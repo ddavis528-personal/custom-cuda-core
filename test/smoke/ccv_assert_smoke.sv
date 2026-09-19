@@ -29,7 +29,8 @@ module dut (
   input  logic rst,
   input  logic a,
   input  logic b,
-  output logic o
+  output logic o,
+  output logic [3:0] payload_out
 );
 
   logic a_q;
@@ -49,7 +50,13 @@ module dut (
       payload_v <= 1'b1;
     end
   end
+  // Read it, guarded by its valid bit. Verilator's UNUSEDSIGNAL caught the
+  // first version of this, where the payload was written and never read --
+  // which made CCV_ASSERT_READ_VALID below a property about nothing. A
+  // hollow property is the failure mode this whole library exists to avoid,
+  // so the finding is kept in the comment rather than just fixed.
   assign payload_rd = payload_v;   // never read before written, by construction
+  assign payload_out = payload_rd ? payload : 4'b0;
 
   assign o = a & b;
 

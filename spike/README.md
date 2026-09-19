@@ -48,7 +48,7 @@ the evidence that `assume` is doing work rather than being ignored.
 
 ## Running
 
-    ../tools/run-spike-1a.sh
+    ../tools/run-spike-1a.py
 
 Writes `../docs/stage1a-tool-support.md` (the matrix §8's exit criteria ask for)
 and `../test/golden/stage1a-matrix.json`.

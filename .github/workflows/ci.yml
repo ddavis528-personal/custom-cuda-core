@@ -1,0 +1,41 @@
+# §8: "CI is a Stage 1 concern, not a Stage 7 one... On a solo project this is
+# the single piece of infrastructure whose absence compounds fastest."
+#
+# One job, one gate. tools/verify.sh is the whole contract -- this file exists
+# to install the toolchain and run it, and should never accumulate checks of
+# its own. A check that lives only in CI cannot be run before pushing, which
+# is when it would actually save time.
+name: verify
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            verilator iverilog yosys cvc5 build-essential python3
+          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
+          cd /tmp/sby && sudo make install PREFIX=/usr/local
+
+      - name: Verify
+        run: ./tools/verify.sh
+
+      # Not part of the gate: regenerating the Stage 1a matrix takes minutes,
+      # and a tool version changing under the flow is a finding to read rather
+      # than a build to fail. Run on demand.
+      - name: Regenerate Stage 1a matrix (manual runs only)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          python3 tools/run-spike-1a.py
+          git --no-pager diff --stat -- docs/stage1a-tool-support.md \
+            test/golden/stage1a-matrix.json

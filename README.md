@@ -1,0 +1,122 @@
+# CCV core — RTL and timing model
+
+**CCV — Custom CUDA Vector processing unit.** The processor design half of the
+project; the compiler and the ISA specification live in
+[`custom-cuda-complier`](../custom-cuda-complier).
+
+This repository holds what
+[`docs/rtl-execution-strategy.md`](docs/rtl-execution-strategy.md) calls for:
+the cycle-accurate timing model, the RTL, and the machinery that connects them
+— an event schema both sides emit against, an assertion library that works
+across three tools that disagree, and a lint layer that enforces the coding
+rules before the first block is written.
+
+**Current state: Stage 1 complete.** Stage 1 is the tooling and schema
+groundwork, whose membership criterion is *needs no architectural decision as
+input*. Everything after it is gated on the Stage 2 interface grill-me, which
+happens outside this repository and has not started. `tools/verify.sh` is
+green and lists the pending stages rather than omitting them.
+
+## Start here
+
+```
+    ./tools/setup-toolchain.sh     # verilator, iverilog, yosys, sby, cvc5
+    ./tools/verify.sh              # the gate
+```
+
+The toolchain is entirely free and open source, by §6's design — there is no
+commercial tool anywhere in the flow. `tools/setup-toolchain.sh` is the record
+of what the flow needs, not a one-time action: containers are ephemeral and
+this is what restores one.
+
+## Documents
+
+| File | Role |
+|---|---|
+| [`docs/rtl-execution-strategy.md`](docs/rtl-execution-strategy.md) | **The process contract.** How we get from locked architecture to validated RTL, and in what order. Not a design doc — block-level architecture definition happens elsewhere and is an input to this. Section references throughout the repo (§1, §6, §8 Stage 1c…) point here. |
+| [`docs/roadmap.md`](docs/roadmap.md) | **Start here when picking this up again.** Current state, what is built, what is next, and the open items carried forward. |
+| [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
+| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eight findings, several of which close questions the strategy doc left open. |
+| [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
+
+The matrix and the findings are deliberately two files. One is data and is
+regenerated; the other is judgment and changes only when someone decides
+something.
+
+## Layout
+
+```
+schema/events.json          event schema -- ONE source for C++ and RTL
+params/ccv_params.json      structural parameters -- ONE source for both
+rtl/include/                ccv_assert.svh (1b), ccv_trace.svh (1c)
+rtl/generated/              generated; never edited
+rtl/lint/                   deliberately non-compliant fixture for the linter
+sim/include/ sim/src/       C++ timing-model side: event emit API
+sim/dpi/                    DPI-C bridge, so RTL feeds the same library
+sim/generated/              generated; never edited
+spike/cases/                Stage 1a tool probes -- 30 cases
+test/smoke/                 exit-criteria smoke modules
+tools/                      generators, checks, and the gate
+```
+
+## What Stage 1 established
+
+Four items, each with its exit criteria as a script (§8: *"anything that can
+be a script should be — on a solo project, criteria requiring a manual
+checklist decay to nothing"*).
+
+**1a — tool-support spike.** Front-loaded deliberately, because a thin SVA
+intersection across the free stack would undercut §7's whole lean-into-formal
+posture, and finding that out in week one is cheap. The intersection *is*
+thin: unlabelled immediate `assert`/`assume`/`cover` in a clocked block, no
+`else` clause, boolean expressions only. No concurrent `assert property`, no
+`$past`, and no multi-cycle sequence construct is available in all three
+tools.
+
+The posture survives anyway, because the load-bearing question was whether
+`assume` genuinely constrains a solver — it does, with cvc5 doing real work.
+So the answer is one property source with per-tool expansion, which is what
+1b builds.
+
+**1b — assertion primitive library.** `assert`/`assume`/`cover` as distinct
+roles, swappable at the call site, plus the X-safety macros. The runtime
+knob is a plusarg guard rather than `$assertoff`, which does not exist on this
+stack.
+
+**1c — event schema mechanism.** The container, not the event list: the two
+event classes are decided, the events themselves are a provisional seed set
+that Stage 2 and Stage 4a populate. Binary 32-byte records, a semantic schema
+hash in every trace header, and a Perfetto view produced on demand. The RTL
+emit path is DPI-C into the same library, decided *and exercised* here rather
+than discovered at 4c.
+
+**1d — coding style and lint.** Eleven rules, each with a counter-example in
+`rtl/lint/bad_module.sv` and a paragraph in the style guide; `check-1d` fails
+if a rule stops firing or stops being documented. Parameters and event ids are
+generated into both languages from one source, because §9 is right that
+nothing else prevents them from drifting.
+
+## What Stage 1 settled that the strategy doc left open
+
+- **SystemVerilog interfaces cannot be block boundaries.** Verilator refuses an
+  interfaced port at top level, and block boundaries are swap boundaries.
+  Plain ports and packed structs. (F-4)
+- **Verible is not needed.** Its load-bearing rule was never expressible in
+  stock rules, so custom rules were always going to be written. §6's "this
+  adds a fourth tool" is retracted. (F-5)
+- **`$assertoff` is unavailable**, and the guard-signal substitute is better,
+  provided the guard is a constant under formal. (F-3)
+- **`$isunknown` cannot state the un-reset-payload invariant under formal** —
+  an un-reset register gets a free two-state value there, so the property is
+  vacuously true. It is stated structurally over the valid bit instead. (F-8)
+
+Full detail in [`docs/stage1a-findings.md`](docs/stage1a-findings.md).
+
+## Checking it
+
+`tools/verify.sh` is the gate and runs everything: generated artifacts are
+current, the Stage 1a matrix still covers every case on disk, each stage's
+exit criteria, the project linter, and Verilator's own lint. It grows one
+section per stage as that stage defines its criteria, and lists the stages not
+yet reached rather than omitting them — a gate that appears to cover the whole
+flow while covering part of it is worse than one that says what it does not.
