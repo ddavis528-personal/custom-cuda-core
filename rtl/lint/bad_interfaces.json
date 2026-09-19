@@ -1,0 +1,37 @@
+{
+  "_comment": [
+    "Lint fixture for CCV-L12, which is a cross-file rule and so cannot be",
+    "counter-exampled by a SystemVerilog file alone. tools/check-1d.sh points",
+    "the rule at this schema instead of the real one.",
+    "",
+    "Two violations: an interface with no checker module at all, and a control",
+    "field the existing checker does not reference."
+  ],
+  "schema_version": 1,
+  "interfaces": [
+    {
+      "name": "nonexistent_t",
+      "provisional": true,
+      "doc": "CCV-L12: no rtl/if/nonexistent_if_checker.sv exists.",
+      "direction": "producer_to_consumer",
+      "backpressure": "ready",
+      "fields": [
+        { "name": "valid", "bits": 1, "control": true, "doc": "x" }
+      ]
+    },
+    {
+      "name": "issue_t",
+      "provisional": true,
+      "doc": "CCV-L12: adds a control field the real checker never references.",
+      "direction": "producer_to_consumer",
+      "backpressure": "ready",
+      "fields": [
+        { "name": "valid", "bits": 1, "control": true, "doc": "x" },
+        { "name": "payload", "bits": 32, "control": false, "doc": "x" },
+        { "name": "tag", "bits": 6, "control": true, "doc": "x" },
+        { "name": "never_checked_field", "bits": 2, "control": true,
+          "doc": "CCV-L12: a control field added to the struct and not to the checker." }
+      ]
+    }
+  ]
+}

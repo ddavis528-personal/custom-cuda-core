@@ -23,6 +23,7 @@ There is no reason to reimplement that here, and every reason not to.
 Each rule has an id (CCV-Lnn) that docs/rtl-coding-style.md cites, so a
 failure points at the paragraph that explains it rather than at a regex.
 """
+import json
 import os
 import re
 import sys
@@ -52,6 +53,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # disabled, which is worse than no rule at all because it still looks enforced.
 SCOPE_PROBE = ("spike/cases/",)
 SCOPE_TB = ("spike/", "test/")
+# Interface checkers are design-scope, plus four rules of their own from
+# docs/interface-checker-convention.md.
+SCOPE_CHECKER = ("rtl/if/", "rtl/lint/")
 
 # Rules that apply in each scope. `design` gets everything not listed here.
 PROBE_RULES = {"CCV-L10"}
@@ -319,6 +323,90 @@ def check_file(path, rel):
                 "internal-behaviour spec it implements, so the two stay "
                 "traceable as both evolve")
 
+    # -- CCV-L13: no `bind` at a design boundary ---------------------------
+    # Stage 1a finding F-9, and the reason is the failure MODE rather than the
+    # missing feature: Yosys parses a bind, ignores it, and garbage-collects
+    # the checker. A standalone block proof would then be empty and green.
+    if not is_tb:
+        for i, l in enumerate(lines):
+            if re.match(r"\s*bind\s+\w+\s+\w+", l):
+                add("CCV-L13", i + 1,
+                    "`bind` at a design boundary; Yosys parses it, ignores it "
+                    "and drops the checker, so the proof passes having checked "
+                    "nothing (F-9). Instantiate with `CCV_CHECKER instead")
+
+    # -- interface checker rules (docs/interface-checker-convention.md) -----
+    is_checker = (any(rel.startswith(r) for r in SCOPE_CHECKER)
+                  and mods and mods[0][1].endswith("_checker"))
+    if is_checker:
+        name = mods[0][1]
+
+        # -- CCV-L14: satisfiability covers are mandatory, not optional -----
+        # Convention §3.3. A contradictory `assume` set makes every dependent
+        # proof vacuously true and does it SILENTLY -- spike cases 34 and 35
+        # demonstrate exactly that. The covers are the only available signal.
+        # Searched in the COMMENT-STRIPPED source. Against `raw` the rule
+        # matches its own counter-example's explanatory comment and reports
+        # the fixture compliant -- the same way CCV-L11 did during 1d. A rule
+        # that reads prose as code is a rule that quietly stops working.
+        if "`CCV_IF_SAT" not in src:
+            add("CCV-L14", mods[0][0],
+                "checker %s has no `CCV_IF_SAT satisfiability cover; §3.3 "
+                "makes them mandatory because a contradictory assume set "
+                "makes every proof over it vacuously true, silently" % name)
+
+        # -- CCV-L15: protocol properties must be mode-resolved -------------
+        # A bare `CCV_ASSERT in a checker ignores the MODE parameter, so the
+        # checker cannot act as a cut-point and the ASSUME side is silently
+        # absent -- which looks like a proof that succeeded.
+        for i, l in enumerate(lines):
+            if re.search(r"`CCV_(ASSERT|ASSUME)\s*\(", l):
+                add("CCV-L15", i + 1,
+                    "bare `CCV_ASSERT/`CCV_ASSUME in a checker; use "
+                    "`CCV_CONTRACT_M so the MODE parameter is honoured, or "
+                    "the ASSUME side of a cut-point is silently absent")
+
+    return F
+
+
+def check_interface_coverage(schema=None):
+    """CCV-L12 -- every interface typedef has a checker, and every CONTROL
+    field is referenced by it.
+
+    Convention §3: "Every interface typedef has exactly one associated checker
+    module. No typedef may exist without one; lint enforces this." And §4: "a
+    field added to the struct and not to the checker is a lint failure."
+
+    This is a cross-file rule, so it runs once over the schema rather than per
+    file. Control fields specifically, because §6 of the strategy doc prohibits
+    X on control and propagates it on data -- a data field needs no obligation,
+    a control field does.
+    """
+    F = []
+    src = schema or os.path.join(ROOT, "schema", "interfaces.json")
+    if not os.path.exists(src):
+        return F
+    with open(src) as f:
+        d = json.load(f)
+    for i in d.get("interfaces", []):
+        base = i["name"][:-2] if i["name"].endswith("_t") else i["name"]
+        path = os.path.join(ROOT, "rtl", "if", "%s_if_checker.sv" % base)
+        rel = os.path.relpath(path, ROOT)
+        if not os.path.exists(path):
+            F.append(Finding("CCV-L12", "schema/interfaces.json", 1,
+                             "interface %s has no checker at %s; no typedef "
+                             "may exist without one" % (i["name"], rel)))
+            continue
+        body = open(path).read()
+        for fld in i["fields"]:
+            if not fld["control"]:
+                continue
+            if not re.search(r"\b%s\b" % re.escape(fld["name"]), body):
+                F.append(Finding("CCV-L12", rel, 1,
+                                 "control field %r of %s is not referenced by "
+                                 "its checker; a field added to the struct and "
+                                 "not to the checker is a lint failure (§4)"
+                                 % (fld["name"], i["name"])))
     return F
 
 
@@ -345,12 +433,22 @@ def iter_sv(paths):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     quiet = "-q" in sys.argv
+    # Lets tools/check-1d.sh point CCV-L12 at a fixture schema, since a
+    # cross-file rule cannot be counter-exampled by a .sv file alone.
+    schema = None
+    for a in sys.argv[1:]:
+        if a.startswith("--schema="):
+            schema = a.split("=", 1)[1]
     targets = args or ["rtl", "test", "spike"]
     findings = []
     n = 0
     for full, rel in iter_sv(targets):
         n += 1
         findings.extend(check_file(full, rel))
+    # Cross-file rule: runs once, and only on a full-tree run, since a
+    # single-file invocation has no opinion about the schema.
+    if not args or schema:
+        findings.extend(check_interface_coverage(schema))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):
         print(f)
     if not quiet:

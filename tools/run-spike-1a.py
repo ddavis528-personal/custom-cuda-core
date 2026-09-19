@@ -338,6 +338,77 @@ def probe_verible():
                       "this environment"}
 
 
+def probe_struct_boundary():
+    """Interface convention §2/Q3: does a packed-struct port surface in the
+    generated C++ model as a signal the swap harness can decompose?
+
+    §1's block-swap mechanism requires a Verilated RTL block and a
+    hand-written C++ timing-model block to sit behind the same interface in
+    one executable. The convention picks packed structs over SystemVerilog
+    `interface` on the argument that a struct is "a plain bit vector at the
+    module boundary". This measures that rather than assuming it."""
+    if not shutil.which("verilator"):
+        return {"result": "NO-TOOL"}
+    case = os.path.join(CASES, "36_packed_struct_port.sv")
+    aux = os.path.join(CASES, "36_packed_struct_port.aux.sv")
+    if not os.path.exists(case):
+        return {"result": "NO-CASE"}
+    with tempfile.TemporaryDirectory() as wd:
+        mdir = os.path.join(wd, "obj")
+        rc, o = run(["verilator", "--cc", "-Wno-fatal", "--top-module", "blk",
+                     "--Mdir", mdir, aux, case], cwd=wd, timeout=240)
+        hdr = os.path.join(mdir, "Vblk.h")
+        if rc != 0 or not os.path.exists(hdr):
+            return {"result": "NOT-USABLE", "detail": first_error(o)}
+        txt = open(hdr).read()
+        m = re.search(r"VL_(IN|OUT)(\d*)\(&iss,\s*(\d+),\s*(\d+)\)", txt)
+        if not m:
+            return {"result": "NOT-EXPOSED",
+                    "detail": "struct port absent from the generated header"}
+        msb, lsb = int(m.group(3)), int(m.group(4))
+        return {
+            "result": "USABLE",
+            "port": m.group(0),
+            "detail": "the struct surfaces as ONE packed signal, bits %d:%d "
+                      "(%d bits = 1 valid + 32 payload + 6 tag). Decomposable "
+                      "by shift and mask." % (msb, lsb, msb - lsb + 1),
+            "consequence": "field OFFSETS are not exposed, so the C++ side "
+                           "must know the layout independently. That is a "
+                           "drift risk of exactly the kind §9 names for "
+                           "parameters, so the typedef is generated into both "
+                           "languages from one source rather than written "
+                           "twice.",
+        }
+
+
+def probe_icarus_dpi():
+    """Interface convention §5/Q4: event emission lives in the per-type
+    checker and goes out through DPI-C. Which tools can carry it?"""
+    if not shutil.which("iverilog"):
+        return {"result": "NO-TOOL"}
+    out = {}
+    with tempfile.TemporaryDirectory() as wd:
+        src = os.path.join(wd, "t.sv")
+        with open(src, "w") as f:
+            f.write('module t;\n'
+                    '  import "DPI-C" function void simple_fn(input int x);\n'
+                    '  initial simple_fn(1);\n'
+                    'endmodule\n')
+        rc, o = run(["iverilog", "-g2012", "-o", os.path.join(wd, "x"),
+                     "-s", "t", src])
+        out["iverilog"] = "OK" if rc == 0 else first_error(o)
+        out["result"] = "VERILATOR-ONLY" if rc != 0 else "BOTH"
+    if out["result"] == "VERILATOR-ONLY":
+        out["detail"] = ("Icarus rejects `import \"DPI-C\"` as an invalid "
+                         "module item in every form tried -- int, longint and "
+                         "string arguments alike. It implements VPI, not DPI. "
+                         "So checker-side event emission is Verilator-only, "
+                         "and a checker's emission half must be guarded per "
+                         "tool so the SAME checker still compiles for the "
+                         "Icarus X-pass.")
+    return out
+
+
 RUNNERS = [("iverilog", run_iverilog), ("verilator", run_verilator),
            ("sby", run_sby)]
 
@@ -369,6 +440,8 @@ def main():
     print("\n  -- out-of-band probes --", flush=True)
     probes = {"x_randomization": probe_x_randomization(),
               "interface_boundary": probe_interface_boundary(),
+              "struct_boundary": probe_struct_boundary(),
+              "icarus_dpi": probe_icarus_dpi(),
               "verible": probe_verible()}
     for k, v in probes.items():
         print("  %-34s %s" % (k, v.get("result", "?")), flush=True)
@@ -456,6 +529,11 @@ def write_doc(out):
                         "Verilator X-randomization (§6)"),
                        ("interface_boundary",
                         "SystemVerilog `interface` on a block boundary (§9, §1)"),
+                       ("struct_boundary",
+                        "Packed struct at the Verilator C++ boundary "
+                        "(interface convention §2)"),
+                       ("icarus_dpi",
+                        "DPI-C availability per tool (interface convention §5)"),
                        ("verible", "Verible availability (§6, §9)")):
         d = pr.get(key, {})
         L.append("**%s** — `%s`\n" % (title, d.get("result", "not run")))

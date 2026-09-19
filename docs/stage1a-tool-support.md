@@ -66,6 +66,12 @@ Formal engine: **cvc5**.
 | 28 | default: <= 'x  X-injection | `CHECK` | `SILENT` | `N/A` |
 | 29 | runtime enable gate (the $assertoff substitute) | `SILENCED` | `SILENCED` | `CHECK` |
 | 30 | SystemVerilog interface on the TOP-LEVEL port list | `N/A` | `N/A` | `N/A` |
+| 31 | bind of a checker (interface convention §4) | `PARSE-FAIL` | `CHECK` | `SILENT` |
+| 32 | checker instantiated directly (the adopted alternative to bind) | `CHECK` | `CHECK` | `CHECK` |
+| 33 | MODE parameter resolving assert / assume / cover | `CHECK` | `CHECK` | `PROVE-PASS` |
+| 34 | contradictory assume set makes a proof vacuously true | `CHECK` | `CHECK` | `SILENT` |
+| 35 | satisfiability cover catches the vacuous assume set | `PARSE-OK` | `PARSE-OK` | `COVER-MISS` |
+| 36 | packed struct on a block's port list | `N/A` | `N/A` | `N/A` |
 
 ## Out-of-band probes
 
@@ -84,36 +90,47 @@ Three Stage 1a questions that are not "does this construct compile", and so are 
 - `verilator_lint`: OK
 - `yosys`: OK
 
+**Packed struct at the Verilator C++ boundary (interface convention §2)** — `USABLE`
+
+- `consequence`: field OFFSETS are not exposed, so the C++ side must know the layout independently. That is a drift risk of exactly the kind §9 names for parameters, so the typedef is generated into both languages from one source rather than written twice.
+- `detail`: the struct surfaces as ONE packed signal, bits 38:0 (39 bits = 1 valid + 32 payload + 6 tag). Decomposable by shift and mask.
+- `port`: VL_OUT64(&iss,38,0)
+
+**DPI-C availability per tool (interface convention §5)** — `VERILATOR-ONLY`
+
+- `detail`: Icarus rejects `import "DPI-C"` as an invalid module item in every form tried -- int, longint and string arguments alike. It implements VPI, not DPI. So checker-side event emission is Verilator-only, and a checker's emission half must be guarded per tool so the SAME checker still compiles for the Icarus X-pass.
+- `iverilog`: /tmp/tmpi0p8nrel/t.sv:2: syntax error
+
 **Verible availability (§6, §9)** — `ABSENT`
 
 - `detail`: verible-verilog-lint not on PATH; upstream ships only GitHub release binaries, which are not reachable from this environment
 
 ## Cell notes
 
-- **01 / sby** — `PARSE-FAIL`: SBY  6:06:28 [case] base: 01_immediate_assert.sv:9: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
+- **01 / sby** — `PARSE-FAIL`: SBY 16:40:07 [case] base: 01_immediate_assert.sv:9: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
 - **04 / iverilog** — `PARSE-FAIL`: spike/cases/04_concurrent_overlap.sv:7: syntax error
-- **04 / sby** — `PARSE-FAIL`: SBY  6:06:39 [case] base: 04_concurrent_overlap.sv:7: ERROR: syntax error, unexpected '@'
+- **04 / sby** — `PARSE-FAIL`: SBY 16:40:17 [case] base: 04_concurrent_overlap.sv:7: ERROR: syntax error, unexpected '@'
 - **05 / iverilog** — `PARSE-FAIL`: spike/cases/05_concurrent_nonoverlap.sv:6: syntax error
-- **05 / sby** — `PARSE-FAIL`: SBY  6:06:43 [case] base: 05_concurrent_nonoverlap.sv:6: ERROR: syntax error, unexpected '@'
+- **05 / sby** — `PARSE-FAIL`: SBY 16:40:21 [case] base: 05_concurrent_nonoverlap.sv:6: ERROR: syntax error, unexpected '@'
 - **06 / iverilog** — `PARSE-FAIL`: spike/cases/06_disable_iff.sv:10: sorry: concurrent_assertion_item not supported. Try -gno-assertions or -gsupported-assertions to turn this message off.
-- **06 / sby** — `PARSE-FAIL`: SBY  6:06:47 [case] base: 06_disable_iff.sv:10: ERROR: syntax error, unexpected '@'
+- **06 / sby** — `PARSE-FAIL`: SBY 16:40:24 [case] base: 06_disable_iff.sv:10: ERROR: syntax error, unexpected '@'
 - **07 / iverilog** — `PARSE-FAIL`: spike/cases/07_past.sv:7: syntax error
-- **07 / sby** — `PARSE-FAIL`: SBY  6:06:50 [case] base: 07_past.sv:7: ERROR: syntax error, unexpected '@'
+- **07 / sby** — `PARSE-FAIL`: SBY 16:40:28 [case] base: 07_past.sv:7: ERROR: syntax error, unexpected '@'
 - **08 / iverilog** — `PARSE-FAIL`: spike/cases/08_edge_fns.sv:6: syntax error
-- **08 / sby** — `PARSE-FAIL`: SBY  6:06:54 [case] base: 08_edge_fns.sv:6: ERROR: syntax error, unexpected '@'
+- **08 / sby** — `PARSE-FAIL`: SBY 16:40:31 [case] base: 08_edge_fns.sv:6: ERROR: syntax error, unexpected '@'
 - **09 / iverilog** — `PARSE-FAIL`: spike/cases/09_delay_seq.sv:7: syntax error
 - **09 / verilator** — `PARSE-FAIL`: %Error-UNSUPPORTED: spike/cases/09_delay_seq.sv:7:64: Unsupported: ## () cycle delay range expression
-- **09 / sby** — `PARSE-FAIL`: SBY  6:06:54 [case] base: 09_delay_seq.sv:7: ERROR: syntax error, unexpected '@'
+- **09 / sby** — `PARSE-FAIL`: SBY 16:40:31 [case] base: 09_delay_seq.sv:7: ERROR: syntax error, unexpected '@'
 - **10 / iverilog** — `PARSE-FAIL`: spike/cases/10_named_property.sv:8: syntax error
 - **10 / verilator** — `PARSE-FAIL`: %Error-UNSUPPORTED: spike/cases/10_named_property.sv:8:3: Unsupported: sequence
-- **10 / sby** — `PARSE-FAIL`: SBY  6:06:54 [case] base: 10_named_property.sv:8: ERROR: syntax error, unexpected ';', expecting '(' or '['
+- **10 / sby** — `PARSE-FAIL`: SBY 16:40:31 [case] base: 10_named_property.sv:8: ERROR: syntax error, unexpected ';', expecting '(' or '['
 - **11 / iverilog** — `PARSE-FAIL`: spike/cases/11_cover_property.sv:6: sorry: concurrent_assertion_item not supported. Try -gno-assertions or -gsupported-assertions to turn this message off.
-- **11 / sby** — `PARSE-FAIL`: SBY  6:06:58 [case] base: 11_cover_property.sv:6: ERROR: syntax error, unexpected '@'
+- **11 / sby** — `PARSE-FAIL`: SBY 16:40:35 [case] base: 11_cover_property.sv:6: ERROR: syntax error, unexpected '@'
 - **12 / iverilog** — `PARSE-FAIL`: spike/cases/12_assume_cutpoint.sv:13: syntax error
-- **12 / sby** — `PARSE-FAIL`: SBY  6:07:02 [case] base: 12_assume_cutpoint.sv:13: ERROR: syntax error, unexpected '@'
+- **12 / sby** — `PARSE-FAIL`: SBY 16:40:38 [case] base: 12_assume_cutpoint.sv:13: ERROR: syntax error, unexpected '@'
 - **13 / iverilog** — `PARSE-FAIL`: spike/cases/13_isunknown_control.sv:19: sorry: concurrent_assertion_item not supported. Try -gno-assertions or -gsupported-assertions to turn this message off.
 - **13 / verilator** — `SILENT`: compiled and ran; never fired
-- **13 / sby** — `PARSE-FAIL`: SBY  6:07:05 [case] base: 13_isunknown_control.sv:19: ERROR: syntax error, unexpected '@'
+- **13 / sby** — `PARSE-FAIL`: SBY 16:40:42 [case] base: 13_isunknown_control.sv:19: ERROR: syntax error, unexpected '@'
 - **14 / iverilog** — `SILENT`: compiled and ran; never fired
 - **14 / sby** — `SILENT`: BMC passed a property written to be false
 - **15 / iverilog** — `SILENT`: compiled and ran; never fired
@@ -122,28 +139,28 @@ Three Stage 1a questions that are not "does this construct compile", and so are 
 - **16 / verilator** — `PARSE-FAIL`: %Error: spike/cases/16_assertoff_runtime.sv:19:19: Can't find definition of variable: 'dut'
 - **16 / sby** — `N/A`: not applicable
 - **17 / iverilog** — `PARSE-FAIL`: spike/cases/17_bind_checker.aux.sv:2: syntax error
-- **17 / sby** — `PARSE-FAIL`: SBY  6:07:16 [case] base: 17_bind_checker.aux.sv:2: ERROR: syntax error, unexpected '@'
+- **17 / sby** — `PARSE-FAIL`: SBY 16:40:52 [case] base: 17_bind_checker.aux.sv:2: ERROR: syntax error, unexpected '@'
 - **18 / iverilog** — `PARSE-FAIL`: spike/cases/18_interface_internal.sv:17: syntax error
-- **18 / sby** — `PARSE-FAIL`: SBY  6:07:20 [case] base: 18_interface_internal.sv:17: ERROR: syntax error, unexpected '@'
+- **18 / sby** — `PARSE-FAIL`: SBY 16:40:55 [case] base: 18_interface_internal.sv:17: ERROR: syntax error, unexpected '@'
 - **19 / iverilog** — `PARSE-FAIL`: spike/cases/19_property_local_var.sv:9: syntax error
 - **19 / verilator** — `PARSE-FAIL`: %Error: spike/cases/19_property_local_var.sv:10:11: syntax error, unexpected IDENTIFIER, expecting "'{"
-- **19 / sby** — `PARSE-FAIL`: SBY  6:07:20 [case] base: 19_property_local_var.sv:9: ERROR: syntax error, unexpected TOK_PROPERTY
+- **19 / sby** — `PARSE-FAIL`: SBY 16:40:56 [case] base: 19_property_local_var.sv:9: ERROR: syntax error, unexpected TOK_PROPERTY
 - **20 / iverilog** — `PARSE-FAIL`: spike/cases/20_restrict.sv:9: sorry: concurrent_assertion_item not supported. Try -gno-assertions or -gsupported-assertions to turn this message off.
-- **20 / sby** — `PARSE-FAIL`: SBY  6:07:24 [case] base: 20_restrict.sv:9: ERROR: syntax error, unexpected '@'
+- **20 / sby** — `PARSE-FAIL`: SBY 16:40:59 [case] base: 20_restrict.sv:9: ERROR: syntax error, unexpected '@'
 - **21 / iverilog** — `PARSE-FAIL`: spike/cases/21_strong_eventually.sv:12: syntax error
 - **21 / verilator** — `PARSE-FAIL`: %Error-UNSUPPORTED: spike/cases/21_strong_eventually.sv:12:67: Unsupported: s_eventually (in property expression)
-- **21 / sby** — `PARSE-FAIL`: SBY  6:07:24 [case] base: 21_strong_eventually.sv:12: ERROR: syntax error, unexpected '@'
+- **21 / sby** — `PARSE-FAIL`: SBY 16:40:59 [case] base: 21_strong_eventually.sv:12: ERROR: syntax error, unexpected '@'
 - **22 / iverilog** — `PARSE-FAIL`: spike/cases/22_throughout.sv:9: syntax error
 - **22 / verilator** — `PARSE-FAIL`: %Error-UNSUPPORTED: spike/cases/22_throughout.sv:9:87: Unsupported: ## () cycle delay range expression
-- **22 / sby** — `PARSE-FAIL`: SBY  6:07:24 [case] base: 22_throughout.sv:9: ERROR: syntax error, unexpected '@'
+- **22 / sby** — `PARSE-FAIL`: SBY 16:40:59 [case] base: 22_throughout.sv:9: ERROR: syntax error, unexpected '@'
 - **23 / iverilog** — `PARSE-FAIL`: spike/cases/23_assert_label.sv:12: syntax error
-- **23 / sby** — `PARSE-FAIL`: SBY  6:07:28 [case] base: 23_assert_label.sv:12: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
-- **24 / iverilog** — `PARSE-FAIL`: /tmp/tmpyzx5clgs/a.out: Program not runnable, 1 errors.
-- **24 / sby** — `PARSE-FAIL`: SBY  6:07:32 [case] base: 24_past_system_fn.sv:11: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
+- **23 / sby** — `PARSE-FAIL`: SBY 16:41:03 [case] base: 23_assert_label.sv:12: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
+- **24 / iverilog** — `PARSE-FAIL`: /tmp/tmphk2i71oz/a.out: Program not runnable, 1 errors.
+- **24 / sby** — `PARSE-FAIL`: SBY 16:41:06 [case] base: 24_past_system_fn.sv:11: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
 - **25 / sby** — `PROVE-PASS`: assume honoured -- cut-point usable
 - **26 / verilator** — `SILENT`: compiled and ran; never fired
-- **26 / sby** — `PARSE-FAIL`: SBY  6:07:39 [case] base: 26_isunknown_immediate.sv:19: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
-- **27 / iverilog** — `PARSE-FAIL`: /tmp/tmphc4vp8ti/a.out: Program not runnable, 1 errors.
+- **26 / sby** — `PARSE-FAIL`: SBY 16:41:13 [case] base: 26_isunknown_immediate.sv:19: ERROR: syntax error, unexpected TOK_ELSE, expecting ';'
+- **27 / iverilog** — `PARSE-FAIL`: /tmp/tmpmy7sdejj/a.out: Program not runnable, 1 errors.
 - **27 / verilator** — `PARSE-FAIL`: %Error: spike/cases/27_assertoff_immediate.sv:14:11: Unsupported or unknown PLI call: '$assertoff'
 - **27 / sby** — `N/A`: not applicable
 - **28 / verilator** — `SILENT`: compiled and ran; never fired
@@ -151,6 +168,14 @@ Three Stage 1a questions that are not "does this construct compile", and so are 
 - **30 / iverilog** — `N/A`: not applicable
 - **30 / verilator** — `N/A`: not applicable
 - **30 / sby** — `N/A`: not applicable
+- **31 / iverilog** — `PARSE-FAIL`: spike/cases/31_bind_silent_drop.aux.sv:7: syntax error
+- **31 / sby** — `SILENT`: BMC passed a property written to be false
+- **33 / sby** — `PROVE-PASS`: assume honoured -- cut-point usable
+- **34 / sby** — `SILENT`: BMC passed a property written to be false
+- **35 / sby** — `COVER-MISS`: cover unreachable
+- **36 / iverilog** — `N/A`: not applicable
+- **36 / verilator** — `N/A`: not applicable
+- **36 / sby** — `N/A`: not applicable
 
 ## The usable subset
 
@@ -160,4 +185,7 @@ Constructs green in **all three** tools. Stage 1b's primitive library may use th
 - immediate assume, isolated (case 25)
 - runtime enable gate (the $assertoff substitute) (case 29)
 - SystemVerilog interface on the TOP-LEVEL port list (case 30)
+- checker instantiated directly (the adopted alternative to bind) (case 32)
+- MODE parameter resolving assert / assume / cover (case 33)
+- packed struct on a block's port list (case 36)
 

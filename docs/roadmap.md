@@ -33,10 +33,24 @@ What this repository is waiting for, specifically:
    consumes and produces.
 3. **Per-block interface NGD budgets** against the 25 NGD envelope.
 
-Once those exist, Stage 2's repository-side work is mechanical and the
-groundwork for it is already in place: the load-bearing event list drops into
-`schema/events.json`, and the interface assertions are written with the 1b
-macros.
+Once those exist, Stage 2's repository-side work is mechanical, and more of it
+is in place than the stage numbering suggests. Each interface becomes:
+
+- an entry in `schema/interfaces.json`, which generates the typedef into both
+  languages;
+- a checker at `rtl/if/<name>_if_checker.sv`, following
+  `rtl/if/issue_if_checker.sv`, which carries the protocol properties, the
+  satisfiability covers and the load-bearing event emission together;
+- a `` `CCV_CHECKER `` instantiation at each boundary that uses it.
+
+CCV-L12 then fails if a typedef has no checker or a control field goes
+unreferenced, so the interface list and the checkers cannot drift apart.
+
+**Two things to carry into that session, both from the spike:** a
+request-to-response contract needs explicit tracking state, since no
+multi-cycle construct exists in any tool (F-2), and every interface needs a
+**justified N** for its bounded-latency property, because liveness cannot be
+stated at all.
 
 **Do not skip ahead to Stage 3.** The skeleton is built against Stage 2's
 interface contracts, and §8 open item 6 is explicit that the block-swap
@@ -80,6 +94,25 @@ looks exactly like one that passes.
 - `params/ccv_params.json` + `tools/gen-params.py`
 - `tools/check-1d.sh`
 
+### Interface checker convention ✅ (mechanism)
+
+`docs/interface-checker-convention.md`, scheduled as part of Stage 1d. All
+five of its spike questions closed — four confirmed, one (`bind`) reversed.
+
+- `schema/interfaces.json` + `tools/gen-interfaces.py` — typedefs into both
+  languages, because the C++ boundary sees a packed signal with no field
+  information (F-12)
+- `rtl/include/ccv_if.svh` — modes, mode-resolved contracts, satisfiability
+  covers, guarded emission
+- `rtl/if/issue_if_checker.sv` — the reference checker. `issue_t` is the
+  convention doc's own worked example, **not a proposed interface**; the real
+  list follows from the Stage 2 partition.
+- `tools/check-if.sh` — exit criteria
+- CCV-L12 … CCV-L15 in the linter
+
+**What is NOT done here:** the interface list, and the per-type checkers.
+Those are Stage 2's, alongside the interface grill-me.
+
 ### CI harness ✅
 
 `tools/verify.sh` and `.github/workflows/ci.yml`. §8 puts this at Stage 1
@@ -101,6 +134,10 @@ rediscovered there. Full text in `stage1a-findings.md`.
 | **F-8** — `$isunknown` cannot state the payload invariant under formal | **Stage 4a** | A block's reset line must pair every un-reset payload field with the valid bit guarding it, not merely name which state is un-reset. Without that pairing §7's third formal target cannot be stated. |
 | **F-6** — Icarus and Verilator answer different X questions | **Stage 4c** | The Icarus X-pass is not redundant with Verilator's X-randomization. Spike cases 26 and 28 are the standing demonstration and should stay in the suite. |
 | **F-3** — the assertion enable gate must be constant under formal | permanent | Spike case 29 is the standing regression. If the guard became a free variable, every property in the design would pass vacuously and nothing about the run would look wrong. |
+| **F-9** — `bind` drops silently under Yosys | **before first synthesis** | Checkers are instantiated, so they are no longer excluded from synthesis for free. Recorded debt with no substitute. |
+| **F-10** — a spike case can be confounded | permanent | A case may test exactly one construct outside the known intersection; anything else it needs comes from the all-three subset, or it is paired with a control. Cases 31/32 and 34/35 are those pairs. |
+| **F-12** — struct field offsets are invisible at the C++ boundary | **Stage 2**, and every swap | The typedef is generated into both languages. The generator rejects interfaces wider than 64 bits, where the Verilated port stops being a single integer. |
+| **F-13** — DPI is Verilator-only | **Stage 2** | The event stream has one witness; a bug in the emission path cannot be caught by cross-checking two simulators. Worth a deliberate test of that path. |
 
 ---
 
@@ -148,6 +185,20 @@ Carried from the strategy doc, with current status.
 8. **What is the bounded-latency N for each interface?** Opened by F-2, since
    liveness cannot be stated. One number per interface, each needing a
    justification, at Stage 2.
+
+9. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
+   removed `bind`. Settle before the first synthesis attempt rather than at it.
+
+10. **Direction discipline without modports.** Partly addressed — the direction
+    is declared in `schema/interfaces.json` and carried into the generated
+    header — but whether that is *adequate* will not be known until several
+    real interfaces exist at Stage 2.
+
+11. **Backpressure convention.** Provisionally the separate `_ready` signal,
+    on the strength of F-12: folding backpressure into the struct would put a
+    reverse-direction field inside a signal the swap harness drives one way.
+    Wide return paths get their own reverse-direction struct. Revisit at Stage
+    2 with real interfaces.
 
 ---
 

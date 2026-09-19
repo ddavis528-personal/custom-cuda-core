@@ -140,6 +140,7 @@ def gen_sv(d, h):
     L.append("// in the model imposes a translation tax on every 4d debug")
     L.append("// session, permanently.")
     L.append("")
+    L.append('// A generated header is a CATALOGUE: it declares every event id and unit in\n// the schema, and no single consumer uses all of them. That is the intended\n// shape, not an oversight, so the unused-parameter warning is turned off for\n// this file only -- narrowly, and here rather than at the call site, so a\n// genuinely unused parameter in hand-written RTL still gets caught.\n/* verilator lint_off UNUSEDPARAM */')
     L.append("localparam int CCV_SCHEMA_VERSION = %d;" % d["schema_version"])
     L.append('localparam string CCV_SCHEMA_HASH = "%s";' % h)
     L.append("")
@@ -150,6 +151,8 @@ def gen_sv(d, h):
     for e in sorted(d["events"], key=lambda e: e["id"]):
         L.append("// %s" % e["doc"])
         L.append("localparam int CCV_%s = %d;" % (e["name"], e["id"]))
+    L.append("")
+    L.append("/* verilator lint_on UNUSEDPARAM */")
     L.append("")
     L.append("`endif // CCV_EVENT_IDS_SVH")
     return "\n".join(L) + "\n"

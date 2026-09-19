@@ -40,4 +40,25 @@ package ccv_assert_pkg;
 `endif
   endfunction
 
+  // Event emission has its own switch, separate from assertion firing
+  // (interface checker convention §6). A correlation run wants events on and
+  // protocol checking on; a throughput regression wants both off; a bring-up
+  // run often wants checking on and events off, because the trace is the
+  // expensive half. One knob could not express that.
+  //
+  //     <sim> +ccv_trace_off=1      checkers still check, nothing is emitted
+  //
+  // Always 0 under formal: there is no DPI in that flow and nothing to emit,
+  // so the function folds away rather than becoming a solver input.
+  function automatic bit trace_enabled();
+`ifdef FORMAL
+    trace_enabled = 1'b0;
+`else
+    int off;
+    trace_enabled = 1'b1;
+    if ($value$plusargs("ccv_trace_off=%d", off))
+      trace_enabled = (off == 0);
+`endif
+  endfunction
+
 endpackage

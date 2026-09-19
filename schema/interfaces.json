@@ -1,0 +1,51 @@
+{
+  "_comment": [
+    "Interface typedefs, single source of truth. tools/gen-interfaces.py",
+    "generates the SystemVerilog packed-struct typedefs and the matching C++",
+    "accessor header from this file.",
+    "",
+    "WHY GENERATED. Stage 1a finding F-12: a packed-struct port surfaces in the",
+    "Verilated C++ model as ONE packed signal -- VL_OUT64(&iss, 38, 0) -- which",
+    "is exactly what the convention's §2 wants, but the FIELD OFFSETS are not",
+    "exposed. The C++ swap harness has to know the layout independently. A field",
+    "reordered in RTL and not in C++ gives a harness reading the wrong bits,",
+    "which presents as a functional bug rather than as a mismatch. That is the",
+    "drift §9 of the strategy doc names for parameters, arriving at the one",
+    "boundary §1's block-swap mechanism depends on.",
+    "",
+    "WHAT IS AND IS NOT DECIDED HERE. The MECHANISM is Stage 1d. The interface",
+    "LIST is Stage 2's, and depends on the partition list, which §2 of the",
+    "strategy doc is explicit has not been decided. `issue_t` below is the",
+    "convention doc's own worked example, carried as a reference so the",
+    "generator, the checker pattern and the lint rules have something real to",
+    "exercise. It is marked provisional and is not a proposed interface.",
+    "",
+    "FIELD ORDER IS DECLARATION ORDER, and in a packed struct the FIRST field",
+    "declared occupies the MOST significant bits. The generator computes offsets",
+    "from that rule and emits them for both languages, so nobody has to.",
+    "",
+    "DIRECTION is recorded per interface (open item: direction discipline",
+    "without modports). Packed structs carry no direction enforcement, so this",
+    "at least makes the intent generated rather than remembered."
+  ],
+
+  "schema_version": 1,
+
+  "interfaces": [
+    {
+      "name": "issue_t",
+      "provisional": true,
+      "doc": "REFERENCE EXAMPLE, from the interface convention §2. Not a proposed interface -- the real list follows from the Stage 2 partition.",
+      "direction": "producer_to_consumer",
+      "backpressure": "ready",
+      "fields": [
+        { "name": "valid",   "bits": 1,  "control": true,
+          "doc": "Transaction valid this cycle. Control, so it carries an X-safety obligation." },
+        { "name": "payload", "bits": 32, "control": false,
+          "doc": "Data. X propagates here; §6 prohibits X on control, not on data." },
+        { "name": "tag",     "bits": 6,  "control": true,
+          "doc": "In-flight transaction tag. Control: it selects, so an X reaches a decision." }
+      ]
+    }
+  ]
+}

@@ -237,6 +237,89 @@ invariant literally says:
 
     `CCV_ASSERT_READ_VALID(rob_read_valid, rob_rd_en, rob_entry_v)
 
+### CCV-L12 — every interface typedef has a checker, referencing every control field
+
+Interface checker convention §3: *"Every interface typedef has exactly one
+associated checker module. No typedef may exist without one; lint enforces
+this."* And §4: *"a field added to the struct and not to the checker is a lint
+failure."*
+
+`schema/interfaces.json` declares the typedef; `rtl/if/<name>_if_checker.sv`
+must exist, and must reference every field marked `control: true`.
+
+Control fields specifically, not all fields — §6 prohibits X on control and
+propagates it on data, so a control field carries an obligation and a data
+field does not. `issue_t`'s `payload` is deliberately unreferenced for exactly
+that reason.
+
+This is a cross-file rule, so it has no counter-example in a `.sv` fixture;
+`tools/check-1d.sh` points it at `rtl/lint/bad_interfaces.json` instead.
+
+### CCV-L13 — no `bind` at a design boundary
+
+**Stage 1a finding F-9, and the reason is the failure mode, not the missing
+feature.**
+
+| Tool | `bind` |
+|---|---|
+| Verilator | works |
+| Icarus | syntax error on the `bind` statement — honest, and cheap |
+| Yosys / `sby` | **parses it, ignores it, garbage-collects the checker** |
+
+Yosys prints `Removing unused module '\chk'` and the proof then passes a
+property written to be false. Every standalone block proof would have been
+empty, and nothing in the output would have said so.
+
+The convention's §4 originally specified `bind`, for good reasons — RTL stays
+readable, checkers stay out of synthesis, and modes can be re-bound per flow
+without touching design source. Those reasons are still right; the mechanism
+is simply not available. Instantiate with `` `CCV_CHECKER `` instead.
+
+**What it costs:** `bind` kept checkers naturally out of synthesis, and
+instantiation does not. Synthesis is deferred (§6 resolved scope decisions), so
+this is recorded debt rather than a present cost — but it is the one part of
+`bind` with no substitute, and it should be settled before the first synthesis
+attempt rather than discovered there.
+
+`bind` is still fine for Verilator-only instrumentation, where nothing is lost.
+
+### CCV-L14 — every checker carries a satisfiability cover
+
+Interface checker convention §3.3, which calls a contradictory `assume` set
+*"the single most dangerous failure mode in the whole formal strategy, because
+it produces false confidence rather than a visible error."*
+
+Spike cases 34 and 35 make that concrete rather than rhetorical. Case 34
+carries contradictory assumes and `assert (1'b0)` — a property that cannot hold
+— and BMC returns **PASS**, with no counterexample and nothing to distinguish
+it from a real proof. Case 35 is the same assume set with a `cover` asking
+whether the assumed state is reachable: **COVER-MISS**, the guard firing.
+
+    `CCV_IF_SAT(iss_accept_reachable, accepted)
+
+The covers are **unconditional, never mode-resolved**. A guard that switched
+off in the mode where assumptions are active would be absent exactly when it is
+needed. They must also *run* alongside any proof relying on the assumption set
+— a guard that is never run carries no information — which `tools/check-if.sh`
+does.
+
+### CCV-L15 — checker properties must be mode-resolved
+
+Use `` `CCV_CONTRACT_M(MODE, ...) ``, not bare `` `CCV_ASSERT ``.
+
+A bare assertion in a checker ignores the `MODE` parameter, so the checker
+cannot act as a formal cut-point: instantiated on an input boundary in `ASSUME`
+mode it would still assert, the environment would go unconstrained, and the
+proof would fail spuriously — or, worse, the intended constraint would simply
+be absent and a neighbouring proof would look fine.
+
+Two macros are exempt and intentionally so:
+
+- `` `CCV_ASSUME_KNOWN `` — an environment constraint in every mode. Under
+  formal an unconstrained input is modelled as possibly-X, so this is what
+  makes the paired `$isunknown` assert provable rather than spurious (F-8).
+- `` `CCV_IF_SAT `` — a guard, never mode-resolved, per CCV-L14.
+
 ### CCV-L09 — no `interface`/`modport` on a port list
 
 See *Load-bearing: interface style* above. Settled by F-4.

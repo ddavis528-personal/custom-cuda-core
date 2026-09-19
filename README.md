@@ -38,6 +38,7 @@ this is what restores one.
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
 | [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eight findings, several of which close questions the strategy doc left open. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
+| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker per interface *type* serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. |
 
 The matrix and the findings are deliberately two files. One is data and is
 regenerated; the other is judgment and changes only when someone decides
@@ -109,6 +110,12 @@ nothing else prevents them from drifting.
 - **`$isunknown` cannot state the un-reset-payload invariant under formal** —
   an un-reset register gets a free two-state value there, so the property is
   vacuously true. It is stated structurally over the valid bit instead. (F-8)
+- **`bind` is unusable, and Yosys drops it silently** — it parses the bind,
+  garbage-collects the checker, and the proof passes having checked nothing.
+  Checkers are instantiated instead. (F-9)
+- **Packed structs do reach the C++ swap boundary**, as one packed signal —
+  but their field offsets do not, so the typedef is generated into both
+  languages. (F-12)
 
 Full detail in [`docs/stage1a-findings.md`](docs/stage1a-findings.md).
 

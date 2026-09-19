@@ -65,8 +65,10 @@ section "generated artifacts"
 #     drifts on its own, which is a genuinely confusing thing to debug.
 run "generate event schema" python3 tools/gen-event-schema.py
 run "generate parameters"   python3 tools/gen-params.py
+run "generate interfaces"   python3 tools/gen-interfaces.py
 run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
+run "interfaces stable"     python3 tools/gen-interfaces.py --check
 
 section "Stage 1a -- tool-support spike"
 if [ "$FULL" = "1" ]; then
@@ -90,15 +92,19 @@ run "1c exit criteria" ./tools/check-1c.sh
 section "Stage 1d -- coding style and lint"
 run "1d exit criteria" ./tools/check-1d.sh
 
+section "Interface checker convention"
+run "interface convention" ./tools/check-if.sh
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.
 if command -v verilator >/dev/null 2>&1; then
   vfail=0
-  for f in test/smoke/ccv_assert_smoke.sv; do
+  for f in test/smoke/ccv_assert_smoke.sv rtl/if/issue_if_checker.sv; do
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut
     if ! verilator --lint-only --assert -Wall -Wno-DECLFILENAME \
+         -Wno-TIMESCALEMOD \
          -Irtl/include -Irtl/generated --top-module "$top" \
          rtl/ccv_assert_pkg.sv "$f" >/tmp/vlint.$$ 2>&1; then
       echo "  $f:"; sed 's/^/    /' /tmp/vlint.$$ | head -12; vfail=1

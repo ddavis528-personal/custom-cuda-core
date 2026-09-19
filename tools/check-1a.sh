@@ -62,6 +62,29 @@ gate = next((c for c in d["cases"] if c["file"].startswith("29_")), None)
 if not gate or gate["cells"]["sby"]["verdict"] != "CHECK":
     sys.exit("case 29 no longer bites under formal; the assertion enable "
              "gate may be disarming the formal flow")
+
+# The four cells the interface checker convention rests on. Each is a
+# DECISION recorded in docs/interface-checker-convention.md; if a tool
+# changes underneath one, the decision needs revisiting, and that should be
+# loud here rather than discovered when a block's proof turns out to be empty.
+def cell(prefix, tool):
+    c = next((x for x in d["cases"] if x["file"].startswith(prefix)), None)
+    return c["cells"][tool]["verdict"] if c else None
+
+if cell("31_", "sby") != "SILENT":
+    sys.exit("case 31: `bind` no longer silently dropped by Yosys. The "
+             "convention rejects bind BECAUSE of that silent drop -- if it "
+             "has been fixed, revisit the instantiation decision")
+if cell("32_", "sby") != "CHECK" or cell("32_", "iverilog") != "CHECK":
+    sys.exit("case 32: checker instantiation no longer works in all three "
+             "tools; the convention's whole connection strategy rests on it")
+if cell("33_", "sby") != "PROVE-PASS":
+    sys.exit("case 33: the MODE parameter no longer resolves ASSUME into a "
+             "real constraint; formal cut-points would be silently absent")
+if cell("34_", "sby") != "SILENT" or cell("35_", "sby") != "COVER-MISS":
+    sys.exit("cases 34/35: the vacuous-assume demonstration or its "
+             "satisfiability-cover guard has stopped behaving as recorded; "
+             "§3.3 of the convention rests on this pair")
 print("1A OK")
 PY
 then

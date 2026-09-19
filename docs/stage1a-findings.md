@@ -252,6 +252,144 @@ merely which state is un-reset. Without that pairing there is nothing for
 
 ---
 
+# Second round — the interface checker convention's spike questions
+
+`interface-checker-convention.md` §7 listed five questions of its own, all
+Stage 1a's to close. **Four came back as hoped. One did not, and it reverses a
+decision in that document.**
+
+## F-9 — `bind` is unusable, and Yosys fails it *silently*
+
+The convention's §4 specified `bind` for connecting checkers: *"RTL stays
+readable, checkers stay naturally out of synthesis, and a block's checkers can
+be re-bound in different modes for different flows without touching the design
+source."* Every one of those reasons is correct. The mechanism is not
+available.
+
+| Tool | `bind` |
+|---|---|
+| Verilator | works |
+| Icarus | syntax error **on the `bind` statement** — honest, cheap to find |
+| Yosys / `sby` | **parses it, ignores it, garbage-collects the checker** |
+
+Yosys prints `Removing unused module '\chk'`, and BMC then returns PASS on a
+property written to be false. **Every standalone block proof in the
+convention's §3.1 would have been empty**, green, and indistinguishable from a
+real one.
+
+**This was nearly missed, and how is worth recording.** Stage 1a's original
+`bind` case (17) put a *labelled concurrent* property inside the checker —
+which Icarus and Yosys reject on their own account (F-1). Its `PARSE-FAIL`
+cells therefore said nothing about binding at all, and reading them as a
+`bind` verdict would have produced the right decision for entirely the wrong
+reason, with no idea the Yosys column was hiding a silent drop rather than a
+parse error. Case **31** re-asks the question using only the all-three
+intersection, and case **32** is the identical checker connected by
+instantiation.
+
+**Decision: direct instantiation everywhere, via `` `CCV_CHECKER ``.** Green in
+all three tools, and under formal the counterexample names the property through
+the instance path — `dut.u_chk.<name>` — which §5's divergence triage needs and
+which `bind` silently discards.
+
+**The cost, stated rather than glossed:** `bind` kept checkers out of synthesis
+for free. Instantiation does not, and there is no substitute. Synthesis is
+deferred by the strategy doc, so this is recorded debt — but it should be
+settled before the first synthesis attempt, not discovered there. The
+re-binding flexibility *does* survive, through `` `CCV_IF_MODE_IN ``: a
+standalone formal run re-roles input checkers to `ASSUME` without the design
+source being edited.
+
+Enforced by **CCV-L13**.
+
+## F-10 — a spike case can be confounded, and the methodology has to allow for it
+
+Not a tool finding; a finding about this spike. It is recorded because it will
+recur.
+
+Case 17 asked about `bind` and measured something else, because its checker
+used constructs two of the three tools reject independently. The verdict looked
+decisive and was meaningless. The whole point of the matrix is to distinguish
+"the tool cannot do this" from "the tool did not do this", and a case that
+varies two things at once cannot do that for either.
+
+**Rule, now applied to every case:** a case may test exactly one construct
+outside the known intersection. Anything else it needs must come from the
+all-three-usable subset. Where a case genuinely must combine two, it is paired
+with a control that isolates the other one — which is what cases 31 and 32 are
+to each other, and 34 and 35.
+
+## F-11 — the MODE parameter works, and `ASSUME` genuinely constrains
+
+The convention's §3.1 has one checker per interface type, instantiated as
+`ASSERT` on a block's outputs and `ASSUME` on its inputs, so formal cut-points
+fall out of the convention rather than being hand-built per block.
+
+The `assert`/`assume`/`cover` keyword cannot be selected by a parameter
+directly. A `generate` picks the branch at elaboration, and that works in all
+three tools.
+
+More importantly, the `ASSUME` branch **does real work**: spike case 33 returns
+`PROVE-PASS` on a property that is false without it, and the negative control
+— the same design with the input checker in `ASSERT` mode — returns `FAIL`.
+Without that control the PASS would be consistent with the property simply
+being true, which is exactly the vacuity F-9 and the §3.3 covers exist to guard
+against.
+
+`CCV_CONTRACT_M` implements this so no checker writes the generate by hand, and
+**CCV-L15** requires checkers to use it.
+
+## F-12 — packed structs reach the C++ boundary, and their layout must be generated
+
+Confirmed: a struct-typed port surfaces in the Verilated model as one packed
+signal.
+
+    VL_OUT64(&iss, 38, 0)      // 39 bits = 1 valid + 32 payload + 6 tag
+
+Decomposable by shift and mask, exactly as the convention's §2 assumes, so the
+block-swap boundary works with structs where it refuses interfaces (F-4).
+
+**The consequence the convention did not anticipate:** field *offsets* are not
+exposed. The C++ side has to know the layout independently, and a field
+reordered in RTL and not in C++ gives a swap harness reading the wrong bits —
+which presents as a functional bug, not as a mismatch. That is precisely the
+drift §9 names for parameters, arriving at the one boundary §1's swap mechanism
+runs across.
+
+So the typedef is **generated into both languages** from
+`schema/interfaces.json`, the same way parameters and event ids already are.
+The generator also rejects any interface wider than 64 bits, because above that
+the Verilated port becomes a word array rather than a single integer and the
+generated accessors would quietly be wrong.
+
+## F-13 — DPI works from a checker, and only under Verilator
+
+Event emission from the checker works — the convention's §5 mechanism is sound,
+and it is the right place for it: every instance of an interface type then
+emits identically, so blocks get no opportunity to drift from the schema.
+
+The convention's Q4 asked about DPI from a *bound* module. Since `bind` is out
+(F-9), the question that matters is DPI from an instantiated checker, and that
+is answered yes.
+
+**Icarus has no DPI at all.** `import "DPI-C"` is an invalid module item there
+in every form tried — `int`, `longint` and `string` arguments alike. It
+implements VPI, not DPI. So a checker's emission half is guarded per tool, and
+`ccv_trace.svh` is included only where DPI exists, which is what lets the same
+checker still compile for the Icarus X-pass **with its properties fully
+intact**.
+
+Note what is and is not conditional there. Event emission is not a property;
+guarding it removes no obligation from any flow. The convention's rule — and
+§7's — is that a property's *presence* must never vary, and it does not.
+
+**What this does cost:** the event stream has exactly one witness. A bug in the
+emission path itself cannot be caught by cross-checking two simulators, and
+every load-bearing event flows through it. Worth a deliberate test of that path
+at Stage 2.
+
+---
+
 ## What this settles for Stage 1b
 
 1. Properties are written through macros. Always. Lint enforces it.
@@ -279,3 +417,9 @@ merely which state is un-reset. Without that pairing there is nothing for
 - **Stage 4a** — a block's reset line must pair every un-reset payload field
   with the valid bit that guards it, or §7's third formal target cannot be
   stated at all. (F-8)
+- **Stage 2** — per-type checkers carry their own tracking state, because no
+  multi-cycle construct exists (F-2). They are things to review, not things to
+  read, and the satisfiability covers are what keeps a wrong one from passing
+  silently. (F-9, F-11, CCV-L14)
+- **Before first synthesis** — checkers are instantiated, not bound, so they
+  are no longer excluded from synthesis for free. Recorded debt. (F-9)
