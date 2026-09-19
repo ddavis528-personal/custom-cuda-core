@@ -128,6 +128,22 @@ at 26 blocks minus reserved ones, and the list is Stage 2's. If the partition
 needs more, the tag format has to widen — much cheaper to find now than after
 a tree of RTL carries the tags.
 
+### Clock gating (exploratory) ✅
+
+`synth/` + `tools/check-clockgate.sh`. Synthesis is deferred (§6) and nothing
+depends on this; it exists because the coding rules are written for where the
+flow is going, and a direction with no artifact behind it drifts.
+
+Yosys has no `clockgate` pass, so a techmap rule stands in for one. Measured:
+enable inferred, gate substituted, and one ICG shared across an 8-bit register
+rather than one per bit — which is the part that matters and the part a real
+pass would have to do (F-18).
+
+**Possible upstream contribution.** If it gets that far, the sharing is the
+pass, not the substitution: group flops by enable, clock and reset; pick a
+minimum group width; keep reset on the data path. Recorded in F-18 while the
+reasoning is fresh.
+
 ### CI harness ✅
 
 `tools/verify.sh` and `.github/workflows/ci.yml`. §8 puts this at Stage 1
@@ -201,20 +217,26 @@ Carried from the strategy doc, with current status.
    liveness cannot be stated. One number per interface, each needing a
    justification, at Stage 2.
 
-9. **Block letters, and whether 26 is enough.** The stage tag gives the block
+9. **Clock-gating equivalence is unverified.** The gated netlist has never
+   been proved against its ungated original — that needs a real ICG cell
+   rather than a blackbox, and care about the gated clock not being a free
+   variable. Nothing relies on it today. Settle before any synthesis result
+   is believed. (F-18)
+
+10. **Block letters, and whether 26 is enough.** The stage tag gives the block
    one letter. The Stage 2 partition decides how many blocks there are; if it
    exceeds the registry, the tag format widens and every tagged net changes.
    Worth a sanity check as soon as the partition list is drafted.
 
-10. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
+11. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
    removed `bind`. Settle before the first synthesis attempt rather than at it.
 
-11. **Direction discipline without modports.** Partly addressed — the direction
+12. **Direction discipline without modports.** Partly addressed — the direction
     is declared in `schema/interfaces.json` and carried into the generated
     header — but whether that is *adequate* will not be known until several
     real interfaces exist at Stage 2.
 
-12. **Backpressure convention.** Provisionally the separate `_ready` signal,
+13. **Backpressure convention.** Provisionally the separate `_ready` signal,
     on the strength of F-12: folding backpressure into the struct would put a
     reverse-direction field inside a signal the swap harness drives one way.
     Wide return paths get their own reverse-direction struct. Revisit at Stage

@@ -78,3 +78,17 @@ module bad_naming_nodefines (
 );
   `CCV_ASSERT(bad_no_defines, a_cx00h == a_cx00h)
 endmodule
+
+// CCV-L25: a feedback mux inside always_ff. Synthesises identically today,
+// but states "mux" where the design intends "gating candidate".
+module bad_naming_feedback (
+  input  logic       ref_core_clk,
+  input  logic       ref_rst_r00h,
+  input  logic       ld_en_cx00h,
+  input  logic [7:0] in_data_cx00h,
+  output logic [7:0] out_h_cx01h
+);
+  always_ff @(posedge ref_core_clk) begin
+    out_h_cx01h <= ld_en_cx00h ? in_data_cx00h : out_h_cx01h;
+  end
+endmodule

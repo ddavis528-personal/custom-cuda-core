@@ -98,6 +98,12 @@ run "interface convention" ./tools/check-if.sh
 section "X-propagation"
 run "x-prop differential" ./tools/check-xprop.sh
 
+section "Clock gating (exploratory)"
+# Synthesis is deferred (§6), and nothing depends on this. It is in the gate
+# for two seconds of runtime because an artifact outside the gate rots, and
+# what it protects is a design direction rather than a build product.
+run "clock gating" ./tools/check-clockgate.sh
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.

@@ -775,6 +775,37 @@ def check_file(path, rel):
                            if seq else
                            "Combinational logic does not advance a stage."))
 
+        # -- CCV-L25: sequential enables are `if`, not a feedback mux -------
+        #
+        # Both spellings synthesise to the same enable flop in Yosys (F-17),
+        # so this is NOT a correctness rule -- it is a statement of intent.
+        # An `if` says "this is a gating candidate"; a feedback mux says
+        # "this is a mux". Commercial gating insertion is more reliably
+        # triggered by the former, and the project has chosen to write RTL for
+        # where the flow is going rather than for what Yosys does today.
+        #
+        # I argued against linting this one revision ago, on the grounds that
+        # it would enforce tool behaviour nobody here can measure. That was
+        # right about the evidence and wrong about the rule: what is being
+        # enforced is a design decision, not a belief about a tool, and a
+        # design decision is exactly the kind of thing lint is for.
+        #
+        # `CCV_XHOLD is the sanctioned escape and is naturally exempt -- a
+        # macro call carries no ternary for this to match.
+        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
+            if kind != "ff":
+                continue
+            for am in re.finditer(
+                    r"([a-z]\w*)\s*<=\s*([^;]*\?[^;]*);", body):
+                lhs, rhs = am.group(1), am.group(2)
+                if not re.search(r"[:?]\s*%s\s*$" % re.escape(lhs), rhs.strip()):
+                    continue
+                add("CCV-L25", ln + body[:am.start()].count("\n"),
+                    "%s is held by a feedback mux inside always_ff. Write the "
+                    "enable as `if`, which states that it is a clock-gating "
+                    "candidate; use `CCV_XHOLD only where the enable cannot "
+                    "be proven X-free" % lhs)
+
         # -- CCV-L24: `_b` is a derived complement --------------------------
         # `_n` is a semantic property of a signal that is DEFINED active-low
         # and carries no obligation. `_b` claims to be the complement of a net

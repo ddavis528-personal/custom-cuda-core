@@ -313,6 +313,14 @@ Three exemptions, each for a reason:
   depth rather than datapath depth.
 - **Right-hand sides with no tagged signal at all** — constants, parameters.
 
+### CCV-L25 — sequential enables are `if`, not a feedback mux
+
+See *Sequential enables* above. Enforces intent rather than correctness: both
+forms give the same enable flop, but only one of them says so.
+
+`` `CCV_XHOLD `` is the sanctioned escape, for an enable that genuinely cannot
+be proven X-free.
+
 ### CCV-L24 — `_b` is a complement
 
 A net named `_b` must be driven through an inversion. It complements a *value*,
@@ -472,11 +480,18 @@ verify** — Yosys 0.33 has no `clockgate` pass at all. It infers the enable and
 stops; turning `$dffe` into an ICG plus a gated clock is a mapping decision it
 never makes.
 
-So this preference is **documented and not linted**. Both forms are provably
-equivalent in the only synthesis tool available here, and a rule that forces
-one spelling on the strength of tool behaviour nobody in this flow can measure
-would be enforcing a belief rather than a fact. `rtl/lint/good_gated_enable.sv`
-is the standing proof that the preferred form is clean under every rule.
+**This is linted (CCV-L25), and the basis matters.** The rule does not claim
+the two forms differ — they provably do not, in the only synthesis tool
+available here. What it enforces is *intent*: an `if` states "this is a
+clock-gating candidate", a feedback mux states "this is a mux", and the
+project has chosen to write RTL for where the flow is going rather than for
+what Yosys does today.
+
+That distinction is why the earlier decision not to lint it was wrong. It was
+right about the evidence and wrong about the rule — what is being enforced is
+a design decision, not a belief about a tool, and a design decision is exactly
+what lint is for. `rtl/lint/good_gated_enable.sv` is the standing proof that
+the preferred form is clean under every other rule.
 
 `` `CCV_XHOLD `` remains available for the case this does not cover: an enable
 that genuinely cannot be proven X-free, where merging beats holding.

@@ -523,6 +523,50 @@ Revisit if a Yosys with `clockgate` becomes available, or when synthesis stops
 being deferred (§6) — at which point the first trial synthesis is the moment to
 check whether the real tool agrees.
 
+## F-18 — clock gating is expressible in Yosys today, and the hard part is sharing
+
+Follow-on to F-17. Yosys has no `clockgate` pass, but the transform can be
+written as a techmap rule, and the exercise located what a real pass would
+actually have to do.
+
+**The substitution is trivial.** `synth/ccv_clockgate_map.v` rewrites
+`$_DFFE_PP_` and `$_SDFFE_PP0P_` into a plain flop driven by a gated clock,
+with a latch-based ICG so the enable cannot glitch the gate.
+
+**The substitution alone is worse than no gating.** techmap is per-cell, so it
+instantiates one ICG *per flop* — eight for an 8-bit register. Real gating
+shares one ICG across every flop with the same enable; per-bit gating adds area
+and clock load and saves nothing.
+
+**`opt_merge -share_all` does the sharing**, and it must follow. It is not the
+default flag — plain `opt_merge` leaves blackboxed ICGs alone, because it
+cannot know a blackbox is side-effect-free. Measured, on an 8-bit register with
+synchronous reset and a load enable:
+
+| | cells |
+|---|---|
+| as synthesised | `$_SDFFE_PP0P_` ×8 |
+| techmap only | `$_DFF_P_` ×8 + `ccv_icg` **×8** |
+| techmap + `opt_merge -share_all` | `$_DFF_P_` ×8 + `ccv_icg` **×1** |
+
+**So if this is ever contributed upstream, the sharing is the pass, not the
+substitution.** A `clockgate` pass has to group flops by their enable
+expression (and clock, and reset) before it emits anything, choose a minimum
+group width below which gating costs more than it saves, and keep the reset on
+the data path rather than folding it into the enable — gating a flop off during
+reset leaves it holding whatever it powered up with. None of that is what a map
+file does.
+
+**Not verified: equivalence.** Proving a gated netlist against its ungated
+original needs the ICG to be a real cell rather than a blackbox, and needs care
+about the gated clock not being a free variable. The obvious next step if this
+is ever relied on, and it is not relied on now — synthesis is deferred, and
+`tools/check-clockgate.sh` is exploratory.
+
+The check also probes whether the installed Yosys has gained a `clockgate`
+pass, so the day it does, the run says so rather than the techmap quietly
+staying in the flow forever.
+
 ---
 
 ## What this settles for Stage 1b
