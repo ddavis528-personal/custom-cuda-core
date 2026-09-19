@@ -3,7 +3,7 @@
 // so the runner asks each tool for its own coverage output and this file just
 // documents where that lives:
 //
-//   Verilator : --coverage-user, then a nonzero count in logs/coverage.dat
+//   With Verilator: --coverage-user, then a nonzero count in logs/coverage.dat
 //   Icarus    : no cover-property support expected; see the matrix
 //
 // Kept as a file rather than a comment in the runner so the asymmetry is

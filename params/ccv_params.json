@@ -1,0 +1,79 @@
+{
+  "_comment": [
+    "Structural parameters, single source of truth. tools/gen-params.py",
+    "generates BOTH sim/generated/ccv_params.h and",
+    "rtl/generated/ccv_params_pkg.sv from this file.",
+    "",
+    "§9 calls this a MECHANISM decision rather than a convention, and is",
+    "specific about why: ROB depth exists as a swept knob in the timing model",
+    "(Stage 4b) and as an RTL parameter, nothing otherwise prevents them from",
+    "drifting, and drift means a correlation run silently comparing two",
+    "differently-sized machines -- a failure that looks like a timing bug.",
+    "",
+    "WHAT IS DECIDED HERE: nothing about sizing. §1 asks for everything to be",
+    "structurally parameterized as config knobs so that design-space",
+    "exploration happens before any of it becomes area/timing commitment, and",
+    "§2 puts the sizing decisions at Stage 4a with the exploration at 4b. The",
+    "values below are placeholders that make the mechanism exercisable.",
+    "",
+    "The `status` field is the point of this file as much as the values are.",
+    "`isa` means it follows from the locked ISA and is not ours to sweep;",
+    "`provisional` means a placeholder awaiting the stage named in `decided_at`.",
+    "Mixing the two silently is how a sweep ends up varying something the",
+    "compiler already depends on."
+  ],
+
+  "params": [
+    { "name": "CCV_WARP_LANES", "value": 32, "status": "isa",
+      "source": "ISA v1.6 §1 -- warp width, settled",
+      "doc": "Lanes per warp. A logical GPR holds 32 lanes, one element each, at every chwidth." },
+
+    { "name": "CCV_GPRS", "value": 16, "status": "isa",
+      "source": "ISA v1.6 §1, O-25 -- settled, and not by the spill data",
+      "doc": "Logical GPRs. Widening to 32 is a reset of the encoding, not a parameter change: Format J overruns 16 bits and Format A-double-prime falls to a 1-bit opcode." },
+
+    { "name": "CCV_PREDS", "value": 4, "status": "isa_provisional",
+      "source": "ISA v1.6 §1 -- provisional pending compiler data; measured pressure is 1-2 of 4",
+      "doc": "Logical predicates. A performance parameter, not a structural ceiling, since O-19 made the file spillable." },
+
+    { "name": "CCV_BARRIER_ENTRIES", "value": 64, "status": "isa",
+      "source": "ISA v1.6 §3, Format E -- 6-bit barrier ID",
+      "doc": "Barrier table entries. The table is a §7 formal target." },
+
+    { "name": "CCV_ADDR_BITS", "value": 48, "status": "isa",
+      "source": "ISA v1.6 §1 -- address width, settled",
+      "doc": "Global address width." },
+
+    { "name": "CCV_DATAPATH_BITS", "value": 1024, "status": "isa",
+      "source": "ISA v1.6 §1 -- 32 lanes x 32 bits",
+      "doc": "Physical datapath width. Kept full by coalescing independent 32-lane instructions, never by widening one." },
+
+    { "name": "CCV_ROB_ENTRIES", "value": 64, "status": "provisional",
+      "decided_at": "Stage 4a (sizing), swept at 4b",
+      "doc": "PLACEHOLDER. Reorder buffer depth." },
+
+    { "name": "CCV_IQ_ENTRIES", "value": 32, "status": "provisional",
+      "decided_at": "Stage 4a (sizing), swept at 4b",
+      "doc": "PLACEHOLDER. Issue queue entries. §2 flags this as directly constrained by the wakeup/select timing budget: at 25 NGD the entry count and the simultaneous result-bus broadcast width are what must fit one pass." },
+
+    { "name": "CCV_PRF_ROWS", "value": 128, "status": "provisional",
+      "decided_at": "Stage 4a (sizing), swept at 4b",
+      "doc": "PLACEHOLDER. Physical register file rows, each CCV_DATAPATH_BITS wide. Sub-row slices are the buddy/slab allocator's business (backend-context.md §5.4), not a separate parameter." },
+
+    { "name": "CCV_TIER1_WARPS", "value": 4, "status": "provisional",
+      "decided_at": "Stage 4a (sizing), swept at 4b",
+      "doc": "PLACEHOLDER. Resident warps in the active SMT tier." },
+
+    { "name": "CCV_TIER2_WARPS", "value": 8, "status": "provisional",
+      "decided_at": "Stage 4a (sizing), swept at 4b",
+      "doc": "PLACEHOLDER. Resident warps in the backing SMT tier." },
+
+    { "name": "CCV_ISSUE_WIDTH", "value": 2, "status": "provisional",
+      "decided_at": "Stage 4a (sizing), swept at 4b",
+      "doc": "PLACEHOLDER. Instructions issued per cycle." },
+
+    { "name": "CCV_NGD_BUDGET", "value": 25, "status": "target",
+      "source": "§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
+      "doc": "Normalized gate delay available in one cycle. Per-block budgets are recorded against this at Stage 2 and 4a. OPEN (§2): whether 25 is the Vmin-corner number or a nominal one -- at 0.55 V variation and the wire/gate delay ratio both worsen, so headroom at nominal does not translate linearly." }
+  ]
+}
