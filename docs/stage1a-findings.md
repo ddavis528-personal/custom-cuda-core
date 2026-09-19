@@ -207,6 +207,49 @@ to rediscover:
 `tools/run-spike-1a.py` probes for solvers in the order this finding
 establishes rather than in a plausible-looking one.
 
+## F-8 — `$isunknown` cannot express the un-reset-payload invariant under formal
+
+Surfaced while building the 1b library against this stack, not during the
+spike proper, but it belongs with the other findings because it corrects a
+reading of §6/§7 rather than a tool expectation.
+
+§7 makes "payload is never read before written" the third formal target, on
+the argument that formal *"treats uninitialized state as free variables rather
+than as whatever value one simulation run produced."* The argument is correct.
+The natural way to write the property is not.
+
+Two measured facts:
+
+1. **An un-reset register is never X under Yosys formal.** It gets a free
+   *two-state* value. So `$isunknown(payload)` is identically false, and any
+   property built on it is vacuously true — green, permanently, checking
+   nothing. That is the worst available failure mode: a formal target reported
+   as discharged when it was never checked at all.
+2. **An unconstrained module input IS modelled as possibly-X.** Yosys lowers
+   `$isunknown` to `$eqx` cells, and on a free input the comparison is
+   satisfiable, so `CCV_ASSERT_KNOWN` on an input fails *spuriously*.
+
+The two pull in opposite directions, which is what makes the naive reading
+dangerous: the same macro is vacuously true in one place and spuriously false
+in another, and neither result tells you so.
+
+**Decisions, both now in `rtl/include/ccv_assert.svh`:**
+
+- `CCV_ASSUME_KNOWN` is the required companion to `CCV_ASSERT_KNOWN`. A block
+  assumes its control inputs are X-free — which its neighbour asserts — and
+  proves its own outputs are. §7's cut-point discipline, applied to X, and the
+  halves compose into a whole-design argument one boundary at a time. Verified:
+  assume-known inputs plus assert-known outputs proves cleanly.
+- The un-reset-payload invariant is stated **structurally, over the valid
+  bit**, via `CCV_ASSERT_READ_VALID(name, read_en, valid_bit)` — never over the
+  payload's value. This is also just a better property, since it is what §6's
+  invariant literally says.
+
+**This changes what Stage 4a writes down.** Each block's reset line (§6) has to
+name, for every un-reset payload field, the valid bit that guards it — not
+merely which state is un-reset. Without that pairing there is nothing for
+`CCV_ASSERT_READ_VALID` to reference, and the formal target cannot be stated.
+
 ---
 
 ## What this settles for Stage 1b
@@ -233,3 +276,6 @@ establishes rather than in a plausible-looking one.
 - **Stage 4c** — the Icarus X-pass is not redundant with Verilator's
   X-randomization; they catch different things, and cases 26/28 are the
   standing demonstration. (F-6)
+- **Stage 4a** — a block's reset line must pair every un-reset payload field
+  with the valid bit that guards it, or §7's third formal target cannot be
+  stated at all. (F-8)
