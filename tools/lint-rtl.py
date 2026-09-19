@@ -80,6 +80,73 @@ def allowed_rules(scope):
     return None  # design: everything
 
 
+SV_KEYWORDS = {
+    "if", "else", "case", "casez", "casex", "endcase", "begin", "end", "and",
+    "or", "not", "xor", "logic", "wire", "reg", "input", "output", "inout",
+    "always", "always_ff", "always_comb", "assign", "posedge", "negedge",
+    "default", "int", "bit", "byte", "signed", "unsigned", "parameter",
+    "localparam", "for", "while", "return", "function", "task", "generate",
+    "endgenerate", "module", "endmodule", "unique", "priority", "begin",
+}
+
+
+def balanced(text, start):
+    """Text inside the parenthesis group beginning at `start`, which must index
+    the opening paren. Returns (inner, index_after_close)."""
+    depth, i = 0, start
+    while i < len(text):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                return text[start + 1:i], i + 1
+        i += 1
+    return "", len(text)
+
+
+def idents(expr):
+    out = set()
+    for m in re.finditer(r"[A-Za-z_]\w*", expr):
+        w = m.group(0)
+        if w in SV_KEYWORDS or re.match(r"^\d", w):
+            continue
+        out.add(w)
+    return out
+
+
+def input_ports(text):
+    """Input port names from an ANSI-style port list."""
+    m = re.search(r"\bmodule\s+\w+\s*(?:#\s*\([^)]*\)\s*)?\(", text)
+    if not m:
+        return set()
+    inner, _ = balanced(text, m.end() - 1)
+    ports = set()
+    for decl in inner.split(","):
+        d = decl.strip()
+        if not re.match(r"^(input|inout)\b", d):
+            continue
+        name = re.findall(r"[A-Za-z_]\w*", d)
+        if name:
+            ports.add(name[-1])
+    return ports
+
+
+def known_signals(raw):
+    """Signals covered by a KNOWN assertion anywhere in the file."""
+    k = set()
+    for pat in (r"CCV_ASSERT_KNOWN\w*\s*\(\s*\w+\s*,\s*([\w.\[\]]+)",
+                r"CCV_ASSUME_KNOWN\s*\(\s*\w+\s*,\s*([\w.\[\]]+)"):
+        for m in re.finditer(pat, raw):
+            k.add(m.group(1).split("[")[0].split(".")[0])
+            k.add(m.group(1).split("[")[0])
+    return k
+
+
+def line_of(text, pos):
+    return text.count("\n", 0, pos) + 1
+
+
 class Finding:
     def __init__(self, rule, path, line, msg):
         self.rule, self.path, self.line, self.msg = rule, path, line, msg
@@ -239,46 +306,145 @@ def check_file(path, rel):
                     "DPI import in design RTL; event instrumentation is bound "
                     "from outside the design (§9 assertion placement)")
 
-    # -- CCV-L07: every case statement has a default ------------------------
-    # §6's first listed rule: an unreachable state assigns X rather than
-    # holding, so the bug is loud instead of silently squashed.
-    for i, l in enumerate(lines):
-        m = re.match(r"\s*(unique\s+|priority\s+)?(case[zx]?)\s*\(", l)
-        if not m:
-            continue
-        j, found_default, endline = i + 1, False, None
-        while j < len(lines):
-            if re.match(r"\s*endcase\b", lines[j]):
-                endline = j
-                break
-            if re.match(r"\s*default\s*:", lines[j]):
-                found_default = True
-            j += 1
-        if not found_default:
-            add("CCV-L07", i + 1,
-                "case without a default; §6 requires an explicit "
-                "`default: <= 'x` so an unreachable state is loud rather than "
-                "an implicit hold")
 
-    # -- CCV-L08: X on control must be asserted against ---------------------
-    # §6's central rule, and the one no stock lint rule expresses: it is a
-    # relationship between a case selector and an assertion elsewhere in the
-    # file, not a property of either alone.
+    # -- CCV-L08 / L16 / L17 / L18: X-determinism on control ---------------
+    #
+    # §6's central rule, and the one no stock rule set expresses: it is a
+    # relationship between a control expression and an assertion elsewhere in
+    # the file, not a property of either alone.
+    #
+    # A selection on control must be X-DETERMINISTIC by one of three routes
+    # (docs/rtl-coding-style.md, and rtl/include/ccv_xprop.svh for the measured
+    # behaviour of each):
+    #
+    #   PROHIBITION  the control inputs carry a KNOWN assertion
+    #   TMERGE       the selection is a ternary, which is not an if/case and so
+    #                never reaches these rules at all
+    #   XMERGE       a case with an X-default covering everything it assigns
+    #
+    # WHY ONLY INPUT PORTS ARE REQUIRED TO CARRY THE ASSERTION. X enters a
+    # module through its ports or through un-reset state. A locally derived
+    # signal is X-free whenever the inputs it derives from are, so asserting at
+    # the boundary discharges the interior -- which is the same compositional
+    # argument F-8 makes for CCV_ASSUME_KNOWN, one level down. Un-reset state
+    # is the other source and is covered separately, by the reset line at Stage
+    # 4a and by CCV_ASSERT_READ_VALID.
+    #
+    # LIMITS, stated because a lint rule that is trusted beyond its reach is
+    # worse than one that is not trusted at all: this reads ANSI port lists,
+    # matches identifiers textually, and does not follow hierarchy, `include
+    # boundaries or non-ANSI declarations. It is a net, not a proof. The proof
+    # is the formal run.
     if not is_tb and not is_header:
-        known = set(re.findall(r"CCV_ASSERT_KNOWN\w*\s*\(\s*\w+\s*,\s*([\w.\[\]]+)",
-                               raw))
-        known |= set(re.findall(r"CCV_ASSUME_KNOWN\s*\(\s*\w+\s*,\s*([\w.\[\]]+)",
-                                raw))
-        known = {k.split("[")[0] for k in known}
-        for i, l in enumerate(lines):
-            m = re.match(r"\s*(?:unique\s+|priority\s+)?case[zx]?\s*\(\s*"
-                         r"([A-Za-z_]\w*)\s*\)", l)
-            if m and m.group(1) not in known:
-                add("CCV-L08", i + 1,
-                    "case selector %r has no CCV_ASSERT_KNOWN/CCV_ASSUME_KNOWN; "
-                    "§6 prohibits X on control rather than propagating it, "
-                    "because `if (x)` silently takes the false branch in every "
-                    "4-state simulator" % m.group(1))
+        known = known_signals(raw)
+        ins = input_ports(src)
+
+        def uncovered(expr):
+            """Input-port identifiers in `expr` with no KNOWN assertion.
+            `rst` is exempt: §6 makes reset globally synchronous and always
+            reset, so it is the one control signal that cannot be X."""
+            return sorted((idents(expr) & ins) - known - {"rst"})
+
+        # -- CCV-L16: casex is banned outright ------------------------------
+        # Measured (F-16): with an unknown selector, casex treats X as a
+        # don't-care and matches the FIRST branch. Not pessimism, not
+        # optimism -- an arbitrary answer that looks like a real one.
+        for m in re.finditer(r"\bcasex\b", src):
+            add("CCV-L16", line_of(src, m.start()),
+                "`casex` is banned: with an unknown selector it treats X as a "
+                "don't-care and silently matches the first branch. Use `case` "
+                "with an X-default, or a ternary")
+
+        # -- if statements: prohibition is the only route -------------------
+        for m in re.finditer(r"(?<![\w.])if\s*\(", src):
+            expr, _ = balanced(src, m.end() - 1)
+            bad_ids = uncovered(expr)
+            if bad_ids:
+                add("CCV-L08", line_of(src, m.start()),
+                    "`if` on control input(s) %s with no "
+                    "CCV_ASSERT_KNOWN/CCV_ASSUME_KNOWN. An unknown condition "
+                    "silently takes the else branch in every 4-state "
+                    "simulator. Assert the input known, or select with a "
+                    "ternary, which merges instead"
+                    % ", ".join(repr(x) for x in bad_ids))
+
+        # -- case / casez: prohibition OR an X-default ----------------------
+        for m in re.finditer(r"\bcase(z?)\s*\(", src):
+            expr, after = balanced(src, m.end() - 1)
+            end = src.find("endcase", after)
+            body = src[after:end if end > 0 else len(src)]
+            ln = line_of(src, m.start())
+
+            # Signals the case assigns, and the X-default that would cover
+            # them -- either in a `default:` branch or as a prologue before
+            # the case in the same always block.
+            assigned = set(re.findall(r"([A-Za-z_]\w*)\s*(?:<=|=)[^=]", body))
+            dm = re.search(r"\bdefault\s*:", body)
+            xcov = set()
+            if dm:
+                for a, rhs in re.findall(
+                        r"([A-Za-z_]\w*)\s*(?:<=|=)\s*([^;]+);",
+                        body[dm.end():]):
+                    if re.search(r"'\s*[bdh]?x|'x", rhs, re.I):
+                        xcov.add(a)
+            pro = src.rfind("always", 0, m.start())
+            if pro >= 0:
+                for a, rhs in re.findall(
+                        r"([A-Za-z_]\w*)\s*(?:<=|=)\s*([^;]+);",
+                        src[pro:m.start()]):
+                    if re.search(r"'\s*[bdh]?x|'x", rhs, re.I):
+                        xcov.add(a)
+
+            x_defaulted = bool(assigned) and assigned <= xcov
+            bad_ids = uncovered(expr)
+
+            # -- CCV-L07: an unreachable state must be loud -----------------
+            # §6's first listed rule. Either route satisfies it: a `default:`
+            # branch, or an X prologue before the case. Demanding the branch
+            # specifically would reject the prologue form, which is the more
+            # natural style and reaches the same guarantee.
+            if not dm and not x_defaulted:
+                add("CCV-L07", ln,
+                    "case with neither a `default:` branch nor an X prologue "
+                    "covering %s; §6 requires an unreachable state to assign "
+                    "'x rather than hold its previous value"
+                    % (", ".join(sorted(assigned - xcov)) or "its outputs"))
+
+            if bad_ids and not x_defaulted:
+                missing = sorted(assigned - xcov)
+                add("CCV-L08", ln,
+                    "case selector uses control input(s) %s with no KNOWN "
+                    "assertion, and the case is not X-defaulted%s. Take one of "
+                    "the two legal routes: assert the input known, or assign "
+                    "'x to every signal the case writes (in `default:` or as a "
+                    "prologue)"
+                    % (", ".join(repr(x) for x in bad_ids),
+                       " (uncovered: %s)" % ", ".join(missing) if missing
+                       else ""))
+            elif not bad_ids and assigned and not x_defaulted and xcov:
+                # Partially X-defaulted while relying on prohibition is fine,
+                # but a partial X-default is usually a slip rather than intent.
+                add("CCV-L17", ln,
+                    "case is partially X-defaulted: %s covered, %s not. A "
+                    "signal left out holds its previous value on an "
+                    "unreachable branch, which is the implicit hold §6's "
+                    "explicit-X rule exists to remove"
+                    % (", ".join(sorted(xcov & assigned)) or "none",
+                       ", ".join(sorted(assigned - xcov))))
+
+        # -- CCV-L18: array write with an unknown index is DROPPED ----------
+        # LRM semantics silently discard a write whose index is X. No
+        # construction fixes that, so the index must be prohibited from
+        # being X.
+        for m in re.finditer(r"([A-Za-z_]\w*)\s*\[([^\]]+)\]\s*<=", src):
+            bad_ids = uncovered(m.group(2))
+            if bad_ids:
+                add("CCV-L18", line_of(src, m.start()),
+                    "write to %s[] indexed by control input(s) %s with no "
+                    "KNOWN assertion. An unknown index does not propagate X -- "
+                    "the write is silently DROPPED, and no coding construct "
+                    "changes that"
+                    % (m.group(1), ", ".join(repr(x) for x in bad_ids)))
 
     # -- CCV-L09: no SystemVerilog interface on a port boundary -------------
     # Settled by Stage 1a finding F-4, not a preference: Verilator reports

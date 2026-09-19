@@ -95,6 +95,9 @@ run "1d exit criteria" ./tools/check-1d.sh
 section "Interface checker convention"
 run "interface convention" ./tools/check-if.sh
 
+section "X-propagation"
+run "x-prop differential" ./tools/check-xprop.sh
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.

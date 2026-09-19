@@ -193,15 +193,141 @@ Event instrumentation is bound to a block from outside it, never written into
 it. A DPI import in a design module is not synthesizable, and §9's argument for
 preferring `bind` for assertions applies here with more force.
 
-### CCV-L07 — every `case` has a `default`, and an unreachable one assigns `'x`
+### CCV-L07 — an unreachable case branch assigns `'x`, never holds
 
 §6's first listed X-safety rule: explicit X-injection for unreachable states,
 rather than the implicit hold that squashes the bug.
 
-    default: state_d = 'x;    // loud
-    // (no default)           // silently holds, and the bug survives
+Either spelling satisfies it — a `default:` branch, or an X prologue before the
+case. The prologue is often the more natural style and reaches the same
+guarantee, so the rule accepts both:
 
-### CCV-L08 — a case selector needs a paired `CCV_ASSERT_KNOWN`
+    always_comb begin
+      y = 'x;                 // prologue
+      case (sel) ... endcase
+    end
+
+    case (sel) ... default: y = 'x; endcase   // or a default branch
+
+    // (neither)              // silently holds, and the bug survives
+
+### X-propagation: matching VCS X-Prop with the tools we have
+
+§6 requires X-correctness to be designed in by convention rather than
+inherited, because neither simulator has dependable X-prop semantics. There is
+no VCS-equivalent X-propagation mode anywhere in the flow.
+
+**The rule: a selection on control must be X-deterministic.** Exactly three
+constructions are legal; anything else is X-optimistic, which means the bug is
+invisible rather than merely unhandled.
+
+| Route | Construction | Behaviour on an unknown selector |
+|---|---|---|
+| **Prohibition** | `if`/`case` whose control **inputs** carry `` `CCV_ASSERT_KNOWN `` | The X is flagged at its source |
+| **tmerge** | Ternary (`?:`), or the `` `CCV_XMUX* `` macros | Agreeing bits keep their value, differing bits go X |
+| **xmerge** | `case`/`casez` with an X-default covering everything it assigns | The whole result goes X |
+
+All measured, with `i0=1100 i1=1110 i2=1100 i3=1101` (bits 3,2 agree; 1,0
+differ):
+
+| Construct | `sel=xx` | `sel=1x` |
+|---|---|---|
+| `if`-chain | `1101` — the **last** branch | `1101` |
+| ternary | `11xx` | `110x` — narrows on partial X |
+| `case` + X-default | `xxxx` | `xxxx` |
+| `casex` | `1100` — **silently matched branch 0** | `1100` |
+
+Two things to take from that table:
+
+- **The ternary operator is already X-pessimistic in the LRM.** It produces
+  exactly what VCS calls tmerge, with no tool mode, no pragma and no primitive
+  — and it narrows correctly when only *part* of the selector is unknown. The
+  asymmetry against `if`/`case` is the whole lever this section rests on.
+- **An `if`-chain does not pick the first branch, it falls through to the
+  last.** Every comparison against an unknown selector is itself unknown, so
+  the chain lands on the final `else`. Which branch that is depends on the
+  ordering, not the design. The answer is definite, arbitrary, and
+  indistinguishable from a correct one.
+
+**Prefer prohibition where it applies.** It is the strongest of the three: it
+reports X at the source rather than tracking its spread, it works in every
+tool, and — unlike propagation — it is *provable under formal*. Choose tmerge
+over xmerge where either is allowed, since a blanket X trains people to ignore
+X. But `case` is too useful to abandon, and an X-defaulted `case` is a fully
+legal, natural-style answer.
+
+**The primitives are conveniences, not requirements.**
+`` `CCV_XMUX2/4/8 `` and `` `CCV_XHOLD `` in `rtl/include/ccv_xprop.svh` just
+save writing a ternary chain; they introduce no semantics. Code that spells the
+chain directly is equally correct and equally lint-clean.
+
+#### This has exactly one witness
+
+Verilator is 2-state and cannot see X at all. Under formal an un-reset register
+is a free **two-state** value (F-8), so `$isunknown` is identically false
+there. **Icarus is the only tool in the flow that observes any of this.**
+
+That is a structural weakness — the same shape as the event-emission path
+(F-13) — and it is the real argument for prohibition being primary: an
+assertion fires under Icarus *and* proves under formal, while propagation is
+checkable in one place only. It also makes the periodic X-pass (§6, and per
+block at Stage 4c) load-bearing rather than supplementary.
+
+`tools/check-xprop.sh` is the differential regression: it asserts the three
+constructions **disagree** on an unknown selector. If they ever agree, these
+rules are ceremony and should be deleted.
+
+### CCV-L16 — `casex` is banned outright
+
+Measured above: with an unknown selector `casex` treats X as a don't-care and
+matches the **first** branch. That is neither pessimism nor optimism — it is an
+arbitrary answer wearing the costume of a real one.
+
+`casez` is permitted, because `z` don't-care does not make `x` a don't-care: a
+`casez` with an unknown selector still matches nothing and falls to its
+default. It is subject to the same X-default requirement as `case`.
+
+### CCV-L17 — no partially X-defaulted case
+
+A `default:` that assigns some of the signals the case writes and not others
+leaves the rest holding their previous value on an unreachable branch — the
+implicit hold CCV-L07 exists to remove, reintroduced halfway.
+
+Usually a slip rather than intent, which is exactly why it needs a rule.
+
+### CCV-L18 — array write with an unknown index
+
+An unknown index does **not** propagate X. LRM semantics silently **drop the
+write**, and no coding construction changes that — the value simply never
+arrives, and the array keeps a stale entry that looks legitimate.
+
+Prohibition is the only route here: assert the index known.
+
+### CCV-L08 — control expressions must be X-deterministic
+
+§6's central rule, and the one no stock rule set expresses: it is a
+relationship between a control expression and an assertion elsewhere in the
+file, not a property of either alone.
+
+An `if` has only the prohibition route — there is no "X-default" for an `if`,
+and the alternative is to write the selection as a ternary, which is not an
+`if` and so never reaches this rule. A `case` has both routes.
+
+**Why only input ports must carry the assertion.** X enters a module through
+its ports or through un-reset state. A locally derived signal is X-free
+whenever the inputs it derives from are, so asserting at the boundary
+discharges the interior — the same compositional argument F-8 makes for
+`` `CCV_ASSUME_KNOWN ``, one level down. Un-reset state is the other source,
+and is covered separately by the reset line at Stage 4a and by
+`` `CCV_ASSERT_READ_VALID ``. `rst` is exempt: §6 makes it globally
+synchronous and always reset.
+
+**Limits, stated because a rule trusted beyond its reach is worse than one not
+trusted at all.** This reads ANSI port lists, matches identifiers textually,
+and does not follow hierarchy, `` `include `` boundaries or non-ANSI
+declarations. It is a net, not a proof. The proof is the formal run.
+
+
 
 **§6's central rule, and the highest-payoff one in this guide.**
 

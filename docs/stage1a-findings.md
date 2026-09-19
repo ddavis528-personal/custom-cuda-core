@@ -438,6 +438,52 @@ Two consequences, both now enforced:
   previously vacuous under Verilator for exactly this reason: the run had
   already aborted.
 
+## F-16 — VCS X-Prop semantics are reachable from plain LRM behaviour
+
+Measured while settling how to match VCS X-Propagation with a toolchain that
+has no X-prop mode. `i0=1100 i1=1110 i2=1100 i3=1101` — bits 3,2 agree, bits
+1,0 differ:
+
+| Construct | `sel=xx` | `sel=1x` | Verdict |
+|---|---|---|---|
+| `if`-chain | `1101` | `1101` | X-optimistic — lands on the **last** branch |
+| ternary / nested ternary | `11xx` | `110x` | **exact tmerge**, free |
+| `case` + X-default | `xxxx` | `xxxx` | **xmerge** |
+| `casez` + X-default | `xxxx` | `xxxx` | xmerge — safe |
+| `casex` | `1100` | `1100` | **silently matches branch 0** |
+
+Four things follow.
+
+**The ternary operator is already X-pessimistic in the LRM.** It produces
+exactly VCS's tmerge with no tool mode, no pragma and no primitive. Better, it
+*narrows* on a partially-unknown selector — `110x` at `sel=1x` — which a
+hand-written merge function does not do without extra care. The asymmetry
+against `if`/`case` is the entire lever available here, and it means the
+X-aware mux primitives §6 anticipated are **conveniences rather than
+requirements**.
+
+**An `if`-chain does not pick the first branch.** Every comparison against an
+unknown selector is itself unknown, so the chain falls through to the final
+`else`. Which branch that is depends on ordering, not design. The answer is
+definite, arbitrary, and indistinguishable from a correct one — which is worse
+than the "takes the false branch" framing §6 uses, because with a chain there
+is no obviously-suspicious branch to look at.
+
+**`casex` is not merely optimistic, it is arbitrary.** It treats X as a
+don't-care and matches the first branch. Banned outright (CCV-L16). `casez`
+survives, because `z` don't-care does not make `x` a don't-care.
+
+**All of it has exactly one witness.** Verilator is 2-state; under formal an
+un-reset register is a free two-state value (F-8) so `$isunknown` is
+identically false. Icarus is the only tool in the flow that observes X at all.
+That is the same structural weakness as the emission path (F-13), and it is the
+argument for **prohibition being primary**: an assertion fires under Icarus
+*and* proves under formal, while propagation is checkable in one place only.
+
+`tools/check-xprop.sh` is the standing differential: it asserts the three
+constructions **disagree** on an unknown selector. If they ever agree, the
+X-determinism rules are ceremony and should be deleted.
+
 ---
 
 ## What this settles for Stage 1b
@@ -473,3 +519,6 @@ Two consequences, both now enforced:
   silently. (F-9, F-11, CCV-L14)
 - **Before first synthesis** — checkers are instantiated, not bound, so they
   are no longer excluded from synthesis for free. Recorded debt. (F-9)
+- **Stage 4c** — X-propagation has one witness, so the Icarus X-pass carries
+  the whole of it. Prohibition is primary precisely because assertions are
+  checkable in two tools and propagation in one. (F-16)

@@ -32,6 +32,7 @@ fi
 python3 tools/lint-rtl.py rtl/lint/bad_module.sv >"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py --schema=rtl/lint/bad_interfaces.json \
   rtl/lint/bad_if_checker.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 if grep -q "CCV-L" "$TMP/bad.log"; then false; else true; fi
 if [ $? -eq 0 ]; then
   bad "lint fails the non-compliant sample" "it passed"
@@ -66,6 +67,18 @@ if [ -n "$undoc" ]; then
   bad "every lint rule is documented" "not in the style guide:$undoc"
 else
   say "every lint rule is documented in the guide" "PASS"
+fi
+
+# -- compliant code must be SILENT -----------------------------------------
+# The false-positive regression, and it matters more than usual for the
+# X-determinism rules: a rule that fires on correct code gets switched off, and
+# a rule that is switched off protects nothing. good_xprop.sv exercises all
+# three legal routes on control inputs exactly as suspicious as the fixture's.
+if python3 tools/lint-rtl.py rtl/lint/good_xprop.sv >"$TMP/good.log" 2>&1; then
+  say "compliant X-determinism code is silent" "PASS"
+else
+  bad "compliant X-determinism code is silent" \
+      "$(grep -m1 'CCV-L' "$TMP/good.log")"
 fi
 
 # -- the real tree is clean ------------------------------------------------
