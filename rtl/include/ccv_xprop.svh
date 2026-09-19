@@ -109,12 +109,25 @@
 // Flop enable with an explicit hold, so an unknown enable merges rather than
 // silently holding.
 //
-//     always_ff @(posedge clk) q <= `CCV_XHOLD(en, d, q);
+//     always_ff @(posedge `CCV_CLK) q <= `CCV_XHOLD(en, d, q);
 //
-// The bare form -- `always_ff @(posedge clk) if (en) q <= d;` -- is the single
-// most common X-optimism bug in sequential logic: an unknown enable holds, and
-// holding is indistinguishable from a correct decision not to load. Legal only
-// when `en` is covered by prohibition.
+// THE FALLBACK, NOT THE DEFAULT -- and an earlier version of this comment had
+// that backwards, calling the `if (en)` form "the single most common
+// X-optimism bug in sequential logic". Inside `always_ff`, `if (en)` is the
+// form to use (finding F-17, and docs/rtl-coding-style.md): it is what carries
+// the enable to synthesis as a gating candidate, and the X obligation is
+// discharged by prohibition -- a `CCV_ASSERT_KNOWN on the enable -- rather
+// than by merging.
+//
+// Measured: both spellings synthesise to the SAME enable flop in Yosys
+// ($_DFFE_PP_ without reset, $_SDFFE_PP0P_ with), so nothing is lost
+// semantically either way. The reason to prefer `if` is that commercial
+// gating insertion is more reliably triggered by it, and that is not
+// something this toolchain can verify.
+//
+// Use this macro where an enable genuinely cannot be proven X-free -- a value
+// arriving from outside the block with no contract behind it -- and where
+// merging is therefore better than holding.
 `define CCV_XHOLD(EN, D, Q) ((EN) ? (D) : (Q))
 
 // Synchronous reset plus enable, in one expression.

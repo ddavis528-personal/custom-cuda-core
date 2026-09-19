@@ -76,13 +76,14 @@ fi
 # a rule that is switched off protects nothing. good_xprop.sv exercises all
 # three legal routes on control inputs exactly as suspicious as the fixture's.
 gfail=0
-for g in rtl/lint/good_xprop.sv rtl/lint/good_naming.sv; do
+for g in rtl/lint/good_xprop.sv rtl/lint/good_naming.sv \
+         rtl/lint/good_gated_enable.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (2 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (3 fixtures)" "PASS"
 
 # -- the real tree is clean ------------------------------------------------
 if python3 tools/lint-rtl.py -q >"$TMP/clean.log" 2>&1; then

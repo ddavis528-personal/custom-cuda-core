@@ -484,6 +484,45 @@ argument for **prohibition being primary**: an assertion fires under Icarus
 constructions **disagree** on an unknown selector. If they ever agree, the
 X-determinism rules are ceremony and should be deleted.
 
+## F-17 — enable inference is form-independent; Yosys does not gate clocks
+
+Two questions, because the style rules push toward the ternary for
+X-determinism while clock gating is conventionally inferred from `if (en)`.
+
+**Do the two spellings synthesise differently?** No.
+
+| | `if (en) q <= d;` | `q <= en ? d : q;` |
+|---|---|---|
+| no reset | `$_DFFE_PP_` ×8 | `$_DFFE_PP_` ×8 |
+| sync reset | `$_SDFFE_PP0P_` ×8 | `$_SDFFE_PP0P_` ×8 |
+
+Yosys's `opt_dff` recognises the feedback mux and converts it to an enable
+flop. The RTL spelling is not what determines whether an enable exists; the
+`$dffe` is, and both forms reach it.
+
+**Does Yosys insert clock gates?** No. Yosys 0.33 has **no `clockgate` pass**.
+It infers the enable and stops there; turning `$dffe` into an ICG plus a gated
+clock is a mapping decision it never makes.
+
+**What this settles, and what it deliberately leaves open.** The apparent
+conflict between X-determinism and clock gating dissolves: both spellings are
+equivalent in the only synthesis tool in this flow, so the X rules never forced
+a power cost. The reason to still prefer `if` inside `always_ff` is that
+commercial gating insertion is more reliably triggered by it — a real concern,
+and one **this toolchain cannot verify**. So the preference is documented and
+**not linted**: a rule that forces a spelling on the strength of tool behaviour
+nobody here can measure would be enforcing a belief rather than a fact.
+
+One consequence worth stating because the intuition runs backwards: with a
+real ICG, an unknown enable yields an unknown **clock**, and every flop behind
+it is undefined. A feedback mux with an unknown enable merely holds. The
+`` `CCV_ASSERT_KNOWN `` on an enable therefore does *more* work in the gated
+case, not less.
+
+Revisit if a Yosys with `clockgate` becomes available, or when synthesis stops
+being deferred (§6) — at which point the first trial synthesis is the moment to
+check whether the real tool agrees.
+
 ---
 
 ## What this settles for Stage 1b
@@ -519,6 +558,9 @@ X-determinism rules are ceremony and should be deleted.
   silently. (F-9, F-11, CCV-L14)
 - **Before first synthesis** — checkers are instantiated, not bound, so they
   are no longer excluded from synthesis for free. Recorded debt. (F-9)
+- **At first synthesis** — confirm the real tool infers gating from the `if`
+  enable form. Yosys cannot answer it, so the preference rests on convention
+  until a commercial tool is in the flow. (F-17)
 - **Stage 4c** — X-propagation has one witness, so the Icarus X-pass carries
   the whole of it. Prohibition is primary precisely because assertions are
   checkable in two tools and propagation in one. (F-16)

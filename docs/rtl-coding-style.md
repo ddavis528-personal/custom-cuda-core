@@ -444,6 +444,46 @@ block at Stage 4c) load-bearing rather than supplementary.
 constructions **disagree** on an unknown selector. If they ever agree, these
 rules are ceremony and should be deleted.
 
+#### Sequential enables: `if` is the right form inside `always_ff`
+
+The one place `if` on control is *preferred* rather than merely tolerated.
+
+    always_ff @(posedge `CCV_CLK) begin
+      if (`CCV_RST)         q_cs01h <= '0;
+      else if (ld_en_cs00h) q_cs01h <= d_cs00h;
+    end
+
+This is the shape that carries an enable to synthesis as a clock-gating
+candidate. The X obligation is discharged by **prohibition** — a
+`` `CCV_ASSERT_KNOWN `` on the enable — not by merging, and the rules as
+written already permit exactly this.
+
+**With a real gate, the assertion matters more, not less.** A feedback mux with
+an unknown enable holds a stale value. An ICG with an unknown enable produces
+an unknown *clock*, and every flop behind it is then undefined. The prohibition
+is doing more work in the gated case, which is the opposite of the intuition.
+
+**Measured (F-17):** both spellings synthesise to the *same* enable flop in
+Yosys — `$_DFFE_PP_` without reset, `$_SDFFE_PP0P_` with it. Yosys's `opt_dff`
+recognises the feedback mux and converts it, so nothing is lost semantically
+either way. The reason to prefer `if` is that commercial gating insertion is
+more reliably triggered by it, and **that is not something this toolchain can
+verify** — Yosys 0.33 has no `clockgate` pass at all. It infers the enable and
+stops; turning `$dffe` into an ICG plus a gated clock is a mapping decision it
+never makes.
+
+So this preference is **documented and not linted**. Both forms are provably
+equivalent in the only synthesis tool available here, and a rule that forces
+one spelling on the strength of tool behaviour nobody in this flow can measure
+would be enforcing a belief rather than a fact. `rtl/lint/good_gated_enable.sv`
+is the standing proof that the preferred form is clean under every rule.
+
+`` `CCV_XHOLD `` remains available for the case this does not cover: an enable
+that genuinely cannot be proven X-free, where merging beats holding.
+
+**In `always_comb`, the preference inverts** — there is no gate to infer, so
+the ternary's tmerge is free and strictly better.
+
 ### CCV-L16 — `casex` is banned outright
 
 Measured above: with an unknown selector `casex` treats X as a don't-care and
