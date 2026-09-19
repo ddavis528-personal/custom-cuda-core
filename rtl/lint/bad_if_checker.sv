@@ -11,6 +11,14 @@
 //===----------------------------------------------------------------------===//
 `include "ccv_if.svh"
 
+// Reusable modules -- interface checkers and primitives -- take `clk`/`rst` as
+// generic FORMALS, because one checker is instantiated inside many blocks and
+// binds to each block's own uniquified clock. Design blocks use the real net
+// names (`<blk>_core_clk`, `<blk>_rst_r<NN>h`); a formal named for one block
+// would read as a lie in every other.
+`define CCV_CLK clk
+`define CCV_RST rst
+
 module bad_if_checker #(
   parameter int MODE = `CCV_MODE_ASSERT
 ) (
@@ -34,6 +42,11 @@ endmodule
 // CCV-L13: `bind` at a design boundary. Yosys parses this, ignores it, and
 // garbage-collects the checker (F-9), so a proof relying on it checks nothing
 // and reports success.
+// Reusable: lint fixture for the checker rules; same formals as a real
+//           checker.
 bind issue_producer bad_if_checker u_bad (
   .clk(clk), .rst(rst), .iss(iss), .iss_ready(iss_ready)
 );
+
+`undef CCV_CLK
+`undef CCV_RST

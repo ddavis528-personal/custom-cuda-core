@@ -17,6 +17,10 @@
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 
+// Test module: `clk`/`rst` formals, driven by the common testbench.
+`define CCV_CLK clk
+`define CCV_RST rst
+
 module dut (
   input  logic clk,
   input  logic rst,
@@ -57,3 +61,6 @@ module dut (
 `endif
 
 endmodule
+
+`undef CCV_CLK
+`undef CCV_RST

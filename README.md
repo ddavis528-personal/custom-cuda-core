@@ -116,6 +116,12 @@ nothing else prevents them from drifting.
 - **Packed structs do reach the C++ swap boundary**, as one packed signal —
   but their field offsets do not, so the typedef is generated into both
   languages. (F-12)
+- **VCS X-Prop semantics are reachable from plain LRM behaviour** — the
+  ternary operator already gives tmerge, and `casex` is banned because it
+  silently matches the first branch. (F-16)
+- **The stage tag does not cross into C++.** Signal identity is the base name;
+  the tag is an implementation attribute, so a retimed RTL still correlates
+  against an unchanged model.
 
 Full detail in [`docs/stage1a-findings.md`](docs/stage1a-findings.md).
 

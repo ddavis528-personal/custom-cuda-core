@@ -7,6 +7,14 @@
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 
+// Reusable modules -- interface checkers and primitives -- take `clk`/`rst` as
+// generic FORMALS, because one checker is instantiated inside many blocks and
+// binds to each block's own uniquified clock. Design blocks use the real net
+// names (`<blk>_core_clk`, `<blk>_rst_r<NN>h`); a formal named for one block
+// would read as a lie in every other.
+`define CCV_CLK clk
+`define CCV_RST rst
+
 module bad_xprop (
   input  logic       clk,
   input  logic       rst,
@@ -63,6 +71,8 @@ endmodule
 // rule exists to remove. The selector IS known-asserted here, so this is the
 // prohibition route; the partial default is a slip rather than a second
 // mechanism.
+// Reusable: lint fixture for the X-determinism rules; the naming rules
+//           are exercised separately by rtl/lint/bad_naming.sv.
 module bad_xprop_partial (
   input  logic       clk,
   input  logic       rst,
@@ -79,3 +89,6 @@ module bad_xprop_partial (
     endcase
   end
 endmodule
+
+`undef CCV_CLK
+`undef CCV_RST

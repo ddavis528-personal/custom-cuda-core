@@ -33,6 +33,7 @@ python3 tools/lint-rtl.py rtl/lint/bad_module.sv >"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py --schema=rtl/lint/bad_interfaces.json \
   rtl/lint/bad_if_checker.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
 if grep -q "CCV-L" "$TMP/bad.log"; then false; else true; fi
 if [ $? -eq 0 ]; then
   bad "lint fails the non-compliant sample" "it passed"
@@ -74,12 +75,14 @@ fi
 # X-determinism rules: a rule that fires on correct code gets switched off, and
 # a rule that is switched off protects nothing. good_xprop.sv exercises all
 # three legal routes on control inputs exactly as suspicious as the fixture's.
-if python3 tools/lint-rtl.py rtl/lint/good_xprop.sv >"$TMP/good.log" 2>&1; then
-  say "compliant X-determinism code is silent" "PASS"
-else
-  bad "compliant X-determinism code is silent" \
-      "$(grep -m1 'CCV-L' "$TMP/good.log")"
-fi
+gfail=0
+for g in rtl/lint/good_xprop.sv rtl/lint/good_naming.sv; do
+  if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
+    bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
+    gfail=1
+  fi
+done
+[ "$gfail" = "0" ] && say "compliant code is silent (2 fixtures)" "PASS"
 
 # -- the real tree is clean ------------------------------------------------
 if python3 tools/lint-rtl.py -q >"$TMP/clean.log" 2>&1; then

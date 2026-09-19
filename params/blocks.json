@@ -1,0 +1,57 @@
+{
+  "_comment": [
+    "Clock-domain letters and block letters for the net-naming stage tag.",
+    "Read by tools/lint-rtl.py; nothing is generated from this file, because",
+    "nothing in RTL or C++ consumes the letters -- only the linter does.",
+    "",
+    "STAGE TAG FORMAT:  <domain><block><NN><l|h>",
+    "",
+    "  domain   letter for the clock domain the signal is generated in. Taken",
+    "           from the segment immediately before `_clk` in the generating",
+    "           clock's name, so `sched_core_clk` -> `core` -> `c`.",
+    "  block    letter for the block that generates the signal.",
+    "  NN       two-digit pipe stage within that block.",
+    "  l|h      generating clock edge: h = posedge, l = negedge.",
+    "",
+    "WHAT IS AND IS NOT DECIDED HERE. The MECHANISM is Stage 1d. The block",
+    "LIST is Stage 2's and follows from the partition, which §2 of the",
+    "strategy doc is explicit has not been decided. Blocks marked provisional",
+    "exist only so the mechanism has something to exercise; they are not a",
+    "proposed partition.",
+    "",
+    "Single letters mean 26 blocks maximum, minus the reserved ones. If the",
+    "Stage 2 partition needs more than that, this format has to widen -- and",
+    "that is much cheaper to discover here than after a tree of RTL carries",
+    "the tags."
+  ],
+
+  "domains": [
+    {
+      "letter": "c",
+      "segment": "core",
+      "synchronous": true,
+      "doc": "The core clock domain. §6 makes this the only functional domain: globally synchronous, single frequency. `core_clk` at the top, uniquified to `<block>_core_clk` after each block's global gate."
+    },
+    {
+      "letter": "t",
+      "segment": "test",
+      "synchronous": false,
+      "doc": "DFT clock. Asynchronous to core by construction -- which is exactly why the domain segment is not `core`. Nothing uses it yet; it is registered so that the first signal crossing from it is a lint finding rather than a surprise."
+    }
+  ],
+
+  "blocks": [
+    {
+      "letter": "r",
+      "name": "reset",
+      "reserved": true,
+      "doc": "RESERVED for the reset distribution network, which does not share a numbering space with any block's datapath. A synchronous reset cannot be delivered globally in one cycle; it is pipelined, and how deep it is when it reaches a block depends on physical distance. So `<blk>_rst_r06h` says 'six stages into the reset tree', and it cannot be confused with a datapath signal at stage 6. Reset nets are exempt from stage arithmetic for the same reason."
+    },
+    {
+      "letter": "x",
+      "name": "reference",
+      "provisional": true,
+      "doc": "PROVISIONAL. Carries the pre-Stage-2 reference material -- the interface checker example and the smoke modules -- so the naming rules have something real to check before the partition exists. Not a block."
+    }
+  ]
+}

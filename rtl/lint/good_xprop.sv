@@ -11,6 +11,15 @@
 `include "ccv_assert.svh"
 `include "ccv_xprop.svh"
 
+// Reusable modules -- interface checkers and primitives -- take `clk`/`rst` as
+// generic FORMALS, because one checker is instantiated inside many blocks and
+// binds to each block's own uniquified clock. Design blocks use the real net
+// names (`<blk>_core_clk`, `<blk>_rst_r<NN>h`); a formal named for one block
+// would read as a lie in every other.
+// Reusable: lint fixture for the X-determinism rules.
+`define CCV_CLK clk
+`define CCV_RST rst
+
 module good_xprop (
   input  logic       clk,
   input  logic       rst,
@@ -70,3 +79,6 @@ module good_xprop (
   end
 
 endmodule
+
+`undef CCV_CLK
+`undef CCV_RST

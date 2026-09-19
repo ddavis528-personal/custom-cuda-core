@@ -15,6 +15,10 @@
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 
+// Test module: `clk`/`rst` formals, driven by the common testbench.
+`define CCV_CLK clk
+`define CCV_RST rst
+
 // The role-swap pattern from ccv_assert.svh, exercised rather than only
 // documented. Black-boxing a neighbour flips its guarantees from obligations
 // into givens; nothing else about the property changes.
@@ -101,3 +105,6 @@ module dut (
   `CCV_ASSERT_T(smoke_past, !(`CCV_PAST(a) && !a_q))
 
 endmodule
+
+`undef CCV_CLK
+`undef CCV_RST

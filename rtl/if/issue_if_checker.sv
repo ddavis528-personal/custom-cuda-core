@@ -23,6 +23,17 @@
 //===----------------------------------------------------------------------===//
 `include "ccv_if.svh"
 
+// Reusable modules -- interface checkers and primitives -- take `clk`/`rst` as
+// generic FORMALS, because one checker is instantiated inside many blocks and
+// binds to each block's own uniquified clock. Design blocks use the real net
+// names (`<blk>_core_clk`, `<blk>_rst_r<NN>h`); a formal named for one block
+// would read as a lie in every other.
+// Reusable: one interface checker is instantiated inside many blocks and
+//           binds to each one's own uniquified clock, so its clock and
+//           reset are generic formals rather than block-named nets.
+`define CCV_CLK clk
+`define CCV_RST rst
+
 module issue_if_checker #(
   parameter int MODE = `CCV_MODE_ASSERT
 ) (
@@ -133,3 +144,6 @@ module issue_if_checker #(
   end
 
 endmodule
+
+`undef CCV_CLK
+`undef CCV_RST

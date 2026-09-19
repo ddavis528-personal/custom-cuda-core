@@ -142,23 +142,190 @@ swap harness stay mechanical:
 
 ## The rules
 
+## Net naming
+
+Every net's name states what it is, when it is valid, and which clock made it.
+That last part is what turns naming from a readability convention into
+something a checker can reason about — the stage tag is why CCV-L21 and
+CCV-L23 exist at all.
+
+### The shapes
+
+```
+signals   <name>[_<stage>][_n|_b]      iq_issue_valid_cs03h
+                                        iq_flush_cs03h_n
+                                        iq_en_cs03h_b
+
+clocks    [<block>_]<domain>_clk[_b]   core_clk           top level
+                                        sched_core_clk     gated, per block
+                                        test_clk           async: no `core`
+                                        sched_core_clk_b   inverted
+
+reset     <block>_rst_r<NN><l|h>       sched_rst_r06h
+
+stage     <domain><block><NN><l|h>     c = core domain
+                                        s = scheduler block
+                                        03 = pipe stage
+                                        h = posedge (l = negedge)
+```
+
+All lowercase, underscore-separated. Only parameters and localparams carry
+upper case.
+
+**`_n` and `_b` are always the outermost suffix**, after the stage tag. Mildly
+ugly, and too entrenched to change.
+
+- **`_n`** — the signal is *defined* active-low. A semantic property; carries
+  no obligation a checker could test.
+- **`_b`** — the *complement* of a value that also exists. CCV-L24 requires it
+  to be driven through an inversion.
+
+### The domain segment is the second-to-last segment of a clock name
+
+`sched_core_clk` → `core`. `test_clk` → `test`. That placement is deliberate:
+it makes "`_core_` means synchronous to the core domain" a **mechanical**
+property rather than a reading convention, so lint can check it and an
+asynchronous clock cannot accidentally be named as though it were synchronous.
+
+Registered in `params/blocks.json`, along with the block letters.
+
+### Reset has its own numbering space
+
+A synchronous reset cannot be delivered globally in one cycle. It is pipelined,
+balanced so de-assertion arrives everywhere on the same cycle, and how deep it
+is when it reaches a block depends on physical distance.
+
+So reset nets carry block letter **`r`**: `sched_rst_r06h` reads as "six stages
+into the reset tree", and cannot be confused with a datapath signal at stage 6.
+**Reset nets take no part in stage arithmetic** — their depth measures distance,
+not datapath.
+
+### Where the stage tag lives, and where it does not
+
+- **On the net, never on a struct field.** An `issue_t` may be instantiated at
+  stage 3 in one place and stage 7 in another, so the type cannot carry a
+  stage. The field stays `valid`; the net is `iq_iss_cs03h`, referenced as
+  `iq_iss_cs03h.valid`.
+- **Not in the C++ timing model.** §9 keeps signal names identical across the
+  two languages so §5 correlation needs no mapping, and the stage tag is an
+  *implementation attribute*, not part of a signal's identity. Correlation
+  matches the base name and carries the tag as metadata. A retimed RTL
+  therefore still correlates against an unchanged model — which is the point,
+  not a concession. **Event-schema field names carry no stage tags.**
+- **Not on a reusable module's formals.** See CCV-L21.
+
+### Design modules and reusable modules
+
+Design RTL declares which block it belongs to:
+
+    // Block: scheduler
+
+A **reusable** module — an interface checker, a primitive — declares itself
+instead, with a reason:
+
+    // Reusable: one interface checker is instantiated inside many blocks and
+    //           binds to each one's own uniquified clock.
+
+Reusable modules take `clk`/`rst` as generic formals and are exempt from the
+clock-naming and stage rules, because a formal named for one block would read
+as a lie in every other. This is **declared, never inferred** — inferring it
+from "the clock is not named like a clock" would let every non-compliant file
+exempt itself by being non-compliant.
+
+### CCV-L02 — every macro user names its own clock and reset
+
+There is no single clock name the assertion macros can hardcode. Each block
+gates `core_clk` on entry and uses the uniquified result, so `sched_core_clk`
+and `alu_core_clk` are different nets; reset is worse, since which stage of the
+distribution tree reaches a block depends on physical distance.
+
+So each file supplies its own:
+
+```systemverilog
+`define CCV_CLK sched_core_clk
+`define CCV_RST sched_rst_r06h
+  ... module body, `CCV_ASSERT(...) as usual ...
+`undef CCV_CLK
+`undef CCV_RST
+```
+
+The inner macros expand at *use* time, so each file genuinely gets its own
+clock — verified in all three tools. **The `` `undef `` is required**: a macro
+outlives the file in a shared compilation unit, and without it the next file
+silently inherits this one's clock. Use the `_AT` forms directly for a module
+needing two clocks, which under §6 should not exist outside DFT.
+
+### CCV-L19 — lower_snake_case
+
+Only parameters and localparams carry upper case.
+
+### CCV-L20 — clocks are named as clocks, and used only as clocks
+
+A net driving a clock edge must match the clock shape, and its domain segment
+must be registered. Conversely a clock may appear only in an edge expression, a
+port map, or **the right-hand side of another clock** — that last one being the
+block's gate, which is the whole reason `<block>_core_clk` exists. Anywhere
+else is a clock read as data.
+
+Because `_core_` marks synchronous, an `always_ff` mixing a `*_core_clk`-
+generated signal with a `test_clk`-generated one is a crossing detectable from
+the names alone. Nothing uses `test_clk` yet; it is registered so the first
+crossing is a finding rather than a surprise.
+
+### CCV-L21 — stage tags are well-formed and consistent
+
+For every flop, the tag on the assigned net is checked against the block that
+generates it:
+
+- **domain letter** matches the domain of the generating clock — a signal
+  labelled for the wrong domain is how a crossing hides;
+- **edge letter** matches `posedge`/`negedge`;
+- **block letter** is registered, and is this file's own block (or `r`).
+
+A design file with sequential logic must declare `// Block:` or `// Reusable:`,
+since without a block name there is nothing to check the block letter against.
+
+### CCV-L22 — a block runs on its own gated clock
+
+No `always_ff @(posedge core_clk)` inside a block. Each block gates `core_clk`
+as its first act, and clocking logic on the ungated net **silently defeats that
+gate**: the design still works, produces identical results, and never saves the
+power it was supposed to. Nothing in simulation shows it, which is exactly why
+it needs a rule.
+
+### CCV-L23 — stage arithmetic
+
+The rule the whole convention exists to make checkable:
+
+| | |
+|---|---|
+| flop output | `max(input stages) + 1` |
+| combinational output | `max(input stages)` |
+
+Catches mislabelled pipelines, accidental combinational paths across a stage
+boundary, and retiming that updated the logic but not the names.
+
+Three exemptions, each for a reason:
+
+- **A net's own previous value.** `q_cs04h <= en ? d_cs03h : q_cs04h` is a hold
+  or a counter — a self-reference at the *same* stage, not a violation.
+- **Reset nets** (block letter `r`), whose numbering measures distribution
+  depth rather than datapath depth.
+- **Right-hand sides with no tagged signal at all** — constants, parameters.
+
+### CCV-L24 — `_b` is a complement
+
+A net named `_b` must be driven through an inversion. It complements a *value*,
+which is often an expression or a bit-select rather than a net of its own, so
+no same-named sibling is required — an earlier version demanded one and was
+wrong. Use `_n` for a signal that is simply defined active-low; that carries no
+obligation.
+
 ### CCV-L01 — one module per file, filename matches module name
 
 Required by build automation and assumed by most lint tooling. Also what makes
 a block's file findable from a waveform hierarchy without a search.
 
-### CCV-L02 — clock and reset ports are `clk` and `rst`, in every module
-
-§9 asks for this so instantiation and the swap harness are mechanical. The
-single-clock, global-synchronous-reset decision (§6) makes it reasonable:
-there is one clock and one reset, so there is nothing to disambiguate.
-
-`rst` is **active high and synchronous**. The assertion macros reference `clk`
-and `rst` by these names and are unusable in a module that spells them
-differently.
-
-*Revisit trigger:* multiple **frequency** domains (§6). Clock gating for power
-does not reopen it.
 
 ### CCV-L03 — no `initial` blocks and no delays in design RTL
 

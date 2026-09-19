@@ -41,13 +41,29 @@
 // immediate form in a clocked `always`, which is semantically identical
 // everywhere. Uniformity is worth more here than Verilator's extra fidelity.
 //
-// CLOCK AND RESET ARE IMPLICIT
+// CLOCK AND RESET COME FROM TWO PER-FILE DEFINES
 //
-// The macros reference `clk` and `rst` by name. §9 requires clock and reset
-// ports to be identically named in every module, which the single-clock,
-// global-synchronous-reset decision (§6) makes reasonable, and which the swap
-// harness depends on anyway. Use the `_AT` forms for the rare module where
-// that does not hold.
+// Every block gates `core_clk` on entry and uses the uniquified result, so
+// there is no single clock name the macros could hardcode -- `sched_core_clk`
+// and `alu_core_clk` are different nets. Reset is worse: it is pipelined, and
+// which stage of the distribution tree reaches a block depends on physical
+// distance, so its name differs per block too.
+//
+// So each design file names its own, once, and clears them at the end:
+//
+//     `define CCV_CLK sched_core_clk
+//     `define CCV_RST sched_rst_r06h
+//       ... module body, with `CCV_ASSERT(...) as usual ...
+//     `undef CCV_CLK
+//     `undef CCV_RST
+//
+// The inner macros expand at USE time rather than at definition time, so each
+// file genuinely gets its own clock -- verified in all three tools, and the
+// `undef is what stops one file's clock leaking into the next in a shared
+// compilation unit. CCV-L02 requires both the defines and the undefs.
+//
+// Use the `_AT` forms directly for a module that needs two clocks, which under
+// §6's single-domain decision should not exist yet outside DFT.
 //
 //===----------------------------------------------------------------------===//
 `ifndef CCV_ASSERT_SVH
@@ -123,12 +139,12 @@
     end
 `endif
 
-`define CCV_CONTRACT(ROLE, NAME, EXPR) `CCV_CONTRACT_AT(clk, rst, ROLE, NAME, EXPR)
-`define CCV_ASSERT(NAME, EXPR)         `CCV_CONTRACT_AT(clk, rst, assert, NAME, EXPR)
-`define CCV_ASSUME(NAME, EXPR)         `CCV_CONTRACT_AT(clk, rst, assume, NAME, EXPR)
+`define CCV_CONTRACT(ROLE, NAME, EXPR) `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, ROLE, NAME, EXPR)
+`define CCV_ASSERT(NAME, EXPR)         `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, EXPR)
+`define CCV_ASSUME(NAME, EXPR)         `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assume, NAME, EXPR)
 `define CCV_ASSERT_AT(CLK, RST, NAME, EXPR) `CCV_CONTRACT_AT(CLK, RST, assert, NAME, EXPR)
 `define CCV_ASSUME_AT(CLK, RST, NAME, EXPR) `CCV_CONTRACT_AT(CLK, RST, assume, NAME, EXPR)
-`define CCV_COVER(NAME, EXPR)          `CCV_COVER_AT(clk, rst, NAME, EXPR)
+`define CCV_COVER(NAME, EXPR)          `CCV_COVER_AT(`CCV_CLK, `CCV_RST, NAME, EXPR)
 
 //===----------------------------------------------------------------------===//
 // §6 -- X on control is prohibited rather than propagated.
@@ -221,8 +237,8 @@
 //     generated signal, not the macro, so pick names the way you would for
 //     ordinary signals.
 //
-// All three take their clock and reset implicitly, as `clk` and `rst`, like
-// the rest of the library.
+// All three take their clock and reset from `CCV_CLK / `CCV_RST, like the
+// rest of the library.
 //===----------------------------------------------------------------------===//
 
 // SIG may not change for as long as COND holds continuously.
@@ -235,8 +251,8 @@
   localparam int NAME``_W = $bits(SIG);                                 \
   logic [NAME``_W-1:0]   NAME``_shadow;                                 \
   logic                  NAME``_armed;                                  \
-  always_ff @(posedge clk) begin                                        \
-    if (rst) NAME``_armed <= 1'b0;                                      \
+  always_ff @(posedge `CCV_CLK) begin                                        \
+    if (`CCV_RST) NAME``_armed <= 1'b0;                                      \
     else begin                                                          \
       NAME``_armed  <= (COND);                                          \
       NAME``_shadow <= (SIG);                                           \
@@ -257,8 +273,8 @@
   localparam int NAME``_W = $bits(SIG);                                 \
   logic [$clog2((N)+2)-1:0] NAME``_cnt;                                 \
   logic [NAME``_W-1:0]      NAME``_hold;                                \
-  always_ff @(posedge clk) begin                                        \
-    if (rst) NAME``_cnt <= '0;                                          \
+  always_ff @(posedge `CCV_CLK) begin                                        \
+    if (`CCV_RST) NAME``_cnt <= '0;                                          \
     else if (START) begin                                               \
       NAME``_cnt  <= (N);                                               \
       NAME``_hold <= (SIG);                                             \
@@ -286,8 +302,8 @@
 // instead, which is a Stage 2 decision per interface, not a default.
 `define CCV_TRACK_RESPONSE_WITHIN(NAME, REQ, ACK, N)                   \
   logic [$clog2((N)+2)-1:0] NAME``_age;                                 \
-  always_ff @(posedge clk) begin                                        \
-    if (rst) NAME``_age <= '0;                                          \
+  always_ff @(posedge `CCV_CLK) begin                                        \
+    if (`CCV_RST) NAME``_age <= '0;                                          \
     else if (ACK) NAME``_age <= '0;                                     \
     else if ((REQ) || NAME``_age != 0) NAME``_age <= NAME``_age + 1'b1; \
   end                                                                   \

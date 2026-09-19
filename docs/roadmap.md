@@ -113,6 +113,21 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
 **What is NOT done here:** the interface list, and the per-type checkers.
 Those are Stage 2's, alongside the interface grill-me.
 
+### Net naming convention ✅ (mechanism)
+
+`docs/rtl-coding-style.md`, net naming section. Every net states what it is,
+when it is valid, and which clock made it — which is what turns naming into
+something a checker can reason about.
+
+- `params/blocks.json` — domain and block letters
+- CCV-L02 rewritten, CCV-L19 … CCV-L24 added
+- `rtl/lint/bad_naming.sv` / `good_naming.sv`
+
+**What is NOT done here:** the block letters. Single letters cap the partition
+at 26 blocks minus reserved ones, and the list is Stage 2's. If the partition
+needs more, the tag format has to widen — much cheaper to find now than after
+a tree of RTL carries the tags.
+
 ### CI harness ✅
 
 `tools/verify.sh` and `.github/workflows/ci.yml`. §8 puts this at Stage 1
@@ -186,15 +201,20 @@ Carried from the strategy doc, with current status.
    liveness cannot be stated. One number per interface, each needing a
    justification, at Stage 2.
 
-9. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
+9. **Block letters, and whether 26 is enough.** The stage tag gives the block
+   one letter. The Stage 2 partition decides how many blocks there are; if it
+   exceeds the registry, the tag format widens and every tagged net changes.
+   Worth a sanity check as soon as the partition list is drafted.
+
+10. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
    removed `bind`. Settle before the first synthesis attempt rather than at it.
 
-10. **Direction discipline without modports.** Partly addressed — the direction
+11. **Direction discipline without modports.** Partly addressed — the direction
     is declared in `schema/interfaces.json` and carried into the generated
     header — but whether that is *adequate* will not be known until several
     real interfaces exist at Stage 2.
 
-11. **Backpressure convention.** Provisionally the separate `_ready` signal,
+12. **Backpressure convention.** Provisionally the separate `_ready` signal,
     on the strength of F-12: folding backpressure into the struct would put a
     reverse-direction field inside a signal the swap harness drives one way.
     Wide return paths get their own reverse-direction struct. Revisit at Stage

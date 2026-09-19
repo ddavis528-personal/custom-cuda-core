@@ -147,6 +147,70 @@ def line_of(text, pos):
     return text.count("\n", 0, pos) + 1
 
 
+# --------------------------------------------------------------------------
+# Net naming (docs/rtl-coding-style.md, net naming section)
+#
+#   signals   <name>[_<stage>][_n|_b]
+#   clocks    [<block>_]<domain>_clk[_b]
+#   stage     <domain><block><NN><l|h>
+#
+# `_n`/`_b` are always the outermost suffix, which is why the stage tag is
+# matched with them optionally following rather than at the end of the string.
+# --------------------------------------------------------------------------
+STAGE_RE = re.compile(r"_([a-z])([a-z])(\d{2})([lh])(?:_[nb])?$")
+CLK_RE = re.compile(r"^(?:([a-z]\w*?)_)?([a-z]\w*)_clk(?:_b)?$")
+
+
+def load_blocks():
+    path = os.path.join(ROOT, "params", "blocks.json")
+    if not os.path.exists(path):
+        return {}, {}
+    with open(path) as f:
+        d = json.load(f)
+    doms = {x["letter"]: x for x in d.get("domains", [])}
+    seg2let = {x["segment"]: x["letter"] for x in d.get("domains", [])}
+    blks = {x["letter"]: x for x in d.get("blocks", [])}
+    return {"by_letter": doms, "by_segment": seg2let}, blks
+
+
+def stage_of(name):
+    """(domain, block, number, edge) or None if the net carries no stage tag."""
+    m = STAGE_RE.search(name)
+    if not m:
+        return None
+    return m.group(1), m.group(2), int(m.group(3)), m.group(4)
+
+
+def clk_domain(name):
+    """The domain segment of a clock net -- the segment immediately before
+    `_clk`. `sched_core_clk` -> 'core'; `core_clk` -> 'core'; `test_clk` ->
+    'test'. That placement is what makes the `_core_` marker mechanically
+    checkable rather than a reading convention."""
+    m = CLK_RE.match(name)
+    return m.group(2) if m else None
+
+
+def always_blocks(src):
+    """(kind, clock_or_None, body, line) for each always block.
+
+    Brace-free HDL, so the body runs to the next block-level construct rather
+    than to a matched delimiter. Good enough to attribute assignments to a
+    clock, which is all the stage rules need."""
+    out = []
+    for m in re.finditer(r"\balways(_ff|_comb|_latch)?\b", src):
+        kind = (m.group(1) or "")[1:] or "plain"
+        rest = src[m.end():]
+        clk = None
+        em = re.match(r"\s*@\s*\(\s*(pos|neg)edge\s+([\w.]+)", rest)
+        if em:
+            clk = (em.group(2), em.group(1))
+        nxt = re.search(r"\balways(_ff|_comb|_latch)?\b|\bassign\b|\bendmodule\b",
+                        rest)
+        body = rest[:nxt.start()] if nxt else rest
+        out.append((kind, clk, body, line_of(src, m.start())))
+    return out
+
+
 class Finding:
     def __init__(self, rule, path, line, msg):
         self.rule, self.path, self.line, self.msg = rule, path, line, msg
@@ -227,22 +291,25 @@ def check_file(path, rel):
                     "module %s is in %s.sv; filename must match module name"
                     % (mods[0][1], want))
 
-    # -- CCV-L02: clock and reset ports named clk and rst -------------------
-    # §9: identically named in every module so instantiation and the swap
-    # harness are mechanical. Reasonable given the single-domain,
-    # global-synchronous-reset decision (§6).
-    for i, l in enumerate(lines):
-        m = re.search(r"\binput\s+(?:logic\s+|wire\s+)?(\w*(?:clock|clk)\w*)\b",
-                      l, re.I)
-        if m and m.group(1) != "clk":
-            add("CCV-L02", i + 1,
-                "clock port named %r; every module uses `clk`" % m.group(1))
-        m = re.search(r"\binput\s+(?:logic\s+|wire\s+)?"
-                      r"(\w*(?:reset|rst)\w*)\b", l, re.I)
-        if m and m.group(1) != "rst":
-            add("CCV-L02", i + 1,
-                "reset port named %r; every module uses `rst` (active high, "
-                "synchronous -- §6)" % m.group(1))
+    # -- CCV-L02: every macro user names its own clock and reset -----------
+    # Each block gates core_clk on entry and uses the uniquified result, and
+    # reset is pipelined so which stage reaches a block depends on physical
+    # distance. There is therefore no single clock or reset name the assertion
+    # macros could hardcode; each file supplies its own through two defines,
+    # and clears them so one file's clock cannot leak into the next.
+    if not is_header and re.search(r"`CCV_(ASSERT|ASSUME|COVER|CONTRACT)", raw):
+        for sym in ("CCV_CLK", "CCV_RST"):
+            if not re.search(r"`define\s+%s\b" % sym, raw):
+                add("CCV-L02", 1,
+                    "file uses the assertion macros but never defines `%s. "
+                    "The macros take clock and reset from `CCV_CLK/`CCV_RST, "
+                    "because per-block gating and a pipelined reset mean no "
+                    "single name could be hardcoded" % sym)
+            elif not re.search(r"`undef\s+%s\b" % sym, raw):
+                add("CCV-L02", 1,
+                    "`%s is defined but never `undef'd. A macro outlives the "
+                    "file in a shared compilation unit, so the next file "
+                    "silently inherits this one's clock" % sym)
 
     # -- CCV-L03: no `initial`, no delays in design RTL ---------------------
     if not is_tb:
@@ -339,11 +406,20 @@ def check_file(path, rel):
         known = known_signals(raw)
         ins = input_ports(src)
 
+        def is_reset(n):
+            """A reset net: the literal `rst` in a reusable module's formals,
+            or any net in the reset distribution tree, which carries block
+            letter `r` in its stage tag."""
+            st = stage_of(n)
+            return n == "rst" or (st is not None and st[1] == "r") or \
+                   re.search(r"(^|_)rst(_|$)", n) is not None
+
         def uncovered(expr):
             """Input-port identifiers in `expr` with no KNOWN assertion.
-            `rst` is exempt: §6 makes reset globally synchronous and always
+            Reset is exempt: §6 makes it globally synchronous and always
             reset, so it is the one control signal that cannot be X."""
-            return sorted((idents(expr) & ins) - known - {"rst"})
+            return sorted(n for n in (idents(expr) & ins) - known
+                          if not is_reset(n))
 
         # -- CCV-L16: casex is banned outright ------------------------------
         # Measured (F-16): with an unknown selector, casex treats X as a
@@ -531,6 +607,193 @@ def check_file(path, rel):
                     "bare `CCV_ASSERT/`CCV_ASSUME in a checker; use "
                     "`CCV_CONTRACT_M so the MODE parameter is honoured, or "
                     "the ASSUME side of a cut-point is silently absent")
+
+
+    # -- net naming --------------------------------------------------------
+    if not is_tb and not is_header:
+        domains, blocks = load_blocks()
+        declared = re.search(r"^\s*//\s*Block:\s*(\w+)", raw, re.M)
+        blk_name = declared.group(1) if declared else None
+
+        # A REUSABLE module -- an interface checker, a primitive -- takes
+        # `clk`/`rst` as generic formals, because one instance of it lives
+        # inside many blocks and binds to each block's own uniquified clock. A
+        # formal named for one block would read as a lie in every other, so
+        # the clock-name and stage rules do not apply to it.
+        #
+        # This is DECLARED, never inferred. Inferring it from "the clock is
+        # not named like a clock" would let every non-compliant file exempt
+        # itself by being non-compliant.
+        reusable = re.search(r"^\s*//\s*Reusable:\s*(\S.*)", raw, re.M)
+
+        if not reusable and not blk_name and re.search(r"\balways_ff\b", src):
+            add("CCV-L21", 1,
+                "design RTL with sequential logic declares neither "
+                "`// Block: <name>` nor `// Reusable: <why>`. The block name "
+                "is what the stage tag's block letter is checked against, so "
+                "without it the naming rules cannot be applied at all")
+        blk_letter = None
+        for L, b in blocks.items():
+            if b["name"] == blk_name:
+                blk_letter = L
+
+        # -- CCV-L19: lowercase, underscore-separated ----------------------
+        # Parameters keep UPPER_SNAKE; everything else is lower_snake_case.
+        for m in re.finditer(r"\b(?:logic|wire|reg)\b[^;\n]*?\b([A-Za-z_]\w*)\s*[;,=\)]",
+                             src):
+            n = m.group(1)
+            if re.search(r"[A-Z]", n):
+                add("CCV-L19", line_of(src, m.start()),
+                    "net %r is not lower_snake_case; only parameters and "
+                    "localparams carry upper case" % n)
+
+        # -- CCV-L20: clocks are named for it, and only clocks are clocks ---
+        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
+            if not clk:
+                continue
+            cname, edge = clk
+            base = cname.split(".")[-1]
+            dom = clk_domain(base)
+            if dom is None:
+                add("CCV-L20", ln,
+                    "%r drives a clock edge but is not named as a clock. A "
+                    "clock net is [<block>_]<domain>_clk, and the domain is "
+                    "the segment before `_clk` -- which is what makes "
+                    "`_core_` mean synchronous-to-core mechanically rather "
+                    "than by reading" % base)
+            elif domains and dom not in domains["by_segment"]:
+                add("CCV-L20", ln,
+                    "clock %r has domain segment %r, which is not in "
+                    "params/blocks.json. An unregistered domain is either a "
+                    "typo or a new clock nobody declared" % (base, dom))
+
+            # -- CCV-L22: blocks run on their own gated clock ---------------
+            # Each block gates core_clk on entry. Using the ungated clock
+            # inside a block silently defeats that gating, and nothing in
+            # simulation shows it -- the design works, it just never saves
+            # any power.
+            if base == "core_clk" and blk_name:
+                add("CCV-L22", ln,
+                    "block %r clocks logic on the ungated `core_clk`. Use the "
+                    "block's uniquified `<block>_core_clk`; the ungated clock "
+                    "defeats the block's global gate, and simulation cannot "
+                    "show it" % blk_name)
+
+        # A clock net may feed an edge expression, a port map, or ANOTHER
+        # CLOCK NET -- that last one is the block's gate, which is the whole
+        # reason `<block>_core_clk` exists. Anything else is a clock read as
+        # data, which is how a clock ends up in a datapath unnoticed.
+        if not reusable:
+            for m in re.finditer(r"(?:assign\s+)?([a-z]\w*)\s*(?:<=|=)\s*([^;]+);",
+                                 src):
+                lhs, rhs = m.group(1), m.group(2)
+                if clk_domain(lhs):
+                    continue        # building a clock from a clock: the gate
+                for cm in re.finditer(r"\b([a-z]\w*_clk(?:_b)?)\b", rhs):
+                    add("CCV-L20", line_of(src, m.start()),
+                        "clock %r is read as data by %r. A clock belongs in "
+                        "an edge expression, a port map, or the right-hand "
+                        "side of another clock -- nowhere else"
+                        % (cm.group(1), lhs))
+
+        # -- CCV-L21: stage tags are well formed and consistent -------------
+        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
+            if kind != "ff" or not clk:
+                continue
+            cbase, edge = clk[0].split(".")[-1], clk[1]
+            dom_seg = clk_domain(cbase)
+            want_dom = domains["by_segment"].get(dom_seg) if domains else None
+            want_edge = "h" if edge == "pos" else "l"
+            for am in re.finditer(r"([a-z]\w*)\s*(?:\[[^\]]*\])?\s*<=", body):
+                lhs = am.group(1)
+                st = stage_of(lhs)
+                if st is None:
+                    continue
+                d, b, num, e = st
+                aln = ln + body[:am.start()].count("\n")
+                if want_dom and d != want_dom:
+                    add("CCV-L21", aln,
+                        "%s is tagged domain %r but is generated by %s, whose "
+                        "domain is %r (%s). A signal labelled for the wrong "
+                        "domain is how a crossing hides"
+                        % (lhs, d, cbase, want_dom, dom_seg))
+                if e != want_edge:
+                    add("CCV-L21", aln,
+                        "%s is tagged edge %r but is generated on %sedge %s"
+                        % (lhs, e, edge, cbase))
+                if blocks and b not in blocks:
+                    add("CCV-L21", aln,
+                        "%s carries block letter %r, which is not registered "
+                        "in params/blocks.json" % (lhs, b))
+                elif blk_letter and b != blk_letter and b != "r":
+                    add("CCV-L21", aln,
+                        "%s carries block letter %r but this file declares "
+                        "`// Block: %s` (letter %r). A block may only generate "
+                        "signals in its own numbering space"
+                        % (lhs, b, blk_name, blk_letter))
+
+        # -- CCV-L23: stage arithmetic --------------------------------------
+        # The rule the whole convention exists to make checkable:
+        #   flop output  = max(input stages) + 1
+        #   combinational = max(input stages)
+        #
+        # Exempt: the net's own previous value (a hold or a counter is a
+        # self-reference at the SAME stage, not a stage violation), reset nets
+        # (block letter `r` -- the reset tree has its own numbering because it
+        # is pipelined by physical distance, not by datapath depth), and any
+        # right-hand side with no tagged signals at all.
+        def rhs_stages(expr, lhs):
+            out = []
+            for w in re.findall(r"[a-z]\w*", expr):
+                if w == lhs:
+                    continue
+                st = stage_of(w)
+                if st and st[1] != "r":
+                    out.append(st[2])
+            return out
+
+        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
+            seq = (kind == "ff")
+            for am in re.finditer(
+                    r"([a-z]\w*)\s*(?:\[[^\]]*\])?\s*(<=|=)\s*([^;]+);", body):
+                lhs, op, rhs = am.group(1), am.group(2), am.group(3)
+                st = stage_of(lhs)
+                if st is None or st[1] == "r":
+                    continue
+                ins = rhs_stages(rhs, lhs)
+                if not ins:
+                    continue
+                want = max(ins) + (1 if seq else 0)
+                if st[2] != want:
+                    aln = ln + body[:am.start()].count("\n")
+                    add("CCV-L23", aln,
+                        "%s is at stage %02d but %s logic over stage(s) %s "
+                        "gives %02d. %s"
+                        % (lhs, st[2], "sequential" if seq else "combinational",
+                           ",".join("%02d" % i for i in sorted(set(ins))), want,
+                           "A flop advances exactly one stage."
+                           if seq else
+                           "Combinational logic does not advance a stage."))
+
+        # -- CCV-L24: `_b` is a derived complement --------------------------
+        # `_n` is a semantic property of a signal that is DEFINED active-low
+        # and carries no obligation. `_b` claims to be the complement of a net
+        # that exists, which is checkable and worth checking: a `_b` that is
+        # not actually inverted is a sign flip nobody sees.
+        for m in re.finditer(r"\b([a-z]\w*)_b\b\s*(?:<=|=)([^;]+);", src):
+            sib = m.group(1)
+            rhs = m.group(2)
+            ln = line_of(src, m.start())
+            # Only the inversion is required. An earlier version also
+            # demanded a same-named sibling net, which is wrong: `_b` is the
+            # complement of a VALUE, and that value is frequently an
+            # expression or a bit-select rather than a net of its own.
+            if not re.search(r"[~!]", rhs):
+                add("CCV-L24", ln,
+                    "%s_b is driven without an inversion. `_b` names a "
+                    "complement; if this is not inverted it is either a sign "
+                    "flip or the wrong suffix -- use `_n` for a signal that "
+                    "is simply defined active-low" % sib)
 
     return F
 
