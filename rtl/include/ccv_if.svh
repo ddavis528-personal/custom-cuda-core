@@ -88,6 +88,30 @@
   endgenerate
 
 //===----------------------------------------------------------------------===//
+// Mode-resolved bounded temporal properties.
+//
+// The tier-1b macros in ccv_assert.svh in their checker form. CCV-L15 requires
+// a checker's properties to be mode-resolved, so the `CCV_ASSERT_*` versions
+// are not usable there; these pair the same tracking state with
+// `CCV_CONTRACT_M.
+//
+// The tracking state itself is NOT mode-dependent and is declared identically
+// in all three modes -- which is what makes a checker's cost the same whether
+// it is asserting or assuming. Only the property's role changes.
+//===----------------------------------------------------------------------===//
+`define CCV_STABLE_WHILE_M(MODE, NAME, COND, SIG)                      \
+  `CCV_TRACK_STABLE_WHILE(NAME, COND, SIG);                             \
+  `CCV_CONTRACT_M(MODE, NAME, NAME``_ok)
+
+`define CCV_STABLE_FOR_M(MODE, NAME, START, SIG, N)                    \
+  `CCV_TRACK_STABLE_FOR(NAME, START, SIG, N);                           \
+  `CCV_CONTRACT_M(MODE, NAME, NAME``_ok)
+
+`define CCV_RESPONSE_WITHIN_M(MODE, NAME, REQ, ACK, N)                 \
+  `CCV_TRACK_RESPONSE_WITHIN(NAME, REQ, ACK, N);                        \
+  `CCV_CONTRACT_M(MODE, NAME, NAME``_ok)
+
+//===----------------------------------------------------------------------===//
 // Satisfiability covers (convention §3.3) -- mandatory, not optional.
 //
 // An internally contradictory `assume` set makes every proof depending on it

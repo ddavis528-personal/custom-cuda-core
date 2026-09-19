@@ -192,6 +192,112 @@
   `CCV_CONTRACT_AT(clk, rst, assert, NAME, !(READ_EN) || (VALID_BIT))
 
 //===----------------------------------------------------------------------===//
+// Tier 1b -- bounded temporal properties, built from explicit tracking state.
+//
+// These are the properties that WOULD be sequences if any sequence construct
+// were available. None is (F-2): `##n`, `sequence`, `throughout`, property
+// local variables and `s_eventually` are rejected by all three tools, and
+// $stable is Verilator-only. So each one below is a small counter or shadow
+// register plus a boolean property over it -- which is tier 1, and therefore
+// green everywhere, including under Icarus and under formal.
+//
+// They declare state, so they are not pure properties. Two consequences worth
+// knowing before using them:
+//
+//   * The state is REAL. It elaborates in every flow and the solver carries it,
+//     so a wide `SIG` or a large `N` costs proof time. Keep N as small as the
+//     contract actually requires.
+//   * `$bits(SIG)` is taken through a `localparam` rather than used directly
+//     in the declaration's range. Using it directly ELABORATES CLEANLY in all
+//     three tools and then crashes Icarus at RUNTIME --
+//     `internal error: port 0 expects wid=0` -- but only when the shadow
+//     register is driven from a different `always` block than SIG, which is
+//     exactly what a macro-declared shadow always is. A hand-written test with
+//     both in one block passes, which is how this nearly shipped. The
+//     indirection costs nothing and is clean everywhere.
+//
+//   * NAME must be unique in the module -- it is pasted into the declared
+//     signal names. A duplicate gives a redeclaration error naming the
+//     generated signal, not the macro, so pick names the way you would for
+//     ordinary signals.
+//
+// All three take their clock and reset implicitly, as `clk` and `rst`, like
+// the rest of the library.
+//===----------------------------------------------------------------------===//
+
+// SIG may not change for as long as COND holds continuously.
+//
+// The convention's §3.2 "payload and tag stability while stalled" is this,
+// with COND being the stall. Note the shape: it constrains change ACROSS a
+// contiguous window, so it says nothing at the cycle COND first asserts, which
+// is correct -- the value is allowed to arrive on that cycle.
+`define CCV_TRACK_STABLE_WHILE(NAME, COND, SIG)                        \
+  localparam int NAME``_W = $bits(SIG);                                 \
+  logic [NAME``_W-1:0]   NAME``_shadow;                                 \
+  logic                  NAME``_armed;                                  \
+  always_ff @(posedge clk) begin                                        \
+    if (rst) NAME``_armed <= 1'b0;                                      \
+    else begin                                                          \
+      NAME``_armed  <= (COND);                                          \
+      NAME``_shadow <= (SIG);                                           \
+    end                                                                 \
+  end                                                                   \
+  wire NAME``_ok = !NAME``_armed || !(COND) || ((SIG) == NAME``_shadow)
+
+`define CCV_ASSERT_STABLE_WHILE(NAME, COND, SIG)                       \
+  `CCV_TRACK_STABLE_WHILE(NAME, COND, SIG);                             \
+  `CCV_ASSERT(NAME, NAME``_ok)
+
+// SIG is sampled when START pulses and may not change for the next N cycles.
+//
+// The duration-bounded form, for a contract stated in cycles rather than
+// against a condition -- "the tag holds for the whole burst", "the address
+// holds for N beats".
+`define CCV_TRACK_STABLE_FOR(NAME, START, SIG, N)                      \
+  localparam int NAME``_W = $bits(SIG);                                 \
+  logic [$clog2((N)+2)-1:0] NAME``_cnt;                                 \
+  logic [NAME``_W-1:0]      NAME``_hold;                                \
+  always_ff @(posedge clk) begin                                        \
+    if (rst) NAME``_cnt <= '0;                                          \
+    else if (START) begin                                               \
+      NAME``_cnt  <= (N);                                               \
+      NAME``_hold <= (SIG);                                             \
+    end else if (NAME``_cnt != 0) begin                                 \
+      NAME``_cnt <= NAME``_cnt - 1'b1;                                  \
+    end                                                                 \
+  end                                                                   \
+  wire NAME``_ok = (NAME``_cnt == 0) || ((SIG) == NAME``_hold)
+
+`define CCV_ASSERT_STABLE_FOR(NAME, START, SIG, N)                     \
+  `CCV_TRACK_STABLE_FOR(NAME, START, SIG, N);                           \
+  `CCV_ASSERT(NAME, NAME``_ok)
+
+// A request is answered within N cycles.
+//
+// This is what replaces liveness. F-2 removed `s_eventually`, so "a request is
+// eventually answered" cannot be stated at all, and the strategy doc's §8 open
+// item 8 records the consequence: every interface needs a BOUNDED latency with
+// a justified N instead. Strictly weaker than liveness -- it cannot prove the
+// absence of deadlock, only bound the wait -- and N is a number somebody has
+// to defend per interface rather than a formality.
+//
+// ONE OUTSTANDING REQUEST is assumed: the age counter clears on any ACK. For a
+// pipelined interface with several in flight, this needs a per-tag age array
+// instead, which is a Stage 2 decision per interface, not a default.
+`define CCV_TRACK_RESPONSE_WITHIN(NAME, REQ, ACK, N)                   \
+  logic [$clog2((N)+2)-1:0] NAME``_age;                                 \
+  always_ff @(posedge clk) begin                                        \
+    if (rst) NAME``_age <= '0;                                          \
+    else if (ACK) NAME``_age <= '0;                                     \
+    else if ((REQ) || NAME``_age != 0) NAME``_age <= NAME``_age + 1'b1; \
+  end                                                                   \
+  wire NAME``_ok = (NAME``_age <= (N))
+
+`define CCV_ASSERT_RESPONSE_WITHIN(NAME, REQ, ACK, N)                  \
+  `CCV_TRACK_RESPONSE_WITHIN(NAME, REQ, ACK, N);                        \
+  `CCV_ASSERT(NAME, NAME``_ok)
+
+//===----------------------------------------------------------------------===//
 // Tier 2 -- temporal properties. Verilator and formal only.
 //
 // THIS TIER IS THE ONE EXCEPTION to "every property is elaborated in every

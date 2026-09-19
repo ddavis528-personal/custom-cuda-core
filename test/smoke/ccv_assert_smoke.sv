@@ -61,7 +61,14 @@ module dut (
   assign o = a & b;
 
   // (1) MUST FIRE. `a` is high at cycle 3 with `b` low.
+  //
+  // Omitted under CCV_SMOKE_QUIET so the whole module can be run expecting
+  // TOTAL silence. Without that second run the "passing property stays quiet"
+  // check below is vacuous under Verilator, which $stops on the first failure
+  // -- every later property is unreached, and unreached reads as quiet.
+`ifndef CCV_SMOKE_QUIET
   `CCV_ASSERT(smoke_fires, !(a && !b))
+`endif
 
   // (2) MUST NOT FIRE. Holds under the fixed stimulus.
   `CCV_ASSERT(smoke_holds, !(o && !a))

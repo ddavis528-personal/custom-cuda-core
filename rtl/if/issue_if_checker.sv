@@ -36,8 +36,6 @@ module issue_if_checker #(
 
   logic        rst_q;         // registered reset, for the post-reset property
   logic        stalled_q;     // valid was up and not accepted last cycle
-  logic [31:0] payload_q;     // shadow copy, for the stability property
-  logic [5:0]  tag_q;
   logic [63:0] inflight_q;    // one bit per tag: is that tag outstanding
   logic [6:0]  inflight_n;    // population, for the bound check
   logic [63:0] cyc_q;
@@ -54,8 +52,6 @@ module issue_if_checker #(
     end else begin
       rst_q      <= 1'b0;
       stalled_q  <= iss.valid && !iss_ready;
-      payload_q  <= iss.payload;
-      tag_q      <= iss.tag;
       cyc_q      <= cyc_q + 1;
       if (accepted) begin
         inflight_q[iss.tag] <= 1'b1;
@@ -85,10 +81,14 @@ module issue_if_checker #(
 
   // Payload and tag are stable while stalled.
   //   wanted:  $stable(payload) throughout the stall
-  //   built:   a shadow copy, compared
-  `CCV_CONTRACT_M(MODE, iss_payload_stable,
-                  !stalled_q || (iss.payload == payload_q))
-  `CCV_CONTRACT_M(MODE, iss_tag_stable, !stalled_q || (iss.tag == tag_q))
+  //   built:   `CCV_STABLE_WHILE_M, which declares the shadow copy itself
+  //
+  // This was hand-rolled here first, which is what motivated the macro: the
+  // shadow register, its reset, and the three-term property are the same every
+  // time, and getting the polarity wrong gives a property that passes.
+  `CCV_STABLE_WHILE_M(MODE, iss_payload_stable, iss.valid && !iss_ready,
+                      iss.payload)
+  `CCV_STABLE_WHILE_M(MODE, iss_tag_stable, iss.valid && !iss_ready, iss.tag)
 
   // No valid during reset, or in the cycle after it.
   //   wanted:  $past(rst) |-> !valid

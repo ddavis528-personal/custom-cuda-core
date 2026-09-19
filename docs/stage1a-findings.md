@@ -388,6 +388,56 @@ emission path itself cannot be caught by cross-checking two simulators, and
 every load-bearing event flows through it. Worth a deliberate test of that path
 at Stage 2.
 
+## F-14 — `$bits()` in a declaration range crashes Icarus at *runtime*
+
+Found while building the tier-1b stability macros, and it is the nastiest
+tool bug in this project so far because every cheap check passes.
+
+    logic [$bits(sig)-1:0] shadow;   // elaborates cleanly in all three tools
+
+Under Icarus this then dies at **runtime**:
+
+    internal error: port 0 expects wid=0, got wid=2
+    vvp: concat.cc:54: Assertion `0' failed.
+
+…but **only when `shadow` is driven from a different `always` block than
+`sig`** — which is exactly what a macro-declared shadow register always is,
+and never what a hand-written test does. A hand-written equivalent with both
+assignments in one block runs perfectly, which is how this nearly shipped: the
+first version of the macro passed a manual check and then crashed the moment it
+was used for real.
+
+**Fix:** take the width through a `localparam` first.
+
+    localparam int NAME_W = $bits(SIG);
+    logic [NAME_W-1:0] NAME_shadow;
+
+Clean in all three tools. The indirection costs nothing.
+
+**The lesson worth keeping, beyond the bug:** compile success is not evidence,
+and neither is a hand-written reproduction that differs structurally from the
+generated code. Both were available here and both said yes.
+
+## F-15 — Verilator `$stop`s on the first assertion failure
+
+An assertion failure under Verilator aborts the run. Icarus reports every
+failure and continues.
+
+This is not a defect, but it silently weakens any **negative** test that checks
+several properties in one build: the first property to fire is the only one
+observed, and every later property is unreached — which is indistinguishable
+from quiet.
+
+Two consequences, both now enforced:
+
+- The tier-1b macro regression builds **one property per run**
+  (`CCV_TSEL_*`), so each is genuinely observed rather than shadowed by
+  whichever fires first.
+- `check-1b.sh` gained a **quiet build** (`CCV_SMOKE_QUIET`) that omits the
+  deliberately-firing property. Its "a passing property stays quiet" check was
+  previously vacuous under Verilator for exactly this reason: the run had
+  already aborted.
+
 ---
 
 ## What this settles for Stage 1b

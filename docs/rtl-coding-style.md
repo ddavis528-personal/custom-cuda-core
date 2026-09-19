@@ -365,6 +365,71 @@ adds no new concept:
 - **`bind`** — tier-2 temporal properties and testbench-side checkers, which
   Icarus does not carry anyway.
 
+## Stating a property over time
+
+There is no separate assertion clock. Every macro bottoms out in
+`always @(posedge clk)`, and `clk`/`rst` are resolved **at the expansion site**
+— they are whatever those names mean in the module the macro appears in, which
+is why CCV-L02 requires them to be named that. The `_AT` variants take explicit
+names for the rare module that cannot. Nothing is generated internally, and
+with a single clock domain (§6) there is nothing to disambiguate.
+
+Because these are immediate assertions inside a clocked block rather than
+concurrent properties, they see **pre-NBA values** — a register written with
+`<=` at the same edge reads as its old value. That matches what a concurrent
+property's preponed sampling would give, so the distinction rarely bites; it
+holds because CCV-L04 keeps `<=` in sequential logic, which is one more reason
+that rule is not cosmetic.
+
+### Tier 1b — bounded temporal properties
+
+No sequence construct exists in any tool (F-2) and `$stable` is
+Verilator-only, so anything spanning cycles is a counter or a shadow register
+plus a boolean property. Three of those are common enough to be in the library:
+
+| Macro | Contract |
+|---|---|
+| `` `CCV_ASSERT_STABLE_WHILE(name, cond, sig) `` | `sig` may not change for as long as `cond` holds continuously |
+| `` `CCV_ASSERT_STABLE_FOR(name, start, sig, n) `` | `sig` is sampled when `start` pulses and held for `n` cycles |
+| `` `CCV_ASSERT_RESPONSE_WITHIN(name, req, ack, n) `` | a request is answered within `n` cycles |
+
+Mode-resolved forms for checkers — `` `CCV_STABLE_WHILE_M ``,
+`` `CCV_STABLE_FOR_M ``, `` `CCV_RESPONSE_WITHIN_M `` — take `MODE` first and
+are what CCV-L15 requires inside a checker.
+
+These are tier **1b**, not tier 2: being boolean properties over ordinary
+state, they are green in all three tools, including under Icarus and under
+formal. Only `` `CCV_PAST `` and the `_T` macros are Verilator-and-formal-only.
+
+Three things to know before using them:
+
+- **The state is real.** It elaborates in every flow and the solver carries it,
+  so a wide `sig` or a large `n` costs proof time. Keep `n` as small as the
+  contract requires.
+- **`name` must be unique in the module** — it is pasted into the declared
+  signal names, and a collision reports a redeclaration of the generated
+  signal rather than pointing at the macro.
+- **`CCV_ASSERT_RESPONSE_WITHIN` assumes one outstanding request**; the age
+  counter clears on any `ack`. A pipelined interface with several in flight
+  needs a per-tag age array, which is a Stage 2 decision per interface.
+
+`CCV_ASSERT_RESPONSE_WITHIN` is what replaces liveness. `s_eventually` does not
+exist anywhere (F-2), so "a request is eventually answered" cannot be stated at
+all — every interface gets a bounded latency with a **justified N** instead.
+That is strictly weaker: it bounds the wait, it does not prove the absence of
+deadlock.
+
+**Two tool behaviours that shape how these get tested** — both bit during this
+work:
+
+- `$bits()` directly in a declaration range elaborates cleanly everywhere and
+  then crashes Icarus at *runtime*, but only when the declared signal is driven
+  from a different `always` block. The macros route it through a `localparam`.
+  (F-14)
+- Verilator `$stop`s on the first assertion failure, so a negative test
+  covering several properties in one build only ever observes one. Build one
+  property per run. (F-15)
+
 ## What cannot be written, and what to write instead
 
 Stage 1a finding F-2: **no multi-cycle sequence construct works in any of the

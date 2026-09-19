@@ -31,10 +31,18 @@ if command -v iverilog >/dev/null 2>&1; then
     on=$(vvp "$TMP/iv.out" 2>&1 | grep -c "smoke_fires")
     off=$(vvp "$TMP/iv.out" +ccv_assert_off=1 2>&1 | grep -c "smoke_fires")
     other=$(vvp "$TMP/iv.out" 2>&1 | grep -c "smoke_holds")
+    # The quiet build omits the deliberately-firing property, so "nothing
+    # fires" is a real observation rather than a run that stopped early.
+    quiet=1
+    if iverilog -g2012 -gassertions -DCCV_SMOKE_QUIET -I "$INC" \
+         -o "$TMP/ivq.out" -s tb "$PKG" "$SMOKE" "$TB" >/dev/null 2>&1; then
+      quiet=$(vvp "$TMP/ivq.out" 2>&1 | grep -c "CCV .* failed")
+    fi
     if   [ "$on"    -lt 1 ]; then bad "icarus: smoke property fires" "never fired"
     elif [ "$off"   -ne 0 ]; then bad "icarus: silenced at runtime" "still fired ($off)"
     elif [ "$other" -ne 0 ]; then bad "icarus: passing property stays quiet" "fired"
-    else say "icarus: compiles, fires, silences" "PASS"
+    elif [ "$quiet" -ne 0 ]; then bad "icarus: compliant build is silent" "$quiet fired"
+    else say "icarus: compiles, fires, silences, quiet" "PASS"
     fi
   else
     bad "icarus: library compiles" "$(head -2 "$TMP/iv.log" | tr '\n' ' ')"
@@ -51,10 +59,17 @@ if command -v verilator >/dev/null 2>&1; then
     on=$("$TMP/vobj/Vtb" 2>&1 | grep -c "smoke_fires")
     off=$("$TMP/vobj/Vtb" +ccv_assert_off=1 2>&1 | grep -c "smoke_fires")
     other=$("$TMP/vobj/Vtb" 2>&1 | grep -c "smoke_holds")
+    quiet=1
+    if verilator --binary -j 0 --assert --timing -Wno-fatal -DCCV_SMOKE_QUIET \
+         -I"$INC" --top-module tb --Mdir "$TMP/vq" "$PKG" "$SMOKE" "$TB" \
+         >/dev/null 2>&1 && [ -x "$TMP/vq/Vtb" ]; then
+      quiet=$("$TMP/vq/Vtb" 2>&1 | grep -c "CCV .* failed")
+    fi
     if   [ "$on"    -lt 1 ]; then bad "verilator: smoke property fires" "never fired"
     elif [ "$off"   -ne 0 ]; then bad "verilator: silenced at runtime" "still fired ($off)"
     elif [ "$other" -ne 0 ]; then bad "verilator: passing property stays quiet" "fired"
-    else say "verilator: compiles, fires, silences" "PASS"
+    elif [ "$quiet" -ne 0 ]; then bad "verilator: compliant build is silent" "$quiet fired"
+    else say "verilator: compiles, fires, silences, quiet" "PASS"
     fi
   else
     bad "verilator: library compiles" "$(grep -m1 '%Error' "$TMP/vl.log" || echo '?')"
@@ -62,6 +77,48 @@ if command -v verilator >/dev/null 2>&1; then
 else
   say "verilator" "SKIP -- not installed"
 fi
+
+# -- tier-1b bounded temporal macros ---------------------------------------
+# Each must be able to FAIL. A stability property that cannot fire reads as
+# coverage while checking nothing.
+#
+# One property per build: under Verilator an assertion failure calls $stop and
+# aborts the run, so a multi-property negative test measures only the first to
+# fire and reports on all of them.
+TSMOKE=test/smoke/ccv_temporal_smoke.sv
+for sel in WHILE:t_stable_while FOR:t_stable_for RESP:t_resp; do
+  d="CCV_TSEL_${sel%%:*}"; prop="${sel##*:}"
+  if command -v iverilog >/dev/null 2>&1; then
+    if iverilog -g2012 -gassertions -D"$d" -I "$INC" -o "$TMP/t.out" -s tb \
+         "$PKG" "$TSMOKE" "$TB" >"$TMP/t.log" 2>&1; then
+      r=$(vvp "$TMP/t.out" 2>&1)
+      if echo "$r" | grep -q "internal error"; then
+        bad "icarus: $prop runs" "vvp crashed"
+      elif [ "$(echo "$r" | grep -c "$prop")" -lt 1 ]; then
+        bad "icarus: $prop fires on a violation" "never fired"
+      else
+        say "icarus: $prop fires on a violation" "PASS"
+      fi
+    else
+      bad "icarus: $prop compiles" "$(head -2 "$TMP/t.log" | tr '\n' ' ')"
+    fi
+  fi
+  if command -v verilator >/dev/null 2>&1; then
+    if verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-WIDTHEXPAND \
+         -D"$d" -I"$INC" --top-module tb --Mdir "$TMP/tv_$prop" \
+         "$PKG" "$TSMOKE" "$TB" >"$TMP/tv.log" 2>&1 \
+       && [ -x "$TMP/tv_$prop/Vtb" ]; then
+      r=$("$TMP/tv_$prop/Vtb" 2>&1)
+      if [ "$(echo "$r" | grep -c "$prop")" -lt 1 ]; then
+        bad "verilator: $prop fires on a violation" "never fired"
+      else
+        say "verilator: $prop fires on a violation" "PASS"
+      fi
+    else
+      bad "verilator: $prop compiles" "$(grep -m1 '%Error' "$TMP/tv.log" || echo '?')"
+    fi
+  fi
+done
 
 # -- sby / Yosys -----------------------------------------------------------
 # Formal gets the third check the simulators cannot give: that the property
