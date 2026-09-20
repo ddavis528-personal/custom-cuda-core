@@ -36,13 +36,13 @@ module gated_reg (input logic clk, input logic rst, input logic en,
   end
 endmodule
 SV
-cat > "$TMP/bb.v" <<'SV'
-(* blackbox *) module ccv_icg (input clk, input en, output gclk); endmodule
-SV
 
 stat_of() {
   yosys -p "
-    read_verilog $TMP/bb.v
+    # -lib reads the real cell as a blackbox, so its ports are checked
+    # against synth/ccv_icg.v rather than against a copy that can drift, and
+    # opt_merge can still share it.
+    read_verilog -lib synth/ccv_icg.v
     read_verilog -sv $TMP/dut.sv
     synth -top gated_reg
     $1

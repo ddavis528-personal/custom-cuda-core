@@ -631,6 +631,19 @@ attempt rather than discovered there.
 
 `bind` is still fine for Verilator-only instrumentation, where nothing is lost.
 
+#### `cover` does nothing in simulation on this stack
+
+Worth knowing before relying on one. Measured (Stage 1a case 03): an immediate
+`cover` is **`SILENT` in both Icarus and Verilator** and `COVER-HIT` only under
+`sby -m cover`. Concurrent `cover property` is worse — it does not parse in
+Icarus or Yosys at all.
+
+So a `cover` is a **formal-only** construct here. That is not a reason to write
+fewer of them; it is a reason to make sure they are *run*, which is why
+`tools/check-if.sh` puts the satisfiability covers through `sby -m cover`
+rather than trusting a simulation regression to exercise them. A guard that is
+never run carries exactly as much information as no guard.
+
 ### CCV-L14 — every checker carries a satisfiability cover
 
 Interface checker convention §3.3, which calls a contradictory `assume` set

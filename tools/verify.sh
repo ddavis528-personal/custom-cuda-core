@@ -53,6 +53,11 @@ if [ -n "$missing" ]; then
   echo "   environment still gates what it can)"
 fi
 
+section "documentation"
+# Docs decay more quietly than code: a drifted count or a dangling reference
+# still reads as authoritative. Both happened during Stage 1.
+run "docs consistent" ./tools/check-docs.sh
+
 section "generated artifacts"
 # Generate first, then check. Two reasons for doing both rather than either:
 #

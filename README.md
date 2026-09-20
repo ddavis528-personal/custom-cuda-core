@@ -46,23 +46,39 @@ something.
 
 ## Layout
 
+Three files are a single source of truth for something that exists in two
+languages, and everything under a `generated/` directory comes from one of
+them. Nothing generated is ever edited, and the gate regenerates and then
+checks nothing moved.
+
 ```
-schema/events.json          event schema -- ONE source for C++ and RTL
-params/ccv_params.json      structural parameters -- ONE source for both
-rtl/include/                ccv_assert.svh (1b), ccv_trace.svh (1c)
+schema/events.json          event schema      -> C++ and RTL headers
+schema/interfaces.json      interface typedefs -> C++ accessors and SV structs
+params/ccv_params.json      structural parameters -> both languages
+params/blocks.json          clock-domain and block letters (lint only)
+
+rtl/include/                ccv_assert.svh   assertion primitives (1b)
+                            ccv_if.svh       interface checker convention
+                            ccv_xprop.svh    X-determinism constructions
+                            ccv_trace.svh    RTL-side event emit (1c)
+rtl/if/                     reference interface checker
+rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
 rtl/generated/              generated; never edited
-rtl/lint/                   deliberately non-compliant fixture for the linter
+
 sim/include/ sim/src/       C++ timing-model side: event emit API
 sim/dpi/                    DPI-C bridge, so RTL feeds the same library
 sim/generated/              generated; never edited
-spike/cases/                Stage 1a tool probes -- 30 cases
+
+synth/                      clock-gating techmap -- exploratory, see F-18
+spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 tools/                      generators, checks, and the gate
 ```
 
 ## What Stage 1 established
 
-Four items, each with its exit criteria as a script (§8: *"anything that can
+Four numbered items, plus four conventions that came out of using them. Each
+has its exit criteria as a script (§8: *"anything that can
 be a script should be — on a solo project, criteria requiring a manual
 checklist decay to nothing"*).
 
@@ -96,6 +112,30 @@ than discovered at 4c.
 if a rule stops firing or stops being documented. Parameters and event ids are
 generated into both languages from one source, because §9 is right that
 nothing else prevents them from drifting.
+
+## Conventions settled on top of Stage 1
+
+Each is documented, enforced by lint, and backed by a measurement rather than
+a preference.
+
+**Interface checkers.** One checker per interface *type* serves protocol
+assertions, formal cut-points and event emission at once. Connected by
+instantiation, not `bind` — see below.
+
+**X-determinism.** A selection on control must be X-deterministic by one of
+three routes: prohibition (assert the control known), tmerge (a ternary, which
+is already X-pessimistic in the LRM), or xmerge (a case with an X-default).
+Anything else is X-optimistic, which makes the bug invisible rather than merely
+unhandled. `casex` is banned outright.
+
+**Net naming.** Every net states what it is, when it is valid and which clock
+made it: `iq_issue_valid_cs03h`. That last part is what makes stage arithmetic
+checkable — a flop advances exactly one stage, combinational logic advances
+none — which is the reason the convention is worth the typing.
+
+**Clock gating.** Enables are written as `if` inside `always_ff`, so they reach
+synthesis as gating candidates. Yosys cannot insert gates, so `synth/` carries
+a techmap rule standing in for the pass it lacks.
 
 ## What Stage 1 settled that the strategy doc left open
 

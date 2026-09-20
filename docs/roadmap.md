@@ -41,10 +41,54 @@ is in place than the stage numbering suggests. Each interface becomes:
 - a checker at `rtl/if/<name>_if_checker.sv`, following
   `rtl/if/issue_if_checker.sv`, which carries the protocol properties, the
   satisfiability covers and the load-bearing event emission together;
-- a `` `CCV_CHECKER `` instantiation at each boundary that uses it.
+- a `` `CCV_CHECKER `` instantiation at each boundary that uses it;
+- a **block letter** in `params/blocks.json`, which the net-naming stage tag
+  is checked against.
 
 CCV-L12 then fails if a typedef has no checker or a control field goes
 unreferenced, so the interface list and the checkers cannot drift apart.
+
+### What a new design file has to carry
+
+Twenty-five lint rules is more than anyone will hold in their head, so the
+obligations that are not obvious from reading existing code:
+
+```systemverilog
+//===-- sched_iq.sv - issue queue ---------------------------------------===//
+//
+// Spec: docs/blocks/scheduler-4a.md        <- CCV-L11, the Stage 4a spec
+// Block: scheduler                          <- CCV-L21, checked against
+//===----------------------------------------------------------------------===//
+`include "ccv_assert.svh"
+
+`define CCV_CLK sched_core_clk              <- CCV-L02
+`define CCV_RST sched_rst_r06h
+
+module sched_iq ( ... );                    <- CCV-L01, filename must match
+
+  // The block gates its clock as its first act -- CCV-L22 forbids clocking
+  // anything on the ungated core_clk.
+  assign sched_core_clk = core_clk & sched_gate_en_cs00h;
+
+  // Every CONTROL input used in an if or a case needs one of these, or the
+  // case needs an X-default -- CCV-L08.
+  `CCV_ASSERT_KNOWN(iq_push_known, iq_push_cs00h)
+
+  ...
+
+endmodule
+
+`undef CCV_CLK                              <- CCV-L02, or the next file
+`undef CCV_RST                                 inherits this one's clock
+```
+
+A **reusable** module — a checker or a primitive, instantiated inside many
+blocks — declares `// Reusable: <why>` instead of `// Block:`, takes
+`clk`/`rst` as generic formals, and is exempt from the clock-naming and stage
+rules. `rtl/if/issue_if_checker.sv` is the worked example.
+
+Run `tools/lint-rtl.py <file>` while writing; it is fast and the messages
+name the rule, which the style guide then explains.
 
 **Two things to carry into that session, both from the spike:** a
 request-to-response contract needs explicit tracking state, since no
@@ -64,7 +108,7 @@ interface.
 
 ### Stage 1a — tool-support spike ✅
 
-30 cases × 3 tools, plus three out-of-band probes. Every case is written so
+36 cases × 3 tools, plus 5 out-of-band probes. Every case is written so
 the fixed stimulus violates it, because the cell that matters is not "does
 this parse" but "does this bite" — a property that elaborates and never fires
 looks exactly like one that passes.
@@ -251,7 +295,7 @@ The walkthrough kernel corpus is an output of the LLVM backend bootstrap,
 which runs on its own schedule in `custom-cuda-complier`.
 
 - **Stage 3** needs a `vadd`-class kernel. **Available today** —
-  `test/elementwise.s` and the walkthrough in the compiler repo.
+  `custom-cuda-complier/test/elementwise.s` and the walkthrough there.
 - **Stage 6** needs the GEMM tile / reduction / elementwise set. **Not yet
   complete.** If the compiler effort lags, Stage 6 is gated on it.
 
@@ -259,7 +303,7 @@ Worth tracking as a cross-project dependency rather than discovering it at the
 gate.
 
 Note also that the functional simulator this project checks against is
-`tools/ccv-sim` in the compiler repository, not `ccg-sim` — the target was
+`custom-cuda-complier/tools/ccv-sim`, not `ccg-sim` — the target was
 renamed from CCG to CCV at the v1.5 audit, and the strategy doc predates that.
 It is the trusted functional oracle (§1), and Stage 3's exit criterion is
 retiring architectural state identical to it.

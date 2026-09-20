@@ -504,14 +504,20 @@ flop. The RTL spelling is not what determines whether an enable exists; the
 It infers the enable and stops there; turning `$dffe` into an ICG plus a gated
 clock is a mapping decision it never makes.
 
-**What this settles, and what it deliberately leaves open.** The apparent
-conflict between X-determinism and clock gating dissolves: both spellings are
-equivalent in the only synthesis tool in this flow, so the X rules never forced
-a power cost. The reason to still prefer `if` inside `always_ff` is that
-commercial gating insertion is more reliably triggered by it — a real concern,
-and one **this toolchain cannot verify**. So the preference is documented and
-**not linted**: a rule that forces a spelling on the strength of tool behaviour
-nobody here can measure would be enforcing a belief rather than a fact.
+**What this settles.** The apparent conflict between X-determinism and clock
+gating dissolves: both spellings are equivalent in the only synthesis tool in
+this flow, so the X rules never forced a power cost. The reason to still prefer
+`if` inside `always_ff` is that commercial gating insertion is more reliably
+triggered by it — a real concern, and one **this toolchain cannot verify**.
+
+**Superseded on the enforcement question.** This finding originally concluded
+that the preference should be documented and *not* linted, on the grounds that
+linting it would enforce tool behaviour nobody here can measure. That reasoning
+was right about the evidence and wrong about the rule, and **CCV-L25 now lints
+it**: what is enforced is the project's decision to write RTL for where the
+flow is going, not a belief about a tool, and a design decision is exactly what
+lint is for. The measurements above are unchanged; only the conclusion drawn
+from them is. See F-18.
 
 One consequence worth stating because the intuition runs backwards: with a
 real ICG, an unknown enable yields an unknown **clock**, and every flop behind
