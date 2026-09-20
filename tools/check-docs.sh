@@ -61,10 +61,15 @@ if impl:
 # top-level directory is always meant to be local.
 local = ("docs/", "tools/", "rtl/", "sim/", "test/", "spike/", "schema/",
          "params/", "synth/", ".github/")
+# Anything under a generated/ directory is a build product: gitignored, and
+# absent from a fresh clone until the generators run. Checking it would make
+# this script depend on having been run after them, and a check whose result
+# depends on build order is a check nobody trusts. The generators verify their
+# own outputs (--check), which is the right place for it.
 for f, t in text.items():
     for m in re.finditer(r"`([\w./-]+)`", t):
         pth = m.group(1)
-        if not pth.startswith(local) or "*" in pth:
+        if not pth.startswith(local) or "*" in pth or "generated/" in pth:
             continue
         if not os.path.exists(pth):
             problems.append("%s refers to %s, which does not exist" % (f, pth))
