@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Tool versions the Stage 1 results are attributable to.",
+    "",
+    "Regenerate with tools/check-toolchain.sh --update, and ONLY after",
+    "deliberately upgrading and re-running the tool matrix -- the",
+    "matrix is the thing these versions make meaningful, and a lock",
+    "updated without it claims a measurement nobody took."
+  ],
+  "tools": {
+    "verilator": "Verilator 5.020 2024-01-01 rev (Debian 5.020-1)",
+    "iverilog": "Icarus Verilog version 12.0 (stable) ()",
+    "yosys": "Yosys 0.33 (git sha1 2584903a060)",
+    "sby": "SBY v0.69",
+    "cvc5": "This is cvc5 version 1.1.2"
+  }
+}

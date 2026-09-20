@@ -192,7 +192,25 @@ exposed, so the C++ side must know the layout independently, and a field
 reordered on one side gives a harness reading the wrong bits — a functional bug,
 not a mismatch. The typedef is therefore generated into both languages.
 
-### 2.4 Verilator's X-randomization works (F-6)
+### 2.4 The lint layer was demonstrated to bite
+
+Stated explicitly because the first version of this report did not, which made
+the lint layer indistinguishable from "configured and unverified".
+
+§8's Stage 1d exit criterion requires lint rules to **fail** a deliberately
+non-compliant sample, not merely run clean on a compliant one. That is checked
+**rule by rule, not in aggregate** — a fixture tripping twenty of twenty-five
+still "fails lint", and the five that went quiet would not surface until a
+block relied on one. The expected rule list is derived from the linter source,
+so a rule added without a counter-example fails the gate.
+
+There are also three `good_*` fixtures that must report **nothing**. For rules
+this aggressive the false-positive regression matters more than the
+counter-example: a rule that fires on correct code gets switched off, and a
+switched-off rule protects nothing. It has already caught three false
+positives that would otherwise have shipped.
+
+### 2.5 Verilator's X-randomization works (F-6)
 
 §6 asked for this to be confirmed rather than assumed. Confirmed, with the flags
 recorded. Two distinct traces across four seeds on an un-reset control bit.
@@ -244,6 +262,41 @@ cross-checked between two simulators, and every load-bearing event flows through
 it. Worth a deliberate test of that path at Stage 2.
 
 ---
+
+## 3.5 Stage 1's results have a shelf life — now detected
+
+Every Stage 1 conclusion is a measurement of third-party tool behaviour at one
+point in time, and several replacements were adopted *because* of a limitation.
+A limitation that lifts silently leaves the workaround in the flow and the
+reasoning behind it wrong — and a cell going FAIL → PASS is both the easier
+direction to miss and the one that invalidates a decision.
+
+Three things now close that:
+
+- **Tool versions are pinned** (`tools/toolchain.lock.json`) and compared on
+  every gate run, in seconds. It cannot pin what a package manager installs; it
+  states what the results are attributable to and notices when that changes.
+- **The matrix is re-measured in CI** weekly and on demand, not only at Stage 1.
+- **Any changed cell fails, in either direction**, and a limitation lifting is
+  tagged as such rather than lumped in with regressions.
+
+The tracked Verilator 4-state effort is the concrete case: if it lands, the
+two-tool split and several X decisions reopen, and this is what would say so.
+
+## 3.6 The emit path is calibrated, not merely tested
+
+A test catches a *broken* emit path. The exposure is **systematic**: a DPI call
+a cycle off relative to the clock edge emits a complete, well-formed,
+self-consistent stream that is uniformly wrong by one cycle — and at §5
+correlation that does not look like an instrumentation fault. It looks like a
+consistent timing divergence in the design under test, which is the signature
+of a real finding and would be chased as one.
+
+`tools/check-emit-calib.sh` calibrates against a three-deep fixed-latency
+pipeline whose correct event cycles are derivable on paper, and diagnoses a
+constant offset **by name** rather than reporting a mismatch. Verified to catch
+an injected one-cycle shift. Permanent, since a change to the emit path or the
+clocking convention can reintroduce it silently.
 
 ## 4. Open items for the planning side
 

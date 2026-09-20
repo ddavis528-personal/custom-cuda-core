@@ -37,6 +37,24 @@ Cycle numbering counts posedges from 0. So `a |-> b` is violated at cycle 3,
 cover is the failure (§7 — an unreachable `cover` is a dead property or a
 mis-written one).
 
+## One unsupported construct per case
+
+**Policy, from a near miss.** The original `bind` case nested a *labelled
+concurrent property* inside the checker — two constructs neither Icarus nor
+Yosys accepts, on top of the one being measured. Its `PARSE-FAIL` cells said
+nothing about binding at all, and reading them as a verdict would have reached
+the right decision for entirely the wrong reason, with Yosys's silent-drop
+behaviour still hidden underneath and no reason to look for it.
+
+> A case may test **exactly one** construct outside the known-usable subset.
+> Anything else it needs comes from the all-three intersection, or the case is
+> paired with a control that isolates the other construct.
+
+Cases 31/32 are such a pair — the same checker and property, bound versus
+instantiated — as are 34/35, which demonstrate a vacuous proof and the cover
+that catches it. Every case declares what it measures in its `case:` header,
+and `tools/check-1a.sh` requires that declaration to exist.
+
 ## Formal cases
 
 Under `sby`, DUT inputs are free variables rather than the stimulus above, so a

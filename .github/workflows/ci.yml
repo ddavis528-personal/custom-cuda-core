@@ -12,6 +12,12 @@ on:
     branches: ["**"]
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Weekly. The gate checks pinned tool VERSIONS in seconds; this re-measures
+    # what the tools actually DO, which is the only thing that notices a
+    # limitation lifting. Runners drift on their own schedule, so a cron is the
+    # trigger rather than a push.
+    - cron: "17 4 * * 1"
 
 jobs:
   gate:
@@ -30,12 +36,10 @@ jobs:
       - name: Verify
         run: ./tools/verify.sh
 
-      # Not part of the gate: regenerating the Stage 1a matrix takes minutes,
-      # and a tool version changing under the flow is a finding to read rather
-      # than a build to fail. Run on demand.
-      - name: Regenerate Stage 1a matrix (manual runs only)
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          python3 tools/run-spike-1a.py
-          git --no-pager diff --stat -- docs/stage1a-tool-support.md \
-            test/golden/stage1a-matrix.json
+      # Separate job-step rather than part of the gate: re-measuring takes
+      # minutes. A changed cell is a finding to read, not a build to fix --
+      # and a cell going FAIL -> PASS matters as much as the reverse, because
+      # several decisions exist because of a limitation that may have lifted.
+      - name: Tool-matrix drift
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python3 tools/check-matrix-drift.py

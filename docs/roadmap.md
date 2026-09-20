@@ -16,6 +16,10 @@ repository's to start.**
     ./tools/verify.sh            # green
 ```
 
+**Review response.** The Stage 1 review raised thirteen items. Six are closed
+in-repo (C-1, C-2, C-3, D-1, D-2, B-3); the rest need the partition list or a
+planning decision and are carried in Part 3 below.
+
 **To hand back to the planning track:**
 [`rtl-findings-stage1.md`](rtl-findings-stage1.md) — what Stage 1 found about
 the strategy, organised for that audience rather than this one.
@@ -265,26 +269,45 @@ Carried from the strategy doc, with current status.
    liveness cannot be stated. One number per interface, each needing a
    justification, at Stage 2.
 
-9. **Clock-gating equivalence is unverified.** The gated netlist has never
+9. **A-1 — the 4d correlation criterion.** Unchanged and still the tightest
+   window: the last cheap moment is before Stage 4a populates the first
+   arbitration-sensitive events, after which changing the schema means
+   reprocessing or discarding every trace captured. A decision, not an
+   investigation.
+
+10. **A-3 — N per interface is provisional by construction.** It cannot be
+    justified at Stage 2; that needs contention data from 4b. Set it from
+    architectural reasoning, record it as provisional, and schedule
+    N-revision as an expected **4b output** rather than a spec change —
+    without that framing, revisiting N later reads as a violation and creates
+    friction against doing it. Each N ships with a case that exceeds it and
+    must fire (see the fail-open register).
+
+11. **A-2 — do testbench-side memory interfaces consume block letters?** They
+    are not design blocks but they do have interfaces, and the tag format
+    question is about what gets tagged. Settle in the same pass as the
+    24-block ceiling check.
+
+12. **Clock-gating equivalence is unverified.** The gated netlist has never
    been proved against its ungated original — that needs a real ICG cell
    rather than a blackbox, and care about the gated clock not being a free
    variable. Nothing relies on it today. Settle before any synthesis result
    is believed. (F-18)
 
-10. **Block letters, and whether 26 is enough.** The stage tag gives the block
+13. **Block letters, and whether 26 is enough.** The stage tag gives the block
    one letter. The Stage 2 partition decides how many blocks there are; if it
    exceeds the registry, the tag format widens and every tagged net changes.
    Worth a sanity check as soon as the partition list is drafted.
 
-11. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
+14. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
    removed `bind`. Settle before the first synthesis attempt rather than at it.
 
-12. **Direction discipline without modports.** Partly addressed — the direction
+15. **Direction discipline without modports.** Partly addressed — the direction
     is declared in `schema/interfaces.json` and carried into the generated
     header — but whether that is *adequate* will not be known until several
     real interfaces exist at Stage 2.
 
-13. **Backpressure convention.** Provisionally the separate `_ready` signal,
+16. **Backpressure convention.** Provisionally the separate `_ready` signal,
     on the strength of F-12: folding backpressure into the struct would put a
     reverse-direction field inside a signal the swap harness drives one way.
     Wide return paths get their own reverse-direction struct. Revisit at Stage

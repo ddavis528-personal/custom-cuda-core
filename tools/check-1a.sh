@@ -27,7 +27,7 @@ D=docs/stage1a-tool-support.md
 [ -f "$D" ] || bad "matrix document present" "$D missing"
 
 if python3 - >/dev/null <<'PY'
-import json, os, sys
+import json, os, re, sys
 d = json.load(open("test/golden/stage1a-matrix.json"))
 recorded = {c["file"] for c in d["cases"]}
 on_disk = {f for f in os.listdir("spike/cases")
@@ -85,6 +85,23 @@ if cell("34_", "sby") != "SILENT" or cell("35_", "sby") != "COVER-MISS":
     sys.exit("cases 34/35: the vacuous-assume demonstration or its "
              "satisfiability-cover guard has stopped behaving as recorded; "
              "§3.3 of the convention rests on this pair")
+# D-2: every case declares what it measures. The rule is that a case may
+# test exactly one construct outside the known-usable subset; the declaration
+# is what makes that reviewable, and a case without one is a measurement
+# nobody can check the scope of.
+import io
+for fn in sorted(os.listdir("spike/cases")):
+    if not fn.endswith(".sv") or ".aux." in fn:
+        continue
+    head = []
+    with io.open(os.path.join("spike/cases", fn)) as f:
+        for line in f:
+            if not line.startswith("//"):
+                break
+            head.append(line)
+    if not any(re.match(r"//\s*case:\s*\S", h) for h in head):
+        sys.exit("%s has no `// case:` declaration saying what it measures "
+                 "(spike/README.md, one unsupported construct per case)" % fn)
 print("1A OK")
 PY
 then

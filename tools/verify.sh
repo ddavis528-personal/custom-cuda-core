@@ -76,23 +76,23 @@ run "parameters stable"     python3 tools/gen-params.py --check
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
 
 section "Stage 1a -- tool-support spike"
-if [ "$FULL" = "1" ]; then
-  run "spike regenerates" python3 tools/run-spike-1a.py
-  if ! git diff --quiet -- docs/stage1a-tool-support.md test/golden/stage1a-matrix.json 2>/dev/null; then
-    echo "  -> the spike produced a DIFFERENT matrix than the one recorded."
-    echo "     That is a real finding, not a test failure: a tool changed"
-    echo "     under the flow. Read the diff before committing it, and check"
-    echo "     docs/stage1a-findings.md still holds."
-    fail=1
-  fi
-fi
+# Every Stage 1 conclusion is a measurement of a third-party tool, and some
+# decisions exist BECAUSE of a limitation. Two cheap checks here; the full
+# re-measure is --full, and runs in CI on a schedule.
+run "toolchain versions pinned" ./tools/check-toolchain.sh
 run "1a exit criteria" ./tools/check-1a.sh
+if [ "$FULL" = "1" ]; then
+  run "matrix unchanged since last measured" python3 tools/check-matrix-drift.py
+fi
 
 section "Stage 1b -- assertion primitive library"
 run "1b exit criteria" ./tools/check-1b.sh
 
 section "Stage 1c -- event schema mechanism"
 run "1c exit criteria" ./tools/check-1c.sh
+# A test catches a broken emit path; only calibration catches a systematic
+# one-cycle offset, which at correlation reads as a design divergence.
+run "emit-path calibration" ./tools/check-emit-calib.sh
 
 section "Stage 1d -- coding style and lint"
 run "1d exit criteria" ./tools/check-1d.sh
