@@ -16,6 +16,10 @@ repository's to start.**
     ./tools/verify.sh            # green
 ```
 
+**To hand back to the planning track:**
+[`rtl-findings-stage1.md`](rtl-findings-stage1.md) — what Stage 1 found about
+the strategy, organised for that audience rather than this one.
+
 **The next action is not a coding task.** §8 Stage 2 is the interface-level
 grill-me, which *closes the partition list first* and then defines interface
 contracts across every block in it. §2 is explicit that the block names used
