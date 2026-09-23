@@ -19,12 +19,18 @@ at **14 block types, 45 instances, 40 channels**, all now encoded and
 machine-checked here. `tools/verify.sh` is green and lists the pending stages
 rather than omitting them.
 
-What the repository is still waiting on is narrow: **28 payload field widths
-across 25 channels** (per-block-session work — 15 of 40 channels generate a
-packed struct today) and **per-interface NGD budgets**. Neither is guessed
-here, because a generated typedef is what downstream code trusts and a
-generated number gets believed. See
-[`docs/roadmap.md`](docs/roadmap.md) Part 3 for the field-by-field list.
+What the repository is still waiting on is narrow but not small: **28 payload
+field widths across 25 channels**, and **per-interface NGD budgets**. Neither
+is guessed here, because a generated typedef is what downstream code trusts
+and a generated number gets believed.
+
+Worth being precise about how much is settled, since the headline number
+flatters it: 15 of 40 channels generate a packed struct today, but 10 of those
+15 do so through at least one *provisional* width, so their layout will still
+move. **Only 5 of 40 channels are decided end to end.**
+[`docs/payload-spec.md`](docs/payload-spec.md) has every channel field by
+field, with each open width's question attached and grouped by who has to
+answer it.
 
 ## Start here
 
@@ -49,6 +55,7 @@ this is what restores one.
 | [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eighteen findings (F-1…F-18), several of which close questions the strategy doc left open. |
 | [`docs/fail-open-register.md`](docs/fail-open-register.md) | Every mechanism in the flow that fails *open* rather than loud, and the negative control that makes its results believable. Stage 1's three worst findings were all fail-open. |
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
+| [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field: decided widths with their source, open widths with the specific question attached and who has to answer it. The worklist for the per-block sessions. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
 | [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one checker for all 40 channels**, since every boundary runs the same credited protocol. |
 

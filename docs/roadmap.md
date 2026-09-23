@@ -380,10 +380,20 @@ Carried from the strategy doc, with current status.
     payload one way (F-12).
 
 17. **28 payload field widths, across 25 channels.** The one input the
-    repository is still blocked on for generated typedefs — 15 of 40 channels
-    generate a packed struct today; the other 25 have at least one unsized
-    field. `tools/check-if.sh` reports the census every run, because "payload
-    widths pending" decays into nobody remembering *which* ones.
+    repository is still blocked on for generated typedefs.
+    **[`payload-spec.md`](payload-spec.md) is the full worklist** — generated
+    from the schema, so it cannot drift from it — with every channel field by
+    field, each open width's specific question, and the questions grouped by
+    which blocks have to answer. `tools/check-if.sh` reports the census every
+    run, because "payload widths pending" decays into nobody remembering
+    *which* ones.
+
+    **The headline count flatters the position.** 15 of 40 channels generate a
+    struct, but 10 of those 15 are sized through a provisional parameter, so
+    their layout will still move — `CCV_P_LINE_BYTES` alone lands on 4
+    channels, `CCV_P_W_ROB_TAG` on 3. **Only 5 of 40 channels are decided end
+    to end.** Writing a skeleton against the other 35 means writing against
+    layouts that are going to change.
 
     Ranked by blast radius, since a field on several channels is one where two
     per-block sessions deciding independently produce two incompatible
