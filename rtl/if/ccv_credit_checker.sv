@@ -17,12 +17,20 @@
 // one module serve channels carrying an 8-bit opcode and channels carrying a
 // 1024-bit GPR row.
 //
-// THE FOUR NUMBERS ARE ONE NUMBER. Credit depth, rescue depth, timeout N and
-// drain wait all derive from the interface's flop-to-flop round trip. They are
-// parameters here so a non-abutting interface moves all four together, which
-// is the correct failure mode.
+// THE ROUND TRIP IS 2 EVERYWHERE, BY CONSTRUCTION. Flops on both sides with
+// no exceptions, plus abutment, gives exactly that -- it is not a per-block
+// choice. So credit depth, rescue depth and drain wait are not three numbers
+// but one number under three names, and all are 2 today; wake is 4.
+//
+// They remain PARAMETERS rather than being read straight from the package for
+// one reason: a non-abutting interface would differ, and none is known to be
+// non-abutting until floorplan. Defaulting them to the global constants means
+// the common case needs no override, while the day a floorplan produces a
+// non-abutting boundary the change is local and all of them move together --
+// which is the correct failure mode.
 //===----------------------------------------------------------------------===//
 `include "ccv_if.svh"
+`include "ccv_params_pkg.sv"
 
 `define CCV_CLK clk
 `define CCV_RST !rst_n
@@ -30,9 +38,16 @@
 module ccv_credit_checker #(
   parameter int MODE       = `CCV_MODE_ASSERT,
   parameter int PAYLOAD_W  = 32,
-  parameter int ROUND_TRIP = 2,
+  parameter int ROUND_TRIP = ccv_params_pkg::CCV_RT_ABUT,
+  // DERIVED, not chosen: credit depth IS the round trip. Defaulting it from
+  // ROUND_TRIP rather than from CCV_CREDIT_DEPTH separately is what stops the
+  // two from being overridden apart -- they are the same number.
   parameter int DEPTH      = ROUND_TRIP,
-  parameter int TIMEOUT_N  = 64,
+  // PROVISIONAL by construction: N cannot be justified before contention data
+  // exists, so revising it is an expected Stage 4b output, not a spec change.
+  // The memory path needs CCV_P_TIMEOUT_MEM instead -- it must exceed
+  // worst-case DRAM latency, which the local number does not.
+  parameter int TIMEOUT_N  = ccv_prov_pkg::CCV_P_TIMEOUT_N,
   parameter int CHANNEL    = 0           // CCV_CH_* from the generated header
 ) (
   input logic                  clk,
@@ -84,6 +99,25 @@ module ccv_credit_checker #(
   `CCV_CONTRACT_M(MODE, credit_known, !$isunknown(ch_credit))
   // NOTE payload is absent by design: §6 prohibits X on CONTROL and
   // propagates it on DATA, where propagation is cheap and reliable.
+
+  // -- configuration is checked, not trusted --------------------------------
+  // Both of these are misconfigurations that produce NO protocol violation, so
+  // nothing else in this file would catch them:
+  //
+  //   DEPTH < ROUND_TRIP       the sender runs out of credits before the first
+  //                            one returns. The interface still obeys every
+  //                            rule below; it just throttles to one message
+  //                            per round trip and looks like healthy
+  //                            backpressure.
+  //   TIMEOUT_N < ROUND_TRIP   response_within_n fires on a channel that is
+  //                            behaving perfectly, and the first instinct on
+  //                            seeing it is to raise N -- i.e. the check
+  //                            teaches you to disbelieve it.
+  //
+  // `CCV_IF_CONFIG is unconditional by construction -- see ccv_if.svh for why
+  // a mode-resolved configuration check is a fail-open.
+  `CCV_IF_CONFIG(depth_covers_round_trip,   DEPTH     >= ROUND_TRIP)
+  `CCV_IF_CONFIG(timeout_covers_round_trip, TIMEOUT_N >= ROUND_TRIP)
 
   // -- the credit protocol -------------------------------------------------
 

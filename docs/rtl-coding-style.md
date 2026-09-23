@@ -674,12 +674,42 @@ mode it would still assert, the environment would go unconstrained, and the
 proof would fail spuriously — or, worse, the intended constraint would simply
 be absent and a neighbouring proof would look fine.
 
-Two macros are exempt and intentionally so:
+Three macros are exempt and intentionally so:
 
 - `` `CCV_ASSUME_KNOWN `` — an environment constraint in every mode. Under
   formal an unconstrained input is modelled as possibly-X, so this is what
   makes the paired `$isunknown` assert provable rather than spurious (F-8).
 - `` `CCV_IF_SAT `` — a guard, never mode-resolved, per CCV-L14.
+- `` `CCV_IF_CONFIG `` — a check on the checker's own parameters, below.
+
+Each is a *named* macro rather than a bare `` `CCV_ASSERT `` precisely so this
+rule keeps full force inside checkers. A file-scope lint exemption would have
+switched CCV-L15 off across the one file it matters most in.
+
+### `CCV_IF_CONFIG` — misconfiguration is not a protocol violation
+
+A parameterised checker can be misconfigured, and the interesting
+misconfigurations break no protocol rule at all:
+
+| Misconfiguration | What it looks like instead |
+| --- | --- |
+| credit depth below the round trip | the channel throttles to one message per round trip — indistinguishable from healthy backpressure |
+| timeout N below the round trip | `response_within_n` fires on a channel behaving perfectly, and the first instinct on seeing it is to raise N — i.e. the check teaches you to disbelieve it |
+
+Nothing else in a checker catches either, because nothing else looks at the
+parameters:
+
+    `CCV_IF_CONFIG(depth_covers_round_trip,   DEPTH     >= ROUND_TRIP)
+    `CCV_IF_CONFIG(timeout_covers_round_trip, TIMEOUT_N >= ROUND_TRIP)
+
+**Never mode-resolved.** Under `MODE=ASSUME` a mode-resolved version would turn
+a misconfiguration into an *assumption* and constrain it away — the proof would
+then hold only over the configurations that are already correct, and say so
+nowhere. A configuration error is wrong in every mode.
+
+`tools/check-if.sh` builds each misconfiguration and requires the matching
+assertion name to fire. Every other check in that file is a *stays quiet*
+check, and a check that has been deleted is very quiet.
 
 ### CCV-L09 — no `interface`/`modport` on a port list
 

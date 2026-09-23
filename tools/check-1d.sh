@@ -110,6 +110,12 @@ src = json.load(open(os.path.join(root, "params/ccv_params.json")))
 sv = open(os.path.join(root, "rtl/generated/ccv_params_pkg.sv")).read()
 h = open(os.path.join(root, "sim/generated/ccv_params.h")).read()
 
+# Mirrors tools/gen-params.py: provisional parameters lose the CCV_P_ prefix
+# and land in ccv::prov, because the namespace is what keeps "unfinished"
+# visible at the use site.
+PROV = {"provisional", "tunable"}
+
+
 def camel(n):
     parts = [p for p in n.split("_") if p != "CCV"]
     return "".join(p.capitalize() for p in parts)
@@ -117,12 +123,14 @@ def camel(n):
 bad = []
 for p in src["params"]:
     name, val = p["name"], p["value"]
+    prov = p["status"] in PROV
+    # Both packages live in one generated file; the value must appear once.
     m = re.search(r"localparam\s+int\s+%s\s*=\s*(\d+)\s*;" % re.escape(name), sv)
     if not m:
         bad.append("%s missing from SystemVerilog" % name)
     elif int(m.group(1)) != val:
         bad.append("%s: SV %s vs source %d" % (name, m.group(1), val))
-    cn = "k" + camel(name)
+    cn = "k" + camel(name.replace("CCV_P_", "") if prov else name)
     m = re.search(r"constexpr\s+uint32_t\s+%s\s*=\s*(\d+)\s*;" % re.escape(cn), h)
     if not m:
         bad.append("%s missing from C++ (as %s)" % (name, cn))

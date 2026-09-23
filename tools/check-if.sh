@@ -25,6 +25,25 @@ TB="test/smoke/tb_credit.sv"
 # which is correct -- §9 keeps delays out of design RTL - and benign.
 VFLAGS="-Wno-fatal -Wno-TIMESCALEMOD -Irtl/include -Irtl/generated"
 
+# -- how much of the topology is actually sized --------------------------
+# A census, not a gate. Reported every run because "payload widths pending"
+# decays into nobody remembering which ones; a number that moves as sessions
+# close is harder to lose than a note.
+python3 - <<'PY'
+import json
+d = json.load(open("schema/interfaces.json"))
+fw = d.get("field_widths", {})
+sized = [c for c in d["channels"]
+         if all(f in fw for f in c["payload_fields"])]
+ur = {}
+for c in d["channels"]:
+    for f in c["payload_fields"]:
+        if f not in fw:
+            ur.setdefault(f, []).append(c["name"])
+print("  %-46s %d of %d channels, %d field(s) open"
+      % ("payload structs generated", len(sized), len(d["channels"]), len(ur)))
+PY
+
 # -- Verilator: builds, stays quiet, emits -------------------------------
 if command -v verilator >/dev/null 2>&1; then
   if verilator --binary -j 0 --assert --timing $VFLAGS \
@@ -62,6 +81,44 @@ if command -v verilator >/dev/null 2>&1; then
     else
       bad "+ccv_trace_off silences emission" "still emitted ($n2 bytes)"
     fi
+
+  # -- negative control: the CONFIGURATION checks still bite ---------------
+  # cfg_depth_covers_round_trip and cfg_timeout_covers_round_trip guard the two
+  # misconfigurations that produce no protocol violation, so if either one
+  # ever stopped firing nothing above would notice -- every other check here
+  # is a "stays quiet" check, and a check that has been deleted is very quiet.
+  # Each build breaks ONE parameter and the assertion NAME is matched, so a
+  # different property firing does not count as a pass.
+  for probe in "DEPTH:1:cfg_depth_covers_round_trip" \
+               "TIMEOUT_N:1:cfg_timeout_covers_round_trip"; do
+    par=${probe%%:*}; rest=${probe#*:}; val=${rest%%:*}; want=${rest##*:}
+    sed -E "s/\\.${par}\\([^)]*\\)/.${par}(${val})/" \
+        test/smoke/credit_smoke.sv > "$TMP/neg_$par.sv"
+    if verilator --binary -j 0 --assert --timing $VFLAGS \
+         -CFLAGS "-I$R/sim/include -I$R/sim/generated" \
+         --top-module tb --Mdir "$TMP/neg_$par" \
+         rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
+         "$TMP/neg_$par.sv" $TB \
+         "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
+         >"$TMP/neg_$par.log" 2>&1 && [ -x "$TMP/neg_$par/Vtb" ]; then
+      # Run to a FILE, not through a pipe. A tripped assertion calls $stop
+      # and the binary aborts (F-15), and under `set -o pipefail` that abort
+      # status becomes the pipeline's -- so `Vtb | grep -q` reports failure on
+      # the very run that is supposed to fail. Which is exactly backwards.
+      # The outer 2>/dev/null suppresses the shell's own "Aborted" job notice
+      # about that death -- the abort is the expected result here, and a line
+      # of alarming-looking noise next to a PASS teaches people to skim.
+      { (cd "$TMP" && "./neg_$par/Vtb" >"neg_$par.out" 2>&1) || true; } \
+        2>/dev/null
+      if grep -q "$want" "$TMP/neg_$par.out"; then
+        say "verilator: bad $par trips $want" "PASS"
+      else
+        bad "bad $par trips $want" "misconfiguration went unreported"
+      fi
+    else
+      bad "bad $par trips $want" "negative-control build failed"
+    fi
+  done
   else
     bad "verilator: checker builds" "$(grep -m1 '%Error' "$TMP/v.log" || echo '?')"
   fi

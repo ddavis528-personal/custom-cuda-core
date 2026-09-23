@@ -1,23 +1,29 @@
 {
   "_comment": [
-    "Structural parameters, single source of truth. tools/gen-params.py generates",
-    "both sim/generated/ccv_params.h and rtl/generated/ccv_params_pkg.sv.",
+    "Structural parameters and widths, single source of truth.",
+    "tools/gen-params.py emits TWO packages, and the split is the point:",
     "",
-    "\u00a79 calls this a MECHANISM decision: a value exists as a swept knob in the",
-    "timing model and as an RTL parameter, and drift between them means a",
-    "correlation run silently comparing two differently-sized machines.",
+    "  ccv_params_pkg   values that follow from decisions already made",
+    "  ccv_prov_pkg     placeholders awaiting a per-block session",
     "",
-    "STATUS is as important as the value:",
-    "  isa       follows from the locked ISA -- NOT ours to sweep, the compiler",
-    "            is already built against it",
-    "  arch      decided at the block-level grill-me (2026-09-23)",
-    "  tunable   decided provisionally; expected to move once the timing model",
-    "            produces event traces. Sweeping these is the point.",
-    "  target    a physical target, not a structure size",
+    "A skeleton may reference both. Anything referencing ccv_prov_pkg is known",
+    "to be unfinished, and making that visible AT EVERY USE SITE is what stops",
+    "a placeholder from being believed -- the same argument the fail-open",
+    "register makes about mechanisms that produce confident wrong answers.",
+    "Provisional names also carry a CCV_P_ prefix, so the signal survives being",
+    "read out of context.",
     "",
-    "Sizing parameters internal to a block (ROB depth, IQ entries, PRF rows)",
-    "are NOT here yet: \u00a78 puts them at Stage 4a, per block, and putting a",
-    "placeholder here would invite sweeping a number nobody has decided."
+    "STATUS drives the split:",
+    "  isa / arch / target     -> ccv_params_pkg",
+    "  provisional / tunable   -> ccv_prov_pkg",
+    "",
+    "`isa` values are NOT ours to sweep: the compiler is already built against",
+    "them.",
+    "",
+    "THE ROUND TRIP IS 2 EVERYWHERE, by construction rather than by choice.",
+    "Credit depth, rescue depth and drain wait are not three numbers -- they",
+    "are that one number under three names, which is why a future non-abutting",
+    "interface moves all of them together."
   ],
   "params": [
     {
@@ -173,6 +179,244 @@
       "status": "target",
       "source": "\u00a72 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
       "doc": "Normalized gate delay in one cycle. OPEN (\u00a72): whether 25 is the Vmin-corner number or a nominal one. Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
+    },
+    {
+      "name": "CCV_W_WARP_ID",
+      "value": 5,
+      "status": "arch",
+      "doc": "Warp id. 32 total warp contexts.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_TIER1_ID",
+      "value": 2,
+      "status": "arch",
+      "doc": "Tier-1 slot, which also selects the ROB instance.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_ARCH_REG",
+      "value": 4,
+      "status": "isa",
+      "doc": "Architectural GPR index. 16 GPRs (ISA v1.6 \u00a71).",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_LANE_MASK",
+      "value": 32,
+      "status": "isa",
+      "doc": "One bit per lane.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_DATA",
+      "value": 1024,
+      "status": "isa",
+      "doc": "Full datapath, 32 lanes x 32 bits.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_LANE_DATA",
+      "value": 32,
+      "status": "isa",
+      "doc": "Lane datapath.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_CHWIDTH",
+      "value": 2,
+      "status": "isa",
+      "doc": "Element width code: 32, 16, 8, 4.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_CORE_ID",
+      "value": 2,
+      "status": "arch",
+      "doc": "Up to 4 cores per MLC.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_INSTR",
+      "value": 48,
+      "status": "isa",
+      "doc": "Longest instruction form (ISA v1.6: 16/32/48).",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_ILEN",
+      "value": 2,
+      "status": "isa",
+      "doc": "Instruction length code: three lengths.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_VA",
+      "value": 64,
+      "status": "arch",
+      "doc": "Address generation is 64-bit, though the ISA's architectural address is 48.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_SPM_ADDR",
+      "value": 17,
+      "status": "arch",
+      "doc": "128 KB scratchpad.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_SPM_BANK",
+      "value": 5,
+      "status": "arch",
+      "doc": "32 banks.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_SPM_WORD",
+      "value": 10,
+      "status": "arch",
+      "doc": "4 KB per bank, 32-bit words.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_BAR_ENTRY",
+      "value": 6,
+      "status": "arch",
+      "doc": "64 barrier entries.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_BAR_ID",
+      "value": 4,
+      "status": "arch",
+      "doc": "16 barriers per CTA.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_W_FAULT_CAUSE",
+      "value": 4,
+      "status": "arch",
+      "doc": "Fault-model cause set, with headroom.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_RT_ABUT",
+      "value": 2,
+      "status": "arch",
+      "doc": "Flop-to-flop round trip, abutting. TWO EVERYWHERE BY CONSTRUCTION -- flops on both sides with no exceptions, plus abutment, gives exactly this. It is not a per-interface choice, and the three values below are not independent numbers but the same number under different names. Only a non-abutting interface would differ, and none is known to be until floorplan.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_CREDIT_DEPTH",
+      "value": 2,
+      "status": "arch",
+      "doc": "Credits held by a sender: equals the round trip, so abutting blocks are never throttled at steady state.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_RESCUE_DEPTH",
+      "value": 2,
+      "status": "arch",
+      "doc": "Storage a stalling receiver reserves to catch everything already in flight. Equals the round trip: no unwinding, no negative acknowledgement.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_DRAIN_WAIT",
+      "value": 2,
+      "status": "arch",
+      "doc": "Cycles to wait after asserting stall before nothing is in flight. Equals the round trip, which is what lets sleep entry, chwidth change and demotion share one mechanism and one proof.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_WAKE_LAT",
+      "value": 4,
+      "status": "arch",
+      "doc": "Wake latency: round trip plus 2.",
+      "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_P_ROB_DEPTH",
+      "value": 32,
+      "status": "provisional",
+      "doc": "ROB sizing against 4-wide issue.",
+      "decided_at": "OOE per-block session"
+    },
+    {
+      "name": "CCV_P_W_ROB_TAG",
+      "value": 7,
+      "status": "provisional",
+      "doc": "Tier-1 id plus ROB depth.",
+      "decided_at": "OOE per-block session"
+    },
+    {
+      "name": "CCV_P_PHYS_REGS",
+      "value": 192,
+      "status": "provisional",
+      "doc": "Rename headroom above 16 arch regs per tier-1 warp.",
+      "decided_at": "OOE and RCU per-block sessions"
+    },
+    {
+      "name": "CCV_P_W_PHYS_REG",
+      "value": 8,
+      "status": "provisional",
+      "doc": "Follows CCV_P_PHYS_REGS.",
+      "decided_at": "OOE and RCU per-block sessions"
+    },
+    {
+      "name": "CCV_P_PRED_REGS",
+      "value": 16,
+      "status": "provisional",
+      "doc": "Predicate file depth.",
+      "decided_at": "RCU per-block session"
+    },
+    {
+      "name": "CCV_P_MAX_CTA",
+      "value": 8,
+      "status": "provisional",
+      "doc": "Resident CTAs, bounded by scratchpad allocation.",
+      "decided_at": "RAU per-block session"
+    },
+    {
+      "name": "CCV_P_W_CTA_SLOT",
+      "value": 3,
+      "status": "provisional",
+      "doc": "Follows CCV_P_MAX_CTA.",
+      "decided_at": "RAU per-block session"
+    },
+    {
+      "name": "CCV_P_W_PA",
+      "value": 48,
+      "status": "provisional",
+      "doc": "Physical address width at the coherent boundary.",
+      "decided_at": "MLC and EXB per-block sessions"
+    },
+    {
+      "name": "CCV_P_LINE_BYTES",
+      "value": 128,
+      "status": "provisional",
+      "doc": "Cache line size.",
+      "decided_at": "DCU and MLC per-block sessions"
+    },
+    {
+      "name": "CCV_P_W_IMM",
+      "value": 32,
+      "status": "provisional",
+      "doc": "Widest immediate after format decode.",
+      "decided_at": "DEC per-block session"
+    },
+    {
+      "name": "CCV_P_TIMEOUT_N",
+      "value": 32,
+      "status": "provisional",
+      "doc": "Outstanding-request timeout for local interfaces. Provisional BY CONSTRUCTION: N cannot be justified before contention data exists, so revising it is an expected Stage 4b output rather than a spec change.",
+      "decided_at": "Stage 4b, from contention data"
+    },
+    {
+      "name": "CCV_P_TIMEOUT_MEM",
+      "value": 2048,
+      "status": "provisional",
+      "doc": "Outstanding-request timeout for the memory path. Must exceed worst-case DRAM latency.",
+      "decided_at": "MLC and EXB per-block sessions"
     }
   ]
 }

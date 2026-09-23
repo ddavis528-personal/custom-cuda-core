@@ -39,8 +39,11 @@ STATUS_NOTE = {
 
 def gen_cpp(d):
     L = [BANNER, "#ifndef CCV_PARAMS_H", "#define CCV_PARAMS_H", "",
-         "#include <cstdint>", "", "namespace ccv {", ""]
+         "#include <cstdint>", "", "namespace ccv {", "",
+         "/// Values that follow from decisions already made.", ""]
     for p in d["params"]:
+        if p["status"] in PROV:
+            continue
         L.append("/// %s" % p["doc"])
         note = STATUS_NOTE.get(p["status"], p["status"])
         if p.get("source"):
@@ -52,6 +55,22 @@ def gen_cpp(d):
         L.append("static constexpr uint32_t k%s = %d;"
                  % (camel(p["name"]), p["value"]))
         L.append("")
+    L.append("/// PLACEHOLDERS awaiting a per-block session. Code referencing")
+    L.append("/// ccv::prov is KNOWN UNFINISHED; the nested namespace is what")
+    L.append("/// keeps that visible at the use site.")
+    L.append("namespace prov {")
+    L.append("")
+    for p in d["params"]:
+        if p["status"] not in PROV:
+            continue
+        L.append("/// %s" % p["doc"])
+        L.append("/// PROVISIONAL -- decided by: %s"
+                 % p.get("decided_at", "unstated"))
+        L.append("static constexpr uint32_t k%s = %d;"
+                 % (camel(p["name"].replace("CCV_P_", "")), p["value"]))
+        L.append("")
+    L.append("} // namespace prov")
+    L.append("")
     L.append("} // namespace ccv")
     L.append("#endif // CCV_PARAMS_H")
     return "\n".join(L) + "\n"
@@ -71,10 +90,28 @@ def camel(name):
     return "".join(p.capitalize() for p in parts)
 
 
+# Which package a parameter lands in. The split is what makes "provisional"
+# visible at every use site rather than in a comment nobody re-reads.
+PROV = {"provisional", "tunable"}
+
+
 def gen_sv(d):
-    L = [BANNER, "`ifndef CCV_PARAMS_PKG_SV", "`define CCV_PARAMS_PKG_SV", "",
-         "package ccv_params_pkg;", ""]
+    L = [BANNER, "`ifndef CCV_PARAMS_PKG_SV", "`define CCV_PARAMS_PKG_SV", ""]
+    L.append("// A parameter package is a CATALOGUE: it declares every machine")
+    L.append("// parameter, and no single module uses all of them. That is the")
+    L.append("// intended shape, not an oversight, so the unused-parameter")
+    L.append("// warning is turned off for this file only -- narrowly, and here")
+    L.append("// rather than at the instantiation site, so a genuinely unused")
+    L.append("// parameter on a hand-written module still gets caught.")
+    L.append("/* verilator lint_off UNUSEDPARAM */")
+    L.append("")
+    L.append("// Values that follow from decisions already made. Nothing here")
+    L.append("// is expected to move.")
+    L.append("package ccv_params_pkg;")
+    L.append("")
     for p in d["params"]:
+        if p["status"] in PROV:
+            continue
         L.append("  // %s" % p["doc"])
         note = STATUS_NOTE.get(p["status"], p["status"])
         L.append("  // %s%s" % (note,
@@ -83,6 +120,25 @@ def gen_sv(d):
         L.append("")
     L.append("endpackage")
     L.append("")
+    L.append("// PLACEHOLDERS awaiting a per-block session. A module that")
+    L.append("// references this package is KNOWN UNFINISHED -- that is the")
+    L.append("// whole reason it is a separate package rather than a comment.")
+    L.append("// Everything here is expected to move, and a change should be a")
+    L.append("// one-line edit propagating through the generated typedefs, the")
+    L.append("// checkers and the C++ model together.")
+    L.append("package ccv_prov_pkg;")
+    L.append("")
+    for p in d["params"]:
+        if p["status"] not in PROV:
+            continue
+        L.append("  // %s" % p["doc"])
+        L.append("  // PROVISIONAL -- decided by: %s"
+                 % p.get("decided_at", "unstated"))
+        L.append("  localparam int %s = %d;" % (p["name"], p["value"]))
+        L.append("")
+    L.append("endpackage")
+    L.append("")
+    L.append("/* verilator lint_on UNUSEDPARAM */")
     L.append("`endif // CCV_PARAMS_PKG_SV")
     return "\n".join(L) + "\n"
 

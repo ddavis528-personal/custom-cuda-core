@@ -13,14 +13,15 @@
 // cycle, and the checker instantiated at the boundary.
 //===----------------------------------------------------------------------===//
 `include "ccv_if.svh"
+`include "ccv_params_pkg.sv"
 
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
 module credit_smoke #(
   parameter int PAYLOAD_W  = 32,
-  parameter int ROUND_TRIP = 2,
-  parameter int DEPTH      = 2
+  parameter int ROUND_TRIP = ccv_params_pkg::CCV_RT_ABUT,
+  parameter int DEPTH      = ccv_params_pkg::CCV_CREDIT_DEPTH
 ) (
   input  logic clk,
   input  logic rst_n,
@@ -84,7 +85,7 @@ module credit_smoke #(
   ccv_credit_checker #(
     .MODE(`CCV_IF_MODE_OUT),
     .PAYLOAD_W(PAYLOAD_W), .ROUND_TRIP(ROUND_TRIP), .DEPTH(DEPTH),
-    .TIMEOUT_N(32)
+    .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N)
   ) u_chk (
     .clk(clk), .rst_n(rst_n), .ch_valid(ch_valid), .ch_payload(ch_payload),
     .ch_credit(ch_credit), .ch_stall(ch_stall)

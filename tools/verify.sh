@@ -136,8 +136,11 @@ section "pending stages"
 cat <<'PENDING'
   Stage 2  partition CLOSED (14 blocks, 45 instances, 40 channels); topology,
            block letters, machine parameters and the credit checker encoded.
-           Remaining: per-channel payload widths and the per-interface round
-           trip, both per-block-session work; per-interface NGD budgets
+           Round trip CLOSED at 2 (flops both sides + abutment); it stays a
+           per-instance parameter, defaulted to that minimum and not expected
+           to move before floorplan.
+           Remaining: 28 payload field widths across 25 channels, per-block-
+           session work; per-interface NGD budgets
   Stage 3  vadd end-to-end through the skeleton, state identical to ccv-sim,
            event stream loads in Perfetto, zero interface assertion violations
                                                     -- next

@@ -47,7 +47,8 @@ is in place than the stage numbering suggests. Each interface becomes:
 - an entry in `schema/interfaces.json`, which generates the typedef into both
   languages;
 - an instantiation of `rtl/if/ccv_credit_checker.sv` at each end, parameterised
-  by payload width and the interface's round trip.
+  by payload width and the interface's round trip — the latter defaulted to
+  the abutting minimum, so in practice only the width is passed.
 
 **The checker is one implementation, not one per interface.** Every boundary
 obeys the same conventions — credited, registered both sides, valid one cycle
@@ -165,10 +166,24 @@ The block-level grill-me (2026-09-23) closed the partition: **14 block types,
 - `EV_CH_XFER` — the load-bearing event content §8 said would fall out of the
   interface grill-me. The 40-channel list **is** the load-bearing event list.
 
-**Still Stage 2's, not done here:** per-channel payload field widths, which
-mostly firm up in the per-block session that owns the interface, and the
-per-interface round trip from which credit depth, rescue depth, timeout N and
-drain wait all derive.
+**Round trip: closed.** Flops on both sides with no exceptions, plus
+abutment, gives exactly 2 — it is not a per-block choice, so credit depth,
+rescue depth and drain wait are not three numbers but one number under three
+names, all 2 today, with wake at 4. It nonetheless stays a **per-instance
+parameter**, defaulted to that minimum: a non-abutting interface would differ,
+and none is known to be non-abutting until floorplan. Nothing is expected to
+override it before then, and the default is what makes the override a local
+one-line change rather than a sweep.
+
+Two `CCV_IF_CONFIG` checks in the checker enforce that the derived numbers
+still cover the round trip. Both guard misconfigurations that break no
+protocol rule — a short depth throttles the channel and looks like healthy
+backpressure; a short timeout fires on a channel behaving perfectly — so
+nothing else would catch either, and `tools/check-if.sh` builds each
+misconfiguration to prove the check still bites.
+
+**Still Stage 2's, not done here:** 28 payload field widths across 25
+channels, which firm up in the per-block session that owns the interface.
 
 ### Interface checker convention ✅ (mechanism)
 

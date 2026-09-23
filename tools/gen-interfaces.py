@@ -47,8 +47,31 @@ def ports_per_block(d, blocks):
     return out
 
 
+def sized(d, c):
+    """Fields with a decided width, or None if any is missing."""
+    fw = d.get("field_widths", {})
+    miss = [f for f in c["payload_fields"] if f not in fw]
+    return None if miss else [(f, fw[f]) for f in c["payload_fields"]]
+
+
+def unresolved(d):
+    """Every field still without a width, and which channels want it. This is
+    the ask to the per-block sessions, kept as a list rather than guessed."""
+    fw = d.get("field_widths", {})
+    out = {}
+    for c in d["channels"]:
+        for f in c["payload_fields"]:
+            if f not in fw:
+                out.setdefault(f, []).append(c["name"])
+    return out
+
+
 def gen_sv(d, blocks, pp):
     L = [BANNER, "`ifndef CCV_INTERFACES_SVH", "`define CCV_INTERFACES_SVH", "",
+         "// The payload structs below are sized from both parameter",
+         "// packages, so this header pulls them in rather than relying on a",
+         "// consumer having included them first.",
+         '`include "ccv_params_pkg.sv"', "",
          "/* verilator lint_off UNUSEDPARAM */", ""]
     L.append("// Every channel carries four signals in the same shape:")
     for s in d["channel_signals"]:
@@ -64,12 +87,42 @@ def gen_sv(d, blocks, pp):
         L.append("// %s -> %s, %s/cycle" % (c["src"], c["dst"], c["rate"]))
         L.append("localparam int CCV_CH_%s = %d;" % (c["name"][4:].upper(), i))
     L.append("")
+    L.append("// Payload structs, for channels whose every field has a")
+    L.append("// decided width. A channel missing one generates no struct --")
+    L.append("// see the list at the end of this file.")
+    L.append("")
+    for c in d["channels"]:
+        f = sized(d, c)
+        if not f:
+            continue
+        nm = c["name"][4:]
+        L.append("typedef struct packed {")
+        for fld, w in f:
+            ww = ("logic" if w == "1"
+                  else "logic [%s-1:0]" % w.replace("CCV_W_", "ccv_params_pkg::CCV_W_")
+                                            .replace("CCV_P_", "ccv_prov_pkg::CCV_P_"))
+            L.append("  %-46s %s;" % (ww, fld))
+        L.append("} ccv_%s_t;" % nm)
+        L.append("")
     L.append("// Ports per block, derived from the channel list.")
     for b in sorted(pp):
         n = len(pp[b]["in"]) + len(pp[b]["out"])
         L.append("localparam int CCV_PORTS_%s = %d;  // %d in, %d out"
                  % (b.upper(), n, len(pp[b]["in"]), len(pp[b]["out"])))
     L.append("")
+    ur = unresolved(d)
+    if ur:
+        L.append("// ---------------------------------------------------------")
+        L.append("// %d payload field(s) still have no decided width, across"
+                 % len(ur))
+        L.append("// %d channel(s). Those channels generate no struct. Each is"
+                 % sum(1 for c in d["channels"] if not sized(d, c)))
+        L.append("// a per-block-session decision; guessing here would put a")
+        L.append("// number nobody chose into a generated typedef.")
+        for f, chs in sorted(ur.items()):
+            L.append("//   %-24s wanted by %s" % (f, ", ".join(c[4:] for c in chs)))
+        L.append("// ---------------------------------------------------------")
+        L.append("")
     L.append("/* verilator lint_on UNUSEDPARAM */")
     L.append("")
     L.append("`endif // CCV_INTERFACES_SVH")

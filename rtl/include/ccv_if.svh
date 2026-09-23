@@ -130,6 +130,28 @@
 `define CCV_IF_SAT(NAME, EXPR) `CCV_COVER(sat_``NAME, EXPR)
 
 //===----------------------------------------------------------------------===//
+// Configuration checks -- unconditional, for the same reason the covers are.
+//
+// A parameterized checker can be MISCONFIGURED, and the interesting
+// misconfigurations are the ones that break no protocol rule: a credit depth
+// below the round trip throttles the channel and looks like healthy
+// backpressure; a timeout below the round trip fires on a channel that is
+// behaving perfectly. Nothing else in a checker catches either, because
+// nothing else is looking at the parameters.
+//
+// NEVER mode-resolved. Under MODE=ASSUME a mode-resolved version would turn a
+// misconfiguration into an ASSUMPTION and constrain it away -- the proof would
+// then hold only over the configurations that are already correct, and say so
+// nowhere. A configuration error is wrong in every mode.
+//
+// This exists as its own macro rather than a bare `CCV_ASSERT so that CCV-L15
+// keeps full force inside checkers: an unwrapped `CCV_ASSERT there is still a
+// mode-resolution bug, and a file-scope lint exemption would have switched the
+// rule off across the one file it matters most in.
+//===----------------------------------------------------------------------===//
+`define CCV_IF_CONFIG(NAME, EXPR) `CCV_ASSERT(cfg_``NAME, EXPR)
+
+//===----------------------------------------------------------------------===//
 // Checker instantiation.
 //
 // The mode is plumbed by the macro; ports stay explicit, because they differ
