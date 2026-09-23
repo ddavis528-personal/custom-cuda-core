@@ -5,10 +5,11 @@
 using it. Written for the architecture and planning side, so it is organised by
 **what the work found about the strategy**, not by what was built.
 
-**Status:** Stage 1 complete and gated. Stage 2 not started, and it is not this
-repository's to start — the partition list comes first, and §2 is explicit that
-the block names used throughout the strategy doc are illustrative rather than a
-proposal.
+**Status:** Stage 1 complete and gated. **Stage 2's partition has since closed**
+(2026-09-23 grill-me: 14 block types, 45 instances, 40 channels) and is encoded
+here; §5 below is kept as written, with each item's delivery status marked,
+because what was asked for and what arrived are worth comparing. The remaining
+inputs are 28 payload field widths and the per-interface NGD budgets.
 
 **Bottom line:** the strategy survives Stage 1 substantially intact. Its
 sequencing was right, and front-loading the tool spike paid for itself several
@@ -314,37 +315,60 @@ clocking convention can reintroduce it silently.
 
 **Opened by Stage 1:**
 
-- **The stage tag gives each block one letter, so ~24 blocks.** If the Stage 2
-  partition exceeds that, the tag format widens and every tagged net changes.
-  Nearly free to check now against a draft block list; expensive later.
-- **A justified N per interface**, from §3.1 above.
-- **Synthesis exclusion for checkers**, from §1.3.
+- ~~**The stage tag gives each block one letter, so ~24 blocks.**~~ **Closed
+  by the partition.** 14 block types, plus `z` (reset tree) and `y` (fixtures)
+  reserved, leaves 8 spare letters — the single-letter tag format stands and
+  no tagged net has to change. This was the item most worth checking early and
+  it cost nothing to check.
+- **A justified N** — from §3.1 above, and **no longer per interface**. The
+  round trip is 2 everywhere by construction, so N is one global provisional
+  plus one for the memory path, which must exceed worst-case DRAM latency.
+  Justifying either still needs contention data from 4b.
+- **Synthesis exclusion for checkers**, from §1.3. Still open, and now applies
+  to 40 checker instances rather than a handful.
 - **Clock-gating equivalence is unverified.** The gated netlist has never been
   proved against its ungated original. Nothing relies on it — synthesis is
   deferred — but settle it before any synthesis result is believed.
+- **28 payload field widths, across 25 channels.** Opened by the partition
+  rather than by Stage 1. These are the only thing blocking generated typedefs
+  for the other 25 channels; `op` (5 channels), `asid` and `opcode` (3 each)
+  are the ones worth settling across per-block sessions rather than within
+  one, since independent decisions on a field that crosses abutting channels
+  produce two incompatible encodings. The full list is in `roadmap.md` Part 3
+  item 17, and `tools/check-if.sh` reports the census on every run.
 
 ---
 
-## 5. What Stage 2 needs from the planning side
+## 5. What Stage 2 needed from the planning side — and what arrived
 
-In dependency order. Once these exist, the repository-side work is mechanical,
-and more of it is in place than the stage numbering suggests.
+Kept as originally written, with delivery status. Three of four arrived in the
+2026-09-23 grill-me.
 
-1. **The partition list**, closed — §8 Stage 2's stated first job. Everything
-   downstream is shaped by it; the unit list in the event schema is currently
-   the strategy doc's own illustrative names, carried only so the mechanism has
-   something to exercise.
-2. **A block letter per block**, for the net-naming stage tag. Check the count
-   against §4's 24-block ceiling while the list is being drafted.
-3. **Per-block interface contracts** — signals, protocol, what each block
-   consumes and produces — with the F-2 caveat that multi-cycle properties need
-   explicit tracking state and a justified N.
-4. **Per-block interface NGD budgets** against the 25 NGD envelope.
+1. ✅ **The partition list.** 14 block types, 45 instances, 40 channels.
+   Encoded in `params/blocks.json` and `schema/interfaces.json`. One note: the
+   source spec stated per-block port lists *and* a channel list, and the two
+   disagreed, so the ports are now **derived** from the channels — a derived
+   list cannot disagree with itself. The unit list in the event schema still
+   carries the strategy doc's illustrative names and should be swapped for the
+   real 14 before Stage 4a.
+2. ✅ **A block letter per block.** 14 assigned, `z`/`y` reserved, 8 spare.
+   The §4 ceiling check passed.
+3. ◐ **Per-block interface contracts.** Protocol and signal shape closed —
+   four signals per channel, credited, valid one cycle ahead of payload. The
+   F-2 caveat held: every temporal property is an explicit tracking register.
+   **28 payload field widths remain open** across 25 channels.
+4. ❌ **Per-block interface NGD budgets** against the 25 NGD envelope. Not
+   started.
 
-Each interface then becomes a schema entry, a checker following the reference
-one, and an instantiation at each boundary. Lint fails if a typedef has no
-checker or a control field goes unreferenced, so the list and the checkers
-cannot drift apart.
+**One thing the partition changed about the plan.** The expectation was a
+checker per interface *type*, following the reference one. Because every
+boundary runs the same credited protocol, it is instead **one parameterised
+checker for all 40 channels** — generic over payload *width*, not payload
+*type*, since the checker never interprets the payload, only the protocol
+around it. That is what lets one module serve a channel carrying an 8-bit
+opcode and a channel carrying a 1024-bit GPR row. Given F-2 — every temporal
+property being hand-written tracking state — a single shared implementation is
+worth considerably more than it would be if the properties were declarative.
 
 ---
 

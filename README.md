@@ -11,11 +11,20 @@ the cycle-accurate timing model, the RTL, and the machinery that connects them
 across three tools that disagree, and a lint layer that enforces the coding
 rules before the first block is written.
 
-**Current state: Stage 1 complete.** Stage 1 is the tooling and schema
-groundwork, whose membership criterion is *needs no architectural decision as
-input*. Everything after it is gated on the Stage 2 interface grill-me, which
-happens outside this repository and has not started. `tools/verify.sh` is
-green and lists the pending stages rather than omitting them.
+**Current state: Stage 1 complete; Stage 2 partition closed and encoded.**
+Stage 1 is the tooling and schema groundwork, whose membership criterion is
+*needs no architectural decision as input*. The Stage 2 interface grill-me
+happens outside this repository; it ran on 2026-09-23 and closed the partition
+at **14 block types, 45 instances, 40 channels**, all now encoded and
+machine-checked here. `tools/verify.sh` is green and lists the pending stages
+rather than omitting them.
+
+What the repository is still waiting on is narrow: **28 payload field widths
+across 25 channels** (per-block-session work — 15 of 40 channels generate a
+packed struct today) and **per-interface NGD budgets**. Neither is guessed
+here, because a generated typedef is what downstream code trusts and a
+generated number gets believed. See
+[`docs/roadmap.md`](docs/roadmap.md) Part 3 for the field-by-field list.
 
 ## Start here
 
@@ -37,11 +46,11 @@ this is what restores one.
 | [`docs/roadmap.md`](docs/roadmap.md) | **Start here when picking this up again.** Current state, what is built, what is next, and the open items carried forward. |
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
 | [`docs/rtl-findings-stage1.md`](docs/rtl-findings-stage1.md) | **The report for the architecture and planning track.** What Stage 1 found about the strategy — six decisions measurement overturned, what was confirmed, and what Stage 2 needs. Organised by what was found, not by what was built. |
-| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eight findings, several of which close questions the strategy doc left open. |
+| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eighteen findings (F-1…F-18), several of which close questions the strategy doc left open. |
 | [`docs/fail-open-register.md`](docs/fail-open-register.md) | Every mechanism in the flow that fails *open* rather than loud, and the negative control that makes its results believable. Stage 1's three worst findings were all fail-open. |
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
-| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker per interface *type* serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. |
+| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one checker for all 40 channels**, since every boundary runs the same credited protocol. |
 
 The matrix and the findings are deliberately two files. One is data and is
 regenerated; the other is judgment and changes only when someone decides
@@ -104,15 +113,16 @@ knob is a plusarg guard rather than `$assertoff`, which does not exist on this
 stack.
 
 **1c — event schema mechanism.** The container, not the event list: the two
-event classes are decided, the events themselves are a provisional seed set
-that Stage 2 and Stage 4a populate. Binary 32-byte records, a semantic schema
+event classes are decided, the events themselves a seed set that Stage 2 and
+Stage 4a populate. Stage 2 has since populated the load-bearing half — the
+40-channel list *is* that list, emitted as `EV_CH_XFER`. Binary 32-byte records, a semantic schema
 hash in every trace header, and a Perfetto view produced on demand. The RTL
 emit path is DPI-C into the same library, decided *and exercised* here rather
 than discovered at 4c.
 
-**1d — coding style and lint.** Eleven rules, each with a counter-example in
-`rtl/lint/bad_module.sv` and a paragraph in the style guide; `check-1d` fails
-if a rule stops firing or stops being documented. Parameters and event ids are
+**1d — coding style and lint.** Twenty-five rules, each with a counter-example
+in `rtl/lint/bad_module.sv` and a paragraph in the style guide; `check-1d`
+fails if a rule stops firing or stops being documented. Parameters and event ids are
 generated into both languages from one source, because §9 is right that
 nothing else prevents them from drifting.
 
@@ -121,9 +131,14 @@ nothing else prevents them from drifting.
 Each is documented, enforced by lint, and backed by a measurement rather than
 a preference.
 
-**Interface checkers.** One checker per interface *type* serves protocol
-assertions, formal cut-points and event emission at once. Connected by
-instantiation, not `bind` — see below.
+**Interface checkers.** One checker — `rtl/if/ccv_credit_checker.sv`, not one
+per interface — serves protocol assertions, formal cut-points and event
+emission at all 40 boundaries at once. Every boundary runs the same credited
+protocol, so only the payload width differs. Connected by instantiation, not
+`bind` — see below. Since no multi-cycle SVA exists (F-2), every temporal
+property in it is an explicit tracking register, which is what makes a single
+shared implementation worth far more than it would be if properties were
+declarative: written once, reviewed once, wrong in one place at most.
 
 **X-determinism.** A selection on control must be X-deterministic by one of
 three routes: prohibition (assert the control known), tmerge (a ternary, which
@@ -167,6 +182,50 @@ a techmap rule standing in for the pass it lacks.
   against an unchanged model.
 
 Full detail in [`docs/stage1a-findings.md`](docs/stage1a-findings.md).
+
+## What Stage 2 encoded
+
+The grill-me closed the partition; this repository turned it into things that
+are checked rather than described.
+
+**The topology.** 14 block types, 45 instances, 40 channels, in
+`params/blocks.json` and `schema/interfaces.json`. Per-block port lists are
+**derived** from the channel list rather than stated, because the source spec
+carried both and they disagreed — and a derived list cannot disagree with
+itself. Block letters came in at 14 with 2 reserved (`z` reset tree, `y`
+fixtures) and 8 spare, so the single-letter stage tag holds.
+
+**The credited protocol.** Four signals per channel: `_valid` and `_payload`
+from the producer, `_credit` and `_stall` from the consumer. Valid leads the
+payload by one cycle on every interface without exception, a credit is
+consumed when valid asserts rather than when the payload lands, and once
+asserted valid is binding. Stage 1 had provisionally guessed a `_ready`
+signal; the reasoning behind that guess survived — backpressure stays outside
+the packed struct, so the swap harness still drives the payload one way (F-12).
+
+**The round trip is 2, by construction.** Flops on both sides with no
+exceptions, plus abutment, gives exactly that. It is not a per-block choice,
+so credit depth, rescue depth and drain wait are not three numbers but one
+number under three names — all 2 today, with wake at 4. It stays a
+per-instance parameter defaulted to that minimum, because a non-abutting
+interface would differ and none is known to be non-abutting until floorplan.
+
+**Provisional values are visible at the use site.** The 12 undecided
+parameters generate into a *separate* package — `ccv_prov_pkg` in SV,
+`ccv::prov::` in C++ — so a module referencing one is known unfinished
+wherever it is read, not merely wherever it is declared. That is the whole
+reason for the split rather than a comment.
+
+**Misconfiguration is checked, because it is not a protocol violation.** Two
+`CCV_IF_CONFIG` assertions guard the two ways a checker can be set up wrong
+without breaking any rule it enforces: a credit depth below the round trip
+throttles the channel and reads as healthy backpressure, and a timeout below
+it fires on a channel behaving perfectly — teaching the reader to disbelieve
+the check. They are unconditional; under `MODE=ASSUME` a mode-resolved version
+would turn a misconfiguration into an *assumption* and constrain it away.
+`tools/check-if.sh` builds each misconfiguration and requires the matching
+assertion to fire, because every other check there is a *stays quiet* check
+and a check that has been deleted is very quiet.
 
 ## Checking it
 

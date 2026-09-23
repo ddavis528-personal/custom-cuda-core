@@ -325,6 +325,12 @@ The convention's §3.1 has one checker per interface type, instantiated as
 `ASSERT` on a block's outputs and `ASSUME` on its inputs, so formal cut-points
 fall out of the convention rather than being hand-built per block.
 
+> **Since (2026-09-23 partition).** It turned out to be *one checker, full
+> stop*: every one of the 40 channels runs the same credited protocol, so
+> `ccv_credit_checker.sv` is generic over payload **width** rather than payload
+> type — it never interprets the payload, only the protocol around it. The
+> mechanism below is unchanged; only the count is.
+
 The `assert`/`assume`/`cover` keyword cannot be selected by a parameter
 directly. A `generate` picks the branch at elaboration, and that works in all
 three tools.
@@ -593,7 +599,8 @@ staying in the flow forever.
 
 - **Stage 2** — multi-cycle interface contracts need explicit tracking state,
   and liveness must be restated as a bounded-latency property with a justified
-  N. (F-2)
+  N. (F-2) — **since:** the round trip is uniform, so N is one global number
+  plus one for the memory path, not one per interface.
 - **Stage 1d** — plain ports, not interfaces, and the reason is the swap
   boundary rather than taste. (F-4)
 - **Stage 4c** — the Icarus X-pass is not redundant with Verilator's
@@ -602,10 +609,13 @@ staying in the flow forever.
 - **Stage 4a** — a block's reset line must pair every un-reset payload field
   with the valid bit that guards it, or §7's third formal target cannot be
   stated at all. (F-8)
-- **Stage 2** — per-type checkers carry their own tracking state, because no
+- **Stage 2** — checkers carry their own tracking state, because no
   multi-cycle construct exists (F-2). They are things to review, not things to
   read, and the satisfiability covers are what keeps a wrong one from passing
-  silently. (F-9, F-11, CCV-L14)
+  silently. (F-9, F-11, CCV-L14) — **since:** there is one checker rather than
+  one per type, which concentrates this: a tracking register that never arms
+  never arms at all 40 boundaries. Its negative controls are still outstanding
+  and are logged in `fail-open-register.md`.
 - **Before first synthesis** — checkers are instantiated, not bound, so they
   are no longer excluded from synthesis for free. Recorded debt. (F-9)
 - **At first synthesis** — confirm the real tool infers gating from the `if`

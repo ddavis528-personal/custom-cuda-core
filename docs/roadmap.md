@@ -24,25 +24,24 @@ planning decision and are carried in Part 3 below.
 [`rtl-findings-stage1.md`](rtl-findings-stage1.md) — what Stage 1 found about
 the strategy, organised for that audience rather than this one.
 
-**The next action is not a coding task.** §8 Stage 2 is the interface-level
-grill-me, which *closes the partition list first* and then defines interface
-contracts across every block in it. §2 is explicit that the block names used
-throughout the strategy doc — OoO scheduler, register file, AGU/windowing,
-barrier unit, front-end — are **illustrative examples, not a proposed
-partition**, and that closing the list is the first job of that session. That
-work happens in the architecture track, not here.
+**The grill-me has happened.** §8 Stage 2's interface-level session ran on
+2026-09-23 and delivered the first three of the four things this repository was
+waiting for. Their status now:
 
-What this repository is waiting for, specifically:
+| Was waiting for | Status |
+|---|---|
+| The partition list | ✅ 14 block types, 45 instances, 40 channels — encoded in `params/blocks.json` and `schema/interfaces.json` |
+| A block letter per block | ✅ 14 assigned, 2 reserved (`z` reset tree, `y` fixtures), 8 spare — **closes the 24-block ceiling question** |
+| Per-block interface contracts | ✅ protocol and signal shape closed; **28 payload field widths across 25 channels still open** |
+| Per-block interface NGD budgets | ❌ not started, against the 25 NGD envelope |
 
-1. **The partition list.** Everything downstream is shaped by it: the unit
-   list in `schema/events.json` is currently §2's own illustrative names,
-   carried only so the mechanism has something to exercise.
-2. **Per-block interface contracts** — signals, protocol, what each block
-   consumes and produces.
-3. **Per-block interface NGD budgets** against the 25 NGD envelope.
+So the remaining input is **payload widths and NGD budgets**, not the
+partition. The widths are per-block-session work and are listed by channel in
+Part 3; they are deliberately not guessed here, because a generated typedef is
+the thing downstream code trusts and a generated number gets believed.
 
-Once those exist, Stage 2's repository-side work is mechanical, and more of it
-is in place than the stage numbering suggests. Each interface becomes:
+Everything that does not depend on those widths is buildable now. Each
+interface becomes:
 
 - an entry in `schema/interfaces.json`, which generates the typedef into both
   languages;
@@ -126,7 +125,7 @@ looks exactly like one that passes.
 - `spike/cases/` — the cases
 - `tools/run-spike-1a.py` — the runner
 - `docs/stage1a-tool-support.md` — the matrix (generated)
-- `docs/stage1a-findings.md` — the eight findings (written)
+- `docs/stage1a-findings.md` — the 18 findings F-1…F-18 (written)
 - `tools/check-1a.sh` — cheap validation of the recorded matrix
 
 ### Stage 1b — assertion primitive library ✅
@@ -159,9 +158,12 @@ The block-level grill-me (2026-09-23) closed the partition: **14 block types,
   four-signal channel shape. Per-block port lists are **derived** from the
   channel list rather than stated, since the source spec kept both and they
   disagreed.
-- `params/ccv_params.json` — 22 machine parameters, each tagged `isa`, `arch`
-  or `tunable`, so a sweep cannot silently vary something the compiler is
-  built against.
+- `params/ccv_params.json` — 56 machine parameters, each tagged `isa`,
+  `arch`, `tunable`, `provisional` or `target`, so a sweep cannot silently
+  vary something the compiler is built against. The 12 `provisional` ones
+  generate into a **separate package** (`ccv_prov_pkg`, `ccv::prov::`), so a
+  module referencing one is visibly unfinished at every use site — which is
+  what stops a placeholder from being believed.
 - `rtl/if/ccv_credit_checker.sv` — the one parameterised checker.
 - `EV_CH_XFER` — the load-bearing event content §8 said would fall out of the
   interface grill-me. The 40-channel list **is** the load-bearing event list.
@@ -200,8 +202,11 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
 
-**What is NOT done here:** the interface list, and the per-type checkers.
-Those are Stage 2's, alongside the interface grill-me.
+**What is NOT done here:** 28 payload field widths. The interface *list* is
+done — all 40 channels, with the protocol and signal shape closed. There are
+no per-type checkers and there will not be: every boundary obeys the same
+credited protocol, so one parameterised checker covers all 40, and the widths
+are the only thing that differs.
 
 ### Net naming convention ✅ (mechanism)
 
@@ -213,10 +218,11 @@ something a checker can reason about.
 - CCV-L02 rewritten, CCV-L19 … CCV-L24 added
 - `rtl/lint/bad_naming.sv` / `good_naming.sv`
 
-**What is NOT done here:** the block letters. Single letters cap the partition
-at 26 blocks minus reserved ones, and the list is Stage 2's. If the partition
-needs more, the tag format has to widen — much cheaper to find now than after
-a tree of RTL carries the tags.
+**Block letters: assigned, and the ceiling held.** The partition came in at 14
+block types, so with `z` (reset tree) and `y` (fixtures) reserved there are 8
+spare letters and the single-letter tag format stands. This was the cheap
+check worth doing before a tree of RTL carried the tags; it passed, and the
+question is closed rather than carried.
 
 ### Clock gating (exploratory) ✅
 
@@ -266,9 +272,13 @@ rediscovered there. Full text in `stage1a-findings.md`.
 
 Carried from the strategy doc, with current status.
 
-1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Content pending**:
-   load-bearing at Stage 2, arbitration-sensitive per block at 4a. The seed
-   set in `schema/events.json` is provisional and marked as such.
+1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Load-bearing content ✅** —
+   the 40-channel list *is* the load-bearing event list, emitted as
+   `EV_CH_XFER` from the shared checker so every boundary emits identically
+   and no per-block drift is possible. **Arbitration-sensitive content still
+   pending**, per block at 4a. The unit list in `schema/events.json` still
+   carries the strategy doc's illustrative block names and should be swapped
+   for the real 14 before 4a.
 
 2. **Arbitration policy spec.** Not started — per block at Stage 4a/4b, before
    that block's 4c RTL build. §5 is explicit this buys *temporal precedence,
@@ -292,8 +302,9 @@ Carried from the strategy doc, with current status.
 5. **CI harness.** ✅ Standing, and accumulating exit criteria per stage.
 
 6. **Timing model implementation details.** C++ decided; the event-driven
-   scheduler is not built. The block-swap interface is blocked on the Stage 2
-   partition, as §8 requires.
+   scheduler is not built. The block-swap interface was blocked on the Stage 2
+   partition, which has now closed — so this is **unblocked and is the next
+   real coding task**, alongside the Stage 3 skeleton.
 
 ### Opened by Stage 1
 
@@ -303,9 +314,14 @@ Carried from the strategy doc, with current status.
    back: at 0.55 V, variation and the wire/gate delay ratio both worsen, so
    headroom at nominal does not translate linearly.
 
-8. **What is the bounded-latency N for each interface?** Opened by F-2, since
-   liveness cannot be stated. One number per interface, each needing a
-   justification, at Stage 2.
+8. **The bounded-latency N.** Opened by F-2, since liveness cannot be stated.
+   **No longer per interface**: the round trip is 2 everywhere by
+   construction, so N is one global provisional (`CCV_P_TIMEOUT_N`, 32) plus
+   one for the memory path (`CCV_P_TIMEOUT_MEM`, 2048), which must exceed
+   worst-case DRAM latency and which the local number does not. Both are in
+   `ccv_prov_pkg` and both are **provisional by construction** per A-3 —
+   revising them is an expected 4b output, not a spec change. What remains is
+   the justification, which needs contention data that does not exist yet.
 
 9. **A-1 — the 4d correlation criterion.** Unchanged and still the tightest
    window: the last cheap moment is before Stage 4a populates the first
@@ -313,18 +329,21 @@ Carried from the strategy doc, with current status.
    reprocessing or discarding every trace captured. A decision, not an
    investigation.
 
-10. **A-3 — N per interface is provisional by construction.** It cannot be
-    justified at Stage 2; that needs contention data from 4b. Set it from
-    architectural reasoning, record it as provisional, and schedule
-    N-revision as an expected **4b output** rather than a spec change —
+10. **A-3 — N is provisional by construction.** (One global N, not one per
+    interface — see item 8.) It cannot be justified at Stage 2; that needs
+    contention data from 4b. Set it from architectural reasoning, record it as
+    provisional, and schedule N-revision as an expected **4b output** rather
+    than a spec change —
     without that framing, revisiting N later reads as a violation and creates
     friction against doing it. Each N ships with a case that exceeds it and
     must fire (see the fail-open register).
 
-11. **A-2 — do testbench-side memory interfaces consume block letters?** They
-    are not design blocks but they do have interfaces, and the tag format
-    question is about what gets tagged. Settle in the same pass as the
-    24-block ceiling check.
+11. ~~**A-2 — do testbench-side memory interfaces consume block letters?**~~
+    **Closed.** They do, and they are registered rather than left to collide:
+    `y` is reserved for fixtures and `z` for the reset tree, which is not a
+    design block but does need stage numbering because a synchronous reset
+    cannot be delivered globally in one cycle. 14 design letters + 2 reserved
+    leaves 8 spare.
 
 12. **Clock-gating equivalence is unverified.** The gated netlist has never
    been proved against its ungated original — that needs a real ICG cell
@@ -332,24 +351,61 @@ Carried from the strategy doc, with current status.
    variable. Nothing relies on it today. Settle before any synthesis result
    is believed. (F-18)
 
-13. **Block letters, and whether 26 is enough.** The stage tag gives the block
-   one letter. The Stage 2 partition decides how many blocks there are; if it
-   exceeds the registry, the tag format widens and every tagged net changes.
-   Worth a sanity check as soon as the partition list is drafted.
+13. ~~**Block letters, and whether 26 is enough.**~~ **Closed** by the same
+   pass as item 11 — the partition is 14 block types, so the single-letter tag
+   holds with room to spare. Had it not, the tag format would have widened and
+   every tagged net changed, which is exactly why this was worth checking
+   against a draft list rather than after a tree of RTL carried the tags.
 
 14. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
    removed `bind`. Settle before the first synthesis attempt rather than at it.
 
-15. **Direction discipline without modports.** Partly addressed — the direction
-    is declared in `schema/interfaces.json` and carried into the generated
-    header — but whether that is *adequate* will not be known until several
-    real interfaces exist at Stage 2.
+15. **Direction discipline without modports.** Direction is declared in
+    `schema/interfaces.json` and carried into the generated header. 40 real
+    interfaces now exist, so the question is answerable — but honestly, not
+    yet answered: nothing has been *built* against them. The test is whether a
+    block author can get a direction wrong and have it caught, and that is not
+    known until the skeleton exists. Re-ask at the end of Stage 3, not before.
 
-16. **Backpressure convention.** Provisionally the separate `_ready` signal,
-    on the strength of F-12: folding backpressure into the struct would put a
-    reverse-direction field inside a signal the swap harness drives one way.
-    Wide return paths get their own reverse-direction struct. Revisit at Stage
-    2 with real interfaces.
+16. ~~**Backpressure convention.**~~ **Settled, and not the way Stage 1
+    guessed.** The provisional answer was a separate `_ready` signal. The
+    grill-me's answer is a **credited protocol**: four signals per channel —
+    `_valid` and `_payload` from the producer, `_credit` and `_stall` from the
+    consumer. Valid leads the payload by one cycle on every interface without
+    exception, a credit is consumed when valid asserts rather than when the
+    payload lands, and once asserted valid is binding.
+
+    The Stage 1 reasoning still holds and is why the shape works: backpressure
+    stays *outside* the packed struct, so the swap harness still drives the
+    payload one way (F-12).
+
+17. **28 payload field widths, across 25 channels.** The one input the
+    repository is still blocked on for generated typedefs — 15 of 40 channels
+    generate a packed struct today; the other 25 have at least one unsized
+    field. `tools/check-if.sh` reports the census every run, because "payload
+    widths pending" decays into nobody remembering *which* ones.
+
+    Ranked by blast radius, since a field on several channels is one where two
+    per-block sessions deciding independently produce two incompatible
+    encodings on channels that abut:
+
+    | Field | Channels | Where |
+    |---|---|---|
+    | `op` | 5 | dcu↔mlc, miu↔dcu, miu↔spm, mlc↔exb, … |
+    | `asid` | 3 | fet↔miu itlb, fet↔mlc ifill, rau→fet launch |
+    | `opcode` | 3 | dec→ooe uop, ooe→rcu issue, rcu→lane ops |
+    | `pcs`, `pred_state` | 2 each | both directions of the pca↔rcu migration pair |
+    | `size` | 2 | miu↔dcu, mlc↔exb |
+
+    The remaining 22 are single-channel: `bank_select`, `byte_mask`, `class`,
+    `code_bounds`, `conflict_serialization`, `cta_id`, `data`,
+    `demotion_threshold`, `index_per_lane`, `itlb_refill`, `launch_block_addr`,
+    `operand`, `ordering`, `ownership_class`, `prf_base`, `prf_size`,
+    `progress_threshold`, `retired_since_restore`, `space`, `status`,
+    `sub_width`, `tilelink_tlc`.
+
+    `op`, `opcode` and `size` are worth settling **across** sessions rather
+    than within one.
 
 ---
 
