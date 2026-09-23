@@ -1,50 +1,627 @@
 {
   "_comment": [
-    "Interface typedefs, single source of truth. tools/gen-interfaces.py",
-    "generates the SystemVerilog packed-struct typedefs and the matching C++",
-    "accessor header from this file.",
+    "Channel topology for the CCV core, from the block-level grill-me",
+    "(2026-09-23). Every channel is one port on each of two blocks, so this",
+    "list IS the design's connectivity and the per-block port index is a",
+    "lookup into it rather than a second source.",
     "",
-    "WHY GENERATED. Stage 1a finding F-12: a packed-struct port surfaces in the",
-    "Verilated C++ model as ONE packed signal -- VL_OUT64(&iss, 38, 0) -- which",
-    "is exactly what the convention's §2 wants, but the FIELD OFFSETS are not",
-    "exposed. The C++ swap harness has to know the layout independently. A field",
-    "reordered in RTL and not in C++ gives a harness reading the wrong bits,",
-    "which presents as a functional bug rather than as a mismatch. That is the",
-    "drift §9 of the strategy doc names for parameters, arriving at the one",
-    "boundary §1's block-swap mechanism depends on.",
+    "WHAT IS HERE AND WHAT IS NOT. The topology -- which blocks, which",
+    "direction, what rate, what fields -- is complete and checked. Field",
+    "WIDTHS are not: most firm up in the per-block session that owns the",
+    "interface, and inventing them here would put a number in the generated",
+    "typedef that nobody decided. So payload structs are generated only for",
+    "channels whose widths are settled; the rest generate topology alone.",
     "",
-    "WHAT IS AND IS NOT DECIDED HERE. The MECHANISM is Stage 1d. The interface",
-    "LIST is Stage 2's, and depends on the partition list, which §2 of the",
-    "strategy doc is explicit has not been decided. `issue_t` below is the",
-    "convention doc's own worked example, carried as a reference so the",
-    "generator, the checker pattern and the lint rules have something real to",
-    "exercise. It is marked provisional and is not a proposed interface.",
+    "COMMON PORTS are not channels and are not listed here -- see",
+    "common_ports below. Every block declares them, generated rather than",
+    "hand-written.",
     "",
-    "FIELD ORDER IS DECLARATION ORDER, and in a packed struct the FIRST field",
-    "declared occupies the MOST significant bits. The generator computes offsets",
-    "from that rule and emits them for both languages, so nobody has to.",
-    "",
-    "DIRECTION is recorded per interface (open item: direction discipline",
-    "without modports). Packed structs carry no direction enforcement, so this",
-    "at least makes the intent generated rather than remembered."
+    "COUNTS. 40 channels. The source spec's prose says 32 and its per-block",
+    "port index runs low on 7 of 14 blocks; the enumerated tables are",
+    "self-consistent and are what this file follows. tools/gen-interfaces.py",
+    "derives the per-block counts from the channel list so the two can never",
+    "disagree again."
   ],
-
-  "schema_version": 1,
-
-  "interfaces": [
+  "schema_version": 2,
+  "common_ports": [
     {
-      "name": "issue_t",
-      "provisional": true,
-      "doc": "REFERENCE EXAMPLE, from the interface convention §2. Not a proposed interface -- the real list follows from the Stage 2 partition.",
-      "direction": "producer_to_consumer",
-      "backpressure": "ready",
-      "fields": [
-        { "name": "valid",   "bits": 1,  "control": true,
-          "doc": "Transaction valid this cycle. Control, so it carries an X-safety obligation." },
-        { "name": "payload", "bits": 32, "control": false,
-          "doc": "Data. X propagates here; §6 prohibits X on control, not on data." },
-        { "name": "tag",     "bits": 6,  "control": true,
-          "doc": "In-flight transaction tag. Control: it selects, so an X reaches a decision." }
+      "name": "clk",
+      "dir": "in",
+      "width": 1,
+      "doc": "Gated clock for the block."
+    },
+    {
+      "name": "clk_free",
+      "dir": "in",
+      "width": 1,
+      "doc": "Ungated clock, for the wake detector ONLY. Anything else on it defeats the block's gate invisibly (CCV-L22)."
+    },
+    {
+      "name": "rst_n",
+      "dir": "in",
+      "width": 1,
+      "doc": "Synchronous reset, ACTIVE LOW. `CCV_RST is the in-reset condition, so a block spells it `!rst_n`."
+    },
+    {
+      "name": "kill_valid",
+      "dir": "in",
+      "width": 1,
+      "doc": "Grid teardown, one cycle ahead of the mask. Outside the credit scheme: a kill must not wait on a stalled receiver."
+    },
+    {
+      "name": "kill_warp_mask",
+      "dir": "in",
+      "width": "CCV_TIER1_WARPS",
+      "doc": "Warps to discard, from RAU. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables, so every receiver just masks warp-indexed state."
+    },
+    {
+      "name": "kill_ack",
+      "dir": "out",
+      "width": 1,
+      "doc": "Block has discarded matching state."
+    },
+    {
+      "name": "wake_req",
+      "dir": "in",
+      "width": 1,
+      "doc": "Ungate request from any peer. Outside the credit scheme."
+    },
+    {
+      "name": "sleep_ok",
+      "dir": "out",
+      "width": 1,
+      "doc": "Block is drained and may be gated."
+    },
+    {
+      "name": "csr_req",
+      "dir": "in",
+      "width": "struct",
+      "doc": "Address, write data, write enable."
+    },
+    {
+      "name": "csr_rsp",
+      "dir": "out",
+      "width": "struct",
+      "doc": "Read data, done."
+    },
+    {
+      "name": "csr_credit",
+      "dir": "out",
+      "width": 1,
+      "doc": "Credit return for the CSR channel."
+    }
+  ],
+  "channel_signals": [
+    {
+      "suffix": "_valid",
+      "dir": "producer",
+      "doc": "Asserted ONE CYCLE AHEAD of the payload, on every interface without exception. A credit is consumed when valid asserts, not when the payload lands, and once asserted valid is binding -- the payload follows on schedule even if a stall arrives in between."
+    },
+    {
+      "suffix": "_payload",
+      "dir": "producer",
+      "doc": "The packed struct. Same flop count as valid, so it arrives no later than it otherwise would."
+    },
+    {
+      "suffix": "_credit",
+      "dir": "consumer",
+      "doc": "Credit return."
+    },
+    {
+      "suffix": "_stall",
+      "dir": "consumer",
+      "doc": "Stall-invalidate: temporarily invalidates outstanding credits. No message may be sent the cycle after it is received, which makes the in-flight window a fixed count rather than a handshake."
+    }
+  ],
+  "channels": [
+    {
+      "name": "ccv_fet_dec_instr",
+      "src": "fet",
+      "dst": "dec",
+      "rate": 8,
+      "group": "instruction",
+      "payload_fields": [
+        "warp_id",
+        "pc",
+        "instr",
+        "length",
+        "fetch_fault"
+      ]
+    },
+    {
+      "name": "ccv_dec_ooe_uop",
+      "src": "dec",
+      "dst": "ooe",
+      "rate": 6,
+      "group": "instruction",
+      "payload_fields": [
+        "warp_id",
+        "pc",
+        "class",
+        "opcode",
+        "src_arch",
+        "dst_arch",
+        "pred_reg",
+        "imm",
+        "decode_fault"
+      ]
+    },
+    {
+      "name": "ccv_ooe_rcu_issue",
+      "src": "ooe",
+      "dst": "rcu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "warp_id",
+        "phys_src",
+        "phys_dst",
+        "phys_pred",
+        "opcode",
+        "chwidth",
+        "dispatch_fault"
+      ]
+    },
+    {
+      "name": "ccv_rcu_lane_ops",
+      "src": "rcu",
+      "dst": "lane",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "opcode",
+        "sub_width",
+        "operand",
+        "pred_bit",
+        "section_en"
+      ],
+      "note": "Fans out to 32 LANE instances; the payload is per-lane."
+    },
+    {
+      "name": "ccv_lane_rcu_res",
+      "src": "lane",
+      "dst": "rcu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "result",
+        "lane_fault"
+      ],
+      "note": "32 LANE instances converge here."
+    },
+    {
+      "name": "ccv_rcu_ooe_done",
+      "src": "rcu",
+      "dst": "ooe",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "exec_fault",
+        "fault_lane_mask"
+      ]
+    },
+    {
+      "name": "ccv_rcu_miu_addr",
+      "src": "rcu",
+      "dst": "miu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "base",
+        "index_per_lane",
+        "store_data"
+      ]
+    },
+    {
+      "name": "ccv_miu_rcu_data",
+      "src": "miu",
+      "dst": "rcu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "phys_dst",
+        "load_data"
+      ]
+    },
+    {
+      "name": "ccv_ooe_miu_memop",
+      "src": "ooe",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rob_tag",
+        "warp_id",
+        "cta_slot",
+        "op",
+        "chwidth",
+        "space",
+        "ordering"
+      ]
+    },
+    {
+      "name": "ccv_miu_ooe_cmpl",
+      "src": "miu",
+      "dst": "ooe",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rob_tag",
+        "status",
+        "cause",
+        "lane_mask",
+        "address",
+        "mlc_miss"
+      ],
+      "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger."
+    },
+    {
+      "name": "ccv_ooe_miu_retire",
+      "src": "ooe",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rob_tag",
+        "commit_or_discard"
+      ]
+    },
+    {
+      "name": "ccv_miu_spm_req",
+      "src": "miu",
+      "dst": "spm",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "bank_addr",
+        "write_data",
+        "byte_mask",
+        "op"
+      ]
+    },
+    {
+      "name": "ccv_spm_miu_rsp",
+      "src": "spm",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "read_data",
+        "conflict_serialization"
+      ]
+    },
+    {
+      "name": "ccv_miu_dcu_req",
+      "src": "miu",
+      "dst": "dcu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "phys_addr",
+        "size",
+        "op",
+        "exclusive_req"
+      ]
+    },
+    {
+      "name": "ccv_dcu_miu_rsp",
+      "src": "dcu",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "data",
+        "hit",
+        "ownership_granted"
+      ]
+    },
+    {
+      "name": "ccv_dcu_mlc_req",
+      "src": "dcu",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "phys_addr",
+        "op",
+        "core_id",
+        "writeback_data"
+      ]
+    },
+    {
+      "name": "ccv_mlc_dcu_rsp",
+      "src": "mlc",
+      "dst": "dcu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "line_data",
+        "ownership",
+        "miss"
+      ]
+    },
+    {
+      "name": "ccv_mlc_dcu_probe",
+      "src": "mlc",
+      "dst": "dcu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "phys_addr",
+        "invalidate_or_downgrade"
+      ],
+      "note": "A wake source: the D-cache cannot sleep through an inbound probe."
+    },
+    {
+      "name": "ccv_dcu_mlc_probe_ack",
+      "src": "dcu",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "ack",
+        "dirty_data"
+      ]
+    },
+    {
+      "name": "ccv_fet_mlc_ifill",
+      "src": "fet",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "phys_addr",
+        "asid"
+      ],
+      "note": "I-cache miss bypasses DCU."
+    },
+    {
+      "name": "ccv_mlc_fet_ifill_rsp",
+      "src": "mlc",
+      "dst": "fet",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "line_data"
+      ]
+    },
+    {
+      "name": "ccv_miu_fet_itlb",
+      "src": "miu",
+      "dst": "fet",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "itlb_refill"
+      ]
+    },
+    {
+      "name": "ccv_fet_miu_itlb_req",
+      "src": "fet",
+      "dst": "miu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "virtual_page",
+        "asid"
+      ]
+    },
+    {
+      "name": "ccv_mlc_exb_req",
+      "src": "mlc",
+      "dst": "exb",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "phys_addr",
+        "size",
+        "op",
+        "ownership_class",
+        "core_id",
+        "writeback_data"
+      ]
+    },
+    {
+      "name": "ccv_exb_mlc_rsp",
+      "src": "exb",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "line_data",
+        "ownership_grant",
+        "inbound_probe",
+        "miss"
+      ]
+    },
+    {
+      "name": "ccv_exb_ext",
+      "src": "exb",
+      "dst": "EXTERNAL",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "tilelink_tlc"
+      ],
+      "note": "THE ONE EXCEPTION. TileLink TL-C at the coherent boundary; obeys that protocol's rules, not ours. Containing it in a bridge block is what keeps the exception to a single port."
+    },
+    {
+      "name": "ccv_rau_fet_launch",
+      "src": "rau",
+      "dst": "fet",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "start_pc",
+        "code_bounds",
+        "asid",
+        "cta_slot"
+      ]
+    },
+    {
+      "name": "ccv_rau_ooe_alloc",
+      "src": "rau",
+      "dst": "ooe",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "prf_base",
+        "prf_size",
+        "activate_or_free"
+      ]
+    },
+    {
+      "name": "ccv_ooe_rau_status",
+      "src": "ooe",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "stalled",
+        "mlc_miss_seen",
+        "retired_since_restore"
+      ]
+    },
+    {
+      "name": "ccv_rau_ooe_demote",
+      "src": "rau",
+      "dst": "ooe",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "squash_to_retirement"
+      ]
+    },
+    {
+      "name": "ccv_ooe_rau_drained",
+      "src": "ooe",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "resume_pc",
+        "arch_state_ready"
+      ]
+    },
+    {
+      "name": "ccv_rau_rcu_mig",
+      "src": "rau",
+      "dst": "rcu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "direction",
+        "bank_select"
+      ]
+    },
+    {
+      "name": "ccv_rcu_pca_mig",
+      "src": "rcu",
+      "dst": "pca",
+      "rate": 1024,
+      "group": "control",
+      "payload_fields": [
+        "gpr_row",
+        "pred_state",
+        "pcs"
+      ]
+    },
+    {
+      "name": "ccv_pca_rcu_mig",
+      "src": "pca",
+      "dst": "rcu",
+      "rate": 1024,
+      "group": "control",
+      "payload_fields": [
+        "gpr_row",
+        "pred_state",
+        "pcs"
+      ]
+    },
+    {
+      "name": "ccv_rau_miu_cta",
+      "src": "rau",
+      "dst": "miu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "cta_slot",
+        "spm_base",
+        "spm_limit",
+        "launch_block_addr"
+      ]
+    },
+    {
+      "name": "ccv_ooe_syu_bar",
+      "src": "ooe",
+      "dst": "syu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "cta_slot",
+        "barrier_id",
+        "arrive_or_wait"
+      ]
+    },
+    {
+      "name": "ccv_syu_ooe_rel",
+      "src": "syu",
+      "dst": "ooe",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_mask_released",
+        "barrier_id"
+      ]
+    },
+    {
+      "name": "ccv_rau_syu_alloc",
+      "src": "rau",
+      "dst": "syu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "cta_slot",
+        "barrier_entries",
+        "allocate_or_free"
+      ]
+    },
+    {
+      "name": "ccv_ooe_cru_fault",
+      "src": "ooe",
+      "dst": "cru",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "cause",
+        "pc",
+        "lane_mask",
+        "address",
+        "cta_id",
+        "warp_id"
+      ]
+    },
+    {
+      "name": "ccv_cru_rau_cfg",
+      "src": "cru",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "demotion_threshold",
+        "progress_threshold",
+        "launch_enable"
       ]
     }
   ]

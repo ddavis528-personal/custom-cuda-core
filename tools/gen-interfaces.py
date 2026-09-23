@@ -1,23 +1,17 @@
 #!/usr/bin/env python3
-"""Generate SystemVerilog typedefs and matching C++ accessors from
+"""Generate the channel topology into SystemVerilog and C++ from
 schema/interfaces.json.
 
-Interface checker convention §2 chooses packed structs over SystemVerilog
-`interface` constructs, and Stage 1a confirmed the choice works: a struct port
-surfaces in the C++ model as one packed signal (F-12). What it does NOT do is
-expose the field offsets, so the C++ side of a block swap has to know the
-layout independently -- and a field reordered on one side only gives a harness
-reading the wrong bits, which looks like a functional bug rather than a
-mismatch.
+Every channel is one port on each of two blocks, so the channel list IS the
+design's connectivity. The per-block port lists below are DERIVED from it
+rather than maintained separately -- the source spec kept both and they
+disagreed on 7 of 14 blocks, which is the failure this removes.
 
-So both sides come from here. This is the same argument §9 of the strategy doc
-makes for parameters, applied to the one boundary §1's swap mechanism runs
-across.
-
-Packed-struct bit order: the FIRST field declared occupies the MOST significant
-bits. The offsets below are computed from that rule, which is worth stating
-because getting it backwards produces a C++ view that is wrong in a way that
-still decodes to plausible values.
+What is generated: the channel enum, the per-block port index, and the
+common-port list. What is NOT: payload structs, because field widths mostly
+firm up in the per-block session that owns the interface. Inventing them here
+would put a number in a generated typedef that nobody decided, and generated
+numbers are believed.
 """
 import json
 import os
@@ -25,6 +19,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "schema", "interfaces.json")
+BLOCKS = os.path.join(ROOT, "params", "blocks.json")
 
 BANNER = """// GENERATED FILE -- DO NOT EDIT.
 //
@@ -33,83 +28,88 @@ BANNER = """// GENERATED FILE -- DO NOT EDIT.
 """
 
 
-def layout(iface):
-    """Field offsets, MSB-first, as a packed struct lays them out."""
-    total = sum(f["bits"] for f in iface["fields"])
-    out, msb = [], total - 1
-    for f in iface["fields"]:
-        lsb = msb - f["bits"] + 1
-        out.append((f, msb, lsb))
-        msb = lsb - 1
-    return total, out
+def block_names():
+    with open(BLOCKS) as f:
+        d = json.load(f)
+    return {b["name"]: b for b in d["blocks"] if b.get("instances", 0) > 0}
 
 
-def camel(name):
-    base = name[:-2] if name.endswith("_t") else name
-    return "".join(p.capitalize() for p in base.split("_"))
+def ports_per_block(d, blocks):
+    """Derived, never stated. src and dst each gain one port per channel."""
+    out = {b: {"in": [], "out": []} for b in blocks}
+    for c in d["channels"]:
+        if c["src"] in out:
+            out[c["src"]]["out"].append(c["name"])
+        if c["dst"] in out:
+            out[c["dst"]]["in"].append(c["name"])
+        elif c["dst"] == "EXTERNAL" and c["src"] in out:
+            pass          # already counted as an out on the bridge
+    return out
 
 
-def gen_sv(d):
+def gen_sv(d, blocks, pp):
     L = [BANNER, "`ifndef CCV_INTERFACES_SVH", "`define CCV_INTERFACES_SVH", "",
-         "// A generated header is a CATALOGUE: it declares every interface's width and\n// layout, and no single consumer uses all of them. That is the intended\n// shape, not an oversight, so the unused-parameter warning is turned off for\n// this file only -- narrowly, and here rather than at the call site, so a\n// genuinely unused parameter in hand-written RTL still gets caught.\n/* verilator lint_off UNUSEDPARAM */"]
-    for i in d["interfaces"]:
-        total, fields = layout(i)
-        L.append("// %s" % i["doc"])
-        L.append("// direction: %s, backpressure: %s, width: %d bits"
-                 % (i["direction"], i["backpressure"], total))
-        if i.get("provisional"):
-            L.append("// PROVISIONAL -- the interface list is Stage 2's, and "
-                     "follows from the partition.")
-        L.append("typedef struct packed {")
-        for f, msb, lsb in fields:
-            w = "logic" if f["bits"] == 1 else "logic [%d:0]" % (f["bits"] - 1)
-            L.append("  %-16s %-10s // [%d:%d]%s -- %s"
-                     % (w, f["name"] + ";", msb, lsb,
-                        " CONTROL" if f["control"] else "", f["doc"]))
-        L.append("} %s;" % i["name"])
-        L.append("")
-        L.append("localparam int %s_W = %d;" % (i["name"].upper()[:-2], total))
-        L.append("")
+         "/* verilator lint_off UNUSEDPARAM */", ""]
+    L.append("// Every channel carries four signals in the same shape:")
+    for s in d["channel_signals"]:
+        L.append("//   <name>%-9s %s" % (s["suffix"], s["doc"].split(".")[0] + "."))
+    L.append("//")
+    L.append("// Common ports, on every block:")
+    for p in d["common_ports"]:
+        L.append("//   %-16s %-4s %s" % (p["name"], p["dir"], p["doc"].split(".")[0] + "."))
+    L.append("")
+    L.append("localparam int CCV_NUM_CHANNELS = %d;" % len(d["channels"]))
+    L.append("")
+    for i, c in enumerate(d["channels"]):
+        L.append("// %s -> %s, %s/cycle" % (c["src"], c["dst"], c["rate"]))
+        L.append("localparam int CCV_CH_%s = %d;" % (c["name"][4:].upper(), i))
+    L.append("")
+    L.append("// Ports per block, derived from the channel list.")
+    for b in sorted(pp):
+        n = len(pp[b]["in"]) + len(pp[b]["out"])
+        L.append("localparam int CCV_PORTS_%s = %d;  // %d in, %d out"
+                 % (b.upper(), n, len(pp[b]["in"]), len(pp[b]["out"])))
+    L.append("")
     L.append("/* verilator lint_on UNUSEDPARAM */")
     L.append("")
     L.append("`endif // CCV_INTERFACES_SVH")
     return "\n".join(L) + "\n"
 
 
-def gen_cpp(d):
+def gen_cpp(d, blocks, pp):
     L = [BANNER, "#ifndef CCV_INTERFACES_H", "#define CCV_INTERFACES_H", "",
          "#include <cstdint>", "", "namespace ccv {", ""]
-    L.append("/// Field accessors for the packed-struct interfaces the RTL")
-    L.append("/// carries. A Verilated struct port arrives as one packed")
-    L.append("/// integer with no field information (finding F-12); these")
-    L.append("/// decompose it, from the same source the typedef came from.")
+    L.append("/// Channel topology. The skeleton wires blocks from this, so a")
+    L.append("/// connection that exists in the model and not in the RTL is a")
+    L.append("/// generation error rather than a wiring mistake.")
+    L.append("enum Channel : uint16_t {")
+    for i, c in enumerate(d["channels"]):
+        L.append("  /// %s -> %s, %s/cycle" % (c["src"], c["dst"], c["rate"]))
+        L.append("  CH_%s = %d," % (c["name"][4:].upper(), i))
+    L.append("  kChannelCount = %d," % len(d["channels"]))
+    L.append("};")
     L.append("")
-    for i in d["interfaces"]:
-        total, fields = layout(i)
-        cn = camel(i["name"])
-        L.append("/// %s" % i["doc"])
-        L.append("/// direction: %s, backpressure: %s"
-                 % (i["direction"], i["backpressure"]))
-        L.append("struct %s {" % cn)
-        L.append("  static constexpr unsigned kWidth = %d;" % total)
-        for f, msb, lsb in fields:
-            L.append("  /// [%d:%d]%s %s" % (msb, lsb,
-                                             " CONTROL" if f["control"] else "",
-                                             f["doc"]))
-            L.append("  static constexpr unsigned k%sLsb = %d;"
-                     % (camel(f["name"]), lsb))
-            L.append("  static constexpr unsigned k%sBits = %d;"
-                     % (camel(f["name"]), f["bits"]))
-        L.append("")
-        for f, msb, lsb in fields:
-            cf = camel(f["name"])
-            mask = (1 << f["bits"]) - 1
-            L.append("  static uint32_t %s(uint64_t raw) {" % f["name"])
-            L.append("    return static_cast<uint32_t>((raw >> k%sLsb) & 0x%xull);"
-                     % (cf, mask))
-            L.append("  }")
-        L.append("};")
-        L.append("")
+    L.append("struct ChannelInfo {")
+    L.append("  const char *name;")
+    L.append("  const char *src;")
+    L.append("  const char *dst;")
+    L.append("  unsigned    rate;")
+    L.append("};")
+    L.append("")
+    L.append("inline const ChannelInfo &channelInfo(Channel c) {")
+    L.append("  static const ChannelInfo kInfo[] = {")
+    for c in d["channels"]:
+        L.append('      {"%s", "%s", "%s", %s},'
+                 % (c["name"], c["src"], c["dst"], c["rate"]))
+    L.append("  };")
+    L.append("  return kInfo[static_cast<unsigned>(c)];")
+    L.append("}")
+    L.append("")
+    for b in sorted(pp):
+        n = len(pp[b]["in"]) + len(pp[b]["out"])
+        L.append("static constexpr unsigned kPorts%s = %d;  // %d in, %d out"
+                 % (b.capitalize(), n, len(pp[b]["in"]), len(pp[b]["out"])))
+    L.append("")
     L.append("} // namespace ccv")
     L.append("#endif // CCV_INTERFACES_H")
     return "\n".join(L) + "\n"
@@ -119,38 +119,33 @@ def main():
     check = "--check" in sys.argv
     with open(SRC) as f:
         d = json.load(f)
+    blocks = block_names()
 
-    names = [i["name"] for i in d["interfaces"]]
+    names = [c["name"] for c in d["channels"]]
     if len(set(names)) != len(names):
-        sys.stderr.write("duplicate interface names\n")
+        sys.stderr.write("duplicate channel names\n")
         return 1
-    for i in d["interfaces"]:
-        if not i["name"].endswith("_t"):
-            sys.stderr.write("%s: interface typedefs end in _t\n" % i["name"])
-            return 1
-        if not i["fields"]:
-            sys.stderr.write("%s: no fields\n" % i["name"])
-            return 1
-        # A struct wider than 64 bits stops being one VL_OUT64 and becomes a
-        # word array in the generated C++, which the accessors here do not
-        # model. Catching it at generation is much cheaper than at the first
-        # swap.
-        total = sum(f["bits"] for f in i["fields"])
-        if total > 64:
-            sys.stderr.write(
-                "%s: %d bits. Above 64 the Verilated port becomes a word "
-                "array rather than a single integer, and these accessors "
-                "assume one integer. Split the interface or widen the "
-                "generator first.\n" % (i["name"], total))
-            return 1
-        fn = [f["name"] for f in i["fields"]]
-        if len(set(fn)) != len(fn):
-            sys.stderr.write("%s: duplicate field names\n" % i["name"])
+    for c in d["channels"]:
+        for end in ("src", "dst"):
+            if c[end] not in blocks and c[end] != "EXTERNAL":
+                sys.stderr.write("channel %s has %s %r, which is not a block "
+                                 "in params/blocks.json\n"
+                                 % (c["name"], end, c[end]))
+                return 1
+        # The channel name must agree with its endpoints, or the topology and
+        # the name drift and the name is what everyone reads.
+        want = "ccv_%s_%s_" % (c["src"], c["dst"])
+        if c["dst"] != "EXTERNAL" and not c["name"].startswith(want):
+            sys.stderr.write("channel %s does not match its endpoints "
+                             "(expected %s...)\n" % (c["name"], want))
             return 1
 
+    pp = ports_per_block(d, blocks)
     targets = [
-        (os.path.join(ROOT, "rtl", "generated", "ccv_interfaces.svh"), gen_sv(d)),
-        (os.path.join(ROOT, "sim", "generated", "ccv_interfaces.h"), gen_cpp(d)),
+        (os.path.join(ROOT, "rtl", "generated", "ccv_interfaces.svh"),
+         gen_sv(d, blocks, pp)),
+        (os.path.join(ROOT, "sim", "generated", "ccv_interfaces.h"),
+         gen_cpp(d, blocks, pp)),
     ]
     stale = []
     for path, text in targets:
@@ -166,11 +161,11 @@ def main():
             sys.stderr.write("generated interface files are stale: %s\n"
                              "  run tools/gen-interfaces.py\n" % ", ".join(stale))
             return 1
-        print("  interface typedefs up to date (%d interface(s))"
-              % len(d["interfaces"]))
+        print("  interface topology up to date (%d channels, %d blocks)"
+              % (len(d["channels"]), len(pp)))
         return 0
-    print("  generated interface typedefs from schema/interfaces.json "
-          "(%d interface(s))" % len(d["interfaces"]))
+    print("  generated interface topology from schema/interfaces.json "
+          "(%d channels, %d blocks)" % (len(d["channels"]), len(pp)))
     return 0
 
 

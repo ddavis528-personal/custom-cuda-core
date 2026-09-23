@@ -19,8 +19,8 @@ fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 
-RTL="rtl/ccv_assert_pkg.sv rtl/if/issue_if_checker.sv test/smoke/issue_if_smoke.sv"
-TB="test/smoke/tb_issue_if.sv"
+RTL="rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv test/smoke/credit_smoke.sv"
+TB="test/smoke/tb_credit.sv"
 # TIMESCALEMOD: the testbench declares a timescale and the design does not,
 # which is correct -- §9 keeps delays out of design RTL - and benign.
 VFLAGS="-Wno-fatal -Wno-TIMESCALEMOD -Irtl/include -Irtl/generated"
@@ -42,7 +42,7 @@ if command -v verilator >/dev/null 2>&1; then
     fi
 
     # Emission from the checker (convention §5, F-13).
-    n=$(cd "$TMP" && ls -l issue_if.ccvtrace 2>/dev/null | awk '{print $5}')
+    n=$(cd "$TMP" && ls -l credit.ccvtrace 2>/dev/null | awk '{print $5}')
     if [ -n "${n:-}" ] && [ "$n" -gt 40 ]; then
       say "verilator: checker emits events via DPI-C" "PASS"
     else
@@ -54,9 +54,9 @@ if command -v verilator >/dev/null 2>&1; then
     # "check the protocol but do not pay for the trace", which is what a
     # bring-up run wants.
     on=$(cd "$TMP" && ./vo/Vtb 2>&1 | grep -c "TRACE_EVENTS" || true)
-    rm -f "$TMP/issue_if.ccvtrace"
+    rm -f "$TMP/credit.ccvtrace"
     (cd "$TMP" && ./vo/Vtb +ccv_trace_off=1 >/dev/null 2>&1)
-    n2=$(cd "$TMP" && ls -l issue_if.ccvtrace 2>/dev/null | awk '{print $5}')
+    n2=$(cd "$TMP" && ls -l credit.ccvtrace 2>/dev/null | awk '{print $5}')
     if [ "${n2:-0}" -le 40 ]; then
       say "verilator: +ccv_trace_off silences emission only" "PASS"
     else
@@ -97,8 +97,8 @@ fi
 # checker, not only as spike cases 34/35.
 if command -v sby >/dev/null 2>&1 && command -v yosys >/dev/null 2>&1; then
   mkdir -p "$TMP/f"
-  cp rtl/ccv_assert_pkg.sv rtl/if/issue_if_checker.sv \
-     test/smoke/issue_if_smoke.sv "$TMP/f/"
+  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
+     test/smoke/credit_smoke.sv "$TMP/f/"
   cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$TMP/f/"
   cat > "$TMP/f/c.sby" <<SBY
 [options]
@@ -110,14 +110,14 @@ smtbmc cvc5
 
 [script]
 read_verilog -sv -formal -I. ccv_assert_pkg.sv
-read_verilog -sv -formal -I. issue_if_checker.sv
-read_verilog -sv -formal -I. issue_if_smoke.sv
-prep -top issue_producer
+read_verilog -sv -formal -I. ccv_credit_checker.sv
+read_verilog -sv -formal -I. credit_smoke.sv
+prep -top credit_smoke
 
 [files]
 ccv_assert_pkg.sv
-issue_if_checker.sv
-issue_if_smoke.sv
+ccv_credit_checker.sv
+credit_smoke.sv
 ccv_assert.svh
 ccv_if.svh
 ccv_trace.svh

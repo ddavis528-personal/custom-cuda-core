@@ -1,79 +1,178 @@
 {
   "_comment": [
-    "Structural parameters, single source of truth. tools/gen-params.py",
-    "generates BOTH sim/generated/ccv_params.h and",
-    "rtl/generated/ccv_params_pkg.sv from this file.",
+    "Structural parameters, single source of truth. tools/gen-params.py generates",
+    "both sim/generated/ccv_params.h and rtl/generated/ccv_params_pkg.sv.",
     "",
-    "§9 calls this a MECHANISM decision rather than a convention, and is",
-    "specific about why: ROB depth exists as a swept knob in the timing model",
-    "(Stage 4b) and as an RTL parameter, nothing otherwise prevents them from",
-    "drifting, and drift means a correlation run silently comparing two",
-    "differently-sized machines -- a failure that looks like a timing bug.",
+    "\u00a79 calls this a MECHANISM decision: a value exists as a swept knob in the",
+    "timing model and as an RTL parameter, and drift between them means a",
+    "correlation run silently comparing two differently-sized machines.",
     "",
-    "WHAT IS DECIDED HERE: nothing about sizing. §1 asks for everything to be",
-    "structurally parameterized as config knobs so that design-space",
-    "exploration happens before any of it becomes area/timing commitment, and",
-    "§2 puts the sizing decisions at Stage 4a with the exploration at 4b. The",
-    "values below are placeholders that make the mechanism exercisable.",
+    "STATUS is as important as the value:",
+    "  isa       follows from the locked ISA -- NOT ours to sweep, the compiler",
+    "            is already built against it",
+    "  arch      decided at the block-level grill-me (2026-09-23)",
+    "  tunable   decided provisionally; expected to move once the timing model",
+    "            produces event traces. Sweeping these is the point.",
+    "  target    a physical target, not a structure size",
     "",
-    "The `status` field is the point of this file as much as the values are.",
-    "`isa` means it follows from the locked ISA and is not ours to sweep;",
-    "`provisional` means a placeholder awaiting the stage named in `decided_at`.",
-    "Mixing the two silently is how a sweep ends up varying something the",
-    "compiler already depends on."
+    "Sizing parameters internal to a block (ROB depth, IQ entries, PRF rows)",
+    "are NOT here yet: \u00a78 puts them at Stage 4a, per block, and putting a",
+    "placeholder here would invite sweeping a number nobody has decided."
   ],
-
   "params": [
-    { "name": "CCV_WARP_LANES", "value": 32, "status": "isa",
-      "source": "ISA v1.6 §1 -- warp width, settled",
-      "doc": "Lanes per warp. A logical GPR holds 32 lanes, one element each, at every chwidth." },
-
-    { "name": "CCV_GPRS", "value": 16, "status": "isa",
-      "source": "ISA v1.6 §1, O-25 -- settled, and not by the spill data",
-      "doc": "Logical GPRs. Widening to 32 is a reset of the encoding, not a parameter change: Format J overruns 16 bits and Format A-double-prime falls to a 1-bit opcode." },
-
-    { "name": "CCV_PREDS", "value": 4, "status": "isa_provisional",
-      "source": "ISA v1.6 §1 -- provisional pending compiler data; measured pressure is 1-2 of 4",
-      "doc": "Logical predicates. A performance parameter, not a structural ceiling, since O-19 made the file spillable." },
-
-    { "name": "CCV_BARRIER_ENTRIES", "value": 64, "status": "isa",
-      "source": "ISA v1.6 §3, Format E -- 6-bit barrier ID",
-      "doc": "Barrier table entries. The table is a §7 formal target." },
-
-    { "name": "CCV_ADDR_BITS", "value": 48, "status": "isa",
-      "source": "ISA v1.6 §1 -- address width, settled",
-      "doc": "Global address width." },
-
-    { "name": "CCV_DATAPATH_BITS", "value": 1024, "status": "isa",
-      "source": "ISA v1.6 §1 -- 32 lanes x 32 bits",
-      "doc": "Physical datapath width. Kept full by coalescing independent 32-lane instructions, never by widening one." },
-
-    { "name": "CCV_ROB_ENTRIES", "value": 64, "status": "provisional",
-      "decided_at": "Stage 4a (sizing), swept at 4b",
-      "doc": "PLACEHOLDER. Reorder buffer depth." },
-
-    { "name": "CCV_IQ_ENTRIES", "value": 32, "status": "provisional",
-      "decided_at": "Stage 4a (sizing), swept at 4b",
-      "doc": "PLACEHOLDER. Issue queue entries. §2 flags this as directly constrained by the wakeup/select timing budget: at 25 NGD the entry count and the simultaneous result-bus broadcast width are what must fit one pass." },
-
-    { "name": "CCV_PRF_ROWS", "value": 128, "status": "provisional",
-      "decided_at": "Stage 4a (sizing), swept at 4b",
-      "doc": "PLACEHOLDER. Physical register file rows, each CCV_DATAPATH_BITS wide. Sub-row slices are the buddy/slab allocator's business (backend-context.md §5.4), not a separate parameter." },
-
-    { "name": "CCV_TIER1_WARPS", "value": 4, "status": "provisional",
-      "decided_at": "Stage 4a (sizing), swept at 4b",
-      "doc": "PLACEHOLDER. Resident warps in the active SMT tier." },
-
-    { "name": "CCV_TIER2_WARPS", "value": 8, "status": "provisional",
-      "decided_at": "Stage 4a (sizing), swept at 4b",
-      "doc": "PLACEHOLDER. Resident warps in the backing SMT tier." },
-
-    { "name": "CCV_ISSUE_WIDTH", "value": 2, "status": "provisional",
-      "decided_at": "Stage 4a (sizing), swept at 4b",
-      "doc": "PLACEHOLDER. Instructions issued per cycle." },
-
-    { "name": "CCV_NGD_BUDGET", "value": 25, "status": "target",
-      "source": "§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
-      "doc": "Normalized gate delay available in one cycle. Per-block budgets are recorded against this at Stage 2 and 4a. OPEN (§2): whether 25 is the Vmin-corner number or a nominal one -- at 0.55 V variation and the wire/gate delay ratio both worsen, so headroom at nominal does not translate linearly." }
+    {
+      "name": "CCV_WARP_LANES",
+      "value": 32,
+      "status": "isa",
+      "source": "ISA v1.6 \u00a71 -- warp width, settled",
+      "doc": "Lanes per warp. A logical GPR holds 32 lanes, one element each, at every chwidth."
+    },
+    {
+      "name": "CCV_GPRS",
+      "value": 16,
+      "status": "isa",
+      "source": "ISA v1.6 \u00a71, O-25",
+      "doc": "Architectural GPRs. 16 x 1024 bit = 2 KB per warp."
+    },
+    {
+      "name": "CCV_PREDS",
+      "value": 4,
+      "status": "isa_provisional",
+      "source": "ISA v1.6 \u00a71 -- provisional pending compiler data; measured pressure 1-2 of 4",
+      "doc": "Logical predicates. A performance parameter, not a structural ceiling."
+    },
+    {
+      "name": "CCV_ADDR_BITS",
+      "value": 48,
+      "status": "isa",
+      "source": "ISA v1.6 \u00a71",
+      "doc": "Global address width."
+    },
+    {
+      "name": "CCV_DATAPATH_BITS",
+      "value": 1024,
+      "status": "isa",
+      "source": "ISA v1.6 \u00a71 -- 32 lanes x 32 bits",
+      "doc": "Physical datapath width."
+    },
+    {
+      "name": "CCV_TIER1_WARPS",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Tier-1 resident warps, SMT-4 equivalent. Four slots covering a DRAM latency near 1000 cycles requires that demotion happen only on TRUE misses -- demoting on short stalls would need roughly 84 warps to keep 4 slots busy."
+    },
+    {
+      "name": "CCV_PARKED_WARPS",
+      "value": 28,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Warps parked in PCA. 32 total contexts."
+    },
+    {
+      "name": "CCV_FETCH_PER_WARP",
+      "value": 2,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Instructions fetched per warp per cycle, all 4 tier-1 warps in parallel."
+    },
+    {
+      "name": "CCV_DECODE_WIDTH",
+      "value": 6,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep",
+      "doc": "Decode output per cycle. Sized for burst absorption ahead of OOE; expected to move once the timing model produces event traces."
+    },
+    {
+      "name": "CCV_ISSUE_WIDTH",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Rename and issue width. The binding width of the machine."
+    },
+    {
+      "name": "CCV_ROB_INSTANCES",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "One ROB per tier-1 warp."
+    },
+    {
+      "name": "CCV_RETIRE_PER_ROB",
+      "value": 2,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Retire per ROB per cycle. 8 peak against 4-wide issue."
+    },
+    {
+      "name": "CCV_AGU_PIPES",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Address generation pipes in MIU, sized for 8-bit coalescing."
+    },
+    {
+      "name": "CCV_TLB_XLAT_PER_CYCLE",
+      "value": 4,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "TLB translations per cycle on the hit path, no page split."
+    },
+    {
+      "name": "CCV_DCACHE_LOOKUPS",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep",
+      "doc": "D-cache lookups per cycle."
+    },
+    {
+      "name": "CCV_SPM_BYTES",
+      "value": 131072,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Scratchpad capacity, 128 KB."
+    },
+    {
+      "name": "CCV_SPM_BANKS",
+      "value": 32,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Scratchpad banks, 32 x 32 bits. Bank conflicts are a first-order GEMM effect, which is why the scratchpad is a design block rather than testbench."
+    },
+    {
+      "name": "CCV_BARRIER_ENTRIES",
+      "value": 64,
+      "status": "isa",
+      "source": "ISA v1.6 \u00a73, Format E -- 6-bit barrier ID",
+      "doc": "Barrier table entries, 4 x 16, epoch-tagged. A \u00a77 formal target."
+    },
+    {
+      "name": "CCV_CORE_ID_BITS",
+      "value": 2,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Up to 4 cores per MLC. Present from day one rather than added when a second core appears, because adding a struct field later regenerates every typedef, header, harness and checker at that boundary."
+    },
+    {
+      "name": "CCV_DEMOTION_THRESHOLD",
+      "value": 50,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep",
+      "doc": "Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop."
+    },
+    {
+      "name": "CCV_MIGRATION_CYCLES",
+      "value": 16,
+      "status": "arch",
+      "source": "grill-me 2026-09-23",
+      "doc": "Migration transfer, 2 KB at 1024 bits, each way. At one swap per ~125 cycles this uses the single migration path at about 25 percent."
+    },
+    {
+      "name": "CCV_NGD_BUDGET",
+      "value": 25,
+      "status": "target",
+      "source": "\u00a72 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
+      "doc": "Normalized gate delay in one cycle. OPEN (\u00a72): whether 25 is the Vmin-corner number or a nominal one. Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
+    }
   ]
 }

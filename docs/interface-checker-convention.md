@@ -80,7 +80,7 @@ module issue_queue (
 **Every interface typedef has exactly one associated checker module.** No typedef may exist without one; lint enforces this.
 
 ```systemverilog
-module issue_if_checker #(
+module ccv_credit_checker #(
   parameter mode_e MODE = ASSERT
 ) (
   input logic   clk,
@@ -105,6 +105,15 @@ The same checker serves opposite roles depending on where it is instantiated. Th
 
 The mode resolution lives in the Stage 1b primitive library, not in each checker — so the `assert`/`assume`/`cover` role split is implemented once and every checker inherits it.
 
+> **SUPERSEDED BY THE CLOSED PARTITION (2026-09-23).** The sketch above is
+> per-interface-type. The block-level grill-me made every one of the 40
+> boundaries obey identical conventions -- credited, registered both sides,
+> valid one cycle ahead -- so the protocol properties are the same everywhere
+> and only widths differ. There is therefore **one** checker,
+> `rtl/if/ccv_credit_checker.sv`, parameterised by payload width and round
+> trip, not one per type. Everything below about modes, satisfiability covers
+> and emission holds unchanged; it simply applies to one module.
+>
 > **ANSWERED (spike Q2, finding F-11) — confirmed, and the mechanism is a `generate`.**
 > The `assert`/`assume`/`cover` keyword cannot be selected by a parameter
 > directly; a `generate` picks the branch at elaboration. That works in all

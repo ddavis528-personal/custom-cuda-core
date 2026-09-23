@@ -51,11 +51,17 @@
 //
 // So each design file names its own, once, and clears them at the end:
 //
-//     `define CCV_CLK sched_core_clk
-//     `define CCV_RST sched_rst_r06h
+//     `define CCV_CLK clk          // the block's gated clock port
+//     `define CCV_RST !rst_n        // CCV_RST is the IN-RESET condition
 //       ... module body, with `CCV_ASSERT(...) as usual ...
 //     `undef CCV_CLK
 //     `undef CCV_RST
+//
+// `CCV_RST is the condition that means "currently in reset", not the reset
+// net. The block-level grill-me made reset ACTIVE LOW (`rst_n`), so it is
+// spelled `!rst_n` at the define and no macro changes -- the expansion
+// `if (!(!rst_n) && ...)` reduces to "assertions live when not in reset",
+// which is what every branch already meant.
 //
 // The inner macros expand at USE time rather than at definition time, so each
 // file genuinely gets its own clock -- verified in all three tools, and the
@@ -162,10 +168,10 @@
 // whatever one run happened to produce.
 //===----------------------------------------------------------------------===//
 `define CCV_ASSERT_KNOWN(NAME, SIG) \
-  `CCV_CONTRACT_AT(clk, rst, assert, NAME, !$isunknown(SIG))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, !$isunknown(SIG))
 
 `define CCV_ASSERT_KNOWN_IF(NAME, VALID, SIG) \
-  `CCV_CONTRACT_AT(clk, rst, assert, NAME, !(VALID) || !$isunknown(SIG))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, !(VALID) || !$isunknown(SIG))
 
 // The `assume` half, and it is not optional under formal.
 //
@@ -179,7 +185,7 @@
 //
 // Every block's formal run should carry one of these per control input.
 `define CCV_ASSUME_KNOWN(NAME, SIG) \
-  `CCV_CONTRACT_AT(clk, rst, assume, NAME, !$isunknown(SIG))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assume, NAME, !$isunknown(SIG))
 
 //===----------------------------------------------------------------------===//
 // §6's un-reset-payload invariant:
@@ -205,7 +211,7 @@
 // property: it is what the invariant actually says.
 //===----------------------------------------------------------------------===//
 `define CCV_ASSERT_READ_VALID(NAME, READ_EN, VALID_BIT) \
-  `CCV_CONTRACT_AT(clk, rst, assert, NAME, !(READ_EN) || (VALID_BIT))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, !(READ_EN) || (VALID_BIT))
 
 //===----------------------------------------------------------------------===//
 // Tier 1b -- bounded temporal properties, built from explicit tracking state.
@@ -336,8 +342,8 @@
   `define CCV_ASSUME_T(NAME, EXPR)
   `define CCV_PAST(SIG) (SIG)
 `else
-  `define CCV_ASSERT_T(NAME, EXPR) `CCV_CONTRACT_AT(clk, rst, assert, NAME, EXPR)
-  `define CCV_ASSUME_T(NAME, EXPR) `CCV_CONTRACT_AT(clk, rst, assume, NAME, EXPR)
+  `define CCV_ASSERT_T(NAME, EXPR) `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, EXPR)
+  `define CCV_ASSUME_T(NAME, EXPR) `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assume, NAME, EXPR)
   `define CCV_PAST(SIG) $past(SIG)
 `endif
 

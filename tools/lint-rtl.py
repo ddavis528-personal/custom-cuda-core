@@ -181,6 +181,15 @@ def stage_of(name):
     return m.group(1), m.group(2), int(m.group(3)), m.group(4)
 
 
+# The common ports every block declares, generated rather than hand-written.
+# They are deliberately UNIFORM across blocks -- which is the same argument
+# that made the original CCV-L02 want one name everywhere: a swap harness that
+# must look up a different clock name per block is not mechanical. The naming
+# convention governs the NET AT THE PARENT that drives these (`ooe_core_clk`),
+# not the formal here.
+COMMON_CLK_PORTS = {"clk", "clk_free"}
+
+
 def clk_domain(name):
     """The domain segment of a clock net -- the segment immediately before
     `_clk`. `sched_core_clk` -> 'core'; `core_clk` -> 'core'; `test_clk` ->
@@ -653,7 +662,10 @@ def check_file(path, rel):
                 continue
             cname, edge = clk
             base = cname.split(".")[-1]
-            dom = clk_domain(base)
+            if base in COMMON_CLK_PORTS:
+                dom = "core"          # a common port, by definition core-domain
+            else:
+                dom = clk_domain(base)
             if dom is None:
                 add("CCV-L20", ln,
                     "%r drives a clock edge but is not named as a clock. A "
@@ -667,17 +679,22 @@ def check_file(path, rel):
                     "params/blocks.json. An unregistered domain is either a "
                     "typo or a new clock nobody declared" % (base, dom))
 
-            # -- CCV-L22: blocks run on their own gated clock ---------------
-            # Each block gates core_clk on entry. Using the ungated clock
-            # inside a block silently defeats that gating, and nothing in
-            # simulation shows it -- the design works, it just never saves
-            # any power.
-            if base == "core_clk" and blk_name:
-                add("CCV-L22", ln,
-                    "block %r clocks logic on the ungated `core_clk`. Use the "
-                    "block's uniquified `<block>_core_clk`; the ungated clock "
-                    "defeats the block's global gate, and simulation cannot "
-                    "show it" % blk_name)
+            # -- CCV-L22: blocks run on their gated clock -------------------
+            # A block receives its clock twice: `clk`, already gated, and
+            # `clk_free`, ungated and present ONLY so the wake detector can
+            # watch for traffic while the block sleeps. Clocking anything else
+            # on `clk_free` silently defeats the block's gate: the design
+            # works, produces identical results, and never saves the power.
+            # Nothing in simulation shows it.
+            if base in ("clk_free", "core_clk") and blk_name:
+                body_names = set(re.findall(r"[a-z]\w*", body))
+                if not any("wake" in n or "detect" in n for n in body_names):
+                    add("CCV-L22", ln,
+                        "block %r clocks logic on %r, which is the UNGATED "
+                        "clock. Only the wake detector may use it; everything "
+                        "else runs on `clk`, or the block's gate is defeated "
+                        "with nothing in simulation to show it"
+                        % (blk_name, base))
 
         # A clock net may feed an edge expression, a port map, or ANOTHER
         # CLOCK NET -- that last one is the block's gate, which is the whole

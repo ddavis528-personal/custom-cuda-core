@@ -147,6 +147,16 @@
 // NUMBER", pointing nowhere near the macro. Cost one build during the 1d work.
 `define CCV_CHECKER(TYPE, INST, M) TYPE #(.MODE(M)) INST
 
+// A checker needing OTHER parameters -- width, round trip, depth, timeout --
+// is instantiated directly, because SystemVerilog allows exactly one
+// parameter list and the macro above has already opened it. Pass the mode
+// yourself; that is the part that matters, and the side macros still supply
+// it:
+//
+//     ccv_credit_checker #(
+//       .MODE(`CCV_IF_MODE_OUT), .PAYLOAD_W(64), .ROUND_TRIP(2)
+//     ) u_chk ( ... );
+
 //===----------------------------------------------------------------------===//
 // Event emission from a checker (convention §5).
 //

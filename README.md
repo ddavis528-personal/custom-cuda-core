@@ -64,7 +64,7 @@ rtl/include/                ccv_assert.svh   assertion primitives (1b)
                             ccv_if.svh       interface checker convention
                             ccv_xprop.svh    X-determinism constructions
                             ccv_trace.svh    RTL-side event emit (1c)
-rtl/if/                     reference interface checker
+rtl/if/                     the one parameterised credit checker
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
 rtl/generated/              generated; never edited
 

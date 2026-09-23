@@ -8,8 +8,8 @@ and what is carried.
 
 ## Part 0 — picking this up again
 
-**State: Stage 1 complete and gated. Stage 2 not started, and it is not this
-repository's to start.**
+**State: Stage 1 complete and gated. Stage 2 under way — the block-level
+grill-me closed the partition on 2026-09-23, and its topology is encoded.**
 
 ```
     ./tools/setup-toolchain.sh   # containers are ephemeral; this restores one
@@ -46,15 +46,16 @@ is in place than the stage numbering suggests. Each interface becomes:
 
 - an entry in `schema/interfaces.json`, which generates the typedef into both
   languages;
-- a checker at `rtl/if/<name>_if_checker.sv`, following
-  `rtl/if/issue_if_checker.sv`, which carries the protocol properties, the
-  satisfiability covers and the load-bearing event emission together;
-- a `` `CCV_CHECKER `` instantiation at each boundary that uses it;
-- a **block letter** in `params/blocks.json`, which the net-naming stage tag
-  is checked against.
+- an instantiation of `rtl/if/ccv_credit_checker.sv` at each end, parameterised
+  by payload width and the interface's round trip.
 
-CCV-L12 then fails if a typedef has no checker or a control field goes
-unreferenced, so the interface list and the checkers cannot drift apart.
+**The checker is one implementation, not one per interface.** Every boundary
+obeys the same conventions — credited, registered both sides, valid one cycle
+ahead — so the protocol properties are identical and only the widths differ.
+Since no multi-cycle SVA exists (F-2), each of those properties is an explicit
+tracking register, which makes a single shared implementation worth far more
+than it would be if they were declarative: written once, reviewed once, wrong
+in one place at most.
 
 ### What a new design file has to carry
 
@@ -93,7 +94,7 @@ endmodule
 A **reusable** module — a checker or a primitive, instantiated inside many
 blocks — declares `// Reusable: <why>` instead of `// Block:`, takes
 `clk`/`rst` as generic formals, and is exempt from the clock-naming and stage
-rules. `rtl/if/issue_if_checker.sv` is the worked example.
+rules. `rtl/if/ccv_credit_checker.sv` is the worked example.
 
 Run `tools/lint-rtl.py <file>` while writing; it is fast and the messages
 name the rule, which the style guide then explains.
@@ -146,6 +147,29 @@ looks exactly like one that passes.
 - `params/ccv_params.json` + `tools/gen-params.py`
 - `tools/check-1d.sh`
 
+### Stage 2 — partition closed, topology encoded ✅
+
+The block-level grill-me (2026-09-23) closed the partition: **14 block types,
+45 instances, 40 channels**. Encoded and machine-checked:
+
+- `params/blocks.json` — the 14 block letters, 8 spare. **Closes A-2**: the
+  single-letter stage tag holds and does not need widening.
+- `schema/interfaces.json` — all 40 channels, the 11 common ports, and the
+  four-signal channel shape. Per-block port lists are **derived** from the
+  channel list rather than stated, since the source spec kept both and they
+  disagreed.
+- `params/ccv_params.json` — 22 machine parameters, each tagged `isa`, `arch`
+  or `tunable`, so a sweep cannot silently vary something the compiler is
+  built against.
+- `rtl/if/ccv_credit_checker.sv` — the one parameterised checker.
+- `EV_CH_XFER` — the load-bearing event content §8 said would fall out of the
+  interface grill-me. The 40-channel list **is** the load-bearing event list.
+
+**Still Stage 2's, not done here:** per-channel payload field widths, which
+mostly firm up in the per-block session that owns the interface, and the
+per-interface round trip from which credit depth, rescue depth, timeout N and
+drain wait all derive.
+
 ### Interface checker convention ✅ (mechanism)
 
 `docs/interface-checker-convention.md`, scheduled as part of Stage 1d. All
@@ -156,9 +180,8 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
   information (F-12)
 - `rtl/include/ccv_if.svh` — modes, mode-resolved contracts, satisfiability
   covers, guarded emission
-- `rtl/if/issue_if_checker.sv` — the reference checker. `issue_t` is the
-  convention doc's own worked example, **not a proposed interface**; the real
-  list follows from the Stage 2 partition.
+- `rtl/if/ccv_credit_checker.sv` — the one parameterised checker, now driven
+  by the real 40-channel topology rather than a worked example.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
 

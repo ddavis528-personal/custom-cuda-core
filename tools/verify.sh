@@ -114,7 +114,7 @@ section "Verilator lint"
 # width mismatches, inferred latches, unused and undriven signals.
 if command -v verilator >/dev/null 2>&1; then
   vfail=0
-  for f in test/smoke/ccv_assert_smoke.sv rtl/if/issue_if_checker.sv; do
+  for f in test/smoke/ccv_assert_smoke.sv rtl/if/ccv_credit_checker.sv; do
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut
     if ! verilator --lint-only --assert -Wall -Wno-DECLFILENAME \
@@ -134,12 +134,14 @@ section "pending stages"
 # Listed rather than omitted. A gate that appears to cover the whole flow
 # while covering only part of it is worse than one that says what it does not.
 cat <<'PENDING'
-  Stage 2  interface contracts, load-bearing event list, interface assertions,
-           per-block NGD budgets                    -- not started
+  Stage 2  partition CLOSED (14 blocks, 45 instances, 40 channels); topology,
+           block letters, machine parameters and the credit checker encoded.
+           Remaining: per-channel payload widths and the per-interface round
+           trip, both per-block-session work; per-interface NGD budgets
   Stage 3  vadd end-to-end through the skeleton, state identical to ccv-sim,
            event stream loads in Perfetto, zero interface assertion violations
-                                                    -- blocked on Stage 2
-  Stage 4+ per-block cycle                          -- blocked on Stage 2
+                                                    -- next
+  Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 
 section "result"

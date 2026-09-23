@@ -30,6 +30,8 @@ BANNER = """// GENERATED FILE -- DO NOT EDIT.
 STATUS_NOTE = {
     "isa": "settled by the ISA -- not a knob",
     "isa_provisional": "ISA-level, still provisional",
+    "arch": "decided at the block-level grill-me",
+    "tunable": "provisional -- expected to move once the timing model runs",
     "provisional": "PLACEHOLDER -- sized at Stage 4a, swept at 4b",
     "target": "physical target, not a structure size",
 }
@@ -102,7 +104,7 @@ def main():
         if p["status"] not in STATUS_NOTE:
             sys.stderr.write("%s: unknown status %r\n" % (p["name"], p["status"]))
             return 1
-        if p["status"] == "provisional" and not p.get("decided_at"):
+        if p["status"] in ("provisional", "tunable") and not p.get("decided_at"):
             sys.stderr.write("%s: provisional parameters must say which stage "
                              "decides them\n" % p["name"])
             return 1

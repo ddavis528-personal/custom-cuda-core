@@ -16,23 +16,23 @@
 module good_gated_enable (
   input  logic       core_clk,
   input  logic       ref_rst_r00h,
-  input  logic       ld_en_cx00h,
-  input  logic [7:0] in_data_cx00h,
-  output logic [7:0] out_q_cx01h
+  input  logic       ld_en_cy00h,
+  input  logic [7:0] in_data_cy00h,
+  output logic [7:0] out_q_cy01h
 );
   logic ref_core_clk;
-  logic blk_en_cx00h;
-  assign blk_en_cx00h = 1'b1;
-  assign ref_core_clk = core_clk & blk_en_cx00h;
+  logic blk_en_cy00h;
+  assign blk_en_cy00h = 1'b1;
+  assign ref_core_clk = core_clk & blk_en_cy00h;
 
   // The enable is prohibited from being X, so the `if` form is safe -- and
   // with a real ICG it matters MORE than for a feedback mux: an unknown
   // enable gives an unknown CLOCK, not merely a held value.
-  `CCV_ASSERT_KNOWN(ld_en_known, ld_en_cx00h)
+  `CCV_ASSERT_KNOWN(ld_en_known, ld_en_cy00h)
 
   always_ff @(posedge ref_core_clk) begin
-    if (ref_rst_r00h)   out_q_cx01h <= '0;
-    else if (ld_en_cx00h) out_q_cx01h <= in_data_cx00h;
+    if (ref_rst_r00h)   out_q_cy01h <= '0;
+    else if (ld_en_cy00h) out_q_cy01h <= in_data_cy00h;
   end
 endmodule
 `undef CCV_CLK

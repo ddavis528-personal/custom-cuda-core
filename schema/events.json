@@ -1,27 +1,27 @@
 {
   "_comment": [
-    "CCV event schema -- the single source of truth for §1's per-instruction",
+    "CCV event schema -- the single source of truth for \u00a71's per-instruction",
     "event stream. tools/gen-event-schema.py generates the C++ header and the",
-    "SystemVerilog header from THIS FILE; neither is edited by hand, and §9's",
+    "SystemVerilog header from THIS FILE; neither is edited by hand, and \u00a79's",
     "requirement that names be mechanically consistent across the two languages",
     "is satisfied by construction rather than by discipline.",
     "",
-    "WHAT IS AND IS NOT DECIDED HERE. §8 is explicit that the taxonomy is a",
+    "WHAT IS AND IS NOT DECIDED HERE. \u00a78 is explicit that the taxonomy is a",
     "MECHANISM (Stage 1c) plus CONTENT that populates later, from two different",
     "places: load-bearing events fall out of the Stage 2 interface grill-me,",
     "arbitration-sensitive events per block at Stage 4a. So the events below are",
-    "a seed set, drawn only from the examples §1 itself names, and every one is",
+    "a seed set, drawn only from the examples \u00a71 itself names, and every one is",
     "marked provisional. Closing the list is Stage 2's job and Stage 4a's, not",
     "this file's.",
     "",
     "The two CLASSES, by contrast, are decided, and the split is the point.",
-    "§1: load-bearing events must match exactly and any divergence is a bug;",
+    "\u00a71: load-bearing events must match exactly and any divergence is a bug;",
     "arbitration-sensitive events are only comparable if the timing model's",
-    "arbiter is faithful to RTL's down to tie-break rules."
+    "arbiter is faithful to RTL's down to tie-break rules.",
+    "",
+    "LOAD-BEARING CONTENT IS NOW POPULATED, at Stage 2 as \u00a78 said it would be: EV_CH_XFER plus the 40-channel list in schema/interfaces.json. The per-instruction events above remain as the finer-grained view; a channel transfer is the interface-defined one."
   ],
-
   "schema_version": 1,
-
   "classes": {
     "load_bearing": {
       "description": "Architectural-state-affecting, or an interface transaction. Must match exactly between timing model and RTL; any divergence is a bug.",
@@ -34,19 +34,17 @@
       "populated_at": "Stage 4a, per block -- internals-defined"
     }
   },
-
   "units": {
-    "_comment": "Track identifiers. One track per structure in the Perfetto view. Provisional: the real list follows from the Stage 2 partition, which §2 is explicit has not been decided. These are §2's own illustrative names, carried only so the mechanism has something to exercise.",
-    "UNIT_UNKNOWN":   0,
+    "_comment": "Track identifiers. One track per structure in the Perfetto view. Provisional: the real list follows from the Stage 2 partition, which \u00a72 is explicit has not been decided. These are \u00a72's own illustrative names, carried only so the mechanism has something to exercise.",
+    "UNIT_UNKNOWN": 0,
     "UNIT_TESTBENCH": 1,
-    "UNIT_FRONTEND":  2,
+    "UNIT_FRONTEND": 2,
     "UNIT_SCHEDULER": 3,
-    "UNIT_REGFILE":   4,
-    "UNIT_AGU":       5,
-    "UNIT_BARRIER":   6,
-    "UNIT_MEMORY":    7
+    "UNIT_REGFILE": 4,
+    "UNIT_AGU": 5,
+    "UNIT_BARRIER": 6,
+    "UNIT_MEMORY": 7
   },
-
   "events": [
     {
       "name": "EV_DECODE",
@@ -54,7 +52,11 @@
       "class": "load_bearing",
       "provisional": true,
       "doc": "An instruction is decoded. First event of an instruction's life; establishes its uid for every later event.",
-      "fields": { "a": "pc_lo", "b": "pc_hi", "c": "opcode" }
+      "fields": {
+        "a": "pc_lo",
+        "b": "pc_hi",
+        "c": "opcode"
+      }
     },
     {
       "name": "EV_DISPATCH",
@@ -62,23 +64,35 @@
       "class": "load_bearing",
       "provisional": true,
       "doc": "Instruction leaves the front end for the back end.",
-      "fields": { "a": "warp_id", "b": "rob_slot", "c": "unused" }
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_slot",
+        "c": "unused"
+      }
     },
     {
       "name": "EV_ISSUE",
       "id": 3,
       "class": "arbitration_sensitive",
       "provisional": true,
-      "doc": "Instruction is selected by the arbiter and issues. §1 names issue cycle as the canonical arbitration-sensitive event: an oldest-ready model and a priority-encoder tie-break diverge on every tie, permanently, and it looks exactly like a bug.",
-      "fields": { "a": "warp_id", "b": "issue_port", "c": "iq_slot" }
+      "doc": "Instruction is selected by the arbiter and issues. \u00a71 names issue cycle as the canonical arbitration-sensitive event: an oldest-ready model and a priority-encoder tie-break diverge on every tie, permanently, and it looks exactly like a bug.",
+      "fields": {
+        "a": "warp_id",
+        "b": "issue_port",
+        "c": "iq_slot"
+      }
     },
     {
       "name": "EV_WAKEUP",
       "id": 4,
       "class": "arbitration_sensitive",
       "provisional": true,
-      "doc": "An operand became ready. Paired with EV_ISSUE it gives §1's wakeup-to-issue latency.",
-      "fields": { "a": "warp_id", "b": "iq_slot", "c": "src_idx" }
+      "doc": "An operand became ready. Paired with EV_ISSUE it gives \u00a71's wakeup-to-issue latency.",
+      "fields": {
+        "a": "warp_id",
+        "b": "iq_slot",
+        "c": "src_idx"
+      }
     },
     {
       "name": "EV_WARP_SELECT",
@@ -86,15 +100,23 @@
       "class": "arbitration_sensitive",
       "provisional": true,
       "doc": "Two-tier SMT warp-select outcome, including which warps were eligible but not chosen -- a losing candidate is what makes a tie-break diff meaningful.",
-      "fields": { "a": "warp_id", "b": "tier", "c": "eligible_mask" }
+      "fields": {
+        "a": "warp_id",
+        "b": "tier",
+        "c": "eligible_mask"
+      }
     },
     {
       "name": "EV_MEM_REQ",
       "id": 6,
       "class": "load_bearing",
       "provisional": true,
-      "doc": "Memory request leaves the core. Load-bearing despite memory being testbench-side (§2): §2 is explicit that interface assertions at that boundary matter MORE than elsewhere, being the one place the design meets a model nobody will ever validate.",
-      "fields": { "a": "addr_lo", "b": "addr_hi", "c": "req_kind" }
+      "doc": "Memory request leaves the core. Load-bearing despite memory being testbench-side (\u00a72): \u00a72 is explicit that interface assertions at that boundary matter MORE than elsewhere, being the one place the design meets a model nobody will ever validate.",
+      "fields": {
+        "a": "addr_lo",
+        "b": "addr_hi",
+        "c": "req_kind"
+      }
     },
     {
       "name": "EV_MEM_RSP",
@@ -102,7 +124,11 @@
       "class": "load_bearing",
       "provisional": true,
       "doc": "Memory response returns to the core.",
-      "fields": { "a": "addr_lo", "b": "addr_hi", "c": "rsp_kind" }
+      "fields": {
+        "a": "addr_lo",
+        "b": "addr_hi",
+        "c": "rsp_kind"
+      }
     },
     {
       "name": "EV_RETIRE",
@@ -110,15 +136,23 @@
       "class": "load_bearing",
       "provisional": true,
       "doc": "Instruction retires and commits architectural state. The event ccv-sim's functional oracle is checked against.",
-      "fields": { "a": "warp_id", "b": "rob_slot", "c": "active_mask" }
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_slot",
+        "c": "active_mask"
+      }
     },
     {
       "name": "EV_BARRIER_ARRIVE",
       "id": 9,
       "class": "load_bearing",
       "provisional": true,
-      "doc": "A warp arrives at a barrier. Arrive/wait is already a split transaction (§2), so the two halves are separate events.",
-      "fields": { "a": "warp_id", "b": "barrier_id", "c": "epoch" }
+      "doc": "A warp arrives at a barrier. Arrive/wait is already a split transaction (\u00a72), so the two halves are separate events.",
+      "fields": {
+        "a": "warp_id",
+        "b": "barrier_id",
+        "c": "epoch"
+      }
     },
     {
       "name": "EV_BARRIER_RELEASE",
@@ -126,7 +160,23 @@
       "class": "load_bearing",
       "provisional": true,
       "doc": "A barrier epoch completes and its waiters are released.",
-      "fields": { "a": "warp_id", "b": "barrier_id", "c": "epoch" }
+      "fields": {
+        "a": "warp_id",
+        "b": "barrier_id",
+        "c": "epoch"
+      }
+    },
+    {
+      "name": "EV_CH_XFER",
+      "id": 11,
+      "class": "load_bearing",
+      "provisional": false,
+      "doc": "A transaction crossed a channel boundary. THE load-bearing event: \u00a71 says decode, dispatch, retire and memory request/response ARE interface transactions, and the block-level grill-me made every one of them a credited channel. So the 40-channel list is the load-bearing event list, and one event type with the channel as a discriminator covers it -- emitted by the shared credit checker, so every boundary emits identically and no block can drift from the schema.",
+      "fields": {
+        "a": "channel_id",
+        "b": "payload_lo",
+        "c": "payload_hi"
+      }
     }
   ]
 }
