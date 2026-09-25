@@ -33,6 +33,7 @@ STATUS_NOTE = {
     "arch": "decided at the block-level grill-me",
     "tunable": "provisional -- expected to move once the timing model runs",
     "provisional": "PLACEHOLDER -- sized at Stage 4a, swept at 4b",
+    "preliminary": "PRELIMINARY -- the ENCODING is undecided, not just the size",
     "target": "physical target, not a structure size",
 }
 
@@ -42,7 +43,7 @@ def gen_cpp(d):
          "#include <cstdint>", "", "namespace ccv {", "",
          "/// Values that follow from decisions already made.", ""]
     for p in d["params"]:
-        if p["status"] in PROV:
+        if tier(p) != "settled":
             continue
         L.append("/// %s" % p["doc"])
         note = STATUS_NOTE.get(p["status"], p["status"])
@@ -61,7 +62,7 @@ def gen_cpp(d):
     L.append("namespace prov {")
     L.append("")
     for p in d["params"]:
-        if p["status"] not in PROV:
+        if tier(p) != "prov":
             continue
         L.append("/// %s" % p["doc"])
         L.append("/// PROVISIONAL -- decided by: %s"
@@ -70,6 +71,22 @@ def gen_cpp(d):
                  % (camel(p["name"].replace("CCV_P_", "")), p["value"]))
         L.append("")
     L.append("} // namespace prov")
+    L.append("")
+    L.append("/// PRELIMINARY -- the field's ENCODING is undecided, not merely")
+    L.append("/// its size. Code referencing ccv::prelim that pattern-matches on")
+    L.append("/// a value, rather than just carrying it, is code that will be")
+    L.append("/// rewritten. The churn rating on each says how much.")
+    L.append("namespace prelim {")
+    L.append("")
+    for p in d["params"]:
+        if tier(p) != "prelim":
+            continue
+        L.append("/// %s" % p["doc"])
+        L.append("/// PRELIMINARY -- churn: %s" % p.get("churn", "unrated").upper())
+        L.append("static constexpr uint32_t k%s = %d;"
+                 % (camel(p["name"].replace("CCV_L_", "")), p["value"]))
+        L.append("")
+    L.append("} // namespace prelim")
     L.append("")
     L.append("} // namespace ccv")
     L.append("#endif // CCV_PARAMS_H")
@@ -90,9 +107,31 @@ def camel(name):
     return "".join(p.capitalize() for p in parts)
 
 
-# Which package a parameter lands in. The split is what makes "provisional"
-# visible at every use site rather than in a comment nobody re-reads.
+# Which package a parameter lands in. THREE tiers, and the package name is
+# visible at every use site -- that is the whole mechanism. A reader of any
+# struct definition can tell how much trust the number deserves without
+# looking anything up.
+#
+#   ccv_params_pkg   follows from a settled decision      does not move
+#   ccv_prov_pkg     a sizing placeholder                 the NUMBER moves
+#   ccv_prelim_pkg   no decided ENCODING at all           the FIELD may move
+#
+# The third tier is what lets skeleton coding proceed without pretending the
+# encodings are known. A preliminary width says the field is real and roughly
+# this big; it says nothing about the encoding, the field count or the
+# semantics. Conflating it with `provisional` would lose exactly that
+# distinction -- "we will pick a number" versus "we do not yet know what this
+# field IS".
 PROV = {"provisional", "tunable"}
+PRELIM = {"preliminary"}
+
+
+def tier(p):
+    if p["status"] in PRELIM:
+        return "prelim"
+    if p["status"] in PROV:
+        return "prov"
+    return "settled"
 
 
 def gen_sv(d):
@@ -110,7 +149,7 @@ def gen_sv(d):
     L.append("package ccv_params_pkg;")
     L.append("")
     for p in d["params"]:
-        if p["status"] in PROV:
+        if tier(p) != "settled":
             continue
         L.append("  // %s" % p["doc"])
         note = STATUS_NOTE.get(p["status"], p["status"])
@@ -129,11 +168,33 @@ def gen_sv(d):
     L.append("package ccv_prov_pkg;")
     L.append("")
     for p in d["params"]:
-        if p["status"] not in PROV:
+        if tier(p) != "prov":
             continue
         L.append("  // %s" % p["doc"])
         L.append("  // PROVISIONAL -- decided by: %s"
                  % p.get("decided_at", "unstated"))
+        L.append("  localparam int %s = %d;" % (p["name"], p["value"]))
+        L.append("")
+    L.append("endpackage")
+    L.append("")
+    L.append("// PRELIMINARY -- a width good enough to WIRE, for a field whose")
+    L.append("// encoding is not decided at all. Referencing this package says")
+    L.append("// more than that a number will move: the field's SHAPE may move,")
+    L.append("// so code that pattern-matches on its contents is code that will")
+    L.append("// be rewritten. The churn rating on each says how much.")
+    L.append("//")
+    L.append("// This tier exists so the skeleton can be wired end to end")
+    L.append("// without anyone having to pretend the encodings are known.")
+    L.append("package ccv_prelim_pkg;")
+    L.append("")
+    for p in d["params"]:
+        if tier(p) != "prelim":
+            continue
+        L.append("  // %s" % p["doc"])
+        L.append("  // PRELIMINARY -- churn: %s%s"
+                 % (p.get("churn", "unrated").upper(),
+                    "  (the FIELD may change shape, not just this number)"
+                    if p.get("churn") == "high" else ""))
         L.append("  localparam int %s = %d;" % (p["name"], p["value"]))
         L.append("")
     L.append("endpackage")
@@ -164,6 +225,19 @@ def main():
             sys.stderr.write("%s: provisional parameters must say which stage "
                              "decides them\n" % p["name"])
             return 1
+        # The churn rating is what a skeleton author reads to decide whether
+        # it is safe to pattern-match on a field or only to carry it. An
+        # unrated preliminary parameter is the one that gets treated as
+        # settled, so it is rejected rather than defaulted.
+        if p["status"] == "preliminary":
+            if p.get("churn") not in ("low", "med", "high"):
+                sys.stderr.write("%s: preliminary parameters need churn "
+                                 "low|med|high\n" % p["name"])
+                return 1
+            if not p.get("decided_at"):
+                sys.stderr.write("%s: preliminary parameters must say who "
+                                 "decides the encoding\n" % p["name"])
+                return 1
 
     targets = [
         (os.path.join(ROOT, "sim", "generated", "ccv_params.h"), gen_cpp(d)),

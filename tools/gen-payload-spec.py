@@ -69,9 +69,28 @@ def load():
     return d, params, pv
 
 
-def pkg_of(name, params):
+TIER_MARK = {"settled": "", "prov": " ⚠️", "prelim": " ⛔"}
+
+
+def tier_of(name, params):
     st = params[name]["status"] if name in params else None
-    return "ccv_prov_pkg" if st == "provisional" else "ccv_params_pkg"
+    if st == "preliminary":
+        return "prelim"
+    if st in ("provisional", "tunable"):
+        return "prov"
+    return "settled"
+
+
+def worst_tier(expr, params):
+    t = "settled"
+    for n in NAME_RE.findall(str(expr)):
+        if n in params:
+            k = tier_of(n, params)
+            if k == "prelim":
+                return "prelim"
+            if k == "prov":
+                t = "prov"
+    return t
 
 
 def fmt_width(expr, params, pv):
@@ -84,11 +103,14 @@ def fmt_width(expr, params, pv):
         return "`%s`" % expr, str(bits), "literal"
     srcs = []
     for n in names:
-        st = params[n]["status"]
-        srcs.append("%s (%s)" % (n, st))
-    prov = any(params[n]["status"] == "provisional" for n in names)
-    tag = " ⚠️" if prov else ""
-    return "`%s`" % expr, str(bits) + tag, "; ".join(srcs)
+        x = params[n]
+        extra = ""
+        if x["status"] == "preliminary":
+            c = x.get("churn", "?")
+            extra = ", churn %s" % ("**HIGH**" if c == "high" else c)
+        srcs.append("%s (%s%s)" % (n, x["status"], extra))
+    return ("`%s`" % expr, str(bits) + TIER_MARK[worst_tier(expr, params)],
+            "; ".join(srcs))
 
 
 def channel_rows(d, params, pv):
@@ -113,6 +135,7 @@ def field_table(c, fw, params, pv):
          "|---|---|---|---|"]
     total = 0
     prov_bits = 0
+    prelim_bits = 0
     known = True
     for f in c["payload_fields"]:
         if f not in fw:
@@ -121,157 +144,165 @@ def field_table(c, fw, params, pv):
             continue
         e, b, s = fmt_width(fw[f], params, pv)
         L.append("| `%s` | %s | %s | %s |" % (f, e, b, s))
-        digits = b.rstrip(" ⚠️")
+        digits = b.rstrip(" ⚠️⛔")
         if digits.isdigit():
             total += int(digits)
-            if "⚠️" in b:
+            if "⛔" in b:
+                prelim_bits += int(digits)
+            elif "⚠️" in b:
                 prov_bits += int(digits)
         else:
             known = False
     if known:
-        note = ""
+        bits = []
+        if prelim_bits:
+            bits.append("⛔ %d preliminary" % prelim_bits)
         if prov_bits:
-            note = " ⚠️ %d of these bits are provisional" % prov_bits
+            bits.append("⚠️ %d provisional" % prov_bits)
+        note = (" " + ", ".join(bits)) if bits else ""
         L.append("| **total** | | **%d** |%s |" % (total, note))
-    return L, (total if known else None), prov_bits
+    return L, (total if known else None), (prov_bits, prelim_bits)
 
 
 def main():
     check = "--check" in sys.argv
     d, params, pv = load()
     fw = d["field_widths"]
-    openq = d.get("open_fields", {})
-    sized, partial = channel_rows(d, params, pv)
+    chans = d["channels"]
 
-    n_open_fields = len(openq)
+    # Classify each channel by the WEAKEST width it carries. A channel is only
+    # as trustworthy as its least-decided field, so taking the worst is the
+    # honest summary -- an average would let one settled field hide a
+    # preliminary one.
+    buckets = {"settled": [], "prov": [], "prelim": []}
+    for c in chans:
+        worst = "settled"
+        for f in c["payload_fields"]:
+            t = worst_tier(fw[f], params)
+            if t == "prelim":
+                worst = "prelim"
+                break
+            if t == "prov":
+                worst = "prov"
+        buckets[worst].append(c)
+
+    prelim_params = {x["name"]: x for x in params.values()
+                     if x["status"] == "preliminary"}
+
     L = [BANNER, "# Payload specification — all 40 channels", ""]
-    L.append("Every channel's payload, field by field. **%d of %d channels**"
-             % (len(sized), len(d["channels"])))
-    L.append("have every field sized and generate a packed struct today; the")
-    L.append("remaining %d have at least one field with no decided width."
-             % len(partial))
+    L.append("Every payload field has a width, so **every one of the %d"
+             % len(chans))
+    L.append("channels generates a packed struct** and the skeleton can be")
+    L.append("wired end to end. The cost is that some widths are guesses, and")
+    L.append("the job of this document is to make sure a guess can never be")
+    L.append("mistaken for a decision.")
     L.append("")
-    L.append("Two things this document is careful about:")
+    L.append("## Three tiers of trust")
     L.append("")
-    L.append("- A width that is **decided** shows where it came from, so a")
-    L.append("  reader can tell an ISA constant from an architectural choice")
-    L.append("  from a provisional placeholder. Anything marked ⚠️ resolves")
-    L.append("  through `ccv_prov_pkg` and is **not** a decision.")
-    L.append("- A width that is **not decided** is left open with the specific")
-    L.append("  question attached. No placeholder is supplied, because a")
-    L.append("  placeholder reaches a generated typedef and gets believed,")
-    L.append("  whereas an open field blocks loudly.")
+    L.append("Every width resolves through one of three packages, and the")
+    L.append("package name is visible at the use site. That is the whole")
+    L.append("mechanism: a reader of any struct definition can tell how much")
+    L.append("trust the number deserves without looking anything up.")
     L.append("")
-    L.append("Channel shape is uniform and is not repeated per channel: four")
-    L.append("signals — `_valid` and `_payload` from the producer, `_credit`")
-    L.append("and `_stall` from the consumer — with valid one cycle ahead of")
-    L.append("the payload. See `docs/interface-checker-convention.md`.")
+    L.append("| Package | Meaning | Expected to move | Mark |")
+    L.append("|---|---|---|---|")
+    L.append("| `ccv_params_pkg` | follows from a settled decision, traceable to the ISA or a partitioning choice | no | |")
+    L.append("| `ccv_prov_pkg` | a sizing placeholder awaiting a per-block session | the number | ⚠️ |")
+    L.append("| `ccv_prelim_pkg` | no decided encoding at all; the width is a first guess | possibly the **field itself** | ⛔ |")
+    L.append("")
+    L.append("`ccv_prelim_pkg` exists so skeleton coding is unblocked without")
+    L.append("pretending the encodings are known. A preliminary width says the")
+    L.append("field is real and roughly this big; it does **not** say the")
+    L.append("encoding, the field count or the semantics are settled.")
+    L.append("")
+    L.append("**Churn** rates the field, not the number. *High* means a")
+    L.append("per-block session is likely to change the field's shape, so code")
+    L.append("that pattern-matches on its contents will need rewriting; *low*")
+    L.append("means only the number moves. `docs/trust-report.md` is the")
+    L.append("build artifact listing everything that references either of the")
+    L.append("bottom two tiers.")
     L.append("")
 
     L.append("## Summary")
     L.append("")
-    L.append("| | Channels | Fields |")
+    L.append("Each channel is classified by the **weakest** width it carries,")
+    L.append("since a struct is only as settled as its least-decided field.")
+    L.append("")
+    L.append("| Weakest width on the channel | Channels | Fields |")
     L.append("|---|---|---|")
-    allf = sum(len(c["payload_fields"]) for c in d["channels"])
-    settled = [ (c, o) for c, o in sized
-                if field_table(c, fw, params, pv)[2] == 0 ]
-    provisional = [ (c, o) for c, o in sized
-                    if field_table(c, fw, params, pv)[2] > 0 ]
-    L.append("| Sized, every width decided | %d | %d |"
-             % (len(settled), sum(len(c["payload_fields"]) for c, _ in settled)))
-    L.append("| Sized, but some width provisional | %d | %d |"
-             % (len(provisional),
-                sum(len(c["payload_fields"]) for c, _ in provisional)))
-    L.append("| Has an open field | %d | %d |"
-             % (len(partial), sum(len(c["payload_fields"]) for c, _ in partial)))
-    L.append("| **Total** | **%d** | **%d** |" % (len(d["channels"]), allf))
-    L.append("")
-    L.append("Distinct field names with no decided width: **%d**." % n_open_fields)
-    L.append("")
-    L.append("**\"Sized\" is not \"decided.\"** %d of the %d channels that"
-             % (len(provisional), len(sized)))
-    L.append("generate a struct today do so through at least one provisional")
-    L.append("width, so their layout will move when that parameter is settled.")
-    L.append("Only **%d of %d** channels are decided end to end. The provisional"
-             % (len(settled), len(d["channels"])))
-    L.append("parameters those depend on:")
-    L.append("")
-    dep = {}
-    for c, _ in provisional:
-        for f in c["payload_fields"]:
-            for n in NAME_RE.findall(str(fw.get(f, ""))):
-                if n in params and params[n]["status"] == "provisional":
-                    dep.setdefault(n, set()).add(c["name"])
-    for n in sorted(dep, key=lambda k: (-len(dep[k]), k)):
-        L.append("- `%s` = %d — %s — **%d channel%s**"
-                 % (n, params[n]["value"], params[n]["doc"].rstrip("."),
-                    len(dep[n]), "" if len(dep[n]) == 1 else "s"))
+    for k, label in (("settled", "All decided"),
+                     ("prov", "⚠️ Some provisional"),
+                     ("prelim", "⛔ Some preliminary")):
+        L.append("| %s | %d | %d |"
+                 % (label, len(buckets[k]),
+                    sum(len(c["payload_fields"]) for c in buckets[k])))
+    L.append("| **Total** | **%d** | **%d** |"
+             % (len(chans), sum(len(c["payload_fields"]) for c in chans)))
     L.append("")
 
-    # -- the ask, first, because it is what the reader is here for ---------
-    L.append("---")
+    L.append("## What still has to be decided")
     L.append("")
-    L.append("## What is needed, by owner")
-    L.append("")
-    L.append("Grouped by who has to answer. A field appearing on several")
-    L.append("channels is listed once; those are the ones where two sessions")
-    L.append("deciding independently produce two incompatible encodings.")
+    L.append("Grouped by who decides. Highest churn first within each group,")
+    L.append("because those are the ones where a skeleton that reads the field")
+    L.append("— rather than merely carrying it — will need rework.")
     L.append("")
     by_owner = {}
-    for f, e in openq.items():
-        by_owner.setdefault(e.get("owner", "unassigned"), []).append(f)
+    for n, x in prelim_params.items():
+        by_owner.setdefault(x.get("decided_at", "unassigned"), []).append(n)
+    order = {"high": 0, "med": 1, "low": 2}
     for owner in sorted(by_owner):
-        fields = sorted(by_owner[owner])
         L.append("### %s" % owner)
         L.append("")
-        for f in fields:
-            e = openq[f]
-            chans = e.get("channels", [])
-            L.append("**`%s`** — %d channel%s: %s"
-                     % (f, len(chans), "" if len(chans) == 1 else "s",
-                        ", ".join("`%s`" % c for c in chans)))
+        L.append("| Parameter | Value | Churn | Basis |")
+        L.append("|---|---|---|---|")
+        for n in sorted(by_owner[owner],
+                        key=lambda k: (order.get(prelim_params[k].get("churn"), 9), k)):
+            x = prelim_params[n]
+            c = x.get("churn", "?")
+            L.append("| `%s` | %d | %s | %s |"
+                     % (n, x["value"], "**HIGH**" if c == "high" else c,
+                        x["doc"].replace("\n", " ")))
+        L.append("")
+
+    oq = d.get("open_questions", {})
+    if oq:
+        L.append("## Open questions that no width can close")
+        L.append("")
+        for k in sorted(oq):
+            e = oq[k]
+            L.append("### %s" % k.replace("_", " "))
             L.append("")
-            if e.get("flag"):
-                L.append("> ⚑ %s" % e["flag"])
-                L.append("")
+            L.append("*%s — %s*" % (e.get("kind", "?"), e.get("owner", "?")))
+            L.append("")
             L.append(e["question"])
             L.append("")
+            L.append("**Blocks:** %s" % e["blocks"])
+            L.append("")
+
     L.append("---")
     L.append("")
-
-    # -- per-channel detail ------------------------------------------------
-    L.append("## Channels with every field sized")
+    L.append("## Every channel")
     L.append("")
-    L.append("These generate a packed struct into both languages today.")
-    L.append("")
-    for c, _ in sized:
-        L.append("### `%s`" % c["name"])
+    for k, label in (("settled", "All widths decided"),
+                     ("prov", "⚠️ Carries a provisional width"),
+                     ("prelim", "⛔ Carries a preliminary width")):
+        if not buckets[k]:
+            continue
+        L.append("## %s" % label)
         L.append("")
-        L.append("%s → %s · rate %s · %s"
-                 % (c["src"], c["dst"], c.get("rate", "?"),
-                    c.get("group", "?")))
-        L.append("")
-        rows, total, prov_bits = field_table(c, fw, params, pv)
-        L.extend(rows)
-        L.append("")
-
-    L.append("## Channels with at least one open field")
-    L.append("")
-    L.append("These generate topology only — no packed struct — until every")
-    L.append("field is sized.")
-    L.append("")
-    for c, open_f in partial:
-        L.append("### `%s`" % c["name"])
-        L.append("")
-        L.append("%s → %s · rate %s · %s · **%d open**"
-                 % (c["src"], c["dst"], c.get("rate", "?"),
-                    c.get("group", "?"), len(open_f)))
-        L.append("")
-        rows, _, _ = field_table(c, fw, params, pv)
-        L.extend(rows)
-        L.append("")
-        L.append("Open: %s" % ", ".join("`%s`" % f for f in open_f))
-        L.append("")
+        for c in buckets[k]:
+            L.append("### `%s`" % c["name"])
+            L.append("")
+            if c.get("doc"):
+                L.append("%s" % c["doc"])
+                L.append("")
+            L.append("%s → %s · rate %s · %s"
+                     % (c["src"], c["dst"], c.get("rate", "?"),
+                        c.get("group", "?")))
+            L.append("")
+            rows, _, _ = field_table(c, fw, params, pv)
+            L.extend(rows)
+            L.append("")
 
     text = "\n".join(L).rstrip() + "\n"
     cur = open(OUT).read() if os.path.exists(OUT) else None
@@ -281,13 +312,15 @@ def main():
             sys.stderr.write("%s is stale\n  run tools/gen-payload-spec.py\n"
                              % rel)
             return 1
-        print("  payload spec up to date (%d sized, %d open, %d questions)"
-              % (len(sized), len(partial), n_open_fields))
+        print("  payload spec up to date (%d settled, %d prov, %d prelim)"
+              % (len(buckets["settled"]), len(buckets["prov"]),
+                 len(buckets["prelim"])))
         return 0
     with open(OUT, "w") as f:
         f.write(text)
-    print("  generated %s (%d channels sized, %d with open fields)"
-          % (rel, len(sized), len(partial)))
+    print("  generated %s (%d settled, %d prov, %d prelim channels)"
+          % (rel, len(buckets["settled"]), len(buckets["prov"]),
+             len(buckets["prelim"])))
     return 0
 
 

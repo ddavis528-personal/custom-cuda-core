@@ -417,6 +417,218 @@
       "status": "provisional",
       "doc": "Outstanding-request timeout for the memory path. Must exceed worst-case DRAM latency.",
       "decided_at": "MLC and EXB per-block sessions"
+    },
+    {
+      "name": "CCV_W_ASID",
+      "value": 8,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Address-space id. 256 address spaces before a rollover forces a flush; with one resident context it exists to make switches cheap."
+    },
+    {
+      "name": "CCV_W_STATUS",
+      "value": 2,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Memory completion status: complete, replay, fault. `cause` carries the detail, so this stays at exactly the three outcomes."
+    },
+    {
+      "name": "CCV_W_ACCESS_SIZE",
+      "value": 3,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Cache access size as a CODE -- powers of two up to a line -- not a byte count. Distinct from CCV_W_CHWIDTH, which is the architectural element width one level up."
+    },
+    {
+      "name": "CCV_W_CONFLICT_SER",
+      "value": 6,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Extra cycles an SPM bank conflict cost, bounded by 32 banks with headroom. A per-lane conflict bitmap belongs in a debug trace, not the datapath."
+    },
+    {
+      "name": "CCV_W_RETIRED_CNT",
+      "value": 8,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Retire count since context restore, SATURATING. The progress guard stops caring well before 256, so this is a saturation choice rather than a true maximum."
+    },
+    {
+      "name": "CCV_W_CSR",
+      "value": 32,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "CSR-programmed policy value. Thresholds are tuning knobs, so they get the full CSR width rather than a tight fit."
+    },
+    {
+      "name": "CCV_P_W_PHYS_PRED",
+      "value": 8,
+      "status": "provisional",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Predicate physical register index. The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split.",
+      "decided_at": "Stage 4a -- OOE rename session sizes the predicate RAT"
+    },
+    {
+      "name": "CCV_L_W_CLASS",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Eight uop classes: integer, float, SFU and convert, memory, control, collective, predicate, spare. DEC decides whether class is derivable from opcode at all.",
+      "decided_at": "DEC block session -- is class derivable from opcode?"
+    },
+    {
+      "name": "CCV_L_W_OPCODE",
+      "value": 9,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "One encoding across all three hops until proven otherwise. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten.",
+      "decided_at": "ISA opcode census, then DEC/OOE/RCU agree the hops"
+    },
+    {
+      "name": "CCV_L_W_MEM_OP",
+      "value": 4,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Architectural memory operation: load, store, atomic family, prefetch, fence.",
+      "decided_at": "MIU block session"
+    },
+    {
+      "name": "CCV_L_W_SPM_OP",
+      "value": 2,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Scratchpad bank access: read, write, and room for a read-modify variant.",
+      "decided_at": "SPM block session"
+    },
+    {
+      "name": "CCV_L_W_COH_OP",
+      "value": 4,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Coherent line request: acquire, release, probe response, writeback, grant acknowledgement. Follows the TL-C subset chosen.",
+      "decided_at": "MLC/EXB session, once the TL-C subset is chosen"
+    },
+    {
+      "name": "CCV_L_W_OWNERSHIP",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "TL-C permission levels plus an explicit dirty bit, kept wider than TL-C needs so a CHI bridge maps without a second translation.",
+      "decided_at": "MLC/EXB session, alongside CCV_L_W_COH_OP"
+    },
+    {
+      "name": "CCV_L_W_SPACE",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Memory space: global, shared, const, local, with spare codes.",
+      "decided_at": "OOE/MIU session"
+    },
+    {
+      "name": "CCV_L_W_ORDERING",
+      "value": 4,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Two bits of order and two of scope. Whether scope is a separate field is the open part.",
+      "decided_at": "OOE/MIU session -- is scope a separate field?"
+    },
+    {
+      "name": "CCV_L_W_ITLB_ENTRY",
+      "value": 64,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "ITLB entry: physical page number, permissions, ASID and valid, rounded up.",
+      "decided_at": "MMU session, with the page-table format"
+    },
+    {
+      "name": "CCV_L_W_PRF_BASE",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Physical register window base, at REGISTER granularity. Chunked allocation would narrow this and prf_size together -- one decision for the pair.",
+      "decided_at": "RAU/OOE session -- register or chunk granularity"
+    },
+    {
+      "name": "CCV_L_W_PRF_SIZE",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Physical register window size. Same granularity decision as CCV_L_W_PRF_BASE.",
+      "decided_at": "RAU/OOE session, with CCV_L_W_PRF_BASE"
+    },
+    {
+      "name": "CCV_L_W_PCA_BANK",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Parked-context bank select: eight banks of four warps, from the proposed PCA organization.",
+      "decided_at": "PCA session, from the parked-array organization"
+    },
+    {
+      "name": "CCV_L_OPERANDS_PER_LANE",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Operands shipped to a lane per beat. Whether a lane receives one instruction's operands or several, and whether the destination is read back for accumulate, both change this.",
+      "decided_at": "RCU/LANE session -- see the src_arch vs operand mismatch"
+    },
+    {
+      "name": "CCV_L_PC_GROUPS",
+      "value": 4,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified.",
+      "decided_at": "divergence model specification"
+    },
+    {
+      "name": "CCV_L_W_PRED_STATE",
+      "value": 1024,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Predicate registers plus a reconvergence stack of eight entries of mask and PC. THE most likely field to be underestimated: the divergence model is stored here and has never been specified.",
+      "decided_at": "divergence model specification"
+    },
+    {
+      "name": "CCV_L_W_TILELINK_TLC",
+      "value": 1760,
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Five TL channels with a 512-bit beat, 48-bit address, 6-bit source and 4-bit sink. Not really a width: EXB decides whether the channel carries a flattened bundle or decomposes into five.",
+      "decided_at": "EXB session -- flattened bundle or five channels"
+    },
+    {
+      "name": "CCV_L_W_BAR_COUNT",
+      "value": 7,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Barrier entries in an allocated range. 7 bits expresses 1..64; 6 would do with a bias. Not stated by the payload pass, so the biasing choice is still open.",
+      "decided_at": "SYU session -- is the count biased?"
+    },
+    {
+      "name": "CCV_L_PAGE_SHIFT",
+      "value": 12,
+      "status": "preliminary",
+      "churn": "low",
+      "source": "Payload widths pass (2026-09-25)",
+      "doc": "Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.",
+      "decided_at": "MMU session"
     }
   ]
 }

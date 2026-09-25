@@ -104,13 +104,56 @@ Parameters carry a `status`, and the distinction matters as much as the value:
 
 - `isa` — follows from the locked ISA. **Not ours to sweep**; the compiler
   already depends on it.
+- `arch` — decided at a design session. Traceable, and not expected to move.
 - `provisional` — a placeholder awaiting the stage named in `decided_at`
-  (Stage 4a sizes it, 4b sweeps it).
+  (Stage 4a sizes it, 4b sweeps it). **The number moves.**
+- `preliminary` — a width good enough to *wire*, for a field whose encoding is
+  not decided at all. **The field's shape may move.**
+- `tunable` — expected to move once the timing model runs.
 - `target` — a physical target such as the 25 NGD envelope, not a structure
   size.
 
 A sweep that varies an `isa` parameter is varying something the compiler is
 built against. The status field is what makes that visible.
+
+### Three packages, because the tier has to be visible at the use site
+
+Status is not just metadata: it picks which package the parameter is
+generated into, and the package name appears at every reference.
+
+| Package | C++ | Meaning | What moves |
+|---|---|---|---|
+| `ccv_params_pkg` | `ccv::` | follows from a settled decision | nothing |
+| `ccv_prov_pkg` | `ccv::prov::` | a sizing placeholder | the number |
+| `ccv_prelim_pkg` | `ccv::prelim::` | no decided encoding at all | the field's **shape** |
+
+So `ccv_prelim_pkg::CCV_L_W_OPCODE` announces itself as unfinished wherever it
+is read, not merely where it is declared. That is the whole mechanism — a
+comment next to the declaration is a comment nobody re-reads at the use site.
+
+**The bottom two tiers are genuinely different obligations, which is why they
+are not one package.** `provisional` says *we will pick a number*;
+`preliminary` says *we do not yet know what this field is*. Collapsing them
+would lose exactly the distinction a skeleton author needs.
+
+### Churn: what you may safely do with a preliminary field
+
+Every `preliminary` parameter carries a churn rating, and it rates the
+**field**, not the number:
+
+- **low** — only the number moves. Carrying it, storing it and comparing it
+  for equality are all safe.
+- **med** — the encoding is likely to gain or lose codes.
+- **high** — the field's shape is likely to change. **Code that
+  pattern-matches on its contents will be rewritten**; code that merely
+  carries it end to end will not.
+
+The practical rule for the Stage 3 skeleton: *carry* preliminary fields
+freely, *decode* them only where the skeleton would be pointless without it,
+and never build control flow on a high-churn field's contents. `opcode`,
+`operand`, `pcs`, `pred_state` and `tilelink_tlc` are the high-churn ones
+today; `docs/trust-report.md` is generated on every gate run and lists them
+with everything that references them.
 
 ## Load-bearing: interface style constrains block-swap feasibility
 

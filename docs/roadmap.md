@@ -32,7 +32,7 @@ waiting for. Their status now:
 |---|---|
 | The partition list | ✅ 14 block types, 45 instances, 40 channels — encoded in `params/blocks.json` and `schema/interfaces.json` |
 | A block letter per block | ✅ 14 assigned, 2 reserved (`z` reset tree, `y` fixtures), 8 spare — **closes the 24-block ceiling question** |
-| Per-block interface contracts | ✅ protocol and signal shape closed; **28 payload field widths across 25 channels still open** |
+| Per-block interface contracts | ✅ protocol, signal shape and **all 144 payload field widths** closed — 10 of 40 channels decided end to end, the rest on provisional or preliminary widths |
 | Per-block interface NGD budgets | ❌ not started, against the 25 NGD envelope |
 
 So the remaining input is **payload widths and NGD budgets**, not the
@@ -184,8 +184,14 @@ backpressure; a short timeout fires on a channel behaving perfectly — so
 nothing else would catch either, and `tools/check-if.sh` builds each
 misconfiguration to prove the check still bites.
 
-**Still Stage 2's, not done here:** 28 payload field widths across 25
-channels, which firm up in the per-block session that owns the interface.
+**Payload widths: closed enough to build on.** Every field has a width, so
+all 40 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
+the widths whose *encoding* is undecided — distinct from `ccv_prov_pkg`, where
+only the number is. Each preliminary parameter also carries a **churn**
+rating: high means a per-block session is likely to change the field's shape,
+so code that pattern-matches on its contents will be rewritten, as against
+code that merely carries it. See [`payload-spec.md`](payload-spec.md) and the
+generated [`trust-report.md`](trust-report.md).
 
 ### Interface checker convention ✅ (mechanism)
 
@@ -202,8 +208,9 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
 
-**What is NOT done here:** 28 payload field widths. The interface *list* is
-done — all 40 channels, with the protocol and signal shape closed. There are
+**What is NOT done here:** nothing, for wiring purposes — all 40 channels
+have a full set of widths and generate a struct. What is not *decided* is
+tiered and reported rather than missing. There are
 no per-type checkers and there will not be: every boundary obeys the same
 credited protocol, so one parameterised checker covers all 40, and the widths
 are the only thing that differs.
@@ -379,21 +386,42 @@ Carried from the strategy doc, with current status.
     stays *outside* the packed struct, so the swap harness still drives the
     payload one way (F-12).
 
-17. **28 payload field widths, across 25 channels.** The one input the
-    repository is still blocked on for generated typedefs.
-    **[`payload-spec.md`](payload-spec.md) is the full worklist** — generated
-    from the schema, so it cannot drift from it — with every channel field by
-    field, each open width's specific question, and the questions grouped by
-    which blocks have to answer. `tools/check-if.sh` reports the census every
-    run, because "payload widths pending" decays into nobody remembering
-    *which* ones.
+17. ~~**28 payload field widths.**~~ **Closed for wiring** by the payload
+    pass (2026-09-25): every field has a width, all 40 channels generate a
+    struct. What replaced it is a **tiering** problem rather than a blocking
+    one — see [`payload-spec.md`](payload-spec.md) and the generated
+    [`trust-report.md`](trust-report.md). 10 of 40 channels are decided end to
+    end; 14 carry a provisional width, 16 a preliminary one.
 
-    **The headline count flatters the position.** 15 of 40 channels generate a
-    struct, but 10 of those 15 are sized through a provisional parameter, so
-    their layout will still move — `CCV_P_LINE_BYTES` alone lands on 4
-    channels, `CCV_P_W_ROB_TAG` on 3. **Only 5 of 40 channels are decided end
-    to end.** Writing a skeleton against the other 35 means writing against
-    layouts that are going to change.
+    The pass also corrected four widths that were sized confidently and
+    wrongly in the first encoding, which matters more than an open field
+    because they generated a struct and nothing flagged them:
+
+    | Field | Was | Now | Why |
+    |---|---|---|---|
+    | `warp_mask_released` | 5 | 32 | a mask, not an id — a release wakes a *set* |
+    | `bank_addr` | 5 | 320 | 5 bits is a bank *index*; 32 banks means 32 independent word addresses |
+    | `phys_pred` | `CCV_P_W_PHYS_REG` | `CCV_P_W_PHYS_PRED` | the predicate file is its own namespace with its own RAT |
+    | `barrier_entries` | one index | `barrier_base` + `barrier_count` | allocation hands out a *range* |
+
+    `bank_addr` was the worst: at 5 bits it does not merely get a number
+    wrong, it assumes every lane shares one address and so deletes the
+    bank-conflict model SPM exists to implement.
+
+18. **The `src_arch` / `operand` mismatch.** `ccv_dec_ooe_uop` carries two
+    source registers; `ccv_rcu_lane_ops` carries three operands. Either the
+    third is the destination read back for accumulate — so rename must treat
+    `dst_arch` as a source — or the ISA has true three-source operations and
+    `src_arch` is one field short. `dp4`/`dp8` make the second likely. **An
+    ISA question, not an RTL one.** It does not block the skeleton, since both
+    sides already have a width; it blocks *coding rename* at 4a.
+
+19. **RCU→MIU is ~8,400 wires.** `index_per_lane` (1024) beside `store_data`
+    (1024) at rate 4, almost certainly the widest interface in the design. It
+    argues for co-locating the AGUs with RCU, or moving address generation
+    into the register read stage. A partitioning question that a width
+    exposed, and block boundaries are swap boundaries — so settle it before
+    floorplan, not after.
 
     Ranked by blast radius, since a field on several channels is one where two
     per-block sessions deciding independently produce two incompatible

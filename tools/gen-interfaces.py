@@ -15,11 +15,13 @@ numbers are believed.
 """
 import json
 import os
+import re
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "schema", "interfaces.json")
 BLOCKS = os.path.join(ROOT, "params", "blocks.json")
+PARAMS = os.path.join(ROOT, "params", "ccv_params.json")
 
 BANNER = """// GENERATED FILE -- DO NOT EDIT.
 //
@@ -66,6 +68,72 @@ def unresolved(d):
     return out
 
 
+# SystemVerilog reserved words that are plausible as a payload field name. A
+# struct member called `class` or `type` elaborates nowhere, and the error
+# points at the generated file rather than at the schema that caused it --
+# which is a bad half hour for whoever hits it. Checked at generation instead.
+SV_RESERVED = {
+    "class", "type", "input", "output", "inout", "ref", "const", "static",
+    "automatic", "signed", "unsigned", "byte", "shortint", "int", "longint",
+    "integer", "time", "real", "logic", "bit", "reg", "wire", "wor", "wand",
+    "event", "string", "chandle", "void", "null", "this", "super", "extends",
+    "virtual", "pure", "local", "protected", "package", "import", "export",
+    "interface", "modport", "program", "property", "sequence", "assert",
+    "assume", "cover", "expect", "bind", "alias", "before", "randomize",
+    "rand", "randc", "constraint", "solve", "dist", "inside", "with", "new",
+    "extern", "context", "forkjoin", "priority", "unique", "unique0", "tagged",
+    "union", "struct", "enum", "typedef", "parameter", "localparam", "genvar",
+    "generate", "endgenerate", "begin", "end", "if", "else", "case", "casex",
+    "casez", "default", "for", "while", "do", "repeat", "forever", "break",
+    "continue", "return", "function", "task", "always", "initial", "final",
+    "assign", "force", "release", "disable", "wait", "fork", "join", "posedge",
+    "negedge", "edge", "or", "and", "not", "nand", "nor", "xor", "xnor", "buf",
+    "cell", "config", "design", "instance", "liblist", "library", "use",
+    "specify", "specparam", "table", "primitive", "defparam", "macromodule",
+    "module", "endmodule", "cross", "coverpoint", "bins", "ignore_bins",
+    "illegal_bins", "matches", "throughout", "intersect", "within", "first_match",
+    "triggered", "let", "checker", "clocking", "global", "implements",
+    "interconnect", "nettype", "soft", "untyped", "restrict",
+}
+
+# Identifier-aware, so every name in a width expression is resolved against
+# the real parameter list. The previous version string-replaced on the
+# CCV_W_ / CCV_P_ prefixes, which silently left anything else -- CCV_SPM_BANKS,
+# every preliminary CCV_L_* -- unqualified. That fails at elaboration with a
+# "size must be constant" error naming the struct member, not the parameter,
+# so the cause is several steps from the symptom.
+_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_PKG_OF = {}
+
+
+def load_param_packages():
+    """name -> the package that declares it. Mirrors tools/gen-params.py."""
+    with open(PARAMS) as f:
+        pd = json.load(f)
+    out = {}
+    for x in pd["params"]:
+        st = x["status"]
+        if st == "preliminary":
+            out[x["name"]] = "ccv_prelim_pkg"
+        elif st in ("provisional", "tunable"):
+            out[x["name"]] = "ccv_prov_pkg"
+        else:
+            out[x["name"]] = "ccv_params_pkg"
+    return out
+
+
+def qualify(expr):
+    def sub(m):
+        n = m.group(0)
+        pkg = _PKG_OF.get(n)
+        return "%s::%s" % (pkg, n) if pkg else n
+    return _IDENT.sub(sub, str(expr))
+
+
+def unknown_names(expr):
+    return [n for n in _IDENT.findall(str(expr)) if n not in _PKG_OF]
+
+
 def gen_sv(d, blocks, pp):
     L = [BANNER, "`ifndef CCV_INTERFACES_SVH", "`define CCV_INTERFACES_SVH", "",
          "// The payload structs below are sized from both parameter",
@@ -98,9 +166,7 @@ def gen_sv(d, blocks, pp):
         nm = c["name"][4:]
         L.append("typedef struct packed {")
         for fld, w in f:
-            ww = ("logic" if w == "1"
-                  else "logic [%s-1:0]" % w.replace("CCV_W_", "ccv_params_pkg::CCV_W_")
-                                            .replace("CCV_P_", "ccv_prov_pkg::CCV_P_"))
+            ww = "logic" if w == "1" else "logic [%s-1:0]" % qualify(w)
             L.append("  %-46s %s;" % (ww, fld))
         L.append("} ccv_%s_t;" % nm)
         L.append("")
@@ -192,6 +258,33 @@ def main():
             sys.stderr.write("channel %s does not match its endpoints "
                              "(expected %s...)\n" % (c["name"], want))
             return 1
+
+    # Resolve the parameter->package map once, then validate every field name
+    # and width expression against it BEFORE generating anything. Both classes
+    # of error below elaborate into a message that points at the generated
+    # file, several steps from the schema line that caused it.
+    _PKG_OF.update(load_param_packages())
+    bad = 0
+    for c in d["channels"]:
+        for fld in c["payload_fields"]:
+            if fld in SV_RESERVED:
+                sys.stderr.write("channel %s: payload field %r is a "
+                                 "SystemVerilog reserved word and cannot be a "
+                                 "struct member -- rename it in the schema\n"
+                                 % (c["name"], fld))
+                bad = 1
+        for fld in c["payload_fields"]:
+            w = d["field_widths"].get(fld)
+            if w is None:
+                continue
+            unk = unknown_names(w)
+            if unk:
+                sys.stderr.write("channel %s field %s: width %r names %s, "
+                                 "which is not in params/ccv_params.json\n"
+                                 % (c["name"], fld, w, ", ".join(unk)))
+                bad = 1
+    if bad:
+        return 1
 
     pp = ports_per_block(d, blocks)
     targets = [

@@ -126,7 +126,8 @@
         "instr",
         "length",
         "fetch_fault"
-      ]
+      ],
+      "doc": "Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path."
     },
     {
       "name": "ccv_dec_ooe_uop",
@@ -137,14 +138,15 @@
       "payload_fields": [
         "warp_id",
         "pc",
-        "class",
+        "uop_class",
         "opcode",
         "src_arch",
         "dst_arch",
         "pred_reg",
         "imm",
         "decode_fault"
-      ]
+      ],
+      "doc": "Format-decoded operations with architectural register names, six per cycle into the queue ahead of rename."
     },
     {
       "name": "ccv_ooe_rcu_issue",
@@ -161,7 +163,8 @@
         "opcode",
         "chwidth",
         "dispatch_fault"
-      ]
+      ],
+      "doc": "What the scheduler selected: physical register names, opcode, element width. Four per cycle, the binding width of the machine."
     },
     {
       "name": "ccv_rcu_lane_ops",
@@ -171,12 +174,12 @@
       "group": "execution",
       "payload_fields": [
         "opcode",
-        "sub_width",
         "operand",
         "pred_bit",
         "section_en"
       ],
-      "note": "Fans out to 32 LANE instances; the payload is per-lane."
+      "note": "Fans out to 32 LANE instances; the payload is per-lane.",
+      "doc": "Operands and control to one lane. Section enables gate the narrow sub-datapaths and the SFU."
     },
     {
       "name": "ccv_lane_rcu_res",
@@ -188,7 +191,8 @@
         "result",
         "lane_fault"
       ],
-      "note": "32 LANE instances converge here."
+      "note": "32 LANE instances converge here.",
+      "doc": "One lane's result and its fault bit."
     },
     {
       "name": "ccv_rcu_ooe_done",
@@ -200,7 +204,8 @@
         "rob_tag",
         "exec_fault",
         "fault_lane_mask"
-      ]
+      ],
+      "doc": "Completion back to the ROB for arithmetic, with the faulting lane mask."
     },
     {
       "name": "ccv_rcu_miu_addr",
@@ -213,7 +218,8 @@
         "base",
         "index_per_lane",
         "store_data"
-      ]
+      ],
+      "doc": "Address operands and store data for memory operations. The widest interface in the design."
     },
     {
       "name": "ccv_miu_rcu_data",
@@ -225,7 +231,8 @@
         "rob_tag",
         "phys_dst",
         "load_data"
-      ]
+      ],
+      "doc": "Load return data written into the register file."
     },
     {
       "name": "ccv_ooe_miu_memop",
@@ -237,11 +244,12 @@
         "rob_tag",
         "warp_id",
         "cta_slot",
-        "op",
+        "mem_op",
         "chwidth",
         "space",
         "ordering"
-      ]
+      ],
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking."
     },
     {
       "name": "ccv_miu_ooe_cmpl",
@@ -257,7 +265,8 @@
         "address",
         "mlc_miss"
       ],
-      "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger."
+      "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger.",
+      "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel."
     },
     {
       "name": "ccv_ooe_miu_retire",
@@ -268,7 +277,8 @@
       "payload_fields": [
         "rob_tag",
         "commit_or_discard"
-      ]
+      ],
+      "doc": "Commit or discard for the store buffer, so stores leave only after their instruction retires."
     },
     {
       "name": "ccv_miu_spm_req",
@@ -280,8 +290,9 @@
         "bank_addr",
         "write_data",
         "byte_mask",
-        "op"
-      ]
+        "spm_op"
+      ],
+      "doc": "Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM."
     },
     {
       "name": "ccv_spm_miu_rsp",
@@ -292,7 +303,8 @@
       "payload_fields": [
         "read_data",
         "conflict_serialization"
-      ]
+      ],
+      "doc": "Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs."
     },
     {
       "name": "ccv_miu_dcu_req",
@@ -303,9 +315,10 @@
       "payload_fields": [
         "phys_addr",
         "size",
-        "op",
+        "coh_op",
         "exclusive_req"
-      ]
+      ],
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics."
     },
     {
       "name": "ccv_dcu_miu_rsp",
@@ -314,10 +327,11 @@
       "rate": 4,
       "group": "memory",
       "payload_fields": [
-        "data",
+        "read_data",
         "hit",
         "ownership_granted"
-      ]
+      ],
+      "doc": "Cache read data, hit indication and whether ownership was granted."
     },
     {
       "name": "ccv_dcu_mlc_req",
@@ -327,10 +341,11 @@
       "group": "memory",
       "payload_fields": [
         "phys_addr",
-        "op",
+        "coh_op",
         "core_id",
         "writeback_data"
-      ]
+      ],
+      "doc": "Fills and writebacks from L1 to the shared cache, tagged with core ID."
     },
     {
       "name": "ccv_mlc_dcu_rsp",
@@ -342,7 +357,8 @@
         "line_data",
         "ownership",
         "miss"
-      ]
+      ],
+      "doc": "Line fills and ownership grants back to L1."
     },
     {
       "name": "ccv_mlc_dcu_probe",
@@ -354,7 +370,8 @@
         "phys_addr",
         "invalidate_or_downgrade"
       ],
-      "note": "A wake source: the D-cache cannot sleep through an inbound probe."
+      "note": "A wake source: the D-cache cannot sleep through an inbound probe.",
+      "doc": "Inbound invalidate or downgrade. Unsolicited, and a wake source, since a sleeping D-cache must still answer."
     },
     {
       "name": "ccv_dcu_mlc_probe_ack",
@@ -365,7 +382,8 @@
       "payload_fields": [
         "ack",
         "dirty_data"
-      ]
+      ],
+      "doc": "Probe response, carrying dirty data when the line was modified."
     },
     {
       "name": "ccv_fet_mlc_ifill",
@@ -377,7 +395,8 @@
         "phys_addr",
         "asid"
       ],
-      "note": "I-cache miss bypasses DCU."
+      "note": "I-cache miss bypasses DCU.",
+      "doc": "Instruction cache miss straight to MLC, bypassing the D-cache."
     },
     {
       "name": "ccv_mlc_fet_ifill_rsp",
@@ -387,7 +406,8 @@
       "group": "memory",
       "payload_fields": [
         "line_data"
-      ]
+      ],
+      "doc": "Instruction line fill."
     },
     {
       "name": "ccv_miu_fet_itlb",
@@ -397,7 +417,8 @@
       "group": "memory",
       "payload_fields": [
         "itlb_refill"
-      ]
+      ],
+      "doc": "Walker returning an ITLB entry."
     },
     {
       "name": "ccv_fet_miu_itlb_req",
@@ -408,7 +429,8 @@
       "payload_fields": [
         "virtual_page",
         "asid"
-      ]
+      ],
+      "doc": "Fetch asking the walker for a translation on an ITLB miss."
     },
     {
       "name": "ccv_mlc_exb_req",
@@ -419,11 +441,12 @@
       "payload_fields": [
         "phys_addr",
         "size",
-        "op",
+        "coh_op",
         "ownership_class",
         "core_id",
         "writeback_data"
-      ]
+      ],
+      "doc": "The protocol-neutral outbound request. Everything the core knows about coherence is expressed here."
     },
     {
       "name": "ccv_exb_mlc_rsp",
@@ -436,7 +459,8 @@
         "ownership_grant",
         "inbound_probe",
         "miss"
-      ]
+      ],
+      "doc": "Protocol-neutral inbound: fills, grants and probes."
     },
     {
       "name": "ccv_exb_ext",
@@ -447,7 +471,8 @@
       "payload_fields": [
         "tilelink_tlc"
       ],
-      "note": "THE ONE EXCEPTION. TileLink TL-C at the coherent boundary; obeys that protocol's rules, not ours. Containing it in a bridge block is what keeps the exception to a single port."
+      "note": "THE ONE EXCEPTION. TileLink TL-C at the coherent boundary; obeys that protocol's rules, not ours. Containing it in a bridge block is what keeps the exception to a single port.",
+      "doc": "TileLink TL-C. The only channel outside our conventions."
     },
     {
       "name": "ccv_rau_fet_launch",
@@ -461,7 +486,8 @@
         "code_bounds",
         "asid",
         "cta_slot"
-      ]
+      ],
+      "doc": "A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot."
     },
     {
       "name": "ccv_rau_ooe_alloc",
@@ -474,7 +500,8 @@
         "prf_base",
         "prf_size",
         "activate_or_free"
-      ]
+      ],
+      "doc": "The warp's physical register window, activated or freed."
     },
     {
       "name": "ccv_ooe_rau_status",
@@ -487,7 +514,8 @@
         "stalled",
         "mlc_miss_seen",
         "retired_since_restore"
-      ]
+      ],
+      "doc": "Per-warp stall and progress reporting, feeding demotion policy."
     },
     {
       "name": "ccv_rau_ooe_demote",
@@ -498,7 +526,8 @@
       "payload_fields": [
         "warp_id",
         "squash_to_retirement"
-      ]
+      ],
+      "doc": "The order to squash a warp to its retirement boundary and report where to resume."
     },
     {
       "name": "ccv_ooe_rau_drained",
@@ -510,7 +539,8 @@
         "warp_id",
         "resume_pc",
         "arch_state_ready"
-      ]
+      ],
+      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin."
     },
     {
       "name": "ccv_rau_rcu_mig",
@@ -522,7 +552,8 @@
         "warp_id",
         "direction",
         "bank_select"
-      ]
+      ],
+      "doc": "Which warp and direction a migration moves, and which parked bank it targets."
     },
     {
       "name": "ccv_rcu_pca_mig",
@@ -534,7 +565,8 @@
         "gpr_row",
         "pred_state",
         "pcs"
-      ]
+      ],
+      "doc": "Architectural state out to the parked array on demotion."
     },
     {
       "name": "ccv_pca_rcu_mig",
@@ -546,7 +578,8 @@
         "gpr_row",
         "pred_state",
         "pcs"
-      ]
+      ],
+      "doc": "Architectural state back in on restore."
     },
     {
       "name": "ccv_rau_miu_cta",
@@ -559,7 +592,8 @@
         "spm_base",
         "spm_limit",
         "launch_block_addr"
-      ]
+      ],
+      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads."
     },
     {
       "name": "ccv_ooe_syu_bar",
@@ -572,7 +606,8 @@
         "cta_slot",
         "barrier_id",
         "arrive_or_wait"
-      ]
+      ],
+      "doc": "Barrier arrive and wait. A warp may be demoted while waiting, so the barrier table tracks non-resident warps."
     },
     {
       "name": "ccv_syu_ooe_rel",
@@ -583,7 +618,8 @@
       "payload_fields": [
         "warp_mask_released",
         "barrier_id"
-      ]
+      ],
+      "doc": "The set of warps a barrier released."
     },
     {
       "name": "ccv_rau_syu_alloc",
@@ -593,9 +629,11 @@
       "group": "control",
       "payload_fields": [
         "cta_slot",
-        "barrier_entries",
+        "barrier_base",
+        "barrier_count",
         "allocate_or_free"
-      ]
+      ],
+      "doc": "Barrier entries allocated to or freed from a CTA slot."
     },
     {
       "name": "ccv_ooe_cru_fault",
@@ -608,9 +646,10 @@
         "pc",
         "lane_mask",
         "address",
-        "cta_id",
+        "cta_slot",
         "warp_id"
-      ]
+      ],
+      "doc": "The first fault taken by a context, written once and never overwritten."
     },
     {
       "name": "ccv_cru_rau_cfg",
@@ -622,7 +661,8 @@
         "demotion_threshold",
         "progress_threshold",
         "launch_enable"
-      ]
+      ],
+      "doc": "Host-programmed policy: demotion threshold, progress threshold, launch enable."
     }
   ],
   "_field_widths_comment": [
@@ -653,8 +693,7 @@
     "core_id": "CCV_W_CORE_ID",
     "cause": "CCV_W_FAULT_CAUSE",
     "barrier_id": "CCV_W_BAR_ID",
-    "barrier_entries": "CCV_W_BAR_ENTRY",
-    "bank_addr": "CCV_W_SPM_BANK",
+    "bank_addr": "CCV_SPM_BANKS*CCV_W_SPM_WORD",
     "spm_base": "CCV_W_SPM_ADDR",
     "spm_limit": "CCV_W_SPM_ADDR",
     "store_data": "CCV_W_DATA",
@@ -672,7 +711,7 @@
     "rob_tag": "CCV_P_W_ROB_TAG",
     "phys_src": "2*CCV_P_W_PHYS_REG",
     "phys_dst": "CCV_P_W_PHYS_REG",
-    "phys_pred": "CCV_P_W_PHYS_REG",
+    "phys_pred": "CCV_P_W_PHYS_PRED",
     "cta_slot": "CCV_P_W_CTA_SLOT",
     "imm": "CCV_P_W_IMM",
     "line_data": "8*CCV_P_LINE_BYTES",
@@ -700,230 +739,55 @@
     "squash_to_retirement": "1",
     "pred_bit": "1",
     "lane_fault": "1",
-    "warp_mask_released": "CCV_W_WARP_ID",
-    "section_en": "4"
+    "warp_mask_released": "CCV_W_LANE_MASK",
+    "section_en": "4",
+    "asid": "CCV_W_ASID",
+    "status": "CCV_W_STATUS",
+    "byte_mask": "CCV_W_DATA/8",
+    "conflict_serialization": "CCV_W_CONFLICT_SER",
+    "retired_since_restore": "CCV_W_RETIRED_CNT",
+    "demotion_threshold": "CCV_W_CSR",
+    "progress_threshold": "CCV_W_CSR",
+    "size": "CCV_W_ACCESS_SIZE",
+    "barrier_base": "CCV_W_BAR_ENTRY",
+    "opcode": "CCV_L_W_OPCODE",
+    "mem_op": "CCV_L_W_MEM_OP",
+    "spm_op": "CCV_L_W_SPM_OP",
+    "coh_op": "CCV_L_W_COH_OP",
+    "ownership_class": "CCV_L_W_OWNERSHIP",
+    "space": "CCV_L_W_SPACE",
+    "ordering": "CCV_L_W_ORDERING",
+    "itlb_refill": "CCV_L_W_ITLB_ENTRY",
+    "code_bounds": "2*(CCV_W_VA-CCV_L_PAGE_SHIFT)",
+    "launch_block_addr": "CCV_W_VA",
+    "prf_base": "CCV_L_W_PRF_BASE",
+    "prf_size": "CCV_L_W_PRF_SIZE",
+    "bank_select": "CCV_L_W_PCA_BANK",
+    "operand": "CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA",
+    "index_per_lane": "CCV_W_DATA",
+    "pcs": "CCV_L_PC_GROUPS*CCV_W_VA",
+    "pred_state": "CCV_L_W_PRED_STATE",
+    "tilelink_tlc": "CCV_L_W_TILELINK_TLC",
+    "barrier_count": "CCV_L_W_BAR_COUNT",
+    "uop_class": "CCV_L_W_CLASS"
   },
-  "_open_fields_comment": [
-    "The payload fields with NO decided width, and the specific question each",
-    "per-block session has to answer. A question rather than a placeholder on",
-    "purpose: a placeholder width would reach a generated typedef and be",
-    "believed, whereas an unanswered question blocks loudly.",
-    "",
-    "`owner` names the blocks on the channels, which is who has to answer.",
-    "`flag` marks the ones where independent per-block answers would collide.",
-    "",
-    "tools/gen-payload-spec.py renders this into docs/payload-spec.md."
+  "_open_questions_comment": [
+    "Questions the payload pass raised that are NOT width questions, and that",
+    "no width can close. Each blocks something specific; the `blocks` field",
+    "says what, so it is obvious when one has become urgent."
   ],
-  "open_fields": {
-    "asid": {
-      "owner": "fet, miu, mlc, rau",
-      "question": "Address-space id width, i.e. how many address spaces are concurrently resident before an ASID rollover / TLB flush is required. Appears on both translation channels and on the launch channel, so it is the same field in all three; one number.",
-      "flag": "Only open field here that is clearly ONE encoding across its channels.",
-      "channels": [
-        "ccv_fet_miu_itlb_req",
-        "ccv_fet_mlc_ifill",
-        "ccv_rau_fet_launch"
-      ]
+  "open_questions": {
+    "src_arch_vs_operand": {
+      "question": "ccv_dec_ooe_uop carries TWO source registers (src_arch = 2*CCV_W_ARCH_REG) while ccv_rcu_lane_ops carries THREE operands (CCV_L_OPERANDS_PER_LANE = 3). Either the third operand is the destination read back for accumulate -- in which case rename must treat dst_arch as a source -- or the ISA has true three-source operations and src_arch is one field short. dp4 and dp8 make the second likely.",
+      "kind": "ISA question, not an RTL one",
+      "blocks": "Rename cannot be coded until this settles. The skeleton can be wired either way, because both sides already have a width; what it changes is which field rename READS, so a skeleton written against the wrong answer needs rework at 4a rather than now.",
+      "owner": "ISA / compiler track"
     },
-    "bank_select": {
-      "owner": "rau, rcu",
-      "question": "Which register bank a migration targets on ccv_rau_rcu_mig. Needs the banking factor of the PRF, which has not been stated anywhere yet.",
-      "channels": [
-        "ccv_rau_rcu_mig"
-      ]
-    },
-    "byte_mask": {
-      "owner": "miu, spm",
-      "question": "Write byte-enables on ccv_miu_spm_req. Almost certainly write_data/8, but write_data's own width is set by the SPM word size (CCV_W_SPM_WORD = 10 addresses 32-bit words), so confirm the beat width rather than assuming.",
-      "channels": [
-        "ccv_miu_spm_req"
-      ]
-    },
-    "class": {
-      "owner": "dec",
-      "question": "How many uop classes, and is class a strict partition of opcode space (so class is derivable from opcode and is carried only to save decode) or an orthogonal attribute? The answer sets whether this field is load-bearing or an optimisation.",
-      "channels": [
-        "ccv_dec_ooe_uop"
-      ]
-    },
-    "code_bounds": {
-      "owner": "rau, fet",
-      "question": "Code region bounds on launch. Two questions: is this a base+limit pair or a base+size, and is it at page granularity (narrowing it considerably) or byte granularity at CCV_W_VA?",
-      "channels": [
-        "ccv_rau_fet_launch"
-      ]
-    },
-    "conflict_serialization": {
-      "owner": "spm, miu",
-      "question": "Reported bank-conflict serialisation on ccv_spm_miu_rsp. Is this a count of extra cycles taken (width = log2 of worst-case serialisation, bounded by 32 banks) or a per-lane conflict bitmap? A count is cheap and enough for the timing model; a bitmap is what a debug trace would want.",
-      "channels": [
-        "ccv_spm_miu_rsp"
-      ]
-    },
-    "cta_id": {
-      "owner": "ooe, cru",
-      "question": "CTA identifier on the fault channel. Distinct from the decided CCV_P_W_CTA_SLOT (3 bits, a hardware slot index): this looks like the software-visible CTA id from the launch grid, which is much wider. Confirm which is meant -- if it is the slot, reuse CCV_P_W_CTA_SLOT and rename the field.",
-      "channels": [
-        "ccv_ooe_cru_fault"
-      ]
-    },
-    "data": {
-      "owner": "dcu, miu",
-      "question": "Read-return data on ccv_dcu_miu_rsp. Named `data` while the SPM path names the same concept `read_data` / `write_data` -- worth unifying. Width is the DCU beat, which needs stating: full line, or CCV_W_DATA, or a narrower beat with multiple transfers.",
-      "channels": [
-        "ccv_dcu_miu_rsp"
-      ]
-    },
-    "demotion_threshold": {
-      "owner": "cru, rau",
-      "question": "Tier-1 demotion threshold, a CSR-programmed policy value. Width is a policy range decision, not an architectural one: state the units (cycles? retired instructions? MLC misses?) and the range worth expressing.",
-      "channels": [
-        "ccv_cru_rau_cfg"
-      ]
-    },
-    "index_per_lane": {
-      "owner": "rcu, miu",
-      "question": "Per-lane index for a gather/scatter on ccv_rcu_miu_addr. Two numbers needed: the index width per lane, and whether all 32 lanes ship per beat or a subset. At 32 lanes x a 32-bit index this is a 1024-bit field, so if that is not intended the channel needs a narrower index or more beats.",
-      "channels": [
-        "ccv_rcu_miu_addr"
-      ]
-    },
-    "itlb_refill": {
-      "owner": "miu, fet",
-      "question": "The only field on ccv_miu_fet_itlb, so it is the whole payload: a translation result. Needs the iTLB entry format -- PPN (CCV_P_W_PA minus page offset) plus permissions plus whatever the refill FSM requires.",
-      "channels": [
-        "ccv_miu_fet_itlb"
-      ]
-    },
-    "launch_block_addr": {
-      "owner": "rau, miu",
-      "question": "Address of the CTA launch block in memory. Presumably CCV_W_VA or CCV_P_W_PA -- state which side of translation this is on, since the channel goes to the MIU.",
-      "channels": [
-        "ccv_rau_miu_cta"
-      ]
-    },
-    "op": {
-      "owner": "memory hierarchy (miu, spm, dcu, mlc, exb)",
-      "question": "Is this ONE encoding or three? It appears on five channels at three different levels: ccv_ooe_miu_memop (architectural memory op), ccv_miu_spm_req (scratchpad bank access), and ccv_miu_dcu_req / ccv_dcu_mlc_req / ccv_mlc_exb_req (cache-line request, where it must also carry coherence intent). A scratchpad bank has no notion of ownership and a cache line has no notion of a lane-strided access, so one shared encoding across all five looks unlikely. Decide whether to keep one field name with three widths or rename them apart; then give the operation list at each level.",
-      "flag": "Widest blast radius of any open field, and the one most likely to be wrong if each session decides alone.",
-      "channels": [
-        "ccv_dcu_mlc_req",
-        "ccv_miu_dcu_req",
-        "ccv_miu_spm_req",
-        "ccv_mlc_exb_req",
-        "ccv_ooe_miu_memop"
-      ]
-    },
-    "opcode": {
-      "owner": "dec, ooe, rcu",
-      "question": "Same question, one level down: dec->ooe carries a decoded uop opcode, ooe->rcu carries what the scheduler issues, and rcu->lane carries what a lane actually executes. Is this one encoding narrowing along the pipe, or re-encoded at each hop? If it narrows, the width is set once by the widest (dec->ooe); if it re-encodes, three numbers. Note dec->ooe already carries a separate `class` field, so the split between class and opcode needs stating either way.",
-      "channels": [
-        "ccv_dec_ooe_uop",
-        "ccv_ooe_rcu_issue",
-        "ccv_rcu_lane_ops"
-      ]
-    },
-    "operand": {
-      "owner": "rcu, lane",
-      "question": "One operand's worth of data on ccv_rcu_lane_ops -- but the channel is per-lane at rate 4, so state whether this is one lane's element (CCV_W_LANE_DATA), a full row (CCV_W_DATA), or a bundle of N source operands. The rate and the width together set the wire cost of the whole execute path, so this one is worth getting right before floorplan.",
-      "channels": [
-        "ccv_rcu_lane_ops"
-      ]
-    },
-    "ordering": {
-      "owner": "ooe, miu",
-      "question": "Memory ordering / fence semantics carried per op. Enumerate the orderings the ISA exposes (relaxed, acquire, release, acq_rel, seq_cst?) and whether scope (CTA / core / system) is encoded in the same field or separately.",
-      "channels": [
-        "ccv_ooe_miu_memop"
-      ]
-    },
-    "ownership_class": {
-      "owner": "mlc, exb",
-      "question": "Coherence ownership class on ccv_mlc_exb_req. Enumerate the states requested at this boundary (the MESI/MOESI subset actually used); the width falls out. Related to `op` on the same channel, so decide the two together -- ownership intent may belong inside op.",
-      "channels": [
-        "ccv_mlc_exb_req"
-      ]
-    },
-    "pcs": {
-      "owner": "rcu, pca",
-      "question": "PLURAL, and that is the question: how many PCs travel in one migration? SMT-4 tier-1 suggests four, but the channel moves a whole parked context, so it may be one PC per warp in the migrating group, or one per divergence-stack entry. State what the set is over, then the count follows CCV_W_VA times that.",
-      "channels": [
-        "ccv_pca_rcu_mig",
-        "ccv_rcu_pca_mig"
-      ]
-    },
-    "pred_state": {
-      "owner": "rcu, pca",
-      "question": "Predicate/divergence state for a migrating context. Needs the divergence representation first: a reconvergence stack of N entries (depth x (mask + PC)) or a flat per-lane mask set. This is the field most likely to be underestimated, because it is where the divergence model is actually stored.",
-      "channels": [
-        "ccv_pca_rcu_mig",
-        "ccv_rcu_pca_mig"
-      ]
-    },
-    "prf_base": {
-      "owner": "rau, ooe",
-      "question": "Physical register file base for a warp's allocated window. Follows CCV_P_PHYS_REGS (CCV_P_W_PHYS_REG = 8 provisional), but confirm whether allocation is at register granularity or in fixed-size chunks -- chunked allocation narrows both this and prf_size.",
-      "channels": [
-        "ccv_rau_ooe_alloc"
-      ]
-    },
-    "prf_size": {
-      "owner": "rau, ooe",
-      "question": "Size of that window. Same granularity question as prf_base; the two are one decision.",
-      "channels": [
-        "ccv_rau_ooe_alloc"
-      ]
-    },
-    "progress_threshold": {
-      "owner": "cru, rau",
-      "question": "Companion to demotion_threshold and the same decision: units and range. Both are tuning knobs, so they may reasonably be the widest thing a CSR write can carry rather than a tight fit.",
-      "channels": [
-        "ccv_cru_rau_cfg"
-      ]
-    },
-    "retired_since_restore": {
-      "owner": "ooe, rau",
-      "question": "Retire count since context restore, feeding the progress/demotion policy. Width is a saturation choice: pick the count at which the policy stops caring and saturate there, rather than sizing for a true maximum.",
-      "channels": [
-        "ccv_ooe_rau_status"
-      ]
-    },
-    "size": {
-      "owner": "miu, dcu, mlc, exb",
-      "question": "Access size at the cache level, on ccv_miu_dcu_req and ccv_mlc_exb_req. Distinct from the decided CCV_W_CHWIDTH (element width code, 2 bits) which lives at the architectural level. Give the legal transfer sizes -- if they are powers of two up to a line, this is a small code rather than a byte count.",
-      "channels": [
-        "ccv_miu_dcu_req",
-        "ccv_mlc_exb_req"
-      ]
-    },
-    "space": {
-      "owner": "ooe, miu",
-      "question": "Memory space selector (global / shared / scratchpad / const / local?). Enumerate the spaces; the width is ceil(log2(count)) unless a one-hot is wanted for decode speed.",
-      "channels": [
-        "ccv_ooe_miu_memop"
-      ]
-    },
-    "status": {
-      "owner": "miu, ooe",
-      "question": "Completion status on ccv_miu_ooe_cmpl. The channel already carries a separate `cause` field (CCV_W_FAULT_CAUSE) and `mlc_miss`, so state what status adds beyond ok/fault -- if it is only ok/fault it is 1 bit and cause carries the rest.",
-      "channels": [
-        "ccv_miu_ooe_cmpl"
-      ]
-    },
-    "sub_width": {
-      "owner": "rcu, lane",
-      "question": "How a lane subdivides its 32-bit datapath for packed SIMD. If the legal set is exactly CCV_W_CHWIDTH's (32/16/8/4) then this is that code and should say so rather than being a second field; if lanes support something chwidth cannot express, state what.",
-      "channels": [
-        "ccv_rcu_lane_ops"
-      ]
-    },
-    "tilelink_tlc": {
-      "owner": "exb",
-      "question": "The only external-facing channel. This is a whole TileLink TL-C bundle, not a scalar: decide the TileLink parameters (beat width, source/sink id widths, address width) and whether this channel carries the flattened bundle or is decomposed into the five TL channels. Until then it cannot be given a single width.",
-      "flag": "Not a field width so much as an external protocol binding.",
-      "channels": [
-        "ccv_exb_ext"
-      ]
+    "rcu_miu_width": {
+      "question": "ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.",
+      "kind": "partitioning question that a width exposed",
+      "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
+      "owner": "partitioning / floorplan"
     }
   }
 }

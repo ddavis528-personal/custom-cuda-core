@@ -123,14 +123,24 @@ def camel(n):
 bad = []
 for p in src["params"]:
     name, val = p["name"], p["value"]
-    prov = p["status"] in PROV
+    # Each tier strips its own prefix on the C++ side, because the namespace
+    # already carries it: ccv::prov::kWImm, ccv::prelim::kWOpcode. Mirroring
+    # the generator here rather than restating the rule is the point -- this
+    # check exists to catch the two drifting apart.
+    prelim = p["status"] == "preliminary"
+    prov = p["status"] in PROV and not prelim
     # Both packages live in one generated file; the value must appear once.
     m = re.search(r"localparam\s+int\s+%s\s*=\s*(\d+)\s*;" % re.escape(name), sv)
     if not m:
         bad.append("%s missing from SystemVerilog" % name)
     elif int(m.group(1)) != val:
         bad.append("%s: SV %s vs source %d" % (name, m.group(1), val))
-    cn = "k" + camel(name.replace("CCV_P_", "") if prov else name)
+    if prelim:
+        cn = "k" + camel(name.replace("CCV_L_", ""))
+    elif prov:
+        cn = "k" + camel(name.replace("CCV_P_", ""))
+    else:
+        cn = "k" + camel(name)
     m = re.search(r"constexpr\s+uint32_t\s+%s\s*=\s*(\d+)\s*;" % re.escape(cn), h)
     if not m:
         bad.append("%s missing from C++ (as %s)" % (name, cn))

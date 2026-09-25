@@ -80,6 +80,11 @@ run "interfaces stable"     python3 tools/gen-interfaces.py --check
 # without running anything. Being generated is what stops it disagreeing with
 # the schema, which is the failure that would make it worse than no spec.
 run "payload spec stable"   python3 tools/gen-payload-spec.py --check
+# Which numbers are still made up is a BUILD ARTIFACT rather than something
+# anyone has to remember -- the payload-widths pass made that a requirement,
+# and a requirement nobody can forget to meet is one the gate produces.
+run "generate trust report" python3 tools/gen-trust-report.py
+run "trust report stable"   python3 tools/gen-trust-report.py --check
 
 section "Stage 1a -- tool-support spike"
 # Every Stage 1 conclusion is a measurement of a third-party tool, and some

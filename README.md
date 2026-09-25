@@ -19,18 +19,28 @@ at **14 block types, 45 instances, 40 channels**, all now encoded and
 machine-checked here. `tools/verify.sh` is green and lists the pending stages
 rather than omitting them.
 
-What the repository is still waiting on is narrow but not small: **28 payload
-field widths across 25 channels**, and **per-interface NGD budgets**. Neither
-is guessed here, because a generated typedef is what downstream code trusts
-and a generated number gets believed.
+**Every payload field now has a width, so all 40 channels generate a packed
+struct and the skeleton can be wired end to end.** The cost is that some
+widths are guesses, so the repository carries **three tiers of trust** and the
+tier is visible at every use site:
 
-Worth being precise about how much is settled, since the headline number
-flatters it: 15 of 40 channels generate a packed struct today, but 10 of those
-15 do so through at least one *provisional* width, so their layout will still
-move. **Only 5 of 40 channels are decided end to end.**
-[`docs/payload-spec.md`](docs/payload-spec.md) has every channel field by
-field, with each open width's question attached and grouped by who has to
-answer it.
+| Package | Meaning | Expected to move |
+|---|---|---|
+| `ccv_params_pkg` | follows from a settled decision | nothing |
+| `ccv_prov_pkg` | a sizing placeholder | the number |
+| `ccv_prelim_pkg` | no decided *encoding* at all | possibly the **field itself** |
+
+Classified by the weakest width each carries: **10 of 40** channels are
+decided end to end, 14 carry a provisional width, and 16 carry a preliminary
+one. [`docs/payload-spec.md`](docs/payload-spec.md) is the per-channel
+breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
+artifact listing everything that references an undecided number, so which
+ones are still made up is produced rather than remembered.
+
+Still outside the repository: **per-interface NGD budgets**, and two questions
+no width can close — the `src_arch`/`operand` mismatch (an ISA question that
+blocks coding rename) and the RCU→MIU width that argues for moving the AGUs
+(a partitioning question, before floorplan).
 
 ## Start here
 
@@ -55,7 +65,8 @@ this is what restores one.
 | [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eighteen findings (F-1…F-18), several of which close questions the strategy doc left open. |
 | [`docs/fail-open-register.md`](docs/fail-open-register.md) | Every mechanism in the flow that fails *open* rather than loud, and the negative control that makes its results believable. Stage 1's three worst findings were all fail-open. |
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
-| [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field: decided widths with their source, open widths with the specific question attached and who has to answer it. The worklist for the per-block sessions. Regenerate with `tools/gen-payload-spec.py`. |
+| [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
+| [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
 | [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one checker for all 40 channels**, since every boundary runs the same credited protocol. |
 
@@ -217,11 +228,18 @@ number under three names — all 2 today, with wake at 4. It stays a
 per-instance parameter defaulted to that minimum, because a non-abutting
 interface would differ and none is known to be non-abutting until floorplan.
 
-**Provisional values are visible at the use site.** The 12 undecided
-parameters generate into a *separate* package — `ccv_prov_pkg` in SV,
-`ccv::prov::` in C++ — so a module referencing one is known unfinished
-wherever it is read, not merely wherever it is declared. That is the whole
-reason for the split rather than a comment.
+**Undecided values are visible at the use site.** Parameters generate into
+one of three packages by status — `ccv_params_pkg`, `ccv_prov_pkg`,
+`ccv_prelim_pkg` (and `ccv::`, `ccv::prov::`, `ccv::prelim::` in C++) — so a
+module referencing an unfinished number says so wherever it is *read*, not
+merely where it is declared. That is the whole reason for a package split
+rather than a comment.
+
+The bottom two tiers are different obligations, which is why they are not one
+package: `prov` means *we will pick a number*, `prelim` means *we do not yet
+know what this field is*. Preliminary parameters also carry a **churn** rating
+— high means the field's shape will change, so code that pattern-matches on
+its contents gets rewritten while code that merely carries it does not.
 
 **Misconfiguration is checked, because it is not a protocol violation.** Two
 `CCV_IF_CONFIG` assertions guard the two ways a checker can be set up wrong
