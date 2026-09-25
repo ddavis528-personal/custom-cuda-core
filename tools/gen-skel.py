@@ -49,6 +49,7 @@ OUT_H = os.path.join(ROOT, "sim", "generated", "ccv_skel_wiring.h")
 OUT_SV = os.path.join(ROOT, "rtl", "generated", "ccv_skel_checkers.sv")
 OUT_PROBE_SV = os.path.join(ROOT, "rtl", "generated", "ccv_skel_layout_probe.sv")
 OUT_PROBE_INC = os.path.join(ROOT, "sim", "generated", "ccv_skel_layout_probe.inc")
+OUT_SLOTS_MD = os.path.join(ROOT, "docs", "skeleton-slots.md")
 
 BANNER_C = """// GENERATED FILE -- DO NOT EDIT.
 //
@@ -104,9 +105,17 @@ def build(d, pv, blocks):
                              "so its per-instance pairing is undefined"
                              % c["name"])
         n = max(ninst[c["src"]], ninst[c["dst"]])
+        dflt = d["slot_attr_defaults"]
+        attrs, decided = {}, {}
+        for a in ("acceptance", "ordering", "slot_binding"):
+            v = c.get("slot_attrs", {}).get(a)
+            attrs[a] = v if v is not None else dflt[a]["default"]
+            decided[a] = v is not None
         chans.append(dict(id=cid, name=c["name"], src=c["src"], dst=c["dst"],
                           rate=c["rate"], bits=total, fields=fields, ninst=n,
-                          src_multi=ms, dst_multi=md))
+                          src_multi=ms, dst_multi=md, attrs=attrs,
+                          decided=decided, id_classes=c["id_classes"],
+                          why=c.get("slot_attrs_why", {})))
 
     # Channel instances and the slot map. Slots are numbered channel instance
     # by channel instance, so a slot index is stable for a fixed schema and
@@ -163,6 +172,10 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("  uint32_t bits;       ///< payload width")
     L.append("  uint16_t nfields; const FieldDesc *fields;")
     L.append("  uint16_t ninst;      ///< copies, one per instance of a multi-instance end")
+    L.append("  bool atomic;         ///< acceptance: all slots move together")
+    L.append("  bool ordered;        ///< one sequence, by (valid cycle, slot index)")
+    L.append("  bool bound;          ///< slot index carries meaning")
+    L.append("  uint8_t id_classes;  ///< bit (1 << IdClass) per class it may carry")
     L.append("};")
     L.append("")
     for c in chans:
@@ -173,10 +186,16 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("")
     L.append("inline constexpr ChanDesc kChans[] = {")
     for c in chans:
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d},'
+        cls = sum(1 << {"none": 0, "instr": 1, "txn": 2}[k]
+                  for k in c["id_classes"])
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %s, %s, %d},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
-                    c["ninst"]))
+                    c["ninst"],
+                    "true" if c["attrs"]["acceptance"] == "atomic" else "false",
+                    "true" if c["attrs"]["ordering"] == "ordered" else "false",
+                    "true" if c["attrs"]["slot_binding"] == "bound" else "false",
+                    cls))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -230,7 +249,17 @@ def gen_sv(chans, cinst, nslots, pbits):
     L.append("  input logic [%d:0]          valid," % (nslots - 1))
     L.append("  input logic [%d:0]          credit," % (nslots - 1))
     L.append("  input logic [%d:0]          stall," % (nslots - 1))
-    L.append("  input logic [%d:0]          payload" % (pbits - 1))
+    L.append("  input logic [%d:0]          payload," % (pbits - 1))
+    L.append("  // Test override: switches EVERY multi-slot channel's atomic")
+    L.append("  // check on. It can only add checks -- a channel the schema")
+    L.append("  // marks atomic is checked whatever this says.")
+    L.append("  input logic                 force_atomic")
+    L.append("`ifdef CCV_TRACE")
+    L.append("  ,")
+    L.append("  // Trace-only message identity, 64 bits per slot. Absent")
+    L.append("  // without CCV_TRACE, so synthesis never sees it.")
+    L.append("  input logic [%d:0]          tid" % (64 * nslots - 1))
+    L.append("`endif")
     L.append(");")
     L.append("")
     for ci in cinst:
@@ -244,8 +273,19 @@ def gen_sv(chans, cinst, nslots, pbits):
                      "u_%s_s%d (" % (c["bits"], c["id"], tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "
                      ".ch_credit(credit[%d]), .ch_stall(stall[%d])," % (k, k, k))
-            L.append("    .ch_payload(payload[%d:%d]));"
-                     % (off + c["bits"] - 1, off))
+            L.append("    .ch_payload(payload[%d:%d])" % (off + c["bits"] - 1, off))
+            L.append("`ifdef CCV_TRACE")
+            L.append("    , .ch_tid(tid[%d:%d])" % (64 * k + 63, 64 * k))
+            L.append("`endif")
+            L.append("  );")
+        if c["rate"] > 1:
+            lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
+            L.append("  ccv_atomic_checker #(.N(%d)) u_%s_atomic ("
+                     % (c["rate"], tag))
+            L.append("    .clk(clk), .rst_n(rst_n), .enable(1'b%d | force_atomic),"
+                     % (1 if c["attrs"]["acceptance"] == "atomic" else 0))
+            L.append("    .valid(valid[%d:%d]), .credit(credit[%d:%d]));"
+                     % (hi, lo, hi, lo))
     L.append("")
     L.append("endmodule")
     return "\n".join(L) + "\n"
@@ -300,6 +340,69 @@ def gen_probe_inc(chans):
     return "\n".join(L) + "\n"
 
 
+def gen_slots_md(chans, cinst, nslots):
+    """The slot count, derived where it can be re-derived by hand.
+
+    A wrong rate on a times-32 channel inflates the count and STILL produces a
+    clean run: every slot that exists is checked, and no checker exists for a
+    slot that should have been there. So the count is the one number a clean
+    run does not validate, and it is written out term by term instead of
+    being inferred from a passing run. tools/check-skel.sh re-derives it
+    independently of this generator every time the gate runs.
+    """
+    L = ["<!-- GENERATED FILE -- DO NOT EDIT. Produced by tools/gen-skel.py;",
+         "     tools/verify.sh fails if it is stale. -->", "",
+         "# Skeleton slot derivation", "",
+         "Every credited slot the skeleton builds, derived from",
+         "`schema/interfaces.json` and `params/blocks.json`: a channel type has",
+         "`rate` slots per instance, and one instance per instance of a",
+         "multi-instance endpoint (LANE has 32).", "",
+         "## The count", "",
+         "| Channel types | Rate | Instances each | Slots |", "|---|---|---|---|"]
+    groups = {}
+    for c in chans:
+        groups.setdefault((c["rate"], c["ninst"]), []).append(c)
+    total = 0
+    for (r, n) in sorted(groups):
+        k = len(groups[(r, n)])
+        L.append("| %d | %d | %d | %d |" % (k, r, n, k * r * n))
+        total += k * r * n
+    L.append("| **%d** | | | **%d** |" % (len(chans), total))
+    assert total == nslots
+    L.append("")
+    L.append("%d channel types; **%d channel instances** (%d types at one "
+             "instance, plus %d at 32 each); **%d slots**, one "
+             "`ccv_credit_checker` each."
+             % (len(chans), len(cinst),
+                sum(1 for c in chans if c["ninst"] == 1),
+                sum(1 for c in chans if c["ninst"] > 1), nslots))
+    L.append("")
+    L.append("The terms that matter most are the ones multiplied by 32: a rate "
+             "wrong by one on either lane channel moves the total by 32 and "
+             "every run stays clean.")
+    L.append("")
+    L.append("## Every channel, with its slot attributes")
+    L.append("")
+    L.append("Attributes apply to rate > 1 only. *Italic* is the permissive "
+             "default; **bold** is decided, with the reason.")
+    L.append("")
+    L.append("| # | Channel | Rate × inst | Slots | Acceptance | Ordering | "
+             "Binding | Id classes |")
+    L.append("|---|---|---|---|---|---|---|---|")
+    def fmt(c, a):
+        if c["rate"] == 1:
+            return "—"
+        v = c["attrs"][a]
+        return "**%s** — %s" % (v, c["why"][a]) if c["decided"][a] else "*%s*" % v
+    for c in chans:
+        L.append("| %d | `%s` | %d × %d | %d | %s | %s | %s | %s |"
+                 % (c["id"], c["name"], c["rate"], c["ninst"],
+                    c["rate"] * c["ninst"], fmt(c, "acceptance"),
+                    fmt(c, "ordering"), fmt(c, "slot_binding"),
+                    ", ".join(c["id_classes"])))
+    return "\n".join(L) + "\n"
+
+
 def main():
     check = "--check" in sys.argv
     d, pv, blocks = load()
@@ -307,7 +410,8 @@ def main():
     targets = [(OUT_H, gen_h(binst, chans, cinst, nslots, pbits, blocks)),
                (OUT_SV, gen_sv(chans, cinst, nslots, pbits)),
                (OUT_PROBE_SV, gen_probe_sv(chans)),
-               (OUT_PROBE_INC, gen_probe_inc(chans))]
+               (OUT_PROBE_INC, gen_probe_inc(chans)),
+               (OUT_SLOTS_MD, gen_slots_md(chans, cinst, nslots))]
     stale = []
     for path, text in targets:
         os.makedirs(os.path.dirname(path), exist_ok=True)

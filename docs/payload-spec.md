@@ -5,7 +5,7 @@
 
 # Payload specification — all 40 channels
 
-Every payload field has a width, so **every one of the 40
+Every payload field has a width, so **every one of the 41
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 10 | 28 |
 | ⚠️ Some provisional | 14 | 46 |
-| ⛔ Some preliminary | 16 | 70 |
-| **Total** | **40** | **144** |
+| ⛔ Some preliminary | 17 | 71 |
+| **Total** | **41** | **145** |
 
 ## What still has to be decided
 
@@ -60,11 +60,12 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_CLASS` | 3 | low | Eight uop classes: integer, float, SFU and convert, memory, control, collective, predicate, spare. DEC decides whether class is derivable from opcode at all. |
 
-### EXB session -- flattened bundle or five channels
+### EXB session -- flattened bundle or separate TL channels
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_L_W_TILELINK_TLC` | 1760 | **HIGH** | Five TL channels with a 512-bit beat, 48-bit address, 6-bit source and 4-bit sink. Not really a width: EXB decides whether the channel carries a flattened bundle or decomposes into five. |
+| `CCV_L_W_TL_IN` | 1176 | **HIGH** | TL-C inbound, B + D plus a valid bit per TL channel: B 641 (as A), D 533 (opcode 3, param 2, size 4, source 6, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe. |
+| `CCV_L_W_TL_OUT` | 1225 | **HIGH** | TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, 6-bit source, 4-bit sink: A 641 (opcode 3, param 3, size 4, source 6, address 48, mask 64, data 512, corrupt 1), C 577 (A without mask), E 4 (sink), valids 3. |
 
 ### ISA opcode census, then DEC/OOE/RCU agree the hops
 
@@ -636,16 +637,16 @@ mlc → exb · rate 1 · memory
 | `writeback_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | **total** | | **1084** | ⛔ 7 preliminary, ⚠️ 1072 provisional |
 
-### `ccv_exb_ext`
+### `ccv_exb_ext_out`
 
-TileLink TL-C. The only channel outside our conventions.
+TileLink TL-C, outbound: channels A (acquire/get/put), C (release, probe response) and E (grant ack). The core is a master. How it decomposes -- flattened bundle or separate TL channels -- is EXB session work.
 
 exb → EXTERNAL · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `tilelink_tlc` | `CCV_L_W_TILELINK_TLC` | 1760 ⛔ | CCV_L_W_TILELINK_TLC (preliminary, churn **HIGH**) |
-| **total** | | **1760** | ⛔ 1760 preliminary |
+| `tl_out` | `CCV_L_W_TL_OUT` | 1225 ⛔ | CCV_L_W_TL_OUT (preliminary, churn **HIGH**) |
+| **total** | | **1225** | ⛔ 1225 preliminary |
 
 ### `ccv_rau_fet_launch`
 
@@ -728,3 +729,14 @@ rau → syu · rate 1 · control
 | `barrier_count` | `CCV_L_W_BAR_COUNT` | 7 ⛔ | CCV_L_W_BAR_COUNT (preliminary, churn low) |
 | `allocate_or_free` | `1` | 1 | literal |
 | **total** | | **17** | ⛔ 7 preliminary, ⚠️ 3 provisional |
+
+### `ccv_ext_exb_in`
+
+TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with.
+
+EXTERNAL → exb · rate 1 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `tl_in` | `CCV_L_W_TL_IN` | 1176 ⛔ | CCV_L_W_TL_IN (preliminary, churn **HIGH**) |
+| **total** | | **1176** | ⛔ 1176 preliminary |

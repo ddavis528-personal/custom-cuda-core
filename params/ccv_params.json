@@ -604,15 +604,6 @@
       "decided_at": "divergence model specification"
     },
     {
-      "name": "CCV_L_W_TILELINK_TLC",
-      "value": 1760,
-      "status": "preliminary",
-      "churn": "high",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Five TL channels with a 512-bit beat, 48-bit address, 6-bit source and 4-bit sink. Not really a width: EXB decides whether the channel carries a flattened bundle or decomposes into five.",
-      "decided_at": "EXB session -- flattened bundle or five channels"
-    },
-    {
       "name": "CCV_L_W_BAR_COUNT",
       "value": 7,
       "status": "preliminary",
@@ -629,6 +620,24 @@
       "source": "Payload widths pass (2026-09-25)",
       "doc": "Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.",
       "decided_at": "MMU session"
+    },
+    {
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Interface decisions (2026-09-24)",
+      "decided_at": "EXB session -- flattened bundle or separate TL channels",
+      "name": "CCV_L_W_TL_OUT",
+      "value": 1225,
+      "doc": "TL-C outbound, A + C + E plus a valid bit per TL channel, at 512-bit beat, 48-bit address, 6-bit source, 4-bit sink: A 641 (opcode 3, param 3, size 4, source 6, address 48, mask 64, data 512, corrupt 1), C 577 (A without mask), E 4 (sink), valids 3."
+    },
+    {
+      "status": "preliminary",
+      "churn": "high",
+      "source": "Interface decisions (2026-09-24)",
+      "decided_at": "EXB session -- flattened bundle or separate TL channels",
+      "name": "CCV_L_W_TL_IN",
+      "value": 1176,
+      "doc": "TL-C inbound, B + D plus a valid bit per TL channel: B 641 (as A), D 533 (opcode 3, param 2, size 4, source 6, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe."
     }
   ]
 }

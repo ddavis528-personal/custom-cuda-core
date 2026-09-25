@@ -43,6 +43,10 @@ def schema_hash(raw_bytes):
     sig = {
         "schema_version": d["schema_version"],
         "units": d["units"],
+        # The id layout changes how every event's instr_uid is READ, so a
+        # trace written under one layout must not be read under another.
+        "uid_layout": {k: v for k, v in d.get("uid_layout", {}).items()
+                       if not k.startswith("_")},
         "events": [
             {"name": e["name"], "id": e["id"], "class": e["class"],
              "fields": e["fields"]}
@@ -127,6 +131,32 @@ def gen_cpp(d, h):
     L.append("  }")
     L.append("}")
     L.append("")
+    ul = d["uid_layout"]; uf = ul["fields"]
+    L.append("/// Trace identity (the instr_uid of every event). Trace-only:")
+    L.append("/// it rides in a CCV_TRACE sideband, never in a payload struct.")
+    L.append("enum class IdClass : uint8_t {")
+    for k, v in sorted(ul["classes"].items(), key=lambda kv: kv[1]):
+        L.append("  k%s = %d," % (k.capitalize(), v))
+    L.append("};")
+    L.append("enum ReplayReason : uint32_t {")
+    for k, v in sorted(ul["replay_reasons"].items(), key=lambda kv: kv[1]):
+        L.append("  kReplay%s = %d," % ("".join(w.capitalize() for w in k.split("_")), v))
+    L.append("};")
+    for f in ("seq", "sub", "owned", "class"):
+        L.append("static constexpr unsigned kUid%sLsb = %d, kUid%sWidth = %d;"
+                 % (f.capitalize(), uf[f]["lsb"], f.capitalize(), uf[f]["width"]))
+    L.append("inline uint64_t makeUid(IdClass c, uint32_t seq, uint16_t sub = 0,")
+    L.append("                        bool owned = false) {")
+    L.append("  return (uint64_t(c) << kUidClassLsb) | (uint64_t(owned) << kUidOwnedLsb) |")
+    L.append("         (uint64_t(sub) << kUidSubLsb) | (uint64_t(seq) << kUidSeqLsb);")
+    L.append("}")
+    L.append("inline IdClass uidClass(uint64_t u) {")
+    L.append("  return IdClass((u >> kUidClassLsb) & ((1u << kUidClassWidth) - 1));")
+    L.append("}")
+    L.append("inline uint32_t uidSeq(uint64_t u) { return uint32_t(u >> kUidSeqLsb); }")
+    L.append("inline uint16_t uidSub(uint64_t u) { return uint16_t(u >> kUidSubLsb); }")
+    L.append("inline bool uidOwned(uint64_t u) { return (u >> kUidOwnedLsb) & 1u; }")
+    L.append("")
     L.append("} // namespace ccv")
     L.append("#endif // CCV_EVENT_IDS_H")
     return "\n".join(L) + "\n"
@@ -151,6 +181,14 @@ def gen_sv(d, h):
     for e in sorted(d["events"], key=lambda e: e["id"]):
         L.append("// %s" % e["doc"])
         L.append("localparam int CCV_%s = %d;" % (e["name"], e["id"]))
+    L.append("")
+    ul = d["uid_layout"]; uf = ul["fields"]
+    L.append("// Trace identity layout. Only meaningful under CCV_TRACE.")
+    for f in ("seq", "sub", "owned", "class"):
+        L.append("localparam int CCV_UID_%s_LSB = %d;" % (f.upper(), uf[f]["lsb"]))
+        L.append("localparam int CCV_UID_%s_W = %d;" % (f.upper(), uf[f]["width"]))
+    for k, v in sorted(ul["classes"].items(), key=lambda kv: kv[1]):
+        L.append("localparam int CCV_ID_%s = %d;" % (k.upper(), v))
     L.append("")
     L.append("/* verilator lint_on UNUSEDPARAM */")
     L.append("")

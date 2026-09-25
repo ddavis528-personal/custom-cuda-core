@@ -252,11 +252,40 @@ def main():
                                  % (c["name"], end, c[end]))
                 return 1
         # The channel name must agree with its endpoints, or the topology and
-        # the name drift and the name is what everyone reads.
-        want = "ccv_%s_%s_" % (c["src"], c["dst"])
-        if c["dst"] != "EXTERNAL" and not c["name"].startswith(want):
+        # the name drift and the name is what everyone reads. EXTERNAL is
+        # spelled `ext` in a name. It used to be exempt from this check, which
+        # was harmless while the only external channel pointed outward; now
+        # the port is a pair, both directions are checked.
+        nm = lambda b: "ext" if b == "EXTERNAL" else b
+        want = "ccv_%s_%s_" % (nm(c["src"]), nm(c["dst"]))
+        if not c["name"].startswith(want):
             sys.stderr.write("channel %s does not match its endpoints "
                              "(expected %s...)\n" % (c["name"], want))
+            return 1
+
+        # Slot attributes: a known name, a legal value, and only where there
+        # is more than one slot for it to describe.
+        dflt = d.get("slot_attr_defaults", {})
+        for a, v in c.get("slot_attrs", {}).items():
+            if a not in dflt or v not in dflt[a]["values"]:
+                sys.stderr.write("channel %s: slot attribute %s=%r is not "
+                                 "one of %s\n" % (c["name"], a, v,
+                                 dflt.get(a, {}).get("values", "(unknown)")))
+                return 1
+            if c["rate"] == 1:
+                sys.stderr.write("channel %s: slot attribute %s on a rate-1 "
+                                 "channel describes nothing\n" % (c["name"], a))
+                return 1
+            if a not in c.get("slot_attrs_why", {}):
+                sys.stderr.write("channel %s: slot attribute %s is set with "
+                                 "no reason recorded -- a decided value "
+                                 "without one reads as a default\n"
+                                 % (c["name"], a))
+                return 1
+        cls = c.get("id_classes")
+        if not cls or any(k not in ("instr", "txn", "none") for k in cls):
+            sys.stderr.write("channel %s: id_classes must be a non-empty set "
+                             "drawn from instr, txn, none\n" % c["name"])
             return 1
 
     # Resolve the parameter->package map once, then validate every field name

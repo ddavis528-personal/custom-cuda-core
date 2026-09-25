@@ -127,7 +127,16 @@
         "length",
         "fetch_fault"
       ],
-      "doc": "Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path."
+      "doc": "Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path.",
+      "slot_attrs": {
+        "slot_binding": "bound"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "the eight slots are four warp streams of two: tier-1 stream = slot / 2"
+      },
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_dec_ooe_uop",
@@ -146,7 +155,16 @@
         "imm",
         "decode_fault"
       ],
-      "doc": "Format-decoded operations with architectural register names, six per cycle into the queue ahead of rename."
+      "doc": "Format-decoded operations with architectural register names, six per cycle into the queue ahead of rename.",
+      "slot_attrs": {
+        "ordering": "ordered"
+      },
+      "slot_attrs_why": {
+        "ordering": "program-ordered per warp"
+      },
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_ooe_rcu_issue",
@@ -164,7 +182,16 @@
         "chwidth",
         "dispatch_fault"
       ],
-      "doc": "What the scheduler selected: physical register names, opcode, element width. Four per cycle, the binding width of the machine."
+      "doc": "What the scheduler selected: physical register names, opcode, element width. Four per cycle, the binding width of the machine.",
+      "slot_attrs": {
+        "slot_binding": "free"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "the four issue slots are a free pool"
+      },
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_rcu_lane_ops",
@@ -179,7 +206,10 @@
         "section_en"
       ],
       "note": "Fans out to 32 LANE instances; the payload is per-lane.",
-      "doc": "Operands and control to one lane. Section enables gate the narrow sub-datapaths and the SFU."
+      "doc": "Operands and control to one lane. Section enables gate the narrow sub-datapaths and the SFU.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_lane_rcu_res",
@@ -192,7 +222,10 @@
         "lane_fault"
       ],
       "note": "32 LANE instances converge here.",
-      "doc": "One lane's result and its fault bit."
+      "doc": "One lane's result and its fault bit.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_rcu_ooe_done",
@@ -205,7 +238,10 @@
         "exec_fault",
         "fault_lane_mask"
       ],
-      "doc": "Completion back to the ROB for arithmetic, with the faulting lane mask."
+      "doc": "Completion back to the ROB for arithmetic, with the faulting lane mask.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_rcu_miu_addr",
@@ -219,7 +255,10 @@
         "index_per_lane",
         "store_data"
       ],
-      "doc": "Address operands and store data for memory operations. The widest interface in the design."
+      "doc": "Address operands and store data for memory operations. The widest interface in the design.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_miu_rcu_data",
@@ -232,7 +271,10 @@
         "phys_dst",
         "load_data"
       ],
-      "doc": "Load return data written into the register file."
+      "doc": "Load return data written into the register file.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_ooe_miu_memop",
@@ -249,7 +291,10 @@
         "space",
         "ordering"
       ],
-      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking."
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_miu_ooe_cmpl",
@@ -266,7 +311,16 @@
         "mlc_miss"
       ],
       "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger.",
-      "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel."
+      "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel.",
+      "slot_attrs": {
+        "ordering": "unordered"
+      },
+      "slot_attrs_why": {
+        "ordering": "genuinely out of order across four pipes"
+      },
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_ooe_miu_retire",
@@ -278,7 +332,10 @@
         "rob_tag",
         "commit_or_discard"
       ],
-      "doc": "Commit or discard for the store buffer, so stores leave only after their instruction retires."
+      "doc": "Commit or discard for the store buffer, so stores leave only after their instruction retires.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_miu_spm_req",
@@ -292,7 +349,10 @@
         "byte_mask",
         "spm_op"
       ],
-      "doc": "Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM."
+      "doc": "Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_spm_miu_rsp",
@@ -304,7 +364,10 @@
         "read_data",
         "conflict_serialization"
       ],
-      "doc": "Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs."
+      "doc": "Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_miu_dcu_req",
@@ -318,7 +381,10 @@
         "coh_op",
         "exclusive_req"
       ],
-      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics."
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_dcu_miu_rsp",
@@ -331,7 +397,10 @@
         "hit",
         "ownership_granted"
       ],
-      "doc": "Cache read data, hit indication and whether ownership was granted."
+      "doc": "Cache read data, hit indication and whether ownership was granted.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_dcu_mlc_req",
@@ -345,7 +414,10 @@
         "core_id",
         "writeback_data"
       ],
-      "doc": "Fills and writebacks from L1 to the shared cache, tagged with core ID."
+      "doc": "Fills and writebacks from L1 to the shared cache, tagged with core ID.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_mlc_dcu_rsp",
@@ -358,7 +430,10 @@
         "ownership",
         "miss"
       ],
-      "doc": "Line fills and ownership grants back to L1."
+      "doc": "Line fills and ownership grants back to L1.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_mlc_dcu_probe",
@@ -371,7 +446,10 @@
         "invalidate_or_downgrade"
       ],
       "note": "A wake source: the D-cache cannot sleep through an inbound probe.",
-      "doc": "Inbound invalidate or downgrade. Unsolicited, and a wake source, since a sleeping D-cache must still answer."
+      "doc": "Inbound invalidate or downgrade. Unsolicited, and a wake source, since a sleeping D-cache must still answer.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_dcu_mlc_probe_ack",
@@ -383,7 +461,10 @@
         "ack",
         "dirty_data"
       ],
-      "doc": "Probe response, carrying dirty data when the line was modified."
+      "doc": "Probe response, carrying dirty data when the line was modified.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_fet_mlc_ifill",
@@ -396,7 +477,10 @@
         "asid"
       ],
       "note": "I-cache miss bypasses DCU.",
-      "doc": "Instruction cache miss straight to MLC, bypassing the D-cache."
+      "doc": "Instruction cache miss straight to MLC, bypassing the D-cache.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_mlc_fet_ifill_rsp",
@@ -407,7 +491,10 @@
       "payload_fields": [
         "line_data"
       ],
-      "doc": "Instruction line fill."
+      "doc": "Instruction line fill.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_miu_fet_itlb",
@@ -418,7 +505,10 @@
       "payload_fields": [
         "itlb_refill"
       ],
-      "doc": "Walker returning an ITLB entry."
+      "doc": "Walker returning an ITLB entry.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_fet_miu_itlb_req",
@@ -430,7 +520,10 @@
         "virtual_page",
         "asid"
       ],
-      "doc": "Fetch asking the walker for a translation on an ITLB miss."
+      "doc": "Fetch asking the walker for a translation on an ITLB miss.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_mlc_exb_req",
@@ -446,7 +539,10 @@
         "core_id",
         "writeback_data"
       ],
-      "doc": "The protocol-neutral outbound request. Everything the core knows about coherence is expressed here."
+      "doc": "The protocol-neutral outbound request. Everything the core knows about coherence is expressed here.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_exb_mlc_rsp",
@@ -460,19 +556,26 @@
         "inbound_probe",
         "miss"
       ],
-      "doc": "Protocol-neutral inbound: fills, grants and probes."
+      "doc": "Protocol-neutral inbound: fills, grants and probes.",
+      "id_classes": [
+        "txn",
+        "none"
+      ]
     },
     {
-      "name": "ccv_exb_ext",
+      "name": "ccv_exb_ext_out",
       "src": "exb",
       "dst": "EXTERNAL",
       "rate": 1,
       "group": "memory",
       "payload_fields": [
-        "tilelink_tlc"
+        "tl_out"
       ],
       "note": "THE ONE EXCEPTION. TileLink TL-C at the coherent boundary; obeys that protocol's rules, not ours. Containing it in a bridge block is what keeps the exception to a single port.",
-      "doc": "TileLink TL-C. The only channel outside our conventions."
+      "doc": "TileLink TL-C, outbound: channels A (acquire/get/put), C (release, probe response) and E (grant ack). The core is a master. How it decomposes -- flattened bundle or separate TL channels -- is EXB session work.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_rau_fet_launch",
@@ -487,7 +590,10 @@
         "asid",
         "cta_slot"
       ],
-      "doc": "A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot."
+      "doc": "A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_rau_ooe_alloc",
@@ -501,7 +607,10 @@
         "prf_size",
         "activate_or_free"
       ],
-      "doc": "The warp's physical register window, activated or freed."
+      "doc": "The warp's physical register window, activated or freed.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_ooe_rau_status",
@@ -515,7 +624,10 @@
         "mlc_miss_seen",
         "retired_since_restore"
       ],
-      "doc": "Per-warp stall and progress reporting, feeding demotion policy."
+      "doc": "Per-warp stall and progress reporting, feeding demotion policy.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_rau_ooe_demote",
@@ -527,7 +639,10 @@
         "warp_id",
         "squash_to_retirement"
       ],
-      "doc": "The order to squash a warp to its retirement boundary and report where to resume."
+      "doc": "The order to squash a warp to its retirement boundary and report where to resume.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_ooe_rau_drained",
@@ -540,7 +655,10 @@
         "resume_pc",
         "arch_state_ready"
       ],
-      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin."
+      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_rau_rcu_mig",
@@ -553,7 +671,10 @@
         "direction",
         "bank_select"
       ],
-      "doc": "Which warp and direction a migration moves, and which parked bank it targets."
+      "doc": "Which warp and direction a migration moves, and which parked bank it targets.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_rcu_pca_mig",
@@ -566,7 +687,10 @@
         "pred_state",
         "pcs"
       ],
-      "doc": "Architectural state out to the parked array on demotion."
+      "doc": "Architectural state out to the parked array on demotion.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_pca_rcu_mig",
@@ -579,7 +703,10 @@
         "pred_state",
         "pcs"
       ],
-      "doc": "Architectural state back in on restore."
+      "doc": "Architectural state back in on restore.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_rau_miu_cta",
@@ -593,7 +720,10 @@
         "spm_limit",
         "launch_block_addr"
       ],
-      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads."
+      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_ooe_syu_bar",
@@ -607,7 +737,10 @@
         "barrier_id",
         "arrive_or_wait"
       ],
-      "doc": "Barrier arrive and wait. A warp may be demoted while waiting, so the barrier table tracks non-resident warps."
+      "doc": "Barrier arrive and wait. A warp may be demoted while waiting, so the barrier table tracks non-resident warps.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_syu_ooe_rel",
@@ -619,7 +752,10 @@
         "warp_mask_released",
         "barrier_id"
       ],
-      "doc": "The set of warps a barrier released."
+      "doc": "The set of warps a barrier released.",
+      "id_classes": [
+        "txn"
+      ]
     },
     {
       "name": "ccv_rau_syu_alloc",
@@ -633,7 +769,10 @@
         "barrier_count",
         "allocate_or_free"
       ],
-      "doc": "Barrier entries allocated to or freed from a CTA slot."
+      "doc": "Barrier entries allocated to or freed from a CTA slot.",
+      "id_classes": [
+        "none"
+      ]
     },
     {
       "name": "ccv_ooe_cru_fault",
@@ -649,7 +788,10 @@
         "cta_slot",
         "warp_id"
       ],
-      "doc": "The first fault taken by a context, written once and never overwritten."
+      "doc": "The first fault taken by a context, written once and never overwritten.",
+      "id_classes": [
+        "instr"
+      ]
     },
     {
       "name": "ccv_cru_rau_cfg",
@@ -662,7 +804,25 @@
         "progress_threshold",
         "launch_enable"
       ],
-      "doc": "Host-programmed policy: demotion threshold, progress threshold, launch enable."
+      "doc": "Host-programmed policy: demotion threshold, progress threshold, launch enable.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_ext_exb_in",
+      "src": "EXTERNAL",
+      "dst": "exb",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "tl_in"
+      ],
+      "doc": "TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with.",
+      "id_classes": [
+        "txn",
+        "none"
+      ]
     }
   ],
   "_field_widths_comment": [
@@ -767,9 +927,10 @@
     "index_per_lane": "CCV_W_DATA",
     "pcs": "CCV_L_PC_GROUPS*CCV_W_VA",
     "pred_state": "CCV_L_W_PRED_STATE",
-    "tilelink_tlc": "CCV_L_W_TILELINK_TLC",
     "barrier_count": "CCV_L_W_BAR_COUNT",
-    "uop_class": "CCV_L_W_CLASS"
+    "uop_class": "CCV_L_W_CLASS",
+    "tl_out": "CCV_L_W_TL_OUT",
+    "tl_in": "CCV_L_W_TL_IN"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
@@ -796,5 +957,54 @@
     "1024-bit GPR row per cycle, i.e. rate 1, with the row carried in the",
     "payload's gpr_row field. The first encoding dropped the 'b' and stored",
     "rate 1024, which the skeleton would have built as 1024 parallel slots."
+  ],
+  "_slot_attrs_comment": [
+    "Per-channel slot attributes (interface decisions, 2026-09-24). A rate>1",
+    "channel is `rate` independent credited slots -- the permissive superset:",
+    "a receiver that can only accept a whole group returns credits in lockstep",
+    "and the sender cannot tell the difference, while a shared pool cannot",
+    "express the partial acceptance SPM and DCU already need.",
+    "",
+    "Only DECIDED values are written on a channel; the generators apply the",
+    "permissive default otherwise, and report which is which, so a default is",
+    "never mistaken for a decision. Tightened per channel as block sessions",
+    "decide. Meaningless at rate 1, and rejected there."
+  ],
+  "slot_attr_defaults": {
+    "acceptance": {
+      "default": "partial",
+      "values": [
+        "partial",
+        "atomic"
+      ],
+      "doc": "atomic: credits (and so valids) move together across the slots. Checked, by ccv_atomic_checker, not merely recorded -- and lets RTL collapse to one counter without a schema change."
+    },
+    "ordering": {
+      "default": "unordered",
+      "values": [
+        "ordered",
+        "unordered"
+      ],
+      "doc": "ordered: the channel carries one sequence, defined as (valid cycle, slot index). Receivers must consume in that order."
+    },
+    "slot_binding": {
+      "default": "free",
+      "values": [
+        "free",
+        "bound"
+      ],
+      "doc": "bound: slot index carries meaning, so slots are NOT interchangeable. The one attribute that cannot be recovered later: without it a bound channel looks free, and a receiver will eventually be written assuming so."
+    }
+  },
+  "_id_classes_comment": [
+    "Which trace-identity classes a channel's messages may carry (interface",
+    "decisions, 2026-09-24): instr -- work traceable to a fetched instruction;",
+    "txn -- a transaction with no single owning instruction, or one of one",
+    "instruction's many; none -- probes, launches, migration, CSR access.",
+    "A SET, because some channels carry more than one kind: EXB->MLC and the",
+    "inbound external port carry fills (txn) and probes (none). The skeleton",
+    "checks every message against its channel's set. The per-channel",
+    "assignment is the skeleton's proposal against those definitions, not yet",
+    "a block session's decision -- see docs/skeleton.md."
   ]
 }

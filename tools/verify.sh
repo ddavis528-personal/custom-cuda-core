@@ -107,6 +107,8 @@ run "1c exit criteria" ./tools/check-1c.sh
 # one-cycle offset, which at correlation reads as a design divergence.
 run "emit-path calibration" ./tools/check-emit-calib.sh
 
+run "trace identity view" python3 tools/check-trace-ids.py
+
 section "Stage 1d -- coding style and lint"
 run "1d exit criteria" ./tools/check-1d.sh
 
@@ -133,14 +135,19 @@ section "Verilator lint"
 # width mismatches, inferred latches, unused and undriven signals.
 if command -v verilator >/dev/null 2>&1; then
   vfail=0
-  for f in test/smoke/ccv_assert_smoke.sv rtl/if/ccv_credit_checker.sv; do
+  # file:define -- the credit checker is linted with and without CCV_TRACE,
+  # because the trace sideband changes its port list and each variant is a
+  # build someone will run.
+  for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_credit_checker.sv: \
+              rtl/if/ccv_credit_checker.sv:CCV_TRACE rtl/if/ccv_atomic_checker.sv:; do
+    f=${spec%%:*}; def=${spec#*:}
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut
     if ! verilator --lint-only --assert -Wall -Wno-DECLFILENAME \
-         -Wno-TIMESCALEMOD \
+         -Wno-TIMESCALEMOD ${def:+-D$def} \
          -Irtl/include -Irtl/generated --top-module "$top" \
          rtl/ccv_assert_pkg.sv "$f" >/tmp/vlint.$$ 2>&1; then
-      echo "  $f:"; sed 's/^/    /' /tmp/vlint.$$ | head -12; vfail=1
+      echo "  $f${def:+ (+$def)}:"; sed 's/^/    /' /tmp/vlint.$$ | head -12; vfail=1
     fi
     rm -f /tmp/vlint.$$
   done
@@ -159,10 +166,11 @@ cat <<'PENDING'
            per-instance parameter, defaulted to that minimum and not expected
            to move before floorplan.
            Payload widths: every field sized, tiered settled/prov/prelim.
-           Remaining: per-interface NGD budgets; rate>1 slot semantics
-           (assumed: independent credited slots -- docs/skeleton.md)
-  Stage 3  S0 plumbing DONE: 45 blocks, 102 channel instances, 339 slots,
-           checker bank Verilated in, Perfetto trace, layout cross-checked.
+           Rate>1: independent slots, with acceptance / ordering / binding
+           per channel. Remaining: per-interface NGD budgets
+  Stage 3  S0 plumbing DONE: 45 blocks, 103 channel instances, 340 slots,
+           checker bank Verilated in, trace identity carried, Perfetto
+           trace, layout cross-checked, slot count re-derived.
            S1 next: vadd end to end, state identical to ccv-sim
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING

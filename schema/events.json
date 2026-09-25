@@ -21,7 +21,7 @@
     "",
     "LOAD-BEARING CONTENT IS NOW POPULATED, at Stage 2 as \u00a78 said it would be: EV_CH_XFER plus the 40-channel list in schema/interfaces.json. The per-instruction events above remain as the finer-grained view; a channel transfer is the interface-defined one."
   ],
-  "schema_version": 1,
+  "schema_version": 2,
   "classes": {
     "load_bearing": {
       "description": "Architectural-state-affecting, or an interface transaction. Must match exactly between timing model and RTL; any divergence is a bug.",
@@ -185,6 +185,59 @@
         "b": "payload_lo",
         "c": "payload_hi"
       }
+    },
+    {
+      "name": "EV_ID_LINK",
+      "id": 12,
+      "class": "arbitration_sensitive",
+      "provisional": false,
+      "doc": "An instruction is re-executed under a NEW id, linked to the old. Squash and replay are central to this machine -- branch recovery, load replay, demotion restore -- and a reused id would show one instruction with overlapping lifetimes instead of the replay. Arbitration-sensitive because whether a replay happens can depend on contention (load replay), so model and RTL may legitimately differ on it.",
+      "fields": {
+        "a": "new_seq",
+        "b": "old_seq",
+        "c": "reason"
+      }
     }
-  ]
+  ],
+  "uid_layout": {
+    "_comment": [
+      "Every event's instr_uid (interface decisions, 2026-09-24). TRACE-ONLY:",
+      "carried beside a message in a sideband that exists only under",
+      "CCV_TRACE, never in the RTL payload struct, so synthesis never sees it.",
+      "rob_tag cannot serve: it does not exist before rename, it is reused",
+      "after retirement, and the control channels have none."
+    ],
+    "fields": {
+      "seq": {
+        "lsb": 0,
+        "width": 32,
+        "doc": "32-bit monotonic. instr: assigned at fetch. txn: the owning instruction's seq if `owned`, else from a separate transaction counter. none: 0."
+      },
+      "sub": {
+        "lsb": 32,
+        "width": 16,
+        "doc": "Sub-index for one instruction's many transactions (a page-split access), so the view nests them under the instruction rather than showing peers. 0 = unnested."
+      },
+      "owned": {
+        "lsb": 61,
+        "width": 1,
+        "doc": "txn only: seq names the owning instruction, and the transaction nests under it."
+      },
+      "class": {
+        "lsb": 62,
+        "width": 2,
+        "doc": "What the id identifies; most channels are not per-instruction at all."
+      }
+    },
+    "classes": {
+      "none": 0,
+      "instr": 1,
+      "txn": 2
+    },
+    "replay_reasons": {
+      "branch_recovery": 1,
+      "load_replay": 2,
+      "demotion_restore": 3
+    }
+  }
 }

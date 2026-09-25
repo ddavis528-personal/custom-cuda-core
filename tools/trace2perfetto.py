@@ -11,9 +11,12 @@ Two views, because §1 names both and they answer different questions:
 
   --by=unit   (default)  one track per structure. Occupancy and contention:
                          where the machine is spending itself.
-  --by=instr             one track per instruction. Lifetime from decode to
-                         retire, which is what a single instruction's stall
-                         story looks like.
+  --by=instr             one PROCESS per instruction, from the trace
+                         identity (schema/events.json uid_layout): the
+                         transactions it owns nest under it by sub-index,
+                         a re-execution is an arrow from the old id to the
+                         new, and class `none` is left to the structure
+                         view -- it has no instruction behind it.
 
 Arbitration-sensitive events (§1) are emitted into their own Perfetto category
 so they can be filtered out in one click. The point is §5's triage: a
@@ -83,6 +86,23 @@ def main():
                      enumerate(json.load(f)["channels"])}
     xfer_id = next((e["id"] for e in schema["events"]
                     if e["name"] == "EV_CH_XFER"), None)
+    link_id = next((e["id"] for e in schema["events"]
+                    if e["name"] == "EV_ID_LINK"), None)
+
+    # Trace identity (schema/events.json uid_layout). --by=instr is built
+    # from it: an instruction is a PROCESS, so the transactions it owns nest
+    # under it by sub-index instead of appearing as peers; unowned
+    # transactions share one process; class `none` -- probes, launches,
+    # migration, CSR -- has no instruction behind it and is left to the
+    # structure view.
+    ul = schema["uid_layout"]
+    uf = ul["fields"]
+    cls_code = ul["classes"]
+
+    def ufield(uid, f):
+        return (uid >> uf[f]["lsb"]) & ((1 << uf[f]["width"]) - 1)
+
+    INSTR_PID0 = 1000          # instruction seq s is process INSTR_PID0 + s
 
     hdr, recs = read_trace(args.trace)
     want = None
@@ -106,20 +126,46 @@ def main():
                             % (hdr["hash"], want),
                     "ph": "i", "s": "g", "ts": 0, "pid": 0, "tid": 0})
 
+    flows = []
     for cycle, uid, eid, unit, a, b, c in recs:
         ev = ev_by_id.get(eid)
         name = ev["name"] if ev else "EV_UNKNOWN_%d" % eid
         cls = ev["class"] if ev else "load_bearing"
         fields = ev["fields"] if ev else {"a": "a", "b": "b", "c": "c"}
-        if args.by == "unit" and eid == xfer_id:
+        if args.by == "instr" and eid == link_id:
+            # A re-execution: an arrow from the old id's lifetime to the new
+            # one's, so a replay reads as a replay rather than as one
+            # instruction with overlapping lifetimes.
+            fid = len(flows) + 1
+            flows.append({"name": "re-executed", "cat": "replay", "ph": "s",
+                          "id": fid, "ts": cycle, "pid": INSTR_PID0 + b,
+                          "tid": 0})
+            flows.append({"name": "re-executed", "cat": "replay", "ph": "f",
+                          "bp": "e", "id": fid, "ts": cycle,
+                          "pid": INSTR_PID0 + a, "tid": 0})
+            continue
+        if args.by == "instr":
+            k = ufield(uid, "class")
+            seq, sub = ufield(uid, "seq"), ufield(uid, "sub")
+            if k == cls_code["none"]:
+                continue
+            if k == cls_code["instr"] or (k == cls_code["txn"]
+                                          and ufield(uid, "owned")):
+                pid = INSTR_PID0 + seq
+                tid = sub if k == cls_code["txn"] else 0
+                track = ("txn %d" % sub) if k == cls_code["txn"] else "instr"
+            else:
+                pid, tid = 2, seq
+                track = "txn %d" % seq
+        elif args.by == "unit" and eid == xfer_id:
             pid, tid = 3, a
             track = chan_name.get(a, "channel %d" % a)
         elif args.by == "unit":
             pid, tid = 1, unit
             track = unit_by_id.get(unit, "UNIT_%d" % unit)
         else:
-            pid, tid = 2, uid & 0xFFFFFFFF
-            track = "instr %d" % uid
+            pid, tid = 1, unit
+            track = unit_by_id.get(unit, "UNIT_%d" % unit)
         out.append({
             "name": name,
             "cat": cls,
@@ -147,11 +193,14 @@ def main():
     meta.append({"name": "process_name", "ph": "M", "pid": 1, "tid": 0,
                  "args": {"name": "CCV structures"}})
     meta.append({"name": "process_name", "ph": "M", "pid": 2, "tid": 0,
-                 "args": {"name": "CCV instructions"}})
+                 "args": {"name": "CCV transactions (no owning instruction)"}})
+    for pid in sorted({e["pid"] for e in out if e["pid"] >= INSTR_PID0}):
+        meta.append({"name": "process_name", "ph": "M", "pid": pid, "tid": 0,
+                     "args": {"name": "instr %d" % (pid - INSTR_PID0)}})
     meta.append({"name": "process_name", "ph": "M", "pid": 3, "tid": 0,
                  "args": {"name": "CCV channels"}})
 
-    doc = {"traceEvents": meta + out,
+    doc = {"traceEvents": meta + out + flows,
            "displayTimeUnit": "ns",
            "ccv": {"schema_version": hdr["version"], "schema_hash": hdr["hash"],
                    "events": len(recs)}}

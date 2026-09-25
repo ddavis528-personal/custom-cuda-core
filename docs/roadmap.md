@@ -196,7 +196,7 @@ generated [`trust-report.md`](trust-report.md).
 ### Stage 3 — skeleton, S0 (plumbing) ✅
 
 See [`skeleton.md`](skeleton.md). The whole machine — 45 block instances,
-102 channel instances, 339 credited slots — wired from the schema, every block
+103 channel instances, 340 credited slots — wired from the schema, every block
 running an exerciser stub, every slot judged by the real SV credit checker
 Verilated in beside it. ~231k messages per 2000-cycle run, three seeds, zero
 violations; each clean result paired with a control that must fail.
@@ -207,7 +207,11 @@ violations; each clean result paired with a control that must fail.
 - `tools/check-skel.sh` — exit criteria, in the gate
 
 **Next: S1, `vadd` end to end** against ccv-sim, which now builds here.
-**Awaiting confirmation:** rate > 1 modelled as independent slots (A-S1).
+**Interface decisions (2026-09-24) built in:** independent slots confirmed,
+with per-channel acceptance / ordering / binding; the external port is a pair;
+instruction identity is a trace-only sideband with class, sub-index and replay
+links. **To confirm:** atomic constrains valids as well as credits, and the
+per-channel id-class assignment (both in `skeleton.md`).
 
 ### Interface checker convention ✅ (mechanism)
 

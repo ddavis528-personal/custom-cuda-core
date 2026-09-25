@@ -25,14 +25,15 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **16 of 40 channels** carry at least one
+appear above. **17 of 41 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
 |---|---|
 | `ccv_dcu_mlc_req` | `coh_op` |
 | `ccv_dec_ooe_uop` | `uop_class`, `opcode` |
-| `ccv_exb_ext` | `tilelink_tlc` |
+| `ccv_exb_ext_out` | `tl_out` |
+| `ccv_ext_exb_in` | `tl_in` |
 | `ccv_miu_dcu_req` | `coh_op` |
 | `ccv_miu_fet_itlb` | `itlb_refill` |
 | `ccv_miu_spm_req` | `spm_op` |
@@ -60,7 +61,8 @@ to code that merely carries it, which will not.
 | `CCV_L_PC_GROUPS` | 4 | **HIGH** | divergence model specification |
 | `CCV_L_W_OPCODE` | 9 | **HIGH** | ISA opcode census, then DEC/OOE/RCU agree the hops |
 | `CCV_L_W_PRED_STATE` | 1024 | **HIGH** | divergence model specification |
-| `CCV_L_W_TILELINK_TLC` | 1760 | **HIGH** | EXB session -- flattened bundle or five channels |
+| `CCV_L_W_TL_IN` | 1176 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
+| `CCV_L_W_TL_OUT` | 1225 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_COH_OP` | 4 | med | MLC/EXB session, once the TL-C subset is chosen |
 | `CCV_L_W_MEM_OP` | 4 | med | MIU block session |
 | `CCV_L_W_ORDERING` | 4 | med | OOE/MIU session -- is scope a separate field? |

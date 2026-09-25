@@ -56,6 +56,14 @@ module ccv_credit_checker #(
   input logic [PAYLOAD_W-1:0]  ch_payload,
   input logic                  ch_credit,
   input logic                  ch_stall
+`ifdef CCV_TRACE
+  ,
+  // TRACE-ONLY identity of the message whose payload is on the wire, riding
+  // beside it -- never inside the payload struct, and absent entirely unless
+  // CCV_TRACE is defined, so synthesis never sees it (interface decisions,
+  // 2026-09-24). Layout: schema/events.json uid_layout.
+  input logic [63:0]           ch_tid
+`endif
 );
 
   localparam int CW = $clog2(DEPTH + 2);
@@ -261,9 +269,19 @@ module ccv_credit_checker #(
     assign pl_hi = ch_payload[63:32];
   end
 
+  // The event's instr_uid is the message's trace identity. It used to be the
+  // payload's low word, which identified nothing; without CCV_TRACE there is
+  // no identity to give, and 0 is class `none`, seq 0 -- honest rather than
+  // plausible.
+`ifdef CCV_TRACE
+  wire [63:0] uid = ch_tid;
+`else
+  wire [63:0] uid = '0;
+`endif
+
   always_ff @(posedge clk) begin
     if (rst_n && valid_q) begin
-      `CCV_IF_EMIT(cyc, {32'b0, pl_lo}, EV_CH_XFER, UNIT_UNKNOWN,
+      `CCV_IF_EMIT(cyc, uid, EV_CH_XFER, UNIT_UNKNOWN,
                    CHANNEL, pl_lo, pl_hi)
     end
   end

@@ -6,7 +6,8 @@
 // skeleton is judged by the same checker the RTL will be, and the
 // load-bearing EV_CH_XFER stream comes from that same code.
 //
-//   ccv-skel [--cycles N] [--seed S] [--trace FILE] [--break MODE]
+//   ccv-skel [--cycles N] [--seed S] [--trace FILE] [--force-atomic]
+//            [--break MODE]
 //
 // --break exists to prove the bank is wired, slot by slot, to what it claims
 // to check. A clean run from a bank that is not connected looks exactly like
@@ -14,6 +15,14 @@
 // its own checker instance, does not.
 //   phantom-all   every receiver returns a credit for nothing   (credit bit)
 //   stall-all     every receiver stalls, every sender sends     (stall, valid)
+//   atomic-all    every multi-slot channel checked as atomic, then its
+//                 lockstep broken, credits and valids separately
+//   misorder      ordered channels consumed newest-first
+//   wrong-class   every message stamped with an id class its channel may
+//                 not carry
+//
+// --force-atomic runs every multi-slot channel as atomic (stubs AND checks)
+// with ordinary traffic, which must be clean -- the partner to atomic-all.
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
 #include "verilated.h"
@@ -45,6 +54,10 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
     setBit(bank.valid, k, slots[k].cur.valid);
     setBit(bank.credit, k, slots[k].cur.credit);
     setBit(bank.stall, k, slots[k].cur.stall);
+    // Trace sideband: 64 bits per slot, present because the skeleton is
+    // always built with CCV_TRACE.
+    for (unsigned b = 0; b != 64; ++b)
+      setBit(bank.tid, uint64_t(k) * 64 + b, (slots[k].cur.tid >> b) & 1u);
   }
   for (const ChanInst &ci : kChanInsts) {
     const ChanDesc &cd = kChans[ci.chan];
@@ -62,15 +75,20 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
 int main(int argc, char **argv) {
   uint64_t cycles = 2000, seed = 1;
   std::string trace, brk = "none";
+  bool force_atomic = false;
   for (int i = 1; i < argc; ++i) {
     auto arg = [&](const char *f) { return !std::strcmp(argv[i], f) && i + 1 < argc; };
     if (arg("--cycles"))     cycles = std::strtoull(argv[++i], nullptr, 0);
     else if (arg("--seed"))  seed = std::strtoull(argv[++i], nullptr, 0);
     else if (arg("--trace")) trace = argv[++i];
     else if (arg("--break")) brk = argv[++i];
+    else if (!std::strcmp(argv[i], "--force-atomic")) force_atomic = true;
   }
-  const bool breaking = brk != "none";
-  if (breaking && brk != "phantom-all" && brk != "stall-all") {
+  // Wiring controls silence organic traffic so nothing else can fire; the
+  // semantic ones (misorder, wrong-class) need traffic to be wrong about.
+  const bool breaking = brk == "phantom-all" || brk == "stall-all" ||
+                        brk == "atomic-all";
+  if (brk != "none" && !breaking && brk != "misorder" && brk != "wrong-class") {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
     return 2;
   }
@@ -95,8 +113,18 @@ int main(int argc, char **argv) {
 
   ExerciseCfg cfg;
   cfg.seed = seed;
-  if (breaking)
-    cfg.p_send = 0.0;     // no organic traffic to muddy the control
+  if (breaking) {
+    // No organic traffic, consumption or stalls to muddy the control. A
+    // random stall landing on a forced valid is a genuine stall_honoured
+    // violation -- the first atomic-all run reported 32 of them.
+    cfg.p_send = 0.0;
+    cfg.p_pop = 0.0;
+    cfg.p_stall = 0.0;
+  }
+  cfg.force_atomic = force_atomic || brk == "atomic-all";
+  cfg.misorder = brk == "misorder";
+  cfg.wrong_class = brk == "wrong-class";
+  bank->force_atomic = cfg.force_atomic;
   Machine m(2, [&](int inst) { return makeExerciser(inst, cfg); });
 
   const uint64_t kReset = 2, kDrain = 16, kBreakAt = 6;
@@ -116,6 +144,19 @@ int main(int argc, char **argv) {
         for (unsigned k = 0; k != kNumSlots; ++k) m.rx(k).stall(true);
       if (brk == "stall-all" && c == kBreakAt + 1)
         for (unsigned k = 0; k != kNumSlots; ++k) m.tx(k).forceValid();
+      // atomic-all: a whole group (legal), then ONE slot's credit, then ONE
+      // slot's valid. Each is legal for the credit checker -- slot 0 has a
+      // message outstanding, and credit to spare -- so only the atomic
+      // checks may fire, and each must, on every multi-slot instance.
+      if (brk == "atomic-all")
+        for (const ChanInst &ci : kChanInsts) {
+          if (kChans[ci.chan].rate < 2) continue;
+          if (c == kBreakAt)
+            for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
+              m.tx(ci.slot_base + s).forceValid();
+          if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
+          if (c == kBreakAt + 5) m.tx(ci.slot_base).forceValid();
+        }
     });
   }
   bank->final();
@@ -129,22 +170,28 @@ int main(int argc, char **argv) {
     overflows += m.rx(k).overflows();
     if (m.rx(k).received() == 0) ++idle;
   }
-  std::printf("SKEL cycles=%llu blocks=%u chan_insts=%u slots=%u sent=%llu "
-              "received=%llu mismatches=%llu overflows=%llu idle_slots=%u "
+  std::printf("SKEL cycles=%llu blocks=%u chan_types=%u chan_insts=%u "
+              "slots=%u sent=%llu received=%llu mismatches=%llu "
+              "tid_mismatches=%llu class_violations=%llu "
+              "class_violation_channels=%u overflows=%llu idle_slots=%u "
               "violations=%d\n",
-              (unsigned long long)cycles, kNumBlkInsts, kNumChanInsts,
-              kNumSlots, (unsigned long long)t.sent,
+              (unsigned long long)cycles, kNumBlkInsts, kNumChans,
+              kNumChanInsts, kNumSlots, (unsigned long long)t.sent,
               (unsigned long long)t.received,
               (unsigned long long)t.mismatches,
+              (unsigned long long)t.tid_mismatches,
+              (unsigned long long)t.class_violations,
+              t.class_violation_channels,
               (unsigned long long)overflows, idle, ctx->errorCount());
 
-  if (!trace.empty() && !breaking) {
+  if (!trace.empty() && brk == "none") {
     // The bank's EV_CH_XFER events must carry exactly the payloads the
-    // senders launched: same channel, same bits 63:0, same multiset. That
-    // is what proves the bank's PAYLOAD wiring -- the negative controls only
-    // reach valid, credit and stall, because Verilator is two-state and
-    // payload_known_when_due cannot fire here.
-    std::vector<std::tuple<uint16_t, uint32_t, uint32_t>> ev, want;
+    // senders launched: same channel, same bits 63:0, same trace identity,
+    // same multiset. That is what proves the bank's PAYLOAD and trace-
+    // sideband wiring -- the negative controls only reach valid, credit and
+    // stall, because Verilator is two-state and payload_known_when_due
+    // cannot fire here.
+    std::vector<std::tuple<uint16_t, uint32_t, uint32_t, uint64_t>> ev, want;
     ccv::EventReader r;
     if (!r.open(trace)) {
       std::fprintf(stderr, "cannot reread trace: %s\n", r.error().c_str());
@@ -153,9 +200,9 @@ int main(int argc, char **argv) {
     ccv::Event e;
     while (r.next(e))
       if (e.event_id == ccv::EV_CH_XFER)
-        ev.push_back({uint16_t(e.a), e.b, e.c});
+        ev.push_back({uint16_t(e.a), e.b, e.c, e.instr_uid});
     for (const Launched &l : launchedLog())
-      want.push_back({l.chan, l.lo32, l.hi32});
+      want.push_back({l.chan, l.lo32, l.hi32, l.tid});
     std::sort(ev.begin(), ev.end());
     std::sort(want.begin(), want.end());
     std::vector<uint16_t> seen;

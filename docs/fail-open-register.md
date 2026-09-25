@@ -45,6 +45,13 @@ broken it once and watched it notice.
 | Checker credit depth vs round trip | **silent** | `DEPTH=1` build must trip `cfg_depth_covers_round_trip` | `check-if.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
+| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 340 checkers fire by name | `check-skel.sh` |
+| Atomic acceptance | **silent** | `--break atomic-all`: all 77 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
+| Ordered consumption | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
+| Id class per channel | **silent** | `--break wrong-class`: all 41 channels report | `check-skel.sh` |
+| Trace id kept out of synthesis | **silent** | Yosys asked both ways: no `ch_tid` without `CCV_TRACE`, present with | `check-skel.sh` |
+| Skeleton slot count | **silent** | re-derived from the schema by code sharing nothing with the generator | `check-skel.sh` |
+| Gate summary parsing | **silent** | keys matched whole; see below | `check-skel.sh` |
 | Credit checker protocol properties | open | 11 cases: each violation trips *exactly* its property on Icarus and trips it first on Verilator; each legal extreme stays quiet | `check-if.sh` |
 
 The ones marked **silent** are the dangerous class: they do not merely fail to
@@ -61,6 +68,21 @@ aborts (F-15), and under `set -o pipefail` that abort status becomes the
 *pipeline's* — so `Vtb | grep -q` reported failure on the very run that was
 supposed to fail. Both now run to a file. Any future fire-test written the
 obvious way has the same bug.
+
+## The gate itself failed open once
+
+The skeleton prints one summary line of `key=value` pairs, and the gate read
+each key with a substring match. When `class_violations=` was added to that
+line *ahead of* `violations=`, a bare match for `violations=` found the
+class count first. **A run with 186 checker violations read as 0.** It was
+caught only because a negative control reported the 186 while the summary
+line said 0. Keys are now matched whole: preceded by a space or the line
+start. The same trap had already bitten once, with `slots=` inside
+`idle_slots=`, and that time it failed *closed*. The second time it failed
+open.
+
+The lesson is general: a check that parses its own evidence is a mechanism
+with its own failure mode, and it needs the same treatment as any other.
 
 ## Closed: the credit checker's protocol properties — and what that found
 
