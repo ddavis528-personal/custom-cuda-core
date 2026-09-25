@@ -132,7 +132,7 @@ assert — is a *relationship between two constructs*, which stock Verible rules
 do not express. Custom rules would have had to be written against its API
 regardless, so the trade was a heavyweight dependency in exchange for nothing.
 
-**Replacement:** a project lint layer (25 rules), with Verilator's `--lint-only`
+**Replacement:** a project lint layer (26 rules), with Verilator's `--lint-only`
 carrying the generic checks it already does well. §6's "this adds a fourth tool"
 is **retracted**.
 

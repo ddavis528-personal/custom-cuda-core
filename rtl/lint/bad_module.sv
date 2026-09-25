@@ -67,4 +67,16 @@ endmodule
 module iface_on_boundary (some_bus.consumer up, some_bus.producer dn);
 endmodule
 
+// CCV-L26: constructs both simulators accept and Yosys 0.33 rejects, so the
+// file is green until it reaches formal. A 2-D packed port and declaration,
+// a keyword cast, and a cast to a typedef name.
+module yosys_rejects (input logic [1:0][3:0] lanes, output logic [5:0] q);
+  typedef logic [5:0] w_t;
+  logic [2:0][5:0] ages;
+  always_comb begin
+    ages = '0;
+    q    = w_t'(int'(lanes[0]));
+  end
+endmodule
+
 // CCV-L11 is violated by omission: there is no `Spec:` reference anywhere.

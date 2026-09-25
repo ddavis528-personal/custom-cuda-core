@@ -77,13 +77,31 @@ fi
 # three legal routes on control inputs exactly as suspicious as the fixture's.
 gfail=0
 for g in rtl/lint/good_xprop.sv rtl/lint/good_naming.sv \
-         rtl/lint/good_gated_enable.sv; do
+         rtl/lint/good_gated_enable.sv rtl/lint/good_yosys_subset.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (3 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (4 fixtures)" "PASS"
+
+# CCV-L26 makes a claim about a TOOL, so the claim is checked against the
+# tool: every form the rule permits must actually be readable by Yosys. A
+# permitted form Yosys rejects would be the worst outcome available -- both
+# simulators green, lint silent, formal dead -- so this is the direction that
+# gets measured on every run. If a Yosys upgrade widens what it accepts, the
+# rule is merely conservative; if one narrows it, this fails.
+if command -v yosys >/dev/null 2>&1; then
+  if yosys -q -p "read_verilog -sv -formal rtl/lint/good_yosys_subset.sv; \
+                  prep -top good_yosys_subset" >"$TMP/l26.log" 2>&1; then
+    say "yosys reads every form CCV-L26 permits" "PASS"
+  else
+    bad "yosys reads every form CCV-L26 permits" \
+        "$(grep -m1 -i error "$TMP/l26.log")"
+  fi
+else
+  say "yosys reads every form CCV-L26 permits" "SKIP -- yosys not installed"
+fi
 
 # -- the real tree is clean ------------------------------------------------
 if python3 tools/lint-rtl.py -q >"$TMP/clean.log" 2>&1; then

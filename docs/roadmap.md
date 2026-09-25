@@ -59,7 +59,7 @@ in one place at most.
 
 ### What a new design file has to carry
 
-Twenty-five lint rules is more than anyone will hold in their head, so the
+Twenty-six lint rules is more than anyone will hold in their head, so the
 obligations that are not obvious from reading existing code:
 
 ```systemverilog

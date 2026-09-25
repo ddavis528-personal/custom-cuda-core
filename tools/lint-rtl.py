@@ -823,6 +823,42 @@ def check_file(path, rel):
                     "candidate; use `CCV_XHOLD only where the enable cannot "
                     "be proven X-free" % lhs)
 
+        # -- CCV-L26: nothing Yosys cannot parse ---------------------------
+        #
+        # Verilator and Icarus both accept these, so simulation is green and
+        # the file only dies when it reaches formal -- the one flow whose
+        # failure a designer is least likely to be running while writing. The
+        # checker hit exactly this (2026-09-25): its first per-message age
+        # queue was a 2-D packed array with int'() casts, and it took down the
+        # sby cover run. Measured against Yosys 0.33, not assumed:
+        #
+        #   REJECTED  logic [A][B] x;   as a declaration or a PORT
+        #             int'(e) integer'(e) shortint'(e) longint'(e) byte'(e)
+        #             foo_t'(e)         a cast to a typedef name
+        #   ACCEPTED  logic [A][B] f;   as a member INSIDE a packed struct
+        #             signed'(e) unsigned'(e) W'(e) 6'(e)
+        #             logic [A] x [B];  an unpacked array
+        #
+        # So packed-struct bodies are removed before matching, and only the
+        # rejected cast spellings are flagged. A rule that flags what the tool
+        # accepts gets exempted, and an exemption habit is how rules die.
+        nostruct = re.sub(r"struct\s+packed\s*\{.*?\}", "", src, flags=re.S)
+        for m in re.finditer(
+                r"\b(?:logic|bit|reg|wire)\s+(?:signed\s+|unsigned\s+)?"
+                r"\[[^\]]+\]\s*\[[^\]]+\]\s*[A-Za-z_]", nostruct):
+            add("CCV-L26", line_of(nostruct, m.start()),
+                "multi-dimensional packed array: Yosys 0.33 rejects it as a "
+                "declaration or port, so this passes both simulators and "
+                "fails formal. Flatten to one vector and index with "
+                "part-selects (x[i*W +: W]), or wrap it in a packed struct")
+        for m in re.finditer(
+                r"\b(int|integer|shortint|longint|byte|[a-z]\w*_t)\s*'\s*\(",
+                src):
+            add("CCV-L26", line_of(src, m.start()),
+                "%s'(...) cast: Yosys 0.33 rejects casts to a type keyword or "
+                "a typedef name. Size casts (W'(x), 6'(x)) and "
+                "signed'/unsigned' are accepted" % m.group(1))
+
         # -- CCV-L24: `_b` is a derived complement --------------------------
         # `_n` is a semantic property of a signal that is DEFINED active-low
         # and carries no obligation. `_b` claims to be the complement of a net

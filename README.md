@@ -138,7 +138,7 @@ hash in every trace header, and a Perfetto view produced on demand. The RTL
 emit path is DPI-C into the same library, decided *and exercised* here rather
 than discovered at 4c.
 
-**1d — coding style and lint.** Twenty-five rules, each with a counter-example
+**1d — coding style and lint.** Twenty-six rules, each with a counter-example
 in `rtl/lint/bad_module.sv` and a paragraph in the style guide; `check-1d`
 fails if a rule stops firing or stops being documented. Parameters and event ids are
 generated into both languages from one source, because §9 is right that

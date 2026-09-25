@@ -364,6 +364,36 @@ forms give the same enable flop, but only one of them says so.
 `` `CCV_XHOLD `` is the sanctioned escape, for an enable that genuinely cannot
 be proven X-free.
 
+### CCV-L26 — nothing Yosys cannot parse
+
+Both simulators accept these; Yosys 0.33 does not. So a file using them is
+green in simulation and dies only when it reaches formal — the flow a designer
+is least likely to be running while writing. The credit checker hit exactly
+this: its first per-message age queue was a 2-D packed array with `int'()`
+casts, and it took down the cover run.
+
+Measured against Yosys, not assumed — and the boundary is not where you would
+guess:
+
+| Construct | Yosys 0.33 |
+|---|---|
+| `logic [A][B] x;` as a declaration or port | **rejected** |
+| `logic [A][B] f;` as a member *inside* a packed struct | accepted |
+| `int'(e)`, `integer'`, `shortint'`, `longint'`, `byte'` | **rejected** |
+| `foo_t'(e)` — a cast to a typedef name | **rejected** |
+| `signed'(e)`, `unsigned'(e)`, `W'(e)`, `6'(e)` | accepted |
+| `logic [A] x [B];` — unpacked | accepted |
+
+The idiom to reach for instead is one flat vector indexed with part-selects,
+`x[i*W +: W]`, which is what `rtl/if/ccv_credit_checker.sv` now does.
+
+The rule flags only what Yosys rejects. A rule that also flags accepted forms
+gets exempted, and an exemption habit is how rules die. To keep that honest in
+the direction that matters, `rtl/lint/good_yosys_subset.sv` exercises every
+permitted form and `check-1d` reads it **with Yosys** on every run: a form the
+rule permits but Yosys rejects would be the worst outcome available — both
+simulators green, lint silent, formal dead.
+
 ### CCV-L24 — `_b` is a complement
 
 A net named `_b` must be driven through an inversion. It complements a *value*,
