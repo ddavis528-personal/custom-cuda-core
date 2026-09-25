@@ -301,7 +301,7 @@ every channel port to a (channel, copy, slot, signal, bit) coordinate from
 names and the layout rule alone. It then requires one driver and one load per
 net, identical coordinates at both ends, and the right direction per signal.
 The resulting producer→consumer map must equal `ccv-skel --dump-wiring`:
-69,709 bits, identical, now including one `_wake` bit per channel
+69,763 bits, identical, now including one `_wake` bit per channel
 instance, which must run from the same producer to the same consumer as
 that instance's slots. A copy with one lane's valid slice swapped is
 rejected.
@@ -461,9 +461,11 @@ ID, rendered in `docs/payload-spec.md`.
    `pred_bit` is the same computation per lane. MIU checks the invariant that
    holds, active ⊆ issue. `EV_RETIRE.active_mask` is still always
    `0xffffffff`.
-4. **One predicate field for guard and destination** (Q-21, `pred_src_and_dst`).
-   `@P0 setp P1, …` has no encoding. S1 refuses such a record; vadd only uses
-   P0.
+4. **Guard and predicate destination: two fields (Q-21).** The ISA encodes
+   them separately (Format C: qualifier `[29:27]`, destination `[31:30]`),
+   and one `pred_reg` couldn't carry `@P0 setp P1`. Now `pred_guard` with
+   `pred_neg`, and `pred_dst` with `pred_we` (see "Skeleton review response
+   4").
 5. **Load write-back destination: decided (Q-25).** OOE carries `phys_dst` and
    `phys_pred` on the memop, and MIU echoes them, so RCU is stateless on
    write-back (see "Skeleton review response 3").
@@ -654,6 +656,34 @@ the way. See `fail-open-register.md`.
   - Control: `--break corrupt-echo` sends one load's data to the wrong
     register, which C_ADD's lanes then reject.
 
+### Skeleton review response 4 (2026-09-25), as built
+
+The first round against the numbered register ([`open-items.md`](open-items.md)).
+
+- **Confirmed as built:** store data on `ccv_miu_dcu_req` (Q-19) and a 32-bit
+  `kill_warp_mask` (Q-31).
+- **Where an op executes, stated once (Q-32):** the lane executes anything
+  that reads lane data; RCU executes everything that reads none, plus the
+  horizontal ops. Both sides now check every op against its record.
+  - **Raised by it (Q-38):** `movi`, `movi48` and `srd` read no lane data, so
+    the rule puts them in RCU, and S1 built them in the lane. They are the one
+    pending exception. `--break drop-q38-exception` removes it, and exactly
+    their lane checks must fail.
+- **Guard and predicate destination split (Q-21).** It was a payload fix,
+  not an ISA question: Format C encodes the qualifier and the destination
+  separately. The uop carries `pred_guard` + `pred_neg` and `pred_dst` +
+  `pred_we`, and the issue carries `phys_pred_guard`, `phys_pred_dst` and
+  `pred_we`. The memop's `phys_pred` is the destination.
+  - RCU now writes a lane result only on active lanes, so a lane the guard
+    disables keeps its old value (invariant 10). This is what makes a guarded
+    write to another predicate observable.
+  - A third kernel, `test/golden/pguard/`, runs `@P0 setp P1`. P1 ends as
+    tid < 8 on the lanes P0 enables and keeps tid < 24 on the rest, and
+    `sel` stores it. It ends identical to ccv-sim.
+  - `--break conflate-pred` puts the destination back in the guard's field.
+    The next compare's guard is then wrong at its lanes, and P0 and P1 both
+    end wrong.
+
 ### S1 wire conventions (placeholders)
 
 These are encodings the payload spec leaves to each block's owner. They are
@@ -666,13 +696,13 @@ decisions.
 | `fet_dec_instr` slots | warp *w* is tier-1 stream *w*: binding group *w*, age = slot order |
 | `dec_ooe_uop.opcode` | skeleton-local table, 1..11 for vadd's ops (0 reserved) |
 | `dec_ooe_uop.src_arch`, `src2_arch` | `[7:4]` src0, `[3:0]` src1; the third source in `src2_arch` |
-| `dec_ooe_uop.pred_reg`, `pred_neg` | a guard's index and negate (from the qualifier); for predicate logic, the destination. Read/written comes from the opcode |
+| `dec_ooe_uop.pred_guard`, `pred_neg`, `pred_dst`, `pred_we` | the guard's index and negate (from the qualifier; sel's selector too); the predicate destination, valid when `pred_we` |
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its byte offset from its own pc (DEC folds in the length). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Rename is `prf_base + arch` (no renaming yet) |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
-| `ooe_rcu_issue.phys_pred` | `4·warp + index` (predicates not renamed) |
+| `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | `4·warp + index` (predicates not renamed); RCU writes the destination only when `pred_we`, and only on active lanes |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
 | `lane_rcu_res.result`, `pred_out` | the GPR value; the predicate result in `pred_out` |
 | `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable |

@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 7 | 23 |
 | ⚠️ Some provisional | 15 | 61 |
-| ⛔ Some preliminary | 22 | 108 |
-| **Total** | **44** | **192** |
+| ⛔ Some preliminary | 22 | 112 |
+| **Total** | **44** | **196** |
 
 ## What still has to be decided
 
@@ -182,14 +182,6 @@ Each is numbered in [`open-items.md`](open-items.md), the one list of what is un
 ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.
 
 **Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
-
-### Q-21 — pred src and dst
-
-*payload question found by the first kernel — ISA / compiler track*
-
-ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.
-
-**Blocks:** Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.
 
 ### Q-30 — migration control
 
@@ -515,7 +507,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the immediate and scale enable, six per cycle into the queue ahead of rename.
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename.
 
 dec → ooe · rate 6 · instruction
 
@@ -528,16 +520,18 @@ dec → ooe · rate 6 · instruction
 | `src_arch` | `2*CCV_W_ARCH_REG` | 8 | CCV_W_ARCH_REG (isa) |
 | `src2_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
 | `dst_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
-| `pred_reg` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
+| `pred_guard` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
 | `pred_neg` | `1` | 1 | literal |
+| `pred_dst` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
+| `pred_we` | `1` | 1 | literal |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **134** | ⛔ 12 preliminary, ⚠️ 32 provisional |
+| **total** | | **137** | ⛔ 12 preliminary, ⚠️ 32 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
-What the scheduler selected: physical register names (three sources), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.
+What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.
 
 ooe → rcu · rate 4 · execution
 
@@ -549,13 +543,15 @@ ooe → rcu · rate 4 · execution
 | `phys_src` | `2*CCV_P_W_PHYS_REG` | 16 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_src2` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
-| `phys_pred` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `phys_pred_guard` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_neg` | `1` | 1 | literal |
+| `phys_pred_dst` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `pred_we` | `1` | 1 | literal |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **129** | ⛔ 9 preliminary, ⚠️ 79 provisional |
+| **total** | | **138** | ⛔ 9 preliminary, ⚠️ 87 provisional |
 
 ### `ccv_rcu_lane_ops`
 
@@ -574,7 +570,7 @@ rcu → lane · rate 4 · execution
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations, which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.
 
 ooe → miu · rate 4 · memory
 

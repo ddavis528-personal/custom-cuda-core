@@ -261,13 +261,15 @@
         "src_arch",
         "src2_arch",
         "dst_arch",
-        "pred_reg",
+        "pred_guard",
         "pred_neg",
+        "pred_dst",
+        "pred_we",
         "imm",
         "scale_en",
         "decode_fault"
       ],
-      "doc": "Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the immediate and scale enable, six per cycle into the queue ahead of rename.",
+      "doc": "Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename.",
       "id_classes": [
         "instr"
       ],
@@ -291,14 +293,16 @@
         "phys_src",
         "phys_src2",
         "phys_dst",
-        "phys_pred",
+        "phys_pred_guard",
         "pred_neg",
+        "phys_pred_dst",
+        "pred_we",
         "opcode",
         "imm",
         "chwidth",
         "dispatch_fault"
       ],
-      "doc": "What the scheduler selected: physical register names (three sources), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.",
+      "doc": "What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.",
       "id_classes": [
         "instr"
       ],
@@ -437,7 +441,7 @@
         "space",
         "ordering"
       ],
-      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations, which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.",
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.",
       "id_classes": [
         "instr"
       ]
@@ -1098,7 +1102,8 @@
     "exec_fault": "1",
     "src_arch": "2*CCV_W_ARCH_REG",
     "dst_arch": "CCV_W_ARCH_REG",
-    "pred_reg": "CCV_W_ARCH_PRED",
+    "pred_guard": "CCV_W_ARCH_PRED",
+    "pred_dst": "CCV_W_ARCH_PRED",
     "chwidth": "CCV_W_CHWIDTH",
     "lane_mask": "CCV_W_LANE_MASK",
     "fault_lane_mask": "CCV_W_LANE_MASK",
@@ -1124,6 +1129,8 @@
     "phys_src": "2*CCV_P_W_PHYS_REG",
     "phys_dst": "CCV_P_W_PHYS_REG",
     "phys_pred": "CCV_P_W_PHYS_PRED",
+    "phys_pred_guard": "CCV_P_W_PHYS_PRED",
+    "phys_pred_dst": "CCV_P_W_PHYS_PRED",
     "cta_slot": "CCV_P_W_CTA_SLOT",
     "imm": "CCV_P_W_IMM",
     "line_data": "8*CCV_P_LINE_BYTES",
@@ -1218,13 +1225,6 @@
       "kind": "partitioning question that a width exposed",
       "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
       "owner": "partitioning / floorplan"
-    },
-    "pred_src_and_dst": {
-      "id": "Q-21",
-      "question": "ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.",
-      "kind": "payload question found by the first kernel",
-      "blocks": "Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.",
-      "owner": "ISA / compiler track"
     },
     "migration_control": {
       "id": "Q-30",

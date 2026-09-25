@@ -22,9 +22,9 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // ooe -> rcu, 4 slot(s) x 129 bit payload
+  // ooe -> rcu, 4 slot(s) x 138 bit payload
   input  logic [3:0] ooe_rcu_issue_valid,
-  input  logic [515:0] ooe_rcu_issue_payload,
+  input  logic [551:0] ooe_rcu_issue_payload,
   output logic [3:0] ooe_rcu_issue_credit,
   output logic [3:0] ooe_rcu_issue_stall,
   input  logic ooe_rcu_issue_wake,

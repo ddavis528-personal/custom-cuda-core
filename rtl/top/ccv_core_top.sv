@@ -124,7 +124,7 @@ module ccv_core_top (
 `endif
   // ccv_dec_ooe_uop: dec -> ooe, 1 copy x 6 slot
   logic [5:0] dec_ooe_uop_valid;
-  logic [803:0] dec_ooe_uop_payload;
+  logic [821:0] dec_ooe_uop_payload;
   logic [5:0] dec_ooe_uop_credit;
   logic [5:0] dec_ooe_uop_stall;
   logic dec_ooe_uop_wake;
@@ -133,7 +133,7 @@ module ccv_core_top (
 `endif
   // ccv_ooe_rcu_issue: ooe -> rcu, 1 copy x 4 slot
   logic [3:0] ooe_rcu_issue_valid;
-  logic [515:0] ooe_rcu_issue_payload;
+  logic [551:0] ooe_rcu_issue_payload;
   logic [3:0] ooe_rcu_issue_credit;
   logic [3:0] ooe_rcu_issue_stall;
   logic ooe_rcu_issue_wake;

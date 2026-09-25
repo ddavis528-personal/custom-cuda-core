@@ -56,6 +56,8 @@ struct Kernel {
   ///                  RCU writes a[i] into R9 instead of R8
   ///   drop-q38-exception  the lanes stop excusing movi, movi48 and srd from
   ///                  the lane-data rule (Q-32), so exactly those must fail it
+  ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
+  ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

@@ -42,8 +42,8 @@ ones are still made up is produced rather than remembered.
 
 Everything still undecided is in one numbered list,
 [`docs/open-items.md`](docs/open-items.md), where an item keeps its Q-number
-for good and closed items stay with their resolution. Three of them are
-payload questions no width can close (Q-18, Q-21, Q-30).
+for good and closed items stay with their resolution. Two of them are
+payload questions no width can close (Q-18, Q-30).
 `schema/interfaces.json` carries those under the same IDs, and
 [`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close)
 renders them. Per-interface NGD budgets (Q-17) haven't started.

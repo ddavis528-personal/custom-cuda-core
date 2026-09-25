@@ -1067,7 +1067,10 @@ public:
   const char *kind() const override { return "rcu"; }
 
 private:
-  struct Alu { unsigned tag; const OpInfo *op; unsigned pdst, ppred; uint64_t tid; };
+  struct Alu {
+    unsigned tag; const OpInfo *op; unsigned pdst, ppred; bool pwe;
+    uint32_t active; uint64_t tid;
+  };
 
   std::array<std::deque<Alu>, 4> alu_;            ///< per issue slot: bound lanes
   std::array<std::deque<std::pair<std::vector<Bits>, uint64_t>>, 4> lane_q_;
@@ -1099,9 +1102,11 @@ private:
         if (m.tid != a.tid) k_.fail("rcu: lane %u slot %u answered for another instruction", l, s);
         const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
         const uint32_t po = uint32_t(get(m.payload, c.lane_rcu, "pred_out"));
+        // A partial write preserves what it does not write (ISA invariant
+        // 10): only the active lanes take a result.
+        if (!((a.active >> l) & 1u)) continue;
         if (a.op->gdst) k_.gpr[a.pdst][l] = v;
-        if (a.op->pwrite)
-          k_.pred[a.ppred] = (k_.pred[a.ppred] & ~(1u << l)) | (po << l);
+        if (a.pwe) k_.pred[a.ppred] = (k_.pred[a.ppred] & ~(1u << l)) | (po << l);
       }
       to_ooe_.push_back({s, done(a.tag), a.tid});
     }
@@ -1149,7 +1154,9 @@ private:
     if (!op) { k_.fail("rcu: unknown opcode"); return; }
     const unsigned ps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
     const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
-    const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred"));
+    const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard"));
+    const unsigned ppd = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_dst"));
+    const bool pwe = get(m.payload, c.ooe_rcu, "pred_we") != 0;
     const unsigned src[3] = {(ps >> 8) & 0xff, ps & 0xff,
                              unsigned(get(m.payload, c.ooe_rcu, "phys_src2"))};
     // Active lanes = issue mask AND guard. RCU is the one block holding both
@@ -1180,12 +1187,13 @@ private:
       uint32_t v = 0;
       if (!std::strcmp(op->name, "POR")) v = a | b;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
-      k_.pred[pp] = (k_.pred[pp] & ~issue) | (v & issue);
+      if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
+      k_.pred[ppd] = (k_.pred[ppd] & ~issue) | (v & issue);
       if (const Record *r = rec(m.tid, "rcu"))
         if (const RegVal *d = r->predDef())
-          if (k_.pred[pp] != d->p)
+          if (k_.pred[ppd] != d->p)
             k_.fail("rcu: seq %llu P%u = %08x, oracle %08x",
-                    (unsigned long long)r->seq, d->idx, k_.pred[pp], d->p);
+                    (unsigned long long)r->seq, d->idx, k_.pred[ppd], d->p);
       to_ooe_.push_back({s, done(tag), m.tid});
       return;
     }
@@ -1245,7 +1253,7 @@ private:
       lanes.push_back(o);
     }
     lane_q_[s].push_back({lanes, m.tid});
-    alu_[s].push_back({tag, op, pd, pp, m.tid});
+    alu_[s].push_back({tag, op, pd, ppd, pwe, active, m.tid});
   }
 
   bool busy() const override {
@@ -1267,9 +1275,9 @@ private:
     uint64_t tid, pc;
     unsigned tag, warp;
     const OpInfo *op;
-    unsigned src[3], dst, pidx;     ///< architectural
+    unsigned src[3], dst, pguard, pdst;   ///< architectural
     uint32_t imm = 0;
-    bool scale_en = false, pneg = false;
+    bool scale_en = false, pneg = false, pwe = false;
     bool taken = false;
     uint32_t taken_mask = 0;
     bool issued = false, rcu = false, miu = false, committed = false;
@@ -1366,7 +1374,9 @@ private:
     e.imm = uint32_t(get(u, c.dec_ooe, "imm"));
     e.scale_en = get(u, c.dec_ooe, "scale_en") != 0;
     e.pneg = get(u, c.dec_ooe, "pred_neg") != 0;
-    e.pidx = unsigned(get(u, c.dec_ooe, "pred_reg"));
+    e.pguard = unsigned(get(u, c.dec_ooe, "pred_guard"));
+    e.pdst = unsigned(get(u, c.dec_ooe, "pred_dst"));
+    e.pwe = get(u, c.dec_ooe, "pred_we") != 0;
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
     emit(now_, e.tid, EV_DISPATCH, UNIT_OOE, e.warp, e.tag);
@@ -1376,9 +1386,13 @@ private:
   /// Registers an entry reads and writes, as (kind, index) pairs.
   static void regs(const E &e, std::vector<unsigned> &rd, std::vector<unsigned> &wr) {
     for (unsigned i = 0; i != e.op->nsrc; ++i) rd.push_back(e.src[i]);
-    if (e.op->pread) rd.push_back(100 + e.pidx);
+    if (e.op->guard || e.op->pdata) rd.push_back(100 + e.pguard);
+    if (e.op->cls == kPredLogic) {    // its sources are qualifiers in imm
+      rd.push_back(100 + (e.imm & 3));
+      rd.push_back(100 + ((e.imm >> 3) & 3));
+    }
     if (e.op->gdst) wr.push_back(e.dst);
-    if (e.op->pwrite) wr.push_back(100 + e.pidx);
+    if (e.pwe) wr.push_back(100 + e.pdst);
   }
 
   void issueOne() {
@@ -1417,7 +1431,9 @@ private:
     put(is, c.ooe_rcu, "phys_src2", pb + e.src[2]);
     if (!mem) put(is, c.ooe_rcu, "imm", e.imm);
     put(is, c.ooe_rcu, "phys_dst", pb + e.dst);
-    put(is, c.ooe_rcu, "phys_pred", physPred(e.warp, e.pidx));
+    put(is, c.ooe_rcu, "phys_pred_guard", physPred(e.warp, e.pguard));
+    put(is, c.ooe_rcu, "phys_pred_dst", physPred(e.warp, e.pdst));
+    put(is, c.ooe_rcu, "pred_we", e.pwe);
     put(is, c.ooe_rcu, "pred_neg", e.pneg && k_.brk != "drop-negate");
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     send(c.ooe_rcu, slot, is, e.tid);
@@ -1431,7 +1447,7 @@ private:
       put(mo, c.ooe_miu, "issue_mask", issue_mask);
       // Write-back destinations, for MIU to echo: RCU keeps no load table.
       put(mo, c.ooe_miu, "phys_dst", pb + e.dst);
-      put(mo, c.ooe_miu, "phys_pred", physPred(e.warp, e.pidx));
+      put(mo, c.ooe_miu, "phys_pred", physPred(e.warp, e.pdst));
       put(mo, c.ooe_miu, "disp",                    // truncated to CCV_W_DISP
           e.imm + (k_.brk == "corrupt-disp" && uidSeq(e.tid) == 6 ? 4u : 0u));
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
@@ -1530,20 +1546,20 @@ private:
       k_.fail("dec: seq %llu %s has an operand shape the table does not",
               (unsigned long long)r->seq, op->name);
     const unsigned dst = gd ? gd->idx : 0;
-    if (op->cls != kPredLogic && pu && pd && pu->idx != pd->idx)
-      k_.fail("dec: seq %llu reads P%u and writes P%u; pred_reg holds one "
-              "(open question pred_src_and_dst)", (unsigned long long)r->seq,
-              pu->idx, pd->idx);
-    unsigned pidx = pu ? pu->idx : pd ? pd->idx : 0;
-    unsigned pneg = 0;
+    // The guard and the predicate destination are separate fields, as they
+    // are in the encoding (Format C: qualifier [29:27], destination [31:30]),
+    // so @P0 setp P1 is one uop (Q-21).
+    unsigned pguard = 0, pneg = 0;
     if (op->guard || op->pdata) {
       // The qualifier is quals[0]: [1:0] the predicate, [2] negate. vadd's
       // branch is @!P0, and the index alone would resolve it backwards.
       if (r->quals.empty()) k_.fail("dec: seq %llu has no guard qualifier",
                                     (unsigned long long)r->seq);
-      else { pidx = r->quals[0] & 3; pneg = (r->quals[0] >> 2) & 1; }
+      else { pguard = r->quals[0] & 3; pneg = (r->quals[0] >> 2) & 1; }
     }
-    if (op->cls == kPredLogic && pd) pidx = pd->idx;   // pred_reg names the destination
+    unsigned pdst = pd ? pd->idx : 0;
+    // The old single field: the destination named by the guard.
+    if (k_.brk == "conflate-pred" && pd && op->guard) pdst = pguard;
     put(u, c.dec_ooe, "uop_class", op->cls);
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
     // Three source fields: Format A's rs2 is an independent source (mad.lo's
@@ -1579,9 +1595,9 @@ private:
     put(u, c.dec_ooe, "imm", imm);
     put(u, c.dec_ooe, "pred_neg", pneg);
     put(u, c.dec_ooe, "scale_en", immOf(op->scale_imm) != 0);
-    // pred_reg is an index (CCV_W_ARCH_PRED); whether it is read, written
-    // or both is the opcode's to say, as for the GPR sources.
-    put(u, c.dec_ooe, "pred_reg", pidx);
+    put(u, c.dec_ooe, "pred_guard", pguard);
+    put(u, c.dec_ooe, "pred_dst", pdst);
+    put(u, c.dec_ooe, "pred_we", pd != nullptr);
     q_.push_back({u, m.tid});
   }
 

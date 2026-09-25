@@ -45,6 +45,7 @@
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   drop-q38-exception  the lanes hold movi/movi48/srd to the lane-data rule
+//   conflate-pred  DEC names the guard as the predicate destination (pguard)
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
 #include "verilated.h"
@@ -227,7 +228,8 @@ int main(int argc, char **argv) {
                       brk == "drop-store" || brk == "corrupt-req-id" ||
                       brk == "itlb-double" || brk == "corrupt-disp" ||
                       brk == "drop-negate" || brk == "drop-pred-data" ||
-                      brk == "corrupt-echo" || brk == "drop-q38-exception";
+                      brk == "corrupt-echo" || brk == "drop-q38-exception" ||
+                      brk == "conflate-pred";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

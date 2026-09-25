@@ -28,9 +28,9 @@
   output logic [7:0] fet_dec_instr_credit,
   output logic [7:0] fet_dec_instr_stall,
   input  logic fet_dec_instr_wake,
-  // dec -> ooe, 6 slot(s) x 134 bit payload
+  // dec -> ooe, 6 slot(s) x 137 bit payload
   output logic [5:0] dec_ooe_uop_valid,
-  output logic [803:0] dec_ooe_uop_payload,
+  output logic [821:0] dec_ooe_uop_payload,
   input  logic [5:0] dec_ooe_uop_credit,
   input  logic [5:0] dec_ooe_uop_stall,
   output logic dec_ooe_uop_wake

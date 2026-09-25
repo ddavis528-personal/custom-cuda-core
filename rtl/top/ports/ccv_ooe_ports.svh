@@ -22,15 +22,15 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // dec -> ooe, 6 slot(s) x 134 bit payload
+  // dec -> ooe, 6 slot(s) x 137 bit payload
   input  logic [5:0] dec_ooe_uop_valid,
-  input  logic [803:0] dec_ooe_uop_payload,
+  input  logic [821:0] dec_ooe_uop_payload,
   output logic [5:0] dec_ooe_uop_credit,
   output logic [5:0] dec_ooe_uop_stall,
   input  logic dec_ooe_uop_wake,
-  // ooe -> rcu, 4 slot(s) x 129 bit payload
+  // ooe -> rcu, 4 slot(s) x 138 bit payload
   output logic [3:0] ooe_rcu_issue_valid,
-  output logic [515:0] ooe_rcu_issue_payload,
+  output logic [551:0] ooe_rcu_issue_payload,
   input  logic [3:0] ooe_rcu_issue_credit,
   input  logic [3:0] ooe_rcu_issue_stall,
   output logic ooe_rcu_issue_wake,

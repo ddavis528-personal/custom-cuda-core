@@ -20,6 +20,9 @@
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
 #                                                a stale R8
+#   a guarded compare writes a predicate      conflate-pred: the next guard
+#     other than its guard (pguard, Q-21)        is wrong at the lanes, and
+#                                                P0 and P1 both end wrong
 #   every op on the right side of the         drop-q38-exception: exactly the
 #     lane-data rule (Q-32)                      movi/movi48/srd lanes fail it
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
@@ -216,6 +219,30 @@ if grep -q "^CHECK lane 0: seq 5 pred_data (sel's selector) wrong" "$B/kernel_dr
   say "--break drop-pred-data: sel's lanes reject it" "PASS"
 else
   bad "--break drop-pred-data" "a missing selector went unnoticed"
+fi
+
+# -- pguard: a guard and a predicate destination that differ (Q-21) --------
+# @P0 setp P1 carries its guard and destination in separate uop fields. With
+# them conflated back into one (the destination named by the guard), the
+# compare writes P0, so the next compare's guard is wrong at its lanes, and
+# both predicates end differently from ccv-sim.
+P=test/golden/pguard/oracle.jsonl
+"$SKEL" --kernel "$P" >"$B/kernel_pguard.log" 2>&1
+ok=1
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$B/kernel_pguard.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
+done
+if [ $ok = 1 ]; then
+  say "pguard: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_pguard.log" cycles) cycles)"
+else
+  bad "pguard: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_pguard.log")"
+fi
+"$SKEL" --kernel "$P" --break conflate-pred >"$B/kernel_conflate-pred.log" 2>&1
+if grep -q "^CHECK lane [0-9]*: seq 7 pred_bit is not issue mask AND guard" "$B/kernel_conflate-pred.log" &&
+   [ "$(field "$B/kernel_conflate-pred.log" pred_mismatch)" = 2 ]; then
+  say "--break conflate-pred: guard and P0/P1 wrong" "PASS"
+else
+  bad "--break conflate-pred" "one field for guard and destination went unnoticed"
 fi
 
 exit $fail
