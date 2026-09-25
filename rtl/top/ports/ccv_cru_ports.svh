@@ -13,9 +13,6 @@
   input  logic clk,
   input  logic clk_free,
   input  logic rst_n,
-  input  logic kill_valid,
-  input  logic [3:0] kill_warp_mask,
-  output logic kill_ack,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   // csr_req of every block instance, by instance index
@@ -32,9 +29,9 @@
   output logic ooe_cru_fault_credit,
   output logic ooe_cru_fault_stall,
   input  logic ooe_cru_fault_wake,
-  // cru -> rau, 1 slot(s) x 65 bit payload
+  // cru -> rau, 1 slot(s) x 74 bit payload
   output logic cru_rau_cfg_valid,
-  output logic [64:0] cru_rau_cfg_payload,
+  output logic [73:0] cru_rau_cfg_payload,
   input  logic cru_rau_cfg_credit,
   input  logic cru_rau_cfg_stall,
   output logic cru_rau_cfg_wake

@@ -14,8 +14,10 @@
   input  logic clk_free,
   input  logic rst_n,
   input  logic kill_valid,
-  input  logic [3:0] kill_warp_mask,
+  input  logic [31:0] kill_warp_mask,
+  input  logic [1:0] kill_epoch,
   output logic kill_ack,
+  output logic [1:0] kill_ack_epoch,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -26,6 +28,12 @@
   input  logic [7:0] fet_dec_instr_credit,
   input  logic [7:0] fet_dec_instr_stall,
   output logic fet_dec_instr_wake,
+  // ooe -> fet, 1 slot(s) x 201 bit payload
+  input  logic ooe_fet_redirect_valid,
+  input  logic [200:0] ooe_fet_redirect_payload,
+  output logic ooe_fet_redirect_credit,
+  output logic ooe_fet_redirect_stall,
+  input  logic ooe_fet_redirect_wake,
   // fet -> mlc, 1 slot(s) x 58 bit payload
   output logic fet_mlc_ifill_valid,
   output logic [57:0] fet_mlc_ifill_payload,
@@ -58,6 +66,7 @@
   input  logic rau_fet_launch_wake
 `ifdef CCV_TRACE
   , output logic [511:0] fet_dec_instr_tid
+  , input  logic [63:0] ooe_fet_redirect_tid
   , output logic [63:0] fet_mlc_ifill_tid
   , input  logic [63:0] mlc_fet_ifill_rsp_tid
   , input  logic [63:0] miu_fet_itlb_tid

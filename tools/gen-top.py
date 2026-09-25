@@ -108,13 +108,19 @@ def block_ports(btype, chans, ninst, common, nb):
         dr = "input" if dr == "in" else "output"
         kind = fab.get("kind")
         if kind == "broadcast":
-            P.append(("output" if btype == fab["from"] else "input", w, name,
-                      False, None))
+            if btype == fab["from"]:
+                P.append(("output", w, name, False, None))
+            elif btype in fab.get("to", [btype]):
+                P.append(("input", w, name, False, None))
         elif kind == "gather":
+            srcs = fab.get("from")
             if btype == fab["to"]:
-                P.append(("input", nb * w, fab["port"], False,
+                P.append(("input", (len(srcs) if srcs else nb) * w, fab["port"],
+                          False,
+                          "%s of %s, in that order" % (name, ", ".join(srcs))
+                          if srcs else
                           "every block instance's %s, by instance index" % name))
-            else:
+            elif srcs is None or btype in srcs:
                 P.append((dr, w, name, False, None))
         elif kind == "star":
             P.append((dr, w, name, False, None))
@@ -223,8 +229,10 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     L.append("// wiring the C++ skeleton reports.")
     L.append("//")
     L.append("// COMMON PORTS, by fabric (schema common_ports):")
-    L.append("//   kill_valid / kill_warp_mask  broadcast from RAU, the one true")
-    L.append("//                                broadcast; kill_ack gathered at RAU")
+    L.append("//   kill_valid / _warp_mask /    broadcast from RAU, the one true")
+    L.append("//   _epoch                       broadcast, to the eight blocks that")
+    L.append("//                                own warp state; kill_ack and its")
+    L.append("//                                epoch gathered back at RAU")
     L.append("//   wake                         not a common port: each channel")
     L.append("//                                carries <name>_wake, sender to")
     L.append("//                                receiver")
@@ -275,10 +283,16 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
         if k == "broadcast":
             L.append("  logic %s%s;   // from %s" % (rng(cw[n]), n, f["from"]))
         elif k == "gather":
-            L.append("  logic %s%s;   // gathered at %s" % (rng(NB * cw[n]), n, f["to"]))
-            for kk in owner_idx(f["to"]):
-                L.append("  assign %s[%d] = 1'b1;   // %s does not ack itself"
-                         % (n, kk, names[kk]))
+            srcs = f.get("from")
+            if srcs:
+                assert all(ninst[b] == 1 for b in srcs), "gather from a multi-instance block"
+                L.append("  logic %s%s;   // gathered at %s from %s"
+                         % (rng(len(srcs) * cw[n]), n, f["to"], ", ".join(srcs)))
+            else:
+                L.append("  logic %s%s;   // gathered at %s" % (rng(NB * cw[n]), n, f["to"]))
+                for kk in owner_idx(f["to"]):
+                    L.append("  assign %s[%d] = 1'b1;   // %s does not ack itself"
+                             % (n, kk, names[kk]))
         elif k == "star":
             dr = next(dr for nm, dr, _, _ in common if nm == n)
             if dr == "in":
@@ -341,7 +355,13 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
             elif kind == "broadcast":
                 ex = pname
             elif kind == "gather":
-                ex = "%s[%d]" % (pname, k)
+                srcs = f.get("from")
+                if srcs:
+                    j = srcs.index(t)
+                    ex = ("%s[%d]" % (pname, j) if cw[pname] == 1
+                          else "%s[%d +: %d]" % (pname, j * cw[pname], cw[pname]))
+                else:
+                    ex = "%s[%d]" % (pname, k)
             elif pname in gathers:
                 ex = gathers[pname]
             elif kind == "local":

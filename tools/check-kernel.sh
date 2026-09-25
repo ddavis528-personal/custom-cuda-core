@@ -16,6 +16,8 @@
 #                                                disagrees with ccv-sim's
 #   one ITLB miss outstanding                  itlb-double: the bank's
 #                                                outstanding checker fires
+#   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
+#                                                and FET's redirect both wrong
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -144,6 +146,18 @@ if [ "$props" = "within_limit" ] &&
   say "--break itlb-double: outstanding limit fires" "PASS"
 else
   bad "--break itlb-double" "bank fired {$props}, want {within_limit} on the ITLB pair"
+fi
+
+# Branches resolve in RCU from the guard, negate included. Without the
+# negate, vadd's @!P0 branch is taken by every lane: RCU's resolution must
+# disagree with ccv-sim, and the redirect it causes must reach FET, which
+# must reject it too -- the one run that exercises ooe_fet_redirect.
+run drop-negate
+if grep -q "^CHECK rcu: seq 8 branch taken by ffffffff, oracle 00000000" "$B/kernel_drop-negate.log" &&
+   grep -q "^CHECK fet: seq 8 redirect to" "$B/kernel_drop-negate.log"; then
+  say "--break drop-negate: RCU and FET reject the branch" "PASS"
+else
+  bad "--break drop-negate" "a backwards guard went unnoticed"
 fi
 
 exit $fail

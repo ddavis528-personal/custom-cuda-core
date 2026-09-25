@@ -222,6 +222,9 @@ std::string Oracle::load(const std::string &path) {
         r.load = j.at("load").u() != 0;
         r.store = j.at("store").u() != 0;
         for (const JV &m : j.at("imms").a()) r.imms.push_back(m.i());
+        for (const JV &m : j.at("quals").a()) r.quals.push_back(unsigned(m.u()));
+        r.taken = uint32_t(j.at("taken").u());
+        r.target = j.at("target").u();
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));
         for (const JV &m : j.at("mem").a()) {

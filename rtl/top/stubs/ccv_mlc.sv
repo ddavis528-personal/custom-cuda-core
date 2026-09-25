@@ -20,7 +20,6 @@
 module ccv_mlc (
   `include "ccv_mlc_ports.svh"
 );
-  assign kill_ack = '0;
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;

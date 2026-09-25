@@ -46,31 +46,102 @@
       "name": "kill_valid",
       "dir": "in",
       "width": 1,
-      "doc": "Grid teardown, one cycle ahead of the mask, broadcast by RAU: OOE raises the fault at retirement, RAU converts grid to warp mask and broadcasts. Outside the credit scheme: a kill must not wait on a stalled receiver. The single true broadcast in the core.",
+      "doc": "Grid teardown, one cycle ahead of the mask, broadcast by RAU to the eight blocks that own warp state (FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA). Lanes hold no warp-tagged state that survives RCU ceasing to send, and DCU, MLC and EXB are physically addressed with no notion of a warp, so they take no part. Outside the credit scheme: a kill must not wait on a stalled receiver.",
       "fabric": {
         "kind": "broadcast",
-        "from": "rau"
+        "from": "rau",
+        "to": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
       }
     },
     {
       "name": "kill_warp_mask",
       "dir": "in",
-      "width": "CCV_TIER1_WARPS",
-      "doc": "Warps to discard, driven by RAU. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables, so every receiver just masks warp-indexed state.",
+      "width": "CCV_TIER1_WARPS+CCV_PARKED_WARPS",
+      "doc": "Warps to discard, one bit per warp CONTEXT (32: tier-1 and parked), driven by RAU. It was sized to the four tier-1 warps, but PCA and SYU hold state for parked warps, which a tier-1 mask cannot name. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables.",
       "fabric": {
         "kind": "broadcast",
-        "from": "rau"
+        "from": "rau",
+        "to": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "kill_epoch",
+      "dir": "in",
+      "width": "CCV_P_W_KILL_EPOCH",
+      "doc": "Epoch of the kill being broadcast. Every ack echoes it, so a late ack from a previous kill cannot satisfy this one.",
+      "fabric": {
+        "kind": "broadcast",
+        "from": "rau",
+        "to": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
       }
     },
     {
       "name": "kill_ack",
       "dir": "out",
       "width": 1,
-      "doc": "Block has discarded matching state. Gathered at RAU (kill_acks, one bit per block instance), which is what lets RAU know a kill is complete.",
+      "doc": "QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf. MIU is the awkward one: retired stores must still drain, so its ack waits on them, while its pending loads are dropped. Gathered at RAU as kill_acks, one bit per owning block in the order FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA.",
       "fabric": {
         "kind": "gather",
         "to": "rau",
-        "port": "kill_acks"
+        "port": "kill_acks",
+        "from": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "kill_ack_epoch",
+      "dir": "out",
+      "width": "CCV_P_W_KILL_EPOCH",
+      "doc": "The kill_epoch this ack answers. RAU counts an ack only when it matches the current epoch.",
+      "fabric": {
+        "kind": "gather",
+        "to": "rau",
+        "port": "kill_ack_epochs",
+        "from": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
       }
     },
     {
@@ -190,6 +261,7 @@
         "src_arch",
         "dst_arch",
         "pred_reg",
+        "pred_neg",
         "imm",
         "scale_en",
         "decode_fault"
@@ -218,6 +290,7 @@
         "phys_src",
         "phys_dst",
         "phys_pred",
+        "pred_neg",
         "opcode",
         "imm",
         "chwidth",
@@ -293,9 +366,11 @@
       "payload_fields": [
         "rob_tag",
         "exec_fault",
+        "branch_taken",
+        "branch_mask",
         "fault_lane_mask"
       ],
-      "doc": "Completion back to the ROB for arithmetic, with the faulting lane mask.",
+      "doc": "Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it.",
       "id_classes": [
         "instr"
       ]
@@ -395,6 +470,24 @@
         "commit_or_discard"
       ],
       "doc": "Commit or discard for the store buffer, so stores leave only after their instruction retires.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_ooe_fet_redirect",
+      "src": "ooe",
+      "dst": "fet",
+      "rate": 1,
+      "group": "instruction",
+      "payload_fields": [
+        "warp_id",
+        "tier1_id",
+        "target_pc",
+        "group_masks",
+        "fetch_epoch"
+      ],
+      "doc": "A resolved branch that changes fetch: the warp, its tier-1 stream, the target PC, the updated PC-group lane masks, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate); OOE redirects. FET owns the PC and its update logic, so the divergent PC-group state lives in FET.",
       "id_classes": [
         "instr"
       ]
@@ -738,11 +831,12 @@
       "group": "control",
       "payload_fields": [
         "warp_id",
+        "fault_taken",
         "stalled",
         "mlc_miss_seen",
         "retired_since_restore"
       ],
-      "doc": "Per-warp stall and progress reporting, feeding demotion policy.",
+      "doc": "Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU maps warp to grid to mask from tables it owns. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.",
       "id_classes": [
         "none"
       ]
@@ -921,9 +1015,11 @@
       "payload_fields": [
         "demotion_threshold",
         "progress_threshold",
-        "launch_enable"
+        "launch_enable",
+        "kill_req",
+        "kill_grid"
       ],
-      "doc": "Host-programmed policy: demotion threshold, progress threshold, launch enable.",
+      "doc": "Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Both kill sources -- a fault from OOE, a request from the host -- land at RAU, the single issuer.",
       "id_classes": [
         "none"
       ]
@@ -1054,7 +1150,16 @@
     "issue_mask": "CCV_W_LANE_MASK",
     "disp": "CCV_W_DISP",
     "scale_en": "1",
-    "tier1_id": "CCV_W_TIER1_ID"
+    "tier1_id": "CCV_W_TIER1_ID",
+    "fault_taken": "1",
+    "kill_req": "1",
+    "kill_grid": "CCV_L_W_GRID_SEL",
+    "branch_taken": "1",
+    "branch_mask": "CCV_W_LANE_MASK",
+    "target_pc": "CCV_W_VA",
+    "group_masks": "CCV_L_PC_GROUPS*CCV_W_LANE_MASK",
+    "fetch_epoch": "CCV_P_W_FETCH_EPOCH",
+    "pred_neg": "1"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
@@ -1086,17 +1191,17 @@
       "blocks": "Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.",
       "owner": "execution / memory payload owners"
     },
-    "branch_resolution": {
-      "question": "Nothing carries a branch's outcome back to fetch. BRA_PRED's taken lanes are issue mask AND guard, which RCU can now compute, but ccv_rcu_ooe_done carries no taken mask or target, and no channel runs from OOE or RCU to FET. Branches, loops and divergence all need it.",
-      "kind": "payload gap found applying the mask decision",
-      "blocks": "Any kernel with a taken branch. vadd's one branch is never taken, and S1's fetch order comes from the oracle.",
-      "owner": "FET / OOE / RCU sessions"
+    "predicate_as_lane_data": {
+      "question": "pred_bit is now the lane ENABLE (issue mask AND guard), so an instruction that reads a predicate as DATA while doing lane arithmetic needs something else. From the ISA and ccv-sim: sel is one -- '@pq sel rd, rs0, rs1' writes rd on every issue-mask lane, choosing rs0 or rs1 by the predicate, so its qualifier is a data operand, not an enable. Two ways to serve it: a second per-lane bit on ccv_rcu_lane_ops, or RCU resolves the select at register read (it holds both the predicate file and both sources) and the lane sees one operand -- the same move as substituting an immediate. The output direction has the same shape: add.pp / addi.pp write a GPR AND a predicate per lane, but ccv_lane_rcu_res carries one result; cas writes a success predicate, and ccv_miu_rcu_data carries none.",
+      "kind": "ISA-driven payload question",
+      "blocks": "sel (selected by the compiler today), and add.pp / addi.pp / cas when they are selected (none is yet). vadd uses none.",
+      "owner": "RCU / LANE sessions, with the ISA track for add.pp's predicate output"
     },
-    "pred_source_operands": {
-      "question": "Predicate VALUES used as data have no path to a lane: pand/por/pxor's sources, vote and ballot. pred_bit is now the lane enable (issue mask AND guard), not a data operand. Either predicate logic executes in RCU beside the predicate file (lanes never see it), or rcu_lane_ops needs predicate operand bits.",
-      "kind": "payload question found applying the mask decision",
-      "blocks": "Nothing in S1 (POR's result comes from the oracle); a real RCU or lane for predicate logic.",
-      "owner": "RCU / LANE sessions"
+    "pc_group_state_owner": {
+      "question": "FET owns the PC and its update logic, so divergent PC-group state lives in FET -- but ccv_rcu_pca_mig carries `pcs` on migration, from RCU. Either FET supplies the group PCs on demote, or PC state is duplicated in two blocks. ccv_ooe_rau_drained.resume_pc is fine (the ROB's oldest un-retired PC); the full group set has no route out of FET. Proposal: move `pcs` off the RCU<->PCA migration pair onto a FET<->PCA pair (demote and restore), so RCU migrates registers and predicates only and FET migrates the PC groups it owns.",
+      "kind": "partitioning inconsistency exposed by branch resolution",
+      "blocks": "Demotion of a divergent warp; migration, which S1 does not exercise.",
+      "owner": "partitioning, with the FET / RCU / PCA sessions"
     }
   },
   "_rate_comment": [

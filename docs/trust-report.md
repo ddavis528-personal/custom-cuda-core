@@ -25,11 +25,12 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **18 of 41 channels** carry at least one
+appear above. **20 of 42 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
 |---|---|
+| `ccv_cru_rau_cfg` | `kill_grid` |
 | `ccv_dcu_mlc_req` | `coh_op` |
 | `ccv_dec_ooe_uop` | `uop_class`, `opcode` |
 | `ccv_exb_ext_out` | `tl_out` |
@@ -39,6 +40,7 @@ preliminary field:
 | `ccv_miu_fet_itlb` | `itlb_refill` |
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
+| `ccv_ooe_fet_redirect` | `group_masks` |
 | `ccv_ooe_miu_memop` | `mem_op`, `space`, `ordering` |
 | `ccv_ooe_rcu_issue` | `opcode` |
 | `ccv_pca_rcu_mig` | `pred_state`, `pcs` |
@@ -66,6 +68,7 @@ to code that merely carries it, which will not.
 | `CCV_L_W_TL_OUT` | 1225 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_COH_OP` | 4 | med | MLC/EXB session, once the TL-C subset is chosen |
 | `CCV_L_W_CSR_ADDR` | 16 | med | CRU session -- the CSR fabric has no topology yet |
+| `CCV_L_W_GRID_SEL` | 8 | med | RAU / CRU sessions |
 | `CCV_L_W_MEM_OP` | 4 | med | MIU block session |
 | `CCV_L_W_ORDERING` | 4 | med | OOE/MIU session -- is scope a separate field? |
 | `CCV_L_W_OWNERSHIP` | 3 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |

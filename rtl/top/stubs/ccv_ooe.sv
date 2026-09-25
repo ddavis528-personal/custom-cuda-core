@@ -21,6 +21,7 @@ module ccv_ooe (
   `include "ccv_ooe_ports.svh"
 );
   assign kill_ack = '0;
+  assign kill_ack_epoch = '0;
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
@@ -47,6 +48,12 @@ module ccv_ooe (
   assign ooe_miu_retire_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_miu_retire_tid = '0;
+`endif
+  assign ooe_fet_redirect_valid = '0;
+  assign ooe_fet_redirect_payload = '0;
+  assign ooe_fet_redirect_wake = '0;
+`ifdef CCV_TRACE
+  assign ooe_fet_redirect_tid = '0;
 `endif
   assign rau_ooe_alloc_credit = '0;
   assign rau_ooe_alloc_stall = '0;

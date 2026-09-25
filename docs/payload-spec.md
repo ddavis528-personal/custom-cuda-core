@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 41 channels
+# Payload specification — all 42 channels
 
-Every payload field has a width, so **every one of the 41
+Every payload field has a width, so **every one of the 42
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 8 | 24 |
-| ⚠️ Some provisional | 15 | 56 |
-| ⛔ Some preliminary | 18 | 89 |
-| **Total** | **41** | **169** |
+| All decided | 7 | 22 |
+| ⚠️ Some provisional | 15 | 58 |
+| ⛔ Some preliminary | 20 | 101 |
+| **Total** | **42** | **181** |
 
 ## What still has to be decided
 
@@ -128,6 +128,12 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_PCA_BANK` | 3 | med | Parked-context bank select: eight banks of four warps, from the proposed PCA organization. |
 
+### RAU / CRU sessions
+
+| Parameter | Value | Churn | Basis |
+|---|---|---|---|
+| `CCV_L_W_GRID_SEL` | 8 | med | Grid selector on the host's kill request (ccv_cru_rau_cfg). RAU maps grid to warp mask from tables it owns. Sized for 256 grid slots; the real number is how many grids RAU tracks at once. |
+
 ### RAU/OOE session -- register or chunk granularity
 
 | Parameter | Value | Churn | Basis |
@@ -167,14 +173,6 @@ because those are the ones where a skeleton that reads the field
 
 ## Open questions that no width can close
 
-### branch resolution
-
-*payload gap found applying the mask decision — FET / OOE / RCU sessions*
-
-Nothing carries a branch's outcome back to fetch. BRA_PRED's taken lanes are issue mask AND guard, which RCU can now compute, but ccv_rcu_ooe_done carries no taken mask or target, and no channel runs from OOE or RCU to FET. Branches, loops and divergence all need it.
-
-**Blocks:** Any kernel with a taken branch. vadd's one branch is never taken, and S1's fetch order comes from the oracle.
-
 ### miu dcu req store data
 
 *payload omission found by the first kernel — memory-path payload owner*
@@ -191,13 +189,13 @@ ccv_miu_rcu_data carries phys_dst, but nothing MIU receives names a destination:
 
 **Blocks:** Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.
 
-### pred source operands
+### pc group state owner
 
-*payload question found applying the mask decision — RCU / LANE sessions*
+*partitioning inconsistency exposed by branch resolution — partitioning, with the FET / RCU / PCA sessions*
 
-Predicate VALUES used as data have no path to a lane: pand/por/pxor's sources, vote and ballot. pred_bit is now the lane enable (issue mask AND guard), not a data operand. Either predicate logic executes in RCU beside the predicate file (lanes never see it), or rcu_lane_ops needs predicate operand bits.
+FET owns the PC and its update logic, so divergent PC-group state lives in FET -- but ccv_rcu_pca_mig carries `pcs` on migration, from RCU. Either FET supplies the group PCs on demote, or PC state is duplicated in two blocks. ccv_ooe_rau_drained.resume_pc is fine (the ROB's oldest un-retired PC); the full group set has no route out of FET. Proposal: move `pcs` off the RCU<->PCA migration pair onto a FET<->PCA pair (demote and restore), so RCU migrates registers and predicates only and FET migrates the PC groups it owns.
 
-**Blocks:** Nothing in S1 (POR's result comes from the oracle); a real RCU or lane for predicate logic.
+**Blocks:** Demotion of a divergent warp; migration, which S1 does not exercise.
 
 ### pred src and dst
 
@@ -206,6 +204,14 @@ Predicate VALUES used as data have no path to a lane: pand/por/pxor's sources, v
 ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.
 
 **Blocks:** Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.
+
+### predicate as lane data
+
+*ISA-driven payload question — RCU / LANE sessions, with the ISA track for add.pp's predicate output*
+
+pred_bit is now the lane ENABLE (issue mask AND guard), so an instruction that reads a predicate as DATA while doing lane arithmetic needs something else. From the ISA and ccv-sim: sel is one -- '@pq sel rd, rs0, rs1' writes rd on every issue-mask lane, choosing rs0 or rs1 by the predicate, so its qualifier is a data operand, not an enable. Two ways to serve it: a second per-lane bit on ccv_rcu_lane_ops, or RCU resolves the select at register read (it holds both the predicate file and both sources) and the lane sees one operand -- the same move as substituting an immediate. The output direction has the same shape: add.pp / addi.pp write a GPR AND a predicate per lane, but ccv_lane_rcu_res carries one result; cas writes a success predicate, and ccv_miu_rcu_data carries none.
+
+**Blocks:** sel (selected by the compiler today), and add.pp / addi.pp / cas when they are selected (none is yet). vadd uses none.
 
 ### rcu miu width
 
@@ -263,17 +269,18 @@ fet → miu · rate 1 · memory
 
 ### `ccv_ooe_rau_status`
 
-Per-warp stall and progress reporting, feeding demotion policy.
+Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU maps warp to grid to mask from tables it owns. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
 
 ooe → rau · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `fault_taken` | `1` | 1 | literal |
 | `stalled` | `1` | 1 | literal |
 | `mlc_miss_seen` | `1` | 1 | literal |
 | `retired_since_restore` | `CCV_W_RETIRED_CNT` | 8 | CCV_W_RETIRED_CNT (arch) |
-| **total** | | **15** | |
+| **total** | | **16** | |
 
 ### `ccv_rau_ooe_demote`
 
@@ -312,24 +319,11 @@ syu → ooe · rate 1 · control
 | `barrier_id` | `CCV_W_BAR_ID` | 4 | CCV_W_BAR_ID (arch) |
 | **total** | | **36** | |
 
-### `ccv_cru_rau_cfg`
-
-Host-programmed policy: demotion threshold, progress threshold, launch enable.
-
-cru → rau · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `demotion_threshold` | `CCV_W_CSR` | 32 | CCV_W_CSR (arch) |
-| `progress_threshold` | `CCV_W_CSR` | 32 | CCV_W_CSR (arch) |
-| `launch_enable` | `1` | 1 | literal |
-| **total** | | **65** | |
-
 ## ⚠️ Carries a provisional width
 
 ### `ccv_rcu_ooe_done`
 
-Completion back to the ROB for arithmetic, with the faulting lane mask.
+Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it.
 
 rcu → ooe · rate 4 · execution
 
@@ -337,8 +331,10 @@ rcu → ooe · rate 4 · execution
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
 | `exec_fault` | `1` | 1 | literal |
+| `branch_taken` | `1` | 1 | literal |
+| `branch_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `fault_lane_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
-| **total** | | **40** | ⚠️ 7 provisional |
+| **total** | | **73** | ⚠️ 7 provisional |
 
 ### `ccv_rcu_miu_addr`
 
@@ -550,10 +546,11 @@ dec → ooe · rate 6 · instruction
 | `src_arch` | `3*CCV_W_ARCH_REG` | 12 | CCV_W_ARCH_REG (isa) |
 | `dst_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
 | `pred_reg` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
+| `pred_neg` | `1` | 1 | literal |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **133** | ⛔ 12 preliminary, ⚠️ 32 provisional |
+| **total** | | **134** | ⛔ 12 preliminary, ⚠️ 32 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
@@ -569,11 +566,12 @@ ooe → rcu · rate 4 · execution
 | `phys_src` | `3*CCV_P_W_PHYS_REG` | 24 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_pred` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `pred_neg` | `1` | 1 | literal |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **128** | ⛔ 9 preliminary, ⚠️ 79 provisional |
+| **total** | | **129** | ⛔ 9 preliminary, ⚠️ 79 provisional |
 
 ### `ccv_rcu_lane_ops`
 
@@ -608,6 +606,21 @@ ooe → miu · rate 4 · memory
 | `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
 | `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
 | **total** | | **77** | ⛔ 11 preliminary, ⚠️ 10 provisional |
+
+### `ccv_ooe_fet_redirect`
+
+A resolved branch that changes fetch: the warp, its tier-1 stream, the target PC, the updated PC-group lane masks, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate); OOE redirects. FET owns the PC and its update logic, so the divergent PC-group state lives in FET.
+
+ooe → fet · rate 1 · instruction
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `group_masks` | `CCV_L_PC_GROUPS*CCV_W_LANE_MASK` | 128 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_LANE_MASK (isa) |
+| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 2 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
+| **total** | | **201** | ⛔ 128 preliminary, ⚠️ 2 provisional |
 
 ### `ccv_miu_spm_req`
 
@@ -792,6 +805,21 @@ rau → syu · rate 1 · control
 | `barrier_count` | `CCV_L_W_BAR_COUNT` | 7 ⛔ | CCV_L_W_BAR_COUNT (preliminary, churn low) |
 | `allocate_or_free` | `1` | 1 | literal |
 | **total** | | **17** | ⛔ 7 preliminary, ⚠️ 3 provisional |
+
+### `ccv_cru_rau_cfg`
+
+Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Both kill sources -- a fault from OOE, a request from the host -- land at RAU, the single issuer.
+
+cru → rau · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `demotion_threshold` | `CCV_W_CSR` | 32 | CCV_W_CSR (arch) |
+| `progress_threshold` | `CCV_W_CSR` | 32 | CCV_W_CSR (arch) |
+| `launch_enable` | `1` | 1 | literal |
+| `kill_req` | `1` | 1 | literal |
+| `kill_grid` | `CCV_L_W_GRID_SEL` | 8 ⛔ | CCV_L_W_GRID_SEL (preliminary, churn med) |
+| **total** | | **74** | ⛔ 8 preliminary |
 
 ### `ccv_ext_exb_in`
 

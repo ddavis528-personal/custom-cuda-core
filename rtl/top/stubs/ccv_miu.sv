@@ -21,6 +21,7 @@ module ccv_miu (
   `include "ccv_miu_ports.svh"
 );
   assign kill_ack = '0;
+  assign kill_ack_epoch = '0;
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;

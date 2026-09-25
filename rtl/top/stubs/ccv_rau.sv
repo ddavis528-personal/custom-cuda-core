@@ -22,6 +22,7 @@ module ccv_rau (
 );
   assign kill_valid = '0;
   assign kill_warp_mask = '0;
+  assign kill_epoch = '0;
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;

@@ -4,7 +4,7 @@
 // params/blocks.json. Edit a source and regenerate; tools/verify.sh fails if
 // this file is stale.
 
-// The CCV core: 45 block instances, 103 channel instances.
+// The CCV core: 45 block instances, 104 channel instances.
 //
 // Channel nets are flat, instance-major then slot -- the same order
 // as the C++ skeleton's slot map, so the checker bank is fed by
@@ -13,8 +13,10 @@
 // wiring the C++ skeleton reports.
 //
 // COMMON PORTS, by fabric (schema common_ports):
-//   kill_valid / kill_warp_mask  broadcast from RAU, the one true
-//                                broadcast; kill_ack gathered at RAU
+//   kill_valid / _warp_mask /    broadcast from RAU, the one true
+//   _epoch                       broadcast, to the eight blocks that
+//                                own warp state; kill_ack and its
+//                                epoch gathered back at RAU
 //   wake                         not a common port: each channel
 //                                carries <name>_wake, sender to
 //                                receiver
@@ -99,9 +101,10 @@ module ccv_core_top (
 
   // Common-port fabrics.
   logic kill_valid;   // from rau
-  logic [3:0] kill_warp_mask;   // from rau
-  logic [44:0] kill_ack;   // gathered at rau
-  assign kill_ack[40] = 1'b1;   // u_rau does not ack itself
+  logic [31:0] kill_warp_mask;   // from rau
+  logic [1:0] kill_epoch;   // from rau
+  logic [7:0] kill_ack;   // gathered at rau from fet, dec, ooe, rcu, miu, spm, syu, pca
+  logic [15:0] kill_ack_epoch;   // gathered at rau from fet, dec, ooe, rcu, miu, spm, syu, pca
   /* verilator lint_off UNUSEDSIGNAL */
   logic [2204:0] csr_reqs;   // csr_req, star from cru
   /* verilator lint_on UNUSEDSIGNAL */
@@ -121,7 +124,7 @@ module ccv_core_top (
 `endif
   // ccv_dec_ooe_uop: dec -> ooe, 1 copy x 6 slot
   logic [5:0] dec_ooe_uop_valid;
-  logic [797:0] dec_ooe_uop_payload;
+  logic [803:0] dec_ooe_uop_payload;
   logic [5:0] dec_ooe_uop_credit;
   logic [5:0] dec_ooe_uop_stall;
   logic dec_ooe_uop_wake;
@@ -130,7 +133,7 @@ module ccv_core_top (
 `endif
   // ccv_ooe_rcu_issue: ooe -> rcu, 1 copy x 4 slot
   logic [3:0] ooe_rcu_issue_valid;
-  logic [511:0] ooe_rcu_issue_payload;
+  logic [515:0] ooe_rcu_issue_payload;
   logic [3:0] ooe_rcu_issue_credit;
   logic [3:0] ooe_rcu_issue_stall;
   logic ooe_rcu_issue_wake;
@@ -157,7 +160,7 @@ module ccv_core_top (
 `endif
   // ccv_rcu_ooe_done: rcu -> ooe, 1 copy x 4 slot
   logic [3:0] rcu_ooe_done_valid;
-  logic [159:0] rcu_ooe_done_payload;
+  logic [291:0] rcu_ooe_done_payload;
   logic [3:0] rcu_ooe_done_credit;
   logic [3:0] rcu_ooe_done_stall;
   logic rcu_ooe_done_wake;
@@ -208,6 +211,15 @@ module ccv_core_top (
   logic ooe_miu_retire_wake;
 `ifdef CCV_TRACE
   logic [255:0] ooe_miu_retire_tid;
+`endif
+  // ccv_ooe_fet_redirect: ooe -> fet, 1 copy x 1 slot
+  logic ooe_fet_redirect_valid;
+  logic [200:0] ooe_fet_redirect_payload;
+  logic ooe_fet_redirect_credit;
+  logic ooe_fet_redirect_stall;
+  logic ooe_fet_redirect_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_fet_redirect_tid;
 `endif
   // ccv_miu_spm_req: miu -> spm, 1 copy x 4 slot
   logic [3:0] miu_spm_req_valid;
@@ -355,7 +367,7 @@ module ccv_core_top (
 `endif
   // ccv_ooe_rau_status: ooe -> rau, 1 copy x 1 slot
   logic ooe_rau_status_valid;
-  logic [14:0] ooe_rau_status_payload;
+  logic [15:0] ooe_rau_status_payload;
   logic ooe_rau_status_credit;
   logic ooe_rau_status_stall;
   logic ooe_rau_status_wake;
@@ -454,7 +466,7 @@ module ccv_core_top (
 `endif
   // ccv_cru_rau_cfg: cru -> rau, 1 copy x 1 slot
   logic cru_rau_cfg_valid;
-  logic [64:0] cru_rau_cfg_payload;
+  logic [73:0] cru_rau_cfg_payload;
   logic cru_rau_cfg_credit;
   logic cru_rau_cfg_stall;
   logic cru_rau_cfg_wake;
@@ -563,7 +575,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
     .kill_ack(kill_ack[0]),
+    .kill_ack_epoch(kill_ack_epoch[0 +: 2]),
     .sleep_ok(fet_sleep_ok),
     .csr_req(csr_reqs[0 +: 49]),
     .csr_rsp(csr_rsps[0 +: 33]),
@@ -573,6 +587,11 @@ module ccv_core_top (
     .fet_dec_instr_credit(fet_dec_instr_credit),
     .fet_dec_instr_stall(fet_dec_instr_stall),
     .fet_dec_instr_wake(fet_dec_instr_wake),
+    .ooe_fet_redirect_valid(ooe_fet_redirect_valid),
+    .ooe_fet_redirect_payload(ooe_fet_redirect_payload),
+    .ooe_fet_redirect_credit(ooe_fet_redirect_credit),
+    .ooe_fet_redirect_stall(ooe_fet_redirect_stall),
+    .ooe_fet_redirect_wake(ooe_fet_redirect_wake),
     .fet_mlc_ifill_valid(fet_mlc_ifill_valid),
     .fet_mlc_ifill_payload(fet_mlc_ifill_payload),
     .fet_mlc_ifill_credit(fet_mlc_ifill_credit),
@@ -600,6 +619,7 @@ module ccv_core_top (
     .rau_fet_launch_wake(rau_fet_launch_wake)
 `ifdef CCV_TRACE
     , .fet_dec_instr_tid(fet_dec_instr_tid),
+      .ooe_fet_redirect_tid(ooe_fet_redirect_tid),
       .fet_mlc_ifill_tid(fet_mlc_ifill_tid),
       .mlc_fet_ifill_rsp_tid(mlc_fet_ifill_rsp_tid),
       .miu_fet_itlb_tid(miu_fet_itlb_tid),
@@ -614,7 +634,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
     .kill_ack(kill_ack[1]),
+    .kill_ack_epoch(kill_ack_epoch[2 +: 2]),
     .sleep_ok(dec_sleep_ok),
     .csr_req(csr_reqs[49 +: 49]),
     .csr_rsp(csr_rsps[33 +: 33]),
@@ -641,7 +663,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
     .kill_ack(kill_ack[2]),
+    .kill_ack_epoch(kill_ack_epoch[4 +: 2]),
     .sleep_ok(ooe_sleep_ok),
     .csr_req(csr_reqs[98 +: 49]),
     .csr_rsp(csr_rsps[66 +: 33]),
@@ -676,6 +700,11 @@ module ccv_core_top (
     .ooe_miu_retire_credit(ooe_miu_retire_credit),
     .ooe_miu_retire_stall(ooe_miu_retire_stall),
     .ooe_miu_retire_wake(ooe_miu_retire_wake),
+    .ooe_fet_redirect_valid(ooe_fet_redirect_valid),
+    .ooe_fet_redirect_payload(ooe_fet_redirect_payload),
+    .ooe_fet_redirect_credit(ooe_fet_redirect_credit),
+    .ooe_fet_redirect_stall(ooe_fet_redirect_stall),
+    .ooe_fet_redirect_wake(ooe_fet_redirect_wake),
     .rau_ooe_alloc_valid(rau_ooe_alloc_valid),
     .rau_ooe_alloc_payload(rau_ooe_alloc_payload),
     .rau_ooe_alloc_credit(rau_ooe_alloc_credit),
@@ -718,6 +747,7 @@ module ccv_core_top (
       .ooe_miu_memop_tid(ooe_miu_memop_tid),
       .miu_ooe_cmpl_tid(miu_ooe_cmpl_tid),
       .ooe_miu_retire_tid(ooe_miu_retire_tid),
+      .ooe_fet_redirect_tid(ooe_fet_redirect_tid),
       .rau_ooe_alloc_tid(rau_ooe_alloc_tid),
       .ooe_rau_status_tid(ooe_rau_status_tid),
       .rau_ooe_demote_tid(rau_ooe_demote_tid),
@@ -734,7 +764,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
     .kill_ack(kill_ack[3]),
+    .kill_ack_epoch(kill_ack_epoch[6 +: 2]),
     .sleep_ok(rcu_sleep_ok),
     .csr_req(csr_reqs[147 +: 49]),
     .csr_rsp(csr_rsps[99 +: 33]),
@@ -801,9 +833,6 @@ module ccv_core_top (
     .clk(lane_00_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[4]),
     .sleep_ok(lane_00_sleep_ok),
     .csr_req(csr_reqs[196 +: 49]),
     .csr_rsp(csr_rsps[132 +: 33]),
@@ -828,9 +857,6 @@ module ccv_core_top (
     .clk(lane_01_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[5]),
     .sleep_ok(lane_01_sleep_ok),
     .csr_req(csr_reqs[245 +: 49]),
     .csr_rsp(csr_rsps[165 +: 33]),
@@ -855,9 +881,6 @@ module ccv_core_top (
     .clk(lane_02_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[6]),
     .sleep_ok(lane_02_sleep_ok),
     .csr_req(csr_reqs[294 +: 49]),
     .csr_rsp(csr_rsps[198 +: 33]),
@@ -882,9 +905,6 @@ module ccv_core_top (
     .clk(lane_03_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[7]),
     .sleep_ok(lane_03_sleep_ok),
     .csr_req(csr_reqs[343 +: 49]),
     .csr_rsp(csr_rsps[231 +: 33]),
@@ -909,9 +929,6 @@ module ccv_core_top (
     .clk(lane_04_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[8]),
     .sleep_ok(lane_04_sleep_ok),
     .csr_req(csr_reqs[392 +: 49]),
     .csr_rsp(csr_rsps[264 +: 33]),
@@ -936,9 +953,6 @@ module ccv_core_top (
     .clk(lane_05_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[9]),
     .sleep_ok(lane_05_sleep_ok),
     .csr_req(csr_reqs[441 +: 49]),
     .csr_rsp(csr_rsps[297 +: 33]),
@@ -963,9 +977,6 @@ module ccv_core_top (
     .clk(lane_06_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[10]),
     .sleep_ok(lane_06_sleep_ok),
     .csr_req(csr_reqs[490 +: 49]),
     .csr_rsp(csr_rsps[330 +: 33]),
@@ -990,9 +1001,6 @@ module ccv_core_top (
     .clk(lane_07_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[11]),
     .sleep_ok(lane_07_sleep_ok),
     .csr_req(csr_reqs[539 +: 49]),
     .csr_rsp(csr_rsps[363 +: 33]),
@@ -1017,9 +1025,6 @@ module ccv_core_top (
     .clk(lane_08_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[12]),
     .sleep_ok(lane_08_sleep_ok),
     .csr_req(csr_reqs[588 +: 49]),
     .csr_rsp(csr_rsps[396 +: 33]),
@@ -1044,9 +1049,6 @@ module ccv_core_top (
     .clk(lane_09_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[13]),
     .sleep_ok(lane_09_sleep_ok),
     .csr_req(csr_reqs[637 +: 49]),
     .csr_rsp(csr_rsps[429 +: 33]),
@@ -1071,9 +1073,6 @@ module ccv_core_top (
     .clk(lane_10_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[14]),
     .sleep_ok(lane_10_sleep_ok),
     .csr_req(csr_reqs[686 +: 49]),
     .csr_rsp(csr_rsps[462 +: 33]),
@@ -1098,9 +1097,6 @@ module ccv_core_top (
     .clk(lane_11_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[15]),
     .sleep_ok(lane_11_sleep_ok),
     .csr_req(csr_reqs[735 +: 49]),
     .csr_rsp(csr_rsps[495 +: 33]),
@@ -1125,9 +1121,6 @@ module ccv_core_top (
     .clk(lane_12_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[16]),
     .sleep_ok(lane_12_sleep_ok),
     .csr_req(csr_reqs[784 +: 49]),
     .csr_rsp(csr_rsps[528 +: 33]),
@@ -1152,9 +1145,6 @@ module ccv_core_top (
     .clk(lane_13_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[17]),
     .sleep_ok(lane_13_sleep_ok),
     .csr_req(csr_reqs[833 +: 49]),
     .csr_rsp(csr_rsps[561 +: 33]),
@@ -1179,9 +1169,6 @@ module ccv_core_top (
     .clk(lane_14_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[18]),
     .sleep_ok(lane_14_sleep_ok),
     .csr_req(csr_reqs[882 +: 49]),
     .csr_rsp(csr_rsps[594 +: 33]),
@@ -1206,9 +1193,6 @@ module ccv_core_top (
     .clk(lane_15_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[19]),
     .sleep_ok(lane_15_sleep_ok),
     .csr_req(csr_reqs[931 +: 49]),
     .csr_rsp(csr_rsps[627 +: 33]),
@@ -1233,9 +1217,6 @@ module ccv_core_top (
     .clk(lane_16_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[20]),
     .sleep_ok(lane_16_sleep_ok),
     .csr_req(csr_reqs[980 +: 49]),
     .csr_rsp(csr_rsps[660 +: 33]),
@@ -1260,9 +1241,6 @@ module ccv_core_top (
     .clk(lane_17_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[21]),
     .sleep_ok(lane_17_sleep_ok),
     .csr_req(csr_reqs[1029 +: 49]),
     .csr_rsp(csr_rsps[693 +: 33]),
@@ -1287,9 +1265,6 @@ module ccv_core_top (
     .clk(lane_18_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[22]),
     .sleep_ok(lane_18_sleep_ok),
     .csr_req(csr_reqs[1078 +: 49]),
     .csr_rsp(csr_rsps[726 +: 33]),
@@ -1314,9 +1289,6 @@ module ccv_core_top (
     .clk(lane_19_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[23]),
     .sleep_ok(lane_19_sleep_ok),
     .csr_req(csr_reqs[1127 +: 49]),
     .csr_rsp(csr_rsps[759 +: 33]),
@@ -1341,9 +1313,6 @@ module ccv_core_top (
     .clk(lane_20_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[24]),
     .sleep_ok(lane_20_sleep_ok),
     .csr_req(csr_reqs[1176 +: 49]),
     .csr_rsp(csr_rsps[792 +: 33]),
@@ -1368,9 +1337,6 @@ module ccv_core_top (
     .clk(lane_21_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[25]),
     .sleep_ok(lane_21_sleep_ok),
     .csr_req(csr_reqs[1225 +: 49]),
     .csr_rsp(csr_rsps[825 +: 33]),
@@ -1395,9 +1361,6 @@ module ccv_core_top (
     .clk(lane_22_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[26]),
     .sleep_ok(lane_22_sleep_ok),
     .csr_req(csr_reqs[1274 +: 49]),
     .csr_rsp(csr_rsps[858 +: 33]),
@@ -1422,9 +1385,6 @@ module ccv_core_top (
     .clk(lane_23_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[27]),
     .sleep_ok(lane_23_sleep_ok),
     .csr_req(csr_reqs[1323 +: 49]),
     .csr_rsp(csr_rsps[891 +: 33]),
@@ -1449,9 +1409,6 @@ module ccv_core_top (
     .clk(lane_24_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[28]),
     .sleep_ok(lane_24_sleep_ok),
     .csr_req(csr_reqs[1372 +: 49]),
     .csr_rsp(csr_rsps[924 +: 33]),
@@ -1476,9 +1433,6 @@ module ccv_core_top (
     .clk(lane_25_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[29]),
     .sleep_ok(lane_25_sleep_ok),
     .csr_req(csr_reqs[1421 +: 49]),
     .csr_rsp(csr_rsps[957 +: 33]),
@@ -1503,9 +1457,6 @@ module ccv_core_top (
     .clk(lane_26_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[30]),
     .sleep_ok(lane_26_sleep_ok),
     .csr_req(csr_reqs[1470 +: 49]),
     .csr_rsp(csr_rsps[990 +: 33]),
@@ -1530,9 +1481,6 @@ module ccv_core_top (
     .clk(lane_27_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[31]),
     .sleep_ok(lane_27_sleep_ok),
     .csr_req(csr_reqs[1519 +: 49]),
     .csr_rsp(csr_rsps[1023 +: 33]),
@@ -1557,9 +1505,6 @@ module ccv_core_top (
     .clk(lane_28_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[32]),
     .sleep_ok(lane_28_sleep_ok),
     .csr_req(csr_reqs[1568 +: 49]),
     .csr_rsp(csr_rsps[1056 +: 33]),
@@ -1584,9 +1529,6 @@ module ccv_core_top (
     .clk(lane_29_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[33]),
     .sleep_ok(lane_29_sleep_ok),
     .csr_req(csr_reqs[1617 +: 49]),
     .csr_rsp(csr_rsps[1089 +: 33]),
@@ -1611,9 +1553,6 @@ module ccv_core_top (
     .clk(lane_30_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[34]),
     .sleep_ok(lane_30_sleep_ok),
     .csr_req(csr_reqs[1666 +: 49]),
     .csr_rsp(csr_rsps[1122 +: 33]),
@@ -1638,9 +1577,6 @@ module ccv_core_top (
     .clk(lane_31_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[35]),
     .sleep_ok(lane_31_sleep_ok),
     .csr_req(csr_reqs[1715 +: 49]),
     .csr_rsp(csr_rsps[1155 +: 33]),
@@ -1667,7 +1603,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[36]),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[4]),
+    .kill_ack_epoch(kill_ack_epoch[8 +: 2]),
     .sleep_ok(miu_sleep_ok),
     .csr_req(csr_reqs[1764 +: 49]),
     .csr_rsp(csr_rsps[1188 +: 33]),
@@ -1754,7 +1692,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[37]),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[5]),
+    .kill_ack_epoch(kill_ack_epoch[10 +: 2]),
     .sleep_ok(spm_sleep_ok),
     .csr_req(csr_reqs[1813 +: 49]),
     .csr_rsp(csr_rsps[1221 +: 33]),
@@ -1779,9 +1719,6 @@ module ccv_core_top (
     .clk(dcu_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[38]),
     .sleep_ok(dcu_sleep_ok),
     .csr_req(csr_reqs[1862 +: 49]),
     .csr_rsp(csr_rsps[1254 +: 33]),
@@ -1830,9 +1767,6 @@ module ccv_core_top (
     .clk(mlc_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[39]),
     .sleep_ok(mlc_sleep_ok),
     .csr_req(csr_reqs[1911 +: 49]),
     .csr_rsp(csr_rsps[1287 +: 33]),
@@ -1895,7 +1829,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
     .kill_acks(kill_ack),
+    .kill_ack_epochs(kill_ack_epoch),
     .sleep_ok(rau_sleep_ok),
     .csr_req(csr_reqs[1960 +: 49]),
     .csr_rsp(csr_rsps[1320 +: 33]),
@@ -1964,7 +1900,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[41]),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[6]),
+    .kill_ack_epoch(kill_ack_epoch[12 +: 2]),
     .sleep_ok(syu_sleep_ok),
     .csr_req(csr_reqs[2009 +: 49]),
     .csr_rsp(csr_rsps[1353 +: 33]),
@@ -1997,7 +1935,9 @@ module ccv_core_top (
     .rst_n(rst_n),
     .kill_valid(kill_valid),
     .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[42]),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[7]),
+    .kill_ack_epoch(kill_ack_epoch[14 +: 2]),
     .sleep_ok(pca_sleep_ok),
     .csr_req(csr_reqs[2058 +: 49]),
     .csr_rsp(csr_rsps[1386 +: 33]),
@@ -2022,9 +1962,6 @@ module ccv_core_top (
     .clk(cru_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[43]),
     .sleep_ok(cru_sleep_ok),
     .csr_req(csr_req),
     .csr_reqs(csr_reqs),
@@ -2052,9 +1989,6 @@ module ccv_core_top (
     .clk(exb_core_clk),
     .clk_free(core_clk),
     .rst_n(rst_n),
-    .kill_valid(kill_valid),
-    .kill_warp_mask(kill_warp_mask),
-    .kill_ack(kill_ack[44]),
     .sleep_ok(exb_sleep_ok),
     .csr_req(csr_reqs[2156 +: 49]),
     .csr_rsp(csr_rsps[1452 +: 33]),
@@ -2093,12 +2027,12 @@ module ccv_core_top (
   // sees a checker.
   ccv_skel_checkers u_checkers (
     .clk(core_clk), .rst_n(rst_n), .force_atomic(1'b0), .pair_enable(1'b1),
-    .valid({ext_exb_in_valid, cru_rau_cfg_valid, ooe_cru_fault_valid, rau_syu_alloc_valid, syu_ooe_rel_valid, ooe_syu_bar_valid, rau_miu_cta_valid, pca_rcu_mig_valid, rcu_pca_mig_valid, rau_rcu_mig_valid, ooe_rau_drained_valid, rau_ooe_demote_valid, ooe_rau_status_valid, rau_ooe_alloc_valid, rau_fet_launch_valid, exb_ext_out_valid, exb_mlc_rsp_valid, mlc_exb_req_valid, fet_miu_itlb_req_valid, miu_fet_itlb_valid, mlc_fet_ifill_rsp_valid, fet_mlc_ifill_valid, dcu_mlc_probe_ack_valid, mlc_dcu_probe_valid, mlc_dcu_rsp_valid, dcu_mlc_req_valid, dcu_miu_rsp_valid, miu_dcu_req_valid, spm_miu_rsp_valid, miu_spm_req_valid, ooe_miu_retire_valid, miu_ooe_cmpl_valid, ooe_miu_memop_valid, miu_rcu_data_valid, rcu_miu_addr_valid, rcu_ooe_done_valid, lane_rcu_res_valid, rcu_lane_ops_valid, ooe_rcu_issue_valid, dec_ooe_uop_valid, fet_dec_instr_valid}),
-    .credit({ext_exb_in_credit, cru_rau_cfg_credit, ooe_cru_fault_credit, rau_syu_alloc_credit, syu_ooe_rel_credit, ooe_syu_bar_credit, rau_miu_cta_credit, pca_rcu_mig_credit, rcu_pca_mig_credit, rau_rcu_mig_credit, ooe_rau_drained_credit, rau_ooe_demote_credit, ooe_rau_status_credit, rau_ooe_alloc_credit, rau_fet_launch_credit, exb_ext_out_credit, exb_mlc_rsp_credit, mlc_exb_req_credit, fet_miu_itlb_req_credit, miu_fet_itlb_credit, mlc_fet_ifill_rsp_credit, fet_mlc_ifill_credit, dcu_mlc_probe_ack_credit, mlc_dcu_probe_credit, mlc_dcu_rsp_credit, dcu_mlc_req_credit, dcu_miu_rsp_credit, miu_dcu_req_credit, spm_miu_rsp_credit, miu_spm_req_credit, ooe_miu_retire_credit, miu_ooe_cmpl_credit, ooe_miu_memop_credit, miu_rcu_data_credit, rcu_miu_addr_credit, rcu_ooe_done_credit, lane_rcu_res_credit, rcu_lane_ops_credit, ooe_rcu_issue_credit, dec_ooe_uop_credit, fet_dec_instr_credit}),
-    .stall({ext_exb_in_stall, cru_rau_cfg_stall, ooe_cru_fault_stall, rau_syu_alloc_stall, syu_ooe_rel_stall, ooe_syu_bar_stall, rau_miu_cta_stall, pca_rcu_mig_stall, rcu_pca_mig_stall, rau_rcu_mig_stall, ooe_rau_drained_stall, rau_ooe_demote_stall, ooe_rau_status_stall, rau_ooe_alloc_stall, rau_fet_launch_stall, exb_ext_out_stall, exb_mlc_rsp_stall, mlc_exb_req_stall, fet_miu_itlb_req_stall, miu_fet_itlb_stall, mlc_fet_ifill_rsp_stall, fet_mlc_ifill_stall, dcu_mlc_probe_ack_stall, mlc_dcu_probe_stall, mlc_dcu_rsp_stall, dcu_mlc_req_stall, dcu_miu_rsp_stall, miu_dcu_req_stall, spm_miu_rsp_stall, miu_spm_req_stall, ooe_miu_retire_stall, miu_ooe_cmpl_stall, ooe_miu_memop_stall, miu_rcu_data_stall, rcu_miu_addr_stall, rcu_ooe_done_stall, lane_rcu_res_stall, rcu_lane_ops_stall, ooe_rcu_issue_stall, dec_ooe_uop_stall, fet_dec_instr_stall}),
-    .payload({ext_exb_in_payload, cru_rau_cfg_payload, ooe_cru_fault_payload, rau_syu_alloc_payload, syu_ooe_rel_payload, ooe_syu_bar_payload, rau_miu_cta_payload, pca_rcu_mig_payload, rcu_pca_mig_payload, rau_rcu_mig_payload, ooe_rau_drained_payload, rau_ooe_demote_payload, ooe_rau_status_payload, rau_ooe_alloc_payload, rau_fet_launch_payload, exb_ext_out_payload, exb_mlc_rsp_payload, mlc_exb_req_payload, fet_miu_itlb_req_payload, miu_fet_itlb_payload, mlc_fet_ifill_rsp_payload, fet_mlc_ifill_payload, dcu_mlc_probe_ack_payload, mlc_dcu_probe_payload, mlc_dcu_rsp_payload, dcu_mlc_req_payload, dcu_miu_rsp_payload, miu_dcu_req_payload, spm_miu_rsp_payload, miu_spm_req_payload, ooe_miu_retire_payload, miu_ooe_cmpl_payload, ooe_miu_memop_payload, miu_rcu_data_payload, rcu_miu_addr_payload, rcu_ooe_done_payload, lane_rcu_res_payload, rcu_lane_ops_payload, ooe_rcu_issue_payload, dec_ooe_uop_payload, fet_dec_instr_payload})
+    .valid({ext_exb_in_valid, cru_rau_cfg_valid, ooe_cru_fault_valid, rau_syu_alloc_valid, syu_ooe_rel_valid, ooe_syu_bar_valid, rau_miu_cta_valid, pca_rcu_mig_valid, rcu_pca_mig_valid, rau_rcu_mig_valid, ooe_rau_drained_valid, rau_ooe_demote_valid, ooe_rau_status_valid, rau_ooe_alloc_valid, rau_fet_launch_valid, exb_ext_out_valid, exb_mlc_rsp_valid, mlc_exb_req_valid, fet_miu_itlb_req_valid, miu_fet_itlb_valid, mlc_fet_ifill_rsp_valid, fet_mlc_ifill_valid, dcu_mlc_probe_ack_valid, mlc_dcu_probe_valid, mlc_dcu_rsp_valid, dcu_mlc_req_valid, dcu_miu_rsp_valid, miu_dcu_req_valid, spm_miu_rsp_valid, miu_spm_req_valid, ooe_fet_redirect_valid, ooe_miu_retire_valid, miu_ooe_cmpl_valid, ooe_miu_memop_valid, miu_rcu_data_valid, rcu_miu_addr_valid, rcu_ooe_done_valid, lane_rcu_res_valid, rcu_lane_ops_valid, ooe_rcu_issue_valid, dec_ooe_uop_valid, fet_dec_instr_valid}),
+    .credit({ext_exb_in_credit, cru_rau_cfg_credit, ooe_cru_fault_credit, rau_syu_alloc_credit, syu_ooe_rel_credit, ooe_syu_bar_credit, rau_miu_cta_credit, pca_rcu_mig_credit, rcu_pca_mig_credit, rau_rcu_mig_credit, ooe_rau_drained_credit, rau_ooe_demote_credit, ooe_rau_status_credit, rau_ooe_alloc_credit, rau_fet_launch_credit, exb_ext_out_credit, exb_mlc_rsp_credit, mlc_exb_req_credit, fet_miu_itlb_req_credit, miu_fet_itlb_credit, mlc_fet_ifill_rsp_credit, fet_mlc_ifill_credit, dcu_mlc_probe_ack_credit, mlc_dcu_probe_credit, mlc_dcu_rsp_credit, dcu_mlc_req_credit, dcu_miu_rsp_credit, miu_dcu_req_credit, spm_miu_rsp_credit, miu_spm_req_credit, ooe_fet_redirect_credit, ooe_miu_retire_credit, miu_ooe_cmpl_credit, ooe_miu_memop_credit, miu_rcu_data_credit, rcu_miu_addr_credit, rcu_ooe_done_credit, lane_rcu_res_credit, rcu_lane_ops_credit, ooe_rcu_issue_credit, dec_ooe_uop_credit, fet_dec_instr_credit}),
+    .stall({ext_exb_in_stall, cru_rau_cfg_stall, ooe_cru_fault_stall, rau_syu_alloc_stall, syu_ooe_rel_stall, ooe_syu_bar_stall, rau_miu_cta_stall, pca_rcu_mig_stall, rcu_pca_mig_stall, rau_rcu_mig_stall, ooe_rau_drained_stall, rau_ooe_demote_stall, ooe_rau_status_stall, rau_ooe_alloc_stall, rau_fet_launch_stall, exb_ext_out_stall, exb_mlc_rsp_stall, mlc_exb_req_stall, fet_miu_itlb_req_stall, miu_fet_itlb_stall, mlc_fet_ifill_rsp_stall, fet_mlc_ifill_stall, dcu_mlc_probe_ack_stall, mlc_dcu_probe_stall, mlc_dcu_rsp_stall, dcu_mlc_req_stall, dcu_miu_rsp_stall, miu_dcu_req_stall, spm_miu_rsp_stall, miu_spm_req_stall, ooe_fet_redirect_stall, ooe_miu_retire_stall, miu_ooe_cmpl_stall, ooe_miu_memop_stall, miu_rcu_data_stall, rcu_miu_addr_stall, rcu_ooe_done_stall, lane_rcu_res_stall, rcu_lane_ops_stall, ooe_rcu_issue_stall, dec_ooe_uop_stall, fet_dec_instr_stall}),
+    .payload({ext_exb_in_payload, cru_rau_cfg_payload, ooe_cru_fault_payload, rau_syu_alloc_payload, syu_ooe_rel_payload, ooe_syu_bar_payload, rau_miu_cta_payload, pca_rcu_mig_payload, rcu_pca_mig_payload, rau_rcu_mig_payload, ooe_rau_drained_payload, rau_ooe_demote_payload, ooe_rau_status_payload, rau_ooe_alloc_payload, rau_fet_launch_payload, exb_ext_out_payload, exb_mlc_rsp_payload, mlc_exb_req_payload, fet_miu_itlb_req_payload, miu_fet_itlb_payload, mlc_fet_ifill_rsp_payload, fet_mlc_ifill_payload, dcu_mlc_probe_ack_payload, mlc_dcu_probe_payload, mlc_dcu_rsp_payload, dcu_mlc_req_payload, dcu_miu_rsp_payload, miu_dcu_req_payload, spm_miu_rsp_payload, miu_spm_req_payload, ooe_fet_redirect_payload, ooe_miu_retire_payload, miu_ooe_cmpl_payload, ooe_miu_memop_payload, miu_rcu_data_payload, rcu_miu_addr_payload, rcu_ooe_done_payload, lane_rcu_res_payload, rcu_lane_ops_payload, ooe_rcu_issue_payload, dec_ooe_uop_payload, fet_dec_instr_payload})
 `ifdef CCV_TRACE
-    , .tid({ext_exb_in_tid, cru_rau_cfg_tid, ooe_cru_fault_tid, rau_syu_alloc_tid, syu_ooe_rel_tid, ooe_syu_bar_tid, rau_miu_cta_tid, pca_rcu_mig_tid, rcu_pca_mig_tid, rau_rcu_mig_tid, ooe_rau_drained_tid, rau_ooe_demote_tid, ooe_rau_status_tid, rau_ooe_alloc_tid, rau_fet_launch_tid, exb_ext_out_tid, exb_mlc_rsp_tid, mlc_exb_req_tid, fet_miu_itlb_req_tid, miu_fet_itlb_tid, mlc_fet_ifill_rsp_tid, fet_mlc_ifill_tid, dcu_mlc_probe_ack_tid, mlc_dcu_probe_tid, mlc_dcu_rsp_tid, dcu_mlc_req_tid, dcu_miu_rsp_tid, miu_dcu_req_tid, spm_miu_rsp_tid, miu_spm_req_tid, ooe_miu_retire_tid, miu_ooe_cmpl_tid, ooe_miu_memop_tid, miu_rcu_data_tid, rcu_miu_addr_tid, rcu_ooe_done_tid, lane_rcu_res_tid, rcu_lane_ops_tid, ooe_rcu_issue_tid, dec_ooe_uop_tid, fet_dec_instr_tid})
+    , .tid({ext_exb_in_tid, cru_rau_cfg_tid, ooe_cru_fault_tid, rau_syu_alloc_tid, syu_ooe_rel_tid, ooe_syu_bar_tid, rau_miu_cta_tid, pca_rcu_mig_tid, rcu_pca_mig_tid, rau_rcu_mig_tid, ooe_rau_drained_tid, rau_ooe_demote_tid, ooe_rau_status_tid, rau_ooe_alloc_tid, rau_fet_launch_tid, exb_ext_out_tid, exb_mlc_rsp_tid, mlc_exb_req_tid, fet_miu_itlb_req_tid, miu_fet_itlb_tid, mlc_fet_ifill_rsp_tid, fet_mlc_ifill_tid, dcu_mlc_probe_ack_tid, mlc_dcu_probe_tid, mlc_dcu_rsp_tid, dcu_mlc_req_tid, dcu_miu_rsp_tid, miu_dcu_req_tid, spm_miu_rsp_tid, miu_spm_req_tid, ooe_fet_redirect_tid, ooe_miu_retire_tid, miu_ooe_cmpl_tid, ooe_miu_memop_tid, miu_rcu_data_tid, rcu_miu_addr_tid, rcu_ooe_done_tid, lane_rcu_res_tid, rcu_lane_ops_tid, ooe_rcu_issue_tid, dec_ooe_uop_tid, fet_dec_instr_tid})
 `endif
   );
 `endif

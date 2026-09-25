@@ -14,27 +14,29 @@
   input  logic clk_free,
   input  logic rst_n,
   input  logic kill_valid,
-  input  logic [3:0] kill_warp_mask,
+  input  logic [31:0] kill_warp_mask,
+  input  logic [1:0] kill_epoch,
   output logic kill_ack,
+  output logic [1:0] kill_ack_epoch,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // dec -> ooe, 6 slot(s) x 133 bit payload
+  // dec -> ooe, 6 slot(s) x 134 bit payload
   input  logic [5:0] dec_ooe_uop_valid,
-  input  logic [797:0] dec_ooe_uop_payload,
+  input  logic [803:0] dec_ooe_uop_payload,
   output logic [5:0] dec_ooe_uop_credit,
   output logic [5:0] dec_ooe_uop_stall,
   input  logic dec_ooe_uop_wake,
-  // ooe -> rcu, 4 slot(s) x 128 bit payload
+  // ooe -> rcu, 4 slot(s) x 129 bit payload
   output logic [3:0] ooe_rcu_issue_valid,
-  output logic [511:0] ooe_rcu_issue_payload,
+  output logic [515:0] ooe_rcu_issue_payload,
   input  logic [3:0] ooe_rcu_issue_credit,
   input  logic [3:0] ooe_rcu_issue_stall,
   output logic ooe_rcu_issue_wake,
-  // rcu -> ooe, 4 slot(s) x 40 bit payload
+  // rcu -> ooe, 4 slot(s) x 73 bit payload
   input  logic [3:0] rcu_ooe_done_valid,
-  input  logic [159:0] rcu_ooe_done_payload,
+  input  logic [291:0] rcu_ooe_done_payload,
   output logic [3:0] rcu_ooe_done_credit,
   output logic [3:0] rcu_ooe_done_stall,
   input  logic rcu_ooe_done_wake,
@@ -56,15 +58,21 @@
   input  logic [3:0] ooe_miu_retire_credit,
   input  logic [3:0] ooe_miu_retire_stall,
   output logic ooe_miu_retire_wake,
+  // ooe -> fet, 1 slot(s) x 201 bit payload
+  output logic ooe_fet_redirect_valid,
+  output logic [200:0] ooe_fet_redirect_payload,
+  input  logic ooe_fet_redirect_credit,
+  input  logic ooe_fet_redirect_stall,
+  output logic ooe_fet_redirect_wake,
   // rau -> ooe, 1 slot(s) x 22 bit payload
   input  logic rau_ooe_alloc_valid,
   input  logic [21:0] rau_ooe_alloc_payload,
   output logic rau_ooe_alloc_credit,
   output logic rau_ooe_alloc_stall,
   input  logic rau_ooe_alloc_wake,
-  // ooe -> rau, 1 slot(s) x 15 bit payload
+  // ooe -> rau, 1 slot(s) x 16 bit payload
   output logic ooe_rau_status_valid,
-  output logic [14:0] ooe_rau_status_payload,
+  output logic [15:0] ooe_rau_status_payload,
   input  logic ooe_rau_status_credit,
   input  logic ooe_rau_status_stall,
   output logic ooe_rau_status_wake,
@@ -105,6 +113,7 @@
   , output logic [255:0] ooe_miu_memop_tid
   , input  logic [255:0] miu_ooe_cmpl_tid
   , output logic [255:0] ooe_miu_retire_tid
+  , output logic [63:0] ooe_fet_redirect_tid
   , input  logic [63:0] rau_ooe_alloc_tid
   , output logic [63:0] ooe_rau_status_tid
   , input  logic [63:0] rau_ooe_demote_tid

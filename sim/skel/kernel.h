@@ -48,6 +48,8 @@ struct Kernel {
   ///                  which the bank's outstanding checker must catch
   ///   corrupt-disp   seq 6's displacement +4 between OOE and MIU, so the AGU
   ///                  computes a wrong address from what it was sent
+  ///   drop-negate    OOE drops the guard's negate bit, so vadd's @!P0 branch
+  ///                  resolves as taken and redirects fetch to the wrong place
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

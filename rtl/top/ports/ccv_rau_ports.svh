@@ -14,9 +14,12 @@
   input  logic clk_free,
   input  logic rst_n,
   output logic kill_valid,
-  output logic [3:0] kill_warp_mask,
-  // every block instance's kill_ack, by instance index
-  input  logic [44:0] kill_acks,
+  output logic [31:0] kill_warp_mask,
+  output logic [1:0] kill_epoch,
+  // kill_ack of fet, dec, ooe, rcu, miu, spm, syu, pca, in that order
+  input  logic [7:0] kill_acks,
+  // kill_ack_epoch of fet, dec, ooe, rcu, miu, spm, syu, pca, in that order
+  input  logic [15:0] kill_ack_epochs,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -33,9 +36,9 @@
   input  logic rau_ooe_alloc_credit,
   input  logic rau_ooe_alloc_stall,
   output logic rau_ooe_alloc_wake,
-  // ooe -> rau, 1 slot(s) x 15 bit payload
+  // ooe -> rau, 1 slot(s) x 16 bit payload
   input  logic ooe_rau_status_valid,
-  input  logic [14:0] ooe_rau_status_payload,
+  input  logic [15:0] ooe_rau_status_payload,
   output logic ooe_rau_status_credit,
   output logic ooe_rau_status_stall,
   input  logic ooe_rau_status_wake,
@@ -69,9 +72,9 @@
   input  logic rau_syu_alloc_credit,
   input  logic rau_syu_alloc_stall,
   output logic rau_syu_alloc_wake,
-  // cru -> rau, 1 slot(s) x 65 bit payload
+  // cru -> rau, 1 slot(s) x 74 bit payload
   input  logic cru_rau_cfg_valid,
-  input  logic [64:0] cru_rau_cfg_payload,
+  input  logic [73:0] cru_rau_cfg_payload,
   output logic cru_rau_cfg_credit,
   output logic cru_rau_cfg_stall,
   input  logic cru_rau_cfg_wake

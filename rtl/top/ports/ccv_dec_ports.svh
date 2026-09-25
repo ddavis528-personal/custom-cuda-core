@@ -14,8 +14,10 @@
   input  logic clk_free,
   input  logic rst_n,
   input  logic kill_valid,
-  input  logic [3:0] kill_warp_mask,
+  input  logic [31:0] kill_warp_mask,
+  input  logic [1:0] kill_epoch,
   output logic kill_ack,
+  output logic [1:0] kill_ack_epoch,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -26,9 +28,9 @@
   output logic [7:0] fet_dec_instr_credit,
   output logic [7:0] fet_dec_instr_stall,
   input  logic fet_dec_instr_wake,
-  // dec -> ooe, 6 slot(s) x 133 bit payload
+  // dec -> ooe, 6 slot(s) x 134 bit payload
   output logic [5:0] dec_ooe_uop_valid,
-  output logic [797:0] dec_ooe_uop_payload,
+  output logic [803:0] dec_ooe_uop_payload,
   input  logic [5:0] dec_ooe_uop_credit,
   input  logic [5:0] dec_ooe_uop_stall,
   output logic dec_ooe_uop_wake

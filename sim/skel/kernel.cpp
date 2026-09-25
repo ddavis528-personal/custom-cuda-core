@@ -54,7 +54,7 @@ struct Ch {
            lane_rcu = chanId("ccv_lane_rcu_res"), rcu_ooe = chanId("ccv_rcu_ooe_done"),
            rcu_miu = chanId("ccv_rcu_miu_addr"), miu_rcu = chanId("ccv_miu_rcu_data"),
            ooe_miu = chanId("ccv_ooe_miu_memop"), miu_ooe = chanId("ccv_miu_ooe_cmpl"),
-           ooe_ret = chanId("ccv_ooe_miu_retire"), miu_dcu = chanId("ccv_miu_dcu_req"),
+           ooe_ret = chanId("ccv_ooe_miu_retire"), ooe_fet = chanId("ccv_ooe_fet_redirect"), miu_dcu = chanId("ccv_miu_dcu_req"),
            dcu_miu = chanId("ccv_dcu_miu_rsp"), dcu_mlc = chanId("ccv_dcu_mlc_req"),
            mlc_dcu = chanId("ccv_mlc_dcu_rsp"), fet_mlc = chanId("ccv_fet_mlc_ifill"),
            mlc_fet = chanId("ccv_mlc_fet_ifill_rsp"), miu_fet = chanId("ccv_miu_fet_itlb"),
@@ -986,7 +986,10 @@ private:
           // guard. Without a guard it is the issue mask alone.
           bool want = (rc->mask >> lane_) & 1u;
           if (op && op->guard)
-            if (const RegVal *p = rc->predUse()) want = want && ((p->p >> lane_) & 1u);
+            if (const RegVal *p = rc->predUse()) {
+              const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
+              want = want && ((((p->p >> lane_) & 1u) != 0) != neg);
+            }
           if ((get(m.payload, c.rcu_lane, "pred_bit") != 0) != want)
             k_.fail("lane %u: seq %llu pred_bit is not issue mask AND guard",
                     lane_, (unsigned long long)rc->seq);
@@ -1109,7 +1112,44 @@ private:
     // computation per lane. A predicate read as DATA (por's sources) is not
     // a guard and does not narrow it (open question pred_source_operands).
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
-    const uint32_t active = issue & (op->guard ? k_.pred[pp] : 0xffffffffu);
+    const uint32_t guard = get(m.payload, c.ooe_rcu, "pred_neg") ? ~k_.pred[pp] : k_.pred[pp];
+    const uint32_t active = issue & (op->guard ? guard : 0xffffffffu);
+    const uint32_t imm0 = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
+
+    // Predicate logic executes HERE, beside the predicate file, and never
+    // reaches a lane (O-33's second obligation; round 16). Sources are two
+    // qualifiers in imm: [2:0] ps0, [5:3] ps1, each [1:0] index + [2] negate.
+    if (op->cls == kPredLogic) {
+      auto src = [&](unsigned q) {
+        const uint32_t v = k_.pred[physPred(0, q & 3)];
+        return (q >> 2) & 1 ? ~v : v;
+      };
+      const uint32_t a = src(imm0 & 7), b = src((imm0 >> 3) & 7);
+      uint32_t v = 0;
+      if (!std::strcmp(op->name, "POR")) v = a | b;
+      else k_.fail("rcu: predicate op %s has no semantics here", op->name);
+      k_.pred[pp] = (k_.pred[pp] & ~issue) | (v & issue);
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (const RegVal *d = r->predDef())
+          if (k_.pred[pp] != d->p)
+            k_.fail("rcu: seq %llu P%u = %08x, oracle %08x",
+                    (unsigned long long)r->seq, d->idx, k_.pred[pp], d->p);
+      to_ooe_.push_back({s, done(tag), m.tid});
+      return;
+    }
+    // Branches resolve HERE too: the condition is a predicate. The taken
+    // lanes are issue mask AND guard; any lane taking it is a redirect.
+    if (op->cls == kBranch) {
+      Bits d = done(tag);
+      put(d, c.rcu_ooe, "branch_taken", active != 0);
+      put(d, c.rcu_ooe, "branch_mask", active);
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (r->taken != active)
+          k_.fail("rcu: seq %llu branch taken by %08x, oracle %08x",
+                  (unsigned long long)r->seq, active, r->taken);
+      to_ooe_.push_back({s, d, m.tid});
+      return;
+    }
 
     if (op->cls == kLoad || op->cls == kStore) {
       Bits a = msgOf(c.rcu_miu);
@@ -1137,7 +1177,7 @@ private:
     }
     // An ALU immediate is substituted into its operand slot here, at
     // register read: lanes never see an immediate, only operands.
-    const uint32_t imm = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
+    const uint32_t imm = imm0;
     std::vector<Bits> lanes;
     for (unsigned l = 0; l != kLanes; ++l) {
       Bits o = msgOf(c.rcu_lane);
@@ -1175,7 +1215,9 @@ private:
     const OpInfo *op;
     unsigned src[3], dst, pidx;     ///< architectural
     uint32_t imm = 0;
-    bool scale_en = false;
+    bool scale_en = false, pneg = false;
+    bool taken = false;
+    uint32_t taken_mask = 0;
     bool issued = false, rcu = false, miu = false, committed = false;
     bool complete() const {
       const bool mem = op->cls == kLoad || op->cls == kStore;
@@ -1202,8 +1244,14 @@ private:
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {
         Receiver::Msg m = take(c.rcu_ooe, s);
-        if (E *e = byTag(unsigned(get(m.payload, c.rcu_ooe, "rob_tag")))) e->rcu = true;
-        else k_.fail("ooe: done for a tag not in the ROB");
+        if (E *e = byTag(unsigned(get(m.payload, c.rcu_ooe, "rob_tag")))) {
+          e->rcu = true;
+          e->taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
+          e->taken_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
+          if (e->op->cls == kBranch && e->taken) redirect(*e);
+        } else {
+          k_.fail("ooe: done for a tag not in the ROB");
+        }
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
@@ -1214,6 +1262,28 @@ private:
       }
     issueOne();
     retireOne();
+    if (!redirects_.empty() && can(c.ooe_fet, 0)) {
+      send(c.ooe_fet, 0, redirects_.front().msg, redirects_.front().tid);
+      redirects_.pop_front();
+    }
+  }
+
+  /// RCU resolved a branch some lane takes: tell FET, which owns the PC.
+  /// Group masks: the taken lanes, then the lanes that fall through.
+  unsigned fetch_epoch_ = 0;
+  std::deque<Q> redirects_;
+  void redirect(const E &e) {
+    const Ch &c = ch();
+    Bits r = msgOf(c.ooe_fet);
+    put(r, c.ooe_fet, "warp_id", e.warp);
+    put(r, c.ooe_fet, "tier1_id", 0);
+    put(r, c.ooe_fet, "target_pc", e.pc + uint64_t(int64_t(int32_t(e.imm))));
+    const FieldDesc &gm = field(c.ooe_fet, "group_masks");
+    r.set(gm.lsb, 32, e.taken_mask);
+    r.set(gm.lsb + 32, 32, 0xffffffffu & ~e.taken_mask);   // issue mask: all 32
+    fetch_epoch_ = (fetch_epoch_ + 1) % (1u << field(c.ooe_fet, "fetch_epoch").width);
+    put(r, c.ooe_fet, "fetch_epoch", fetch_epoch_);
+    redirects_.push_back({0, r, e.tid});
   }
 
   E *byTag(unsigned t) {
@@ -1239,6 +1309,7 @@ private:
     e.dst = unsigned(get(u, c.dec_ooe, "dst_arch"));
     e.imm = uint32_t(get(u, c.dec_ooe, "imm"));
     e.scale_en = get(u, c.dec_ooe, "scale_en") != 0;
+    e.pneg = get(u, c.dec_ooe, "pred_neg") != 0;
     e.pidx = unsigned(get(u, c.dec_ooe, "pred_reg"));
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
@@ -1291,6 +1362,7 @@ private:
     if (!mem) put(is, c.ooe_rcu, "imm", e.imm);
     put(is, c.ooe_rcu, "phys_dst", pb + e.dst);
     put(is, c.ooe_rcu, "phys_pred", physPred(e.warp, e.pidx));
+    put(is, c.ooe_rcu, "pred_neg", e.pneg && k_.brk != "drop-negate");
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     send(c.ooe_rcu, slot, is, e.tid);
     if (mem) {
@@ -1333,7 +1405,7 @@ private:
     rob_.pop_front();
   }
 
-  bool busy() const override { return !rob_.empty(); }
+  bool busy() const override { return !rob_.empty() || !redirects_.empty(); }
 };
 
 // ---- DEC ---------------------------------------------------------------------------
@@ -1399,11 +1471,20 @@ private:
       k_.fail("dec: seq %llu %s has an operand shape the table does not",
               (unsigned long long)r->seq, op->name);
     const unsigned dst = gd ? gd->idx : 0;
-    if (pu && pd && pu->idx != pd->idx)
+    if (op->cls != kPredLogic && pu && pd && pu->idx != pd->idx)
       k_.fail("dec: seq %llu reads P%u and writes P%u; pred_reg holds one "
               "(open question pred_src_and_dst)", (unsigned long long)r->seq,
               pu->idx, pd->idx);
-    const unsigned pidx = pu ? pu->idx : pd ? pd->idx : 0;
+    unsigned pidx = pu ? pu->idx : pd ? pd->idx : 0;
+    unsigned pneg = 0;
+    if (op->guard) {
+      // The guard is quals[0]: [1:0] the predicate, [2] negate. vadd's
+      // branch is @!P0, and the index alone would resolve it backwards.
+      if (r->quals.empty()) k_.fail("dec: seq %llu has no guard qualifier",
+                                    (unsigned long long)r->seq);
+      else { pidx = r->quals[0] & 3; pneg = (r->quals[0] >> 2) & 1; }
+    }
+    if (op->cls == kPredLogic && pd) pidx = pd->idx;   // pred_reg names the destination
     put(u, c.dec_ooe, "uop_class", op->cls);
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
     // Three source fields: Format A's rs2 is an independent source (mad.lo's
@@ -1424,8 +1505,21 @@ private:
       }
       return r->imms[k];
     };
-    put(u, c.dec_ooe, "imm",
-        uint32_t(op->disp_imm >= 0 ? immOf(op->disp_imm) : immOf(op->alu_imm)));
+    uint32_t imm = uint32_t(op->disp_imm >= 0 ? immOf(op->disp_imm) : immOf(op->alu_imm));
+    if (op->cls == kBranch) {
+      // A branch's imm is its byte offset from its OWN pc: DEC knows the
+      // length, which the uop does not carry, so it folds it in here
+      // (offsets are halfwords, from the next instruction).
+      imm = uint32_t(int64_t(r->size) + 2 * immOf(0));
+    } else if (op->cls == kPredLogic) {
+      // Predicate logic executes in RCU (O-33, round 16). Its two source
+      // qualifiers ride in imm: [2:0] ps0, [5:3] ps1.
+      if (r->quals.size() < 2) k_.fail("dec: seq %llu predicate logic without two sources",
+                                       (unsigned long long)r->seq);
+      else imm = (r->quals[0] & 7) | ((r->quals[1] & 7) << 3);
+    }
+    put(u, c.dec_ooe, "imm", imm);
+    put(u, c.dec_ooe, "pred_neg", pneg);
     put(u, c.dec_ooe, "scale_en", immOf(op->scale_imm) != 0);
     // pred_reg is an index (CCV_W_ARCH_PRED); whether it is read, written
     // or both is the opcode's to say, as for the GPR sources.
@@ -1457,6 +1551,7 @@ private:
   IdPool ids_;
   std::map<unsigned, uint64_t> ifill_wait_; ///< virtual line, by req_id
   std::deque<Q> fills_, itlbs_;
+  unsigned epoch_ = 0;                      ///< from the last redirect
 
   void work() override {
     const Ch &c = ch();
@@ -1468,6 +1563,21 @@ private:
         k_.fail("fet: launch at %llx, but ccv-sim began elsewhere",
                 (unsigned long long)start);
       launched_ = true;
+    }
+    if (has(c.ooe_fet, 0)) {
+      // A redirect. Fetch ORDER is still the oracle's, so what FET can do is
+      // check the redirect says where ccv-sim went, and take the new epoch
+      // (a real FET discards in-flight fetches from older epochs).
+      Receiver::Msg m = take(c.ooe_fet, 0);
+      const uint64_t tgt = get(m.payload, c.ooe_fet, "target_pc");
+      const uint32_t tmask = uint32_t(m.payload.get(field(c.ooe_fet, "group_masks").lsb, 32));
+      if (const Record *r = rec(m.tid, "fet")) {
+        if (tgt != r->target || tmask != r->taken)
+          k_.fail("fet: seq %llu redirect to %llx for lanes %08x; ccv-sim %llx for %08x",
+                  (unsigned long long)r->seq, (unsigned long long)tgt, tmask,
+                  (unsigned long long)r->target, r->taken);
+      }
+      epoch_ = unsigned(get(m.payload, c.ooe_fet, "fetch_epoch"));
     }
     if (has(c.miu_fet, 0)) {
       Receiver::Msg m = take(c.miu_fet, 0);

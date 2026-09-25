@@ -45,7 +45,7 @@ broken it once and watched it notice.
 | Checker credit depth vs round trip | **silent** | `DEPTH=1` build must trip `cfg_depth_covers_round_trip` | `check-if.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
-| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 340 checkers fire by name | `check-skel.sh` |
+| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 341 checkers fire by name | `check-skel.sh` |
 | Atomic acceptance | **silent** | `--break atomic-all`: all 77 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
 | Ordered consumption (per key) | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
 | Lane lockstep | **silent** | `--break lockstep-all`: one lane alone — both lockstep checkers fire, nothing else | `check-skel.sh` |
@@ -62,6 +62,8 @@ broken it once and watched it notice.
 | Binding key (fet→dec `tier1_id`) | **silent** | `--break misgroup`: every message names the next group — only `binding_key` fires. The wiring controls force well-formed payloads so they trip only their own property | `check-skel.sh` |
 | Outstanding limit (one ITLB miss) | **silent** | `--break itlb-double` must trip `within_limit` and nothing else. The checker's formal covers must be reachable, and they were not at first: see below | `check-kernel.sh`, `check-if.sh` |
 | MIU's AGU on carried displacement and scale | **silent** | `--break corrupt-disp`: a displacement off by 4 must fail MIU's address check against ccv-sim | `check-kernel.sh` |
+| Branch resolution (guard negate) | **silent** | the negate was not carried, and the check agreed with the stub because both read the un-negated predicate. `--break drop-negate` now must make RCU's resolution and FET's redirect both disagree with ccv-sim | `check-kernel.sh` |
+| Encode/decode round trip coverage (compiler repo) | **silent** | 85 instructions were "unbuildable" and skipped while the check printed clean (compiler F-144). Any unbuildable instruction now fails it | `ccv-roundtrip` |
 | Golden oracle record vs ccv-sim | open | SKIPs, visibly, without the compiler repo. The compare was mutated once by hand (one mask bit flipped in the checked-in record) and failed | `gen-golden.sh --check` |
 | ccv-sim `-oracle` memory flags | **silent** | the record reported `"load":0` beside 32 reads (compiler F-141). It now refuses a step whose traffic the descriptor does not declare; checked once by dropping `LD_GLOBAL`'s flag | compiler repo |
 

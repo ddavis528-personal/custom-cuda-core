@@ -531,6 +531,22 @@
       "decided_at": "the owning block's session, from its outstanding window"
     },
     {
+      "name": "CCV_P_W_KILL_EPOCH",
+      "value": 2,
+      "status": "provisional",
+      "source": "Skeleton review response 2 (2026-09-25)",
+      "doc": "Kill epoch, broadcast with kill_valid and echoed on every kill ack, so a late ack from a previous kill cannot satisfy the next one. One bit suffices while RAU has one kill in flight; two leaves room.",
+      "decided_at": "RAU session, from how many kills may overlap"
+    },
+    {
+      "name": "CCV_P_W_FETCH_EPOCH",
+      "value": 2,
+      "status": "provisional",
+      "source": "Skeleton review response 2 (2026-09-25)",
+      "doc": "Fetch epoch on ccv_ooe_fet_redirect: FET bumps it on a redirect and discards in-flight fetches from the wrong path by epoch.",
+      "decided_at": "FET session, from fetch pipeline depth"
+    },
+    {
       "name": "CCV_L_W_CLASS",
       "value": 3,
       "status": "preliminary",
@@ -583,6 +599,15 @@
       "source": "Payload spec response (2026-09-25)",
       "doc": "Kind of inbound message on ccv_exb_mlc_rsp: 0 = a response to a request; otherwise a probe and what it asks (to-invalid, to-branch, to-trunk, after TL-C Probe param). Replaces the one-bit inbound_probe flag.",
       "decided_at": "MLC/EXB session, alongside CCV_L_W_COH_OP"
+    },
+    {
+      "name": "CCV_L_W_GRID_SEL",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Skeleton review response 2 (2026-09-25)",
+      "doc": "Grid selector on the host's kill request (ccv_cru_rau_cfg). RAU maps grid to warp mask from tables it owns. Sized for 256 grid slots; the real number is how many grids RAU tracks at once.",
+      "decided_at": "RAU / CRU sessions"
     },
     {
       "name": "CCV_L_W_OWNERSHIP",

@@ -62,6 +62,10 @@ struct Record {
   std::string op, kind;
   bool load = false, store = false;
   std::vector<int64_t> imms;         ///< immediate operands, operand order
+  std::vector<unsigned> quals;       ///< predicate qualifiers as encoded:
+                                     ///< [1:0] index, [2] negate
+  uint32_t taken = 0;                ///< branch: lanes that take it
+  uint64_t target = 0;               ///< branch: where they go
   std::vector<RegVal> uses, defs;    ///< operand order; uses before, defs after
   std::vector<MemAcc> mem;           ///< ascending lane
 

@@ -14,15 +14,17 @@
   input  logic clk_free,
   input  logic rst_n,
   input  logic kill_valid,
-  input  logic [3:0] kill_warp_mask,
+  input  logic [31:0] kill_warp_mask,
+  input  logic [1:0] kill_epoch,
   output logic kill_ack,
+  output logic [1:0] kill_ack_epoch,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // ooe -> rcu, 4 slot(s) x 128 bit payload
+  // ooe -> rcu, 4 slot(s) x 129 bit payload
   input  logic [3:0] ooe_rcu_issue_valid,
-  input  logic [511:0] ooe_rcu_issue_payload,
+  input  logic [515:0] ooe_rcu_issue_payload,
   output logic [3:0] ooe_rcu_issue_credit,
   output logic [3:0] ooe_rcu_issue_stall,
   input  logic ooe_rcu_issue_wake,
@@ -38,9 +40,9 @@
   output logic [127:0] lane_rcu_res_credit,
   output logic [127:0] lane_rcu_res_stall,
   input  logic [31:0] lane_rcu_res_wake,
-  // rcu -> ooe, 4 slot(s) x 40 bit payload
+  // rcu -> ooe, 4 slot(s) x 73 bit payload
   output logic [3:0] rcu_ooe_done_valid,
-  output logic [159:0] rcu_ooe_done_payload,
+  output logic [291:0] rcu_ooe_done_payload,
   input  logic [3:0] rcu_ooe_done_credit,
   input  logic [3:0] rcu_ooe_done_stall,
   output logic rcu_ooe_done_wake,
