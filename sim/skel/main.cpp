@@ -79,7 +79,7 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
 
 int main(int argc, char **argv) {
   uint64_t cycles = 2000, seed = 1;
-  std::string trace, brk = "none";
+  std::string trace, brk = "none", dump_wiring;
   bool force_atomic = false;
   for (int i = 1; i < argc; ++i) {
     auto arg = [&](const char *f) { return !std::strcmp(argv[i], f) && i + 1 < argc; };
@@ -87,6 +87,7 @@ int main(int argc, char **argv) {
     else if (arg("--seed"))  seed = std::strtoull(argv[++i], nullptr, 0);
     else if (arg("--trace")) trace = argv[++i];
     else if (arg("--break")) brk = argv[++i];
+    else if (arg("--dump-wiring")) dump_wiring = argv[++i];
     else if (!std::strcmp(argv[i], "--force-atomic")) force_atomic = true;
   }
   // Wiring controls silence organic traffic so nothing else can fire; the
@@ -97,6 +98,33 @@ int main(int argc, char **argv) {
       brk != "wrong-class" && brk != "misbind") {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
     return 2;
+  }
+
+  // The skeleton's connectivity, one line per slot: channel, copy, slot,
+  // producer instance, consumer instance. tools/check-top-wiring.py compares
+  // it with connectivity EXTRACTED from the elaborated SV top, so the two
+  // realisations of the wiring are checked against each other. The instance
+  // naming rule is implemented here separately from tools/gen-top.py on
+  // purpose.
+  if (!dump_wiring.empty()) {
+    auto name = [](int16_t idx) -> std::string {
+      if (idx < 0) return "EXTERNAL";
+      const BlkInst &b = kBlkInsts[idx];
+      unsigned same = 0;
+      for (const BlkInst &o : kBlkInsts) same += o.type == b.type;
+      char buf[64];
+      if (same == 1) std::snprintf(buf, sizeof buf, "u_%s", blkName(b.type));
+      else std::snprintf(buf, sizeof buf, "u_%s_%02u", blkName(b.type), b.index);
+      return buf;
+    };
+    std::FILE *f = std::fopen(dump_wiring.c_str(), "w");
+    if (!f) { std::fprintf(stderr, "cannot write %s\n", dump_wiring.c_str()); return 1; }
+    for (const ChanInst &ci : kChanInsts)
+      for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
+        std::fprintf(f, "%s %u %u %s %s\n", kChans[ci.chan].name, ci.inst, s,
+                     name(ci.src).c_str(), name(ci.dst).c_str());
+    std::fclose(f);
+    return 0;
   }
 
   if (unsigned bad = checkFieldTiling()) {

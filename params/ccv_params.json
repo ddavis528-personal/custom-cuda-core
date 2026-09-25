@@ -638,6 +638,15 @@
       "name": "CCV_L_W_TL_IN",
       "value": 1176,
       "doc": "TL-C inbound, B + D plus a valid bit per TL channel: B 641 (as A), D 533 (opcode 3, param 2, size 4, source 6, sink 4, denied 1, data 512, corrupt 1), valids 2. The earlier single 1760 reproduces exactly as A + C + D + E + 5 valids -- it never included B, the probe."
+    },
+    {
+      "status": "preliminary",
+      "source": "SV top generation (2026-09-25)",
+      "decided_at": "CRU session -- the CSR fabric has no topology yet",
+      "name": "CCV_L_W_CSR_ADDR",
+      "value": 16,
+      "churn": "med",
+      "doc": "CSR address. A first guess, made only so the common CSR port can be declared: the schema gave csr_req as 'address, write data, write enable' with no widths, and there is no CSR map yet."
     }
   ]
 }

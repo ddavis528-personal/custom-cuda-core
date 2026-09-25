@@ -935,6 +935,15 @@ def iter_sv(paths):
             # SUPPOSED to fail -- tools/check-1d.sh lints it by name and fails
             # if it ever stops failing. Walking it here would make every
             # ordinary run red.
+            #
+            # rtl/top/ and test/top/ are generated too (tools/gen-top.py) and
+            # merely TRACKED, so the top level can be read in the repo. Its
+            # staleness check is what protects them, not lint: channel port
+            # names cannot carry stage tags until 4a numbers the stages.
+            rel = os.path.relpath(dirpath, ROOT)
+            if rel in ("rtl/top", "test/top") or rel.startswith(("rtl/top/", "test/top/")):
+                dirnames[:] = []
+                continue
             dirnames[:] = [d for d in dirnames
                            if d not in ("generated", "__pycache__", "lint")]
             for fn in sorted(filenames):

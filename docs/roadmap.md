@@ -216,6 +216,14 @@ Atomic covers valids and credits (confirmed). Open: the fet→dec binding key
 ("tier-1 stream = slot / 2") is still text, since the payload carries
 `warp_id`, not the tier-1 slot.
 
+### SV top ✅ (structure)
+
+`rtl/top/` — generated and tracked: 45 stub blocks wired by the 103 channel
+instances, each block's port list generated and included, the shared checker
+bank under `CCV_CHECK`. Clean in all three tools. Its connectivity, extracted
+from the elaborated netlist, equals the C++ skeleton's bit for bit. See
+`skeleton.md`, "The SV top", for the common-port gaps it exposed.
+
 ### Interface checker convention ✅ (mechanism)
 
 `docs/interface-checker-convention.md`, scheduled as part of Stage 1d. All
@@ -302,7 +310,14 @@ rediscovered there. Full text in `stage1a-findings.md`.
 
 Carried from the strategy doc, with current status.
 
-1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Load-bearing content ✅** —
+1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Three schema problems found
+   answering "what can the skeleton observe"**, open for the planning side:
+   six of the provisional seed events (`DECODE`, `DISPATCH`, `MEM_REQ`,
+   `MEM_RSP`, `BARRIER_ARRIVE`, `BARRIER_RELEASE`) are `EV_CH_XFER` on a named
+   channel and need a channel mapping or deleting; `EV_RETIRE` is *internal*
+   to OOE, not a channel transaction, so the OOE stub must emit it; and
+   `EV_DECODE` still claims to establish the uid, which the identity decision
+   moved to fetch. **Load-bearing content ✅** —
    the 40-channel list *is* the load-bearing event list, emitted as
    `EV_CH_XFER` from the shared checker so every boundary emits identically
    and no per-block drift is possible. **Unit list ✅** — swapped from the
@@ -391,7 +406,10 @@ Carried from the strategy doc, with current status.
    against a draft list rather than after a tree of RTL carried the tags.
 
 14. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
-   removed `bind`. Settle before the first synthesis attempt rather than at it.
+   removed `bind`. **Mechanism in place:** the SV top instantiates its
+   checkers only under `CCV_CHECK`, and Yosys is asked both ways that the
+   synthesis view has none. Still open: the same rule inside real block RTL
+   at 4c, where checkers sit at each block's own ports.
 
 15. **Direction discipline without modports.** Direction is declared in
     `schema/interfaces.json` and carried into the generated header. 40 real

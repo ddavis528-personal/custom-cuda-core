@@ -95,6 +95,10 @@ rtl/include/                ccv_assert.svh   assertion primitives (1b)
                             ccv_trace.svh    RTL-side event emit (1c)
 rtl/if/                     the one parameterised credit checker
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
+rtl/top/                    GENERATED, tracked: the SV top level
+                              ccv_core_top.sv   45 blocks, 103 channel instances
+                              ports/            each block's port list
+                              stubs/            stub blocks, swapped at 4c
 rtl/generated/              generated; never edited
 
 sim/include/ sim/src/       C++ timing-model side: event emit API
@@ -106,6 +110,7 @@ synth/                      clock-gating techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
+test/top/                   GENERATED, tracked: testbench for the SV top
 tools/                      generators, checks, and the gate
 ```
 

@@ -174,12 +174,30 @@ structs are fine and worth using where a boundary carries many related
 signals — a struct port does Verilate. The `interface`/`modport` construct
 does not.
 
-Suffix convention for a ready/valid boundary, so that instantiation and the
-swap harness stay mechanical:
+Boundary ports follow the credited channel shape (the block-level grill-me),
+named by CHANNEL, so instantiation and the swap harness stay mechanical and a
+port reads the same in RTL, in the C++ skeleton and in the event schema:
 
-    <peer>_<signal>_valid     producer asserts, data is valid this cycle
-    <peer>_<signal>_ready     consumer asserts, will accept this cycle
-    <peer>_<signal>_<field>   the payload itself
+    <src>_<dst>_<what>_valid     producer; one cycle ahead of the payload
+    <src>_<dst>_<what>_payload   producer; flat, `rate` slots x the packed struct
+    <src>_<dst>_<what>_credit    consumer; credit return
+    <src>_<dst>_<what>_stall     consumer; stall-invalidate
+    <src>_<dst>_<what>_tid       producer; trace identity, ONLY under CCV_TRACE
+
+(An earlier version of this section described a `_ready` handshake. The
+grill-me replaced it with credits; the section had not caught up.)
+
+**Boundary ports carry no stage tag.** Stage numbers are assigned per block at
+4a, and a port name must not change when a block is retimed. The tag belongs
+on the internal flop that drives the port: inside FET, `fet_dec_instr_valid`
+is driven by something like `fet_dec_instr_valid_cf05h`. This matches the
+rule that the stage tag is an implementation attribute rather than part of a
+signal's identity (*Where the stage tag lives*, below).
+
+**A block's port list is generated, never written.** `rtl/top/ports/
+ccv_<blk>_ports.svh` is included between the parentheses of the module
+header — in the stub and in the real RTL alike — so the two cannot disagree
+on a port, and swapping one for the other is a file-list change.
 
 ---
 

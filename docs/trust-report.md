@@ -64,6 +64,7 @@ to code that merely carries it, which will not.
 | `CCV_L_W_TL_IN` | 1176 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_TL_OUT` | 1225 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_COH_OP` | 4 | med | MLC/EXB session, once the TL-C subset is chosen |
+| `CCV_L_W_CSR_ADDR` | 16 | med | CRU session -- the CSR fabric has no topology yet |
 | `CCV_L_W_MEM_OP` | 4 | med | MIU block session |
 | `CCV_L_W_ORDERING` | 4 | med | OOE/MIU session -- is scope a separate field? |
 | `CCV_L_W_OWNERSHIP` | 3 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |

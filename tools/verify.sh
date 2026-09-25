@@ -87,6 +87,8 @@ run "generate trust report" python3 tools/gen-trust-report.py
 run "trust report stable"   python3 tools/gen-trust-report.py --check
 run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
+run "generate SV top"       python3 tools/gen-top.py
+run "SV top stable"         python3 tools/gen-top.py --check
 
 section "Stage 1a -- tool-support spike"
 # Every Stage 1 conclusion is a measurement of a third-party tool, and some
@@ -129,6 +131,12 @@ section "Stage 3 -- skeleton (S0: plumbing)"
 # every slot judged by the Verilated SV checker. S0 proves the machine is
 # connected before any block does anything real; vadd end to end is S1.
 run "skeleton plumbing" ./tools/check-skel.sh
+
+section "SV top -- rtl/top/ (generated, tracked)"
+# The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
+# instances, with the checker bank under CCV_CHECK. After the skeleton, which
+# builds the binary whose wiring this is compared against.
+run "SV top" ./tools/check-top.sh
 
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:

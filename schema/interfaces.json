@@ -75,14 +75,14 @@
     {
       "name": "csr_req",
       "dir": "in",
-      "width": "struct",
-      "doc": "Address, write data, write enable."
+      "width": "CCV_L_W_CSR_ADDR+CCV_W_CSR+1",
+      "doc": "Address, write data, write enable. Width: address + data + write enable (preliminary address)."
     },
     {
       "name": "csr_rsp",
       "dir": "out",
-      "width": "struct",
-      "doc": "Read data, done."
+      "width": "CCV_W_CSR+1",
+      "doc": "Read data, done. Width: read data + done."
     },
     {
       "name": "csr_credit",

@@ -54,6 +54,12 @@ Grouped by who decides. Highest churn first within each group,
 because those are the ones where a skeleton that reads the field
 — rather than merely carrying it — will need rework.
 
+### CRU session -- the CSR fabric has no topology yet
+
+| Parameter | Value | Churn | Basis |
+|---|---|---|---|
+| `CCV_L_W_CSR_ADDR` | 16 | med | CSR address. A first guess, made only so the common CSR port can be declared: the schema gave csr_req as 'address, write data, write enable' with no widths, and there is no CSR map yet. |
+
 ### DEC block session -- is class derivable from opcode?
 
 | Parameter | Value | Churn | Basis |
