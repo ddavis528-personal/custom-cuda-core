@@ -78,6 +78,9 @@ void setDraining(bool on);
 /// bank sees the payload AND the trace sideband the channel carried.
 struct Launched { uint16_t chan; uint32_t lo32, hi32; uint64_t tid; };
 const std::vector<Launched> &launchedLog();
+/// Append to that log. The exerciser logs its own launches; S1's functional
+/// stubs call this so the same bank-vs-launch comparison covers them.
+void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid);
 
 } // namespace skel
 } // namespace ccv

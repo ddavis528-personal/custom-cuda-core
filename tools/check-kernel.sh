@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Stage 3 skeleton -- S1: a kernel through the machine.
+#
+# vadd runs on S1's functional stubs, over the real channel path, with the
+# checker bank judging every slot, and must end with the register file and
+# memory ccv-sim ends with. Every clean result has a partner that must fail:
+#
+#   clean                                      negative control
+#   final state == ccv-sim, 0 check failures   corrupt-fetch: DEC sees the byte
+#                                              corrupt-load:  a lane sees the
+#                                                operand AND the final R9 differs
+#                                              drop-store:    all 32 words differ
+#   0 bank violations                          (S0's controls, tools/check-skel.sh)
+#   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
+#                                                or identity fails it)
+#
+# Needs build/skel/ccv-skel from tools/check-skel.sh, which verify.sh runs
+# first.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+B=build
+SKEL="$B/skel/ccv-skel"
+K=test/golden/vadd/oracle.jsonl
+fail=0
+say() { printf '  %-46s %s\n' "$1" "$2"; }
+bad() { say "$1" "FAIL -- $2"; fail=1; }
+# Whole-key match: `violations=` must not match `class_violations=`.
+field() { tr ' ' '\n' <"$1" | sed -n "s/^$2=//p" | head -1; }
+
+if [ ! -x "$SKEL" ]; then
+  say "S1 kernel" "SKIP -- no $SKEL (tools/check-skel.sh builds it)"
+  exit 0
+fi
+
+# -- golden record still what ccv-sim produces -----------------------------
+tools/gen-golden.sh --check || fail=1
+
+# -- the clean run -----------------------------------------------------------
+log=$B/kernel_vadd.log
+"$SKEL" --kernel "$K" --trace "$B/kernel_vadd.ccvtrace" >"$log" 2>&1
+want="finished=1 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 violations=0"
+ok=1
+for kv in $want; do
+  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || { ok=0; miss="$kv (got $(field "$log" "${kv%%=*}"))"; }
+done
+cyc=$(field "$log" cycles)
+if [ $ok = 1 ]; then
+  say "vadd: final state == ccv-sim, 0 violations" "PASS ($cyc cycles, $(field "$log" channels_used) channels)"
+else
+  bad "vadd: final state == ccv-sim, 0 violations" "$miss"
+fi
+if [ "$(field "$log" match)" = "yes" ]; then
+  say "vadd: bank EV_CH_XFER == every launch" "PASS ($(field "$log" events) transfers)"
+else
+  bad "vadd: bank EV_CH_XFER == every launch" "$(grep '^XFER' "$log")"
+fi
+
+# Deterministic: a second run is cycle-identical and trace-identical.
+"$SKEL" --kernel "$K" --trace "$B/kernel_vadd2.ccvtrace" >"$B/kernel_vadd2.log" 2>&1
+if cmp -s "$B/kernel_vadd.ccvtrace" "$B/kernel_vadd2.ccvtrace" &&
+   [ "$(field "$B/kernel_vadd2.log" cycles)" = "$cyc" ]; then
+  say "vadd: deterministic (trace byte-identical)" "PASS"
+else
+  bad "vadd: deterministic" "second run differs"
+fi
+
+# -- Perfetto: both views convert, and every retire is on its instruction --
+if python3 tools/trace2perfetto.py "$B/kernel_vadd.ccvtrace" --by=instr \
+     -o "$B/kernel_vadd.json" >/dev/null 2>&1 &&
+   got=$(python3 - "$B/kernel_vadd.json" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1]))["traceEvents"]
+names = {e["pid"]: e["args"]["name"] for e in d
+         if e.get("ph") == "M" and e.get("name") == "process_name"}
+ret = [e for e in d if e.get("name") == "EV_RETIRE"]
+# One retire per instruction process, none elsewhere.
+print(len(ret), len({e["pid"] for e in ret}),
+      sum(1 for e in ret if e["pid"] >= 1000))
+PY
+   ) && [ "$got" = "17 17 17" ] &&
+   python3 tools/trace2perfetto.py "$B/kernel_vadd.ccvtrace" \
+     -o "$B/kernel_vadd_units.json" >/dev/null 2>&1; then
+  say "vadd trace -> Perfetto, 17 retires on 17 instrs" "PASS"
+else
+  bad "vadd trace -> Perfetto" "${got:-conversion failed}"
+fi
+
+# -- negative controls: each must fail, where it should ---------------------
+run() { "$SKEL" --kernel "$K" --break "$1" >"$B/kernel_$1.log" 2>&1; }
+run corrupt-fetch
+if [ "$(field "$B/kernel_corrupt-fetch.log" check_failures)" != 0 ] &&
+   grep -q "^CHECK dec: seq 5 " "$B/kernel_corrupt-fetch.log"; then
+  say "--break corrupt-fetch: DEC rejects the bytes" "PASS"
+else
+  bad "--break corrupt-fetch" "not caught at DEC"
+fi
+run corrupt-load
+if grep -q "^CHECK lane 5: seq 14 operand 1 (R9)" "$B/kernel_corrupt-load.log" &&
+   [ "$(field "$B/kernel_corrupt-load.log" gpr_mismatch)" = 1 ]; then
+  say "--break corrupt-load: lane check + final R9" "PASS"
+else
+  bad "--break corrupt-load" "not caught by the lane and the final compare"
+fi
+run drop-store
+if [ "$(field "$B/kernel_drop-store.log" mem_mismatch)" = 32 ]; then
+  say "--break drop-store: all 32 words differ" "PASS"
+else
+  bad "--break drop-store" "mem_mismatch=$(field "$B/kernel_drop-store.log" mem_mismatch), want 32"
+fi
+
+exit $fail

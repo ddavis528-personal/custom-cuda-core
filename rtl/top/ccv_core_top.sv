@@ -202,7 +202,7 @@ module ccv_core_top (
 `endif
   // ccv_miu_dcu_req: miu -> dcu, 1 copy x 4 slot
   logic [3:0] miu_dcu_req_valid;
-  logic [223:0] miu_dcu_req_payload;
+  logic [4831:0] miu_dcu_req_payload;
   logic [3:0] miu_dcu_req_credit;
   logic [3:0] miu_dcu_req_stall;
 `ifdef CCV_TRACE

@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 10 | 28 |
 | ⚠️ Some provisional | 14 | 46 |
-| ⛔ Some preliminary | 17 | 71 |
-| **Total** | **41** | **145** |
+| ⛔ Some preliminary | 17 | 73 |
+| **Total** | **41** | **147** |
 
 ## What still has to be decided
 
@@ -165,6 +165,46 @@ because those are the ones where a skeleton that reads the field
 | `CCV_L_W_PRED_STATE` | 1024 | **HIGH** | Predicate registers plus a reconvergence stack of eight entries of mask and PC. THE most likely field to be underestimated: the divergence model is stored here and has never been specified. |
 
 ## Open questions that no width can close
+
+### active lane mask
+
+*payload omission found by the first kernel — instruction-path payload owner*
+
+Nothing on the instruction path carries the issue group's active-lane mask (the PC-grouped lanes, §1). A divergent group's inactive lanes must neither compute nor access memory, but ccv_fet_dec_instr, ccv_dec_ooe_uop, ccv_ooe_rcu_issue and ccv_ooe_miu_memop have no mask; only faults and completions (lane_mask) carry one.
+
+**Blocks:** Any divergent kernel. vadd with n = 32 never diverges, so S1 runs every group with all 32 lanes and checks that the oracle agrees.
+
+### agu immediate
+
+*payload omission found by the first kernel — execution / memory payload owners*
+
+Address generation has no route for the immediate or the index scale. ccv_dec_ooe_uop carries imm, but ccv_ooe_rcu_issue and ccv_rcu_lane_ops drop it, and ccv_rcu_miu_addr / ccv_ooe_miu_memop carry neither displacement nor scale -- yet the ISA's address is (base << 16) + (index << scale) + disp. Ties to rcu_miu_width: if the AGU moves into RCU's read stage, index_per_lane becomes a per-lane offset and imm/scale must reach RCU on the issue channel.
+
+**Blocks:** S1 takes each lane's offset from the ccv-sim oracle rather than computing it (recorded as a substitution in docs/skeleton.md); a real AGU cannot be coded until this settles. ALU immediates have the same gap.
+
+### miu dcu req store data
+
+*payload omission found by the first kernel — memory-path payload owner*
+
+ccv_miu_dcu_req had no store data: nothing on the MIU->DCU path could carry what a store writes, so no store could reach memory. Stage 3 S1 (vadd) added write_data (CCV_W_DATA) and byte_mask (CCV_W_DATA/8), mirroring ccv_miu_spm_req. Confirm, or say where store data is meant to travel instead (a separate store-data channel would decouple address and data timing, as many L1s do).
+
+**Blocks:** Nothing while the added fields stand; the choice changes the widest DCU-facing bus (56 -> 1208 bits at rate 4).
+
+### miu rcu phys dst
+
+*payload inconsistency found by the first kernel — execution / memory payload owners*
+
+ccv_miu_rcu_data carries phys_dst, but nothing MIU receives names a destination: ccv_ooe_miu_memop and ccv_rcu_miu_addr carry rob_tag and no register. Either MIU is meant to return data by rob_tag alone (drop phys_dst from ccv_miu_rcu_data; RCU keeps the destination from issue) or one of the request channels is missing phys_dst.
+
+**Blocks:** Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.
+
+### pred src and dst
+
+*payload question found by the first kernel — ISA / compiler track*
+
+ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.
+
+**Blocks:** Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.
 
 ### rcu miu width
 
@@ -590,7 +630,7 @@ miu → spm · rate 4 · memory
 
 ### `ccv_miu_dcu_req`
 
-Cache access, physically addressed, with the exclusive-ownership request for atomics.
+Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.
 
 miu → dcu · rate 4 · memory
 
@@ -600,7 +640,9 @@ miu → dcu · rate 4 · memory
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `exclusive_req` | `1` | 1 | literal |
-| **total** | | **56** | ⛔ 4 preliminary, ⚠️ 48 provisional |
+| `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
+| `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
+| **total** | | **1208** | ⛔ 4 preliminary, ⚠️ 48 provisional |
 
 ### `ccv_dcu_mlc_req`
 

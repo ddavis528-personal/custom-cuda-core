@@ -399,9 +399,11 @@
         "phys_addr",
         "size",
         "coh_op",
-        "exclusive_req"
+        "exclusive_req",
+        "write_data",
+        "byte_mask"
       ],
-      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics.",
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.",
       "id_classes": [
         "txn"
       ]
@@ -970,6 +972,36 @@
       "kind": "partitioning question that a width exposed",
       "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
       "owner": "partitioning / floorplan"
+    },
+    "miu_dcu_req_store_data": {
+      "question": "ccv_miu_dcu_req had no store data: nothing on the MIU->DCU path could carry what a store writes, so no store could reach memory. Stage 3 S1 (vadd) added write_data (CCV_W_DATA) and byte_mask (CCV_W_DATA/8), mirroring ccv_miu_spm_req. Confirm, or say where store data is meant to travel instead (a separate store-data channel would decouple address and data timing, as many L1s do).",
+      "kind": "payload omission found by the first kernel",
+      "blocks": "Nothing while the added fields stand; the choice changes the widest DCU-facing bus (56 -> 1208 bits at rate 4).",
+      "owner": "memory-path payload owner"
+    },
+    "agu_immediate": {
+      "question": "Address generation has no route for the immediate or the index scale. ccv_dec_ooe_uop carries imm, but ccv_ooe_rcu_issue and ccv_rcu_lane_ops drop it, and ccv_rcu_miu_addr / ccv_ooe_miu_memop carry neither displacement nor scale -- yet the ISA's address is (base << 16) + (index << scale) + disp. Ties to rcu_miu_width: if the AGU moves into RCU's read stage, index_per_lane becomes a per-lane offset and imm/scale must reach RCU on the issue channel.",
+      "kind": "payload omission found by the first kernel",
+      "blocks": "S1 takes each lane's offset from the ccv-sim oracle rather than computing it (recorded as a substitution in docs/skeleton.md); a real AGU cannot be coded until this settles. ALU immediates have the same gap.",
+      "owner": "execution / memory payload owners"
+    },
+    "active_lane_mask": {
+      "question": "Nothing on the instruction path carries the issue group's active-lane mask (the PC-grouped lanes, \u00a71). A divergent group's inactive lanes must neither compute nor access memory, but ccv_fet_dec_instr, ccv_dec_ooe_uop, ccv_ooe_rcu_issue and ccv_ooe_miu_memop have no mask; only faults and completions (lane_mask) carry one.",
+      "kind": "payload omission found by the first kernel",
+      "blocks": "Any divergent kernel. vadd with n = 32 never diverges, so S1 runs every group with all 32 lanes and checks that the oracle agrees.",
+      "owner": "instruction-path payload owner"
+    },
+    "pred_src_and_dst": {
+      "question": "ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.",
+      "kind": "payload question found by the first kernel",
+      "blocks": "Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.",
+      "owner": "ISA / compiler track"
+    },
+    "miu_rcu_phys_dst": {
+      "question": "ccv_miu_rcu_data carries phys_dst, but nothing MIU receives names a destination: ccv_ooe_miu_memop and ccv_rcu_miu_addr carry rob_tag and no register. Either MIU is meant to return data by rob_tag alone (drop phys_dst from ccv_miu_rcu_data; RCU keeps the destination from issue) or one of the request channels is missing phys_dst.",
+      "kind": "payload inconsistency found by the first kernel",
+      "blocks": "Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.",
+      "owner": "execution / memory payload owners"
     }
   },
   "_rate_comment": [

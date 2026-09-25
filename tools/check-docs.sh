@@ -30,7 +30,8 @@ F = "docs/stage1a-findings.md"
 defined = set(re.findall(r"^## (F-\d+)", text[F], re.M))
 used = set()
 for t in text.values():
-    used |= set(re.findall(r"\bF-\d+\b", t))
+    # "compiler F-141" is the compiler repo's numbering, checked there.
+    used |= set(re.findall(r"(?<![Cc]ompiler )\bF-\d+\b", t))
 for r in sorted(used - defined, key=lambda x: int(x[2:])):
     problems.append("finding %s is referenced but never defined" % r)
 if defined:

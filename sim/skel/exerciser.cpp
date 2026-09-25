@@ -260,10 +260,7 @@ private:
           break;
         }
     g.tx[s]->cycle(true, msg, tid);
-    const uint32_t nb = msg.size();
-    g_launched.push_back(
-        {g.ci->chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),
-         uint32_t(nb <= 32 ? 0 : msg.get(32, nb < 64 ? nb - 32 : 32)), tid});
+    logLaunch(g.ci->chan, msg, tid);
     ++g_totals.sent;
   }
 
@@ -361,6 +358,12 @@ ExerciseTotals exerciseTotals() {
 }
 void setDraining(bool on) { g_draining = on; }
 const std::vector<Launched> &launchedLog() { return g_launched; }
+void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid) {
+  const uint32_t nb = msg.size();
+  g_launched.push_back(
+      {chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),
+       uint32_t(nb <= 32 ? 0 : msg.get(32, nb < 64 ? nb - 32 : 32)), tid});
+}
 
 } // namespace skel
 } // namespace ccv

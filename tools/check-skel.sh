@@ -42,7 +42,8 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_skel_checkers \
      rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv \
      rtl/generated/ccv_skel_checkers.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
-     "$R/sim/skel/exerciser.cpp" "$R/sim/src/event.cpp" \
+     "$R/sim/skel/exerciser.cpp" "$R/sim/skel/kernel.cpp" \
+     "$R/sim/skel/oracle.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/skel.log" 2>&1; then
   bad "skeleton builds" "$(grep -m1 -i error "$B/skel.log")"
   exit 1

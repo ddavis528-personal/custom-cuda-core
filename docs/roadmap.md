@@ -206,7 +206,13 @@ violations; each clean result paired with a control that must fail.
 - `sim/skel/` — the two-phase machine, the protocol in one place, the stub
 - `tools/check-skel.sh` — exit criteria, in the gate
 
-**Next: S1, `vadd` end to end** against ccv-sim, which now builds here.
+**S1 ✅ — `vadd` end to end.** It runs on functional stubs over the real
+channel path in 355 cycles. The final register file and memory are identical
+to ccv-sim's, with 0 interface violations, and each clean result is paired
+with a control that must fail it (`tools/check-kernel.sh`). It found six
+payload gaps, including store data missing from `ccv_miu_dcu_req` (added
+provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-141). See
+[`skeleton.md`](skeleton.md#s1--vadd-through-the-machine).
 **Interface decisions (2026-09-24, revised 2026-09-25) built in:**
 independent slots with per-channel acceptance, binding (with groups) and an
 ordering *key*; an instance-level `lockstep` attribute for the lane channels,

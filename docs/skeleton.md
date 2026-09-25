@@ -12,7 +12,7 @@ if the first is proven:
 | Milestone | What it proves | Status |
 |---|---|---|
 | **S0 — plumbing** | Every block instance and channel instance exists and is wired to the right two ends; every slot carries traffic under backpressure; the protocol holds; every payload bit lands where both languages agree it should | **Done** — `tools/check-skel.sh` |
-| **S1 — `vadd`** | An instruction stream flows through the real channel path, values carried by the channels, retiring state identical to ccv-sim | Next |
+| **S1 — `vadd`** | An instruction stream flows through the real channel path, values carried by the channels, retiring state identical to ccv-sim | **Done** — `tools/check-kernel.sh` |
 
 `build/skel/ccv-skel --cycles 2000 --seed 1 --trace t.ccvtrace` runs S0.
 `tools/trace2perfetto.py t.ccvtrace -o t.json` makes the Perfetto view, one
@@ -321,31 +321,154 @@ rejected.
 
 ## S1 — `vadd` through the machine
 
+**Done.** `tools/check-kernel.sh`, in the gate after S0.
+
+```
+build/skel/ccv-skel --kernel test/golden/vadd/oracle.jsonl --trace t.ccvtrace
+tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json
+```
+
+vadd (`c[i] = a[i] + b[i]`, 32 threads, one warp, 17 issue groups) runs to
+completion in **355 cycles** on functional stubs behind the same ports the S0
+exerciser used, with the checker bank judging every slot. It ends with the
+register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
+touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
+violations, and the bank's 691 `EV_CH_XFER` events matching every launch
+exactly. It carries traffic on 26 of the 41 channels; the 15 idle ones are
+SPM, barriers, migration, demotion, probes and faults, none of which vadd
+reaches.
+
+| Clean result | Negative control that must fail it |
+|---|---|
+| Instruction bytes DEC receives == bytes ccv-sim ran | `--break corrupt-fetch` flips one byte FET→DEC; DEC rejects seq 5 |
+| Operands every lane receives == ccv-sim's; final register file == ccv-sim's | `--break corrupt-load` flips lane 5's load data MIU→RCU; lane 5 rejects the `C_ADD` operand *and* the final R9 differs |
+| Final memory == ccv-sim's | `--break drop-store` has MIU discard the committed store; all 32 words of `c[]` differ |
+| 0 bank violations | S0's controls prove the same bank, driven by the same code, is wired to every slot |
+| `EV_CH_XFER` == every launch | Exact multiset over channel, payload bits and identity, so one wrong bit fails it |
+
+A second run is byte-identical (trace and cycle count), and
+`tools/gen-golden.sh --check` fails the gate if the checked-in oracle record
+drifts from what the compiler repo's ccv-sim now produces.
+
+### Where the values come from
+
 §1: the timing model *"calls into ccv-sim for what an instruction does and
-owns when."* The seam exists: ccv-sim's `Interp::step(Warp&, const MCInst&,
-mask, pc, size)` executes one instruction against warp state.
+owns when."* The seam is `ccv-sim -oracle` (added in the compiler repo for
+this): one JSON record per issue group with the bytes, the issue mask, every
+register read (value before) and written (value after), and each memory
+access attributed to its lane. It is checked in as
+`test/golden/vadd/oracle.jsonl`, generated from `test/golden/vadd/kernel.cfg`
+by `tools/gen-golden.sh`. Regenerating it needs the compiler repo built:
+LLVM 18 through its CMake, which needs `llvm-18-dev` and `libzstd-dev`, with
+an `apt-get update` first. Without the compiler repo, the drift check
+SKIPs.
 
-The plan, so the check means something:
+The original plan had DEC decoding through LLVM's disassembler and lanes
+calling `Interp::step`. S1 reads the record instead, so the core repo
+doesn't link LLVM. Only one thing changes: the "what" is read from ccv-sim's
+record rather than computed by ccv-sim in-process. What the record may be
+used for:
 
-1. **Values originate at the oracle, travel the channels, and are committed
-   by the sinks.** FET fetches real instruction bytes from testbench memory;
-   DEC decodes through the same LLVM disassembler ccv-sim uses; execution
-   values come from `Interp::step`; MIU commits stores from the payloads it
-   *received*, not from the oracle's copy.
-2. **The final state is compared against an independent ccv-sim run.** If
-   every value came straight from the oracle to the result, the comparison
-   would be tautological. Routing them through the channels is what makes it
-   test the machine.
-3. **Stubs replace the exerciser one block at a time**, each behind the same
-   ports, with the S0 checks still running. Fixed latency, no arbitration
-   (§8: "internal timing is placeholder").
+| From the record (the "what") | Carried by the channels, checked against the record |
+|---|---|
+| Fetch **order** (no branch unit yet) | Instruction **bytes**: testbench memory → EXB → MLC → FET, via ITLB and ifill |
+| Decode: which registers an instruction reads and writes | Operands: out of RCU's register file, to the lanes |
+| ALU **results**: a lane returns ccv-sim's value | Load data: memory → EXB → MLC → DCU → MIU → RCU |
+| **Substitution:** each lane's address offset | Store data: RCU's register file → MIU → DCU (RMW) → MLC → EXB → memory |
 
-**Prerequisite, recorded because it was not obvious.** ccv-sim builds against
-LLVM 18 through the compiler repo's CMake, which needs `llvm-18-dev` — the
-runtime `llvm-18` package ships no `LLVMConfig.cmake` — and `libzstd-dev`,
-because Ubuntu's `LLVMExports.cmake` names `zstd::libzstd_shared` without
-depending on it. A stale package index 404s on `libxml2-dev` until
-`apt-get update`. With those, `cmake -DLLVM_DIR=/usr/lib/llvm-18/lib/cmake/llvm`
-builds `ccv-sim`, and `custom-cuda-complier/test/elementwise.s` computes `c[i] = a[i] + b[i]`
-correctly in 17 issue groups. `tools/setup-toolchain.sh` will take these on
-when S1 first links the oracle.
+The trace identity (uid seq = record seq) is how a checker finds the record.
+It's trace-only, so no stub uses it to decide what to do. There is one
+exception: the address offset, because no payload carries the displacement
+or the scale (finding 2 below).
+
+**What this does not test.** Because ALU results come from the record, a
+wrong operand doesn't produce a wrong result. It's caught by the lanes'
+operand check instead, which `corrupt-load` proves is live. The stubs have
+placeholder timing: in-order issue with a scoreboard, one memory op at a time,
+no caches, a 10-cycle testbench memory. The 355 cycles measure the stubs, not
+the machine.
+
+### Findings — payload gaps the first kernel exposed
+
+Each one is an entry in `schema/interfaces.json` `open_questions`, and
+rendered in `docs/payload-spec.md`.
+
+1. **No store data to DCU** (`miu_dcu_req_store_data`). `ccv_miu_dcu_req`
+   had nothing that could carry what a store writes. **S1 added `write_data`
+   and `byte_mask`**, mirroring `ccv_miu_spm_req` (56 → 1208 bits at rate 4).
+   *Needs confirmation*, or a separate store-data channel.
+2. **No route for the immediate or scale to the AGU** (`agu_immediate`).
+   `imm` is on the uop and dropped at issue, and nothing downstream carries a
+   displacement or scale. S1 substitutes the oracle's per-lane offset. ALU
+   immediates have the same gap.
+3. **No active-lane mask on the instruction path** (`active_lane_mask`).
+   vadd never diverges, so S1 checks every group's mask is all 32 lanes and
+   retires with that. `EV_RETIRE.active_mask` is always `0xffffffff` today.
+4. **One predicate field for guard and destination** (`pred_src_and_dst`).
+   `@P0 setp P1, …` has no encoding. S1 refuses such a record; vadd only uses
+   P0.
+5. **`ccv_miu_rcu_data.phys_dst` has no source** (`miu_rcu_phys_dst`).
+   Nothing MIU receives names a destination register. RCU keeps it by
+   `rob_tag` from issue, and the field is left zero.
+6. **Three-source ops ride on `dst_arch`** (the existing
+   `src_arch_vs_operand`). `MADLO` (accumulate: destination == third source)
+   and `ST_GLOBAL_IDX` (data, base, index; no destination) both fit if the
+   third source travels in `dst_arch` / `phys_dst`, and S1 does that. A
+   three-source op with a *different* destination would not fit, and DEC
+   refuses one.
+
+Also found and fixed, in the compiler repo:
+
+- **compiler F-141.** Compiler F-50's `mayLoad`/`mayStore` fix had bound its TableGen `let`s one
+  def late. `LD_GLOBAL`, `LD_GLOBAL_P`, the compressed pair and both atomics
+  had no memory effect, and three narrow stores were marked as loads. It
+  showed up because the oracle reported `"load":0` beside 32 reads. `-oracle`
+  now refuses any step whose memory traffic its descriptor doesn't declare.
+- **compiler F-142.** ccv-sim recognized 42 of the 64 `setp` forms as compares when
+  excluding Format C's unwritten `rd`. No benchmark output changed.
+
+### S1 wire conventions (placeholders)
+
+These are encodings the payload spec leaves to each block's owner. They are
+chosen in `sim/skel/kernel.cpp` and listed here so nobody mistakes them for
+decisions.
+
+| Where | Convention |
+|---|---|
+| `fet_dec_instr.length` | 0/1/2 = 2/4/6 bytes; `instr` little-endian bytes |
+| `fet_dec_instr` slots | warp *w* is tier-1 stream *w*: binding group *w*, age = slot order |
+| `dec_ooe_uop.opcode` | skeleton-local table, 1..11 for vadd's ops (0 reserved) |
+| `dec_ooe_uop.src_arch` | `[7:4]` src0, `[3:0]` src1; a third source in `dst_arch` |
+| `dec_ooe_uop.pred_reg` | `[3]` writes, `[2]` reads, `[1:0]` index |
+| `dec_ooe_uop.imm` | 0: not decoded (finding 2) |
+| `ooe_rcu_issue.phys_src` | `[15:8]` src0, `[7:0]` src1; rename is `prf_base + arch` (no renaming yet) |
+| `ooe_rcu_issue.phys_pred` | `4·warp + index` (predicates not renamed) |
+| `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
+| `lane_rcu_res.result` | GPR value, or the predicate bit in bit 0 |
+| `rcu_miu_addr.base` | window base `GPR[base] << 16` (§5.1), checked uniform across lanes |
+| per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
+| `coh_op` | 0 read, 1 write |
+| `ooe_miu_memop.mem_op` | 0 load, 1 store |
+| `size` | log2 bytes; 7 = a 128-byte line |
+| `rau_fet_launch.code_bounds` | `[63:0]` base, `[103:64]` length |
+| `exb_ext_out.tl_out` | `[2:0]` op (1 Get, 2 PutFull), `[50:3]` address, `[178:51]` byte mask, `[1202:179]` data |
+| `ext_exb_in.tl_in` | `[2:0]` op (1 AccessAckData, 2 AccessAck), `[1026:3]` data |
+| identities | instruction: `instr` class, seq = record seq. Line request on an instruction's behalf: owned `txn`, same seq, sub = line. ITLB and ifill: unowned `txn` |
+
+### Events: what the skeleton emits
+
+Seven of the twelve schema events:
+
+| Event | Emitted by | vadd count |
+|---|---|---|
+| `EV_CH_XFER` | the checker bank, every transfer | 691 |
+| `EV_DECODE` | DEC | 17 |
+| `EV_DISPATCH` | OOE, ROB allocation | 17 |
+| `EV_ISSUE` | OOE (`C_EXIT` isn't issued) | 16 |
+| `EV_MEM_REQ` / `EV_MEM_RSP` | MIU per line; FET per ifill | 9 / 9 |
+| `EV_RETIRE` | OOE, in order | 17 |
+
+Not yet emitted: `EV_WAKEUP` and `EV_WARP_SELECT`, which need more than one
+warp and a real scheduler; `EV_BARRIER_ARRIVE`/`RELEASE`, which need a
+barrier kernel; and `EV_ID_LINK`, which needs a replay. Those come from S2's
+kernels.

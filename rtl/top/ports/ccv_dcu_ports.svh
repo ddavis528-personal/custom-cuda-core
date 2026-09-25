@@ -21,9 +21,9 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // miu -> dcu, 4 slot(s) x 56 bit payload
+  // miu -> dcu, 4 slot(s) x 1208 bit payload
   input  logic [3:0] miu_dcu_req_valid,
-  input  logic [223:0] miu_dcu_req_payload,
+  input  logic [4831:0] miu_dcu_req_payload,
   output logic [3:0] miu_dcu_req_credit,
   output logic [3:0] miu_dcu_req_stall,
   // dcu -> miu, 4 slot(s) x 1026 bit payload

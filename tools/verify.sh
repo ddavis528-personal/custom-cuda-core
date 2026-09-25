@@ -132,6 +132,12 @@ section "Stage 3 -- skeleton (S0: plumbing)"
 # connected before any block does anything real; vadd end to end is S1.
 run "skeleton plumbing" ./tools/check-skel.sh
 
+section "Stage 3 -- skeleton (S1: vadd)"
+# vadd on functional stubs over the real channel path, final register file
+# and memory compared with ccv-sim's, each clean result paired with a control
+# that must fail. After S0, which builds the binary.
+run "vadd through the machine" ./tools/check-kernel.sh
+
 section "SV top -- rtl/top/ (generated, tracked)"
 # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
 # instances, with the checker bank under CCV_CHECK. After the skeleton, which
@@ -180,7 +186,10 @@ cat <<'PENDING'
   Stage 3  S0 plumbing DONE: 45 blocks, 103 channel instances, 340 slots,
            checker bank Verilated in, trace identity carried, Perfetto
            trace, layout cross-checked, slot count re-derived.
-           S1 next: vadd end to end, state identical to ccv-sim
+           S1 DONE: vadd end to end on functional stubs, final state
+           identical to ccv-sim, 0 violations, 26 of 41 channels carrying
+           it. Six payload findings open (docs/skeleton.md, S1).
+           S2 next: a kernel that diverges, loops, or uses SPM/barriers
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 
