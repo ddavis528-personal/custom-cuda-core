@@ -324,7 +324,7 @@ the schema says how the top connects it):
     (`kill_ack_epoch`), so a late ack from one kill can't satisfy the next.
   - `kill_warp_mask` is 32 bits, one per warp context. It was sized to the
     four tier-1 warps, but PCA and SYU hold state for parked warps, which a
-    tier-1 mask can't name.
+    tier-1 mask can't name. Awaiting confirmation (Q-31).
 - **Both kill sources land at RAU, the single issuer.** A fault comes direct
   from OOE: `fault_taken` with the `warp_id` on `ccv_ooe_rau_status`, and RAU
   maps warp to grid to mask. CRU records the fault in parallel for the host
@@ -339,16 +339,19 @@ the schema says how the top connects it):
 
 **Gaps still visible:**
 
-- **Wake's timing contract.** `_wake` exists, but how far it must lead valid
-  (`CCV_WAKE_LAT`, 4) is not yet a checked property. A stub never sleeps, so
-  nothing depends on it yet.
+- **Wake's timing contract (Q-33).** `_wake` exists, but how far it must
+  lead valid (`CCV_WAKE_LAT`, 4) is not yet a checked property. A stub never
+  sleeps, so nothing depends on it yet.
 - **CSR widths were unspecified** (`"struct"`). `csr_req` is address + data +
   write enable, with the address a preliminary 16 bits (`CCV_L_W_CSR_ADDR`,
   churn med); `csr_rsp` is data + done.
 - The reset tree (block letter `z`) isn't modelled; `rst_n` fans out
-  directly.
+  directly (Q-37).
 
-## Still open
+## Known limitations
+
+Neither is an open item; both are recorded so nobody mistakes them for one.
+Open items are in [`open-items.md`](open-items.md).
 
 - **Unit is `UNIT_UNKNOWN`** for every channel transfer, because the checker
   sits between two blocks and belongs to neither. The Perfetto view puts
@@ -436,40 +439,42 @@ the machine.
 
 ### Findings — payload gaps the first kernel exposed
 
-Each one is an entry in `schema/interfaces.json` `open_questions`, and
-rendered in `docs/payload-spec.md`.
+Each is numbered in [`open-items.md`](open-items.md). The ones still open
+are also entries in `schema/interfaces.json` `open_questions`, under the same
+ID, rendered in `docs/payload-spec.md`.
 
-1. **No store data to DCU** (`miu_dcu_req_store_data`). `ccv_miu_dcu_req`
+1. **No store data to DCU** (Q-19, `miu_dcu_req_store_data`). `ccv_miu_dcu_req`
    had nothing that could carry what a store writes. **S1 added `write_data`
    and `byte_mask`**, mirroring `ccv_miu_spm_req` (56 → 1208 bits at rate 4).
    *Needs confirmation*, or a separate store-data channel.
-2. **Immediates: decided.** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16, the
-   widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`, and
-   the shift is derived from `chwidth`. ALU immediates ride on
+2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16,
+   the widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`,
+   and the shift is derived from `chwidth`. ALU immediates ride on
    `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register
    read, so lanes never see an immediate. The oracle substitution is gone.
-3. **Masks: decided.** Only RCU holds both the issue mask and the predicate
-   values, so it is the sole producer of `active_mask`, on `rcu_miu_addr` and
-   `miu_rcu_data`. `ooe_rcu_issue` and `ooe_miu_memop` carry `issue_mask`, a
-   different field that is never compared with it. `pred_bit` is the same
-   computation per lane. MIU checks the invariant that holds, active ⊆
-   issue. `EV_RETIRE.active_mask` is still always `0xffffffff`.
-4. **One predicate field for guard and destination** (`pred_src_and_dst`).
+3. **Masks: decided (Q-23).** Only RCU holds both the issue mask and the
+   predicate values, so it is the sole producer of `active_mask`, on
+   `rcu_miu_addr` and `miu_rcu_data`. `ooe_rcu_issue` and `ooe_miu_memop`
+   carry `issue_mask`, a different field that is never compared with it.
+   `pred_bit` is the same computation per lane. MIU checks the invariant that
+   holds, active ⊆ issue. `EV_RETIRE.active_mask` is still always
+   `0xffffffff`.
+4. **One predicate field for guard and destination** (Q-21, `pred_src_and_dst`).
    `@P0 setp P1, …` has no encoding. S1 refuses such a record; vadd only uses
    P0.
-5. **Load write-back destination: decided.** OOE carries `phys_dst` and
+5. **Load write-back destination: decided (Q-25).** OOE carries `phys_dst` and
    `phys_pred` on the memop, and MIU echoes them, so RCU is stateless on
    write-back (see "Skeleton review response 3").
-6. **Three sources: answered from the ISA, and the uop widened.** Format A
-   `dp4.*`, `dp2.*`, `ffma.f0` and `mad.lo` read `rs0`, `rs1` *and* `rs2` (the
-   accumulator input) and write an **independent** `rd`; only the compressed
-   Format J forms (`dp4.acc`, `mad.acc`, `ffma.acc`) tie the destination to
-   the accumulator. The ISA's own walkthrough has `mad.lo r1, r3, r1, r2`,
-   with `rd` ≠ `rs2`; vadd's hand-written `MADLO R1, R2, R3, R1` just happened
-   to fit. `cas` reads three GPRs as well. So the third source has its own
-   field (`src2_arch`, `phys_src2`), and the S1 workaround of carrying it in
-   `dst_arch` is removed. (`dp8` is
-   in the ISA table, but no instruction definition exists for it yet.)
+6. **Three sources: answered from the ISA, and the uop widened (Q-20).**
+   Format A `dp4.*`, `dp2.*`, `ffma.f0` and `mad.lo` read `rs0`, `rs1` *and*
+   `rs2` (the accumulator input) and write an **independent** `rd`; only the
+   compressed Format J forms (`dp4.acc`, `mad.acc`, `ffma.acc`) tie the
+   destination to the accumulator. The ISA's own walkthrough has
+   `mad.lo r1, r3, r1, r2`, with `rd` ≠ `rs2`; vadd's hand-written
+   `MADLO R1, R2, R3, R1` just happened to fit. `cas` reads three GPRs as well. So the third source
+   has its own field (`src2_arch`, `phys_src2`), and the S1 workaround of
+   carrying it in `dst_arch` is removed. (`dp8` is in the ISA table, but no
+   instruction definition exists for it yet.)
 
 Also found and fixed, in the compiler repo:
 
@@ -519,14 +524,14 @@ already applied: `warp_mask_released` 32, `bank_addr` 320, `phys_pred` on
 `read_data`.
 
 **Raised by applying it, and since answered** (see the next section): who
-computes `active_mask`, and ITLB correlation.
+computes `active_mask` (Q-23), and ITLB correlation (Q-24).
 
 ### Skeleton review response (2026-09-25), as built
 
 - **`issue_mask` and `active_mask` are two fields, not two copies** (finding
   3 above). This retires the equality check, which would have fired on the
-  first predicated load, and closes the open question.
-- **ITLB: FET is single-miss-outstanding, asserted.** An `outstanding`
+  first predicated load, and closes Q-23.
+- **ITLB: FET is single-miss-outstanding, asserted (Q-24).** An `outstanding`
   attribute on `fet_miu_itlb_req` (`answered_by: ccv_miu_fet_itlb`,
   `max: 1`) generates a `ccv_outstanding_checker` in the bank. It counts
   requests against responses at valid, and fires on a second request or on
@@ -547,7 +552,8 @@ computes `active_mask`, and ITLB correlation.
   flattened width stands in for a burst sequencer, not just a bus.
 
 **Raised by applying it, and answered in the next round:** branch
-resolution, predicate source operands, and compiler F-143 (see below).
+resolution (Q-26), predicate source operands (Q-27), and compiler F-143 (see
+below).
 
 The formal covers for the new outstanding checker caught a vacuous setup on
 the way. See `fail-open-register.md`.
@@ -557,7 +563,7 @@ the way. See `fail-open-register.md`.
 - **Kill** (the SV top section above): eight owning blocks, quiesced acks,
   an epoch, a 32-bit warp mask, and both sources (a fault from OOE, a
   request from the host) landing at RAU.
-- **Branch resolution is built.** The condition is a predicate in RCU's
+- **Branch resolution is built (Q-26).** The condition is a predicate in RCU's
   file, so RCU resolves: `branch_taken` and `branch_mask` (issue ∧ guard)
   on `ccv_rcu_ooe_done`. OOE redirects on the new `ccv_ooe_fet_redirect`:
   warp, tier-1 stream, target PC, updated group masks, and a fetch epoch.
@@ -572,20 +578,22 @@ the way. See `fail-open-register.md`.
   compared against the same un-negated value. `pred_neg` now rides on the
   uop and the issue, and RCU and the lanes honour it. ccv-sim's oracle now
   emits the raw qualifiers (`quals`) so decode can see the negate.
-- **Predicate logic executes in RCU,** as already decided (O-33's second
+- **Predicate logic executes in RCU (Q-27),** as already decided (O-33's second
   obligation; round 16). `por` never reaches a lane. Its two source
   qualifiers ride in the uop's `imm` (a skeleton convention), and RCU
   computes the result from its predicate file and checks it against
   ccv-sim's. That removes the transfers for `por` and the branch from all
   32 lanes: 701 → 573.
-- **`sel` reads a predicate as data, and executes in the lane (decided).**
-  `@pq sel rd, rs0, rs1` writes `rd` on every issue-mask lane, choosing by the
-  predicate. **The rule:** RCU executes exactly two classes itself. The first
-  is ops whose sources and destinations are all predicates (predicate logic,
-  and branch resolution: a predicate in, a lane mask out). The second is data
-  moving horizontally between lanes (`shfl`, `vote`, `ballot`, `unballot`).
-  Everything else runs in the lane, and a lane stub fails if an RCU-class op
-  ever reaches it. The fields this implies:
+- **`sel` reads a predicate as data, and executes in the lane (Q-28,
+  decided).** `@pq sel rd, rs0, rs1` writes `rd` on every issue-mask lane,
+  choosing by the predicate. **The rule:** RCU executes exactly two classes
+  itself. The first is ops whose sources and destinations are all predicates
+  (predicate logic, and branch resolution: a predicate in, a lane mask out).
+  The second is data moving horizontally between lanes (`shfl`, `vote`,
+  `ballot`, `unballot`). Everything else runs in the lane, and a lane stub
+  fails if an RCU-class op ever reaches it. Branch resolution and `pmov` sit
+  in the first class by reading rather than by statement, and are awaiting
+  confirmation (Q-32). The fields this implies:
   - `pred_data` on `rcu_lane_ops`, sel's selector, beside `pred_bit`, which
     stays the enable;
   - `pred_out` on `lane_rcu_res`, a lane's predicate result (`setp` used to
@@ -595,8 +603,9 @@ the way. See `fail-open-register.md`.
   A second kernel, `test/golden/sel/`, exercises it: `c[tid] = tid < 16 ? tid
   : 16`, so half the lanes choose `rs1`. It ends identical to ccv-sim in 120
   cycles, and `--break drop-pred-data` must be rejected by those lanes.
-- **The PC-group owner:** FET owns divergent PC state, but `ccv_rcu_pca_mig`
-  carried `pcs` from RCU. Built in the next round: a FET↔PCA pair.
+- **The PC-group owner (Q-29):** FET owns divergent PC state, but
+  `ccv_rcu_pca_mig` carried `pcs` from RCU. Built in the next round: a FET↔PCA
+  pair.
 - **Compiler F-143 is fixed** (`cas`'s offset is `simm16`, decoded
   sign-extended), and escalated as you said: an offset at or above 0x8000
   would have been emitted as a large positive and executed as negative.
@@ -606,20 +615,20 @@ the way. See `fail-open-register.md`.
 
 ### Skeleton review response 3 (2026-09-25), as built
 
-- **The PC groups migrate FET↔PCA.** `pcs` is off `ccv_rcu_pca_mig` and
+- **The PC groups migrate FET↔PCA (Q-29).** `pcs` is off `ccv_rcu_pca_mig` and
   `ccv_pca_rcu_mig`, and onto the new `ccv_fet_pca_mig` / `ccv_pca_fet_mig`,
   each carrying `warp_id` and the groups. The design is at 44 channels.
-  - **Open (`migration_control`):** RAU sequences both halves and waits for
-    both acks, but at 44 channels nothing carries that. Nothing tells FET to
-    send or accept, no ack reaches RAU from FET, RCU or PCA, and
+  - **Open (Q-30, `migration_control`):** RAU sequences both halves and waits
+    for both acks, but at 44 channels nothing carries that. Nothing tells FET
+    to send or accept, no ack reaches RAU from FET, RCU or PCA, and
     `ccv_rcu_pca_mig` never said which warp or bank it carries. The smallest
     fix is a RAU→FET migrate command and a PCA→RAU done, which would make 46
     channels.
 - **Already built last round, and unchanged:**
   - `issue_mask` / `active_mask` as two fields, with the agree check retired
-    (it is now active ⊆ issue).
-  - FET's single ITLB miss, asserted by the bank's outstanding checker.
-- **The third source is a named field** (`src2_arch`, 4 bits; `phys_src2`,
+    (it is now active ⊆ issue): Q-23.
+  - FET's single ITLB miss, asserted by the bank's outstanding checker: Q-24.
+- **The third source is a named field** (Q-20; `src2_arch`, 4 bits; `phys_src2`,
   8 bits). Last round had widened `src_arch` to a packed three-source field;
   now `src_arch` holds two again and `dst_arch` means the destination,
   always.
@@ -632,8 +641,8 @@ the way. See `fail-open-register.md`.
     register twice. The invariant is Format J's: `mad.acc`, `dp4.acc` and
     `ffma.acc` read and write `rd` (TableGen ties `rd` to `rd_in`), and every
     Format A four-register form takes `rs2` as an independent source.
-- **Load write-back is stateless in RCU.** The memop carries `phys_dst` and
-  `phys_pred`, and MIU echoes both on `miu_rcu_data`, so RCU writes where
+- **Load write-back is stateless in RCU (Q-25).** The memop carries `phys_dst`
+  and `phys_pred`, and MIU echoes both on `miu_rcu_data`, so RCU writes where
   the data says and holds no table of outstanding loads.
   - One bit beyond your spec: `pred_we`, set by MIU from the op. Without it,
     a stateless RCU can't tell a `cas` from a load, and would write

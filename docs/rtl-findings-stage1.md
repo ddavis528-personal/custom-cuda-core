@@ -304,43 +304,47 @@ clocking convention can reintroduce it silently.
 
 ## 4. Open items for the planning side
 
+Each of these now has a fixed number in [`open-items.md`](open-items.md),
+given in brackets, and its current status is kept there rather than here.
+
 **Carried from the strategy doc, with changed status:**
 
-- **Open item 4 — the correlation criterion for arbitration-sensitive events —
-  is now more urgent than the doc implies.** It notes this "wants settling
+- **Open item 4 [Q-5] — the correlation criterion for arbitration-sensitive
+  events — is now more urgent than the doc implies.** It notes this "wants settling
   before Stage 1c locks the schema". Stage 1c has shipped. The schema records
   the criterion as OPEN and carries no tolerance metadata; if the answer is a
   stated tolerance rather than exact match, the schema needs a field and its
   hash changes. **Settle before Stage 4a populates the first
   arbitration-sensitive events** — that is the last cheap moment.
-- **Is 25 NGD the Vmin-corner number or a nominal one?** (§2) Unchanged, and
-  still Stage 2's.
+- **Is 25 NGD the Vmin-corner number or a nominal one?** [Q-7] (§2) Unchanged,
+  and still Stage 2's.
 
 **Opened by Stage 1:**
 
-- ~~**The stage tag gives each block one letter, so ~24 blocks.**~~ **Closed
-  by the partition.** 14 block types, plus `z` (reset tree) and `y` (fixtures)
-  reserved, leaves 8 spare letters — the single-letter tag format stands and
-  no tagged net has to change. This was the item most worth checking early and
-  it cost nothing to check.
-- **A justified N** — from §3.1 above, and **no longer per interface**. The
-  round trip is 2 everywhere by construction, so N is one global provisional
-  plus one for the memory path, which must exceed worst-case DRAM latency.
-  Justifying either still needs contention data from 4b.
-- **Synthesis exclusion for checkers**, from §1.3. Still open, and now applies
-  to 40 checker instances rather than a handful. *Since:* the SV top
+- ~~**The stage tag gives each block one letter, so ~24 blocks.**~~ [Q-11]
+  **Closed by the partition.** 14 block types, plus `z` (reset tree) and `y`
+  (fixtures) reserved, leaves 8 spare letters — the single-letter tag format
+  stands and no tagged net has to change. This was the item most worth
+  checking early and it cost nothing to check.
+- **A justified N** [Q-8] — from §3.1 above, and **no longer per interface**.
+  The round trip is 2 everywhere by construction, so N is one global
+  provisional plus one for the memory path, which must exceed worst-case DRAM
+  latency. Justifying either still needs contention data from 4b.
+- **Synthesis exclusion for checkers** [Q-12], from §1.3. Still open, and now
+  applies to 40 checker instances rather than a handful. *Since:* the SV top
   instantiates its checkers only under `CCV_CHECK`, verified in Yosys both
   ways; real block RTL at 4c must follow the same rule.
-- **Clock-gating equivalence is unverified.** The gated netlist has never been
-  proved against its ungated original. Nothing relies on it — synthesis is
-  deferred — but settle it before any synthesis result is believed.
-- **28 payload field widths, across 25 channels.** Opened by the partition
-  rather than by Stage 1. These are the only thing blocking generated typedefs
-  for the other 25 channels; `op` (5 channels), `asid` and `opcode` (3 each)
-  are the ones worth settling across per-block sessions rather than within
-  one, since independent decisions on a field that crosses abutting channels
-  produce two incompatible encodings. The full list is in `roadmap.md` Part 3
-  item 17, and `tools/check-if.sh` reports the census on every run.
+- **Clock-gating equivalence is unverified** [Q-10]. The gated netlist has
+  never been proved against its ungated original. Nothing relies on it —
+  synthesis is deferred — but settle it before any synthesis result is
+  believed.
+- **28 payload field widths, across 25 channels** [Q-15, Q-34]. Opened by the
+  partition rather than by Stage 1. These are the only thing blocking
+  generated typedefs for the other 25 channels; `op` (5 channels), `asid` and
+  `opcode` (3 each) are the ones worth settling across per-block sessions
+  rather than within one, since independent decisions on a field that crosses
+  abutting channels produce two incompatible encodings. The full list was in
+  `roadmap.md`, and `tools/check-if.sh` reports the census on every run.
   *Since:* closed for wiring by the payload pass (2026-09-25). Every field has
   a width, tiered settled / provisional / preliminary, and `op` was split into
   `mem_op`, `spm_op` and `coh_op`.

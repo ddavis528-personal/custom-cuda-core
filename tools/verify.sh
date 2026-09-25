@@ -189,7 +189,7 @@ cat <<'PENDING'
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state
            identical to ccv-sim, 0 violations, 26 of 44 channels carrying
-           it. Four payload questions open (schema open_questions).
+           it. Open items: docs/open-items.md, by Q-number.
            S2 next: a kernel that diverges, loops, or uses SPM/barriers
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING

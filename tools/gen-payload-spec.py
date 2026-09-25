@@ -269,9 +269,12 @@ def main():
     if oq:
         L.append("## Open questions that no width can close")
         L.append("")
-        for k in sorted(oq):
+        L.append("Each is numbered in [`open-items.md`](open-items.md), the one "
+                 "list of what is undecided.")
+        L.append("")
+        for k in sorted(oq, key=lambda k: int(oq[k]["id"][2:])):
             e = oq[k]
-            L.append("### %s" % k.replace("_", " "))
+            L.append("### %s — %s" % (e["id"], k.replace("_", " ")))
             L.append("")
             L.append("*%s — %s*" % (e.get("kind", "?"), e.get("owner", "?")))
             L.append("")

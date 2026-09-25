@@ -22,7 +22,7 @@ what vadd does not.**
 [`rtl-findings-stage1.md`](rtl-findings-stage1.md) covers what Stage 1 found
 about the strategy, organised for that audience rather than this one. The
 Stage 1 review raised thirteen items; the ones still open are carried in
-Part 3.
+[`open-items.md`](open-items.md).
 
 **What Stage 2 was waiting for, and what arrived.** The interface-level
 grill-me ran on 2026-09-23. Here is each input's status:
@@ -40,11 +40,12 @@ grill-me ran on 2026-09-23. Here is each input's status:
    no loop, one warp, and no SPM or barriers, so 18 of the 44 channels carried
    nothing in S1. Kernels that exercise them come from the compiler corpus
    (Part 4). Several are blocked on open payload questions, at least in the
-   form S1 worked around (Part 3, item 20).
-2. **The open payload questions** (Part 3, item 20). They're owned by the
-   per-block sessions and the ISA track, not this repository, but each one
+   form S1 worked around (Q-21, Q-30).
+2. **The open items in [`open-items.md`](open-items.md).** Three wait on a
+   confirmation (Q-19, Q-31, Q-32). Most of the rest are owned by the
+   per-block sessions and the ISA track, not this repository, and each one
    says what it blocks.
-3. **The 4d correlation criterion** (item 4) must be settled before Stage 4a
+3. **The 4d correlation criterion** (Q-5) must be settled before Stage 4a
    populates the first arbitration-sensitive events.
 
 **The checker is one implementation, not one per interface.** Every boundary
@@ -152,8 +153,8 @@ The block-level grill-me (2026-09-23) closed the partition: **14 block types,
 45 instances, 40 channels** (44 now: the external port pair, branch
 redirect, and the FET↔PCA migration pair). Encoded and machine-checked:
 
-- `params/blocks.json` — the 14 block letters, 8 spare. **Closes A-2**: the
-  single-letter stage tag holds and does not need widening.
+- `params/blocks.json` — the 14 block letters, 8 spare. **Closes Q-9 and
+  Q-11**: the single-letter stage tag holds and does not need widening.
 - `schema/interfaces.json` — all 44 channels, the common ports, and the
   four-signal channel shape. Per-block port lists are **derived** from the
   channel list rather than stated, since the source spec kept both and they
@@ -196,6 +197,21 @@ generated [`trust-report.md`](trust-report.md). The partitioning response
 (2026-09-25) added `req_id` on every request/response pair, sized per hop,
 and `active_mask` on the memory path; see
 [`skeleton.md`](skeleton.md#payload-spec-response-2026-09-25-as-built).
+
+The pass also corrected four widths that were sized confidently and wrongly
+in the first encoding. That matters more than an open field, because each
+generated a struct and nothing flagged it:
+
+| Field | Was | Now | Why |
+|---|---|---|---|
+| `warp_mask_released` | 5 | 32 | a mask, not an id — a release wakes a *set* |
+| `bank_addr` | 5 | 320 | 5 bits is a bank *index*; 32 banks means 32 independent word addresses |
+| `phys_pred` | `CCV_P_W_PHYS_REG` | `CCV_P_W_PHYS_PRED` | the predicate file is its own namespace with its own RAT |
+| `barrier_entries` | one index | `barrier_base` + `barrier_count` | allocation hands out a *range* |
+
+`bank_addr` was the worst: at 5 bits it doesn't merely get a number wrong. It
+assumes every lane shares one address, and so deletes the bank-conflict model
+SPM exists to implement.
 
 ### Stage 3 — skeleton ✅ S0 (plumbing), ✅ S1 (`vadd`)
 
@@ -333,209 +349,13 @@ rediscovered there. Full text in `stage1a-findings.md`.
 
 ## Part 3 — open items
 
-Carried from the strategy doc, with current status.
-
-1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Two schema questions for
-   the planning side,** from answering "what can the skeleton observe":
-   - Six of the provisional seed events (`DECODE`, `DISPATCH`, `MEM_REQ`,
-     `MEM_RSP`, `BARRIER_ARRIVE`, `BARRIER_RELEASE`) coincide with an
-     `EV_CH_XFER` on a named channel. They need a channel mapping, or
-     deleting. S1's stubs emit the first four as block-internal events
-     (DEC, OOE at ROB allocation, MIU and FET per line), which works but
-     answers neither question.
-   - `EV_DECODE` still claims to establish the uid, which the identity
-     decision moved to fetch.
-
-   `EV_RETIRE` was the third: it's internal to OOE, and the S1 OOE stub now
-   emits it. **Load-bearing content ✅** —
-   the channel list *is* the load-bearing event list, emitted as
-   `EV_CH_XFER` from the shared checker so every boundary emits identically
-   and no per-block drift is possible. **Unit list ✅** — swapped from the
-   strategy doc's illustrative names to the real 14 blocks, *derived* from
-   `params/blocks.json` and checked against it, since two lists of the same
-   thing disagree eventually and this one is read at every emit site. Done
-   before Stage 3 rather than after: a unit id is baked into every event
-   record, so fixing it later means re-tagging or discarding every trace.
-   **Arbitration-sensitive content still pending**, per block at 4a.
-
-2. **Arbitration policy spec.** Not started — per block at Stage 4a/4b, before
-   that block's 4c RTL build. §5 is explicit this buys *temporal precedence,
-   not independence*: written by the same person who then writes the model and
-   the RTL, it does not make agreement into proof. What it delivers is a stable
-   reference, so a policy change is a visible decision rather than silent drift
-   in one implementation.
-
-3. **Assertion primitive library + tool-support spike.** ✅ Both complete.
-
-4. **4d correlation criterion for arbitration-sensitive events.** **Still
-   open, and now more urgent than the strategy doc implies.** The doc notes
-   this "wants settling before Stage 1c locks the schema". Stage 1c has
-   shipped, so the position is: the schema's `classes` block records the
-   criterion as OPEN and the event record carries no tolerance metadata. If
-   the answer turns out to be a stated tolerance rather than exact match, the
-   schema needs a field for it and the hash changes. **Settle before Stage 4a
-   populates the first arbitration-sensitive events**, which is the last cheap
-   moment.
-
-5. **CI harness.** ✅ Standing, and accumulating exit criteria per stage.
-
-6. **Timing model implementation details.** C++ decided. The skeleton's
-   loop is a plain two-phase cycle over every block, which is enough while
-   timing is placeholder. The event-driven scheduler §1 describes isn't
-   built. The block-swap interface it has to preserve is: channel ends and
-   one `cycle()` call per clock (`sim/skel/machine.h`). That is the Stage 4b
-   task.
-
-### Opened by Stage 1
-
-7. **Is 25 NGD the Vmin-corner number or a nominal one?** (§2) Recorded in
-   `params/ccv_params.json` as `CCV_NGD_BUDGET` with the question attached.
-   §2 puts it at Stage 2, and it changes how much margin each block holds
-   back: at 0.55 V, variation and the wire/gate delay ratio both worsen, so
-   headroom at nominal does not translate linearly.
-
-8. **The bounded-latency N.** Opened by F-2, since liveness cannot be stated.
-   **No longer per interface**: the round trip is 2 everywhere by
-   construction, so N is one global provisional (`CCV_P_TIMEOUT_N`, 32) plus
-   one for the memory path (`CCV_P_TIMEOUT_MEM`, 2048), which must exceed
-   worst-case DRAM latency and which the local number does not. Both are in
-   `ccv_prov_pkg` and both are **provisional by construction** per A-3 —
-   revising them is an expected 4b output, not a spec change. What remains is
-   the justification, which needs contention data that does not exist yet.
-
-9. **A-1 — the 4d correlation criterion.** Unchanged and still the tightest
-   window: the last cheap moment is before Stage 4a populates the first
-   arbitration-sensitive events, after which changing the schema means
-   reprocessing or discarding every trace captured. A decision, not an
-   investigation.
-
-10. **A-3 — N is provisional by construction.** (One global N, not one per
-    interface — see item 8.) It cannot be justified at Stage 2; that needs
-    contention data from 4b. Set it from architectural reasoning, record it as
-    provisional, and schedule N-revision as an expected **4b output** rather
-    than a spec change —
-    without that framing, revisiting N later reads as a violation and creates
-    friction against doing it. Each N ships with a case that exceeds it and
-    must fire (see the fail-open register).
-
-11. ~~**A-2 — do testbench-side memory interfaces consume block letters?**~~
-    **Closed.** They do, and they are registered rather than left to collide:
-    `y` is reserved for fixtures and `z` for the reset tree, which is not a
-    design block but does need stage numbering because a synchronous reset
-    cannot be delivered globally in one cycle. 14 design letters + 2 reserved
-    leaves 8 spare.
-
-12. **Clock-gating equivalence is unverified.** The gated netlist has never
-   been proved against its ungated original — that needs a real ICG cell
-   rather than a blackbox, and care about the gated clock not being a free
-   variable. Nothing relies on it today. Settle before any synthesis result
-   is believed. (F-18)
-
-13. ~~**Block letters, and whether 26 is enough.**~~ **Closed** by the same
-   pass as item 11 — the partition is 14 block types, so the single-letter tag
-   holds with room to spare. Had it not, the tag format would have widened and
-   every tagged net changed, which is exactly why this was worth checking
-   against a draft list rather than after a tree of RTL carried the tags.
-
-14. **Synthesis exclusion for checkers.** `bind` provided it for free; F-9
-   removed `bind`. **Mechanism in place:** the SV top instantiates its
-   checkers only under `CCV_CHECK`, and Yosys is asked both ways that the
-   synthesis view has none. Still open: the same rule inside real block RTL
-   at 4c, where checkers sit at each block's own ports.
-
-15. **Direction discipline without modports.** Direction is declared in
-    `schema/interfaces.json` and carried into the generated header. 44 real
-    interfaces now exist, so the question is answerable — but honestly, not
-    yet answered: nothing has been *built* against them. The test is whether a
-    block author can get a direction wrong and have it caught, and that is not
-    known until the skeleton exists. Re-ask at the end of Stage 3, not before.
-
-16. ~~**Backpressure convention.**~~ **Settled, and not the way Stage 1
-    guessed.** The provisional answer was a separate `_ready` signal. The
-    grill-me's answer is a **credited protocol**: four signals per channel —
-    `_valid` and `_payload` from the producer, `_credit` and `_stall` from the
-    consumer. Valid leads the payload by one cycle on every interface without
-    exception, a credit is consumed when valid asserts rather than when the
-    payload lands, and once asserted valid is binding.
-
-    The Stage 1 reasoning still holds and is why the shape works: backpressure
-    stays *outside* the packed struct, so the swap harness still drives the
-    payload one way (F-12).
-
-17. ~~**28 payload field widths.**~~ **Closed for wiring** by the payload
-    pass (2026-09-25): every field has a width, all 44 channels generate a
-    struct. What replaced it is a **tiering** problem rather than a blocking
-    one — see [`payload-spec.md`](payload-spec.md) and the generated
-    [`trust-report.md`](trust-report.md). 7 of 44 channels are decided end to
-    end; 15 carry a provisional width, 22 a preliminary one.
-
-    The pass also corrected four widths that were sized confidently and
-    wrongly in the first encoding, which matters more than an open field
-    because they generated a struct and nothing flagged them:
-
-    | Field | Was | Now | Why |
-    |---|---|---|---|
-    | `warp_mask_released` | 5 | 32 | a mask, not an id — a release wakes a *set* |
-    | `bank_addr` | 5 | 320 | 5 bits is a bank *index*; 32 banks means 32 independent word addresses |
-    | `phys_pred` | `CCV_P_W_PHYS_REG` | `CCV_P_W_PHYS_PRED` | the predicate file is its own namespace with its own RAT |
-    | `barrier_entries` | one index | `barrier_base` + `barrier_count` | allocation hands out a *range* |
-
-    `bank_addr` was the worst: at 5 bits it does not merely get a number
-    wrong, it assumes every lane shares one address and so deletes the
-    bank-conflict model SPM exists to implement.
-
-18. ~~**The `src_arch` / `operand` mismatch.**~~ **Answered from the ISA:
-    `src_arch` was one field short.** Format A's `rs2` is an independent
-    source (`mad.lo`'s and `dp4`'s accumulator input), with `rd` independent
-    of it. Only Format J ties them. `src_arch` and `phys_src` now carry three.
-    The original question: `ccv_dec_ooe_uop` carries two
-    source registers; `ccv_rcu_lane_ops` carries three operands. Either the
-    third is the destination read back for accumulate — so rename must treat
-    `dst_arch` as a source — or the ISA has true three-source operations and
-    `src_arch` is one field short. `dp4`/`dp8` make the second likely. **An
-    ISA question, not an RTL one.** It does not block the skeleton, since both
-    sides already have a width; it blocks *coding rename* at 4a. S1 carries a
-    third source in `dst_arch`, which fits vadd's `MADLO` (accumulate) and
-    indexed store, and refuses anything else.
-
-19. **RCU→MIU is ~8,400 wires.** `index_per_lane` (1024) beside `store_data`
-    (1024) at rate 4, almost certainly the widest interface in the design. It
-    argues for co-locating the AGUs with RCU, or moving address generation
-    into the register read stage. A partitioning question that a width
-    exposed, and block boundaries are swap boundaries — so settle it before
-    floorplan, not after.
-
-20. **Payload questions from running `vadd`, and from applying the
-    partitioning response.** Each one is in `schema/interfaces.json`
-    `open_questions`, with what it blocks and who owns it, and is rendered in
-    [`payload-spec.md`](payload-spec.md#open-questions-that-no-width-can-close).
-    Item 19 is the other entry there.
-
-    | Question | In short |
-    |---|---|
-    | `miu_dcu_req_store_data` | store data was missing from MIU→DCU; `write_data` + `byte_mask` added provisionally — **confirm** |
-    | `pred_src_and_dst` | one `pred_reg` for guard and destination |
-    | `migration_control` | RAU sequences both migrations and waits for both acks, but nothing carries the command to FET or any ack to RAU; smallest fix: 46 channels |
-
-    Decided since, and closed: `agu_immediate` (disp + scale to MIU's AGU,
-    ALU immediates substituted by RCU), `active_lane_mask` (`issue_mask` and
-    an RCU-only `active_mask`), `itlb_correlation` (one miss outstanding,
-    asserted), and `src_arch_vs_operand` (item 18); then `branch_resolution`
-    (built: RCU resolves, OOE redirects on `ccv_ooe_fet_redirect`) and
-    `pred_source_operands` (already decided: predicate logic executes in
-    RCU, now built); then `predicate_as_lane_data` (decided: RCU executes
-    only all-predicate and horizontal ops; `sel` runs in the lane with a
-    `pred_data` bit); then `pc_group_state_owner` (built: the FET↔PCA
-    migration pair) and `miu_rcu_phys_dst` (built: OOE carries the
-    destinations on the memop, MIU echoes them, and RCU is stateless on
-    write-back).
-
-    Fields shared across abutting channels are worth settling **across**
-    sessions rather than within one. After the payload pass split `op`, those
-    are `opcode` (three hops), `asid` (three channels) and `size`.
-    [`trust-report.md`](trust-report.md) lists every channel that carries an
-    undecided width, and [`payload-spec.md`](payload-spec.md) lists what still
-    has to be decided.
+**Moved to [`open-items.md`](open-items.md),** where each item has a running
+number (Q-n) that is never renumbered or reused, so a review round can say
+"Q-21" instead of "item 4 of the latest five". Closed items stay there with
+their resolution. `tools/check-docs.sh` checks that the numbering has no
+holes, that the summary matches the rows, and that the schema's
+`open_questions` agree with it. The old per-list numbers (this part's items
+1–20, the strategy doc's §8 items) are mapped at the bottom of that page.
 
 ---
 

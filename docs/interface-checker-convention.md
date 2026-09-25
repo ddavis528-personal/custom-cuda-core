@@ -361,8 +361,8 @@ The two questions the spike raised that this document had not asked:
 
   > **Since:** 41 exist, and the S1 stubs are built against them, but no
   > block has yet been written by hand against a generated port list. The
-  > question is re-asked at the end of Stage 3 (`roadmap.md` Part 3,
-  > item 15).
+  > question is re-asked at the end of Stage 3 (Q-13 in
+  > [`open-items.md`](open-items.md)).
 - **Backpressure convention.** Separate `_ready` signal versus reverse-direction
   struct. *Provisionally decided* in favour of the separate `_ready`, on the
   strength of F-12: the struct surfaces at the C++ boundary as one packed

@@ -6,8 +6,11 @@
 # way, and more quietly: a count that drifts or a finding reference that points
 # nowhere still reads as authoritative.
 #
-# Four things, all of which drifted at least once during Stage 1:
+# Five things, all of which drifted at least once:
 #   - every F-nn referenced anywhere is defined, and the numbering has no holes
+#   - the open-items register (Q-n) is numbered without holes, its summary
+#     matches its rows, the schema's open questions name live rows, and every
+#     Q-n referenced anywhere is defined
 #   - every lint rule is implemented, documented, and numbered without holes
 #   - every repo path named in a doc exists
 #   - counts stated in prose match what is on disk
@@ -41,6 +44,69 @@ if defined:
             problems.append("finding F-%d is missing: the numbering has a hole, "
                             "which usually means one was deleted rather than "
                             "marked superseded" % i)
+
+# -- open items --------------------------------------------------------------
+# Running numbering, never reused: the point is that "Q-21" means the same
+# thing in every review round, which only holds if nothing renumbers.
+Q = "docs/open-items.md"
+STATUSES = ("open", "awaiting confirmation", "scheduled", "closed")
+rows = {}
+for m in re.finditer(r"^\| Q-(\d+) (.*)$", text[Q], re.M):
+    n = int(m.group(1))
+    cells = [c.strip() for c in m.group(2).split(" | ")]
+    st = re.match(r"\*\*(%s)\b" % "|".join(STATUSES), cells[-1])
+    if n in rows:
+        problems.append("Q-%d has two rows: IDs are never reused" % n)
+    if not st:
+        problems.append("Q-%d's status does not start with one of: %s"
+                        % (n, ", ".join(STATUSES)))
+    rows[n] = (st.group(1) if st else "?", m.group(0))
+for i in range(1, max(rows, default=0) + 1):
+    if i not in rows:
+        problems.append("Q-%d is missing: the numbering has a hole, which "
+                        "means one was deleted rather than closed" % i)
+# The summary lists every live item under its status, and nothing else.
+for label in ("Awaiting confirmation", "Open", "Scheduled"):
+    m = re.search(r"^- \*\*%s:\*\* (.*)$" % label, text[Q], re.M)
+    said = set(int(x) for x in re.findall(r"Q-(\d+)", m.group(1))) if m else set()
+    want = {n for n, (st, _) in rows.items() if st == label.lower()}
+    if not m:
+        problems.append("%s has no '%s' summary line" % (Q, label))
+    elif said != want:
+        problems.append("%s's '%s' summary says %s, the rows say %s"
+                        % (Q, label, sorted(said), sorted(want)))
+# Schema open questions and register rows name each other, and agree.
+oq = json.load(open("schema/interfaces.json")).get("open_questions", {})
+named = {}
+for n, (st, row) in rows.items():
+    for k in re.findall(r"Schema: `(\w+)`", row):
+        named[k] = n
+        if st == "closed":
+            problems.append("Q-%d is closed but still names schema question "
+                            "%s: delete the schema entry, or reopen" % (n, k))
+for k, e in oq.items():
+    q = e.get("id", "")
+    if not re.fullmatch(r"Q-\d+", q):
+        problems.append("schema open question %s carries no Q-id" % k)
+    elif named.get(k) != int(q[2:]):
+        problems.append("schema open question %s says %s, but %s"
+                        % (k, q, "Q-%d names it" % named[k] if k in named
+                           else "no register row names it"))
+for k in sorted(set(named) - set(oq)):
+    problems.append("Q-%d names schema question %s, which does not exist"
+                    % (named[k], k))
+# Every reference resolves. The schema's own text counts as a doc here.
+refs = dict(text)
+for f in glob.glob("schema/*.json"):
+    refs[f] = open(f).read()
+for f, t in refs.items():
+    for r in sorted(set(int(x) for x in re.findall(r"\bQ-(\d+)\b", t))):
+        if r not in rows:
+            problems.append("%s refers to Q-%d, which is not in %s" % (f, r, Q))
+counts = {st: sum(1 for s, _ in rows.values() if s == st) for st in STATUSES}
+print("SUMMARY %d items: %d open, %d awaiting confirmation, %d scheduled, "
+      "%d closed" % (len(rows), counts["open"], counts["awaiting confirmation"],
+                     counts["scheduled"], counts["closed"]))
 
 # -- lint rules --------------------------------------------------------------
 lint = open("tools/lint-rtl.py").read()
@@ -96,8 +162,11 @@ sys.exit(1 if problems else 0)
 PY
 )
 rc=$?
+summary=$(sed -n 's/^SUMMARY //p' <<< "$out")
+out=$(grep -v '^SUMMARY ' <<< "$out")
 if [ $rc -eq 0 ]; then
   say "findings, rules, paths and counts consistent" "PASS"
+  say "open items (docs/open-items.md)" "PASS ($summary)"
 else
   while IFS= read -r l; do [ -n "$l" ] && bad "docs consistent" "$l"; done <<< "$out"
 fi

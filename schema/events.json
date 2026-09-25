@@ -30,7 +30,7 @@
     },
     "arbitration_sensitive": {
       "description": "Outcome depends on an arbiter's algorithm including tie-breaks. Comparable only against a faithful arbiter model, not a statistically plausible one.",
-      "correlation": "OPEN -- see open item 4. Exact match if the arbiter model is faithful to tie-breaks; otherwise a stated tolerance, and correlation becomes a judgement call each run. This choice constrains how the schema records these events, so it wants settling before the content lands.",
+      "correlation": "OPEN -- Q-5 in docs/open-items.md. Exact match if the arbiter model is faithful to tie-breaks; otherwise a stated tolerance, and correlation becomes a judgement call each run. This choice constrains how the schema records these events, so it wants settling before the content lands.",
       "populated_at": "Stage 4a, per block -- internals-defined"
     }
   },

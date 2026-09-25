@@ -173,15 +173,17 @@ because those are the ones where a skeleton that reads the field
 
 ## Open questions that no width can close
 
-### migration control
+Each is numbered in [`open-items.md`](open-items.md), the one list of what is undecided.
 
-*control gap exposed by moving the PC groups — RAU / PCA sessions*
+### Q-18 — rcu miu width
 
-RAU sequences both migrations and waits for both acks before reallocating the slot -- but at 44 channels nothing carries the sequencing. ccv_rau_rcu_mig tells RCU which warp, direction and parked bank; nothing tells FET to send or accept its PC groups, and no channel returns an ack to RAU from FET, RCU or PCA. The same gap already existed for PCA itself: ccv_rcu_pca_mig carries no warp or bank, so PCA cannot place what arrives (the new FET<->PCA pair carries warp_id for this reason). Smallest fix: extend ccv_rau_rcu_mig's command to FET (a ccv_rau_fet_mig with warp, direction, bank), and have PCA ack once both halves land (a ccv_pca_rau_mig_done) -- 46 channels -- with bank_select added to both data pairs.
+*partitioning question that a width exposed — partitioning / floorplan*
 
-**Blocks:** Demotion and restore, which no S1 kernel exercises.
+ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.
 
-### miu dcu req store data
+**Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
+
+### Q-19 — miu dcu req store data
 
 *payload omission found by the first kernel — memory-path payload owner*
 
@@ -189,7 +191,7 @@ ccv_miu_dcu_req had no store data: nothing on the MIU->DCU path could carry what
 
 **Blocks:** Nothing while the added fields stand; the choice changes the widest DCU-facing bus (56 -> 1208 bits at rate 4).
 
-### pred src and dst
+### Q-21 — pred src and dst
 
 *payload question found by the first kernel — ISA / compiler track*
 
@@ -197,13 +199,13 @@ ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a gu
 
 **Blocks:** Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.
 
-### rcu miu width
+### Q-30 — migration control
 
-*partitioning question that a width exposed — partitioning / floorplan*
+*control gap exposed by moving the PC groups — RAU / PCA sessions*
 
-ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.
+RAU sequences both migrations and waits for both acks before reallocating the slot -- but at 44 channels nothing carries the sequencing. ccv_rau_rcu_mig tells RCU which warp, direction and parked bank; nothing tells FET to send or accept its PC groups, and no channel returns an ack to RAU from FET, RCU or PCA. The same gap already existed for PCA itself: ccv_rcu_pca_mig carries no warp or bank, so PCA cannot place what arrives (the new FET<->PCA pair carries warp_id for this reason). Smallest fix: extend ccv_rau_rcu_mig's command to FET (a ccv_rau_fet_mig with warp, direction, bank), and have PCA ack once both halves land (a ccv_pca_rau_mig_done) -- 46 channels -- with bank_select added to both data pairs.
 
-**Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
+**Blocks:** Demotion and restore, which no S1 kernel exercises.
 
 ---
 

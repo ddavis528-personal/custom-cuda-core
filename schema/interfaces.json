@@ -1207,28 +1207,34 @@
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
     "no width can close. Each blocks something specific; the `blocks` field",
-    "says what, so it is obvious when one has become urgent."
+    "says what, so it is obvious when one has become urgent. Each carries its",
+    "id in docs/open-items.md, where it is numbered once and never reused;",
+    "tools/check-docs.sh requires the two to agree."
   ],
   "open_questions": {
     "rcu_miu_width": {
+      "id": "Q-18",
       "question": "ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.",
       "kind": "partitioning question that a width exposed",
       "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
       "owner": "partitioning / floorplan"
     },
     "miu_dcu_req_store_data": {
+      "id": "Q-19",
       "question": "ccv_miu_dcu_req had no store data: nothing on the MIU->DCU path could carry what a store writes, so no store could reach memory. Stage 3 S1 (vadd) added write_data (CCV_W_DATA) and byte_mask (CCV_W_DATA/8), mirroring ccv_miu_spm_req. Confirm, or say where store data is meant to travel instead (a separate store-data channel would decouple address and data timing, as many L1s do).",
       "kind": "payload omission found by the first kernel",
       "blocks": "Nothing while the added fields stand; the choice changes the widest DCU-facing bus (56 -> 1208 bits at rate 4).",
       "owner": "memory-path payload owner"
     },
     "pred_src_and_dst": {
+      "id": "Q-21",
       "question": "ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.",
       "kind": "payload question found by the first kernel",
       "blocks": "Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.",
       "owner": "ISA / compiler track"
     },
     "migration_control": {
+      "id": "Q-30",
       "question": "RAU sequences both migrations and waits for both acks before reallocating the slot -- but at 44 channels nothing carries the sequencing. ccv_rau_rcu_mig tells RCU which warp, direction and parked bank; nothing tells FET to send or accept its PC groups, and no channel returns an ack to RAU from FET, RCU or PCA. The same gap already existed for PCA itself: ccv_rcu_pca_mig carries no warp or bank, so PCA cannot place what arrives (the new FET<->PCA pair carries warp_id for this reason). Smallest fix: extend ccv_rau_rcu_mig's command to FET (a ccv_rau_fet_mig with warp, direction, bank), and have PCA ack once both halves land (a ccv_pca_rau_mig_done) -- 46 channels -- with bank_select added to both data pairs.",
       "kind": "control gap exposed by moving the PC groups",
       "blocks": "Demotion and restore, which no S1 kernel exercises.",

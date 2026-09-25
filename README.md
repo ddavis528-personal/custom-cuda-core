@@ -40,14 +40,13 @@ breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
 artifact listing everything that references an undecided number, so which
 ones are still made up is produced rather than remembered.
 
-Still outside the repository: **per-interface NGD budgets**, and four payload
-questions no width can close, listed in `schema/interfaces.json`
-`open_questions` and rendered in
-[`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close).
-One predates the skeleton: the RCU→MIU width, a partitioning question to
-settle before floorplan. The rest came from running `vadd`. One is waiting on
-confirmation rather than analysis: store data on `ccv_miu_dcu_req`, added
-provisionally.
+Everything still undecided is in one numbered list,
+[`docs/open-items.md`](docs/open-items.md), where an item keeps its Q-number
+for good and closed items stay with their resolution. Four of them are
+payload questions no width can close (Q-18, Q-19, Q-21, Q-30).
+`schema/interfaces.json` carries those under the same IDs, and
+[`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close)
+renders them. Per-interface NGD budgets (Q-17) haven't started.
 
 ## Start here
 
@@ -66,7 +65,8 @@ this is what restores one.
 | File | Role |
 |---|---|
 | [`docs/rtl-execution-strategy.md`](docs/rtl-execution-strategy.md) | **The process contract.** How we get from locked architecture to validated RTL, and in what order. Not a design doc — block-level architecture definition happens elsewhere and is an input to this. Section references throughout the repo (§1, §6, §8 Stage 1c…) point here. |
-| [`docs/roadmap.md`](docs/roadmap.md) | **Start here when picking this up again.** Current state, what is built, what is next, and the open items carried forward. |
+| [`docs/roadmap.md`](docs/roadmap.md) | **Start here when picking this up again.** Current state, what is built, and what is next. |
+| [`docs/open-items.md`](docs/open-items.md) | **Every open item, numbered Q-1… and never renumbered.** What is undecided, awaiting confirmation or scheduled to a stage, with owner and what each blocks. Closed items stay, with their resolution. Refer to items by ID. |
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
 | [`docs/rtl-findings-stage1.md`](docs/rtl-findings-stage1.md) | **The report for the architecture and planning track.** What Stage 1 found about the strategy — six decisions measurement overturned, what was confirmed, and what Stage 2 needs. Organised by what was found, not by what was built. |
 | [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eighteen findings (F-1…F-18), several of which close questions the strategy doc left open. |
