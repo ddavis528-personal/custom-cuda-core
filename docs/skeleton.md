@@ -82,14 +82,16 @@ stall phases while its smoke test passed. See `fail-open-register.md`.
 A checker bank that is not connected produces exactly the same clean run as
 one that is. So every clean result has a partner that must **not** be clean:
 
-| Clean result (3 seeds, 2000 cycles, ~230k messages each) | Negative control |
+| Clean result (3 seeds, 2000 cycles, ~151k messages each) | Negative control |
 |---|---|
 | 0 checker violations | `--break phantom-all`: all 340 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
 | | `--break stall-all`: all 340 fire `stall_honoured` — proves every `stall` and `valid` |
 | `EV_CH_XFER` payloads (bits 63:0) **and trace ids** equal the launched ones, as a multiset | the match is exact, so one miswired payload or sideband bit fails it |
 | 0 payload mismatches at the receivers; sent == received; no idle slot | — (end-to-end data check, independent of the bank) |
 | `--force-atomic`: every multi-slot channel moves in whole groups, clean | `--break atomic-all`: all 77 atomic checkers fire both properties, and nothing else fires |
-| The ordered channel is consumed in (arrival, slot) order, payloads keyed on its one sequence | `--break misorder`: consuming newest-first is caught — on exactly the ordered channels |
+| Ordered channels are consumed in order per key — per binding group on fet→dec, per `warp_id` on dec→ooe — with different keys free to pass | `--break misorder`: taking a head that is not the oldest of its key is caught — on exactly the two ordered channels |
+| Lane channels advance together: slot *k* moves on all 32 lanes or none | `--break lockstep-all`: one lane's slot alone — both lockstep checkers fire, nothing else |
+| Slot *k* carries the same instruction on every lane | `--break misbind`: lane 7 carries slot *k*+1's instruction in slot *k* — only `lockstep_id` fires |
 | Every message's id class is in its channel's set | `--break wrong-class`: all 41 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
@@ -127,41 +129,73 @@ document to agree with it.
 
 ---
 
-## Interface decisions (2026-09-24), as built
+## Interface decisions (2026-09-24, revised 2026-09-25), as built
 
-### Rate > 1: independent slots, plus three attributes
+### Rate > 1: independent slots, plus per-channel attributes
 
-Unchanged mechanism: `rate` independent credited slots, one checker each.
-Three attributes per channel, each defaulting to the permissive value.
-Only **decided** values are written in the schema. The generators apply
-defaults otherwise and mark which is which, so a default is never read as a
-decision. Setting one on a rate-1 channel, or without a recorded reason, is a
-generation error.
+The mechanism is unchanged: `rate` independent credited slots, one checker each.
+Only **decided** attribute values are written in the schema, each with its
+reason. The generators apply the permissive default otherwise and mark which
+is which, so a default is never read as a decision. `gen-interfaces.py`
+rejects any specification that couldn't mean anything:
+- an attribute on a rate-1 channel, or one with no reason recorded;
+- `slot_group` ordering without binding;
+- an ordering field that isn't in the payload;
+- a binding group that doesn't divide the rate;
+- lockstep on a channel with one instance.
 
-| Attribute | Decided so far | How the skeleton honours it |
-|---|---|---|
-| `acceptance` | none atomic yet | `ccv_atomic_checker` on all 77 multi-slot channel instances, enabled by the schema; stubs send and consume whole groups |
-| `ordering` | `dec→ooe uop` ordered; `miu→ooe cmpl` unordered | one sequence per channel, consumed in (arrival, slot) order |
-| `slot_binding` | `fet→dec instr` bound; `ooe→rcu issue` free | slots stay separate streams; nothing in the skeleton pools them |
+| Attribute | Level | Decided so far | Checked by |
+|---|---|---|---|
+| `acceptance` | slots | none atomic yet | `ccv_atomic_checker`, all 77 multi-slot instances |
+| `slot_binding` + `binding_group` | slots | fet→dec bound, groups of 2; lane channels bound, groups of 1; ooe→rcu issue free | `lockstep_id` on the lane channels (below) |
+| `ordering` — a **key** | slots | fet→dec `slot_group`; dec→ooe `warp_id`; miu→ooe cmpl `none` | the stubs' in-order consumption, and `--break misorder` |
+| `lockstep` | **instances** | both lane channels | `ccv_lockstep_checker`, one per lane channel |
 
-**Interpretation to confirm — atomic constrains valids too.** The decision
-says credits move together, "letting RTL collapse to one counter". Credits
-alone don't give that: if slots launched independently while credits came back
-in lockstep, the per-slot counts would drift apart and one counter couldn't
-represent them. So `ccv_atomic_checker` requires valids *and* credits to be all
-or none each cycle. If only credits were meant, the check drops its
-`atomic_valid` half.
+**Atomic means the message, valid and payload together.** Confirmed: a
+message is its valid *and* its payload despite the one-cycle stagger. So
+`ccv_atomic_checker` requires valids and credits both to be all-or-none. It
+exists before any channel is atomic on purpose, and its `enable` is the schema
+flag OR a test override that can only switch it on.
 
-The check exists before any channel is atomic on purpose. Were it only
-recorded, marking a channel atomic later would assert nothing. Its `enable` is
-the schema flag OR a test override that can only switch it on, so a channel
-decided atomic can't be switched off at run time.
+**Ordering is a key, not a boolean.** Six uops from up to four warps have no
+total order, only a per-warp one, and fet→dec's two slots per stream are
+strictly program-ordered. So `ordering` is `none`, `slot_group` (one order
+per binding group), or a payload field name (one order per value of that
+field). A receiver may take a head only if no older message shares its key.
+Different keys pass each other freely; one key never passes itself.
 
-**The binding key is text, not yet a check.** `fet→dec instr` is bound as
-"tier-1 stream = slot / 2". Checking that needs a payload field naming the
-stream, and the payload carries `warp_id` (5 bits, 32 warps), not the tier-1
-slot (2 bits). A check would have to know the warp-to-tier-1 mapping, which
-belongs to OOE.
+**Lockstep is the missing instance-level attribute.** Every other check looks
+inside one channel instance; `ccv_lockstep_checker` looks across all 32. Per
+slot *k*, valid and credit must be all-or-none across the lanes. Under
+`CCV_TRACE`, when slot *k* lands on every lane, every lane must carry the
+**same trace id**.
+
+That last property is what makes binding checkable here. Lane 3 taking
+instruction A in slot 0 while lane 7 takes it in slot 2 has matching valids
+and different ids. Stall is not required to match: a lane may stall on its
+own, provided the single sender holds every lane for it. A sender that
+doesn't is caught by `lockstep_valid` plus `stall_honoured` on the stalled lane.
+
+In the stubs, a decision that spans blocks — 32 lane blocks — comes from a
+hash of (channel, slot, cycle) shared by every block, not a block's private
+RNG. Otherwise the stub would break lockstep by construction. Lockstep costs
+throughput, as it should: 256 of the 340 slots are lane slots, and the RCU
+sender holds all 32 lanes whenever any one stalls, so runs carry ~151k
+messages where they carried ~230k.
+
+**The fet→dec binding key is still text, not a check.** "Tier-1 stream =
+slot / 2" needs a payload field naming the stream; the payload carries
+`warp_id` (32 warps), not the tier-1 slot. Its ordering, however, is now
+checked through `slot_group`.
+
+**What the stub got wrong on the way, and the check that caught it.** The
+first keyed receiver served eligible heads in slot order and stopped at its
+first failed coin. That starved fet→dec's higher binding groups: slots 4–7
+were held past N = 32 cycles, and `response_within_n` fired 175 times — the
+bounded-response check doing exactly its job, on the stub. It now picks at
+random among eligible heads, with one coin per step. Not in slot order,
+which is a fixed priority; not oldest-first, which is plain FIFO and would
+never let one key pass another. Clean across eight seeds.
 
 ### The external port is a pair
 
@@ -201,20 +235,24 @@ and `none` stays in the structure view. `tools/check-trace-ids.py` checks
 that structure, and fails on the obvious wrong implementation (owned
 transactions drawn as peers).
 
-**Proposal to confirm — which classes each channel carries.** The decision
-defines the classes; it doesn't assign channels. The skeleton proposes a
-*set* per channel, since some carry more than one kind: EXB→MLC and the
-inbound port carry fills (txn) *and* probes (none). Every message is checked
-against its channel's set. The full assignment is in
-[`skeleton-slots.md`](skeleton-slots.md); in short:
+**Which classes each channel carries.** Each channel has a *set*, since
+some carry more than one kind: EXB→MLC and the inbound port carry fills
+(txn) *and* probes (none). Every message is checked against its channel's
+set. The full assignment is in [`skeleton-slots.md`](skeleton-slots.md); in
+short:
 
 - **instr (13):** the instruction path, execute and memory ops, completion,
   retire, barrier arrive, fault;
-- **txn (13):** SPM, DCU and MLC traffic, ifill, ITLB, outbound external, and
-  barrier *release* (it wakes several warps);
+- **txn (12):** SPM, DCU and MLC traffic, ifill, ITLB, outbound external;
 - **txn + none (2):** EXB→MLC, inbound external;
-- **none (13):** probes, launch, allocation, status, demotion and
-  migration, CTA setup, CSR config.
+- **none (14):** probes, launch, allocation, status, demotion and
+  migration, CTA setup, CSR config — and barrier **release**.
+
+A release wakes a *set* of warps and has no single owning transaction, so it
+is `none` rather than `txn`. The link back to each `bar.sync` is already in
+the trace — the arrives on the same `barrier_id` since its previous release —
+so no set-valued id is needed. An explicit link, if wanted, would be a trace
+event, not an id.
 
 In S0 the ids are synthetic: a pure function of the message, like the payload.
 S1 assigns the real sequence at fetch.
