@@ -3,7 +3,7 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 40 channels
+# Payload specification — all 41 channels
 
 Every payload field has a width, so **every one of the 41
 channels generates a packed struct** and the skeleton can be

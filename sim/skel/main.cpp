@@ -1,6 +1,6 @@
 //===-- main.cpp - ccv-skel: the Stage 3 skeleton ----------------------===//
 //
-// Runs the whole machine -- 45 block instances, 102 channel instances, 339
+// Runs the whole machine -- 45 block instances, 103 channel instances, 340
 // credited slots -- with the SystemVerilog interface checker Verilated in at
 // every slot. The bank is clocked with each cycle's channel signals, so the
 // skeleton is judged by the same checker the RTL will be, and the

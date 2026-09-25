@@ -326,7 +326,7 @@ The convention's §3.1 has one checker per interface type, instantiated as
 fall out of the convention rather than being hand-built per block.
 
 > **Since (2026-09-23 partition).** It turned out to be *one checker, full
-> stop*: every one of the 40 channels runs the same credited protocol, so
+> stop*: every one of the 40 channels (now 41) runs the same credited protocol, so
 > `ccv_credit_checker.sv` is generic over payload **width** rather than payload
 > type — it never interprets the payload, only the protocol around it. The
 > mechanism below is unchanged; only the count is.
@@ -614,10 +614,13 @@ staying in the flow forever.
   read, and the satisfiability covers are what keeps a wrong one from passing
   silently. (F-9, F-11, CCV-L14) — **since:** there is one checker rather than
   one per type, which concentrates this: a tracking register that never arms
-  never arms at all 40 boundaries. Its negative controls are still outstanding
-  and are logged in `fail-open-register.md`.
+  never arms at all 40 boundaries. **Since:** its negative controls exist
+  (`test/neg/tb_credit_neg.sv`, 11 cases), and the first run found four bugs
+  in the checker. See `fail-open-register.md`.
 - **Before first synthesis** — checkers are instantiated, not bound, so they
-  are no longer excluded from synthesis for free. Recorded debt. (F-9)
+  are no longer excluded from synthesis for free. Recorded debt. (F-9) —
+  **since:** the SV top puts them under `CCV_CHECK`; real block RTL still has
+  to.
 - **At first synthesis** — confirm the real tool infers gating from the `if`
   enable form. Yosys cannot answer it, so the preference rests on convention
   until a commercial tool is in the flow. (F-17)

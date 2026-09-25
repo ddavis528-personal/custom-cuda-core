@@ -8,8 +8,11 @@ using it. Written for the architecture and planning side, so it is organised by
 **Status:** Stage 1 complete and gated. **Stage 2's partition has since closed**
 (2026-09-23 grill-me: 14 block types, 45 instances, 40 channels) and is encoded
 here; §5 below is kept as written, with each item's delivery status marked,
-because what was asked for and what arrived are worth comparing. The remaining
-inputs are 28 payload field widths and the per-interface NGD budgets.
+because what was asked for and what arrived are worth comparing. Since this
+report was written, the payload widths have closed (tiered by trust), the
+external port has become a pair (41 channels), and Stage 3 has run `vadd`
+end to end. The per-interface NGD budgets are the input still missing.
+[`roadmap.md`](roadmap.md) holds the current state.
 
 **Bottom line:** the strategy survives Stage 1 substantially intact. Its
 sequencing was right, and front-loading the tool spike paid for itself several
@@ -325,7 +328,9 @@ clocking convention can reintroduce it silently.
   plus one for the memory path, which must exceed worst-case DRAM latency.
   Justifying either still needs contention data from 4b.
 - **Synthesis exclusion for checkers**, from §1.3. Still open, and now applies
-  to 40 checker instances rather than a handful.
+  to 40 checker instances rather than a handful. *Since:* the SV top
+  instantiates its checkers only under `CCV_CHECK`, verified in Yosys both
+  ways; real block RTL at 4c must follow the same rule.
 - **Clock-gating equivalence is unverified.** The gated netlist has never been
   proved against its ungated original. Nothing relies on it — synthesis is
   deferred — but settle it before any synthesis result is believed.
@@ -336,6 +341,9 @@ clocking convention can reintroduce it silently.
   one, since independent decisions on a field that crosses abutting channels
   produce two incompatible encodings. The full list is in `roadmap.md` Part 3
   item 17, and `tools/check-if.sh` reports the census on every run.
+  *Since:* closed for wiring by the payload pass (2026-09-25). Every field has
+  a width, tiered settled / provisional / preliminary, and `op` was split into
+  `mem_op`, `spm_op` and `coh_op`.
 
 ---
 
@@ -350,13 +358,15 @@ Kept as originally written, with delivery status. Three of four arrived in the
    disagreed, so the ports are now **derived** from the channels — a derived
    list cannot disagree with itself. The unit list in the event schema still
    carries the strategy doc's illustrative names and should be swapped for the
-   real 14 before Stage 4a.
+   real 14 before Stage 4a. *Since:* done. The units are derived from
+   `params/blocks.json` and checked against it.
 2. ✅ **A block letter per block.** 14 assigned, `z`/`y` reserved, 8 spare.
    The §4 ceiling check passed.
 3. ◐ **Per-block interface contracts.** Protocol and signal shape closed —
    four signals per channel, credited, valid one cycle ahead of payload. The
    F-2 caveat held: every temporal property is an explicit tracking register.
-   **28 payload field widths remain open** across 25 channels.
+   **28 payload field widths remain open** across 25 channels. *Since:*
+   all sized, and tiered (`payload-spec.md`).
 4. ❌ **Per-block interface NGD budgets** against the 25 NGD envelope. Not
    started.
 

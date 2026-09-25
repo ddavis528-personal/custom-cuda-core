@@ -11,16 +11,18 @@ the cycle-accurate timing model, the RTL, and the machinery that connects them
 across three tools that disagree, and a lint layer that enforces the coding
 rules before the first block is written.
 
-**Current state: Stage 1 complete; Stage 2 closed and encoded; Stage 3 skeleton S0 (plumbing) done.**
-Stage 1 is the tooling and schema groundwork, whose membership criterion is
-*needs no architectural decision as input*. The Stage 2 interface grill-me
-happens outside this repository; it ran on 2026-09-23 and closed the partition
-at **14 block types, 45 instances, 40 channels**, all now encoded and
-machine-checked here. `tools/verify.sh` is green and lists the pending stages
-rather than omitting them.
+**Current state: Stage 1 complete; Stage 2 closed and encoded; Stage 3
+skeleton S0 (plumbing) and S1 (`vadd` end to end, final state identical to
+ccv-sim) done.** Stage 1 is the tooling and schema groundwork, whose membership
+criterion is *needs no architectural decision as input*. The Stage 2 interface
+grill-me happens outside this repository; it ran on 2026-09-23 and closed the
+partition at **14 block types, 45 instances, 40 channels**. It's 41 channels
+since the external port became an out/in pair, and all of them are encoded
+and machine-checked here. `tools/verify.sh` is green and lists the pending
+stages rather than omitting them.
 
-**Every payload field now has a width, so all 40 channels generate a packed
-struct and the skeleton can be wired end to end.** The cost is that some
+**Every payload field now has a width, so all 41 channels generate a packed
+struct and the skeleton is wired end to end.** The cost is that some
 widths are guesses, so the repository carries **three tiers of trust** and the
 tier is visible at every use site:
 
@@ -30,17 +32,21 @@ tier is visible at every use site:
 | `ccv_prov_pkg` | a sizing placeholder | the number |
 | `ccv_prelim_pkg` | no decided *encoding* at all | possibly the **field itself** |
 
-Classified by the weakest width each carries: **10 of 40** channels are
-decided end to end, 14 carry a provisional width, and 16 carry a preliminary
+Classified by the weakest width each carries: **8 of 41** channels are
+decided end to end, 15 carry a provisional width, and 18 carry a preliminary
 one. [`docs/payload-spec.md`](docs/payload-spec.md) is the per-channel
 breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
 artifact listing everything that references an undecided number, so which
 ones are still made up is produced rather than remembered.
 
-Still outside the repository: **per-interface NGD budgets**, and two questions
-no width can close — the `src_arch`/`operand` mismatch (an ISA question that
-blocks coding rename) and the RCU→MIU width that argues for moving the AGUs
-(a partitioning question, before floorplan).
+Still outside the repository: **per-interface NGD budgets**, and eight payload
+questions no width can close, listed in `schema/interfaces.json`
+`open_questions` and rendered in
+[`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close).
+Two predate the skeleton: the `src_arch`/`operand` mismatch, an ISA question
+that blocks coding rename, and the RCU→MIU width that argues for moving the
+AGUs, a partitioning question to settle before floorplan. The other six
+came from running `vadd`.
 
 ## Start here
 
@@ -67,10 +73,10 @@ this is what restores one.
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
-| [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the assumptions awaiting confirmation, and S1: `vadd` end to end, its wire conventions and the payload gaps it found. |
+| [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the SV top, and S1: `vadd` end to end, where its values come from, its wire conventions and the payload gaps it found. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
-| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one checker for all 40 channels**, since every boundary runs the same credited protocol. |
+| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one credit checker for every channel**, since every boundary runs the same credited protocol. Two more checkers (atomic, lockstep) span slots and instances rather than types. |
 
 The matrix and the findings are deliberately two files. One is data and is
 regenerated; the other is judgment and changes only when someone decides
@@ -93,7 +99,9 @@ rtl/include/                ccv_assert.svh   assertion primitives (1b)
                             ccv_if.svh       interface checker convention
                             ccv_xprop.svh    X-determinism constructions
                             ccv_trace.svh    RTL-side event emit (1c)
-rtl/if/                     the one parameterised credit checker
+rtl/if/                     the credit checker (one per slot), plus the atomic
+                              (across a channel's slots) and lockstep (across
+                              lane instances) checkers
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
 rtl/top/                    GENERATED, tracked: the SV top level
                               ccv_core_top.sv   45 blocks, 103 channel instances
@@ -103,7 +111,8 @@ rtl/generated/              generated; never edited
 
 sim/include/ sim/src/       C++ timing-model side: event emit API
 sim/dpi/                    DPI-C bridge, so RTL feeds the same library
-sim/skel/                   Stage 3 skeleton: channels, machine, stubs
+sim/skel/                   Stage 3 skeleton: channels, machine, the S0
+                              exerciser, the S1 functional stubs and oracle reader
 sim/generated/              generated; never edited
 
 synth/                      clock-gating techmap -- exploratory, see F-18
@@ -111,6 +120,7 @@ spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
 test/top/                   GENERATED, tracked: testbench for the SV top
+test/golden/                ccv-sim oracle records per kernel (tools/gen-golden.sh)
 tools/                      generators, checks, and the gate
 ```
 
@@ -141,8 +151,8 @@ stack.
 
 **1c — event schema mechanism.** The container, not the event list: the two
 event classes are decided, the events themselves a seed set that Stage 2 and
-Stage 4a populate. Stage 2 has since populated the load-bearing half — the
-40-channel list *is* that list, emitted as `EV_CH_XFER`. Binary 32-byte records, a semantic schema
+Stage 4a populate. Stage 2 has since populated the load-bearing half: the
+channel list *is* that list, emitted as `EV_CH_XFER`. Binary 32-byte records, a semantic schema
 hash in every trace header, and a Perfetto view produced on demand. The RTL
 emit path is DPI-C into the same library, decided *and exercised* here rather
 than discovered at 4c.
@@ -160,7 +170,7 @@ a preference.
 
 **Interface checkers.** One checker — `rtl/if/ccv_credit_checker.sv`, not one
 per interface — serves protocol assertions, formal cut-points and event
-emission at all 40 boundaries at once. Every boundary runs the same credited
+emission at every boundary at once. Every boundary runs the same credited
 protocol, so only the payload width differs. Connected by instantiation, not
 `bind` — see below. Since no multi-cycle SVA exists (F-2), every temporal
 property in it is an explicit tracking register, which is what makes a single
@@ -215,8 +225,9 @@ Full detail in [`docs/stage1a-findings.md`](docs/stage1a-findings.md).
 The grill-me closed the partition; this repository turned it into things that
 are checked rather than described.
 
-**The topology.** 14 block types, 45 instances, 40 channels, in
-`params/blocks.json` and `schema/interfaces.json`. Per-block port lists are
+**The topology.** 14 block types, 45 instances, 40 channels (41 since the
+external port became an out/in pair), in `params/blocks.json` and
+`schema/interfaces.json`. Per-block port lists are
 **derived** from the channel list rather than stated, because the source spec
 carried both and they disagreed — and a derived list cannot disagree with
 itself. Block letters came in at 14 with 2 reserved (`z` reset tree, `y`
@@ -260,6 +271,26 @@ would turn a misconfiguration into an *assumption* and constrain it away.
 `tools/check-if.sh` builds each misconfiguration and requires the matching
 assertion to fire, because every other check there is a *stays quiet* check
 and a check that has been deleted is very quiet.
+
+## What Stage 3 has built
+
+Detail is in [`docs/skeleton.md`](docs/skeleton.md).
+
+**S0: plumbing.** The whole machine is wired from the schema: 45 block
+instances, 103 channel instances, 340 credited slots. At first every block is
+an exerciser stub, and every slot is judged by the real SV credit checker,
+Verilated in. Three seeds each give zero violations. Every clean result is
+paired with a control that must fail it.
+
+**The SV top.** The same machine as SystemVerilog (`rtl/top/`), generated and
+tracked. Its connectivity is extracted from the elaborated netlist and equals
+the C++ skeleton's bit for bit.
+
+**S1: `vadd`.** It runs to completion on functional stubs over the real
+channel path. The final register file and memory are identical to ccv-sim's,
+and there are zero interface violations. The "what" comes from a ccv-sim
+oracle record; bytes, operands, and load and store data travel the channels.
+The run found six payload gaps, which are now open questions.
 
 ## Checking it
 

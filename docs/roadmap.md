@@ -8,46 +8,44 @@ and what is carried.
 
 ## Part 0 — picking this up again
 
-**State: Stage 1 complete and gated. Stage 2 under way — the block-level
-grill-me closed the partition on 2026-09-23, and its topology is encoded.**
+**State: Stage 1 complete. Stage 2 closed and encoded, except the
+per-interface NGD budgets. Stage 3's skeleton has run `vadd` end to end (S1),
+with the final state identical to ccv-sim's. Next: S2, a kernel that stresses
+what vadd does not.**
 
 ```
     ./tools/setup-toolchain.sh   # containers are ephemeral; this restores one
     ./tools/verify.sh            # green
 ```
 
-**Review response.** The Stage 1 review raised thirteen items. Six are closed
-in-repo (C-1, C-2, C-3, D-1, D-2, B-3); the rest need the partition list or a
-planning decision and are carried in Part 3 below.
-
 **To hand back to the planning track:**
-[`rtl-findings-stage1.md`](rtl-findings-stage1.md) — what Stage 1 found about
-the strategy, organised for that audience rather than this one.
+[`rtl-findings-stage1.md`](rtl-findings-stage1.md) covers what Stage 1 found
+about the strategy, organised for that audience rather than this one. The
+Stage 1 review raised thirteen items; the ones still open are carried in
+Part 3.
 
-**The grill-me has happened.** §8 Stage 2's interface-level session ran on
-2026-09-23 and delivered the first three of the four things this repository was
-waiting for. Their status now:
+**What Stage 2 was waiting for, and what arrived.** The interface-level
+grill-me ran on 2026-09-23. Here is each input's status:
 
 | Was waiting for | Status |
 |---|---|
-| The partition list | ✅ 14 block types, 45 instances, 40 channels — encoded in `params/blocks.json` and `schema/interfaces.json` |
+| The partition list | ✅ 14 block types, 45 instances, 40 channels — 41 since the external port became an out/in pair. Encoded in `params/blocks.json` and `schema/interfaces.json` |
 | A block letter per block | ✅ 14 assigned, 2 reserved (`z` reset tree, `y` fixtures), 8 spare — **closes the 24-block ceiling question** |
-| Per-block interface contracts | ✅ protocol, signal shape and **all 144 payload field widths** closed — 10 of 40 channels decided end to end, the rest on provisional or preliminary widths |
+| Per-block interface contracts | ✅ protocol, signal shape, slot attributes and **all 163 payload field widths**. 8 of 41 channels are decided end to end; the rest are on provisional or preliminary widths, tiered and reported |
 | Per-block interface NGD budgets | ❌ not started, against the 25 NGD envelope |
 
-So the remaining input is **payload widths and NGD budgets**, not the
-partition. The widths are per-block-session work and are listed by channel in
-Part 3; they are deliberately not guessed here, because a generated typedef is
-the thing downstream code trusts and a generated number gets believed.
+**Next, in order:**
 
-Everything that does not depend on those widths is buildable now. Each
-interface becomes:
-
-- an entry in `schema/interfaces.json`, which generates the typedef into both
-  languages;
-- an instantiation of `rtl/if/ccv_credit_checker.sv` at each end, parameterised
-  by payload width and the interface's round trip — the latter defaulted to
-  the abutting minimum, so in practice only the width is passed.
+1. **S2: a kernel that stresses what vadd does not.** vadd has no divergence,
+   no loop, one warp, and no SPM or barriers, so 15 of the 41 channels carried
+   nothing in S1. Kernels that exercise them come from the compiler corpus
+   (Part 4). Several are blocked on open payload questions, at least in the
+   form S1 worked around (Part 3, item 20).
+2. **The open payload questions** (Part 3, item 20). They're owned by the
+   per-block sessions and the ISA track, not this repository, but each one
+   says what it blocks.
+3. **The 4d correlation criterion** (item 4) must be settled before Stage 4a
+   populates the first arbitration-sensitive events.
 
 **The checker is one implementation, not one per interface.** Every boundary
 obeys the same conventions — credited, registered both sides, valid one cycle
@@ -55,7 +53,9 @@ ahead — so the protocol properties are identical and only the widths differ.
 Since no multi-cycle SVA exists (F-2), each of those properties is an explicit
 tracking register, which makes a single shared implementation worth far more
 than it would be if they were declarative: written once, reviewed once, wrong
-in one place at most.
+in one place at most. Two further checkers span slots and instances rather
+than interface types: atomic acceptance across a channel's slots, and
+lockstep across the 32 lanes.
 
 ### What a new design file has to carry
 
@@ -105,11 +105,10 @@ multi-cycle construct exists in any tool (F-2), and every interface needs a
 **justified N** for its bounded-latency property, because liveness cannot be
 stated at all.
 
-**Do not skip ahead to Stage 3.** The skeleton is built against Stage 2's
-interface contracts, and §8 open item 6 is explicit that the block-swap
-interface must be settled at Stage 2 because the skeleton's block boundaries
-*are* the swap boundaries — retrofitting swappability means reworking every
-interface.
+**Keep the swap boundary fixed.** §8 open item 6 is explicit that the skeleton's
+block boundaries *are* the swap boundaries, so retrofitting swappability means
+reworking every interface. A payload change goes through the schema, and the
+S0 checks re-prove the wiring. It never goes through a stub.
 
 ---
 
@@ -150,23 +149,25 @@ looks exactly like one that passes.
 ### Stage 2 — partition closed, topology encoded ✅
 
 The block-level grill-me (2026-09-23) closed the partition: **14 block types,
-45 instances, 40 channels**. Encoded and machine-checked:
+45 instances, 40 channels** (41 since the external port became an out/in
+pair). Encoded and machine-checked:
 
 - `params/blocks.json` — the 14 block letters, 8 spare. **Closes A-2**: the
   single-letter stage tag holds and does not need widening.
-- `schema/interfaces.json` — all 40 channels, the 11 common ports, and the
+- `schema/interfaces.json` — all 41 channels, the 11 common ports, and the
   four-signal channel shape. Per-block port lists are **derived** from the
   channel list rather than stated, since the source spec kept both and they
   disagreed.
-- `params/ccv_params.json` — 56 machine parameters, each tagged `isa`,
-  `arch`, `tunable`, `provisional` or `target`, so a sweep cannot silently
-  vary something the compiler is built against. The 12 `provisional` ones
-  generate into a **separate package** (`ccv_prov_pkg`, `ccv::prov::`), so a
-  module referencing one is visibly unfinished at every use site — which is
-  what stops a placeholder from being believed.
+- `params/ccv_params.json` — 91 machine parameters, each tagged `isa`,
+  `arch`, `tunable`, `target`, `provisional` or `preliminary`, so a sweep
+  cannot silently vary something the compiler is built against. The 19
+  `provisional` and 21 `preliminary` ones generate into **separate packages**
+  (`ccv_prov_pkg`, `ccv_prelim_pkg`), so a module referencing one is visibly
+  unfinished at every use site — which is what stops a placeholder from being
+  believed.
 - `rtl/if/ccv_credit_checker.sv` — the one parameterised checker.
 - `EV_CH_XFER` — the load-bearing event content §8 said would fall out of the
-  interface grill-me. The 40-channel list **is** the load-bearing event list.
+  interface grill-me. The channel list **is** the load-bearing event list.
 
 **Round trip: closed.** Flops on both sides with no exceptions, plus
 abutment, gives exactly 2 — it is not a per-block choice, so credit depth,
@@ -185,34 +186,46 @@ nothing else would catch either, and `tools/check-if.sh` builds each
 misconfiguration to prove the check still bites.
 
 **Payload widths: closed enough to build on.** Every field has a width, so
-all 40 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
+all 41 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
 the widths whose *encoding* is undecided — distinct from `ccv_prov_pkg`, where
 only the number is. Each preliminary parameter also carries a **churn**
 rating: high means a per-block session is likely to change the field's shape,
 so code that pattern-matches on its contents will be rewritten, as against
 code that merely carries it. See [`payload-spec.md`](payload-spec.md) and the
-generated [`trust-report.md`](trust-report.md).
+generated [`trust-report.md`](trust-report.md). The partitioning response
+(2026-09-25) added `req_id` on every request/response pair, sized per hop,
+and `active_mask` on the memory path; see
+[`skeleton.md`](skeleton.md#payload-spec-response-2026-09-25-as-built).
 
-### Stage 3 — skeleton, S0 (plumbing) ✅
+### Stage 3 — skeleton ✅ S0 (plumbing), ✅ S1 (`vadd`)
 
-See [`skeleton.md`](skeleton.md). The whole machine — 45 block instances,
-103 channel instances, 340 credited slots — wired from the schema, every block
-running an exerciser stub, every slot judged by the real SV credit checker
-Verilated in beside it. ~231k messages per 2000-cycle run, three seeds, zero
-violations; each clean result paired with a control that must fail.
+See [`skeleton.md`](skeleton.md).
+
+**S0.** The whole machine is wired from the schema: 45 block instances, 103
+channel instances, 340 credited slots. Every block runs an exerciser stub, and
+every slot is judged by the real SV credit checker Verilated in beside it. A
+2000-cycle run carries ~151k messages, and three seeds give zero violations.
+Each clean result is paired with a control that must fail it.
 
 - `tools/gen-skel.py` — wiring tables, the checker bank, and a layout probe
-  that reads all 144 fields back through the real SV structs
-- `sim/skel/` — the two-phase machine, the protocol in one place, the stub
+  that reads all 163 fields back through the real SV structs
+- `sim/skel/` — the two-phase machine, the protocol in one place, the stubs
 - `tools/check-skel.sh` — exit criteria, in the gate
 
-**S1 ✅ — `vadd` end to end.** It runs on functional stubs over the real
+**S1 — `vadd` end to end.** It runs on functional stubs over the real
 channel path in 355 cycles. The final register file and memory are identical
 to ccv-sim's, with 0 interface violations, and each clean result is paired
 with a control that must fail it (`tools/check-kernel.sh`). It found six
 payload gaps, including store data missing from `ccv_miu_dcu_req` (added
 provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-141). See
 [`skeleton.md`](skeleton.md#s1--vadd-through-the-machine).
+
+- `sim/skel/kernel.cpp`, `oracle.cpp` — the functional stubs and the reader
+  for ccv-sim's `-oracle` records
+- `test/golden/vadd/`, `tools/gen-golden.sh` — the checked-in record, and its
+  drift check against the compiler repo
+- `tools/check-kernel.sh` — exit criteria, in the gate
+
 **Interface decisions (2026-09-24, revised 2026-09-25) built in:**
 independent slots with per-channel acceptance, binding (with groups) and an
 ordering *key*; an instance-level `lockstep` attribute for the lane channels,
@@ -241,16 +254,18 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
 - `rtl/include/ccv_if.svh` — modes, mode-resolved contracts, satisfiability
   covers, guarded emission
 - `rtl/if/ccv_credit_checker.sv` — the one parameterised checker, now driven
-  by the real 40-channel topology rather than a worked example.
+  by the real topology (one instance per slot) rather than a worked example.
+- `rtl/if/ccv_atomic_checker.sv`, `ccv_lockstep_checker.sv` — the two
+  checkers that look across slots and across lane instances.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
 
-**What is NOT done here:** nothing, for wiring purposes — all 40 channels
+**What is NOT done here:** nothing, for wiring purposes — all 41 channels
 have a full set of widths and generate a struct. What is not *decided* is
-tiered and reported rather than missing. There are
-no per-type checkers and there will not be: every boundary obeys the same
-credited protocol, so one parameterised checker covers all 40, and the widths
-are the only thing that differs.
+tiered and reported rather than missing. There are no per-type checkers and
+there will not be: every boundary obeys the same credited protocol, so one
+parameterised checker covers every channel, and the widths are the only thing
+that differs.
 
 ### Net naming convention ✅ (mechanism)
 
@@ -316,15 +331,20 @@ rediscovered there. Full text in `stage1a-findings.md`.
 
 Carried from the strategy doc, with current status.
 
-1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Three schema problems found
-   answering "what can the skeleton observe"**, open for the planning side:
-   six of the provisional seed events (`DECODE`, `DISPATCH`, `MEM_REQ`,
-   `MEM_RSP`, `BARRIER_ARRIVE`, `BARRIER_RELEASE`) are `EV_CH_XFER` on a named
-   channel and need a channel mapping or deleting; `EV_RETIRE` is *internal*
-   to OOE, not a channel transaction, so the OOE stub must emit it; and
-   `EV_DECODE` still claims to establish the uid, which the identity decision
-   moved to fetch. **Load-bearing content ✅** —
-   the 40-channel list *is* the load-bearing event list, emitted as
+1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Two schema questions for
+   the planning side,** from answering "what can the skeleton observe":
+   - Six of the provisional seed events (`DECODE`, `DISPATCH`, `MEM_REQ`,
+     `MEM_RSP`, `BARRIER_ARRIVE`, `BARRIER_RELEASE`) coincide with an
+     `EV_CH_XFER` on a named channel. They need a channel mapping, or
+     deleting. S1's stubs emit the first four as block-internal events
+     (DEC, OOE at ROB allocation, MIU and FET per line), which works but
+     answers neither question.
+   - `EV_DECODE` still claims to establish the uid, which the identity
+     decision moved to fetch.
+
+   `EV_RETIRE` was the third: it's internal to OOE, and the S1 OOE stub now
+   emits it. **Load-bearing content ✅** —
+   the channel list *is* the load-bearing event list, emitted as
    `EV_CH_XFER` from the shared checker so every boundary emits identically
    and no per-block drift is possible. **Unit list ✅** — swapped from the
    strategy doc's illustrative names to the real 14 blocks, *derived* from
@@ -355,10 +375,12 @@ Carried from the strategy doc, with current status.
 
 5. **CI harness.** ✅ Standing, and accumulating exit criteria per stage.
 
-6. **Timing model implementation details.** C++ decided; the event-driven
-   scheduler is not built. The block-swap interface was blocked on the Stage 2
-   partition, which has now closed — so this is **unblocked and is the next
-   real coding task**, alongside the Stage 3 skeleton.
+6. **Timing model implementation details.** C++ decided. The skeleton's
+   loop is a plain two-phase cycle over every block, which is enough while
+   timing is placeholder. The event-driven scheduler §1 describes isn't
+   built. The block-swap interface it has to preserve is: channel ends and
+   one `cycle()` call per clock (`sim/skel/machine.h`). That is the Stage 4b
+   task.
 
 ### Opened by Stage 1
 
@@ -418,7 +440,7 @@ Carried from the strategy doc, with current status.
    at 4c, where checkers sit at each block's own ports.
 
 15. **Direction discipline without modports.** Direction is declared in
-    `schema/interfaces.json` and carried into the generated header. 40 real
+    `schema/interfaces.json` and carried into the generated header. 41 real
     interfaces now exist, so the question is answerable — but honestly, not
     yet answered: nothing has been *built* against them. The test is whether a
     block author can get a direction wrong and have it caught, and that is not
@@ -437,11 +459,11 @@ Carried from the strategy doc, with current status.
     payload one way (F-12).
 
 17. ~~**28 payload field widths.**~~ **Closed for wiring** by the payload
-    pass (2026-09-25): every field has a width, all 40 channels generate a
+    pass (2026-09-25): every field has a width, all 41 channels generate a
     struct. What replaced it is a **tiering** problem rather than a blocking
     one — see [`payload-spec.md`](payload-spec.md) and the generated
-    [`trust-report.md`](trust-report.md). 10 of 40 channels are decided end to
-    end; 14 carry a provisional width, 16 a preliminary one.
+    [`trust-report.md`](trust-report.md). 8 of 41 channels are decided end to
+    end; 15 carry a provisional width, 18 a preliminary one.
 
     The pass also corrected four widths that were sized confidently and
     wrongly in the first encoding, which matters more than an open field
@@ -464,7 +486,9 @@ Carried from the strategy doc, with current status.
     `dst_arch` as a source — or the ISA has true three-source operations and
     `src_arch` is one field short. `dp4`/`dp8` make the second likely. **An
     ISA question, not an RTL one.** It does not block the skeleton, since both
-    sides already have a width; it blocks *coding rename* at 4a.
+    sides already have a width; it blocks *coding rename* at 4a. S1 carries a
+    third source in `dst_arch`, which fits vadd's `MADLO` (accumulate) and
+    indexed store, and refuses anything else.
 
 19. **RCU→MIU is ~8,400 wires.** `index_per_lane` (1024) beside `store_data`
     (1024) at rate 4, almost certainly the widest interface in the design. It
@@ -473,27 +497,27 @@ Carried from the strategy doc, with current status.
     exposed, and block boundaries are swap boundaries — so settle it before
     floorplan, not after.
 
-    Ranked by blast radius, since a field on several channels is one where two
-    per-block sessions deciding independently produce two incompatible
-    encodings on channels that abut:
+20. **Payload questions from running `vadd`, and from applying the
+    partitioning response.** Each one is in `schema/interfaces.json`
+    `open_questions`, with what it blocks and who owns it, and is rendered in
+    [`payload-spec.md`](payload-spec.md#open-questions-that-no-width-can-close).
+    Items 18 and 19 are the other two entries there.
 
-    | Field | Channels | Where |
-    |---|---|---|
-    | `op` | 5 | dcu↔mlc, miu↔dcu, miu↔spm, mlc↔exb, … |
-    | `asid` | 3 | fet↔miu itlb, fet↔mlc ifill, rau→fet launch |
-    | `opcode` | 3 | dec→ooe uop, ooe→rcu issue, rcu→lane ops |
-    | `pcs`, `pred_state` | 2 each | both directions of the pca↔rcu migration pair |
-    | `size` | 2 | miu↔dcu, mlc↔exb |
+    | Question | In short |
+    |---|---|
+    | `miu_dcu_req_store_data` | store data was missing from MIU→DCU; `write_data` + `byte_mask` added provisionally — **confirm** |
+    | `agu_immediate` | no displacement or scale reaches address generation; S1 substitutes the oracle's per-lane offset |
+    | `active_lane_mask` | the memory path has `active_mask`, but neither OOE nor RCU can compute it; proposal: `issue_mask` on `ooe_rcu_issue` |
+    | `pred_src_and_dst` | one `pred_reg` for guard and destination |
+    | `miu_rcu_phys_dst` | `miu_rcu_data.phys_dst` has no source |
+    | `itlb_correlation` | ITLB refills name no request |
 
-    The remaining 22 are single-channel: `bank_select`, `byte_mask`, `class`,
-    `code_bounds`, `conflict_serialization`, `cta_id`, `data`,
-    `demotion_threshold`, `index_per_lane`, `itlb_refill`, `launch_block_addr`,
-    `operand`, `ordering`, `ownership_class`, `prf_base`, `prf_size`,
-    `progress_threshold`, `retired_since_restore`, `space`, `status`,
-    `sub_width`, `tilelink_tlc`.
-
-    `op`, `opcode` and `size` are worth settling **across** sessions rather
-    than within one.
+    Fields shared across abutting channels are worth settling **across**
+    sessions rather than within one. After the payload pass split `op`, those
+    are `opcode` (three hops), `asid` (three channels) and `size`.
+    [`trust-report.md`](trust-report.md) lists every channel that carries an
+    undecided width, and [`payload-spec.md`](payload-spec.md) lists what still
+    has to be decided.
 
 ---
 
@@ -503,8 +527,11 @@ Carried from the strategy doc, with current status.
 The walkthrough kernel corpus is an output of the LLVM backend bootstrap,
 which runs on its own schedule in `custom-cuda-complier`.
 
-- **Stage 3** needs a `vadd`-class kernel. **Available today** —
-  `custom-cuda-complier/test/elementwise.s` and the walkthrough there.
+- **Stage 3** needed a `vadd`-class kernel: `custom-cuda-complier/test/elementwise.s`.
+  **Used by S1.** Its ccv-sim `-oracle` record is checked in under
+  `test/golden/vadd/`, and `tools/gen-golden.sh --check` fails the gate if
+  the compiler repo's ccv-sim drifts from it. S2's kernels come from the same
+  corpus.
 - **Stage 6** needs the GEMM tile / reduction / elementwise set. **Not yet
   complete.** If the compiler effort lags, Stage 6 is gated on it.
 

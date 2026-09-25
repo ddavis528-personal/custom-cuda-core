@@ -56,6 +56,11 @@ broken it once and watched it notice.
 | Skeleton slot count | **silent** | re-derived from the schema by code sharing nothing with the generator | `check-skel.sh` |
 | Gate summary parsing | **silent** | keys matched whole; see below | `check-skel.sh` |
 | Credit checker protocol properties | open | 11 cases: each violation trips *exactly* its property on Icarus and trips it first on Verilator; each legal extreme stays quiet | `check-if.sh` |
+| S1 final state compared with ccv-sim | **silent** | a compare fed from the oracle instead of the machine would always pass. `--break corrupt-load` must change the final R9, and `--break drop-store` all 32 words of `c[]` | `check-kernel.sh` |
+| S1 per-consumer checks against the oracle | **silent** | `--break corrupt-fetch` must be caught at DEC, and `corrupt-load` at the lane receiving the operand | `check-kernel.sh` |
+| Response correlation by `req_id` | **silent** | FIFO order matches ids by coincidence while one request is outstanding. `--break corrupt-req-id` must be refused by MLC, not taken as the oldest | `check-kernel.sh` |
+| Golden oracle record vs ccv-sim | open | SKIPs, visibly, without the compiler repo. The compare was mutated once by hand (one mask bit flipped in the checked-in record) and failed | `gen-golden.sh --check` |
+| ccv-sim `-oracle` memory flags | **silent** | the record reported `"load":0` beside 32 reads (compiler F-141). It now refuses a step whose traffic the descriptor does not declare; checked once by dropping `LD_GLOBAL`'s flag | compiler repo |
 
 The ones marked **silent** are the dangerous class: they do not merely fail to
 detect, they produce a positive result that is wrong. The two checker

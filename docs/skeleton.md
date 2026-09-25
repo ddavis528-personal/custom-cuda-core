@@ -14,9 +14,20 @@ if the first is proven:
 | **S0 — plumbing** | Every block instance and channel instance exists and is wired to the right two ends; every slot carries traffic under backpressure; the protocol holds; every payload bit lands where both languages agree it should | **Done** — `tools/check-skel.sh` |
 | **S1 — `vadd`** | An instruction stream flows through the real channel path, values carried by the channels, retiring state identical to ccv-sim | **Done** — `tools/check-kernel.sh` |
 
-`build/skel/ccv-skel --cycles 2000 --seed 1 --trace t.ccvtrace` runs S0.
-`tools/trace2perfetto.py t.ccvtrace -o t.json` makes the Perfetto view, one
-track per channel; add `--by=instr` for the per-instruction view.
+```
+build/skel/ccv-skel --cycles 2000 --seed 1 --trace t.ccvtrace        # S0
+build/skel/ccv-skel --kernel test/golden/vadd/oracle.jsonl \
+                    --trace t.ccvtrace                                # S1
+tools/trace2perfetto.py t.ccvtrace -o t.json     # one track per channel
+tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json   # per instruction
+```
+
+`tools/check-skel.sh` builds the binary and runs S0's checks, and
+`tools/check-kernel.sh` runs S1's. Both run in the gate.
+
+**Next: S2.** vadd leaves 15 of the 41 channels idle and never diverges, loops
+or uses a second warp. S2 is kernels that do, as far as the open payload
+questions allow.
 
 ---
 
@@ -46,10 +57,10 @@ produces them, never their shape. Field positions are generated
 **Cross-checked, not assumed.** The C++ offsets and the SV typedefs come from
 two generators that agree by construction, which is exactly the agreement F-12
 says not to trust at a swap boundary. `rtl/generated/ccv_skel_layout_probe.sv`
-reads all 144 fields back *through the real SV structs* and compares them with
+reads all 163 fields back *through the real SV structs* and compares them with
 the C++ table: zero disagreements over 64 random rounds. Its negative control
 shifts every C++ offset by one bit, and the probe must catch every field that
-can be shifted — 141 of 141 (the other three are single-field payloads).
+can be shifted — 160 of 160 (the other three are single-field payloads).
 
 ### 3. Interface checking is the SV checker itself, Verilated in
 
@@ -117,8 +128,7 @@ and every channel with its attributes. In short:
 
 That is 41 types and 103 channel instances: 39 at one instance, plus the two
 lane channels at 32 each. Before the inbound external channel it was 40
-types, 102 instances, 339 slots. (The review's "102 from 41 types" was off by
-one: 102 is 38 + 2×32.)
+types, 102 instances, 339 slots.
 
 The review's point stands regardless: this is the one number a clean run does
 not validate. A rate wrong by one on a ×32 channel moves the total by 32, and
@@ -255,7 +265,8 @@ so no set-valued id is needed. An explicit link, if wanted, would be a trace
 event, not an id.
 
 In S0 the ids are synthetic: a pure function of the message, like the payload.
-S1 assigns the real sequence at fetch.
+In S1 they are real: FET assigns the instruction's sequence, and the memory
+path's transactions are owned by it (see "S1 wire conventions").
 
 ## The SV top
 
@@ -286,7 +297,7 @@ every channel port to a (channel, copy, slot, signal, bit) coordinate from
 names and the layout rule alone. It then requires one driver and one load per
 net, identical coordinates at both ends, and the right direction per signal.
 The resulting producer→consumer map must equal `ccv-skel --dump-wiring`:
-63,232 bits, identical. A copy with one lane's valid slice swapped is
+68,345 bits, identical. A copy with one lane's valid slice swapped is
 rejected.
 
 **Gaps it exposed, left visible rather than guessed:**
@@ -454,7 +465,7 @@ cross-checked C++ against SV) and exercised by vadd.
   `phys_addr`. The flag was on `exb_mlc_rsp`, not `ext_exb_in`: `tl_in` is the
   flattened TL bundle and already carries the probe's address and param in its
   B-channel fields. EXB translates them. Decomposing `tl_in` into named fields
-  is the EXB session's `tilelink_tlc` decision, so I haven't done it here.
+  is the EXB session's `tilelink_tlc` decision, and is left to it.
 - **Lane channels have no tag:** added as the third reason in
   `rcu_lane_ops`' binding rationale. They were already `bound` and lockstep.
 
@@ -505,7 +516,7 @@ decisions.
 | `exb_ext_out.tl_out` | `[2:0]` op (1 Get, 2 PutFull), `[8:3]` source (= MLC→EXB `req_id`), `[56:9]` address, `[184:57]` byte mask, `[1208:185]` data |
 | `ext_exb_in.tl_in` | `[2:0]` op (1 AccessAckData, 2 AccessAck), `[8:3]` source, `[1032:9]` data |
 | `req_id` | each requester allocates the lowest free id below 2^width on its own hop and holds it until the response; MLC maps its EXB-side id back to the requester's id |
-| `active_mask` | all 32 lanes, or the guard predicate for a predicated memory op; MIU touches and RCU writes only active lanes |
+| `active_mask` | OOE sends its issue mask (all 32 lanes: no divergence yet); RCU sends issue mask ∧ guard. They differ for a predicated memory op, which MIU reports (open question `active_lane_mask`). MIU touches and RCU writes only active lanes |
 | identities | instruction: `instr` class, seq = record seq. Line request on an instruction's behalf: owned `txn`, same seq, sub = line. ITLB and ifill: unowned `txn` |
 
 ### Events: what the skeleton emits

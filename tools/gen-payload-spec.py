@@ -190,7 +190,7 @@ def main():
     prelim_params = {x["name"]: x for x in params.values()
                      if x["status"] == "preliminary"}
 
-    L = [BANNER, "# Payload specification — all 40 channels", ""]
+    L = [BANNER, "# Payload specification — all %d channels" % len(chans), ""]
     L.append("Every payload field has a width, so **every one of the %d"
              % len(chans))
     L.append("channels generates a packed struct** and the skeleton can be")

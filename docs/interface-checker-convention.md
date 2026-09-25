@@ -107,12 +107,17 @@ The mode resolution lives in the Stage 1b primitive library, not in each checker
 
 > **SUPERSEDED BY THE CLOSED PARTITION (2026-09-23).** The sketch above is
 > per-interface-type. The block-level grill-me made every one of the 40
-> boundaries obey identical conventions -- credited, registered both sides,
+> boundaries (41 since the external port became a pair) obey identical conventions -- credited, registered both sides,
 > valid one cycle ahead -- so the protocol properties are the same everywhere
 > and only widths differ. There is therefore **one** checker,
 > `rtl/if/ccv_credit_checker.sv`, parameterised by payload width and round
 > trip, not one per type. Everything below about modes, satisfiability covers
 > and emission holds unchanged; it simply applies to one module.
+>
+> **Since (Stage 3).** Two more checkers exist, but not per type:
+> `ccv_atomic_checker` looks across a channel's slots, and
+> `ccv_lockstep_checker` across the 32 lane instances. The credit checker is
+> instantiated once per slot, 340 times.
 >
 > **ANSWERED (spike Q2, finding F-11) — confirmed, and the mechanism is a `generate`.**
 > The `assert`/`assume`/`cover` keyword cannot be selected by a parameter
@@ -351,6 +356,11 @@ The two questions the spike raised that this document had not asked:
   a generated-code mismatch rather than a silent miswiring. Whether that is
   *adequate* is still open and will not be known until several real interfaces
   exist at Stage 2.
+
+  > **Since:** 41 exist, and the S1 stubs are built against them, but no
+  > block has yet been written by hand against a generated port list. The
+  > question is re-asked at the end of Stage 3 (`roadmap.md` Part 3,
+  > item 15).
 - **Backpressure convention.** Separate `_ready` signal versus reverse-direction
   struct. *Provisionally decided* in favour of the separate `_ready`, on the
   strength of F-12: the struct surfaces at the C++ boundary as one packed
@@ -359,6 +369,12 @@ The two questions the spike raised that this document had not asked:
   get their own reverse-direction struct, which is the doc's own second option
   applied per direction rather than per interface. Revisit at Stage 2 with real
   interfaces in hand.
+
+  > **SETTLED at Stage 2, and not as guessed.** The grill-me chose a
+  > **credited protocol**: `_valid` and `_payload` from the producer,
+  > `_credit` and `_stall` from the consumer. The F-12 reasoning survives:
+  > backpressure stays outside the packed struct, so the swap harness still
+  > drives the payload one way.
 - **Checker reuse across block-swap.** Still open, and F-12 sharpens it. The
   struct's field offsets are not exposed at the C++ boundary, so the swap
   harness already needs a generated view of the layout —
@@ -367,6 +383,12 @@ The two questions the spike raised that this document had not asked:
   generator exists. It still interacts with the unresolved 4d correlation
   criterion, and is not decided here.
 
+  > **ANSWERED at Stage 3: the SV checker itself.** The C++ skeleton
+  > Verilates `ccv_skel_checkers`, the bank of real checkers, rather than
+  > porting them. So a C++ stub and a swapped-in RTL block are judged by
+  > identical logic, and `EV_CH_XFER` comes from identical code on both sides
+  > (`skeleton.md`, decision 3).
+
 ### Opened by the spike
 
 - **Synthesis exclusion has no substitute now that `bind` is out.** `bind` kept
@@ -374,7 +396,15 @@ The two questions the spike raised that this document had not asked:
   deferred by the strategy doc, so this is a recorded debt rather than a present
   cost — but it is real, and it should be settled before the first synthesis
   attempt rather than discovered there.
+
+  > **Mechanism in place:** the SV top instantiates checkers only under
+  > `CCV_CHECK`, and Yosys is asked both ways that the synthesis view has none.
+  > The same rule inside real block RTL is still to do, at 4c.
 - **The event emission path has one witness.** DPI is Verilator-only (F-13), so
   a bug in emission itself cannot be caught by cross-checking two simulators.
   Worth a deliberate test of the emission path at Stage 2, since every
   load-bearing event in §5 flows through it.
+
+  > **Since:** the skeleton gives the path a second witness. Every
+  > `EV_CH_XFER` the Verilated bank emits is compared, as an exact multiset
+  > over channel, payload bits and identity, with what the senders launched.

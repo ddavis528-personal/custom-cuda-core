@@ -1180,9 +1180,10 @@ private:
       put(mo, c.ooe_miu, "rob_tag", e.tag);
       put(mo, c.ooe_miu, "warp_id", e.warp);
       put(mo, c.ooe_miu, "mem_op", e.op->cls == kStore ? kMemStore : kMemLoad);
-      // OOE has the issue mask but not predicate values (open question
-      // active_lane_mask). Unpredicated and undiverged, that is all lanes.
-      put(mo, c.ooe_miu, "active_mask", e.op->pread ? 0u : 0xffffffffu);
+      // OOE has the issue mask, not predicate values (open question
+      // active_lane_mask), so this is the issue mask: all 32 lanes until a
+      // group diverges. For a predicated op RCU's copy differs, and MIU says.
+      put(mo, c.ooe_miu, "active_mask", 0xffffffffu);
       send(c.ooe_miu, slot, mo, e.tid);
     }
     e.issued = true;

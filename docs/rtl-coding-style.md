@@ -151,7 +151,8 @@ Every `preliminary` parameter carries a churn rating, and it rates the
 The practical rule for the Stage 3 skeleton: *carry* preliminary fields
 freely, *decode* them only where the skeleton would be pointless without it,
 and never build control flow on a high-churn field's contents. `opcode`,
-`operand`, `pcs`, `pred_state` and `tilelink_tlc` are the high-churn ones
+`operand` (`CCV_L_OPERANDS_PER_LANE`), `pcs` (`CCV_L_PC_GROUPS`),
+`pred_state` and the external port's `tl_out`/`tl_in` are the high-churn ones
 today; `docs/trust-report.md` is generated on every gate run and lists them
 with everything that references them.
 
@@ -893,7 +894,9 @@ Three things to know before using them:
   signal rather than pointing at the macro.
 - **`CCV_ASSERT_RESPONSE_WITHIN` assumes one outstanding request**; the age
   counter clears on any `ack`. A pipelined interface with several in flight
-  needs a per-tag age array, which is a Stage 2 decision per interface.
+  needs one age per outstanding message, which is what
+  `ccv_credit_checker.sv` carries. It was one counter until its negative
+  controls showed a second message could wait ~2N (`fail-open-register.md`).
 
 `CCV_ASSERT_RESPONSE_WITHIN` is what replaces liveness. `s_eventually` does not
 exist anywhere (F-2), so "a request is eventually answered" cannot be stated at
@@ -926,8 +929,9 @@ Consequences, which land on Stage 2 when interface contracts are written:
   to review rather than a thing to read.
 - **Deadlock freedom** cannot be stated as liveness. It becomes a bounded
   property — *a request outstanding for more than N cycles is a failure* —
-  which is strictly weaker, and N is a number somebody has to justify per
-  interface.
+  which is strictly weaker, and N is a number somebody has to justify. The
+  round trip turned out uniform, so it is one global N plus one for the
+  memory path (`CCV_P_TIMEOUT_N`, `CCV_P_TIMEOUT_MEM`), both provisional.
 - **One-cycle history** is available as `` `CCV_PAST `` in tier 2, which is
   the Verilator-and-formal tier.
 
