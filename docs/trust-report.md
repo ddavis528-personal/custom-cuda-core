@@ -18,6 +18,7 @@ so this is a build artifact rather than something to remember.
 | File | Preliminary | Provisional |
 |---|---|---|
 | `rtl/if/ccv_credit_checker.sv` | — | `CCV_P_TIMEOUT_N` |
+| `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/smoke/credit_smoke.sv` | — | `CCV_P_TIMEOUT_N` |
 
 ## Reach a source scan cannot see

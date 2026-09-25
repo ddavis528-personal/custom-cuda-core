@@ -60,32 +60,87 @@ module ccv_credit_checker #(
 
   localparam int CW = $clog2(DEPTH + 2);
   localparam int TW = $clog2(TIMEOUT_N + 2);
+  // One slot past the limit, so a message that overruns by one is still aged.
+  // Beyond that no_overrun has already fired and the extra messages go
+  // untracked -- the checker reports the first thing wrong, not every one.
+  localparam int QD = DEPTH + 1;
 
-  logic [CW-1:0] outstanding;
-  logic [TW-1:0] oldest_age;
-  logic          valid_q;
-  logic          stall_q;
+  // Per-message ages as ONE flat vector, oldest in the low TW bits, indexed
+  // with part-selects. Not `logic [QD-1:0][TW-1:0]`: Yosys 0.33 rejects a
+  // multi-dimensional packed array outright (a syntax error at the second
+  // bracket), and it rejects `int'()` casts too, so both are out of the
+  // three-tool intersection this checker has to live in.
+  logic [CW-1:0]      outstanding;
+  logic [QD*TW-1:0]   age_q;
+  logic [QD*TW-1:0]   age_d;
+  logic [CW-1:0]      tail;
+  logic               valid_q;
+  logic               stall_q;
 
   wire sent     = ch_valid;
   wire returned = ch_credit;
 
+  // A credit only retires a message if one is outstanding. A phantom credit
+  // is REPORTED (no_phantom_credit) but must not move the count: letting it
+  // wrap made the very next report a bogus no_overrun, which points whoever
+  // is debugging at the sender when the receiver is at fault. Found by the
+  // phantom negative control under Icarus; Verilator hid it by stopping at
+  // the first failure.
+  wire pop  = returned && (outstanding != '0);
+  wire push = sent;
+
+  // AGE IS PER MESSAGE. The previous version kept one counter for the oldest
+  // message and reset it when that message was answered -- so the NEXT
+  // message's clock restarted from zero, and anything but the oldest message
+  // could be outstanding for up to ~2N before this fired. The timeout_second
+  // and second_late negative controls measured it: a second message stuck
+  // behind a first answered at exactly N fired 31 cycles late.
+  //
+  // Credits are fungible, so a returning credit retires the OLDEST message.
+  // That is the only reading available at the channel level, and it is the
+  // one the protocol's "no message outstanding more than N" needs.
+  //
+  // An age counts the edges a message has been outstanding at, INCLUDING the
+  // edge that consumed its credit -- a credit is consumed when valid asserts,
+  // not when the payload lands. So a message consumed at edge k and answered
+  // at edge k+N passes, and one answered at k+N+1 fails AT k+N+1: no
+  // detection latency. The old counter started one edge late and missed a
+  // message answered at exactly N+1 (timeout_n1).
+  always_comb begin
+    age_d = age_q;
+    // Every outstanding message ages by one, saturating.
+    for (int i = 0; i < QD; i++)
+      if ((CW'(i) < outstanding) && (age_d[i*TW +: TW] != {TW{1'b1}}))
+        age_d[i*TW +: TW] = age_d[i*TW +: TW] + 1'b1;
+    // The oldest leaves on a credit; everything behind it moves up one.
+    if (pop)
+      age_d = {{TW{1'b0}}, age_d[QD*TW-1:TW]};
+    // A new message joins behind the last one still outstanding, having
+    // been outstanding at one edge: the one consuming its credit.
+    tail = pop ? (outstanding - 1'b1) : outstanding;
+    if (push)
+      for (int i = 0; i < QD; i++)
+        if (CW'(i) == tail)
+          age_d[i*TW +: TW] = TW'(1);
+  end
+
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       outstanding <= '0;
-      oldest_age  <= '0;
+      age_q       <= '0;
       valid_q     <= 1'b0;
       stall_q     <= 1'b0;
     end else begin
       valid_q <= ch_valid;
       stall_q <= ch_stall;
+      age_q   <= age_d;
 
-      // A credit is consumed when valid asserts, not when the payload lands.
-      if (sent && !returned)      outstanding <= outstanding + 1'b1;
-      else if (!sent && returned) outstanding <= outstanding - 1'b1;
-
-      if (outstanding == '0)             oldest_age <= '0;
-      else if (returned)                 oldest_age <= '0;
-      else if (oldest_age != {TW{1'b1}}) oldest_age <= oldest_age + 1'b1;
+      // Saturating at both ends, for the same reason pop is guarded: a
+      // counter that wraps turns one error into a stream of wrong ones.
+      if (push && !pop && (outstanding != {CW{1'b1}}))
+        outstanding <= outstanding + 1'b1;
+      else if (!push && pop)
+        outstanding <= outstanding - 1'b1;
     end
   end
 
@@ -127,8 +182,14 @@ module ccv_credit_checker #(
 
   // A credit returned for something never sent: a receiver counting wrong,
   // which surfaces later as a sender that never throttles.
+  //
+  // Including a credit that arrives on the SAME edge a message is consumed,
+  // with nothing outstanding before it. The previous form excused that case
+  // (`&& !sent`), but the round trip is at least 2, so a credit cannot belong
+  // to a message whose payload has not yet been sent -- it is a phantom that
+  // happens to coincide with a send. Found by phantom_with_send.
   `CCV_CONTRACT_M(MODE, no_phantom_credit,
-                  !(returned && (outstanding == '0) && !sent))
+                  !(returned && (outstanding == '0)))
 
   // No message may be sent the cycle after a stall is received. That
   // guarantee is what makes the in-flight window a fixed count rather than a
@@ -152,7 +213,7 @@ module ccv_credit_checker #(
   //
   // PROVISIONAL BY CONSTRUCTION: N cannot be justified before contention data
   // exists. Revising it is an expected Stage 4b output, not a spec change.
-  `CCV_CONTRACT_M(MODE, response_within_n, oldest_age <= TIMEOUT_N[TW-1:0])
+  `CCV_CONTRACT_M(MODE, response_within_n, age_q[TW-1:0] <= TIMEOUT_N[TW-1:0])
 
   // -- event emission (§5 of the convention) ------------------------------
   // Emitting HERE, in the shared checker, rather than per block: every

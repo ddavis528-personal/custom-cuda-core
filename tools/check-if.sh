@@ -126,6 +126,101 @@ else
   say "verilator" "SKIP -- not installed"
 fi
 
+# -- negative controls: the PROTOCOL properties bite, and only them --------
+# test/neg/tb_credit_neg.sv drives the checker's ports directly, one protocol
+# violation per case, written from the protocol rather than from the checker.
+# Each FIRE case must trip exactly its property and nothing else; each QUIET
+# case sits exactly at a legal limit and must stay silent. The pairs bracket
+# every counter, because an off-by-one in a tracking register is invisible to
+# a case that overshoots by a mile.
+#
+# Both simulators, for different reasons. Icarus does not stop on a failure,
+# so its result is the EXACT set of properties that fired -- that is what
+# proves a case trips one property rather than one first. Verilator $stops on
+# the first failure (F-15), so it proves the target fires first, and it is the
+# simulator the skeleton runs on.
+#
+# These cases found four bugs in the checker when first written: a timeout
+# loose by one cycle, a per-message bound that was really ~2N for anything
+# but the oldest message, a phantom credit that corrupted the count into a
+# bogus overrun, and a same-edge phantom the property excused. That is the
+# argument for keeping them: the "stays quiet" checks above passed throughout.
+NEG_CASES="overrun:no_overrun at_depth:- phantom:no_phantom_credit
+  phantom_with_send:no_phantom_credit stall:stall_honoured
+  xpayload:payload_known_when_due timeout:response_within_n timeout_at_n:-
+  timeout_n1:response_within_n timeout_second:response_within_n
+  second_late:response_within_n"
+NEG_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv test/neg/tb_credit_neg.sv"
+
+fired() {   # the sorted, de-duplicated set of properties named in a log
+  grep -o "CCV [a-z_0-9]* failed" "$1" 2>/dev/null | awk '{print $2}' \
+    | sort -u | tr '\n' ' ' | sed 's/ $//'
+}
+
+have_v=0; have_i=0
+if command -v verilator >/dev/null 2>&1 && \
+   verilator --binary -j 0 --assert --timing $VFLAGS \
+     -CFLAGS "-I$R/sim/include -I$R/sim/generated" \
+     --top-module tb --Mdir "$TMP/neg_vo" $NEG_SRC \
+     "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
+     >"$TMP/neg_vb.log" 2>&1 && [ -x "$TMP/neg_vo/Vtb" ]; then
+  have_v=1
+fi
+if command -v iverilog >/dev/null 2>&1 && \
+   iverilog -g2012 -gassertions -Irtl/include -Irtl/generated \
+     -o "$TMP/neg_iv.out" -s tb $NEG_SRC >"$TMP/neg_ib.log" 2>&1; then
+  have_i=1
+fi
+[ "$have_v" = 1 ] || bad "negative controls: verilator build" \
+  "$(grep -m1 '%Error' "$TMP/neg_vb.log" 2>/dev/null || echo 'not installed')"
+[ "$have_i" = 1 ] || bad "negative controls: icarus build" \
+  "$(head -1 "$TMP/neg_ib.log" 2>/dev/null || echo 'not installed')"
+
+for pair in $NEG_CASES; do
+  cs=${pair%%:*}; want=${pair#*:}; [ "$want" = "-" ] && want=""
+  why=""
+
+  if [ "$have_i" = 1 ]; then
+    vvp "$TMP/neg_iv.out" +case="$cs" >"$TMP/neg_i_$cs.log" 2>&1
+    got=$(fired "$TMP/neg_i_$cs.log")
+    # A run that died early is silent, and silence is what a QUIET case is
+    # looking for -- so reaching the end marker is part of passing.
+    if ! grep -q "NEG_END $cs" "$TMP/neg_i_$cs.log"; then
+      why="icarus run did not complete"
+    elif [ "$got" != "$want" ]; then
+      why="icarus fired {${got:-nothing}}, want {${want:-nothing}}"
+    fi
+  fi
+
+  if [ -z "$why" ] && [ "$have_v" = 1 ]; then
+    # To a file, not a pipe: the tripped assertion aborts the binary, and
+    # under pipefail that abort would become the pipeline's status.
+    { (cd "$TMP" && "./neg_vo/Vtb" +case="$cs" >"neg_v_$cs.log" 2>&1) || true; } \
+      2>/dev/null
+    got=$(fired "$TMP/neg_v_$cs.log")
+    vwant=$want
+    # Verilator is two-state: an X on the payload is a 0 or a 1 by the time
+    # anything can look at it, so $isunknown cannot fire there at all. That is
+    # a property of the tool (F-6), not of the checker, and it is why Icarus
+    # is a required witness above rather than a redundant one.
+    [ "$cs" = "xpayload" ] && vwant=""
+    if [ -z "$vwant" ] && ! grep -q "NEG_END $cs" "$TMP/neg_v_$cs.log"; then
+      why="verilator run did not complete"
+    elif [ "$got" != "$vwant" ]; then
+      why="verilator fired {${got:-nothing}}, want {${vwant:-nothing}}"
+    fi
+  fi
+
+  if [ -n "$why" ]; then
+    bad "neg: $cs" "$why"
+  elif [ -n "$want" ]; then
+    note=""; [ "$cs" = "xpayload" ] && note=" (icarus only; 2-state blind)"
+    say "neg: $cs trips only $want" "PASS$note"
+  else
+    say "neg: $cs stays quiet at the limit" "PASS"
+  fi
+done
+
 # -- Icarus: the SAME checker source still compiles without DPI -----------
 # F-13: Icarus has no DPI at all. The emission guard exists so the X-pass can
 # still run the checker with its properties fully intact, and this is the

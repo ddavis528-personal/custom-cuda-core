@@ -44,7 +44,7 @@ broken it once and watched it notice.
 | Documentation | **silent** | references, counts and rule coverage checked | `check-docs.sh` |
 | Checker credit depth vs round trip | **silent** | `DEPTH=1` build must trip `cfg_depth_covers_round_trip` | `check-if.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
-| **Credit checker protocol properties** | open | **MISSING — see below** | — |
+| Credit checker protocol properties | open | 11 cases: each violation trips *exactly* its property on Icarus and trips it first on Verilator; each legal extreme stays quiet | `check-if.sh` |
 
 The ones marked **silent** are the dangerous class: they do not merely fail to
 detect, they produce a positive result that is wrong. The two checker
@@ -61,42 +61,48 @@ aborts (F-15), and under `set -o pipefail` that abort status becomes the
 supposed to fail. Both now run to a file. Any future fire-test written the
 obvious way has the same bug.
 
-## Outstanding: the credit checker's protocol properties
+## Closed: the credit checker's protocol properties — and what that found
 
-**This is a gap, recorded rather than deferred silently**, per this file's own
-policy that a mechanism added without a control belongs here with its control
-marked missing.
+This section used to record a gap: the checker's five protocol properties had
+no negative control, only proof that they stayed quiet against a correct
+producer. `test/neg/tb_credit_neg.sv` closes it, and **the first run found
+four bugs in a checker that every "stays quiet" check had been passing.**
+That is the case for this file in one paragraph.
 
-`rtl/if/ccv_credit_checker.sv` carries five protocol properties —
-`no_overrun`, `no_phantom_credit`, `stall_honoured`, `payload_known_when_due`,
-`response_within_n` — each built on explicit tracking state, because no
-multi-cycle SVA exists (F-2). **None has a negative control.** What exists
-today proves only that they stay quiet against a protocol-correct producer
-(`test/smoke/credit_smoke.sv`) and that their satisfiability covers are
-reachable under formal. Neither of those distinguishes a property that works
-from a property whose tracking register never arms — which is precisely the
-`bind` failure class, and precisely what the *Candidates* section below named
-in advance.
+The cases were written from the protocol before looking at how the checker
+counts, as the Candidates section below requires. Each drives the checker's
+ports directly, one violation per case, and the legal extremes are tested
+too — exactly `DEPTH` outstanding, a credit back at exactly N — because an
+off-by-one in a tracking register is invisible to a case that only ever
+overshoots.
 
-This matters more than a single missing test, because the checker is
-instantiated at all 40 boundaries. One property that never arms is one property
-that never arms 40 times.
+| Case | What it found |
+|---|---|
+| `timeout_n1` — credit back N+1 cycles after the send | **Quiet.** The age counter started one edge after the credit was consumed, though the checker's own comment says a credit is consumed when valid asserts. Loose by one. |
+| `timeout_second` — first message answered, second never | **Fired late.** Answering the oldest message reset the only age counter, so the next message's clock restarted from zero. |
+| `second_late` — first answered at exactly N (legal), second never | **Fired 31 cycles late.** The same bug at its worst: any message but the oldest could be outstanding for up to ~2N. The "decorative N" failure below, in a real form. |
+| `phantom` — a credit with nothing outstanding | **Right property, then a wrong one.** The count wrapped, so the next report was a bogus `no_overrun` — pointing whoever debugs it at the sender when the receiver is at fault. Only Icarus showed it; Verilator stops at the first failure. |
+| `phantom_with_send` — a credit on the same edge a send is consumed | **Quiet.** The property excused it, but the round trip is at least 2, so that credit cannot belong to that message. |
 
-> **Required:** a deliberately-violating producer per property — an overrunning
-> sender, a phantom credit return, a send in the shadow of a stall, an X on the
-> payload when due, and a response withheld past N — each of which must fire
-> its own property **by name**, one property per build, since Verilator
-> `$stop`s on the first failure and a multi-property negative test silently
-> measures only one.
+Fixed in the checker, not in the tests: ages are now **per message** (a
+three-entry queue at `DEPTH` 2), counted from the consuming edge; the
+outstanding count saturates at both ends; and the phantom property no longer
+excuses a coincident send. The gate was also run against the **old** checker
+to confirm these five cases reject it — a control that passes both versions
+proves nothing.
 
-The two `CCV_IF_CONFIG` controls in `check-if.sh` are the pattern to copy.
+**One structural limit, recorded rather than worked around:** Verilator is
+two-state, so `payload_known_when_due` *cannot* fire there — an X is already
+a 0 or a 1 by the time anything looks. Icarus is the only witness for that
+property, which makes it a required simulator for this check rather than a
+redundant one (F-6).
 
 ## Candidates Stage 2 introduces
 
 Named in advance, because each will otherwise arrive without a control.
 
-**Tracking registers inside checkers.** ⚠️ **Arrived, control missing** — see
-the section above. No multi-cycle SVA exists (F-2), so every request-response
+**Tracking registers inside checkers.** ✅ **Control built — and it found
+four bugs**; see the section above. No multi-cycle SVA exists (F-2), so every request-response
 contract becomes an explicit state machine in the checker. A tracking register
 that silently never arms is indistinguishable from one that passes — the same
 class as `bind`.
@@ -105,18 +111,19 @@ class as `bind`.
 > that must fire, **built at the same time as the tracking logic**. Written
 > afterwards, it gets written to match whatever the logic already does.
 
-That last sentence is now the live risk rather than a caution: the tracking
-logic is written and the controls are not, so whoever writes them is writing
-them against logic that already exists. Worth extra care that each case is
-derived from the *protocol*, not from reading the checker.
+The controls were written after the tracking logic, which is exactly the
+risk named here — so they were written from the protocol and run against the
+checker unchanged first, and every disagreement was treated as the checker's
+bug until shown otherwise. All four were.
 
 The tier-1b macros (`CCV_ASSERT_STABLE_WHILE`, `..._FOR`,
 `..._RESPONSE_WITHIN`) are the worked example: each has a negative control in
 `check-1b.sh`, one property per build, because Verilator `$stop`s on the first
 failure and a multi-property negative test silently measures only one.
 
-**Bounded-wait N large enough to be decorative.** ⚠️ **Arrived, control
-missing.** Liveness is unstatable, so every interface gets *outstanding more
+**Bounded-wait N large enough to be decorative.** ✅ **Control built** —
+`timeout`, `timeout_n1`, `timeout_second`, `second_late` all exceed N and must
+fire; `timeout_at_n` sits exactly at it and must not. Liveness is unstatable, so every interface gets *outstanding more
 than N cycles is a failure*. Too large and the property never fires under any
 circumstance the design can produce — it is then a fail-open mechanism wearing
 a property's clothes. N is now one global provisional (`CCV_P_TIMEOUT_N` = 32)
@@ -125,8 +132,10 @@ plus `CCV_P_TIMEOUT_MEM` = 2048 for the memory path.
 Note that `cfg_timeout_covers_round_trip` does **not** cover this. It guards N
 being too *small*, which is the loud failure. Too large is the quiet one.
 
-> **Required:** each N ships with a case that exceeds it and must fire. Folds
-> into the `response_within_n` control listed above.
+> **Required:** each N ships with a case that exceeds it and must fire. Met
+> for `CCV_P_TIMEOUT_N`. **Not yet met for `CCV_P_TIMEOUT_MEM`**, because no
+> checker instance uses it yet — the first memory-path instance must bring
+> its own case.
 
 **Checkers instantiated but never reached.** ✅ **Arrived with its control.** A
 checker at a boundary that never carries traffic reports nothing, forever, and
