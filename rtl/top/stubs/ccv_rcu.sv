@@ -41,7 +41,7 @@ module ccv_rcu (
 `endif
   assign rcu_miu_addr_valid = '0;
   /* verilator lint_off WIDTHCONCAT */
-  assign rcu_miu_addr_payload = '0;  // 8476 bits, intended
+  assign rcu_miu_addr_payload = '0;  // 8604 bits, intended
   /* verilator lint_on WIDTHCONCAT */
 `ifdef CCV_TRACE
   assign rcu_miu_addr_tid = '0;

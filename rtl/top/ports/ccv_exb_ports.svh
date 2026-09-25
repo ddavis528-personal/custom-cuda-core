@@ -21,14 +21,14 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // mlc -> exb, 1 slot(s) x 1084 bit payload
+  // mlc -> exb, 1 slot(s) x 1090 bit payload
   input  logic mlc_exb_req_valid,
-  input  logic [1083:0] mlc_exb_req_payload,
+  input  logic [1089:0] mlc_exb_req_payload,
   output logic mlc_exb_req_credit,
   output logic mlc_exb_req_stall,
-  // exb -> mlc, 1 slot(s) x 1027 bit payload
+  // exb -> mlc, 1 slot(s) x 1082 bit payload
   output logic exb_mlc_rsp_valid,
-  output logic [1026:0] exb_mlc_rsp_payload,
+  output logic [1081:0] exb_mlc_rsp_payload,
   input  logic exb_mlc_rsp_credit,
   input  logic exb_mlc_rsp_stall,
   // exb -> EXTERNAL, 1 slot(s) x 1225 bit payload

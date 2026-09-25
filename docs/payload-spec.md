@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 10 | 28 |
-| ⚠️ Some provisional | 14 | 46 |
-| ⛔ Some preliminary | 17 | 73 |
-| **Total** | **41** | **147** |
+| All decided | 8 | 23 |
+| ⚠️ Some provisional | 15 | 56 |
+| ⛔ Some preliminary | 18 | 84 |
+| **Total** | **41** | **163** |
 
 ## What still has to be decided
 
@@ -90,6 +90,7 @@ because those are the ones where a skeleton that reads the field
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
 | `CCV_L_W_OWNERSHIP` | 3 | med | TL-C permission levels plus an explicit dirty bit, kept wider than TL-C needs so a CHI bridge maps without a second translation. |
+| `CCV_L_W_PROBE_TYPE` | 2 | med | Kind of inbound message on ccv_exb_mlc_rsp: 0 = a response to a request; otherwise a probe and what it asks (to-invalid, to-branch, to-trunk, after TL-C Probe param). Replaces the one-bit inbound_probe flag. |
 
 ### MLC/EXB session, once the TL-C subset is chosen
 
@@ -168,11 +169,11 @@ because those are the ones where a skeleton that reads the field
 
 ### active lane mask
 
-*payload omission found by the first kernel — instruction-path payload owner*
+*payload gap, narrowed by the payload-spec response — instruction-path payload owner*
 
-Nothing on the instruction path carries the issue group's active-lane mask (the PC-grouped lanes, §1). A divergent group's inactive lanes must neither compute nor access memory, but ccv_fet_dec_instr, ccv_dec_ooe_uop, ccv_ooe_rcu_issue and ccv_ooe_miu_memop have no mask; only faults and completions (lane_mask) carry one.
+The memory path now carries active_mask (ccv_ooe_miu_memop, ccv_rcu_miu_addr, ccv_miu_rcu_data), defined as issue mask AND guard predicate. Neither producer can compute it from what it receives: OOE knows the issue mask (it chose the PC group) but not predicate VALUES, which live in RCU's predicate file; RCU has the predicate values but ccv_ooe_rcu_issue carries no issue mask. The same gap means rcu_lane_ops.pred_bit cannot fold the issue mask in, so the arithmetic path is only correct while every group issues all 32 lanes. Proposal: add issue_mask (CCV_W_LANE_MASK) to ccv_ooe_rcu_issue; RCU then sources rcu_miu_addr.active_mask and pred_bit, and ooe_miu_memop.active_mask either becomes the issue mask (pre-predicate, which is what OOE has) or is dropped.
 
-**Blocks:** Any divergent kernel. vadd with n = 32 never diverges, so S1 runs every group with all 32 lanes and checks that the oracle agrees.
+**Blocks:** Any divergent or predicated memory kernel. vadd issues every group with all 32 lanes and unpredicated memory ops, so S1 sets active_mask to all ones and checks the oracle agrees.
 
 ### agu immediate
 
@@ -181,6 +182,14 @@ Nothing on the instruction path carries the issue group's active-lane mask (the 
 Address generation has no route for the immediate or the index scale. ccv_dec_ooe_uop carries imm, but ccv_ooe_rcu_issue and ccv_rcu_lane_ops drop it, and ccv_rcu_miu_addr / ccv_ooe_miu_memop carry neither displacement nor scale -- yet the ISA's address is (base << 16) + (index << scale) + disp. Ties to rcu_miu_width: if the AGU moves into RCU's read stage, index_per_lane becomes a per-lane offset and imm/scale must reach RCU on the issue channel.
 
 **Blocks:** S1 takes each lane's offset from the ccv-sim oracle rather than computing it (recorded as a substitution in docs/skeleton.md); a real AGU cannot be coded until this settles. ALU immediates have the same gap.
+
+### itlb correlation
+
+*payload gap, same class as the req_id finding — FET / MIU sessions*
+
+ccv_miu_fet_itlb returns an entry (PPN, permissions, ASID, valid) with nothing naming the virtual page it answers, and ccv_fet_miu_itlb_req carries no tag. The same defect as the five response channels, one level up: with more than one ITLB miss outstanding FET cannot match refills to requests. Either FET has at most one miss outstanding (say so; the channel is then correct as is) or the refill needs req_id or the virtual page.
+
+**Blocks:** Nothing in S1: FET never has two misses outstanding.
 
 ### miu dcu req store data
 
@@ -254,31 +263,6 @@ lane → rcu · rate 4 · execution
 | `result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
 | `lane_fault` | `1` | 1 | literal |
 | **total** | | **33** | |
-
-### `ccv_spm_miu_rsp`
-
-Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs.
-
-spm → miu · rate 4 · memory
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| `conflict_serialization` | `CCV_W_CONFLICT_SER` | 6 | CCV_W_CONFLICT_SER (arch) |
-| **total** | | **1030** | |
-
-### `ccv_dcu_miu_rsp`
-
-Cache read data, hit indication and whether ownership was granted.
-
-dcu → miu · rate 4 · memory
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| `hit` | `1` | 1 | literal |
-| `ownership_granted` | `1` | 1 | literal |
-| **total** | | **1026** | |
 
 ### `ccv_fet_miu_itlb_req`
 
@@ -380,23 +364,25 @@ rcu → miu · rate 4 · execution
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
+| `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `base` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `index_per_lane` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `store_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| **total** | | **2119** | ⚠️ 7 provisional |
+| **total** | | **2151** | ⚠️ 7 provisional |
 
 ### `ccv_miu_rcu_data`
 
-Load return data written into the register file.
+Load return data written into the register file. active_mask gates the register-file write: an inactive lane keeps its old value.
 
 miu → rcu · rate 4 · execution
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
+| `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `load_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| **total** | | **1039** | ⚠️ 15 provisional |
+| **total** | | **1071** | ⚠️ 15 provisional |
 
 ### `ccv_miu_ooe_cmpl`
 
@@ -426,6 +412,33 @@ ooe → miu · rate 4 · memory
 | `commit_or_discard` | `1` | 1 | literal |
 | **total** | | **8** | ⚠️ 7 provisional |
 
+### `ccv_spm_miu_rsp`
+
+Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs.
+
+spm → miu · rate 4 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 3 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
+| `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
+| `conflict_serialization` | `CCV_W_CONFLICT_SER` | 6 | CCV_W_CONFLICT_SER (arch) |
+| **total** | | **1033** | ⚠️ 3 provisional |
+
+### `ccv_dcu_miu_rsp`
+
+Cache read data, hit indication and whether ownership was granted.
+
+dcu → miu · rate 4 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
+| `hit` | `1` | 1 | literal |
+| `ownership_granted` | `1` | 1 | literal |
+| **total** | | **1030** | ⚠️ 4 provisional |
+
 ### `ccv_mlc_dcu_rsp`
 
 Line fills and ownership grants back to L1.
@@ -434,10 +447,11 @@ mlc → dcu · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_DCU_MLC` | 4 ⚠️ | CCV_P_W_REQ_DCU_MLC (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | `ownership` | `1` | 1 | literal |
 | `miss` | `1` | 1 | literal |
-| **total** | | **1026** | ⚠️ 1024 provisional |
+| **total** | | **1030** | ⚠️ 1028 provisional |
 
 ### `ccv_mlc_dcu_probe`
 
@@ -447,9 +461,10 @@ mlc → dcu · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MLC_PROBE` | 2 ⚠️ | CCV_P_W_REQ_MLC_PROBE (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `invalidate_or_downgrade` | `1` | 1 | literal |
-| **total** | | **49** | ⚠️ 48 provisional |
+| **total** | | **51** | ⚠️ 50 provisional |
 
 ### `ccv_dcu_mlc_probe_ack`
 
@@ -459,9 +474,10 @@ dcu → mlc · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MLC_PROBE` | 2 ⚠️ | CCV_P_W_REQ_MLC_PROBE (provisional) |
 | `ack` | `1` | 1 | literal |
 | `dirty_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| **total** | | **1025** | ⚠️ 1024 provisional |
+| **total** | | **1027** | ⚠️ 1026 provisional |
 
 ### `ccv_fet_mlc_ifill`
 
@@ -471,9 +487,10 @@ fet → mlc · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_FET_MLC` | 2 ⚠️ | CCV_P_W_REQ_FET_MLC (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| **total** | | **56** | ⚠️ 48 provisional |
+| **total** | | **58** | ⚠️ 50 provisional |
 
 ### `ccv_mlc_fet_ifill_rsp`
 
@@ -483,22 +500,9 @@ mlc → fet · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_FET_MLC` | 2 ⚠️ | CCV_P_W_REQ_FET_MLC (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| **total** | | **1024** | ⚠️ 1024 provisional |
-
-### `ccv_exb_mlc_rsp`
-
-Protocol-neutral inbound: fills, grants and probes.
-
-exb → mlc · rate 1 · memory
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| `ownership_grant` | `1` | 1 | literal |
-| `inbound_probe` | `1` | 1 | literal |
-| `miss` | `1` | 1 | literal |
-| **total** | | **1027** | ⚠️ 1024 provisional |
+| **total** | | **1026** | ⚠️ 1026 provisional |
 
 ### `ccv_rau_miu_cta`
 
@@ -560,10 +564,10 @@ dec → ooe · rate 6 · instruction
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `src_arch` | `2*CCV_W_ARCH_REG` | 8 | CCV_W_ARCH_REG (isa) |
 | `dst_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
-| `pred_reg` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
+| `pred_reg` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **130** | ⛔ 12 preliminary, ⚠️ 32 provisional |
+| **total** | | **128** | ⛔ 12 preliminary, ⚠️ 32 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
@@ -599,20 +603,21 @@ rcu → lane · rate 4 · execution
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking. active_mask is the lanes that may access memory or fault: issue mask intersected with the guard predicate.
 
 ooe → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
+| `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
 | `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
-| **total** | | **28** | ⛔ 11 preliminary, ⚠️ 10 provisional |
+| **total** | | **60** | ⛔ 11 preliminary, ⚠️ 10 provisional |
 
 ### `ccv_miu_spm_req`
 
@@ -622,11 +627,12 @@ miu → spm · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MIU_SPM` | 3 ⚠️ | CCV_P_W_REQ_MIU_SPM (provisional) |
 | `bank_addr` | `CCV_SPM_BANKS*CCV_W_SPM_WORD` | 320 | CCV_SPM_BANKS (arch); CCV_W_SPM_WORD (arch) |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
 | `spm_op` | `CCV_L_W_SPM_OP` | 2 ⛔ | CCV_L_W_SPM_OP (preliminary, churn low) |
-| **total** | | **1474** | ⛔ 2 preliminary |
+| **total** | | **1477** | ⛔ 2 preliminary, ⚠️ 3 provisional |
 
 ### `ccv_miu_dcu_req`
 
@@ -636,13 +642,14 @@ miu → dcu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `exclusive_req` | `1` | 1 | literal |
 | `write_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `byte_mask` | `CCV_W_DATA/8` | 128 | CCV_W_DATA (isa) |
-| **total** | | **1208** | ⛔ 4 preliminary, ⚠️ 48 provisional |
+| **total** | | **1212** | ⛔ 4 preliminary, ⚠️ 52 provisional |
 
 ### `ccv_dcu_mlc_req`
 
@@ -652,11 +659,12 @@ dcu → mlc · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_DCU_MLC` | 4 ⚠️ | CCV_P_W_REQ_DCU_MLC (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `core_id` | `CCV_W_CORE_ID` | 2 | CCV_W_CORE_ID (arch) |
 | `writeback_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| **total** | | **1078** | ⛔ 4 preliminary, ⚠️ 1072 provisional |
+| **total** | | **1082** | ⛔ 4 preliminary, ⚠️ 1076 provisional |
 
 ### `ccv_miu_fet_itlb`
 
@@ -677,13 +685,30 @@ mlc → exb · rate 1 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MLC_EXB` | 6 ⚠️ | CCV_P_W_REQ_MLC_EXB (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
 | `size` | `CCV_W_ACCESS_SIZE` | 3 | CCV_W_ACCESS_SIZE (arch) |
 | `coh_op` | `CCV_L_W_COH_OP` | 4 ⛔ | CCV_L_W_COH_OP (preliminary, churn med) |
 | `ownership_class` | `CCV_L_W_OWNERSHIP` | 3 ⛔ | CCV_L_W_OWNERSHIP (preliminary, churn med) |
 | `core_id` | `CCV_W_CORE_ID` | 2 | CCV_W_CORE_ID (arch) |
 | `writeback_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
-| **total** | | **1084** | ⛔ 7 preliminary, ⚠️ 1072 provisional |
+| **total** | | **1090** | ⛔ 7 preliminary, ⚠️ 1078 provisional |
+
+### `ccv_exb_mlc_rsp`
+
+Protocol-neutral inbound: fills and grants, matched to their request by req_id, and probes, which carry their line address and what they ask (probe_type != 0; req_id is then meaningless).
+
+exb → mlc · rate 1 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MLC_EXB` | 6 ⚠️ | CCV_P_W_REQ_MLC_EXB (provisional) |
+| `probe_type` | `CCV_L_W_PROBE_TYPE` | 2 ⛔ | CCV_L_W_PROBE_TYPE (preliminary, churn med) |
+| `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
+| `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
+| `ownership_grant` | `1` | 1 | literal |
+| `miss` | `1` | 1 | literal |
+| **total** | | **1082** | ⛔ 2 preliminary, ⚠️ 1078 provisional |
 
 ### `ccv_exb_ext_out`
 
@@ -780,7 +805,7 @@ rau → syu · rate 1 · control
 
 ### `ccv_ext_exb_in`
 
-TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with.
+TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with. A probe's line address and type ride in tl_in's TL-B fields; EXB turns them into ccv_exb_mlc_rsp's phys_addr and probe_type.
 
 EXTERNAL → exb · rate 1 · memory
 

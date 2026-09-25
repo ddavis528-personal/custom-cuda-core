@@ -25,7 +25,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **17 of 41 channels** carry at least one
+appear above. **18 of 41 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
@@ -33,6 +33,7 @@ preliminary field:
 | `ccv_dcu_mlc_req` | `coh_op` |
 | `ccv_dec_ooe_uop` | `uop_class`, `opcode` |
 | `ccv_exb_ext_out` | `tl_out` |
+| `ccv_exb_mlc_rsp` | `probe_type` |
 | `ccv_ext_exb_in` | `tl_in` |
 | `ccv_miu_dcu_req` | `coh_op` |
 | `ccv_miu_fet_itlb` | `itlb_refill` |
@@ -71,6 +72,7 @@ to code that merely carries it, which will not.
 | `CCV_L_W_PCA_BANK` | 3 | med | PCA session, from the parked-array organization |
 | `CCV_L_W_PRF_BASE` | 8 | med | RAU/OOE session -- register or chunk granularity |
 | `CCV_L_W_PRF_SIZE` | 8 | med | RAU/OOE session, with CCV_L_W_PRF_BASE |
+| `CCV_L_W_PROBE_TYPE` | 2 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
 | `CCV_L_W_BAR_COUNT` | 7 | low | SYU session -- is the count biased? |
 | `CCV_L_W_CLASS` | 3 | low | DEC block session -- is class derivable from opcode? |

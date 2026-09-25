@@ -21,9 +21,9 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // dec -> ooe, 6 slot(s) x 130 bit payload
+  // dec -> ooe, 6 slot(s) x 128 bit payload
   input  logic [5:0] dec_ooe_uop_valid,
-  input  logic [779:0] dec_ooe_uop_payload,
+  input  logic [767:0] dec_ooe_uop_payload,
   output logic [5:0] dec_ooe_uop_credit,
   output logic [5:0] dec_ooe_uop_stall,
   // ooe -> rcu, 4 slot(s) x 56 bit payload
@@ -36,9 +36,9 @@
   input  logic [159:0] rcu_ooe_done_payload,
   output logic [3:0] rcu_ooe_done_credit,
   output logic [3:0] rcu_ooe_done_stall,
-  // ooe -> miu, 4 slot(s) x 28 bit payload
+  // ooe -> miu, 4 slot(s) x 60 bit payload
   output logic [3:0] ooe_miu_memop_valid,
-  output logic [111:0] ooe_miu_memop_payload,
+  output logic [239:0] ooe_miu_memop_payload,
   input  logic [3:0] ooe_miu_memop_credit,
   input  logic [3:0] ooe_miu_memop_stall,
   // miu -> ooe, 4 slot(s) x 110 bit payload

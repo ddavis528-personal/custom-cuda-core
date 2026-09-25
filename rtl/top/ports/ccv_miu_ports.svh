@@ -21,19 +21,19 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // rcu -> miu, 4 slot(s) x 2119 bit payload
+  // rcu -> miu, 4 slot(s) x 2151 bit payload
   input  logic [3:0] rcu_miu_addr_valid,
-  input  logic [8475:0] rcu_miu_addr_payload,
+  input  logic [8603:0] rcu_miu_addr_payload,
   output logic [3:0] rcu_miu_addr_credit,
   output logic [3:0] rcu_miu_addr_stall,
-  // miu -> rcu, 4 slot(s) x 1039 bit payload
+  // miu -> rcu, 4 slot(s) x 1071 bit payload
   output logic [3:0] miu_rcu_data_valid,
-  output logic [4155:0] miu_rcu_data_payload,
+  output logic [4283:0] miu_rcu_data_payload,
   input  logic [3:0] miu_rcu_data_credit,
   input  logic [3:0] miu_rcu_data_stall,
-  // ooe -> miu, 4 slot(s) x 28 bit payload
+  // ooe -> miu, 4 slot(s) x 60 bit payload
   input  logic [3:0] ooe_miu_memop_valid,
-  input  logic [111:0] ooe_miu_memop_payload,
+  input  logic [239:0] ooe_miu_memop_payload,
   output logic [3:0] ooe_miu_memop_credit,
   output logic [3:0] ooe_miu_memop_stall,
   // miu -> ooe, 4 slot(s) x 110 bit payload
@@ -46,24 +46,24 @@
   input  logic [31:0] ooe_miu_retire_payload,
   output logic [3:0] ooe_miu_retire_credit,
   output logic [3:0] ooe_miu_retire_stall,
-  // miu -> spm, 4 slot(s) x 1474 bit payload
+  // miu -> spm, 4 slot(s) x 1477 bit payload
   output logic [3:0] miu_spm_req_valid,
-  output logic [5895:0] miu_spm_req_payload,
+  output logic [5907:0] miu_spm_req_payload,
   input  logic [3:0] miu_spm_req_credit,
   input  logic [3:0] miu_spm_req_stall,
-  // spm -> miu, 4 slot(s) x 1030 bit payload
+  // spm -> miu, 4 slot(s) x 1033 bit payload
   input  logic [3:0] spm_miu_rsp_valid,
-  input  logic [4119:0] spm_miu_rsp_payload,
+  input  logic [4131:0] spm_miu_rsp_payload,
   output logic [3:0] spm_miu_rsp_credit,
   output logic [3:0] spm_miu_rsp_stall,
-  // miu -> dcu, 4 slot(s) x 1208 bit payload
+  // miu -> dcu, 4 slot(s) x 1212 bit payload
   output logic [3:0] miu_dcu_req_valid,
-  output logic [4831:0] miu_dcu_req_payload,
+  output logic [4847:0] miu_dcu_req_payload,
   input  logic [3:0] miu_dcu_req_credit,
   input  logic [3:0] miu_dcu_req_stall,
-  // dcu -> miu, 4 slot(s) x 1026 bit payload
+  // dcu -> miu, 4 slot(s) x 1030 bit payload
   input  logic [3:0] dcu_miu_rsp_valid,
-  input  logic [4103:0] dcu_miu_rsp_payload,
+  input  logic [4119:0] dcu_miu_rsp_payload,
   output logic [3:0] dcu_miu_rsp_credit,
   output logic [3:0] dcu_miu_rsp_stall,
   // miu -> fet, 1 slot(s) x 64 bit payload

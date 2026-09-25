@@ -219,7 +219,7 @@
         "lockstep": true
       },
       "slot_attrs_why": {
-        "slot_binding": "lane N's four operands slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2",
+        "slot_binding": "lane N's four operands slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2; and neither lane channel carries an instruction tag, so a result is attributable only by its slot",
         "lockstep": "the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control"
       }
     },
@@ -271,6 +271,7 @@
       "group": "execution",
       "payload_fields": [
         "rob_tag",
+        "active_mask",
         "base",
         "index_per_lane",
         "store_data"
@@ -288,10 +289,11 @@
       "group": "execution",
       "payload_fields": [
         "rob_tag",
+        "active_mask",
         "phys_dst",
         "load_data"
       ],
-      "doc": "Load return data written into the register file.",
+      "doc": "Load return data written into the register file. active_mask gates the register-file write: an inactive lane keeps its old value.",
       "id_classes": [
         "instr"
       ]
@@ -304,6 +306,7 @@
       "group": "memory",
       "payload_fields": [
         "rob_tag",
+        "active_mask",
         "warp_id",
         "cta_slot",
         "mem_op",
@@ -311,7 +314,7 @@
         "space",
         "ordering"
       ],
-      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking.",
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking. active_mask is the lanes that may access memory or fault: issue mask intersected with the guard predicate.",
       "id_classes": [
         "instr"
       ]
@@ -364,6 +367,7 @@
       "rate": 4,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "bank_addr",
         "write_data",
         "byte_mask",
@@ -372,7 +376,10 @@
       "doc": "Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_SPM"
+      }
     },
     {
       "name": "ccv_spm_miu_rsp",
@@ -381,13 +388,17 @@
       "rate": 4,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "read_data",
         "conflict_serialization"
       ],
       "doc": "Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_SPM"
+      }
     },
     {
       "name": "ccv_miu_dcu_req",
@@ -396,6 +407,7 @@
       "rate": 4,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "phys_addr",
         "size",
         "coh_op",
@@ -406,7 +418,10 @@
       "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_DCU"
+      }
     },
     {
       "name": "ccv_dcu_miu_rsp",
@@ -415,6 +430,7 @@
       "rate": 4,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "read_data",
         "hit",
         "ownership_granted"
@@ -422,7 +438,10 @@
       "doc": "Cache read data, hit indication and whether ownership was granted.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_DCU"
+      }
     },
     {
       "name": "ccv_dcu_mlc_req",
@@ -431,6 +450,7 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "phys_addr",
         "coh_op",
         "core_id",
@@ -439,7 +459,10 @@
       "doc": "Fills and writebacks from L1 to the shared cache, tagged with core ID.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_DCU_MLC"
+      }
     },
     {
       "name": "ccv_mlc_dcu_rsp",
@@ -448,6 +471,7 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "line_data",
         "ownership",
         "miss"
@@ -455,7 +479,10 @@
       "doc": "Line fills and ownership grants back to L1.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_DCU_MLC"
+      }
     },
     {
       "name": "ccv_mlc_dcu_probe",
@@ -464,6 +491,7 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "phys_addr",
         "invalidate_or_downgrade"
       ],
@@ -471,7 +499,10 @@
       "doc": "Inbound invalidate or downgrade. Unsolicited, and a wake source, since a sleeping D-cache must still answer.",
       "id_classes": [
         "none"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_PROBE"
+      }
     },
     {
       "name": "ccv_dcu_mlc_probe_ack",
@@ -480,13 +511,17 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "ack",
         "dirty_data"
       ],
       "doc": "Probe response, carrying dirty data when the line was modified.",
       "id_classes": [
         "none"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_PROBE"
+      }
     },
     {
       "name": "ccv_fet_mlc_ifill",
@@ -495,6 +530,7 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "phys_addr",
         "asid"
       ],
@@ -502,7 +538,10 @@
       "doc": "Instruction cache miss straight to MLC, bypassing the D-cache.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_FET_MLC"
+      }
     },
     {
       "name": "ccv_mlc_fet_ifill_rsp",
@@ -511,12 +550,16 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "line_data"
       ],
       "doc": "Instruction line fill.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_FET_MLC"
+      }
     },
     {
       "name": "ccv_miu_fet_itlb",
@@ -554,6 +597,7 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
         "phys_addr",
         "size",
         "coh_op",
@@ -564,7 +608,10 @@
       "doc": "The protocol-neutral outbound request. Everything the core knows about coherence is expressed here.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_EXB"
+      }
     },
     {
       "name": "ccv_exb_mlc_rsp",
@@ -573,16 +620,21 @@
       "rate": 1,
       "group": "memory",
       "payload_fields": [
+        "req_id",
+        "probe_type",
+        "phys_addr",
         "line_data",
         "ownership_grant",
-        "inbound_probe",
         "miss"
       ],
-      "doc": "Protocol-neutral inbound: fills, grants and probes.",
+      "doc": "Protocol-neutral inbound: fills and grants, matched to their request by req_id, and probes, which carry their line address and what they ask (probe_type != 0; req_id is then meaningless).",
       "id_classes": [
         "txn",
         "none"
-      ]
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_EXB"
+      }
     },
     {
       "name": "ccv_exb_ext_out",
@@ -841,7 +893,7 @@
       "payload_fields": [
         "tl_in"
       ],
-      "doc": "TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with.",
+      "doc": "TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with. A probe's line address and type ride in tl_in's TL-B fields; EXB turns them into ccv_exb_mlc_rsp's phys_addr and probe_type.",
       "id_classes": [
         "txn",
         "none"
@@ -869,7 +921,7 @@
     "exec_fault": "1",
     "src_arch": "2*CCV_W_ARCH_REG",
     "dst_arch": "CCV_W_ARCH_REG",
-    "pred_reg": "CCV_W_ARCH_REG",
+    "pred_reg": "CCV_W_ARCH_PRED",
     "chwidth": "CCV_W_CHWIDTH",
     "lane_mask": "CCV_W_LANE_MASK",
     "fault_lane_mask": "CCV_W_LANE_MASK",
@@ -915,7 +967,6 @@
     "ownership": "1",
     "ownership_grant": "1",
     "invalidate_or_downgrade": "1",
-    "inbound_probe": "1",
     "arch_state_ready": "1",
     "launch_enable": "1",
     "mlc_miss_seen": "1",
@@ -953,7 +1004,9 @@
     "barrier_count": "CCV_L_W_BAR_COUNT",
     "uop_class": "CCV_L_W_CLASS",
     "tl_out": "CCV_L_W_TL_OUT",
-    "tl_in": "CCV_L_W_TL_IN"
+    "tl_in": "CCV_L_W_TL_IN",
+    "probe_type": "CCV_L_W_PROBE_TYPE",
+    "active_mask": "CCV_W_LANE_MASK"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
@@ -986,9 +1039,9 @@
       "owner": "execution / memory payload owners"
     },
     "active_lane_mask": {
-      "question": "Nothing on the instruction path carries the issue group's active-lane mask (the PC-grouped lanes, \u00a71). A divergent group's inactive lanes must neither compute nor access memory, but ccv_fet_dec_instr, ccv_dec_ooe_uop, ccv_ooe_rcu_issue and ccv_ooe_miu_memop have no mask; only faults and completions (lane_mask) carry one.",
-      "kind": "payload omission found by the first kernel",
-      "blocks": "Any divergent kernel. vadd with n = 32 never diverges, so S1 runs every group with all 32 lanes and checks that the oracle agrees.",
+      "question": "The memory path now carries active_mask (ccv_ooe_miu_memop, ccv_rcu_miu_addr, ccv_miu_rcu_data), defined as issue mask AND guard predicate. Neither producer can compute it from what it receives: OOE knows the issue mask (it chose the PC group) but not predicate VALUES, which live in RCU's predicate file; RCU has the predicate values but ccv_ooe_rcu_issue carries no issue mask. The same gap means rcu_lane_ops.pred_bit cannot fold the issue mask in, so the arithmetic path is only correct while every group issues all 32 lanes. Proposal: add issue_mask (CCV_W_LANE_MASK) to ccv_ooe_rcu_issue; RCU then sources rcu_miu_addr.active_mask and pred_bit, and ooe_miu_memop.active_mask either becomes the issue mask (pre-predicate, which is what OOE has) or is dropped.",
+      "kind": "payload gap, narrowed by the payload-spec response",
+      "blocks": "Any divergent or predicated memory kernel. vadd issues every group with all 32 lanes and unpredicated memory ops, so S1 sets active_mask to all ones and checks the oracle agrees.",
       "owner": "instruction-path payload owner"
     },
     "pred_src_and_dst": {
@@ -1002,6 +1055,12 @@
       "kind": "payload inconsistency found by the first kernel",
       "blocks": "Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.",
       "owner": "execution / memory payload owners"
+    },
+    "itlb_correlation": {
+      "question": "ccv_miu_fet_itlb returns an entry (PPN, permissions, ASID, valid) with nothing naming the virtual page it answers, and ccv_fet_miu_itlb_req carries no tag. The same defect as the five response channels, one level up: with more than one ITLB miss outstanding FET cannot match refills to requests. Either FET has at most one miss outstanding (say so; the channel is then correct as is) or the refill needs req_id or the virtual page.",
+      "kind": "payload gap, same class as the req_id finding",
+      "blocks": "Nothing in S1: FET never has two misses outstanding.",
+      "owner": "FET / MIU sessions"
     }
   },
   "_rate_comment": [

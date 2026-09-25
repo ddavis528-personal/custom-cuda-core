@@ -106,7 +106,7 @@ module ccv_core_top (
 `endif
   // ccv_dec_ooe_uop: dec -> ooe, 1 copy x 6 slot
   logic [5:0] dec_ooe_uop_valid;
-  logic [779:0] dec_ooe_uop_payload;
+  logic [767:0] dec_ooe_uop_payload;
   logic [5:0] dec_ooe_uop_credit;
   logic [5:0] dec_ooe_uop_stall;
 `ifdef CCV_TRACE
@@ -146,7 +146,7 @@ module ccv_core_top (
 `endif
   // ccv_rcu_miu_addr: rcu -> miu, 1 copy x 4 slot
   logic [3:0] rcu_miu_addr_valid;
-  logic [8475:0] rcu_miu_addr_payload;
+  logic [8603:0] rcu_miu_addr_payload;
   logic [3:0] rcu_miu_addr_credit;
   logic [3:0] rcu_miu_addr_stall;
 `ifdef CCV_TRACE
@@ -154,7 +154,7 @@ module ccv_core_top (
 `endif
   // ccv_miu_rcu_data: miu -> rcu, 1 copy x 4 slot
   logic [3:0] miu_rcu_data_valid;
-  logic [4155:0] miu_rcu_data_payload;
+  logic [4283:0] miu_rcu_data_payload;
   logic [3:0] miu_rcu_data_credit;
   logic [3:0] miu_rcu_data_stall;
 `ifdef CCV_TRACE
@@ -162,7 +162,7 @@ module ccv_core_top (
 `endif
   // ccv_ooe_miu_memop: ooe -> miu, 1 copy x 4 slot
   logic [3:0] ooe_miu_memop_valid;
-  logic [111:0] ooe_miu_memop_payload;
+  logic [239:0] ooe_miu_memop_payload;
   logic [3:0] ooe_miu_memop_credit;
   logic [3:0] ooe_miu_memop_stall;
 `ifdef CCV_TRACE
@@ -186,7 +186,7 @@ module ccv_core_top (
 `endif
   // ccv_miu_spm_req: miu -> spm, 1 copy x 4 slot
   logic [3:0] miu_spm_req_valid;
-  logic [5895:0] miu_spm_req_payload;
+  logic [5907:0] miu_spm_req_payload;
   logic [3:0] miu_spm_req_credit;
   logic [3:0] miu_spm_req_stall;
 `ifdef CCV_TRACE
@@ -194,7 +194,7 @@ module ccv_core_top (
 `endif
   // ccv_spm_miu_rsp: spm -> miu, 1 copy x 4 slot
   logic [3:0] spm_miu_rsp_valid;
-  logic [4119:0] spm_miu_rsp_payload;
+  logic [4131:0] spm_miu_rsp_payload;
   logic [3:0] spm_miu_rsp_credit;
   logic [3:0] spm_miu_rsp_stall;
 `ifdef CCV_TRACE
@@ -202,7 +202,7 @@ module ccv_core_top (
 `endif
   // ccv_miu_dcu_req: miu -> dcu, 1 copy x 4 slot
   logic [3:0] miu_dcu_req_valid;
-  logic [4831:0] miu_dcu_req_payload;
+  logic [4847:0] miu_dcu_req_payload;
   logic [3:0] miu_dcu_req_credit;
   logic [3:0] miu_dcu_req_stall;
 `ifdef CCV_TRACE
@@ -210,7 +210,7 @@ module ccv_core_top (
 `endif
   // ccv_dcu_miu_rsp: dcu -> miu, 1 copy x 4 slot
   logic [3:0] dcu_miu_rsp_valid;
-  logic [4103:0] dcu_miu_rsp_payload;
+  logic [4119:0] dcu_miu_rsp_payload;
   logic [3:0] dcu_miu_rsp_credit;
   logic [3:0] dcu_miu_rsp_stall;
 `ifdef CCV_TRACE
@@ -218,7 +218,7 @@ module ccv_core_top (
 `endif
   // ccv_dcu_mlc_req: dcu -> mlc, 1 copy x 1 slot
   logic dcu_mlc_req_valid;
-  logic [1077:0] dcu_mlc_req_payload;
+  logic [1081:0] dcu_mlc_req_payload;
   logic dcu_mlc_req_credit;
   logic dcu_mlc_req_stall;
 `ifdef CCV_TRACE
@@ -226,7 +226,7 @@ module ccv_core_top (
 `endif
   // ccv_mlc_dcu_rsp: mlc -> dcu, 1 copy x 1 slot
   logic mlc_dcu_rsp_valid;
-  logic [1025:0] mlc_dcu_rsp_payload;
+  logic [1029:0] mlc_dcu_rsp_payload;
   logic mlc_dcu_rsp_credit;
   logic mlc_dcu_rsp_stall;
 `ifdef CCV_TRACE
@@ -234,7 +234,7 @@ module ccv_core_top (
 `endif
   // ccv_mlc_dcu_probe: mlc -> dcu, 1 copy x 1 slot
   logic mlc_dcu_probe_valid;
-  logic [48:0] mlc_dcu_probe_payload;
+  logic [50:0] mlc_dcu_probe_payload;
   logic mlc_dcu_probe_credit;
   logic mlc_dcu_probe_stall;
 `ifdef CCV_TRACE
@@ -242,7 +242,7 @@ module ccv_core_top (
 `endif
   // ccv_dcu_mlc_probe_ack: dcu -> mlc, 1 copy x 1 slot
   logic dcu_mlc_probe_ack_valid;
-  logic [1024:0] dcu_mlc_probe_ack_payload;
+  logic [1026:0] dcu_mlc_probe_ack_payload;
   logic dcu_mlc_probe_ack_credit;
   logic dcu_mlc_probe_ack_stall;
 `ifdef CCV_TRACE
@@ -250,7 +250,7 @@ module ccv_core_top (
 `endif
   // ccv_fet_mlc_ifill: fet -> mlc, 1 copy x 1 slot
   logic fet_mlc_ifill_valid;
-  logic [55:0] fet_mlc_ifill_payload;
+  logic [57:0] fet_mlc_ifill_payload;
   logic fet_mlc_ifill_credit;
   logic fet_mlc_ifill_stall;
 `ifdef CCV_TRACE
@@ -258,7 +258,7 @@ module ccv_core_top (
 `endif
   // ccv_mlc_fet_ifill_rsp: mlc -> fet, 1 copy x 1 slot
   logic mlc_fet_ifill_rsp_valid;
-  logic [1023:0] mlc_fet_ifill_rsp_payload;
+  logic [1025:0] mlc_fet_ifill_rsp_payload;
   logic mlc_fet_ifill_rsp_credit;
   logic mlc_fet_ifill_rsp_stall;
 `ifdef CCV_TRACE
@@ -282,7 +282,7 @@ module ccv_core_top (
 `endif
   // ccv_mlc_exb_req: mlc -> exb, 1 copy x 1 slot
   logic mlc_exb_req_valid;
-  logic [1083:0] mlc_exb_req_payload;
+  logic [1089:0] mlc_exb_req_payload;
   logic mlc_exb_req_credit;
   logic mlc_exb_req_stall;
 `ifdef CCV_TRACE
@@ -290,7 +290,7 @@ module ccv_core_top (
 `endif
   // ccv_exb_mlc_rsp: exb -> mlc, 1 copy x 1 slot
   logic exb_mlc_rsp_valid;
-  logic [1026:0] exb_mlc_rsp_payload;
+  logic [1081:0] exb_mlc_rsp_payload;
   logic exb_mlc_rsp_credit;
   logic exb_mlc_rsp_stall;
 `ifdef CCV_TRACE

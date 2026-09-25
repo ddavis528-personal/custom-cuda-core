@@ -10,6 +10,8 @@
 #                                              corrupt-load:  a lane sees the
 #                                                operand AND the final R9 differs
 #                                              drop-store:    all 32 words differ
+#   responses correlated by req_id             corrupt-req-id: MLC refuses the
+#                                                mis-tagged fill; nothing retires
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -106,6 +108,17 @@ if [ "$(field "$B/kernel_drop-store.log" mem_mismatch)" = 32 ]; then
   say "--break drop-store: all 32 words differ" "PASS"
 else
   bad "--break drop-store" "mem_mismatch=$(field "$B/kernel_drop-store.log" mem_mismatch), want 32"
+fi
+
+# Responses are matched by req_id, per hop, not by arrival order: a response
+# that names the wrong id is refused rather than taken as the oldest.
+"$SKEL" --kernel "$K" --break corrupt-req-id --cycles 3000 >"$B/kernel_corrupt-req-id.log" 2>&1
+if grep -q "^CHECK mlc: a response for req_id 1, which is not outstanding" \
+     "$B/kernel_corrupt-req-id.log" &&
+   [ "$(field "$B/kernel_corrupt-req-id.log" finished)" = 0 ]; then
+  say "--break corrupt-req-id: MLC refuses, no retire" "PASS"
+else
+  bad "--break corrupt-req-id" "a mis-tagged response was accepted"
 fi
 
 exit $fail

@@ -41,14 +41,14 @@
   output logic [159:0] rcu_ooe_done_payload,
   input  logic [3:0] rcu_ooe_done_credit,
   input  logic [3:0] rcu_ooe_done_stall,
-  // rcu -> miu, 4 slot(s) x 2119 bit payload
+  // rcu -> miu, 4 slot(s) x 2151 bit payload
   output logic [3:0] rcu_miu_addr_valid,
-  output logic [8475:0] rcu_miu_addr_payload,
+  output logic [8603:0] rcu_miu_addr_payload,
   input  logic [3:0] rcu_miu_addr_credit,
   input  logic [3:0] rcu_miu_addr_stall,
-  // miu -> rcu, 4 slot(s) x 1039 bit payload
+  // miu -> rcu, 4 slot(s) x 1071 bit payload
   input  logic [3:0] miu_rcu_data_valid,
-  input  logic [4155:0] miu_rcu_data_payload,
+  input  logic [4283:0] miu_rcu_data_payload,
   output logic [3:0] miu_rcu_data_credit,
   output logic [3:0] miu_rcu_data_stall,
   // rau -> rcu, 1 slot(s) x 9 bit payload

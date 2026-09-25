@@ -24,6 +24,7 @@ import json
 import os
 import re
 import sys
+from ccv_schema import field_width
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PARAMS = os.path.join(ROOT, "params", "ccv_params.json")
@@ -92,7 +93,7 @@ def main():
     for c in sd["channels"]:
         bad = []
         for fld in c["payload_fields"]:
-            for n in ident.findall(str(fw.get(fld, ""))):
+            for n in ident.findall(str(field_width(sd, c, fld) or "")):
                 if n in prelim:
                     bad.append((fld, n))
         if bad:

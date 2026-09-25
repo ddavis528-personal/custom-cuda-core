@@ -30,15 +30,16 @@ VFLAGS="-Wno-fatal -Wno-TIMESCALEMOD -Irtl/include -Irtl/generated"
 # decays into nobody remembering which ones; a number that moves as sessions
 # close is harder to lose than a note.
 python3 - <<'PY'
-import json
+import json, sys
+sys.path.insert(0, "tools")
+from ccv_schema import field_width
 d = json.load(open("schema/interfaces.json"))
-fw = d.get("field_widths", {})
 sized = [c for c in d["channels"]
-         if all(f in fw for f in c["payload_fields"])]
+         if all(field_width(d, c, f) is not None for f in c["payload_fields"])]
 ur = {}
 for c in d["channels"]:
     for f in c["payload_fields"]:
-        if f not in fw:
+        if field_width(d, c, f) is None:
             ur.setdefault(f, []).append(c["name"])
 print("  %-46s %d of %d channels, %d field(s) open"
       % ("payload structs generated", len(sized), len(d["channels"]), len(ur)))

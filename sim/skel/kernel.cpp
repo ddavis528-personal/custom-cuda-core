@@ -110,8 +110,11 @@ enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // The testbench link. tl_out / tl_in are single opaque fields whose TileLink
 // encoding is the EXB session's; this is enough to move a line.
 enum : unsigned { kTlGet = 1, kTlPutFull = 2, kTlAckData = 1, kTlAck = 2 };
-constexpr uint32_t kTlOp = 0, kTlAddr = 3, kTlMask = 51, kTlData = 179;  // tl_out
-constexpr uint32_t kTlInOp = 0, kTlInData = 3;                          // tl_in
+// The source id is MLC's req_id on that hop, as TL-C matches D to A by source.
+constexpr uint32_t kTlOp = 0, kTlSrc = 3, kTlAddr = 9, kTlMask = 57,
+                   kTlData = 185;                                  // tl_out
+constexpr uint32_t kTlInOp = 0, kTlInSrc = 3, kTlInData = 9;       // tl_in
+constexpr uint32_t kTlSrcW = 6;
 
 // ---- the opcode table ---------------------------------------------------------
 //
@@ -149,6 +152,26 @@ const OpInfo *opByName(const std::string &n) {
 const OpInfo *opByCode(unsigned c) {
   return c >= 1 && c <= kNumOps ? &kOps[c - 1] : nullptr;
 }
+
+/// req_id allocation on one hop: the lowest free id below 2^width, where the
+/// width is the hop's own (CCV_P_W_REQ_*). Running out is a stall, not a
+/// wrap -- a reused id would let a response match the wrong request.
+class IdPool {
+public:
+  explicit IdPool(unsigned chan) : n_(1u << field(chan, "req_id").width) {}
+  bool any() const { return used_.size() < n_; }
+  unsigned take() {
+    unsigned i = 0;
+    while (used_.count(i)) ++i;
+    used_.insert(i);
+    return i;
+  }
+  bool release(unsigned i) { return used_.erase(i) != 0; }
+  bool empty() const { return used_.empty(); }
+private:
+  unsigned n_;
+  std::set<unsigned> used_;
+};
 
 uint64_t instrUid(uint64_t seq) { return makeUid(IdClass::kInstr, uint32_t(seq)); }
 uint32_t g_unowned_txn = 0;   ///< sequence for transactions no instruction owns
@@ -294,6 +317,7 @@ private:
       const unsigned op = unsigned(m.payload.get(kTlOp, 3));
       const uint64_t addr = m.payload.get(kTlAddr, 48);
       Bits r = msgOf(c.ext_exb);
+      r.set(kTlInSrc, kTlSrcW, m.payload.get(kTlSrc, kTlSrcW));
       if (addr % kLine) k_.fail("testbench: unaligned line address %llx",
                                 (unsigned long long)addr);
       if (op == kTlGet) {
@@ -332,6 +356,7 @@ public:
 
 private:
   std::deque<Q> out_, in_;
+  bool corrupted_ = false;
 
   void work() override {
     const Ch &c = ch();
@@ -340,6 +365,7 @@ private:
       Bits t = msgOf(c.exb_ext);
       const bool wr = get(m.payload, c.mlc_exb, "coh_op") == kCohWrite;
       t.set(kTlOp, 3, wr ? kTlPutFull : kTlGet);
+      t.set(kTlSrc, kTlSrcW, get(m.payload, c.mlc_exb, "req_id"));
       t.set(kTlAddr, 48, get(m.payload, c.mlc_exb, "phys_addr"));
       if (wr) {
         // mlc_exb_req has no byte mask: a write is always a whole line.
@@ -353,6 +379,12 @@ private:
       Receiver::Msg m = take(c.ext_exb, 0);
       Bits r = msgOf(c.exb_mlc);
       putLine(r, field(c.exb_mlc, "line_data").lsb, getLine(m.payload, kTlInData));
+      put(r, c.exb_mlc, "req_id", m.payload.get(kTlInSrc, kTlSrcW));
+      put(r, c.exb_mlc, "probe_type", 0);          // a response, not a probe
+      if (k_.brk == "corrupt-req-id" && !corrupted_) {
+        put(r, c.exb_mlc, "req_id", get(r, c.exb_mlc, "req_id") ^ 1);
+        corrupted_ = true;
+      }
       put(r, c.exb_mlc, "miss", 1);
       in_.push_back({0, r, m.tid});
     }
@@ -372,14 +404,18 @@ private:
 
 class Mlc : public Stub {
 public:
-  using Stub::Stub;
+  Mlc(int inst, Kernel &k) : Stub(inst, k), ids_(ch().mlc_exb) {}
   const char *kind() const override { return "mlc"; }
 
 private:
   enum Who { kDcu, kFet };
-  struct R { Who who; Bits msg; uint64_t tid; };
+  /// What an EXB-side req_id stands for: who asked, and under which of
+  /// THEIR ids -- each hop has its own id space.
+  struct Owner { Who who; unsigned their_id; };
+  struct R { Owner o; Bits msg; uint64_t tid; };
   std::deque<R> to_exb_;
-  std::deque<Who> owner_;       ///< one per request EXB has not answered
+  IdPool ids_;
+  std::map<unsigned, Owner> owner_;   ///< by req_id toward EXB
   std::deque<Q> to_dcu_, to_fet_;
 
   void work() override {
@@ -393,7 +429,7 @@ private:
       put(e, c.mlc_exb, "core_id", get(m.payload, c.dcu_mlc, "core_id"));
       putLine(e, field(c.mlc_exb, "writeback_data").lsb,
               getLine(m.payload, field(c.dcu_mlc, "writeback_data").lsb));
-      to_exb_.push_back({kDcu, e, m.tid});
+      to_exb_.push_back({{kDcu, unsigned(get(m.payload, c.dcu_mlc, "req_id"))}, e, m.tid});
     }
     if (has(c.fet_mlc, 0)) {
       Receiver::Msg m = take(c.fet_mlc, 0);
@@ -401,30 +437,40 @@ private:
       put(e, c.mlc_exb, "phys_addr", get(m.payload, c.fet_mlc, "phys_addr"));
       put(e, c.mlc_exb, "size", kSizeLine);
       put(e, c.mlc_exb, "coh_op", kCohRead);
-      to_exb_.push_back({kFet, e, m.tid});
+      to_exb_.push_back({{kFet, unsigned(get(m.payload, c.fet_mlc, "req_id"))}, e, m.tid});
     }
-    if (!to_exb_.empty() && can(c.mlc_exb, 0)) {
-      send(c.mlc_exb, 0, to_exb_.front().msg, to_exb_.front().tid);
-      owner_.push_back(to_exb_.front().who);
+    if (!to_exb_.empty() && ids_.any() && can(c.mlc_exb, 0)) {
+      R &r = to_exb_.front();
+      const unsigned id = ids_.take();
+      put(r.msg, c.mlc_exb, "req_id", id);
+      owner_[id] = r.o;
+      send(c.mlc_exb, 0, r.msg, r.tid);
       to_exb_.pop_front();
     }
     if (has(c.exb_mlc, 0)) {
       Receiver::Msg m = take(c.exb_mlc, 0);
-      if (owner_.empty()) {
-        k_.fail("mlc: a response with no request outstanding");
+      const unsigned id = unsigned(get(m.payload, c.exb_mlc, "req_id"));
+      auto it = owner_.find(id);
+      if (get(m.payload, c.exb_mlc, "probe_type") != 0) {
+        k_.fail("mlc: an inbound probe -- not modelled in S1");
+      } else if (it == owner_.end()) {
+        k_.fail("mlc: a response for req_id %u, which is not outstanding", id);
       } else {
         const Line l = getLine(m.payload, field(c.exb_mlc, "line_data").lsb);
-        if (owner_.front() == kDcu) {
+        if (it->second.who == kDcu) {
           Bits r = msgOf(c.mlc_dcu);
+          put(r, c.mlc_dcu, "req_id", it->second.their_id);
           putLine(r, field(c.mlc_dcu, "line_data").lsb, l);
           put(r, c.mlc_dcu, "miss", 1);
           to_dcu_.push_back({0, r, m.tid});
         } else {
           Bits r = msgOf(c.mlc_fet);
+          put(r, c.mlc_fet, "req_id", it->second.their_id);
           putLine(r, field(c.mlc_fet, "line_data").lsb, l);
           to_fet_.push_back({0, r, m.tid});
         }
-        owner_.pop_front();
+        owner_.erase(it);
+        ids_.release(id);
       }
     }
     if (!to_dcu_.empty() && can(c.mlc_dcu, 0)) {
@@ -450,7 +496,7 @@ private:
 
 class Dcu : public Stub {
 public:
-  using Stub::Stub;
+  Dcu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().dcu_mlc) {}
   const char *kind() const override { return "dcu"; }
 
 private:
@@ -458,13 +504,24 @@ private:
   std::deque<Op> q_;
   enum { kIdle, kWaitLine, kWaitAck } st_ = kIdle;
   Op cur_{0, Bits(), 0};
+  IdPool ids_;
+  unsigned mlc_id_ = 0;              ///< the one request to MLC outstanding
   std::deque<Q> to_mlc_, to_miu_;
+
+  /// A response to MIU answers its request by MIU's own req_id.
+  Bits miuRsp() {
+    Bits r = msgOf(ch().dcu_miu);
+    put(r, ch().dcu_miu, "req_id", get(cur_.req, ch().miu_dcu, "req_id"));
+    return r;
+  }
 
   void mlcReq(unsigned coh, uint64_t pa, const Line *data) {
     const Ch &c = ch();
     Bits r = msgOf(c.dcu_mlc);
     put(r, c.dcu_mlc, "phys_addr", pa);
     put(r, c.dcu_mlc, "coh_op", coh);
+    mlc_id_ = ids_.take();
+    put(r, c.dcu_mlc, "req_id", mlc_id_);
     if (data) putLine(r, field(c.dcu_mlc, "writeback_data").lsb, *data);
     to_mlc_.push_back({0, r, cur_.tid});
   }
@@ -479,7 +536,10 @@ private:
     if (has(c.mlc_dcu, 0)) {
       Receiver::Msg m = take(c.mlc_dcu, 0);
       const bool wr = get(cur_.req, c.miu_dcu, "coh_op") == kCohWrite;
-      Bits r = msgOf(c.dcu_miu);
+      const unsigned id = unsigned(get(m.payload, c.mlc_dcu, "req_id"));
+      if (st_ == kIdle || id != mlc_id_ || !ids_.release(id))
+        k_.fail("dcu: MLC answered req_id %u, which is not outstanding", id);
+      Bits r = miuRsp();
       if (st_ == kWaitLine && !wr) {
         putLine(r, field(c.dcu_miu, "read_data").lsb,
                 getLine(m.payload, field(c.mlc_dcu, "line_data").lsb));
@@ -527,7 +587,7 @@ private:
 
 class Miu : public Stub {
 public:
-  using Stub::Stub;
+  Miu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().miu_dcu) {}
   const char *kind() const override { return "miu"; }
 
 private:
@@ -537,6 +597,7 @@ private:
   struct Job {
     bool store = false;
     unsigned tag = 0, memop_slot = 0, addr_slot = 0;
+    uint32_t active = 0;             ///< lanes that may access memory
     uint64_t tid = 0;
     std::array<uint64_t, kLanes> addr{};
     std::vector<LineReq> lines;
@@ -552,7 +613,8 @@ private:
   bool active_ = false;
   Job job_;
   bool dropped_ = false;
-  std::array<std::deque<uint64_t>, 4> outstanding_;   ///< per dcu slot
+  IdPool ids_;
+  std::map<unsigned, uint64_t> outstanding_;   ///< line, by req_id to DCU
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
 
   void work() override {
@@ -595,12 +657,17 @@ private:
     for (unsigned s = 0; s != kChans[c.dcu_miu].rate; ++s)
       while (has(c.dcu_miu, s)) {
         Receiver::Msg m = take(c.dcu_miu, s);
-        if (!active_ || outstanding_[s].empty()) {
-          k_.fail("miu: a DCU response with nothing outstanding on slot %u", s);
+        // Matched by req_id, not by slot or arrival order: DCU may answer
+        // four outstanding requests in any order.
+        const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        auto o = outstanding_.find(id);
+        if (!active_ || o == outstanding_.end()) {
+          k_.fail("miu: a DCU response for req_id %u, which is not outstanding", id);
           continue;
         }
-        const uint64_t line = outstanding_[s].front();
-        outstanding_[s].pop_front();
+        const uint64_t line = o->second;
+        outstanding_.erase(o);
+        ids_.release(id);
         job_.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
         ++job_.back;
         emit(now_, m.tid, EV_MEM_RSP, UNIT_MIU, uint32_t(line),
@@ -643,12 +710,20 @@ private:
     j.addr_slot = a->second.slot;
     j.tid = a->second.tid;
     const Bits &am = a->second.msg;
+    // The mask arrives twice, from OOE and from RCU (the response's safe
+    // default); the two describe one operation and must agree.
+    j.active = uint32_t(get(am, c.rcu_miu, "active_mask"));
+    if (uint32_t(get(mo.msg, c.ooe_miu, "active_mask")) != j.active)
+      k_.fail("miu: rob tag %u active_mask differs between OOE and RCU", tag);
     const uint64_t base = get(am, c.rcu_miu, "base");
     for (unsigned l = 0; l != kLanes; ++l)
-      j.addr[l] = base + getLane(am, c.rcu_miu, "index_per_lane", l);
-    // Lines touched, in first-touch order; four bytes per lane (32-bit only).
+      if ((j.active >> l) & 1u)
+        j.addr[l] = base + getLane(am, c.rcu_miu, "index_per_lane", l);
+    // Lines touched by ACTIVE lanes, in first-touch order; four bytes per
+    // lane (32-bit only). An inactive lane's address is never looked at.
     std::map<uint64_t, size_t> at;
     for (unsigned l = 0; l != kLanes; ++l) {
+      if (!((j.active >> l) & 1u)) continue;
       const uint64_t line = j.addr[l] / kLine * kLine;
       if (!at.count(line)) {
         at[line] = j.lines.size();
@@ -689,12 +764,11 @@ private:
   void check(const Job &j, const Bits &am) {
     const Record *r = rec(j.tid, "miu");
     if (!r) return;
-    if (r->mask != 0xffffffffu)
-      k_.fail("miu: seq %llu runs with mask %08x, and no mask reaches MIU "
-              "(open question active_lane_mask)", (unsigned long long)r->seq, r->mask);
-    if (r->mem.size() != kLanes || r->store != j.store) {
-      k_.fail("miu: seq %llu is not a 32-lane %s", (unsigned long long)r->seq,
-              j.store ? "store" : "load");
+    uint32_t lanes = 0;
+    for (const MemAcc &a : r->mem) lanes |= 1u << a.lane;
+    if (lanes != j.active || r->store != j.store) {
+      k_.fail("miu: seq %llu active_mask %08x, but ccv-sim's %s touched lanes %08x",
+              (unsigned long long)r->seq, j.active, r->store ? "store" : "load", lanes);
       return;
     }
     for (const MemAcc &a : r->mem) {
@@ -713,8 +787,9 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", j.tag);
-    put(m, c.miu_ooe, "lane_mask", 0xffffffffu);
-    put(m, c.miu_ooe, "address", j.addr[0]);
+    put(m, c.miu_ooe, "lane_mask", j.active);
+    for (unsigned l = 0; l != kLanes; ++l)
+      if ((j.active >> l) & 1u) { put(m, c.miu_ooe, "address", j.addr[l]); break; }
     put(m, c.miu_ooe, "mlc_miss", 1);
     return m;
   }
@@ -724,9 +799,11 @@ private:
     const unsigned rate = kChans[c.miu_dcu].rate;
     // Up to one line request per DCU slot per cycle.
     for (unsigned s = 0; s != rate && job_.next != job_.lines.size(); ++s) {
-      if (!can(c.miu_dcu, s)) continue;
+      if (!can(c.miu_dcu, s) || !ids_.any()) continue;
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
+      const unsigned id = ids_.take();
+      put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
       put(r, c.miu_dcu, "size", kSizeLine);
       put(r, c.miu_dcu, "coh_op", job_.store ? kCohWrite : kCohRead);
@@ -738,7 +815,7 @@ private:
       const uint64_t tid =
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
-      outstanding_[s].push_back(lr.line);
+      outstanding_[id] = lr.line;
       emit(now_, tid, EV_MEM_REQ, UNIT_MIU, uint32_t(lr.line),
            uint32_t(lr.line >> 32), job_.store ? kCohWrite : kCohRead);
     }
@@ -746,16 +823,20 @@ private:
     if (!job_.store) {
       Bits d = msgOf(c.miu_rcu);
       put(d, c.miu_rcu, "rob_tag", job_.tag);
+      put(d, c.miu_rcu, "active_mask", job_.active);
       const Record *r = rec(job_.tid, "miu");
       for (unsigned l = 0; l != kLanes; ++l) {
+        if (!((job_.active >> l) & 1u)) continue;
         const Line &ln = job_.got[job_.addr[l] / kLine * kLine];
         const unsigned off = unsigned(job_.addr[l] % kLine);
         uint32_t v = 0;
         for (unsigned b = 0; b != 4; ++b) v |= uint32_t(ln[off + b]) << (8 * b);
         // What came back from memory, against what ccv-sim loaded.
-        if (r && l < r->mem.size() && r->mem[l].val != v)
-          k_.fail("miu: seq %llu lane %u loaded %08x, oracle %08x",
-                  (unsigned long long)r->seq, l, v, r->mem[l].val);
+        if (r)
+          for (const MemAcc &a : r->mem)
+            if (a.lane == l && a.val != v)
+              k_.fail("miu: seq %llu lane %u loaded %08x, oracle %08x",
+                      (unsigned long long)r->seq, l, v, a.val);
         if (k_.brk == "corrupt-load" && r && r->seq == 13 && l == 5) v ^= 1;
         putLane(d, c.miu_rcu, "load_data", l, v);
       }
@@ -888,8 +969,10 @@ private:
         // miu_rcu_data.phys_dst has no source: nothing MIU receives names the
         // destination (open question miu_rcu_phys_dst). RCU kept it at issue.
         const unsigned pd = it->second.pdst;
+        const uint32_t active = uint32_t(get(m.payload, c.miu_rcu, "active_mask"));
         for (unsigned l = 0; l != kLanes; ++l)
-          k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l);
+          if ((active >> l) & 1u)   // an inactive lane keeps its old value
+            k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l);
         to_ooe_.push_back({it->second.slot, done(tag), it->second.tid});
         loads_.erase(it);
       }
@@ -926,6 +1009,10 @@ private:
     if (op->cls == kLoad || op->cls == kStore) {
       Bits a = msgOf(c.rcu_miu);
       put(a, c.rcu_miu, "rob_tag", tag);
+      // Issue mask AND guard. No issue mask reaches RCU (open question
+      // active_lane_mask), so it is all 32 lanes -- which the oracle checks.
+      const uint32_t active = op->pread ? k_.pred[pp] : 0xffffffffu;
+      put(a, c.rcu_miu, "active_mask", active);
       const auto &b = k_.gpr[src[op->base_src]];
       for (unsigned l = 1; l != kLanes; ++l)
         if (b[l] != b[0]) { k_.fail("rcu: window base differs across lanes; rcu_miu_addr.base is scalar"); break; }
@@ -1040,7 +1127,7 @@ private:
     e.src[0] = sa >> 4;
     e.src[1] = sa & 15;
     e.src[2] = e.dst = unsigned(get(u, c.dec_ooe, "dst_arch"));
-    e.pidx = unsigned(get(u, c.dec_ooe, "pred_reg")) & 3;
+    e.pidx = unsigned(get(u, c.dec_ooe, "pred_reg"));
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
     emit(now_, e.tid, EV_DISPATCH, UNIT_OOE, e.warp, e.tag);
@@ -1093,6 +1180,9 @@ private:
       put(mo, c.ooe_miu, "rob_tag", e.tag);
       put(mo, c.ooe_miu, "warp_id", e.warp);
       put(mo, c.ooe_miu, "mem_op", e.op->cls == kStore ? kMemStore : kMemLoad);
+      // OOE has the issue mask but not predicate values (open question
+      // active_lane_mask). Unpredicated and undiverged, that is all lanes.
+      put(mo, c.ooe_miu, "active_mask", e.op->pread ? 0u : 0xffffffffu);
       send(c.ooe_miu, slot, mo, e.tid);
     }
     e.issued = true;
@@ -1205,7 +1295,9 @@ private:
     put(u, c.dec_ooe, "src_arch",
         ((g.size() > 0 ? g[0]->idx : 0) << 4) | (g.size() > 1 ? g[1]->idx : 0));
     put(u, c.dec_ooe, "dst_arch", dst);
-    put(u, c.dec_ooe, "pred_reg", (pd ? 8u : 0u) | (pu ? 4u : 0u) | pidx);
+    // pred_reg is an index (CCV_W_ARCH_PRED); whether it is read, written
+    // or both is the opcode's to say, as for the GPR sources.
+    put(u, c.dec_ooe, "pred_reg", pidx);
     q_.push_back({u, m.tid});
   }
 
@@ -1220,7 +1312,7 @@ private:
 
 class Fet : public Stub {
 public:
-  using Stub::Stub;
+  Fet(int inst, Kernel &k) : Stub(inst, k), ids_(ch().fet_mlc) {}
   const char *kind() const override { return "fet"; }
 
 private:
@@ -1230,7 +1322,8 @@ private:
   std::map<uint64_t, uint64_t> page_;       ///< virtual page -> physical page
   std::set<uint64_t> itlb_wait_;
   std::map<uint64_t, Line> line_;           ///< by virtual line address
-  std::deque<uint64_t> ifill_wait_;         ///< virtual lines, in request order
+  IdPool ids_;
+  std::map<unsigned, uint64_t> ifill_wait_; ///< virtual line, by req_id
   std::deque<Q> fills_, itlbs_;
 
   void work() override {
@@ -1254,11 +1347,15 @@ private:
     }
     if (has(c.mlc_fet, 0)) {
       Receiver::Msg m = take(c.mlc_fet, 0);
-      if (ifill_wait_.empty()) { k_.fail("fet: a fill it did not ask for"); }
-      else {
-        const uint64_t vl = ifill_wait_.front();
+      const unsigned id = unsigned(get(m.payload, c.mlc_fet, "req_id"));
+      auto w = ifill_wait_.find(id);
+      if (w == ifill_wait_.end()) {
+        k_.fail("fet: a fill for req_id %u, which is not outstanding", id);
+      } else {
+        const uint64_t vl = w->second;
         line_[vl] = getLine(m.payload, field(c.mlc_fet, "line_data").lsb);
-        ifill_wait_.pop_front();
+        ifill_wait_.erase(w);
+        ids_.release(id);
         emit(now_, m.tid, EV_MEM_RSP, UNIT_FET, uint32_t(vl), uint32_t(vl >> 32), 2);
       }
     }
@@ -1297,7 +1394,7 @@ private:
   void want(uint64_t vline) {
     const Ch &c = ch();
     const uint64_t vp = vline / kPage;
-    for (uint64_t w : ifill_wait_) if (w == vline) return;
+    for (auto &w : ifill_wait_) if (w.second == vline) return;
     auto p = page_.find(vp);
     if (p == page_.end()) {
       if (itlb_wait_.count(vp)) return;
@@ -1307,12 +1404,15 @@ private:
       itlb_wait_.insert(vp);
       return;
     }
+    if (!ids_.any()) return;                 // all fills in flight: wait
     Bits r = msgOf(c.fet_mlc);
+    const unsigned id = ids_.take();
+    put(r, c.fet_mlc, "req_id", id);
     const uint64_t pa = p->second * kPage + vline % kPage;
     put(r, c.fet_mlc, "phys_addr", pa);
     const uint64_t tid = makeUid(IdClass::kTxn, g_unowned_txn++);
     fills_.push_back({0, r, tid});
-    ifill_wait_.push_back(vline);
+    ifill_wait_[id] = vline;
     emit(now_, tid, EV_MEM_REQ, UNIT_FET, uint32_t(pa), uint32_t(pa >> 32), 2);
   }
 

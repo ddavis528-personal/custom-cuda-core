@@ -345,6 +345,7 @@ reaches.
 | Final memory == ccv-sim's | `--break drop-store` has MIU discard the committed store; all 32 words of `c[]` differ |
 | 0 bank violations | S0's controls prove the same bank, driven by the same code, is wired to every slot |
 | `EV_CH_XFER` == every launch | Exact multiset over channel, payload bits and identity, so one wrong bit fails it |
+| Every response matched to its request by `req_id` | `--break corrupt-req-id` gives the first EXB→MLC response the wrong id; MLC refuses it and nothing retires |
 
 A second run is byte-identical (trace and cycle count), and
 `tools/gen-golden.sh --check` fails the gate if the checked-in oracle record
@@ -401,9 +402,9 @@ rendered in `docs/payload-spec.md`.
    `imm` is on the uop and dropped at issue, and nothing downstream carries a
    displacement or scale. S1 substitutes the oracle's per-lane offset. ALU
    immediates have the same gap.
-3. **No active-lane mask on the instruction path** (`active_lane_mask`).
-   vadd never diverges, so S1 checks every group's mask is all 32 lanes and
-   retires with that. `EV_RETIRE.active_mask` is always `0xffffffff` today.
+3. **Active-lane mask** (`active_lane_mask`). The response added
+   `active_mask` to the three memory-path channels; see below for what
+   remains open. `EV_RETIRE.active_mask` is still always `0xffffffff`.
 4. **One predicate field for guard and destination** (`pred_src_and_dst`).
    `@P0 setp P1, …` has no encoding. S1 refuses such a record; vadd only uses
    P0.
@@ -427,6 +428,56 @@ Also found and fixed, in the compiler repo:
 - **compiler F-142.** ccv-sim recognized 42 of the 64 `setp` forms as compares when
   excluding Format C's unwritten `rd`. No benchmark output changed.
 
+### Payload spec response (2026-09-25), as built
+
+The partitioning response to `payload-spec.md`, applied. Every change is
+covered by the S0 checks (the new fields are random traffic, their bits are
+cross-checked C++ against SV) and exercised by vadd.
+
+- **`req_id` on every request/response pair, per hop.** Added to the five
+  pairs (`miu_spm`, `miu_dcu`, `dcu_mlc`, `fet_mlc` ifill, `mlc_exb`) and to
+  the probe/acknowledgement pair. Each hop has its own provisional width, set
+  by its outstanding window: MIU→SPM 3, MIU→DCU 4, DCU→MLC 4, FET→MLC 2,
+  MLC→EXB 6 (the TL-C source width the `tilelink_tlc` sizing assumed), probe 2
+  (`CCV_P_W_REQ_*`). One field name with a different width per hop needed a
+  per-channel override of `field_widths`. That rule is in `tools/ccv_schema.py`
+  and all six width consumers use it. The S1 stubs now match every response by
+  id instead of by slot or arrival order.
+- **`active_mask`** (`CCV_W_LANE_MASK`) on `ooe_miu_memop`, `rcu_miu_addr`
+  and `miu_rcu_data`. MIU checks the two copies agree, touches only active
+  lanes and checks them against ccv-sim's; RCU writes only active lanes.
+- **`pred_reg` is `CCV_W_ARCH_PRED`** (2 bits, new, isa). S1 had packed
+  read/write flags into the spare bits; now they come from the opcode, like
+  GPR source counts.
+- **Inbound probe:** `exb_mlc_rsp`'s one-bit `inbound_probe` is replaced by
+  `probe_type` (`CCV_L_W_PROBE_TYPE`, 2, preliminary; 0 = a response) and
+  `phys_addr`. The flag was on `exb_mlc_rsp`, not `ext_exb_in`: `tl_in` is the
+  flattened TL bundle and already carries the probe's address and param in its
+  B-channel fields. EXB translates them. Decomposing `tl_in` into named fields
+  is the EXB session's `tilelink_tlc` decision, so I haven't done it here.
+- **Lane channels have no tag:** added as the third reason in
+  `rcu_lane_ops`' binding rationale. They were already `bound` and lockstep.
+
+**Stale in the response, already true of the build:** both migration
+channels are rate 1 in the schema (the 340-slot total is derived from it and
+re-derived independently in the gate). The four sizing corrections were
+already applied: `warp_mask_released` 32, `bank_addr` 320, `phys_pred` on
+`CCV_P_W_PHYS_PRED`, and barrier base plus count. `dcu_miu_rsp` already says
+`read_data`.
+
+**Raised by applying it** (in `open_questions`):
+
+- **Neither producer can compute `active_mask`.** It is issue mask ∧ guard
+  predicate. OOE knows the issue mask but not predicate values, which live in
+  RCU's file. RCU has the values but `ooe_rcu_issue` carries no issue mask.
+  The same gap means `pred_bit` can't fold in the issue mask, so "the
+  arithmetic path is already correct" holds only while every group issues all
+  32 lanes. Proposal: add `issue_mask` to `ooe_rcu_issue`.
+- **ITLB refills have no correlation either** (`itlb_correlation`).
+  `miu_fet_itlb` returns an entry naming no virtual page, and the request
+  carries no tag. It's the same defect one level up, unless FET is defined to
+  have at most one miss outstanding.
+
 ### S1 wire conventions (placeholders)
 
 These are encodings the payload spec leaves to each block's owner. They are
@@ -439,7 +490,7 @@ decisions.
 | `fet_dec_instr` slots | warp *w* is tier-1 stream *w*: binding group *w*, age = slot order |
 | `dec_ooe_uop.opcode` | skeleton-local table, 1..11 for vadd's ops (0 reserved) |
 | `dec_ooe_uop.src_arch` | `[7:4]` src0, `[3:0]` src1; a third source in `dst_arch` |
-| `dec_ooe_uop.pred_reg` | `[3]` writes, `[2]` reads, `[1:0]` index |
+| `dec_ooe_uop.pred_reg` | the index (`CCV_W_ARCH_PRED`); read/written comes from the opcode |
 | `dec_ooe_uop.imm` | 0: not decoded (finding 2) |
 | `ooe_rcu_issue.phys_src` | `[15:8]` src0, `[7:0]` src1; rename is `prf_base + arch` (no renaming yet) |
 | `ooe_rcu_issue.phys_pred` | `4·warp + index` (predicates not renamed) |
@@ -451,8 +502,10 @@ decisions.
 | `ooe_miu_memop.mem_op` | 0 load, 1 store |
 | `size` | log2 bytes; 7 = a 128-byte line |
 | `rau_fet_launch.code_bounds` | `[63:0]` base, `[103:64]` length |
-| `exb_ext_out.tl_out` | `[2:0]` op (1 Get, 2 PutFull), `[50:3]` address, `[178:51]` byte mask, `[1202:179]` data |
-| `ext_exb_in.tl_in` | `[2:0]` op (1 AccessAckData, 2 AccessAck), `[1026:3]` data |
+| `exb_ext_out.tl_out` | `[2:0]` op (1 Get, 2 PutFull), `[8:3]` source (= MLC→EXB `req_id`), `[56:9]` address, `[184:57]` byte mask, `[1208:185]` data |
+| `ext_exb_in.tl_in` | `[2:0]` op (1 AccessAckData, 2 AccessAck), `[8:3]` source, `[1032:9]` data |
+| `req_id` | each requester allocates the lowest free id below 2^width on its own hop and holds it until the response; MLC maps its EXB-side id back to the requester's id |
+| `active_mask` | all 32 lanes, or the guard predicate for a predicated memory op; MIU touches and RCU writes only active lanes |
 | identities | instruction: `instr` class, seq = record seq. Line request on an instruction's behalf: owned `txn`, same seq, sub = line. ITLB and ifill: unowned `txn` |
 
 ### Events: what the skeleton emits

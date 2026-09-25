@@ -202,6 +202,13 @@
       "source": "ports spec 2026-09-23"
     },
     {
+      "name": "CCV_W_ARCH_PRED",
+      "value": 2,
+      "status": "isa",
+      "doc": "Architectural predicate index. 4 predicates (ISA v1.6 \u00a71). A separate namespace from the GPRs, with its own RAT and count, even while the width happens to be smaller.",
+      "source": "Payload spec response (2026-09-25)"
+    },
+    {
       "name": "CCV_W_LANE_MASK",
       "value": 32,
       "status": "isa",
@@ -469,6 +476,54 @@
       "decided_at": "Stage 4a -- OOE rename session sizes the predicate RAT"
     },
     {
+      "name": "CCV_P_W_REQ_MIU_SPM",
+      "value": 3,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_MIU_DCU",
+      "value": 4,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MIU -> DCU: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen outstanding cache accesses: four slots, four deep, since hits and misses return at different times.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_DCU_MLC",
+      "value": 4,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on DCU -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Sixteen fills in flight, i.e. sixteen MSHRs.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_FET_MLC",
+      "value": 2,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on FET -> MLC: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Four instruction fills in flight.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_MLC_EXB",
+      "value": 6,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MLC -> EXB: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). The TL-C source-id width the tilelink_tlc sizing assumed (6 bits), so EXB maps it without translation.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
+      "name": "CCV_P_W_REQ_MLC_PROBE",
+      "value": 2,
+      "status": "provisional",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "req_id on MLC -> DCU probe and its acknowledgement: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Four probes in flight.",
+      "decided_at": "the owning block's session, from its outstanding window"
+    },
+    {
       "name": "CCV_L_W_CLASS",
       "value": 3,
       "status": "preliminary",
@@ -512,6 +567,15 @@
       "source": "Payload widths pass (2026-09-25)",
       "doc": "Coherent line request: acquire, release, probe response, writeback, grant acknowledgement. Follows the TL-C subset chosen.",
       "decided_at": "MLC/EXB session, once the TL-C subset is chosen"
+    },
+    {
+      "name": "CCV_L_W_PROBE_TYPE",
+      "value": 2,
+      "status": "preliminary",
+      "churn": "med",
+      "source": "Payload spec response (2026-09-25)",
+      "doc": "Kind of inbound message on ccv_exb_mlc_rsp: 0 = a response to a request; otherwise a probe and what it asks (to-invalid, to-branch, to-trunk, after TL-C Probe param). Replaces the one-bit inbound_probe flag.",
+      "decided_at": "MLC/EXB session, alongside CCV_L_W_COH_OP"
     },
     {
       "name": "CCV_L_W_OWNERSHIP",

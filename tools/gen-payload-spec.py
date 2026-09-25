@@ -22,6 +22,7 @@ import json
 import os
 import re
 import sys
+from ccv_schema import field_width
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "schema", "interfaces.json")
@@ -117,7 +118,7 @@ def channel_rows(d, params, pv):
     fw = d["field_widths"]
     sized, partial = [], []
     for c in d["channels"]:
-        open_f = [f for f in c["payload_fields"] if f not in fw]
+        open_f = [f for f in c["payload_fields"] if field_width(d, c, f) is None]
         (partial if open_f else sized).append((c, open_f))
     return sized, partial
 
@@ -178,7 +179,7 @@ def main():
     for c in chans:
         worst = "settled"
         for f in c["payload_fields"]:
-            t = worst_tier(fw[f], params)
+            t = worst_tier(field_width(d, c, f), params)
             if t == "prelim":
                 worst = "prelim"
                 break
@@ -300,7 +301,8 @@ def main():
                      % (c["src"], c["dst"], c.get("rate", "?"),
                         c.get("group", "?")))
             L.append("")
-            rows, _, _ = field_table(c, fw, params, pv)
+            rows, _, _ = field_table(c, {**fw, **c.get("field_widths", {})},
+                                    params, pv)
             L.extend(rows)
             L.append("")
 

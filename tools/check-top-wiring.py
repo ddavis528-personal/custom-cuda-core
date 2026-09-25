@@ -27,6 +27,7 @@ import re
 import subprocess
 import sys
 import tempfile
+from ccv_schema import field_width
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIGS = ("valid", "payload", "credit", "stall")
@@ -41,7 +42,7 @@ def schema():
     ninst["EXTERNAL"] = 1
     ch = {}
     for c in d["channels"]:
-        bits = sum(eval(str(d["field_widths"][f]), {"__builtins__": {}}, pv)
+        bits = sum(eval(str(field_width(d, c, f)), {"__builtins__": {}}, pv)
                    for f in c["payload_fields"])
         ch[c["name"][4:]] = dict(name=c["name"], src=c["src"], dst=c["dst"],
                                  rate=c["rate"], bits=bits,

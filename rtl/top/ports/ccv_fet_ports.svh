@@ -26,14 +26,14 @@
   output logic [959:0] fet_dec_instr_payload,
   input  logic [7:0] fet_dec_instr_credit,
   input  logic [7:0] fet_dec_instr_stall,
-  // fet -> mlc, 1 slot(s) x 56 bit payload
+  // fet -> mlc, 1 slot(s) x 58 bit payload
   output logic fet_mlc_ifill_valid,
-  output logic [55:0] fet_mlc_ifill_payload,
+  output logic [57:0] fet_mlc_ifill_payload,
   input  logic fet_mlc_ifill_credit,
   input  logic fet_mlc_ifill_stall,
-  // mlc -> fet, 1 slot(s) x 1024 bit payload
+  // mlc -> fet, 1 slot(s) x 1026 bit payload
   input  logic mlc_fet_ifill_rsp_valid,
-  input  logic [1023:0] mlc_fet_ifill_rsp_payload,
+  input  logic [1025:0] mlc_fet_ifill_rsp_payload,
   output logic mlc_fet_ifill_rsp_credit,
   output logic mlc_fet_ifill_rsp_stall,
   // miu -> fet, 1 slot(s) x 64 bit payload

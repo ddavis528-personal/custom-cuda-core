@@ -21,14 +21,14 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // miu -> spm, 4 slot(s) x 1474 bit payload
+  // miu -> spm, 4 slot(s) x 1477 bit payload
   input  logic [3:0] miu_spm_req_valid,
-  input  logic [5895:0] miu_spm_req_payload,
+  input  logic [5907:0] miu_spm_req_payload,
   output logic [3:0] miu_spm_req_credit,
   output logic [3:0] miu_spm_req_stall,
-  // spm -> miu, 4 slot(s) x 1030 bit payload
+  // spm -> miu, 4 slot(s) x 1033 bit payload
   output logic [3:0] spm_miu_rsp_valid,
-  output logic [4119:0] spm_miu_rsp_payload,
+  output logic [4131:0] spm_miu_rsp_payload,
   input  logic [3:0] spm_miu_rsp_credit,
   input  logic [3:0] spm_miu_rsp_stall
 `ifdef CCV_TRACE

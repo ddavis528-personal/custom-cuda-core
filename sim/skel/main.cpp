@@ -36,6 +36,7 @@
 //   corrupt-fetch  one instruction byte flipped between FET and DEC
 //   corrupt-load   one lane's load data flipped between MIU and RCU
 //   drop-store     a committed store discarded by MIU
+//   corrupt-req-id the first EXB->MLC response answers the wrong req_id
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
 #include "verilated.h"
@@ -199,7 +200,7 @@ int main(int argc, char **argv) {
   const bool breaking = brk == "phantom-all" || brk == "stall-all" ||
                         brk == "atomic-all" || brk == "lockstep-all";
   const bool kbreak = brk == "corrupt-fetch" || brk == "corrupt-load" ||
-                      brk == "drop-store";
+                      brk == "drop-store" || brk == "corrupt-req-id";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

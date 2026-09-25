@@ -42,6 +42,8 @@ struct Kernel {
   ///   corrupt-fetch  one instruction byte flipped on its way FET -> DEC
   ///   corrupt-load   one lane's load data flipped on its way MIU -> RCU
   ///   drop-store     MIU discards a committed store instead of writing it
+  ///   corrupt-req-id the first EXB -> MLC response carries the wrong req_id,
+  ///                  proving responses are matched by id, not by order
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

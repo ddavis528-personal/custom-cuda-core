@@ -26,9 +26,9 @@
   input  logic [959:0] fet_dec_instr_payload,
   output logic [7:0] fet_dec_instr_credit,
   output logic [7:0] fet_dec_instr_stall,
-  // dec -> ooe, 6 slot(s) x 130 bit payload
+  // dec -> ooe, 6 slot(s) x 128 bit payload
   output logic [5:0] dec_ooe_uop_valid,
-  output logic [779:0] dec_ooe_uop_payload,
+  output logic [767:0] dec_ooe_uop_payload,
   input  logic [5:0] dec_ooe_uop_credit,
   input  logic [5:0] dec_ooe_uop_stall
 `ifdef CCV_TRACE

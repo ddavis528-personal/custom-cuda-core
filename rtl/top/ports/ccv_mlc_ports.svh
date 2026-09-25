@@ -21,44 +21,44 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // dcu -> mlc, 1 slot(s) x 1078 bit payload
+  // dcu -> mlc, 1 slot(s) x 1082 bit payload
   input  logic dcu_mlc_req_valid,
-  input  logic [1077:0] dcu_mlc_req_payload,
+  input  logic [1081:0] dcu_mlc_req_payload,
   output logic dcu_mlc_req_credit,
   output logic dcu_mlc_req_stall,
-  // mlc -> dcu, 1 slot(s) x 1026 bit payload
+  // mlc -> dcu, 1 slot(s) x 1030 bit payload
   output logic mlc_dcu_rsp_valid,
-  output logic [1025:0] mlc_dcu_rsp_payload,
+  output logic [1029:0] mlc_dcu_rsp_payload,
   input  logic mlc_dcu_rsp_credit,
   input  logic mlc_dcu_rsp_stall,
-  // mlc -> dcu, 1 slot(s) x 49 bit payload
+  // mlc -> dcu, 1 slot(s) x 51 bit payload
   output logic mlc_dcu_probe_valid,
-  output logic [48:0] mlc_dcu_probe_payload,
+  output logic [50:0] mlc_dcu_probe_payload,
   input  logic mlc_dcu_probe_credit,
   input  logic mlc_dcu_probe_stall,
-  // dcu -> mlc, 1 slot(s) x 1025 bit payload
+  // dcu -> mlc, 1 slot(s) x 1027 bit payload
   input  logic dcu_mlc_probe_ack_valid,
-  input  logic [1024:0] dcu_mlc_probe_ack_payload,
+  input  logic [1026:0] dcu_mlc_probe_ack_payload,
   output logic dcu_mlc_probe_ack_credit,
   output logic dcu_mlc_probe_ack_stall,
-  // fet -> mlc, 1 slot(s) x 56 bit payload
+  // fet -> mlc, 1 slot(s) x 58 bit payload
   input  logic fet_mlc_ifill_valid,
-  input  logic [55:0] fet_mlc_ifill_payload,
+  input  logic [57:0] fet_mlc_ifill_payload,
   output logic fet_mlc_ifill_credit,
   output logic fet_mlc_ifill_stall,
-  // mlc -> fet, 1 slot(s) x 1024 bit payload
+  // mlc -> fet, 1 slot(s) x 1026 bit payload
   output logic mlc_fet_ifill_rsp_valid,
-  output logic [1023:0] mlc_fet_ifill_rsp_payload,
+  output logic [1025:0] mlc_fet_ifill_rsp_payload,
   input  logic mlc_fet_ifill_rsp_credit,
   input  logic mlc_fet_ifill_rsp_stall,
-  // mlc -> exb, 1 slot(s) x 1084 bit payload
+  // mlc -> exb, 1 slot(s) x 1090 bit payload
   output logic mlc_exb_req_valid,
-  output logic [1083:0] mlc_exb_req_payload,
+  output logic [1089:0] mlc_exb_req_payload,
   input  logic mlc_exb_req_credit,
   input  logic mlc_exb_req_stall,
-  // exb -> mlc, 1 slot(s) x 1027 bit payload
+  // exb -> mlc, 1 slot(s) x 1082 bit payload
   input  logic exb_mlc_rsp_valid,
-  input  logic [1026:0] exb_mlc_rsp_payload,
+  input  logic [1081:0] exb_mlc_rsp_payload,
   output logic exb_mlc_rsp_credit,
   output logic exb_mlc_rsp_stall
 `ifdef CCV_TRACE

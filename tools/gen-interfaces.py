@@ -17,6 +17,7 @@ import json
 import os
 import re
 import sys
+from ccv_schema import field_width
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "schema", "interfaces.json")
@@ -51,19 +52,17 @@ def ports_per_block(d, blocks):
 
 def sized(d, c):
     """Fields with a decided width, or None if any is missing."""
-    fw = d.get("field_widths", {})
-    miss = [f for f in c["payload_fields"] if f not in fw]
-    return None if miss else [(f, fw[f]) for f in c["payload_fields"]]
+    ws = [(f, field_width(d, c, f)) for f in c["payload_fields"]]
+    return None if any(w is None for _, w in ws) else ws
 
 
 def unresolved(d):
     """Every field still without a width, and which channels want it. This is
     the ask to the per-block sessions, kept as a list rather than guessed."""
-    fw = d.get("field_widths", {})
     out = {}
     for c in d["channels"]:
         for f in c["payload_fields"]:
-            if f not in fw:
+            if field_width(d, c, f) is None:
                 out.setdefault(f, []).append(c["name"])
     return out
 
@@ -333,7 +332,7 @@ def main():
                                  % (c["name"], fld))
                 bad = 1
         for fld in c["payload_fields"]:
-            w = d["field_widths"].get(fld)
+            w = field_width(d, c, fld)
             if w is None:
                 continue
             unk = unknown_names(w)

@@ -40,6 +40,7 @@ import json
 import os
 import re
 import sys
+from ccv_schema import field_width
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "interfaces.json")
@@ -93,7 +94,7 @@ def build(d, pv, blocks):
     chans = []
     for cid, c in enumerate(d["channels"]):
         fields = []
-        widths = [resolve(d["field_widths"][f], pv) for f in c["payload_fields"]]
+        widths = [resolve(field_width(d, c, f), pv) for f in c["payload_fields"]]
         total = sum(widths)
         lsb = total
         for f, w in zip(c["payload_fields"], widths):
