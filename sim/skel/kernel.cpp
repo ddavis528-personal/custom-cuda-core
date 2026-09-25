@@ -146,7 +146,8 @@ struct OpInfo {
   UopClass cls;
   uint8_t nsrc;         ///< GPR sources, in src_arch order
   bool gdst, pread, pwrite;
-  bool guard;           ///< the predicate read is a guard (@pq), not data
+  bool guard;           ///< the predicate read is a guard (@pq): an enable
+  bool pdata;           ///< the predicate read is DATA to the lane (sel)
   int8_t base_src;      ///< memory: the window base's source
   int8_t index_src;     ///< memory: the per-lane index's source, or -1
   int8_t data_src;      ///< store: the data's source
@@ -155,19 +156,31 @@ struct OpInfo {
   // issue, which substitutes it into operand slot `imm_slot`.
   int8_t disp_imm, scale_imm, alu_imm, imm_slot;
 };
+// Where each executes. RCU executes exactly two classes itself: (1) all
+// sources and all destinations are predicates -- predicate logic, and branch
+// resolution (a predicate in, a lane mask out); (2) data moving horizontally
+// between lanes -- shfl, vote, ballot, unballot. Everything else, sel
+// included, runs in the lane.
+bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch; }
 constexpr OpInfo kOps[] = {
-  //                            nsrc gdst  pread  pwrite guard  base idx data disp scl alu slot
-  {"POR",           kPredLogic, 0, false, true,  true,  false, -1, -1, -1, -1, -1, -1, -1},
-  {"MOVI48",        kAlu,       0, true,  false, false, false, -1, -1, -1, -1, -1,  0,  0},
-  {"SRD",           kAlu,       0, true,  false, false, false, -1, -1, -1, -1, -1,  0,  0},
-  {"LD_GLOBAL",     kLoad,      1, true,  false, false, false,  0, -1, -1,  0, -1, -1, -1},
-  {"MADLO",         kAlu,       3, true,  false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"SETP_LT",       kAlu,       2, false, true,  true,  true,  -1, -1, -1, -1, -1, -1, -1},
-  {"BRA_PRED",      kBranch,    0, false, true,  false, true,  -1, -1, -1, -1, -1, -1, -1},
-  {"LD_GLOBAL_IDX", kLoad,      2, true,  false, false, false,  0,  1, -1,  1,  0, -1, -1},
-  {"C_ADD",         kAlu,       2, true,  false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
-  {"C_EXIT",        kExit,      0, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  //                            nsrc gdst  pread  pwrite guard  pdata  base idx data disp scl alu slot
+  {"POR",           kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"MOVI48",        kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  {"LD_GLOBAL",     kLoad,      1, true,  false, false, false, false,  0, -1, -1,  0, -1, -1, -1},
+  {"MADLO",         kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LT",       kAlu,       2, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1},
+  {"BRA_PRED",      kBranch,    0, false, true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
+  {"LD_GLOBAL_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
+  {"C_ADD",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
+  {"C_EXIT",        kExit,      0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"MOVI",          kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  // sel's qualifier is DATA: every issue-mask lane writes rd, choosing rs0 or
+  // rs1 by it. So no enable narrowing, and the predicate rides as pred_data.
+  // (Format A always encodes rs2; the sel kernel names R2 for it, which the
+  // oracle folds into the rs1 use.)
+  {"SEL",           kAlu,       2, true,  true,  false, false, true,  -1, -1, -1, -1, -1, -1, -1},
 };
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
@@ -960,6 +973,8 @@ private:
         Bits r = msgOf(c.lane_rcu);
         if (const Record *rc = rec(m.tid, "lane")) {
           const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
+          if (op && inRcu(op->cls))
+            k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
           if (op != opByName(rc->op))
             k_.fail("lane %u: seq %llu opcode is not %s", lane_,
                     (unsigned long long)rc->seq, rc->op.c_str());
@@ -994,10 +1009,18 @@ private:
             k_.fail("lane %u: seq %llu pred_bit is not issue mask AND guard",
                     lane_, (unsigned long long)rc->seq);
           // The result: what ccv-sim computed (the "what", §1).
-          uint32_t v = 0;
-          if (const RegVal *d = rc->gprDef()) v = d->v[lane_];
-          else if (const RegVal *d = rc->predDef()) v = (d->p >> lane_) & 1u;
-          put(r, c.lane_rcu, "result", v);
+          if (const RegVal *d = rc->gprDef()) put(r, c.lane_rcu, "result", d->v[lane_]);
+          if (const RegVal *d = rc->predDef())
+            put(r, c.lane_rcu, "pred_out", (d->p >> lane_) & 1u);
+          // A predicate read as DATA (sel's selector), negate applied.
+          if (op && op->pdata)
+            if (const RegVal *p = rc->predUse()) {
+              const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
+              const bool want = (((p->p >> lane_) & 1u) != 0) != neg;
+              if ((get(m.payload, c.rcu_lane, "pred_data") != 0) != want)
+                k_.fail("lane %u: seq %llu pred_data (sel's selector) wrong", lane_,
+                        (unsigned long long)rc->seq);
+            }
         }
         q_.push_back({s, r, m.tid});
       }
@@ -1055,9 +1078,10 @@ private:
         Receiver::Msg m = take(c.lane_rcu, s, l);
         if (m.tid != a.tid) k_.fail("rcu: lane %u slot %u answered for another instruction", l, s);
         const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
+        const uint32_t po = uint32_t(get(m.payload, c.lane_rcu, "pred_out"));
         if (a.op->gdst) k_.gpr[a.pdst][l] = v;
         if (a.op->pwrite)
-          k_.pred[a.ppred] = (k_.pred[a.ppred] & ~(1u << l)) | ((v & 1u) << l);
+          k_.pred[a.ppred] = (k_.pred[a.ppred] & ~(1u << l)) | (po << l);
       }
       to_ooe_.push_back({s, done(a.tag), a.tid});
     }
@@ -1187,6 +1211,8 @@ private:
         o.set(olsb + 32 * i, 32, k_.gpr[src[i]][l]);
       if (op->alu_imm >= 0) o.set(olsb + 32 * unsigned(op->imm_slot), 32, imm);
       put(o, c.rcu_lane, "pred_bit", (active >> l) & 1u);
+      if (op->pdata && k_.brk != "drop-pred-data")
+        put(o, c.rcu_lane, "pred_data", (guard >> l) & 1u);
       put(o, c.rcu_lane, "section_en", 1);
       lanes.push_back(o);
     }
@@ -1477,8 +1503,8 @@ private:
               pu->idx, pd->idx);
     unsigned pidx = pu ? pu->idx : pd ? pd->idx : 0;
     unsigned pneg = 0;
-    if (op->guard) {
-      // The guard is quals[0]: [1:0] the predicate, [2] negate. vadd's
+    if (op->guard || op->pdata) {
+      // The qualifier is quals[0]: [1:0] the predicate, [2] negate. vadd's
       // branch is @!P0, and the index alone would resolve it backwards.
       if (r->quals.empty()) k_.fail("dec: seq %llu has no guard qualifier",
                                     (unsigned long long)r->seq);

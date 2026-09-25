@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 7 | 22 |
-| ⚠️ Some provisional | 15 | 58 |
-| ⛔ Some preliminary | 20 | 101 |
-| **Total** | **42** | **181** |
+| All decided | 7 | 23 |
+| ⚠️ Some provisional | 15 | 59 |
+| ⛔ Some preliminary | 20 | 102 |
+| **Total** | **42** | **184** |
 
 ## What still has to be decided
 
@@ -205,14 +205,6 @@ ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a gu
 
 **Blocks:** Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.
 
-### predicate as lane data
-
-*ISA-driven payload question — RCU / LANE sessions, with the ISA track for add.pp's predicate output*
-
-pred_bit is now the lane ENABLE (issue mask AND guard), so an instruction that reads a predicate as DATA while doing lane arithmetic needs something else. From the ISA and ccv-sim: sel is one -- '@pq sel rd, rs0, rs1' writes rd on every issue-mask lane, choosing rs0 or rs1 by the predicate, so its qualifier is a data operand, not an enable. Two ways to serve it: a second per-lane bit on ccv_rcu_lane_ops, or RCU resolves the select at register read (it holds both the predicate file and both sources) and the lane sees one operand -- the same move as substituting an immediate. The output direction has the same shape: add.pp / addi.pp write a GPR AND a predicate per lane, but ccv_lane_rcu_res carries one result; cas writes a success predicate, and ccv_miu_rcu_data carries none.
-
-**Blocks:** sel (selected by the compiler today), and add.pp / addi.pp / cas when they are selected (none is yet). vadd uses none.
-
 ### rcu miu width
 
 *partitioning question that a width exposed — partitioning / floorplan*
@@ -245,15 +237,16 @@ fet → dec · rate 8 · instruction
 
 ### `ccv_lane_rcu_res`
 
-One lane's result and its fault bit.
+One lane's result, its predicate output (setp's compare, add.pp's predicate beside its GPR result), and its fault bit.
 
 lane → rcu · rate 4 · execution
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
+| `pred_out` | `1` | 1 | literal |
 | `lane_fault` | `1` | 1 | literal |
-| **total** | | **33** | |
+| **total** | | **34** | |
 
 ### `ccv_fet_miu_itlb_req`
 
@@ -353,7 +346,7 @@ rcu → miu · rate 4 · execution
 
 ### `ccv_miu_rcu_data`
 
-Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value.
+Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file.
 
 miu → rcu · rate 4 · execution
 
@@ -361,9 +354,10 @@ miu → rcu · rate 4 · execution
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
 | `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `pred_result` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `load_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| **total** | | **1071** | ⚠️ 15 provisional |
+| **total** | | **1103** | ⚠️ 15 provisional |
 
 ### `ccv_miu_ooe_cmpl`
 
@@ -575,7 +569,7 @@ ooe → rcu · rate 4 · execution
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. pred_bit is issue mask AND guard for this lane -- the same computation as active_mask -- so a lane with pred_bit clear does nothing. Section enables gate the narrow sub-datapaths and the SFU.
+Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every operation EXCEPT the two classes RCU executes itself -- (1) all sources and all destinations are predicates (pand/por/pxor/pmov, and branch resolution), (2) data moving horizontally between lanes (shfl, vote, ballot, unballot).
 
 rcu → lane · rate 4 · execution
 
@@ -584,8 +578,9 @@ rcu → lane · rate 4 · execution
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `operand` | `CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA` | 96 ⛔ | CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_W_LANE_DATA (isa) |
 | `pred_bit` | `1` | 1 | literal |
+| `pred_data` | `1` | 1 | literal |
 | `section_en` | `4` | 4 | literal |
-| **total** | | **110** | ⛔ 105 preliminary |
+| **total** | | **111** | ⛔ 105 preliminary |
 
 ### `ccv_ooe_miu_memop`
 

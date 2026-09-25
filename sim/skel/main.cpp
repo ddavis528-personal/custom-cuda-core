@@ -42,6 +42,7 @@
 //   itlb-double    FET has two ITLB misses outstanding
 //   corrupt-disp   one load's displacement is off by 4 on its way OOE->MIU
 //   drop-negate    guard negates dropped at issue: @!P0 resolves backwards
+//   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
 #include "verilated.h"
@@ -223,7 +224,7 @@ int main(int argc, char **argv) {
   const bool kbreak = brk == "corrupt-fetch" || brk == "corrupt-load" ||
                       brk == "drop-store" || brk == "corrupt-req-id" ||
                       brk == "itlb-double" || brk == "corrupt-disp" ||
-                      brk == "drop-negate";
+                      brk == "drop-negate" || brk == "drop-pred-data";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

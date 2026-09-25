@@ -577,14 +577,23 @@ the way. See `fail-open-register.md`.
   computes the result from its predicate file and checks it against
   ccv-sim's. That removes the transfers for `por` and the branch from all
   32 lanes: 701 → 573.
-- **Your ISA question, answered from the ISA: yes, `sel`.** `@pq sel rd, rs0,
-  rs1` writes `rd` on every issue-mask lane, choosing by the predicate, so its
-  qualifier is data, not an enable. The output direction has the same shape:
-  `add.pp`/`addi.pp` write a GPR *and* a predicate per lane (one `result` on
-  `lane_rcu_res`), and `cas` writes a success predicate (`miu_rcu_data`
-  carries none). Open question `predicate_as_lane_data`. The cheapest answer
-  for `sel` is RCU resolving the select at register read, the same move as
-  an immediate.
+- **`sel` reads a predicate as data, and executes in the lane (decided).**
+  `@pq sel rd, rs0, rs1` writes `rd` on every issue-mask lane, choosing by the
+  predicate. **The rule:** RCU executes exactly two classes itself. The first
+  is ops whose sources and destinations are all predicates (predicate logic,
+  and branch resolution: a predicate in, a lane mask out). The second is data
+  moving horizontally between lanes (`shfl`, `vote`, `ballot`, `unballot`).
+  Everything else runs in the lane, and a lane stub fails if an RCU-class op
+  ever reaches it. The fields this implies:
+  - `pred_data` on `rcu_lane_ops`, sel's selector, beside `pred_bit`, which
+    stays the enable;
+  - `pred_out` on `lane_rcu_res`, a lane's predicate result (`setp` used to
+    borrow `result[0]`, which `add.pp`'s GPR-plus-predicate could not share);
+  - `pred_result` on `miu_rcu_data`, per lane, for `cas`'s success predicate.
+
+  A second kernel, `test/golden/sel/`, exercises it: `c[tid] = tid < 16 ? tid
+  : 16`, so half the lanes choose `rs1`. It ends identical to ccv-sim in 120
+  cycles, and `--break drop-pred-data` must be rejected by those lanes.
 - **The PC-group owner** (open question `pc_group_state_owner`): FET owns
   divergent PC state, but `ccv_rcu_pca_mig` carries `pcs` from RCU. Proposal:
   move `pcs` onto a FET↔PCA pair.
@@ -614,7 +623,8 @@ decisions.
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
 | `ooe_rcu_issue.phys_pred` | `4·warp + index` (predicates not renamed) |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
-| `lane_rcu_res.result` | GPR value, or the predicate bit in bit 0 |
+| `lane_rcu_res.result`, `pred_out` | the GPR value; the predicate result in `pred_out` |
+| `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable |
 | `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |

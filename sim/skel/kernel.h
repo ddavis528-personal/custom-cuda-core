@@ -50,6 +50,8 @@ struct Kernel {
   ///                  computes a wrong address from what it was sent
   ///   drop-negate    OOE drops the guard's negate bit, so vadd's @!P0 branch
   ///                  resolves as taken and redirects fetch to the wrong place
+  ///   drop-pred-data RCU withholds pred_data, so sel's lanes see a clear
+  ///                  selector (run on the sel kernel)
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

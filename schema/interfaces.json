@@ -317,10 +317,11 @@
         "opcode",
         "operand",
         "pred_bit",
+        "pred_data",
         "section_en"
       ],
       "note": "Fans out to 32 LANE instances; the payload is per-lane.",
-      "doc": "Operands and control to one lane. pred_bit is issue mask AND guard for this lane -- the same computation as active_mask -- so a lane with pred_bit clear does nothing. Section enables gate the narrow sub-datapaths and the SFU.",
+      "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every operation EXCEPT the two classes RCU executes itself -- (1) all sources and all destinations are predicates (pand/por/pxor/pmov, and branch resolution), (2) data moving horizontally between lanes (shfl, vote, ballot, unballot).",
       "id_classes": [
         "instr"
       ],
@@ -341,10 +342,11 @@
       "group": "execution",
       "payload_fields": [
         "result",
+        "pred_out",
         "lane_fault"
       ],
       "note": "32 LANE instances converge here.",
-      "doc": "One lane's result and its fault bit.",
+      "doc": "One lane's result, its predicate output (setp's compare, add.pp's predicate beside its GPR result), and its fault bit.",
       "id_classes": [
         "instr"
       ],
@@ -402,10 +404,11 @@
       "payload_fields": [
         "rob_tag",
         "active_mask",
+        "pred_result",
         "phys_dst",
         "load_data"
       ],
-      "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value.",
+      "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file.",
       "id_classes": [
         "instr"
       ]
@@ -1159,7 +1162,10 @@
     "target_pc": "CCV_W_VA",
     "group_masks": "CCV_L_PC_GROUPS*CCV_W_LANE_MASK",
     "fetch_epoch": "CCV_P_W_FETCH_EPOCH",
-    "pred_neg": "1"
+    "pred_neg": "1",
+    "pred_data": "1",
+    "pred_out": "1",
+    "pred_result": "CCV_W_LANE_MASK"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
@@ -1190,12 +1196,6 @@
       "kind": "payload inconsistency found by the first kernel",
       "blocks": "Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.",
       "owner": "execution / memory payload owners"
-    },
-    "predicate_as_lane_data": {
-      "question": "pred_bit is now the lane ENABLE (issue mask AND guard), so an instruction that reads a predicate as DATA while doing lane arithmetic needs something else. From the ISA and ccv-sim: sel is one -- '@pq sel rd, rs0, rs1' writes rd on every issue-mask lane, choosing rs0 or rs1 by the predicate, so its qualifier is a data operand, not an enable. Two ways to serve it: a second per-lane bit on ccv_rcu_lane_ops, or RCU resolves the select at register read (it holds both the predicate file and both sources) and the lane sees one operand -- the same move as substituting an immediate. The output direction has the same shape: add.pp / addi.pp write a GPR AND a predicate per lane, but ccv_lane_rcu_res carries one result; cas writes a success predicate, and ccv_miu_rcu_data carries none.",
-      "kind": "ISA-driven payload question",
-      "blocks": "sel (selected by the compiler today), and add.pp / addi.pp / cas when they are selected (none is yet). vadd uses none.",
-      "owner": "RCU / LANE sessions, with the ISA track for add.pp's predicate output"
     },
     "pc_group_state_owner": {
       "question": "FET owns the PC and its update logic, so divergent PC-group state lives in FET -- but ccv_rcu_pca_mig carries `pcs` on migration, from RCU. Either FET supplies the group PCs on demote, or PC state is duplicated in two blocks. ccv_ooe_rau_drained.resume_pc is fine (the ROB's oldest un-retired PC); the full group set has no route out of FET. Proposal: move `pcs` off the RCU<->PCA migration pair onto a FET<->PCA pair (demote and restore), so RCU migrates registers and predicates only and FET migrates the PC groups it owns.",

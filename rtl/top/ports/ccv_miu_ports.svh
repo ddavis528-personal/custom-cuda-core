@@ -28,9 +28,9 @@
   output logic [3:0] rcu_miu_addr_credit,
   output logic [3:0] rcu_miu_addr_stall,
   input  logic rcu_miu_addr_wake,
-  // miu -> rcu, 4 slot(s) x 1071 bit payload
+  // miu -> rcu, 4 slot(s) x 1103 bit payload
   output logic [3:0] miu_rcu_data_valid,
-  output logic [4283:0] miu_rcu_data_payload,
+  output logic [4411:0] miu_rcu_data_payload,
   input  logic [3:0] miu_rcu_data_credit,
   input  logic [3:0] miu_rcu_data_stall,
   output logic miu_rcu_data_wake,

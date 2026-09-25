@@ -28,15 +28,15 @@
   output logic [3:0] ooe_rcu_issue_credit,
   output logic [3:0] ooe_rcu_issue_stall,
   input  logic ooe_rcu_issue_wake,
-  // rcu -> lane, 128 slot(s) x 110 bit payload
+  // rcu -> lane, 128 slot(s) x 111 bit payload
   output logic [127:0] rcu_lane_ops_valid,
-  output logic [14079:0] rcu_lane_ops_payload,
+  output logic [14207:0] rcu_lane_ops_payload,
   input  logic [127:0] rcu_lane_ops_credit,
   input  logic [127:0] rcu_lane_ops_stall,
   output logic [31:0] rcu_lane_ops_wake,
-  // lane -> rcu, 128 slot(s) x 33 bit payload
+  // lane -> rcu, 128 slot(s) x 34 bit payload
   input  logic [127:0] lane_rcu_res_valid,
-  input  logic [4223:0] lane_rcu_res_payload,
+  input  logic [4351:0] lane_rcu_res_payload,
   output logic [127:0] lane_rcu_res_credit,
   output logic [127:0] lane_rcu_res_stall,
   input  logic [31:0] lane_rcu_res_wake,
@@ -52,9 +52,9 @@
   input  logic [3:0] rcu_miu_addr_credit,
   input  logic [3:0] rcu_miu_addr_stall,
   output logic rcu_miu_addr_wake,
-  // miu -> rcu, 4 slot(s) x 1071 bit payload
+  // miu -> rcu, 4 slot(s) x 1103 bit payload
   input  logic [3:0] miu_rcu_data_valid,
-  input  logic [4283:0] miu_rcu_data_payload,
+  input  logic [4411:0] miu_rcu_data_payload,
   output logic [3:0] miu_rcu_data_credit,
   output logic [3:0] miu_rcu_data_stall,
   input  logic miu_rcu_data_wake,

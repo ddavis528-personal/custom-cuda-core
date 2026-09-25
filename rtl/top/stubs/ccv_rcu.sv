@@ -29,7 +29,7 @@ module ccv_rcu (
   assign ooe_rcu_issue_stall = '0;
   assign rcu_lane_ops_valid = '0;
   /* verilator lint_off WIDTHCONCAT */
-  assign rcu_lane_ops_payload = '0;  // 14080 bits, intended
+  assign rcu_lane_ops_payload = '0;  // 14208 bits, intended
   /* verilator lint_on WIDTHCONCAT */
   assign rcu_lane_ops_wake = '0;
 `ifdef CCV_TRACE

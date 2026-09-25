@@ -17,15 +17,15 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // rcu -> lane, 4 slot(s) x 110 bit payload
+  // rcu -> lane, 4 slot(s) x 111 bit payload
   input  logic [3:0] rcu_lane_ops_valid,
-  input  logic [439:0] rcu_lane_ops_payload,
+  input  logic [443:0] rcu_lane_ops_payload,
   output logic [3:0] rcu_lane_ops_credit,
   output logic [3:0] rcu_lane_ops_stall,
   input  logic rcu_lane_ops_wake,
-  // lane -> rcu, 4 slot(s) x 33 bit payload
+  // lane -> rcu, 4 slot(s) x 34 bit payload
   output logic [3:0] lane_rcu_res_valid,
-  output logic [131:0] lane_rcu_res_payload,
+  output logic [135:0] lane_rcu_res_payload,
   input  logic [3:0] lane_rcu_res_credit,
   input  logic [3:0] lane_rcu_res_stall,
   output logic lane_rcu_res_wake

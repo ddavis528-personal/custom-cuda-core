@@ -160,4 +160,25 @@ else
   bad "--break drop-negate" "a backwards guard went unnoticed"
 fi
 
+# -- sel: a predicate read as DATA by the lane ------------------------------
+# pred_bit is the lane's enable; sel's selector rides separately as
+# pred_data, and half the lanes must choose rs1 for it to be observable.
+S=test/golden/sel/oracle.jsonl
+"$SKEL" --kernel "$S" >"$B/kernel_sel.log" 2>&1
+ok=1
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$B/kernel_sel.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
+done
+if [ $ok = 1 ]; then
+  say "sel: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_sel.log" cycles) cycles)"
+else
+  bad "sel: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_sel.log")"
+fi
+"$SKEL" --kernel "$S" --break drop-pred-data >"$B/kernel_drop-pred-data.log" 2>&1
+if grep -q "^CHECK lane 0: seq 5 pred_data (sel's selector) wrong" "$B/kernel_drop-pred-data.log"; then
+  say "--break drop-pred-data: sel's lanes reject it" "PASS"
+else
+  bad "--break drop-pred-data" "a missing selector went unnoticed"
+fi
+
 exit $fail

@@ -516,7 +516,6 @@ Carried from the strategy doc, with current status.
     | `miu_dcu_req_store_data` | store data was missing from MIU→DCU; `write_data` + `byte_mask` added provisionally — **confirm** |
     | `pred_src_and_dst` | one `pred_reg` for guard and destination |
     | `miu_rcu_phys_dst` | `miu_rcu_data.phys_dst` has no source |
-    | `predicate_as_lane_data` | `sel` reads a predicate as data while doing lane arithmetic (`pred_bit` is the enable); `add.pp`/`cas` write a predicate beside a result |
     | `pc_group_state_owner` | FET owns divergent PC state, but `rcu_pca_mig` carries `pcs` from RCU; proposal: a FET↔PCA pair |
 
     Decided since, and closed: `agu_immediate` (disp + scale to MIU's AGU,
@@ -525,7 +524,9 @@ Carried from the strategy doc, with current status.
     asserted), and `src_arch_vs_operand` (item 18); then `branch_resolution`
     (built: RCU resolves, OOE redirects on `ccv_ooe_fet_redirect`) and
     `pred_source_operands` (already decided: predicate logic executes in
-    RCU, now built).
+    RCU, now built); then `predicate_as_lane_data` (decided: RCU executes
+    only all-predicate and horizontal ops; `sel` runs in the lane with a
+    `pred_data` bit).
 
     Fields shared across abutting channels are worth settling **across**
     sessions rather than within one. After the payload pass split `op`, those

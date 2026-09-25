@@ -40,14 +40,14 @@ breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
 artifact listing everything that references an undecided number, so which
 ones are still made up is produced rather than remembered.
 
-Still outside the repository: **per-interface NGD budgets**, and six payload
+Still outside the repository: **per-interface NGD budgets**, and five payload
 questions no width can close, listed in `schema/interfaces.json`
 `open_questions` and rendered in
 [`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close).
 One predates the skeleton: the RCU→MIU width, a partitioning question to
-settle before floorplan. The rest came from running `vadd`. The most urgent
-is `predicate_as_lane_data`, because the compiler already selects `sel`,
-which reads a predicate as data where the lane now receives an enable.
+settle before floorplan. The rest came from running `vadd`. One is waiting on
+confirmation rather than analysis: store data on `ccv_miu_dcu_req`, added
+provisionally.
 
 ## Start here
 
