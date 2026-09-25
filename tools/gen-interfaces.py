@@ -263,25 +263,55 @@ def main():
                              "(expected %s...)\n" % (c["name"], want))
             return 1
 
-        # Slot attributes: a known name, a legal value, and only where there
-        # is more than one slot for it to describe.
-        dflt = d.get("slot_attr_defaults", {})
-        for a, v in c.get("slot_attrs", {}).items():
-            if a not in dflt or v not in dflt[a]["values"]:
-                sys.stderr.write("channel %s: slot attribute %s=%r is not "
-                                 "one of %s\n" % (c["name"], a, v,
-                                 dflt.get(a, {}).get("values", "(unknown)")))
+        # Slot attributes. Each rule rejects a specification that could not
+        # mean anything, because a meaningless attribute is read as a
+        # decision by whoever writes the receiver.
+        sa = c.get("slot_attrs", {})
+        why = c.get("slot_attrs_why", {})
+        known = ("acceptance", "slot_binding", "binding_group", "ordering",
+                 "lockstep")
+        multi_inst = max(blocks[c["src"]]["instances"] if c["src"] in blocks else 1,
+                         blocks[c["dst"]]["instances"] if c["dst"] in blocks else 1) > 1
+
+        def err(msg):
+            sys.stderr.write("channel %s: %s\n" % (c["name"], msg))
+
+        for a in sa:
+            if a not in known:
+                err("unknown slot attribute %r" % a); return 1
+            if a not in why:
+                err("slot attribute %s is set with no reason recorded -- a "
+                    "decided value without one reads as a default" % a)
                 return 1
-            if c["rate"] == 1:
-                sys.stderr.write("channel %s: slot attribute %s on a rate-1 "
-                                 "channel describes nothing\n" % (c["name"], a))
-                return 1
-            if a not in c.get("slot_attrs_why", {}):
-                sys.stderr.write("channel %s: slot attribute %s is set with "
-                                 "no reason recorded -- a decided value "
-                                 "without one reads as a default\n"
-                                 % (c["name"], a))
-                return 1
+        per_slot = [a for a in sa if a != "lockstep"]
+        if c["rate"] == 1 and per_slot:
+            err("slot attribute(s) %s on a rate-1 channel describe nothing"
+                % ", ".join(per_slot)); return 1
+        if sa.get("acceptance", "partial") not in ("partial", "atomic"):
+            err("acceptance must be partial or atomic"); return 1
+        bnd = sa.get("slot_binding", "free")
+        if bnd not in ("free", "bound"):
+            err("slot_binding must be free or bound"); return 1
+        grp = sa.get("binding_group", 1)
+        if "binding_group" in sa and bnd != "bound":
+            err("binding_group without slot_binding: bound"); return 1
+        if not isinstance(grp, int) or grp < 1 or c["rate"] % grp:
+            err("binding_group %r must divide the rate %d" % (grp, c["rate"]))
+            return 1
+        ordk = sa.get("ordering", "none")
+        if ordk == "slot_group":
+            if bnd != "bound":
+                err("ordering slot_group needs slot_binding: bound -- there "
+                    "is no group to be ordered within"); return 1
+        elif ordk != "none" and ordk not in c["payload_fields"]:
+            err("ordering key %r is neither none, slot_group, nor a field of "
+                "this channel's payload %s" % (ordk, c["payload_fields"]))
+            return 1
+        if sa.get("lockstep", False) not in (False, True):
+            err("lockstep must be true or false"); return 1
+        if sa.get("lockstep") and not multi_inst:
+            err("lockstep on a channel with one instance: there is nothing "
+                "to advance together with"); return 1
         cls = c.get("id_classes")
         if not cls or any(k not in ("instr", "txn", "none") for k in cls):
             sys.stderr.write("channel %s: id_classes must be a non-empty set "

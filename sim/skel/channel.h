@@ -144,7 +144,11 @@ public:
   }
 
   bool empty() const { return buf_.empty(); }
+  size_t size() const { return buf_.size(); }
   const Msg &front() const { return buf_.front(); }
+  /// Every buffered message, oldest first -- a keyed-ordering receiver needs
+  /// to see past the head to know whether a head is the oldest of its key.
+  const Msg &at(size_t i) const { return buf_[i]; }
 
   /// Consume the oldest message; its credit goes back next cycle.
   void pop() {

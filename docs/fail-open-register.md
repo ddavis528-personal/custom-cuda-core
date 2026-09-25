@@ -47,7 +47,10 @@ broken it once and watched it notice.
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
 | Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 340 checkers fire by name | `check-skel.sh` |
 | Atomic acceptance | **silent** | `--break atomic-all`: all 77 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
-| Ordered consumption | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
+| Ordered consumption (per key) | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
+| Lane lockstep | **silent** | `--break lockstep-all`: one lane alone — both lockstep checkers fire, nothing else | `check-skel.sh` |
+| Lane slot binding (same instruction per slot) | **silent** | `--break misbind`: lane 7 carries slot k+1's instruction in slot k — only `lockstep_id` fires | `check-skel.sh` |
+| Slot attribute specification | **silent** | each rule in `gen-interfaces.py` rejects its bad case (checked once, by mutation) | `gen-interfaces.py` |
 | Id class per channel | **silent** | `--break wrong-class`: all 41 channels report | `check-skel.sh` |
 | Trace id kept out of synthesis | **silent** | Yosys asked both ways: no `ch_tid` without `CCV_TRACE`, present with | `check-skel.sh` |
 | Skeleton slot count | **silent** | re-derived from the schema by code sharing nothing with the generator | `check-skel.sh` |

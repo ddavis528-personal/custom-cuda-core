@@ -6,18 +6,26 @@
 // have sent. Sending, consuming and stalling are randomised, so the credit
 // protocol runs under real backpressure rather than a clean pipe.
 //
-// It honours the per-channel slot attributes (interface decisions,
-// 2026-09-24), because a stub that ignored them would be the first receiver
-// "written assuming" what the attributes exist to rule out:
-//   atomic   -- a group launches on every slot or none, and is consumed whole
-//   ordered  -- one sequence across slots, consumed in (arrival, slot) order;
-//               the payload is keyed on that sequence, so consuming out of
-//               order is a payload mismatch
-//   bound    -- slots are kept separate streams; nothing pools them
+// It honours every slot attribute, because a stub that ignored them would be
+// the first receiver "written assuming" what they exist to rule out:
 //
-// Every message also carries a trace identity whose class must be one the
-// channel may carry. The ids are synthetic here -- a pure function of the
-// message, like the payload -- because S0 has no fetch to number them at.
+//   atomic      a group launches on every slot of an instance or none, and is
+//               consumed whole
+//   lockstep    slot k moves on every instance or none. The decision comes
+//               from a hash of (channel, slot, cycle) shared by every block,
+//               not a block's private RNG -- 32 lane blocks deciding
+//               independently would break lockstep by construction
+//   binding     slots stay separate streams; nothing pools them
+//   ordering    none: per-slot FIFO only. slot_group: one sequence per
+//               binding group, consumed oldest-first. A field key (warp_id):
+//               one sequence per VALUE of the field, and a head may be taken
+//               only if no older message shares its key -- so different
+//               warps pass each other and one warp never passes itself
+//
+// A message's payload and trace id are pure functions of its stream (slot,
+// group or key value) and its sequence in that stream, so consuming out of
+// order shows up as a payload mismatch. On a lockstep channel the id ignores
+// the instance: slot k carries the same instruction on every lane.
 //===----------------------------------------------------------------------===//
 #ifndef CCV_SKEL_EXERCISER_H
 #define CCV_SKEL_EXERCISER_H
@@ -35,18 +43,19 @@ struct ExerciseCfg {
   double p_pop = 0.6;     ///< chance a consumer drains, per decision
   double p_stall = 0.05;  ///< chance a consumer starts a 1-3 cycle stall
   bool force_atomic = false;  ///< treat EVERY multi-slot channel as atomic
-  bool misorder = false;      ///< negative control: consume ordered channels
-                              ///< newest-first
+  bool misorder = false;      ///< negative control: take a head that is NOT
+                              ///< the oldest of its stream/key
   bool wrong_class = false;   ///< negative control: stamp an id class the
                               ///< channel may not carry
+  bool misbind = false;       ///< negative control: on lane 7 of a lockstep
+                              ///< channel, carry slot k+1's id in slot k
 };
 
-/// Payload for a message. `key` is the slot sequence, or the channel
-/// sequence on an ordered channel. Filled FIELD BY FIELD through the
-/// generated table, so the layout code is exercised, not bypassed.
-Bits expectedPayload(const ChanInst &ci, unsigned slot, uint64_t key);
-/// Trace identity for the same message: class drawn from the channel's set.
-uint64_t expectedTid(const ChanInst &ci, unsigned slot, uint64_t key);
+/// Stream of a message: its slot, its binding group, or its key value.
+uint64_t streamOf(const ChanDesc &cd, unsigned slot, uint64_t keyval);
+Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
+                     uint64_t keyval);
+uint64_t expectedTid(const ChanInst &ci, uint64_t stream, uint64_t seq);
 
 std::unique_ptr<Block> makeExerciser(int inst, const ExerciseCfg &cfg);
 

@@ -107,7 +107,8 @@ def build(d, pv, blocks):
         n = max(ninst[c["src"]], ninst[c["dst"]])
         dflt = d["slot_attr_defaults"]
         attrs, decided = {}, {}
-        for a in ("acceptance", "ordering", "slot_binding"):
+        for a in ("acceptance", "slot_binding", "binding_group", "ordering",
+                  "lockstep"):
             v = c.get("slot_attrs", {}).get(a)
             attrs[a] = v if v is not None else dflt[a]["default"]
             decided[a] = v is not None
@@ -166,15 +167,21 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("/// most significant.")
     L.append("struct FieldDesc { const char *name; uint32_t lsb; uint32_t width; };")
     L.append("")
+    L.append("/// Ordering is a KEY: none; one order per binding group; or one")
+    L.append("/// order per value of a payload field (e.g. warp_id).")
+    L.append("enum class Order : uint8_t { kNone, kSlotGroup, kField };")
+    L.append("")
     L.append("struct ChanDesc {")
     L.append("  uint16_t id; const char *name; Blk src, dst;")
     L.append("  uint16_t rate;       ///< slots: independent credited channels")
     L.append("  uint32_t bits;       ///< payload width")
     L.append("  uint16_t nfields; const FieldDesc *fields;")
     L.append("  uint16_t ninst;      ///< copies, one per instance of a multi-instance end")
-    L.append("  bool atomic;         ///< acceptance: all slots move together")
-    L.append("  bool ordered;        ///< one sequence, by (valid cycle, slot index)")
-    L.append("  bool bound;          ///< slot index carries meaning")
+    L.append("  bool atomic;         ///< acceptance: a group moves together")
+    L.append("  uint8_t bind_group;  ///< 0 = free; else slots per binding group")
+    L.append("  Order order;         ///< ordering key kind")
+    L.append("  int16_t order_field; ///< fields[] index when order == kField")
+    L.append("  bool lockstep;       ///< all instances advance together")
     L.append("  uint8_t id_classes;  ///< bit (1 << IdClass) per class it may carry")
     L.append("};")
     L.append("")
@@ -188,14 +195,23 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     for c in chans:
         cls = sum(1 << {"none": 0, "instr": 1, "txn": 2}[k]
                   for k in c["id_classes"])
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %s, %s, %d},'
+        o = c["attrs"]["ordering"]
+        if c["rate"] == 1 or o == "none":
+            ok, of = "Order::kNone", -1
+        elif o == "slot_group":
+            ok, of = "Order::kSlotGroup", -1
+        else:
+            ok = "Order::kField"
+            of = [f for f, _, _ in c["fields"]].index(o)
+        bg = (c["attrs"]["binding_group"]
+              if c["attrs"]["slot_binding"] == "bound" else 0)
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
                     "true" if c["attrs"]["acceptance"] == "atomic" else "false",
-                    "true" if c["attrs"]["ordering"] == "ordered" else "false",
-                    "true" if c["attrs"]["slot_binding"] == "bound" else "false",
-                    cls))
+                    bg, ok, of,
+                    "true" if c["attrs"]["lockstep"] else "false", cls))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -286,6 +302,23 @@ def gen_sv(chans, cinst, nslots, pbits):
                      % (1 if c["attrs"]["acceptance"] == "atomic" else 0))
             L.append("    .valid(valid[%d:%d]), .credit(credit[%d:%d]));"
                      % (hi, lo, hi, lo))
+    for c in chans:
+        if not c["attrs"]["lockstep"]:
+            continue
+        first = [ci for ci in cinst if ci["chan"] is c]
+        lo = first[0]["slot_base"]
+        hi = lo + c["ninst"] * c["rate"] - 1
+        # The instances' slots are contiguous and instance-major, because the
+        # slot map is built channel instance by channel instance.
+        assert all(ci["slot_base"] == lo + ci["inst"] * c["rate"] for ci in first)
+        L.append("  ccv_lockstep_checker #(.INSTS(%d), .N(%d)) u_%s_lockstep ("
+                 % (c["ninst"], c["rate"], c["name"][4:]))
+        L.append("    .clk(clk), .rst_n(rst_n),")
+        L.append("    .valid(valid[%d:%d]), .credit(credit[%d:%d])" % (hi, lo, hi, lo))
+        L.append("`ifdef CCV_TRACE")
+        L.append("    , .tid(tid[%d:%d])" % (64 * hi + 63, 64 * lo))
+        L.append("`endif")
+        L.append("  );")
     L.append("")
     L.append("endmodule")
     return "\n".join(L) + "\n"
@@ -383,22 +416,30 @@ def gen_slots_md(chans, cinst, nslots):
     L.append("")
     L.append("## Every channel, with its slot attributes")
     L.append("")
-    L.append("Attributes apply to rate > 1 only. *Italic* is the permissive "
-             "default; **bold** is decided, with the reason.")
+    L.append("Slot attributes apply to rate > 1 only; lockstep to channels "
+             "replicated across a multi-instance endpoint. *Italic* is the "
+             "permissive default; **bold** is decided, with the reason.")
     L.append("")
-    L.append("| # | Channel | Rate × inst | Slots | Acceptance | Ordering | "
-             "Binding | Id classes |")
-    L.append("|---|---|---|---|---|---|---|---|")
-    def fmt(c, a):
-        if c["rate"] == 1:
+    L.append("| # | Channel | Rate × inst | Slots | Acceptance | Binding | "
+             "Ordering key | Lockstep | Id classes |")
+    L.append("|---|---|---|---|---|---|---|---|---|")
+    def fmt(c, a, show=None):
+        if a != "lockstep" and c["rate"] == 1:
             return "—"
-        v = c["attrs"][a]
-        return "**%s** — %s" % (v, c["why"][a]) if c["decided"][a] else "*%s*" % v
+        if a == "lockstep" and c["ninst"] == 1:
+            return "—"
+        v = show if show is not None else c["attrs"][a]
+        return ("**%s** — %s" % (v, c["why"][a]) if c["decided"][a]
+                else "*%s*" % v)
     for c in chans:
-        L.append("| %d | `%s` | %d × %d | %d | %s | %s | %s | %s |"
+        b = c["attrs"]["slot_binding"]
+        if b == "bound":
+            b = "bound, groups of %d" % c["attrs"]["binding_group"]
+        L.append("| %d | `%s` | %d × %d | %d | %s | %s | %s | %s | %s |"
                  % (c["id"], c["name"], c["rate"], c["ninst"],
                     c["rate"] * c["ninst"], fmt(c, "acceptance"),
-                    fmt(c, "ordering"), fmt(c, "slot_binding"),
+                    fmt(c, "slot_binding", b), fmt(c, "ordering"),
+                    fmt(c, "lockstep", "true" if c["attrs"]["lockstep"] else "false"),
                     ", ".join(c["id_classes"])))
     return "\n".join(L) + "\n"
 

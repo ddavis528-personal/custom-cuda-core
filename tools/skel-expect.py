@@ -19,11 +19,17 @@ def copies(c):
     return max(ni[c["src"]], ni[c["dst"]])
 
 
+def attr(c, a, default):
+    return c.get("slot_attrs", {}).get(a, default)
+
+
+# Ordered = any ordering KEY other than none, on a channel with slots to order.
 ordered = " ".join(sorted(c["name"] for c in d["channels"]
-                          if c.get("slot_attrs", {}).get("ordering") == "ordered"))
-print("X_TYPES=%d X_INSTS=%d X_SLOTS=%d X_MULTI=%d X_ORDERED='%s'" % (
+                          if c["rate"] > 1 and attr(c, "ordering", "none") != "none"))
+print("X_TYPES=%d X_INSTS=%d X_SLOTS=%d X_MULTI=%d X_LOCKSTEP=%d X_ORDERED='%s'" % (
     len(d["channels"]),
     sum(copies(c) for c in d["channels"]),
     sum(c["rate"] * copies(c) for c in d["channels"]),
     sum(copies(c) for c in d["channels"] if c["rate"] > 1),
+    sum(1 for c in d["channels"] if attr(c, "lockstep", False)),
     ordered))

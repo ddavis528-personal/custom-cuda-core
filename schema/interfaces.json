@@ -128,15 +128,19 @@
         "fetch_fault"
       ],
       "doc": "Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path.",
-      "slot_attrs": {
-        "slot_binding": "bound"
-      },
-      "slot_attrs_why": {
-        "slot_binding": "the eight slots are four warp streams of two: tier-1 stream = slot / 2"
-      },
       "id_classes": [
         "instr"
-      ]
+      ],
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "binding_group": 2,
+        "ordering": "slot_group"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "four warp streams of two: tier-1 stream = slot / 2",
+        "binding_group": "two slots per warp stream",
+        "ordering": "each stream's two slots are strictly program-ordered"
+      }
     },
     {
       "name": "ccv_dec_ooe_uop",
@@ -156,15 +160,15 @@
         "decode_fault"
       ],
       "doc": "Format-decoded operations with architectural register names, six per cycle into the queue ahead of rename.",
-      "slot_attrs": {
-        "ordering": "ordered"
-      },
-      "slot_attrs_why": {
-        "ordering": "program-ordered per warp"
-      },
       "id_classes": [
         "instr"
-      ]
+      ],
+      "slot_attrs": {
+        "ordering": "warp_id"
+      },
+      "slot_attrs_why": {
+        "ordering": "six uops from up to four warps have no total order; order is per warp"
+      }
     },
     {
       "name": "ccv_ooe_rcu_issue",
@@ -183,15 +187,15 @@
         "dispatch_fault"
       ],
       "doc": "What the scheduler selected: physical register names, opcode, element width. Four per cycle, the binding width of the machine.",
+      "id_classes": [
+        "instr"
+      ],
       "slot_attrs": {
         "slot_binding": "free"
       },
       "slot_attrs_why": {
         "slot_binding": "the four issue slots are a free pool"
-      },
-      "id_classes": [
-        "instr"
-      ]
+      }
     },
     {
       "name": "ccv_rcu_lane_ops",
@@ -209,7 +213,15 @@
       "doc": "Operands and control to one lane. Section enables gate the narrow sub-datapaths and the SFU.",
       "id_classes": [
         "instr"
-      ]
+      ],
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "lockstep": true
+      },
+      "slot_attrs_why": {
+        "slot_binding": "lane N's four operands slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2",
+        "lockstep": "the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control"
+      }
     },
     {
       "name": "ccv_lane_rcu_res",
@@ -225,7 +237,15 @@
       "doc": "One lane's result and its fault bit.",
       "id_classes": [
         "instr"
-      ]
+      ],
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "lockstep": true
+      },
+      "slot_attrs_why": {
+        "slot_binding": "lane N's four results slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2",
+        "lockstep": "the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control"
+      }
     },
     {
       "name": "ccv_rcu_ooe_done",
@@ -312,15 +332,15 @@
       ],
       "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger.",
       "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel.",
+      "id_classes": [
+        "instr"
+      ],
       "slot_attrs": {
-        "ordering": "unordered"
+        "ordering": "none"
       },
       "slot_attrs_why": {
         "ordering": "genuinely out of order across four pipes"
-      },
-      "id_classes": [
-        "instr"
-      ]
+      }
     },
     {
       "name": "ccv_ooe_miu_retire",
@@ -754,8 +774,9 @@
       ],
       "doc": "The set of warps a barrier released.",
       "id_classes": [
-        "txn"
-      ]
+        "none"
+      ],
+      "id_classes_why": "A release wakes a SET of waiting warps and has no single owning transaction. The link back to each bar.sync is already in the trace -- the arrives on the same barrier_id since its previous release -- so no set-valued id is needed; an explicit link, if wanted, is a trace event."
     },
     {
       "name": "ccv_rau_syu_alloc",
@@ -959,16 +980,16 @@
     "rate 1024, which the skeleton would have built as 1024 parallel slots."
   ],
   "_slot_attrs_comment": [
-    "Per-channel slot attributes (interface decisions, 2026-09-24). A rate>1",
-    "channel is `rate` independent credited slots -- the permissive superset:",
-    "a receiver that can only accept a whole group returns credits in lockstep",
-    "and the sender cannot tell the difference, while a shared pool cannot",
-    "express the partial acceptance SPM and DCU already need.",
+    "Per-channel slot attributes (interface decisions 2026-09-24, revised",
+    "2026-09-25). A rate>1 channel is `rate` independent credited slots -- the",
+    "permissive superset -- tightened per channel as block sessions decide.",
     "",
-    "Only DECIDED values are written on a channel; the generators apply the",
-    "permissive default otherwise, and report which is which, so a default is",
-    "never mistaken for a decision. Tightened per channel as block sessions",
-    "decide. Meaningless at rate 1, and rejected there."
+    "Only DECIDED values are written on a channel, each with a reason; the",
+    "generators apply the permissive default otherwise and report which is",
+    "which, so a default is never mistaken for a decision.",
+    "",
+    "`lockstep` is an INSTANCE-level attribute: it describes the copies of a",
+    "channel across a multi-instance endpoint, not the slots within one copy."
   ],
   "slot_attr_defaults": {
     "acceptance": {
@@ -977,15 +998,8 @@
         "partial",
         "atomic"
       ],
-      "doc": "atomic: credits (and so valids) move together across the slots. Checked, by ccv_atomic_checker, not merely recorded -- and lets RTL collapse to one counter without a schema change."
-    },
-    "ordering": {
-      "default": "unordered",
-      "values": [
-        "ordered",
-        "unordered"
-      ],
-      "doc": "ordered: the channel carries one sequence, defined as (valid cycle, slot index). Receivers must consume in that order."
+      "applies": "rate > 1",
+      "doc": "atomic: a group of messages moves together -- valids and credits both all-or-none across the slots, since a message is its valid AND its payload despite the one-cycle stagger. Checked by ccv_atomic_checker; lets RTL collapse to one counter."
     },
     "slot_binding": {
       "default": "free",
@@ -993,7 +1007,32 @@
         "free",
         "bound"
       ],
-      "doc": "bound: slot index carries meaning, so slots are NOT interchangeable. The one attribute that cannot be recovered later: without it a bound channel looks free, and a receiver will eventually be written assuming so."
+      "applies": "rate > 1",
+      "doc": "bound: slot index carries meaning, so slots are NOT interchangeable. `binding_group` gives the slots per group (default 1: every slot its own stream). The one attribute that cannot be recovered later."
+    },
+    "binding_group": {
+      "default": 1,
+      "applies": "slot_binding: bound",
+      "doc": "Slots per binding group; must divide the rate. fet->dec is four warp streams of two, so 2."
+    },
+    "ordering": {
+      "default": "none",
+      "values": [
+        "none",
+        "slot_group",
+        "<payload field>"
+      ],
+      "applies": "rate > 1",
+      "doc": "An ordering KEY, not a boolean. none: no order across slots. slot_group: one program order within each binding group. A payload field name (e.g. warp_id): ordered among messages with the same value of that field, and free between values -- six uops from up to four warps have no total order, only a per-warp one."
+    },
+    "lockstep": {
+      "default": false,
+      "values": [
+        false,
+        true
+      ],
+      "applies": "a channel replicated across a multi-instance endpoint",
+      "doc": "All instances advance together: slot k's valid and credit are the same on every instance each cycle, and -- with the trace sideband -- carry the same instruction id. Checked by ccv_lockstep_checker. Without it, 32 lanes with per-lane flow control is not a SIMD machine."
     }
   },
   "_id_classes_comment": [

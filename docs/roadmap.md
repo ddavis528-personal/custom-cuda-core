@@ -207,11 +207,14 @@ violations; each clean result paired with a control that must fail.
 - `tools/check-skel.sh` — exit criteria, in the gate
 
 **Next: S1, `vadd` end to end** against ccv-sim, which now builds here.
-**Interface decisions (2026-09-24) built in:** independent slots confirmed,
-with per-channel acceptance / ordering / binding; the external port is a pair;
-instruction identity is a trace-only sideband with class, sub-index and replay
-links. **To confirm:** atomic constrains valids as well as credits, and the
-per-channel id-class assignment (both in `skeleton.md`).
+**Interface decisions (2026-09-24, revised 2026-09-25) built in:**
+independent slots with per-channel acceptance, binding (with groups) and an
+ordering *key*; an instance-level `lockstep` attribute for the lane channels,
+checked across all 32 lanes including the instruction id per slot; the
+external port is a pair; instruction identity is a trace-only sideband.
+Atomic covers valids and credits (confirmed). Open: the fet→dec binding key
+("tier-1 stream = slot / 2") is still text, since the payload carries
+`warp_id`, not the tier-1 slot.
 
 ### Interface checker convention ✅ (mechanism)
 

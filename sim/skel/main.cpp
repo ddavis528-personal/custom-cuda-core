@@ -17,7 +17,12 @@
 //   stall-all     every receiver stalls, every sender sends     (stall, valid)
 //   atomic-all    every multi-slot channel checked as atomic, then its
 //                 lockstep broken, credits and valids separately
-//   misorder      ordered channels consumed newest-first
+//   lockstep-all  on every lockstep channel, ONE instance's slot 0 valid,
+//                 then its credit, without its siblings
+//   misbind       lane 7 of a lockstep channel carries slot k+1's
+//                 instruction in slot k: matching valids, different ids
+//   misorder      ordered channels: a head taken that is not the oldest of
+//                 its stream or key
 //   wrong-class   every message stamped with an id class its channel may
 //                 not carry
 //
@@ -87,8 +92,9 @@ int main(int argc, char **argv) {
   // Wiring controls silence organic traffic so nothing else can fire; the
   // semantic ones (misorder, wrong-class) need traffic to be wrong about.
   const bool breaking = brk == "phantom-all" || brk == "stall-all" ||
-                        brk == "atomic-all";
-  if (brk != "none" && !breaking && brk != "misorder" && brk != "wrong-class") {
+                        brk == "atomic-all" || brk == "lockstep-all";
+  if (brk != "none" && !breaking && brk != "misorder" &&
+      brk != "wrong-class" && brk != "misbind") {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
     return 2;
   }
@@ -124,6 +130,7 @@ int main(int argc, char **argv) {
   cfg.force_atomic = force_atomic || brk == "atomic-all";
   cfg.misorder = brk == "misorder";
   cfg.wrong_class = brk == "wrong-class";
+  cfg.misbind = brk == "misbind";
   bank->force_atomic = cfg.force_atomic;
   Machine m(2, [&](int inst) { return makeExerciser(inst, cfg); });
 
@@ -156,6 +163,14 @@ int main(int argc, char **argv) {
               m.tx(ci.slot_base + s).forceValid();
           if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
           if (c == kBreakAt + 5) m.tx(ci.slot_base).forceValid();
+        }
+      // lockstep-all: instance 0's slot 0 alone -- a valid, then (legally,
+      // for that slot) its credit. Only the lockstep checks may fire.
+      if (brk == "lockstep-all")
+        for (const ChanInst &ci : kChanInsts) {
+          if (!kChans[ci.chan].lockstep || ci.inst != 0) continue;
+          if (c == kBreakAt) m.tx(ci.slot_base).forceValid();
+          if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
         }
     });
   }

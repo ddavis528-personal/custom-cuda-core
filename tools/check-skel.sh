@@ -39,7 +39,8 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_skel_checkers \
      --Mdir "$B/skel" -o ccv-skel \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
      rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
-     rtl/if/ccv_atomic_checker.sv rtl/generated/ccv_skel_checkers.sv \
+     rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv \
+     rtl/generated/ccv_skel_checkers.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/skel.log" 2>&1; then
@@ -73,18 +74,20 @@ field() {
 eval "$(python3 tools/skel-expect.py)"
 bank_cc=$(grep -c "^  ccv_credit_checker #" rtl/generated/ccv_skel_checkers.sv)
 bank_ac=$(grep -c "^  ccv_atomic_checker #" rtl/generated/ccv_skel_checkers.sv)
+bank_lc=$(grep -c "^  ccv_lockstep_checker #" rtl/generated/ccv_skel_checkers.sv)
 doc_n=$(grep -oE "\*\*[0-9]+ slots\*\*" docs/skeleton-slots.md | grep -oE "[0-9]+")
 "$SKEL" --cycles 4 >"$B/skel_count.log" 2>&1
 bin_n=$(field "$B/skel_count.log" slots)
 if [ "$bank_cc" = "$X_SLOTS" ] && [ "$bin_n" = "$X_SLOTS" ] &&
    [ "$doc_n" = "$X_SLOTS" ] && [ "$bank_ac" = "$X_MULTI" ] &&
+   [ "$bank_lc" = "$X_LOCKSTEP" ] &&
    [ "$(field "$B/skel_count.log" chan_insts)" = "$X_INSTS" ] &&
    [ "$(field "$B/skel_count.log" chan_types)" = "$X_TYPES" ]; then
   say "slots re-derived: $X_TYPES types, $X_INSTS instances" \
       "PASS ($X_SLOTS slots, $X_MULTI groups)"
 else
   bad "slot count re-derived from the schema" \
-      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI"
+      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP"
 fi
 
 # -- the trace sideband is invisible to synthesis --------------------------
@@ -161,7 +164,8 @@ fi
 # -- negative controls: every checker instance, by name -------------------
 slots=$X_SLOTS
 for mode in phantom-all:no_phantom_credit stall-all:stall_honoured \
-            atomic-all:atomic_credit+atomic_valid; do
+            atomic-all:atomic_credit+atomic_valid \
+            lockstep-all:lockstep_credit+lockstep_valid; do
   m=${mode%%:*}; prop=${mode#*:}
   log="$B/skel_$m.log"
   "$SKEL" --cycles 40 --break "$m" >"$log" 2>&1
@@ -173,6 +177,7 @@ for mode in phantom-all:no_phantom_credit stall-all:stall_honoured \
   props=$(grep -o "CCV [a-z_]* failed" "$log" | awk '{print $2}' | sort -u \
           | tr '\n' '+' | sed 's/+$//')
   want_n=$slots; [ "$m" = "atomic-all" ] && want_n=$X_MULTI
+  [ "$m" = "lockstep-all" ] && want_n=$X_LOCKSTEP
   if [ "$inst" = "$want_n" ] && [ "$props" = "$prop" ]; then
     say "--break $m: all $want_n checkers fire" "PASS"
   else
@@ -188,6 +193,20 @@ if [ "$(field "$log" mismatches)" != "0" ] && [ "$hit" = "$X_ORDERED" ]; then
   say "--break misorder: caught on the ordered channel" "PASS ($hit)"
 else
   bad "--break misorder" "mismatches on {$hit}, want {$X_ORDERED}"
+fi
+
+# -- binding under lockstep: the same instruction in slot k on every lane ---
+# Lane 7 carries slot k+1's instruction in slot k: valids and credits still
+# match, so only the trace id can see it -- and only lockstep_id may fire.
+log="$B/skel_misbind.log"
+"$SKEL" --cycles 400 --break misbind >"$log" 2>&1
+props=$(grep -o "CCV [a-z_]* failed" "$log" | awk '{print $2}' | sort -u | tr '\n' '+' | sed 's/+$//')
+inst=$(grep -o "Assertion failed in [^:]*" "$log" \
+       | sed 's/Assertion failed in //; s/\.[a-z_]*$//; s/\.g_[a-z_]*$//' | sort -u | wc -l)
+if [ "$props" = "lockstep_id" ] && [ "$inst" = "$X_LOCKSTEP" ]; then
+  say "--break misbind: lane takes another slot's instr" "PASS ($inst lockstep checkers)"
+else
+  bad "--break misbind" "$inst of $X_LOCKSTEP fired {$props}, want {lockstep_id}"
 fi
 
 # -- id classes: a class a channel may not carry is caught on every one ----

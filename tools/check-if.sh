@@ -366,6 +366,47 @@ SBY
     bad "formal: atomic checker covers reachable" \
         "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
   fi
+
+  # The lockstep checker's covers, likewise. Free
+  # values broadcast to every slot: the asserts must hold, and a whole group
+  # must be able to move -- an unreachable cover here would mean the
+  # enable or lockstep logic can never be satisfied.
+  mkdir -p "$TMP/fl"
+  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_lockstep_checker.sv \
+     test/smoke/lockstep_smoke.sv "$TMP/fl/"
+  cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$TMP/fl/"
+  cat > "$TMP/fl/l.sby" <<SBY
+[options]
+mode cover
+depth 6
+
+[engines]
+smtbmc cvc5
+
+[script]
+read_verilog -sv -formal -I. ccv_assert_pkg.sv
+read_verilog -sv -formal -I. ccv_lockstep_checker.sv
+read_verilog -sv -formal -I. lockstep_smoke.sv
+prep -top lockstep_smoke
+
+[files]
+ccv_assert_pkg.sv
+ccv_lockstep_checker.sv
+lockstep_smoke.sv
+ccv_assert.svh
+ccv_if.svh
+ccv_trace.svh
+ccv_interfaces.svh
+ccv_event_ids.svh
+ccv_params_pkg.sv
+SBY
+  out=$(cd "$TMP/fl" && sby -f l.sby 2>&1)
+  if echo "$out" | grep -q "DONE (PASS"; then
+    say "formal: lockstep checker covers reachable" "PASS"
+  else
+    bad "formal: lockstep checker covers reachable" \
+        "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
+  fi
 else
   say "sby/yosys" "SKIP -- not installed"
 fi

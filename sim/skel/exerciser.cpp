@@ -4,6 +4,7 @@
 #include "ccv_event_ids.h"
 
 #include <cstdio>
+#include <map>
 
 namespace ccv {
 namespace skel {
@@ -17,10 +18,12 @@ uint64_t splitmix(uint64_t x) {
   return x ^ (x >> 31);
 }
 
+double toUnit(uint64_t h) { return double(h >> 11) * (1.0 / 9007199254740992.0); }
+
 class Rng {
 public:
   explicit Rng(uint64_t s) : s_(splitmix(s)) {}
-  double uniform() { return double(next() >> 11) * (1.0 / 9007199254740992.0); }
+  double uniform() { return toUnit(next()); }
   uint64_t next() { return s_ = splitmix(s_); }
 private:
   uint64_t s_;
@@ -31,23 +34,30 @@ std::vector<Launched> g_launched;
 bool g_draining = false;
 bool g_class_bad[kNumChans] = {};
 
-uint64_t messageKey(const ChanInst &ci, unsigned slot, uint64_t key) {
-  return splitmix((uint64_t(ci.chan) << 48) ^ (uint64_t(ci.inst) << 40) ^
-                  (uint64_t(slot) << 32) ^ key);
+constexpr uint64_t kStreamGroup = 0x1000, kStreamKey = 0x2000;
+constexpr unsigned kKeyValues = 4;   // up to four warps, as on dec->ooe
+
+/// Key values a field-keyed channel's sender draws from: few enough that
+/// messages sharing a key are common, which is when ordering matters.
+unsigned keyValues(const ChanDesc &cd) {
+  const unsigned w = cd.fields[cd.order_field].width;
+  return w >= 2 ? kKeyValues : (1u << w);
 }
 
-/// One channel instance, as seen from one end.
+uint64_t fieldOf(const ChanDesc &cd, const Bits &b) {
+  const FieldDesc &f = cd.fields[cd.order_field];
+  return b.get(f.lsb, f.width < 64 ? f.width : 64);
+}
+
 struct OutGroup {
   const ChanInst *ci;
   std::vector<Sender *> tx;
-  std::vector<uint64_t> slot_seq;   ///< per slot
-  uint64_t chan_seq = 0;            ///< ordered channels
+  std::map<uint64_t, uint64_t> seq;   ///< per stream
 };
 struct InGroup {
   const ChanInst *ci;
   std::vector<Receiver *> rx;
-  std::vector<uint64_t> slot_seq;
-  uint64_t chan_seq = 0;
+  std::map<uint64_t, uint64_t> seq;
   std::vector<unsigned> stall_left;
 };
 
@@ -59,47 +69,80 @@ public:
 
   void cycle(uint64_t now) override {
     if (!built_) build();
-    for (InGroup &g : in_) receive(g, now);
-    for (OutGroup &g : out_) send(g);
+    for (auto &kv : in_) receive(kv.first, kv.second, now);
+    for (auto &kv : out_) send(kv.first, kv.second, now);
   }
 
 private:
-  bool atomic(const ChanInst &ci) const {
-    const ChanDesc &cd = kChans[ci.chan];
-    return cd.rate > 1 && (cd.atomic || cfg_.force_atomic);
-  }
-  bool ordered(const ChanInst &ci) const {
-    const ChanDesc &cd = kChans[ci.chan];
-    return cd.rate > 1 && cd.ordered;
+  // -- the decision a unit makes -------------------------------------------
+  // Private to this block, unless the unit spans blocks (lockstep), in which
+  // case every block computes the same value from (channel, unit, cycle).
+  double decide(bool shared, unsigned chan, unsigned unit, uint64_t now,
+                uint64_t salt) {
+    if (!shared) return rng_.uniform();
+    return toUnit(splitmix(cfg_.seed ^ (uint64_t(chan) << 48) ^
+                           (uint64_t(unit) << 40) ^ (now << 4) ^ salt));
   }
 
-  // Ports arrive slot by slot, grouped by channel instance and in slot
-  // order, because the machine wires them that way.
+  bool atomic(const ChanDesc &cd) const {
+    return cd.rate > 1 && (cd.atomic || cfg_.force_atomic);
+  }
+
   void build() {
     for (const Out &o : outs) {
-      if (out_.empty() || out_.back().ci != o.ci) out_.push_back({o.ci, {}, {}});
-      out_.back().tx.push_back(o.tx);
-      out_.back().slot_seq.push_back(0);
+      auto &v = out_[o.ci->chan];
+      if (v.empty() || v.back().ci != o.ci) v.push_back({o.ci, {}, {}});
+      v.back().tx.push_back(o.tx);
     }
     for (const In &i : ins) {
-      if (in_.empty() || in_.back().ci != i.ci) in_.push_back({i.ci, {}, {}, 0, {}});
-      in_.back().rx.push_back(i.rx);
-      in_.back().slot_seq.push_back(0);
-      in_.back().stall_left.push_back(0);
+      auto &v = in_[i.ci->chan];
+      if (v.empty() || v.back().ci != i.ci) v.push_back({i.ci, {}, {}, {}});
+      v.back().rx.push_back(i.rx);
+      v.back().stall_left.push_back(0);
     }
     built_ = true;
   }
 
-  void verify(InGroup &g, unsigned s, const Receiver::Msg &m, uint64_t key) {
+  /// Decision units: sets of (group, slot) that move together this cycle.
+  template <typename G>
+  std::vector<std::vector<std::pair<G *, unsigned>>>
+  units(std::vector<G> &gs, const ChanDesc &cd) {
+    std::vector<std::vector<std::pair<G *, unsigned>>> u;
+    const unsigned n = cd.rate;
+    if (atomic(cd) && cd.lockstep) {
+      u.emplace_back();
+      for (G &g : gs) for (unsigned s = 0; s != n; ++s) u.back().push_back({&g, s});
+    } else if (atomic(cd)) {
+      for (G &g : gs) {
+        u.emplace_back();
+        for (unsigned s = 0; s != n; ++s) u.back().push_back({&g, s});
+      }
+    } else if (cd.lockstep) {
+      for (unsigned s = 0; s != n; ++s) {
+        u.emplace_back();
+        for (G &g : gs) u.back().push_back({&g, s});
+      }
+    } else {
+      for (G &g : gs)
+        for (unsigned s = 0; s != n; ++s) u.push_back({{&g, s}});
+    }
+    return u;
+  }
+
+  // -- receiving ------------------------------------------------------------
+  void verify(InGroup &g, unsigned s, const Receiver::Msg &m) {
     const ChanDesc &cd = kChans[g.ci->chan];
-    if (m.payload != expectedPayload(*g.ci, s, key)) {
+    const uint64_t kv = cd.order == Order::kField ? fieldOf(cd, m.payload) : 0;
+    const uint64_t st = streamOf(cd, s, kv);
+    const uint64_t q = g.seq[st]++;
+    if (m.payload != expectedPayload(*g.ci, st, q, kv)) {
       if (g_totals.mismatches < 5)
-        std::fprintf(stderr, "MISMATCH %s[%u] slot %u message %llu%s\n",
-                     cd.name, g.ci->inst, s, (unsigned long long)key,
-                     ordered(*g.ci) ? " (ordered: out of order?)" : "");
+        std::fprintf(stderr, "MISMATCH %s[%u] slot %u stream %llx message %llu\n",
+                     cd.name, g.ci->inst, s, (unsigned long long)st,
+                     (unsigned long long)q);
       ++g_totals.mismatches;
     }
-    if (m.tid != expectedTid(*g.ci, s, key))
+    if (m.tid != expectedTid(*g.ci, st, q))
       ++g_totals.tid_mismatches;
     if (!((cd.id_classes >> unsigned(uidClass(m.tid))) & 1u)) {
       if (g_totals.class_violations < 5)
@@ -111,68 +154,111 @@ private:
     ++g_totals.received;
   }
 
-  void receive(InGroup &g, uint64_t now) {
-    const unsigned n = unsigned(g.rx.size());
-    for (Receiver *r : g.rx) r->cycle(now);
-
-    if (atomic(*g.ci)) {
-      // A whole group or nothing: every slot must hold a message.
-      bool all = true;
-      for (Receiver *r : g.rx) all = all && !r->empty();
-      if (all && rng_.uniform() < cfg_.p_pop)
-        for (unsigned s = 0; s != n; ++s) {
-          const uint64_t key = ordered(*g.ci) ? g.chan_seq++ : g.slot_seq[s]++;
-          verify(g, s, g.rx[s]->front(), key);
-          g.rx[s]->pop();
-        }
-    } else if (ordered(*g.ci)) {
-      // One sequence across the slots, consumed in (arrival, slot) order --
-      // each step takes the oldest head. `misorder` takes the newest, which
-      // must surface as payload mismatches.
-      for (unsigned step = 0; step != n; ++step) {
-        int pick = -1;
-        for (unsigned s = 0; s != n; ++s) {
-          if (g.rx[s]->empty()) continue;
-          if (pick < 0) { pick = int(s); continue; }
-          const uint64_t a = g.rx[s]->front().arrived;
-          const uint64_t b = g.rx[pick]->front().arrived;
-          if (cfg_.misorder ? (a >= b) : (a < b)) pick = int(s);
-        }
-        if (pick < 0 || rng_.uniform() >= cfg_.p_pop) break;
-        verify(g, unsigned(pick), g.rx[pick]->front(), g.chan_seq++);
-        g.rx[pick]->pop();
+  /// A head is ELIGIBLE if no buffered message on this channel instance is
+  /// older by (arrival, slot) and shares its stream -- its binding group or
+  /// its key value. Different streams may pass each other; one never passes
+  /// itself.
+  bool eligible(InGroup &g, const ChanDesc &cd, unsigned s) {
+    const Receiver::Msg &h = g.rx[s]->front();
+    const uint64_t kv = cd.order == Order::kField ? fieldOf(cd, h.payload) : 0;
+    const uint64_t st = streamOf(cd, s, kv);
+    for (unsigned t = 0; t != g.rx.size(); ++t)
+      for (size_t i = 0; i != g.rx[t]->size(); ++i) {
+        const Receiver::Msg &m = g.rx[t]->at(i);
+        const uint64_t mkv = cd.order == Order::kField ? fieldOf(cd, m.payload) : 0;
+        if (streamOf(cd, t, mkv) != st) continue;
+        if (m.arrived < h.arrived || (m.arrived == h.arrived && t < s))
+          return false;
       }
-    } else {
-      for (unsigned s = 0; s != n; ++s)
-        if (!g.rx[s]->empty() && rng_.uniform() < cfg_.p_pop) {
-          verify(g, s, g.rx[s]->front(), g.slot_seq[s]++);
-          g.rx[s]->pop();
-        }
-    }
-
-    for (unsigned s = 0; s != n; ++s) {
-      if (g.stall_left[s] == 0 && rng_.uniform() < cfg_.p_stall)
-        g.stall_left[s] = 1 + unsigned(rng_.next() % 3);
-      if (g.stall_left[s] != 0) {
-        g.rx[s]->stall(true);
-        --g.stall_left[s];
-      }
-    }
+    return true;
   }
 
-  void launch(OutGroup &g, unsigned s, uint64_t key) {
-    const Bits msg = expectedPayload(*g.ci, s, key);
-    uint64_t tid = expectedTid(*g.ci, s, key);
-    if (cfg_.wrong_class) {
-      // Stamp the first class this channel may NOT carry. Every channel
-      // excludes at least one, so every channel must report.
-      const ChanDesc &cd = kChans[g.ci->chan];
+  void receive(unsigned chan, std::vector<InGroup> &gs, uint64_t now) {
+    const ChanDesc &cd = kChans[chan];
+    for (InGroup &g : gs) for (Receiver *r : g.rx) r->cycle(now);
+    // This block holds every instance of a lockstep channel: it is the
+    // single receiver, and must stall them together too.
+    const bool sole = cd.lockstep && gs.size() == cd.ninst;
+
+    if (cd.order != Order::kNone && !atomic(cd)) {
+      // Keyed consumption: up to `rate` heads a cycle, each one ELIGIBLE,
+      // chosen AT RANDOM among the eligible. Not the first in slot order:
+      // that is a fixed priority, and the first version of this loop starved
+      // fet->dec's higher binding groups until response_within_n fired 175
+      // times -- the bounded-response check doing exactly its job, on the
+      // stub. Not the oldest either, which is plain FIFO and would never let
+      // one stream pass another. `misorder` takes an ineligible head.
+      for (InGroup &g : gs)
+        for (unsigned step = 0; step != cd.rate; ++step) {
+          unsigned ok[64], nok = 0;
+          int bad = -1;
+          for (unsigned s = 0; s != cd.rate; ++s) {
+            if (g.rx[s]->empty()) continue;
+            if (eligible(g, cd, s)) ok[nok++] = s;
+            else if (bad < 0) bad = int(s);
+          }
+          int pick = nok ? int(ok[rng_.next() % nok]) : -1;
+          if (cfg_.misorder && bad >= 0) pick = bad;
+          if (pick < 0) break;
+          // One coin per step, not stop-at-the-first-failure: that drained
+          // ~1.5 messages a cycle against the unordered receiver's 0.6 x
+          // rate, and the tail of 16 in-flight messages crossed N.
+          if (rng_.uniform() >= cfg_.p_pop) continue;
+          verify(g, unsigned(pick), g.rx[pick]->front());
+          g.rx[pick]->pop();
+        }
+    } else {
+      unsigned uid = 0;
+      for (auto &u : units(gs, cd)) {
+        bool all = true;
+        for (auto &m : u) all = all && !m.first->rx[m.second]->empty();
+        if (all && decide(cd.lockstep, chan, uid, now, 0x9) < cfg_.p_pop)
+          for (auto &m : u) {
+            verify(*m.first, m.second, m.first->rx[m.second]->front());
+            m.first->rx[m.second]->pop();
+          }
+        ++uid;
+      }
+    }
+
+    for (InGroup &g : gs)
+      for (unsigned s = 0; s != cd.rate; ++s) {
+        bool st;
+        if (sole) {
+          // Shared per slot, memoryless: every instance's slot s together.
+          st = decide(true, chan, s, now, 0x5) < cfg_.p_stall;
+        } else {
+          // Private, with a duration. On a lockstep channel whose receivers
+          // are the many instances (the lanes), this is what makes the single
+          // sender hold EVERY lane for one lane's stall.
+          if (g.stall_left[s] == 0 && rng_.uniform() < cfg_.p_stall)
+            g.stall_left[s] = 1 + unsigned(rng_.next() % 3);
+          st = g.stall_left[s] != 0;
+          if (st) --g.stall_left[s];
+        }
+        if (st) g.rx[s]->stall(true);
+      }
+  }
+
+  // -- sending --------------------------------------------------------------
+  void launch(OutGroup &g, unsigned s) {
+    const ChanDesc &cd = kChans[g.ci->chan];
+    const uint64_t kv = cd.order == Order::kField
+                            ? rng_.next() % keyValues(cd) : 0;
+    const uint64_t st = streamOf(cd, s, kv);
+    const uint64_t q = g.seq[st]++;
+    const Bits msg = expectedPayload(*g.ci, st, q, kv);
+    uint64_t tid = expectedTid(*g.ci, st, q);
+    if (cfg_.misbind && cd.lockstep && g.ci->inst == 7)
+      // Lane 7 carries slot s+1's instruction in slot s -- the SIMD
+      // violation binding exists to rule out.
+      tid = expectedTid(*g.ci, streamOf(cd, (s + 1) % cd.rate, kv), q);
+    if (cfg_.wrong_class)
       for (unsigned k = 0; k != 3; ++k)
         if (!((cd.id_classes >> k) & 1u)) {
           tid = makeUid(IdClass(k), uidSeq(tid));
           break;
         }
-    }
     g.tx[s]->cycle(true, msg, tid);
     const uint32_t nb = msg.size();
     g_launched.push_back(
@@ -181,44 +267,57 @@ private:
     ++g_totals.sent;
   }
 
-  void send(OutGroup &g) {
-    const unsigned n = unsigned(g.tx.size());
-    if (atomic(*g.ci)) {
+  void send(unsigned chan, std::vector<OutGroup> &gs, uint64_t now) {
+    const ChanDesc &cd = kChans[chan];
+    unsigned uid = 0;
+    // Units are built slot-ascending within an instance, so an ordered
+    // stream's sequence follows (cycle, slot) by construction.
+    for (auto &u : units(gs, cd)) {
       bool all = true;
-      for (Sender *t : g.tx) all = all && t->canSend();
-      const bool go = all && !g_draining && rng_.uniform() < cfg_.p_send;
-      for (unsigned s = 0; s != n; ++s) {
-        if (go) launch(g, s, ordered(*g.ci) ? g.chan_seq++ : g.slot_seq[s]++);
-        else g.tx[s]->cycle(false, Bits());
+      for (auto &m : u) all = all && m.first->tx[m.second]->canSend();
+      const bool go = all && !g_draining &&
+                      decide(cd.lockstep, chan, uid, now, 0x3) < cfg_.p_send;
+      for (auto &m : u) {
+        if (go) launch(*m.first, m.second);
+        else m.first->tx[m.second]->cycle(false, Bits());
       }
-      return;
-    }
-    // Slots in index order, so an ordered channel's sequence follows
-    // (cycle, slot) by construction.
-    for (unsigned s = 0; s != n; ++s) {
-      const bool want = !g_draining && rng_.uniform() < cfg_.p_send;
-      if (want && g.tx[s]->canSend())
-        launch(g, s, ordered(*g.ci) ? g.chan_seq++ : g.slot_seq[s]++);
-      else
-        g.tx[s]->cycle(false, Bits());
+      ++uid;
     }
   }
 
   ExerciseCfg cfg_;
   Rng rng_;
   bool built_ = false;
-  std::vector<OutGroup> out_;
-  std::vector<InGroup> in_;
+  std::map<unsigned, std::vector<OutGroup>> out_;
+  std::map<unsigned, std::vector<InGroup>> in_;
 };
+
+uint64_t messageKey(const ChanInst &ci, bool with_inst, uint64_t stream,
+                    uint64_t seq) {
+  return splitmix((uint64_t(ci.chan) << 48) ^
+                  (with_inst ? uint64_t(ci.inst) << 40 : 0) ^
+                  (stream << 24) ^ seq);
+}
 
 } // namespace
 
-Bits expectedPayload(const ChanInst &ci, unsigned slot, uint64_t key) {
+uint64_t streamOf(const ChanDesc &cd, unsigned slot, uint64_t keyval) {
+  if (cd.rate < 2) return 0;
+  switch (cd.order) {
+  case Order::kSlotGroup: return kStreamGroup + slot / cd.bind_group;
+  case Order::kField:     return kStreamKey + keyval;
+  case Order::kNone:      break;
+  }
+  return slot;
+}
+
+Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
+                     uint64_t keyval) {
   const ChanDesc &cd = kChans[ci.chan];
   Bits b(cd.bits);
-  // An ordered channel's key is the channel sequence, which already names
-  // the message uniquely; the slot it happened to ride on is not part of it.
-  const uint64_t k = messageKey(ci, cd.ordered && cd.rate > 1 ? 0 : slot, key);
+  // Payload is per instance even on a lockstep channel: each lane has its
+  // own operands. Only the IDENTITY is shared across lanes.
+  const uint64_t k = messageKey(ci, true, stream, seq);
   for (unsigned f = 0; f != cd.nfields; ++f) {
     const FieldDesc &fd = cd.fields[f];
     for (uint32_t off = 0; off < fd.width; off += 64) {
@@ -226,13 +325,18 @@ Bits expectedPayload(const ChanInst &ci, unsigned slot, uint64_t key) {
       b.set(fd.lsb + off, w, splitmix(k ^ (uint64_t(f) << 20) ^ off));
     }
   }
+  if (cd.order == Order::kField) {
+    const FieldDesc &fd = cd.fields[cd.order_field];
+    b.set(fd.lsb, fd.width < 64 ? fd.width : 64, keyval);
+  }
   return b;
 }
 
-uint64_t expectedTid(const ChanInst &ci, unsigned slot, uint64_t key) {
+uint64_t expectedTid(const ChanInst &ci, uint64_t stream, uint64_t seq) {
   const ChanDesc &cd = kChans[ci.chan];
-  const uint64_t h = splitmix(
-      messageKey(ci, cd.ordered && cd.rate > 1 ? 0 : slot, key) ^ 0x7157ull);
+  // On a lockstep channel slot k carries the same instruction on every
+  // instance, so the id does not depend on which instance it is.
+  const uint64_t h = splitmix(messageKey(ci, !cd.lockstep, stream, seq) ^ 0x7157ull);
   unsigned allowed[3], n = 0;
   for (unsigned c = 0; c != 3; ++c)
     if ((cd.id_classes >> c) & 1u) allowed[n++] = c;
