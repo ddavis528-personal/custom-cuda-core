@@ -41,8 +41,8 @@ grill-me ran on 2026-09-23. Here is each input's status:
    nothing in S1. Kernels that exercise them come from the compiler corpus
    (Part 4). Several are blocked on open payload questions, at least in the
    form S1 worked around (Q-21, Q-30).
-2. **The open items in [`open-items.md`](open-items.md).** Three wait on a
-   confirmation (Q-19, Q-31, Q-32). Most of the rest are owned by the
+2. **The open items in [`open-items.md`](open-items.md).** One waits on a
+   confirmation (Q-38). Most of the rest are owned by the
    per-block sessions and the ISA track, not this repository, and each one
    says what it blocks.
 3. **The 4d correlation criterion** (Q-5) must be settled before Stage 4a

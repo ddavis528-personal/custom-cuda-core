@@ -324,7 +324,8 @@ the schema says how the top connects it):
     (`kill_ack_epoch`), so a late ack from one kill can't satisfy the next.
   - `kill_warp_mask` is 32 bits, one per warp context. It was sized to the
     four tier-1 warps, but PCA and SYU hold state for parked warps, which a
-    tier-1 mask can't name. Awaiting confirmation (Q-31).
+    tier-1 mask can't name. Confirmed (Q-31): SYU must record arrival for
+    a warp parked at `bar.sync`, since it can be demoted.
 - **Both kill sources land at RAU, the single issuer.** A fault comes direct
   from OOE: `fault_taken` with the `warp_id` on `ccv_ooe_rau_status`, and RAU
   maps warp to grid to mask. CRU records the fault in parallel for the host
@@ -443,10 +444,11 @@ Each is numbered in [`open-items.md`](open-items.md). The ones still open
 are also entries in `schema/interfaces.json` `open_questions`, under the same
 ID, rendered in `docs/payload-spec.md`.
 
-1. **No store data to DCU** (Q-19, `miu_dcu_req_store_data`). `ccv_miu_dcu_req`
-   had nothing that could carry what a store writes. **S1 added `write_data`
-   and `byte_mask`**, mirroring `ccv_miu_spm_req` (56 → 1208 bits at rate 4).
-   *Needs confirmation*, or a separate store-data channel.
+1. **No store data to DCU: confirmed as built (Q-19).** `ccv_miu_dcu_req`
+   had nothing that could carry what a store writes. S1 added `write_data`
+   (1024) and `byte_mask` (128), mirroring `ccv_miu_spm_req` (56 → 1208 bits
+   at rate 4). A separate store-data channel would duplicate flow control for
+   nothing, and byte granularity is enough because a 4-bit access faults.
 2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16,
    the widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`,
    and the shift is derived from `chwidth`. ALU immediates ride on
@@ -586,14 +588,16 @@ the way. See `fail-open-register.md`.
   32 lanes: 701 → 573.
 - **`sel` reads a predicate as data, and executes in the lane (Q-28,
   decided).** `@pq sel rd, rs0, rs1` writes `rd` on every issue-mask lane,
-  choosing by the predicate. **The rule:** RCU executes exactly two classes
-  itself. The first is ops whose sources and destinations are all predicates
-  (predicate logic, and branch resolution: a predicate in, a lane mask out).
-  The second is data moving horizontally between lanes (`shfl`, `vote`,
-  `ballot`, `unballot`). Everything else runs in the lane, and a lane stub
-  fails if an RCU-class op ever reaches it. Branch resolution and `pmov` sit
-  in the first class by reading rather than by statement, and are awaiting
-  confirmation (Q-32). The fields this implies:
+  choosing by the predicate. **The rule (Q-32, stated without special
+  cases):** the lane executes anything that reads lane data; RCU executes
+  everything that reads none, plus the ops that move data horizontally
+  between lanes (`shfl`, `vote`, `ballot`, `unballot`). Predicate logic,
+  `pmov` and branch resolution read no lane data, so they are RCU's. `setp`,
+  `add.pp` and `cas` read lane data, so they run in the lane although they
+  write predicates. A lane stub fails if an op that reads no lane data reaches
+  it, and RCU fails if one it executes reads a GPR. Three built ops break the
+  rule (`movi`, `movi48`, `srd`) and are the one pending exception (Q-38).
+  The fields this implies:
   - `pred_data` on `rcu_lane_ops`, sel's selector, beside `pred_bit`, which
     stays the enable;
   - `pred_out` on `lane_rcu_res`, a lane's predicate result (`setp` used to

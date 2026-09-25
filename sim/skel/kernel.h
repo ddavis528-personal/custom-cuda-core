@@ -54,6 +54,8 @@ struct Kernel {
   ///                  selector (run on the sel kernel)
   ///   corrupt-echo   MIU echoes phys_dst + 1 for seq 12's load, so a stateless
   ///                  RCU writes a[i] into R9 instead of R8
+  ///   drop-q38-exception  the lanes stop excusing movi, movi48 and srd from
+  ///                  the lane-data rule (Q-32), so exactly those must fail it
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

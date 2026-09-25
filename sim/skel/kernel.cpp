@@ -7,7 +7,7 @@
 // be. Nothing here uses a message's trace identity to decide what to DO --
 // only to find the record a check compares against. The two exceptions are
 // named where they happen: fetch order and decode (strategy §1's "what"), and
-// the per-lane address offset (open question agu_immediate).
+// a lane's ALU result.
 //===----------------------------------------------------------------------===//
 #include "kernel.h"
 
@@ -156,12 +156,22 @@ struct OpInfo {
   // issue, which substitutes it into operand slot `imm_slot`.
   int8_t disp_imm, scale_imm, alu_imm, imm_slot;
 };
-// Where each executes. RCU executes exactly two classes itself: (1) all
-// sources and all destinations are predicates -- predicate logic, and branch
-// resolution (a predicate in, a lane mask out); (2) data moving horizontally
-// between lanes -- shfl, vote, ballot, unballot. Everything else, sel
-// included, runs in the lane.
+// Where each executes (Q-32): the lane executes anything that reads lane
+// data; RCU executes everything that reads none -- predicate logic, pmov,
+// branch resolution -- plus the ops that move data horizontally between
+// lanes (shfl, vote, ballot, unballot). setp, add.pp and cas read lane data
+// and run in the lane although they write predicates; sel reads lane data
+// and a predicate, and runs in the lane too. Memory ops go to MIU.
 bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch; }
+/// Reads lane data: a GPR source. The one test the rule turns on.
+bool readsLaneData(const Record &r) { return !r.gprUses().empty(); }
+/// Q-38: movi, movi48 and srd read no lane data, so the rule puts them in
+/// RCU, but S1 built them in the lane before the rule existed. They are the
+/// one pending exception, listed here so every other op is held to the rule.
+bool pendingQ38(const OpInfo *op) {
+  return !std::strcmp(op->name, "MOVI") || !std::strcmp(op->name, "MOVI48") ||
+         !std::strcmp(op->name, "SRD");
+}
 constexpr OpInfo kOps[] = {
   //                            nsrc gdst  pread  pwrite guard  pdata  base idx data disp scl alu slot
   {"POR",           kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
@@ -982,6 +992,10 @@ private:
           const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
           if (op && inRcu(op->cls))
             k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
+          if (op && !readsLaneData(*rc) &&
+              (!pendingQ38(op) || k_.brk == "drop-q38-exception"))
+            k_.fail("lane %u: %s reads no lane data; RCU executes it (Q-32)",
+                    lane_, op->name);
           if (op != opByName(rc->op))
             k_.fail("lane %u: seq %llu opcode is not %s", lane_,
                     (unsigned long long)rc->seq, rc->op.c_str());
@@ -1142,12 +1156,18 @@ private:
     // -- the issue mask arrives here, the predicate values live here -- so
     // it is the sole producer of active_mask, and pred_bit is the same
     // computation per lane. A predicate read as DATA (por's sources) is not
-    // a guard and does not narrow it (open question pred_source_operands).
+    // a guard and does not narrow it (Q-27).
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
     const uint32_t guard = get(m.payload, c.ooe_rcu, "pred_neg") ? ~k_.pred[pp] : k_.pred[pp];
     const uint32_t active = issue & (op->guard ? guard : 0xffffffffu);
     const uint32_t imm0 = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
 
+    // An op RCU executes must read no lane data: RCU has the register file,
+    // but a GPR read is the lanes' work (Q-32).
+    if (inRcu(op->cls))
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (readsLaneData(*r))
+          k_.fail("rcu: %s reads lane data; the lane executes it (Q-32)", op->name);
     // Predicate logic executes HERE, beside the predicate file, and never
     // reaches a lane (O-33's second obligation; round 16). Sources are two
     // qualifiers in imm: [2:0] ps0, [5:3] ps1, each [1:0] index + [2] negate.
@@ -1435,8 +1455,8 @@ private:
       send(c.ooe_ret, slot, r, e.tid);
       e.committed = true;
     }
-    // No active-lane mask reaches OOE (open question active_lane_mask), so
-    // every group retires with all 32 lanes.
+    // No active-lane mask reaches OOE: active_mask is RCU's alone (Q-23),
+    // so every group retires with all 32 lanes.
     emit(now_, e.tid, EV_RETIRE, UNIT_OOE, e.warp, e.tag, 0xffffffffu);
     ++k_.retired;
     k_.retire_order.push_back(uidSeq(e.tid));

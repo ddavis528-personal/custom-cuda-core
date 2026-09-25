@@ -183,14 +183,6 @@ ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 
 
 **Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
 
-### Q-19 — miu dcu req store data
-
-*payload omission found by the first kernel — memory-path payload owner*
-
-ccv_miu_dcu_req had no store data: nothing on the MIU->DCU path could carry what a store writes, so no store could reach memory. Stage 3 S1 (vadd) added write_data (CCV_W_DATA) and byte_mask (CCV_W_DATA/8), mirroring ccv_miu_spm_req. Confirm, or say where store data is meant to travel instead (a separate store-data channel would decouple address and data timing, as many L1s do).
-
-**Blocks:** Nothing while the added fields stand; the choice changes the widest DCU-facing bus (56 -> 1208 bits at rate 4).
-
 ### Q-21 — pred src and dst
 
 *payload question found by the first kernel — ISA / compiler track*
@@ -567,7 +559,7 @@ ooe → rcu · rate 4 · execution
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every operation EXCEPT the two classes RCU executes itself -- (1) all sources and all destinations are predicates (pand/por/pxor/pmov, and branch resolution), (2) data moving horizontally between lanes (shfl, vote, ballot, unballot).
+Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every operation that reads lane data (Q-32). RCU executes everything that reads none -- predicate logic (pand/por/pxor), pmov, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas read lane data and run in lanes although they write predicates; pred_out and pred_result carry those back.
 
 rcu → lane · rate 4 · execution
 

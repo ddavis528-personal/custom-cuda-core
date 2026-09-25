@@ -20,6 +20,8 @@
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
 #                                                a stale R8
+#   every op on the right side of the         drop-q38-exception: exactly the
+#     lane-data rule (Q-32)                      movi/movi48/srd lanes fail it
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -171,6 +173,28 @@ if grep -q "^CHECK lane 1: seq 14 operand 0 (R8)" "$B/kernel_corrupt-echo.log"; 
   say "--break corrupt-echo: stateless write-back misroutes" "PASS"
 else
   bad "--break corrupt-echo" "a wrong echoed destination went unnoticed"
+fi
+
+# The lane-data rule (Q-32) is checked on every op, with one pending
+# exception (Q-38): movi, movi48 and srd read no lane data but are built in
+# the lane. Without the exception, exactly those ops must fail it, on every
+# lane -- and nothing else may, or the rule check is wrong about an op.
+run drop-q38-exception
+want=$(python3 - "$K" <<'PY'
+import json, sys
+n = 0
+for l in open(sys.argv[1]):
+    r = json.loads(l)
+    n += r.get("op") in ("MOVI", "MOVI48", "SRD")
+print(32 * n)
+PY
+)
+got=$(field "$B/kernel_drop-q38-exception.log" check_failures)
+if [ "$got" = "$want" ] && [ "$want" -gt 0 ] &&
+   ! grep "^CHECK" "$B/kernel_drop-q38-exception.log" | grep -qv "reads no lane data"; then
+  say "--break drop-q38-exception: exactly Q-38's ops" "PASS ($got lane checks)"
+else
+  bad "--break drop-q38-exception" "check_failures=$got, want $want, all from the lane-data rule"
 fi
 
 # -- sel: a predicate read as DATA by the lane ------------------------------
