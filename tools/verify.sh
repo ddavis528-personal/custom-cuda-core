@@ -85,6 +85,8 @@ run "payload spec stable"   python3 tools/gen-payload-spec.py --check
 # and a requirement nobody can forget to meet is one the gate produces.
 run "generate trust report" python3 tools/gen-trust-report.py
 run "trust report stable"   python3 tools/gen-trust-report.py --check
+run "generate skel wiring"  python3 tools/gen-skel.py
+run "skel wiring stable"    python3 tools/gen-skel.py --check
 
 section "Stage 1a -- tool-support spike"
 # Every Stage 1 conclusion is a measurement of a third-party tool, and some
@@ -120,6 +122,12 @@ section "Clock gating (exploratory)"
 # what it protects is a design direction rather than a build product.
 run "clock gating" ./tools/check-clockgate.sh
 
+section "Stage 3 -- skeleton (S0: plumbing)"
+# The whole machine wired from the schema, every block an exerciser stub,
+# every slot judged by the Verilated SV checker. S0 proves the machine is
+# connected before any block does anything real; vadd end to end is S1.
+run "skeleton plumbing" ./tools/check-skel.sh
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.
@@ -150,11 +158,12 @@ cat <<'PENDING'
            Round trip CLOSED at 2 (flops both sides + abutment); it stays a
            per-instance parameter, defaulted to that minimum and not expected
            to move before floorplan.
-           Remaining: 28 payload field widths across 25 channels, per-block-
-           session work; per-interface NGD budgets
-  Stage 3  vadd end-to-end through the skeleton, state identical to ccv-sim,
-           event stream loads in Perfetto, zero interface assertion violations
-                                                    -- next
+           Payload widths: every field sized, tiered settled/prov/prelim.
+           Remaining: per-interface NGD budgets; rate>1 slot semantics
+           (assumed: independent credited slots -- docs/skeleton.md)
+  Stage 3  S0 plumbing DONE: 45 blocks, 102 channel instances, 339 slots,
+           checker bank Verilated in, Perfetto trace, layout cross-checked.
+           S1 next: vadd end to end, state identical to ccv-sim
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 

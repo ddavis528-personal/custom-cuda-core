@@ -239,10 +239,32 @@ module ccv_credit_checker #(
     else        cyc <= cyc + 64'd1;
   end
 
+  // The event carries the payload's low 32 bits. Zero-extended first: a
+  // payload narrower than 32 bits made `ch_payload[31:0]` an out-of-range
+  // select, which no test saw while every checker was instantiated at 32 bits.
+  // The skeleton's bank instantiates one per slot at the channel's REAL width,
+  // and 10 channels are narrower -- ooe->rau demote is 6 bits.
+  // A generate-if rather than a ternary, so each width elaborates only the
+  // branch it can: a dead `ch_payload[31:0]` is still an out-of-range select.
+  // The schema names EV_CH_XFER's fields channel_id, payload_lo, payload_hi;
+  // the hi half was emitted as a constant 0 until the skeleton put real
+  // payloads through, so it is filled here for every width.
+  logic [31:0] pl_lo, pl_hi;
+  if (PAYLOAD_W <= 32) begin : g_narrow
+    assign pl_lo = 32'(ch_payload);
+    assign pl_hi = '0;
+  end else if (PAYLOAD_W < 64) begin : g_mid
+    assign pl_lo = ch_payload[31:0];
+    assign pl_hi = 32'(ch_payload[PAYLOAD_W-1:32]);
+  end else begin : g_wide
+    assign pl_lo = ch_payload[31:0];
+    assign pl_hi = ch_payload[63:32];
+  end
+
   always_ff @(posedge clk) begin
     if (rst_n && valid_q) begin
-      `CCV_IF_EMIT(cyc, {32'b0, ch_payload[31:0]}, EV_CH_XFER, UNIT_UNKNOWN,
-                   CHANNEL, ch_payload[31:0], 0)
+      `CCV_IF_EMIT(cyc, {32'b0, pl_lo}, EV_CH_XFER, UNIT_UNKNOWN,
+                   CHANNEL, pl_lo, pl_hi)
     end
   end
 

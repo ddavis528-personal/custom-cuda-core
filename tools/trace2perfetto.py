@@ -72,6 +72,17 @@ def main():
     ev_by_id = {e["id"]: e for e in schema["events"]}
     unit_by_id = {v: k for k, v in schema["units"].items()
                   if not k.startswith("_")}
+    # EV_CH_XFER goes on a track per CHANNEL rather than per unit. It is
+    # emitted by the shared credit checker, which sits between two blocks and
+    # belongs to neither, so its unit is UNIT_UNKNOWN -- and a whole machine's
+    # traffic on one track (231k events in the first skeleton run) is not a
+    # view of anything. The schema defines its `a` field as the channel id,
+    # so the channel is recoverable without changing the event record.
+    with open(os.path.join(ROOT, "schema", "interfaces.json")) as f:
+        chan_name = {i: c["name"] for i, c in
+                     enumerate(json.load(f)["channels"])}
+    xfer_id = next((e["id"] for e in schema["events"]
+                    if e["name"] == "EV_CH_XFER"), None)
 
     hdr, recs = read_trace(args.trace)
     want = None
@@ -100,7 +111,10 @@ def main():
         name = ev["name"] if ev else "EV_UNKNOWN_%d" % eid
         cls = ev["class"] if ev else "load_bearing"
         fields = ev["fields"] if ev else {"a": "a", "b": "b", "c": "c"}
-        if args.by == "unit":
+        if args.by == "unit" and eid == xfer_id:
+            pid, tid = 3, a
+            track = chan_name.get(a, "channel %d" % a)
+        elif args.by == "unit":
             pid, tid = 1, unit
             track = unit_by_id.get(unit, "UNIT_%d" % unit)
         else:
@@ -134,6 +148,8 @@ def main():
                  "args": {"name": "CCV structures"}})
     meta.append({"name": "process_name", "ph": "M", "pid": 2, "tid": 0,
                  "args": {"name": "CCV instructions"}})
+    meta.append({"name": "process_name", "ph": "M", "pid": 3, "tid": 0,
+                 "args": {"name": "CCV channels"}})
 
     doc = {"traceEvents": meta + out,
            "displayTimeUnit": "ns",

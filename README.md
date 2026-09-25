@@ -11,7 +11,7 @@ the cycle-accurate timing model, the RTL, and the machinery that connects them
 across three tools that disagree, and a lint layer that enforces the coding
 rules before the first block is written.
 
-**Current state: Stage 1 complete; Stage 2 partition closed and encoded.**
+**Current state: Stage 1 complete; Stage 2 closed and encoded; Stage 3 skeleton S0 (plumbing) done.**
 Stage 1 is the tooling and schema groundwork, whose membership criterion is
 *needs no architectural decision as input*. The Stage 2 interface grill-me
 happens outside this repository; it ran on 2026-09-23 and closed the partition
@@ -67,6 +67,7 @@ this is what restores one.
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
+| [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the assumptions awaiting confirmation, and the plan for `vadd`. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
 | [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one checker for all 40 channels**, since every boundary runs the same credited protocol. |
 
@@ -97,11 +98,13 @@ rtl/generated/              generated; never edited
 
 sim/include/ sim/src/       C++ timing-model side: event emit API
 sim/dpi/                    DPI-C bridge, so RTL feeds the same library
+sim/skel/                   Stage 3 skeleton: channels, machine, stubs
 sim/generated/              generated; never edited
 
 synth/                      clock-gating techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
+test/neg/                   negative controls for the credit checker
 tools/                      generators, checks, and the gate
 ```
 

@@ -193,6 +193,22 @@ so code that pattern-matches on its contents will be rewritten, as against
 code that merely carries it. See [`payload-spec.md`](payload-spec.md) and the
 generated [`trust-report.md`](trust-report.md).
 
+### Stage 3 — skeleton, S0 (plumbing) ✅
+
+See [`skeleton.md`](skeleton.md). The whole machine — 45 block instances,
+102 channel instances, 339 credited slots — wired from the schema, every block
+running an exerciser stub, every slot judged by the real SV credit checker
+Verilated in beside it. ~231k messages per 2000-cycle run, three seeds, zero
+violations; each clean result paired with a control that must fail.
+
+- `tools/gen-skel.py` — wiring tables, the checker bank, and a layout probe
+  that reads all 144 fields back through the real SV structs
+- `sim/skel/` — the two-phase machine, the protocol in one place, the stub
+- `tools/check-skel.sh` — exit criteria, in the gate
+
+**Next: S1, `vadd` end to end** against ccv-sim, which now builds here.
+**Awaiting confirmation:** rate > 1 modelled as independent slots (A-S1).
+
 ### Interface checker convention ✅ (mechanism)
 
 `docs/interface-checker-convention.md`, scheduled as part of Stage 1d. All
