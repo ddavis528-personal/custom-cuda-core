@@ -63,7 +63,19 @@
   input  logic [183:0] rau_fet_launch_payload,
   output logic rau_fet_launch_credit,
   output logic rau_fet_launch_stall,
-  input  logic rau_fet_launch_wake
+  input  logic rau_fet_launch_wake,
+  // fet -> pca, 1 slot(s) x 261 bit payload
+  output logic fet_pca_mig_valid,
+  output logic [260:0] fet_pca_mig_payload,
+  input  logic fet_pca_mig_credit,
+  input  logic fet_pca_mig_stall,
+  output logic fet_pca_mig_wake,
+  // pca -> fet, 1 slot(s) x 261 bit payload
+  input  logic pca_fet_mig_valid,
+  input  logic [260:0] pca_fet_mig_payload,
+  output logic pca_fet_mig_credit,
+  output logic pca_fet_mig_stall,
+  input  logic pca_fet_mig_wake
 `ifdef CCV_TRACE
   , output logic [511:0] fet_dec_instr_tid
   , input  logic [63:0] ooe_fet_redirect_tid
@@ -72,4 +84,6 @@
   , input  logic [63:0] miu_fet_itlb_tid
   , output logic [63:0] fet_miu_itlb_req_tid
   , input  logic [63:0] rau_fet_launch_tid
+  , output logic [63:0] fet_pca_mig_tid
+  , input  logic [63:0] pca_fet_mig_tid
 `endif

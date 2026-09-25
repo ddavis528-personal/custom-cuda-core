@@ -25,7 +25,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **20 of 42 channels** carry at least one
+appear above. **22 of 44 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
@@ -36,6 +36,7 @@ preliminary field:
 | `ccv_exb_ext_out` | `tl_out` |
 | `ccv_exb_mlc_rsp` | `probe_type` |
 | `ccv_ext_exb_in` | `tl_in` |
+| `ccv_fet_pca_mig` | `pcs` |
 | `ccv_miu_dcu_req` | `coh_op` |
 | `ccv_miu_fet_itlb` | `itlb_refill` |
 | `ccv_miu_spm_req` | `spm_op` |
@@ -43,13 +44,14 @@ preliminary field:
 | `ccv_ooe_fet_redirect` | `group_masks` |
 | `ccv_ooe_miu_memop` | `mem_op`, `space`, `ordering` |
 | `ccv_ooe_rcu_issue` | `opcode` |
-| `ccv_pca_rcu_mig` | `pred_state`, `pcs` |
+| `ccv_pca_fet_mig` | `pcs` |
+| `ccv_pca_rcu_mig` | `pred_state` |
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rau_ooe_alloc` | `prf_base`, `prf_size` |
 | `ccv_rau_rcu_mig` | `bank_select` |
 | `ccv_rau_syu_alloc` | `barrier_count` |
 | `ccv_rcu_lane_ops` | `opcode`, `operand` |
-| `ccv_rcu_pca_mig` | `pred_state`, `pcs` |
+| `ccv_rcu_pca_mig` | `pred_state` |
 
 ## High-churn parameters
 

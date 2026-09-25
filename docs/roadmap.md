@@ -29,15 +29,15 @@ grill-me ran on 2026-09-23. Here is each input's status:
 
 | Was waiting for | Status |
 |---|---|
-| The partition list | ✅ 14 block types, 45 instances, 40 channels — 42 now: the external port became an out/in pair, and branch redirect added `ccv_ooe_fet_redirect`. Encoded in `params/blocks.json` and `schema/interfaces.json` |
+| The partition list | ✅ 14 block types, 45 instances, 40 channels — 44 now: the external port became an out/in pair, branch redirect added `ccv_ooe_fet_redirect`, and the PC groups migrate on a FET↔PCA pair. Encoded in `params/blocks.json` and `schema/interfaces.json` |
 | A block letter per block | ✅ 14 assigned, 2 reserved (`z` reset tree, `y` fixtures), 8 spare — **closes the 24-block ceiling question** |
-| Per-block interface contracts | ✅ protocol, signal shape, slot attributes and **all 181 payload field widths**. 7 of 42 channels are decided end to end; the rest are on provisional or preliminary widths, tiered and reported |
+| Per-block interface contracts | ✅ protocol, signal shape, slot attributes and **all 192 payload field widths**. 7 of 44 channels are decided end to end; the rest are on provisional or preliminary widths, tiered and reported |
 | Per-block interface NGD budgets | ❌ not started, against the 25 NGD envelope |
 
 **Next, in order:**
 
 1. **S2: a kernel that stresses what vadd does not.** vadd has no divergence,
-   no loop, one warp, and no SPM or barriers, so 16 of the 42 channels carried
+   no loop, one warp, and no SPM or barriers, so 18 of the 44 channels carried
    nothing in S1. Kernels that exercise them come from the compiler corpus
    (Part 4). Several are blocked on open payload questions, at least in the
    form S1 worked around (Part 3, item 20).
@@ -149,12 +149,12 @@ looks exactly like one that passes.
 ### Stage 2 — partition closed, topology encoded ✅
 
 The block-level grill-me (2026-09-23) closed the partition: **14 block types,
-45 instances, 40 channels** (42 now: the external port became an out/in
-pair, and branch redirect added one). Encoded and machine-checked:
+45 instances, 40 channels** (44 now: the external port pair, branch
+redirect, and the FET↔PCA migration pair). Encoded and machine-checked:
 
 - `params/blocks.json` — the 14 block letters, 8 spare. **Closes A-2**: the
   single-letter stage tag holds and does not need widening.
-- `schema/interfaces.json` — all 42 channels, the common ports, and the
+- `schema/interfaces.json` — all 44 channels, the common ports, and the
   four-signal channel shape. Per-block port lists are **derived** from the
   channel list rather than stated, since the source spec kept both and they
   disagreed.
@@ -186,7 +186,7 @@ nothing else would catch either, and `tools/check-if.sh` builds each
 misconfiguration to prove the check still bites.
 
 **Payload widths: closed enough to build on.** Every field has a width, so
-all 42 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
+all 44 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
 the widths whose *encoding* is undecided — distinct from `ccv_prov_pkg`, where
 only the number is. Each preliminary parameter also carries a **churn**
 rating: high means a per-block session is likely to change the field's shape,
@@ -201,14 +201,14 @@ and `active_mask` on the memory path; see
 
 See [`skeleton.md`](skeleton.md).
 
-**S0.** The whole machine is wired from the schema: 45 block instances, 104
-channel instances, 341 credited slots. Every block runs an exerciser stub, and
+**S0.** The whole machine is wired from the schema: 45 block instances, 106
+channel instances, 343 credited slots. Every block runs an exerciser stub, and
 every slot is judged by the real SV credit checker Verilated in beside it. A
 2000-cycle run carries ~151k messages, and three seeds give zero violations.
 Each clean result is paired with a control that must fail it.
 
 - `tools/gen-skel.py` — wiring tables, the checker bank, and a layout probe
-  that reads all 181 fields back through the real SV structs
+  that reads all 192 fields back through the real SV structs
 - `sim/skel/` — the two-phase machine, the protocol in one place, the stubs
 - `tools/check-skel.sh` — exit criteria, in the gate
 
@@ -241,7 +241,7 @@ wake per channel, CSR from CRU, and TL-C beats on the link. See
 
 ### SV top ✅ (structure)
 
-`rtl/top/` — generated and tracked: 45 stub blocks wired by the 104 channel
+`rtl/top/` — generated and tracked: 45 stub blocks wired by the 106 channel
 instances, each block's port list generated and included, the shared checker
 bank under `CCV_CHECK`. Clean in all three tools. Its connectivity, extracted
 from the elaborated netlist, equals the C++ skeleton's bit for bit. See
@@ -264,7 +264,7 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
 
-**What is NOT done here:** nothing, for wiring purposes — all 42 channels
+**What is NOT done here:** nothing, for wiring purposes — all 44 channels
 have a full set of widths and generate a struct. What is not *decided* is
 tiered and reported rather than missing. There are no per-type checkers and
 there will not be: every boundary obeys the same credited protocol, so one
@@ -444,7 +444,7 @@ Carried from the strategy doc, with current status.
    at 4c, where checkers sit at each block's own ports.
 
 15. **Direction discipline without modports.** Direction is declared in
-    `schema/interfaces.json` and carried into the generated header. 42 real
+    `schema/interfaces.json` and carried into the generated header. 44 real
     interfaces now exist, so the question is answerable — but honestly, not
     yet answered: nothing has been *built* against them. The test is whether a
     block author can get a direction wrong and have it caught, and that is not
@@ -463,11 +463,11 @@ Carried from the strategy doc, with current status.
     payload one way (F-12).
 
 17. ~~**28 payload field widths.**~~ **Closed for wiring** by the payload
-    pass (2026-09-25): every field has a width, all 42 channels generate a
+    pass (2026-09-25): every field has a width, all 44 channels generate a
     struct. What replaced it is a **tiering** problem rather than a blocking
     one — see [`payload-spec.md`](payload-spec.md) and the generated
-    [`trust-report.md`](trust-report.md). 7 of 42 channels are decided end to
-    end; 15 carry a provisional width, 20 a preliminary one.
+    [`trust-report.md`](trust-report.md). 7 of 44 channels are decided end to
+    end; 15 carry a provisional width, 22 a preliminary one.
 
     The pass also corrected four widths that were sized confidently and
     wrongly in the first encoding, which matters more than an open field
@@ -515,8 +515,7 @@ Carried from the strategy doc, with current status.
     |---|---|
     | `miu_dcu_req_store_data` | store data was missing from MIU→DCU; `write_data` + `byte_mask` added provisionally — **confirm** |
     | `pred_src_and_dst` | one `pred_reg` for guard and destination |
-    | `miu_rcu_phys_dst` | `miu_rcu_data.phys_dst` has no source |
-    | `pc_group_state_owner` | FET owns divergent PC state, but `rcu_pca_mig` carries `pcs` from RCU; proposal: a FET↔PCA pair |
+    | `migration_control` | RAU sequences both migrations and waits for both acks, but nothing carries the command to FET or any ack to RAU; smallest fix: 46 channels |
 
     Decided since, and closed: `agu_immediate` (disp + scale to MIU's AGU,
     ALU immediates substituted by RCU), `active_lane_mask` (`issue_mask` and
@@ -526,7 +525,10 @@ Carried from the strategy doc, with current status.
     `pred_source_operands` (already decided: predicate logic executes in
     RCU, now built); then `predicate_as_lane_data` (decided: RCU executes
     only all-predicate and horizontal ops; `sel` runs in the lane with a
-    `pred_data` bit).
+    `pred_data` bit); then `pc_group_state_owner` (built: the FET↔PCA
+    migration pair) and `miu_rcu_phys_dst` (built: OOE carries the
+    destinations on the memop, MIU echoes them, and RCU is stateless on
+    write-back).
 
     Fields shared across abutting channels are worth settling **across**
     sessions rather than within one. After the payload pass split `op`, those

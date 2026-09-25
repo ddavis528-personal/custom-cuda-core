@@ -33,5 +33,13 @@ module ccv_pca (
 `ifdef CCV_TRACE
   assign pca_rcu_mig_tid = '0;
 `endif
+  assign fet_pca_mig_credit = '0;
+  assign fet_pca_mig_stall = '0;
+  assign pca_fet_mig_valid = '0;
+  assign pca_fet_mig_payload = '0;
+  assign pca_fet_mig_wake = '0;
+`ifdef CCV_TRACE
+  assign pca_fet_mig_tid = '0;
+`endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

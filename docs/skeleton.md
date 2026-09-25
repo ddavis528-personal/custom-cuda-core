@@ -25,7 +25,7 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json   # per instruction
 `tools/check-skel.sh` builds the binary and runs S0's checks, and
 `tools/check-kernel.sh` runs S1's. Both run in the gate.
 
-**Next: S2.** vadd leaves 16 of the 42 channels idle and never diverges, loops
+**Next: S2.** vadd leaves 18 of the 44 channels idle and never diverges, loops
 or uses a second warp. S2 is kernels that do, as far as the open payload
 questions allow.
 
@@ -57,10 +57,10 @@ produces them, never their shape. Field positions are generated
 **Cross-checked, not assumed.** The C++ offsets and the SV typedefs come from
 two generators that agree by construction, which is exactly the agreement F-12
 says not to trust at a swap boundary. `rtl/generated/ccv_skel_layout_probe.sv`
-reads all 181 fields back *through the real SV structs* and compares them with
+reads all 192 fields back *through the real SV structs* and compares them with
 the C++ table: zero disagreements over 64 random rounds. Its negative control
 shifts every C++ offset by one bit, and the probe must catch every field that
-can be shifted — 178 of 178 (the other three are single-field payloads).
+can be shifted — 189 of 189 (the other three are single-field payloads).
 
 ### 3. Interface checking is the SV checker itself, Verilated in
 
@@ -68,7 +68,7 @@ The skeleton is C++, and the obvious move is a C++ port of the checker. That
 is the wrong one: a second implementation of the protocol drifts from the
 first, and "zero violations" then becomes a statement about the port. Instead
 `rtl/generated/ccv_skel_checkers.sv` instantiates the real
-`ccv_credit_checker` once per slot — 341 of them — and the skeleton clocks it
+`ccv_credit_checker` once per slot — 343 of them — and the skeleton clocks it
 with every slot's signals each cycle. The skeleton and every future RTL block
 are judged by identical logic, and the load-bearing `EV_CH_XFER` stream comes
 from identical code on both sides, which is what makes 4d correlation compare
@@ -95,19 +95,19 @@ one that is. So every clean result has a partner that must **not** be clean:
 
 | Clean result (3 seeds, 2000 cycles, ~151k messages each) | Negative control |
 |---|---|
-| 0 checker violations | `--break phantom-all`: all 341 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
-| | `--break stall-all`: all 341 fire `stall_honoured` — proves every `stall` and `valid` |
+| 0 checker violations | `--break phantom-all`: all 343 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
+| | `--break stall-all`: all 343 fire `stall_honoured` — proves every `stall` and `valid` |
 | `EV_CH_XFER` payloads (bits 63:0) **and trace ids** equal the launched ones, as a multiset | the match is exact, so one miswired payload or sideband bit fails it |
 | 0 payload mismatches at the receivers; sent == received; no idle slot | — (end-to-end data check, independent of the bank) |
 | `--force-atomic`: every multi-slot channel moves in whole groups, clean | `--break atomic-all`: all 77 atomic checkers fire both properties, and nothing else fires |
 | Ordered channels are consumed in order per key — per binding group on fet→dec, per `warp_id` on dec→ooe — with different keys free to pass | `--break misorder`: taking a head that is not the oldest of its key is caught — on exactly the two ordered channels |
 | Lane channels advance together: slot *k* moves on all 32 lanes or none | `--break lockstep-all`: one lane's slot alone — both lockstep checkers fire, nothing else |
 | Slot *k* carries the same instruction on every lane | `--break misbind`: lane 7 carries slot *k*+1's instruction in slot *k* — only `lockstep_id` fires |
-| Every message's id class is in its channel's set | `--break wrong-class`: all 42 channels report |
+| Every message's id class is in its channel's set | `--break wrong-class`: all 44 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
 | Every fet→dec message names its own group (`tier1_id` == slot / 2) | `--break misgroup`: every message names the next group — only `binding_key` fires |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
-| **341 slots**, re-derived from the schema every run | — (see below) |
+| **343 slots**, re-derived from the schema every run | — (see below) |
 
 The payload wiring gets the event-stream check rather than a negative control
 because Verilator is two-state: `payload_known_when_due` cannot fire there at
@@ -120,16 +120,17 @@ and every channel with its attributes. In short:
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 27 | 1 | 1 | 27 |
+| 29 | 1 | 1 | 29 |
 | 11 | 4 | 1 | 44 |
 | 2 | 4 | 32 | 256 |
 | 1 | 6 | 1 | 6 |
 | 1 | 8 | 1 | 8 |
-| **42** | | | **341** |
+| **44** | | | **343** |
 
-That is 42 types and 104 channel instances: 40 at one instance, plus the two
+That is 44 types and 106 channel instances: 42 at one instance, plus the two
 lane channels at 32 each. The inbound external channel took it from 40 types
-(339 slots) to 41, and branch redirect to 42.
+(339 slots) to 41, branch redirect to 42, and the FET↔PCA migration pair to
+44.
 
 The review's point stands regardless: this is the one number a clean run does
 not validate. A rate wrong by one on a ×32 channel moves the total by 32, and
@@ -191,7 +192,7 @@ doesn't is caught by `lockstep_valid` plus `stall_honoured` on the stalled lane.
 In the stubs, a decision that spans blocks — 32 lane blocks — comes from a
 hash of (channel, slot, cycle) shared by every block, not a block's private
 RNG. Otherwise the stub would break lockstep by construction. Lockstep costs
-throughput, as it should: 256 of the 341 slots are lane slots, and the RCU
+throughput, as it should: 256 of the 343 slots are lane slots, and the RCU
 sender holds all 32 lanes whenever any one stalls, so runs carry ~151k
 messages where they carried ~230k.
 
@@ -278,7 +279,7 @@ The same machine as SystemVerilog, generated by `tools/gen-top.py` and
 
 | File | What |
 |---|---|
-| `rtl/top/ccv_core_top.sv` | 45 block instances, 104 channel instances, gated clocks, the checker bank under `CCV_CHECK` |
+| `rtl/top/ccv_core_top.sv` | 45 block instances, 106 channel instances, gated clocks, the checker bank under `CCV_CHECK` |
 | `rtl/top/ports/ccv_<blk>_ports.svh` | each block type's port list — included by the stub and by real RTL alike |
 | `rtl/top/stubs/ccv_<blk>.sv` | stubs that never send: protocol-legal on every channel |
 | `test/top/tb_core_top.sv` | clock, reset, tie-offs; `+phantom` is its negative control |
@@ -300,7 +301,7 @@ every channel port to a (channel, copy, slot, signal, bit) coordinate from
 names and the layout rule alone. It then requires one driver and one load per
 net, identical coordinates at both ends, and the right direction per signal.
 The resulting producer→consumer map must equal `ccv-skel --dump-wiring`:
-69,207 bits, identical, now including one `_wake` bit per channel
+69,709 bits, identical, now including one `_wake` bit per channel
 instance, which must run from the same producer to the same consumer as
 that instance's slots. A copy with one lane's valid slice swapped is
 rejected.
@@ -375,8 +376,8 @@ exerciser used, with the checker bank judging every slot. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
 violations, and the bank's 573 `EV_CH_XFER` events matching every launch
-exactly. It carries traffic on 26 of the 42 channels; the 16 idle ones are
-SPM, barriers, migration, demotion, probes, faults and branch redirect
+exactly. It carries traffic on 26 of the 44 channels; the 18 idle ones are
+SPM, barriers, migration (both pairs), demotion, probes, faults and branch redirect
 (vadd's one branch is never taken), none of which vadd reaches.
 
 | Clean result | Negative control that must fail it |
@@ -456,18 +457,18 @@ rendered in `docs/payload-spec.md`.
 4. **One predicate field for guard and destination** (`pred_src_and_dst`).
    `@P0 setp P1, …` has no encoding. S1 refuses such a record; vadd only uses
    P0.
-5. **`ccv_miu_rcu_data.phys_dst` has no source** (`miu_rcu_phys_dst`).
-   Nothing MIU receives names a destination register. RCU keeps it by
-   `rob_tag` from issue, and the field is left zero.
+5. **Load write-back destination: decided.** OOE carries `phys_dst` and
+   `phys_pred` on the memop, and MIU echoes them, so RCU is stateless on
+   write-back (see "Skeleton review response 3").
 6. **Three sources: answered from the ISA, and the uop widened.** Format A
    `dp4.*`, `dp2.*`, `ffma.f0` and `mad.lo` read `rs0`, `rs1` *and* `rs2` (the
    accumulator input) and write an **independent** `rd`; only the compressed
    Format J forms (`dp4.acc`, `mad.acc`, `ffma.acc`) tie the destination to
    the accumulator. The ISA's own walkthrough has `mad.lo r1, r3, r1, r2`,
    with `rd` ≠ `rs2`; vadd's hand-written `MADLO R1, R2, R3, R1` just happened
-   to fit. `cas` reads three GPRs as well. So `src_arch` is `3 ×
-   CCV_W_ARCH_REG` and `phys_src` is `3 × CCV_P_W_PHYS_REG`, and the S1
-   workaround of carrying the third source in `dst_arch` is removed. (`dp8` is
+   to fit. `cas` reads three GPRs as well. So the third source has its own
+   field (`src2_arch`, `phys_src2`), and the S1 workaround of carrying it in
+   `dst_arch` is removed. (`dp8` is
    in the ISA table, but no instruction definition exists for it yet.)
 
 Also found and fixed, in the compiler repo:
@@ -594,15 +595,51 @@ the way. See `fail-open-register.md`.
   A second kernel, `test/golden/sel/`, exercises it: `c[tid] = tid < 16 ? tid
   : 16`, so half the lanes choose `rs1`. It ends identical to ccv-sim in 120
   cycles, and `--break drop-pred-data` must be rejected by those lanes.
-- **The PC-group owner** (open question `pc_group_state_owner`): FET owns
-  divergent PC state, but `ccv_rcu_pca_mig` carries `pcs` from RCU. Proposal:
-  move `pcs` onto a FET↔PCA pair.
+- **The PC-group owner:** FET owns divergent PC state, but `ccv_rcu_pca_mig`
+  carried `pcs` from RCU. Built in the next round: a FET↔PCA pair.
 - **Compiler F-143 is fixed** (`cas`'s offset is `simm16`, decoded
   sign-extended), and escalated as you said: an offset at or above 0x8000
   would have been emitted as a large positive and executed as negative.
   **Compiler F-144:** fixing it exposed that 85 predicated instructions had
   silently left the encode/decode round trip since the predicate operand
   types were added (see `fail-open-register.md`).
+
+### Skeleton review response 3 (2026-09-25), as built
+
+- **The PC groups migrate FET↔PCA.** `pcs` is off `ccv_rcu_pca_mig` and
+  `ccv_pca_rcu_mig`, and onto the new `ccv_fet_pca_mig` / `ccv_pca_fet_mig`,
+  each carrying `warp_id` and the groups. The design is at 44 channels.
+  - **Open (`migration_control`):** RAU sequences both halves and waits for
+    both acks, but at 44 channels nothing carries that. Nothing tells FET to
+    send or accept, no ack reaches RAU from FET, RCU or PCA, and
+    `ccv_rcu_pca_mig` never said which warp or bank it carries. The smallest
+    fix is a RAU→FET migrate command and a PCA→RAU done, which would make 46
+    channels.
+- **Already built last round, and unchanged:**
+  - `issue_mask` / `active_mask` as two fields, with the agree check retired
+    (it is now active ⊆ issue).
+  - FET's single ITLB miss, asserted by the bank's outstanding checker.
+- **The third source is a named field** (`src2_arch`, 4 bits; `phys_src2`,
+  8 bits). Last round had widened `src_arch` to a packed three-source field;
+  now `src_arch` holds two again and `dst_arch` means the destination,
+  always.
+  - The ISA question was answered last round: Format A `dp4` takes a separate
+    third source (`rs2`), so the field is required, not merely cleaner.
+  - **One correction to the invariant to record.** `mad.lo` does *not*
+    accumulate into its destination: `mad.lo rd, rs0, rs1, rs2` has `rd`
+    independent of `rs2` (the ISA walkthrough's `mad.lo r1, r3, r1, r2`).
+    vadd's `MADLO R1, R2, R3, R1` accumulates only because it names the same
+    register twice. The invariant is Format J's: `mad.acc`, `dp4.acc` and
+    `ffma.acc` read and write `rd` (TableGen ties `rd` to `rd_in`), and every
+    Format A four-register form takes `rs2` as an independent source.
+- **Load write-back is stateless in RCU.** The memop carries `phys_dst` and
+  `phys_pred`, and MIU echoes both on `miu_rcu_data`, so RCU writes where
+  the data says and holds no table of outstanding loads.
+  - One bit beyond your spec: `pred_we`, set by MIU from the op. Without it,
+    a stateless RCU can't tell a `cas` from a load, and would write
+    `pred_result` over the predicate that `phys_pred` names on every load.
+  - Control: `--break corrupt-echo` sends one load's data to the wrong
+    register, which C_ADD's lanes then reject.
 
 ### S1 wire conventions (placeholders)
 
@@ -615,11 +652,12 @@ decisions.
 | `fet_dec_instr.length` | 0/1/2 = 2/4/6 bytes; `instr` little-endian bytes |
 | `fet_dec_instr` slots | warp *w* is tier-1 stream *w*: binding group *w*, age = slot order |
 | `dec_ooe_uop.opcode` | skeleton-local table, 1..11 for vadd's ops (0 reserved) |
-| `dec_ooe_uop.src_arch` | `[11:8]` src0, `[7:4]` src1, `[3:0]` src2 |
+| `dec_ooe_uop.src_arch`, `src2_arch` | `[7:4]` src0, `[3:0]` src1; the third source in `src2_arch` |
 | `dec_ooe_uop.pred_reg`, `pred_neg` | a guard's index and negate (from the qualifier); for predicate logic, the destination. Read/written comes from the opcode |
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its byte offset from its own pc (DEC folds in the length). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
-| `ooe_rcu_issue.phys_src` | `[23:16]` src0, `[15:8]` src1, `[7:0]` src2; rename is `prf_base + arch` (no renaming yet) |
+| `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Rename is `prf_base + arch` (no renaming yet) |
+| `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
 | `ooe_rcu_issue.phys_pred` | `4·warp + index` (predicates not renamed) |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |

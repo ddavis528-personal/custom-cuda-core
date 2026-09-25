@@ -1,6 +1,6 @@
 //===-- main.cpp - ccv-skel: the Stage 3 skeleton ----------------------===//
 //
-// Runs the whole machine -- 45 block instances, 104 channel instances, 341
+// Runs the whole machine -- 45 block instances, 106 channel instances, 341
 // credited slots -- with the SystemVerilog interface checker Verilated in at
 // every slot. The bank is clocked with each cycle's channel signals, so the
 // skeleton is judged by the same checker the RTL will be, and the
@@ -43,6 +43,7 @@
 //   corrupt-disp   one load's displacement is off by 4 on its way OOE->MIU
 //   drop-negate    guard negates dropped at issue: @!P0 resolves backwards
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
+//   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
 #include "verilated.h"
@@ -224,7 +225,8 @@ int main(int argc, char **argv) {
   const bool kbreak = brk == "corrupt-fetch" || brk == "corrupt-load" ||
                       brk == "drop-store" || brk == "corrupt-req-id" ||
                       brk == "itlb-double" || brk == "corrupt-disp" ||
-                      brk == "drop-negate" || brk == "drop-pred-data";
+                      brk == "drop-negate" || brk == "drop-pred-data" ||
+                      brk == "corrupt-echo";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

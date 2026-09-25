@@ -16,13 +16,13 @@ skeleton S0 (plumbing) and S1 (`vadd` end to end, final state identical to
 ccv-sim) done.** Stage 1 is the tooling and schema groundwork, whose membership
 criterion is *needs no architectural decision as input*. The Stage 2 interface
 grill-me happens outside this repository; it ran on 2026-09-23 and closed the
-partition at **14 block types, 45 instances, 40 channels**. It's 42 channels
-now, since the external port became an out/in pair and branch redirect
-added `ccv_ooe_fet_redirect`, and all of them are encoded
+partition at **14 block types, 45 instances, 40 channels**. It's 44 channels
+now: the external port became an out/in pair, branch redirect added
+`ccv_ooe_fet_redirect`, and the PC groups got their own FET↔PCA migration pair, and all of them are encoded
 and machine-checked here. `tools/verify.sh` is green and lists the pending
 stages rather than omitting them.
 
-**Every payload field now has a width, so all 42 channels generate a packed
+**Every payload field now has a width, so all 44 channels generate a packed
 struct and the skeleton is wired end to end.** The cost is that some
 widths are guesses, so the repository carries **three tiers of trust** and the
 tier is visible at every use site:
@@ -33,14 +33,14 @@ tier is visible at every use site:
 | `ccv_prov_pkg` | a sizing placeholder | the number |
 | `ccv_prelim_pkg` | no decided *encoding* at all | possibly the **field itself** |
 
-Classified by the weakest width each carries: **7 of 42** channels are
-decided end to end, 15 carry a provisional width, and 20 carry a preliminary
+Classified by the weakest width each carries: **7 of 44** channels are
+decided end to end, 15 carry a provisional width, and 22 carry a preliminary
 one. [`docs/payload-spec.md`](docs/payload-spec.md) is the per-channel
 breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
 artifact listing everything that references an undecided number, so which
 ones are still made up is produced rather than remembered.
 
-Still outside the repository: **per-interface NGD budgets**, and five payload
+Still outside the repository: **per-interface NGD budgets**, and four payload
 questions no width can close, listed in `schema/interfaces.json`
 `open_questions` and rendered in
 [`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close).
@@ -106,7 +106,7 @@ rtl/if/                     the credit checker (one per slot), plus the atomic
                               outstanding (request/response pairs) checkers
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
 rtl/top/                    GENERATED, tracked: the SV top level
-                              ccv_core_top.sv   45 blocks, 104 channel instances
+                              ccv_core_top.sv   45 blocks, 106 channel instances
                               ports/            each block's port list
                               stubs/            stub blocks, swapped at 4c
 rtl/generated/              generated; never edited
@@ -227,8 +227,8 @@ Full detail in [`docs/stage1a-findings.md`](docs/stage1a-findings.md).
 The grill-me closed the partition; this repository turned it into things that
 are checked rather than described.
 
-**The topology.** 14 block types, 45 instances, 40 channels (42 now: the
-external port became an out/in pair, and branch redirect added one), in `params/blocks.json` and
+**The topology.** 14 block types, 45 instances, 40 channels (44 now: the
+external port pair, branch redirect, and the FET↔PCA migration pair), in `params/blocks.json` and
 `schema/interfaces.json`. Per-block port lists are
 **derived** from the channel list rather than stated, because the source spec
 carried both and they disagreed — and a derived list cannot disagree with
@@ -279,7 +279,7 @@ and a check that has been deleted is very quiet.
 Detail is in [`docs/skeleton.md`](docs/skeleton.md).
 
 **S0: plumbing.** The whole machine is wired from the schema: 45 block
-instances, 104 channel instances, 341 credited slots. At first every block is
+instances, 106 channel instances, 343 credited slots. At first every block is
 an exerciser stub, and every slot is judged by the real SV credit checker,
 Verilated in. Three seeds each give zero violations. Every clean result is
 paired with a control that must fail it.

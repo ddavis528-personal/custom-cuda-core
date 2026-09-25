@@ -40,9 +40,9 @@
   output logic [3:0] rcu_ooe_done_credit,
   output logic [3:0] rcu_ooe_done_stall,
   input  logic rcu_ooe_done_wake,
-  // ooe -> miu, 4 slot(s) x 77 bit payload
+  // ooe -> miu, 4 slot(s) x 93 bit payload
   output logic [3:0] ooe_miu_memop_valid,
-  output logic [307:0] ooe_miu_memop_payload,
+  output logic [371:0] ooe_miu_memop_payload,
   input  logic [3:0] ooe_miu_memop_credit,
   input  logic [3:0] ooe_miu_memop_stall,
   output logic ooe_miu_memop_wake,

@@ -52,6 +52,8 @@ struct Kernel {
   ///                  resolves as taken and redirects fetch to the wrong place
   ///   drop-pred-data RCU withholds pred_data, so sel's lanes see a clear
   ///                  selector (run on the sel kernel)
+  ///   corrupt-echo   MIU echoes phys_dst + 1 for seq 12's load, so a stateless
+  ///                  RCU writes a[i] into R9 instead of R8
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

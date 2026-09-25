@@ -52,9 +52,9 @@
   input  logic [3:0] rcu_miu_addr_credit,
   input  logic [3:0] rcu_miu_addr_stall,
   output logic rcu_miu_addr_wake,
-  // miu -> rcu, 4 slot(s) x 1103 bit payload
+  // miu -> rcu, 4 slot(s) x 1112 bit payload
   input  logic [3:0] miu_rcu_data_valid,
-  input  logic [4411:0] miu_rcu_data_payload,
+  input  logic [4447:0] miu_rcu_data_payload,
   output logic [3:0] miu_rcu_data_credit,
   output logic [3:0] miu_rcu_data_stall,
   input  logic miu_rcu_data_wake,
@@ -64,15 +64,15 @@
   output logic rau_rcu_mig_credit,
   output logic rau_rcu_mig_stall,
   input  logic rau_rcu_mig_wake,
-  // rcu -> pca, 1 slot(s) x 2304 bit payload
+  // rcu -> pca, 1 slot(s) x 2048 bit payload
   output logic rcu_pca_mig_valid,
-  output logic [2303:0] rcu_pca_mig_payload,
+  output logic [2047:0] rcu_pca_mig_payload,
   input  logic rcu_pca_mig_credit,
   input  logic rcu_pca_mig_stall,
   output logic rcu_pca_mig_wake,
-  // pca -> rcu, 1 slot(s) x 2304 bit payload
+  // pca -> rcu, 1 slot(s) x 2048 bit payload
   input  logic pca_rcu_mig_valid,
-  input  logic [2303:0] pca_rcu_mig_payload,
+  input  logic [2047:0] pca_rcu_mig_payload,
   output logic pca_rcu_mig_credit,
   output logic pca_rcu_mig_stall,
   input  logic pca_rcu_mig_wake

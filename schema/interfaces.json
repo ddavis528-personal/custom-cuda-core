@@ -259,6 +259,7 @@
         "uop_class",
         "opcode",
         "src_arch",
+        "src2_arch",
         "dst_arch",
         "pred_reg",
         "pred_neg",
@@ -266,7 +267,7 @@
         "scale_en",
         "decode_fault"
       ],
-      "doc": "Format-decoded operations with architectural register names (three sources: Format A's rs2 is an independent source, e.g. the accumulator input of mad.lo and dp4, with rd independent of it), the immediate and scale enable, six per cycle into the queue ahead of rename.",
+      "doc": "Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the immediate and scale enable, six per cycle into the queue ahead of rename.",
       "id_classes": [
         "instr"
       ],
@@ -288,6 +289,7 @@
         "warp_id",
         "issue_mask",
         "phys_src",
+        "phys_src2",
         "phys_dst",
         "phys_pred",
         "pred_neg",
@@ -406,9 +408,11 @@
         "active_mask",
         "pred_result",
         "phys_dst",
+        "phys_pred",
+        "pred_we",
         "load_data"
       ],
-      "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file.",
+      "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load.",
       "id_classes": [
         "instr"
       ]
@@ -421,6 +425,8 @@
       "group": "memory",
       "payload_fields": [
         "rob_tag",
+        "phys_dst",
+        "phys_pred",
         "issue_mask",
         "warp_id",
         "cta_slot",
@@ -431,7 +437,7 @@
         "space",
         "ordering"
       ],
-      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute.",
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations, which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.",
       "id_classes": [
         "instr"
       ]
@@ -899,10 +905,9 @@
       "group": "control",
       "payload_fields": [
         "gpr_row",
-        "pred_state",
-        "pcs"
+        "pred_state"
       ],
-      "doc": "Architectural state out to the parked array on demotion.",
+      "doc": "Architectural register and predicate state out to the parked array on demotion. The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.",
       "id_classes": [
         "none"
       ]
@@ -915,10 +920,39 @@
       "group": "control",
       "payload_fields": [
         "gpr_row",
-        "pred_state",
+        "pred_state"
+      ],
+      "doc": "Architectural register and predicate state back in on restore. The PC groups return to FET on ccv_pca_fet_mig.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_fet_pca_mig",
+      "src": "fet",
+      "dst": "pca",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
         "pcs"
       ],
-      "doc": "Architectural state back in on restore.",
+      "doc": "A demoted warp's PC groups, out to the parked array. FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer and waits for both before reallocating the slot.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_pca_fet_mig",
+      "src": "pca",
+      "dst": "fet",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "pcs"
+      ],
+      "doc": "A restored warp's PC groups, back to FET, which resumes fetch from them.",
       "id_classes": [
         "none"
       ]
@@ -1062,7 +1096,7 @@
     "decode_fault": "1",
     "dispatch_fault": "1",
     "exec_fault": "1",
-    "src_arch": "3*CCV_W_ARCH_REG",
+    "src_arch": "2*CCV_W_ARCH_REG",
     "dst_arch": "CCV_W_ARCH_REG",
     "pred_reg": "CCV_W_ARCH_PRED",
     "chwidth": "CCV_W_CHWIDTH",
@@ -1087,7 +1121,7 @@
     "resume_pc": "CCV_W_VA",
     "phys_addr": "CCV_P_W_PA",
     "rob_tag": "CCV_P_W_ROB_TAG",
-    "phys_src": "3*CCV_P_W_PHYS_REG",
+    "phys_src": "2*CCV_P_W_PHYS_REG",
     "phys_dst": "CCV_P_W_PHYS_REG",
     "phys_pred": "CCV_P_W_PHYS_PRED",
     "cta_slot": "CCV_P_W_CTA_SLOT",
@@ -1165,7 +1199,10 @@
     "pred_neg": "1",
     "pred_data": "1",
     "pred_out": "1",
-    "pred_result": "CCV_W_LANE_MASK"
+    "pred_result": "CCV_W_LANE_MASK",
+    "src2_arch": "CCV_W_ARCH_REG",
+    "phys_src2": "CCV_P_W_PHYS_REG",
+    "pred_we": "1"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
@@ -1191,17 +1228,11 @@
       "blocks": "Rename of predicate destinations; S1 refuses a record whose guard and predicate destination differ.",
       "owner": "ISA / compiler track"
     },
-    "miu_rcu_phys_dst": {
-      "question": "ccv_miu_rcu_data carries phys_dst, but nothing MIU receives names a destination: ccv_ooe_miu_memop and ccv_rcu_miu_addr carry rob_tag and no register. Either MIU is meant to return data by rob_tag alone (drop phys_dst from ccv_miu_rcu_data; RCU keeps the destination from issue) or one of the request channels is missing phys_dst.",
-      "kind": "payload inconsistency found by the first kernel",
-      "blocks": "Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.",
-      "owner": "execution / memory payload owners"
-    },
-    "pc_group_state_owner": {
-      "question": "FET owns the PC and its update logic, so divergent PC-group state lives in FET -- but ccv_rcu_pca_mig carries `pcs` on migration, from RCU. Either FET supplies the group PCs on demote, or PC state is duplicated in two blocks. ccv_ooe_rau_drained.resume_pc is fine (the ROB's oldest un-retired PC); the full group set has no route out of FET. Proposal: move `pcs` off the RCU<->PCA migration pair onto a FET<->PCA pair (demote and restore), so RCU migrates registers and predicates only and FET migrates the PC groups it owns.",
-      "kind": "partitioning inconsistency exposed by branch resolution",
-      "blocks": "Demotion of a divergent warp; migration, which S1 does not exercise.",
-      "owner": "partitioning, with the FET / RCU / PCA sessions"
+    "migration_control": {
+      "question": "RAU sequences both migrations and waits for both acks before reallocating the slot -- but at 44 channels nothing carries the sequencing. ccv_rau_rcu_mig tells RCU which warp, direction and parked bank; nothing tells FET to send or accept its PC groups, and no channel returns an ack to RAU from FET, RCU or PCA. The same gap already existed for PCA itself: ccv_rcu_pca_mig carries no warp or bank, so PCA cannot place what arrives (the new FET<->PCA pair carries warp_id for this reason). Smallest fix: extend ccv_rau_rcu_mig's command to FET (a ccv_rau_fet_mig with warp, direction, bank), and have PCA ack once both halves land (a ccv_pca_rau_mig_done) -- 46 channels -- with bank_select added to both data pairs.",
+      "kind": "control gap exposed by moving the PC groups",
+      "blocks": "Demotion and restore, which no S1 kernel exercises.",
+      "owner": "RAU / PCA sessions"
     }
   },
   "_rate_comment": [

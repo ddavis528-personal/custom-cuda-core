@@ -18,6 +18,8 @@
 #                                                outstanding checker fires
 #   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
 #                                                and FET's redirect both wrong
+#   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
+#                                                a stale R8
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -158,6 +160,17 @@ if grep -q "^CHECK rcu: seq 8 branch taken by ffffffff, oracle 00000000" "$B/ker
   say "--break drop-negate: RCU and FET reject the branch" "PASS"
 else
   bad "--break drop-negate" "a backwards guard went unnoticed"
+fi
+
+# RCU keeps no table of outstanding loads: it writes where MIU's echo says.
+# A wrong echo lands a[i] in R9, leaving R8 stale, and C_ADD's lanes must
+# reject the operand. (The final compare cannot see it: the next load
+# rewrites R9 and C_ADD's result comes from the oracle.)
+run corrupt-echo
+if grep -q "^CHECK lane 1: seq 14 operand 0 (R8)" "$B/kernel_corrupt-echo.log"; then
+  say "--break corrupt-echo: stateless write-back misroutes" "PASS"
+else
+  bad "--break corrupt-echo" "a wrong echoed destination went unnoticed"
 fi
 
 # -- sel: a predicate read as DATA by the lane ------------------------------

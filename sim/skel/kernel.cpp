@@ -684,6 +684,7 @@ private:
   struct Job {
     bool store = false;
     unsigned tag = 0, memop_slot = 0, addr_slot = 0;
+    unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
     uint32_t active = 0;             ///< lanes that may access memory
     uint64_t tid = 0;
     std::array<uint64_t, kLanes> addr{};
@@ -794,6 +795,8 @@ private:
     j.tag = tag;
     j.store = get(mo.msg, c.ooe_miu, "mem_op") == kMemStore;
     j.memop_slot = mo.slot;
+    j.phys_dst = unsigned(get(mo.msg, c.ooe_miu, "phys_dst"));
+    j.phys_pred = unsigned(get(mo.msg, c.ooe_miu, "phys_pred"));
     j.addr_slot = a->second.slot;
     j.tid = a->second.tid;
     const Bits &am = a->second.msg;
@@ -925,6 +928,10 @@ private:
       Bits d = msgOf(c.miu_rcu);
       put(d, c.miu_rcu, "rob_tag", job_.tag);
       put(d, c.miu_rcu, "active_mask", job_.active);
+      put(d, c.miu_rcu, "phys_dst",
+          job_.phys_dst + (k_.brk == "corrupt-echo" && uidSeq(job_.tid) == 12 ? 1u : 0u));
+      put(d, c.miu_rcu, "phys_pred", job_.phys_pred);
+      put(d, c.miu_rcu, "pred_we", 0);          // a load writes no predicate
       const Record *r = rec(job_.tid, "miu");
       for (unsigned l = 0; l != kLanes; ++l) {
         if (!((job_.active >> l) & 1u)) continue;
@@ -1047,9 +1054,8 @@ public:
 
 private:
   struct Alu { unsigned tag; const OpInfo *op; unsigned pdst, ppred; uint64_t tid; };
-  struct Ld { unsigned slot, pdst; uint64_t tid; };
+
   std::array<std::deque<Alu>, 4> alu_;            ///< per issue slot: bound lanes
-  std::map<unsigned, Ld> loads_;
   std::array<std::deque<std::pair<std::vector<Bits>, uint64_t>>, 4> lane_q_;
   std::deque<Q> to_ooe_, to_miu_;
 
@@ -1089,18 +1095,20 @@ private:
     for (unsigned s = 0; s != kChans[c.miu_rcu].rate; ++s)
       while (has(c.miu_rcu, s)) {
         Receiver::Msg m = take(c.miu_rcu, s);
+        // Stateless write-back: every destination arrives with the data,
+        // echoed by MIU from the memop.
         const unsigned tag = unsigned(get(m.payload, c.miu_rcu, "rob_tag"));
-        auto it = loads_.find(tag);
-        if (it == loads_.end()) { k_.fail("rcu: load data for rob tag %u, no load", tag); continue; }
-        // miu_rcu_data.phys_dst has no source: nothing MIU receives names the
-        // destination (open question miu_rcu_phys_dst). RCU kept it at issue.
-        const unsigned pd = it->second.pdst;
+        const unsigned pd = unsigned(get(m.payload, c.miu_rcu, "phys_dst"));
         const uint32_t active = uint32_t(get(m.payload, c.miu_rcu, "active_mask"));
         for (unsigned l = 0; l != kLanes; ++l)
           if ((active >> l) & 1u)   // an inactive lane keeps its old value
             k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l);
-        to_ooe_.push_back({it->second.slot, done(tag), it->second.tid});
-        loads_.erase(it);
+        if (get(m.payload, c.miu_rcu, "pred_we")) {
+          const unsigned pp = unsigned(get(m.payload, c.miu_rcu, "phys_pred"));
+          const uint32_t pr = uint32_t(get(m.payload, c.miu_rcu, "pred_result"));
+          k_.pred[pp] = (k_.pred[pp] & ~active) | (pr & active);
+        }
+        to_ooe_.push_back({s, done(tag), m.tid});
       }
 
     for (unsigned s = 0; s != rate; ++s) {
@@ -1125,11 +1133,11 @@ private:
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
     const OpInfo *op = opByCode(unsigned(get(m.payload, c.ooe_rcu, "opcode")));
     if (!op) { k_.fail("rcu: unknown opcode"); return; }
-    const uint64_t ps = get(m.payload, c.ooe_rcu, "phys_src");
+    const unsigned ps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
     const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
     const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred"));
-    const unsigned src[3] = {unsigned(ps >> 16) & 0xff, unsigned(ps >> 8) & 0xff,
-                             unsigned(ps) & 0xff};
+    const unsigned src[3] = {(ps >> 8) & 0xff, ps & 0xff,
+                             unsigned(get(m.payload, c.ooe_rcu, "phys_src2"))};
     // Active lanes = issue mask AND guard. RCU is the one block holding both
     // -- the issue mask arrives here, the predicate values live here -- so
     // it is the sole producer of active_mask, and pred_bit is the same
@@ -1195,8 +1203,8 @@ private:
           putLane(a, c.rcu_miu, "store_data", l, k_.gpr[src[op->data_src]][l]);
       }
       to_miu_.push_back({s, a, m.tid});
+      // A load's write-back is MIU's echo; RCU remembers nothing of it.
       if (op->cls == kStore) to_ooe_.push_back({s, done(tag), m.tid});
-      else loads_[tag] = {s, pd, m.tid};
       return;
     }
     // An ALU immediate is substituted into its operand slot here, at
@@ -1223,7 +1231,7 @@ private:
   bool busy() const override {
     for (unsigned s = 0; s != 4; ++s)
       if (!alu_[s].empty() || !lane_q_[s].empty()) return true;
-    return !loads_.empty() || !to_ooe_.empty() || !to_miu_.empty();
+    return !to_ooe_.empty() || !to_miu_.empty();
   }
 };
 
@@ -1331,7 +1339,9 @@ private:
     }
     if (rob_.size() == kRob) k_.fail("ooe: ROB overflow");
     const unsigned sa = unsigned(get(u, c.dec_ooe, "src_arch"));
-    for (unsigned i = 0; i != 3; ++i) e.src[i] = (sa >> (4 * (2 - i))) & 15;
+    e.src[0] = (sa >> 4) & 15;
+    e.src[1] = sa & 15;
+    e.src[2] = unsigned(get(u, c.dec_ooe, "src2_arch"));
     e.dst = unsigned(get(u, c.dec_ooe, "dst_arch"));
     e.imm = uint32_t(get(u, c.dec_ooe, "imm"));
     e.scale_en = get(u, c.dec_ooe, "scale_en") != 0;
@@ -1383,8 +1393,8 @@ private:
     // send; vadd never diverges, so it is all 32 (lanes check the oracle).
     const uint32_t issue_mask = 0xffffffffu;
     put(is, c.ooe_rcu, "issue_mask", issue_mask);
-    put(is, c.ooe_rcu, "phys_src",
-        (uint64_t(pb + e.src[0]) << 16) | ((pb + e.src[1]) << 8) | (pb + e.src[2]));
+    put(is, c.ooe_rcu, "phys_src", ((pb + e.src[0]) << 8) | (pb + e.src[1]));
+    put(is, c.ooe_rcu, "phys_src2", pb + e.src[2]);
     if (!mem) put(is, c.ooe_rcu, "imm", e.imm);
     put(is, c.ooe_rcu, "phys_dst", pb + e.dst);
     put(is, c.ooe_rcu, "phys_pred", physPred(e.warp, e.pidx));
@@ -1399,6 +1409,9 @@ private:
       // The issue mask, not the active mask: only RCU holds the predicate
       // values, so only RCU computes active = issue AND guard.
       put(mo, c.ooe_miu, "issue_mask", issue_mask);
+      // Write-back destinations, for MIU to echo: RCU keeps no load table.
+      put(mo, c.ooe_miu, "phys_dst", pb + e.dst);
+      put(mo, c.ooe_miu, "phys_pred", physPred(e.warp, e.pidx));
       put(mo, c.ooe_miu, "disp",                    // truncated to CCV_W_DISP
           e.imm + (k_.brk == "corrupt-disp" && uidSeq(e.tid) == 6 ? 4u : 0u));
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
@@ -1515,10 +1528,9 @@ private:
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
     // Three source fields: Format A's rs2 is an independent source (mad.lo's
     // and dp4's accumulator input), with rd independent of it.
-    unsigned sa = 0;
-    for (size_t i = 0; i != 3; ++i)
-      sa |= (i < g.size() ? g[i]->idx : 0u) << (4 * (2 - i));
-    put(u, c.dec_ooe, "src_arch", sa);
+    put(u, c.dec_ooe, "src_arch",
+        ((g.size() > 0 ? g[0]->idx : 0u) << 4) | (g.size() > 1 ? g[1]->idx : 0u));
+    put(u, c.dec_ooe, "src2_arch", g.size() > 2 ? g[2]->idx : 0u);
     put(u, c.dec_ooe, "dst_arch", dst);
     // The uop's one immediate: the displacement for a memory op, else the ALU
     // immediate. The scale enable rides beside it.
