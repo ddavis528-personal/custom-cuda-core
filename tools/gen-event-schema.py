@@ -165,6 +165,26 @@ def main():
     d = json.loads(raw)
     h = schema_hash(raw)
 
+    # The unit list is one track per BLOCK, and the blocks are closed in
+    # params/blocks.json. Checking rather than re-listing: two lists of the
+    # same thing disagree eventually, and this one is read at every emit site,
+    # so a block missing here is a block whose events land on the wrong track
+    # -- which looks like a correlation bug, not a schema bug.
+    with open(os.path.join(ROOT, "params", "blocks.json")) as f:
+        want = {"UNIT_%s" % b["name"].upper() for b in json.load(f)["blocks"]
+                if b.get("instances", 0) > 0}
+    have = {k for k in d["units"] if k.startswith("UNIT_")}
+    fixed = {"UNIT_UNKNOWN", "UNIT_TESTBENCH"}
+    missing, extra = want - have, have - want - fixed
+    if missing or extra:
+        if missing:
+            sys.stderr.write("units missing a block from params/blocks.json: "
+                             "%s\n" % ", ".join(sorted(missing)))
+        if extra:
+            sys.stderr.write("units name something that is not a block: %s\n"
+                             % ", ".join(sorted(extra)))
+        return 1
+
     # Event ids must be unique and stable: a reused id silently reinterprets
     # every trace already written.
     ids = [e["id"] for e in d["events"]]

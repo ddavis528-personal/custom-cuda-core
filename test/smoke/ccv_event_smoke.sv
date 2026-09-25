@@ -33,14 +33,14 @@ module ccv_event_smoke;
       uid = 1000 + i;
 
       // Load-bearing: an instruction's architectural milestones.
-      `CCV_EMIT3(cycle + 0, uid, EV_DECODE,   UNIT_FRONTEND,  32'h100 + i*4, 0, 8'h2a)
-      `CCV_EMIT3(cycle + 1, uid, EV_DISPATCH, UNIT_SCHEDULER, i % 2, i, 0)
+      `CCV_EMIT3(cycle + 0, uid, EV_DECODE,   UNIT_FET,  32'h100 + i*4, 0, 8'h2a)
+      `CCV_EMIT3(cycle + 1, uid, EV_DISPATCH, UNIT_OOE, i % 2, i, 0)
 
       // Arbitration-sensitive: the class §1 warns diverges on every tie if the
       // arbiter model is merely plausible rather than faithful.
-      `CCV_EMIT3(cycle + 2, uid, EV_ISSUE,    UNIT_SCHEDULER, i % 2, 0, i)
+      `CCV_EMIT3(cycle + 2, uid, EV_ISSUE,    UNIT_OOE, i % 2, 0, i)
 
-      `CCV_EMIT3(cycle + 5, uid, EV_RETIRE,   UNIT_SCHEDULER, i % 2, i, 32'hffffffff)
+      `CCV_EMIT3(cycle + 5, uid, EV_RETIRE,   UNIT_OOE, i % 2, i, 32'hffffffff)
       cycle = cycle + 3;
     end
 

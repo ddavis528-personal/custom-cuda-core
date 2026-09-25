@@ -35,15 +35,23 @@
     }
   },
   "units": {
-    "_comment": "Track identifiers. One track per structure in the Perfetto view. Provisional: the real list follows from the Stage 2 partition, which \u00a72 is explicit has not been decided. These are \u00a72's own illustrative names, carried only so the mechanism has something to exercise.",
+    "_comment": "Track identifiers -- one track per block in the Perfetto view. DERIVED from params/blocks.json, which is the closed partition, rather than listed here: a second list would disagree with the first, and this one is read by every emit site. UNIT_UNKNOWN and UNIT_TESTBENCH are not blocks and are fixed at 0 and 1; block ids follow in the partition's order. Regenerating after a partition change renumbers them and moves the schema hash, which is the intended loud failure -- a trace captured under the old numbering must not silently read as the new one.",
     "UNIT_UNKNOWN": 0,
     "UNIT_TESTBENCH": 1,
-    "UNIT_FRONTEND": 2,
-    "UNIT_SCHEDULER": 3,
-    "UNIT_REGFILE": 4,
-    "UNIT_AGU": 5,
-    "UNIT_BARRIER": 6,
-    "UNIT_MEMORY": 7
+    "UNIT_FET": 2,
+    "UNIT_DEC": 3,
+    "UNIT_OOE": 4,
+    "UNIT_RCU": 5,
+    "UNIT_LANE": 6,
+    "UNIT_MIU": 7,
+    "UNIT_SPM": 8,
+    "UNIT_DCU": 9,
+    "UNIT_MLC": 10,
+    "UNIT_RAU": 11,
+    "UNIT_SYU": 12,
+    "UNIT_PCA": 13,
+    "UNIT_CRU": 14,
+    "UNIT_EXB": 15
   },
   "events": [
     {

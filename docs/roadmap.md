@@ -282,10 +282,13 @@ Carried from the strategy doc, with current status.
 1. **Event taxonomy spec.** Mechanism ✅ at 1c. **Load-bearing content ✅** —
    the 40-channel list *is* the load-bearing event list, emitted as
    `EV_CH_XFER` from the shared checker so every boundary emits identically
-   and no per-block drift is possible. **Arbitration-sensitive content still
-   pending**, per block at 4a. The unit list in `schema/events.json` still
-   carries the strategy doc's illustrative block names and should be swapped
-   for the real 14 before 4a.
+   and no per-block drift is possible. **Unit list ✅** — swapped from the
+   strategy doc's illustrative names to the real 14 blocks, *derived* from
+   `params/blocks.json` and checked against it, since two lists of the same
+   thing disagree eventually and this one is read at every emit site. Done
+   before Stage 3 rather than after: a unit id is baked into every event
+   record, so fixing it later means re-tagging or discarding every trace.
+   **Arbitration-sensitive content still pending**, per block at 4a.
 
 2. **Arbitration policy spec.** Not started — per block at Stage 4a/4b, before
    that block's 4c RTL build. §5 is explicit this buys *temporal precedence,

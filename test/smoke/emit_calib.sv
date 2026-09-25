@@ -61,9 +61,9 @@ module emit_calib (
   // entered, which is what an event is pinned to.
   always_ff @(posedge clk) begin
     if (!rst) begin
-      if (s1) `CCV_IF_EMIT(cyc, 64'd7000, EV_DECODE,   UNIT_FRONTEND,  1, 0, 0)
-      if (s2) `CCV_IF_EMIT(cyc, 64'd7000, EV_DISPATCH, UNIT_SCHEDULER, 2, 0, 0)
-      if (s3) `CCV_IF_EMIT(cyc, 64'd7000, EV_RETIRE,   UNIT_SCHEDULER, 3, 0, 0)
+      if (s1) `CCV_IF_EMIT(cyc, 64'd7000, EV_DECODE,   UNIT_FET,  1, 0, 0)
+      if (s2) `CCV_IF_EMIT(cyc, 64'd7000, EV_DISPATCH, UNIT_OOE, 2, 0, 0)
+      if (s3) `CCV_IF_EMIT(cyc, 64'd7000, EV_RETIRE,   UNIT_OOE, 3, 0, 0)
     end
   end
 

@@ -38,7 +38,7 @@ int main() {
     ccv::EventWriter w;
     if (!w.open(p)) { std::printf("open failed\n"); return 1; }
     for (int i = 0; i < 8; ++i)
-      w.emit(100 + i, 7000 + i, ccv::EV_DECODE, ccv::UNIT_FRONTEND,
+      w.emit(100 + i, 7000 + i, ccv::EV_DECODE, ccv::UNIT_FET,
              i, i * 2, i * 3);
     w.close();
   }
@@ -48,7 +48,7 @@ int main() {
   ccv::Event e; int n = 0;
   while (r.next(e)) {
     if (e.cycle != uint64_t(100 + n) || e.instr_uid != uint64_t(7000 + n) ||
-        e.event_id != ccv::EV_DECODE || e.unit != ccv::UNIT_FRONTEND ||
+        e.event_id != ccv::EV_DECODE || e.unit != ccv::UNIT_FET ||
         e.a != uint32_t(n) || e.b != uint32_t(n * 2) || e.c != uint32_t(n * 3)) {
       std::printf("record %d mismatched\n", n); return 1;
     }
