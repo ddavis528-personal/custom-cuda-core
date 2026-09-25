@@ -38,24 +38,46 @@ module credit_smoke #(
   logic [PAYLOAD_W-1:0]  ch_payload;
   logic [PAYLOAD_W-1:0]  next_data;
   logic                  valid_q;
-  logic                  stall_q;
 
   assign ch_stall = rx_stall;
 
-  // The sender may only assert valid when it holds a credit and was not
-  // stalled last cycle. Those two conditions are the whole protocol.
+  // The sender may only assert valid when it holds a credit and is not being
+  // stalled. Those two conditions are the whole protocol.
+  //
+  // The stall term is the stall seen THIS cycle, not a registered copy. The
+  // rule is "no message the cycle after a stall is received", and valid is a
+  // flop: the valid for cycle t+1 is decided at the edge ending cycle t, so it
+  // has to look at cycle t's stall. An earlier version used stall_q -- the
+  // stall from cycle t-1 -- which is one cycle late, and it violated the rule
+  // at half of all stall timings. The smoke stimulus happened to stall only
+  // where the producer was out of credits anyway, so it passed for months;
+  // check-if now sweeps the stall across every phase instead.
+  //
+  // Input to flop through logic, so both sides of the boundary are still
+  // registered: the consumer's stall flop drives this, and this drives the
+  // producer's valid flop.
+`ifndef CCV_NEG_LATE_STALL
+  wire can_send = (credits != '0) && !ch_stall;
+`else
+  // NEGATIVE CONTROL ONLY -- the one-cycle-late stall this producer used to
+  // have. tools/check-if.sh builds it to prove the stall-phase sweep can see
+  // the bug; a sweep that passes this build has no teeth.
+  logic stall_q;
+  always_ff @(posedge clk) begin
+    if (!rst_n) stall_q <= 1'b0;
+    else        stall_q <= ch_stall;
+  end
   wire can_send = (credits != '0) && !stall_q;
+`endif
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
       credits    <= DEPTH[CW-1:0];
       ch_valid   <= 1'b0;
       valid_q    <= 1'b0;
-      stall_q    <= 1'b0;
       next_data  <= '0;
       ch_payload <= '0;
     end else begin
-      stall_q  <= ch_stall;
       valid_q  <= ch_valid;
 
       ch_valid <= want_send && can_send;

@@ -72,7 +72,9 @@ module ccv_credit_checker #(
   // three-tool intersection this checker has to live in.
   logic [CW-1:0]      outstanding;
   logic [QD*TW-1:0]   age_q;
-  logic [QD*TW-1:0]   age_d;
+  logic [QD*TW-1:0]   aged;          // after this cycle's aging
+  logic [QD*TW-1:0]   shifted;       // after the oldest leaves, if it does
+  logic [QD*TW-1:0]   age_d;         // after a new message joins, if one does
   logic [CW-1:0]      tail;
   logic               valid_q;
   logic               stall_q;
@@ -106,22 +108,28 @@ module ccv_credit_checker #(
   // at edge k+N passes, and one answered at k+N+1 fails AT k+N+1: no
   // detection latency. The old counter started one edge late and missed a
   // message answered at exactly N+1 (timeout_n1).
-  always_comb begin
-    age_d = age_q;
+  // Continuous assigns, one per slot, rather than an always_comb that reads
+  // and part-selects the vector it is writing. Icarus supports the latter only
+  // partially -- it warns that constant selects in always_* are unsupported
+  // and falls back to whole-vector sensitivity. The result was right, but a
+  // warning printed on every build is one people learn to skip, and Icarus
+  // is the ONLY witness for payload_known_when_due.
+  for (genvar g = 0; g < QD; g++) begin : g_age
+    wire          live = (CW'(g) < outstanding);
+    wire [TW-1:0] a    = age_q[g*TW +: TW];
     // Every outstanding message ages by one, saturating.
-    for (int i = 0; i < QD; i++)
-      if ((CW'(i) < outstanding) && (age_d[i*TW +: TW] != {TW{1'b1}}))
-        age_d[i*TW +: TW] = age_d[i*TW +: TW] + 1'b1;
-    // The oldest leaves on a credit; everything behind it moves up one.
-    if (pop)
-      age_d = {{TW{1'b0}}, age_d[QD*TW-1:TW]};
-    // A new message joins behind the last one still outstanding, having
-    // been outstanding at one edge: the one consuming its credit.
-    tail = pop ? (outstanding - 1'b1) : outstanding;
-    if (push)
-      for (int i = 0; i < QD; i++)
-        if (CW'(i) == tail)
-          age_d[i*TW +: TW] = TW'(1);
+    assign aged[g*TW +: TW] = (live && (a != {TW{1'b1}})) ? a + 1'b1 : a;
+  end
+
+  // The oldest leaves on a credit; everything behind it moves up one.
+  assign shifted = pop ? {{TW{1'b0}}, aged[QD*TW-1:TW]} : aged;
+
+  // A new message joins behind the last one still outstanding, having been
+  // outstanding at one edge: the one consuming its credit.
+  assign tail = pop ? (outstanding - 1'b1) : outstanding;
+  for (genvar g = 0; g < QD; g++) begin : g_push
+    assign age_d[g*TW +: TW] = (push && (CW'(g) == tail)) ? TW'(1)
+                                                         : shifted[g*TW +: TW];
   end
 
   always_ff @(posedge clk) begin

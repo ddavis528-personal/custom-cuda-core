@@ -44,6 +44,7 @@ broken it once and watched it notice.
 | Documentation | **silent** | references, counts and rule coverage checked | `check-docs.sh` |
 | Checker credit depth vs round trip | **silent** | `DEPTH=1` build must trip `cfg_depth_covers_round_trip` | `check-if.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
+| Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
 | Credit checker protocol properties | open | 11 cases: each violation trips *exactly* its property on Icarus and trips it first on Verilator; each legal extreme stays quiet | `check-if.sh` |
 
 The ones marked **silent** are the dangerous class: they do not merely fail to
@@ -90,6 +91,17 @@ outstanding count saturates at both ends; and the phantom property no longer
 excuses a coincident send. The gate was also run against the **old** checker
 to confirm these five cases reject it — a control that passes both versions
 proves nothing.
+
+**Then the same discipline turned on the reference producer.** Porting
+`test/smoke/credit_smoke.sv` into the skeleton meant reading it closely, and
+its sender gated `valid` on a *registered* copy of stall — the stall from one
+cycle too early. Swept across every stall phase, it violated the rule at 14 of
+28. Its smoke test had passed since Stage 1 because the one stall window it
+used landed where the producer was out of credits anyway. That is silent in
+exactly the register's sense: a "stays quiet" check, quiet for the wrong
+reason. The producer is fixed, the sweep is permanent, and the old bug is
+kept behind `CCV_NEG_LATE_STALL` so the sweep has to keep proving it can see
+it.
 
 **One structural limit, recorded rather than worked around:** Verilator is
 two-state, so `payload_known_when_due` *cannot* fire there — an X is already

@@ -693,7 +693,7 @@ rau → rcu · rate 1 · control
 
 Architectural state out to the parked array on demotion.
 
-rcu → pca · rate 1024 · control
+rcu → pca · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
@@ -706,7 +706,7 @@ rcu → pca · rate 1024 · control
 
 Architectural state back in on restore.
 
-pca → rcu · rate 1024 · control
+pca → rcu · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|

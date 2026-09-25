@@ -126,6 +126,44 @@ else
   say "verilator" "SKIP -- not installed"
 fi
 
+# -- the reference producer obeys the stall rule at EVERY phase -----------
+# A single-cycle stall at each cycle 3..30 in turn. The smoke stimulus above
+# stalls for one window at one phase, and the producer used to react to a
+# stall one cycle late -- which violated the rule at half of all phases while
+# the one window happened to land where it was out of credits anyway. So it
+# passed for months. One run per phase costs milliseconds on Icarus.
+#
+# And the sweep gets its own negative control: CCV_NEG_LATE_STALL rebuilds the
+# producer with the old bug, and the sweep must catch it. Without that, this
+# is one more "stays quiet" check, and quiet is what a sweep that tests
+# nothing also looks like.
+sweep() {   # $1 = compiled vvp image; prints the phases that fired
+  for p in $(seq 3 30); do
+    vvp "$1" +pulse=$p 2>&1 | grep -q "CCV .* failed" && printf '%s ' "$p"
+  done
+}
+if command -v iverilog >/dev/null 2>&1; then
+  if iverilog -g2012 -gassertions -Irtl/include -Irtl/generated \
+       -o "$TMP/sw.out" -s tb $RTL $TB >"$TMP/sw.log" 2>&1 &&
+     iverilog -g2012 -gassertions -DCCV_NEG_LATE_STALL -Irtl/include \
+       -Irtl/generated -o "$TMP/sw_bug.out" -s tb $RTL $TB \
+       >>"$TMP/sw.log" 2>&1; then
+    good=$(sweep "$TMP/sw.out"); buggy=$(sweep "$TMP/sw_bug.out")
+    if [ -n "$good" ]; then
+      bad "producer honours stall at every phase" "fires at phase(s) $good"
+    elif [ -z "$buggy" ]; then
+      bad "stall sweep catches a late-stall producer" \
+          "the old bug passed the sweep -- it has no teeth"
+    else
+      say "producer honours stall at all 28 phases" "PASS"
+      say "  ...and the sweep catches the old late stall" \
+          "PASS ($(echo $buggy | wc -w) phases)"
+    fi
+  else
+    bad "stall sweep builds" "$(head -1 "$TMP/sw.log")"
+  fi
+fi
+
 # -- negative controls: the PROTOCOL properties bite, and only them --------
 # test/neg/tb_credit_neg.sv drives the checker's ports directly, one protocol
 # violation per case, written from the protocol rather than from the checker.

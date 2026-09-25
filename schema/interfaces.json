@@ -559,7 +559,7 @@
       "name": "ccv_rcu_pca_mig",
       "src": "rcu",
       "dst": "pca",
-      "rate": 1024,
+      "rate": 1,
       "group": "control",
       "payload_fields": [
         "gpr_row",
@@ -572,7 +572,7 @@
       "name": "ccv_pca_rcu_mig",
       "src": "pca",
       "dst": "rcu",
-      "rate": 1024,
+      "rate": 1,
       "group": "control",
       "payload_fields": [
         "gpr_row",
@@ -789,5 +789,12 @@
       "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
       "owner": "partitioning / floorplan"
     }
-  }
+  },
+  "_rate_comment": [
+    "`rate` is TRANSFERS per cycle at peak -- messages, not bits. The source",
+    "spec gives the two migration channels as '1024b', a bandwidth: one",
+    "1024-bit GPR row per cycle, i.e. rate 1, with the row carried in the",
+    "payload's gpr_row field. The first encoding dropped the 'b' and stored",
+    "rate 1024, which the skeleton would have built as 1024 parallel slots."
+  ]
 }
