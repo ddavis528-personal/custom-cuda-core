@@ -12,14 +12,14 @@ multi-instance endpoint (LANE has 32).
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 29 | 1 | 1 | 29 |
+| 31 | 1 | 1 | 31 |
 | 11 | 4 | 1 | 44 |
 | 2 | 4 | 32 | 256 |
 | 1 | 6 | 1 | 6 |
 | 1 | 8 | 1 | 8 |
-| **44** | | | **343** |
+| **46** | | | **345** |
 
-44 channel types; **106 channel instances** (42 types at one instance, plus 2 at 32 each); **343 slots**, one `ccv_credit_checker` each.
+46 channel types; **108 channel instances** (44 types at one instance, plus 2 at 32 each); **345 slots**, one `ccv_credit_checker` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 
@@ -66,10 +66,12 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 34 | `ccv_pca_rcu_mig` | 1 × 1 | 1 | — | — | — | — | none |
 | 35 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | none |
 | 36 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | none |
-| 37 | `ccv_rau_miu_cta` | 1 × 1 | 1 | — | — | — | — | none |
-| 38 | `ccv_ooe_syu_bar` | 1 × 1 | 1 | — | — | — | — | instr |
-| 39 | `ccv_syu_ooe_rel` | 1 × 1 | 1 | — | — | — | — | none |
-| 40 | `ccv_rau_syu_alloc` | 1 × 1 | 1 | — | — | — | — | none |
-| 41 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | instr |
-| 42 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | none |
-| 43 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | txn, none |
+| 37 | `ccv_rau_fet_mig` | 1 × 1 | 1 | — | — | — | — | none |
+| 38 | `ccv_pca_rau_mig_done` | 1 × 1 | 1 | — | — | — | — | none |
+| 39 | `ccv_rau_miu_cta` | 1 × 1 | 1 | — | — | — | — | none |
+| 40 | `ccv_ooe_syu_bar` | 1 × 1 | 1 | — | — | — | — | instr |
+| 41 | `ccv_syu_ooe_rel` | 1 × 1 | 1 | — | — | — | — | none |
+| 42 | `ccv_rau_syu_alloc` | 1 × 1 | 1 | — | — | — | — | none |
+| 43 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | instr |
+| 44 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | none |
+| 45 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | txn, none |

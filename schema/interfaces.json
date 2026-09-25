@@ -908,10 +908,12 @@
       "rate": 1,
       "group": "control",
       "payload_fields": [
+        "warp_id",
+        "row_idx",
         "gpr_row",
         "pred_state"
       ],
-      "doc": "Architectural register and predicate state out to the parked array on demotion. The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.",
+      "doc": "Architectural register and predicate state out to the parked array on demotion, one GPR row per message. Addressed: warp_id and row_idx say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.",
       "id_classes": [
         "none"
       ]
@@ -923,10 +925,12 @@
       "rate": 1,
       "group": "control",
       "payload_fields": [
+        "warp_id",
+        "row_idx",
         "gpr_row",
         "pred_state"
       ],
-      "doc": "Architectural register and predicate state back in on restore. The PC groups return to FET on ccv_pca_fet_mig.",
+      "doc": "Architectural register and predicate state back in on restore, one GPR row per message, addressed by warp_id and row_idx so RCU writes it without state. The PC groups return to FET on ccv_pca_fet_mig.",
       "id_classes": [
         "none"
       ]
@@ -957,6 +961,36 @@
         "pcs"
       ],
       "doc": "A restored warp's PC groups, back to FET, which resumes fetch from them.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rau_fet_mig",
+      "src": "rau",
+      "dst": "fet",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "direction",
+        "bank_select"
+      ],
+      "doc": "The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction, which parked bank. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_pca_rau_mig_done",
+      "src": "pca",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id"
+      ],
+      "doc": "A demotion has landed: PCA holds every GPR row from RCU and the PC groups from FET for warp_id. RAU waits for this before reallocating the warp's slot. One ack from the block that sees both halves arrive, rather than one from each sender.",
       "id_classes": [
         "none"
       ]
@@ -1181,6 +1215,7 @@
     "prf_base": "CCV_L_W_PRF_BASE",
     "prf_size": "CCV_L_W_PRF_SIZE",
     "bank_select": "CCV_L_W_PCA_BANK",
+    "row_idx": "CCV_W_ARCH_REG",
     "operand": "CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA",
     "index_per_lane": "CCV_W_DATA",
     "pcs": "CCV_L_PC_GROUPS*CCV_W_VA",
@@ -1225,13 +1260,6 @@
       "kind": "partitioning question that a width exposed",
       "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
       "owner": "partitioning / floorplan"
-    },
-    "migration_control": {
-      "id": "Q-30",
-      "question": "RAU sequences both migrations and waits for both acks before reallocating the slot -- but at 44 channels nothing carries the sequencing. ccv_rau_rcu_mig tells RCU which warp, direction and parked bank; nothing tells FET to send or accept its PC groups, and no channel returns an ack to RAU from FET, RCU or PCA. The same gap already existed for PCA itself: ccv_rcu_pca_mig carries no warp or bank, so PCA cannot place what arrives (the new FET<->PCA pair carries warp_id for this reason). Smallest fix: extend ccv_rau_rcu_mig's command to FET (a ccv_rau_fet_mig with warp, direction, bank), and have PCA ack once both halves land (a ccv_pca_rau_mig_done) -- 46 channels -- with bank_select added to both data pairs.",
-      "kind": "control gap exposed by moving the PC groups",
-      "blocks": "Demotion and restore, which no S1 kernel exercises.",
-      "owner": "RAU / PCA sessions"
     }
   },
   "_rate_comment": [

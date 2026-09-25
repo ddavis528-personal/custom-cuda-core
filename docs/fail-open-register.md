@@ -45,7 +45,7 @@ broken it once and watched it notice.
 | Checker credit depth vs round trip | **silent** | `DEPTH=1` build must trip `cfg_depth_covers_round_trip` | `check-if.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
-| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 343 checkers fire by name | `check-skel.sh` |
+| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 345 checkers fire by name | `check-skel.sh` |
 | Atomic acceptance | **silent** | `--break atomic-all`: all 77 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
 | Ordered consumption (per key) | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
 | Lane lockstep | **silent** | `--break lockstep-all`: one lane alone — both lockstep checkers fire, nothing else | `check-skel.sh` |

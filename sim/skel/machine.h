@@ -1,6 +1,6 @@
 //===-- machine.h - the whole machine, wired from the schema ----*- C++ -*-===//
 //
-// 45 block instances and 106 channel instances, built from the generated
+// 45 block instances and 108 channel instances, built from the generated
 // wiring tables rather than listed by hand: a connection that exists here
 // and not in the RTL would be a generation error, not a typo.
 //

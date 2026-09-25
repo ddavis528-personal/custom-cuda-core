@@ -60,6 +60,18 @@
   input  logic rau_rcu_mig_credit,
   input  logic rau_rcu_mig_stall,
   output logic rau_rcu_mig_wake,
+  // rau -> fet, 1 slot(s) x 9 bit payload
+  output logic rau_fet_mig_valid,
+  output logic [8:0] rau_fet_mig_payload,
+  input  logic rau_fet_mig_credit,
+  input  logic rau_fet_mig_stall,
+  output logic rau_fet_mig_wake,
+  // pca -> rau, 1 slot(s) x 5 bit payload
+  input  logic pca_rau_mig_done_valid,
+  input  logic [4:0] pca_rau_mig_done_payload,
+  output logic pca_rau_mig_done_credit,
+  output logic pca_rau_mig_done_stall,
+  input  logic pca_rau_mig_done_wake,
   // rau -> miu, 1 slot(s) x 101 bit payload
   output logic rau_miu_cta_valid,
   output logic [100:0] rau_miu_cta_payload,
@@ -85,6 +97,8 @@
   , output logic [63:0] rau_ooe_demote_tid
   , input  logic [63:0] ooe_rau_drained_tid
   , output logic [63:0] rau_rcu_mig_tid
+  , output logic [63:0] rau_fet_mig_tid
+  , input  logic [63:0] pca_rau_mig_done_tid
   , output logic [63:0] rau_miu_cta_tid
   , output logic [63:0] rau_syu_alloc_tid
   , input  logic [63:0] cru_rau_cfg_tid

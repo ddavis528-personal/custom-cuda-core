@@ -176,7 +176,7 @@ section "pending stages"
 # Listed rather than omitted. A gate that appears to cover the whole flow
 # while covering only part of it is worse than one that says what it does not.
 cat <<'PENDING'
-  Stage 2  partition CLOSED (14 blocks, 45 instances, 44 channels); topology,
+  Stage 2  partition CLOSED (14 blocks, 45 instances, 46 channels); topology,
            block letters, machine parameters and the credit checker encoded.
            Round trip CLOSED at 2 (flops both sides + abutment); it stays a
            per-instance parameter, defaulted to that minimum and not expected
@@ -184,11 +184,11 @@ cat <<'PENDING'
            Payload widths: every field sized, tiered settled/prov/prelim.
            Rate>1: independent slots, with acceptance / ordering / binding
            per channel. Remaining: per-interface NGD budgets
-  Stage 3  S0 plumbing DONE: 45 blocks, 106 channel instances, 343 slots,
+  Stage 3  S0 plumbing DONE: 45 blocks, 108 channel instances, 345 slots,
            checker bank Verilated in, trace identity carried, Perfetto
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state
-           identical to ccv-sim, 0 violations, 26 of 44 channels carrying
+           identical to ccv-sim, 0 violations, 26 of 46 channels carrying
            it. Open items: docs/open-items.md, by Q-number.
            S2 next: a kernel that diverges, loops, or uses SPM/barriers
   Stage 4+ per-block cycle                          -- after the skeleton

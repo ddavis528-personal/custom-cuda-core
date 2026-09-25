@@ -59,5 +59,7 @@ module ccv_fet (
 `endif
   assign pca_fet_mig_credit = '0;
   assign pca_fet_mig_stall = '0;
+  assign rau_fet_mig_credit = '0;
+  assign rau_fet_mig_stall = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

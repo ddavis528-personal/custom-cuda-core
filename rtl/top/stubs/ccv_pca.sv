@@ -41,5 +41,11 @@ module ccv_pca (
 `ifdef CCV_TRACE
   assign pca_fet_mig_tid = '0;
 `endif
+  assign pca_rau_mig_done_valid = '0;
+  assign pca_rau_mig_done_payload = '0;
+  assign pca_rau_mig_done_wake = '0;
+`ifdef CCV_TRACE
+  assign pca_rau_mig_done_tid = '0;
+`endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

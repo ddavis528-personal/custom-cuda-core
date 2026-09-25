@@ -25,7 +25,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **22 of 44 channels** carry at least one
+appear above. **23 of 46 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
@@ -47,6 +47,7 @@ preliminary field:
 | `ccv_pca_fet_mig` | `pcs` |
 | `ccv_pca_rcu_mig` | `pred_state` |
 | `ccv_rau_fet_launch` | `code_bounds` |
+| `ccv_rau_fet_mig` | `bank_select` |
 | `ccv_rau_ooe_alloc` | `prf_base`, `prf_size` |
 | `ccv_rau_rcu_mig` | `bank_select` |
 | `ccv_rau_syu_alloc` | `barrier_count` |

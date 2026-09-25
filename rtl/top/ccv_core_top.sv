@@ -4,7 +4,7 @@
 // params/blocks.json. Edit a source and regenerate; tools/verify.sh fails if
 // this file is stale.
 
-// The CCV core: 45 block instances, 106 channel instances.
+// The CCV core: 45 block instances, 108 channel instances.
 //
 // Channel nets are flat, instance-major then slot -- the same order
 // as the C++ skeleton's slot map, so the checker bank is fed by
@@ -403,7 +403,7 @@ module ccv_core_top (
 `endif
   // ccv_rcu_pca_mig: rcu -> pca, 1 copy x 1 slot
   logic rcu_pca_mig_valid;
-  logic [2047:0] rcu_pca_mig_payload;
+  logic [2056:0] rcu_pca_mig_payload;
   logic rcu_pca_mig_credit;
   logic rcu_pca_mig_stall;
   logic rcu_pca_mig_wake;
@@ -412,7 +412,7 @@ module ccv_core_top (
 `endif
   // ccv_pca_rcu_mig: pca -> rcu, 1 copy x 1 slot
   logic pca_rcu_mig_valid;
-  logic [2047:0] pca_rcu_mig_payload;
+  logic [2056:0] pca_rcu_mig_payload;
   logic pca_rcu_mig_credit;
   logic pca_rcu_mig_stall;
   logic pca_rcu_mig_wake;
@@ -436,6 +436,24 @@ module ccv_core_top (
   logic pca_fet_mig_wake;
 `ifdef CCV_TRACE
   logic [63:0] pca_fet_mig_tid;
+`endif
+  // ccv_rau_fet_mig: rau -> fet, 1 copy x 1 slot
+  logic rau_fet_mig_valid;
+  logic [8:0] rau_fet_mig_payload;
+  logic rau_fet_mig_credit;
+  logic rau_fet_mig_stall;
+  logic rau_fet_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_fet_mig_tid;
+`endif
+  // ccv_pca_rau_mig_done: pca -> rau, 1 copy x 1 slot
+  logic pca_rau_mig_done_valid;
+  logic [4:0] pca_rau_mig_done_payload;
+  logic pca_rau_mig_done_credit;
+  logic pca_rau_mig_done_stall;
+  logic pca_rau_mig_done_wake;
+`ifdef CCV_TRACE
+  logic [63:0] pca_rau_mig_done_tid;
 `endif
   // ccv_rau_miu_cta: rau -> miu, 1 copy x 1 slot
   logic rau_miu_cta_valid;
@@ -644,7 +662,12 @@ module ccv_core_top (
     .pca_fet_mig_payload(pca_fet_mig_payload),
     .pca_fet_mig_credit(pca_fet_mig_credit),
     .pca_fet_mig_stall(pca_fet_mig_stall),
-    .pca_fet_mig_wake(pca_fet_mig_wake)
+    .pca_fet_mig_wake(pca_fet_mig_wake),
+    .rau_fet_mig_valid(rau_fet_mig_valid),
+    .rau_fet_mig_payload(rau_fet_mig_payload),
+    .rau_fet_mig_credit(rau_fet_mig_credit),
+    .rau_fet_mig_stall(rau_fet_mig_stall),
+    .rau_fet_mig_wake(rau_fet_mig_wake)
 `ifdef CCV_TRACE
     , .fet_dec_instr_tid(fet_dec_instr_tid),
       .ooe_fet_redirect_tid(ooe_fet_redirect_tid),
@@ -654,7 +677,8 @@ module ccv_core_top (
       .fet_miu_itlb_req_tid(fet_miu_itlb_req_tid),
       .rau_fet_launch_tid(rau_fet_launch_tid),
       .fet_pca_mig_tid(fet_pca_mig_tid),
-      .pca_fet_mig_tid(pca_fet_mig_tid)
+      .pca_fet_mig_tid(pca_fet_mig_tid),
+      .rau_fet_mig_tid(rau_fet_mig_tid)
 `endif
   );
 
@@ -1896,6 +1920,16 @@ module ccv_core_top (
     .rau_rcu_mig_credit(rau_rcu_mig_credit),
     .rau_rcu_mig_stall(rau_rcu_mig_stall),
     .rau_rcu_mig_wake(rau_rcu_mig_wake),
+    .rau_fet_mig_valid(rau_fet_mig_valid),
+    .rau_fet_mig_payload(rau_fet_mig_payload),
+    .rau_fet_mig_credit(rau_fet_mig_credit),
+    .rau_fet_mig_stall(rau_fet_mig_stall),
+    .rau_fet_mig_wake(rau_fet_mig_wake),
+    .pca_rau_mig_done_valid(pca_rau_mig_done_valid),
+    .pca_rau_mig_done_payload(pca_rau_mig_done_payload),
+    .pca_rau_mig_done_credit(pca_rau_mig_done_credit),
+    .pca_rau_mig_done_stall(pca_rau_mig_done_stall),
+    .pca_rau_mig_done_wake(pca_rau_mig_done_wake),
     .rau_miu_cta_valid(rau_miu_cta_valid),
     .rau_miu_cta_payload(rau_miu_cta_payload),
     .rau_miu_cta_credit(rau_miu_cta_credit),
@@ -1918,6 +1952,8 @@ module ccv_core_top (
       .rau_ooe_demote_tid(rau_ooe_demote_tid),
       .ooe_rau_drained_tid(ooe_rau_drained_tid),
       .rau_rcu_mig_tid(rau_rcu_mig_tid),
+      .rau_fet_mig_tid(rau_fet_mig_tid),
+      .pca_rau_mig_done_tid(pca_rau_mig_done_tid),
       .rau_miu_cta_tid(rau_miu_cta_tid),
       .rau_syu_alloc_tid(rau_syu_alloc_tid),
       .cru_rau_cfg_tid(cru_rau_cfg_tid)
@@ -1991,12 +2027,18 @@ module ccv_core_top (
     .pca_fet_mig_payload(pca_fet_mig_payload),
     .pca_fet_mig_credit(pca_fet_mig_credit),
     .pca_fet_mig_stall(pca_fet_mig_stall),
-    .pca_fet_mig_wake(pca_fet_mig_wake)
+    .pca_fet_mig_wake(pca_fet_mig_wake),
+    .pca_rau_mig_done_valid(pca_rau_mig_done_valid),
+    .pca_rau_mig_done_payload(pca_rau_mig_done_payload),
+    .pca_rau_mig_done_credit(pca_rau_mig_done_credit),
+    .pca_rau_mig_done_stall(pca_rau_mig_done_stall),
+    .pca_rau_mig_done_wake(pca_rau_mig_done_wake)
 `ifdef CCV_TRACE
     , .rcu_pca_mig_tid(rcu_pca_mig_tid),
       .pca_rcu_mig_tid(pca_rcu_mig_tid),
       .fet_pca_mig_tid(fet_pca_mig_tid),
-      .pca_fet_mig_tid(pca_fet_mig_tid)
+      .pca_fet_mig_tid(pca_fet_mig_tid),
+      .pca_rau_mig_done_tid(pca_rau_mig_done_tid)
 `endif
   );
 
@@ -2069,12 +2111,12 @@ module ccv_core_top (
   // sees a checker.
   ccv_skel_checkers u_checkers (
     .clk(core_clk), .rst_n(rst_n), .force_atomic(1'b0), .pair_enable(1'b1),
-    .valid({ext_exb_in_valid, cru_rau_cfg_valid, ooe_cru_fault_valid, rau_syu_alloc_valid, syu_ooe_rel_valid, ooe_syu_bar_valid, rau_miu_cta_valid, pca_fet_mig_valid, fet_pca_mig_valid, pca_rcu_mig_valid, rcu_pca_mig_valid, rau_rcu_mig_valid, ooe_rau_drained_valid, rau_ooe_demote_valid, ooe_rau_status_valid, rau_ooe_alloc_valid, rau_fet_launch_valid, exb_ext_out_valid, exb_mlc_rsp_valid, mlc_exb_req_valid, fet_miu_itlb_req_valid, miu_fet_itlb_valid, mlc_fet_ifill_rsp_valid, fet_mlc_ifill_valid, dcu_mlc_probe_ack_valid, mlc_dcu_probe_valid, mlc_dcu_rsp_valid, dcu_mlc_req_valid, dcu_miu_rsp_valid, miu_dcu_req_valid, spm_miu_rsp_valid, miu_spm_req_valid, ooe_fet_redirect_valid, ooe_miu_retire_valid, miu_ooe_cmpl_valid, ooe_miu_memop_valid, miu_rcu_data_valid, rcu_miu_addr_valid, rcu_ooe_done_valid, lane_rcu_res_valid, rcu_lane_ops_valid, ooe_rcu_issue_valid, dec_ooe_uop_valid, fet_dec_instr_valid}),
-    .credit({ext_exb_in_credit, cru_rau_cfg_credit, ooe_cru_fault_credit, rau_syu_alloc_credit, syu_ooe_rel_credit, ooe_syu_bar_credit, rau_miu_cta_credit, pca_fet_mig_credit, fet_pca_mig_credit, pca_rcu_mig_credit, rcu_pca_mig_credit, rau_rcu_mig_credit, ooe_rau_drained_credit, rau_ooe_demote_credit, ooe_rau_status_credit, rau_ooe_alloc_credit, rau_fet_launch_credit, exb_ext_out_credit, exb_mlc_rsp_credit, mlc_exb_req_credit, fet_miu_itlb_req_credit, miu_fet_itlb_credit, mlc_fet_ifill_rsp_credit, fet_mlc_ifill_credit, dcu_mlc_probe_ack_credit, mlc_dcu_probe_credit, mlc_dcu_rsp_credit, dcu_mlc_req_credit, dcu_miu_rsp_credit, miu_dcu_req_credit, spm_miu_rsp_credit, miu_spm_req_credit, ooe_fet_redirect_credit, ooe_miu_retire_credit, miu_ooe_cmpl_credit, ooe_miu_memop_credit, miu_rcu_data_credit, rcu_miu_addr_credit, rcu_ooe_done_credit, lane_rcu_res_credit, rcu_lane_ops_credit, ooe_rcu_issue_credit, dec_ooe_uop_credit, fet_dec_instr_credit}),
-    .stall({ext_exb_in_stall, cru_rau_cfg_stall, ooe_cru_fault_stall, rau_syu_alloc_stall, syu_ooe_rel_stall, ooe_syu_bar_stall, rau_miu_cta_stall, pca_fet_mig_stall, fet_pca_mig_stall, pca_rcu_mig_stall, rcu_pca_mig_stall, rau_rcu_mig_stall, ooe_rau_drained_stall, rau_ooe_demote_stall, ooe_rau_status_stall, rau_ooe_alloc_stall, rau_fet_launch_stall, exb_ext_out_stall, exb_mlc_rsp_stall, mlc_exb_req_stall, fet_miu_itlb_req_stall, miu_fet_itlb_stall, mlc_fet_ifill_rsp_stall, fet_mlc_ifill_stall, dcu_mlc_probe_ack_stall, mlc_dcu_probe_stall, mlc_dcu_rsp_stall, dcu_mlc_req_stall, dcu_miu_rsp_stall, miu_dcu_req_stall, spm_miu_rsp_stall, miu_spm_req_stall, ooe_fet_redirect_stall, ooe_miu_retire_stall, miu_ooe_cmpl_stall, ooe_miu_memop_stall, miu_rcu_data_stall, rcu_miu_addr_stall, rcu_ooe_done_stall, lane_rcu_res_stall, rcu_lane_ops_stall, ooe_rcu_issue_stall, dec_ooe_uop_stall, fet_dec_instr_stall}),
-    .payload({ext_exb_in_payload, cru_rau_cfg_payload, ooe_cru_fault_payload, rau_syu_alloc_payload, syu_ooe_rel_payload, ooe_syu_bar_payload, rau_miu_cta_payload, pca_fet_mig_payload, fet_pca_mig_payload, pca_rcu_mig_payload, rcu_pca_mig_payload, rau_rcu_mig_payload, ooe_rau_drained_payload, rau_ooe_demote_payload, ooe_rau_status_payload, rau_ooe_alloc_payload, rau_fet_launch_payload, exb_ext_out_payload, exb_mlc_rsp_payload, mlc_exb_req_payload, fet_miu_itlb_req_payload, miu_fet_itlb_payload, mlc_fet_ifill_rsp_payload, fet_mlc_ifill_payload, dcu_mlc_probe_ack_payload, mlc_dcu_probe_payload, mlc_dcu_rsp_payload, dcu_mlc_req_payload, dcu_miu_rsp_payload, miu_dcu_req_payload, spm_miu_rsp_payload, miu_spm_req_payload, ooe_fet_redirect_payload, ooe_miu_retire_payload, miu_ooe_cmpl_payload, ooe_miu_memop_payload, miu_rcu_data_payload, rcu_miu_addr_payload, rcu_ooe_done_payload, lane_rcu_res_payload, rcu_lane_ops_payload, ooe_rcu_issue_payload, dec_ooe_uop_payload, fet_dec_instr_payload})
+    .valid({ext_exb_in_valid, cru_rau_cfg_valid, ooe_cru_fault_valid, rau_syu_alloc_valid, syu_ooe_rel_valid, ooe_syu_bar_valid, rau_miu_cta_valid, pca_rau_mig_done_valid, rau_fet_mig_valid, pca_fet_mig_valid, fet_pca_mig_valid, pca_rcu_mig_valid, rcu_pca_mig_valid, rau_rcu_mig_valid, ooe_rau_drained_valid, rau_ooe_demote_valid, ooe_rau_status_valid, rau_ooe_alloc_valid, rau_fet_launch_valid, exb_ext_out_valid, exb_mlc_rsp_valid, mlc_exb_req_valid, fet_miu_itlb_req_valid, miu_fet_itlb_valid, mlc_fet_ifill_rsp_valid, fet_mlc_ifill_valid, dcu_mlc_probe_ack_valid, mlc_dcu_probe_valid, mlc_dcu_rsp_valid, dcu_mlc_req_valid, dcu_miu_rsp_valid, miu_dcu_req_valid, spm_miu_rsp_valid, miu_spm_req_valid, ooe_fet_redirect_valid, ooe_miu_retire_valid, miu_ooe_cmpl_valid, ooe_miu_memop_valid, miu_rcu_data_valid, rcu_miu_addr_valid, rcu_ooe_done_valid, lane_rcu_res_valid, rcu_lane_ops_valid, ooe_rcu_issue_valid, dec_ooe_uop_valid, fet_dec_instr_valid}),
+    .credit({ext_exb_in_credit, cru_rau_cfg_credit, ooe_cru_fault_credit, rau_syu_alloc_credit, syu_ooe_rel_credit, ooe_syu_bar_credit, rau_miu_cta_credit, pca_rau_mig_done_credit, rau_fet_mig_credit, pca_fet_mig_credit, fet_pca_mig_credit, pca_rcu_mig_credit, rcu_pca_mig_credit, rau_rcu_mig_credit, ooe_rau_drained_credit, rau_ooe_demote_credit, ooe_rau_status_credit, rau_ooe_alloc_credit, rau_fet_launch_credit, exb_ext_out_credit, exb_mlc_rsp_credit, mlc_exb_req_credit, fet_miu_itlb_req_credit, miu_fet_itlb_credit, mlc_fet_ifill_rsp_credit, fet_mlc_ifill_credit, dcu_mlc_probe_ack_credit, mlc_dcu_probe_credit, mlc_dcu_rsp_credit, dcu_mlc_req_credit, dcu_miu_rsp_credit, miu_dcu_req_credit, spm_miu_rsp_credit, miu_spm_req_credit, ooe_fet_redirect_credit, ooe_miu_retire_credit, miu_ooe_cmpl_credit, ooe_miu_memop_credit, miu_rcu_data_credit, rcu_miu_addr_credit, rcu_ooe_done_credit, lane_rcu_res_credit, rcu_lane_ops_credit, ooe_rcu_issue_credit, dec_ooe_uop_credit, fet_dec_instr_credit}),
+    .stall({ext_exb_in_stall, cru_rau_cfg_stall, ooe_cru_fault_stall, rau_syu_alloc_stall, syu_ooe_rel_stall, ooe_syu_bar_stall, rau_miu_cta_stall, pca_rau_mig_done_stall, rau_fet_mig_stall, pca_fet_mig_stall, fet_pca_mig_stall, pca_rcu_mig_stall, rcu_pca_mig_stall, rau_rcu_mig_stall, ooe_rau_drained_stall, rau_ooe_demote_stall, ooe_rau_status_stall, rau_ooe_alloc_stall, rau_fet_launch_stall, exb_ext_out_stall, exb_mlc_rsp_stall, mlc_exb_req_stall, fet_miu_itlb_req_stall, miu_fet_itlb_stall, mlc_fet_ifill_rsp_stall, fet_mlc_ifill_stall, dcu_mlc_probe_ack_stall, mlc_dcu_probe_stall, mlc_dcu_rsp_stall, dcu_mlc_req_stall, dcu_miu_rsp_stall, miu_dcu_req_stall, spm_miu_rsp_stall, miu_spm_req_stall, ooe_fet_redirect_stall, ooe_miu_retire_stall, miu_ooe_cmpl_stall, ooe_miu_memop_stall, miu_rcu_data_stall, rcu_miu_addr_stall, rcu_ooe_done_stall, lane_rcu_res_stall, rcu_lane_ops_stall, ooe_rcu_issue_stall, dec_ooe_uop_stall, fet_dec_instr_stall}),
+    .payload({ext_exb_in_payload, cru_rau_cfg_payload, ooe_cru_fault_payload, rau_syu_alloc_payload, syu_ooe_rel_payload, ooe_syu_bar_payload, rau_miu_cta_payload, pca_rau_mig_done_payload, rau_fet_mig_payload, pca_fet_mig_payload, fet_pca_mig_payload, pca_rcu_mig_payload, rcu_pca_mig_payload, rau_rcu_mig_payload, ooe_rau_drained_payload, rau_ooe_demote_payload, ooe_rau_status_payload, rau_ooe_alloc_payload, rau_fet_launch_payload, exb_ext_out_payload, exb_mlc_rsp_payload, mlc_exb_req_payload, fet_miu_itlb_req_payload, miu_fet_itlb_payload, mlc_fet_ifill_rsp_payload, fet_mlc_ifill_payload, dcu_mlc_probe_ack_payload, mlc_dcu_probe_payload, mlc_dcu_rsp_payload, dcu_mlc_req_payload, dcu_miu_rsp_payload, miu_dcu_req_payload, spm_miu_rsp_payload, miu_spm_req_payload, ooe_fet_redirect_payload, ooe_miu_retire_payload, miu_ooe_cmpl_payload, ooe_miu_memop_payload, miu_rcu_data_payload, rcu_miu_addr_payload, rcu_ooe_done_payload, lane_rcu_res_payload, rcu_lane_ops_payload, ooe_rcu_issue_payload, dec_ooe_uop_payload, fet_dec_instr_payload})
 `ifdef CCV_TRACE
-    , .tid({ext_exb_in_tid, cru_rau_cfg_tid, ooe_cru_fault_tid, rau_syu_alloc_tid, syu_ooe_rel_tid, ooe_syu_bar_tid, rau_miu_cta_tid, pca_fet_mig_tid, fet_pca_mig_tid, pca_rcu_mig_tid, rcu_pca_mig_tid, rau_rcu_mig_tid, ooe_rau_drained_tid, rau_ooe_demote_tid, ooe_rau_status_tid, rau_ooe_alloc_tid, rau_fet_launch_tid, exb_ext_out_tid, exb_mlc_rsp_tid, mlc_exb_req_tid, fet_miu_itlb_req_tid, miu_fet_itlb_tid, mlc_fet_ifill_rsp_tid, fet_mlc_ifill_tid, dcu_mlc_probe_ack_tid, mlc_dcu_probe_tid, mlc_dcu_rsp_tid, dcu_mlc_req_tid, dcu_miu_rsp_tid, miu_dcu_req_tid, spm_miu_rsp_tid, miu_spm_req_tid, ooe_fet_redirect_tid, ooe_miu_retire_tid, miu_ooe_cmpl_tid, ooe_miu_memop_tid, miu_rcu_data_tid, rcu_miu_addr_tid, rcu_ooe_done_tid, lane_rcu_res_tid, rcu_lane_ops_tid, ooe_rcu_issue_tid, dec_ooe_uop_tid, fet_dec_instr_tid})
+    , .tid({ext_exb_in_tid, cru_rau_cfg_tid, ooe_cru_fault_tid, rau_syu_alloc_tid, syu_ooe_rel_tid, ooe_syu_bar_tid, rau_miu_cta_tid, pca_rau_mig_done_tid, rau_fet_mig_tid, pca_fet_mig_tid, fet_pca_mig_tid, pca_rcu_mig_tid, rcu_pca_mig_tid, rau_rcu_mig_tid, ooe_rau_drained_tid, rau_ooe_demote_tid, ooe_rau_status_tid, rau_ooe_alloc_tid, rau_fet_launch_tid, exb_ext_out_tid, exb_mlc_rsp_tid, mlc_exb_req_tid, fet_miu_itlb_req_tid, miu_fet_itlb_tid, mlc_fet_ifill_rsp_tid, fet_mlc_ifill_tid, dcu_mlc_probe_ack_tid, mlc_dcu_probe_tid, mlc_dcu_rsp_tid, dcu_mlc_req_tid, dcu_miu_rsp_tid, miu_dcu_req_tid, spm_miu_rsp_tid, miu_spm_req_tid, ooe_fet_redirect_tid, ooe_miu_retire_tid, miu_ooe_cmpl_tid, ooe_miu_memop_tid, miu_rcu_data_tid, rcu_miu_addr_tid, rcu_ooe_done_tid, lane_rcu_res_tid, rcu_lane_ops_tid, ooe_rcu_issue_tid, dec_ooe_uop_tid, fet_dec_instr_tid})
 `endif
   );
 `endif

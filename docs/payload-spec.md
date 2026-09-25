@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 44 channels
+# Payload specification — all 46 channels
 
-Every payload field has a width, so **every one of the 44
+Every payload field has a width, so **every one of the 46
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 7 | 23 |
+| All decided | 8 | 24 |
 | ⚠️ Some provisional | 15 | 61 |
-| ⛔ Some preliminary | 22 | 112 |
-| **Total** | **44** | **196** |
+| ⛔ Some preliminary | 23 | 119 |
+| **Total** | **46** | **204** |
 
 ## What still has to be decided
 
@@ -183,14 +183,6 @@ ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 
 
 **Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
 
-### Q-30 — migration control
-
-*control gap exposed by moving the PC groups — RAU / PCA sessions*
-
-RAU sequences both migrations and waits for both acks before reallocating the slot -- but at 44 channels nothing carries the sequencing. ccv_rau_rcu_mig tells RCU which warp, direction and parked bank; nothing tells FET to send or accept its PC groups, and no channel returns an ack to RAU from FET, RCU or PCA. The same gap already existed for PCA itself: ccv_rcu_pca_mig carries no warp or bank, so PCA cannot place what arrives (the new FET<->PCA pair carries warp_id for this reason). Smallest fix: extend ccv_rau_rcu_mig's command to FET (a ccv_rau_fet_mig with warp, direction, bank), and have PCA ack once both halves land (a ccv_pca_rau_mig_done) -- 46 channels -- with bank_select added to both data pairs.
-
-**Blocks:** Demotion and restore, which no S1 kernel exercises.
-
 ---
 
 ## Every channel
@@ -277,6 +269,17 @@ ooe → rau · rate 1 · control
 | `resume_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `arch_state_ready` | `1` | 1 | literal |
 | **total** | | **70** | |
+
+### `ccv_pca_rau_mig_done`
+
+A demotion has landed: PCA holds every GPR row from RCU and the PC groups from FET for warp_id. RAU waits for this before reallocating the warp's slot. One ack from the block that sees both halves arrive, rather than one from each sender.
+
+pca → rau · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| **total** | | **5** | |
 
 ### `ccv_syu_ooe_rel`
 
@@ -751,27 +754,31 @@ rau → rcu · rate 1 · control
 
 ### `ccv_rcu_pca_mig`
 
-Architectural register and predicate state out to the parked array on demotion. The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.
+Architectural register and predicate state out to the parked array on demotion, one GPR row per message. Addressed: warp_id and row_idx say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.
 
 rcu → pca · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `row_idx` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
 | `gpr_row` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `pred_state` | `CCV_L_W_PRED_STATE` | 1024 ⛔ | CCV_L_W_PRED_STATE (preliminary, churn **HIGH**) |
-| **total** | | **2048** | ⛔ 1024 preliminary |
+| **total** | | **2057** | ⛔ 1024 preliminary |
 
 ### `ccv_pca_rcu_mig`
 
-Architectural register and predicate state back in on restore. The PC groups return to FET on ccv_pca_fet_mig.
+Architectural register and predicate state back in on restore, one GPR row per message, addressed by warp_id and row_idx so RCU writes it without state. The PC groups return to FET on ccv_pca_fet_mig.
 
 pca → rcu · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `row_idx` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
 | `gpr_row` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `pred_state` | `CCV_L_W_PRED_STATE` | 1024 ⛔ | CCV_L_W_PRED_STATE (preliminary, churn **HIGH**) |
-| **total** | | **2048** | ⛔ 1024 preliminary |
+| **total** | | **2057** | ⛔ 1024 preliminary |
 
 ### `ccv_fet_pca_mig`
 
@@ -796,6 +803,19 @@ pca → fet · rate 1 · control
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `pcs` | `CCV_L_PC_GROUPS*CCV_W_VA` | 256 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_VA (arch) |
 | **total** | | **261** | ⛔ 256 preliminary |
+
+### `ccv_rau_fet_mig`
+
+The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction, which parked bank. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command.
+
+rau → fet · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `direction` | `1` | 1 | literal |
+| `bank_select` | `CCV_L_W_PCA_BANK` | 3 ⛔ | CCV_L_W_PCA_BANK (preliminary, churn med) |
+| **total** | | **9** | ⛔ 3 preliminary |
 
 ### `ccv_rau_syu_alloc`
 

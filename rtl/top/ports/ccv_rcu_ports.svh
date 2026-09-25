@@ -64,15 +64,15 @@
   output logic rau_rcu_mig_credit,
   output logic rau_rcu_mig_stall,
   input  logic rau_rcu_mig_wake,
-  // rcu -> pca, 1 slot(s) x 2048 bit payload
+  // rcu -> pca, 1 slot(s) x 2057 bit payload
   output logic rcu_pca_mig_valid,
-  output logic [2047:0] rcu_pca_mig_payload,
+  output logic [2056:0] rcu_pca_mig_payload,
   input  logic rcu_pca_mig_credit,
   input  logic rcu_pca_mig_stall,
   output logic rcu_pca_mig_wake,
-  // pca -> rcu, 1 slot(s) x 2048 bit payload
+  // pca -> rcu, 1 slot(s) x 2057 bit payload
   input  logic pca_rcu_mig_valid,
-  input  logic [2047:0] pca_rcu_mig_payload,
+  input  logic [2056:0] pca_rcu_mig_payload,
   output logic pca_rcu_mig_credit,
   output logic pca_rcu_mig_stall,
   input  logic pca_rcu_mig_wake

@@ -25,7 +25,7 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json   # per instruction
 `tools/check-skel.sh` builds the binary and runs S0's checks, and
 `tools/check-kernel.sh` runs S1's. Both run in the gate.
 
-**Next: S2.** vadd leaves 18 of the 44 channels idle and never diverges, loops
+**Next: S2.** vadd leaves 20 of the 46 channels idle and never diverges, loops
 or uses a second warp. S2 is kernels that do, as far as the open payload
 questions allow.
 
@@ -68,7 +68,7 @@ The skeleton is C++, and the obvious move is a C++ port of the checker. That
 is the wrong one: a second implementation of the protocol drifts from the
 first, and "zero violations" then becomes a statement about the port. Instead
 `rtl/generated/ccv_skel_checkers.sv` instantiates the real
-`ccv_credit_checker` once per slot — 343 of them — and the skeleton clocks it
+`ccv_credit_checker` once per slot — 345 of them — and the skeleton clocks it
 with every slot's signals each cycle. The skeleton and every future RTL block
 are judged by identical logic, and the load-bearing `EV_CH_XFER` stream comes
 from identical code on both sides, which is what makes 4d correlation compare
@@ -95,19 +95,19 @@ one that is. So every clean result has a partner that must **not** be clean:
 
 | Clean result (3 seeds, 2000 cycles, ~151k messages each) | Negative control |
 |---|---|
-| 0 checker violations | `--break phantom-all`: all 343 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
-| | `--break stall-all`: all 343 fire `stall_honoured` — proves every `stall` and `valid` |
+| 0 checker violations | `--break phantom-all`: all 345 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
+| | `--break stall-all`: all 345 fire `stall_honoured` — proves every `stall` and `valid` |
 | `EV_CH_XFER` payloads (bits 63:0) **and trace ids** equal the launched ones, as a multiset | the match is exact, so one miswired payload or sideband bit fails it |
 | 0 payload mismatches at the receivers; sent == received; no idle slot | — (end-to-end data check, independent of the bank) |
 | `--force-atomic`: every multi-slot channel moves in whole groups, clean | `--break atomic-all`: all 77 atomic checkers fire both properties, and nothing else fires |
 | Ordered channels are consumed in order per key — per binding group on fet→dec, per `warp_id` on dec→ooe — with different keys free to pass | `--break misorder`: taking a head that is not the oldest of its key is caught — on exactly the two ordered channels |
 | Lane channels advance together: slot *k* moves on all 32 lanes or none | `--break lockstep-all`: one lane's slot alone — both lockstep checkers fire, nothing else |
 | Slot *k* carries the same instruction on every lane | `--break misbind`: lane 7 carries slot *k*+1's instruction in slot *k* — only `lockstep_id` fires |
-| Every message's id class is in its channel's set | `--break wrong-class`: all 44 channels report |
+| Every message's id class is in its channel's set | `--break wrong-class`: all 46 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
 | Every fet→dec message names its own group (`tier1_id` == slot / 2) | `--break misgroup`: every message names the next group — only `binding_key` fires |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
-| **343 slots**, re-derived from the schema every run | — (see below) |
+| **345 slots**, re-derived from the schema every run | — (see below) |
 
 The payload wiring gets the event-stream check rather than a negative control
 because Verilator is two-state: `payload_known_when_due` cannot fire there at
@@ -120,17 +120,17 @@ and every channel with its attributes. In short:
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 29 | 1 | 1 | 29 |
+| 31 | 1 | 1 | 31 |
 | 11 | 4 | 1 | 44 |
 | 2 | 4 | 32 | 256 |
 | 1 | 6 | 1 | 6 |
 | 1 | 8 | 1 | 8 |
-| **44** | | | **343** |
+| **46** | | | **345** |
 
-That is 44 types and 106 channel instances: 42 at one instance, plus the two
+That is 46 types and 108 channel instances: 44 at one instance, plus the two
 lane channels at 32 each. The inbound external channel took it from 40 types
-(339 slots) to 41, branch redirect to 42, and the FET↔PCA migration pair to
-44.
+(339 slots) to 41, branch redirect to 42, the FET↔PCA migration pair to 44,
+and migration control (a RAU→FET command, a PCA→RAU done) to 46.
 
 The review's point stands regardless: this is the one number a clean run does
 not validate. A rate wrong by one on a ×32 channel moves the total by 32, and
@@ -192,7 +192,7 @@ doesn't is caught by `lockstep_valid` plus `stall_honoured` on the stalled lane.
 In the stubs, a decision that spans blocks — 32 lane blocks — comes from a
 hash of (channel, slot, cycle) shared by every block, not a block's private
 RNG. Otherwise the stub would break lockstep by construction. Lockstep costs
-throughput, as it should: 256 of the 343 slots are lane slots, and the RCU
+throughput, as it should: 256 of the 345 slots are lane slots, and the RCU
 sender holds all 32 lanes whenever any one stalls, so runs carry ~151k
 messages where they carried ~230k.
 
@@ -279,7 +279,7 @@ The same machine as SystemVerilog, generated by `tools/gen-top.py` and
 
 | File | What |
 |---|---|
-| `rtl/top/ccv_core_top.sv` | 45 block instances, 106 channel instances, gated clocks, the checker bank under `CCV_CHECK` |
+| `rtl/top/ccv_core_top.sv` | 45 block instances, 108 channel instances, gated clocks, the checker bank under `CCV_CHECK` |
 | `rtl/top/ports/ccv_<blk>_ports.svh` | each block type's port list — included by the stub and by real RTL alike |
 | `rtl/top/stubs/ccv_<blk>.sv` | stubs that never send: protocol-legal on every channel |
 | `test/top/tb_core_top.sv` | clock, reset, tie-offs; `+phantom` is its negative control |
@@ -301,7 +301,7 @@ every channel port to a (channel, copy, slot, signal, bit) coordinate from
 names and the layout rule alone. It then requires one driver and one load per
 net, identical coordinates at both ends, and the right direction per signal.
 The resulting producer→consumer map must equal `ccv-skel --dump-wiring`:
-69,763 bits, identical, now including one `_wake` bit per channel
+69,803 bits, identical, now including one `_wake` bit per channel
 instance, which must run from the same producer to the same consumer as
 that instance's slots. A copy with one lane's valid slice swapped is
 rejected.
@@ -380,8 +380,8 @@ exerciser used, with the checker bank judging every slot. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
 violations, and the bank's 573 `EV_CH_XFER` events matching every launch
-exactly. It carries traffic on 26 of the 44 channels; the 18 idle ones are
-SPM, barriers, migration (both pairs), demotion, probes, faults and branch redirect
+exactly. It carries traffic on 26 of the 46 channels; the 20 idle ones are
+SPM, barriers, migration (both pairs and its command and done), probes, faults and branch redirect
 (vadd's one branch is never taken), none of which vadd reaches.
 
 | Clean result | Negative control that must fail it |
@@ -629,7 +629,7 @@ the way. See `fail-open-register.md`.
     to send or accept, no ack reaches RAU from FET, RCU or PCA, and
     `ccv_rcu_pca_mig` never said which warp or bank it carries. The smallest
     fix is a RAU→FET migrate command and a PCA→RAU done, which would make 46
-    channels.
+    channels. Built in review 4.
 - **Already built last round, and unchanged:**
   - `issue_mask` / `active_mask` as two fields, with the agree check retired
     (it is now active ⊆ issue): Q-23.
@@ -683,6 +683,22 @@ The first round against the numbered register ([`open-items.md`](open-items.md))
   - `--break conflate-pred` puts the destination back in the guard's field.
     The next compare's guard is then wrong at its lanes, and P0 and P1 both
     end wrong.
+- **Migration is addressed and sequenced (Q-30), 46 channels.** The finding
+  inside the gap: `ccv_rcu_pca_mig` never named a warp or a row, so the
+  migration data path was unaddressed. The command carried `warp_id`,
+  `direction` and `bank_select`, but only to RCU, so PCA would have had to
+  infer placement from a command it never sees.
+  - Both RCU↔PCA data channels now carry `warp_id` and `row_idx` (the GPR
+    the 1024-bit row holds, `CCV_W_ARCH_REG`).
+  - `ccv_rau_fet_mig` gives FET the same command RCU gets.
+  - `ccv_pca_rau_mig_done` returns `warp_id` once PCA holds both halves, so
+    RAU waits on one ack from the block that sees both land.
+  - Demotion now has every message it needs. No S1 kernel migrates, so the
+    four new or changed channels carry S0's random traffic, judged by the
+    bank like every other slot.
+  - **Raised by it (Q-39):** restore has no command to PCA. On restore PCA
+    is the sender, of both the GPR rows and the PC groups, and no channel
+    tells it which warp to send. PCA also never sees `bank_select`.
 
 ### S1 wire conventions (placeholders)
 
