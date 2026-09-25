@@ -46,49 +46,74 @@
       "name": "kill_valid",
       "dir": "in",
       "width": 1,
-      "doc": "Grid teardown, one cycle ahead of the mask. Outside the credit scheme: a kill must not wait on a stalled receiver."
+      "doc": "Grid teardown, one cycle ahead of the mask, broadcast by RAU: OOE raises the fault at retirement, RAU converts grid to warp mask and broadcasts. Outside the credit scheme: a kill must not wait on a stalled receiver. The single true broadcast in the core.",
+      "fabric": {
+        "kind": "broadcast",
+        "from": "rau"
+      }
     },
     {
       "name": "kill_warp_mask",
       "dir": "in",
       "width": "CCV_TIER1_WARPS",
-      "doc": "Warps to discard, from RAU. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables, so every receiver just masks warp-indexed state."
+      "doc": "Warps to discard, driven by RAU. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables, so every receiver just masks warp-indexed state.",
+      "fabric": {
+        "kind": "broadcast",
+        "from": "rau"
+      }
     },
     {
       "name": "kill_ack",
       "dir": "out",
       "width": 1,
-      "doc": "Block has discarded matching state."
-    },
-    {
-      "name": "wake_req",
-      "dir": "in",
-      "width": 1,
-      "doc": "Ungate request from any peer. Outside the credit scheme."
+      "doc": "Block has discarded matching state. Gathered at RAU (kill_acks, one bit per block instance), which is what lets RAU know a kill is complete.",
+      "fabric": {
+        "kind": "gather",
+        "to": "rau",
+        "port": "kill_acks"
+      }
     },
     {
       "name": "sleep_ok",
       "dir": "out",
       "width": 1,
-      "doc": "Block is drained and may be gated."
+      "doc": "Block is drained and may be gated. Goes to the block's OWN clock gate only; wake arrives per channel (the _wake channel signal), so there is no global sleep or wake fabric.",
+      "fabric": {
+        "kind": "local"
+      }
     },
     {
       "name": "csr_req",
       "dir": "in",
       "width": "CCV_L_W_CSR_ADDR+CCV_W_CSR+1",
-      "doc": "Address, write data, write enable. Width: address + data + write enable (preliminary address)."
+      "doc": "Address, write data, write enable, from CRU, which owns the CSR fabric. CRU's own csr ports are the host side. Width: address + data + write enable (preliminary address).",
+      "fabric": {
+        "kind": "star",
+        "owner": "cru",
+        "port": "csr_reqs"
+      }
     },
     {
       "name": "csr_rsp",
       "dir": "out",
       "width": "CCV_W_CSR+1",
-      "doc": "Read data, done. Width: read data + done."
+      "doc": "Read data, done. Width: read data + done.",
+      "fabric": {
+        "kind": "star",
+        "owner": "cru",
+        "port": "csr_rsps"
+      }
     },
     {
       "name": "csr_credit",
       "dir": "out",
       "width": 1,
-      "doc": "Credit return for the CSR channel."
+      "doc": "Credit return for the CSR channel.",
+      "fabric": {
+        "kind": "star",
+        "owner": "cru",
+        "port": "csr_credits"
+      }
     }
   ],
   "channel_signals": [
@@ -111,6 +136,12 @@
       "suffix": "_stall",
       "dir": "consumer",
       "doc": "Stall-invalidate: temporarily invalidates outstanding credits. No message may be sent the cycle after it is received, which makes the in-flight window a fixed count rather than a handshake."
+    },
+    {
+      "suffix": "_wake",
+      "dir": "producer",
+      "per": "channel instance",
+      "doc": "Wake request toward the receiver, asserted by the sender ahead of a send so a gated receiver can ungate. One per channel instance, not per slot, and outside the credit scheme. Replaces the global wake_req common port: wake is directional and per channel, so it belongs in the channel bundle."
     }
   ],
   "channels": [
@@ -122,6 +153,7 @@
       "group": "instruction",
       "payload_fields": [
         "warp_id",
+        "tier1_id",
         "pc",
         "instr",
         "length",
@@ -134,12 +166,14 @@
       "slot_attrs": {
         "slot_binding": "bound",
         "binding_group": 2,
-        "ordering": "slot_group"
+        "ordering": "slot_group",
+        "binding_key": "tier1_id"
       },
       "slot_attrs_why": {
         "slot_binding": "four warp streams of two: tier-1 stream = slot / 2",
         "binding_group": "two slots per warp stream",
-        "ordering": "each stream's two slots are strictly program-ordered"
+        "ordering": "each stream's two slots are strictly program-ordered",
+        "binding_key": "the stream a message belongs to, carried so the binding is checked rather than stated: tier1_id must equal slot / binding_group"
       }
     },
     {
@@ -157,9 +191,10 @@
         "dst_arch",
         "pred_reg",
         "imm",
+        "scale_en",
         "decode_fault"
       ],
-      "doc": "Format-decoded operations with architectural register names, six per cycle into the queue ahead of rename.",
+      "doc": "Format-decoded operations with architectural register names (three sources: Format A's rs2 is an independent source, e.g. the accumulator input of mad.lo and dp4, with rd independent of it), the immediate and scale enable, six per cycle into the queue ahead of rename.",
       "id_classes": [
         "instr"
       ],
@@ -179,14 +214,16 @@
       "payload_fields": [
         "rob_tag",
         "warp_id",
+        "issue_mask",
         "phys_src",
         "phys_dst",
         "phys_pred",
         "opcode",
+        "imm",
         "chwidth",
         "dispatch_fault"
       ],
-      "doc": "What the scheduler selected: physical register names, opcode, element width. Four per cycle, the binding width of the machine.",
+      "doc": "What the scheduler selected: physical register names (three sources), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.",
       "id_classes": [
         "instr"
       ],
@@ -210,7 +247,7 @@
         "section_en"
       ],
       "note": "Fans out to 32 LANE instances; the payload is per-lane.",
-      "doc": "Operands and control to one lane. Section enables gate the narrow sub-datapaths and the SFU.",
+      "doc": "Operands and control to one lane. pred_bit is issue mask AND guard for this lane -- the same computation as active_mask -- so a lane with pred_bit clear does nothing. Section enables gate the narrow sub-datapaths and the SFU.",
       "id_classes": [
         "instr"
       ],
@@ -276,7 +313,7 @@
         "index_per_lane",
         "store_data"
       ],
-      "doc": "Address operands and store data for memory operations. The widest interface in the design.",
+      "doc": "Address operands and store data for memory operations, and active_mask: issue mask AND guard predicate, computed by RCU, the one block holding both. The widest interface in the design.",
       "id_classes": [
         "instr"
       ]
@@ -293,7 +330,7 @@
         "phys_dst",
         "load_data"
       ],
-      "doc": "Load return data written into the register file. active_mask gates the register-file write: an inactive lane keeps its old value.",
+      "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value.",
       "id_classes": [
         "instr"
       ]
@@ -306,15 +343,17 @@
       "group": "memory",
       "payload_fields": [
         "rob_tag",
-        "active_mask",
+        "issue_mask",
         "warp_id",
         "cta_slot",
         "mem_op",
         "chwidth",
+        "disp",
+        "scale_en",
         "space",
         "ordering"
       ],
-      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking. active_mask is the lanes that may access memory or fault: issue mask intersected with the guard predicate.",
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute.",
       "id_classes": [
         "instr"
       ]
@@ -588,7 +627,12 @@
       "doc": "Fetch asking the walker for a translation on an ITLB miss.",
       "id_classes": [
         "txn"
-      ]
+      ],
+      "outstanding": {
+        "answered_by": "ccv_miu_fet_itlb",
+        "max": 1
+      },
+      "outstanding_why": "FET has at most one ITLB miss outstanding, which makes a correlation tag unnecessary: code is a handful of pages, the ITLB is 4-8 entries, and fetch stalls on a miss anyway. Asserted (ccv_outstanding_checker), not tagged. Revisit if multi-warp fetch across distant code regions proves otherwise."
     },
     {
       "name": "ccv_mlc_exb_req",
@@ -919,7 +963,7 @@
     "decode_fault": "1",
     "dispatch_fault": "1",
     "exec_fault": "1",
-    "src_arch": "2*CCV_W_ARCH_REG",
+    "src_arch": "3*CCV_W_ARCH_REG",
     "dst_arch": "CCV_W_ARCH_REG",
     "pred_reg": "CCV_W_ARCH_PRED",
     "chwidth": "CCV_W_CHWIDTH",
@@ -944,7 +988,7 @@
     "resume_pc": "CCV_W_VA",
     "phys_addr": "CCV_P_W_PA",
     "rob_tag": "CCV_P_W_ROB_TAG",
-    "phys_src": "2*CCV_P_W_PHYS_REG",
+    "phys_src": "3*CCV_P_W_PHYS_REG",
     "phys_dst": "CCV_P_W_PHYS_REG",
     "phys_pred": "CCV_P_W_PHYS_PRED",
     "cta_slot": "CCV_P_W_CTA_SLOT",
@@ -1006,7 +1050,11 @@
     "tl_out": "CCV_L_W_TL_OUT",
     "tl_in": "CCV_L_W_TL_IN",
     "probe_type": "CCV_L_W_PROBE_TYPE",
-    "active_mask": "CCV_W_LANE_MASK"
+    "active_mask": "CCV_W_LANE_MASK",
+    "issue_mask": "CCV_W_LANE_MASK",
+    "disp": "CCV_W_DISP",
+    "scale_en": "1",
+    "tier1_id": "CCV_W_TIER1_ID"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",
@@ -1014,12 +1062,6 @@
     "says what, so it is obvious when one has become urgent."
   ],
   "open_questions": {
-    "src_arch_vs_operand": {
-      "question": "ccv_dec_ooe_uop carries TWO source registers (src_arch = 2*CCV_W_ARCH_REG) while ccv_rcu_lane_ops carries THREE operands (CCV_L_OPERANDS_PER_LANE = 3). Either the third operand is the destination read back for accumulate -- in which case rename must treat dst_arch as a source -- or the ISA has true three-source operations and src_arch is one field short. dp4 and dp8 make the second likely.",
-      "kind": "ISA question, not an RTL one",
-      "blocks": "Rename cannot be coded until this settles. The skeleton can be wired either way, because both sides already have a width; what it changes is which field rename READS, so a skeleton written against the wrong answer needs rework at 4a rather than now.",
-      "owner": "ISA / compiler track"
-    },
     "rcu_miu_width": {
       "question": "ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.",
       "kind": "partitioning question that a width exposed",
@@ -1031,18 +1073,6 @@
       "kind": "payload omission found by the first kernel",
       "blocks": "Nothing while the added fields stand; the choice changes the widest DCU-facing bus (56 -> 1208 bits at rate 4).",
       "owner": "memory-path payload owner"
-    },
-    "agu_immediate": {
-      "question": "Address generation has no route for the immediate or the index scale. ccv_dec_ooe_uop carries imm, but ccv_ooe_rcu_issue and ccv_rcu_lane_ops drop it, and ccv_rcu_miu_addr / ccv_ooe_miu_memop carry neither displacement nor scale -- yet the ISA's address is (base << 16) + (index << scale) + disp. Ties to rcu_miu_width: if the AGU moves into RCU's read stage, index_per_lane becomes a per-lane offset and imm/scale must reach RCU on the issue channel.",
-      "kind": "payload omission found by the first kernel",
-      "blocks": "S1 takes each lane's offset from the ccv-sim oracle rather than computing it (recorded as a substitution in docs/skeleton.md); a real AGU cannot be coded until this settles. ALU immediates have the same gap.",
-      "owner": "execution / memory payload owners"
-    },
-    "active_lane_mask": {
-      "question": "The memory path now carries active_mask (ccv_ooe_miu_memop, ccv_rcu_miu_addr, ccv_miu_rcu_data), defined as issue mask AND guard predicate. Neither producer can compute it from what it receives: OOE knows the issue mask (it chose the PC group) but not predicate VALUES, which live in RCU's predicate file; RCU has the predicate values but ccv_ooe_rcu_issue carries no issue mask. The same gap means rcu_lane_ops.pred_bit cannot fold the issue mask in, so the arithmetic path is only correct while every group issues all 32 lanes. Proposal: add issue_mask (CCV_W_LANE_MASK) to ccv_ooe_rcu_issue; RCU then sources rcu_miu_addr.active_mask and pred_bit, and ooe_miu_memop.active_mask either becomes the issue mask (pre-predicate, which is what OOE has) or is dropped.",
-      "kind": "payload gap, narrowed by the payload-spec response",
-      "blocks": "Any divergent or predicated memory kernel. vadd issues every group with all 32 lanes and unpredicated memory ops, so S1 sets active_mask to all ones and checks the oracle agrees.",
-      "owner": "instruction-path payload owner"
     },
     "pred_src_and_dst": {
       "question": "ccv_dec_ooe_uop has one pred_reg (and ccv_ooe_rcu_issue one phys_pred), but a guarded compare can read its guard in one predicate and write another (@P0 setp P1, ...). vadd only ever uses P0 for both.",
@@ -1056,11 +1086,17 @@
       "blocks": "Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.",
       "owner": "execution / memory payload owners"
     },
-    "itlb_correlation": {
-      "question": "ccv_miu_fet_itlb returns an entry (PPN, permissions, ASID, valid) with nothing naming the virtual page it answers, and ccv_fet_miu_itlb_req carries no tag. The same defect as the five response channels, one level up: with more than one ITLB miss outstanding FET cannot match refills to requests. Either FET has at most one miss outstanding (say so; the channel is then correct as is) or the refill needs req_id or the virtual page.",
-      "kind": "payload gap, same class as the req_id finding",
-      "blocks": "Nothing in S1: FET never has two misses outstanding.",
-      "owner": "FET / MIU sessions"
+    "branch_resolution": {
+      "question": "Nothing carries a branch's outcome back to fetch. BRA_PRED's taken lanes are issue mask AND guard, which RCU can now compute, but ccv_rcu_ooe_done carries no taken mask or target, and no channel runs from OOE or RCU to FET. Branches, loops and divergence all need it.",
+      "kind": "payload gap found applying the mask decision",
+      "blocks": "Any kernel with a taken branch. vadd's one branch is never taken, and S1's fetch order comes from the oracle.",
+      "owner": "FET / OOE / RCU sessions"
+    },
+    "pred_source_operands": {
+      "question": "Predicate VALUES used as data have no path to a lane: pand/por/pxor's sources, vote and ballot. pred_bit is now the lane enable (issue mask AND guard), not a data operand. Either predicate logic executes in RCU beside the predicate file (lanes never see it), or rcu_lane_ops needs predicate operand bits.",
+      "kind": "payload question found applying the mask decision",
+      "blocks": "Nothing in S1 (POR's result comes from the oracle); a real RCU or lane for predicate logic.",
+      "owner": "RCU / LANE sessions"
     }
   },
   "_rate_comment": [

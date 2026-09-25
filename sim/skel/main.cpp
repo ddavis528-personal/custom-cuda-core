@@ -25,6 +25,8 @@
 //                 its stream or key
 //   wrong-class   every message stamped with an id class its channel may
 //                 not carry
+//   misgroup      every binding key names the wrong group (fet->dec's
+//                 tier1_id); only the binding checker may fire
 //
 // --force-atomic runs every multi-slot channel as atomic (stubs AND checks)
 // with ordinary traffic, which must be clean -- the partner to atomic-all.
@@ -37,6 +39,8 @@
 //   corrupt-load   one lane's load data flipped between MIU and RCU
 //   drop-store     a committed store discarded by MIU
 //   corrupt-req-id the first EXB->MLC response answers the wrong req_id
+//   itlb-double    FET has two ITLB misses outstanding
+//   corrupt-disp   one load's displacement is off by 4 on its way OOE->MIU
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
 #include "verilated.h"
@@ -130,6 +134,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
     k.name = s2 == std::string::npos ? dir : dir.substr(s2 + 1);
   }
   Machine m(2, [&](int inst) { return makeKernelBlock(inst, k); });
+  bank.pair_enable = 1;
 
   // Finished = the exit has retired, no block has work left, and nothing is
   // in flight on any slot -- then a short tail, so a late message would
@@ -178,6 +183,21 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   return 0;
 }
 
+/// A payload for a forced valid on `slot` that no payload check objects to:
+/// zero, except a binding key naming the slot's own group. The wiring
+/// controls force valids with no message behind them, and each is meant to
+/// trip exactly one property.
+Bits wellFormed(Machine &m, unsigned slot) {
+  const ChanInst &ci = m.chanInstOf(slot);
+  const ChanDesc &cd = kChans[ci.chan];
+  Bits b(cd.bits);
+  if (cd.bind_key >= 0) {
+    const FieldDesc &f = cd.fields[cd.bind_key];
+    b.set(f.lsb, f.width, (slot - ci.slot_base) / cd.bind_group);
+  }
+  return b;
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -200,13 +220,15 @@ int main(int argc, char **argv) {
   const bool breaking = brk == "phantom-all" || brk == "stall-all" ||
                         brk == "atomic-all" || brk == "lockstep-all";
   const bool kbreak = brk == "corrupt-fetch" || brk == "corrupt-load" ||
-                      brk == "drop-store" || brk == "corrupt-req-id";
+                      brk == "drop-store" || brk == "corrupt-req-id" ||
+                      brk == "itlb-double" || brk == "corrupt-disp";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;
   }
   if (brk != "none" && !breaking && brk != "misorder" &&
-      brk != "wrong-class" && brk != "misbind" && !kbreak) {
+      brk != "wrong-class" && brk != "misbind" && brk != "misgroup" &&
+      !kbreak) {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
     return 2;
   }
@@ -278,7 +300,12 @@ int main(int argc, char **argv) {
   cfg.misorder = brk == "misorder";
   cfg.wrong_class = brk == "wrong-class";
   cfg.misbind = brk == "misbind";
+  cfg.misgroup = brk == "misgroup";
   bank->force_atomic = cfg.force_atomic;
+  // The exerciser's traffic is synthetic: it sends requests and responses
+  // independently, so a request/response pairing cannot hold (see
+  // ccv_outstanding_checker). The functional stubs turn it on.
+  bank->pair_enable = 0;
   Machine m(2, [&](int inst) { return makeExerciser(inst, cfg); });
 
   const uint64_t kReset = 2, kDrain = 16, kBreakAt = 6;
@@ -297,7 +324,7 @@ int main(int argc, char **argv) {
       if (brk == "stall-all" && c == kBreakAt)
         for (unsigned k = 0; k != kNumSlots; ++k) m.rx(k).stall(true);
       if (brk == "stall-all" && c == kBreakAt + 1)
-        for (unsigned k = 0; k != kNumSlots; ++k) m.tx(k).forceValid();
+        for (unsigned k = 0; k != kNumSlots; ++k) m.tx(k).forceValid(wellFormed(m, k));
       // atomic-all: a whole group (legal), then ONE slot's credit, then ONE
       // slot's valid. Each is legal for the credit checker -- slot 0 has a
       // message outstanding, and credit to spare -- so only the atomic
@@ -307,9 +334,9 @@ int main(int argc, char **argv) {
           if (kChans[ci.chan].rate < 2) continue;
           if (c == kBreakAt)
             for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
-              m.tx(ci.slot_base + s).forceValid();
+              m.tx(ci.slot_base + s).forceValid(wellFormed(m, ci.slot_base + s));
           if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
-          if (c == kBreakAt + 5) m.tx(ci.slot_base).forceValid();
+          if (c == kBreakAt + 5) m.tx(ci.slot_base).forceValid(wellFormed(m, ci.slot_base));
         }
       // lockstep-all: instance 0's slot 0 alone -- a valid, then (legally,
       // for that slot) its credit. Only the lockstep checks may fire.

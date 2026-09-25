@@ -140,13 +140,15 @@ def gen_sv(d, blocks, pp):
          "// consumer having included them first.",
          '`include "ccv_params_pkg.sv"', "",
          "/* verilator lint_off UNUSEDPARAM */", ""]
-    L.append("// Every channel carries four signals in the same shape:")
+    L.append("// Every channel carries the same signals:")
     for s in d["channel_signals"]:
         L.append("//   <name>%-9s %s" % (s["suffix"], s["doc"].split(".")[0] + "."))
     L.append("//")
-    L.append("// Common ports, on every block:")
+    L.append("// Common ports, on every block (fabric: how the top connects them):")
     for p in d["common_ports"]:
-        L.append("//   %-16s %-4s %s" % (p["name"], p["dir"], p["doc"].split(".")[0] + "."))
+        f = p.get("fabric", {}).get("kind", "fan-in")
+        L.append("//   %-16s %-4s %-9s %s" % (p["name"], p["dir"], f,
+                                           p["doc"].split(".")[0] + "."))
     L.append("")
     L.append("localparam int CCV_NUM_CHANNELS = %d;" % len(d["channels"]))
     L.append("")
@@ -268,7 +270,7 @@ def main():
         sa = c.get("slot_attrs", {})
         why = c.get("slot_attrs_why", {})
         known = ("acceptance", "slot_binding", "binding_group", "ordering",
-                 "lockstep")
+                 "lockstep", "binding_key")
         multi_inst = max(blocks[c["src"]]["instances"] if c["src"] in blocks else 1,
                          blocks[c["dst"]]["instances"] if c["dst"] in blocks else 1) > 1
 
@@ -306,11 +308,37 @@ def main():
             err("ordering key %r is neither none, slot_group, nor a field of "
                 "this channel's payload %s" % (ordk, c["payload_fields"]))
             return 1
+        bkey = sa.get("binding_key")
+        if bkey is not None:
+            if bnd != "bound":
+                err("binding_key without slot_binding: bound -- there is no "
+                    "group for the key to name"); return 1
+            if bkey not in c["payload_fields"]:
+                err("binding_key %r is not a payload field" % bkey); return 1
         if sa.get("lockstep", False) not in (False, True):
             err("lockstep must be true or false"); return 1
         if sa.get("lockstep") and not multi_inst:
             err("lockstep on a channel with one instance: there is nothing "
                 "to advance together with"); return 1
+        # A request whose responses come back on another channel, with at
+        # most `max` outstanding. Stated instead of a correlation tag, and
+        # checked across the pair by ccv_outstanding_checker.
+        out = c.get("outstanding")
+        if out is not None:
+            names = {x["name"]: x for x in d["channels"]}
+            rsp = names.get(out.get("answered_by"))
+            if rsp is None:
+                err("outstanding.answered_by %r is not a channel"
+                    % out.get("answered_by")); return 1
+            if (rsp["src"], rsp["dst"]) != (c["dst"], c["src"]):
+                err("outstanding.answered_by %s does not run back from %s to %s"
+                    % (rsp["name"], c["dst"], c["src"])); return 1
+            if c["rate"] != 1 or rsp["rate"] != 1 or multi_inst:
+                err("outstanding is defined for a rate-1, single-instance pair"); return 1
+            if not isinstance(out.get("max"), int) or out["max"] < 1:
+                err("outstanding.max must be a positive integer"); return 1
+            if "outstanding_why" not in c:
+                err("outstanding is set with no reason recorded"); return 1
         cls = c.get("id_classes")
         if not cls or any(k not in ("instr", "txn", "none") for k in cls):
             sys.stderr.write("channel %s: id_classes must be a non-empty set "

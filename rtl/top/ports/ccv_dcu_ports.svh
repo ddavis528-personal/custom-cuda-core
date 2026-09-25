@@ -16,7 +16,6 @@
   input  logic kill_valid,
   input  logic [3:0] kill_warp_mask,
   output logic kill_ack,
-  input  logic wake_req,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -26,31 +25,37 @@
   input  logic [4847:0] miu_dcu_req_payload,
   output logic [3:0] miu_dcu_req_credit,
   output logic [3:0] miu_dcu_req_stall,
+  input  logic miu_dcu_req_wake,
   // dcu -> miu, 4 slot(s) x 1030 bit payload
   output logic [3:0] dcu_miu_rsp_valid,
   output logic [4119:0] dcu_miu_rsp_payload,
   input  logic [3:0] dcu_miu_rsp_credit,
   input  logic [3:0] dcu_miu_rsp_stall,
+  output logic dcu_miu_rsp_wake,
   // dcu -> mlc, 1 slot(s) x 1082 bit payload
   output logic dcu_mlc_req_valid,
   output logic [1081:0] dcu_mlc_req_payload,
   input  logic dcu_mlc_req_credit,
   input  logic dcu_mlc_req_stall,
+  output logic dcu_mlc_req_wake,
   // mlc -> dcu, 1 slot(s) x 1030 bit payload
   input  logic mlc_dcu_rsp_valid,
   input  logic [1029:0] mlc_dcu_rsp_payload,
   output logic mlc_dcu_rsp_credit,
   output logic mlc_dcu_rsp_stall,
+  input  logic mlc_dcu_rsp_wake,
   // mlc -> dcu, 1 slot(s) x 51 bit payload
   input  logic mlc_dcu_probe_valid,
   input  logic [50:0] mlc_dcu_probe_payload,
   output logic mlc_dcu_probe_credit,
   output logic mlc_dcu_probe_stall,
+  input  logic mlc_dcu_probe_wake,
   // dcu -> mlc, 1 slot(s) x 1027 bit payload
   output logic dcu_mlc_probe_ack_valid,
   output logic [1026:0] dcu_mlc_probe_ack_payload,
   input  logic dcu_mlc_probe_ack_credit,
-  input  logic dcu_mlc_probe_ack_stall
+  input  logic dcu_mlc_probe_ack_stall,
+  output logic dcu_mlc_probe_ack_wake
 `ifdef CCV_TRACE
   , input  logic [255:0] miu_dcu_req_tid
   , output logic [255:0] dcu_miu_rsp_tid

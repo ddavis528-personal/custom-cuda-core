@@ -71,7 +71,8 @@ def load():
     for cp in d["common_ports"]:
         w = cp["width"]
         common.append((cp["name"], cp["dir"],
-                       w if isinstance(w, int) else gs.resolve(w, pv)))
+                       w if isinstance(w, int) else gs.resolve(w, pv),
+                       cp.get("fabric", {})))
     return d, blocks, binst, chans, cinst, ninst, common
 
 
@@ -86,11 +87,42 @@ def rng(w):
     return "" if w == 1 else "[%d:0] " % (w - 1)
 
 
-def block_ports(btype, chans, ninst, common):
-    """[(dir, width, name, trace_only, doc)] for one block type."""
+def flip(dr):
+    return "output" if dr == "input" else "input"
+
+
+def block_ports(btype, chans, ninst, common, nb):
+    """[(dir, width, name, trace_only, doc)] for one block type.
+
+    Common ports follow their `fabric` (schema common_ports):
+      broadcast  driven by one block (`from`), an input everywhere else
+      gather     an output everywhere but `to`, which takes all of them as
+                 one vector (`port`), a bit per block instance
+      star       as declared on every block; the `owner` also drives every
+                 other block's copy through a vector port (`port`) -- its own
+                 declared ports are the host side
+      local      as declared, wired only to the block's own clock gate
+    """
     P = []
-    for name, dr, w in common:
-        P.append(("input" if dr == "in" else "output", w, name, False, None))
+    for name, dr, w, fab in common:
+        dr = "input" if dr == "in" else "output"
+        kind = fab.get("kind")
+        if kind == "broadcast":
+            P.append(("output" if btype == fab["from"] else "input", w, name,
+                      False, None))
+        elif kind == "gather":
+            if btype == fab["to"]:
+                P.append(("input", nb * w, fab["port"], False,
+                          "every block instance's %s, by instance index" % name))
+            else:
+                P.append((dr, w, name, False, None))
+        elif kind == "star":
+            P.append((dr, w, name, False, None))
+            if btype == fab["owner"]:
+                P.append((flip(dr), nb * w, fab["port"], False,
+                          "%s of every block instance, by instance index" % name))
+        else:
+            P.append((dr, w, name, False, None))
     for c in chans:
         base = c["name"][4:]
         for side in ("src", "dst"):
@@ -105,6 +137,8 @@ def block_ports(btype, chans, ninst, common):
             P.append((fwd, n * c["bits"], base + "_payload", False, None))
             P.append((back, n, base + "_credit", False, None))
             P.append((back, n, base + "_stall", False, None))
+            P.append((fwd, copies_seen(c, btype, ninst), base + "_wake",
+                      False, None))
             P.append((fwd, n * 64, base + "_tid", True, None))
     return P
 
@@ -138,7 +172,8 @@ def gen_stub(btype, P):
     L.append("// That is protocol-legal on every channel -- no valid means no")
     L.append("// credit is owed -- so the top elaborates and simulates with every")
     L.append("// checker quiet. Common-port handshakes (kill, sleep, CSR) have no")
-    L.append("// specified semantics yet, so outputs sit at their inactive value.")
+    L.append("// specified semantics yet, so outputs sit at their inactive value:")
+    L.append("// sleep_ok low keeps the block's clock running.")
     L.append("//")
     L.append("// Replaced at 4c by real RTL with the SAME module name, including")
     L.append("// the same generated port list; the swap is a file-list change.")
@@ -174,6 +209,9 @@ def gen_stub(btype, P):
 def gen_top(d, binst, chans, cinst, ninst, common, ports):
     NB = len(binst)
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
+    cw = {n: w for n, _, w, _ in common}
+    fab = {n: f for n, _, _, f in common}
+    owner_idx = lambda t: [k for k, (bt, _) in enumerate(binst) if bt == t]
     L = [BANNER]
     L.append("// The CCV core: %d block instances, %d channel instances."
              % (NB, len(cinst)))
@@ -184,35 +222,35 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     L.append("// connectivity from Yosys and compares it, bit for bit, with the")
     L.append("// wiring the C++ skeleton reports.")
     L.append("//")
-    L.append("// COMMON PORTS. clk is the block's gated clock, made here from")
-    L.append("// core_clk; the gate enable is tied high because the power")
-    L.append("// controller that would drive it from sleep_ok/wake_req is not")
-    L.append("// specified. rst_n fans out directly; the reset tree (block letter")
-    L.append("// z) is not modelled yet. kill_valid/kill_warp_mask are broadcast")
-    L.append("// from the top: the schema says kill comes from RAU, but RAU has no")
-    L.append("// kill OUTPUT. The per-block kill_ack, wake_req, sleep_ok and CSR")
-    L.append("// ports have no fabric in the spec, so they are brought to this")
-    L.append("// boundary as vectors indexed by block instance rather than wired")
-    L.append("// to a guess.")
+    L.append("// COMMON PORTS, by fabric (schema common_ports):")
+    L.append("//   kill_valid / kill_warp_mask  broadcast from RAU, the one true")
+    L.append("//                                broadcast; kill_ack gathered at RAU")
+    L.append("//   wake                         not a common port: each channel")
+    L.append("//                                carries <name>_wake, sender to")
+    L.append("//                                receiver")
+    L.append("//   sleep_ok                     local: drives the block's own")
+    L.append("//                                clock gate, nothing else")
+    L.append("//   csr_*                        a star from CRU, which owns the")
+    L.append("//                                CSR fabric; CRU's own csr ports")
+    L.append("//                                are the host side, at this")
+    L.append("//                                boundary")
+    L.append("// rst_n fans out directly; the reset tree (block letter z) is not")
+    L.append("// modelled yet.")
     L.append("//")
     L.append("// Block instance index (for the per-block common-port vectors):")
     for k, n in enumerate(names):
         L.append("//   %2d  %s" % (k, n))
     L.append("`include \"ccv_interfaces.svh\"")
     L.append("")
-    cw = {n: w for n, _, w in common}
     ext = [c for c in chans if "EXTERNAL" in (c["src"], c["dst"])]
+    csr = [n for n, f in fab.items() if f.get("kind") == "star"]
     L.append("module ccv_core_top (")
     P = ["  input  logic core_clk",
-         "  input  logic rst_n",
-         "  input  logic kill_valid",
-         "  input  logic %skill_warp_mask" % rng(cw["kill_warp_mask"]),
-         "  input  logic %swake_req" % rng(NB),
-         "  input  logic %scsr_req" % rng(NB * cw["csr_req"]),
-         "  output logic %skill_ack" % rng(NB),
-         "  output logic %ssleep_ok" % rng(NB),
-         "  output logic %scsr_rsp" % rng(NB * cw["csr_rsp"]),
-         "  output logic %scsr_credit" % rng(NB)]
+         "  input  logic rst_n"]
+    for n in csr:                        # the CSR owner's host side
+        dr = next(dr for nm, dr, _, _ in common if nm == n)
+        P.append("  %-6s logic %s%s" % ("input" if dr == "in" else "output",
+                                          rng(cw[n]), n))
     tp = []
     for c in ext:
         base = c["name"][4:]
@@ -221,13 +259,43 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
         P += ["  %-6s logic %s%s_valid" % (fwd, rng(c["rate"]), base),
               "  %-6s logic %s%s_payload" % (fwd, rng(c["rate"] * c["bits"]), base),
               "  %-6s logic %s%s_credit" % (back, rng(c["rate"]), base),
-              "  %-6s logic %s%s_stall" % (back, rng(c["rate"]), base)]
+              "  %-6s logic %s%s_stall" % (back, rng(c["rate"]), base),
+              "  %-6s logic %s_wake" % (fwd, base)]
         tp.append("  , %-6s logic %s%s_tid" % (fwd, rng(c["rate"] * 64), base))
     L.append(",\n".join(P))
     L.append("`ifdef CCV_TRACE")
     L += tp
     L.append("`endif")
     L.append(");")
+    L.append("")
+    # common-port fabrics
+    L.append("  // Common-port fabrics.")
+    for n, f in fab.items():
+        k = f.get("kind")
+        if k == "broadcast":
+            L.append("  logic %s%s;   // from %s" % (rng(cw[n]), n, f["from"]))
+        elif k == "gather":
+            L.append("  logic %s%s;   // gathered at %s" % (rng(NB * cw[n]), n, f["to"]))
+            for kk in owner_idx(f["to"]):
+                L.append("  assign %s[%d] = 1'b1;   // %s does not ack itself"
+                         % (n, kk, names[kk]))
+        elif k == "star":
+            dr = next(dr for nm, dr, _, _ in common if nm == n)
+            if dr == "in":
+                # The owner drives every slice, its own included, and its own
+                # is read by nobody: its host side is at the boundary.
+                L.append("  /* verilator lint_off UNUSEDSIGNAL */")
+            L.append("  logic %s%s;   // %s, star from %s" % (rng(NB * cw[n]), f["port"], n, f["owner"]))
+            if dr == "in":
+                L.append("  /* verilator lint_on UNUSEDSIGNAL */")
+    for n, f in fab.items():
+        if f.get("kind") != "star":
+            continue
+        dr = next(dr for nm, dr, _, _ in common if nm == n)
+        if dr == "out":                  # the owner's own slot of a gathered vector
+            for kk in owner_idx(f["owner"]):
+                L.append("  assign %s[%d +: %d] = '0;   // %s's own: its host side is at the boundary"
+                         % (f["port"], kk * cw[n], cw[n], names[kk]))
     L.append("")
     # nets for internal channels
     for c in chans:
@@ -238,44 +306,68 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
         L.append("  // %s: %s -> %s, %d copy x %d slot" % (
             c["name"], c["src"], c["dst"], c["ninst"], c["rate"]))
         for sig, w in (("valid", n), ("payload", n * c["bits"]),
-                       ("credit", n), ("stall", n)):
+                       ("credit", n), ("stall", n), ("wake", c["ninst"])):
             L.append("  logic %s%s_%s;" % (rng(w), base, sig))
         L.append("`ifdef CCV_TRACE")
         L.append("  logic %s%s_tid;" % (rng(n * 64), base))
         L.append("`endif")
     L.append("")
-    L.append("  // Per-block gated clocks. Gate enable tied high: see above.")
+    L.append("  // Per-block gated clocks: each block's sleep_ok drives its own")
+    L.append("  // gate and nothing else. A stub holds sleep_ok low, so its clock")
+    L.append("  // runs; a real block's wake detector (on clk_free) lowers it when")
+    L.append("  // a _wake arrives on one of its input channels.")
     for n in names:
         b = n[2:]
-        L.append("  wire %s_clk_en = 1'b1;" % b)
-        L.append("  wire %s_core_clk = core_clk & %s_clk_en;" % (b, b))
+        L.append("  logic %s_sleep_ok;" % b)
+        L.append("  wire %s_core_clk = core_clk & ~%s_sleep_ok;" % (b, b))
     L.append("")
     for k, (t, i) in enumerate(binst):
         n = names[k]
         conns = []
         trconns = []
         for dr, w, pname, tr, _ in ports[t]:
+            f = fab.get(pname, {})
+            kind = f.get("kind")
+            gathers = {ff["port"]: nm for nm, ff in fab.items()
+                       if ff.get("kind") == "gather"}
+            stars = {ff["port"]: nm for nm, ff in fab.items()
+                     if ff.get("kind") == "star"}
             if pname == "clk":
                 ex = "%s_core_clk" % n[2:]
             elif pname == "clk_free":
                 ex = "core_clk"
-            elif pname in ("rst_n", "kill_valid", "kill_warp_mask"):
+            elif pname == "rst_n":
+                ex = "rst_n"
+            elif kind == "broadcast":
                 ex = pname
-            elif pname in ("kill_ack", "wake_req", "sleep_ok", "csr_credit"):
+            elif kind == "gather":
                 ex = "%s[%d]" % (pname, k)
-            elif pname in ("csr_req", "csr_rsp"):
-                ex = "%s[%d +: %d]" % (pname, k * cw[pname], cw[pname])
+            elif pname in gathers:
+                ex = gathers[pname]
+            elif kind == "local":
+                ex = "%s_%s" % (n[2:], pname)
+            elif kind == "star":
+                if t == f["owner"]:
+                    ex = pname                        # host side
+                elif cw[pname] == 1:
+                    ex = "%s[%d]" % (f["port"], k)
+                else:
+                    ex = "%s[%d +: %d]" % (f["port"], k * cw[pname], cw[pname])
+            elif pname in stars:
+                ex = pname
             else:
                 sig = pname.rsplit("_", 1)[1]
                 base = pname[: -len(sig) - 1]
                 c = next(c for c in chans if c["name"][4:] == base)
-                per = {"valid": 1, "credit": 1, "stall": 1,
-                       "payload": c["bits"], "tid": 64}[sig]
+                per = {"valid": c["rate"], "credit": c["rate"], "stall": c["rate"],
+                       "payload": c["rate"] * c["bits"], "tid": c["rate"] * 64,
+                       "wake": 1}[sig]
                 if copies_seen(c, t, ninst) == c["ninst"]:
                     ex = pname
+                elif per == 1:
+                    ex = "%s[%d]" % (pname, i)
                 else:
-                    lo = i * c["rate"] * per
-                    ex = "%s[%d +: %d]" % (pname, lo, c["rate"] * per)
+                    ex = "%s[%d +: %d]" % (pname, i * per, per)
             (trconns if tr else conns).append(".%s(%s)" % (pname, ex))
         L.append("  ccv_%s %s (" % (t, n))
         L.append("    " + ",\n    ".join(conns))
@@ -294,7 +386,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     L.append("  // nets. Absent unless CCV_CHECK is defined, so synthesis never")
     L.append("  // sees a checker.")
     L.append("  ccv_skel_checkers u_checkers (")
-    L.append("    .clk(core_clk), .rst_n(rst_n), .force_atomic(1'b0),")
+    L.append("    .clk(core_clk), .rst_n(rst_n), .force_atomic(1'b0), .pair_enable(1'b1),")
     L.append("    .valid(%s)," % cat("valid"))
     L.append("    .credit(%s)," % cat("credit"))
     L.append("    .stall(%s)," % cat("stall"))
@@ -311,7 +403,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
 
 def gen_tb(d, binst, chans, common):
     NB = len(binst)
-    cw = {n: w for n, _, w in common}
+    cw = {n: w for n, _, w, _ in common}
     ext = [c for c in chans if "EXTERNAL" in (c["src"], c["dst"])]
     L = [BANNER.replace("// Produced", "// Produced"), "`timescale 1ns/1ps"]
     L.append("// Clock, reset and tie-offs for ccv_core_top. With stub blocks nothing")
@@ -320,11 +412,10 @@ def gen_tb(d, binst, chans, common):
     L.append("// The machine's real testbench is the C++ skeleton (sim/skel/).")
     L.append("module tb;")
     L.append("  logic core_clk = 1'b0, rst_n = 1'b0;")
-    L.append("  logic [%d:0] kill_ack, sleep_ok, csr_credit;" % (NB - 1))
-    L.append("  logic [%d:0] csr_rsp;" % (NB * cw["csr_rsp"] - 1))
-    conns = [".core_clk(core_clk)", ".rst_n(rst_n)", ".kill_valid(1'b0)",
-             ".kill_warp_mask('0)", ".wake_req('0)", ".csr_req('0)",
-             ".kill_ack(kill_ack)", ".sleep_ok(sleep_ok)",
+    L.append("  // The CSR owner's host side, idle.")
+    L.append("  logic %scsr_rsp;" % rng(cw["csr_rsp"]))
+    L.append("  logic csr_credit;")
+    conns = [".core_clk(core_clk)", ".rst_n(rst_n)", ".csr_req('0)",
              ".csr_rsp(csr_rsp)", ".csr_credit(csr_credit)"]
     tr = []
     phantom = None
@@ -336,10 +427,12 @@ def gen_tb(d, binst, chans, common):
             L.append("  logic %s%s_valid;" % (rng(r), base))
             L.append("  logic %s%s_payload;" % (rng(r * c["bits"]), base))
             L.append("  logic %s%s_credit = '0;" % (rng(r), base))
+            L.append("  logic %s_wake;" % base)
             conns += [".%s_valid(%s_valid)" % (base, base),
                       ".%s_payload(%s_payload)" % (base, base),
                       ".%s_credit(%s_credit)" % (base, base),
-                      ".%s_stall('0)" % base]
+                      ".%s_stall('0)" % base,
+                      ".%s_wake(%s_wake)" % (base, base)]
             phantom = base
             L.append("`ifdef CCV_TRACE")
             L.append("  logic %s%s_tid;" % (rng(r * 64), base))
@@ -349,7 +442,8 @@ def gen_tb(d, binst, chans, common):
             L.append("  logic %s%s_credit, %s_stall;" % (rng(r), base, base))
             conns += [".%s_valid('0)" % base, ".%s_payload('0)" % base,
                       ".%s_credit(%s_credit)" % (base, base),
-                      ".%s_stall(%s_stall)" % (base, base)]
+                      ".%s_stall(%s_stall)" % (base, base),
+                      ".%s_wake(1'b0)" % base]
             tr.append(".%s_tid('0)" % base)
     L.append("")
     L.append("  ccv_core_top u_top (")
@@ -386,7 +480,7 @@ def gen_tb(d, binst, chans, common):
 def main():
     check = "--check" in sys.argv
     d, blocks, binst, chans, cinst, ninst, common = load()
-    ports = {b["name"]: block_ports(b["name"], chans, ninst, common)
+    ports = {b["name"]: block_ports(b["name"], chans, ninst, common, len(binst))
              for b in blocks}
     targets = [(os.path.join(TOPDIR, "ccv_core_top.sv"),
                 gen_top(d, binst, chans, cinst, ninst, common, ports)),

@@ -49,6 +49,8 @@ struct ExerciseCfg {
                               ///< channel may not carry
   bool misbind = false;       ///< negative control: on lane 7 of a lockstep
                               ///< channel, carry slot k+1's id in slot k
+  bool misgroup = false;      ///< negative control: a binding key naming the
+                              ///< wrong group, on every keyed channel
 };
 
 /// Stream of a message: its slot, its binding group, or its key value.

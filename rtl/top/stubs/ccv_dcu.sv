@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -27,11 +28,13 @@ module ccv_dcu (
   assign miu_dcu_req_stall = '0;
   assign dcu_miu_rsp_valid = '0;
   assign dcu_miu_rsp_payload = '0;
+  assign dcu_miu_rsp_wake = '0;
 `ifdef CCV_TRACE
   assign dcu_miu_rsp_tid = '0;
 `endif
   assign dcu_mlc_req_valid = '0;
   assign dcu_mlc_req_payload = '0;
+  assign dcu_mlc_req_wake = '0;
 `ifdef CCV_TRACE
   assign dcu_mlc_req_tid = '0;
 `endif
@@ -41,6 +44,7 @@ module ccv_dcu (
   assign mlc_dcu_probe_stall = '0;
   assign dcu_mlc_probe_ack_valid = '0;
   assign dcu_mlc_probe_ack_payload = '0;
+  assign dcu_mlc_probe_ack_wake = '0;
 `ifdef CCV_TRACE
   assign dcu_mlc_probe_ack_tid = '0;
 `endif

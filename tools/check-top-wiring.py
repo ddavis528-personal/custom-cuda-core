@@ -67,11 +67,15 @@ def elaborate(top_path, out_json):
 
 def coord_of(ch, ninst, endpoint, btype, port, bit):
     """(chan, copy, slot, sig, bitpos) for one port bit, or None."""
-    m = re.match(r"(.+)_(valid|payload|credit|stall)$", port)
+    m = re.match(r"(.+)_(valid|payload|credit|stall|wake)$", port)
     if not m or m.group(1) not in ch:
         return None
     base, sig = m.groups()
     c = ch[base]
+    if sig == "wake":                           # one bit per channel INSTANCE
+        copy = (int(endpoint.rsplit("_", 1)[1]) if ninst.get(btype, 1) > 1
+                else bit)
+        return (c["name"], copy, None, sig, 0)
     per = c["bits"] if sig == "payload" else 1
     idx, bitpos = divmod(bit, per)
     if ninst.get(btype, 1) > 1:                 # this instance IS one copy
@@ -127,6 +131,7 @@ def main():
 
     errs = []
     edge = {}           # (chan, copy, slot) -> (producer, consumer)
+    wake = {}           # (chan, copy) -> (producer, consumer)
     seen = set()
     for b in set(drivers) | set(loads):
         dv, ld = drivers.get(b, []), loads.get(b, [])
@@ -140,13 +145,22 @@ def main():
             continue
         seen.add(dc)
         chan, copy, slot, sig, _ = dc
+        if sig == "wake":
+            wake[(chan, copy)] = (dw, lw)       # producer drives it
+            continue
         fwd = sig in ("valid", "payload")
         prod, cons = (dw, lw) if fwd else (lw, dw)
         key = (chan, copy, slot)
         if edge.setdefault(key, (prod, cons)) != (prod, cons):
             errs.append("%s: %s disagrees with the slot's other signals" % (key, sig))
 
-    want_bits = sum(c["copies"] * c["rate"] * (3 + c["bits"]) for c in ch.values())
+    # Wake runs sender to receiver of the same channel instance as its slots.
+    for (chan, copy), pc in wake.items():
+        if edge.get((chan, copy, 0)) != pc:
+            errs.append("%s copy %d: _wake runs %s -> %s, its slots %s"
+                        % (chan, copy, pc[0], pc[1], edge.get((chan, copy, 0))))
+    want_bits = sum(c["copies"] * (c["rate"] * (3 + c["bits"]) + 1)
+                    for c in ch.values())
     if len(seen) != want_bits:
         errs.append("%d channel-signal bits connected, the schema implies %d"
                     % (len(seen), want_bits))

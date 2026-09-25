@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -29,6 +30,7 @@ module ccv_rcu (
   /* verilator lint_off WIDTHCONCAT */
   assign rcu_lane_ops_payload = '0;  // 14080 bits, intended
   /* verilator lint_on WIDTHCONCAT */
+  assign rcu_lane_ops_wake = '0;
 `ifdef CCV_TRACE
   assign rcu_lane_ops_tid = '0;
 `endif
@@ -36,6 +38,7 @@ module ccv_rcu (
   assign lane_rcu_res_stall = '0;
   assign rcu_ooe_done_valid = '0;
   assign rcu_ooe_done_payload = '0;
+  assign rcu_ooe_done_wake = '0;
 `ifdef CCV_TRACE
   assign rcu_ooe_done_tid = '0;
 `endif
@@ -43,6 +46,7 @@ module ccv_rcu (
   /* verilator lint_off WIDTHCONCAT */
   assign rcu_miu_addr_payload = '0;  // 8604 bits, intended
   /* verilator lint_on WIDTHCONCAT */
+  assign rcu_miu_addr_wake = '0;
 `ifdef CCV_TRACE
   assign rcu_miu_addr_tid = '0;
 `endif
@@ -52,6 +56,7 @@ module ccv_rcu (
   assign rau_rcu_mig_stall = '0;
   assign rcu_pca_mig_valid = '0;
   assign rcu_pca_mig_payload = '0;
+  assign rcu_pca_mig_wake = '0;
 `ifdef CCV_TRACE
   assign rcu_pca_mig_tid = '0;
 `endif

@@ -12,6 +12,10 @@
 #                                              drop-store:    all 32 words differ
 #   responses correlated by req_id             corrupt-req-id: MLC refuses the
 #                                                mis-tagged fill; nothing retires
+#   addresses from the carried disp + scale    corrupt-disp: MIU's AGU address
+#                                                disagrees with ccv-sim's
+#   one ITLB miss outstanding                  itlb-double: the bank's
+#                                                outstanding checker fires
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -119,6 +123,27 @@ if grep -q "^CHECK mlc: a response for req_id 1, which is not outstanding" \
   say "--break corrupt-req-id: MLC refuses, no retire" "PASS"
 else
   bad "--break corrupt-req-id" "a mis-tagged response was accepted"
+fi
+
+# The AGU computes addresses from what it is SENT: a displacement off by 4
+# on the memop must surface as MIU's address check against ccv-sim.
+run corrupt-disp
+if grep -q "^CHECK miu: seq 6 lane 0 address 20008, oracle 20004" "$B/kernel_corrupt-disp.log"; then
+  say "--break corrupt-disp: MIU's AGU address rejected" "PASS"
+else
+  bad "--break corrupt-disp" "the displacement did not reach the address check"
+fi
+
+# FET is single-miss-outstanding, asserted rather than tagged. Two misses
+# outstanding must trip the bank's outstanding checker -- and nothing else
+# in the bank.
+"$SKEL" --kernel "$K" --break itlb-double --cycles 3000 >"$B/kernel_itlb-double.log" 2>&1
+props=$(grep -o "CCV [a-z_]* failed" "$B/kernel_itlb-double.log" | awk '{print $2}' | sort -u | tr '\n' '+' | sed 's/+$//')
+if [ "$props" = "within_limit" ] &&
+   grep -q "u_fet_miu_itlb_req_outstanding" "$B/kernel_itlb-double.log"; then
+  say "--break itlb-double: outstanding limit fires" "PASS"
+else
+  bad "--break itlb-double" "bank fired {$props}, want {within_limit} on the ITLB pair"
 fi
 
 exit $fail

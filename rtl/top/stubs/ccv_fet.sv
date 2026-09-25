@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -25,11 +26,13 @@ module ccv_fet (
   assign csr_credit = '0;
   assign fet_dec_instr_valid = '0;
   assign fet_dec_instr_payload = '0;
+  assign fet_dec_instr_wake = '0;
 `ifdef CCV_TRACE
   assign fet_dec_instr_tid = '0;
 `endif
   assign fet_mlc_ifill_valid = '0;
   assign fet_mlc_ifill_payload = '0;
+  assign fet_mlc_ifill_wake = '0;
 `ifdef CCV_TRACE
   assign fet_mlc_ifill_tid = '0;
 `endif
@@ -39,6 +42,7 @@ module ccv_fet (
   assign miu_fet_itlb_stall = '0;
   assign fet_miu_itlb_req_valid = '0;
   assign fet_miu_itlb_req_payload = '0;
+  assign fet_miu_itlb_req_wake = '0;
 `ifdef CCV_TRACE
   assign fet_miu_itlb_req_tid = '0;
 `endif

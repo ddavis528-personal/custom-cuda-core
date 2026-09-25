@@ -117,7 +117,9 @@ def build(d, pv, blocks):
                           rate=c["rate"], bits=total, fields=fields, ninst=n,
                           src_multi=ms, dst_multi=md, attrs=attrs,
                           decided=decided, id_classes=c["id_classes"],
-                          why=c.get("slot_attrs_why", {})))
+                          why=c.get("slot_attrs_why", {}),
+                          binding_key=c.get("slot_attrs", {}).get("binding_key"),
+                          outstanding=c.get("outstanding")))
 
     # Channel instances and the slot map. Slots are numbered channel instance
     # by channel instance, so a slot index is stable for a fixed schema and
@@ -184,6 +186,8 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("  int16_t order_field; ///< fields[] index when order == kField")
     L.append("  bool lockstep;       ///< all instances advance together")
     L.append("  uint8_t id_classes;  ///< bit (1 << IdClass) per class it may carry")
+    L.append("  int16_t bind_key;    ///< fields[] index of the binding key, or -1:")
+    L.append("                       ///< it must equal slot / bind_group")
     L.append("};")
     L.append("")
     for c in chans:
@@ -206,13 +210,15 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
             of = [f for f, _, _ in c["fields"]].index(o)
         bg = (c["attrs"]["binding_group"]
               if c["attrs"]["slot_binding"] == "bound" else 0)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d},'
+        bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
+              if c["binding_key"] else -1)
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
                     "true" if c["attrs"]["acceptance"] == "atomic" else "false",
                     bg, ok, of,
-                    "true" if c["attrs"]["lockstep"] else "false", cls))
+                    "true" if c["attrs"]["lockstep"] else "false", cls, bk))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -270,7 +276,11 @@ def gen_sv(chans, cinst, nslots, pbits):
     L.append("  // Test override: switches EVERY multi-slot channel's atomic")
     L.append("  // check on. It can only add checks -- a channel the schema")
     L.append("  // marks atomic is checked whatever this says.")
-    L.append("  input logic                 force_atomic")
+    L.append("  input logic                 force_atomic,")
+    L.append("  // Request/response pairs with an outstanding limit. Off only for")
+    L.append("  // the S0 exerciser, whose synthetic traffic sends on each channel")
+    L.append("  // independently; on for the functional stubs and in the SV top.")
+    L.append("  input logic                 pair_enable")
     L.append("`ifdef CCV_TRACE")
     L.append("  ,")
     L.append("  // Trace-only message identity, 64 bits per slot. Absent")
@@ -303,6 +313,34 @@ def gen_sv(chans, cinst, nslots, pbits):
                      % (1 if c["attrs"]["acceptance"] == "atomic" else 0))
             L.append("    .valid(valid[%d:%d]), .credit(credit[%d:%d]));"
                      % (hi, lo, hi, lo))
+    for ci in cinst:
+        c = ci["chan"]
+        if not c["binding_key"]:
+            continue
+        f, klsb, kw = next(x for x in c["fields"] if x[0] == c["binding_key"])
+        tag = "%s_i%d" % (c["name"][4:], ci["inst"]) if c["ninst"] > 1 else c["name"][4:]
+        lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
+        keys = ", ".join(
+            "payload[%d:%d]" % (ci["payload_base"] + s * c["bits"] + klsb + kw - 1,
+                                ci["payload_base"] + s * c["bits"] + klsb)
+            for s in reversed(range(c["rate"])))
+        L.append("  ccv_binding_checker #(.N(%d), .GROUP(%d), .W(%d)) u_%s_binding ("
+                 % (c["rate"], c["attrs"]["binding_group"], kw, tag))
+        L.append("    .clk(clk), .rst_n(rst_n), .valid(valid[%d:%d]),"
+                 % (hi, lo))
+        L.append("    .key({%s}));" % keys)
+    byname = {c["name"]: c for c in chans}
+    for c in chans:
+        if not c["outstanding"]:
+            continue
+        rsp = byname[c["outstanding"]["answered_by"]]
+        rq = next(ci for ci in cinst if ci["chan"] is c)["slot_base"]
+        rs = next(ci for ci in cinst if ci["chan"] is rsp)["slot_base"]
+        L.append("  ccv_outstanding_checker #(.MAX(%d)) u_%s_outstanding ("
+                 % (c["outstanding"]["max"], c["name"][4:]))
+        L.append("    .clk(clk), .rst_n(rst_n), .enable(pair_enable),")
+        L.append("    .req_valid(valid[%d]), .rsp_valid(valid[%d]));  // %s"
+                 % (rq, rs, rsp["name"]))
     for c in chans:
         if not c["attrs"]["lockstep"]:
             continue

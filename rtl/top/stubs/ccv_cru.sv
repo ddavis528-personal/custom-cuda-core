@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -21,12 +22,14 @@ module ccv_cru (
 );
   assign kill_ack = '0;
   assign sleep_ok = '0;
+  assign csr_reqs = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign ooe_cru_fault_credit = '0;
   assign ooe_cru_fault_stall = '0;
   assign cru_rau_cfg_valid = '0;
   assign cru_rau_cfg_payload = '0;
+  assign cru_rau_cfg_wake = '0;
 `ifdef CCV_TRACE
   assign cru_rau_cfg_tid = '0;
 `endif

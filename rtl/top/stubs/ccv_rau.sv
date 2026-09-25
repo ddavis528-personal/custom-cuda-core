@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -19,17 +20,20 @@
 module ccv_rau (
   `include "ccv_rau_ports.svh"
 );
-  assign kill_ack = '0;
+  assign kill_valid = '0;
+  assign kill_warp_mask = '0;
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign rau_fet_launch_valid = '0;
   assign rau_fet_launch_payload = '0;
+  assign rau_fet_launch_wake = '0;
 `ifdef CCV_TRACE
   assign rau_fet_launch_tid = '0;
 `endif
   assign rau_ooe_alloc_valid = '0;
   assign rau_ooe_alloc_payload = '0;
+  assign rau_ooe_alloc_wake = '0;
 `ifdef CCV_TRACE
   assign rau_ooe_alloc_tid = '0;
 `endif
@@ -37,6 +41,7 @@ module ccv_rau (
   assign ooe_rau_status_stall = '0;
   assign rau_ooe_demote_valid = '0;
   assign rau_ooe_demote_payload = '0;
+  assign rau_ooe_demote_wake = '0;
 `ifdef CCV_TRACE
   assign rau_ooe_demote_tid = '0;
 `endif
@@ -44,16 +49,19 @@ module ccv_rau (
   assign ooe_rau_drained_stall = '0;
   assign rau_rcu_mig_valid = '0;
   assign rau_rcu_mig_payload = '0;
+  assign rau_rcu_mig_wake = '0;
 `ifdef CCV_TRACE
   assign rau_rcu_mig_tid = '0;
 `endif
   assign rau_miu_cta_valid = '0;
   assign rau_miu_cta_payload = '0;
+  assign rau_miu_cta_wake = '0;
 `ifdef CCV_TRACE
   assign rau_miu_cta_tid = '0;
 `endif
   assign rau_syu_alloc_valid = '0;
   assign rau_syu_alloc_payload = '0;
+  assign rau_syu_alloc_wake = '0;
 `ifdef CCV_TRACE
   assign rau_syu_alloc_tid = '0;
 `endif

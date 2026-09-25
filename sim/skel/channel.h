@@ -104,6 +104,9 @@ public:
   /// Negative-control hooks. They exist to prove the checker bank is wired
   /// to the slot it claims to check; nothing in a real run calls them.
   void forceValid() { s_.nxt.valid = true; }
+  /// ...carrying `msg`, so a control aimed at one property does not also
+  /// trip a payload check (a binding key) with whatever was last promised.
+  void forceValid(const Bits &msg) { promised_ = msg; s_.nxt.valid = true; }
 
   uint64_t sent() const { return sent_; }
   unsigned credits() const { return credits_; }

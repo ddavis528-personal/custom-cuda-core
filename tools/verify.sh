@@ -154,7 +154,8 @@ if command -v verilator >/dev/null 2>&1; then
   # build someone will run.
   for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_credit_checker.sv: \
               rtl/if/ccv_credit_checker.sv:CCV_TRACE rtl/if/ccv_atomic_checker.sv: \
-              rtl/if/ccv_lockstep_checker.sv: rtl/if/ccv_lockstep_checker.sv:CCV_TRACE; do
+              rtl/if/ccv_lockstep_checker.sv: rtl/if/ccv_lockstep_checker.sv:CCV_TRACE \
+              rtl/if/ccv_binding_checker.sv: rtl/if/ccv_outstanding_checker.sv:; do
     f=${spec%%:*}; def=${spec#*:}
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut
@@ -188,7 +189,7 @@ cat <<'PENDING'
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state
            identical to ccv-sim, 0 violations, 26 of 41 channels carrying
-           it. Eight payload questions open (schema open_questions).
+           it. Six payload questions open (schema open_questions).
            S2 next: a kernel that diverges, loops, or uses SPM/barriers
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING

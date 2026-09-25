@@ -40,6 +40,7 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_skel_checkers \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
      rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
      rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv \
+     rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv \
      rtl/generated/ccv_skel_checkers.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/skel/kernel.cpp" \
@@ -76,19 +77,22 @@ eval "$(python3 tools/skel-expect.py)"
 bank_cc=$(grep -c "^  ccv_credit_checker #" rtl/generated/ccv_skel_checkers.sv)
 bank_ac=$(grep -c "^  ccv_atomic_checker #" rtl/generated/ccv_skel_checkers.sv)
 bank_lc=$(grep -c "^  ccv_lockstep_checker #" rtl/generated/ccv_skel_checkers.sv)
+bank_bc=$(grep -c "^  ccv_binding_checker #" rtl/generated/ccv_skel_checkers.sv)
+bank_oc=$(grep -c "^  ccv_outstanding_checker #" rtl/generated/ccv_skel_checkers.sv)
 doc_n=$(grep -oE "\*\*[0-9]+ slots\*\*" docs/skeleton-slots.md | grep -oE "[0-9]+")
 "$SKEL" --cycles 4 >"$B/skel_count.log" 2>&1
 bin_n=$(field "$B/skel_count.log" slots)
 if [ "$bank_cc" = "$X_SLOTS" ] && [ "$bin_n" = "$X_SLOTS" ] &&
    [ "$doc_n" = "$X_SLOTS" ] && [ "$bank_ac" = "$X_MULTI" ] &&
-   [ "$bank_lc" = "$X_LOCKSTEP" ] &&
+   [ "$bank_lc" = "$X_LOCKSTEP" ] && [ "$bank_bc" = "$X_BINDING" ] &&
+   [ "$bank_oc" = "$X_OUTSTANDING" ] &&
    [ "$(field "$B/skel_count.log" chan_insts)" = "$X_INSTS" ] &&
    [ "$(field "$B/skel_count.log" chan_types)" = "$X_TYPES" ]; then
   say "slots re-derived: $X_TYPES types, $X_INSTS instances" \
       "PASS ($X_SLOTS slots, $X_MULTI groups)"
 else
   bad "slot count re-derived from the schema" \
-      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP"
+      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; outstanding $bank_oc/$X_OUTSTANDING"
 fi
 
 # -- the trace sideband is invisible to synthesis --------------------------
@@ -208,6 +212,21 @@ if [ "$props" = "lockstep_id" ] && [ "$inst" = "$X_LOCKSTEP" ]; then
   say "--break misbind: lane takes another slot's instr" "PASS ($inst lockstep checkers)"
 else
   bad "--break misbind" "$inst of $X_LOCKSTEP fired {$props}, want {lockstep_id}"
+fi
+
+# -- binding key: a message naming another group -------------------------
+# Every fet->dec message names the NEXT tier-1 stream: valids, credits and
+# ordering are all legal, so only the binding checker can see it -- and only
+# binding_key may fire, on every keyed channel instance.
+log="$B/skel_misgroup.log"
+"$SKEL" --cycles 400 --break misgroup >"$log" 2>&1
+props=$(grep -o "CCV [a-z_]* failed" "$log" | awk '{print $2}' | sort -u | tr '\n' '+' | sed 's/+$//')
+inst=$(grep -o "Assertion failed in [^:]*" "$log" \
+       | sed 's/Assertion failed in //; s/\.[a-z_]*$//' | sort -u | wc -l)
+if [ "$props" = "binding_key" ] && [ "$inst" = "$X_BINDING" ]; then
+  say "--break misgroup: slot carries another stream" "PASS ($inst binding checker)"
+else
+  bad "--break misgroup" "$inst of $X_BINDING fired {$props}, want {binding_key}"
 fi
 
 # -- id classes: a class a channel may not carry is caught on every one ----

@@ -231,9 +231,13 @@ independent slots with per-channel acceptance, binding (with groups) and an
 ordering *key*; an instance-level `lockstep` attribute for the lane channels,
 checked across all 32 lanes including the instruction id per slot; the
 external port is a pair; instruction identity is a trace-only sideband.
-Atomic covers valids and credits (confirmed). Open: the fet→dec binding key
-("tier-1 stream = slot / 2") is still text, since the payload carries
-`warp_id`, not the tier-1 slot.
+Atomic covers valids and credits (confirmed). The fet→dec binding is checked
+through `tier1_id`, and FET's single ITLB miss is asserted by a pair checker.
+**Skeleton review response (2026-09-25) built in:** `issue_mask` and
+`active_mask` as two fields, three source registers, displacement and scale
+to MIU's AGU, ALU immediates substituted by RCU, kill broadcast from RAU,
+wake per channel, CSR from CRU, and TL-C beats on the link. See
+[`skeleton.md`](skeleton.md#skeleton-review-response-2026-09-25-as-built).
 
 ### SV top ✅ (structure)
 
@@ -480,7 +484,11 @@ Carried from the strategy doc, with current status.
     wrong, it assumes every lane shares one address and so deletes the
     bank-conflict model SPM exists to implement.
 
-18. **The `src_arch` / `operand` mismatch.** `ccv_dec_ooe_uop` carries two
+18. ~~**The `src_arch` / `operand` mismatch.**~~ **Answered from the ISA:
+    `src_arch` was one field short.** Format A's `rs2` is an independent
+    source (`mad.lo`'s and `dp4`'s accumulator input), with `rd` independent
+    of it. Only Format J ties them. `src_arch` and `phys_src` now carry three.
+    The original question: `ccv_dec_ooe_uop` carries two
     source registers; `ccv_rcu_lane_ops` carries three operands. Either the
     third is the destination read back for accumulate — so rename must treat
     `dst_arch` as a source — or the ISA has true three-source operations and
@@ -501,16 +509,20 @@ Carried from the strategy doc, with current status.
     partitioning response.** Each one is in `schema/interfaces.json`
     `open_questions`, with what it blocks and who owns it, and is rendered in
     [`payload-spec.md`](payload-spec.md#open-questions-that-no-width-can-close).
-    Items 18 and 19 are the other two entries there.
+    Item 19 is the other entry there.
 
     | Question | In short |
     |---|---|
     | `miu_dcu_req_store_data` | store data was missing from MIU→DCU; `write_data` + `byte_mask` added provisionally — **confirm** |
-    | `agu_immediate` | no displacement or scale reaches address generation; S1 substitutes the oracle's per-lane offset |
-    | `active_lane_mask` | the memory path has `active_mask`, but neither OOE nor RCU can compute it; proposal: `issue_mask` on `ooe_rcu_issue` |
     | `pred_src_and_dst` | one `pred_reg` for guard and destination |
     | `miu_rcu_phys_dst` | `miu_rcu_data.phys_dst` has no source |
-    | `itlb_correlation` | ITLB refills name no request |
+    | `branch_resolution` | nothing carries a branch's outcome back to fetch — blocks the first taken branch |
+    | `pred_source_operands` | predicate values used as data (`por` sources, `vote`) have no lane path |
+
+    Decided since, and closed: `agu_immediate` (disp + scale to MIU's AGU,
+    ALU immediates substituted by RCU), `active_lane_mask` (`issue_mask` and
+    an RCU-only `active_mask`), `itlb_correlation` (one miss outstanding,
+    asserted), and `src_arch_vs_operand` (item 18).
 
     Fields shared across abutting channels are worth settling **across**
     sessions rather than within one. After the payload pass split `op`, those

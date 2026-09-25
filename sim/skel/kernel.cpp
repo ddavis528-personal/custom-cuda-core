@@ -106,15 +106,34 @@ Line getLine(const Bits &b, uint32_t lsb) {
 // Placeholders for encodings the payload spec leaves to the owning block.
 enum : unsigned { kCohRead = 0, kCohWrite = 1 };        // coh_op
 enum : unsigned { kMemLoad = 0, kMemStore = 1 };        // ooe_miu_memop.mem_op
+enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
 enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
-// The testbench link. tl_out / tl_in are single opaque fields whose TileLink
-// encoding is the EXB session's; this is enough to move a line.
-enum : unsigned { kTlGet = 1, kTlPutFull = 2, kTlAckData = 1, kTlAck = 2 };
-// The source id is MLC's req_id on that hop, as TL-C matches D to A by source.
-constexpr uint32_t kTlOp = 0, kTlSrc = 3, kTlAddr = 9, kTlMask = 57,
-                   kTlData = 185;                                  // tl_out
-constexpr uint32_t kTlInOp = 0, kTlInSrc = 3, kTlInData = 9;       // tl_in
+// The testbench link: the flattened TL-C bundle CCV_L_W_TL_OUT / _IN were
+// sized from -- A + C + E out, B + D in, each channel's fields at the stated
+// parameters (512-bit beat, 48-bit address, 6-bit source, 4-bit sink), then a
+// valid bit per TL channel at the top. A 128-byte line is therefore a
+// TWO-BEAT burst, and EXB is where the sequencer lives. Flattened versus
+// decomposed is still the EXB session's decision (tilelink_tlc).
+enum : unsigned { kTlPutFull = 0, kTlGet = 4, kTlAck = 0, kTlAckData = 1 };
+constexpr uint32_t kBeat = 64;                    // bytes per beat
+constexpr uint32_t kBeats = kLine / kBeat;        // beats per line
+constexpr uint32_t kTlSizeLine = 7;               // log2(128)
+// A channel, at the bottom of tl_out
+constexpr uint32_t kAOp = 0, kAParam = 3, kASize = 6, kASrc = 10, kAAddr = 16,
+                   kAMask = 64, kAData = 128;
+constexpr uint32_t kAValid = 1222;                // a_valid, c_valid, e_valid
+// D channel, above B in tl_in
+constexpr uint32_t kDOp = 641, kDSize = 646, kDSrc = 650, kDData = 661;
+constexpr uint32_t kDValid = 1175;                // b_valid 1174, d_valid 1175
 constexpr uint32_t kTlSrcW = 6;
+
+void putBeat(Bits &b, uint32_t lsb, const Line &l, unsigned beat) {
+  for (unsigned k = 0; k != kBeat; ++k) b.set(lsb + 8 * k, 8, l[beat * kBeat + k]);
+}
+void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
+  for (unsigned k = 0; k != kBeat; ++k)
+    l[beat * kBeat + k] = uint8_t(b.get(lsb + 8 * k, 8));
+}
 
 // ---- the opcode table ---------------------------------------------------------
 //
@@ -125,23 +144,30 @@ enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic };
 struct OpInfo {
   const char *name;
   UopClass cls;
-  uint8_t nsrc;         ///< GPR sources; the third travels in dst_arch/phys_dst
+  uint8_t nsrc;         ///< GPR sources, in src_arch order
   bool gdst, pread, pwrite;
-  int8_t base_src;      ///< memory: which source is the window base
-  int8_t data_src;      ///< store: which source is the data
+  bool guard;           ///< the predicate read is a guard (@pq), not data
+  int8_t base_src;      ///< memory: the window base's source
+  int8_t index_src;     ///< memory: the per-lane index's source, or -1
+  int8_t data_src;      ///< store: the data's source
+  // Immediates, as indices into the record's `imms` (operand order), -1 if
+  // none. disp/scale go to MIU's AGU on the memop; alu goes to RCU on the
+  // issue, which substitutes it into operand slot `imm_slot`.
+  int8_t disp_imm, scale_imm, alu_imm, imm_slot;
 };
 constexpr OpInfo kOps[] = {
-  {"POR",           kPredLogic, 0, false, true,  true,  -1, -1},
-  {"MOVI48",        kAlu,       0, true,  false, false, -1, -1},
-  {"SRD",           kAlu,       0, true,  false, false, -1, -1},
-  {"LD_GLOBAL",     kLoad,      1, true,  false, false,  0, -1},
-  {"MADLO",         kAlu,       3, true,  false, false, -1, -1},
-  {"SETP_LT",       kAlu,       2, false, true,  true,  -1, -1},
-  {"BRA_PRED",      kBranch,    0, false, true,  false, -1, -1},
-  {"LD_GLOBAL_IDX", kLoad,      2, true,  false, false,  0, -1},
-  {"C_ADD",         kAlu,       2, true,  false, false, -1, -1},
-  {"ST_GLOBAL_IDX", kStore,     3, false, false, false,  1,  0},
-  {"C_EXIT",        kExit,      0, false, false, false, -1, -1},
+  //                            nsrc gdst  pread  pwrite guard  base idx data disp scl alu slot
+  {"POR",           kPredLogic, 0, false, true,  true,  false, -1, -1, -1, -1, -1, -1, -1},
+  {"MOVI48",        kAlu,       0, true,  false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  {"SRD",           kAlu,       0, true,  false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  {"LD_GLOBAL",     kLoad,      1, true,  false, false, false,  0, -1, -1,  0, -1, -1, -1},
+  {"MADLO",         kAlu,       3, true,  false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LT",       kAlu,       2, false, true,  true,  true,  -1, -1, -1, -1, -1, -1, -1},
+  {"BRA_PRED",      kBranch,    0, false, true,  false, true,  -1, -1, -1, -1, -1, -1, -1},
+  {"LD_GLOBAL_IDX", kLoad,      2, true,  false, false, false,  0,  1, -1,  1,  0, -1, -1},
+  {"C_ADD",         kAlu,       2, true,  false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
+  {"C_EXIT",        kExit,      0, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
@@ -308,43 +334,65 @@ public:
 private:
   static constexpr uint64_t kLatency = 10;   // placeholder DRAM
   struct P { uint64_t due; Bits msg; uint64_t tid; };
-  std::deque<P> q_;
+  std::deque<P> q_;                          // D beats, in order
+  struct Put { uint64_t addr; Line data{}; std::array<bool, kLine> mask{}; unsigned beats = 0; };
+  std::map<unsigned, Put> puts_;             // bursts being received, by source
+
+  Bits dBeat(unsigned op, unsigned src) {
+    Bits r = msgOf(ch().ext_exb);
+    r.set(kDOp, 3, op);
+    r.set(kDSize, 4, kTlSizeLine);
+    r.set(kDSrc, kTlSrcW, src);
+    r.setBit(kDValid, true);
+    return r;
+  }
 
   void work() override {
     const Ch &c = ch();
     while (has(c.exb_ext, 0)) {
       Receiver::Msg m = take(c.exb_ext, 0);
-      const unsigned op = unsigned(m.payload.get(kTlOp, 3));
-      const uint64_t addr = m.payload.get(kTlAddr, 48);
-      Bits r = msgOf(c.ext_exb);
-      r.set(kTlInSrc, kTlSrcW, m.payload.get(kTlSrc, kTlSrcW));
-      if (addr % kLine) k_.fail("testbench: unaligned line address %llx",
-                                (unsigned long long)addr);
+      const Bits &a = m.payload;
+      if (!a.bit(kAValid)) { k_.fail("testbench: a link message with no A beat"); continue; }
+      const unsigned op = unsigned(a.get(kAOp, 3));
+      const unsigned src = unsigned(a.get(kASrc, kTlSrcW));
+      const uint64_t addr = a.get(kAAddr, 48);
+      if (addr % kLine || a.get(kASize, 4) != kTlSizeLine)
+        k_.fail("testbench: not a whole-line access at %llx", (unsigned long long)addr);
       if (op == kTlGet) {
+        // AccessAckData: the line as a burst of beats, one a cycle.
         Line l{};
         for (unsigned k = 0; k != kLine; ++k) {
           auto it = k_.mem.find(addr + k);
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
-        r.set(kTlInOp, 3, kTlAckData);
-        putLine(r, kTlInData, l);
+        for (unsigned beat = 0; beat != kBeats; ++beat) {
+          Bits r = dBeat(kTlAckData, src);
+          putBeat(r, kDData, l, beat);
+          q_.push_back({now_ + kLatency + beat, r, m.tid});
+        }
       } else if (op == kTlPutFull) {
-        const Line l = getLine(m.payload, kTlData);
-        for (unsigned k = 0; k != kLine; ++k)
-          if (m.payload.bit(kTlMask + k)) k_.mem[addr + k] = l[k];
-        r.set(kTlInOp, 3, kTlAck);
+        // Collect the burst; write and acknowledge once it is whole.
+        Put &p = puts_[src];
+        if (p.beats == 0) p.addr = addr;
+        getBeat(a, kAData, p.data, p.beats);
+        for (unsigned k = 0; k != kBeat; ++k)
+          p.mask[p.beats * kBeat + k] = a.bit(kAMask + k);
+        if (++p.beats == kBeats) {
+          for (unsigned k = 0; k != kLine; ++k)
+            if (p.mask[k]) k_.mem[p.addr + k] = p.data[k];
+          q_.push_back({now_ + kLatency, dBeat(kTlAck, src), m.tid});
+          puts_.erase(src);
+        }
       } else {
-        k_.fail("testbench: unknown link opcode %u", op);
-        continue;
+        k_.fail("testbench: unknown A opcode %u", op);
       }
-      q_.push_back({now_ + kLatency, r, m.tid});
     }
     if (!q_.empty() && q_.front().due <= now_ && can(c.ext_exb, 0)) {
       send(c.ext_exb, 0, q_.front().msg, q_.front().tid);
       q_.pop_front();
     }
   }
-  bool busy() const override { return !q_.empty(); }
+  bool busy() const override { return !q_.empty() || !puts_.empty(); }
 };
 
 // ---- EXB: the core's edge ----------------------------------------------------------
@@ -357,36 +405,60 @@ public:
 private:
   std::deque<Q> out_, in_;
   bool corrupted_ = false;
+  struct Gather { Line data{}; unsigned beats = 0; };
+  std::map<unsigned, Gather> gather_;        // AccessAckData bursts, by source
 
+  // The burst sequencer the flattened bundle stands in for: a line request
+  // becomes one A beat (Get) or kBeats of them (PutFullData), and a line's
+  // worth of D beats becomes one response to MLC.
   void work() override {
     const Ch &c = ch();
     if (has(c.mlc_exb, 0)) {
       Receiver::Msg m = take(c.mlc_exb, 0);
-      Bits t = msgOf(c.exb_ext);
       const bool wr = get(m.payload, c.mlc_exb, "coh_op") == kCohWrite;
-      t.set(kTlOp, 3, wr ? kTlPutFull : kTlGet);
-      t.set(kTlSrc, kTlSrcW, get(m.payload, c.mlc_exb, "req_id"));
-      t.set(kTlAddr, 48, get(m.payload, c.mlc_exb, "phys_addr"));
-      if (wr) {
-        // mlc_exb_req has no byte mask: a write is always a whole line.
-        for (unsigned k = 0; k != kLine; ++k) t.setBit(kTlMask + k, true);
-        putLine(t, kTlData,
-                getLine(m.payload, field(c.mlc_exb, "writeback_data").lsb));
+      const Line l = getLine(m.payload, field(c.mlc_exb, "writeback_data").lsb);
+      for (unsigned beat = 0; beat != (wr ? kBeats : 1); ++beat) {
+        Bits t = msgOf(c.exb_ext);
+        t.set(kAOp, 3, wr ? kTlPutFull : kTlGet);
+        t.set(kASize, 4, kTlSizeLine);
+        t.set(kASrc, kTlSrcW, get(m.payload, c.mlc_exb, "req_id"));
+        t.set(kAAddr, 48, get(m.payload, c.mlc_exb, "phys_addr"));
+        t.setBit(kAValid, true);
+        if (wr) {
+          // mlc_exb_req has no byte mask: a write is always a whole line.
+          for (unsigned k = 0; k != kBeat; ++k) t.setBit(kAMask + k, true);
+          putBeat(t, kAData, l, beat);
+        }
+        out_.push_back({0, t, m.tid});
       }
-      out_.push_back({0, t, m.tid});
     }
     if (has(c.ext_exb, 0)) {
       Receiver::Msg m = take(c.ext_exb, 0);
-      Bits r = msgOf(c.exb_mlc);
-      putLine(r, field(c.exb_mlc, "line_data").lsb, getLine(m.payload, kTlInData));
-      put(r, c.exb_mlc, "req_id", m.payload.get(kTlInSrc, kTlSrcW));
-      put(r, c.exb_mlc, "probe_type", 0);          // a response, not a probe
-      if (k_.brk == "corrupt-req-id" && !corrupted_) {
-        put(r, c.exb_mlc, "req_id", get(r, c.exb_mlc, "req_id") ^ 1);
-        corrupted_ = true;
+      const Bits &d = m.payload;
+      const unsigned src = unsigned(d.get(kDSrc, kTlSrcW));
+      bool whole = true;
+      Line l{};
+      if (!d.bit(kDValid)) {
+        k_.fail("exb: an inbound message with no D beat (probes are not modelled)");
+        whole = false;
+      } else if (d.get(kDOp, 3) == kTlAckData) {
+        Gather &g = gather_[src];
+        getBeat(d, kDData, g.data, g.beats);
+        whole = ++g.beats == kBeats;
+        if (whole) { l = g.data; gather_.erase(src); }
       }
-      put(r, c.exb_mlc, "miss", 1);
-      in_.push_back({0, r, m.tid});
+      if (whole && d.bit(kDValid)) {
+        Bits r = msgOf(c.exb_mlc);
+        putLine(r, field(c.exb_mlc, "line_data").lsb, l);
+        put(r, c.exb_mlc, "req_id", src);
+        put(r, c.exb_mlc, "probe_type", 0);          // a response, not a probe
+        if (k_.brk == "corrupt-req-id" && !corrupted_) {
+          put(r, c.exb_mlc, "req_id", get(r, c.exb_mlc, "req_id") ^ 1);
+          corrupted_ = true;
+        }
+        put(r, c.exb_mlc, "miss", 1);
+        in_.push_back({0, r, m.tid});
+      }
     }
     if (!out_.empty() && can(c.exb_ext, 0)) {
       send(c.exb_ext, 0, out_.front().msg, out_.front().tid);
@@ -397,7 +469,9 @@ private:
       in_.pop_front();
     }
   }
-  bool busy() const override { return !out_.empty() || !in_.empty(); }
+  bool busy() const override {
+    return !out_.empty() || !in_.empty() || !gather_.empty();
+  }
 };
 
 // ---- MLC: no cache yet; forwards, and matches responses in order ------------------
@@ -710,15 +784,29 @@ private:
     j.addr_slot = a->second.slot;
     j.tid = a->second.tid;
     const Bits &am = a->second.msg;
-    // The mask arrives twice, from OOE and from RCU (the response's safe
-    // default); the two describe one operation and must agree.
+    // Two DIFFERENT masks: the issue mask from OOE, and active = issue AND
+    // guard from RCU. They differ for any predicated op, correctly; what
+    // must hold is that no lane is active outside the issue group.
     j.active = uint32_t(get(am, c.rcu_miu, "active_mask"));
-    if (uint32_t(get(mo.msg, c.ooe_miu, "active_mask")) != j.active)
-      k_.fail("miu: rob tag %u active_mask differs between OOE and RCU", tag);
-    const uint64_t base = get(am, c.rcu_miu, "base");
+    const uint32_t issue = uint32_t(get(mo.msg, c.ooe_miu, "issue_mask"));
+    if (j.active & ~issue)
+      k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
+              tag, j.active & ~issue);
+    // The AGU (§5.1): .global is (base << 16) + (index << scale) + disp, and
+    // the scale is log2 of the element size, from chwidth, when enabled.
+    // .shared has no window shift. disp is sign-extended from CCV_W_DISP.
+    const FieldDesc &df = field(c.ooe_miu, "disp");
+    const uint64_t draw = get(mo.msg, c.ooe_miu, "disp");
+    const int64_t disp = int64_t(draw << (64 - df.width)) >> (64 - df.width);
+    const unsigned chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
+    const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - chw : 0;
+    const bool global = get(mo.msg, c.ooe_miu, "space") == kSpaceGlobal;
+    const uint64_t base = get(am, c.rcu_miu, "base") << (global ? 16 : 0);
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l) & 1u)
-        j.addr[l] = base + getLane(am, c.rcu_miu, "index_per_lane", l);
+        j.addr[l] = base +
+                    (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
+                    uint64_t(disp);
     // Lines touched by ACTIVE lanes, in first-touch order; four bytes per
     // lane (32-bit only). An inactive lane's address is never looked at.
     std::map<uint64_t, size_t> at;
@@ -885,12 +973,23 @@ private:
                       lane_, (unsigned long long)rc->seq, i, g[i]->idx, got,
                       g[i]->v[lane_]);
           }
-          if (const RegVal *p = rc->predUse()) {
-            const bool got = get(m.payload, c.rcu_lane, "pred_bit") != 0;
-            if (got != (((p->p >> lane_) & 1u) != 0))
-              k_.fail("lane %u: seq %llu predicate P%u bit wrong", lane_,
-                      (unsigned long long)rc->seq, p->idx);
+          // An immediate RCU substituted into its operand slot.
+          if (op && op->alu_imm >= 0 && size_t(op->alu_imm) < rc->imms.size()) {
+            const uint32_t got = uint32_t(m.payload.get(
+                field(c.rcu_lane, "operand").lsb + 32 * unsigned(op->imm_slot), 32));
+            if (got != uint32_t(rc->imms[op->alu_imm]))
+              k_.fail("lane %u: seq %llu immediate operand %08x, oracle %08x",
+                      lane_, (unsigned long long)rc->seq, got,
+                      uint32_t(rc->imms[op->alu_imm]));
           }
+          // pred_bit is this lane's enable: in the issue group AND past the
+          // guard. Without a guard it is the issue mask alone.
+          bool want = (rc->mask >> lane_) & 1u;
+          if (op && op->guard)
+            if (const RegVal *p = rc->predUse()) want = want && ((p->p >> lane_) & 1u);
+          if ((get(m.payload, c.rcu_lane, "pred_bit") != 0) != want)
+            k_.fail("lane %u: seq %llu pred_bit is not issue mask AND guard",
+                    lane_, (unsigned long long)rc->seq);
           // The result: what ccv-sim computed (the "what", §1).
           uint32_t v = 0;
           if (const RegVal *d = rc->gprDef()) v = d->v[lane_];
@@ -999,45 +1098,55 @@ private:
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
     const OpInfo *op = opByCode(unsigned(get(m.payload, c.ooe_rcu, "opcode")));
     if (!op) { k_.fail("rcu: unknown opcode"); return; }
-    const unsigned ps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
+    const uint64_t ps = get(m.payload, c.ooe_rcu, "phys_src");
     const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
     const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred"));
-    // Two sources in phys_src; a third travels in phys_dst (open question
-    // src_arch_vs_operand -- the accumulate reading).
-    const unsigned src[3] = {ps >> 8, ps & 0xff, pd};
+    const unsigned src[3] = {unsigned(ps >> 16) & 0xff, unsigned(ps >> 8) & 0xff,
+                             unsigned(ps) & 0xff};
+    // Active lanes = issue mask AND guard. RCU is the one block holding both
+    // -- the issue mask arrives here, the predicate values live here -- so
+    // it is the sole producer of active_mask, and pred_bit is the same
+    // computation per lane. A predicate read as DATA (por's sources) is not
+    // a guard and does not narrow it (open question pred_source_operands).
+    const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
+    const uint32_t active = issue & (op->guard ? k_.pred[pp] : 0xffffffffu);
 
     if (op->cls == kLoad || op->cls == kStore) {
       Bits a = msgOf(c.rcu_miu);
       put(a, c.rcu_miu, "rob_tag", tag);
-      // Issue mask AND guard. No issue mask reaches RCU (open question
-      // active_lane_mask), so it is all 32 lanes -- which the oracle checks.
-      const uint32_t active = op->pread ? k_.pred[pp] : 0xffffffffu;
       put(a, c.rcu_miu, "active_mask", active);
+      // Register values only: the AGU is MIU's, and the displacement and
+      // scale reach it on the memop.
       const auto &b = k_.gpr[src[op->base_src]];
       for (unsigned l = 1; l != kLanes; ++l)
-        if (b[l] != b[0]) { k_.fail("rcu: window base differs across lanes; rcu_miu_addr.base is scalar"); break; }
-      const uint64_t base = uint64_t(b[0]) << 16;   // .global window, §5.1
-      put(a, c.rcu_miu, "base", base);
-      // SUBSTITUTION (open question agu_immediate): no displacement or scale
-      // reaches RCU, so each lane's offset comes from the oracle record.
-      if (const Record *r = rec(m.tid, "rcu"))
-        for (const MemAcc &acc : r->mem)
-          putLane(a, c.rcu_miu, "index_per_lane", acc.lane, uint32_t(acc.addr - base));
-      if (op->cls == kStore)
-        for (unsigned l = 0; l != kLanes; ++l)
+        if (((active >> l) & 1u) && b[l] != b[0]) {
+          k_.fail("rcu: window base differs across lanes; rcu_miu_addr.base is scalar");
+          break;
+        }
+      put(a, c.rcu_miu, "base", b[0]);
+      for (unsigned l = 0; l != kLanes; ++l) {
+        if (op->index_src >= 0)
+          putLane(a, c.rcu_miu, "index_per_lane", l, k_.gpr[src[op->index_src]][l]);
+        if (op->cls == kStore)
           putLane(a, c.rcu_miu, "store_data", l, k_.gpr[src[op->data_src]][l]);
+      }
       to_miu_.push_back({s, a, m.tid});
       if (op->cls == kStore) to_ooe_.push_back({s, done(tag), m.tid});
       else loads_[tag] = {s, pd, m.tid};
       return;
     }
+    // An ALU immediate is substituted into its operand slot here, at
+    // register read: lanes never see an immediate, only operands.
+    const uint32_t imm = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
     std::vector<Bits> lanes;
     for (unsigned l = 0; l != kLanes; ++l) {
       Bits o = msgOf(c.rcu_lane);
       put(o, c.rcu_lane, "opcode", opcodeOf(op));
+      const uint32_t olsb = field(c.rcu_lane, "operand").lsb;
       for (unsigned i = 0; i != op->nsrc; ++i)
-        o.set(field(c.rcu_lane, "operand").lsb + 32 * i, 32, k_.gpr[src[i]][l]);
-      if (op->pread) put(o, c.rcu_lane, "pred_bit", (k_.pred[pp] >> l) & 1u);
+        o.set(olsb + 32 * i, 32, k_.gpr[src[i]][l]);
+      if (op->alu_imm >= 0) o.set(olsb + 32 * unsigned(op->imm_slot), 32, imm);
+      put(o, c.rcu_lane, "pred_bit", (active >> l) & 1u);
       put(o, c.rcu_lane, "section_en", 1);
       lanes.push_back(o);
     }
@@ -1064,7 +1173,9 @@ private:
     uint64_t tid, pc;
     unsigned tag, warp;
     const OpInfo *op;
-    unsigned src[3], dst, pidx;     ///< arch; src[2]/dst share dst_arch
+    unsigned src[3], dst, pidx;     ///< architectural
+    uint32_t imm = 0;
+    bool scale_en = false;
     bool issued = false, rcu = false, miu = false, committed = false;
     bool complete() const {
       const bool mem = op->cls == kLoad || op->cls == kStore;
@@ -1124,9 +1235,10 @@ private:
     }
     if (rob_.size() == kRob) k_.fail("ooe: ROB overflow");
     const unsigned sa = unsigned(get(u, c.dec_ooe, "src_arch"));
-    e.src[0] = sa >> 4;
-    e.src[1] = sa & 15;
-    e.src[2] = e.dst = unsigned(get(u, c.dec_ooe, "dst_arch"));
+    for (unsigned i = 0; i != 3; ++i) e.src[i] = (sa >> (4 * (2 - i))) & 15;
+    e.dst = unsigned(get(u, c.dec_ooe, "dst_arch"));
+    e.imm = uint32_t(get(u, c.dec_ooe, "imm"));
+    e.scale_en = get(u, c.dec_ooe, "scale_en") != 0;
     e.pidx = unsigned(get(u, c.dec_ooe, "pred_reg"));
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
@@ -1170,7 +1282,13 @@ private:
     Bits is = msgOf(c.ooe_rcu);
     put(is, c.ooe_rcu, "rob_tag", e.tag);
     put(is, c.ooe_rcu, "warp_id", e.warp);
-    put(is, c.ooe_rcu, "phys_src", ((pb + e.src[0]) << 8) | (pb + e.src[1]));
+    // The issue group's lanes. OOE chose the PC group, so this is its to
+    // send; vadd never diverges, so it is all 32 (lanes check the oracle).
+    const uint32_t issue_mask = 0xffffffffu;
+    put(is, c.ooe_rcu, "issue_mask", issue_mask);
+    put(is, c.ooe_rcu, "phys_src",
+        (uint64_t(pb + e.src[0]) << 16) | ((pb + e.src[1]) << 8) | (pb + e.src[2]));
+    if (!mem) put(is, c.ooe_rcu, "imm", e.imm);
     put(is, c.ooe_rcu, "phys_dst", pb + e.dst);
     put(is, c.ooe_rcu, "phys_pred", physPred(e.warp, e.pidx));
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
@@ -1180,10 +1298,13 @@ private:
       put(mo, c.ooe_miu, "rob_tag", e.tag);
       put(mo, c.ooe_miu, "warp_id", e.warp);
       put(mo, c.ooe_miu, "mem_op", e.op->cls == kStore ? kMemStore : kMemLoad);
-      // OOE has the issue mask, not predicate values (open question
-      // active_lane_mask), so this is the issue mask: all 32 lanes until a
-      // group diverges. For a predicated op RCU's copy differs, and MIU says.
-      put(mo, c.ooe_miu, "active_mask", 0xffffffffu);
+      // The issue mask, not the active mask: only RCU holds the predicate
+      // values, so only RCU computes active = issue AND guard.
+      put(mo, c.ooe_miu, "issue_mask", issue_mask);
+      put(mo, c.ooe_miu, "disp",                    // truncated to CCV_W_DISP
+          e.imm + (k_.brk == "corrupt-disp" && uidSeq(e.tid) == 6 ? 4u : 0u));
+      put(mo, c.ooe_miu, "scale_en", e.scale_en);
+      put(mo, c.ooe_miu, "space", kSpaceGlobal);   // every memory op in the table
       send(c.ooe_miu, slot, mo, e.tid);
     }
     e.issued = true;
@@ -1277,15 +1398,7 @@ private:
         bool(pd) != op->pwrite)
       k_.fail("dec: seq %llu %s has an operand shape the table does not",
               (unsigned long long)r->seq, op->name);
-    unsigned dst = gd ? gd->idx : 0;
-    if (g.size() == 3) {
-      // The third source rides in dst_arch: only if it IS the destination
-      // (accumulate) or there is none (store).
-      if (gd && gd->idx != g[2]->idx)
-        k_.fail("dec: seq %llu needs three sources and a different destination; "
-                "the uop holds two plus dst_arch", (unsigned long long)r->seq);
-      dst = g[2]->idx;
-    }
+    const unsigned dst = gd ? gd->idx : 0;
     if (pu && pd && pu->idx != pd->idx)
       k_.fail("dec: seq %llu reads P%u and writes P%u; pred_reg holds one "
               "(open question pred_src_and_dst)", (unsigned long long)r->seq,
@@ -1293,9 +1406,27 @@ private:
     const unsigned pidx = pu ? pu->idx : pd ? pd->idx : 0;
     put(u, c.dec_ooe, "uop_class", op->cls);
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
-    put(u, c.dec_ooe, "src_arch",
-        ((g.size() > 0 ? g[0]->idx : 0) << 4) | (g.size() > 1 ? g[1]->idx : 0));
+    // Three source fields: Format A's rs2 is an independent source (mad.lo's
+    // and dp4's accumulator input), with rd independent of it.
+    unsigned sa = 0;
+    for (size_t i = 0; i != 3; ++i)
+      sa |= (i < g.size() ? g[i]->idx : 0u) << (4 * (2 - i));
+    put(u, c.dec_ooe, "src_arch", sa);
     put(u, c.dec_ooe, "dst_arch", dst);
+    // The uop's one immediate: the displacement for a memory op, else the ALU
+    // immediate. The scale enable rides beside it.
+    auto immOf = [&](int8_t k) -> int64_t {
+      if (k < 0) return 0;
+      if (size_t(k) >= r->imms.size()) {
+        k_.fail("dec: seq %llu %s has no immediate %d", (unsigned long long)r->seq,
+                op->name, k);
+        return 0;
+      }
+      return r->imms[k];
+    };
+    put(u, c.dec_ooe, "imm",
+        uint32_t(op->disp_imm >= 0 ? immOf(op->disp_imm) : immOf(op->alu_imm)));
+    put(u, c.dec_ooe, "scale_en", immOf(op->scale_imm) != 0);
     // pred_reg is an index (CCV_W_ARCH_PRED); whether it is read, written
     // or both is the opcode's to say, as for the GPR sources.
     put(u, c.dec_ooe, "pred_reg", pidx);
@@ -1340,6 +1471,7 @@ private:
     }
     if (has(c.miu_fet, 0)) {
       Receiver::Msg m = take(c.miu_fet, 0);
+      // One miss outstanding, so the refill answers the one page waiting.
       if (itlb_wait_.empty()) { k_.fail("fet: an ITLB refill it did not ask for"); }
       else {
         page_[*itlb_wait_.begin()] = get(m.payload, c.miu_fet, "itlb_refill");
@@ -1375,6 +1507,7 @@ private:
       if (k_.brk == "corrupt-fetch" && r.seq == 5) word ^= 0x100;
       Bits f = msgOf(c.fet_dec);
       put(f, c.fet_dec, "warp_id", 0);
+      put(f, c.fet_dec, "tier1_id", s / kChans[c.fet_dec].bind_group);
       put(f, c.fet_dec, "pc", r.pc);
       put(f, c.fet_dec, "instr", word);
       put(f, c.fet_dec, "length", r.size / 2 - 1);
@@ -1398,7 +1531,17 @@ private:
     for (auto &w : ifill_wait_) if (w.second == vline) return;
     auto p = page_.find(vp);
     if (p == page_.end()) {
-      if (itlb_wait_.count(vp)) return;
+      // At most ONE miss outstanding: the refill names no page, so a second
+      // miss would be unmatchable. Asserted across the pair by the bank's
+      // ccv_outstanding_checker. itlb-double breaks it on purpose, by also
+      // asking for the next page.
+      if (!itlb_wait_.empty()) return;
+      if (k_.brk == "itlb-double") {
+        Bits r2 = msgOf(c.fet_miu);
+        put(r2, c.fet_miu, "virtual_page", vp + 1);
+        itlbs_.push_back({0, r2, makeUid(IdClass::kTxn, g_unowned_txn++)});
+        itlb_wait_.insert(vp + 1);
+      }
       Bits r = msgOf(c.fet_miu);
       put(r, c.fet_miu, "virtual_page", vp);
       itlbs_.push_back({0, r, makeUid(IdClass::kTxn, g_unowned_txn++)});

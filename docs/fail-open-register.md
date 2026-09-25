@@ -59,6 +59,9 @@ broken it once and watched it notice.
 | S1 final state compared with ccv-sim | **silent** | a compare fed from the oracle instead of the machine would always pass. `--break corrupt-load` must change the final R9, and `--break drop-store` all 32 words of `c[]` | `check-kernel.sh` |
 | S1 per-consumer checks against the oracle | **silent** | `--break corrupt-fetch` must be caught at DEC, and `corrupt-load` at the lane receiving the operand | `check-kernel.sh` |
 | Response correlation by `req_id` | **silent** | FIFO order matches ids by coincidence while one request is outstanding. `--break corrupt-req-id` must be refused by MLC, not taken as the oldest | `check-kernel.sh` |
+| Binding key (fet→dec `tier1_id`) | **silent** | `--break misgroup`: every message names the next group — only `binding_key` fires. The wiring controls force well-formed payloads so they trip only their own property | `check-skel.sh` |
+| Outstanding limit (one ITLB miss) | **silent** | `--break itlb-double` must trip `within_limit` and nothing else. The checker's formal covers must be reachable, and they were not at first: see below | `check-kernel.sh`, `check-if.sh` |
+| MIU's AGU on carried displacement and scale | **silent** | `--break corrupt-disp`: a displacement off by 4 must fail MIU's address check against ccv-sim | `check-kernel.sh` |
 | Golden oracle record vs ccv-sim | open | SKIPs, visibly, without the compiler repo. The compare was mutated once by hand (one mask bit flipped in the checked-in record) and failed | `gen-golden.sh --check` |
 | ccv-sim `-oracle` memory flags | **silent** | the record reported `"load":0` beside 32 reads (compiler F-141). It now refuses a step whose traffic the descriptor does not declare; checked once by dropping `LD_GLOBAL`'s flag | compiler repo |
 
@@ -91,6 +94,20 @@ open.
 
 The lesson is general: a check that parses its own evidence is a mechanism
 with its own failure mode, and it needs the same treatment as any other.
+
+## The covers caught a vacuous checker, first time out
+
+`ccv_outstanding_checker` was first written, like the credit checker, with
+`CCV_ASSUME_KNOWN` on its two inputs to satisfy CCV-L08. Its formal harness
+drives those inputs from a register. With the two assumptions in place,
+**every cover in the harness was unreachable**, including a plain
+`cover(req)` added as a probe. The assumption set admitted no trace at all,
+so any assertion proved against it would have passed having checked nothing.
+The mandatory satisfiability covers (§3.3) are what reported it. The
+counter now selects with ternaries, CCV-L08's other sanctioned form, and all
+covers are reached. The root cause, why the known-assumption on a
+register-driven input empties the trace space under Yosys, is not yet
+isolated.
 
 ## Closed: the credit checker's protocol properties — and what that found
 

@@ -16,21 +16,28 @@
   input  logic kill_valid,
   input  logic [3:0] kill_warp_mask,
   output logic kill_ack,
-  input  logic wake_req,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
+  // csr_req of every block instance, by instance index
+  output logic [2204:0] csr_reqs,
   output logic [32:0] csr_rsp,
+  // csr_rsp of every block instance, by instance index
+  input  logic [1484:0] csr_rsps,
   output logic csr_credit,
+  // csr_credit of every block instance, by instance index
+  input  logic [44:0] csr_credits,
   // ooe -> cru, 1 slot(s) x 172 bit payload
   input  logic ooe_cru_fault_valid,
   input  logic [171:0] ooe_cru_fault_payload,
   output logic ooe_cru_fault_credit,
   output logic ooe_cru_fault_stall,
+  input  logic ooe_cru_fault_wake,
   // cru -> rau, 1 slot(s) x 65 bit payload
   output logic cru_rau_cfg_valid,
   output logic [64:0] cru_rau_cfg_payload,
   input  logic cru_rau_cfg_credit,
-  input  logic cru_rau_cfg_stall
+  input  logic cru_rau_cfg_stall,
+  output logic cru_rau_cfg_wake
 `ifdef CCV_TRACE
   , input  logic [63:0] ooe_cru_fault_tid
   , output logic [63:0] cru_rau_cfg_tid

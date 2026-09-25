@@ -16,7 +16,6 @@
   input  logic kill_valid,
   input  logic [3:0] kill_warp_mask,
   output logic kill_ack,
-  input  logic wake_req,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -26,11 +25,13 @@
   input  logic [2303:0] rcu_pca_mig_payload,
   output logic rcu_pca_mig_credit,
   output logic rcu_pca_mig_stall,
+  input  logic rcu_pca_mig_wake,
   // pca -> rcu, 1 slot(s) x 2304 bit payload
   output logic pca_rcu_mig_valid,
   output logic [2303:0] pca_rcu_mig_payload,
   input  logic pca_rcu_mig_credit,
-  input  logic pca_rcu_mig_stall
+  input  logic pca_rcu_mig_stall,
+  output logic pca_rcu_mig_wake
 `ifdef CCV_TRACE
   , input  logic [63:0] rcu_pca_mig_tid
   , output logic [63:0] pca_rcu_mig_tid

@@ -17,9 +17,9 @@
 //     register file, load data comes back from memory, store data leaves the
 //     register file. Every consumer checks what arrived against the record,
 //     and the final register file and memory are compared with ccv-sim's.
-//   - ONE substitution, forced by a payload gap (open question
-//     agu_immediate): each lane's address offset comes from the record,
-//     because nothing on the issue path carries the displacement or scale.
+//   - Immediates come from the record's `imms` and then travel: a
+//     displacement and scale enable on the memop to MIU's AGU, an ALU
+//     immediate on the issue to RCU, which substitutes it into an operand.
 //
 // The instruction's trace identity (uid seq == record seq) is how a checker
 // finds the record. It is trace-only, so no block may use it to decide what
@@ -61,6 +61,7 @@ struct Record {
   uint32_t mask = 0;
   std::string op, kind;
   bool load = false, store = false;
+  std::vector<int64_t> imms;         ///< immediate operands, operand order
   std::vector<RegVal> uses, defs;    ///< operand order; uses before, defs after
   std::vector<MemAcc> mem;           ///< ascending lane
 

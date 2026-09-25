@@ -39,14 +39,14 @@ breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
 artifact listing everything that references an undecided number, so which
 ones are still made up is produced rather than remembered.
 
-Still outside the repository: **per-interface NGD budgets**, and eight payload
+Still outside the repository: **per-interface NGD budgets**, and six payload
 questions no width can close, listed in `schema/interfaces.json`
 `open_questions` and rendered in
 [`docs/payload-spec.md`](docs/payload-spec.md#open-questions-that-no-width-can-close).
-Two predate the skeleton: the `src_arch`/`operand` mismatch, an ISA question
-that blocks coding rename, and the RCU→MIU width that argues for moving the
-AGUs, a partitioning question to settle before floorplan. The other six
-came from running `vadd`.
+One predates the skeleton: the RCU→MIU width, a partitioning question to
+settle before floorplan. The rest came from running `vadd`. The most urgent
+is `branch_resolution`, since nothing yet carries a branch outcome back to
+fetch.
 
 ## Start here
 
@@ -76,7 +76,7 @@ this is what restores one.
 | [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the SV top, and S1: `vadd` end to end, where its values come from, its wire conventions and the payload gaps it found. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
-| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one credit checker for every channel**, since every boundary runs the same credited protocol. Two more checkers (atomic, lockstep) span slots and instances rather than types. |
+| [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one credit checker for every channel**, since every boundary runs the same credited protocol. Four more checkers (atomic, lockstep, binding, outstanding) span slots, instances and channel pairs rather than types. |
 
 The matrix and the findings are deliberately two files. One is data and is
 regenerated; the other is judgment and changes only when someone decides
@@ -100,8 +100,9 @@ rtl/include/                ccv_assert.svh   assertion primitives (1b)
                             ccv_xprop.svh    X-determinism constructions
                             ccv_trace.svh    RTL-side event emit (1c)
 rtl/if/                     the credit checker (one per slot), plus the atomic
-                              (across a channel's slots) and lockstep (across
-                              lane instances) checkers
+                              (across a channel's slots), lockstep (across lane
+                              instances), binding (a slot's group key) and
+                              outstanding (request/response pairs) checkers
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
 rtl/top/                    GENERATED, tracked: the SV top level
                               ccv_core_top.sv   45 blocks, 103 channel instances

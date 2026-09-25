@@ -247,7 +247,13 @@ private:
                             ? rng_.next() % keyValues(cd) : 0;
     const uint64_t st = streamOf(cd, s, kv);
     const uint64_t q = g.seq[st]++;
-    const Bits msg = expectedPayload(*g.ci, st, q, kv);
+    Bits msg = expectedPayload(*g.ci, st, q, kv);
+    if (cfg_.misgroup && cd.bind_key >= 0) {
+      // Every message names the NEXT group: a slot carrying another
+      // stream's traffic, which binding exists to rule out.
+      const FieldDesc &fd = cd.fields[cd.bind_key];
+      msg.set(fd.lsb, fd.width, msg.get(fd.lsb, fd.width) + 1);
+    }
     uint64_t tid = expectedTid(*g.ci, st, q);
     if (cfg_.misbind && cd.lockstep && g.ci->inst == 7)
       // Lane 7 carries slot s+1's instruction in slot s -- the SIMD
@@ -325,6 +331,17 @@ Bits expectedPayload(const ChanInst &ci, uint64_t stream, uint64_t seq,
   if (cd.order == Order::kField) {
     const FieldDesc &fd = cd.fields[cd.order_field];
     b.set(fd.lsb, fd.width < 64 ? fd.width : 64, keyval);
+  }
+  if (cd.bind_key >= 0) {
+    // The binding key names the message's group. Only a slot_group-ordered
+    // channel has one today, and there the stream IS the group.
+    if (cd.order != Order::kSlotGroup) {
+      std::fprintf(stderr, "%s: a binding key on a channel not ordered by "
+                   "slot group -- the exerciser does not know its group\n", cd.name);
+      std::abort();
+    }
+    const FieldDesc &fd = cd.fields[cd.bind_key];
+    b.set(fd.lsb, fd.width, stream - kStreamGroup);
   }
   return b;
 }

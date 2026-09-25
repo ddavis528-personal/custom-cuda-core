@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -27,6 +28,7 @@ module ccv_miu (
   assign rcu_miu_addr_stall = '0;
   assign miu_rcu_data_valid = '0;
   assign miu_rcu_data_payload = '0;
+  assign miu_rcu_data_wake = '0;
 `ifdef CCV_TRACE
   assign miu_rcu_data_tid = '0;
 `endif
@@ -34,6 +36,7 @@ module ccv_miu (
   assign ooe_miu_memop_stall = '0;
   assign miu_ooe_cmpl_valid = '0;
   assign miu_ooe_cmpl_payload = '0;
+  assign miu_ooe_cmpl_wake = '0;
 `ifdef CCV_TRACE
   assign miu_ooe_cmpl_tid = '0;
 `endif
@@ -41,6 +44,7 @@ module ccv_miu (
   assign ooe_miu_retire_stall = '0;
   assign miu_spm_req_valid = '0;
   assign miu_spm_req_payload = '0;
+  assign miu_spm_req_wake = '0;
 `ifdef CCV_TRACE
   assign miu_spm_req_tid = '0;
 `endif
@@ -48,6 +52,7 @@ module ccv_miu (
   assign spm_miu_rsp_stall = '0;
   assign miu_dcu_req_valid = '0;
   assign miu_dcu_req_payload = '0;
+  assign miu_dcu_req_wake = '0;
 `ifdef CCV_TRACE
   assign miu_dcu_req_tid = '0;
 `endif
@@ -55,6 +60,7 @@ module ccv_miu (
   assign dcu_miu_rsp_stall = '0;
   assign miu_fet_itlb_valid = '0;
   assign miu_fet_itlb_payload = '0;
+  assign miu_fet_itlb_wake = '0;
 `ifdef CCV_TRACE
   assign miu_fet_itlb_tid = '0;
 `endif

@@ -114,10 +114,12 @@ The mode resolution lives in the Stage 1b primitive library, not in each checker
 > trip, not one per type. Everything below about modes, satisfiability covers
 > and emission holds unchanged; it simply applies to one module.
 >
-> **Since (Stage 3).** Two more checkers exist, but not per type:
-> `ccv_atomic_checker` looks across a channel's slots, and
-> `ccv_lockstep_checker` across the 32 lane instances. The credit checker is
-> instantiated once per slot, 340 times.
+> **Since (Stage 3).** Four more checkers exist, but not per type:
+> `ccv_atomic_checker` looks across a channel's slots,
+> `ccv_lockstep_checker` across the 32 lane instances, `ccv_binding_checker`
+> at a slot's group key, and `ccv_outstanding_checker` across a
+> request/response channel pair. The credit checker is instantiated once per
+> slot, 340 times.
 >
 > **ANSWERED (spike Q2, finding F-11) — confirmed, and the mechanism is a `generate`.**
 > The `assert`/`assume`/`cover` keyword cannot be selected by a parameter

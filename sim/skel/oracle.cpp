@@ -20,6 +20,7 @@ namespace {
 struct JV {
   enum Kind { kNum, kStr, kArr, kObj } kind = kNum;
   uint64_t num = 0;
+  bool neg = false;       ///< immediates are signed; everything else is not
   std::string str;
   std::vector<JV> arr;
   std::map<std::string, JV> obj;
@@ -31,8 +32,12 @@ struct JV {
   }
   bool has(const std::string &k) const { return obj.count(k) != 0; }
   uint64_t u() const {
-    if (kind != kNum) throw std::string("expected a number");
+    if (kind != kNum || neg) throw std::string("expected a non-negative number");
     return num;
+  }
+  int64_t i() const {
+    if (kind != kNum) throw std::string("expected a number");
+    return neg ? -int64_t(num) : int64_t(num);
   }
   const std::string &s() const {
     if (kind != kStr) throw std::string("expected a string");
@@ -98,7 +103,10 @@ private:
       expect('"');
       return v;
     }
-    if (c >= '0' && c <= '9') {
+    if (c == '-' || (c >= '0' && c <= '9')) {
+      if (c == '-') { v.neg = true; ++i_; }
+      if (i_ == t_.size() || t_[i_] < '0' || t_[i_] > '9')
+        throw std::string("a sign with no digits");
       while (i_ < t_.size() && t_[i_] >= '0' && t_[i_] <= '9')
         v.num = v.num * 10 + uint64_t(t_[i_++] - '0');
       return v;
@@ -213,6 +221,7 @@ std::string Oracle::load(const std::string &path) {
         r.kind = j.at("kind").s();
         r.load = j.at("load").u() != 0;
         r.store = j.at("store").u() != 0;
+        for (const JV &m : j.at("imms").a()) r.imms.push_back(m.i());
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));
         for (const JV &m : j.at("mem").a()) {

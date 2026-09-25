@@ -26,6 +26,9 @@ def attr(c, a, default):
 # Ordered = any ordering KEY other than none, on a channel with slots to order.
 ordered = " ".join(sorted(c["name"] for c in d["channels"]
                           if c["rate"] > 1 and attr(c, "ordering", "none") != "none"))
+print("X_BINDING=%d X_OUTSTANDING=%d" % (
+    sum(copies(c) for c in d["channels"] if attr(c, "binding_key", None)),
+    sum(1 for c in d["channels"] if "outstanding" in c)))
 print("X_TYPES=%d X_INSTS=%d X_SLOTS=%d X_MULTI=%d X_LOCKSTEP=%d X_ORDERED='%s'" % (
     len(d["channels"]),
     sum(copies(c) for c in d["channels"]),

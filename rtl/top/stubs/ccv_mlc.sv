@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -27,11 +28,13 @@ module ccv_mlc (
   assign dcu_mlc_req_stall = '0;
   assign mlc_dcu_rsp_valid = '0;
   assign mlc_dcu_rsp_payload = '0;
+  assign mlc_dcu_rsp_wake = '0;
 `ifdef CCV_TRACE
   assign mlc_dcu_rsp_tid = '0;
 `endif
   assign mlc_dcu_probe_valid = '0;
   assign mlc_dcu_probe_payload = '0;
+  assign mlc_dcu_probe_wake = '0;
 `ifdef CCV_TRACE
   assign mlc_dcu_probe_tid = '0;
 `endif
@@ -41,11 +44,13 @@ module ccv_mlc (
   assign fet_mlc_ifill_stall = '0;
   assign mlc_fet_ifill_rsp_valid = '0;
   assign mlc_fet_ifill_rsp_payload = '0;
+  assign mlc_fet_ifill_rsp_wake = '0;
 `ifdef CCV_TRACE
   assign mlc_fet_ifill_rsp_tid = '0;
 `endif
   assign mlc_exb_req_valid = '0;
   assign mlc_exb_req_payload = '0;
+  assign mlc_exb_req_wake = '0;
 `ifdef CCV_TRACE
   assign mlc_exb_req_tid = '0;
 `endif

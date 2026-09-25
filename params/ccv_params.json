@@ -209,6 +209,13 @@
       "source": "Payload spec response (2026-09-25)"
     },
     {
+      "name": "CCV_W_DISP",
+      "value": 16,
+      "status": "isa",
+      "source": "Skeleton review response (2026-09-25)",
+      "doc": "Memory displacement, sign-extended at the AGU. The widest memory-format offset is cas's 16-bit signed field (ISA v1.6 \u00a73); Format D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8 all fit. (The compiler declares cas's offset uimm16 -- compiler F-143 -- which would need 17.)"
+    },
+    {
       "name": "CCV_W_LANE_MASK",
       "value": 32,
       "status": "isa",

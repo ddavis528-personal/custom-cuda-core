@@ -57,10 +57,10 @@ produces them, never their shape. Field positions are generated
 **Cross-checked, not assumed.** The C++ offsets and the SV typedefs come from
 two generators that agree by construction, which is exactly the agreement F-12
 says not to trust at a swap boundary. `rtl/generated/ccv_skel_layout_probe.sv`
-reads all 163 fields back *through the real SV structs* and compares them with
+reads all 169 fields back *through the real SV structs* and compares them with
 the C++ table: zero disagreements over 64 random rounds. Its negative control
 shifts every C++ offset by one bit, and the probe must catch every field that
-can be shifted — 160 of 160 (the other three are single-field payloads).
+can be shifted — 166 of 166 (the other three are single-field payloads).
 
 ### 3. Interface checking is the SV checker itself, Verilated in
 
@@ -105,6 +105,7 @@ one that is. So every clean result has a partner that must **not** be clean:
 | Slot *k* carries the same instruction on every lane | `--break misbind`: lane 7 carries slot *k*+1's instruction in slot *k* — only `lockstep_id` fires |
 | Every message's id class is in its channel's set | `--break wrong-class`: all 41 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
+| Every fet→dec message names its own group (`tier1_id` == slot / 2) | `--break misgroup`: every message names the next group — only `binding_key` fires |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
 | **340 slots**, re-derived from the schema every run | — (see below) |
 
@@ -158,6 +159,7 @@ rejects any specification that couldn't mean anything:
 |---|---|---|---|
 | `acceptance` | slots | none atomic yet | `ccv_atomic_checker`, all 77 multi-slot instances |
 | `slot_binding` + `binding_group` | slots | fet→dec bound, groups of 2; lane channels bound, groups of 1; ooe→rcu issue free | `lockstep_id` on the lane channels (below) |
+| `binding_key` | slots | fet→dec `tier1_id` | `ccv_binding_checker`: the key must equal slot / `binding_group` |
 | `ordering` — a **key** | slots | fet→dec `slot_group`; dec→ooe `warp_id`; miu→ooe cmpl `none` | the stubs' in-order consumption, and `--break misorder` |
 | `lockstep` | **instances** | both lane channels | `ccv_lockstep_checker`, one per lane channel |
 
@@ -193,10 +195,11 @@ throughput, as it should: 256 of the 340 slots are lane slots, and the RCU
 sender holds all 32 lanes whenever any one stalls, so runs carry ~151k
 messages where they carried ~230k.
 
-**The fet→dec binding key is still text, not a check.** "Tier-1 stream =
-slot / 2" needs a payload field naming the stream; the payload carries
-`warp_id` (32 warps), not the tier-1 slot. Its ordering, however, is now
-checked through `slot_group`.
+**The fet→dec binding is checked, not stated.** "Tier-1 stream = slot / 2"
+needed a payload field naming the stream; `warp_id` names one of 32 warps,
+not the tier-1 slot. `tier1_id` (`CCV_W_TIER1_ID`, 2 bits) is that field, and
+`binding_key` points the bank's `ccv_binding_checker` at it: when a payload
+lands on slot *s*, its key must equal *s* / 2.
 
 **What the stub got wrong on the way, and the check that caught it.** The
 first keyed receiver served eligible heads in slot order and stopped at its
@@ -297,25 +300,39 @@ every channel port to a (channel, copy, slot, signal, bit) coordinate from
 names and the layout rule alone. It then requires one driver and one load per
 net, identical coordinates at both ends, and the right direction per signal.
 The resulting producer→consumer map must equal `ccv-skel --dump-wiring`:
-68,345 bits, identical. A copy with one lane's valid slice swapped is
+68,850 bits, identical, now including one `_wake` bit per channel
+instance, which must run from the same producer to the same consumer as
+that instance's slots. A copy with one lane's valid slice swapped is
 rejected.
 
-**Gaps it exposed, left visible rather than guessed:**
+**Common-port fabrics** (decided 2026-09-25; each common port's `fabric` in
+the schema says how the top connects it):
 
-- **Common-port fabrics have no topology.** The schema says kill comes "from
-  RAU", but RAU declares `kill_valid` as an *input* like every other block,
-  and has no kill output. Wake/sleep and CSR have no fabric at all. So
-  `kill_valid`/`kill_warp_mask` are broadcast from top inputs, and every
-  block's `kill_ack`, `wake_req`, `sleep_ok` and CSR ports are brought to the
-  top boundary as vectors indexed by block instance.
+- **Kill is the one true broadcast, from RAU.** OOE raises the fault at
+  retirement, RAU converts grid to warp mask and broadcasts `kill_valid` and
+  `kill_warp_mask`. Every other block acks, and RAU gathers the acks as
+  `kill_acks`, a bit per block instance. The gather is this repository's
+  reading: something has to tell RAU a kill is complete.
+- **Wake is not a fabric.** It is `_wake`, a fifth channel signal from sender
+  to receiver, one per channel instance. `sleep_ok` goes to the block's own
+  clock gate only (`<blk>_core_clk = core_clk & ~<blk>_sleep_ok`).
+- **CRU owns the CSR fabric,** as a star: it drives every block's `csr_req`
+  and gathers `csr_rsp` and `csr_credit`, and its own CSR ports are the host
+  side, at the top boundary.
+
+**Gaps still visible:**
+
+- **How a fault reaches RAU.** OOE's fault goes to CRU (`ooe_cru_fault`),
+  and nothing runs from there, or from OOE, to RAU saying which grid to
+  kill. `cru_rau_cfg` carries policy thresholds, not a kill.
+- **Wake's timing contract.** `_wake` exists, but how far it must lead valid
+  (`CCV_WAKE_LAT`, 4) is not yet a checked property. A stub never sleeps, so
+  nothing depends on it yet.
 - **CSR widths were unspecified** (`"struct"`). `csr_req` is address + data +
   write enable, with the address a preliminary 16 bits (`CCV_L_W_CSR_ADDR`,
   churn med); `csr_rsp` is data + done.
-- **The clock gate's owner is unspecified.** The schema's `clk` is "gated for
-  the block", so the top makes `<blk>_core_clk` from `core_clk`, with the
-  enable tied high until a power controller drives it from
-  `sleep_ok`/`wake_req`. The reset tree (block letter `z`) isn't modelled;
-  `rst_n` fans out directly.
+- The reset tree (block letter `z`) isn't modelled; `rst_n` fans out
+  directly.
 
 ## Still open
 
@@ -340,11 +357,11 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json
 ```
 
 vadd (`c[i] = a[i] + b[i]`, 32 threads, one warp, 17 issue groups) runs to
-completion in **355 cycles** on functional stubs behind the same ports the S0
+completion in **365 cycles** on functional stubs behind the same ports the S0
 exerciser used, with the checker bank judging every slot. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
-violations, and the bank's 691 `EV_CH_XFER` events matching every launch
+violations, and the bank's 701 `EV_CH_XFER` events matching every launch
 exactly. It carries traffic on 26 of the 41 channels; the 15 idle ones are
 SPM, barriers, migration, demotion, probes and faults, none of which vadd
 reaches.
@@ -357,6 +374,8 @@ reaches.
 | 0 bank violations | S0's controls prove the same bank, driven by the same code, is wired to every slot |
 | `EV_CH_XFER` == every launch | Exact multiset over channel, payload bits and identity, so one wrong bit fails it |
 | Every response matched to its request by `req_id` | `--break corrupt-req-id` gives the first EXB→MLC response the wrong id; MLC refuses it and nothing retires |
+| Addresses computed by MIU's AGU from the carried base, index, displacement and scale | `--break corrupt-disp` adds 4 to one load's displacement OOE→MIU; MIU's address check rejects all 32 lanes |
+| FET has at most one ITLB miss outstanding | `--break itlb-double` asks for a second page; the bank's `within_limit` fires, and nothing else (FET then matches a refill to the wrong page, which is the reason for the rule) |
 
 A second run is byte-identical (trace and cycle count), and
 `tools/gen-golden.sh --check` fails the gate if the checked-in oracle record
@@ -386,18 +405,18 @@ used for:
 | Fetch **order** (no branch unit yet) | Instruction **bytes**: testbench memory → EXB → MLC → FET, via ITLB and ifill |
 | Decode: which registers an instruction reads and writes | Operands: out of RCU's register file, to the lanes |
 | ALU **results**: a lane returns ccv-sim's value | Load data: memory → EXB → MLC → DCU → MIU → RCU |
-| **Substitution:** each lane's address offset | Store data: RCU's register file → MIU → DCU (RMW) → MLC → EXB → memory |
+| Immediates (the record's `imms`), at decode | Displacement and scale enable: DEC → OOE → MIU's AGU; ALU immediate: DEC → OOE → RCU, substituted into an operand |
+| | Store data: RCU's register file → MIU → DCU (RMW) → MLC → EXB → memory |
 
 The trace identity (uid seq = record seq) is how a checker finds the record.
-It's trace-only, so no stub uses it to decide what to do. There is one
-exception: the address offset, because no payload carries the displacement
-or the scale (finding 2 below).
+It's trace-only, so no stub uses it to decide what to do. (The one exception,
+the per-lane address offset, is gone: displacement and scale now travel.)
 
 **What this does not test.** Because ALU results come from the record, a
 wrong operand doesn't produce a wrong result. It's caught by the lanes'
 operand check instead, which `corrupt-load` proves is live. The stubs have
 placeholder timing: in-order issue with a scoreboard, one memory op at a time,
-no caches, a 10-cycle testbench memory. The 355 cycles measure the stubs, not
+no caches, a 10-cycle testbench memory. The 365 cycles measure the stubs, not
 the machine.
 
 ### Findings — payload gaps the first kernel exposed
@@ -409,25 +428,33 @@ rendered in `docs/payload-spec.md`.
    had nothing that could carry what a store writes. **S1 added `write_data`
    and `byte_mask`**, mirroring `ccv_miu_spm_req` (56 → 1208 bits at rate 4).
    *Needs confirmation*, or a separate store-data channel.
-2. **No route for the immediate or scale to the AGU** (`agu_immediate`).
-   `imm` is on the uop and dropped at issue, and nothing downstream carries a
-   displacement or scale. S1 substitutes the oracle's per-lane offset. ALU
-   immediates have the same gap.
-3. **Active-lane mask** (`active_lane_mask`). The response added
-   `active_mask` to the three memory-path channels; see below for what
-   remains open. `EV_RETIRE.active_mask` is still always `0xffffffff`.
+2. **Immediates: decided.** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16, the
+   widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`, and
+   the shift is derived from `chwidth`. ALU immediates ride on
+   `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register
+   read, so lanes never see an immediate. The oracle substitution is gone.
+3. **Masks: decided.** Only RCU holds both the issue mask and the predicate
+   values, so it is the sole producer of `active_mask`, on `rcu_miu_addr` and
+   `miu_rcu_data`. `ooe_rcu_issue` and `ooe_miu_memop` carry `issue_mask`, a
+   different field that is never compared with it. `pred_bit` is the same
+   computation per lane. MIU checks the invariant that holds, active ⊆
+   issue. `EV_RETIRE.active_mask` is still always `0xffffffff`.
 4. **One predicate field for guard and destination** (`pred_src_and_dst`).
    `@P0 setp P1, …` has no encoding. S1 refuses such a record; vadd only uses
    P0.
 5. **`ccv_miu_rcu_data.phys_dst` has no source** (`miu_rcu_phys_dst`).
    Nothing MIU receives names a destination register. RCU keeps it by
    `rob_tag` from issue, and the field is left zero.
-6. **Three-source ops ride on `dst_arch`** (the existing
-   `src_arch_vs_operand`). `MADLO` (accumulate: destination == third source)
-   and `ST_GLOBAL_IDX` (data, base, index; no destination) both fit if the
-   third source travels in `dst_arch` / `phys_dst`, and S1 does that. A
-   three-source op with a *different* destination would not fit, and DEC
-   refuses one.
+6. **Three sources: answered from the ISA, and the uop widened.** Format A
+   `dp4.*`, `dp2.*`, `ffma.f0` and `mad.lo` read `rs0`, `rs1` *and* `rs2` (the
+   accumulator input) and write an **independent** `rd`; only the compressed
+   Format J forms (`dp4.acc`, `mad.acc`, `ffma.acc`) tie the destination to
+   the accumulator. The ISA's own walkthrough has `mad.lo r1, r3, r1, r2`,
+   with `rd` ≠ `rs2`; vadd's hand-written `MADLO R1, R2, R3, R1` just happened
+   to fit. `cas` reads three GPRs as well. So `src_arch` is `3 ×
+   CCV_W_ARCH_REG` and `phys_src` is `3 × CCV_P_W_PHYS_REG`, and the S1
+   workaround of carrying the third source in `dst_arch` is removed. (`dp8` is
+   in the ISA table, but no instruction definition exists for it yet.)
 
 Also found and fixed, in the compiler repo:
 
@@ -476,18 +503,49 @@ already applied: `warp_mask_released` 32, `bank_addr` 320, `phys_pred` on
 `CCV_P_W_PHYS_PRED`, and barrier base plus count. `dcu_miu_rsp` already says
 `read_data`.
 
+**Raised by applying it, and since answered** (see the next section): who
+computes `active_mask`, and ITLB correlation.
+
+### Skeleton review response (2026-09-25), as built
+
+- **`issue_mask` and `active_mask` are two fields, not two copies** (finding
+  3 above). This retires the equality check, which would have fired on the
+  first predicated load, and closes the open question.
+- **ITLB: FET is single-miss-outstanding, asserted.** An `outstanding`
+  attribute on `fet_miu_itlb_req` (`answered_by: ccv_miu_fet_itlb`,
+  `max: 1`) generates a `ccv_outstanding_checker` in the bank. It counts
+  requests against responses at valid, and fires on a second request or on
+  a response with nothing outstanding. The S0 exerciser's synthetic traffic
+  can't honour a pairing, so the bank's `pair_enable` is off for S0 and on for
+  S1 and the SV top. `--break itlb-double` is its control.
+- **Kill from RAU, wake per channel, sleep local, CSR from CRU** (the SV top
+  section above).
+- **Three sources** (finding 6 above) and **immediates** (finding 2).
+- **`tier1_id`** makes fet→dec's binding a check (the interface decisions
+  section above).
+- **The link carries TL-C beats, not lines.** S1's placeholder had put a
+  whole 1024-bit line in one `tl_out` message, contradicting the 512-bit beat
+  the width was derived from. It now uses the real flattened layout
+  (A/C/E out, B/D in, the per-channel valid bits at the top). A line is a
+  two-beat burst: EXB splits `PutFullData` into beats and gathers
+  `AccessAckData` beats back into one response. **For the EXB session:** the
+  flattened width stands in for a burst sequencer, not just a bus.
+
 **Raised by applying it** (in `open_questions`):
 
-- **Neither producer can compute `active_mask`.** It is issue mask ∧ guard
-  predicate. OOE knows the issue mask but not predicate values, which live in
-  RCU's file. RCU has the values but `ooe_rcu_issue` carries no issue mask.
-  The same gap means `pred_bit` can't fold in the issue mask, so "the
-  arithmetic path is already correct" holds only while every group issues all
-  32 lanes. Proposal: add `issue_mask` to `ooe_rcu_issue`.
-- **ITLB refills have no correlation either** (`itlb_correlation`).
-  `miu_fet_itlb` returns an entry naming no virtual page, and the request
-  carries no tag. It's the same defect one level up, unless FET is defined to
-  have at most one miss outstanding.
+- **`branch_resolution`.** Nothing carries a branch's outcome back to fetch.
+  RCU can now compute BRA_PRED's taken lanes, but `rcu_ooe_done` has no taken
+  mask or target, and no channel runs to FET. This blocks the first taken
+  branch, and with it loops and divergence.
+- **`pred_source_operands`.** `pred_bit` is now a lane enable, so predicate
+  values used as *data* (`pand`/`por`/`pxor` sources, `vote`, `ballot`) have
+  no lane path. Either predicate logic executes in RCU beside the predicate
+  file, or the lanes need predicate operand bits.
+- **Compiler F-143.** The ISA gives `cas`'s offset as 16-bit signed, but the
+  compiler declares it `uimm16`. `CCV_W_DISP` = 16 follows the ISA.
+
+The formal covers for the new outstanding checker caught a vacuous setup on
+the way. See `fail-open-register.md`.
 
 ### S1 wire conventions (placeholders)
 
@@ -500,23 +558,26 @@ decisions.
 | `fet_dec_instr.length` | 0/1/2 = 2/4/6 bytes; `instr` little-endian bytes |
 | `fet_dec_instr` slots | warp *w* is tier-1 stream *w*: binding group *w*, age = slot order |
 | `dec_ooe_uop.opcode` | skeleton-local table, 1..11 for vadd's ops (0 reserved) |
-| `dec_ooe_uop.src_arch` | `[7:4]` src0, `[3:0]` src1; a third source in `dst_arch` |
+| `dec_ooe_uop.src_arch` | `[11:8]` src0, `[7:4]` src1, `[3:0]` src2 |
 | `dec_ooe_uop.pred_reg` | the index (`CCV_W_ARCH_PRED`); read/written comes from the opcode |
-| `dec_ooe_uop.imm` | 0: not decoded (finding 2) |
-| `ooe_rcu_issue.phys_src` | `[15:8]` src0, `[7:0]` src1; rename is `prf_base + arch` (no renaming yet) |
+| `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it |
+| `ooe_rcu_issue.phys_src` | `[23:16]` src0, `[15:8]` src1, `[7:0]` src2; rename is `prf_base + arch` (no renaming yet) |
+| operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
 | `ooe_rcu_issue.phys_pred` | `4·warp + index` (predicates not renamed) |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
 | `lane_rcu_res.result` | GPR value, or the predicate bit in bit 0 |
-| `rcu_miu_addr.base` | window base `GPR[base] << 16` (§5.1), checked uniform across lanes |
+| `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |
-| `ooe_miu_memop.mem_op` | 0 load, 1 store |
+| `ooe_miu_memop.mem_op`, `space` | 0 load, 1 store; 0 global, 1 shared |
 | `size` | log2 bytes; 7 = a 128-byte line |
 | `rau_fet_launch.code_bounds` | `[63:0]` base, `[103:64]` length |
-| `exb_ext_out.tl_out` | `[2:0]` op (1 Get, 2 PutFull), `[8:3]` source (= MLC→EXB `req_id`), `[56:9]` address, `[184:57]` byte mask, `[1208:185]` data |
-| `ext_exb_in.tl_in` | `[2:0]` op (1 AccessAckData, 2 AccessAck), `[8:3]` source, `[1032:9]` data |
+| `exb_ext_out.tl_out` | flattened TL-C: A `[640:0]` (opcode, param, size, source = MLC→EXB `req_id`, address, mask, data 512, corrupt), C `[1217:641]`, E `[1221:1218]`, valids a/c/e `[1224:1222]`. Get = 4, PutFullData = 0 |
+| `ext_exb_in.tl_in` | flattened TL-C: B `[640:0]`, D `[1173:641]` (opcode, param, size, source, sink, denied, data 512, corrupt), valids b/d `[1175:1174]`. AccessAck = 0, AccessAckData = 1 |
+| line on the link | two 512-bit beats, same address; EXB and the testbench count them |
 | `req_id` | each requester allocates the lowest free id below 2^width on its own hop and holds it until the response; MLC maps its EXB-side id back to the requester's id |
-| `active_mask` | OOE sends its issue mask (all 32 lanes: no divergence yet); RCU sends issue mask ∧ guard. They differ for a predicated memory op, which MIU reports (open question `active_lane_mask`). MIU touches and RCU writes only active lanes |
+| `issue_mask` / `active_mask` / `pred_bit` | OOE sends `issue_mask` (all 32: no divergence yet). RCU computes issue ∧ guard as `active_mask` and per lane as `pred_bit`; a predicate read as data is not a guard. MIU touches, and RCU writes, only active lanes |
+| `fet_dec_instr.tier1_id` | slot / 2: warp 0 is tier-1 stream 0 |
 | identities | instruction: `instr` class, seq = record seq. Line request on an instruction's behalf: owned `txn`, same seq, sub = line. ITLB and ifill: unowned `txn` |
 
 ### Events: what the skeleton emits
@@ -525,7 +586,7 @@ Seven of the twelve schema events:
 
 | Event | Emitted by | vadd count |
 |---|---|---|
-| `EV_CH_XFER` | the checker bank, every transfer | 691 |
+| `EV_CH_XFER` | the checker bank, every transfer | 701 |
 | `EV_DECODE` | DEC | 17 |
 | `EV_DISPATCH` | OOE, ROB allocation | 17 |
 | `EV_ISSUE` | OOE (`C_EXIT` isn't issued) | 16 |

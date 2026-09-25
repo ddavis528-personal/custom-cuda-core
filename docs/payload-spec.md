@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 8 | 23 |
+| All decided | 8 | 24 |
 | ⚠️ Some provisional | 15 | 56 |
-| ⛔ Some preliminary | 18 | 84 |
-| **Total** | **41** | **163** |
+| ⛔ Some preliminary | 18 | 89 |
+| **Total** | **41** | **169** |
 
 ## What still has to be decided
 
@@ -167,29 +167,13 @@ because those are the ones where a skeleton that reads the field
 
 ## Open questions that no width can close
 
-### active lane mask
+### branch resolution
 
-*payload gap, narrowed by the payload-spec response — instruction-path payload owner*
+*payload gap found applying the mask decision — FET / OOE / RCU sessions*
 
-The memory path now carries active_mask (ccv_ooe_miu_memop, ccv_rcu_miu_addr, ccv_miu_rcu_data), defined as issue mask AND guard predicate. Neither producer can compute it from what it receives: OOE knows the issue mask (it chose the PC group) but not predicate VALUES, which live in RCU's predicate file; RCU has the predicate values but ccv_ooe_rcu_issue carries no issue mask. The same gap means rcu_lane_ops.pred_bit cannot fold the issue mask in, so the arithmetic path is only correct while every group issues all 32 lanes. Proposal: add issue_mask (CCV_W_LANE_MASK) to ccv_ooe_rcu_issue; RCU then sources rcu_miu_addr.active_mask and pred_bit, and ooe_miu_memop.active_mask either becomes the issue mask (pre-predicate, which is what OOE has) or is dropped.
+Nothing carries a branch's outcome back to fetch. BRA_PRED's taken lanes are issue mask AND guard, which RCU can now compute, but ccv_rcu_ooe_done carries no taken mask or target, and no channel runs from OOE or RCU to FET. Branches, loops and divergence all need it.
 
-**Blocks:** Any divergent or predicated memory kernel. vadd issues every group with all 32 lanes and unpredicated memory ops, so S1 sets active_mask to all ones and checks the oracle agrees.
-
-### agu immediate
-
-*payload omission found by the first kernel — execution / memory payload owners*
-
-Address generation has no route for the immediate or the index scale. ccv_dec_ooe_uop carries imm, but ccv_ooe_rcu_issue and ccv_rcu_lane_ops drop it, and ccv_rcu_miu_addr / ccv_ooe_miu_memop carry neither displacement nor scale -- yet the ISA's address is (base << 16) + (index << scale) + disp. Ties to rcu_miu_width: if the AGU moves into RCU's read stage, index_per_lane becomes a per-lane offset and imm/scale must reach RCU on the issue channel.
-
-**Blocks:** S1 takes each lane's offset from the ccv-sim oracle rather than computing it (recorded as a substitution in docs/skeleton.md); a real AGU cannot be coded until this settles. ALU immediates have the same gap.
-
-### itlb correlation
-
-*payload gap, same class as the req_id finding — FET / MIU sessions*
-
-ccv_miu_fet_itlb returns an entry (PPN, permissions, ASID, valid) with nothing naming the virtual page it answers, and ccv_fet_miu_itlb_req carries no tag. The same defect as the five response channels, one level up: with more than one ITLB miss outstanding FET cannot match refills to requests. Either FET has at most one miss outstanding (say so; the channel is then correct as is) or the refill needs req_id or the virtual page.
-
-**Blocks:** Nothing in S1: FET never has two misses outstanding.
+**Blocks:** Any kernel with a taken branch. vadd's one branch is never taken, and S1's fetch order comes from the oracle.
 
 ### miu dcu req store data
 
@@ -207,6 +191,14 @@ ccv_miu_rcu_data carries phys_dst, but nothing MIU receives names a destination:
 
 **Blocks:** Nothing: S1 has RCU keep the destination by rob_tag and leaves phys_dst zero. Settle before MIU and RCU are coded against each other.
 
+### pred source operands
+
+*payload question found applying the mask decision — RCU / LANE sessions*
+
+Predicate VALUES used as data have no path to a lane: pand/por/pxor's sources, vote and ballot. pred_bit is now the lane enable (issue mask AND guard), not a data operand. Either predicate logic executes in RCU beside the predicate file (lanes never see it), or rcu_lane_ops needs predicate operand bits.
+
+**Blocks:** Nothing in S1 (POR's result comes from the oracle); a real RCU or lane for predicate logic.
+
 ### pred src and dst
 
 *payload question found by the first kernel — ISA / compiler track*
@@ -223,14 +215,6 @@ ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 
 
 **Blocks:** Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.
 
-### src arch vs operand
-
-*ISA question, not an RTL one — ISA / compiler track*
-
-ccv_dec_ooe_uop carries TWO source registers (src_arch = 2*CCV_W_ARCH_REG) while ccv_rcu_lane_ops carries THREE operands (CCV_L_OPERANDS_PER_LANE = 3). Either the third operand is the destination read back for accumulate -- in which case rename must treat dst_arch as a source -- or the ISA has true three-source operations and src_arch is one field short. dp4 and dp8 make the second likely.
-
-**Blocks:** Rename cannot be coded until this settles. The skeleton can be wired either way, because both sides already have a width; what it changes is which field rename READS, so a skeleton written against the wrong answer needs rework at 4a rather than now.
-
 ---
 
 ## Every channel
@@ -246,11 +230,12 @@ fet → dec · rate 8 · instruction
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
 | `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `instr` | `CCV_W_INSTR` | 48 | CCV_W_INSTR (isa) |
 | `length` | `CCV_W_ILEN` | 2 | CCV_W_ILEN (isa) |
 | `fetch_fault` | `1` | 1 | literal |
-| **total** | | **120** | |
+| **total** | | **122** | |
 
 ### `ccv_lane_rcu_res`
 
@@ -357,7 +342,7 @@ rcu → ooe · rate 4 · execution
 
 ### `ccv_rcu_miu_addr`
 
-Address operands and store data for memory operations. The widest interface in the design.
+Address operands and store data for memory operations, and active_mask: issue mask AND guard predicate, computed by RCU, the one block holding both. The widest interface in the design.
 
 rcu → miu · rate 4 · execution
 
@@ -372,7 +357,7 @@ rcu → miu · rate 4 · execution
 
 ### `ccv_miu_rcu_data`
 
-Load return data written into the register file. active_mask gates the register-file write: an inactive lane keeps its old value.
+Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value.
 
 miu → rcu · rate 4 · execution
 
@@ -552,7 +537,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names, six per cycle into the queue ahead of rename.
+Format-decoded operations with architectural register names (three sources: Format A's rs2 is an independent source, e.g. the accumulator input of mad.lo and dp4, with rd independent of it), the immediate and scale enable, six per cycle into the queue ahead of rename.
 
 dec → ooe · rate 6 · instruction
 
@@ -562,16 +547,17 @@ dec → ooe · rate 6 · instruction
 | `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `uop_class` | `CCV_L_W_CLASS` | 3 ⛔ | CCV_L_W_CLASS (preliminary, churn low) |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
-| `src_arch` | `2*CCV_W_ARCH_REG` | 8 | CCV_W_ARCH_REG (isa) |
+| `src_arch` | `3*CCV_W_ARCH_REG` | 12 | CCV_W_ARCH_REG (isa) |
 | `dst_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
 | `pred_reg` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
+| `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **128** | ⛔ 12 preliminary, ⚠️ 32 provisional |
+| **total** | | **133** | ⛔ 12 preliminary, ⚠️ 32 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
-What the scheduler selected: physical register names, opcode, element width. Four per cycle, the binding width of the machine.
+What the scheduler selected: physical register names (three sources), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.
 
 ooe → rcu · rate 4 · execution
 
@@ -579,17 +565,19 @@ ooe → rcu · rate 4 · execution
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `phys_src` | `2*CCV_P_W_PHYS_REG` | 16 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
+| `issue_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `phys_src` | `3*CCV_P_W_PHYS_REG` | 24 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_pred` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
+| `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **56** | ⛔ 9 preliminary, ⚠️ 39 provisional |
+| **total** | | **128** | ⛔ 9 preliminary, ⚠️ 79 provisional |
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. Section enables gate the narrow sub-datapaths and the SFU.
+Operands and control to one lane. pred_bit is issue mask AND guard for this lane -- the same computation as active_mask -- so a lane with pred_bit clear does nothing. Section enables gate the narrow sub-datapaths and the SFU.
 
 rcu → lane · rate 4 · execution
 
@@ -603,21 +591,23 @@ rcu → lane · rate 4 · execution
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking. active_mask is the lanes that may access memory or fault: issue mask intersected with the guard predicate.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute.
 
 ooe → miu · rate 4 · memory
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
-| `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `issue_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
+| `disp` | `CCV_W_DISP` | 16 | CCV_W_DISP (isa) |
+| `scale_en` | `1` | 1 | literal |
 | `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
 | `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
-| **total** | | **60** | ⛔ 11 preliminary, ⚠️ 10 provisional |
+| **total** | | **77** | ⛔ 11 preliminary, ⚠️ 10 provisional |
 
 ### `ccv_miu_spm_req`
 

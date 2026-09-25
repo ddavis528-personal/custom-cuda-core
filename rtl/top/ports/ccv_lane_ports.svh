@@ -16,7 +16,6 @@
   input  logic kill_valid,
   input  logic [3:0] kill_warp_mask,
   output logic kill_ack,
-  input  logic wake_req,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -26,11 +25,13 @@
   input  logic [439:0] rcu_lane_ops_payload,
   output logic [3:0] rcu_lane_ops_credit,
   output logic [3:0] rcu_lane_ops_stall,
+  input  logic rcu_lane_ops_wake,
   // lane -> rcu, 4 slot(s) x 33 bit payload
   output logic [3:0] lane_rcu_res_valid,
   output logic [131:0] lane_rcu_res_payload,
   input  logic [3:0] lane_rcu_res_credit,
-  input  logic [3:0] lane_rcu_res_stall
+  input  logic [3:0] lane_rcu_res_stall,
+  output logic lane_rcu_res_wake
 `ifdef CCV_TRACE
   , input  logic [255:0] rcu_lane_ops_tid
   , output logic [255:0] lane_rcu_res_tid

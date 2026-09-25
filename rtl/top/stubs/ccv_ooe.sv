@@ -8,7 +8,8 @@
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value.
+// specified semantics yet, so outputs sit at their inactive value:
+// sleep_ok low keeps the block's clock running.
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -27,6 +28,7 @@ module ccv_ooe (
   assign dec_ooe_uop_stall = '0;
   assign ooe_rcu_issue_valid = '0;
   assign ooe_rcu_issue_payload = '0;
+  assign ooe_rcu_issue_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_rcu_issue_tid = '0;
 `endif
@@ -34,6 +36,7 @@ module ccv_ooe (
   assign rcu_ooe_done_stall = '0;
   assign ooe_miu_memop_valid = '0;
   assign ooe_miu_memop_payload = '0;
+  assign ooe_miu_memop_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_miu_memop_tid = '0;
 `endif
@@ -41,6 +44,7 @@ module ccv_ooe (
   assign miu_ooe_cmpl_stall = '0;
   assign ooe_miu_retire_valid = '0;
   assign ooe_miu_retire_payload = '0;
+  assign ooe_miu_retire_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_miu_retire_tid = '0;
 `endif
@@ -48,6 +52,7 @@ module ccv_ooe (
   assign rau_ooe_alloc_stall = '0;
   assign ooe_rau_status_valid = '0;
   assign ooe_rau_status_payload = '0;
+  assign ooe_rau_status_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_rau_status_tid = '0;
 `endif
@@ -55,11 +60,13 @@ module ccv_ooe (
   assign rau_ooe_demote_stall = '0;
   assign ooe_rau_drained_valid = '0;
   assign ooe_rau_drained_payload = '0;
+  assign ooe_rau_drained_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_rau_drained_tid = '0;
 `endif
   assign ooe_syu_bar_valid = '0;
   assign ooe_syu_bar_payload = '0;
+  assign ooe_syu_bar_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_syu_bar_tid = '0;
 `endif
@@ -67,6 +74,7 @@ module ccv_ooe (
   assign syu_ooe_rel_stall = '0;
   assign ooe_cru_fault_valid = '0;
   assign ooe_cru_fault_payload = '0;
+  assign ooe_cru_fault_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_cru_fault_tid = '0;
 `endif

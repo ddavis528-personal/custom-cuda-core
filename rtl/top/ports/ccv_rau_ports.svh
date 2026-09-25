@@ -13,10 +13,10 @@
   input  logic clk,
   input  logic clk_free,
   input  logic rst_n,
-  input  logic kill_valid,
-  input  logic [3:0] kill_warp_mask,
-  output logic kill_ack,
-  input  logic wake_req,
+  output logic kill_valid,
+  output logic [3:0] kill_warp_mask,
+  // every block instance's kill_ack, by instance index
+  input  logic [44:0] kill_acks,
   output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
@@ -26,46 +26,55 @@
   output logic [183:0] rau_fet_launch_payload,
   input  logic rau_fet_launch_credit,
   input  logic rau_fet_launch_stall,
+  output logic rau_fet_launch_wake,
   // rau -> ooe, 1 slot(s) x 22 bit payload
   output logic rau_ooe_alloc_valid,
   output logic [21:0] rau_ooe_alloc_payload,
   input  logic rau_ooe_alloc_credit,
   input  logic rau_ooe_alloc_stall,
+  output logic rau_ooe_alloc_wake,
   // ooe -> rau, 1 slot(s) x 15 bit payload
   input  logic ooe_rau_status_valid,
   input  logic [14:0] ooe_rau_status_payload,
   output logic ooe_rau_status_credit,
   output logic ooe_rau_status_stall,
+  input  logic ooe_rau_status_wake,
   // rau -> ooe, 1 slot(s) x 6 bit payload
   output logic rau_ooe_demote_valid,
   output logic [5:0] rau_ooe_demote_payload,
   input  logic rau_ooe_demote_credit,
   input  logic rau_ooe_demote_stall,
+  output logic rau_ooe_demote_wake,
   // ooe -> rau, 1 slot(s) x 70 bit payload
   input  logic ooe_rau_drained_valid,
   input  logic [69:0] ooe_rau_drained_payload,
   output logic ooe_rau_drained_credit,
   output logic ooe_rau_drained_stall,
+  input  logic ooe_rau_drained_wake,
   // rau -> rcu, 1 slot(s) x 9 bit payload
   output logic rau_rcu_mig_valid,
   output logic [8:0] rau_rcu_mig_payload,
   input  logic rau_rcu_mig_credit,
   input  logic rau_rcu_mig_stall,
+  output logic rau_rcu_mig_wake,
   // rau -> miu, 1 slot(s) x 101 bit payload
   output logic rau_miu_cta_valid,
   output logic [100:0] rau_miu_cta_payload,
   input  logic rau_miu_cta_credit,
   input  logic rau_miu_cta_stall,
+  output logic rau_miu_cta_wake,
   // rau -> syu, 1 slot(s) x 17 bit payload
   output logic rau_syu_alloc_valid,
   output logic [16:0] rau_syu_alloc_payload,
   input  logic rau_syu_alloc_credit,
   input  logic rau_syu_alloc_stall,
+  output logic rau_syu_alloc_wake,
   // cru -> rau, 1 slot(s) x 65 bit payload
   input  logic cru_rau_cfg_valid,
   input  logic [64:0] cru_rau_cfg_payload,
   output logic cru_rau_cfg_credit,
-  output logic cru_rau_cfg_stall
+  output logic cru_rau_cfg_stall,
+  input  logic cru_rau_cfg_wake
 `ifdef CCV_TRACE
   , output logic [63:0] rau_fet_launch_tid
   , output logic [63:0] rau_ooe_alloc_tid

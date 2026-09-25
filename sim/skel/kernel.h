@@ -44,6 +44,10 @@ struct Kernel {
   ///   drop-store     MIU discards a committed store instead of writing it
   ///   corrupt-req-id the first EXB -> MLC response carries the wrong req_id,
   ///                  proving responses are matched by id, not by order
+  ///   itlb-double    FET asks for a second translation with one outstanding,
+  ///                  which the bank's outstanding checker must catch
+  ///   corrupt-disp   seq 6's displacement +4 between OOE and MIU, so the AGU
+  ///                  computes a wrong address from what it was sent
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------

@@ -408,6 +408,49 @@ SBY
     bad "formal: lockstep checker covers reachable" \
         "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
   fi
+
+  # The binding and outstanding checkers' covers, run the same way. Legal
+  # traffic by construction; the asserts must hold and every cover must be
+  # reachable, or the check could never see the case it exists for.
+  for pair in binding:b outstanding:o; do
+    chk=${pair%%:*}; dir="$TMP/f${pair#*:}"
+    mkdir -p "$dir"
+    cp rtl/ccv_assert_pkg.sv "rtl/if/ccv_${chk}_checker.sv" \
+       "test/smoke/${chk}_smoke.sv" "$dir/"
+    cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$dir/"
+    cat > "$dir/c.sby" <<SBY
+[options]
+mode cover
+depth 8
+
+[engines]
+smtbmc cvc5
+
+[script]
+read_verilog -sv -formal -I. ccv_assert_pkg.sv
+read_verilog -sv -formal -I. ccv_${chk}_checker.sv
+read_verilog -sv -formal -I. ${chk}_smoke.sv
+prep -top ${chk}_smoke
+
+[files]
+ccv_assert_pkg.sv
+ccv_${chk}_checker.sv
+${chk}_smoke.sv
+ccv_assert.svh
+ccv_if.svh
+ccv_trace.svh
+ccv_interfaces.svh
+ccv_event_ids.svh
+ccv_params_pkg.sv
+SBY
+    out=$(cd "$dir" && sby -f c.sby 2>&1)
+    if echo "$out" | grep -q "DONE (PASS"; then
+      say "formal: $chk checker covers reachable" "PASS"
+    else
+      bad "formal: $chk checker covers reachable" \
+          "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
+    fi
+  done
 else
   say "sby/yosys" "SKIP -- not installed"
 fi

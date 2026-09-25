@@ -11,11 +11,13 @@
 // The machine's real testbench is the C++ skeleton (sim/skel/).
 module tb;
   logic core_clk = 1'b0, rst_n = 1'b0;
-  logic [44:0] kill_ack, sleep_ok, csr_credit;
-  logic [1484:0] csr_rsp;
+  // The CSR owner's host side, idle.
+  logic [32:0] csr_rsp;
+  logic csr_credit;
   logic exb_ext_out_valid;
   logic [1224:0] exb_ext_out_payload;
   logic exb_ext_out_credit = '0;
+  logic exb_ext_out_wake;
 `ifdef CCV_TRACE
   logic [63:0] exb_ext_out_tid;
 `endif
@@ -24,22 +26,19 @@ module tb;
   ccv_core_top u_top (
     .core_clk(core_clk),
     .rst_n(rst_n),
-    .kill_valid(1'b0),
-    .kill_warp_mask('0),
-    .wake_req('0),
     .csr_req('0),
-    .kill_ack(kill_ack),
-    .sleep_ok(sleep_ok),
     .csr_rsp(csr_rsp),
     .csr_credit(csr_credit),
     .exb_ext_out_valid(exb_ext_out_valid),
     .exb_ext_out_payload(exb_ext_out_payload),
     .exb_ext_out_credit(exb_ext_out_credit),
     .exb_ext_out_stall('0),
+    .exb_ext_out_wake(exb_ext_out_wake),
     .ext_exb_in_valid('0),
     .ext_exb_in_payload('0),
     .ext_exb_in_credit(ext_exb_in_credit),
-    .ext_exb_in_stall(ext_exb_in_stall)
+    .ext_exb_in_stall(ext_exb_in_stall),
+    .ext_exb_in_wake(1'b0)
 `ifdef CCV_TRACE
     , .exb_ext_out_tid(exb_ext_out_tid),
       .ext_exb_in_tid('0)
