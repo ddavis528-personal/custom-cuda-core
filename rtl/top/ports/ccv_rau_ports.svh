@@ -30,9 +30,9 @@
   input  logic rau_fet_launch_credit,
   input  logic rau_fet_launch_stall,
   output logic rau_fet_launch_wake,
-  // rau -> ooe, 1 slot(s) x 22 bit payload
+  // rau -> ooe, 1 slot(s) x 59 bit payload
   output logic rau_ooe_alloc_valid,
-  output logic [21:0] rau_ooe_alloc_payload,
+  output logic [58:0] rau_ooe_alloc_payload,
   input  logic rau_ooe_alloc_credit,
   input  logic rau_ooe_alloc_stall,
   output logic rau_ooe_alloc_wake,

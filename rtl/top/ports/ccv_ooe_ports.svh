@@ -64,9 +64,9 @@
   input  logic ooe_fet_redirect_credit,
   input  logic ooe_fet_redirect_stall,
   output logic ooe_fet_redirect_wake,
-  // rau -> ooe, 1 slot(s) x 22 bit payload
+  // rau -> ooe, 1 slot(s) x 59 bit payload
   input  logic rau_ooe_alloc_valid,
-  input  logic [21:0] rau_ooe_alloc_payload,
+  input  logic [58:0] rau_ooe_alloc_payload,
   output logic rau_ooe_alloc_credit,
   output logic rau_ooe_alloc_stall,
   input  logic rau_ooe_alloc_wake,

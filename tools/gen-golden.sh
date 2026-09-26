@@ -28,7 +28,7 @@ for k in test/golden/*/; do
   k=${k%/}; name=$(basename "$k")
   [ -f "$k/kernel.cfg" ] || continue
   # kernel.cfg: SOURCE=<path in the compiler repo, or core:<path in this one>>,
-# then one poke per line.
+# an optional CTAID=<n> (ccv-sim -ctaid), then one poke per line.
   src=$(sed -n 's/^SOURCE=//p' "$k/kernel.cfg")
   # core:<path> is relative to this repo; anything else to the compiler's.
   case "$src" in
@@ -37,6 +37,8 @@ for k in test/golden/*/; do
   esac
   pokes=()
   while read -r p; do pokes+=(-poke "$p"); done < <(grep -E '^0x' "$k/kernel.cfg")
+  ctaid=$(sed -n 's/^CTAID=//p' "$k/kernel.cfg")
+  [ -n "$ctaid" ] && pokes+=(-ctaid "$ctaid")
   python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
     "$tmp/$name.bin" >/dev/null || { echo "  $name: $src did not assemble"; rc=1; continue; }
   "$C/build/ccv-sim" "$tmp/$name.bin" "${pokes[@]}" -oracle "$tmp/$name.jsonl" \

@@ -327,7 +327,7 @@
         "section_en"
       ],
       "note": "Fans out to 32 LANE instances; the payload is per-lane.",
-      "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every operation that reads lane data (Q-32). RCU executes everything that reads none -- predicate logic (pand/por/pxor), pmov, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas read lane data and run in lanes although they write predicates; pred_out and pred_result carry those back.",
+      "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.",
       "id_classes": [
         "instr"
       ],
@@ -829,9 +829,11 @@
         "warp_id",
         "prf_base",
         "prf_size",
-        "activate_or_free"
+        "activate_or_free",
+        "ctaid",
+        "warp_in_cta"
       ],
-      "doc": "The warp's physical register window, activated or freed.",
+      "doc": "The warp's physical register window, activated or freed, and its identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38). Promotion re-sends this message, so identity arrives with every activation. RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.",
       "id_classes": [
         "none"
       ]
@@ -1215,6 +1217,8 @@
     "prf_base": "CCV_L_W_PRF_BASE",
     "prf_size": "CCV_L_W_PRF_SIZE",
     "bank_select": "CCV_L_W_PCA_BANK",
+    "ctaid": "CCV_W_CTAID",
+    "warp_in_cta": "CCV_W_WARP_IN_CTA",
     "row_idx": "CCV_W_ARCH_REG",
     "operand": "CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA",
     "index_per_lane": "CCV_W_DATA",

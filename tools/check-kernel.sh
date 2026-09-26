@@ -23,8 +23,12 @@
 #   a guarded compare writes a predicate      conflate-pred: the next guard
 #     other than its guard (pguard, Q-21)        is wrong at the lanes, and
 #                                                P0 and P1 both end wrong
-#   every op on the right side of the         drop-q38-exception: exactly the
-#     lane-data rule (Q-32)                      movi/movi48/srd lanes fail it
+#   every op on its side of the rule (Q-32)   movi-in-lane: the lanes refuse
+#                                                movi48 and movi
+#   srd's value from OOE's identity (Q-38)    corrupt-ctaid (srd kernel): the
+#                                                lanes' srd result is wrong
+#   an unallocated srd selector faults        srd-selector: DEC's range check
+#                                                names it; nothing retires it
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -178,26 +182,26 @@ else
   bad "--break corrupt-echo" "a wrong echoed destination went unnoticed"
 fi
 
-# The lane-data rule (Q-32) is checked on every op, with one pending
-# exception (Q-38): movi, movi48 and srd read no lane data but are built in
-# the lane. Without the exception, exactly those ops must fail it, on every
-# lane -- and nothing else may, or the rule check is wrong about an op.
-run drop-q38-exception
-want=$(python3 - "$K" <<'PY'
-import json, sys
-n = 0
-for l in open(sys.argv[1]):
-    r = json.loads(l)
-    n += r.get("op") in ("MOVI", "MOVI48", "SRD")
-print(32 * n)
-PY
-)
-got=$(field "$B/kernel_drop-q38-exception.log" check_failures)
-if [ "$got" = "$want" ] && [ "$want" -gt 0 ] &&
-   ! grep "^CHECK" "$B/kernel_drop-q38-exception.log" | grep -qv "reads no lane data"; then
-  say "--break drop-q38-exception: exactly Q-38's ops" "PASS ($got lane checks)"
+# Where each op executes (Q-32, Q-38) is checked on every op. movi and
+# movi48 have no per-lane input, so RCU writes their immediate itself; sent
+# to the lanes instead, every lane must refuse both, and nothing else fails.
+run movi-in-lane
+if [ "$(field "$B/kernel_movi-in-lane.log" check_failures)" = 64 ] &&
+   ! grep "^CHECK" "$B/kernel_movi-in-lane.log" | grep -qv "MOVI48\|MOVI "; then
+  say "--break movi-in-lane: the lanes refuse it" "PASS"
 else
-  bad "--break drop-q38-exception" "check_failures=$got, want $want, all from the lane-data rule"
+  bad "--break movi-in-lane" "check_failures=$(field "$B/kernel_movi-in-lane.log" check_failures), want 64 from movi and movi48 alone"
+fi
+
+# srd's selector is a legal field that can hold an unallocated value: DEC's
+# range check, a separate obligation from the reserved-field zero checks,
+# must name it, and the instruction must not retire.
+run srd-selector
+if grep -q "^CHECK dec: seq 2 srd selector 2 is unallocated" "$B/kernel_srd-selector.log" &&
+   [ "$(field "$B/kernel_srd-selector.log" retired)" != 17 ]; then
+  say "--break srd-selector: DEC's range check" "PASS"
+else
+  bad "--break srd-selector" "an unallocated selector decoded"
 fi
 
 # -- sel: a predicate read as DATA by the lane ------------------------------
@@ -219,6 +223,27 @@ if grep -q "^CHECK lane 0: seq 5 pred_data (sel's selector) wrong" "$B/kernel_dr
   say "--break drop-pred-data: sel's lanes reject it" "PASS"
 else
   bad "--break drop-pred-data" "a missing selector went unnoticed"
+fi
+
+# -- srd: identity from OOE, at a non-zero CTA index (Q-38) ----------------
+# OOE puts srd's value in the immediate from its shadow of RAU's table; the
+# lane ORs its index in for %ctatid. CTA 7, so %ctaid is visible.
+D=test/golden/srd/oracle.jsonl
+"$SKEL" --kernel "$D" >"$B/kernel_srd.log" 2>&1
+ok=1
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$B/kernel_srd.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
+done
+if [ $ok = 1 ]; then
+  say "srd: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_srd.log" cycles) cycles)"
+else
+  bad "srd: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_srd.log")"
+fi
+"$SKEL" --kernel "$D" --break corrupt-ctaid >"$B/kernel_corrupt-ctaid.log" 2>&1
+if grep -q "^CHECK lane [0-9]*: seq 2 srd 8, oracle 7" "$B/kernel_corrupt-ctaid.log"; then
+  say "--break corrupt-ctaid: srd's lanes reject it" "PASS"
+else
+  bad "--break corrupt-ctaid" "a wrong CTA index reached a register unnoticed"
 fi
 
 # -- pguard: a guard and a predicate destination that differ (Q-21) --------

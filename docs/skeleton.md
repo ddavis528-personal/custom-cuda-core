@@ -379,7 +379,7 @@ completion in **365 cycles** on functional stubs behind the same ports the S0
 exerciser used, with the checker bank judging every slot. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
-violations, and the bank's 573 `EV_CH_XFER` events matching every launch
+violations, and the bank's 509 `EV_CH_XFER` events matching every launch
 exactly. It carries traffic on 26 of the 46 channels; the 20 idle ones are
 SPM, barriers, migration (both pairs and its command and done), probes, faults and branch redirect
 (vadd's one branch is never taken), none of which vadd reaches.
@@ -700,6 +700,57 @@ The first round against the numbered register ([`open-items.md`](open-items.md))
     is the sender, of both the GPR rows and the PC groups, and no channel
     tells it which warp to send. PCA also never sees `bank_select`.
 
+### Skeleton review response 5 (2026-09-25), as built
+
+The `srd` response: Q-38 closed, and Q-32's rule amended.
+
+- **The rule, amended:** the lane executes anything whose result differs per
+  lane; RCU executes what is warp-uniform, plus the horizontal ops. "Reads
+  lane data" meant register reads, and taken literally it sent `srd` to RCU.
+  How the stubs check it, and a wording question it raises, is Q-40.
+- **`movi` and `movi48` execute in RCU.** RCU writes the immediate into the
+  register file on the issue-mask lanes and checks it against ccv-sim, with
+  no lane round trip. That takes vadd from 573 channel transfers to 509.
+  `--break movi-in-lane` sends them to the lanes instead, and every lane must
+  refuse both.
+- **`srd` stays in the lane, with its value from OOE.** Lane identity is
+  wiring: each lane knows its index as a constant.
+  - The warp-level part is identity RAU already holds. It arrives on
+    `ccv_rau_ooe_alloc` (`ctaid`, 32 bits; `warp_in_cta`, 5), which promotion
+    re-sends.
+  - OOE substitutes it into the immediate at issue: `warp_in_cta << 5` for
+    `%ctatid`, `%ctaid` itself for selector 1.
+  - The lane ORs its index in for selector 0, with no adder since the low
+    five bits are zero, and passes selector 1 through.
+  - **The lane's selector is a stated choice: two opcodes, not a bit.** DEC
+    decodes the selector once, and every later block keys off the opcode:
+    OOE to pick the identity, the lane to pick OR or pass-through. A bit on
+    `rcu_lane_ops` would also have needed one on the issue, since the
+    immediate no longer holds the selector by the time RCU sees it.
+  - The lane computes `srd`'s result and checks it against ccv-sim. It is the
+    first lane result the machine computes rather than takes from the
+    record.
+  - A fourth kernel, `test/golden/srd/`, runs at CTA 7, since every other
+    kernel runs CTA 0, where a missing `%ctaid` reads as right.
+    `--break corrupt-ctaid` sends OOE ctaid + 1, and the lanes' result is
+    rejected. (`warp_in_cta` is always 0 here: the skeleton runs one warp.)
+- **DEC's selector check is its own obligation** (`params/blocks.json`).
+  Selectors 2–15 are a legal field holding an unallocated value, a range
+  comparison beside the reserved-field zero checks. `--break srd-selector`
+  must be named by it, and the instruction must not retire.
+- **`CCV_P_W_IMM`'s floor is 32, set by `%ctaid`,** and recorded where the
+  width is declared. The same goes for `CCV_W_CTAID` and
+  `CCV_W_WARP_IN_CTA`.
+- **The compiler's obligations are in the compiler repo.**
+  - **The narrow-destination refusal is compiler F-145.** It already held
+    structurally, and now a named error refuses any change that breaks it.
+    A mutation test proves the refusal fires.
+  - **Rematerialization is compiler F-146, and it did not happen.** `srd`
+    has no pattern, so TableGen inferred side effects and vetoed remat, and
+    `sgemm` spills `%ctatid`. Making it real is a trade: `sgemm` 4×4 gains,
+    but `igemm` 1×1 picks up a 14-`mov` rotation in its loop. So it's left
+    as an open choice with the numbers.
+
 ### S1 wire conventions (placeholders)
 
 These are encodings the payload spec leaves to each block's owner. They are
@@ -710,10 +761,11 @@ decisions.
 |---|---|
 | `fet_dec_instr.length` | 0/1/2 = 2/4/6 bytes; `instr` little-endian bytes |
 | `fet_dec_instr` slots | warp *w* is tier-1 stream *w*: binding group *w*, age = slot order |
-| `dec_ooe_uop.opcode` | skeleton-local table, 1..11 for vadd's ops (0 reserved) |
+| `dec_ooe_uop.opcode` | skeleton-local table (0 reserved); `srd` decodes to one opcode per allocated selector |
 | `dec_ooe_uop.src_arch`, `src2_arch` | `[7:4]` src0, `[3:0]` src1; the third source in `src2_arch` |
 | `dec_ooe_uop.pred_guard`, `pred_neg`, `pred_dst`, `pred_we` | the guard's index and negate (from the qualifier; sel's selector too); the predicate destination, valid when `pred_we` |
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its byte offset from its own pc (DEC folds in the length). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
+| `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Rename is `prf_base + arch` (no renaming yet) |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
@@ -744,7 +796,7 @@ Seven of the twelve schema events:
 
 | Event | Emitted by | vadd count |
 |---|---|---|
-| `EV_CH_XFER` | the checker bank, every transfer | 573 |
+| `EV_CH_XFER` | the checker bank, every transfer | 509 |
 | `EV_DECODE` | DEC | 17 |
 | `EV_DISPATCH` | OOE, ROB allocation | 17 |
 | `EV_ISSUE` | OOE (`C_EXIT` isn't issued) | 16 |

@@ -44,7 +44,7 @@
     { "letter": "f", "name": "fet",  "module": "ccv_fetch",  "instances": 1,
       "doc": "Fetch, L1 I-cache, ITLB, length decode and align." },
     { "letter": "d", "name": "dec",  "module": "ccv_decode", "instances": 1,
-      "doc": "Format decode, reserved-field checks, 6-wide output." },
+      "doc": "Format decode, 6-wide output, and two separate illegal-instruction obligations: reserved fields must be zero, and a legal field must not hold an unallocated value (srd selectors 2-15). The second is a range comparison, not a zero comparison, so allocating a selector later is a one-line change to a named check." },
     { "letter": "q", "name": "ooe",  "module": "ccv_ooe",    "instances": 1,
       "doc": "RAT, free list, RS, 4 ROBs, scheduler, wakeup/select, squash, demotion trigger. Most-connected block, and first in the risk-first build order." },
     { "letter": "r", "name": "rcu",  "module": "ccv_rcu",    "instances": 1,

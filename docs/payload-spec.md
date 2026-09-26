@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 8 | 24 |
 | ⚠️ Some provisional | 15 | 61 |
-| ⛔ Some preliminary | 23 | 119 |
-| **Total** | **46** | **204** |
+| ⛔ Some preliminary | 23 | 121 |
+| **Total** | **46** | **206** |
 
 ## What still has to be decided
 
@@ -558,7 +558,7 @@ ooe → rcu · rate 4 · execution
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every operation that reads lane data (Q-32). RCU executes everything that reads none -- predicate logic (pand/por/pxor), pmov, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas read lane data and run in lanes although they write predicates; pred_out and pred_result carry those back.
+Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.
 
 rcu → lane · rate 4 · execution
 
@@ -727,7 +727,7 @@ rau → fet · rate 1 · control
 
 ### `ccv_rau_ooe_alloc`
 
-The warp's physical register window, activated or freed.
+The warp's physical register window, activated or freed, and its identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38). Promotion re-sends this message, so identity arrives with every activation. RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.
 
 rau → ooe · rate 1 · control
 
@@ -737,7 +737,9 @@ rau → ooe · rate 1 · control
 | `prf_base` | `CCV_L_W_PRF_BASE` | 8 ⛔ | CCV_L_W_PRF_BASE (preliminary, churn med) |
 | `prf_size` | `CCV_L_W_PRF_SIZE` | 8 ⛔ | CCV_L_W_PRF_SIZE (preliminary, churn med) |
 | `activate_or_free` | `1` | 1 | literal |
-| **total** | | **22** | ⛔ 16 preliminary |
+| `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
+| `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
+| **total** | | **59** | ⛔ 16 preliminary |
 
 ### `ccv_rau_rcu_mig`
 

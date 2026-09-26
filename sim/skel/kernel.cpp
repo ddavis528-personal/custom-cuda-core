@@ -140,7 +140,7 @@ void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
 // The skeleton's decoder: an opcode per operation vadd uses, and the operand
 // shape rename and register read need. Opcode values are skeleton-local
 // (payload spec: opcode is 9 bits, preliminary) -- 0 is reserved.
-enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic };
+enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm };
 struct OpInfo {
   const char *name;
   UopClass cls;
@@ -155,28 +155,33 @@ struct OpInfo {
   // none. disp/scale go to MIU's AGU on the memop; alu goes to RCU on the
   // issue, which substitutes it into operand slot `imm_slot`.
   int8_t disp_imm, scale_imm, alu_imm, imm_slot;
+  // srd: the selector this opcode decodes from, and whether the lane ORs its
+  // own index into the operand. The selector is decoded once, by DEC, into
+  // one of two opcodes: OOE picks the identity by opcode, and the lane picks
+  // OR or pass-through by opcode, so no field carries it past decode.
+  int8_t srd_sel = -1;
+  bool or_lane = false;
 };
-// Where each executes (Q-32): the lane executes anything that reads lane
-// data; RCU executes everything that reads none -- predicate logic, pmov,
-// branch resolution -- plus the ops that move data horizontally between
-// lanes (shfl, vote, ballot, unballot). setp, add.pp and cas read lane data
-// and run in the lane although they write predicates; sel reads lane data
-// and a predicate, and runs in the lane too. Memory ops go to MIU.
-bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch; }
-/// Reads lane data: a GPR source. The one test the rule turns on.
-bool readsLaneData(const Record &r) { return !r.gprUses().empty(); }
-/// Q-38: movi, movi48 and srd read no lane data, so the rule puts them in
-/// RCU, but S1 built them in the lane before the rule existed. They are the
-/// one pending exception, listed here so every other op is held to the rule.
-bool pendingQ38(const OpInfo *op) {
-  return !std::strcmp(op->name, "MOVI") || !std::strcmp(op->name, "MOVI48") ||
-         !std::strcmp(op->name, "SRD");
+// Where each executes (Q-32, Q-38): the lane executes any opcode with a
+// per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
+// the opcodes whose inputs are all warp-level -- the predicate file, an
+// immediate: predicate logic, pmov, movi, movi48, branch resolution -- plus
+// the ops that move data horizontally between lanes. setp, add.pp, cas and
+// sel run in the lane although they touch predicates. srd stays in the lane
+// whole: selector 1 is warp-uniform, but splitting one opcode across two
+// blocks to save an operand trip on a prologue instruction is a bad trade.
+// Memory ops go to MIU.
+bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch || c == kImm; }
+/// A per-lane input: a GPR source, or the lane's own index.
+bool perLaneInput(const OpInfo *op, const Record &r) {
+  return !r.gprUses().empty() || op->srd_sel >= 0;
 }
 constexpr OpInfo kOps[] = {
   //                            nsrc gdst  pread  pwrite guard  pdata  base idx data disp scl alu slot
   {"POR",           kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"MOVI48",        kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
-  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  {"MOVI48",        kImm,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  // srd #0 (%ctatid): the immediate is warp_base, and the lane ORs its index.
+  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 0, true},
   {"LD_GLOBAL",     kLoad,      1, true,  false, false, false, false,  0, -1, -1,  0, -1, -1, -1},
   {"MADLO",         kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"SETP_LT",       kAlu,       2, false, true,  true,  true,  false, -1, -1, -1, -1, -1, -1, -1},
@@ -185,17 +190,24 @@ constexpr OpInfo kOps[] = {
   {"C_ADD",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
   {"C_EXIT",        kExit,      0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
-  {"MOVI",          kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
+  {"MOVI",          kImm,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
   // sel's qualifier is DATA: every issue-mask lane writes rd, choosing rs0 or
   // rs1 by it. So no enable narrowing, and the predicate rides as pred_data.
   // (Format A always encodes rs2; the sel kernel names R2 for it, which the
   // oracle folds into the rs1 use.)
   {"SEL",           kAlu,       2, true,  true,  false, false, true,  -1, -1, -1, -1, -1, -1, -1},
+  // srd #1 (%ctaid): the immediate is the value; the lane passes it through.
+  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 1, false},
 };
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
 const OpInfo *opByName(const std::string &n) {
   for (const OpInfo &o : kOps) if (n == o.name) return &o;
+  return nullptr;
+}
+/// srd's opcode for a selector, or null: 2-15 are unallocated.
+const OpInfo *srdBySel(int64_t sel) {
+  for (const OpInfo &o : kOps) if (o.srd_sel >= 0 && o.srd_sel == sel) return &o;
   return nullptr;
 }
 const OpInfo *opByCode(unsigned c) {
@@ -992,11 +1004,10 @@ private:
           const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
           if (op && inRcu(op->cls))
             k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
-          if (op && !readsLaneData(*rc) &&
-              (!pendingQ38(op) || k_.brk == "drop-q38-exception"))
-            k_.fail("lane %u: %s reads no lane data; RCU executes it (Q-32)",
+          if (op && !perLaneInput(op, *rc))
+            k_.fail("lane %u: %s has no per-lane input; RCU executes it (Q-32)",
                     lane_, op->name);
-          if (op != opByName(rc->op))
+          if (!op || rc->op != op->name)
             k_.fail("lane %u: seq %llu opcode is not %s", lane_,
                     (unsigned long long)rc->seq, rc->op.c_str());
           // Operands: what RCU read out of its register file.
@@ -1009,8 +1020,11 @@ private:
                       lane_, (unsigned long long)rc->seq, i, g[i]->idx, got,
                       g[i]->v[lane_]);
           }
-          // An immediate RCU substituted into its operand slot.
-          if (op && op->alu_imm >= 0 && size_t(op->alu_imm) < rc->imms.size()) {
+          // An immediate RCU substituted into its operand slot. srd's is
+          // identity from OOE rather than the encoded selector, and its
+          // check is the lane's own result check below.
+          if (op && op->alu_imm >= 0 && op->srd_sel < 0 &&
+              size_t(op->alu_imm) < rc->imms.size()) {
             const uint32_t got = uint32_t(m.payload.get(
                 field(c.rcu_lane, "operand").lsb + 32 * unsigned(op->imm_slot), 32));
             if (got != uint32_t(rc->imms[op->alu_imm]))
@@ -1029,8 +1043,21 @@ private:
           if ((get(m.payload, c.rcu_lane, "pred_bit") != 0) != want)
             k_.fail("lane %u: seq %llu pred_bit is not issue mask AND guard",
                     lane_, (unsigned long long)rc->seq);
-          // The result: what ccv-sim computed (the "what", §1).
-          if (const RegVal *d = rc->gprDef()) put(r, c.lane_rcu, "result", d->v[lane_]);
+          // The result: what ccv-sim computed (the "what", §1) -- except
+          // srd's, which the lane computes: the immediate RCU substituted,
+          // with the lane's hardwired index ORed in for %ctatid. OOE's
+          // identity, not the oracle, supplies the value.
+          if (const RegVal *d = rc->gprDef()) {
+            uint32_t v = d->v[lane_];
+            if (op && op->srd_sel >= 0) {
+              const uint32_t o0 = uint32_t(m.payload.get(field(c.rcu_lane, "operand").lsb, 32));
+              v = op->or_lane ? (o0 | lane_) : o0;
+              if (v != d->v[lane_])
+                k_.fail("lane %u: seq %llu srd %u, oracle %u", lane_,
+                        (unsigned long long)rc->seq, v, d->v[lane_]);
+            }
+            put(r, c.lane_rcu, "result", v);
+          }
           if (const RegVal *d = rc->predDef())
             put(r, c.lane_rcu, "pred_out", (d->p >> lane_) & 1u);
           // A predicate read as DATA (sel's selector), negate applied.
@@ -1169,12 +1196,29 @@ private:
     const uint32_t active = issue & (op->guard ? guard : 0xffffffffu);
     const uint32_t imm0 = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
 
-    // An op RCU executes must read no lane data: RCU has the register file,
-    // but a GPR read is the lanes' work (Q-32).
+    // An op RCU executes must have no per-lane input: RCU has the register
+    // file, but per-lane work is the lanes' (Q-32).
     if (inRcu(op->cls))
       if (const Record *r = rec(m.tid, "rcu"))
-        if (readsLaneData(*r))
-          k_.fail("rcu: %s reads lane data; the lane executes it (Q-32)", op->name);
+        if (perLaneInput(op, *r))
+          k_.fail("rcu: %s has a per-lane input; the lane executes it (Q-32)", op->name);
+    // An immediate move is warp-level: RCU writes the immediate straight into
+    // the register file on the issue-mask lanes, with no lane round trip.
+    // (--break movi-in-lane sends it to the lanes instead, which must refuse.)
+    if (op->cls == kImm && k_.brk != "movi-in-lane") {
+      for (unsigned l = 0; l != kLanes; ++l)
+        if ((active >> l) & 1u) k_.gpr[pd][l] = imm0;
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (const RegVal *d = r->gprDef())
+          for (unsigned l = 0; l != kLanes; ++l)
+            if (((active >> l) & 1u) && k_.gpr[pd][l] != d->v[l]) {
+              k_.fail("rcu: seq %llu R%u lane %u = %08x, oracle %08x",
+                      (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
+              break;
+            }
+      to_ooe_.push_back({s, done(tag), m.tid});
+      return;
+    }
     // Predicate logic executes HERE, beside the predicate file, and never
     // reaches a lane (O-33's second obligation; round 16). Sources are two
     // qualifiers in imm: [2:0] ps0, [5:3] ps1, each [1:0] index + [2] negate.
@@ -1289,6 +1333,8 @@ private:
   std::deque<E> rob_;
   unsigned next_tag_ = 0;
   unsigned prf_base_[32] = {};
+  // Identity, shadowed from RAU's table on every activation (Q-38).
+  uint32_t ctaid_[32] = {}, warp_in_cta_[32] = {};
   static constexpr unsigned kRob = 128;
 
   void work() override {
@@ -1297,6 +1343,8 @@ private:
       Receiver::Msg m = take(c.rau_ooe, 0);
       const unsigned w = unsigned(get(m.payload, c.rau_ooe, "warp_id"));
       prf_base_[w] = unsigned(get(m.payload, c.rau_ooe, "prf_base"));
+      ctaid_[w] = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
+      warp_in_cta_[w] = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
       if (w == 0) k_.prf_base = prf_base_[w];
     }
     // Uops: oldest first by (arrival, slot) -- all landed this cycle, so slot
@@ -1429,7 +1477,13 @@ private:
     put(is, c.ooe_rcu, "issue_mask", issue_mask);
     put(is, c.ooe_rcu, "phys_src", ((pb + e.src[0]) << 8) | (pb + e.src[1]));
     put(is, c.ooe_rcu, "phys_src2", pb + e.src[2]);
-    if (!mem) put(is, c.ooe_rcu, "imm", e.imm);
+    // srd's value is identity, which OOE holds, so it goes in the immediate
+    // here and RCU substitutes it like any other: warp_base for %ctatid
+    // (the lane ORs its index in), %ctaid itself for selector 1.
+    uint32_t imm = e.imm;
+    if (e.op->srd_sel >= 0)
+      imm = e.op->or_lane ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
+    if (!mem) put(is, c.ooe_rcu, "imm", imm);
     put(is, c.ooe_rcu, "phys_dst", pb + e.dst);
     put(is, c.ooe_rcu, "phys_pred_guard", physPred(e.warp, e.pguard));
     put(is, c.ooe_rcu, "phys_pred_dst", physPred(e.warp, e.pdst));
@@ -1530,6 +1584,25 @@ private:
     // Decode itself is the oracle's: which registers the instruction reads
     // and writes. The table checks the record has the shape the uop can hold.
     const OpInfo *op = opByName(r->op);
+    // DEC's second illegal-instruction obligation, separate from the
+    // reserved-field zero checks: srd's selector is a legal field that may
+    // hold an unallocated value, so this is a range comparison. Allocating
+    // selector 2 later is one line here.
+    if (op && op->srd_sel >= 0) {
+      const int64_t sel = (r->imms.empty() ? 0 : r->imms[0]) +
+                          (k_.brk == "srd-selector" ? 2 : 0);
+      op = srdBySel(sel);
+      if (!op) {
+        k_.fail("dec: seq %llu srd selector %lld is unallocated (a legal field, "
+                "an illegal value)", (unsigned long long)r->seq, (long long)sel);
+        Bits u = msgOf(c.dec_ooe);
+        put(u, c.dec_ooe, "warp_id", get(f, c.fet_dec, "warp_id"));
+        put(u, c.dec_ooe, "pc", pc);
+        put(u, c.dec_ooe, "decode_fault", 1);
+        q_.push_back({u, m.tid});
+        return;
+      }
+    }
     Bits u = msgOf(c.dec_ooe);
     put(u, c.dec_ooe, "warp_id", get(f, c.fet_dec, "warp_id"));
     put(u, c.dec_ooe, "pc", pc);
@@ -1769,6 +1842,9 @@ private:
       put(a, c.rau_ooe, "prf_base", 0);
       put(a, c.rau_ooe, "prf_size", kArchGprs);
       put(a, c.rau_ooe, "activate_or_free", 1);
+      // Identity from RAU's warp-to-CTA table: one warp, warp 0 of its CTA.
+      put(a, c.rau_ooe, "ctaid", k_.orc.ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
+      put(a, c.rau_ooe, "warp_in_cta", 0);
       send(c.rau_ooe, 0, a, none);
       alloc_ = true;
     }

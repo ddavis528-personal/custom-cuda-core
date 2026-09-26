@@ -358,7 +358,7 @@ module ccv_core_top (
 `endif
   // ccv_rau_ooe_alloc: rau -> ooe, 1 copy x 1 slot
   logic rau_ooe_alloc_valid;
-  logic [21:0] rau_ooe_alloc_payload;
+  logic [58:0] rau_ooe_alloc_payload;
   logic rau_ooe_alloc_credit;
   logic rau_ooe_alloc_stall;
   logic rau_ooe_alloc_wake;

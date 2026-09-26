@@ -54,8 +54,12 @@ struct Kernel {
   ///                  selector (run on the sel kernel)
   ///   corrupt-echo   MIU echoes phys_dst + 1 for seq 12's load, so a stateless
   ///                  RCU writes a[i] into R9 instead of R8
-  ///   drop-q38-exception  the lanes stop excusing movi, movi48 and srd from
-  ///                  the lane-data rule (Q-32), so exactly those must fail it
+  ///   movi-in-lane   RCU forwards movi/movi48 to the lanes instead of writing
+  ///                  the immediate itself; the lanes must refuse them (Q-38)
+  ///   srd-selector   DEC reads srd's selector as 2, which is unallocated; its
+  ///                  range check, not the zero checks, must catch it
+  ///   corrupt-ctaid  RAU sends OOE ctaid + 1, so srd #1's lanes compute a
+  ///                  value the oracle disagrees with (run on the srd kernel)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
   ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
   std::string brk = "none";
