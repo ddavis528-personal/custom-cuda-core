@@ -60,6 +60,10 @@ struct Kernel {
   ///                  range check, not the zero checks, must catch it
   ///   corrupt-ctaid  RAU sends OOE ctaid + 1, so srd #1's lanes compute a
   ///                  value the oracle disagrees with (run on the srd kernel)
+  ///   late-lead      the lane mask is driven with the operands instead of with
+  ///                  valid, so each lane takes a stale mask (Q-40)
+  ///   ignore-mask    RCU writes back every lane, including those the mask
+  ///                  switched off, whose outputs are poison (pguard kernel)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
   ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
   std::string brk = "none";

@@ -48,7 +48,12 @@ module ccv_credit_checker #(
   // The memory path needs CCV_P_TIMEOUT_MEM instead -- it must exceed
   // worst-case DRAM latency, which the local number does not.
   parameter int TIMEOUT_N  = ccv_prov_pkg::CCV_P_TIMEOUT_N,
-  parameter int CHANNEL    = 0           // CCV_CH_* from the generated header
+  parameter int CHANNEL    = 0,          // CCV_CH_* from the generated header
+  // Payload bits that LEAD: driven with valid, one cycle ahead of the rest of
+  // the payload, in the same register (schema lead_fields). The lane mask is
+  // the case -- it gates a lane before the operands it gates arrive. Zero on
+  // every channel without lead fields, which makes the property vacuous.
+  parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0
 ) (
   input logic                  clk,
   input logic                  rst_n,
@@ -221,6 +226,13 @@ module ccv_credit_checker #(
   `CCV_CONTRACT_M(MODE, payload_known_when_due,
                   !valid_q || !$isunknown(ch_payload))
 
+  // Lead fields are due WITH valid, not after it: a receiver acts on them in
+  // the valid cycle (a lane gates itself on its mask before its operands
+  // land). Like payload_known_when_due, only a four-state simulator or formal
+  // can see it fail.
+  `CCV_CONTRACT_M(MODE, lead_known_at_valid,
+                  !ch_valid || !$isunknown(ch_payload & LEAD_MASK))
+
   // -- bounded response, standing in for liveness -------------------------
   // s_eventually does not exist on this toolchain (F-2), so "eventually
   // answered" cannot be stated. This bounds the wait instead: strictly
@@ -257,16 +269,28 @@ module ccv_credit_checker #(
   // The schema names EV_CH_XFER's fields channel_id, payload_lo, payload_hi;
   // the hi half was emitted as a constant 0 until the skeleton put real
   // payloads through, so it is filled here for every width.
+  //
+  // The MESSAGE, not the wire: a lead slice is taken in the valid cycle, as
+  // the receiver takes it, because by the time the rest of the payload lands
+  // the wire's lead slice may already belong to the next message.
+  // Only the bits the event carries are rebuilt.
+  localparam int EW = (PAYLOAD_W < 64) ? PAYLOAD_W : 64;
+  logic [EW-1:0] lead_q;
+  always_ff @(posedge clk) begin
+    if (ch_valid) lead_q <= ch_payload[EW-1:0] & LEAD_MASK[EW-1:0];
+  end
+  wire [EW-1:0] msg = (ch_payload[EW-1:0] & ~LEAD_MASK[EW-1:0]) | lead_q;
+
   logic [31:0] pl_lo, pl_hi;
   if (PAYLOAD_W <= 32) begin : g_narrow
-    assign pl_lo = 32'(ch_payload);
+    assign pl_lo = 32'(msg);
     assign pl_hi = '0;
   end else if (PAYLOAD_W < 64) begin : g_mid
-    assign pl_lo = ch_payload[31:0];
-    assign pl_hi = 32'(ch_payload[PAYLOAD_W-1:32]);
+    assign pl_lo = msg[31:0];
+    assign pl_hi = 32'(msg[EW-1:32]);
   end else begin : g_wide
-    assign pl_lo = ch_payload[31:0];
-    assign pl_hi = ch_payload[63:32];
+    assign pl_lo = msg[31:0];
+    assign pl_hi = msg[63:32];
   end
 
   // The event's instr_uid is the message's trace identity. It used to be the

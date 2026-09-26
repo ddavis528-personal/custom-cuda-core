@@ -20,6 +20,13 @@
 //     valid launched for next cycle (test/smoke/credit_smoke.sv used a
 //     registered stall, one cycle late, and violated this at 14 of 28 phases)
 //   - the receiver returns one credit per message it consumes
+//   - LEAD fields (schema lead_fields) are the exception to "the payload
+//     follows valid": that slice of the same register is written with valid.
+//     On the wire it carries the lead of the message whose valid is up, while
+//     the rest carries the previous message's payload; the receiver takes the
+//     lead in the valid cycle and puts the message back together when the
+//     rest lands. The lane mask is why (Q-40): a lane gates itself before
+//     the operands it gates arrive.
 //
 // A slot is one of `rate` independent credited channels -- decided
 // (interface decisions, 2026-09-24): the permissive superset, tightened per
@@ -48,7 +55,16 @@ struct SlotSignals {
 
 struct Slot {
   SlotSignals cur, nxt;
-  explicit Slot(uint32_t bits) { cur.payload = nxt.payload = Bits(bits); }
+  Bits lead_mask;        ///< payload bits driven with valid; empty if none
+  bool has_lead = false;
+  /// Negative control (--break late-lead): the lead is driven with the rest
+  /// of the payload, a cycle late, while the receiver still takes it with
+  /// valid. Nothing in a real run sets it.
+  bool late_lead = false;
+  explicit Slot(uint32_t bits, const Bits &lead = Bits())
+      : lead_mask(lead.size() ? lead : Bits(bits)), has_lead(lead.any()) {
+    cur.payload = nxt.payload = Bits(bits);
+  }
 
   /// Start of a cycle. The payload register HOLDS unless its producer writes
   /// it; the pulse signals are rewritten by their drivers every cycle.
@@ -89,6 +105,10 @@ public:
     if (go) {
       promised_ = msg;
       promised_tid_ = tid;
+      // The lead goes out WITH valid, into the same register, over whatever
+      // the previous message's payload left in the rest of it.
+      if (s_.has_lead && !s_.late_lead)
+        s_.nxt.payload.mergeFrom(msg, s_.lead_mask);
     }
     // Same accounting as the RTL reference: a credit arriving this cycle is
     // not usable for a launch decided this cycle.
@@ -136,7 +156,14 @@ public:
   /// that lands this cycle.
   void cycle(uint64_t now) {
     if (landing_) {
-      buf_.push_back({s_.cur.payload, s_.cur.tid, now});
+      Bits p = s_.cur.payload;
+      // The lead was taken off the wire in the valid cycle; the wire's lead
+      // slice now belongs to the NEXT message.
+      if (s_.has_lead) {
+        p.mergeFrom(leads_.front(), s_.lead_mask);
+        leads_.pop_front();
+      }
+      buf_.push_back({p, s_.cur.tid, now});
       // Credits bound what can be outstanding, so this cannot overflow if
       // the sender is correct. Checked here as well as by the checker bank:
       // two witnesses, and this one does not depend on the bank being wired.
@@ -144,6 +171,8 @@ public:
         ++overflows_;
     }
     landing_ = s_.cur.valid;
+    if (s_.has_lead && s_.cur.valid)
+      leads_.push_back(s_.cur.payload);
   }
 
   bool empty() const { return buf_.empty(); }
@@ -171,6 +200,7 @@ private:
   Slot &s_;
   unsigned depth_;
   std::deque<Msg> buf_;
+  std::deque<Bits> leads_;   ///< lead slices taken in valid cycles, in order
   bool landing_ = false;
   uint64_t received_ = 0, overflows_ = 0;
 };

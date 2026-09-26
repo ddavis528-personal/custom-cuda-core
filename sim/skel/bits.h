@@ -52,6 +52,15 @@ public:
       setBit(lsb + k, (v >> k) & 1u);
   }
 
+  /// Take `src`'s bits where `mask` is set, keep this one's elsewhere.
+  void mergeFrom(const Bits &src, const Bits &mask) {
+    for (size_t i = 0; i != w_.size(); ++i)
+      w_[i] = (w_[i] & ~mask.w_[i]) | (src.w_[i] & mask.w_[i]);
+  }
+  bool any() const {
+    for (uint64_t x : w_) if (x) return true;
+    return false;
+  }
   bool operator==(const Bits &o) const { return n_ == o.n_ && w_ == o.w_; }
   bool operator!=(const Bits &o) const { return !(*this == o); }
 

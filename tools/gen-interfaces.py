@@ -165,10 +165,15 @@ def gen_sv(d, blocks, pp):
         if not f:
             continue
         nm = c["name"][4:]
+        lead = set(c.get("lead_fields", []))
+        if lead:
+            L.append("// LEAD fields are driven with valid, one cycle ahead of the")
+            L.append("// rest of the payload (schema lead_fields).")
         L.append("typedef struct packed {")
         for fld, w in f:
             ww = "logic" if w == "1" else "logic [%s-1:0]" % qualify(w)
-            L.append("  %-46s %s;" % (ww, fld))
+            L.append(("  %-46s %s;%s" % (ww, fld, "  // LEAD" if fld in lead
+                                         else "")).rstrip())
         L.append("} ccv_%s_t;" % nm)
         L.append("")
     L.append("// Ports per block, derived from the channel list.")
@@ -320,6 +325,19 @@ def main():
         if sa.get("lockstep") and not multi_inst:
             err("lockstep on a channel with one instance: there is nothing "
                 "to advance together with"); return 1
+        # Lead fields: driven with valid, one cycle ahead of the rest of the
+        # payload, in the same packed register. The mask that gates a lane is
+        # the case: it has to be there before the operands it gates.
+        lead = c.get("lead_fields")
+        if lead is not None:
+            if not lead or any(f not in c["payload_fields"] for f in lead):
+                err("lead_fields must be a non-empty subset of the payload "
+                    "fields"); return 1
+            if len(lead) == len(c["payload_fields"]):
+                err("every field is a lead field: that is the valid cycle "
+                    "carrying the whole payload, not a lead"); return 1
+            if "lead_why" not in c:
+                err("lead_fields are set with no reason recorded"); return 1
         # A request whose responses come back on another channel, with at
         # most `max` outstanding. Stated instead of a correlation tag, and
         # checked across the pair by ccv_outstanding_checker.

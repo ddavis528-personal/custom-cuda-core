@@ -81,6 +81,15 @@ at the edge that launches valid, payload one cycle behind, no valid the cycle
 after a stall, one credit back per message consumed. No stub can get it
 wrong, because no stub implements it.
 
+**Lead fields** are the one exception to "payload one cycle behind" (Q-40).
+A channel may declare some fields as leads. That slice of the same payload
+register is written with valid, so on the wire it carries the lead of the
+message whose valid is up, while the rest carries the previous message's
+payload. The receiver takes the lead in the valid cycle and reassembles the
+message when the rest lands. The checker bank does the same before it logs
+the transfer. `rcu_lane_ops` is the only channel with lead fields: the
+lane's mask travels a cycle ahead of the operands it gates.
+
 It was ported from `test/smoke/credit_smoke.sv` — and reading that closely is
 how the reference producer's late-stall bug was found: it gated `valid` on a
 registered copy of stall, one cycle late, and violated the rule at 14 of 28
@@ -111,7 +120,9 @@ one that is. So every clean result has a partner that must **not** be clean:
 
 The payload wiring gets the event-stream check rather than a negative control
 because Verilator is two-state: `payload_known_when_due` cannot fire there at
-all, so an X-injection control is not available on this simulator.
+all, so an X-injection control is not available on this simulator. The same
+holds for `lead_known_at_valid`. Both have fire and quiet cases on Icarus in
+`tools/check-if.sh`.
 
 ### The slot count, derived
 
@@ -751,6 +762,42 @@ The `srd` response: Q-38 closed, and Q-32's rule amended.
     but `igemm` 1×1 picks up a 14-`mov` rotation in its loop. So it's left
     as an open choice with the numbers.
 
+### Skeleton review response 6 (2026-09-26), as built
+
+Q-40 closed. Predicate logic executes in RCU, but predicate values always
+reach the lanes, one bit per lane, and the mask always gates.
+
+- **The mask always gates.** A lane whose `pred_bit` is clear doesn't
+  capture its operands or compute. The stub drives poison on its outputs,
+  RCU writes back only the lanes the mask enables, and
+  `--break ignore-mask` (RCU writes every lane) puts that poison into
+  pguard's P1.
+- **The mask travels one cycle ahead of the GPR operands.** `pred_bit`,
+  `pred_data` and `section_en` are `rcu_lane_ops`' **lead fields**
+  (`lead_fields` in the schema).
+  - **The choice, stated:** it is the same channel and the same packed
+    struct. The lead slice of the payload register is written with valid, not
+    a cycle after it. No new signal, port or credit: the mask can't lose step
+    with the operands, because they are one message under one flow control.
+  - A separate mask channel was the alternative. It would have added 32
+    channel instances and 128 slots, and needed its credits coupled to the
+    operand channel's and a checker to keep the two in step.
+  - This is the protocol's own lead phase: valid already leads the payload by
+    one cycle, and the mask now rides in it.
+  - `sim/skel/channel.h` writes the lead with valid, and the receiver takes
+    it in the valid cycle. The checker bank does the same before logging a
+    transfer, since the wire's lead slice may already belong to the next
+    message by the time the rest lands.
+  - The credit checker states it as `lead_known_at_valid`, with a fire case
+    and a quiet case (Icarus; Verilator is two-state).
+  - `--break late-lead` drives the mask with the operands instead, and every
+    lane must reject the stale mask it took with valid.
+- **Found on the way: CCV-L19 misread typed parameters as nets.**
+  `parameter logic [W-1:0] NAME` is a parameter; the rule saw `logic` and
+  demanded lower case. That is what forced the binding checker's `WANT` into
+  an `int`, and a mask wider than 32 bits can't be one. Fixed, with a typed
+  parameter in the compliant fixture so it stays fixed.
+
 ### S1 wire conventions (placeholders)
 
 These are encodings the payload spec leaves to each block's owner. They are
@@ -773,7 +820,7 @@ decisions.
 | `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | `4·warp + index` (predicates not renamed); RCU writes the destination only when `pred_we`, and only on active lanes |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
 | `lane_rcu_res.result`, `pred_out` | the GPR value; the predicate result in `pred_out` |
-| `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable |
+| `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable. Both, and `section_en`, are lead fields: on the wire with valid, a cycle ahead of `operand` |
 | `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |

@@ -648,9 +648,16 @@ def check_file(path, rel):
 
         # -- CCV-L19: lowercase, underscore-separated ----------------------
         # Parameters keep UPPER_SNAKE; everything else is lower_snake_case.
+        # A TYPED parameter (`parameter logic [W-1:0] NAME = ...`) is still a
+        # parameter: the type keyword is not a net declaration. Reading it as
+        # one forced width-typed constants into `int`, which cannot hold a
+        # mask wider than 32 bits.
         for m in re.finditer(r"\b(?:logic|wire|reg)\b[^;\n]*?\b([A-Za-z_]\w*)\s*[;,=\)]",
                              src):
             n = m.group(1)
+            ls = src.rfind("\n", 0, m.start()) + 1
+            if re.search(r"\b(?:parameter|localparam)\s+$", src[ls:m.start()]):
+                continue
             if re.search(r"[A-Z]", n):
                 add("CCV-L19", line_of(src, m.start()),
                     "net %r is not lower_snake_case; only parameters and "

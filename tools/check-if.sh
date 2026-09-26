@@ -186,7 +186,8 @@ fi
 # argument for keeping them: the "stays quiet" checks above passed throughout.
 NEG_CASES="overrun:no_overrun at_depth:- phantom:no_phantom_credit
   phantom_with_send:no_phantom_credit stall:stall_honoured
-  xpayload:payload_known_when_due timeout:response_within_n timeout_at_n:-
+  xpayload:payload_known_when_due xlead:lead_known_at_valid xlead_before:-
+  timeout:response_within_n timeout_at_n:-
   timeout_n1:response_within_n timeout_second:response_within_n
   second_late:response_within_n"
 NEG_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv test/neg/tb_credit_neg.sv"
@@ -242,7 +243,7 @@ for pair in $NEG_CASES; do
     # anything can look at it, so $isunknown cannot fire there at all. That is
     # a property of the tool (F-6), not of the checker, and it is why Icarus
     # is a required witness above rather than a redundant one.
-    [ "$cs" = "xpayload" ] && vwant=""
+    case "$cs" in xpayload|xlead) vwant="" ;; esac
     if [ -z "$vwant" ] && ! grep -q "NEG_END $cs" "$TMP/neg_v_$cs.log"; then
       why="verilator run did not complete"
     elif [ "$got" != "$vwant" ]; then
@@ -253,7 +254,7 @@ for pair in $NEG_CASES; do
   if [ -n "$why" ]; then
     bad "neg: $cs" "$why"
   elif [ -n "$want" ]; then
-    note=""; [ "$cs" = "xpayload" ] && note=" (icarus only; 2-state blind)"
+    note=""; case "$cs" in xpayload|xlead) note=" (icarus only; 2-state blind)" ;; esac
     say "neg: $cs trips only $want" "PASS$note"
   else
     say "neg: $cs stays quiet at the limit" "PASS"

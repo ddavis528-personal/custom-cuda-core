@@ -55,7 +55,7 @@ broken it once and watched it notice.
 | Trace id kept out of synthesis | **silent** | Yosys asked both ways: no `ch_tid` without `CCV_TRACE`, present with | `check-skel.sh` |
 | Skeleton slot count | **silent** | re-derived from the schema by code sharing nothing with the generator | `check-skel.sh` |
 | Gate summary parsing | **silent** | keys matched whole; see below | `check-skel.sh` |
-| Credit checker protocol properties | open | 11 cases: each violation trips *exactly* its property on Icarus and trips it first on Verilator; each legal extreme stays quiet | `check-if.sh` |
+| Credit checker protocol properties | open | 13 cases: each violation trips *exactly* its property on Icarus and trips it first on Verilator; each legal extreme stays quiet | `check-if.sh` |
 | S1 final state compared with ccv-sim | **silent** | a compare fed from the oracle instead of the machine would always pass. `--break corrupt-load` must change the final R9, and `--break drop-store` all 32 words of `c[]` | `check-kernel.sh` |
 | S1 per-consumer checks against the oracle | **silent** | `--break corrupt-fetch` must be caught at DEC, and `corrupt-load` at the lane receiving the operand | `check-kernel.sh` |
 | Response correlation by `req_id` | **silent** | FIFO order matches ids by coincidence while one request is outstanding. `--break corrupt-req-id` must be refused by MLC, not taken as the oldest | `check-kernel.sh` |
@@ -68,6 +68,8 @@ broken it once and watched it notice.
 | Where an op executes (Q-32, Q-38) | **silent** | a class table that put an op on the wrong side would still produce the right final state, since both sides compute the same answer. The lanes and RCU check every op against its record: a per-lane input or none. `--break movi-in-lane` must be refused by every lane for `movi` and `movi48`, and nothing else may fail |  `check-kernel.sh` |
 | `srd`'s identity (OOE's shadow of RAU's table) | **silent** | every kernel but one runs CTA 0, where a missing or wrong `%ctaid` reads as right. The srd kernel runs CTA 7, and `--break corrupt-ctaid` must be rejected by the lanes computing `srd` | `check-kernel.sh` |
 | DEC's selector range check | **silent** | an unallocated selector folded into the zero checks would have nothing to fail on. `--break srd-selector` must be named by the range check | `check-kernel.sh` |
+| The lane mask one cycle ahead (lead fields, Q-40) | **silent** | the final state is the same whichever cycle the mask arrives in. The lane uses the mask it took off the wire in the valid cycle, so `--break late-lead`, which drives it with the operands instead, must make every lane reject a stale mask | `check-kernel.sh` |
+| A masked-off lane does nothing, and RCU relies on it | **silent** | a lane result from the oracle is right on every lane, so writing back a masked-off lane was invisible. A masked-off lane now drives poison, and `--break ignore-mask` (RCU writes every lane) must put it into pguard's P1 | `check-kernel.sh` |
 | Guard and predicate destination as separate fields | **silent** | with guard = destination (every S1 kernel before pguard) one field serves both and nothing can tell. `--break conflate-pred` on the pguard kernel must make the next guard wrong at the lanes, and both predicates wrong at the end | `check-kernel.sh` |
 | Open-items register consistency | open | a hole in the numbering, a summary that disagrees with the rows, a schema question pointing at the wrong or a closed row, and an undefined Q-n were each introduced once by hand and each failed | `check-docs.sh` |
 | Encode/decode round trip coverage (compiler repo) | **silent** | 85 instructions were "unbuildable" and skipped while the check printed clean (compiler F-144). Any unbuildable instruction now fails it | `ccv-roundtrip` |
@@ -160,8 +162,8 @@ kept behind `CCV_NEG_LATE_STALL` so the sweep has to keep proving it can see
 it.
 
 **One structural limit, recorded rather than worked around:** Verilator is
-two-state, so `payload_known_when_due` *cannot* fire there — an X is already
-a 0 or a 1 by the time anything looks. Icarus is the only witness for that
+two-state, so `payload_known_when_due` and `lead_known_at_valid` *cannot*
+fire there — an X is already a 0 or a 1 by the time anything looks. Icarus is the only witness for that
 property, which makes it a required simulator for this check rather than a
 redundant one (F-6).
 

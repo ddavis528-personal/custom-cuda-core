@@ -8,7 +8,11 @@
 // wrong, done right. tools/check-1d.sh fails if ANY finding is reported here.
 //===----------------------------------------------------------------------===//
 
-module good_naming (
+module good_naming #(
+  // A TYPED parameter is a parameter, not a net: UPPER_SNAKE is right here.
+  // CCV-L19 once read the `logic` as a net declaration.
+  parameter logic [39:0] LEAD_MASK = 40'h3f
+) (
   input  logic       core_clk,
   input  logic       ref_rst_r00h,
   input  logic [3:0] in_data_cy00h,

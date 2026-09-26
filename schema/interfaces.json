@@ -196,7 +196,7 @@
     {
       "suffix": "_payload",
       "dir": "producer",
-      "doc": "The packed struct. Same flop count as valid, so it arrives no later than it otherwise would."
+      "doc": "The packed struct. Same flop count as valid, so it arrives no later than it otherwise would. A channel may declare LEAD fields (lead_fields): that slice of the same register is written with valid, one cycle ahead of the rest, so on the wire it carries the lead of the message whose valid is up while the rest carries the previous message's payload. The lane mask is the one case today (Q-40)."
     },
     {
       "suffix": "_credit",
@@ -327,6 +327,12 @@
         "section_en"
       ],
       "note": "Fans out to 32 LANE instances; the payload is per-lane.",
+      "lead_fields": [
+        "pred_bit",
+        "pred_data",
+        "section_en"
+      ],
+      "lead_why": "The mask gates the lane, so it must arrive before what it gates (Q-40). RCU reads the predicate and sends the lane's enable, its predicate-as-data and its section enables with valid, one cycle ahead of the GPR operands; a masked-off lane never clocks its operand capture or its datapath. pred_data is an operand too (sel's selector), but a one-bit read from RCU's predicate file costs nothing to move early.",
       "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.",
       "id_classes": [
         "instr"

@@ -47,6 +47,8 @@
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
 //   srd-selector   DEC sees srd selector 2, which is unallocated
 //   corrupt-ctaid  RAU sends OOE the wrong CTA index
+//   late-lead      the lane mask goes out with the operands, a cycle late
+//   ignore-mask    RCU writes back every lane, masked-off ones included
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
@@ -142,6 +144,8 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   }
   Machine m(2, [&](int inst) { return makeKernelBlock(inst, k); });
   bank.pair_enable = 1;
+  if (brk == "late-lead")
+    for (Slot &s : m.slots()) s.late_lead = true;
 
   // Finished = the exit has retired, no block has work left, and nothing is
   // in flight on any slot -- then a short tail, so a late message would
@@ -232,7 +236,8 @@ int main(int argc, char **argv) {
                       brk == "drop-negate" || brk == "drop-pred-data" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
-                      brk == "conflate-pred";
+                      brk == "conflate-pred" || brk == "late-lead" ||
+                      brk == "ignore-mask";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

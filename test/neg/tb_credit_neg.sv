@@ -37,7 +37,9 @@ module tb;
   string       cname;
   int          c, last;
 
-  ccv_credit_checker #(.PAYLOAD_W(32)) u_chk (
+  // The low byte LEADS: it is due with valid (lead_known_at_valid). No other
+  // case drives it unknown, so the mask changes no other case's result.
+  ccv_credit_checker #(.PAYLOAD_W(32), .LEAD_MASK(32'h0000_00ff)) u_chk (
     .clk(clk), .rst_n(rst_n), .ch_valid(v), .ch_payload(pl),
     .ch_credit(cr), .ch_stall(st));
 
@@ -56,6 +58,8 @@ module tb;
     else if (cname == "phantom_with_send") last = S + 4;
     else if (cname == "stall")          last = S + 6;
     else if (cname == "xpayload")       last = S + 6;
+    else if (cname == "xlead")          last = S + 6;
+    else if (cname == "xlead_before")   last = S + 6;
     else if (cname == "timeout")        last = S + N + 2;
     else if (cname == "timeout_at_n")   last = S + N + 6;
     else if (cname == "timeout_n1")     last = S + N + 2;
@@ -104,6 +108,22 @@ module tb;
       else if (cname == "xpayload") begin
         v  = (c == S);
         if (c == S + 1) pl = 'x;
+        cr = (c == S + 3);
+      end
+
+      // A lead field is due WITH valid: unknown in the valid cycle, known
+      // after, and the rest of the payload always known.
+      else if (cname == "xlead") begin
+        v  = (c == S);
+        if (c == S) pl[7:0] = 'x;
+        cr = (c == S + 3);
+      end
+
+      // The legal limit: the lead bits unknown the cycle BEFORE valid, and
+      // known from valid on. Must be quiet.
+      else if (cname == "xlead_before") begin
+        v  = (c == S);
+        if (c == S - 1) pl[7:0] = 'x;
         cr = (c == S + 3);
       end
 

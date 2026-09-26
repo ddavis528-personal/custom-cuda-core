@@ -29,6 +29,10 @@
 #                                                lanes' srd result is wrong
 #   an unallocated srd selector faults        srd-selector: DEC's range check
 #                                                names it; nothing retires it
+#   the lane mask is on the wire with valid,  late-lead: every lane takes a
+#     a cycle ahead of the operands (Q-40)       stale mask
+#   a masked-off lane does nothing, and RCU   ignore-mask (pguard): its poison
+#     writes back only active lanes              lands in P1
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -246,7 +250,38 @@ else
   bad "--break corrupt-ctaid" "a wrong CTA index reached a register unnoticed"
 fi
 
-# -- pguard: a guard and a predicate destination that differ (Q-21) --------
+# -- the lane mask: one cycle ahead, and always gating (Q-40) ---------------
+# pred_bit, pred_data and section_en are rcu_lane_ops' LEAD fields: driven with
+# valid, a cycle ahead of the operands, so a lane gates itself before its
+# operands land. Driven late, with the operands, the lane takes whatever the
+# wire's lead slice held in the valid cycle -- a stale mask -- and must reject
+# it at once.
+run late-lead
+if grep -q "^CHECK lane [0-9]*: seq [0-9]* pred_bit is not issue mask AND guard" \
+     "$B/kernel_late-lead.log"; then
+  say "--break late-lead: every lane sees a stale mask" "PASS"
+else
+  bad "--break late-lead" "a mask arriving with the operands went unnoticed"
+fi
+# A masked-off lane never computes: its outputs are poison. RCU must write
+# back only the lanes the mask enables, or pguard's guarded compare (lanes
+# 16-31 off) puts poison into P1, which sel's lanes and the final compare see.
+"$SKEL" --kernel test/golden/pguard/oracle.jsonl --break ignore-mask \
+  >"$B/kernel_ignore-mask.log" 2>&1
+if grep -q "^CHECK lane [0-9]*: seq 9 pred_data (sel's selector) wrong" "$B/kernel_ignore-mask.log" &&
+   [ "$(field "$B/kernel_ignore-mask.log" pred_mismatch)" = 1 ]; then
+  say "--break ignore-mask: masked-off poison lands" "PASS"
+else
+  bad "--break ignore-mask" "a write-back from a masked-off lane went unnoticed"
+fi
+
+#   an unallocated srd selector faults        srd-selector: DEC's range check
+#                                                names it; nothing retires it
+#   the lane mask is on the wire with valid,  late-lead: every lane takes a
+#     a cycle ahead of the operands (Q-40)       stale mask
+#   a masked-off lane does nothing, and RCU   ignore-mask (pguard): its poison
+#     writes back only active lanes              lands in P1
+
 # @P0 setp P1 carries its guard and destination in separate uop fields. With
 # them conflated back into one (the destination named by the guard), the
 # compare writes P0, so the next compare's guard is wrong at its lanes, and

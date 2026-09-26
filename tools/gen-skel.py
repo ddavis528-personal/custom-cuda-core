@@ -97,9 +97,13 @@ def build(d, pv, blocks):
         widths = [resolve(field_width(d, c, f), pv) for f in c["payload_fields"]]
         total = sum(widths)
         lsb = total
+        lead = set(c.get("lead_fields", []))
+        lead_mask = 0
         for f, w in zip(c["payload_fields"], widths):
             lsb -= w                  # first field is the MSB end
             fields.append((f, lsb, w))
+            if f in lead:
+                lead_mask |= ((1 << w) - 1) << lsb
         ms, md = ninst[c["src"]] > 1, ninst[c["dst"]] > 1
         if ms and md:
             raise SystemExit("channel %s: both endpoints are multi-instance, "
@@ -119,7 +123,8 @@ def build(d, pv, blocks):
                           decided=decided, id_classes=c["id_classes"],
                           why=c.get("slot_attrs_why", {}),
                           binding_key=c.get("slot_attrs", {}).get("binding_key"),
-                          outstanding=c.get("outstanding")))
+                          outstanding=c.get("outstanding"),
+                          lead=lead, lead_mask=lead_mask))
 
     # Channel instances and the slot map. Slots are numbered channel instance
     # by channel instance, so a slot index is stable for a fixed schema and
@@ -168,7 +173,9 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("/// One bit field of a payload. lsb/width are positions in the")
     L.append("/// SystemVerilog PACKED struct: the first declared field is the")
     L.append("/// most significant.")
-    L.append("struct FieldDesc { const char *name; uint32_t lsb; uint32_t width; };")
+    L.append("/// `lead`: driven with valid, one cycle ahead of the rest of the")
+    L.append("/// payload, in the same register (schema lead_fields).")
+    L.append("struct FieldDesc { const char *name; uint32_t lsb; uint32_t width; bool lead; };")
     L.append("")
     L.append("/// Ordering is a KEY: none; one order per binding group; or one")
     L.append("/// order per value of a payload field (e.g. warp_id).")
@@ -193,7 +200,8 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     for c in chans:
         L.append("inline constexpr FieldDesc kF_%s[] = {" % c["name"])
         for f, lsb, w in c["fields"]:
-            L.append('  {"%s", %d, %d},' % (f, lsb, w))
+            L.append('  {"%s", %d, %d, %s},' % (f, lsb, w,
+                     "true" if f in c["lead"] else "false"))
         L.append("};")
     L.append("")
     L.append("inline constexpr ChanDesc kChans[] = {")
@@ -296,8 +304,10 @@ def gen_sv(chans, cinst, nslots, pbits):
         for s in range(c["rate"]):
             k = ci["slot_base"] + s
             off = ci["payload_base"] + s * c["bits"]
-            L.append("  ccv_credit_checker #(.PAYLOAD_W(%d), .CHANNEL(%d)) "
-                     "u_%s_s%d (" % (c["bits"], c["id"], tag, s))
+            lm = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
+                  if c["lead_mask"] else "")
+            L.append("  ccv_credit_checker #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
+                     "u_%s_s%d (" % (c["bits"], c["id"], lm, tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "
                      ".ch_credit(credit[%d]), .ch_stall(stall[%d])," % (k, k, k))
             L.append("    .ch_payload(payload[%d:%d])" % (off + c["bits"] - 1, off))

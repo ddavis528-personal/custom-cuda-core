@@ -1000,6 +1000,12 @@ private:
       while (has(c.rcu_lane, s, lane_)) {
         Receiver::Msg m = take(c.rcu_lane, s, lane_);
         Bits r = msgOf(c.lane_rcu);
+        // The mask arrived with valid, a cycle ahead of the operands (the
+        // channel's lead fields, Q-40). A lane it switches off does nothing:
+        // it never captures its operands, never computes, and drives no
+        // result -- modelled as poison on its outputs, so a receiver that
+        // wrote back a masked-off lane would be caught by the final compare.
+        const bool on = get(m.payload, c.rcu_lane, "pred_bit") != 0;
         if (const Record *rc = rec(m.tid, "lane")) {
           const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
           if (op && inRcu(op->cls))
@@ -1012,7 +1018,7 @@ private:
                     (unsigned long long)rc->seq, rc->op.c_str());
           // Operands: what RCU read out of its register file.
           const auto g = rc->gprUses();
-          for (size_t i = 0; i != g.size() && i < 3; ++i) {
+          for (size_t i = 0; on && i != g.size() && i < 3; ++i) {
             const uint32_t got = uint32_t(m.payload.get(
                 field(c.rcu_lane, "operand").lsb + 32 * unsigned(i), 32));
             if (got != g[i]->v[lane_])
@@ -1023,7 +1029,7 @@ private:
           // An immediate RCU substituted into its operand slot. srd's is
           // identity from OOE rather than the encoded selector, and its
           // check is the lane's own result check below.
-          if (op && op->alu_imm >= 0 && op->srd_sel < 0 &&
+          if (on && op && op->alu_imm >= 0 && op->srd_sel < 0 &&
               size_t(op->alu_imm) < rc->imms.size()) {
             const uint32_t got = uint32_t(m.payload.get(
                 field(c.rcu_lane, "operand").lsb + 32 * unsigned(op->imm_slot), 32));
@@ -1047,7 +1053,11 @@ private:
           // srd's, which the lane computes: the immediate RCU substituted,
           // with the lane's hardwired index ORed in for %ctatid. OOE's
           // identity, not the oracle, supplies the value.
-          if (const RegVal *d = rc->gprDef()) {
+          if (!on) {
+            put(r, c.lane_rcu, "result", 0xdeadbeefu);
+            if (const RegVal *d = rc->predDef())
+              put(r, c.lane_rcu, "pred_out", ((d->p >> lane_) & 1u) ^ 1u);
+          } else if (const RegVal *d = rc->gprDef()) {
             uint32_t v = d->v[lane_];
             if (op && op->srd_sel >= 0) {
               const uint32_t o0 = uint32_t(m.payload.get(field(c.rcu_lane, "operand").lsb, 32));
@@ -1058,10 +1068,11 @@ private:
             }
             put(r, c.lane_rcu, "result", v);
           }
-          if (const RegVal *d = rc->predDef())
-            put(r, c.lane_rcu, "pred_out", (d->p >> lane_) & 1u);
+          if (on)
+            if (const RegVal *d = rc->predDef())
+              put(r, c.lane_rcu, "pred_out", (d->p >> lane_) & 1u);
           // A predicate read as DATA (sel's selector), negate applied.
-          if (op && op->pdata)
+          if (on && op && op->pdata)
             if (const RegVal *p = rc->predUse()) {
               const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
               const bool want = (((p->p >> lane_) & 1u) != 0) != neg;
@@ -1131,7 +1142,7 @@ private:
         const uint32_t po = uint32_t(get(m.payload, c.lane_rcu, "pred_out"));
         // A partial write preserves what it does not write (ISA invariant
         // 10): only the active lanes take a result.
-        if (!((a.active >> l) & 1u)) continue;
+        if (!((a.active >> l) & 1u) && k_.brk != "ignore-mask") continue;
         if (a.op->gdst) k_.gpr[a.pdst][l] = v;
         if (a.pwe) k_.pred[a.ppred] = (k_.pred[a.ppred] & ~(1u << l)) | (po << l);
       }

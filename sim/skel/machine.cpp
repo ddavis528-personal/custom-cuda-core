@@ -11,8 +11,13 @@ Machine::Machine(unsigned depth, const Factory &make) {
   owner_.resize(kNumSlots, nullptr);
   for (const ChanInst &ci : kChanInsts) {
     const ChanDesc &cd = kChans[ci.chan];
+    Bits lead(cd.bits);
+    for (unsigned f = 0; f != cd.nfields; ++f)
+      if (cd.fields[f].lead)
+        for (uint32_t b = 0; b != cd.fields[f].width; ++b)
+          lead.setBit(cd.fields[f].lsb + b, true);
     for (unsigned s = 0; s != cd.rate; ++s) {
-      slots_.emplace_back(cd.bits);
+      slots_.emplace_back(cd.bits, lead);
       owner_[ci.slot_base + s] = &ci;
     }
   }
