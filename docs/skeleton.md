@@ -16,7 +16,7 @@ if the first is proven:
 
 ```
 build/skel/ccv-skel --cycles 2000 --seed 1 --trace t.ccvtrace        # S0
-build/skel/ccv-skel --kernel test/golden/vadd/oracle.jsonl \
+build/skel/ccv-skel --kernel build/oracle/vadd/oracle.jsonl \
                     --trace t.ccvtrace                                # S1
 tools/trace2perfetto.py t.ccvtrace -o t.json     # one track per channel
 tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json   # per instruction
@@ -392,7 +392,7 @@ Open items are in [`open-items.md`](open-items.md).
 **Done.** `tools/check-kernel.sh`, in the gate after S0.
 
 ```
-build/skel/ccv-skel --kernel test/golden/vadd/oracle.jsonl --trace t.ccvtrace
+build/skel/ccv-skel --kernel build/oracle/vadd/oracle.jsonl --trace t.ccvtrace
 tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json
 ```
 
@@ -418,9 +418,7 @@ SPM, barriers, migration (both pairs and its command and done), probes, faults a
 | Branches resolve in RCU from the guard, negate included, and redirect fetch only when taken | `--break drop-negate` drops the guard's negate at issue: vadd's `@!P0` resolves as taken by all 32 lanes, RCU disagrees with ccv-sim, and the redirect it causes is rejected by FET (the one run that exercises `ooe_fet_redirect`) |
 | FET has at most one ITLB miss outstanding | `--break itlb-double` asks for a second page; the bank's `within_limit` fires, and nothing else (FET then matches a refill to the wrong page, which is the reason for the rule) |
 
-A second run is byte-identical (trace and cycle count), and
-`tools/gen-golden.sh --check` fails the gate if the checked-in oracle record
-drifts from what the compiler repo's ccv-sim now produces.
+A second run is byte-identical (trace and cycle count).
 
 ### Where the values come from
 
@@ -428,12 +426,24 @@ drifts from what the compiler repo's ccv-sim now produces.
 owns when."* The seam is `ccv-sim -oracle` (added in the compiler repo for
 this): one JSON record per issue group with the bytes, the issue mask, every
 register read (value before) and written (value after), and each memory
-access attributed to its lane. It is checked in as
-`test/golden/vadd/oracle.jsonl`, generated from `test/golden/vadd/kernel.cfg`
-by `tools/gen-golden.sh`. Regenerating it needs the compiler repo built:
-LLVM 18 through its CMake, which needs `llvm-18-dev` and `libzstd-dev`, with
-an `apt-get update` first. Without the compiler repo, the drift check
-SKIPs.
+access attributed to its lane.
+
+**The records are generated, not checked in.** `tools/gen-oracle.sh` runs
+each gate:
+- It fetches the compiler snapshot pinned in `tools/compiler.lock`, a commit
+  on the compiler repo's `release` branch, which carries a built `ccv-sim`
+  and `CCV.json`.
+- It assembles each `test/kernels/<k>/` with the snapshot's `ccv-as.py`, and
+  writes `build/oracle/<k>/oracle.jsonl` with its `ccv-sim -oracle`.
+
+Nothing needs LLVM here, and the snapshot proves itself before use: it must
+name the lock's source commit, and its `ccv-sim` must match the sha256 in its
+own manifest. The pin is what the checked-in records used to buy, since a
+compiler change reaches this gate only through a reviewed bump
+(`tools/fetch-compiler.sh --bump`), but without a second copy that could
+drift. A fetch that fails fails the gate; there is no skip. When the change
+was made, the live records were byte-identical to the four checked-in ones
+they replaced.
 
 The original plan had DEC decoding through LLVM's disassembler and lanes
 calling `Interp::step`. S1 reads the record instead, so the core repo
@@ -628,7 +638,7 @@ the way. See `fail-open-register.md`.
     borrow `result[0]`, which `add.pp`'s GPR-plus-predicate could not share);
   - `pred_result` on `miu_rcu_data`, per lane, for `cas`'s success predicate.
 
-  A second kernel, `test/golden/sel/`, exercises it: `c[tid] = tid < 16 ? tid
+  A second kernel, `test/kernels/sel/`, exercises it: `c[tid] = tid < 16 ? tid
   : 16`, so half the lanes choose `rs1`. It ends identical to ccv-sim in 120
   cycles, and `--break drop-pred-data` must be rejected by those lanes.
 - **The PC-group owner (Q-29):** FET owns divergent PC state, but
@@ -699,7 +709,7 @@ The first round against the numbered register ([`open-items.md`](open-items.md))
   - RCU now writes a lane result only on active lanes, so a lane the guard
     disables keeps its old value (invariant 10). This is what makes a guarded
     write to another predicate observable.
-  - A third kernel, `test/golden/pguard/`, runs `@P0 setp P1`. P1 ends as
+  - A third kernel, `test/kernels/pguard/`, runs `@P0 setp P1`. P1 ends as
     tid < 8 on the lanes P0 enables and keeps tid < 24 on the rest, and
     `sel` stores it. It ends identical to ccv-sim.
   - `--break conflate-pred` puts the destination back in the guard's field.
@@ -752,7 +762,7 @@ The `srd` response: Q-38 closed, and Q-32's rule amended.
   - The lane computes `srd`'s result and checks it against ccv-sim. It is the
     first lane result the machine computes rather than takes from the
     record.
-  - A fourth kernel, `test/golden/srd/`, runs at CTA 7, since every other
+  - A fourth kernel, `test/kernels/srd/`, runs at CTA 7, since every other
     kernel runs CTA 0, where a missing `%ctaid` reads as right.
     `--break corrupt-ctaid` sends OOE ctaid + 1, and the lanes' result is
     rejected. (`warp_in_cta` is always 0 here: the skeleton runs one warp.)

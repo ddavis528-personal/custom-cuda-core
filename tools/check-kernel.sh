@@ -43,7 +43,7 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 B=build
 SKEL="$B/skel/ccv-skel"
-K=test/golden/vadd/oracle.jsonl
+K=build/oracle/vadd/oracle.jsonl
 fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
@@ -55,8 +55,10 @@ if [ ! -x "$SKEL" ]; then
   exit 0
 fi
 
-# -- golden record still what ccv-sim produces -----------------------------
-tools/gen-golden.sh --check || fail=1
+# -- the oracle records, from the pinned compiler snapshot -------------------
+# Generated each run by the snapshot's built ccv-sim (tools/compiler.lock), not
+# checked in. No oracle, no kernel runs: that is a failure, not a skip.
+tools/gen-oracle.sh || { echo "  S1 kernels: no oracle records" >&2; exit 1; }
 
 # -- the clean run -----------------------------------------------------------
 log=$B/kernel_vadd.log
@@ -211,7 +213,7 @@ fi
 # -- sel: a predicate read as DATA by the lane ------------------------------
 # pred_bit is the lane's enable; sel's selector rides separately as
 # pred_data, and half the lanes must choose rs1 for it to be observable.
-S=test/golden/sel/oracle.jsonl
+S=build/oracle/sel/oracle.jsonl
 "$SKEL" --kernel "$S" >"$B/kernel_sel.log" 2>&1
 ok=1
 for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
@@ -232,7 +234,7 @@ fi
 # -- srd: identity from OOE, at a non-zero CTA index (Q-38) ----------------
 # OOE puts srd's value in the immediate from its shadow of RAU's table; the
 # lane ORs its index in for %ctatid. CTA 7, so %ctaid is visible.
-D=test/golden/srd/oracle.jsonl
+D=build/oracle/srd/oracle.jsonl
 "$SKEL" --kernel "$D" >"$B/kernel_srd.log" 2>&1
 ok=1
 for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
@@ -266,7 +268,7 @@ fi
 # A masked-off lane never computes: its outputs are poison. RCU must write
 # back only the lanes the mask enables, or pguard's guarded compare (lanes
 # 16-31 off) puts poison into P1, which sel's lanes and the final compare see.
-"$SKEL" --kernel test/golden/pguard/oracle.jsonl --break ignore-mask \
+"$SKEL" --kernel build/oracle/pguard/oracle.jsonl --break ignore-mask \
   >"$B/kernel_ignore-mask.log" 2>&1
 if grep -q "^CHECK lane [0-9]*: seq 9 pred_data (sel's selector) wrong" "$B/kernel_ignore-mask.log" &&
    [ "$(field "$B/kernel_ignore-mask.log" pred_mismatch)" = 1 ]; then
@@ -286,7 +288,7 @@ fi
 # them conflated back into one (the destination named by the guard), the
 # compare writes P0, so the next compare's guard is wrong at its lanes, and
 # both predicates end differently from ccv-sim.
-P=test/golden/pguard/oracle.jsonl
+P=build/oracle/pguard/oracle.jsonl
 "$SKEL" --kernel "$P" >"$B/kernel_pguard.log" 2>&1
 ok=1
 for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do

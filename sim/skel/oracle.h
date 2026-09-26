@@ -2,8 +2,9 @@
 //
 // Strategy §1: the timing model "calls into ccv-sim for what an instruction
 // does and owns when". S1 takes the WHAT from a record ccv-sim writes
-// (`ccv-sim -oracle`, one JSON line per issue group), checked in under
-// test/golden/<kernel>/ so this repo runs without the compiler repo.
+// (`ccv-sim -oracle`, one JSON line per issue group), generated each gate
+// run by tools/gen-oracle.sh from a PINNED compiler snapshot's built ccv-sim
+// (tools/compiler.lock) into build/oracle/<kernel>/ -- never checked in.
 //
 // What the record may be used for is the whole point of S1, so it is stated
 // here once:

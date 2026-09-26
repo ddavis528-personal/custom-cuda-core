@@ -68,9 +68,9 @@ fi
 # Every S1 kernel's trace and both Perfetto views, not only vadd's.
 SKEL=build/skel/ccv-skel
 [ -x "$SKEL" ] || die "no $SKEL after the gate"
-KERNELS=$(ls -d test/golden/*/ | xargs -n1 basename)
+KERNELS=$(ls -d test/kernels/*/ | xargs -n1 basename)
 for k in $KERNELS; do
-  "$SKEL" --kernel "test/golden/$k/oracle.jsonl" --trace "build/rel_$k.ccvtrace" \
+  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --trace "build/rel_$k.ccvtrace" \
     >"build/rel_$k.log" 2>&1 || die "kernel $k did not run clean"
   python3 tools/trace2perfetto.py "build/rel_$k.ccvtrace" --by=instr \
     -o "build/rel_$k.by_instr.json" >/dev/null || die "Perfetto view of $k failed"
@@ -94,6 +94,7 @@ cp build/release-verify.log "$A/verify.log"
 cp build/rel_wiring.txt "$A/wiring.txt"
 for k in $KERNELS; do
   cp "build/rel_$k.log" "$A/kernels/$k.log"
+  cp "build/oracle/$k/oracle.jsonl" "$A/kernels/$k.oracle.jsonl"
   cp "build/rel_$k.ccvtrace" "$A/kernels/$k.ccvtrace"
   cp "build/rel_$k.by_instr.json" "$A/kernels/$k.by_instr.json"
   cp "build/rel_$k.by_unit.json" "$A/kernels/$k.by_unit.json"
@@ -120,13 +121,15 @@ ver() { "$@" 2>&1 | head -1; }
   echo "- **\`release/\`:** the gate log (\`verify.log\`), the C++ skeleton's"
   echo "  wiring dump, and for each S1 kernel its run summary, event trace"
   echo "  (\`.ccvtrace\`) and two Perfetto views -- open the \`.json\` files at"
-  echo "  https://ui.perfetto.dev."
+  echo "  https://ui.perfetto.dev -- and the ccv-sim oracle record it ran"
+  echo "  against, generated from the pinned compiler snapshot."
   echo
   echo "| | |"
   echo "|---|---|"
   echo "| Source | \`$SRCBRANCH\` @ \`$SHA\` |"
   echo "| Built | $DATE (UTC) |"
   echo "| Gate | \`tools/verify.sh\`: $(grep -A1 '== result ==' build/release-verify.log | tail -1 | xargs) |"
+  echo "| Compiler snapshot | custom-cuda-complier \`release\` @ \`$(sed -n 's/^commit=//p' tools/compiler.lock)\` (source \`$(sed -n 's/^source=//p' tools/compiler.lock)\`) |"
   echo "| Verilator | $(ver verilator --version) |"
   echo "| Icarus | $(ver iverilog -V) |"
   echo "| Yosys | $(ver yosys -V) |"
