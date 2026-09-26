@@ -6,6 +6,10 @@ testbench from schema/interfaces.json and params/blocks.json.
   rtl/top/ports/ccv_<blk>_ports.svh  each block type's port list, generated
   rtl/top/stubs/ccv_<blk>.sv         a stub per block type
   test/top/tb_core_top.sv            clock, reset and tie-offs
+  rtl/top/wrap/ccv_<blk>_w.sv        hardening wrappers: block + repeaters
+                                     (params/links.json), the physical
+                                     hierarchy; ccv_<inst>_w for one with
+                                     feedthroughs
   rtl/top/dpi/ccv_<blk>.sv           the C++ skeleton's block, over DPI-C
   rtl/top/dpi/ccv_ext.sv             ...and its testbench end of EXTERNAL
   test/top/tb_sv_hosted.sv           the top built from those, run to the end
@@ -310,6 +314,189 @@ def gen_stub(btype, P):
     return "\n".join(L) + "\n"
 
 
+# -- hardening wrappers and repeated links -------------------------------------
+#
+# Every block instance sits in a hardening wrapper of the same instance name:
+# the physical hierarchy, stable whatever the floorplan decides. A wrapper is
+# the block plus one sequential repeater (rtl/phys/ccv_seq_rpt.sv) per
+# channel end the block owns, at STAGES 0 unless params/links.json says
+# otherwise, plus one per FEEDTHROUGH: a channel the floorplan routes across
+# this wrapper, which then has ports for it. A stage count is a wrapper
+# parameter, set by the top, so changing a split changes no structure; a
+# feedthrough changes that one wrapper's ports, and it gets a module of its
+# own (ccv_<instance>_w) instead of its type's shared one (ccv_<type>_w).
+#
+# A channel instance whose route crosses feedthroughs runs in SEGMENTS
+# between wrappers; segment j leaves hop j. The top names them
+# <chan>[_c<NN>]_h<j>[_s<K>]_<sig> -- and a channel with no feedthrough is
+# one segment with its plain name, so an unrepeated top reads as before. The
+# checker bank watches segment 0, where the link leaves the source's wrapper.
+
+
+def cinst_index(cinst, c, copy):
+    return next(k for k, x in enumerate(cinst) if x["chan"] is c and x["inst"] == copy)
+
+
+def nsegs(ci):
+    return len(ci["hops"]) - 1
+
+
+def seg_net(ci, slot, sig, j):
+    """The top's net for signal `sig` of `slot` on segment j of a channel
+    instance. The segment at EXTERNAL is the top's own port, so it keeps the
+    plain name, as does the only segment of an unrouted channel."""
+    c, copy, n = ci["chan"], ci["inst"], nsegs(ci)
+    if (n == 1 or (c["src"] == "EXTERNAL" and j == 0) or
+            (c["dst"] == "EXTERNAL" and j == n - 1)):
+        return net_name(c, copy, slot, sig)
+    base = c["name"][4:] + copy_sfx(c, copy) + "_h%d" % j
+    return base + ("_wake" if sig == "wake" else slot_sfx(c, slot) + "_" + sig)
+
+
+def seg_is_port(ci, j):
+    c, n = ci["chan"], nsegs(ci)
+    return ((c["src"] == "EXTERNAL" and j == 0) or
+            (c["dst"] == "EXTERNAL" and j == n - 1))
+
+
+def block_ends(t, i, P, cinst):
+    """Block instance (type t, index i)'s channel ends: [(cinst index,
+    'src'|'dst', copy as the ports name it)], in port-list order."""
+    out, seen = [], set()
+    for p in P:
+        if p[6] is None:
+            continue
+        c, cp = p[6][0], p[6][1]
+        if (c["id"], cp) in seen:
+            continue
+        seen.add((c["id"], cp))
+        copy = cp if cp is not None else (i if c["ninst"] > 1 else 0)
+        assert c["src"] != c["dst"], "a channel from a block to itself"
+        out.append((cinst_index(cinst, c, copy), "src" if c["src"] == t else "dst", cp))
+    return out
+
+
+def rpt_param(c, cp):
+    return "RPT_" + (c["name"][4:] + copy_sfx(c, cp)).upper()
+
+
+def ft_param(ci):
+    c = ci["chan"]
+    return "FT_" + (c["name"][4:] + copy_sfx(c, ci["inst"])).upper()
+
+
+def feedthroughs(binst, cinst):
+    """Block-instance index -> [(cinst index, hop j)] routed across it."""
+    ft = {}
+    for x, ci in enumerate(cinst):
+        for j in range(1, len(ci["hops"]) - 1):
+            ft.setdefault(ci["hops"][j][0], []).append((x, j))
+    return ft
+
+
+def wrapper_module(k, t, names, ft):
+    return "ccv_%s_w" % (names[k][2:] if ft.get(k) else t)
+
+
+def rpt_inst(L, name, stages, c, src, dst):
+    """One ccv_seq_rpt for a channel instance. `src` and `dst` map a signal to
+    its per-slot net names (a function of slot and sig)."""
+    r = c["rate"]
+    lead = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
+            if c["lead_mask"] else "")
+    cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
+    L.append("  ccv_seq_rpt #(.STAGES(%s), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
+             % (stages, r, c["bits"], lead, name))
+    L.append("    .clk(core_clk), .rst_n(rst_n),")
+    L.append("    .src_valid(%s), .src_payload(%s)," % (cat(src, "valid"), cat(src, "payload")))
+    L.append("    .src_wake(%s), .src_credit(%s), .src_stall(%s),"
+             % (src(None, "wake"), cat(src, "credit"), cat(src, "stall")))
+    L.append("    .dst_valid(%s), .dst_payload(%s)," % (cat(dst, "valid"), cat(dst, "payload")))
+    L.append("    .dst_wake(%s), .dst_credit(%s), .dst_stall(%s)"
+             % (dst(None, "wake"), cat(dst, "credit"), cat(dst, "stall")))
+    L.append("`ifdef CCV_TRACE")
+    L.append("    , .src_tid(%s), .dst_tid(%s)" % (cat(src, "tid"), cat(dst, "tid")))
+    L.append("`endif")
+    L.append("  );")
+
+
+def port_nm(c, cp, slot, sig):
+    """A block port's name for one signal of the end (c, cp)."""
+    base = c["name"][4:] + copy_sfx(c, cp)
+    return base + ("_wake" if sig == "wake" else slot_sfx(c, slot) + "_" + sig)
+
+
+def gen_wrapper(t, mod, P, ends, fts, cinst, ninst):
+    L = [BANNER]
+    L.append("// HARDENING WRAPPER %s: ccv_%s and the sequential repeaters of its"
+             % (mod, t))
+    L.append("// channel ends -- the physical hierarchy (docs/physical.md, \"Wrappers")
+    L.append("// and links\"). Nothing but instances and nets, like the top. Every")
+    L.append("// end has its repeater whether or not the link is repeated: STAGES is")
+    L.append("// a parameter the top sets from params/links.json, 0 meaning wires, so")
+    L.append("// a new split changes parameters and never this structure.")
+    if fts:
+        L.append("//")
+        L.append("// FEEDTHROUGHS: channels routed across this wrapper, with ports")
+        L.append("// fti_* (toward the source) and fto_* (toward the destination):")
+        for x, j in fts:
+            ci = cinst[x]
+            L.append("//   %s copy %d, hop %d" % (ci["chan"]["name"], ci["inst"], j))
+    L.append("`include \"ccv_interfaces.svh\"")
+    L.append("")
+    params = [rpt_param(cinst[x]["chan"], cp) for x, _, cp in ends]
+    params += [ft_param(cinst[x]) for x, _ in fts]
+    L.append("module %s #(" % mod)
+    L.append(",\n".join("  parameter int %s = 0" % p for p in params))
+    L.append(") (")
+    L.append("  `include \"ccv_%s_ports.svh\"" % t)
+    fps = []
+    for x, _ in fts:
+        ci = cinst[x]
+        for side, fwd in (("fti_", "input"), ("fto_", "output")):
+            for dr, w, name, tr, _d, typ, _m in chan_ports(ci["chan"], fwd, [ci["inst"]]):
+                fps.append((tr, "%-6s %s%s%s" % (dr, decl(w, typ), side, name)))
+    L += ["  , " + x for tr, x in fps if not tr]
+    L += guarded([x for x in fps if x[0]], lambda x: x)
+    L.append(");")
+    L.append("")
+    L.append("  // Between the block and its repeaters: b_<port>, one net per port.")
+    for dr, w, name, tr, _d, typ, m in P:
+        if m is None or tr:
+            continue
+        L.append("  %sb_%s;" % (decl(w, typ), name))
+    L += guarded([(tr, "%sb_%s;" % (decl(w, typ), name))
+                  for dr, w, name, tr, _d, typ, m in P if m is not None and tr],
+                 lambda x: x, lead="")
+    L.append("")
+    conns, gconns = [], []
+    for dr, w, name, tr, _d, typ, m in P:
+        ex = name if m is None else "b_" + name
+        (gconns.append((tr, ".%s(%s)" % (name, ex))) if tr
+         else conns.append(".%s(%s)" % (name, ex)))
+    L.append("  ccv_%s u_blk (" % t)
+    L.append("    " + ",\n    ".join(conns))
+    L += guarded(gconns, lambda x: x, lead="  , ")
+    L.append("  );")
+    L.append("")
+    for x, side, cp in ends:
+        c = cinst[x]["chan"]
+        blk = lambda sl, sig, c=c, cp=cp: "b_" + port_nm(c, cp, sl, sig)
+        out = lambda sl, sig, c=c, cp=cp: port_nm(c, cp, sl, sig)
+        L.append("  // %s, %s end" % (c["name"], "source" if side == "src" else "destination"))
+        rpt_inst(L, "u_rpt_" + c["name"][4:] + copy_sfx(c, cp), rpt_param(c, cp), c,
+                 blk if side == "src" else out, out if side == "src" else blk)
+    for x, j in fts:
+        ci = cinst[x]
+        c = ci["chan"]
+        L.append("  // %s copy %d, routed across this wrapper (hop %d)" % (c["name"], ci["inst"], j))
+        rpt_inst(L, "u_ft_" + c["name"][4:] + copy_sfx(c, ci["inst"]), ft_param(ci), c,
+                 lambda sl, sig, c=c, ci=ci: "fti_" + port_nm(c, ci["inst"], sl, sig),
+                 lambda sl, sig, c=c, ci=ci: "fto_" + port_nm(c, ci["inst"], sl, sig))
+    L.append("endmodule")
+    return "\n".join(L) + "\n"
+
+
 def gen_top(d, binst, chans, cinst, ninst, common, ports):
     NB = len(binst)
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
@@ -411,27 +598,43 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
                 L.append("  logic %s_%s;" % (nm[2:], n))
             L.append("`endif")
     L.append("")
-    # nets for internal channels
+    # nets: every segment of every channel instance, but those that are the
+    # top's own ports
+    ft = feedthroughs(binst, cinst)
     for c in chans:
-        if "EXTERNAL" in (c["src"], c["dst"]):
+        cis = [ci for ci in cinst if ci["chan"] is c]
+        segs = [(ci, j) for ci in cis for j in range(nsegs(ci)) if not seg_is_port(ci, j)]
+        if not segs:
             continue
         L.append("  // %s: %s -> %s, %d cop%s x %d slot%s" % (
             c["name"], c["src"], c["dst"], c["ninst"],
             "y" if c["ninst"] == 1 else "ies", c["rate"],
             "" if c["rate"] == 1 else "s"))
-        cps = list(range(c["ninst"]))
-        for dr, w, name, tr, _, typ, m in chan_ports(c, "output", cps):
-            if tr:
-                continue
-            L.append("  %s%s;" % (decl(w, typ), name))
-        L += guarded([(tr, "%s%s;" % (decl(w, typ), name))
-                      for dr, w, name, tr, _, typ, m in chan_ports(c, "output", cps)
-                      if tr], lambda x: x, lead="")
+        tr = []
+        for ci, j in segs:
+            for sl in range(c["rate"]):
+                for sig in ("valid", "payload", "credit", "stall"):
+                    w = c["bits"] if sig == "payload" else 1
+                    typ = "ccv_%s_t" % c["name"][4:] if sig == "payload" else None
+                    L.append("  %s%s;" % (decl(w, typ), seg_net(ci, sl, sig, j)))
+            L.append("  logic %s;" % seg_net(ci, None, "wake", j))
+            tr += [("CCV_TRACE", "logic [63:0] %s;" % seg_net(ci, sl, "tid", j))
+                   for sl in range(c["rate"])]
+        L += guarded(tr, lambda x: x, lead="")
     L.append("")
     for k, (t, i) in enumerate(binst):
         n = names[k]
         conns = []
         trconns = []
+        ends = block_ends(t, i, ports[t], cinst)
+        pov = []
+        for x, side, cp in ends:
+            st = cinst[x]["hops"][0 if side == "src" else -1][1]
+            if st:
+                pov.append(".%s(%d)" % (rpt_param(cinst[x]["chan"], cp), st))
+        for x, j in ft.get(k, []):
+            if cinst[x]["hops"][j][1]:
+                pov.append(".%s(%d)" % (ft_param(cinst[x]), cinst[x]["hops"][j][1]))
         for dr, w, pname, tr, _, _typ, meta in ports[t]:
             f = fab.get(pname, {})
             kind = f.get("kind")
@@ -468,18 +671,30 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
             elif pname in stars:
                 ex = pname
             else:
-                # A channel port: the net is the same name with the copy
-                # filled in. A block that IS one copy leaves it out of its
-                # ports; the top's nets always carry it.
+                # A channel port: the segment leaving this wrapper, if it is
+                # the source, or arriving at it. A block that IS one copy
+                # leaves the copy out of its ports; the top's nets carry it.
                 c, cp, sl, sig = meta
-                if cp is None and c["ninst"] > 1:
-                    cp = i
-                ex = net_name(c, cp, sl, sig)
+                copy = cp if cp is not None else (i if c["ninst"] > 1 else 0)
+                ci = cinst[cinst_index(cinst, c, copy)]
+                ex = seg_net(ci, sl, sig, 0 if c["src"] == t else nsegs(ci) - 1)
             if tr:
                 trconns.append((tr, ".%s(%s)" % (pname, ex)))
             else:
                 conns.append(".%s(%s)" % (pname, ex))
-        L.append("  ccv_%s %s (" % (t, n))
+        for x, j in ft.get(k, []):
+            ci = cinst[x]
+            for side, jj in (("fti_", j - 1), ("fto_", j)):
+                for sl in range(ci["chan"]["rate"]):
+                    for sig in ("valid", "payload", "credit", "stall"):
+                        conns.append(".%s%s(%s)" % (side, port_nm(ci["chan"], ci["inst"], sl, sig),
+                                                    seg_net(ci, sl, sig, jj)))
+                    trconns.append(("CCV_TRACE", ".%s%s(%s)" % (
+                        side, port_nm(ci["chan"], ci["inst"], sl, "tid"), seg_net(ci, sl, "tid", jj))))
+                conns.append(".%s%s(%s)" % (side, port_nm(ci["chan"], ci["inst"], None, "wake"),
+                                            seg_net(ci, None, "wake", jj)))
+        mod = wrapper_module(k, t, names, ft)
+        L.append("  %s %s%s (" % (mod, "#(%s) " % ", ".join(pov) if pov else "", n))
         L.append("    " + ",\n    ".join(conns))
         L += guarded(trconns, lambda x: x, lead="  , ")
         L.append("  );")
@@ -487,12 +702,13 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     # the checker bank
     # The bank's vectors are in slot-map order -- channel instance by channel
     # instance, then slot -- with slot 0 at the LSB, so {last, ..., first}.
+    # Segment 0 of each: where the link leaves the source's wrapper.
     def cat(sig):
-        nets = [net_name(ci["chan"], ci["inst"], s, sig)
+        nets = [seg_net(ci, s, sig, 0)
                 for ci in cinst for s in range(ci["chan"]["rate"])]
         return "{%s}" % ", ".join(reversed(nets))
     def cat_wake():
-        nets = [net_name(ci["chan"], ci["inst"], None, "wake") for ci in cinst]
+        nets = [seg_net(ci, None, "wake", 0) for ci in cinst]
         return "{%s}" % ", ".join(reversed(nets))
     L.append("`ifdef CCV_CHECK")
     L.append("  // The SAME checker bank the C++ skeleton Verilates, on the real")
@@ -863,6 +1079,17 @@ def main():
                         gen_stub(t, ports[t])))
         targets.append((os.path.join(TOPDIR, "dpi", "ccv_%s.sv" % t),
                         gen_shim(t, ports[t])))
+    names = [inst_name(t, i, ninst[t]) for t, i in binst]
+    ft = feedthroughs(binst, cinst)
+    made = set()
+    for k, (t, i) in enumerate(binst):
+        mod = wrapper_module(k, t, names, ft)
+        if mod in made:
+            continue
+        made.add(mod)
+        targets.append((os.path.join(TOPDIR, "wrap", "%s.sv" % mod),
+                        gen_wrapper(t, mod, ports[t], block_ends(t, i, ports[t], cinst),
+                                    ft.get(k, []), cinst, ninst)))
     eports = ext_ports(chans)
     targets.append((os.path.join(TOPDIR, "dpi", "ccv_ext.sv"),
                     gen_shim("ext", eports, own_ports=True)))
@@ -883,8 +1110,18 @@ def main():
             stale.append(os.path.relpath(path, ROOT))
             if not check:
                 open(path, "w").write(text)
-    msg = "%d files: top, %d port lists, %d stubs, %d DPI shims, 2 testbenches" % (
-        len(targets), len(blocks), len(blocks), len(blocks) + 1)
+    # A wrapper module that no longer exists (a feedthrough removed from
+    # params/links.json) must not linger: it would still compile, unused.
+    wdir = os.path.join(TOPDIR, "wrap")
+    want = {os.path.basename(p) for p, _ in targets if os.path.dirname(p) == wdir}
+    for f in sorted(os.listdir(wdir)):
+        if f.endswith(".sv") and f not in want:
+            stale.append(os.path.relpath(os.path.join(wdir, f), ROOT))
+            if not check:
+                os.remove(os.path.join(wdir, f))
+    msg = ("%d files: top, %d port lists, %d stubs, %d DPI shims, %d wrappers, "
+           "2 testbenches" % (len(targets), len(blocks), len(blocks),
+                              len(blocks) + 1, len(want)))
     if check:
         if stale:
             sys.stderr.write("stale: %s\n  run tools/gen-top.py\n"

@@ -41,6 +41,7 @@ import os
 import re
 import sys
 from ccv_schema import field_width
+import ccv_links
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "interfaces.json")
@@ -144,6 +145,14 @@ def build(d, pv, blocks):
                               else bidx[(c["dst"], d_inst)]))
             slot += c["rate"]
             pbit += c["rate"] * c["bits"]
+    # Repeater stages per channel instance, from params/links.json: the total
+    # (the link's latency each way) and how many sit in the source's wrapper
+    # (where the checker bank watches the link).
+    hops = ccv_links.load(chans, cinst, binst, ninst)
+    for i, ci in enumerate(cinst):
+        ci["hops"] = hops[i]
+        ci["stages"] = ccv_links.total(hops[i])
+        ci["src_stages"] = hops[i][0][1]
     return binst, chans, cinst, slot, pbit
 
 
@@ -242,17 +251,22 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("/// Channel INSTANCES. src/dst index kBlkInsts; -1 is EXTERNAL.")
     L.append("/// slot_base and payload_base locate this instance in the")
     L.append("/// checker bank's flat valid/credit/stall and payload vectors.")
+    L.append("/// stages: sequential repeater stages each way (params/links.json);")
+    L.append("/// src_stages: how many of them are in the source's wrapper, which is")
+    L.append("/// where the checker bank watches the link.")
     L.append("struct ChanInst {")
     L.append("  uint16_t chan; uint16_t inst; int16_t src; int16_t dst;")
     L.append("  uint32_t slot_base; uint64_t payload_base;")
+    L.append("  uint16_t stages; uint16_t src_stages;")
     L.append("};")
     L.append("inline constexpr ChanInst kChanInsts[] = {")
     for ci in cinst:
-        L.append("  {%d, %d, %d, %d, %d, %d},"
+        L.append("  {%d, %d, %d, %d, %d, %d, %d, %d},"
                  % (ci["chan"]["id"], ci["inst"],
                     -1 if ci["src"] is None else ci["src"],
                     -1 if ci["dst"] is None else ci["dst"],
-                    ci["slot_base"], ci["payload_base"]))
+                    ci["slot_base"], ci["payload_base"],
+                    ci["stages"], ci["src_stages"]))
     L.append("};")
     L.append("constexpr unsigned kNumChanInsts = %d;" % len(cinst))
     L.append("constexpr unsigned kNumSlots = %d;" % nslots)
@@ -313,6 +327,14 @@ def gen_sv(chans, cinst, nslots, pbits):
             off = ci["payload_base"] + s * c["bits"]
             lm = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
                   if c["lead_mask"] else "")
+            if ci["stages"]:
+                # A repeated link (params/links.json): the round trip and the
+                # response bound grow by 2N, and the stall rule counts the
+                # stages between this point and the sender.
+                n = ci["stages"]
+                lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
+                       ".TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + %d), "
+                       ".SRC_STAGES(%d)" % (2 * n, 2 * n, ci["src_stages"]))
             L.append("  ccv_credit_checker #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
                      "u_%s_s%d (" % (c["bits"], c["id"], lm, tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "
@@ -353,9 +375,12 @@ def gen_sv(chans, cinst, nslots, pbits):
         base = c["name"][4:]
         tag = "%s_i%d" % (base, ci["inst"]) if c["ninst"] > 1 else base
         lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
-        L.append("  ccv_wake_checker u_%s_wake (.clk(clk), .rst_n(rst_n), "
-                 ".rx_gated(rx_gated[%d]), .wake(wake[%d]), .valid(|valid[%d:%d]));"
-                 % (tag, k, k, hi, lo))
+        # Watched where the link leaves the source's wrapper, the valid and
+        # wake reach the receiver the rest of the stages later.
+        arrive = ci["stages"] - ci["src_stages"]
+        L.append("  ccv_wake_checker %su_%s_wake (.clk(clk), .rst_n(rst_n), "
+                 ".rx_gated(rx_gated[%d]), .wake_seen(wake[%d]), .valid_seen(|valid[%d:%d]));"
+                 % ("#(.ARRIVE(%d)) " % arrive if arrive else "", tag, k, k, hi, lo))
     byname = {c["name"]: c for c in chans}
     for c in chans:
         if not c["outstanding"]:

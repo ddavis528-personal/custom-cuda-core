@@ -1967,18 +1967,22 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
 void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
                        int violations) {
   const KernelReport r = compareFinal(k);
-  uint64_t overflows = 0;
-  for (unsigned s = 0; s != kNumSlots; ++s) overflows += m.rx(s).overflows();
+  uint64_t overflows = 0, leaks = 0;
+  for (unsigned s = 0; s != kNumSlots; ++s) {
+    overflows += m.rx(s).overflows();
+    leaks += m.rx(s).leaks();
+  }
   std::printf("KERNEL name=%s finished=%d cycles=%llu retired=%llu "
               "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
               "mem_mismatch=%u check_failures=%llu class_violations=%llu "
-              "overflows=%llu channels_used=%u/%u violations=%d\n",
+              "overflows=%llu credit_leaks=%llu channels_used=%u/%u violations=%d\n",
               k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
               (unsigned long long)k.retired, k.orc.issue_groups,
               r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
               r.mem_mismatch, (unsigned long long)k.failures,
               (unsigned long long)k.class_violations,
-              (unsigned long long)overflows, r.channels_used, kNumChans,
+              (unsigned long long)overflows, (unsigned long long)leaks,
+              r.channels_used, kNumChans,
               violations);
   std::printf("UNUSED %s\n", r.unused.c_str());
 }

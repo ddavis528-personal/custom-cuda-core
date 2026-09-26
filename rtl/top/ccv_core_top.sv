@@ -2123,7 +2123,7 @@ module ccv_core_top (
   logic [63:0] cru_rau_cfg_tid;
 `endif
 
-  ccv_fet u_fet (
+  ccv_fet_w u_fet (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -2236,7 +2236,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_dec u_dec (
+  ccv_dec_w u_dec (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -2326,7 +2326,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_ooe u_ooe (
+  ccv_ooe_w u_ooe (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -2528,7 +2528,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_rcu u_rcu (
+  ccv_rcu_w u_rcu (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -3992,7 +3992,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_00 (
+  ccv_lane_w u_lane_00 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[196 +: 49]),
@@ -4047,7 +4047,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_01 (
+  ccv_lane_w u_lane_01 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[245 +: 49]),
@@ -4102,7 +4102,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_02 (
+  ccv_lane_w u_lane_02 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[294 +: 49]),
@@ -4157,7 +4157,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_03 (
+  ccv_lane_w u_lane_03 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[343 +: 49]),
@@ -4212,7 +4212,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_04 (
+  ccv_lane_w u_lane_04 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[392 +: 49]),
@@ -4267,7 +4267,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_05 (
+  ccv_lane_w u_lane_05 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[441 +: 49]),
@@ -4322,7 +4322,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_06 (
+  ccv_lane_w u_lane_06 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[490 +: 49]),
@@ -4377,7 +4377,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_07 (
+  ccv_lane_w u_lane_07 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[539 +: 49]),
@@ -4432,7 +4432,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_08 (
+  ccv_lane_w u_lane_08 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[588 +: 49]),
@@ -4487,7 +4487,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_09 (
+  ccv_lane_w u_lane_09 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[637 +: 49]),
@@ -4542,7 +4542,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_10 (
+  ccv_lane_w u_lane_10 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[686 +: 49]),
@@ -4597,7 +4597,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_11 (
+  ccv_lane_w u_lane_11 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[735 +: 49]),
@@ -4652,7 +4652,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_12 (
+  ccv_lane_w u_lane_12 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[784 +: 49]),
@@ -4707,7 +4707,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_13 (
+  ccv_lane_w u_lane_13 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[833 +: 49]),
@@ -4762,7 +4762,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_14 (
+  ccv_lane_w u_lane_14 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[882 +: 49]),
@@ -4817,7 +4817,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_15 (
+  ccv_lane_w u_lane_15 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[931 +: 49]),
@@ -4872,7 +4872,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_16 (
+  ccv_lane_w u_lane_16 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[980 +: 49]),
@@ -4927,7 +4927,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_17 (
+  ccv_lane_w u_lane_17 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1029 +: 49]),
@@ -4982,7 +4982,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_18 (
+  ccv_lane_w u_lane_18 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1078 +: 49]),
@@ -5037,7 +5037,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_19 (
+  ccv_lane_w u_lane_19 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1127 +: 49]),
@@ -5092,7 +5092,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_20 (
+  ccv_lane_w u_lane_20 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1176 +: 49]),
@@ -5147,7 +5147,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_21 (
+  ccv_lane_w u_lane_21 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1225 +: 49]),
@@ -5202,7 +5202,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_22 (
+  ccv_lane_w u_lane_22 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1274 +: 49]),
@@ -5257,7 +5257,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_23 (
+  ccv_lane_w u_lane_23 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1323 +: 49]),
@@ -5312,7 +5312,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_24 (
+  ccv_lane_w u_lane_24 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1372 +: 49]),
@@ -5367,7 +5367,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_25 (
+  ccv_lane_w u_lane_25 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1421 +: 49]),
@@ -5422,7 +5422,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_26 (
+  ccv_lane_w u_lane_26 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1470 +: 49]),
@@ -5477,7 +5477,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_27 (
+  ccv_lane_w u_lane_27 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1519 +: 49]),
@@ -5532,7 +5532,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_28 (
+  ccv_lane_w u_lane_28 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1568 +: 49]),
@@ -5587,7 +5587,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_29 (
+  ccv_lane_w u_lane_29 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1617 +: 49]),
@@ -5642,7 +5642,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_30 (
+  ccv_lane_w u_lane_30 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1666 +: 49]),
@@ -5697,7 +5697,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_lane u_lane_31 (
+  ccv_lane_w u_lane_31 (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1715 +: 49]),
@@ -5752,7 +5752,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_miu u_miu (
+  ccv_miu_w u_miu (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -5977,7 +5977,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_spm u_spm (
+  ccv_spm_w u_spm (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -6037,7 +6037,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_dcu u_dcu (
+  ccv_dcu_w u_dcu (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1862 +: 49]),
@@ -6116,7 +6116,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_mlc u_mlc (
+  ccv_mlc_w u_mlc (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[1911 +: 49]),
@@ -6177,7 +6177,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_rau u_rau (
+  ccv_rau_w u_rau (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -6261,7 +6261,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_syu u_syu (
+  ccv_syu_w u_syu (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -6297,7 +6297,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_pca u_pca (
+  ccv_pca_w u_pca (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .kill_valid(kill_valid),
@@ -6345,7 +6345,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_cru u_cru (
+  ccv_cru_w u_cru (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_req),
@@ -6373,7 +6373,7 @@ module ccv_core_top (
 `endif
   );
 
-  ccv_exb u_exb (
+  ccv_exb_w u_exb (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req(csr_reqs[2107 +: 49]),

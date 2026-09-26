@@ -260,7 +260,9 @@ wake per channel, CSR from CRU, and TL-C beats on the link. See
 instances, each block's port list generated and included, the shared checker
 bank under `CCV_CHECK`. The top holds block instances and nets and nothing
 else. Each block gates `core_clk` itself, and `tools/check-top-pure.py`
-enforces the rule, with Q-42 (full abutment) still open. Clean in all three tools. Its connectivity, extracted
+enforces the rule, with Q-42 (full abutment) still open. Every block sits in
+a hardening wrapper with its channel ends' repeaters, and `params/links.json`
+splits each link's stages across the wrappers it crosses (`physical.md`). Clean in all three tools. Its connectivity, extracted
 from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 `skeleton.md`, "The SV top", for the common-port gaps it exposed.
 

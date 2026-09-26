@@ -117,7 +117,7 @@ fi
 # -- the enables, on the netlist ---------------------------------------------
 if command -v yosys >/dev/null 2>&1; then
   if out=$(python3 tools/check-rpt-enables.py 2>&1); then
-    say "enables on the netlist: payload, lead, pulses" "PASS (4 shapes)"
+    say "enables on the netlist: payload, lead, pulses" "PASS (5 shapes)"
   else
     bad "repeater enables on the netlist" "$(echo "$out" | grep -m1 '^  ')"
   fi
@@ -128,10 +128,10 @@ mut() {   # $1 name, $2 sed expression
   sed "$2" $RPT >"$B/mut/$1.sv"
   cmp -s $RPT "$B/mut/$1.sv" && { bad "mutant $1" "did not apply"; return 1; }
 }
-mut enable-now 's/      if (valid_q) pay_q <= p\[k\*W +: W\];/      if (v[k]) pay_q <= p[k*W +: W];/'
-mut lead-late  's/        if (v\[k\]) lead_q <= /        if (valid_q) lead_q <= /'
-mut credit-short 's/    assign cr\[k\]   = credit_q;/    assign cr[k]   = cr[k+1];/'
-mut free-run   's/      if (valid_q) pay_q <= p\[k\*W +: W\];/      pay_q <= p[k*W +: W];/'
+mut enable-now 's/        if (valid_q\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /'
+mut lead-late  's/          if (v\[k\*S+j\]) lead_q <= /          if (valid_q[j]) lead_q <= /'
+mut credit-short 's/    assign cr\[k\*S +: S\]    = credit_q;/    assign cr[k*S +: S]    = cr[(k+1)*S +: S];/'
+mut free-run   's/        if (valid_q\[j\]) pay_q <= /        pay_q <= /'
 if command -v iverilog >/dev/null 2>&1; then
   caught=""
   for spec in enable-now:data_errors lead-late:data_errors credit-short:latency_errors; do

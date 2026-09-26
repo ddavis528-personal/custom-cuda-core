@@ -11,6 +11,12 @@
 // The receiver here is a model with a fixed wake latency: it gates at S and
 // ungates LAT cycles after a wake -- except where a case says a DIFFERENT
 // wake (another channel's) brought it up, which this checker cannot see.
+//
+// +arrive runs every case through a checker watching a repeated link
+// upstream of the receiver (ARRIVE = 2): it sees valid and wake two cycles
+// before the receiver does, and must judge exactly as the checker at the
+// receiver does. +arrive_wrong feeds the same early view to a checker told
+// ARRIVE = 0 -- the control: other_wake, legal at the receiver, must fire.
 //===----------------------------------------------------------------------===//
 `timescale 1ns/1ps
 module tb;
@@ -23,13 +29,24 @@ module tb;
   string cname;
   int    c, wk, up;
 
-  ccv_wake_checker u_chk (.clk(clk), .rst_n(rst_n), .rx_gated(g), .wake(w),
-                          .valid(v));
+  localparam int A = 2;
+  logic  w_e = 1'b0, v_e = 1'b0;     // the same wake and valid, A cycles early
+  bit    arrive, arrive_wrong;
+  ccv_wake_checker u_chk (.clk(clk), .rst_n(rst_n), .rx_gated(g),
+                          .wake_seen(w && !arrive && !arrive_wrong),
+                          .valid_seen(v && !arrive && !arrive_wrong));
+  ccv_wake_checker #(.ARRIVE(A)) u_chk_up (.clk(clk), .rst_n(rst_n), .rx_gated(g),
+                          .wake_seen(w_e && arrive), .valid_seen(v_e && arrive));
+  ccv_wake_checker u_chk_wrong (.clk(clk), .rst_n(rst_n), .rx_gated(g),
+                          .wake_seen(w_e && arrive_wrong),
+                          .valid_seen(v_e && arrive_wrong));
 
   always #5 clk = ~clk;
 
   initial begin
     if (!$value$plusargs("case=%s", cname)) cname = "none";
+    arrive = $test$plusargs("arrive");
+    arrive_wrong = $test$plusargs("arrive_wrong");
     wk = -1;           // this channel's wake, if any
     up = 1 << 30;      // when the receiver's clock is running again
     if (cname == "wake_t3")               begin wk = T - 3; up = wk + LAT; end
@@ -49,6 +66,8 @@ module tb;
       else                         g = (c >= S && c < up);
       w = (c == wk);
       v = (c == T);
+      w_e = (c + A == wk);
+      v_e = (c + A == T);
       @(posedge clk);
       #1;
     end

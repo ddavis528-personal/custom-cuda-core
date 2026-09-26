@@ -1,22 +1,26 @@
 #!/usr/bin/env python3
 """The SV top's connectivity, extracted from the ELABORATED netlist, must be
-exactly the C++ skeleton's.
+exactly the C++ skeleton's -- block port to block port, through the hardening
+wrappers and every repeater stage between them.
 
-Both are generated from the same schema, so comparing the generators would
-prove nothing. This compares what the two realisations actually are: Yosys
-elaborates rtl/top/ccv_core_top.sv, and every bit of every channel port on
-every block instance is mapped to a logical coordinate -- (channel, copy,
-slot, signal, bit) -- from the port name and the instance name alone, by the
-naming rule <chan>[_c<NN>][_s<K>]_<sig> (tools/gen-top.py). Then, for every
-net:
+Both are generated from the same schema and params/links.json, so comparing
+the generators would prove nothing. This compares what the two realisations
+actually are. Yosys elaborates the top with the blocks as blackboxes and the
+wrappers and repeaters flattened into it (bit-level, constants propagated),
+and every bit of every channel port on every block is mapped to a logical
+coordinate -- (channel, copy, slot, signal, bit) -- from the port name and
+the instance name alone, by the naming rule <chan>[_c<NN>][_s<K>]_<sig>
+(tools/gen-top.py). Then every bit a block drives is followed, flop by flop,
+to where it ends:
 
-  - exactly one driver and one load: nothing dangling, nothing doubled;
-  - the driver's and the load's coordinates are IDENTICAL: bit-exact
-    routing, including every payload bit;
+  - it ends on exactly one block port (or top port, for EXTERNAL), with the
+    IDENTICAL coordinate: bit-exact routing, every payload bit included;
   - valid and payload flow producer -> consumer, credit and stall back;
+  - the flops passed on the way are the link's repeater stages, the same
+    in every signal of a slot, each way;
 
-and the resulting (channel, copy, slot) -> (producer, consumer) map must equal
-the one ccv-skel --dump-wiring reports from the running C++ skeleton.
+and the resulting (channel, copy, slot) -> (producer, consumer, stages) map
+must equal the one ccv-skel --dump-wiring reports from the C++ skeleton.
 
 --mutate first connects one lane's rcu->lane valid to another lane's net in a
 temporary copy of the top; the check must then fail. A cross-check that
@@ -58,15 +62,22 @@ def schema():
 
 
 def elaborate(top_path, out_json):
-    stubs = sorted(os.path.join(ROOT, "rtl", "top", "stubs", f)
-                   for f in os.listdir(os.path.join(ROOT, "rtl", "top", "stubs")))
+    """The top, the blocks as blackboxes, everything between them flattened
+    to single-bit cells with constants propagated -- so a repeater stage is
+    one flop per bit and a lead-mask merge is plain wiring."""
+    d = os.path.join(ROOT, "rtl", "top")
+    stubs = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
+    wraps = sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
     inc = " ".join("-I" + os.path.join(ROOT, p) for p in
                    ("rtl/include", "rtl/generated", "rtl/top/ports"))
-    files = " ".join([os.path.join(ROOT, "rtl", "ccv_assert_pkg.sv")] + stubs + [top_path])
-    r = subprocess.run(["yosys", "-q", "-p",
-                        "read_verilog -sv %s %s; hierarchy -check -top ccv_core_top; "
-                        "write_json %s" % (inc, files, out_json)],
-                       capture_output=True, text=True)
+    rv = "read_verilog -sv -formal %s" % inc
+    script = ("%s %s; %s -lib %s; %s %s %s %s; hierarchy -check -top ccv_core_top; "
+              "proc; flatten; chformal -remove; techmap; opt -fast; opt_clean; "
+              "write_json %s"
+              % (rv, os.path.join(ROOT, "rtl", "ccv_assert_pkg.sv"), rv, " ".join(stubs),
+                 rv, os.path.join(ROOT, "rtl", "phys", "ccv_seq_rpt.sv"),
+                 " ".join(wraps), top_path, out_json))
+    r = subprocess.run(["yosys", "-q", "-p", script], capture_output=True, text=True)
     if r.returncode:
         sys.exit("yosys failed: %s" % (r.stderr or r.stdout)[:400])
     log = r.stderr + r.stdout
@@ -124,72 +135,105 @@ def main():
                 src.replace(want, ".rcu_lane_ops_s0_valid(rcu_lane_ops_c07_s0_valid)", 1))
         top = elaborate(top_path, os.path.join(t, "top.json"))
 
-    drivers, loads = {}, {}
-    def add(bitid, who, coord, is_driver):
-        (drivers if is_driver else loads).setdefault(bitid, []).append((who, coord))
-
-    ncells = 0
+    # Every endpoint bit -- a block port bit or a top port bit -- with its
+    # coordinate, and whether it drives (a block output, a top input).
+    ends = {}                  # net bit -> [(who, coord, drives)]
+    loads = {}                 # net bit -> [(cell, port)] for every cell input
+    flops = {}                 # cell name -> (D bit, Q bit)
+    nblocks = 0
     for cname, cell in top["cells"].items():
-        if not cell["type"].startswith("ccv_"):
-            continue
-        ncells += 1
-        btype = cell["type"][4:]
+        ctype = cell["type"]
+        conns = cell["connections"]
         dirs = cell.get("port_directions", {})
-        for port, bits in cell["connections"].items():
-            for i, b in enumerate(bits):
-                co = coord_of(ch, ninst, cname, btype, port, i)
-                if co is None or isinstance(b, str):
-                    continue
-                add(b, cname, co, dirs.get(port) == "output")
+        if ctype.startswith("ccv_"):            # a block, kept as a blackbox
+            nblocks += 1
+            inst = cname[:-len(".u_blk")] if cname.endswith(".u_blk") else cname
+            btype = ctype[4:]
+            for port, bits in conns.items():
+                for i, b in enumerate(bits):
+                    co = coord_of(ch, ninst, inst, btype, port, i)
+                    if co is None or isinstance(b, str):
+                        continue
+                    ends.setdefault(b, []).append((inst, co, dirs.get(port) == "output"))
+            continue
+        if "DFF" in ctype:
+            flops[cname] = (conns["D"][0], conns["Q"][0])
+        for port, bits in conns.items():
+            if port in ("Q", "Y") or dirs.get(port) == "output":
+                continue
+            if "DFF" in ctype and port != "D":
+                continue            # an enable, clock or reset: not the data path
+            for b in bits:
+                loads.setdefault(b, []).append((cname, port))
     for pname, p in top["ports"].items():
         for i, b in enumerate(p["bits"]):
             co = coord_of(ch, ninst, "EXTERNAL", "EXTERNAL", pname, i)
-            if co is None:
-                continue
-            # a top INPUT drives the inside; a top OUTPUT loads it
-            add(b, "EXTERNAL", co, p["direction"] == "input")
+            if co is not None:
+                # a top INPUT drives the inside; a top OUTPUT loads it
+                ends.setdefault(b, []).append(("EXTERNAL", co, p["direction"] == "input"))
+    by_d = {}
+    for cname, (d, q) in flops.items():
+        by_d.setdefault(d, []).append(q)
 
     errs = []
-    edge = {}           # (chan, copy, slot) -> (producer, consumer)
-    wake = {}           # (chan, copy) -> (producer, consumer)
+    edge = {}           # (chan, copy, slot) -> (producer, consumer, stages)
+    wake = {}           # (chan, copy) -> (producer, consumer, stages)
     seen = set()
-    for b in set(drivers) | set(loads):
-        dv, ld = drivers.get(b, []), loads.get(b, [])
-        if len(dv) != 1 or len(ld) != 1:
-            errs.append("net %s: %d driver(s) %s, %d load(s) %s"
-                        % (b, len(dv), dv[:2], len(ld), ld[:2]))
-            continue
-        (dw, dc), (lw, lc) = dv[0], ld[0]
-        if dc != lc:
-            errs.append("misrouted: %s %s -> %s %s" % (dw, dc, lw, lc))
-            continue
-        seen.add(dc)
-        chan, copy, slot, sig, _ = dc
-        if sig == "wake":
-            wake[(chan, copy)] = (dw, lw)       # producer drives it
-            continue
-        fwd = sig in ("valid", "payload")
-        prod, cons = (dw, lw) if fwd else (lw, dw)
-        key = (chan, copy, slot)
-        if edge.setdefault(key, (prod, cons)) != (prod, cons):
-            errs.append("%s: %s disagrees with the slot's other signals" % (key, sig))
+    for b0, es in ends.items():
+        for who, co, drives in es:
+            if not drives:
+                continue
+            # Follow the data path: through flops, to the one endpoint.
+            b, n, path_ok = b0, 0, True
+            while True:
+                sinks = [e for e in ends.get(b, []) if not e[2]]
+                nxt = by_d.get(b, [])
+                other = [l for l in loads.get(b, []) if l[0] not in flops]
+                if len(sinks) + len(nxt) != 1 or other:
+                    errs.append("%s %s: %d endpoint(s), %d flop(s) and %d other load(s) at stage %d"
+                                % (who, co, len(sinks), len(nxt), len(other), n))
+                    path_ok = False
+                    break
+                if sinks:
+                    break
+                b, n = nxt[0], n + 1
+            if not path_ok:
+                continue
+            lw, lco, _ = sinks[0]
+            if lco != co:
+                errs.append("misrouted: %s %s -> %s %s" % (who, co, lw, lco))
+                continue
+            seen.add(co)
+            chan, copy, slot, sig, _ = co
+            if sig == "wake":
+                if wake.setdefault((chan, copy), (who, lw, n)) != (who, lw, n):
+                    errs.append("%s copy %d: _wake bits disagree" % (chan, copy))
+                continue
+            fwd = sig in ("valid", "payload", "tid")
+            prod, cons = (who, lw) if fwd else (lw, who)
+            key = (chan, copy, slot)
+            if edge.setdefault(key, (prod, cons, n)) != (prod, cons, n):
+                errs.append("%s: %s bit %d runs %s -> %s through %d stage(s), the slot's "
+                            "other signals %s" % (key, sig, co[4], prod, cons, n, edge[key]))
 
-    # Wake runs sender to receiver of the same channel instance as its slots.
+    # Wake runs sender to receiver of the same channel instance as its slots,
+    # through as many stages.
     for (chan, copy), pc in wake.items():
         if edge.get((chan, copy, 0)) != pc:
-            errs.append("%s copy %d: _wake runs %s -> %s, its slots %s"
-                        % (chan, copy, pc[0], pc[1], edge.get((chan, copy, 0))))
+            errs.append("%s copy %d: _wake runs %s -> %s (%d stages), its slots %s"
+                        % (chan, copy, pc[0], pc[1], pc[2], edge.get((chan, copy, 0))))
     want_bits = sum(c["copies"] * (c["rate"] * (3 + c["bits"]) + 1)
                     for c in ch.values())
-    if len(seen) != want_bits:
+    nbits = len([x for x in seen if x[3] != "tid"])
+    if nbits != want_bits:
         errs.append("%d channel-signal bits connected, the schema implies %d"
-                    % (len(seen), want_bits))
+                    % (nbits, want_bits))
 
     cpp = set()
     for line in open(dump):
-        chan, copy, slot, src, dst = line.split()
-        cpp.add((chan, int(copy), int(slot), src, dst))
-    sv = {(k[0], k[1], k[2], v[0], v[1]) for k, v in edge.items()}
+        chan, copy, slot, src, dst, stages = line.split()
+        cpp.add((chan, int(copy), int(slot), src, dst, int(stages)))
+    sv = {(k[0], k[1], k[2], v[0], v[1], v[2]) for k, v in edge.items()}
     for x in sorted(cpp - sv)[:3]:
         errs.append("in the C++ skeleton, not the SV top: %s" % (x,))
     for x in sorted(sv - cpp)[:3]:
@@ -201,8 +245,10 @@ def main():
         for e in errs[:6]:
             print("  " + e)
         return 1
-    print("TOPWIRING %s: %d block instances, %d slots, %d bits, "
-          "identical to the C++ skeleton" % (label, ncells, len(sv), len(seen)))
+    rep = sum(1 for x in sv if x[5])
+    print("TOPWIRING %s: %d blocks, %d slots, %d bits, identical to the C++ "
+          "skeleton; %d slot(s) repeated, %d flop stage(s) traced"
+          % (label, nblocks, len(sv), nbits, rep, sum(x[5] for x in sv)))
     return 0
 
 

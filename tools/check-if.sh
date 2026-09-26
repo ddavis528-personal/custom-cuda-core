@@ -309,6 +309,25 @@ for pair in $WAKE_CASES; do
   else say "wake: $cs stays quiet at the limit" "PASS"
   fi
 done
+# The same eight cases, judged by a checker watching two stages upstream of
+# the receiver (ARRIVE = 2; a repeated link, params/links.json). And the
+# control: that early view judged as if at the receiver, where other_wake --
+# legal -- must fire.
+if [ "$wi" = 1 ]; then
+  why=""
+  for pair in $WAKE_CASES; do
+    cs=${pair%%:*}; want=${pair#*:}; [ "$want" = "-" ] && want=""
+    vvp "$TMP/wake_iv.out" +case="$cs" +arrive >"$TMP/wake_a_$cs.log" 2>&1
+    got=$(fired "$TMP/wake_a_$cs.log")
+    [ "$got" = "$want" ] || why="$why $cs: {${got:-nothing}}"
+  done
+  [ -z "$why" ] && say "wake: all 8 cases judged 2 stages upstream" "PASS" ||
+    bad "wake checker with ARRIVE" "${why# }"
+  vvp "$TMP/wake_iv.out" +case=other_wake +arrive_wrong >"$TMP/wake_aw.log" 2>&1
+  [ "$(fired "$TMP/wake_aw.log")" = "wake_leads_valid" ] &&
+    say "  ...and without the delay, other_wake fires" "PASS" ||
+    bad "wake ARRIVE control" "an early view judged as at the receiver stayed quiet"
+fi
 
 # -- Icarus: the SAME checker source still compiles without DPI -----------
 # F-13: Icarus has no DPI at all. The emission guard exists so the X-pass can

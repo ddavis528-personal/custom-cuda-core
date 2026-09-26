@@ -93,7 +93,7 @@ manifest. The gate must pass first, and the branch is never merged back.
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
 | [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the SV top, and S1: `vadd` end to end, where its values come from, its wire conventions and the payload gaps it found. |
-| [`docs/physical.md`](docs/physical.md) | **Getting to abutment.** The sequential repeater widget, what a repeated link changes (round trip, checker placement, credit depth and rate), clocking options, and where repeaters could live. |
+| [`docs/physical.md`](docs/physical.md) | **Getting to abutment.** The sequential repeater widget; the hardening wrappers and `params/links.json`, which says how many stages of each channel each wrapper holds; what a repeated link changes (round trip, checker placement, credit depth and rate); clocking options. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
 | [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one credit checker for every channel**, since every boundary runs the same credited protocol. Four more checkers (atomic, lockstep, binding, outstanding) span slots, instances and channel pairs rather than types. |
@@ -130,6 +130,8 @@ rtl/top/                    GENERATED, tracked: the SV top level
                               ccv_core_top.sv   45 blocks, 108 channel instances
                               ports/            each block's port list
                               stubs/            stub blocks, swapped at 4c
+                              wrap/             hardening wrappers: block +
+                                                repeaters, per params/links.json
                               dpi/              the C++ skeleton's blocks as DPI
                                                 shims: the all-C++ machine in SV
 rtl/generated/              generated; never edited
@@ -144,7 +146,8 @@ synth/                      clock-gating techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
-test/phys/                  the sequential repeater through N = 0..4 stages
+test/phys/                  the sequential repeater through N = 0..4 stages,
+                              and a busy repeater split (links_split.json)
 test/top/                   GENERATED, tracked: testbenches for the SV top,
                               with stubs and with the DPI shims
 test/kernels/               S1 kernels' sources; oracles come from the pinned compiler (tools/gen-oracle.sh)

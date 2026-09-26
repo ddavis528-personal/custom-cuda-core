@@ -1,0 +1,26 @@
+{
+  "_doc": [
+    "WHERE EACH CHANNEL'S SEQUENTIAL REPEATERS LIVE (docs/physical.md, 'Wrappers and links').",
+    "",
+    "Every block instance sits in a hardening wrapper of the same name (fet, lane_05, ...), and every channel instance runs from its source's wrapper to its destination's. A LINK entry says how many repeater stages (rtl/phys/ccv_seq_rpt.sv) each wrapper along that path holds. Any channel instance no entry covers is 'src:0 > dst:0': abutted, no repeaters.",
+    "",
+    "  channel  the channel name without ccv_, e.g. fet_dec_instr",
+    "  copies   which copies of a replicated channel (rcu_lane_ops has 32): \"all\" (the default), or a list such as [5, 6]. An entry naming copies beats an \"all\" entry for those copies; any other overlap is an error.",
+    "  route    the hops, in the direction of valid, as 'wrapper:stages' separated by '>'. It starts at 'src' and ends at 'dst', this copy's own endpoints. Anything between is a FEEDTHROUGH: another wrapper the channel crosses, named by its block instance ('miu', 'lane_06'), which gets ports for it and holds its stages.",
+    "  why      optional: a note for the reader.",
+    "",
+    "Rules, checked by tools/ccv_links.py whenever the generators run:",
+    "  - stages are whole numbers, 0 to 16; the end at EXTERNAL holds none (it has no wrapper);",
+    "  - a route doesn't pass its own endpoints, or any wrapper twice;",
+    "  - every copy of a lockstep channel has the same total, or lockstep delivery is lost, and the same src stages, since the checker bank watches each link where it leaves the source's wrapper.",
+    "",
+    "What a link's total N changes, derived from this file and nowhere else: its checkers' ROUND_TRIP (+2N), TIMEOUT_N (+2N) and SRC_STAGES, and the C++ skeleton's latency for that slot, so both hosts still agree. Credit depth does NOT follow yet (Q-43).",
+    "",
+    "Example entries (not active):",
+    "  {\"channel\": \"fet_dec_instr\", \"route\": \"src:1 > dst:1\"}",
+    "  {\"channel\": \"dec_ooe_uop\",   \"route\": \"src:0 > miu:2 > dst:1\", \"why\": \"passes over MIU\"}",
+    "  {\"channel\": \"rcu_lane_ops\",  \"copies\": \"all\", \"route\": \"src:1 > dst:1\"}",
+    "  {\"channel\": \"rcu_lane_ops\",  \"copies\": [7],   \"route\": \"src:1 > lane_06:1 > dst:0\", \"why\": \"lane 7 reached over lane 6\"}"
+  ],
+  "links": []
+}

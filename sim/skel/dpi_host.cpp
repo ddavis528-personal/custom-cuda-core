@@ -16,8 +16,11 @@
 //      them: pulses low, payload and trace id holding;
 //   3. out of reset, the block runs its cycle, reading `cur`, writing `nxt`;
 //   4. the fields it drives go back to the shim, which registers them.
-// Both ends of a slot sample the same net at the same edge, so both write
-// the same `cur`; each writes only its own half of `nxt`. No block reads
+// Each shim writes its own END of the slot (Slot::src() or dst()). On an
+// abutted link the two are one object, and both ends sample the same net at
+// the same edge, so they write the same `cur`; each writes only its own half
+// of `nxt`. On a repeated link they are two objects, and the SV repeaters in
+// the hardening wrappers between them are the latency. No block reads
 // `nxt`, so the order the simulator calls the shims in cannot matter -- the
 // same argument as channel.h's two phases, now made by the Verilog.
 //
@@ -173,6 +176,17 @@ void putv(svBitVecVal *v, uint32_t off, uint32_t w, uint64_t x) {  // w <= 64
   }
 }
 
+/// The end of its slot a port belongs to: the sender's for what the sender
+/// drives or reads back (valid, payload, trace id out; credit, stall in),
+/// the receiver's otherwise. On a repeated link the two differ, and the SV
+/// repeaters between them are the latency; on an abutted one they are the
+/// same object.
+SlotEnd &endOf(Slot &sl, const DpiPort &p) {
+  const bool fwd = p.sig == DpiSig::VALID || p.sig == DpiSig::PAYLOAD ||
+                   p.sig == DpiSig::TID;
+  return fwd == p.out ? sl.src() : sl.dst();
+}
+
 void cycle(unsigned type, int h, long long cyc, bool rst,
            const svBitVecVal *sample, svBitVecVal *drive) {
   if (!g || h < 0 || size_t(h) >= g->shims.size()) die("unregistered shim");
@@ -185,7 +199,7 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
   uint32_t off = 0;
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
-    SlotSignals &c = slots[s.slot[j]].cur;
+    SlotSignals &c = endOf(slots[s.slot[j]], p).cur;
     switch (p.sig) {
     case DpiSig::VALID:  c.valid = getv(sample, off, 1); break;
     case DpiSig::CREDIT: c.credit = getv(sample, off, 1); break;
@@ -204,13 +218,13 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
     if (!p.out) continue;
-    Slot &sl = slots[s.slot[j]];
+    SlotEnd &e = endOf(slots[s.slot[j]], p);
     switch (p.sig) {
-    case DpiSig::VALID:   sl.nxt.valid = false; break;
-    case DpiSig::CREDIT:  sl.nxt.credit = false; break;
-    case DpiSig::STALL:   sl.nxt.stall = false; break;
-    case DpiSig::TID:     sl.nxt.tid = sl.cur.tid; break;
-    case DpiSig::PAYLOAD: sl.nxt.payload = sl.cur.payload; break;
+    case DpiSig::VALID:   e.nxt.valid = false; break;
+    case DpiSig::CREDIT:  e.nxt.credit = false; break;
+    case DpiSig::STALL:   e.nxt.stall = false; break;
+    case DpiSig::TID:     e.nxt.tid = e.cur.tid; break;
+    case DpiSig::PAYLOAD: e.nxt.payload = e.cur.payload; break;
     }
   }
   // 3. the block's cycle
@@ -222,7 +236,7 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
     if (!p.out) continue;
-    const SlotSignals &n = slots[s.slot[j]].nxt;
+    const SlotSignals &n = endOf(slots[s.slot[j]], p).nxt;
     switch (p.sig) {
     case DpiSig::VALID:  putv(drive, off, 1, n.valid); break;
     case DpiSig::CREDIT: putv(drive, off, 1, n.credit); break;
@@ -246,7 +260,17 @@ extern "C" {
 int ccv_dpi_register(const char *path) {
   if (!g) init();
   std::string n = path ? path : "";
-  if (size_t d = n.find_last_of('.'); d != std::string::npos) n = n.substr(d + 1);
+  // A block sits in its hardening wrapper as u_blk; the wrapper carries the
+  // instance's name (tb.u_top.u_lane_05.u_blk). The testbench's end of
+  // EXTERNAL is tb.u_ext.
+  std::vector<std::string> parts;
+  for (size_t a = 0, d; a <= n.size(); a = d + 1) {
+    d = n.find('.', a);
+    if (d == std::string::npos) d = n.size();
+    parts.push_back(n.substr(a, d - a));
+  }
+  n = parts.back();
+  if (n == "u_blk" && parts.size() > 1) n = parts[parts.size() - 2];
   Shim s;
   s.name = n;
   s.inst = instOf(n);

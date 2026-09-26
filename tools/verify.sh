@@ -157,6 +157,14 @@ section "SV-hosted C++ -- the skeleton's blocks inside the SV top"
 # late must not. After the skeleton and the kernels, whose runs it compares.
 run "SV-hosted C++" ./tools/check-sv-hosted.sh
 
+section "Hardening wrappers -- params/links.json"
+# The design's own links.json repeats nothing yet. A busy split -- links
+# repeated at both ends, feedthroughs, lockstep lanes, EXTERNAL -- is built in
+# a copy of the tree and must pass the top-level rule, the S0 suite, the
+# wiring trace, every kernel, and SV-hosted == C++-hosted; malformed
+# configurations must each be refused by name.
+run "wrappers and links" ./tools/check-links.sh
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.

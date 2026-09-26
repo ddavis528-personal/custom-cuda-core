@@ -372,9 +372,11 @@ simulation shows it, which is exactly why it needs a rule.
 
 ### The top level: block instances and nets, nothing else
 
-`ccv_core_top` holds block instances and the nets between them. It has no
-gate, flop, constant tie-off or clock gate, and no glue of any kind. This is a
-hard rule, for three reasons:
+`ccv_core_top` holds hardening wrappers and the nets between them, and each
+wrapper holds its one block, its sequential repeaters and the nets between
+them. Neither level has a gate, flop, constant tie-off or clock gate, or glue
+of any kind, outside a block or a repeater. This is a hard rule, for three
+reasons:
 
 - **Everything can be validated at the top.** Pure connectivity is what
   `check-top-wiring.py` checks bit for bit against the C++ skeleton. Logic
@@ -403,16 +405,18 @@ under `CCV_CHECK`, as `_tid` exists only under `CCV_TRACE`. That is an
 observation, not a control: the decision to gate stays inside the block.
 
 **Enforced on the elaborated netlist** by `tools/check-top-pure.py`, in
-`check-top.sh`, for both the synthesis and checking views:
+`check-top.sh`, for both the synthesis and checking views, at the top and in
+every wrapper:
 
-- every cell is a block instance, and exactly the 45 the schema places;
+- every cell is what that level may hold: at the top, exactly the 45
+  wrappers; in a wrapper, one block and its repeaters;
 - no constant on any block or top port;
 - every bit a block reads has one driver;
 - every bit a block drives is read.
 
-Five impure copies must each be refused for the rule they break: the old
-clock gate, a tied reset, a top-level flop, a floating input and an unloaded
-output.
+Seven impure copies must each be refused for the rule they break: the old
+clock gate, a tied reset, a top-level flop, a floating input, an unloaded
+output, and a clock gate and a tie-off inside a wrapper.
 
 What the rule doesn't yet give is *full* abutment. Every net would have to
 join neighbours, and today `core_clk`, `rst_n`, the kill broadcast and the

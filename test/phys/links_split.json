@@ -1,0 +1,16 @@
+{
+  "_doc": [
+    "A deliberately busy split for tools/check-links.sh: every feature of params/links.json at once, on channels the S1 kernels use. Never the design's configuration."
+  ],
+  "links": [
+    {"channel": "fet_dec_instr", "route": "src:1 > dst:1", "why": "split between both ends"},
+    {"channel": "dec_ooe_uop", "route": "src:0 > miu:2 > dst:1", "why": "a feedthrough across MIU"},
+    {"channel": "mlc_exb_req", "route": "src:0 > spm:1 > dst:0", "why": "a feedthrough across SPM, stages only there"},
+    {"channel": "rcu_lane_ops", "copies": "all", "route": "src:1 > dst:1"},
+    {"channel": "rcu_lane_ops", "copies": [7], "route": "src:1 > lane_06:1 > dst:0", "why": "lane 7 reached across lane 6: the same total and src stages, as lockstep needs"},
+    {"channel": "lane_rcu_res", "route": "src:0 > dst:2"},
+    {"channel": "miu_rcu_data", "route": "src:3 > dst:0"},
+    {"channel": "exb_ext_out", "route": "src:1 > dst:0", "why": "EXTERNAL end holds none"},
+    {"channel": "ext_exb_in", "route": "src:0 > dst:1"}
+  ]
+}

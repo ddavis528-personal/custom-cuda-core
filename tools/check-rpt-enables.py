@@ -25,21 +25,23 @@ import sys
 import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-CONFIGS = [  # (stages, width, lead mask, trace)
-    (1, 8, 0x0, False),
-    (3, 12, 0x0, True),
-    (2, 20, 0xf, True),
-    (4, 16, 0x0c1, False),
+CONFIGS = [  # (stages, slots, width, lead mask, trace)
+    (1, 1, 8, 0x0, False),
+    (3, 1, 12, 0x0, True),
+    (2, 1, 20, 0xf, True),
+    (4, 1, 16, 0x0c1, False),
+    (2, 4, 10, 0x3, True),
 ]
 
 
-def netlist(path, stages, width, lead, trace, tmp):
+def netlist(path, stages, slots, width, lead, trace, tmp):
     out = os.path.join(tmp, "rpt.json")
     d = "-DCCV_TRACE " if trace else ""
     script = ("read_verilog -sv -formal %s-Irtl/include -Irtl/generated "
-              "rtl/ccv_assert_pkg.sv %s; chparam -set STAGES %d -set PAYLOAD_W %d "
-              "-set LEAD_MASK %d ccv_seq_rpt; hierarchy -top ccv_seq_rpt; proc; opt; "
-              "write_json %s" % (d, path, stages, width, lead, out))
+              "rtl/ccv_assert_pkg.sv %s; chparam -set STAGES %d -set SLOTS %d "
+              "-set PAYLOAD_W %d -set LEAD_MASK %d ccv_seq_rpt; hierarchy -top "
+              "ccv_seq_rpt; proc; opt; write_json %s"
+              % (d, path, stages, slots, width, lead, out))
     r = subprocess.run(["yosys", "-q", "-p", script], cwd=ROOT,
                        capture_output=True, text=True)
     if r.returncode:
@@ -47,7 +49,7 @@ def netlist(path, stages, width, lead, trace, tmp):
     return json.load(open(out))["modules"]["ccv_seq_rpt"]
 
 
-def check(mod, stages, width, lead, trace):
+def check(mod, stages, slots, width, lead, trace):
     # Every net name a bit carries, so a flop is named by what it drives.
     names = {}
     for n, v in mod["netnames"].items():
@@ -57,11 +59,12 @@ def check(mod, stages, width, lead, trace):
     def bit(net, i=0):
         return mod["netnames"][net]["bits"][i]
 
-    def valid_at(node):   # the valid on node `node`: src_valid, or stage node-1's flop
-        return bit("src_valid") if node == 0 else bit("g_stage[%d].valid_q" % (node - 1))
+    def valid_at(node, j):   # slot j's valid on node `node`
+        return (bit("src_valid", j) if node == 0
+                else bit("g_stage[%d].valid_q" % (node - 1), j))
 
     bad = []
-    seen_pulse = {}
+    pulse_bits = {}
     for cname, c in mod["cells"].items():
         t = c["type"]
         if "dff" not in t:
@@ -80,13 +83,15 @@ def check(mod, stages, width, lead, trace):
         if reg in ("valid_q", "wake_q", "credit_q", "stall_q"):
             if en is not None or "sdff" not in t:
                 bad.append("%s: a pulse, must be reset and never enabled (is %s)" % (net, t))
-            seen_pulse[(k, reg)] = seen_pulse.get((k, reg), 0) + len(q)
+            pulse_bits[(k, reg)] = pulse_bits.get((k, reg), 0) + len(q)
             continue
+        j = int(net.split("g_slot[")[1].split("]")[0]) if "g_slot[" in net else 0
         if reg in ("pay_q", "tid_q"):
-            want, why = bit("g_stage[%d].valid_q" % k), "this stage's valid (the previous cycle's)"
+            want = bit("g_stage[%d].valid_q" % k, j)
+            why = "this stage's slot-%d valid (the previous cycle's)" % j
             mask = ~lead if reg == "pay_q" else -1
         elif reg == "lead_q":
-            want, why = valid_at(k), "the stage's input valid (the same cycle's)"
+            want, why = valid_at(k, j), "the stage's slot-%d input valid (the same cycle's)" % j
             mask = lead
         else:
             bad.append("%s: an unexpected register" % net)
@@ -98,14 +103,15 @@ def check(mod, stages, width, lead, trace):
             continue
         if en is None:
             bad.append("%s: loads every cycle; must be enabled by %s" % (net, why))
-        elif any(en[0] != want for _ in live):
+        elif en[0] != want:
             bad.append("%s: enabled by %s, not by %s"
                        % (net, sorted(names.get(en[0], {("?", 0)}))[0][0], why))
     for k in range(stages):
-        for reg in ("valid_q", "wake_q", "credit_q", "stall_q"):
-            if seen_pulse.get((k, reg)) != 1:
-                bad.append("g_stage[%d].%s: %s flop bits, want 1"
-                           % (k, reg, seen_pulse.get((k, reg), 0)))
+        for reg, n in (("valid_q", slots), ("credit_q", slots),
+                       ("stall_q", slots), ("wake_q", 1)):
+            if pulse_bits.get((k, reg)) != n:
+                bad.append("g_stage[%d].%s: %s flop bits, want %d"
+                           % (k, reg, pulse_bits.get((k, reg), 0), n))
     return bad
 
 
@@ -124,11 +130,11 @@ def main():
             path = a.split("=", 1)[1]
     fails = 0
     with tempfile.TemporaryDirectory() as tmp:
-        for stages, width, lead, trace in CONFIGS:
-            bad = check(netlist(path, stages, width, lead, trace, tmp),
-                        stages, width, lead, trace)
-            tag = "STAGES=%d W=%d LEAD=%#x%s" % (stages, width, lead,
-                                                   " +trace" if trace else "")
+        for stages, slots, width, lead, trace in CONFIGS:
+            bad = check(netlist(path, stages, slots, width, lead, trace, tmp),
+                        stages, slots, width, lead, trace)
+            tag = "STAGES=%d SLOTS=%d W=%d LEAD=%#x%s" % (
+                stages, slots, width, lead, " +trace" if trace else "")
             if bad:
                 fails += 1
                 print("RPT_ENABLES %s: %d finding(s)" % (tag, len(bad)))

@@ -43,7 +43,7 @@ if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
 fi
 
 CHK="rtl/if/ccv_credit_checker.sv rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv rtl/if/ccv_wake_checker.sv rtl/generated/ccv_skel_checkers.sv"
-SV="rtl/ccv_assert_pkg.sv $CHK rtl/top/dpi/*.sv rtl/top/ccv_core_top.sv test/top/tb_sv_hosted.sv"
+SV="rtl/ccv_assert_pkg.sv $CHK rtl/top/dpi/*.sv rtl/phys/ccv_seq_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_core_top.sv test/top/tb_sv_hosted.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
 
 # -- lint and build ----------------------------------------------------------

@@ -47,7 +47,8 @@ class Machine {
 public:
   using Factory = std::function<std::unique_ptr<Block>(int inst)>;
 
-  /// `depth` is the credit depth of every slot: the round trip, 2 today.
+  /// `depth` is the credit depth of every abutted slot: the round trip, 2
+  /// today. A slot with N repeater stages each way gets depth + 2N.
   Machine(unsigned depth, const Factory &make);
 
   /// Advance one cycle. Blocks run only out of reset. `inject`, if given,

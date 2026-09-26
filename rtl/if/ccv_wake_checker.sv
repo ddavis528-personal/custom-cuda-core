@@ -19,6 +19,12 @@
 // toward a sleep that begins after it: nothing obliges a receiver to stay
 // awake because a wake passed it by.
 //
+// ARRIVE: where the checker watches a repeated link (params/links.json), the
+// valid and the wake still have ARRIVE stages to go before the receiver sees
+// them. Both are delayed by that much here, so the contract is judged
+// against the receiver's gate at the moment they reach it. 0 on an abutted
+// link, and wherever the checker sits at the receiver.
+//
 // A tracking register rather than a sequence, because no multi-cycle
 // construct exists in any tool (F-2). Ternary selects, not `if` on the
 // inputs (CCV-L08), as in ccv_outstanding_checker.
@@ -30,14 +36,35 @@
 
 module ccv_wake_checker #(
   parameter int MODE = `CCV_MODE_ASSERT,
-  parameter int LAT  = ccv_params_pkg::CCV_WAKE_LAT
+  parameter int LAT  = ccv_params_pkg::CCV_WAKE_LAT,
+  parameter int ARRIVE = 0
 ) (
   input logic clk,
   input logic rst_n,
   input logic rx_gated,   // the receiver's clk_gated: its clock is stopped
-  input logic wake,       // this channel instance's _wake
-  input logic valid       // any slot of this channel instance
+  input logic wake_seen,  // this channel instance's _wake, where watched
+  input logic valid_seen  // any slot of this channel instance, where watched
 );
+
+  // Valid and wake as the receiver sees them: ARRIVE cycles later.
+  logic wake, valid;
+  if (ARRIVE == 0) begin : g_here
+    assign wake  = wake_seen;
+    assign valid = valid_seen;
+  end else begin : g_later
+    logic [ARRIVE-1:0] wake_h, valid_h;
+    always_ff @(posedge clk) begin
+      if (!rst_n) begin
+        wake_h  <= '0;
+        valid_h <= '0;
+      end else begin
+        wake_h  <= ARRIVE'({wake_h, wake_seen});
+        valid_h <= ARRIVE'({valid_h, valid_seen});
+      end
+    end
+    assign wake  = wake_h[ARRIVE-1];
+    assign valid = valid_h[ARRIVE-1];
+  end
 
   localparam int AW = $clog2(LAT + 1);
   localparam int AW_LAT = LAT;
