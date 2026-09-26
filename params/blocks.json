@@ -30,7 +30,7 @@
       "letter": "c",
       "segment": "core",
       "synchronous": true,
-      "doc": "The core clock domain, and the only functional one. Each block receives it twice: `clk`, gated for the block, and `clk_free`, ungated for the wake detector. Both are the same frequency, so this remains a single domain and §6's revisit trigger (multiple FREQUENCY domains) has not fired."
+      "doc": "The core clock domain, and the only functional one. Each block receives it once, ungated, as `core_clk`, and gates it itself: the gated `<blk>_core_clk` never leaves the block, and only the gate and the wake detector run on the ungated net (CCV-L22). Gated and ungated are the same frequency, so this remains a single domain and §6's revisit trigger (multiple FREQUENCY domains) has not fired."
     },
     {
       "letter": "t",

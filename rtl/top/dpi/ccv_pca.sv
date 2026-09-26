@@ -39,7 +39,9 @@ module ccv_pca (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_pca(h, cyc, !rst_n, {
       pca_rau_mig_done_tid, pca_rau_mig_done_stall, pca_rau_mig_done_credit,
       pca_rau_mig_done_payload, pca_rau_mig_done_valid, pca_fet_mig_tid,
@@ -65,9 +67,11 @@ module ccv_pca (
 `endif
   assign kill_ack = '0;
   assign kill_ack_epoch = '0;
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign pca_rcu_mig_wake = '0;
   assign pca_fet_mig_wake = '0;
   assign pca_rau_mig_done_wake = '0;

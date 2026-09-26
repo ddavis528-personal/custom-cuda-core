@@ -187,7 +187,7 @@ def stage_of(name):
 # must look up a different clock name per block is not mechanical. The naming
 # convention governs the NET AT THE PARENT that drives these (`ooe_core_clk`),
 # not the formal here.
-COMMON_CLK_PORTS = {"clk", "clk_free"}
+COMMON_CLK_PORTS = {"core_clk"}
 
 
 def clk_domain(name):
@@ -687,13 +687,14 @@ def check_file(path, rel):
                     "typo or a new clock nobody declared" % (base, dom))
 
             # -- CCV-L22: blocks run on their gated clock -------------------
-            # A block receives its clock twice: `clk`, already gated, and
-            # `clk_free`, ungated and present ONLY so the wake detector can
-            # watch for traffic while the block sleeps. Clocking anything else
-            # on `clk_free` silently defeats the block's gate: the design
-            # works, produces identical results, and never saves the power.
-            # Nothing in simulation shows it.
-            if base in ("clk_free", "core_clk") and blk_name:
+            # A block receives ONE clock, `core_clk`, ungated, and gates it
+            # itself as its first act: the gate is inside the block, never at
+            # the top (the top holds only instances and nets). Only the gate
+            # and the wake detector, which watches for traffic while the block
+            # sleeps, may run on the ungated net. Clocking anything else on it
+            # silently defeats the gate: the design works, produces identical
+            # results, and never saves the power. Nothing in simulation shows it.
+            if base == "core_clk" and blk_name:
                 body_names = set(re.findall(r"[a-z]\w*", body))
                 if not any("wake" in n or "detect" in n for n in body_names):
                     add("CCV-L22", ln,

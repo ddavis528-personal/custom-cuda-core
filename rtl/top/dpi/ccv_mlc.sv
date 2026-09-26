@@ -39,7 +39,9 @@ module ccv_mlc (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_mlc(h, cyc, !rst_n, {
       exb_mlc_rsp_tid, exb_mlc_rsp_stall, exb_mlc_rsp_credit,
       exb_mlc_rsp_payload, exb_mlc_rsp_valid, mlc_exb_req_tid,
@@ -70,9 +72,11 @@ module ccv_mlc (
     dcu_mlc_req_stall, dcu_mlc_req_credit
   } = skew ? q2 : q;
 `endif
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign mlc_dcu_rsp_wake = '0;
   assign mlc_dcu_probe_wake = '0;
   assign mlc_fet_ifill_rsp_wake = '0;

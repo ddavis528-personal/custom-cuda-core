@@ -363,11 +363,60 @@ since without a block name there is nothing to check the block letter against.
 
 ### CCV-L22 — a block runs on its own gated clock
 
-No `always_ff @(posedge core_clk)` inside a block. Each block gates `core_clk`
-as its first act, and clocking logic on the ungated net **silently defeats that
-gate**: the design still works, produces identical results, and never saves the
-power it was supposed to. Nothing in simulation shows it, which is exactly why
-it needs a rule.
+No `always_ff @(posedge core_clk)` inside a block, except the wake detector.
+A block receives one clock, `core_clk`, ungated, and gates it as its first
+act, inside itself (see *The top level* below). Clocking logic on the
+ungated net **silently defeats that gate**: the design still works, produces
+identical results, and never saves the power it was supposed to. Nothing in
+simulation shows it, which is exactly why it needs a rule.
+
+### The top level: block instances and nets, nothing else
+
+`ccv_core_top` holds block instances and the nets between them. It has no
+gate, flop, constant tie-off or clock gate, and no glue of any kind. This is a
+hard rule, for three reasons:
+
+- **Everything can be validated at the top.** Pure connectivity is what
+  `check-top-wiring.py` checks bit for bit against the C++ skeleton. Logic
+  there would be neither a block nor wiring, so no check would own it.
+- **The floorplan can abut the blocks.** A top-level cell needs somewhere to
+  sit, and glue between two blocks is what stops them touching.
+- **Sleep is a block's own decision.** A block enters sleep on local
+  quiescence or stall, signals that are internal and stay internal. So the
+  clock gate belongs inside the block, next to what drives it. A top-level
+  gate would need those signals brought out as ports.
+
+What the rule moved:
+
+- **The clock gates.** Each block now takes `core_clk` ungated and gates it
+  itself, where the top used to build `<blk>_core_clk` from a `sleep_ok`
+  port.
+- **The CSR star's tie-offs.** CRU's own slot in its star vectors was tied to
+  zero at the top. It now has no slot, and the vectors index the other 44
+  instances.
+
+**One exception, and it observes.** Under `CCV_CHECK` the top also holds the
+checker bank. Its ports may take constants (its configuration). It may drive
+nothing, and it is absent from every synthesis view. The bank learns a
+receiver's gate state from `clk_gated`, an output port each block has only
+under `CCV_CHECK`, as `_tid` exists only under `CCV_TRACE`. That is an
+observation, not a control: the decision to gate stays inside the block.
+
+**Enforced on the elaborated netlist** by `tools/check-top-pure.py`, in
+`check-top.sh`, for both the synthesis and checking views:
+
+- every cell is a block instance, and exactly the 45 the schema places;
+- no constant on any block or top port;
+- every bit a block reads has one driver;
+- every bit a block drives is read.
+
+Five impure copies must each be refused for the rule they break: the old
+clock gate, a tied reset, a top-level flop, a floating input and an unloaded
+output.
+
+What the rule doesn't yet give is *full* abutment. Every net would have to
+join neighbours, and today `core_clk`, `rst_n`, the kill broadcast and the
+CSR star fan out across the core. That is Q-42.
 
 ### CCV-L23 — stage arithmetic
 

@@ -258,7 +258,9 @@ wake per channel, CSR from CRU, and TL-C beats on the link. See
 
 `rtl/top/` — generated and tracked: 45 stub blocks wired by the 108 channel
 instances, each block's port list generated and included, the shared checker
-bank under `CCV_CHECK`. Clean in all three tools. Its connectivity, extracted
+bank under `CCV_CHECK`. The top holds block instances and nets and nothing
+else. Each block gates `core_clk` itself, and `tools/check-top-pure.py`
+enforces the rule, with Q-42 (full abutment) still open. Clean in all three tools. Its connectivity, extracted
 from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 `skeleton.md`, "The SV top", for the common-port gaps it exposed.
 

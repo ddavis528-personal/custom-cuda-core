@@ -19,7 +19,7 @@
 
 /* verilator lint_off UNUSEDSIGNAL */
 module ccv_ext (
-  input  logic clk,
+  input  logic core_clk,
   input  logic rst_n,
   input  logic exb_ext_out_valid,
   input  ccv_exb_ext_out_t exb_ext_out_payload,
@@ -54,7 +54,9 @@ module ccv_ext (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_ext(h, cyc, !rst_n, {
       ext_exb_in_tid, ext_exb_in_stall, ext_exb_in_credit,
       ext_exb_in_payload, ext_exb_in_valid, exb_ext_out_tid,

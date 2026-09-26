@@ -39,7 +39,9 @@ module ccv_dec (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_dec(h, cyc, !rst_n, {
       dec_ooe_uop_s5_tid, dec_ooe_uop_s4_tid, dec_ooe_uop_s3_tid,
       dec_ooe_uop_s2_tid, dec_ooe_uop_s1_tid, dec_ooe_uop_s0_tid,
@@ -87,9 +89,11 @@ module ccv_dec (
 `endif
   assign kill_ack = '0;
   assign kill_ack_epoch = '0;
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign dec_ooe_uop_wake = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

@@ -39,7 +39,9 @@ module ccv_lane (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_lane(h, cyc, !rst_n, {
       lane_rcu_res_s3_tid, lane_rcu_res_s2_tid, lane_rcu_res_s1_tid,
       lane_rcu_res_s0_tid, lane_rcu_res_s3_stall, lane_rcu_res_s3_credit,
@@ -70,9 +72,11 @@ module ccv_lane (
     rcu_lane_ops_s0_stall, rcu_lane_ops_s0_credit
   } = skew ? q2 : q;
 `endif
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign lane_rcu_res_wake = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

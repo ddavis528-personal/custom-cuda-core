@@ -39,7 +39,9 @@ module ccv_ooe (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_ooe(h, cyc, !rst_n, {
       ooe_cru_fault_tid, ooe_cru_fault_stall, ooe_cru_fault_credit,
       ooe_cru_fault_payload, ooe_cru_fault_valid, syu_ooe_rel_tid,
@@ -137,9 +139,11 @@ module ccv_ooe (
 `endif
   assign kill_ack = '0;
   assign kill_ack_epoch = '0;
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign ooe_rcu_issue_wake = '0;
   assign ooe_miu_memop_wake = '0;
   assign ooe_miu_retire_wake = '0;

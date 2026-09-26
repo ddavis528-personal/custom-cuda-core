@@ -39,7 +39,9 @@ module ccv_spm (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  always @(posedge clk) begin
+  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
+  // core_clk, which is what a real block's gate would pass when open.
+  always @(posedge core_clk) begin
     ccv_dpi_cycle_spm(h, cyc, !rst_n, {
       spm_miu_rsp_s3_tid, spm_miu_rsp_s2_tid, spm_miu_rsp_s1_tid,
       spm_miu_rsp_s0_tid, spm_miu_rsp_s3_stall, spm_miu_rsp_s3_credit,
@@ -72,9 +74,11 @@ module ccv_spm (
 `endif
   assign kill_ack = '0;
   assign kill_ack_epoch = '0;
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign spm_miu_rsp_wake = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

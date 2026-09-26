@@ -58,7 +58,7 @@ module tb;
 `endif
   );
   ccv_ext u_ext (
-    .clk(core_clk),
+    .core_clk(core_clk),
     .rst_n(rst_n),
     .exb_ext_out_valid(exb_ext_out_valid),
     .exb_ext_out_payload(exb_ext_out_payload),

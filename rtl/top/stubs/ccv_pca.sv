@@ -7,9 +7,10 @@
 // STUB for ccv_pca: never sends, never consumes, never stalls.
 // That is protocol-legal on every channel -- no valid means no
 // credit is owed -- so the top elaborates and simulates with every
-// checker quiet. Common-port handshakes (kill, sleep, CSR) have no
-// specified semantics yet, so outputs sit at their inactive value:
-// sleep_ok low keeps the block's clock running.
+// checker quiet. Common-port handshakes (kill, CSR) have no
+// specified semantics yet, so outputs sit at their inactive value.
+// A stub holds no state, so it has no clock gate: clk_gated reports
+// the gate open. Real RTL gates core_clk inside itself (CCV-L22).
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -22,9 +23,11 @@ module ccv_pca (
 );
   assign kill_ack = '0;
   assign kill_ack_epoch = '0;
-  assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+`ifdef CCV_CHECK
+  assign clk_gated = '0;
+`endif
   assign rcu_pca_mig_credit = '0;
   assign rcu_pca_mig_stall = '0;
   assign pca_rcu_mig_valid = '0;

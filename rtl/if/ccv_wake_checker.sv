@@ -34,7 +34,7 @@ module ccv_wake_checker #(
 ) (
   input logic clk,
   input logic rst_n,
-  input logic rx_gated,   // the receiver's sleep_ok: its clock is stopped
+  input logic rx_gated,   // the receiver's clk_gated: its clock is stopped
   input logic wake,       // this channel instance's _wake
   input logic valid       // any slot of this channel instance
 );

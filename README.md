@@ -306,8 +306,10 @@ Verilated in. Three seeds each give zero violations. Every clean result is
 paired with a control that must fail it.
 
 **The SV top.** The same machine as SystemVerilog (`rtl/top/`), generated and
-tracked. Its connectivity is extracted from the elaborated netlist and equals
-the C++ skeleton's bit for bit. Built from DPI shims instead of stubs, it runs
+tracked. It holds block instances and nets and nothing else: each block gates
+its own clock, and the rule is checked on the elaborated netlist. Its
+connectivity is extracted from that netlist and equals the C++ skeleton's bit
+for bit. Built from DPI shims instead of stubs, it runs
 the C++ skeleton's own blocks, stitched by the generated Verilog. Every S1
 kernel and every kernel control comes out as the C++ host runs it, which
 makes the SV port list the swap boundary for RTL, one block at a time.
