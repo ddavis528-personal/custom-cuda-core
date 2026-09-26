@@ -144,6 +144,13 @@ section "SV top -- rtl/top/ (generated, tracked)"
 # builds the binary whose wiring this is compared against.
 run "SV top" ./tools/check-top.sh
 
+section "SV-hosted C++ -- the skeleton's blocks inside the SV top"
+# The same top built from rtl/top/dpi/ shims: every block the C++ skeleton's,
+# every connection the generated Verilog's. Every S1 kernel and every kernel
+# control must come out as the C++ host runs them, and one block one cycle
+# late must not. After the skeleton and the kernels, whose runs it compares.
+run "SV-hosted C++" ./tools/check-sv-hosted.sh
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.

@@ -2,9 +2,12 @@
 #include "exerciser.h"
 
 #include "ccv_event_ids.h"
+#include "ccv/event.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <map>
+#include <tuple>
 
 namespace ccv {
 namespace skel {
@@ -380,6 +383,32 @@ void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid) {
   g_launched.push_back(
       {chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),
        uint32_t(nb <= 32 ? 0 : msg.get(32, nb < 64 ? nb - 32 : 32)), tid});
+}
+
+/// That is what proves the bank's PAYLOAD and trace-sideband wiring -- the
+/// negative controls only reach valid, credit and stall, because Verilator is
+/// two-state and payload_known_when_due cannot fire.
+int xferCheck(const std::string &trace) {
+  std::vector<std::tuple<uint16_t, uint32_t, uint32_t, uint64_t>> ev, want;
+  ccv::EventReader r;
+  if (!r.open(trace)) {
+    std::fprintf(stderr, "cannot reread trace: %s\n", r.error().c_str());
+    return 1;
+  }
+  ccv::Event e;
+  while (r.next(e))
+    if (e.event_id == ccv::EV_CH_XFER)
+      ev.push_back({uint16_t(e.a), e.b, e.c, e.instr_uid});
+  for (const Launched &l : launchedLog())
+    want.push_back({l.chan, l.lo32, l.hi32, l.tid});
+  std::sort(ev.begin(), ev.end());
+  std::sort(want.begin(), want.end());
+  std::vector<uint16_t> seen;
+  for (auto &p : ev) seen.push_back(std::get<0>(p));
+  seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+  std::printf("XFER events=%zu launched=%zu match=%s channels_seen=%zu\n",
+              ev.size(), want.size(), ev == want ? "yes" : "no", seen.size());
+  return 0;
 }
 
 } // namespace skel

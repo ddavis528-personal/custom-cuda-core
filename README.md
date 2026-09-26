@@ -127,6 +127,8 @@ rtl/top/                    GENERATED, tracked: the SV top level
                               ccv_core_top.sv   45 blocks, 108 channel instances
                               ports/            each block's port list
                               stubs/            stub blocks, swapped at 4c
+                              dpi/              the C++ skeleton's blocks as DPI
+                                                shims: the all-C++ machine in SV
 rtl/generated/              generated; never edited
 
 sim/include/ sim/src/       C++ timing-model side: event emit API
@@ -139,7 +141,8 @@ synth/                      clock-gating techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
-test/top/                   GENERATED, tracked: testbench for the SV top
+test/top/                   GENERATED, tracked: testbenches for the SV top,
+                              with stubs and with the DPI shims
 test/kernels/               S1 kernels' sources; oracles come from the pinned compiler (tools/gen-oracle.sh)
 tools/                      generators, checks, and the gate
 ```
@@ -304,7 +307,10 @@ paired with a control that must fail it.
 
 **The SV top.** The same machine as SystemVerilog (`rtl/top/`), generated and
 tracked. Its connectivity is extracted from the elaborated netlist and equals
-the C++ skeleton's bit for bit.
+the C++ skeleton's bit for bit. Built from DPI shims instead of stubs, it runs
+the C++ skeleton's own blocks, stitched by the generated Verilog. Every S1
+kernel and every kernel control comes out as the C++ host runs it, which
+makes the SV port list the swap boundary for RTL, one block at a time.
 
 **S1: `vadd`.** It runs to completion on functional stubs over the real
 channel path. The final register file and memory are identical to ccv-sim's,

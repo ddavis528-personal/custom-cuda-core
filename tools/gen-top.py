@@ -6,6 +6,10 @@ testbench from schema/interfaces.json and params/blocks.json.
   rtl/top/ports/ccv_<blk>_ports.svh  each block type's port list, generated
   rtl/top/stubs/ccv_<blk>.sv         a stub per block type
   test/top/tb_core_top.sv            clock, reset and tie-offs
+  rtl/top/dpi/ccv_<blk>.sv           the C++ skeleton's block, over DPI-C
+  rtl/top/dpi/ccv_ext.sv             ...and its testbench end of EXTERNAL
+  test/top/tb_sv_hosted.sv           the top built from those, run to the end
+  sim/generated/ccv_dpi_ports.h      each shim's sample order, for the host
 
 TRACKED, unlike rtl/generated/, so the top level can be read in the repo; the
 gate regenerates and fails if anything moved, which is what stops it being
@@ -571,6 +575,251 @@ def gen_tb(d, binst, chans, common):
     return "\n".join(L) + "\n"
 
 
+# -- SV-hosted C++ blocks ------------------------------------------------------
+#
+# The C++ skeleton's blocks, hosted INSIDE the SV top: a shim per block type
+# with the same module name and the same included port list as the stub, so
+# swapping a stub, a shim or real RTL is one file-list change, in any mix.
+# The shim samples every channel signal it can see at its clock edge -- its
+# inputs AND its own registered outputs, since a sender reads back its valid
+# and a held payload -- hands them to sim/skel/dpi_host.cpp, which runs the
+# C++ block for that cycle, and registers what the block drove. What crosses
+# a block boundary is then an SV net, never a C++ object: the top-level
+# Verilog does the stitching.
+#
+# The sample and drive vectors are concatenations in port-list order, the
+# first port at the LSB; sim/generated/ccv_dpi_ports.h describes the same
+# order to the host, from the same port list, so the two cannot disagree.
+# `_wake` is not sampled: no C++ block sleeps or wakes yet (Q-33), so a shim
+# drives it low, as a stub does.
+
+SIGS = ("valid", "payload", "credit", "stall", "tid")
+
+
+def dpi_ports(P):
+    """The channel ports a shim samples, in order: every one but wake."""
+    return [p for p in P if p[6] is not None and p[6][3] != "wake"]
+
+
+def ext_ports(chans):
+    """The testbench's end of every EXTERNAL channel, as port tuples."""
+    P = [("input", 1, "clk", False, None, None, None),
+         ("input", 1, "rst_n", False, None, None, None)]
+    for c in chans:
+        if c["src"] == "EXTERNAL":
+            P += chan_ports(c, "output", [None])
+        elif c["dst"] == "EXTERNAL":
+            P += chan_ports(c, "input", [None])
+    return P
+
+
+def gen_shim(btype, P, own_ports=False):
+    """A block type whose behaviour is the C++ skeleton's, over DPI-C."""
+    S = dpi_ports(P)
+    O = [p for p in S if p[0] == "output"]
+    sw = sum(p[1] for p in S)
+    ow = sum(p[1] for p in O)
+    ext = btype == "ext"
+    L = [BANNER]
+    L.append("// SV-HOSTED C++ for ccv_%s: the C++ skeleton's %s, run through DPI-C" % (
+        btype, "testbench end of EXTERNAL" if ext else "functional stub"))
+    L.append("// by sim/skel/dpi_host.cpp. Same module name and port list as the")
+    L.append("// stub in rtl/top/stubs/ and the real RTL to come, so any mix of the")
+    L.append("// three is a file-list change; tools/check-sv-hosted.sh builds the top")
+    L.append("// from these alone and requires the run the C++ skeleton produces.")
+    L.append("//")
+    L.append("// At each edge of its clock: sample every channel signal (%d bits," % sw)
+    L.append("// first port at the LSB), let the C++ block run its cycle, register")
+    L.append("// what it drove (%d bits). Common-port outputs sit inactive, as in" % ow)
+    L.append("// the stub. Simulation only, and only with the trace sideband: the")
+    L.append("// C++ blocks carry trace identity on every message.")
+    L.append("`include \"ccv_interfaces.svh\"")
+    L.append("")
+    L.append("/* verilator lint_off UNUSEDSIGNAL */")
+    if own_ports:
+        L.append("module ccv_%s (" % btype)
+        plain = [p for p in P if not p[3]]
+        trace = [p for p in P if p[3]]
+        for k, (dr, w, name, _, doc, typ, _m) in enumerate(plain):
+            sep = "," if k != len(plain) - 1 else ""
+            L.append("  %-6s %s%s%s" % (dr, decl(w, typ), name, sep))
+        L.append("`ifdef CCV_TRACE")
+        for dr, w, name, _, _, typ, _m in trace:
+            L.append("  , %-6s %s%s" % (dr, decl(w, typ), name))
+        L.append("`endif")
+        L.append(");")
+    else:
+        L.append("module ccv_%s (" % btype)
+        L.append("  `include \"ccv_%s_ports.svh\"" % btype)
+        L.append(");")
+    L.append("`ifndef CCV_TRACE")
+    L.append("  // Refused at elaboration: without _tid there is no identity to carry.")
+    L.append("  ccv_sv_hosted_needs_CCV_TRACE u_needs_trace ();")
+    L.append("`else")
+    L.append("  import \"DPI-C\" context function int ccv_dpi_register(input string path);")
+    L.append("  import \"DPI-C\" function bit ccv_dpi_skew(input int h);")
+    L.append("  import \"DPI-C\" context function void ccv_dpi_cycle_%s(" % btype)
+    L.append("    input int h, input longint cyc, input bit rst,")
+    L.append("    input bit [%d:0] sample, output bit [%d:0] drive);" % (sw - 1, ow - 1))
+    L.append("")
+    L.append("  int h;")
+    L.append("  bit skew;              // negative control: one extra register")
+    L.append("  longint cyc = 0;")
+    L.append("  bit [%d:0] drv, q, q2;" % (ow - 1))
+    L.append("  initial begin")
+    L.append("    h = ccv_dpi_register($sformatf(\"%m\"));")
+    L.append("    skew = ccv_dpi_skew(h);")
+    L.append("  end")
+    L.append("  always @(posedge clk) begin")
+    L.append("    ccv_dpi_cycle_%s(h, cyc, !rst_n, {" % btype)
+    names = [p[2] for p in reversed(S)]
+    for k in range(0, len(names), 3):
+        chunk = ", ".join(names[k:k + 3])
+        L.append("      %s%s" % (chunk, "," if k + 3 < len(names) else ""))
+    L.append("    }, drv);")
+    L.append("    q <= drv;")
+    L.append("    q2 <= q;")
+    L.append("    cyc <= cyc + 1;")
+    L.append("  end")
+    L.append("  assign {")
+    names = [p[2] for p in reversed(O)]
+    for k in range(0, len(names), 3):
+        chunk = ", ".join(names[k:k + 3])
+        L.append("    %s%s" % (chunk, "," if k + 3 < len(names) else ""))
+    L.append("  } = skew ? q2 : q;")
+    L.append("`endif")
+    for dr, w, name, tr, _, _t, m in P:
+        if dr != "output" or (m is not None and m[3] != "wake"):
+            continue
+        if w > 8192:
+            L.append("  /* verilator lint_off WIDTHCONCAT */")
+            L.append("  assign %s = '0;  // %d bits, intended" % (name, w))
+            L.append("  /* verilator lint_on WIDTHCONCAT */")
+        else:
+            L.append("  assign %s = '0;" % name)
+    L.append("endmodule")
+    L.append("/* verilator lint_on UNUSEDSIGNAL */")
+    return "\n".join(L) + "\n"
+
+
+def gen_dpi_header(types):
+    """sim/generated/ccv_dpi_ports.h: each shim's sample order, for the host.
+    `types` is [(name, P)], EXTERNAL's end last as `ext`."""
+    L = ["// GENERATED FILE -- DO NOT EDIT. From tools/gen-top.py, with the",
+         "// SV-hosted shims in rtl/top/dpi/: each shim's sample vector, in order,",
+         "// first entry at the LSB. `copy` -1 is the instance's own copy (a block",
+         "// that IS one copy of a replicated channel); `out` is from the block's side.",
+         "#ifndef CCV_DPI_PORTS_H",
+         "#define CCV_DPI_PORTS_H",
+         "#include <cstdint>",
+         "",
+         "namespace ccv {",
+         "namespace skel {",
+         "",
+         "enum class DpiSig : uint8_t { VALID, PAYLOAD, CREDIT, STALL, TID };",
+         "struct DpiPort { uint16_t chan; int16_t copy; uint8_t slot; DpiSig sig;",
+         "                 uint32_t width; bool out; };",
+         "struct DpiType { const char *name; const DpiPort *ports; unsigned nports;",
+         "                 uint32_t sample_bits, drive_bits; };",
+         ""]
+    for t, P in types:
+        S = dpi_ports(P)
+        L.append("inline constexpr DpiPort kDpiPorts_%s[] = {" % t)
+        for dr, w, name, _tr, _d, _ty, (c, cp, sl, sig) in S:
+            L.append("  {%d, %d, %d, DpiSig::%s, %d, %s},  // %s" % (
+                c["id"], -1 if cp is None else cp, sl, sig.upper(), w,
+                "true" if dr == "output" else "false", name))
+        L.append("};")
+    L.append("")
+    L.append("inline constexpr DpiType kDpiTypes[] = {")
+    for t, P in types:
+        S = dpi_ports(P)
+        L.append("  {\"%s\", kDpiPorts_%s, %d, %d, %d}," % (
+            t, t, len(S), sum(p[1] for p in S),
+            sum(p[1] for p in S if p[0] == "output")))
+    L.append("};")
+    L.append("constexpr unsigned kNumDpiTypes = %d;" % len(types))
+    L.append("")
+    L.append("/// X(type, index into kDpiTypes): one ccv_dpi_cycle_<type> per shim.")
+    L.append("#define CCV_DPI_TYPES(X) \\")
+    L.append(" \\\n".join("  X(%s, %d)" % (t, k) for k, (t, _) in enumerate(types)))
+    L.append("")
+    L.append("} // namespace skel")
+    L.append("} // namespace ccv")
+    L.append("#endif")
+    return "\n".join(L) + "\n"
+
+
+def gen_tb_hosted(chans, common):
+    """The testbench for the SV-hosted run: clock, reset, the top, and the
+    EXTERNAL end as one more shim. It asks the host each cycle whether the
+    kernel is finished, by the same rule the C++ skeleton's loop applies."""
+    cw = {n: w for n, _, w, _ in common}
+    ext = [c for c in chans if "EXTERNAL" in (c["src"], c["dst"])]
+    L = [BANNER, "`timescale 1ns/1ps"]
+    L.append("// The SV-hosted run: ccv_core_top built from rtl/top/dpi/ shims, so")
+    L.append("// every block is the C++ skeleton's and every connection between them")
+    L.append("// is this top's Verilog. The kernel, trace and negative controls come")
+    L.append("// in as plusargs the host reads (+ccv_oracle= +ccv_trace= +ccv_break=")
+    L.append("// +ccv_shim_delay=<instance> +ccv_cycles=). Reset is low for the first")
+    L.append("// two edges, as in the C++ skeleton's loop.")
+    L.append("`include \"ccv_interfaces.svh\"")
+    L.append("module tb;")
+    L.append("  logic core_clk = 1'b0, rst_n = 1'b0;")
+    L.append("  // The CSR owner's host side: idle, and nothing here reads it.")
+    L.append("  /* verilator lint_off UNUSEDSIGNAL */")
+    L.append("  logic %scsr_rsp;" % rng(cw["csr_rsp"]))
+    L.append("  logic csr_credit;")
+    L.append("  /* verilator lint_on UNUSEDSIGNAL */")
+    conns = [".core_clk(core_clk)", ".rst_n(rst_n)", ".csr_req('0)",
+             ".csr_rsp(csr_rsp)", ".csr_credit(csr_credit)"]
+    econns = [".clk(core_clk)", ".rst_n(rst_n)"]
+    tr, etr = [], []
+    for c in ext:
+        for dr, w, name, t, _, typ, _m in chan_ports(c, "output", [None]):
+            if t:
+                L.append("`ifdef CCV_TRACE")
+                L.append("  %s%s;" % (decl(w, typ), name))
+                L.append("`endif")
+                tr.append(".%s(%s)" % (name, name))
+            else:
+                L.append("  %s%s;" % (decl(w, typ), name))
+                conns.append(".%s(%s)" % (name, name))
+    L.append("")
+    L.append("  ccv_core_top u_top (")
+    L.append("    " + ",\n    ".join(conns))
+    L.append("`ifdef CCV_TRACE")
+    L.append("    , " + ",\n      ".join(tr))
+    L.append("`endif")
+    L.append("  );")
+    L.append("  ccv_ext u_ext (")
+    L.append("    " + ",\n    ".join(econns + conns[5:]))
+    L.append("`ifdef CCV_TRACE")
+    L.append("    , " + ",\n      ".join(tr))
+    L.append("`endif")
+    L.append("  );")
+    L.append("")
+    L.append("  import \"DPI-C\" context function bit ccv_dpi_done(input longint cyc);")
+    L.append("  import \"DPI-C\" context function void ccv_dpi_report();")
+    L.append("  initial forever #5 core_clk = ~core_clk;")
+    L.append("  // Off the edge, so no block samples it mid-change.")
+    L.append("  initial begin")
+    L.append("    repeat (2) @(posedge core_clk);")
+    L.append("    #1 rst_n = 1'b1;")
+    L.append("  end")
+    L.append("  // Between edges every block has run the cycle: ask whether it is over.")
+    L.append("  longint c = 0;")
+    L.append("  always @(negedge core_clk) begin")
+    L.append("    if (ccv_dpi_done(c)) begin")
+    L.append("      ccv_dpi_report();")
+    L.append("      $finish;")
+    L.append("    end")
+    L.append("    c <= c + 1;")
+    L.append("  end")
+    L.append("endmodule")
+    return "\n".join(L) + "\n"
+
+
 def main():
     check = "--check" in sys.argv
     d, blocks, binst, chans, cinst, ninst, common = load()
@@ -586,6 +835,20 @@ def main():
                         gen_ports(t, ports[t])))
         targets.append((os.path.join(TOPDIR, "stubs", "ccv_%s.sv" % t),
                         gen_stub(t, ports[t])))
+        targets.append((os.path.join(TOPDIR, "dpi", "ccv_%s.sv" % t),
+                        gen_shim(t, ports[t])))
+    eports = ext_ports(chans)
+    targets.append((os.path.join(TOPDIR, "dpi", "ccv_ext.sv"),
+                    gen_shim("ext", eports, own_ports=True)))
+    targets.append((os.path.join(TBDIR, "tb_sv_hosted.sv"),
+                    gen_tb_hosted(chans, common)))
+    # A build product, like the rest of sim/generated/: written, not tracked.
+    hdr = os.path.join(ROOT, "sim", "generated", "ccv_dpi_ports.h")
+    htext = gen_dpi_header([(b["name"], ports[b["name"]]) for b in blocks] +
+                           [("ext", eports)])
+    os.makedirs(os.path.dirname(hdr), exist_ok=True)
+    if not os.path.exists(hdr) or open(hdr).read() != htext:
+        open(hdr, "w").write(htext)
     stale = []
     for path, text in targets:
         os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -594,8 +857,8 @@ def main():
             stale.append(os.path.relpath(path, ROOT))
             if not check:
                 open(path, "w").write(text)
-    msg = "%d files: top, %d port lists, %d stubs, testbench" % (
-        len(targets), len(blocks), len(blocks))
+    msg = "%d files: top, %d port lists, %d stubs, %d DPI shims, 2 testbenches" % (
+        len(targets), len(blocks), len(blocks), len(blocks) + 1)
     if check:
         if stale:
             sys.stderr.write("stale: %s\n  run tools/gen-top.py\n"

@@ -1941,5 +1941,47 @@ KernelReport compareFinal(Kernel &k) {
   return r;
 }
 
+std::string kernelName(const std::string &path) {
+  const size_t sl = path.find_last_of('/');
+  const std::string dir = sl == std::string::npos ? "." : path.substr(0, sl);
+  const size_t s2 = dir.find_last_of('/');
+  return s2 == std::string::npos ? dir : dir.substr(s2 + 1);
+}
+
+bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
+  bool in_flight = false;
+  for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
+    in_flight = m.tx(s).sent() != m.rx(s).received();
+  if (c >= kReset && k.exited && k.busy == 0 && !in_flight) {
+    if (!finished) finish = c;
+    finished = true;
+    ++quiet;
+  } else {
+    quiet = 0;
+    finished = false;
+  }
+  k.busy = 0;
+  return quiet == kTail;
+}
+
+void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
+                       int violations) {
+  const KernelReport r = compareFinal(k);
+  uint64_t overflows = 0;
+  for (unsigned s = 0; s != kNumSlots; ++s) overflows += m.rx(s).overflows();
+  std::printf("KERNEL name=%s finished=%d cycles=%llu retired=%llu "
+              "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
+              "mem_mismatch=%u check_failures=%llu class_violations=%llu "
+              "overflows=%llu channels_used=%u/%u violations=%d\n",
+              k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
+              (unsigned long long)k.retired, k.orc.issue_groups,
+              r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
+              r.mem_mismatch, (unsigned long long)k.failures,
+              (unsigned long long)k.class_violations,
+              (unsigned long long)overflows, r.channels_used, kNumChans,
+              violations);
+  std::printf("UNUSED %s\n", r.unused.c_str());
+}
+
 } // namespace skel
 } // namespace ccv

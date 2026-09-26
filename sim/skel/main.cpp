@@ -105,34 +105,6 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
   }
 }
 
-/// The bank's EV_CH_XFER events must carry exactly the payloads the senders
-/// launched: same channel, same bits 63:0, same trace identity, same
-/// multiset. That is what proves the bank's PAYLOAD and trace-sideband
-/// wiring -- the negative controls only reach valid, credit and stall,
-/// because Verilator is two-state and payload_known_when_due cannot fire.
-int xferCheck(const std::string &trace) {
-  std::vector<std::tuple<uint16_t, uint32_t, uint32_t, uint64_t>> ev, want;
-  ccv::EventReader r;
-  if (!r.open(trace)) {
-    std::fprintf(stderr, "cannot reread trace: %s\n", r.error().c_str());
-    return 1;
-  }
-  ccv::Event e;
-  while (r.next(e))
-    if (e.event_id == ccv::EV_CH_XFER)
-      ev.push_back({uint16_t(e.a), e.b, e.c, e.instr_uid});
-  for (const Launched &l : launchedLog())
-    want.push_back({l.chan, l.lo32, l.hi32, l.tid});
-  std::sort(ev.begin(), ev.end());
-  std::sort(want.begin(), want.end());
-  std::vector<uint16_t> seen;
-  for (auto &p : ev) seen.push_back(std::get<0>(p));
-  seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
-  std::printf("XFER events=%zu launched=%zu match=%s channels_seen=%zu\n",
-              ev.size(), want.size(), ev == want ? "yes" : "no", seen.size());
-  return 0;
-}
-
 /// S1: a kernel through the machine, to completion.
 int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
               const std::string &trace, VerilatedContext &ctx,
@@ -143,60 +115,25 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
     return 1;
   }
   k.brk = brk;
-  {
-    const size_t sl = path.find_last_of('/');
-    const std::string dir = sl == std::string::npos ? "." : path.substr(0, sl);
-    const size_t s2 = dir.find_last_of('/');
-    k.name = s2 == std::string::npos ? dir : dir.substr(s2 + 1);
-  }
+  k.name = kernelName(path);
   Machine m(2, [&](int inst) { return makeKernelBlock(inst, k); });
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
 
-  // Finished = the exit has retired, no block has work left, and nothing is
-  // in flight on any slot -- then a short tail, so a late message would
-  // still be seen by the bank.
-  const uint64_t kReset = 2, kTail = 8;
-  uint64_t c = 0, quiet = 0, finish = 0;
-  bool finished = false;
-  for (; c != cap && quiet != kTail; ++c) {
-    bank.rst_n = c >= kReset;
+  // Finished: the rule is KernelEnd's, shared with the SV-hosted run.
+  KernelEnd end;
+  for (uint64_t c = 0; c != cap; ++c) {
+    bank.rst_n = c >= KernelEnd::kReset;
     drive(bank, m);
     bank.clk = 0; bank.eval(); ctx.timeInc(5);
     bank.clk = 1; bank.eval(); ctx.timeInc(5);
-    k.busy = 0;
-    m.step(c < kReset);
-    bool in_flight = false;
-    for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
-      in_flight = m.tx(s).sent() != m.rx(s).received();
-    if (c >= kReset && k.exited && k.busy == 0 && !in_flight) {
-      if (!finished) finish = c;
-      finished = true;
-      ++quiet;
-    } else {
-      quiet = 0;
-      finished = false;
-    }
+    m.step(c < KernelEnd::kReset);
+    if (end.after(c, k, m)) break;
   }
   bank.final();
   ccv::traceWriter().close();
-
-  const KernelReport r = compareFinal(k);
-  uint64_t overflows = 0;
-  for (unsigned s = 0; s != kNumSlots; ++s) overflows += m.rx(s).overflows();
-  std::printf("KERNEL name=%s finished=%d cycles=%llu retired=%llu "
-              "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
-              "mem_mismatch=%u check_failures=%llu class_violations=%llu "
-              "overflows=%llu channels_used=%u/%u violations=%d\n",
-              k.name.c_str(), int(finished), (unsigned long long)finish,
-              (unsigned long long)k.retired, k.orc.issue_groups,
-              r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
-              r.mem_mismatch, (unsigned long long)k.failures,
-              (unsigned long long)k.class_violations,
-              (unsigned long long)overflows, r.channels_used, kNumChans,
-              ctx.errorCount());
-  std::printf("UNUSED %s\n", r.unused.c_str());
+  printKernelReport(k, m, end, ctx.errorCount());
   if (!trace.empty() && brk == "none") return xferCheck(trace);
   return 0;
 }
