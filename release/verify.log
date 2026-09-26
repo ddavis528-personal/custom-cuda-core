@@ -1,0 +1,199 @@
+
+== toolchain ==
+  verilator    present
+  iverilog     present
+  yosys        present
+  sby          present
+  cvc5         present
+  python3      present
+  g++          present
+
+== documentation ==
+  findings, rules, paths and counts consistent   PASS
+  open items (docs/open-items.md)                PASS (41 items: 6 open, 0 awaiting confirmation, 9 scheduled, 26 closed)
+
+== generated artifacts ==
+  generated event headers from schema/events.json (hash aef57f9e3784cd2d)
+  generated parameter definitions from params/ccv_params.json (97 parameters)
+  generated interface topology from schema/interfaces.json (46 channels, 14 blocks)
+  generated docs/payload-spec.md (8 settled, 15 prov, 23 prelim channels)
+  event schema headers up to date (hash aef57f9e3784cd2d)
+  parameter definitions up to date (97 parameters)
+  interface topology up to date (46 channels, 14 blocks)
+  payload spec up to date (8 settled, 15 prov, 23 prelim)
+  generated docs/trust-report.md (3 files reference an undecided width)
+  trust report up to date (3 files, 23/46 channels tainted)
+  generated skeleton wiring (45 block instances, 108 channel instances, 345 slots, 68697 payload bits)
+  skeleton wiring up to date (45 block instances, 108 channel instances, 345 slots, 68697 payload bits)
+  generated SV top (30 files: top, 14 port lists, 14 stubs, testbench)
+  SV top up to date (30 files: top, 14 port lists, 14 stubs, testbench)
+
+== Stage 1a -- tool-support spike ==
+  toolchain matches the pinned versions          PASS
+  matrix covers every case, probes recorded      PASS
+  usable subset named in the document            PASS
+
+== Stage 1b -- assertion primitive library ==
+  icarus: compiles, fires, silences, quiet       PASS
+  verilator: compiles, fires, silences, quiet    PASS
+  icarus: t_stable_while fires on a violation    PASS
+  verilator: t_stable_while fires on a violation PASS
+  icarus: t_stable_for fires on a violation      PASS
+  verilator: t_stable_for fires on a violation   PASS
+  icarus: t_resp fires on a violation            PASS
+  verilator: t_resp fires on a violation         PASS
+  sby: library elaborates, property bites, named PASS
+
+== Stage 1c -- event schema mechanism ==
+  schema headers current and versioned           PASS
+  C++ emit API round-trips, fields intact        PASS
+  DPI-C emit from SystemVerilog                  PASS
+  stub stream round-trips into Perfetto JSON     PASS
+  emitted cycles match the paper reference       PASS
+  trace identity view: nesting, replay, none     PASS
+
+== Stage 1d -- coding style and lint ==
+  style guide present                            PASS
+  lint fails the non-compliant sample            PASS
+  every lint rule fires on the fixture (26 rules) PASS
+  every lint rule is documented in the guide     PASS
+  compliant code is silent (4 fixtures)          PASS
+  yosys reads every form CCV-L26 permits         PASS
+  lint clean across rtl/, test/, spike/          PASS
+  generated parameter files current              PASS
+  C++ and RTL parameter values agree with source PASS
+
+== Interface checker convention ==
+  payload structs generated                      46 of 46 channels, 0 field(s) open
+  verilator: checker builds, nothing fires       PASS
+  verilator: checker emits events via DPI-C      PASS
+  verilator: +ccv_trace_off silences emission only PASS
+  verilator: bad DEPTH trips cfg_depth_covers_round_trip PASS
+  verilator: bad TIMEOUT_N trips cfg_timeout_covers_round_trip PASS
+  producer honours stall at all 28 phases        PASS
+    ...and the sweep catches the old late stall  PASS (14 phases)
+  neg: overrun trips only no_overrun             PASS
+  neg: at_depth stays quiet at the limit         PASS
+  neg: phantom trips only no_phantom_credit      PASS
+  neg: phantom_with_send trips only no_phantom_credit PASS
+  neg: stall trips only stall_honoured           PASS
+  neg: xpayload trips only payload_known_when_due PASS (icarus only; 2-state blind)
+  neg: xlead trips only lead_known_at_valid      PASS (icarus only; 2-state blind)
+  neg: xlead_before stays quiet at the limit     PASS
+  neg: timeout trips only response_within_n      PASS
+  neg: timeout_at_n stays quiet at the limit     PASS
+  neg: timeout_n1 trips only response_within_n   PASS
+  neg: timeout_second trips only response_within_n PASS
+  neg: second_late trips only response_within_n  PASS
+  wake: wake_t3 trips only wake_leads_valid      PASS
+  wake: wake_t4 stays quiet at the limit         PASS
+  wake: no_wake trips only wake_leads_valid      PASS
+  wake: awake stays quiet at the limit           PASS
+  wake: early_wake trips only wake_leads_valid   PASS
+  wake: other_wake stays quiet at the limit      PASS
+  wake: other_wake_short trips only wake_leads_valid PASS
+  wake: resleep trips only wake_leads_valid      PASS
+  icarus: same checker compiles without DPI, quiet PASS
+  formal: satisfiability covers all reachable    PASS
+  formal: atomic checker covers reachable        PASS
+  formal: lockstep checker covers reachable      PASS
+  formal: binding checker covers reachable       PASS
+  formal: outstanding checker covers reachable   PASS
+
+== X-propagation ==
+  optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
+  ternary merges: agreeing bits kept, rest X     PASS (=11xx)
+  case + X-default gives xmerge                  PASS (=xxxx)
+  the three constructions disagree on X          PASS
+  ternary narrows on a partially-unknown select  PASS (=110x)
+  all three agree when the select is known       PASS
+
+== Clock gating (exploratory) ==
+  enable inferred from the if-enable form        PASS
+  one ICG shared across all 8 flops              PASS
+  yosys still has no clockgate pass              as expected (F-17)
+
+== Stage 3 -- skeleton (S0: plumbing) ==
+  skeleton builds (checker bank Verilated in)    PASS
+  slots re-derived: 46 types, 108 instances      PASS (345 slots, 77 groups)
+  trace id absent from synthesis, present in trace PASS
+  C++ field offsets == SV packed structs         PASS (rounds=64)
+    ...a 1-bit offset shift is caught on every field PASS (202 fields)
+  seed 1: 155515 msgs, 0 violations              PASS
+  seed 2: 153978 msgs, 0 violations              PASS
+  seed 3: 155494 msgs, 0 violations              PASS
+    (every slot used; sent == received; XFER == launched, ids too) 
+  --force-atomic: every group moves whole, clean PASS (77 groups)
+  --break phantom-all: all 345 checkers fire     PASS
+  --break stall-all: all 345 checkers fire       PASS
+  --break atomic-all: all 77 checkers fire       PASS
+  --break lockstep-all: all 2 checkers fire      PASS
+  --break misorder: caught on the ordered channel PASS (ccv_dec_ooe_uop ccv_fet_dec_instr)
+  --break misbind: lane takes another slot's instr PASS (2 lockstep checkers)
+  --break misgroup: slot carries another stream  PASS (1 binding checker)
+  --break wrong-class: every channel's set enforced PASS (46 channels)
+  trace -> Perfetto JSON, one track per channel  PASS (46)
+
+== Stage 3 -- skeleton (S1: vadd) ==
+  golden pguard matches ccv-sim                  PASS
+  golden sel matches ccv-sim                     PASS
+  golden srd matches ccv-sim                     PASS
+  golden vadd matches ccv-sim                    PASS
+  vadd: final state == ccv-sim, 0 violations     PASS (361 cycles, 26/46 channels)
+  vadd: bank EV_CH_XFER == every launch          PASS (509 transfers)
+  vadd: deterministic (trace byte-identical)     PASS
+  vadd trace -> Perfetto, 17 retires on 17 instrs PASS
+  --break corrupt-fetch: DEC rejects the bytes   PASS
+  --break corrupt-load: lane check + final R9    PASS
+  --break drop-store: all 32 words differ        PASS
+  --break corrupt-req-id: MLC refuses, no retire PASS
+  --break corrupt-disp: MIU's AGU address rejected PASS
+  --break itlb-double: outstanding limit fires   PASS
+  --break drop-negate: RCU and FET reject the branch PASS
+  --break corrupt-echo: stateless write-back misroutes PASS
+  --break movi-in-lane: the lanes refuse it      PASS
+  --break srd-selector: DEC's range check        PASS
+  sel: final state == ccv-sim, 0 violations      PASS (119 cycles)
+  --break drop-pred-data: sel's lanes reject it  PASS
+  srd: final state == ccv-sim, 0 violations      PASS (111 cycles)
+  --break corrupt-ctaid: srd's lanes reject it   PASS
+  --break late-lead: every lane sees a stale mask PASS
+  --break ignore-mask: masked-off poison lands   PASS
+  pguard: final state == ccv-sim, 0 violations   PASS (128 cycles)
+  --break conflate-pred: guard and P0/P1 wrong   PASS
+
+== SV top -- rtl/top/ (generated, tracked) ==
+  verilator -Wall: top (synthesis view)          PASS
+  verilator -Wall: top -DCCV_CHECK               PASS
+  verilator -Wall: top -DCCV_CHECK -DCCV_TRACE   PASS
+  verilator: top + checker bank simulates quiet  PASS
+    ...+phantom: the bank in the top fires       PASS
+  icarus: top simulates (no checkers)            PASS
+  icarus: top simulates -DCCV_CHECK              PASS
+  yosys: 45 blocks; checkers only under CCV_CHECK PASS
+  SV top wiring == C++ skeleton wiring           PASS (69840 bits)
+    ...and rejects a lane swapped in a copy      PASS
+
+== Verilator lint ==
+  clean
+
+== pending stages ==
+  Stage 2  partition CLOSED (14 blocks, 45 instances, 46 channels); topology,
+           block letters, machine parameters and the credit checker encoded.
+           Round trip CLOSED at 2 (flops both sides + abutment); it stays a
+           per-instance parameter, defaulted to that minimum and not expected
+           to move before floorplan.
+           Payload widths: every field sized, tiered settled/prov/prelim.
+           Rate>1: independent slots, with acceptance / ordering / binding
+           per channel. Remaining: per-interface NGD budgets
+  Stage 3  S0 plumbing DONE: 45 blocks, 108 channel instances, 345 slots,
+           checker bank Verilated in, trace identity carried, Perfetto
+           trace, layout cross-checked, slot count re-derived.
+           S1 DONE: vadd end to end on functional stubs, final state
+           identical to ccv-sim, 0 violations, 26 of 46 channels carrying
+           it. Open items: docs/open-items.md, by Q-number.
+           S2 next: a kernel that diverges, loops, or uses SPM/barriers
+  Stage 4+ per-block cycle                          -- after the skeleton
+
+== result ==
+  PASS

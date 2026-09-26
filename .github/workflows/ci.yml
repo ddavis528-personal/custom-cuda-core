@@ -1,0 +1,45 @@
+# §8: "CI is a Stage 1 concern, not a Stage 7 one... On a solo project this is
+# the single piece of infrastructure whose absence compounds fastest."
+#
+# One job, one gate. tools/verify.sh is the whole contract -- this file exists
+# to install the toolchain and run it, and should never accumulate checks of
+# its own. A check that lives only in CI cannot be run before pushing, which
+# is when it would actually save time.
+name: verify
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    # Weekly. The gate checks pinned tool VERSIONS in seconds; this re-measures
+    # what the tools actually DO, which is the only thing that notices a
+    # limitation lifting. Runners drift on their own schedule, so a cron is the
+    # trigger rather than a push.
+    - cron: "17 4 * * 1"
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            verilator iverilog yosys cvc5 build-essential python3
+          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
+          cd /tmp/sby && sudo make install PREFIX=/usr/local
+
+      - name: Verify
+        run: ./tools/verify.sh
+
+      # Separate job-step rather than part of the gate: re-measuring takes
+      # minutes. A changed cell is a finding to read, not a build to fix --
+      # and a cell going FAIL -> PASS matters as much as the reverse, because
+      # several decisions exist because of a limitation that may have lifted.
+      - name: Tool-matrix drift
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: python3 tools/check-matrix-drift.py

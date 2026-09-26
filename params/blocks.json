@@ -1,0 +1,78 @@
+{
+  "_comment": [
+    "Clock-domain letters and block letters for the net-naming stage tag.",
+    "Read by tools/lint-rtl.py; nothing is generated from it, because only the",
+    "linter consumes the letters.",
+    "",
+    "STAGE TAG FORMAT:  <domain><block><NN><l|h>",
+    "",
+    "  domain   letter for the clock domain the signal is generated in",
+    "  block    letter for the block that generates it",
+    "  NN       two-digit pipe stage within that block",
+    "  l|h      generating clock edge: h = posedge, l = negedge",
+    "",
+    "CLOSED at the block-level grill-me (2026-09-23). 14 block types, 45",
+    "instances. Letters I, O and 0 are avoided for tag readability.",
+    "",
+    "Open item A-2 is CLOSED by this list: 14 of 24 usable letters are taken",
+    "and 8 remain spare, so the single-letter tag format holds and does not",
+    "need widening. Two of the spare letters are taken below for things that",
+    "are not design blocks, leaving 8.",
+    "",
+    "A-2's sub-question -- do testbench-side memory interfaces consume block",
+    "letters -- answers itself from the partition: EXB is the coherent",
+    "boundary and everything past it is testbench, so nothing beyond EXB is",
+    "tagged and no letter is spent on it."
+  ],
+
+  "domains": [
+    {
+      "letter": "c",
+      "segment": "core",
+      "synchronous": true,
+      "doc": "The core clock domain, and the only functional one. Each block receives it twice: `clk`, gated for the block, and `clk_free`, ungated for the wake detector. Both are the same frequency, so this remains a single domain and §6's revisit trigger (multiple FREQUENCY domains) has not fired."
+    },
+    {
+      "letter": "t",
+      "segment": "test",
+      "synchronous": false,
+      "doc": "DFT clock. Asynchronous to core by construction, which is why its domain segment is not `core`. Nothing uses it yet; registered so the first signal crossing from it is a lint finding rather than a surprise."
+    }
+  ],
+
+  "blocks": [
+    { "letter": "f", "name": "fet",  "module": "ccv_fetch",  "instances": 1,
+      "doc": "Fetch, L1 I-cache, ITLB, length decode and align." },
+    { "letter": "d", "name": "dec",  "module": "ccv_decode", "instances": 1,
+      "doc": "Format decode, 6-wide output, and two separate illegal-instruction obligations: reserved fields must be zero, and a legal field must not hold an unallocated value (srd selectors 2-15). The second is a range comparison, not a zero comparison, so allocating a selector later is a one-line change to a named check." },
+    { "letter": "q", "name": "ooe",  "module": "ccv_ooe",    "instances": 1,
+      "doc": "RAT, free list, RS, 4 ROBs, scheduler, wakeup/select, squash, demotion trigger. Most-connected block, and first in the risk-first build order." },
+    { "letter": "r", "name": "rcu",  "module": "ccv_rcu",    "instances": 1,
+      "doc": "Physical register file (flop array), predicate file, predicate ALU, collective crossbar." },
+    { "letter": "l", "name": "lane", "module": "ccv_lane",   "instances": 32,
+      "doc": "32-bit lane with 16/8/4-bit sections, SFU, cvt. The only multi-instance block; anything crossing lanes is tested in RCU, which holds the crossbar." },
+    { "letter": "m", "name": "miu",  "module": "ccv_miu",    "instances": 1,
+      "doc": "4 AGU pipes, load and store buffers, disambiguation, TLB, page-table walker, exclusive ownership." },
+    { "letter": "s", "name": "spm",  "module": "ccv_spm",    "instances": 1,
+      "doc": "128 KB scratchpad, 32 banks x 32 bits, conflict resolver." },
+    { "letter": "c", "name": "dcu",  "module": "ccv_dcu",    "instances": 1,
+      "doc": "L1 data cache, 4 lookups per cycle, probe/invalidate port. NOTE the letter is `c`, not `d` -- `d` is DEC." },
+    { "letter": "n", "name": "mlc",  "module": "ccv_mlc",    "instances": 1,
+      "doc": "Shared cache, merges I and D traffic, coherent boundary." },
+    { "letter": "a", "name": "rau",  "module": "ccv_rau",    "instances": 1,
+      "doc": "Warp slots, PRF partitions, SPM regions, CTA launch, warp-to-CTA-to-grid tables, kill masks, migration FSM, forward-progress guard. Moved early in the build order because so many blocks depend on its interfaces." },
+    { "letter": "b", "name": "syu",  "module": "ccv_syu",    "instances": 1,
+      "doc": "Barrier table, 64 entries, epoch-tagged, CTA-scoped. A §7 formal target." },
+    { "letter": "p", "name": "pca",  "module": "ccv_pca",    "instances": 1,
+      "doc": "Parked context array, banked 1r1w, 28 parked warps. Dumb storage plus a migration bus; policy is RAU's." },
+    { "letter": "x", "name": "cru",  "module": "ccv_cru",    "instances": 1,
+      "doc": "Control and status registers, sticky fault record, performance counters." },
+    { "letter": "e", "name": "exb",  "module": "ccv_exb",    "instances": 1,
+      "doc": "Protocol bridge to TileLink TL-C. The one boundary that does not follow the interface conventions, which is what keeps the exception to a single port." },
+
+    { "letter": "z", "name": "reset", "reserved": true, "instances": 0,
+      "doc": "RESERVED, not a design block: the reset distribution network, which does not share a numbering space with any block's datapath. A synchronous reset cannot be delivered globally in one cycle; it is pipelined, and how deep it is on arrival depends on physical distance. `z` rather than `r` because the grill-me assigned `r` to RCU -- an earlier draft of this registry had the collision. Reset nets are exempt from stage arithmetic." },
+    { "letter": "y", "name": "reference", "provisional": true, "instances": 0,
+      "doc": "PROVISIONAL, not a design block: pre-Stage-2 reference material and lint fixtures, so the naming rules have something to check. Was `x` until the grill-me assigned `x` to CRU." }
+  ]
+}

@@ -1,0 +1,109 @@
+# Open items
+
+The one list of what is undecided, unbuilt or unconfirmed, with **running,
+fixed numbering**, as in the compiler repo's F-/O- registers. It exists so a
+review can say "Q-21" instead of "item 4 of the latest five".
+
+**Rules** (`tools/check-docs.sh` enforces the ones a script can check):
+
+- **An ID is never renumbered and never reused.** A new item takes the next
+  number. The numbering has no holes: closing an item changes its status and
+  keeps its row, with the resolution in it.
+- **Every item has one row here,** and other docs refer to it by ID rather
+  than restating it. Where a doc does give the context, the ID comes with it.
+- **Status is one of four,** and it's the first word of the row's status:
+  - **open**: a decision nobody has made yet;
+  - **awaiting confirmation**: built one way provisionally, needs a yes or a
+    redirect;
+  - **scheduled**: the answer is a named stage's deliverable, and nothing is
+    blocked before then;
+  - **closed**: decided or built, with what was decided.
+- **A schema `open_questions` entry carries its ID** (`"id": "Q-n"`), and its
+  row names the key (`Schema: key`). The check requires the two to agree, and
+  requires the row not to be closed. Closing one means deleting the schema
+  entry and closing the row, in the same change.
+- **Not in this list:**
+  - Stage 1a tool findings (`F-n`, [`stage1a-findings.md`](stage1a-findings.md)).
+  - Mechanisms that could pass vacuously ([`fail-open-register.md`](fail-open-register.md)).
+  - Undecided payload widths. [`trust-report.md`](trust-report.md) generates
+    that list from the parameters.
+  - The compiler repo's numbering. That is always written "compiler F-n" or
+    "compiler O-n" here.
+
+## Now
+
+The summary is checked against the table, so it can't drift from it.
+
+- **Awaiting confirmation:** (none)
+- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-41
+- **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-35, Q-36, Q-37
+
+The one with a deadline is Q-18, before floorplan.
+
+## The register
+
+"Raised" says where an item came from:
+
+- *strategy §8 n*: the strategy doc's open item n.
+- *Stage 1*: the Stage 1 review ([`rtl-findings-stage1.md`](rtl-findings-stage1.md)).
+- *payload pass*: the 2026-09-25 width pass.
+- *S1*: running `vadd`.
+- *review n*: the n-th skeleton review response ([`skeleton.md`](skeleton.md)). Review 4 is the first response to this register, review 5 the `srd` response, review 6 the answer on Q-40, and review 7 the round that closed Q-2, Q-3, Q-5, Q-33 and Q-34.
+
+| Item | Raised | Owner | Status |
+|---|---|---|---|
+| Q-1 Arbitration-sensitive event content | strategy §8 1 | per block | **scheduled — Stage 4a, per block.** The mechanism shipped at 1c. The load-bearing content is the channel list, emitted as `EV_CH_XFER` by the shared checker, so it can't drift per block. What remains are the events whose outcome depends on an arbiter (issue cycle, wakeup-to-issue latency, warp select, and ROB allocation, which is `EV_DISPATCH` since Q-2), which each block defines along with its internals. Q-5 comes first |
+| Q-2 Six seed events coincide with a channel transfer | S1 | — | **closed (review 7) — five deleted and one kept, under a stated principle: an event earns its place only if its timing is decided by an arbiter inside a block.** Anything that is definitionally a channel transfer is already `EV_CH_XFER` on a named channel, and a duplicate that can drift is worse than no event. `DECODE`, `BARRIER_ARRIVE` and `BARRIER_RELEASE` were exactly `ccv_dec_ooe_uop`, `ccv_ooe_syu_bar` and `ccv_syu_ooe_rel`. `MEM_REQ` and `MEM_RSP` were also ambiguous: one memop becomes several transactions (MIU→SPM, MIU→DCU, DCU→MLC), each with its own `req_id`. All five are deleted, and their ids (1, 6, 7, 9, 10) are retired: `gen-event-schema.py` refuses to reuse one. `DISPATCH` stays, redefined as ROB allocation, which is arbitrated and internal to OOE, so it is now arbitration-sensitive and Q-1 content. The principle leaves one case open: Q-41 |
+| Q-3 `EV_DECODE` still claims to establish the uid | S1 | — | **closed (review 7).** The uid is created at fetch, so decode references an existing uid rather than establishing one. The text was corrected, and then the event itself was deleted under Q-2; the fact is kept in the retired-ids note in `schema/events.json` |
+| Q-4 Arbitration policy spec | strategy §8 2 | per block | **scheduled — Stage 4a/4b, before each block's 4c RTL.** Not started. §5 is explicit that this buys temporal precedence, not independence: it makes a policy change a visible decision rather than silent drift in one implementation |
+| Q-5 The 4d correlation criterion (A-1) | strategy §8 4; Stage 1 | — | **closed (review 7) — exact match, with the tolerance field reserved now.** A tolerance is the wrong default. Its usual justification, independent teams modelling an unknown microarchitecture, isn't this situation. A tolerance is where drift hides, and nobody ever tightens one. Exact match is achievable because Q-4 makes arbitration policy a specified input to both sides rather than an implementation accident. Every event carries a reserved `tolerance: null`. The semantic hash covers the key's **presence** but not its **value**, since a tolerance changes how traces are compared, not how one is read, so setting one later moves no hash. `gen-event-schema.py` refuses a non-null value until this is reopened |
+| Q-6 Event-driven timing-model scheduler | strategy §8 6 | infrastructure | **scheduled — Stage 4b.** The skeleton's loop is a plain two-phase cycle over every block, which is enough while timing is placeholder. The swap interface the scheduler must preserve is channel ends plus one `cycle()` per clock (`sim/skel/machine.h`) |
+| Q-7 Is 25 NGD the Vmin-corner number or a nominal one? | Stage 1 (§2) | planning | **open.** `CCV_NGD_BUDGET` carries the question. It sets how much margin each block holds back: at 0.55 V, variation and the wire/gate delay ratio both worsen, so headroom at nominal doesn't translate linearly. Q-17 depends on it |
+| Q-8 The bounded-latency N, justified (A-3) | Stage 1, F-2 | infrastructure | **scheduled — a Stage 4b output; provisional by construction.** One global `CCV_P_TIMEOUT_N` (32) and a memory-path `CCV_P_TIMEOUT_MEM` (2048), which must exceed worst-case DRAM latency. Justifying either needs contention data that only 4b produces, so revising them is expected, not a spec change. Each N ships with a case that exceeds it and must fire. That's not yet met for `CCV_P_TIMEOUT_MEM` (`fail-open-register.md`) |
+| Q-9 Do testbench-side memory interfaces consume block letters? (A-2) | Stage 1 | — | **closed — yes, and registered rather than left to collide.** `y` is reserved for fixtures. `z` is reserved for the reset tree, which needs stage numbering because a synchronous reset can't be delivered globally in one cycle |
+| Q-10 Clock-gating equivalence is unverified (F-18) | Stage 1 | infrastructure | **open — settle before any synthesis result is believed.** The gated netlist has never been proved against the ungated one. That needs a real ICG cell rather than a blackbox, and a gated clock that isn't a free variable. Nothing relies on it today |
+| Q-11 Block letters: is 26 enough? | Stage 1 | — | **closed by the partition.** 14 block types plus `y` and `z` leaves 8 spare, so the single-letter stage tag stands and no tagged net changes |
+| Q-12 Synthesis exclusion for checkers | Stage 1, F-9 | per block | **scheduled — Stage 4c.** `bind` provided it for free; F-9 removed `bind`. The SV top instantiates its checkers only under `CCV_CHECK`, and Yosys is asked both ways that the synthesis view has none. Real block RTL must follow the same rule at its own ports |
+| Q-13 Direction discipline without modports | Stage 1 | infrastructure | **scheduled — re-ask at the end of Stage 3.** Direction is declared in `schema/interfaces.json` and carried into the generated header. The test is whether a block author can get a direction wrong and have it caught, and nobody has yet written a block by hand against a generated port list |
+| Q-14 Backpressure convention | Stage 1 | — | **closed at Stage 2 — a credited protocol, not `_ready`.** `_valid` and `_payload` come from the producer, `_credit` and `_stall` from the consumer, and `_wake` is a fifth signal from the sender (review 1). Backpressure stays outside the packed struct, so the swap harness drives the payload one way (F-12) |
+| Q-15 Payload field widths | Stage 2 | — | **closed for wiring by the payload pass (2026-09-25).** Every field has a width, tiered decided / provisional / preliminary in [`trust-report.md`](trust-report.md). The pass also corrected four widths that were confidently wrong: `warp_mask_released`, `bank_addr`, `phys_pred` and `barrier_entries` ([`roadmap.md`](roadmap.md) Part 1). The cross-channel part is Q-34 |
+| Q-16 Checker reuse across block swap | Stage 1 | — | **closed at Stage 3 — the SV checker itself.** The C++ skeleton Verilates the bank of real checkers rather than porting them, so a C++ stub and a swapped-in RTL block are judged by the same code |
+| Q-17 Per-interface NGD budgets | Stage 2 | planning | **open — not started,** against the 25 NGD envelope (Q-7) |
+| Q-18 RCU→MIU is ~8,400 wires: co-locate the AGUs? | payload pass | partitioning / floorplan | **open — settle before floorplan.** Schema: `rcu_miu_width`. `index_per_lane` (1024) sits beside `store_data` (1024) at rate 4. That argues for putting the AGUs with RCU, or moving address generation into register read. Block boundaries are swap boundaries, so the answer may move one. Q-22 put the AGU in MIU for S1 |
+| Q-19 Store data on MIU→DCU | S1 | memory-path payload owner | **closed (2026-09-25) — confirmed as built: `write_data` and `byte_mask` on `ccv_miu_dcu_req`, mirroring `ccv_miu_spm_req`.** A separate store-data channel would duplicate flow control for nothing. `write_data` is 32 lanes × 4 bytes = 1024 bits and `byte_mask` 128, matching `CCV_P_LINE_BYTES`. Byte granularity is enough because a 4-bit memory access faults, so a sub-byte write enable never arises. Was schema key `miu_dcu_req_store_data` |
+| Q-20 A third source register | payload pass; review 1 | — | **closed (review 3) — named fields `src2_arch` and `phys_src2`.** Format A `mad.lo`, `dp4.*`, `dp2.*` and `ffma.f0` read an independent `rs2`. The invariant, recorded in [`skeleton.md`](skeleton.md): accumulate-into-destination is Format J's alone (`mad.acc`, `dp4.acc`, `ffma.acc`). `dst_arch` always means the destination |
+| Q-21 One predicate field for guard and destination | S1 | — | **closed (review 4) — a payload fix, now built.** The ISA encodes the two separately (Format C/C′: qualifier `[29:27]`, destination `[31:30]`, ISA v1.6 §3), and only the uop conflated them. The uop now carries `pred_guard` + `pred_neg` and `pred_dst` + `pred_we`, and the issue carries `phys_pred_guard`, `phys_pred_dst` and `pred_we`. It's the same one-field-two-meanings pattern as the branch length in `imm`. `test/golden/pguard/` runs `@P0 setp P1`, and `--break conflate-pred` is its control. Was schema key `pred_src_and_dst` |
+| Q-22 Immediates, and where the AGU lives | S1 | — | **closed (review 1).** `disp` (sign-extended, compiler F-143) and `scale_en` ride on `ooe_miu_memop`, and MIU is the AGU. ALU immediates ride on `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register read. Was schema key `agu_immediate` |
+| Q-23 Two lane masks | S1 | — | **closed (review 1).** `issue_mask` rides on `ooe_rcu_issue` and `ooe_miu_memop`. `active_mask` is produced only by RCU, which holds the predicates. MIU checks active ⊆ issue. Was schema key `active_lane_mask` |
+| Q-24 ITLB response correlation | payload pass | — | **closed (review 1) — FET is single-miss-outstanding, asserted rather than tagged.** The bank's outstanding checker enforces it, and `--break itlb-double` is its control. Was schema key `itlb_correlation` |
+| Q-25 Load write-back destination | S1 | — | **closed (review 3).** The memop carries `phys_dst` and `phys_pred`, and MIU echoes both with `pred_we`, so RCU is stateless on write-back. `--break corrupt-echo` is its control. Was schema key `miu_rcu_phys_dst` |
+| Q-26 Branch resolution | review 1 | — | **closed (review 2) — RCU resolves.** `branch_taken` and `branch_mask` ride on `ccv_rcu_ooe_done`, and OOE redirects on the new `ccv_ooe_fet_redirect`. The guard's negate (`pred_neg`) was found missing on the way. Was schema key `branch_resolution` |
+| Q-27 Predicate source operands | review 1 | — | **closed (review 2) — already decided** by compiler O-33 (round 16): predicate logic executes in RCU. Was schema key `pred_source_operands` |
+| Q-28 A predicate read as lane data (`sel`) | review 2 | — | **closed (2026-09-25) — `sel` runs in the lane, with a `pred_data` bit.** RCU executes exactly two classes: ops whose sources and destinations are all predicates, and data moving horizontally between lanes (`shfl`, `vote`, `ballot`, `unballot`). Q-32 is the boundary. Was schema key `predicate_as_lane_data` |
+| Q-29 Who owns PC-group state | review 2 | — | **closed (review 3) — FET, migrating over a FET↔PCA pair.** `pcs` moved off the RCU↔PCA pair, which took the design to 44 channels. The sequencing is Q-30. Was schema key `pc_group_state_owner` |
+| Q-30 Nothing carries migration sequencing | review 3 | — | **closed (review 4) — built at 46 channels; demotion unblocks.** The real finding inside it: `ccv_rcu_pca_mig` never named a warp or a row, so the migration data path was unaddressed. The command carried `warp_id`, `direction` and `bank_select`, but only to RCU. Both RCU↔PCA data channels now carry `warp_id` and `row_idx`. `ccv_rau_fet_mig` gives FET the same command as RCU, and `ccv_pca_rau_mig_done` acks once PCA holds both halves. Restore is Q-39. Was schema key `migration_control` |
+| Q-31 `kill_warp_mask` is 32 bits, not 4 | review 2 | — | **closed (2026-09-25) — confirmed at 32, one bit per warp context.** PCA holds the 28 parked warps by definition, and SYU must record barrier arrival for non-resident warps, because a warp parked at `bar.sync` can be demoted. A tier-1 mask names neither |
+| Q-32 RCU op-class boundary cases | review 2 | — | **closed (2026-09-25), rule amended by review 5: the lane executes anything whose result differs per lane; RCU executes what is warp-uniform, plus the horizontal ops.** The rule first given was "reads lane data", which meant register-file reads, and applied literally it moved `srd` to RCU (Q-38). A hardwired lane index is not a register read, but it does make `srd #0`'s result differ per lane. The amended rule keeps every case this item settled: `movi`, `movi48`, `pmov`, predicate logic, branch resolution and the horizontal ops in RCU; `setp`, `add.pp`, `cas`, `sel` and `srd` in the lanes. `pred_out` and `pred_result` carry the lanes' predicate results back. The confirmed wording (Q-40): an opcode runs in the lane if it has a per-lane input (a GPR, or the lane's own index), and in RCU if its inputs are all warp-level, plus the horizontal ops |
+| Q-33 Wake's timing contract | review 1 | — | **closed (review 7) — stated, and checked by a tracking register (F-2).** If valid asserts toward a gated receiver at cycle T, the channel's wake must have asserted at or before T − `CCV_WAKE_LAT`. `rtl/if/ccv_wake_checker.sv` states it. One reading is mine: a receiver counts as gated from the cycle it gates until this channel's wake is `LAT` old, or until it has run `LAT` cycles, woken by something else; a wake that passed while it was awake doesn't answer a later sleep. `test/neg/tb_wake_neg.sv` pins the contract with eight cases on both simulators. The control is `wake_t3`, which must fire; `wake_t4`, the legal limit, must not. The bank carries one checker per channel instance (108). The C++ skeleton drives it with no sleep, because no stub sleeps yet; the SV top wires the real `_wake` nets and every receiver's `sleep_ok` |
+| Q-34 Fields that cross abutting channels | payload pass | — | **closed (review 7) by ownership, not field by field.** `opcode`, `asid` and `size` are one question, not three: cross-hop fields are owned by the schema, not by the sessions that consume them. A block may narrow a field locally only if its encoding is a strict projection of the shared one, never a re-encoding. `asid` (8) and `size` (a 3-bit code) already have one width everywhere; `opcode` stays at DEC's width on all three hops until the census says otherwise. The rule is in `schema/interfaces.json`. `gen-interfaces.py` refuses a per-channel width for any field not declared per-hop, and only `req_id`, which names one hop's request, is per-hop |
+| Q-35 OOE sizing: `CCV_P_ROB_DEPTH`, `CCV_P_PHYS_REGS` | review 3 | OOE session | **scheduled — OOE's per-block session.** Both are provisional placeholders today |
+| Q-36 TL-C burst structure | review 1 | EXB session | **scheduled — EXB's per-block session.** The flattened TL-C link stands in for a burst sequencer, not just a bus: a line is two 512-bit beats, and S1's EXB splits `PutFullData` into beats and gathers `AccessAckData` beats back |
+| Q-37 The reset tree isn't modelled | S0 | infrastructure | **scheduled — before block RTL at Stage 4c.** Block letter `z` is reserved for it. In the skeleton `rst_n` fans out directly |
+| Q-38 The Q-32 rule moves `movi`, `movi48` and `srd` to RCU | review 4 | — | **closed (review 5): `movi` and `movi48` move to RCU, and `srd` stays in the lane.** Lane identity is wiring, not state: each lane holds its position as a hardwired constant, so there's no launch-state route to build. The warp-uniform part rides the existing immediate. OOE shadows identity (`ctaid`, `warp_in_cta`, 37 bits on `ccv_rau_ooe_alloc`, re-sent on every activation) and substitutes it into `srd`'s immediate at issue: `warp_base = warp_in_cta << 5` for selector 0, whose low five bits are zero, so the lane ORs its index in without an adder; `%ctaid` for selector 1, which the lane passes through. Selector 1 stays in the lane although it is warp-uniform: splitting one opcode across two blocks isn't worth it for a prologue instruction. The lane's choice between OR and pass-through is a stated one: DEC decodes the selector into two opcodes, so no field carries it. `%ctaid` fills `CCV_P_W_IMM` exactly, which sets that parameter's floor. Built: RCU writes `movi`/`movi48` itself (`--break movi-in-lane`), the lane computes `srd` from OOE's identity (`test/golden/srd`, CTA 7, `--break corrupt-ctaid`), and DEC range-checks the selector as its own obligation (`--break srd-selector`) |
+| Q-39 Restore has no command to PCA | review 4 | RAU / PCA sessions | **open.** On restore PCA is the sender, of the GPR rows on `ccv_pca_rcu_mig` and the PC groups on `ccv_pca_fet_mig`, but no channel tells PCA which warp to send. RAU commands RCU and FET, the two receivers. There's also no restore-complete ack: `ccv_pca_rau_mig_done` means a demotion landed. Smallest fix: a RAU→PCA command (`warp_id`, `direction`), which also lets PCA ack a restore once it has sent both halves. That makes 47 channels. It would also carry `bank_select`, which today reaches only RCU and FET, neither of which stores anything in a bank. On demotion PCA places a row by `warp_id` alone, which is enough only if the bank is a function of the warp. Blocks restore, which no kernel exercises yet |
+| Q-40 "Result differs per lane" also covers predicate logic | review 5 | — | **closed (review 6): the wording is confirmed, and predicates still reach the lanes, one bit per lane.** RCU executes an opcode whose inputs are all warp-level, and the lane executes one with a per-lane input (a GPR, or its own index). Predicate *logic* stays in RCU, but predicate *values* always travel to the lanes as `pred_bit`, the lane's enable, and `pred_data`, sel's operand. **The mask always gates:** a masked-off lane never captures its operands or computes, which saves power, and RCU writes back only the lanes the mask enables. **The mask travels one cycle ahead of the GPR operands:** `pred_bit`, `pred_data` and `section_en` are `ccv_rcu_lane_ops`' *lead fields*, the slice of the payload register written with valid rather than a cycle after. The credit checker's `lead_known_at_valid` states it, and `--break late-lead` and `--break ignore-mask` are its controls |
+| Q-41 Does `EV_RETIRE` meet Q-2's principle? | review 7 | you | **open.** `EV_RETIRE` is OOE-internal, not a channel transfer, but its timing is in-order commit rather than obviously an arbiter's decision, and it's `load_bearing`. There are three readings. (1) Retire is arbitrated: commit bandwidth is shared across the four tier-1 ROBs, so it should be reclassified arbitration-sensitive, like `EV_DISPATCH`. (2) The architectural commit point is an exception the principle should name. (3) Delete it, since `ccv_ooe_miu_retire` carries stores' commit. It's kept as it is until decided: it's the event ccv-sim's oracle is checked against |
+
+## Where the old numbers went
+
+Before this register, open items were numbered per list, and every new list
+restarted at 1:
+
+| Old reference | Now |
+|---|---|
+| strategy §8 open items 1, 2, 4, 6 | Q-1–Q-3, Q-4, Q-5, Q-6 (3 and 5 were completed at Stage 1) |
+| roadmap Part 3 items 7, 8, 11–19 | Q-7, Q-8, Q-9, Q-10, Q-11, Q-12, Q-13, Q-14, Q-15, Q-20, Q-18 |
+| roadmap Part 3 items 9 and 10 | duplicates of Q-5 and Q-8 |
+| roadmap Part 3 item 20 (payload questions) | Q-19, Q-21, Q-30 open; Q-20, Q-22–Q-29 closed |
+| review 3's five items | Q-29, Q-23, Q-24, Q-20, Q-25 |
+| `interface-checker-convention.md` §8 | Q-13, Q-14, Q-16 |

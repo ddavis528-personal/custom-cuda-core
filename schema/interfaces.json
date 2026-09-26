@@ -1,0 +1,1366 @@
+{
+  "_comment": [
+    "Channel topology for the CCV core, from the block-level grill-me",
+    "(2026-09-23). Every channel is one port on each of two blocks, so this",
+    "list IS the design's connectivity and the per-block port index is a",
+    "lookup into it rather than a second source.",
+    "",
+    "WHAT IS HERE AND WHAT IS NOT. The topology -- which blocks, which",
+    "direction, what rate, what fields -- is complete and checked. Field",
+    "WIDTHS are not: most firm up in the per-block session that owns the",
+    "interface, and inventing them here would put a number in the generated",
+    "typedef that nobody decided. So payload structs are generated only for",
+    "channels whose widths are settled; the rest generate topology alone.",
+    "",
+    "COMMON PORTS are not channels and are not listed here -- see",
+    "common_ports below. Every block declares them, generated rather than",
+    "hand-written.",
+    "",
+    "COUNTS. 40 channels. The source spec's prose says 32 and its per-block",
+    "port index runs low on 7 of 14 blocks; the enumerated tables are",
+    "self-consistent and are what this file follows. tools/gen-interfaces.py",
+    "derives the per-block counts from the channel list so the two can never",
+    "disagree again."
+  ],
+  "schema_version": 2,
+  "common_ports": [
+    {
+      "name": "clk",
+      "dir": "in",
+      "width": 1,
+      "doc": "Gated clock for the block."
+    },
+    {
+      "name": "clk_free",
+      "dir": "in",
+      "width": 1,
+      "doc": "Ungated clock, for the wake detector ONLY. Anything else on it defeats the block's gate invisibly (CCV-L22)."
+    },
+    {
+      "name": "rst_n",
+      "dir": "in",
+      "width": 1,
+      "doc": "Synchronous reset, ACTIVE LOW. `CCV_RST is the in-reset condition, so a block spells it `!rst_n`."
+    },
+    {
+      "name": "kill_valid",
+      "dir": "in",
+      "width": 1,
+      "doc": "Grid teardown, one cycle ahead of the mask, broadcast by RAU to the eight blocks that own warp state (FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA). Lanes hold no warp-tagged state that survives RCU ceasing to send, and DCU, MLC and EXB are physically addressed with no notion of a warp, so they take no part. Outside the credit scheme: a kill must not wait on a stalled receiver.",
+      "fabric": {
+        "kind": "broadcast",
+        "from": "rau",
+        "to": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "kill_warp_mask",
+      "dir": "in",
+      "width": "CCV_TIER1_WARPS+CCV_PARKED_WARPS",
+      "doc": "Warps to discard, one bit per warp CONTEXT (32: tier-1 and parked), driven by RAU. It was sized to the four tier-1 warps, but PCA and SYU hold state for parked warps, which a tier-1 mask cannot name. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables.",
+      "fabric": {
+        "kind": "broadcast",
+        "from": "rau",
+        "to": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "kill_epoch",
+      "dir": "in",
+      "width": "CCV_P_W_KILL_EPOCH",
+      "doc": "Epoch of the kill being broadcast. Every ack echoes it, so a late ack from a previous kill cannot satisfy this one.",
+      "fabric": {
+        "kind": "broadcast",
+        "from": "rau",
+        "to": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "kill_ack",
+      "dir": "out",
+      "width": 1,
+      "doc": "QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf. MIU is the awkward one: retired stores must still drain, so its ack waits on them, while its pending loads are dropped. Gathered at RAU as kill_acks, one bit per owning block in the order FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA.",
+      "fabric": {
+        "kind": "gather",
+        "to": "rau",
+        "port": "kill_acks",
+        "from": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "kill_ack_epoch",
+      "dir": "out",
+      "width": "CCV_P_W_KILL_EPOCH",
+      "doc": "The kill_epoch this ack answers. RAU counts an ack only when it matches the current epoch.",
+      "fabric": {
+        "kind": "gather",
+        "to": "rau",
+        "port": "kill_ack_epochs",
+        "from": [
+          "fet",
+          "dec",
+          "ooe",
+          "rcu",
+          "miu",
+          "spm",
+          "syu",
+          "pca"
+        ]
+      }
+    },
+    {
+      "name": "sleep_ok",
+      "dir": "out",
+      "width": 1,
+      "doc": "Block is drained and may be gated. Goes to the block's OWN clock gate only; wake arrives per channel (the _wake channel signal), so there is no global sleep or wake fabric.",
+      "fabric": {
+        "kind": "local"
+      }
+    },
+    {
+      "name": "csr_req",
+      "dir": "in",
+      "width": "CCV_L_W_CSR_ADDR+CCV_W_CSR+1",
+      "doc": "Address, write data, write enable, from CRU, which owns the CSR fabric. CRU's own csr ports are the host side. Width: address + data + write enable (preliminary address).",
+      "fabric": {
+        "kind": "star",
+        "owner": "cru",
+        "port": "csr_reqs"
+      }
+    },
+    {
+      "name": "csr_rsp",
+      "dir": "out",
+      "width": "CCV_W_CSR+1",
+      "doc": "Read data, done. Width: read data + done.",
+      "fabric": {
+        "kind": "star",
+        "owner": "cru",
+        "port": "csr_rsps"
+      }
+    },
+    {
+      "name": "csr_credit",
+      "dir": "out",
+      "width": 1,
+      "doc": "Credit return for the CSR channel.",
+      "fabric": {
+        "kind": "star",
+        "owner": "cru",
+        "port": "csr_credits"
+      }
+    }
+  ],
+  "channel_signals": [
+    {
+      "suffix": "_valid",
+      "dir": "producer",
+      "doc": "Asserted ONE CYCLE AHEAD of the payload, on every interface without exception. A credit is consumed when valid asserts, not when the payload lands, and once asserted valid is binding -- the payload follows on schedule even if a stall arrives in between."
+    },
+    {
+      "suffix": "_payload",
+      "dir": "producer",
+      "doc": "The packed struct. Same flop count as valid, so it arrives no later than it otherwise would. A channel may declare LEAD fields (lead_fields): that slice of the same register is written with valid, one cycle ahead of the rest, so on the wire it carries the lead of the message whose valid is up while the rest carries the previous message's payload. The lane mask is the one case today (Q-40)."
+    },
+    {
+      "suffix": "_credit",
+      "dir": "consumer",
+      "doc": "Credit return."
+    },
+    {
+      "suffix": "_stall",
+      "dir": "consumer",
+      "doc": "Stall-invalidate: temporarily invalidates outstanding credits. No message may be sent the cycle after it is received, which makes the in-flight window a fixed count rather than a handshake."
+    },
+    {
+      "suffix": "_wake",
+      "dir": "producer",
+      "per": "channel instance",
+      "doc": "Wake request toward the receiver, asserted by the sender ahead of a send so a gated receiver can ungate. One per channel instance, not per slot, and outside the credit scheme. Replaces the global wake_req common port: wake is directional and per channel, so it belongs in the channel bundle."
+    }
+  ],
+  "channels": [
+    {
+      "name": "ccv_fet_dec_instr",
+      "src": "fet",
+      "dst": "dec",
+      "rate": 8,
+      "group": "instruction",
+      "payload_fields": [
+        "warp_id",
+        "tier1_id",
+        "pc",
+        "instr",
+        "length",
+        "fetch_fault"
+      ],
+      "doc": "Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path.",
+      "id_classes": [
+        "instr"
+      ],
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "binding_group": 2,
+        "ordering": "slot_group",
+        "binding_key": "tier1_id"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "four warp streams of two: tier-1 stream = slot / 2",
+        "binding_group": "two slots per warp stream",
+        "ordering": "each stream's two slots are strictly program-ordered",
+        "binding_key": "the stream a message belongs to, carried so the binding is checked rather than stated: tier1_id must equal slot / binding_group"
+      }
+    },
+    {
+      "name": "ccv_dec_ooe_uop",
+      "src": "dec",
+      "dst": "ooe",
+      "rate": 6,
+      "group": "instruction",
+      "payload_fields": [
+        "warp_id",
+        "pc",
+        "uop_class",
+        "opcode",
+        "src_arch",
+        "src2_arch",
+        "dst_arch",
+        "pred_guard",
+        "pred_neg",
+        "pred_dst",
+        "pred_we",
+        "imm",
+        "scale_en",
+        "decode_fault"
+      ],
+      "doc": "Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename.",
+      "id_classes": [
+        "instr"
+      ],
+      "slot_attrs": {
+        "ordering": "warp_id"
+      },
+      "slot_attrs_why": {
+        "ordering": "six uops from up to four warps have no total order; order is per warp"
+      }
+    },
+    {
+      "name": "ccv_ooe_rcu_issue",
+      "src": "ooe",
+      "dst": "rcu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "warp_id",
+        "issue_mask",
+        "phys_src",
+        "phys_src2",
+        "phys_dst",
+        "phys_pred_guard",
+        "pred_neg",
+        "phys_pred_dst",
+        "pred_we",
+        "opcode",
+        "imm",
+        "chwidth",
+        "dispatch_fault"
+      ],
+      "doc": "What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.",
+      "id_classes": [
+        "instr"
+      ],
+      "slot_attrs": {
+        "slot_binding": "free"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "the four issue slots are a free pool"
+      }
+    },
+    {
+      "name": "ccv_rcu_lane_ops",
+      "src": "rcu",
+      "dst": "lane",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "opcode",
+        "operand",
+        "pred_bit",
+        "pred_data",
+        "section_en"
+      ],
+      "note": "Fans out to 32 LANE instances; the payload is per-lane.",
+      "lead_fields": [
+        "pred_bit",
+        "pred_data",
+        "section_en"
+      ],
+      "lead_why": "The mask gates the lane, so it must arrive before what it gates (Q-40). RCU reads the predicate and sends the lane's enable, its predicate-as-data and its section enables with valid, one cycle ahead of the GPR operands; a masked-off lane never clocks its operand capture or its datapath. pred_data is an operand too (sel's selector), but a one-bit read from RCU's predicate file costs nothing to move early.",
+      "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.",
+      "id_classes": [
+        "instr"
+      ],
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "lockstep": true
+      },
+      "slot_attrs_why": {
+        "slot_binding": "lane N's four operands slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2; and neither lane channel carries an instruction tag, so a result is attributable only by its slot",
+        "lockstep": "the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control"
+      }
+    },
+    {
+      "name": "ccv_lane_rcu_res",
+      "src": "lane",
+      "dst": "rcu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "result",
+        "pred_out",
+        "lane_fault"
+      ],
+      "note": "32 LANE instances converge here.",
+      "doc": "One lane's result, its predicate output (setp's compare, add.pp's predicate beside its GPR result), and its fault bit.",
+      "id_classes": [
+        "instr"
+      ],
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "lockstep": true
+      },
+      "slot_attrs_why": {
+        "slot_binding": "lane N's four results slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2",
+        "lockstep": "the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control"
+      }
+    },
+    {
+      "name": "ccv_rcu_ooe_done",
+      "src": "rcu",
+      "dst": "ooe",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "exec_fault",
+        "branch_taken",
+        "branch_mask",
+        "fault_lane_mask"
+      ],
+      "doc": "Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_rcu_miu_addr",
+      "src": "rcu",
+      "dst": "miu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "active_mask",
+        "base",
+        "index_per_lane",
+        "store_data"
+      ],
+      "doc": "Address operands and store data for memory operations, and active_mask: issue mask AND guard predicate, computed by RCU, the one block holding both. The widest interface in the design.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_miu_rcu_data",
+      "src": "miu",
+      "dst": "rcu",
+      "rate": 4,
+      "group": "execution",
+      "payload_fields": [
+        "rob_tag",
+        "active_mask",
+        "pred_result",
+        "phys_dst",
+        "phys_pred",
+        "pred_we",
+        "load_data"
+      ],
+      "doc": "Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_ooe_miu_memop",
+      "src": "ooe",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rob_tag",
+        "phys_dst",
+        "phys_pred",
+        "issue_mask",
+        "warp_id",
+        "cta_slot",
+        "mem_op",
+        "chwidth",
+        "disp",
+        "scale_en",
+        "space",
+        "ordering"
+      ],
+      "doc": "The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_miu_ooe_cmpl",
+      "src": "miu",
+      "dst": "ooe",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rob_tag",
+        "status",
+        "cause",
+        "lane_mask",
+        "address",
+        "mlc_miss"
+      ],
+      "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger.",
+      "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel.",
+      "id_classes": [
+        "instr"
+      ],
+      "slot_attrs": {
+        "ordering": "none"
+      },
+      "slot_attrs_why": {
+        "ordering": "genuinely out of order across four pipes"
+      }
+    },
+    {
+      "name": "ccv_ooe_miu_retire",
+      "src": "ooe",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rob_tag",
+        "commit_or_discard"
+      ],
+      "doc": "Commit or discard for the store buffer, so stores leave only after their instruction retires.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_ooe_fet_redirect",
+      "src": "ooe",
+      "dst": "fet",
+      "rate": 1,
+      "group": "instruction",
+      "payload_fields": [
+        "warp_id",
+        "tier1_id",
+        "target_pc",
+        "group_masks",
+        "fetch_epoch"
+      ],
+      "doc": "A resolved branch that changes fetch: the warp, its tier-1 stream, the target PC, the updated PC-group lane masks, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate); OOE redirects. FET owns the PC and its update logic, so the divergent PC-group state lives in FET.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_miu_spm_req",
+      "src": "miu",
+      "dst": "spm",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "bank_addr",
+        "write_data",
+        "byte_mask",
+        "spm_op"
+      ],
+      "doc": "Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_SPM"
+      }
+    },
+    {
+      "name": "ccv_spm_miu_rsp",
+      "src": "spm",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "read_data",
+        "conflict_serialization"
+      ],
+      "doc": "Scratchpad read data plus how many extra cycles conflicts cost, which the timing model needs.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_SPM"
+      }
+    },
+    {
+      "name": "ccv_miu_dcu_req",
+      "src": "miu",
+      "dst": "dcu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "phys_addr",
+        "size",
+        "coh_op",
+        "exclusive_req",
+        "write_data",
+        "byte_mask"
+      ],
+      "doc": "Cache access, physically addressed, with the exclusive-ownership request for atomics, and the store data with its byte mask.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_DCU"
+      }
+    },
+    {
+      "name": "ccv_dcu_miu_rsp",
+      "src": "dcu",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "read_data",
+        "hit",
+        "ownership_granted"
+      ],
+      "doc": "Cache read data, hit indication and whether ownership was granted.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_DCU"
+      }
+    },
+    {
+      "name": "ccv_dcu_mlc_req",
+      "src": "dcu",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "phys_addr",
+        "coh_op",
+        "core_id",
+        "writeback_data"
+      ],
+      "doc": "Fills and writebacks from L1 to the shared cache, tagged with core ID.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_DCU_MLC"
+      }
+    },
+    {
+      "name": "ccv_mlc_dcu_rsp",
+      "src": "mlc",
+      "dst": "dcu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "line_data",
+        "ownership",
+        "miss"
+      ],
+      "doc": "Line fills and ownership grants back to L1.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_DCU_MLC"
+      }
+    },
+    {
+      "name": "ccv_mlc_dcu_probe",
+      "src": "mlc",
+      "dst": "dcu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "phys_addr",
+        "invalidate_or_downgrade"
+      ],
+      "note": "A wake source: the D-cache cannot sleep through an inbound probe.",
+      "doc": "Inbound invalidate or downgrade. Unsolicited, and a wake source, since a sleeping D-cache must still answer.",
+      "id_classes": [
+        "none"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_PROBE"
+      }
+    },
+    {
+      "name": "ccv_dcu_mlc_probe_ack",
+      "src": "dcu",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "ack",
+        "dirty_data"
+      ],
+      "doc": "Probe response, carrying dirty data when the line was modified.",
+      "id_classes": [
+        "none"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_PROBE"
+      }
+    },
+    {
+      "name": "ccv_fet_mlc_ifill",
+      "src": "fet",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "phys_addr",
+        "asid"
+      ],
+      "note": "I-cache miss bypasses DCU.",
+      "doc": "Instruction cache miss straight to MLC, bypassing the D-cache.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_FET_MLC"
+      }
+    },
+    {
+      "name": "ccv_mlc_fet_ifill_rsp",
+      "src": "mlc",
+      "dst": "fet",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "line_data"
+      ],
+      "doc": "Instruction line fill.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_FET_MLC"
+      }
+    },
+    {
+      "name": "ccv_miu_fet_itlb",
+      "src": "miu",
+      "dst": "fet",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "itlb_refill"
+      ],
+      "doc": "Walker returning an ITLB entry.",
+      "id_classes": [
+        "txn"
+      ]
+    },
+    {
+      "name": "ccv_fet_miu_itlb_req",
+      "src": "fet",
+      "dst": "miu",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "virtual_page",
+        "asid"
+      ],
+      "doc": "Fetch asking the walker for a translation on an ITLB miss.",
+      "id_classes": [
+        "txn"
+      ],
+      "outstanding": {
+        "answered_by": "ccv_miu_fet_itlb",
+        "max": 1
+      },
+      "outstanding_why": "FET has at most one ITLB miss outstanding, which makes a correlation tag unnecessary: code is a handful of pages, the ITLB is 4-8 entries, and fetch stalls on a miss anyway. Asserted (ccv_outstanding_checker), not tagged. Revisit if multi-warp fetch across distant code regions proves otherwise."
+    },
+    {
+      "name": "ccv_mlc_exb_req",
+      "src": "mlc",
+      "dst": "exb",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "phys_addr",
+        "size",
+        "coh_op",
+        "ownership_class",
+        "core_id",
+        "writeback_data"
+      ],
+      "doc": "The protocol-neutral outbound request. Everything the core knows about coherence is expressed here.",
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_EXB"
+      }
+    },
+    {
+      "name": "ccv_exb_mlc_rsp",
+      "src": "exb",
+      "dst": "mlc",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "req_id",
+        "probe_type",
+        "phys_addr",
+        "line_data",
+        "ownership_grant",
+        "miss"
+      ],
+      "doc": "Protocol-neutral inbound: fills and grants, matched to their request by req_id, and probes, which carry their line address and what they ask (probe_type != 0; req_id is then meaningless).",
+      "id_classes": [
+        "txn",
+        "none"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MLC_EXB"
+      }
+    },
+    {
+      "name": "ccv_exb_ext_out",
+      "src": "exb",
+      "dst": "EXTERNAL",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "tl_out"
+      ],
+      "note": "THE ONE EXCEPTION. TileLink TL-C at the coherent boundary; obeys that protocol's rules, not ours. Containing it in a bridge block is what keeps the exception to a single port.",
+      "doc": "TileLink TL-C, outbound: channels A (acquire/get/put), C (release, probe response) and E (grant ack). The core is a master. How it decomposes -- flattened bundle or separate TL channels -- is EXB session work.",
+      "id_classes": [
+        "txn"
+      ]
+    },
+    {
+      "name": "ccv_rau_fet_launch",
+      "src": "rau",
+      "dst": "fet",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "start_pc",
+        "code_bounds",
+        "asid",
+        "cta_slot"
+      ],
+      "doc": "A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rau_ooe_alloc",
+      "src": "rau",
+      "dst": "ooe",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "prf_base",
+        "prf_size",
+        "activate_or_free",
+        "ctaid",
+        "warp_in_cta"
+      ],
+      "doc": "The warp's physical register window, activated or freed, and its identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38). Promotion re-sends this message, so identity arrives with every activation. RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_ooe_rau_status",
+      "src": "ooe",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "fault_taken",
+        "stalled",
+        "mlc_miss_seen",
+        "retired_since_restore"
+      ],
+      "doc": "Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU maps warp to grid to mask from tables it owns. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rau_ooe_demote",
+      "src": "rau",
+      "dst": "ooe",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "squash_to_retirement"
+      ],
+      "doc": "The order to squash a warp to its retirement boundary and report where to resume.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_ooe_rau_drained",
+      "src": "ooe",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "resume_pc",
+        "arch_state_ready"
+      ],
+      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rau_rcu_mig",
+      "src": "rau",
+      "dst": "rcu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "direction",
+        "bank_select"
+      ],
+      "doc": "Which warp and direction a migration moves, and which parked bank it targets.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rcu_pca_mig",
+      "src": "rcu",
+      "dst": "pca",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "row_idx",
+        "gpr_row",
+        "pred_state"
+      ],
+      "doc": "Architectural register and predicate state out to the parked array on demotion, one GPR row per message. Addressed: warp_id and row_idx say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_pca_rcu_mig",
+      "src": "pca",
+      "dst": "rcu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "row_idx",
+        "gpr_row",
+        "pred_state"
+      ],
+      "doc": "Architectural register and predicate state back in on restore, one GPR row per message, addressed by warp_id and row_idx so RCU writes it without state. The PC groups return to FET on ccv_pca_fet_mig.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_fet_pca_mig",
+      "src": "fet",
+      "dst": "pca",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "pcs"
+      ],
+      "doc": "A demoted warp's PC groups, out to the parked array. FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer and waits for both before reallocating the slot.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_pca_fet_mig",
+      "src": "pca",
+      "dst": "fet",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "pcs"
+      ],
+      "doc": "A restored warp's PC groups, back to FET, which resumes fetch from them.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rau_fet_mig",
+      "src": "rau",
+      "dst": "fet",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "direction",
+        "bank_select"
+      ],
+      "doc": "The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction, which parked bank. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_pca_rau_mig_done",
+      "src": "pca",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id"
+      ],
+      "doc": "A demotion has landed: PCA holds every GPR row from RCU and the PC groups from FET for warp_id. RAU waits for this before reallocating the warp's slot. One ack from the block that sees both halves arrive, rather than one from each sender.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_rau_miu_cta",
+      "src": "rau",
+      "dst": "miu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "cta_slot",
+        "spm_base",
+        "spm_limit",
+        "launch_block_addr"
+      ],
+      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_ooe_syu_bar",
+      "src": "ooe",
+      "dst": "syu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_id",
+        "cta_slot",
+        "barrier_id",
+        "arrive_or_wait"
+      ],
+      "doc": "Barrier arrive and wait. A warp may be demoted while waiting, so the barrier table tracks non-resident warps.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_syu_ooe_rel",
+      "src": "syu",
+      "dst": "ooe",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "warp_mask_released",
+        "barrier_id"
+      ],
+      "doc": "The set of warps a barrier released.",
+      "id_classes": [
+        "none"
+      ],
+      "id_classes_why": "A release wakes a SET of waiting warps and has no single owning transaction. The link back to each bar.sync is already in the trace -- the arrives on the same barrier_id since its previous release -- so no set-valued id is needed; an explicit link, if wanted, is a trace event."
+    },
+    {
+      "name": "ccv_rau_syu_alloc",
+      "src": "rau",
+      "dst": "syu",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "cta_slot",
+        "barrier_base",
+        "barrier_count",
+        "allocate_or_free"
+      ],
+      "doc": "Barrier entries allocated to or freed from a CTA slot.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_ooe_cru_fault",
+      "src": "ooe",
+      "dst": "cru",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "cause",
+        "pc",
+        "lane_mask",
+        "address",
+        "cta_slot",
+        "warp_id"
+      ],
+      "doc": "The first fault taken by a context, written once and never overwritten.",
+      "id_classes": [
+        "instr"
+      ]
+    },
+    {
+      "name": "ccv_cru_rau_cfg",
+      "src": "cru",
+      "dst": "rau",
+      "rate": 1,
+      "group": "control",
+      "payload_fields": [
+        "demotion_threshold",
+        "progress_threshold",
+        "launch_enable",
+        "kill_req",
+        "kill_grid"
+      ],
+      "doc": "Host-programmed policy (demotion threshold, progress threshold, launch enable) and the host's kill request with a grid selector. Both kill sources -- a fault from OOE, a request from the host -- land at RAU, the single issuer.",
+      "id_classes": [
+        "none"
+      ]
+    },
+    {
+      "name": "ccv_ext_exb_in",
+      "src": "EXTERNAL",
+      "dst": "exb",
+      "rate": 1,
+      "group": "memory",
+      "payload_fields": [
+        "tl_in"
+      ],
+      "doc": "TileLink TL-C, inbound: channels B (probe) and D (grant). Declared now rather than with a second core, because it is the only way the testbench memory can INITIATE a probe -- and so the only way to exercise the DCU probe port, probe as a wake source, and a probe arriving at a sleeping block before there is a second core to debug them with. A probe's line address and type ride in tl_in's TL-B fields; EXB turns them into ccv_exb_mlc_rsp's phys_addr and probe_type.",
+      "id_classes": [
+        "txn",
+        "none"
+      ]
+    }
+  ],
+  "_field_ownership_comment": [
+    "OWNERSHIP (Q-34): a field that crosses hops is owned by this schema, not",
+    "by the sessions that consume it. Its width and encoding are the ones here,",
+    "on every channel that carries it. A block may narrow a field locally only",
+    "if its encoding is a strict projection of the shared one -- low bits of",
+    "the same code, never a re-encoding. opcode stays at DEC's width on all",
+    "three hops until the ISA opcode census says otherwise; asid (8) and size",
+    "(a 3-bit code) already have one width everywhere.",
+    "",
+    "per_hop_fields are the exception, and are not cross-hop at all: req_id",
+    "names one hop's outstanding request, sized by that hop's window, so each",
+    "hop has its own. Only these may carry a per-channel width override;",
+    "tools/gen-interfaces.py refuses an override of any other field."
+  ],
+  "per_hop_fields": [
+    "req_id"
+  ],
+  "_field_widths_comment": [
+    "Payload field -> width, as a SystemVerilog expression over ccv_params_pkg",
+    "and ccv_prov_pkg. A field absent from this map has no decided width, so",
+    "its channel generates a field LIST rather than a packed struct, and",
+    "tools/check-if.sh reports how many remain.",
+    "",
+    "Inventing the missing ones here would put a number nobody decided into a",
+    "generated typedef, and generated numbers get believed. They are enumerated",
+    "instead, so the ask to each per-block session is a specific short list."
+  ],
+  "field_widths": {
+    "warp_id": "CCV_W_WARP_ID",
+    "pc": "CCV_W_VA",
+    "instr": "CCV_W_INSTR",
+    "length": "CCV_W_ILEN",
+    "fetch_fault": "1",
+    "decode_fault": "1",
+    "dispatch_fault": "1",
+    "exec_fault": "1",
+    "src_arch": "2*CCV_W_ARCH_REG",
+    "dst_arch": "CCV_W_ARCH_REG",
+    "pred_guard": "CCV_W_ARCH_PRED",
+    "pred_dst": "CCV_W_ARCH_PRED",
+    "chwidth": "CCV_W_CHWIDTH",
+    "lane_mask": "CCV_W_LANE_MASK",
+    "fault_lane_mask": "CCV_W_LANE_MASK",
+    "core_id": "CCV_W_CORE_ID",
+    "cause": "CCV_W_FAULT_CAUSE",
+    "barrier_id": "CCV_W_BAR_ID",
+    "bank_addr": "CCV_SPM_BANKS*CCV_W_SPM_WORD",
+    "spm_base": "CCV_W_SPM_ADDR",
+    "spm_limit": "CCV_W_SPM_ADDR",
+    "store_data": "CCV_W_DATA",
+    "load_data": "CCV_W_DATA",
+    "write_data": "CCV_W_DATA",
+    "read_data": "CCV_W_DATA",
+    "gpr_row": "CCV_W_DATA",
+    "result": "CCV_W_LANE_DATA",
+    "base": "CCV_W_VA",
+    "address": "CCV_W_VA",
+    "virtual_page": "CCV_W_VA",
+    "start_pc": "CCV_W_VA",
+    "resume_pc": "CCV_W_VA",
+    "phys_addr": "CCV_P_W_PA",
+    "rob_tag": "CCV_P_W_ROB_TAG",
+    "phys_src": "2*CCV_P_W_PHYS_REG",
+    "phys_dst": "CCV_P_W_PHYS_REG",
+    "phys_pred": "CCV_P_W_PHYS_PRED",
+    "phys_pred_guard": "CCV_P_W_PHYS_PRED",
+    "phys_pred_dst": "CCV_P_W_PHYS_PRED",
+    "cta_slot": "CCV_P_W_CTA_SLOT",
+    "imm": "CCV_P_W_IMM",
+    "line_data": "8*CCV_P_LINE_BYTES",
+    "writeback_data": "8*CCV_P_LINE_BYTES",
+    "dirty_data": "8*CCV_P_LINE_BYTES",
+    "mlc_miss": "1",
+    "hit": "1",
+    "miss": "1",
+    "stalled": "1",
+    "ack": "1",
+    "commit_or_discard": "1",
+    "activate_or_free": "1",
+    "allocate_or_free": "1",
+    "arrive_or_wait": "1",
+    "direction": "1",
+    "exclusive_req": "1",
+    "ownership_granted": "1",
+    "ownership": "1",
+    "ownership_grant": "1",
+    "invalidate_or_downgrade": "1",
+    "arch_state_ready": "1",
+    "launch_enable": "1",
+    "mlc_miss_seen": "1",
+    "squash_to_retirement": "1",
+    "pred_bit": "1",
+    "lane_fault": "1",
+    "warp_mask_released": "CCV_W_LANE_MASK",
+    "section_en": "4",
+    "asid": "CCV_W_ASID",
+    "status": "CCV_W_STATUS",
+    "byte_mask": "CCV_W_DATA/8",
+    "conflict_serialization": "CCV_W_CONFLICT_SER",
+    "retired_since_restore": "CCV_W_RETIRED_CNT",
+    "demotion_threshold": "CCV_W_CSR",
+    "progress_threshold": "CCV_W_CSR",
+    "size": "CCV_W_ACCESS_SIZE",
+    "barrier_base": "CCV_W_BAR_ENTRY",
+    "opcode": "CCV_L_W_OPCODE",
+    "mem_op": "CCV_L_W_MEM_OP",
+    "spm_op": "CCV_L_W_SPM_OP",
+    "coh_op": "CCV_L_W_COH_OP",
+    "ownership_class": "CCV_L_W_OWNERSHIP",
+    "space": "CCV_L_W_SPACE",
+    "ordering": "CCV_L_W_ORDERING",
+    "itlb_refill": "CCV_L_W_ITLB_ENTRY",
+    "code_bounds": "2*(CCV_W_VA-CCV_L_PAGE_SHIFT)",
+    "launch_block_addr": "CCV_W_VA",
+    "prf_base": "CCV_L_W_PRF_BASE",
+    "prf_size": "CCV_L_W_PRF_SIZE",
+    "bank_select": "CCV_L_W_PCA_BANK",
+    "ctaid": "CCV_W_CTAID",
+    "warp_in_cta": "CCV_W_WARP_IN_CTA",
+    "row_idx": "CCV_W_ARCH_REG",
+    "operand": "CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA",
+    "index_per_lane": "CCV_W_DATA",
+    "pcs": "CCV_L_PC_GROUPS*CCV_W_VA",
+    "pred_state": "CCV_L_W_PRED_STATE",
+    "barrier_count": "CCV_L_W_BAR_COUNT",
+    "uop_class": "CCV_L_W_CLASS",
+    "tl_out": "CCV_L_W_TL_OUT",
+    "tl_in": "CCV_L_W_TL_IN",
+    "probe_type": "CCV_L_W_PROBE_TYPE",
+    "active_mask": "CCV_W_LANE_MASK",
+    "issue_mask": "CCV_W_LANE_MASK",
+    "disp": "CCV_W_DISP",
+    "scale_en": "1",
+    "tier1_id": "CCV_W_TIER1_ID",
+    "fault_taken": "1",
+    "kill_req": "1",
+    "kill_grid": "CCV_L_W_GRID_SEL",
+    "branch_taken": "1",
+    "branch_mask": "CCV_W_LANE_MASK",
+    "target_pc": "CCV_W_VA",
+    "group_masks": "CCV_L_PC_GROUPS*CCV_W_LANE_MASK",
+    "fetch_epoch": "CCV_P_W_FETCH_EPOCH",
+    "pred_neg": "1",
+    "pred_data": "1",
+    "pred_out": "1",
+    "pred_result": "CCV_W_LANE_MASK",
+    "src2_arch": "CCV_W_ARCH_REG",
+    "phys_src2": "CCV_P_W_PHYS_REG",
+    "pred_we": "1"
+  },
+  "_open_questions_comment": [
+    "Questions the payload pass raised that are NOT width questions, and that",
+    "no width can close. Each blocks something specific; the `blocks` field",
+    "says what, so it is obvious when one has become urgent. Each carries its",
+    "id in docs/open-items.md, where it is numbered once and never reused;",
+    "tools/check-docs.sh requires the two to agree."
+  ],
+  "open_questions": {
+    "rcu_miu_width": {
+      "id": "Q-18",
+      "question": "ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 4 -- roughly 8,400 wires from RCU into MIU, almost certainly the widest interface in the design. It argues for co-locating the AGUs with RCU, or moving address generation into the register read stage.",
+      "kind": "partitioning question that a width exposed",
+      "blocks": "Nothing today -- the skeleton does not care how wide a bus is. Settle before floorplan rather than after, since the answer may move a block boundary and block boundaries are swap boundaries.",
+      "owner": "partitioning / floorplan"
+    }
+  },
+  "_rate_comment": [
+    "`rate` is TRANSFERS per cycle at peak -- messages, not bits. The source",
+    "spec gives the two migration channels as '1024b', a bandwidth: one",
+    "1024-bit GPR row per cycle, i.e. rate 1, with the row carried in the",
+    "payload's gpr_row field. The first encoding dropped the 'b' and stored",
+    "rate 1024, which the skeleton would have built as 1024 parallel slots."
+  ],
+  "_slot_attrs_comment": [
+    "Per-channel slot attributes (interface decisions 2026-09-24, revised",
+    "2026-09-25). A rate>1 channel is `rate` independent credited slots -- the",
+    "permissive superset -- tightened per channel as block sessions decide.",
+    "",
+    "Only DECIDED values are written on a channel, each with a reason; the",
+    "generators apply the permissive default otherwise and report which is",
+    "which, so a default is never mistaken for a decision.",
+    "",
+    "`lockstep` is an INSTANCE-level attribute: it describes the copies of a",
+    "channel across a multi-instance endpoint, not the slots within one copy."
+  ],
+  "slot_attr_defaults": {
+    "acceptance": {
+      "default": "partial",
+      "values": [
+        "partial",
+        "atomic"
+      ],
+      "applies": "rate > 1",
+      "doc": "atomic: a group of messages moves together -- valids and credits both all-or-none across the slots, since a message is its valid AND its payload despite the one-cycle stagger. Checked by ccv_atomic_checker; lets RTL collapse to one counter."
+    },
+    "slot_binding": {
+      "default": "free",
+      "values": [
+        "free",
+        "bound"
+      ],
+      "applies": "rate > 1",
+      "doc": "bound: slot index carries meaning, so slots are NOT interchangeable. `binding_group` gives the slots per group (default 1: every slot its own stream). The one attribute that cannot be recovered later."
+    },
+    "binding_group": {
+      "default": 1,
+      "applies": "slot_binding: bound",
+      "doc": "Slots per binding group; must divide the rate. fet->dec is four warp streams of two, so 2."
+    },
+    "ordering": {
+      "default": "none",
+      "values": [
+        "none",
+        "slot_group",
+        "<payload field>"
+      ],
+      "applies": "rate > 1",
+      "doc": "An ordering KEY, not a boolean. none: no order across slots. slot_group: one program order within each binding group. A payload field name (e.g. warp_id): ordered among messages with the same value of that field, and free between values -- six uops from up to four warps have no total order, only a per-warp one."
+    },
+    "lockstep": {
+      "default": false,
+      "values": [
+        false,
+        true
+      ],
+      "applies": "a channel replicated across a multi-instance endpoint",
+      "doc": "All instances advance together: slot k's valid and credit are the same on every instance each cycle, and -- with the trace sideband -- carry the same instruction id. Checked by ccv_lockstep_checker. Without it, 32 lanes with per-lane flow control is not a SIMD machine."
+    }
+  },
+  "_id_classes_comment": [
+    "Which trace-identity classes a channel's messages may carry (interface",
+    "decisions, 2026-09-24): instr -- work traceable to a fetched instruction;",
+    "txn -- a transaction with no single owning instruction, or one of one",
+    "instruction's many; none -- probes, launches, migration, CSR access.",
+    "A SET, because some channels carry more than one kind: EXB->MLC and the",
+    "inbound external port carry fills (txn) and probes (none). The skeleton",
+    "checks every message against its channel's set. The per-channel",
+    "assignment is the skeleton's proposal against those definitions, not yet",
+    "a block session's decision -- see docs/skeleton.md."
+  ]
+}

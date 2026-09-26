@@ -1,0 +1,25 @@
+build/
+obj_dir/
+*.o
+*.d
+*.a
+*.vcd
+*.fst
+__pycache__/
+.cache/
+compile_commands.json
+
+# sby working directories are named after the .sby file next to it
+spike/**/*.sby.d/
+**/sby_work/
+
+# Generated. Both have a single source of truth checked in, and regenerating
+# them is part of the gate -- see tools/verify.sh.
+rtl/generated/
+sim/generated/
+
+# ...but the spike cases and golden results are SOURCE, not build output. The
+# sibling compiler repo learned this the hard way: a broad ignore rule silently
+# untracked its whole regression suite, and a fresh clone had no gate at all.
+!test/golden/**
+!spike/cases/**

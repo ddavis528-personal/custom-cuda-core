@@ -1,0 +1,3 @@
+KERNEL name=sel finished=1 cycles=119 retired=8 issue_groups=8 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 channels_used=25/46 violations=0
+UNUSED ccv_miu_rcu_data ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
+XFER events=254 launched=254 match=yes channels_seen=25
