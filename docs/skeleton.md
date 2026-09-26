@@ -312,7 +312,7 @@ every channel port to a (channel, copy, slot, signal, bit) coordinate from
 names and the layout rule alone. It then requires one driver and one load per
 net, identical coordinates at both ends, and the right direction per signal.
 The resulting producer→consumer map must equal `ccv-skel --dump-wiring`:
-69,803 bits, identical, now including one `_wake` bit per channel
+69,840 bits, identical, now including one `_wake` bit per channel
 instance, which must run from the same producer to the same consumer as
 that instance's slots. A copy with one lane's valid slice swapped is
 rejected.
@@ -351,9 +351,11 @@ the schema says how the top connects it):
 
 **Gaps still visible:**
 
-- **Wake's timing contract (Q-33).** `_wake` exists, but how far it must
-  lead valid (`CCV_WAKE_LAT`, 4) is not yet a checked property. A stub never
-  sleeps, so nothing depends on it yet.
+- **Wake's timing contract (Q-33) is checked, but only by its own tests so
+  far.** `ccv_wake_checker` (one per channel instance in the bank) requires
+  a channel's wake at least `CCV_WAKE_LAT` cycles before valid toward a
+  gated receiver. No stub sleeps yet, so in the skeleton and the top it
+  holds without being exercised; `tools/check-if.sh` exercises it.
 - **CSR widths were unspecified** (`"struct"`). `csr_req` is address + data +
   write enable, with the address a preliminary 16 bits (`CCV_L_W_CSR_ADDR`,
   churn med); `csr_rsp` is data + done.
@@ -798,6 +800,34 @@ reach the lanes, one bit per lane, and the mask always gates.
   an `int`, and a mask wider than 32 bits can't be one. Fixed, with a typed
   parameter in the compliant fixture so it stays fixed.
 
+### Skeleton review response 7 (2026-09-26), as built
+
+Five items closed: Q-2, Q-3, Q-5, Q-33 and Q-34.
+
+- **Events (Q-2, Q-3).** An event earns its place only if its timing is
+  decided by an arbiter inside a block.
+  - `EV_DECODE`, both barrier events, and `EV_MEM_REQ`/`EV_MEM_RSP` are
+    deleted, and their ids retired. The stubs no longer emit them.
+  - The fixtures that used `EV_DECODE` as a generic event (the 1c
+    round-trip, the DPI smoke test, emit calibration) now use `EV_ISSUE`
+    and `EV_WARP_SELECT`.
+  - `EV_DISPATCH` is ROB allocation, and arbitration-sensitive.
+  - `EV_RETIRE` is the case the rule leaves open (Q-41).
+- **Correlation is exact match (Q-5).** Each event reserves a null
+  `tolerance`. Its presence is hashed and its value is not, so the option
+  stays free without a hash change later.
+- **Cross-hop fields belong to the schema (Q-34).** Only a per-hop field
+  (`req_id`) may have a per-channel width. `gen-interfaces.py` refuses any
+  other override; a mutation overriding `opcode` on one hop was refused.
+- **The wake contract (Q-33).** `ccv_wake_checker` is a tracking register:
+  valid toward a gated receiver at T needs the wake at or before
+  T − `CCV_WAKE_LAT`.
+  - Eight cases pin it on both simulators. `wake_t3` must fire and `wake_t4`
+    must not. The other six pin how "gated" is read, which is written in the
+    checker's header.
+  - It is in the bank per channel instance, with the SV top's real `_wake`
+    and `sleep_ok` nets.
+
 ### S1 wire conventions (placeholders)
 
 These are encodings the payload spec leaves to each block's owner. They are
@@ -839,18 +869,22 @@ decisions.
 
 ### Events: what the skeleton emits
 
-Seven of the twelve schema events:
+Four of the schema's seven events. Q-2 deleted five, under the rule that an
+event earns its place only if its timing is decided by an arbiter inside a
+block. `EV_DECODE`, `EV_BARRIER_ARRIVE` and `EV_BARRIER_RELEASE` were exactly
+`ccv_dec_ooe_uop`, `ccv_ooe_syu_bar` and `ccv_syu_ooe_rel`. `EV_MEM_REQ` and
+`EV_MEM_RSP` were ambiguous besides: one memop becomes several transactions,
+each with its own `req_id` on its own hop, and those hops' `EV_CH_XFER`s
+carry it. Their ids (1, 6, 7, 9, 10) are retired and never reused.
 
 | Event | Emitted by | vadd count |
 |---|---|---|
 | `EV_CH_XFER` | the checker bank, every transfer | 509 |
-| `EV_DECODE` | DEC | 17 |
-| `EV_DISPATCH` | OOE, ROB allocation | 17 |
+| `EV_DISPATCH` | OOE, ROB allocation (arbitration-sensitive since Q-2) | 17 |
 | `EV_ISSUE` | OOE (`C_EXIT` isn't issued) | 16 |
-| `EV_MEM_REQ` / `EV_MEM_RSP` | MIU per line; FET per ifill | 9 / 9 |
 | `EV_RETIRE` | OOE, in order | 17 |
 
 Not yet emitted: `EV_WAKEUP` and `EV_WARP_SELECT`, which need more than one
-warp and a real scheduler; `EV_BARRIER_ARRIVE`/`RELEASE`, which need a
-barrier kernel; and `EV_ID_LINK`, which needs a replay. Those come from S2's
-kernels.
+warp and a real scheduler, and `EV_ID_LINK`, which needs a replay. Those come
+from S2's kernels. Every event carries a reserved `tolerance`, null: Q-5
+decided exact match.

@@ -325,6 +325,13 @@ def main():
         if sa.get("lockstep") and not multi_inst:
             err("lockstep on a channel with one instance: there is nothing "
                 "to advance together with"); return 1
+        # Cross-hop fields are owned by the schema (Q-34): one width on every
+        # channel. Only a declared per-hop field may be overridden per channel.
+        for f in c.get("field_widths", {}):
+            if f not in d.get("per_hop_fields", []):
+                err("field_widths overrides %r, which is not a per-hop field: a "
+                    "field that crosses hops has one width, owned by the schema "
+                    "(Q-34)" % f); return 1
         # Lead fields: driven with valid, one cycle ahead of the rest of the
         # payload, in the same packed register. The mask that gates a lane is
         # the case: it has to be there before the operands it gates.

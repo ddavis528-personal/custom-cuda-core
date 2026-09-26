@@ -41,6 +41,7 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_skel_checkers \
      rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
      rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv \
      rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv \
+     rtl/if/ccv_wake_checker.sv \
      rtl/generated/ccv_skel_checkers.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/skel/kernel.cpp" \

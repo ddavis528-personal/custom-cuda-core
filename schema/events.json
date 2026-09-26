@@ -19,7 +19,9 @@
     "arbitration-sensitive events are only comparable if the timing model's",
     "arbiter is faithful to RTL's down to tie-break rules.",
     "",
-    "LOAD-BEARING CONTENT IS NOW POPULATED, at Stage 2 as \u00a78 said it would be: EV_CH_XFER plus the 40-channel list in schema/interfaces.json. The per-instruction events above remain as the finer-grained view; a channel transfer is the interface-defined one."
+    "LOAD-BEARING CONTENT IS POPULATED by EV_CH_XFER plus the channel list in schema/interfaces.json. THE PRINCIPLE (Q-2): an event earns its place only if its timing is decided by an arbiter inside a block. Anything that is definitionally a channel transfer is already EV_CH_XFER on a named channel, and a duplicate that can drift is worse than no event. EV_RETIRE is the open case (Q-41).",
+    "",
+    "TOLERANCE (Q-5): every event carries `tolerance`, reserved and null. The criterion is exact match. The key's PRESENCE is in the semantic hash; its VALUE is not, because a tolerance changes how two traces are compared, not how one is read. Setting one later therefore leaves every trace readable. tools/gen-event-schema.py refuses a non-null tolerance until Q-5 is reopened."
   ],
   "schema_version": 2,
   "classes": {
@@ -30,7 +32,7 @@
     },
     "arbitration_sensitive": {
       "description": "Outcome depends on an arbiter's algorithm including tie-breaks. Comparable only against a faithful arbiter model, not a statistically plausible one.",
-      "correlation": "OPEN -- Q-5 in docs/open-items.md. Exact match if the arbiter model is faithful to tie-breaks; otherwise a stated tolerance, and correlation becomes a judgement call each run. This choice constrains how the schema records these events, so it wants settling before the content lands.",
+      "correlation": "exact (Q-5). Achievable because Q-4 makes arbitration policy a specified input to both the timing model and the RTL rather than an implementation accident. A tolerance is the wrong default: it is where drift hides, and nobody ever tightens one.",
       "populated_at": "Stage 4a, per block -- internals-defined"
     }
   },
@@ -55,28 +57,17 @@
   },
   "events": [
     {
-      "name": "EV_DECODE",
-      "id": 1,
-      "class": "load_bearing",
-      "provisional": true,
-      "doc": "An instruction is decoded. First event of an instruction's life; establishes its uid for every later event.",
-      "fields": {
-        "a": "pc_lo",
-        "b": "pc_hi",
-        "c": "opcode"
-      }
-    },
-    {
       "name": "EV_DISPATCH",
       "id": 2,
-      "class": "load_bearing",
+      "class": "arbitration_sensitive",
       "provisional": true,
-      "doc": "Instruction leaves the front end for the back end.",
+      "doc": "ROB allocation in OOE: the cycle an instruction takes a reorder-buffer entry. Kept under Q-2's principle because that cycle is decided by OOE's allocation arbitration, internal to the block; the uop's arrival is ccv_dec_ooe_uop's EV_CH_XFER. Q-1 content: its final definition comes with OOE's Stage 4a.",
       "fields": {
         "a": "warp_id",
         "b": "rob_slot",
         "c": "unused"
-      }
+      },
+      "tolerance": null
     },
     {
       "name": "EV_ISSUE",
@@ -88,7 +79,8 @@
         "a": "warp_id",
         "b": "issue_port",
         "c": "iq_slot"
-      }
+      },
+      "tolerance": null
     },
     {
       "name": "EV_WAKEUP",
@@ -100,7 +92,8 @@
         "a": "warp_id",
         "b": "iq_slot",
         "c": "src_idx"
-      }
+      },
+      "tolerance": null
     },
     {
       "name": "EV_WARP_SELECT",
@@ -112,31 +105,8 @@
         "a": "warp_id",
         "b": "tier",
         "c": "eligible_mask"
-      }
-    },
-    {
-      "name": "EV_MEM_REQ",
-      "id": 6,
-      "class": "load_bearing",
-      "provisional": true,
-      "doc": "Memory request leaves the core. Load-bearing despite memory being testbench-side (\u00a72): \u00a72 is explicit that interface assertions at that boundary matter MORE than elsewhere, being the one place the design meets a model nobody will ever validate.",
-      "fields": {
-        "a": "addr_lo",
-        "b": "addr_hi",
-        "c": "req_kind"
-      }
-    },
-    {
-      "name": "EV_MEM_RSP",
-      "id": 7,
-      "class": "load_bearing",
-      "provisional": true,
-      "doc": "Memory response returns to the core.",
-      "fields": {
-        "a": "addr_lo",
-        "b": "addr_hi",
-        "c": "rsp_kind"
-      }
+      },
+      "tolerance": null
     },
     {
       "name": "EV_RETIRE",
@@ -148,31 +118,8 @@
         "a": "warp_id",
         "b": "rob_slot",
         "c": "active_mask"
-      }
-    },
-    {
-      "name": "EV_BARRIER_ARRIVE",
-      "id": 9,
-      "class": "load_bearing",
-      "provisional": true,
-      "doc": "A warp arrives at a barrier. Arrive/wait is already a split transaction (\u00a72), so the two halves are separate events.",
-      "fields": {
-        "a": "warp_id",
-        "b": "barrier_id",
-        "c": "epoch"
-      }
-    },
-    {
-      "name": "EV_BARRIER_RELEASE",
-      "id": 10,
-      "class": "load_bearing",
-      "provisional": true,
-      "doc": "A barrier epoch completes and its waiters are released.",
-      "fields": {
-        "a": "warp_id",
-        "b": "barrier_id",
-        "c": "epoch"
-      }
+      },
+      "tolerance": null
     },
     {
       "name": "EV_CH_XFER",
@@ -184,7 +131,8 @@
         "a": "channel_id",
         "b": "payload_lo",
         "c": "payload_hi"
-      }
+      },
+      "tolerance": null
     },
     {
       "name": "EV_ID_LINK",
@@ -196,7 +144,8 @@
         "a": "new_seq",
         "b": "old_seq",
         "c": "reason"
-      }
+      },
+      "tolerance": null
     }
   ],
   "uid_layout": {
@@ -239,5 +188,23 @@
       "load_replay": 2,
       "demotion_restore": 3
     }
-  }
+  },
+  "retired_ids": [
+    1,
+    6,
+    7,
+    9,
+    10
+  ],
+  "_retired_ids_comment": [
+    "Ids of deleted events. Never reused: a reused id silently reinterprets every",
+    "trace already written. tools/gen-event-schema.py refuses one.",
+    "1 EV_DECODE, 6 EV_MEM_REQ, 7 EV_MEM_RSP, 9 EV_BARRIER_ARRIVE, 10",
+    "EV_BARRIER_RELEASE: deleted under Q-2. DECODE and the barrier pair were",
+    "exactly ccv_dec_ooe_uop, ccv_ooe_syu_bar and ccv_syu_ooe_rel. MEM_REQ and",
+    "MEM_RSP were ambiguous as well: one memop becomes several transactions",
+    "(MIU->SPM, MIU->DCU, DCU->MLC), each with its own req_id, which the per-hop",
+    "channel events carry. (EV_DECODE's text had also claimed to establish the",
+    "uid; the uid is created at fetch -- Q-3.)"
+  ]
 }

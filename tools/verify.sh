@@ -155,7 +155,8 @@ if command -v verilator >/dev/null 2>&1; then
   for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_credit_checker.sv: \
               rtl/if/ccv_credit_checker.sv:CCV_TRACE rtl/if/ccv_atomic_checker.sv: \
               rtl/if/ccv_lockstep_checker.sv: rtl/if/ccv_lockstep_checker.sv:CCV_TRACE \
-              rtl/if/ccv_binding_checker.sv: rtl/if/ccv_outstanding_checker.sv:; do
+              rtl/if/ccv_binding_checker.sv: rtl/if/ccv_outstanding_checker.sv: \
+              rtl/if/ccv_wake_checker.sv:; do
     f=${spec%%:*}; def=${spec#*:}
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut

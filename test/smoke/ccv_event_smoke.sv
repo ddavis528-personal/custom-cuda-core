@@ -32,14 +32,14 @@ module ccv_event_smoke;
     for (int i = 0; i < 4; i++) begin
       uid = 1000 + i;
 
-      // Load-bearing: an instruction's architectural milestones.
-      `CCV_EMIT3(cycle + 0, uid, EV_DECODE,   UNIT_FET,  32'h100 + i*4, 0, 8'h2a)
-      `CCV_EMIT3(cycle + 1, uid, EV_DISPATCH, UNIT_OOE, i % 2, i, 0)
-
       // Arbitration-sensitive: the class §1 warns diverges on every tie if the
-      // arbiter model is merely plausible rather than faithful.
+      // arbiter model is merely plausible rather than faithful. Warp select,
+      // ROB allocation (EV_DISPATCH since Q-2) and issue.
+      `CCV_EMIT3(cycle + 0, uid, EV_WARP_SELECT, UNIT_OOE, i % 2, 0, 32'h0000000f)
+      `CCV_EMIT3(cycle + 1, uid, EV_DISPATCH, UNIT_OOE, i % 2, i, 0)
       `CCV_EMIT3(cycle + 2, uid, EV_ISSUE,    UNIT_OOE, i % 2, 0, i)
 
+      // Load-bearing: the architectural commit.
       `CCV_EMIT3(cycle + 5, uid, EV_RETIRE,   UNIT_OOE, i % 2, i, 32'hffffffff)
       cycle = cycle + 3;
     end

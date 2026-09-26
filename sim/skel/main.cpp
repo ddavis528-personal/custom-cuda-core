@@ -87,6 +87,12 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
     for (unsigned b = 0; b != 64; ++b)
       setBit(bank.tid, uint64_t(k) * 64 + b, (slots[k].cur.tid >> b) & 1u);
   }
+  // No stub sleeps and none wakes (Q-33): the wake checkers see a receiver
+  // that is never gated, so they hold and stay quiet.
+  for (unsigned k = 0; k != kNumChanInsts; ++k) {
+    setBit(bank.wake, k, false);
+    setBit(bank.rx_gated, k, false);
+  }
   for (const ChanInst &ci : kChanInsts) {
     const ChanDesc &cd = kChans[ci.chan];
     for (unsigned s = 0; s != cd.rate; ++s) {

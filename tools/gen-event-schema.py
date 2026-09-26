@@ -49,9 +49,14 @@ def schema_hash(raw_bytes):
                        if not k.startswith("_")},
         "events": [
             {"name": e["name"], "id": e["id"], "class": e["class"],
-             "fields": e["fields"]}
+             "fields": e["fields"],
+             # The tolerance's PRESENCE is hashed and its VALUE is not (Q-5):
+             # it changes how two traces are compared, not how one is read.
+             "tolerance_reserved": "tolerance" in e}
             for e in sorted(d["events"], key=lambda e: e["id"])
         ],
+        # A retired id must stay retired: reusing one reinterprets old traces.
+        "retired_ids": sorted(d.get("retired_ids", [])),
     }
     blob = json.dumps(sig, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(blob).hexdigest()[:16]
@@ -229,6 +234,11 @@ def main():
     if len(set(ids)) != len(ids):
         sys.stderr.write("event ids are not unique: %s\n" % sorted(ids))
         return 1
+    reused = set(ids) & set(d.get("retired_ids", []))
+    if reused:
+        sys.stderr.write("event ids %s are retired and may not be reused\n"
+                         % sorted(reused))
+        return 1
     names = [e["name"] for e in d["events"]]
     if len(set(names)) != len(names):
         sys.stderr.write("event names are not unique\n")
@@ -237,6 +247,16 @@ def main():
         if e["class"] not in d["classes"]:
             sys.stderr.write("event %s has unknown class %r\n"
                              % (e["name"], e["class"]))
+            return 1
+        # Q-5 decided exact match. The key is reserved so that setting it
+        # later costs no hash change; setting it is a decision, not an edit.
+        if "tolerance" not in e:
+            sys.stderr.write("event %s has no reserved tolerance key (Q-5)\n"
+                             % e["name"])
+            return 1
+        if e["tolerance"] is not None:
+            sys.stderr.write("event %s sets a tolerance, but Q-5 decided exact "
+                             "match; reopen Q-5 first\n" % e["name"])
             return 1
         if set(e["fields"]) != {"a", "b", "c"}:
             sys.stderr.write("event %s must define fields a, b and c\n"

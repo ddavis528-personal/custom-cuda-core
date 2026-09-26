@@ -575,7 +575,7 @@
       "status": "preliminary",
       "churn": "high",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "One encoding across all three hops until proven otherwise. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten.",
+      "doc": "One encoding across all three hops, owned by the schema (Q-34): a block may narrow it locally only as a strict projection, never a re-encoding. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten.",
       "decided_at": "ISA opcode census, then DEC/OOE/RCU agree the hops"
     },
     {

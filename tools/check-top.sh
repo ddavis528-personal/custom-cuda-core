@@ -19,7 +19,7 @@ fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 
-CHK="rtl/if/ccv_credit_checker.sv rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv rtl/generated/ccv_skel_checkers.sv"
+CHK="rtl/if/ccv_credit_checker.sv rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv rtl/if/ccv_wake_checker.sv rtl/generated/ccv_skel_checkers.sv"
 STUBS=$(ls rtl/top/stubs/*.sv | tr '\n' ' ')
 # The assertion package first: the checkers import it, and every tool wants a
 # package declared before its first use.

@@ -77,7 +77,7 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_L_W_OPCODE` | 9 | **HIGH** | One encoding across all three hops until proven otherwise. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten. |
+| `CCV_L_W_OPCODE` | 9 | **HIGH** | One encoding across all three hops, owned by the schema (Q-34): a block may narrow it locally only as a strict projection, never a re-encoding. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten. |
 
 ### MIU block session
 

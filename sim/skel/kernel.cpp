@@ -780,8 +780,6 @@ private:
         ids_.release(id);
         job_.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
         ++job_.back;
-        emit(now_, m.tid, EV_MEM_RSP, UNIT_MIU, uint32_t(line),
-             uint32_t(line >> 32), job_.store ? kCohWrite : kCohRead);
       }
 
     if (!active_) start();
@@ -942,8 +940,6 @@ private:
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
       outstanding_[id] = lr.line;
-      emit(now_, tid, EV_MEM_REQ, UNIT_MIU, uint32_t(lr.line),
-           uint32_t(lr.line >> 32), job_.store ? kCohWrite : kCohRead);
     }
     if (job_.back != job_.lines.size()) return;
     if (!job_.store) {
@@ -1590,7 +1586,6 @@ private:
       k_.fail("dec: seq %llu fetched %u bytes at %llx that are not what ccv-sim ran",
               (unsigned long long)r->seq, len, (unsigned long long)pc);
     if (get(f, c.fet_dec, "fetch_fault")) k_.fail("dec: fetch fault");
-    emit(now_, m.tid, EV_DECODE, UNIT_DEC, uint32_t(pc), uint32_t(pc >> 32));
 
     // Decode itself is the oracle's: which registers the instruction reads
     // and writes. The table checks the record has the shape the uop can hold.
@@ -1757,7 +1752,6 @@ private:
         line_[vl] = getLine(m.payload, field(c.mlc_fet, "line_data").lsb);
         ifill_wait_.erase(w);
         ids_.release(id);
-        emit(now_, m.tid, EV_MEM_RSP, UNIT_FET, uint32_t(vl), uint32_t(vl >> 32), 2);
       }
     }
     // Warp 0 is tier-1 stream 0: binding group 0, slots 0 and 1, in order.
@@ -1825,7 +1819,6 @@ private:
     const uint64_t tid = makeUid(IdClass::kTxn, g_unowned_txn++);
     fills_.push_back({0, r, tid});
     ifill_wait_[id] = vline;
-    emit(now_, tid, EV_MEM_REQ, UNIT_FET, uint32_t(pa), uint32_t(pa >> 32), 2);
   }
 
   bool busy() const override {

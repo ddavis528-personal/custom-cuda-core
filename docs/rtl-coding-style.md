@@ -72,7 +72,7 @@ its own idiom; what has to be total and reversible is the **mapping**:
 | Artifact | RTL | C++ |
 |---|---|---|
 | parameter | `CCV_ROB_ENTRIES` | `ccv::kRobEntries` |
-| event id | `CCV_EV_DECODE` | `ccv::EV_DECODE` |
+| event id | `CCV_EV_ISSUE` | `ccv::EV_ISSUE` |
 | signal | `iq_issue_valid` | `iq_issue_valid` |
 
 Signals keep `lower_snake_case` in both, so no mapping is needed at all for

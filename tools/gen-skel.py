@@ -288,7 +288,13 @@ def gen_sv(chans, cinst, nslots, pbits):
     L.append("  // Request/response pairs with an outstanding limit. Off only for")
     L.append("  // the S0 exerciser, whose synthetic traffic sends on each channel")
     L.append("  // independently; on for the functional stubs and in the SV top.")
-    L.append("  input logic                 pair_enable")
+    L.append("  input logic                 pair_enable,")
+    L.append("  // Per channel instance: its _wake, and its receiver's sleep_ok (Q-33).")
+    L.append("  // The C++ skeleton drives both low -- no stub sleeps yet -- and the")
+    L.append("  // SV top drives the real nets, so the first block that gates its")
+    L.append("  // clock is held to the wake contract from its first cycle.")
+    L.append("  input logic [%d:0]          wake," % (len(cinst) - 1))
+    L.append("  input logic [%d:0]          rx_gated" % (len(cinst) - 1))
     L.append("`ifdef CCV_TRACE")
     L.append("  ,")
     L.append("  // Trace-only message identity, 64 bits per slot. Absent")
@@ -339,6 +345,16 @@ def gen_sv(chans, cinst, nslots, pbits):
         L.append("    .clk(clk), .rst_n(rst_n), .valid(valid[%d:%d]),"
                  % (hi, lo))
         L.append("    .key({%s}));" % keys)
+    L.append("  // The wake contract (Q-33): valid toward a gated receiver needs this")
+    L.append("  // channel instance's wake at least CCV_WAKE_LAT cycles earlier.")
+    for k, ci in enumerate(cinst):
+        c = ci["chan"]
+        base = c["name"][4:]
+        tag = "%s_i%d" % (base, ci["inst"]) if c["ninst"] > 1 else base
+        lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
+        L.append("  ccv_wake_checker u_%s_wake (.clk(clk), .rst_n(rst_n), "
+                 ".rx_gated(rx_gated[%d]), .wake(wake[%d]), .valid(|valid[%d:%d]));"
+                 % (tag, k, k, hi, lo))
     byname = {c["name"]: c for c in chans}
     for c in chans:
         if not c["outstanding"]:

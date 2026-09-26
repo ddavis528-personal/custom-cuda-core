@@ -261,6 +261,55 @@ for pair in $NEG_CASES; do
   fi
 done
 
+# -- the wake contract (Q-33) ----------------------------------------------
+# Valid toward a gated receiver at T needs this channel's wake at or before
+# T - CCV_WAKE_LAT. test/neg/tb_wake_neg.sv drives ccv_wake_checker directly.
+# wake_t3 is the control the contract asks for: a wake one cycle too late
+# must fire; wake_t4, the legal limit, must not. The others pin the reading
+# of "gated" written in the checker's header: an earlier wake does not
+# answer a later sleep, a receiver woken by something else is exempt once it
+# has run LAT cycles and not before, and a second sleep needs a second wake.
+# Two-state is enough here, so both simulators must agree on every case.
+WAKE_CASES="wake_t3:wake_leads_valid wake_t4:- no_wake:wake_leads_valid
+  awake:- early_wake:wake_leads_valid other_wake:-
+  other_wake_short:wake_leads_valid resleep:wake_leads_valid"
+WAKE_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_wake_checker.sv test/neg/tb_wake_neg.sv"
+wv=0; wi=0
+command -v verilator >/dev/null 2>&1 &&
+  verilator --binary -j 0 --assert --timing $VFLAGS \
+    -CFLAGS "-I$R/sim/include -I$R/sim/generated" \
+    --top-module tb --Mdir "$TMP/wake_vo" $WAKE_SRC \
+    "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
+    >"$TMP/wake_vb.log" 2>&1 && [ -x "$TMP/wake_vo/Vtb" ] && wv=1
+command -v iverilog >/dev/null 2>&1 &&
+  iverilog -g2012 -gassertions -Irtl/include -Irtl/generated \
+    -o "$TMP/wake_iv.out" -s tb $WAKE_SRC >"$TMP/wake_ib.log" 2>&1 && wi=1
+[ "$wv" = 1 ] || bad "wake contract: verilator build" "$(grep -m1 '%Error' "$TMP/wake_vb.log")"
+[ "$wi" = 1 ] || bad "wake contract: icarus build" "$(head -1 "$TMP/wake_ib.log")"
+for pair in $WAKE_CASES; do
+  cs=${pair%%:*}; want=${pair#*:}; [ "$want" = "-" ] && want=""
+  why=""
+  if [ "$wi" = 1 ]; then
+    vvp "$TMP/wake_iv.out" +case="$cs" >"$TMP/wake_i_$cs.log" 2>&1
+    got=$(fired "$TMP/wake_i_$cs.log")
+    if ! grep -q "NEG_END $cs" "$TMP/wake_i_$cs.log"; then why="icarus run did not complete"
+    elif [ "$got" != "$want" ]; then why="icarus fired {${got:-nothing}}, want {${want:-nothing}}"
+    fi
+  fi
+  if [ -z "$why" ] && [ "$wv" = 1 ]; then
+    { (cd "$TMP" && "./wake_vo/Vtb" +case="$cs" >"wake_v_$cs.log" 2>&1) || true; } 2>/dev/null
+    got=$(fired "$TMP/wake_v_$cs.log")
+    if [ -z "$want" ] && ! grep -q "NEG_END $cs" "$TMP/wake_v_$cs.log"; then
+      why="verilator run did not complete"
+    elif [ "$got" != "$want" ]; then why="verilator fired {${got:-nothing}}, want {${want:-nothing}}"
+    fi
+  fi
+  if [ -n "$why" ]; then bad "wake: $cs" "$why"
+  elif [ -n "$want" ]; then say "wake: $cs trips only $want" "PASS"
+  else say "wake: $cs stays quiet at the limit" "PASS"
+  fi
+done
+
 # -- Icarus: the SAME checker source still compiles without DPI -----------
 # F-13: Icarus has no DPI at all. The emission guard exists so the X-pass can
 # still run the checker with its properties fully intact, and this is the

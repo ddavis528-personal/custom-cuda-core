@@ -410,7 +410,13 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     L.append("    .valid(%s)," % cat("valid"))
     L.append("    .credit(%s)," % cat("credit"))
     L.append("    .stall(%s)," % cat("stall"))
-    L.append("    .payload(%s)" % cat("payload"))
+    L.append("    .payload(%s)," % cat("payload"))
+    L.append("    .wake(%s)," % cat("wake"))
+    # Each channel instance's receiver's sleep_ok, in the bank's channel
+    # instance order; the testbench end of EXTERNAL never sleeps.
+    rxg = ["1'b0" if ci["dst"] is None else "%s_sleep_ok" % names[ci["dst"]][2:]
+           for ci in reversed(cinst)]
+    L.append("    .rx_gated({%s})" % ", ".join(rxg))
     L.append("`ifdef CCV_TRACE")
     L.append("    , .tid(%s)" % cat("tid"))
     L.append("`endif")

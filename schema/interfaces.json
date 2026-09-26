@@ -1123,6 +1123,23 @@
       ]
     }
   ],
+  "_field_ownership_comment": [
+    "OWNERSHIP (Q-34): a field that crosses hops is owned by this schema, not",
+    "by the sessions that consume it. Its width and encoding are the ones here,",
+    "on every channel that carries it. A block may narrow a field locally only",
+    "if its encoding is a strict projection of the shared one -- low bits of",
+    "the same code, never a re-encoding. opcode stays at DEC's width on all",
+    "three hops until the ISA opcode census says otherwise; asid (8) and size",
+    "(a 3-bit code) already have one width everywhere.",
+    "",
+    "per_hop_fields are the exception, and are not cross-hop at all: req_id",
+    "names one hop's outstanding request, sized by that hop's window, so each",
+    "hop has its own. Only these may carry a per-channel width override;",
+    "tools/gen-interfaces.py refuses an override of any other field."
+  ],
+  "per_hop_fields": [
+    "req_id"
+  ],
   "_field_widths_comment": [
     "Payload field -> width, as a SystemVerilog expression over ccv_params_pkg",
     "and ccv_prov_pkg. A field absent from this map has no decided width, so",
