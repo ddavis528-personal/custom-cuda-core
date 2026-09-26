@@ -236,8 +236,9 @@ provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-141).
 
 - `sim/skel/kernel.cpp`, `oracle.cpp` — the functional stubs and the reader
   for ccv-sim's `-oracle` records
-- `test/golden/vadd/`, `tools/gen-golden.sh` — the checked-in record, and its
-  drift check against the compiler repo
+- `test/kernels/`, `tools/gen-oracle.sh`, `tools/compiler.lock` — the S1
+  kernels' sources, and their ccv-sim oracle records generated each run from
+  a pinned compiler snapshot
 - `tools/check-kernel.sh` — exit criteria, in the gate
 
 **Interface decisions (2026-09-24, revised 2026-09-25) built in:**
@@ -364,10 +365,11 @@ The walkthrough kernel corpus is an output of the LLVM backend bootstrap,
 which runs on its own schedule in `custom-cuda-complier`.
 
 - **Stage 3** needed a `vadd`-class kernel: `custom-cuda-complier/test/elementwise.s`.
-  **Used by S1.** Its ccv-sim `-oracle` record is checked in under
-  `test/golden/vadd/`, and `tools/gen-golden.sh --check` fails the gate if
-  the compiler repo's ccv-sim drifts from it. S2's kernels come from the same
-  corpus.
+  **Used by S1.** Its ccv-sim `-oracle` record is generated each gate run
+  from the compiler snapshot pinned in `tools/compiler.lock`: a commit on the
+  compiler repo's `release` branch, carrying a built `ccv-sim`. A compiler
+  change reaches this gate only through a reviewed bump. S2's kernels come
+  from the same corpus.
 - **Stage 6** needs the GEMM tile / reduction / elementwise set. **Not yet
   complete.** If the compiler effort lags, Stage 6 is gated on it.
 

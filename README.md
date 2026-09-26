@@ -70,8 +70,9 @@ interface typedefs in `rtl/generated/ccv_interfaces.svh`, use a snapshot:
     ./tools/make-release.sh [--push]   # gate, then a snapshot commit + tag
 ```
 
-A snapshot is one commit on the `release` branch, tagged
-`snapshot-<date>-<sha7>`. It holds the source tree at one commit, every
+A snapshot is one commit on the `release` branch, identified by that commit
+(its message and `SNAPSHOT.md` name the source commit); it is also tagged
+`snapshot-<date>-<sha7>` where the remote accepts tags. It holds the source tree at one commit, every
 generated file at its real path, and build artifacts under `release/`: the
 gate log, each kernel's run summary, event trace and Perfetto views, and the
 wiring dump. Its `SNAPSHOT.md` names the source commit and carries a
@@ -139,7 +140,7 @@ spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
 test/top/                   GENERATED, tracked: testbench for the SV top
-test/golden/                ccv-sim oracle records per kernel (tools/gen-golden.sh)
+test/kernels/               S1 kernels' sources; oracles come from the pinned compiler (tools/gen-oracle.sh)
 tools/                      generators, checks, and the gate
 ```
 

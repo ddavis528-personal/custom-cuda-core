@@ -1,0 +1,11 @@
+# The compiler snapshot this repository runs ccv-sim from: a commit on
+# custom-cuda-complier's `release` branch, made by tools/make-release.sh there.
+# The gate generates every kernel's oracle records live from THIS snapshot's
+# built ccv-sim and CCV.json -- nothing of ccv-sim's output is checked in.
+#
+# Pinned, not "latest": a compiler change must not change this repository's
+# gate without a change here. Bump with `tools/fetch-compiler.sh --bump`, as
+# its own commit, and review what the kernels do under the new snapshot.
+repo=https://github.com/ddavis528-personal/custom-cuda-complier
+commit=b64fc61a5257970aa47973da0fbdcf458b59417a
+source=b00ba89118ef40d62476232a8f65d6eaf4f3b99f

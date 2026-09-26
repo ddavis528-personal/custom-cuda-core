@@ -32,7 +32,8 @@
 // with ordinary traffic, which must be clean -- the partner to atomic-all.
 //
 // --kernel ORACLE replaces the exercisers with S1's functional stubs and runs
-// the kernel ccv-sim recorded in ORACLE (test/golden/<kernel>/oracle.jsonl)
+// the kernel ccv-sim recorded in ORACLE (build/oracle/<kernel>/oracle.jsonl,
+// from tools/gen-oracle.sh)
 // to completion, then compares the final register file and memory with
 // ccv-sim's. Its negative controls, each of which must fail the run:
 //   corrupt-fetch  one instruction byte flipped between FET and DEC

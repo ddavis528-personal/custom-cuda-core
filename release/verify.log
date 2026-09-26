@@ -135,10 +135,10 @@
   trace -> Perfetto JSON, one track per channel  PASS (46)
 
 == Stage 3 -- skeleton (S1: vadd) ==
-  golden pguard matches ccv-sim                  PASS
-  golden sel matches ccv-sim                     PASS
-  golden srd matches ccv-sim                     PASS
-  golden vadd matches ccv-sim                    PASS
+  oracle pguard from the pinned ccv-sim          PASS (14 records)
+  oracle sel from the pinned ccv-sim             PASS (10 records)
+  oracle srd from the pinned ccv-sim             PASS (8 records)
+  oracle vadd from the pinned ccv-sim            PASS (19 records)
   vadd: final state == ccv-sim, 0 violations     PASS (361 cycles, 26/46 channels)
   vadd: bank EV_CH_XFER == every launch          PASS (509 transfers)
   vadd: deterministic (trace byte-identical)     PASS
