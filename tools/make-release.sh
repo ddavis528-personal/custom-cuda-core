@@ -23,7 +23,8 @@
 #
 # Each snapshot is one commit on the release branch, whose parent is the
 # previous snapshot, so the branch reads as a history of releases. It is
-# tagged snapshot-<date>-<sha7>. The gate must pass: a snapshot of a red tree
+# tagged snapshot-<date>-<sha7> locally, and --push tries the tag too, but the
+# commit is the identity: nothing depends on the tag reaching the remote. The gate must pass: a snapshot of a red tree
 # would be the one copy people read without the gate beside it.
 #
 # Requires a clean working tree (the snapshot must BE a commit), and makes the
@@ -171,9 +172,18 @@ git worktree add --detach "$WT" "$SHA" >/dev/null 2>&1 || die "worktree failed"
 NFILES=$(git ls-tree -r --name-only "$BRANCH" | wc -l)
 echo "make-release: $TAG on branch $BRANCH ($NFILES files, release/ $((total / 1024)) KB)"
 if [ "$PUSH" = 1 ]; then
-  git push -u origin "$BRANCH" && git push origin "$TAG" ||
-    die "push failed; the snapshot is local ($BRANCH, $TAG)"
-  echo "make-release: pushed $BRANCH and $TAG"
+  git push -u origin "$BRANCH" || die "push of $BRANCH failed; the snapshot is local"
+  echo "make-release: pushed $BRANCH ($(git rev-parse --short "$BRANCH"))"
+  # The tag is a convenience. A snapshot is identified by its commit on the
+  # branch -- its message and SNAPSHOT.md name the source -- so nothing may
+  # depend on the tag. Some remotes refuse tag pushes by policy (this
+  # project's sandbox does, with a 403); that is reported, once, not retried.
+  if git push origin "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "make-release: pushed $TAG"
+  else
+    echo "make-release: the remote refused $TAG; it is local only (push it from" \
+         "a machine whose remote accepts tags)"
+  fi
 else
   echo "make-release: local only; publish with: git push -u origin $BRANCH && git push origin $TAG"
 fi
