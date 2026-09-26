@@ -61,6 +61,22 @@ commercial tool anywhere in the flow. `tools/setup-toolchain.sh` is the record
 of what the flow needs, not a one-time action: containers are ephemeral and
 this is what restores one.
 
+**Generated files are not on this branch.** `rtl/generated/` and
+`sim/generated/` are build products: each has one source of truth here, and
+the gate regenerates them. To read them without a toolchain, including the
+interface typedefs in `rtl/generated/ccv_interfaces.svh`, use a snapshot:
+
+```
+    ./tools/make-release.sh [--push]   # gate, then a snapshot commit + tag
+```
+
+A snapshot is one commit on the `release` branch, tagged
+`snapshot-<date>-<sha7>`. It holds the source tree at one commit, every
+generated file at its real path, and build artifacts under `release/`: the
+gate log, each kernel's run summary, event trace and Perfetto views, and the
+wiring dump. Its `SNAPSHOT.md` names the source commit and carries a
+manifest. The gate must pass first, and the branch is never merged back.
+
 ## Documents
 
 | File | Role |
