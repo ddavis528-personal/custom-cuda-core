@@ -581,6 +581,36 @@ staying in the flow forever.
 
 ---
 
+## F-19 — Icarus `$isunknown` of an inline expression with a resized typed parameter
+
+Found 2026-09-26, by the first traffic through a channel narrower than 32
+bits under Icarus: the sequential-repeater testbench (`test/phys/`), where
+`lead_known_at_valid` fired on every valid with the lead slice plainly
+known.
+
+Icarus 12.0 evaluates `$isunknown(p & M)` as 1 when `M` is a typed
+parameter, `parameter logic [W-1:0] M`, and `W` is overridden from its
+default. The operands print as known, `$isunknown(M)` is 0, and the same
+expression through a `wire` is 0. Measured:
+
+| `W` | `M` | `$isunknown(p & M)` inline | through a wire |
+|---|---|---|---|
+| 32 (default) | default `'0` | 0 | 0 |
+| 32 (default) | `32'h1` | 0 | 0 |
+| 20 | default `'0` | **1** | 0 |
+| 20 | `20'hf`, a literal | 0 | 0 |
+| 20 | `20'hf`, from a localparam | **1** | 0 |
+
+**It fails loud, not open:** a false firing, never a missed one. But it
+fires on correct designs, and "the checker is wrong under Icarus" is exactly
+the belief that gets real failures ignored. The credit checker now takes
+`lead_bits`, a wire, which is correct in every tool. It was latent there
+since lead fields arrived. Icarus had only run it on 32-bit channels, or
+without traffic.
+
+**Rule:** under Icarus, pass `$isunknown` a net, not an expression involving
+a typed parameter.
+
 ## What this settles for Stage 1b
 
 1. Properties are written through macros. Always. Lint enforces it.

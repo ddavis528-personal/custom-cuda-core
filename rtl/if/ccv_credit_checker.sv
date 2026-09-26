@@ -53,7 +53,14 @@ module ccv_credit_checker #(
   // the payload, in the same register (schema lead_fields). The lane mask is
   // the case -- it gates a lane before the operands it gates arrive. Zero on
   // every channel without lead fields, which makes the property vacuous.
-  parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0
+  parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0,
+  // Sequential repeater stages between THIS checker and the sender
+  // (rtl/phys/ccv_seq_rpt.sv). Only the stall rule depends on where along a
+  // repeated link the checker sits: a stall seen here reaches the sender
+  // SRC_STAGES cycles later, and the first valid it can suppress takes as
+  // long again to come back. 0 is the sender's own port, as on every
+  // abutted link. ROUND_TRIP is the whole link's, wherever the checker is.
+  parameter int SRC_STAGES = 0
 ) (
   input logic                  clk,
   input logic                  rst_n,
@@ -90,7 +97,10 @@ module ccv_credit_checker #(
   logic [QD*TW-1:0]   age_d;         // after a new message joins, if one does
   logic [CW-1:0]      tail;
   logic               valid_q;
-  logic               stall_q;
+  // The stall, as old as the first valid it can have suppressed: one cycle
+  // at the sender, 1 + 2 * SRC_STAGES at a point that far downstream.
+  localparam int SL = 1 + 2 * SRC_STAGES;
+  logic [SL-1:0]      stall_h;
 
   wire sent     = ch_valid;
   wire returned = ch_credit;
@@ -150,10 +160,10 @@ module ccv_credit_checker #(
       outstanding <= '0;
       age_q       <= '0;
       valid_q     <= 1'b0;
-      stall_q     <= 1'b0;
+      stall_h     <= '0;
     end else begin
       valid_q <= ch_valid;
-      stall_q <= ch_stall;
+      stall_h <= SL'({stall_h, ch_stall});
       age_q   <= age_d;
 
       // Saturating at both ends, for the same reason pop is guarded: a
@@ -215,8 +225,10 @@ module ccv_credit_checker #(
   // No message may be sent the cycle after a stall is received. That
   // guarantee is what makes the in-flight window a fixed count rather than a
   // handshake, and rescue depth, drain wait and sleep entry are all counted
-  // against it.
-  `CCV_CONTRACT_M(MODE, stall_honoured, !(stall_q && ch_valid))
+  // against it. Stated at the SENDER: downstream of repeater stages the
+  // valids already in flight still arrive, so the stall checked is the one
+  // old enough to have stopped the valid seen now.
+  `CCV_CONTRACT_M(MODE, stall_honoured, !(stall_h[SL-1] && ch_valid))
 
   // -- valid one cycle early ----------------------------------------------
   // Once asserted, valid is BINDING: the payload follows on schedule even if
@@ -230,8 +242,11 @@ module ccv_credit_checker #(
   // the valid cycle (a lane gates itself on its mask before its operands
   // land). Like payload_known_when_due, only a four-state simulator or formal
   // can see it fail.
+  // Through a wire: Icarus 12 reports $isunknown of the inline expression
+  // as 1 whenever PAYLOAD_W is overridden, with every bit known (F-19).
+  wire [PAYLOAD_W-1:0] lead_bits = ch_payload & LEAD_MASK;
   `CCV_CONTRACT_M(MODE, lead_known_at_valid,
-                  !ch_valid || !$isunknown(ch_payload & LEAD_MASK))
+                  !ch_valid || !$isunknown(lead_bits))
 
   // -- bounded response, standing in for liveness -------------------------
   // s_eventually does not exist on this toolchain (F-2), so "eventually

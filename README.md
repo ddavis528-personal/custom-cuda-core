@@ -87,12 +87,13 @@ manifest. The gate must pass first, and the branch is never merged back.
 | [`docs/open-items.md`](docs/open-items.md) | **Every open item, numbered Q-1… and never renumbered.** What is undecided, awaiting confirmation or scheduled to a stage, with owner and what each blocks. Closed items stay, with their resolution. Refer to items by ID. |
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
 | [`docs/rtl-findings-stage1.md`](docs/rtl-findings-stage1.md) | **The report for the architecture and planning track.** What Stage 1 found about the strategy — six decisions measurement overturned, what was confirmed, and what Stage 2 needs. Organised by what was found, not by what was built. |
-| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eighteen findings (F-1…F-18), several of which close questions the strategy doc left open. |
+| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — nineteen findings (F-1…F-19), several of which close questions the strategy doc left open. |
 | [`docs/fail-open-register.md`](docs/fail-open-register.md) | Every mechanism in the flow that fails *open* rather than loud, and the negative control that makes its results believable. Stage 1's three worst findings were all fail-open. |
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
 | [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the SV top, and S1: `vadd` end to end, where its values come from, its wire conventions and the payload gaps it found. |
+| [`docs/physical.md`](docs/physical.md) | **Getting to abutment.** The sequential repeater widget, what a repeated link changes (round trip, checker placement, credit depth and rate), clocking options, and where repeaters could live. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
 | [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one credit checker for every channel**, since every boundary runs the same credited protocol. Four more checkers (atomic, lockstep, binding, outstanding) span slots, instances and channel pairs rather than types. |
@@ -123,6 +124,8 @@ rtl/if/                     the credit checker (one per slot), plus the atomic
                               instances), binding (a slot's group key) and
                               outstanding (request/response pairs) checkers
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
+rtl/phys/                   physical-implementation primitives: the
+                              sequential repeater (docs/physical.md)
 rtl/top/                    GENERATED, tracked: the SV top level
                               ccv_core_top.sv   45 blocks, 108 channel instances
                               ports/            each block's port list
@@ -141,6 +144,7 @@ synth/                      clock-gating techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
+test/phys/                  the sequential repeater through N = 0..4 stages
 test/top/                   GENERATED, tracked: testbenches for the SV top,
                               with stubs and with the DPI shims
 test/kernels/               S1 kernels' sources; oracles come from the pinned compiler (tools/gen-oracle.sh)

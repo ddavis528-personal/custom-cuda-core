@@ -144,6 +144,12 @@ section "SV top -- rtl/top/ (generated, tracked)"
 # builds the binary whose wiring this is compared against.
 run "SV top" ./tools/check-top.sh
 
+section "Physical primitives -- sequential repeater"
+# rtl/phys/ccv_seq_rpt.sv through N = 0..4 stages on both simulators, the
+# checker at three points along the link, its enables on the Yosys netlist,
+# and mutants that must each be caught -- one of them only by the netlist.
+run "sequential repeater" ./tools/check-phys.sh
+
 section "SV-hosted C++ -- the skeleton's blocks inside the SV top"
 # The same top built from rtl/top/dpi/ shims: every block the C++ skeleton's,
 # every connection the generated Verilog's. Every S1 kernel and every kernel

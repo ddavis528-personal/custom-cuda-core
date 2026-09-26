@@ -416,7 +416,9 @@ output.
 
 What the rule doesn't yet give is *full* abutment. Every net would have to
 join neighbours, and today `core_clk`, `rst_n`, the kill broadcast and the
-CSR star fan out across the core. That is Q-42.
+CSR star fan out across the core. That is Q-42. A channel too long for one
+cycle is covered by sequential repeaters (`rtl/phys/ccv_seq_rpt.sv`,
+[`physical.md`](physical.md)), not by glue at the top.
 
 ### CCV-L23 — stage arithmetic
 
