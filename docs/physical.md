@@ -68,21 +68,31 @@ lead over valid (Q-33), since both are delayed alike.
 **Every slot of a channel instance takes the same N,** and so does every
 copy of a lockstep channel. Otherwise atomic and lockstep delivery are lost.
 
-**The rate is depth / (4 + 2N).** Measured by the testbench and in the
-skeleton's own channel model. A credit's whole loop is four cycles at
-abutment (valid; payload lands; credit registered; credit usable) plus 2N of
-wire:
+**Channels run at full bandwidth, and credit depth is the credit loop
+(Q-43, decided 2026-09-26).** A credit's whole loop is four cycles at
+abutment, `CCV_CREDIT_DEPTH` = `CCV_RT_ABUT` + `CCV_CREDIT_TURNAROUND`:
+- valid;
+- the payload lands;
+- the credit is registered;
+- the credit is usable.
 
-| N | depth `CCV_RT_ABUT` (2) | depth `CCV_RT_ABUT + 2N` | depth `4 + 2N` |
+A repeated link adds 2N of wire, so the rate is depth / (4 + 2N). Measured
+by the testbench and the skeleton's own channel model:
+
+| N | depth `CCV_RT_ABUT` (2) | depth `CCV_RT_ABUT + 2N` (before Q-43) | depth `4 + 2N` (now) |
 |---|---|---|---|
-| 0 | 0.50 | 0.50 | 1.00 |
-| 2 | 0.25 | 0.75 | 1.00 |
-| 4 | 0.17 | 0.83 | 1.00 |
+| 0 | 0.50 | 0.50 | **1.00** |
+| 2 | 0.25 | 0.75 | **1.00** |
+| 4 | 0.17 | 0.83 | **1.00** |
 
-A repeated link that forgot to deepen its credits throttles with **no
-protocol violation to say so**, the misconfiguration the checker's
-`depth_covers_round_trip` exists for. The table also shows a finding about
-abutted links: at today's depth of 2, every slot runs at half rate (Q-43).
+Depth used to equal the round trip, on the claim that this never throttled
+abutting blocks. It ran every slot at half rate.
+
+**Full rate is proved, not just measured.** `tools/check-formal.sh` proves
+it for all time at depth 4 + 2N, for N = 0, 1 and 2, and finds a
+counterexample at one less. The checker refuses any depth below the loop
+(`cfg_depth_covers_credit_loop`). That misconfiguration produces no protocol
+violation, only lost bandwidth, so it needs its own check.
 
 ## Clocking
 
@@ -131,9 +141,37 @@ the swap boundary: C++ shim, stub or RTL, inside a wrapper that doesn't
 change.
 
 **Every channel end has its repeater, at `STAGES` 0 unless configured.** A
-stage count is a wrapper parameter the top sets (`RPT_<CHAN>[_C<NN>]`), and
-only non-zero ones appear. A new split changes parameters, never structure.
-32 lanes with the same split stay one module, `ccv_lane_w`.
+new split changes stage counts, never structure. How the counts reach the
+wrapper depends on whether its type is hard-reused.
+
+**Hard reuse (`"hard_reuse": ["lane"]` in `params/links.json`).** A listed
+type gets the minimal set of wrapper templates.
+- **Grouping:** its instances are grouped by what their wrapper holds, which
+  is each end's stages plus each feedthrough's channel and stages.
+- **Templates:** each group becomes one template with its stages fixed as
+  `localparam`s and no parameters at all, so every instance using it is the
+  same module: one hard macro.
+- **Names:** the group most instances are in is `ccv_<type>_w`; the others
+  are `ccv_<type>_w_v1`, `_v2`, and so on.
+- **Divergence costs only what it must.** Feedthrough ports are named by
+  ordinal (`ft0i_…`, `ft0o_…`), not by the copy they carry, so two lanes
+  carrying different copies across themselves can still share a template.
+
+Today all 32 lanes are one template. In the busy split used as a test, the
+lanes hold three different things (30 alike, lane 7 routed differently, lane
+6 with a feedthrough), and there are exactly three templates.
+
+**Proof from the netlist, not the generator.** `check-top-pure.py` rule R6
+requires two things:
+- every instance of a hard-reuse type is a template used as it is, with no
+  parameter override;
+- no two templates of a type are the same circuit.
+
+A duplicated template and a lane given a parameter are both refused.
+
+**Other types:** one module per type, with the stages as parameters the top
+sets (`RPT_<CHAN>[_C<NN>]`, only non-zero ones written). An instance with
+feedthroughs gets a module of its own.
 
 **The configuration is one file, `params/links.json`.** Each entry gives a
 channel instance's route in the direction of valid, as wrapper:stages hops:
@@ -179,6 +217,55 @@ channel instance's route in the direction of valid, as wrapper:stages hops:
 The C++ link model and the SV repeaters are checked to be the same machine.
 The busy split in `test/phys/links_split.json`, SV-hosted, gives the C++
 skeleton's run cycle for cycle (`tools/check-links.sh`).
+
+## Proved: one link, for all time
+
+`tools/check-formal.sh`, in the gate, is the first formal PROOF in the
+regression. Before it, formal meant cover runs on the checkers: a vacuity
+guard that proved nothing about a design.
+
+**The harness** is `test/formal/fv_link.sv`:
+- a sender and a receiver with exactly the C++ endpoints' timing;
+- N stages of `ccv_seq_rpt` between them;
+- the credit checker at both ends.
+
+It is proved by PDR (ABC), so the results hold for every reachable state,
+not a bounded window:
+
+| Proved | Assumption | N |
+|---|---|---|
+| data in order (lead slice included), no buffer overflow, **one credit per message consumed**, **credit conservation**, every credit-checker property at both ends | none | 0, 1, 2 |
+| bounded response (`response_within_n`) | the receiver drains: never two idle cycles in a row | 0, 1 (N = 2 doesn't converge in 15 minutes; the age counters are the cost) |
+| **full bandwidth**: a launch every cycle at depth 4 + 2N | greedy sender and receiver | 0, 1, 2 |
+
+**Each proof has a partner that must fail:**
+- two messages consumed for one credit (the S0 bug) refutes
+  `credit_per_msg` and `conservation`;
+- the repeater's enable-now and lead-late mutants refute `data_in_order`;
+- depth one short of the loop refutes `full_bandwidth`.
+
+**The proofs are about traffic that happens.** Two witnesses show three
+messages delivered and the buffer filling, under exactly the safety proofs'
+assumptions, which are none. The first version assumed the draining receiver
+everywhere, and that assumption kept the buffer from ever filling. The
+witness caught it. Fairness now applies only to the one property that needs
+it.
+
+**Two tool problems stood in the way, both recorded:**
+- F-20: Yosys reads `$isunknown` as "equals 0", which made the checkers'
+  own assumptions pin their inputs to all ones.
+- SBY 0.69's ABC engine crashes on Yosys 0.33's witness files, so the script
+  builds SBY's model and runs `yosys-abc` itself.
+
+**What it proves about the design, and what it doesn't.** The harness
+endpoints are models of the protocol's timing, not block RTL, which doesn't
+exist yet. What this settles:
+- the repeater;
+- the checker;
+- the credit arithmetic, depth included.
+
+Each block's own RTL endpoints will need the same properties proved on
+them: `credit_per_msg` belongs in every receiver.
 
 ## Checked
 
@@ -238,8 +325,7 @@ channel.
 ## Not yet
 
 - **No link is repeated in the design.** `params/links.json` is empty until
-  the floorplan says otherwise. Clock source per link is Q-45, and the base
-  credit depth is Q-43; depth follows N already.
+  the floorplan says otherwise. Clock source per link is Q-45.
 - **Full abutment is Q-42.** The broadcast and star fabrics (clock, reset,
   kill, CSR) are nets at the top, not channels, so `links.json` doesn't
   route them.

@@ -42,7 +42,7 @@ broken it once and watched it notice.
 | Clock-gate sharing | open | one ICG for eight flops, not eight | `check-clockgate.sh` |
 | Tool behaviour itself | **silent** | matrix re-measured, any cell change reported | `check-matrix-drift.py` |
 | Documentation | **silent** | references, counts and rule coverage checked | `check-docs.sh` |
-| Checker credit depth vs round trip | **silent** | `DEPTH=1` build must trip `cfg_depth_covers_round_trip` | `check-if.sh` |
+| Checker credit depth vs the credit loop | **silent** | a depth below the loop runs the channel below full bandwidth with no protocol violation (Q-43). A `DEPTH` one below the loop must trip `cfg_depth_covers_credit_loop`; full rate at the loop and not below it is proved (`check-formal.sh`) | `check-if.sh`, `check-formal.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
 | Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 345 checkers fire by name | `check-skel.sh` |
@@ -77,6 +77,10 @@ broken it once and watched it notice.
 | Open-items register consistency | open | a hole in the numbering, a summary that disagrees with the rows, a schema question pointing at the wrong or a closed row, and an undefined Q-n were each introduced once by hand and each failed | `check-docs.sh` |
 | Encode/decode round trip coverage (compiler repo) | **silent** | 85 instructions were "unbuildable" and skipped while the check printed clean (compiler F-144). Any unbuildable instruction now fails it | `ccv-roundtrip` |
 | Top level holds only block instances and nets | open | a check that isn't looking passes any top. Five impure copies, each refused for the rule it breaks: the top-level clock gate the top used to have, a tied reset, a top-level flop, a floating input, an unloaded output. A floating input got through once, because Yosys drops an unconnected port from the cell's connections, so ports are checked against the module's own list | `check-top.sh` (`check-top-pure.py`) |
+| Formal known-assumptions (`$isunknown` under Yosys) | **silent** | Yosys reads `$isunknown(s)` as "`s` equals 0", so `CCV_ASSUME_KNOWN` pinned inputs to all ones and any proof over them explored a sender whose valid never fell (F-20). The known-macros are now constant true under formal; the link proofs carry no known-assumption, and their witnesses show traffic flowing and buffers filling | `check-formal.sh` |
+| Formal link proofs | **silent** | a proof passes over an assumption set too narrow to reach the states it is about. Every proof has a mutant that must be refuted, and two witnesses must be reachable under the proofs' own assumptions. The first version's fairness assumption made a full buffer unreachable, which one witness caught | `check-formal.sh` |
+| End-of-test quiescence | **silent** | a message never credited back outlives a run that ends first. `quiesced_at_end` (the credit checker, `+ccv_eot_quiesce` on drained runs) must fire on `--break double-pop`, independently of the C++ leak count | `check-skel.sh` |
+| Hard reuse | **silent** | a template set that isn't minimal, or an instance with a parameter override, still simulates and synthesises, and only the hard macros multiply. R6 on the netlist refuses a duplicated template and a parameterised lane | `check-top.sh` |
 | S0 credit conservation | **silent** | a keyed exerciser receiver popped one slot twice in a cycle, returning one credit for two messages, 7 to 10 times a run, and the gate was clean: the orphan only ages out on an idle slot, and the drain ended first. Found when a repeated link's deeper queues starved a slot. Receivers now count double pops (`credit_leaks`, required 0 in S0 and every kernel), and S0 requires every sender's credits home after the drain | `check-skel.sh`, `check-kernel.sh` |
 | params/links.json validation | open | a validator that accepts a bad file builds a machine nobody specified. Eleven malformed configurations, each refused with its reason named | `check-links.sh` |
 | Repeated links, both hosts | **silent** | the C++ link model and the SV repeaters are separate implementations of the same latency. A busy split must run cycle for cycle the same in both, and the wiring trace must count each link's stages flop by flop | `check-links.sh` |
@@ -126,9 +130,11 @@ drives those inputs from a register. With the two assumptions in place,
 so any assertion proved against it would have passed having checked nothing.
 The mandatory satisfiability covers (§3.3) are what reported it. The
 counter now selects with ternaries, CCV-L08's other sanctioned form, and all
-covers are reached. The root cause, why the known-assumption on a
-register-driven input empties the trace space under Yosys, is not yet
-isolated.
+covers are reached. **Root cause, isolated 2026-09-26 (F-20):** Yosys reads
+`$isunknown(s)` as "`s` equals 0", so the known-assumption pinned each input
+to all ones, which a register driven from reset can never hold. The
+known-macros are now constant true under formal, and the formal link proofs
+carry no such assumption.
 
 ## Closed: the credit checker's protocol properties — and what that found
 

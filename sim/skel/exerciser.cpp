@@ -231,7 +231,7 @@ private:
           if (rng_.uniform() >= cfg_.p_pop) continue;
           verify(g, unsigned(pick), g.rx[pick]->front());
           g.rx[pick]->pop();
-          taken[pick] = true;
+          taken[pick] = !cfg_.double_pop;
         }
       }
     } else {

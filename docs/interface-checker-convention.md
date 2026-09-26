@@ -169,9 +169,9 @@ Type-specific properties are added per interface: ordering guarantees, credit ac
 >
 > One property in §3.2 is unaffected and worth noting for it: the `$isunknown`
 > checks on control fields are boolean, so the X-safety posture crosses
-> boundaries exactly as this section intends. Pair them with `CCV_ASSUME_KNOWN`
-> on the input side — under formal an unconstrained input is modelled as
-> possibly-X and the assert alone fails spuriously (F-8).
+> boundaries exactly as this section intends — in simulation. Under formal
+> they are constant true through `` `CCV_KNOWN ``: Yosys reads `$isunknown` as
+> "equals 0", which pinned every assumed-known input to all ones (F-20).
 
 ### 3.3 Satisfiability covers — mandatory, not optional
 

@@ -126,5 +126,20 @@ def load(chans, cinst, binst, ninst, links_path=None):
     return out
 
 
+def hard_reuse(block_types, links_path=None):
+    """Block types whose wrappers are built as the minimal set of hard-reuse
+    templates (params/links.json "hard_reuse")."""
+    p = links_path or path()
+    with open(p) as f:
+        d = json.load(f)
+    r = d.get("hard_reuse", [])
+    bad = [t for t in r if t not in block_types] if isinstance(r, list) else [r]
+    if bad:
+        raise SystemExit("%s: hard_reuse names no block type: %s (types: %s)"
+                         % (os.path.relpath(p, ROOT), ", ".join(map(str, bad)),
+                            ", ".join(block_types)))
+    return set(r)
+
+
 def total(hops):
     return sum(s for _, s in hops)

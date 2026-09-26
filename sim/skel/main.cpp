@@ -56,6 +56,7 @@
 #include "verilated.h"
 
 #include "ccv/event.h"
+#include "ccv_params.h"
 #include "exerciser.h"
 #include "kernel.h"
 #include "machine.h"
@@ -66,6 +67,7 @@
 #include <cstring>
 #include <string>
 #include <tuple>
+#include <vector>
 
 using namespace ccv::skel;
 
@@ -117,7 +119,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
   }
   k.brk = brk;
   k.name = kernelName(path);
-  Machine m(2, [&](int inst) { return makeKernelBlock(inst, k); });
+  Machine m(ccv::kCreditDepth, [&](int inst) { return makeKernelBlock(inst, k); });
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
@@ -189,6 +191,7 @@ int main(int argc, char **argv) {
   }
   if (brk != "none" && !breaking && brk != "misorder" &&
       brk != "wrong-class" && brk != "misbind" && brk != "misgroup" &&
+      brk != "double-pop" &&
       !kbreak) {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
     return 2;
@@ -227,7 +230,13 @@ int main(int argc, char **argv) {
   }
 
   auto ctx = std::make_unique<VerilatedContext>();
-  ctx->commandArgs(argc, argv);
+  // A run that drains is judged at its end: nothing outstanding on any slot
+  // (the checkers' quiesced_at_end). Runs cut off mid-traffic -- the wiring
+  // controls -- are not asked.
+  std::vector<const char *> args(argv, argv + argc);
+  if (brk == "none" || brk == "double-pop")
+    args.push_back("+ccv_eot_quiesce");
+  ctx->commandArgs(int(args.size()), args.data());
   // Count violations and keep going, rather than stopping at the first: a
   // report that says how many and where is worth more than one that says
   // "something".
@@ -262,12 +271,13 @@ int main(int argc, char **argv) {
   cfg.wrong_class = brk == "wrong-class";
   cfg.misbind = brk == "misbind";
   cfg.misgroup = brk == "misgroup";
+  cfg.double_pop = brk == "double-pop";
   bank->force_atomic = cfg.force_atomic;
   // The exerciser's traffic is synthetic: it sends requests and responses
   // independently, so a request/response pairing cannot hold (see
   // ccv_outstanding_checker). The functional stubs turn it on.
   bank->pair_enable = 0;
-  Machine m(2, [&](int inst) { return makeExerciser(inst, cfg); });
+  Machine m(ccv::kCreditDepth, [&](int inst) { return makeExerciser(inst, cfg); });
 
   // The drain covers the longest link: its stages each way, and a queue of
   // its deeper credits to empty.

@@ -10,7 +10,7 @@
 #     every message, lead slice and trace id       data errors
 #     intact; every signal exactly N cycles     lead-late: the lead taken a
 #   rate = depth / (4 + 2N), exactly:              cycle late -- data errors
-#     link depth, abutted depth, full loop      credit-short: credit skips a
+#     full loop (default), round trip, abutted  credit-short: credit skips a
 #                                                  stage -- latency errors
 #   the receiver-end checker told its distance  told it sits at the sender:
 #     from the sender (SRC_STAGES = N) is quiet    stall_honoured fires
@@ -82,8 +82,10 @@ for sim in iv vl; do
     [ -n "$s" ] && [ $((s - r)) -le $((2 + 2 * n)) ] && [ "$r" -gt 500 ] ||
       why="$why N=$n: sent=$s received=$r"
     # The rate, exactly as the loop predicts, for three credit depths.
-    for mode in "full:$(( (2 + 2*n) * 1000 / (4 + 2*n) ))" \
-                "full shallow:$(( 2000 / (4 + 2*n) ))" "full loopdepth:1000"; do
+    # Full bandwidth at the credit-loop depth (Q-43); the two depths it
+    # replaced, measured to the formula, so the table in physical.md stands.
+    for mode in "full:1000" "full rtdepth:$(( (2 + 2*n) * 1000 / (4 + 2*n) ))" \
+                "full shallow:$(( 2000 / (4 + 2*n) ))"; do
       args=$(sed 's/\([a-z]*\)/+\1/g' <<<"${mode%%:*}")
       want=${mode##*:}
       o=$(run "$cmd" $args)

@@ -42,6 +42,12 @@ must then fail, naming that rule:
   unloaded  a wrapper output disconnected                     R4
   wrapgate  a clock gate inside FET's wrapper                 R1
   wraptie   FET's block reset tied high inside its wrapper    R2
+  dupreuse  a second lane template, the same circuit          R6
+  paramreuse a lane given a parameter override                R6
+
+  R6  hard reuse (params/links.json "hard_reuse"): every instance of such a
+      type is a template used as it is, with no parameter override, and no
+      two templates of the type are the same circuit
 """
 import json
 import os
@@ -53,6 +59,12 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOP = os.path.join(ROOT, "rtl", "top", "ccv_core_top.sv")
 BANK = "ccv_skel_checkers"
+
+
+def hard_reuse():
+    """The hard_reuse types in force (CCV_LINKS, as the generators read it)."""
+    p = os.environ.get("CCV_LINKS", os.path.join(ROOT, "params", "links.json"))
+    return set(json.load(open(p)).get("hard_reuse", []))
 
 
 def expected_instances():
@@ -170,8 +182,9 @@ def check_all(modules, with_bank):
         if name not in want:
             return "is not a wrapper instance"
         btype, nm = want[name]
-        if t not in ("ccv_%s_w" % btype, "ccv_%s_w" % nm):
-            return "is not %s's wrapper (ccv_%s_w or ccv_%s_w)" % (name, btype, nm)
+        if t not in ("ccv_%s_w" % btype, "ccv_%s_w" % nm) and \
+                not re.match(r"^ccv_%s_w_v\d+$" % btype, t):
+            return "is not %s's wrapper (ccv_%s_w[_v<n>] or ccv_%s_w)" % (name, btype, nm)
         return None
 
     bad, nw, has_bank = check("ccv_core_top", top, modules, top_allowed)
@@ -189,14 +202,15 @@ def check_all(modules, with_bank):
             continue
         nwrap += 1
         btype = next((bt for bt, nm in want.values()
-                      if t in ("ccv_%s_w" % bt, "ccv_%s_w" % nm)), None)
+                      if t in ("ccv_%s_w" % bt, "ccv_%s_w" % nm)
+                      or re.match(r"^ccv_%s_w_v\d+$" % bt, t)), None)
         seen_blk = []
 
         def w_allowed(name, ct, btype=btype, seen_blk=seen_blk):
             if name == "u_blk" and ct == "ccv_%s" % btype:
                 seen_blk.append(name)
                 return None
-            if ct == "ccv_seq_rpt" and re.match(r"^u_(rpt|ft)_", name):
+            if ct == "ccv_seq_rpt" and re.match(r"^u_(rpt|ft\d+)_", name):
                 return None
             return "is not the wrapper's block (u_blk) or a repeater"
 
@@ -208,7 +222,46 @@ def check_all(modules, with_bank):
     return bad, nw, nwrap, has_bank
 
 
+def check_reuse(modules, reuse):
+    """HARD REUSE (params/links.json "hard_reuse"), from the netlist, not the
+    generator: every instance of such a type is a template used as it is --
+    no parameter overrides, so one module is one hard macro -- and no two
+    templates of a type are the same circuit, so the set is minimal.
+    Returns (findings, {type: (templates, instances)})."""
+    want = expected_instances()
+    top = modules["ccv_core_top"]
+    bad, summary = [], {}
+    for btype in sorted(reuse):
+        insts = {n: c for n, c in top["cells"].items()
+                 if n in want and want[n][0] == btype}
+        mods = set()
+        for n, c in sorted(insts.items()):
+            if c["type"].startswith("$paramod"):
+                bad.append(("R6", "ccv_core_top: %s is a parameterised %s -- "
+                            "not a hard-reuse template" % (n, base(c["type"]))))
+            mods.add(c["type"])
+
+        def shape(m):
+            """A template as a circuit: its cells with their (derived) module
+            types -- a repeater's STAGES is in its derived name -- and ports."""
+            mod = modules[m]
+            cells = tuple(sorted((n, c["type"]) for n, c in mod["cells"].items()))
+            ports = tuple(sorted((p, v["direction"], len(v["bits"]))
+                                 for p, v in mod["ports"].items()))
+            return cells, ports
+        shapes = {}
+        for m in sorted(mods):
+            shapes.setdefault(shape(m), []).append(base(m))
+        for same in shapes.values():
+            if len(same) > 1:
+                bad.append(("R6", "%s: templates %s are the same circuit -- the "
+                            "set is not minimal" % (btype, ", ".join(same))))
+        summary[btype] = (len(mods), len(insts))
+    return bad, summary
+
+
 WRAP_FET = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_fet_w.sv")
+WRAP_LANE = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_lane_w.sv")
 MUTATIONS = {
     # (rule it must break, file it edits, the edit)
     "gate": ("R1", TOP, lambda t: t.replace(
@@ -226,20 +279,30 @@ MUTATIONS = {
         "endmodule", "  wire fet_gclk = core_clk & rst_n;\nendmodule", 1)),
     "wraptie": ("R2", WRAP_FET, lambda t: t.replace(
         "    .rst_n(rst_n),", "    .rst_n(1'b1),", 1)),
+    # Hard reuse: a lane template duplicated under another name (not minimal),
+    # and a lane given a parameter (not one hard macro).
+    "dupreuse": ("R6", TOP, lambda t: t.replace(
+        "  ccv_lane_w u_lane_05 (", "  ccv_lane_w_v9 u_lane_05 (", 1),
+        [(WRAP_LANE, "ccv_lane_w_v9.sv", lambda t: t.replace(
+            "module ccv_lane_w (", "module ccv_lane_w_v9 (", 1))]),
+    "paramreuse": ("R6", TOP, lambda t: t.replace(
+        "  ccv_lane_w u_lane_05 (", "  ccv_lane_w #(.SPARE(1)) u_lane_05 (", 1),
+        [(WRAP_LANE, "ccv_lane_w.sv", lambda t: t.replace(
+            "module ccv_lane_w (", "module ccv_lane_w #(parameter int SPARE = 0) (", 1))]),
 }
 
 
-def sources(override=None):
+def sources(override=None, extra=()):
     """The files Yosys reads: stubs, the repeater, the wrappers, the top --
-    with one of them replaced by a mutated copy."""
+    with mutated copies replacing or joining them."""
     d = os.path.join(ROOT, "rtl", "top")
     files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
     files.append(os.path.join(ROOT, "rtl", "phys", "ccv_seq_rpt.sv"))
     files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
     files.append(TOP)
-    if override:
-        files = [override[1] if f == override[0] else f for f in files]
-    return files
+    for old, new in (override or {}).items():
+        files = [new if f == old else f for f in files]
+    return files + list(extra)
 
 
 def main():
@@ -250,27 +313,38 @@ def main():
             if mutate not in MUTATIONS:
                 sys.exit("unknown mutation %s" % mutate)
     with tempfile.TemporaryDirectory() as tmp:
-        override = None
+        override, extra = {}, []
         if mutate:
-            _, path, edit = MUTATIONS[mutate]
-            text = open(path).read()
-            new = edit(text)
-            if new == text:
-                sys.exit("mutation %s did not apply" % mutate)
-            copy = os.path.join(tmp, os.path.basename(path))
-            open(copy, "w").write(new)
-            override = (path, copy)
+            spec = MUTATIONS[mutate]
+            edits = [(spec[1], os.path.basename(spec[1]), spec[2])] + list(
+                spec[3] if len(spec) > 3 else [])
+            for path, name, edit in edits:
+                text = open(path).read()
+                new = edit(text)
+                if new == text:
+                    sys.exit("mutation %s did not apply" % mutate)
+                copy = os.path.join(tmp, name)
+                open(copy, "w").write(new)
+                if name == os.path.basename(path):
+                    override[path] = copy
+                else:
+                    extra.append(copy)
         fails = []
         for label, defs in (("synthesis view", []),
                             ("checking view", ["CCV_CHECK", "CCV_TRACE"])):
-            mods = elaborate(sources(override), defs, tmp)
+            mods = elaborate(sources(override, extra), defs, tmp)
             bad, nw, nwrap, has_bank = check_all(mods, bool(defs))
+            rb, reused = check_reuse(mods, hard_reuse())
+            bad += rb
             if bad:
                 fails.append((label, bad))
             else:
                 print("  %s: %d wrappers (%d modules), each a block and its "
                       "repeaters, nothing else%s"
                       % (label, nw, nwrap, ", plus the checker bank" if has_bank else ""))
+                for t, (nt, ni) in sorted(reused.items()):
+                    print("  %s: hard reuse, %d template(s) for %d instances"
+                          % (t, nt, ni))
         if not fails:
             print("TOP_PURE ok")
             return 0

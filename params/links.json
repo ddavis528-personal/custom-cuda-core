@@ -14,7 +14,9 @@
     "  - a route doesn't pass its own endpoints, or any wrapper twice;",
     "  - every copy of a lockstep channel has the same total, or lockstep delivery is lost, and the same src stages, since the checker bank watches each link where it leaves the source's wrapper.",
     "",
-    "What a link's total N changes, derived from this file and nowhere else: its checkers' ROUND_TRIP (+2N), TIMEOUT_N (+2N) and SRC_STAGES, and the C++ skeleton's latency for that slot, so both hosts still agree. Credit depth does NOT follow yet (Q-43).",
+    "What a link's total N changes, derived from this file and nowhere else: its checkers' ROUND_TRIP (+2N, and so their DEPTH, the credit loop), TIMEOUT_N (+2N) and SRC_STAGES, and the C++ skeleton's latency and credit depth for that slot (CCV_CREDIT_DEPTH + 2N, full bandwidth: Q-43), so both hosts still agree.",
+    "",
+    "hard_reuse: block types whose wrappers must stay hard-reusable. Their instances are grouped by what their wrapper holds -- each end's stages, each feedthrough's channel and stages -- and each group is one TEMPLATE with its stages fixed and no parameters: ccv_<type>_w for the group most instances are in, ccv_<type>_w_v1, _v2, ... for the rest, so a divergent split costs exactly as many templates as it has distinct wrappers, and no more. A type not listed gets one parameterised module (stages set by the top) and a module of its own per instance with feedthroughs.",
     "",
     "Example entries (not active):",
     "  {\"channel\": \"fet_dec_instr\", \"route\": \"src:1 > dst:1\"}",
@@ -22,5 +24,6 @@
     "  {\"channel\": \"rcu_lane_ops\",  \"copies\": \"all\", \"route\": \"src:1 > dst:1\"}",
     "  {\"channel\": \"rcu_lane_ops\",  \"copies\": [7],   \"route\": \"src:1 > lane_06:1 > dst:0\", \"why\": \"lane 7 reached over lane 6\"}"
   ],
+  "hard_reuse": ["lane"],
   "links": []
 }

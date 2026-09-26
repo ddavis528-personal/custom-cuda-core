@@ -21,7 +21,7 @@ the formal target in §7 — was going to produce a green result that meant
 nothing. Everything below is measured; nothing is argued from documentation.
 
 Detail and evidence for every finding is in
-[`stage1a-findings.md`](stage1a-findings.md) (F-1 … F-19); the tool matrix it
+[`stage1a-findings.md`](stage1a-findings.md) (F-1 … F-20); the tool matrix it
 rests on is [`stage1a-tool-support.md`](stage1a-tool-support.md), which is
 generated.
 

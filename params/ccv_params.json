@@ -30,35 +30,35 @@
       "name": "CCV_WARP_LANES",
       "value": 32,
       "status": "isa",
-      "source": "ISA v1.6 \u00a71 -- warp width, settled",
+      "source": "ISA v1.6 §1 -- warp width, settled",
       "doc": "Lanes per warp. A logical GPR holds 32 lanes, one element each, at every chwidth."
     },
     {
       "name": "CCV_GPRS",
       "value": 16,
       "status": "isa",
-      "source": "ISA v1.6 \u00a71, O-25",
+      "source": "ISA v1.6 §1, O-25",
       "doc": "Architectural GPRs. 16 x 1024 bit = 2 KB per warp."
     },
     {
       "name": "CCV_PREDS",
       "value": 4,
       "status": "isa_provisional",
-      "source": "ISA v1.6 \u00a71 -- provisional pending compiler data; measured pressure 1-2 of 4",
+      "source": "ISA v1.6 §1 -- provisional pending compiler data; measured pressure 1-2 of 4",
       "doc": "Logical predicates. A performance parameter, not a structural ceiling."
     },
     {
       "name": "CCV_ADDR_BITS",
       "value": 48,
       "status": "isa",
-      "source": "ISA v1.6 \u00a71",
+      "source": "ISA v1.6 §1",
       "doc": "Global address width."
     },
     {
       "name": "CCV_DATAPATH_BITS",
       "value": 1024,
       "status": "isa",
-      "source": "ISA v1.6 \u00a71 -- 32 lanes x 32 bits",
+      "source": "ISA v1.6 §1 -- 32 lanes x 32 bits",
       "doc": "Physical datapath width."
     },
     {
@@ -149,8 +149,8 @@
       "name": "CCV_BARRIER_ENTRIES",
       "value": 64,
       "status": "isa",
-      "source": "ISA v1.6 \u00a73, Format E -- 6-bit barrier ID",
-      "doc": "Barrier table entries, 4 x 16, epoch-tagged. A \u00a77 formal target."
+      "source": "ISA v1.6 §3, Format E -- 6-bit barrier ID",
+      "doc": "Barrier table entries, 4 x 16, epoch-tagged. A §7 formal target."
     },
     {
       "name": "CCV_CORE_ID_BITS",
@@ -177,8 +177,8 @@
       "name": "CCV_NGD_BUDGET",
       "value": 25,
       "status": "target",
-      "source": "\u00a72 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
-      "doc": "Normalized gate delay in one cycle. OPEN (\u00a72): whether 25 is the Vmin-corner number or a nominal one. Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
+      "source": "§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
+      "doc": "Normalized gate delay in one cycle. OPEN (§2): whether 25 is the Vmin-corner number or a nominal one. Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
     },
     {
       "name": "CCV_W_WARP_ID",
@@ -198,14 +198,14 @@
       "name": "CCV_W_ARCH_REG",
       "value": 4,
       "status": "isa",
-      "doc": "Architectural GPR index. 16 GPRs (ISA v1.6 \u00a71).",
+      "doc": "Architectural GPR index. 16 GPRs (ISA v1.6 §1).",
       "source": "ports spec 2026-09-23"
     },
     {
       "name": "CCV_W_ARCH_PRED",
       "value": 2,
       "status": "isa",
-      "doc": "Architectural predicate index. 4 predicates (ISA v1.6 \u00a71). A separate namespace from the GPRs, with its own RAT and count, even while the width happens to be smaller.",
+      "doc": "Architectural predicate index. 4 predicates (ISA v1.6 §1). A separate namespace from the GPRs, with its own RAT and count, even while the width happens to be smaller.",
       "source": "Payload spec response (2026-09-25)"
     },
     {
@@ -213,21 +213,21 @@
       "value": 16,
       "status": "isa",
       "source": "Skeleton review response (2026-09-25)",
-      "doc": "Memory displacement, sign-extended at the AGU. The widest memory-format offset is cas's 16-bit signed field (ISA v1.6 \u00a73); Format D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8 all fit. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-143, fixed.)"
+      "doc": "Memory displacement, sign-extended at the AGU. The widest memory-format offset is cas's 16-bit signed field (ISA v1.6 §3); Format D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8 all fit. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-143, fixed.)"
     },
     {
       "name": "CCV_W_CTAID",
       "value": 32,
       "status": "isa",
       "source": "srd response (2026-09-25), Q-38",
-      "doc": "srd #1's %ctaid, the flat CTA index within the grid (ISA v1.6 \u00a75.3). Dispatch state, held by RAU and shadowed in OOE, which substitutes it into srd's immediate at issue. It exactly fills CCV_P_W_IMM, so it sets that parameter's floor."
+      "doc": "srd #1's %ctaid, the flat CTA index within the grid (ISA v1.6 §5.3). Dispatch state, held by RAU and shadowed in OOE, which substitutes it into srd's immediate at issue. It exactly fills CCV_P_W_IMM, so it sets that parameter's floor."
     },
     {
       "name": "CCV_W_WARP_IN_CTA",
       "value": 5,
       "status": "isa",
       "source": "srd response (2026-09-25), Q-38",
-      "doc": "A warp's index within its CTA. %ctatid is 10 bits (ISA v1.6 \u00a75.3) and a warp is 32 lanes, so 5. srd #0's warp_base = warp_in_cta << 5 has its low five bits zero, so the lane ORs its hardwired index in without an adder."
+      "doc": "A warp's index within its CTA. %ctatid is 10 bits (ISA v1.6 §5.3) and a warp is 32 lanes, so 5. srd #0's warp_base = warp_in_cta << 5 has its low five bits zero, so the lane ORs its hardwired index in without an adder."
     },
     {
       "name": "CCV_W_LANE_MASK",
@@ -335,11 +335,18 @@
       "source": "ports spec 2026-09-23"
     },
     {
-      "name": "CCV_CREDIT_DEPTH",
+      "name": "CCV_CREDIT_TURNAROUND",
       "value": 2,
       "status": "arch",
-      "doc": "Credits held by a sender: equals the round trip, so abutting blocks are never throttled at steady state.",
-      "source": "ports spec 2026-09-23"
+      "doc": "What the endpoints add to the round trip before a credit can be spent again: the payload lands one cycle after its valid, the receiver returns the credit the cycle after that, and a credit that arrives is usable the cycle after (channel.h, credit_smoke.sv). So the credit loop is CCV_RT_ABUT + 2 = 4, not the round trip. Rescue depth and drain wait count only in-flight VALIDS and stay equal to the round trip.",
+      "source": "Q-43, 2026-09-26"
+    },
+    {
+      "name": "CCV_CREDIT_DEPTH",
+      "value": 4,
+      "status": "arch",
+      "doc": "Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2N longer, and its depth with it. Proved in tools/check-formal.sh: full rate at this depth, and not at one less.",
+      "source": "Q-43, 2026-09-26"
     },
     {
       "name": "CCV_RESCUE_DEPTH",

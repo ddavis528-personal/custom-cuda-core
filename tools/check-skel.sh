@@ -194,6 +194,20 @@ for mode in phantom-all:no_phantom_credit stall-all:stall_honoured \
   fi
 done
 
+# -- credit conservation, as the SV checker sees it ------------------------
+# The S0 exerciser leaked credits for months with every run clean: a keyed
+# receiver taking one slot twice in a cycle returns ONE credit for two
+# messages, and the orphan outlives the run. --break double-pop brings that
+# receiver back. The C++ count must see it, and so must the checker bank on
+# its own: quiesced_at_end, at the end of a drained run (+ccv_eot_quiesce).
+log="$B/skel_double_pop.log"
+"$SKEL" --cycles 2000 --break double-pop >"$log" 2>&1
+if [ "$(field "$log" credit_leaks)" != "0" ] && grep -q "CCV quiesced_at_end failed" "$log"; then
+  say "--break double-pop: leak counted, bank fires" "PASS ($(field "$log" credit_leaks) leaks; quiesced_at_end)"
+else
+  bad "--break double-pop" "credit_leaks=$(field "$log" credit_leaks); quiesced_at_end $(grep -c 'quiesced_at_end failed' "$log") times"
+fi
+
 # -- ordered channels: consuming out of order must be caught --------------
 log="$B/skel_misorder.log"
 "$SKEL" --cycles 400 --break misorder >"$log" 2>&1

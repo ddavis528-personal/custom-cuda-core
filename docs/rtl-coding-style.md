@@ -740,11 +740,13 @@ it is cheap and reliable; prohibit X on control, where propagation is not.**
       endcase
     end
 
-**Under formal, pair it with `CCV_ASSUME_KNOWN` on inputs** (finding F-8).
-Yosys models an unconstrained module input as possibly-X, so the assert alone
-fails spuriously. A block assumes its control inputs are X-free — which its
-neighbour asserts — and proves its own outputs are; the halves compose into a
-whole-design argument one boundary at a time.
+**Under formal the known-macros are constant true** (finding F-20, which
+corrects F-8). Yosys reads `$isunknown(s)` as "`s` equals 0", so
+`assume(!$isunknown(s))` pinned an input to all ones, and the assert failed on
+every legal 0. The formal model has no X: registers and inputs are free
+two-state values. So X-freedom is the simulators' question, and formal proves
+the protocol over every value instead. Write `` `CCV_KNOWN(s) ``, never a bare
+`$isunknown`, in any property Yosys may read.
 
 **Do not use `$isunknown` for the un-reset-payload invariant.** Also F-8: an
 un-reset register gets a free *two-state* value under formal, so
@@ -845,9 +847,8 @@ be absent and a neighbouring proof would look fine.
 
 Three macros are exempt and intentionally so:
 
-- `` `CCV_ASSUME_KNOWN `` — an environment constraint in every mode. Under
-  formal an unconstrained input is modelled as possibly-X, so this is what
-  makes the paired `$isunknown` assert provable rather than spurious (F-8).
+- `` `CCV_ASSUME_KNOWN `` — an environment constraint in simulation, constant
+  true under formal, where there is no X to constrain (F-20).
 - `` `CCV_IF_SAT `` — a guard, never mode-resolved, per CCV-L14.
 - `` `CCV_IF_CONFIG `` — a check on the checker's own parameters, below.
 
@@ -862,13 +863,13 @@ misconfigurations break no protocol rule at all:
 
 | Misconfiguration | What it looks like instead |
 | --- | --- |
-| credit depth below the round trip | the channel throttles to one message per round trip — indistinguishable from healthy backpressure |
+| credit depth below the credit loop (round trip + turnaround, Q-43) | the channel runs below full bandwidth, `DEPTH / loop` of it — indistinguishable from healthy backpressure |
 | timeout N below the round trip | `response_within_n` fires on a channel behaving perfectly, and the first instinct on seeing it is to raise N — i.e. the check teaches you to disbelieve it |
 
 Nothing else in a checker catches either, because nothing else looks at the
 parameters:
 
-    `CCV_IF_CONFIG(depth_covers_round_trip,   DEPTH     >= ROUND_TRIP)
+    `CCV_IF_CONFIG(depth_covers_credit_loop,  DEPTH     >= ROUND_TRIP + CCV_CREDIT_TURNAROUND)
     `CCV_IF_CONFIG(timeout_covers_round_trip, TIMEOUT_N >= ROUND_TRIP)
 
 **Never mode-resolved.** Under `MODE=ASSUME` a mode-resolved version would turn

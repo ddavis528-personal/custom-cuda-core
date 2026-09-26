@@ -61,4 +61,20 @@ package ccv_assert_pkg;
 `endif
   endfunction
 
+  // End-of-test quiescence (the checkers' `quiesced_at_end`): only a run that
+  // DRAINED may be judged by it -- a run cut off mid-traffic has messages in
+  // flight by design. So it is asked for, per run:
+  //
+  //     <sim> +ccv_eot_quiesce      nothing may be outstanding at the end
+  //
+  // Never under formal: there is no end of test there, and the proofs state
+  // what quiescence stands in for (tools/check-formal.sh).
+  function automatic bit eot_quiesce();
+`ifdef FORMAL
+    eot_quiesce = 1'b0;
+`else
+    eot_quiesce = $test$plusargs("ccv_eot_quiesce");
+`endif
+  endfunction
+
 endpackage

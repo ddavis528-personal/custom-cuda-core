@@ -89,6 +89,14 @@ if out=$(python3 tools/check-top-pure.py 2>&1); then
 else
   bad "split: top-level rule" "$(grep -m1 -E '^  R[0-9]' <<<"$out")"
 fi
+# Hard reuse under a divergent split: the lanes hold three different things
+# -- 30 the common split, lane 07 its own route, lane 06 a feedthrough -- so
+# exactly three templates, parameter-free, none the same circuit.
+if grep -q "lane: hard reuse, 3 template(s) for 32 instances" <<<"$out"; then
+  say "split: lanes hard-reused, 3 templates for 32" "PASS (ccv_lane_w, _v1, _v2)"
+else
+  bad "split: lane hard reuse" "$(grep -m1 'hard reuse' <<<"$out")"
+fi
 
 ./tools/check-skel.sh >build/skel_suite.log 2>&1
 if grep -q "FAIL" build/skel_suite.log; then

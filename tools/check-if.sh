@@ -84,13 +84,14 @@ if command -v verilator >/dev/null 2>&1; then
     fi
 
   # -- negative control: the CONFIGURATION checks still bite ---------------
-  # cfg_depth_covers_round_trip and cfg_timeout_covers_round_trip guard the two
+  # cfg_depth_covers_credit_loop and cfg_timeout_covers_round_trip guard the two
   # misconfigurations that produce no protocol violation, so if either one
   # ever stopped firing nothing above would notice -- every other check here
   # is a "stays quiet" check, and a check that has been deleted is very quiet.
   # Each build breaks ONE parameter and the assertion NAME is matched, so a
   # different property firing does not count as a pass.
-  for probe in "DEPTH:1:cfg_depth_covers_round_trip" \
+  # DEPTH one below the credit loop: the tightest breach of full bandwidth.
+  for probe in "DEPTH:3:cfg_depth_covers_credit_loop" \
                "TIMEOUT_N:1:cfg_timeout_covers_round_trip"; do
     par=${probe%%:*}; rest=${probe#*:}; val=${rest%%:*}; want=${rest##*:}
     sed -E "s/\\.${par}\\([^)]*\\)/.${par}(${val})/" \
@@ -117,7 +118,8 @@ if command -v verilator >/dev/null 2>&1; then
         bad "bad $par trips $want" "misconfiguration went unreported"
       fi
     else
-      bad "bad $par trips $want" "negative-control build failed"
+      bad "bad $par trips $want" \
+          "negative-control build failed: $(grep -m1 -E '%Error|error:|Killed|No space' "$TMP/neg_$par.log" || tail -1 "$TMP/neg_$par.log")"
     fi
   done
   else

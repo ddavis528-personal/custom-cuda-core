@@ -17,13 +17,14 @@
 //     A credit's whole loop is 2 + CCV_RT_ABUT + 2N cycles: valid, payload
 //     landing, credit registered, credit usable, plus the wire both ways.
 //     So the rate is depth / (4 + 2N):
-//       depth CCV_RT_ABUT + 2N (the link's round trip)  (2 + 2N) / (4 + 2N),
-//                                                      never below abutted
+//       depth CCV_CREDIT_DEPTH + 2N, the whole loop    one message a cycle:
+//         (the default, Q-43)                          full bandwidth
+//       +rtdepth: depth CCV_RT_ABUT + 2N, the round    (2 + 2N) / (4 + 2N):
+//         trip, as depth was before Q-43               the old half rate
 //       +shallow: depth CCV_RT_ABUT, as if nobody        2 / (4 + 2N): what a
-//         deepened the credits                           repeated link that
+//         deepened the credits for the link              repeated link that
 //                                                      forgot does, with no
 //                                                      protocol violation
-//       +loopdepth: depth 4 + 2N, the whole loop       one message a cycle
 //
 // Printed: RPT N=.. sent=.. received=.. data_errors=.. latency_errors=..
 // overflow=.. rate_x1000=..
@@ -50,7 +51,7 @@ module tb;
   logic [W-1:0] s_payload, promised;
   logic [63:0]  s_tid, promised_tid;
   int           credits, depth, sent;
-  bit           full, shallow, loopdepth;
+  bit           full, shallow, rtdepth;
   function automatic logic [W-1:0] msg_of(int seq);
     return W'(seq * 32'h9e3779b1 ^ (seq << 7));
   endfunction
@@ -199,8 +200,9 @@ module tb;
   initial begin
     full = $test$plusargs("full");
     shallow = $test$plusargs("shallow");
-    loopdepth = $test$plusargs("loopdepth");
-    depth = shallow ? ccv_params_pkg::CCV_RT_ABUT : loopdepth ? RT + 2 : RT;
+    rtdepth = $test$plusargs("rtdepth");
+    depth = shallow ? ccv_params_pkg::CCV_RT_ABUT : rtdepth ? RT
+          : ccv_params_pkg::CCV_CREDIT_DEPTH + 2 * N;
     latency_errors = 0;
     repeat (2) @(posedge clk);
     #1 rst_n = 1'b1;

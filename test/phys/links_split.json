@@ -2,6 +2,7 @@
   "_doc": [
     "A deliberately busy split for tools/check-links.sh: every feature of params/links.json at once, on channels the S1 kernels use. Never the design's configuration."
   ],
+  "hard_reuse": ["lane"],
   "links": [
     {"channel": "fet_dec_instr", "route": "src:1 > dst:1", "why": "split between both ends"},
     {"channel": "dec_ooe_uop", "route": "src:0 > miu:2 > dst:1", "why": "a feedthrough across MIU"},

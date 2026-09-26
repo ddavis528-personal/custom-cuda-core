@@ -87,7 +87,7 @@ manifest. The gate must pass first, and the branch is never merged back.
 | [`docs/open-items.md`](docs/open-items.md) | **Every open item, numbered Q-1… and never renumbered.** What is undecided, awaiting confirmation or scheduled to a stage, with owner and what each blocks. Closed items stay, with their resolution. Refer to items by ID. |
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
 | [`docs/rtl-findings-stage1.md`](docs/rtl-findings-stage1.md) | **The report for the architecture and planning track.** What Stage 1 found about the strategy — six decisions measurement overturned, what was confirmed, and what Stage 2 needs. Organised by what was found, not by what was built. |
-| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — nineteen findings (F-1…F-19), several of which close questions the strategy doc left open. |
+| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — twenty findings (F-1…F-20), several of which close questions the strategy doc left open. |
 | [`docs/fail-open-register.md`](docs/fail-open-register.md) | Every mechanism in the flow that fails *open* rather than loud, and the negative control that makes its results believable. Stage 1's three worst findings were all fail-open. |
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
@@ -146,6 +146,7 @@ synth/                      clock-gating techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
+test/formal/                formal harnesses: one credited link, proved by PDR
 test/phys/                  the sequential repeater through N = 0..4 stages,
                               and a busy repeater split (links_split.json)
 test/top/                   GENERATED, tracked: testbenches for the SV top,

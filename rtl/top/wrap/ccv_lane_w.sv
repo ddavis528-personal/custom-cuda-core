@@ -7,17 +7,25 @@
 // HARDENING WRAPPER ccv_lane_w: ccv_lane and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
 // and links"). Nothing but instances and nets, like the top. Every
-// end has its repeater whether or not the link is repeated: STAGES is
-// a parameter the top sets from params/links.json, 0 meaning wires, so
-// a new split changes parameters and never this structure.
+// end has its repeater whether or not the link is repeated.
+//
+// A HARD-REUSE TEMPLATE (params/links.json hard_reuse): its stages
+// are fixed here, so every instance that holds the same is this one
+// module with no parameters -- one hard macro. Used by:
+//   lane_00, lane_01, lane_02, lane_03, lane_04, lane_05, lane_06,
+//   lane_07, lane_08, lane_09, lane_10, lane_11, lane_12, lane_13,
+//   lane_14, lane_15, lane_16, lane_17, lane_18, lane_19, lane_20,
+//   lane_21, lane_22, lane_23, lane_24, lane_25, lane_26, lane_27,
+//   lane_28, lane_29, lane_30, lane_31
 `include "ccv_interfaces.svh"
 
-module ccv_lane_w #(
-  parameter int RPT_RCU_LANE_OPS = 0,
-  parameter int RPT_LANE_RCU_RES = 0
-) (
+module ccv_lane_w (
   `include "ccv_lane_ports.svh"
 );
+
+  // This template's stages, fixed.
+  localparam int RPT_RCU_LANE_OPS = 0;
+  localparam int RPT_LANE_RCU_RES = 0;
 
   // Between the block and its repeaters: b_<port>, one net per port.
   logic b_rcu_lane_ops_s0_valid;

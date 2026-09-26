@@ -144,6 +144,14 @@ section "SV top -- rtl/top/ (generated, tracked)"
 # builds the binary whose wiring this is compared against.
 run "SV top" ./tools/check-top.sh
 
+section "Formal proofs -- one credited link, for all time"
+# test/formal/fv_link.sv by PDR: data, overflow, one credit per message,
+# conservation and every checker property with no assumption; bounded
+# response under a draining receiver; full bandwidth at the credit-loop depth
+# (Q-43) -- each with a mutant that must be refuted, and witnesses that the
+# traffic the proofs are about happens.
+run "formal link proofs" ./tools/check-formal.sh
+
 section "Physical primitives -- sequential repeater"
 # rtl/phys/ccv_seq_rpt.sv through N = 0..4 stages on both simulators, the
 # checker at three points along the link, its enables on the Yosys netlist,

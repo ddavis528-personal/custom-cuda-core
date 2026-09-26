@@ -42,6 +42,7 @@
 
 #include "ccv/event.h"
 #include "ccv_dpi_ports.h"
+#include "ccv_params.h"
 #include "exerciser.h"
 #include "kernel.h"
 #include "machine.h"
@@ -109,7 +110,7 @@ void init() {
   g->skew_name = plusarg("ccv_shim_delay");
   if (unsigned bad = checkFieldTiling()) die("%s%d broken field table(s)", "", int(bad));
   g->m = std::make_unique<Machine>(
-      2, [](int inst) { return makeKernelBlock(inst, g->k); });
+      ccv::kCreditDepth, [](int inst) { return makeKernelBlock(inst, g->k); });
   if (g->k.brk == "late-lead")
     for (Slot &s : g->m->slots()) s.late_lead = true;
 }

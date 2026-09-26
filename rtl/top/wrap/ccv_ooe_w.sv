@@ -7,9 +7,9 @@
 // HARDENING WRAPPER ccv_ooe_w: ccv_ooe and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
 // and links"). Nothing but instances and nets, like the top. Every
-// end has its repeater whether or not the link is repeated: STAGES is
-// a parameter the top sets from params/links.json, 0 meaning wires, so
-// a new split changes parameters and never this structure.
+// end has its repeater whether or not the link is repeated.
+// STAGES is a parameter the top sets from params/links.json, 0 meaning
+// wires, so a new split changes parameters and never this structure.
 `include "ccv_interfaces.svh"
 
 module ccv_ooe_w #(

@@ -61,6 +61,8 @@ which is the synthesis exclusion open item B-1 asked for. The trace sideband
 (`_tid`) exists only under CCV_TRACE, as the identity decision requires.
 """
 import importlib.util
+import textwrap
+import ccv_links
 import json
 import os
 import sys
@@ -380,9 +382,14 @@ def rpt_param(c, cp):
     return "RPT_" + (c["name"][4:] + copy_sfx(c, cp)).upper()
 
 
-def ft_param(ci):
-    c = ci["chan"]
-    return "FT_" + (c["name"][4:] + copy_sfx(c, ci["inst"])).upper()
+def ft_param(ci, o):
+    """Feedthrough ordinal o's stage count: by ordinal, not copy, so two
+    wrappers carrying different copies across themselves can be one template."""
+    return "FT%d_%s" % (o, ci["chan"]["name"][4:].upper())
+
+
+def ft_side(o, side):
+    return "ft%d%s_" % (o, side)
 
 
 def feedthroughs(binst, cinst):
@@ -394,8 +401,43 @@ def feedthroughs(binst, cinst):
     return ft
 
 
-def wrapper_module(k, t, names, ft):
-    return "ccv_%s_w" % (names[k][2:] if ft.get(k) else t)
+def wrapper_plan(binst, cinst, ports, names, ft, reuse):
+    """Instance k -> (module, {parameter: stages}, baked).
+
+    HARD REUSE (params/links.json "hard_reuse"): a type listed there gets the
+    MINIMAL set of templates -- one per distinct thing a wrapper can hold
+    (its ends' stages, its feedthroughs' channels and stages) -- each with its
+    stages baked in as localparams, so instances that hold the same are one
+    module with no parameters at all: one hard macro, reused. The template
+    most instances use is ccv_<type>_w; the others ccv_<type>_w_v1, _v2...
+    Any other type: one module per type with the stages as parameters the
+    top sets, and a module of its own for an instance with feedthroughs."""
+    sig, vals = {}, {}
+    for k, (t, i) in enumerate(binst):
+        v = {}
+        for x, side, cp in block_ends(t, i, ports[t], cinst):
+            v[rpt_param(cinst[x]["chan"], cp)] = cinst[x]["hops"][0 if side == "src" else -1][1]
+        for o, (x, j) in enumerate(ft.get(k, [])):
+            v[ft_param(cinst[x], o)] = cinst[x]["hops"][j][1]
+        vals[k] = v
+        sig[k] = tuple(sorted(v.items()))
+    plan = {}
+    for t in sorted({t for t, _ in binst}):
+        ks = [k for k, (bt, _) in enumerate(binst) if bt == t]
+        if t in reuse:
+            groups = {}
+            for k in ks:
+                groups.setdefault(sig[k], []).append(k)
+            order = sorted(groups.values(), key=lambda g: (-len(g), g[0]))
+            for n, g in enumerate(order):
+                mod = "ccv_%s_w" % t if n == 0 else "ccv_%s_w_v%d" % (t, n)
+                for k in g:
+                    plan[k] = (mod, vals[k], True)
+        else:
+            for k in ks:
+                mod = "ccv_%s_w" % (names[k][2:] if ft.get(k) else t)
+                plan[k] = (mod, vals[k], False)
+    return plan
 
 
 def rpt_inst(L, name, stages, c, src, dst):
@@ -426,40 +468,55 @@ def port_nm(c, cp, slot, sig):
     return base + ("_wake" if sig == "wake" else slot_sfx(c, slot) + "_" + sig)
 
 
-def gen_wrapper(t, mod, P, ends, fts, cinst, ninst):
+def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
     L = [BANNER]
     L.append("// HARDENING WRAPPER %s: ccv_%s and the sequential repeaters of its"
              % (mod, t))
     L.append("// channel ends -- the physical hierarchy (docs/physical.md, \"Wrappers")
     L.append("// and links\"). Nothing but instances and nets, like the top. Every")
-    L.append("// end has its repeater whether or not the link is repeated: STAGES is")
-    L.append("// a parameter the top sets from params/links.json, 0 meaning wires, so")
-    L.append("// a new split changes parameters and never this structure.")
+    L.append("// end has its repeater whether or not the link is repeated.")
+    if baked is not None:
+        L.append("//")
+        L.append("// A HARD-REUSE TEMPLATE (params/links.json hard_reuse): its stages")
+        L.append("// are fixed here, so every instance that holds the same is this one")
+        L.append("// module with no parameters -- one hard macro. Used by:")
+        L += ["//   " + x for x in textwrap.wrap(", ".join(users), 66)]
+    else:
+        L.append("// STAGES is a parameter the top sets from params/links.json, 0 meaning")
+        L.append("// wires, so a new split changes parameters and never this structure.")
     if fts:
         L.append("//")
-        L.append("// FEEDTHROUGHS: channels routed across this wrapper, with ports")
-        L.append("// fti_* (toward the source) and fto_* (toward the destination):")
-        for x, j in fts:
-            ci = cinst[x]
-            L.append("//   %s copy %d, hop %d" % (ci["chan"]["name"], ci["inst"], j))
+        L.append("// FEEDTHROUGHS: channels routed across this wrapper, by ordinal,")
+        L.append("// ports ft<k>i_* (toward the source) and ft<k>o_* (toward the")
+        L.append("// destination); which copy each carries is the top's connection:")
+        for o, (x, j) in enumerate(fts):
+            L.append("//   ft%d  %s" % (o, cinst[x]["chan"]["name"]))
     L.append("`include \"ccv_interfaces.svh\"")
     L.append("")
     params = [rpt_param(cinst[x]["chan"], cp) for x, _, cp in ends]
-    params += [ft_param(cinst[x]) for x, _ in fts]
-    L.append("module %s #(" % mod)
-    L.append(",\n".join("  parameter int %s = 0" % p for p in params))
-    L.append(") (")
+    params += [ft_param(cinst[x], o) for o, (x, _) in enumerate(fts)]
+    if baked is None:
+        L.append("module %s #(" % mod)
+        L.append(",\n".join("  parameter int %s = 0" % p for p in params))
+        L.append(") (")
+    else:
+        L.append("module %s (" % mod)
     L.append("  `include \"ccv_%s_ports.svh\"" % t)
     fps = []
-    for x, _ in fts:
+    for o, (x, _) in enumerate(fts):
         ci = cinst[x]
-        for side, fwd in (("fti_", "input"), ("fto_", "output")):
-            for dr, w, name, tr, _d, typ, _m in chan_ports(ci["chan"], fwd, [ci["inst"]]):
-                fps.append((tr, "%-6s %s%s%s" % (dr, decl(w, typ), side, name)))
+        for side, fwd in (("i", "input"), ("o", "output")):
+            for dr, w, name, tr, _d, typ, _m in chan_ports(ci["chan"], fwd, [None]):
+                fps.append((tr, "%-6s %s%s%s" % (dr, decl(w, typ), ft_side(o, side), name)))
     L += ["  , " + x for tr, x in fps if not tr]
     L += guarded([x for x in fps if x[0]], lambda x: x)
     L.append(");")
     L.append("")
+    if baked is not None:
+        L.append("  // This template's stages, fixed.")
+        for p in params:
+            L.append("  localparam int %s = %d;" % (p, baked[p]))
+        L.append("")
     L.append("  // Between the block and its repeaters: b_<port>, one net per port.")
     for dr, w, name, tr, _d, typ, m in P:
         if m is None or tr:
@@ -486,18 +543,18 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst):
         L.append("  // %s, %s end" % (c["name"], "source" if side == "src" else "destination"))
         rpt_inst(L, "u_rpt_" + c["name"][4:] + copy_sfx(c, cp), rpt_param(c, cp), c,
                  blk if side == "src" else out, out if side == "src" else blk)
-    for x, j in fts:
+    for o, (x, j) in enumerate(fts):
         ci = cinst[x]
         c = ci["chan"]
-        L.append("  // %s copy %d, routed across this wrapper (hop %d)" % (c["name"], ci["inst"], j))
-        rpt_inst(L, "u_ft_" + c["name"][4:] + copy_sfx(c, ci["inst"]), ft_param(ci), c,
-                 lambda sl, sig, c=c, ci=ci: "fti_" + port_nm(c, ci["inst"], sl, sig),
-                 lambda sl, sig, c=c, ci=ci: "fto_" + port_nm(c, ci["inst"], sl, sig))
+        L.append("  // feedthrough %d: %s, routed across this wrapper" % (o, c["name"]))
+        rpt_inst(L, "u_ft%d_%s" % (o, c["name"][4:]), ft_param(ci, o), c,
+                 lambda sl, sig, c=c, o=o: ft_side(o, "i") + port_nm(c, None, sl, sig),
+                 lambda sl, sig, c=c, o=o: ft_side(o, "o") + port_nm(c, None, sl, sig))
     L.append("endmodule")
     return "\n".join(L) + "\n"
 
 
-def gen_top(d, binst, chans, cinst, ninst, common, ports):
+def gen_top(d, binst, chans, cinst, ninst, common, ports, reuse=()):
     NB = len(binst)
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
     cw = {n: w for n, _, w, _ in common}
@@ -601,6 +658,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     # nets: every segment of every channel instance, but those that are the
     # top's own ports
     ft = feedthroughs(binst, cinst)
+    plan = wrapper_plan(binst, cinst, ports, names, ft, reuse)
     for c in chans:
         cis = [ci for ci in cinst if ci["chan"] is c]
         segs = [(ci, j) for ci in cis for j in range(nsegs(ci)) if not seg_is_port(ci, j)]
@@ -626,15 +684,8 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
         n = names[k]
         conns = []
         trconns = []
-        ends = block_ends(t, i, ports[t], cinst)
-        pov = []
-        for x, side, cp in ends:
-            st = cinst[x]["hops"][0 if side == "src" else -1][1]
-            if st:
-                pov.append(".%s(%d)" % (rpt_param(cinst[x]["chan"], cp), st))
-        for x, j in ft.get(k, []):
-            if cinst[x]["hops"][j][1]:
-                pov.append(".%s(%d)" % (ft_param(cinst[x]), cinst[x]["hops"][j][1]))
+        mod, vals, baked = plan[k]
+        pov = [] if baked else [".%s(%d)" % (p, v) for p, v in vals.items() if v]
         for dr, w, pname, tr, _, _typ, meta in ports[t]:
             f = fab.get(pname, {})
             kind = f.get("kind")
@@ -682,18 +733,18 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
                 trconns.append((tr, ".%s(%s)" % (pname, ex)))
             else:
                 conns.append(".%s(%s)" % (pname, ex))
-        for x, j in ft.get(k, []):
+        for o, (x, j) in enumerate(ft.get(k, [])):
             ci = cinst[x]
-            for side, jj in (("fti_", j - 1), ("fto_", j)):
+            for side, jj in (("i", j - 1), ("o", j)):
+                pre = ft_side(o, side)
                 for sl in range(ci["chan"]["rate"]):
                     for sig in ("valid", "payload", "credit", "stall"):
-                        conns.append(".%s%s(%s)" % (side, port_nm(ci["chan"], ci["inst"], sl, sig),
+                        conns.append(".%s%s(%s)" % (pre, port_nm(ci["chan"], None, sl, sig),
                                                     seg_net(ci, sl, sig, jj)))
                     trconns.append(("CCV_TRACE", ".%s%s(%s)" % (
-                        side, port_nm(ci["chan"], ci["inst"], sl, "tid"), seg_net(ci, sl, "tid", jj))))
-                conns.append(".%s%s(%s)" % (side, port_nm(ci["chan"], ci["inst"], None, "wake"),
+                        pre, port_nm(ci["chan"], None, sl, "tid"), seg_net(ci, sl, "tid", jj))))
+                conns.append(".%s%s(%s)" % (pre, port_nm(ci["chan"], None, None, "wake"),
                                             seg_net(ci, None, "wake", jj)))
-        mod = wrapper_module(k, t, names, ft)
         L.append("  %s %s%s (" % (mod, "#(%s) " % ", ".join(pov) if pov else "", n))
         L.append("    " + ",\n    ".join(conns))
         L += guarded(trconns, lambda x: x, lead="  , ")
@@ -1067,8 +1118,9 @@ def main():
     d, blocks, binst, chans, cinst, ninst, common = load()
     ports = {b["name"]: block_ports(b["name"], chans, ninst, common, len(binst))
              for b in blocks}
+    reuse = ccv_links.hard_reuse([b["name"] for b in blocks])
     targets = [(os.path.join(TOPDIR, "ccv_core_top.sv"),
-                gen_top(d, binst, chans, cinst, ninst, common, ports)),
+                gen_top(d, binst, chans, cinst, ninst, common, ports, reuse)),
                (os.path.join(TBDIR, "tb_core_top.sv"),
                 gen_tb(d, binst, chans, common))]
     for b in blocks:
@@ -1081,15 +1133,18 @@ def main():
                         gen_shim(t, ports[t])))
     names = [inst_name(t, i, ninst[t]) for t, i in binst]
     ft = feedthroughs(binst, cinst)
+    plan = wrapper_plan(binst, cinst, ports, names, ft, reuse)
     made = set()
     for k, (t, i) in enumerate(binst):
-        mod = wrapper_module(k, t, names, ft)
+        mod, vals, baked = plan[k]
         if mod in made:
             continue
         made.add(mod)
+        users = [names[j][2:] for j in range(len(binst)) if plan[j][0] == mod]
         targets.append((os.path.join(TOPDIR, "wrap", "%s.sv" % mod),
                         gen_wrapper(t, mod, ports[t], block_ends(t, i, ports[t], cinst),
-                                    ft.get(k, []), cinst, ninst)))
+                                    ft.get(k, []), cinst, ninst,
+                                    vals if baked else None, users)))
     eports = ext_ports(chans)
     targets.append((os.path.join(TOPDIR, "dpi", "ccv_ext.sv"),
                     gen_shim("ext", eports, own_ports=True)))

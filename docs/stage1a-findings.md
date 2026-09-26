@@ -235,6 +235,9 @@ in another, and neither result tells you so.
 
 **Decisions, both now in `rtl/include/ccv_assert.svh`:**
 
+- **Superseded by F-20:** under Yosys formal `$isunknown` means "equals 0",
+  so the pairing below pinned inputs to all ones. The known-macros are now
+  constant true under `FORMAL`.
 - `CCV_ASSUME_KNOWN` is the required companion to `CCV_ASSERT_KNOWN`. A block
   assumes its control inputs are X-free — which its neighbour asserts — and
   proves its own outputs are. §7's cut-point discipline, applied to X, and the
@@ -610,6 +613,45 @@ without traffic.
 
 **Rule:** under Icarus, pass `$isunknown` a net, not an expression involving
 a typed parameter.
+
+## F-20 — under Yosys formal, `assume(!$isunknown(s))` pins `s` to all ones
+
+Found 2026-09-26, building the first formal PROOF in the regression
+(`test/formal/fv_link.sv`). The credit checker's input assumptions made the
+proof's assumption set unsatisfiable the cycle reset released. Isolated on a
+two-bit input: with `assume(!$isunknown(a))`, `cover(a == 2'b11)` is reached
+and `cover(a == 2'b00)` and `cover(a == 2'b01)` are not.
+
+**Mechanism.** Yosys lowers `$isunknown(s)` to a case-equality against an
+all-`x` constant. Its SMT backend models that `x` as ZERO. So under formal
+"unknown" means "equals 0":
+- `assume(!$isunknown(s))` constrains `s` to ALL ONES;
+- `assert(!$isunknown(s))` fails whenever `s` is 0, even on a register
+  reset to a known value and fed from a known input.
+
+**This corrects F-8.** F-8 read the spurious assertion failure on an input
+as "possibly-X" modelling, and made `CCV_ASSUME_KNOWN` the required
+companion. Its "verified: proves cleanly" was measuring an environment
+pinned to all ones: every checker that assumed its inputs known was proving
+things about a sender whose valid never fell. The fail-open register already
+held the symptom and not the cause. `ccv_outstanding_checker`'s harness
+"admitted no trace at all" once it assumed its register-driven inputs known;
+that is this: a register driven from reset cannot be 1 for ever.
+
+**Decision (`rtl/include/ccv_assert.svh`).** `CCV_KNOWN(s)` is
+`!$isunknown(s)` in simulation and constant true under `FORMAL`. Every
+known-assertion and known-assumption goes through it, the credit checker's
+direct ones included.
+- **Under formal there is no X.** Registers and inputs are free two-state
+  values (F-8's first fact, which stands), so X-freedom is not a formal
+  question.
+- **The simulators answer it.** Icarus four-state carries the X policy, as
+  F-6 already made it.
+- **Formal proves the protocol over every two-state value instead.**
+  `tools/check-formal.sh` does, with no assumption at all.
+
+**Rule:** never write `$isunknown` in a property Yosys may read; use
+`` `CCV_KNOWN ``.
 
 ## What this settles for Stage 1b
 

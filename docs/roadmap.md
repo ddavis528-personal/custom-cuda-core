@@ -123,7 +123,7 @@ looks exactly like one that passes.
 - `spike/cases/` — the cases
 - `tools/run-spike-1a.py` — the runner
 - `docs/stage1a-tool-support.md` — the matrix (generated)
-- `docs/stage1a-findings.md` — the 19 findings F-1…F-19 (written)
+- `docs/stage1a-findings.md` — the 20 findings F-1…F-20 (written)
 - `tools/check-1a.sh` — cheap validation of the recorded matrix
 
 ### Stage 1b — assertion primitive library ✅
