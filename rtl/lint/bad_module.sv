@@ -79,4 +79,13 @@ module yosys_rejects (input logic [1:0][3:0] lanes, output logic [5:0] q);
   end
 endmodule
 
+// CCV-L26, the worse case: a packed ARRAY of packed structs. Yosys 0.33
+// accepts it and gets it wrong -- the port is sized by the array bound, the
+// fields become implicit 1-bit nets, and only warnings say so. Both
+// simulators get it right, so nothing but formal would ever disagree.
+typedef struct packed { logic [3:0] a; logic b; } slot_t;
+module yosys_misreads (input slot_t [3:0] slots, output logic q);
+  assign q = slots[1].b;
+endmodule
+
 // CCV-L11 is violated by omission: there is no `Spec:` reference anywhere.

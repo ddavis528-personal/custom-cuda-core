@@ -858,6 +858,17 @@ def check_file(path, rel):
                 "declaration or port, so this passes both simulators and "
                 "fails formal. Flatten to one vector and index with "
                 "part-selects (x[i*W +: W]), or wrap it in a packed struct")
+        # A packed array of a typedef'd type (`slot_t [N] x`). Worse than a
+        # rejection: Yosys ACCEPTS it as a port, sizes it by the array bound
+        # alone, and turns the struct's fields into implicit 1-bit nets, with
+        # only warnings (measured 2026-09-26). One port per element instead,
+        # each of the struct type -- which is what the generated top does.
+        for m in re.finditer(r"\b([a-z]\w*_t)\s*\[[^\]]+\]\s*[A-Za-z_]", nostruct):
+            add("CCV-L26", line_of(nostruct, m.start()),
+                "packed array of %s: Yosys 0.33 accepts it and mis-elaborates "
+                "it silently (the port is sized by the array bound, the fields "
+                "become implicit nets). Use one %s-typed port or net per "
+                "element" % (m.group(1), m.group(1)))
         for m in re.finditer(
                 r"\b(int|integer|shortint|longint|byte|[a-z]\w*_t)\s*'\s*\(",
                 src):

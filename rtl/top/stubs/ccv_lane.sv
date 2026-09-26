@@ -23,13 +23,34 @@ module ccv_lane (
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-  assign rcu_lane_ops_credit = '0;
-  assign rcu_lane_ops_stall = '0;
-  assign lane_rcu_res_valid = '0;
-  assign lane_rcu_res_payload = '0;
+  assign rcu_lane_ops_s0_credit = '0;
+  assign rcu_lane_ops_s0_stall = '0;
+  assign rcu_lane_ops_s1_credit = '0;
+  assign rcu_lane_ops_s1_stall = '0;
+  assign rcu_lane_ops_s2_credit = '0;
+  assign rcu_lane_ops_s2_stall = '0;
+  assign rcu_lane_ops_s3_credit = '0;
+  assign rcu_lane_ops_s3_stall = '0;
+  assign lane_rcu_res_s0_valid = '0;
+  assign lane_rcu_res_s0_payload = '0;
+  assign lane_rcu_res_s1_valid = '0;
+  assign lane_rcu_res_s1_payload = '0;
+  assign lane_rcu_res_s2_valid = '0;
+  assign lane_rcu_res_s2_payload = '0;
+  assign lane_rcu_res_s3_valid = '0;
+  assign lane_rcu_res_s3_payload = '0;
   assign lane_rcu_res_wake = '0;
 `ifdef CCV_TRACE
-  assign lane_rcu_res_tid = '0;
+  assign lane_rcu_res_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign lane_rcu_res_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign lane_rcu_res_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign lane_rcu_res_s3_tid = '0;
 `endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

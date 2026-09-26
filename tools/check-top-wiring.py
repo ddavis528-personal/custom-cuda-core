@@ -6,8 +6,9 @@ Both are generated from the same schema, so comparing the generators would
 prove nothing. This compares what the two realisations actually are: Yosys
 elaborates rtl/top/ccv_core_top.sv, and every bit of every channel port on
 every block instance is mapped to a logical coordinate -- (channel, copy,
-slot, signal, bit) -- from the port name, the instance name and the layout
-rule alone. Then, for every net:
+slot, signal, bit) -- from the port name and the instance name alone, by the
+naming rule <chan>[_c<NN>][_s<K>]_<sig> (tools/gen-top.py). Then, for every
+net:
 
   - exactly one driver and one load: nothing dangling, nothing doubled;
   - the driver's and the load's coordinates are IDENTICAL: bit-exact
@@ -17,9 +18,15 @@ rule alone. Then, for every net:
 and the resulting (channel, copy, slot) -> (producer, consumer) map must equal
 the one ccv-skel --dump-wiring reports from the running C++ skeleton.
 
---mutate first swaps one lane's slice of rcu->lane valid for another's in a
+--mutate first connects one lane's rcu->lane valid to another lane's net in a
 temporary copy of the top; the check must then fail. A cross-check that
 passes a miswired top proves nothing either.
+
+Yosys elaborates struct-typed ports. A packed ARRAY of structs as a port it
+gets silently wrong -- it sizes the port by the array bound and declares the
+fields as implicit nets, with warnings only -- so those warnings are
+refused here: a netlist Yosys had to resize or invent nets for is not the
+design, whatever its connectivity says.
 """
 import json
 import os
@@ -62,28 +69,41 @@ def elaborate(top_path, out_json):
                        capture_output=True, text=True)
     if r.returncode:
         sys.exit("yosys failed: %s" % (r.stderr or r.stdout)[:400])
+    log = r.stderr + r.stdout
+    for tell in ("Resizing cell port", "is implicitly declared"):
+        if tell in log:
+            line = next(l for l in log.splitlines() if tell in l)
+            sys.exit("yosys mis-elaborated the top (%s): %s" % (tell, line.strip()))
     return json.load(open(out_json))["modules"]["ccv_core_top"]
 
 
+PORT_RE = re.compile(r"(?P<base>.+?)(?:_c(?P<copy>\d\d))?(?:_s(?P<slot>\d+))?"
+                     r"_(?P<sig>valid|payload|credit|stall|wake)$")
+
+
 def coord_of(ch, ninst, endpoint, btype, port, bit):
-    """(chan, copy, slot, sig, bitpos) for one port bit, or None."""
-    m = re.match(r"(.+)_(valid|payload|credit|stall|wake)$", port)
-    if not m or m.group(1) not in ch:
+    """(chan, copy, slot, sig, bitpos) for one port bit, or None.
+
+    Every port is one slot's signal (or one copy's wake), so the bit index is
+    the bit within it. The copy is in the name when the block names one of
+    several; a block that IS one copy takes it from its instance name."""
+    m = PORT_RE.match(port)
+    if not m or m.group("base") not in ch:
         return None
-    base, sig = m.groups()
-    c = ch[base]
-    if sig == "wake":                           # one bit per channel INSTANCE
-        copy = (int(endpoint.rsplit("_", 1)[1]) if ninst.get(btype, 1) > 1
-                else bit)
-        return (c["name"], copy, None, sig, 0)
-    per = c["bits"] if sig == "payload" else 1
-    idx, bitpos = divmod(bit, per)
-    if ninst.get(btype, 1) > 1:                 # this instance IS one copy
+    c = ch[m.group("base")]
+    sig = m.group("sig")
+    if m.group("copy") is not None:
+        copy = int(m.group("copy"))
+    elif ninst.get(btype, 1) > 1:
         copy = int(endpoint.rsplit("_", 1)[1])
-        slot = idx
-    else:                                       # sees every copy
-        copy, slot = divmod(idx, c["rate"])
-    return (c["name"], copy, slot, sig, bitpos)
+    else:
+        copy = 0
+    if sig == "wake":
+        return (c["name"], copy, None, sig, 0)
+    slot = int(m.group("slot")) if m.group("slot") is not None else 0
+    if (m.group("slot") is None) != (c["rate"] == 1):
+        return None                             # not this channel's naming
+    return (c["name"], copy, slot, sig, bit)
 
 
 def main():
@@ -96,12 +116,12 @@ def main():
         top_path = top_src
         if mutate:
             src = open(top_src).read()
-            want = ".rcu_lane_ops_valid(rcu_lane_ops_valid[12 +: 4])"
+            want = ".rcu_lane_ops_s0_valid(rcu_lane_ops_c03_s0_valid)"
             if want not in src:
                 sys.exit("mutation site not found")
             top_path = os.path.join(t, "ccv_core_top.sv")
             open(top_path, "w").write(
-                src.replace(want, ".rcu_lane_ops_valid(rcu_lane_ops_valid[28 +: 4])", 1))
+                src.replace(want, ".rcu_lane_ops_s0_valid(rcu_lane_ops_c07_s0_valid)", 1))
         top = elaborate(top_path, os.path.join(t, "top.json"))
 
     drivers, loads = {}, {}

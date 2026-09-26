@@ -25,13 +25,34 @@ module ccv_spm (
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-  assign miu_spm_req_credit = '0;
-  assign miu_spm_req_stall = '0;
-  assign spm_miu_rsp_valid = '0;
-  assign spm_miu_rsp_payload = '0;
+  assign miu_spm_req_s0_credit = '0;
+  assign miu_spm_req_s0_stall = '0;
+  assign miu_spm_req_s1_credit = '0;
+  assign miu_spm_req_s1_stall = '0;
+  assign miu_spm_req_s2_credit = '0;
+  assign miu_spm_req_s2_stall = '0;
+  assign miu_spm_req_s3_credit = '0;
+  assign miu_spm_req_s3_stall = '0;
+  assign spm_miu_rsp_s0_valid = '0;
+  assign spm_miu_rsp_s0_payload = '0;
+  assign spm_miu_rsp_s1_valid = '0;
+  assign spm_miu_rsp_s1_payload = '0;
+  assign spm_miu_rsp_s2_valid = '0;
+  assign spm_miu_rsp_s2_payload = '0;
+  assign spm_miu_rsp_s3_valid = '0;
+  assign spm_miu_rsp_s3_payload = '0;
   assign spm_miu_rsp_wake = '0;
 `ifdef CCV_TRACE
-  assign spm_miu_rsp_tid = '0;
+  assign spm_miu_rsp_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign spm_miu_rsp_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign spm_miu_rsp_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign spm_miu_rsp_s3_tid = '0;
 `endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

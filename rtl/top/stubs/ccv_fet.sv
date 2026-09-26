@@ -25,11 +25,46 @@ module ccv_fet (
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-  assign fet_dec_instr_valid = '0;
-  assign fet_dec_instr_payload = '0;
+  assign fet_dec_instr_s0_valid = '0;
+  assign fet_dec_instr_s0_payload = '0;
+  assign fet_dec_instr_s1_valid = '0;
+  assign fet_dec_instr_s1_payload = '0;
+  assign fet_dec_instr_s2_valid = '0;
+  assign fet_dec_instr_s2_payload = '0;
+  assign fet_dec_instr_s3_valid = '0;
+  assign fet_dec_instr_s3_payload = '0;
+  assign fet_dec_instr_s4_valid = '0;
+  assign fet_dec_instr_s4_payload = '0;
+  assign fet_dec_instr_s5_valid = '0;
+  assign fet_dec_instr_s5_payload = '0;
+  assign fet_dec_instr_s6_valid = '0;
+  assign fet_dec_instr_s6_payload = '0;
+  assign fet_dec_instr_s7_valid = '0;
+  assign fet_dec_instr_s7_payload = '0;
   assign fet_dec_instr_wake = '0;
 `ifdef CCV_TRACE
-  assign fet_dec_instr_tid = '0;
+  assign fet_dec_instr_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s3_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s4_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s5_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s6_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign fet_dec_instr_s7_tid = '0;
 `endif
   assign ooe_fet_redirect_credit = '0;
   assign ooe_fet_redirect_stall = '0;

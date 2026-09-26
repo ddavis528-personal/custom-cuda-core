@@ -25,29 +25,96 @@ module ccv_ooe (
   assign sleep_ok = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-  assign dec_ooe_uop_credit = '0;
-  assign dec_ooe_uop_stall = '0;
-  assign ooe_rcu_issue_valid = '0;
-  assign ooe_rcu_issue_payload = '0;
+  assign dec_ooe_uop_s0_credit = '0;
+  assign dec_ooe_uop_s0_stall = '0;
+  assign dec_ooe_uop_s1_credit = '0;
+  assign dec_ooe_uop_s1_stall = '0;
+  assign dec_ooe_uop_s2_credit = '0;
+  assign dec_ooe_uop_s2_stall = '0;
+  assign dec_ooe_uop_s3_credit = '0;
+  assign dec_ooe_uop_s3_stall = '0;
+  assign dec_ooe_uop_s4_credit = '0;
+  assign dec_ooe_uop_s4_stall = '0;
+  assign dec_ooe_uop_s5_credit = '0;
+  assign dec_ooe_uop_s5_stall = '0;
+  assign ooe_rcu_issue_s0_valid = '0;
+  assign ooe_rcu_issue_s0_payload = '0;
+  assign ooe_rcu_issue_s1_valid = '0;
+  assign ooe_rcu_issue_s1_payload = '0;
+  assign ooe_rcu_issue_s2_valid = '0;
+  assign ooe_rcu_issue_s2_payload = '0;
+  assign ooe_rcu_issue_s3_valid = '0;
+  assign ooe_rcu_issue_s3_payload = '0;
   assign ooe_rcu_issue_wake = '0;
 `ifdef CCV_TRACE
-  assign ooe_rcu_issue_tid = '0;
+  assign ooe_rcu_issue_s0_tid = '0;
 `endif
-  assign rcu_ooe_done_credit = '0;
-  assign rcu_ooe_done_stall = '0;
-  assign ooe_miu_memop_valid = '0;
-  assign ooe_miu_memop_payload = '0;
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s3_tid = '0;
+`endif
+  assign rcu_ooe_done_s0_credit = '0;
+  assign rcu_ooe_done_s0_stall = '0;
+  assign rcu_ooe_done_s1_credit = '0;
+  assign rcu_ooe_done_s1_stall = '0;
+  assign rcu_ooe_done_s2_credit = '0;
+  assign rcu_ooe_done_s2_stall = '0;
+  assign rcu_ooe_done_s3_credit = '0;
+  assign rcu_ooe_done_s3_stall = '0;
+  assign ooe_miu_memop_s0_valid = '0;
+  assign ooe_miu_memop_s0_payload = '0;
+  assign ooe_miu_memop_s1_valid = '0;
+  assign ooe_miu_memop_s1_payload = '0;
+  assign ooe_miu_memop_s2_valid = '0;
+  assign ooe_miu_memop_s2_payload = '0;
+  assign ooe_miu_memop_s3_valid = '0;
+  assign ooe_miu_memop_s3_payload = '0;
   assign ooe_miu_memop_wake = '0;
 `ifdef CCV_TRACE
-  assign ooe_miu_memop_tid = '0;
+  assign ooe_miu_memop_s0_tid = '0;
 `endif
-  assign miu_ooe_cmpl_credit = '0;
-  assign miu_ooe_cmpl_stall = '0;
-  assign ooe_miu_retire_valid = '0;
-  assign ooe_miu_retire_payload = '0;
+`ifdef CCV_TRACE
+  assign ooe_miu_memop_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_miu_memop_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_miu_memop_s3_tid = '0;
+`endif
+  assign miu_ooe_cmpl_s0_credit = '0;
+  assign miu_ooe_cmpl_s0_stall = '0;
+  assign miu_ooe_cmpl_s1_credit = '0;
+  assign miu_ooe_cmpl_s1_stall = '0;
+  assign miu_ooe_cmpl_s2_credit = '0;
+  assign miu_ooe_cmpl_s2_stall = '0;
+  assign miu_ooe_cmpl_s3_credit = '0;
+  assign miu_ooe_cmpl_s3_stall = '0;
+  assign ooe_miu_retire_s0_valid = '0;
+  assign ooe_miu_retire_s0_payload = '0;
+  assign ooe_miu_retire_s1_valid = '0;
+  assign ooe_miu_retire_s1_payload = '0;
+  assign ooe_miu_retire_s2_valid = '0;
+  assign ooe_miu_retire_s2_payload = '0;
+  assign ooe_miu_retire_s3_valid = '0;
+  assign ooe_miu_retire_s3_payload = '0;
   assign ooe_miu_retire_wake = '0;
 `ifdef CCV_TRACE
-  assign ooe_miu_retire_tid = '0;
+  assign ooe_miu_retire_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_miu_retire_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_miu_retire_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_miu_retire_s3_tid = '0;
 `endif
   assign ooe_fet_redirect_valid = '0;
   assign ooe_fet_redirect_payload = '0;

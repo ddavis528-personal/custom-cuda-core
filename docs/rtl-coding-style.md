@@ -177,13 +177,27 @@ does not.
 
 Boundary ports follow the credited channel shape (the block-level grill-me),
 named by CHANNEL, so instantiation and the swap harness stay mechanical and a
-port reads the same in RTL, in the C++ skeleton and in the event schema:
+port reads the same in RTL, in the C++ skeleton and in the event schema. One
+group of ports per SLOT, the payload typed:
 
-    <src>_<dst>_<what>_valid     producer; one cycle ahead of the payload
-    <src>_<dst>_<what>_payload   producer; flat, `rate` slots x the packed struct
-    <src>_<dst>_<what>_credit    consumer; credit return
-    <src>_<dst>_<what>_stall     consumer; stall-invalidate
-    <src>_<dst>_<what>_tid       producer; trace identity, ONLY under CCV_TRACE
+    <chan>[_c<NN>][_s<K>]_valid     producer; one cycle ahead of the payload
+    <chan>[_c<NN>][_s<K>]_payload   producer; typed ccv_<chan>_t
+    <chan>[_c<NN>][_s<K>]_credit    consumer; credit return
+    <chan>[_c<NN>][_s<K>]_stall     consumer; stall-invalidate
+    <chan>[_c<NN>][_s<K>]_tid       producer; trace identity, ONLY under CCV_TRACE
+    <chan>[_c<NN>]_wake             producer; one per channel instance
+
+`<chan>` is `<src>_<dst>_<what>`, the channel's name without `ccv_`. Each
+suffix appears only when its dimension exists: `_s<K>` on a channel of rate
+above 1, `_c<NN>` (two digits) on a replicated channel where the name
+refers to ONE of its copies. RCU, which owns all 32 lanes' copies, has
+`rcu_lane_ops_c05_s2_payload`; the lane that IS copy 5 has
+`rcu_lane_ops_s2_payload`, and the top's net is `rcu_lane_ops_c05_s2_payload`.
+A slot's four signals share one prefix, so the group is found by name.
+
+Per slot rather than an array of structs, deliberately: a packed array of
+packed structs as a port is the one form Yosys 0.33 accepts and gets wrong
+(CCV-L26, below).
 
 (An earlier version of this section described a `_ready` handshake. The
 grill-me replaced it with credits; the section had not caught up.)
@@ -402,9 +416,17 @@ guess:
 | `foo_t'(e)` — a cast to a typedef name | **rejected** |
 | `signed'(e)`, `unsigned'(e)`, `W'(e)`, `6'(e)` | accepted |
 | `logic [A] x [B];` — unpacked | accepted |
+| `foo_t x` — one packed struct, as a declaration or port | accepted |
+| `foo_t [A] x` — a packed array of packed structs, as a port | **accepted and mis-elaborated**: sized by `A` alone, fields made implicit 1-bit nets, warnings only |
 
 The idiom to reach for instead is one flat vector indexed with part-selects,
-`x[i*W +: W]`, which is what `rtl/if/ccv_credit_checker.sv` now does.
+`x[i*W +: W]`, which is what `rtl/if/ccv_credit_checker.sv` now does, or,
+for an array of structs at a port, one struct-typed port per element, which
+is what the generated top does. The array-of-structs case is the dangerous
+one: Yosys doesn't reject it, it sizes the port by the array bound, turns the
+fields into implicit 1-bit nets, and only warns.
+`tools/check-top-wiring.py` refuses those warnings as well as the lint rule
+refusing the construct.
 
 The rule flags only what Yosys rejects. A rule that also flags accepted forms
 gets exempted, and an exemption habit is how rules die. To keep that honest in

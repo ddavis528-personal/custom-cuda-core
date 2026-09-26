@@ -23,11 +23,28 @@ in the stub and in the real 4c RTL alike, so the two cannot disagree on a
 port. Swapping a stub for real RTL is then a file-list change -- the SV
 analogue of the C++ skeleton's block swap.
 
-PORT LAYOUT. A channel port is flat, instance-major then slot: bit range of
-slot s of copy i is [(i*rate + s)*W +: W]. A block owning every copy of a
-replicated channel (RCU, for the 32 lanes) sees all of them; a block that IS
-one copy (a lane) sees its own `rate` slots. No 2-D packed arrays: Yosys
-rejects them (CCV-L26).
+PORT NAMING: one group of ports per slot, the payload typed. Every channel
+signal is named
+
+    <chan>[_c<NN>][_s<K>]_<sig>     sig: valid payload credit stall tid
+    <chan>[_c<NN>]_wake             one per channel instance
+
+where <chan> is the channel name without `ccv_`, `_c<NN>` the copy (two
+digits) and `_s<K>` the slot. Each suffix is present only when that dimension
+exists: `_s<K>` only on a channel of rate > 1, and `_c<NN>` only on a
+replicated channel, and only where the name refers to ONE of its copies -- a
+block that owns every copy (RCU, for the 32 lanes) and the top's nets carry
+it; a block that IS one copy (a lane) does not. A slot's four signals share
+one prefix, so a reader finds the group by name. `_payload` is typed
+ccv_<chan>_t, from ccv_interfaces.svh.
+
+Why per slot rather than an array of structs: Yosys 0.33 accepts a packed
+struct port, but a packed array of packed structs as a port it mis-elaborates
+SILENTLY -- it sizes the port by the array bound alone, declares the fields
+as implicit 1-bit nets, and warns (measured 2026-09-26). Both simulators get
+it right, so only synthesis and formal would see a different circuit.
+tools/check-top-wiring.py refuses those warnings, and CCV-L26 refuses the
+construct.
 
 CHECKERS. Under CCV_CHECK the top instantiates the SAME generated checker bank
 the C++ skeleton Verilates -- ccv_skel_checkers -- fed by concatenating the
@@ -109,9 +126,9 @@ def block_ports(btype, chans, ninst, common, nb):
         kind = fab.get("kind")
         if kind == "broadcast":
             if btype == fab["from"]:
-                P.append(("output", w, name, False, None))
+                P.append(("output", w, name, False, None, None, None))
             elif btype in fab.get("to", [btype]):
-                P.append(("input", w, name, False, None))
+                P.append(("input", w, name, False, None, None, None))
         elif kind == "gather":
             srcs = fab.get("from")
             if btype == fab["to"]:
@@ -119,34 +136,81 @@ def block_ports(btype, chans, ninst, common, nb):
                           False,
                           "%s of %s, in that order" % (name, ", ".join(srcs))
                           if srcs else
-                          "every block instance's %s, by instance index" % name))
+                          "every block instance's %s, by instance index" % name,
+                          None, None))
             elif srcs is None or btype in srcs:
-                P.append((dr, w, name, False, None))
+                P.append((dr, w, name, False, None, None, None))
         elif kind == "star":
-            P.append((dr, w, name, False, None))
+            P.append((dr, w, name, False, None, None, None))
             if btype == fab["owner"]:
                 P.append((flip(dr), nb * w, fab["port"], False,
-                          "%s of every block instance, by instance index" % name))
+                          "%s of every block instance, by instance index" % name,
+                          None, None))
         else:
-            P.append((dr, w, name, False, None))
+            P.append((dr, w, name, False, None, None, None))
     for c in chans:
-        base = c["name"][4:]
         for side in ("src", "dst"):
             if c[side] != btype:
                 continue
-            n = copies_seen(c, btype, ninst) * c["rate"]
-            prod = side == "src"
-            fwd, back = ("output", "input") if prod else ("input", "output")
-            doc = "%s -> %s, %d slot(s) x %d bit payload" % (
-                c["src"], c["dst"], n, c["bits"])
-            P.append((fwd, n, base + "_valid", False, doc))
-            P.append((fwd, n * c["bits"], base + "_payload", False, None))
-            P.append((back, n, base + "_credit", False, None))
-            P.append((back, n, base + "_stall", False, None))
-            P.append((fwd, copies_seen(c, btype, ninst), base + "_wake",
-                      False, None))
-            P.append((fwd, n * 64, base + "_tid", True, None))
+            fwd = "output" if side == "src" else "input"
+            P += chan_ports(c, fwd, owns_copies(c, btype, ninst))
     return P
+
+
+def copy_sfx(c, copy):
+    return "_c%02d" % copy if c["ninst"] > 1 and copy is not None else ""
+
+
+def slot_sfx(c, s):
+    return "_s%d" % s if c["rate"] > 1 else ""
+
+
+def owns_copies(c, btype, ninst):
+    """The copies a block of this type names in its ports: every one if it
+    owns a replicated channel's copies, else [None] (one, unnamed)."""
+    if ninst.get(btype, 1) > 1 or c["ninst"] == 1:
+        return [None]
+    return list(range(c["ninst"]))
+
+
+def chan_ports(c, fwd, copies):
+    """Port tuples for one side of a channel: per copy, per slot, the four
+    signals together, then the copy's wake; trace ids last, per slot."""
+    back = flip(fwd)
+    base = c["name"][4:]
+    typ = "ccv_%s_t" % base
+    P = []
+    for cp in copies:
+        for s in range(c["rate"]):
+            pre = base + copy_sfx(c, cp) + slot_sfx(c, s)
+            doc = "%s -> %s%s%s" % (c["src"], c["dst"],
+                                    ", copy %d" % cp if cp is not None and c["ninst"] > 1 else "",
+                                    ", slot %d of %d" % (s, c["rate"]) if c["rate"] > 1 else "")
+            meta = lambda sig: (c, cp, s, sig)
+            P.append((fwd, 1, pre + "_valid", False, doc, None, meta("valid")))
+            P.append((fwd, c["bits"], pre + "_payload", False, None, typ, meta("payload")))
+            P.append((back, 1, pre + "_credit", False, None, None, meta("credit")))
+            P.append((back, 1, pre + "_stall", False, None, None, meta("stall")))
+        P.append((fwd, 1, base + copy_sfx(c, cp) + "_wake", False, None, None,
+                  (c, cp, None, "wake")))
+    for cp in copies:
+        for s in range(c["rate"]):
+            P.append((fwd, 64, base + copy_sfx(c, cp) + slot_sfx(c, s) + "_tid",
+                      True, None, None, (c, cp, s, "tid")))
+    return P
+
+
+def decl(w, typ):
+    return typ + " " if typ else "logic " + rng(w)
+
+
+def net_name(c, copy, slot, sig):
+    """The top's net for one channel signal: the copy always named on a
+    replicated channel, the slot on a multi-slot one."""
+    base = c["name"][4:] + copy_sfx(c, copy)
+    if sig == "wake":
+        return base + "_wake"
+    return base + slot_sfx(c, slot) + "_" + sig
 
 
 def gen_ports(btype, P):
@@ -156,18 +220,22 @@ def gen_ports(btype, P):
     L.append("//")
     L.append("// Channel ports are named by channel, not stage-tagged: stage")
     L.append("// numbers are assigned at 4a, and the tag belongs on the internal")
-    L.append("// flop that drives the port. `_tid` is trace-only (CCV_TRACE).")
+    L.append("// flop that drives the port. One group per slot:")
+    L.append("//   <chan>[_c<NN>][_s<K>]_{valid,payload,credit,stall}, and")
+    L.append("//   <chan>[_c<NN>]_wake per channel instance; `_c` only where a")
+    L.append("// block names one of several copies, `_s` only at rate > 1.")
+    L.append("// `_payload` is typed ccv_<chan>_t. `_tid` is trace-only (CCV_TRACE).")
     plain = [p for p in P if not p[3]]
     trace = [p for p in P if p[3]]
-    for k, (dr, w, name, _, doc) in enumerate(plain):
+    for k, (dr, w, name, _, doc, typ, _m) in enumerate(plain):
         if doc:
             L.append("  // %s" % doc)
         sep = "," if k != len(plain) - 1 else ""
-        L.append("  %-6s logic %s%s%s" % (dr, rng(w), name, sep))
+        L.append("  %-6s %s%s%s" % (dr, decl(w, typ), name, sep))
     if trace:
         L.append("`ifdef CCV_TRACE")
-        for dr, w, name, _, _ in trace:
-            L.append("  , %-6s logic %s%s" % (dr, rng(w), name))
+        for dr, w, name, _, _, typ, _m in trace:
+            L.append("  , %-6s %s%s" % (dr, decl(w, typ), name))
         L.append("`endif")
     return "\n".join(L) + "\n"
 
@@ -190,16 +258,14 @@ def gen_stub(btype, P):
     L.append("module ccv_%s (" % btype)
     L.append("  `include \"ccv_%s_ports.svh\"" % btype)
     L.append(");")
-    for dr, w, name, tr, _ in P:
+    for dr, w, name, tr, _, _t, _m in P:
         if dr != "output":
             continue
         if tr:
             L.append("`ifdef CCV_TRACE")
         if w > 8192:
             # Verilator flags any replication over 8k bits as "probably
-            # wrong". These are real: 32 lanes x 4 x 110 bits of operands, and
-            # RCU->MIU at 4 x 2119 -- the ~8,400-wire interface the payload
-            # review already flagged. Suppressed here, per assignment.
+            # wrong". Real where it happens: a wide common-port vector.
             L.append("  /* verilator lint_off WIDTHCONCAT */")
             L.append("  assign %s = '0;  // %d bits, intended" % (name, w))
             L.append("  /* verilator lint_on WIDTHCONCAT */")
@@ -261,15 +327,12 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
                                           rng(cw[n]), n))
     tp = []
     for c in ext:
-        base = c["name"][4:]
         out = c["src"] != "EXTERNAL"      # the core drives it
-        fwd, back = ("output", "input") if out else ("input", "output")
-        P += ["  %-6s logic %s%s_valid" % (fwd, rng(c["rate"]), base),
-              "  %-6s logic %s%s_payload" % (fwd, rng(c["rate"] * c["bits"]), base),
-              "  %-6s logic %s%s_credit" % (back, rng(c["rate"]), base),
-              "  %-6s logic %s%s_stall" % (back, rng(c["rate"]), base),
-              "  %-6s logic %s_wake" % (fwd, base)]
-        tp.append("  , %-6s logic %s%s_tid" % (fwd, rng(c["rate"] * 64), base))
+        for dr, w, name, tr, _, typ, _m in chan_ports(c, "output" if out else "input", [None]):
+            if tr:
+                tp.append("  , %-6s %s%s" % (dr, decl(w, typ), name))
+            else:
+                P.append("  %-6s %s%s" % (dr, decl(w, typ), name))
     L.append(",\n".join(P))
     L.append("`ifdef CCV_TRACE")
     L += tp
@@ -315,15 +378,19 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     for c in chans:
         if "EXTERNAL" in (c["src"], c["dst"]):
             continue
-        base = c["name"][4:]
-        n = c["ninst"] * c["rate"]
-        L.append("  // %s: %s -> %s, %d copy x %d slot" % (
-            c["name"], c["src"], c["dst"], c["ninst"], c["rate"]))
-        for sig, w in (("valid", n), ("payload", n * c["bits"]),
-                       ("credit", n), ("stall", n), ("wake", c["ninst"])):
-            L.append("  logic %s%s_%s;" % (rng(w), base, sig))
+        L.append("  // %s: %s -> %s, %d cop%s x %d slot%s" % (
+            c["name"], c["src"], c["dst"], c["ninst"],
+            "y" if c["ninst"] == 1 else "ies", c["rate"],
+            "" if c["rate"] == 1 else "s"))
+        cps = list(range(c["ninst"]))
+        for dr, w, name, tr, _, typ, m in chan_ports(c, "output", cps):
+            if tr:
+                continue
+            L.append("  %s%s;" % (decl(w, typ), name))
         L.append("`ifdef CCV_TRACE")
-        L.append("  logic %s%s_tid;" % (rng(n * 64), base))
+        for dr, w, name, tr, _, typ, m in chan_ports(c, "output", cps):
+            if tr:
+                L.append("  %s%s;" % (decl(w, typ), name))
         L.append("`endif")
     L.append("")
     L.append("  // Per-block gated clocks: each block's sleep_ok drives its own")
@@ -339,7 +406,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
         n = names[k]
         conns = []
         trconns = []
-        for dr, w, pname, tr, _ in ports[t]:
+        for dr, w, pname, tr, _, _typ, meta in ports[t]:
             f = fab.get(pname, {})
             kind = f.get("kind")
             gathers = {ff["port"]: nm for nm, ff in fab.items()
@@ -376,18 +443,13 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
             elif pname in stars:
                 ex = pname
             else:
-                sig = pname.rsplit("_", 1)[1]
-                base = pname[: -len(sig) - 1]
-                c = next(c for c in chans if c["name"][4:] == base)
-                per = {"valid": c["rate"], "credit": c["rate"], "stall": c["rate"],
-                       "payload": c["rate"] * c["bits"], "tid": c["rate"] * 64,
-                       "wake": 1}[sig]
-                if copies_seen(c, t, ninst) == c["ninst"]:
-                    ex = pname
-                elif per == 1:
-                    ex = "%s[%d]" % (pname, i)
-                else:
-                    ex = "%s[%d +: %d]" % (pname, i * per, per)
+                # A channel port: the net is the same name with the copy
+                # filled in. A block that IS one copy leaves it out of its
+                # ports; the top's nets always carry it.
+                c, cp, sl, sig = meta
+                if cp is None and c["ninst"] > 1:
+                    cp = i
+                ex = net_name(c, cp, sl, sig)
             (trconns if tr else conns).append(".%s(%s)" % (pname, ex))
         L.append("  ccv_%s %s (" % (t, n))
         L.append("    " + ",\n    ".join(conns))
@@ -398,9 +460,15 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
         L.append("  );")
         L.append("")
     # the checker bank
-    order = list(reversed(chans))    # {last, ..., first}: slot 0 at the LSB
+    # The bank's vectors are in slot-map order -- channel instance by channel
+    # instance, then slot -- with slot 0 at the LSB, so {last, ..., first}.
     def cat(sig):
-        return "{%s}" % ", ".join("%s_%s" % (c["name"][4:], sig) for c in order)
+        nets = [net_name(ci["chan"], ci["inst"], s, sig)
+                for ci in cinst for s in range(ci["chan"]["rate"])]
+        return "{%s}" % ", ".join(reversed(nets))
+    def cat_wake():
+        nets = [net_name(ci["chan"], ci["inst"], None, "wake") for ci in cinst]
+        return "{%s}" % ", ".join(reversed(nets))
     L.append("`ifdef CCV_CHECK")
     L.append("  // The SAME checker bank the C++ skeleton Verilates, on the real")
     L.append("  // nets. Absent unless CCV_CHECK is defined, so synthesis never")
@@ -411,7 +479,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports):
     L.append("    .credit(%s)," % cat("credit"))
     L.append("    .stall(%s)," % cat("stall"))
     L.append("    .payload(%s)," % cat("payload"))
-    L.append("    .wake(%s)," % cat("wake"))
+    L.append("    .wake(%s)," % cat_wake())
     # Each channel instance's receiver's sleep_ok, in the bank's channel
     # instance order; the testbench end of EXTERNAL never sleeps.
     rxg = ["1'b0" if ci["dst"] is None else "%s_sleep_ok" % names[ci["dst"]][2:]

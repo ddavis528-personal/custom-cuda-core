@@ -9,7 +9,11 @@
 //
 // Channel ports are named by channel, not stage-tagged: stage
 // numbers are assigned at 4a, and the tag belongs on the internal
-// flop that drives the port. `_tid` is trace-only (CCV_TRACE).
+// flop that drives the port. One group per slot:
+//   <chan>[_c<NN>][_s<K>]_{valid,payload,credit,stall}, and
+//   <chan>[_c<NN>]_wake per channel instance; `_c` only where a
+// block names one of several copies, `_s` only at rate > 1.
+// `_payload` is typed ccv_<chan>_t. `_tid` is trace-only (CCV_TRACE).
   input  logic clk,
   input  logic clk_free,
   input  logic rst_n,
@@ -23,15 +27,15 @@
   output logic csr_credit,
   // csr_credit of every block instance, by instance index
   input  logic [44:0] csr_credits,
-  // ooe -> cru, 1 slot(s) x 172 bit payload
+  // ooe -> cru
   input  logic ooe_cru_fault_valid,
-  input  logic [171:0] ooe_cru_fault_payload,
+  input  ccv_ooe_cru_fault_t ooe_cru_fault_payload,
   output logic ooe_cru_fault_credit,
   output logic ooe_cru_fault_stall,
   input  logic ooe_cru_fault_wake,
-  // cru -> rau, 1 slot(s) x 74 bit payload
+  // cru -> rau
   output logic cru_rau_cfg_valid,
-  output logic [73:0] cru_rau_cfg_payload,
+  output ccv_cru_rau_cfg_t cru_rau_cfg_payload,
   input  logic cru_rau_cfg_credit,
   input  logic cru_rau_cfg_stall,
   output logic cru_rau_cfg_wake
