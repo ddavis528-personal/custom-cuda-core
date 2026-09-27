@@ -83,6 +83,7 @@ manifest. The gate must pass first, and the branch is never merged back.
 | File | Role |
 |---|---|
 | [`docs/rtl-execution-strategy.md`](docs/rtl-execution-strategy.md) | **The process contract.** How we get from locked architecture to validated RTL, and in what order. Not a design doc — block-level architecture definition happens elsewhere and is an input to this. Section references throughout the repo (§1, §6, §8 Stage 1c…) point here. |
+| [`docs/walkthrough.md`](docs/walkthrough.md) | **Generated. The machine as it stands, through one kernel.** `vadd` from the pinned compiler snapshot, through the oracle, the parameters and schema, one channel from JSON to ports, the C++ run, one instruction's journey across the blocks, the same run in SystemVerilog, the checker bank and the proofs. Regenerate with `tools/gen-walkthrough.py`; the gate fails if it is stale. |
 | [`docs/roadmap.md`](docs/roadmap.md) | **Start here when picking this up again.** Current state, what is built, and what is next. |
 | [`docs/open-items.md`](docs/open-items.md) | **Every open item, numbered Q-1… and never renumbered.** What is undecided, awaiting confirmation or scheduled to a stage, with owner and what each blocks. Closed items stay, with their resolution. Refer to items by ID. |
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |

@@ -115,6 +115,9 @@ ver() { "$@" 2>&1 | head -1; }
   echo "is \`$SRCBRANCH\` at \`$SHA\`, and this branch is rebuilt from source by"
   echo "\`tools/make-release.sh\`; nothing here flows back."
   echo
+  echo "**Start with [\`docs/walkthrough.md\`](docs/walkthrough.md):** one kernel"
+  echo "through the whole machine, every listing generated from this tree."
+  echo
   echo "What is here beyond the source tree at that commit:"
   echo
   echo "- **Generated files, at their real paths:** \`rtl/generated/\` (interface"

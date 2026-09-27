@@ -185,6 +185,17 @@ section "Hardening wrappers -- params/links.json"
 # configurations must each be refused by name.
 run "wrappers and links" ./tools/check-links.sh
 
+section "Walkthrough -- docs/walkthrough.md"
+# One kernel through the whole machine, every listing produced by running the
+# binaries built above (ccv-skel, the SV-hosted build, the oracle records) and
+# the prose's named properties checked against their sources. After every
+# section it reads from.
+if command -v verilator >/dev/null 2>&1; then
+  run "walkthrough current" python3 tools/gen-walkthrough.py --check
+else
+  echo "  SKIP -- verilator not installed (the walkthrough runs its builds)"
+fi
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.
