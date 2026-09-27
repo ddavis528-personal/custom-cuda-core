@@ -204,10 +204,96 @@ def gen_sv(d):
     return "\n".join(L) + "\n"
 
 
+# A parameter that follows from others says so: `derive` is the expression it
+# must equal, `require` a condition it must meet. The value stays written out,
+# because every tool reads `value`; what this adds is that a value which no
+# longer follows from its inputs is refused here, by name and with the number
+# it should be, instead of shipping. Grammar: parameter names, integers,
+# + - * // **, comparisons, and cdiv(a, b) and clog2(x).
+FUNCS = {"cdiv": lambda a, b: -(-a // b),
+         "clog2": lambda x: max(0, (x - 1).bit_length())}
+
+
+def evaluate(expr, values):
+    import ast
+    ops = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
+           ast.Mult: lambda a, b: a * b, ast.FloorDiv: lambda a, b: a // b,
+           ast.Pow: lambda a, b: a ** b}
+    cmps = {ast.Gt: lambda a, b: a > b, ast.GtE: lambda a, b: a >= b,
+            ast.Lt: lambda a, b: a < b, ast.LtE: lambda a, b: a <= b,
+            ast.Eq: lambda a, b: a == b}
+
+    def ev(n):
+        if isinstance(n, ast.Expression):
+            return ev(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, int):
+            return n.value
+        if isinstance(n, ast.Name):
+            if n.id not in values:
+                raise ValueError("unknown parameter %s" % n.id)
+            return values[n.id]
+        if isinstance(n, ast.BinOp) and type(n.op) in ops:
+            return ops[type(n.op)](ev(n.left), ev(n.right))
+        if (isinstance(n, ast.Compare) and len(n.ops) == 1
+                and type(n.ops[0]) in cmps):
+            return cmps[type(n.ops[0])](ev(n.left), ev(n.comparators[0]))
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id in FUNCS and not n.keywords):
+            return FUNCS[n.func.id](*[ev(a) for a in n.args])
+        raise ValueError("not allowed in a derivation: %s" % ast.dump(n))
+    return ev(ast.parse(expr, mode="eval"))
+
+
+def check_derived(d):
+    """Every `derive` equals its value and every `require` holds."""
+    values = {p["name"]: p["value"] for p in d["params"]}
+    bad = []
+    for p in d["params"]:
+        try:
+            if "derive" in p:
+                want = evaluate(p["derive"], values)
+                if want != p["value"]:
+                    bad.append("%s = %d, but %s gives %d: set it to %d"
+                               % (p["name"], p["value"], p["derive"], want, want))
+            if "require" in p and not evaluate(p["require"], values):
+                bad.append("%s = %d breaks its requirement %s"
+                           % (p["name"], p["value"], p["require"]))
+        except (ValueError, SyntaxError, TypeError) as e:
+            bad.append("%s: %s" % (p["name"], e))
+    return bad
+
+
+def selftest(d):
+    """The negative control: each derivation and requirement must refuse a
+    value that no longer follows from its inputs. Run in memory, on copies."""
+    import copy
+    cases = [("CCV_L_W_PRED_STATE", 2 * 1024, "CCV_MIGRATION_CYCLES"),
+             ("CCV_MIGRATION_CYCLES", 33, "CCV_W_MIG_ROW"),
+             ("CCV_PARKED_WARPS", 60, "CCV_WARP_CONTEXTS"),
+             ("CCV_P_PRED_REGS", 16, "CCV_P_PRED_REGS"),
+             ("CCV_P_PHYS_REGS", 64, "CCV_P_PHYS_REGS")]
+    missed = []
+    for name, v, who in cases:
+        m = copy.deepcopy(d)
+        for p in m["params"]:
+            if p["name"] == name:
+                p["value"] = v
+        if not any(b.startswith(who + " ") for b in check_derived(m)):
+            missed.append("%s = %d not caught at %s" % (name, v, who))
+    if missed:
+        sys.stderr.write("".join("%s\n" % x for x in missed))
+        return 1
+    print("  derived parameters: %d mutation(s), each refused by name"
+          % len(cases))
+    return 0
+
+
 def main():
     check = "--check" in sys.argv
     with open(SRC) as f:
         d = json.load(f)
+    if "--selftest" in sys.argv:
+        return selftest(d)
 
     names = [p["name"] for p in d["params"]]
     if len(set(names)) != len(names):
@@ -238,6 +324,15 @@ def main():
                 sys.stderr.write("%s: preliminary parameters must say who "
                                  "decides the encoding\n" % p["name"])
                 return 1
+
+    bad = check_derived(d)
+    if bad:
+        sys.stderr.write("".join("%s\n" % b for b in bad))
+        return 1
+    for p in d["params"]:  # the relation travels into both languages
+        for k, what in (("derive", "Derived: = "), ("require", "Requires: ")):
+            if k in p:
+                p["doc"] = "%s  %s%s." % (p["doc"], what, p[k])
 
     targets = [
         (os.path.join(ROOT, "sim", "generated", "ccv_params.h"), gen_cpp(d)),

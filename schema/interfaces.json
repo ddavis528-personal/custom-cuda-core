@@ -59,8 +59,8 @@
     {
       "name": "kill_warp_mask",
       "dir": "in",
-      "width": "CCV_TIER1_WARPS+CCV_PARKED_WARPS",
-      "doc": "Warps to discard, one bit per warp CONTEXT (32: tier-1 and parked), driven by RAU. It was sized to the four tier-1 warps, but PCA and SYU hold state for parked warps, which a tier-1 mask cannot name. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables.",
+      "width": "CCV_WARP_CONTEXTS",
+      "doc": "Warps to discard, one bit per warp CONTEXT (CCV_WARP_CONTEXTS = 32: tier-1 and parked), driven by RAU. It was sized to the four tier-1 warps, but PCA and SYU hold state for parked warps, which a tier-1 mask cannot name. Grid ID appears on no interface -- RAU converts it from its warp-to-CTA-to-grid tables.",
       "fabric": {
         "kind": "broadcast",
         "from": "rau",
@@ -797,7 +797,7 @@
       "payload_fields": [
         "tl_out"
       ],
-      "note": "THE ONE EXCEPTION. TileLink TL-C at the coherent boundary; obeys that protocol's rules, not ours. Containing it in a bridge block is what keeps the exception to a single port.",
+      "note": "The coherent boundary, meant to be THE ONE EXCEPTION: TileLink TL-C, obeying that protocol's rules rather than ours, contained in a bridge block so the exception stays at a single port. NOT YET (arch opens A-11, A-24): today this and ccv_ext_exb_in are ordinary credited channels whose payload is a flattened TL-C bundle, with one valid per TL channel and no TL ready. The outer credit is the only back-pressure, so a blocked TL channel stalls all of them, and TL-C's freedom from deadlock rests on some channels never being blocked by others. The bundle cannot express that, so nothing run against it says anything about TL-C deadlock behaviour. It is a stand-in for S1's single core and in-order testbench memory; per-channel ready/valid replaces it in EXB's session (Q-36).",
       "doc": "TileLink TL-C, outbound: channels A (acquire/get/put), C (release, probe response) and E (grant ack). The core is a master. How it decomposes -- flattened bundle or separate TL channels -- is EXB session work.",
       "id_classes": [
         "txn"
@@ -1044,7 +1044,7 @@
         "warp_mask_released",
         "barrier_id"
       ],
-      "doc": "The set of warps a barrier released: one bit per warp context, tier-1 and parked, sized like kill_warp_mask and not by the lane count, which is 32 by coincidence (arch open A-12).",
+      "doc": "The set of warps a barrier released: one bit per warp context, tier-1 and parked (CCV_WARP_CONTEXTS), sized like kill_warp_mask and not by the lane count, which is 32 by coincidence (arch open A-12).",
       "id_classes": [
         "none"
       ],
@@ -1212,7 +1212,7 @@
     "squash_to_retirement": "1",
     "pred_bit": "1",
     "lane_fault": "1",
-    "warp_mask_released": "CCV_TIER1_WARPS+CCV_PARKED_WARPS",
+    "warp_mask_released": "CCV_WARP_CONTEXTS",
     "section_en": "4",
     "asid": "CCV_W_ASID",
     "status": "CCV_W_STATUS",
@@ -1266,7 +1266,7 @@
     "src2_arch": "CCV_W_ARCH_REG",
     "phys_src2": "CCV_P_W_PHYS_REG",
     "pred_we": "1",
-    "mig_row": "CCV_W_ARCH_REG+1",
+    "mig_row": "CCV_W_MIG_ROW",
     "row_data": "CCV_W_DATA",
     "ilen": "CCV_W_ILEN"
   },

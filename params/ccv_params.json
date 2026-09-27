@@ -76,6 +76,14 @@
       "doc": "Warps parked in PCA. 32 total contexts."
     },
     {
+      "name": "CCV_WARP_CONTEXTS",
+      "value": 32,
+      "status": "arch",
+      "source": "arch open A-23 (2026-09-27)",
+      "derive": "CCV_TIER1_WARPS + CCV_PARKED_WARPS",
+      "doc": "Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, warp_mask_released). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12)."
+    },
+    {
       "name": "CCV_FETCH_PER_WARP",
       "value": 2,
       "status": "arch",
@@ -171,7 +179,16 @@
       "value": 17,
       "status": "arch",
       "source": "grill-me 2026-09-23",
-      "doc": "Migration transfer, each way: 16 GPR rows of 1024 bits (2 KB) plus one row of predicate and divergence state (ceil(CCV_L_W_PRED_STATE / CCV_W_DATA), one today), one row per cycle. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (arch open A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent."
+      "doc": "Migration transfer, each way, one 1024-bit row per cycle: the 16 GPR rows plus ceil(CCV_L_W_PRED_STATE / CCV_W_DATA) rows of predicate and divergence state, one today. Derived, not chosen (arch open A-22): CCV_L_W_PRED_STATE is preliminary and churn-high, and if it grows past a row this follows, refused by tools/gen-params.py until it does. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent.",
+      "derive": "2**CCV_W_ARCH_REG + cdiv(CCV_L_W_PRED_STATE, CCV_W_DATA)"
+    },
+    {
+      "name": "CCV_W_MIG_ROW",
+      "value": 5,
+      "status": "arch",
+      "source": "arch opens A-1, A-22 (2026-09-27)",
+      "derive": "clog2(CCV_MIGRATION_CYCLES)",
+      "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, 16 and up predicate and divergence state. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
     },
     {
       "name": "CCV_NGD_BUDGET",
@@ -409,21 +426,24 @@
       "value": 192,
       "status": "provisional",
       "doc": "Rename headroom above 16 arch regs per tier-1 warp.",
-      "decided_at": "OOE and RCU per-block sessions"
+      "decided_at": "OOE and RCU per-block sessions",
+      "require": "CCV_P_PHYS_REGS > CCV_TIER1_WARPS * 2**CCV_W_ARCH_REG"
     },
     {
       "name": "CCV_P_W_PHYS_REG",
       "value": 8,
       "status": "provisional",
       "doc": "Follows CCV_P_PHYS_REGS.",
-      "decided_at": "OOE and RCU per-block sessions"
+      "decided_at": "OOE and RCU per-block sessions",
+      "derive": "clog2(CCV_P_PHYS_REGS)"
     },
     {
       "name": "CCV_P_PRED_REGS",
-      "value": 16,
+      "value": 48,
       "status": "provisional",
-      "doc": "Predicate file depth.",
-      "decided_at": "RCU per-block session"
+      "doc": "Physical predicate file depth. The resident warps' architectural predicates alone fill CCV_TIER1_WARPS x 4 = 16 entries, so the file must be deeper or rename has no free register to allocate and the first predicate write never renames (arch open A-21; it was 16). 48 is the GPR file's ratio, 3x architectural (192 against 64), as a placeholder.",
+      "decided_at": "RCU per-block session",
+      "require": "CCV_P_PRED_REGS > CCV_TIER1_WARPS * 2**CCV_W_ARCH_PRED"
     },
     {
       "name": "CCV_P_MAX_CTA",
@@ -518,11 +538,12 @@
     },
     {
       "name": "CCV_P_W_PHYS_PRED",
-      "value": 8,
+      "value": 6,
       "status": "provisional",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Predicate physical register index. The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split.",
-      "decided_at": "Stage 4a -- OOE rename session sizes the predicate RAT"
+      "doc": "Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split.",
+      "decided_at": "Stage 4a -- OOE rename session sizes the predicate RAT",
+      "derive": "clog2(CCV_P_PRED_REGS)"
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",

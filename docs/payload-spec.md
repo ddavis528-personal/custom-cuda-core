@@ -267,7 +267,7 @@ rcu → pca · rate 1 · control
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `mig_row` | `CCV_W_ARCH_REG+1` | 5 | CCV_W_ARCH_REG (isa) |
+| `mig_row` | `CCV_W_MIG_ROW` | 5 | CCV_W_MIG_ROW (arch) |
 | `row_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | **total** | | **1034** | |
 
@@ -280,7 +280,7 @@ pca → rcu · rate 1 · control
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `mig_row` | `CCV_W_ARCH_REG+1` | 5 | CCV_W_ARCH_REG (isa) |
+| `mig_row` | `CCV_W_MIG_ROW` | 5 | CCV_W_MIG_ROW (arch) |
 | `row_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | **total** | | **1034** | |
 
@@ -298,13 +298,13 @@ pca → rau · rate 1 · control
 
 ### `ccv_syu_ooe_rel`
 
-The set of warps a barrier released: one bit per warp context, tier-1 and parked, sized like kill_warp_mask and not by the lane count, which is 32 by coincidence (arch open A-12).
+The set of warps a barrier released: one bit per warp context, tier-1 and parked (CCV_WARP_CONTEXTS), sized like kill_warp_mask and not by the lane count, which is 32 by coincidence (arch open A-12).
 
 syu → ooe · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `warp_mask_released` | `CCV_TIER1_WARPS+CCV_PARKED_WARPS` | 32 | CCV_TIER1_WARPS (arch); CCV_PARKED_WARPS (arch) |
+| `warp_mask_released` | `CCV_WARP_CONTEXTS` | 32 | CCV_WARP_CONTEXTS (arch) |
 | `barrier_id` | `CCV_W_BAR_ID` | 4 | CCV_W_BAR_ID (arch) |
 | **total** | | **36** | |
 
@@ -352,10 +352,10 @@ miu → rcu · rate 4 · execution
 | `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `pred_result` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
-| `phys_pred` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `phys_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_we` | `1` | 1 | literal |
 | `load_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| **total** | | **1112** | ⚠️ 23 provisional |
+| **total** | | **1110** | ⚠️ 21 provisional |
 
 ### `ccv_miu_ooe_cmpl`
 
@@ -562,15 +562,15 @@ ooe → rcu · rate 4 · execution
 | `phys_src` | `2*CCV_P_W_PHYS_REG` | 16 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_src2` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
-| `phys_pred_guard` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `phys_pred_guard` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_neg` | `1` | 1 | literal |
-| `phys_pred_dst` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `phys_pred_dst` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_we` | `1` | 1 | literal |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **138** | ⛔ 9 preliminary, ⚠️ 87 provisional |
+| **total** | | **134** | ⛔ 9 preliminary, ⚠️ 83 provisional |
 
 ### `ccv_rcu_lane_ops`
 
@@ -597,7 +597,7 @@ ooe → miu · rate 4 · memory
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
-| `phys_pred` | `CCV_P_W_PHYS_PRED` | 8 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `phys_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `issue_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
@@ -607,7 +607,7 @@ ooe → miu · rate 4 · memory
 | `scale_en` | `1` | 1 | literal |
 | `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
 | `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
-| **total** | | **93** | ⛔ 11 preliminary, ⚠️ 26 provisional |
+| **total** | | **91** | ⛔ 11 preliminary, ⚠️ 24 provisional |
 
 ### `ccv_ooe_fet_redirect`
 

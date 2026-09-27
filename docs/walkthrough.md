@@ -398,7 +398,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(14)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[307]), .ch_credit(credit[307]), .ch_stall(stall[307]),
-    .ch_payload(payload[46562:45351])
+    .ch_payload(payload[46530:45319])
 `ifdef CCV_TRACE
     , .ch_tid(tid[19711:19648])
 `endif
