@@ -9,8 +9,9 @@
 #   - it simulates, in Icarus and in Verilator, with the bank attached;
 #   - synthesis sees no checker at all unless CCV_CHECK is defined (B-1);
 #   - it holds block instances and nets and nothing else -- no gate, flop,
-#     constant or clock gate -- and five deliberately impure copies are
-#     refused (tools/check-top-pure.py);
+#     constant or clock gate -- every block holds its one ccv_clk_gate, whose
+#     own decision is the block's clk_gated, and eleven deliberately impure
+#     copies are refused (tools/check-top-pure.py);
 #   - its connectivity, EXTRACTED from the elaborated netlist, is bit for bit
 #     the C++ skeleton's -- and a deliberately miswired copy is rejected.
 set -uo pipefail
@@ -29,7 +30,10 @@ STUBS=$(ls rtl/top/stubs/*.sv | tr '\n' ' ')
 PKG="rtl/ccv_assert_pkg.sv"
 # The hardening wrappers, and the repeater they instantiate at every end.
 WRAP="rtl/phys/ccv_seq_rpt.sv $(ls rtl/top/wrap/*.sv | tr '\n' ' ')"
-TOP="$STUBS $WRAP rtl/top/ccv_core_top.sv"
+# Every block's clock gate, and the ctech view its ICG resolves to
+# ($CCV_CTECH, default the simulation view; tools/ccv_ctech.py).
+GATE="rtl/clk/ccv_clk_gate.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
+TOP="$GATE $STUBS $WRAP rtl/top/ccv_core_top.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
 
 # -- Verilator -Wall, three builds people will actually run -----------------
@@ -117,14 +121,14 @@ if command -v yosys >/dev/null 2>&1; then
     bad "top: only block instances and nets" "$(echo "$out" | grep -m1 -E '^  R[0-9]')"
   fi
   refused=""
-  for m in gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse; do
+  for m in gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk; do
     python3 tools/check-top-pure.py --mutate=$m >"$B/top_pure_$m.log" 2>&1
     rc=$?
     [ $rc -eq 1 ] && refused="$refused $m" ||
       bad "top rule refuses a $m" "$(grep -m1 -E 'MUTANT|TOP_PURE ok|mutation' "$B/top_pure_$m.log")"
   done
-  [ "$refused" = " gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse" ] &&
-    say "  ...and refuses 9 impure copies: top, wrapper, reuse" "PASS"
+  [ "$refused" = " gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk" ] &&
+    say "  ...and refuses 11 impure copies: top, wrapper, reuse, gate" "PASS"
 fi
 
 # -- connectivity: the elaborated SV top IS the C++ skeleton's wiring -------

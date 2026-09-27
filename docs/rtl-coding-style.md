@@ -338,10 +338,11 @@ Only parameters and localparams carry upper case.
 ### CCV-L20 — clocks are named as clocks, and used only as clocks
 
 A net driving a clock edge must match the clock shape, and its domain segment
-must be registered. Conversely a clock may appear only in an edge expression, a
-port map, or **the right-hand side of another clock** — that last one being the
-block's gate, which is the whole reason `<block>_core_clk` exists. Anywhere
-else is a clock read as data.
+must be registered. Conversely a clock may appear only in an edge expression
+or a port map — the block's gate is `ccv_clk_gate`'s `gclk` port, which is the
+whole reason `<block>_core_clk` exists. Anywhere else is a clock read as data.
+A clock built from a clock with logic is CCV-L27's business: only a ctech cell
+does that.
 
 Because `_core_` marks synchronous, an `always_ff` mixing a `*_core_clk`-
 generated signal with a `test_clk`-generated one is a crossing detectable from
@@ -369,6 +370,45 @@ act, inside itself (see *The top level* below). Clocking logic on the
 ungated net **silently defeats that gate**: the design still works, produces
 identical results, and never saves the power it was supposed to. Nothing in
 simulation shows it, which is exactly why it needs a rule.
+
+The gate is `ccv_clk_gate` (`docs/clock-gate.md`): a block with sequential
+logic must instantiate it with `.clk(core_clk)`, and runs on its `gclk`. The
+sleep policy, the wake-within-a-cycle guarantee and the ctech ICG are all
+inside it, so no block builds its own. The wake detector the exception allows
+is the edge detector a block needs for a level-sensitive wake source, such as
+a stall that releases.
+
+```systemverilog
+ccv_clk_gate u_cg (
+  .clk(core_clk), .rst_n(sched_rst_r06h_n),
+  .quiesced(sched_idle_cs03h), .stalled(sched_blocked_cs03h),
+  .wake({ooe_sched_wake, lane_sched_wake}),
+  .cg_override(sched_cg_ovr_cs00h), .te(scan_en),
+  .gclk(sched_core_clk), .gated(clk_gated));
+```
+
+`check-top-pure.py` R7 checks the same thing on the elaborated netlist: every
+block has exactly one `ccv_clk_gate`, on its `core_clk` port, and its
+`clk_gated` port is that gate's `gated`.
+
+### CCV-L27 — every clock gate is the ctech ICG
+
+Outside `rtl/ctech/`, no clock is built from a clock with logic, and no
+`always_latch` exists. A clock gate is `ccv_ctech_icg`, reached through
+`ccv_clk_gate`. It is simulated as a latch and an AND gate, and synthesised as
+the library's ICG cell, whatever synthesis would have inferred (see
+`docs/clock-gate.md`, *The ctech layer*).
+
+A hand-built `assign x_clk = core_clk & en` works in every RTL simulation. In
+silicon it glitches whenever `en` moves while the clock is high, and synthesis
+may or may not recognise it as a gate. Renaming a clock (`assign a_clk =
+b_clk;`) is wiring, and is allowed.
+
+The rule also ties the marker to the directory. A file in `rtl/ctech/` must
+say `// Ctech: <cell> -- <view>`, and no file elsewhere may, since that
+marker is what exempts a file from CCV-L08's clock check and from this rule.
+A library view's `lib_cells.v` holds the library's port declarations, not our
+RTL, and is not linted.
 
 ### The top level: block instances and nets, nothing else
 

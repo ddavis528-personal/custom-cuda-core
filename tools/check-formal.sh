@@ -24,6 +24,9 @@
 #     drains (FV_FAIR) -- the ONE property that
 #     needs an assumption, proved on its own
 #
+# The block clock gate (rtl/clk/ccv_clk_gate.sv) is proved at the end, on
+# the multiclock model; see that section.
+#
 # SBY 0.69's ABC integration crashes on Yosys 0.33's witness files, even on a
 # trivially true property, so the model is built the way SBY builds it and
 # yosys-abc runs PDR directly. PDR reports only THAT the miter fired, so a
@@ -149,6 +152,125 @@ for tgt in reach_three reach_full; do
   r=$(prove "$tgt" 1 $((LOOP + 2)) "FV_REACH" "$tgt")
   [ "${r%% *}" = cex ] && say "  ...witness: $tgt" "PASS (${r#cex } frames)" ||
     bad "non-vacuity $tgt" "$r: unreachable -- the assumptions may be too strong"
+done
+
+# == The block clock gate: rtl/clk/ccv_clk_gate.sv ============================
+# test/formal/fv_clk_gate.sv, on Yosys's MULTICLOCK model (clk2fflogic):
+# clk is an input toggling at global steps, each phase one step or two, so
+# the ctech ICG's latch and AND are modelled as they switch -- the glitch an
+# AND gate makes is representable, and must be refuted, not assumed away.
+#
+#   proved                                     must fail (counterexample)
+#   the gated clock is clean, every input      the ICG with no latch, or a
+#     free to move at any step                   latch open on the high phase
+#   cycle behaviour against a model built      a wake registered before the
+#     from input histories: the edge is the      cell (not within one cycle);
+#     decision, a wake opens the edge ending     hysteresis one short;
+#     its own cycle and WAKE_HOLD more,          reset left off the enable
+#     override / reset / te open it
+#   Q-33 with ccv_wake_checker: the sender's   a wake hold one short of
+#     half assumed, the receiver's half          CCV_WAKE_LAT: wake_keeps_rx
+#     (wake_keeps_rx) and "no valid meets a
+#     withheld edge" proved
+#   non-vacuity: the gate closes; a valid is
+#     captured right after a sleep
+prove_cg() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
+  local name=$1 defs=$2 target=$3 hq=$4 hs=$5 hold=$6
+  local gate=${7:-$R/rtl/clk/ccv_clk_gate.sv} icg=${8:-$R/rtl/ctech/sim/ccv_ctech_icg.sv}
+  local d="$B/$name"
+  mkdir -p "$d"
+  local keep=""
+  case "$target" in
+    all) ;;
+    -*)  keep="chformal -assert -remove t:\$assert c:*${target#-} %i" ;;
+    *)   keep="chformal -assert -remove t:\$assert c:*$target %d" ;;
+  esac
+  local dflags=""
+  for x in $defs; do dflags="$dflags -D$x"; done
+  local rv="read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated"
+  cat >"$d/m.ys" <<YS
+$rv $R/rtl/ccv_assert_pkg.sv
+$rv $R/rtl/if/ccv_wake_checker.sv
+$rv $icg
+$rv $gate
+$rv $R/test/formal/fv_clk_gate.sv
+chparam -set HQ $hq -set HS $hs -set HOLD $hold fv_clk_gate
+prep -top fv_clk_gate
+flatten
+$keep
+chformal -cover -remove
+clk2fflogic
+setundef -undriven -anyseq
+setattr -unset keep
+opt -full
+techmap
+opt -fast
+memory_map -formal
+formalff -clk2ff -ff2anyinit
+simplemap
+dffunmap
+aigmap
+opt_clean
+select -assert-min 1 t:\$_AND_ t:\$_NOT_
+write_aiger -I -B -zinit -no-startoffset $d/m.aig
+YS
+  if ! yosys -q "$d/m.ys" >"$d/yosys.log" 2>&1; then echo error; return; fi
+  timeout 900 yosys-abc -c "read_aiger $d/m.aig; fold; strash; pdr" >"$d/abc.log" 2>&1
+  if grep -q "Property proved" "$d/abc.log"; then echo proved
+  elif f=$(grep -oE "asserted in frame [0-9]+" "$d/abc.log"); then echo "cex ${f##* }"
+  else echo error; fi
+}
+
+pkgval() { sed -n "s/.*localparam int $1 = \([0-9]*\);/\1/p" rtl/generated/ccv_params_pkg.sv; }
+LAT=$(pkgval CCV_WAKE_LAT)
+# Two configurations: small hysteresis (the corners close together), and the
+# parameters every block gets by default.
+for cfg in "3 5 $LAT" "$(pkgval CCV_CG_HYST_QUIESCE) $(pkgval CCV_CG_HYST_STALL) $LAT"; do
+  read -r hq hs hold <<<"$cfg"
+  tag="q${hq}s${hs}h${hold}"
+  ok=1; what=""
+  for spec in "glitch:FV_ASYNC:all" "cycle::all" "q33_rx:FV_Q33:wake_keeps_rx" \
+              "q33_valid:FV_Q33:q33_valid_meets_clock"; do
+    IFS=: read -r nm def tgt <<<"$spec"
+    r=$(prove_cg "cg_${nm}_$tag" "$def" "$tgt" $hq $hs $hold)
+    [ "$r" = proved ] || { ok=0; what="$what $nm: $r ($B/cg_${nm}_$tag/abc.log)"; }
+  done
+  [ $ok = 1 ] &&
+    say "clock gate ($hq/$hs/$hold): glitch, cycle, Q-33" "PASS (proved)" ||
+    bad "clock gate ($hq/$hs/$hold)" "${what# }"
+done
+
+mkdir -p "$B/cg_mut"
+G=rtl/clk/ccv_clk_gate.sv
+I=rtl/ctech/sim/ccv_ctech_icg.sv
+sed 's/  wire           en       = !sleep || wake_any || cg_override || !rst_n;/  logic wake_r;\n  always_ff @(posedge clk) wake_r <= wake_any;\n  wire           en       = !sleep || wake_r || cg_override || !rst_n;/' \
+  $G >"$B/cg_mut/wake_reg.sv"
+sed "s/      if (wake_any)    hold_q  <= HOLD;/      if (wake_any)    hold_q  <= HOLD - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
+sed "s/  wire           q_full   = (q_run_q == HQ);/  wire           q_full   = (q_run_q == HQ - 1'b1);/" $G >"$B/cg_mut/hyst_early.sv"
+sed 's/ || cg_override || !rst_n;/ || cg_override;/' $G >"$B/cg_mut/no_reset.sv"
+awk '/always_latch begin/{print "  assign en_l = en | te;"; skip=2; next} skip>0{skip--; next} {print}' \
+  $I >"$B/cg_mut/no_latch.sv"
+sed 's/    if (!clk) en_l = en | te;/    if (clk) en_l = en | te;/' $I >"$B/cg_mut/high_latch.sv"
+for spec in "wake_reg:g::wake_next_edge:a wake registered: not within one cycle" \
+            "hold_short:g:FV_Q33:wake_keeps_rx:wake hold one short of CCV_WAKE_LAT" \
+            "hyst_early:g::spec:hysteresis one short" \
+            "no_reset:g::reset_opens:reset left off the enable" \
+            "no_latch:i:FV_ASYNC:all:an ICG with no latch" \
+            "high_latch:i:FV_ASYNC:all:a latch open on the high phase"; do
+  IFS=: read -r nm kind def tgt what <<<"$spec"
+  src=$G; [ $kind = i ] && src=$I
+  if cmp -s $src "$B/cg_mut/$nm.sv"; then bad "clock-gate mutant $nm" "did not apply"; continue; fi
+  if [ $kind = g ]; then r=$(prove_cg "cgm_$nm" "$def" "$tgt" 3 5 $LAT "$B/cg_mut/$nm.sv")
+  else r=$(prove_cg "cgm_$nm" "$def" "$tgt" 3 5 $LAT "" "$B/cg_mut/$nm.sv"); fi
+  lbl=$tgt; [ "$tgt" = all ] && lbl="the clean-clock properties"
+  [ "${r%% *}" = cex ] && say "  ...$what: $lbl fail" "PASS ($r)" ||
+    bad "clock-gate mutant $nm" "$r: not refuted"
+done
+for spec in "reach_gated:FV_REACH" "reach_woken:FV_REACH FV_Q33"; do
+  IFS=: read -r tgt def <<<"$spec"
+  r=$(prove_cg "cg_$tgt" "$def" "$tgt" 3 5 $LAT)
+  [ "${r%% *}" = cex ] && say "  ...witness: $tgt" "PASS (${r#cex } frames)" ||
+    bad "clock-gate non-vacuity $tgt" "$r: unreachable"
 done
 
 exit $fail

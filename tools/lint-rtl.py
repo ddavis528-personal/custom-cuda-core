@@ -270,6 +270,17 @@ def check_file(path, rel):
     is_tb = scope != "design"
     is_header = rel.endswith((".svh", ".vh"))
 
+    # A library view's lib_cells.v declares the ports of a PROCESS LIBRARY's
+    # cells so the view elaborates without the PDK. It is the library's
+    # naming, not ours, and it is never synthesised.
+    if re.match(r"rtl/ctech/[^/]+/lib_cells\.v$", rel):
+        return []
+    # A ctech cell (docs/clock-gate.md): the one place a latch, a clock read
+    # as data, a clock built from a clock, or a library cell may appear. It
+    # is where the marker says AND where the directory says, or neither.
+    in_ctech = rel.startswith("rtl/ctech/")
+    ctech = in_ctech and re.search(r"^\s*//\s*Ctech:\s*\S", raw, re.M) is not None
+
     exempt = {}
     for m in EXEMPT_RE.finditer(raw):
         for r in re.split(r"[,\s]+", m.group(1).strip()):
@@ -426,9 +437,11 @@ def check_file(path, rel):
         def uncovered(expr):
             """Input-port identifiers in `expr` with no KNOWN assertion.
             Reset is exempt: §6 makes it globally synchronous and always
-            reset, so it is the one control signal that cannot be X."""
+            reset, so it is the one control signal that cannot be X. So is
+            the clock inside a ctech cell, whose latch is `if (!clk)`."""
             return sorted(n for n in (idents(expr) & ins) - known
-                          if not is_reset(n))
+                          if not is_reset(n)
+                          and not (ctech and (n == "clk" or clk_domain(n))))
 
         # -- CCV-L16: casex is banned outright ------------------------------
         # Measured (F-16): with an unknown selector, casex treats X as a
@@ -635,6 +648,18 @@ def check_file(path, rel):
         # itself by being non-compliant.
         reusable = re.search(r"^\s*//\s*Reusable:\s*(\S.*)", raw, re.M)
 
+        # -- CCV-L27: the ctech marker and the ctech directory agree -------
+        marked = re.search(r"^\s*//\s*Ctech:\s*\S", raw, re.M)
+        if marked and not in_ctech:
+            add("CCV-L27", line_of(raw, marked.start()),
+                "`// Ctech:` outside rtl/ctech/. The marker is what lets a "
+                "file hold a latch or a hand-built clock, so only a ctech "
+                "view may carry it: rtl/ctech/<view>/ccv_ctech_<cell>.sv")
+        if in_ctech and not marked:
+            add("CCV-L27", 1,
+                "a file in rtl/ctech/ without `// Ctech: <cell> -- <view>`. "
+                "Say which cell and which view it is")
+
         if not reusable and not blk_name and re.search(r"\balways_ff\b", src):
             add("CCV-L21", 1,
                 "design RTL with sequential logic declares neither "
@@ -713,13 +738,56 @@ def check_file(path, rel):
                                  src):
                 lhs, rhs = m.group(1), m.group(2)
                 if clk_domain(lhs):
-                    continue        # building a clock from a clock: the gate
+                    continue        # a clock from a clock: CCV-L27's business
                 for cm in re.finditer(r"\b([a-z]\w*_clk(?:_b)?)\b", rhs):
                     add("CCV-L20", line_of(src, m.start()),
                         "clock %r is read as data by %r. A clock belongs in "
                         "an edge expression, a port map, or the right-hand "
                         "side of another clock -- nowhere else"
                         % (cm.group(1), lhs))
+
+        # -- CCV-L22, the other half: a block HAS its gate -----------------
+        # A block with sequential logic gates core_clk through ccv_clk_gate,
+        # which is where the sleep policy, the wake guarantee and the ctech
+        # ICG live. Checked textually: an instance of it taking core_clk.
+        if blk_name and re.search(r"\balways_ff\b", src):
+            gm = re.search(r"\bccv_clk_gate\b[^;]*?\.clk\s*\(\s*core_clk\s*\)",
+                           src, re.S)
+            if not gm:
+                add("CCV-L22", 1,
+                    "block %r has sequential logic but no ccv_clk_gate taking "
+                    "core_clk. Every block's first act is its gate: the sleep "
+                    "policy, the wake-within-a-cycle guarantee and the ctech "
+                    "ICG are all inside it (docs/clock-gate.md)" % blk_name)
+
+        # -- CCV-L27: clock gates are ctech cells ---------------------------
+        # Every clock gate in the design is ccv_ctech_icg, reached through
+        # ccv_clk_gate, so that synthesis gets the library's ICG rather than
+        # whatever it infers from an AND -- which glitches when its enable
+        # moves while the clock is high, and which nothing in RTL simulation
+        # shows. So outside rtl/ctech/: no clock built from a clock with
+        # logic, and no latch. Renaming a clock (`assign a_clk = b_clk;`) is
+        # wiring and is fine.
+        if not ctech:
+            for m in re.finditer(r"\bassign\s+([a-z]\w*)\s*=\s*([^;]+);", src):
+                lhs, rhs = m.group(1), m.group(2).strip()
+                if not (clk_domain(lhs) or lhs in ("clk", "gclk")):
+                    continue
+                if re.fullmatch(r"[a-z]\w*", rhs):
+                    continue        # a rename
+                if re.search(r"\b(?:[a-z]\w*_clk|clk)\b", rhs):
+                    add("CCV-L27", line_of(src, m.start()),
+                        "clock %r is built from a clock by hand (%s). Every "
+                        "clock gate is the ctech ICG: instantiate "
+                        "ccv_clk_gate, whose ccv_ctech_icg becomes the "
+                        "library's cell in synthesis. An AND gate glitches "
+                        "when its enable moves while the clock is high, and "
+                        "no RTL simulation shows it" % (lhs, rhs[:40]))
+            for m in re.finditer(r"\balways_latch\b", src):
+                add("CCV-L27", line_of(src, m.start()),
+                    "a latch outside rtl/ctech/. The only latch in the design "
+                    "is the one inside the ctech ICG's simulation view; "
+                    "anything else that needs one is a ctech cell")
 
         # -- CCV-L21: stage tags are well formed and consistent -------------
         for kind, clk, body, ln in (() if reusable else always_blocks(src)):

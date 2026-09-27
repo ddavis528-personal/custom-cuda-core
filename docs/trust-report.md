@@ -17,6 +17,7 @@ so this is a build artifact rather than something to remember.
 
 | File | Preliminary | Provisional |
 |---|---|---|
+| `rtl/clk/ccv_clk_gate.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL` |
 | `rtl/if/ccv_credit_checker.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |

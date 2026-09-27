@@ -21,9 +21,17 @@ module good_gated_enable (
   output logic [7:0] out_q_cy01h
 );
   logic ref_core_clk;
-  logic blk_en_cy00h;
-  assign blk_en_cy00h = 1'b1;
-  assign ref_core_clk = core_clk & blk_en_cy00h;
+  ccv_clk_gate u_cg (
+    .clk        (core_clk),
+    .rst_n      (!ref_rst_r00h),
+    .quiesced   (1'b0),
+    .stalled    (1'b0),
+    .wake       (1'b0),
+    .cg_override(1'b1),
+    .te         (1'b0),
+    .gclk       (ref_core_clk),
+    .gated      ()
+  );
 
   // The enable is prohibited from being X, so the `if` form is safe -- and
   // with a real ICG it matters MORE than for a feedback mux: an unknown

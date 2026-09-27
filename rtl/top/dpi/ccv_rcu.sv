@@ -21,6 +21,25 @@
 module ccv_rcu (
   `include "ccv_rcu_ports.svh"
 );
+  // The block's clock gate: ctech ICG, sleep policy, wake path. Tied
+  // never to close -- cg_override -- until the block has idle logic;
+  // then these ties become its quiesced, stalled and wake. quiesced:
+  // a C++ block's idleness is not visible here.
+  logic gclk, cg_gated;
+  ccv_clk_gate u_cg (
+    .clk        (core_clk),
+    .rst_n      (rst_n),
+    .quiesced   (1'b0),
+    .stalled    (1'b0),
+    .wake       (1'b0),
+    .cg_override(1'b1),
+    .te         (1'b0),
+    .gclk       (gclk),
+    .gated      (cg_gated)
+  );
+`ifdef CCV_CHECK
+  assign clk_gated = cg_gated;
+`endif
 `ifndef CCV_TRACE
   // Refused at elaboration: without _tid there is no identity to carry.
   ccv_sv_hosted_needs_CCV_TRACE u_needs_trace ();
@@ -39,9 +58,10 @@ module ccv_rcu (
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end
-  // No clock gate: a C++ block never sleeps (Q-33), so it runs on
-  // core_clk, which is what a real block's gate would pass when open.
-  always @(posedge core_clk) begin
+  // On the gate's clock, as a real block runs. No C++ block sleeps
+  // yet (Q-33), so the gate is tied open and gclk is core_clk's
+  // edges through the ctech ICG.
+  always @(posedge gclk) begin
     ccv_dpi_cycle_rcu(h, cyc, !rst_n, {
       pca_rcu_mig_tid, pca_rcu_mig_stall, pca_rcu_mig_credit,
       pca_rcu_mig_payload, pca_rcu_mig_valid, rcu_pca_mig_tid,
@@ -743,9 +763,6 @@ module ccv_rcu (
   assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-`ifdef CCV_CHECK
-  assign clk_gated = '0;
-`endif
   assign rcu_lane_ops_c00_wake = '0;
   assign rcu_lane_ops_c01_wake = '0;
   assign rcu_lane_ops_c02_wake = '0;

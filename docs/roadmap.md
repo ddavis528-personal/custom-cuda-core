@@ -58,7 +58,7 @@ lockstep across the 32 lanes.
 
 ### What a new design file has to carry
 
-Twenty-six lint rules is more than anyone will hold in their head, so the
+Twenty-seven lint rules is more than anyone will hold in their head, so the
 obligations that are not obvious from reading existing code:
 
 ```systemverilog
@@ -74,9 +74,10 @@ obligations that are not obvious from reading existing code:
 
 module sched_iq ( ... );                    <- CCV-L01, filename must match
 
-  // The block gates its clock as its first act -- CCV-L22 forbids clocking
-  // anything on the ungated core_clk.
-  assign sched_core_clk = core_clk & sched_gate_en_cs00h;
+  // The block gates its clock as its first act, through ccv_clk_gate --
+  // CCV-L22 forbids clocking anything on the ungated core_clk, and CCV-L27
+  // forbids building the gate by hand (docs/clock-gate.md).
+  ccv_clk_gate u_cg (.clk(core_clk), ..., .gclk(sched_core_clk), .gated(clk_gated));
 
   // Every CONTROL input used in an if or a case needs one of these, or the
   // case needs an X-default -- CCV-L08.
@@ -123,7 +124,7 @@ looks exactly like one that passes.
 - `spike/cases/` — the cases
 - `tools/run-spike-1a.py` — the runner
 - `docs/stage1a-tool-support.md` — the matrix (generated)
-- `docs/stage1a-findings.md` — the 20 findings F-1…F-20 (written)
+- `docs/stage1a-findings.md` — the 21 findings F-1…F-21 (written)
 - `tools/check-1a.sh` — cheap validation of the recorded matrix
 
 ### Stage 1b — assertion primitive library ✅

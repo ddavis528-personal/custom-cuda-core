@@ -48,6 +48,14 @@ must then fail, naming that rule:
   R6  hard reuse (params/links.json "hard_reuse"): every instance of such a
       type is a template used as it is, with no parameter override, and no
       two templates of the type are the same circuit
+  R7  every block has its clock gate (docs/clock-gate.md): exactly one
+      ccv_clk_gate, clocked by the block's core_clk port, and under
+      CCV_CHECK its clk_gated port is that gate's own `gated` -- the
+      observation the wake checkers read is the real decision, not a tie.
+      And the ctech ICG appears inside ccv_clk_gate and nowhere else
+
+  gatetie   FET's clk_gated tied instead of the gate's report R7
+  gateclk   FET's gate clocked by something other than core_clk R7
 """
 import json
 import os
@@ -55,6 +63,8 @@ import re
 import subprocess
 import sys
 import tempfile
+
+import ccv_ctech
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOP = os.path.join(ROOT, "rtl", "top", "ccv_core_top.sv")
@@ -222,6 +232,41 @@ def check_all(modules, with_bank):
     return bad, nw, nwrap, has_bank
 
 
+def check_gates(modules, with_bank):
+    """R7 on every block module the wrappers instantiate."""
+    bad = []
+    blocks = set()
+    for mname, mod in modules.items():
+        if base(mname).endswith("_w"):
+            for n, c in mod["cells"].items():
+                if n == "u_blk":
+                    blocks.add(c["type"])
+    for b in sorted(blocks):
+        mod = modules[b]
+        gates = [(n, c) for n, c in mod["cells"].items()
+                 if base(c["type"]) == "ccv_clk_gate"]
+        if len(gates) != 1:
+            bad.append(("R7", "%s: %d clock gates, want exactly one ccv_clk_gate"
+                        % (b, len(gates))))
+            continue
+        n, c = gates[0]
+        if c["connections"]["clk"] != mod["ports"]["core_clk"]["bits"]:
+            bad.append(("R7", "%s: %s is not clocked by the block's core_clk"
+                        % (b, n)))
+        if with_bank and "clk_gated" in mod["ports"] and \
+                mod["ports"]["clk_gated"]["bits"] != c["connections"]["gated"]:
+            bad.append(("R7", "%s: clk_gated is not %s's `gated` -- the wake "
+                        "checkers would read a tie, not the gate" % (b, n)))
+    for mname, mod in modules.items():
+        if base(mname) == "ccv_clk_gate":
+            continue
+        for n, c in mod["cells"].items():
+            if base(c["type"]) == "ccv_ctech_icg":
+                bad.append(("R7", "%s: a ctech ICG (%s) outside ccv_clk_gate"
+                            % (base(mname), n)))
+    return bad, len(blocks)
+
+
 def check_reuse(modules, reuse):
     """HARD REUSE (params/links.json "hard_reuse"), from the netlist, not the
     generator: every instance of such a type is a template used as it is --
@@ -262,6 +307,7 @@ def check_reuse(modules, reuse):
 
 WRAP_FET = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_fet_w.sv")
 WRAP_LANE = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_lane_w.sv")
+STUB_FET = os.path.join(ROOT, "rtl", "top", "stubs", "ccv_fet.sv")
 MUTATIONS = {
     # (rule it must break, file it edits, the edit)
     "gate": ("R1", TOP, lambda t: t.replace(
@@ -279,6 +325,11 @@ MUTATIONS = {
         "endmodule", "  wire fet_gclk = core_clk & rst_n;\nendmodule", 1)),
     "wraptie": ("R2", WRAP_FET, lambda t: t.replace(
         "    .rst_n(rst_n),", "    .rst_n(1'b1),", 1)),
+    # R7: the observation must be the gate's, and the gate on core_clk.
+    "gatetie": ("R7", STUB_FET, lambda t: t.replace(
+        "assign clk_gated = cg_gated;", "assign clk_gated = 1'b0;", 1)),
+    "gateclk": ("R7", STUB_FET, lambda t: t.replace(
+        ".clk        (core_clk),", ".clk        (rst_n),", 1)),
     # Hard reuse: a lane template duplicated under another name (not minimal),
     # and a lane given a parameter (not one hard macro).
     "dupreuse": ("R6", TOP, lambda t: t.replace(
@@ -298,6 +349,10 @@ def sources(override=None, extra=()):
     d = os.path.join(ROOT, "rtl", "top")
     files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
     files.append(os.path.join(ROOT, "rtl", "phys", "ccv_seq_rpt.sv"))
+    # Each block's clock gate and its ctech cell: inside the block, so no
+    # rule here applies to them, but the block does not elaborate without.
+    files.append(os.path.join(ROOT, "rtl", "clk", "ccv_clk_gate.sv"))
+    files += ccv_ctech.files()
     files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
     files.append(TOP)
     for old, new in (override or {}).items():
@@ -336,12 +391,16 @@ def main():
             bad, nw, nwrap, has_bank = check_all(mods, bool(defs))
             rb, reused = check_reuse(mods, hard_reuse())
             bad += rb
+            gb, ngated = check_gates(mods, bool(defs))
+            bad += gb
             if bad:
                 fails.append((label, bad))
             else:
                 print("  %s: %d wrappers (%d modules), each a block and its "
                       "repeaters, nothing else%s"
                       % (label, nw, nwrap, ", plus the checker bank" if has_bank else ""))
+                print("  %s: %d block types, each with its one clock gate%s"
+                      % (label, ngated, ", reporting clk_gated" if defs else ""))
                 for t, (nt, ni) in sorted(reused.items()):
                     print("  %s: hard reuse, %d template(s) for %d instances"
                           % (t, nt, ni))

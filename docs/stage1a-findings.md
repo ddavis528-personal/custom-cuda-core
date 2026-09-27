@@ -653,6 +653,30 @@ direct ones included.
 **Rule:** never write `$isunknown` in a property Yosys may read; use
 `` `CCV_KNOWN ``.
 
+## F-21 — a multiclock model whose clock toggles every step cannot show a glitch
+
+Found 2026-09-27, proving the block clock gate
+(`test/formal/fv_clk_gate.sv`) on Yosys's multiclock model (`clk2fflogic`),
+where the clock is an ordinary input and time is global steps. With the
+clock assumed to toggle on every step, the gated-clock properties (gclk rises
+only when clk rises, falls only when it falls, and is never high while clk is
+low) PROVED on an ICG with no latch at all, `gclk = clk & en`, and on one
+whose latch was open in the high phase.
+
+**Mechanism.** If clk changes on every step, every input change coincides
+with a clock edge. Nothing can move in the MIDDLE of a phase, which is the
+only place an AND gate glitches. The runt pulse was not ruled out; it was
+unrepresentable.
+
+**Decision.** Each phase lasts one step or two, freely: the clock is assumed
+never to hold for more than two steps, not to toggle on every one. The same
+properties then fail on both mutants at the first frame they can, and still
+prove on the real latch-based ICG. `tools/check-formal.sh` keeps both mutants
+as controls.
+
+**Rule:** in a multiclock proof, give every clock phase room for an input to
+change inside it, and keep a mutant that only a mid-phase change exposes.
+
 ## What this settles for Stage 1b
 
 1. Properties are written through macros. Always. Lint enforces it.

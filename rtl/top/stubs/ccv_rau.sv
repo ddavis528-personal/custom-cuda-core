@@ -9,8 +9,8 @@
 // credit is owed -- so the top elaborates and simulates with every
 // checker quiet. Common-port handshakes (kill, CSR) have no
 // specified semantics yet, so outputs sit at their inactive value.
-// A stub holds no state, so it has no clock gate: clk_gated reports
-// the gate open. Real RTL gates core_clk inside itself (CCV-L22).
+// It has its clock gate all the same, tied open, and clk_gated is
+// that gate's own report (docs/clock-gate.md).
 //
 // Replaced at 4c by real RTL with the SAME module name, including
 // the same generated port list; the swap is a file-list change.
@@ -21,14 +21,30 @@
 module ccv_rau (
   `include "ccv_rau_ports.svh"
 );
+  // The block's clock gate: ctech ICG, sleep policy, wake path. Tied
+  // never to close -- cg_override -- until the block has idle logic;
+  // then these ties become its quiesced, stalled and wake. quiesced:
+  // a stub holds nothing, so it is always quiesced.
+  logic gclk, cg_gated;
+  ccv_clk_gate u_cg (
+    .clk        (core_clk),
+    .rst_n      (rst_n),
+    .quiesced   (1'b1),
+    .stalled    (1'b0),
+    .wake       (1'b0),
+    .cg_override(1'b1),
+    .te         (1'b0),
+    .gclk       (gclk),
+    .gated      (cg_gated)
+  );
+`ifdef CCV_CHECK
+  assign clk_gated = cg_gated;
+`endif
   assign kill_valid = '0;
   assign kill_warp_mask = '0;
   assign kill_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
-`ifdef CCV_CHECK
-  assign clk_gated = '0;
-`endif
   assign rau_fet_launch_valid = '0;
   assign rau_fet_launch_payload = '0;
   assign rau_fet_launch_wake = '0;

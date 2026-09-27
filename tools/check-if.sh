@@ -271,10 +271,13 @@ done
 # of "gated" written in the checker's header: an earlier wake does not
 # answer a later sleep, a receiver woken by something else is exempt once it
 # has run LAT cycles and not before, and a second sleep needs a second wake.
+# rx_early is the receiver's half: asleep again before LAT after a wake,
+# which only wake_keeps_rx may report.
 # Two-state is enough here, so both simulators must agree on every case.
 WAKE_CASES="wake_t3:wake_leads_valid wake_t4:- no_wake:wake_leads_valid
   awake:- early_wake:wake_leads_valid other_wake:-
-  other_wake_short:wake_leads_valid resleep:wake_leads_valid"
+  other_wake_short:wake_leads_valid resleep:wake_leads_valid
+  rx_early:wake_keeps_rx"
 WAKE_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_wake_checker.sv test/neg/tb_wake_neg.sv"
 wv=0; wi=0
 command -v verilator >/dev/null 2>&1 &&
@@ -311,7 +314,7 @@ for pair in $WAKE_CASES; do
   else say "wake: $cs stays quiet at the limit" "PASS"
   fi
 done
-# The same eight cases, judged by a checker watching two stages upstream of
+# The same nine cases, judged by a checker watching two stages upstream of
 # the receiver (ARRIVE = 2; a repeated link, params/links.json). And the
 # control: that early view judged as if at the receiver, where other_wake --
 # legal -- must fire.
@@ -323,7 +326,7 @@ if [ "$wi" = 1 ]; then
     got=$(fired "$TMP/wake_a_$cs.log")
     [ "$got" = "$want" ] || why="$why $cs: {${got:-nothing}}"
   done
-  [ -z "$why" ] && say "wake: all 8 cases judged 2 stages upstream" "PASS" ||
+  [ -z "$why" ] && say "wake: all 9 cases judged 2 stages upstream" "PASS" ||
     bad "wake checker with ARRIVE" "${why# }"
   vvp "$TMP/wake_iv.out" +case=other_wake +arrive_wrong >"$TMP/wake_aw.log" 2>&1
   [ "$(fired "$TMP/wake_aw.log")" = "wake_leads_valid" ] &&

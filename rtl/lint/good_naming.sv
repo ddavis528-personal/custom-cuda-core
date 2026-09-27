@@ -24,9 +24,17 @@ module good_naming #(
   // The block gates the incoming clock as its first act, and everything
   // sequential below runs on the gated copy.
   logic ref_core_clk;
-  logic clk_en_cy00h;
-  assign clk_en_cy00h = 1'b1;
-  assign ref_core_clk = core_clk & clk_en_cy00h;
+  ccv_clk_gate u_cg (
+    .clk        (core_clk),
+    .rst_n      (!ref_rst_r00h),
+    .quiesced   (1'b0),
+    .stalled    (1'b0),
+    .wake       (1'b0),
+    .cg_override(1'b1),
+    .te         (1'b0),
+    .gclk       (ref_core_clk),
+    .gated      ()
+  );
 
   logic [3:0] mid_cy01h;
 

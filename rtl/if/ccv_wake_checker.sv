@@ -17,7 +17,17 @@
 //     something else, and is up by any account.
 // A wake that arrived while the receiver was still awake does not count
 // toward a sleep that begins after it: nothing obliges a receiver to stay
-// awake because a wake passed it by.
+// awake because a wake passed it by -- beyond the one cycle below.
+//
+// THE RECEIVER'S HALF, wake_keeps_rx. The reading above excuses a receiver
+// that sleeps again, and charges the sender for the valid that meets it,
+// however the sender timed its wake. So the sender's rule is sufficient only
+// if a receiver keeps a promise: a wake at T means the receiver is running
+// at T + LAT -- the earliest cycle the sender may rely on it. Stated here
+// with its own role, RX_MODE, because it binds the other side: the sender
+// is checked by MODE, the receiver by RX_MODE. ccv_clk_gate keeps it with
+// cycles to spare (a wake opens the next edge, and WAKE_HOLD >= LAT more);
+// tools/check-formal.sh proves the gate against this property.
 //
 // ARRIVE: where the checker watches a repeated link (params/links.json), the
 // valid and the wake still have ARRIVE stages to go before the receiver sees
@@ -36,6 +46,7 @@
 
 module ccv_wake_checker #(
   parameter int MODE = `CCV_MODE_ASSERT,
+  parameter int RX_MODE = `CCV_MODE_ASSERT,
   parameter int LAT  = ccv_params_pkg::CCV_WAKE_LAT,
   parameter int ARRIVE = 0
 ) (
@@ -107,9 +118,18 @@ module ccv_wake_checker #(
 
   `CCV_CONTRACT_M(MODE, wake_leads_valid, !(valid && owed_now))
 
+  // The receiver's half: running LAT cycles after any wake it was sent.
+  logic [LAT-1:0] wake_ago;   // [k]: a wake k+1 cycles ago
+  always_ff @(posedge clk) begin
+    if (!rst_n) wake_ago <= '0;
+    else        wake_ago <= LAT'({wake_ago, wake});
+  end
+  `CCV_CONTRACT_M(RX_MODE, wake_keeps_rx, !(wake_ago[LAT-1] && rx_gated))
+
   // -- satisfiability (§3.3): a sleep is answered by this channel's wake --
   `CCV_IF_SAT(slept,        sleep_start)
   `CCV_IF_SAT(woken_in_time, valid && woken_q && age_q >= lat)
+  `CCV_IF_SAT(rx_up_on_time, wake_ago[LAT-1] && !rx_gated)
 
 endmodule
 

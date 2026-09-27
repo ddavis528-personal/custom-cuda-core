@@ -310,12 +310,15 @@ the C++ skeleton's block swap.
   top used to build `<blk>_core_clk = core_clk & ~<blk>_sleep_ok` itself.
   That gate is gone, and `sleep_ok` and `clk_free` are gone from every block's
   ports.
+- **The gate itself** is `ccv_clk_gate` (`docs/clock-gate.md`), in every
+  stub and every shim from the start, tied never to close (`cg_override`
+  high) until a block has idle logic to drive it.
 - **The bank's view of the gate:** under `CCV_CHECK`, each block's
-  `clk_gated` observation port tells the checker bank whether its gate is
-  closed.
+  `clk_gated` observation port is that gate's own `gated`: whether the coming
+  edge will reach the block.
 - **Enforcement:** `tools/check-top-pure.py` holds the elaborated netlist to
-  the rule, and five impure copies must be refused, the old clock gate among
-  them.
+  the rule, including R7 (each block's one gate, and `clk_gated` its report),
+  and eleven impure copies must be refused, the old clock gate among them.
 - **What's still open:** full abutment, with every net between neighbours,
   is Q-42.
 
@@ -449,9 +452,11 @@ how they report.
   the SV side, only a file list. On the host side, the finish rule's
   in-flight count reads both ends' `Sender`/`Receiver` counters, and an RTL
   end has none. The first RTL block brings a finish rule read off the wires.
-- **`_wake` is not sampled, and a shim has no clock gate.** No C++ block
-  sleeps (Q-33), so a shim runs on `core_clk`, drives wake low, and reports
-  its gate open on `clk_gated`, as a stub does.
+- **`_wake` is not sampled, and a shim's gate never closes.** No C++ block
+  sleeps (Q-33), so a shim drives wake low and holds its `ccv_clk_gate` open
+  with `cg_override`, as a stub does. It still runs on that gate's `gclk`,
+  through the ctech ICG, and the run matches the C++ skeleton cycle for
+  cycle.
 
 ## Known limitations
 

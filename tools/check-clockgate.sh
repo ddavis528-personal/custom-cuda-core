@@ -39,10 +39,10 @@ SV
 
 stat_of() {
   yosys -p "
-    # -lib reads the real cell as a blackbox, so its ports are checked
-    # against synth/ccv_icg.v rather than against a copy that can drift, and
+    # -lib reads the ctech cell as a blackbox, so its ports are checked
+    # against rtl/ctech/ rather than against a copy that can drift, and
     # opt_merge can still share it.
-    read_verilog -lib synth/ccv_icg.v
+    read_verilog -lib -sv rtl/ctech/sim/ccv_ctech_icg.sv
     read_verilog -sv $TMP/dut.sv
     synth -top gated_reg
     $1
@@ -63,7 +63,7 @@ fi
 gated=$(stat_of "techmap -map synth/ccv_clockgate_map.v
     opt_merge -share_all
     opt_clean")
-icg=$(echo "$gated" | grep -oP '\s+ccv_icg\s+\K\d+' || echo 0)
+icg=$(echo "$gated" | grep -oP '\s+ccv_ctech_icg\s+\K\d+' || echo 0)
 ff=$(echo "$gated" | grep -oP '\s+\$_DFF_P_\s+\K\d+' || echo 0)
 
 if [ "$ff" -ne 8 ]; then
@@ -74,7 +74,7 @@ elif [ "$icg" -gt 1 ]; then
   bad "one ICG shared across the register" \
       "got $icg gates for 8 flops -- per-bit gating costs area and clock load and saves nothing. Is opt_merge -share_all still running?"
 else
-  bad "ICG substituted" "no ccv_icg in the netlist"
+  bad "ICG substituted" "no ccv_ctech_icg in the netlist"
 fi
 
 # 3. Does the installed Yosys have a real pass yet? Recorded rather than

@@ -11,6 +11,10 @@
 // The receiver here is a model with a fixed wake latency: it gates at S and
 // ungates LAT cycles after a wake -- except where a case says a DIFFERENT
 // wake (another channel's) brought it up, which this checker cannot see.
+// Every case's receiver keeps its own half (running LAT cycles after a
+// wake: wake_keeps_rx) except rx_early, which exists to break it; so
+// early_wake's wake comes LAT + 1 before the sleep, a wake the receiver
+// has honoured before it gates.
 //
 // +arrive runs every case through a checker watching a repeated link
 // upstream of the receiver (ARRIVE = 2): it sees valid and wake two cycles
@@ -51,10 +55,11 @@ module tb;
     up = 1 << 30;      // when the receiver's clock is running again
     if (cname == "wake_t3")               begin wk = T - 3; up = wk + LAT; end
     else if (cname == "wake_t4")          begin wk = T - 4; up = wk + LAT; end
-    else if (cname == "early_wake")       begin wk = S - 2; end
+    else if (cname == "early_wake")       begin wk = S - LAT - 1; end
     else if (cname == "other_wake")       begin up = T - LAT; end
     else if (cname == "other_wake_short") begin up = T - LAT + 1; end
     else if (cname == "resleep")          begin wk = S + 1; end
+    else if (cname == "rx_early")         begin wk = S + 1; end
 
     $display("NEG_BEGIN %s LAT=%0d", cname, LAT);
     for (c = 0; c <= T + 3; c++) begin
@@ -63,11 +68,14 @@ module tb;
       // S + 8 with no second wake. Everything else gates at S until `up`.
       if (cname == "awake")        g = 1'b0;
       else if (cname == "resleep") g = (c >= S && c < wk + LAT) || (c >= S + 8);
+      // rx_early: the receiver breaks ITS half -- up at the wake, asleep
+      // again before LAT has passed. No valid follows; only it may fire.
+      else if (cname == "rx_early") g = (c >= S && c <= wk) || (c >= wk + 2);
       else                         g = (c >= S && c < up);
       w = (c == wk);
-      v = (c == T);
+      v = (c == T) && cname != "rx_early";
       w_e = (c + A == wk);
-      v_e = (c + A == T);
+      v_e = (c + A == T) && cname != "rx_early";
       @(posedge clk);
       #1;
     end

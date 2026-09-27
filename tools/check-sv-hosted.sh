@@ -43,7 +43,8 @@ if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
 fi
 
 CHK="rtl/if/ccv_credit_checker.sv rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv rtl/if/ccv_wake_checker.sv rtl/generated/ccv_skel_checkers.sv"
-SV="rtl/ccv_assert_pkg.sv $CHK rtl/top/dpi/*.sv rtl/phys/ccv_seq_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_core_top.sv test/top/tb_sv_hosted.sv"
+GATE="rtl/clk/ccv_clk_gate.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
+SV="rtl/ccv_assert_pkg.sv $CHK $GATE rtl/top/dpi/*.sv rtl/phys/ccv_seq_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_core_top.sv test/top/tb_sv_hosted.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
 
 # -- lint and build ----------------------------------------------------------

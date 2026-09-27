@@ -277,6 +277,34 @@ def gen_ports(btype, P):
     return "\n".join(L) + "\n"
 
 
+def gate_lines(quiesced, why):
+    """The block's clock gate (rtl/clk/ccv_clk_gate.sv), tied never to close.
+    Every block has one from the start, so the hierarchy a real block fills
+    in is already the one the top was checked with; `gclk` is what a real
+    block clocks on (CCV-L22)."""
+    return [
+        "  // The block's clock gate: ctech ICG, sleep policy, wake path. Tied",
+        "  // never to close -- cg_override -- until the block has idle logic;",
+        "  // then these ties become its quiesced, stalled and wake. quiesced:",
+        "  // %s." % why,
+        "  logic gclk, cg_gated;",
+        "  ccv_clk_gate u_cg (",
+        "    .clk        (core_clk),",
+        "    .rst_n      (rst_n),",
+        "    .quiesced   (%s)," % quiesced,
+        "    .stalled    (1'b0),",
+        "    .wake       (1'b0),",
+        "    .cg_override(1'b1),",
+        "    .te         (1'b0),",
+        "    .gclk       (gclk),",
+        "    .gated      (cg_gated)",
+        "  );",
+        "`ifdef CCV_CHECK",
+        "  assign clk_gated = cg_gated;",
+        "`endif",
+    ]
+
+
 def gen_stub(btype, P):
     L = [BANNER]
     L.append("// STUB for ccv_%s: never sends, never consumes, never stalls." % btype)
@@ -284,8 +312,8 @@ def gen_stub(btype, P):
     L.append("// credit is owed -- so the top elaborates and simulates with every")
     L.append("// checker quiet. Common-port handshakes (kill, CSR) have no")
     L.append("// specified semantics yet, so outputs sit at their inactive value.")
-    L.append("// A stub holds no state, so it has no clock gate: clk_gated reports")
-    L.append("// the gate open. Real RTL gates core_clk inside itself (CCV-L22).")
+    L.append("// It has its clock gate all the same, tied open, and clk_gated is")
+    L.append("// that gate's own report (docs/clock-gate.md).")
     L.append("//")
     L.append("// Replaced at 4c by real RTL with the SAME module name, including")
     L.append("// the same generated port list; the swap is a file-list change.")
@@ -296,8 +324,9 @@ def gen_stub(btype, P):
     L.append("module ccv_%s (" % btype)
     L.append("  `include \"ccv_%s_ports.svh\"" % btype)
     L.append(");")
+    L += gate_lines("1'b1", "a stub holds nothing, so it is always quiesced")
     for dr, w, name, tr, _, _t, _m in P:
-        if dr != "output":
+        if dr != "output" or name == "clk_gated":
             continue
         if tr:
             L.append("`ifdef %s" % tr)
@@ -939,6 +968,8 @@ def gen_shim(btype, P, own_ports=False):
         L.append("module ccv_%s (" % btype)
         L.append("  `include \"ccv_%s_ports.svh\"" % btype)
         L.append(");")
+    if not ext:
+        L += gate_lines("1'b0", "a C++ block's idleness is not visible here")
     L.append("`ifndef CCV_TRACE")
     L.append("  // Refused at elaboration: without _tid there is no identity to carry.")
     L.append("  ccv_sv_hosted_needs_CCV_TRACE u_needs_trace ();")
@@ -957,9 +988,14 @@ def gen_shim(btype, P, own_ports=False):
     L.append("    h = ccv_dpi_register($sformatf(\"%m\"));")
     L.append("    skew = ccv_dpi_skew(h);")
     L.append("  end")
-    L.append("  // No clock gate: a C++ block never sleeps (Q-33), so it runs on")
-    L.append("  // core_clk, which is what a real block's gate would pass when open.")
-    L.append("  always @(posedge core_clk) begin")
+    if ext:
+        L.append("  // The testbench, not a block: no gate, and it never sleeps.")
+        L.append("  always @(posedge core_clk) begin")
+    else:
+        L.append("  // On the gate's clock, as a real block runs. No C++ block sleeps")
+        L.append("  // yet (Q-33), so the gate is tied open and gclk is core_clk's")
+        L.append("  // edges through the ctech ICG.")
+        L.append("  always @(posedge gclk) begin")
     L.append("    ccv_dpi_cycle_%s(h, cyc, !rst_n, {" % btype)
     names = [p[2] for p in reversed(S)]
     for k in range(0, len(names), 3):
@@ -980,6 +1016,8 @@ def gen_shim(btype, P, own_ports=False):
     for dr, w, name, tr, _, _t, m in P:
         if dr != "output" or (m is not None and m[3] != "wake"):
             continue
+        if name == "clk_gated" and not ext:
+            continue            # the gate's own report
         if tr:
             L.append("`ifdef %s" % tr)
         if w > 8192:

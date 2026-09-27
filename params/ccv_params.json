@@ -366,8 +366,22 @@
       "name": "CCV_WAKE_LAT",
       "value": 4,
       "status": "arch",
-      "doc": "Wake latency: round trip plus 2.",
+      "doc": "Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_wake_checker). The receiver's side is ccv_clk_gate: a wake opens the gate for the very next edge and holds it open for WAKE_HOLD = this many edges after, so a valid that follows the wake by exactly this much is still captured.",
       "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_CG_HYST_QUIESCE",
+      "value": 8,
+      "status": "tunable",
+      "decided_at": "power analysis, with the first real block",
+      "doc": "Block clock gate (ccv_clk_gate): consecutive quiesced cycles before the gate closes. Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. Each block may override it on its own instance."
+    },
+    {
+      "name": "CCV_CG_HYST_STALL",
+      "value": 16,
+      "status": "tunable",
+      "decided_at": "power analysis, with the first real block",
+      "doc": "Block clock gate: consecutive stalled cycles before the gate closes. Longer than the quiesce hysteresis by default, because a stall usually ends on its own within a few cycles and a stalled block holds work that sleeping only delays. Placeholder, as CCV_CG_HYST_QUIESCE."
     },
     {
       "name": "CCV_P_ROB_DEPTH",
