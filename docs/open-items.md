@@ -35,7 +35,7 @@ review can say "Q-21" instead of "item 4 of the latest five".
 The summary is checked against the table, so it can't drift from it.
 
 - **Awaiting confirmation:** (none)
-- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-41, Q-42, Q-45
+- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-41, Q-42, Q-45, Q-50, Q-51
 - **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-35, Q-36, Q-37, Q-46, Q-48
 
 The one with a deadline is Q-18, before floorplan.
@@ -101,6 +101,8 @@ The one with a deadline is Q-18, before floorplan.
 | Q-47 CSR control of the clock gate: override and hysteresis | clock gate | — | **closed (2026-09-27): both are CSRs.** `ccv_clk_gate` takes `cg_override` and both thresholds, `hyst_quiesce` and `hyst_stall` (`CCV_CG_HYST_W` = 6 bits), as inputs, for the block's CSR decode to drive. `CCV_CG_HYST_QUIESCE` and `CCV_CG_HYST_STALL` are now the CSRs' reset values, not parameters of the gate. A threshold of 0 counts as 1. Until a block decodes its CSRs, it ties them to those reset values and the override high. Per-block or global override is the CSR map's decision, when it is written |
 | Q-48 The target process library | clock gate | synthesis | **scheduled — after Stage 4 (decided 2026-09-27).** The process is chosen after Stage 4. The ctech layer takes a library as a directory of views (`rtl/ctech/<library>/`). sky130 and ASAP7 exist to prove the mechanism: one ICG in synthesis, no latch, ports checked, and sky130's cell simulated against the behavioural view. The real library needs its own views, and its ICG's clock-gating checks in timing analysis |
 | Q-49 The wake path into the ICG enable: timing budget | clock gate | — | **closed (2026-09-27): the wake is registered inside `ccv_clk_gate`.** No path from another block reaches a clock gate's enable: a wake ends at a flop in the receiving gate, and every input of the enable is a flop in that block. A wake in cycle T opens the edge that ends T + 1 (it opened the edge ending T before), and the gate holds open through T + `CCV_WAKE_LAT` (`WAKE_HOLD` = `CCV_WAKE_LAT` − 1 after the register), so Q-33's budget of 4 absorbs the extra cycle. Proved: `wake_second_edge`, and a mutant with the wake back on the enable path, unregistered, must fail the cycle model |
+| Q-50 The host launch path: what hands RAU a grid to launch? | per-block spec seed | RAU / CRU sessions | **open.** RAU owns CTA launch, and nothing delivers grid descriptors to it: `ccv_cru_rau_cfg` carries policy, `launch_enable` and the host's `kill_grid`, and no channel carries a grid's dimensions, entry point, argument block or scratchpad and barrier needs. Also open: whether `kill_grid` names a grid RAU was ever told about. The S1 RAU launches its one warp from the oracle, so nothing has exercised a launch. Needs a descriptor channel (CRU→RAU, or a host port at the top boundary) and a grid table in RAU; `CCV_L_W_GRID_SEL` sizes the selector meanwhile. Raised by the per-block spec seed (RAU tab) |
+| Q-51 A register-file port grant on `ccv_ooe_rcu_issue`? | per-block spec seed | RCU / OOE sessions | **open.** The per-block spec seed (RCU tab) says the interface carries a port-grant signal, tied off today, so that an SRAM register file later does not rewrite the OOE contract. The schema has no such signal on any channel. Either it is added now, as a backward signal on `ccv_ooe_rcu_issue` (tied off, and kept by lint), or the flop-array assumption is recorded as a Stage 4 exit condition for RCU. Decide at the RCU session |
 
 ## Where the old numbers went
 
