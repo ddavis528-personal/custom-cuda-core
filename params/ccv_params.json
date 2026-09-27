@@ -168,10 +168,10 @@
     },
     {
       "name": "CCV_MIGRATION_CYCLES",
-      "value": 16,
+      "value": 17,
       "status": "arch",
       "source": "grill-me 2026-09-23",
-      "doc": "Migration transfer, 2 KB at 1024 bits, each way. At one swap per ~125 cycles this uses the single migration path at about 25 percent."
+      "doc": "Migration transfer, each way: 16 GPR rows of 1024 bits (2 KB) plus one row of predicate and divergence state (ceil(CCV_L_W_PRED_STATE / CCV_W_DATA), one today), one row per cycle. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (arch open A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent."
     },
     {
       "name": "CCV_NGD_BUDGET",

@@ -262,7 +262,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_fet_mlc_ifill, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(58)) u_rpt_fet_mlc_ifill (
+  ccv_seq_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(50)) u_rpt_fet_mlc_ifill (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_mlc_ifill_valid}), .src_payload({b_fet_mlc_ifill_payload}),
     .src_wake(b_fet_mlc_ifill_wake), .src_credit({b_fet_mlc_ifill_credit}), .src_stall({b_fet_mlc_ifill_stall}),
@@ -295,7 +295,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_fet_miu_itlb_req, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(72)) u_rpt_fet_miu_itlb_req (
+  ccv_seq_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_miu_itlb_req_valid}), .src_payload({b_fet_miu_itlb_req_payload}),
     .src_wake(b_fet_miu_itlb_req_wake), .src_credit({b_fet_miu_itlb_req_credit}), .src_stall({b_fet_miu_itlb_req_stall}),
@@ -317,7 +317,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_fet_pca_mig, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(261)) u_rpt_fet_pca_mig (
+  ccv_seq_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_fet_pca_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_pca_mig_valid}), .src_payload({b_fet_pca_mig_payload}),
     .src_wake(b_fet_pca_mig_wake), .src_credit({b_fet_pca_mig_credit}), .src_stall({b_fet_pca_mig_stall}),
@@ -328,7 +328,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_pca_fet_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(261)) u_rpt_pca_fet_mig (
+  ccv_seq_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_pca_fet_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({pca_fet_mig_valid}), .src_payload({pca_fet_mig_payload}),
     .src_wake(pca_fet_mig_wake), .src_credit({pca_fet_mig_credit}), .src_stall({pca_fet_mig_stall}),

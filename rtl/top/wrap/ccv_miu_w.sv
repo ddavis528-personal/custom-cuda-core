@@ -554,7 +554,7 @@ module ccv_miu_w #(
 `endif
   );
   // ccv_dcu_miu_rsp, destination end
-  ccv_seq_rpt #(.STAGES(RPT_DCU_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1030)) u_rpt_dcu_miu_rsp (
+  ccv_seq_rpt #(.STAGES(RPT_DCU_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1031)) u_rpt_dcu_miu_rsp (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({dcu_miu_rsp_s3_valid, dcu_miu_rsp_s2_valid, dcu_miu_rsp_s1_valid, dcu_miu_rsp_s0_valid}), .src_payload({dcu_miu_rsp_s3_payload, dcu_miu_rsp_s2_payload, dcu_miu_rsp_s1_payload, dcu_miu_rsp_s0_payload}),
     .src_wake(dcu_miu_rsp_wake), .src_credit({dcu_miu_rsp_s3_credit, dcu_miu_rsp_s2_credit, dcu_miu_rsp_s1_credit, dcu_miu_rsp_s0_credit}), .src_stall({dcu_miu_rsp_s3_stall, dcu_miu_rsp_s2_stall, dcu_miu_rsp_s1_stall, dcu_miu_rsp_s0_stall}),
@@ -576,7 +576,7 @@ module ccv_miu_w #(
 `endif
   );
   // ccv_fet_miu_itlb_req, destination end
-  ccv_seq_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(72)) u_rpt_fet_miu_itlb_req (
+  ccv_seq_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({fet_miu_itlb_req_valid}), .src_payload({fet_miu_itlb_req_payload}),
     .src_wake(fet_miu_itlb_req_wake), .src_credit({fet_miu_itlb_req_credit}), .src_stall({fet_miu_itlb_req_stall}),

@@ -10,7 +10,7 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (35754 bits,
+// At each edge of its clock: sample every channel signal (35746 bits,
 // first port at the LSB), let the C++ block run its cycle, register
 // what it drove (16857 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
@@ -53,7 +53,7 @@ module ccv_miu (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_miu(
     input int h, input longint cyc, input bit rst,
-    input bit [35753:0] sample, output bit [16856:0] drive);
+    input bit [35745:0] sample, output bit [16856:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register

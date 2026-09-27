@@ -1328,6 +1328,7 @@ private:
     const OpInfo *op;
     unsigned src[3], dst, pguard, pdst;   ///< architectural
     uint32_t imm = 0;
+    unsigned ilen = 0;                     ///< length code: 0/1/2 = 2/4/6 bytes
     bool scale_en = false, pneg = false, pwe = false;
     bool taken = false;
     uint32_t taken_mask = 0;
@@ -1394,7 +1395,10 @@ private:
     Bits r = msgOf(c.ooe_fet);
     put(r, c.ooe_fet, "warp_id", e.warp);
     put(r, c.ooe_fet, "tier1_id", 0);
-    put(r, c.ooe_fet, "target_pc", e.pc + uint64_t(int64_t(int32_t(e.imm))));
+    // imm is the architectural offset, in halfwords from the NEXT
+    // instruction; ilen says how long this one is (arch open A-8).
+    put(r, c.ooe_fet, "target_pc",
+        e.pc + 2 * (e.ilen + 1) + uint64_t(2 * int64_t(int32_t(e.imm))));
     const FieldDesc &gm = field(c.ooe_fet, "group_masks");
     r.set(gm.lsb, 32, e.taken_mask);
     r.set(gm.lsb + 32, 32, 0xffffffffu & ~e.taken_mask);   // issue mask: all 32
@@ -1427,6 +1431,7 @@ private:
     e.src[2] = unsigned(get(u, c.dec_ooe, "src2_arch"));
     e.dst = unsigned(get(u, c.dec_ooe, "dst_arch"));
     e.imm = uint32_t(get(u, c.dec_ooe, "imm"));
+    e.ilen = unsigned(get(u, c.dec_ooe, "ilen"));
     e.scale_en = get(u, c.dec_ooe, "scale_en") != 0;
     e.pneg = get(u, c.dec_ooe, "pred_neg") != 0;
     e.pguard = unsigned(get(u, c.dec_ooe, "pred_guard"));
@@ -1660,10 +1665,10 @@ private:
     };
     uint32_t imm = uint32_t(op->disp_imm >= 0 ? immOf(op->disp_imm) : immOf(op->alu_imm));
     if (op->cls == kBranch) {
-      // A branch's imm is its byte offset from its OWN pc: DEC knows the
-      // length, which the uop does not carry, so it folds it in here
-      // (offsets are halfwords, from the next instruction).
-      imm = uint32_t(int64_t(r->size) + 2 * immOf(0));
+      // A branch's imm is its architectural offset, in halfwords from the
+      // next instruction; the length rides beside it in ilen, and OOE
+      // computes the target (arch open A-8).
+      imm = uint32_t(immOf(0));
     } else if (op->cls == kPredLogic) {
       // Predicate logic executes in RCU (O-33, round 16). Its two source
       // qualifiers ride in imm: [2:0] ps0, [5:3] ps1.
@@ -1672,6 +1677,7 @@ private:
       else imm = (r->quals[0] & 7) | ((r->quals[1] & 7) << 3);
     }
     put(u, c.dec_ooe, "imm", imm);
+    put(u, c.dec_ooe, "ilen", r->size / 2 - 1);
     put(u, c.dec_ooe, "pred_neg", pneg);
     put(u, c.dec_ooe, "scale_en", immOf(op->scale_imm) != 0);
     put(u, c.dec_ooe, "pred_guard", pguard);

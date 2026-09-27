@@ -3762,7 +3762,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_pca_mig, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(2057)) u_rpt_rcu_pca_mig (
+  ccv_seq_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_pca_mig_valid}), .src_payload({b_rcu_pca_mig_payload}),
     .src_wake(b_rcu_pca_mig_wake), .src_credit({b_rcu_pca_mig_credit}), .src_stall({b_rcu_pca_mig_stall}),
@@ -3773,7 +3773,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_pca_rcu_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(2057)) u_rpt_pca_rcu_mig (
+  ccv_seq_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({pca_rcu_mig_valid}), .src_payload({pca_rcu_mig_payload}),
     .src_wake(pca_rcu_mig_wake), .src_credit({pca_rcu_mig_credit}), .src_stall({pca_rcu_mig_stall}),

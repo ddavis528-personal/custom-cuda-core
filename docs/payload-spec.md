@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 8 | 24 |
+| All decided | 9 | 29 |
 | ⚠️ Some provisional | 15 | 61 |
-| ⛔ Some preliminary | 23 | 121 |
-| **Total** | **46** | **206** |
+| ⛔ Some preliminary | 22 | 118 |
+| **Total** | **46** | **208** |
 
 ## What still has to be decided
 
@@ -218,18 +218,6 @@ lane → rcu · rate 4 · execution
 | `lane_fault` | `1` | 1 | literal |
 | **total** | | **34** | |
 
-### `ccv_fet_miu_itlb_req`
-
-Fetch asking the walker for a translation on an ITLB miss.
-
-fet → miu · rate 1 · memory
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `virtual_page` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| **total** | | **72** | |
-
 ### `ccv_ooe_rau_status`
 
 Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU maps warp to grid to mask from tables it owns. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
@@ -270,26 +258,53 @@ ooe → rau · rate 1 · control
 | `arch_state_ready` | `1` | 1 | literal |
 | **total** | | **70** | |
 
+### `ccv_rcu_pca_mig`
+
+Architectural state out to the parked array on demotion, one 1024-bit row per message. Rows 0 to 15 are the 16 GPRs; rows 16 and up carry the warp's predicate and divergence state (CCV_L_W_PRED_STATE bits, ceil(CCV_L_W_PRED_STATE / CCV_W_DATA) rows, one today). Addressed: warp_id and mig_row say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). Predicate state travels once per migration, not beside every GPR row (arch open A-1). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.
+
+rcu → pca · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `mig_row` | `CCV_W_ARCH_REG+1` | 5 | CCV_W_ARCH_REG (isa) |
+| `row_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
+| **total** | | **1034** | |
+
+### `ccv_pca_rcu_mig`
+
+Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate and divergence state), addressed by warp_id and mig_row so RCU writes it without state. The PC groups and their lane masks return to FET on ccv_pca_fet_mig.
+
+pca → rcu · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `mig_row` | `CCV_W_ARCH_REG+1` | 5 | CCV_W_ARCH_REG (isa) |
+| `row_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
+| **total** | | **1034** | |
+
 ### `ccv_pca_rau_mig_done`
 
-A demotion has landed: PCA holds every GPR row from RCU and the PC groups from FET for warp_id. RAU waits for this before reallocating the warp's slot. One ack from the block that sees both halves arrive, rather than one from each sender.
+A migration has landed, either way. direction 0: a demotion, PCA holds every row from RCU and the PC groups from FET for warp_id, and RAU may reallocate the warp's slot. direction 1: a restore, PCA has sent every row to RCU and the PC groups to FET, and RAU may activate the warp. One ack from the block that sees both halves, rather than one from each sender (arch open A-3; the restore COMMAND is Q-39).
 
 pca → rau · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| **total** | | **5** | |
+| `direction` | `1` | 1 | literal |
+| **total** | | **6** | |
 
 ### `ccv_syu_ooe_rel`
 
-The set of warps a barrier released.
+The set of warps a barrier released: one bit per warp context, tier-1 and parked, sized like kill_warp_mask and not by the lane count, which is 32 by coincidence (arch open A-12).
 
 syu → ooe · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `warp_mask_released` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `warp_mask_released` | `CCV_TIER1_WARPS+CCV_PARKED_WARPS` | 32 | CCV_TIER1_WARPS (arch); CCV_PARKED_WARPS (arch) |
 | `barrier_id` | `CCV_W_BAR_ID` | 4 | CCV_W_BAR_ID (arch) |
 | **total** | | **36** | |
 
@@ -385,7 +400,7 @@ spm → miu · rate 4 · memory
 
 ### `ccv_dcu_miu_rsp`
 
-Cache read data, hit indication and whether ownership was granted.
+Cache read data, hit indication and whether ownership was granted, and mlc_miss: the fill that served this access missed in MLC (ccv_mlc_dcu_rsp.miss, passed through). MIU reports it on ccv_miu_ooe_cmpl, since an MLC miss is the primary demotion trigger; without this field the signal stopped at DCU (arch open A-9).
 
 dcu → miu · rate 4 · memory
 
@@ -395,7 +410,8 @@ dcu → miu · rate 4 · memory
 | `read_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | `hit` | `1` | 1 | literal |
 | `ownership_granted` | `1` | 1 | literal |
-| **total** | | **1030** | ⚠️ 4 provisional |
+| `mlc_miss` | `1` | 1 | literal |
+| **total** | | **1031** | ⚠️ 4 provisional |
 
 ### `ccv_mlc_dcu_rsp`
 
@@ -439,7 +455,7 @@ dcu → mlc · rate 1 · memory
 
 ### `ccv_fet_mlc_ifill`
 
-Instruction cache miss straight to MLC, bypassing the D-cache.
+Instruction cache miss straight to MLC, bypassing the D-cache. Physically addressed, so no ASID (arch open A-5).
 
 fet → mlc · rate 1 · memory
 
@@ -447,8 +463,7 @@ fet → mlc · rate 1 · memory
 |---|---|---|---|
 | `req_id` | `CCV_P_W_REQ_FET_MLC` | 2 ⚠️ | CCV_P_W_REQ_FET_MLC (provisional) |
 | `phys_addr` | `CCV_P_W_PA` | 48 ⚠️ | CCV_P_W_PA (provisional) |
-| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
-| **total** | | **58** | ⚠️ 50 provisional |
+| **total** | | **50** | ⚠️ 50 provisional |
 
 ### `ccv_mlc_fet_ifill_rsp`
 
@@ -510,7 +525,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename.
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8).
 
 dec → ooe · rate 6 · instruction
 
@@ -528,9 +543,10 @@ dec → ooe · rate 6 · instruction
 | `pred_dst` | `CCV_W_ARCH_PRED` | 2 | CCV_W_ARCH_PRED (isa) |
 | `pred_we` | `1` | 1 | literal |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
+| `ilen` | `CCV_W_ILEN` | 2 | CCV_W_ILEN (isa) |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **137** | ⛔ 12 preliminary, ⚠️ 32 provisional |
+| **total** | | **139** | ⛔ 12 preliminary, ⚠️ 32 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
@@ -610,7 +626,7 @@ ooe → fet · rate 1 · instruction
 
 ### `ccv_miu_spm_req`
 
-Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM.
+Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).
 
 miu → spm · rate 4 · memory
 
@@ -666,6 +682,18 @@ miu → fet · rate 1 · memory
 | `itlb_refill` | `CCV_L_W_ITLB_ENTRY` | 64 ⛔ | CCV_L_W_ITLB_ENTRY (preliminary, churn low) |
 | **total** | | **64** | ⛔ 64 preliminary |
 
+### `ccv_fet_miu_itlb_req`
+
+Fetch asking the walker for a translation on an ITLB miss: the virtual PAGE number (CCV_W_VA - CCV_L_PAGE_SHIFT bits), so no meaningless low bits can disagree with the TLB tag (arch open A-4).
+
+fet → miu · rate 1 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `virtual_page` | `CCV_W_VA-CCV_L_PAGE_SHIFT` | 52 ⛔ | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (preliminary, churn low) |
+| `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
+| **total** | | **60** | ⛔ 52 preliminary |
+
 ### `ccv_mlc_exb_req`
 
 The protocol-neutral outbound request. Everything the core knows about coherence is expressed here.
@@ -685,7 +713,7 @@ mlc → exb · rate 1 · memory
 
 ### `ccv_exb_mlc_rsp`
 
-Protocol-neutral inbound: fills and grants, matched to their request by req_id, and probes, which carry their line address and what they ask (probe_type != 0; req_id is then meaningless).
+Protocol-neutral inbound: fills and grants, matched to their request by req_id, and probes, which carry their line address and what they ask. probe_type is the discriminator: 0 is a response; non-zero is a probe, on which req_id, line_data, ownership_grant and miss are reserved and zero, so an overloaded field is checkable rather than 'meaningless' (arch open A-10).
 
 exb → mlc · rate 1 · memory
 
@@ -754,37 +782,9 @@ rau → rcu · rate 1 · control
 | `bank_select` | `CCV_L_W_PCA_BANK` | 3 ⛔ | CCV_L_W_PCA_BANK (preliminary, churn med) |
 | **total** | | **9** | ⛔ 3 preliminary |
 
-### `ccv_rcu_pca_mig`
-
-Architectural register and predicate state out to the parked array on demotion, one GPR row per message. Addressed: warp_id and row_idx say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.
-
-rcu → pca · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `row_idx` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
-| `gpr_row` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| `pred_state` | `CCV_L_W_PRED_STATE` | 1024 ⛔ | CCV_L_W_PRED_STATE (preliminary, churn **HIGH**) |
-| **total** | | **2057** | ⛔ 1024 preliminary |
-
-### `ccv_pca_rcu_mig`
-
-Architectural register and predicate state back in on restore, one GPR row per message, addressed by warp_id and row_idx so RCU writes it without state. The PC groups return to FET on ccv_pca_fet_mig.
-
-pca → rcu · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `row_idx` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
-| `gpr_row` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| `pred_state` | `CCV_L_W_PRED_STATE` | 1024 ⛔ | CCV_L_W_PRED_STATE (preliminary, churn **HIGH**) |
-| **total** | | **2057** | ⛔ 1024 preliminary |
-
 ### `ccv_fet_pca_mig`
 
-A demoted warp's PC groups, out to the parked array. FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer and waits for both before reallocating the slot.
+A demoted warp's PC groups, out to the parked array: each group's PC and its lane mask, which together are the warp's divergence state in FET (the same group_masks ccv_ooe_fet_redirect updates; arch open A-2). FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer and waits for both before reallocating the slot.
 
 fet → pca · rate 1 · control
 
@@ -792,11 +792,12 @@ fet → pca · rate 1 · control
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `pcs` | `CCV_L_PC_GROUPS*CCV_W_VA` | 256 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_VA (arch) |
-| **total** | | **261** | ⛔ 256 preliminary |
+| `group_masks` | `CCV_L_PC_GROUPS*CCV_W_LANE_MASK` | 128 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_LANE_MASK (isa) |
+| **total** | | **389** | ⛔ 384 preliminary |
 
 ### `ccv_pca_fet_mig`
 
-A restored warp's PC groups, back to FET, which resumes fetch from them.
+A restored warp's PC groups, PCs and lane masks, back to FET, which resumes fetch from them.
 
 pca → fet · rate 1 · control
 
@@ -804,7 +805,8 @@ pca → fet · rate 1 · control
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `pcs` | `CCV_L_PC_GROUPS*CCV_W_VA` | 256 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_VA (arch) |
-| **total** | | **261** | ⛔ 256 preliminary |
+| `group_masks` | `CCV_L_PC_GROUPS*CCV_W_LANE_MASK` | 128 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_LANE_MASK (isa) |
+| **total** | | **389** | ⛔ 384 preliminary |
 
 ### `ccv_rau_fet_mig`
 

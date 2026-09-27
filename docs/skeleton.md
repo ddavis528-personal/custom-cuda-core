@@ -947,7 +947,7 @@ decisions.
 | `dec_ooe_uop.opcode` | skeleton-local table (0 reserved); `srd` decodes to one opcode per allocated selector |
 | `dec_ooe_uop.src_arch`, `src2_arch` | `[7:4]` src0, `[3:0]` src1; the third source in `src2_arch` |
 | `dec_ooe_uop.pred_guard`, `pred_neg`, `pred_dst`, `pred_we` | the guard's index and negate (from the qualifier; sel's selector too); the predicate destination, valid when `pred_we` |
-| `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its byte offset from its own pc (DEC folds in the length). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
+| `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its architectural offset, in halfwords from the next instruction, with the length code in `ilen` beside it; OOE computes `pc + bytes(ilen) + 2·imm` (arch open A-8). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Rename is `prf_base + arch` (no renaming yet) |

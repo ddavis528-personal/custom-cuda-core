@@ -260,7 +260,7 @@ module ccv_rau_w #(
 `endif
   );
   // ccv_pca_rau_mig_done, destination end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_RAU_MIG_DONE), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_pca_rau_mig_done (
+  ccv_seq_rpt #(.STAGES(RPT_PCA_RAU_MIG_DONE), .SLOTS(1), .PAYLOAD_W(6)) u_rpt_pca_rau_mig_done (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({pca_rau_mig_done_valid}), .src_payload({pca_rau_mig_done_payload}),
     .src_wake(pca_rau_mig_done_wake), .src_credit({pca_rau_mig_done_credit}), .src_stall({pca_rau_mig_done_stall}),
