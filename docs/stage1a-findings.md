@@ -235,6 +235,9 @@ in another, and neither result tells you so.
 
 **Decisions, both now in `rtl/include/ccv_assert.svh`:**
 
+- **Superseded by F-20:** under Yosys formal `$isunknown` means "equals 0",
+  so the pairing below pinned inputs to all ones. The known-macros are now
+  constant true under `FORMAL`.
 - `CCV_ASSUME_KNOWN` is the required companion to `CCV_ASSERT_KNOWN`. A block
   assumes its control inputs are X-free — which its neighbour asserts — and
   proves its own outputs are. §7's cut-point discipline, applied to X, and the
@@ -580,6 +583,99 @@ pass, so the day it does, the run says so rather than the techmap quietly
 staying in the flow forever.
 
 ---
+
+## F-19 — Icarus `$isunknown` of an inline expression with a resized typed parameter
+
+Found 2026-09-26, by the first traffic through a channel narrower than 32
+bits under Icarus: the sequential-repeater testbench (`test/phys/`), where
+`lead_known_at_valid` fired on every valid with the lead slice plainly
+known.
+
+Icarus 12.0 evaluates `$isunknown(p & M)` as 1 when `M` is a typed
+parameter, `parameter logic [W-1:0] M`, and `W` is overridden from its
+default. The operands print as known, `$isunknown(M)` is 0, and the same
+expression through a `wire` is 0. Measured:
+
+| `W` | `M` | `$isunknown(p & M)` inline | through a wire |
+|---|---|---|---|
+| 32 (default) | default `'0` | 0 | 0 |
+| 32 (default) | `32'h1` | 0 | 0 |
+| 20 | default `'0` | **1** | 0 |
+| 20 | `20'hf`, a literal | 0 | 0 |
+| 20 | `20'hf`, from a localparam | **1** | 0 |
+
+**It fails loud, not open:** a false firing, never a missed one. But it
+fires on correct designs, and "the checker is wrong under Icarus" is exactly
+the belief that gets real failures ignored. The credit checker now takes
+`lead_bits`, a wire, which is correct in every tool. It was latent there
+since lead fields arrived. Icarus had only run it on 32-bit channels, or
+without traffic.
+
+**Rule:** under Icarus, pass `$isunknown` a net, not an expression involving
+a typed parameter.
+
+## F-20 — under Yosys formal, `assume(!$isunknown(s))` pins `s` to all ones
+
+Found 2026-09-26, building the first formal PROOF in the regression
+(`test/formal/fv_link.sv`). The credit checker's input assumptions made the
+proof's assumption set unsatisfiable the cycle reset released. Isolated on a
+two-bit input: with `assume(!$isunknown(a))`, `cover(a == 2'b11)` is reached
+and `cover(a == 2'b00)` and `cover(a == 2'b01)` are not.
+
+**Mechanism.** Yosys lowers `$isunknown(s)` to a case-equality against an
+all-`x` constant. Its SMT backend models that `x` as ZERO. So under formal
+"unknown" means "equals 0":
+- `assume(!$isunknown(s))` constrains `s` to ALL ONES;
+- `assert(!$isunknown(s))` fails whenever `s` is 0, even on a register
+  reset to a known value and fed from a known input.
+
+**This corrects F-8.** F-8 read the spurious assertion failure on an input
+as "possibly-X" modelling, and made `CCV_ASSUME_KNOWN` the required
+companion. Its "verified: proves cleanly" was measuring an environment
+pinned to all ones: every checker that assumed its inputs known was proving
+things about a sender whose valid never fell. The fail-open register already
+held the symptom and not the cause. `ccv_outstanding_checker`'s harness
+"admitted no trace at all" once it assumed its register-driven inputs known;
+that is this: a register driven from reset cannot be 1 for ever.
+
+**Decision (`rtl/include/ccv_assert.svh`).** `CCV_KNOWN(s)` is
+`!$isunknown(s)` in simulation and constant true under `FORMAL`. Every
+known-assertion and known-assumption goes through it, the credit checker's
+direct ones included.
+- **Under formal there is no X.** Registers and inputs are free two-state
+  values (F-8's first fact, which stands), so X-freedom is not a formal
+  question.
+- **The simulators answer it.** Icarus four-state carries the X policy, as
+  F-6 already made it.
+- **Formal proves the protocol over every two-state value instead.**
+  `tools/check-formal.sh` does, with no assumption at all.
+
+**Rule:** never write `$isunknown` in a property Yosys may read; use
+`` `CCV_KNOWN ``.
+
+## F-21 — a multiclock model whose clock toggles every step cannot show a glitch
+
+Found 2026-09-27, proving the block clock gate
+(`test/formal/fv_clk_gate.sv`) on Yosys's multiclock model (`clk2fflogic`),
+where the clock is an ordinary input and time is global steps. With the
+clock assumed to toggle on every step, the gated-clock properties (gclk rises
+only when clk rises, falls only when it falls, and is never high while clk is
+low) PROVED on an ICG with no latch at all, `gclk = clk & en`, and on one
+whose latch was open in the high phase.
+
+**Mechanism.** If clk changes on every step, every input change coincides
+with a clock edge. Nothing can move in the MIDDLE of a phase, which is the
+only place an AND gate glitches. The runt pulse was not ruled out; it was
+unrepresentable.
+
+**Decision.** Each phase lasts one step or two, freely: the clock is assumed
+never to hold for more than two steps, not to toggle on every one. The same
+properties then fail on both mutants at the first frame they can, and still
+prove on the real latch-based ICG. `tools/check-formal.sh` keeps both mutants
+as controls.
+
+**Rule:** in a multiclock proof, give every clock phase room for an input to
+change inside it, and keep a mutant that only a mid-phase change exposes.
 
 ## What this settles for Stage 1b
 

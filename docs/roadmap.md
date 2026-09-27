@@ -58,7 +58,7 @@ lockstep across the 32 lanes.
 
 ### What a new design file has to carry
 
-Twenty-six lint rules is more than anyone will hold in their head, so the
+Twenty-seven lint rules is more than anyone will hold in their head, so the
 obligations that are not obvious from reading existing code:
 
 ```systemverilog
@@ -74,9 +74,10 @@ obligations that are not obvious from reading existing code:
 
 module sched_iq ( ... );                    <- CCV-L01, filename must match
 
-  // The block gates its clock as its first act -- CCV-L22 forbids clocking
-  // anything on the ungated core_clk.
-  assign sched_core_clk = core_clk & sched_gate_en_cs00h;
+  // The block gates its clock as its first act, through ccv_clk_gate --
+  // CCV-L22 forbids clocking anything on the ungated core_clk, and CCV-L27
+  // forbids building the gate by hand (docs/clock-gate.md).
+  ccv_clk_gate u_cg (.clk(core_clk), ..., .gclk(sched_core_clk), .gated(clk_gated));
 
   // Every CONTROL input used in an if or a case needs one of these, or the
   // case needs an X-default -- CCV-L08.
@@ -123,7 +124,7 @@ looks exactly like one that passes.
 - `spike/cases/` — the cases
 - `tools/run-spike-1a.py` — the runner
 - `docs/stage1a-tool-support.md` — the matrix (generated)
-- `docs/stage1a-findings.md` — the 18 findings F-1…F-18 (written)
+- `docs/stage1a-findings.md` — the 21 findings F-1…F-21 (written)
 - `tools/check-1a.sh` — cheap validation of the recorded matrix
 
 ### Stage 1b — assertion primitive library ✅
@@ -258,9 +259,22 @@ wake per channel, CSR from CRU, and TL-C beats on the link. See
 
 `rtl/top/` — generated and tracked: 45 stub blocks wired by the 108 channel
 instances, each block's port list generated and included, the shared checker
-bank under `CCV_CHECK`. Clean in all three tools. Its connectivity, extracted
+bank under `CCV_CHECK`. The top holds block instances and nets and nothing
+else. Each block gates `core_clk` itself, and `tools/check-top-pure.py`
+enforces the rule, with Q-42 (full abutment) still open. Every block sits in
+a hardening wrapper with its channel ends' repeaters, and `params/links.json`
+splits each link's stages across the wrappers it crosses (`physical.md`). Clean in all three tools. Its connectivity, extracted
 from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 `skeleton.md`, "The SV top", for the common-port gaps it exposed.
+
+**SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
+top runs every C++ block over DPI-C, with the generated Verilog carrying
+every connection. All four S1 kernels match the C++-hosted run: summary lines
+identical and event traces the same records cycle by cycle. All 15 kernel
+controls give the same KERNEL line. One block one cycle late
+(`+ccv_shim_delay`) must not match, and doesn't
+(`tools/check-sv-hosted.sh`). Next: mixed hosting, which needs a finish rule
+read off the wires.
 
 ### Interface checker convention ✅ (mechanism)
 

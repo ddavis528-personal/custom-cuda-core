@@ -10,23 +10,23 @@
 
 == documentation ==
   findings, rules, paths and counts consistent   PASS
-  open items (docs/open-items.md)                PASS (41 items: 6 open, 0 awaiting confirmation, 9 scheduled, 26 closed)
+  open items (docs/open-items.md)                PASS (49 items: 8 open, 0 awaiting confirmation, 11 scheduled, 30 closed)
 
 == generated artifacts ==
   generated event headers from schema/events.json (hash aef57f9e3784cd2d)
-  generated parameter definitions from params/ccv_params.json (97 parameters)
+  generated parameter definitions from params/ccv_params.json (101 parameters)
   generated interface topology from schema/interfaces.json (46 channels, 14 blocks)
   generated docs/payload-spec.md (8 settled, 15 prov, 23 prelim channels)
   event schema headers up to date (hash aef57f9e3784cd2d)
-  parameter definitions up to date (97 parameters)
+  parameter definitions up to date (101 parameters)
   interface topology up to date (46 channels, 14 blocks)
   payload spec up to date (8 settled, 15 prov, 23 prelim)
-  generated docs/trust-report.md (3 files reference an undecided width)
-  trust report up to date (3 files, 23/46 channels tainted)
+  generated docs/trust-report.md (35 files reference an undecided width)
+  trust report up to date (35 files, 23/46 channels tainted)
   generated skeleton wiring (45 block instances, 108 channel instances, 345 slots, 68697 payload bits)
   skeleton wiring up to date (45 block instances, 108 channel instances, 345 slots, 68697 payload bits)
-  generated SV top (30 files: top, 14 port lists, 14 stubs, testbench)
-  SV top up to date (30 files: top, 14 port lists, 14 stubs, testbench)
+  generated SV top (60 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
+  SV top up to date (60 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
 
 == Stage 1a -- tool-support spike ==
   toolchain matches the pinned versions          PASS
@@ -42,7 +42,7 @@
   verilator: t_stable_for fires on a violation   PASS
   icarus: t_resp fires on a violation            PASS
   verilator: t_resp fires on a violation         PASS
-  sby: library elaborates, property bites, named PASS
+  sby: library elaborates and property bites     PASS (label not in report)
 
 == Stage 1c -- event schema mechanism ==
   schema headers current and versioned           PASS
@@ -55,7 +55,7 @@
 == Stage 1d -- coding style and lint ==
   style guide present                            PASS
   lint fails the non-compliant sample            PASS
-  every lint rule fires on the fixture (26 rules) PASS
+  every lint rule fires on the fixture (27 rules) PASS
   every lint rule is documented in the guide     PASS
   compliant code is silent (4 fixtures)          PASS
   yosys reads every form CCV-L26 permits         PASS
@@ -68,10 +68,10 @@
   verilator: checker builds, nothing fires       PASS
   verilator: checker emits events via DPI-C      PASS
   verilator: +ccv_trace_off silences emission only PASS
-  verilator: bad DEPTH trips cfg_depth_covers_round_trip PASS
+  verilator: bad DEPTH trips cfg_depth_covers_credit_loop PASS
   verilator: bad TIMEOUT_N trips cfg_timeout_covers_round_trip PASS
   producer honours stall at all 28 phases        PASS
-    ...and the sweep catches the old late stall  PASS (14 phases)
+    ...and the sweep catches the old late stall  PASS (27 phases)
   neg: overrun trips only no_overrun             PASS
   neg: at_depth stays quiet at the limit         PASS
   neg: phantom trips only no_phantom_credit      PASS
@@ -93,6 +93,9 @@
   wake: other_wake stays quiet at the limit      PASS
   wake: other_wake_short trips only wake_leads_valid PASS
   wake: resleep trips only wake_leads_valid      PASS
+  wake: rx_early trips only wake_keeps_rx        PASS
+  wake: all 9 cases judged 2 stages upstream     PASS
+    ...and without the delay, other_wake fires   PASS
   icarus: same checker compiles without DPI, quiet PASS
   formal: satisfiability covers all reachable    PASS
   formal: atomic checker covers reachable        PASS
@@ -108,6 +111,20 @@
   ternary narrows on a partially-unknown select  PASS (=110x)
   all three agree when the select is known       PASS
 
+== Clock gating -- the ctech layer and the block gate ==
+  3 views, 1 cell(s), identical ports            PASS (asap7 sim sky130_fd_sc_hd )
+  sky130 lib_cells.v == the vendor cell's ports  PASS (CLK:input GATE:input GCLK:output SCE:input)
+  synthesis, asap7: one ICGx1_ASAP7_75t_R        PASS (no latch; clk and gclk straight)
+  synthesis, sky130_fd_sc_hd: one sky130_fd_sc_hd__sdlclkp_1 PASS (no latch; clk and gclk straight)
+    ...and refuses the simulation view, by name  PASS
+  icarus: sim view, enable in either phase       PASS (cycles=2000 edges=1060 mid_high_changes=2559 ref_samples=0)
+  icarus: sky130 view through the vendor cell    PASS
+  icarus: sim view == sky130 cell, every sample  PASS (40000 samples)
+  verilator -Wall: sim view                      PASS
+  verilator: sim view, enable in either phase    PASS (cycles=2000 edges=1090 mid_high_changes=2558 ref_samples=0)
+    ...an ICG with no latch: caught              PASS (both simulators)
+    ...a latch open on the high phase: caught    PASS (both simulators)
+
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
   one ICG shared across all 8 flops              PASS
@@ -119,15 +136,16 @@
   trace id absent from synthesis, present in trace PASS
   C++ field offsets == SV packed structs         PASS (rounds=64)
     ...a 1-bit offset shift is caught on every field PASS (202 fields)
-  seed 1: 155515 msgs, 0 violations              PASS
-  seed 2: 153978 msgs, 0 violations              PASS
-  seed 3: 155494 msgs, 0 violations              PASS
-    (every slot used; sent == received; XFER == launched, ids too) 
+  seed 1: 235126 msgs, 0 violations              PASS
+  seed 2: 233869 msgs, 0 violations              PASS
+  seed 3: 235790 msgs, 0 violations              PASS
+    (every slot used; sent == received; every credit home; XFER == launched, ids too) 
   --force-atomic: every group moves whole, clean PASS (77 groups)
   --break phantom-all: all 345 checkers fire     PASS
   --break stall-all: all 345 checkers fire       PASS
   --break atomic-all: all 77 checkers fire       PASS
   --break lockstep-all: all 2 checkers fire      PASS
+  --break double-pop: leak counted, bank fires   PASS (42 leaks; quiesced_at_end)
   --break misorder: caught on the ordered channel PASS (ccv_dec_ooe_uop ccv_fet_dec_instr)
   --break misbind: lane takes another slot's instr PASS (2 lockstep checkers)
   --break misgroup: slot carries another stream  PASS (1 binding checker)
@@ -171,8 +189,72 @@
   icarus: top simulates (no checkers)            PASS
   icarus: top simulates -DCCV_CHECK              PASS
   yosys: 45 blocks; checkers only under CCV_CHECK PASS
+  top and wrappers: only instances and nets      PASS (both views)
+    ...and refuses 11 impure copies: top, wrapper, reuse, gate PASS
   SV top wiring == C++ skeleton wiring           PASS (69840 bits)
     ...and rejects a lane swapped in a copy      PASS
+
+== Formal proofs -- one credited link, and the block clock gate ==
+  safety, N=0: every property, for all time      PASS (proved)
+    ...bounded response, receiver draining       PASS (proved)
+  safety, N=1: every property, for all time      PASS (proved)
+    ...bounded response, receiver draining       PASS (proved)
+  safety, N=2: every property, for all time      PASS (proved)
+  full bandwidth, N=0, depth 4                   PASS (proved; depth 3: cex)
+  full bandwidth, N=1, depth 6                   PASS (proved; depth 5: cex)
+  full bandwidth, N=2, depth 8                   PASS (proved; depth 7: cex)
+    ...two consumed, one credit: credit_per_msg fails PASS (cex 10)
+    ...two consumed, one credit: conservation fails PASS (cex 9)
+    ...repeater enable_now: data_in_order fails  PASS (cex 8)
+    ...repeater lead_late: data_in_order fails   PASS (cex 7)
+    ...witness: reach_three                      PASS (10 frames)
+    ...witness: reach_full                       PASS (13 frames)
+  clock gate (3/5/3): glitch, cycle, Q-33        PASS (proved)
+  clock gate (8/16/3): glitch, cycle, Q-33       PASS (proved)
+    ...a wake a cycle later still: wake_second_edge fail PASS (cex 13)
+    ...the wake back on the enable path, unregistered: spec fail PASS (cex 9)
+    ...wake hold one short of CCV_WAKE_LAT: wake_keeps_rx fail PASS (cex 11)
+    ...hysteresis one short: spec fail           PASS (cex 7)
+    ...reset left off the enable: reset_opens fail PASS (cex 9)
+    ...an ICG with no latch: the clean-clock properties fail PASS (cex 1)
+    ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
+    ...witness: reach_gated                      PASS (17 frames)
+    ...witness: reach_woken                      PASS (17 frames)
+
+== Physical primitives -- sequential repeater ==
+  repeater: verilator -Wall, six shapes          PASS
+  icarus: N=0..4 intact, exact latency and rate  PASS
+  verilator: N=0..4 intact, exact latency and rate PASS
+    ...receiver-end checker as if at the sender  PASS (stall_honoured, there only)
+  enables on the netlist: payload, lead, pulses  PASS (5 shapes)
+    ...enable-now, lead-late, credit-short caught PASS
+    ...free-run: invisible in sim, refused by netlist PASS
+    ...lead-late also refused by the netlist check PASS
+
+== SV-hosted C++ -- the skeleton's blocks inside the SV top ==
+  verilator -Wall: shims, top, testbench         PASS
+    ...and refuse a build without CCV_TRACE      PASS
+  SV-hosted build: 45 blocks + EXTERNAL as shims PASS
+  pguard: SV-hosted == C++-hosted                PASS (433 events, cycles=128)
+  sel: SV-hosted == C++-hosted                   PASS (277 events, cycles=119)
+  srd: SV-hosted == C++-hosted                   PASS (263 events, cycles=111)
+  vadd: SV-hosted == C++-hosted                  PASS (559 events, cycles=361)
+  every kernel control: the same KERNEL line     PASS (15 controls)
+    ...u_dec one cycle late: caught              PASS (differing_cycles=203)
+    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=173)
+
+== Hardening wrappers -- params/links.json ==
+  links.json: malformed configurations refused   PASS (11 cases, each by name)
+  split: generated                               PASS (16 wrapper modules)
+  split: top and wrappers hold instances and nets PASS (both views)
+  split: lanes hard-reused, 3 templates for 32   PASS (ccv_lane_w, _v1, _v2)
+  split: S0 suite, every control, every credit home PASS
+  split: wiring traced flop by flop == C++       PASS (277 slot(s) repeated, 561 stages)
+  split: every S1 kernel == ccv-sim              PASS (vadd 425 cycles)
+  split: SV repeaters == C++ link model          PASS (4 kernels, 15 controls, skew caught)
+
+== Walkthrough -- docs/walkthrough.md ==
+  walkthrough current
 
 == Verilator lint ==
   clean

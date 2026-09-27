@@ -176,9 +176,13 @@ static constexpr uint32_t kWFaultCause = 4;
 /// decided at the block-level grill-me (ports spec 2026-09-23)
 static constexpr uint32_t kRtAbut = 2;
 
-/// Credits held by a sender: equals the round trip, so abutting blocks are never throttled at steady state.
-/// decided at the block-level grill-me (ports spec 2026-09-23)
-static constexpr uint32_t kCreditDepth = 2;
+/// What the endpoints add to the round trip before a credit can be spent again: the payload lands one cycle after its valid, the receiver returns the credit the cycle after that, and a credit that arrives is usable the cycle after (channel.h, credit_smoke.sv). So the credit loop is CCV_RT_ABUT + 2 = 4, not the round trip. Rescue depth and drain wait count only in-flight VALIDS and stay equal to the round trip.
+/// decided at the block-level grill-me (Q-43, 2026-09-26)
+static constexpr uint32_t kCreditTurnaround = 2;
+
+/// Credits held by a sender, and so the entries a receiver buffers: the CREDIT LOOP, CCV_RT_ABUT + CCV_CREDIT_TURNAROUND, so a channel runs at full bandwidth, one message per slot per cycle, at steady state. It was 2, equal to the round trip on the claim that abutting blocks are never throttled; measured, that runs every slot at half rate (Q-43, decided 2026-09-26: channels always run at full bandwidth). A repeated link's loop is 2N longer, and its depth with it. Proved in tools/check-formal.sh: full rate at this depth, and not at one less.
+/// decided at the block-level grill-me (Q-43, 2026-09-26)
+static constexpr uint32_t kCreditDepth = 4;
 
 /// Storage a stalling receiver reserves to catch everything already in flight. Equals the round trip: no unwinding, no negative acknowledgement.
 /// decided at the block-level grill-me (ports spec 2026-09-23)
@@ -188,7 +192,7 @@ static constexpr uint32_t kRescueDepth = 2;
 /// decided at the block-level grill-me (ports spec 2026-09-23)
 static constexpr uint32_t kDrainWait = 2;
 
-/// Wake latency: round trip plus 2.
+/// Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_wake_checker). The receiver's side is ccv_clk_gate: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.
 /// decided at the block-level grill-me (ports spec 2026-09-23)
 static constexpr uint32_t kWakeLat = 4;
 
@@ -232,6 +236,18 @@ static constexpr uint32_t kDcacheLookups = 4;
 /// Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop.
 /// PROVISIONAL -- decided by: Stage 4b sweep
 static constexpr uint32_t kDemotionThreshold = 50;
+
+/// Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_clk_gate inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values.
+/// PROVISIONAL -- decided by: the CSR map (Q-47)
+static constexpr uint32_t kCgHystW = 6;
+
+/// Block clock gate (ccv_clk_gate): consecutive quiesced cycles before the gate closes -- the reset value of the block's hysteresis CSR (Q-47). Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. A block programs its own through the CSR.
+/// PROVISIONAL -- decided by: power analysis, with the first real block
+static constexpr uint32_t kCgHystQuiesce = 8;
+
+/// Block clock gate: consecutive stalled cycles before the gate closes. Longer than the quiesce hysteresis by default, because a stall usually ends on its own within a few cycles and a stalled block holds work that sleeping only delays. Placeholder, as CCV_CG_HYST_QUIESCE.
+/// PROVISIONAL -- decided by: power analysis, with the first real block
+static constexpr uint32_t kCgHystStall = 16;
 
 /// ROB sizing against 4-wide issue.
 /// PROVISIONAL -- decided by: OOE per-block session

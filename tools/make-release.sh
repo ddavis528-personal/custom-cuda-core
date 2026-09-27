@@ -98,6 +98,9 @@ for k in $KERNELS; do
   cp "build/rel_$k.ccvtrace" "$A/kernels/$k.ccvtrace"
   cp "build/rel_$k.by_instr.json" "$A/kernels/$k.by_instr.json"
   cp "build/rel_$k.by_unit.json" "$A/kernels/$k.by_unit.json"
+  # The same kernel with every block SV-hosted (tools/check-sv-hosted.sh).
+  cp "build/svh_sv_$k.log" "$A/kernels/$k.sv-hosted.log" ||
+    die "no SV-hosted run of $k after the gate"
 done
 big=$(find "$A" -type f -size +"$MAXFILE"c)
 [ -z "$big" ] || die "artifact over the $((MAXFILE / 1024 / 1024)) MB cap: $big"
@@ -112,6 +115,9 @@ ver() { "$@" 2>&1 | head -1; }
   echo "is \`$SRCBRANCH\` at \`$SHA\`, and this branch is rebuilt from source by"
   echo "\`tools/make-release.sh\`; nothing here flows back."
   echo
+  echo "**Start with [\`docs/walkthrough.md\`](docs/walkthrough.md):** one kernel"
+  echo "through the whole machine, every listing generated from this tree."
+  echo
   echo "What is here beyond the source tree at that commit:"
   echo
   echo "- **Generated files, at their real paths:** \`rtl/generated/\` (interface"
@@ -122,7 +128,9 @@ ver() { "$@" 2>&1 | head -1; }
   echo "  wiring dump, and for each S1 kernel its run summary, event trace"
   echo "  (\`.ccvtrace\`) and two Perfetto views -- open the \`.json\` files at"
   echo "  https://ui.perfetto.dev -- and the ccv-sim oracle record it ran"
-  echo "  against, generated from the pinned compiler snapshot."
+  echo "  against, generated from the pinned compiler snapshot, and the"
+  echo "  same kernel's run with every block hosted by the SV top"
+  echo "  (\`.sv-hosted.log\`)."
   echo
   echo "| | |"
   echo "|---|---|"

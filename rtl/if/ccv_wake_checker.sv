@@ -17,7 +17,23 @@
 //     something else, and is up by any account.
 // A wake that arrived while the receiver was still awake does not count
 // toward a sleep that begins after it: nothing obliges a receiver to stay
-// awake because a wake passed it by.
+// awake because a wake passed it by -- beyond the promise below.
+//
+// THE RECEIVER'S HALF, wake_keeps_rx. The reading above excuses a receiver
+// that sleeps again, and charges the sender for the valid that meets it,
+// however the sender timed its wake. So the sender's rule is sufficient only
+// if a receiver keeps a promise: a wake at T means the receiver is running
+// at T + LAT -- the earliest cycle the sender may rely on it. Stated here
+// with its own role, RX_MODE, because it binds the other side: the sender
+// is checked by MODE, the receiver by RX_MODE. ccv_clk_gate keeps it: it
+// registers the wake and opens the edge after next, then holds open through
+// T + LAT; tools/check-formal.sh proves the gate against this property.
+//
+// ARRIVE: where the checker watches a repeated link (params/links.json), the
+// valid and the wake still have ARRIVE stages to go before the receiver sees
+// them. Both are delayed by that much here, so the contract is judged
+// against the receiver's gate at the moment they reach it. 0 on an abutted
+// link, and wherever the checker sits at the receiver.
 //
 // A tracking register rather than a sequence, because no multi-cycle
 // construct exists in any tool (F-2). Ternary selects, not `if` on the
@@ -30,14 +46,36 @@
 
 module ccv_wake_checker #(
   parameter int MODE = `CCV_MODE_ASSERT,
-  parameter int LAT  = ccv_params_pkg::CCV_WAKE_LAT
+  parameter int RX_MODE = `CCV_MODE_ASSERT,
+  parameter int LAT  = ccv_params_pkg::CCV_WAKE_LAT,
+  parameter int ARRIVE = 0
 ) (
   input logic clk,
   input logic rst_n,
-  input logic rx_gated,   // the receiver's sleep_ok: its clock is stopped
-  input logic wake,       // this channel instance's _wake
-  input logic valid       // any slot of this channel instance
+  input logic rx_gated,   // the receiver's clk_gated: its clock is stopped
+  input logic wake_seen,  // this channel instance's _wake, where watched
+  input logic valid_seen  // any slot of this channel instance, where watched
 );
+
+  // Valid and wake as the receiver sees them: ARRIVE cycles later.
+  logic wake, valid;
+  if (ARRIVE == 0) begin : g_here
+    assign wake  = wake_seen;
+    assign valid = valid_seen;
+  end else begin : g_later
+    logic [ARRIVE-1:0] wake_h, valid_h;
+    always_ff @(posedge clk) begin
+      if (!rst_n) begin
+        wake_h  <= '0;
+        valid_h <= '0;
+      end else begin
+        wake_h  <= ARRIVE'({wake_h, wake_seen});
+        valid_h <= ARRIVE'({valid_h, valid_seen});
+      end
+    end
+    assign wake  = wake_h[ARRIVE-1];
+    assign valid = valid_h[ARRIVE-1];
+  end
 
   localparam int AW = $clog2(LAT + 1);
   localparam int AW_LAT = LAT;
@@ -80,9 +118,18 @@ module ccv_wake_checker #(
 
   `CCV_CONTRACT_M(MODE, wake_leads_valid, !(valid && owed_now))
 
+  // The receiver's half: running LAT cycles after any wake it was sent.
+  logic [LAT-1:0] wake_ago;   // [k]: a wake k+1 cycles ago
+  always_ff @(posedge clk) begin
+    if (!rst_n) wake_ago <= '0;
+    else        wake_ago <= LAT'({wake_ago, wake});
+  end
+  `CCV_CONTRACT_M(RX_MODE, wake_keeps_rx, !(wake_ago[LAT-1] && rx_gated))
+
   // -- satisfiability (§3.3): a sleep is answered by this channel's wake --
   `CCV_IF_SAT(slept,        sleep_start)
   `CCV_IF_SAT(woken_in_time, valid && woken_q && age_q >= lat)
+  `CCV_IF_SAT(rx_up_on_time, wake_ago[LAT-1] && !rx_gated)
 
 endmodule
 

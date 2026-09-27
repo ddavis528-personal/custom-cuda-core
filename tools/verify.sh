@@ -120,6 +120,15 @@ run "interface convention" ./tools/check-if.sh
 section "X-propagation"
 run "x-prop differential" ./tools/check-xprop.sh
 
+section "Clock gating -- the ctech layer and the block gate"
+# rtl/ctech/: every view the same cells and ports; the gate synthesised with
+# each library view is ONE library ICG and no latch; the simulation view is
+# refused by synthesis, glitch-free on both simulators with the enable moving
+# in either phase, and identical to the sky130 cell's own model; mutants
+# without a proper latch must fail. The gate's behaviour is proved in the
+# formal section.
+run "ctech and clock gate" ./tools/check-ctech.sh
+
 section "Clock gating (exploratory)"
 # Synthesis is deferred (§6), and nothing depends on this. It is in the gate
 # for two seconds of runtime because an artifact outside the gate rots, and
@@ -144,6 +153,49 @@ section "SV top -- rtl/top/ (generated, tracked)"
 # builds the binary whose wiring this is compared against.
 run "SV top" ./tools/check-top.sh
 
+section "Formal proofs -- one credited link, and the block clock gate"
+# test/formal/fv_link.sv by PDR: data, overflow, one credit per message,
+# conservation and every checker property with no assumption; bounded
+# response under a draining receiver; full bandwidth at the credit-loop depth
+# (Q-43) -- each with a mutant that must be refuted, and witnesses that the
+# traffic the proofs are about happens.
+# Then the block clock gate on the multiclock model: a clean gated clock with
+# the enable free to move at any step, the cycle behaviour against a history
+# model, and both halves of Q-33 -- mutants and witnesses likewise.
+run "formal proofs" ./tools/check-formal.sh
+
+section "Physical primitives -- sequential repeater"
+# rtl/phys/ccv_seq_rpt.sv through N = 0..4 stages on both simulators, the
+# checker at three points along the link, its enables on the Yosys netlist,
+# and mutants that must each be caught -- one of them only by the netlist.
+run "sequential repeater" ./tools/check-phys.sh
+
+section "SV-hosted C++ -- the skeleton's blocks inside the SV top"
+# The same top built from rtl/top/dpi/ shims: every block the C++ skeleton's,
+# every connection the generated Verilog's. Every S1 kernel and every kernel
+# control must come out as the C++ host runs them, and one block one cycle
+# late must not. After the skeleton and the kernels, whose runs it compares.
+run "SV-hosted C++" ./tools/check-sv-hosted.sh
+
+section "Hardening wrappers -- params/links.json"
+# The design's own links.json repeats nothing yet. A busy split -- links
+# repeated at both ends, feedthroughs, lockstep lanes, EXTERNAL -- is built in
+# a copy of the tree and must pass the top-level rule, the S0 suite, the
+# wiring trace, every kernel, and SV-hosted == C++-hosted; malformed
+# configurations must each be refused by name.
+run "wrappers and links" ./tools/check-links.sh
+
+section "Walkthrough -- docs/walkthrough.md"
+# One kernel through the whole machine, every listing produced by running the
+# binaries built above (ccv-skel, the SV-hosted build, the oracle records) and
+# the prose's named properties checked against their sources. After every
+# section it reads from.
+if command -v verilator >/dev/null 2>&1; then
+  run "walkthrough current" python3 tools/gen-walkthrough.py --check
+else
+  echo "  SKIP -- verilator not installed (the walkthrough runs its builds)"
+fi
+
 section "Verilator lint"
 # The generic checks the project linter deliberately does not reimplement:
 # width mismatches, inferred latches, unused and undriven signals.
@@ -156,14 +208,14 @@ if command -v verilator >/dev/null 2>&1; then
               rtl/if/ccv_credit_checker.sv:CCV_TRACE rtl/if/ccv_atomic_checker.sv: \
               rtl/if/ccv_lockstep_checker.sv: rtl/if/ccv_lockstep_checker.sv:CCV_TRACE \
               rtl/if/ccv_binding_checker.sv: rtl/if/ccv_outstanding_checker.sv: \
-              rtl/if/ccv_wake_checker.sv:; do
+              rtl/if/ccv_wake_checker.sv: rtl/clk/ccv_clk_gate.sv:; do
     f=${spec%%:*}; def=${spec#*:}
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut
     if ! verilator --lint-only --assert -Wall -Wno-DECLFILENAME \
          -Wno-TIMESCALEMOD ${def:+-D$def} \
          -Irtl/include -Irtl/generated --top-module "$top" \
-         rtl/ccv_assert_pkg.sv "$f" >/tmp/vlint.$$ 2>&1; then
+         rtl/ccv_assert_pkg.sv $(python3 tools/ccv_ctech.py) "$f" >/tmp/vlint.$$ 2>&1; then
       echo "  $f${def:+ (+$def)}:"; sed 's/^/    /' /tmp/vlint.$$ | head -12; vfail=1
     fi
     rm -f /tmp/vlint.$$

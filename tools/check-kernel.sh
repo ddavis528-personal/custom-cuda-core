@@ -63,7 +63,7 @@ tools/gen-oracle.sh || { echo "  S1 kernels: no oracle records" >&2; exit 1; }
 # -- the clean run -----------------------------------------------------------
 log=$B/kernel_vadd.log
 "$SKEL" --kernel "$K" --trace "$B/kernel_vadd.ccvtrace" >"$log" 2>&1
-want="finished=1 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 violations=0"
+want="finished=1 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 violations=0"
 ok=1
 for kv in $want; do
   [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || { ok=0; miss="$kv (got $(field "$log" "${kv%%=*}"))"; }

@@ -98,6 +98,27 @@ struct KernelReport {
 /// Compare the machine's final architectural state with ccv-sim's.
 KernelReport compareFinal(Kernel &k);
 
+/// The kernel's name: the directory its oracle record sits in.
+std::string kernelName(const std::string &oracle_path);
+
+/// When a kernel run is over, by ONE rule for both hosts -- the C++ loop in
+/// main.cpp and the SV-hosted testbench (dpi_host.cpp): the exit has retired,
+/// no block has work left, nothing is in flight on any slot, and that has held
+/// for a short tail, so a late message would still be seen by the bank.
+/// Call once per cycle, after every block has run it; it clears k.busy.
+struct KernelEnd {
+  static constexpr uint64_t kReset = 2, kTail = 8;
+  uint64_t quiet = 0, finish = 0;
+  bool finished = false;
+  /// True once the tail has run out.
+  bool after(uint64_t c, Kernel &k, Machine &m);
+};
+
+/// The KERNEL and UNUSED lines, the same from either host, so
+/// tools/check-sv-hosted.sh can compare them as text.
+void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
+                       int violations);
+
 } // namespace skel
 } // namespace ccv
 #endif // CCV_SKEL_KERNEL_H

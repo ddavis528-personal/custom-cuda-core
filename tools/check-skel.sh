@@ -142,6 +142,8 @@ for seed in 1 2 3; do
   [ "$(field "$log" violations)" = "0" ] || why="$why; $(field "$log" violations) checker violations"
   [ "$(field "$log" mismatches)" = "0" ] || why="$why; payload mismatches"
   [ "$(field "$log" overflows)" = "0" ]  || why="$why; receive overflow"
+  [ "$(field "$log" credit_leaks)" = "0" ] || why="$why; $(field "$log" credit_leaks) credit(s) lost"
+  [ "$(field "$log" credits_home)" = "$X_SLOTS" ] || why="$why; credits home on $(field "$log" credits_home) of $X_SLOTS slots"
   [ "$(field "$log" idle_slots)" = "0" ] || why="$why; $(field "$log" idle_slots) idle slot(s)"
   [ "$(field "$log" sent)" = "$(field "$log" received)" ] || why="$why; sent != received"
   [ "$(field "$log" tid_mismatches)" = "0" ]   || why="$why; trace ids wrong"
@@ -154,14 +156,15 @@ for seed in 1 2 3; do
     say "seed $seed: $(field "$log" sent) msgs, 0 violations" "PASS"
   fi
 done
-say "  (every slot used; sent == received; XFER == launched, ids too)" ""
+say "  (every slot used; sent == received; every credit home; XFER == launched, ids too)" ""
 
 # -- atomic acceptance: clean when honoured, loud when broken --------------
 log="$B/skel_force_atomic.log"
 "$SKEL" --cycles 2000 --seed 1 --force-atomic --trace "$B/skel_fa.ccvtrace" \
   >"$log" 2>&1
 if [ "$(field "$log" violations)" = "0" ] && [ "$(field "$log" mismatches)" = "0" ] &&
-   [ "$(field "$log" idle_slots)" = "0" ] && [ "$(field "$log" match)" = "yes" ]; then
+   [ "$(field "$log" idle_slots)" = "0" ] && [ "$(field "$log" match)" = "yes" ] &&
+   [ "$(field "$log" credit_leaks)" = "0" ] && [ "$(field "$log" credits_home)" = "$X_SLOTS" ]; then
   say "--force-atomic: every group moves whole, clean" "PASS ($X_MULTI groups)"
 else
   bad "--force-atomic clean run" "$(grep '^SKEL' "$log")"
@@ -190,6 +193,20 @@ for mode in phantom-all:no_phantom_credit stall-all:stall_honoured \
     bad "--break $m" "$inst of $want_n instances fired {$props}, want {$prop}"
   fi
 done
+
+# -- credit conservation, as the SV checker sees it ------------------------
+# The S0 exerciser leaked credits for months with every run clean: a keyed
+# receiver taking one slot twice in a cycle returns ONE credit for two
+# messages, and the orphan outlives the run. --break double-pop brings that
+# receiver back. The C++ count must see it, and so must the checker bank on
+# its own: quiesced_at_end, at the end of a drained run (+ccv_eot_quiesce).
+log="$B/skel_double_pop.log"
+"$SKEL" --cycles 2000 --break double-pop >"$log" 2>&1
+if [ "$(field "$log" credit_leaks)" != "0" ] && grep -q "CCV quiesced_at_end failed" "$log"; then
+  say "--break double-pop: leak counted, bank fires" "PASS ($(field "$log" credit_leaks) leaks; quiesced_at_end)"
+else
+  bad "--break double-pop" "credit_leaks=$(field "$log" credit_leaks); quiesced_at_end $(grep -c 'quiesced_at_end failed' "$log") times"
+fi
 
 # -- ordered channels: consuming out of order must be caught --------------
 log="$B/skel_misorder.log"

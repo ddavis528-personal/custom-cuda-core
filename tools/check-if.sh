@@ -84,13 +84,14 @@ if command -v verilator >/dev/null 2>&1; then
     fi
 
   # -- negative control: the CONFIGURATION checks still bite ---------------
-  # cfg_depth_covers_round_trip and cfg_timeout_covers_round_trip guard the two
+  # cfg_depth_covers_credit_loop and cfg_timeout_covers_round_trip guard the two
   # misconfigurations that produce no protocol violation, so if either one
   # ever stopped firing nothing above would notice -- every other check here
   # is a "stays quiet" check, and a check that has been deleted is very quiet.
   # Each build breaks ONE parameter and the assertion NAME is matched, so a
   # different property firing does not count as a pass.
-  for probe in "DEPTH:1:cfg_depth_covers_round_trip" \
+  # DEPTH one below the credit loop: the tightest breach of full bandwidth.
+  for probe in "DEPTH:3:cfg_depth_covers_credit_loop" \
                "TIMEOUT_N:1:cfg_timeout_covers_round_trip"; do
     par=${probe%%:*}; rest=${probe#*:}; val=${rest%%:*}; want=${rest##*:}
     sed -E "s/\\.${par}\\([^)]*\\)/.${par}(${val})/" \
@@ -117,7 +118,8 @@ if command -v verilator >/dev/null 2>&1; then
         bad "bad $par trips $want" "misconfiguration went unreported"
       fi
     else
-      bad "bad $par trips $want" "negative-control build failed"
+      bad "bad $par trips $want" \
+          "negative-control build failed: $(grep -m1 -E '%Error|error:|Killed|No space' "$TMP/neg_$par.log" || tail -1 "$TMP/neg_$par.log")"
     fi
   done
   else
@@ -269,10 +271,13 @@ done
 # of "gated" written in the checker's header: an earlier wake does not
 # answer a later sleep, a receiver woken by something else is exempt once it
 # has run LAT cycles and not before, and a second sleep needs a second wake.
+# rx_early is the receiver's half: asleep again before LAT after a wake,
+# which only wake_keeps_rx may report.
 # Two-state is enough here, so both simulators must agree on every case.
 WAKE_CASES="wake_t3:wake_leads_valid wake_t4:- no_wake:wake_leads_valid
   awake:- early_wake:wake_leads_valid other_wake:-
-  other_wake_short:wake_leads_valid resleep:wake_leads_valid"
+  other_wake_short:wake_leads_valid resleep:wake_leads_valid
+  rx_early:wake_keeps_rx"
 WAKE_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_wake_checker.sv test/neg/tb_wake_neg.sv"
 wv=0; wi=0
 command -v verilator >/dev/null 2>&1 &&
@@ -309,6 +314,25 @@ for pair in $WAKE_CASES; do
   else say "wake: $cs stays quiet at the limit" "PASS"
   fi
 done
+# The same nine cases, judged by a checker watching two stages upstream of
+# the receiver (ARRIVE = 2; a repeated link, params/links.json). And the
+# control: that early view judged as if at the receiver, where other_wake --
+# legal -- must fire.
+if [ "$wi" = 1 ]; then
+  why=""
+  for pair in $WAKE_CASES; do
+    cs=${pair%%:*}; want=${pair#*:}; [ "$want" = "-" ] && want=""
+    vvp "$TMP/wake_iv.out" +case="$cs" +arrive >"$TMP/wake_a_$cs.log" 2>&1
+    got=$(fired "$TMP/wake_a_$cs.log")
+    [ "$got" = "$want" ] || why="$why $cs: {${got:-nothing}}"
+  done
+  [ -z "$why" ] && say "wake: all 9 cases judged 2 stages upstream" "PASS" ||
+    bad "wake checker with ARRIVE" "${why# }"
+  vvp "$TMP/wake_iv.out" +case=other_wake +arrive_wrong >"$TMP/wake_aw.log" 2>&1
+  [ "$(fired "$TMP/wake_aw.log")" = "wake_leads_valid" ] &&
+    say "  ...and without the delay, other_wake fires" "PASS" ||
+    bad "wake ARRIVE control" "an early view judged as at the receiver stayed quiet"
+fi
 
 # -- Icarus: the SAME checker source still compiles without DPI -----------
 # F-13: Icarus has no DPI at all. The emission guard exists so the X-pass can

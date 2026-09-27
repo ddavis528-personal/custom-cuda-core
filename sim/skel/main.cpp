@@ -56,6 +56,7 @@
 #include "verilated.h"
 
 #include "ccv/event.h"
+#include "ccv_params.h"
 #include "exerciser.h"
 #include "kernel.h"
 #include "machine.h"
@@ -66,6 +67,7 @@
 #include <cstring>
 #include <string>
 #include <tuple>
+#include <vector>
 
 using namespace ccv::skel;
 
@@ -76,17 +78,27 @@ template <typename W> void setBit(W &w, uint64_t i, bool v) {
   w[i / 32] = v ? (w[i / 32] | m) : (w[i / 32] & ~m);
 }
 
-/// Present this cycle's signals -- `cur` -- to the checker bank.
+/// Present this cycle's signals to the checker bank, where the bank watches
+/// each link: as it leaves the source's wrapper, src_stages repeater stages
+/// from the sender -- the same point the SV top's bank sees.
 void drive(Vccv_skel_checkers &bank, Machine &m) {
   auto &slots = m.slots();
-  for (unsigned k = 0; k != kNumSlots; ++k) {
-    setBit(bank.valid, k, slots[k].cur.valid);
-    setBit(bank.credit, k, slots[k].cur.credit);
-    setBit(bank.stall, k, slots[k].cur.stall);
-    // Trace sideband: 64 bits per slot, present because the skeleton is
-    // always built with CCV_TRACE.
-    for (unsigned b = 0; b != 64; ++b)
-      setBit(bank.tid, uint64_t(k) * 64 + b, (slots[k].cur.tid >> b) & 1u);
+  for (const ChanInst &ci : kChanInsts) {
+    const ChanDesc &cd = kChans[ci.chan];
+    for (unsigned s = 0; s != cd.rate; ++s) {
+      const unsigned k = ci.slot_base + s;
+      const SlotSignals o = slots[k].at(ci.src_stages);
+      setBit(bank.valid, k, o.valid);
+      setBit(bank.credit, k, o.credit);
+      setBit(bank.stall, k, o.stall);
+      // Trace sideband: 64 bits per slot, present because the skeleton is
+      // always built with CCV_TRACE.
+      for (unsigned b = 0; b != 64; ++b)
+        setBit(bank.tid, uint64_t(k) * 64 + b, (o.tid >> b) & 1u);
+      const uint64_t base = ci.payload_base + uint64_t(s) * cd.bits;
+      for (uint32_t b = 0; b != cd.bits; ++b)
+        setBit(bank.payload, base + b, o.payload.bit(b));
+    }
   }
   // No stub sleeps and none wakes (Q-33): the wake checkers see a receiver
   // that is never gated, so they hold and stay quiet.
@@ -94,43 +106,6 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
     setBit(bank.wake, k, false);
     setBit(bank.rx_gated, k, false);
   }
-  for (const ChanInst &ci : kChanInsts) {
-    const ChanDesc &cd = kChans[ci.chan];
-    for (unsigned s = 0; s != cd.rate; ++s) {
-      const Bits &p = slots[ci.slot_base + s].cur.payload;
-      const uint64_t base = ci.payload_base + uint64_t(s) * cd.bits;
-      for (uint32_t b = 0; b != cd.bits; ++b)
-        setBit(bank.payload, base + b, p.bit(b));
-    }
-  }
-}
-
-/// The bank's EV_CH_XFER events must carry exactly the payloads the senders
-/// launched: same channel, same bits 63:0, same trace identity, same
-/// multiset. That is what proves the bank's PAYLOAD and trace-sideband
-/// wiring -- the negative controls only reach valid, credit and stall,
-/// because Verilator is two-state and payload_known_when_due cannot fire.
-int xferCheck(const std::string &trace) {
-  std::vector<std::tuple<uint16_t, uint32_t, uint32_t, uint64_t>> ev, want;
-  ccv::EventReader r;
-  if (!r.open(trace)) {
-    std::fprintf(stderr, "cannot reread trace: %s\n", r.error().c_str());
-    return 1;
-  }
-  ccv::Event e;
-  while (r.next(e))
-    if (e.event_id == ccv::EV_CH_XFER)
-      ev.push_back({uint16_t(e.a), e.b, e.c, e.instr_uid});
-  for (const Launched &l : launchedLog())
-    want.push_back({l.chan, l.lo32, l.hi32, l.tid});
-  std::sort(ev.begin(), ev.end());
-  std::sort(want.begin(), want.end());
-  std::vector<uint16_t> seen;
-  for (auto &p : ev) seen.push_back(std::get<0>(p));
-  seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
-  std::printf("XFER events=%zu launched=%zu match=%s channels_seen=%zu\n",
-              ev.size(), want.size(), ev == want ? "yes" : "no", seen.size());
-  return 0;
 }
 
 /// S1: a kernel through the machine, to completion.
@@ -143,60 +118,25 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
     return 1;
   }
   k.brk = brk;
-  {
-    const size_t sl = path.find_last_of('/');
-    const std::string dir = sl == std::string::npos ? "." : path.substr(0, sl);
-    const size_t s2 = dir.find_last_of('/');
-    k.name = s2 == std::string::npos ? dir : dir.substr(s2 + 1);
-  }
-  Machine m(2, [&](int inst) { return makeKernelBlock(inst, k); });
+  k.name = kernelName(path);
+  Machine m(ccv::kCreditDepth, [&](int inst) { return makeKernelBlock(inst, k); });
   bank.pair_enable = 1;
   if (brk == "late-lead")
     for (Slot &s : m.slots()) s.late_lead = true;
 
-  // Finished = the exit has retired, no block has work left, and nothing is
-  // in flight on any slot -- then a short tail, so a late message would
-  // still be seen by the bank.
-  const uint64_t kReset = 2, kTail = 8;
-  uint64_t c = 0, quiet = 0, finish = 0;
-  bool finished = false;
-  for (; c != cap && quiet != kTail; ++c) {
-    bank.rst_n = c >= kReset;
+  // Finished: the rule is KernelEnd's, shared with the SV-hosted run.
+  KernelEnd end;
+  for (uint64_t c = 0; c != cap; ++c) {
+    bank.rst_n = c >= KernelEnd::kReset;
     drive(bank, m);
     bank.clk = 0; bank.eval(); ctx.timeInc(5);
     bank.clk = 1; bank.eval(); ctx.timeInc(5);
-    k.busy = 0;
-    m.step(c < kReset);
-    bool in_flight = false;
-    for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
-      in_flight = m.tx(s).sent() != m.rx(s).received();
-    if (c >= kReset && k.exited && k.busy == 0 && !in_flight) {
-      if (!finished) finish = c;
-      finished = true;
-      ++quiet;
-    } else {
-      quiet = 0;
-      finished = false;
-    }
+    m.step(c < KernelEnd::kReset);
+    if (end.after(c, k, m)) break;
   }
   bank.final();
   ccv::traceWriter().close();
-
-  const KernelReport r = compareFinal(k);
-  uint64_t overflows = 0;
-  for (unsigned s = 0; s != kNumSlots; ++s) overflows += m.rx(s).overflows();
-  std::printf("KERNEL name=%s finished=%d cycles=%llu retired=%llu "
-              "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
-              "mem_mismatch=%u check_failures=%llu class_violations=%llu "
-              "overflows=%llu channels_used=%u/%u violations=%d\n",
-              k.name.c_str(), int(finished), (unsigned long long)finish,
-              (unsigned long long)k.retired, k.orc.issue_groups,
-              r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
-              r.mem_mismatch, (unsigned long long)k.failures,
-              (unsigned long long)k.class_violations,
-              (unsigned long long)overflows, r.channels_used, kNumChans,
-              ctx.errorCount());
-  std::printf("UNUSED %s\n", r.unused.c_str());
+  printKernelReport(k, m, end, ctx.errorCount());
   if (!trace.empty() && brk == "none") return xferCheck(trace);
   return 0;
 }
@@ -251,13 +191,14 @@ int main(int argc, char **argv) {
   }
   if (brk != "none" && !breaking && brk != "misorder" &&
       brk != "wrong-class" && brk != "misbind" && brk != "misgroup" &&
+      brk != "double-pop" &&
       !kbreak) {
     std::fprintf(stderr, "unknown --break mode %s\n", brk.c_str());
     return 2;
   }
 
   // The skeleton's connectivity, one line per slot: channel, copy, slot,
-  // producer instance, consumer instance. tools/check-top-wiring.py compares
+  // producer instance, consumer instance, repeater stages each way. tools/check-top-wiring.py compares
   // it with connectivity EXTRACTED from the elaborated SV top, so the two
   // realisations of the wiring are checked against each other. The instance
   // naming rule is implemented here separately from tools/gen-top.py on
@@ -277,8 +218,8 @@ int main(int argc, char **argv) {
     if (!f) { std::fprintf(stderr, "cannot write %s\n", dump_wiring.c_str()); return 1; }
     for (const ChanInst &ci : kChanInsts)
       for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
-        std::fprintf(f, "%s %u %u %s %s\n", kChans[ci.chan].name, ci.inst, s,
-                     name(ci.src).c_str(), name(ci.dst).c_str());
+        std::fprintf(f, "%s %u %u %s %s %u\n", kChans[ci.chan].name, ci.inst, s,
+                     name(ci.src).c_str(), name(ci.dst).c_str(), ci.stages);
     std::fclose(f);
     return 0;
   }
@@ -289,7 +230,13 @@ int main(int argc, char **argv) {
   }
 
   auto ctx = std::make_unique<VerilatedContext>();
-  ctx->commandArgs(argc, argv);
+  // A run that drains is judged at its end: nothing outstanding on any slot
+  // (the checkers' quiesced_at_end). Runs cut off mid-traffic -- the wiring
+  // controls -- are not asked.
+  std::vector<const char *> args(argv, argv + argc);
+  if (brk == "none" || brk == "double-pop")
+    args.push_back("+ccv_eot_quiesce");
+  ctx->commandArgs(int(args.size()), args.data());
   // Count violations and keep going, rather than stopping at the first: a
   // report that says how many and where is worth more than one that says
   // "something".
@@ -324,14 +271,19 @@ int main(int argc, char **argv) {
   cfg.wrong_class = brk == "wrong-class";
   cfg.misbind = brk == "misbind";
   cfg.misgroup = brk == "misgroup";
+  cfg.double_pop = brk == "double-pop";
   bank->force_atomic = cfg.force_atomic;
   // The exerciser's traffic is synthetic: it sends requests and responses
   // independently, so a request/response pairing cannot hold (see
   // ccv_outstanding_checker). The functional stubs turn it on.
   bank->pair_enable = 0;
-  Machine m(2, [&](int inst) { return makeExerciser(inst, cfg); });
+  Machine m(ccv::kCreditDepth, [&](int inst) { return makeExerciser(inst, cfg); });
 
-  const uint64_t kReset = 2, kDrain = 16, kBreakAt = 6;
+  // The drain covers the longest link: its stages each way, and a queue of
+  // its deeper credits to empty.
+  unsigned max_stages = 0;
+  for (const ChanInst &ci : kChanInsts) max_stages = std::max<unsigned>(max_stages, ci.stages);
+  const uint64_t kReset = 2, kDrain = 16 + 6 * max_stages, kBreakAt = 6;
   for (uint64_t c = 0; c != cycles; ++c) {
     const bool in_reset = c < kReset;
     setDraining(c + kDrain >= cycles);
@@ -346,8 +298,12 @@ int main(int argc, char **argv) {
         for (unsigned k = 0; k != kNumSlots; ++k) m.rx(k).forceCredit();
       if (brk == "stall-all" && c == kBreakAt)
         for (unsigned k = 0; k != kNumSlots; ++k) m.rx(k).stall(true);
-      if (brk == "stall-all" && c == kBreakAt + 1)
-        for (unsigned k = 0; k != kNumSlots; ++k) m.tx(k).forceValid(wellFormed(m, k));
+      // The valid meets the stall where the sender sees it: on a link of N
+      // repeater stages, N cycles after the receiver raised it.
+      if (brk == "stall-all")
+        for (unsigned k = 0; k != kNumSlots; ++k)
+          if (c == kBreakAt + 1 + m.chanInstOf(k).stages)
+            m.tx(k).forceValid(wellFormed(m, k));
       // atomic-all: a whole group (legal), then ONE slot's credit, then ONE
       // slot's valid. Each is legal for the credit checker -- slot 0 has a
       // message outstanding, and credit to spare -- so only the atomic
@@ -358,8 +314,11 @@ int main(int argc, char **argv) {
           if (c == kBreakAt)
             for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
               m.tx(ci.slot_base + s).forceValid(wellFormed(m, ci.slot_base + s));
-          if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
-          if (c == kBreakAt + 5) m.tx(ci.slot_base).forceValid(wellFormed(m, ci.slot_base));
+          // The credit after the message has arrived: N stages later on a
+          // repeated link, or it would be a phantom where the bank watches.
+          if (c == kBreakAt + 3 + ci.stages) m.rx(ci.slot_base).forceCredit();
+          if (c == kBreakAt + 5 + ci.stages)
+            m.tx(ci.slot_base).forceValid(wellFormed(m, ci.slot_base));
         }
       // lockstep-all: instance 0's slot 0 alone -- a valid, then (legally,
       // for that slot) its credit. Only the lockstep checks may fire.
@@ -376,17 +335,20 @@ int main(int argc, char **argv) {
 
   // -- summary: one line, machine-readable, for tools/check-skel.sh --------
   const ExerciseTotals t = exerciseTotals();
-  uint64_t overflows = 0;
-  unsigned idle = 0;
+  uint64_t overflows = 0, leaks = 0;
+  unsigned idle = 0, home = 0;
   for (unsigned k = 0; k != kNumSlots; ++k) {
     overflows += m.rx(k).overflows();
+    leaks += m.rx(k).leaks();
     if (m.rx(k).received() == 0) ++idle;
+    // Conservation: after the drain, every sender holds all its credits.
+    if (m.tx(k).credits() == m.tx(k).depth()) ++home;
   }
   std::printf("SKEL cycles=%llu blocks=%u chan_types=%u chan_insts=%u "
               "slots=%u sent=%llu received=%llu mismatches=%llu "
               "tid_mismatches=%llu class_violations=%llu "
-              "class_violation_channels=%u overflows=%llu idle_slots=%u "
-              "violations=%d\n",
+              "class_violation_channels=%u overflows=%llu credit_leaks=%llu "
+              "credits_home=%u idle_slots=%u violations=%d\n",
               (unsigned long long)cycles, kNumBlkInsts, kNumChans,
               kNumChanInsts, kNumSlots, (unsigned long long)t.sent,
               (unsigned long long)t.received,
@@ -394,7 +356,8 @@ int main(int argc, char **argv) {
               (unsigned long long)t.tid_mismatches,
               (unsigned long long)t.class_violations,
               t.class_violation_channels,
-              (unsigned long long)overflows, idle, ctx->errorCount());
+              (unsigned long long)overflows, (unsigned long long)leaks, home,
+              idle, ctx->errorCount());
 
   if (!trace.empty() && brk == "none") return xferCheck(trace);
   return 0;

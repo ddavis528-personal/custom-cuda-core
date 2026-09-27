@@ -338,10 +338,11 @@ Only parameters and localparams carry upper case.
 ### CCV-L20 — clocks are named as clocks, and used only as clocks
 
 A net driving a clock edge must match the clock shape, and its domain segment
-must be registered. Conversely a clock may appear only in an edge expression, a
-port map, or **the right-hand side of another clock** — that last one being the
-block's gate, which is the whole reason `<block>_core_clk` exists. Anywhere
-else is a clock read as data.
+must be registered. Conversely a clock may appear only in an edge expression
+or a port map — the block's gate is `ccv_clk_gate`'s `gclk` port, which is the
+whole reason `<block>_core_clk` exists. Anywhere else is a clock read as data.
+A clock built from a clock with logic is CCV-L27's business: only a ctech cell
+does that.
 
 Because `_core_` marks synchronous, an `always_ff` mixing a `*_core_clk`-
 generated signal with a `test_clk`-generated one is a crossing detectable from
@@ -363,11 +364,106 @@ since without a block name there is nothing to check the block letter against.
 
 ### CCV-L22 — a block runs on its own gated clock
 
-No `always_ff @(posedge core_clk)` inside a block. Each block gates `core_clk`
-as its first act, and clocking logic on the ungated net **silently defeats that
-gate**: the design still works, produces identical results, and never saves the
-power it was supposed to. Nothing in simulation shows it, which is exactly why
-it needs a rule.
+No `always_ff @(posedge core_clk)` inside a block, except the wake detector.
+A block receives one clock, `core_clk`, ungated, and gates it as its first
+act, inside itself (see *The top level* below). Clocking logic on the
+ungated net **silently defeats that gate**: the design still works, produces
+identical results, and never saves the power it was supposed to. Nothing in
+simulation shows it, which is exactly why it needs a rule.
+
+The gate is `ccv_clk_gate` (`docs/clock-gate.md`): a block with sequential
+logic must instantiate it with `.clk(core_clk)`, and runs on its `gclk`. The
+sleep policy, the registered wake and its hold, and the ctech ICG are all
+inside it, so no block builds its own. The wake detector the exception allows
+is the edge detector a block needs for a level-sensitive wake source, such as
+a stall that releases.
+
+```systemverilog
+ccv_clk_gate u_cg (
+  .clk(core_clk), .rst_n(sched_rst_r06h_n),
+  .quiesced(sched_idle_cs03h), .stalled(sched_blocked_cs03h),
+  .hyst_quiesce(sched_csr_hyst_q), .hyst_stall(sched_csr_hyst_s),
+  .wake({ooe_sched_wake, lane_sched_wake}),
+  .cg_override(sched_csr_cg_ovr), .te(1'b0),
+  .gclk(sched_core_clk), .gated(clk_gated));
+```
+
+`check-top-pure.py` R7 checks the same thing on the elaborated netlist: every
+block has exactly one `ccv_clk_gate`, on its `core_clk` port, and its
+`clk_gated` port is that gate's `gated`.
+
+### CCV-L27 — every clock gate is the ctech ICG
+
+Outside `rtl/ctech/`, no clock is built from a clock with logic, and no
+`always_latch` exists. A clock gate is `ccv_ctech_icg`, reached through
+`ccv_clk_gate`. It is simulated as a latch and an AND gate, and synthesised as
+the library's ICG cell, whatever synthesis would have inferred (see
+`docs/clock-gate.md`, *The ctech layer*).
+
+A hand-built `assign x_clk = core_clk & en` works in every RTL simulation. In
+silicon it glitches whenever `en` moves while the clock is high, and synthesis
+may or may not recognise it as a gate. Renaming a clock (`assign a_clk =
+b_clk;`) is wiring, and is allowed.
+
+The rule also ties the marker to the directory. A file in `rtl/ctech/` must
+say `// Ctech: <cell> -- <view>`, and no file elsewhere may, since that
+marker is what exempts a file from CCV-L08's clock check and from this rule.
+A library view's `lib_cells.v` holds the library's port declarations, not our
+RTL, and is not linted.
+
+### The top level: block instances and nets, nothing else
+
+`ccv_core_top` holds hardening wrappers and the nets between them, and each
+wrapper holds its one block, its sequential repeaters and the nets between
+them. Neither level has a gate, flop, constant tie-off or clock gate, or glue
+of any kind, outside a block or a repeater. This is a hard rule, for three
+reasons:
+
+- **Everything can be validated at the top.** Pure connectivity is what
+  `check-top-wiring.py` checks bit for bit against the C++ skeleton. Logic
+  there would be neither a block nor wiring, so no check would own it.
+- **The floorplan can abut the blocks.** A top-level cell needs somewhere to
+  sit, and glue between two blocks is what stops them touching.
+- **Sleep is a block's own decision.** A block enters sleep on local
+  quiescence or stall, signals that are internal and stay internal. So the
+  clock gate belongs inside the block, next to what drives it. A top-level
+  gate would need those signals brought out as ports.
+
+What the rule moved:
+
+- **The clock gates.** Each block now takes `core_clk` ungated and gates it
+  itself, where the top used to build `<blk>_core_clk` from a `sleep_ok`
+  port.
+- **The CSR star's tie-offs.** CRU's own slot in its star vectors was tied to
+  zero at the top. It now has no slot, and the vectors index the other 44
+  instances.
+
+**One exception, and it observes.** Under `CCV_CHECK` the top also holds the
+checker bank. Its ports may take constants (its configuration). It may drive
+nothing, and it is absent from every synthesis view. The bank learns a
+receiver's gate state from `clk_gated`, an output port each block has only
+under `CCV_CHECK`, as `_tid` exists only under `CCV_TRACE`. That is an
+observation, not a control: the decision to gate stays inside the block.
+
+**Enforced on the elaborated netlist** by `tools/check-top-pure.py`, in
+`check-top.sh`, for both the synthesis and checking views, at the top and in
+every wrapper:
+
+- every cell is what that level may hold: at the top, exactly the 45
+  wrappers; in a wrapper, one block and its repeaters;
+- no constant on any block or top port;
+- every bit a block reads has one driver;
+- every bit a block drives is read.
+
+Seven impure copies must each be refused for the rule they break: the old
+clock gate, a tied reset, a top-level flop, a floating input, an unloaded
+output, and a clock gate and a tie-off inside a wrapper.
+
+What the rule doesn't yet give is *full* abutment. Every net would have to
+join neighbours, and today `core_clk`, `rst_n`, the kill broadcast and the
+CSR star fan out across the core. That is Q-42. A channel too long for one
+cycle is covered by sequential repeaters (`rtl/phys/ccv_seq_rpt.sv`,
+[`physical.md`](physical.md)), not by glue at the top.
 
 ### CCV-L23 — stage arithmetic
 
@@ -685,11 +781,13 @@ it is cheap and reliable; prohibit X on control, where propagation is not.**
       endcase
     end
 
-**Under formal, pair it with `CCV_ASSUME_KNOWN` on inputs** (finding F-8).
-Yosys models an unconstrained module input as possibly-X, so the assert alone
-fails spuriously. A block assumes its control inputs are X-free — which its
-neighbour asserts — and proves its own outputs are; the halves compose into a
-whole-design argument one boundary at a time.
+**Under formal the known-macros are constant true** (finding F-20, which
+corrects F-8). Yosys reads `$isunknown(s)` as "`s` equals 0", so
+`assume(!$isunknown(s))` pinned an input to all ones, and the assert failed on
+every legal 0. The formal model has no X: registers and inputs are free
+two-state values. So X-freedom is the simulators' question, and formal proves
+the protocol over every value instead. Write `` `CCV_KNOWN(s) ``, never a bare
+`$isunknown`, in any property Yosys may read.
 
 **Do not use `$isunknown` for the un-reset-payload invariant.** Also F-8: an
 un-reset register gets a free *two-state* value under formal, so
@@ -790,9 +888,8 @@ be absent and a neighbouring proof would look fine.
 
 Three macros are exempt and intentionally so:
 
-- `` `CCV_ASSUME_KNOWN `` — an environment constraint in every mode. Under
-  formal an unconstrained input is modelled as possibly-X, so this is what
-  makes the paired `$isunknown` assert provable rather than spurious (F-8).
+- `` `CCV_ASSUME_KNOWN `` — an environment constraint in simulation, constant
+  true under formal, where there is no X to constrain (F-20).
 - `` `CCV_IF_SAT `` — a guard, never mode-resolved, per CCV-L14.
 - `` `CCV_IF_CONFIG `` — a check on the checker's own parameters, below.
 
@@ -807,13 +904,13 @@ misconfigurations break no protocol rule at all:
 
 | Misconfiguration | What it looks like instead |
 | --- | --- |
-| credit depth below the round trip | the channel throttles to one message per round trip — indistinguishable from healthy backpressure |
+| credit depth below the credit loop (round trip + turnaround, Q-43) | the channel runs below full bandwidth, `DEPTH / loop` of it — indistinguishable from healthy backpressure |
 | timeout N below the round trip | `response_within_n` fires on a channel behaving perfectly, and the first instinct on seeing it is to raise N — i.e. the check teaches you to disbelieve it |
 
 Nothing else in a checker catches either, because nothing else looks at the
 parameters:
 
-    `CCV_IF_CONFIG(depth_covers_round_trip,   DEPTH     >= ROUND_TRIP)
+    `CCV_IF_CONFIG(depth_covers_credit_loop,  DEPTH     >= ROUND_TRIP + CCV_CREDIT_TURNAROUND)
     `CCV_IF_CONFIG(timeout_covers_round_trip, TIMEOUT_N >= ROUND_TRIP)
 
 **Never mode-resolved.** Under `MODE=ASSUME` a mode-resolved version would turn

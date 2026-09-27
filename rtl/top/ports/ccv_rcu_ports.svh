@@ -13,16 +13,18 @@
 //   <chan>[_c<NN>][_s<K>]_{valid,payload,credit,stall}, and
 //   <chan>[_c<NN>]_wake per channel instance; `_c` only where a
 // block names one of several copies, `_s` only at rate > 1.
-// `_payload` is typed ccv_<chan>_t. `_tid` is trace-only (CCV_TRACE).
-  input  logic clk,
-  input  logic clk_free,
+// `_payload` is typed ccv_<chan>_t. `_tid` is trace-only (CCV_TRACE);
+// `clk_gated` is an observation for the checker bank (CCV_CHECK).
+//
+// One clock, core_clk, UNGATED: the block gates it as its first act,
+// inside the block. The top holds only block instances and nets.
+  input  logic core_clk,
   input  logic rst_n,
   input  logic kill_valid,
   input  logic [31:0] kill_warp_mask,
   input  logic [1:0] kill_epoch,
   output logic kill_ack,
   output logic [1:0] kill_ack_epoch,
-  output logic sleep_ok,
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
@@ -1472,6 +1474,9 @@
   output logic pca_rcu_mig_credit,
   output logic pca_rcu_mig_stall,
   input  logic pca_rcu_mig_wake
+`ifdef CCV_CHECK
+  , output logic clk_gated
+`endif
 `ifdef CCV_TRACE
   , input  logic [63:0] ooe_rcu_issue_s0_tid
   , input  logic [63:0] ooe_rcu_issue_s1_tid

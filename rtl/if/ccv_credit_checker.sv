@@ -19,8 +19,12 @@
 //
 // THE ROUND TRIP IS 2 EVERYWHERE, BY CONSTRUCTION. Flops on both sides with
 // no exceptions, plus abutment, gives exactly that -- it is not a per-block
-// choice. So credit depth, rescue depth and drain wait are not three numbers
-// but one number under three names, and all are 2 today; wake is 4.
+// choice. Rescue depth and drain wait count in-flight valids and equal it.
+// CREDIT DEPTH DOES NOT (Q-43): a credit's loop is the round trip plus the
+// endpoints' turnaround -- the payload lands a cycle after valid, the credit
+// goes back the cycle after that, and it is spent the cycle after it
+// arrives -- so 4 at abutment. Depth equal to the round trip ran every slot
+// at half rate; channels run at full bandwidth, so depth is the loop.
 //
 // They remain PARAMETERS rather than being read straight from the package for
 // one reason: a non-abutting interface would differ, and none is known to be
@@ -39,10 +43,11 @@ module ccv_credit_checker #(
   parameter int MODE       = `CCV_MODE_ASSERT,
   parameter int PAYLOAD_W  = 32,
   parameter int ROUND_TRIP = ccv_params_pkg::CCV_RT_ABUT,
-  // DERIVED, not chosen: credit depth IS the round trip. Defaulting it from
-  // ROUND_TRIP rather than from CCV_CREDIT_DEPTH separately is what stops the
-  // two from being overridden apart -- they are the same number.
-  parameter int DEPTH      = ROUND_TRIP,
+  // DERIVED, not chosen: credit depth IS the credit loop, the round trip plus
+  // the endpoints' turnaround. Defaulting it from ROUND_TRIP rather than from
+  // CCV_CREDIT_DEPTH separately is what stops the two from being overridden
+  // apart -- a repeated link's ROUND_TRIP carries its depth with it.
+  parameter int DEPTH      = ROUND_TRIP + ccv_params_pkg::CCV_CREDIT_TURNAROUND,
   // PROVISIONAL by construction: N cannot be justified before contention data
   // exists, so revising it is an expected Stage 4b output, not a spec change.
   // The memory path needs CCV_P_TIMEOUT_MEM instead -- it must exceed
@@ -53,7 +58,14 @@ module ccv_credit_checker #(
   // the payload, in the same register (schema lead_fields). The lane mask is
   // the case -- it gates a lane before the operands it gates arrive. Zero on
   // every channel without lead fields, which makes the property vacuous.
-  parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0
+  parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0,
+  // Sequential repeater stages between THIS checker and the sender
+  // (rtl/phys/ccv_seq_rpt.sv). Only the stall rule depends on where along a
+  // repeated link the checker sits: a stall seen here reaches the sender
+  // SRC_STAGES cycles later, and the first valid it can suppress takes as
+  // long again to come back. 0 is the sender's own port, as on every
+  // abutted link. ROUND_TRIP is the whole link's, wherever the checker is.
+  parameter int SRC_STAGES = 0
 ) (
   input logic                  clk,
   input logic                  rst_n,
@@ -90,7 +102,10 @@ module ccv_credit_checker #(
   logic [QD*TW-1:0]   age_d;         // after a new message joins, if one does
   logic [CW-1:0]      tail;
   logic               valid_q;
-  logic               stall_q;
+  // The stall, as old as the first valid it can have suppressed: one cycle
+  // at the sender, 1 + 2 * SRC_STAGES at a point that far downstream.
+  localparam int SL = 1 + 2 * SRC_STAGES;
+  logic [SL-1:0]      stall_h;
 
   wire sent     = ch_valid;
   wire returned = ch_credit;
@@ -150,10 +165,10 @@ module ccv_credit_checker #(
       outstanding <= '0;
       age_q       <= '0;
       valid_q     <= 1'b0;
-      stall_q     <= 1'b0;
+      stall_h     <= '0;
     end else begin
       valid_q <= ch_valid;
-      stall_q <= ch_stall;
+      stall_h <= SL'({stall_h, ch_stall});
       age_q   <= age_d;
 
       // Saturating at both ends, for the same reason pop is guarded: a
@@ -171,8 +186,8 @@ module ccv_credit_checker #(
   `CCV_ASSUME_KNOWN(env_valid_known,  ch_valid)
   `CCV_ASSUME_KNOWN(env_credit_known, ch_credit)
   `CCV_ASSUME_KNOWN(env_stall_known,  ch_stall)
-  `CCV_CONTRACT_M(MODE, valid_known,  !$isunknown(ch_valid))
-  `CCV_CONTRACT_M(MODE, credit_known, !$isunknown(ch_credit))
+  `CCV_CONTRACT_M(MODE, valid_known,  `CCV_KNOWN(ch_valid))
+  `CCV_CONTRACT_M(MODE, credit_known, `CCV_KNOWN(ch_credit))
   // NOTE payload is absent by design: §6 prohibits X on CONTROL and
   // propagates it on DATA, where propagation is cheap and reliable.
 
@@ -180,11 +195,12 @@ module ccv_credit_checker #(
   // Both of these are misconfigurations that produce NO protocol violation, so
   // nothing else in this file would catch them:
   //
-  //   DEPTH < ROUND_TRIP       the sender runs out of credits before the first
-  //                            one returns. The interface still obeys every
-  //                            rule below; it just throttles to one message
-  //                            per round trip and looks like healthy
-  //                            backpressure.
+  //   DEPTH < the credit loop  the sender runs out of credits before the first
+  //                            one comes back round. The interface still
+  //                            obeys every rule below; it just runs at
+  //                            DEPTH / loop of its bandwidth and looks like
+  //                            healthy backpressure. Channels run at full
+  //                            bandwidth (Q-43), so this is refused.
   //   TIMEOUT_N < ROUND_TRIP   response_within_n fires on a channel that is
   //                            behaving perfectly, and the first instinct on
   //                            seeing it is to raise N -- i.e. the check
@@ -192,7 +208,8 @@ module ccv_credit_checker #(
   //
   // `CCV_IF_CONFIG is unconditional by construction -- see ccv_if.svh for why
   // a mode-resolved configuration check is a fail-open.
-  `CCV_IF_CONFIG(depth_covers_round_trip,   DEPTH     >= ROUND_TRIP)
+  `CCV_IF_CONFIG(depth_covers_credit_loop,
+                 DEPTH >= ROUND_TRIP + ccv_params_pkg::CCV_CREDIT_TURNAROUND)
   `CCV_IF_CONFIG(timeout_covers_round_trip, TIMEOUT_N >= ROUND_TRIP)
 
   // -- the credit protocol -------------------------------------------------
@@ -215,8 +232,10 @@ module ccv_credit_checker #(
   // No message may be sent the cycle after a stall is received. That
   // guarantee is what makes the in-flight window a fixed count rather than a
   // handshake, and rescue depth, drain wait and sleep entry are all counted
-  // against it.
-  `CCV_CONTRACT_M(MODE, stall_honoured, !(stall_q && ch_valid))
+  // against it. Stated at the SENDER: downstream of repeater stages the
+  // valids already in flight still arrive, so the stall checked is the one
+  // old enough to have stopped the valid seen now.
+  `CCV_CONTRACT_M(MODE, stall_honoured, !(stall_h[SL-1] && ch_valid))
 
   // -- valid one cycle early ----------------------------------------------
   // Once asserted, valid is BINDING: the payload follows on schedule even if
@@ -224,14 +243,37 @@ module ccv_credit_checker #(
   // functionally and fails the swap test, which is why this is checked rather
   // than assumed.
   `CCV_CONTRACT_M(MODE, payload_known_when_due,
-                  !valid_q || !$isunknown(ch_payload))
+                  !valid_q || `CCV_KNOWN(ch_payload))
 
   // Lead fields are due WITH valid, not after it: a receiver acts on them in
   // the valid cycle (a lane gates itself on its mask before its operands
   // land). Like payload_known_when_due, only a four-state simulator or formal
   // can see it fail.
+  // Through a wire: Icarus 12 reports $isunknown of the inline expression
+  // as 1 whenever PAYLOAD_W is overridden, with every bit known (F-19).
+  wire [PAYLOAD_W-1:0] lead_bits = ch_payload & LEAD_MASK;
   `CCV_CONTRACT_M(MODE, lead_known_at_valid,
-                  !ch_valid || !$isunknown(ch_payload & LEAD_MASK))
+                  !ch_valid || `CCV_KNOWN(lead_bits))
+
+  // -- end of test: every message answered --------------------------------
+  // A receiver that consumes two messages and returns one credit breaks no
+  // rule above at the time: one credit is legal. The orphan it leaves is
+  // outstanding for ever, and response_within_n sees it only once it ages
+  // past N -- which a run that ends first never reaches. The S0 exerciser
+  // leaked credits that way for months, clean. So a drained run (the
+  // +ccv_eot_quiesce plusarg, ccv_assert_pkg) must end with nothing
+  // outstanding. The formal proof of the same property is conservation, in
+  // tools/check-formal.sh. Simulation only: formal has no end of test, and
+  // synthesis no final block.
+`ifndef FORMAL
+`ifndef SYNTHESIS
+  final begin
+    if (ccv_assert_pkg::eot_quiesce() && outstanding != '0)
+      $error("CCV quiesced_at_end failed: %0d message(s) never credited back",
+             outstanding);
+  end
+`endif
+`endif
 
   // -- bounded response, standing in for liveness -------------------------
   // s_eventually does not exist on this toolchain (F-2), so "eventually

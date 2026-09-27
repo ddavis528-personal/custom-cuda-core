@@ -2,9 +2,12 @@
 #include "exerciser.h"
 
 #include "ccv_event_ids.h"
+#include "ccv/event.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <map>
+#include <tuple>
 
 namespace ccv {
 namespace skel {
@@ -33,8 +36,10 @@ ExerciseTotals g_totals;
 std::vector<Launched> g_launched;
 bool g_draining = false;
 bool g_class_bad[kNumChans] = {};
+bool g_mismatch_chan[kNumChans] = {};
 
 constexpr uint64_t kStreamGroup = 0x1000, kStreamKey = 0x2000;
+constexpr uint64_t kPatience = 8;   // cycles an eligible head may be passed over
 constexpr unsigned kKeyValues = 4;   // up to four warps, as on dec->ooe
 
 /// Key values a field-keyed channel's sender draws from: few enough that
@@ -136,10 +141,15 @@ private:
     const uint64_t st = streamOf(cd, s, kv);
     const uint64_t q = g.seq[st]++;
     if (m.payload != expectedPayload(*g.ci, st, q, kv)) {
-      if (g_totals.mismatches < 5)
+      // The first on each CHANNEL, not the first five in all: the misorder
+      // control is judged by which channels report, and a cap across all of
+      // them let one busy channel hide another (found on a repeated link).
+      if (!g_mismatch_chan[g.ci->chan]) {
+        g_mismatch_chan[g.ci->chan] = true;
         std::fprintf(stderr, "MISMATCH %s[%u] slot %u stream %llx message %llu\n",
                      cd.name, g.ci->inst, s, (unsigned long long)st,
                      (unsigned long long)q);
+      }
       ++g_totals.mismatches;
     }
     if (m.tid != expectedTid(*g.ci, st, q))
@@ -188,16 +198,31 @@ private:
       // times -- the bounded-response check doing exactly its job, on the
       // stub. Not the oldest either, which is plain FIFO and would never let
       // one stream pass another. `misorder` takes an ineligible head.
-      for (InGroup &g : gs)
+      for (InGroup &g : gs) {
+        // One head per SLOT per cycle: a slot returns one credit a cycle,
+        // so a second pop there would lose one (Receiver::pop).
+        bool taken[64] = {};
         for (unsigned step = 0; step != cd.rate; ++step) {
           unsigned ok[64], nok = 0;
           int bad = -1;
           for (unsigned s = 0; s != cd.rate; ++s) {
-            if (g.rx[s]->empty()) continue;
+            if (g.rx[s]->empty() || taken[s]) continue;
             if (eligible(g, cd, s)) ok[nok++] = s;
             else if (bad < 0) bad = int(s);
           }
           int pick = nok ? int(ok[rng_.next() % nok]) : -1;
+          // ...but patience runs out: an eligible head that has waited
+          // kPatience cycles goes first, oldest first. A random pick alone
+          // has no bound on how long one message can keep losing the draw,
+          // and the first repeated links -- credit depth 2 + 2N, so deeper
+          // queues -- found it: response_within_n on every cycle.
+          for (unsigned x = 0; x != nok; ++x) {
+            const uint64_t a = g.rx[ok[x]]->front().arrived;
+            if (now - a >= kPatience &&
+                (pick < 0 || a < g.rx[pick]->front().arrived ||
+                 now - g.rx[pick]->front().arrived < kPatience))
+              pick = int(ok[x]);
+          }
           if (cfg_.misorder && bad >= 0) pick = bad;
           if (pick < 0) break;
           // One coin per step, not stop-at-the-first-failure: that drained
@@ -206,7 +231,9 @@ private:
           if (rng_.uniform() >= cfg_.p_pop) continue;
           verify(g, unsigned(pick), g.rx[pick]->front());
           g.rx[pick]->pop();
+          taken[pick] = !cfg_.double_pop;
         }
+      }
     } else {
       unsigned uid = 0;
       for (auto &u : units(gs, cd)) {
@@ -380,6 +407,32 @@ void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid) {
   g_launched.push_back(
       {chan, uint32_t(msg.get(0, nb < 32 ? nb : 32)),
        uint32_t(nb <= 32 ? 0 : msg.get(32, nb < 64 ? nb - 32 : 32)), tid});
+}
+
+/// That is what proves the bank's PAYLOAD and trace-sideband wiring -- the
+/// negative controls only reach valid, credit and stall, because Verilator is
+/// two-state and payload_known_when_due cannot fire.
+int xferCheck(const std::string &trace) {
+  std::vector<std::tuple<uint16_t, uint32_t, uint32_t, uint64_t>> ev, want;
+  ccv::EventReader r;
+  if (!r.open(trace)) {
+    std::fprintf(stderr, "cannot reread trace: %s\n", r.error().c_str());
+    return 1;
+  }
+  ccv::Event e;
+  while (r.next(e))
+    if (e.event_id == ccv::EV_CH_XFER)
+      ev.push_back({uint16_t(e.a), e.b, e.c, e.instr_uid});
+  for (const Launched &l : launchedLog())
+    want.push_back({l.chan, l.lo32, l.hi32, l.tid});
+  std::sort(ev.begin(), ev.end());
+  std::sort(want.begin(), want.end());
+  std::vector<uint16_t> seen;
+  for (auto &p : ev) seen.push_back(std::get<0>(p));
+  seen.erase(std::unique(seen.begin(), seen.end()), seen.end());
+  std::printf("XFER events=%zu launched=%zu match=%s channels_seen=%zu\n",
+              ev.size(), want.size(), ev == want ? "yes" : "no", seen.size());
+  return 0;
 }
 
 } // namespace skel

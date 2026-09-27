@@ -92,3 +92,20 @@ module bad_naming_feedback (
     out_h_cy01h <= ld_en_cy00h ? in_data_cy00h : out_h_cy01h;
   end
 endmodule
+
+// CCV-L27: a clock gate built by hand -- an AND, which glitches when its
+// enable moves while the clock is high -- and a latch, outside rtl/ctech/.
+// Both belong to the ctech ICG, reached through ccv_clk_gate. The marker
+// below is the third violation: only a ctech view may carry it.
+// Ctech: icg -- misplaced
+module bad_naming_gates (
+  input  logic       core_clk,
+  input  logic       blk_en_cy00h,
+  output logic       bad_core_clk,
+  output logic       held_cy00h
+);
+  assign bad_core_clk = core_clk & blk_en_cy00h;
+  always_latch begin
+    if (blk_en_cy00h) held_cy00h = 1'b1;
+  end
+endmodule

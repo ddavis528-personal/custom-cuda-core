@@ -166,26 +166,38 @@
 // answer different questions, which is why §6 runs both. Under formal it is the
 // strongest of the three, since un-reset state is a free variable rather than
 // whatever one run happened to produce.
+//
+// UNDER FORMAL THERE IS NO X, and $isunknown is worse than meaningless there
+// (finding F-20). The formal model is two-state: an un-reset register is a
+// free two-state value (F-8), and so is an input. Yosys lowers $isunknown(s)
+// to a case-equality against an x constant, which its SMT backend reads as
+// ZERO -- so "unknown" means "equals 0", `assume(!$isunknown(s))` pins s to
+// ALL ONES, and `assert(!$isunknown(s))` fails whenever s is 0. Every checker
+// that assumed its inputs known was proving things about a sender whose
+// valid never fell. So CCV_KNOWN is constant true under FORMAL: X-freedom is
+// the simulators' question (the Icarus X-pass, F-6), and formal proves the
+// protocol over every two-state value instead.
 //===----------------------------------------------------------------------===//
+`ifdef FORMAL
+  `define CCV_KNOWN(SIG) 1'b1
+`else
+  `define CCV_KNOWN(SIG) !$isunknown(SIG)
+`endif
+
 `define CCV_ASSERT_KNOWN(NAME, SIG) \
-  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, !$isunknown(SIG))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, `CCV_KNOWN(SIG))
 
 `define CCV_ASSERT_KNOWN_IF(NAME, VALID, SIG) \
-  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, !(VALID) || !$isunknown(SIG))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assert, NAME, !(VALID) || `CCV_KNOWN(SIG))
 
-// The `assume` half, and it is not optional under formal.
-//
-// Yosys models an unconstrained module INPUT as possibly-X, so
-// `CCV_ASSERT_KNOWN on an input is satisfiable and fails spuriously -- a real
-// result from the 1b build, not a hypothetical (finding F-8). The fix is the
-// cut-point discipline §7 already describes, applied to X: a block ASSUMES its
-// inputs are X-free, because its neighbour asserts exactly that, and then
-// PROVES its own outputs are. The two halves compose into a whole-design
-// argument, one boundary at a time.
-//
-// Every block's formal run should carry one of these per control input.
+// The `assume` half: in a simulation-driven run it states the contract a
+// block's neighbour asserts, one boundary at a time (§7's cut-point
+// discipline, applied to X). Under formal it is vacuous by construction,
+// through CCV_KNOWN -- F-8 once made it required there, on a reading of
+// Yosys's X modelling that F-20 corrected: it pinned every such input to
+// all ones.
 `define CCV_ASSUME_KNOWN(NAME, SIG) \
-  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assume, NAME, !$isunknown(SIG))
+  `CCV_CONTRACT_AT(`CCV_CLK, `CCV_RST, assume, NAME, `CCV_KNOWN(SIG))
 
 //===----------------------------------------------------------------------===//
 // §6's un-reset-payload invariant:

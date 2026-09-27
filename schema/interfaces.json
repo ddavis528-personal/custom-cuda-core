@@ -25,16 +25,10 @@
   "schema_version": 2,
   "common_ports": [
     {
-      "name": "clk",
+      "name": "core_clk",
       "dir": "in",
       "width": 1,
-      "doc": "Gated clock for the block."
-    },
-    {
-      "name": "clk_free",
-      "dir": "in",
-      "width": 1,
-      "doc": "Ungated clock, for the wake detector ONLY. Anything else on it defeats the block's gate invisibly (CCV-L22)."
+      "doc": "The core clock, UNGATED -- the only clock a block receives. The block gates it as its first act, inside the block, on its own quiescence or stall; the gated `<blk>_core_clk` never leaves the block, and nothing but the gate and the wake detector may be clocked on this one (CCV-L22). Gating is inside the block, not at the top, so the top holds nothing but block instances and nets (rtl-coding-style.md, \"The top level\") and the signals that decide sleep stay internal."
     },
     {
       "name": "rst_n",
@@ -145,15 +139,6 @@
       }
     },
     {
-      "name": "sleep_ok",
-      "dir": "out",
-      "width": 1,
-      "doc": "Block is drained and may be gated. Goes to the block's OWN clock gate only; wake arrives per channel (the _wake channel signal), so there is no global sleep or wake fabric.",
-      "fabric": {
-        "kind": "local"
-      }
-    },
-    {
       "name": "csr_req",
       "dir": "in",
       "width": "CCV_L_W_CSR_ADDR+CCV_W_CSR+1",
@@ -184,6 +169,16 @@
         "kind": "star",
         "owner": "cru",
         "port": "csr_credits"
+      }
+    },
+    {
+      "name": "clk_gated",
+      "dir": "out",
+      "width": 1,
+      "check_only": true,
+      "doc": "CCV_CHECK only: the block's clock gate is closed this cycle. An OBSERVATION port, like a channel's `_tid` under CCV_TRACE: it exists for the wake checker in the top's checker bank (Q-33), is read by nothing in the design, and is absent from every synthesis view. What decides to gate stays inside the block.",
+      "fabric": {
+        "kind": "observe"
       }
     }
   ],

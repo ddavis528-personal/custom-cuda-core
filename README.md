@@ -83,16 +83,19 @@ manifest. The gate must pass first, and the branch is never merged back.
 | File | Role |
 |---|---|
 | [`docs/rtl-execution-strategy.md`](docs/rtl-execution-strategy.md) | **The process contract.** How we get from locked architecture to validated RTL, and in what order. Not a design doc — block-level architecture definition happens elsewhere and is an input to this. Section references throughout the repo (§1, §6, §8 Stage 1c…) point here. |
+| [`docs/walkthrough.md`](docs/walkthrough.md) | **Generated. The machine as it stands, through one kernel.** `vadd` from the pinned compiler snapshot, through the oracle, the parameters and schema, one channel from JSON to ports, the C++ run, one instruction's journey across the blocks, the same run in SystemVerilog, the checker bank and the proofs. Regenerate with `tools/gen-walkthrough.py`; the gate fails if it is stale. |
 | [`docs/roadmap.md`](docs/roadmap.md) | **Start here when picking this up again.** Current state, what is built, and what is next. |
 | [`docs/open-items.md`](docs/open-items.md) | **Every open item, numbered Q-1… and never renumbered.** What is undecided, awaiting confirmation or scheduled to a stage, with owner and what each blocks. Closed items stay, with their resolution. Refer to items by ID. |
 | [`docs/stage1a-tool-support.md`](docs/stage1a-tool-support.md) | **Generated.** The SVA-construct × three-tool matrix, with a named usable subset. Regenerate with `tools/run-spike-1a.py`. |
 | [`docs/rtl-findings-stage1.md`](docs/rtl-findings-stage1.md) | **The report for the architecture and planning track.** What Stage 1 found about the strategy — six decisions measurement overturned, what was confirmed, and what Stage 2 needs. Organised by what was found, not by what was built. |
-| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — eighteen findings (F-1…F-18), several of which close questions the strategy doc left open. |
+| [`docs/stage1a-findings.md`](docs/stage1a-findings.md) | **Written.** What the matrix means and what it settles — twenty-one findings (F-1…F-21), several of which close questions the strategy doc left open. |
 | [`docs/fail-open-register.md`](docs/fail-open-register.md) | Every mechanism in the flow that fails *open* rather than loud, and the negative control that makes its results believable. Stage 1's three worst findings were all fail-open. |
 | [`docs/reset-line-template.md`](docs/reset-line-template.md) | The format a block's Stage 4a reset line must take — every un-reset payload field paired with the valid bit that guards it, without which §7's third formal target cannot be written. |
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
 | [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the SV top, and S1: `vadd` end to end, where its values come from, its wire conventions and the payload gaps it found. |
+| [`docs/clock-gate.md`](docs/clock-gate.md) | **Clock gating.** The ctech layer (one module per cell, a behavioural view for simulation and one per process library for synthesis), and `ccv_clk_gate`, every block's gate: sleep on quiescence or stall with CSR-programmable hysteresis, a CSR override, and a registered wake that opens the edge after next. What is proved about it, and how. |
+| [`docs/physical.md`](docs/physical.md) | **Getting to abutment.** The sequential repeater widget; the hardening wrappers and `params/links.json`, which says how many stages of each channel each wrapper holds; what a repeated link changes (round trip, checker placement, credit depth and rate); clocking options. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
 | [`docs/interface-checker-convention.md`](docs/interface-checker-convention.md) | How block interfaces are declared and how one checker serves assertions, formal cut-points and event emission at once. Its five spike questions are closed; the answers are folded in inline, marked **ANSWERED**, beside the original reasoning. Written expecting one checker per interface *type*; the partition made it **one credit checker for every channel**, since every boundary runs the same credited protocol. Four more checkers (atomic, lockstep, binding, outstanding) span slots, instances and channel pairs rather than types. |
@@ -123,10 +126,21 @@ rtl/if/                     the credit checker (one per slot), plus the atomic
                               instances), binding (a slot's group key) and
                               outstanding (request/response pairs) checkers
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
+rtl/phys/                   physical-implementation primitives: the
+                              sequential repeater (docs/physical.md)
+rtl/clk/                    ccv_clk_gate, every block's clock gate
+                              (docs/clock-gate.md)
+rtl/ctech/                  ctech cells, one directory per view: sim/ for
+                              simulation and formal, <library>/ per process
+                              library; tools/ccv_ctech.py picks one
 rtl/top/                    GENERATED, tracked: the SV top level
                               ccv_core_top.sv   45 blocks, 108 channel instances
                               ports/            each block's port list
                               stubs/            stub blocks, swapped at 4c
+                              wrap/             hardening wrappers: block +
+                                                repeaters, per params/links.json
+                              dpi/              the C++ skeleton's blocks as DPI
+                                                shims: the all-C++ machine in SV
 rtl/generated/              generated; never edited
 
 sim/include/ sim/src/       C++ timing-model side: event emit API
@@ -135,11 +149,18 @@ sim/skel/                   Stage 3 skeleton: channels, machine, the S0
                               exerciser, the S1 functional stubs and oracle reader
 sim/generated/              generated; never edited
 
-synth/                      clock-gating techmap -- exploratory, see F-18
+synth/                      flop-enable to ICG techmap -- exploratory, see F-18
 spike/cases/                Stage 1a tool probes -- 36 cases
 test/smoke/                 exit-criteria smoke modules
 test/neg/                   negative controls for the credit checker
-test/top/                   GENERATED, tracked: testbench for the SV top
+test/formal/                formal harnesses, proved by PDR: one credited link;
+                              the block clock gate, on the multiclock model
+test/ctech/                 the ctech ICG in event simulation, and the sky130
+                              cell model it is checked against (vendor/)
+test/phys/                  the sequential repeater through N = 0..4 stages,
+                              and a busy repeater split (links_split.json)
+test/top/                   GENERATED, tracked: testbenches for the SV top,
+                              with stubs and with the DPI shims
 test/kernels/               S1 kernels' sources; oracles come from the pinned compiler (tools/gen-oracle.sh)
 tools/                      generators, checks, and the gate
 ```
@@ -177,7 +198,7 @@ hash in every trace header, and a Perfetto view produced on demand. The RTL
 emit path is DPI-C into the same library, decided *and exercised* here rather
 than discovered at 4c.
 
-**1d — coding style and lint.** Twenty-six rules, each with a counter-example
+**1d — coding style and lint.** Twenty-seven rules, each with a counter-example
 in `rtl/lint/bad_module.sv` and a paragraph in the style guide; `check-1d`
 fails if a rule stops firing or stops being documented. Parameters and event ids are
 generated into both languages from one source, because §9 is right that
@@ -210,7 +231,8 @@ none — which is the reason the convention is worth the typing.
 
 **Clock gating.** Enables are written as `if` inside `always_ff`, so they reach
 synthesis as gating candidates. Yosys cannot insert gates, so `synth/` carries
-a techmap rule standing in for the pass it lacks.
+a techmap rule standing in for the pass it lacks; it maps to the ctech ICG,
+like every other clock gate (`docs/clock-gate.md`).
 
 ## What Stage 1 settled that the strategy doc left open
 
@@ -303,8 +325,13 @@ Verilated in. Three seeds each give zero violations. Every clean result is
 paired with a control that must fail it.
 
 **The SV top.** The same machine as SystemVerilog (`rtl/top/`), generated and
-tracked. Its connectivity is extracted from the elaborated netlist and equals
-the C++ skeleton's bit for bit.
+tracked. It holds block instances and nets and nothing else: each block gates
+its own clock, and the rule is checked on the elaborated netlist. Its
+connectivity is extracted from that netlist and equals the C++ skeleton's bit
+for bit. Built from DPI shims instead of stubs, it runs
+the C++ skeleton's own blocks, stitched by the generated Verilog. Every S1
+kernel and every kernel control comes out as the C++ host runs it, which
+makes the SV port list the swap boundary for RTL, one block at a time.
 
 **S1: `vadd`.** It runs to completion on functional stubs over the real
 channel path. The final register file and memory are identical to ccv-sim's,

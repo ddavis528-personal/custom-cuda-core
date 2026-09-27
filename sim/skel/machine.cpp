@@ -17,15 +17,18 @@ Machine::Machine(unsigned depth, const Factory &make) {
         for (uint32_t b = 0; b != cd.fields[f].width; ++b)
           lead.setBit(cd.fields[f].lsb + b, true);
     for (unsigned s = 0; s != cd.rate; ++s) {
-      slots_.emplace_back(cd.bits, lead);
+      slots_.emplace_back(cd.bits, lead, ci.stages);
       owner_[ci.slot_base + s] = &ci;
     }
   }
   // Senders and receivers hold references into slots_, so it must not
   // reallocate from here on.
+  // A repeated link's round trip is 2N longer, and so is its credit depth
+  // (docs/physical.md): the sender's credits and the receiver's buffer.
   for (unsigned k = 0; k != kNumSlots; ++k) {
-    tx_.push_back(std::make_unique<Sender>(slots_[k], depth));
-    rx_.push_back(std::make_unique<Receiver>(slots_[k], depth));
+    const unsigned d = depth + 2 * owner_[k]->stages;
+    tx_.push_back(std::make_unique<Sender>(slots_[k], d));
+    rx_.push_back(std::make_unique<Receiver>(slots_[k], d));
   }
 
   for (unsigned b = 0; b != kNumBlkInsts; ++b)

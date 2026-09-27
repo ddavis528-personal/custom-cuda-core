@@ -33,6 +33,8 @@
 #include "machine.h"
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace ccv {
 namespace skel {
@@ -51,6 +53,9 @@ struct ExerciseCfg {
                               ///< channel, carry slot k+1's id in slot k
   bool misgroup = false;      ///< negative control: a binding key naming the
                               ///< wrong group, on every keyed channel
+  bool double_pop = false;    ///< negative control: a keyed receiver may take
+                              ///< one slot twice a cycle -- two consumed, one
+                              ///< credit: the leak it had until 2026-09-26
 };
 
 /// Stream of a message: its slot, its binding group, or its key value.
@@ -83,6 +88,12 @@ const std::vector<Launched> &launchedLog();
 /// Append to that log. The exerciser logs its own launches; S1's functional
 /// stubs call this so the same bank-vs-launch comparison covers them.
 void logLaunch(uint16_t chan, const Bits &msg, uint64_t tid);
+
+/// The bank's EV_CH_XFER events in `trace` must carry exactly the payloads
+/// the senders launched: same channel, same bits 63:0, same trace identity,
+/// same multiset. Prints the XFER line; returns nonzero only if the trace
+/// cannot be read.
+int xferCheck(const std::string &trace);
 
 } // namespace skel
 } // namespace ccv

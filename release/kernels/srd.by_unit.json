@@ -524,6 +524,38 @@
    "s": "t",
    "ts": 33,
    "pid": 3,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387908,
+    "unit": "ccv_fet_dec_instr",
+    "channel_id": 0,
+    "payload_lo": 71338754,
+    "payload_hi": 2153775104
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 33,
+   "pid": 3,
+   "tid": 0,
+   "args": {
+    "instr_uid": 4611686018427387909,
+    "unit": "ccv_fet_dec_instr",
+    "channel_id": 0,
+    "payload_lo": 1744,
+    "payload_hi": 2155872256
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 33,
+   "pid": 3,
    "tid": 1,
    "args": {
     "instr_uid": 4611686018427387904,
@@ -700,13 +732,13 @@
    "s": "t",
    "ts": 35,
    "pid": 3,
-   "tid": 0,
+   "tid": 1,
    "args": {
     "instr_uid": 4611686018427387908,
-    "unit": "ccv_fet_dec_instr",
-    "channel_id": 0,
-    "payload_lo": 71338754,
-    "payload_hi": 2153775104
+    "unit": "ccv_dec_ooe_uop",
+    "channel_id": 1,
+    "payload_lo": 2,
+    "payload_hi": 169873408
    }
   },
   {
@@ -716,13 +748,45 @@
    "s": "t",
    "ts": 35,
    "pid": 3,
-   "tid": 0,
+   "tid": 1,
    "args": {
     "instr_uid": 4611686018427387909,
-    "unit": "ccv_fet_dec_instr",
-    "channel_id": 0,
-    "payload_lo": 1744,
-    "payload_hi": 2155872256
+    "unit": "ccv_dec_ooe_uop",
+    "channel_id": 1,
+    "payload_lo": 0,
+    "payload_hi": 184549376
+   }
+  },
+  {
+   "name": "EV_DISPATCH",
+   "cat": "arbitration_sensitive",
+   "ph": "i",
+   "s": "t",
+   "ts": 37,
+   "pid": 1,
+   "tid": 4,
+   "args": {
+    "instr_uid": 4611686018427387908,
+    "unit": "UNIT_OOE",
+    "warp_id": 0,
+    "rob_slot": 4,
+    "unused": 0
+   }
+  },
+  {
+   "name": "EV_DISPATCH",
+   "cat": "arbitration_sensitive",
+   "ph": "i",
+   "s": "t",
+   "ts": 37,
+   "pid": 1,
+   "tid": 4,
+   "args": {
+    "instr_uid": 4611686018427387909,
+    "unit": "UNIT_OOE",
+    "warp_id": 0,
+    "rob_slot": 5,
+    "unused": 0
    }
   },
   {
@@ -787,70 +851,6 @@
     "channel_id": 5,
     "payload_lo": 0,
     "payload_hi": 0
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 37,
-   "pid": 3,
-   "tid": 1,
-   "args": {
-    "instr_uid": 4611686018427387908,
-    "unit": "ccv_dec_ooe_uop",
-    "channel_id": 1,
-    "payload_lo": 2,
-    "payload_hi": 169873408
-   }
-  },
-  {
-   "name": "EV_CH_XFER",
-   "cat": "load_bearing",
-   "ph": "i",
-   "s": "t",
-   "ts": 37,
-   "pid": 3,
-   "tid": 1,
-   "args": {
-    "instr_uid": 4611686018427387909,
-    "unit": "ccv_dec_ooe_uop",
-    "channel_id": 1,
-    "payload_lo": 0,
-    "payload_hi": 184549376
-   }
-  },
-  {
-   "name": "EV_DISPATCH",
-   "cat": "arbitration_sensitive",
-   "ph": "i",
-   "s": "t",
-   "ts": 39,
-   "pid": 1,
-   "tid": 4,
-   "args": {
-    "instr_uid": 4611686018427387908,
-    "unit": "UNIT_OOE",
-    "warp_id": 0,
-    "rob_slot": 4,
-    "unused": 0
-   }
-  },
-  {
-   "name": "EV_DISPATCH",
-   "cat": "arbitration_sensitive",
-   "ph": "i",
-   "s": "t",
-   "ts": 39,
-   "pid": 1,
-   "tid": 4,
-   "args": {
-    "instr_uid": 4611686018427387909,
-    "unit": "UNIT_OOE",
-    "warp_id": 0,
-    "rob_slot": 5,
-    "unused": 0
    }
   },
   {

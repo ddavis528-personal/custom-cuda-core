@@ -2,7 +2,9 @@
 //
 // A techmap rule standing in for the `clockgate` pass Yosys does not have.
 // Applied after `synth`, it rewrites every enable flop into a plain flop
-// driven by a gated clock.
+// driven by a gated clock -- through the ctech ICG (rtl/ctech/), like every
+// other clock gate, so the library view decides the cell. Scan (te) is tied
+// low here; a real flow's clock-gating pass wires it.
 //
 // ON ITS OWN THIS IS WORSE THAN NO GATING. techmap is per-cell, so it
 // instantiates one ICG PER FLOP -- eight for an 8-bit register. Real gating
@@ -20,7 +22,7 @@
 (* techmap_celltype = "$_DFFE_PP_" *)
 module ccv_map_dffe_pp (input D, input C, input E, output Q);
   wire gclk;
-  ccv_icg u_icg (.clk(C), .en(E), .gclk(gclk));
+  ccv_ctech_icg u_icg (.clk(C), .en(E), .te(1'b0), .gclk(gclk));
   \$_DFF_P_ u_ff (.D(D), .C(gclk), .Q(Q));
 endmodule
 
@@ -31,6 +33,6 @@ module ccv_map_sdffe_pp0p (input D, input C, input E, input R, output Q);
   // The reset must stay on the DATA path, never on the enable: gating a flop
   // off during reset would leave it holding whatever it came up with.
   assign d_rst = R ? 1'b0 : D;
-  ccv_icg u_icg (.clk(C), .en(E | R), .gclk(gclk));
+  ccv_ctech_icg u_icg (.clk(C), .en(E | R), .te(1'b0), .gclk(gclk));
   \$_DFF_P_ u_ff (.D(d_rst), .C(gclk), .Q(Q));
 endmodule

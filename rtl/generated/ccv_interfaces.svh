@@ -21,18 +21,17 @@
 //   <name>_wake     Wake request toward the receiver, asserted by the sender ahead of a send so a gated receiver can ungate.
 //
 // Common ports, on every block (fabric: how the top connects them):
-//   clk              in   fan-in    Gated clock for the block.
-//   clk_free         in   fan-in    Ungated clock, for the wake detector ONLY.
+//   core_clk         in   fan-in    The core clock, UNGATED -- the only clock a block receives.
 //   rst_n            in   fan-in    Synchronous reset, ACTIVE LOW.
 //   kill_valid       in   broadcast Grid teardown, one cycle ahead of the mask, broadcast by RAU to the eight blocks that own warp state (FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA).
 //   kill_warp_mask   in   broadcast Warps to discard, one bit per warp CONTEXT (32: tier-1 and parked), driven by RAU.
 //   kill_epoch       in   broadcast Epoch of the kill being broadcast.
 //   kill_ack         out  gather    QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf.
 //   kill_ack_epoch   out  gather    The kill_epoch this ack answers.
-//   sleep_ok         out  local     Block is drained and may be gated.
 //   csr_req          in   star      Address, write data, write enable, from CRU, which owns the CSR fabric.
 //   csr_rsp          out  star      Read data, done.
 //   csr_credit       out  star      Credit return for the CSR channel.
+//   clk_gated        out  observe   CCV_CHECK only: the block's clock gate is closed this cycle.
 
 localparam int CCV_NUM_CHANNELS = 46;
 
