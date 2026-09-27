@@ -93,32 +93,40 @@ One per block, the block's first act. It takes `core_clk` ungated.
 | `clk`, `rst_n` | in | `core_clk`, ungated; the reset |
 | `quiesced` | in | from the block: nothing in flight, nothing owed |
 | `stalled` | in | from the block: nothing can move until an input changes |
-| `wake[NWAKE]` | in | any one opens the next edge; the block ORs its wake sources in |
-| `cg_override` | in | force the clock on (chicken bit) |
-| `te` | in | scan test enable, to the cell's own test pin |
+| `hyst_quiesce`, `hyst_stall` | in | the thresholds, `CCV_CG_HYST_W` = 6 bits: CSR fields (Q-47) |
+| `wake[NWAKE]` | in | any one opens the edge after next; the block ORs its wake sources in |
+| `cg_override` | in | force the clock on: a CSR, the chicken bit (Q-47) |
+| `te` | in | scan test enable, to the cell's own test pin (Q-46) |
 | `gclk` | out | the block's clock: everything sequential in the block runs on it |
 | `gated` | out | 1: the coming edge will not reach the block. The block's `clk_gated` |
 
 **Sleep entry, with hysteresis.** The gate closes once `quiesced` has held
-for `HYST_QUIESCE` consecutive cycles, or `stalled` for `HYST_STALL`. The edge
+for `hyst_quiesce` consecutive cycles, or `stalled` for `hyst_stall`. The edge
 that ends the last of those cycles is delivered, and the next one is not.
 Both conditions come from the gated domain, so once the gate closes they hold
 still and the block stays asleep until something outside it changes. The two
-are separate because a stall usually ends by itself within a few cycles. The
-defaults, `CCV_CG_HYST_QUIESCE` = 8 and `CCV_CG_HYST_STALL` = 16, are
-placeholders ("tunable"; decided by power analysis). Each block may override
-them on its own instance. A hysteresis below 1 is refused at elaboration:
-it would put the block's own combinational idle logic on the enable path.
+are separate because a stall usually ends by itself within a few cycles.
 
-**Wake, within one cycle.** `wake` goes straight to the ICG's enable, past
-every register in the gate. A wake that is high in a cycle therefore opens
-the edge that ends that same cycle. The gate then stays open for
-`WAKE_HOLD` more edges, whatever the block reports. `WAKE_HOLD` defaults to
-`CCV_WAKE_LAT`, and a smaller value is refused at elaboration. The hold is
-what makes Q-33 work from the receiver's side: a sender may put valid
-`CCV_WAKE_LAT` cycles after its wake, and the receiver must still be running
-then, even with nothing to do in between. `ccv_wake_checker` now states that
-half too, as `wake_keeps_rx`.
+The thresholds are inputs, because they are CSRs (Q-47). Their reset values
+are `CCV_CG_HYST_QUIESCE` = 8 and `CCV_CG_HYST_STALL` = 16, which are
+placeholders ("tunable"; decided by power analysis). A block ties the inputs
+to those values until it decodes its own CSRs. A threshold of 0 counts as 1:
+0 would put the block's own combinational idle logic on the enable path. The
+counters compare with `>=`, so a threshold lowered mid-count takes effect at
+once.
+
+**Wake, registered (Q-49).** `wake` is registered inside the gate before it
+reaches anything, so the one path from another block ends at a flop, never
+at the ICG's enable. A wake high in cycle T opens the edge that ends cycle
+T + 1. The gate then stays open through T + `CCV_WAKE_LAT`, whatever the
+block reports: `WAKE_HOLD` = `CCV_WAKE_LAT` − 1 more edges after the register.
+A smaller `WAKE_HOLD` is refused at elaboration.
+
+The hold is what makes Q-33 work from the receiver's side. A sender may put
+valid `CCV_WAKE_LAT` cycles after its wake, and the receiver must still be
+running then, even with nothing to do in between. `ccv_wake_checker` states
+that half as `wake_keeps_rx`. The register costs one of the 4 cycles
+`CCV_WAKE_LAT` allows, so no sender changes.
 
 **What a block ORs into `wake`:** anything that must reach it while it sleeps.
 - every inbound channel's `_wake`;
@@ -128,56 +136,57 @@ half too, as `wake_keeps_rx`.
   the one thing besides this gate CCV-L22 lets a block clock on `core_clk`.
 
 **Override, reset, test.**
-- `cg_override` forces the gate open.
+- `cg_override` forces the gate open. It is a CSR (Q-47).
 - So does reset: resets are synchronous, so a block in reset must be clocked
   or it never resets, and `!rst_n` opens the gate the cycle it arrives.
 - `te` goes to the cell's own test pin, as scan expects. It is not part of
-  the functional enable.
+  the functional enable. It joins the TAP and scan fabrics after Stage 4
+  (Q-46).
 
-**Where the gate's state lives.** The gate has three counters of
-`$clog2(max(HYST_QUIESCE, HYST_STALL, WAKE_HOLD) + 1)` bits, 15 flops at the
-defaults. They run on the ungated clock, because they must see every cycle and
-a gate clocked by its own output is a loop that timing analysis does not like.
+**Where the gate's state lives.** The gate has two threshold counters of
+`CCV_CG_HYST_W` bits, a hold counter and the wake register: 16 flops at the
+defaults. They run on the ungated clock, because they must see every cycle
+and a gate clocked by its own output is a loop that timing analysis does not
+like.
 
-**Timing.** The enable path starts at a flop in the gate, or at the far end
-of a wake net: a flop in the sender, or the last repeater stage of the link.
-It ends at the ICG's enable pin, which sets up to the rising edge at the root
-of the block's clock tree, earlier than the flops see it. It is the one path
-from another block into a clock gate. If it does not close, registering the
-wake at the receiver costs one cycle, which `CCV_WAKE_LAT` = 4 has room for,
-since the gate itself uses none of it (Q-49).
+**Timing.** Every input of the enable is a flop in the same block: the wake
+register, the counters, the override CSR and the reset pipeline. So the
+enable path is local, as a clock gate's must be. It sets up to the rising
+edge at the root of the block's clock tree, earlier than the flops see it.
 
 **Today.** Every stub and every SV-hosted DPI shim instantiates the gate tied
-never to close: `cg_override` = 1, `wake` = 0, `te` = 0 (Q-46, Q-47). Its
-`gated` is the block's `clk_gated`, so the checker bank reads the gate's own
-decision. The shims clock on `gclk`, and the SV-hosted run still matches the
-C++ skeleton cycle for cycle. `check-top-pure.py` rule R7 requires every block
-to have exactly one `ccv_clk_gate`, clocked by its `core_clk` port, with
-`clk_gated` driven by that gate's `gated`. It also allows the ICG nowhere
-else. Mutants `gatetie` and `gateclk` must each be refused.
+never to close: `cg_override` = 1, the thresholds at their reset values,
+`wake` = 0, `te` = 0. Its `gated` is the block's `clk_gated`, so the checker
+bank reads the gate's own decision. The shims clock on `gclk`, and the
+SV-hosted run still matches the C++ skeleton cycle for cycle.
+`check-top-pure.py` rule R7 requires every block to have exactly one
+`ccv_clk_gate`, clocked by its `core_clk` port, with `clk_gated` driven by
+that gate's `gated`. It also allows the ICG nowhere else. Mutants `gatetie`
+and `gateclk` must each be refused.
 
 ## Proved: the gate, as it switches
 
 `tools/check-formal.sh` proves `ccv_clk_gate`, with the simulation view of its
 ICG, on Yosys's multiclock model. There `clk` is an input and each phase lasts
 one global step or two (F-21), so the latch and the AND are modelled as they
-switch. The proofs run at hysteresis 3/5 and at the defaults 8/16, with hold
-`CCV_WAKE_LAT`, and start from arbitrary flop contents with the first cycle
-in reset.
+switch. The cycle model runs with thresholds 3/5 and at the reset values 8/16.
+The clean-clock and Q-33 proofs leave the thresholds free: any value, changing
+at any time. Every proof starts from arbitrary flop contents with the first
+cycle in reset.
 
 | Property | Stimulus | Fails on |
 |---|---|---|
 | the gated clock is clean: high only while clk is, rising and falling only with it | every input free at every step | an ICG with no latch; a latch open in the high phase |
 | `edge_decides`: the edge that ends a cycle reaches the block exactly when `gated` was low | inputs move as flops on clk | |
-| `spec`: `gated` equals a model built from input histories (shift registers, not the gate's counters) | as above | hysteresis one short |
-| `wake_next_edge`, `wake_hold`, `override_opens`, `reset_opens`, `te_opens` | as above | a wake registered before the cell (not within a cycle); reset left off the enable |
+| `spec`: `gated` equals a model built from input histories (shift registers, not the gate's counters) | as above | hysteresis one short; the wake back on the enable path, unregistered |
+| `wake_second_edge`, `wake_hold`, `override_opens`, `reset_opens`, `te_opens` | as above | the wake a cycle later still; reset left off the enable |
 | `wake_keeps_rx`: running `CCV_WAKE_LAT` cycles after any wake | `ccv_wake_checker`, the sender's half assumed | a wake hold one short |
 | `q33_valid_meets_clock`: no contract-keeping valid arrives on a withheld edge | as above | |
 | witnesses: the gate closes; a valid is captured right after a sleep | | |
 
-## Open
+## Decided, and open
 
-- **Q-46:** who drives each block's `te`.
-- **Q-47:** CSR control of `cg_override` and the hysteresis.
-- **Q-48:** the target library.
-- **Q-49:** the wake-to-ICG-enable path budget.
+- **Q-46** (scheduled after Stage 4): `te` joins the TAP and scan fabrics.
+- **Q-47** (closed): override and thresholds are CSRs; the gate takes them as inputs.
+- **Q-48** (scheduled after Stage 4): the process, and so the target library.
+- **Q-49** (closed): the wake is registered inside the gate.

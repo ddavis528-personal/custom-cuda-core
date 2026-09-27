@@ -17,7 +17,7 @@
 //     something else, and is up by any account.
 // A wake that arrived while the receiver was still awake does not count
 // toward a sleep that begins after it: nothing obliges a receiver to stay
-// awake because a wake passed it by -- beyond the one cycle below.
+// awake because a wake passed it by -- beyond the promise below.
 //
 // THE RECEIVER'S HALF, wake_keeps_rx. The reading above excuses a receiver
 // that sleeps again, and charges the sender for the valid that meets it,
@@ -25,9 +25,9 @@
 // if a receiver keeps a promise: a wake at T means the receiver is running
 // at T + LAT -- the earliest cycle the sender may rely on it. Stated here
 // with its own role, RX_MODE, because it binds the other side: the sender
-// is checked by MODE, the receiver by RX_MODE. ccv_clk_gate keeps it with
-// cycles to spare (a wake opens the next edge, and WAKE_HOLD >= LAT more);
-// tools/check-formal.sh proves the gate against this property.
+// is checked by MODE, the receiver by RX_MODE. ccv_clk_gate keeps it: it
+// registers the wake and opens the edge after next, then holds open through
+// T + LAT; tools/check-formal.sh proves the gate against this property.
 //
 // ARRIVE: where the checker watches a repeated link (params/links.json), the
 // valid and the wake still have ARRIVE stages to go before the receiver sees

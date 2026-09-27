@@ -29,6 +29,8 @@ module good_naming #(
     .rst_n      (!ref_rst_r00h),
     .quiesced   (1'b0),
     .stalled    (1'b0),
+    .hyst_quiesce(6'd8),
+    .hyst_stall (6'd16),
     .wake       (1'b0),
     .cg_override(1'b1),
     .te         (1'b0),

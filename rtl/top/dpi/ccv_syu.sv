@@ -25,17 +25,22 @@ module ccv_syu (
   // never to close -- cg_override -- until the block has idle logic;
   // then these ties become its quiesced, stalled and wake. quiesced:
   // a C++ block's idleness is not visible here.
+  // The thresholds and the override are CSRs (Q-47): tied to their
+  // reset values until the block decodes its own.
+  localparam int CG_HW = ccv_prov_pkg::CCV_CG_HYST_W;
   logic gclk, cg_gated;
   ccv_clk_gate u_cg (
-    .clk        (core_clk),
-    .rst_n      (rst_n),
-    .quiesced   (1'b0),
-    .stalled    (1'b0),
-    .wake       (1'b0),
-    .cg_override(1'b1),
-    .te         (1'b0),
-    .gclk       (gclk),
-    .gated      (cg_gated)
+    .clk         (core_clk),
+    .rst_n       (rst_n),
+    .quiesced    (1'b0),
+    .stalled     (1'b0),
+    .hyst_quiesce(CG_HW'(ccv_prov_pkg::CCV_CG_HYST_QUIESCE)),
+    .hyst_stall  (CG_HW'(ccv_prov_pkg::CCV_CG_HYST_STALL)),
+    .wake        (1'b0),
+    .cg_override (1'b1),
+    .te          (1'b0),
+    .gclk        (gclk),
+    .gated       (cg_gated)
   );
 `ifdef CCV_CHECK
   assign clk_gated = cg_gated;

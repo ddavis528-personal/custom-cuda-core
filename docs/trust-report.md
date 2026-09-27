@@ -17,8 +17,37 @@ so this is a build artifact rather than something to remember.
 
 | File | Preliminary | Provisional |
 |---|---|---|
-| `rtl/clk/ccv_clk_gate.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL` |
+| `rtl/clk/ccv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `rtl/if/ccv_credit_checker.sv` | — | `CCV_P_TIMEOUT_N` |
+| `rtl/top/dpi/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_dec.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_exb.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_fet.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_lane.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_miu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_mlc.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_ooe.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_pca.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_rau.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/dpi/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_cru.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_dcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_dec.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_exb.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_fet.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_lane.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_miu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_mlc.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_ooe.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_pca.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_rau.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/phys/tb_seq_rpt.sv` | — | `CCV_P_TIMEOUT_N` |

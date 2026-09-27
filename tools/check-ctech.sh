@@ -19,7 +19,7 @@
 #   mutants           the simulation view with no latch, and with its latch
 #                     open on the high phase: the testbench must fail both
 #
-# The gate's own behaviour -- hysteresis, wake within a cycle, the Q-33 hold
+# The gate's own behaviour -- hysteresis, the registered wake, the Q-33 hold
 # -- is proved in tools/check-formal.sh, on this same simulation view.
 set -uo pipefail
 cd "$(dirname "$0")/.."

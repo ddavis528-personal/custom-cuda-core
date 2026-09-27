@@ -757,8 +757,8 @@ def check_file(path, rel):
                 add("CCV-L22", 1,
                     "block %r has sequential logic but no ccv_clk_gate taking "
                     "core_clk. Every block's first act is its gate: the sleep "
-                    "policy, the wake-within-a-cycle guarantee and the ctech "
-                    "ICG are all inside it (docs/clock-gate.md)" % blk_name)
+                    "policy, the wake path and the ctech ICG are all inside "
+                    "it (docs/clock-gate.md)" % blk_name)
 
         # -- CCV-L27: clock gates are ctech cells ---------------------------
         # Every clock gate in the design is ccv_ctech_icg, reached through

@@ -373,7 +373,7 @@ simulation shows it, which is exactly why it needs a rule.
 
 The gate is `ccv_clk_gate` (`docs/clock-gate.md`): a block with sequential
 logic must instantiate it with `.clk(core_clk)`, and runs on its `gclk`. The
-sleep policy, the wake-within-a-cycle guarantee and the ctech ICG are all
+sleep policy, the registered wake and its hold, and the ctech ICG are all
 inside it, so no block builds its own. The wake detector the exception allows
 is the edge detector a block needs for a level-sensitive wake source, such as
 a stall that releases.
@@ -382,8 +382,9 @@ a stall that releases.
 ccv_clk_gate u_cg (
   .clk(core_clk), .rst_n(sched_rst_r06h_n),
   .quiesced(sched_idle_cs03h), .stalled(sched_blocked_cs03h),
+  .hyst_quiesce(sched_csr_hyst_q), .hyst_stall(sched_csr_hyst_s),
   .wake({ooe_sched_wake, lane_sched_wake}),
-  .cg_override(sched_cg_ovr_cs00h), .te(scan_en),
+  .cg_override(sched_csr_cg_ovr), .te(1'b0),
   .gclk(sched_core_clk), .gated(clk_gated));
 ```
 

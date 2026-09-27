@@ -329,7 +329,7 @@ MUTATIONS = {
     "gatetie": ("R7", STUB_FET, lambda t: t.replace(
         "assign clk_gated = cg_gated;", "assign clk_gated = 1'b0;", 1)),
     "gateclk": ("R7", STUB_FET, lambda t: t.replace(
-        ".clk        (core_clk),", ".clk        (rst_n),", 1)),
+        ".clk         (core_clk),", ".clk         (rst_n),", 1)),
     # Hard reuse: a lane template duplicated under another name (not minimal),
     # and a lane given a parameter (not one hard macro).
     "dupreuse": ("R6", TOP, lambda t: t.replace(

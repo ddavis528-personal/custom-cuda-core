@@ -17,7 +17,8 @@
 //             rising step. Proves the cycle behaviour:
 //               edge_decides   the edge that ends a cycle reaches the block
 //                              exactly when `gated` was low in that cycle
-//               wake_next_edge a wake opens the edge that ends its own cycle
+//               wake_second_edge  a wake in cycle T opens the edge that
+//                              ends T + 1 (it is registered first, Q-49)
 //               wake_hold      ...and the WAKE_HOLD edges after it
 //               override_opens / reset_opens / te_opens
 //               spec           `gated` equals an independent model built
@@ -36,7 +37,7 @@
 module fv_clk_gate #(
   parameter int HQ   = 3,
   parameter int HS   = 5,
-  parameter int HOLD = ccv_params_pkg::CCV_WAKE_LAT
+  parameter int HOLD = ccv_params_pkg::CCV_WAKE_LAT - 1
 ) (
   input logic clk,
   input logic rst_n,
@@ -45,19 +46,34 @@ module fv_clk_gate #(
   input logic wake,
   input logic cg_override,
   input logic te,
-  input logic valid
+  input logic valid,
+  input logic [ccv_prov_pkg::CCV_CG_HYST_W-1:0] hyst_q_in,
+  input logic [ccv_prov_pkg::CCV_CG_HYST_W-1:0] hyst_s_in
 );
+  localparam int HW = ccv_prov_pkg::CCV_CG_HYST_W;
+  // The thresholds are CSR inputs. The cycle model needs them fixed, at HQ
+  // and HS; the clean-clock and Q-33 proofs hold for ANY values, changing
+  // at any time (FV_FREE_HYST).
+`ifdef FV_FREE_HYST
+  wire [HW-1:0] hyst_q = hyst_q_in;
+  wire [HW-1:0] hyst_s = hyst_s_in;
+`else
+  wire [HW-1:0] hyst_q = HW'(HQ);
+  wire [HW-1:0] hyst_s = HW'(HS);
+`endif
   logic gclk, gated;
-  ccv_clk_gate #(.HYST_QUIESCE(HQ), .HYST_STALL(HS), .WAKE_HOLD(HOLD)) dut (
-    .clk        (clk),
-    .rst_n      (rst_n),
-    .quiesced   (quiesced),
-    .stalled    (stalled),
-    .wake       (wake),
-    .cg_override(cg_override),
-    .te         (te),
-    .gclk       (gclk),
-    .gated      (gated)
+  ccv_clk_gate #(.WAKE_HOLD(HOLD)) dut (
+    .clk         (clk),
+    .rst_n       (rst_n),
+    .quiesced    (quiesced),
+    .stalled     (stalled),
+    .hyst_quiesce(hyst_q),
+    .hyst_stall  (hyst_s),
+    .wake        (wake),
+    .cg_override (cg_override),
+    .te          (te),
+    .gclk        (gclk),
+    .gated       (gated)
   );
 
   // -- the clock, and the previous step of everything ----------------------
@@ -112,14 +128,15 @@ module fv_clk_gate #(
   // the gate is held to, deliberately not built the way the gate is.
   logic [HQ-1:0]   qh;
   logic [HS-1:0]   sh;
-  logic [HOLD-1:0] wh;
+  logic [HOLD:0]   wh;     // the wake is registered: HOLD + 1 cycles open
   initial begin qh = '0; sh = '0; wh = '0; end
   always @(posedge clk) begin
     qh <= !rst_n ? '0 : HQ'({qh, quiesced});
     sh <= !rst_n ? '0 : HS'({sh, stalled});
-    wh <= !rst_n ? '0 : HOLD'({wh, wake});
+    wh <= !rst_n ? '0 : (HOLD+1)'({wh, wake});
   end
-  wire exp_gated = rst_n && !te && !wake && !cg_override && !(|wh) &&
+  // No `wake` term: this cycle's wake reaches the gate a cycle later.
+  wire exp_gated = rst_n && !te && !cg_override && !(|wh) &&
                    ((&qh) || (&sh));
 
   // Flops power up anything (formalff -ff2anyinit), the gate's counters as
@@ -134,9 +151,9 @@ module fv_clk_gate #(
   always @(posedge clk) if (started && reset_seen) begin
 `ifndef FV_Q33
 `ifndef FV_REACH
-    spec:           assert (gated == exp_gated);
-    wake_next_edge: assert (!(wake && gated));
-    wake_hold:      assert (!(rst_n && (|wh) && gated));
+    spec:             assert (gated == exp_gated);
+    wake_second_edge: assert (!(rst_n && wh[0] && gated));
+    wake_hold:        assert (!(rst_n && (|wh) && gated));
     override_opens: assert (!(cg_override && gated));
     reset_opens:    assert (!(!rst_n && gated));
     te_opens:       assert (!(te && gated));

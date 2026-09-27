@@ -366,15 +366,22 @@
       "name": "CCV_WAKE_LAT",
       "value": 4,
       "status": "arch",
-      "doc": "Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_wake_checker). The receiver's side is ccv_clk_gate: a wake opens the gate for the very next edge and holds it open for WAKE_HOLD = this many edges after, so a valid that follows the wake by exactly this much is still captured.",
+      "doc": "Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_wake_checker). The receiver's side is ccv_clk_gate: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.",
       "source": "ports spec 2026-09-23"
+    },
+    {
+      "name": "CCV_CG_HYST_W",
+      "value": 6,
+      "status": "tunable",
+      "decided_at": "the CSR map (Q-47)",
+      "doc": "Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_clk_gate inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values."
     },
     {
       "name": "CCV_CG_HYST_QUIESCE",
       "value": 8,
       "status": "tunable",
       "decided_at": "power analysis, with the first real block",
-      "doc": "Block clock gate (ccv_clk_gate): consecutive quiesced cycles before the gate closes. Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. Each block may override it on its own instance."
+      "doc": "Block clock gate (ccv_clk_gate): consecutive quiesced cycles before the gate closes -- the reset value of the block's hysteresis CSR (Q-47). Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. A block programs its own through the CSR."
     },
     {
       "name": "CCV_CG_HYST_STALL",
