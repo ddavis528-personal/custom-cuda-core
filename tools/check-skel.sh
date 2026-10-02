@@ -13,8 +13,9 @@
 # one that is:
 #
 #   clean                                       negative control
-#   0 violations, 3 seeds                       phantom-all: all 345 fire
-#                                               stall-all:   all 345 fire
+#   0 violations, 3 seeds                       phantom-all: all 346 fire
+#                                               stall-all:   all 346 fire
+#                                               fixed-all:   all 272 fixed-latency fire
 #   EV_CH_XFER payloads == launched payloads    (the match is exact, so a
 #                                                miswired payload bit fails it)
 #   C++ field offsets == SV packed structs      --mutate: every shiftable
@@ -80,20 +81,21 @@ bank_ac=$(grep -c "^  ccv_atomic_checker #" rtl/generated/ccv_skel_checkers.sv)
 bank_lc=$(grep -c "^  ccv_lockstep_checker #" rtl/generated/ccv_skel_checkers.sv)
 bank_bc=$(grep -c "^  ccv_binding_checker #" rtl/generated/ccv_skel_checkers.sv)
 bank_oc=$(grep -c "^  ccv_outstanding_checker #" rtl/generated/ccv_skel_checkers.sv)
+bank_fx=$(grep -c "^  ccv_credit_checker #.*FIXED_LAT(1)" rtl/generated/ccv_skel_checkers.sv)
 doc_n=$(grep -oE "\*\*[0-9]+ slots\*\*" docs/skeleton-slots.md | grep -oE "[0-9]+")
 "$SKEL" --cycles 4 >"$B/skel_count.log" 2>&1
 bin_n=$(field "$B/skel_count.log" slots)
 if [ "$bank_cc" = "$X_SLOTS" ] && [ "$bin_n" = "$X_SLOTS" ] &&
    [ "$doc_n" = "$X_SLOTS" ] && [ "$bank_ac" = "$X_MULTI" ] &&
    [ "$bank_lc" = "$X_LOCKSTEP" ] && [ "$bank_bc" = "$X_BINDING" ] &&
-   [ "$bank_oc" = "$X_OUTSTANDING" ] &&
+   [ "$bank_oc" = "$X_OUTSTANDING" ] && [ "$bank_fx" = "$X_FIXED" ] &&
    [ "$(field "$B/skel_count.log" chan_insts)" = "$X_INSTS" ] &&
    [ "$(field "$B/skel_count.log" chan_types)" = "$X_TYPES" ]; then
   say "slots re-derived: $X_TYPES types, $X_INSTS instances" \
       "PASS ($X_SLOTS slots, $X_MULTI groups)"
 else
   bad "slot count re-derived from the schema" \
-      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; outstanding $bank_oc/$X_OUTSTANDING"
+      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; outstanding $bank_oc/$X_OUTSTANDING; fixed latency $bank_fx/$X_FIXED"
 fi
 
 # -- the trace sideband is invisible to synthesis --------------------------
@@ -172,9 +174,14 @@ fi
 
 # -- negative controls: every checker instance, by name -------------------
 slots=$X_SLOTS
-for mode in phantom-all:no_phantom_credit stall-all:stall_honoured \
+# stall-all also breaks fixed latency's no-stall rule, on those slots only;
+# fixed-all must reach every fixed-latency slot and break nothing else.
+stall_props=stall_honoured
+[ "$X_FIXED" != 0 ] && stall_props=fixed_latency_no_stall+stall_honoured
+for mode in phantom-all:no_phantom_credit stall-all:$stall_props \
             atomic-all:atomic_credit+atomic_valid \
-            lockstep-all:lockstep_credit+lockstep_valid; do
+            lockstep-all:lockstep_credit+lockstep_valid \
+            fixed-all:fixed_latency_prompt; do
   m=${mode%%:*}; prop=${mode#*:}
   log="$B/skel_$m.log"
   "$SKEL" --cycles 40 --break "$m" >"$log" 2>&1
@@ -187,6 +194,7 @@ for mode in phantom-all:no_phantom_credit stall-all:stall_honoured \
           | tr '\n' '+' | sed 's/+$//')
   want_n=$slots; [ "$m" = "atomic-all" ] && want_n=$X_MULTI
   [ "$m" = "lockstep-all" ] && want_n=$X_LOCKSTEP
+  [ "$m" = "fixed-all" ] && want_n=$X_FIXED
   if [ "$inst" = "$want_n" ] && [ "$props" = "$prop" ]; then
     say "--break $m: all $want_n checkers fire" "PASS"
   else

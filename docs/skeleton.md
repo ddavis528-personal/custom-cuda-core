@@ -25,7 +25,7 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json   # per instruction
 `tools/check-skel.sh` builds the binary and runs S0's checks, and
 `tools/check-kernel.sh` runs S1's. Both run in the gate.
 
-**Next: S2.** vadd leaves 20 of the 46 channels idle and never diverges, loops
+**Next: S2.** vadd leaves 21 of the 47 channels idle and never diverges, loops
 or uses a second warp. S2 is kernels that do, as far as the open payload
 questions allow.
 
@@ -68,7 +68,7 @@ The skeleton is C++, and the obvious move is a C++ port of the checker. That
 is the wrong one: a second implementation of the protocol drifts from the
 first, and "zero violations" then becomes a statement about the port. Instead
 `rtl/generated/ccv_skel_checkers.sv` instantiates the real
-`ccv_credit_checker` once per slot — 345 of them — and the skeleton clocks it
+`ccv_credit_checker` once per slot — 346 of them — and the skeleton clocks it
 with every slot's signals each cycle. The skeleton and every future RTL block
 are judged by identical logic, and the load-bearing `EV_CH_XFER` stream comes
 from identical code on both sides, which is what makes 4d correlation compare
@@ -104,19 +104,20 @@ one that is. So every clean result has a partner that must **not** be clean:
 
 | Clean result (3 seeds, 2000 cycles, ~151k messages each) | Negative control |
 |---|---|
-| 0 checker violations | `--break phantom-all`: all 345 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
-| | `--break stall-all`: all 345 fire `stall_honoured` — proves every `stall` and `valid` |
+| 0 checker violations | `--break phantom-all`: all 346 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
+| | `--break stall-all`: all 346 fire `stall_honoured` (and the 272 fixed-latency ones `fixed_latency_no_stall` too) — proves every `stall` and `valid` |
+| Fixed-latency receivers never stall and credit on landing (A-47) | `--break fixed-all`: all 272 fixed-latency checkers fire `fixed_latency_prompt` on a credit one cycle late |
 | `EV_CH_XFER` payloads (bits 63:0) **and trace ids** equal the launched ones, as a multiset | the match is exact, so one miswired payload or sideband bit fails it |
 | 0 payload mismatches at the receivers; sent == received; no idle slot | — (end-to-end data check, independent of the bank) |
 | `--force-atomic`: every multi-slot channel moves in whole groups, clean | `--break atomic-all`: all 77 atomic checkers fire both properties, and nothing else fires |
 | Ordered channels are consumed in order per key — per binding group on fet→dec, per `warp_id` on dec→ooe — with different keys free to pass | `--break misorder`: taking a head that is not the oldest of its key is caught — on exactly the two ordered channels |
 | Lane channels advance together: slot *k* moves on all 32 lanes or none | `--break lockstep-all`: one lane's slot alone — both lockstep checkers fire, nothing else |
 | Slot *k* carries the same instruction on every lane | `--break misbind`: lane 7 carries slot *k*+1's instruction in slot *k* — only `lockstep_id` fires |
-| Every message's id class is in its channel's set | `--break wrong-class`: all 46 channels report |
+| Every message's id class is in its channel's set | `--break wrong-class`: all 47 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
 | Every fet→dec message names its own group (`tier1_id` == slot / 2) | `--break misgroup`: every message names the next group — only `binding_key` fires |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
-| **345 slots**, re-derived from the schema every run | — (see below) |
+| **346 slots**, re-derived from the schema every run | — (see below) |
 
 The payload wiring gets the event-stream check rather than a negative control
 because Verilator is two-state: `payload_known_when_due` cannot fire there at
@@ -131,17 +132,17 @@ and every channel with its attributes. In short:
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 31 | 1 | 1 | 31 |
+| 32 | 1 | 1 | 32 |
 | 11 | 4 | 1 | 44 |
 | 2 | 4 | 32 | 256 |
 | 1 | 6 | 1 | 6 |
 | 1 | 8 | 1 | 8 |
-| **46** | | | **345** |
+| **47** | | | **346** |
 
-That is 46 types and 108 channel instances: 44 at one instance, plus the two
+That is 47 types and 109 channel instances: 45 at one instance, plus the two
 lane channels at 32 each. The inbound external channel took it from 40 types
 (339 slots) to 41, branch redirect to 42, the FET↔PCA migration pair to 44,
-and migration control (a RAU→FET command, a PCA→RAU done) to 46.
+migration control (a RAU→FET command, a PCA→RAU done) to 46, and OOE's RAT map to RCU (the OOE session) to 47.
 
 The review's point stands regardless: this is the one number a clean run does
 not validate. A rate wrong by one on a ×32 channel moves the total by 32, and
@@ -203,7 +204,7 @@ doesn't is caught by `lockstep_valid` plus `stall_honoured` on the stalled lane.
 In the stubs, a decision that spans blocks — 32 lane blocks — comes from a
 hash of (channel, slot, cycle) shared by every block, not a block's private
 RNG. Otherwise the stub would break lockstep by construction. Lockstep costs
-throughput, as it should: 256 of the 345 slots are lane slots, and the RCU
+throughput, as it should: 256 of the 346 slots are lane slots, and the RCU
 sender holds all 32 lanes whenever any one stalls, so runs carry ~151k
 messages where they carried ~230k.
 
@@ -290,7 +291,7 @@ The same machine as SystemVerilog, generated by `tools/gen-top.py` and
 
 | File | What |
 |---|---|
-| `rtl/top/ccv_core_top.sv` | 45 block instances and the nets of 108 channel instances, nothing else; the checker bank under `CCV_CHECK` |
+| `rtl/top/ccv_core_top.sv` | 45 block instances and the nets of 109 channel instances, nothing else; the checker bank under `CCV_CHECK` |
 | `rtl/top/ports/ccv_<blk>_ports.svh` | each block type's port list — included by the stub and by real RTL alike |
 | `rtl/top/stubs/ccv_<blk>.sv` | stubs that never send: protocol-legal on every channel |
 | `test/top/tb_core_top.sv` | clock, reset, tie-offs; `+phantom` is its negative control |
@@ -489,8 +490,8 @@ exerciser used, with the checker bank judging every slot. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
 violations, and the bank's 509 `EV_CH_XFER` events matching every launch
-exactly. It carries traffic on 26 of the 46 channels; the 20 idle ones are
-SPM, barriers, migration (both pairs and its command and done), probes, faults and branch redirect
+exactly. It carries traffic on 26 of the 47 channels; the 21 idle ones are
+SPM, barriers, migration (both pairs, its command and done, and OOE's RAT map), probes, faults and branch redirect
 (vadd's one branch is never taken), none of which vadd reaches.
 
 | Clean result | Negative control that must fail it |
@@ -918,7 +919,8 @@ Five items closed: Q-2, Q-3, Q-5, Q-33 and Q-34.
     round-trip, the DPI smoke test, emit calibration) now use `EV_ISSUE`
     and `EV_WARP_SELECT`.
   - `EV_DISPATCH` is ROB allocation, and arbitration-sensitive.
-  - `EV_RETIRE` is the case the rule leaves open (Q-41).
+  - `EV_RETIRE` is the case the rule leaves open (Q-41; since closed by the
+    OOE session: arbitration-sensitive, with the retire sequence correlated).
 - **Correlation is exact match (Q-5).** Each event reserves a null
   `tolerance`. Its presence is hashed and its value is not, so the option
   stays free without a hash change later.
@@ -933,6 +935,44 @@ Five items closed: Q-2, Q-3, Q-5, Q-33 and Q-34.
     checker's header.
   - It is in the bank per channel instance, with the SV top's real `_wake`
     nets and each receiver's `clk_gated`.
+
+### OOE session change set (2026-10-02), as built
+
+The OOE Stage 4 grill-me and its A-25 to A-55 review rounds, applied to the
+schema and the stubs. The channel-level reasoning is in the arch opens; what
+matters for the skeleton:
+
+- **47 channels.** `ccv_ooe_rcu_map` is new: OOE's RAT for a migrating warp,
+  since physical locations now exist only in OOE (RAU allocates none, A-30).
+  Seven channels changed; payload-spec.md has the fields.
+- **Fixed latency is a slot attribute** (`fixed_latency`, A-47), on
+  `ooe_rcu_issue`, `rcu_lane_ops`, `lane_rcu_res`, `rcu_ooe_done`,
+  `miu_ooe_cmpl` and `miu_rcu_data`: the receiver never stalls and returns
+  each credit the cycle its message lands. The credit checker's `FIXED_LAT`
+  adds `fixed_latency_no_stall` and `fixed_latency_prompt` (a message older
+  than the link's round trip, less the stages already crossed, is a held
+  message). The exerciser's receivers drain those slots on landing;
+  `--break fixed-all` holds every one a cycle and all 272 checkers fire. The
+  wiring controls answer fixed-latency valids with exactly that prompt
+  credit, so each still fires only what it targets.
+- **Merge is a fourth source** (A-33, A-43, A-44): `merge_data` to the lane,
+  predicates merged in RCU. S1's kernels exercise the predicate merge
+  (pguard's guarded compare) but have no masked GPR writer or masked load,
+  so the GPR merge path is built and self-checked but not reached, and the
+  masked-load copy op is not modelled (OOE fails loudly if one appears).
+- **Overlays.** A named slice of a field valid under a selector:
+  `discard_tail` on `ooe_miu_memop.disp` when `mem_op == 0xF` (A-41).
+  `gen-interfaces.py` checks it fits and emits its LSB and width beside the
+  struct.
+- **Derived parameters.** `CCV_MIGRATION_CYCLES`, the rename floors and
+  ceilings, the ROB tag and checkpoint widths and the generated latencies
+  derive from their inputs, `params/links.json` included; a stale value is
+  refused by name. A derived value is never more settled than its inputs.
+- **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
+  completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
+  context-isolation assertions and the RAT-map pairing checker. Each needs a
+  block's internal schedule or state; the interface half, the fixed-latency
+  attribute, is in the bank.
 
 ### S1 wire conventions (placeholders)
 
@@ -950,10 +990,12 @@ decisions.
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its architectural offset, in halfwords from the next instruction, with the length code in `ilen` beside it; OOE computes `pc + bytes(ilen) + 2·imm` (arch open A-8). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
-| `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Rename is `prf_base + arch` (no renaming yet) |
+| `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. OOE maps `16·warp + arch` (no renaming yet; RAU allocates nothing, A-30) |
+| `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; without renaming the old destinations are the new ones. A masked load would also owe a copy-only op (opcode `0x1FF`); no S1 kernel has one, and OOE fails loudly if one appears |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
-| `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | `4·warp + index` (predicates not renamed); RCU writes the destination only when `pred_we`, and only on active lanes |
+| `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | `4·warp + index` (predicates not renamed); RCU writes the destination only when `pred_we`, merging by read-modify-write from `phys_pred_old_dst`: active lanes from the lanes' `pred_out`, the rest kept (A-43) |
+| `rcu_lane_ops.merge_data`, `lane_rcu_res.result` | the old destination's value per lane; an inactive lane returns it as its result, and checks it against the oracle's post-state, which for an inactive lane is the old value. RCU then writes every lane (per-lane write enables all on, A-44) |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
 | `lane_rcu_res.result`, `pred_out` | the GPR value; the predicate result in `pred_out` |
 | `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable. Both, and `section_en`, are lead fields: on the wire with valid, a cycle ahead of `operand` |
@@ -967,9 +1009,10 @@ decisions.
 | `ext_exb_in.tl_in` | flattened TL-C: B `[640:0]`, D `[1173:641]` (opcode, param, size, source, sink, denied, data 512, corrupt), valids b/d `[1175:1174]`. AccessAck = 0, AccessAckData = 1 |
 | line on the link | two 512-bit beats, same address; EXB and the testbench count them |
 | `req_id` | each requester allocates the lowest free id below 2^width on its own hop and holds it until the response; MLC maps its EXB-side id back to the requester's id |
-| `issue_mask` / `active_mask` / `pred_bit` | OOE sends `issue_mask` (all 32: no divergence yet). RCU computes issue ∧ guard as `active_mask` and per lane as `pred_bit`; a predicate read as data is not a guard. MIU touches, and RCU writes, only active lanes |
+| `issue_mask` / `active_mask` / `pred_bit` | OOE sends `issue_mask` (all 32: no divergence yet). RCU computes issue ∧ guard as `active_mask` and per lane as `pred_bit`; a predicate read as data is not a guard. MIU touches only active lanes, and RCU writes only active lanes of a load |
 | `fet_dec_instr.tier1_id` | slot / 2: warp 0 is tier-1 stream 0 |
-| `ooe_fet_redirect.group_masks` | 32 bits per PC group, the taken lanes first, then the fall-through lanes |
+| `fet_dec_instr.checkpoint_id`, `pred_taken` | FET takes a checkpoint per branch, round-robin over `CCV_P_BR_CKPTS`, and predicts static not-taken (fetch still follows the oracle, so a taken branch is the mispredict). Not limited to 4 in flight: FET hears only of mispredicts, so it cannot tell when a checkpoint frees (Q-52) |
+| `ooe_fet_redirect.checkpoint_id`, `taken_mask` | the branch's checkpoint, echoed through DEC and OOE, which FET checks is the one it took (`--break corrupt-ckpt`); the taken lanes. OOE redirects when RCU's outcome differs from `pred_taken` (A-42) |
 | `kill_acks`, `kill_ack_epochs` | FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA from bit 0 up |
 | identities | instruction: `instr` class, seq = record seq. Line request on an instruction's behalf: owned `txn`, same seq, sub = line. ITLB and ifill: unowned `txn` |
 

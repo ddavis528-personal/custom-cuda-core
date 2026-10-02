@@ -194,7 +194,7 @@ module ccv_rau_w #(
 `endif
   );
   // ccv_rau_ooe_alloc, source end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(59)) u_rpt_rau_ooe_alloc (
+  ccv_seq_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(43)) u_rpt_rau_ooe_alloc (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rau_ooe_alloc_valid}), .src_payload({b_rau_ooe_alloc_payload}),
     .src_wake(b_rau_ooe_alloc_wake), .src_credit({b_rau_ooe_alloc_credit}), .src_stall({b_rau_ooe_alloc_stall}),

@@ -162,6 +162,12 @@ module ccv_ooe (
 `ifdef CCV_TRACE
   assign ooe_rau_drained_tid = '0;
 `endif
+  assign ooe_rcu_map_valid = '0;
+  assign ooe_rcu_map_payload = '0;
+  assign ooe_rcu_map_wake = '0;
+`ifdef CCV_TRACE
+  assign ooe_rcu_map_tid = '0;
+`endif
   assign ooe_syu_bar_valid = '0;
   assign ooe_syu_bar_payload = '0;
   assign ooe_syu_bar_wake = '0;

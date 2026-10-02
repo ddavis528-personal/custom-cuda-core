@@ -1037,6 +1037,8 @@ module ccv_rcu (
   assign miu_rcu_data_s3_stall = '0;
   assign rau_rcu_mig_credit = '0;
   assign rau_rcu_mig_stall = '0;
+  assign ooe_rcu_map_credit = '0;
+  assign ooe_rcu_map_stall = '0;
   assign rcu_pca_mig_valid = '0;
   assign rcu_pca_mig_payload = '0;
   assign rcu_pca_mig_wake = '0;

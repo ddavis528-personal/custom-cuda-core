@@ -24,6 +24,7 @@ module ccv_ooe_w #(
   parameter int RPT_OOE_RAU_STATUS = 0,
   parameter int RPT_RAU_OOE_DEMOTE = 0,
   parameter int RPT_OOE_RAU_DRAINED = 0,
+  parameter int RPT_OOE_RCU_MAP = 0,
   parameter int RPT_OOE_SYU_BAR = 0,
   parameter int RPT_SYU_OOE_REL = 0,
   parameter int RPT_OOE_CRU_FAULT = 0
@@ -167,6 +168,11 @@ module ccv_ooe_w #(
   logic b_ooe_rau_drained_credit;
   logic b_ooe_rau_drained_stall;
   logic b_ooe_rau_drained_wake;
+  logic b_ooe_rcu_map_valid;
+  ccv_ooe_rcu_map_t b_ooe_rcu_map_payload;
+  logic b_ooe_rcu_map_credit;
+  logic b_ooe_rcu_map_stall;
+  logic b_ooe_rcu_map_wake;
   logic b_ooe_syu_bar_valid;
   ccv_ooe_syu_bar_t b_ooe_syu_bar_payload;
   logic b_ooe_syu_bar_credit;
@@ -214,6 +220,7 @@ module ccv_ooe_w #(
   logic [63:0] b_ooe_rau_status_tid;
   logic [63:0] b_rau_ooe_demote_tid;
   logic [63:0] b_ooe_rau_drained_tid;
+  logic [63:0] b_ooe_rcu_map_tid;
   logic [63:0] b_ooe_syu_bar_tid;
   logic [63:0] b_syu_ooe_rel_tid;
   logic [63:0] b_ooe_cru_fault_tid;
@@ -365,6 +372,11 @@ module ccv_ooe_w #(
     .ooe_rau_drained_credit(b_ooe_rau_drained_credit),
     .ooe_rau_drained_stall(b_ooe_rau_drained_stall),
     .ooe_rau_drained_wake(b_ooe_rau_drained_wake),
+    .ooe_rcu_map_valid(b_ooe_rcu_map_valid),
+    .ooe_rcu_map_payload(b_ooe_rcu_map_payload),
+    .ooe_rcu_map_credit(b_ooe_rcu_map_credit),
+    .ooe_rcu_map_stall(b_ooe_rcu_map_stall),
+    .ooe_rcu_map_wake(b_ooe_rcu_map_wake),
     .ooe_syu_bar_valid(b_ooe_syu_bar_valid),
     .ooe_syu_bar_payload(b_ooe_syu_bar_payload),
     .ooe_syu_bar_credit(b_ooe_syu_bar_credit),
@@ -415,6 +427,7 @@ module ccv_ooe_w #(
     , .ooe_rau_status_tid(b_ooe_rau_status_tid)
     , .rau_ooe_demote_tid(b_rau_ooe_demote_tid)
     , .ooe_rau_drained_tid(b_ooe_rau_drained_tid)
+    , .ooe_rcu_map_tid(b_ooe_rcu_map_tid)
     , .ooe_syu_bar_tid(b_ooe_syu_bar_tid)
     , .syu_ooe_rel_tid(b_syu_ooe_rel_tid)
     , .ooe_cru_fault_tid(b_ooe_cru_fault_tid)
@@ -422,7 +435,7 @@ module ccv_ooe_w #(
   );
 
   // ccv_dec_ooe_uop, destination end
-  ccv_seq_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(139)) u_rpt_dec_ooe_uop (
+  ccv_seq_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(142)) u_rpt_dec_ooe_uop (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({dec_ooe_uop_s5_valid, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_valid, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_valid}), .src_payload({dec_ooe_uop_s5_payload, dec_ooe_uop_s4_payload, dec_ooe_uop_s3_payload, dec_ooe_uop_s2_payload, dec_ooe_uop_s1_payload, dec_ooe_uop_s0_payload}),
     .src_wake(dec_ooe_uop_wake), .src_credit({dec_ooe_uop_s5_credit, dec_ooe_uop_s4_credit, dec_ooe_uop_s3_credit, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_credit, dec_ooe_uop_s0_credit}), .src_stall({dec_ooe_uop_s5_stall, dec_ooe_uop_s4_stall, dec_ooe_uop_s3_stall, dec_ooe_uop_s2_stall, dec_ooe_uop_s1_stall, dec_ooe_uop_s0_stall}),
@@ -433,7 +446,7 @@ module ccv_ooe_w #(
 `endif
   );
   // ccv_ooe_rcu_issue, source end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(4), .PAYLOAD_W(134)) u_rpt_ooe_rcu_issue (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(4), .PAYLOAD_W(149)) u_rpt_ooe_rcu_issue (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .src_payload({b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
     .src_wake(b_ooe_rcu_issue_wake), .src_credit({b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .src_stall({b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall}),
@@ -488,7 +501,7 @@ module ccv_ooe_w #(
 `endif
   );
   // ccv_ooe_fet_redirect, source end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(201)) u_rpt_ooe_fet_redirect (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(107)) u_rpt_ooe_fet_redirect (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_ooe_fet_redirect_valid}), .src_payload({b_ooe_fet_redirect_payload}),
     .src_wake(b_ooe_fet_redirect_wake), .src_credit({b_ooe_fet_redirect_credit}), .src_stall({b_ooe_fet_redirect_stall}),
@@ -499,7 +512,7 @@ module ccv_ooe_w #(
 `endif
   );
   // ccv_rau_ooe_alloc, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(59)) u_rpt_rau_ooe_alloc (
+  ccv_seq_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(43)) u_rpt_rau_ooe_alloc (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_ooe_alloc_valid}), .src_payload({rau_ooe_alloc_payload}),
     .src_wake(rau_ooe_alloc_wake), .src_credit({rau_ooe_alloc_credit}), .src_stall({rau_ooe_alloc_stall}),
@@ -540,6 +553,17 @@ module ccv_ooe_w #(
     .dst_wake(ooe_rau_drained_wake), .dst_credit({ooe_rau_drained_credit}), .dst_stall({ooe_rau_drained_stall})
 `ifdef CCV_TRACE
     , .src_tid({b_ooe_rau_drained_tid}), .dst_tid({ooe_rau_drained_tid})
+`endif
+  );
+  // ccv_ooe_rcu_map, source end
+  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(158)) u_rpt_ooe_rcu_map (
+    .clk(core_clk), .rst_n(rst_n),
+    .src_valid({b_ooe_rcu_map_valid}), .src_payload({b_ooe_rcu_map_payload}),
+    .src_wake(b_ooe_rcu_map_wake), .src_credit({b_ooe_rcu_map_credit}), .src_stall({b_ooe_rcu_map_stall}),
+    .dst_valid({ooe_rcu_map_valid}), .dst_payload({ooe_rcu_map_payload}),
+    .dst_wake(ooe_rcu_map_wake), .dst_credit({ooe_rcu_map_credit}), .dst_stall({ooe_rcu_map_stall})
+`ifdef CCV_TRACE
+    , .src_tid({b_ooe_rcu_map_tid}), .dst_tid({ooe_rcu_map_tid})
 `endif
   );
   // ccv_ooe_syu_bar, source end

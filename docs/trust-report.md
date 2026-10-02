@@ -47,6 +47,7 @@ so this is a build artifact rather than something to remember.
 | `rtl/top/stubs/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
+| `sim/skel/kernel.cpp` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
@@ -57,7 +58,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **22 of 46 channels** carry at least one
+appear above. **20 of 47 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
@@ -74,13 +75,11 @@ preliminary field:
 | `ccv_miu_fet_itlb` | `itlb_refill` |
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
-| `ccv_ooe_fet_redirect` | `group_masks` |
 | `ccv_ooe_miu_memop` | `mem_op`, `space`, `ordering` |
 | `ccv_ooe_rcu_issue` | `opcode` |
 | `ccv_pca_fet_mig` | `pcs`, `group_masks` |
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rau_fet_mig` | `bank_select` |
-| `ccv_rau_ooe_alloc` | `prf_base`, `prf_size` |
 | `ccv_rau_rcu_mig` | `bank_select` |
 | `ccv_rau_syu_alloc` | `barrier_count` |
 | `ccv_rcu_lane_ops` | `opcode`, `operand` |
@@ -97,7 +96,6 @@ to code that merely carries it, which will not.
 | `CCV_L_OPERANDS_PER_LANE` | 3 | **HIGH** | RCU/LANE session -- see the src_arch vs operand mismatch |
 | `CCV_L_PC_GROUPS` | 4 | **HIGH** | divergence model specification |
 | `CCV_L_W_OPCODE` | 9 | **HIGH** | ISA opcode census, then DEC/OOE/RCU agree the hops |
-| `CCV_L_W_PRED_STATE` | 1024 | **HIGH** | divergence model specification |
 | `CCV_L_W_TL_IN` | 1176 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_TL_OUT` | 1225 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_COH_OP` | 4 | med | MLC/EXB session, once the TL-C subset is chosen |
@@ -107,8 +105,6 @@ to code that merely carries it, which will not.
 | `CCV_L_W_ORDERING` | 4 | med | OOE/MIU session -- is scope a separate field? |
 | `CCV_L_W_OWNERSHIP` | 3 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
 | `CCV_L_W_PCA_BANK` | 3 | med | PCA session, from the parked-array organization |
-| `CCV_L_W_PRF_BASE` | 8 | med | RAU/OOE session -- register or chunk granularity |
-| `CCV_L_W_PRF_SIZE` | 8 | med | RAU/OOE session, with CCV_L_W_PRF_BASE |
 | `CCV_L_W_PROBE_TYPE` | 2 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
 | `CCV_L_W_BAR_COUNT` | 7 | low | SYU session -- is the count biased? |

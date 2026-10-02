@@ -194,6 +194,12 @@
   input  logic ooe_rau_drained_credit,
   input  logic ooe_rau_drained_stall,
   output logic ooe_rau_drained_wake,
+  // ooe -> rcu
+  output logic ooe_rcu_map_valid,
+  output ccv_ooe_rcu_map_t ooe_rcu_map_payload,
+  input  logic ooe_rcu_map_credit,
+  input  logic ooe_rcu_map_stall,
+  output logic ooe_rcu_map_wake,
   // ooe -> syu
   output logic ooe_syu_bar_valid,
   output ccv_ooe_syu_bar_t ooe_syu_bar_payload,
@@ -247,6 +253,7 @@
   , output logic [63:0] ooe_rau_status_tid
   , input  logic [63:0] rau_ooe_demote_tid
   , output logic [63:0] ooe_rau_drained_tid
+  , output logic [63:0] ooe_rcu_map_tid
   , output logic [63:0] ooe_syu_bar_tid
   , input  logic [63:0] syu_ooe_rel_tid
   , output logic [63:0] ooe_cru_fault_tid

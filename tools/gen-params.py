@@ -209,12 +209,46 @@ def gen_sv(d):
 # because every tool reads `value`; what this adds is that a value which no
 # longer follows from its inputs is refused here, by name and with the number
 # it should be, instead of shipping. Grammar: parameter names, integers,
-# + - * // **, comparisons, and cdiv(a, b) and clog2(x).
+# + - * // **, comparisons, cdiv(a, b), clog2(x), and link_n('channel'): the
+# repeater stages params/links.json puts on that channel (without ccv_), the
+# most over its copies, so a latency built on the links follows them.
+# A derived parameter is never more settled than its inputs: a settled width
+# that follows a provisional count would move without its tier saying so.
 FUNCS = {"cdiv": lambda a, b: -(-a // b),
          "clog2": lambda x: max(0, (x - 1).bit_length())}
+TIER_RANK = {"settled": 0, "prov": 1, "prelim": 2}
 
 
-def evaluate(expr, values):
+def link_stages(path=None):
+    """Channel (without ccv_) -> most repeater stages on any copy, read
+    straight from params/links.json. Validity is tools/ccv_links.py's job,
+    run by every generator that builds the machine; this only sums routes."""
+    import re
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import ccv_links
+    with open(path or ccv_links.path()) as f:
+        entries = json.load(f).get("links", [])
+    out = {}
+    for e in entries:
+        n = sum(int(m.group(2)) for m in
+                (ccv_links.HOP.match(h) for h in e.get("route", "").split(">"))
+                if m)
+        out[e.get("channel")] = max(out.get(e.get("channel"), 0), n)
+    return out
+
+
+def schema_channels():
+    with open(os.path.join(ROOT, "schema", "interfaces.json")) as f:
+        return {c["name"][4:] for c in json.load(f)["channels"]}
+
+
+def names_in(expr):
+    import ast
+    return {n.id for n in ast.walk(ast.parse(expr, mode="eval"))
+            if isinstance(n, ast.Name) and n.id not in FUNCS}
+
+
+def evaluate(expr, values, links=None):
     import ast
     ops = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
            ast.Mult: lambda a, b: a * b, ast.FloorDiv: lambda a, b: a // b,
@@ -228,6 +262,14 @@ def evaluate(expr, values):
             return ev(n.body)
         if isinstance(n, ast.Constant) and isinstance(n.value, int):
             return n.value
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "link_n" and len(n.args) == 1
+                and isinstance(n.args[0], ast.Constant)
+                and isinstance(n.args[0].value, str)):
+            if n.args[0].value not in schema_channels():
+                raise ValueError("link_n names no channel: %r (names are "
+                                 "without ccv_)" % n.args[0].value)
+            return (links if links is not None else {}).get(n.args[0].value, 0)
         if isinstance(n, ast.Name):
             if n.id not in values:
                 raise ValueError("unknown parameter %s" % n.id)
@@ -244,18 +286,29 @@ def evaluate(expr, values):
     return ev(ast.parse(expr, mode="eval"))
 
 
-def check_derived(d):
-    """Every `derive` equals its value and every `require` holds."""
+def check_derived(d, links=None):
+    """Every `derive` equals its value and every `require` holds, and no
+    derived parameter is more settled than what it derives from."""
     values = {p["name"]: p["value"] for p in d["params"]}
+    tiers = {p["name"]: tier(p) for p in d["params"]}
+    if links is None:
+        links = link_stages()
     bad = []
     for p in d["params"]:
         try:
             if "derive" in p:
-                want = evaluate(p["derive"], values)
+                looser = [x for x in sorted(names_in(p["derive"]))
+                          if TIER_RANK[tiers.get(x, "settled")] > TIER_RANK[tiers[p["name"]]]]
+                if looser:
+                    bad.append("%s is %s but derives from %s: a derived value is "
+                               "never more settled than its inputs"
+                               % (p["name"], tiers[p["name"]],
+                                  ", ".join("%s (%s)" % (x, tiers[x]) for x in looser)))
+                want = evaluate(p["derive"], values, links)
                 if want != p["value"]:
                     bad.append("%s = %d, but %s gives %d: set it to %d"
                                % (p["name"], p["value"], p["derive"], want, want))
-            if "require" in p and not evaluate(p["require"], values):
+            if "require" in p and not evaluate(p["require"], values, links):
                 bad.append("%s = %d breaks its requirement %s"
                            % (p["name"], p["value"], p["require"]))
         except (ValueError, SyntaxError, TypeError) as e:
@@ -267,19 +320,33 @@ def selftest(d):
     """The negative control: each derivation and requirement must refuse a
     value that no longer follows from its inputs. Run in memory, on copies."""
     import copy
-    cases = [("CCV_L_W_PRED_STATE", 2 * 1024, "CCV_MIGRATION_CYCLES"),
-             ("CCV_MIGRATION_CYCLES", 33, "CCV_W_MIG_ROW"),
-             ("CCV_PARKED_WARPS", 60, "CCV_WARP_CONTEXTS"),
-             ("CCV_P_PRED_REGS", 16, "CCV_P_PRED_REGS"),
-             ("CCV_P_PHYS_REGS", 64, "CCV_P_PHYS_REGS")]
+    links = link_stages()
+    cases = [("CCV_PREDS", "value", 8, "CCV_W_PRED_STATE"),
+             ("CCV_W_PRED_STATE", "value", 2048, "CCV_MIGRATION_CYCLES"),
+             ("CCV_MIGRATION_CYCLES", "value", 33, "CCV_W_MIG_ROW"),
+             ("CCV_PARKED_WARPS", "value", 60, "CCV_WARP_CONTEXTS"),
+             ("CCV_P_PRED_REGS", "value", 16, "CCV_P_PRED_REGS"),
+             ("CCV_P_PHYS_REGS", "value", 64, "CCV_P_PHYS_REGS"),
+             ("CCV_P_PHYS_REGS", "value", 256, "CCV_P_REN_FLOOR"),
+             ("CCV_P_REN_SLACK", "value", 0, "CCV_P_REN_CEIL"),
+             ("CCV_P_PRED_REN_SLACK", "value", 30, "CCV_P_PRED_REN_CEIL"),
+             ("CCV_P_ROB_DEPTH", "value", 64, "CCV_P_W_ROB_IDX"),
+             ("CCV_P_BR_CKPTS", "value", 8, "CCV_P_W_CKPT_ID"),
+             ("CCV_P_W_CKPT_ID", "status", "arch", "CCV_P_W_CKPT_ID"),
+             ("link_n('rcu_lane_ops')", "links", 2, "CCV_LAT_LANE"),
+             ("link_n('dcu_miu_rsp')", "links", 1, "CCV_LAT_L1_HIT"),
+             ("CCV_LAT_LANE", "derive",
+              "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     missed = []
-    for name, v, who in cases:
-        m = copy.deepcopy(d)
+    for name, key, v, who in cases:
+        m, lk = copy.deepcopy(d), dict(links)
+        if key == "links":
+            lk[name[len("link_n('"):-2]] = v
         for p in m["params"]:
             if p["name"] == name:
-                p["value"] = v
-        if not any(b.startswith(who + " ") for b in check_derived(m)):
-            missed.append("%s = %d not caught at %s" % (name, v, who))
+                p[key] = v
+        if not any(b.split()[0].rstrip(":") == who for b in check_derived(m, lk)):
+            missed.append("%s %s = %s not caught at %s" % (name, key, v, who))
     if missed:
         sys.stderr.write("".join("%s\n" % x for x in missed))
         return 1

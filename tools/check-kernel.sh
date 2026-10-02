@@ -16,6 +16,7 @@
 #                                                disagrees with ccv-sim's
 #   one ITLB miss outstanding                  itlb-double: the bank's
 #                                                outstanding checker fires
+#   a redirect names FET's own checkpoint     corrupt-ckpt: FET refuses it
 #   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
@@ -31,8 +32,8 @@
 #                                                names it; nothing retires it
 #   the lane mask is on the wire with valid,  late-lead: every lane takes a
 #     a cycle ahead of the operands (Q-40)       stale mask
-#   a masked-off lane does nothing, and RCU   ignore-mask (pguard): its poison
-#     writes back only active lanes              lands in P1
+#   a masked-off lane does not compute, and   ignore-mask (pguard): its poison
+#     RCU merges predicates by the mask (A-43)   lands in P1
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -171,10 +172,20 @@ fi
 # must reject it too -- the one run that exercises ooe_fet_redirect.
 run drop-negate
 if grep -q "^CHECK rcu: seq 8 branch taken by ffffffff, oracle 00000000" "$B/kernel_drop-negate.log" &&
-   grep -q "^CHECK fet: seq 8 redirect to" "$B/kernel_drop-negate.log"; then
+   grep -q "^CHECK fet: seq 8 redirect to" "$B/kernel_drop-negate.log" &&
+   ! grep -q "redirect names checkpoint" "$B/kernel_drop-negate.log"; then
   say "--break drop-negate: RCU and FET reject the branch" "PASS"
 else
   bad "--break drop-negate" "a backwards guard went unnoticed"
+fi
+# The checkpoint a redirect names is FET's own, back through DEC and OOE
+# (A-42): drop-negate's redirect names the right one (checked just above),
+# and one naming another must be refused.
+run corrupt-ckpt
+if grep -q "^CHECK fet: seq 8 redirect names checkpoint" "$B/kernel_corrupt-ckpt.log"; then
+  say "--break corrupt-ckpt: FET refuses the checkpoint" "PASS"
+else
+  bad "--break corrupt-ckpt" "a redirect naming the wrong checkpoint went unnoticed"
 fi
 
 # RCU keeps no table of outstanding loads: it writes where MIU's echo says.
@@ -265,9 +276,10 @@ if grep -q "^CHECK lane [0-9]*: seq [0-9]* pred_bit is not issue mask AND guard"
 else
   bad "--break late-lead" "a mask arriving with the operands went unnoticed"
 fi
-# A masked-off lane never computes: its outputs are poison. RCU must write
-# back only the lanes the mask enables, or pguard's guarded compare (lanes
-# 16-31 off) puts poison into P1, which sel's lanes and the final compare see.
+# A masked-off lane never computes: its predicate output is poison, and RCU
+# merges predicates by read-modify-write under the active mask (A-43). If the
+# merge drops the mask, pguard's guarded compare (lanes 16-31 off) puts poison
+# into P1, which sel's lanes and the final compare see.
 "$SKEL" --kernel build/oracle/pguard/oracle.jsonl --break ignore-mask \
   >"$B/kernel_ignore-mask.log" 2>&1
 if grep -q "^CHECK lane [0-9]*: seq 9 pred_data (sel's selector) wrong" "$B/kernel_ignore-mask.log" &&
@@ -281,8 +293,8 @@ fi
 #                                                names it; nothing retires it
 #   the lane mask is on the wire with valid,  late-lead: every lane takes a
 #     a cycle ahead of the operands (Q-40)       stale mask
-#   a masked-off lane does nothing, and RCU   ignore-mask (pguard): its poison
-#     writes back only active lanes              lands in P1
+#   a masked-off lane does not compute, and   ignore-mask (pguard): its poison
+#     RCU merges predicates by the mask (A-43)   lands in P1
 
 # @P0 setp P1 carries its guard and destination in separate uop fields. With
 # them conflated back into one (the destination named by the guard), the

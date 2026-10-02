@@ -287,7 +287,7 @@ def build():
             a[0], a[1], ("`%s`" % b[0]) if b[0] else "", b[1]))
     chk_tbl = ["| Checker | In the bank | Judges |", "|---|---|---|"]
     judges = {
-        "ccv_credit_checker": "one slot: credit, stall, payload known when due, bounded response, and at the end, nothing left uncredited",
+        "ccv_credit_checker": "one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing",
         "ccv_wake_checker": "one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver)",
         "ccv_atomic_checker": "a channel's slots that must move together",
         "ccv_lockstep_checker": "copies of a channel that must move in lockstep across the 32 lanes",

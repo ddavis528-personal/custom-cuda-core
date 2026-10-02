@@ -179,8 +179,8 @@
       "value": 17,
       "status": "arch",
       "source": "grill-me 2026-09-23",
-      "doc": "Migration transfer, each way, one 1024-bit row per cycle: the 16 GPR rows plus ceil(CCV_L_W_PRED_STATE / CCV_W_DATA) rows of predicate and divergence state, one today. Derived, not chosen (arch open A-22): CCV_L_W_PRED_STATE is preliminary and churn-high, and if it grows past a row this follows, refused by tools/gen-params.py until it does. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent.",
-      "derive": "2**CCV_W_ARCH_REG + cdiv(CCV_L_W_PRED_STATE, CCV_W_DATA)"
+      "doc": "Migration transfer, each way, one 1024-bit row per cycle: the 16 GPR rows plus ceil(CCV_W_PRED_STATE / CCV_W_DATA) rows of predicate state, one. Derived, not chosen (arch open A-22): if the predicate state ever grows past a row this follows, refused by tools/gen-params.py until it does. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent.",
+      "derive": "CCV_GPRS + cdiv(CCV_W_PRED_STATE, CCV_W_DATA)"
     },
     {
       "name": "CCV_W_MIG_ROW",
@@ -189,6 +189,14 @@
       "source": "arch opens A-1, A-22 (2026-09-27)",
       "derive": "clog2(CCV_MIGRATION_CYCLES)",
       "doc": "Migration row index on ccv_rcu_pca_mig / ccv_pca_rcu_mig: rows 0-15 GPRs, 16 and up predicate and divergence state. Sized by the row count, so it widens when CCV_MIGRATION_CYCLES does."
+    },
+    {
+      "name": "CCV_W_PRED_STATE",
+      "value": 128,
+      "status": "arch",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; arch open A-50",
+      "derive": "CCV_PREDS * CCV_W_LANE_MASK",
+      "doc": "A warp's migrated predicate state: its 4 architectural predicates of one bit per lane. It was CCV_L_W_PRED_STATE = 1024, preliminary, sized for a reconvergence stack as well; FET now owns divergence (checkpoints and min-PC reconvergence, no stack) and the PC groups migrate through FET, so RCU migrates only the predicates (A-50). One migration row."
     },
     {
       "name": "CCV_NGD_BUDGET",
@@ -411,23 +419,187 @@
       "name": "CCV_P_ROB_DEPTH",
       "value": 32,
       "status": "provisional",
-      "doc": "ROB sizing against 4-wide issue.",
+      "doc": "ROB entries per tier-1 warp. 32, confirmed for the first build by the OOE session.",
       "decided_at": "OOE per-block session"
     },
     {
       "name": "CCV_P_W_ROB_TAG",
       "value": 7,
       "status": "provisional",
-      "doc": "Tier-1 id plus ROB depth.",
-      "decided_at": "OOE per-block session"
+      "doc": "rob_tag: the tier-1 slot's ROB (2 bits) and the entry index in it (CCV_P_W_ROB_IDX). Carries no age, since the ROB is circular (A-41).",
+      "decided_at": "OOE per-block session",
+      "derive": "clog2(CCV_ROB_INSTANCES) + clog2(CCV_P_ROB_DEPTH)"
+    },
+    {
+      "name": "CCV_P_W_ROB_IDX",
+      "value": 5,
+      "status": "provisional",
+      "decided_at": "OOE per-block session, with CCV_P_ROB_DEPTH",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-41",
+      "derive": "clog2(CCV_P_ROB_DEPTH)",
+      "doc": "ROB entry index within one tier-1 warp's ROB: the low part of rob_tag, and the width of a bulk discard's discard_tail (an overlay on displacement[4:0], A-41)."
+    },
+    {
+      "name": "CCV_P_BR_CKPTS",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "FET per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Branch checkpoints per warp, held in FET: PC-group state saved at each unresolved branch, restored from checkpoint_id plus taken_mask on a mispredict. Fetch stalls a warp when all are in use."
+    },
+    {
+      "name": "CCV_P_W_CKPT_ID",
+      "value": 2,
+      "status": "provisional",
+      "decided_at": "FET per-block session, with CCV_P_BR_CKPTS",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "derive": "clog2(CCV_P_BR_CKPTS)",
+      "doc": "checkpoint_id, on ccv_fet_dec_instr, ccv_dec_ooe_uop and ccv_ooe_fet_redirect. Provisional rather than settled because it follows CCV_P_BR_CKPTS, and a derived width is never more settled than its inputs (tools/gen-params.py refuses it)."
+    },
+    {
+      "name": "CCV_P_RS_RCU",
+      "value": 30,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Reservation-station entries for RCU-class ops (lanes and RCU-executed)."
+    },
+    {
+      "name": "CCV_P_RS_MIU",
+      "value": 15,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Reservation-station entries for MIU-class ops. With CCV_P_RS_RCU it sizes the wakeup dependency matrix, 45 x 45; each entry tracks up to six producers (A-43)."
+    },
+    {
+      "name": "CCV_P_DECQ",
+      "value": 12,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Decode queue depth ahead of rename."
+    },
+    {
+      "name": "CCV_P_REN_SLACK",
+      "value": 16,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-40",
+      "doc": "GPR rename registers deliberately left unreachable by any warp's ceiling, as margin."
+    },
+    {
+      "name": "CCV_P_REN_FLOOR",
+      "value": 16,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-34, A-40",
+      "derive": "(CCV_P_PHYS_REGS - CCV_TIER1_WARPS * CCV_GPRS) // (2 * CCV_TIER1_WARPS)",
+      "doc": "GPR rename registers guaranteed to each tier-1 slot above its 16 architectural ones, reserved whether the slot is occupied or not: half the fair share of the rename pool. The reservation is what lets restore admission never wait (A-49)."
+    },
+    {
+      "name": "CCV_P_REN_CEIL",
+      "value": 64,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-34, A-40",
+      "derive": "CCV_P_PHYS_REGS - CCV_TIER1_WARPS * CCV_GPRS - (CCV_TIER1_WARPS - 1) * CCV_P_REN_FLOOR - CCV_P_REN_SLACK",
+      "require": "CCV_P_REN_CEIL >= CCV_P_REN_FLOOR",
+      "doc": "Most GPR rename registers one warp may hold above its architectural ones. Derived so that one warp at its ceiling and the others at their floors fit the pool with CCV_P_REN_SLACK to spare: ceiling + (warps - 1) x floor <= pool - slack."
+    },
+    {
+      "name": "CCV_P_PRED_REN_SLACK",
+      "value": 0,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-40",
+      "doc": "Predicate rename registers left as margin: none. The exact fit is deliberate; the derivation is what absorbs the risk (A-40)."
+    },
+    {
+      "name": "CCV_P_PRED_REN_FLOOR",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-39, A-40",
+      "derive": "(CCV_P_PRED_REGS - CCV_TIER1_WARPS * CCV_PREDS) // (2 * CCV_TIER1_WARPS)",
+      "doc": "Predicate rename registers guaranteed to each tier-1 slot above its 4 architectural ones, on the same rule as the GPR floor (A-39)."
+    },
+    {
+      "name": "CCV_P_PRED_REN_CEIL",
+      "value": 20,
+      "status": "provisional",
+      "decided_at": "OOE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-39, A-40",
+      "derive": "CCV_P_PRED_REGS - CCV_TIER1_WARPS * CCV_PREDS - (CCV_TIER1_WARPS - 1) * CCV_P_PRED_REN_FLOOR - CCV_P_PRED_REN_SLACK",
+      "require": "CCV_P_PRED_REN_CEIL >= CCV_P_PRED_REN_FLOOR",
+      "doc": "Most predicate rename registers one warp may hold above its architectural ones; as CCV_P_REN_CEIL."
+    },
+    {
+      "name": "CCV_LAT_RCU_BASE",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "RCU per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Pipeline depth of an RCU-executed op, from RCU accepting the issue to the result in the PRF. An assumption until RCU's session confirms it."
+    },
+    {
+      "name": "CCV_LAT_LANE_BASE",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "LANE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Lane pipeline depth with abutted links, from RCU accepting the issue to the lane result in the PRF. An assumption until LANE's session confirms it as a contract."
+    },
+    {
+      "name": "CCV_LAT_L1_HIT_BASE",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "MIU per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "L1 hit latency with abutted links, from MIU accepting the memop to its completion and data leaving MIU. An assumption until MIU's session confirms it."
+    },
+    {
+      "name": "CCV_LAT_RCU",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "derive": "CCV_LAT_RCU_BASE",
+      "doc": "Contracted latency of an RCU-executed op. Crosses no link after acceptance: a dependant's issue crosses the same ccv_ooe_rcu_issue link, so that link cancels out of the schedule."
+    },
+    {
+      "name": "CCV_LAT_LANE",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-48",
+      "derive": "CCV_LAT_LANE_BASE + link_n('rcu_lane_ops') + link_n('lane_rcu_res')",
+      "doc": "Contracted lane latency: base plus the repeater stages out and back, from params/links.json (A-48). The lane channels are lockstep, so every copy has the same stages."
+    },
+    {
+      "name": "CCV_LAT_LANE_BYP",
+      "value": 4,
+      "status": "tunable",
+      "decided_at": "LANE per-block session",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set",
+      "doc": "Lane-to-lane bypass: a dependent lane op may issue this many cycles after its producer. Inside the lane, so no link enters it."
+    },
+    {
+      "name": "CCV_LAT_L1_HIT",
+      "value": 7,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48",
+      "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp')",
+      "doc": "Contracted L1 hit latency: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
     },
     {
       "name": "CCV_P_PHYS_REGS",
       "value": 192,
       "status": "provisional",
-      "doc": "Rename headroom above 16 arch regs per tier-1 warp.",
+      "doc": "Physical GPRs: one global pool, allocated by OOE's free lists (RAU allocates none; A-30). Each tier-1 slot, occupied or not, reserves its 16 architectural registers plus CCV_P_REN_FLOOR, so 64 of the 192 are architectural and 128 rename.",
       "decided_at": "OOE and RCU per-block sessions",
-      "require": "CCV_P_PHYS_REGS > CCV_TIER1_WARPS * 2**CCV_W_ARCH_REG"
+      "require": "CCV_P_PHYS_REGS > CCV_TIER1_WARPS * CCV_GPRS"
     },
     {
       "name": "CCV_P_W_PHYS_REG",
@@ -443,7 +615,7 @@
       "status": "provisional",
       "doc": "Physical predicate file depth. The resident warps' architectural predicates alone fill CCV_TIER1_WARPS x 4 = 16 entries, so the file must be deeper or rename has no free register to allocate and the first predicate write never renames (arch open A-21; it was 16). 48 is the GPR file's ratio, 3x architectural (192 against 64), as a placeholder.",
       "decided_at": "RCU per-block session",
-      "require": "CCV_P_PRED_REGS > CCV_TIER1_WARPS * 2**CCV_W_ARCH_PRED"
+      "require": "CCV_P_PRED_REGS > CCV_TIER1_WARPS * CCV_PREDS"
     },
     {
       "name": "CCV_P_MAX_CTA",
@@ -709,24 +881,6 @@
       "decided_at": "MMU session, with the page-table format"
     },
     {
-      "name": "CCV_L_W_PRF_BASE",
-      "value": 8,
-      "status": "preliminary",
-      "churn": "med",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Physical register window base, at REGISTER granularity. Chunked allocation would narrow this and prf_size together -- one decision for the pair.",
-      "decided_at": "RAU/OOE session -- register or chunk granularity"
-    },
-    {
-      "name": "CCV_L_W_PRF_SIZE",
-      "value": 8,
-      "status": "preliminary",
-      "churn": "med",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Physical register window size. Same granularity decision as CCV_L_W_PRF_BASE.",
-      "decided_at": "RAU/OOE session, with CCV_L_W_PRF_BASE"
-    },
-    {
       "name": "CCV_L_W_PCA_BANK",
       "value": 3,
       "status": "preliminary",
@@ -751,15 +905,6 @@
       "churn": "high",
       "source": "Payload widths pass (2026-09-25)",
       "doc": "PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified.",
-      "decided_at": "divergence model specification"
-    },
-    {
-      "name": "CCV_L_W_PRED_STATE",
-      "value": 1024,
-      "status": "preliminary",
-      "churn": "high",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Predicate registers plus a reconvergence stack of eight entries of mask and PC. THE most likely field to be underestimated: the divergence model is stored here and has never been specified.",
       "decided_at": "divergence model specification"
     },
     {

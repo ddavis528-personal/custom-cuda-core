@@ -239,7 +239,13 @@ private:
       for (auto &u : units(gs, cd)) {
         bool all = true;
         for (auto &m : u) all = all && !m.first->rx[m.second]->empty();
-        if (all && decide(cd.lockstep, chan, uid, now, 0x9) < cfg_.p_pop)
+        // A fixed-latency receiver takes every message the cycle it lands
+        // (A-47): holding one is not back-pressure there, it is a broken
+        // contract, and the bank's fixed_latency_prompt says so.
+        // A wiring control silences consumption (p_pop 0), fixed-latency
+        // receivers included: there the control supplies the credits.
+        if (all && ((cd.fixed_lat && cfg_.p_pop > 0) ||
+                    decide(cd.lockstep, chan, uid, now, 0x9) < cfg_.p_pop))
           for (auto &m : u) {
             verify(*m.first, m.second, m.first->rx[m.second]->front());
             m.first->rx[m.second]->pop();
@@ -248,6 +254,7 @@ private:
       }
     }
 
+    if (cd.fixed_lat) return;   // and never stalls
     for (InGroup &g : gs)
       for (unsigned s = 0; s != cd.rate; ++s) {
         bool st;

@@ -129,7 +129,7 @@ module ccv_lane_w (
   );
 
   // ccv_rcu_lane_ops, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS), .SLOTS(4), .PAYLOAD_W(111), .LEAD_MASK(111'h3f)) u_rpt_rcu_lane_ops (
+  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS), .SLOTS(4), .PAYLOAD_W(143), .LEAD_MASK(143'h3f)) u_rpt_rcu_lane_ops (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rcu_lane_ops_s3_valid, rcu_lane_ops_s2_valid, rcu_lane_ops_s1_valid, rcu_lane_ops_s0_valid}), .src_payload({rcu_lane_ops_s3_payload, rcu_lane_ops_s2_payload, rcu_lane_ops_s1_payload, rcu_lane_ops_s0_payload}),
     .src_wake(rcu_lane_ops_wake), .src_credit({rcu_lane_ops_s3_credit, rcu_lane_ops_s2_credit, rcu_lane_ops_s1_credit, rcu_lane_ops_s0_credit}), .src_stall({rcu_lane_ops_s3_stall, rcu_lane_ops_s2_stall, rcu_lane_ops_s1_stall, rcu_lane_ops_s0_stall}),

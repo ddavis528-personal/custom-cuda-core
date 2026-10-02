@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 46 channels
+# Payload specification — all 47 channels
 
-Every payload field has a width, so **every one of the 46
+Every payload field has a width, so **every one of the 47
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 9 | 29 |
-| ⚠️ Some provisional | 15 | 61 |
-| ⛔ Some preliminary | 22 | 118 |
-| **Total** | **46** | **208** |
+| All decided | 9 | 27 |
+| ⚠️ Some provisional | 18 | 79 |
+| ⛔ Some preliminary | 20 | 113 |
+| **Total** | **47** | **219** |
 
 ## What still has to be decided
 
@@ -134,18 +134,6 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_GRID_SEL` | 8 | med | Grid selector on the host's kill request (ccv_cru_rau_cfg). RAU maps grid to warp mask from tables it owns. Sized for 256 grid slots; the real number is how many grids RAU tracks at once. |
 
-### RAU/OOE session -- register or chunk granularity
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_W_PRF_BASE` | 8 | med | Physical register window base, at REGISTER granularity. Chunked allocation would narrow this and prf_size together -- one decision for the pair. |
-
-### RAU/OOE session, with CCV_L_W_PRF_BASE
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_W_PRF_SIZE` | 8 | med | Physical register window size. Same granularity decision as CCV_L_W_PRF_BASE. |
-
 ### RCU/LANE session -- see the src_arch vs operand mismatch
 
 | Parameter | Value | Churn | Basis |
@@ -169,7 +157,6 @@ because those are the ones where a skeleton that reads the field
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
 | `CCV_L_PC_GROUPS` | 4 | **HIGH** | PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified. |
-| `CCV_L_W_PRED_STATE` | 1024 | **HIGH** | Predicate registers plus a reconvergence stack of eight entries of mask and PC. THE most likely field to be underestimated: the divergence model is stored here and has never been specified. |
 
 ## Open questions that no width can close
 
@@ -189,25 +176,9 @@ ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 
 
 ## All widths decided
 
-### `ccv_fet_dec_instr`
-
-Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path.
-
-fet → dec · rate 8 · instruction
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
-| `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| `instr` | `CCV_W_INSTR` | 48 | CCV_W_INSTR (isa) |
-| `length` | `CCV_W_ILEN` | 2 | CCV_W_ILEN (isa) |
-| `fetch_fault` | `1` | 1 | literal |
-| **total** | | **122** | |
-
 ### `ccv_lane_rcu_res`
 
-One lane's result, its predicate output (setp's compare, add.pp's predicate beside its GPR result), and its fault bit.
+One lane's result, its predicate output (setp's compare, add.pp's predicate beside its GPR result), and its fault bit. RCU writes the PRF through per-lane write enables: every lane for an ordinary op (an inactive lane's result is its merge_data), only the inactive lanes for CCV_OP_PRF_COPY (A-44).
 
 lane → rcu · rate 4 · execution
 
@@ -217,6 +188,20 @@ lane → rcu · rate 4 · execution
 | `pred_out` | `1` | 1 | literal |
 | `lane_fault` | `1` | 1 | literal |
 | **total** | | **34** | |
+
+### `ccv_rau_ooe_alloc`
+
+A warp activated or freed, and its identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). Promotion re-sends this message, so identity arrives with every activation. RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.
+
+rau → ooe · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `activate_or_free` | `1` | 1 | literal |
+| `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
+| `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
+| **total** | | **43** | |
 
 ### `ccv_ooe_rau_status`
 
@@ -260,7 +245,7 @@ ooe → rau · rate 1 · control
 
 ### `ccv_rcu_pca_mig`
 
-Architectural state out to the parked array on demotion, one 1024-bit row per message. Rows 0 to 15 are the 16 GPRs; rows 16 and up carry the warp's predicate and divergence state (CCV_L_W_PRED_STATE bits, ceil(CCV_L_W_PRED_STATE / CCV_W_DATA) rows, one today). Addressed: warp_id and mig_row say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). Predicate state travels once per migration, not beside every GPR row (arch open A-1). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.
+Architectural state out to the parked array on demotion, one 1024-bit row per message. Rows 0 to 15 are the 16 GPRs; rows 16 and up carry the warp's predicate state (CCV_W_PRED_STATE bits, ceil(CCV_W_PRED_STATE / CCV_W_DATA) rows, one today). Addressed: warp_id and mig_row say where the row goes, so PCA places it from the data itself rather than inferring placement from a command it never sees (the RAU->RCU command is RCU's). Predicate state travels once per migration, not beside every GPR row (arch open A-1). The PC groups are not here: FET owns them, and they travel on ccv_fet_pca_mig.
 
 rcu → pca · rate 1 · control
 
@@ -273,7 +258,7 @@ rcu → pca · rate 1 · control
 
 ### `ccv_pca_rcu_mig`
 
-Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate and divergence state), addressed by warp_id and mig_row so RCU writes it without state. The PC groups and their lane masks return to FET on ccv_pca_fet_mig.
+Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate state), addressed by warp_id and mig_row so RCU writes it without state. The PC groups and their lane masks return to FET on ccv_pca_fet_mig.
 
 pca → rcu · rate 1 · control
 
@@ -310,9 +295,27 @@ syu → ooe · rate 1 · control
 
 ## ⚠️ Carries a provisional width
 
+### `ccv_fet_dec_instr`
+
+Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path. On a branch, checkpoint_id names the PC-group checkpoint FET took for it and pred_taken FET's predicted direction (uniform-only first; A-42); both are don't-care on other instructions. A predicted mask replaces pred_taken when divergent prediction lands.
+
+fet → dec · rate 8 · instruction
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `instr` | `CCV_W_INSTR` | 48 | CCV_W_INSTR (isa) |
+| `length` | `CCV_W_ILEN` | 2 | CCV_W_ILEN (isa) |
+| `checkpoint_id` | `CCV_P_W_CKPT_ID` | 2 ⚠️ | CCV_P_W_CKPT_ID (provisional) |
+| `pred_taken` | `1` | 1 | literal |
+| `fetch_fault` | `1` | 1 | literal |
+| **total** | | **125** | ⚠️ 2 provisional |
+
 ### `ccv_rcu_ooe_done`
 
-Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it.
+Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it. CCV_OP_PRF_COPY produces no done: its masked load keeps one rob_tag and one completion, the load's (A-38).
 
 rcu → ooe · rate 4 · execution
 
@@ -342,7 +345,7 @@ rcu → miu · rate 4 · execution
 
 ### `ccv_miu_rcu_data`
 
-Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load.
+Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load. An L1 hit's data lands at the contracted cycle, with its completion (A-47). A masked load's inactive lanes are written by its copy-only op through a lane, never by MIU, so this channel carries no merge fields (A-33).
 
 miu → rcu · rate 4 · execution
 
@@ -359,7 +362,7 @@ miu → rcu · rate 4 · execution
 
 ### `ccv_miu_ooe_cmpl`
 
-Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel.
+Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46).
 
 miu → ooe · rate 4 · memory
 
@@ -384,6 +387,22 @@ ooe → miu · rate 4 · memory
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
 | `commit_or_discard` | `1` | 1 | literal |
 | **total** | | **8** | ⚠️ 7 provisional |
+
+### `ccv_ooe_fet_redirect`
+
+A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own.
+
+ooe → fet · rate 1 · instruction
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `checkpoint_id` | `CCV_P_W_CKPT_ID` | 2 ⚠️ | CCV_P_W_CKPT_ID (provisional) |
+| `taken_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 2 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
+| **total** | | **107** | ⚠️ 4 provisional |
 
 ### `ccv_spm_miu_rsp`
 
@@ -477,6 +496,20 @@ mlc → fet · rate 1 · memory
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | **total** | | **1026** | ⚠️ 1026 provisional |
 
+### `ccv_ooe_rcu_map`
+
+Where a migrating warp's architectural registers live: its RAT, 16 physical GPR names and 4 physical predicate names. Physical locations exist only in OOE's RAT, so this replaces RAU's prf_base + arch addressing. direction 0: demote, RCU reads the named rows out to PCA; 1: restore, RCU writes PCA's rows into them. RCU pairs it with ccv_rau_rcu_mig by warp and direction (A-45), and ccv_ooe_rau_drained is sent only after it. Rate 1, separate from the rate-4 issue channel that binds the machine's width. A message is one whole map, atomic and ordered by construction on a single slot, so no slot attributes are declared (the schema refuses them on a rate-1 channel).
+
+ooe → rcu · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `direction` | `1` | 1 | literal |
+| `gpr_map` | `CCV_GPRS*CCV_P_W_PHYS_REG` | 128 ⚠️ | CCV_GPRS (isa); CCV_P_W_PHYS_REG (provisional) |
+| `pred_map` | `CCV_PREDS*CCV_P_W_PHYS_PRED` | 24 ⚠️ | CCV_PREDS (isa_provisional); CCV_P_W_PHYS_PRED (provisional) |
+| **total** | | **158** | ⚠️ 152 provisional |
+
 ### `ccv_rau_miu_cta`
 
 Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads.
@@ -525,7 +558,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8).
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42).
 
 dec → ooe · rate 6 · instruction
 
@@ -544,13 +577,15 @@ dec → ooe · rate 6 · instruction
 | `pred_we` | `1` | 1 | literal |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `ilen` | `CCV_W_ILEN` | 2 | CCV_W_ILEN (isa) |
+| `checkpoint_id` | `CCV_P_W_CKPT_ID` | 2 ⚠️ | CCV_P_W_CKPT_ID (provisional) |
+| `pred_taken` | `1` | 1 | literal |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **139** | ⛔ 12 preliminary, ⚠️ 32 provisional |
+| **total** | | **142** | ⛔ 12 preliminary, ⚠️ 34 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
-What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine.
+What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28).
 
 ooe → rcu · rate 4 · execution
 
@@ -562,19 +597,22 @@ ooe → rcu · rate 4 · execution
 | `phys_src` | `2*CCV_P_W_PHYS_REG` | 16 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_src2` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
+| `phys_old_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `phys_pred_guard` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_neg` | `1` | 1 | literal |
 | `phys_pred_dst` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
+| `phys_pred_old_dst` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_we` | `1` | 1 | literal |
+| `merge_en` | `1` | 1 | literal |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **134** | ⛔ 9 preliminary, ⚠️ 83 provisional |
+| **total** | | **149** | ⛔ 9 preliminary, ⚠️ 97 provisional |
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask, so a lane with pred_bit clear does nothing. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.
+Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask. A lane with pred_bit clear does not compute: it returns merge_data as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0, since then every lane is enabled. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.
 
 rcu → lane · rate 4 · execution
 
@@ -582,14 +620,15 @@ rcu → lane · rate 4 · execution
 |---|---|---|---|
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `operand` | `CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA` | 96 ⛔ | CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_W_LANE_DATA (isa) |
+| `merge_data` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
 | `pred_bit` | `1` | 1 | literal |
 | `pred_data` | `1` | 1 | literal |
 | `section_en` | `4` | 4 | literal |
-| **total** | | **111** | ⛔ 105 preliminary |
+| **total** | | **143** | ⛔ 105 preliminary |
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp.
 
 ooe → miu · rate 4 · memory
 
@@ -608,21 +647,6 @@ ooe → miu · rate 4 · memory
 | `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
 | `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
 | **total** | | **91** | ⛔ 11 preliminary, ⚠️ 24 provisional |
-
-### `ccv_ooe_fet_redirect`
-
-A resolved branch that changes fetch: the warp, its tier-1 stream, the target PC, the updated PC-group lane masks, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate); OOE redirects. FET owns the PC and its update logic, so the divergent PC-group state lives in FET.
-
-ooe → fet · rate 1 · instruction
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
-| `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| `group_masks` | `CCV_L_PC_GROUPS*CCV_W_LANE_MASK` | 128 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_LANE_MASK (isa) |
-| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 2 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
-| **total** | | **201** | ⛔ 128 preliminary, ⚠️ 2 provisional |
 
 ### `ccv_miu_spm_req`
 
@@ -753,25 +777,9 @@ rau → fet · rate 1 · control
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | **total** | | **184** | ⛔ 104 preliminary, ⚠️ 3 provisional |
 
-### `ccv_rau_ooe_alloc`
-
-The warp's physical register window, activated or freed, and its identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38). Promotion re-sends this message, so identity arrives with every activation. RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.
-
-rau → ooe · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `prf_base` | `CCV_L_W_PRF_BASE` | 8 ⛔ | CCV_L_W_PRF_BASE (preliminary, churn med) |
-| `prf_size` | `CCV_L_W_PRF_SIZE` | 8 ⛔ | CCV_L_W_PRF_SIZE (preliminary, churn med) |
-| `activate_or_free` | `1` | 1 | literal |
-| `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
-| `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
-| **total** | | **59** | ⛔ 16 preliminary |
-
 ### `ccv_rau_rcu_mig`
 
-Which warp and direction a migration moves, and which parked bank it targets.
+Which warp and direction a migration moves, and which parked bank it targets. RCU pairs it with ccv_ooe_rcu_map by warp_id and direction and proceeds once both have arrived, in either order; at most one migration per warp is in flight (A-45).
 
 rau → rcu · rate 1 · control
 
@@ -784,7 +792,7 @@ rau → rcu · rate 1 · control
 
 ### `ccv_fet_pca_mig`
 
-A demoted warp's PC groups, out to the parked array: each group's PC and its lane mask, which together are the warp's divergence state in FET (the same group_masks ccv_ooe_fet_redirect updates; arch open A-2). FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer and waits for both before reallocating the slot.
+A demoted warp's PC groups, out to the parked array: each group's PC and its lane mask, which together are the warp's divergence state in FET (the groups FET maintains, and rebuilds from checkpoint_id and taken_mask on a redirect; A-2, A-36). FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer; PCA acks both halves at once on ccv_pca_rau_mig_done. Checkpoints never migrate: demotion squashes to the retirement boundary, so a demoted warp has no unresolved branch.
 
 fet → pca · rate 1 · control
 

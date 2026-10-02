@@ -114,7 +114,7 @@ def build(d, pv, blocks):
         dflt = d["slot_attr_defaults"]
         attrs, decided = {}, {}
         for a in ("acceptance", "slot_binding", "binding_group", "ordering",
-                  "lockstep"):
+                  "lockstep", "fixed_latency"):
             v = c.get("slot_attrs", {}).get(a)
             attrs[a] = v if v is not None else dflt[a]["default"]
             decided[a] = v is not None
@@ -204,6 +204,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("  uint8_t id_classes;  ///< bit (1 << IdClass) per class it may carry")
     L.append("  int16_t bind_key;    ///< fields[] index of the binding key, or -1:")
     L.append("                       ///< it must equal slot / bind_group")
+    L.append("  bool fixed_lat;      ///< receiver never stalls, credits on landing (A-47)")
     L.append("};")
     L.append("")
     for c in chans:
@@ -229,13 +230,14 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
               if c["attrs"]["slot_binding"] == "bound" else 0)
         bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
               if c["binding_key"] else -1)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d},'
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
                     "true" if c["attrs"]["acceptance"] == "atomic" else "false",
                     bg, ok, of,
-                    "true" if c["attrs"]["lockstep"] else "false", cls, bk))
+                    "true" if c["attrs"]["lockstep"] else "false", cls, bk,
+                    "true" if c["attrs"]["fixed_latency"] else "false"))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -327,6 +329,8 @@ def gen_sv(chans, cinst, nslots, pbits):
             off = ci["payload_base"] + s * c["bits"]
             lm = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
                   if c["lead_mask"] else "")
+            if c["attrs"]["fixed_latency"]:
+                lm += ", .FIXED_LAT(1)"   # no stall, credit on landing (A-47)
             if ci["stages"]:
                 # A repeated link (params/links.json): the round trip and the
                 # response bound grow by 2N, and the stall rule counts the
@@ -508,14 +512,15 @@ def gen_slots_md(chans, cinst, nslots):
     L.append("## Every channel, with its slot attributes")
     L.append("")
     L.append("Slot attributes apply to rate > 1 only; lockstep to channels "
-             "replicated across a multi-instance endpoint. *Italic* is the "
-             "permissive default; **bold** is decided, with the reason.")
+             "replicated across a multi-instance endpoint; fixed latency to any "
+             "channel. *Italic* is the permissive default; **bold** is decided, "
+             "with the reason.")
     L.append("")
     L.append("| # | Channel | Rate × inst | Slots | Acceptance | Binding | "
-             "Ordering key | Lockstep | Id classes |")
-    L.append("|---|---|---|---|---|---|---|---|---|")
+             "Ordering key | Lockstep | Fixed latency | Id classes |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|")
     def fmt(c, a, show=None):
-        if a != "lockstep" and c["rate"] == 1:
+        if a not in ("lockstep", "fixed_latency") and c["rate"] == 1:
             return "—"
         if a == "lockstep" and c["ninst"] == 1:
             return "—"
@@ -526,11 +531,12 @@ def gen_slots_md(chans, cinst, nslots):
         b = c["attrs"]["slot_binding"]
         if b == "bound":
             b = "bound, groups of %d" % c["attrs"]["binding_group"]
-        L.append("| %d | `%s` | %d × %d | %d | %s | %s | %s | %s | %s |"
+        L.append("| %d | `%s` | %d × %d | %d | %s | %s | %s | %s | %s | %s |"
                  % (c["id"], c["name"], c["rate"], c["ninst"],
                     c["rate"] * c["ninst"], fmt(c, "acceptance"),
                     fmt(c, "slot_binding", b), fmt(c, "ordering"),
                     fmt(c, "lockstep", "true" if c["attrs"]["lockstep"] else "false"),
+                    fmt(c, "fixed_latency", "true" if c["attrs"]["fixed_latency"] else "false"),
                     ", ".join(c["id_classes"])))
     return "\n".join(L) + "\n"
 

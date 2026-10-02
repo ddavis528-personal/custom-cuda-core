@@ -128,7 +128,7 @@ lists every such module.
 
 ## 4. The partition
 
-14 block types, 45 instances, 46 channel types
+14 block types, 45 instances, 47 channel types
 (2 of them to and from the testbench's `EXTERNAL`). Every channel is
 point to point, credited, and declared in `schema/interfaces.json`, which is
 the only place a channel is defined.
@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=46 chan_insts=108 slots=345 sent=235126 received=235126 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=345 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=47 chan_insts=109 slots=346 sent=457856 received=457856 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=346 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -215,18 +215,18 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=361 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/46 violations=0
+KERNEL name=vadd finished=1 cycles=361 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/47 violations=0
 XFER events=509 launched=509 match=yes channels_seen=26
 ```
 
 Retired in order, every register, predicate and memory word equal to
 `ccv-sim`'s, and every one of the 509 messages
 launched was seen by the checker bank, which reported nothing. The run
-touches 26/46 channel types. The rest are waiting for
+touches 26/47 channel types. The rest are waiting for
 kernels that need them:
 
 ```
-UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
+UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
 ```
 
 ## 7. One instruction through the machine
@@ -242,8 +242,8 @@ instruction can be followed across every block it touches. Seq 12,
      39  ccv_dec_ooe_uop                dec  -> ooe       
      41  EV_DISPATCH                    ooe          
     225  EV_ISSUE                       ooe          
-    225  ccv_ooe_rcu_issue              ooe  -> rcu       
     225  ccv_ooe_miu_memop              ooe  -> miu       
+    225  ccv_ooe_rcu_issue              ooe  -> rcu       
     227  ccv_rcu_miu_addr               rcu  -> miu       
     229  ccv_miu_dcu_req                miu  -> dcu       
     231  ccv_dcu_mlc_req                dcu  -> mlc       
@@ -370,8 +370,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=361 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/46 violations=0
-TRACES records=559/559 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=361 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=26/47 violations=0
+TRACES records=559/559 equal=yes byte_identical=yes differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -386,8 +386,8 @@ SV top under `CCV_CHECK`.
 
 | Checker | In the bank | Judges |
 |---|---|---|
-| `ccv_credit_checker` | 345 | one slot: credit, stall, payload known when due, bounded response, and at the end, nothing left uncredited |
-| `ccv_wake_checker` | 108 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
+| `ccv_credit_checker` | 346 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
+| `ccv_wake_checker` | 109 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
 | `ccv_atomic_checker` | 77 | a channel's slots that must move together |
 | `ccv_lockstep_checker` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
 | `ccv_binding_checker` | 1 | a slot's group key stays bound |
@@ -398,7 +398,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(14)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[307]), .ch_credit(credit[307]), .ch_stall(stall[307]),
-    .ch_payload(payload[46530:45319])
+    .ch_payload(payload[50634:49423])
 `ifdef CCV_TRACE
     , .ch_tid(tid[19711:19648])
 `endif
@@ -413,13 +413,13 @@ now (section 10), and caught in simulation by the checker's end-of-test
 check:
 
 ```
-[20000] %Error: ccv_credit_checker.sv:272: Assertion failed in bank.ccv_skel_checkers.u_fet_dec_instr_s0: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=46 chan_insts=108 slots=345 sent=226242 received=226242 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=331 idle_slots=0 violations=14
+[20000] %Error: ccv_credit_checker.sv:293: Assertion failed in bank.ccv_skel_checkers.u_fet_dec_instr_s0: CCV quiesced_at_end failed: 3 message(s) never credited back
+SKEL cycles=2000 blocks=45 chan_types=47 chan_insts=109 slots=346 sent=449302 received=449302 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=332 idle_slots=0 violations=14
 ```
 
 The C++ receivers count the same leak from their side:
 `credit_leaks=42`, and only
-331 of 345 slots have all
+332 of 346 slots have all
 their credits home at the end.
 
 ## 10. Proved, for all time
@@ -486,8 +486,8 @@ counter-example that must fire, and a paragraph in
 From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
-- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-41, Q-42, Q-45, Q-50, Q-51
-- **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-35, Q-36, Q-37, Q-46, Q-48
+- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50, Q-52
+- **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53
 
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.

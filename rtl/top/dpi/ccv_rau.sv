@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (1288 bits,
+// At each edge of its clock: sample every channel signal (1272 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (848 bits). Common-port outputs sit inactive, as in
+// what it drove (832 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_rau (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_rau(
     input int h, input longint cyc, input bit rst,
-    input bit [1287:0] sample, output bit [847:0] drive);
+    input bit [1271:0] sample, output bit [831:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc = 0;
-  bit [847:0] drv, q, q2;
+  bit [831:0] drv, q, q2;
   initial begin
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);

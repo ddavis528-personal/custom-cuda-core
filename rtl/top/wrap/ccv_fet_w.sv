@@ -240,7 +240,7 @@ module ccv_fet_w #(
   );
 
   // ccv_fet_dec_instr, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(122)) u_rpt_fet_dec_instr (
+  ccv_seq_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(125)) u_rpt_fet_dec_instr (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_dec_instr_s7_valid, b_fet_dec_instr_s6_valid, b_fet_dec_instr_s5_valid, b_fet_dec_instr_s4_valid, b_fet_dec_instr_s3_valid, b_fet_dec_instr_s2_valid, b_fet_dec_instr_s1_valid, b_fet_dec_instr_s0_valid}), .src_payload({b_fet_dec_instr_s7_payload, b_fet_dec_instr_s6_payload, b_fet_dec_instr_s5_payload, b_fet_dec_instr_s4_payload, b_fet_dec_instr_s3_payload, b_fet_dec_instr_s2_payload, b_fet_dec_instr_s1_payload, b_fet_dec_instr_s0_payload}),
     .src_wake(b_fet_dec_instr_wake), .src_credit({b_fet_dec_instr_s7_credit, b_fet_dec_instr_s6_credit, b_fet_dec_instr_s5_credit, b_fet_dec_instr_s4_credit, b_fet_dec_instr_s3_credit, b_fet_dec_instr_s2_credit, b_fet_dec_instr_s1_credit, b_fet_dec_instr_s0_credit}), .src_stall({b_fet_dec_instr_s7_stall, b_fet_dec_instr_s6_stall, b_fet_dec_instr_s5_stall, b_fet_dec_instr_s4_stall, b_fet_dec_instr_s3_stall, b_fet_dec_instr_s2_stall, b_fet_dec_instr_s1_stall, b_fet_dec_instr_s0_stall}),
@@ -251,7 +251,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_ooe_fet_redirect, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(201)) u_rpt_ooe_fet_redirect (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(107)) u_rpt_ooe_fet_redirect (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_fet_redirect_valid}), .src_payload({ooe_fet_redirect_payload}),
     .src_wake(ooe_fet_redirect_wake), .src_credit({ooe_fet_redirect_credit}), .src_stall({ooe_fet_redirect_stall}),

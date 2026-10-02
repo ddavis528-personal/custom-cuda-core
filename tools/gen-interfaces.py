@@ -175,6 +175,16 @@ def gen_sv(d, blocks, pp):
             L.append(("  %-46s %s;%s" % (ww, fld, "  // LEAD" if fld in lead
                                          else "")).rstrip())
         L.append("} ccv_%s_t;" % nm)
+        for ov in c.get("overlays", []):
+            # An overlay is a named slice of one field, valid only under its
+            # selector: declared beside the struct, never a struct member,
+            # since the bits belong to the field.
+            L.append("// OVERLAY %s: %s[%d +: %s], valid only when %s."
+                     % (ov["name"], ov["field"], ov["lsb"], ov["width"], ov["when"]))
+            L.append("localparam int CCV_%s_%s_LSB = %d;"
+                     % (nm.upper(), ov["name"].upper(), ov["lsb"]))
+            L.append("localparam int CCV_%s_%s_W = %s;"
+                     % (nm.upper(), ov["name"].upper(), qualify(ov["width"])))
         L.append("")
     L.append("// Ports per block, derived from the channel list.")
     for b in sorted(pp):
@@ -275,7 +285,7 @@ def main():
         sa = c.get("slot_attrs", {})
         why = c.get("slot_attrs_why", {})
         known = ("acceptance", "slot_binding", "binding_group", "ordering",
-                 "lockstep", "binding_key")
+                 "lockstep", "binding_key", "fixed_latency")
         multi_inst = max(blocks[c["src"]]["instances"] if c["src"] in blocks else 1,
                          blocks[c["dst"]]["instances"] if c["dst"] in blocks else 1) > 1
 
@@ -289,7 +299,9 @@ def main():
                 err("slot attribute %s is set with no reason recorded -- a "
                     "decided value without one reads as a default" % a)
                 return 1
-        per_slot = [a for a in sa if a != "lockstep"]
+        # lockstep describes the copies, fixed_latency the receiver: neither
+        # is about how slots relate, so both mean something at rate 1.
+        per_slot = [a for a in sa if a not in ("lockstep", "fixed_latency")]
         if c["rate"] == 1 and per_slot:
             err("slot attribute(s) %s on a rate-1 channel describe nothing"
                 % ", ".join(per_slot)); return 1
@@ -322,6 +334,8 @@ def main():
                 err("binding_key %r is not a payload field" % bkey); return 1
         if sa.get("lockstep", False) not in (False, True):
             err("lockstep must be true or false"); return 1
+        if sa.get("fixed_latency", False) not in (False, True):
+            err("fixed_latency must be true or false"); return 1
         if sa.get("lockstep") and not multi_inst:
             err("lockstep on a channel with one instance: there is nothing "
                 "to advance together with"); return 1
@@ -364,6 +378,25 @@ def main():
                 err("outstanding.max must be a positive integer"); return 1
             if "outstanding_why" not in c:
                 err("outstanding is set with no reason recorded"); return 1
+        # Overlays: a named sub-field of one payload field, meaningful only
+        # when another field holds one value (A-41's discard_tail on disp).
+        # Declared, so a reader of the bits never has to guess which meaning
+        # applies; checked here for everything but the width's fit, which
+        # needs the parameter values (main(), below).
+        for ov in c.get("overlays", []):
+            if set(ov) - {"name", "field", "lsb", "width", "when", "doc"} or \
+               not all(k in ov for k in ("name", "field", "lsb", "width", "when", "doc")):
+                err("an overlay needs exactly name, field, lsb, width, when, doc"); return 1
+            if ov["field"] not in c["payload_fields"]:
+                err("overlay %s is on %r, not a payload field" % (ov["name"], ov["field"])); return 1
+            if ov["name"] in c["payload_fields"]:
+                err("overlay %s shadows a payload field" % ov["name"]); return 1
+            m = re.match(r"^\s*([a-z_][a-z0-9_]*)\s*==\s*(0x[0-9a-fA-F]+|\d+)\s*$", ov["when"])
+            if not m or m.group(1) not in c["payload_fields"] or m.group(1) == ov["field"]:
+                err("overlay %s: when must be '<another payload field> == <integer>'"
+                    % ov["name"]); return 1
+            if not isinstance(ov["lsb"], int) or ov["lsb"] < 0:
+                err("overlay %s: lsb must be a non-negative integer" % ov["name"]); return 1
         cls = c.get("id_classes")
         if not cls or any(k not in ("instr", "txn", "none") for k in cls):
             sys.stderr.write("channel %s: id_classes must be a non-empty set "
@@ -393,6 +426,27 @@ def main():
                 sys.stderr.write("channel %s field %s: width %r names %s, "
                                  "which is not in params/ccv_params.json\n"
                                  % (c["name"], fld, w, ", ".join(unk)))
+                bad = 1
+    # An overlay must fit inside its field, and its selecting value inside
+    # its selector: both need the numbers, so they are checked here.
+    with open(PARAMS) as f:
+        pv = {p["name"]: p["value"] for p in json.load(f)["params"]}
+    num = lambda e: eval(re.sub(r"\bCCV_\w+", lambda m: str(pv[m.group(0)]), str(e)),
+                         {"__builtins__": {}})
+    for c in d["channels"]:
+        for ov in c.get("overlays", []):
+            fw = num(field_width(d, c, ov["field"]))
+            ow = num(ov["width"])
+            sel, val = [x.strip() for x in ov["when"].split("==")]
+            if ov["lsb"] + ow > fw:
+                sys.stderr.write("channel %s: overlay %s [%d +: %d] does not fit "
+                                 "%s, %d bits\n" % (c["name"], ov["name"], ov["lsb"],
+                                                    ow, ov["field"], fw))
+                bad = 1
+            if int(val, 0) >= 1 << num(field_width(d, c, sel)):
+                sys.stderr.write("channel %s: overlay %s selects %s == %s, which "
+                                 "does not fit %s\n" % (c["name"], ov["name"], sel,
+                                                         val, sel))
                 bad = 1
     if bad:
         return 1

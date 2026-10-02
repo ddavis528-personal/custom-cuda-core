@@ -1462,6 +1462,12 @@
   output logic rau_rcu_mig_credit,
   output logic rau_rcu_mig_stall,
   input  logic rau_rcu_mig_wake,
+  // ooe -> rcu
+  input  logic ooe_rcu_map_valid,
+  input  ccv_ooe_rcu_map_t ooe_rcu_map_payload,
+  output logic ooe_rcu_map_credit,
+  output logic ooe_rcu_map_stall,
+  input  logic ooe_rcu_map_wake,
   // rcu -> pca
   output logic rcu_pca_mig_valid,
   output ccv_rcu_pca_mig_t rcu_pca_mig_payload,
@@ -1751,6 +1757,7 @@
   , input  logic [63:0] miu_rcu_data_s2_tid
   , input  logic [63:0] miu_rcu_data_s3_tid
   , input  logic [63:0] rau_rcu_mig_tid
+  , input  logic [63:0] ooe_rcu_map_tid
   , output logic [63:0] rcu_pca_mig_tid
   , input  logic [63:0] pca_rcu_mig_tid
 `endif

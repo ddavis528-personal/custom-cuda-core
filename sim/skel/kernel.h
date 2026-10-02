@@ -62,8 +62,10 @@ struct Kernel {
   ///                  value the oracle disagrees with (run on the srd kernel)
   ///   late-lead      the lane mask is driven with the operands instead of with
   ///                  valid, so each lane takes a stale mask (Q-40)
-  ///   ignore-mask    RCU writes back every lane, including those the mask
-  ///                  switched off, whose outputs are poison (pguard kernel)
+  ///   corrupt-ckpt   drop-negate's mispredict, with the redirect naming a
+  ///                  checkpoint FET did not take for that branch (A-42)
+  ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
+  ///                  switched-off lanes' poison lands (pguard kernel; A-43)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
   ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
   std::string brk = "none";
@@ -72,7 +74,6 @@ struct Kernel {
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
-  unsigned prf_base = 0;                           ///< warp 0's, from RAU
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   bool exited = false;
@@ -86,7 +87,10 @@ struct Kernel {
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);
 
-/// Physical predicate index of arch P<idx> for a warp: preds are not renamed.
+/// Physical register of arch R<idx> / P<idx> for a warp. OOE owns the RAT
+/// and RAU allocates nothing (A-30); the stub does not rename, so each warp
+/// keeps a fixed window and an op's old destination is its new one.
+inline unsigned physReg(unsigned warp, unsigned idx) { return warp * 16 + idx; }
 inline unsigned physPred(unsigned warp, unsigned idx) { return warp * 4 + idx; }
 
 struct KernelReport {

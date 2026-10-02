@@ -1,6 +1,6 @@
 //===-- main.cpp - ccv-skel: the Stage 3 skeleton ----------------------===//
 //
-// Runs the whole machine -- 45 block instances, 108 channel instances, 345
+// Runs the whole machine -- 45 block instances, 109 channel instances, 346
 // credited slots -- with the SystemVerilog interface checker Verilated in at
 // every slot. The bank is clocked with each cycle's channel signals, so the
 // skeleton is judged by the same checker the RTL will be, and the
@@ -19,6 +19,12 @@
 //                 lockstep broken, credits and valids separately
 //   lockstep-all  on every lockstep channel, ONE instance's slot 0 valid,
 //                 then its credit, without its siblings
+//   fixed-all     on every fixed-latency slot, a valid whose credit comes
+//                 back ONE cycle later than landing allows (A-47)
+//
+// A fixed-latency slot (schema fixed_latency) owes a credit the cycle its
+// message lands, so the controls above answer their forced valids there
+// with exactly that prompt credit: each still fires only what it targets.
 //   misbind       lane 7 of a lockstep channel carries slot k+1's
 //                 instruction in slot k: matching valids, different ids
 //   misorder      ordered channels: a head taken that is not the oldest of
@@ -43,13 +49,15 @@
 //   itlb-double    FET has two ITLB misses outstanding
 //   corrupt-disp   one load's displacement is off by 4 on its way OOE->MIU
 //   drop-negate    guard negates dropped at issue: @!P0 resolves backwards
+//   corrupt-ckpt   as drop-negate, and OOE's redirect names the wrong
+//                  checkpoint, which FET must refuse (A-42)
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
 //   srd-selector   DEC sees srd selector 2, which is unallocated
 //   corrupt-ctaid  RAU sends OOE the wrong CTA index
 //   late-lead      the lane mask goes out with the operands, a cycle late
-//   ignore-mask    RCU writes back every lane, masked-off ones included
+//   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
 //===----------------------------------------------------------------------===//
 #include "Vccv_skel_checkers.h"
@@ -176,11 +184,13 @@ int main(int argc, char **argv) {
   // Wiring controls silence organic traffic so nothing else can fire; the
   // semantic ones (misorder, wrong-class) need traffic to be wrong about.
   const bool breaking = brk == "phantom-all" || brk == "stall-all" ||
-                        brk == "atomic-all" || brk == "lockstep-all";
+                        brk == "atomic-all" || brk == "lockstep-all" ||
+                        brk == "fixed-all";
   const bool kbreak = brk == "corrupt-fetch" || brk == "corrupt-load" ||
                       brk == "drop-store" || brk == "corrupt-req-id" ||
                       brk == "itlb-double" || brk == "corrupt-disp" ||
                       brk == "drop-negate" || brk == "drop-pred-data" ||
+                      brk == "corrupt-ckpt" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" ||
@@ -293,6 +303,13 @@ int main(int argc, char **argv) {
     bank->clk = 0; bank->eval(); ctx->timeInc(5);
     bank->clk = 1; bank->eval(); ctx->timeInc(5);
 
+    // The credit a fixed-latency receiver owes a valid forced at cycle v:
+    // its payload lands 2 + N cycles on, and the credit goes back then.
+    auto prompt = [&](unsigned k, uint64_t v, unsigned late = 0) {
+      if (kChans[m.chanInstOf(k).chan].fixed_lat &&
+          c == v + 2 + m.chanInstOf(k).stages + late)
+        m.rx(k).forceCredit();
+    };
     m.step(in_reset, [&] {
       if (brk == "phantom-all" && c == kBreakAt)
         for (unsigned k = 0; k != kNumSlots; ++k) m.rx(k).forceCredit();
@@ -301,19 +318,32 @@ int main(int argc, char **argv) {
       // The valid meets the stall where the sender sees it: on a link of N
       // repeater stages, N cycles after the receiver raised it.
       if (brk == "stall-all")
-        for (unsigned k = 0; k != kNumSlots; ++k)
+        for (unsigned k = 0; k != kNumSlots; ++k) {
           if (c == kBreakAt + 1 + m.chanInstOf(k).stages)
             m.tx(k).forceValid(wellFormed(m, k));
+          prompt(k, kBreakAt + 1 + m.chanInstOf(k).stages);
+        }
       // atomic-all: a whole group (legal), then ONE slot's credit, then ONE
       // slot's valid. Each is legal for the credit checker -- slot 0 has a
       // message outstanding, and credit to spare -- so only the atomic
       // checks may fire, and each must, on every multi-slot instance.
+      // On a fixed-latency channel the whole group is credited promptly
+      // (legal), so the lone credit and lone valid that break atomicity are
+      // a fresh valid on slot 0 and its own prompt credit.
       if (brk == "atomic-all")
         for (const ChanInst &ci : kChanInsts) {
           if (kChans[ci.chan].rate < 2) continue;
           if (c == kBreakAt)
             for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
               m.tx(ci.slot_base + s).forceValid(wellFormed(m, ci.slot_base + s));
+          if (kChans[ci.chan].fixed_lat) {
+            for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
+              prompt(ci.slot_base + s, kBreakAt);
+            if (c == kBreakAt + 5 + ci.stages)
+              m.tx(ci.slot_base).forceValid(wellFormed(m, ci.slot_base));
+            prompt(ci.slot_base, kBreakAt + 5 + ci.stages);
+            continue;
+          }
           // The credit after the message has arrived: N stages later on a
           // repeated link, or it would be a phantom where the bank watches.
           if (c == kBreakAt + 3 + ci.stages) m.rx(ci.slot_base).forceCredit();
@@ -326,7 +356,15 @@ int main(int argc, char **argv) {
         for (const ChanInst &ci : kChanInsts) {
           if (!kChans[ci.chan].lockstep || ci.inst != 0) continue;
           if (c == kBreakAt) m.tx(ci.slot_base).forceValid();
-          if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
+          if (kChans[ci.chan].fixed_lat) prompt(ci.slot_base, kBreakAt);
+          else if (c == kBreakAt + 3) m.rx(ci.slot_base).forceCredit();
+        }
+      // fixed-all: every fixed-latency slot's credit, one cycle late.
+      if (brk == "fixed-all")
+        for (unsigned k = 0; k != kNumSlots; ++k) {
+          if (!kChans[m.chanInstOf(k).chan].fixed_lat) continue;
+          if (c == kBreakAt) m.tx(k).forceValid(wellFormed(m, k));
+          prompt(k, kBreakAt, 1);
         }
     });
   }
