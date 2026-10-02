@@ -55,7 +55,8 @@ struct Ch {
            lane_rcu = chanId("ccv_lane_rcu_res"), rcu_ooe = chanId("ccv_rcu_ooe_done"),
            rcu_miu = chanId("ccv_rcu_miu_addr"), miu_rcu = chanId("ccv_miu_rcu_data"),
            ooe_miu = chanId("ccv_ooe_miu_memop"), miu_ooe = chanId("ccv_miu_ooe_cmpl"),
-           ooe_ret = chanId("ccv_ooe_miu_retire"), ooe_fet = chanId("ccv_ooe_fet_redirect"), miu_dcu = chanId("ccv_miu_dcu_req"),
+           ooe_ret = chanId("ccv_ooe_miu_retire"), ooe_fet = chanId("ccv_ooe_fet_redirect"),
+           ooe_free = chanId("ccv_ooe_fet_ckpt_free"), miu_dcu = chanId("ccv_miu_dcu_req"),
            dcu_miu = chanId("ccv_dcu_miu_rsp"), dcu_mlc = chanId("ccv_dcu_mlc_req"),
            mlc_dcu = chanId("ccv_mlc_dcu_rsp"), fet_mlc = chanId("ccv_fet_mlc_ifill"),
            mlc_fet = chanId("ccv_mlc_fet_ifill_rsp"), miu_fet = chanId("ccv_miu_fet_itlb"),
@@ -1395,8 +1396,19 @@ private:
           e->taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
           e->taken_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
           // A mispredict is the resolved outcome against FET's prediction
-          // (A-42); only then does OOE redirect, naming the checkpoint.
-          if (e->op->cls == kBranch && e->taken != e->pred_taken) redirect(*e);
+          // (A-42); only then does OOE redirect, naming the checkpoint. A
+          // correct resolution frees the checkpoint instead, on the bitmap
+          // (A-56); a mispredict's is FET's to free, on the redirect.
+          if (e->op->cls == kBranch) {
+            if (e->taken != e->pred_taken) {
+              redirect(*e);
+              // stale-free breaks A-58's first rule on purpose: it frees the
+              // checkpoint the same cycle's redirect restores.
+              if (k_.brk == "stale-free") free_mask_ |= freeBit(*e);
+            } else {
+              free_mask_ |= freeBit(*e);
+            }
+          }
         } else {
           k_.fail("ooe: done for a tag not in the ROB");
         }
@@ -1414,7 +1426,21 @@ private:
       send(c.ooe_fet, 0, redirects_.front().msg, redirects_.front().tid);
       redirects_.pop_front();
     }
+    // Every checkpoint freed this cycle, in one message. The channel is
+    // fixed-latency, so a credit is always back in time; if one were not, the
+    // bits would simply ride the next message.
+    if (free_mask_ && can(c.ooe_free, 0)) {
+      Bits f = msgOf(c.ooe_free);
+      put(f, c.ooe_free, "free_mask", free_mask_);
+      send(c.ooe_free, 0, f, makeUid(IdClass::kNone, 0));
+      free_mask_ = 0;
+    }
   }
+
+  /// Bit tier1_id * CCV_P_BR_CKPTS + checkpoint_id. One warp, tier-1 slot 0
+  /// (the redirect says the same).
+  uint64_t free_mask_ = 0;
+  uint64_t freeBit(const E &e) const { return uint64_t(1) << (0 * kCkpts + e.ckpt); }
 
   /// RCU resolved a branch some lane takes: tell FET, which owns the PC.
   /// Group masks: the taken lanes, then the lanes that fall through.
@@ -1547,9 +1573,10 @@ private:
     if (merge && e.op->cls == kLoad)
       k_.fail("ooe: a masked load needs the copy-only op, which the S1 stubs "
               "do not model");
-    // corrupt-ckpt rides drop-negate's forced mispredict: it needs a redirect.
+    // corrupt-ckpt and stale-free ride drop-negate's forced mispredict: each
+    // needs a redirect.
     put(is, c.ooe_rcu, "pred_neg", e.pneg && k_.brk != "drop-negate" &&
-                                   k_.brk != "corrupt-ckpt");
+                                   k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     send(c.ooe_rcu, slot, is, e.tid);
     if (mem) {
@@ -1595,7 +1622,9 @@ private:
     rob_.pop_front();
   }
 
-  bool busy() const override { return !rob_.empty() || !redirects_.empty(); }
+  bool busy() const override {
+    return !rob_.empty() || !redirects_.empty() || free_mask_ != 0;
+  }
 };
 
 // ---- DEC ---------------------------------------------------------------------------
@@ -1763,8 +1792,12 @@ private:
   std::map<unsigned, uint64_t> ifill_wait_; ///< virtual line, by req_id
   std::deque<Q> fills_, itlbs_;
   static constexpr unsigned kCkpts = ccv::prov::kBrCkpts;
-  unsigned next_ckpt_ = 0;
+  // Tier-1 slot 0's checkpoints: which are live, and in what order they were
+  // taken, so a redirect can free the one it restores and every younger one.
+  uint32_t live_ = 0;
+  std::deque<unsigned> taken_order_;
   std::map<uint64_t, unsigned> ckpt_of_;    ///< checkpoint, by branch seq
+  bool await_redirect_ = false;             ///< fetched a branch it mispredicts
   unsigned epoch_ = 0;                      ///< from the last redirect
 
   void work() override {
@@ -1798,7 +1831,35 @@ private:
           k_.fail("fet: seq %llu redirect names checkpoint %u, not the one FET took",
                   (unsigned long long)r->seq, ck);
       }
+      // Restoring a checkpoint frees it and every younger one: the branches
+      // that took them were on the wrong path (A-56). Applied before any free
+      // landing this cycle -- the pair is latency-matched (A-58).
+      for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
+        if (*it == ck) {
+          for (auto j = it; j != taken_order_.end(); ++j) live_ &= ~(1u << *j);
+          taken_order_.erase(it, taken_order_.end());
+          break;
+        }
+      await_redirect_ = false;
       epoch_ = unsigned(get(m.payload, c.ooe_fet, "fetch_epoch"));
+    }
+    if (has(c.ooe_free, 0)) {
+      // Checkpoints freed by correct resolutions. Every bit must name one
+      // live here when it lands (V-46): a free that overtook its redirect, or
+      // one for a squashed branch, would release another branch's.
+      Receiver::Msg m = take(c.ooe_free, 0);
+      const uint64_t fm = get(m.payload, c.ooe_free, "free_mask");
+      for (unsigned b = 0; b != kChans[c.ooe_free].bits; ++b) {
+        if (!(fm >> b & 1)) continue;
+        const unsigned slot = b / kCkpts, ck = b % kCkpts;
+        if (slot != 0 || !(live_ >> ck & 1)) {
+          k_.fail("fet: a free for tier-1 slot %u checkpoint %u, which is not live", slot, ck);
+          continue;
+        }
+        live_ &= ~(1u << ck);
+        for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
+          if (*it == ck) { taken_order_.erase(it); break; }
+      }
     }
     if (has(c.miu_fet, 0)) {
       Receiver::Msg m = take(c.miu_fet, 0);
@@ -1823,7 +1884,8 @@ private:
       }
     }
     // Warp 0 is tier-1 stream 0: binding group 0, slots 0 and 1, in order.
-    for (unsigned s = 0; s != 2 && launched_ && next_ != recs.size(); ++s) {
+    for (unsigned s = 0; s != 2 && launched_ && !await_redirect_ &&
+                         next_ != recs.size(); ++s) {
       const Record &r = recs[next_];
       bool ready = true;
       for (uint64_t a = r.pc / kLine * kLine; a < r.pc + r.size; a += kLine)
@@ -1843,20 +1905,27 @@ private:
       put(f, c.fet_dec, "length", r.size / 2 - 1);
       // A branch takes a checkpoint of the PC groups, and FET predicts it.
       // The prediction is static not-taken (uniform-only prediction is the
-      // FET session's); fetch still follows the oracle, so a taken branch
-      // is the mispredict that drives the redirect. Checkpoints are handed
-      // out round-robin and not limited to CCV_P_BR_CKPTS in flight: FET
-      // hears only about mispredicts, so it cannot tell when a correctly
-      // predicted branch frees one (an interface open, recorded).
+      // FET session's). With all CCV_P_BR_CKPTS live, fetch stalls until
+      // ccv_ooe_fet_ckpt_free or a redirect frees one (A-56). FET cannot
+      // fetch a wrong path it has no oracle for, so after a branch it will
+      // mispredict it fetches nothing until the redirect: the redirect then
+      // frees only the branch's own checkpoint, and no free is ever owed for
+      // a squashed branch.
+      bool mispredict = false;
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBranch) {
-        const unsigned ck = next_ckpt_;
-        next_ckpt_ = (next_ckpt_ + 1) % kCkpts;
+        unsigned ck = 0;
+        while (ck != kCkpts && (live_ >> ck & 1)) ++ck;
+        if (ck == kCkpts) break;                    // every checkpoint live
+        live_ |= 1u << ck;
+        taken_order_.push_back(ck);
         ckpt_of_[r.seq] = ck;
         put(f, c.fet_dec, "checkpoint_id", ck);
         put(f, c.fet_dec, "pred_taken", 0);
+        mispredict = r.taken != 0;
       }
       send(c.fet_dec, s, f, instrUid(r.seq));
       ++next_;
+      if (mispredict) { await_redirect_ = true; break; }
     }
     if (!itlbs_.empty() && can(c.fet_miu, 0)) {
       send(c.fet_miu, 0, itlbs_.front().msg, itlbs_.front().tid);

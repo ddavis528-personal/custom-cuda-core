@@ -15,6 +15,7 @@
 module ccv_fet_w #(
   parameter int RPT_FET_DEC_INSTR = 0,
   parameter int RPT_OOE_FET_REDIRECT = 0,
+  parameter int RPT_OOE_FET_CKPT_FREE = 0,
   parameter int RPT_FET_MLC_IFILL = 0,
   parameter int RPT_MLC_FET_IFILL_RSP = 0,
   parameter int RPT_MIU_FET_ITLB = 0,
@@ -66,6 +67,11 @@ module ccv_fet_w #(
   logic b_ooe_fet_redirect_credit;
   logic b_ooe_fet_redirect_stall;
   logic b_ooe_fet_redirect_wake;
+  logic b_ooe_fet_ckpt_free_valid;
+  ccv_ooe_fet_ckpt_free_t b_ooe_fet_ckpt_free_payload;
+  logic b_ooe_fet_ckpt_free_credit;
+  logic b_ooe_fet_ckpt_free_stall;
+  logic b_ooe_fet_ckpt_free_wake;
   logic b_fet_mlc_ifill_valid;
   ccv_fet_mlc_ifill_t b_fet_mlc_ifill_payload;
   logic b_fet_mlc_ifill_credit;
@@ -116,6 +122,7 @@ module ccv_fet_w #(
   logic [63:0] b_fet_dec_instr_s6_tid;
   logic [63:0] b_fet_dec_instr_s7_tid;
   logic [63:0] b_ooe_fet_redirect_tid;
+  logic [63:0] b_ooe_fet_ckpt_free_tid;
   logic [63:0] b_fet_mlc_ifill_tid;
   logic [63:0] b_mlc_fet_ifill_rsp_tid;
   logic [63:0] b_miu_fet_itlb_tid;
@@ -175,6 +182,11 @@ module ccv_fet_w #(
     .ooe_fet_redirect_credit(b_ooe_fet_redirect_credit),
     .ooe_fet_redirect_stall(b_ooe_fet_redirect_stall),
     .ooe_fet_redirect_wake(b_ooe_fet_redirect_wake),
+    .ooe_fet_ckpt_free_valid(b_ooe_fet_ckpt_free_valid),
+    .ooe_fet_ckpt_free_payload(b_ooe_fet_ckpt_free_payload),
+    .ooe_fet_ckpt_free_credit(b_ooe_fet_ckpt_free_credit),
+    .ooe_fet_ckpt_free_stall(b_ooe_fet_ckpt_free_stall),
+    .ooe_fet_ckpt_free_wake(b_ooe_fet_ckpt_free_wake),
     .fet_mlc_ifill_valid(b_fet_mlc_ifill_valid),
     .fet_mlc_ifill_payload(b_fet_mlc_ifill_payload),
     .fet_mlc_ifill_credit(b_fet_mlc_ifill_credit),
@@ -228,6 +240,7 @@ module ccv_fet_w #(
     , .fet_dec_instr_s6_tid(b_fet_dec_instr_s6_tid)
     , .fet_dec_instr_s7_tid(b_fet_dec_instr_s7_tid)
     , .ooe_fet_redirect_tid(b_ooe_fet_redirect_tid)
+    , .ooe_fet_ckpt_free_tid(b_ooe_fet_ckpt_free_tid)
     , .fet_mlc_ifill_tid(b_fet_mlc_ifill_tid)
     , .mlc_fet_ifill_rsp_tid(b_mlc_fet_ifill_rsp_tid)
     , .miu_fet_itlb_tid(b_miu_fet_itlb_tid)
@@ -259,6 +272,17 @@ module ccv_fet_w #(
     .dst_wake(b_ooe_fet_redirect_wake), .dst_credit({b_ooe_fet_redirect_credit}), .dst_stall({b_ooe_fet_redirect_stall})
 `ifdef CCV_TRACE
     , .src_tid({ooe_fet_redirect_tid}), .dst_tid({b_ooe_fet_redirect_tid})
+`endif
+  );
+  // ccv_ooe_fet_ckpt_free, destination end
+  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_CKPT_FREE), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_ooe_fet_ckpt_free (
+    .clk(core_clk), .rst_n(rst_n),
+    .src_valid({ooe_fet_ckpt_free_valid}), .src_payload({ooe_fet_ckpt_free_payload}),
+    .src_wake(ooe_fet_ckpt_free_wake), .src_credit({ooe_fet_ckpt_free_credit}), .src_stall({ooe_fet_ckpt_free_stall}),
+    .dst_valid({b_ooe_fet_ckpt_free_valid}), .dst_payload({b_ooe_fet_ckpt_free_payload}),
+    .dst_wake(b_ooe_fet_ckpt_free_wake), .dst_credit({b_ooe_fet_ckpt_free_credit}), .dst_stall({b_ooe_fet_ckpt_free_stall})
+`ifdef CCV_TRACE
+    , .src_tid({ooe_fet_ckpt_free_tid}), .dst_tid({b_ooe_fet_ckpt_free_tid})
 `endif
   );
   // ccv_fet_mlc_ifill, source end

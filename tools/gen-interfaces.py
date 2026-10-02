@@ -378,6 +378,25 @@ def main():
                 err("outstanding.max must be a positive integer"); return 1
             if "outstanding_why" not in c:
                 err("outstanding is set with no reason recorded"); return 1
+        # A latency-matched pair (A-58): two channels between the same blocks
+        # whose relative arrival order must equal their send order, so their
+        # repeater stages are held equal (tools/ccv_links.py) and both
+        # receivers apply on landing (fixed_latency on both).
+        lm = c.get("latency_match")
+        if lm is not None:
+            names = {x["name"]: x for x in d["channels"]}
+            other = names.get(lm)
+            if other is None or other is c:
+                err("latency_match %r is not another channel" % lm); return 1
+            if (other["src"], other["dst"]) != (c["src"], c["dst"]):
+                err("latency_match %s does not run from %s to %s as this one does"
+                    % (lm, c["src"], c["dst"])); return 1
+            if not (c.get("slot_attrs", {}).get("fixed_latency") and
+                    other.get("slot_attrs", {}).get("fixed_latency")):
+                err("latency_match: both %s and %s must be fixed_latency, or a "
+                    "stalled receiver reorders them" % (c["name"], lm)); return 1
+            if "latency_match_why" not in c:
+                err("latency_match is set with no reason recorded"); return 1
         # Overlays: a named sub-field of one payload field, meaningful only
         # when another field holds one value (A-41's discard_tail on disp).
         # Declared, so a reader of the bits never has to guess which meaning

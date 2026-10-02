@@ -125,6 +125,7 @@ def build(d, pv, blocks):
                           why=c.get("slot_attrs_why", {}),
                           binding_key=c.get("slot_attrs", {}).get("binding_key"),
                           outstanding=c.get("outstanding"),
+                          latency_match=c.get("latency_match"),
                           lead=lead, lead_mask=lead_mask))
 
     # Channel instances and the slot map. Slots are numbered channel instance

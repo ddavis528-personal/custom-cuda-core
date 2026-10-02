@@ -582,7 +582,7 @@
       "status": "tunable",
       "decided_at": "LANE per-block session",
       "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "Lane-to-lane bypass: a dependent lane op may issue this many cycles after its producer. Inside the lane, so no link enters it."
+      "doc": "Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and which consumers may take the bypass is open (Q-55)."
     },
     {
       "name": "CCV_LAT_L1_HIT",

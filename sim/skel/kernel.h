@@ -64,6 +64,9 @@ struct Kernel {
   ///                  valid, so each lane takes a stale mask (Q-40)
   ///   corrupt-ckpt   drop-negate's mispredict, with the redirect naming a
   ///                  checkpoint FET did not take for that branch (A-42)
+  ///   stale-free     drop-negate's mispredict, with OOE also freeing the
+  ///                  checkpoint its redirect restores: the redirect lands
+  ///                  first, so FET sees a free for a dead checkpoint (A-58)
   ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
   ///                  switched-off lanes' poison lands (pguard kernel; A-43)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,

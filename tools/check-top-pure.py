@@ -99,7 +99,7 @@ def base(t):
 def elaborate(files, defines, tmp):
     """The design as Yosys elaborates it. The checker bank, where there is
     one, is read as a blackbox: its PORTS are what the rule is about, and
-    its 346 checkers' bodies would take Yosys minutes to elaborate."""
+    its 347 checkers' bodies would take Yosys minutes to elaborate."""
     out = os.path.join(tmp, "top.json")
     rv = "read_verilog -sv -formal %s -Irtl/include -Irtl/generated -Irtl/top/ports" \
         % " ".join("-D" + d for d in defines)

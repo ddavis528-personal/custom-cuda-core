@@ -25,7 +25,7 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json   # per instruction
 `tools/check-skel.sh` builds the binary and runs S0's checks, and
 `tools/check-kernel.sh` runs S1's. Both run in the gate.
 
-**Next: S2.** vadd leaves 21 of the 47 channels idle and never diverges, loops
+**Next: S2.** vadd leaves 21 of the 48 channels idle and never diverges, loops
 or uses a second warp. S2 is kernels that do, as far as the open payload
 questions allow.
 
@@ -68,7 +68,7 @@ The skeleton is C++, and the obvious move is a C++ port of the checker. That
 is the wrong one: a second implementation of the protocol drifts from the
 first, and "zero violations" then becomes a statement about the port. Instead
 `rtl/generated/ccv_skel_checkers.sv` instantiates the real
-`ccv_credit_checker` once per slot — 346 of them — and the skeleton clocks it
+`ccv_credit_checker` once per slot — 347 of them — and the skeleton clocks it
 with every slot's signals each cycle. The skeleton and every future RTL block
 are judged by identical logic, and the load-bearing `EV_CH_XFER` stream comes
 from identical code on both sides, which is what makes 4d correlation compare
@@ -104,20 +104,20 @@ one that is. So every clean result has a partner that must **not** be clean:
 
 | Clean result (3 seeds, 2000 cycles, ~151k messages each) | Negative control |
 |---|---|
-| 0 checker violations | `--break phantom-all`: all 346 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
-| | `--break stall-all`: all 346 fire `stall_honoured` (and the 272 fixed-latency ones `fixed_latency_no_stall` too) — proves every `stall` and `valid` |
-| Fixed-latency receivers never stall and credit on landing (A-47) | `--break fixed-all`: all 272 fixed-latency checkers fire `fixed_latency_prompt` on a credit one cycle late |
+| 0 checker violations | `--break phantom-all`: all 347 checkers fire `no_phantom_credit`, each by name — proves every slot's `credit` wiring |
+| | `--break stall-all`: all 347 fire `stall_honoured` (and the 274 fixed-latency ones `fixed_latency_no_stall` too) — proves every `stall` and `valid` |
+| Fixed-latency receivers never stall and credit on landing (A-47) | `--break fixed-all`: all 274 fixed-latency checkers fire `fixed_latency_prompt` on a credit one cycle late |
 | `EV_CH_XFER` payloads (bits 63:0) **and trace ids** equal the launched ones, as a multiset | the match is exact, so one miswired payload or sideband bit fails it |
 | 0 payload mismatches at the receivers; sent == received; no idle slot | — (end-to-end data check, independent of the bank) |
 | `--force-atomic`: every multi-slot channel moves in whole groups, clean | `--break atomic-all`: all 77 atomic checkers fire both properties, and nothing else fires |
 | Ordered channels are consumed in order per key — per binding group on fet→dec, per `warp_id` on dec→ooe — with different keys free to pass | `--break misorder`: taking a head that is not the oldest of its key is caught — on exactly the two ordered channels |
 | Lane channels advance together: slot *k* moves on all 32 lanes or none | `--break lockstep-all`: one lane's slot alone — both lockstep checkers fire, nothing else |
 | Slot *k* carries the same instruction on every lane | `--break misbind`: lane 7 carries slot *k*+1's instruction in slot *k* — only `lockstep_id` fires |
-| Every message's id class is in its channel's set | `--break wrong-class`: all 47 channels report |
+| Every message's id class is in its channel's set | `--break wrong-class`: all 48 channels report |
 | The trace id exists only under `CCV_TRACE` | asked of Yosys both ways — absent without, present with |
 | Every fet→dec message names its own group (`tier1_id` == slot / 2) | `--break misgroup`: every message names the next group — only `binding_key` fires |
 | C++ field offsets == SV packed structs | `--mutate`: every shiftable field must disagree |
-| **346 slots**, re-derived from the schema every run | — (see below) |
+| **347 slots**, re-derived from the schema every run | — (see below) |
 
 The payload wiring gets the event-stream check rather than a negative control
 because Verilator is two-state: `payload_known_when_due` cannot fire there at
@@ -132,17 +132,17 @@ and every channel with its attributes. In short:
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 32 | 1 | 1 | 32 |
+| 33 | 1 | 1 | 33 |
 | 11 | 4 | 1 | 44 |
 | 2 | 4 | 32 | 256 |
 | 1 | 6 | 1 | 6 |
 | 1 | 8 | 1 | 8 |
-| **47** | | | **346** |
+| **48** | | | **347** |
 
-That is 47 types and 109 channel instances: 45 at one instance, plus the two
+That is 48 types and 110 channel instances: 45 at one instance, plus the two
 lane channels at 32 each. The inbound external channel took it from 40 types
 (339 slots) to 41, branch redirect to 42, the FET↔PCA migration pair to 44,
-migration control (a RAU→FET command, a PCA→RAU done) to 46, and OOE's RAT map to RCU (the OOE session) to 47.
+migration control (a RAU→FET command, a PCA→RAU done) to 46, OOE's RAT map to RCU (the OOE session) to 47, and the checkpoint-free bitmap to FET (A-56) to 48.
 
 The review's point stands regardless: this is the one number a clean run does
 not validate. A rate wrong by one on a ×32 channel moves the total by 32, and
@@ -204,7 +204,7 @@ doesn't is caught by `lockstep_valid` plus `stall_honoured` on the stalled lane.
 In the stubs, a decision that spans blocks — 32 lane blocks — comes from a
 hash of (channel, slot, cycle) shared by every block, not a block's private
 RNG. Otherwise the stub would break lockstep by construction. Lockstep costs
-throughput, as it should: 256 of the 346 slots are lane slots, and the RCU
+throughput, as it should: 256 of the 347 slots are lane slots, and the RCU
 sender holds all 32 lanes whenever any one stalls, so runs carry ~151k
 messages where they carried ~230k.
 
@@ -291,7 +291,7 @@ The same machine as SystemVerilog, generated by `tools/gen-top.py` and
 
 | File | What |
 |---|---|
-| `rtl/top/ccv_core_top.sv` | 45 block instances and the nets of 109 channel instances, nothing else; the checker bank under `CCV_CHECK` |
+| `rtl/top/ccv_core_top.sv` | 45 block instances and the nets of 110 channel instances, nothing else; the checker bank under `CCV_CHECK` |
 | `rtl/top/ports/ccv_<blk>_ports.svh` | each block type's port list — included by the stub and by real RTL alike |
 | `rtl/top/stubs/ccv_<blk>.sv` | stubs that never send: protocol-legal on every channel |
 | `test/top/tb_core_top.sv` | clock, reset, tie-offs; `+phantom` is its negative control |
@@ -485,14 +485,14 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json
 ```
 
 vadd (`c[i] = a[i] + b[i]`, 32 threads, one warp, 17 issue groups) runs to
-completion in **365 cycles** on functional stubs behind the same ports the S0
+completion in **361 cycles** on functional stubs behind the same ports the S0
 exerciser used, with the checker bank judging every slot. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
-violations, and the bank's 509 `EV_CH_XFER` events matching every launch
-exactly. It carries traffic on 26 of the 47 channels; the 21 idle ones are
+violations, and the bank's 510 `EV_CH_XFER` events matching every launch
+exactly. It carries traffic on 27 of the 48 channels; the 21 idle ones are
 SPM, barriers, migration (both pairs, its command and done, and OOE's RAT map), probes, faults and branch redirect
-(vadd's one branch is never taken), none of which vadd reaches.
+(vadd's one branch is never taken, so it frees its checkpoint on `ooe_fet_ckpt_free` instead), none of which vadd reaches.
 
 | Clean result | Negative control that must fail it |
 |---|---|
@@ -952,7 +952,7 @@ matters for the skeleton:
   adds `fixed_latency_no_stall` and `fixed_latency_prompt` (a message older
   than the link's round trip, less the stages already crossed, is a held
   message). The exerciser's receivers drain those slots on landing;
-  `--break fixed-all` holds every one a cycle and all 272 checkers fire. The
+  `--break fixed-all` holds every one a cycle and all 274 checkers fire. The
   wiring controls answer fixed-latency valids with exactly that prompt
   credit, so each still fires only what it targets.
 - **Merge is a fourth source** (A-33, A-43, A-44): `merge_data` to the lane,
@@ -968,6 +968,18 @@ matters for the skeleton:
   ceilings, the ROB tag and checkpoint widths and the generated latencies
   derive from their inputs, `params/links.json` included; a stale value is
   refused by name. A derived value is never more settled than its inputs.
+- **Checkpoint release** (A-56, A-58; the follow-up round). `ccv_ooe_fet_ckpt_free`
+  is the 48th channel: a 16-bit bitmap from OOE, one bit per tier-1 slot per
+  checkpoint, freeing what correct resolutions freed that cycle. The redirect
+  became fixed-latency too, and the two are a latency-matched pair (schema key
+  `latency_match`; `tools/ccv_links.py` refuses unequal link totals), so FET
+  sees them in send order and applies the redirect first. FET's stub now holds
+  four real checkpoints, stalls with all four live, stops fetching after a
+  branch it will mispredict (it has no wrong path to fetch), frees the
+  restored checkpoint and every younger one on a redirect, and refuses a free
+  for a checkpoint that is not live (V-46). `--break stale-free` frees the
+  checkpoint a redirect restores, and FET must refuse it. S1 has no taken
+  branch outside the controls, so the redirect-side frees run only there.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

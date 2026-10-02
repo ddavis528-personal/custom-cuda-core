@@ -20,6 +20,7 @@ module ccv_ooe_w #(
   parameter int RPT_MIU_OOE_CMPL = 0,
   parameter int RPT_OOE_MIU_RETIRE = 0,
   parameter int RPT_OOE_FET_REDIRECT = 0,
+  parameter int RPT_OOE_FET_CKPT_FREE = 0,
   parameter int RPT_RAU_OOE_ALLOC = 0,
   parameter int RPT_OOE_RAU_STATUS = 0,
   parameter int RPT_RAU_OOE_DEMOTE = 0,
@@ -148,6 +149,11 @@ module ccv_ooe_w #(
   logic b_ooe_fet_redirect_credit;
   logic b_ooe_fet_redirect_stall;
   logic b_ooe_fet_redirect_wake;
+  logic b_ooe_fet_ckpt_free_valid;
+  ccv_ooe_fet_ckpt_free_t b_ooe_fet_ckpt_free_payload;
+  logic b_ooe_fet_ckpt_free_credit;
+  logic b_ooe_fet_ckpt_free_stall;
+  logic b_ooe_fet_ckpt_free_wake;
   logic b_rau_ooe_alloc_valid;
   ccv_rau_ooe_alloc_t b_rau_ooe_alloc_payload;
   logic b_rau_ooe_alloc_credit;
@@ -216,6 +222,7 @@ module ccv_ooe_w #(
   logic [63:0] b_ooe_miu_retire_s2_tid;
   logic [63:0] b_ooe_miu_retire_s3_tid;
   logic [63:0] b_ooe_fet_redirect_tid;
+  logic [63:0] b_ooe_fet_ckpt_free_tid;
   logic [63:0] b_rau_ooe_alloc_tid;
   logic [63:0] b_ooe_rau_status_tid;
   logic [63:0] b_rau_ooe_demote_tid;
@@ -352,6 +359,11 @@ module ccv_ooe_w #(
     .ooe_fet_redirect_credit(b_ooe_fet_redirect_credit),
     .ooe_fet_redirect_stall(b_ooe_fet_redirect_stall),
     .ooe_fet_redirect_wake(b_ooe_fet_redirect_wake),
+    .ooe_fet_ckpt_free_valid(b_ooe_fet_ckpt_free_valid),
+    .ooe_fet_ckpt_free_payload(b_ooe_fet_ckpt_free_payload),
+    .ooe_fet_ckpt_free_credit(b_ooe_fet_ckpt_free_credit),
+    .ooe_fet_ckpt_free_stall(b_ooe_fet_ckpt_free_stall),
+    .ooe_fet_ckpt_free_wake(b_ooe_fet_ckpt_free_wake),
     .rau_ooe_alloc_valid(b_rau_ooe_alloc_valid),
     .rau_ooe_alloc_payload(b_rau_ooe_alloc_payload),
     .rau_ooe_alloc_credit(b_rau_ooe_alloc_credit),
@@ -423,6 +435,7 @@ module ccv_ooe_w #(
     , .ooe_miu_retire_s2_tid(b_ooe_miu_retire_s2_tid)
     , .ooe_miu_retire_s3_tid(b_ooe_miu_retire_s3_tid)
     , .ooe_fet_redirect_tid(b_ooe_fet_redirect_tid)
+    , .ooe_fet_ckpt_free_tid(b_ooe_fet_ckpt_free_tid)
     , .rau_ooe_alloc_tid(b_rau_ooe_alloc_tid)
     , .ooe_rau_status_tid(b_ooe_rau_status_tid)
     , .rau_ooe_demote_tid(b_rau_ooe_demote_tid)
@@ -509,6 +522,17 @@ module ccv_ooe_w #(
     .dst_wake(ooe_fet_redirect_wake), .dst_credit({ooe_fet_redirect_credit}), .dst_stall({ooe_fet_redirect_stall})
 `ifdef CCV_TRACE
     , .src_tid({b_ooe_fet_redirect_tid}), .dst_tid({ooe_fet_redirect_tid})
+`endif
+  );
+  // ccv_ooe_fet_ckpt_free, source end
+  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_CKPT_FREE), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_ooe_fet_ckpt_free (
+    .clk(core_clk), .rst_n(rst_n),
+    .src_valid({b_ooe_fet_ckpt_free_valid}), .src_payload({b_ooe_fet_ckpt_free_payload}),
+    .src_wake(b_ooe_fet_ckpt_free_wake), .src_credit({b_ooe_fet_ckpt_free_credit}), .src_stall({b_ooe_fet_ckpt_free_stall}),
+    .dst_valid({ooe_fet_ckpt_free_valid}), .dst_payload({ooe_fet_ckpt_free_payload}),
+    .dst_wake(ooe_fet_ckpt_free_wake), .dst_credit({ooe_fet_ckpt_free_credit}), .dst_stall({ooe_fet_ckpt_free_stall})
+`ifdef CCV_TRACE
+    , .src_tid({b_ooe_fet_ckpt_free_tid}), .dst_tid({ooe_fet_ckpt_free_tid})
 `endif
   );
   // ccv_rau_ooe_alloc, destination end

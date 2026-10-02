@@ -12,14 +12,14 @@ multi-instance endpoint (LANE has 32).
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 32 | 1 | 1 | 32 |
+| 33 | 1 | 1 | 33 |
 | 11 | 4 | 1 | 44 |
 | 2 | 4 | 32 | 256 |
 | 1 | 6 | 1 | 6 |
 | 1 | 8 | 1 | 8 |
-| **47** | | | **346** |
+| **48** | | | **347** |
 
-47 channel types; **109 channel instances** (45 types at one instance, plus 2 at 32 each); **346 slots**, one `ccv_credit_checker` each.
+48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **347 slots**, one `ccv_credit_checker` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 
@@ -40,39 +40,40 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 8 | `ccv_ooe_miu_memop` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |
 | 9 | `ccv_miu_ooe_cmpl` | 4 × 1 | 4 | *partial* | *free* | **none** — genuinely out of order across four pipes | — | **true** — an L1 hit completes at exactly the contracted cycle and no completion then is the miss indication (A-46), which only means something if OOE never delays taking a completion (A-47) | instr |
 | 10 | `ccv_ooe_miu_retire` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |
-| 11 | `ccv_ooe_fet_redirect` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
-| 12 | `ccv_miu_spm_req` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
-| 13 | `ccv_spm_miu_rsp` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
-| 14 | `ccv_miu_dcu_req` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
-| 15 | `ccv_dcu_miu_rsp` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
-| 16 | `ccv_dcu_mlc_req` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 17 | `ccv_mlc_dcu_rsp` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 18 | `ccv_mlc_dcu_probe` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 19 | `ccv_dcu_mlc_probe_ack` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 20 | `ccv_fet_mlc_ifill` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 21 | `ccv_mlc_fet_ifill_rsp` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 22 | `ccv_miu_fet_itlb` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 23 | `ccv_fet_miu_itlb_req` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 24 | `ccv_mlc_exb_req` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 25 | `ccv_exb_mlc_rsp` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
-| 26 | `ccv_exb_ext_out` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
-| 27 | `ccv_rau_fet_launch` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 28 | `ccv_rau_ooe_alloc` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 29 | `ccv_ooe_rau_status` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 30 | `ccv_rau_ooe_demote` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 31 | `ccv_ooe_rau_drained` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 32 | `ccv_rau_rcu_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 33 | `ccv_ooe_rcu_map` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 34 | `ccv_rcu_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 35 | `ccv_pca_rcu_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 36 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 37 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 38 | `ccv_rau_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 39 | `ccv_pca_rau_mig_done` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 40 | `ccv_rau_miu_cta` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 41 | `ccv_ooe_syu_bar` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
-| 42 | `ccv_syu_ooe_rel` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 43 | `ccv_rau_syu_alloc` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 44 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
-| 45 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 46 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
+| 11 | `ccv_ooe_fet_redirect` | 1 × 1 | 1 | — | — | — | — | **true** — A-58: latency-matched with ccv_ooe_fet_ckpt_free; if FET could stall a redirect, a free sent after it could be applied before it and release a checkpoint the redirect is restoring. | instr |
+| 12 | `ccv_ooe_fet_ckpt_free` | 1 × 1 | 1 | — | — | — | — | **true** — A-56: one bitmap frees any number of checkpoints, so FET can always take it the cycle it lands; a stalled free would hold a checkpoint FET could reuse. | none |
+| 13 | `ccv_miu_spm_req` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
+| 14 | `ccv_spm_miu_rsp` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
+| 15 | `ccv_miu_dcu_req` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
+| 16 | `ccv_dcu_miu_rsp` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | txn |
+| 17 | `ccv_dcu_mlc_req` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 18 | `ccv_mlc_dcu_rsp` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 19 | `ccv_mlc_dcu_probe` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 20 | `ccv_dcu_mlc_probe_ack` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 21 | `ccv_fet_mlc_ifill` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 22 | `ccv_mlc_fet_ifill_rsp` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 23 | `ccv_miu_fet_itlb` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 24 | `ccv_fet_miu_itlb_req` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 25 | `ccv_mlc_exb_req` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 26 | `ccv_exb_mlc_rsp` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
+| 27 | `ccv_exb_ext_out` | 1 × 1 | 1 | — | — | — | — | *false* | txn |
+| 28 | `ccv_rau_fet_launch` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 29 | `ccv_rau_ooe_alloc` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 30 | `ccv_ooe_rau_status` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 31 | `ccv_rau_ooe_demote` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 32 | `ccv_ooe_rau_drained` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 33 | `ccv_rau_rcu_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 34 | `ccv_ooe_rcu_map` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 35 | `ccv_rcu_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 36 | `ccv_pca_rcu_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 37 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 38 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 39 | `ccv_rau_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 40 | `ccv_pca_rau_mig_done` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 41 | `ccv_rau_miu_cta` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 42 | `ccv_ooe_syu_bar` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
+| 43 | `ccv_syu_ooe_rel` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 44 | `ccv_rau_syu_alloc` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 45 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
+| 46 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 47 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |

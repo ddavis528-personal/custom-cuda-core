@@ -146,6 +146,12 @@ module ccv_ooe (
 `ifdef CCV_TRACE
   assign ooe_fet_redirect_tid = '0;
 `endif
+  assign ooe_fet_ckpt_free_valid = '0;
+  assign ooe_fet_ckpt_free_payload = '0;
+  assign ooe_fet_ckpt_free_wake = '0;
+`ifdef CCV_TRACE
+  assign ooe_fet_ckpt_free_tid = '0;
+`endif
   assign rau_ooe_alloc_credit = '0;
   assign rau_ooe_alloc_stall = '0;
   assign ooe_rau_status_valid = '0;

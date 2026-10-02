@@ -55,6 +55,7 @@ unknown key|{"channel": "fet_dec_instr", "stage": 1, "route": "src:0 > dst:0"}
 also set by|{"channel": "fet_dec_instr", "route": "src:1 > dst:0"}, {"channel": "fet_dec_instr", "route": "src:0 > dst:1"}
 totals differ|{"channel": "rcu_lane_ops", "copies": [3], "route": "src:0 > dst:1"}
 src stages differ|{"channel": "rcu_lane_ops", "route": "src:0 > dst:1"}, {"channel": "rcu_lane_ops", "copies": [3], "route": "src:1 > dst:0"}
+latency-matched with|{"channel": "ooe_fet_redirect", "route": "src:1 > dst:0"}
 CASES
 if [ -z "$missed" ]; then
   say "links.json: malformed configurations refused" "PASS ($refused cases, each by name)"

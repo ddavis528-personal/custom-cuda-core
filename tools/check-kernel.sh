@@ -17,6 +17,8 @@
 #   one ITLB miss outstanding                  itlb-double: the bank's
 #                                                outstanding checker fires
 #   a redirect names FET's own checkpoint     corrupt-ckpt: FET refuses it
+#   no free for a checkpoint a redirect       stale-free: FET refuses a free
+#     restores; the pair lands in send order     for a dead checkpoint (A-58)
 #   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
@@ -186,6 +188,17 @@ if grep -q "^CHECK fet: seq 8 redirect names checkpoint" "$B/kernel_corrupt-ckpt
   say "--break corrupt-ckpt: FET refuses the checkpoint" "PASS"
 else
   bad "--break corrupt-ckpt" "a redirect naming the wrong checkpoint went unnoticed"
+fi
+# A checkpoint is freed exactly once (A-56, A-58): stale-free has OOE also
+# free the checkpoint its redirect restores. The two channels are a
+# latency-matched pair and FET applies the redirect first, so the free lands
+# on a checkpoint that is already dead, and FET must say so (V-46).
+run stale-free
+if grep -q "^CHECK fet: a free for tier-1 slot 0 checkpoint [0-9]*, which is not live" \
+     "$B/kernel_stale-free.log"; then
+  say "--break stale-free: FET refuses a dead free" "PASS"
+else
+  bad "--break stale-free" "a free for a restored checkpoint went unnoticed"
 fi
 
 # RCU keeps no table of outstanding loads: it writes where MIU's echo says.

@@ -170,6 +170,12 @@
   input  logic ooe_fet_redirect_credit,
   input  logic ooe_fet_redirect_stall,
   output logic ooe_fet_redirect_wake,
+  // ooe -> fet
+  output logic ooe_fet_ckpt_free_valid,
+  output ccv_ooe_fet_ckpt_free_t ooe_fet_ckpt_free_payload,
+  input  logic ooe_fet_ckpt_free_credit,
+  input  logic ooe_fet_ckpt_free_stall,
+  output logic ooe_fet_ckpt_free_wake,
   // rau -> ooe
   input  logic rau_ooe_alloc_valid,
   input  ccv_rau_ooe_alloc_t rau_ooe_alloc_payload,
@@ -249,6 +255,7 @@
   , output logic [63:0] ooe_miu_retire_s2_tid
   , output logic [63:0] ooe_miu_retire_s3_tid
   , output logic [63:0] ooe_fet_redirect_tid
+  , output logic [63:0] ooe_fet_ckpt_free_tid
   , input  logic [63:0] rau_ooe_alloc_tid
   , output logic [63:0] ooe_rau_status_tid
   , input  logic [63:0] rau_ooe_demote_tid

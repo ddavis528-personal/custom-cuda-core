@@ -541,9 +541,37 @@
         "target_pc",
         "fetch_epoch"
       ],
-      "doc": "A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own.",
+      "doc": "A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle.",
       "id_classes": [
         "instr"
+      ],
+      "slot_attrs": {
+        "fixed_latency": true
+      },
+      "slot_attrs_why": {
+        "fixed_latency": "A-58: latency-matched with ccv_ooe_fet_ckpt_free; if FET could stall a redirect, a free sent after it could be applied before it and release a checkpoint the redirect is restoring."
+      }
+    },
+    {
+      "name": "ccv_ooe_fet_ckpt_free",
+      "src": "ooe",
+      "dst": "fet",
+      "rate": 1,
+      "group": "instruction",
+      "payload_fields": [
+        "free_mask"
+      ],
+      "slot_attrs": {
+        "fixed_latency": true
+      },
+      "slot_attrs_why": {
+        "fixed_latency": "A-56: one bitmap frees any number of checkpoints, so FET can always take it the cycle it lands; a stalled free would hold a checkpoint FET could reuse."
+      },
+      "latency_match": "ccv_ooe_fet_redirect",
+      "latency_match_why": "A-58: a free that overtook a redirect could release a checkpoint FET had already reallocated. Equal link stages and receivers that apply on landing make arrival order equal send order, and FET applies a redirect before frees in the same cycle.",
+      "doc": "Checkpoints freed by a correct branch resolution (A-56). One bit per tier-1 slot per checkpoint, bit tier1_id*CCV_P_BR_CKPTS + checkpoint_id; a set bit frees that checkpoint in FET. One message frees any number across all warps, so nothing queues: OOE sends whenever the mask is non-zero. A checkpoint is freed exactly once: here on a correct resolution, or by FET itself when a redirect restores it (FET frees the restored checkpoint and every younger one of that warp) or a demotion or kill resets the warp. OOE never frees a checkpoint the same cycle's redirect squashes, and drops the resolutions of squashed branches (A-58). Every set bit must name a checkpoint live in FET when it lands (V-46). Branches resolve out of order, which is why FET cannot infer frees from a count.",
+      "id_classes": [
+        "none"
       ]
     },
     {
@@ -1329,7 +1357,8 @@
     "merge_en": "1",
     "merge_data": "CCV_W_LANE_DATA",
     "gpr_map": "CCV_GPRS*CCV_P_W_PHYS_REG",
-    "pred_map": "CCV_PREDS*CCV_P_W_PHYS_PRED"
+    "pred_map": "CCV_PREDS*CCV_P_W_PHYS_PRED",
+    "free_mask": "CCV_TIER1_WARPS*CCV_P_BR_CKPTS"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",

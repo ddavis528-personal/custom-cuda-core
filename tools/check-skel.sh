@@ -13,9 +13,9 @@
 # one that is:
 #
 #   clean                                       negative control
-#   0 violations, 3 seeds                       phantom-all: all 346 fire
-#                                               stall-all:   all 346 fire
-#                                               fixed-all:   all 272 fixed-latency fire
+#   0 violations, 3 seeds                       phantom-all: all 347 fire
+#                                               stall-all:   all 347 fire
+#                                               fixed-all:   all 274 fixed-latency fire
 #   EV_CH_XFER payloads == launched payloads    (the match is exact, so a
 #                                                miswired payload bit fails it)
 #   C++ field offsets == SV packed structs      --mutate: every shiftable

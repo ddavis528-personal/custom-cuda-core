@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 47 channels
+# Payload specification — all 48 channels
 
-Every payload field has a width, so **every one of the 47
+Every payload field has a width, so **every one of the 48
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 27 |
-| ⚠️ Some provisional | 18 | 79 |
+| ⚠️ Some provisional | 19 | 80 |
 | ⛔ Some preliminary | 20 | 113 |
-| **Total** | **47** | **219** |
+| **Total** | **48** | **220** |
 
 ## What still has to be decided
 
@@ -390,7 +390,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_ooe_fet_redirect`
 
-A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own.
+A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle.
 
 ooe → fet · rate 1 · instruction
 
@@ -403,6 +403,17 @@ ooe → fet · rate 1 · instruction
 | `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 2 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
 | **total** | | **107** | ⚠️ 4 provisional |
+
+### `ccv_ooe_fet_ckpt_free`
+
+Checkpoints freed by a correct branch resolution (A-56). One bit per tier-1 slot per checkpoint, bit tier1_id*CCV_P_BR_CKPTS + checkpoint_id; a set bit frees that checkpoint in FET. One message frees any number across all warps, so nothing queues: OOE sends whenever the mask is non-zero. A checkpoint is freed exactly once: here on a correct resolution, or by FET itself when a redirect restores it (FET frees the restored checkpoint and every younger one of that warp) or a demotion or kill resets the warp. OOE never frees a checkpoint the same cycle's redirect squashes, and drops the resolutions of squashed branches (A-58). Every set bit must name a checkpoint live in FET when it lands (V-46). Branches resolve out of order, which is why FET cannot infer frees from a count.
+
+ooe → fet · rate 1 · instruction
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `free_mask` | `CCV_TIER1_WARPS*CCV_P_BR_CKPTS` | 16 ⚠️ | CCV_TIER1_WARPS (arch); CCV_P_BR_CKPTS (provisional) |
+| **total** | | **16** | ⚠️ 16 provisional |
 
 ### `ccv_spm_miu_rsp`
 

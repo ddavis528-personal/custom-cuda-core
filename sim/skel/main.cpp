@@ -1,6 +1,6 @@
 //===-- main.cpp - ccv-skel: the Stage 3 skeleton ----------------------===//
 //
-// Runs the whole machine -- 45 block instances, 109 channel instances, 346
+// Runs the whole machine -- 45 block instances, 110 channel instances, 347
 // credited slots -- with the SystemVerilog interface checker Verilated in at
 // every slot. The bank is clocked with each cycle's channel signals, so the
 // skeleton is judged by the same checker the RTL will be, and the
@@ -51,6 +51,8 @@
 //   drop-negate    guard negates dropped at issue: @!P0 resolves backwards
 //   corrupt-ckpt   as drop-negate, and OOE's redirect names the wrong
 //                  checkpoint, which FET must refuse (A-42)
+//   stale-free     as drop-negate, and OOE also frees the checkpoint its
+//                  redirect restores, which FET must refuse (A-58, V-46)
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
@@ -190,7 +192,7 @@ int main(int argc, char **argv) {
                       brk == "drop-store" || brk == "corrupt-req-id" ||
                       brk == "itlb-double" || brk == "corrupt-disp" ||
                       brk == "drop-negate" || brk == "drop-pred-data" ||
-                      brk == "corrupt-ckpt" ||
+                      brk == "corrupt-ckpt" || brk == "stale-free" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" ||

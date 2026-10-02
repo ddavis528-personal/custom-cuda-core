@@ -31,13 +31,13 @@ grill-me ran on 2026-09-23. Here is each input's status:
 |---|---|
 | The partition list | ✅ 14 block types, 45 instances, 40 channels — 47 now: the external port became an out/in pair, branch redirect added `ccv_ooe_fet_redirect`, the PC groups migrate on a FET↔PCA pair, migration gained a RAU→FET command and a PCA→RAU done (Q-30), and the OOE session added `ccv_ooe_rcu_map`. Encoded in `params/blocks.json` and `schema/interfaces.json` |
 | A block letter per block | ✅ 14 assigned, 2 reserved (`z` reset tree, `y` fixtures), 8 spare — **closes the 24-block ceiling question** |
-| Per-block interface contracts | ✅ protocol, signal shape, slot attributes and **all 200 payload field widths**. 9 of 47 channels are decided end to end; the rest are on provisional or preliminary widths, tiered and reported |
+| Per-block interface contracts | ✅ protocol, signal shape, slot attributes and **every payload field width**. 9 of 48 channels are decided end to end; the rest are on provisional or preliminary widths, tiered and reported |
 | Per-block interface NGD budgets | ❌ not started, against the 25 NGD envelope |
 
 **Next, in order:**
 
 1. **S2: a kernel that stresses what vadd does not.** vadd has no divergence,
-   no loop, one warp, and no SPM or barriers, so 21 of the 47 channels carried
+   no loop, one warp, and no SPM or barriers, so 21 of the 48 channels carried
    nothing in S1. Kernels that exercise them come from the compiler corpus
    (Part 4). Several are blocked on open payload questions, at least in the
    form S1 worked around (Q-30).
@@ -154,7 +154,7 @@ redirect, and two migration pairs). Encoded and machine-checked:
 
 - `params/blocks.json` — the 14 block letters, 8 spare. **Closes Q-9 and
   Q-11**: the single-letter stage tag holds and does not need widening.
-- `schema/interfaces.json` — all 47 channels, the common ports, and the
+- `schema/interfaces.json` — all 48 channels, the common ports, and the
   four-signal channel shape. Per-block port lists are **derived** from the
   channel list rather than stated, since the source spec kept both and they
   disagreed.
@@ -186,7 +186,7 @@ nothing else would catch either, and `tools/check-if.sh` builds each
 misconfiguration to prove the check still bites.
 
 **Payload widths: closed enough to build on.** Every field has a width, so
-all 47 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
+all 48 channels generate a struct. A third package, `ccv_prelim_pkg`, carries
 the widths whose *encoding* is undecided — distinct from `ccv_prov_pkg`, where
 only the number is. Each preliminary parameter also carries a **churn**
 rating: high means a per-block session is likely to change the field's shape,
@@ -217,13 +217,13 @@ SPM exists to implement.
 See [`skeleton.md`](skeleton.md).
 
 **S0.** The whole machine is wired from the schema: 45 block instances, 109
-channel instances, 346 credited slots. Every block runs an exerciser stub, and
+channel instances, 347 credited slots. Every block runs an exerciser stub, and
 every slot is judged by the real SV credit checker Verilated in beside it. A
 2000-cycle run carries ~151k messages, and three seeds give zero violations.
 Each clean result is paired with a control that must fail it.
 
 - `tools/gen-skel.py` — wiring tables, the checker bank, and a layout probe
-  that reads all 200 fields back through the real SV structs
+  that reads every field back through the real SV structs
 - `sim/skel/` — the two-phase machine, the protocol in one place, the stubs
 - `tools/check-skel.sh` — exit criteria, in the gate
 
@@ -257,7 +257,7 @@ wake per channel, CSR from CRU, and TL-C beats on the link. See
 
 ### SV top ✅ (structure)
 
-`rtl/top/` — generated and tracked: 45 stub blocks wired by the 109 channel
+`rtl/top/` — generated and tracked: 45 stub blocks wired by the 110 channel
 instances, each block's port list generated and included, the shared checker
 bank under `CCV_CHECK`. The top holds block instances and nets and nothing
 else. Each block gates `core_clk` itself, and `tools/check-top-pure.py`
@@ -293,7 +293,7 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
 
-**What is NOT done here:** nothing, for wiring purposes — all 47 channels
+**What is NOT done here:** nothing, for wiring purposes — all 48 channels
 have a full set of widths and generate a struct. What is not *decided* is
 tiered and reported rather than missing. There are no per-type checkers and
 there will not be: every boundary obeys the same credited protocol, so one
