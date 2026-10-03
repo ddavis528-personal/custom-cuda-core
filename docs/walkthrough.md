@@ -486,7 +486,7 @@ counter-example that must fire, and a paragraph in
 From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
-- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50, Q-54, Q-55
+- **Open:** Q-7, Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50
 - **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53
 
 Stage 4 replaces the stubs, block by block, with RTL written against the

@@ -209,13 +209,17 @@ def gen_sv(d):
 # because every tool reads `value`; what this adds is that a value which no
 # longer follows from its inputs is refused here, by name and with the number
 # it should be, instead of shipping. Grammar: parameter names, integers,
-# + - * // **, comparisons, cdiv(a, b), clog2(x), and link_n('channel'): the
-# repeater stages params/links.json puts on that channel (without ccv_), the
-# most over its copies, so a latency built on the links follows them.
+# + - * // **, comparisons, cdiv(a, b), clog2(x), max(a, b), and
+# link_n('channel'): the repeater stages params/links.json puts on that
+# channel (without ccv_), the most over its copies, so a latency built on the
+# links follows them. link_n is the STAGES only: a whole crossing is
+# CCV_LAT_HOP + link_n(...), and a latency over paths with different numbers
+# of crossings (a max) has to say so, since no base can absorb the difference.
 # A derived parameter is never more settled than its inputs: a settled width
 # that follows a provisional count would move without its tier saying so.
 FUNCS = {"cdiv": lambda a, b: -(-a // b),
-         "clog2": lambda x: max(0, (x - 1).bit_length())}
+         "clog2": lambda x: max(0, (x - 1).bit_length()),
+         "max": lambda a, b: max(a, b)}
 TIER_RANK = {"settled": 0, "prov": 1, "prelim": 2}
 
 
@@ -335,6 +339,11 @@ def selftest(d):
              ("CCV_P_W_CKPT_ID", "status", "arch", "CCV_P_W_CKPT_ID"),
              ("link_n('rcu_lane_ops')", "links", 2, "CCV_LAT_LANE"),
              ("link_n('dcu_miu_rsp')", "links", 1, "CCV_LAT_L1_HIT"),
+             ("link_n('rcu_miu_addr')", "links", 1, "CCV_LAT_L1_WAKE"),
+             ("link_n('ooe_miu_memop')", "links", 9, "CCV_LAT_L1_WAKE"),
+             ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
+             ("CCV_LAT_RCU_ADDR_BASE", "value", 5, "CCV_LAT_RCU_ADDR"),
+             ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     missed = []

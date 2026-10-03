@@ -980,6 +980,12 @@ matters for the skeleton:
   for a checkpoint that is not live (V-46). `--break stale-free` frees the
   checkpoint a redirect restores, and FET must refuse it. S1 has no taken
   branch outside the controls, so the redirect-side frees run only there.
+- **L1 wake and completion times** (A-57, A-61, A-63) are generated: MIU's
+  start is the later of the memop and RCU's address, a `max` over two paths
+  with different numbers of channel crossings, so each crossing is counted
+  whole, `CCV_LAT_HOP` + its stages. The parameter grammar gained `max`.
+  Bypass eligibility per producer-consumer pair (A-62) is OOE-internal: the
+  stub wakes on completion and has no matrix to change.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

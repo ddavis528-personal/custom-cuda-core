@@ -589,9 +589,52 @@
       "value": 7,
       "status": "tunable",
       "decided_at": "generated",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; A-46, A-48; A-61",
       "derive": "CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp')",
-      "doc": "Contracted L1 hit latency: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
+      "doc": "Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46)."
+    },
+    {
+      "name": "CCV_LAT_HOP",
+      "value": 2,
+      "status": "arch",
+      "source": "channel protocol (channel.h); made explicit for A-61",
+      "derive": "CCV_RT_ABUT // 2 + 1",
+      "doc": "One channel crossing with no repeater stages, from the sender launching a message to the receiver holding its payload: the valid crosses in half the round trip and the payload lands one cycle after its valid. A whole crossing is CCV_LAT_HOP + link_n(channel). Latencies that are linear in their crossings fold this into their base; a max over paths with different numbers of crossings (CCV_LAT_L1_WAKE) cannot, so it is named."
+    },
+    {
+      "name": "CCV_LAT_RCU_ADDR_BASE",
+      "value": 2,
+      "status": "tunable",
+      "decided_at": "RCU per-block session",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. A placeholder of the schema owner's (the OOE session named the parameter, not its value) until RCU's session sets it."
+    },
+    {
+      "name": "CCV_LAT_RCU_ADDR",
+      "value": 2,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "derive": "CCV_LAT_RCU_ADDR_BASE",
+      "doc": "RCU's issue-to-address time (A-61). Inside RCU, so no link enters it; the crossings either side are counted where it is used."
+    },
+    {
+      "name": "CCV_LAT_L1_WAKE",
+      "value": 13,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue'))",
+      "doc": "Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels."
+    },
+    {
+      "name": "CCV_LAT_L1_CMPL",
+      "value": 15,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE session follow-up (2026-10-02), A-61",
+      "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl')",
+      "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE."
     },
     {
       "name": "CCV_P_PHYS_REGS",
