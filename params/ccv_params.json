@@ -607,7 +607,7 @@
       "status": "tunable",
       "decided_at": "RCU per-block session",
       "source": "OOE session follow-up (2026-10-02), A-61",
-      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. A placeholder of the schema owner's (the OOE session named the parameter, not its value) until RCU's session sets it."
+      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 2 is the accepted starting point (Daniel, 2026-10-03; the OOE session named the parameter, the schema owner proposed the value). Tunable: RCU's session confirms or moves it."
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
