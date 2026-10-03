@@ -19,6 +19,8 @@
 #   a redirect names FET's own checkpoint     corrupt-ckpt: FET refuses it
 #   no free for a checkpoint a redirect       stale-free: FET refuses a free
 #     restores; the pair lands in send order     for a dead checkpoint (A-58)
+#   OOE schedules on DEC's sched_attr         attr-store-as-load: the store
+#     (A-66), never on opcode                    reaches MIU as a load
 #   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
@@ -199,6 +201,15 @@ if grep -q "^CHECK fet: a free for tier-1 slot 0 checkpoint [0-9]*, which is not
   say "--break stale-free: FET refuses a dead free" "PASS"
 else
   bad "--break stale-free" "a free for a restored checkpoint went unnoticed"
+fi
+# OOE decides memory kind from DEC's decoded sched_attr, not from opcode
+# (A-66): attr-store-as-load marks the store a load, OOE sends MIU a load,
+# and MIU's check against ccv-sim's store must fail.
+run attr-store-as-load
+if grep -q "^CHECK miu: seq 15 .*ccv-sim's store" "$B/kernel_attr-store-as-load.log"; then
+  say "--break attr-store-as-load: MIU rejects it" "PASS"
+else
+  bad "--break attr-store-as-load" "OOE ignored sched_attr's memory kind"
 fi
 
 # RCU keeps no table of outstanding loads: it writes where MIU's echo says.

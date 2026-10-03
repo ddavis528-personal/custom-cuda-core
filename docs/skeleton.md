@@ -986,6 +986,20 @@ matters for the skeleton:
   whole, `CCV_LAT_HOP` + its stages. The parameter grammar gained `max`.
   Bypass eligibility per producer-consumer pair (A-62) is OOE-internal: the
   stub wakes on completion and has no matrix to change.
+- **Launch, restore, slot and scheduling attributes** (A-64 to A-67).
+  `ccv_rau_ooe_alloc` carries a 2-bit `alloc_op` (free, launch,
+  restore-allocate, restore-activate) and `tier1_id`; `ccv_rau_fet_launch` and
+  `ccv_rau_fet_mig` carry `tier1_id`; `ccv_dec_ooe_uop` carries a 13-bit
+  `sched_attr`. On launch OOE maps every architectural register to a
+  hardwired zero register, `CCV_P_PHYS_ZERO` = 255 and `CCV_P_PRED_ZERO` = 63,
+  derived as the all-ones index and required outside the pool. The stubs: RAU
+  sends launch and slot 0; FET fetches in that slot's binding group; OOE keeps
+  the slot table and a RAT that is the zero register until first written, and
+  takes memory kind and branch from `sched_attr` (`--break
+  attr-store-as-load` sends a store to MIU as a load, and MIU refuses it); RCU
+  refuses a write to a zero register. No S1 kernel reads a register before
+  writing it, so the zero-register read path is built but unreached, and
+  restore is not modelled.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

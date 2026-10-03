@@ -344,6 +344,8 @@ def selftest(d):
              ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
              ("CCV_LAT_RCU_ADDR_BASE", "value", 5, "CCV_LAT_RCU_ADDR"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
+             ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
+             ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     missed = []

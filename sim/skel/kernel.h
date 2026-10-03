@@ -67,6 +67,8 @@ struct Kernel {
   ///   stale-free     drop-negate's mispredict, with OOE also freeing the
   ///                  checkpoint its redirect restores: the redirect lands
   ///                  first, so FET sees a free for a dead checkpoint (A-58)
+  ///   attr-store-as-load  DEC's sched_attr calls each store a load, so OOE
+  ///                  sends MIU a load and the store never lands (A-66)
   ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
   ///                  switched-off lanes' poison lands (pguard kernel; A-43)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,

@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 9 | 27 |
+| All decided | 9 | 28 |
 | ⚠️ Some provisional | 19 | 80 |
-| ⛔ Some preliminary | 20 | 113 |
-| **Total** | **48** | **220** |
+| ⛔ Some preliminary | 20 | 116 |
+| **Total** | **48** | **224** |
 
 ## What still has to be decided
 
@@ -191,17 +191,18 @@ lane → rcu · rate 4 · execution
 
 ### `ccv_rau_ooe_alloc`
 
-A warp activated or freed, and its identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). Promotion re-sends this message, so identity arrives with every activation. RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.
+What RAU tells OOE about a warp's residency (A-64, A-65). alloc_op: 0 free, 1 launch, 2 restore-allocate, 3 restore-activate. Launch: OOE maps the warp's 16 architectural GPRs and 4 predicates to the hardwired zero registers (CCV_P_PHYS_ZERO, CCV_P_PRED_ZERO), so no zeroing traffic is sent and the warp may issue at once. Restore-allocate, before the PCA transfer: OOE allocates 16 GPRs and 4 predicates from the slot's reservation, so it never waits, and sends ccv_ooe_rcu_map with direction 1. Restore-activate, after ccv_pca_rau_mig_done: only now may the warp rename and issue. A single activation message would deadlock, since PCA's rows need the map and the map would need the activation. Free: the warp's state is released. tier1_id is the tier-1 slot RAU placed the warp in; OOE keeps its warp-to-slot table from it, which indexes the ROB, rob_tag's slot field, the per-slot reservations and the checkpoint-free bitmap, so ccv_dec_ooe_uop needs no slot field. Identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.
 
 rau → ooe · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `activate_or_free` | `1` | 1 | literal |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `alloc_op` | `2` | 2 | literal |
 | `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
 | `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
-| **total** | | **43** | |
+| **total** | | **46** | |
 
 ### `ccv_ooe_rau_status`
 
@@ -509,7 +510,7 @@ mlc → fet · rate 1 · memory
 
 ### `ccv_ooe_rcu_map`
 
-Where a migrating warp's architectural registers live: its RAT, 16 physical GPR names and 4 physical predicate names. Physical locations exist only in OOE's RAT, so this replaces RAU's prf_base + arch addressing. direction 0: demote, RCU reads the named rows out to PCA; 1: restore, RCU writes PCA's rows into them. RCU pairs it with ccv_rau_rcu_mig by warp and direction (A-45), and ccv_ooe_rau_drained is sent only after it. Rate 1, separate from the rate-4 issue channel that binds the machine's width. A message is one whole map, atomic and ordered by construction on a single slot, so no slot attributes are declared (the schema refuses them on a rate-1 channel).
+Where a migrating warp's architectural registers live: its RAT, 16 physical GPR names and 4 physical predicate names. Physical locations exist only in OOE's RAT, so this replaces RAU's prf_base + arch addressing. direction 0: demote, RCU reads the named rows out to PCA; 1: restore, RCU writes PCA's rows into them. RCU pairs it with ccv_rau_rcu_mig by warp and direction (A-45), and ccv_ooe_rau_drained is sent only after it. Rate 1, separate from the rate-4 issue channel that binds the machine's width. A message is one whole map, atomic and ordered by construction on a single slot, so no slot attributes are declared (the schema refuses them on a rate-1 channel). A demotion map may name the zero registers (A-64): RCU then reads zeros out to PCA. A restore map never does: restore-allocate allocates every register it names.
 
 ooe → rcu · rate 1 · control
 
@@ -569,7 +570,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42).
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. Layout MSB first: rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). DEC owns the opcode-to-attribute table.
 
 dec → ooe · rate 6 · instruction
 
@@ -578,6 +579,7 @@ dec → ooe · rate 6 · instruction
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `uop_class` | `CCV_L_W_CLASS` | 3 ⛔ | CCV_L_W_CLASS (preliminary, churn low) |
+| `sched_attr` | `CCV_P_W_SCHED_ATTR` | 13 ⚠️ | CCV_P_W_SCHED_ATTR (provisional) |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `src_arch` | `2*CCV_W_ARCH_REG` | 8 | CCV_W_ARCH_REG (isa) |
 | `src2_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
@@ -592,11 +594,11 @@ dec → ooe · rate 6 · instruction
 | `pred_taken` | `1` | 1 | literal |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **142** | ⛔ 12 preliminary, ⚠️ 34 provisional |
+| **total** | | **155** | ⛔ 12 preliminary, ⚠️ 47 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
-What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28).
+What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28). ZERO REGISTERS (A-64): CCV_P_PHYS_ZERO and CCV_P_PRED_ZERO, one past each pool, read zero and are never written. A launched warp's sources, guard and old destinations may name them; phys_dst, phys_pred_dst and the destinations of every write never do.
 
 ooe → rcu · rate 4 · execution
 
@@ -775,18 +777,19 @@ exb → EXTERNAL · rate 1 · memory
 
 ### `ccv_rau_fet_launch`
 
-A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot.
+A warp becoming resident: where to start, what code it may touch, which address space, which CTA slot. tier1_id is the tier-1 slot RAU placed the warp in (A-65): FET fetches it in that slot's binding group on ccv_fet_dec_instr and indexes its checkpoints by it, as OOE does from ccv_rau_ooe_alloc.
 
 rau → fet · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
 | `start_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `code_bounds` | `2*(CCV_W_VA-CCV_L_PAGE_SHIFT)` | 104 ⛔ | CCV_W_VA (arch); CCV_L_PAGE_SHIFT (preliminary, churn low) |
 | `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
-| **total** | | **184** | ⛔ 104 preliminary, ⚠️ 3 provisional |
+| **total** | | **186** | ⛔ 104 preliminary, ⚠️ 3 provisional |
 
 ### `ccv_rau_rcu_mig`
 
@@ -829,16 +832,17 @@ pca → fet · rate 1 · control
 
 ### `ccv_rau_fet_mig`
 
-The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction, which parked bank. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command.
+The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction, which parked bank. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command. tier1_id is the warp's tier-1 slot (A-65): on a restore, the slot RAU is placing it in, which FET needs before PCA's PC groups arrive; on a demotion, the slot being vacated.
 
 rau → fet · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
 | `direction` | `1` | 1 | literal |
 | `bank_select` | `CCV_L_W_PCA_BANK` | 3 ⛔ | CCV_L_W_PCA_BANK (preliminary, churn med) |
-| **total** | | **9** | ⛔ 3 preliminary |
+| **total** | | **11** | ⛔ 3 preliminary |
 
 ### `ccv_rau_syu_alloc`
 

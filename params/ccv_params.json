@@ -648,9 +648,9 @@
       "name": "CCV_P_W_PHYS_REG",
       "value": 8,
       "status": "provisional",
-      "doc": "Follows CCV_P_PHYS_REGS.",
+      "doc": "Follows CCV_P_PHYS_REGS. One index past the pool is reserved for the hardwired zero register (A-64, A-67), so the width covers CCV_P_PHYS_REGS + 1 entries.",
       "decided_at": "OOE and RCU per-block sessions",
-      "derive": "clog2(CCV_P_PHYS_REGS)"
+      "derive": "clog2(CCV_P_PHYS_REGS + 1)"
     },
     {
       "name": "CCV_P_PRED_REGS",
@@ -756,9 +756,37 @@
       "value": 6,
       "status": "provisional",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split.",
+      "doc": "Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split. One index past the pool is reserved for the hardwired zero predicate (A-64, A-67).",
       "decided_at": "Stage 4a -- OOE rename session sizes the predicate RAT",
-      "derive": "clog2(CCV_P_PRED_REGS)"
+      "derive": "clog2(CCV_P_PRED_REGS + 1)"
+    },
+    {
+      "name": "CCV_P_PHYS_ZERO",
+      "value": 255,
+      "status": "provisional",
+      "decided_at": "generated",
+      "source": "OOE session (2026-10-03), A-64; A-67",
+      "derive": "2 ** CCV_P_W_PHYS_REG - 1",
+      "require": "CCV_P_PHYS_ZERO >= CCV_P_PHYS_REGS",
+      "doc": "The hardwired zero GPR (A-64): the all-ones physical index, outside the pool. It reads zero in every lane and is never written, allocated or freed. At launch OOE maps all 16 architectural GPRs to it, so a launched warp needs no zeroing traffic; a demotion map may name it. Derived from the width, and required outside the pool, so a pool swept to a power of two widens the index instead of colliding with it (A-67)."
+    },
+    {
+      "name": "CCV_P_PRED_ZERO",
+      "value": 63,
+      "status": "provisional",
+      "decided_at": "generated",
+      "source": "OOE session (2026-10-03), A-64; A-67",
+      "derive": "2 ** CCV_P_W_PHYS_PRED - 1",
+      "require": "CCV_P_PRED_ZERO >= CCV_P_PRED_REGS",
+      "doc": "The hardwired zero predicate (A-64): the all-ones predicate index, outside the pool, reading zero and never written. At launch OOE maps all 4 architectural predicates to it (A-67)."
+    },
+    {
+      "name": "CCV_P_W_SCHED_ATTR",
+      "value": 13,
+      "status": "provisional",
+      "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
+      "source": "OOE session (2026-10-03), A-66",
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). The field set is the OOE session's; the bit order and codes are the schema owner's, applied for confirmation."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",

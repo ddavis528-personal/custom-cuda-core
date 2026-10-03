@@ -330,7 +330,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_rau_fet_launch, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(184)) u_rpt_rau_fet_launch (
+  ccv_seq_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(186)) u_rpt_rau_fet_launch (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_fet_launch_valid}), .src_payload({rau_fet_launch_payload}),
     .src_wake(rau_fet_launch_wake), .src_credit({rau_fet_launch_credit}), .src_stall({rau_fet_launch_stall}),
@@ -363,7 +363,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_rau_fet_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_FET_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_fet_mig (
+  ccv_seq_rpt #(.STAGES(RPT_RAU_FET_MIG), .SLOTS(1), .PAYLOAD_W(11)) u_rpt_rau_fet_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_fet_mig_valid}), .src_payload({rau_fet_mig_payload}),
     .src_wake(rau_fet_mig_wake), .src_credit({rau_fet_mig_credit}), .src_stall({rau_fet_mig_stall}),
