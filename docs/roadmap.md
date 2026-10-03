@@ -39,8 +39,11 @@ grill-me ran on 2026-09-23. Here is each input's status:
 1. **S2: kernels that stress what vadd does not.** vadd has no divergence,
    no loop, one warp, and no SPM or barriers, so 21 of the 48 channels carried
    nothing in S1. The first S2 kernels cover partial writes under rename and the zero
-   registers (`merge`) and masked loads through the copy-only op (`mload`).
-   Kernels for the rest come from the compiler corpus
+   registers (`merge`), masked loads through the copy-only op (`mload`),
+   misaligned and scattered warp accesses (`unal`, `gather`), and mispredicted
+   branches and checkpoint pressure (`loop`, `brs`); what is still unreached,
+   and why, is in [`coverage.md`](coverage.md). Kernels for the rest come from
+   the compiler corpus
    (Part 4). Several are blocked on open payload questions, at least in the
    form S1 worked around (Q-30).
 2. **The open items in [`open-items.md`](open-items.md).** Most are owned
@@ -271,8 +274,8 @@ from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 
 **SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
 top runs every C++ block over DPI-C, with the generated Verilog carrying
-every connection. All six kernels match the C++-hosted run: summary lines
-identical and event traces the same records cycle by cycle. All 23 kernel
+every connection. All ten kernels match the C++-hosted run: summary lines
+identical and event traces the same records cycle by cycle. All 25 kernel
 controls give the same KERNEL line. One block one cycle late
 (`+ccv_shim_delay`) must not match, and doesn't
 (`tools/check-sv-hosted.sh`). Next: mixed hosting, which needs a finish rule

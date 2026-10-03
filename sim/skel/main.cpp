@@ -63,6 +63,9 @@
 //                  lanes, so it lands past its contract (mload; A-38)
 //   copy-from-new  the copy-only op reads the load's new destination, not its
 //                  old one (mload; A-33)
+//   free-new       OOE's retire frees the write's new register, not the old
+//                  one, so live values are reallocated (loop kernel)
+//   one-line       MIU puts a warp's access in its first lane's line (unal)
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
@@ -206,6 +209,7 @@ int main(int argc, char **argv) {
                       brk == "attr-store-as-load" || brk == "dirty-zero" ||
                       brk == "wrong-merge" || brk == "skip-copy" ||
                       brk == "late-copy" || brk == "copy-from-new" ||
+                      brk == "free-new" || brk == "one-line" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" ||

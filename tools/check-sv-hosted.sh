@@ -78,7 +78,7 @@ say "SV-hosted build: 45 blocks + EXTERNAL as shims" "PASS"
 # One run on each host. $1 kernel, $2 tag, then extra args as "cpp|sv" pairs.
 cpp() { "$SKEL" --kernel "$B/oracle/$1/oracle.jsonl" "${@:2}" 2>/dev/null; }
 svh() { "$SVH" "+ccv_oracle=$B/oracle/$1/oracle.jsonl" "${@:2}" 2>/dev/null; }
-lines() { grep -E '^(KERNEL|UNUSED|XFER) ' "$1"; }
+lines() { grep -E '^(KERNEL|UNUSED|XFER|COVER) ' "$1"; }
 
 # -- every S1 kernel, both hosts --------------------------------------------
 for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
@@ -114,7 +114,7 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             vadd:late-lead pguard:ignore-mask pguard:conflate-pred \
             vadd:corrupt-ckpt vadd:stale-free vadd:attr-store-as-load:3000 \
             merge:dirty-zero merge:wrong-merge mload:skip-copy \
-            mload:late-copy mload:copy-from-new; do
+            mload:late-copy mload:copy-from-new unal:one-line loop:free-new; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)

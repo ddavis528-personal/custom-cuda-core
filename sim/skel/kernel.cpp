@@ -883,7 +883,10 @@ private:
     std::map<uint64_t, size_t> at;
     for (unsigned l = 0; l != kLanes; ++l) {
       if (!((j.active >> l) & 1u)) continue;
-      const uint64_t line = j.addr[l] / kLine * kLine;
+      // one-line: MIU takes the warp's access to lie in the line its first
+      // active lane falls in, so the lanes past a line boundary are wrong.
+      const uint64_t line =
+          (k_.brk == "one-line" && !j.lines.empty() ? j.lines[0].line : j.addr[l]) / kLine * kLine;
       if (!at.count(line)) {
         at[line] = j.lines.size();
         j.lines.push_back({line, {}, {}, uint16_t(j.lines.size())});
@@ -899,6 +902,11 @@ private:
       }
     }
     check(j, am);
+    if (j.lines.size() > 1) k_.hit("line_split");
+    k_.peak("lines_peak", j.lines.size());
+    if (j.store)
+      for (const LineReq &lr : j.lines)
+        if (std::count(lr.mask.begin(), lr.mask.end(), true) != int(kLine)) k_.hit("partial_line");
     order_.pop_front();
     memop_.erase(tag);
     addr_.erase(a);
@@ -957,6 +965,7 @@ private:
     const Ch &c = ch();
     const unsigned rate = kChans[c.miu_dcu].rate;
     // Up to one line request per DCU slot per cycle.
+    if (job_.next != job_.lines.size() && !ids_.any()) k_.hit("dcu_id_wait");
     for (unsigned s = 0; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
       const LineReq &lr = job_.lines[job_.next++];
@@ -988,7 +997,8 @@ private:
       const Record *r = rec(job_.tid, "miu");
       for (unsigned l = 0; l != kLanes; ++l) {
         if (!((job_.active >> l) & 1u)) continue;
-        const Line &ln = job_.got[job_.addr[l] / kLine * kLine];
+        const Line &ln = job_.got[k_.brk == "one-line" ? job_.lines[0].line
+                                                       : job_.addr[l] / kLine * kLine];
         const unsigned off = unsigned(job_.addr[l] % kLine);
         uint32_t v = 0;
         for (unsigned b = 0; b != 4; ++b) v |= uint32_t(ln[off + b]) << (8 * b);
@@ -1549,6 +1559,7 @@ private:
   // records only whether one has been written since launch (A-64).
   std::array<std::array<unsigned, 16>, 32> rat_;
   std::deque<unsigned> free_;
+  std::set<unsigned> used_;     ///< registers ever allocated (coverage)
   bool pw_[32][4] = {};
   static constexpr unsigned kRob = 128;
 
@@ -1659,6 +1670,7 @@ private:
     fetch_epoch_ = (fetch_epoch_ + 1) % (1u << field(c.ooe_fet, "fetch_epoch").width);
     put(r, c.ooe_fet, "fetch_epoch", fetch_epoch_);
     redirects_.push_back({0, r, e.tid});
+    k_.hit("redirect");
   }
 
   E *byTag(unsigned t) {
@@ -1706,6 +1718,7 @@ private:
     if (e.op->gdst) {
       e.pnew = free_.front();
       free_.pop_front();
+      if (!used_.insert(e.pnew).second) k_.hit("reg_reuse");   // came back from a retire
       rat_[e.warp][e.dst & 15] = e.pnew;
       if (e.warp == 0) k_.rat0[e.dst & 15] = e.pnew;   // the final compare's map
     }
@@ -1784,6 +1797,10 @@ private:
     put(is, c.ooe_rcu, "phys_pred_dst", physPred(e.warp, e.pdst));
     put(is, c.ooe_rcu, "pred_we", e.pwe);
     put(is, c.ooe_rcu, "merge_en", merge);
+    if (merge) k_.hit("merge");
+    for (unsigned i = 0; i != e.op->nsrc; ++i)
+      if (e.psrc[i] == ccv::prov::kPhysZero) k_.hit("zero_read");
+    if (merge && e.op->gdst && e.pold == ccv::prov::kPhysZero) k_.hit("zero_read");
     put(is, c.ooe_rcu, "phys_old_dst", merge ? e.pold : 0);
     put(is, c.ooe_rcu, "phys_pred_old_dst", merge ? e.ppold : 0);
     // corrupt-ckpt and stale-free ride drop-negate's forced mispredict: each
@@ -1805,6 +1822,7 @@ private:
       // skip-copy: OOE issues the load alone, so the inactive lanes keep
       // whatever the fresh register held.
       if (k_.brk != "skip-copy") send(c.ooe_rcu, cslot, cp, e.tid);
+      k_.hit("copy");
       e.copy_pending = true;
       e.copy_wake = now_ + ccv::prov::kLatLane;
     }
@@ -1849,7 +1867,10 @@ private:
     ++k_.retired;
     k_.retire_order.push_back(uidSeq(e.tid));
     if (e.op->cls == kExit) k_.exited = true;
-    if (e.op->gdst && e.pold != ccv::prov::kPhysZero) free_.push_back(e.pold);
+    // free-new: retire frees the write's own new register instead of the
+    // one it replaced, so a live value is reallocated once the list wraps.
+    const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;
+    if (e.op->gdst && freed != ccv::prov::kPhysZero) free_.push_back(freed);
     rob_.pop_front();
   }
 
@@ -2104,6 +2125,7 @@ private:
           continue;
         }
         live_ &= ~(1u << ck);
+        k_.hit("ckpt_free");
         for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
           if (*it == ck) { taken_order_.erase(it); break; }
       }
@@ -2164,9 +2186,10 @@ private:
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBranch) {
         unsigned ck = 0;
         while (ck != kCkpts && (live_ >> ck & 1)) ++ck;
-        if (ck == kCkpts) break;                    // every checkpoint live
+        if (ck == kCkpts) { k_.hit("ckpt_full"); break; }   // every checkpoint live
         live_ |= 1u << ck;
         taken_order_.push_back(ck);
+        k_.peak("ckpt_peak", taken_order_.size());
         ckpt_of_[r.seq] = ck;
         put(f, c.fet_dec, "checkpoint_id", ck);
         put(f, c.fet_dec, "pred_taken", 0);
@@ -2385,6 +2408,10 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
               r.channels_used, kNumChans,
               violations);
   std::printf("UNUSED %s\n", r.unused.c_str());
+  std::printf("COVER");
+  for (const char *b : Kernel::kCoverBins)
+    std::printf(" %s=%llu", b, (unsigned long long)(k.cover.count(b) ? k.cover.at(b) : 0));
+  std::printf("\n");
 }
 
 } // namespace skel

@@ -1043,8 +1043,19 @@ matters for the skeleton:
   contract check fires for both copies; the stubs' slow load completion
   hides it from the reader, which a real OOE would not). The mload oracle
   needed a ccv-sim fix: `-oracle` counted a guarded load's accesses against
-  the issue mask, not the active lanes (compiler snapshot 41e32c5). 23
-  controls run on both hosts.
+  the issue mask, not the active lanes (compiler snapshot 41e32c5).
+- **Coverage kernels and counts** ([`coverage.md`](coverage.md)). `unal`
+  (warp accesses straddling two lines, a store's partial masks on both),
+  `gather` (one line per lane, reversed, broadcast, a scattered store),
+  `loop` (99 mispredicted backward branches; the rename free list wraps) and
+  `brs` (five branches against four checkpoints, then a taken one). The stubs
+  count coverage bins and print them on a `COVER` line, which both hosts
+  must print alike; `tools/check-kernel.sh` holds each kernel to the bins it
+  exists for. Controls `one-line` (MIU puts a warp access in its first lane's
+  line) and `free-new` (retire frees the new register, not the old). 25
+  controls run on both hosts. Not reached yet, each blocked on an open:
+  wrong-path execution and squash (A-70), divergence (A-69), and a lane's
+  word split across lines (A-71).
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

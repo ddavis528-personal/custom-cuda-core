@@ -48,6 +48,14 @@
 #                                                refuse the copy's source
 #   the copy lands within CCV_LAT_LANE of     late-copy (mload): RCU's
 #     RCU taking it (A-38)                       contract check fires
+#   a warp access split across two lines      one-line (unal): MIU's loaded
+#     (unal) or spread over 32 (gather)          values and the stored words
+#                                                past the boundary are wrong
+#   retire frees the mapping a write          free-new (loop): live values
+#     replaced; the free list wraps (loop)       reallocated, the lanes see it
+#   every kernel reaches the bins it exists   (COVER counts, below; a stub
+#     for (docs/coverage.md)                     change that stops reaching a
+#                                                path fails here)
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -436,6 +444,56 @@ if [ "$(grep -c "^CHECK rcu: seq [78]'s copy reached the PRF [0-9]* cycles after
   say "--break late-copy: RCU's contract check fires" "PASS (both copies)"
 else
   bad "--break late-copy" "a copy past CCV_LAT_LANE went unnoticed: $(grep '^KERNEL' "$B/kernel_late-copy.log")"
+fi
+
+
+# Coverage kernels (docs/coverage.md): misaligned and scattered warp accesses,
+# mispredicted branches, checkpoint pressure. Each must match ccv-sim, AND
+# reach the bins it exists for -- a kernel that passes without reaching its
+# path proves nothing about it. Bins are counted in the stubs (COVER line).
+cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
+while read -r k want; do
+  [ -z "$k" ] && continue
+  log="$B/kernel_$k.log"
+  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  why=""
+  for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+    [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+  done
+  for w in $want; do
+    bin=${w%%[=>]*}; have=$(cover "$log" "$bin")
+    case "$w" in
+      *'>'*) [ "${have:-0}" -gt "${w#*>}" ] || why="$why $bin=$have (want >${w#*>})" ;;
+      *)     [ "$have" = "${w#*=}" ] || why="$why $bin=$have (want ${w#*=})" ;;
+    esac
+  done
+  if [ -z "$why" ]; then
+    say "$k: == ccv-sim, reaches its bins" "PASS ($(field "$log" cycles) cycles; $want)"
+  else
+    bad "$k: == ccv-sim, reaches its bins" "${why# }"
+  fi
+done <<'KERNELS'
+unal   line_split=3 lines_peak=2 partial_line=2
+gather lines_peak=32 line_split=2 partial_line=32 dcu_id_wait>0
+loop   redirect=99 ckpt_free=1 reg_reuse>0
+brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
+mload  copy=2 zero_read=1
+merge  zero_read=2 merge=4
+vadd   ckpt_free=1 redirect=0
+KERNELS
+"$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
+if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
+   [ "$(field "$B/kernel_one-line.log" mem_mismatch)" = 17 ]; then
+  say "--break one-line: the lanes past the boundary" "PASS (loads at MIU, 17 stored words)"
+else
+  bad "--break one-line" "a warp access split across lines went unchecked: $(grep '^KERNEL' "$B/kernel_one-line.log")"
+fi
+"$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
+if grep -q "^CHECK lane 0: seq 382 operand 1 (R1) 0000005e, oracle 00000000" "$B/kernel_free-new.log" &&
+   [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
+  say "--break free-new: a live register reallocated" "PASS (seq 382, once the list wraps)"
+else
+  bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
 
 exit $fail

@@ -28,6 +28,7 @@
 #include "machine.h"
 #include "oracle.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -80,6 +81,11 @@ struct Kernel {
   ///                  cleared copy-pending on (mload kernel; A-38)
   ///   copy-from-new  the copy-only op carries the load's new destination as
   ///                  merge_data instead of its old one (mload kernel; A-33)
+  ///   free-new       OOE's retire frees the write's own new register instead
+  ///                  of the one it replaced: once the free list wraps, live
+  ///                  values are reallocated and overwritten (loop kernel)
+  ///   one-line       MIU takes a warp's access to lie in the line of its first
+  ///                  active lane, the aligned-only shortcut (unal kernel)
   ///   attr-store-as-load  DEC's sched_attr calls each store a load, so OOE
   ///                  sends MIU a load and the store never lands (A-66)
   ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
@@ -100,6 +106,18 @@ struct Kernel {
   uint64_t class_violations = 0;
   std::vector<uint64_t> rx_per_chan = std::vector<uint64_t>(kNumChans, 0);
   unsigned busy = 0;                               ///< blocks with work left
+
+  /// Coverage bins: what each kernel exists to reach, counted where it
+  /// happens, so a stub change that stops reaching a path fails the gate
+  /// instead of passing it vacuously (docs/coverage.md). kCoverBins is the
+  /// COVER line's order; every bin prints, reached or not.
+  static constexpr const char *kCoverBins[] = {
+      "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
+      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
+      "dcu_id_wait"};
+  std::map<std::string, uint64_t> cover;
+  void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
+  void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 
   void fail(const char *fmt, ...);
 };
