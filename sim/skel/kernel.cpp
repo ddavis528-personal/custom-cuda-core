@@ -212,6 +212,9 @@ constexpr OpInfo kOps[] = {
   {"BRA_PRED",      kBranch,    0, false, true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
   {"LD_GLOBAL_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
   {"C_ADD",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // add under a guard (Format Ap): the guard switches lanes off, and they
+  // keep the destination's old value, carried as merge_data (A-33, A-44).
+  {"ADD_P",         kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
   {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
   {"C_EXIT",        kExit,      0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"MOVI",          kImm,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
@@ -1227,6 +1230,13 @@ private:
 
   void issue(unsigned s, const Receiver::Msg &m) {
     const Ch &c = ch();
+    // dirty-zero: the zero registers read as garbage. The merge kernel's
+    // first guarded writes and its read of an unwritten register must show
+    // it (A-64).
+    if (k_.brk == "dirty-zero") {
+      k_.gpr[ccv::prov::kPhysZero].fill(0x5a5a5a5au);
+      k_.pred[ccv::prov::kPredZero] = 0xa5a5a5a5u;
+    }
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
     const OpInfo *op = opByCode(unsigned(get(m.payload, c.ooe_rcu, "opcode")));
     if (!op) { k_.fail("rcu: unknown opcode"); return; }
@@ -1357,7 +1367,10 @@ private:
       put(o, c.rcu_lane, "section_en", 1);
       // The old destination, carried to the lane: an inactive lane returns
       // it as its result (A-33, A-44). Don't-care without merge_en.
-      put(o, c.rcu_lane, "merge_data", merge ? k_.gpr[pold][l] : 0u);
+      // wrong-merge: the merge value read from the second source, not the
+      // old destination; the lanes must refuse it (A-33, A-44).
+      put(o, c.rcu_lane, "merge_data",
+          !merge ? 0u : k_.gpr[k_.brk == "wrong-merge" ? src[1] : pold][l]);
       lanes.push_back(o);
     }
     lane_q_[s].push_back({lanes, m.tid});

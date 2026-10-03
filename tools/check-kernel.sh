@@ -38,6 +38,10 @@
 #     a cycle ahead of the operands (Q-40)       stale mask
 #   a masked-off lane does not compute, and   ignore-mask (pguard): its poison
 #     RCU merges predicates by the mask (A-43)   lands in P1
+#   a guarded write merges inactive lanes     wrong-merge (merge): the lanes
+#     from its old destination (A-33, A-44)      refuse the wrong source
+#   a launched warp reads the zero registers  dirty-zero (merge): every path
+#     (A-64)                                     that reads one fails
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -341,6 +345,43 @@ if grep -q "^CHECK lane [0-9]*: seq 7 pred_bit is not issue mask AND guard" "$B/
   say "--break conflate-pred: guard and P0/P1 wrong" "PASS"
 else
   bad "--break conflate-pred" "one field for guard and destination went unnoticed"
+fi
+
+# merge (S2's first kernel): guarded GPR and predicate writes that merge their
+# inactive lanes from the old destination (A-33, A-43, A-44), and a launched
+# warp's reads of the zero registers (A-64). Lanes 16-31 are off for the
+# guarded writes, so their old value is what the lane must return.
+M=build/oracle/merge/oracle.jsonl
+"$SKEL" --kernel "$M" >"$B/kernel_merge.log" 2>&1
+ok=1
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$B/kernel_merge.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
+done
+if [ $ok = 1 ]; then
+  say "merge: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_merge.log" cycles) cycles)"
+else
+  bad "merge: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_merge.log")"
+fi
+# The zero registers read as garbage: R6's first guarded write merges it into
+# lanes 16-31 (16), the next write reads those lanes back (16), C_ADD reads
+# the unwritten R7 in every lane (32), and P2's merge leaves it wrong (1).
+"$SKEL" --kernel "$M" --break dirty-zero >"$B/kernel_dirty-zero.log" 2>&1
+if grep -q "^CHECK lane 16: seq 4 merge_data 5a5a5a5a, but R6 keeps 00000000" "$B/kernel_dirty-zero.log" &&
+   [ "$(field "$B/kernel_dirty-zero.log" check_failures)" = 64 ] &&
+   [ "$(field "$B/kernel_dirty-zero.log" pred_mismatch)" = 1 ]; then
+  say "--break dirty-zero: every zero-register path" "PASS (64 lane checks, P2)"
+else
+  bad "--break dirty-zero" "a zero-register read went unnoticed: $(grep '^KERNEL' "$B/kernel_dirty-zero.log")"
+fi
+# The merge value from the wrong register: every inactive lane of both
+# guarded writes refuses it, and R6 ends wrong on the lanes the second one
+# switched off.
+"$SKEL" --kernel "$M" --break wrong-merge >"$B/kernel_wrong-merge.log" 2>&1
+if grep -q "^CHECK lane 16: seq 4 merge_data 00000010, but R6 keeps 00000000" "$B/kernel_wrong-merge.log" &&
+   [ "$(field "$B/kernel_wrong-merge.log" gpr_mismatch)" = 16 ]; then
+  say "--break wrong-merge: the lanes refuse it" "PASS"
+else
+  bad "--break wrong-merge" "a wrong merge source went unnoticed: $(grep '^KERNEL' "$B/kernel_wrong-merge.log")"
 fi
 
 exit $fail

@@ -430,7 +430,7 @@ no DPI-C):
   cycle (`tools/compare-traces.py`). Order *within* a cycle differs: it is
   the order emitters happened to be called in, and the traces aren't
   byte-identical.
-- **Each of the 15 kernel controls:** the same KERNEL line from both hosts,
+- **Each of the 20 kernel controls:** the same KERNEL line from both hosts,
   failure paths included. That covers which checks fired, the final-state
   mismatches, and the bank's violation count (`itlb-double`'s comes from the
   bank in the top).
@@ -956,10 +956,9 @@ matters for the skeleton:
   wiring controls answer fixed-latency valids with exactly that prompt
   credit, so each still fires only what it targets.
 - **Merge is a fourth source** (A-33, A-43, A-44): `merge_data` to the lane,
-  predicates merged in RCU. S1's kernels exercise the predicate merge
-  (pguard's guarded compare) but have no masked GPR writer or masked load,
-  so the GPR merge path is built and self-checked but not reached, and the
-  masked-load copy op is not modelled (OOE fails loudly if one appears).
+  predicates merged in RCU. pguard exercises the predicate merge, and the
+  merge kernel (S2's first, below) the GPR merge. The masked-load copy op is
+  not modelled: OOE fails loudly if a masked load appears.
 - **Overlays.** A named slice of a field valid under a selector:
   `discard_tail` on `ooe_miu_memop.disp` when `mem_op == 0xF` (A-41).
   `gen-interfaces.py` checks it fits and emits its LSB and width beside the
@@ -998,8 +997,18 @@ matters for the skeleton:
   takes memory kind and branch from `sched_attr` (`--break
   attr-store-as-load` sends a store to MIU as a load, and MIU refuses it); RCU
   refuses a write to a zero register. No S1 kernel reads a register before
-  writing it, so the zero-register read path is built but unreached, and
+  writing it; the merge kernel (below) reaches the zero-register reads, and
   restore is not modelled.
+- **S2's first kernel: merge** (`test/kernels/merge/`). Guarded writes under
+  rename, and a launched warp's zero registers: `@P1 add R6` is R6's first
+  write, so lanes 16-31 merge from the zero register; `@!P1 add R6` merges
+  from R6's own old value; `add R7, R1` reads the never-written R7; and
+  `@P1 setp P2` merges P2 from the zero predicate. Final state equals
+  ccv-sim's. `--break dirty-zero` (the zero registers read as garbage) fails
+  every one of those paths, 64 lane checks and P2, and `--break wrong-merge`
+  (RCU sends the second source as `merge_data`) is refused at every inactive
+  lane. Both run on the SV-hosted top too, 20 controls in all. Masked loads
+  stay out until the copy-only op is modelled.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

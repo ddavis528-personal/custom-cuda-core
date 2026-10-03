@@ -129,7 +129,8 @@ done
 if grep -q "FAIL" build/svh_suite.log; then
   bad "split: SV-hosted == C++-hosted" "$(grep -m1 FAIL build/svh_suite.log | xargs)"
 else
-  say "split: SV repeaters == C++ link model" "PASS (4 kernels, 15 controls, skew caught)"
+  say "split: SV repeaters == C++ link model" \
+      "PASS ($(ls -d test/kernels/*/ | wc -l) kernels, $(grep -o '([0-9]* controls)' build/svh_suite.log | tr -dc 0-9) controls, skew caught)"
 fi
 
 exit $fail

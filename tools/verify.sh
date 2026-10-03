@@ -244,7 +244,9 @@ cat <<'PENDING'
            S1 DONE: vadd end to end on functional stubs, final state
            identical to ccv-sim, 0 violations, 27 of 48 channels carrying
            it. Open items: docs/open-items.md, by Q-number.
-           S2 next: a kernel that diverges, loops, or uses SPM/barriers
+           S2 started: merge (partial writes under rename, the zero
+           registers). Next: masked loads (the copy-only op), divergence,
+           loops, SPM and barriers
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 

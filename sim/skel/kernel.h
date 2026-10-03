@@ -67,6 +67,11 @@ struct Kernel {
   ///   stale-free     drop-negate's mispredict, with OOE also freeing the
   ///                  checkpoint its redirect restores: the redirect lands
   ///                  first, so FET sees a free for a dead checkpoint (A-58)
+  ///   dirty-zero     the zero registers read as garbage instead of zero, so
+  ///                  the merge kernel's first guarded writes and its read of
+  ///                  an unwritten register take it (A-64)
+  ///   wrong-merge    RCU sends a guarded write's second source as merge_data
+  ///                  instead of its old destination (merge kernel; A-44)
   ///   attr-store-as-load  DEC's sched_attr calls each store a load, so OOE
   ///                  sends MIU a load and the store never lands (A-66)
   ///   ignore-mask    RCU's predicate merge ignores the active mask, so the

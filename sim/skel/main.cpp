@@ -54,6 +54,9 @@
 //   stale-free     as drop-negate, and OOE also frees the checkpoint its
 //                  redirect restores, which FET must refuse (A-58, V-46)
 //   attr-store-as-load  DEC's sched_attr calls a store a load (A-66)
+//   dirty-zero     the zero registers read as garbage (merge kernel; A-64)
+//   wrong-merge    RCU sends the second source as merge_data, not the old
+//                  destination (merge kernel; A-33, A-44)
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
@@ -194,7 +197,8 @@ int main(int argc, char **argv) {
                       brk == "itlb-double" || brk == "corrupt-disp" ||
                       brk == "drop-negate" || brk == "drop-pred-data" ||
                       brk == "corrupt-ckpt" || brk == "stale-free" ||
-                      brk == "attr-store-as-load" ||
+                      brk == "attr-store-as-load" || brk == "dirty-zero" ||
+                      brk == "wrong-merge" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" ||
