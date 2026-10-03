@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 28 |
-| ⚠️ Some provisional | 19 | 80 |
-| ⛔ Some preliminary | 20 | 119 |
-| **Total** | **48** | **227** |
+| ⚠️ Some provisional | 19 | 82 |
+| ⛔ Some preliminary | 20 | 121 |
+| **Total** | **48** | **231** |
 
 ## What still has to be decided
 
@@ -304,7 +304,7 @@ syu → ooe · rate 1 · control
 
 ### `ccv_fet_dec_instr`
 
-Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path. On a branch, checkpoint_id names the PC-group checkpoint FET took for it and pred_taken FET's predicted direction (uniform-only first; A-42); both are don't-care on other instructions. A predicted mask replaces pred_taken when divergent prediction lands.
+Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path. On a branch, checkpoint_id names the PC-group checkpoint FET took for it and pred_taken FET's predicted direction (uniform-only first; A-42); both are don't-care on other instructions. A predicted mask replaces pred_taken when divergent prediction lands. GROUP MASK AND EPOCH (A-69, A-70): group_mask is the lanes of the PC group the instruction was fetched for, set by FET, which owns the groups, and carried through DEC to OOE, which needs it at rename (merge elision: is the mask full?) and sends it as issue_mask. fetch_epoch is the warp's epoch when it was fetched: FET takes a new one from every redirect, and DEC and OOE drop any uop whose epoch is not the warp's current one, which is how wrong-path uops still in this channel, in DEC or in the decode queue are discarded after a redirect.
 
 fet → dec · rate 8 · instruction
 
@@ -313,12 +313,14 @@ fet → dec · rate 8 · instruction
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
 | `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `group_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
 | `instr` | `CCV_W_INSTR` | 48 | CCV_W_INSTR (isa) |
 | `length` | `CCV_W_ILEN` | 2 | CCV_W_ILEN (isa) |
 | `checkpoint_id` | `CCV_P_W_CKPT_ID` | 2 ⚠️ | CCV_P_W_CKPT_ID (provisional) |
 | `pred_taken` | `1` | 1 | literal |
 | `fetch_fault` | `1` | 1 | literal |
-| **total** | | **125** | ⚠️ 2 provisional |
+| **total** | | **160** | ⚠️ 5 provisional |
 
 ### `ccv_rcu_ooe_done`
 
@@ -397,7 +399,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_ooe_fet_redirect`
 
-A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle.
+A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. OOE keeps a current fetch epoch per warp, advanced on every redirect it sends (and on demotion and kill, A-70); the redirect carries the new value, and FET tags everything it fetches for the warp afterwards with it, on ccv_fet_dec_instr.
 
 ooe → fet · rate 1 · instruction
 
@@ -408,8 +410,8 @@ ooe → fet · rate 1 · instruction
 | `checkpoint_id` | `CCV_P_W_CKPT_ID` | 2 ⚠️ | CCV_P_W_CKPT_ID (provisional) |
 | `taken_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 2 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
-| **total** | | **107** | ⚠️ 4 provisional |
+| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
+| **total** | | **108** | ⚠️ 5 provisional |
 
 ### `ccv_ooe_fet_ckpt_free`
 
@@ -576,7 +578,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. Layout MSB first: rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). DEC owns the opcode-to-attribute table. mem_op, space and ordering (A-68) are decoded here too, for memory ops, and OOE copies them to ccv_ooe_miu_memop unexamined, so opcode decoding lives only in DEC and MIU stays off the opcode census. DEC never emits mem_op 0xF, which is OOE's bulk discard (A-41); asserted on DEC's output (V-52). All three are don't-care unless sched_attr's rs_miu is set, as is mem_kind.
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. Layout MSB first: rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). DEC owns the opcode-to-attribute table. mem_op, space and ordering (A-68) are decoded here too, for memory ops, and OOE copies them to ccv_ooe_miu_memop unexamined, so opcode decoding lives only in DEC and MIU stays off the opcode census. DEC never emits mem_op 0xF, which is OOE's bulk discard (A-41); asserted on DEC's output (V-52). All three are don't-care unless sched_attr's rs_miu is set, as is mem_kind. group_mask and fetch_epoch pass through from FET (A-69, A-70): OOE renames no uop whose fetch_epoch differs from its warp's current epoch, and every issued uop's issue_mask is the group_mask it arrived with. The mask rides per slot; whether a fetch bundle is always one PC group, which would let it ride once per bundle, is the FET and DEC sessions' to confirm, and would need a field shared across an atomic slot group, which the schema does not have yet.
 
 dec → ooe · rate 6 · instruction
 
@@ -584,6 +586,8 @@ dec → ooe · rate 6 · instruction
 |---|---|---|---|
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `group_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
 | `uop_class` | `CCV_L_W_CLASS` | 3 ⛔ | CCV_L_W_CLASS (preliminary, churn low) |
 | `sched_attr` | `CCV_P_W_SCHED_ATTR` | 13 ⚠️ | CCV_P_W_SCHED_ATTR (provisional) |
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
@@ -603,7 +607,7 @@ dec → ooe · rate 6 · instruction
 | `pred_taken` | `1` | 1 | literal |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **166** | ⛔ 23 preliminary, ⚠️ 47 provisional |
+| **total** | | **201** | ⛔ 23 preliminary, ⚠️ 50 provisional |
 
 ### `ccv_ooe_rcu_issue`
 

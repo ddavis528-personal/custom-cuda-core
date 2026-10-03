@@ -86,6 +86,10 @@ struct Kernel {
   ///                  values are reallocated and overwritten (loop kernel)
   ///   one-line       MIU takes a warp's access to lie in the line of its first
   ///                  active lane, the aligned-only shortcut (unal kernel)
+  ///   corrupt-group-mask  FET drops lane 31 from seq 5's group mask, which
+  ///                  OOE issues as its issue mask: the lanes refuse it (A-69)
+  ///   stale-epoch    FET tags the first instruction after a redirect with the
+  ///                  epoch before it; OOE drops it, and it never retires (A-70)
   ///   attr-store-as-load  DEC's sched_attr calls each store a load, so OOE
   ///                  sends MIU a load and the store never lands (A-66)
   ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
@@ -114,7 +118,7 @@ struct Kernel {
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
-      "dcu_id_wait"};
+      "dcu_id_wait", "epoch_drop"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }

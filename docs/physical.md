@@ -304,7 +304,7 @@ them: `credit_per_msg` belongs in every receiver.
   - the wiring traced flop by flop, equal to the C++ skeleton's with stage
     counts, 561 stages;
   - every S1 kernel equal to ccv-sim (vadd in 425 cycles, not 361);
-  - SV-hosted equal to C++-hosted: ten kernels and 25 controls, with both
+  - SV-hosted equal to C++-hosted: ten kernels and 27 controls, with both
     skew controls caught.
 
 **What the first split found, beyond itself:** the S0 exerciser was

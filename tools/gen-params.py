@@ -350,6 +350,10 @@ def selftest(d):
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
              ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),
+             # A-70: an epoch that can wrap within one flight is refused,
+             # and more checkpoints widen it.
+             ("CCV_P_W_FETCH_EPOCH", "value", 2, "CCV_P_W_FETCH_EPOCH"),
+             ("CCV_P_BR_CKPTS", "value", 7, "CCV_P_W_FETCH_EPOCH"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     missed = []

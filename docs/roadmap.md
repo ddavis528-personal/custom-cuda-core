@@ -275,7 +275,7 @@ from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 **SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
 top runs every C++ block over DPI-C, with the generated Verilog carrying
 every connection. All ten kernels match the C++-hosted run: summary lines
-identical and event traces the same records cycle by cycle. All 25 kernel
+identical and event traces the same records cycle by cycle. All 27 kernel
 controls give the same KERNEL line. One block one cycle late
 (`+ccv_shim_delay`) must not match, and doesn't
 (`tools/check-sv-hosted.sh`). Next: mixed hosting, which needs a finish rule

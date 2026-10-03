@@ -53,6 +53,10 @@
 #                                                past the boundary are wrong
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
+#   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
+#     carried with the uop (A-69)                refuse a mask missing lane 31
+#   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
+#     before rename (A-70)                       it, and it never retires
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -479,7 +483,7 @@ loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
-vadd   ckpt_free=1 redirect=0
+vadd   ckpt_free=1 redirect=0 epoch_drop=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
@@ -494,6 +498,21 @@ if grep -q "^CHECK lane 0: seq 382 operand 1 (R1) 0000005e, oracle 00000000" "$B
   say "--break free-new: a live register reallocated" "PASS (seq 382, once the list wraps)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
+fi
+"$SKEL" --kernel "$K" --break corrupt-group-mask >"$B/kernel_corrupt-group-mask.log" 2>&1
+if grep -q "^CHECK lane 31: seq 5 pred_bit is not issue mask AND guard" "$B/kernel_corrupt-group-mask.log" &&
+   [ "$(field "$B/kernel_corrupt-group-mask.log" check_failures)" = 1 ]; then
+  say "--break corrupt-group-mask: lane 31 refuses it" "PASS (A-69)"
+else
+  bad "--break corrupt-group-mask" "a wrong group mask went unnoticed: $(grep '^KERNEL' "$B/kernel_corrupt-group-mask.log")"
+fi
+"$SKEL" --kernel build/oracle/loop/oracle.jsonl --break stale-epoch >"$B/kernel_stale-epoch.log" 2>&1
+if [ "$(cover "$B/kernel_stale-epoch.log" epoch_drop)" = 1 ] &&
+   [ "$(field "$B/kernel_stale-epoch.log" order)" = bad ] &&
+   [ "$(field "$B/kernel_stale-epoch.log" retired)" = 406 ]; then
+  say "--break stale-epoch: OOE drops the uop" "PASS (A-70; 406 of 407 retire)"
+else
+  bad "--break stale-epoch" "a stale-epoch uop was not dropped: $(grep -E '^(KERNEL|COVER)' "$B/kernel_stale-epoch.log" | xargs)"
 fi
 
 exit $fail

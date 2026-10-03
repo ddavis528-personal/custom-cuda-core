@@ -39,23 +39,27 @@ must print the same `COVER` line as the C++ one.
    wrong path). So a mispredict today exercises the redirect and the
    checkpoint restore, but no squash: no wrong-path uop is renamed, issued or
    discarded, no RAT is recovered, no store is discarded, and MIU's bulk
-   discard (A-41) never runs. Blocked on an interface gap (Review A-70): no
-   uop carries the fetch epoch, so OOE cannot tell a stale wrong-path uop
-   from the correct path once the redirect has gone.
+   discard (A-41) never runs. The interface gap is closed (A-70, applied:
+   every uop carries a 3-bit fetch epoch, and OOE drops stale ones before
+   rename, `--break stale-epoch` as the control); what remains is stub work,
+   step 1 below.
 2. **Divergence.** Every kernel's branches are uniform, and every issue mask
-   is all 32 lanes. A divergent branch needs the group's lane mask to reach
-   OOE, which sends it as `issue_mask`, and no channel carries it from FET,
-   which owns the groups (Review A-69).
+   is all 32 lanes. The group mask now reaches OOE with each uop (A-69,
+   applied; `--break corrupt-group-mask` as the control), so what remains is
+   FET's group state in the stub: splitting a group on a divergent branch and
+   reconverging it.
 3. **A lane's word split across lines.** ccv-sim accepts a 4-byte access at
-   any byte address. Whether the ISA does is open (Review A-71); the MIU stub
-   assumes a lane's word lies in one line.
+   any byte address. Whether the ISA does is deferred to the ISA track
+   (Review A-71); the MIU stub assumes a lane's word lies in one line. If it
+   is legal, such an access cannot meet the L1 contract and completes late
+   (A-46); if not, it faults at retirement.
 4. **Per-warp concurrency.** One warp, one CTA throughout: no tier-1 slot
    other than 0, no binding-group contention, no SPM, no barriers, no
    migration.
 
 ## Next, in order
 
-1. **Wrong-path fetch and squash** once A-70 is settled. FET fetches past a
+1. **Wrong-path fetch and squash** (A-70 is settled). FET fetches past a
    predicted branch for as long as it has a decode for the next PC (in a
    loop, the exit path is decoded on the last iteration). Wrong-path uops get
    their own identity class, the lanes check nothing for them, and the final
@@ -64,7 +68,7 @@ must print the same `COVER` line as the C++ one.
    destinations to the free list, and bulk-discards the warp's younger
    stores. Controls: a squashed write that lands, a squashed store that
    commits, a register freed twice.
-2. **Divergence** once A-69 is settled: a tail warp (`n` not a multiple of
+2. **Divergence** (A-69 is settled): a tail warp (`n` not a multiple of
    32, so the bounds branch splits the warp), if/else with reconvergence, and
    masked loads masked by the issue mask rather than a guard.
 3. **Compiler-corpus kernels.** `bench-vadd_loop` (a grid-stride loop) and

@@ -1526,6 +1526,7 @@ private:
     bool taken = false, pred_taken = false;
     uint32_t taken_mask = 0;
     unsigned ckpt = 0;                     ///< FET's checkpoint, on a branch
+    uint32_t mask = 0;                     ///< the PC group's lanes, from FET (A-69)
     uint32_t attr = 0;                     ///< sched_attr, from DEC (A-66)
     unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
     // Physical names, read from the RAT at dispatch: a register no older
@@ -1581,6 +1582,8 @@ private:
           p = ccv::prov::kPhysZero;
         }
         for (bool &b : pw_[w]) b = false;
+        // The epoch is not reset: a relaunched warp_id could otherwise meet
+        // its predecessor's uops still in flight at the same epoch (A-72).
         if (w == 0) k_.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
       } else if (op != kAllocFree) {
         k_.fail("ooe: restore (alloc_op %u) is not modelled in S1", op);
@@ -1650,7 +1653,7 @@ private:
 
   /// RCU resolved a branch some lane takes: tell FET, which owns the PC.
   /// Group masks: the taken lanes, then the lanes that fall through.
-  unsigned fetch_epoch_ = 0;
+  unsigned epoch_[32] = {};     ///< each warp's current fetch epoch (A-70)
   std::deque<Q> redirects_;
   static constexpr unsigned kCkpts = ccv::prov::kBrCkpts;
   void redirect(const E &e) {
@@ -1667,8 +1670,10 @@ private:
     put(r, c.ooe_fet, "checkpoint_id",
         k_.brk == "corrupt-ckpt" ? (e.ckpt + 1) % kCkpts : e.ckpt);
     put(r, c.ooe_fet, "taken_mask", e.taken_mask);
-    fetch_epoch_ = (fetch_epoch_ + 1) % (1u << field(c.ooe_fet, "fetch_epoch").width);
-    put(r, c.ooe_fet, "fetch_epoch", fetch_epoch_);
+    // The warp's epoch advances, and the redirect carries the new one: FET
+    // tags what it fetches from here on with it (A-70).
+    epoch_[e.warp] = (epoch_[e.warp] + 1) % (1u << field(c.ooe_fet, "fetch_epoch").width);
+    put(r, c.ooe_fet, "fetch_epoch", epoch_[e.warp]);
     redirects_.push_back({0, r, e.tid});
     k_.hit("redirect");
   }
@@ -1685,6 +1690,13 @@ private:
     e.tid = m.tid;
     e.pc = get(u, c.dec_ooe, "pc");
     e.warp = unsigned(get(u, c.dec_ooe, "warp_id"));
+    // A uop fetched before the warp's last redirect is wrong-path: it is
+    // dropped here, before rename, by its epoch (A-70).
+    if (unsigned(get(u, c.dec_ooe, "fetch_epoch")) != epoch_[e.warp]) {
+      k_.hit("epoch_drop");
+      return;
+    }
+    e.mask = uint32_t(get(u, c.dec_ooe, "group_mask"));
     e.op = opByCode(unsigned(get(u, c.dec_ooe, "opcode")));
     if (!e.op || get(u, c.dec_ooe, "decode_fault")) {
       k_.fail("ooe: a uop it cannot execute");
@@ -1767,7 +1779,9 @@ private:
     // Merge (A-33): some lane may keep its old value -- the issue mask is
     // not full, or a guard may switch lanes off -- so the old destination is
     // a fourth source: the RAT's old mapping, the zero register if unwritten.
-    const uint32_t issue_mask = 0xffffffffu;   // vadd-era kernels never diverge
+    // The issue group is the PC group the uop arrived with (A-69), and a
+    // mask that is not full means some lane keeps its old value.
+    const uint32_t issue_mask = e.mask;
     const bool merge = issue_mask != 0xffffffffu || e.op->guard;
     // A masked load owes a copy-only op beside it (A-33, A-38): MIU writes
     // only its active lanes, so the inactive ones are copied from the old
@@ -1780,8 +1794,6 @@ private:
     Bits is = msgOf(c.ooe_rcu);
     put(is, c.ooe_rcu, "rob_tag", e.tag);
     put(is, c.ooe_rcu, "warp_id", e.warp);
-    // The issue group's lanes. OOE chose the PC group, so this is its to
-    // send; no S1 kernel diverges, so it is all 32 (lanes check the oracle).
     put(is, c.ooe_rcu, "issue_mask", issue_mask);
     put(is, c.ooe_rcu, "phys_src", (e.psrc[0] << 8) | e.psrc[1]);
     put(is, c.ooe_rcu, "phys_src2", e.psrc[2]);
@@ -1947,6 +1959,9 @@ private:
     Bits u = msgOf(c.dec_ooe);
     put(u, c.dec_ooe, "warp_id", get(f, c.fet_dec, "warp_id"));
     put(u, c.dec_ooe, "pc", pc);
+    // FET's group mask and epoch pass through (A-69, A-70).
+    put(u, c.dec_ooe, "group_mask", get(f, c.fet_dec, "group_mask"));
+    put(u, c.dec_ooe, "fetch_epoch", get(f, c.fet_dec, "fetch_epoch"));
     if (!op) {
       k_.fail("dec: %s is not in the skeleton's opcode table", r->op.c_str());
       put(u, c.dec_ooe, "decode_fault", 1);
@@ -2065,7 +2080,9 @@ private:
   std::map<uint64_t, unsigned> ckpt_of_;    ///< checkpoint, by branch seq
   bool await_redirect_ = false;             ///< fetched a branch it mispredicts
   unsigned tier1_ = 0;                      ///< the warp's tier-1 slot, from RAU
-  unsigned epoch_ = 0;                      ///< from the last redirect
+  unsigned epoch_ = 0;                      ///< from the last redirect (A-70)
+  static constexpr unsigned kEpochs = 1u << ccv::prov::kWFetchEpoch;
+  bool stale_next_ = false, stale_done_ = false;   ///< stale-epoch control
 
   void work() override {
     const Ch &c = ch();
@@ -2110,6 +2127,8 @@ private:
         }
       await_redirect_ = false;
       epoch_ = unsigned(get(m.payload, c.ooe_fet, "fetch_epoch"));
+      stale_next_ = k_.brk == "stale-epoch" && !stale_done_;
+      stale_done_ = stale_done_ || stale_next_;
     }
     if (has(c.ooe_free, 0)) {
       // Checkpoints freed by correct resolutions. Every bit must name one
@@ -2174,6 +2193,16 @@ private:
       put(f, c.fet_dec, "pc", r.pc);
       put(f, c.fet_dec, "instr", word);
       put(f, c.fet_dec, "length", r.size / 2 - 1);
+      // The PC group's lanes and the warp's epoch ride with the instruction
+      // (A-69, A-70). FET owns the groups; with no divergence model the
+      // group is the lanes ccv-sim issued it to. corrupt-group-mask drops
+      // lane 31 from one instruction's group; stale-epoch tags the first
+      // instruction after a redirect with the epoch before it.
+      uint32_t gmask = r.mask;
+      if (k_.brk == "corrupt-group-mask" && r.seq == 5) gmask &= 0x7fffffffu;
+      put(f, c.fet_dec, "group_mask", gmask);
+      put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (epoch_ + kEpochs - 1) % kEpochs : epoch_);
+      stale_next_ = false;
       // A branch takes a checkpoint of the PC groups, and FET predicts it.
       // The prediction is static not-taken (uniform-only prediction is the
       // FET session's). With all CCV_P_BR_CKPTS live, fetch stalls until

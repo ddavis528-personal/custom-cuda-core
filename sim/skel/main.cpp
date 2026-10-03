@@ -66,6 +66,10 @@
 //   free-new       OOE's retire frees the write's new register, not the old
 //                  one, so live values are reallocated (loop kernel)
 //   one-line       MIU puts a warp's access in its first lane's line (unal)
+//   corrupt-group-mask  FET drops lane 31 from one instruction's group mask,
+//                  which OOE sends as its issue mask (A-69)
+//   stale-epoch    FET tags the first instruction after a redirect with the
+//                  epoch before it, so OOE drops it as wrong-path (A-70)
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
@@ -210,6 +214,7 @@ int main(int argc, char **argv) {
                       brk == "wrong-merge" || brk == "skip-copy" ||
                       brk == "late-copy" || brk == "copy-from-new" ||
                       brk == "free-new" || brk == "one-line" ||
+                      brk == "corrupt-group-mask" || brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" ||

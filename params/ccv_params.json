@@ -786,7 +786,7 @@
       "status": "provisional",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). mem_kind is don't-care unless rs_miu is set. Each further fixed-latency lane unit (SFU and others) takes a spare lat_class code, 4 to 7, once the LANE session sets its latency, with its own generated wake parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). Each further fixed-latency lane unit (SFU and others) takes a spare lat_class code, 4 to 7, once the LANE session sets its latency, with its own generated wake parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
@@ -846,11 +846,13 @@
     },
     {
       "name": "CCV_P_W_FETCH_EPOCH",
-      "value": 2,
+      "value": 3,
       "status": "provisional",
-      "source": "Skeleton review response 2 (2026-09-25)",
-      "doc": "Fetch epoch on ccv_ooe_fet_redirect: FET bumps it on a redirect and discards in-flight fetches from the wrong path by epoch.",
-      "decided_at": "FET session, from fetch pipeline depth"
+      "source": "Skeleton review response 2 (2026-09-25); OOE session (2026-10-03), A-70",
+      "derive": "clog2(CCV_P_BR_CKPTS + 2)",
+      "require": "2 ** CCV_P_W_FETCH_EPOCH > CCV_P_BR_CKPTS + 1",
+      "doc": "Fetch epoch, on ccv_ooe_fet_redirect and on every uop (ccv_fet_dec_instr, ccv_dec_ooe_uop; A-70). OOE advances a warp's epoch on every redirect, demotion and kill, and drops any arriving uop whose epoch is not current. A uop in flight from FET to OOE can see one epoch change per unresolved branch older than it (they resolve out of order, youngest first in the worst case: CCV_P_BR_CKPTS redirects) plus one demotion or kill, so 2^W must exceed CCV_P_BR_CKPTS + 1, or a uop that many epochs stale aliases the current epoch and executes as correct-path. At 2 bits the rule fails.",
+      "decided_at": "generated"
     },
     {
       "name": "CCV_L_W_CLASS",

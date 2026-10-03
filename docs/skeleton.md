@@ -1056,6 +1056,22 @@ matters for the skeleton:
   controls run on both hosts. Not reached yet, each blocked on an open:
   wrong-path execution and squash (A-70), divergence (A-69), and a lane's
   word split across lines (A-71).
+- **Group mask and fetch epoch on every uop** (A-69, A-70). FET sets
+  `group_mask` (the PC group's lanes) and `fetch_epoch` on
+  `ccv_fet_dec_instr`, DEC passes both through on `ccv_dec_ooe_uop`
+  (125 to 160 bits a slot, and 166 to 201), and OOE sends the mask as
+  `issue_mask` and drops, before rename, any uop whose epoch is not its
+  warp's current one. OOE advances a warp's epoch on each redirect, which
+  carries it to FET. `CCV_P_W_FETCH_EPOCH` is now derived,
+  `clog2(CCV_P_BR_CKPTS + 2)` = 3, with the requirement that it cannot
+  wrap within one flight; gen-params' selftest refuses 2 bits. Controls
+  `corrupt-group-mask` (lane 31 missing from one mask: refused at the lane)
+  and `stale-epoch` (one uop tagged with the epoch before a redirect: OOE
+  drops it and it never retires). The stub's FET still fetches no wrong
+  path, so no clean kernel drops anything yet (`epoch_drop=0`). Not
+  modelled: the epoch on demotion and kill (raised as A-72), and a mask
+  narrower than the warp, which needs FET's group state (no kernel
+  diverges yet).
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a
@@ -1078,6 +1094,7 @@ decisions.
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its architectural offset, in halfwords from the next instruction, with the length code in `ilen` beside it; OOE computes `pc + bytes(ilen) + 2·imm` (arch open A-8). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
+| `fet_dec_instr.group_mask`, `fetch_epoch` → `dec_ooe_uop` | the record's issue mask, which is the PC group with no divergence model; the epoch of FET's last redirect. OOE issues the mask as `issue_mask` and drops a uop of any other epoch (A-69, A-70) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Names from OOE's RAT: a FIFO free list over the 192-register pool, the zero register for anything unwritten (RAU allocates nothing, A-30) |
 | `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) rides the next issue slot in the same cycle, with the load's issue fields; an unguarded one masked only by its issue mask would name the zero predicate, negated |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
