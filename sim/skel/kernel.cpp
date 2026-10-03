@@ -107,7 +107,8 @@ Line getLine(const Bits &b, uint32_t lsb) {
 //
 // Placeholders for encodings the payload spec leaves to the owning block.
 enum : unsigned { kCohRead = 0, kCohWrite = 1 };        // coh_op
-enum : unsigned { kMemLoad = 0, kMemStore = 1 };        // ooe_miu_memop.mem_op
+enum : unsigned { kMemLoad = 0, kMemStore = 1,          // ooe_miu_memop.mem_op
+                  kMemBulkDiscard = 0xF };
 enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_op
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
@@ -1404,6 +1405,7 @@ private:
     uint32_t taken_mask = 0;
     unsigned ckpt = 0;                     ///< FET's checkpoint, on a branch
     uint32_t attr = 0;                     ///< sched_attr, from DEC (A-66)
+    unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
     // Physical names, read from the RAT at dispatch: a register no older
     // instruction of the warp has written is still the zero register (A-64).
     unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0;
@@ -1557,6 +1559,9 @@ private:
     e.ckpt = unsigned(get(u, c.dec_ooe, "checkpoint_id"));
     e.pred_taken = get(u, c.dec_ooe, "pred_taken") != 0;
     e.attr = uint32_t(get(u, c.dec_ooe, "sched_attr"));
+    e.mem_op = unsigned(get(u, c.dec_ooe, "mem_op"));
+    e.space = unsigned(get(u, c.dec_ooe, "space"));
+    e.ordering = unsigned(get(u, c.dec_ooe, "ordering"));
     // Rename, as far as S1 goes: sources and old destinations read the RAT
     // before this instruction's own writes update it (A-64).
     auto g = [&](unsigned a) { return gw_[e.warp][a & 15] ? physReg(e.warp, a) : ccv::prov::kPhysZero; };
@@ -1652,7 +1657,7 @@ private:
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", e.tag);
       put(mo, c.ooe_miu, "warp_id", e.warp);
-      put(mo, c.ooe_miu, "mem_op", attrMemKind(e.attr) == kMemKStore ? kMemStore : kMemLoad);
+      put(mo, c.ooe_miu, "mem_op", e.mem_op);             // DEC's, unexamined (A-68)
       // The issue mask, not the active mask: only RCU holds the predicate
       // values, so only RCU computes active = issue AND guard.
       put(mo, c.ooe_miu, "issue_mask", issue_mask);
@@ -1662,7 +1667,8 @@ private:
       put(mo, c.ooe_miu, "disp",                    // truncated to CCV_W_DISP
           e.imm + (k_.brk == "corrupt-disp" && uidSeq(e.tid) == 6 ? 4u : 0u));
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
-      put(mo, c.ooe_miu, "space", kSpaceGlobal);   // every memory op in the table
+      put(mo, c.ooe_miu, "space", e.space);
+      put(mo, c.ooe_miu, "ordering", e.ordering);
       send(c.ooe_miu, slot, mo, e.tid);
     }
     e.issued = true;
@@ -1797,6 +1803,15 @@ private:
     if (k_.brk == "attr-store-as-load" && op->cls == kStore)
       attr &= ~(3u << 6);
     put(u, c.dec_ooe, "sched_attr", attr);
+    // The memop's fields are DEC's to decode too (A-68); OOE copies them to
+    // MIU unexamined. 0xF is OOE's bulk discard, never DEC's (V-52).
+    if (op->cls == kLoad || op->cls == kStore) {
+      const unsigned mop = op->cls == kStore ? kMemStore : kMemLoad;
+      if (mop == kMemBulkDiscard) k_.fail("dec: mem_op 0xF is OOE's bulk discard");
+      put(u, c.dec_ooe, "mem_op", mop);
+      put(u, c.dec_ooe, "space", kSpaceGlobal);     // every memory op in the table
+      put(u, c.dec_ooe, "ordering", 0);
+    }
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
     // Three source fields: Format A's rs2 is an independent source (mad.lo's
     // and dp4's accumulator input), with rd independent of it.

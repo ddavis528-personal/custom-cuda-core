@@ -65,7 +65,7 @@ preliminary field:
 |---|---|
 | `ccv_cru_rau_cfg` | `kill_grid` |
 | `ccv_dcu_mlc_req` | `coh_op` |
-| `ccv_dec_ooe_uop` | `uop_class`, `opcode` |
+| `ccv_dec_ooe_uop` | `uop_class`, `mem_op`, `space`, `ordering`, `opcode` |
 | `ccv_exb_ext_out` | `tl_out` |
 | `ccv_exb_mlc_rsp` | `probe_type` |
 | `ccv_ext_exb_in` | `tl_in` |

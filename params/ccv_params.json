@@ -786,7 +786,7 @@
       "status": "provisional",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). The field set is the OOE session's; the bit order and codes are the schema owner's, applied for confirmation."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). mem_kind is don't-care unless rs_miu is set. Each further fixed-latency lane unit (SFU and others) takes a spare lat_class code, 4 to 7, once the LANE session sets its latency, with its own generated wake parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
@@ -876,7 +876,7 @@
       "status": "preliminary",
       "churn": "med",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Architectural memory operation: load, store, atomic family, prefetch, fence.",
+      "doc": "Architectural memory operation: load, store, atomic family, prefetch, fence. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.",
       "decided_at": "MIU block session"
     },
     {

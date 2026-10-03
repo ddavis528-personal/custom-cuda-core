@@ -999,6 +999,14 @@ matters for the skeleton:
   refuses a write to a zero register. No S1 kernel reads a register before
   writing it; the merge kernel (below) reaches the zero-register reads, and
   restore is not modelled.
+- **Memop fields from DEC** (A-68). `ccv_dec_ooe_uop` carries `mem_op`,
+  `space` and `ordering` (166 bits); OOE copies them to MIU unexamined, and
+  DEC refuses to emit `mem_op` 0xF, OOE's bulk discard. With the memop's kind
+  now DEC's, `--break attr-store-as-load` corrupts only `sched_attr`: OOE
+  treats the store as a load and never commits it, and all 32 words stay
+  unwritten. Making that control match on both hosts exposed a testbench bug:
+  the SV-hosted end check could run twice a cycle, and the second call saw an
+  idle machine. `ccv_dpi_done` now evaluates once per cycle.
 - **S2's first kernel: merge** (`test/kernels/merge/`). Guarded writes under
   rename, and a launched warp's zero registers: `@P1 add R6` is R6's first
   write, so lanes 16-31 merge from the zero register; `@!P1 add R6` merges

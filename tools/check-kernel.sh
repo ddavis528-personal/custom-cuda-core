@@ -19,8 +19,8 @@
 #   a redirect names FET's own checkpoint     corrupt-ckpt: FET refuses it
 #   no free for a checkpoint a redirect       stale-free: FET refuses a free
 #     restores; the pair lands in send order     for a dead checkpoint (A-58)
-#   OOE schedules on DEC's sched_attr         attr-store-as-load: the store
-#     (A-66), never on opcode                    reaches MIU as a load
+#   OOE schedules on DEC's sched_attr         attr-store-as-load: OOE never
+#     (A-66), never on opcode                    commits the store
 #   branches resolved in RCU, guard negated    drop-negate: RCU's resolution
 #                                                and FET's redirect both wrong
 #   load write-back from MIU's echo            corrupt-echo: C_ADD's lanes see
@@ -207,11 +207,12 @@ else
   bad "--break stale-free" "a free for a restored checkpoint went unnoticed"
 fi
 # OOE decides memory kind from DEC's decoded sched_attr, not from opcode
-# (A-66): attr-store-as-load marks the store a load, OOE sends MIU a load,
-# and MIU's check against ccv-sim's store must fail.
-run attr-store-as-load
-if grep -q "^CHECK miu: seq 15 .*ccv-sim's store" "$B/kernel_attr-store-as-load.log"; then
-  say "--break attr-store-as-load: MIU rejects it" "PASS"
+# (A-66): attr-store-as-load marks the store a load in sched_attr alone.
+# mem_op still says store (A-68), so MIU buffers it, but OOE never sends the
+# commit a store owes at retire, and every word of the result stays unwritten.
+"$SKEL" --kernel "$K" --break attr-store-as-load --cycles 3000 >"$B/kernel_attr-store-as-load.log" 2>&1
+if [ "$(field "$B/kernel_attr-store-as-load.log" mem_mismatch)" = 32 ]; then
+  say "--break attr-store-as-load: the store never lands" "PASS (32 words)"
 else
   bad "--break attr-store-as-load" "OOE ignored sched_attr's memory kind"
 fi
