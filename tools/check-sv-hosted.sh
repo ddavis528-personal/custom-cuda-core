@@ -113,7 +113,8 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             vadd:srd-selector sel:drop-pred-data srd:corrupt-ctaid \
             vadd:late-lead pguard:ignore-mask pguard:conflate-pred \
             vadd:corrupt-ckpt vadd:stale-free vadd:attr-store-as-load:3000 \
-            merge:dirty-zero merge:wrong-merge; do
+            merge:dirty-zero merge:wrong-merge mload:skip-copy \
+            mload:late-copy mload:copy-from-new; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)

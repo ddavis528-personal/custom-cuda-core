@@ -78,7 +78,12 @@ for d in rtl sim tools params schema test docs; do cp -r "$d" "$S/"; done
 cp -r "$B/oracle" "$S/build/"
 cp test/phys/links_split.json "$S/params/links.json"
 cd "$S"
-if ! { PYTHONPATH=tools python3 tools/gen-skel.py && PYTHONPATH=tools python3 tools/gen-top.py; } \
+# Parameters first: the contracted latencies derive from the links
+# (CCV_LAT_LANE from the lane channels' stages), and the stubs hold the
+# lanes to them.
+if ! { python3 tools/gen-params.py --settle && python3 tools/gen-params.py &&
+       PYTHONPATH=tools python3 tools/gen-skel.py &&
+       PYTHONPATH=tools python3 tools/gen-top.py; } \
      >build/gen.log 2>&1; then
   bad "split: generate" "$(tail -2 build/gen.log | xargs)"
   exit 1

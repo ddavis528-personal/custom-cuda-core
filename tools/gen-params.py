@@ -10,6 +10,10 @@ Generate both from one shared definition rather than maintaining two."
 
 Run with --check to fail when the generated files are stale, which is how
 tools/verify.sh keeps the two from drifting between edits.
+
+--settle rewrites derived values from their inputs and saves the source: for
+the scratch tree tools/check-links.sh builds with another links.json, never for
+the design's own file.
 """
 import json
 import os
@@ -366,12 +370,39 @@ def selftest(d):
     return 0
 
 
+def settle(d):
+    """Rewrite every derived value from its inputs, to a fixed point, and save
+    the source. Only for a scratch copy of the tree that runs a different
+    params/links.json (tools/check-links.sh): the design's own file is never
+    settled by a tool, so a floorplan change reaches it as a reviewed diff."""
+    links = link_stages()
+    for _ in range(len(d["params"])):
+        values = {p["name"]: p["value"] for p in d["params"]}
+        changed = []
+        for p in d["params"]:
+            if "derive" in p:
+                want = evaluate(p["derive"], values, links)
+                if want != p["value"]:
+                    changed.append("%s %d -> %d" % (p["name"], p["value"], want))
+                    p["value"] = values[p["name"]] = want
+        if not changed:
+            break
+        for c in changed:
+            print("  settled %s" % c)
+    with open(SRC, "w") as f:
+        json.dump(d, f, indent=2)
+        f.write("\n")
+    return 0
+
+
 def main():
     check = "--check" in sys.argv
     with open(SRC) as f:
         d = json.load(f)
     if "--selftest" in sys.argv:
         return selftest(d)
+    if "--settle" in sys.argv:
+        return settle(d)
 
     names = [p["name"] for p in d["params"]]
     if len(set(names)) != len(names):

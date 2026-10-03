@@ -158,6 +158,12 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_PC_GROUPS` | 4 | **HIGH** | PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified. |
 
+### generated
+
+| Parameter | Value | Churn | Basis |
+|---|---|---|---|
+| `CCV_OP_PRF_COPY` | 511 | low | The copy-only op's opcode on ccv_ooe_rcu_issue and ccv_rcu_lane_ops: the all-ones code, which no ISA opcode takes. A masked load issues it beside the load, with the load's rob_tag and destinations and the old destination as merge_data: a lane returns merge_data on its inactive lanes, RCU writes only those, and no done comes back -- the load keeps one completion, its own (A-38). OOE clears the load's copy-pending at issue + CCV_LAT_LANE, as for any lane op; RCU owes the PRF write within CCV_LAT_LANE of accepting it. |
+
 ## Open questions that no width can close
 
 Each is numbered in [`open-items.md`](open-items.md), the one list of what is undecided.

@@ -72,6 +72,14 @@ struct Kernel {
   ///                  an unwritten register take it (A-64)
   ///   wrong-merge    RCU sends a guarded write's second source as merge_data
   ///                  instead of its old destination (merge kernel; A-44)
+  ///   skip-copy      OOE issues a masked load without its copy-only op, so
+  ///                  the inactive lanes keep the fresh register's stale value
+  ///                  (mload kernel; A-38)
+  ///   late-copy      RCU holds the copy-only op CCV_LAT_LANE cycles before
+  ///                  sending it to the lanes: it lands after the wake OOE
+  ///                  cleared copy-pending on (mload kernel; A-38)
+  ///   copy-from-new  the copy-only op carries the load's new destination as
+  ///                  merge_data instead of its old one (mload kernel; A-33)
   ///   attr-store-as-load  DEC's sched_attr calls each store a load, so OOE
   ///                  sends MIU a load and the store never lands (A-66)
   ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
@@ -84,6 +92,7 @@ struct Kernel {
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
+  std::vector<unsigned> rat0;                      ///< OOE's GPR map for warp 0
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   bool exited = false;
@@ -97,10 +106,9 @@ struct Kernel {
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);
 
-/// Physical register of arch R<idx> / P<idx> for a warp. OOE owns the RAT
-/// and RAU allocates nothing (A-30); the stub does not rename, so each warp
-/// keeps a fixed window and an op's old destination is its new one.
-inline unsigned physReg(unsigned warp, unsigned idx) { return warp * 16 + idx; }
+/// Physical predicate of arch P<idx> for a warp. OOE owns the RATs and RAU
+/// allocates nothing (A-30). GPRs are renamed (Kernel::rat0 is warp 0's map
+/// at the end); predicates are not, so each warp keeps a fixed window.
 inline unsigned physPred(unsigned warp, unsigned idx) { return warp * 4 + idx; }
 
 struct KernelReport {

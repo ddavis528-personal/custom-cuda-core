@@ -226,8 +226,15 @@ constexpr OpInfo kOps[] = {
   {"SEL",           kAlu,       2, true,  true,  false, false, true,  -1, -1, -1, -1, -1, -1, -1},
   // srd #1 (%ctaid): the immediate is the value; the lane passes it through.
   {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 1, false},
+  // A guarded load (Format Dp): MIU writes the active lanes, and the inactive
+  // ones keep their old value through a copy-only op (A-33, A-38).
+  {"LD_GLOBAL_P",   kLoad,      1, true,  true,  false, true,  false,  0, -1, -1,  0, -1, -1, -1},
 };
+/// The copy-only op (A-38): the all-ones opcode, outside the table.
+constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
+
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
+static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
 unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
 const OpInfo *opByName(const std::string &n) {
   for (const OpInfo &o : kOps) if (n == o.name) return &o;
@@ -1030,7 +1037,9 @@ private:
         // result -- modelled as poison on its outputs, so a receiver that
         // wrote back a masked-off lane would be caught by the final compare.
         const bool on = get(m.payload, c.rcu_lane, "pred_bit") != 0;
-        if (const Record *rc = rec(m.tid, "lane")) {
+        if (get(m.payload, c.rcu_lane, "opcode") == kOpCopy) {
+          copy(m, r, on);
+        } else if (const Record *rc = rec(m.tid, "lane")) {
           const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
           if (op && inRcu(op->cls))
             k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
@@ -1125,6 +1134,38 @@ private:
       }
   }
   bool busy() const override { return !q_.empty(); }
+
+  /// The copy-only op (A-38): no compute. An inactive lane returns
+  /// merge_data, the masked load's old destination, which is what ccv-sim
+  /// says the lane keeps; an enabled lane's result is don't-care, driven as
+  /// poison, since RCU writes only the inactive lanes.
+  void copy(const Receiver::Msg &m, Bits &r, bool on) {
+    const Ch &c = ch();
+    const Record *rc = rec(m.tid, "lane");
+    if (!rc) return;
+    const OpInfo *op = opByName(rc->op);
+    if (!op || op->cls != kLoad) {
+      k_.fail("lane %u: a copy-only op for seq %llu, which is not a load", lane_,
+              (unsigned long long)rc->seq);
+      return;
+    }
+    bool want = (rc->mask >> lane_) & 1u;
+    if (op->guard)
+      if (const RegVal *p = rc->predUse()) {
+        const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
+        want = want && ((((p->p >> lane_) & 1u) != 0) != neg);
+      }
+    if (on != want)
+      k_.fail("lane %u: seq %llu's copy has pred_bit %u, not the load's enable", lane_,
+              (unsigned long long)rc->seq, unsigned(on));
+    const uint32_t md = uint32_t(get(m.payload, c.rcu_lane, "merge_data"));
+    if (!on)
+      if (const RegVal *d = rc->gprDef())
+        if (md != d->v[lane_])
+          k_.fail("lane %u: seq %llu's copy carries %08x, but R%u keeps %08x", lane_,
+                  (unsigned long long)rc->seq, md, d->idx, d->v[lane_]);
+    put(r, c.lane_rcu, "result", on ? 0xbad0c0deu ^ lane_ : md);
+  }
 };
 
 // ---- RCU: the register file ----------------------------------------------------------
@@ -1132,7 +1173,13 @@ private:
 class Rcu : public Stub {
 public:
   Rcu(int inst, Kernel &k) : Stub(inst, k) {
+    // A register file comes up holding garbage: each physical GPR a distinct
+    // pattern, so a read of one nothing wrote -- a missed merge or copy, a
+    // rename that skipped the zero register -- cannot pass by reading zero.
+    // The zero registers read zero (A-64).
     k.gpr.assign(256, {});
+    for (unsigned p = 0; p != ccv::prov::kPhysRegs; ++p)
+      for (unsigned l = 0; l != kLanes; ++l) k.gpr[p][l] = 0xdead0000u | p << 5 | l;
     k.pred.assign(256, 0);
   }
   const char *kind() const override { return "rcu"; }
@@ -1142,10 +1189,14 @@ private:
     unsigned tag; const OpInfo *op; unsigned pdst, ppred; bool pwe;
     uint32_t active; uint64_t tid;
     bool merge; unsigned ppold;   ///< predicate merge source (A-43)
+    bool copy = false;            ///< the copy-only op (A-38): op is null
+    uint64_t accepted = 0;        ///< the cycle RCU took the issue
   };
+  /// One op's 32 lane messages, held until every lane has a credit.
+  struct LaneOp { std::vector<Bits> lanes; uint64_t tid, not_before = 0; };
 
   std::array<std::deque<Alu>, 4> alu_;            ///< per issue slot: bound lanes
-  std::array<std::deque<std::pair<std::vector<Bits>, uint64_t>>, 4> lane_q_;
+  std::array<std::deque<LaneOp>, 4> lane_q_;
   std::deque<Q> to_ooe_, to_miu_;
 
   Bits done(unsigned tag) {
@@ -1169,6 +1220,7 @@ private:
       if (alu_[s].empty()) { k_.fail("rcu: lane results on slot %u for nothing", s); continue; }
       const Alu a = alu_[s].front();
       alu_[s].pop_front();
+      if (a.copy) { landCopy(a, s); continue; }
       uint32_t po_mask = 0;
       for (unsigned l = 0; l != kLanes; ++l) {
         Receiver::Msg m = take(c.lane_rcu, s, l);
@@ -1213,12 +1265,12 @@ private:
       }
 
     for (unsigned s = 0; s != rate; ++s) {
-      if (lane_q_[s].empty()) continue;
+      if (lane_q_[s].empty() || lane_q_[s].front().not_before > now_) continue;
       bool all = true;
       for (unsigned l = 0; l != kLanes; ++l) all = all && can(c.rcu_lane, s, l);
       if (!all) continue;     // lockstep: every lane or none
       for (unsigned l = 0; l != kLanes; ++l)
-        send(c.rcu_lane, s, lane_q_[s].front().first[l], lane_q_[s].front().second, l);
+        send(c.rcu_lane, s, lane_q_[s].front().lanes[l], lane_q_[s].front().tid, l);
       lane_q_[s].pop_front();
     }
     for (auto *q : {&to_ooe_, &to_miu_}) {
@@ -1239,6 +1291,7 @@ private:
       k_.pred[ccv::prov::kPredZero] = 0xa5a5a5a5u;
     }
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
+    if (get(m.payload, c.ooe_rcu, "opcode") == kOpCopy) { issueCopy(s, m); return; }
     const OpInfo *op = opByCode(unsigned(get(m.payload, c.ooe_rcu, "opcode")));
     if (!op) { k_.fail("rcu: unknown opcode"); return; }
     const unsigned ps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
@@ -1378,6 +1431,61 @@ private:
     alu_[s].push_back({tag, op, pd, ppd, pwe, active, m.tid, merge, ppold});
   }
 
+  /// The copy-only op of a masked load (A-33, A-38): the old destination
+  /// through a lane, as merge_data, written back on the inactive lanes only.
+  /// It takes the load's rob_tag and produces no done. RCU computes the
+  /// active lanes as for any op -- issue mask AND guard -- so the copy and
+  /// MIU's write-back, gated by the same mask, split the lanes between them.
+  void issueCopy(unsigned s, const Receiver::Msg &m) {
+    const Ch &c = ch();
+    const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
+    const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
+    const unsigned pold = unsigned(get(m.payload, c.ooe_rcu, "phys_old_dst"));
+    const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard"));
+    if (!get(m.payload, c.ooe_rcu, "merge_en"))
+      k_.fail("rcu: a copy-only op without merge_en has nothing to copy");
+    if (get(m.payload, c.ooe_rcu, "pred_we"))   // cas's predicate: not in S1
+      k_.fail("rcu: a copy-only op with a predicate destination is not modelled");
+    if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a copy-only op writes the zero register");
+    const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
+    const uint32_t guard = get(m.payload, c.ooe_rcu, "pred_neg") ? ~k_.pred[pp] : k_.pred[pp];
+    const uint32_t active = issue & guard;
+    std::vector<Bits> lanes;
+    for (unsigned l = 0; l != kLanes; ++l) {
+      Bits o = msgOf(c.rcu_lane);
+      put(o, c.rcu_lane, "opcode", kOpCopy);
+      put(o, c.rcu_lane, "pred_bit", (active >> l) & 1u);
+      put(o, c.rcu_lane, "section_en", 1);
+      // copy-from-new: the copy reads the load's fresh destination, not its
+      // old one -- a copy onto itself, which keeps nothing.
+      put(o, c.rcu_lane, "merge_data", k_.gpr[k_.brk == "copy-from-new" ? pd : pold][l]);
+      lanes.push_back(o);
+    }
+    // late-copy: the copy waits CCV_LAT_LANE cycles before leaving for the
+    // lanes, so it lands after the contract OOE wakes the load's readers on.
+    lane_q_[s].push_back({lanes, m.tid, k_.brk == "late-copy" ? now_ + ccv::prov::kLatLane : 0});
+    Alu a{tag, nullptr, pd, 0, false, active, m.tid, true, 0};
+    a.copy = true;
+    a.accepted = now_;
+    alu_[s].push_back(a);
+  }
+
+  /// The copy's lane results: inactive lanes only, within CCV_LAT_LANE of
+  /// acceptance -- the contract OOE clears the load's copy-pending on.
+  void landCopy(const Alu &a, unsigned s) {
+    const Ch &c = ch();
+    for (unsigned l = 0; l != kLanes; ++l) {
+      Receiver::Msg m = take(c.lane_rcu, s, l);
+      if (m.tid != a.tid) k_.fail("rcu: lane %u slot %u answered for another instruction", l, s);
+      if (!((a.active >> l) & 1u))
+        k_.gpr[a.pdst][l] = uint32_t(get(m.payload, c.lane_rcu, "result"));
+    }
+    if (now_ - a.accepted > ccv::prov::kLatLane)
+      k_.fail("rcu: seq %llu's copy reached the PRF %llu cycles after RCU took it; "
+              "CCV_LAT_LANE is %u", (unsigned long long)uidSeq(a.tid),
+              (unsigned long long)(now_ - a.accepted), ccv::prov::kLatLane);
+  }
+
   bool busy() const override {
     for (unsigned s = 0; s != 4; ++s)
       if (!alu_[s].empty() || !lane_q_[s].empty()) return true;
@@ -1389,7 +1497,11 @@ private:
 
 class Ooe : public Stub {
 public:
-  using Stub::Stub;
+  Ooe(int inst, Kernel &k) : Stub(inst, k) {
+    for (auto &w : rat_) w.fill(ccv::prov::kPhysZero);
+    for (unsigned p = 0; p != ccv::prov::kPhysRegs; ++p) free_.push_back(p);
+    k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+  }
   const char *kind() const override { return "ooe"; }
 
 private:
@@ -1408,10 +1520,15 @@ private:
     unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
     // Physical names, read from the RAT at dispatch: a register no older
     // instruction of the warp has written is still the zero register (A-64).
-    unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0;
+    unsigned psrc[3] = {}, pold = 0, pnew = 0, ppguard = 0, ppold = 0;
     bool issued = false, rcu = false, miu = false, committed = false;
+    // A masked load's copy-only op (A-38) sends no done: OOE clears this at
+    // the copy's contracted wake, issue + CCV_LAT_LANE, as for a lane op.
+    bool copy_pending = false;
+    uint64_t copy_wake = 0;
     bool complete() const {
-      return op->cls == kExit ? issued : issued && rcu && (!attrMem(attr) || miu);
+      return op->cls == kExit ? issued
+                              : issued && rcu && (!attrMem(attr) || miu) && !copy_pending;
     }
   };
   std::deque<E> rob_;
@@ -1420,10 +1537,19 @@ private:
   // tier-1 slot RAU placed each warp in (A-65).
   uint32_t ctaid_[32] = {}, warp_in_cta_[32] = {};
   unsigned slot_[32] = {};
-  // The RAT, as far as S1 needs one: physical names are fixed per warp, so
-  // all it records is whether an architectural register has been written
-  // since launch -- if not, it is still the zero register (A-64).
-  bool gw_[32][16] = {}, pw_[32][4] = {};
+  // The GPR RAT: every write takes a fresh physical register from the free
+  // list, and the one it replaces goes back when the writer retires -- no
+  // older instruction can still read it then, and every younger one reads
+  // the new name. A register no instruction of the warp has written maps to
+  // the zero register (A-64). The free list is FIFO, so a freed register
+  // comes back with a stale value; that is what makes a merge or a masked
+  // load's copy that read the wrong source visible.
+  //
+  // Predicates are not renamed: each warp keeps a fixed window, and pw_
+  // records only whether one has been written since launch (A-64).
+  std::array<std::array<unsigned, 16>, 32> rat_;
+  std::deque<unsigned> free_;
+  bool pw_[32][4] = {};
   static constexpr unsigned kRob = 128;
 
   void work() override {
@@ -1439,16 +1565,23 @@ private:
         // Launch (A-64): every architectural register maps to the zero
         // registers until written. No zeroing traffic, and nothing stale
         // from another context can be read.
-        for (bool &b : gw_[w]) b = false;
+        for (unsigned &p : rat_[w]) {
+          if (p != ccv::prov::kPhysZero) free_.push_back(p);
+          p = ccv::prov::kPhysZero;
+        }
         for (bool &b : pw_[w]) b = false;
+        if (w == 0) k_.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
       } else if (op != kAllocFree) {
         k_.fail("ooe: restore (alloc_op %u) is not modelled in S1", op);
       }
     }
     // Uops: oldest first by (arrival, slot) -- all landed this cycle, so slot
     // order is age order; the key (warp_id) keeps each warp's own order.
+    // A uop waits in the channel -- its credit unreturned -- while the ROB
+    // is full or no physical register is free: rename stalls, never drops.
     for (unsigned s = 0; s != kChans[c.dec_ooe].rate; ++s)
-      while (has(c.dec_ooe, s)) dispatch(take(c.dec_ooe, s));
+      while (has(c.dec_ooe, s) && rob_.size() != kRob && !free_.empty())
+        dispatch(take(c.dec_ooe, s));
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {
         Receiver::Msg m = take(c.rcu_ooe, s);
@@ -1481,6 +1614,8 @@ private:
         if (E *e = byTag(unsigned(get(m.payload, c.miu_ooe, "rob_tag")))) e->miu = true;
         else k_.fail("ooe: completion for a tag not in the ROB");
       }
+    for (E &e : rob_)
+      if (e.copy_pending && now_ >= e.copy_wake) e.copy_pending = false;
     issueOne();
     retireOne();
     if (!redirects_.empty() && can(c.ooe_fet, 0)) {
@@ -1543,7 +1678,6 @@ private:
       k_.fail("ooe: a uop it cannot execute");
       return;
     }
-    if (rob_.size() == kRob) k_.fail("ooe: ROB overflow");
     const unsigned sa = unsigned(get(u, c.dec_ooe, "src_arch"));
     e.src[0] = (sa >> 4) & 15;
     e.src[1] = sa & 15;
@@ -1562,15 +1696,19 @@ private:
     e.mem_op = unsigned(get(u, c.dec_ooe, "mem_op"));
     e.space = unsigned(get(u, c.dec_ooe, "space"));
     e.ordering = unsigned(get(u, c.dec_ooe, "ordering"));
-    // Rename, as far as S1 goes: sources and old destinations read the RAT
-    // before this instruction's own writes update it (A-64).
-    auto g = [&](unsigned a) { return gw_[e.warp][a & 15] ? physReg(e.warp, a) : ccv::prov::kPhysZero; };
+    // Rename: sources and old destinations read the RAT before this
+    // instruction's own writes update it (A-64).
     auto q = [&](unsigned a) { return pw_[e.warp][a & 3] ? physPred(e.warp, a) : ccv::prov::kPredZero; };
-    for (unsigned i = 0; i != 3; ++i) e.psrc[i] = g(e.src[i]);
-    e.pold = g(e.dst);
+    for (unsigned i = 0; i != 3; ++i) e.psrc[i] = rat_[e.warp][e.src[i] & 15];
+    e.pold = rat_[e.warp][e.dst & 15];
     e.ppguard = q(e.pguard);
     e.ppold = q(e.pdst);
-    if (e.op->gdst) gw_[e.warp][e.dst & 15] = true;
+    if (e.op->gdst) {
+      e.pnew = free_.front();
+      free_.pop_front();
+      rat_[e.warp][e.dst & 15] = e.pnew;
+      if (e.warp == 0) k_.rat0[e.dst & 15] = e.pnew;   // the final compare's map
+    }
     if (e.pwe) pw_[e.warp][e.pdst & 3] = true;
     e.tag = next_tag_;
     next_tag_ = (next_tag_ + 1) % kRob;
@@ -1613,14 +1751,24 @@ private:
     }
     if (e.op->cls == kExit) { e.issued = true; return; }
     const unsigned slot = e.tag % kChans[c.ooe_rcu].rate;
-    if (!can(c.ooe_rcu, slot) || (mem && !can(c.ooe_miu, slot))) return;
-    auto preg = [&](unsigned a) { return physReg(e.warp, a); };   // destinations
+    // Merge (A-33): some lane may keep its old value -- the issue mask is
+    // not full, or a guard may switch lanes off -- so the old destination is
+    // a fourth source: the RAT's old mapping, the zero register if unwritten.
+    const uint32_t issue_mask = 0xffffffffu;   // vadd-era kernels never diverge
+    const bool merge = issue_mask != 0xffffffffu || e.op->guard;
+    // A masked load owes a copy-only op beside it (A-33, A-38): MIU writes
+    // only its active lanes, so the inactive ones are copied from the old
+    // destination through a lane, on a second issue slot the same cycle.
+    const bool copy = merge && mem && attrMemKind(e.attr) == kMemKLoad;
+    const unsigned cslot = (slot + 1) % kChans[c.ooe_rcu].rate;
+    if (!can(c.ooe_rcu, slot) || (mem && !can(c.ooe_miu, slot)) ||
+        (copy && !can(c.ooe_rcu, cslot)))
+      return;
     Bits is = msgOf(c.ooe_rcu);
     put(is, c.ooe_rcu, "rob_tag", e.tag);
     put(is, c.ooe_rcu, "warp_id", e.warp);
     // The issue group's lanes. OOE chose the PC group, so this is its to
-    // send; vadd never diverges, so it is all 32 (lanes check the oracle).
-    const uint32_t issue_mask = 0xffffffffu;
+    // send; no S1 kernel diverges, so it is all 32 (lanes check the oracle).
     put(is, c.ooe_rcu, "issue_mask", issue_mask);
     put(is, c.ooe_rcu, "phys_src", (e.psrc[0] << 8) | e.psrc[1]);
     put(is, c.ooe_rcu, "phys_src2", e.psrc[2]);
@@ -1631,28 +1779,35 @@ private:
     if (e.op->srd_sel >= 0)
       imm = e.op->or_lane ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
     if (!mem) put(is, c.ooe_rcu, "imm", imm);
-    put(is, c.ooe_rcu, "phys_dst", preg(e.dst));
+    put(is, c.ooe_rcu, "phys_dst", e.op->gdst ? e.pnew : 0);
     put(is, c.ooe_rcu, "phys_pred_guard", e.ppguard);
     put(is, c.ooe_rcu, "phys_pred_dst", physPred(e.warp, e.pdst));
     put(is, c.ooe_rcu, "pred_we", e.pwe);
-    // Merge (A-33): some lane may keep its old value -- the issue mask is
-    // not full, or a guard may switch lanes off -- so the old destination is
-    // a fourth source: the RAT's old mapping, the zero register if unwritten.
-    const bool merge = issue_mask != 0xffffffffu || e.op->guard;
     put(is, c.ooe_rcu, "merge_en", merge);
     put(is, c.ooe_rcu, "phys_old_dst", merge ? e.pold : 0);
     put(is, c.ooe_rcu, "phys_pred_old_dst", merge ? e.ppold : 0);
-    // A masked load also owes a copy-only op (CCV_OP_PRF_COPY, A-33/A-38).
-    // No S1 kernel has one; fail loudly rather than carry an untested path.
-    if (merge && mem && attrMemKind(e.attr) == kMemKLoad)
-      k_.fail("ooe: a masked load needs the copy-only op, which the S1 stubs "
-              "do not model");
     // corrupt-ckpt and stale-free ride drop-negate's forced mispredict: each
     // needs a redirect.
     put(is, c.ooe_rcu, "pred_neg", e.pneg && k_.brk != "drop-negate" &&
                                    k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
     send(c.ooe_rcu, slot, is, e.tid);
+    if (copy) {
+      // The same issue as the load's -- tag, destination, old destination,
+      // guard -- under CCV_OP_PRF_COPY. An unguarded load masked only by
+      // its issue mask would name the zero predicate negated: all ones.
+      Bits cp = is;
+      put(cp, c.ooe_rcu, "opcode", kOpCopy);
+      if (!e.op->guard) {
+        put(cp, c.ooe_rcu, "phys_pred_guard", ccv::prov::kPredZero);
+        put(cp, c.ooe_rcu, "pred_neg", 1);
+      }
+      // skip-copy: OOE issues the load alone, so the inactive lanes keep
+      // whatever the fresh register held.
+      if (k_.brk != "skip-copy") send(c.ooe_rcu, cslot, cp, e.tid);
+      e.copy_pending = true;
+      e.copy_wake = now_ + ccv::prov::kLatLane;
+    }
     if (mem) {
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", e.tag);
@@ -1662,7 +1817,7 @@ private:
       // values, so only RCU computes active = issue AND guard.
       put(mo, c.ooe_miu, "issue_mask", issue_mask);
       // Write-back destinations, for MIU to echo: RCU keeps no load table.
-      put(mo, c.ooe_miu, "phys_dst", preg(e.dst));
+      put(mo, c.ooe_miu, "phys_dst", e.pnew);
       put(mo, c.ooe_miu, "phys_pred", physPred(e.warp, e.pdst));
       put(mo, c.ooe_miu, "disp",                    // truncated to CCV_W_DISP
           e.imm + (k_.brk == "corrupt-disp" && uidSeq(e.tid) == 6 ? 4u : 0u));
@@ -1694,6 +1849,7 @@ private:
     ++k_.retired;
     k_.retire_order.push_back(uidSeq(e.tid));
     if (e.op->cls == kExit) k_.exited = true;
+    if (e.op->gdst && e.pold != ccv::prov::kPhysZero) free_.push_back(e.pold);
     rob_.pop_front();
   }
 
@@ -2154,10 +2310,10 @@ KernelReport compareFinal(Kernel &k) {
   const Oracle &o = k.orc;
   for (unsigned a = 0; a != kArchGprs; ++a)
     for (unsigned l = 0; l != kLanes; ++l)
-      if (k.gpr[physReg(0, a)][l] != o.final_gpr[a][l]) {
+      if (k.gpr[k.rat0[a]][l] != o.final_gpr[a][l]) {
         if (r.gpr_mismatch++ < 4)
           std::fprintf(stderr, "FINAL R%u lane %u: machine %08x, ccv-sim %08x\n",
-                       a, l, k.gpr[physReg(0, a)][l], o.final_gpr[a][l]);
+                       a, l, k.gpr[k.rat0[a]][l], o.final_gpr[a][l]);
       }
   for (unsigned p = 0; p != kArchPreds; ++p)
     if (k.pred[physPred(0, p)] != o.final_pred[p]) {

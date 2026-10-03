@@ -1015,8 +1015,36 @@ matters for the skeleton:
   ccv-sim's. `--break dirty-zero` (the zero registers read as garbage) fails
   every one of those paths, 64 lane checks and P2, and `--break wrong-merge`
   (RCU sends the second source as `merge_data`) is refused at every inactive
-  lane. Both run on the SV-hosted top too, 20 controls in all. Masked loads
-  stay out until the copy-only op is modelled.
+  lane. Both run on the SV-hosted top too.
+- **GPR renaming in the OOE stub.** A RAT per warp and a FIFO free list of
+  the 192 physical GPRs: every write takes a fresh register, and the one it
+  replaces is freed when the writer retires. A launched warp maps all 16 to
+  the zero register (A-64). RCU's file comes up holding a distinct garbage
+  pattern per register, so a missed merge or copy cannot pass by reading
+  zero. The final-state compare reads through OOE's map. Predicates stay
+  unrenamed, a fixed window per warp. No S1 kernel squashes anything (FET
+  fetches no wrong path), so the RAT has no recovery yet.
+- **The copy-only op** (A-33, A-38; `test/kernels/mload/`). A masked load
+  writes its fresh destination's active lanes from MIU; OOE issues a second
+  op beside it, on the next issue slot the same cycle, with opcode
+  `CCV_OP_PRF_COPY` (0x1FF, a generated parameter: the all-ones opcode), the
+  load's tag and destination, and the old destination as `merge_data`. RCU
+  computes the active lanes as for any op and sends it to the lanes. An
+  inactive lane returns `merge_data`, checked against ccv-sim's post-state,
+  and RCU writes only the inactive lanes and sends no done. OOE clears the
+  load's copy-pending at issue + `CCV_LAT_LANE`, as for any lane op, and RCU
+  checks it met that contract: the PRF write within `CCV_LAT_LANE` of
+  accepting the copy. The stubs land it in 4. mload's first guarded load
+  keeps lanes 16-31 of R5 at `100 + tid`, its second keeps lanes 0-15 of the
+  unwritten R8 at zero, and C_ADD reads every lane of R5. Controls:
+  `--break skip-copy` (garbage on the inactive lanes, at C_ADD's lanes and in
+  the final R8), `copy-from-new` (the copy reads the fresh register: refused
+  at all 32 copied lanes) and `late-copy` (held `CCV_LAT_LANE` cycles: RCU's
+  contract check fires for both copies; the stubs' slow load completion
+  hides it from the reader, which a real OOE would not). The mload oracle
+  needed a ccv-sim fix: `-oracle` counted a guarded load's accesses against
+  the issue mask, not the active lanes (compiler snapshot 41e32c5). 23
+  controls run on both hosts.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a
@@ -1039,12 +1067,12 @@ decisions.
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its architectural offset, in halfwords from the next instruction, with the length code in `ilen` beside it; OOE computes `pc + bytes(ilen) + 2·imm` (arch open A-8). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
-| `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. OOE maps `16·warp + arch` (no renaming yet; RAU allocates nothing, A-30) |
-| `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; without renaming the old destinations are the new ones. A masked load would also owe a copy-only op (opcode `0x1FF`); no S1 kernel has one, and OOE fails loudly if one appears |
+| `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Names from OOE's RAT: a FIFO free list over the 192-register pool, the zero register for anything unwritten (RAU allocates nothing, A-30) |
+| `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) rides the next issue slot in the same cycle, with the load's issue fields; an unguarded one masked only by its issue mask would name the zero predicate, negated |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
 | `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | `4·warp + index` (predicates not renamed); RCU writes the destination only when `pred_we`, merging by read-modify-write from `phys_pred_old_dst`: active lanes from the lanes' `pred_out`, the rest kept (A-43) |
-| `rcu_lane_ops.merge_data`, `lane_rcu_res.result` | the old destination's value per lane; an inactive lane returns it as its result, and checks it against the oracle's post-state, which for an inactive lane is the old value. RCU then writes every lane (per-lane write enables all on, A-44) |
+| `rcu_lane_ops.merge_data`, `lane_rcu_res.result` | the old destination's value per lane; an inactive lane returns it as its result, and checks it against the oracle's post-state, which for an inactive lane is the old value. RCU then writes every lane (per-lane write enables all on, A-44); for the copy-only op, only the inactive lanes, and an enabled lane's result is poison |
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
 | `lane_rcu_res.result`, `pred_out` | the GPR value; the predicate result in `pred_out` |
 | `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable. Both, and `section_en`, are lead fields: on the wire with valid, a cycle ahead of `operand` |

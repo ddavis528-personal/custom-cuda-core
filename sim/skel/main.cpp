@@ -57,6 +57,12 @@
 //   dirty-zero     the zero registers read as garbage (merge kernel; A-64)
 //   wrong-merge    RCU sends the second source as merge_data, not the old
 //                  destination (merge kernel; A-33, A-44)
+//   skip-copy      OOE issues a masked load without its copy-only op (mload
+//                  kernel; A-38)
+//   late-copy      RCU holds the copy-only op CCV_LAT_LANE cycles before the
+//                  lanes, so it lands past its contract (mload; A-38)
+//   copy-from-new  the copy-only op reads the load's new destination, not its
+//                  old one (mload; A-33)
 //   drop-pred-data RCU sends no pred_data: sel's selector reads as 0
 //   corrupt-echo   MIU echoes the wrong phys_dst for one load
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
@@ -198,7 +204,8 @@ int main(int argc, char **argv) {
                       brk == "drop-negate" || brk == "drop-pred-data" ||
                       brk == "corrupt-ckpt" || brk == "stale-free" ||
                       brk == "attr-store-as-load" || brk == "dirty-zero" ||
-                      brk == "wrong-merge" ||
+                      brk == "wrong-merge" || brk == "skip-copy" ||
+                      brk == "late-copy" || brk == "copy-from-new" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" ||

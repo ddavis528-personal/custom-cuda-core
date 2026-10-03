@@ -47,7 +47,7 @@ so this is a build artifact rather than something to remember.
 | `rtl/top/stubs/ccv_rcu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
-| `sim/skel/kernel.cpp` | — | — |
+| `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE` |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
@@ -112,3 +112,4 @@ to code that merely carries it, which will not.
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | MMU session, with the page-table format |
 | `CCV_L_W_SPACE` | 3 | low | OOE/MIU session |
 | `CCV_L_W_SPM_OP` | 2 | low | SPM block session |
+| `CCV_OP_PRF_COPY` | 511 | low | generated |

@@ -871,6 +871,16 @@
       "decided_at": "ISA opcode census, then DEC/OOE/RCU agree the hops"
     },
     {
+      "name": "CCV_OP_PRF_COPY",
+      "value": 511,
+      "status": "preliminary",
+      "churn": "low",
+      "decided_at": "generated",
+      "source": "OOE session, A-33/A-38; core skeleton models it (2026-10-03)",
+      "derive": "2 ** CCV_L_W_OPCODE - 1",
+      "doc": "The copy-only op's opcode on ccv_ooe_rcu_issue and ccv_rcu_lane_ops: the all-ones code, which no ISA opcode takes. A masked load issues it beside the load, with the load's rob_tag and destinations and the old destination as merge_data: a lane returns merge_data on its inactive lanes, RCU writes only those, and no done comes back -- the load keeps one completion, its own (A-38). OOE clears the load's copy-pending at issue + CCV_LAT_LANE, as for any lane op; RCU owes the PRF write within CCV_LAT_LANE of accepting it."
+    },
+    {
       "name": "CCV_L_W_MEM_OP",
       "value": 4,
       "status": "preliminary",

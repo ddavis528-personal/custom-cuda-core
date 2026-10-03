@@ -42,6 +42,12 @@
 #     from its old destination (A-33, A-44)      refuse the wrong source
 #   a launched warp reads the zero registers  dirty-zero (merge): every path
 #     (A-64)                                     that reads one fails
+#   a masked load's inactive lanes keep their skip-copy (mload): the lanes see
+#     old value, by a copy-only op (A-38)        the fresh register's garbage
+#                                              copy-from-new (mload): the lanes
+#                                                refuse the copy's source
+#   the copy lands within CCV_LAT_LANE of     late-copy (mload): RCU's
+#     RCU taking it (A-38)                       contract check fires
 #   0 bank violations                          (S0's controls, tools/check-skel.sh)
 #   EV_CH_XFER == every launch                 (exact multiset: one flipped bit
 #                                                or identity fails it)
@@ -383,6 +389,53 @@ if grep -q "^CHECK lane 16: seq 4 merge_data 00000010, but R6 keeps 00000000" "$
   say "--break wrong-merge: the lanes refuse it" "PASS"
 else
   bad "--break wrong-merge" "a wrong merge source went unnoticed: $(grep '^KERNEL' "$B/kernel_wrong-merge.log")"
+fi
+
+# mload: masked loads under rename (A-33, A-38). MIU writes a load's active
+# lanes; its inactive ones are copied from the old destination by the
+# copy-only op OOE issues beside it, through a lane, written back on the
+# inactive lanes only. Lanes 16-31 keep R5 = 100 + tid across the first load;
+# lanes 0-15 keep R8 = 0, from the zero register, across the second.
+L=build/oracle/mload/oracle.jsonl
+"$SKEL" --kernel "$L" >"$B/kernel_mload.log" 2>&1
+ok=1
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+  [ "$(field "$B/kernel_mload.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
+done
+if [ $ok = 1 ]; then
+  say "mload: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_mload.log" cycles) cycles)"
+else
+  bad "mload: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_mload.log")"
+fi
+# No copy: the fresh registers keep their power-on garbage on the inactive
+# lanes. C_ADD reads R5's 16 of them, and R8 ends wrong on its 16.
+"$SKEL" --kernel "$L" --break skip-copy >"$B/kernel_skip-copy.log" 2>&1
+if grep -q "^CHECK lane 16: seq 9 operand 0 (R5) dead...., oracle 00000074" "$B/kernel_skip-copy.log" &&
+   [ "$(field "$B/kernel_skip-copy.log" check_failures)" = 16 ] &&
+   [ "$(field "$B/kernel_skip-copy.log" gpr_mismatch)" = 16 ]; then
+  say "--break skip-copy: inactive lanes keep garbage" "PASS (R5 read, R8 final)"
+else
+  bad "--break skip-copy" "a masked load without its copy went unnoticed: $(grep '^KERNEL' "$B/kernel_skip-copy.log")"
+fi
+# The copy from the load's own fresh register: each lane it carries refuses
+# it -- 16 inactive lanes per copy, two copies -- and C_ADD reads R5's 16.
+"$SKEL" --kernel "$L" --break copy-from-new >"$B/kernel_copy-from-new.log" 2>&1
+if grep -q "^CHECK lane 16: seq 7's copy carries dead...., but R5 keeps 00000074" "$B/kernel_copy-from-new.log" &&
+   [ "$(field "$B/kernel_copy-from-new.log" check_failures)" = 48 ] &&
+   [ "$(field "$B/kernel_copy-from-new.log" gpr_mismatch)" = 16 ]; then
+  say "--break copy-from-new: the lanes refuse it" "PASS (32 copied lanes, 16 reads)"
+else
+  bad "--break copy-from-new" "a copy from the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_copy-from-new.log")"
+fi
+# The copy held past its contract: the stubs' load completion is slow enough
+# to hide it from the reader, so RCU's own check is what must fire, once per
+# copy. A real OOE wakes the reader on the contract, not on the completion.
+"$SKEL" --kernel "$L" --break late-copy >"$B/kernel_late-copy.log" 2>&1
+if [ "$(grep -c "^CHECK rcu: seq [78]'s copy reached the PRF [0-9]* cycles after RCU took it" "$B/kernel_late-copy.log")" = 2 ] &&
+   [ "$(field "$B/kernel_late-copy.log" check_failures)" = 2 ]; then
+  say "--break late-copy: RCU's contract check fires" "PASS (both copies)"
+else
+  bad "--break late-copy" "a copy past CCV_LAT_LANE went unnoticed: $(grep '^KERNEL' "$B/kernel_late-copy.log")"
 fi
 
 exit $fail
