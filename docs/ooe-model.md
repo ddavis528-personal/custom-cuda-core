@@ -51,7 +51,10 @@ selected in t+2. Inside a cycle:
 ## Decisions the design doc leaves open
 
 Each of these is a model decision, the RTL follows it, and each is
-arbitration policy for Q-4 where it chooses between requesters.
+arbitration policy for Q-4 where it chooses between requesters. Where a
+costlier choice would perform better, it is an entry in
+[`perf-register.md`](perf-register.md). Decision 6's in-flight kill, for
+example, is PF-1.
 
 1. **Select order.** Bulk discards take memop slots first. Then the MIU class
    goes, then the RCU class, from the four issue slots of
@@ -103,6 +106,54 @@ arbitration policy for Q-4 where it chooses between requesters.
     `test/phys/links_split.json`, whose failure found it. `CCV_LAT_L1_WAKE`
     already makes this correction for a hit; the miss path needs the same.
 
+## Bypass groups
+
+A dependant's wake time belongs to the producer and consumer pair, not to the
+producer alone. A-62 already said so for two cases (bypass or not). Physical
+distance makes it general: an SFU far from the ALUs, an RCU-only result such
+as `movi`'s, a unit with its own short loop. So the scheduler takes a table:
+
+- **Producer unit**: its `lat_class` from `sched_attr` (A-66). That is 0 for
+  RCU, 1 for the lane ALUs, and 4 to 7 for the spare codes a further unit
+  takes (`Config::unit_lat`, its full latency).
+- **Consumer group**: its own `lat_class` when it executes in RCU or a lane,
+  or the memop group (8), because RCU sends a memop's address and data to
+  MIU.
+- **`byp[unit][group]`**: how many cycles after the producer issues a
+  consumer of that group may issue on its result. A value of 0, or anything
+  at or over the producer's latency, means no bypass: the consumer waits for
+  the full latency, when the value is in the register file. Elaboration
+  refuses an entry at or over the producer's latency.
+
+Lane ALU to lane ALU defaults to `CCV_LAT_LANE_BYP` (A-59). Every other pair
+has no bypass until the LANE and RCU sessions name one. A predicate use is
+never bypassed (A-62), nor is a cross-lane producer (A-59), a memop or a
+copy-only op.
+
+In hardware, a producer broadcasts one wake per distinct offset in its
+row, plus the full-latency wake. A matrix cell stores its dependency bit and
+which of those wakes it waits for, chosen at rename from the pair. With one
+bypass offset this is exactly A-73's two-bit cell. With k distinct offsets
+the select is log2(k + 1) bits, and the ready logic picks one of k + 1 wake
+vectors per cell. That is the cost to put into the scheduler-ceiling
+estimate. In the model, `woff_` is the select and `cellOk` the per-cell AOI.
+
+Configure it with `CCV_OOE_CONFIG`, for example
+`lat.4=12,byp.4.4=6,byp.4.1=9,byp.1.4=5,byp.0.1=2`. The unit tests run
+exactly that configuration on odd seeds, with SFU ops in the traces. A
+control must be caught: a core bypassing faster than the table its
+environment holds it to.
+
+Two things this needs from outside OOE:
+
+- **Parameters for the table**, generated beside `CCV_LAT_LANE_BYP`, once
+  the LANE and RCU sessions name the pairs.
+- **A `bypass_group` field on `sched_attr`, if `lat_class` cannot serve
+  as the group.** Two units with one latency but different bypass
+  distances would need it. That is an interface change.
+
+The design doc's A-73 text, two-bit cells, needs the same generalisation.
+
 ## The arrival-cycle checker on `ccv_rcu_ooe_done` (V-35, repo Q-53)
 
 A dependant issued at the contracted latency reaches RCU one issue crossing
@@ -113,7 +164,8 @@ before. Its done is sent with the write, so the done lands no later than:
 issue + (CCV_LAT_HOP + issue stages) + LAT - 1 + (CCV_LAT_HOP + done stages)
 ```
 
-LAT is `CCV_LAT_RCU` or `CCV_LAT_LANE` by latency class. That is 6 and 10
+LAT is the producing unit's latency: `CCV_LAT_RCU`, `CCV_LAT_LANE`, or a
+configured spare unit's (see "Bypass groups"). That is 6 and 10
 cycles at no repeaters. The S1 RCU answers in 4 and 8. Earlier is a faster
 RCU, which is safe. Later breaks the contract the dependants were woken on, and
 the checker names the instruction. `--break movi-in-lane` is its control. The
@@ -128,7 +180,7 @@ one-line change when its neighbour is ready.
 
 | Flag | S1 | Why off in S1 | Turned on by |
 |---|---|---|---|
-| `bypass` | off | RCU reads the PRF the cycle it takes an issue, after nothing written that cycle. A dependant woken at `CCV_LAT_LANE_BYP` reads stale data. | An RCU or LANE bypass |
+| `bypass` | off | RCU reads the PRF the cycle it takes an issue, after nothing written that cycle. A dependant woken by any bypass wake reads stale data. The table (Bypass groups) is ignored while this is off. | An RCU or LANE bypass |
 | `l1_spec` | off | MIU completes every load as a miss at its own pace. A dependant woken at `CCV_LAT_L1_WAKE` issues on garbage, and the lanes refuse it before the cancel lands. | An MIU that completes an L1 hit at exactly `CCV_LAT_L1_CMPL` (A-46) |
 | `rename_preds` | off | RCU reads predicate-logic sources, and `compareFinal` reads final predicates, at fixed `physPred` windows. | A-75's predicate-source fields, and a committed-predicate-map hook |
 | `memop_rcu_done` | on | RCU sends a done for loads and stores, which the channel's doc does not mention. A memop completes only after both. | The top level settling whether memops get a done |
@@ -194,7 +246,8 @@ not define. Until it does, each is a named counter or histogram in the
   dataflow model of when each register becomes readable. It also catches any
   late write into a reallocated register, and checks that retirement equals
   the correct path exactly. The tests cover:
-  - exact wake times: bypass, cross-lane, RCU-to-lane, memop-from-lane;
+  - exact wake times: bypass, cross-lane, RCU-to-lane, memop-from-lane, and
+    every pair of a bypass-group configuration;
   - L1 hit and miss, with transitive replay of a grandchild;
   - the masked load's copy;
   - a squash with a deferred free;
@@ -207,9 +260,13 @@ not define. Until it does, each is a named counter or histogram in the
   - 25 random seeds × four mode combinations, up to four warps, with
     wrong-path fetch, mispredicts and L1 misses.
 
-  Four injected bugs must each fail the harness: freeing the new mapping, a
-  cancel that stops after one hop, a wake one cycle early, and a floorplan
-  whose load data lands after its completion with the core not told.
+  Five injected bugs must each fail the harness:
+  - freeing the new mapping;
+  - a cancel that stops after one hop;
+  - a wake one cycle early;
+  - a floorplan whose load data lands after its completion, with the core
+    not told;
+  - a bypass faster than the table the environment holds the core to.
 
 ## Sweeps
 

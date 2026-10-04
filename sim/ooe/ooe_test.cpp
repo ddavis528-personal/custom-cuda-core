@@ -54,7 +54,13 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 8 | memk << 6 | uint32_t(br) << 5 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu };
+
+/// A kind's unit (its lat_class) and its consumer group (Config::byp).
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp ? 1 : k == kSfu ? 4 : 0; }
+int groupOf(Kind k) {
+  return k == kLoad || k == kStore ? int(Config::kConsMem) : int(unitOf(k));
+}
 
 /// One instruction of a synthetic trace.
 struct Op {
@@ -79,6 +85,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.pred_guard = o.pguard;
   switch (o.k) {
   case kLane: u.attr_raw = attr(0, 0, o.cross, 1, 0, 0, 0, 0, 1); break;
+  case kSfu: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 4); break;   // a spare lane unit
   case kRcuOp: u.attr_raw = attr(0, 1, 0, 1, 0, 0, 0, 0, 0); break;
   case kSetp:
     u.attr_raw = attr(0, 0, 0, 0, 1, 0, 0, 0, 1);
@@ -153,7 +160,18 @@ struct Env {
   uint64_t next_tid = 1;
 
   // dataflow model: when each physical register's value is readable
-  struct Ready { uint64_t early = 0, late = 0; uint64_t tid = 0; bool spec = false; };
+  /// When a register's value is readable: `late` for every reader; a timed
+  /// producer's bypass readers from issue + the table's offset for the pair.
+  struct Ready {
+    uint64_t issue = 0, late = 0, tid = 0;
+    unsigned unit = 0;
+    bool timed = false, cross = false;
+  };
+  uint64_t readableFor(const Ready &r, int group) const {
+    if (!r.timed || r.cross || group < 0 || !cfg.bypass) return r.late;
+    const unsigned b = cfg.bypOff(r.unit, unsigned(group));
+    return b && b < cfg.unitLat(r.unit) ? r.issue + b : r.late;
+  }
   std::map<unsigned, Ready> gready, pready;
   struct Viol { uint64_t at; std::string what; };
   std::map<uint64_t, std::vector<Viol>> viol;    ///< tid -> violations
@@ -291,12 +309,12 @@ struct Env {
   void violation(uint64_t tid, const std::string &what) { viol[tid].push_back({t, what}); }
 
   /// When a source written by `p` is readable for this consumer.
-  void checkRead(uint64_t tid, unsigned preg, bool pred, bool early_ok) {
+  void checkRead(uint64_t tid, unsigned preg, bool pred, int group) {
     if (pred ? preg == cfg.pred_zero : preg == cfg.phys_zero) return;
     auto &m = pred ? pready : gready;
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
-    const uint64_t at = early_ok ? it->second.early : it->second.late;
+    const uint64_t at = readableFor(it->second, pred ? -1 : group);
     if (t < at) {
       char b[160];
       std::snprintf(b, sizeof b, "(kind %d) reads %s%u at %llu, readable at %llu, written by tid %llu (kind %d)",
@@ -311,30 +329,30 @@ struct Env {
   void onIssue(const Issue &is) {
     const Op &o = op_of[is.tid];
     if (is.copy) {
-      checkRead(is.tid, is.pold, false, false);
+      checkRead(is.tid, is.pold, false, 1);
       return;
     }
     last_issue[is.tid] = t;
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/tag" + std::to_string(is.rob_tag) + " ";
-    const bool lane_cons = o.k == kLane || o.k == kSetp;
-    for (unsigned i = 0; i != o.nsrc; ++i) checkRead(is.tid, is.psrc[i], false, lane_cons);
-    if (is.merge && is.pdst && o.k != kLoad) checkRead(is.tid, is.pold, false, lane_cons);
-    if (o.guard || o.k == kBranch) checkRead(is.tid, is.ppguard, true, false);
+    const int group = groupOf(o.k);
+    for (unsigned i = 0; i != o.nsrc; ++i) checkRead(is.tid, is.psrc[i], false, group);
+    if (is.merge && is.pdst && o.k != kLoad) checkRead(is.tid, is.pold, false, group);
+    if (o.guard || o.k == kBranch) checkRead(is.tid, is.ppguard, true, -1);
     if (o.k == kPlogic) {
       // the qualifier sources: the core renamed them; find them by RAT is
       // not visible here, so they are checked through the predicate merge
       // and the guard paths only.
     }
-    if (is.pred_we && is.merge) checkRead(is.tid, is.ppold, true, false);
+    if (is.pred_we && is.merge) checkRead(is.tid, is.ppold, true, -1);
     // Results: when they are readable, and when they land.
-    const unsigned lat = o.k == kLane || o.k == kSetp ? cfg.lat_lane : cfg.lat_rcu;
-    const uint64_t byp = (o.k == kLane && !o.cross && cfg.bypass) ? cfg.lat_lane_byp : lat;
+    const unsigned unit = unitOf(o.k);
+    const unsigned lat = cfg.unitLat(unit);
     if (is.pdst && o.k != kLoad) {
-      gready[is.pdst] = {t + byp, t + lat, is.tid, false};
+      gready[is.pdst] = {t, t + lat, is.tid, unit, true, o.cross};
       gwriter[is.pdst] = {is.tid, t};
       landings.insert({t + lat, {is.pdst, is.tid}});
     }
-    if (is.pred_we) pready[is.ppdst] = {t + lat, t + lat, is.tid, false};
+    if (is.pred_we) pready[is.ppdst] = {t, t + lat, is.tid, unit, true, false};
     // RCU's done: within the bound (V-35), at a fixed latency per issue.
     if (o.k != kLoad && o.k != kStore) {
       const unsigned bound = cfg.issue_link + lat - 1 + cfg.done_link;
@@ -364,7 +382,7 @@ struct Env {
       if (m.pdst) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
         const uint64_t rd = hit ? t + cfg.lat_l1_wake : when + data_after_cmpl;
-        gready[m.pdst] = {rd, rd, m.tid, false};
+        gready[m.pdst] = {t, rd, m.tid, 2, false, false};
         gwriter[m.pdst] = {m.tid, t};
         landings.insert({rd, {m.pdst, m.tid}});
       }
@@ -372,7 +390,7 @@ struct Env {
       when = t + 4 + rnd(miss_extra);
       if (o.k == kLoad && m.pdst) {
         const uint64_t rd = when + data_after_cmpl;
-        gready[m.pdst] = {rd, rd, m.tid, false};
+        gready[m.pdst] = {t, rd, m.tid, 2, false, false};
         gwriter[m.pdst] = {m.tid, t};
         landings.insert({rd, {m.pdst, m.tid}});
       }
@@ -469,7 +487,7 @@ struct Env {
 
 // ---- program generators ----------------------------------------------------------------
 
-std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed) {
+std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed, bool sfu = false) {
   auto r = [&](unsigned k) { return unsigned(rng() % k); };
   std::vector<Op> p;
   // a prologue that writes some registers and predicates
@@ -482,7 +500,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed)
     o.src[0] = r(16);
     o.src[1] = r(16);
     o.src[2] = r(16);
-    if (c < 35) { o.k = kLane; o.nsrc = 1 + r(3); o.cross = r(8) == 0; }
+    if (c < 35) { o.k = sfu && r(3) == 0 ? kSfu : kLane; o.nsrc = 1 + r(3); o.cross = o.k == kLane && r(8) == 0; }
     else if (c < 45) { o.k = kRcuOp; }
     else if (c < 58) { o.k = kLoad; o.nsrc = 1; }
     else if (c < 66) { o.k = kStore; o.nsrc = 2; }
@@ -491,7 +509,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed)
     else if (c < 88) { o.k = kBranch; o.pguard = r(4); o.taken = r(2); o.pred_taken = r(3) ? o.taken : !o.taken; }
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
-    if ((o.k == kLane || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
+    if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
     p.push_back(o);
   }
   Op e;
@@ -503,6 +521,19 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed)
 Config baseConfig() {
   Config c;
   c.memop_rcu_done = false;
+  return c;
+}
+
+/// A bypass-group configuration: an SFU-like unit 4 a long way from the ALUs,
+/// with its own bypass back to itself, slower ones across, and RCU-only
+/// results bypassed to the lanes a cycle early.
+Config groupConfig() {
+  Config c = baseConfig();
+  c.unit_lat[4] = 12;
+  c.byp[4][4] = 6;      // SFU -> SFU
+  c.byp[4][1] = 9;      // SFU -> ALU
+  c.byp[1][4] = 5;      // ALU -> SFU
+  c.byp[0][1] = 2;      // RCU op -> ALU
   return c;
 }
 
@@ -548,6 +579,44 @@ void testWakeTimes() {
     EXPECT(t7 - t6 == c.lat_rcu, "RCU op -> lane %llu", (unsigned long long)(t7 - t6));
     EXPECT(issueCycle(e, 3) - t1 >= c.lat_lane, "a memop read a bypassed value");
   }
+}
+
+void testBypassGroups() {
+  g_test = "bypass-groups";
+  Config c = groupConfig();
+  EXPECT(c.check().empty(), "%s", c.check().c_str());
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  auto add = [&](Kind k, unsigned dst, int src) {
+    Op o; o.k = k; o.dst = dst;
+    if (src >= 0) { o.src[0] = unsigned(src); o.nsrc = 1; }
+    p.push_back(o);
+  };
+  add(kSfu, 1, -1);   // tid 1
+  add(kSfu, 2, 1);    // tid 2: SFU -> SFU, 6
+  add(kLane, 3, 1);   // tid 3: SFU -> ALU, 9
+  add(kLane, 4, -1);  // tid 4
+  add(kSfu, 5, 4);    // tid 5: ALU -> SFU, 5
+  add(kLane, 6, 4);   // tid 6: ALU -> ALU, the default CCV_LAT_LANE_BYP
+  add(kRcuOp, 7, -1); // tid 7
+  add(kLane, 8, 7);   // tid 8: RCU -> ALU, 2
+  add(kRcuOp, 9, 4);  // tid 9: ALU -> RCU: no bypass, CCV_LAT_LANE
+  add(kRcuOp, 10, 1); // tid 10: SFU -> RCU: no bypass, the SFU's 12
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  struct W { uint64_t prod, cons; unsigned want; const char *what; };
+  const W ws[] = {{1, 2, 6, "SFU -> SFU"}, {1, 3, 9, "SFU -> ALU"}, {4, 5, 5, "ALU -> SFU"},
+                  {4, 6, c.lat_lane_byp, "ALU -> ALU"}, {7, 8, 2, "RCU -> ALU"},
+                  {4, 9, c.lat_lane, "ALU -> RCU"}, {1, 10, 12, "SFU -> RCU"}};
+  for (const W &w : ws)
+    EXPECT(issueCycle(e, w.cons) - issueCycle(e, w.prod) == w.want, "%s woke after %llu, want %u",
+           w.what, (unsigned long long)(issueCycle(e, w.cons) - issueCycle(e, w.prod)), w.want);
+  // A pair at or over the producer's latency is refused at elaboration.
+  Config bad = groupConfig();
+  bad.byp[4][1] = 12;
+  EXPECT(!bad.check().empty(), "a bypass no faster than the register file was accepted");
 }
 
 void testL1Spec() {
@@ -834,7 +903,9 @@ void testRandom(unsigned seeds) {
     for (int mode = 0; mode != 4; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
-      Config c = baseConfig();
+      // Odd seeds run the bypass-group configuration, SFU ops included.
+      const bool groups = seed % 2 == 1;
+      Config c = groups ? groupConfig() : baseConfig();
       c.bypass = mode & 1;
       c.l1_spec = (mode & 2) != 0;
       std::mt19937 rng(seed * 4 + unsigned(mode));
@@ -846,7 +917,7 @@ void testRandom(unsigned seeds) {
       e.data_after_cmpl = c.cmpl_wake_delay;
       e.rcu_fast = seed % 3 == 0;
       const unsigned warps = 1 + seed % 4;
-      for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true));
+      for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, groups));
       e.finish();
       const int before = g_fail;
       for (unsigned i = 0; i != warps; ++i) {
@@ -889,6 +960,7 @@ void testControls() {
       {"shallow-cancel", [](Config &c) { c.inject_shallow_cancel = true; }},
       {"early-wake", [](Config &c) { c.inject_early_wake = true; }},
       {"cmpl-wake-delay-ignored", [](Config &c) { c.cmpl_wake_delay = 0; c.inject_free_new = false; }},
+      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = 20; c.byp[4][1] = 3; }},
   };
   for (const C &x : cs) {
     const int saved = g_fail;
@@ -906,7 +978,10 @@ void testControls() {
       // The last control: data lands two cycles after its completion, and
       // the core is not told.
       if (std::string(x.name) == "cmpl-wake-delay-ignored") e.data_after_cmpl = 2;
-      e.launch(0, 0, randomProgram(rng, 150, true));
+      // The core bypasses SFU -> ALU at 3; the contract says 9.
+      const bool groups = std::string(x.name) == "bypass-faster-than-contract";
+      if (groups) e.cfg.byp[4][1] = 9;
+      e.launch(0, 0, randomProgram(rng, 150, true, groups));
       const int before = g_fail;
       g_quiet = true;
       e.finish(20000);
@@ -976,6 +1051,7 @@ int main(int argc, char **argv) {
     return g_fail ? 1 : 0;
   }
   testWakeTimes();
+  testBypassGroups();
   testL1Spec();
   testL1WakeAfterCmpl();
   testMaskedLoad();

@@ -33,6 +33,12 @@ std::string Config::apply(const std::string &spec) {
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}};
   std::stringstream ss(spec);
+  // byp.P.C=N and lat.U=N: the bypass table and the spare units' latencies.
+  std::map<std::string, uint8_t *> bt;
+  for (unsigned p = 0; p != kUnits; ++p)
+    for (unsigned g = 0; g != kConsGroups; ++g)
+      bt["byp." + std::to_string(p) + "." + std::to_string(g)] = &byp[p][g];
+  for (unsigned p = 4; p != kUnits; ++p) u["lat." + std::to_string(p)] = &unit_lat[p];
   std::string kv;
   while (std::getline(ss, kv, ',')) {
     if (kv.empty()) continue;
@@ -43,6 +49,7 @@ std::string Config::apply(const std::string &spec) {
     const unsigned long n = std::strtoul(v.c_str(), &end, 0);
     if (!end || *end) return "ooe config: '" + v + "' is not a number";
     if (u.count(k)) *u[k] = unsigned(n);
+    else if (bt.count(k)) *bt[k] = uint8_t(n);
     else if (b.count(k)) *b[k] = n != 0;
     else return "ooe config: no knob '" + k + "'";
   }
@@ -73,6 +80,13 @@ std::string Config::check() const {
   if (ckpts > (1u << ccv::prov::kWCkptId)) return "ckpts exceeds checkpoint_id";
   if (issue_width == 0 || rename_width == 0 || retire_per_rob == 0) return "a zero width";
   if (lat_lane_byp > lat_lane) return "CCV_LAT_LANE_BYP exceeds CCV_LAT_LANE";
+  for (unsigned p = 0; p != kUnits; ++p)
+    for (unsigned g = 0; g != kConsGroups; ++g)
+      if (byp[p][g] && (byp[p][g] >= unitLat(p) || byp[p][g] == 0xFF)) {
+        std::snprintf(buf, sizeof buf, "bypass %u -> %u is %u cycles, not under unit %u's "
+                      "latency %u", p, g, unsigned(byp[p][g]), p, unitLat(p));
+        return buf;
+      }
   return "";
 }
 
@@ -111,6 +125,9 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   n_ = cfg_.rs_rcu + cfg_.rs_miu;
   rs_.resize(n_);
   cell_.assign(size_t(n_) * n_, 0);
+  woff_.assign(size_t(n_) * n_, kLateOff);
+  cok_.assign(size_t(n_) * n_, 0);
+  skew_ = cfg_.inject_early_wake ? 1 : 0;
   gprod_.assign(cfg_.phys_regs, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
   for (unsigned p = 0; p != cfg_.phys_regs; ++p) gfree_.push_back(p);
@@ -308,7 +325,11 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
       rs_[e].rob = rob;
       rs_[e].copy = copy;
       rs_[e].age = next_age_++;
-      for (unsigned j = 0; j != n_; ++j) cell(e, j) = 0;
+      for (unsigned j = 0; j != n_; ++j) {
+        cell(e, j) = 0;
+        woff_[size_t(e) * n_ + j] = kLateOff;
+        cok_[size_t(e) * n_ + j] = 0;
+      }
       ++slot_[slot].rs_held;
       return e;
     }
@@ -318,7 +339,10 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
 void Core::rsFree(unsigned e) {
   RsEntry &x = rs_[e];
   if (!x.valid) return;
-  for (unsigned i = 0; i != n_; ++i) cell(i, e) = 0;   // its column: satisfied for good
+  for (unsigned i = 0; i != n_; ++i) {   // its column: satisfied for good
+    cell(i, e) = 0;
+    cok_[size_t(i) * n_ + e] = 0;
+  }
   for (unsigned j = 0; j != n_; ++j) cell(e, j) = 0;
   for (auto &p : gprod_) for (unsigned &q : p) if (q == e) q = kNoEntry;
   for (auto &p : pprod_) for (unsigned &q : p) if (q == e) q = kNoEntry;
@@ -329,11 +353,12 @@ void Core::rsFree(unsigned e) {
   x.valid = false;
 }
 
-/// Record that entry e reads physical register preg. `elig`: this use is
-/// bypass-eligible from the consumer's side -- a lane-executing op reading
-/// it as a lane operand (A-62). The cell's late bit is clear only if every
-/// use is eligible AND the producer is a non-cross-lane lane op (V-48).
-void Core::dep(unsigned e, unsigned preg, bool pred, bool elig) {
+/// Record that entry e reads physical register preg. `group` is the
+/// consumer's bypass group for this use (Config::byp), or -1 for a use no
+/// bypass reaches: a predicate read as guard, data or merge source (A-62).
+/// The cell waits for a bypass wake only if every use it makes of the
+/// producer may take that bypass (V-48), else for the full-latency wake.
+void Core::dep(unsigned e, unsigned preg, bool pred, int group) {
   if (pred ? preg == cfg_.pred_zero : preg == cfg_.phys_zero) return;
   const auto &prods = pred ? pprod_[preg] : gprod_[preg];
   for (unsigned j : prods) {
@@ -341,44 +366,58 @@ void Core::dep(unsigned e, unsigned preg, bool pred, bool elig) {
     if (j == e) { err("V-10: entry %u depends on itself", e); continue; }
     const RsEntry &p = rs_[j];
     const RobEntry &pr = slot_[p.slot].rob[p.rob];
-    const bool lane_prod = p.copy || (!pr.is_mem && !pr.u.attr.exec_rcu &&
-                                      pr.u.attr.lat_class == kLatClsLane);
-    const bool early_ok = elig && lane_prod && !pr.u.attr.cross_lane && !p.copy;
+    const unsigned unit = pr.u.attr.lat_class;
+    uint8_t off = kLateOff;
+    // Only a fixed-latency, non-cross-lane producer bypasses (A-59): never a
+    // memop, a copy-only op or a unit that wakes on its done.
+    if (cfg_.bypass && group >= 0 && !p.copy && !pr.is_mem && !pr.u.attr.cross_lane &&
+        unit < Config::kUnits && cfg_.unitLat(unit)) {
+      const unsigned b = cfg_.bypOff(unit, unsigned(group));
+      if (b && b < cfg_.unitLat(unit)) off = uint8_t(b);
+    }
     uint8_t &c = cell(e, j);
-    if (!(c & 1)) c = uint8_t(1 | (early_ok ? 0 : 2));
-    else if (!early_ok) c |= 2;
+    uint8_t &w = woff_[size_t(e) * n_ + j];
+    if (!(c & 1)) { c = 1; w = off; }
+    else if (w != kLateOff && (off == kLateOff || off > w)) w = off;   // the later wins
   }
 }
 
 void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   const Uop &u = r.u;
-  // Does this consumer execute in a lane and read GPRs as lane operands?
-  const bool lane_cons = !r.is_mem && !u.attr.exec_rcu;
+  // The consumer's bypass group for its GPR operands: its unit (0 for an
+  // op RCU executes), or the memop group -- RCU sends a memop's address and
+  // data to MIU.
+  const int group = r.is_mem ? int(Config::kConsMem) : int(u.attr.lat_class & 7);
   if (copy_half) {
-    // The copy-only op: the old destination through a lane as merge_data,
-    // under the load's guard (A-38). Its guard use is a predicate: late.
-    dep(e, r.pold, false, true);
-    if (u.shape.guard) dep(e, r.ppguard, true, false);
+    // The copy-only op: the old destination through a lane (unit 1) as
+    // merge_data, under the load's guard (A-38).
+    dep(e, r.pold, false, 1);
+    if (u.shape.guard) dep(e, r.ppguard, true, -1);
     return;
   }
   for (unsigned i = 0; i != 3; ++i)
-    if ((u.shape.gpr_reads >> i) & 1u) dep(e, r.psrc[i], false, lane_cons);
+    if ((u.shape.gpr_reads >> i) & 1u) dep(e, r.psrc[i], false, group);
   // The old destination is a fourth source when the write merges (A-33),
   // except for a masked load, whose copy reads it instead.
-  if (r.merge && r.alloc_gpr && !r.copy) dep(e, r.pold, false, lane_cons);
-  if (u.shape.guard || u.shape.pdata) dep(e, r.ppguard, true, false);
+  if (r.merge && r.alloc_gpr && !r.copy) dep(e, r.pold, false, group);
+  if (u.shape.guard || u.shape.pdata) dep(e, r.ppguard, true, -1);
   if (u.shape.pred_logic) {
-    dep(e, r.pq[0], true, false);
-    dep(e, r.pq[1], true, false);
+    dep(e, r.pq[0], true, -1);
+    dep(e, r.pq[1], true, -1);
   }
   // The old predicate destination when the predicate write merges (A-43).
-  if (u.pred_we && r.merge) dep(e, r.ppold, true, false);
+  if (u.pred_we && r.merge) dep(e, r.ppold, true, -1);
 }
 
 bool Core::cellOk(unsigned i, unsigned j) const {
-  const uint8_t c = cell(i, j);
-  if (!(c & 1)) return true;
-  return (c & 2) ? rs_[j].late : rs_[j].early;
+  if (!(cell(i, j) & 1)) return true;
+  const RsEntry &p = rs_[j];
+  const uint8_t w = woff_[size_t(i) * n_ + j];
+  if (w == kLateOff) return p.late;
+  // A bypass wake: its offset after the producer's issue, while that issue
+  // stands (a cancel clears issued). dep() gives offsets only to timed
+  // producers.
+  return p.issued && now_ + skew_ >= p.issue_at + w;
 }
 
 bool Core::rowReady(unsigned i) const {
@@ -399,10 +438,10 @@ void Core::setWakes(unsigned e) {
   RsEntry &x = rs_[e];
   const RobEntry &r = slot_[x.slot].rob[x.rob];
   const SchedAttr &a = r.u.attr;
-  x.early = x.late = false;
+  x.late = false;
   x.spec = x.on_completion = false;
   if (x.copy) {
-    x.early_at = x.late_at = now_ + cfg_.lat_lane;     // a lane op; no done (A-38)
+    x.late_at = now_ + cfg_.lat_lane;     // a lane op; no done (A-38)
     return;
   }
   if (r.is_mem) {
@@ -410,45 +449,36 @@ void Core::setWakes(unsigned e) {
     // scratchpad loads, atomics and everything past L1 wake on completion.
     if (cfg_.l1_spec && r.is_load && a.lat_class == kLatClsL1 && r.u.space == 0) {
       x.spec = true;
-      x.early_at = x.late_at = now_ + cfg_.lat_l1_wake;
+      x.late_at = now_ + cfg_.lat_l1_wake;
     } else {
       x.on_completion = true;
     }
     return;
   }
-  switch (a.lat_class) {
-  case kLatClsRcu:
-    x.early_at = x.late_at = now_ + cfg_.lat_rcu;
-    break;
-  case kLatClsLane:
-    x.late_at = now_ + cfg_.lat_lane;
-    // A lane producer raises the early wake at the bypass time (A-59); the
-    // cell decides whether a dependant may use it (A-62). Cross-lane
-    // producers wake every dependant at the full latency.
-    x.early_at = cfg_.bypass && !a.cross_lane ? now_ + cfg_.lat_lane_byp : x.late_at;
-    break;
-  default:
-    // lat_class 3, and the spare codes 4-7 until LANE names their latency:
-    // wake on the done, which is never early.
-    x.on_completion = true;
-    break;
-  }
+  // A fixed-latency unit: the full-latency wake at its latency, and its
+  // bypass wakes at each cell's offset (cellOk). A unit with no latency
+  // named yet -- lat_class 3, or a spare code -- wakes on its done.
+  const unsigned lat = a.lat_class < Config::kUnits ? cfg_.unitLat(a.lat_class) : 0;
+  if (lat) x.late_at = now_ + lat;
+  else x.on_completion = true;
 }
 
-void Core::wake(unsigned e, bool early, bool late) {
-  RsEntry &x = rs_[e];
-  const bool was_e = x.early, was_l = x.late;
-  x.early = x.early || early;
-  x.late = x.late || late;
-  if (x.early == was_e && x.late == was_l) return;
-  // EV_WAKEUP per dependant whose operand this satisfied (src: the producer).
-  for (unsigned i = 0; i != n_; ++i)
-    if ((cell(i, e) & 1) && rs_[i].valid && !rs_[i].issued) {
-      const bool now_ok = (cell(i, e) & 2) ? x.late : x.early;
-      const bool was_ok = (cell(i, e) & 2) ? was_l : was_e;
-      if (now_ok && !was_ok) ev("wakeup", slot_[rs_[i].slot].warp, i, e,
-                                slot_[rs_[i].slot].rob[rs_[i].rob].u.tid);
+void Core::wake(unsigned e) { rs_[e].late = true; }
+
+/// EV_WAKEUP for every operand whose wake was satisfied this cycle: the
+/// dependant's RS entry and the producer's.
+void Core::emitWakeups() {
+  for (unsigned i = 0; i != n_; ++i) {
+    if (!rs_[i].valid || rs_[i].issued) continue;
+    for (unsigned j = 0; j != n_; ++j) {
+      if (!(cell(i, j) & 1)) continue;
+      uint8_t &k = cok_[size_t(i) * n_ + j];
+      const bool ok = cellOk(i, j);
+      if (ok && !k)
+        ev("wakeup", slot_[rs_[i].slot].warp, i, j, slot_[rs_[i].slot].rob[rs_[i].rob].u.tid);
+      k = ok;
     }
+  }
 }
 
 /// A load missed its L1 slot: withdraw its wakes and poison everything that
@@ -457,7 +487,7 @@ void Core::wake(unsigned e, bool early, bool late) {
 /// Waiting; the load itself stays at MIU and wakes again on its completion.
 void Core::cancel(unsigned e) {
   RsEntry &x = rs_[e];
-  x.early = x.late = false;
+  x.late = false;
   x.spec = false;
   x.on_completion = true;
   count("cancel.miss");
@@ -476,7 +506,7 @@ void Core::cancel(unsigned e) {
         continue;
       }
       y.issued = false;
-      y.early = y.late = false;
+      y.late = false;
       ++y.replays;
       // Its done still comes, at the contracted cycle: void it (A-47). If
       // it has come already, void what it said.
@@ -521,8 +551,7 @@ void Core::advanceWakes() {
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
-    const uint64_t skew = cfg_.inject_early_wake ? 1 : 0;
-    wake(e, now_ + skew >= x.early_at, now_ + skew >= x.late_at);
+    if (now_ + skew_ >= x.late_at) wake(e);
   }
   // L1 contract: no completion at CCV_LAT_L1_CMPL is the miss (A-46, A-54).
   for (unsigned e = cfg_.rs_rcu; e != n_; ++e) {
@@ -545,6 +574,7 @@ void Core::advanceWakes() {
       RobEntry &r = slot_[s].rob[i];
       if (r.valid && r.squashed && !outstanding(r)) releaseEntry(s, i);
     }
+  emitWakeups();
 }
 
 // ---- completions -------------------------------------------------------------------------
@@ -597,8 +627,8 @@ void Core::takeCompletions() {
       // later than issue + issue link + latency - 1 + done link. Earlier is
       // a faster RCU, which is safe; later broke the contract dependants
       // were woken on.
-      if (lc == kLatClsRcu || lc == kLatClsLane) {
-        const uint64_t lat = lc == kLatClsRcu ? cfg_.lat_rcu : cfg_.lat_lane;
+      if (lc < Config::kUnits && cfg_.unitLat(lc)) {
+        const uint64_t lat = cfg_.unitLat(lc);
         const uint64_t bound = cfg_.issue_link + lat - 1 + cfg_.done_link;
         if (took > bound)
           err("V-35: seq %u (rob tag %u) done %llu cycles after issue; latency class %u "
@@ -615,7 +645,7 @@ void Core::takeCompletions() {
     // A done is a completion for an RS entry that wakes on it.
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && rs_[r->rs_main].on_completion &&
         rs_[r->rs_main].cls == RsCls::kRcu)
-      wake(r->rs_main, true, true);
+      wake(r->rs_main);
     if (r->u.attr.branch) {
       r->resolved = true;
       r->taken = d.branch_taken;
@@ -655,8 +685,8 @@ void Core::takeCompletions() {
         if (r->is_load) count("load.past_l1");
         // Wake once the data is readable at RCU (Config::cmpl_wake_delay).
         x.on_completion = false;
-        x.early_at = x.late_at = now_ + cfg_.cmpl_wake_delay;
-        if (!cfg_.cmpl_wake_delay) wake(r->rs_main, true, true);
+        x.late_at = now_ + cfg_.cmpl_wake_delay;
+        if (!cfg_.cmpl_wake_delay) wake(r->rs_main);
       }
     }
     complete(s, idx);

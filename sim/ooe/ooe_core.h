@@ -3,7 +3,7 @@
 // The Stage 4b timing model of OOE: decode queue, rename (GPR and predicate
 // RATs, RAT checkpoints, a global free list with per-slot floor and
 // ceiling), unified reservation stations split by class, the 2-bit-cell
-// dependency matrix with early and late wakes, oldest-first select with a
+// dependency matrix with per-pair bypass wakes, oldest-first select with a
 // rotating warp tie-break, transitive cancel, four per-slot ROBs, squash in
 // ROB order, deferred free, demotion, kill, restore and faults.
 //
@@ -96,9 +96,30 @@ struct Config {
   unsigned demote_barrier = ccv::prov::kDemotionThreshold;
 
   // -- what the neighbours can do today (docs/ooe-model.md, "S1 modes") -------
-  /// Early wake at CCV_LAT_LANE_BYP for bypass-eligible pairs (A-59, A-62).
-  /// Off while RCU reads the PRF when it takes an issue and has no bypass.
-  bool bypass = true;
+  /// Bypass groups (docs/ooe-model.md, "Bypass groups"). A producer's
+  /// unit is its lat_class; a consumer's group is its lat_class (0 for an
+  /// op RCU executes), or kConsMem for a memop. byp[unit][group], when
+  /// non-zero and under the producer's latency, is how many cycles after
+  /// the producer's issue that consumer may issue on its result, by bypass;
+  /// 0 means no bypass, so the consumer waits the producer's full latency.
+  /// Lane ALU to lane ALU defaults to CCV_LAT_LANE_BYP (A-59), and every
+  /// other pair has no bypass until its sessions name one.
+  bool bypass = true;            ///< master enable; off in S1 (no RCU bypass)
+  static constexpr unsigned kUnits = 8, kConsMem = 8, kConsGroups = 9;
+  std::array<std::array<uint8_t, kConsGroups>, kUnits> byp{};
+  /// Full latency of the spare lat_class codes 4-7 (SFU and the like), as
+  /// the LANE session names them; 0 means none yet: wake on the done.
+  std::array<unsigned, kUnits> unit_lat{};
+  /// The bypass offset for a pair, or 0 for none.
+  unsigned bypOff(unsigned unit, unsigned group) const {
+    if (byp[unit][group]) return byp[unit][group];
+    return unit == 1 && group == 1 ? lat_lane_byp : 0;
+  }
+  /// A unit's full latency: when any reader may issue on its result through
+  /// the register file; 0 if it wakes on its done.
+  unsigned unitLat(unsigned unit) const {
+    return unit == 0 ? lat_rcu : unit == 1 ? lat_lane : unit >= 4 ? unit_lat[unit] : 0;
+  }
   /// Speculative wake of L1-load dependants at CCV_LAT_L1_WAKE, cancelled on
   /// a miss (A-46). Off while MIU completes no load at the L1 contract.
   bool l1_spec = true;
@@ -382,8 +403,8 @@ private:
     uint64_t issue_at = 0;
     bool spec = false;             ///< woken speculatively (an L1 load)
     bool on_completion = false;    ///< wakes on its completion, not a time
-    uint64_t early_at = 0, late_at = 0;
-    bool early = false, late = false;   ///< the two wake broadcasts
+    uint64_t late_at = 0;
+    bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
     bool confirmed = false;        ///< result can no longer be cancelled
     bool ever_issued = false;
     unsigned replays = 0;
@@ -449,13 +470,14 @@ private:
   unsigned rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy);
   void rsFree(unsigned e);
   void addDeps(unsigned e, const RobEntry &r, bool copy_half);
-  void dep(unsigned e, unsigned preg, bool pred, bool late_needed);
+  void dep(unsigned e, unsigned preg, bool pred, int group);
   bool cellOk(unsigned i, unsigned j) const;
   bool rowReady(unsigned i) const;
   bool rowConfirmed(unsigned i) const;
   void doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port);
   void setWakes(unsigned e);
-  void wake(unsigned e, bool early, bool late);
+  void wake(unsigned e);
+  void emitWakeups();
   void cancel(unsigned e);
   void confirmPass();
   bool predHold(unsigned slot, const RobEntry &r) const;
@@ -490,7 +512,15 @@ private:
 
   // reservation stations and the matrix
   std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU
-  std::vector<uint8_t> cell_;         ///< N x N: bit 0 dependency, bit 1 late
+  std::vector<uint8_t> cell_;         ///< N x N: bit 0 dependency
+  /// Per cell, which of the producer's wakes it waits for: kLateOff for the
+  /// full-latency wake, else a bypass offset from the producer's issue. A
+  /// producer broadcasts one wake per distinct offset in its column, so the
+  /// cell's select is log2 of that count wide (A-73's late bit, generalised).
+  std::vector<uint8_t> woff_;
+  std::vector<uint8_t> cok_;          ///< per cell, satisfied last cycle (EV_WAKEUP)
+  static constexpr uint8_t kLateOff = 0xFF;
+  uint64_t skew_ = 0;                 ///< inject_early_wake
   unsigned n_ = 0;
   uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }

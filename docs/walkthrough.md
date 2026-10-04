@@ -241,8 +241,6 @@ instruction can be followed across every block it touches. Seq 12,
      37  ccv_fet_dec_instr              fet  -> dec       
      39  ccv_dec_ooe_uop                dec  -> ooe       
      42  EV_DISPATCH                    ooe          
-     80  EV_WAKEUP                      ooe          
-    157  EV_WAKEUP                      ooe          
     157  EV_ISSUE                       ooe          
     157  ccv_ooe_miu_memop              ooe  -> miu       
     157  ccv_ooe_rcu_issue              ooe  -> rcu       
@@ -286,8 +284,6 @@ in the same cycle, and gets 32 results back 2 cycles later:
      38  ccv_fet_dec_instr              fet  -> dec       
      40  ccv_dec_ooe_uop                dec  -> ooe       
      43  EV_DISPATCH                    ooe          
-    213  EV_WAKEUP                      ooe          
-    241  EV_WAKEUP                      ooe          
     241  EV_ISSUE                       ooe          
     241  ccv_ooe_rcu_issue              ooe  -> rcu       
     243  ccv_rcu_lane_ops               rcu  -> lane   x32
@@ -375,7 +371,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=306 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-TRACES records=578/578 equal=yes byte_identical=no differing_cycles=0
+TRACES records=560/560 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
