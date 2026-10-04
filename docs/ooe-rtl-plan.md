@@ -53,7 +53,7 @@ L1 speculation, and fixed-window predicates.
 *Recommendation:* bypass and L1 speculation as elaboration parameters,
 because they are a gate on an existing path. Fixed-window predicates not in
 RTL: they are a second rename scheme. So 4d waits on A-75 and the
-predicate-map hook (request 3 in [`ooe-model.md`](ooe-model.md)).
+predicate-map hook (OI-3 in the cross-agent register).
 
 **6. The reset line** ([`reset-line-template.md`](reset-line-template.md)).
 Reset state:

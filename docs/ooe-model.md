@@ -313,33 +313,16 @@ least-built block on its path, and here every neighbour is a stand-in):
   demotion-heavy runs, which need RAU.
 - Two retires per ROB is worth about 6% over one. Four buys nothing.
 
-## Requests to the top-level session
+## Requests to other agents
 
-None of these is an interface change except where marked. They are what the
-model needs from files the top-level session owns.
+Every request, and every model decision awaiting OA's ratification, lives
+in the OI tab of the [CCV cross-agent register](https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5),
+which is the one place they are tracked:
 
-1. **Review two gate edits made on this branch** (one commit, so it can be
-   redone). First, `Kernel::fail` prints every check failure, up to 10,000, not
-   the first 12. With out-of-order issue, which instruction fails first is
-   issue order. The greps for dirty-zero, copy-from-new and conflate-pred
-   anchor on one instruction's line, and missed it although every count
-   matched. Second, movi-in-lane's expectation: the lanes refuse movi48
-   (64), and V-35 names its late done. Its readers then see stale data,
-   which a latency-scheduled OOE cannot avoid once a contract is broken, so
-   "nothing else fails" no longer holds by construction.
-2. **Gate the unit tests**: one line in `tools/verify.sh` running
-   `sim/ooe/run-tests.sh`.
-3. **A committed-predicate-map hook** beside `Kernel::rat0`, for
-   `compareFinal`. Together with A-75's predicate sources on the issue
-   (interface), it lets `rename_preds` turn on.
-4. **Say whether RCU sends a done for memops.** The channel doc says
-   arithmetic, and the S1 RCU sends one for loads and stores.
-5. **Stub fidelity, to reach the model's speculative paths on kernels**: an
-   MIU that completes a hit at exactly `CCV_LAT_L1_CMPL`, and an RCU whose
-   operand read sees a same-cycle write or bypass.
-6. **Parameters** for the knobs above, and for decision 11's miss-wake
-   delay, generated beside `CCV_LAT_L1_WAKE` from the same links; also
-   **events** for the doc's Events table in `schema/events.json`.
-7. **Consumers in the RAU, CRU and SYU stubs** for status, fault, drained,
-   map and barrier, and the kill ports in the C++ machine, so demotion, kill,
-   faults and barriers can run on kernels.
+- Requests to TI: OI-1 to OI-9. OI-1 is review of the two gate edits.
+- Decisions 4, 5, 6, 11 and the V-35 bound: OI-10 to OI-14. Decision 6
+  was accepted by Daniel 2026-10-04 as the first pass.
+- Decisions 1 to 3 and 7 to 9: OI-15.
+- Bypass groups: OI-16.
+- The RTL grill-me: OI-17.
+- Process: OI-18 to OI-21.
