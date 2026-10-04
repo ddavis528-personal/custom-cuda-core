@@ -29,7 +29,8 @@
 #     other than its guard (pguard, Q-21)        is wrong at the lanes, and
 #                                                P0 and P1 both end wrong
 #   every op on its side of the rule (Q-32)   movi-in-lane: the lanes refuse
-#                                                movi48 and movi
+#                                                movi48 and movi, and OOE's
+#                                                V-35 names the late done
 #   srd's value from OOE's identity (Q-38)    corrupt-ctaid (srd kernel): the
 #                                                lanes' srd result is wrong
 #   an unallocated srd selector faults        srd-selector: DEC's range check
@@ -248,13 +249,19 @@ fi
 
 # Where each op executes (Q-32, Q-38) is checked on every op. movi and
 # movi48 have no per-lane input, so RCU writes their immediate itself; sent
-# to the lanes instead, every lane must refuse both, and nothing else fails.
+# to the lanes instead, every lane must refuse both. The lane round trip also
+# breaks CCV_LAT_RCU, which OOE schedules movi48's readers on: OOE's
+# arrival-cycle checker on ccv_rcu_ooe_done (V-35) must name the late done,
+# once. (Its readers then see the stale register -- the cost of a broken
+# latency contract to a latency-scheduled OOE, not a second fault.)
 run movi-in-lane
-if [ "$(field "$B/kernel_movi-in-lane.log" check_failures)" = 64 ] &&
-   ! grep "^CHECK" "$B/kernel_movi-in-lane.log" | grep -qv "MOVI48\|MOVI "; then
-  say "--break movi-in-lane: the lanes refuse it" "PASS"
+nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$B/kernel_movi-in-lane.log")
+nlate=$(grep -c "^CHECK ooe: V-35: " "$B/kernel_movi-in-lane.log")
+if [ "$nmovi" = 64 ] && [ "$nlate" = 1 ] &&
+   grep -q "^CHECK ooe: V-35: seq 1 (rob tag [0-9]*) done" "$B/kernel_movi-in-lane.log"; then
+  say "--break movi-in-lane: the lanes refuse it" "PASS (and V-35 names the late done)"
 else
-  bad "--break movi-in-lane" "check_failures=$(field "$B/kernel_movi-in-lane.log" check_failures), want 64 from movi and movi48 alone"
+  bad "--break movi-in-lane" "$nmovi lane refusals (want 64), $nlate V-35 reports (want 1, seq 1)"
 fi
 
 # srd's selector is a legal field that can hold an unallocated value: DEC's
