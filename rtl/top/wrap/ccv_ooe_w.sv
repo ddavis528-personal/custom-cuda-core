@@ -514,7 +514,7 @@ module ccv_ooe_w #(
 `endif
   );
   // ccv_ooe_fet_redirect, source end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(108)) u_rpt_ooe_fet_redirect (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(109)) u_rpt_ooe_fet_redirect (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_ooe_fet_redirect_valid}), .src_payload({b_ooe_fet_redirect_payload}),
     .src_wake(b_ooe_fet_redirect_wake), .src_credit({b_ooe_fet_redirect_credit}), .src_stall({b_ooe_fet_redirect_stall}),

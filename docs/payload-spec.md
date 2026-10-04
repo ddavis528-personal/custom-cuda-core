@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 28 |
-| ⚠️ Some provisional | 19 | 82 |
+| ⚠️ Some provisional | 19 | 83 |
 | ⛔ Some preliminary | 20 | 121 |
-| **Total** | **48** | **231** |
+| **Total** | **48** | **232** |
 
 ## What still has to be decided
 
@@ -399,7 +399,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_ooe_fet_redirect`
 
-A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. OOE keeps a current fetch epoch per warp, advanced on every redirect it sends (and on demotion and kill, A-70); the redirect carries the new value, and FET tags everything it fetches for the warp afterwards with it, on ccv_fet_dec_instr.
+A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. EPOCH OWNERSHIP (A-70, A-74): OOE owns every warp's fetch epoch and is the only block that advances it: on each redirect, on ccv_rau_ooe_demote, and on a kill. It tells FET of every change on this channel. A redirect carries the new epoch; a demotion or kill sends an epoch notice, epoch_only = 1, for which FET only takes fetch_epoch for warp_id, and checkpoint_id, taken_mask and target_pc are don't-care (no restore, no PC change, no checkpoint freed). FET advances nothing itself. It tags everything it fetches for the warp afterwards with that epoch on ccv_fet_dec_instr. Both blocks hold the epoch per warp_id, not per tier-1 slot, so it survives demotion and restore. Neither resets it at launch, because a relaunched warp_id could meet its predecessor's uops still in flight. The channel is fixed-latency and in order, so notices and redirects for a warp land in the order sent, and V-56 holds: one channel latency after every change, FET's epoch for a warp equals OOE's.
 
 ooe → fet · rate 1 · instruction
 
@@ -411,7 +411,8 @@ ooe → fet · rate 1 · instruction
 | `taken_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
-| **total** | | **108** | ⚠️ 5 provisional |
+| `epoch_only` | `1` | 1 | literal |
+| **total** | | **109** | ⚠️ 5 provisional |
 
 ### `ccv_ooe_fet_ckpt_free`
 

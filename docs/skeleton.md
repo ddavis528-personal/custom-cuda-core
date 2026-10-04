@@ -1069,10 +1069,17 @@ matters for the skeleton:
   and `stale-epoch` (one uop tagged with the epoch before a redirect: OOE
   drops it and it never retires). The stub's FET still fetches no wrong
   path, so no clean kernel drops anything yet (`epoch_drop=0`). Not
-  modelled: the epoch on demotion and kill (A-74: OOE to own it and tell
-  FET with an epoch-only redirect, proposed), and a mask
-  narrower than the warp, which needs FET's group state (no kernel
-  diverges yet).
+  modelled: a mask narrower than the warp, which needs FET's group state
+  (no kernel diverges yet).
+- **Epoch ownership** (A-74, accepted). OOE owns every warp's fetch epoch
+  and tells FET of each change on `ccv_ooe_fet_redirect`. A demotion or kill
+  sends an epoch notice, with the new 1-bit `epoch_only` (109 bits, from
+  108): FET takes the epoch and nothing else. Both keep the epoch per
+  `warp_id`, never reset at launch, and OOE's `kill_ack` waits until its
+  notice has landed in FET, so a relaunch cannot be fetched under the old
+  epoch (V-56, V-57). The FET stub now holds the epoch per `warp_id` and
+  honours `epoch_only`; OOE sends 0 on every redirect, since demotion and
+  kill are not modelled.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

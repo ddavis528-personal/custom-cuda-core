@@ -100,7 +100,7 @@
       "name": "kill_ack",
       "dir": "out",
       "width": 1,
-      "doc": "QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf. MIU is the awkward one: retired stores must still drain, so its ack waits on them, while its pending loads are dropped. Gathered at RAU as kill_acks, one bit per owning block in the order FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA.",
+      "doc": "QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf. MIU is the awkward one: retired stores must still drain, so its ack waits on them, while its pending loads are dropped. Gathered at RAU as kill_acks, one bit per owning block in the order FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA. OOE's ack also waits until the epoch notice it sent for the kill (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET: its send cycle plus the channel's fixed latency. RAU relaunches only after every ack, so a relaunch can never reach FET ahead of the notice, and no relaunched warp is fetched under an epoch older than OOE's (V-57).",
       "fabric": {
         "kind": "gather",
         "to": "rau",
@@ -547,9 +547,10 @@
         "checkpoint_id",
         "taken_mask",
         "target_pc",
-        "fetch_epoch"
+        "fetch_epoch",
+        "epoch_only"
       ],
-      "doc": "A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. OOE keeps a current fetch epoch per warp, advanced on every redirect it sends (and on demotion and kill, A-70); the redirect carries the new value, and FET tags everything it fetches for the warp afterwards with it, on ccv_fet_dec_instr.",
+      "doc": "A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. EPOCH OWNERSHIP (A-70, A-74): OOE owns every warp's fetch epoch and is the only block that advances it: on each redirect, on ccv_rau_ooe_demote, and on a kill. It tells FET of every change on this channel. A redirect carries the new epoch; a demotion or kill sends an epoch notice, epoch_only = 1, for which FET only takes fetch_epoch for warp_id, and checkpoint_id, taken_mask and target_pc are don't-care (no restore, no PC change, no checkpoint freed). FET advances nothing itself. It tags everything it fetches for the warp afterwards with that epoch on ccv_fet_dec_instr. Both blocks hold the epoch per warp_id, not per tier-1 slot, so it survives demotion and restore. Neither resets it at launch, because a relaunched warp_id could meet its predecessor's uops still in flight. The channel is fixed-latency and in order, so notices and redirects for a warp land in the order sent, and V-56 holds: one channel latency after every change, FET's epoch for a warp equals OOE's.",
       "id_classes": [
         "instr"
       ],
@@ -1371,7 +1372,8 @@
     "free_mask": "CCV_TIER1_WARPS*CCV_P_BR_CKPTS",
     "alloc_op": "2",
     "sched_attr": "CCV_P_W_SCHED_ATTR",
-    "group_mask": "CCV_W_LANE_MASK"
+    "group_mask": "CCV_W_LANE_MASK",
+    "epoch_only": "1"
   },
   "_open_questions_comment": [
     "Questions the payload pass raised that are NOT width questions, and that",

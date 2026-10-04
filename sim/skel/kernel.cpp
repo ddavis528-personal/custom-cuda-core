@@ -1674,6 +1674,9 @@ private:
     // tags what it fetches from here on with it (A-70).
     epoch_[e.warp] = (epoch_[e.warp] + 1) % (1u << field(c.ooe_fet, "fetch_epoch").width);
     put(r, c.ooe_fet, "fetch_epoch", epoch_[e.warp]);
+    // A real redirect. OOE also sends epoch_only notices on this channel for
+    // a demotion or kill (A-74); the stubs model neither yet.
+    put(r, c.ooe_fet, "epoch_only", 0);
     redirects_.push_back({0, r, e.tid});
     k_.hit("redirect");
   }
@@ -2080,7 +2083,9 @@ private:
   std::map<uint64_t, unsigned> ckpt_of_;    ///< checkpoint, by branch seq
   bool await_redirect_ = false;             ///< fetched a branch it mispredicts
   unsigned tier1_ = 0;                      ///< the warp's tier-1 slot, from RAU
-  unsigned epoch_ = 0;                      ///< from the last redirect (A-70)
+  // Each warp's fetch epoch, by warp_id, as OOE last sent it (A-70, A-74).
+  // FET advances nothing itself, and never resets it at launch.
+  unsigned epoch_[32] = {};
   static constexpr unsigned kEpochs = 1u << ccv::prov::kWFetchEpoch;
   bool stale_next_ = false, stale_done_ = false;   ///< stale-epoch control
 
@@ -2101,34 +2106,43 @@ private:
       // check the redirect says where ccv-sim went, and take the new epoch
       // (a real FET discards in-flight fetches from older epochs).
       Receiver::Msg m = take(c.ooe_fet, 0);
-      const uint64_t tgt = get(m.payload, c.ooe_fet, "target_pc");
-      const uint32_t tmask = uint32_t(get(m.payload, c.ooe_fet, "taken_mask"));
-      const unsigned ck = unsigned(get(m.payload, c.ooe_fet, "checkpoint_id"));
-      if (const Record *r = rec(m.tid, "fet")) {
-        if (tgt != r->target || tmask != r->taken)
-          k_.fail("fet: seq %llu redirect to %llx for lanes %08x; ccv-sim %llx for %08x",
-                  (unsigned long long)r->seq, (unsigned long long)tgt, tmask,
-                  (unsigned long long)r->target, r->taken);
-        // The checkpoint is FET's own: the one it took for this branch, back
-        // through DEC and OOE. FET rebuilds the groups from it and tmask.
-        auto k = ckpt_of_.find(r->seq);
-        if (k == ckpt_of_.end() || k->second != ck)
-          k_.fail("fet: seq %llu redirect names checkpoint %u, not the one FET took",
-                  (unsigned long long)r->seq, ck);
-      }
-      // Restoring a checkpoint frees it and every younger one: the branches
-      // that took them were on the wrong path (A-56). Applied before any free
-      // landing this cycle -- the pair is latency-matched (A-58).
-      for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
-        if (*it == ck) {
-          for (auto j = it; j != taken_order_.end(); ++j) live_ &= ~(1u << *j);
-          taken_order_.erase(it, taken_order_.end());
-          break;
+      const unsigned rw = unsigned(get(m.payload, c.ooe_fet, "warp_id"));
+      const unsigned fe = unsigned(get(m.payload, c.ooe_fet, "fetch_epoch"));
+      // An epoch notice (A-74): OOE advanced the warp's epoch for a demotion
+      // or kill. FET takes the epoch and nothing else -- no restore, no PC
+      // change. Not sent until demotion and kill are modelled.
+      if (get(m.payload, c.ooe_fet, "epoch_only")) {
+        epoch_[rw & 31] = fe;
+      } else {
+        const uint64_t tgt = get(m.payload, c.ooe_fet, "target_pc");
+        const uint32_t tmask = uint32_t(get(m.payload, c.ooe_fet, "taken_mask"));
+        const unsigned ck = unsigned(get(m.payload, c.ooe_fet, "checkpoint_id"));
+        if (const Record *r = rec(m.tid, "fet")) {
+          if (tgt != r->target || tmask != r->taken)
+            k_.fail("fet: seq %llu redirect to %llx for lanes %08x; ccv-sim %llx for %08x",
+                    (unsigned long long)r->seq, (unsigned long long)tgt, tmask,
+                    (unsigned long long)r->target, r->taken);
+          // The checkpoint is FET's own: the one it took for this branch, back
+          // through DEC and OOE. FET rebuilds the groups from it and tmask.
+          auto k = ckpt_of_.find(r->seq);
+          if (k == ckpt_of_.end() || k->second != ck)
+            k_.fail("fet: seq %llu redirect names checkpoint %u, not the one FET took",
+                    (unsigned long long)r->seq, ck);
         }
-      await_redirect_ = false;
-      epoch_ = unsigned(get(m.payload, c.ooe_fet, "fetch_epoch"));
-      stale_next_ = k_.brk == "stale-epoch" && !stale_done_;
-      stale_done_ = stale_done_ || stale_next_;
+        // Restoring a checkpoint frees it and every younger one: the branches
+        // that took them were on the wrong path (A-56). Applied before any free
+        // landing this cycle -- the pair is latency-matched (A-58).
+        for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
+          if (*it == ck) {
+            for (auto j = it; j != taken_order_.end(); ++j) live_ &= ~(1u << *j);
+            taken_order_.erase(it, taken_order_.end());
+            break;
+          }
+        await_redirect_ = false;
+        epoch_[rw & 31] = fe;
+        stale_next_ = k_.brk == "stale-epoch" && !stale_done_;
+        stale_done_ = stale_done_ || stale_next_;
+      }
     }
     if (has(c.ooe_free, 0)) {
       // Checkpoints freed by correct resolutions. Every bit must name one
@@ -2201,7 +2215,8 @@ private:
       uint32_t gmask = r.mask;
       if (k_.brk == "corrupt-group-mask" && r.seq == 5) gmask &= 0x7fffffffu;
       put(f, c.fet_dec, "group_mask", gmask);
-      put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (epoch_ + kEpochs - 1) % kEpochs : epoch_);
+      const unsigned ep = epoch_[0];            // the stub fetches warp 0 only
+      put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
       stale_next_ = false;
       // A branch takes a checkpoint of the PC groups, and FET predicts it.
       // The prediction is static not-taken (uniform-only prediction is the
