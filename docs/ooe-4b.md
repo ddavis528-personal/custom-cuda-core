@@ -13,6 +13,12 @@ reset line ([`reset-line-template.md`](reset-line-template.md)), per-stage NGD
 budgets, and the scheduler's timing-ceiling estimate, which also needs Q-7
 (is 25 NGD a Vmin or a nominal number?).
 
+**Status (2026-10-04).** The model is in [`sim/ooe/`](../sim/ooe/) and is
+what `makeOoe` builds; the stub stays selectable with `CCV_OOE_IMPL=stub`.
+Every kernel and control passes on both hosts. What the model decides, what
+it cannot use yet, its tests, the sweep and its requests to the top-level
+session are in [`ooe-model.md`](ooe-model.md).
+
 ## Sources of truth
 
 | What | Where |
