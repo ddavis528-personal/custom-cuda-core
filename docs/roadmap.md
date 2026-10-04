@@ -8,10 +8,14 @@ and what is carried.
 
 ## Part 0 — picking this up again
 
-**State: Stage 1 complete. Stage 2 closed and encoded, except the
-per-interface NGD budgets. Stage 3's skeleton has run `vadd` end to end (S1),
-with the final state identical to ccv-sim's. Next: S2, a kernel that stresses
-what vadd does not.**
+**State (2026-10-04): Stage 1 complete. Stage 2 closed and encoded, except
+the per-interface NGD budgets. Stage 3's skeleton runs ten kernels end to end
+on both hosts (S1 `vadd`, then S2: merge, masked loads, misaligned and
+scattered accesses, mispredicts), each matching ccv-sim and held to coverage
+counts. OOE's interfaces are settled (Review A-25 to A-74), and its Stage 4b
+C++ model starts in a session of its own: [`ooe-4b.md`](ooe-4b.md) is its
+handoff. This session stays top-level: schema, parameters, gate, and the
+stubs the OOE model needs to be exercised.**
 
 ```
     ./tools/setup-toolchain.sh   # containers are ephemeral; this restores one
@@ -36,6 +40,10 @@ grill-me ran on 2026-09-23. Here is each input's status:
 
 **Next, in order:**
 
+0. **OOE Stage 4b**, in its own session ([`ooe-4b.md`](ooe-4b.md)). The
+   top-level work that feeds it, in order: settle Review A-75 (what OOE needs
+   from DEC so it never decodes `opcode`); wrong-path fetch and squash in the
+   stubs; several warps; divergence; then demotion, kill and restore.
 1. **S2: kernels that stress what vadd does not.** vadd has no divergence,
    no loop, one warp, and no SPM or barriers, so 21 of the 48 channels carried
    nothing in S1. The first S2 kernels cover partial writes under rename and the zero

@@ -37,6 +37,7 @@ if ! command -v verilator >/dev/null 2>&1; then
   exit 0
 fi
 SKEL="$B/skel/ccv-skel"
+BLOCKS=$(grep -v '^#' sim/skel/blocks.list | sed "s|^|$R/|" | tr '\n' ' ')
 if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
   bad "SV-hosted C++" "no $SKEL or oracles -- tools/check-skel.sh and check-kernel.sh first"
   exit 1
@@ -65,7 +66,7 @@ fi
 if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
      -DCCV_CHECK -DCCV_TRACE $INC --top-module tb --Mdir "$B/svh_vo" -o ccv-svh \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
-     $SV "$R/sim/skel/dpi_host.cpp" "$R/sim/skel/kernel.cpp" \
+     $SV "$R/sim/skel/dpi_host.cpp" $BLOCKS \
      "$R/sim/skel/oracle.cpp" "$R/sim/skel/machine.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/svh_build.log" 2>&1; then

@@ -1044,6 +1044,12 @@ matters for the skeleton:
   hides it from the reader, which a real OOE would not). The mload oracle
   needed a ccv-sim fix: `-oracle` counted a guarded load's accesses against
   the issue mask, not the active lanes (compiler snapshot 41e32c5).
+- **Stubs split for per-block models.** What every stub shares (channel and
+  field access, the `Stub` base, the wire conventions, the opcode table)
+  is in `sim/skel/stub.h`; the OOE stub is in `sim/skel/ooe.cpp` behind
+  `makeOoe`, the first block a Stage 4b model replaces
+  ([`ooe-4b.md`](ooe-4b.md)). Both hosts build the block implementations
+  listed in `sim/skel/blocks.list`.
 - **Coverage kernels and counts** ([`coverage.md`](coverage.md)). `unal`
   (warp accesses straddling two lines, a store's partial masks on both),
   `gather` (one line per lane, reversed, broadcast, a scattered store),

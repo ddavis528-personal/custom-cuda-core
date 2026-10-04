@@ -48,6 +48,8 @@ so this is a build artifact rather than something to remember.
 | `rtl/top/stubs/ccv_spm.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `rtl/top/stubs/ccv_syu.sv` | — | `CCV_CG_HYST_QUIESCE`, `CCV_CG_HYST_STALL`, `CCV_CG_HYST_W` |
 | `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE` |
+| `sim/skel/ooe.cpp` | — | — |
+| `sim/skel/stub.h` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
