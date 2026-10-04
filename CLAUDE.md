@@ -43,6 +43,9 @@ the ports diverges there. Block implementations are listed in
 
 ## Design docs outside the repo (Claude docs, the user's account)
 
+Pinned copies, which grep can reach, are in `docs/design-snapshots/`. The
+live doc wins; refresh a copy, never edit it (`docs/design-snapshots/README.md`).
+
 - OOE microarchitecture, Stage 4: https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU
 - Interface changes and the Review tab (A-n rows): https://claude.ai/artifact/EcuSx6yXG4dCmkT2ky2Cb7
 - Per-block architecture specs: https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35
@@ -53,6 +56,8 @@ the ports diverges there. Block implementations are listed in
 - The top-level session owns `schema/`, `params/`, `tools/`, `rtl/top/` and
   the block stubs.
 - A per-block session owns its own model files.
-- An interface change goes on the Review tab as a new A-n row for the
-  top-level session to apply. It is never a direct schema edit from a
-  per-block session.
+- An interface change is a new A-n row for the top-level session to apply.
+  It is never a direct schema edit from a per-block session. The Review
+  tab's conversation is closing, with A-75 its last row; later rows go to the
+  planned multi-agent channel once it exists, and to the Review tab until
+  then.
