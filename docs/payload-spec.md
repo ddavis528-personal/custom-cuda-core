@@ -239,7 +239,7 @@ rau → ooe · rate 1 · control
 
 ### `ccv_ooe_rau_drained`
 
-Confirmation that only architectural state remains, with the resume PC. Migration may begin.
+Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length.
 
 ooe → rau · rate 1 · control
 

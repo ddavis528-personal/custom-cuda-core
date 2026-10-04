@@ -1075,9 +1075,10 @@ matters for the skeleton:
   and tells FET of each change on `ccv_ooe_fet_redirect`. A demotion or kill
   sends an epoch notice, with the new 1-bit `epoch_only` (109 bits, from
   108): FET takes the epoch and nothing else. Both keep the epoch per
-  `warp_id`, never reset at launch, and OOE's `kill_ack` waits until its
-  notice has landed in FET, so a relaunch cannot be fetched under the old
-  epoch (V-56, V-57). The FET stub now holds the epoch per `warp_id` and
+  `warp_id`, never reset at launch, and OOE's `kill_ack`, and its
+  `ccv_ooe_rau_drained` for a demotion, wait until the notice has landed in
+  FET, so a relaunch or restore cannot be fetched under the old epoch
+  (V-56, V-57). The FET stub now holds the epoch per `warp_id` and
   honours `epoch_only`; OOE sends 0 on every redirect, since demotion and
   kill are not modelled.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per

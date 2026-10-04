@@ -100,7 +100,7 @@
       "name": "kill_ack",
       "dir": "out",
       "width": 1,
-      "doc": "QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf. MIU is the awkward one: retired stores must still drain, so its ack waits on them, while its pending loads are dropped. Gathered at RAU as kill_acks, one bit per owning block in the order FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA. OOE's ack also waits until the epoch notice it sent for the kill (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET: its send cycle plus the channel's fixed latency. RAU relaunches only after every ack, so a relaunch can never reach FET ahead of the notice, and no relaunched warp is fetched under an epoch older than OOE's (V-57).",
+      "doc": "QUIESCED, not merely stopped: a block acks only when it holds no state for the killed warps AND has nothing in flight toward anyone else on their behalf. MIU is the awkward one: retired stores must still drain, so its ack waits on them, while its pending loads are dropped. Gathered at RAU as kill_acks, one bit per owning block in the order FET, DEC, OOE, RCU, MIU, SPM, SYU, PCA. OOE's ack also waits until the epoch notice it sent for the kill (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET: its send cycle plus the channel's fixed latency. RAU relaunches only after every ack, so a relaunch can never reach FET ahead of the notice, and no relaunched warp is fetched under an epoch older than OOE's (V-57). A demotion follows the same rule on ccv_ooe_rau_drained.",
       "fabric": {
         "kind": "gather",
         "to": "rau",
@@ -960,7 +960,7 @@
         "resume_pc",
         "arch_state_ready"
       ],
-      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin.",
+      "doc": "Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length.",
       "id_classes": [
         "none"
       ]
