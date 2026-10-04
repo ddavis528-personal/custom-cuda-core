@@ -1583,7 +1583,7 @@ private:
         }
         for (bool &b : pw_[w]) b = false;
         // The epoch is not reset: a relaunched warp_id could otherwise meet
-        // its predecessor's uops still in flight at the same epoch (A-72).
+        // its predecessor's uops still in flight at the same epoch (A-74).
         if (w == 0) k_.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
       } else if (op != kAllocFree) {
         k_.fail("ooe: restore (alloc_op %u) is not modelled in S1", op);

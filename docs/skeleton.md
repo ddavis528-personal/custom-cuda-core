@@ -1069,7 +1069,8 @@ matters for the skeleton:
   and `stale-epoch` (one uop tagged with the epoch before a redirect: OOE
   drops it and it never retires). The stub's FET still fetches no wrong
   path, so no clean kernel drops anything yet (`epoch_drop=0`). Not
-  modelled: the epoch on demotion and kill (raised as A-72), and a mask
+  modelled: the epoch on demotion and kill (A-74: OOE to own it and tell
+  FET with an epoch-only redirect, proposed), and a mask
   narrower than the warp, which needs FET's group state (no kernel
   diverges yet).
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
