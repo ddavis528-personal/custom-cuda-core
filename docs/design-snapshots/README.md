@@ -16,12 +16,12 @@ it.** Never edit one by hand: refresh it.
 Each snapshot starts with a header naming its source, tab, revision, export
 date and status; `tools/check-docs.sh` refuses one without it.
 
-**The Review conversation is closing.** A-75 (what OOE needs from DEC so it
-never decodes `opcode`) is its last row, and the one still open when it
-closed. It is answered on the Review tab, after which this snapshot is
-refreshed once more. Later A-n rows belong to the planned multi-agent channel,
-and the numbering continues there. Rows A-1 to A-24 are an earlier round,
-kept on the *Arch opens* tab of the
+**The Review conversation is closed** at A-75. Its rows still open moved to
+the [CCV cross-agent register](https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5)
+under the raiser's prefix (A-75 is TI-1, A-71 is TI-2), and new items are
+raised there, never as A-n rows. The register is a live working record, not
+a design source, so it is not snapshotted. Rows A-1 to A-24 are an earlier
+round, kept on the *Arch opens* tab of the
 [per-block specs doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35) and
 not snapshotted here.
 
@@ -30,10 +30,9 @@ not snapshotted here.
 - **The OOE microarchitecture doc**, whenever it changes, in the same commit
   as the code or interface change that follows from it. The commit then
   carries both the design text and what was built from it.
-- **The Review tab**, when the top-level session applies a row. Then
-  `tools/check-docs.sh` holds: every A-n from A-25 onward that the repo cites
-  must be in `interface-review.md`, so applying a row without refreshing the
-  snapshot fails the gate. The check needs no access to the live doc.
+- **The Review tab** no longer changes. `tools/check-docs.sh` still holds: every A-n from A-25 onward that the repo cites
+  must be in `interface-review.md`. The check needs no access to the live
+  doc.
 
 ## How to refresh
 

@@ -18,7 +18,7 @@ budgets, and the scheduler's timing-ceiling estimate, which also needs Q-7
 | What | Where |
 |---|---|
 | OOE's internal design: rename, the two-bit wakeup matrix, select, ROB, checkpoints, squash, demotion, kill, activation, parameters, events, the V-properties | *OOE microarchitecture — Stage 4 grill-me* (Claude doc): https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU. A copy pinned to this repo: [`design-snapshots/ooe-microarchitecture.md`](design-snapshots/ooe-microarchitecture.md) |
-| Why each interface is the way it is: Review rows A-25 to A-75, each with the OOE session's response and where it was applied; and the change set itself | *Interface spec changes — OOE session*, Review and Changes tabs: https://claude.ai/artifact/EcuSx6yXG4dCmkT2ky2Cb7. Copies: [`design-snapshots/interface-review.md`](design-snapshots/interface-review.md), [`design-snapshots/interface-changes.md`](design-snapshots/interface-changes.md) |
+| Why each interface is the way it is: Review rows A-25 to A-75 (closed), each with the OOE session's response and where it was applied; and the change set itself. Later rows are in the cross-agent register: https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5 | *Interface spec changes — OOE session*, Review and Changes tabs: https://claude.ai/artifact/EcuSx6yXG4dCmkT2ky2Cb7. Copies: [`design-snapshots/interface-review.md`](design-snapshots/interface-review.md), [`design-snapshots/interface-changes.md`](design-snapshots/interface-changes.md) |
 | Per-block specs, including OOE's neighbours | *CCV per-block architecture specs*: https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35 |
 | Ports, fields, widths, slot attributes, channel contracts (each channel's `doc`) | [`schema/interfaces.json`](../schema/interfaces.json); readable per channel in [`payload-spec.md`](payload-spec.md) |
 | Every size and latency | [`params/ccv_params.json`](../params/ccv_params.json), generated into `sim/generated/ccv_params.h` (`ccv::prov::k*`, `ccv::prelim::k*`). Never hard-code a number that has a parameter |
@@ -107,10 +107,10 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
   - exit;
   - which identity `srd` substitutes.
 
-  Raised on the Review tab; until it is settled, the model may use the same
-  table lookup, marked as temporary.
-- A-71 (an unaligned lane word) is deferred to the ISA track and does not
-  touch OOE.
+  Now TI-1 in the register (Needs OA, DA); until it is settled, the model
+  may use the same table lookup, marked as temporary.
+- A-71 (an unaligned lane word), now TI-2, is deferred to the ISA track and
+  does not touch OOE.
 
 ## What the environment can and cannot exercise yet
 
@@ -153,12 +153,15 @@ change. Regenerate it with `python3 tools/gen-walkthrough.py` and commit it.
 - **The OOE session owns** its model files and `sim/skel/ooe.cpp`. **The
   top-level session owns** `schema/`, `params/`, the generators in `tools/`,
   `rtl/top/`, and every other block's stub.
-- **An interface change is a new A-n row** for the top-level session to
-  apply to schema, parameters and stubs. It is never a direct edit of the
-  schema. The Review tab's conversation is closing, with A-75 its last row,
-  answered there. Later rows go where the planned multi-agent channel says,
-  and until that exists, on the Review tab. A-numbers continue across
-  channels.
+- **All cross-agent traffic goes through the register**, *CCV cross-agent
+  register*: https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5. Its
+  Conventions tab is the process. The OOE model session is **OI** and writes
+  only the OI tab; the top-level session is **TI**, the OOE architect **OA**.
+  At session start, search every tab for `OI` in a Needs column.
+- **An interface change is a row in OI's tab with `TI` in Needs**, for the
+  top-level session to apply to schema, parameters and stubs. It is never a
+  direct edit of the schema. The Review tab (A-25 to A-75) is closed, and its
+  open rows moved to the register.
 - **The design snapshots** in [`design-snapshots/`](design-snapshots/) pin the
   docs this repo was built against. Change the microarchitecture doc and
   refresh its snapshot in the same commit as the code that follows it

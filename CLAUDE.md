@@ -47,7 +47,7 @@ Pinned copies, which grep can reach, are in `docs/design-snapshots/`. The
 live doc wins; refresh a copy, never edit it (`docs/design-snapshots/README.md`).
 
 - OOE microarchitecture, Stage 4: https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU
-- Interface changes and the Review tab (A-n rows): https://claude.ai/artifact/EcuSx6yXG4dCmkT2ky2Cb7
+- Interface changes and the closed Review tab (A-n rows): https://claude.ai/artifact/EcuSx6yXG4dCmkT2ky2Cb7
 - Per-block architecture specs: https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35
 - Block partitioning and interface spec (the arch agent's): https://claude.ai/artifact/7n8Uv33XAvxziZ7Xyz9jCz
 
@@ -56,8 +56,21 @@ live doc wins; refresh a copy, never edit it (`docs/design-snapshots/README.md`)
 - The top-level session owns `schema/`, `params/`, `tools/`, `rtl/top/` and
   the block stubs.
 - A per-block session owns its own model files.
-- An interface change is a new A-n row for the top-level session to apply.
-  It is never a direct schema edit from a per-block session. The Review
-  tab's conversation is closing, with A-75 its last row; later rows go to the
-  planned multi-agent channel once it exists, and to the Review tab until
-  then.
+- An interface change is a row for the top-level session to apply. It is
+  never a direct schema edit from a per-block session.
+
+## The cross-agent register
+
+Every agent communicates through *CCV cross-agent register* (Claude doc):
+https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5. Read its Conventions tab first.
+- This session is **TI** (top-level implementation): it writes only the TI
+  tab and mints `TI-n`. The OOE model session is **OI**; the OOE architect is
+  **OA**; **AR** is the top-level architect; **DA** is Daniel.
+- At session start, search every tab for `TI` in a Needs column (OA-11), and
+  answer in the TI tab's responses table.
+- A per-block session raises an interface change in its own tab with `TI` in
+  Needs. The closed A-n register (A-25 to A-75) is pinned in
+  `docs/design-snapshots/interface-review.md`; its open items moved to the
+  register (A-75 is TI-1, A-71 is TI-2).
+- `docs/open-items.md` (Q-n) stays the repo's own tracker. A Q-n that needs
+  an answer from another agent or DA is raised as a TI row citing it.
