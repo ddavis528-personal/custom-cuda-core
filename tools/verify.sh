@@ -148,6 +148,12 @@ section "Stage 3 -- skeleton (S1: vadd)"
 # that must fail. After S0, which builds the binary.
 run "vadd through the machine" ./tools/check-kernel.sh
 
+section "Stage 4b -- OOE model unit tests (sim/ooe/)"
+# The paths no S1 kernel reaches yet: squash, deferred free, L1 cancel and
+# replay, bypass groups, several warps, demotion, kill, faults, barriers.
+# The harness's own controls must each be caught, and are held by name.
+run "OOE unit tests" ./tools/check-ooe-unit.sh
+
 section "SV top -- rtl/top/ (generated, tracked)"
 # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
 # instances, with the checker bank under CCV_CHECK. After the skeleton, which

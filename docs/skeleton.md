@@ -1049,7 +1049,9 @@ matters for the skeleton:
   is in `sim/skel/stub.h`; the OOE stub is in `sim/skel/ooe.cpp` behind
   `makeOoe`, the first block a Stage 4b model replaces
   ([`ooe-4b.md`](ooe-4b.md)). Both hosts build the block implementations
-  listed in `sim/skel/blocks.list`.
+  listed in `sim/skel/blocks.list`. The OOE model (`sim/ooe/`, merged from
+  the OOE session's branch) is now what `makeOoe` builds; the stub stays
+  behind `CCV_OOE_IMPL=stub`.
 - **Coverage kernels and counts** ([`coverage.md`](coverage.md)). `unal`
   (warp accesses straddling two lines, a store's partial masks on both),
   `gather` (one line per lane, reversed, broadcast, a scattered store),

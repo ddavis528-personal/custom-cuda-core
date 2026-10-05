@@ -23,7 +23,11 @@ namespace ccv {
 namespace skel {
 
 void Kernel::fail(const char *fmt, ...) {
-  if (failures < 12) {
+  // Every failure prints, up to a bound against a runaway: the controls in
+  // tools/check-kernel.sh grep for one instruction's line, and with an
+  // out-of-order OOE (sim/ooe/) which instruction fails first is a matter
+  // of issue order, not of which check fired.
+  if (failures < 10000) {
     va_list ap;
     va_start(ap, fmt);
     std::fprintf(stderr, "CHECK ");

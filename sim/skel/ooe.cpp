@@ -8,6 +8,8 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 
+#include <cstdlib>
+
 namespace ccv {
 namespace skel {
 namespace {
@@ -405,8 +407,14 @@ private:
 
 } // namespace
 
+/// The Stage 4b model (sim/ooe/), and this stub beside it for A/B runs:
+/// CCV_OOE_IMPL=stub selects the stub, in both hosts.
+std::unique_ptr<Block> makeOoeModel(int inst, Kernel &k);
+
 std::unique_ptr<Block> makeOoe(int inst, Kernel &k) {
-  return std::make_unique<Ooe>(inst, k);
+  const char *impl = std::getenv("CCV_OOE_IMPL");
+  if (impl && std::string(impl) == "stub") return std::make_unique<Ooe>(inst, k);
+  return makeOoeModel(inst, k);
 }
 
 } // namespace skel

@@ -13,6 +13,12 @@ reset line ([`reset-line-template.md`](reset-line-template.md)), per-stage NGD
 budgets, and the scheduler's timing-ceiling estimate, which also needs Q-7
 (is 25 NGD a Vmin or a nominal number?).
 
+**Status (2026-10-04).** The model is in [`sim/ooe/`](../sim/ooe/) and is
+what `makeOoe` builds; the stub stays selectable with `CCV_OOE_IMPL=stub`.
+Every kernel and control passes on both hosts. What the model decides, what
+it cannot use yet, its tests, the sweep and its requests to the top-level
+session are in [`ooe-model.md`](ooe-model.md).
+
 ## Sources of truth
 
 | What | Where |
@@ -32,15 +38,14 @@ budgets, and the scheduler's timing-ceiling estimate, which also needs Q-7
   name (`ch()`, `get`, `put`, `msgOf`), the `Stub` base (`has`, `take`,
   `can`, `send`, one `work()` per cycle), `emit` for events, and the S1 wire
   conventions.
-- `sim/skel/ooe.cpp`: the OOE stub today, behind `makeOoe(inst, k)`. It is in
-  order: one issue a cycle, a scoreboard instead of reservation stations, and
-  no squash. It does have a real GPR RAT and free list, the copy-only op,
-  checkpoint release, and the per-warp fetch epoch.
-- Put the model in its own files, in a directory of its own beside
-  `sim/skel/`, and list them in
-  `sim/skel/blocks.list`. Both hosts, the C++ skeleton and the SV-hosted top,
-  build from that list. Point `makeOoe` at the model. Keeping the stub
-  selectable until the model passes everything makes A/B runs cheap.
+- `sim/ooe/`: the model (`ooe_core.*`, the core; `ooe_block.cpp`, its ports,
+  behind `makeOoeModel`), listed in `sim/skel/blocks.list`, which both hosts
+  build from. Its unit tests (`ooe_test.cpp`, `run-tests.sh`) are gated by
+  `tools/check-ooe-unit.sh`, which also holds the harness's controls by name.
+- `sim/skel/ooe.cpp`: the in-order stub it replaced, still selectable with
+  `CCV_OOE_IMPL=stub` for A/B runs.
+- The model reaches the top-level branch by merge: OI names a commit in its
+  register tab, and TI merges it and runs the whole gate (register OI-2).
 
 ## The swap boundary: rules the gate enforces
 
@@ -139,6 +144,7 @@ to the top-level session, in this order:
 ./tools/gen-oracle.sh               # oracles from the pinned compiler snapshot
 ./tools/check-skel.sh               # builds build/skel/ccv-skel (S0 suite)
 ./tools/check-kernel.sh             # every kernel, its bins and its controls
+./tools/check-ooe-unit.sh           # the OOE model's unit tests and their controls
 ./tools/check-sv-hosted.sh          # the same blocks inside the SV top
 ./tools/verify.sh                   # the whole gate (~25 min); must be green to push
 build/skel/ccv-skel --kernel build/oracle/loop/oracle.jsonl [--break MODE] [--trace t.ccvtrace]
