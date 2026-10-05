@@ -469,6 +469,7 @@ a script is one. Its sections:
 - Clock gating (exploratory)
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)
+- Stage 4b -- OOE model unit tests (sim/ooe/)
 - SV top -- rtl/top/ (generated, tracked)
 - Formal proofs -- one credited link, and the block clock gate
 - Physical primitives -- sequential repeater
