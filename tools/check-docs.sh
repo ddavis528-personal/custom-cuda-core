@@ -6,7 +6,7 @@
 # way, and more quietly: a count that drifts or a finding reference that points
 # nowhere still reads as authoritative.
 #
-# Five things, all of which drifted at least once:
+# Six things, all of which drifted at least once:
 #   - every F-nn referenced anywhere is defined, and the numbering has no holes
 #   - the open-items register (Q-n) is numbered without holes, its summary
 #     matches its rows, the schema's open questions name live rows, and every
@@ -14,6 +14,8 @@
 #   - every lint rule is implemented, documented, and numbered without holes
 #   - every repo path named in a doc exists
 #   - counts stated in prose match what is on disk
+#   - design snapshots carry their header, and the review snapshot holds every
+#     review row (A-n) the repo cites
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
@@ -155,6 +157,42 @@ for pat, actual, what in checks:
             if int(m.group(1)) != actual:
                 problems.append("%s says %s %s, but there are %d"
                                 % (f, m.group(1), what, actual))
+
+# -- design snapshots --------------------------------------------------------
+# Copies of the design docs that live outside the repo (docs/design-snapshots/
+# README.md). Each carries a header naming its source and revision. The review
+# snapshot must hold every review row (A-25 on) the repo cites: applying a row
+# without refreshing the snapshot is the drift this catches, and it needs no
+# access to the live doc.
+SNAP = "docs/design-snapshots"
+snaps = [f for f in sorted(glob.glob(SNAP + "/*.md"))
+         if os.path.basename(f) not in ("README.md", "ooe-diagrams.md")]
+hdr = re.compile(r"<!-- design-snapshot url=\S+ tab=\S+ rev=\d+ exported="
+                 r"\d{4}-\d\d-\d\d status=(living|closed) -->")
+for f in snaps:
+    first = open(f).readline()
+    if not hdr.match(first):
+        problems.append("%s has no design-snapshot header: regenerate it with "
+                        "tools/snapshot-doc.py, never by hand" % f)
+    if "&#91;embedded content:" in open(f).read():
+        problems.append("%s still holds a diagram placeholder" % f)
+review = SNAP + "/interface-review.md"
+if os.path.exists(review):
+    have = set(int(x) for x in re.findall(r"\*\*A-(\d+)\*\*", open(review).read()))
+    cited = {}
+    srcs = (docs + ["CLAUDE.md"] + glob.glob("schema/*.json") +
+            glob.glob("params/*.json") + glob.glob("sim/skel/*.[ch]*") +
+            glob.glob("tools/*.sh") + glob.glob("tools/*.py"))
+    for f in srcs:
+        for x in re.findall(r"\bA-(\d+)\b", open(f).read()):
+            cited.setdefault(int(x), f)
+    # A-1 to A-24 are the earlier round on the per-block specs doc's Arch
+    # opens tab, which is not snapshotted (README.md there).
+    for n in sorted(n for n in set(cited) - have if n >= 25):
+        problems.append("%s cites A-%d, which %s does not hold: refresh the "
+                        "snapshot" % (cited[n], n, review))
+else:
+    problems.append("%s is missing" % review)
 
 for p in problems:
     print(p)

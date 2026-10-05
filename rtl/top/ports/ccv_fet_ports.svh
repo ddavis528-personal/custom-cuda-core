@@ -75,6 +75,12 @@
   output logic ooe_fet_redirect_credit,
   output logic ooe_fet_redirect_stall,
   input  logic ooe_fet_redirect_wake,
+  // ooe -> fet
+  input  logic ooe_fet_ckpt_free_valid,
+  input  ccv_ooe_fet_ckpt_free_t ooe_fet_ckpt_free_payload,
+  output logic ooe_fet_ckpt_free_credit,
+  output logic ooe_fet_ckpt_free_stall,
+  input  logic ooe_fet_ckpt_free_wake,
   // fet -> mlc
   output logic fet_mlc_ifill_valid,
   output ccv_fet_mlc_ifill_t fet_mlc_ifill_payload,
@@ -136,6 +142,7 @@
   , output logic [63:0] fet_dec_instr_s6_tid
   , output logic [63:0] fet_dec_instr_s7_tid
   , input  logic [63:0] ooe_fet_redirect_tid
+  , input  logic [63:0] ooe_fet_ckpt_free_tid
   , output logic [63:0] fet_mlc_ifill_tid
   , input  logic [63:0] mlc_fet_ifill_rsp_tid
   , input  logic [63:0] miu_fet_itlb_tid

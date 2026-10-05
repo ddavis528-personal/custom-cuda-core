@@ -28,6 +28,7 @@
 #include "machine.h"
 #include "oracle.h"
 
+#include <algorithm>
 #include <map>
 #include <string>
 #include <vector>
@@ -62,8 +63,37 @@ struct Kernel {
   ///                  value the oracle disagrees with (run on the srd kernel)
   ///   late-lead      the lane mask is driven with the operands instead of with
   ///                  valid, so each lane takes a stale mask (Q-40)
-  ///   ignore-mask    RCU writes back every lane, including those the mask
-  ///                  switched off, whose outputs are poison (pguard kernel)
+  ///   corrupt-ckpt   drop-negate's mispredict, with the redirect naming a
+  ///                  checkpoint FET did not take for that branch (A-42)
+  ///   stale-free     drop-negate's mispredict, with OOE also freeing the
+  ///                  checkpoint its redirect restores: the redirect lands
+  ///                  first, so FET sees a free for a dead checkpoint (A-58)
+  ///   dirty-zero     the zero registers read as garbage instead of zero, so
+  ///                  the merge kernel's first guarded writes and its read of
+  ///                  an unwritten register take it (A-64)
+  ///   wrong-merge    RCU sends a guarded write's second source as merge_data
+  ///                  instead of its old destination (merge kernel; A-44)
+  ///   skip-copy      OOE issues a masked load without its copy-only op, so
+  ///                  the inactive lanes keep the fresh register's stale value
+  ///                  (mload kernel; A-38)
+  ///   late-copy      RCU holds the copy-only op CCV_LAT_LANE cycles before
+  ///                  sending it to the lanes: it lands after the wake OOE
+  ///                  cleared copy-pending on (mload kernel; A-38)
+  ///   copy-from-new  the copy-only op carries the load's new destination as
+  ///                  merge_data instead of its old one (mload kernel; A-33)
+  ///   free-new       OOE's retire frees the write's own new register instead
+  ///                  of the one it replaced: once the free list wraps, live
+  ///                  values are reallocated and overwritten (loop kernel)
+  ///   one-line       MIU takes a warp's access to lie in the line of its first
+  ///                  active lane, the aligned-only shortcut (unal kernel)
+  ///   corrupt-group-mask  FET drops lane 31 from seq 5's group mask, which
+  ///                  OOE issues as its issue mask: the lanes refuse it (A-69)
+  ///   stale-epoch    FET tags the first instruction after a redirect with the
+  ///                  epoch before it; OOE drops it, and it never retires (A-70)
+  ///   attr-store-as-load  DEC's sched_attr calls each store a load, so OOE
+  ///                  sends MIU a load and the store never lands (A-66)
+  ///   ignore-mask    RCU's predicate merge ignores the active mask, so the
+  ///                  switched-off lanes' poison lands (pguard kernel; A-43)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
   ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
   std::string brk = "none";
@@ -72,7 +102,7 @@ struct Kernel {
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
-  unsigned prf_base = 0;                           ///< warp 0's, from RAU
+  std::vector<unsigned> rat0;                      ///< OOE's GPR map for warp 0
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   bool exited = false;
@@ -81,12 +111,26 @@ struct Kernel {
   std::vector<uint64_t> rx_per_chan = std::vector<uint64_t>(kNumChans, 0);
   unsigned busy = 0;                               ///< blocks with work left
 
+  /// Coverage bins: what each kernel exists to reach, counted where it
+  /// happens, so a stub change that stops reaching a path fails the gate
+  /// instead of passing it vacuously (docs/coverage.md). kCoverBins is the
+  /// COVER line's order; every bin prints, reached or not.
+  static constexpr const char *kCoverBins[] = {
+      "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
+      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
+      "dcu_id_wait", "epoch_drop"};
+  std::map<std::string, uint64_t> cover;
+  void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
+  void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
+
   void fail(const char *fmt, ...);
 };
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);
 
-/// Physical predicate index of arch P<idx> for a warp: preds are not renamed.
+/// Physical predicate of arch P<idx> for a warp. OOE owns the RATs and RAU
+/// allocates nothing (A-30). GPRs are renamed (Kernel::rat0 is warp 0's map
+/// at the end); predicates are not, so each warp keeps a fixed window.
 inline unsigned physPred(unsigned warp, unsigned idx) { return warp * 4 + idx; }
 
 struct KernelReport {

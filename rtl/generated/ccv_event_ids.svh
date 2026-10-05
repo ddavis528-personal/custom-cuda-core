@@ -18,7 +18,7 @@
 // genuinely unused parameter in hand-written RTL still gets caught.
 /* verilator lint_off UNUSEDPARAM */
 localparam int CCV_SCHEMA_VERSION = 2;
-localparam string CCV_SCHEMA_HASH = "aef57f9e3784cd2d";
+localparam string CCV_SCHEMA_HASH = "54527de41d933b5c";
 
 localparam int CCV_UNIT_UNKNOWN = 0;
 localparam int CCV_UNIT_TESTBENCH = 1;
@@ -45,7 +45,7 @@ localparam int CCV_EV_ISSUE = 3;
 localparam int CCV_EV_WAKEUP = 4;
 // Two-tier SMT warp-select outcome, including which warps were eligible but not chosen -- a losing candidate is what makes a tie-break diff meaningful.
 localparam int CCV_EV_WARP_SELECT = 5;
-// Instruction retires and commits architectural state. The event ccv-sim's functional oracle is checked against.
+// Instruction retires and commits architectural state. Arbitration-sensitive (Q-41, closed by the OOE session 2026-10-02): commit bandwidth is shared across the four tier-1 ROBs, so the cycle a warp retires is an arbiter's decision, as EV_DISPATCH's is. What ccv-sim's oracle is checked against is the per-warp retirement SEQUENCE, correlated separately (the kernel run's retire order), not this event's cycle.
 localparam int CCV_EV_RETIRE = 8;
 // A transaction crossed a channel boundary. THE load-bearing event: §1 says decode, dispatch, retire and memory request/response ARE interface transactions, and the block-level grill-me made every one of them a credited channel. So the 40-channel list is the load-bearing event list, and one event type with the channel as a discriminator covers it -- emitted by the shared credit checker, so every boundary emits identically and no block can drift from the schema.
 localparam int CCV_EV_CH_XFER = 11;

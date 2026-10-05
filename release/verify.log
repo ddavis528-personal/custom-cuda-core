@@ -10,21 +10,22 @@
 
 == documentation ==
   findings, rules, paths and counts consistent   PASS
-  open items (docs/open-items.md)                PASS (49 items: 8 open, 0 awaiting confirmation, 11 scheduled, 30 closed)
+  open items (docs/open-items.md)                PASS (58 items: 10 open, 0 awaiting confirmation, 11 scheduled, 37 closed)
 
 == generated artifacts ==
-  generated event headers from schema/events.json (hash aef57f9e3784cd2d)
-  generated parameter definitions from params/ccv_params.json (101 parameters)
-  generated interface topology from schema/interfaces.json (46 channels, 14 blocks)
-  generated docs/payload-spec.md (8 settled, 15 prov, 23 prelim channels)
-  event schema headers up to date (hash aef57f9e3784cd2d)
-  parameter definitions up to date (101 parameters)
-  interface topology up to date (46 channels, 14 blocks)
-  payload spec up to date (8 settled, 15 prov, 23 prelim)
-  generated docs/trust-report.md (35 files reference an undecided width)
-  trust report up to date (35 files, 23/46 channels tainted)
-  generated skeleton wiring (45 block instances, 108 channel instances, 345 slots, 68697 payload bits)
-  skeleton wiring up to date (45 block instances, 108 channel instances, 345 slots, 68697 payload bits)
+  generated event headers from schema/events.json (hash 54527de41d933b5c)
+  generated parameter definitions from params/ccv_params.json (129 parameters)
+  generated interface topology from schema/interfaces.json (48 channels, 14 blocks)
+  generated docs/payload-spec.md (9 settled, 19 prov, 20 prelim channels)
+  event schema headers up to date (hash 54527de41d933b5c)
+  parameter definitions up to date (129 parameters)
+  derived parameters: 24 mutation(s), each refused by name
+  interface topology up to date (48 channels, 14 blocks)
+  payload spec up to date (9 settled, 19 prov, 20 prelim)
+  generated docs/trust-report.md (41 files reference an undecided width)
+  trust report up to date (41 files, 20/48 channels tainted)
+  generated skeleton wiring (45 block instances, 110 channel instances, 347 slots, 71777 payload bits)
+  skeleton wiring up to date (45 block instances, 110 channel instances, 347 slots, 71777 payload bits)
   generated SV top (60 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
   SV top up to date (60 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
 
@@ -64,7 +65,7 @@
   C++ and RTL parameter values agree with source PASS
 
 == Interface checker convention ==
-  payload structs generated                      46 of 46 channels, 0 field(s) open
+  payload structs generated                      48 of 48 channels, 0 field(s) open
   verilator: checker builds, nothing fires       PASS
   verilator: checker emits events via DPI-C      PASS
   verilator: +ccv_trace_off silences emission only PASS
@@ -132,33 +133,40 @@
 
 == Stage 3 -- skeleton (S0: plumbing) ==
   skeleton builds (checker bank Verilated in)    PASS
-  slots re-derived: 46 types, 108 instances      PASS (345 slots, 77 groups)
+  slots re-derived: 48 types, 110 instances      PASS (347 slots, 77 groups)
   trace id absent from synthesis, present in trace PASS
   C++ field offsets == SV packed structs         PASS (rounds=64)
-    ...a 1-bit offset shift is caught on every field PASS (202 fields)
-  seed 1: 235126 msgs, 0 violations              PASS
-  seed 2: 233869 msgs, 0 violations              PASS
-  seed 3: 235790 msgs, 0 violations              PASS
+    ...a 1-bit offset shift is caught on every field PASS (228 fields)
+  seed 1: 459440 msgs, 0 violations              PASS
+  seed 2: 455554 msgs, 0 violations              PASS
+  seed 3: 455158 msgs, 0 violations              PASS
     (every slot used; sent == received; every credit home; XFER == launched, ids too) 
   --force-atomic: every group moves whole, clean PASS (77 groups)
-  --break phantom-all: all 345 checkers fire     PASS
-  --break stall-all: all 345 checkers fire       PASS
+  --break phantom-all: all 347 checkers fire     PASS
+  --break stall-all: all 347 checkers fire       PASS
   --break atomic-all: all 77 checkers fire       PASS
   --break lockstep-all: all 2 checkers fire      PASS
+  --break fixed-all: all 274 checkers fire       PASS
   --break double-pop: leak counted, bank fires   PASS (42 leaks; quiesced_at_end)
   --break misorder: caught on the ordered channel PASS (ccv_dec_ooe_uop ccv_fet_dec_instr)
   --break misbind: lane takes another slot's instr PASS (2 lockstep checkers)
   --break misgroup: slot carries another stream  PASS (1 binding checker)
-  --break wrong-class: every channel's set enforced PASS (46 channels)
-  trace -> Perfetto JSON, one track per channel  PASS (46)
+  --break wrong-class: every channel's set enforced PASS (48 channels)
+  trace -> Perfetto JSON, one track per channel  PASS (48)
 
 == Stage 3 -- skeleton (S1: vadd) ==
+  oracle brs from the pinned ccv-sim             PASS (14 records)
+  oracle gather from the pinned ccv-sim          PASS (18 records)
+  oracle loop from the pinned ccv-sim            PASS (409 records)
+  oracle merge from the pinned ccv-sim           PASS (11 records)
+  oracle mload from the pinned ccv-sim           PASS (13 records)
   oracle pguard from the pinned ccv-sim          PASS (14 records)
   oracle sel from the pinned ccv-sim             PASS (10 records)
   oracle srd from the pinned ccv-sim             PASS (8 records)
+  oracle unal from the pinned ccv-sim            PASS (11 records)
   oracle vadd from the pinned ccv-sim            PASS (19 records)
-  vadd: final state == ccv-sim, 0 violations     PASS (361 cycles, 26/46 channels)
-  vadd: bank EV_CH_XFER == every launch          PASS (509 transfers)
+  vadd: final state == ccv-sim, 0 violations     PASS (306 cycles, 27/48 channels)
+  vadd: bank EV_CH_XFER == every launch          PASS (510 transfers)
   vadd: deterministic (trace byte-identical)     PASS
   vadd trace -> Perfetto, 17 retires on 17 instrs PASS
   --break corrupt-fetch: DEC rejects the bytes   PASS
@@ -168,17 +176,46 @@
   --break corrupt-disp: MIU's AGU address rejected PASS
   --break itlb-double: outstanding limit fires   PASS
   --break drop-negate: RCU and FET reject the branch PASS
+  --break corrupt-ckpt: FET refuses the checkpoint PASS
+  --break stale-free: FET refuses a dead free    PASS
+  --break attr-store-as-load: the store never lands PASS (32 words)
   --break corrupt-echo: stateless write-back misroutes PASS
-  --break movi-in-lane: the lanes refuse it      PASS
+  --break movi-in-lane: the lanes refuse it      PASS (V-35 names the late done; 356 failures, as pinned)
   --break srd-selector: DEC's range check        PASS
-  sel: final state == ccv-sim, 0 violations      PASS (119 cycles)
+  sel: final state == ccv-sim, 0 violations      PASS (117 cycles)
   --break drop-pred-data: sel's lanes reject it  PASS
-  srd: final state == ccv-sim, 0 violations      PASS (111 cycles)
+  srd: final state == ccv-sim, 0 violations      PASS (110 cycles)
   --break corrupt-ctaid: srd's lanes reject it   PASS
   --break late-lead: every lane sees a stale mask PASS
   --break ignore-mask: masked-off poison lands   PASS
-  pguard: final state == ccv-sim, 0 violations   PASS (128 cycles)
+  pguard: final state == ccv-sim, 0 violations   PASS (125 cycles)
   --break conflate-pred: guard and P0/P1 wrong   PASS
+  merge: final state == ccv-sim, 0 violations    PASS (67 cycles)
+  --break dirty-zero: every zero-register path   PASS (64 lane checks, P2)
+  --break wrong-merge: the lanes refuse it       PASS
+  mload: final state == ccv-sim, 0 violations    PASS (116 cycles)
+  --break skip-copy: inactive lanes keep garbage PASS (R5 read, R8 final)
+  --break copy-from-new: the lanes refuse it     PASS (32 copied lanes, 16 reads)
+  --break late-copy: RCU's contract check fires  PASS (both copies)
+  unal: == ccv-sim, reaches its bins             PASS (263 cycles; line_split=3 lines_peak=2 partial_line=2)
+  gather: == ccv-sim, reaches its bins           PASS (2345 cycles; lines_peak=32 line_split=2 partial_line=32 dcu_id_wait>0)
+  loop: == ccv-sim, reaches its bins             PASS (2636 cycles; redirect=99 ckpt_free=1 reg_reuse>0)
+  brs: == ccv-sim, reaches its bins              PASS (83 cycles; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
+  mload: == ccv-sim, reaches its bins            PASS (116 cycles; copy=2 zero_read=1)
+  merge: == ccv-sim, reaches its bins            PASS (67 cycles; zero_read=2 merge=4)
+  vadd: == ccv-sim, reaches its bins             PASS (306 cycles; ckpt_free=1 redirect=0 epoch_drop=0)
+  --break one-line: the lanes past the boundary  PASS (loads at MIU, 17 stored words)
+  --break free-new: a live register reallocated  PASS (seq 382, once the list wraps)
+  --break corrupt-group-mask: lane 31 refuses it PASS (A-69)
+  --break stale-epoch: OOE drops the uop         PASS (A-70; 406 of 407 retire)
+
+== Stage 4b -- OOE model unit tests (sim/ooe/) ==
+  OOE unit tests                                       PASS
+  control free-new                                     caught
+  control shallow-cancel                               caught
+  control early-wake                                   caught
+  control cmpl-wake-delay-ignored                      caught
+  control bypass-faster-than-contract                  caught
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -191,7 +228,7 @@
   yosys: 45 blocks; checkers only under CCV_CHECK PASS
   top and wrappers: only instances and nets      PASS (both views)
     ...and refuses 11 impure copies: top, wrapper, reuse, gate PASS
-  SV top wiring == C++ skeleton wiring           PASS (69840 bits)
+  SV top wiring == C++ skeleton wiring           PASS (72928 bits)
     ...and rejects a lane swapped in a copy      PASS
 
 == Formal proofs -- one credited link, and the block clock gate ==
@@ -235,23 +272,29 @@
   verilator -Wall: shims, top, testbench         PASS
     ...and refuse a build without CCV_TRACE      PASS
   SV-hosted build: 45 blocks + EXTERNAL as shims PASS
-  pguard: SV-hosted == C++-hosted                PASS (433 events, cycles=128)
-  sel: SV-hosted == C++-hosted                   PASS (277 events, cycles=119)
-  srd: SV-hosted == C++-hosted                   PASS (263 events, cycles=111)
-  vadd: SV-hosted == C++-hosted                  PASS (559 events, cycles=361)
-  every kernel control: the same KERNEL line     PASS (15 controls)
-    ...u_dec one cycle late: caught              PASS (differing_cycles=203)
-    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=173)
+  brs: SV-hosted == C++-hosted                   PASS (288 events, cycles=83)
+  gather: SV-hosted == C++-hosted                PASS (1275 events, cycles=2345)
+  loop: SV-hosted == C++-hosted                  PASS (22222 events, cycles=2636)
+  merge: SV-hosted == C++-hosted                 PASS (456 events, cycles=67)
+  mload: SV-hosted == C++-hosted                 PASS (500 events, cycles=116)
+  pguard: SV-hosted == C++-hosted                PASS (433 events, cycles=125)
+  sel: SV-hosted == C++-hosted                   PASS (277 events, cycles=117)
+  srd: SV-hosted == C++-hosted                   PASS (263 events, cycles=110)
+  unal: SV-hosted == C++-hosted                  PASS (280 events, cycles=263)
+  vadd: SV-hosted == C++-hosted                  PASS (560 events, cycles=306)
+  every kernel control: the same KERNEL line     PASS (27 controls)
+    ...u_dec one cycle late: caught              PASS (differing_cycles=127)
+    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=71)
 
 == Hardening wrappers -- params/links.json ==
-  links.json: malformed configurations refused   PASS (11 cases, each by name)
+  links.json: malformed configurations refused   PASS (12 cases, each by name)
   split: generated                               PASS (16 wrapper modules)
   split: top and wrappers hold instances and nets PASS (both views)
   split: lanes hard-reused, 3 templates for 32   PASS (ccv_lane_w, _v1, _v2)
   split: S0 suite, every control, every credit home PASS
   split: wiring traced flop by flop == C++       PASS (277 slot(s) repeated, 561 stages)
-  split: every S1 kernel == ccv-sim              PASS (vadd 425 cycles)
-  split: SV repeaters == C++ link model          PASS (4 kernels, 15 controls, skew caught)
+  split: every S1 kernel == ccv-sim              PASS (vadd 347 cycles)
+  split: SV repeaters == C++ link model          PASS (10 kernels, 27 controls, skew caught)
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
@@ -260,7 +303,7 @@
   clean
 
 == pending stages ==
-  Stage 2  partition CLOSED (14 blocks, 45 instances, 46 channels); topology,
+  Stage 2  partition CLOSED (14 blocks, 45 instances, 48 channels); topology,
            block letters, machine parameters and the credit checker encoded.
            Round trip CLOSED at 2 (flops both sides + abutment); it stays a
            per-instance parameter, defaulted to that minimum and not expected
@@ -268,13 +311,15 @@
            Payload widths: every field sized, tiered settled/prov/prelim.
            Rate>1: independent slots, with acceptance / ordering / binding
            per channel. Remaining: per-interface NGD budgets
-  Stage 3  S0 plumbing DONE: 45 blocks, 108 channel instances, 345 slots,
+  Stage 3  S0 plumbing DONE: 45 blocks, 110 channel instances, 347 slots,
            checker bank Verilated in, trace identity carried, Perfetto
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state
-           identical to ccv-sim, 0 violations, 26 of 46 channels carrying
+           identical to ccv-sim, 0 violations, 27 of 48 channels carrying
            it. Open items: docs/open-items.md, by Q-number.
-           S2 next: a kernel that diverges, loops, or uses SPM/barriers
+           S2 started: merge (partial writes under rename, the zero
+           registers). Next: masked loads (the copy-only op), divergence,
+           loops, SPM and barriers
   Stage 4+ per-block cycle                          -- after the skeleton
 
 == result ==

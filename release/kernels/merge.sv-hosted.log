@@ -1,0 +1,6 @@
+SVHOST shims=46/46 skewed=none
+KERNEL name=merge finished=1 cycles=67 retired=9 issue_groups=9 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=17/48 violations=0
+UNUSED ccv_rcu_miu_addr ccv_miu_rcu_data ccv_ooe_miu_memop ccv_miu_ooe_cmpl ccv_ooe_miu_retire ccv_ooe_fet_redirect ccv_ooe_fet_ckpt_free ccv_miu_spm_req ccv_spm_miu_rsp ccv_miu_dcu_req ccv_dcu_miu_rsp ccv_dcu_mlc_req ccv_mlc_dcu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
+COVER redirect=0 ckpt_free=0 ckpt_full=0 ckpt_peak=0 merge=4 copy=0 zero_read=2 reg_reuse=0 line_split=0 lines_peak=0 partial_line=0 dcu_id_wait=0 epoch_drop=0
+XFER events=430 launched=430 match=yes channels_seen=17
+- test/top/tb_sv_hosted.sv:92: Verilog $finish

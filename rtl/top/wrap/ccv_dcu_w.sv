@@ -184,7 +184,7 @@ module ccv_dcu_w #(
 `endif
   );
   // ccv_dcu_miu_rsp, source end
-  ccv_seq_rpt #(.STAGES(RPT_DCU_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1030)) u_rpt_dcu_miu_rsp (
+  ccv_seq_rpt #(.STAGES(RPT_DCU_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1031)) u_rpt_dcu_miu_rsp (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_dcu_miu_rsp_s3_valid, b_dcu_miu_rsp_s2_valid, b_dcu_miu_rsp_s1_valid, b_dcu_miu_rsp_s0_valid}), .src_payload({b_dcu_miu_rsp_s3_payload, b_dcu_miu_rsp_s2_payload, b_dcu_miu_rsp_s1_payload, b_dcu_miu_rsp_s0_payload}),
     .src_wake(b_dcu_miu_rsp_wake), .src_credit({b_dcu_miu_rsp_s3_credit, b_dcu_miu_rsp_s2_credit, b_dcu_miu_rsp_s1_credit, b_dcu_miu_rsp_s0_credit}), .src_stall({b_dcu_miu_rsp_s3_stall, b_dcu_miu_rsp_s2_stall, b_dcu_miu_rsp_s1_stall, b_dcu_miu_rsp_s0_stall}),

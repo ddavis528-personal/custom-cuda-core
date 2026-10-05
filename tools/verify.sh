@@ -74,6 +74,7 @@ run "generate interfaces"   python3 tools/gen-interfaces.py
 run "generate payload spec" python3 tools/gen-payload-spec.py
 run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
+run "derived params refuse drift" python3 tools/gen-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
 # docs/payload-spec.md is generated but TRACKED, unlike the rtl/sim ones --
 # it is the per-block sessions' worklist, so it has to be readable on GitHub
@@ -146,6 +147,12 @@ section "Stage 3 -- skeleton (S1: vadd)"
 # and memory compared with ccv-sim's, each clean result paired with a control
 # that must fail. After S0, which builds the binary.
 run "vadd through the machine" ./tools/check-kernel.sh
+
+section "Stage 4b -- OOE model unit tests (sim/ooe/)"
+# The paths no S1 kernel reaches yet: squash, deferred free, L1 cancel and
+# replay, bypass groups, several warps, demotion, kill, faults, barriers.
+# The harness's own controls must each be caught, and are held by name.
+run "OOE unit tests" ./tools/check-ooe-unit.sh
 
 section "SV top -- rtl/top/ (generated, tracked)"
 # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
@@ -229,7 +236,7 @@ section "pending stages"
 # Listed rather than omitted. A gate that appears to cover the whole flow
 # while covering only part of it is worse than one that says what it does not.
 cat <<'PENDING'
-  Stage 2  partition CLOSED (14 blocks, 45 instances, 46 channels); topology,
+  Stage 2  partition CLOSED (14 blocks, 45 instances, 48 channels); topology,
            block letters, machine parameters and the credit checker encoded.
            Round trip CLOSED at 2 (flops both sides + abutment); it stays a
            per-instance parameter, defaulted to that minimum and not expected
@@ -237,13 +244,15 @@ cat <<'PENDING'
            Payload widths: every field sized, tiered settled/prov/prelim.
            Rate>1: independent slots, with acceptance / ordering / binding
            per channel. Remaining: per-interface NGD budgets
-  Stage 3  S0 plumbing DONE: 45 blocks, 108 channel instances, 345 slots,
+  Stage 3  S0 plumbing DONE: 45 blocks, 110 channel instances, 347 slots,
            checker bank Verilated in, trace identity carried, Perfetto
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state
-           identical to ccv-sim, 0 violations, 26 of 46 channels carrying
+           identical to ccv-sim, 0 violations, 27 of 48 channels carrying
            it. Open items: docs/open-items.md, by Q-number.
-           S2 next: a kernel that diverges, loops, or uses SPM/barriers
+           S2 started: merge (partial writes under rename, the zero
+           registers). Next: masked loads (the copy-only op), divergence,
+           loops, SPM and barriers
   Stage 4+ per-block cycle                          -- after the skeleton
 PENDING
 

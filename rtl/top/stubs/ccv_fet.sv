@@ -92,6 +92,8 @@ module ccv_fet (
 `endif
   assign ooe_fet_redirect_credit = '0;
   assign ooe_fet_redirect_stall = '0;
+  assign ooe_fet_ckpt_free_credit = '0;
+  assign ooe_fet_ckpt_free_stall = '0;
   assign fet_mlc_ifill_valid = '0;
   assign fet_mlc_ifill_payload = '0;
   assign fet_mlc_ifill_wake = '0;

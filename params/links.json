@@ -13,6 +13,7 @@
     "  - stages are whole numbers, 0 to 16; the end at EXTERNAL holds none (it has no wrapper);",
     "  - a route doesn't pass its own endpoints, or any wrapper twice;",
     "  - every copy of a lockstep channel has the same total, or lockstep delivery is lost, and the same src stages, since the checker bank watches each link where it leaves the source's wrapper.",
+    "  - a channel declaring latency_match in the schema (ccv_ooe_fet_ckpt_free, with ccv_ooe_fet_redirect: A-58) has the same total as its partner, so the two arrive in the order they were sent.",
     "",
     "What a link's total N changes, derived from this file and nowhere else: its checkers' ROUND_TRIP (+2N, and so their DEPTH, the credit loop), TIMEOUT_N (+2N) and SRC_STAGES, and the C++ skeleton's latency and credit depth for that slot (CCV_CREDIT_DEPTH + 2N, full bandwidth: Q-43), so both hosts still agree.",
     "",

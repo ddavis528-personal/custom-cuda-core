@@ -301,7 +301,16 @@ CCV_DPI_TYPES(CCV_DPI_CYCLE)
 
 svBit ccv_dpi_done(long long c) {
   if (!g) die("no shim registered: is the top built from rtl/top/dpi/?");
-  return g->end.after(uint64_t(c), g->k, *g->m) || uint64_t(c) + 1 == g->cap;
+  // Once per cycle, however often the testbench's negedge block runs: the
+  // end rule counts the cycle's busy blocks and then clears the count, so a
+  // second call in the same cycle would see an idle machine and end a run
+  // that is not over (seen when a control left MIU holding a store forever).
+  static long long last_c = -1;
+  static bool last_done = false;
+  if (c == last_c) return last_done;
+  last_c = c;
+  last_done = g->end.after(uint64_t(c), g->k, *g->m) || uint64_t(c) + 1 == g->cap;
+  return last_done;
 }
 
 void ccv_dpi_report() {

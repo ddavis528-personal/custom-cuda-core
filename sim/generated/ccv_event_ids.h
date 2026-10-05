@@ -15,7 +15,7 @@ static constexpr uint32_t kSchemaVersion = 2;
 /// Semantic hash of the schema. Written into every trace header
 /// and checked on read, so a trace can never be silently
 /// interpreted against a schema it was not written under.
-static constexpr const char *kSchemaHash = "aef57f9e3784cd2d";
+static constexpr const char *kSchemaHash = "54527de41d933b5c";
 
 enum class EventClass : uint16_t {
   kLoadBearing = 0,          ///< exact match required (§1)
@@ -50,7 +50,7 @@ enum EventId : uint16_t {
   EV_WAKEUP = 4,
   /// Two-tier SMT warp-select outcome, including which warps were eligible but not chosen -- a losing candidate is what makes a tie-break diff meaningful.
   EV_WARP_SELECT = 5,
-  /// Instruction retires and commits architectural state. The event ccv-sim's functional oracle is checked against.
+  /// Instruction retires and commits architectural state. Arbitration-sensitive (Q-41, closed by the OOE session 2026-10-02): commit bandwidth is shared across the four tier-1 ROBs, so the cycle a warp retires is an arbiter's decision, as EV_DISPATCH's is. What ccv-sim's oracle is checked against is the per-warp retirement SEQUENCE, correlated separately (the kernel run's retire order), not this event's cycle.
   EV_RETIRE = 8,
   /// A transaction crossed a channel boundary. THE load-bearing event: §1 says decode, dispatch, retire and memory request/response ARE interface transactions, and the block-level grill-me made every one of them a credited channel. So the 40-channel list is the load-bearing event list, and one event type with the channel as a discriminator covers it -- emitted by the shared credit checker, so every boundary emits identically and no block can drift from the schema.
   EV_CH_XFER = 11,
@@ -66,7 +66,7 @@ inline EventClass eventClass(EventId id) {
   case EV_ISSUE: return EventClass::kArbitrationSensitive;
   case EV_WAKEUP: return EventClass::kArbitrationSensitive;
   case EV_WARP_SELECT: return EventClass::kArbitrationSensitive;
-  case EV_RETIRE: return EventClass::kLoadBearing;
+  case EV_RETIRE: return EventClass::kArbitrationSensitive;
   case EV_CH_XFER: return EventClass::kLoadBearing;
   case EV_ID_LINK: return EventClass::kArbitrationSensitive;
   default: return EventClass::kLoadBearing;

@@ -120,6 +120,18 @@ def load(chans, cinst, binst, ninst, links_path=None):
         if len(heads) > 1:
             errs.append("%s is lockstep, but its copies' src stages differ: %s"
                         % (c["name"][4:], sorted(heads)))
+    # A latency-matched pair (A-58): arrival order must equal send order, so
+    # the two links carry the same number of stages, whatever the floorplan.
+    tot = {}
+    for i, x in enumerate(cinst):
+        tot.setdefault(x["chan"]["name"], set()).add(sum(s for _, s in out[i]))
+    for c in chans:
+        lm = c.get("latency_match")
+        if lm and tot.get(c["name"]) != tot.get(lm):
+            errs.append("%s is latency-matched with %s, but their totals differ: "
+                        "%s against %s" % (c["name"][4:], lm[4:],
+                                           sorted(tot.get(c["name"], ())),
+                                           sorted(tot.get(lm, ()))))
     if errs:
         raise SystemExit("%s: %d problem(s)\n  %s"
                          % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))

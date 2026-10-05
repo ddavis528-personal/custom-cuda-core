@@ -1,0 +1,9 @@
+# The block implementations behind the swap boundary, compiled into BOTH hosts:
+# the C++ skeleton (tools/check-skel.sh) and the SV-hosted top
+# (tools/check-sv-hosted.sh). One path per line, from the repo root. A block
+# model in its own file is added here, and makeKernelBlock (kernel.cpp) or its
+# make<Block> function (stub.h) selects it.
+sim/skel/kernel.cpp
+sim/skel/ooe.cpp
+sim/ooe/ooe_core.cpp
+sim/ooe/ooe_block.cpp

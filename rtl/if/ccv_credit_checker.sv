@@ -65,7 +65,14 @@ module ccv_credit_checker #(
   // SRC_STAGES cycles later, and the first valid it can suppress takes as
   // long again to come back. 0 is the sender's own port, as on every
   // abutted link. ROUND_TRIP is the whole link's, wherever the checker is.
-  parameter int SRC_STAGES = 0
+  parameter int SRC_STAGES = 0,
+  // FIXED LATENCY (schema slot attribute fixed_latency, arch open A-47): the
+  // receiver never stalls and returns every message's credit the cycle it
+  // lands. OOE schedules wakeup from contracted latencies with no grant,
+  // late or cancel signal, so on these channels a receiver that holds a
+  // message is not back-pressure but a broken contract. 0 on every other
+  // channel, which makes both properties vacuous.
+  parameter int FIXED_LAT  = 0
 ) (
   input logic                  clk,
   input logic                  rst_n,
@@ -236,6 +243,20 @@ module ccv_credit_checker #(
   // valids already in flight still arrive, so the stall checked is the one
   // old enough to have stopped the valid seen now.
   `CCV_CONTRACT_M(MODE, stall_honoured, !(stall_h[SL-1] && ch_valid))
+
+  // -- fixed latency (A-47) -------------------------------------------------
+  // A receiver that takes each message the cycle its payload lands returns
+  // its credit when the message is exactly PROMPT old as seen here: the
+  // link's whole round trip, less the stages between this point and the
+  // sender, which the valid has already crossed and the credit has yet to.
+  // One cycle later is a receiver holding a message, which a fixed-latency
+  // channel has no way to express -- so it is a violation, not a delay.
+  localparam int PROMPT = ROUND_TRIP - 2 * SRC_STAGES;
+  `CCV_IF_CONFIG(fixed_latency_prompt_reachable,
+                 FIXED_LAT == 0 || (PROMPT >= 1 && PROMPT <= TIMEOUT_N))
+  `CCV_CONTRACT_M(MODE, fixed_latency_no_stall, FIXED_LAT == 0 || !ch_stall)
+  `CCV_CONTRACT_M(MODE, fixed_latency_prompt,
+                  FIXED_LAT == 0 || age_q[TW-1:0] <= PROMPT[TW-1:0])
 
   // -- valid one cycle early ----------------------------------------------
   // Once asserted, valid is BINDING: the payload follows on schedule even if

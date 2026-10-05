@@ -38,75 +38,79 @@ enum Channel : uint16_t {
   CH_OOE_MIU_RETIRE = 10,
   /// ooe -> fet, 1/cycle
   CH_OOE_FET_REDIRECT = 11,
+  /// ooe -> fet, 1/cycle
+  CH_OOE_FET_CKPT_FREE = 12,
   /// miu -> spm, 4/cycle
-  CH_MIU_SPM_REQ = 12,
+  CH_MIU_SPM_REQ = 13,
   /// spm -> miu, 4/cycle
-  CH_SPM_MIU_RSP = 13,
+  CH_SPM_MIU_RSP = 14,
   /// miu -> dcu, 4/cycle
-  CH_MIU_DCU_REQ = 14,
+  CH_MIU_DCU_REQ = 15,
   /// dcu -> miu, 4/cycle
-  CH_DCU_MIU_RSP = 15,
+  CH_DCU_MIU_RSP = 16,
   /// dcu -> mlc, 1/cycle
-  CH_DCU_MLC_REQ = 16,
+  CH_DCU_MLC_REQ = 17,
   /// mlc -> dcu, 1/cycle
-  CH_MLC_DCU_RSP = 17,
+  CH_MLC_DCU_RSP = 18,
   /// mlc -> dcu, 1/cycle
-  CH_MLC_DCU_PROBE = 18,
+  CH_MLC_DCU_PROBE = 19,
   /// dcu -> mlc, 1/cycle
-  CH_DCU_MLC_PROBE_ACK = 19,
+  CH_DCU_MLC_PROBE_ACK = 20,
   /// fet -> mlc, 1/cycle
-  CH_FET_MLC_IFILL = 20,
+  CH_FET_MLC_IFILL = 21,
   /// mlc -> fet, 1/cycle
-  CH_MLC_FET_IFILL_RSP = 21,
+  CH_MLC_FET_IFILL_RSP = 22,
   /// miu -> fet, 1/cycle
-  CH_MIU_FET_ITLB = 22,
+  CH_MIU_FET_ITLB = 23,
   /// fet -> miu, 1/cycle
-  CH_FET_MIU_ITLB_REQ = 23,
+  CH_FET_MIU_ITLB_REQ = 24,
   /// mlc -> exb, 1/cycle
-  CH_MLC_EXB_REQ = 24,
+  CH_MLC_EXB_REQ = 25,
   /// exb -> mlc, 1/cycle
-  CH_EXB_MLC_RSP = 25,
+  CH_EXB_MLC_RSP = 26,
   /// exb -> EXTERNAL, 1/cycle
-  CH_EXB_EXT_OUT = 26,
+  CH_EXB_EXT_OUT = 27,
   /// rau -> fet, 1/cycle
-  CH_RAU_FET_LAUNCH = 27,
+  CH_RAU_FET_LAUNCH = 28,
   /// rau -> ooe, 1/cycle
-  CH_RAU_OOE_ALLOC = 28,
+  CH_RAU_OOE_ALLOC = 29,
   /// ooe -> rau, 1/cycle
-  CH_OOE_RAU_STATUS = 29,
+  CH_OOE_RAU_STATUS = 30,
   /// rau -> ooe, 1/cycle
-  CH_RAU_OOE_DEMOTE = 30,
+  CH_RAU_OOE_DEMOTE = 31,
   /// ooe -> rau, 1/cycle
-  CH_OOE_RAU_DRAINED = 31,
+  CH_OOE_RAU_DRAINED = 32,
   /// rau -> rcu, 1/cycle
-  CH_RAU_RCU_MIG = 32,
+  CH_RAU_RCU_MIG = 33,
+  /// ooe -> rcu, 1/cycle
+  CH_OOE_RCU_MAP = 34,
   /// rcu -> pca, 1/cycle
-  CH_RCU_PCA_MIG = 33,
+  CH_RCU_PCA_MIG = 35,
   /// pca -> rcu, 1/cycle
-  CH_PCA_RCU_MIG = 34,
+  CH_PCA_RCU_MIG = 36,
   /// fet -> pca, 1/cycle
-  CH_FET_PCA_MIG = 35,
+  CH_FET_PCA_MIG = 37,
   /// pca -> fet, 1/cycle
-  CH_PCA_FET_MIG = 36,
+  CH_PCA_FET_MIG = 38,
   /// rau -> fet, 1/cycle
-  CH_RAU_FET_MIG = 37,
+  CH_RAU_FET_MIG = 39,
   /// pca -> rau, 1/cycle
-  CH_PCA_RAU_MIG_DONE = 38,
+  CH_PCA_RAU_MIG_DONE = 40,
   /// rau -> miu, 1/cycle
-  CH_RAU_MIU_CTA = 39,
+  CH_RAU_MIU_CTA = 41,
   /// ooe -> syu, 1/cycle
-  CH_OOE_SYU_BAR = 40,
+  CH_OOE_SYU_BAR = 42,
   /// syu -> ooe, 1/cycle
-  CH_SYU_OOE_REL = 41,
+  CH_SYU_OOE_REL = 43,
   /// rau -> syu, 1/cycle
-  CH_RAU_SYU_ALLOC = 42,
+  CH_RAU_SYU_ALLOC = 44,
   /// ooe -> cru, 1/cycle
-  CH_OOE_CRU_FAULT = 43,
+  CH_OOE_CRU_FAULT = 45,
   /// cru -> rau, 1/cycle
-  CH_CRU_RAU_CFG = 44,
+  CH_CRU_RAU_CFG = 46,
   /// EXTERNAL -> exb, 1/cycle
-  CH_EXT_EXB_IN = 45,
-  kChannelCount = 46,
+  CH_EXT_EXB_IN = 47,
+  kChannelCount = 48,
 };
 
 struct ChannelInfo {
@@ -130,6 +134,7 @@ inline const ChannelInfo &channelInfo(Channel c) {
       {"ccv_miu_ooe_cmpl", "miu", "ooe", 4},
       {"ccv_ooe_miu_retire", "ooe", "miu", 4},
       {"ccv_ooe_fet_redirect", "ooe", "fet", 1},
+      {"ccv_ooe_fet_ckpt_free", "ooe", "fet", 1},
       {"ccv_miu_spm_req", "miu", "spm", 4},
       {"ccv_spm_miu_rsp", "spm", "miu", 4},
       {"ccv_miu_dcu_req", "miu", "dcu", 4},
@@ -151,6 +156,7 @@ inline const ChannelInfo &channelInfo(Channel c) {
       {"ccv_rau_ooe_demote", "rau", "ooe", 1},
       {"ccv_ooe_rau_drained", "ooe", "rau", 1},
       {"ccv_rau_rcu_mig", "rau", "rcu", 1},
+      {"ccv_ooe_rcu_map", "ooe", "rcu", 1},
       {"ccv_rcu_pca_mig", "rcu", "pca", 1},
       {"ccv_pca_rcu_mig", "pca", "rcu", 1},
       {"ccv_fet_pca_mig", "fet", "pca", 1},
@@ -172,14 +178,14 @@ static constexpr unsigned kPortsCru = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsDcu = 6;  // 3 in, 3 out
 static constexpr unsigned kPortsDec = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsExb = 4;  // 2 in, 2 out
-static constexpr unsigned kPortsFet = 10;  // 6 in, 4 out
+static constexpr unsigned kPortsFet = 11;  // 7 in, 4 out
 static constexpr unsigned kPortsLane = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsMiu = 12;  // 7 in, 5 out
 static constexpr unsigned kPortsMlc = 8;  // 4 in, 4 out
-static constexpr unsigned kPortsOoe = 14;  // 6 in, 8 out
+static constexpr unsigned kPortsOoe = 16;  // 6 in, 10 out
 static constexpr unsigned kPortsPca = 5;  // 2 in, 3 out
 static constexpr unsigned kPortsRau = 11;  // 4 in, 7 out
-static constexpr unsigned kPortsRcu = 9;  // 5 in, 4 out
+static constexpr unsigned kPortsRcu = 10;  // 6 in, 4 out
 static constexpr unsigned kPortsSpm = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsSyu = 3;  // 2 in, 1 out
 

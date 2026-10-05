@@ -297,6 +297,7 @@ ccv_ooe_miu_retire 0 1 u_ooe u_miu 0
 ccv_ooe_miu_retire 0 2 u_ooe u_miu 0
 ccv_ooe_miu_retire 0 3 u_ooe u_miu 0
 ccv_ooe_fet_redirect 0 0 u_ooe u_fet 0
+ccv_ooe_fet_ckpt_free 0 0 u_ooe u_fet 0
 ccv_miu_spm_req 0 0 u_miu u_spm 0
 ccv_miu_spm_req 0 1 u_miu u_spm 0
 ccv_miu_spm_req 0 2 u_miu u_spm 0
@@ -330,6 +331,7 @@ ccv_ooe_rau_status 0 0 u_ooe u_rau 0
 ccv_rau_ooe_demote 0 0 u_rau u_ooe 0
 ccv_ooe_rau_drained 0 0 u_ooe u_rau 0
 ccv_rau_rcu_mig 0 0 u_rau u_rcu 0
+ccv_ooe_rcu_map 0 0 u_ooe u_rcu 0
 ccv_rcu_pca_mig 0 0 u_rcu u_pca 0
 ccv_pca_rcu_mig 0 0 u_pca u_rcu 0
 ccv_fet_pca_mig 0 0 u_fet u_pca 0

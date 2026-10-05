@@ -16,14 +16,15 @@ skeleton S0 (plumbing) and S1 (`vadd` end to end, final state identical to
 ccv-sim) done.** Stage 1 is the tooling and schema groundwork, whose membership
 criterion is *needs no architectural decision as input*. The Stage 2 interface
 grill-me happens outside this repository; it ran on 2026-09-23 and closed the
-partition at **14 block types, 45 instances, 40 channels**. It's 46 channels
+partition at **14 block types, 45 instances, 40 channels**. It's 48 channels
 now: the external port became an out/in pair, branch redirect added
 `ccv_ooe_fet_redirect`, the PC groups got their own FET↔PCA migration pair,
-and migration gained a RAU→FET command and a PCA→RAU done. All of them are
+migration gained a RAU→FET command and a PCA→RAU done, and the OOE session
+added OOE's RAT map to RCU (`ccv_ooe_rcu_map`). All of them are
 encoded and machine-checked here. `tools/verify.sh` is green and lists the pending
 stages rather than omitting them.
 
-**Every payload field now has a width, so all 46 channels generate a packed
+**Every payload field now has a width, so all 48 channels generate a packed
 struct and the skeleton is wired end to end.** The cost is that some
 widths are guesses, so the repository carries **three tiers of trust** and the
 tier is visible at every use site:
@@ -34,8 +35,8 @@ tier is visible at every use site:
 | `ccv_prov_pkg` | a sizing placeholder | the number |
 | `ccv_prelim_pkg` | no decided *encoding* at all | possibly the **field itself** |
 
-Classified by the weakest width each carries: **8 of 46** channels are
-decided end to end, 15 carry a provisional width, and 23 carry a preliminary
+Classified by the weakest width each carries: **9 of 48** channels are
+decided end to end, 19 carry a provisional width, and 20 carry a preliminary
 one. [`docs/payload-spec.md`](docs/payload-spec.md) is the per-channel
 breakdown; [`docs/trust-report.md`](docs/trust-report.md) is the build
 artifact listing everything that references an undecided number, so which
@@ -94,6 +95,9 @@ manifest. The gate must pass first, and the branch is never merged back.
 | [`docs/payload-spec.md`](docs/payload-spec.md) | **Generated.** Every channel's payload field by field, with each width's tier and source, and what each channel is *for*. Regenerate with `tools/gen-payload-spec.py`. |
 | [`docs/trust-report.md`](docs/trust-report.md) | **Generated.** Every module referencing a width nobody has decided, plus the channels that carry one indirectly and the high-churn parameters. Which numbers are still made up, as a build artifact rather than something to remember. |
 | [`docs/skeleton.md`](docs/skeleton.md) | **The Stage 3 skeleton.** The decisions the swap boundary rests on, what S0 proves and how each claim is kept honest, the SV top, and S1: `vadd` end to end, where its values come from, its wire conventions and the payload gaps it found. |
+| [`docs/design-snapshots/`](docs/design-snapshots/README.md) | **Pinned copies of the design docs that live outside the repo**: the OOE microarchitecture doc (living) and the OOE interface review and change set (closed). Refreshed, never edited, and checked: every review row the repo cites must be in the snapshot. |
+| [`docs/ooe-4b.md`](docs/ooe-4b.md) | **Handoff for the OOE model session (Stage 4b).** Sources of truth, where the code goes, the swap-boundary rules the gate enforces, OOE's ports and contracts, what the environment can and cannot exercise yet, and how the sessions divide the work. |
+| [`docs/coverage.md`](docs/coverage.md) | **Kernel coverage.** What the S1/S2 kernels reach, held to by coverage counts in the gate; what they do not reach yet, and which open blocks each gap. |
 | [`docs/clock-gate.md`](docs/clock-gate.md) | **Clock gating.** The ctech layer (one module per cell, a behavioural view for simulation and one per process library for synthesis), and `ccv_clk_gate`, every block's gate: sleep on quiescence or stall with CSR-programmable hysteresis, a CSR override, and a registered wake that opens the edge after next. What is proved about it, and how. |
 | [`docs/physical.md`](docs/physical.md) | **Getting to abutment.** The sequential repeater widget; the hardening wrappers and `params/links.json`, which says how many stages of each channel each wrapper holds; what a repeated link changes (round trip, checker placement, credit depth and rate); clocking options. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
@@ -134,7 +138,7 @@ rtl/ctech/                  ctech cells, one directory per view: sim/ for
                               simulation and formal, <library>/ per process
                               library; tools/ccv_ctech.py picks one
 rtl/top/                    GENERATED, tracked: the SV top level
-                              ccv_core_top.sv   45 blocks, 108 channel instances
+                              ccv_core_top.sv   45 blocks, 110 channel instances
                               ports/            each block's port list
                               stubs/            stub blocks, swapped at 4c
                               wrap/             hardening wrappers: block +
@@ -319,7 +323,7 @@ and a check that has been deleted is very quiet.
 Detail is in [`docs/skeleton.md`](docs/skeleton.md).
 
 **S0: plumbing.** The whole machine is wired from the schema: 45 block
-instances, 108 channel instances, 345 credited slots. At first every block is
+instances, 110 channel instances, 347 credited slots. At first every block is
 an exerciser stub, and every slot is judged by the real SV credit checker,
 Verilated in. Three seeds each give zero violations. Every clean result is
 paired with a control that must fail it.

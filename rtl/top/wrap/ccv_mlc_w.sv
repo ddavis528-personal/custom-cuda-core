@@ -183,7 +183,7 @@ module ccv_mlc_w #(
 `endif
   );
   // ccv_fet_mlc_ifill, destination end
-  ccv_seq_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(58)) u_rpt_fet_mlc_ifill (
+  ccv_seq_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(50)) u_rpt_fet_mlc_ifill (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({fet_mlc_ifill_valid}), .src_payload({fet_mlc_ifill_payload}),
     .src_wake(fet_mlc_ifill_wake), .src_credit({fet_mlc_ifill_credit}), .src_stall({fet_mlc_ifill_stall}),

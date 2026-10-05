@@ -10,6 +10,10 @@ Generate both from one shared definition rather than maintaining two."
 
 Run with --check to fail when the generated files are stale, which is how
 tools/verify.sh keeps the two from drifting between edits.
+
+--settle rewrites derived values from their inputs and saves the source: for
+the scratch tree tools/check-links.sh builds with another links.json, never for
+the design's own file.
 """
 import json
 import os
@@ -204,10 +208,205 @@ def gen_sv(d):
     return "\n".join(L) + "\n"
 
 
+# A parameter that follows from others says so: `derive` is the expression it
+# must equal, `require` a condition it must meet. The value stays written out,
+# because every tool reads `value`; what this adds is that a value which no
+# longer follows from its inputs is refused here, by name and with the number
+# it should be, instead of shipping. Grammar: parameter names, integers,
+# + - * // **, comparisons, cdiv(a, b), clog2(x), max(a, b), and
+# link_n('channel'): the repeater stages params/links.json puts on that
+# channel (without ccv_), the most over its copies, so a latency built on the
+# links follows them. link_n is the STAGES only: a whole crossing is
+# CCV_LAT_HOP + link_n(...), and a latency over paths with different numbers
+# of crossings (a max) has to say so, since no base can absorb the difference.
+# A derived parameter is never more settled than its inputs: a settled width
+# that follows a provisional count would move without its tier saying so.
+FUNCS = {"cdiv": lambda a, b: -(-a // b),
+         "clog2": lambda x: max(0, (x - 1).bit_length()),
+         "max": lambda a, b: max(a, b)}
+TIER_RANK = {"settled": 0, "prov": 1, "prelim": 2}
+
+
+def link_stages(path=None):
+    """Channel (without ccv_) -> most repeater stages on any copy, read
+    straight from params/links.json. Validity is tools/ccv_links.py's job,
+    run by every generator that builds the machine; this only sums routes."""
+    import re
+    sys.path.insert(0, os.path.join(ROOT, "tools"))
+    import ccv_links
+    with open(path or ccv_links.path()) as f:
+        entries = json.load(f).get("links", [])
+    out = {}
+    for e in entries:
+        n = sum(int(m.group(2)) for m in
+                (ccv_links.HOP.match(h) for h in e.get("route", "").split(">"))
+                if m)
+        out[e.get("channel")] = max(out.get(e.get("channel"), 0), n)
+    return out
+
+
+def schema_channels():
+    with open(os.path.join(ROOT, "schema", "interfaces.json")) as f:
+        return {c["name"][4:] for c in json.load(f)["channels"]}
+
+
+def names_in(expr):
+    import ast
+    return {n.id for n in ast.walk(ast.parse(expr, mode="eval"))
+            if isinstance(n, ast.Name) and n.id not in FUNCS}
+
+
+def evaluate(expr, values, links=None):
+    import ast
+    ops = {ast.Add: lambda a, b: a + b, ast.Sub: lambda a, b: a - b,
+           ast.Mult: lambda a, b: a * b, ast.FloorDiv: lambda a, b: a // b,
+           ast.Pow: lambda a, b: a ** b}
+    cmps = {ast.Gt: lambda a, b: a > b, ast.GtE: lambda a, b: a >= b,
+            ast.Lt: lambda a, b: a < b, ast.LtE: lambda a, b: a <= b,
+            ast.Eq: lambda a, b: a == b}
+
+    def ev(n):
+        if isinstance(n, ast.Expression):
+            return ev(n.body)
+        if isinstance(n, ast.Constant) and isinstance(n.value, int):
+            return n.value
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id == "link_n" and len(n.args) == 1
+                and isinstance(n.args[0], ast.Constant)
+                and isinstance(n.args[0].value, str)):
+            if n.args[0].value not in schema_channels():
+                raise ValueError("link_n names no channel: %r (names are "
+                                 "without ccv_)" % n.args[0].value)
+            return (links if links is not None else {}).get(n.args[0].value, 0)
+        if isinstance(n, ast.Name):
+            if n.id not in values:
+                raise ValueError("unknown parameter %s" % n.id)
+            return values[n.id]
+        if isinstance(n, ast.BinOp) and type(n.op) in ops:
+            return ops[type(n.op)](ev(n.left), ev(n.right))
+        if (isinstance(n, ast.Compare) and len(n.ops) == 1
+                and type(n.ops[0]) in cmps):
+            return cmps[type(n.ops[0])](ev(n.left), ev(n.comparators[0]))
+        if (isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                and n.func.id in FUNCS and not n.keywords):
+            return FUNCS[n.func.id](*[ev(a) for a in n.args])
+        raise ValueError("not allowed in a derivation: %s" % ast.dump(n))
+    return ev(ast.parse(expr, mode="eval"))
+
+
+def check_derived(d, links=None):
+    """Every `derive` equals its value and every `require` holds, and no
+    derived parameter is more settled than what it derives from."""
+    values = {p["name"]: p["value"] for p in d["params"]}
+    tiers = {p["name"]: tier(p) for p in d["params"]}
+    if links is None:
+        links = link_stages()
+    bad = []
+    for p in d["params"]:
+        try:
+            if "derive" in p:
+                looser = [x for x in sorted(names_in(p["derive"]))
+                          if TIER_RANK[tiers.get(x, "settled")] > TIER_RANK[tiers[p["name"]]]]
+                if looser:
+                    bad.append("%s is %s but derives from %s: a derived value is "
+                               "never more settled than its inputs"
+                               % (p["name"], tiers[p["name"]],
+                                  ", ".join("%s (%s)" % (x, tiers[x]) for x in looser)))
+                want = evaluate(p["derive"], values, links)
+                if want != p["value"]:
+                    bad.append("%s = %d, but %s gives %d: set it to %d"
+                               % (p["name"], p["value"], p["derive"], want, want))
+            if "require" in p and not evaluate(p["require"], values, links):
+                bad.append("%s = %d breaks its requirement %s"
+                           % (p["name"], p["value"], p["require"]))
+        except (ValueError, SyntaxError, TypeError) as e:
+            bad.append("%s: %s" % (p["name"], e))
+    return bad
+
+
+def selftest(d):
+    """The negative control: each derivation and requirement must refuse a
+    value that no longer follows from its inputs. Run in memory, on copies."""
+    import copy
+    links = link_stages()
+    cases = [("CCV_PREDS", "value", 8, "CCV_W_PRED_STATE"),
+             ("CCV_W_PRED_STATE", "value", 2048, "CCV_MIGRATION_CYCLES"),
+             ("CCV_MIGRATION_CYCLES", "value", 33, "CCV_W_MIG_ROW"),
+             ("CCV_PARKED_WARPS", "value", 60, "CCV_WARP_CONTEXTS"),
+             ("CCV_P_PRED_REGS", "value", 16, "CCV_P_PRED_REGS"),
+             ("CCV_P_PHYS_REGS", "value", 64, "CCV_P_PHYS_REGS"),
+             ("CCV_P_PHYS_REGS", "value", 256, "CCV_P_REN_FLOOR"),
+             ("CCV_P_REN_SLACK", "value", 0, "CCV_P_REN_CEIL"),
+             ("CCV_P_PRED_REN_SLACK", "value", 30, "CCV_P_PRED_REN_CEIL"),
+             ("CCV_P_ROB_DEPTH", "value", 64, "CCV_P_W_ROB_IDX"),
+             ("CCV_P_BR_CKPTS", "value", 8, "CCV_P_W_CKPT_ID"),
+             ("CCV_P_W_CKPT_ID", "status", "arch", "CCV_P_W_CKPT_ID"),
+             ("link_n('rcu_lane_ops')", "links", 2, "CCV_LAT_LANE"),
+             ("link_n('dcu_miu_rsp')", "links", 1, "CCV_LAT_L1_HIT"),
+             ("link_n('rcu_miu_addr')", "links", 1, "CCV_LAT_L1_WAKE"),
+             ("link_n('ooe_miu_memop')", "links", 9, "CCV_LAT_L1_WAKE"),
+             ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
+             ("CCV_LAT_RCU_ADDR_BASE", "value", 5, "CCV_LAT_RCU_ADDR"),
+             ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
+             ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
+             ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),
+             # A-70: an epoch that can wrap within one flight is refused,
+             # and more checkpoints widen it.
+             ("CCV_P_W_FETCH_EPOCH", "value", 2, "CCV_P_W_FETCH_EPOCH"),
+             ("CCV_P_BR_CKPTS", "value", 7, "CCV_P_W_FETCH_EPOCH"),
+             ("CCV_LAT_LANE", "derive",
+              "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
+    missed = []
+    for name, key, v, who in cases:
+        m, lk = copy.deepcopy(d), dict(links)
+        if key == "links":
+            lk[name[len("link_n('"):-2]] = v
+        for p in m["params"]:
+            if p["name"] == name:
+                p[key] = v
+        if not any(b.split()[0].rstrip(":") == who for b in check_derived(m, lk)):
+            missed.append("%s %s = %s not caught at %s" % (name, key, v, who))
+    if missed:
+        sys.stderr.write("".join("%s\n" % x for x in missed))
+        return 1
+    print("  derived parameters: %d mutation(s), each refused by name"
+          % len(cases))
+    return 0
+
+
+def settle(d):
+    """Rewrite every derived value from its inputs, to a fixed point, and save
+    the source. Only for a scratch copy of the tree that runs a different
+    params/links.json (tools/check-links.sh): the design's own file is never
+    settled by a tool, so a floorplan change reaches it as a reviewed diff."""
+    links = link_stages()
+    for _ in range(len(d["params"])):
+        values = {p["name"]: p["value"] for p in d["params"]}
+        changed = []
+        for p in d["params"]:
+            if "derive" in p:
+                want = evaluate(p["derive"], values, links)
+                if want != p["value"]:
+                    changed.append("%s %d -> %d" % (p["name"], p["value"], want))
+                    p["value"] = values[p["name"]] = want
+        if not changed:
+            break
+        for c in changed:
+            print("  settled %s" % c)
+    with open(SRC, "w") as f:
+        json.dump(d, f, indent=2)
+        f.write("\n")
+    return 0
+
+
 def main():
     check = "--check" in sys.argv
     with open(SRC) as f:
         d = json.load(f)
+    if "--selftest" in sys.argv:
+        return selftest(d)
+    if "--settle" in sys.argv:
+        return settle(d)
 
     names = [p["name"] for p in d["params"]]
     if len(set(names)) != len(names):
@@ -238,6 +437,15 @@ def main():
                 sys.stderr.write("%s: preliminary parameters must say who "
                                  "decides the encoding\n" % p["name"])
                 return 1
+
+    bad = check_derived(d)
+    if bad:
+        sys.stderr.write("".join("%s\n" % b for b in bad))
+        return 1
+    for p in d["params"]:  # the relation travels into both languages
+        for k, what in (("derive", "Derived: = "), ("require", "Requires: ")):
+            if k in p:
+                p["doc"] = "%s  %s%s." % (p["doc"], what, p[k])
 
     targets = [
         (os.path.join(ROOT, "sim", "generated", "ccv_params.h"), gen_cpp(d)),

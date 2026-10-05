@@ -55,6 +55,7 @@ unknown key|{"channel": "fet_dec_instr", "stage": 1, "route": "src:0 > dst:0"}
 also set by|{"channel": "fet_dec_instr", "route": "src:1 > dst:0"}, {"channel": "fet_dec_instr", "route": "src:0 > dst:1"}
 totals differ|{"channel": "rcu_lane_ops", "copies": [3], "route": "src:0 > dst:1"}
 src stages differ|{"channel": "rcu_lane_ops", "route": "src:0 > dst:1"}, {"channel": "rcu_lane_ops", "copies": [3], "route": "src:1 > dst:0"}
+latency-matched with|{"channel": "ooe_fet_redirect", "route": "src:1 > dst:0"}
 CASES
 if [ -z "$missed" ]; then
   say "links.json: malformed configurations refused" "PASS ($refused cases, each by name)"
@@ -77,7 +78,12 @@ for d in rtl sim tools params schema test docs; do cp -r "$d" "$S/"; done
 cp -r "$B/oracle" "$S/build/"
 cp test/phys/links_split.json "$S/params/links.json"
 cd "$S"
-if ! { PYTHONPATH=tools python3 tools/gen-skel.py && PYTHONPATH=tools python3 tools/gen-top.py; } \
+# Parameters first: the contracted latencies derive from the links
+# (CCV_LAT_LANE from the lane channels' stages), and the stubs hold the
+# lanes to them.
+if ! { python3 tools/gen-params.py --settle && python3 tools/gen-params.py &&
+       PYTHONPATH=tools python3 tools/gen-skel.py &&
+       PYTHONPATH=tools python3 tools/gen-top.py; } \
      >build/gen.log 2>&1; then
   bad "split: generate" "$(tail -2 build/gen.log | xargs)"
   exit 1
@@ -128,7 +134,8 @@ done
 if grep -q "FAIL" build/svh_suite.log; then
   bad "split: SV-hosted == C++-hosted" "$(grep -m1 FAIL build/svh_suite.log | xargs)"
 else
-  say "split: SV repeaters == C++ link model" "PASS (4 kernels, 15 controls, skew caught)"
+  say "split: SV repeaters == C++ link model" \
+      "PASS ($(ls -d test/kernels/*/ | wc -l) kernels, $(grep -o '([0-9]* controls)' build/svh_suite.log | tr -dc 0-9) controls, skew caught)"
 fi
 
 exit $fail

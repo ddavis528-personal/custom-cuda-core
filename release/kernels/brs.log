@@ -1,0 +1,4 @@
+KERNEL name=brs finished=1 cycles=83 retired=12 issue_groups=12 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=19/48 violations=0
+UNUSED ccv_rcu_miu_addr ccv_miu_rcu_data ccv_ooe_miu_memop ccv_miu_ooe_cmpl ccv_ooe_miu_retire ccv_miu_spm_req ccv_spm_miu_rsp ccv_miu_dcu_req ccv_dcu_miu_rsp ccv_dcu_mlc_req ccv_mlc_dcu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
+COVER redirect=1 ckpt_free=5 ckpt_full=22 ckpt_peak=4 merge=7 copy=0 zero_read=0 reg_reuse=0 line_split=0 lines_peak=0 partial_line=0 dcu_id_wait=0 epoch_drop=0
+XFER events=253 launched=253 match=yes channels_seen=19

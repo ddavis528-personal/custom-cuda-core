@@ -37,6 +37,7 @@ if ! command -v verilator >/dev/null 2>&1; then
   exit 0
 fi
 SKEL="$B/skel/ccv-skel"
+BLOCKS=$(grep -v '^#' sim/skel/blocks.list | sed "s|^|$R/|" | tr '\n' ' ')
 if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
   bad "SV-hosted C++" "no $SKEL or oracles -- tools/check-skel.sh and check-kernel.sh first"
   exit 1
@@ -65,7 +66,7 @@ fi
 if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
      -DCCV_CHECK -DCCV_TRACE $INC --top-module tb --Mdir "$B/svh_vo" -o ccv-svh \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
-     $SV "$R/sim/skel/dpi_host.cpp" "$R/sim/skel/kernel.cpp" \
+     $SV "$R/sim/skel/dpi_host.cpp" $BLOCKS \
      "$R/sim/skel/oracle.cpp" "$R/sim/skel/machine.cpp" \
      "$R/sim/skel/exerciser.cpp" "$R/sim/src/event.cpp" \
      "$R/sim/dpi/ccv_event_dpi.cpp" >"$B/svh_build.log" 2>&1; then
@@ -78,7 +79,7 @@ say "SV-hosted build: 45 blocks + EXTERNAL as shims" "PASS"
 # One run on each host. $1 kernel, $2 tag, then extra args as "cpp|sv" pairs.
 cpp() { "$SKEL" --kernel "$B/oracle/$1/oracle.jsonl" "${@:2}" 2>/dev/null; }
 svh() { "$SVH" "+ccv_oracle=$B/oracle/$1/oracle.jsonl" "${@:2}" 2>/dev/null; }
-lines() { grep -E '^(KERNEL|UNUSED|XFER) ' "$1"; }
+lines() { grep -E '^(KERNEL|UNUSED|XFER|COVER) ' "$1"; }
 
 # -- every S1 kernel, both hosts --------------------------------------------
 for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
@@ -111,7 +112,11 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             vadd:corrupt-req-id:3000 vadd:corrupt-disp vadd:itlb-double:3000 \
             vadd:drop-negate vadd:corrupt-echo vadd:movi-in-lane \
             vadd:srd-selector sel:drop-pred-data srd:corrupt-ctaid \
-            vadd:late-lead pguard:ignore-mask pguard:conflate-pred; do
+            vadd:late-lead pguard:ignore-mask pguard:conflate-pred \
+            vadd:corrupt-ckpt vadd:stale-free vadd:attr-store-as-load:3000 \
+            merge:dirty-zero merge:wrong-merge mload:skip-copy \
+            mload:late-copy mload:copy-from-new unal:one-line loop:free-new \
+            vadd:corrupt-group-mask loop:stale-epoch; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)
