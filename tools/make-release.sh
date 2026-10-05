@@ -92,12 +92,21 @@ A="$STAGE/release"
 mkdir -p "$A/kernels"
 cp build/release-verify.log "$A/verify.log"
 cp build/rel_wiring.txt "$A/wiring.txt"
+# A Perfetto view over 1 MB ships gzipped (ui.perfetto.dev opens .json.gz
+# as it is): a long kernel's views run to megabytes of repetitive JSON and
+# compress about fifty-fold, and the per-file cap stays as it is.
+view() {
+  if [ "$(stat -c %s "$1")" -gt $((1024 * 1024)) ]; then
+    gzip -9c "$1" >"$2.gz"
+  else
+    cp "$1" "$2"
+  fi
+}
 for k in $KERNELS; do
   cp "build/rel_$k.log" "$A/kernels/$k.log"
   cp "build/oracle/$k/oracle.jsonl" "$A/kernels/$k.oracle.jsonl"
   cp "build/rel_$k.ccvtrace" "$A/kernels/$k.ccvtrace"
-  cp "build/rel_$k.by_instr.json" "$A/kernels/$k.by_instr.json"
-  cp "build/rel_$k.by_unit.json" "$A/kernels/$k.by_unit.json"
+  for v in by_instr by_unit; do view "build/rel_$k.$v.json" "$A/kernels/$k.$v.json"; done
   # The same kernel with every block SV-hosted (tools/check-sv-hosted.sh).
   cp "build/svh_sv_$k.log" "$A/kernels/$k.sv-hosted.log" ||
     die "no SV-hosted run of $k after the gate"
@@ -127,7 +136,8 @@ ver() { "$@" 2>&1 | head -1; }
   echo "- **\`release/\`:** the gate log (\`verify.log\`), the C++ skeleton's"
   echo "  wiring dump, and for each S1 kernel its run summary, event trace"
   echo "  (\`.ccvtrace\`) and two Perfetto views -- open the \`.json\` files at"
-  echo "  https://ui.perfetto.dev -- and the ccv-sim oracle record it ran"
+  echo "  https://ui.perfetto.dev; a view over 1 MB ships as \`.json.gz\`, which"
+  echo "  the UI opens as it is -- and the ccv-sim oracle record it ran"
   echo "  against, generated from the pinned compiler snapshot, and the"
   echo "  same kernel's run with every block hosted by the SV top"
   echo "  (\`.sv-hosted.log\`)."
