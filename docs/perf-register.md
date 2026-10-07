@@ -118,11 +118,13 @@ it.
 
 ### PF-6 Memory disambiguation: loads pass older stores
 
-- **Now:** memops issue in program order per warp. MIU orders memory, and
-  OOE does no disambiguation (decision 2).
-- **Alternative:** a younger load issues past an older store whose address
-  is unknown, with a violation check and replay, or a store-set style
-  predictor.
+- **Now:** memops issue in program order per warp, load behind load as well
+  as load behind store. MIU orders memory, and OOE does no disambiguation
+  (decision 2). OA ratified this as a conservative first-build choice and
+  asked for it here (OA's response to OI-15).
+- **Alternative:** a younger load issues past older loads freely, and past
+  an older store whose address is unknown with a violation check and
+  replay, or a store-set style predictor.
 - **Cost:** an address compare against older stores, an ordering-violation
   replay or squash, and a predictor.
 - **Signal:** cycles ready loads wait on older unissued memops (to add:

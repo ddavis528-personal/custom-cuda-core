@@ -141,6 +141,7 @@ struct Config {
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
+  bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);

@@ -51,7 +51,10 @@ selected in t+2. Inside a cycle:
 ## Decisions the design doc leaves open
 
 Each of these is a model decision, the RTL follows it, and each is
-arbitration policy for Q-4 where it chooses between requesters. Where a
+arbitration policy for Q-4 where it chooses between requesters. OA
+ratified decisions 1 to 9 and 11 on 2026-10-07, with Daniel's approval, in
+its responses to OI-10 to OI-15. Decision 5 became the design's invariant
+V-58, and OA confirmed decision 10's reading (OI-14). Where a
 costlier choice would perform better, it is an entry in
 [`perf-register.md`](perf-register.md). Decision 6's in-flight kill, for
 example, is PF-1.
@@ -274,7 +277,8 @@ added with the event.
   - V-10 (the matrix is acyclic, same-warp and older-only);
   - V-14 (the per-warp RS cap);
   - V-15 (no issued entry rests on a withdrawn wake);
-  - V-29 (no zero register is allocated, freed or written).
+  - V-29 (no zero register is allocated, freed or written);
+  - V-58 (a complete ROB entry holds no RS entry).
 - **At the point of action:**
   - V-03, V-05, V-17, V-30, V-44 and V-49;
   - V-35 (above);
@@ -298,13 +302,15 @@ added with the event.
   - 25 random seeds × four mode combinations, up to four warps, with
     wrong-path fetch, mispredicts and L1 misses.
 
-  Five injected bugs must each fail the harness:
+  Six injected bugs must each fail the harness:
   - freeing the new mapping;
   - a cancel that stops after one hop;
   - a wake one cycle early;
   - a floorplan whose load data lands after its completion, with the core
     not told;
-  - a bypass faster than the table the environment holds the core to.
+  - a bypass faster than the table the environment holds the core to;
+  - a ROB entry that completes before its RS entries free, under an RCU
+    faster than its contract (V-58).
 
 ## Sweeps
 
