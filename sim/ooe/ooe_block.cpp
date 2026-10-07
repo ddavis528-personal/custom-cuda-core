@@ -245,7 +245,7 @@ private:
       if (best < 0) return;
       const Receiver *r = peek(c.dec_ooe, unsigned(best));
       const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
-      if (!core_.canAccept(w)) { held.insert(w); continue; }
+      if (!core_.canAccept(w)) { core_.noteRefused(w); held.insert(w); continue; }
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }

@@ -317,6 +317,9 @@ public:
   /// Can the decode queue take a uop of this warp? (Credit: the adapter
   /// leaves a uop in the channel while this is false.)
   bool canAccept(unsigned warp) const;
+  /// The adapter left a uop of this warp in the channel because canAccept
+  /// said no: count which limit held it (the decode-queue events).
+  void noteRefused(unsigned warp);
   void uop(const Uop &u);
   void done(const Done &d);
   void cmpl(const Cmpl &c);
@@ -409,6 +412,7 @@ private:
     bool ever_issued = false;
     unsigned replays = 0;
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
+    uint64_t ready_since = 0;      ///< first cycle a memop's row was ready
   };
 
   struct Ckpt {

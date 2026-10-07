@@ -171,6 +171,12 @@ bool Core::canAccept(unsigned warp) const {
   return slot_[s].decq < max;
 }
 
+void Core::noteRefused(unsigned warp) {
+  if (decq_.size() >= cfg_.decq) { count("stall.decq_full"); return; }
+  count("stall.decq_warp_max");
+  ev("stall", warp, 3);
+}
+
 /// Into the decode queue, after this cycle's rename: renamed from the next.
 void Core::uop(const Uop &u) {
   const int si = slotOf(u.warp);
@@ -182,7 +188,6 @@ void Core::uop(const Uop &u) {
   }
   decq_.push_back(u);
   ++slot_[si].decq;
-  if (decq_.size() == cfg_.decq) count("stall.decq_full");
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
@@ -1215,6 +1220,10 @@ void Core::select() {
     if (!x.valid || x.issued || x.copy || slot_[x.slot].st != WarpState::kActive || !rowReady(e))
       continue;
     const bool miu = e >= cfg_.rs_rcu;
+    if (miu && !x.ready_seen) {
+      rs_[e].ready_seen = true;
+      rs_[e].ready_since = now_;
+    }
     // Counterfactual (Memory operations): a memop held only on an
     // unconfirmed source while an MIU slot went unused.
     if (miu && !rowConfirmed(e) && mports != cfg_.memop_width) count("memop.held_unconfirmed");
@@ -1231,6 +1240,10 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   const Uop &u = r.u;
   x.issued = true;
   x.issue_at = now_;
+  // Memop hold cycles (Events): from the first cycle its operands were all
+  // woken to its issue, the cost of waiting for confirmation.
+  if (x.cls == RsCls::kMiu)
+    ++histograms["memop_hold_cycles"][x.ready_seen ? now_ - x.ready_since : 0];
   const bool first = !x.ever_issued;
   x.ever_issued = true;
   setWakes(e);

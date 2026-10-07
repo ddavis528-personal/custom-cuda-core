@@ -221,6 +221,44 @@ not define. Until it does, each is a named counter or histogram in the
 `ready_not_selected`, `memop.held_unconfirmed`, `issue_per_cycle`,
 `retire_per_cycle`, `cancel_depth` and `done_after_issue.lat*`.
 
+### Events owed to the schema (OI-7)
+
+The list TI assigns ids from. Each row is one event of the design doc's
+Events table: when it fires, its `a`, `b` and `c` payload, and the model
+counter or hook that marks the same point today. Every one is
+arbitration-sensitive (Q-1): a stall or hold an OOE arbiter decides, never a
+channel transfer (Q-2). Rows marked *per cycle* fire every cycle the
+condition holds, so their count is a duration.
+
+| Event | Fires when | a | b | c | Model today |
+|---|---|---|---|---|---|
+| GPR free list empty | rename blocks on a GPR with the free list empty; per cycle | warp_id | owned GPRs | free GPRs | `stall.gpr_empty` |
+| Rename floor or ceiling hit | rename blocks on another slot's floor, or this warp's ceiling; per cycle | warp_id | 0 floor, 1 ceiling | 0 GPR, 1 predicate | `stall.gpr_floor`, `stall.gpr_ceiling`, `stall.pred_floor_ceiling` |
+| Predicate free list empty | rename blocks on a predicate with the list empty; per cycle | warp_id | owned predicates | 0 | `stall.pred_empty` |
+| ROB full | the warp's ROB has no entry at rename; per cycle | warp_id | ROB count | 0 | `stall.rob_full` |
+| ROB slot held | the next ROB slot is held by a squashed op still in flight (decision 6); per cycle | warp_id | held rob_tag | 0 | `stall.rob_slot_held` |
+| RS full | a class has no free entry at rename; per cycle | warp_id | 0 RCU, 1 MIU | free entries in the class | `stall.rs_full.rcu`, `stall.rs_full.miu` |
+| RS per-warp cap hit | the warp holds its cap at rename; per cycle | warp_id | RS entries held | cap | `stall.rs_warp_cap` |
+| Decode queue full | DEC is held: a uop stays in the channel with the queue full; per cycle | warp_id of the oldest held uop | queue occupancy | 0 | `stall.decq_full` |
+| Decode queue per-warp max | a uop stays in the channel with its warp at its maximum; per cycle | warp_id | that warp's entries | maximum | `stall.decq_warp_max` |
+| `chwidth` serialisation | rename held behind an in-flight `chwidth` change; per cycle | warp_id | holding rob_tag | 0 | `hold.chwidth` |
+| Barrier hold | rename held on a barrier wait; per cycle | warp_id | barrier_id | 0 | `hold.barrier` |
+| Redirect busy | a mispredict or epoch notice waits for the rate-1 redirect; per cycle | warp_id waiting | redirects queued | 0 | `stall.redirect_busy` |
+| Memop held, would have issued | a memop is ready but for an unconfirmed source while an MIU slot goes unused; per cycle | warp_id | RS entry | 0 | `memop.held_unconfirmed` |
+| Memop hold cycles | a memop issues; once per issue | warp_id | rob_tag | cycles from all operands woken to issue | histogram `memop_hold_cycles` |
+| Deferred free | a squash leaves an entry holding its registers for an op in flight | warp_id | rob_tag | 0 | hook `deferred_free`, `squash.deferred` |
+| Ready but not selected | an entry is ready and not issued; per cycle, per entry | warp_id | RS entry | 0 | `ready_not_selected` |
+| Cancel and replay | a withdrawn wake returns an issued entry to Waiting | warp_id | RS entry | depth from the missed load | hook `cancel`, `cancel.replay`, histogram `cancel_depth` |
+| Demotion trigger | a trigger crosses its threshold at the ROB head; once per head | warp_id | 0 MLC miss, 1 barrier, 2 fallback | cycles the head has stalled | `demote_trigger.*` |
+| Cross-group squash | a mispredict squashes entries of other PC groups; once per squash | warp_id | entries of other groups | branch rob_tag | `squash.cross_group` |
+| Masked-load copy op | a masked load issues its copy-only op | warp_id | rob_tag | issue slot | hook `copy` |
+
+Two in the doc's table are not OOE's: the branch-checkpoint stall is FET's
+(its `ckpt_full`), and select grant is `EV_ISSUE`. Not yet in the model: the
+"would have issued" event's record, at retire, of whether those sources
+later confirmed without a cancel. It needs a field per ROB entry and is
+added with the event.
+
 ## How it is checked
 
 - **On the kernels** ([`coverage.md`](coverage.md)). Every S1 kernel matches
