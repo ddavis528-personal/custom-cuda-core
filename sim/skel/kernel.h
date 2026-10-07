@@ -96,6 +96,9 @@ struct Kernel {
   ///                  switched-off lanes' poison lands (pguard kernel; A-43)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
   ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
+  ///   swap-prat0     the final compare reads P0 and P1 through a predicate
+  ///                  map with the two swapped, as an OOE reporting a wrong
+  ///                  committed map would (OI-3; pguard kernel)
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------
@@ -103,6 +106,11 @@ struct Kernel {
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
   std::vector<unsigned> rat0;                      ///< OOE's GPR map for warp 0
+  /// OOE's committed predicate map for warp 0, which the final compare reads
+  /// through (OI-3). An OOE that renames predicates sets it at retirement,
+  /// as it does rat0; left empty, the compare reads the fixed physPred
+  /// windows, which is right only while predicates are not renamed.
+  std::vector<unsigned> prat0;
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   bool exited = false;

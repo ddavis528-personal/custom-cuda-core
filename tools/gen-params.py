@@ -346,6 +346,11 @@ def selftest(d):
              ("link_n('rcu_miu_addr')", "links", 1, "CCV_LAT_L1_WAKE"),
              ("link_n('ooe_miu_memop')", "links", 9, "CCV_LAT_L1_WAKE"),
              ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
+             # OI-13: a slower data path makes a miss's dependant wait.
+             ("link_n('miu_rcu_data')", "links", 3, "CCV_LAT_L1_MISS_WAKE"),
+             ("CCV_P_RS_WARP_CAP", "value", 46, "CCV_P_RS_WARP_CAP"),
+             ("CCV_P_DECQ_WARP_MAX", "value", 13, "CCV_P_DECQ_WARP_MAX"),
+             ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_BYP_GROUPS"),
              ("CCV_LAT_RCU_ADDR_BASE", "value", 5, "CCV_LAT_RCU_ADDR"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),

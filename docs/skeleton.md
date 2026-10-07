@@ -1140,7 +1140,7 @@ decisions.
 
 ### Events: what the skeleton emits
 
-Four of the schema's seven events. Q-2 deleted five, under the rule that an
+Four of the schema's 27 events. The 20 `EV_OOE_*` events (ids 13 to 32) are OOE's arbitration-sensitive set, defined from the OOE model's list (register OI-7) and emitted by the model, not the stubs. Q-2 deleted five, under the rule that an
 event earns its place only if its timing is decided by an arbiter inside a
 block. `EV_DECODE`, `EV_BARRIER_ARRIVE` and `EV_BARRIER_RELEASE` were exactly
 `ccv_dec_ooe_uop`, `ccv_ooe_syu_bar` and `ccv_syu_ooe_rel`. `EV_MEM_REQ` and

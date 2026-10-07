@@ -39,6 +39,8 @@
 #     a cycle ahead of the operands (Q-40)       stale mask
 #   a masked-off lane does not compute, and   ignore-mask (pguard): its poison
 #     RCU merges predicates by the mask (A-43)   lands in P1
+#   final predicates are read through OOE's   swap-prat0 (pguard): P0 and P1
+#     committed predicate map (OI-3)             both end wrong
 #   a guarded write merges inactive lanes     wrong-merge (merge): the lanes
 #     from its old destination (A-33, A-44)      refuse the wrong source
 #   a launched warp reads the zero registers  dirty-zero (merge): every path
@@ -381,6 +383,17 @@ if grep -q "^CHECK lane [0-9]*: seq 7 pred_bit is not issue mask AND guard" "$B/
   say "--break conflate-pred: guard and P0/P1 wrong" "PASS"
 else
   bad "--break conflate-pred" "one field for guard and destination went unnoticed"
+fi
+# The final compare reads predicates through Kernel::prat0, OOE's committed
+# map, once an OOE renames them (OI-3). A map with P0 and P1 swapped must
+# fail both, and nothing else.
+"$SKEL" --kernel "$P" --break swap-prat0 >"$B/kernel_swap-prat0.log" 2>&1
+if [ "$(field "$B/kernel_swap-prat0.log" pred_mismatch)" = 2 ] &&
+   [ "$(field "$B/kernel_swap-prat0.log" check_failures)" = 0 ] &&
+   [ "$(field "$B/kernel_swap-prat0.log" gpr_mismatch)" = 0 ]; then
+  say "--break swap-prat0: compare reads OOE's map" "PASS"
+else
+  bad "--break swap-prat0" "the final compare does not read through the predicate map"
 fi
 
 # merge (S2's first kernel): guarded GPR and predicate writes that merge their

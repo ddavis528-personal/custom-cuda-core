@@ -175,6 +175,22 @@
       "doc": "Cycles before the CSR-programmable demotion fallback fires. MLC miss is the primary trigger; this is the backstop."
     },
     {
+      "name": "CCV_DEMOTION_THRESHOLD_MLC",
+      "value": 50,
+      "status": "tunable",
+      "decided_at": "RAU per-block session (register OA-8)",
+      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). Starts at the fallback's value until RAU's session or the Stage 4b sweep sets it; formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
+    },
+    {
+      "name": "CCV_DEMOTION_THRESHOLD_BARRIER",
+      "value": 50,
+      "status": "tunable",
+      "decided_at": "RAU per-block session (register OA-8)",
+      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "doc": "Threshold of the barrier-wait demotion trigger: how long a barrier wait may hold the ROB head before the warp demotes. A CSR (Q18). Starts at the fallback's value. Replaces the OOE model's demote_barrier knob."
+    },
+    {
       "name": "CCV_MIGRATION_CYCLES",
       "value": 17,
       "status": "arch",
@@ -481,6 +497,24 @@
       "doc": "Decode queue depth ahead of rename."
     },
     {
+      "name": "CCV_P_RS_WARP_CAP",
+      "value": 45,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep (register OA-7)",
+      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "require": "CCV_P_RS_WARP_CAP <= CCV_P_RS_RCU + CCV_P_RS_MIU",
+      "doc": "Reservation-station entries one warp may hold at once, across both classes, so a stalled warp cannot fill the stations. The first-build value is both classes' total, which is no cap; the sweep sets it. Replaces the OOE model's rs_warp_cap knob."
+    },
+    {
+      "name": "CCV_P_DECQ_WARP_MAX",
+      "value": 12,
+      "status": "tunable",
+      "decided_at": "Stage 4b sweep (register OA-7)",
+      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "require": "CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ",
+      "doc": "Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit; the sweep sets it. Replaces the OOE model's decq_warp_max knob."
+    },
+    {
       "name": "CCV_P_REN_SLACK",
       "value": 16,
       "status": "provisional",
@@ -585,6 +619,25 @@
       "doc": "Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and which consumers may take the bypass is open (Q-55)."
     },
     {
+      "name": "CCV_P_LAT_CLASSES",
+      "value": 8,
+      "status": "preliminary",
+      "churn": "med",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "OOE model session, register OI-16 (2026-10-07)",
+      "doc": "Producer units the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4-7 spare for SFU and other lane units). Sizes the bypass table's rows (OI-16)."
+    },
+    {
+      "name": "CCV_P_BYP_GROUPS",
+      "value": 9,
+      "status": "preliminary",
+      "churn": "med",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "OOE model session, register OI-16 (2026-10-07)",
+      "derive": "CCV_P_LAT_CLASSES + 1",
+      "doc": "Consumer groups in the bypass table: one per lat_class, plus memops (OI-16). A cell holds which of its producer's wakes a consumer of that group waits for: the full latency, or a bypass offset (A-73 generalised). The default table is lane to lane at CCV_LAT_LANE_BYP and no other bypass; the other cells' values wait on OA-4."
+    },
+    {
       "name": "CCV_LAT_L1_HIT",
       "value": 7,
       "status": "tunable",
@@ -635,6 +688,15 @@
       "source": "OOE session follow-up (2026-10-02), A-61",
       "derive": "max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl')",
       "doc": "Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE."
+    },
+    {
+      "name": "CCV_LAT_L1_MISS_WAKE",
+      "value": 0,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "OOE model session, register OI-13 (ratified by OA 2026-10-07)",
+      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1)",
+      "doc": "After a miss, how long past the completion's arrival at OOE a dependant must wait to issue, so it reaches RCU no sooner than the data (OI-13). MIU sends the data to RCU and the completion to OOE over different links: the data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read. 0 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
     },
     {
       "name": "CCV_P_PHYS_REGS",

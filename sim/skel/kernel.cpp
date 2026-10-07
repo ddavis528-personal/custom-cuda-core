@@ -1671,11 +1671,15 @@ KernelReport compareFinal(Kernel &k) {
           std::fprintf(stderr, "FINAL R%u lane %u: machine %08x, ccv-sim %08x\n",
                        a, l, k.gpr[k.rat0[a]][l], o.final_gpr[a][l]);
       }
+  std::vector<unsigned> pmap = k.prat0;
+  if (pmap.empty())
+    for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(0, p));
+  if (k.brk == "swap-prat0") std::swap(pmap[0], pmap[1]);
   for (unsigned p = 0; p != kArchPreds; ++p)
-    if (k.pred[physPred(0, p)] != o.final_pred[p]) {
+    if (k.pred[pmap[p]] != o.final_pred[p]) {
       ++r.pred_mismatch;
       std::fprintf(stderr, "FINAL P%u: machine %08x, ccv-sim %08x\n", p,
-                   k.pred[physPred(0, p)], o.final_pred[p]);
+                   k.pred[pmap[p]], o.final_pred[p]);
     }
   for (auto &w : o.final_mem) {
     uint32_t v = 0;

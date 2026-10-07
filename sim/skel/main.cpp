@@ -217,7 +217,7 @@ int main(int argc, char **argv) {
                       brk == "corrupt-group-mask" || brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
-                      brk == "conflate-pred" || brk == "late-lead" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" ||
                       brk == "ignore-mask";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
