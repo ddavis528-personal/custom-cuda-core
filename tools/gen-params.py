@@ -350,8 +350,10 @@ def selftest(d):
              ("link_n('miu_rcu_data')", "links", 3, "CCV_LAT_L1_MISS_WAKE"),
              ("CCV_P_RS_WARP_CAP", "value", 46, "CCV_P_RS_WARP_CAP"),
              ("CCV_P_DECQ_WARP_MAX", "value", 13, "CCV_P_DECQ_WARP_MAX"),
-             ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_BYP_GROUPS"),
-             ("CCV_LAT_RCU_ADDR_BASE", "value", 5, "CCV_LAT_RCU_ADDR"),
+             # OI-16: sched_attr's width follows its two code counts.
+             ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_W_SCHED_ATTR"),
+             ("CCV_P_BYP_GROUPS", "value", 9, "CCV_P_W_SCHED_ATTR"),
+             ("CCV_LAT_RCU_ADDR_BASE", "value", 2, "CCV_LAT_RCU_ADDR"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
              ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),

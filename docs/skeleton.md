@@ -989,7 +989,7 @@ matters for the skeleton:
   `ccv_rau_ooe_alloc` carries a 2-bit `alloc_op` (free, launch,
   restore-allocate, restore-activate) and `tier1_id`; `ccv_rau_fet_launch` and
   `ccv_rau_fet_mig` carry `tier1_id`; `ccv_dec_ooe_uop` carries a 13-bit
-  `sched_attr`. On launch OOE maps every architectural register to a
+  `sched_attr` (16 bits since `bypass_group`, below). On launch OOE maps every architectural register to a
   hardwired zero register, `CCV_P_PHYS_ZERO` = 255 and `CCV_P_PRED_ZERO` = 63,
   derived as the all-ones index and required outside the pool. The stubs: RAU
   sends launch and slot 0; FET fetches in that slot's binding group; OOE keeps
@@ -1119,6 +1119,22 @@ matters for the skeleton:
   confirmed sources (V-17). The `movi-in-lane` control's pinned total moved
   from 259 to 676: the misplaced movi's lane round trip lands two cycles
   later, so more of its readers see the stale register.
+- **Daniel's 2026-10-08 answers, applied.** `CCV_LAT_RCU_ADDR_BASE` is 5, a
+  placeholder (OA-5): the address path binds MIU's start, so
+  `CCV_LAT_L1_WAKE` is 16 and `CCV_LAT_L1_CMPL` 18, and the early-hit
+  control's expected line follows the generated contract. RCU sends no done
+  for a memop (OI-4): a load or store completes on `ccv_miu_ooe_cmpl` alone,
+  the RCU stub sends neither done it used to, and the OOE adapter and stub
+  complete a memop on MIU's completion (an edit in OI's files, in a commit
+  of its own). `sched_attr` gains a 3-bit `bypass_group` at its top (OI-16,
+  OA-4): integer, FP, address calculation, SFU, warp-collective, predicate.
+  DEC's table puts every memop in address calculation, predicate logic in
+  predicate, and the rest of S1 in integer; `CCV_P_BYP_GROUPS` is 8, the
+  group codes, and `sched_attr`'s width is derived from its two code counts.
+  The penalties are parameters (`CCV_LAT_BYP_PEN_SAME` 0, `_INT_FP` 2, `_SFU`
+  3), with `CCV_LAT_SFU` 12 and `CCV_LAT_COLLECTIVE` 5 for `lat_class` 4 and
+  5. Nothing reads `bypass_group` until the OOE model indexes its table by
+  group, so its control comes with that change.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

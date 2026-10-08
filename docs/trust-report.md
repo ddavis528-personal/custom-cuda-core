@@ -70,7 +70,7 @@ preliminary field:
 |---|---|
 | `ccv_cru_rau_cfg` | `kill_grid` |
 | `ccv_dcu_mlc_req` | `coh_op` |
-| `ccv_dec_ooe_uop` | `uop_class`, `mem_op`, `space`, `ordering`, `opcode` |
+| `ccv_dec_ooe_uop` | `uop_class`, `sched_attr`, `mem_op`, `space`, `ordering`, `opcode` |
 | `ccv_exb_ext_out` | `tl_out` |
 | `ccv_exb_mlc_rsp` | `probe_type` |
 | `ccv_ext_exb_in` | `tl_in` |
@@ -111,8 +111,9 @@ to code that merely carries it, which will not.
 | `CCV_L_W_OWNERSHIP` | 3 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
 | `CCV_L_W_PCA_BANK` | 3 | med | PCA session, from the parked-array organization |
 | `CCV_L_W_PROBE_TYPE` | 2 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
-| `CCV_P_BYP_GROUPS` | 9 | med | LANE per-block session (register OA-4) |
+| `CCV_P_BYP_GROUPS` | 8 | med | LANE per-block session (register OA-4) |
 | `CCV_P_LAT_CLASSES` | 8 | med | LANE per-block session (register OA-4) |
+| `CCV_P_W_SCHED_ATTR` | 16 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
 | `CCV_L_W_BAR_COUNT` | 7 | low | SYU session -- is the count biased? |
 | `CCV_L_W_CLASS` | 3 | low | DEC block session -- is class derivable from opcode? |

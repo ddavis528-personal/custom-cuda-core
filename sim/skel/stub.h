@@ -144,16 +144,34 @@ inline bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch || c == k
 
 // sched_attr on ccv_dec_ooe_uop (A-66): what OOE schedules on, decoded by DEC
 // so OOE need not decode opcode. Layout MSB first, CCV_P_W_SCHED_ATTR bits:
-// rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch,
-// serial[2], lat_class[3]. Provisional codes (the schema owner's).
+// bypass_group[3], rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred,
+// mem_kind[2], branch, serial[2], lat_class[3]. Preliminary codes (the schema
+// owner's).
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
-enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3 };
+enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
+                  kLatSfu = 4, kLatCollective = 5 };
+// bypass_group (OI-16; Daniel's responses OA-4): which bypass penalties an
+// op takes, as producer and as consumer, the codes of CCV_P_BYP_GROUPS.
+enum : unsigned { kBypInt = 0, kBypFp = 1, kBypAddr = 2, kBypSfu = 3,
+                  kBypCollective = 4, kBypPred = 5 };
+/// An op's bypass group. S1's table has no FP, SFU or warp-collective op;
+/// movi and movi48 are integer although RCU executes them, and a memop
+/// consumes as address calculation. An op that writes no result and reads
+/// no GPR (a branch, exit) takes 0, don't-care.
+inline unsigned bypGroupOf(const OpInfo *op) {
+  switch (op->cls) {
+  case kLoad: case kStore: return kBypAddr;
+  case kPredLogic: return kBypPred;
+  default: return kBypInt;
+  }
+}
 inline uint32_t schedAttrOf(const OpInfo *op) {
   const bool mem = op->cls == kLoad || op->cls == kStore;
   const unsigned memk = op->cls == kStore ? kMemKStore : kMemKLoad;
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore ? kLatCompletion
                      : inRcu(op->cls) || op->cls == kExit ? kLatRcu : kLatLane;
-  return uint32_t(mem) << 12 | uint32_t(inRcu(op->cls) || op->cls == kExit) << 11 |
+  return uint32_t(bypGroupOf(op)) << 13 |
+         uint32_t(mem) << 12 | uint32_t(inRcu(op->cls) || op->cls == kExit) << 11 |
          0u << 10 /* no S1 op is cross-lane */ | uint32_t(op->gdst) << 9 |
          uint32_t(op->pwrite) << 8 | (mem ? memk : 0u) << 6 |
          uint32_t(op->cls == kBranch) << 5 | 0u << 3 | lat;
@@ -161,6 +179,7 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
 inline bool attrMem(uint32_t a) { return (a >> 12) & 1u; }
 inline unsigned attrMemKind(uint32_t a) { return (a >> 6) & 3u; }
 inline bool attrBranch(uint32_t a) { return (a >> 5) & 1u; }
+inline unsigned attrBypGroup(uint32_t a) { return (a >> 13) & 7u; }
 /// A per-lane input: a GPR source, or the lane's own index.
 inline bool perLaneInput(const OpInfo *op, const Record &r) {
   return !r.gprUses().empty() || op->srd_sel >= 0;

@@ -644,17 +644,56 @@
       "churn": "med",
       "decided_at": "LANE per-block session (register OA-4)",
       "source": "OOE model session, register OI-16 (2026-10-07)",
-      "doc": "Producer units the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4-7 spare for SFU and other lane units). Sizes the bypass table's rows (OI-16)."
+      "doc": "Latency classes the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4 SFU, 5 warp-collective, 6-7 spare). A class sets a producer's full latency; which consumers it may wake early is its bypass_group's (OI-16, Daniel's responses OA-4)."
     },
     {
       "name": "CCV_P_BYP_GROUPS",
-      "value": 9,
+      "value": 8,
       "status": "preliminary",
       "churn": "med",
       "decided_at": "LANE per-block session (register OA-4)",
-      "source": "OOE model session, register OI-16 (2026-10-07)",
-      "derive": "CCV_P_LAT_CLASSES + 1",
-      "doc": "Consumer groups in the bypass table: one per lat_class, plus memops (OI-16). A cell holds which of its producer's wakes a consumer of that group waits for: the full latency, or a bypass offset (A-73 generalised). The default table is lane to lane at CCV_LAT_LANE_BYP and no other bypass; the other cells' values wait on OA-4."
+      "source": "OOE model session, register OI-16 (2026-10-07); Daniel's responses OI-16 and OA-4 (2026-10-08)",
+      "doc": "Bypass groups: the codes of sched_attr's 3-bit bypass_group (0 integer, 1 floating point, 2 address calculation, 3 SFU, 4 warp-collective, 5 predicate, 6-7 spare), which index the bypass table both ways, byp[producer group][consumer group] (OI-16). A memop consumes as address calculation. A cell is a penalty in cycles after the producer's fastest bypass point, capped at the PRF read: in-unit CCV_LAT_BYP_PEN_SAME, integer and FP to each other CCV_LAT_BYP_PEN_INT_FP, integer or FP and SFU to each other CCV_LAT_BYP_PEN_SFU. Address-calculation, warp-collective and predicate consumers never bypass, nor does a warp-collective or predicate producer (A-59, A-62, V-48)."
+    },
+    {
+      "name": "CCV_LAT_BYP_PEN_SAME",
+      "value": 0,
+      "status": "tunable",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "Daniel's responses OA-4 (2026-10-08)",
+      "doc": "Bypass penalty within one group (integer to integer, FP to FP, SFU to SFU): cycles after the producer's fastest bypass point, CCV_LAT_LANE_BYP for a lane producer."
+    },
+    {
+      "name": "CCV_LAT_BYP_PEN_INT_FP",
+      "value": 2,
+      "status": "tunable",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "Daniel's responses OA-4 (2026-10-08)",
+      "doc": "Bypass penalty from integer to FP and from FP to integer, in cycles after the producer's fastest bypass point, capped at the PRF read."
+    },
+    {
+      "name": "CCV_LAT_BYP_PEN_SFU",
+      "value": 3,
+      "status": "tunable",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "Daniel's responses OA-4 (2026-10-08)",
+      "doc": "Bypass penalty from integer or FP to SFU and from SFU to integer or FP, in cycles after the producer's fastest bypass point, capped at the PRF read. With today's values a lane producer's wake for an SFU consumer lands at CCV_LAT_LANE_BYP + 3 = CCV_LAT_LANE, the PRF read (OA's response OI-16). SFU's own fastest bypass point is not yet named (OA proposes CCV_LAT_SFU_BYP, for DA); until it is, an SFU producer wakes every consumer at CCV_LAT_SFU."
+    },
+    {
+      "name": "CCV_LAT_SFU",
+      "value": 12,
+      "status": "tunable",
+      "decided_at": "LANE per-block session",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
+      "doc": "Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. A placeholder until a LANE session confirms it."
+    },
+    {
+      "name": "CCV_LAT_COLLECTIVE",
+      "value": 5,
+      "status": "tunable",
+      "decided_at": "RCU per-block session",
+      "source": "Daniel's responses OA-4 (2026-10-08), a placeholder",
+      "doc": "Full latency of lat_class 5, the warp-collective ops RCU executes (shfl, vote, ballot, unballot): issue to the result readable in the PRF. Cross-lane, so nothing bypasses from them (A-59). A placeholder until an RCU session confirms it."
     },
     {
       "name": "CCV_LAT_L1_HIT",
@@ -863,11 +902,13 @@
     },
     {
       "name": "CCV_P_W_SCHED_ATTR",
-      "value": 13,
-      "status": "provisional",
+      "value": 16,
+      "status": "preliminary",
+      "churn": "med",
+      "derive": "10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). Each further fixed-latency lane unit (SFU and others) takes a spare lat_class code, 4 to 7, once the LANE session sets its latency, with its own generated wake parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
