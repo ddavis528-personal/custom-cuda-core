@@ -616,7 +616,26 @@
       "status": "tunable",
       "decided_at": "LANE per-block session",
       "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and which consumers may take the bypass is open (Q-55)."
+      "doc": "Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and a consumer takes it only if every use it makes of the producer is a lane operand (A-62, Q-55). The lane forwards the value; RCU names it with operand_byp on ccv_rcu_lane_ops (TI-8).",
+      "require": "CCV_LAT_LANE_BYP < CCV_LAT_LANE"
+    },
+    {
+      "name": "CCV_P_W_LANE_BYP_AGE",
+      "value": 2,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
+      "derive": "max(1, clog2(CCV_LAT_LANE - CCV_LAT_LANE_BYP))",
+      "doc": "How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. Ages run from CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 1, after which RCU's register file holds the value. The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE."
+    },
+    {
+      "name": "CCV_P_W_LANE_BYP_SEL",
+      "value": 5,
+      "status": "tunable",
+      "decided_at": "generated",
+      "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
+      "derive": "1 + clog2(CCV_ISSUE_WIDTH) + CCV_P_W_LANE_BYP_AGE",
+      "doc": "One operand's bypass select on ccv_rcu_lane_ops, LSB first: [0] forward, [clog2(CCV_ISSUE_WIDTH):1] the producer's issue slot, then its age less CCV_LAT_LANE_BYP. With [0] clear the operand is the value RCU read."
     },
     {
       "name": "CCV_P_LAT_CLASSES",

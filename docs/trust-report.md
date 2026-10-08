@@ -50,7 +50,7 @@ so this is a build artifact rather than something to remember.
 | `sim/ooe/ooe_block.cpp` | — | `CCV_LAT_L1_MISS_WAKE` |
 | `sim/ooe/ooe_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_BR_CKPTS`, `CCV_P_W_FETCH_EPOCH` |
 | `sim/ooe/ooe_core.h` | — | — |
-| `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE` |
+| `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/skel/ooe.cpp` | — | — |
 | `sim/skel/stub.h` | — | — |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
@@ -87,7 +87,7 @@ preliminary field:
 | `ccv_rau_fet_mig` | `bank_select` |
 | `ccv_rau_rcu_mig` | `bank_select` |
 | `ccv_rau_syu_alloc` | `barrier_count` |
-| `ccv_rcu_lane_ops` | `opcode`, `operand` |
+| `ccv_rcu_lane_ops` | `opcode`, `operand`, `operand_byp` |
 
 ## High-churn parameters
 

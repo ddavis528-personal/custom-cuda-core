@@ -359,6 +359,10 @@ def selftest(d):
              # and more checkpoints widen it.
              ("CCV_P_W_FETCH_EPOCH", "value", 2, "CCV_P_W_FETCH_EPOCH"),
              ("CCV_P_BR_CKPTS", "value", 7, "CCV_P_W_FETCH_EPOCH"),
+             # TI-8: a bypass no faster than the register file is refused,
+             # and the bypass select's age field follows CCV_LAT_LANE.
+             ("CCV_LAT_LANE_BYP", "value", 7, "CCV_LAT_LANE_BYP"),
+             ("CCV_P_W_LANE_BYP_AGE", "value", 1, "CCV_P_W_LANE_BYP_AGE"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     missed = []
