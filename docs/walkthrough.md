@@ -398,7 +398,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[308]), .ch_credit(credit[308]), .ch_stall(stall[308]),
-    .ch_payload(payload[53864:52653])
+    .ch_payload(payload[53906:52695])
 `ifdef CCV_TRACE
     , .ch_tid(tid[19775:19712])
 `endif
@@ -487,7 +487,7 @@ counter-example that must fire, and a paragraph in
 From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
-- **Open:** Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50, Q-57, Q-58
+- **Open:** Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50, Q-57
 - **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53
 
 Stage 4 replaces the stubs, block by block, with RTL written against the
