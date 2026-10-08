@@ -82,8 +82,9 @@ private:
   /// CCV_OOE_CONFIG ("name=value,...") overrides any of it for a sweep.
   static ooe::Config config(Kernel &k) {
     ooe::Config c;
-    c.bypass = false;        // RCU reads the PRF when it takes the issue
-    c.l1_spec = false;       // the gate also runs every kernel with it on (OI-5)
+    // The design's modes: the lanes forward at CCV_LAT_LANE_BYP (TI-8) and
+    // MIU completes an L1 hit at the contract (A-46), so both are on (OI-5).
+    // CCV_OOE_CONFIG=bypass=0,l1_spec=0 runs the conservative path.
     c.rename_preds = false;  // RCU and compareFinal read physPred windows
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
