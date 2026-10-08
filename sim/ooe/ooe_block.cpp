@@ -38,6 +38,15 @@ public:
     core_.on_event = [this](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       event(n, w, a, b, tid);
     };
+    // OOE's structural events (OI-7): ids in schema order from EV_OOE_GPR_EMPTY.
+    static_assert(EV_OOE_COPY_ISSUE - EV_OOE_GPR_EMPTY + 1 == unsigned(ooe::OoeEv::kCount),
+                  "OoeEv must list schema/events.json's EV_OOE_* in id order");
+    static_assert(EV_OOE_DECQ_FULL == EV_OOE_GPR_EMPTY + unsigned(ooe::OoeEv::kDecqFull) &&
+                  EV_OOE_CANCEL_REPLAY == EV_OOE_GPR_EMPTY + unsigned(ooe::OoeEv::kCancelReplay),
+                  "OoeEv out of id order");
+    core_.on_ooe_event = [this](ooe::OoeEv k, unsigned w, uint64_t b, uint64_t c, uint64_t tid) {
+      emit(now_, tid, EventId(EV_OOE_GPR_EMPTY + unsigned(k)), UNIT_OOE, w, uint32_t(b), uint32_t(c));
+    };
   }
   ~OoeModel() override {
     // Sizing-sweep data (docs/ooe-model.md, "Sweeps"): every counter and
@@ -74,7 +83,7 @@ private:
   static ooe::Config config(Kernel &k) {
     ooe::Config c;
     c.bypass = false;        // RCU reads the PRF when it takes the issue
-    c.l1_spec = false;       // MIU completes no load at the L1 contract
+    c.l1_spec = false;       // the gate also runs every kernel with it on (OI-5)
     c.rename_preds = false;  // RCU and compareFinal read physPred windows
     c.memop_rcu_done = true; // RCU sends a done for loads and stores too
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
@@ -87,8 +96,14 @@ private:
       if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages;
       if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages;
     }
+    // CCV_LAT_L1_MISS_WAKE is generated from the same links (OI-13); a
+    // build whose parameters and wiring disagree is stale, not a run.
     const int d = int(data_link) - int(cmpl_link) - int(c.issue_link) + 1;
-    c.cmpl_wake_delay = d > 0 ? unsigned(d) : 0;
+    if (unsigned(d > 0 ? d : 0) != c.cmpl_wake_delay) {
+      std::fprintf(stderr, "ooe: CCV_LAT_L1_MISS_WAKE %u, but the wiring gives %d: regenerate\n",
+                   c.cmpl_wake_delay, d > 0 ? d : 0);
+      std::abort();
+    }
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {

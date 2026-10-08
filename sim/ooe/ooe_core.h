@@ -56,9 +56,9 @@ struct Config {
   unsigned rename_width = ccv::kIssueWidth;       ///< doc: "4 uops per cycle"
   unsigned rs_rcu = ccv::prov::kRsRcu;
   unsigned rs_miu = ccv::prov::kRsMiu;
-  unsigned rs_warp_cap = 0;                       ///< KNOB: 0 = the class size
+  unsigned rs_warp_cap = ccv::prov::kRsWarpCap;   ///< 0 or >= both classes = no cap
   unsigned decq = ccv::prov::kDecq;
-  unsigned decq_warp_max = 0;                     ///< KNOB: 0 = decq
+  unsigned decq_warp_max = ccv::prov::kDecqWarpMax; ///< 0 or >= decq = no limit
   unsigned ckpts = ccv::prov::kBrCkpts;
   unsigned phys_regs = ccv::prov::kPhysRegs;
   unsigned pred_regs = ccv::prov::kPredRegs;
@@ -87,13 +87,13 @@ struct Config {
   /// A dependant must reach RCU after the data does, so it wakes this many
   /// cycles after the completion lands: max(0, ccv_miu_rcu_data crossing -
   /// ccv_miu_ooe_cmpl crossing - ccv_ooe_rcu_issue crossing + 1). The
-  /// adapter derives it from the wiring; 0 with no repeaters.
-  unsigned cmpl_wake_delay = 0;
-  /// Demotion trigger thresholds (CSRs, one per trigger; Q18). Only the
-  /// fallback has a parameter; the other two are KNOBs that default to it.
+  /// CCV_LAT_L1_MISS_WAKE (OI-13), generated from the links; 0 with no repeaters.
+  unsigned cmpl_wake_delay = ccv::prov::kLatL1MissWake;
+  /// Demotion trigger thresholds (CSRs, one per trigger; Q18), each its own
+  /// parameter (OI-6); the values wait on OA-8.
   unsigned demote_fallback = ccv::prov::kDemotionThreshold;
-  unsigned demote_mlc_miss = ccv::prov::kDemotionThreshold;
-  unsigned demote_barrier = ccv::prov::kDemotionThreshold;
+  unsigned demote_mlc_miss = ccv::prov::kDemotionThresholdMlc;
+  unsigned demote_barrier = ccv::prov::kDemotionThresholdBarrier;
 
   // -- what the neighbours can do today (docs/ooe-model.md, "S1 modes") -------
   /// Bypass groups (docs/ooe-model.md, "Bypass groups"). A producer's
@@ -105,7 +105,9 @@ struct Config {
   /// Lane ALU to lane ALU defaults to CCV_LAT_LANE_BYP (A-59), and every
   /// other pair has no bypass until its sessions name one.
   bool bypass = true;            ///< master enable; off in S1 (no RCU bypass)
-  static constexpr unsigned kUnits = 8, kConsMem = 8, kConsGroups = 9;
+  static constexpr unsigned kUnits = ccv::prelim::kPLatClasses, kConsMem = kUnits,
+                            kConsGroups = ccv::prelim::kPBypGroups;
+  static_assert(kConsGroups == kUnits + 1, "one group per lat_class, plus memops");
   std::array<std::array<uint8_t, kConsGroups>, kUnits> byp{};
   /// Full latency of the spare lat_class codes 4-7 (SFU and the like), as
   /// the LANE session names them; 0 means none yet: wake on the done.
@@ -309,6 +311,70 @@ struct Retired {
 
 // ---- the model -------------------------------------------------------------------------
 
+/// A free list as the RTL builds it (OI-22, docs/ooe-rtl-plan.md item 2): one
+/// bit per register, allocated by a priority encoder that starts at a rotating
+/// pointer and moves past each register it hands out, so a freed register
+/// comes back late. A free sets its bit at the clock edge (clock()), so a
+/// register freed in a cycle is not allocated in that cycle. Any number of
+/// frees a cycle costs nothing.
+/// OOE's structural events (docs/ooe-model.md, "Events"; OI-7), in the order
+/// of their ids in schema/events.json, EV_OOE_GPR_EMPTY first. Each carries
+/// warp_id as a; b and c are the schema's fields.
+enum class OoeEv : unsigned {
+  kGprEmpty, kRenameLimit, kPredEmpty, kRobFull, kRobSlotHeld, kRsFull, kRsWarpCap,
+  kDecqFull, kDecqWarpMax, kChwidthHold, kBarrierHold, kRedirectBusy, kMemopHeld,
+  kMemopHoldCycles, kDeferredFree, kReadyNotSelected, kCancelReplay, kDemoteTrigger,
+  kCrossGroupSquash, kCopyIssue, kCount
+};
+
+class FreeVec {
+public:
+  void reset(unsigned n) {
+    bit_.assign(n, 1);
+    pend_.assign(n, 0);
+    ready_ = n;
+    npend_ = 0;
+    ptr_ = 0;
+  }
+  /// Free registers, including those freed this cycle.
+  size_t size() const { return ready_ + npend_; }
+  /// Free registers allocation can take this cycle.
+  size_t ready() const { return ready_; }
+  bool empty() const { return ready_ == 0; }
+  bool has(unsigned p) const { return bit_[p] || pend_[p]; }
+  unsigned alloc() {
+    const unsigned n = unsigned(bit_.size());
+    for (unsigned i = 0; i != n; ++i) {
+      const unsigned p = (ptr_ + i) % n;
+      if (!bit_[p]) continue;
+      bit_[p] = 0;
+      --ready_;
+      ptr_ = (p + 1) % n;
+      return p;
+    }
+    return n;   // caller checked ready()
+  }
+  /// False when the register is already free (a double free).
+  bool free(unsigned p) {
+    if (has(p)) return false;
+    pend_[p] = 1;
+    ++npend_;
+    return true;
+  }
+  void clock() {
+    if (!npend_) return;
+    for (size_t p = 0; p != pend_.size(); ++p)
+      if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
+    ready_ += npend_;
+    npend_ = 0;
+  }
+
+private:
+  std::vector<uint8_t> bit_, pend_;
+  size_t ready_ = 0, npend_ = 0;
+  unsigned ptr_ = 0;
+};
+
 class Core {
 public:
   explicit Core(const Config &cfg);
@@ -337,6 +403,8 @@ public:
   // -- observation ------------------------------------------------------------------
   /// Hooks for events and coverage: (name, warp, a, b, tid).
   std::function<void(const char *, unsigned, uint64_t, uint64_t, uint64_t)> on_event;
+  /// The structural events, (kind, warp, b, c, tid); see OoeEv.
+  std::function<void(OoeEv, unsigned, uint64_t, uint64_t, uint64_t)> on_ooe_event;
   /// A broken invariant or a contract violation: the adapter makes it a
   /// check failure.
   std::function<void(const std::string &)> on_error;
@@ -439,6 +507,7 @@ private:
     unsigned decq = 0;                        ///< decode-queue entries
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
+    unsigned bar_id = 0;                      ///< the held barrier (events)
     unsigned chwidth_rob = 0;                 ///< the holding instruction
     bool fault_stop = false;                  ///< V-24
     uint64_t head_since = 0;                  ///< head-stall timer (demotion)
@@ -503,6 +572,9 @@ private:
   void releaseSlot(unsigned slot);
   void ev(const char *name, unsigned warp = 0, uint64_t a = 0, uint64_t b = 0,
           uint64_t tid = 0);
+  void oev(OoeEv k, unsigned warp, uint64_t b = 0, uint64_t c = 0, uint64_t tid = 0) {
+    if (on_ooe_event) on_ooe_event(k, warp, b, c, tid);
+  }
   void err(const char *fmt, ...);
   void count(const std::string &k, uint64_t n = 1) { counters[k] += n; }
 
@@ -536,8 +608,8 @@ private:
   // masked load and its copy), and whether its value has landed
   std::vector<std::array<unsigned, 2>> gprod_, pprod_;
 
-  // free lists: FIFO, so a freed register comes back late with a stale value
-  std::deque<unsigned> gfree_, pfree_;
+  // free lists: bit-vectors with rotating-start allocation (OI-22)
+  FreeVec gfree_, pfree_;
   std::vector<uint8_t> gowner_, powner_;      ///< slot + 1, 0 = free
   std::vector<uint8_t> gever_;                ///< ever allocated (reg_reuse)
 
