@@ -79,6 +79,13 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_OPCODE` | 9 | **HIGH** | One encoding across all three hops, owned by the schema (Q-34): a block may narrow it locally only as a strict projection, never a re-encoding. Narrowing at RCU->LANE is likely, but the ISA opcode census sets it. Anything decoding this field will be rewritten. |
 
+### LANE per-block session (register OA-4)
+
+| Parameter | Value | Churn | Basis |
+|---|---|---|---|
+| `CCV_P_BYP_GROUPS` | 9 | med | Consumer groups in the bypass table: one per lat_class, plus memops (OI-16). A cell holds which of its producer's wakes a consumer of that group waits for: the full latency, or a bypass offset (A-73 generalised). The default table is lane to lane at CCV_LAT_LANE_BYP and no other bypass; the other cells' values wait on OA-4. |
+| `CCV_P_LAT_CLASSES` | 8 | med | Producer units the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4-7 spare for SFU and other lane units). Sizes the bypass table's rows (OI-16). |
+
 ### MIU block session
 
 | Parameter | Value | Churn | Basis |
