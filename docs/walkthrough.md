@@ -216,11 +216,11 @@ real channels. It then compares the final state with the oracle's.
 
 ```
 KERNEL name=vadd finished=1 cycles=214 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-XFER events=482 launched=482 match=yes channels_seen=27
+XFER events=474 launched=474 match=yes channels_seen=27
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 482 messages
+`ccv-sim`'s, and every one of the 474 messages
 launched was seen by the checker bank, which reported nothing. The run
 touches 27/48 channel types. The rest are waiting for
 kernels that need them:
@@ -257,8 +257,7 @@ instruction can be followed across every block it touches. Seq 12,
     117  ccv_dcu_miu_rsp                dcu  -> miu       
     119  ccv_miu_rcu_data               miu  -> rcu       
     119  ccv_miu_ooe_cmpl               miu  -> ooe       
-    121  ccv_rcu_ooe_done               rcu  -> ooe       
-    123  EV_RETIRE                      ooe          
+    121  EV_RETIRE                      ooe          
 ```
 
 - **Fetch to dispatch in 5 cycles:** FET to DEC to OOE, one
@@ -273,7 +272,7 @@ instruction can be followed across every block it touches. Seq 12,
   98. The data comes back at 110, in 2 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
-  the instruction retires at 123, 86 cycles after fetch.
+  the instruction retires at 121, 84 cycles after fetch.
 
 Seq 14, `C_ADD`, the add, is the other shape of
 traffic: the lanes. RCU sends 32 lane operations, one per lane instance,
@@ -372,7 +371,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=214 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-TRACES records=540/540 equal=yes byte_identical=no differing_cycles=0
+TRACES records=532/532 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -399,7 +398,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[308]), .ch_credit(credit[308]), .ch_stall(stall[308]),
-    .ch_payload(payload[53846:52635])
+    .ch_payload(payload[53864:52653])
 `ifdef CCV_TRACE
     , .ch_tid(tid[19775:19712])
 `endif
