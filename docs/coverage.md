@@ -61,6 +61,19 @@ must print the same `COVER` line as the C++ one.
 4. **Per-warp concurrency.** One warp, one CTA throughout: no tier-1 slot
    other than 0, no binding-group contention, no SPM, no barriers, no
    migration.
+5. **The lane's real ports (Daniel's response OI-28, 2026-10-08).** A lane
+   block has four 32-bit operand ports, three sources and merge, each in
+   four 8-bit sections; a full-width lane op takes every section, so one
+   issues a cycle, and four co-issue only as narrow ops in separate
+   sections. The stubs still carry `ccv_rcu_lane_ops` as four slot-bound
+   full-width slots, sixteen operand ports a lane, and the OOE model issues
+   up to four full-width lane ops a cycle. Correctness is unaffected: every
+   kernel still matches ccv-sim. Every cycle count is optimistic, and no
+   IPC-derived number should be trusted until the stubs limit the lane
+   ports (register OI-34). The channel's new shape, and `operand_byp`'s
+   with it, waits on the design rows OI-29 to OI-31 (OI-32). A narrow
+   kernel, vadd16, with co-issue bins and a control that grants two ops
+   into one section, comes with it.
 
 ## Next, in order
 
