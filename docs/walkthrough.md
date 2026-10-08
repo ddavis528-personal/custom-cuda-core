@@ -276,7 +276,7 @@ instruction can be followed across every block it touches. Seq 12,
 
 Seq 14, `C_ADD`, the add, is the other shape of
 traffic: the lanes. RCU sends 32 lane operations, one per lane instance,
-in the same cycle, and gets 32 results back 2 cycles later:
+in the same cycle, and gets 32 results back 4 cycles later:
 
 ```
   cycle  event / channel                src  -> dst    msgs
@@ -287,9 +287,9 @@ in the same cycle, and gets 32 results back 2 cycles later:
     149  EV_ISSUE                       ooe          
     149  ccv_ooe_rcu_issue              ooe  -> rcu       
     151  ccv_rcu_lane_ops               rcu  -> lane   x32
-    153  ccv_lane_rcu_res               lane -> rcu    x32
-    155  ccv_rcu_ooe_done               rcu  -> ooe       
-    157  EV_RETIRE                      ooe          
+    155  ccv_lane_rcu_res               lane -> rcu    x32
+    157  ccv_rcu_ooe_done               rcu  -> ooe       
+    159  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -398,7 +398,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[308]), .ch_credit(credit[308]), .ch_stall(stall[308]),
-    .ch_payload(payload[51286:50075])
+    .ch_payload(payload[53846:52635])
 `ifdef CCV_TRACE
     , .ch_tid(tid[19775:19712])
 `endif
