@@ -532,7 +532,7 @@ mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0
 hit    l1_hit=4 l1_late=0
-byp    copy=1 lane_byp=0
+byp    copy=1 lane_byp=5
 plog   merge=3
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
