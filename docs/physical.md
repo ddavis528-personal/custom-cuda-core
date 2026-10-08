@@ -303,7 +303,7 @@ them: `credit_per_msg` belongs in every receiver.
   - the S0 suite with every negative control;
   - the wiring traced flop by flop, equal to the C++ skeleton's with stage
     counts, 561 stages;
-  - every S1 kernel equal to ccv-sim (vadd in 425 cycles, not 361);
+  - every kernel equal to ccv-sim (vadd in 245 cycles, not 214);
   - every kernel with OOE's lane-local bypass on: `CCV_LAT_LANE` is 11
     there and the forwarding window 4 to 10, but the bypass stays at 4,
     since producer and dependant cross the same links (TI-8);
