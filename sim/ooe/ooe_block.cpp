@@ -85,7 +85,7 @@ private:
     c.bypass = false;        // RCU reads the PRF when it takes the issue
     c.l1_spec = false;       // the gate also runs every kernel with it on (OI-5)
     c.rename_preds = false;  // RCU and compareFinal read physPred windows
-    c.memop_rcu_done = true; // RCU sends a done for loads and stores too
+    c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
     c.inject_free_new = k.brk == "free-new";
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;

@@ -48,9 +48,11 @@ private:
     // the copy's contracted wake, issue + CCV_LAT_LANE, as for a lane op.
     bool copy_pending = false;
     uint64_t copy_wake = 0;
+    // A memop completes on MIU's completion alone: RCU sends no done for it
+    // (OI-4).
     bool complete() const {
       return op->cls == kExit ? issued
-                              : issued && rcu && (!attrMem(attr) || miu) && !copy_pending;
+                              : issued && (attrMem(attr) ? miu : rcu) && !copy_pending;
     }
   };
   std::deque<E> rob_;
