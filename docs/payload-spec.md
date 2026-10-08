@@ -45,8 +45,8 @@ since a struct is only as settled as its least-decided field.
 |---|---|---|
 | All decided | 9 | 28 |
 | ⚠️ Some provisional | 19 | 83 |
-| ⛔ Some preliminary | 20 | 121 |
-| **Total** | **48** | **232** |
+| ⛔ Some preliminary | 20 | 122 |
+| **Total** | **48** | **233** |
 
 ## What still has to be decided
 
@@ -646,7 +646,7 @@ ooe → rcu · rate 4 · execution
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask. A lane with pred_bit clear does not compute: it returns merge_data as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0, since then every lane is enabled. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.
+Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask. A lane with pred_bit clear does not compute: it returns merge_data as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0, since then every lane is enabled. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC. operand_byp is the lane-local bypass (A-59, TI-8): one CCV_P_W_LANE_BYP_SEL select per operand slot and a last one for merge_data. A select with its forward bit set replaces the value RCU read with a result this lane computed earlier, named by the producer's issue slot and its age, the cycles between the two ops' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at the bypass offset can meet; a lane never forwards a result younger than CCV_LAT_LANE_BYP. The select is the same on every lane, like opcode.
 
 rcu → lane · rate 4 · execution
 
@@ -658,7 +658,8 @@ rcu → lane · rate 4 · execution
 | `pred_bit` | `1` | 1 | literal |
 | `pred_data` | `1` | 1 | literal |
 | `section_en` | `4` | 4 | literal |
-| **total** | | **143** | ⛔ 105 preliminary |
+| `operand_byp` | `(CCV_L_OPERANDS_PER_LANE+1)*CCV_P_W_LANE_BYP_SEL` | 20 ⛔ | CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_P_W_LANE_BYP_SEL (tunable) |
+| **total** | | **163** | ⛔ 125 preliminary |
 
 ### `ccv_ooe_miu_memop`
 

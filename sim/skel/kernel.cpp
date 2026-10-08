@@ -827,17 +827,64 @@ private:
 
 // ---- LANE: one of 32; operands in, oracle result out ------------------------------
 
+// The lane-local bypass select (A-59, TI-8): one per operand slot of
+// ccv_rcu_lane_ops and a last one for merge_data. LSB first: forward, the
+// producer's issue slot, and its age less CCV_LAT_LANE_BYP.
+constexpr unsigned kBypOperands = ccv::prelim::kOperandsPerLane + 1;
+constexpr unsigned kBypMerge = ccv::prelim::kOperandsPerLane;
+constexpr unsigned clog2c(unsigned x) { return x <= 1 ? 0 : 1 + clog2c((x + 1) / 2); }
+constexpr unsigned kBypSlotBits = clog2c(kIssueWidth);
+static_assert(ccv::prov::kWLaneBypSel == 1 + kBypSlotBits + ccv::prov::kWLaneBypAge,
+              "operand_byp's layout is forward, slot, age");
+
 class Lane : public Stub {
 public:
   Lane(int inst, Kernel &k) : Stub(inst, k), lane_(kBlkInsts[inst].index) {}
   const char *kind() const override { return "lane"; }
 
 private:
+  /// The lane pipeline: a result leaves kPipe cycles after its operands
+  /// arrive, so it lands in RCU's PRF CCV_LAT_LANE - 1 cycles after RCU took
+  /// the issue: the cycle before a dependant woken at the full latency reads
+  /// it (V-35). Stages on either lane channel add to CCV_LAT_LANE, not here.
+  static constexpr unsigned kPipe = ccv::prov::kLatLaneBase - 1 - 2 * kLatHop;
+  static_assert(ccv::prov::kLatLaneBase >= 1 + 2 * kLatHop, "no room for the lane pipeline");
+  static_assert(ccv::prov::kLatLaneByp >= kPipe,
+                "a dependant at CCV_LAT_LANE_BYP would arrive before its producer's result");
+
+  struct Out { unsigned slot; Bits msg; uint64_t tid, at; };
+  /// This lane's results by arrival cycle and slot: what its bypass mux can
+  /// forward, kept until RCU's register file holds them (A-59).
+  struct Res { uint64_t at; unsigned slot; uint32_t v; };
+
   unsigned lane_;
-  std::deque<Q> q_;
+  std::deque<Out> q_;
+  std::deque<Res> hist_;
+
+  /// Operand slot i, or merge_data for kBypMerge: the value RCU read, or,
+  /// with its operand_byp select set, the result this lane computed on the
+  /// named slot `age` cycles before this op arrived.
+  uint32_t operand(const Receiver::Msg &m, unsigned i, uint64_t seq) {
+    const Ch &c = ch();
+    const uint32_t raw =
+        i == kBypMerge ? uint32_t(get(m.payload, c.rcu_lane, "merge_data"))
+                       : uint32_t(m.payload.get(field(c.rcu_lane, "operand").lsb + 32 * i, 32));
+    const unsigned sel = unsigned(m.payload.get(
+        field(c.rcu_lane, "operand_byp").lsb + ccv::prov::kWLaneBypSel * i,
+        ccv::prov::kWLaneBypSel));
+    if (!(sel & 1u)) return raw;
+    const unsigned slot = (sel >> 1) & ((1u << kBypSlotBits) - 1);
+    const unsigned age = (sel >> (1 + kBypSlotBits)) + ccv::prov::kLatLaneByp;
+    for (const Res &h : hist_)
+      if (h.slot == slot && h.at + age == now_) return h.v;
+    k_.fail("lane %u: seq %llu operand %u forwards slot %u from %u cycles back, "
+            "where nothing arrived", lane_, (unsigned long long)seq, i, slot, age);
+    return raw;
+  }
 
   void work() override {
     const Ch &c = ch();
+    while (!hist_.empty() && hist_.front().at + ccv::prov::kLatLane <= now_) hist_.pop_front();
     for (unsigned s = 0; s != kChans[c.rcu_lane].rate; ++s)
       while (has(c.rcu_lane, s, lane_)) {
         Receiver::Msg m = take(c.rcu_lane, s, lane_);
@@ -865,8 +912,7 @@ private:
           // Operands: what RCU read out of its register file.
           const auto g = rc->gprUses();
           for (size_t i = 0; on && i != g.size() && i < 3; ++i) {
-            const uint32_t got = uint32_t(m.payload.get(
-                field(c.rcu_lane, "operand").lsb + 32 * unsigned(i), 32));
+            const uint32_t got = operand(m, unsigned(i), rc->seq);
             if (got != g[i]->v[lane_])
               k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x",
                       lane_, (unsigned long long)rc->seq, i, g[i]->idx, got,
@@ -903,7 +949,7 @@ private:
             // Switched off: no compute; the result is the old destination
             // RCU carried here (A-33, A-44). The oracle's post-state for an
             // inactive lane IS its old value, so the merge is checked here.
-            const uint32_t md = uint32_t(get(m.payload, c.rcu_lane, "merge_data"));
+            const uint32_t md = operand(m, kBypMerge, rc->seq);
             put(r, c.lane_rcu, "result", md);
             if (const RegVal *d = rc->gprDef())
               if (md != d->v[lane_])
@@ -915,7 +961,7 @@ private:
           } else if (const RegVal *d = rc->gprDef()) {
             uint32_t v = d->v[lane_];
             if (op && op->srd_sel >= 0) {
-              const uint32_t o0 = uint32_t(m.payload.get(field(c.rcu_lane, "operand").lsb, 32));
+              const uint32_t o0 = operand(m, 0, rc->seq);
               v = op->or_lane ? (o0 | lane_) : o0;
               if (v != d->v[lane_])
                 k_.fail("lane %u: seq %llu srd %u, oracle %u", lane_,
@@ -936,10 +982,12 @@ private:
                         (unsigned long long)rc->seq);
             }
         }
-        q_.push_back({s, r, m.tid});
+        if (get(m.payload, c.rcu_lane, "opcode") != kOpCopy)
+          hist_.push_back({now_, s, uint32_t(get(r, c.lane_rcu, "result"))});
+        q_.push_back({s, r, m.tid, now_ + kPipe});
       }
     for (auto it = q_.begin(); it != q_.end();)
-      if (can(c.lane_rcu, it->slot, lane_)) {
+      if (it->at <= now_ && can(c.lane_rcu, it->slot, lane_)) {
         send(c.lane_rcu, it->slot, it->msg, it->tid, lane_);
         it = q_.erase(it);
       } else {
@@ -971,7 +1019,7 @@ private:
     if (on != want)
       k_.fail("lane %u: seq %llu's copy has pred_bit %u, not the load's enable", lane_,
               (unsigned long long)rc->seq, unsigned(on));
-    const uint32_t md = uint32_t(get(m.payload, c.rcu_lane, "merge_data"));
+    const uint32_t md = operand(m, kBypMerge, rc->seq);
     if (!on)
       if (const RegVal *d = rc->gprDef())
         if (md != d->v[lane_])
@@ -1004,13 +1052,31 @@ private:
     bool merge; unsigned ppold;   ///< predicate merge source (A-43)
     bool copy = false;            ///< the copy-only op (A-38): op is null
     uint64_t accepted = 0;        ///< the cycle RCU took the issue
+    uint64_t serial = 0;          ///< its key in wr_
   };
-  /// One op's 32 lane messages, held until every lane has a credit.
-  struct LaneOp { std::vector<Bits> lanes; uint64_t tid, not_before = 0; };
+  /// One op's 32 lane messages, held until every lane has a credit, and
+  /// which of its operands were read from a register a lane op in flight
+  /// has yet to write (wr_): the lanes forward those (A-59).
+  struct LaneOp {
+    std::vector<Bits> lanes; uint64_t tid, not_before = 0;
+    uint64_t serial = 0;
+    std::array<int, kBypOperands> from_reg;       ///< -1: read from the PRF
+    std::array<uint64_t, kBypOperands> from{};    ///< the producer's serial
+    LaneOp(std::vector<Bits> l, uint64_t t, uint64_t nb = 0)
+        : lanes(std::move(l)), tid(t), not_before(nb) { from_reg.fill(-1); }
+  };
+  /// A lane op in flight that writes a GPR, from RCU taking its issue until
+  /// its results land, by destination. A dependant OOE woke at
+  /// CCV_LAT_LANE_BYP reads a register named here, before the write: RCU
+  /// names the producer's slot and age in operand_byp and the lane forwards
+  /// its own result (A-59, TI-8). RCU needs the destinations only, no data.
+  struct Writer { uint64_t serial; unsigned slot; uint64_t sent = ~0ull; };
 
   std::array<std::deque<Alu>, 4> alu_;            ///< per issue slot: bound lanes
   std::array<std::deque<LaneOp>, 4> lane_q_;
   std::deque<Q> to_ooe_, to_miu_;
+  std::map<unsigned, Writer> wr_;
+  uint64_t serial_ = 0;
 
   Bits done(unsigned tag) {
     Bits d = msgOf(ch().rcu_ooe);
@@ -1054,6 +1120,10 @@ private:
         if (a.op->gdst) k_.gpr[a.pdst][l] = v;
         po_mask |= (po & 1u) << l;
       }
+      if (a.op->gdst) {
+        auto w = wr_.find(a.pdst);
+        if (w != wr_.end() && w->second.serial == a.serial) wr_.erase(w);
+      }
       // Predicates merge HERE, by read-modify-write of the 32-bit row from
       // the old destination (A-43): the lanes' bits on active lanes, the
       // old ones elsewhere. ignore-mask drops the mask, which writes the
@@ -1091,16 +1161,88 @@ private:
       bool all = true;
       for (unsigned l = 0; l != kLanes; ++l) all = all && can(c.rcu_lane, s, l);
       if (!all) continue;     // lockstep: every lane or none
-      for (unsigned l = 0; l != kLanes; ++l)
-        send(c.rcu_lane, s, lane_q_[s].front().lanes[l], lane_q_[s].front().tid, l);
+      LaneOp &lo = lane_q_[s].front();
+      forward(lo);
+      for (unsigned l = 0; l != kLanes; ++l) send(c.rcu_lane, s, lo.lanes[l], lo.tid, l);
+      for (auto &w : wr_)
+        if (w.second.serial == lo.serial) w.second.sent = now_;
       lane_q_[s].pop_front();
     }
-    for (auto *q : {&to_ooe_, &to_miu_}) {
-      const unsigned chan = q == &to_ooe_ ? c.rcu_ooe : c.rcu_miu;
-      for (auto it = q->begin(); it != q->end();)
-        if (can(chan, it->slot)) { send(chan, it->slot, it->msg, it->tid); it = q->erase(it); }
-        else ++it;
+    // ccv_rcu_ooe_done's slots are a free pool: any done takes any slot,
+    // oldest first. A lane op's done leaves the cycle its write lands, at
+    // V-35's bound exactly, so it cannot wait for its issue slot.
+    for (auto it = to_ooe_.begin(); it != to_ooe_.end();) {
+      unsigned s = 0;
+      while (s != kChans[c.rcu_ooe].rate && !can(c.rcu_ooe, s)) ++s;
+      if (s == kChans[c.rcu_ooe].rate) break;
+      send(c.rcu_ooe, s, it->msg, it->tid);
+      it = to_ooe_.erase(it);
     }
+    for (auto it = to_miu_.begin(); it != to_miu_.end();)
+      if (can(c.rcu_miu, it->slot)) { send(c.rcu_miu, it->slot, it->msg, it->tid); it = to_miu_.erase(it); }
+      else ++it;
+  }
+
+  /// At the lane op's send: name each operand read before its producer's
+  /// write in operand_byp, by the producer's slot and its age, the cycles
+  /// since the producer left for the lanes. The lanes see the same distance
+  /// between the two arrivals, since both cross the same link.
+  void forward(LaneOp &lo) {
+    const Ch &c = ch();
+    bool fwd = false;
+    for (unsigned i = 0; i != kBypOperands; ++i) {
+      if (lo.from_reg[i] < 0) continue;
+      const unsigned preg = unsigned(lo.from_reg[i]);
+      const unsigned long long seq = uidSeq(lo.tid);
+      auto w = wr_.find(preg);
+      if (w == wr_.end() || w->second.serial != lo.from[i]) {
+        // The write landed between RCU's read and this send, which only a
+        // send held for credit can see: read it again.
+        for (unsigned l = 0; l != kLanes; ++l)
+          if (i == kBypMerge) put(lo.lanes[l], c.rcu_lane, "merge_data", k_.gpr[preg][l]);
+          else lo.lanes[l].set(field(c.rcu_lane, "operand").lsb + 32 * i, 32, k_.gpr[preg][l]);
+        continue;
+      }
+      if (w->second.sent == ~0ull) {
+        k_.fail("rcu: seq %llu leaves for the lanes before the producer of its operand %u",
+                seq, i);
+        continue;
+      }
+      const uint64_t age = now_ - w->second.sent;
+      if (age < ccv::prov::kLatLaneByp) {
+        k_.fail("rcu: seq %llu reads operand %u %llu cycles after its lane producer; "
+                "CCV_LAT_LANE_BYP is %u", seq, i, (unsigned long long)age,
+                ccv::prov::kLatLaneByp);
+        continue;
+      }
+      if (age - ccv::prov::kLatLaneByp >= (1u << ccv::prov::kWLaneBypAge)) {
+        k_.fail("rcu: seq %llu operand %u's producer is %llu cycles ahead, past the "
+                "bypass window", seq, i, (unsigned long long)age);
+        continue;
+      }
+      if (k_.brk == "no-lane-bypass") continue;
+      const unsigned sel = 1u | w->second.slot << 1 |
+                           unsigned(age - ccv::prov::kLatLaneByp) << (1 + kBypSlotBits);
+      for (unsigned l = 0; l != kLanes; ++l)
+        lo.lanes[l].set(field(c.rcu_lane, "operand_byp").lsb + ccv::prov::kWLaneBypSel * i,
+                        ccv::prov::kWLaneBypSel, sel);
+      fwd = true;
+    }
+    if (fwd) k_.hit("lane_byp");
+  }
+
+  /// Record which of a lane op's operands a lane op in flight has yet to
+  /// write, and enter the op itself in wr_ if it writes a GPR.
+  void inFlight(LaneOp &lo, unsigned s, const std::array<int, kBypOperands> &reads, int writes) {
+    lo.serial = ++serial_;
+    for (unsigned i = 0; i != kBypOperands; ++i) {
+      if (reads[i] < 0) continue;
+      auto w = wr_.find(unsigned(reads[i]));
+      if (w == wr_.end()) continue;
+      lo.from_reg[i] = reads[i];
+      lo.from[i] = w->second.serial;
+    }
+    if (writes >= 0) wr_[unsigned(writes)] = {lo.serial, s};
   }
 
   void issue(unsigned s, const Receiver::Msg &m) {
@@ -1249,8 +1391,17 @@ private:
           !merge ? 0u : k_.gpr[k_.brk == "wrong-merge" ? src[1] : pold][l]);
       lanes.push_back(o);
     }
-    lane_q_[s].push_back({lanes, m.tid});
-    alu_[s].push_back({tag, op, pd, ppd, pwe, active, m.tid, merge, ppold});
+    std::array<int, kBypOperands> reads;
+    reads.fill(-1);
+    for (unsigned i = 0; i != op->nsrc; ++i)
+      if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) reads[i] = int(src[i]);
+    if (merge) reads[kBypMerge] = int(k_.brk == "wrong-merge" ? src[1] : pold);
+    LaneOp lo(std::move(lanes), m.tid);
+    inFlight(lo, s, reads, op->gdst ? int(pd) : -1);
+    Alu a{tag, op, pd, ppd, pwe, active, m.tid, merge, ppold};
+    a.serial = lo.serial;
+    lane_q_[s].push_back(std::move(lo));
+    alu_[s].push_back(a);
   }
 
   /// The copy-only op of a masked load (A-33, A-38): the old destination
@@ -1285,10 +1436,19 @@ private:
     }
     // late-copy: the copy waits CCV_LAT_LANE cycles before leaving for the
     // lanes, so it lands after the contract OOE wakes the load's readers on.
-    lane_q_[s].push_back({lanes, m.tid, k_.brk == "late-copy" ? now_ + ccv::prov::kLatLane : 0});
+    // The copy reads its merge_data like any lane op, so a lane producer
+    // still in flight is forwarded to it; it writes only the load's inactive
+    // lanes, so it is never a producer itself (A-38).
+    LaneOp lo(std::move(lanes), m.tid, k_.brk == "late-copy" ? now_ + ccv::prov::kLatLane : 0);
+    std::array<int, kBypOperands> reads;
+    reads.fill(-1);
+    reads[kBypMerge] = int(k_.brk == "copy-from-new" ? pd : pold);
+    inFlight(lo, s, reads, -1);
     Alu a{tag, nullptr, pd, 0, false, active, m.tid, true, 0};
     a.copy = true;
     a.accepted = now_;
+    a.serial = lo.serial;
+    lane_q_[s].push_back(std::move(lo));
     alu_[s].push_back(a);
   }
 

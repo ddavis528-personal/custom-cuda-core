@@ -120,7 +120,7 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
 
 ## What the environment can and cannot exercise yet
 
-Eleven kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
+Twelve kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
 coverage counts. They exercise:
 - rename, merge, the zero registers and the copy-only op;
 - mispredicts with checkpoint restore and free;
@@ -128,10 +128,15 @@ coverage counts. They exercise:
 - the free list wrapping;
 - dropping a stale-epoch uop;
 - L1 hits at the contract, and the model's `l1_spec` on every kernel
-  (`CCV_OOE_CONFIG=l1_spec=1`, held in `tools/check-kernel.sh`; OI-5). The
-  kernels also pass with `bypass=1`, but only because the S1 lanes answer
-  faster than `CCV_LAT_LANE`: a lane-local bypass is not yet modelled, so
-  that pass does not prove one.
+  (`CCV_OOE_CONFIG=l1_spec=1`, held in `tools/check-kernel.sh`; OI-5);
+- the lane-local bypass (A-59, TI-8): the model's `bypass` on every kernel,
+  alone and with `l1_spec` (`CCV_OOE_CONFIG=bypass=1`). The lanes now
+  answer at `CCV_LAT_LANE`, so a dependant woken at `CCV_LAT_LANE_BYP`
+  reads the register file before the write and takes its operand from the
+  lane: RCU names the producer in `operand_byp` on `ccv_rcu_lane_ops`. The
+  `byp` kernel forwards five operands; `no-lane-bypass` and an OOE
+  bypassing at 3 must fail. `config()` in `sim/ooe/ooe_block.cpp` still
+  sets `bypass = false`, so turning it on is the model session's call.
 
 They cannot yet exercise the following. Each needs stub work, which belongs
 to the top-level session, in this order:

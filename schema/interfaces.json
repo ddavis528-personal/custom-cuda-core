@@ -338,7 +338,8 @@
         "merge_data",
         "pred_bit",
         "pred_data",
-        "section_en"
+        "section_en",
+        "operand_byp"
       ],
       "note": "Fans out to 32 LANE instances; the payload is per-lane.",
       "lead_fields": [
@@ -347,7 +348,7 @@
         "section_en"
       ],
       "lead_why": "The mask gates the lane, so it must arrive before what it gates (Q-40). RCU reads the predicate and sends the lane's enable, its predicate-as-data and its section enables with valid, one cycle ahead of the GPR operands; a masked-off lane never clocks its operand capture or its datapath. pred_data is an operand too (sel's selector), but a one-bit read from RCU's predicate file costs nothing to move early.",
-      "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask. A lane with pred_bit clear does not compute: it returns merge_data as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0, since then every lane is enabled. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC.",
+      "doc": "Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask. A lane with pred_bit clear does not compute: it returns merge_data as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0, since then every lane is enabled. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC. operand_byp is the lane-local bypass (A-59, TI-8): one CCV_P_W_LANE_BYP_SEL select per operand slot and a last one for merge_data. A select with its forward bit set replaces the value RCU read with a result this lane computed earlier, named by the producer's issue slot and its age, the cycles between the two ops' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at the bypass offset can meet; a lane never forwards a result younger than CCV_LAT_LANE_BYP. The select is the same on every lane, like opcode.",
       "id_classes": [
         "instr"
       ],
@@ -1307,6 +1308,7 @@
     "lane_fault": "1",
     "warp_mask_released": "CCV_WARP_CONTEXTS",
     "section_en": "4",
+    "operand_byp": "(CCV_L_OPERANDS_PER_LANE+1)*CCV_P_W_LANE_BYP_SEL",
     "asid": "CCV_W_ASID",
     "status": "CCV_W_STATUS",
     "byte_mask": "CCV_W_DATA/8",

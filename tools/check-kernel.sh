@@ -60,6 +60,13 @@
 #     carried with the uop (A-69)                refuse a mask missing lane 31
 #   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
 #     before rename (A-70)                       it, and it never retires
+#   an L1 hit completes at the contract with  early-hit, late-hit-data,
+#     its data, and its dependants read it       no-rcu-bypass (hit, with
+#     (A-46, OI-5)                               l1_spec): V-44 or stale reads
+#   a dependant woken at CCV_LAT_LANE_BYP     no-lane-bypass (byp, with
+#     reads the value its lane forwards          bypass): five stale operands;
+#     (A-59, TI-8)                               an OOE bypassing at 3: RCU
+#                                                refuses it
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -262,8 +269,10 @@ fi
 # this kernel still fails the control. (Re-pin MOVI_TOTAL only with the
 # reason in the commit; it moves when OOE's timing does. 356 -> 259 when RCU's
 # register read began to see the same cycle's writes, OI-5: fewer readers
-# land before the value.)
-MOVI_TOTAL=259
+# land before the value. 259 -> 676 when the lanes began answering at
+# CCV_LAT_LANE rather than early, TI-8: the misplaced movi's round trip now
+# lands two cycles later, so more readers land before the value.)
+MOVI_TOTAL=676
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
@@ -517,6 +526,7 @@ mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0
 hit    l1_hit=4 l1_late=0
+byp    copy=1 lane_byp=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
@@ -593,5 +603,59 @@ for brk in late-hit-data no-rcu-bypass; do
     bad "--break $brk" "$n stale reads (want 160): $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
+
+# Lane-local bypass (A-59, TI-8). With OOE's bypass on, a lane op's
+# dependant issues CCV_LAT_LANE_BYP after it, before the result reaches
+# RCU's register file: RCU names the producer's slot and age in operand_byp
+# and the lane forwards its own result. The lanes answer at the contract, so
+# a dependant that took the register file's value instead would read it
+# stale. Every kernel must pass so, and with l1_spec as well; byp forwards
+# five operands, a third operand among them, and merge a merge_data.
+for k in $(ls build/oracle); do
+  for cfg in bypass=1 bypass=1,l1_spec=1; do
+    log="$B/kernel_${k}_${cfg//[=,]/_}.log"
+    CCV_OOE_CONFIG=$cfg "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+    why=""
+    for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+      [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+    done
+    [ -z "$why" ] || bad "$k with $cfg" "${why# }"
+  done
+done
+log="$B/kernel_byp_bypass_1.log"
+nbyp=0
+for k in $(ls build/oracle); do
+  [ "$(cover "$B/kernel_${k}_bypass_1.log" lane_byp)" -gt 0 ] && nbyp=$((nbyp + 1))
+done
+if [ "$(cover "$log" lane_byp)" = 5 ] && [ "$(cover "$log" copy)" = 1 ]; then
+  say "every kernel with bypass, and with l1_spec" "PASS (forwarding in $nbyp kernels; byp's 5)"
+else
+  bad "byp with bypass" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
+fi
+bctl() { CCV_OOE_CONFIG=$1 "$SKEL" --kernel "build/oracle/$2/oracle.jsonl" ${3:+--break "$3"} >"$B/kernel_$4.log" 2>&1; }
+# RCU never names the producer: each forwarded operand is the stale value
+# RCU read, on all 32 lanes, and nothing replays it.
+bctl bypass=1 byp no-lane-bypass no-lane-bypass
+n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|7 operand 1|8 operand 1|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
+if [ "$n" = 160 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 160 ]; then
+  say "--break no-lane-bypass: forwards read stale" "PASS (5 operands x 32 lanes)"
+else
+  bad "--break no-lane-bypass" "$n stale reads (want 160): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
+fi
+bctl bypass=1 merge no-lane-bypass no-lane-bypass-merge
+if [ "$(grep -c "^CHECK lane [0-9]*: seq 5 merge_data " "$B/kernel_no-lane-bypass-merge.log")" = 16 ]; then
+  say "  ...and merge's merge_data" "PASS (its 16 switched-off lanes)"
+else
+  bad "--break no-lane-bypass (merge)" "the merge_data forward was not missed: $(grep '^KERNEL' "$B/kernel_no-lane-bypass-merge.log")"
+fi
+# An OOE bypassing a cycle faster than CCV_LAT_LANE_BYP: RCU refuses each
+# dependant it meets three cycles behind its producer.
+bctl bypass=1,lat_lane_byp=3 byp "" early-bypass
+n=$(grep -cE "^CHECK rcu: seq [0-9]+ reads operand [0-9] 3 cycles after its lane producer; CCV_LAT_LANE_BYP is 4" "$B/kernel_early-bypass.log")
+if [ "$n" = 3 ] && [ "$(field "$B/kernel_early-bypass.log" check_failures)" = 99 ]; then
+  say "an OOE bypassing at 3: RCU refuses it" "PASS (3 dependants; their 96 lane reads stale)"
+else
+  bad "an OOE bypassing at 3" "$n refusals (want 3): $(grep '^KERNEL' "$B/kernel_early-bypass.log")"
+fi
 
 exit $fail

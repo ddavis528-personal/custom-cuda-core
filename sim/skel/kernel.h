@@ -100,6 +100,9 @@ struct Kernel {
   ///   swap-prat0     the final compare reads P0 and P1 through a predicate
   ///                  map with the two swapped, as an OOE reporting a wrong
   ///                  committed map would (OI-3; pguard kernel)
+  ///   no-lane-bypass RCU never sets operand_byp, so a dependant OOE woke at
+  ///                  CCV_LAT_LANE_BYP takes the stale value it read from the
+  ///                  register file (TI-8; with CCV_OOE_CONFIG=bypass=1)
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------
@@ -127,7 +130,7 @@ struct Kernel {
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
-      "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "reexec"};
+      "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "reexec", "lane_byp"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }

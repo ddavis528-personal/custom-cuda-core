@@ -130,6 +130,26 @@ else
   bad "every kernel control: the same KERNEL line" "differ:$diffs"
 fi
 
+# -- OOE's bypass on, both hosts ---------------------------------------------
+# The lane-local bypass (A-59, TI-8): with OOE waking lane dependants at
+# CCV_LAT_LANE_BYP, the lanes forward through operand_byp. Every kernel, and
+# the control that drops the forwarding, must print the same KERNEL and
+# COVER lines on both hosts.
+diffs=""
+nbyp=0
+for spec in $(ls -d test/kernels/*/ | xargs -n1 basename) byp:no-lane-bypass; do
+  IFS=: read -r k brk <<<"$spec"
+  a=$(CCV_OOE_CONFIG=bypass=1 cpp "$k" ${brk:+--break "$brk"} | grep -E '^(KERNEL|COVER) ')
+  s=$(CCV_OOE_CONFIG=bypass=1 svh "$k" ${brk:++ccv_break=$brk} | grep -E '^(KERNEL|COVER) ')
+  nbyp=$((nbyp + 1))
+  [ -n "$a" ] && [ "$a" = "$s" ] || diffs="$diffs $spec"
+done
+if [ -z "$diffs" ]; then
+  say "with OOE's bypass: the same KERNEL line" "PASS ($nbyp runs, no-lane-bypass among them)"
+else
+  bad "with OOE's bypass: the same KERNEL line" "differ:$diffs"
+fi
+
 # -- the partner: one block one cycle late must not compare equal ------------
 for inst in u_dec u_lane_05; do
   svh vadd "+ccv_trace=$B/svh_skew.ccvtrace" "+ccv_shim_delay=$inst" >"$B/svh_skew.log"

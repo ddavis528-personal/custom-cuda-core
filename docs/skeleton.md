@@ -1034,7 +1034,8 @@ matters for the skeleton:
   and RCU writes only the inactive lanes and sends no done. OOE clears the
   load's copy-pending at issue + `CCV_LAT_LANE`, as for any lane op, and RCU
   checks it met that contract: the PRF write within `CCV_LAT_LANE` of
-  accepting the copy. The stubs land it in 4. mload's first guarded load
+  accepting the copy. The stubs land it in 6, `CCV_LAT_LANE` - 1, as any
+  lane op since the lane-local bypass (below). mload's first guarded load
   keeps lanes 16-31 of R5 at `100 + tid`, its second keeps lanes 0-15 of the
   unwritten R8 at zero, and C_ADD reads every lane of R5. Controls:
   `--break skip-copy` (garbage on the inactive lanes, at C_ADD's lanes and in
@@ -1089,6 +1090,35 @@ matters for the skeleton:
   (V-56, V-57). The FET stub now holds the epoch per `warp_id` and
   honours `epoch_only`; OOE sends 0 on every redirect, since demotion and
   kill are not modelled.
+- **Lane-local bypass** (A-59, TI-8). The lanes answer at the contract: a
+  lane holds its result `CCV_LAT_LANE_BASE` - 1 - 2 `CCV_LAT_HOP` = 2 cycles,
+  so the write lands in RCU's PRF `CCV_LAT_LANE` - 1 cycles after RCU took
+  the issue, the cycle before a dependant woken at the full latency reads
+  it, and its done meets OOE's V-35 bound exactly. They used to answer in
+  0, which let every kernel pass with OOE's `bypass` on without proving
+  anything. Now a dependant OOE wakes at `CCV_LAT_LANE_BYP` reads the PRF
+  before the write. RCU keeps the destinations of the lane ops in flight
+  (no data), and when a lane op reads one it sets that operand's select in
+  `operand_byp`, a new field on `ccv_rcu_lane_ops`: forward, the producer's
+  issue slot, and its age, the cycles between the two sends less
+  `CCV_LAT_LANE_BYP`. Both ops cross the same link, so the lane sees the
+  same distance between their arrivals; it keeps its own results that long
+  and forwards the one named. Four selects a lane, one per operand slot and
+  one for `merge_data`, of `CCV_P_W_LANE_BYP_SEL` = 5 bits:
+  `CCV_P_W_LANE_BYP_AGE` follows `CCV_LAT_LANE` - `CCV_LAT_LANE_BYP`, so the
+  links widen it (3 bits in `test/phys/links_split.json`). RCU refuses a
+  dependant less than `CCV_LAT_LANE_BYP` behind its producer. `rcu_ooe_done`
+  is a free pool, so a done takes any slot. The `byp` kernel forwards five
+  operands, MADLO's third among them; every kernel passes with
+  `CCV_OOE_CONFIG=bypass=1` and with `l1_spec` as well, on both hosts and
+  across the split. Controls: `no-lane-bypass` (RCU sets no select: byp's
+  five forwarded operands read stale on all 32 lanes, merge's merge_data on
+  its 16 switched-off lanes), and an OOE bypassing at 3
+  (`lat_lane_byp=3`), which RCU refuses. Not reached: a forward into a masked
+  load's copy-only op, since OOE issues a memop and its copy only on
+  confirmed sources (V-17). The `movi-in-lane` control's pinned total moved
+  from 259 to 676: the misplaced movi's lane round trip lands two cycles
+  later, so more of its readers see the stale register.
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

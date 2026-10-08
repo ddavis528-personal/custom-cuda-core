@@ -304,7 +304,10 @@ them: `credit_per_msg` belongs in every receiver.
   - the wiring traced flop by flop, equal to the C++ skeleton's with stage
     counts, 561 stages;
   - every S1 kernel equal to ccv-sim (vadd in 425 cycles, not 361);
-  - SV-hosted equal to C++-hosted: eleven kernels and 31 controls, with both
+  - every kernel with OOE's lane-local bypass on: `CCV_LAT_LANE` is 11
+    there and the forwarding window 4 to 10, but the bypass stays at 4,
+    since producer and dependant cross the same links (TI-8);
+  - SV-hosted equal to C++-hosted: twelve kernels and 31 controls, with both
     skew controls caught.
 
 **What the first split found, beyond itself:** the S0 exerciser was
