@@ -1139,8 +1139,8 @@ private:
       while (has(c.miu_rcu, s)) {
         Receiver::Msg m = take(c.miu_rcu, s);
         // Stateless write-back: every destination arrives with the data,
-        // echoed by MIU from the memop.
-        const unsigned tag = unsigned(get(m.payload, c.miu_rcu, "rob_tag"));
+        // echoed by MIU from the memop. No done: a memop's completion is
+        // MIU's, on ccv_miu_ooe_cmpl (OI-4).
         const unsigned pd = unsigned(get(m.payload, c.miu_rcu, "phys_dst"));
         const uint32_t active = uint32_t(get(m.payload, c.miu_rcu, "active_mask"));
         if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a load writes the zero register");
@@ -1152,7 +1152,6 @@ private:
           const uint32_t pr = uint32_t(get(m.payload, c.miu_rcu, "pred_result"));
           k_.pred[pp] = (k_.pred[pp] & ~active) | (pr & active);
         }
-        to_ooe_.push_back({s, done(tag), m.tid});
       }
     if (k_.brk != "no-rcu-bypass") takeIssues();
 
@@ -1364,8 +1363,8 @@ private:
           putLane(a, c.rcu_miu, "store_data", l, k_.gpr[src[op->data_src]][l]);
       }
       to_miu_.push_back({s, a, m.tid});
-      // A load's write-back is MIU's echo; RCU remembers nothing of it.
-      if (op->cls == kStore) to_ooe_.push_back({s, done(tag), m.tid});
+      // A load's write-back is MIU's echo; RCU remembers nothing of it, and
+      // sends no done for either kind: the completion is MIU's (OI-4).
       return;
     }
     // An ALU immediate is substituted into its operand slot here, at
