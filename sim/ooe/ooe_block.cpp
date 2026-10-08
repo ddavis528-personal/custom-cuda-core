@@ -34,6 +34,8 @@ class OoeModel : public Stub {
 public:
   OoeModel(int inst, Kernel &k) : Stub(inst, k), core_(config(k)) {
     k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+    // A launched warp's predicates map to the zero predicate (A-64).
+    if (core_.config().rename_preds) k.prat0.assign(kArchPreds, ccv::prov::kPredZero);
     core_.on_error = [this](const std::string &m) { k_.fail("ooe: %s", m.c_str()); };
     core_.on_event = [this](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       event(n, w, a, b, tid);
@@ -85,7 +87,9 @@ private:
     // The design's modes: the lanes forward at CCV_LAT_LANE_BYP (TI-8) and
     // MIU completes an L1 hit at the contract (A-46), so both are on (OI-5).
     // CCV_OOE_CONFIG=bypass=0,l1_spec=0 runs the conservative path.
-    c.rename_preds = false;  // RCU and compareFinal read physPred windows
+    // Predicates are renamed (Q-21, A-39): RCU reads the renamed sources
+    // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
+    // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
     c.inject_free_new = k.brk == "free-new";
@@ -379,7 +383,13 @@ private:
       k_.retire_order.push_back(uidSeq(r.tid));
       if (r.exit) k_.exited = true;
       if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = r.pnew;   // the final compare's map
+      // The predicate map likewise, while predicates are renamed (OI-3);
+      // left empty, the final compare reads the fixed physPred windows.
+      if (r.warp == 0 && r.writes_pred) {
+        k_.prat0[r.pdst] = r.ppnew;
+      }
     }
+
   }
 
   bool busy() const override { return core_.busy(); }

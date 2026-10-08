@@ -46,7 +46,7 @@ it.
 | PF-22 | Retire wider than two per ROB | retire | deferred (sweep: not worth it now) |
 | PF-23 | Demotion abandons outstanding loads | demotion | deferred |
 | PF-24 | Divergent branch prediction | FET | deferred (doc) |
-| PF-25 | Predicate renaming in place of the fixed-window holds | rename | owed, not optional (S1 mode) |
+| PF-25 | Predicate renaming in place of the fixed-window holds | rename | adopted (OI-3) |
 | PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
 
 ## Entries
@@ -324,9 +324,9 @@ it.
   writes behind older readers and writers (`hold.pred_window`).
 - **Alternative:** the design's own predicate renaming (Q-21, A-39), which
   the model already has.
-- **Status:** owed, not optional. It turns on with A-75 and the
-  predicate-map hook ([`ooe-model.md`](ooe-model.md), "S1 modes"). Listed
-  so the hold's cost on S1 kernels is not mistaken for the design's.
+- **Status:** adopted. TI-1 (A-75) brought the renamed predicate sources
+  and OI-3 the predicate-map hook, so the kernels run renamed by default
+  ([`ooe-model.md`](ooe-model.md), "S1 modes").
 
 ### PF-26 Co-issue lane ops whose lane masks are disjoint
 

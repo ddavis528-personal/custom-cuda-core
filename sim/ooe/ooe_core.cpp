@@ -1100,6 +1100,9 @@ void Core::retire() {
       rt.writes_gpr = r.alloc_gpr;
       rt.dst = r.u.dst & 15;
       rt.pnew = r.pnew;
+      rt.writes_pred = r.alloc_pred;
+      rt.pdst = r.u.pred_dst & 3;
+      rt.ppnew = r.ppnew;
       retired.push_back(rt);
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
       ++s.retired_since_restore;

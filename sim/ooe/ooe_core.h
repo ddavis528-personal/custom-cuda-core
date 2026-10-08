@@ -309,6 +309,8 @@ struct Retired {
   bool exit = false;
   bool writes_gpr = false;
   unsigned dst = 0, pnew = 0;
+  bool writes_pred = false;         ///< a renamed predicate destination
+  unsigned pdst = 0, ppnew = 0;
 };
 
 // ---- the model -------------------------------------------------------------------------
