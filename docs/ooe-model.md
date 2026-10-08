@@ -48,6 +48,31 @@ selected in t+2. Inside a cycle:
 6. Rename: up to `CCV_ISSUE_WIDTH` uops from the decode queue.
 7. Redirect queue (rate 1) and the checkpoint-free bitmap.
 
+Three stages from the design's 25-NGD split (OA-1; OI-26), each a `Config`
+field:
+
+- **Rename takes three stages** (`rename_stages` = 3): RAT read, producer
+  lookup and matrix write. An entry renamed in cycle t can be selected from
+  t + 3. That costs two front-end cycles on every redirect, not the wake
+  loop: `loop` runs 2636 cycles against 2336 with one stage.
+- **Payload read** (`payload_stages` = 1): what select grants leaves on
+  `ccv_ooe_rcu_issue` and `ccv_ooe_miu_memop` a cycle later. Wakes count
+  from the grant, so producer and dependant move together. Only the
+  contracts timed from the channel add the stage: the L1 shadow and V-44,
+  V-35's done bound, and a copy-only op's landing.
+- **Transitive cancel moves one hop a cycle** (`cancelHop`). A miss returns
+  its direct dependants to Waiting at once, and each later cycle takes the
+  next hop, deciding the whole hop before applying it, until nothing
+  changes. V-59 makes that safe: every wake offset is at least 3, 2 plus
+  the hop, so the cancel lands before the next hop's ready computation.
+  `Config::check` refuses a shorter offset (unit test `v-59`). V-15 is
+  checked only once a cancel has settled. The wavefront it has not reached
+  is exactly what V-15 forbids at rest.
+
+The post-miss wake's extra cycle (OA's response OI-26) belongs to
+`CCV_LAT_L1_MISS_WAKE`, which TI's generator folds it into. When it does,
+the adapter's check that the parameter matches the wiring gains the same +1.
+
 ## Decisions the design doc leaves open
 
 Each of these is a model decision, the RTL follows it, and each is

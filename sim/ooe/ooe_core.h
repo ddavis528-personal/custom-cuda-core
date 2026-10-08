@@ -89,6 +89,15 @@ struct Config {
   /// ccv_miu_ooe_cmpl crossing - ccv_ooe_rcu_issue crossing + 1). The
   /// CCV_LAT_L1_MISS_WAKE (OI-13), generated from the links; 0 with no repeaters.
   unsigned cmpl_wake_delay = ccv::prov::kLatL1MissWake;
+  /// Select's payload-read stage (OA-1, OI-26): a grant leaves on the
+  /// channel this many cycles later. Wakes count from the grant, so the
+  /// stage shifts producer and dependant alike; only the contracts timed
+  /// from the channel (V-35, V-44, the L1 shadow, a copy's landing) add it.
+  /// 0 or 1.
+  unsigned payload_stages = 1;
+  /// Rename's stages (OA-1, OI-29): RAT read, producer lookup, matrix write.
+  /// An entry renamed in cycle t can be selected from t + rename_stages.
+  unsigned rename_stages = 3;
   /// Demotion trigger thresholds (CSRs, one per trigger; Q18), each its own
   /// parameter (OI-6); the values wait on OA-8.
   unsigned demote_fallback = ccv::prov::kDemotionThreshold;
@@ -486,6 +495,7 @@ private:
     unsigned replays = 0;
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
     uint64_t ready_since = 0;      ///< first cycle a memop's row was ready
+    uint64_t eligible_at = 0;      ///< first cycle select may take it (rename's stages)
   };
 
   struct Ckpt {
@@ -557,6 +567,7 @@ private:
   void wake(unsigned e);
   void emitWakeups();
   void cancel(unsigned e);
+  bool cancelHop(unsigned root);
   void confirmPass();
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
@@ -632,6 +643,11 @@ private:
   uint64_t free_mask_ = 0;
   std::deque<Commit> commits_;
   std::deque<Memop> discards_;       ///< bulk discards, waiting for a slot
+  // granted last cycle, in the payload-read stage (payload_stages = 1)
+  bool cancel_live_ = false;          ///< a transitive cancel still spreading
+  unsigned cancel_depth_ = 0;
+  std::vector<Issue> held_issues_;
+  std::vector<Memop> held_memops_;
 };
 
 } // namespace ooe

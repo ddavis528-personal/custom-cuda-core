@@ -28,7 +28,7 @@ std::string Config::apply(const std::string &spec) {
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
-      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"demote_fallback", &demote_fallback},
+      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}};
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}};
@@ -58,6 +58,24 @@ std::string Config::apply(const std::string &spec) {
 
 std::string Config::check() const {
   char buf[200];
+  if (payload_stages > 1) return "payload_stages: 0 or 1";
+  if (rename_stages < 1) return "rename_stages: at least 1";
+  // V-59 (elaboration): every wake offset is at least 2 + the cancel's hop
+  // time, 1 cycle, so a transitive cancel lands before the next hop's ready
+  // computation (OA-1). Wakes are raised a cycle early, so a dependant of a
+  // producer granted at t is selected no sooner than t + 3.
+  {
+    unsigned lo = std::min({lat_rcu, lat_lane, lat_l1_wake});
+    for (unsigned u = 0; u != kUnits; ++u) {
+      if (unit_lat[u]) lo = std::min(lo, unit_lat[u]);
+      for (unsigned g = 0; g != kConsGroups && bypass; ++g)
+        if (bypOff(u, g)) lo = std::min(lo, bypOff(u, g));
+    }
+    if (lo < 3) {
+      std::snprintf(buf, sizeof buf, "V-59: a wake offset of %u, under 2 + the 1-cycle cancel hop", lo);
+      return buf;
+    }
+  }
   // V-31: ceiling + (slots - 1) x floor <= rename pool, both pools (A-40).
   const unsigned gren = phys_regs - slots * kArchGprs;
   if (phys_regs < slots * kArchGprs || ren_ceil + (slots - 1) * ren_floor > gren) {
@@ -219,6 +237,12 @@ void Core::cycle(uint64_t now) {
   control();           // RAU's alloc and demote, kill, barrier release
   retire();
   select();
+  // Payload read (OA-1): what select granted leaves on the channels a cycle
+  // later, so this cycle's grants wait and last cycle's go out.
+  if (cfg_.payload_stages) {
+    std::swap(out.issues, held_issues_);
+    std::swap(out.memops, held_memops_);
+  }
   rename();            // the decode queue; uop() refills it after the clock
   sendRedirect();
   if (check_invariants) checkInvariants();
@@ -226,7 +250,8 @@ void Core::cycle(uint64_t now) {
 
 bool Core::busy() const {
   if (!decq_.empty() || !redirects_.empty() || free_mask_ ||
-      !commits_.empty() || !discards_.empty())
+      !commits_.empty() || !discards_.empty() || !held_issues_.empty() ||
+      !held_memops_.empty())
     return true;
   for (const Slot &s : slot_) {
     if (s.count) return true;
@@ -336,6 +361,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
       rs_[e].rob = rob;
       rs_[e].copy = copy;
       rs_[e].age = next_age_++;
+      rs_[e].eligible_at = now_ + cfg_.rename_stages;
       for (unsigned j = 0; j != n_; ++j) {
         cell(e, j) = 0;
         woff_[size_t(e) * n_ + j] = kLateOff;
@@ -502,14 +528,28 @@ void Core::cancel(unsigned e) {
   x.spec = false;
   x.on_completion = true;
   count("cancel.miss");
-  unsigned depth = 0;
-  for (bool changed = true; changed; ++depth) {
-    changed = false;
-    if (cfg_.inject_shallow_cancel && depth == 1) break;
-    for (unsigned i = 0; i != n_; ++i) {
+  // One hop now; cancelHop() takes one more a cycle until nothing changes
+  // (OA-1: transitive cancel moves one hop per cycle, held by V-59).
+  if (!cancel_live_) cancel_depth_ = 0;
+  cancel_live_ = true;
+  cancelHop(e);
+}
+
+/// One hop of transitive cancel: every issued, unconfirmed entry whose row
+/// is no longer ready -- a producer it issued on was withdrawn or returned
+/// to Waiting -- returns to Waiting. False when nothing changed.
+bool Core::cancelHop(unsigned root) {
+  // Decide the whole hop first, so a return to Waiting in this hop does not
+  // reach that entry's own dependants until the next.
+  std::vector<unsigned> hop;
+  for (unsigned i = 0; i != n_; ++i) {
+    const RsEntry &y = rs_[i];
+    if (y.valid && y.issued && !y.confirmed && i != root && !rowReady(i)) hop.push_back(i);
+  }
+  bool changed = false;
+  {
+    for (unsigned i : hop) {
       RsEntry &y = rs_[i];
-      if (!y.valid || !y.issued || y.confirmed || i == e) continue;
-      if (rowReady(i)) continue;
       // Issued on a wake that has been withdrawn: back to Waiting.
       RobEntry &r = slot_[y.slot].rob[y.rob];
       if (r.is_mem || y.copy) {
@@ -528,12 +568,13 @@ void Core::cancel(unsigned e) {
         r.resolved = false;
       }
       count("cancel.replay");
-      ev("cancel", slot_[y.slot].warp, i, depth + 1, r.u.tid);
-      oev(OoeEv::kCancelReplay, slot_[y.slot].warp, i, depth + 1, r.u.tid);
+      ev("cancel", slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
+      oev(OoeEv::kCancelReplay, slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
       changed = true;
     }
   }
-  ++histograms["cancel_depth"][depth];
+  if (changed) ++cancel_depth_;
+  return changed;
 }
 
 /// Confirm results that can no longer be cancelled, oldest first (producers
@@ -560,6 +601,13 @@ void Core::confirmPass() {
 }
 
 void Core::advanceWakes() {
+  // Transitive cancel's next hop, from what the last cycle withdrew.
+  if (cancel_live_) {
+    if (cfg_.inject_shallow_cancel || !cancelHop(kNoEntry)) {
+      ++histograms["cancel_depth"][cancel_depth_];
+      cancel_live_ = false;
+    }
+  }
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
@@ -568,7 +616,8 @@ void Core::advanceWakes() {
   // L1 contract: no completion at CCV_LAT_L1_CMPL is the miss (A-46, A-54).
   for (unsigned e = cfg_.rs_rcu; e != n_; ++e) {
     RsEntry &x = rs_[e];
-    if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.lat_l1_cmpl) cancel(e);
+    if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+      cancel(e);
   }
   // Copy-only ops land at their contracted cycle and send no done (A-38).
   for (unsigned s = 0; s != slot_.size(); ++s)
@@ -630,7 +679,7 @@ void Core::takeCompletions() {
     const unsigned idx = d.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (!r->is_mem) {
       const unsigned lc = r->u.attr.lat_class;
-      const uint64_t took = now_ - r->rcu_issue_at;
+      const uint64_t took = now_ - (r->rcu_issue_at + cfg_.payload_stages);
       ++histograms["done_after_issue.lat" + std::to_string(lc)][took];
       // V-35, the arrival-cycle checker on ccv_rcu_ooe_done (repo Q-53).
       // A dependant issued at the contracted latency reaches RCU one issue
@@ -688,9 +737,10 @@ void Core::takeCompletions() {
       RsEntry &x = rs_[r->rs_main];
       if (x.spec) {
         // An L1 hit lands at exactly CCV_LAT_L1_CMPL (A-46, V-44).
-        if (now_ != x.issue_at + cfg_.lat_l1_cmpl)
+        if (now_ != x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
           err("V-44: rob tag %u completed %llu cycles after issue; the L1 contract is %u",
-              c.rob_tag, (unsigned long long)(now_ - x.issue_at), cfg_.lat_l1_cmpl);
+              c.rob_tag, (unsigned long long)(now_ - x.issue_at - cfg_.payload_stages),
+              cfg_.lat_l1_cmpl);
         x.spec = false;               // the speculative wake stands
         count("load.l1_hit");
       } else {
@@ -1177,7 +1227,7 @@ void Core::select() {
   // Ready entries per warp, oldest first, per class.
   auto ready = [&](unsigned e, bool miu) -> bool {
     const RsEntry &x = rs_[e];
-    if (!x.valid || x.issued || x.copy) return false;
+    if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive) return false;
     if (!rowReady(e)) return false;
@@ -1233,7 +1283,8 @@ void Core::select() {
   ++histograms["issue_per_cycle"][ports];
   for (unsigned e = 0; e != n_; ++e) {
     const RsEntry &x = rs_[e];
-    if (!x.valid || x.issued || x.copy || slot_[x.slot].st != WarpState::kActive || !rowReady(e))
+    if (!x.valid || x.issued || x.copy || x.eligible_at > now_ ||
+        slot_[x.slot].st != WarpState::kActive || !rowReady(e))
       continue;
     const bool miu = e >= cfg_.rs_rcu;
     if (miu && !x.ready_seen) {
@@ -1344,7 +1395,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     }
     out.issues.push_back(cp);
     r.copy_pending = true;
-    r.copy_land = now_ + cfg_.lat_lane;
+    r.copy_land = now_ + cfg_.payload_stages + cfg_.lat_lane;
     ev("copy", s.warp, is.rob_tag, 0, u.tid);
     oev(OoeEv::kCopyIssue, s.warp, is.rob_tag, copy_port, u.tid);
     ev("issue", s.warp, copy_port, r.rs_copy, u.tid);
@@ -1676,8 +1727,9 @@ void Core::checkInvariants() {
         else if (rs_[j].age > rs_[i].age) bad("V-10", "a dependency on a younger entry");
       }
   // V-15: after a cancel settles, nothing issued and unconfirmed is waiting
-  // on a withdrawn wake.
-  for (unsigned i = 0; i != n_; ++i)
+  // on a withdrawn wake. While one spreads, a hop a cycle (V-59), the
+  // entries it has not reached yet are exactly such entries.
+  for (unsigned i = 0; i != n_ && !cancel_live_; ++i)
     if (rs_[i].valid && rs_[i].issued && !rs_[i].confirmed && !rowReady(i))
       bad("V-15", "an issued entry's producer is no longer woken");
 }
