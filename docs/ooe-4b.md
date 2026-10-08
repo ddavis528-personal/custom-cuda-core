@@ -10,8 +10,9 @@ block's internals replace its stub; every kernel stays functionally correct
 against ccv-sim; arbitration-sensitive events are emitted; sizing-sweep data is
 collected. RTL (4c) comes later, after the 4a items still missing for OOE: the
 reset line ([`reset-line-template.md`](reset-line-template.md)), per-stage NGD
-budgets, and the scheduler's timing-ceiling estimate, which also needs Q-7
-(is 25 NGD a Vmin or a nominal number?).
+budgets, and the scheduler's timing-ceiling estimate against 25 NGD per stage
+(Q-7 is closed: NGD is normalized gate delays, the same budget at every
+corner).
 
 **Status (2026-10-04).** The model is in [`sim/ooe/`](../sim/ooe/) and is
 what `makeOoe` builds; the stub stays selectable with `CCV_OOE_IMPL=stub`.

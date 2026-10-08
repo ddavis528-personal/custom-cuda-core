@@ -219,7 +219,7 @@
       "value": 25,
       "status": "target",
       "source": "§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
-      "doc": "Normalized gate delay in one cycle. OPEN (§2): whether 25 is the Vmin-corner number or a nominal one. Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
+      "doc": "Normalized gate delays in one cycle: NAND equivalents, measured by logical effort. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
     },
     {
       "name": "CCV_W_WARP_ID",
