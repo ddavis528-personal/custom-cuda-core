@@ -9,7 +9,7 @@ and what is carried.
 ## Part 0 — picking this up again
 
 **State (2026-10-04): Stage 1 complete. Stage 2 closed and encoded, except
-the per-interface NGD budgets. Stage 3's skeleton runs twelve kernels end to end
+the per-interface NGD budgets. Stage 3's skeleton runs thirteen kernels end to end
 on both hosts (S1 `vadd`, then S2: merge, masked loads, misaligned and
 scattered accesses, mispredicts, L1 hits, the lane-local bypass), each
 matching ccv-sim and held to coverage counts. OOE's interfaces are settled (Review A-25 to A-74), and its Stage 4b
@@ -41,9 +41,9 @@ grill-me ran on 2026-09-23. Here is each input's status:
 **Next, in order:**
 
 0. **OOE Stage 4b**, in its own session ([`ooe-4b.md`](ooe-4b.md)). The
-   top-level work that feeds it, in order: settle Review A-75 (what OOE needs
-   from DEC so it never decodes `opcode`); wrong-path fetch and squash in the
-   stubs; several warps; divergence; then demotion, kill and restore.
+   top-level work that feeds it, in order: Review A-75 (what OOE needs
+   from DEC so it never decodes `opcode`) is settled and applied as TI-1;
+   next, wrong-path fetch and squash in the stubs; several warps; divergence; then demotion, kill and restore.
 1. **S2: kernels that stress what vadd does not.** vadd has no divergence,
    no loop, one warp, and no SPM or barriers, so 21 of the 48 channels carried
    nothing in S1. The first S2 kernels cover partial writes under rename and the zero
@@ -282,8 +282,8 @@ from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 
 **SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
 top runs every C++ block over DPI-C, with the generated Verilog carrying
-every connection. All twelve kernels match the C++-hosted run: summary lines
-identical and event traces the same records cycle by cycle. All 31 kernel
+every connection. All thirteen kernels match the C++-hosted run: summary lines
+identical and event traces the same records cycle by cycle. All 33 kernel
 controls give the same KERNEL line, and so does every kernel with OOE's
 lane-local bypass on. One block one cycle late
 (`+ccv_shim_delay`) must not match, and doesn't

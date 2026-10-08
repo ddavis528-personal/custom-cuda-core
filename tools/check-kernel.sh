@@ -67,6 +67,12 @@
 #     reads the value its lane forwards          bypass): five stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
+#   OOE renames and waits on the sources     drop-src-valid: DEC hides a
+#     DEC marks real (TI-1)                      second source, and seq 14
+#                                                reads R9 stale
+#   predicate logic reads renamed sources     arch-pred-srcs (plog): RCU
+#     from imm, with negates (TI-1)              reads DEC's qualifiers, and
+#                                                P3 comes out wrong
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -527,6 +533,7 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0
 hit    l1_hit=4 l1_late=0
 byp    copy=1 lane_byp=0
+plog   merge=3
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
@@ -605,6 +612,27 @@ for brk in late-hit-data no-rcu-bypass; do
     bad "--break $brk" "$n stale reads (want 160): $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
+
+# DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
+# src_valid marks, and nothing else, so a real read DEC hides is read stale.
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break drop-src-valid >"$B/kernel_drop-src-valid.log" 2>&1
+n=$(grep -c "^CHECK lane [0-9]*: seq 14 operand 1 (R9) " "$B/kernel_drop-src-valid.log")
+if [ "$n" = 32 ] && [ "$(field "$B/kernel_drop-src-valid.log" check_failures)" = 32 ]; then
+  say "--break drop-src-valid: seq 14 reads R9 stale" "PASS (32 lanes)"
+else
+  bad "--break drop-src-valid" "$n stale reads (want 32): $(grep '^KERNEL' "$B/kernel_drop-src-valid.log")"
+fi
+# Predicate logic's sources arrive renamed in imm: RCU reading DEC's
+# qualifiers instead gets plog's P3 = !P1 | P2 wrong, and its own check, the
+# guarded add's lanes and the final compare all say so.
+"$SKEL" --kernel build/oracle/plog/oracle.jsonl --break arch-pred-srcs >"$B/kernel_arch-pred-srcs.log" 2>&1
+if grep -q "^CHECK rcu: seq 7 P3 = ffffffff, oracle ffff00ff" "$B/kernel_arch-pred-srcs.log" &&
+   [ "$(field "$B/kernel_arch-pred-srcs.log" pred_mismatch)" = 1 ] &&
+   [ "$(field "$B/kernel_arch-pred-srcs.log" check_failures)" = 9 ]; then
+  say "--break arch-pred-srcs: plog's P3 wrong" "PASS (RCU's check, 8 lanes' enable, the final P3)"
+else
+  bad "--break arch-pred-srcs" "a misnamed predicate source went unnoticed: $(grep '^KERNEL' "$B/kernel_arch-pred-srcs.log")"
+fi
 
 # Lane-local bypass (A-59, TI-8). With OOE's bypass on, a lane op's
 # dependant issues CCV_LAT_LANE_BYP after it, before the result reaches

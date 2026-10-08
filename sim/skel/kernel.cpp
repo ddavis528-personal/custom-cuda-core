@@ -1308,14 +1308,31 @@ private:
       return;
     }
     // Predicate logic executes HERE, beside the predicate file, and never
-    // reaches a lane (O-33's second obligation; round 16). Sources are two
-    // qualifiers in imm: [2:0] ps0, [5:3] ps1, each [1:0] index + [2] negate.
+    // reaches a lane (O-33's second obligation; round 16). Its two sources
+    // arrive renamed, in imm (TI-1): each CCV_P_W_PHYS_PRED bits of physical
+    // predicate and a negate above it, read as phys_pred_guard is.
     if (op->cls == kPredLogic) {
+      constexpr unsigned w = ccv::prov::kWPhysPred;
       auto src = [&](unsigned q) {
-        const uint32_t v = k_.pred[physPred(0, q & 3)];
-        return (q >> 2) & 1 ? ~v : v;
+        const unsigned pp = q & ((1u << w) - 1);
+        if (pp >= k_.pred.size()) {
+          k_.fail("rcu: seq %llu names predicate %u", (unsigned long long)uidSeq(m.tid), pp);
+          return 0u;
+        }
+        const uint32_t v = k_.pred[pp];
+        return (q >> w) & 1 ? ~v : v;
       };
-      const uint32_t a = src(imm0 & 7), b = src((imm0 >> 3) & 7);
+      uint32_t a = src(imm0), b = src(imm0 >> (w + 1));
+      // arch-pred-srcs: RCU reads DEC's qualifiers ([2:0] and [5:3]) as
+      // before TI-1, not OOE's renamed sources; plog's P3 must come out wrong.
+      if (k_.brk == "arch-pred-srcs") {
+        auto arch = [&](unsigned q) {
+          const uint32_t v = k_.pred[q & 3];
+          return (q >> 2) & 1 ? ~v : v;
+        };
+        a = arch(imm0 & 7);
+        b = arch((imm0 >> 3) & 7);
+      }
       uint32_t v = 0;
       if (!std::strcmp(op->name, "POR")) v = a | b;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
@@ -1578,6 +1595,14 @@ private:
     if (k_.brk == "attr-store-as-load" && op->cls == kStore)
       attr &= ~(3u << 6);
     put(u, c.dec_ooe, "sched_attr", attr);
+    // What OOE schedules and renames on instead of opcode (A-75, TI-1).
+    // drop-src-valid: DEC calls a two-source op's second source unread, so
+    // OOE neither renames nor waits on it.
+    unsigned sv = srcValidOf(op);
+    if (k_.brk == "drop-src-valid" && op->nsrc == 2 && op->cls == kAlu) sv &= ~2u;
+    put(u, c.dec_ooe, "src_valid", sv);
+    put(u, c.dec_ooe, "pred_use", predUseOf(op));
+    put(u, c.dec_ooe, "imm_kind", immKindOf(op));
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to
     // MIU unexamined. 0xF is OOE's bulk discard, never DEC's (V-52).
     if (op->cls == kLoad || op->cls == kStore) {

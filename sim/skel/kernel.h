@@ -100,6 +100,11 @@ struct Kernel {
   ///   swap-prat0     the final compare reads P0 and P1 through a predicate
   ///                  map with the two swapped, as an OOE reporting a wrong
   ///                  committed map would (OI-3; pguard kernel)
+  ///   drop-src-valid DEC clears a two-source ALU op's second src_valid bit,
+  ///                  so OOE does not wait on it (TI-1; vadd: seq 14 reads R9
+  ///                  stale)
+  ///   arch-pred-srcs RCU reads predicate logic's sources as DEC's qualifiers,
+  ///                  not OOE's renamed predicates (TI-1; plog)
   ///   no-lane-bypass RCU never sets operand_byp, so a dependant OOE woke at
   ///                  CCV_LAT_LANE_BYP takes the stale value it read from the
   ///                  register file (TI-8; with CCV_OOE_CONFIG=bypass=1)

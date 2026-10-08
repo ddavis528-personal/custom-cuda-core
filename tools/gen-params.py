@@ -354,6 +354,8 @@ def selftest(d):
              ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_W_SCHED_ATTR"),
              ("CCV_P_BYP_GROUPS", "value", 9, "CCV_P_W_SCHED_ATTR"),
              ("CCV_LAT_RCU_ADDR_BASE", "value", 2, "CCV_LAT_RCU_ADDR"),
+             # TI-1: imm carries predicate logic's two renamed sources.
+             ("CCV_P_W_IMM", "value", 12, "CCV_P_W_IMM"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
              ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),

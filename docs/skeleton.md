@@ -1135,6 +1135,19 @@ matters for the skeleton:
   3), with `CCV_LAT_SFU` 12 and `CCV_LAT_COLLECTIVE` 5 for `lat_class` 4 and
   5. Nothing reads `bypass_group` until the OOE model indexes its table by
   group, so its control comes with that change.
+- **Decode-free scheduling** (A-75, TI-1, agreed by Daniel 2026-10-08).
+  `ccv_dec_ooe_uop` carries `src_valid`[3], `pred_use`[2] (none, guard,
+  data) and `imm_kind`[2] (literal, predicate sources, `warp_base`,
+  `ctaid`), and exit is `sched_attr`'s serial code 3. OOE renames predicate
+  logic's two sources and sends them in `imm` on `ccv_ooe_rcu_issue`, each
+  `CCV_P_W_PHYS_PRED` bits and a negate (`CCV_P_W_IMM` is required to hold
+  both), and RCU reads them as it reads `phys_pred_guard`. DEC's stub
+  derives the fields from its table; the OOE adapter reads them, and the
+  OOE model and stub write the renamed sources (edits in OI's files, in a
+  commit of their own). The plog kernel gives predicate logic real values:
+  P3 = !P1 | P2, then a guard. Controls: `drop-src-valid` (DEC hides vadd's
+  seq 14's second source; it reads R9 stale on all 32 lanes) and
+  `arch-pred-srcs` (RCU reads DEC's qualifiers; plog's P3 comes out wrong).
 - **Not built yet, owned by Stage 4 blocks:** the arrival-cycle checker per
   completion channel, the outstanding-tag checker on `miu_ooe_cmpl`, the A-35
   context-isolation assertions and the RAT-map pairing checker. Each needs a

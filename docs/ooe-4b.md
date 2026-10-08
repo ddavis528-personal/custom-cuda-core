@@ -103,24 +103,24 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
 
 ## Still open at the interface
 
-- **A-75: what OOE needs from DEC so it never decodes `opcode`.** The stub
-  still looks the opcode up in the skeleton's table for five things:
-  - which source fields are real reads;
-  - whether the predicate is a guard (an enable, so the write merges) or
-    data (`sel`);
-  - predicate logic's two predicate sources, carried as qualifiers in `imm`
-    and needing renaming;
-  - exit;
-  - which identity `srd` substitutes.
-
-  Now TI-1 in the register (Needs OA, DA); until it is settled, the model
-  may use the same table lookup, marked as temporary.
+- **A-75, now TI-1: settled and applied (Daniel, 2026-10-08).** DEC
+  delivers what OOE used to look up in the skeleton's opcode table:
+  `src_valid`[3], which source fields are real reads; `pred_use`[2], none,
+  guard (an enable, so the write merges) or data (`sel`); `imm_kind`[2],
+  whether `imm` is a literal, predicate logic's two qualifiers, or `srd`'s
+  `warp_base` or `ctaid` identity; and exit as `sched_attr`'s serial code 3.
+  OOE renames predicate logic's sources and sends them in `imm` on
+  `ccv_ooe_rcu_issue`, each `CCV_P_W_PHYS_PRED` bits and a negate, and RCU
+  reads them as it reads `phys_pred_guard`. The adapter reads the fields;
+  nothing in OOE looks at `opcode`. Controls: `drop-src-valid` (vadd) and
+  `arch-pred-srcs` (the plog kernel). OI-3, predicate renaming on the
+  kernels, is unblocked.
 - A-71 (an unaligned lane word), now TI-2, is deferred to the ISA track and
   does not touch OOE.
 
 ## What the environment can and cannot exercise yet
 
-Twelve kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
+Thirteen kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
 coverage counts. They exercise:
 - rename, merge, the zero registers and the copy-only op;
 - mispredicts with checkpoint restore and free;

@@ -150,6 +150,7 @@ inline bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch || c == k
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
                   kLatSfu = 4, kLatCollective = 5 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3 };
 // bypass_group (OI-16; Daniel's responses OA-4): which bypass penalties an
 // op takes, as producer and as consumer, the codes of CCV_P_BYP_GROUPS.
 enum : unsigned { kBypInt = 0, kBypFp = 1, kBypAddr = 2, kBypSfu = 3,
@@ -174,7 +175,21 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
          uint32_t(mem) << 12 | uint32_t(inRcu(op->cls) || op->cls == kExit) << 11 |
          0u << 10 /* no S1 op is cross-lane */ | uint32_t(op->gdst) << 9 |
          uint32_t(op->pwrite) << 8 | (mem ? memk : 0u) << 6 |
-         uint32_t(op->cls == kBranch) << 5 | 0u << 3 | lat;
+         uint32_t(op->cls == kBranch) << 5 | uint32_t(op->cls == kExit ? kSerExit : 0) << 3 |
+         lat;
+}
+// The three fields DEC adds so OOE never decodes opcode (A-75, TI-1).
+enum : unsigned { kPredUseNone = 0, kPredUseGuard = 1, kPredUseData = 2 };
+enum : unsigned { kImmLiteral = 0, kImmPredSrcs = 1, kImmWarpBase = 2, kImmCtaid = 3 };
+/// Bit i: source i is a real read (src_arch's two fields, then src2_arch).
+inline unsigned srcValidOf(const OpInfo *op) { return (1u << op->nsrc) - 1u; }
+inline unsigned predUseOf(const OpInfo *op) {
+  return op->guard ? kPredUseGuard : op->pdata ? kPredUseData : kPredUseNone;
+}
+inline unsigned immKindOf(const OpInfo *op) {
+  return op->cls == kPredLogic ? kImmPredSrcs
+         : op->srd_sel == 0     ? kImmWarpBase
+         : op->srd_sel == 1     ? kImmCtaid : kImmLiteral;
 }
 inline bool attrMem(uint32_t a) { return (a >> 12) & 1u; }
 inline unsigned attrMemKind(uint32_t a) { return (a >> 6) & 3u; }
