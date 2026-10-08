@@ -675,15 +675,15 @@
     },
     {
       "name": "CCV_LAT_RCU_ADDR_BASE",
-      "value": 2,
+      "value": 5,
       "status": "tunable",
       "decided_at": "RCU per-block session",
-      "source": "OOE session follow-up (2026-10-02), A-61",
-      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 2 is the accepted starting point (Daniel, 2026-10-03; the OOE session named the parameter, the schema owner proposed the value). Tunable: RCU's session confirms or moves it."
+      "source": "OOE session follow-up (2026-10-02), A-61; Daniel's response OA-5 (2026-10-08)",
+      "doc": "RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. Tunable: RCU's session confirms or moves it."
     },
     {
       "name": "CCV_LAT_RCU_ADDR",
-      "value": 2,
+      "value": 5,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -692,7 +692,7 @@
     },
     {
       "name": "CCV_LAT_L1_WAKE",
-      "value": 13,
+      "value": 16,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",
@@ -701,7 +701,7 @@
     },
     {
       "name": "CCV_LAT_L1_CMPL",
-      "value": 15,
+      "value": 18,
       "status": "tunable",
       "decided_at": "generated",
       "source": "OOE session follow-up (2026-10-02), A-61",

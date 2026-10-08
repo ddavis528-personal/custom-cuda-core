@@ -583,11 +583,13 @@ else
   bad "hit with l1_spec" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
 fi
 l1ctl() { CCV_OOE_CONFIG=l1_spec=1 "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break "$1" >"$B/kernel_$1.log" 2>&1; }
-# The completion a cycle early: OOE's V-44 names each of the four.
+# The completion a cycle early: OOE's V-44 names each of the four, one cycle
+# short of the generated contract.
 l1ctl early-hit
-if [ "$(grep -c "^CHECK ooe: V-44: rob tag [0-9]* completed 14 cycles after issue" "$B/kernel_early-hit.log")" = 4 ] &&
+cmpl=$(sed -n 's/^static constexpr uint32_t kLatL1Cmpl = \([0-9]*\);/\1/p' sim/generated/ccv_params.h)
+if [ "$(grep -c "^CHECK ooe: V-44: rob tag [0-9]* completed $((cmpl - 1)) cycles after issue" "$B/kernel_early-hit.log")" = 4 ] &&
    [ "$(field "$B/kernel_early-hit.log" check_failures)" = 4 ]; then
-  say "--break early-hit: V-44 names all four" "PASS"
+  say "--break early-hit: V-44 names all four" "PASS (at $((cmpl - 1)), CCV_LAT_L1_CMPL $cmpl)"
 else
   bad "--break early-hit" "a hit completed early went unnoticed: $(grep '^KERNEL' "$B/kernel_early-hit.log")"
 fi
