@@ -105,9 +105,11 @@ struct Config {
   /// Lane ALU to lane ALU defaults to CCV_LAT_LANE_BYP (A-59), and every
   /// other pair has no bypass until its sessions name one.
   bool bypass = true;            ///< master enable; off in S1 (no RCU bypass)
+  // CCV_P_BYP_GROUPS now counts sched_attr's bypass_group codes (OI-16);
+  // until the table is indexed by group, it stays one column per lat_class
+  // plus memops.
   static constexpr unsigned kUnits = ccv::prelim::kPLatClasses, kConsMem = kUnits,
-                            kConsGroups = ccv::prelim::kPBypGroups;
-  static_assert(kConsGroups == kUnits + 1, "one group per lat_class, plus memops");
+                            kConsGroups = kUnits + 1;
   std::array<std::array<uint8_t, kConsGroups>, kUnits> byp{};
   /// Full latency of the spare lat_class codes 4-7 (SFU and the like), as
   /// the LANE session names them; 0 means none yet: wake on the done.
