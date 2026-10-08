@@ -749,12 +749,12 @@
     },
     {
       "name": "CCV_LAT_L1_MISS_WAKE",
-      "value": 0,
+      "value": 1,
       "status": "tunable",
       "decided_at": "generated",
-      "source": "OOE model session, register OI-13 (ratified by OA 2026-10-07)",
-      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1)",
-      "doc": "After a miss, how long past the completion's arrival at OOE a dependant must wait to issue, so it reaches RCU no sooner than the data (OI-13). MIU sends the data to RCU and the completion to OOE over different links: the data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read. 0 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
+      "source": "OOE model session, register OI-13 (ratified by OA 2026-10-07); the +1, OA's response OI-26 (2026-10-08)",
+      "derive": "max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1) + 1",
+      "doc": "After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
     },
     {
       "name": "CCV_P_PHYS_REGS",
