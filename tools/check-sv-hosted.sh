@@ -116,7 +116,8 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             vadd:corrupt-ckpt vadd:stale-free vadd:attr-store-as-load:3000 \
             merge:dirty-zero merge:wrong-merge mload:skip-copy \
             mload:late-copy mload:copy-from-new unal:one-line loop:free-new \
-            vadd:corrupt-group-mask loop:stale-epoch; do
+            vadd:corrupt-group-mask loop:stale-epoch pguard:swap-prat0 \
+            hit:early-hit hit:late-hit-data hit:no-rcu-bypass; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)

@@ -14,7 +14,9 @@ checkpoint frees, cycles FET stalled with every checkpoint live, the most
 checkpoints live at once, merges, copy-only ops, zero-register reads,
 physical registers reallocated after a free, memops touching more than one
 line, the most lines one memop touched, store lines with a partial byte mask,
-and cycles MIU waited for a DCU request id. `tools/check-kernel.sh` holds
+cycles MIU waited for a DCU request id, loads completed as L1 hits at the
+contract (`l1_hit`) or hit but too late for it (`l1_late`), and instructions a
+lane executed twice because OOE cancelled and replayed them (`reexec`). `tools/check-kernel.sh` holds
 each kernel to the bins it exists for, so a stub change that stops reaching
 a path fails the gate rather than passing it vacuously. The SV-hosted run
 must print the same `COVER` line as the C++ one.
@@ -30,6 +32,8 @@ must print the same `COVER` line as the C++ one.
 | Scattered lane addresses | gather | one line per lane: 32 line requests for one memop, MIU waiting on DCU request ids and reusing them (`lines_peak=32 dcu_id_wait>0`); reversed order within a line; broadcast; a store with a 4-byte mask in each of 32 lines | (MIU's per-lane address and data checks) |
 | Branch mispredicts (redirect, checkpoint restore) | loop, brs | a backward branch mispredicted 99 times, then a correct fall-through (`redirect=99`); a uniform taken forward branch | drop-negate, corrupt-ckpt, stale-free |
 | Rename free list wrapping | loop | about 200 writes against 192 registers (`reg_reuse>0`) | free-new |
+| L1 hits at the contract (A-46, OI-5) | hit | DCU holds lines (a small direct-mapped array); MIU completes a load whose lines all hit at exactly `CCV_LAT_L1_CMPL` after OOE issued it, data and completion together, and anything later is the miss indication. Four pointer-chasing hits on time (`l1_hit=4`) | early-hit, late-hit-data |
+| L1 speculation (OOE's `l1_spec`) | every kernel | each kernel passes again with the dependants of a load woken at `CCV_LAT_L1_WAKE` and replayed on a miss: RCU's register read sees the same cycle's write, and a lane judges a replayed op on its last execution (`Kernel::failHeld`); hit replays its miss's dependant (`reexec=1`) | no-rcu-bypass, late-hit-data |
 | Checkpoint pressure | brs | five unresolved branches against `CCV_P_BR_CKPTS` = 4: FET stalls until a free (`ckpt_peak=4 ckpt_full>0 ckpt_free=5`) | |
 
 ## What is not reached, and why

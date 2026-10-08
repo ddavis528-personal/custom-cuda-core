@@ -260,8 +260,10 @@ fi
 # loads at MIU, and a window base that differs across lanes. Those are the
 # only other failures allowed, and the total is pinned: a new failure in
 # this kernel still fails the control. (Re-pin MOVI_TOTAL only with the
-# reason in the commit; it moves when OOE's timing does.)
-MOVI_TOTAL=356
+# reason in the commit; it moves when OOE's timing does. 356 -> 259 when RCU's
+# register read began to see the same cycle's writes, OI-5: fewer readers
+# land before the value.)
+MOVI_TOTAL=259
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
@@ -514,6 +516,7 @@ brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0
+hit    l1_hit=4 l1_late=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
@@ -544,5 +547,51 @@ if [ "$(cover "$B/kernel_stale-epoch.log" epoch_drop)" = 1 ] &&
 else
   bad "--break stale-epoch" "a stale-epoch uop was not dropped: $(grep -E '^(KERNEL|COVER)' "$B/kernel_stale-epoch.log" | xargs)"
 fi
+
+# L1 speculation (A-46, OI-5). With OOE's l1_spec on, a load's dependants
+# issue at CCV_LAT_L1_WAKE before the load completes, and are cancelled and
+# replayed if it misses. That needs MIU to complete a hit at exactly the
+# contract (CCV_LAT_L1_CMPL at OOE) with its data, RCU's register read to see
+# the same cycle's write (the data lands in the dependant's read cycle), and
+# the lanes to judge a replayed op on its last execution (Kernel::failHeld).
+# Every kernel must pass so; hit must take its four hits on time and replay
+# its miss's dependant. Each piece has a control that must fail.
+for k in $(ls build/oracle); do
+  log="$B/kernel_${k}_l1spec.log"
+  CCV_OOE_CONFIG=l1_spec=1 "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  why=""
+  for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
+    [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+  done
+  [ -z "$why" ] || bad "$k with l1_spec" "${why# }"
+done
+log="$B/kernel_hit_l1spec.log"
+if [ "$(cover "$log" l1_hit)" = 4 ] && [ "$(cover "$log" reexec)" = 1 ] &&
+   [ "$(field "$log" check_failures)" = 0 ]; then
+  say "every kernel with l1_spec; hit's 4 hits on time" "PASS (its miss's dependant replayed)"
+else
+  bad "hit with l1_spec" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
+fi
+l1ctl() { CCV_OOE_CONFIG=l1_spec=1 "$SKEL" --kernel build/oracle/hit/oracle.jsonl --break "$1" >"$B/kernel_$1.log" 2>&1; }
+# The completion a cycle early: OOE's V-44 names each of the four.
+l1ctl early-hit
+if [ "$(grep -c "^CHECK ooe: V-44: rob tag [0-9]* completed 14 cycles after issue" "$B/kernel_early-hit.log")" = 4 ] &&
+   [ "$(field "$B/kernel_early-hit.log" check_failures)" = 4 ]; then
+  say "--break early-hit: V-44 names all four" "PASS"
+else
+  bad "--break early-hit" "a hit completed early went unnoticed: $(grep '^KERNEL' "$B/kernel_early-hit.log")"
+fi
+# The data a cycle behind its completion, and RCU reading before the same
+# cycle's write: either way the hits' dependants read the old register, and
+# nothing replays them, so the held checks fail at the end of the run.
+for brk in late-hit-data no-rcu-bypass; do
+  l1ctl "$brk"
+  n=$(grep -c "^CHECK lane [0-9]*: seq \(5\|7\|9\|11\|13\) operand 1 " "$B/kernel_$brk.log")
+  if [ "$n" = 160 ] && [ "$(field "$B/kernel_$brk.log" check_failures)" = 160 ]; then
+    say "--break $brk: hits' dependants read stale" "PASS (5 ops x 32 lanes)"
+  else
+    bad "--break $brk" "$n stale reads (want 160): $(grep '^KERNEL' "$B/kernel_$brk.log")"
+  fi
+done
 
 exit $fail

@@ -120,13 +120,18 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
 
 ## What the environment can and cannot exercise yet
 
-Ten kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
+Eleven kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
 coverage counts. They exercise:
 - rename, merge, the zero registers and the copy-only op;
 - mispredicts with checkpoint restore and free;
 - checkpoint pressure;
 - the free list wrapping;
-- dropping a stale-epoch uop.
+- dropping a stale-epoch uop;
+- L1 hits at the contract, and the model's `l1_spec` on every kernel
+  (`CCV_OOE_CONFIG=l1_spec=1`, held in `tools/check-kernel.sh`; OI-5). The
+  kernels also pass with `bypass=1`, but only because the S1 lanes answer
+  faster than `CCV_LAT_LANE`: a lane-local bypass is not yet modelled, so
+  that pass does not prove one.
 
 They cannot yet exercise the following. Each needs stub work, which belongs
 to the top-level session, in this order:

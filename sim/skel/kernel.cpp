@@ -38,6 +38,28 @@ void Kernel::fail(const char *fmt, ...) {
   ++failures;
 }
 
+void Kernel::failHeld(const std::string &where, uint64_t tid, const char *fmt, ...) {
+  char buf[512];
+  va_list ap;
+  va_start(ap, fmt);
+  std::vsnprintf(buf, sizeof buf, fmt, ap);
+  va_end(ap);
+  held[{where, tid}].push_back(buf);
+}
+
+void Kernel::executing(const std::string &where, uint64_t tid) {
+  if (!executed.insert({where, tid}).second) {
+    held.erase({where, tid});      // a replay: the earlier execution is moot
+    if (reexecuted.insert(tid).second) hit("reexec");
+  }
+}
+
+void Kernel::flushHeld() {
+  for (const auto &h : held)
+    for (const std::string &m : h.second) fail("%s", m.c_str());
+  held.clear();
+}
+
 namespace {
 
 // The testbench link: the flattened TL-C bundle CCV_L_W_TL_OUT / _IN were
@@ -332,11 +354,36 @@ private:
   unsigned mlc_id_ = 0;              ///< the one request to MLC outstanding
   std::deque<Q> to_mlc_, to_miu_;
 
+  /// L1 (OI-5): a small direct-mapped array, so a load that revisits a line
+  /// hits, and MIU can complete it at the L1 contract. A hit answers the
+  /// cycle it arrives, ahead of any miss in flight: the contract is MIU's to
+  /// keep (CCV_LAT_L1_HIT), and an answer early enough lets it. Fills install
+  /// the line; a store's merged line goes to MLC as before and updates the
+  /// copy here, so a later hit reads it. One core and no other writer, so
+  /// nothing else can make a copy stale.
+  static constexpr unsigned kSets = 64;
+  struct Way { bool valid = false; uint64_t line = 0; Line data{}; };
+  std::array<Way, kSets> l1_{};
+  Way &way(uint64_t pa) { return l1_[(pa / kLine) % kSets]; }
+  const Line *lookup(uint64_t pa) {
+    Way &w = way(pa);
+    return w.valid && w.line == pa ? &w.data : nullptr;
+  }
+  void install(uint64_t pa, const Line &l) { way(pa) = {true, pa, l}; }
+
   /// A response to MIU answers its request by MIU's own req_id.
-  Bits miuRsp() {
+  Bits rspFor(const Bits &req) {
     Bits r = msgOf(ch().dcu_miu);
-    put(r, ch().dcu_miu, "req_id", get(cur_.req, ch().miu_dcu, "req_id"));
+    put(r, ch().dcu_miu, "req_id", get(req, ch().miu_dcu, "req_id"));
     return r;
+  }
+  Bits miuRsp() { return rspFor(cur_.req); }
+  /// A read that hits: the line, hit set, no MLC miss.
+  void hitRsp(const Op &o, const Line &l) {
+    Bits r = rspFor(o.req);
+    putLine(r, field(ch().dcu_miu, "read_data").lsb, l);
+    put(r, ch().dcu_miu, "hit", 1);
+    to_miu_.push_back({o.slot, r, o.tid});
   }
 
   void mlcReq(unsigned coh, uint64_t pa, const Line *data) {
@@ -355,7 +402,12 @@ private:
     for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s)
       while (has(c.miu_dcu, s)) {
         Receiver::Msg m = take(c.miu_dcu, s);
-        q_.push_back({s, m.payload, m.tid});
+        const Op o{s, m.payload, m.tid};
+        const Line *l = get(m.payload, c.miu_dcu, "coh_op") == kCohRead
+                            ? lookup(get(m.payload, c.miu_dcu, "phys_addr"))
+                            : nullptr;
+        if (l) hitRsp(o, *l);
+        else q_.push_back(o);
       }
     if (has(c.mlc_dcu, 0)) {
       Receiver::Msg m = take(c.mlc_dcu, 0);
@@ -365,8 +417,10 @@ private:
         k_.fail("dcu: MLC answered req_id %u, which is not outstanding", id);
       Bits r = miuRsp();
       if (st_ == kWaitLine && !wr) {
-        putLine(r, field(c.dcu_miu, "read_data").lsb,
-                getLine(m.payload, field(c.mlc_dcu, "line_data").lsb));
+        const Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
+        putLine(r, field(c.dcu_miu, "read_data").lsb, l);
+        put(r, c.dcu_miu, "mlc_miss", get(m.payload, c.mlc_dcu, "miss"));
+        install(get(cur_.req, c.miu_dcu, "phys_addr"), l);
         to_miu_.push_back({cur_.slot, r, cur_.tid});
         st_ = kIdle;
       } else if (st_ == kWaitLine) {
@@ -375,6 +429,7 @@ private:
         const uint32_t mlsb = field(c.miu_dcu, "byte_mask").lsb;
         for (unsigned k = 0; k != kLine; ++k)
           if (cur_.req.bit(mlsb + k)) l[k] = w[k];
+        install(get(cur_.req, c.miu_dcu, "phys_addr"), l);
         mlcReq(kCohWrite, get(cur_.req, c.miu_dcu, "phys_addr"), &l);
         st_ = kWaitAck;
       } else if (st_ == kWaitAck) {
@@ -387,8 +442,17 @@ private:
     if (st_ == kIdle && !q_.empty()) {
       cur_ = q_.front();
       q_.pop_front();
-      mlcReq(kCohRead, get(cur_.req, c.miu_dcu, "phys_addr"), nullptr);
-      st_ = kWaitLine;
+      // A read queued behind the fill that brought its line in hits now
+      // (late for the contract, which is MIU's to judge).
+      const Line *l = get(cur_.req, c.miu_dcu, "coh_op") == kCohRead
+                          ? lookup(get(cur_.req, c.miu_dcu, "phys_addr"))
+                          : nullptr;
+      if (l) {
+        hitRsp(cur_, *l);
+      } else {
+        mlcReq(kCohRead, get(cur_.req, c.miu_dcu, "phys_addr"), nullptr);
+        st_ = kWaitLine;
+      }
     }
     if (!to_mlc_.empty() && can(c.dcu_mlc, 0)) {
       send(c.dcu_mlc, 0, to_mlc_.front().msg, to_mlc_.front().tid);
@@ -415,7 +479,7 @@ public:
   const char *kind() const override { return "miu"; }
 
 private:
-  struct Memop { unsigned slot; Bits msg; };
+  struct Memop { unsigned slot; Bits msg; uint64_t at; };
   struct Addr { unsigned slot; Bits msg; uint64_t tid; };
   struct LineReq { uint64_t line; Line data{}; std::array<bool, kLine> mask{}; uint16_t sub; };
   struct Job {
@@ -428,7 +492,14 @@ private:
     std::vector<LineReq> lines;
     unsigned next = 0, back = 0;     ///< lines requested / answered
     std::map<uint64_t, Line> got;
+    bool global = false;             ///< .global: the L1 contract applies
+    bool hit = true;                 ///< every line hit in DCU
+    bool mlc_miss = false;           ///< some line's fill missed MLC
+    uint64_t due = 0;                ///< a global load's L1-contract cycle
   };
+  /// A hit's completion and data, held for the contract cycle.
+  struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
+  std::deque<Timed> timed_;
 
   std::map<unsigned, Memop> memop_;
   std::map<unsigned, Addr> addr_;
@@ -456,7 +527,7 @@ private:
       while (has(c.ooe_miu, s)) {
         Receiver::Msg m = take(c.ooe_miu, s);
         const unsigned tag = unsigned(get(m.payload, c.ooe_miu, "rob_tag"));
-        memop_[tag] = {s, m.payload};
+        memop_[tag] = {s, m.payload, now_};
         order_.push_back(tag);
       }
     for (unsigned s = 0; s != kChans[c.rcu_miu].rate; ++s)
@@ -494,11 +565,39 @@ private:
         outstanding_.erase(o);
         ids_.release(id);
         job_.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+        if (!get(m.payload, c.dcu_miu, "hit")) job_.hit = false;
+        if (get(m.payload, c.dcu_miu, "mlc_miss")) job_.mlc_miss = true;
         ++job_.back;
       }
 
     if (!active_) start();
     if (active_) advance();
+    // A hit's completion and data leave together at the contract cycle, or
+    // not as a hit at all: if either channel has no credit then, both go
+    // late and OOE takes it for a miss (A-46), never a completion on time
+    // with its data behind it.
+    while (!timed_.empty() && timed_.front().at <= now_) {
+      Timed t = timed_.front();
+      timed_.pop_front();
+      if (t.data_only) {                   // late-hit-data's data, behind
+        to_rcu_.push_back(t.data);
+        continue;
+      }
+      if (t.at == now_ && can(c.miu_rcu, t.data.slot) && can(c.miu_ooe, t.cmpl.slot)) {
+        send(c.miu_ooe, t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
+        if (k_.brk == "late-hit-data")
+          // The data a cycle behind its completion: dependants woken by the
+          // contract read the register before the load lands.
+          timed_.push_front({now_ + 1, t.data, t.cmpl, true});
+        else
+          send(c.miu_rcu, t.data.slot, t.data.msg, t.data.tid);
+        k_.hit("l1_hit");
+      } else {
+        to_rcu_.push_back(t.data);
+        to_ooe_.push_back(t.cmpl);
+        k_.hit("l1_late");
+      }
+    }
 
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
@@ -534,6 +633,14 @@ private:
     j.phys_pred = unsigned(get(mo.msg, c.ooe_miu, "phys_pred"));
     j.addr_slot = a->second.slot;
     j.tid = a->second.tid;
+    // The L1 contract (A-46, A-61): a hit's completion reaches OOE at its
+    // issue + CCV_LAT_L1_CMPL. The memop's arrival says when OOE issued it,
+    // since it left on that cycle and the link is fixed, so the completion
+    // must leave MIU CCV_LAT_L1_CMPL less both crossings after it arrived.
+    // Timed from the issue, not from when MIU got to it: a load MIU starts
+    // late cannot be a hit, and one whose address came early is not early.
+    j.due = mo.at + ccv::prov::kLatL1Cmpl - crossing(c.ooe_miu) - crossing(c.miu_ooe) -
+            (k_.brk == "early-hit" ? 1 : 0);
     const Bits &am = a->second.msg;
     // Two DIFFERENT masks: the issue mask from OOE, and active = issue AND
     // guard from RCU. They differ for any predicated op, correctly; what
@@ -552,6 +659,7 @@ private:
     const unsigned chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
     const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - chw : 0;
     const bool global = get(mo.msg, c.ooe_miu, "space") == kSpaceGlobal;
+    j.global = global;
     const uint64_t base = get(am, c.rcu_miu, "base") << (global ? 16 : 0);
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l) & 1u)
@@ -637,8 +745,15 @@ private:
     put(m, c.miu_ooe, "lane_mask", j.active);
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l) & 1u) { put(m, c.miu_ooe, "address", j.addr[l]); break; }
-    put(m, c.miu_ooe, "mlc_miss", 1);
+    put(m, c.miu_ooe, "mlc_miss", j.mlc_miss ? 1 : 0);
     return m;
+  }
+
+  /// A whole crossing of a channel: CCV_LAT_HOP plus its repeater stages.
+  static unsigned crossing(unsigned chan) {
+    for (const ChanInst &ci : kChanInsts)
+      if (ci.chan == chan) return kLatHop + ci.stages;
+    return kLatHop;
   }
 
   void advance() {
@@ -691,14 +806,20 @@ private:
         if (k_.brk == "corrupt-load" && r && r->seq == 13 && l == 5) v ^= 1;
         putLane(d, c.miu_rcu, "load_data", l, v);
       }
-      to_rcu_.push_back({job_.addr_slot, d, job_.tid});
-      to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
+      if (job_.hit && job_.global && now_ <= job_.due) {
+        timed_.push_back({job_.due, {job_.addr_slot, d, job_.tid},
+                          {job_.memop_slot, cmpl(job_), job_.tid}});
+      } else {
+        if (job_.hit) k_.hit("l1_late");
+        to_rcu_.push_back({job_.addr_slot, d, job_.tid});
+        to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
+      }
     }
     active_ = false;
   }
 
   bool busy() const override {
-    return active_ || !order_.empty() || !stores_.empty() ||
+    return active_ || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();
   }
@@ -730,6 +851,8 @@ private:
         if (get(m.payload, c.rcu_lane, "opcode") == kOpCopy) {
           copy(m, r, on);
         } else if (const Record *rc = rec(m.tid, "lane")) {
+          const std::string at = "lane " + std::to_string(lane_);
+          k_.executing(at, m.tid);
           const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
           if (op && inRcu(op->cls))
             k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
@@ -745,7 +868,7 @@ private:
             const uint32_t got = uint32_t(m.payload.get(
                 field(c.rcu_lane, "operand").lsb + 32 * unsigned(i), 32));
             if (got != g[i]->v[lane_])
-              k_.fail("lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x",
+              k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x",
                       lane_, (unsigned long long)rc->seq, i, g[i]->idx, got,
                       g[i]->v[lane_]);
           }
@@ -770,7 +893,7 @@ private:
               want = want && ((((p->p >> lane_) & 1u) != 0) != neg);
             }
           if ((get(m.payload, c.rcu_lane, "pred_bit") != 0) != want)
-            k_.fail("lane %u: seq %llu pred_bit is not issue mask AND guard",
+            k_.failHeld(at, m.tid, "lane %u: seq %llu pred_bit is not issue mask AND guard",
                     lane_, (unsigned long long)rc->seq);
           // The result: what ccv-sim computed (the "what", §1) -- except
           // srd's, which the lane computes: the immediate RCU substituted,
@@ -784,7 +907,7 @@ private:
             put(r, c.lane_rcu, "result", md);
             if (const RegVal *d = rc->gprDef())
               if (md != d->v[lane_])
-                k_.fail("lane %u: seq %llu merge_data %08x, but R%u keeps %08x",
+                k_.failHeld(at, m.tid, "lane %u: seq %llu merge_data %08x, but R%u keeps %08x",
                         lane_, (unsigned long long)rc->seq, md, d->idx, d->v[lane_]);
             // pred_out is don't-care here (RCU merges predicates): poison.
             if (const RegVal *d = rc->predDef())
@@ -809,7 +932,7 @@ private:
               const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
               const bool want = (((p->p >> lane_) & 1u) != 0) != neg;
               if ((get(m.payload, c.rcu_lane, "pred_data") != 0) != want)
-                k_.fail("lane %u: seq %llu pred_data (sel's selector) wrong", lane_,
+                k_.failHeld(at, m.tid, "lane %u: seq %llu pred_data (sel's selector) wrong", lane_,
                         (unsigned long long)rc->seq);
             }
         }
@@ -898,8 +1021,16 @@ private:
   void work() override {
     const Ch &c = ch();
     const unsigned rate = kChans[c.ooe_rcu].rate;
-    for (unsigned s = 0; s != rate; ++s)
-      while (has(c.ooe_rcu, s)) issue(s, take(c.ooe_rcu, s));
+    // Register read sees this cycle's writes (OI-5): lane results and load
+    // data land before the issues they may feed are read. CCV_LAT_L1_WAKE
+    // brings an L1 hit's dependant to RCU in the very cycle its data does,
+    // so without this a dependant OOE woke by the contract reads the old
+    // value. no-rcu-bypass reads first, as the S1 RCU did.
+    auto takeIssues = [&] {
+      for (unsigned s = 0; s != rate; ++s)
+        while (has(c.ooe_rcu, s)) issue(s, take(c.ooe_rcu, s));
+    };
+    if (k_.brk == "no-rcu-bypass") takeIssues();
 
     // Lane results, slot by slot: all 32 lanes, or it is not lockstep.
     for (unsigned s = 0; s != rate; ++s) {
@@ -953,6 +1084,7 @@ private:
         }
         to_ooe_.push_back({s, done(tag), m.tid});
       }
+    if (k_.brk != "no-rcu-bypass") takeIssues();
 
     for (unsigned s = 0; s != rate; ++s) {
       if (lane_q_[s].empty() || lane_q_[s].front().not_before > now_) continue;
@@ -1662,6 +1794,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
 }
 
 KernelReport compareFinal(Kernel &k) {
+  k.flushHeld();
   KernelReport r;
   const Oracle &o = k.orc;
   for (unsigned a = 0; a != kArchGprs; ++a)

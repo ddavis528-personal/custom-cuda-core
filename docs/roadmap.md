@@ -9,7 +9,7 @@ and what is carried.
 ## Part 0 — picking this up again
 
 **State (2026-10-04): Stage 1 complete. Stage 2 closed and encoded, except
-the per-interface NGD budgets. Stage 3's skeleton runs ten kernels end to end
+the per-interface NGD budgets. Stage 3's skeleton runs eleven kernels end to end
 on both hosts (S1 `vadd`, then S2: merge, masked loads, misaligned and
 scattered accesses, mispredicts), each matching ccv-sim and held to coverage
 counts. OOE's interfaces are settled (Review A-25 to A-74), and its Stage 4b
@@ -282,8 +282,8 @@ from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 
 **SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
 top runs every C++ block over DPI-C, with the generated Verilog carrying
-every connection. All ten kernels match the C++-hosted run: summary lines
-identical and event traces the same records cycle by cycle. All 27 kernel
+every connection. All eleven kernels match the C++-hosted run: summary lines
+identical and event traces the same records cycle by cycle. All 31 kernel
 controls give the same KERNEL line. One block one cycle late
 (`+ccv_shim_delay`) must not match, and doesn't
 (`tools/check-sv-hosted.sh`). Next: mixed hosting, which needs a finish rule

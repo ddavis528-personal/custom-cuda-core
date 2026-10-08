@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -126,12 +127,27 @@ struct Kernel {
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
-      "dcu_id_wait", "epoch_drop"};
+      "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "reexec"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 
   void fail(const char *fmt, ...);
+  /// A check on the VALUES an execution read, held rather than failed. OOE
+  /// may issue an op on an L1 hit it speculated, cancel it when the hit does
+  /// not come, and replay it under the same id (A-46): the cancelled
+  /// execution read stale operands by design. A held failure is dropped if
+  /// the same instruction executes again at the same place (`executing`),
+  /// and fails at the end of the run if it never does (flushHeld, before the
+  /// final compare). The lane returns ccv-sim's result whatever its
+  /// operands, so a dropped execution cannot hide a wrong architectural
+  /// value; the final compare would still see one.
+  void failHeld(const std::string &where, uint64_t tid, const char *fmt, ...);
+  void executing(const std::string &where, uint64_t tid);
+  void flushHeld();
+  std::map<std::pair<std::string, uint64_t>, std::vector<std::string>> held;
+  std::set<std::pair<std::string, uint64_t>> executed;
+  std::set<uint64_t> reexecuted;                   ///< tids that ran twice
 };
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);
