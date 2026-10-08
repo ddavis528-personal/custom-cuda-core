@@ -47,6 +47,7 @@ it.
 | PF-23 | Demotion abandons outstanding loads | demotion | deferred |
 | PF-24 | Divergent branch prediction | FET | deferred (doc) |
 | PF-25 | Predicate renaming in place of the fixed-window holds | rename | owed, not optional (S1 mode) |
+| PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
 
 ## Entries
 
@@ -326,3 +327,21 @@ it.
 - **Status:** owed, not optional. It turns on with A-75 and the
   predicate-map hook ([`ooe-model.md`](ooe-model.md), "S1 modes"). Listed
   so the hold's cost on S1 kernels is not mistaken for the design's.
+
+### PF-26 Co-issue lane ops whose lane masks are disjoint
+
+- **Now:** each lane block has four operand ports, so lane ops share a
+  cycle only by taking separate slices of them: narrow `chwidth` ops in
+  different sections. Two full-width lane ops never co-issue, even when
+  their issue masks are disjoint (Daniel, 2026-10-08).
+- **Alternative:** also co-issue lane ops whose lane masks are disjoint,
+  for example the divergent PC groups of one warp, or partial-warp ops of
+  different warps. RCU steers each lane's ports to the op that owns that
+  lane.
+- **Cost:** a pairwise mask-disjointness check among one cycle's grants,
+  which is the serial path banked select avoids (OA-1). A precomputed
+  overlap bit per entry pair, set at rename like the age matrix, keeps it
+  off the loop. RCU also needs per-lane port steering.
+- **Signal:** cycles where a ready lane op waits behind another lane op
+  whose mask is disjoint from it (to add, `ready_not_selected` split by
+  that cause).
