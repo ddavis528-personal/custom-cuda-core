@@ -623,7 +623,10 @@ void testL1Spec() {
   g_test = "l1-spec";
   for (int miss = 0; miss != 2; ++miss) {
     Config c = baseConfig();
-    c.lat_l1_cmpl = 20;            // a long shadow, so a grandchild issues inside it
+    // A long shadow, one lane latency past the wake, so a grandchild issues
+    // inside it. (It read 20, against a wake of 13, until CCV_LAT_RCU_ADDR_BASE
+    // moved the wake to 16: OA-5.)
+    c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
     Env e(c);
     e.keep_log = true;
     e.miss_pct = miss ? 100 : 0;
@@ -981,7 +984,7 @@ void testControls() {
       {"shallow-cancel", [](Config &c) { c.inject_shallow_cancel = true; }},
       {"early-wake", [](Config &c) { c.inject_early_wake = true; }},
       {"cmpl-wake-delay-ignored", [](Config &c) { c.cmpl_wake_delay = 0; c.inject_free_new = false; }},
-      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = 20; c.byp[4][1] = 3; }},
+      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.byp[4][1] = 3; }},
       {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
   };
   for (const C &x : cs) {
@@ -992,7 +995,7 @@ void testControls() {
       g_test = name;
       Config c = baseConfig();
       c.l1_spec = true;
-      c.lat_l1_cmpl = 20;      // a shadow long enough for grandchildren
+      c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;   // a shadow long enough for grandchildren
       x.set(c);
       std::mt19937 rng(seed);
       Env e(c, seed);
