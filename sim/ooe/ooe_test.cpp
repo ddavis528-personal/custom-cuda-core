@@ -961,6 +961,7 @@ void testControls() {
       {"early-wake", [](Config &c) { c.inject_early_wake = true; }},
       {"cmpl-wake-delay-ignored", [](Config &c) { c.cmpl_wake_delay = 0; c.inject_free_new = false; }},
       {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = 20; c.byp[4][1] = 3; }},
+      {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
   };
   for (const C &x : cs) {
     const int saved = g_fail;
@@ -981,6 +982,8 @@ void testControls() {
       // The core bypasses SFU -> ALU at 3; the contract says 9.
       const bool groups = std::string(x.name) == "bypass-faster-than-contract";
       if (groups) e.cfg.byp[4][1] = 9;
+      // An RCU faster than its contract is what exposes completing early.
+      if (std::string(x.name) == "complete-before-rs-free") e.rcu_fast = true;
       e.launch(0, 0, randomProgram(rng, 150, true, groups));
       const int before = g_fail;
       g_quiet = true;

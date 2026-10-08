@@ -600,7 +600,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   // A ROB entry outlives its RS entries: it completes only once every one
   // is confirmed and freed, so no result it reports can still be cancelled
   // and no RS entry ever names a retired ROB slot.
-  c = c && r.rs_main == kNoEntry && r.rs_copy == kNoEntry;
+  c = c && ((r.rs_main == kNoEntry && r.rs_copy == kNoEntry) || cfg_.inject_complete_early);
   if (!c) return;
   r.complete = true;
   // A branch acts on its outcome only once confirmed: a resolution read
@@ -1557,6 +1557,12 @@ void Core::checkInvariants() {
       }
     }
     if (live != branches) bad("V-07", "live checkpoints and unresolved branches differ");
+    // V-58 (OI-11): a ROB entry completes only after every RS entry of its
+    // uop has confirmed and freed.
+    for (const RobEntry &r : s.rob)
+      if (r.valid && !r.squashed && r.complete &&
+          (r.rs_main != kNoEntry || r.rs_copy != kNoEntry))
+        bad("V-58", "a complete ROB entry still holds an RS entry");
     if (s.rs_held > (cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_)) bad("V-14", "a warp over its RS cap");
   }
   unsigned accounted = 0;
