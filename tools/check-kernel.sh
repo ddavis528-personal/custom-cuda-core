@@ -434,8 +434,8 @@ fi
 "$SKEL" --kernel "$M" --break dirty-zero >"$B/kernel_dirty-zero.log" 2>&1
 if grep -q "^CHECK lane 16: seq 4 merge_data 5a5a5a5a, but R6 keeps 00000000" "$B/kernel_dirty-zero.log" &&
    [ "$(field "$B/kernel_dirty-zero.log" check_failures)" = 64 ] &&
-   [ "$(field "$B/kernel_dirty-zero.log" pred_mismatch)" = 1 ]; then
-  say "--break dirty-zero: every zero-register path" "PASS (64 lane checks, P2)"
+   [ "$(field "$B/kernel_dirty-zero.log" pred_mismatch)" = 2 ]; then
+  say "--break dirty-zero: every zero-register path" "PASS (64 lane checks, P2, P3)"
 else
   bad "--break dirty-zero" "a zero-register read went unnoticed: $(grep '^KERNEL' "$B/kernel_dirty-zero.log")"
 fi
