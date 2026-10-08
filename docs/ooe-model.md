@@ -104,10 +104,25 @@ example, is PF-1.
     together, over different links. A dependant woken by the completion
     still has to reach RCU after the data does. So it wakes
     `max(0, miu_rcu_data crossing − miu_ooe_cmpl crossing − ooe_rcu_issue
-    crossing + 1)` cycles after the completion (`cmpl_wake_delay`, derived
-    from the wiring). That is 0 with no repeaters and 2 in
+    crossing + 1)` cycles after the completion (`cmpl_wake_delay`, from
+    `CCV_LAT_L1_MISS_WAKE`, which TI generates from the links; the adapter
+    refuses a build whose wiring disagrees). That is 0 with no repeaters and 2 in
     `test/phys/links_split.json`, whose failure found it. `CCV_LAT_L1_WAKE`
     already makes this correction for a hit; the miss path needs the same.
+
+## Free lists
+
+Each pool (GPRs, predicates) is a bit-vector with rotating-start
+allocation, as the RTL builds it (`FreeVec`; OA's answer to OI-17, done
+as OI-22). Allocation takes the first free register at or after a pointer,
+which then moves past it, so a freed register comes back only once the
+pointer wraps. A free sets its bit at the clock edge: a register freed in a
+cycle is not allocated in that cycle. Any number of frees a cycle costs
+nothing, so a squash's 32 or a kill's 16 need no drain. Rename's floor and
+ceiling checks count only registers allocatable this cycle; V-01, V-02 and
+V-04 count those freed this cycle too. On the S1 kernels, one warp freeing
+in order, the order is the old FIFO's, so `--break free-new` still fails at
+the same line (seq 382).
 
 ## Bypass groups
 
@@ -184,7 +199,7 @@ one-line change when its neighbour is ready.
 | Flag | S1 | Why off in S1 | Turned on by |
 |---|---|---|---|
 | `bypass` | off | RCU reads the PRF the cycle it takes an issue, after nothing written that cycle. A dependant woken by any bypass wake reads stale data. The table (Bypass groups) is ignored while this is off. | An RCU or LANE bypass |
-| `l1_spec` | off | MIU completes every load as a miss at its own pace. A dependant woken at `CCV_LAT_L1_WAKE` issues on garbage, and the lanes refuse it before the cancel lands. | An MIU that completes an L1 hit at exactly `CCV_LAT_L1_CMPL` (A-46) |
+| `l1_spec` | off | Off by default, so the kernels' pinned controls keep their numbers. TI's MIU now completes an L1 hit at exactly `CCV_LAT_L1_CMPL` (A-46; TI's response OI-5, `31f6143`), and the gate runs every kernel again with `CCV_OOE_CONFIG=l1_spec=1`, with its own controls. | Turning it on by default, once TI re-pins the default run's controls (OI-5) |
 | `rename_preds` | off | RCU reads predicate-logic sources, and `compareFinal` reads final predicates, at fixed `physPred` windows. | A-75's predicate-source fields, and a committed-predicate-map hook |
 | `memop_rcu_done` | on | RCU sends a done for loads and stores, which the channel's doc does not mention. A memop completes only after both. | The top level settling whether memops get a done |
 
@@ -200,33 +215,42 @@ adapter turns a fault into a check failure, counts and drops status reports
 The kill ports are not in the C++ machine yet, so kill is reached only by the
 unit tests.
 
-## Knobs without a parameter
+## Parameters that were knobs
 
-The model reads every size and latency from `ccv_params.h`. These have no
-parameter yet. Each defaults to "no limit" or to the nearest parameter, and
-each is owed one before the RTL fixes a number:
+The model reads every size and latency from `ccv_params.h`. TI added the
+ones the model's knobs stood for (OI-6, OI-13; `456b3e9`), and each
+`Config` field now defaults to its parameter:
 
-| Knob | Default | The doc says |
+| Field | Parameter | First-build value |
 |---|---|---|
-| `rs_warp_cap` | the RS size (no cap) | to be set by sweep |
-| `decq_warp_max` | `CCV_P_DECQ` (no cap) | "a per-warp maximum" |
-| `demote_mlc_miss`, `demote_barrier` | `CCV_DEMOTION_THRESHOLD` | one CSR per trigger |
-| `rename_width` | `CCV_ISSUE_WIDTH` | "4 uops per cycle" |
+| `rs_warp_cap` | `CCV_P_RS_WARP_CAP` | 45, both classes: no cap |
+| `decq_warp_max` | `CCV_P_DECQ_WARP_MAX` | 12, the queue: no limit |
+| `demote_mlc_miss`, `demote_barrier` | `CCV_DEMOTION_THRESHOLD_MLC`, `_BARRIER` | 50 each, values wait on OA-8 |
+| `cmpl_wake_delay` | `CCV_LAT_L1_MISS_WAKE` | 0; 2 under `links_split` |
+| `byp` shape | `CCV_P_LAT_CLASSES`, `CCV_P_BYP_GROUPS` | 8 × 9; values wait on OA-4 |
+
+`rename_width` stays at `CCV_ISSUE_WIDTH` ("4 uops per cycle"), and
+`unit_lat` for `lat_class` 4 to 7 waits on OA-4. The sizing sweep runs with
+no per-warp limits unless it sweeps one, since a "no limit" value equal to
+today's size would limit a larger one.
 
 ## Events and counters
 
 The model emits the schema's arbitration-sensitive events: `EV_DISPATCH` at
 ROB allocation, `EV_ISSUE` (warp, issue slot, RS entry), `EV_WAKEUP` (warp,
-dependant, producer) per satisfied cell, and `EV_RETIRE`. The doc's Events
-table has about twenty more, mostly structural stalls, which the schema does
-not define. Until it does, each is a named counter or histogram in the
-`CCV_OOE_STATS` dump: `stall.*`, `hold.*`, `cancel.*`, `squash.*`,
-`ready_not_selected`, `memop.held_unconfirmed`, `issue_per_cycle`,
-`retire_per_cycle`, `cancel_depth` and `done_after_issue.lat*`.
+dependant, producer) per satisfied cell, and `EV_RETIRE`. It also emits the
+twenty structural events below as `EV_OOE_*`, ids 13 to 32, which TI
+assigned from this list (OI-7; `456b3e9`). The core raises each as an
+`OoeEv`, listed in id order, and the adapter maps it to its id. The uid is
+the uop the event concerns, or 0 for a decode-queue refusal, which has no
+uop yet. Each is also a named counter or histogram in the `CCV_OOE_STATS`
+dump: `stall.*`, `hold.*`, `cancel.*`, `squash.*`, `ready_not_selected`,
+`memop.held_unconfirmed`, `issue_per_cycle`, `retire_per_cycle`,
+`cancel_depth` and `done_after_issue.lat*`.
 
-### Events owed to the schema (OI-7)
+### The structural events (OI-7)
 
-The list TI assigns ids from. Each row is one event of the design doc's
+The list TI assigned ids from, in id order. Each row is one event of the design doc's
 Events table: when it fires, its `a`, `b` and `c` payload, and the model
 counter or hook that marks the same point today. Every one is
 arbitration-sensitive (Q-1): a stall or hold an OOE arbiter decides, never a
@@ -257,7 +281,9 @@ condition holds, so their count is a duration.
 | Masked-load copy op | a masked load issues its copy-only op | warp_id | rob_tag | issue slot | hook `copy` |
 
 Two in the doc's table are not OOE's: the branch-checkpoint stall is FET's
-(its `ckpt_full`), and select grant is `EV_ISSUE`. Not yet in the model: the
+(its `ckpt_full`), and select grant is `EV_ISSUE`. `EV_OOE_BARRIER_HOLD`
+carries the barrier uop's immediate as its `barrier_id` until A-75 names the
+field. Not yet in the model: the
 "would have issued" event's record, at retire, of whether those sources
 later confirmed without a cancel. It needs a field per ROB entry and is
 added with the event.

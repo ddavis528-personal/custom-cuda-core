@@ -130,8 +130,8 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   skew_ = cfg_.inject_early_wake ? 1 : 0;
   gprod_.assign(cfg_.phys_regs, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
-  for (unsigned p = 0; p != cfg_.phys_regs; ++p) gfree_.push_back(p);
-  for (unsigned p = 0; p != cfg_.pred_regs; ++p) pfree_.push_back(p);
+  gfree_.reset(cfg_.phys_regs);
+  pfree_.reset(cfg_.pred_regs);
   gowner_.assign(cfg_.phys_regs, 0);
   powner_.assign(cfg_.pred_regs, 0);
   gever_.assign(cfg_.phys_regs, 0);
@@ -172,9 +172,15 @@ bool Core::canAccept(unsigned warp) const {
 }
 
 void Core::noteRefused(unsigned warp) {
-  if (decq_.size() >= cfg_.decq) { count("stall.decq_full"); return; }
+  if (decq_.size() >= cfg_.decq) {
+    count("stall.decq_full");
+    oev(OoeEv::kDecqFull, warp, decq_.size());
+    return;
+  }
   count("stall.decq_warp_max");
-  ev("stall", warp, 3);
+  const int s = slotOf(warp);
+  oev(OoeEv::kDecqWarpMax, warp, s < 0 ? 0 : slot_[s].decq,
+      cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq);
 }
 
 /// Into the decode queue, after this cycle's rename: renamed from the next.
@@ -204,6 +210,8 @@ void Core::kill(uint32_t mask, unsigned epoch) {
 
 void Core::cycle(uint64_t now) {
   now_ = now;
+  gfree_.clock();      // last cycle's frees become allocatable
+  pfree_.clock();
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -245,7 +253,7 @@ std::array<unsigned, kArchPreds> Core::committedPredMap(unsigned warp) const {
 
 bool Core::gprAllowed(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (gfree_.size() < n) return false;
+  if (gfree_.ready() < n) return false;
   if (s.held_gpr + n > kArchGprs + cfg_.ren_ceil) return false;
   // Every other tier-1 slot, occupied or not, keeps its architectural 16
   // plus its floor reserved: free registers must still cover them.
@@ -255,12 +263,12 @@ bool Core::gprAllowed(unsigned slot, unsigned n) const {
       const unsigned want = kArchGprs + cfg_.ren_floor;
       owed += slot_[v].held_gpr < want ? want - slot_[v].held_gpr : 0;
     }
-  return gfree_.size() - n >= owed;
+  return gfree_.ready() - n >= owed;
 }
 
 bool Core::predAllowed(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (pfree_.size() < n) return false;
+  if (pfree_.ready() < n) return false;
   if (s.held_pred + n > kArchPreds + cfg_.pred_ren_ceil) return false;
   unsigned owed = 0;
   for (unsigned v = 0; v != slot_.size(); ++v)
@@ -268,12 +276,11 @@ bool Core::predAllowed(unsigned slot, unsigned n) const {
       const unsigned want = kArchPreds + cfg_.pred_ren_floor;
       owed += slot_[v].held_pred < want ? want - slot_[v].held_pred : 0;
     }
-  return pfree_.size() - n >= owed;
+  return pfree_.ready() - n >= owed;
 }
 
 unsigned Core::allocGpr(unsigned slot) {
-  const unsigned p = gfree_.front();
-  gfree_.pop_front();
+  const unsigned p = gfree_.alloc();
   if (gowner_[p]) err("V-03: GPR p%u allocated while slot %u owns it", p, gowner_[p] - 1);
   gowner_[p] = uint8_t(slot + 1);
   ++slot_[slot].held_gpr;
@@ -284,8 +291,7 @@ unsigned Core::allocGpr(unsigned slot) {
 
 unsigned Core::allocPred(unsigned slot, unsigned arch) {
   if (!cfg_.rename_preds) return cfg_.pred_window(slot_[slot].warp, arch);
-  const unsigned p = pfree_.front();
-  pfree_.pop_front();
+  const unsigned p = pfree_.alloc();
   if (powner_[p]) err("V-03: predicate pp%u allocated while slot %u owns it", p, powner_[p] - 1);
   powner_[p] = uint8_t(slot + 1);
   ++slot_[slot].held_pred;
@@ -301,7 +307,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
   }
   gowner_[p] = 0;
   --slot_[slot].held_gpr;
-  gfree_.push_back(p);
+  if (!gfree_.free(p)) err("V-01: GPR p%u freed twice", p);
 }
 
 void Core::freePred(unsigned slot, unsigned p) {
@@ -313,7 +319,7 @@ void Core::freePred(unsigned slot, unsigned p) {
   }
   powner_[p] = 0;
   --slot_[slot].held_pred;
-  pfree_.push_back(p);
+  if (!pfree_.free(p)) err("V-02: predicate pp%u freed twice", p);
 }
 
 // ---- reservation stations and the dependency matrix (A-62, A-73) ---------------------
@@ -523,6 +529,7 @@ void Core::cancel(unsigned e) {
       }
       count("cancel.replay");
       ev("cancel", slot_[y.slot].warp, i, depth + 1, r.u.tid);
+      oev(OoeEv::kCancelReplay, slot_[y.slot].warp, i, depth + 1, r.u.tid);
       changed = true;
     }
   }
@@ -773,12 +780,12 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
   bool stores_at_miu = false;
-  unsigned n = 0, deferred = 0;
+  unsigned n = 0, deferred = 0, other = 0;
   for (unsigned k = first; k < s.count; ++k) {
     const unsigned idx = (s.head + k) % cfg_.rob_depth;
     RobEntry &r = s.rob[idx];
     ++n;
-    if (!to_retirement && r.u.group_mask != gmask) count("squash.cross_group");   // A-31
+    if (!to_retirement && r.u.group_mask != gmask) { count("squash.cross_group"); ++other; }   // A-31
     if (r.rs_main != kNoEntry) rsFree(r.rs_main);
     if (r.rs_copy != kNoEntry) rsFree(r.rs_copy);
     r.rs_main = r.rs_copy = kNoEntry;
@@ -791,10 +798,14 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
       r.stale_dones = r.rcu_dones_owed;
       ++deferred;
       ev("deferred_free", s.warp, tagOf(slot, idx), 0, r.u.tid);
+      oev(OoeEv::kDeferredFree, s.warp, tagOf(slot, idx), 0, r.u.tid);
     } else {
       releaseEntry(slot, idx);
     }
   }
+  if (other)
+    oev(OoeEv::kCrossGroupSquash, s.warp, other, tagOf(slot, unsigned(keep_idx)),
+        s.rob[unsigned(keep_idx)].u.tid);
   count("squash.entries", n);
   count("squash.deferred", deferred);
   if (stores_at_miu) {
@@ -1106,12 +1117,14 @@ void Core::retire() {
         out.status.push_back({s.warp, false, true, true, s.retired_since_restore});
         s.miss_reported = true;
         count("demote_trigger.mlc_miss");
+        oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
       const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
       if (stall > lim && !s.stalled_reported) {
         out.status.push_back({s.warp, false, true, h.mlc_miss, s.retired_since_restore});
         s.stalled_reported = true;
         count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
+        oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
       }
     }
   }
@@ -1226,9 +1239,17 @@ void Core::select() {
     }
     // Counterfactual (Memory operations): a memop held only on an
     // unconfirmed source while an MIU slot went unused.
-    if (miu && !rowConfirmed(e) && mports != cfg_.memop_width) count("memop.held_unconfirmed");
-    else if (predHold(x.slot, slot_[x.slot].rob[x.rob])) count("hold.pred_window");
-    else count("ready_not_selected");   // per warp per cycle (Events)
+    const unsigned w = slot_[x.slot].warp;
+    const uint64_t tid = slot_[x.slot].rob[x.rob].u.tid;
+    if (miu && !rowConfirmed(e) && mports != cfg_.memop_width) {
+      count("memop.held_unconfirmed");
+      oev(OoeEv::kMemopHeld, w, e, 0, tid);
+    } else if (predHold(x.slot, slot_[x.slot].rob[x.rob])) {
+      count("hold.pred_window");
+    } else {
+      count("ready_not_selected");   // per entry per cycle (Events)
+      oev(OoeEv::kReadyNotSelected, w, e, 0, tid);
+    }
   }
   rr_select_ = (rr_select_ + 1) % slot_.size();
 }
@@ -1242,8 +1263,11 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   x.issue_at = now_;
   // Memop hold cycles (Events): from the first cycle its operands were all
   // woken to its issue, the cost of waiting for confirmation.
-  if (x.cls == RsCls::kMiu)
-    ++histograms["memop_hold_cycles"][x.ready_seen ? now_ - x.ready_since : 0];
+  if (x.cls == RsCls::kMiu) {
+    const uint64_t held = x.ready_seen ? now_ - x.ready_since : 0;
+    ++histograms["memop_hold_cycles"][held];
+    oev(OoeEv::kMemopHoldCycles, s.warp, tagOf(x.slot, x.rob), held, u.tid);
+  }
   const bool first = !x.ever_issued;
   x.ever_issued = true;
   setWakes(e);
@@ -1312,6 +1336,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     r.copy_pending = true;
     r.copy_land = now_ + cfg_.lat_lane;
     ev("copy", s.warp, is.rob_tag, 0, u.tid);
+    oev(OoeEv::kCopyIssue, s.warp, is.rob_tag, copy_port, u.tid);
     ev("issue", s.warp, copy_port, r.rs_copy, u.tid);
   }
   if (r.is_mem) {
@@ -1340,10 +1365,26 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   Slot &s = slot_[si];
   if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
   if (s.fault_stop) { count("hold.fault"); return false; }
-  if (s.chwidth_hold) { count("hold.chwidth"); ev("stall", s.warp, 1); return false; }
-  if (s.bar_hold) { count("hold.barrier"); ev("stall", s.warp, 2); return false; }
-  if (s.count == cfg_.rob_depth) { count("stall.rob_full"); return false; }
-  if (s.rob[s.tail].valid) { count("stall.rob_slot_held"); return false; }
+  if (s.chwidth_hold) {
+    count("hold.chwidth");
+    oev(OoeEv::kChwidthHold, s.warp, tagOf(si, s.chwidth_rob), 0, u.tid);
+    return false;
+  }
+  if (s.bar_hold) {
+    count("hold.barrier");
+    oev(OoeEv::kBarrierHold, s.warp, s.bar_id, 0, u.tid);
+    return false;
+  }
+  if (s.count == cfg_.rob_depth) {
+    count("stall.rob_full");
+    oev(OoeEv::kRobFull, s.warp, s.count, 0, u.tid);
+    return false;
+  }
+  if (s.rob[s.tail].valid) {
+    count("stall.rob_slot_held");
+    oev(OoeEv::kRobSlotHeld, s.warp, tagOf(si, s.tail), 0, u.tid);
+    return false;
+  }
   const SchedAttr &a = u.attr;
   const bool nop = u.shape.exit || u.decode_fault;
   const bool mem = !nop && a.rs_miu;
@@ -1357,20 +1398,45 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rs_[e].valid;
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rs_[e].valid;
     const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
-    if (free_rcu < need_rcu) { count("stall.rs_full.rcu"); return false; }
-    if (free_miu < need_miu) { count("stall.rs_full.miu"); return false; }
+    if (free_rcu < need_rcu) {
+      count("stall.rs_full.rcu");
+      oev(OoeEv::kRsFull, s.warp, 0, free_rcu, u.tid);
+      return false;
+    }
+    if (free_miu < need_miu) {
+      count("stall.rs_full.miu");
+      oev(OoeEv::kRsFull, s.warp, 1, free_miu, u.tid);
+      return false;
+    }
     const unsigned cap = cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_;
-    if (s.rs_held + need_rcu + need_miu > cap) { count("stall.rs_warp_cap"); return false; }
+    if (s.rs_held + need_rcu + need_miu > cap) {
+      count("stall.rs_warp_cap");
+      oev(OoeEv::kRsWarpCap, s.warp, s.rs_held, cap, u.tid);
+      return false;
+    }
   }
   if (wgpr && !gprAllowed(si, 1)) {
-    if (gfree_.empty()) count("stall.gpr_empty");
-    else if (s.held_gpr + 1 > kArchGprs + cfg_.ren_ceil) count("stall.gpr_ceiling");
-    else count("stall.gpr_floor");
+    if (gfree_.empty()) {
+      count("stall.gpr_empty");
+      oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
+    } else if (s.held_gpr + 1 > kArchGprs + cfg_.ren_ceil) {
+      count("stall.gpr_ceiling");
+      oev(OoeEv::kRenameLimit, s.warp, 1, 0, u.tid);
+    } else {
+      count("stall.gpr_floor");
+      oev(OoeEv::kRenameLimit, s.warp, 0, 0, u.tid);
+    }
     return false;
   }
   if (!nop && u.pred_we && cfg_.rename_preds && !predAllowed(si, 1)) {
-    if (pfree_.empty()) count("stall.pred_empty");
-    else count("stall.pred_floor_ceiling");
+    if (pfree_.empty()) {
+      count("stall.pred_empty");
+      oev(OoeEv::kPredEmpty, s.warp, s.held_pred, 0, u.tid);
+    } else {
+      count("stall.pred_floor_ceiling");
+      oev(OoeEv::kRenameLimit, s.warp, s.held_pred + 1 > kArchPreds + cfg_.pred_ren_ceil ? 1 : 0,
+          1, u.tid);
+    }
     return false;
   }
   if (!nop && a.branch) {
@@ -1422,7 +1488,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.ckpt_live = true;
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
-    if (a.serial == kSerBarrier) s.bar_hold = true;
+    if (a.serial == kSerBarrier) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
     r.rs_main = rsAlloc(mem ? RsCls::kMiu : RsCls::kRcu, si, idx, false);
     rs_[r.rs_main].produces = wgpr || u.pred_we;
@@ -1491,7 +1557,10 @@ void Core::sendRedirect() {
       slot_[si].notice_sent = true;
       slot_[si].notice_lands = now_ + cfg_.redirect_lat;
     }
-    if (!redirects_.empty()) count("stall.redirect_busy", redirects_.size());
+    if (!redirects_.empty()) {
+      count("stall.redirect_busy", redirects_.size());
+      oev(OoeEv::kRedirectBusy, redirects_.front().warp, redirects_.size(), 0, redirects_.front().tid);
+    }
   }
   // Every checkpoint freed this cycle, in one message (A-56).
   out.free_mask = free_mask_;
@@ -1511,11 +1580,8 @@ void Core::checkInvariants() {
   // V-01: free list + every slot's owned registers partition the pool, and
   // a slot owns exactly its committed map plus its in-flight destinations.
   std::vector<int> where(cfg_.phys_regs, -1);
-  for (unsigned p : gfree_) {
-    if (p >= cfg_.phys_regs) { bad("V-29", "the free list holds a register outside the pool"); continue; }
-    if (where[p] != -1) bad("V-01", "a register is on the free list twice");
-    where[p] = 99;
-  }
+  for (unsigned p = 0; p != cfg_.phys_regs; ++p)
+    if (gfree_.has(p)) where[p] = 99;
   for (unsigned si = 0; si != slot_.size(); ++si) {
     const Slot &s = slot_[si];
     std::set<unsigned> own;

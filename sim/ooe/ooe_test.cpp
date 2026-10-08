@@ -883,6 +883,27 @@ void testBarrier() {
   e.finish();
 }
 
+/// The free list as the RTL builds it (OI-22): allocation from a rotating
+/// pointer, so a freed register comes back only once the pointer wraps, and a
+/// register freed in a cycle is not allocated until the next.
+void testFreeVec() {
+  g_test = "free-vec";
+  FreeVec f;
+  f.reset(8);
+  for (unsigned i = 0; i != 3; ++i) EXPECT(f.alloc() == i, "first pass in order");
+  EXPECT(f.free(1), "free p1");
+  EXPECT(!f.free(1), "a double free is refused");
+  EXPECT(f.size() == 6 && f.ready() == 5, "p1 pending until the clock");
+  for (unsigned i = 3; i != 8; ++i) EXPECT(f.alloc() == i, "past the freed p1 to the end");
+  EXPECT(f.empty(), "p1 not allocatable in the cycle it was freed");
+  f.clock();
+  EXPECT(f.alloc() == 1, "p1 after the pointer wraps");
+  EXPECT(f.empty() && f.size() == 0, "all allocated");
+  for (unsigned p : {6u, 2u, 4u}) f.free(p);
+  f.clock();
+  EXPECT(f.alloc() == 2 && f.alloc() == 4 && f.alloc() == 6, "rotating from p2");
+}
+
 void testChwidth() {
   g_test = "chwidth";
   Config c = baseConfig();
@@ -1026,6 +1047,9 @@ void sweep() {
     return double(total) / 6;
   };
   Config base = baseConfig();
+  // No per-warp limits unless swept: the parameters' "no limit" values
+  // equal today's sizes, and would limit a larger one.
+  base.rs_warp_cap = base.decq_warp_max = 0;
   const double ref = run(base);
   std::printf("| knob | value | cycles | vs default |\n|---|---|---|---|\n");
   std::printf("| (default) | | %.0f | 1.000 |\n", ref);
@@ -1065,6 +1089,7 @@ int main(int argc, char **argv) {
   testFault();
   testBarrier();
   testChwidth();
+  testFreeVec();
   testFixedWindowPreds();
   testRandom(seeds);
   testControls();
