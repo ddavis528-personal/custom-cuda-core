@@ -48,6 +48,7 @@ it.
 | PF-24 | Divergent branch prediction | FET | deferred (doc) |
 | PF-25 | Predicate renaming in place of the fixed-window holds | rename | adopted (OI-3) |
 | PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
+| PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | deferred (DA, AR-13) |
 
 ## Entries
 
@@ -345,3 +346,21 @@ it.
 - **Signal:** cycles where a ready lane op waits behind another lane op
   whose mask is disjoint from it (to add, `ready_not_selected` split by
   that cause).
+
+### PF-27 Fold section alignment into the producing op
+
+- **Now:** where a narrow op's operands sit in different sections, rename
+  inserts an explicit move, executed in RCU on RCU's own grant (DA's
+  responses OI-30 and AR-13, 2026-10-08). It costs no section throughput,
+  but it takes an issue slot and a temporary slice, and it adds RCU's
+  latency to the consumer.
+- **Alternative:** the producing load or ALU op writes its result straight
+  into the section its consumer needs, so no move exists.
+- **Cost:** the producer's latency would then depend on its destination's
+  slice position. That is variable latency into the bypass network and a
+  new set of bypass cases, which is why it was rejected for now. A
+  read-path byte rotate on one operand port is the other way to remove
+  the moves (AR-13).
+- **Signal:** inserted moves per narrow op on `vadd16` (to add, once slice
+  placement exists: `rename.section_move`). Also the cycles a move waits
+  because four narrow ops hold the four issue slots (AR-13's open point).
