@@ -101,12 +101,15 @@ private:
       if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages;
       if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages;
     }
-    // CCV_LAT_L1_MISS_WAKE is generated from the same links (OI-13); a
-    // build whose parameters and wiring disagree is stale, not a run.
+    // CCV_LAT_L1_MISS_WAKE is generated from the same links (OI-13), plus
+    // the cycle an event-driven wake loses against a timed one (OA's
+    // response OI-26); a build whose parameters and wiring disagree is
+    // stale, not a run.
     const int d = int(data_link) - int(cmpl_link) - int(c.issue_link) + 1;
-    if (unsigned(d > 0 ? d : 0) != c.cmpl_wake_delay) {
-      std::fprintf(stderr, "ooe: CCV_LAT_L1_MISS_WAKE %u, but the wiring gives %d: regenerate\n",
-                   c.cmpl_wake_delay, d > 0 ? d : 0);
+    const unsigned want = unsigned(d > 0 ? d : 0) + 1;
+    if (want != c.cmpl_wake_delay) {
+      std::fprintf(stderr, "ooe: CCV_LAT_L1_MISS_WAKE %u, but the wiring gives %u: regenerate\n",
+                   c.cmpl_wake_delay, want);
       std::abort();
     }
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {

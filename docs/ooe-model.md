@@ -69,9 +69,12 @@ field:
   checked only once a cancel has settled. The wavefront it has not reached
   is exactly what V-15 forbids at rest.
 
-The post-miss wake's extra cycle (OA's response OI-26) belongs to
-`CCV_LAT_L1_MISS_WAKE`, which TI's generator folds it into. When it does,
-the adapter's check that the parameter matches the wiring gains the same +1.
+The post-miss wake's extra cycle (OA's response OI-26) is in
+`CCV_LAT_L1_MISS_WAKE`, now defined from the completion's arrival to the
+dependant's earliest select: 1 with abutted links, 3 under `links_split`. A
+completion-driven wake cannot be raised a cycle early, as a timed one is.
+The adapter's check that the parameter matches the wiring carries the same
++1.
 
 ## Decisions the design doc leaves open
 
