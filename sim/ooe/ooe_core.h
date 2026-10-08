@@ -165,7 +165,7 @@ struct SchedAttr {
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3 };
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
 /// derives these from the skeleton's opcode table -- the one place OOE still

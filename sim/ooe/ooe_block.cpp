@@ -9,7 +9,7 @@
 //     events, and check failures for the core's contract and invariant errors;
 //   - the negative controls that act on a message (corrupt-ckpt, stale-free,
 //     drop-negate, skip-copy, corrupt-disp); free-new acts inside the core;
-//   - A-75's temporary opcode lookup (UopShape), until DEC delivers it;
+//   - DEC's src_valid, pred_use and imm_kind into UopShape (A-75, TI-1);
 //   - the S1 configuration (docs/ooe-model.md, "S1 modes"): which of the
 //     core's mechanisms the S1 neighbours can carry today.
 //===----------------------------------------------------------------------===//
@@ -174,22 +174,21 @@ private:
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
     u.decode_fault = get(p, c.dec_ooe, "decode_fault") != 0;
-    // TEMPORARY (A-75): what DEC does not yet deliver -- which source
-    // fields are real reads, guard or data predicate, predicate logic's
-    // sources, exit, srd's identity -- from the skeleton's opcode table.
-    // Nothing else in OOE looks at opcode.
+    // What DEC decodes so OOE never looks at opcode (A-75, TI-1): which
+    // source fields are real reads, how the predicate is read, what imm
+    // holds, and exit as sched_attr's serial code 3.
     if (!u.decode_fault) {
-      const OpInfo *op = opByCode(u.opcode);
-      if (!op) {
-        k_.fail("ooe: a uop it cannot execute");
+      u.shape.gpr_reads = uint8_t(get(p, c.dec_ooe, "src_valid") & 7u);
+      const unsigned pu = unsigned(get(p, c.dec_ooe, "pred_use"));
+      const unsigned ik = unsigned(get(p, c.dec_ooe, "imm_kind"));
+      u.shape.guard = pu == kPredUseGuard;
+      u.shape.pdata = pu == kPredUseData;
+      u.shape.pred_logic = ik == kImmPredSrcs;
+      u.shape.exit = u.attr.serial == kSerExit;
+      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
+      if (pu > kPredUseData) {
+        k_.fail("ooe: pred_use %u is not a code", pu);
         u.decode_fault = true;
-      } else {
-        for (unsigned i = 0; i != op->nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
-        u.shape.guard = op->guard;
-        u.shape.pdata = op->pdata;
-        u.shape.pred_logic = op->cls == kPredLogic;
-        u.shape.exit = op->cls == kExit;
-        u.shape.srd = op->srd_sel < 0 ? -1 : op->or_lane ? 0 : 1;
       }
     }
     return u;

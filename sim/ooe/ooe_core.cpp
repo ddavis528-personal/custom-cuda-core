@@ -1300,6 +1300,13 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
     // (the lane ORs its index in), %ctaid for selector 1.
     is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5 : u.shape.srd == 1 ? s.ctaid : u.imm;
+    // Predicate logic's two sources, renamed: each physical predicate with
+    // its negate above it, where DEC's qualifiers were (TI-1).
+    if (u.shape.pred_logic) {
+      constexpr unsigned w = ccv::prov::kWPhysPred;
+      auto q = [&](unsigned pp, unsigned qual) { return pp | ((qual >> 2) & 1u) << w; };
+      is.imm = q(r.pq[0], u.imm & 7) | q(r.pq[1], (u.imm >> 3) & 7) << (w + 1);
+    }
   }
   out.issues.push_back(is);
   if (!r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;

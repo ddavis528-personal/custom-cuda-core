@@ -319,6 +319,13 @@ private:
     uint32_t imm = e.imm;
     if (e.op->srd_sel >= 0)
       imm = e.op->or_lane ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
+    // Predicate logic's sources go to RCU as physical predicates (TI-1):
+    // this stub renames no predicate, so each is its window.
+    if (e.op->cls == kPredLogic) {
+      constexpr unsigned w = ccv::prov::kWPhysPred;
+      auto q = [&](unsigned qual) { return physPred(e.warp, qual & 3) | ((qual >> 2) & 1u) << w; };
+      imm = q(e.imm & 7) | q((e.imm >> 3) & 7) << (w + 1);
+    }
     if (!mem) put(is, c.ooe_rcu, "imm", imm);
     put(is, c.ooe_rcu, "phys_dst", e.op->gdst ? e.pnew : 0);
     put(is, c.ooe_rcu, "phys_pred_guard", e.ppguard);

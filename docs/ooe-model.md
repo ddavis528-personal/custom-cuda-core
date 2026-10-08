@@ -200,7 +200,7 @@ one-line change when its neighbour is ready.
 |---|---|---|---|
 | `bypass` | off | RCU reads the PRF the cycle it takes an issue, after nothing written that cycle. A dependant woken by any bypass wake reads stale data. The table (Bypass groups) is ignored while this is off. | An RCU or LANE bypass |
 | `l1_spec` | off | Off by default, so the kernels' pinned controls keep their numbers. TI's MIU now completes an L1 hit at exactly `CCV_LAT_L1_CMPL` (A-46; TI's response OI-5, `31f6143`), and the gate runs every kernel again with `CCV_OOE_CONFIG=l1_spec=1`, with its own controls. | Turning it on by default, once TI re-pins the default run's controls (OI-5) |
-| `rename_preds` | off | RCU reads predicate-logic sources, and `compareFinal` reads final predicates, at fixed `physPred` windows. | A-75's predicate-source fields, and a committed-predicate-map hook |
+| `rename_preds` | off | `compareFinal` reads final predicates at fixed `physPred` windows unless OOE sets the committed predicate map. Predicate logic's sources now reach RCU renamed (TI-1). | Setting `Kernel::prat0` at retirement (OI-3); TI-1's fields are in |
 | `memop_rcu_done` | off | Settled (OI-4, Daniel 2026-10-08): RCU sends no done for a memop, and a memop completes on MIU's completion alone. The flag stays for the unit tests until OI drops it. | Done: TI's RCU stub stopped sending them |
 
 With `rename_preds` off, each warp's predicates live at their window. OOE
