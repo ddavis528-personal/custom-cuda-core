@@ -405,7 +405,7 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
 /// of its data register's sections; an op RCU executes, or a
 /// warp-collective or predicate op, takes R; a lane op takes the union of
 /// its operands' sections (OI-30 revised), widened to its unit's minimum.
-unsigned Core::resOf(const RobEntry &r, bool copy_half) const {
+unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
   const Uop &u = r.u;
   const SchedAttr &a = u.attr;
   if (r.is_mem && !copy_half) {
@@ -432,6 +432,7 @@ unsigned Core::resOf(const RobEntry &r, bool copy_half) const {
   }
   if (!m) m = 1;                       // no GPR operand: section 0
   if (cfg_.inject_narrow_footprint) return m & (~m + 1u);
+  if (!widen) return m;                // operand spread alone (AR, OI-34)
   if (fm >= 4) m = 0xFu;
   else if (fm == 2) m |= ((m & 0x5u) << 1) | ((m & 0xAu) >> 1);
   return m;
@@ -1435,7 +1436,16 @@ void Core::selectSectioned() {
     const RobEntry &r = slot_[x.slot].rob[x.rob];
     const unsigned port = unsigned(__builtin_ctz(x.res));
     const unsigned secs = unsigned(__builtin_popcount(x.res & 0xFu));
-    if (secs) ++histograms["sections_per_op.w" + std::to_string(r.u.w)][secs];
+    if (secs) {
+      ++histograms["sections_per_op.w" + std::to_string(r.u.w)][secs];
+      // AR's split (OI-34): by bypass group (the copy apart), the footprint
+      // beside the operands' own spread, so placement and the unit minimum
+      // read separately.
+      const std::string g = x.copy ? "copy" : "g" + std::to_string(r.u.attr.bypass_group & 7);
+      const std::string k = g + ".w" + std::to_string(r.u.w);
+      ++histograms["foot." + k][secs];
+      ++histograms["spread." + k][unsigned(__builtin_popcount(resOf(r, x.copy, false) & 0xFu))];
+    }
     // V-63: every lane operand inside the footprint.
     if (!(x.res >> 4) && !cfg_.inject_narrow_footprint) {
       const unsigned want = resOf(r, x.copy) & 0xFu;

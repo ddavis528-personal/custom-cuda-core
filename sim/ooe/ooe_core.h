@@ -648,7 +648,7 @@ private:
   unsigned placePos(unsigned slot, const Uop &u, bool merge) const;
   /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
   /// 4 RCU (R), 5-8 MIU pipes P0-P3.
-  unsigned resOf(const RobEntry &r, bool copy_half) const;
+  unsigned resOf(const RobEntry &r, bool copy_half, bool widen = true) const;
   void selectSectioned();
   Issue makeIssue(unsigned slot, unsigned idx, unsigned port) const;
   void issueCopy(unsigned slot, unsigned idx, unsigned port);

@@ -1313,12 +1313,14 @@ void sweep() {
 ///   aluN: eight N-bit accumulators, initialised, one op each per
 ///   iteration, each reading a shared narrow operand R12 (lane-bound; alu32
 ///   is the full-width reference); aluN-self the same with no shared
-///   operand (acc = acc op acc), the ceiling for a lone warp.
+///   operand (acc = acc op acc), the ceiling for a lone warp;
+///   fpN-self: the same in N-bit FP (E4M3 at 8 bits, IS-7), where the
+///   unit minimum, not placement, sets the footprint.
 /// The loop control (an RCU index add, a 32-bit setp, the branch) is in
 /// every body, as compiled code carries it.
 void sweepSections() {
   enum KK { kVadd, kRed, kCvt, kAlu, kAluSelf };
-  auto body = [](KK kk, unsigned w, unsigned iters) {
+  auto body = [](KK kk, unsigned w, unsigned iters, Kind op = kLane) {
     std::vector<Op> p;
     for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
     // aluN: the narrow operand R12 and eight accumulators, each initialised.
@@ -1327,7 +1329,7 @@ void sweepSections() {
       if (kk == kAlu || kk == kAluSelf) {
         // Eight independent accumulators, one op each per iteration.
         for (unsigned j = 0; j != 8; ++j) {
-          Op a; a.k = kLane; a.dst = 4 + j; a.w = w; a.src[0] = 4 + j; a.src[1] = kk == kAlu ? 12 : 4 + j; a.nsrc = 2; p.push_back(a);
+          Op a; a.k = op; a.dst = 4 + j; a.w = w; a.src[0] = 4 + j; a.src[1] = kk == kAlu ? 12 : 4 + j; a.nsrc = 2; p.push_back(a);
         }
       } else {
         Op x; x.k = kLoad; x.dst = 4; x.w = w; x.src[0] = 0; x.nsrc = 1; p.push_back(x);
@@ -1354,13 +1356,16 @@ void sweepSections() {
     Op e; e.k = kExit; p.push_back(e);
     return p;
   };
-  struct Kern { const char *name; KK kk; unsigned w; };
+  struct Kern { const char *name; KK kk; unsigned w; Kind op = kLane; };
   const Kern ks[] = {{"alu8", kAlu, 2}, {"alu16", kAlu, 1}, {"alu32", kAlu, 0}, {"alu8-self", kAluSelf, 2},
                      {"alu32-self", kAluSelf, 0}, {"vadd8", kVadd, 2},
-                     {"vadd16", kVadd, 1}, {"red8", kRed, 2}, {"cvt8", kCvt, 2}};
+                     {"vadd16", kVadd, 1}, {"red8", kRed, 2}, {"cvt8", kCvt, 2},
+                     {"fp8-self", kAluSelf, 2, kFp}, {"fp32-self", kAluSelf, 0, kFp}};
   const char *pn[] = {"slot", "0", "rotate-0", "rotate-slot", "slot+reg"};
-  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | sections/narrow op | idle sections/cycle | lost resource |\n"
-              "|---|---|---|---|---|---|---|---|---|\n");
+  // Footprint and operand spread per bypass group (AR's response OI-34):
+  // integer at the kernel's width, FP over every width (cvt writes 32 bits).
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
+              "|---|---|---|---|---|---|---|---|---|---|\n");
   for (const Kern &k : ks)
     for (unsigned warps : {1u, 4u}) {
       double ref = 0;
@@ -1372,23 +1377,38 @@ void sweepSections() {
           c.sectioned = true;
           c.place = place;
           c.loads_pass_loads = oa13;
-          uint64_t cyc = 0, narrow = 0, nsec = 0, cycles_seen = 0, idle = 0, lost = 0;
+          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0;
+          // [int, FP] x [footprint, spread]: op count and section sum.
+          uint64_t n[2][2] = {}, sum[2][2] = {};
           const unsigned seeds = 4;
           for (unsigned seed = 1; seed <= seeds; ++seed) {
             Env e(c, seed);
             e.miss_pct = 10;
-            for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, body(k.kk, k.w, 32));
+            for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, body(k.kk, k.w, 32, k.op));
             e.finish();
             EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
             cyc += e.t;
-            for (auto &h : e.core.histograms["sections_per_op.w" + std::to_string(k.w)]) { narrow += h.second; nsec += h.first * h.second; }
+            for (auto &kv : e.core.histograms) {
+              const std::string &name = kv.first;
+              const bool foot = name.rfind("foot.", 0) == 0, spread = name.rfind("spread.", 0) == 0;
+              if (!foot && !spread) continue;
+              const std::string gw = name.substr(foot ? 5 : 7);
+              int g = -1;
+              if (gw == "g0.w" + std::to_string(k.w)) g = 0;
+              else if (gw.rfind("g1.", 0) == 0) g = 1;
+              if (g < 0) continue;
+              for (auto &h : kv.second) { n[g][spread] += h.second; sum[g][spread] += h.first * h.second; }
+            }
             for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
             lost += e.core.counters["select.lost_resource"];
           }
           const double cy = double(cyc) / seeds;
           if (place == 0 && !oa13) ref = cy;
-          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.0f |\n", k.name, warps, pn[place],
-                      oa13 ? "on" : "off", cy, cy / ref, narrow ? double(nsec) / narrow : 0.0,
+          auto mean = [&](int g, int sp) { return n[g][sp] ? double(sum[g][sp]) / double(n[g][sp]) : 0.0; };
+          char fp[32] = "-";
+          if (n[1][0]) std::snprintf(fp, sizeof fp, "%.2f / %.2f", mean(1, 0), mean(1, 1));
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps, pn[place],
+                      oa13 ? "on" : "off", cy, cy / ref, mean(0, 0), mean(0, 1), fp,
                       cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
         }
     }

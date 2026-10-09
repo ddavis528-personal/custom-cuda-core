@@ -497,6 +497,8 @@ prints from the command):
 | vadd16 | 4 | 1034 | 1067 | 1059 | 1073 | 1052 (4.0 sections/op) |
 | red8 | 4 | 367 | 377 | 372 | 371 | 367 |
 | cvt8 | 4 | 1246 | 1254 | 1252 | 1246 | 1246 |
+| fp8-self (FP minimum 2) | 4 | 838 | 1232 | 1232 | 838 | 798 |
+| fp32-self (reference) | 4 | 1232 | | | | |
 
 - **Four warps, lane-bound:** home = slot index is 2.0x over home 0 at 8
   bits and 1.5x at 16. Home 0 is exactly alu32: no narrow gain at all.
@@ -516,6 +518,15 @@ prints from the command):
 - **vadd, red and cvt are ROB-bound here** (`stall.rob_full` is most of
   the cycles): placement moves them by 4% at most. Under OA-15 cvt8 is
   placement-blind.
+- **Footprint against spread, per bypass group** (AR's response OI-34;
+  both columns print). Spread is the union of the operands' own sections;
+  footprint is that union widened to `foot_min`. Integer footprint equals
+  spread in every run, so any integer width above 1 section is placement's.
+  FP at 8 bits (fp8-self, E4M3 per IS-7) has footprint 2 and spread 1:
+  the unit minimum, not placement. Four warps of fp8-self take 838 cycles
+  at an FP minimum of 2 and 605 at a minimum of 1, the same as int8. That
+  is 1.47x over fp32 rather than 2.04x. cvt8's FP ops write 32 bits, so
+  their 4 sections come from their operands, under either minimum.
 - **OA-13** changes nothing except vadd8 under slot + reg (6%). The loads
   of one iteration become ready together. Its case is gathers and pointer
   chasing, which needs the corpus.
