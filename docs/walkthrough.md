@@ -473,6 +473,7 @@ a script is one. Its sections:
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)
 - Stage 4b -- OOE model unit tests (sim/ooe/)
+- Stage 4c -- OOE RTL (rtl/ooe/)
 - SV top -- rtl/top/ (generated, tracked)
 - Formal proofs -- one credited link, and the block clock gate
 - Physical primitives -- sequential repeater
