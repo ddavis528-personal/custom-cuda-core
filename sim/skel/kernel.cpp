@@ -486,6 +486,7 @@ private:
     bool store = false;
     unsigned tag = 0, memop_slot = 0, addr_slot = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
+    unsigned dst_pos = 0, chw = 0;          ///< likewise: the slice a load writes
     uint32_t active = 0;             ///< lanes that may access memory
     uint64_t tid = 0;
     std::array<uint64_t, kLanes> addr{};
@@ -527,6 +528,15 @@ private:
       while (has(c.ooe_miu, s)) {
         Receiver::Msg m = take(c.ooe_miu, s);
         const unsigned tag = unsigned(get(m.payload, c.ooe_miu, "rob_tag"));
+        // The memop's pipe footprint (OI-33): its width's span of pipes, from
+        // its data position. MIU sizes its per-pipe work by it. A bulk
+        // discard's fields are reserved zero (A-41), pipes among them.
+        const unsigned chw = unsigned(get(m.payload, c.ooe_miu, "chwidth"));
+        const unsigned pos = unsigned(get(m.payload, c.ooe_miu, "dst_pos"));
+        const unsigned pipes = unsigned(get(m.payload, c.ooe_miu, "pipes"));
+        if (get(m.payload, c.ooe_miu, "mem_op") != kMemBulkDiscard && pipes != maskOf(chw, pos))
+          k_.fail("miu: rob tag %u has pipes %x, but a %u-bit memop at position %u takes %x",
+                  tag, pipes, 32u >> chw, pos, maskOf(chw, pos));
         memop_[tag] = {s, m.payload, now_};
         order_.push_back(tag);
       }
@@ -631,6 +641,8 @@ private:
     j.memop_slot = mo.slot;
     j.phys_dst = unsigned(get(mo.msg, c.ooe_miu, "phys_dst"));
     j.phys_pred = unsigned(get(mo.msg, c.ooe_miu, "phys_pred"));
+    j.dst_pos = unsigned(get(mo.msg, c.ooe_miu, "dst_pos"));
+    j.chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
     j.addr_slot = a->second.slot;
     j.tid = a->second.tid;
     // The L1 contract (A-46, A-61): a hit's completion reaches OOE at its
@@ -787,6 +799,8 @@ private:
       put(d, c.miu_rcu, "active_mask", job_.active);
       put(d, c.miu_rcu, "phys_dst",
           job_.phys_dst + (k_.brk == "corrupt-echo" && uidSeq(job_.tid) == 12 ? 1u : 0u));
+      put(d, c.miu_rcu, "dst_pos", job_.dst_pos);
+      put(d, c.miu_rcu, "dst_width", job_.chw);
       put(d, c.miu_rcu, "phys_pred", job_.phys_pred);
       put(d, c.miu_rcu, "pred_we", 0);          // a load writes no predicate
       const Record *r = rec(job_.tid, "miu");
@@ -827,15 +841,31 @@ private:
 
 // ---- LANE: one of 32; operands in, oracle result out ------------------------------
 
-// The lane-local bypass select (A-59, TI-8): one per operand slot of
-// ccv_rcu_lane_ops and a last one for merge_data. LSB first: forward, the
-// producer's issue slot, and its age less CCV_LAT_LANE_BYP.
+// Sectioned lanes (OI-28 to OI-31, TI-9): ccv_rcu_lane_ops is one message a
+// cycle, and up to four ops share it, each in its own sections. The
+// per-section fields pack section 0 at the LSBs. The per-port ones
+// (sec_opnd_pos, sec_opnd_width, operand_byp) pack a section's four ports
+// together, the three operands then merge_data, so entry k * kBypOperands + i
+// is section k's port i. sec_owner names, per section, the lead section of
+// the op holding it (TI-10). The S1 stubs model full-width ops only: one op
+// a message, holding every section, owned by S0.
 constexpr unsigned kBypOperands = ccv::prelim::kOperandsPerLane + 1;
 constexpr unsigned kBypMerge = ccv::prelim::kOperandsPerLane;
 constexpr unsigned clog2c(unsigned x) { return x <= 1 ? 0 : 1 + clog2c((x + 1) / 2); }
-constexpr unsigned kBypSlotBits = clog2c(kIssueWidth);
-static_assert(ccv::prov::kWLaneBypSel == 1 + kBypSlotBits + ccv::prov::kWLaneBypAge,
-              "operand_byp's layout is forward, slot, age");
+/// The lane-local bypass select (A-59, TI-8): LSB first, forward, the
+/// producer's lead section, and its age less CCV_LAT_LANE_BYP.
+constexpr unsigned kBypSecBits = clog2c(kSecs);
+static_assert(ccv::prov::kWLaneBypSel == 1 + kBypSecBits + ccv::prov::kWLaneBypAge,
+              "operand_byp's layout is forward, lead section, age");
+constexpr unsigned kAllSecs = (1u << kSecs) - 1;
+
+/// Entry `k`, `w` bits wide, of a per-section (or per-section-per-port) field.
+inline unsigned getSec(const Bits &b, unsigned chan, const char *f, unsigned k, unsigned w) {
+  return unsigned(b.get(field(chan, f).lsb + w * k, w));
+}
+inline void putSec(Bits &b, unsigned chan, const char *f, unsigned k, unsigned w, unsigned v) {
+  b.set(field(chan, f).lsb + w * k, w, v);
+}
 
 class Lane : public Stub {
 public:
@@ -852,149 +882,193 @@ private:
   static_assert(ccv::prov::kLatLaneByp >= kPipe,
                 "a dependant at CCV_LAT_LANE_BYP would arrive before its producer's result");
 
-  struct Out { unsigned slot; Bits msg; uint64_t tid, at; };
-  /// This lane's results by arrival cycle and slot: what its bypass mux can
-  /// forward, kept until RCU's register file holds them (A-59).
-  struct Res { uint64_t at; unsigned slot; uint32_t v; };
+  struct Out { Bits msg; uint64_t tid, at; };
+  /// This lane's results by arrival cycle, with the lead section of the op
+  /// that held each section (-1: none): what its bypass mux can forward,
+  /// kept until RCU's register file holds them (A-59).
+  struct Res { uint64_t at; std::array<int, kSecs> lead; uint32_t v; };
 
   unsigned lane_;
   std::deque<Out> q_;
   std::deque<Res> hist_;
 
-  /// Operand slot i, or merge_data for kBypMerge: the value RCU read, or,
-  /// with its operand_byp select set, the result this lane computed on the
-  /// named slot `age` cycles before this op arrived.
+  /// Port i, or merge_data for kBypMerge, section by section: the byte RCU
+  /// read or, with that section's operand_byp select set, the byte this lane
+  /// computed for the op the select names by lead section, `age` cycles
+  /// before this message arrived.
   uint32_t operand(const Receiver::Msg &m, unsigned i, uint64_t seq) {
     const Ch &c = ch();
-    const uint32_t raw =
-        i == kBypMerge ? uint32_t(get(m.payload, c.rcu_lane, "merge_data"))
-                       : uint32_t(m.payload.get(field(c.rcu_lane, "operand").lsb + 32 * i, 32));
-    const unsigned sel = unsigned(m.payload.get(
-        field(c.rcu_lane, "operand_byp").lsb + ccv::prov::kWLaneBypSel * i,
-        ccv::prov::kWLaneBypSel));
-    if (!(sel & 1u)) return raw;
-    const unsigned slot = (sel >> 1) & ((1u << kBypSlotBits) - 1);
-    const unsigned age = (sel >> (1 + kBypSlotBits)) + ccv::prov::kLatLaneByp;
-    for (const Res &h : hist_)
-      if (h.slot == slot && h.at + age == now_) return h.v;
-    k_.fail("lane %u: seq %llu operand %u forwards slot %u from %u cycles back, "
-            "where nothing arrived", lane_, (unsigned long long)seq, i, slot, age);
-    return raw;
+    uint32_t v = i == kBypMerge
+                     ? uint32_t(get(m.payload, c.rcu_lane, "merge_data"))
+                     : uint32_t(m.payload.get(field(c.rcu_lane, "operand").lsb + 32 * i, 32));
+    for (unsigned k = 0; k != kSecs; ++k) {
+      const unsigned sel = getSec(m.payload, c.rcu_lane, "operand_byp", k * kBypOperands + i,
+                                  ccv::prov::kWLaneBypSel);
+      if (!(sel & 1u)) continue;
+      const unsigned lead = (sel >> 1) & ((1u << kBypSecBits) - 1);
+      const unsigned age = (sel >> (1 + kBypSecBits)) + ccv::prov::kLatLaneByp;
+      const Res *h = nullptr;
+      for (const Res &r : hist_)
+        if (r.at + age == now_ && r.lead[k] == int(lead)) h = &r;
+      if (!h) {
+        k_.fail("lane %u: seq %llu operand %u section %u forwards the op led by section %u "
+                "from %u cycles back, where nothing arrived",
+                lane_, (unsigned long long)seq, i, k, lead, age);
+        continue;
+      }
+      const uint32_t byte = 0xffu << (8 * k);
+      v = (v & ~byte) | (h->v & byte);
+    }
+    return v;
   }
 
   void work() override {
     const Ch &c = ch();
     while (!hist_.empty() && hist_.front().at + ccv::prov::kLatLane <= now_) hist_.pop_front();
-    for (unsigned s = 0; s != kChans[c.rcu_lane].rate; ++s)
-      while (has(c.rcu_lane, s, lane_)) {
-        Receiver::Msg m = take(c.rcu_lane, s, lane_);
-        Bits r = msgOf(c.lane_rcu);
-        // The mask arrived with valid, a cycle ahead of the operands (the
-        // channel's lead fields, Q-40). A lane it switches off does nothing:
-        // it never captures its operands, never computes, and drives no
-        // result -- modelled as poison on its outputs, so a receiver that
-        // wrote back a masked-off lane would be caught by the final compare.
-        const bool on = get(m.payload, c.rcu_lane, "pred_bit") != 0;
-        if (get(m.payload, c.rcu_lane, "opcode") == kOpCopy) {
-          copy(m, r, on);
-        } else if (const Record *rc = rec(m.tid, "lane")) {
-          const std::string at = "lane " + std::to_string(lane_);
-          k_.executing(at, m.tid);
-          const OpInfo *op = opByCode(unsigned(get(m.payload, c.rcu_lane, "opcode")));
-          if (op && inRcu(op->cls))
-            k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
-          if (op && !perLaneInput(op, *rc))
-            k_.fail("lane %u: %s has no per-lane input; RCU executes it (Q-32)",
-                    lane_, op->name);
-          if (!op || rc->op != op->name)
-            k_.fail("lane %u: seq %llu opcode is not %s", lane_,
-                    (unsigned long long)rc->seq, rc->op.c_str());
-          // Operands: what RCU read out of its register file.
-          const auto g = rc->gprUses();
-          for (size_t i = 0; on && i != g.size() && i < 3; ++i) {
-            const uint32_t got = operand(m, unsigned(i), rc->seq);
-            if (got != g[i]->v[lane_])
-              k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x",
-                      lane_, (unsigned long long)rc->seq, i, g[i]->idx, got,
-                      g[i]->v[lane_]);
-          }
-          // An immediate RCU substituted into its operand slot. srd's is
-          // identity from OOE rather than the encoded selector, and its
-          // check is the lane's own result check below.
-          if (on && op && op->alu_imm >= 0 && op->srd_sel < 0 &&
-              size_t(op->alu_imm) < rc->imms.size()) {
-            const uint32_t got = uint32_t(m.payload.get(
-                field(c.rcu_lane, "operand").lsb + 32 * unsigned(op->imm_slot), 32));
-            if (got != uint32_t(rc->imms[op->alu_imm]))
-              k_.fail("lane %u: seq %llu immediate operand %08x, oracle %08x",
-                      lane_, (unsigned long long)rc->seq, got,
-                      uint32_t(rc->imms[op->alu_imm]));
-          }
-          // pred_bit is this lane's enable: in the issue group AND past the
-          // guard. Without a guard it is the issue mask alone.
-          bool want = (rc->mask >> lane_) & 1u;
-          if (op && op->guard)
-            if (const RegVal *p = rc->predUse()) {
-              const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
-              want = want && ((((p->p >> lane_) & 1u) != 0) != neg);
-            }
-          if ((get(m.payload, c.rcu_lane, "pred_bit") != 0) != want)
-            k_.failHeld(at, m.tid, "lane %u: seq %llu pred_bit is not issue mask AND guard",
-                    lane_, (unsigned long long)rc->seq);
-          // The result: what ccv-sim computed (the "what", §1) -- except
-          // srd's, which the lane computes: the immediate RCU substituted,
-          // with the lane's hardwired index ORed in for %ctatid. OOE's
-          // identity, not the oracle, supplies the value.
-          if (!on) {
-            // Switched off: no compute; the result is the old destination
-            // RCU carried here (A-33, A-44). The oracle's post-state for an
-            // inactive lane IS its old value, so the merge is checked here.
-            const uint32_t md = operand(m, kBypMerge, rc->seq);
-            put(r, c.lane_rcu, "result", md);
-            if (const RegVal *d = rc->gprDef())
-              if (md != d->v[lane_])
-                k_.failHeld(at, m.tid, "lane %u: seq %llu merge_data %08x, but R%u keeps %08x",
-                        lane_, (unsigned long long)rc->seq, md, d->idx, d->v[lane_]);
-            // pred_out is don't-care here (RCU merges predicates): poison.
-            if (const RegVal *d = rc->predDef())
-              put(r, c.lane_rcu, "pred_out", ((d->p >> lane_) & 1u) ^ 1u);
-          } else if (const RegVal *d = rc->gprDef()) {
-            uint32_t v = d->v[lane_];
-            if (op && op->srd_sel >= 0) {
-              const uint32_t o0 = operand(m, 0, rc->seq);
-              v = op->or_lane ? (o0 | lane_) : o0;
-              if (v != d->v[lane_])
-                k_.fail("lane %u: seq %llu srd %u, oracle %u", lane_,
-                        (unsigned long long)rc->seq, v, d->v[lane_]);
-            }
-            put(r, c.lane_rcu, "result", v);
-          }
-          if (on)
-            if (const RegVal *d = rc->predDef())
-              put(r, c.lane_rcu, "pred_out", (d->p >> lane_) & 1u);
-          // A predicate read as DATA (sel's selector), negate applied.
-          if (on && op && op->pdata)
-            if (const RegVal *p = rc->predUse()) {
-              const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
-              const bool want = (((p->p >> lane_) & 1u) != 0) != neg;
-              if ((get(m.payload, c.rcu_lane, "pred_data") != 0) != want)
-                k_.failHeld(at, m.tid, "lane %u: seq %llu pred_data (sel's selector) wrong", lane_,
-                        (unsigned long long)rc->seq);
-            }
-        }
-        if (get(m.payload, c.rcu_lane, "opcode") != kOpCopy)
-          hist_.push_back({now_, s, uint32_t(get(r, c.lane_rcu, "result"))});
-        q_.push_back({s, r, m.tid, now_ + kPipe});
-      }
-    for (auto it = q_.begin(); it != q_.end();)
-      if (it->at <= now_ && can(c.lane_rcu, it->slot, lane_)) {
-        send(c.lane_rcu, it->slot, it->msg, it->tid, lane_);
-        it = q_.erase(it);
+    while (has(c.rcu_lane, 0, lane_)) {
+      Receiver::Msg m = take(c.rcu_lane, 0, lane_);
+      Bits r = msgOf(c.lane_rcu);
+      const unsigned en = unsigned(get(m.payload, c.rcu_lane, "section_en"));
+      const unsigned own = unsigned(get(m.payload, c.rcu_lane, "sec_owner"));
+      Res h{now_, {}, 0};
+      h.lead.fill(-1);
+      if (en != kAllSecs || own != 0) {
+        k_.fail("lane %u: sections %x owned %02x; only a full-width op is modelled in the S1 "
+                "stubs", lane_, en, own);
       } else {
-        ++it;
+        h.lead.fill(0);
+        execute(m, r);
+        // Every section the op held has its result here; a full-width op's
+        // predicate out rides on its lead section.
+        put(r, c.lane_rcu, "sec_valid", en);
       }
+      h.v = uint32_t(get(r, c.lane_rcu, "result"));
+      // The copy-only op writes only inactive lanes and is never a producer.
+      if (getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode) != kOpCopy)
+        hist_.push_back(h);
+      q_.push_back({r, m.tid, now_ + kPipe});
+    }
+    if (!q_.empty() && q_.front().at <= now_ && can(c.lane_rcu, 0, lane_)) {
+      send(c.lane_rcu, 0, q_.front().msg, q_.front().tid, lane_);
+      q_.pop_front();
+    }
   }
   bool busy() const override { return !q_.empty(); }
+
+  /// A full-width op: one opcode, one enable and one predicate-as-data, the
+  /// same in every section, and each operand a 32-bit register at position 0.
+  void execute(const Receiver::Msg &m, Bits &r) {
+    const Ch &c = ch();
+    const unsigned opc = getSec(m.payload, c.rcu_lane, "sec_opcode", 0, ccv::prelim::kWOpcode);
+    const unsigned pb = unsigned(get(m.payload, c.rcu_lane, "sec_pred_bit"));
+    const unsigned pdv = unsigned(get(m.payload, c.rcu_lane, "sec_pred_data"));
+    bool uniform = (pb == 0 || pb == kAllSecs) && (pdv == 0 || pdv == kAllSecs);
+    for (unsigned k = 1; k != kSecs; ++k)
+      uniform = uniform &&
+                getSec(m.payload, c.rcu_lane, "sec_opcode", k, ccv::prelim::kWOpcode) == opc;
+    for (unsigned i = 0; i != kBypOperands; ++i)
+      uniform = uniform &&
+                getSec(m.payload, c.rcu_lane, "sec_opnd_width", i, ccv::kWChwidth) == kChw32 &&
+                getSec(m.payload, c.rcu_lane, "sec_opnd_pos", i, ccv::kWPhysPos) == 0;
+    uniform = uniform && getSec(m.payload, c.rcu_lane, "sec_dst_width", 0, ccv::kWChwidth) == kChw32 &&
+              getSec(m.payload, c.rcu_lane, "sec_dst_pos", 0, ccv::kWPhysPos) == 0;
+    if (!uniform) {
+      k_.fail("lane %u: a full-width op whose sections, operands or destination disagree",
+              lane_);
+      return;
+    }
+    // The enable arrived with valid, a cycle ahead of the operands (the
+    // channel's lead fields, Q-40). A lane it switches off does nothing:
+    // it never captures its operands, never computes, and drives no result
+    // -- modelled as poison on its outputs, so a receiver that wrote back a
+    // masked-off lane would be caught by the final compare.
+    const bool on = pb != 0;
+    if (opc == kOpCopy) {
+      copy(m, r, on);
+      return;
+    }
+    const Record *rc = rec(m.tid, "lane");
+    if (!rc) return;
+    const std::string at = "lane " + std::to_string(lane_);
+    k_.executing(at, m.tid);
+    const OpInfo *op = opByCode(opc);
+    if (op && inRcu(op->cls))
+      k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
+    if (op && !perLaneInput(op, *rc))
+      k_.fail("lane %u: %s has no per-lane input; RCU executes it (Q-32)", lane_, op->name);
+    if (!op || rc->op != op->name)
+      k_.fail("lane %u: seq %llu opcode is not %s", lane_, (unsigned long long)rc->seq,
+              rc->op.c_str());
+    // Operands: what RCU read out of its register file.
+    const auto g = rc->gprUses();
+    for (size_t i = 0; on && i != g.size() && i < 3; ++i) {
+      const uint32_t got = operand(m, unsigned(i), rc->seq);
+      if (got != g[i]->v[lane_])
+        k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x", lane_,
+                    (unsigned long long)rc->seq, i, g[i]->idx, got, g[i]->v[lane_]);
+    }
+    // An immediate RCU substituted into its operand slot. srd's is
+    // identity from OOE rather than the encoded selector, and its
+    // check is the lane's own result check below.
+    if (on && op && op->alu_imm >= 0 && op->srd_sel < 0 && size_t(op->alu_imm) < rc->imms.size()) {
+      const uint32_t got = uint32_t(
+          m.payload.get(field(c.rcu_lane, "operand").lsb + 32 * unsigned(op->imm_slot), 32));
+      if (got != uint32_t(rc->imms[op->alu_imm]))
+        k_.fail("lane %u: seq %llu immediate operand %08x, oracle %08x", lane_,
+                (unsigned long long)rc->seq, got, uint32_t(rc->imms[op->alu_imm]));
+    }
+    // sec_pred_bit is this lane's enable: in the issue group AND past the
+    // guard. Without a guard it is the issue mask alone.
+    bool want = (rc->mask >> lane_) & 1u;
+    if (op && op->guard)
+      if (const RegVal *p = rc->predUse()) {
+        const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
+        want = want && ((((p->p >> lane_) & 1u) != 0) != neg);
+      }
+    if (on != want)
+      k_.failHeld(at, m.tid, "lane %u: seq %llu pred_bit is not issue mask AND guard", lane_,
+                  (unsigned long long)rc->seq);
+    // The result: what ccv-sim computed (the "what", §1) -- except srd's,
+    // which the lane computes: the immediate RCU substituted, with the
+    // lane's hardwired index ORed in for %ctatid. OOE's identity, not the
+    // oracle, supplies the value.
+    if (!on) {
+      // Switched off: no compute; the result is the old destination RCU
+      // carried here (A-33, A-44). The oracle's post-state for an inactive
+      // lane IS its old value, so the merge is checked here.
+      const uint32_t md = operand(m, kBypMerge, rc->seq);
+      put(r, c.lane_rcu, "result", md);
+      if (const RegVal *d = rc->gprDef())
+        if (md != d->v[lane_])
+          k_.failHeld(at, m.tid, "lane %u: seq %llu merge_data %08x, but R%u keeps %08x", lane_,
+                      (unsigned long long)rc->seq, md, d->idx, d->v[lane_]);
+      // sec_pred_out is don't-care here (RCU merges predicates): poison.
+      if (const RegVal *d = rc->predDef())
+        put(r, c.lane_rcu, "sec_pred_out", ((d->p >> lane_) & 1u) ^ 1u);
+    } else if (const RegVal *d = rc->gprDef()) {
+      uint32_t v = d->v[lane_];
+      if (op && op->srd_sel >= 0) {
+        const uint32_t o0 = operand(m, 0, rc->seq);
+        v = op->or_lane ? (o0 | lane_) : o0;
+        if (v != d->v[lane_])
+          k_.fail("lane %u: seq %llu srd %u, oracle %u", lane_, (unsigned long long)rc->seq, v,
+                  d->v[lane_]);
+      }
+      put(r, c.lane_rcu, "result", v);
+    }
+    if (on)
+      if (const RegVal *d = rc->predDef())
+        put(r, c.lane_rcu, "sec_pred_out", (d->p >> lane_) & 1u);
+    // A predicate read as DATA (sel's selector), negate applied.
+    if (on && op && op->pdata)
+      if (const RegVal *p = rc->predUse()) {
+        const bool neg = !rc->quals.empty() && ((rc->quals[0] >> 2) & 1);
+        const bool want = (((p->p >> lane_) & 1u) != 0) != neg;
+        if ((pdv != 0) != want)
+          k_.failHeld(at, m.tid, "lane %u: seq %llu pred_data (sel's selector) wrong", lane_,
+                      (unsigned long long)rc->seq);
+      }
+  }
 
   /// The copy-only op (A-38): no compute. An inactive lane returns
   /// merge_data, the masked load's old destination, which is what ccv-sim
@@ -1046,6 +1120,8 @@ public:
   const char *kind() const override { return "rcu"; }
 
 private:
+  static constexpr unsigned kRes = ccv::kIssueResources;
+
   struct Alu {
     unsigned tag; const OpInfo *op; unsigned pdst, ppred; bool pwe;
     uint32_t active; uint64_t tid;
@@ -1053,27 +1129,27 @@ private:
     bool copy = false;            ///< the copy-only op (A-38): op is null
     uint64_t accepted = 0;        ///< the cycle RCU took the issue
     uint64_t serial = 0;          ///< its key in wr_
+    unsigned foot = kAllSecs;     ///< the sections it holds
   };
   /// One op's 32 lane messages, held until every lane has a credit, and
   /// which of its operands were read from a register a lane op in flight
   /// has yet to write (wr_): the lanes forward those (A-59).
   struct LaneOp {
-    std::vector<Bits> lanes; uint64_t tid, not_before = 0;
-    uint64_t serial = 0;
+    std::vector<Bits> lanes; Alu alu; uint64_t not_before = 0;
     std::array<int, kBypOperands> from_reg;       ///< -1: read from the PRF
     std::array<uint64_t, kBypOperands> from{};    ///< the producer's serial
-    LaneOp(std::vector<Bits> l, uint64_t t, uint64_t nb = 0)
-        : lanes(std::move(l)), tid(t), not_before(nb) { from_reg.fill(-1); }
+    LaneOp(std::vector<Bits> l, const Alu &a, uint64_t nb = 0)
+        : lanes(std::move(l)), alu(a), not_before(nb) { from_reg.fill(-1); }
   };
   /// A lane op in flight that writes a GPR, from RCU taking its issue until
   /// its results land, by destination. A dependant OOE woke at
   /// CCV_LAT_LANE_BYP reads a register named here, before the write: RCU
-  /// names the producer's slot and age in operand_byp and the lane forwards
-  /// its own result (A-59, TI-8). RCU needs the destinations only, no data.
-  struct Writer { uint64_t serial; unsigned slot; uint64_t sent = ~0ull; };
+  /// names the producer's lead section and age in operand_byp and the lane
+  /// forwards its own result (A-59, TI-8). RCU needs the destinations only.
+  struct Writer { uint64_t serial; unsigned lead; uint64_t sent = ~0ull; };
 
-  std::array<std::deque<Alu>, 4> alu_;            ///< per issue slot: bound lanes
-  std::array<std::deque<LaneOp>, 4> lane_q_;
+  std::deque<LaneOp> lane_q_;   ///< accepted, not yet sent to the lanes
+  std::deque<Alu> alu_;         ///< sent to the lanes, in the order they answer
   std::deque<Q> to_ooe_, to_miu_;
   std::map<unsigned, Writer> wr_;
   uint64_t serial_ = 0;
@@ -1083,56 +1159,38 @@ private:
     put(d, ch().rcu_ooe, "rob_tag", tag);
     return d;
   }
+  /// The first slot of slot s's resource group: S0, P0 or R.
+  static unsigned groupOf(unsigned s) {
+    return s < kSlotP0 ? kSlotS0 : s < kSlotR ? kSlotP0 : kSlotR;
+  }
+  /// Slot s by its resource's name, and a footprint as S3..S0 (or P3..P0).
+  static std::string res(unsigned s) {
+    return s == kSlotR ? "R" : (s < kSlotP0 ? "S" : "P") + std::to_string(s - groupOf(s));
+  }
+  static std::string bits(unsigned f) {
+    std::string b;
+    for (unsigned k = kSecs; k-- != 0;) b += (f >> k) & 1u ? '1' : '0';
+    return b;
+  }
 
   void work() override {
     const Ch &c = ch();
-    const unsigned rate = kChans[c.ooe_rcu].rate;
     // Register read sees this cycle's writes (OI-5): lane results and load
     // data land before the issues they may feed are read. CCV_LAT_L1_WAKE
     // brings an L1 hit's dependant to RCU in the very cycle its data does,
     // so without this a dependant OOE woke by the contract reads the old
     // value. no-rcu-bypass reads first, as the S1 RCU did.
-    auto takeIssues = [&] {
-      for (unsigned s = 0; s != rate; ++s)
-        while (has(c.ooe_rcu, s)) issue(s, take(c.ooe_rcu, s));
-    };
-    if (k_.brk == "no-rcu-bypass") takeIssues();
+    if (k_.brk == "no-rcu-bypass") issues();
 
-    // Lane results, slot by slot: all 32 lanes, or it is not lockstep.
-    for (unsigned s = 0; s != rate; ++s) {
-      unsigned n = 0;
-      for (unsigned l = 0; l != kLanes; ++l) n += has(c.lane_rcu, s, l);
-      if (n == 0) continue;
-      if (n != kLanes) { k_.fail("rcu: %u of 32 lanes answered on slot %u", n, s); continue; }
-      if (alu_[s].empty()) { k_.fail("rcu: lane results on slot %u for nothing", s); continue; }
-      const Alu a = alu_[s].front();
-      alu_[s].pop_front();
-      if (a.copy) { landCopy(a, s); continue; }
-      uint32_t po_mask = 0;
-      for (unsigned l = 0; l != kLanes; ++l) {
-        Receiver::Msg m = take(c.lane_rcu, s, l);
-        if (m.tid != a.tid) k_.fail("rcu: lane %u slot %u answered for another instruction", l, s);
-        const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
-        const uint32_t po = uint32_t(get(m.payload, c.lane_rcu, "pred_out"));
-        // Per-lane write enables (A-44), all on for an ordinary op: an
-        // inactive lane's result is its merge_data, so a partial write
-        // preserves what it does not write (ISA invariant 10) by merging.
-        if (a.op->gdst) k_.gpr[a.pdst][l] = v;
-        po_mask |= (po & 1u) << l;
-      }
-      if (a.op->gdst) {
-        auto w = wr_.find(a.pdst);
-        if (w != wr_.end() && w->second.serial == a.serial) wr_.erase(w);
-      }
-      // Predicates merge HERE, by read-modify-write of the 32-bit row from
-      // the old destination (A-43): the lanes' bits on active lanes, the
-      // old ones elsewhere. ignore-mask drops the mask, which writes the
-      // switched-off lanes' poison.
-      if (a.pwe) {
-        const uint32_t on = k_.brk == "ignore-mask" ? 0xffffffffu : a.active;
-        k_.pred[a.ppred] = ((a.merge ? k_.pred[a.ppold] : 0u) & ~on) | (po_mask & on);
-      }
-      to_ooe_.push_back({s, done(a.tag), a.tid});
+    // Lane results, one message a cycle: all 32 lanes, or it is not lockstep.
+    unsigned n = 0;
+    for (unsigned l = 0; l != kLanes; ++l) n += has(c.lane_rcu, 0, l);
+    if (n != 0 && n != kLanes) k_.fail("rcu: %u of 32 lanes answered", n);
+    else if (n != 0 && alu_.empty()) k_.fail("rcu: lane results for nothing");
+    else if (n != 0) {
+      const Alu a = alu_.front();
+      alu_.pop_front();
+      land(a);
     }
 
     for (unsigned s = 0; s != kChans[c.miu_rcu].rate; ++s)
@@ -1144,6 +1202,12 @@ private:
         const unsigned pd = unsigned(get(m.payload, c.miu_rcu, "phys_dst"));
         const uint32_t active = uint32_t(get(m.payload, c.miu_rcu, "active_mask"));
         if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a load writes the zero register");
+        // The slice it writes: dst_pos and dst_width, a whole row in S1.
+        const unsigned dw = unsigned(get(m.payload, c.miu_rcu, "dst_width"));
+        const unsigned dp = unsigned(get(m.payload, c.miu_rcu, "dst_pos"));
+        if (dw != kChw32 || dp != 0)
+          k_.fail("rcu: a %u-bit load at position %u; only full-width loads are modelled in "
+                  "the S1 stubs", 32u >> dw, dp);
         for (unsigned l = 0; l != kLanes; ++l)
           if ((active >> l) & 1u)   // an inactive lane keeps its old value
             k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l);
@@ -1153,23 +1217,26 @@ private:
           k_.pred[pp] = (k_.pred[pp] & ~active) | (pr & active);
         }
       }
-    if (k_.brk != "no-rcu-bypass") takeIssues();
+    if (k_.brk != "no-rcu-bypass") issues();
 
-    for (unsigned s = 0; s != rate; ++s) {
-      if (lane_q_[s].empty() || lane_q_[s].front().not_before > now_) continue;
-      bool all = true;
-      for (unsigned l = 0; l != kLanes; ++l) all = all && can(c.rcu_lane, s, l);
-      if (!all) continue;     // lockstep: every lane or none
-      LaneOp &lo = lane_q_[s].front();
-      forward(lo);
-      for (unsigned l = 0; l != kLanes; ++l) send(c.rcu_lane, s, lo.lanes[l], lo.tid, l);
+    // One lane message a cycle, every lane or none (lockstep): the oldest
+    // op whose hold has passed. Only late-copy holds one, and the ops behind
+    // it go first, as their contract requires.
+    bool all = true;
+    for (unsigned l = 0; l != kLanes; ++l) all = all && can(c.rcu_lane, 0, l);
+    for (auto it = lane_q_.begin(); all && it != lane_q_.end(); ++it) {
+      if (it->not_before > now_) continue;
+      forward(*it);
+      for (unsigned l = 0; l != kLanes; ++l) send(c.rcu_lane, 0, it->lanes[l], it->alu.tid, l);
       for (auto &w : wr_)
-        if (w.second.serial == lo.serial) w.second.sent = now_;
-      lane_q_[s].pop_front();
+        if (w.second.serial == it->alu.serial) w.second.sent = now_;
+      alu_.push_back(it->alu);
+      lane_q_.erase(it);
+      break;
     }
     // ccv_rcu_ooe_done's slots are a free pool: any done takes any slot,
     // oldest first. A lane op's done leaves the cycle its write lands, at
-    // V-35's bound exactly, so it cannot wait for its issue slot.
+    // V-35's bound exactly, so it cannot wait for a particular slot.
     for (auto it = to_ooe_.begin(); it != to_ooe_.end();) {
       unsigned s = 0;
       while (s != kChans[c.rcu_ooe].rate && !can(c.rcu_ooe, s)) ++s;
@@ -1182,17 +1249,134 @@ private:
       else ++it;
   }
 
+  /// A lane op's results: every section it held, from all 32 lanes.
+  void land(const Alu &a) {
+    const Ch &c = ch();
+    uint32_t po_mask = 0;
+    for (unsigned l = 0; l != kLanes; ++l) {
+      Receiver::Msg m = take(c.lane_rcu, 0, l);
+      if (m.tid != a.tid) k_.fail("rcu: lane %u answered for another instruction", l);
+      if (get(m.payload, c.lane_rcu, "sec_valid") != a.foot)
+        k_.fail("rcu: lane %u's results hold sections %x, not seq %llu's %x", l,
+                unsigned(get(m.payload, c.lane_rcu, "sec_valid")),
+                (unsigned long long)uidSeq(a.tid), a.foot);
+      const uint32_t v = uint32_t(get(m.payload, c.lane_rcu, "result"));
+      if (a.copy) {
+        // The copy writes only the load's inactive lanes (A-38, A-44).
+        if (!((a.active >> l) & 1u)) k_.gpr[a.pdst][l] = v;
+        continue;
+      }
+      // Per-lane write enables (A-44), all on for an ordinary op: an
+      // inactive lane's result is its merge_data, so a partial write
+      // preserves what it does not write (ISA invariant 10) by merging.
+      if (a.op->gdst) k_.gpr[a.pdst][l] = v;
+      // A full-width op's predicate rides on its lead section, S0.
+      po_mask |= uint32_t(get(m.payload, c.lane_rcu, "sec_pred_out") & 1u) << l;
+    }
+    if (a.copy) {
+      // Within CCV_LAT_LANE of acceptance: the contract OOE clears the
+      // load's copy-pending on.
+      if (now_ - a.accepted > ccv::prov::kLatLane)
+        k_.fail("rcu: seq %llu's copy reached the PRF %llu cycles after RCU took it; "
+                "CCV_LAT_LANE is %u", (unsigned long long)uidSeq(a.tid),
+                (unsigned long long)(now_ - a.accepted), ccv::prov::kLatLane);
+      return;
+    }
+    if (a.op->gdst) {
+      auto w = wr_.find(a.pdst);
+      if (w != wr_.end() && w->second.serial == a.serial) wr_.erase(w);
+    }
+    // Predicates merge HERE, by read-modify-write of the 32-bit row from
+    // the old destination (A-43): the lanes' bits on active lanes, the
+    // old ones elsewhere. ignore-mask drops the mask, which writes the
+    // switched-off lanes' poison.
+    if (a.pwe) {
+      const uint32_t on = k_.brk == "ignore-mask" ? 0xffffffffu : a.active;
+      k_.pred[a.ppred] = ((a.merge ? k_.pred[a.ppold] : 0u) & ~on) | (po_mask & on);
+    }
+    to_ooe_.push_back({0, done(a.tag), a.tid});
+  }
+
+  /// This cycle's issues, one slot per select resource: S0-S3, P0-P3, R.
+  /// V-60 first. Each lead sits in its footprint's lowest slot, every other
+  /// slot of the footprint carries its continuation, and no slot belongs to
+  /// two footprints. Then each lead, in slot order.
+  void issues() {
+    const Ch &c = ch();
+    std::array<Receiver::Msg, kRes> m{};
+    std::array<bool, kRes> got{};
+    for (unsigned s = 0; s != kRes; ++s)
+      if ((got[s] = has(c.ooe_rcu, s))) m[s] = take(c.ooe_rcu, s);
+    auto cont = [&](unsigned s) { return get(m[s].payload, c.ooe_rcu, "cont") != 0; };
+    auto tag = [&](unsigned s) { return unsigned(get(m[s].payload, c.ooe_rcu, "rob_tag")); };
+    auto seq = [&](unsigned s) { return (unsigned long long)uidSeq(m[s].tid); };
+    std::array<int, kRes> owner;
+    owner.fill(-1);
+    for (unsigned s = 0; s != kRes; ++s) {
+      if (!got[s] || cont(s)) continue;
+      const unsigned fp = unsigned(get(m[s].payload, c.ooe_rcu, "footprint"));
+      const unsigned base = groupOf(s);
+      if (base == kSlotR) {
+        if (fp)
+          k_.fail("rcu: seq %llu holds R with footprint %s; R takes none", seq(s),
+                  bits(fp).c_str());
+        owner[s] = int(s);
+        continue;
+      }
+      for (unsigned b = 0; b != kSecs; ++b) {
+        if (!((fp >> b) & 1u)) continue;
+        const unsigned t = base + b;
+        if (owner[t] >= 0) {
+          k_.fail("rcu: V-60: seq %llu's footprint %s overlaps seq %llu's at %s", seq(s),
+                  bits(fp).c_str(), seq(unsigned(owner[t])), res(t).c_str());
+          continue;
+        }
+        owner[t] = int(s);
+      }
+      if (!fp || base + unsigned(__builtin_ctz(fp)) != s)
+        k_.fail("rcu: seq %llu sits in %s, which is not its footprint %s's lowest", seq(s),
+                res(s).c_str(), bits(fp).c_str());
+    }
+    for (unsigned s = 0; s != kRes; ++s) {
+      if (!got[s]) continue;
+      const int o = owner[s];
+      if (o < 0)
+        k_.fail("rcu: %s carries seq %llu outside every footprint", res(s).c_str(), seq(s));
+      else if (unsigned(o) != s && (!cont(s) || tag(s) != tag(unsigned(o))))
+        k_.fail("rcu: %s, in seq %llu's footprint, carries no continuation of it",
+                res(s).c_str(), seq(unsigned(o)));
+    }
+    for (unsigned s = 0; s != kRes; ++s)
+      if (owner[s] >= 0 && unsigned(owner[s]) != s && !got[s])
+        k_.fail("rcu: %s, in seq %llu's footprint, carries nothing", res(s).c_str(),
+                seq(unsigned(owner[s])));
+    for (unsigned s = 0; s != kRes; ++s)
+      if (got[s] && !cont(s)) issue(s, m[s]);
+  }
+
+  /// A register a lane op reads or writes, by its position and width code:
+  /// a full 32-bit register at position 0 in S1, and never past its row.
+  void slice(const Receiver::Msg &m, const char *what, unsigned w, unsigned pos) {
+    const unsigned long long seq = uidSeq(m.tid);
+    if (maskOf(w, pos) & ~kAllSecs)
+      k_.fail("rcu: seq %llu's %s, a %u-bit register at position %u, overruns its row", seq,
+              what, 32u >> w, pos);
+    else if (w != kChw32)
+      k_.fail("rcu: seq %llu's %s is a %u-bit register; only 32-bit registers are modelled "
+              "in the S1 stubs", seq, what, 32u >> w);
+  }
+
   /// At the lane op's send: name each operand read before its producer's
-  /// write in operand_byp, by the producer's slot and its age, the cycles
-  /// since the producer left for the lanes. The lanes see the same distance
-  /// between the two arrivals, since both cross the same link.
+  /// write in operand_byp, by the producer's lead section and its age, the
+  /// cycles since the producer left for the lanes. The lanes see the same
+  /// distance between the two arrivals, since both cross the same link.
   void forward(LaneOp &lo) {
     const Ch &c = ch();
     bool fwd = false;
     for (unsigned i = 0; i != kBypOperands; ++i) {
       if (lo.from_reg[i] < 0) continue;
       const unsigned preg = unsigned(lo.from_reg[i]);
-      const unsigned long long seq = uidSeq(lo.tid);
+      const unsigned long long seq = uidSeq(lo.alu.tid);
       auto w = wr_.find(preg);
       if (w == wr_.end() || w->second.serial != lo.from[i]) {
         // The write landed between RCU's read and this send, which only a
@@ -1220,11 +1404,15 @@ private:
         continue;
       }
       if (k_.brk == "no-lane-bypass") continue;
-      const unsigned sel = 1u | w->second.slot << 1 |
-                           unsigned(age - ccv::prov::kLatLaneByp) << (1 + kBypSlotBits);
+      // Every section of the port: the consumer is full width, and so is
+      // its producer, whose lead section names it.
+      const unsigned sel = 1u | w->second.lead << 1 |
+                           unsigned(age - ccv::prov::kLatLaneByp) << (1 + kBypSecBits);
       for (unsigned l = 0; l != kLanes; ++l)
-        lo.lanes[l].set(field(c.rcu_lane, "operand_byp").lsb + ccv::prov::kWLaneBypSel * i,
-                        ccv::prov::kWLaneBypSel, sel);
+        for (unsigned k = 0; k != kSecs; ++k)
+          if ((lo.alu.foot >> k) & 1u)
+            putSec(lo.lanes[l], c.rcu_lane, "operand_byp", k * kBypOperands + i,
+                   ccv::prov::kWLaneBypSel, sel);
       fwd = true;
     }
     if (fwd) k_.hit("lane_byp");
@@ -1232,8 +1420,9 @@ private:
 
   /// Record which of a lane op's operands a lane op in flight has yet to
   /// write, and enter the op itself in wr_ if it writes a GPR.
-  void inFlight(LaneOp &lo, unsigned s, const std::array<int, kBypOperands> &reads, int writes) {
-    lo.serial = ++serial_;
+  void inFlight(LaneOp &lo, unsigned lead, const std::array<int, kBypOperands> &reads,
+                int writes) {
+    lo.alu.serial = ++serial_;
     for (unsigned i = 0; i != kBypOperands; ++i) {
       if (reads[i] < 0) continue;
       auto w = wr_.find(unsigned(reads[i]));
@@ -1241,7 +1430,32 @@ private:
       lo.from_reg[i] = reads[i];
       lo.from[i] = w->second.serial;
     }
-    if (writes >= 0) wr_[unsigned(writes)] = {lo.serial, s};
+    if (writes >= 0) wr_[unsigned(writes)] = {lo.alu.serial, lead};
+  }
+
+  /// The lane message's control for a full-width op: every section holds
+  /// it, S0 owns them all, and the lead carries each port's and the
+  /// destination's position and width. Operands, merge_data and the enables
+  /// are per lane.
+  Bits laneMsg(const Receiver::Msg &m, unsigned opc) {
+    const Ch &c = ch();
+    Bits o = msgOf(c.rcu_lane);
+    for (unsigned k = 0; k != kSecs; ++k)
+      putSec(o, c.rcu_lane, "sec_opcode", k, ccv::prelim::kWOpcode, opc);
+    put(o, c.rcu_lane, "section_en", kAllSecs);
+    put(o, c.rcu_lane, "sec_owner", 0);   // every section S0's: one op
+    for (unsigned i = 0; i != kBypOperands; ++i) {
+      const bool mg = i == kBypMerge;
+      putSec(o, c.rcu_lane, "sec_opnd_width", i, ccv::kWChwidth,
+             mg ? unsigned(get(m.payload, c.ooe_rcu, "dst_width"))
+                : getSec(m.payload, c.ooe_rcu, "src_width", i, ccv::kWChwidth));
+      putSec(o, c.rcu_lane, "sec_opnd_pos", i, ccv::kWPhysPos,
+             mg ? unsigned(get(m.payload, c.ooe_rcu, "old_dst_pos"))
+                : getSec(m.payload, c.ooe_rcu, "src_pos", i, ccv::kWPhysPos));
+    }
+    put(o, c.rcu_lane, "sec_dst_width", get(m.payload, c.ooe_rcu, "dst_width"));
+    put(o, c.rcu_lane, "sec_dst_pos", get(m.payload, c.ooe_rcu, "dst_pos"));
+    return o;
   }
 
   void issue(unsigned s, const Receiver::Msg &m) {
@@ -1254,9 +1468,33 @@ private:
       k_.pred[ccv::prov::kPredZero] = 0xa5a5a5a5u;
     }
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
-    if (get(m.payload, c.ooe_rcu, "opcode") == kOpCopy) { issueCopy(s, m); return; }
-    const OpInfo *op = opByCode(unsigned(get(m.payload, c.ooe_rcu, "opcode")));
-    if (!op) { k_.fail("rcu: unknown opcode"); return; }
+    const unsigned opc = unsigned(get(m.payload, c.ooe_rcu, "opcode"));
+    const OpInfo *op = opc == kOpCopy ? nullptr : opByCode(opc);
+    if (!op && opc != kOpCopy) { k_.fail("rcu: unknown opcode"); return; }
+    // Each class on its own resources: lane ops (the copy among them) on
+    // the sections, memops on the pipes, RCU-only ops on R.
+    const bool mem = op && (op->cls == kLoad || op->cls == kStore);
+    const unsigned want = mem ? kSlotP0 : op && inRcu(op->cls) ? kSlotR : kSlotS0;
+    if (groupOf(s) != want)
+      k_.fail("rcu: seq %llu, %s, issued on %s; its class issues on %s",
+              (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", res(s).c_str(),
+              want == kSlotS0 ? "S0-S3" : want == kSlotP0 ? "P0-P3" : "R");
+    const unsigned fp = unsigned(get(m.payload, c.ooe_rcu, "footprint"));
+    if (want != kSlotR && fp != kAllSecs)
+      k_.fail("rcu: seq %llu's footprint %s; only full-width ops are modelled in the S1 stubs",
+              (unsigned long long)uidSeq(m.tid), bits(fp).c_str());
+    // Every register named, at its width and position.
+    const unsigned dw = unsigned(get(m.payload, c.ooe_rcu, "dst_width"));
+    const bool merge = get(m.payload, c.ooe_rcu, "merge_en") != 0;
+    if (!op || op->gdst)
+      slice(m, "destination", dw, unsigned(get(m.payload, c.ooe_rcu, "dst_pos")));
+    if (merge) slice(m, "old destination", dw, unsigned(get(m.payload, c.ooe_rcu, "old_dst_pos")));
+    for (unsigned i = 0; op && i != op->nsrc; ++i)
+      if (!(op->alu_imm >= 0 && int(i) == op->imm_slot))
+        slice(m, i == 0 ? "first source" : i == 1 ? "second source" : "third source",
+              getSec(m.payload, c.ooe_rcu, "src_width", i, ccv::kWChwidth),
+              getSec(m.payload, c.ooe_rcu, "src_pos", i, ccv::kWPhysPos));
+    if (!op) { issueCopy(s, m); return; }
     const unsigned ps = unsigned(get(m.payload, c.ooe_rcu, "phys_src"));
     const unsigned pd = unsigned(get(m.payload, c.ooe_rcu, "phys_dst"));
     const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard"));
@@ -1264,7 +1502,6 @@ private:
     const bool pwe = get(m.payload, c.ooe_rcu, "pred_we") != 0;
     // Merge (A-33, A-43): the old destinations, read like any source. Only
     // with merge_en set may a lane be inactive, so only then are they read.
-    const bool merge = get(m.payload, c.ooe_rcu, "merge_en") != 0;
     const unsigned pold = unsigned(get(m.payload, c.ooe_rcu, "phys_old_dst"));
     const unsigned ppold = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_old_dst"));
     const unsigned src[3] = {(ps >> 8) & 0xff, ps & 0xff,
@@ -1274,7 +1511,7 @@ private:
       k_.fail("rcu: seq %llu writes a zero register", (unsigned long long)uidSeq(m.tid));
     // Active lanes = issue mask AND guard. RCU is the one block holding both
     // -- the issue mask arrives here, the predicate values live here -- so
-    // it is the sole producer of active_mask, and pred_bit is the same
+    // it is the sole producer of active_mask, and sec_pred_bit is the same
     // computation per lane. A predicate read as DATA (por's sources) is not
     // a guard and does not narrow it (Q-27).
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
@@ -1304,7 +1541,7 @@ private:
                       (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
               break;
             }
-      to_ooe_.push_back({s, done(tag), m.tid});
+      to_ooe_.push_back({0, done(tag), m.tid});
       return;
     }
     // Predicate logic executes HERE, beside the predicate file, and never
@@ -1343,7 +1580,7 @@ private:
           if (k_.pred[ppd] != d->p)
             k_.fail("rcu: seq %llu P%u = %08x, oracle %08x",
                     (unsigned long long)r->seq, d->idx, k_.pred[ppd], d->p);
-      to_ooe_.push_back({s, done(tag), m.tid});
+      to_ooe_.push_back({0, done(tag), m.tid});
       return;
     }
     // Branches resolve HERE too: the condition is a predicate. The taken
@@ -1356,11 +1593,11 @@ private:
         if (r->taken != active)
           k_.fail("rcu: seq %llu branch taken by %08x, oracle %08x",
                   (unsigned long long)r->seq, active, r->taken);
-      to_ooe_.push_back({s, d, m.tid});
+      to_ooe_.push_back({0, d, m.tid});
       return;
     }
 
-    if (op->cls == kLoad || op->cls == kStore) {
+    if (mem) {
       Bits a = msgOf(c.rcu_miu);
       put(a, c.rcu_miu, "rob_tag", tag);
       put(a, c.rcu_miu, "active_mask", active);
@@ -1379,7 +1616,8 @@ private:
         if (op->cls == kStore)
           putLane(a, c.rcu_miu, "store_data", l, k_.gpr[src[op->data_src]][l]);
       }
-      to_miu_.push_back({s, a, m.tid});
+      // On the slot of the memop's lead pipe.
+      to_miu_.push_back({groupOf(s) == kSlotP0 ? s - kSlotP0 : 0, a, m.tid});
       // A load's write-back is MIU's echo; RCU remembers nothing of it, and
       // sends no done for either kind: the completion is MIU's (OI-4).
       return;
@@ -1387,18 +1625,17 @@ private:
     // An ALU immediate is substituted into its operand slot here, at
     // register read: lanes never see an immediate, only operands.
     const uint32_t imm = imm0;
+    const Bits ctl = laneMsg(m, opcodeOf(op));
     std::vector<Bits> lanes;
     for (unsigned l = 0; l != kLanes; ++l) {
-      Bits o = msgOf(c.rcu_lane);
-      put(o, c.rcu_lane, "opcode", opcodeOf(op));
+      Bits o = ctl;
       const uint32_t olsb = field(c.rcu_lane, "operand").lsb;
       for (unsigned i = 0; i != op->nsrc; ++i)
         o.set(olsb + 32 * i, 32, k_.gpr[src[i]][l]);
       if (op->alu_imm >= 0) o.set(olsb + 32 * unsigned(op->imm_slot), 32, imm);
-      put(o, c.rcu_lane, "pred_bit", (active >> l) & 1u);
+      put(o, c.rcu_lane, "sec_pred_bit", (active >> l) & 1u ? kAllSecs : 0u);
       if (op->pdata && k_.brk != "drop-pred-data")
-        put(o, c.rcu_lane, "pred_data", (guard >> l) & 1u);
-      put(o, c.rcu_lane, "section_en", 1);
+        put(o, c.rcu_lane, "sec_pred_data", (guard >> l) & 1u ? kAllSecs : 0u);
       // The old destination, carried to the lane: an inactive lane returns
       // it as its result (A-33, A-44). Don't-care without merge_en.
       // wrong-merge: the merge value read from the second source, not the
@@ -1412,12 +1649,11 @@ private:
     for (unsigned i = 0; i != op->nsrc; ++i)
       if (!(op->alu_imm >= 0 && int(i) == op->imm_slot)) reads[i] = int(src[i]);
     if (merge) reads[kBypMerge] = int(k_.brk == "wrong-merge" ? src[1] : pold);
-    LaneOp lo(std::move(lanes), m.tid);
-    inFlight(lo, s, reads, op->gdst ? int(pd) : -1);
     Alu a{tag, op, pd, ppd, pwe, active, m.tid, merge, ppold};
-    a.serial = lo.serial;
-    lane_q_[s].push_back(std::move(lo));
-    alu_[s].push_back(a);
+    a.accepted = now_;
+    LaneOp lo(std::move(lanes), a);
+    inFlight(lo, groupOf(s) == kSlotS0 ? s - kSlotS0 : 0, reads, op->gdst ? int(pd) : -1);
+    lane_q_.push_back(std::move(lo));
   }
 
   /// The copy-only op of a masked load (A-33, A-38): the old destination
@@ -1439,12 +1675,11 @@ private:
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
     const uint32_t guard = get(m.payload, c.ooe_rcu, "pred_neg") ? ~k_.pred[pp] : k_.pred[pp];
     const uint32_t active = issue & guard;
+    const Bits ctl = laneMsg(m, kOpCopy);
     std::vector<Bits> lanes;
     for (unsigned l = 0; l != kLanes; ++l) {
-      Bits o = msgOf(c.rcu_lane);
-      put(o, c.rcu_lane, "opcode", kOpCopy);
-      put(o, c.rcu_lane, "pred_bit", (active >> l) & 1u);
-      put(o, c.rcu_lane, "section_en", 1);
+      Bits o = ctl;
+      put(o, c.rcu_lane, "sec_pred_bit", (active >> l) & 1u ? kAllSecs : 0u);
       // copy-from-new: the copy reads the load's fresh destination, not its
       // old one -- a copy onto itself, which keeps nothing.
       put(o, c.rcu_lane, "merge_data", k_.gpr[k_.brk == "copy-from-new" ? pd : pold][l]);
@@ -1455,39 +1690,19 @@ private:
     // The copy reads its merge_data like any lane op, so a lane producer
     // still in flight is forwarded to it; it writes only the load's inactive
     // lanes, so it is never a producer itself (A-38).
-    LaneOp lo(std::move(lanes), m.tid, k_.brk == "late-copy" ? now_ + ccv::prov::kLatLane : 0);
-    std::array<int, kBypOperands> reads;
-    reads.fill(-1);
-    reads[kBypMerge] = int(k_.brk == "copy-from-new" ? pd : pold);
-    inFlight(lo, s, reads, -1);
     Alu a{tag, nullptr, pd, 0, false, active, m.tid, true, 0};
     a.copy = true;
     a.accepted = now_;
-    a.serial = lo.serial;
-    lane_q_[s].push_back(std::move(lo));
-    alu_[s].push_back(a);
-  }
-
-  /// The copy's lane results: inactive lanes only, within CCV_LAT_LANE of
-  /// acceptance -- the contract OOE clears the load's copy-pending on.
-  void landCopy(const Alu &a, unsigned s) {
-    const Ch &c = ch();
-    for (unsigned l = 0; l != kLanes; ++l) {
-      Receiver::Msg m = take(c.lane_rcu, s, l);
-      if (m.tid != a.tid) k_.fail("rcu: lane %u slot %u answered for another instruction", l, s);
-      if (!((a.active >> l) & 1u))
-        k_.gpr[a.pdst][l] = uint32_t(get(m.payload, c.lane_rcu, "result"));
-    }
-    if (now_ - a.accepted > ccv::prov::kLatLane)
-      k_.fail("rcu: seq %llu's copy reached the PRF %llu cycles after RCU took it; "
-              "CCV_LAT_LANE is %u", (unsigned long long)uidSeq(a.tid),
-              (unsigned long long)(now_ - a.accepted), ccv::prov::kLatLane);
+    LaneOp lo(std::move(lanes), a, k_.brk == "late-copy" ? now_ + ccv::prov::kLatLane : 0);
+    std::array<int, kBypOperands> reads;
+    reads.fill(-1);
+    reads[kBypMerge] = int(k_.brk == "copy-from-new" ? pd : pold);
+    inFlight(lo, groupOf(s) == kSlotS0 ? s - kSlotS0 : 0, reads, -1);
+    lane_q_.push_back(std::move(lo));
   }
 
   bool busy() const override {
-    for (unsigned s = 0; s != 4; ++s)
-      if (!alu_[s].empty() || !lane_q_[s].empty()) return true;
-    return !to_ooe_.empty() || !to_miu_.empty();
+    return !alu_.empty() || !lane_q_.empty() || !to_ooe_.empty() || !to_miu_.empty();
   }
 };
 

@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (6044 bits,
+// At each edge of its clock: sample every channel signal (7866 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (2815 bits). Common-port outputs sit inactive, as in
+// what it drove (4213 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_ooe (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_ooe(
     input int h, input longint cyc, input bit rst,
-    input bit [6043:0] sample, output bit [2814:0] drive);
+    input bit [7865:0] sample, output bit [4212:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc = 0;
-  bit [2814:0] drv, q, q2;
+  bit [4212:0] drv, q, q2;
   initial begin
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
@@ -104,30 +104,44 @@ module ccv_ooe (
       ooe_miu_memop_s2_credit, ooe_miu_memop_s2_payload, ooe_miu_memop_s2_valid,
       ooe_miu_memop_s1_stall, ooe_miu_memop_s1_credit, ooe_miu_memop_s1_payload,
       ooe_miu_memop_s1_valid, ooe_miu_memop_s0_stall, ooe_miu_memop_s0_credit,
-      ooe_miu_memop_s0_payload, ooe_miu_memop_s0_valid, rcu_ooe_done_s3_tid,
+      ooe_miu_memop_s0_payload, ooe_miu_memop_s0_valid, rcu_ooe_done_s6_tid,
+      rcu_ooe_done_s5_tid, rcu_ooe_done_s4_tid, rcu_ooe_done_s3_tid,
       rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid,
+      rcu_ooe_done_s6_stall, rcu_ooe_done_s6_credit, rcu_ooe_done_s6_payload,
+      rcu_ooe_done_s6_valid, rcu_ooe_done_s5_stall, rcu_ooe_done_s5_credit,
+      rcu_ooe_done_s5_payload, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_stall,
+      rcu_ooe_done_s4_credit, rcu_ooe_done_s4_payload, rcu_ooe_done_s4_valid,
       rcu_ooe_done_s3_stall, rcu_ooe_done_s3_credit, rcu_ooe_done_s3_payload,
       rcu_ooe_done_s3_valid, rcu_ooe_done_s2_stall, rcu_ooe_done_s2_credit,
       rcu_ooe_done_s2_payload, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_stall,
       rcu_ooe_done_s1_credit, rcu_ooe_done_s1_payload, rcu_ooe_done_s1_valid,
       rcu_ooe_done_s0_stall, rcu_ooe_done_s0_credit, rcu_ooe_done_s0_payload,
-      rcu_ooe_done_s0_valid, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid,
-      ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid, ooe_rcu_issue_s3_stall,
-      ooe_rcu_issue_s3_credit, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s3_valid,
-      ooe_rcu_issue_s2_stall, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s2_payload,
-      ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s1_credit,
-      ooe_rcu_issue_s1_payload, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_stall,
-      ooe_rcu_issue_s0_credit, ooe_rcu_issue_s0_payload, ooe_rcu_issue_s0_valid,
-      dec_ooe_uop_s5_tid, dec_ooe_uop_s4_tid, dec_ooe_uop_s3_tid,
-      dec_ooe_uop_s2_tid, dec_ooe_uop_s1_tid, dec_ooe_uop_s0_tid,
-      dec_ooe_uop_s5_stall, dec_ooe_uop_s5_credit, dec_ooe_uop_s5_payload,
-      dec_ooe_uop_s5_valid, dec_ooe_uop_s4_stall, dec_ooe_uop_s4_credit,
-      dec_ooe_uop_s4_payload, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_stall,
-      dec_ooe_uop_s3_credit, dec_ooe_uop_s3_payload, dec_ooe_uop_s3_valid,
-      dec_ooe_uop_s2_stall, dec_ooe_uop_s2_credit, dec_ooe_uop_s2_payload,
-      dec_ooe_uop_s2_valid, dec_ooe_uop_s1_stall, dec_ooe_uop_s1_credit,
-      dec_ooe_uop_s1_payload, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_stall,
-      dec_ooe_uop_s0_credit, dec_ooe_uop_s0_payload, dec_ooe_uop_s0_valid
+      rcu_ooe_done_s0_valid, ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid,
+      ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid,
+      ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid,
+      ooe_rcu_issue_s0_tid, ooe_rcu_issue_s8_stall, ooe_rcu_issue_s8_credit,
+      ooe_rcu_issue_s8_payload, ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_stall,
+      ooe_rcu_issue_s7_credit, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s7_valid,
+      ooe_rcu_issue_s6_stall, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s6_payload,
+      ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s5_credit,
+      ooe_rcu_issue_s5_payload, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_stall,
+      ooe_rcu_issue_s4_credit, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s4_valid,
+      ooe_rcu_issue_s3_stall, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s3_payload,
+      ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s2_credit,
+      ooe_rcu_issue_s2_payload, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_stall,
+      ooe_rcu_issue_s1_credit, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s1_valid,
+      ooe_rcu_issue_s0_stall, ooe_rcu_issue_s0_credit, ooe_rcu_issue_s0_payload,
+      ooe_rcu_issue_s0_valid, dec_ooe_uop_s5_tid, dec_ooe_uop_s4_tid,
+      dec_ooe_uop_s3_tid, dec_ooe_uop_s2_tid, dec_ooe_uop_s1_tid,
+      dec_ooe_uop_s0_tid, dec_ooe_uop_s5_stall, dec_ooe_uop_s5_credit,
+      dec_ooe_uop_s5_payload, dec_ooe_uop_s5_valid, dec_ooe_uop_s4_stall,
+      dec_ooe_uop_s4_credit, dec_ooe_uop_s4_payload, dec_ooe_uop_s4_valid,
+      dec_ooe_uop_s3_stall, dec_ooe_uop_s3_credit, dec_ooe_uop_s3_payload,
+      dec_ooe_uop_s3_valid, dec_ooe_uop_s2_stall, dec_ooe_uop_s2_credit,
+      dec_ooe_uop_s2_payload, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_stall,
+      dec_ooe_uop_s1_credit, dec_ooe_uop_s1_payload, dec_ooe_uop_s1_valid,
+      dec_ooe_uop_s0_stall, dec_ooe_uop_s0_credit, dec_ooe_uop_s0_payload,
+      dec_ooe_uop_s0_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -153,11 +167,18 @@ module ccv_ooe (
     ooe_miu_memop_s2_tid, ooe_miu_memop_s1_tid, ooe_miu_memop_s0_tid,
     ooe_miu_memop_s3_payload, ooe_miu_memop_s3_valid, ooe_miu_memop_s2_payload,
     ooe_miu_memop_s2_valid, ooe_miu_memop_s1_payload, ooe_miu_memop_s1_valid,
-    ooe_miu_memop_s0_payload, ooe_miu_memop_s0_valid, rcu_ooe_done_s3_stall,
+    ooe_miu_memop_s0_payload, ooe_miu_memop_s0_valid, rcu_ooe_done_s6_stall,
+    rcu_ooe_done_s6_credit, rcu_ooe_done_s5_stall, rcu_ooe_done_s5_credit,
+    rcu_ooe_done_s4_stall, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_stall,
     rcu_ooe_done_s3_credit, rcu_ooe_done_s2_stall, rcu_ooe_done_s2_credit,
     rcu_ooe_done_s1_stall, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_stall,
-    rcu_ooe_done_s0_credit, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid,
-    ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid, ooe_rcu_issue_s3_payload,
+    rcu_ooe_done_s0_credit, ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid,
+    ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid,
+    ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid,
+    ooe_rcu_issue_s0_tid, ooe_rcu_issue_s8_payload, ooe_rcu_issue_s8_valid,
+    ooe_rcu_issue_s7_payload, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_payload,
+    ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s5_valid,
+    ooe_rcu_issue_s4_payload, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_payload,
     ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s2_valid,
     ooe_rcu_issue_s1_payload, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_payload,
     ooe_rcu_issue_s0_valid, dec_ooe_uop_s5_stall, dec_ooe_uop_s5_credit,

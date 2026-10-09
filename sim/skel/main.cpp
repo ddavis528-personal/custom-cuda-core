@@ -26,7 +26,8 @@
 // message lands, so the controls above answer their forced valids there
 // with exactly that prompt credit: each still fires only what it targets.
 //   misbind       lane 7 of a lockstep channel carries slot k+1's
-//                 instruction in slot k: matching valids, different ids
+//                 instruction in slot k (on a one-slot channel, its
+//                 stream's next one): matching valids, different ids
 //   misorder      ordered channels: a head taken that is not the oldest of
 //                 its stream or key
 //   wrong-class   every message stamped with an id class its channel may
@@ -218,6 +219,7 @@ int main(int argc, char **argv) {
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());

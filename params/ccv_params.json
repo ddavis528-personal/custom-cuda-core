@@ -101,8 +101,47 @@
       "name": "CCV_ISSUE_WIDTH",
       "value": 4,
       "status": "arch",
-      "source": "grill-me 2026-09-23",
-      "doc": "Rename and issue width. The binding width of the machine."
+      "source": "grill-me 2026-09-23; reread by Daniel's response OI-28 (2026-10-08)",
+      "doc": "Rename and retire width, four uops a cycle. It never meant four ALU ops: 32 lanes x 32 bits is the 1024-bit datapath, so a full-width lane op takes the whole lane array for a cycle (OI-28). Issue is per resource, CCV_ISSUE_RESOURCES slots on ccv_ooe_rcu_issue."
+    },
+    {
+      "name": "CCV_SECTIONS",
+      "value": 4,
+      "status": "arch",
+      "source": "Daniel's response OI-28 (2026-10-08); change doc 'Interface spec changes -- sectioned lanes'",
+      "doc": "8-bit sections per lane, with joinable boundaries: a full-width op gangs all four, and narrow ops co-issue only in disjoint sections (one at 32 bits, two at 16, four at 8). The PRF is CCV_SECTIONS banks, each 256 bits a row, and a register name is a row plus a position."
+    },
+    {
+      "name": "CCV_MIU_PIPES",
+      "value": 4,
+      "status": "arch",
+      "source": "AR's response OI-33 (2026-10-08)",
+      "doc": "MIU's AGU pipes, P0-P3: a memop's footprint is four pipes at 32 bits, two at 16 and one at 8, so the port sustains one full-width memop or four 8-bit ones. Matching CCV_SECTIONS is what keeps the memop operand-read budget the same at every width (CCV_PRF_MEMOP_READ_BITS)."
+    },
+    {
+      "name": "CCV_ISSUE_RESOURCES",
+      "value": 9,
+      "status": "arch",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); OI-31, OI-33",
+      "derive": "CCV_SECTIONS + CCV_MIU_PIPES + 1",
+      "doc": "Slots on ccv_ooe_rcu_issue, one per select resource, in this order: the lane sections S0-S3, the MIU pipes P0-P3, and the RCU unit R. An op takes its lowest resource's slot and marks the rest of its footprint continuation."
+    },
+    {
+      "name": "CCV_W_PHYS_POS",
+      "value": 2,
+      "status": "arch",
+      "source": "Daniel's response OI-29 (2026-10-08)",
+      "derive": "clog2(CCV_SECTIONS)",
+      "doc": "A register's position in its row, the section its lowest byte sits in: a 32-bit register at 0, a 16-bit one at 0 or 2, an 8-bit one anywhere. A register name is a row (CCV_P_W_PHYS_REG) plus this; the zero register is valid at any position."
+    },
+    {
+      "name": "CCV_PRF_MEMOP_READ_BITS",
+      "value": 3072,
+      "status": "arch",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); AR-12",
+      "derive": "3 * CCV_WARP_LANES * CCV_W_LANE_DATA",
+      "require": "CCV_MIU_PIPES * 3 * (CCV_WARP_LANES * CCV_W_LANE_DATA // CCV_SECTIONS) == CCV_PRF_MEMOP_READ_BITS",
+      "doc": "PRF read bandwidth for memop operands, a budget line kept as a check: base, index and store data, three full rows for one 32-bit memop or three slices each for four 8-bit ones, the same at every width. The requirement fails if the pipes and sections stop matching. Memop reads never use a lane port, or memory serialises with ALU work."
     },
     {
       "name": "CCV_ROB_INSTANCES",
@@ -634,8 +673,89 @@
       "status": "tunable",
       "decided_at": "generated",
       "source": "TI, lane-local bypass in the stubs (2026-10-08); A-59, register TI-8",
-      "derive": "1 + clog2(CCV_ISSUE_WIDTH) + CCV_P_W_LANE_BYP_AGE",
-      "doc": "One operand's bypass select on ccv_rcu_lane_ops, LSB first: [0] forward, [clog2(CCV_ISSUE_WIDTH):1] the producer's issue slot, then its age less CCV_LAT_LANE_BYP. With [0] clear the operand is the value RCU read."
+      "derive": "1 + clog2(CCV_SECTIONS) + CCV_P_W_LANE_BYP_AGE",
+      "doc": "One bypass select on ccv_rcu_lane_ops, per operand port and per section, LSB first: [0] forward, [clog2(CCV_SECTIONS):1] the producer's lead section, then its age less CCV_LAT_LANE_BYP. With [0] clear the section's byte of that port is the value RCU read."
+    },
+    {
+      "name": "CCV_L_PRF_LANE_READ_BITS",
+      "value": 4096,
+      "status": "preliminary",
+      "churn": "high",
+      "decided_at": "RCU/LANE session, with CCV_L_OPERANDS_PER_LANE",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); AR's response OI-28",
+      "derive": "(CCV_L_OPERANDS_PER_LANE + 1) * CCV_WARP_LANES * CCV_W_LANE_DATA",
+      "doc": "PRF read bandwidth into the lanes, a budget line: four operand ports (three sources and the merge source) of 1,024 bits, one byte a section per lane, each byte from its own section bank. Sixteen survives only as a count of slice reads."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_INT",
+      "value": 1,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_INT <= CCV_SECTIONS",
+      "doc": "CCV_FOOT_MIN for bypass_group 0, integer: the fewest sections an integer op claims. Its footprint is the union of its operands' sections, widened to this."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_FP",
+      "value": 2,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_FP <= CCV_SECTIONS",
+      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: two sections, since the ISA has no 8-bit FP arithmetic (e4m3 and e5m2 appear only inside dp4, which reads full width)."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_ADDR",
+      "value": 1,
+      "status": "provisional",
+      "decided_at": "MIU per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_ADDR <= CCV_MIU_PIPES",
+      "doc": "CCV_FOOT_MIN for bypass_group 2, address calculation: counted in MIU pipes, not lane sections. A memop's footprint is the pipes at its data position, widened to this."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_SFU",
+      "value": 4,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "require": "CCV_P_FOOT_MIN_SFU <= CCV_SECTIONS",
+      "doc": "CCV_FOOT_MIN for bypass_group 3, the SFU: every section, so a narrow SFU op runs full width and selects its narrow operand by position (OA-15)."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_COLLECTIVE",
+      "value": 0,
+      "status": "provisional",
+      "decided_at": "RCU per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "doc": "CCV_FOOT_MIN for bypass_group 4, warp-collective: 0, since these execute in RCU and take R only."
+    },
+    {
+      "name": "CCV_P_FOOT_MIN_PRED",
+      "value": 0,
+      "status": "provisional",
+      "decided_at": "RCU per-block session",
+      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "doc": "CCV_FOOT_MIN for bypass_group 5, predicate: 0, since predicate logic executes in RCU and takes R only."
+    },
+    {
+      "name": "CCV_DONE_SLOTS",
+      "value": 7,
+      "status": "provisional",
+      "decided_at": "LANE per-block session",
+      "source": "OA's response TI-9 (2026-10-09)",
+      "derive": "CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2",
+      "doc": "Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here."
+    },
+    {
+      "name": "CCV_P_W_BYP_GROUP",
+      "value": 3,
+      "status": "preliminary",
+      "churn": "med",
+      "decided_at": "LANE per-block session (register OA-4)",
+      "source": "change doc 'Interface spec changes -- sectioned lanes' (2026-10-08)",
+      "derive": "clog2(CCV_P_BYP_GROUPS)",
+      "doc": "bypass_group's width, on sched_attr and on ccv_ooe_rcu_issue."
     },
     {
       "name": "CCV_P_LAT_CLASSES",

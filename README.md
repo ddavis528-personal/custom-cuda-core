@@ -323,7 +323,7 @@ and a check that has been deleted is very quiet.
 Detail is in [`docs/skeleton.md`](docs/skeleton.md).
 
 **S0: plumbing.** The whole machine is wired from the schema: 45 block
-instances, 110 channel instances, 347 credited slots. At first every block is
+instances, 110 channel instances, 163 credited slots. At first every block is
 an exerciser stub, and every slot is judged by the real SV credit checker,
 Verilated in. Three seeds each give zero violations. Every clean result is
 paired with a control that must fail it.

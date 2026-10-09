@@ -64,7 +64,7 @@
 #     its data, and its dependants read it       no-rcu-bypass (hit, with
 #     (A-46, OI-5)                               l1_spec): V-44 or stale reads
 #   a dependant woken at CCV_LAT_LANE_BYP     no-lane-bypass (byp, with
-#     reads the value its lane forwards          bypass): five stale operands;
+#     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
 #   OOE renames and waits on the sources     drop-src-valid: DEC hides a
@@ -73,6 +73,13 @@
 #   predicate logic reads renamed sources     arch-pred-srcs (plog): RCU
 #     from imm, with negates (TI-1)              reads DEC's qualifiers, and
 #                                                P3 comes out wrong
+#   co-issued footprints are disjoint on the  no-resource-cap: two ops claim
+#     nine resource slots (V-60, TI-9)           one group; RCU refuses each
+#                                                shared slot
+#   a register fits its row at its position   bad-pos: RCU and the lanes
+#     (OI-29, TI-9)                              refuse a 32-bit one at 1
+#   a memop's pipes are its width's span      narrow-pipes: MIU refuses one
+#     (OI-33, TI-9)                              pipe for a 32-bit memop
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -277,8 +284,13 @@ fi
 # register read began to see the same cycle's writes, OI-5: fewer readers
 # land before the value. 259 -> 676 when the lanes began answering at
 # CCV_LAT_LANE rather than early, TI-8: the misplaced movi's round trip now
-# lands two cycles later, so more readers land before the value.)
-MOVI_TOTAL=676
+# lands two cycles later, so more readers land before the value. 676 -> 516
+# when the lane channel became one message a cycle under OOE's interim
+# one-lane-op cap, TI-9: the readers issue later, so fewer land before it.)
+# One lane message a cycle also means the misplaced movi takes the message
+# OOE scheduled for the lane op issued beside it, seq 3's srd, whose done
+# V-35 then names a cycle late too: the cost of the movi, not a second fault.
+MOVI_TOTAL=516
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
@@ -286,11 +298,12 @@ nlate=$(grep -c "^CHECK ooe: V-35: " "$L")
 nother=$(grep "^CHECK" "$L" | grep -v "^CHECK lane [0-9]*: MOVI\(48\)\? \|^CHECK ooe: V-35: " |
          grep -vc "^CHECK lane [0-9]*: seq [0-9]* operand \|^CHECK miu: seq [0-9]* lane [0-9]* \(address\|loaded\) \|^CHECK rcu: window base differs across lanes")
 total=$(field "$L" check_failures)
-if [ "$nmovi" = 64 ] && [ "$nlate" = 1 ] && [ "$nother" = 0 ] && [ "$total" = "$MOVI_TOTAL" ] &&
-   grep -q "^CHECK ooe: V-35: seq 1 (rob tag [0-9]*) done" "$L"; then
+if [ "$nmovi" = 64 ] && [ "$nlate" = 2 ] && [ "$nother" = 0 ] && [ "$total" = "$MOVI_TOTAL" ] &&
+   grep -q "^CHECK ooe: V-35: seq 1 (rob tag [0-9]*) done" "$L" &&
+   grep -q "^CHECK ooe: V-35: seq 3 (rob tag [0-9]*) done" "$L"; then
   say "--break movi-in-lane: the lanes refuse it" "PASS (V-35 names the late done; $total failures, as pinned)"
 else
-  bad "--break movi-in-lane" "$nmovi lane refusals (want 64), $nlate V-35 reports (want 1, seq 1), $nother failures of another kind (want 0), $total in all (want $MOVI_TOTAL)"
+  bad "--break movi-in-lane" "$nmovi lane refusals (want 64), $nlate V-35 reports (want 2, seq 1 and 3), $nother failures of another kind (want 0), $total in all (want $MOVI_TOTAL)"
 fi
 
 # srd's selector is a legal field that can hold an unallocated value: DEC's
@@ -347,14 +360,14 @@ else
 fi
 
 # -- the lane mask: one cycle ahead, and always gating (Q-40) ---------------
-# pred_bit, pred_data and section_en are rcu_lane_ops' LEAD fields: driven with
-# valid, a cycle ahead of the operands, so a lane gates itself before its
-# operands land. Driven late, with the operands, the lane takes whatever the
-# wire's lead slice held in the valid cycle -- a stale mask -- and must reject
-# it at once.
+# section_en, sec_owner, sec_pred_bit and sec_pred_data are rcu_lane_ops' LEAD
+# fields: driven with valid, a cycle ahead of the operands, so a lane gates
+# each section before its operands land. Driven late, with the operands, the
+# lane takes whatever the wire's lead slice held in the valid cycle -- a stale
+# mask, empty before the first op -- and must reject it at once: every lane,
+# on the first lane op.
 run late-lead
-if grep -q "^CHECK lane [0-9]*: seq [0-9]* pred_bit is not issue mask AND guard" \
-     "$B/kernel_late-lead.log"; then
+if [ "$(grep -c "^CHECK lane [0-9]*: sections 0 owned 00; " "$B/kernel_late-lead.log")" = 32 ]; then
   say "--break late-lead: every lane sees a stale mask" "PASS"
 else
   bad "--break late-lead" "a mask arriving with the operands went unnoticed"
@@ -532,7 +545,7 @@ mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0
 hit    l1_hit=4 l1_late=0
-byp    copy=1 lane_byp=5
+byp    copy=1 lane_byp=4
 plog   merge=3
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
@@ -607,14 +620,17 @@ else
 fi
 # The data a cycle behind its completion, and RCU reading before the same
 # cycle's write: either way the hits' dependants read the old register, and
-# nothing replays them, so the held checks fail at the end of the run.
+# nothing replays them, so the held checks fail at the end of the run. Four
+# dependants meet the contract cycle: R6's second reader, seq 13, issues a
+# cycle after seq 11 while one lane op issues a cycle (TI-9), and finds the
+# data in place.
 for brk in late-hit-data no-rcu-bypass; do
   l1ctl "$brk"
-  n=$(grep -c "^CHECK lane [0-9]*: seq \(5\|7\|9\|11\|13\) operand 1 " "$B/kernel_$brk.log")
-  if [ "$n" = 160 ] && [ "$(field "$B/kernel_$brk.log" check_failures)" = 160 ]; then
-    say "--break $brk: hits' dependants read stale" "PASS (5 ops x 32 lanes)"
+  n=$(grep -c "^CHECK lane [0-9]*: seq \(5\|7\|9\|11\) operand 1 " "$B/kernel_$brk.log")
+  if [ "$n" = 128 ] && [ "$(field "$B/kernel_$brk.log" check_failures)" = 128 ]; then
+    say "--break $brk: hits' dependants read stale" "PASS (4 ops x 32 lanes)"
   else
-    bad "--break $brk" "$n stale reads (want 160): $(grep '^KERNEL' "$B/kernel_$brk.log")"
+    bad "--break $brk" "$n stale reads (want 128): $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
 
@@ -645,8 +661,10 @@ fi
 # and the lane forwards its own result. The lanes answer at the contract, so
 # a dependant that took the register file's value instead would read it
 # stale. Every kernel must pass so with bypass alone, and with both modes
-# off; byp forwards five operands, a third operand among them, and merge a
-# merge_data. With both off nothing forwards.
+# off; byp forwards four operands, a third operand among them, and merge a
+# merge_data. With both off nothing forwards. (byp forwarded five while lane
+# ops co-issued; under OOE's interim one-lane-op cap, TI-9, tid's third
+# reader, seq 8, issues after tid's write lands and reads the register file.)
 for k in $(ls build/oracle); do
   for cfg in bypass=1,l1_spec=0 bypass=0,l1_spec=0; do
     log="$B/kernel_${k}_${cfg//[=,]/_}.log"
@@ -664,8 +682,8 @@ for k in $(ls build/oracle); do
   [ "$(cover "$B/kernel_${k}_bypass_1_l1_spec_0.log" lane_byp)" -gt 0 ] && nbyp=$((nbyp + 1))
   [ "$(cover "$B/kernel_${k}_bypass_0_l1_spec_0.log" lane_byp)" = 0 ] || noff=$((noff + 1))
 done
-if [ "$(cover "$log" lane_byp)" = 5 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
-  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 5; none with both off)"
+if [ "$(cover "$log" lane_byp)" = 4 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
+  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 4; none with both off)"
 else
   bad "byp with bypass" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
 fi
@@ -673,11 +691,11 @@ bctl() { CCV_OOE_CONFIG=$1 "$SKEL" --kernel "build/oracle/$2/oracle.jsonl" ${3:+
 # RCU never names the producer: each forwarded operand is the stale value
 # RCU read, on all 32 lanes, and nothing replays it.
 bctl bypass=1 byp no-lane-bypass no-lane-bypass
-n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|7 operand 1|8 operand 1|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
-if [ "$n" = 160 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 160 ]; then
-  say "--break no-lane-bypass: forwards read stale" "PASS (5 operands x 32 lanes)"
+n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|7 operand 1|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
+if [ "$n" = 128 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 128 ]; then
+  say "--break no-lane-bypass: forwards read stale" "PASS (4 operands x 32 lanes)"
 else
-  bad "--break no-lane-bypass" "$n stale reads (want 160): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
+  bad "--break no-lane-bypass" "$n stale reads (want 128): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
 fi
 bctl bypass=1 merge no-lane-bypass no-lane-bypass-merge
 if [ "$(grep -c "^CHECK lane [0-9]*: seq 5 merge_data " "$B/kernel_no-lane-bypass-merge.log")" = 16 ]; then
@@ -686,13 +704,52 @@ else
   bad "--break no-lane-bypass (merge)" "the merge_data forward was not missed: $(grep '^KERNEL' "$B/kernel_no-lane-bypass-merge.log")"
 fi
 # An OOE bypassing a cycle faster than CCV_LAT_LANE_BYP: RCU refuses each
-# dependant it meets three cycles behind its producer.
+# dependant it meets three cycles behind its producer. Two do: with one RCU
+# op a cycle (TI-9) byp's five immediates issue in turn, so seq 6 waits on
+# R2's movi rather than on tid, and seq 7 follows it.
 bctl bypass=1,lat_lane_byp=3 byp "" early-bypass
 n=$(grep -cE "^CHECK rcu: seq [0-9]+ reads operand [0-9] 3 cycles after its lane producer; CCV_LAT_LANE_BYP is 4" "$B/kernel_early-bypass.log")
-if [ "$n" = 3 ] && [ "$(field "$B/kernel_early-bypass.log" check_failures)" = 99 ]; then
-  say "an OOE bypassing at 3: RCU refuses it" "PASS (3 dependants; their 96 lane reads stale)"
+if [ "$n" = 2 ] && [ "$(field "$B/kernel_early-bypass.log" check_failures)" = 66 ]; then
+  say "an OOE bypassing at 3: RCU refuses it" "PASS (2 dependants; their 64 lane reads stale)"
 else
-  bad "an OOE bypassing at 3" "$n refusals (want 3): $(grep '^KERNEL' "$B/kernel_early-bypass.log")"
+  bad "an OOE bypassing at 3" "$n refusals (want 2): $(grep '^KERNEL' "$B/kernel_early-bypass.log")"
+fi
+
+# Sectioned lanes (OI-28 to OI-33, TI-9). ccv_ooe_rcu_issue is one slot per
+# select resource, S0-S3, P0-P3 and R, and co-issued footprints are disjoint
+# (V-60). Until OI's per-resource select (OI-31), OOE's interim cap issues one
+# full-width lane op, one memop and one RCU op a cycle. Lifted, a second op
+# claims a group already held, and RCU refuses every slot the two share: the
+# lane sections for one pair, the pipes for two more.
+"$SKEL" --kernel "$K" --break no-resource-cap >"$B/kernel_no-resource-cap.log" 2>&1
+log="$B/kernel_no-resource-cap.log"
+if grep -q "^CHECK rcu: V-60: seq 3's footprint 1111 overlaps seq 2's at S0" "$log" &&
+   grep -q "^CHECK rcu: V-60: seq 6's footprint 1111 overlaps seq 4's at P0" "$log" &&
+   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = 12 ]; then
+  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: 3 pairs, 12 slots, sections and pipes)"
+else
+  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want 12): $(grep '^KERNEL' "$log")"
+fi
+# A register is a row and a position; a 32-bit one fills its row from 0.
+# OOE naming one at position 1 overruns the row: RCU refuses it, the lanes
+# refuse the destination, and the next reader of it reads it stale.
+"$SKEL" --kernel "$K" --break bad-pos >"$B/kernel_bad-pos.log" 2>&1
+log="$B/kernel_bad-pos.log"
+if grep -q "^CHECK rcu: seq 2's destination, a 32-bit register at position 1, overruns its row" "$log" &&
+   [ "$(grep -c "^CHECK lane [0-9]*: a full-width op whose sections, operands or destination disagree" "$log")" = 32 ]; then
+  say "--break bad-pos: RCU and the lanes refuse it" "PASS (seq 2's destination; 32 lanes)"
+else
+  bad "--break bad-pos" "a register past its row went unnoticed: $(grep '^KERNEL' "$log")"
+fi
+# A memop's pipe footprint is its width's span from its position (OI-33):
+# four pipes at 32 bits. One pipe for each of vadd's memops, MIU refuses all.
+"$SKEL" --kernel "$K" --break narrow-pipes >"$B/kernel_narrow-pipes.log" 2>&1
+log="$B/kernel_narrow-pipes.log"
+n=$(grep -c "^CHECK miu: rob tag [0-9]* has pipes 1, but a 32-bit memop at position 0 takes f" "$log")
+if [ "$n" = 8 ] && [ "$(field "$log" check_failures)" = 8 ]; then
+  say "--break narrow-pipes: MIU refuses each memop" "PASS (8 memops)"
+else
+  bad "--break narrow-pipes" "$n refusals (want 8): $(grep '^KERNEL' "$log")"
 fi
 
 exit $fail

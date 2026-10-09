@@ -13,13 +13,15 @@ multi-instance endpoint (LANE has 32).
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
 | 33 | 1 | 1 | 33 |
-| 11 | 4 | 1 | 44 |
-| 2 | 4 | 32 | 256 |
+| 2 | 1 | 32 | 64 |
+| 9 | 4 | 1 | 36 |
 | 1 | 6 | 1 | 6 |
+| 1 | 7 | 1 | 7 |
 | 1 | 8 | 1 | 8 |
-| **48** | | | **347** |
+| 1 | 9 | 1 | 9 |
+| **48** | | | **163** |
 
-48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **347 slots**, one `ccv_credit_checker` each.
+48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **163 slots**, one `ccv_credit_checker` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 
@@ -31,10 +33,10 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 |---|---|---|---|---|---|---|---|---|---|
 | 0 | `ccv_fet_dec_instr` | 8 × 1 | 8 | *partial* | **bound, groups of 2** — four warp streams of two: tier-1 stream = slot / 2 | **slot_group** — each stream's two slots are strictly program-ordered | — | *false* | instr |
 | 1 | `ccv_dec_ooe_uop` | 6 × 1 | 6 | *partial* | *free* | **warp_id** — six uops from up to four warps have no total order; order is per warp | — | *false* | instr |
-| 2 | `ccv_ooe_rcu_issue` | 4 × 1 | 4 | *partial* | **free** — the four issue slots are a free pool | *none* | — | **true** — once RCU accepts an issue, the result lands exactly at its contracted latency; OOE schedules wakeup from that and has no grant or late signal to learn otherwise (A-47, Q-51) | instr |
-| 3 | `ccv_rcu_lane_ops` | 4 × 32 | 128 | *partial* | **bound, groups of 1** — lane N's four operands slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2; and neither lane channel carries an instruction tag, so a result is attributable only by its slot | *none* | **true** — the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control | **true** — the lane pipeline is part of the contracted lane latency; a lane that stalled would slip every dependant OOE has already scheduled (A-47) | instr |
-| 4 | `ccv_lane_rcu_res` | 4 × 32 | 128 | *partial* | **bound, groups of 1** — lane N's four results slots correspond one-to-one with the four issue slots; free would let lane 3 take instruction A in slot 0 while lane 7 takes it in slot 2 | *none* | **true** — the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control | **true** — lane results land in the PRF at the contracted cycle; RCU never holds one (A-47) | instr |
-| 5 | `ccv_rcu_ooe_done` | 4 × 1 | 4 | *partial* | *free* | *none* | — | **true** — completion at the contracted cycle is what OOE retires against; no late or cancel bit exists (A-47) | instr |
+| 2 | `ccv_ooe_rcu_issue` | 9 × 1 | 9 | *partial* | **bound, groups of 1** — slot k is select resource k, CCV_ISSUE_RESOURCES in all: the lane sections S0-S3, the MIU pipes P0-P3, then the RCU unit R. An op sits in its lowest resource's slot and marks every other resource of its footprint continuation, so RCU sees which sections and pipes each cycle's ops hold; free slots would hide that | *none* | — | **true** — once RCU accepts an issue, the result lands exactly at its contracted latency; OOE schedules wakeup from that and has no grant or late signal to learn otherwise (A-47, Q-51) | instr |
+| 3 | `ccv_rcu_lane_ops` | 1 × 32 | 32 | — | — | — | **true** — the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control | **true** — the lane pipeline is part of the contracted lane latency; a lane that stalled would slip every dependant OOE has already scheduled (A-47) | instr |
+| 4 | `ccv_lane_rcu_res` | 1 × 32 | 32 | — | — | — | **true** — the 32 lanes are one SIMD datapath: they advance together, with no per-lane flow control | **true** — lane results land in the PRF at the contracted cycle; RCU never holds one (A-47) | instr |
+| 5 | `ccv_rcu_ooe_done` | 7 × 1 | 7 | *partial* | *free* | *none* | — | **true** — completion at the contracted cycle is what OOE retires against; no late or cancel bit exists (A-47) | instr |
 | 6 | `ccv_rcu_miu_addr` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |
 | 7 | `ccv_miu_rcu_data` | 4 × 1 | 4 | *partial* | *free* | *none* | — | **true** — L1-hit data must be in the PRF at the contracted cycle, since dependants woken at hit latency read it (A-47) | instr |
 | 8 | `ccv_ooe_miu_memop` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |

@@ -34,7 +34,7 @@ must print the same `COVER` line as the C++ one.
 | Rename free list wrapping | loop | about 200 writes against 192 registers (`reg_reuse>0`) | free-new |
 | L1 hits at the contract (A-46, OI-5) | hit | DCU holds lines (a small direct-mapped array); MIU completes a load whose lines all hit at exactly `CCV_LAT_L1_CMPL` after OOE issued it, data and completion together, and anything later is the miss indication. Four pointer-chasing hits on time (`l1_hit=4`) | early-hit, late-hit-data |
 | L1 speculation (OOE's `l1_spec`) | every kernel | on by default (OI-5), and each kernel passes again with it alone and with both modes off: the dependants of a load woken at `CCV_LAT_L1_WAKE` and replayed on a miss: RCU's register read sees the same cycle's write, and a lane judges a replayed op on its last execution (`Kernel::failHeld`); hit replays its miss's dependant (`reexec=1`) | no-rcu-bypass, late-hit-data |
-| Lane-local bypass (OOE's `bypass`; A-59, TI-8) | every kernel; byp, merge | on by default (OI-5), and each kernel passes again with it alone and with both modes off, lane dependants woken at `CCV_LAT_LANE_BYP`: the lanes answer at `CCV_LAT_LANE`, so the dependant reads the register file before the write, RCU names the producer's slot and age in `operand_byp`, and the lane forwards its own result. byp forwards five operands, MADLO's third among them (`lane_byp=5` with the bypass, `lane_byp=0` with both modes off); merge forwards a merge_data. Not reached: a forward into a masked load's copy-only op, since OOE issues a memop and its copy only on confirmed sources (V-17) | no-lane-bypass; an OOE bypassing at 3, which RCU refuses |
+| Lane-local bypass (OOE's `bypass`; A-59, TI-8) | every kernel; byp, merge | on by default (OI-5), and each kernel passes again with it alone and with both modes off, lane dependants woken at `CCV_LAT_LANE_BYP`: the lanes answer at `CCV_LAT_LANE`, so the dependant reads the register file before the write, RCU names the producer's lead section and age in `operand_byp`, and the lane forwards its own result. byp forwards four operands, MADLO's third among them (`lane_byp=4` with the bypass, `lane_byp=0` with both modes off; five while lane ops co-issued, before the interim one-lane-op cap); merge forwards a merge_data. Not reached: a forward into a masked load's copy-only op, since OOE issues a memop and its copy only on confirmed sources (V-17) | no-lane-bypass; an OOE bypassing at 3, which RCU refuses |
 | Decode-free scheduling (A-75, TI-1) | every kernel; plog | OOE renames and waits on the sources DEC's `src_valid` marks, reads guard or data from `pred_use`, and takes exit and `srd`'s identity from `sched_attr` and `imm_kind`, never from `opcode`. Predicate logic reaches RCU with its two sources renamed in `imm`: plog computes P3 = !P1 \| P2 from real values and guards an add with it (`merge=3`) | drop-src-valid (vadd), arch-pred-srcs (plog) |
 | Checkpoint pressure | brs | five unresolved branches against `CCV_P_BR_CKPTS` = 4: FET stalls until a free (`ckpt_peak=4 ckpt_full>0 ckpt_free=5`) | |
 
@@ -62,19 +62,20 @@ must print the same `COVER` line as the C++ one.
 4. **Per-warp concurrency.** One warp, one CTA throughout: no tier-1 slot
    other than 0, no binding-group contention, no SPM, no barriers, no
    migration.
-5. **The lane's real ports (Daniel's response OI-28, 2026-10-08).** A lane
-   block has four 32-bit operand ports, three sources and merge, each in
-   four 8-bit sections; a full-width lane op takes every section, so one
-   issues a cycle, and four co-issue only as narrow ops in separate
-   sections. The stubs still carry `ccv_rcu_lane_ops` as four slot-bound
-   full-width slots, sixteen operand ports a lane, and the OOE model issues
-   up to four full-width lane ops a cycle. Correctness is unaffected: every
-   kernel still matches ccv-sim. Every cycle count is optimistic, and no
-   IPC-derived number should be trusted until the stubs limit the lane
-   ports (register OI-34). The channel's new shape, and `operand_byp`'s
-   with it, waits on the design rows OI-29 to OI-31 (OI-32). A narrow
-   kernel, vadd16, with co-issue bins and a control that grants two ops
-   into one section, comes with it.
+5. **Narrow ops (Daniel's responses OI-28 to OI-31; TI-9).** A lane block
+   has four 32-bit operand ports, three sources and merge, each in four
+   8-bit sections; a full-width lane op takes every section, so one issues
+   a cycle, and four co-issue only as narrow ops in separate sections. The
+   channels now have that shape (nine resource slots on the issue, one
+   message a lane), and the lane ports are limited: OOE's interim select
+   cap issues one lane op, one memop and one RCU op a cycle, so cycle
+   counts are no longer optimistic on that account. What is not reached is
+   anything narrower than 32 bits: every S1 kernel is full width, the stubs
+   refuse a narrow op by name, and a footprint is always a whole group.
+   It comes with OI's per-resource select (OI-31) and slice placement: a
+   narrow kernel, vadd16, with co-issue and footprint-width bins (AR-15),
+   section-level forwarding, and the V-60 control re-aimed at two narrow
+   ops granted one section.
 
 ## Next, in order
 
