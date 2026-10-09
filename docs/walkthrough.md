@@ -374,7 +374,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=222 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-TRACES records=662/662 equal=yes byte_identical=no differing_cycles=0
+TRACES records=654/654 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
