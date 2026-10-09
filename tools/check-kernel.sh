@@ -565,6 +565,11 @@ else
   bad "--break stale-epoch" "a stale-epoch uop was not dropped: $(grep -E '^(KERNEL|COVER)' "$B/kernel_stale-epoch.log" | xargs)"
 fi
 
+# The OOE modes. bypass and l1_spec are on by default (OI-5), so the runs
+# above are both modes on. Here each runs alone, and every kernel runs once
+# more with both off, the conservative scheduler (CCV_OOE_CONFIG=bypass=0,
+# l1_spec=0): a mode's pass must not rest on the other.
+#
 # L1 speculation (A-46, OI-5). With OOE's l1_spec on, a load's dependants
 # issue at CCV_LAT_L1_WAKE before the load completes, and are cancelled and
 # replayed if it misses. That needs MIU to complete a hit at exactly the
@@ -575,7 +580,7 @@ fi
 # its miss's dependant. Each piece has a control that must fail.
 for k in $(ls build/oracle); do
   log="$B/kernel_${k}_l1spec.log"
-  CCV_OOE_CONFIG=l1_spec=1 "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
+  CCV_OOE_CONFIG=bypass=0,l1_spec=1 "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
   why=""
   for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 violations=0; do
     [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
@@ -585,7 +590,7 @@ done
 log="$B/kernel_hit_l1spec.log"
 if [ "$(cover "$log" l1_hit)" = 4 ] && [ "$(cover "$log" reexec)" = 1 ] &&
    [ "$(field "$log" check_failures)" = 0 ]; then
-  say "every kernel with l1_spec; hit's 4 hits on time" "PASS (its miss's dependant replayed)"
+  say "every kernel with l1_spec alone; hit's 4 on time" "PASS (its miss's dependant replayed)"
 else
   bad "hit with l1_spec" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
 fi
@@ -639,10 +644,11 @@ fi
 # RCU's register file: RCU names the producer's slot and age in operand_byp
 # and the lane forwards its own result. The lanes answer at the contract, so
 # a dependant that took the register file's value instead would read it
-# stale. Every kernel must pass so, and with l1_spec as well; byp forwards
-# five operands, a third operand among them, and merge a merge_data.
+# stale. Every kernel must pass so with bypass alone, and with both modes
+# off; byp forwards five operands, a third operand among them, and merge a
+# merge_data. With both off nothing forwards.
 for k in $(ls build/oracle); do
-  for cfg in bypass=1 bypass=1,l1_spec=1; do
+  for cfg in bypass=1,l1_spec=0 bypass=0,l1_spec=0; do
     log="$B/kernel_${k}_${cfg//[=,]/_}.log"
     CCV_OOE_CONFIG=$cfg "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$log" 2>&1
     why=""
@@ -652,13 +658,14 @@ for k in $(ls build/oracle); do
     [ -z "$why" ] || bad "$k with $cfg" "${why# }"
   done
 done
-log="$B/kernel_byp_bypass_1.log"
-nbyp=0
+log="$B/kernel_byp_bypass_1_l1_spec_0.log"
+nbyp=0; noff=0
 for k in $(ls build/oracle); do
-  [ "$(cover "$B/kernel_${k}_bypass_1.log" lane_byp)" -gt 0 ] && nbyp=$((nbyp + 1))
+  [ "$(cover "$B/kernel_${k}_bypass_1_l1_spec_0.log" lane_byp)" -gt 0 ] && nbyp=$((nbyp + 1))
+  [ "$(cover "$B/kernel_${k}_bypass_0_l1_spec_0.log" lane_byp)" = 0 ] || noff=$((noff + 1))
 done
-if [ "$(cover "$log" lane_byp)" = 5 ] && [ "$(cover "$log" copy)" = 1 ]; then
-  say "every kernel with bypass, and with l1_spec" "PASS (forwarding in $nbyp kernels; byp's 5)"
+if [ "$(cover "$log" lane_byp)" = 5 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
+  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 5; none with both off)"
 else
   bad "byp with bypass" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
 fi

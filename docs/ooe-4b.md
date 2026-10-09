@@ -127,16 +127,16 @@ coverage counts. They exercise:
 - checkpoint pressure;
 - the free list wrapping;
 - dropping a stale-epoch uop;
-- L1 hits at the contract, and the model's `l1_spec` on every kernel
-  (`CCV_OOE_CONFIG=l1_spec=1`, held in `tools/check-kernel.sh`; OI-5);
-- the lane-local bypass (A-59, TI-8): the model's `bypass` on every kernel,
-  alone and with `l1_spec` (`CCV_OOE_CONFIG=bypass=1`). The lanes now
+- L1 hits at the contract, and the model's `l1_spec`, on by default since
+  OI-5; `tools/check-kernel.sh` also runs every kernel with it alone, with
+  `bypass` alone, and with both off (`CCV_OOE_CONFIG=bypass=0,l1_spec=0`);
+- the lane-local bypass (A-59, TI-8): the model's `bypass`, on by default
+  since OI-5. The lanes now
   answer at `CCV_LAT_LANE`, so a dependant woken at `CCV_LAT_LANE_BYP`
   reads the register file before the write and takes its operand from the
   lane: RCU names the producer in `operand_byp` on `ccv_rcu_lane_ops`. The
   `byp` kernel forwards five operands; `no-lane-bypass` and an OOE
-  bypassing at 3 must fail. `config()` in `sim/ooe/ooe_block.cpp` still
-  sets `bypass = false`, so turning it on is the model session's call.
+  bypassing at 3 must fail.
 
 They cannot yet exercise the following. Each needs stub work, which belongs
 to the top-level session, in this order:
