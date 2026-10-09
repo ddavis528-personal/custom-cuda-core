@@ -65,7 +65,7 @@ std::string Config::check() const {
   char buf[200];
   if (payload_stages > 1) return "payload_stages: 0 or 1";
   if (rename_stages < 1) return "rename_stages: at least 1";
-  if (place > 2) return "place: 0 (home = slot), 1 (home = 0) or 2 (rotate)";
+  if (place > 4) return "place: 0 (home = slot), 1 (home = 0), 2 (rotate from 0), 3 (rotate from slot) or 4 (slot + register)";
   for (unsigned f : foot_min)
     if (f != 0 && f != 1 && f != 2 && f != 4) return "foot.G: 0, 1, 2 or 4 sections";
   // V-59 (elaboration): every wake offset is at least 2 + the cancel's hop
@@ -392,7 +392,11 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
     const unsigned n = s.rat[u.src[i] & 15];
     if (!isZeroName(n) && nameWidth(n) != 0) return align(namePos(n));
   }
-  const unsigned home = cfg_.place == 1 ? 0 : cfg_.place == 2 ? s.home_ctr : slot;
+  const unsigned home = cfg_.place == 1   ? 0
+                        : cfg_.place == 2 ? s.home_ctr
+                        : cfg_.place == 3 ? s.home_ctr + slot
+                        : cfg_.place == 4 ? slot + (u.dst & 15)
+                                          : slot;
   return w == 1 ? (home % 2) * 2 : home % 4;
 }
 

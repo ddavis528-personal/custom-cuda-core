@@ -1162,7 +1162,7 @@ void testRandom(unsigned seeds) {
       // rule in turn, with loads passing loads on odd seeds (OA-13).
       const bool sec = (mode & 4) != 0;
       c.sectioned = sec;
-      c.place = seed % 3;
+      c.place = seed % 5;
       c.loads_pass_loads = sec && seed % 2 == 1;
       std::mt19937 rng(seed * 4 + unsigned(mode));
       // Every fifth seed: a floorplan where load data lands after the
@@ -1304,12 +1304,106 @@ void sweep() {
     }
 }
 
+
+/// OI-34: placement and OA-13 arms on synthetic narrow loops, one warp and
+/// four. Each kernel is a loop body repeated with a backward taken branch:
+///   vaddN: ld a, ld b (N-bit), add, st;
+///   redN: ld x, acc += x (loop-carried, N-bit), and the final store;
+///   cvt8: ld x (8-bit), x + x (8-bit), a convert to FP32, an FP op, st;
+///   aluN: eight N-bit accumulators, initialised, one op each per
+///   iteration, each reading a shared narrow operand R12 (lane-bound; alu32
+///   is the full-width reference); aluN-self the same with no shared
+///   operand (acc = acc op acc), the ceiling for a lone warp.
+/// The loop control (an RCU index add, a 32-bit setp, the branch) is in
+/// every body, as compiled code carries it.
+void sweepSections() {
+  enum KK { kVadd, kRed, kCvt, kAlu, kAluSelf };
+  auto body = [](KK kk, unsigned w, unsigned iters) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+    // aluN: the narrow operand R12 and eight accumulators, each initialised.
+    for (unsigned r = 4; r != 13 && (kk == kAlu || kk == kAluSelf); ++r) { Op o; o.k = kLane; o.dst = r; o.w = w; p.push_back(o); }
+    for (unsigned it = 0; it != iters; ++it) {
+      if (kk == kAlu || kk == kAluSelf) {
+        // Eight independent accumulators, one op each per iteration.
+        for (unsigned j = 0; j != 8; ++j) {
+          Op a; a.k = kLane; a.dst = 4 + j; a.w = w; a.src[0] = 4 + j; a.src[1] = kk == kAlu ? 12 : 4 + j; a.nsrc = 2; p.push_back(a);
+        }
+      } else {
+        Op x; x.k = kLoad; x.dst = 4; x.w = w; x.src[0] = 0; x.nsrc = 1; p.push_back(x);
+      }
+      if (kk == kAlu || kk == kAluSelf) {
+      } else if (kk == kVadd) {
+        Op y; y.k = kLoad; y.dst = 5; y.w = w; y.src[0] = 0; y.nsrc = 1; p.push_back(y);
+        Op a; a.k = kLane; a.dst = 6; a.w = w; a.src[0] = 4; a.src[1] = 5; a.nsrc = 2; p.push_back(a);
+        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 6; s.nsrc = 2; p.push_back(s);
+      } else if (kk == kRed) {
+        Op a; a.k = kLane; a.dst = 7; a.w = w; a.src[0] = 7; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
+      } else {
+        Op a; a.k = kLane; a.dst = 5; a.w = w; a.src[0] = 4; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
+        Op c; c.k = kFp; c.dst = 8; c.src[0] = 5; c.nsrc = 1; p.push_back(c);            // cvt to FP32
+        Op f; f.k = kFp; f.dst = 9; f.src[0] = 8; f.src[1] = 8; f.nsrc = 2; p.push_back(f);
+        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 9; s.nsrc = 2; p.push_back(s);
+      }
+      Op r; r.k = kRcuOp; r.dst = 0; r.src[0] = 0; r.nsrc = 1; p.push_back(r);           // index += stride
+      Op t; t.k = kSetp; t.pdst = 1; t.src[0] = 0; t.src[1] = 1; t.nsrc = 2; p.push_back(t);
+      const bool more = it + 1 != iters;
+      Op b; b.k = kBranch; b.pguard = 1; b.taken = b.pred_taken = more; b.backward = true; p.push_back(b);
+    }
+    if (kk == kRed) { Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 7; s.nsrc = 2; p.push_back(s); }
+    Op e; e.k = kExit; p.push_back(e);
+    return p;
+  };
+  struct Kern { const char *name; KK kk; unsigned w; };
+  const Kern ks[] = {{"alu8", kAlu, 2}, {"alu16", kAlu, 1}, {"alu32", kAlu, 0}, {"alu8-self", kAluSelf, 2},
+                     {"alu32-self", kAluSelf, 0}, {"vadd8", kVadd, 2},
+                     {"vadd16", kVadd, 1}, {"red8", kRed, 2}, {"cvt8", kCvt, 2}};
+  const char *pn[] = {"slot", "0", "rotate-0", "rotate-slot", "slot+reg"};
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | sections/narrow op | idle sections/cycle | lost resource |\n"
+              "|---|---|---|---|---|---|---|---|---|\n");
+  for (const Kern &k : ks)
+    for (unsigned warps : {1u, 4u}) {
+      double ref = 0;
+      for (unsigned place = 0; place != 5; ++place)
+        for (int oa13 = 0; oa13 != 2; ++oa13) {
+          if (k.kk != kVadd && oa13) continue;   // at most one load per body: OA-13 moves nothing
+          if (k.w == 0 && place) continue;        // 32-bit: no placement
+          Config c = baseConfig();
+          c.sectioned = true;
+          c.place = place;
+          c.loads_pass_loads = oa13;
+          uint64_t cyc = 0, narrow = 0, nsec = 0, cycles_seen = 0, idle = 0, lost = 0;
+          const unsigned seeds = 4;
+          for (unsigned seed = 1; seed <= seeds; ++seed) {
+            Env e(c, seed);
+            e.miss_pct = 10;
+            for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, body(k.kk, k.w, 32));
+            e.finish();
+            EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+            cyc += e.t;
+            for (auto &h : e.core.histograms["sections_per_op.w" + std::to_string(k.w)]) { narrow += h.second; nsec += h.first * h.second; }
+            for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
+            lost += e.core.counters["select.lost_resource"];
+          }
+          const double cy = double(cyc) / seeds;
+          if (place == 0 && !oa13) ref = cy;
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.0f |\n", k.name, warps, pn[place],
+                      oa13 ? "on" : "off", cy, cy / ref, narrow ? double(nsec) / narrow : 0.0,
+                      cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
+        }
+    }
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
   unsigned seeds = 25;
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--seeds" && i + 1 < argc) seeds = unsigned(std::atoi(argv[++i]));
+  if (argc > 1 && std::string(argv[1]) == "--sweep-sections") {
+    sweepSections();
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--sweep") {
     sweep();
     return g_fail ? 1 : 0;

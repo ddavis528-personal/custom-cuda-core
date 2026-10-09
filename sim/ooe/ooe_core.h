@@ -162,7 +162,9 @@ struct Config {
   bool sectioned = false;
   /// Placement of a narrow destination with no narrow source (OA-14):
   /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
-  /// every warp; 2 the home position, advanced at each taken backward branch.
+  /// every warp; 2 the home position, advanced at each taken backward branch
+  /// from 0; 3 the same, from the slot index (OA-14 leaves the start open);
+  /// 4 the slot index plus the architectural destination (OI-34's own arm).
   unsigned place = 0;
   /// OA-13: a load passes older loads of its warp, blocked only by an older
   /// unissued store, atomic, fence or ordered access. Off: memops issue in

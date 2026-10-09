@@ -210,7 +210,9 @@ its nine slots (OI-32, TI). The unit tests and sweeps run it now.
   The home position comes from `place` (OA-14; DA picks from the OI-34 sweep):
   - 0: the tier-1 slot index;
   - 1: position 0 for every warp;
-  - 2: a per-warp counter, advanced at each taken backward branch.
+  - 2: a per-warp counter, advanced at each taken backward branch;
+  - 3: the same counter, starting at the slot index;
+  - 4: the slot index plus the architectural destination (OI-34's arm).
 
   The lane swizzles inside its 32-bit word, so no op ever moves data
   between sections.
@@ -470,6 +472,47 @@ least-built block on its path, and here every neighbour is a stand-in):
   because the synthetic warps never stall long. Its value comes from
   demotion-heavy runs, which need RAU.
 - Two retires per ROB is worth about 6% over one. Four buys nothing.
+
+**OI-34: sectioned placement and OA-13** (`sim/ooe/run-tests.sh
+--sweep-sections`, 2026-10-09). Synthetic 32-iteration loops, each with its
+loop control (an RCU index add, a 32-bit setp, a backward branch). Four
+seeds, 10% of loads missing. Cycles, one warp and four (the full table
+prints from the command):
+
+| kernel | warps | slot | 0 | rotate from 0 | rotate from slot | slot + reg |
+|---|---|---|---|---|---|---|
+| alu8 (shared operand) | 1 | 342 | 342 | 342 | 342 | 339 |
+| alu8 (shared operand) | 4 | **616** | 1232 | 1232 | 616 | 953 |
+| alu16 (shared operand) | 4 | **813** | 1232 | 1232 | 813 | 1113 |
+| alu32 (reference) | 1 / 4 | 342 / 1232 | | | | |
+| alu8-self | 1 | 340 | 340 | 340 | 340 | **247** |
+| alu8-self | 4 | 605 | 1232 | 1232 | 605 | **570** |
+| vadd8 | 4 | 1064 | 1067 | 1066 | 1053 | 1067 (996 with OA-13) |
+| vadd16 | 4 | 1034 | 1067 | 1059 | 1073 | 1052 (4.0 sections/op) |
+| red8 | 4 | 367 | 377 | 372 | 371 | 367 |
+| cvt8 | 4 | 1246 | 1254 | 1252 | 1246 | 1246 |
+
+- **Four warps, lane-bound:** home = slot index is 2.0x over home 0 at 8
+  bits and 1.5x at 16. Home 0 is exactly alu32: no narrow gain at all.
+- **OA-14's rotation equals its starting rule.** From 0, every warp rotates
+  in lockstep and it equals home 0. From the slot index, it equals home =
+  slot. It never moves a loop-carried value, which follows its own
+  source, so it gives a lone warp nothing on any kernel. In red8 it widens
+  the accumulator's op to 1.75 sections (the accumulator stays put while
+  the load moves), at no cycle cost here.
+- **A lone warp co-issues only if its independent registers sit apart and
+  share no narrow operand.** `place=4` (slot + architectural destination)
+  does this: alu8-self runs 1.38x faster until the ROB binds. The same rule
+  costs where the code mixes registers. vadd16's a and b land in different
+  pairs, so its add takes all 4 sections. A shared narrow operand (alu8's
+  R12) puts its section in every op's footprint, which serialises a lone
+  warp under any rule and slows four warps by 1.55x under slot + reg.
+- **vadd, red and cvt are ROB-bound here** (`stall.rob_full` is most of
+  the cycles): placement moves them by 4% at most. Under OA-15 cvt8 is
+  placement-blind.
+- **OA-13** changes nothing except vadd8 under slot + reg (6%). The loads
+  of one iteration become ready together. Its case is gathers and pointer
+  chasing, which needs the corpus.
 
 ## Requests to other agents
 
