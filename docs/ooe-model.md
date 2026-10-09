@@ -90,7 +90,13 @@ example, is PF-1.
 1. **Select order.** Bulk discards take memop slots first. Then the MIU class
    goes, then the RCU class, from the four issue slots of
    `ccv_ooe_rcu_issue`. Every memop also takes an issue slot, because RCU
-   reads its address sources. Within a class, each warp in turn, starting from
+   reads its address sources. INTERIM (TI, sectioned lanes; OI-31 replaces
+   it): with `resource_cap`, on in the adapter, a cycle takes at most one
+   lane op (a masked load's copy among them), one memop and one RCU op,
+   since every S1 op is full width and claims its whole resource group. The
+   adapter puts each on its group's lead slot of the nine (S0, P0, R) and
+   marks the rest of its footprint continuation; the unit tests run with it
+   off. Within a class, each warp in turn, starting from
    a priority that rotates every cycle, issues its oldest ready entry, and the
    rounds repeat until slots run out. Age is allocation order within a warp;
    across warps there is none, as the doc says.

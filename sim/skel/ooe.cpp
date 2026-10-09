@@ -291,7 +291,11 @@ private:
       if (e.op->cls == kExit) return;                // exit waits for all
     }
     if (e.op->cls == kExit) { e.issued = true; return; }
-    const unsigned slot = e.tag % kChans[c.ooe_rcu].rate;
+    // ccv_ooe_rcu_issue's slots are resources (S0-S3, P0-P3, R): a lane op
+    // and a memop are full width here, so each takes its whole group, its
+    // lead slot first and the rest continuation; an RCU op takes R.
+    const unsigned slot = mem ? kSlotP0 : inRcu(e.op->cls) ? kSlotR : kSlotS0;
+    const unsigned mslot = e.tag % kChans[c.ooe_miu].rate;
     // Merge (A-33): some lane may keep its old value -- the issue mask is
     // not full, or a guard may switch lanes off -- so the old destination is
     // a fourth source: the RAT's old mapping, the zero register if unwritten.
@@ -303,9 +307,14 @@ private:
     // only its active lanes, so the inactive ones are copied from the old
     // destination through a lane, on a second issue slot the same cycle.
     const bool copy = merge && mem && attrMemKind(e.attr) == kMemKLoad;
-    const unsigned cslot = (slot + 1) % kChans[c.ooe_rcu].rate;
-    if (!can(c.ooe_rcu, slot) || (mem && !can(c.ooe_miu, slot)) ||
-        (copy && !can(c.ooe_rcu, cslot)))
+    const unsigned cslot = kSlotS0;
+    auto groupFree = [&](unsigned lead) {
+      const unsigned n = lead == kSlotR ? 1 : kSecs;
+      for (unsigned k = 0; k != n; ++k)
+        if (!can(c.ooe_rcu, lead + k)) return false;
+      return true;
+    };
+    if (!groupFree(slot) || (mem && !can(c.ooe_miu, mslot)) || (copy && !groupFree(cslot)))
       return;
     Bits is = msgOf(c.ooe_rcu);
     put(is, c.ooe_rcu, "rob_tag", e.tag);
@@ -343,7 +352,20 @@ private:
     put(is, c.ooe_rcu, "pred_neg", e.pneg && k_.brk != "drop-negate" &&
                                    k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
     put(is, c.ooe_rcu, "opcode", opcodeOf(e.op));
-    send(c.ooe_rcu, slot, is, e.tid);
+    put(is, c.ooe_rcu, "bypass_group", attrBypGroup(e.attr));
+    put(is, c.ooe_rcu, "footprint", slot == kSlotR ? 0u : maskOf(kChw32, 0));
+    // A lead and its continuation: the rest of its full-width group.
+    auto sendGroup = [&](unsigned lead, const Bits &m) {
+      send(c.ooe_rcu, lead, m, e.tid);
+      if (lead == kSlotR) return;
+      for (unsigned k = 1; k != kSecs; ++k) {
+        Bits ct = msgOf(c.ooe_rcu);
+        put(ct, c.ooe_rcu, "rob_tag", e.tag);
+        put(ct, c.ooe_rcu, "cont", 1);
+        send(c.ooe_rcu, lead + k, ct, e.tid);
+      }
+    };
+    sendGroup(slot, is);
     if (copy) {
       // The same issue as the load's -- tag, destination, old destination,
       // guard -- under CCV_OP_PRF_COPY. An unguarded load masked only by
@@ -356,7 +378,7 @@ private:
       }
       // skip-copy: OOE issues the load alone, so the inactive lanes keep
       // whatever the fresh register held.
-      if (k_.brk != "skip-copy") send(c.ooe_rcu, cslot, cp, e.tid);
+      if (k_.brk != "skip-copy") sendGroup(cslot, cp);
       k_.hit("copy");
       e.copy_pending = true;
       e.copy_wake = now_ + ccv::prov::kLatLane;
@@ -377,7 +399,8 @@ private:
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
       put(mo, c.ooe_miu, "space", e.space);
       put(mo, c.ooe_miu, "ordering", e.ordering);
-      send(c.ooe_miu, slot, mo, e.tid);
+      put(mo, c.ooe_miu, "pipes", maskOf(kChw32, 0));   // full width: P0-P3
+      send(c.ooe_miu, mslot, mo, e.tid);
     }
     e.issued = true;
     emit(now_, e.tid, EV_ISSUE, UNIT_OOE, e.warp, slot, e.tag);

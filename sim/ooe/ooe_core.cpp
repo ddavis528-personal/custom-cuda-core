@@ -30,7 +30,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}};
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec}, {"resource_cap", &resource_cap},
                                      {"rename_preds", &rename_preds}};
   std::stringstream ss(spec);
   // byp.P.C=N and lat.U=N: the bypass table and the spare units' latencies.
@@ -1212,6 +1212,8 @@ bool Core::predHold(unsigned slot, const RobEntry &r) const {
 
 void Core::select() {
   unsigned ports = 0, mports = 0;
+  // resource_cap's groups claimed this cycle: lane sections, pipes, R.
+  bool lane_used = false, pipes_used = false, r_used = false;
   std::vector<bool> memop_block(slot_.size(), false);
   // Bulk discards first: each takes a memop slot, and no memop of the same
   // warp goes in the same cycle (V-23).
@@ -1272,6 +1274,17 @@ void Core::select() {
         const RobEntry &r = slot_[si].rob[rs_[e].rob];
         const unsigned need = r.copy ? 2 : 1;
         if (ports + need > cfg_.issue_width) { count("stall.copy_port"); continue; }
+        if (cfg_.resource_cap) {
+          const bool rcu_op = !miu && r.u.attr.exec_rcu;
+          const bool lane = (!miu && !rcu_op) || r.copy;
+          if ((lane && lane_used) || (miu && pipes_used) || (rcu_op && r_used)) {
+            count("stall.resource");
+            continue;
+          }
+          lane_used |= lane;
+          pipes_used |= miu;
+          r_used |= rcu_op;
+        }
         const unsigned port = ports;
         ports += need;
         if (miu) ++mports;
@@ -1349,6 +1362,10 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   is.chwidth = s.chwidth;
   is.guarded = u.shape.guard;
   is.gpr_reads = u.shape.gpr_reads;
+  // Interim footprints (resource_cap): every op full width.
+  is.res = r.is_mem ? Issue::kMemop : u.attr.exec_rcu ? Issue::kRcuOp : Issue::kLaneOp;
+  is.footprint = is.res == Issue::kRcuOp ? 0 : 0xF;
+  is.byp_group = uint8_t((u.attr_raw >> 13) & 7u);
   if (!r.is_mem) {
     is.send_imm = true;
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
@@ -1387,6 +1404,8 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     Issue cp = is;
     cp.port = copy_port;
     cp.copy = true;
+    cp.res = Issue::kLaneOp;       // the copy runs through a lane
+    cp.footprint = 0xF;
     cp.send_imm = true;
     cp.imm = 0;
     if (!u.shape.guard) {

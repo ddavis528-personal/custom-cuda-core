@@ -75,6 +75,7 @@ public:
 
 private:
   ooe::Core core_;
+  bool bad_pos_done_ = false;   ///< the bad-pos control names one register
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
@@ -91,6 +92,11 @@ private:
     // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
     // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
+    // One footprint per resource group a cycle, until OI-31's per-resource
+    // select: the sectioned issue channel carries one full-width lane op,
+    // one memop and one RCU op. no-resource-cap lifts it, and RCU must
+    // refuse the overlap that follows (V-60).
+    c.resource_cap = k.brk != "no-resource-cap";
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
     c.inject_free_new = k.brk == "free-new";
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
@@ -277,6 +283,7 @@ private:
   void sendOutputs() {
     const Ch &c = ch();
     const ooe::Outputs &o = core_.out;
+    std::vector<std::pair<const ooe::Issue *, Bits>> issues;
     for (const ooe::Issue &x : o.issues) {
       Bits is = msgOf(c.ooe_rcu);
       put(is, c.ooe_rcu, "rob_tag", x.rob_tag);
@@ -298,11 +305,26 @@ private:
       put(is, c.ooe_rcu, "pred_neg", x.pred_neg && k_.brk != "drop-negate" &&
                                      k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
       put(is, c.ooe_rcu, "opcode", x.copy ? kOpCopy : x.opcode);
+      put(is, c.ooe_rcu, "bypass_group", x.byp_group);
+      // Every S1 register is full width at position 0 (no slice placement
+      // yet); each operand carries the warp's width code. bad-pos names the
+      // first lane op's 32-bit destination at position 1, which overruns its
+      // row: RCU must refuse it.
+      for (unsigned i = 0; i != 3; ++i)
+        is.set(field(c.ooe_rcu, "src_width").lsb + ccv::kWChwidth * i, ccv::kWChwidth, x.chwidth);
+      put(is, c.ooe_rcu, "dst_width", x.chwidth);
+      const OpInfo *gop = x.copy ? nullptr : opByCode(x.opcode);
+      if (k_.brk == "bad-pos" && x.res == ooe::Issue::kLaneOp && gop && gop->gdst &&
+          !bad_pos_done_) {
+        put(is, c.ooe_rcu, "dst_pos", 1);
+        bad_pos_done_ = true;
+      }
       // skip-copy: the load issues alone, so its inactive lanes keep whatever
       // the fresh register held (A-38).
       if (x.copy && k_.brk == "skip-copy") continue;
-      sendOn(c.ooe_rcu, x.port, is, x.tid);
+      issues.emplace_back(&x, is);
     }
+    sendIssues(issues);
     for (const ooe::Memop &x : o.memops) {
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", x.rob_tag);
@@ -322,6 +344,9 @@ private:
         put(mo, c.ooe_miu, "space", x.space);
         put(mo, c.ooe_miu, "ordering", x.ordering);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
+        // The memop's pipe footprint at its data position (0 in S1).
+        // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
+        put(mo, c.ooe_miu, "pipes", k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, 0));
       }
       sendOn(c.ooe_miu, x.port, mo, x.tid);
     }
@@ -364,6 +389,44 @@ private:
     if (!o.status.empty()) core_.counters["s1.status_dropped"] += o.status.size();
     if (!o.maps.empty() || !o.drained.empty() || !o.bars.empty() || !o.kill_acks.empty())
       k_.fail("ooe: a map, drained, barrier or kill ack with no S1 consumer");
+  }
+
+  /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an
+  /// op goes in its footprint's lowest slot, and the rest of its footprint
+  /// carries continuation, its rob_tag and cont = 1. Leads go first, then
+  /// continuations. Without resource_cap (no-resource-cap) two ops can claim
+  /// one group in a cycle: the second lead takes the next free slot, as a
+  /// select with no per-resource pick would place it, continuations take
+  /// what is left, and RCU must refuse the overlap (V-60) or the slot.
+  void sendIssues(const std::vector<std::pair<const ooe::Issue *, Bits>> &issues) {
+    const Ch &c = ch();
+    const bool loose = k_.brk == "no-resource-cap";
+    auto group = [](const ooe::Issue &x) {
+      return x.res == ooe::Issue::kRcuOp ? kSlotR
+             : x.res == ooe::Issue::kMemop ? kSlotP0 : kSlotS0;
+    };
+    for (const auto &p : issues) {
+      const ooe::Issue &x = *p.first;
+      const unsigned fp = x.res == ooe::Issue::kRcuOp ? 0u : x.footprint;
+      unsigned s = group(x) + (fp ? unsigned(__builtin_ctz(fp)) : 0u);
+      for (unsigned k = 0; loose && k != kSlotR && !can(c.ooe_rcu, s); ++k)
+        s = (s + 1) % (kSlotR + 1);
+      Bits msg = p.second;
+      put(msg, c.ooe_rcu, "footprint", fp);
+      sendOn(c.ooe_rcu, s, msg, x.tid);
+    }
+    for (const auto &p : issues) {
+      const ooe::Issue &x = *p.first;
+      if (x.res == ooe::Issue::kRcuOp) continue;
+      for (unsigned b = unsigned(__builtin_ctz(x.footprint)) + 1; b < kSecs; ++b) {
+        const unsigned s = group(x) + b;
+        if (!((x.footprint >> b) & 1u) || (loose && !can(c.ooe_rcu, s))) continue;
+        Bits ct = msgOf(c.ooe_rcu);
+        put(ct, c.ooe_rcu, "rob_tag", x.rob_tag);
+        put(ct, c.ooe_rcu, "cont", 1);
+        sendOn(c.ooe_rcu, s, ct, x.tid);
+      }
+    }
   }
 
   void sendOn(unsigned chan, unsigned port, const Bits &msg, uint64_t tid) {
