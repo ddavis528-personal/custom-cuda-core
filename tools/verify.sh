@@ -158,7 +158,7 @@ run "OOE unit tests" ./tools/check-ooe-unit.sh
 section "Stage 4c -- OOE RTL (rtl/ooe/)"
 # Each OOE RTL module in lockstep with the model code it implements, at the
 # parameters' sizes, with the harness's controls each caught.
-run "OOE RTL pick == model" ./test/ooe/run-pick.sh
+run "OOE RTL == model" ./test/ooe/run-rtl.sh
 
 section "SV top -- rtl/top/ (generated, tracked)"
 # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
