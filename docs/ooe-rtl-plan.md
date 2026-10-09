@@ -8,7 +8,37 @@ for OOE. This file is the agenda: each decision, the options, and a
 recommendation. The model changes first wherever a decision changes
 behaviour, so the RTL still has one reference to correlate against.
 
-## Blocking decisions
+## Status (2026-10-09)
+
+Settled since this agenda was written:
+
+- **1, the stage budget.** Q-7 is closed: NGD is normalized gate delays,
+  the same at every corner. OA's paper estimate (OA-1, revised for the
+  sectioned select) puts ready at 16.1 NGD and the per-resource select at
+  17.6 (30 entries) and 15.7 (15 entries). The model carries rename as
+  three stages and a payload stage (OI-26).
+- **2, the free list.** (a), a bit-vector with a rotating start (OI-22).
+- **5, the S1 modes.** Bypass, L1 speculation and predicate renaming are
+  all on in the kernels, so the RTL carries one rename scheme.
+
+Still open for the RTL grill-me with DA: **3** (the decode queue), **4**
+(payload storage), and **6** (the reset line). The reset line must now also
+cover the sectioned state: row owners, live-section masks and per-name
+widths.
+
+Built (`rtl/ooe/`):
+
+- **`ccv_ooe_pick`**, one RS class's per-resource select, combinational.
+  `test/ooe/run-pick.sh` holds it in lockstep with `ooe::pickResources`,
+  the function the model's select calls, at both classes' sizes. Its
+  controls (youngest-wins, any-wins, no-mask) must each be caught.
+  `test/ooe/depth.sh` maps it to NAND-equivalent gates (each gate at its
+  fanout-of-4 delay). The 30-entry pick's logic is 9.4 NGD in 7 levels,
+  against the estimate's 9.1 of logic. The 15-entry pick's is 8.1 in 6,
+  against 7.7. Both are inside the estimate's stated ±15%, so the select
+  stage is about 17.9 and 16.1 NGD of 25.
+
+## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The
 model wakes and selects in one cycle (a dependant issues exactly its

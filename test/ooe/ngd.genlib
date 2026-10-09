@@ -1,0 +1,19 @@
+# Gates for a depth estimate in NGD (DA's response TI-3: a normalized gate
+# is a NAND equivalent by logical effort). Each gate's delay is its
+# fanout-of-4 delay, d = g*4 + p in units of tau, divided by a NAND2's
+# (4/3*4 + 2 = 7.33 tau), so a NAND2 at fanout 4 is 1.00 NGD. Delays are
+# load-independent: fanout beyond 4 (broadcast) and wire are costed outside
+# the logic, as OA's estimate does. Area is transistor count.
+GATE ZERO   0  Y=CONST0;
+GATE ONE    0  Y=CONST1;
+GATE BUF    4  Y=A;          PIN * NONINV 1 999 1.36 0 1.36 0
+GATE INV    2  Y=!A;         PIN * INV    1 999 0.68 0 0.68 0
+GATE NAND2  4  Y=!(A*B);     PIN * INV    1 999 1.00 0 1.00 0
+GATE NOR2   4  Y=!(A+B);     PIN * INV    1 999 1.18 0 1.18 0
+GATE NAND3  6  Y=!(A*B*C);   PIN * INV    1 999 1.32 0 1.32 0
+GATE NOR3   6  Y=!(A+B+C);   PIN * INV    1 999 1.68 0 1.68 0
+GATE NAND4  8  Y=!(A*B*C*D); PIN * INV    1 999 1.64 0 1.64 0
+GATE AOI21  6  Y=!(A*B+C);   PIN * INV    1 999 1.50 0 1.50 0
+GATE OAI21  6  Y=!((A+B)*C); PIN * INV    1 999 1.50 0 1.50 0
+GATE AOI22  8  Y=!(A*B+C*D); PIN * INV    1 999 1.64 0 1.64 0
+GATE OAI22  8  Y=!((A+B)*(C+D)); PIN * INV 1 999 1.64 0 1.64 0

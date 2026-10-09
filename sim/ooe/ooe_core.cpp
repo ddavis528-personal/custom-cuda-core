@@ -1352,6 +1352,25 @@ bool Core::predHold(unsigned slot, const RobEntry &r) const {
   return false;
 }
 
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost) {
+  std::vector<size_t> win(nres, SIZE_MAX);
+  for (size_t e = 0; e != req.size(); ++e)
+    for (unsigned k = 0; k != nres; ++k)
+      if (((req[e].res >> k) & 1u) && (win[k] == SIZE_MAX || req[e].age < req[win[k]].age)) win[k] = e;
+  std::vector<bool> grant(req.size(), false);
+  for (size_t e = 0; e != req.size(); ++e) {
+    bool all = true, some = false;
+    for (unsigned k = 0; k != nres; ++k)
+      if ((req[e].res >> k) & 1u) {
+        if (win[k] == e) some = true;
+        else all = false;
+      }
+    grant[e] = all && req[e].res != 0;
+    if (lost && !all && some) ++*lost;
+  }
+  return grant;
+}
+
 /// Select over resources (OI-31, OI-33): S0-S3, R and P0-P3, bits 0 to 8.
 /// Each resource grants its oldest ready requester; an entry issues only
 /// if it wins every resource its footprint names, so co-issued footprints
@@ -1410,22 +1429,14 @@ void Core::selectSectioned() {
   std::vector<unsigned> cand;
   for (unsigned e = 0; e != n_; ++e)
     if (ready(e)) cand.push_back(e);
-  std::array<unsigned, kRes> win;
-  win.fill(kNoEntry);
-  for (unsigned e : cand)
-    for (unsigned k = 0; k != kRes; ++k)
-      if (((rs_[e].res >> k) & 1u) && (win[k] == kNoEntry || rs_[e].age < rs_[win[k]].age)) win[k] = e;
+  std::vector<PickReq> preq;
+  for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
   std::vector<unsigned> grant;
-  for (unsigned e : cand) {
-    bool all = true, some = false;
-    for (unsigned k = 0; k != kRes; ++k)
-      if ((rs_[e].res >> k) & 1u) {
-        if (win[k] == e) some = true;
-        else all = false;
-      }
-    if (all) grant.push_back(e);
-    else if (some) count("select.lost_resource");   // won a section, lost another
-  }
+  unsigned lost = 0;
+  const std::vector<bool> won = pickResources(preq, kRes, &lost);
+  for (size_t i = 0; i != cand.size(); ++i)
+    if (won[i]) grant.push_back(cand[i]);
+  if (lost) count("select.lost_resource", lost);   // won a section, lost another
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
   // inject_double_grant: the oldest lane op, and the oldest memop, left out
   // are granted anyway, onto sections or pipes a granted op holds.

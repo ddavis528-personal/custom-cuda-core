@@ -284,6 +284,19 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
 
 // ---- decoded outputs ----------------------------------------------------------------
 
+/// One ready requester of the per-resource select: its resource mask and
+/// its age (smaller is older).
+struct PickReq {
+  unsigned res = 0;
+  uint64_t age = 0;
+};
+/// The per-resource select (OI-31, V-60), the reference the RTL's
+/// ccv_ooe_pick is checked against: each resource grants its oldest
+/// requester, and a requester issues only if it wins every resource it
+/// names. Returns which requesters issue; *lost counts those that won some
+/// resources but not all.
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr);
+
 struct Issue {          ///< ccv_ooe_rcu_issue
   uint64_t tid = 0;
   unsigned port = 0;    ///< issue slot
