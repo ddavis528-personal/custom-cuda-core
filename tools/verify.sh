@@ -155,6 +155,11 @@ section "Stage 4b -- OOE model unit tests (sim/ooe/)"
 # The harness's own controls must each be caught, and are held by name.
 run "OOE unit tests" ./tools/check-ooe-unit.sh
 
+section "Stage 4c -- OOE RTL (rtl/ooe/)"
+# Each OOE RTL module in lockstep with the model code it implements, at the
+# parameters' sizes, with the harness's controls each caught.
+run "OOE RTL pick == model" ./test/ooe/run-pick.sh
+
 section "SV top -- rtl/top/ (generated, tracked)"
 # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
 # instances, with the checker bank under CCV_CHECK. After the skeleton, which
