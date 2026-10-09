@@ -156,6 +156,11 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   woff_.assign(size_t(n_) * n_, kLateOff);
   cok_.assign(size_t(n_) * n_, 0);
   skew_ = cfg_.inject_early_wake ? 1 : 0;
+  for (const auto &row : cfg_.byp)
+    for (uint8_t v : row)
+      if (v != Config::kNoByp && std::find(pens_.begin(), pens_.end(), v) == pens_.end()) pens_.push_back(v);
+  std::sort(pens_.begin(), pens_.end());
+  pens_fit_ = pens_.size() <= kWakeLines - 1;
   const unsigned names = cfg_.phys_regs * kPos_;
   gprod_.assign(names, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
@@ -597,6 +602,25 @@ bool Core::cellOk(unsigned i, unsigned j) const {
   // stands (a cancel clears issued). dep() gives offsets only to timed
   // producers.
   return p.issued && now_ + skew_ >= p.issue_at + w;
+}
+
+unsigned Core::cellCode(unsigned i, unsigned j) const {
+  const uint8_t w = woff_[size_t(i) * n_ + j];
+  if (w == kLateOff) return kLateLine;
+  const unsigned unit = slot_[rs_[j].slot].rob[rs_[j].rob].u.attr.lat_class;
+  const unsigned pen = w - cfg_.fastOf(unit);
+  for (unsigned k = 0; k != pens_.size(); ++k)
+    if (pens_[k] == pen) return k;
+  return kWakeLines;   // no line carries it: the structural check reports it
+}
+
+bool Core::wakeLine(unsigned j, unsigned k) const {
+  const RsEntry &p = rs_[j];
+  if (k == kLateLine) return p.late;
+  if (k >= pens_.size() || !p.issued) return false;
+  const unsigned unit = slot_[p.slot].rob[p.rob].u.attr.lat_class;
+  const unsigned f = unit < Config::kUnits ? cfg_.fastOf(unit) : 0;
+  return f && now_ + skew_ >= p.issue_at + f + pens_[k];
 }
 
 bool Core::rowReady(unsigned i) const {
@@ -1969,6 +1993,25 @@ void Core::checkInvariants() {
     if (counters["invariant." + id] <= kReportOnce) err("%s: %s", id.c_str(), what.c_str());
   };
   char buf[256];
+  // The ready path as the RTL builds it: a row is ready iff every cell it
+  // depends on selects a raised wake line of its producer. Holding this
+  // every cycle is what lets ccv_ooe_ready be checked against the model's
+  // own state (test/ooe/ready_tb.cpp).
+  if (pens_fit_)
+    for (unsigned i = 0; i != n_; ++i) {
+      if (!rs_[i].valid) continue;
+      bool st = true;
+      for (unsigned j = 0; j != n_ && st; ++j)
+        if (depBit(i, j)) {
+          const unsigned k = cellCode(i, j);
+          st = k < kWakeLines && wakeLine(j, k);
+        }
+      if (st != rowReady(i)) {
+        std::snprintf(buf, sizeof buf, "entry %u: wake lines say %s, the model %s", i, st ? "ready" : "waiting",
+                      rowReady(i) ? "ready" : "waiting");
+        bad("ready-structure", buf);
+      }
+    }
   // V-01: free list + every slot's owned registers partition the pool, and
   // a slot owns exactly its committed map plus its in-flight destinations.
   std::vector<int> where(cfg_.phys_regs, -1);

@@ -24,3 +24,12 @@ for cfg in "pick_rcu $n_rcu $((secs + 1)) 9.1" "pick_miu $n_miu $pipes 7.7"; do
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s resources: %5s NGD in %s levels (estimate %s)\n' "$1" "$2" "$3" "$d" "$l" "$4"
 done
+# ccv_ooe_ready over both classes: the estimate's logic terms are the cell
+# select and dependency gate (3.5) and the row-wide AND (5.6).
+n=$((n_rcu + n_miu))
+yosys -q -p "read_verilog -sv rtl/ooe/ccv_ooe_ready.sv; chparam -set N $n ccv_ooe_ready;
+             synth -flatten -top ccv_ooe_ready; write_blif $out/ready.blif"
+line=$(yosys-abc -c "read_blif $out/ready.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
+l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
+printf '  %-10s %3s entries, 4 wake lines: %5s NGD in %s levels (estimate 9.1)\n' ready "$n" "$d" "$l"

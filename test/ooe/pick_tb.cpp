@@ -16,6 +16,7 @@
 // garbage row counts). Usage: pick_tb [vectors] [seed].
 //===----------------------------------------------------------------------===//
 #include "Vccv_ooe_pick.h"
+#include "verilated.h"
 #include "ooe_core.h"
 
 #include <cstdio>
@@ -48,7 +49,8 @@ int main(int argc, char **argv) {
   const char *ctl = std::getenv("PICK_CONTROL");
   const std::string control = ctl ? ctl : "";
   std::mt19937_64 rng(seed);
-  Vccv_ooe_pick dut;
+  VerilatedContext ctx;
+  Vccv_ooe_pick dut{&ctx};
   unsigned fails = 0, issued_total = 0, lost_total = 0, multi_total = 0;
 
   for (unsigned v = 0; v != vectors && fails < 10; ++v) {

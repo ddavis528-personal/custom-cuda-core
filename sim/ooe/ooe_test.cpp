@@ -35,6 +35,9 @@ namespace {
 
 int g_fail = 0;
 bool g_quiet = false;     ///< a negative control's expected failures
+/// Called after every core cycle of every Env: an RTL testbench compiled
+/// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
+void (*g_cycle_hook)(const Core &) = nullptr;
 std::string g_test;
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
@@ -438,6 +441,7 @@ struct Env {
     }
     fetApply();
     core.cycle(t);
+    if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
     for (const Issue &is : o.issues) onIssue(is);
@@ -1419,6 +1423,16 @@ void sweepSections() {
 
 } // namespace
 
+#ifdef OOE_TEST_AS_LIBRARY
+/// The random tests with a hook on every core cycle: what an RTL testbench
+/// runs. Returns the failure count.
+int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
+  g_cycle_hook = hook;
+  testRandom(seeds);
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
+#else
 int main(int argc, char **argv) {
   unsigned seeds = 25;
   for (int i = 1; i < argc; ++i)
@@ -1456,3 +1470,4 @@ int main(int argc, char **argv) {
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }
+#endif

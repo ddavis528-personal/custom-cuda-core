@@ -723,7 +723,27 @@ private:
   unsigned kPos_ = 1;
   std::vector<uint8_t> gw_;                   ///< name -> width code
   std::vector<uint8_t> rowOwner_, rowSec_;    ///< row -> slot + 1; live sections
+  // The ready path as the RTL builds it (OA-1; A-62, A-73, OA-4): each
+  // producer drives kWakeLines wake lines, its fastest bypass point plus
+  // each bypass penalty, and the PRF read; each matrix cell selects one.
+  std::vector<unsigned> pens_;        ///< the distinct penalties, sorted
+  bool pens_fit_ = true;              ///< at most kWakeLines - 1 of them
 public:
+  static constexpr unsigned kWakeLines = 4, kLateLine = kWakeLines - 1;
+  /// A matrix cell: entry i waits on entry j.
+  bool depBit(unsigned i, unsigned j) const { return cell(i, j) & 1; }
+  /// The wake line cell (i, j) selects: a bypass penalty's index into the
+  /// producer's lines, or kLateLine for the PRF read.
+  unsigned cellCode(unsigned i, unsigned j) const;
+  /// Producer j's wake line k this cycle.
+  bool wakeLine(unsigned j, unsigned k) const;
+  /// Whether the configured penalties fit the lines (a knob-set table may
+  /// not); the structural check runs only when they do.
+  bool wakeLinesFit() const { return pens_fit_; }
+  unsigned rsEntries() const { return n_; }
+  bool rsValid(unsigned e) const { return rs_[e].valid; }
+  bool rsIssued(unsigned e) const { return rs_[e].issued; }
+  bool rsReady(unsigned e) const { return rowReady(e); }
   unsigned nameRow(unsigned n) const { return n / kPos_; }
   unsigned namePos(unsigned n) const { return n % kPos_; }
   bool isZeroName(unsigned n) const { return n / kPos_ == cfg_.phys_zero; }

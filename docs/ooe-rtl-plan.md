@@ -29,7 +29,7 @@ widths.
 Built (`rtl/ooe/`):
 
 - **`ccv_ooe_pick`**, one RS class's per-resource select, combinational.
-  `test/ooe/run-pick.sh` holds it in lockstep with `ooe::pickResources`,
+  `test/ooe/run-rtl.sh` holds it in lockstep with `ooe::pickResources`,
   the function the model's select calls, at both classes' sizes. Its
   controls (youngest-wins, any-wins, no-mask) must each be caught.
   `test/ooe/depth.sh` maps it to NAND-equivalent gates (each gate at its
@@ -37,6 +37,21 @@ Built (`rtl/ooe/`):
   against the estimate's 9.1 of logic. The 15-entry pick's is 8.1 in 6,
   against 7.7. Both are inside the estimate's stated ±15%, so the select
   stage is about 17.9 and 16.1 NGD of 25.
+- **`ccv_ooe_ready`**, the ready stage over all 45 entries, combinational:
+  - each producer drives four wake lines: its fastest bypass point plus
+    each of the three bypass penalties, and last the PRF read;
+  - each matrix cell selects one line, and a row is ready when every cell
+    it depends on sees its line raised.
+
+  The model carries the same structure (`Core::cellCode`,
+  `Core::wakeLine`) and checks every cycle that it reproduces `rowReady`
+  ("ready-structure"; a one-cycle mutation of the lines is caught).
+  `test/ooe/ready_tb.cpp` runs the model's random unit tests and drives
+  the RTL from the live core after every cycle. Cycles whose knob-set
+  bypass table has more distinct penalties than the lines carry are
+  skipped and counted. Controls code-shift and no-late must each be
+  caught. Logic depth is 9.8 NGD in 8 levels, against the estimate's 9.1,
+  so the ready stage is about 16.8 NGD of 25.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
