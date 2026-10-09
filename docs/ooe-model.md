@@ -217,7 +217,9 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   2. to an existing narrow source's position;
   3. to its home position.
 
-  The home position comes from `place` (OA-14; DA picks from the OI-34 sweep):
+  The home position comes from `place`. 0 is the decided default (DA's
+  response OI-35, 2026-10-09); the others are sweep arms, and OA-14's
+  rotation is withdrawn:
   - 0: the tier-1 slot index;
   - 1: position 0 for every warp;
   - 2: a per-warp counter, advanced at each taken backward branch;
@@ -246,7 +248,8 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   cycle before its load (V-61). Its sources are confirmed first, so it
   cannot be cancelled after the load has gone. Unsectioned, the copy leaves
   with its load, as before.
-- **Loads passing loads** (OA-13, pending DA): with `loads_pass_loads`, a
+- **Loads passing loads** (OA-13, deferred to PF-28 by DA's response of
+  2026-10-09; a sweep knob only, off): with `loads_pass_loads`, a
   plain load passes older unissued plain loads of its warp. It never passes
   a store, an atomic, a fence or an ordered access. Off, memops issue in
   program order per warp (OI-15).
@@ -488,7 +491,10 @@ least-built block on its path, and here every neighbour is a stand-in):
 --sweep-sections`, 2026-10-09). Synthetic 32-iteration loops, each with its
 loop control (an RCU index add, a 32-bit setp, a backward branch). Four
 seeds, 10% of loads missing. Cycles, one warp and four (the full table
-prints from the command):
+prints from the command). Under the decided default (home = slot index),
+**the one-warp rows are 1.0x by design** (AR-16): one warp's narrow ops
+share its home section, so the 2x and 4x rates are aggregate across
+warps. A lone warp's narrow rate is PF-29.
 
 | kernel | warps | slot | 0 | rotate from 0 | rotate from slot | slot + reg |
 |---|---|---|---|---|---|---|

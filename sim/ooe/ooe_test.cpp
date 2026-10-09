@@ -1364,6 +1364,9 @@ void sweepSections() {
   const char *pn[] = {"slot", "0", "rotate-0", "rotate-slot", "slot+reg"};
   // Footprint and operand spread per bypass group (AR's response OI-34):
   // integer at the kernel's width, FP over every width (cvt writes 32 bits).
+  // AR-16: under the decided default (place 0, home = slot index) one
+  // warp's narrow ops share a section, so its rows are 1.0x by design.
+  std::printf("One-warp rows at place=slot are 1.0x by design (AR-16): narrow rates are aggregate across warps.\n\n");
   std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
               "|---|---|---|---|---|---|---|---|---|---|\n");
   for (const Kern &k : ks)
