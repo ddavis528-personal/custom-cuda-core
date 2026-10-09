@@ -90,13 +90,12 @@ example, is PF-1.
 1. **Select order.** Bulk discards take memop slots first. Then the MIU class
    goes, then the RCU class, from the four issue slots of
    `ccv_ooe_rcu_issue`. Every memop also takes an issue slot, because RCU
-   reads its address sources. INTERIM (TI, sectioned lanes; OI-31 replaces
-   it): with `resource_cap`, on in the adapter, a cycle takes at most one
-   lane op (a masked load's copy among them), one memop and one RCU op,
-   since every S1 op is full width and claims its whole resource group. The
-   adapter puts each on its group's lead slot of the nine (S0, P0, R) and
-   marks the rest of its footprint continuation; the unit tests run with it
-   off. Within a class, each warp in turn, starting from
+   reads its address sources. That is the unsectioned select, which the
+   unit tests still run. The kernels run sectioned (below, "Sectioned
+   lanes"), which replaced TI's interim `resource_cap`. Every S1 op is full
+   width, so a cycle carries at most one lane op, one memop and one RCU op,
+   each in its footprint's lowest slot of the nine with the rest marked as
+   continuation. Within a class, each warp in turn, starting from
    a priority that rotates every cycle, issues its oldest ready entry, and the
    rounds repeat until slots run out. Age is allocation order within a warp;
    across warps there is none, as the doc says.
@@ -199,8 +198,13 @@ than the table its environment holds it to.
 Each lane block has four 32-bit operand ports, each split into four 8-bit
 sections. Four-wide issue into a lane block is possible only for narrow
 `chwidth` ops in separate sections (DA, OI-28). The model carries this under
-`Config::sectioned`. It stays off for the kernels until the issue channel has
-its nine slots (OI-32, TI). The unit tests and sweeps run it now.
+`Config::sectioned`, on for the kernels: the adapter sends each operand's
+row and position from its name (TI's nine-slot issue, OI-32). Every S1
+register is 32-bit, so the kernels exercise full-width footprints only.
+The unit tests and sweeps run narrow registers. The kernels' no-resource-cap
+control is `inject_double_grant`: select grants one more lane op and one
+more memop onto held sections and pipes, and RCU must refuse the overlap
+(V-60).
 
 - **Names.** A register is a slice of a PRF row, named `row * 4 + position`.
   A 32-bit register takes the whole row. A 16-bit one takes an aligned pair
@@ -223,7 +227,8 @@ its nine slots (OI-32, TI). The unit tests and sweeps run it now.
   The lane swizzles inside its 32-bit word, so no op ever moves data
   between sections.
 - **Footprint** (OI-30 revised, AR-12). An op's footprint is the union of its
-  operands' sections, widened to `foot_min[bypass_group]`:
+  operands' sections, widened to `foot_min[bypass_group]`, which comes from
+  the generated `CCV_P_FOOT_MIN_*` (TI's response IS-7):
   - integer 1;
   - FP 2 (a section pair);
   - SFU 4;

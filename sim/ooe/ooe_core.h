@@ -170,10 +170,14 @@ struct Config {
   /// unissued store, atomic, fence or ordered access. Off: memops issue in
   /// program order per warp (OI-15).
   bool loads_pass_loads = false;
-  /// CCV_FOOT_MIN[bypass_group] in sections (AR-12): integer 1, FP 2,
-  /// address calculation 1 (in MIU pipes), SFU 4; warp-collective and
-  /// predicate 0 (RCU only).
-  std::array<unsigned, kGroups> foot_min = {1, 2, 1, 4, 0, 0, 1, 1};
+  /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
+  /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
+  /// reaches the model: integer, FP (provisional, IS-7), address
+  /// calculation (in MIU pipes), SFU; warp-collective and predicate 0 (R
+  /// only). Groups 6 and 7 are spare and take the integer minimum.
+  std::array<unsigned, kGroups> foot_min = {
+      ccv::prov::kFootMinInt, ccv::prov::kFootMinFp, ccv::prov::kFootMinAddr, ccv::prov::kFootMinSfu,
+      ccv::prov::kFootMinCollective, ccv::prov::kFootMinPred, ccv::prov::kFootMinInt, ccv::prov::kFootMinInt};
   /// Rename predicates through the predicate RAT and pool (Q-21, A-39). Off
   /// while RCU reads predicate-logic sources and the final compare reads
   /// predicates by a fixed window (physPred), which A-75 and a testbench
@@ -187,14 +191,6 @@ struct Config {
   /// sends the address, for a load when it writes the data). When set, a
   /// memop completes only after both, so no late done meets a reused tag.
   bool memop_rcu_done = false;
-  /// INTERIM (TI, sectioned lanes; OI-31 replaces it): one footprint per
-  /// select resource group a cycle. A lane op claims every lane section, a
-  /// memop every MIU pipe and an RCU-only op R, since nothing is placed by
-  /// slice yet and every S1 op is full width. So at most one lane op (a
-  /// masked load's copy among them), one memop and one RCU op issue a cycle,
-  /// which is what ccv_ooe_rcu_issue's nine resource slots carry at 32 bits.
-  /// Off, select keeps today's single four-wide budget (the unit tests).
-  bool resource_cap = false;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
@@ -202,6 +198,10 @@ struct Config {
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
   bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  /// Sectioned select grants one more lane op a cycle onto sections already
+  /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
+  /// must refuse.
+  bool inject_double_grant = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);

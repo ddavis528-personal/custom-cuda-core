@@ -92,11 +92,13 @@ private:
     // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
     // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
     c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
-    // One footprint per resource group a cycle, until OI-31's per-resource
-    // select: the sectioned issue channel carries one full-width lane op,
-    // one memop and one RCU op. no-resource-cap lifts it, and RCU must
-    // refuse the overlap that follows (V-60).
-    c.resource_cap = k.brk != "no-resource-cap";
+    // Sectioned lanes (OI-29 to OI-33): registers are slices of rows, and
+    // select grants the nine resources one op each (V-60). Every S1 op is
+    // full width, so a cycle carries one lane op, one memop and one RCU op.
+    // no-resource-cap grants a second lane op onto held sections, and RCU
+    // must refuse the overlap (V-60).
+    c.sectioned = true;
+    c.inject_double_grant = k.brk == "no-resource-cap";
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
     c.inject_free_new = k.brk == "free-new";
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
@@ -289,15 +291,23 @@ private:
       put(is, c.ooe_rcu, "rob_tag", x.rob_tag);
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
-      put(is, c.ooe_rcu, "phys_src", (x.psrc[0] << 8) | x.psrc[1]);
-      put(is, c.ooe_rcu, "phys_src2", x.psrc[2]);
+      // A name is a row and a position (sectioned; unsectioned the position
+      // is 0): rows in the phys_ fields, positions beside them.
+      const auto row = [this](unsigned n) { return core_.nameRow(n); };
+      const auto pos = [this](unsigned n) { return core_.namePos(n); };
+      put(is, c.ooe_rcu, "phys_src", (row(x.psrc[0]) << 8) | row(x.psrc[1]));
+      put(is, c.ooe_rcu, "phys_src2", row(x.psrc[2]));
+      put(is, c.ooe_rcu, "src_pos",
+          pos(x.psrc[0]) | pos(x.psrc[1]) << ccv::kWPhysPos | pos(x.psrc[2]) << (2 * ccv::kWPhysPos));
       if (x.send_imm) put(is, c.ooe_rcu, "imm", x.imm);
-      put(is, c.ooe_rcu, "phys_dst", x.pdst);
+      put(is, c.ooe_rcu, "phys_dst", row(x.pdst));
+      put(is, c.ooe_rcu, "dst_pos", pos(x.pdst));
       put(is, c.ooe_rcu, "phys_pred_guard", x.ppguard);
       put(is, c.ooe_rcu, "phys_pred_dst", x.ppdst);
       put(is, c.ooe_rcu, "pred_we", x.pred_we);
       put(is, c.ooe_rcu, "merge_en", x.merge);
-      put(is, c.ooe_rcu, "phys_old_dst", x.pold);
+      put(is, c.ooe_rcu, "phys_old_dst", row(x.pold));
+      put(is, c.ooe_rcu, "old_dst_pos", pos(x.pold));
       put(is, c.ooe_rcu, "phys_pred_old_dst", x.ppold);
       put(is, c.ooe_rcu, "chwidth", x.chwidth);
       // corrupt-ckpt and stale-free ride drop-negate's forced mispredict:
@@ -306,8 +316,8 @@ private:
                                      k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
       put(is, c.ooe_rcu, "opcode", x.copy ? kOpCopy : x.opcode);
       put(is, c.ooe_rcu, "bypass_group", x.byp_group);
-      // Every S1 register is full width at position 0 (no slice placement
-      // yet); each operand carries the warp's width code. bad-pos names the
+      // Every S1 register is full width (at position 0); each operand
+      // carries the warp's width code. bad-pos names the
       // first lane op's 32-bit destination at position 1, which overruns its
       // row: RCU must refuse it.
       for (unsigned i = 0; i != 3; ++i)
@@ -336,7 +346,8 @@ private:
         mo.set(d.lsb, ccv::prov::kWRobIdx, x.disp);
       } else {
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
-        put(mo, c.ooe_miu, "phys_dst", x.pdst);
+        put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
+        put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));
         put(mo, c.ooe_miu, "phys_pred", x.ppred);
         put(mo, c.ooe_miu, "disp",                 // truncated to CCV_W_DISP
             x.disp + (k_.brk == "corrupt-disp" && uidSeq(x.tid) == 6 ? 4u : 0u));
@@ -346,7 +357,8 @@ private:
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
         // The memop's pipe footprint at its data position (0 in S1).
         // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
-        put(mo, c.ooe_miu, "pipes", k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, 0));
+        put(mo, c.ooe_miu, "pipes",
+            k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
       }
       sendOn(c.ooe_miu, x.port, mo, x.tid);
     }
@@ -394,7 +406,7 @@ private:
   /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an
   /// op goes in its footprint's lowest slot, and the rest of its footprint
   /// carries continuation, its rob_tag and cont = 1. Leads go first, then
-  /// continuations. Without resource_cap (no-resource-cap) two ops can claim
+  /// continuations. Under no-resource-cap (inject_double_grant) two ops claim
   /// one group in a cycle: the second lead takes the next free slot, as a
   /// select with no per-resource pick would place it, continuations take
   /// what is left, and RCU must refuse the overlap (V-60) or the slot.
@@ -448,7 +460,7 @@ private:
       ++k_.retired;
       k_.retire_order.push_back(uidSeq(r.tid));
       if (r.exit) k_.exited = true;
-      if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = r.pnew;   // the final compare's map
+      if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = core_.nameRow(r.pnew);   // the final compare's map (rows)
       // The predicate map likewise, while predicates are renamed (OI-3);
       // left empty, the final compare reads the fixed physPred windows.
       if (r.warp == 0 && r.writes_pred) {

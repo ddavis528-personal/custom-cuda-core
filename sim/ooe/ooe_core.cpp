@@ -32,7 +32,7 @@ std::string Config::apply(const std::string &spec) {
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec}, {"resource_cap", &resource_cap},
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
@@ -65,7 +65,6 @@ std::string Config::check() const {
   char buf[200];
   if (payload_stages > 1) return "payload_stages: 0 or 1";
   if (rename_stages < 1) return "rename_stages: at least 1";
-  if (sectioned && resource_cap) return "resource_cap is the unsectioned interim; sectioned select replaces it";
   if (place > 4) return "place: 0 (home = slot), 1 (home = 0), 2 (rotate from 0), 3 (rotate from slot) or 4 (slot + register)";
   for (unsigned f : foot_min)
     if (f != 0 && f != 1 && f != 2 && f != 4) return "foot.G: 0, 1, 2 or 4 sections";
@@ -1390,7 +1389,7 @@ void Core::selectSectioned() {
     }
     return true;
   };
-  auto ready = [&](unsigned e) -> bool {
+  auto ready = [&](unsigned e, bool order = true) -> bool {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.eligible_at > now_ || (x.res & busy)) return false;
     const Slot &s = slot_[x.slot];
@@ -1406,7 +1405,7 @@ void Core::selectSectioned() {
     // V-61: the copy went in an earlier cycle (or has confirmed and freed).
     if (r.copy && r.rs_copy != kNoEntry && (!rs_[r.rs_copy].issued || rs_[r.rs_copy].issue_at >= now_))
       return false;
-    return memopOrderOk(s, r);
+    return !order || memopOrderOk(s, r);
   };
   std::vector<unsigned> cand;
   for (unsigned e = 0; e != n_; ++e)
@@ -1428,13 +1427,39 @@ void Core::selectSectioned() {
     else if (some) count("select.lost_resource");   // won a section, lost another
   }
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
+  // inject_double_grant: the oldest lane op, and the oldest memop, left out
+  // are granted anyway, onto sections or pipes a granted op holds.
+  std::vector<unsigned> extra;
+  if (cfg_.inject_double_grant) {
+    unsigned held = 0;
+    for (unsigned e : grant) held |= rs_[e].res;
+    // A memop behind an older one granted this cycle is a candidate too, as
+    // a select issuing the two in program order would make it.
+    std::vector<unsigned> pool = cand;
+    for (unsigned e = 0; e != n_; ++e)
+      if (rs_[e].cls == RsCls::kMiu && std::find(cand.begin(), cand.end(), e) == cand.end() && ready(e, false))
+        pool.push_back(e);
+    for (unsigned grp : {0xFu, 0xFu << 5}) {
+      unsigned x = kNoEntry;
+      for (unsigned e : pool)
+        if ((rs_[e].res & grp) && (rs_[e].res & held & grp) &&
+            std::find(grant.begin(), grant.end(), e) == grant.end() &&
+            (x == kNoEntry || rs_[e].age < rs_[x].age))
+          x = e;
+      if (x != kNoEntry) extra.push_back(x);
+    }
+    grant.insert(grant.end(), extra.begin(), extra.end());
+  }
+  const auto isExtra = [&](unsigned e) { return std::find(extra.begin(), extra.end(), e) != extra.end(); };
   unsigned used = busy, issued = 0;
   for (unsigned e : grant) {
-    if (used & rs_[e].res) { err("V-60: a resource granted twice in a cycle"); continue; }
+    if ((used & rs_[e].res) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
     used |= rs_[e].res;
     const RsEntry &x = rs_[e];
     const RobEntry &r = slot_[x.slot].rob[x.rob];
-    const unsigned port = unsigned(__builtin_ctz(x.res));
+    unsigned port = unsigned(__builtin_ctz(x.res));
+    // An injected second memop takes MIU's next slot, its pipes still held.
+    if (isExtra(e) && (x.res >> 5)) port = kP0 + 1;
     const unsigned secs = unsigned(__builtin_popcount(x.res & 0xFu));
     if (secs) {
       ++histograms["sections_per_op.w" + std::to_string(r.u.w)][secs];
@@ -1468,8 +1493,6 @@ void Core::selectSectioned() {
 void Core::select() {
   if (cfg_.sectioned) { selectSectioned(); return; }
   unsigned ports = 0, mports = 0;
-  // resource_cap's groups claimed this cycle: lane sections, pipes, R.
-  bool lane_used = false, pipes_used = false, r_used = false;
   std::vector<bool> memop_block(slot_.size(), false);
   // Bulk discards first: each takes a memop slot, and no memop of the same
   // warp goes in the same cycle (V-23).
@@ -1530,17 +1553,6 @@ void Core::select() {
         const RobEntry &r = slot_[si].rob[rs_[e].rob];
         const unsigned need = r.copy ? 2 : 1;
         if (ports + need > cfg_.issue_width) { count("stall.copy_port"); continue; }
-        if (cfg_.resource_cap) {
-          const bool rcu_op = !miu && r.u.attr.exec_rcu;
-          const bool lane = (!miu && !rcu_op) || r.copy;
-          if ((lane && lane_used) || (miu && pipes_used) || (rcu_op && r_used)) {
-            count("stall.resource");
-            continue;
-          }
-          lane_used |= lane;
-          pipes_used |= miu;
-          r_used |= rcu_op;
-        }
         const unsigned port = ports;
         ports += need;
         if (miu) ++mports;
@@ -1603,7 +1615,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port) const {
   is.guarded = u.shape.guard;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
-  // (resOf). Otherwise every op is full width (TI's interim resource_cap).
+  // (resOf). Otherwise every op is full width.
   is.res = r.is_mem ? Issue::kMemop : u.attr.exec_rcu ? Issue::kRcuOp : Issue::kLaneOp;
   is.footprint = is.res == Issue::kRcuOp ? 0 : 0xF;
   if (cfg_.sectioned) {

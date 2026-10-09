@@ -121,11 +121,12 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
   other slot of its footprint carries `cont` = 1 and its `rob_tag`. Every
   register name carries a 2-bit position and a 2-bit width code (0 = 32,
   1 = 16, 2 = 8, 3 = 4), and a memop names its pipes on
-  `ccv_ooe_miu_memop`. RCU refuses a footprint overlap (V-60). Until OI's
-  per-resource select (OI-31) lands, the model's `resource_cap` issues one
-  lane op, one memop and one RCU op a cycle, all full width at position 0:
-  TI's edit in OI's files, in a commit of its own, for OI to keep or
-  replace. Controls: `no-resource-cap`, `bad-pos`, `narrow-pipes`.
+  `ccv_ooe_miu_memop`. RCU refuses a footprint overlap (V-60). The kernels
+  now run the sectioned model with its nine one-grant picks (OI-31), which
+  replaced TI's interim `resource_cap`; the adapter sends each operand's row
+  and position from its name. Every S1 register is 32-bit at position 0.
+  Controls: `no-resource-cap` (the model's `inject_double_grant`),
+  `bad-pos`, `narrow-pipes`.
 - A-71 (an unaligned lane word), now TI-2, is deferred to the ISA track and
   does not touch OOE.
 
