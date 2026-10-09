@@ -1,4 +1,4 @@
-//===-- pick_tb.cpp - ccv_ooe_pick against ooe::pickResources -----------===//
+//===-- pick_tb.cpp - ooe_pick against ooe::pickResources -----------===//
 //
 // The RTL's per-resource select held in lockstep with the model's: random
 // RS states (valid entries with distinct ages, random readiness, random
@@ -15,7 +15,7 @@
 // entry issues if it wins any resource), and no-mask (an invalid entry's
 // garbage row counts). Usage: pick_tb [vectors] [seed].
 //===----------------------------------------------------------------------===//
-#include "Vccv_ooe_pick.h"
+#include "Vooe_pick.h"
 #include "verilated.h"
 #include "ooe_core.h"
 
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
   const std::string control = ctl ? ctl : "";
   std::mt19937_64 rng(seed);
   VerilatedContext ctx;
-  Vccv_ooe_pick dut{&ctx};
+  Vooe_pick dut{&ctx};
   unsigned fails = 0, issued_total = 0, lost_total = 0, multi_total = 0;
 
   for (unsigned v = 0; v != vectors && fails < 10; ++v) {

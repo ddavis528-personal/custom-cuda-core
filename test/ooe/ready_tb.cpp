@@ -1,8 +1,8 @@
-//===-- ready_tb.cpp - ccv_ooe_ready against the live model --------------===//
+//===-- ready_tb.cpp - ooe_ready against the live model --------------===//
 //
 // Runs the model's random unit tests (sim/ooe/ooe_test.cpp, every mode:
 // bypass, L1 speculation, sectioned lanes, several warps, mispredicts and
-// misses) and, after every core cycle, drives ccv_ooe_ready from the core's
+// misses) and, after every core cycle, drives ooe_ready from the core's
 // own state: each cell's dependency bit and line select (Core::depBit,
 // Core::cellCode) and each producer's wake lines (Core::wakeLine). The
 // RTL's ready must equal the model's rowReady for every valid entry.
@@ -15,7 +15,7 @@
 // and no-late (the PRF-read line never rises).
 // Usage: ready_tb [seeds]
 //===----------------------------------------------------------------------===//
-#include "Vccv_ooe_ready.h"
+#include "Vooe_ready.h"
 #include "verilated.h"
 #include "ooe_core.h"
 
@@ -30,7 +30,7 @@ int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
 
 namespace {
 std::unique_ptr<VerilatedContext> ctx;
-std::unique_ptr<Vccv_ooe_ready> dut;
+std::unique_ptr<Vooe_ready> dut;
 std::string control;
 unsigned long long cycles = 0, skipped = 0, compared = 0, ready_seen = 0, mismatches = 0;
 
@@ -87,7 +87,7 @@ int main(int argc, char **argv) {
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("READY_CONTROL")) control = c;
   ctx = std::make_unique<VerilatedContext>();
-  dut = std::make_unique<Vccv_ooe_ready>(ctx.get());
+  dut = std::make_unique<Vooe_ready>(ctx.get());
   const int model_fails = ooeTestRandomHooked(seeds, hook);
   dut->final();
   std::printf("ready_tb control=%s seeds=%u cycles=%llu skipped=%llu compared=%llu ready=%llu "

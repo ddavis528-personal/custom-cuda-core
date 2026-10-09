@@ -1,4 +1,4 @@
-//===-- ccv_ooe_pick.sv - OOE per-resource select ---------------------===//
+//===-- ooe_pick.sv - OOE per-resource select ---------------------===//
 //
 // Block: ooe
 // Spec: docs/design-snapshots/ooe-microarchitecture.md, Scheduling: Select
@@ -20,7 +20,7 @@
 // are valid, which req guarantees for every term that reaches a grant.
 //===----------------------------------------------------------------------===//
 
-module ccv_ooe_pick #(
+module ooe_pick #(
   parameter int N = 30,   // entries in the class (CCV_P_RS_RCU or CCV_P_RS_MIU)
   parameter int R = 5     // resources the class picks (S0-S3 and R, or P0-P3)
 ) (

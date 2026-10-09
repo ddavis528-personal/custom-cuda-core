@@ -1,4 +1,4 @@
-//===-- ccv_ooe_ready.sv - OOE ready from the dependency matrix --------===//
+//===-- ooe_ready.sv - OOE ready from the dependency matrix --------===//
 //
 // Block: ooe
 // Spec: docs/design-snapshots/ooe-microarchitecture.md, Scheduling: Wakeup
@@ -24,7 +24,7 @@
 // wake[j*W + k]: producer j's line k.
 //===----------------------------------------------------------------------===//
 
-module ccv_ooe_ready #(
+module ooe_ready #(
   parameter int N  = 45,   // RS entries, both classes (CCV_P_RS_RCU + CCV_P_RS_MIU)
   parameter int W  = 4,    // wake lines per producer: three bypass points and late
   parameter int CW = 2     // bits per cell's line select, clog2(W)

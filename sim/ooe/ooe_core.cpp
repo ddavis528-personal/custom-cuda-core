@@ -1995,7 +1995,7 @@ void Core::checkInvariants() {
   char buf[256];
   // The ready path as the RTL builds it: a row is ready iff every cell it
   // depends on selects a raised wake line of its producer. Holding this
-  // every cycle is what lets ccv_ooe_ready be checked against the model's
+  // every cycle is what lets ooe_ready be checked against the model's
   // own state (test/ooe/ready_tb.cpp).
   if (pens_fit_)
     for (unsigned i = 0; i != n_; ++i) {

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # OOE RTL in lockstep with the model, each harness's negative controls
 # caught:
-# - ccv_ooe_pick against ooe::pickResources (test/ooe/pick_tb.cpp), at both
+# - ooe_pick against ooe::pickResources (test/ooe/pick_tb.cpp), at both
 #   RS classes' sizes: the lane-and-RCU class (CCV_P_RS_RCU entries, S0-S3
 #   and R) and the MIU class (CCV_P_RS_MIU entries, P0-P3);
-# - ccv_ooe_ready against the live model through its random unit tests
+# - ooe_ready against the live model through its random unit tests
 #   (test/ooe/ready_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
@@ -23,9 +23,9 @@ for cfg in "rcu $n_rcu $((secs + 1))" "miu $n_miu $pipes"; do
   dir=build/ooe-rtl/pick_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL \
-        -GN="$n" -GR="$r" --top-module ccv_ooe_pick --Mdir "$dir" -o pick_tb \
+        -GN="$n" -GR="$r" --top-module ooe_pick --Mdir "$dir" -o pick_tb \
         -CFLAGS "-std=c++17 -O2 -DPICK_N=$n -DPICK_R=$r -I$PWD/sim/generated -I$PWD/sim/ooe" \
-        "$PWD/rtl/ooe/ccv_ooe_pick.sv" "$PWD/test/ooe/pick_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
+        "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/test/ooe/pick_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
         >"$dir/build.log" 2>&1; then
     say "pick $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
   fi
@@ -43,14 +43,14 @@ for cfg in "rcu $n_rcu $((secs + 1))" "miu $n_miu $pipes"; do
   done
 done
 
-# ccv_ooe_ready, driven from the core after every cycle of the unit tests.
+# ooe_ready, driven from the core after every cycle of the unit tests.
 n=$((n_rcu + n_miu))
 dir=build/ooe-rtl/ready
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL \
-      -GN="$n" --top-module ccv_ooe_ready --Mdir "$dir" -o ready_tb \
+      -GN="$n" --top-module ooe_ready --Mdir "$dir" -o ready_tb \
       -CFLAGS "-std=c++17 -O2 -DREADY_N=$n -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ooe/ccv_ooe_ready.sv" "$PWD/test/ooe/ready_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
+      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/test/ooe/ready_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
       "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "ready: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi

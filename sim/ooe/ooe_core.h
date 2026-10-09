@@ -291,7 +291,7 @@ struct PickReq {
   uint64_t age = 0;
 };
 /// The per-resource select (OI-31, V-60), the reference the RTL's
-/// ccv_ooe_pick is checked against: each resource grants its oldest
+/// ooe_pick is checked against: each resource grants its oldest
 /// requester, and a requester issues only if it wins every resource it
 /// names. Returns which requesters issue; *lost counts those that won some
 /// resources but not all.
