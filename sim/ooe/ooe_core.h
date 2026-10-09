@@ -105,28 +105,46 @@ struct Config {
   unsigned demote_barrier = ccv::prov::kDemotionThresholdBarrier;
 
   // -- what the neighbours can do today (docs/ooe-model.md, "S1 modes") -------
-  /// Bypass groups (docs/ooe-model.md, "Bypass groups"). A producer's
-  /// unit is its lat_class; a consumer's group is its lat_class (0 for an
-  /// op RCU executes), or kConsMem for a memop. byp[unit][group], when
-  /// non-zero and under the producer's latency, is how many cycles after
-  /// the producer's issue that consumer may issue on its result, by bypass;
-  /// 0 means no bypass, so the consumer waits the producer's full latency.
-  /// Lane ALU to lane ALU defaults to CCV_LAT_LANE_BYP (A-59), and every
-  /// other pair has no bypass until its sessions name one.
-  bool bypass = true;            ///< master enable; off in S1 (no RCU bypass)
-  // CCV_P_BYP_GROUPS now counts sched_attr's bypass_group codes (OI-16);
-  // until the table is indexed by group, it stays one column per lat_class
-  // plus memops.
-  static constexpr unsigned kUnits = ccv::prelim::kPLatClasses, kConsMem = kUnits,
-                            kConsGroups = kUnits + 1;
-  std::array<std::array<uint8_t, kConsGroups>, kUnits> byp{};
-  /// Full latency of the spare lat_class codes 4-7 (SFU and the like), as
-  /// the LANE session names them; 0 means none yet: wake on the done.
-  std::array<unsigned, kUnits> unit_lat{};
-  /// The bypass offset for a pair, or 0 for none.
-  unsigned bypOff(unsigned unit, unsigned group) const {
-    if (byp[unit][group]) return byp[unit][group];
-    return unit == 1 && group == 1 ? lat_lane_byp : 0;
+  /// Bypass groups (docs/ooe-model.md, "Bypass groups"; OI-16, Daniel's
+  /// responses OA-4). A producer's lat_class sets its full latency and its
+  /// fastest bypass point; its bypass_group and the consumer's index the
+  /// penalty table. A consumer may issue on the result fast[unit] +
+  /// byp[producer group][consumer group] cycles after the producer's issue,
+  /// if that is under the full latency; kNoByp, or a unit with no fastest
+  /// point (single-time: RCU, warp-collective, loads), means the PRF read.
+  bool bypass = true;            ///< master enable
+  static constexpr unsigned kUnits = ccv::prelim::kPLatClasses;
+  static constexpr unsigned kGroups = ccv::prelim::kPBypGroups;
+  enum : unsigned { kGrpInt = 0, kGrpFp = 1, kGrpAddr = 2, kGrpSfu = 3, kGrpColl = 4, kGrpPred = 5 };
+  static constexpr uint8_t kNoByp = 0xFF;
+  std::array<std::array<uint8_t, kGroups>, kGroups> byp = defaultByp();
+  /// The fastest bypass point per lat_class; 0 for a single-time unit. The
+  /// lane's is lat_lane_byp (CCV_LAT_LANE_BYP). SFU has none until a
+  /// CCV_LAT_SFU_BYP exists (OA's response OI-16), so SFU wakes at its
+  /// full latency.
+  std::array<unsigned, kUnits> fast{};
+  /// Full latency of lat_class codes 4-7: SFU and warp-collective from
+  /// their parameters, the spares 0 (wake on the done).
+  std::array<unsigned, kUnits> unit_lat = {0, 0, 0, 0, ccv::prov::kLatSfu, ccv::prov::kLatCollective, 0, 0};
+  static std::array<std::array<uint8_t, kGroups>, kGroups> defaultByp() {
+    std::array<std::array<uint8_t, kGroups>, kGroups> t;
+    for (auto &row : t) row.fill(kNoByp);
+    const unsigned same = ccv::prov::kLatBypPenSame, intfp = ccv::prov::kLatBypPenIntFp,
+                   sfu = ccv::prov::kLatBypPenSfu;
+    t[kGrpInt][kGrpInt] = t[kGrpFp][kGrpFp] = t[kGrpSfu][kGrpSfu] = uint8_t(same);
+    t[kGrpInt][kGrpFp] = t[kGrpFp][kGrpInt] = uint8_t(intfp);
+    t[kGrpInt][kGrpSfu] = t[kGrpFp][kGrpSfu] = t[kGrpSfu][kGrpInt] = t[kGrpSfu][kGrpFp] = uint8_t(sfu);
+    return t;
+  }
+  unsigned fastOf(unsigned unit) const { return unit == 1 ? lat_lane_byp : fast[unit]; }
+  /// The bypass wake for a pair, in cycles after the producer's issue, or
+  /// 0 for none: the consumer waits the producer's full latency.
+  unsigned bypWake(unsigned unit, unsigned pg, unsigned cg) const {
+    if (unit >= kUnits || pg >= kGroups || cg >= kGroups || byp[pg][cg] == kNoByp) return 0;
+    const unsigned f = fastOf(unit);
+    if (!f) return 0;
+    const unsigned w = f + byp[pg][cg];
+    return w < unitLat(unit) ? w : 0;
   }
   /// A unit's full latency: when any reader may issue on its result through
   /// the register file; 0 if it wakes on its done.
@@ -170,6 +188,7 @@ struct SchedAttr {
   bool rs_miu = false, exec_rcu = false, cross_lane = false;
   bool writes_gpr = false, writes_pred = false, branch = false;
   unsigned mem_kind = 0, serial = 0, lat_class = 0;
+  unsigned bypass_group = 0;    ///< OI-16: [15:13]
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };

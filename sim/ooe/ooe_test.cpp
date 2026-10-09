@@ -54,12 +54,20 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 8 | memk << 6 | uint32_t(br) << 5 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
-unsigned unitOf(Kind k) { return k == kLane || k == kSetp ? 1 : k == kSfu ? 4 : 0; }
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp ? 1 : k == kSfu ? 4 : 0; }
+/// Its bypass group as a producer (sched_attr's bypass_group).
+unsigned pgroupOf(Kind k) {
+  return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred : Config::kGrpInt;
+}
+/// Its group as a consumer: a memop consumes as address calculation, and
+/// an op RCU executes takes no bypass (V-48).
 int groupOf(Kind k) {
-  return k == kLoad || k == kStore ? int(Config::kConsMem) : int(unitOf(k));
+  if (k == kLoad || k == kStore) return int(Config::kGrpAddr);
+  if (k == kRcuOp || k == kPlogic || k == kBranch) return -1;
+  return int(pgroupOf(k));
 }
 
 /// One instruction of a synthetic trace.
@@ -85,6 +93,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.pred_guard = o.pguard;
   switch (o.k) {
   case kLane: u.attr_raw = attr(0, 0, o.cross, 1, 0, 0, 0, 0, 1); break;
+  case kFp: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 1); break;     // a lane FP op
   case kSfu: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 4); break;   // a spare lane unit
   case kRcuOp: u.attr_raw = attr(0, 1, 0, 1, 0, 0, 0, 0, 0); break;
   case kSetp:
@@ -112,6 +121,8 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = 2; break;
   }
+  u.attr_raw |= pgroupOf(o.k) << 13;
+  if (o.k == kLoad || o.k == kStore) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -164,13 +175,13 @@ struct Env {
   /// producer's bypass readers from issue + the table's offset for the pair.
   struct Ready {
     uint64_t issue = 0, late = 0, tid = 0;
-    unsigned unit = 0;
+    unsigned unit = 0, pgroup = 0;
     bool timed = false, cross = false;
   };
   uint64_t readableFor(const Ready &r, int group) const {
     if (!r.timed || r.cross || group < 0 || !cfg.bypass) return r.late;
-    const unsigned b = cfg.bypOff(r.unit, unsigned(group));
-    return b && b < cfg.unitLat(r.unit) ? r.issue + b : r.late;
+    const unsigned b = cfg.bypWake(r.unit, r.pgroup, unsigned(group));
+    return b ? r.issue + b : r.late;
   }
   std::map<unsigned, Ready> gready, pready;
   struct Viol { uint64_t at; std::string what; };
@@ -329,7 +340,7 @@ struct Env {
   void onIssue(const Issue &is) {
     const Op &o = op_of[is.tid];
     if (is.copy) {
-      checkRead(is.tid, is.pold, false, 1);
+      checkRead(is.tid, is.pold, false, int(Config::kGrpInt));
       return;
     }
     last_issue[is.tid] = t;
@@ -348,11 +359,11 @@ struct Env {
     const unsigned unit = unitOf(o.k);
     const unsigned lat = cfg.unitLat(unit);
     if (is.pdst && o.k != kLoad) {
-      gready[is.pdst] = {t, t + lat, is.tid, unit, true, o.cross};
+      gready[is.pdst] = {t, t + lat, is.tid, unit, pgroupOf(o.k), true, o.cross};
       gwriter[is.pdst] = {is.tid, t};
       landings.insert({t + lat, {is.pdst, is.tid}});
     }
-    if (is.pred_we) pready[is.ppdst] = {t, t + lat, is.tid, unit, true, false};
+    if (is.pred_we) pready[is.ppdst] = {t, t + lat, is.tid, unit, pgroupOf(o.k), true, false};
     // RCU's done: within the bound (V-35), at a fixed latency per issue.
     if (o.k != kLoad && o.k != kStore) {
       const unsigned bound = cfg.issue_link + lat - 1 + cfg.done_link;
@@ -382,7 +393,7 @@ struct Env {
       if (m.pdst) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
         const uint64_t rd = hit ? t + cfg.lat_l1_wake : when + data_after_cmpl;
-        gready[m.pdst] = {t, rd, m.tid, 2, false, false};
+        gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
         gwriter[m.pdst] = {m.tid, t};
         landings.insert({rd, {m.pdst, m.tid}});
       }
@@ -390,7 +401,7 @@ struct Env {
       when = t + 4 + rnd(miss_extra);
       if (o.k == kLoad && m.pdst) {
         const uint64_t rd = when + data_after_cmpl;
-        gready[m.pdst] = {t, rd, m.tid, 2, false, false};
+        gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
         gwriter[m.pdst] = {m.tid, t};
         landings.insert({rd, {m.pdst, m.tid}});
       }
@@ -530,9 +541,10 @@ Config baseConfig() {
 Config groupConfig() {
   Config c = baseConfig();
   c.unit_lat[4] = 12;
-  c.byp[4][4] = 6;      // SFU -> SFU
-  c.byp[4][1] = 9;      // SFU -> ALU
-  c.byp[1][4] = 5;      // ALU -> SFU
+  c.fast[4] = 6;                                   // SFU's fastest bypass point
+  c.byp[Config::kGrpSfu][Config::kGrpSfu] = 0;     // SFU -> SFU at 6
+  c.byp[Config::kGrpSfu][Config::kGrpInt] = 3;     // SFU -> ALU at 9
+  c.byp[Config::kGrpInt][Config::kGrpSfu] = 1;     // ALU -> SFU at 4 + 1
   return c;
 }
 
@@ -602,19 +614,24 @@ void testBypassGroups() {
   add(kLane, 8, 7);   // tid 8: RCU -> ALU: single-time, CCV_LAT_RCU
   add(kRcuOp, 9, 4);  // tid 9: ALU -> RCU: no bypass, CCV_LAT_LANE
   add(kRcuOp, 10, 1); // tid 10: SFU -> RCU: no bypass, the SFU's 12
+  add(kFp, 11, 4);    // tid 11: ALU -> FP, CCV_LAT_LANE_BYP + 2
+  add(kLane, 12, 11); // tid 12: FP -> ALU, + 2
+  add(kFp, 13, 11);   // tid 13: FP -> FP, in-unit + 0
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
   e.finish();
   struct W { uint64_t prod, cons; unsigned want; const char *what; };
   const W ws[] = {{1, 2, 6, "SFU -> SFU"}, {1, 3, 9, "SFU -> ALU"}, {4, 5, 5, "ALU -> SFU"},
                   {4, 6, c.lat_lane_byp, "ALU -> ALU"}, {7, 8, c.lat_rcu, "RCU -> ALU"},
-                  {4, 9, c.lat_lane, "ALU -> RCU"}, {1, 10, 12, "SFU -> RCU"}};
+                  {4, 9, c.lat_lane, "ALU -> RCU"}, {1, 10, 12, "SFU -> RCU"},
+                  {4, 11, c.lat_lane_byp + 2, "ALU -> FP"}, {11, 12, c.lat_lane_byp + 2, "FP -> ALU"},
+                  {11, 13, c.lat_lane_byp, "FP -> FP"}};
   for (const W &w : ws)
     EXPECT(issueCycle(e, w.cons) - issueCycle(e, w.prod) == w.want, "%s woke after %llu, want %u",
            w.what, (unsigned long long)(issueCycle(e, w.cons) - issueCycle(e, w.prod)), w.want);
-  // A pair at or over the producer's latency is refused at elaboration.
+  // A fastest point at or over the unit's latency is refused at elaboration.
   Config bad = groupConfig();
-  bad.byp[4][1] = 12;
+  bad.fast[4] = 12;
   EXPECT(!bad.check().empty(), "a bypass no faster than the register file was accepted");
 }
 
@@ -997,7 +1014,7 @@ void testControls() {
       {"shallow-cancel", [](Config &c) { c.inject_shallow_cancel = true; }},
       {"early-wake", [](Config &c) { c.inject_early_wake = true; }},
       {"cmpl-wake-delay-ignored", [](Config &c) { c.cmpl_wake_delay = 0; c.inject_free_new = false; }},
-      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.byp[4][1] = 3; }},
+      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.fast[4] = 3; }},
       {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
   };
   for (const C &x : cs) {
@@ -1016,9 +1033,9 @@ void testControls() {
       // The last control: data lands two cycles after its completion, and
       // the core is not told.
       if (std::string(x.name) == "cmpl-wake-delay-ignored") e.data_after_cmpl = 2;
-      // The core bypasses SFU -> ALU at 3; the contract says 9.
+      // The core bypasses SFU at 3 (SFU -> ALU at 6); the contract says 6 (9).
       const bool groups = std::string(x.name) == "bypass-faster-than-contract";
-      if (groups) e.cfg.byp[4][1] = 9;
+      if (groups) e.cfg.fast[4] = 6;
       // An RCU faster than its contract is what exposes completing early.
       if (std::string(x.name) == "complete-before-rs-free") e.rcu_fast = true;
       e.launch(0, 0, randomProgram(rng, 150, true, groups));

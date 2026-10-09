@@ -33,11 +33,13 @@ std::string Config::apply(const std::string &spec) {
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}};
   std::stringstream ss(spec);
-  // byp.P.C=N and lat.U=N: the bypass table and the spare units' latencies.
+  // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
+  // table by group, the units' fastest points and the latencies 4-7.
   std::map<std::string, uint8_t *> bt;
-  for (unsigned p = 0; p != kUnits; ++p)
-    for (unsigned g = 0; g != kConsGroups; ++g)
+  for (unsigned p = 0; p != kGroups; ++p)
+    for (unsigned g = 0; g != kGroups; ++g)
       bt["byp." + std::to_string(p) + "." + std::to_string(g)] = &byp[p][g];
+  for (unsigned p = 0; p != kUnits; ++p) u["fast." + std::to_string(p)] = &fast[p];
   for (unsigned p = 4; p != kUnits; ++p) u["lat." + std::to_string(p)] = &unit_lat[p];
   std::string kv;
   while (std::getline(ss, kv, ',')) {
@@ -68,8 +70,9 @@ std::string Config::check() const {
     unsigned lo = std::min({lat_rcu, lat_lane, lat_l1_wake});
     for (unsigned u = 0; u != kUnits; ++u) {
       if (unit_lat[u]) lo = std::min(lo, unit_lat[u]);
-      for (unsigned g = 0; g != kConsGroups && bypass; ++g)
-        if (bypOff(u, g)) lo = std::min(lo, bypOff(u, g));
+      for (unsigned pg = 0; pg != kGroups && bypass; ++pg)
+        for (unsigned cg = 0; cg != kGroups; ++cg)
+          if (bypWake(u, pg, cg)) lo = std::min(lo, bypWake(u, pg, cg));
     }
     if (lo < 3) {
       std::snprintf(buf, sizeof buf, "V-59: a wake offset of %u, under 2 + the 1-cycle cancel hop", lo);
@@ -98,13 +101,12 @@ std::string Config::check() const {
   if (ckpts > (1u << ccv::prov::kWCkptId)) return "ckpts exceeds checkpoint_id";
   if (issue_width == 0 || rename_width == 0 || retire_per_rob == 0) return "a zero width";
   if (lat_lane_byp > lat_lane) return "CCV_LAT_LANE_BYP exceeds CCV_LAT_LANE";
-  for (unsigned p = 0; p != kUnits; ++p)
-    for (unsigned g = 0; g != kConsGroups; ++g)
-      if (byp[p][g] && (byp[p][g] >= unitLat(p) || byp[p][g] == 0xFF)) {
-        std::snprintf(buf, sizeof buf, "bypass %u -> %u is %u cycles, not under unit %u's "
-                      "latency %u", p, g, unsigned(byp[p][g]), p, unitLat(p));
-        return buf;
-      }
+  for (unsigned u = 0; u != kUnits; ++u)
+    if (fastOf(u) && fastOf(u) >= unitLat(u)) {
+      std::snprintf(buf, sizeof buf, "unit %u's fastest bypass %u is not under its latency %u",
+                    u, fastOf(u), unitLat(u));
+      return buf;
+    }
   return "";
 }
 
@@ -119,6 +121,7 @@ SchedAttr SchedAttr::decode(uint32_t a) {
   s.branch = (a >> 5) & 1u;
   s.serial = (a >> 3) & 3u;
   s.lat_class = a & 7u;
+  s.bypass_group = (a >> 13) & 7u;
   return s;
 }
 
@@ -409,8 +412,8 @@ void Core::dep(unsigned e, unsigned preg, bool pred, int group) {
     // memop, a copy-only op or a unit that wakes on its done.
     if (cfg_.bypass && group >= 0 && !p.copy && !pr.is_mem && !pr.u.attr.cross_lane &&
         unit < Config::kUnits && cfg_.unitLat(unit)) {
-      const unsigned b = cfg_.bypOff(unit, unsigned(group));
-      if (b && b < cfg_.unitLat(unit)) off = uint8_t(b);
+      const unsigned b = cfg_.bypWake(unit, pr.u.attr.bypass_group, unsigned(group));
+      if (b) off = uint8_t(b);
     }
     uint8_t &c = cell(e, j);
     uint8_t &w = woff_[size_t(e) * n_ + j];
@@ -421,14 +424,14 @@ void Core::dep(unsigned e, unsigned preg, bool pred, int group) {
 
 void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   const Uop &u = r.u;
-  // The consumer's bypass group for its GPR operands: its unit (0 for an
-  // op RCU executes), or the memop group -- RCU sends a memop's address and
-  // data to MIU.
-  const int group = r.is_mem ? int(Config::kConsMem) : int(u.attr.lat_class & 7);
+  // The consumer's bypass group for its GPR operands: its bypass_group; a
+  // memop consumes as address calculation, since RCU sends its address and
+  // data to MIU; and an op RCU executes takes no bypass (V-48).
+  const int group = r.is_mem ? int(Config::kGrpAddr) : u.attr.exec_rcu ? -1 : int(u.attr.bypass_group);
   if (copy_half) {
-    // The copy-only op: the old destination through a lane (unit 1) as
-    // merge_data, under the load's guard (A-38).
-    dep(e, r.pold, false, 1);
+    // The copy-only op: the old destination through a lane as merge_data,
+    // under the load's guard (A-38).
+    dep(e, r.pold, false, int(Config::kGrpInt));
     if (u.shape.guard) dep(e, r.ppguard, true, -1);
     return;
   }

@@ -48,7 +48,7 @@ it.
 | PF-24 | Divergent branch prediction | FET | deferred (doc) |
 | PF-25 | Predicate renaming in place of the fixed-window holds | rename | adopted (OI-3) |
 | PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
-| PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | deferred (DA, AR-13) |
+| PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | dropped (DA's revised OI-30) |
 
 ## Entries
 
@@ -348,6 +348,12 @@ it.
   that cause).
 
 ### PF-27 Fold section alignment into the producing op
+
+- **Status:** dropped, 2026-10-08. DA's revised response OI-30 replaced
+  forced alignment with the footprint rule: an op claims the union of its
+  operands' sections, and the lane swizzles bytes within its own 32-bit
+  word, so no section moves exist to fold. The entry is kept as the record
+  of the alternative.
 
 - **Now:** where a narrow op's operands sit in different sections, rename
   inserts an explicit move, executed in RCU on RCU's own grant (DA's

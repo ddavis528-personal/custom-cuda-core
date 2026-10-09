@@ -154,51 +154,39 @@ the same line (seq 382).
 
 ## Bypass groups
 
-A dependant's wake time belongs to the producer and consumer pair, not to the
-producer alone. A-62 already said so for two cases (bypass or not). Physical
-distance makes it general: an SFU far from the ALUs, an RCU-only result such
-as `movi`'s, a unit with its own short loop. So the scheduler takes a table:
+A dependant's wake belongs to the producer and consumer pair, not to the
+producer alone (OI-16; Daniel's responses OA-4). The scheduler indexes a
+table by `sched_attr`'s `bypass_group` (0 integer, 1 FP, 2 address
+calculation, 3 SFU, 4 warp-collective, 5 predicate; `CCV_P_BYP_GROUPS`):
 
-- **Producer unit**: its `lat_class` from `sched_attr` (A-66). That is 0 for
-  RCU, 1 for the lane ALUs, and 4 to 7 for the spare codes a further unit
-  takes (`Config::unit_lat`, its full latency).
-- **Consumer group**: its own `lat_class` when it executes in RCU or a lane,
-  or the memop group (8), because RCU sends a memop's address and data to
-  MIU.
-- **`byp[unit][group]`**: how many cycles after the producer issues a
-  consumer of that group may issue on its result. A value of 0, or anything
-  at or over the producer's latency, means no bypass: the consumer waits for
-  the full latency, when the value is in the register file. Elaboration
-  refuses an entry at or over the producer's latency.
+- **The producer's `lat_class`** sets its full latency (`unitLat`: RCU 3,
+  lane `CCV_LAT_LANE`, SFU `CCV_LAT_SFU`, warp-collective
+  `CCV_LAT_COLLECTIVE`) and its fastest bypass point (`Config::fast`;
+  the lane's is `CCV_LAT_LANE_BYP`). A unit with no fastest point is
+  single-time: RCU, warp-collective, loads, and SFU until a
+  `CCV_LAT_SFU_BYP` exists (OA's response OI-16).
+- **`byp[producer group][consumer group]`** is a penalty in cycles after
+  that point, from the parameters: in-unit `CCV_LAT_BYP_PEN_SAME` (0),
+  integer and FP to each other `_INT_FP` (2), integer or FP and SFU to each
+  other `_SFU` (3). Address-calculation, warp-collective and predicate
+  consumers never bypass (`kNoByp`), nor do warp-collective or predicate
+  producers.
+- **The wake** is fast + penalty after the producer's issue, if that is
+  under the full latency; otherwise the consumer waits for the PRF read.
+  A memop consumes as address calculation, and an op RCU executes takes
+  no bypass (V-48). A predicate use, a cross-lane producer, a memop
+  producer and a copy-only op never bypass.
 
-Lane ALU to lane ALU defaults to `CCV_LAT_LANE_BYP` (A-59). Every other pair
-has no bypass until the LANE and RCU sessions name one. A predicate use is
-never bypassed (A-62), nor is a cross-lane producer (A-59), a memop or a
-copy-only op.
+With today's values a lane producer wakes at 4, 6 or 7 (4 + 3 lands on the
+PRF read), so three wakes are distinct; the hardware keeps four select codes,
+since the penalties are tunable (OA's response OI-16). In the model, `woff_`
+is the per-cell select and `cellOk` the per-cell AOI.
 
-In hardware, a producer broadcasts one wake per distinct offset in its
-row, plus the full-latency wake. A matrix cell stores its dependency bit and
-which of those wakes it waits for, chosen at rename from the pair. With one
-bypass offset this is exactly A-73's two-bit cell. With k distinct offsets
-the select is log2(k + 1) bits, and the ready logic picks one of k + 1 wake
-vectors per cell. That is the cost to put into the scheduler-ceiling
-estimate. In the model, `woff_` is the select and `cellOk` the per-cell AOI.
-
-Configure it with `CCV_OOE_CONFIG`, for example
-`lat.4=12,byp.4.4=6,byp.4.1=9,byp.1.4=5,byp.0.1=2`. The unit tests run
-exactly that configuration on odd seeds, with SFU ops in the traces. A
-control must be caught: a core bypassing faster than the table its
-environment holds it to.
-
-Two things this needs from outside OOE:
-
-- **Parameters for the table**, generated beside `CCV_LAT_LANE_BYP`, once
-  the LANE and RCU sessions name the pairs.
-- **A `bypass_group` field on `sched_attr`, if `lat_class` cannot serve
-  as the group.** Two units with one latency but different bypass
-  distances would need it. That is an interface change.
-
-The design doc's A-73 text, two-bit cells, needs the same generalisation.
+Configure it with `CCV_OOE_CONFIG`: `byp.P.C=N` (255 for none), `fast.U=N`,
+`lat.U=N`. The unit tests run an SFU configuration (`fast.4=6`, SFU to SFU
+6, SFU to ALU 9, ALU to SFU 5) on odd seeds, and check integer, FP and SFU
+pairs cycle by cycle. A control must be caught: a core bypassing faster
+than the table its environment holds it to.
 
 ## The arrival-cycle checker on `ccv_rcu_ooe_done` (V-35, repo Q-53)
 
