@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #include "ooe_core.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -76,6 +77,8 @@ struct Op {
   unsigned dst = 0, src[3] = {}, nsrc = 0, pdst = 0, pguard = 0, pq[2] = {};
   bool guard = false, cross = false, taken = false, pred_taken = false;
   uint32_t mask = kFullMask;
+  unsigned w = 0;                ///< sectioned: the destination's width code
+  bool backward = false;         ///< a backward branch (OA-14's rotation)
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -88,6 +91,8 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.ilen = 1;
   for (unsigned i = 0; i != 3; ++i) u.src[i] = o.src[i];
   u.dst = o.dst;
+  u.w = o.w;
+  u.backward = o.backward;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
   u.shape.guard = o.guard;
   u.pred_guard = o.pguard;
@@ -161,6 +166,7 @@ struct Env {
   };
   std::vector<Warp> w;
   std::map<uint64_t, Op> op_of;                  ///< tid -> op
+  uint64_t lane_ops = 0, lane_ops_one_section = 0;   ///< sectioned stats
   std::map<uint64_t, bool> correct;              ///< tid -> correct path
   std::map<uint64_t, size_t> idx_of;             ///< tid -> program index
   std::multimap<uint64_t, Uop> fetched;          ///< arrival cycle -> uop
@@ -321,7 +327,7 @@ struct Env {
 
   /// When a source written by `p` is readable for this consumer.
   void checkRead(uint64_t tid, unsigned preg, bool pred, int group) {
-    if (pred ? preg == cfg.pred_zero : preg == cfg.phys_zero) return;
+    if (pred ? preg == cfg.pred_zero : core.isZeroName(preg)) return;
     auto &m = pred ? pready : gready;
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
@@ -436,6 +442,32 @@ struct Env {
     if (keep_log) log.push_back(o);
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
+    // Sectioned lanes (OI-28): the lane ops leaving in one cycle use
+    // disjoint sections of the four operand ports, each op every section its
+    // operands sit in. Checked from the names alone, not the core's
+    // footprints.
+    if (cfg.sectioned) {
+      unsigned used = 0;
+      for (const Issue &is : o.issues) {
+        const Op &op = op_of[is.tid];
+        const bool lane = is.copy || op.k == kLane || op.k == kSfu || op.k == kSetp || op.k == kFp;
+        if (!lane) continue;
+        unsigned m = 0;
+        if (is.copy) {
+          m = core.sectionsOf(is.pdst) | core.sectionsOf(is.pold);
+        } else {
+          if (op.k != kSetp) m |= core.sectionsOf(is.pdst);
+          for (unsigned i = 0; i != op.nsrc; ++i) m |= core.sectionsOf(is.psrc[i]);
+          if (is.merge && op.k != kSetp) m |= core.sectionsOf(is.pold);
+        }
+        if (used & m)
+          errors.push_back("cycle " + std::to_string(t) + ": two lane ops share a section (tid " +
+                           std::to_string(is.tid) + ")");
+        used |= m;
+        ++lane_ops;
+        if (m && !(m & (m - 1))) ++lane_ops_one_section;
+      }
+    }
     for (const Redirect &r : o.redirects) redirects.insert({t + cfg.redirect_lat, r});
     if (o.free_mask) frees.insert({t + cfg.redirect_lat, o.free_mask});
     for (const Retired &r : core.retired) {
@@ -498,9 +530,14 @@ struct Env {
 
 // ---- program generators ----------------------------------------------------------------
 
-std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed, bool sfu = false) {
+std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed, bool sfu = false,
+                              bool narrow = false) {
   auto r = [&](unsigned k) { return unsigned(rng() % k); };
   std::vector<Op> p;
+  // Sectioned: each architectural register has one width for the program,
+  // as the committed chwidth table gives it: R0-R3 32-bit, the rest any.
+  std::array<unsigned, 16> width{};
+  for (unsigned i = 4; i != 16 && narrow; ++i) width[i] = r(4);
   // a prologue that writes some registers and predicates
   for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
   { Op o; o.k = kSetp; o.pdst = 1; o.src[0] = 0; o.src[1] = 1; o.nsrc = 2; p.push_back(o); }
@@ -521,6 +558,8 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
+    o.w = width[o.dst];
+    o.backward = o.k == kBranch && r(2) == 0;
     p.push_back(o);
   }
   Op e;
@@ -712,7 +751,7 @@ void testMaskedLoad() {
   uint64_t copy_at = 0;
   for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
     for (const Issue &i : e.log[cyc].issues)
-      if (i.copy) { ++copies; copy_at = cyc; EXPECT(i.merge && i.pold != c.phys_zero, "copy without its old destination"); }
+      if (i.copy) { ++copies; copy_at = cyc; EXPECT(i.merge && !e.core.isZeroName(i.pold), "copy without its old destination"); }
   EXPECT(copies == 1, "%u copies (V-20: exactly one)", copies);
   EXPECT(copy_at == issueCycle(e, 2), "the copy left apart from its load");
   EXPECT(copy_at - issueCycle(e, 1) >= c.lat_lane, "the copy read R5 before it landed");
@@ -952,9 +991,166 @@ void testChwidth() {
     if (i.tid == 2) EXPECT(i.chwidth == 2, "the younger op read chwidth %u, not the committed one", i.chwidth);
 }
 
+/// Sectioned lanes (OI-29 to OI-33): narrow registers placed in sections,
+/// footprints widened per unit, and lane ops co-issued on disjoint sections.
+void testSections() {
+  auto cfgS = [](unsigned place) {
+    Config c = baseConfig();
+    c.sectioned = true;
+    c.place = place;
+    c.l1_spec = false;
+    return c;
+  };
+  // Independent ops per warp, each writing its own register at width w.
+  auto indep = [](Kind k, unsigned w, unsigned n) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != n; ++i) { Op o; o.k = k; o.dst = 4 + i; o.w = w; p.push_back(o); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    return p;
+  };
+  // The most lane ops issued in any one cycle.
+  auto maxLane = [](const Env &e) {
+    size_t m = 0;
+    for (const Outputs &o : e.log) {
+      size_t n = 0;
+      for (const Issue &i : o.issues) n += i.port < 4;
+      m = std::max(m, n);
+    }
+    return m;
+  };
+  auto run = [&](const Config &c, Kind k, unsigned w, std::vector<unsigned> slots) {
+    Env e(c);
+    e.keep_log = true;
+    for (unsigned s : slots) e.launch(s * 5, s, indep(k, w, 8));
+    e.finish();
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+    return e;
+  };
+
+  g_test = "sections: 8-bit ops of four warps co-issue";
+  {
+    Env e = run(cfgS(0), kLane, 2, {0, 1, 2, 3});
+    EXPECT(maxLane(e) == 4, "at most %zu lane ops in a cycle", maxLane(e));
+    EXPECT(e.lane_ops_one_section == e.lane_ops, "%llu of %llu took one section",
+           (unsigned long long)e.lane_ops_one_section, (unsigned long long)e.lane_ops);
+    // Home = slot index: warp s's registers sit in section s.
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.port < 4) EXPECT(e.core.namePos(i.pdst) == (i.warp / 5) % 4 && i.port == (i.warp / 5) % 4,
+                               "warp %u wrote section %u from port %u", i.warp, e.core.namePos(i.pdst), i.port);
+  }
+  g_test = "sections: 32-bit ops take the whole lane";
+  EXPECT(maxLane(run(cfgS(0), kLane, 0, {0, 1, 2, 3})) == 1, "two 32-bit ops in a cycle");
+  g_test = "sections: home 0 puts every warp in section 0";
+  EXPECT(maxLane(run(cfgS(1), kLane, 2, {0, 1, 2, 3})) == 1, "two ops shared section 0");
+  g_test = "sections: 16-bit ops pair up";
+  EXPECT(maxLane(run(cfgS(0), kLane, 1, {0, 1, 2, 3})) == 2, "16-bit ops not two a cycle");
+  g_test = "sections: FP widens to a section pair";
+  EXPECT(maxLane(run(cfgS(0), kFp, 2, {0, 1})) == 1, "FP ops in sections 0 and 1 co-issued");
+  EXPECT(maxLane(run(cfgS(0), kFp, 2, {0, 2})) == 2, "FP ops in sections 0 and 2 did not co-issue");
+  g_test = "sections: SFU takes the whole lane";
+  EXPECT(maxLane(run(cfgS(0), kSfu, 2, {0, 2})) == 1, "two SFU ops in a cycle");
+
+  g_test = "sections: a narrow op follows its source; a merge keeps its position";
+  {
+    Config c = cfgS(0);
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    // Slot 1's home is section 1 (8-bit) or sections 2-3 (16-bit); the
+    // source and merge rules must override it.
+    Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);                               // tid 1: 16-bit, sections 2-3
+    Op b; b.k = kLane; b.dst = 5; b.w = 2; b.src[0] = 4; b.nsrc = 1; p.push_back(b);     // tid 2: follows R4 to 2
+    Op m; m.k = kLane; m.dst = 5; m.w = 2; m.mask = 0xffff; p.push_back(m);              // tid 3: merges R5 at 2
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(5, 1, p);
+    e.finish();
+    unsigned seen = 0;
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.port < 4 && !i.copy) {
+          ++seen;
+          EXPECT(e.core.namePos(i.pdst) == 2, "tid %llu placed at %u, not section 2",
+                 (unsigned long long)i.tid, e.core.namePos(i.pdst));
+          EXPECT(i.port == 2, "tid %llu issued on port %u", (unsigned long long)i.tid, i.port);
+        }
+    EXPECT(seen == 3, "%u lane issues", seen);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+
+  g_test = "sections: narrow loads of two warps take their own MIU pipes";
+  {
+    Config c = cfgS(0);
+    Env e(c);
+    e.keep_log = true;
+    for (unsigned s : {0u, 2u}) {
+      std::vector<Op> p;
+      for (unsigned i = 0; i != 6; ++i) { Op l; l.k = kLoad; l.dst = 4 + i; l.w = 2; l.nsrc = 1; p.push_back(l); }
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(s * 5, s, p);
+    }
+    e.finish();
+    size_t most = 0;
+    for (const Outputs &o : e.log) {
+      unsigned used = 0;
+      for (const Memop &m : o.memops) {
+        EXPECT(m.port == (m.warp / 5) % 4, "warp %u's load on pipe %u", m.warp, m.port);
+        EXPECT(!(used >> m.port & 1u), "pipe %u granted twice", m.port);
+        used |= 1u << m.port;
+      }
+      most = std::max(most, o.memops.size());
+    }
+    EXPECT(most == 2, "at most %zu loads in a cycle", most);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+
+  g_test = "sections: a masked load's copy issues before its load (V-61)";
+  {
+    Config c = cfgS(0);
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op w; w.k = kLane; w.dst = 5; w.w = 2; p.push_back(w);                                  // tid 1
+    Op ld; ld.k = kLoad; ld.dst = 5; ld.w = 2; ld.nsrc = 1; ld.mask = 0xffff; p.push_back(ld);  // tid 2
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    uint64_t copy_at = ~0ull;
+    for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
+      for (const Issue &i : e.log[cyc].issues) if (i.copy) copy_at = cyc;
+    uint64_t load_at = ~0ull;
+    for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
+      for (const Memop &m : e.log[cyc].memops) if (m.tid == 2) load_at = cyc;
+    EXPECT(copy_at != ~0ull && load_at != ~0ull && copy_at < load_at, "copy at %llu, load at %llu",
+           (unsigned long long)copy_at, (unsigned long long)load_at);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+
+  g_test = "sections: a load passes an older waiting load only under OA-13";
+  for (int pass = 0; pass != 2; ++pass) {
+    Config c = cfgS(0);
+    c.loads_pass_loads = pass;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op f; f.k = kSfu; f.dst = 1; p.push_back(f);                                    // tid 1: a slow address
+    Op a; a.k = kLoad; a.dst = 4; a.src[0] = 1; a.nsrc = 1; p.push_back(a);         // tid 2: waits on it
+    Op b; b.k = kLoad; b.dst = 5; b.src[0] = 0; b.nsrc = 1; p.push_back(b);         // tid 3: ready
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    uint64_t at[4] = {};
+    for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
+      for (const Memop &m : e.log[cyc].memops) if (m.tid < 4) at[m.tid] = cyc;
+    EXPECT(pass ? at[3] < at[2] : at[3] > at[2], "loads at %llu and %llu with loads_pass_loads=%d",
+           (unsigned long long)at[2], (unsigned long long)at[3], pass);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+}
+
 void testRandom(unsigned seeds) {
   for (unsigned seed = 1; seed <= seeds; ++seed) {
-    for (int mode = 0; mode != 4; ++mode) {
+    for (int mode = 0; mode != 8; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
       // Odd seeds run the bypass-group configuration, SFU ops included.
@@ -962,6 +1158,12 @@ void testRandom(unsigned seeds) {
       Config c = groups ? groupConfig() : baseConfig();
       c.bypass = mode & 1;
       c.l1_spec = (mode & 2) != 0;
+      // Modes 4-7: sectioned lanes and narrow registers, each placement
+      // rule in turn, with loads passing loads on odd seeds (OA-13).
+      const bool sec = (mode & 4) != 0;
+      c.sectioned = sec;
+      c.place = seed % 3;
+      c.loads_pass_loads = sec && seed % 2 == 1;
       std::mt19937 rng(seed * 4 + unsigned(mode));
       // Every fifth seed: a floorplan where load data lands after the
       // completion (the links split does this), and the core told so.
@@ -971,7 +1173,7 @@ void testRandom(unsigned seeds) {
       e.data_after_cmpl = c.cmpl_wake_delay;
       e.rcu_fast = seed % 3 == 0;
       const unsigned warps = 1 + seed % 4;
-      for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, groups));
+      for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, groups, sec));
       e.finish();
       const int before = g_fail;
       for (unsigned i = 0; i != warps; ++i) {
@@ -1016,6 +1218,7 @@ void testControls() {
       {"cmpl-wake-delay-ignored", [](Config &c) { c.cmpl_wake_delay = 0; c.inject_free_new = false; }},
       {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.fast[4] = 3; }},
       {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
+      {"narrow-footprint", [](Config &c) { c.sectioned = true; c.inject_narrow_footprint = true; }},
   };
   for (const C &x : cs) {
     const int saved = g_fail;
@@ -1038,7 +1241,12 @@ void testControls() {
       if (groups) e.cfg.fast[4] = 6;
       // An RCU faster than its contract is what exposes completing early.
       if (std::string(x.name) == "complete-before-rs-free") e.rcu_fast = true;
-      e.launch(0, 0, randomProgram(rng, 150, true, groups));
+      // A footprint narrower than the operands: four warps of narrow
+      // registers, so two lane ops land in one cycle on a shared section.
+      if (c.inject_narrow_footprint)
+        for (unsigned i = 0; i != 4; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, false, true));
+      else
+        e.launch(0, 0, randomProgram(rng, 150, true, groups));
       const int before = g_fail;
       g_quiet = true;
       e.finish(20000);
@@ -1122,6 +1330,7 @@ int main(int argc, char **argv) {
   testFault();
   testBarrier();
   testChwidth();
+  testSections();
   testFreeVec();
   testV59();
   testFixedWindowPreds();

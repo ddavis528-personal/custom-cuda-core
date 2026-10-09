@@ -188,6 +188,68 @@ Configure it with `CCV_OOE_CONFIG`: `byp.P.C=N` (255 for none), `fast.U=N`,
 pairs cycle by cycle. A control must be caught: a core bypassing faster
 than the table its environment holds it to.
 
+## Sectioned lanes (OI-29 to OI-34)
+
+Each lane block has four 32-bit operand ports, each split into four 8-bit
+sections. Four-wide issue into a lane block is possible only for narrow
+`chwidth` ops in separate sections (DA, OI-28). The model carries this under
+`Config::sectioned`. It stays off for the kernels until the issue channel has
+its nine slots (OI-32, TI). The unit tests and sweeps run it now.
+
+- **Names.** A register is a slice of a PRF row, named `row * 4 + position`.
+  A 32-bit register takes the whole row. A 16-bit one takes an aligned pair
+  (positions 0 or 2). An 8-bit or 4-bit one takes one section, so 4-bit gets
+  4x the rate, not 8x (OI-29).
+- **Rows.** One tier-1 slot owns a row while any of its sections is live
+  (V-62). Freeing the last live section frees the row.
+- **Placement.** A narrow destination goes, in this order:
+  1. to its old destination's position, on a merge;
+  2. to an existing narrow source's position;
+  3. to its home position.
+
+  The home position comes from `place` (OA-14; DA picks from the OI-34 sweep):
+  - 0: the tier-1 slot index;
+  - 1: position 0 for every warp;
+  - 2: a per-warp counter, advanced at each taken backward branch.
+
+  The lane swizzles inside its 32-bit word, so no op ever moves data
+  between sections.
+- **Footprint** (OI-30 revised, AR-12). An op's footprint is the union of its
+  operands' sections, widened to `foot_min[bypass_group]`:
+  - integer 1;
+  - FP 2 (a section pair);
+  - SFU 4;
+  - address calculation 1, counted in MIU pipes;
+  - warp-collective and predicate 0, which takes R.
+
+  An op RCU executes takes R. A memop takes the MIU pipes P0-P3 of its data
+  register's sections: a load's destination, a store's data source.
+- **Select** grants nine resources: S0-S3, R and P0-P3. Each resource picks
+  its oldest ready requester. An entry issues only if it wins every resource
+  in its footprint, so co-issued footprints are disjoint by construction
+  (V-60). An entry that wins some resources but not all counts
+  `select.lost_resource`. The issue port is the footprint's lowest resource.
+- **A masked load's copy** is a lane op of its own and issues at least a
+  cycle before its load (V-61). Its sources are confirmed first, so it
+  cannot be cancelled after the load has gone. Unsectioned, the copy leaves
+  with its load, as before.
+- **Loads passing loads** (OA-13, pending DA): with `loads_pass_loads`, a
+  plain load passes older unissued plain loads of its warp. It never passes
+  a store, an atomic, a fence or an ordered access. Off, memops issue in
+  program order per warp (OI-15).
+- **Checks.** V-63: every lane operand sits inside the footprint. V-62: the
+  per-cycle partition check is exact per section and per row owner. The
+  unit harness checks, from names alone, that no two lane ops in a cycle
+  share a section.
+
+Statistics:
+- `sections_per_op.wN`: sections per issued op, by destination width;
+- `sections_idle`: idle sections per cycle;
+- `issue_per_cycle`.
+
+Configure it with `CCV_OOE_CONFIG`: `place=N`, `loads_pass_loads=1`,
+`foot.G=N` (0, 1, 2 or 4).
+
 ## The arrival-cycle checker on `ccv_rcu_ooe_done` (V-35, repo Q-53)
 
 A dependant issued at the contracted latency reaches RCU one issue crossing
@@ -341,10 +403,18 @@ added with the event.
   - a fault at retirement;
   - a barrier and a `chwidth` serialisation;
   - the fixed-window predicate mode;
-  - 25 random seeds × four mode combinations, up to four warps, with
-    wrong-path fetch, mispredicts and L1 misses.
+  - sectioned lanes:
+    - four 8-bit warps co-issue, two 16-bit, one 32-bit;
+    - FP widens to a pair, SFU to the whole lane;
+    - placement by source and merge over home;
+    - narrow loads on their own MIU pipes;
+    - V-61's copy before its load;
+    - OA-13 on and off;
+  - 25 random seeds × eight mode combinations, up to four warps, with
+    wrong-path fetch, mispredicts and L1 misses. Modes 4-7 are sectioned,
+    with narrow registers, each placement rule and OA-13.
 
-  Six injected bugs must each fail the harness:
+  Seven injected bugs must each fail the harness:
   - freeing the new mapping;
   - a cancel that stops after one hop;
   - a wake one cycle early;
@@ -352,7 +422,9 @@ added with the event.
     not told;
   - a bypass faster than the table the environment holds the core to;
   - a ROB entry that completes before its RS entries free, under an RCU
-    faster than its contract (V-58).
+    faster than its contract (V-58);
+  - a footprint narrower than its operands, so two lane ops share a
+    section in one cycle.
 
 ## Sweeps
 

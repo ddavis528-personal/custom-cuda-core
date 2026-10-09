@@ -154,6 +154,24 @@ struct Config {
   /// Speculative wake of L1-load dependants at CCV_LAT_L1_WAKE, cancelled on
   /// a miss (A-46). Off while MIU completes no load at the L1 contract.
   bool l1_spec = true;
+  // -- narrow registers and lane sections (OI-28 to OI-33, Daniel's 2026-10-08) -
+  /// Sectioned lanes: a register is a slice of a PRF row, named row * 4 +
+  /// position, an op claims the union of its operands' sections widened to
+  /// its unit's minimum, and select grants nine resources (S0-S3, R, P0-P3).
+  /// Off in S1 until OI-32's schema carries positions: names are then rows.
+  bool sectioned = false;
+  /// Placement of a narrow destination with no narrow source (OA-14):
+  /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
+  /// every warp; 2 the home position, advanced at each taken backward branch.
+  unsigned place = 0;
+  /// OA-13: a load passes older loads of its warp, blocked only by an older
+  /// unissued store, atomic, fence or ordered access. Off: memops issue in
+  /// program order per warp (OI-15).
+  bool loads_pass_loads = false;
+  /// CCV_FOOT_MIN[bypass_group] in sections (AR-12): integer 1, FP 2,
+  /// address calculation 1 (in MIU pipes), SFU 4; warp-collective and
+  /// predicate 0 (RCU only).
+  std::array<unsigned, kGroups> foot_min = {1, 2, 1, 4, 0, 0, 1, 1};
   /// Rename predicates through the predicate RAT and pool (Q-21, A-39). Off
   /// while RCU reads predicate-logic sources and the final compare reads
   /// predicates by a fixed window (physPred), which A-75 and a testbench
@@ -173,6 +191,7 @@ struct Config {
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
+  bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -226,6 +245,11 @@ struct Uop {
   bool pred_taken = false;
   bool scale_en = false;
   bool decode_fault = false;
+  /// The destination's element width, from the committed chwidth table:
+  /// 0 32-bit, 1 16-bit, 2 8-bit, 3 4-bit (sectioned; a 4-bit register takes
+  /// an 8-bit section, OI-29). Sources carry their own in their names.
+  unsigned w = 0;
+  bool backward = false;             ///< a branch whose target is behind it (OA-14)
   UopShape shape;
 };
 
@@ -515,6 +539,7 @@ private:
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
     uint64_t ready_since = 0;      ///< first cycle a memop's row was ready
     uint64_t eligible_at = 0;      ///< first cycle select may take it (rename's stages)
+    unsigned res = 0;              ///< sectioned: the resources it needs (resOf)
   };
 
   struct Ckpt {
@@ -541,6 +566,7 @@ private:
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
     unsigned bar_id = 0;                      ///< the held barrier (events)
+    unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
     bool fault_stop = false;                  ///< V-24
     uint64_t head_since = 0;                  ///< head-stall timer (demotion)
@@ -597,6 +623,22 @@ private:
   bool gprAllowed(unsigned slot, unsigned n) const;
   bool predAllowed(unsigned slot, unsigned n) const;
   unsigned allocGpr(unsigned slot);
+  /// Sectioned: allocate a register of width code w for a slot, preferring
+  /// position pos (a hint: another position if it must).
+  unsigned allocSlice(unsigned slot, unsigned w, unsigned pos);
+  /// Sectioned: how a width w register at pos would be placed, without
+  /// placing it: 0 an owned partial row, 1 a new row, 2 neither (stall).
+  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const;
+  unsigned placePos(unsigned slot, const Uop &u, bool merge) const;
+  /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
+  /// 4 RCU (R), 5-8 MIU pipes P0-P3.
+  unsigned resOf(const RobEntry &r, bool copy_half) const;
+  void selectSectioned();
+  Issue makeIssue(unsigned slot, unsigned idx, unsigned port) const;
+  void issueCopy(unsigned slot, unsigned idx, unsigned port);
+  unsigned secMask(unsigned w, unsigned pos) const {
+    return w == 0 ? 0xFu : w == 1 ? (3u << (pos & 2u)) : (1u << (pos & 3u));
+  }
   unsigned allocPred(unsigned slot, unsigned arch);
   void freeGpr(unsigned slot, unsigned p);
   void freePred(unsigned slot, unsigned p);
@@ -646,6 +688,24 @@ private:
   FreeVec gfree_, pfree_;
   std::vector<uint8_t> gowner_, powner_;      ///< slot + 1, 0 = free
   std::vector<uint8_t> gever_;                ///< ever allocated (reg_reuse)
+  // Sectioned registers: a name is row * kPos_ + position (kPos_ 1 when not
+  // sectioned, so a name is a row). A row is owned by one tier-1 slot while
+  // any of its sections is live (OI-29); gfree_ holds the wholly free rows.
+  unsigned kPos_ = 1;
+  std::vector<uint8_t> gw_;                   ///< name -> width code
+  std::vector<uint8_t> rowOwner_, rowSec_;    ///< row -> slot + 1; live sections
+public:
+  unsigned nameRow(unsigned n) const { return n / kPos_; }
+  unsigned namePos(unsigned n) const { return n % kPos_; }
+  bool isZeroName(unsigned n) const { return n / kPos_ == cfg_.phys_zero; }
+  unsigned zeroName() const { return cfg_.phys_zero * kPos_; }
+  unsigned nameWidth(unsigned n) const { return n < gw_.size() ? gw_[n] : 0; }
+  /// The sections a register occupies; none for the zero register.
+  unsigned sectionsOf(unsigned n) const {
+    if (isZeroName(n)) return 0;
+    return cfg_.sectioned ? secMask(nameWidth(n), namePos(n)) : 0xFu;
+  }
+private:
 
   // inputs not yet taken
   std::vector<Done> dones_;
