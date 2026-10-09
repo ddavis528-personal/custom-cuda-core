@@ -43,6 +43,8 @@ grill-me ran on 2026-09-23. Here is each input's status:
 0. **OOE Stage 4b**, in its own session ([`ooe-4b.md`](ooe-4b.md)). The
    top-level work that feeds it, in order: Review A-75 (what OOE needs
    from DEC so it never decodes `opcode`) is settled and applied as TI-1;
+   sectioned lanes (TI-9) are in the schema and the stubs, full width only,
+   with OOE's interim one-lane-op cap until OI's per-resource select;
    next, wrong-path fetch and squash in the stubs; several warps; divergence; then demotion, kill and restore.
 1. **S2: kernels that stress what vadd does not.** vadd has no divergence,
    no loop, one warp, and no SPM or barriers, so 21 of the 48 channels carried
@@ -229,10 +231,10 @@ SPM exists to implement.
 
 See [`skeleton.md`](skeleton.md).
 
-**S0.** The whole machine is wired from the schema: 45 block instances, 109
-channel instances, 347 credited slots. Every block runs an exerciser stub, and
+**S0.** The whole machine is wired from the schema: 45 block instances, 110
+channel instances, 163 credited slots. Every block runs an exerciser stub, and
 every slot is judged by the real SV credit checker Verilated in beside it. A
-2000-cycle run carries ~151k messages, and three seeds give zero violations.
+2000-cycle run carries ~200k messages, and three seeds give zero violations.
 Each clean result is paired with a control that must fail it.
 
 - `tools/gen-skel.py` — wiring tables, the checker bank, and a layout probe

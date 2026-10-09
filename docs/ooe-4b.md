@@ -83,9 +83,9 @@ session are in [`ooe-model.md`](ooe-model.md).
 | Channel | Dir | Rate | Contract notes |
 |---|---|---|---|
 | `ccv_dec_ooe_uop` | in | 6 | ordered per `warp_id`; `sched_attr` (A-66), `group_mask` (A-69), `fetch_epoch` (A-70); `mem_op`/`space`/`ordering` passed to MIU unexamined (A-68) |
-| `ccv_ooe_rcu_issue` | out | 4 | fixed latency; zero registers (A-64); merge (A-33); `CCV_OP_PRF_COPY` beside a masked load (A-38) |
-| `ccv_rcu_ooe_done` | in | 4 | fixed latency, so OOE never stalls it; branch resolution rides here |
-| `ccv_ooe_miu_memop` | out | 4 | bulk discard is `mem_op` 0xF with `discard_tail` (A-41, A-53) |
+| `ccv_ooe_rcu_issue` | out | 9 | one bound slot per select resource, S0-S3, P0-P3, R: a lead in its footprint's lowest slot, continuation on the rest, footprints disjoint (V-60, TI-9); fixed latency; zero registers (A-64); merge (A-33); `CCV_OP_PRF_COPY` beside a masked load (A-38) |
+| `ccv_rcu_ooe_done` | in | 7 (`CCV_DONE_SLOTS`) | fixed latency, so OOE never stalls it; branch resolution rides here; none for a memop (OI-4) |
+| `ccv_ooe_miu_memop` | out | 4 | `pipes`, the memop's footprint over P0-P3, and `dst_pos` (OI-33); bulk discard is `mem_op` 0xF with `discard_tail` (A-41, A-53) |
 | `ccv_miu_ooe_cmpl` | in | 4 | fixed latency; an L1 hit completes at exactly `CCV_LAT_L1_CMPL` (A-47, A-61) |
 | `ccv_ooe_miu_retire` | out | 4 | commit or discard for stores |
 | `ccv_ooe_fet_redirect` | out | 1 | fixed latency; latency-matched with `ckpt_free` (A-58); `epoch_only` notices for demotion and kill (A-74) |
@@ -93,7 +93,7 @@ session are in [`ooe-model.md`](ooe-model.md).
 | `ccv_rau_ooe_alloc` | in | 1 | `alloc_op`: free, launch, restore-allocate, restore-activate (A-64); `tier1_id` (A-65) |
 | `ccv_rau_ooe_demote`, `ccv_ooe_rau_drained` | in / out | 1 | drained only after the demotion's epoch notice lands (A-74) |
 | `ccv_ooe_rau_status`, `ccv_ooe_cru_fault` | out | 1 | progress, stall and fault reporting |
-| `ccv_ooe_rcu_map` | out | 1 | the RAT map for migration (restore direction 1) |
+| `ccv_ooe_rcu_map` | out | 1 | the RAT map for migration (restore direction 1), with each register's position and width (TI-9) |
 | `ccv_ooe_syu_bar`, `ccv_syu_ooe_rel` | out / in | 1 | barriers |
 | `kill_*` common ports | in / out | | `kill_ack` only after the kill's epoch notice lands (A-74) |
 
@@ -115,6 +115,17 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
   nothing in OOE looks at `opcode`. Controls: `drop-src-valid` (vadd) and
   `arch-pred-srcs` (the plog kernel). OI-3, predicate renaming on the
   kernels, is unblocked.
+- **Sectioned lanes, TI-9: the schema is in, on TI's proposed answers.**
+  `ccv_ooe_rcu_issue` is nine bound slots, S0-S3, P0-P3 and R; an op sits in
+  its footprint's lowest slot with `footprint` and `bypass_group`, and every
+  other slot of its footprint carries `cont` = 1 and its `rob_tag`. Every
+  register name carries a 2-bit position and a 2-bit width code (0 = 32,
+  1 = 16, 2 = 8, 3 = 4), and a memop names its pipes on
+  `ccv_ooe_miu_memop`. RCU refuses a footprint overlap (V-60). Until OI's
+  per-resource select (OI-31) lands, the model's `resource_cap` issues one
+  lane op, one memop and one RCU op a cycle, all full width at position 0:
+  TI's edit in OI's files, in a commit of its own, for OI to keep or
+  replace. Controls: `no-resource-cap`, `bad-pos`, `narrow-pipes`.
 - A-71 (an unaligned lane word), now TI-2, is deferred to the ISA track and
   does not touch OOE.
 
@@ -127,16 +138,16 @@ coverage counts. They exercise:
 - checkpoint pressure;
 - the free list wrapping;
 - dropping a stale-epoch uop;
-- L1 hits at the contract, and the model's `l1_spec` on every kernel
-  (`CCV_OOE_CONFIG=l1_spec=1`, held in `tools/check-kernel.sh`; OI-5);
-- the lane-local bypass (A-59, TI-8): the model's `bypass` on every kernel,
-  alone and with `l1_spec` (`CCV_OOE_CONFIG=bypass=1`). The lanes now
+- L1 hits at the contract, and the model's `l1_spec`, on by default since
+  OI-5; `tools/check-kernel.sh` also runs every kernel with it alone, with
+  `bypass` alone, and with both off (`CCV_OOE_CONFIG=bypass=0,l1_spec=0`);
+- the lane-local bypass (A-59, TI-8): the model's `bypass`, on by default
+  since OI-5. The lanes now
   answer at `CCV_LAT_LANE`, so a dependant woken at `CCV_LAT_LANE_BYP`
   reads the register file before the write and takes its operand from the
   lane: RCU names the producer in `operand_byp` on `ccv_rcu_lane_ops`. The
   `byp` kernel forwards five operands; `no-lane-bypass` and an OOE
-  bypassing at 3 must fail. `config()` in `sim/ooe/ooe_block.cpp` still
-  sets `bypass = false`, so turning it on is the model session's call.
+  bypassing at 3 must fail.
 
 They cannot yet exercise the following. Each needs stub work, which belongs
 to the top-level session, in this order:

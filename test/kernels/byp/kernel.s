@@ -19,7 +19,7 @@
         MOVI       R7, 7
         SETP_LT    P1, R15, 0, R1, R2   # @P0 P1 = tid < 16: forwards tid
         C_ADD      R5, R1               # R5 = 100 + tid: forwards tid
-        C_ADD      R7, R1               # R7 = 7 + tid: forwards tid
+        C_ADD      R7, R1               # R7 = 7 + tid: forwards tid while lane ops co-issue
         C_ADD      R5, R1               # R5 = 100 + 2 tid: forwards R5
         MADLO      R6, R1, R2, R7       # R6 = 16 tid + 7 + tid: forwards R7, the third operand
         LD_GLOBAL_P R5, 1, R0, 0        # @P1 R5 = [0x50000]; the copy keeps 100 + 2 tid in lanes 16-31

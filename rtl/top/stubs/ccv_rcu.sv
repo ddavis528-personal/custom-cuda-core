@@ -57,934 +57,272 @@ module ccv_rcu (
   assign ooe_rcu_issue_s2_stall = '0;
   assign ooe_rcu_issue_s3_credit = '0;
   assign ooe_rcu_issue_s3_stall = '0;
-  assign rcu_lane_ops_c00_s0_valid = '0;
-  assign rcu_lane_ops_c00_s0_payload = '0;
-  assign rcu_lane_ops_c00_s1_valid = '0;
-  assign rcu_lane_ops_c00_s1_payload = '0;
-  assign rcu_lane_ops_c00_s2_valid = '0;
-  assign rcu_lane_ops_c00_s2_payload = '0;
-  assign rcu_lane_ops_c00_s3_valid = '0;
-  assign rcu_lane_ops_c00_s3_payload = '0;
+  assign ooe_rcu_issue_s4_credit = '0;
+  assign ooe_rcu_issue_s4_stall = '0;
+  assign ooe_rcu_issue_s5_credit = '0;
+  assign ooe_rcu_issue_s5_stall = '0;
+  assign ooe_rcu_issue_s6_credit = '0;
+  assign ooe_rcu_issue_s6_stall = '0;
+  assign ooe_rcu_issue_s7_credit = '0;
+  assign ooe_rcu_issue_s7_stall = '0;
+  assign ooe_rcu_issue_s8_credit = '0;
+  assign ooe_rcu_issue_s8_stall = '0;
+  assign rcu_lane_ops_c00_valid = '0;
+  assign rcu_lane_ops_c00_payload = '0;
   assign rcu_lane_ops_c00_wake = '0;
-  assign rcu_lane_ops_c01_s0_valid = '0;
-  assign rcu_lane_ops_c01_s0_payload = '0;
-  assign rcu_lane_ops_c01_s1_valid = '0;
-  assign rcu_lane_ops_c01_s1_payload = '0;
-  assign rcu_lane_ops_c01_s2_valid = '0;
-  assign rcu_lane_ops_c01_s2_payload = '0;
-  assign rcu_lane_ops_c01_s3_valid = '0;
-  assign rcu_lane_ops_c01_s3_payload = '0;
+  assign rcu_lane_ops_c01_valid = '0;
+  assign rcu_lane_ops_c01_payload = '0;
   assign rcu_lane_ops_c01_wake = '0;
-  assign rcu_lane_ops_c02_s0_valid = '0;
-  assign rcu_lane_ops_c02_s0_payload = '0;
-  assign rcu_lane_ops_c02_s1_valid = '0;
-  assign rcu_lane_ops_c02_s1_payload = '0;
-  assign rcu_lane_ops_c02_s2_valid = '0;
-  assign rcu_lane_ops_c02_s2_payload = '0;
-  assign rcu_lane_ops_c02_s3_valid = '0;
-  assign rcu_lane_ops_c02_s3_payload = '0;
+  assign rcu_lane_ops_c02_valid = '0;
+  assign rcu_lane_ops_c02_payload = '0;
   assign rcu_lane_ops_c02_wake = '0;
-  assign rcu_lane_ops_c03_s0_valid = '0;
-  assign rcu_lane_ops_c03_s0_payload = '0;
-  assign rcu_lane_ops_c03_s1_valid = '0;
-  assign rcu_lane_ops_c03_s1_payload = '0;
-  assign rcu_lane_ops_c03_s2_valid = '0;
-  assign rcu_lane_ops_c03_s2_payload = '0;
-  assign rcu_lane_ops_c03_s3_valid = '0;
-  assign rcu_lane_ops_c03_s3_payload = '0;
+  assign rcu_lane_ops_c03_valid = '0;
+  assign rcu_lane_ops_c03_payload = '0;
   assign rcu_lane_ops_c03_wake = '0;
-  assign rcu_lane_ops_c04_s0_valid = '0;
-  assign rcu_lane_ops_c04_s0_payload = '0;
-  assign rcu_lane_ops_c04_s1_valid = '0;
-  assign rcu_lane_ops_c04_s1_payload = '0;
-  assign rcu_lane_ops_c04_s2_valid = '0;
-  assign rcu_lane_ops_c04_s2_payload = '0;
-  assign rcu_lane_ops_c04_s3_valid = '0;
-  assign rcu_lane_ops_c04_s3_payload = '0;
+  assign rcu_lane_ops_c04_valid = '0;
+  assign rcu_lane_ops_c04_payload = '0;
   assign rcu_lane_ops_c04_wake = '0;
-  assign rcu_lane_ops_c05_s0_valid = '0;
-  assign rcu_lane_ops_c05_s0_payload = '0;
-  assign rcu_lane_ops_c05_s1_valid = '0;
-  assign rcu_lane_ops_c05_s1_payload = '0;
-  assign rcu_lane_ops_c05_s2_valid = '0;
-  assign rcu_lane_ops_c05_s2_payload = '0;
-  assign rcu_lane_ops_c05_s3_valid = '0;
-  assign rcu_lane_ops_c05_s3_payload = '0;
+  assign rcu_lane_ops_c05_valid = '0;
+  assign rcu_lane_ops_c05_payload = '0;
   assign rcu_lane_ops_c05_wake = '0;
-  assign rcu_lane_ops_c06_s0_valid = '0;
-  assign rcu_lane_ops_c06_s0_payload = '0;
-  assign rcu_lane_ops_c06_s1_valid = '0;
-  assign rcu_lane_ops_c06_s1_payload = '0;
-  assign rcu_lane_ops_c06_s2_valid = '0;
-  assign rcu_lane_ops_c06_s2_payload = '0;
-  assign rcu_lane_ops_c06_s3_valid = '0;
-  assign rcu_lane_ops_c06_s3_payload = '0;
+  assign rcu_lane_ops_c06_valid = '0;
+  assign rcu_lane_ops_c06_payload = '0;
   assign rcu_lane_ops_c06_wake = '0;
-  assign rcu_lane_ops_c07_s0_valid = '0;
-  assign rcu_lane_ops_c07_s0_payload = '0;
-  assign rcu_lane_ops_c07_s1_valid = '0;
-  assign rcu_lane_ops_c07_s1_payload = '0;
-  assign rcu_lane_ops_c07_s2_valid = '0;
-  assign rcu_lane_ops_c07_s2_payload = '0;
-  assign rcu_lane_ops_c07_s3_valid = '0;
-  assign rcu_lane_ops_c07_s3_payload = '0;
+  assign rcu_lane_ops_c07_valid = '0;
+  assign rcu_lane_ops_c07_payload = '0;
   assign rcu_lane_ops_c07_wake = '0;
-  assign rcu_lane_ops_c08_s0_valid = '0;
-  assign rcu_lane_ops_c08_s0_payload = '0;
-  assign rcu_lane_ops_c08_s1_valid = '0;
-  assign rcu_lane_ops_c08_s1_payload = '0;
-  assign rcu_lane_ops_c08_s2_valid = '0;
-  assign rcu_lane_ops_c08_s2_payload = '0;
-  assign rcu_lane_ops_c08_s3_valid = '0;
-  assign rcu_lane_ops_c08_s3_payload = '0;
+  assign rcu_lane_ops_c08_valid = '0;
+  assign rcu_lane_ops_c08_payload = '0;
   assign rcu_lane_ops_c08_wake = '0;
-  assign rcu_lane_ops_c09_s0_valid = '0;
-  assign rcu_lane_ops_c09_s0_payload = '0;
-  assign rcu_lane_ops_c09_s1_valid = '0;
-  assign rcu_lane_ops_c09_s1_payload = '0;
-  assign rcu_lane_ops_c09_s2_valid = '0;
-  assign rcu_lane_ops_c09_s2_payload = '0;
-  assign rcu_lane_ops_c09_s3_valid = '0;
-  assign rcu_lane_ops_c09_s3_payload = '0;
+  assign rcu_lane_ops_c09_valid = '0;
+  assign rcu_lane_ops_c09_payload = '0;
   assign rcu_lane_ops_c09_wake = '0;
-  assign rcu_lane_ops_c10_s0_valid = '0;
-  assign rcu_lane_ops_c10_s0_payload = '0;
-  assign rcu_lane_ops_c10_s1_valid = '0;
-  assign rcu_lane_ops_c10_s1_payload = '0;
-  assign rcu_lane_ops_c10_s2_valid = '0;
-  assign rcu_lane_ops_c10_s2_payload = '0;
-  assign rcu_lane_ops_c10_s3_valid = '0;
-  assign rcu_lane_ops_c10_s3_payload = '0;
+  assign rcu_lane_ops_c10_valid = '0;
+  assign rcu_lane_ops_c10_payload = '0;
   assign rcu_lane_ops_c10_wake = '0;
-  assign rcu_lane_ops_c11_s0_valid = '0;
-  assign rcu_lane_ops_c11_s0_payload = '0;
-  assign rcu_lane_ops_c11_s1_valid = '0;
-  assign rcu_lane_ops_c11_s1_payload = '0;
-  assign rcu_lane_ops_c11_s2_valid = '0;
-  assign rcu_lane_ops_c11_s2_payload = '0;
-  assign rcu_lane_ops_c11_s3_valid = '0;
-  assign rcu_lane_ops_c11_s3_payload = '0;
+  assign rcu_lane_ops_c11_valid = '0;
+  assign rcu_lane_ops_c11_payload = '0;
   assign rcu_lane_ops_c11_wake = '0;
-  assign rcu_lane_ops_c12_s0_valid = '0;
-  assign rcu_lane_ops_c12_s0_payload = '0;
-  assign rcu_lane_ops_c12_s1_valid = '0;
-  assign rcu_lane_ops_c12_s1_payload = '0;
-  assign rcu_lane_ops_c12_s2_valid = '0;
-  assign rcu_lane_ops_c12_s2_payload = '0;
-  assign rcu_lane_ops_c12_s3_valid = '0;
-  assign rcu_lane_ops_c12_s3_payload = '0;
+  assign rcu_lane_ops_c12_valid = '0;
+  assign rcu_lane_ops_c12_payload = '0;
   assign rcu_lane_ops_c12_wake = '0;
-  assign rcu_lane_ops_c13_s0_valid = '0;
-  assign rcu_lane_ops_c13_s0_payload = '0;
-  assign rcu_lane_ops_c13_s1_valid = '0;
-  assign rcu_lane_ops_c13_s1_payload = '0;
-  assign rcu_lane_ops_c13_s2_valid = '0;
-  assign rcu_lane_ops_c13_s2_payload = '0;
-  assign rcu_lane_ops_c13_s3_valid = '0;
-  assign rcu_lane_ops_c13_s3_payload = '0;
+  assign rcu_lane_ops_c13_valid = '0;
+  assign rcu_lane_ops_c13_payload = '0;
   assign rcu_lane_ops_c13_wake = '0;
-  assign rcu_lane_ops_c14_s0_valid = '0;
-  assign rcu_lane_ops_c14_s0_payload = '0;
-  assign rcu_lane_ops_c14_s1_valid = '0;
-  assign rcu_lane_ops_c14_s1_payload = '0;
-  assign rcu_lane_ops_c14_s2_valid = '0;
-  assign rcu_lane_ops_c14_s2_payload = '0;
-  assign rcu_lane_ops_c14_s3_valid = '0;
-  assign rcu_lane_ops_c14_s3_payload = '0;
+  assign rcu_lane_ops_c14_valid = '0;
+  assign rcu_lane_ops_c14_payload = '0;
   assign rcu_lane_ops_c14_wake = '0;
-  assign rcu_lane_ops_c15_s0_valid = '0;
-  assign rcu_lane_ops_c15_s0_payload = '0;
-  assign rcu_lane_ops_c15_s1_valid = '0;
-  assign rcu_lane_ops_c15_s1_payload = '0;
-  assign rcu_lane_ops_c15_s2_valid = '0;
-  assign rcu_lane_ops_c15_s2_payload = '0;
-  assign rcu_lane_ops_c15_s3_valid = '0;
-  assign rcu_lane_ops_c15_s3_payload = '0;
+  assign rcu_lane_ops_c15_valid = '0;
+  assign rcu_lane_ops_c15_payload = '0;
   assign rcu_lane_ops_c15_wake = '0;
-  assign rcu_lane_ops_c16_s0_valid = '0;
-  assign rcu_lane_ops_c16_s0_payload = '0;
-  assign rcu_lane_ops_c16_s1_valid = '0;
-  assign rcu_lane_ops_c16_s1_payload = '0;
-  assign rcu_lane_ops_c16_s2_valid = '0;
-  assign rcu_lane_ops_c16_s2_payload = '0;
-  assign rcu_lane_ops_c16_s3_valid = '0;
-  assign rcu_lane_ops_c16_s3_payload = '0;
+  assign rcu_lane_ops_c16_valid = '0;
+  assign rcu_lane_ops_c16_payload = '0;
   assign rcu_lane_ops_c16_wake = '0;
-  assign rcu_lane_ops_c17_s0_valid = '0;
-  assign rcu_lane_ops_c17_s0_payload = '0;
-  assign rcu_lane_ops_c17_s1_valid = '0;
-  assign rcu_lane_ops_c17_s1_payload = '0;
-  assign rcu_lane_ops_c17_s2_valid = '0;
-  assign rcu_lane_ops_c17_s2_payload = '0;
-  assign rcu_lane_ops_c17_s3_valid = '0;
-  assign rcu_lane_ops_c17_s3_payload = '0;
+  assign rcu_lane_ops_c17_valid = '0;
+  assign rcu_lane_ops_c17_payload = '0;
   assign rcu_lane_ops_c17_wake = '0;
-  assign rcu_lane_ops_c18_s0_valid = '0;
-  assign rcu_lane_ops_c18_s0_payload = '0;
-  assign rcu_lane_ops_c18_s1_valid = '0;
-  assign rcu_lane_ops_c18_s1_payload = '0;
-  assign rcu_lane_ops_c18_s2_valid = '0;
-  assign rcu_lane_ops_c18_s2_payload = '0;
-  assign rcu_lane_ops_c18_s3_valid = '0;
-  assign rcu_lane_ops_c18_s3_payload = '0;
+  assign rcu_lane_ops_c18_valid = '0;
+  assign rcu_lane_ops_c18_payload = '0;
   assign rcu_lane_ops_c18_wake = '0;
-  assign rcu_lane_ops_c19_s0_valid = '0;
-  assign rcu_lane_ops_c19_s0_payload = '0;
-  assign rcu_lane_ops_c19_s1_valid = '0;
-  assign rcu_lane_ops_c19_s1_payload = '0;
-  assign rcu_lane_ops_c19_s2_valid = '0;
-  assign rcu_lane_ops_c19_s2_payload = '0;
-  assign rcu_lane_ops_c19_s3_valid = '0;
-  assign rcu_lane_ops_c19_s3_payload = '0;
+  assign rcu_lane_ops_c19_valid = '0;
+  assign rcu_lane_ops_c19_payload = '0;
   assign rcu_lane_ops_c19_wake = '0;
-  assign rcu_lane_ops_c20_s0_valid = '0;
-  assign rcu_lane_ops_c20_s0_payload = '0;
-  assign rcu_lane_ops_c20_s1_valid = '0;
-  assign rcu_lane_ops_c20_s1_payload = '0;
-  assign rcu_lane_ops_c20_s2_valid = '0;
-  assign rcu_lane_ops_c20_s2_payload = '0;
-  assign rcu_lane_ops_c20_s3_valid = '0;
-  assign rcu_lane_ops_c20_s3_payload = '0;
+  assign rcu_lane_ops_c20_valid = '0;
+  assign rcu_lane_ops_c20_payload = '0;
   assign rcu_lane_ops_c20_wake = '0;
-  assign rcu_lane_ops_c21_s0_valid = '0;
-  assign rcu_lane_ops_c21_s0_payload = '0;
-  assign rcu_lane_ops_c21_s1_valid = '0;
-  assign rcu_lane_ops_c21_s1_payload = '0;
-  assign rcu_lane_ops_c21_s2_valid = '0;
-  assign rcu_lane_ops_c21_s2_payload = '0;
-  assign rcu_lane_ops_c21_s3_valid = '0;
-  assign rcu_lane_ops_c21_s3_payload = '0;
+  assign rcu_lane_ops_c21_valid = '0;
+  assign rcu_lane_ops_c21_payload = '0;
   assign rcu_lane_ops_c21_wake = '0;
-  assign rcu_lane_ops_c22_s0_valid = '0;
-  assign rcu_lane_ops_c22_s0_payload = '0;
-  assign rcu_lane_ops_c22_s1_valid = '0;
-  assign rcu_lane_ops_c22_s1_payload = '0;
-  assign rcu_lane_ops_c22_s2_valid = '0;
-  assign rcu_lane_ops_c22_s2_payload = '0;
-  assign rcu_lane_ops_c22_s3_valid = '0;
-  assign rcu_lane_ops_c22_s3_payload = '0;
+  assign rcu_lane_ops_c22_valid = '0;
+  assign rcu_lane_ops_c22_payload = '0;
   assign rcu_lane_ops_c22_wake = '0;
-  assign rcu_lane_ops_c23_s0_valid = '0;
-  assign rcu_lane_ops_c23_s0_payload = '0;
-  assign rcu_lane_ops_c23_s1_valid = '0;
-  assign rcu_lane_ops_c23_s1_payload = '0;
-  assign rcu_lane_ops_c23_s2_valid = '0;
-  assign rcu_lane_ops_c23_s2_payload = '0;
-  assign rcu_lane_ops_c23_s3_valid = '0;
-  assign rcu_lane_ops_c23_s3_payload = '0;
+  assign rcu_lane_ops_c23_valid = '0;
+  assign rcu_lane_ops_c23_payload = '0;
   assign rcu_lane_ops_c23_wake = '0;
-  assign rcu_lane_ops_c24_s0_valid = '0;
-  assign rcu_lane_ops_c24_s0_payload = '0;
-  assign rcu_lane_ops_c24_s1_valid = '0;
-  assign rcu_lane_ops_c24_s1_payload = '0;
-  assign rcu_lane_ops_c24_s2_valid = '0;
-  assign rcu_lane_ops_c24_s2_payload = '0;
-  assign rcu_lane_ops_c24_s3_valid = '0;
-  assign rcu_lane_ops_c24_s3_payload = '0;
+  assign rcu_lane_ops_c24_valid = '0;
+  assign rcu_lane_ops_c24_payload = '0;
   assign rcu_lane_ops_c24_wake = '0;
-  assign rcu_lane_ops_c25_s0_valid = '0;
-  assign rcu_lane_ops_c25_s0_payload = '0;
-  assign rcu_lane_ops_c25_s1_valid = '0;
-  assign rcu_lane_ops_c25_s1_payload = '0;
-  assign rcu_lane_ops_c25_s2_valid = '0;
-  assign rcu_lane_ops_c25_s2_payload = '0;
-  assign rcu_lane_ops_c25_s3_valid = '0;
-  assign rcu_lane_ops_c25_s3_payload = '0;
+  assign rcu_lane_ops_c25_valid = '0;
+  assign rcu_lane_ops_c25_payload = '0;
   assign rcu_lane_ops_c25_wake = '0;
-  assign rcu_lane_ops_c26_s0_valid = '0;
-  assign rcu_lane_ops_c26_s0_payload = '0;
-  assign rcu_lane_ops_c26_s1_valid = '0;
-  assign rcu_lane_ops_c26_s1_payload = '0;
-  assign rcu_lane_ops_c26_s2_valid = '0;
-  assign rcu_lane_ops_c26_s2_payload = '0;
-  assign rcu_lane_ops_c26_s3_valid = '0;
-  assign rcu_lane_ops_c26_s3_payload = '0;
+  assign rcu_lane_ops_c26_valid = '0;
+  assign rcu_lane_ops_c26_payload = '0;
   assign rcu_lane_ops_c26_wake = '0;
-  assign rcu_lane_ops_c27_s0_valid = '0;
-  assign rcu_lane_ops_c27_s0_payload = '0;
-  assign rcu_lane_ops_c27_s1_valid = '0;
-  assign rcu_lane_ops_c27_s1_payload = '0;
-  assign rcu_lane_ops_c27_s2_valid = '0;
-  assign rcu_lane_ops_c27_s2_payload = '0;
-  assign rcu_lane_ops_c27_s3_valid = '0;
-  assign rcu_lane_ops_c27_s3_payload = '0;
+  assign rcu_lane_ops_c27_valid = '0;
+  assign rcu_lane_ops_c27_payload = '0;
   assign rcu_lane_ops_c27_wake = '0;
-  assign rcu_lane_ops_c28_s0_valid = '0;
-  assign rcu_lane_ops_c28_s0_payload = '0;
-  assign rcu_lane_ops_c28_s1_valid = '0;
-  assign rcu_lane_ops_c28_s1_payload = '0;
-  assign rcu_lane_ops_c28_s2_valid = '0;
-  assign rcu_lane_ops_c28_s2_payload = '0;
-  assign rcu_lane_ops_c28_s3_valid = '0;
-  assign rcu_lane_ops_c28_s3_payload = '0;
+  assign rcu_lane_ops_c28_valid = '0;
+  assign rcu_lane_ops_c28_payload = '0;
   assign rcu_lane_ops_c28_wake = '0;
-  assign rcu_lane_ops_c29_s0_valid = '0;
-  assign rcu_lane_ops_c29_s0_payload = '0;
-  assign rcu_lane_ops_c29_s1_valid = '0;
-  assign rcu_lane_ops_c29_s1_payload = '0;
-  assign rcu_lane_ops_c29_s2_valid = '0;
-  assign rcu_lane_ops_c29_s2_payload = '0;
-  assign rcu_lane_ops_c29_s3_valid = '0;
-  assign rcu_lane_ops_c29_s3_payload = '0;
+  assign rcu_lane_ops_c29_valid = '0;
+  assign rcu_lane_ops_c29_payload = '0;
   assign rcu_lane_ops_c29_wake = '0;
-  assign rcu_lane_ops_c30_s0_valid = '0;
-  assign rcu_lane_ops_c30_s0_payload = '0;
-  assign rcu_lane_ops_c30_s1_valid = '0;
-  assign rcu_lane_ops_c30_s1_payload = '0;
-  assign rcu_lane_ops_c30_s2_valid = '0;
-  assign rcu_lane_ops_c30_s2_payload = '0;
-  assign rcu_lane_ops_c30_s3_valid = '0;
-  assign rcu_lane_ops_c30_s3_payload = '0;
+  assign rcu_lane_ops_c30_valid = '0;
+  assign rcu_lane_ops_c30_payload = '0;
   assign rcu_lane_ops_c30_wake = '0;
-  assign rcu_lane_ops_c31_s0_valid = '0;
-  assign rcu_lane_ops_c31_s0_payload = '0;
-  assign rcu_lane_ops_c31_s1_valid = '0;
-  assign rcu_lane_ops_c31_s1_payload = '0;
-  assign rcu_lane_ops_c31_s2_valid = '0;
-  assign rcu_lane_ops_c31_s2_payload = '0;
-  assign rcu_lane_ops_c31_s3_valid = '0;
-  assign rcu_lane_ops_c31_s3_payload = '0;
+  assign rcu_lane_ops_c31_valid = '0;
+  assign rcu_lane_ops_c31_payload = '0;
   assign rcu_lane_ops_c31_wake = '0;
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c00_s0_tid = '0;
+  assign rcu_lane_ops_c00_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c00_s1_tid = '0;
+  assign rcu_lane_ops_c01_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c00_s2_tid = '0;
+  assign rcu_lane_ops_c02_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c00_s3_tid = '0;
+  assign rcu_lane_ops_c03_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c01_s0_tid = '0;
+  assign rcu_lane_ops_c04_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c01_s1_tid = '0;
+  assign rcu_lane_ops_c05_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c01_s2_tid = '0;
+  assign rcu_lane_ops_c06_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c01_s3_tid = '0;
+  assign rcu_lane_ops_c07_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c02_s0_tid = '0;
+  assign rcu_lane_ops_c08_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c02_s1_tid = '0;
+  assign rcu_lane_ops_c09_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c02_s2_tid = '0;
+  assign rcu_lane_ops_c10_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c02_s3_tid = '0;
+  assign rcu_lane_ops_c11_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c03_s0_tid = '0;
+  assign rcu_lane_ops_c12_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c03_s1_tid = '0;
+  assign rcu_lane_ops_c13_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c03_s2_tid = '0;
+  assign rcu_lane_ops_c14_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c03_s3_tid = '0;
+  assign rcu_lane_ops_c15_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c04_s0_tid = '0;
+  assign rcu_lane_ops_c16_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c04_s1_tid = '0;
+  assign rcu_lane_ops_c17_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c04_s2_tid = '0;
+  assign rcu_lane_ops_c18_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c04_s3_tid = '0;
+  assign rcu_lane_ops_c19_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c05_s0_tid = '0;
+  assign rcu_lane_ops_c20_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c05_s1_tid = '0;
+  assign rcu_lane_ops_c21_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c05_s2_tid = '0;
+  assign rcu_lane_ops_c22_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c05_s3_tid = '0;
+  assign rcu_lane_ops_c23_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c06_s0_tid = '0;
+  assign rcu_lane_ops_c24_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c06_s1_tid = '0;
+  assign rcu_lane_ops_c25_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c06_s2_tid = '0;
+  assign rcu_lane_ops_c26_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c06_s3_tid = '0;
+  assign rcu_lane_ops_c27_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c07_s0_tid = '0;
+  assign rcu_lane_ops_c28_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c07_s1_tid = '0;
+  assign rcu_lane_ops_c29_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c07_s2_tid = '0;
+  assign rcu_lane_ops_c30_tid = '0;
 `endif
 `ifdef CCV_TRACE
-  assign rcu_lane_ops_c07_s3_tid = '0;
+  assign rcu_lane_ops_c31_tid = '0;
 `endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c08_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c08_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c08_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c08_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c09_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c09_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c09_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c09_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c10_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c10_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c10_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c10_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c11_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c11_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c11_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c11_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c12_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c12_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c12_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c12_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c13_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c13_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c13_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c13_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c14_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c14_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c14_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c14_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c15_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c15_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c15_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c15_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c16_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c16_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c16_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c16_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c17_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c17_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c17_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c17_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c18_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c18_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c18_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c18_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c19_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c19_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c19_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c19_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c20_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c20_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c20_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c20_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c21_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c21_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c21_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c21_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c22_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c22_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c22_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c22_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c23_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c23_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c23_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c23_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c24_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c24_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c24_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c24_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c25_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c25_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c25_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c25_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c26_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c26_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c26_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c26_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c27_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c27_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c27_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c27_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c28_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c28_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c28_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c28_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c29_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c29_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c29_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c29_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c30_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c30_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c30_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c30_s3_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c31_s0_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c31_s1_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c31_s2_tid = '0;
-`endif
-`ifdef CCV_TRACE
-  assign rcu_lane_ops_c31_s3_tid = '0;
-`endif
-  assign lane_rcu_res_c00_s0_credit = '0;
-  assign lane_rcu_res_c00_s0_stall = '0;
-  assign lane_rcu_res_c00_s1_credit = '0;
-  assign lane_rcu_res_c00_s1_stall = '0;
-  assign lane_rcu_res_c00_s2_credit = '0;
-  assign lane_rcu_res_c00_s2_stall = '0;
-  assign lane_rcu_res_c00_s3_credit = '0;
-  assign lane_rcu_res_c00_s3_stall = '0;
-  assign lane_rcu_res_c01_s0_credit = '0;
-  assign lane_rcu_res_c01_s0_stall = '0;
-  assign lane_rcu_res_c01_s1_credit = '0;
-  assign lane_rcu_res_c01_s1_stall = '0;
-  assign lane_rcu_res_c01_s2_credit = '0;
-  assign lane_rcu_res_c01_s2_stall = '0;
-  assign lane_rcu_res_c01_s3_credit = '0;
-  assign lane_rcu_res_c01_s3_stall = '0;
-  assign lane_rcu_res_c02_s0_credit = '0;
-  assign lane_rcu_res_c02_s0_stall = '0;
-  assign lane_rcu_res_c02_s1_credit = '0;
-  assign lane_rcu_res_c02_s1_stall = '0;
-  assign lane_rcu_res_c02_s2_credit = '0;
-  assign lane_rcu_res_c02_s2_stall = '0;
-  assign lane_rcu_res_c02_s3_credit = '0;
-  assign lane_rcu_res_c02_s3_stall = '0;
-  assign lane_rcu_res_c03_s0_credit = '0;
-  assign lane_rcu_res_c03_s0_stall = '0;
-  assign lane_rcu_res_c03_s1_credit = '0;
-  assign lane_rcu_res_c03_s1_stall = '0;
-  assign lane_rcu_res_c03_s2_credit = '0;
-  assign lane_rcu_res_c03_s2_stall = '0;
-  assign lane_rcu_res_c03_s3_credit = '0;
-  assign lane_rcu_res_c03_s3_stall = '0;
-  assign lane_rcu_res_c04_s0_credit = '0;
-  assign lane_rcu_res_c04_s0_stall = '0;
-  assign lane_rcu_res_c04_s1_credit = '0;
-  assign lane_rcu_res_c04_s1_stall = '0;
-  assign lane_rcu_res_c04_s2_credit = '0;
-  assign lane_rcu_res_c04_s2_stall = '0;
-  assign lane_rcu_res_c04_s3_credit = '0;
-  assign lane_rcu_res_c04_s3_stall = '0;
-  assign lane_rcu_res_c05_s0_credit = '0;
-  assign lane_rcu_res_c05_s0_stall = '0;
-  assign lane_rcu_res_c05_s1_credit = '0;
-  assign lane_rcu_res_c05_s1_stall = '0;
-  assign lane_rcu_res_c05_s2_credit = '0;
-  assign lane_rcu_res_c05_s2_stall = '0;
-  assign lane_rcu_res_c05_s3_credit = '0;
-  assign lane_rcu_res_c05_s3_stall = '0;
-  assign lane_rcu_res_c06_s0_credit = '0;
-  assign lane_rcu_res_c06_s0_stall = '0;
-  assign lane_rcu_res_c06_s1_credit = '0;
-  assign lane_rcu_res_c06_s1_stall = '0;
-  assign lane_rcu_res_c06_s2_credit = '0;
-  assign lane_rcu_res_c06_s2_stall = '0;
-  assign lane_rcu_res_c06_s3_credit = '0;
-  assign lane_rcu_res_c06_s3_stall = '0;
-  assign lane_rcu_res_c07_s0_credit = '0;
-  assign lane_rcu_res_c07_s0_stall = '0;
-  assign lane_rcu_res_c07_s1_credit = '0;
-  assign lane_rcu_res_c07_s1_stall = '0;
-  assign lane_rcu_res_c07_s2_credit = '0;
-  assign lane_rcu_res_c07_s2_stall = '0;
-  assign lane_rcu_res_c07_s3_credit = '0;
-  assign lane_rcu_res_c07_s3_stall = '0;
-  assign lane_rcu_res_c08_s0_credit = '0;
-  assign lane_rcu_res_c08_s0_stall = '0;
-  assign lane_rcu_res_c08_s1_credit = '0;
-  assign lane_rcu_res_c08_s1_stall = '0;
-  assign lane_rcu_res_c08_s2_credit = '0;
-  assign lane_rcu_res_c08_s2_stall = '0;
-  assign lane_rcu_res_c08_s3_credit = '0;
-  assign lane_rcu_res_c08_s3_stall = '0;
-  assign lane_rcu_res_c09_s0_credit = '0;
-  assign lane_rcu_res_c09_s0_stall = '0;
-  assign lane_rcu_res_c09_s1_credit = '0;
-  assign lane_rcu_res_c09_s1_stall = '0;
-  assign lane_rcu_res_c09_s2_credit = '0;
-  assign lane_rcu_res_c09_s2_stall = '0;
-  assign lane_rcu_res_c09_s3_credit = '0;
-  assign lane_rcu_res_c09_s3_stall = '0;
-  assign lane_rcu_res_c10_s0_credit = '0;
-  assign lane_rcu_res_c10_s0_stall = '0;
-  assign lane_rcu_res_c10_s1_credit = '0;
-  assign lane_rcu_res_c10_s1_stall = '0;
-  assign lane_rcu_res_c10_s2_credit = '0;
-  assign lane_rcu_res_c10_s2_stall = '0;
-  assign lane_rcu_res_c10_s3_credit = '0;
-  assign lane_rcu_res_c10_s3_stall = '0;
-  assign lane_rcu_res_c11_s0_credit = '0;
-  assign lane_rcu_res_c11_s0_stall = '0;
-  assign lane_rcu_res_c11_s1_credit = '0;
-  assign lane_rcu_res_c11_s1_stall = '0;
-  assign lane_rcu_res_c11_s2_credit = '0;
-  assign lane_rcu_res_c11_s2_stall = '0;
-  assign lane_rcu_res_c11_s3_credit = '0;
-  assign lane_rcu_res_c11_s3_stall = '0;
-  assign lane_rcu_res_c12_s0_credit = '0;
-  assign lane_rcu_res_c12_s0_stall = '0;
-  assign lane_rcu_res_c12_s1_credit = '0;
-  assign lane_rcu_res_c12_s1_stall = '0;
-  assign lane_rcu_res_c12_s2_credit = '0;
-  assign lane_rcu_res_c12_s2_stall = '0;
-  assign lane_rcu_res_c12_s3_credit = '0;
-  assign lane_rcu_res_c12_s3_stall = '0;
-  assign lane_rcu_res_c13_s0_credit = '0;
-  assign lane_rcu_res_c13_s0_stall = '0;
-  assign lane_rcu_res_c13_s1_credit = '0;
-  assign lane_rcu_res_c13_s1_stall = '0;
-  assign lane_rcu_res_c13_s2_credit = '0;
-  assign lane_rcu_res_c13_s2_stall = '0;
-  assign lane_rcu_res_c13_s3_credit = '0;
-  assign lane_rcu_res_c13_s3_stall = '0;
-  assign lane_rcu_res_c14_s0_credit = '0;
-  assign lane_rcu_res_c14_s0_stall = '0;
-  assign lane_rcu_res_c14_s1_credit = '0;
-  assign lane_rcu_res_c14_s1_stall = '0;
-  assign lane_rcu_res_c14_s2_credit = '0;
-  assign lane_rcu_res_c14_s2_stall = '0;
-  assign lane_rcu_res_c14_s3_credit = '0;
-  assign lane_rcu_res_c14_s3_stall = '0;
-  assign lane_rcu_res_c15_s0_credit = '0;
-  assign lane_rcu_res_c15_s0_stall = '0;
-  assign lane_rcu_res_c15_s1_credit = '0;
-  assign lane_rcu_res_c15_s1_stall = '0;
-  assign lane_rcu_res_c15_s2_credit = '0;
-  assign lane_rcu_res_c15_s2_stall = '0;
-  assign lane_rcu_res_c15_s3_credit = '0;
-  assign lane_rcu_res_c15_s3_stall = '0;
-  assign lane_rcu_res_c16_s0_credit = '0;
-  assign lane_rcu_res_c16_s0_stall = '0;
-  assign lane_rcu_res_c16_s1_credit = '0;
-  assign lane_rcu_res_c16_s1_stall = '0;
-  assign lane_rcu_res_c16_s2_credit = '0;
-  assign lane_rcu_res_c16_s2_stall = '0;
-  assign lane_rcu_res_c16_s3_credit = '0;
-  assign lane_rcu_res_c16_s3_stall = '0;
-  assign lane_rcu_res_c17_s0_credit = '0;
-  assign lane_rcu_res_c17_s0_stall = '0;
-  assign lane_rcu_res_c17_s1_credit = '0;
-  assign lane_rcu_res_c17_s1_stall = '0;
-  assign lane_rcu_res_c17_s2_credit = '0;
-  assign lane_rcu_res_c17_s2_stall = '0;
-  assign lane_rcu_res_c17_s3_credit = '0;
-  assign lane_rcu_res_c17_s3_stall = '0;
-  assign lane_rcu_res_c18_s0_credit = '0;
-  assign lane_rcu_res_c18_s0_stall = '0;
-  assign lane_rcu_res_c18_s1_credit = '0;
-  assign lane_rcu_res_c18_s1_stall = '0;
-  assign lane_rcu_res_c18_s2_credit = '0;
-  assign lane_rcu_res_c18_s2_stall = '0;
-  assign lane_rcu_res_c18_s3_credit = '0;
-  assign lane_rcu_res_c18_s3_stall = '0;
-  assign lane_rcu_res_c19_s0_credit = '0;
-  assign lane_rcu_res_c19_s0_stall = '0;
-  assign lane_rcu_res_c19_s1_credit = '0;
-  assign lane_rcu_res_c19_s1_stall = '0;
-  assign lane_rcu_res_c19_s2_credit = '0;
-  assign lane_rcu_res_c19_s2_stall = '0;
-  assign lane_rcu_res_c19_s3_credit = '0;
-  assign lane_rcu_res_c19_s3_stall = '0;
-  assign lane_rcu_res_c20_s0_credit = '0;
-  assign lane_rcu_res_c20_s0_stall = '0;
-  assign lane_rcu_res_c20_s1_credit = '0;
-  assign lane_rcu_res_c20_s1_stall = '0;
-  assign lane_rcu_res_c20_s2_credit = '0;
-  assign lane_rcu_res_c20_s2_stall = '0;
-  assign lane_rcu_res_c20_s3_credit = '0;
-  assign lane_rcu_res_c20_s3_stall = '0;
-  assign lane_rcu_res_c21_s0_credit = '0;
-  assign lane_rcu_res_c21_s0_stall = '0;
-  assign lane_rcu_res_c21_s1_credit = '0;
-  assign lane_rcu_res_c21_s1_stall = '0;
-  assign lane_rcu_res_c21_s2_credit = '0;
-  assign lane_rcu_res_c21_s2_stall = '0;
-  assign lane_rcu_res_c21_s3_credit = '0;
-  assign lane_rcu_res_c21_s3_stall = '0;
-  assign lane_rcu_res_c22_s0_credit = '0;
-  assign lane_rcu_res_c22_s0_stall = '0;
-  assign lane_rcu_res_c22_s1_credit = '0;
-  assign lane_rcu_res_c22_s1_stall = '0;
-  assign lane_rcu_res_c22_s2_credit = '0;
-  assign lane_rcu_res_c22_s2_stall = '0;
-  assign lane_rcu_res_c22_s3_credit = '0;
-  assign lane_rcu_res_c22_s3_stall = '0;
-  assign lane_rcu_res_c23_s0_credit = '0;
-  assign lane_rcu_res_c23_s0_stall = '0;
-  assign lane_rcu_res_c23_s1_credit = '0;
-  assign lane_rcu_res_c23_s1_stall = '0;
-  assign lane_rcu_res_c23_s2_credit = '0;
-  assign lane_rcu_res_c23_s2_stall = '0;
-  assign lane_rcu_res_c23_s3_credit = '0;
-  assign lane_rcu_res_c23_s3_stall = '0;
-  assign lane_rcu_res_c24_s0_credit = '0;
-  assign lane_rcu_res_c24_s0_stall = '0;
-  assign lane_rcu_res_c24_s1_credit = '0;
-  assign lane_rcu_res_c24_s1_stall = '0;
-  assign lane_rcu_res_c24_s2_credit = '0;
-  assign lane_rcu_res_c24_s2_stall = '0;
-  assign lane_rcu_res_c24_s3_credit = '0;
-  assign lane_rcu_res_c24_s3_stall = '0;
-  assign lane_rcu_res_c25_s0_credit = '0;
-  assign lane_rcu_res_c25_s0_stall = '0;
-  assign lane_rcu_res_c25_s1_credit = '0;
-  assign lane_rcu_res_c25_s1_stall = '0;
-  assign lane_rcu_res_c25_s2_credit = '0;
-  assign lane_rcu_res_c25_s2_stall = '0;
-  assign lane_rcu_res_c25_s3_credit = '0;
-  assign lane_rcu_res_c25_s3_stall = '0;
-  assign lane_rcu_res_c26_s0_credit = '0;
-  assign lane_rcu_res_c26_s0_stall = '0;
-  assign lane_rcu_res_c26_s1_credit = '0;
-  assign lane_rcu_res_c26_s1_stall = '0;
-  assign lane_rcu_res_c26_s2_credit = '0;
-  assign lane_rcu_res_c26_s2_stall = '0;
-  assign lane_rcu_res_c26_s3_credit = '0;
-  assign lane_rcu_res_c26_s3_stall = '0;
-  assign lane_rcu_res_c27_s0_credit = '0;
-  assign lane_rcu_res_c27_s0_stall = '0;
-  assign lane_rcu_res_c27_s1_credit = '0;
-  assign lane_rcu_res_c27_s1_stall = '0;
-  assign lane_rcu_res_c27_s2_credit = '0;
-  assign lane_rcu_res_c27_s2_stall = '0;
-  assign lane_rcu_res_c27_s3_credit = '0;
-  assign lane_rcu_res_c27_s3_stall = '0;
-  assign lane_rcu_res_c28_s0_credit = '0;
-  assign lane_rcu_res_c28_s0_stall = '0;
-  assign lane_rcu_res_c28_s1_credit = '0;
-  assign lane_rcu_res_c28_s1_stall = '0;
-  assign lane_rcu_res_c28_s2_credit = '0;
-  assign lane_rcu_res_c28_s2_stall = '0;
-  assign lane_rcu_res_c28_s3_credit = '0;
-  assign lane_rcu_res_c28_s3_stall = '0;
-  assign lane_rcu_res_c29_s0_credit = '0;
-  assign lane_rcu_res_c29_s0_stall = '0;
-  assign lane_rcu_res_c29_s1_credit = '0;
-  assign lane_rcu_res_c29_s1_stall = '0;
-  assign lane_rcu_res_c29_s2_credit = '0;
-  assign lane_rcu_res_c29_s2_stall = '0;
-  assign lane_rcu_res_c29_s3_credit = '0;
-  assign lane_rcu_res_c29_s3_stall = '0;
-  assign lane_rcu_res_c30_s0_credit = '0;
-  assign lane_rcu_res_c30_s0_stall = '0;
-  assign lane_rcu_res_c30_s1_credit = '0;
-  assign lane_rcu_res_c30_s1_stall = '0;
-  assign lane_rcu_res_c30_s2_credit = '0;
-  assign lane_rcu_res_c30_s2_stall = '0;
-  assign lane_rcu_res_c30_s3_credit = '0;
-  assign lane_rcu_res_c30_s3_stall = '0;
-  assign lane_rcu_res_c31_s0_credit = '0;
-  assign lane_rcu_res_c31_s0_stall = '0;
-  assign lane_rcu_res_c31_s1_credit = '0;
-  assign lane_rcu_res_c31_s1_stall = '0;
-  assign lane_rcu_res_c31_s2_credit = '0;
-  assign lane_rcu_res_c31_s2_stall = '0;
-  assign lane_rcu_res_c31_s3_credit = '0;
-  assign lane_rcu_res_c31_s3_stall = '0;
+  assign lane_rcu_res_c00_credit = '0;
+  assign lane_rcu_res_c00_stall = '0;
+  assign lane_rcu_res_c01_credit = '0;
+  assign lane_rcu_res_c01_stall = '0;
+  assign lane_rcu_res_c02_credit = '0;
+  assign lane_rcu_res_c02_stall = '0;
+  assign lane_rcu_res_c03_credit = '0;
+  assign lane_rcu_res_c03_stall = '0;
+  assign lane_rcu_res_c04_credit = '0;
+  assign lane_rcu_res_c04_stall = '0;
+  assign lane_rcu_res_c05_credit = '0;
+  assign lane_rcu_res_c05_stall = '0;
+  assign lane_rcu_res_c06_credit = '0;
+  assign lane_rcu_res_c06_stall = '0;
+  assign lane_rcu_res_c07_credit = '0;
+  assign lane_rcu_res_c07_stall = '0;
+  assign lane_rcu_res_c08_credit = '0;
+  assign lane_rcu_res_c08_stall = '0;
+  assign lane_rcu_res_c09_credit = '0;
+  assign lane_rcu_res_c09_stall = '0;
+  assign lane_rcu_res_c10_credit = '0;
+  assign lane_rcu_res_c10_stall = '0;
+  assign lane_rcu_res_c11_credit = '0;
+  assign lane_rcu_res_c11_stall = '0;
+  assign lane_rcu_res_c12_credit = '0;
+  assign lane_rcu_res_c12_stall = '0;
+  assign lane_rcu_res_c13_credit = '0;
+  assign lane_rcu_res_c13_stall = '0;
+  assign lane_rcu_res_c14_credit = '0;
+  assign lane_rcu_res_c14_stall = '0;
+  assign lane_rcu_res_c15_credit = '0;
+  assign lane_rcu_res_c15_stall = '0;
+  assign lane_rcu_res_c16_credit = '0;
+  assign lane_rcu_res_c16_stall = '0;
+  assign lane_rcu_res_c17_credit = '0;
+  assign lane_rcu_res_c17_stall = '0;
+  assign lane_rcu_res_c18_credit = '0;
+  assign lane_rcu_res_c18_stall = '0;
+  assign lane_rcu_res_c19_credit = '0;
+  assign lane_rcu_res_c19_stall = '0;
+  assign lane_rcu_res_c20_credit = '0;
+  assign lane_rcu_res_c20_stall = '0;
+  assign lane_rcu_res_c21_credit = '0;
+  assign lane_rcu_res_c21_stall = '0;
+  assign lane_rcu_res_c22_credit = '0;
+  assign lane_rcu_res_c22_stall = '0;
+  assign lane_rcu_res_c23_credit = '0;
+  assign lane_rcu_res_c23_stall = '0;
+  assign lane_rcu_res_c24_credit = '0;
+  assign lane_rcu_res_c24_stall = '0;
+  assign lane_rcu_res_c25_credit = '0;
+  assign lane_rcu_res_c25_stall = '0;
+  assign lane_rcu_res_c26_credit = '0;
+  assign lane_rcu_res_c26_stall = '0;
+  assign lane_rcu_res_c27_credit = '0;
+  assign lane_rcu_res_c27_stall = '0;
+  assign lane_rcu_res_c28_credit = '0;
+  assign lane_rcu_res_c28_stall = '0;
+  assign lane_rcu_res_c29_credit = '0;
+  assign lane_rcu_res_c29_stall = '0;
+  assign lane_rcu_res_c30_credit = '0;
+  assign lane_rcu_res_c30_stall = '0;
+  assign lane_rcu_res_c31_credit = '0;
+  assign lane_rcu_res_c31_stall = '0;
   assign rcu_ooe_done_s0_valid = '0;
   assign rcu_ooe_done_s0_payload = '0;
   assign rcu_ooe_done_s1_valid = '0;
@@ -993,6 +331,12 @@ module ccv_rcu (
   assign rcu_ooe_done_s2_payload = '0;
   assign rcu_ooe_done_s3_valid = '0;
   assign rcu_ooe_done_s3_payload = '0;
+  assign rcu_ooe_done_s4_valid = '0;
+  assign rcu_ooe_done_s4_payload = '0;
+  assign rcu_ooe_done_s5_valid = '0;
+  assign rcu_ooe_done_s5_payload = '0;
+  assign rcu_ooe_done_s6_valid = '0;
+  assign rcu_ooe_done_s6_payload = '0;
   assign rcu_ooe_done_wake = '0;
 `ifdef CCV_TRACE
   assign rcu_ooe_done_s0_tid = '0;
@@ -1005,6 +349,15 @@ module ccv_rcu (
 `endif
 `ifdef CCV_TRACE
   assign rcu_ooe_done_s3_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign rcu_ooe_done_s4_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign rcu_ooe_done_s5_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign rcu_ooe_done_s6_tid = '0;
 `endif
   assign rcu_miu_addr_s0_valid = '0;
   assign rcu_miu_addr_s0_payload = '0;

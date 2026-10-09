@@ -231,6 +231,19 @@ inline constexpr OpInfo kOps[] = {
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
 
+// Sectioned lanes (Daniel's responses OI-28 to OI-31; change doc "Interface
+// spec changes -- sectioned lanes"). ccv_ooe_rcu_issue's slots are select
+// resources: the lane sections S0-S3, the MIU pipes P0-P3, then R. An op
+// sits in its footprint's lowest slot and marks the rest continuation.
+constexpr unsigned kSecs = ccv::kSections;
+constexpr unsigned kSlotS0 = 0, kSlotP0 = kSecs, kSlotR = kSecs + ccv::kMiuPipes;
+static_assert(kSlotR + 1 == ccv::kIssueResources, "S0-S3, P0-P3, R");
+/// chwidth's codes, and the sections (or pipes) a register of each spans.
+enum : unsigned { kChw32 = 0, kChw16 = 1, kChw8 = 2, kChw4 = 3 };
+inline unsigned spanOf(unsigned chw) { return chw == kChw32 ? 4u : chw == kChw16 ? 2u : 1u; }
+/// The footprint mask of a register at a position: its span from there.
+inline unsigned maskOf(unsigned chw, unsigned pos) { return ((1u << spanOf(chw)) - 1u) << pos; }
+
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
 inline unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }

@@ -69,6 +69,16 @@ module ccv_ooe (
   assign ooe_rcu_issue_s2_payload = '0;
   assign ooe_rcu_issue_s3_valid = '0;
   assign ooe_rcu_issue_s3_payload = '0;
+  assign ooe_rcu_issue_s4_valid = '0;
+  assign ooe_rcu_issue_s4_payload = '0;
+  assign ooe_rcu_issue_s5_valid = '0;
+  assign ooe_rcu_issue_s5_payload = '0;
+  assign ooe_rcu_issue_s6_valid = '0;
+  assign ooe_rcu_issue_s6_payload = '0;
+  assign ooe_rcu_issue_s7_valid = '0;
+  assign ooe_rcu_issue_s7_payload = '0;
+  assign ooe_rcu_issue_s8_valid = '0;
+  assign ooe_rcu_issue_s8_payload = '0;
   assign ooe_rcu_issue_wake = '0;
 `ifdef CCV_TRACE
   assign ooe_rcu_issue_s0_tid = '0;
@@ -82,6 +92,21 @@ module ccv_ooe (
 `ifdef CCV_TRACE
   assign ooe_rcu_issue_s3_tid = '0;
 `endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s4_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s5_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s6_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s7_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_rcu_issue_s8_tid = '0;
+`endif
   assign rcu_ooe_done_s0_credit = '0;
   assign rcu_ooe_done_s0_stall = '0;
   assign rcu_ooe_done_s1_credit = '0;
@@ -90,6 +115,12 @@ module ccv_ooe (
   assign rcu_ooe_done_s2_stall = '0;
   assign rcu_ooe_done_s3_credit = '0;
   assign rcu_ooe_done_s3_stall = '0;
+  assign rcu_ooe_done_s4_credit = '0;
+  assign rcu_ooe_done_s4_stall = '0;
+  assign rcu_ooe_done_s5_credit = '0;
+  assign rcu_ooe_done_s5_stall = '0;
+  assign rcu_ooe_done_s6_credit = '0;
+  assign rcu_ooe_done_s6_stall = '0;
   assign ooe_miu_memop_s0_valid = '0;
   assign ooe_miu_memop_s0_payload = '0;
   assign ooe_miu_memop_s1_valid = '0;

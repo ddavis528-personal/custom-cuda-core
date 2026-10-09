@@ -76,6 +76,7 @@ run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
 run "derived params refuse drift" python3 tools/gen-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
+run "rates refuse drift"     python3 tools/gen-interfaces.py --selftest
 # docs/payload-spec.md is generated but TRACKED, unlike the rtl/sim ones --
 # it is the per-block sessions' worklist, so it has to be readable on GitHub
 # without running anything. Being generated is what stops it disagreeing with
@@ -244,7 +245,7 @@ cat <<'PENDING'
            Payload widths: every field sized, tiered settled/prov/prelim.
            Rate>1: independent slots, with acceptance / ordering / binding
            per channel. Remaining: per-interface NGD budgets
-  Stage 3  S0 plumbing DONE: 45 blocks, 110 channel instances, 347 slots,
+  Stage 3  S0 plumbing DONE: 45 blocks, 110 channel instances, 163 slots,
            checker bank Verilated in, trace identity carried, Perfetto
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state

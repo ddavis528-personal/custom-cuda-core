@@ -354,6 +354,14 @@ def selftest(d):
              ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_W_SCHED_ATTR"),
              ("CCV_P_BYP_GROUPS", "value", 9, "CCV_P_W_SCHED_ATTR"),
              ("CCV_LAT_RCU_ADDR_BASE", "value", 2, "CCV_LAT_RCU_ADDR"),
+             # Sectioned lanes: pipes must match sections for the memop
+             # read budget to hold at every width, a footprint minimum
+             # cannot exceed the sections, and the resource count follows.
+             ("CCV_MIU_PIPES", "value", 2, "CCV_PRF_MEMOP_READ_BITS"),
+             ("CCV_P_FOOT_MIN_SFU", "value", 5, "CCV_P_FOOT_MIN_SFU"),
+             ("CCV_ISSUE_RESOURCES", "value", 8, "CCV_ISSUE_RESOURCES"),
+             # OA's response TI-9: the done pool is the sum over the pipes.
+             ("CCV_DONE_SLOTS", "value", 5, "CCV_DONE_SLOTS"),
              # TI-1: imm carries predicate logic's two renamed sources.
              ("CCV_P_W_IMM", "value", 12, "CCV_P_W_IMM"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),

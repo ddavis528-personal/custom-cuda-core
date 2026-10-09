@@ -187,6 +187,14 @@ struct Config {
   /// sends the address, for a load when it writes the data). When set, a
   /// memop completes only after both, so no late done meets a reused tag.
   bool memop_rcu_done = false;
+  /// INTERIM (TI, sectioned lanes; OI-31 replaces it): one footprint per
+  /// select resource group a cycle. A lane op claims every lane section, a
+  /// memop every MIU pipe and an RCU-only op R, since nothing is placed by
+  /// slice yet and every S1 op is full width. So at most one lane op (a
+  /// masked load's copy among them), one memop and one RCU op issue a cycle,
+  /// which is what ccv_ooe_rcu_issue's nine resource slots carry at 32 bits.
+  /// Off, select keeps today's single four-wide budget (the unit tests).
+  bool resource_cap = false;
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
@@ -291,6 +299,12 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
   uint8_t gpr_reads = 0;         ///< likewise
+  /// The resource group the op issues on (ccv_ooe_rcu_issue's slots) and
+  /// its footprint there: lane sections, MIU pipes, or R alone (footprint 0).
+  enum : uint8_t { kLaneOp = 0, kMemop = 1, kRcuOp = 2 };
+  uint8_t res = kLaneOp;
+  uint8_t footprint = 0xF;
+  uint8_t byp_group = 0;         ///< sched_attr's bypass_group (OI-16)
 };
 struct Memop {          ///< ccv_ooe_miu_memop
   uint64_t tid = 0;

@@ -229,15 +229,16 @@ else
 fi
 
 # -- binding under lockstep: the same instruction in slot k on every lane ---
-# Lane 7 carries slot k+1's instruction in slot k: valids and credits still
-# match, so only the trace id can see it -- and only lockstep_id may fire.
+# Lane 7 carries slot k+1's instruction in slot k, or on a one-slot channel
+# (the sectioned lane channels) its stream's next one: valids and credits
+# still match, so only the trace id can see it -- and only lockstep_id may fire.
 log="$B/skel_misbind.log"
 "$SKEL" --cycles 400 --break misbind >"$log" 2>&1
 props=$(grep -o "CCV [a-z_]* failed" "$log" | awk '{print $2}' | sort -u | tr '\n' '+' | sed 's/+$//')
 inst=$(grep -o "Assertion failed in [^:]*" "$log" \
        | sed 's/Assertion failed in //; s/\.[a-z_]*$//; s/\.g_[a-z_]*$//' | sort -u | wc -l)
 if [ "$props" = "lockstep_id" ] && [ "$inst" = "$X_LOCKSTEP" ]; then
-  say "--break misbind: lane takes another slot's instr" "PASS ($inst lockstep checkers)"
+  say "--break misbind: lane takes another instr" "PASS ($inst lockstep checkers)"
 else
   bad "--break misbind" "$inst of $X_LOCKSTEP fired {$props}, want {lockstep_id}"
 fi

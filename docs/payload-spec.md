@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 9 | 28 |
-| ⚠️ Some provisional | 19 | 83 |
-| ⛔ Some preliminary | 20 | 125 |
-| **Total** | **48** | **236** |
+| All decided | 9 | 29 |
+| ⚠️ Some provisional | 19 | 87 |
+| ⛔ Some preliminary | 20 | 140 |
+| **Total** | **48** | **256** |
 
 ## What still has to be decided
 
@@ -91,6 +91,7 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_P_BYP_GROUPS` | 8 | med | Bypass groups: the codes of sched_attr's 3-bit bypass_group (0 integer, 1 floating point, 2 address calculation, 3 SFU, 4 warp-collective, 5 predicate, 6-7 spare), which index the bypass table both ways, byp[producer group][consumer group] (OI-16). A memop consumes as address calculation. A cell is a penalty in cycles after the producer's fastest bypass point, capped at the PRF read: in-unit CCV_LAT_BYP_PEN_SAME, integer and FP to each other CCV_LAT_BYP_PEN_INT_FP, integer or FP and SFU to each other CCV_LAT_BYP_PEN_SFU. Address-calculation, warp-collective and predicate consumers never bypass, nor does a warp-collective or predicate producer (A-59, A-62, V-48). |
 | `CCV_P_LAT_CLASSES` | 8 | med | Latency classes the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4 SFU, 5 warp-collective, 6-7 spare). A class sets a producer's full latency; which consumers it may wake early is its bypass_group's (OI-16, Daniel's responses OA-4). |
+| `CCV_P_W_BYP_GROUP` | 3 | med | bypass_group's width, on sched_attr and on ccv_ooe_rcu_issue. |
 
 ### MIU block session
 
@@ -153,6 +154,12 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_OPERANDS_PER_LANE` | 3 | **HIGH** | Operands shipped to a lane per beat. Whether a lane receives one instruction's operands or several, and whether the destination is read back for accumulate, both change this. |
 
+### RCU/LANE session, with CCV_L_OPERANDS_PER_LANE
+
+| Parameter | Value | Churn | Basis |
+|---|---|---|---|
+| `CCV_L_PRF_LANE_READ_BITS` | 4096 | **HIGH** | PRF read bandwidth into the lanes, a budget line: four operand ports (three sources and the merge source) of 1,024 bits, one byte a section per lane, each byte from its own section bank. Sixteen survives only as a count of slice reads. |
+
 ### SPM block session
 
 | Parameter | Value | Churn | Basis |
@@ -197,16 +204,17 @@ ccv_rcu_miu_addr carries index_per_lane (1024) beside store_data (1024) at rate 
 
 ### `ccv_lane_rcu_res`
 
-One lane's result, its predicate output (setp's compare, add.pp's predicate beside its GPR result), and its fault bit. RCU writes the PRF through per-lane write enables: every lane for an ordinary op (an inactive lane's result is its merge_data), only the inactive lanes for CCV_OP_PRF_COPY (A-44).
+One lane's results, one message a cycle (OI-28): a 32-bit result, used whole by a full-width op and by section for narrow ones, already steered to each destination's position inside the lane; per section, sec_valid (an op's result is here), sec_pred_out (setp's compare, add.pp's predicate: one bit a lane per op, on the op's lead section) and sec_fault. RCU knows which op held which section, the lane latency being fixed, so no tag rides here. RCU writes the PRF by slice through per-lane write enables: every lane for an ordinary op (an inactive lane's result is its merge_data), only the inactive lanes for CCV_OP_PRF_COPY (A-44).
 
-lane → rcu · rate 4 · execution
+lane → rcu · rate 1 · execution
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `result` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
-| `pred_out` | `1` | 1 | literal |
-| `lane_fault` | `1` | 1 | literal |
-| **total** | | **34** | |
+| `sec_valid` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `sec_pred_out` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `sec_fault` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| **total** | | **44** | |
 
 ### `ccv_rau_ooe_alloc`
 
@@ -337,9 +345,9 @@ fet → dec · rate 8 · instruction
 
 ### `ccv_rcu_ooe_done`
 
-Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it. CCV_OP_PRF_COPY produces no done: its masked load keeps one rob_tag and one completion, the load's (A-38). Nor does any memop: a load or store completes on ccv_miu_ooe_cmpl alone, and RCU, which sends its address and writes a load's data, sends nothing here for it (OI-4, Daniel 2026-10-08). A done for a memop would spend a transfer and, arriving late, could match a reused rob_tag.
+Completion back to the ROB for arithmetic, with the faulting lane mask -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it. CCV_OP_PRF_COPY produces no done: its masked load keeps one rob_tag and one completion, the load's (A-38). Nor does any memop: a load or store completes on ccv_miu_ooe_cmpl alone, and RCU, which sends its address and writes a load's data, sends nothing here for it (OI-4, Daniel 2026-10-08). A done for a memop would spend a transfer and, arriving late, could match a reused rob_tag. CCV_DONE_SLOTS slots, a free pool (TI-9, OA's response 2026-10-09): dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class. Four narrow lane ops issued at t - 7, an SFU op at t - 12, an RCU-only op at t - 3 and a warp-collective at t - 5 all land at t: seven. A lane op's done leaves the cycle its write lands, at V-35's bound with no slack, so none can wait for a slot. Memops send none (OI-4).
 
-rcu → ooe · rate 4 · execution
+rcu → ooe · rate 7 · execution
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
@@ -352,7 +360,7 @@ rcu → ooe · rate 4 · execution
 
 ### `ccv_rcu_miu_addr`
 
-Address operands and store data for memory operations, and active_mask: issue mask AND guard predicate, computed by RCU, the one block holding both. The widest interface in the design.
+Address operands and store data for memory operations, and active_mask: issue mask AND guard predicate, computed by RCU, the one block holding both. The widest interface in the design. SECTIONED (OI-33): base, index and store data are read at the memop's width and position, a slice, right-aligned in their fields; memop reads use their own PRF ports, never a lane port (CCV_PRF_MEMOP_READ_BITS).
 
 rcu → miu · rate 4 · execution
 
@@ -367,7 +375,7 @@ rcu → miu · rate 4 · execution
 
 ### `ccv_miu_rcu_data`
 
-Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load. An L1 hit's data lands at the contracted cycle, with its completion (A-47). A masked load's inactive lanes are written by its copy-only op through a lane, never by MIU, so this channel carries no merge fields (A-33).
+Load return data written into the register file. active_mask (echoing rcu_miu_addr's) gates the write: an inactive lane keeps its old value. pred_result carries a per-lane predicate the memory op produces (cas's success), for RCU's predicate file. phys_dst and phys_pred echo the memop's, so RCU writes back without state: load_data to phys_dst, pred_result (cas's success) to phys_pred. pred_we, set by MIU from the op (cas, not a load), says whether pred_result is written at all -- without it a stateless RCU would clobber the predicate phys_pred names on every load. An L1 hit's data lands at the contracted cycle, with its completion (A-47). A masked load's inactive lanes are written by its copy-only op through a lane, never by MIU, so this channel carries no merge fields (A-33). SECTIONED (OI-29, OI-33): phys_dst is a row, dst_pos and dst_width the slice the load writes; load_data carries the slice right-aligned in each lane's 32 bits.
 
 miu → rcu · rate 4 · execution
 
@@ -377,10 +385,12 @@ miu → rcu · rate 4 · execution
 | `active_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `pred_result` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
+| `dst_pos` | `CCV_W_PHYS_POS` | 2 | CCV_W_PHYS_POS (arch) |
+| `dst_width` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `phys_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_we` | `1` | 1 | literal |
 | `load_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
-| **total** | | **1110** | ⚠️ 21 provisional |
+| **total** | | **1114** | ⚠️ 21 provisional |
 
 ### `ccv_miu_ooe_cmpl`
 
@@ -532,7 +542,7 @@ mlc → fet · rate 1 · memory
 
 ### `ccv_ooe_rcu_map`
 
-Where a migrating warp's architectural registers live: its RAT, 16 physical GPR names and 4 physical predicate names. Physical locations exist only in OOE's RAT, so this replaces RAU's prf_base + arch addressing. direction 0: demote, RCU reads the named rows out to PCA; 1: restore, RCU writes PCA's rows into them. RCU pairs it with ccv_rau_rcu_mig by warp and direction (A-45), and ccv_ooe_rau_drained is sent only after it. Rate 1, separate from the rate-4 issue channel that binds the machine's width. A message is one whole map, atomic and ordered by construction on a single slot, so no slot attributes are declared (the schema refuses them on a rate-1 channel). A demotion map may name the zero registers (A-64): RCU then reads zeros out to PCA. A restore map never does: restore-allocate allocates every register it names.
+Where a migrating warp's architectural registers live: its RAT, 16 physical GPR names and 4 physical predicate names. Physical locations exist only in OOE's RAT, so this replaces RAU's prf_base + arch addressing. direction 0: demote, RCU reads the named rows out to PCA; 1: restore, RCU writes PCA's rows into them. RCU pairs it with ccv_rau_rcu_mig by warp and direction (A-45), and ccv_ooe_rau_drained is sent only after it. Rate 1, separate from the issue channel, whose nine resource slots bind the machine's width. A message is one whole map, atomic and ordered by construction on a single slot, so no slot attributes are declared (the schema refuses them on a rate-1 channel). A demotion map may name the zero registers (A-64): RCU then reads zeros out to PCA. A restore map never does: restore-allocate allocates every register it names. SECTIONED (OI-29, TI-9): a register is a row, a position and a width, so gpr_pos and gpr_width ride beside gpr_map. Rows are warp-private, so demotion and restore move whole rows (OA's response TI-9 (2)). Each distinct row moves once, in order of its first appearance in gpr_map from R0 up, which is the order PCA stores the warp's rows: that order is each row's saved index. A restore map names the new rows in the same pattern, each register at its saved position and width, and RCU writes PCA's k-th row into the k-th distinct row it names.
 
 ooe → rcu · rate 1 · control
 
@@ -541,8 +551,10 @@ ooe → rcu · rate 1 · control
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `direction` | `1` | 1 | literal |
 | `gpr_map` | `CCV_GPRS*CCV_P_W_PHYS_REG` | 128 ⚠️ | CCV_GPRS (isa); CCV_P_W_PHYS_REG (provisional) |
+| `gpr_pos` | `CCV_GPRS*CCV_W_PHYS_POS` | 32 | CCV_GPRS (isa); CCV_W_PHYS_POS (arch) |
+| `gpr_width` | `CCV_GPRS*CCV_W_CHWIDTH` | 32 | CCV_GPRS (isa); CCV_W_CHWIDTH (isa) |
 | `pred_map` | `CCV_PREDS*CCV_P_W_PHYS_PRED` | 24 ⚠️ | CCV_PREDS (isa_provisional); CCV_P_W_PHYS_PRED (provisional) |
-| **total** | | **158** | ⚠️ 152 provisional |
+| **total** | | **222** | ⚠️ 152 provisional |
 
 ### `ccv_rau_miu_cta`
 
@@ -628,9 +640,9 @@ dec → ooe · rate 6 · instruction
 
 ### `ccv_ooe_rcu_issue`
 
-What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. Four per cycle, the binding width of the machine. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28). ZERO REGISTERS (A-64): CCV_P_PHYS_ZERO and CCV_P_PRED_ZERO, one past each pool, read zero and are never written. A read of one needs no PRF port: RCU decodes the index and drives a constant, which matters because a launched warp's early reads all name them (A-73). A launched warp's sources, guard and old destinations may name them; phys_dst, phys_pred_dst and the destinations of every write never do. PREDICATE LOGIC (TI-1): pand, por and pxor read two predicates, and OOE renames them like any source, so imm carries their physical names, not DEC's qualifiers: [CCV_P_W_PHYS_PRED-1:0] the first source, [CCV_P_W_PHYS_PRED] its negate, then the second source and its negate, 2 (CCV_P_W_PHYS_PRED + 1) = 14 bits. RCU reads them as it reads phys_pred_guard, so the issue channel does not grow.
+What the scheduler selected: physical register names (three sources; the guard predicate and the predicate destination separately, with pred_we saying whether a predicate is written), opcode, element width, the issue group's lane mask, and the ALU immediate, which RCU substitutes into an operand slot at register read so lanes never see an immediate. One slot per select resource (CCV_ISSUE_RESOURCES = 9): S0-S3, P0-P3, R; see SECTIONED LANES below. MERGE (A-33): with merge_en set (the issue mask is not full or the op is guarded), phys_old_dst is a fourth source, read at issue with the others and carried to the lane as merge_data, so it bypasses like any operand; the lane writes its inactive lanes from it. merge_en = 0 makes phys_old_dst don't-care. Predicates merge in RCU instead: at write-back RCU read-modify-writes the 32-bit row from phys_pred_old_dst (A-43). A masked load sends a second, copy-only op here, opcode CCV_OP_PRF_COPY = 0x1FF, with the load's rob_tag: it writes only the load's inactive lanes (GPR and predicate destination alike) and produces no done (A-38). Fixed latency: once RCU accepts an issue the result lands at the contracted latency, and there is no port grant (Q-51, A-28). ZERO REGISTERS (A-64): CCV_P_PHYS_ZERO and CCV_P_PRED_ZERO, one past each pool, read zero and are never written. A read of one needs no PRF port: RCU decodes the index and drives a constant, which matters because a launched warp's early reads all name them (A-73). A launched warp's sources, guard and old destinations may name them; phys_dst, phys_pred_dst and the destinations of every write never do. PREDICATE LOGIC (TI-1): pand, por and pxor read two predicates, and OOE renames them like any source, so imm carries their physical names, not DEC's qualifiers: [CCV_P_W_PHYS_PRED-1:0] the first source, [CCV_P_W_PHYS_PRED] its negate, then the second source and its negate, 2 (CCV_P_W_PHYS_PRED + 1) = 14 bits. RCU reads them as it reads phys_pred_guard, so the issue channel does not grow. SECTIONED LANES (Daniel's responses OI-28 to OI-31, change doc 'Interface spec changes -- sectioned lanes', TI-9): a lane is four 8-bit sections and the PRF four section banks; a register name is a row (phys_src, phys_src2, phys_dst, phys_old_dst) plus a position (src_pos, dst_pos, old_dst_pos), each operand with its own width code (src_width; dst_width, which the merge source shares, being the same architectural register). footprint is the op's 4-bit mask: lane sections for an op on S0-S3 (the union of its operands' sections, widened to CCV_FOOT_MIN for its bypass_group; a non-contiguous mask is legal), MIU pipes for a memop on P0-P3, 0 on R. An op sits in its footprint's lowest slot; every other slot of its footprint carries cont = 1 and the same rob_tag, and nothing else. A memop takes P slots here, for RCU to read its operands at its width and position, as well as its pipe footprint on ccv_ooe_miu_memop. Co-issued footprints are disjoint (V-60), so at most one full-width lane op, one full-width memop and one RCU op issue in a cycle, and four 8-bit ops of each. The zero register is valid at any position. bypass_group rides with the op for the lanes' forwarding (OI-16).
 
-ooe → rcu · rate 4 · execution
+ooe → rcu · rate 9 · execution
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
@@ -647,32 +659,45 @@ ooe → rcu · rate 4 · execution
 | `phys_pred_old_dst` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `pred_we` | `1` | 1 | literal |
 | `merge_en` | `1` | 1 | literal |
+| `cont` | `1` | 1 | literal |
+| `footprint` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `bypass_group` | `CCV_P_W_BYP_GROUP` | 3 ⛔ | CCV_P_W_BYP_GROUP (preliminary, churn med) |
+| `src_pos` | `3*CCV_W_PHYS_POS` | 6 | CCV_W_PHYS_POS (arch) |
+| `src_width` | `3*CCV_W_CHWIDTH` | 6 | CCV_W_CHWIDTH (isa) |
+| `dst_pos` | `CCV_W_PHYS_POS` | 2 | CCV_W_PHYS_POS (arch) |
+| `old_dst_pos` | `CCV_W_PHYS_POS` | 2 | CCV_W_PHYS_POS (arch) |
+| `dst_width` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `imm` | `CCV_P_W_IMM` | 32 ⚠️ | CCV_P_W_IMM (provisional) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `dispatch_fault` | `1` | 1 | literal |
-| **total** | | **149** | ⛔ 9 preliminary, ⚠️ 97 provisional |
+| **total** | | **175** | ⛔ 12 preliminary, ⚠️ 97 provisional |
 
 ### `ccv_rcu_lane_ops`
 
-Operands and control to one lane. pred_bit is the lane's ENABLE: issue mask AND guard, the same computation as active_mask. A lane with pred_bit clear does not compute: it returns merge_data as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0, since then every lane is enabled. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. pred_data is a predicate read as DATA, e.g. sel's selector, which chooses between sources on every enabled lane. Section enables gate the narrow sub-datapaths and the SFU. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic (pand/por/pxor), pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; pred_out and pred_result carry those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, and the two arrive as different opcodes, decoded from the selector by DEC. operand_byp is the lane-local bypass (A-59, TI-8): one CCV_P_W_LANE_BYP_SEL select per operand slot and a last one for merge_data. A select with its forward bit set replaces the value RCU read with a result this lane computed earlier, named by the producer's issue slot and its age, the cycles between the two ops' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at the bypass offset can meet; a lane never forwards a result younger than CCV_LAT_LANE_BYP. The select is the same on every lane, like opcode.
+Operands and control to one lane, one message a cycle (Daniel's response OI-28; change doc 'Interface spec changes -- sectioned lanes'). A lane is four 8-bit sections, S0-S3, and up to four ops share the message, each in its own sections. operand (three 32-bit ports, src0-src2) and merge_data (the fourth) are the four operand ports, 32 bits a lane: one byte a section, each from its own section bank. Per section: section_en (an op holds it), sec_owner (the lead section, its lowest, of the op that holds it; a section is its op's lead where sec_owner names itself), sec_opcode, sec_pred_bit and sec_pred_data. An owner rather than a lead bit, because a footprint may be non-contiguous (AR-15): ops on {S0, S2} and {S1, S3} share a message, and a lead bit alone cannot say whose S2 is (TI-10). On a lead section only: each of the four operands' position and width (sec_opnd_pos, sec_opnd_width) and the destination's (sec_dst_pos, sec_dst_width). The op routes bytes freely within its footprint as part of executing, the swizzle, after the bypass mux; it never reaches another lane's word, which only a warp-collective in RCU moves. A full-width op holds all four sections. sec_pred_bit is the section op's ENABLE in this lane: issue mask AND guard, the same computation as active_mask. A section whose enable is clear does not compute: its op returns merge_data's bytes as its result, which is how a masked or guarded write keeps its inactive lanes' old values under rename (A-33, A-44); merge_data is don't-care when the op's merge_en is 0. For CCV_OP_PRF_COPY an enabled lane's result is don't-care: RCU writes only the inactive lanes. sec_pred_data is a predicate read as DATA, e.g. sel's selector. What reaches a lane: every opcode with a per-lane input, a GPR or the lane's own hardwired index (Q-32, Q-38). RCU executes the opcodes whose inputs are all warp-level -- predicate logic, pmov, movi, movi48, branch resolution -- plus the horizontal ops (shfl, vote, ballot, unballot). setp, add.pp and cas run in lanes although they write predicates; sec_pred_out carries those back. srd runs in the lane: selector 0 ORs the lane's index into the warp_base immediate, selector 1 passes %ctaid through, decoded from the selector by DEC as two opcodes. operand_byp is the lane-local bypass (A-59, TI-8, TI-9): one CCV_P_W_LANE_BYP_SEL select per operand port per section, since co-issued narrow ops may each forward from a different producer. A select with its forward bit set replaces that section's byte of that port with a result this lane computed earlier, named by the producer's lead section and its age, the cycles between the two messages' arrival here less CCV_LAT_LANE_BYP. RCU sets it for a source whose lane producer has not yet written the PRF, which only a dependant woken at a bypass offset can meet. The selects are the same on every lane, like the opcodes. LAYOUT: every per-section field packs S0 at its LSBs. sec_opnd_pos, sec_opnd_width and operand_byp hold one entry per port per section, section-major: entry k * (CCV_L_OPERANDS_PER_LANE + 1) + i is section k's port i, ports src0-src2 then merge_data. sec_opnd_pos, sec_opnd_width, sec_dst_pos and sec_dst_width are read on lead sections only.
 
-rcu → lane · rate 4 · execution
+rcu → lane · rate 1 · execution
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
+| `sec_opcode` | `CCV_SECTIONS*CCV_L_W_OPCODE` | 36 ⛔ | CCV_SECTIONS (arch); CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `operand` | `CCV_L_OPERANDS_PER_LANE*CCV_W_LANE_DATA` | 96 ⛔ | CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_W_LANE_DATA (isa) |
 | `merge_data` | `CCV_W_LANE_DATA` | 32 | CCV_W_LANE_DATA (isa) |
-| `pred_bit` | `1` | 1 | literal |
-| `pred_data` | `1` | 1 | literal |
-| `section_en` | `4` | 4 | literal |
-| `operand_byp` | `(CCV_L_OPERANDS_PER_LANE+1)*CCV_P_W_LANE_BYP_SEL` | 20 ⛔ | CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_P_W_LANE_BYP_SEL (tunable) |
-| **total** | | **163** | ⛔ 125 preliminary |
+| `section_en` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `sec_owner` | `CCV_SECTIONS*CCV_W_PHYS_POS` | 8 | CCV_SECTIONS (arch); CCV_W_PHYS_POS (arch) |
+| `sec_pred_bit` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `sec_pred_data` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
+| `sec_opnd_pos` | `CCV_SECTIONS*(CCV_L_OPERANDS_PER_LANE+1)*CCV_W_PHYS_POS` | 32 ⛔ | CCV_SECTIONS (arch); CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_W_PHYS_POS (arch) |
+| `sec_opnd_width` | `CCV_SECTIONS*(CCV_L_OPERANDS_PER_LANE+1)*CCV_W_CHWIDTH` | 32 ⛔ | CCV_SECTIONS (arch); CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_W_CHWIDTH (isa) |
+| `sec_dst_pos` | `CCV_SECTIONS*CCV_W_PHYS_POS` | 8 | CCV_SECTIONS (arch); CCV_W_PHYS_POS (arch) |
+| `sec_dst_width` | `CCV_SECTIONS*CCV_W_CHWIDTH` | 8 | CCV_SECTIONS (arch); CCV_W_CHWIDTH (isa) |
+| `operand_byp` | `CCV_SECTIONS*(CCV_L_OPERANDS_PER_LANE+1)*CCV_P_W_LANE_BYP_SEL` | 80 ⛔ | CCV_SECTIONS (arch); CCV_L_OPERANDS_PER_LANE (preliminary, churn **HIGH**); CCV_P_W_LANE_BYP_SEL (tunable) |
+| **total** | | **344** | ⛔ 276 preliminary |
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp. mem_op, space and ordering arrive from DEC on ccv_dec_ooe_uop and pass through OOE unexamined (A-68); 0xF alone is OOE's own.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp. mem_op, space and ordering arrive from DEC on ccv_dec_ooe_uop and pass through OOE unexamined (A-68); 0xF alone is OOE's own. SECTIONED (OI-33): pipes is the memop's footprint over MIU's pipes P0-P3, four at 32 bits, two at 16 and one at 8, at its data position; phys_dst is a row and dst_pos its position, echoed for the slice write-back.
 
 ooe → miu · rate 4 · memory
 
@@ -680,17 +705,19 @@ ooe → miu · rate 4 · memory
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
+| `dst_pos` | `CCV_W_PHYS_POS` | 2 | CCV_W_PHYS_POS (arch) |
 | `phys_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
 | `issue_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
+| `pipes` | `CCV_MIU_PIPES` | 4 | CCV_MIU_PIPES (arch) |
 | `disp` | `CCV_W_DISP` | 16 | CCV_W_DISP (isa) |
 | `scale_en` | `1` | 1 | literal |
 | `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
 | `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
-| **total** | | **91** | ⛔ 11 preliminary, ⚠️ 24 provisional |
+| **total** | | **97** | ⛔ 11 preliminary, ⚠️ 24 provisional |
 
 ### `ccv_miu_spm_req`
 

@@ -250,11 +250,51 @@ def gen_cpp(d, blocks, pp):
     return "\n".join(L) + "\n"
 
 
+def rate_drift(d, pv):
+    """Every channel whose rate a parameter derives (rate_param): the literal
+    is what every tool reads, so it must equal the parameter, or a new pipe or
+    resource grows the parameter while the channel keeps its old width."""
+    errs = []
+    for c in d["channels"]:
+        rp = c.get("rate_param")
+        if rp is None:
+            continue
+        if rp not in pv:
+            errs.append("channel %s: rate_param %s is not in params/ccv_params.json"
+                        % (c["name"], rp))
+        elif pv[rp] != c["rate"]:
+            errs.append("channel %s: rate %d, but %s is %d -- update the rate"
+                        % (c["name"], c["rate"], rp, pv[rp]))
+    return errs
+
+
+def selftest(d, pv):
+    """Each tied rate, one off: the generator must refuse it by name."""
+    tied = [c for c in d["channels"] if "rate_param" in c]
+    if not tied or rate_drift(d, pv):
+        sys.stderr.write("selftest: no tied rate, or the schema already drifts\n")
+        return 1
+    for c in tied:
+        was = c["rate"]
+        c["rate"] = was + 1
+        caught = any(c["name"] in e for e in rate_drift(d, pv))
+        c["rate"] = was
+        if not caught:
+            sys.stderr.write("selftest: %s's rate one off went unrefused\n" % c["name"])
+            return 1
+    print("  channel rates refuse drift from their parameters (%d tied: %s)"
+          % (len(tied), ", ".join(c["name"] for c in tied)))
+    return 0
+
+
 def main():
     check = "--check" in sys.argv
     with open(SRC) as f:
         d = json.load(f)
     blocks = block_names()
+    if "--selftest" in sys.argv:
+        with open(PARAMS) as f:
+            return selftest(d, {p["name"]: p["value"] for p in json.load(f)["params"]})
 
     names = [c["name"] for c in d["channels"]]
     if len(set(names)) != len(names):
@@ -452,6 +492,9 @@ def main():
         pv = {p["name"]: p["value"] for p in json.load(f)["params"]}
     num = lambda e: eval(re.sub(r"\bCCV_\w+", lambda m: str(pv[m.group(0)]), str(e)),
                          {"__builtins__": {}})
+    for e in rate_drift(d, pv):
+        sys.stderr.write(e + "\n")
+        bad = 1
     for c in d["channels"]:
         for ov in c.get("overlays", []):
             fw = num(field_width(d, c, ov["field"]))

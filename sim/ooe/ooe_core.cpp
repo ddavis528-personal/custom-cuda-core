@@ -30,9 +30,9 @@ std::string Config::apply(const std::string &spec) {
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}};
-  // `sectioned` itself is not a knob until the issue channel has its nine
-  // slots (OI-32); these act only under it.
-  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
+  // `sectioned` itself is not a knob until the adapter places operands by
+  // position (OI-32); place, loads_pass_loads and foot act only under it.
+  std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec}, {"resource_cap", &resource_cap},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
@@ -65,6 +65,7 @@ std::string Config::check() const {
   char buf[200];
   if (payload_stages > 1) return "payload_stages: 0 or 1";
   if (rename_stages < 1) return "rename_stages: at least 1";
+  if (sectioned && resource_cap) return "resource_cap is the unsectioned interim; sectioned select replaces it";
   if (place > 4) return "place: 0 (home = slot), 1 (home = 0), 2 (rotate from 0), 3 (rotate from slot) or 4 (slot + register)";
   for (unsigned f : foot_min)
     if (f != 0 && f != 1 && f != 2 && f != 4) return "foot.G: 0, 1, 2 or 4 sections";
@@ -1457,6 +1458,8 @@ void Core::selectSectioned() {
 void Core::select() {
   if (cfg_.sectioned) { selectSectioned(); return; }
   unsigned ports = 0, mports = 0;
+  // resource_cap's groups claimed this cycle: lane sections, pipes, R.
+  bool lane_used = false, pipes_used = false, r_used = false;
   std::vector<bool> memop_block(slot_.size(), false);
   // Bulk discards first: each takes a memop slot, and no memop of the same
   // warp goes in the same cycle (V-23).
@@ -1517,6 +1520,17 @@ void Core::select() {
         const RobEntry &r = slot_[si].rob[rs_[e].rob];
         const unsigned need = r.copy ? 2 : 1;
         if (ports + need > cfg_.issue_width) { count("stall.copy_port"); continue; }
+        if (cfg_.resource_cap) {
+          const bool rcu_op = !miu && r.u.attr.exec_rcu;
+          const bool lane = (!miu && !rcu_op) || r.copy;
+          if ((lane && lane_used) || (miu && pipes_used) || (rcu_op && r_used)) {
+            count("stall.resource");
+            continue;
+          }
+          lane_used |= lane;
+          pipes_used |= miu;
+          r_used |= rcu_op;
+        }
         const unsigned port = ports;
         ports += need;
         if (miu) ++mports;
@@ -1578,6 +1592,16 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port) const {
   is.chwidth = s.chwidth;
   is.guarded = u.shape.guard;
   is.gpr_reads = u.shape.gpr_reads;
+  // The resource group and footprint. Sectioned: the entry's own resources
+  // (resOf). Otherwise every op is full width (TI's interim resource_cap).
+  is.res = r.is_mem ? Issue::kMemop : u.attr.exec_rcu ? Issue::kRcuOp : Issue::kLaneOp;
+  is.footprint = is.res == Issue::kRcuOp ? 0 : 0xF;
+  if (cfg_.sectioned) {
+    const unsigned m = resOf(r, false);
+    is.res = m >> 5 ? Issue::kMemop : m >> 4 ? Issue::kRcuOp : Issue::kLaneOp;
+    is.footprint = uint8_t(is.res == Issue::kMemop ? m >> 5 : is.res == Issue::kRcuOp ? 0 : m & 0xFu);
+  }
+  is.byp_group = uint8_t((u.attr_raw >> 13) & 7u);
   if (!r.is_mem) {
     is.send_imm = true;
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
@@ -1610,6 +1634,8 @@ void Core::issueCopy(unsigned slot, unsigned idx, unsigned copy_port) {
   Issue cp = is;
   cp.port = copy_port;
   cp.copy = true;
+  cp.res = Issue::kLaneOp;       // the copy runs through a lane
+  cp.footprint = uint8_t(cfg_.sectioned ? resOf(r, true) & 0xFu : 0xFu);
   cp.send_imm = true;
   cp.imm = 0;
   if (!u.shape.guard) {

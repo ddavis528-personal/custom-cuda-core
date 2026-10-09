@@ -75,6 +75,26 @@ module ccv_ooe_w #(
   ccv_ooe_rcu_issue_t b_ooe_rcu_issue_s3_payload;
   logic b_ooe_rcu_issue_s3_credit;
   logic b_ooe_rcu_issue_s3_stall;
+  logic b_ooe_rcu_issue_s4_valid;
+  ccv_ooe_rcu_issue_t b_ooe_rcu_issue_s4_payload;
+  logic b_ooe_rcu_issue_s4_credit;
+  logic b_ooe_rcu_issue_s4_stall;
+  logic b_ooe_rcu_issue_s5_valid;
+  ccv_ooe_rcu_issue_t b_ooe_rcu_issue_s5_payload;
+  logic b_ooe_rcu_issue_s5_credit;
+  logic b_ooe_rcu_issue_s5_stall;
+  logic b_ooe_rcu_issue_s6_valid;
+  ccv_ooe_rcu_issue_t b_ooe_rcu_issue_s6_payload;
+  logic b_ooe_rcu_issue_s6_credit;
+  logic b_ooe_rcu_issue_s6_stall;
+  logic b_ooe_rcu_issue_s7_valid;
+  ccv_ooe_rcu_issue_t b_ooe_rcu_issue_s7_payload;
+  logic b_ooe_rcu_issue_s7_credit;
+  logic b_ooe_rcu_issue_s7_stall;
+  logic b_ooe_rcu_issue_s8_valid;
+  ccv_ooe_rcu_issue_t b_ooe_rcu_issue_s8_payload;
+  logic b_ooe_rcu_issue_s8_credit;
+  logic b_ooe_rcu_issue_s8_stall;
   logic b_ooe_rcu_issue_wake;
   logic b_rcu_ooe_done_s0_valid;
   ccv_rcu_ooe_done_t b_rcu_ooe_done_s0_payload;
@@ -92,6 +112,18 @@ module ccv_ooe_w #(
   ccv_rcu_ooe_done_t b_rcu_ooe_done_s3_payload;
   logic b_rcu_ooe_done_s3_credit;
   logic b_rcu_ooe_done_s3_stall;
+  logic b_rcu_ooe_done_s4_valid;
+  ccv_rcu_ooe_done_t b_rcu_ooe_done_s4_payload;
+  logic b_rcu_ooe_done_s4_credit;
+  logic b_rcu_ooe_done_s4_stall;
+  logic b_rcu_ooe_done_s5_valid;
+  ccv_rcu_ooe_done_t b_rcu_ooe_done_s5_payload;
+  logic b_rcu_ooe_done_s5_credit;
+  logic b_rcu_ooe_done_s5_stall;
+  logic b_rcu_ooe_done_s6_valid;
+  ccv_rcu_ooe_done_t b_rcu_ooe_done_s6_payload;
+  logic b_rcu_ooe_done_s6_credit;
+  logic b_rcu_ooe_done_s6_stall;
   logic b_rcu_ooe_done_wake;
   logic b_ooe_miu_memop_s0_valid;
   ccv_ooe_miu_memop_t b_ooe_miu_memop_s0_payload;
@@ -205,10 +237,18 @@ module ccv_ooe_w #(
   logic [63:0] b_ooe_rcu_issue_s1_tid;
   logic [63:0] b_ooe_rcu_issue_s2_tid;
   logic [63:0] b_ooe_rcu_issue_s3_tid;
+  logic [63:0] b_ooe_rcu_issue_s4_tid;
+  logic [63:0] b_ooe_rcu_issue_s5_tid;
+  logic [63:0] b_ooe_rcu_issue_s6_tid;
+  logic [63:0] b_ooe_rcu_issue_s7_tid;
+  logic [63:0] b_ooe_rcu_issue_s8_tid;
   logic [63:0] b_rcu_ooe_done_s0_tid;
   logic [63:0] b_rcu_ooe_done_s1_tid;
   logic [63:0] b_rcu_ooe_done_s2_tid;
   logic [63:0] b_rcu_ooe_done_s3_tid;
+  logic [63:0] b_rcu_ooe_done_s4_tid;
+  logic [63:0] b_rcu_ooe_done_s5_tid;
+  logic [63:0] b_rcu_ooe_done_s6_tid;
   logic [63:0] b_ooe_miu_memop_s0_tid;
   logic [63:0] b_ooe_miu_memop_s1_tid;
   logic [63:0] b_ooe_miu_memop_s2_tid;
@@ -285,6 +325,26 @@ module ccv_ooe_w #(
     .ooe_rcu_issue_s3_payload(b_ooe_rcu_issue_s3_payload),
     .ooe_rcu_issue_s3_credit(b_ooe_rcu_issue_s3_credit),
     .ooe_rcu_issue_s3_stall(b_ooe_rcu_issue_s3_stall),
+    .ooe_rcu_issue_s4_valid(b_ooe_rcu_issue_s4_valid),
+    .ooe_rcu_issue_s4_payload(b_ooe_rcu_issue_s4_payload),
+    .ooe_rcu_issue_s4_credit(b_ooe_rcu_issue_s4_credit),
+    .ooe_rcu_issue_s4_stall(b_ooe_rcu_issue_s4_stall),
+    .ooe_rcu_issue_s5_valid(b_ooe_rcu_issue_s5_valid),
+    .ooe_rcu_issue_s5_payload(b_ooe_rcu_issue_s5_payload),
+    .ooe_rcu_issue_s5_credit(b_ooe_rcu_issue_s5_credit),
+    .ooe_rcu_issue_s5_stall(b_ooe_rcu_issue_s5_stall),
+    .ooe_rcu_issue_s6_valid(b_ooe_rcu_issue_s6_valid),
+    .ooe_rcu_issue_s6_payload(b_ooe_rcu_issue_s6_payload),
+    .ooe_rcu_issue_s6_credit(b_ooe_rcu_issue_s6_credit),
+    .ooe_rcu_issue_s6_stall(b_ooe_rcu_issue_s6_stall),
+    .ooe_rcu_issue_s7_valid(b_ooe_rcu_issue_s7_valid),
+    .ooe_rcu_issue_s7_payload(b_ooe_rcu_issue_s7_payload),
+    .ooe_rcu_issue_s7_credit(b_ooe_rcu_issue_s7_credit),
+    .ooe_rcu_issue_s7_stall(b_ooe_rcu_issue_s7_stall),
+    .ooe_rcu_issue_s8_valid(b_ooe_rcu_issue_s8_valid),
+    .ooe_rcu_issue_s8_payload(b_ooe_rcu_issue_s8_payload),
+    .ooe_rcu_issue_s8_credit(b_ooe_rcu_issue_s8_credit),
+    .ooe_rcu_issue_s8_stall(b_ooe_rcu_issue_s8_stall),
     .ooe_rcu_issue_wake(b_ooe_rcu_issue_wake),
     .rcu_ooe_done_s0_valid(b_rcu_ooe_done_s0_valid),
     .rcu_ooe_done_s0_payload(b_rcu_ooe_done_s0_payload),
@@ -302,6 +362,18 @@ module ccv_ooe_w #(
     .rcu_ooe_done_s3_payload(b_rcu_ooe_done_s3_payload),
     .rcu_ooe_done_s3_credit(b_rcu_ooe_done_s3_credit),
     .rcu_ooe_done_s3_stall(b_rcu_ooe_done_s3_stall),
+    .rcu_ooe_done_s4_valid(b_rcu_ooe_done_s4_valid),
+    .rcu_ooe_done_s4_payload(b_rcu_ooe_done_s4_payload),
+    .rcu_ooe_done_s4_credit(b_rcu_ooe_done_s4_credit),
+    .rcu_ooe_done_s4_stall(b_rcu_ooe_done_s4_stall),
+    .rcu_ooe_done_s5_valid(b_rcu_ooe_done_s5_valid),
+    .rcu_ooe_done_s5_payload(b_rcu_ooe_done_s5_payload),
+    .rcu_ooe_done_s5_credit(b_rcu_ooe_done_s5_credit),
+    .rcu_ooe_done_s5_stall(b_rcu_ooe_done_s5_stall),
+    .rcu_ooe_done_s6_valid(b_rcu_ooe_done_s6_valid),
+    .rcu_ooe_done_s6_payload(b_rcu_ooe_done_s6_payload),
+    .rcu_ooe_done_s6_credit(b_rcu_ooe_done_s6_credit),
+    .rcu_ooe_done_s6_stall(b_rcu_ooe_done_s6_stall),
     .rcu_ooe_done_wake(b_rcu_ooe_done_wake),
     .ooe_miu_memop_s0_valid(b_ooe_miu_memop_s0_valid),
     .ooe_miu_memop_s0_payload(b_ooe_miu_memop_s0_payload),
@@ -418,10 +490,18 @@ module ccv_ooe_w #(
     , .ooe_rcu_issue_s1_tid(b_ooe_rcu_issue_s1_tid)
     , .ooe_rcu_issue_s2_tid(b_ooe_rcu_issue_s2_tid)
     , .ooe_rcu_issue_s3_tid(b_ooe_rcu_issue_s3_tid)
+    , .ooe_rcu_issue_s4_tid(b_ooe_rcu_issue_s4_tid)
+    , .ooe_rcu_issue_s5_tid(b_ooe_rcu_issue_s5_tid)
+    , .ooe_rcu_issue_s6_tid(b_ooe_rcu_issue_s6_tid)
+    , .ooe_rcu_issue_s7_tid(b_ooe_rcu_issue_s7_tid)
+    , .ooe_rcu_issue_s8_tid(b_ooe_rcu_issue_s8_tid)
     , .rcu_ooe_done_s0_tid(b_rcu_ooe_done_s0_tid)
     , .rcu_ooe_done_s1_tid(b_rcu_ooe_done_s1_tid)
     , .rcu_ooe_done_s2_tid(b_rcu_ooe_done_s2_tid)
     , .rcu_ooe_done_s3_tid(b_rcu_ooe_done_s3_tid)
+    , .rcu_ooe_done_s4_tid(b_rcu_ooe_done_s4_tid)
+    , .rcu_ooe_done_s5_tid(b_rcu_ooe_done_s5_tid)
+    , .rcu_ooe_done_s6_tid(b_rcu_ooe_done_s6_tid)
     , .ooe_miu_memop_s0_tid(b_ooe_miu_memop_s0_tid)
     , .ooe_miu_memop_s1_tid(b_ooe_miu_memop_s1_tid)
     , .ooe_miu_memop_s2_tid(b_ooe_miu_memop_s2_tid)
@@ -459,29 +539,29 @@ module ccv_ooe_w #(
 `endif
   );
   // ccv_ooe_rcu_issue, source end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(4), .PAYLOAD_W(149)) u_rpt_ooe_rcu_issue (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(9), .PAYLOAD_W(175)) u_rpt_ooe_rcu_issue (
     .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .src_payload({b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
-    .src_wake(b_ooe_rcu_issue_wake), .src_credit({b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .src_stall({b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall}),
-    .dst_valid({ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid}), .dst_payload({ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload}),
-    .dst_wake(ooe_rcu_issue_wake), .dst_credit({ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit}), .dst_stall({ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall})
+    .src_valid({b_ooe_rcu_issue_s8_valid, b_ooe_rcu_issue_s7_valid, b_ooe_rcu_issue_s6_valid, b_ooe_rcu_issue_s5_valid, b_ooe_rcu_issue_s4_valid, b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .src_payload({b_ooe_rcu_issue_s8_payload, b_ooe_rcu_issue_s7_payload, b_ooe_rcu_issue_s6_payload, b_ooe_rcu_issue_s5_payload, b_ooe_rcu_issue_s4_payload, b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
+    .src_wake(b_ooe_rcu_issue_wake), .src_credit({b_ooe_rcu_issue_s8_credit, b_ooe_rcu_issue_s7_credit, b_ooe_rcu_issue_s6_credit, b_ooe_rcu_issue_s5_credit, b_ooe_rcu_issue_s4_credit, b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .src_stall({b_ooe_rcu_issue_s8_stall, b_ooe_rcu_issue_s7_stall, b_ooe_rcu_issue_s6_stall, b_ooe_rcu_issue_s5_stall, b_ooe_rcu_issue_s4_stall, b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall}),
+    .dst_valid({ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid}), .dst_payload({ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload}),
+    .dst_wake(ooe_rcu_issue_wake), .dst_credit({ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit}), .dst_stall({ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_ooe_rcu_issue_s3_tid, b_ooe_rcu_issue_s2_tid, b_ooe_rcu_issue_s1_tid, b_ooe_rcu_issue_s0_tid}), .dst_tid({ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid})
+    , .src_tid({b_ooe_rcu_issue_s8_tid, b_ooe_rcu_issue_s7_tid, b_ooe_rcu_issue_s6_tid, b_ooe_rcu_issue_s5_tid, b_ooe_rcu_issue_s4_tid, b_ooe_rcu_issue_s3_tid, b_ooe_rcu_issue_s2_tid, b_ooe_rcu_issue_s1_tid, b_ooe_rcu_issue_s0_tid}), .dst_tid({ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid, ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid})
 `endif
   );
   // ccv_rcu_ooe_done, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(4), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
+  ccv_seq_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
     .clk(core_clk), .rst_n(rst_n),
-    .src_valid({rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid}), .src_payload({rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload}),
-    .src_wake(rcu_ooe_done_wake), .src_credit({rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit}), .src_stall({rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall}),
-    .dst_valid({b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid}), .dst_payload({b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload}),
-    .dst_wake(b_rcu_ooe_done_wake), .dst_credit({b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit}), .dst_stall({b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall})
+    .src_valid({rcu_ooe_done_s6_valid, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_valid, rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid}), .src_payload({rcu_ooe_done_s6_payload, rcu_ooe_done_s5_payload, rcu_ooe_done_s4_payload, rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload}),
+    .src_wake(rcu_ooe_done_wake), .src_credit({rcu_ooe_done_s6_credit, rcu_ooe_done_s5_credit, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit}), .src_stall({rcu_ooe_done_s6_stall, rcu_ooe_done_s5_stall, rcu_ooe_done_s4_stall, rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall}),
+    .dst_valid({b_rcu_ooe_done_s6_valid, b_rcu_ooe_done_s5_valid, b_rcu_ooe_done_s4_valid, b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid}), .dst_payload({b_rcu_ooe_done_s6_payload, b_rcu_ooe_done_s5_payload, b_rcu_ooe_done_s4_payload, b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload}),
+    .dst_wake(b_rcu_ooe_done_wake), .dst_credit({b_rcu_ooe_done_s6_credit, b_rcu_ooe_done_s5_credit, b_rcu_ooe_done_s4_credit, b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit}), .dst_stall({b_rcu_ooe_done_s6_stall, b_rcu_ooe_done_s5_stall, b_rcu_ooe_done_s4_stall, b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({rcu_ooe_done_s3_tid, rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid}), .dst_tid({b_rcu_ooe_done_s3_tid, b_rcu_ooe_done_s2_tid, b_rcu_ooe_done_s1_tid, b_rcu_ooe_done_s0_tid})
+    , .src_tid({rcu_ooe_done_s6_tid, rcu_ooe_done_s5_tid, rcu_ooe_done_s4_tid, rcu_ooe_done_s3_tid, rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid}), .dst_tid({b_rcu_ooe_done_s6_tid, b_rcu_ooe_done_s5_tid, b_rcu_ooe_done_s4_tid, b_rcu_ooe_done_s3_tid, b_rcu_ooe_done_s2_tid, b_rcu_ooe_done_s1_tid, b_rcu_ooe_done_s0_tid})
 `endif
   );
   // ccv_ooe_miu_memop, source end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(91)) u_rpt_ooe_miu_memop (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(97)) u_rpt_ooe_miu_memop (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_ooe_miu_memop_s3_valid, b_ooe_miu_memop_s2_valid, b_ooe_miu_memop_s1_valid, b_ooe_miu_memop_s0_valid}), .src_payload({b_ooe_miu_memop_s3_payload, b_ooe_miu_memop_s2_payload, b_ooe_miu_memop_s1_payload, b_ooe_miu_memop_s0_payload}),
     .src_wake(b_ooe_miu_memop_wake), .src_credit({b_ooe_miu_memop_s3_credit, b_ooe_miu_memop_s2_credit, b_ooe_miu_memop_s1_credit, b_ooe_miu_memop_s0_credit}), .src_stall({b_ooe_miu_memop_s3_stall, b_ooe_miu_memop_s2_stall, b_ooe_miu_memop_s1_stall, b_ooe_miu_memop_s0_stall}),
@@ -580,7 +660,7 @@ module ccv_ooe_w #(
 `endif
   );
   // ccv_ooe_rcu_map, source end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(158)) u_rpt_ooe_rcu_map (
+  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(222)) u_rpt_ooe_rcu_map (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_ooe_rcu_map_valid}), .src_payload({b_ooe_rcu_map_payload}),
     .src_wake(b_ooe_rcu_map_wake), .src_credit({b_ooe_rcu_map_credit}), .src_stall({b_ooe_rcu_map_stall}),

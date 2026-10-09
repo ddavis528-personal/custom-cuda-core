@@ -81,13 +81,13 @@ preliminary field:
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
 | `ccv_ooe_miu_memop` | `mem_op`, `space`, `ordering` |
-| `ccv_ooe_rcu_issue` | `opcode` |
+| `ccv_ooe_rcu_issue` | `bypass_group`, `opcode` |
 | `ccv_pca_fet_mig` | `pcs`, `group_masks` |
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rau_fet_mig` | `bank_select` |
 | `ccv_rau_rcu_mig` | `bank_select` |
 | `ccv_rau_syu_alloc` | `barrier_count` |
-| `ccv_rcu_lane_ops` | `opcode`, `operand`, `operand_byp` |
+| `ccv_rcu_lane_ops` | `sec_opcode`, `operand`, `sec_opnd_pos`, `sec_opnd_width`, `operand_byp` |
 
 ## High-churn parameters
 
@@ -100,6 +100,7 @@ to code that merely carries it, which will not.
 |---|---|---|---|
 | `CCV_L_OPERANDS_PER_LANE` | 3 | **HIGH** | RCU/LANE session -- see the src_arch vs operand mismatch |
 | `CCV_L_PC_GROUPS` | 4 | **HIGH** | divergence model specification |
+| `CCV_L_PRF_LANE_READ_BITS` | 4096 | **HIGH** | RCU/LANE session, with CCV_L_OPERANDS_PER_LANE |
 | `CCV_L_W_OPCODE` | 9 | **HIGH** | ISA opcode census, then DEC/OOE/RCU agree the hops |
 | `CCV_L_W_TL_IN` | 1176 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
 | `CCV_L_W_TL_OUT` | 1225 | **HIGH** | EXB session -- flattened bundle or separate TL channels |
@@ -113,6 +114,7 @@ to code that merely carries it, which will not.
 | `CCV_L_W_PROBE_TYPE` | 2 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
 | `CCV_P_BYP_GROUPS` | 8 | med | LANE per-block session (register OA-4) |
 | `CCV_P_LAT_CLASSES` | 8 | med | LANE per-block session (register OA-4) |
+| `CCV_P_W_BYP_GROUP` | 3 | med | LANE per-block session (register OA-4) |
 | `CCV_P_W_SCHED_ATTR` | 16 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
 | `CCV_L_W_BAR_COUNT` | 7 | low | SYU session -- is the count biased? |

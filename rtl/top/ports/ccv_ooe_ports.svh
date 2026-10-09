@@ -59,47 +59,87 @@
   output logic dec_ooe_uop_s5_credit,
   output logic dec_ooe_uop_s5_stall,
   input  logic dec_ooe_uop_wake,
-  // ooe -> rcu, slot 0 of 4
+  // ooe -> rcu, slot 0 of 9
   output logic ooe_rcu_issue_s0_valid,
   output ccv_ooe_rcu_issue_t ooe_rcu_issue_s0_payload,
   input  logic ooe_rcu_issue_s0_credit,
   input  logic ooe_rcu_issue_s0_stall,
-  // ooe -> rcu, slot 1 of 4
+  // ooe -> rcu, slot 1 of 9
   output logic ooe_rcu_issue_s1_valid,
   output ccv_ooe_rcu_issue_t ooe_rcu_issue_s1_payload,
   input  logic ooe_rcu_issue_s1_credit,
   input  logic ooe_rcu_issue_s1_stall,
-  // ooe -> rcu, slot 2 of 4
+  // ooe -> rcu, slot 2 of 9
   output logic ooe_rcu_issue_s2_valid,
   output ccv_ooe_rcu_issue_t ooe_rcu_issue_s2_payload,
   input  logic ooe_rcu_issue_s2_credit,
   input  logic ooe_rcu_issue_s2_stall,
-  // ooe -> rcu, slot 3 of 4
+  // ooe -> rcu, slot 3 of 9
   output logic ooe_rcu_issue_s3_valid,
   output ccv_ooe_rcu_issue_t ooe_rcu_issue_s3_payload,
   input  logic ooe_rcu_issue_s3_credit,
   input  logic ooe_rcu_issue_s3_stall,
+  // ooe -> rcu, slot 4 of 9
+  output logic ooe_rcu_issue_s4_valid,
+  output ccv_ooe_rcu_issue_t ooe_rcu_issue_s4_payload,
+  input  logic ooe_rcu_issue_s4_credit,
+  input  logic ooe_rcu_issue_s4_stall,
+  // ooe -> rcu, slot 5 of 9
+  output logic ooe_rcu_issue_s5_valid,
+  output ccv_ooe_rcu_issue_t ooe_rcu_issue_s5_payload,
+  input  logic ooe_rcu_issue_s5_credit,
+  input  logic ooe_rcu_issue_s5_stall,
+  // ooe -> rcu, slot 6 of 9
+  output logic ooe_rcu_issue_s6_valid,
+  output ccv_ooe_rcu_issue_t ooe_rcu_issue_s6_payload,
+  input  logic ooe_rcu_issue_s6_credit,
+  input  logic ooe_rcu_issue_s6_stall,
+  // ooe -> rcu, slot 7 of 9
+  output logic ooe_rcu_issue_s7_valid,
+  output ccv_ooe_rcu_issue_t ooe_rcu_issue_s7_payload,
+  input  logic ooe_rcu_issue_s7_credit,
+  input  logic ooe_rcu_issue_s7_stall,
+  // ooe -> rcu, slot 8 of 9
+  output logic ooe_rcu_issue_s8_valid,
+  output ccv_ooe_rcu_issue_t ooe_rcu_issue_s8_payload,
+  input  logic ooe_rcu_issue_s8_credit,
+  input  logic ooe_rcu_issue_s8_stall,
   output logic ooe_rcu_issue_wake,
-  // rcu -> ooe, slot 0 of 4
+  // rcu -> ooe, slot 0 of 7
   input  logic rcu_ooe_done_s0_valid,
   input  ccv_rcu_ooe_done_t rcu_ooe_done_s0_payload,
   output logic rcu_ooe_done_s0_credit,
   output logic rcu_ooe_done_s0_stall,
-  // rcu -> ooe, slot 1 of 4
+  // rcu -> ooe, slot 1 of 7
   input  logic rcu_ooe_done_s1_valid,
   input  ccv_rcu_ooe_done_t rcu_ooe_done_s1_payload,
   output logic rcu_ooe_done_s1_credit,
   output logic rcu_ooe_done_s1_stall,
-  // rcu -> ooe, slot 2 of 4
+  // rcu -> ooe, slot 2 of 7
   input  logic rcu_ooe_done_s2_valid,
   input  ccv_rcu_ooe_done_t rcu_ooe_done_s2_payload,
   output logic rcu_ooe_done_s2_credit,
   output logic rcu_ooe_done_s2_stall,
-  // rcu -> ooe, slot 3 of 4
+  // rcu -> ooe, slot 3 of 7
   input  logic rcu_ooe_done_s3_valid,
   input  ccv_rcu_ooe_done_t rcu_ooe_done_s3_payload,
   output logic rcu_ooe_done_s3_credit,
   output logic rcu_ooe_done_s3_stall,
+  // rcu -> ooe, slot 4 of 7
+  input  logic rcu_ooe_done_s4_valid,
+  input  ccv_rcu_ooe_done_t rcu_ooe_done_s4_payload,
+  output logic rcu_ooe_done_s4_credit,
+  output logic rcu_ooe_done_s4_stall,
+  // rcu -> ooe, slot 5 of 7
+  input  logic rcu_ooe_done_s5_valid,
+  input  ccv_rcu_ooe_done_t rcu_ooe_done_s5_payload,
+  output logic rcu_ooe_done_s5_credit,
+  output logic rcu_ooe_done_s5_stall,
+  // rcu -> ooe, slot 6 of 7
+  input  logic rcu_ooe_done_s6_valid,
+  input  ccv_rcu_ooe_done_t rcu_ooe_done_s6_payload,
+  output logic rcu_ooe_done_s6_credit,
+  output logic rcu_ooe_done_s6_stall,
   input  logic rcu_ooe_done_wake,
   // ooe -> miu, slot 0 of 4
   output logic ooe_miu_memop_s0_valid,
@@ -238,10 +278,18 @@
   , output logic [63:0] ooe_rcu_issue_s1_tid
   , output logic [63:0] ooe_rcu_issue_s2_tid
   , output logic [63:0] ooe_rcu_issue_s3_tid
+  , output logic [63:0] ooe_rcu_issue_s4_tid
+  , output logic [63:0] ooe_rcu_issue_s5_tid
+  , output logic [63:0] ooe_rcu_issue_s6_tid
+  , output logic [63:0] ooe_rcu_issue_s7_tid
+  , output logic [63:0] ooe_rcu_issue_s8_tid
   , input  logic [63:0] rcu_ooe_done_s0_tid
   , input  logic [63:0] rcu_ooe_done_s1_tid
   , input  logic [63:0] rcu_ooe_done_s2_tid
   , input  logic [63:0] rcu_ooe_done_s3_tid
+  , input  logic [63:0] rcu_ooe_done_s4_tid
+  , input  logic [63:0] rcu_ooe_done_s5_tid
+  , input  logic [63:0] rcu_ooe_done_s6_tid
   , output logic [63:0] ooe_miu_memop_s0_tid
   , output logic [63:0] ooe_miu_memop_s1_tid
   , output logic [63:0] ooe_miu_memop_s2_tid

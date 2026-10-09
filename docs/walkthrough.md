@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=48 chan_insts=110 slots=347 sent=459440 received=459440 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=347 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=48 chan_insts=110 slots=163 sent=200945 received=200945 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=163 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -215,12 +215,12 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=221 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-XFER events=540 launched=540 match=yes channels_seen=27
+KERNEL name=vadd finished=1 cycles=222 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
+XFER events=582 launched=582 match=yes channels_seen=27
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 540 messages
+`ccv-sim`'s, and every one of the 582 messages
 launched was seen by the checker bank, which reported nothing. The run
 touches 27/48 channel types. The rest are waiting for
 kernels that need them:
@@ -241,39 +241,39 @@ instruction can be followed across every block it touches. Seq 12,
      37  ccv_fet_dec_instr              fet  -> dec       
      39  ccv_dec_ooe_uop                dec  -> ooe       
      42  EV_DISPATCH                    ooe          
-     60  EV_WAKEUP                      ooe          
-     92  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
-     92  EV_ISSUE                       ooe          
-     93  ccv_ooe_miu_memop              ooe  -> miu       
-     93  ccv_ooe_rcu_issue              ooe  -> rcu       
-     95  ccv_rcu_miu_addr               rcu  -> miu       
-     97  ccv_miu_dcu_req                miu  -> dcu       
-     99  ccv_dcu_mlc_req                dcu  -> mlc       
-    101  ccv_mlc_exb_req                mlc  -> exb       
-    103  ccv_exb_ext_out                exb  -> ext       
-    115  ccv_ext_exb_in                 ext  -> exb       
+     62  EV_WAKEUP                      ooe          
+     93  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
+     93  EV_ISSUE                       ooe          
+     94  ccv_ooe_miu_memop              ooe  -> miu       
+     94  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+     96  ccv_rcu_miu_addr               rcu  -> miu       
+     98  ccv_miu_dcu_req                miu  -> dcu       
+    100  ccv_dcu_mlc_req                dcu  -> mlc       
+    102  ccv_mlc_exb_req                mlc  -> exb       
+    104  ccv_exb_ext_out                exb  -> ext       
     116  ccv_ext_exb_in                 ext  -> exb       
-    118  ccv_exb_mlc_rsp                exb  -> mlc       
-    120  ccv_mlc_dcu_rsp                mlc  -> dcu       
-    122  ccv_dcu_miu_rsp                dcu  -> miu       
-    124  ccv_miu_rcu_data               miu  -> rcu       
-    124  ccv_miu_ooe_cmpl               miu  -> ooe       
-    127  EV_RETIRE                      ooe          
+    117  ccv_ext_exb_in                 ext  -> exb       
+    119  ccv_exb_mlc_rsp                exb  -> mlc       
+    121  ccv_mlc_dcu_rsp                mlc  -> dcu       
+    123  ccv_dcu_miu_rsp                dcu  -> miu       
+    125  ccv_miu_rcu_data               miu  -> rcu       
+    125  ccv_miu_ooe_cmpl               miu  -> ooe       
+    128  EV_RETIRE                      ooe          
 ```
 
 - **Fetch to dispatch in 5 cycles:** FET to DEC to OOE, one
   channel hop each.
-- **Dispatched at 42, issued at 92.** The S1 OOE issues in order
+- **Dispatched at 42, issued at 93.** The S1 OOE issues in order
   and lets one memory operation be in flight at a time. The loads ahead of
   this one (seq 4, 6, 9, 10, 11) each make the whole
   trip first.
 - **Issue:** OOE sends the operation to RCU, which reads the index register,
   and to MIU, which gets the address from RCU.
 - **Memory:** MIU to DCU to MLC to EXB, and out to the testbench's memory at
-  103. The data comes back at 115, in 2 beats, and returns the
+  104. The data comes back at 116, in 2 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
-  the instruction retires at 127, 90 cycles after fetch.
+  the instruction retires at 128, 91 cycles after fetch.
 
 Seq 14, `C_ADD`, the add, is the other shape of
 traffic: the lanes. RCU sends 32 lane operations, one per lane instance,
@@ -285,14 +285,14 @@ in the same cycle, and gets 32 results back 4 cycles later:
      38  ccv_fet_dec_instr              fet  -> dec       
      40  ccv_dec_ooe_uop                dec  -> ooe       
      43  EV_DISPATCH                    ooe          
-    108  EV_WAKEUP                      ooe          
-    113  EV_WAKEUP                      ooe          
-    155  EV_ISSUE                       ooe          
-    156  ccv_ooe_rcu_issue              ooe  -> rcu       
-    158  ccv_rcu_lane_ops               rcu  -> lane   x32
-    162  ccv_lane_rcu_res               lane -> rcu    x32
-    164  ccv_rcu_ooe_done               rcu  -> ooe       
-    166  EV_RETIRE                      ooe          
+    109  EV_WAKEUP                      ooe          
+    114  EV_WAKEUP                      ooe          
+    156  EV_ISSUE                       ooe          
+    157  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    159  ccv_rcu_lane_ops               rcu  -> lane   x32
+    163  ccv_lane_rcu_res               lane -> rcu    x32
+    165  ccv_rcu_ooe_done               rcu  -> ooe       
+    167  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -373,8 +373,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=221 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-TRACES records=610/610 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=222 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
+TRACES records=662/662 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -389,9 +389,9 @@ SV top under `CCV_CHECK`.
 
 | Checker | In the bank | Judges |
 |---|---|---|
-| `ccv_credit_checker` | 347 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
+| `ccv_credit_checker` | 163 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
 | `ccv_wake_checker` | 110 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
-| `ccv_atomic_checker` | 77 | a channel's slots that must move together |
+| `ccv_atomic_checker` | 13 | a channel's slots that must move together |
 | `ccv_lockstep_checker` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
 | `ccv_binding_checker` | 1 | a slot's group key stays bound |
 | `ccv_outstanding_checker` | 1 | request / response pairs across two channels |
@@ -400,10 +400,10 @@ One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
   ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
-    .clk(clk), .rst_n(rst_n), .ch_valid(valid[308]), .ch_credit(credit[308]), .ch_stall(stall[308]),
-    .ch_payload(payload[53906:52695])
+    .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
+    .ch_payload(payload[42344:41133])
 `ifdef CCV_TRACE
-    , .ch_tid(tid[19775:19712])
+    , .ch_tid(tid[7999:7936])
 `endif
   );
 ```
@@ -417,12 +417,12 @@ check:
 
 ```
 [20000] %Error: ccv_credit_checker.sv:293: Assertion failed in bank.ccv_skel_checkers.u_fet_dec_instr_s0: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=48 chan_insts=110 slots=347 sent=450900 received=450900 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=333 idle_slots=0 violations=14
+SKEL cycles=2000 blocks=45 chan_types=48 chan_insts=110 slots=163 sent=192201 received=192201 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=149 idle_slots=0 violations=14
 ```
 
 The C++ receivers count the same leak from their side:
 `credit_leaks=42`, and only
-333 of 347 slots have all
+149 of 163 slots have all
 their credits home at the end.
 
 ## 10. Proved, for all time

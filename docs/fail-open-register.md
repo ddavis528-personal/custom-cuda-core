@@ -45,11 +45,11 @@ broken it once and watched it notice.
 | Checker credit depth vs the credit loop | **silent** | a depth below the loop runs the channel below full bandwidth with no protocol violation (Q-43). A `DEPTH` one below the loop must trip `cfg_depth_covers_credit_loop`; full rate at the loop and not below it is proved (`check-formal.sh`) | `check-if.sh`, `check-formal.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
-| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 347 checkers fire by name; `fixed-all`: all 274 fixed-latency ones | `check-skel.sh` |
-| Atomic acceptance | **silent** | `--break atomic-all`: all 77 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
+| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 163 checkers fire by name; `fixed-all`: all 90 fixed-latency ones | `check-skel.sh` |
+| Atomic acceptance | **silent** | `--break atomic-all`: all 13 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
 | Ordered consumption (per key) | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
 | Lane lockstep | **silent** | `--break lockstep-all`: one lane alone — both lockstep checkers fire, nothing else | `check-skel.sh` |
-| Lane slot binding (same instruction per slot) | **silent** | `--break misbind`: lane 7 carries slot k+1's instruction in slot k — only `lockstep_id` fires | `check-skel.sh` |
+| Lane slot binding (same instruction per slot) | **silent** | `--break misbind`: lane 7 carries slot k+1's instruction in slot k, or its stream's next one on a one-slot channel — only `lockstep_id` fires | `check-skel.sh` |
 | Slot attribute specification | **silent** | each rule in `gen-interfaces.py` rejects its bad case (checked once, by mutation) | `gen-interfaces.py` |
 | Id class per channel | **silent** | `--break wrong-class`: all 41 channels report | `check-skel.sh` |
 | Trace id kept out of synthesis | **silent** | Yosys asked both ways: no `ch_tid` without `CCV_TRACE`, present with | `check-skel.sh` |
