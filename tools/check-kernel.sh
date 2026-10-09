@@ -285,8 +285,8 @@ fi
 # land before the value. 259 -> 676 when the lanes began answering at
 # CCV_LAT_LANE rather than early, TI-8: the misplaced movi's round trip now
 # lands two cycles later, so more readers land before the value. 676 -> 516
-# when the lane channel became one message a cycle under OOE's interim
-# one-lane-op cap, TI-9: the readers issue later, so fewer land before it.)
+# when the lane channel became one message a cycle and OOE one full-width
+# lane op a cycle, TI-9: the readers issue later, so fewer land before it.)
 # One lane message a cycle also means the misplaced movi takes the message
 # OOE scheduled for the lane op issued beside it, seq 3's srd, whose done
 # V-35 then names a cycle late too: the cost of the movi, not a second fault.
@@ -662,8 +662,8 @@ fi
 # a dependant that took the register file's value instead would read it
 # stale. Every kernel must pass so with bypass alone, and with both modes
 # off; byp forwards four operands, a third operand among them, and merge a
-# merge_data. With both off nothing forwards. (byp forwarded five while lane
-# ops co-issued; under OOE's interim one-lane-op cap, TI-9, tid's third
+# merge_data. With both off nothing forwards. (byp forwarded five while
+# full-width lane ops could co-issue; at one a cycle, TI-9, tid's third
 # reader, seq 8, issues after tid's write lands and reads the register file.)
 for k in $(ls build/oracle); do
   for cfg in bypass=1,l1_spec=0 bypass=0,l1_spec=0; do
@@ -717,10 +717,11 @@ fi
 
 # Sectioned lanes (OI-28 to OI-33, TI-9). ccv_ooe_rcu_issue is one slot per
 # select resource, S0-S3, P0-P3 and R, and co-issued footprints are disjoint
-# (V-60). Until OI's per-resource select (OI-31), OOE's interim cap issues one
-# full-width lane op, one memop and one RCU op a cycle. Lifted, a second op
-# claims a group already held, and RCU refuses every slot the two share: the
-# lane sections for one pair, the pipes for two more.
+# (V-60), which OOE's sectioned select (OI-31) guarantees by construction.
+# no-resource-cap makes the model grant a second lane op and a second memop
+# onto resources already held (inject_double_grant): a second op claims a
+# group already held, and RCU refuses every slot the two share: the lane
+# sections for one pair, the pipes for two more.
 "$SKEL" --kernel "$K" --break no-resource-cap >"$B/kernel_no-resource-cap.log" 2>&1
 log="$B/kernel_no-resource-cap.log"
 if grep -q "^CHECK rcu: V-60: seq 3's footprint 1111 overlaps seq 2's at S0" "$log" &&

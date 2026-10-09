@@ -191,8 +191,9 @@ group of ports per SLOT, the payload typed:
 suffix appears only when its dimension exists: `_s<K>` on a channel of rate
 above 1, `_c<NN>` (two digits) on a replicated channel where the name
 refers to ONE of its copies. RCU, which owns all 32 lanes' copies, has
-`rcu_lane_ops_c05_s2_payload`; the lane that IS copy 5 has
-`rcu_lane_ops_s2_payload`, and the top's net is `rcu_lane_ops_c05_s2_payload`.
+`rcu_lane_ops_c05_payload` (rate 1, so no `_s<K>`); the lane that IS copy 5
+has `rcu_lane_ops_payload`, and the top's net is `rcu_lane_ops_c05_payload`.
+A rated channel adds the slot: `ooe_rcu_issue_s2_payload`.
 A slot's four signals share one prefix, so the group is found by name.
 
 Per slot rather than an array of structs, deliberately: a packed array of

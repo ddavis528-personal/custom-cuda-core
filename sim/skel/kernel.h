@@ -108,8 +108,9 @@ struct Kernel {
   ///   no-lane-bypass RCU never sets operand_byp, so a dependant OOE woke at
   ///                  CCV_LAT_LANE_BYP takes the stale value it read from the
   ///                  register file (TI-8; with CCV_OOE_CONFIG=bypass=1)
-  ///   no-resource-cap OOE's select lets two ops claim one resource group in
-  ///                  a cycle, and the second lead takes the next free slot of
+  ///   no-resource-cap OOE's select grants a second lane op and a second memop
+  ///                  onto resources already held (inject_double_grant), and
+  ///                  the second lead takes the next free slot of
   ///                  ccv_ooe_rcu_issue: RCU refuses the overlap (V-60, TI-9)
   ///   bad-pos        OOE names the first GPR-writing lane op's 32-bit
   ///                  destination at position 1, overrunning its row: RCU

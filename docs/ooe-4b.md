@@ -147,8 +147,11 @@ coverage counts. They exercise:
   answer at `CCV_LAT_LANE`, so a dependant woken at `CCV_LAT_LANE_BYP`
   reads the register file before the write and takes its operand from the
   lane: RCU names the producer in `operand_byp` on `ccv_rcu_lane_ops`. The
-  `byp` kernel forwards five operands; `no-lane-bypass` and an OOE
-  bypassing at 3 must fail.
+  `byp` kernel forwards four operands; `no-lane-bypass` and an OOE
+  bypassing at 3 must fail;
+- the sectioned select (OI-31) over nine resource slots, at 32 bits only:
+  V-60 at RCU, with `no-resource-cap`, `bad-pos` and `narrow-pipes` as its
+  controls.
 
 They cannot yet exercise the following. Each needs stub work, which belongs
 to the top-level session, in this order:
@@ -159,6 +162,10 @@ to the top-level session, in this order:
 4. **Demotion, kill and restore**: neither the RAU nor PCA stub models them,
    and restore is also blocked on Q-39.
 5. **Most of the compiler corpus**: DEC's table lacks several ops.
+6. **Narrow ops**: the RCU, LANE and MIU stubs refuse anything narrower than
+   32 bits by name. Per-section execution, slice write-back and sliced
+   address reads come once TI-10 (the section owner on `ccv_rcu_lane_ops`)
+   settles; vadd16 is the first kernel.
 
 ## Running it
 

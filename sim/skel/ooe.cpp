@@ -305,7 +305,9 @@ private:
     const bool merge = issue_mask != 0xffffffffu || e.op->guard;
     // A masked load owes a copy-only op beside it (A-33, A-38): MIU writes
     // only its active lanes, so the inactive ones are copied from the old
-    // destination through a lane, on a second issue slot the same cycle.
+    // destination through a lane. The stub issues it in the load's cycle on
+    // the lane sections S0-S3, while the load holds the pipes P0-P3; the
+    // model issues it a cycle ahead (V-61).
     const bool copy = merge && mem && attrMemKind(e.attr) == kMemKLoad;
     const unsigned cslot = kSlotS0;
     auto groupFree = [&](unsigned lead) {

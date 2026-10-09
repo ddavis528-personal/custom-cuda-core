@@ -699,10 +699,10 @@
       "name": "CCV_P_FOOT_MIN_FP",
       "value": 2,
       "status": "provisional",
-      "decided_at": "LANE per-block session",
-      "source": "AR-12, OA's response AR-12 (2026-10-08)",
+      "decided_at": "Daniel, on IS-7: a cost choice, costed by AR",
+      "source": "AR-12, OA's response AR-12 (2026-10-08); IS-7 and AR's response (2026-10-09)",
       "require": "CCV_P_FOOT_MIN_FP <= CCV_SECTIONS",
-      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: two sections, since the ISA has no 8-bit FP arithmetic (e4m3 and e5m2 appear only inside dp4, which reads full width)."
+      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: two sections, a cost choice for the first build pending Daniel on IS-7. The ISA does define 8-bit FP arithmetic: section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1. A minimum of 2 runs those at 2x the 32-bit rate where integer reaches 4x; a minimum of 1 would need a per-section FP8 datapath. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 1.47x over fp32 at 2 against 2.04x at 1 (four warps)."
     },
     {
       "name": "CCV_P_FOOT_MIN_ADDR",
