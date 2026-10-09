@@ -533,7 +533,6 @@ Config groupConfig() {
   c.byp[4][4] = 6;      // SFU -> SFU
   c.byp[4][1] = 9;      // SFU -> ALU
   c.byp[1][4] = 5;      // ALU -> SFU
-  c.byp[0][1] = 2;      // RCU op -> ALU
   return c;
 }
 
@@ -600,7 +599,7 @@ void testBypassGroups() {
   add(kSfu, 5, 4);    // tid 5: ALU -> SFU, 5
   add(kLane, 6, 4);   // tid 6: ALU -> ALU, the default CCV_LAT_LANE_BYP
   add(kRcuOp, 7, -1); // tid 7
-  add(kLane, 8, 7);   // tid 8: RCU -> ALU, 2
+  add(kLane, 8, 7);   // tid 8: RCU -> ALU: single-time, CCV_LAT_RCU
   add(kRcuOp, 9, 4);  // tid 9: ALU -> RCU: no bypass, CCV_LAT_LANE
   add(kRcuOp, 10, 1); // tid 10: SFU -> RCU: no bypass, the SFU's 12
   Op ex; ex.k = kExit; p.push_back(ex);
@@ -608,7 +607,7 @@ void testBypassGroups() {
   e.finish();
   struct W { uint64_t prod, cons; unsigned want; const char *what; };
   const W ws[] = {{1, 2, 6, "SFU -> SFU"}, {1, 3, 9, "SFU -> ALU"}, {4, 5, 5, "ALU -> SFU"},
-                  {4, 6, c.lat_lane_byp, "ALU -> ALU"}, {7, 8, 2, "RCU -> ALU"},
+                  {4, 6, c.lat_lane_byp, "ALU -> ALU"}, {7, 8, c.lat_rcu, "RCU -> ALU"},
                   {4, 9, c.lat_lane, "ALU -> RCU"}, {1, 10, 12, "SFU -> RCU"}};
   for (const W &w : ws)
     EXPECT(issueCycle(e, w.cons) - issueCycle(e, w.prod) == w.want, "%s woke after %llu, want %u",
@@ -889,6 +888,20 @@ void testBarrier() {
 /// The free list as the RTL builds it (OI-22): allocation from a rotating
 /// pointer, so a freed register comes back only once the pointer wraps, and a
 /// register freed in a cycle is not allocated until the next.
+/// V-59 is an elaboration check: a configuration whose shortest wake is
+/// under 3 cycles is refused, since cancel moves one hop a cycle (OA-1).
+void testV59() {
+  g_test = "v-59";
+  Config c = baseConfig();
+  EXPECT(c.check().empty(), "the base configuration passes: %s", c.check().c_str());
+  c.lat_rcu = 2;
+  EXPECT(c.check().rfind("V-59", 0) == 0, "an RCU latency of 2 refused: '%s'", c.check().c_str());
+  c = baseConfig();
+  c.bypass = true;
+  c.lat_lane_byp = 2;
+  EXPECT(c.check().rfind("V-59", 0) == 0, "a bypass at 2 refused: '%s'", c.check().c_str());
+}
+
 void testFreeVec() {
   g_test = "free-vec";
   FreeVec f;
@@ -1093,6 +1106,7 @@ int main(int argc, char **argv) {
   testBarrier();
   testChwidth();
   testFreeVec();
+  testV59();
   testFixedWindowPreds();
   testRandom(seeds);
   testControls();

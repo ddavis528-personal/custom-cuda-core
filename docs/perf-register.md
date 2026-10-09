@@ -46,8 +46,9 @@ it.
 | PF-22 | Retire wider than two per ROB | retire | deferred (sweep: not worth it now) |
 | PF-23 | Demotion abandons outstanding loads | demotion | deferred |
 | PF-24 | Divergent branch prediction | FET | deferred (doc) |
-| PF-25 | Predicate renaming in place of the fixed-window holds | rename | owed, not optional (S1 mode) |
+| PF-25 | Predicate renaming in place of the fixed-window holds | rename | adopted (OI-3) |
 | PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
+| PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | deferred (DA, AR-13) |
 
 ## Entries
 
@@ -324,9 +325,9 @@ it.
   writes behind older readers and writers (`hold.pred_window`).
 - **Alternative:** the design's own predicate renaming (Q-21, A-39), which
   the model already has.
-- **Status:** owed, not optional. It turns on with A-75 and the
-  predicate-map hook ([`ooe-model.md`](ooe-model.md), "S1 modes"). Listed
-  so the hold's cost on S1 kernels is not mistaken for the design's.
+- **Status:** adopted. TI-1 (A-75) brought the renamed predicate sources
+  and OI-3 the predicate-map hook, so the kernels run renamed by default
+  ([`ooe-model.md`](ooe-model.md), "S1 modes").
 
 ### PF-26 Co-issue lane ops whose lane masks are disjoint
 
@@ -345,3 +346,21 @@ it.
 - **Signal:** cycles where a ready lane op waits behind another lane op
   whose mask is disjoint from it (to add, `ready_not_selected` split by
   that cause).
+
+### PF-27 Fold section alignment into the producing op
+
+- **Now:** where a narrow op's operands sit in different sections, rename
+  inserts an explicit move, executed in RCU on RCU's own grant (DA's
+  responses OI-30 and AR-13, 2026-10-08). It costs no section throughput,
+  but it takes an issue slot and a temporary slice, and it adds RCU's
+  latency to the consumer.
+- **Alternative:** the producing load or ALU op writes its result straight
+  into the section its consumer needs, so no move exists.
+- **Cost:** the producer's latency would then depend on its destination's
+  slice position. That is variable latency into the bypass network and a
+  new set of bypass cases, which is why it was rejected for now. A
+  read-path byte rotate on one operand port is the other way to remove
+  the moves (AR-13).
+- **Signal:** inserted moves per narrow op on `vadd16` (to add, once slice
+  placement exists: `rename.section_move`). Also the cycles a move waits
+  because four narrow ops hold the four issue slots (AR-13's open point).
