@@ -44,7 +44,8 @@ grill-me ran on 2026-09-23. Here is each input's status:
    top-level work that feeds it, in order: Review A-75 (what OOE needs
    from DEC so it never decodes `opcode`) is settled and applied as TI-1;
    sectioned lanes (TI-9) are in the schema and the stubs, full width only,
-   with OOE's interim one-lane-op cap until OI's per-resource select;
+   and the kernels run OOE's sectioned select (OI-31); narrow ops in the
+   stubs follow once TI-10 settles;
    next, wrong-path fetch and squash in the stubs; several warps; divergence; then demotion, kill and restore.
 1. **S2: kernels that stress what vadd does not.** vadd has no divergence,
    no loop, one warp, and no SPM or barriers, so 21 of the 48 channels carried

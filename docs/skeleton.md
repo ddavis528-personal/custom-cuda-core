@@ -586,7 +586,8 @@ ID, rendered in `docs/payload-spec.md`.
    predicate values, so it is the sole producer of `active_mask`, on
    `rcu_miu_addr` and `miu_rcu_data`. `ooe_rcu_issue` and `ooe_miu_memop`
    carry `issue_mask`, a different field that is never compared with it.
-   `pred_bit` is the same computation per lane. MIU checks the invariant that
+   `pred_bit` (per section since sectioned lanes, `sec_pred_bit`) is the same
+   computation per lane. MIU checks the invariant that
    holds, active ⊆ issue. `EV_RETIRE.active_mask` is still always
    `0xffffffff`.
 4. **Guard and predicate destination: two fields (Q-21).** The ISA encodes
@@ -727,7 +728,8 @@ the way. See `fail-open-register.md`.
   write predicates. A lane stub fails if an op that reads no lane data reaches
   it, and RCU fails if one it executes reads a GPR. Three built ops break the
   rule (`movi`, `movi48`, `srd`) and are the one pending exception (Q-38).
-  The fields this implies:
+  The fields this implies (per section since sectioned lanes: `sec_pred_data`,
+  `sec_pred_bit`, `sec_pred_out`):
   - `pred_data` on `rcu_lane_ops`, sel's selector, beside `pred_bit`, which
     stays the enable;
   - `pred_out` on `lane_rcu_res`, a lane's predicate result (`setp` used to
@@ -884,14 +886,15 @@ The `srd` response: Q-38 closed, and Q-32's rule amended.
 Q-40 closed. Predicate logic executes in RCU, but predicate values always
 reach the lanes, one bit per lane, and the mask always gates.
 
-- **The mask always gates.** A lane whose `pred_bit` is clear doesn't
+- **The mask always gates.** A section whose `sec_pred_bit` is clear doesn't
   capture its operands or compute. The stub drives poison on its outputs,
   RCU writes back only the lanes the mask enables, and
   `--break ignore-mask` (RCU writes every lane) puts that poison into
   pguard's P1.
-- **The mask travels one cycle ahead of the GPR operands.** `pred_bit`,
-  `pred_data` and `section_en` are `rcu_lane_ops`' **lead fields**
-  (`lead_fields` in the schema).
+- **The mask travels one cycle ahead of the GPR operands.** `section_en`,
+  `sec_owner`, `sec_pred_bit` and `sec_pred_data` are `rcu_lane_ops`'
+  **lead fields** (`lead_fields` in the schema; `pred_bit`, `pred_data` and
+  `section_en` before sectioned lanes).
   - **The choice, stated:** it is the same channel and the same packed
     struct. The lead slice of the payload register is written with valid, not
     a cycle after it. No new signal, port or credit: the mask can't lose step
@@ -1034,8 +1037,8 @@ matters for the skeleton:
   fetches no wrong path), so the RAT has no recovery yet.
 - **The copy-only op** (A-33, A-38; `test/kernels/mload/`). A masked load
   writes its fresh destination's active lanes from MIU; OOE issues a second
-  op beside it in the same cycle, on the lane sections while the load holds
-  the pipes (sectioned lanes, below), with opcode
+  op on the lane sections, at least a cycle ahead of the load in the model
+  (V-61) and beside it in the S1 stub (`CCV_OOE_IMPL=stub`), with opcode
   `CCV_OP_PRF_COPY` (0x1FF, a generated parameter: the all-ones opcode), the
   load's tag and destination, and the old destination as `merge_data`. RCU
   computes the active lanes as for any op and sends it to the lanes. An
@@ -1118,7 +1121,8 @@ matters for the skeleton:
   links widen it (3 bits in `test/phys/links_split.json`). RCU refuses a
   dependant less than `CCV_LAT_LANE_BYP` behind its producer. `rcu_ooe_done`
   is a free pool, so a done takes any slot. The `byp` kernel forwards five
-  operands, MADLO's third among them; every kernel passes with
+  operands, MADLO's third among them (four since one lane op a cycle, under
+  sectioned lanes below); every kernel passes with
   `CCV_OOE_CONFIG=bypass=1` and with `l1_spec` as well, on both hosts and
   across the split. Controls: `no-lane-bypass` (RCU sets no select: byp's
   five forwarded operands read stale on all 32 lanes, merge's merge_data on
@@ -1183,18 +1187,21 @@ matters for the skeleton:
   and refuses a register past its row; MIU refuses a `pipes` that is not
   the memop's width's span from its position. The stubs model full-width
   ops only: one op a lane message, holding all four sections, and RCU and
-  the lanes refuse anything narrower by name. Until OI's per-resource
-  select (OI-31), OOE's select carries an interim cap, `resource_cap`: one
-  lane op (a masked load's copy among them), one memop and one RCU op a
-  cycle, which is what nine slots carry at 32 bits (edits in OI's files, in
-  a commit of their own). loop takes 2736 cycles against 2636, and every
+  the lanes refuse anything narrower by name. The kernels run OOE's
+  sectioned select (OI-31: nine one-grant picks, so co-issued footprints are
+  disjoint by construction), and the adapter sends each operand's row and
+  position from its name (OI's b71cbf3, which replaced TI's interim
+  `resource_cap`). With every S1 register 32-bit at position 0, a cycle
+  carries at most one lane op, one memop and one RCU op: a full-width op
+  takes its whole group. loop takes 2736 cycles against 2636, and every
   kernel matches ccv-sim on both OOE implementations and both hosts.
-  Controls: `no-resource-cap` (two ops claim one group; RCU refuses each
-  shared slot), `bad-pos` (a 32-bit destination at position 1; RCU and the
-  lanes refuse it) and `narrow-pipes` (one pipe for a 32-bit memop; MIU
+  Controls: `no-resource-cap` (the model's `inject_double_grant` grants a
+  second lane op and a second memop onto resources already held; RCU refuses
+  each shared slot), `bad-pos` (a 32-bit destination at position 1; RCU and
+  the lanes refuse it) and `narrow-pipes` (one pipe for a 32-bit memop; MIU
   refuses all eight of vadd's). `misbind` gives lane 7 its stream's next
   instruction, since a one-slot channel has no other slot. Re-pinned for
-  the cap, each with its reason in `check-kernel.sh`: byp forwards four
+  one full-width lane op a cycle, each with its reason in `check-kernel.sh`: byp forwards four
   operands, not five (tid's third reader issues after tid's write lands),
   hit's late-data controls catch four readers, not five, an OOE bypassing at
   3 meets two dependants, not three, `movi-in-lane`'s total is 516 with a
@@ -1223,14 +1230,15 @@ decisions.
 | `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
 | `fet_dec_instr.group_mask`, `fetch_epoch` → `dec_ooe_uop` | the record's issue mask, which is the PC group with no divergence model; the epoch of FET's last redirect. OOE issues the mask as `issue_mask` and drops a uop of any other epoch (A-69, A-70) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Names from OOE's RAT: a FIFO free list over the 192-register pool, the zero register for anything unwritten (RAU allocates nothing, A-30) |
-| `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) rides the next issue slot in the same cycle, with the load's issue fields; an unguarded one masked only by its issue mask would name the zero predicate, negated |
+| `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) issues on the lane sections with the load's issue fields, at least a cycle ahead of the load in the model (V-61) and beside it in the S1 stub; an unguarded one masked only by its issue mask would name the zero predicate, negated |
 | `ooe_miu_memop.phys_dst`, `phys_pred` → `miu_rcu_data` | echoed unchanged by MIU; RCU writes `load_data` to `phys_dst`, and `pred_result` to `phys_pred` only when `pred_we` |
 | operand slot of an ALU immediate | per opcode (the skeleton's table); RCU fills it at register read |
-| `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | `4·warp + index` (predicates not renamed); RCU writes the destination only when `pred_we`, merging by read-modify-write from `phys_pred_old_dst`: active lanes from the lanes' `pred_out`, the rest kept (A-43) |
+| `ooe_rcu_issue.phys_pred_guard`, `phys_pred_dst` | the model's predicate RAT (OI-3); the S1 stub keeps fixed windows, `4·warp + index`. RCU writes the destination only when `pred_we`, merging by read-modify-write from `phys_pred_old_dst`: active lanes from the lanes' `sec_pred_out`, the rest kept (A-43) |
 | `rcu_lane_ops.merge_data`, `lane_rcu_res.result` | the old destination's value per lane; an inactive lane returns it as its result, and checks it against the oracle's post-state, which for an inactive lane is the old value. RCU then writes every lane (per-lane write enables all on, A-44); for the copy-only op, only the inactive lanes, and an enabled lane's result is poison |
-| `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i* |
-| `lane_rcu_res.result`, `pred_out` | the GPR value; the predicate result in `pred_out` |
-| `rcu_lane_ops.pred_data` | a predicate read as data (sel's selector), negate applied; `pred_bit` is the enable. Both, and `section_en`, are lead fields: on the wire with valid, a cycle ahead of `operand` |
+| `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i*; its byte *k* is section *k* |
+| `rcu_lane_ops` per-section fields | S0 at the LSBs; `sec_opnd_pos`, `sec_opnd_width` and `operand_byp` section-major, entry 4*k* + *i* is section *k*'s port *i* (src0-src2, then merge). The S1 stubs send one full-width op a message: `section_en` 1111, `sec_owner` 0 for every section |
+| `lane_rcu_res.result`, `sec_valid`, `sec_pred_out` | the GPR value; the sections the op held; its predicate result on its lead section |
+| `rcu_lane_ops.sec_pred_data` | a predicate read as data (sel's selector), negate applied; `sec_pred_bit` is the enable. Both, with `section_en` and `sec_owner`, are lead fields: on the wire with valid, a cycle ahead of `operand` |
 | `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |
@@ -1241,7 +1249,7 @@ decisions.
 | `ext_exb_in.tl_in` | flattened TL-C: B `[640:0]`, D `[1173:641]` (opcode, param, size, source, sink, denied, data 512, corrupt), valids b/d `[1175:1174]`. AccessAck = 0, AccessAckData = 1 |
 | line on the link | two 512-bit beats, same address; EXB and the testbench count them |
 | `req_id` | each requester allocates the lowest free id below 2^width on its own hop and holds it until the response; MLC maps its EXB-side id back to the requester's id |
-| `issue_mask` / `active_mask` / `pred_bit` | OOE sends `issue_mask` (all 32: no divergence yet). RCU computes issue ∧ guard as `active_mask` and per lane as `pred_bit`; a predicate read as data is not a guard. MIU touches only active lanes, and RCU writes only active lanes of a load |
+| `issue_mask` / `active_mask` / `sec_pred_bit` | OOE sends `issue_mask` (all 32: no divergence yet). RCU computes issue ∧ guard as `active_mask` and per lane as `sec_pred_bit`; a predicate read as data is not a guard. MIU touches only active lanes, and RCU writes only active lanes of a load |
 | `fet_dec_instr.tier1_id` | slot / 2: warp 0 is tier-1 stream 0 |
 | `fet_dec_instr.checkpoint_id`, `pred_taken` | FET takes a checkpoint per branch, round-robin over `CCV_P_BR_CKPTS`, and predicts static not-taken (fetch still follows the oracle, so a taken branch is the mispredict). Not limited to 4 in flight: FET hears only of mispredicts, so it cannot tell when a checkpoint frees (Q-52) |
 | `ooe_fet_redirect.checkpoint_id`, `taken_mask` | the branch's checkpoint, echoed through DEC and OOE, which FET checks is the one it took (`--break corrupt-ckpt`); the taken lanes. OOE redirects when RCU's outcome differs from `pred_taken` (A-42) |
