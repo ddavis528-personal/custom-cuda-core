@@ -50,6 +50,7 @@ so this is a build artifact rather than something to remember.
 | `sim/ooe/ooe_block.cpp` | — | `CCV_LAT_L1_MISS_WAKE` |
 | `sim/ooe/ooe_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_BR_CKPTS`, `CCV_P_W_FETCH_EPOCH` |
 | `sim/ooe/ooe_core.h` | — | — |
+| `sim/ooe/ooe_test.cpp` | — | `CCV_P_FOOT_MIN_FP` |
 | `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/skel/ooe.cpp` | — | — |
 | `sim/skel/stub.h` | — | — |
