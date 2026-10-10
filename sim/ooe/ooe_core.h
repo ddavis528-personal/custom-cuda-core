@@ -435,6 +435,7 @@ public:
       bit_[p] = 0;
       --ready_;
       ptr_ = (p + 1) % n;
+      allocs_.push_back(p);
       return p;
     }
     return n;   // caller checked ready()
@@ -444,9 +445,20 @@ public:
     if (has(p)) return false;
     pend_[p] = 1;
     ++npend_;
+    frees_.push_back(p);
     return true;
   }
+  /// The allocations, in order, and frees since the last clock(): one clock
+  /// edge's worth, including those made by inputs between cycles
+  /// (ooe_freelist's testbench drives the RTL with them).
+  const std::vector<unsigned> &cycleAllocs() const { return allocs_; }
+  const std::vector<unsigned> &cycleFrees() const { return frees_; }
+  unsigned pointer() const { return ptr_; }
+  unsigned capacity() const { return unsigned(bit_.size()); }
+  bool bit(unsigned p) const { return bit_[p]; }
   void clock() {
+    allocs_.clear();
+    frees_.clear();
     if (!npend_) return;
     for (size_t p = 0; p != pend_.size(); ++p)
       if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
@@ -456,6 +468,7 @@ public:
 
 private:
   std::vector<uint8_t> bit_, pend_;
+  std::vector<unsigned> allocs_, frees_;
   size_t ready_ = 0, npend_ = 0;
   unsigned ptr_ = 0;
 };
@@ -727,6 +740,7 @@ private:
   // producer drives kWakeLines wake lines, its fastest bypass point plus
   // each bypass penalty, and the PRF read; each matrix cell selects one.
   std::vector<unsigned> pens_;        ///< the distinct penalties, sorted
+  uint64_t serial_ = 0;
   bool pens_fit_ = true;              ///< at most kWakeLines - 1 of them
 public:
   static constexpr unsigned kWakeLines = 4, kLateLine = kWakeLines - 1;
@@ -740,6 +754,12 @@ public:
   /// Whether the configured penalties fit the lines (a knob-set table may
   /// not); the structural check runs only when they do.
   bool wakeLinesFit() const { return pens_fit_; }
+  /// A number unique to this core among all constructed in the process, so
+  /// an observer can tell a new core from one at a reused address.
+  uint64_t serial() const { return serial_; }
+  /// The GPR row free list and the predicate free list (ooe_freelist).
+  const FreeVec &gprFree() const { return gfree_; }
+  const FreeVec &predFree() const { return pfree_; }
   unsigned rsEntries() const { return n_; }
   bool rsValid(unsigned e) const { return rs_[e].valid; }
   bool rsIssued(unsigned e) const { return rs_[e].issued; }

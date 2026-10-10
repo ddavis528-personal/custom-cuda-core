@@ -38,6 +38,9 @@ bool g_quiet = false;     ///< a negative control's expected failures
 /// Called after every core cycle of every Env: an RTL testbench compiled
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
+/// Called just before every core cycle, after that cycle's inputs: the
+/// whole interval between two FreeVec::clock() calls is then visible.
+void (*g_pre_cycle_hook)(const Core &) = nullptr;
 std::string g_test;
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
@@ -440,6 +443,7 @@ struct Env {
       it = landings.erase(it);
     }
     fetApply();
+    if (g_pre_cycle_hook) g_pre_cycle_hook(core);
     core.cycle(t);
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
@@ -1443,6 +1447,13 @@ int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = hook;
   testRandom(seeds);
   g_cycle_hook = nullptr;
+  return g_fail;
+}
+/// The same, with the hook just before each core cycle instead.
+int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {
+  g_pre_cycle_hook = hook;
+  testRandom(seeds);
+  g_pre_cycle_hook = nullptr;
   return g_fail;
 }
 #else

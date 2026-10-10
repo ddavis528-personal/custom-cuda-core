@@ -5,7 +5,9 @@
 #   RS classes' sizes: the lane-and-RCU class (CCV_P_RS_RCU entries, S0-S3
 #   and R) and the MIU class (CCV_P_RS_MIU entries, P0-P3);
 # - ooe_ready against the live model through its random unit tests
-#   (test/ooe/ready_tb.cpp).
+#   (test/ooe/ready_tb.cpp);
+# - ooe_freelist against the model's own free lists, live, for the GPR rows
+#   and the predicates (test/ooe/freelist_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -65,5 +67,37 @@ for c in code-shift no-late; do
   else
     say "  control $c (ready)" "caught"
   fi
+done
+
+# ooe_freelist, driven from the model's own free lists after every cycle:
+# the GPR rows and the predicates.
+phys=$(sed -n 's/.*localparam int CCV_P_PHYS_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+preds=$(sed -n 's/.*localparam int CCV_P_PRED_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+width=$(sed -n 's/.*localparam int CCV_ISSUE_WIDTH = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+for cfg in "gpr 0 $phys" "pred 1 $preds"; do
+  set -- $cfg
+  name=$1 pool=$2 n=$3
+  dir=build/ooe-rtl/freelist_$name
+  mkdir -p "$dir"
+  if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+        -GN="$n" -GA="$width" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
+        "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+    say "freelist $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
+  fi
+  if out=$("$dir/freelist_tb" "$seeds" 2>&1); then
+    say "freelist $name ($n entries, $width ports) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+  else
+    say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+  fi
+  for c in drop-free extra-alloc; do
+    if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
+      say "  control $c (freelist $name)" "MISSED"; fail=1
+    else
+      say "  control $c (freelist $name)" "caught"
+    fi
+  done
 done
 exit $fail

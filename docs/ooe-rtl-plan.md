@@ -21,10 +21,11 @@ Settled since this agenda was written:
 - **5, the S1 modes.** Bypass, L1 speculation and predicate renaming are
   all on in the kernels, so the RTL carries one rename scheme.
 
-Still open for the RTL grill-me with DA: **3** (the decode queue), **4**
-(payload storage), and **6** (the reset line). The reset line must now also
-cover the sectioned state: row owners, live-section masks and per-name
-widths.
+Decided at the RTL grill-me (DA's response OI-36, 2026-10-10): **3**, per-warp
+decode FIFOs on a shared 12-entry credit pool; **4**, payload in the RS, read
+through the grant; **6**, the reset line as the design doc's Reset line
+section states it (OA's response OI-36). Sub-blocks are named
+`ooe_<name>` and run on `ooe_core_clk` (DA's responses OI-37).
 
 Built (`rtl/ooe/`):
 
@@ -52,6 +53,24 @@ Built (`rtl/ooe/`):
   skipped and counted. Controls code-shift and no-late must each be
   caught. Logic depth is 9.8 NGD in 8 levels, against the estimate's 9.1,
   so the ready stage is about 16.8 NGD of 25.
+
+- **`ooe_freelist`**, a free list: a bit per entry, up to four allocations
+  a cycle in rotating order from a pointer, any number of frees a cycle.
+  It is the first sequential sub-block, with all its state reset. Its state
+  is one register, {pointer, free bits}, whose next value is a function of
+  that register and the cycle's inputs alone. That is how a one-cycle loop
+  over several fields is written under CCV-L23. `test/ooe/freelist_tb.cpp`
+  drives it, just before every model cycle, with one clock edge's
+  allocations and frees on the model's own `FreeVec`, for the GPR rows
+  (192) and the predicates (48). Over 25 seeds and 200 cores it matches
+  every grant, every free bit and the pointer. Controls drop-free and
+  extra-alloc must each be caught. **Timing is not met.** Written as a
+  behavioural scan, the allocation path synthesises to a ripple chain:
+  344 NGD in 250 levels at 48 entries. A parallel-prefix form (rotate by
+  masking at the pointer, a saturating prefix count, one-hot to index) is
+  about 30 NGD on paper at 192 entries, still over a stage. So allocation
+  likely needs candidates prepared a cycle ahead, which changes when a
+  freed entry can be taken, and with it the model. That is OI-38, for OA.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 

@@ -134,6 +134,8 @@ SchedAttr SchedAttr::decode(uint32_t a) {
 // ---- construction ------------------------------------------------------------------
 
 Core::Core(const Config &cfg) : cfg_(cfg) {
+  static uint64_t next_serial = 0;
+  serial_ = ++next_serial;
   const std::string e = cfg_.check();
   if (!e.empty()) {
     std::fprintf(stderr, "ooe: %s\n", e.c_str());
