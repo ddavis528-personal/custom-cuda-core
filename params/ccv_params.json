@@ -697,12 +697,12 @@
     },
     {
       "name": "CCV_P_FOOT_MIN_FP",
-      "value": 2,
+      "value": 1,
       "status": "provisional",
-      "decided_at": "Daniel, on IS-7: a cost choice, costed by AR",
-      "source": "AR-12, OA's response AR-12 (2026-10-08); IS-7 and AR's response (2026-10-09)",
+      "decided_at": "Daniel, on IS-7",
+      "source": "AR-12, OA's response AR-12 (2026-10-08); DA's response IS-7 (2026-10-09)",
       "require": "CCV_P_FOOT_MIN_FP <= CCV_SECTIONS",
-      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: two sections, a cost choice for the first build pending Daniel on IS-7. The ISA does define 8-bit FP arithmetic: section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1. A minimum of 2 runs those at 2x the 32-bit rate where integer reaches 4x; a minimum of 1 would need a per-section FP8 datapath. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 1.47x over fp32 at 2 against 2.04x at 1 (four warps)."
+      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines it: section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1. Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 2.04x over fp32 at 1 against 1.47x at 2 (four warps). The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS)."
     },
     {
       "name": "CCV_P_FOOT_MIN_ADDR",
@@ -743,9 +743,9 @@
       "value": 7,
       "status": "provisional",
       "decided_at": "LANE per-block session",
-      "source": "OA's response TI-9 (2026-10-09)",
+      "source": "OA's response TI-9 (2026-10-09); OA's response IS-7 (2026-10-09)",
       "derive": "CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2",
-      "doc": "Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here."
+      "doc": "Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7)."
     },
     {
       "name": "CCV_P_W_BYP_GROUP",
