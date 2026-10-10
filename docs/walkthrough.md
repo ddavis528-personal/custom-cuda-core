@@ -482,7 +482,7 @@ a script is one. Its sections:
 - Walkthrough -- docs/walkthrough.md
 - Verilator lint
 
-It includes 27 lint rules (`tools/lint-rtl.py`). Each has a
+It includes 28 lint rules (`tools/lint-rtl.py`). Each has a
 counter-example that must fire, and a paragraph in
 `docs/rtl-coding-style.md`.
 
