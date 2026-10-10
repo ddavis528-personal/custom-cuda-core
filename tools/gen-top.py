@@ -946,9 +946,12 @@ def gen_shim(btype, P, own_ports=False):
     sw = sum(p[1] for p in S)
     ow = sum(p[1] for p in O)
     ext = btype == "ext"
+    # EXTERNAL is testbench, not a block, so its shim is named as one
+    # (tb_ext, in test/top/) rather than in the design's namespace (OI-37).
+    mod = "tb_ext" if ext else "ccv_%s" % btype
     L = [BANNER]
-    L.append("// SV-HOSTED C++ for ccv_%s: the C++ skeleton's %s, run through DPI-C" % (
-        btype, "testbench end of EXTERNAL" if ext else "functional stub"))
+    L.append("// SV-HOSTED C++ for %s: the C++ skeleton's %s, run through DPI-C" % (
+        mod, "testbench end of EXTERNAL" if ext else "functional stub"))
     L.append("// by sim/skel/dpi_host.cpp. Same module name and port list as the")
     L.append("// stub in rtl/top/stubs/ and the real RTL to come, so any mix of the")
     L.append("// three is a file-list change; tools/check-sv-hosted.sh builds the top")
@@ -963,7 +966,7 @@ def gen_shim(btype, P, own_ports=False):
     L.append("")
     L.append("/* verilator lint_off UNUSEDSIGNAL */")
     if own_ports:
-        L.append("module ccv_%s (" % btype)
+        L.append("module %s (" % mod)
         plain = [p for p in P if not p[3]]
         trace = [p for p in P if p[3]]
         for k, (dr, w, name, _, doc, typ, _m) in enumerate(plain):

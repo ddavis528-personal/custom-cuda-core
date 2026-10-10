@@ -4,7 +4,7 @@
 // params/blocks.json. Edit a source and regenerate; tools/verify.sh fails if
 // this file is stale.
 
-// SV-HOSTED C++ for ccv_ext: the C++ skeleton's testbench end of EXTERNAL, run through DPI-C
+// SV-HOSTED C++ for tb_ext: the C++ skeleton's testbench end of EXTERNAL, run through DPI-C
 // by sim/skel/dpi_host.cpp. Same module name and port list as the
 // stub in rtl/top/stubs/ and the real RTL to come, so any mix of the
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
@@ -18,7 +18,7 @@
 `include "ccv_interfaces.svh"
 
 /* verilator lint_off UNUSEDSIGNAL */
-module ccv_ext (
+module tb_ext (
   input  logic core_clk,
   input  logic rst_n,
   input  logic exb_ext_out_valid,
