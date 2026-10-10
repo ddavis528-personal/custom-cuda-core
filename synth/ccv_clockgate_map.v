@@ -22,7 +22,7 @@
 (* techmap_celltype = "$_DFFE_PP_" *)
 module ccv_map_dffe_pp (input D, input C, input E, output Q);
   wire gclk;
-  ccv_ctech_icg u_icg (.clk(C), .en(E), .te(1'b0), .gclk(gclk));
+  ccv_common_ctech_icg u_icg (.clk(C), .en(E), .te(1'b0), .gclk(gclk));
   \$_DFF_P_ u_ff (.D(D), .C(gclk), .Q(Q));
 endmodule
 
@@ -33,6 +33,6 @@ module ccv_map_sdffe_pp0p (input D, input C, input E, input R, output Q);
   // The reset must stay on the DATA path, never on the enable: gating a flop
   // off during reset would leave it holding whatever it came up with.
   assign d_rst = R ? 1'b0 : D;
-  ccv_ctech_icg u_icg (.clk(C), .en(E | R), .te(1'b0), .gclk(gclk));
+  ccv_common_ctech_icg u_icg (.clk(C), .en(E | R), .te(1'b0), .gclk(gclk));
   \$_DFF_P_ u_ff (.D(d_rst), .C(gclk), .Q(Q));
 endmodule

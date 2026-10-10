@@ -1,9 +1,9 @@
-//===-- ccv_outstanding_checker.sv - at most MAX requests unanswered -----===//
+//===-- ccv_common_chk_outstanding.sv - at most MAX requests unanswered -----===//
 //
 // Spec: skeleton review response (2026-09-25), outstanding attribute;
 //       docs/skeleton.md
-// Reusable: one instance per request/response channel pair with an
-//           `outstanding` limit; clk/rst_n are generic formals.
+// One instance per request/response channel pair with an
+// `outstanding` limit; clk/rst_n are generic formals.
 //
 // A response channel with no correlation tag is correct only if the
 // requester never has more outstanding than the pair can tell apart. For
@@ -25,7 +25,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_outstanding_checker #(
+module ccv_common_chk_outstanding #(
   parameter int MODE = `CCV_MODE_ASSERT,
   parameter int MAX  = 1
 ) (

@@ -1,6 +1,6 @@
 //===-- tb_wake_neg.sv - the wake contract, one case per boundary --------===//
 //
-// Spec: open item Q-33; rtl/if/ccv_wake_checker.sv
+// Spec: open item Q-33; rtl/if/ccv_common_chk_wake.sv
 //
 // Drives the checker's ports directly, written from the contract rather than
 // from the checker: valid toward a gated receiver at T needs this channel's
@@ -36,12 +36,12 @@ module tb;
   localparam int A = 2;
   logic  w_e = 1'b0, v_e = 1'b0;     // the same wake and valid, A cycles early
   bit    arrive, arrive_wrong;
-  ccv_wake_checker u_chk (.clk(clk), .rst_n(rst_n), .rx_gated(g),
+  ccv_common_chk_wake u_chk (.clk(clk), .rst_n(rst_n), .rx_gated(g),
                           .wake_seen(w && !arrive && !arrive_wrong),
                           .valid_seen(v && !arrive && !arrive_wrong));
-  ccv_wake_checker #(.ARRIVE(A)) u_chk_up (.clk(clk), .rst_n(rst_n), .rx_gated(g),
+  ccv_common_chk_wake #(.ARRIVE(A)) u_chk_up (.clk(clk), .rst_n(rst_n), .rx_gated(g),
                           .wake_seen(w_e && arrive), .valid_seen(v_e && arrive));
-  ccv_wake_checker u_chk_wrong (.clk(clk), .rst_n(rst_n), .rx_gated(g),
+  ccv_common_chk_wake u_chk_wrong (.clk(clk), .rst_n(rst_n), .rx_gated(g),
                           .wake_seen(w_e && arrive_wrong),
                           .valid_seen(v_e && arrive_wrong));
 

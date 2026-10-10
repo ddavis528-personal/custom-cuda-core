@@ -1,6 +1,6 @@
 //===-- tb_seq_rpt.sv - a credited channel through sequential repeaters ---===//
 //
-// Spec: docs/physical.md, "Sequential repeaters"; rtl/phys/ccv_seq_rpt.sv
+// Spec: docs/physical.md, "Sequential repeaters"; rtl/phys/ccv_common_rpt.sv
 //
 // A sender and a receiver that follow the channel protocol at their own
 // ports, with N repeater stages between them, split into two repeaters so a
@@ -96,14 +96,14 @@ module tb;
   logic [W-1:0] r_payload;
   logic [63:0]  r_tid;
 
-  ccv_seq_rpt #(.STAGES(M), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_a (
+  ccv_common_rpt #(.STAGES(M), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_a (
     .clk, .rst_n,
     .src_valid(s_valid), .src_payload(s_payload), .src_wake(s_wake),
     .src_credit(s_credit), .src_stall(s_stall),
     .dst_valid(m_valid), .dst_payload(m_payload), .dst_wake(m_wake),
     .dst_credit(m_credit), .dst_stall(m_stall),
     .src_tid(s_tid), .dst_tid(m_tid));
-  ccv_seq_rpt #(.STAGES(N - M), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_b (
+  ccv_common_rpt #(.STAGES(N - M), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt_b (
     .clk, .rst_n,
     .src_valid(m_valid), .src_payload(m_payload), .src_wake(m_wake),
     .src_credit(m_credit), .src_stall(m_stall),
@@ -119,15 +119,15 @@ module tb;
 `else
   localparam int RX_SRC = N;
 `endif
-  ccv_credit_checker #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(RT + 2), .TIMEOUT_N(TO), .LEAD_MASK(LEAD),
+  ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(RT + 2), .TIMEOUT_N(TO), .LEAD_MASK(LEAD),
                        .SRC_STAGES(0)) u_chk_src (
     .clk, .rst_n, .ch_valid(s_valid), .ch_payload(s_payload),
     .ch_credit(s_credit), .ch_stall(s_stall), .ch_tid(s_tid));
-  ccv_credit_checker #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(RT + 2), .TIMEOUT_N(TO), .LEAD_MASK(LEAD),
+  ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(RT + 2), .TIMEOUT_N(TO), .LEAD_MASK(LEAD),
                        .SRC_STAGES(M)) u_chk_mid (
     .clk, .rst_n, .ch_valid(m_valid), .ch_payload(m_payload),
     .ch_credit(m_credit), .ch_stall(m_stall), .ch_tid(m_tid));
-  ccv_credit_checker #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(RT + 2), .TIMEOUT_N(TO), .LEAD_MASK(LEAD),
+  ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(RT + 2), .TIMEOUT_N(TO), .LEAD_MASK(LEAD),
                        .SRC_STAGES(RX_SRC)) u_chk_dst (
     .clk, .rst_n, .ch_valid(r_valid), .ch_payload(r_payload),
     .ch_credit(r_credit), .ch_stall(r_stall), .ch_tid(r_tid));

@@ -2,16 +2,16 @@
 """Generate the SystemVerilog top level, block port lists, stubs and a
 testbench from schema/interfaces.json and params/blocks.json.
 
-  rtl/top/ccv_core_top.sv            45 block instances, 103 channel instances
+  rtl/top/ccv_top.sv            45 block instances, 103 channel instances
   rtl/top/ports/ccv_<blk>_ports.svh  each block type's port list, generated
   rtl/top/stubs/ccv_<blk>.sv         a stub per block type
-  test/top/tb_core_top.sv            clock, reset and tie-offs
+  test/top/tb_top.sv            clock, reset and tie-offs
   rtl/top/wrap/ccv_<blk>_w.sv        hardening wrappers: block + repeaters
                                      (params/links.json), the physical
                                      hierarchy; ccv_<inst>_w for one with
                                      feedthroughs
   rtl/top/dpi/ccv_<blk>.sv           the C++ skeleton's block, over DPI-C
-  rtl/top/dpi/ccv_ext.sv             ...and its testbench end of EXTERNAL
+  test/top/tb_ext.sv                 ...and its testbench end of EXTERNAL
   test/top/tb_sv_hosted.sv           the top built from those, run to the end
   sim/generated/ccv_dpi_ports.h      each shim's sample order, for the host
 
@@ -55,7 +55,7 @@ tools/check-top-wiring.py refuses those warnings, and CCV-L26 refuses the
 construct.
 
 CHECKERS. Under CCV_CHECK the top instantiates the SAME generated checker bank
-the C++ skeleton Verilates -- ccv_skel_checkers -- fed by concatenating the
+the C++ skeleton Verilates -- ccv_common_chk_bank -- fed by concatenating the
 channel nets in slot order. Without CCV_CHECK there are no checkers at all,
 which is the synthesis exclusion open item B-1 asked for. The trace sideband
 (`_tid`) exists only under CCV_TRACE, as the identity decision requires.
@@ -278,7 +278,7 @@ def gen_ports(btype, P):
 
 
 def gate_lines(quiesced, why):
-    """The block's clock gate (rtl/clk/ccv_clk_gate.sv), tied never to close.
+    """The block's clock gate (rtl/clk/ccv_common_clk.sv), tied never to close.
     Every block has one from the start, so the hierarchy a real block fills
     in is already the one the top was checked with; `gclk` is what a real
     block clocks on (CCV-L22)."""
@@ -291,7 +291,7 @@ def gate_lines(quiesced, why):
         "  // reset values until the block decodes its own.",
         "  localparam int CG_HW = ccv_prov_pkg::CCV_CG_HYST_W;",
         "  logic gclk, cg_gated;",
-        "  ccv_clk_gate u_cg (",
+        "  ccv_common_clk u_cg (",
         "    .clk         (core_clk),",
         "    .rst_n       (rst_n),",
         "    .quiesced    (%s)," % quiesced,
@@ -354,13 +354,15 @@ def gen_stub(btype, P):
 #
 # Every block instance sits in a hardening wrapper of the same instance name:
 # the physical hierarchy, stable whatever the floorplan decides. A wrapper is
-# the block plus one sequential repeater (rtl/phys/ccv_seq_rpt.sv) per
+# the block plus one sequential repeater (rtl/phys/ccv_common_rpt.sv) per
 # channel end the block owns, at STAGES 0 unless params/links.json says
 # otherwise, plus one per FEEDTHROUGH: a channel the floorplan routes across
 # this wrapper, which then has ports for it. A stage count is a wrapper
 # parameter, set by the top, so changing a split changes no structure; a
 # feedthrough changes that one wrapper's ports, and it gets a module of its
-# own (ccv_<instance>_w) instead of its type's shared one (ccv_<type>_w).
+# own (ccv_<type>_w_<NN>, after the instance) instead of its type's shared
+# one (ccv_<type>_w). Every wrapper's name starts ccv_<type>_w, which is what
+# lets the RTL lint read its block from the name (OI-37).
 #
 # A channel instance whose route crosses feedthroughs runs in SEGMENTS
 # between wrappers; segment j leaves hop j. The top names them
@@ -469,19 +471,20 @@ def wrapper_plan(binst, cinst, ports, names, ft, reuse):
                     plan[k] = (mod, vals[k], True)
         else:
             for k in ks:
-                mod = "ccv_%s_w" % (names[k][2:] if ft.get(k) else t)
+                own = ft.get(k) and names[k][2:] != t
+                mod = "ccv_%s_w_%s" % (t, names[k][3 + len(t):]) if own else "ccv_%s_w" % t
                 plan[k] = (mod, vals[k], False)
     return plan
 
 
 def rpt_inst(L, name, stages, c, src, dst):
-    """One ccv_seq_rpt for a channel instance. `src` and `dst` map a signal to
+    """One ccv_common_rpt for a channel instance. `src` and `dst` map a signal to
     its per-slot net names (a function of slot and sig)."""
     r = c["rate"]
     lead = (", .LEAD_MASK(%d'h%x)" % (c["bits"], c["lead_mask"])
             if c["lead_mask"] else "")
     cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
-    L.append("  ccv_seq_rpt #(.STAGES(%s), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
+    L.append("  ccv_common_rpt #(.STAGES(%s), .SLOTS(%d), .PAYLOAD_W(%d)%s) %s ("
              % (stages, r, c["bits"], lead, name))
     L.append("    .clk(core_clk), .rst_n(rst_n),")
     L.append("    .src_valid(%s), .src_payload(%s)," % (cat(src, "valid"), cat(src, "payload")))
@@ -643,7 +646,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports, reuse=()):
     L.append("")
     ext = [c for c in chans if "EXTERNAL" in (c["src"], c["dst"])]
     csr = [n for n, f in fab.items() if f.get("kind") == "star"]
-    L.append("module ccv_core_top (")
+    L.append("module ccv_top (")
     P = ["  input  logic core_clk",
          "  input  logic rst_n"]
     for n in csr:                        # the CSR owner's host side
@@ -800,7 +803,7 @@ def gen_top(d, binst, chans, cinst, ninst, common, ports, reuse=()):
     L.append("  // nets: the one thing here that is not a block. It only observes,")
     L.append("  // and it is absent unless CCV_CHECK is defined, so synthesis and")
     L.append("  // the floorplan never see it.")
-    L.append("  ccv_skel_checkers u_checkers (")
+    L.append("  ccv_common_chk_bank u_checkers (")
     L.append("    .clk(core_clk), .rst_n(rst_n), .force_atomic(1'b0), .pair_enable(1'b1),")
     L.append("    .valid(%s)," % cat("valid"))
     L.append("    .credit(%s)," % cat("credit"))
@@ -827,7 +830,7 @@ def gen_tb(d, binst, chans, common):
     cw = {n: w for n, _, w, _ in common}
     ext = [c for c in chans if "EXTERNAL" in (c["src"], c["dst"])]
     L = [BANNER.replace("// Produced", "// Produced"), "`timescale 1ns/1ps"]
-    L.append("// Clock, reset and tie-offs for ccv_core_top. With stub blocks nothing")
+    L.append("// Clock, reset and tie-offs for ccv_top. With stub blocks nothing")
     L.append("// moves; what this proves is that the whole top elaborates and runs")
     L.append("// in each simulator, with the checker bank attached under CCV_CHECK.")
     L.append("// The machine's real testbench is the C++ skeleton (sim/skel/).")
@@ -867,7 +870,7 @@ def gen_tb(d, binst, chans, common):
                       ".%s_wake(1'b0)" % base]
             tr.append(".%s_tid('0)" % base)
     L.append("")
-    L.append("  ccv_core_top u_top (")
+    L.append("  ccv_top u_top (")
     L.append("    " + ",\n    ".join(conns))
     L.append("`ifdef CCV_TRACE")
     L.append("    , " + ",\n      ".join(tr))
@@ -1093,7 +1096,7 @@ def gen_tb_hosted(chans, common):
     cw = {n: w for n, _, w, _ in common}
     ext = [c for c in chans if "EXTERNAL" in (c["src"], c["dst"])]
     L = [BANNER, "`timescale 1ns/1ps"]
-    L.append("// The SV-hosted run: ccv_core_top built from rtl/top/dpi/ shims, so")
+    L.append("// The SV-hosted run: ccv_top built from rtl/top/dpi/ shims, so")
     L.append("// every block is the C++ skeleton's and every connection between them")
     L.append("// is this top's Verilog. The kernel, trace and negative controls come")
     L.append("// in as plusargs the host reads (+ccv_oracle= +ccv_trace= +ccv_break=")
@@ -1122,13 +1125,13 @@ def gen_tb_hosted(chans, common):
                 L.append("  %s%s;" % (decl(w, typ), name))
                 conns.append(".%s(%s)" % (name, name))
     L.append("")
-    L.append("  ccv_core_top u_top (")
+    L.append("  ccv_top u_top (")
     L.append("    " + ",\n    ".join(conns))
     L.append("`ifdef CCV_TRACE")
     L.append("    , " + ",\n      ".join(tr))
     L.append("`endif")
     L.append("  );")
-    L.append("  ccv_ext u_ext (")
+    L.append("  tb_ext u_ext (")
     L.append("    " + ",\n    ".join(econns + conns[5:]))
     L.append("`ifdef CCV_TRACE")
     L.append("    , " + ",\n      ".join(tr))
@@ -1162,9 +1165,9 @@ def main():
     ports = {b["name"]: block_ports(b["name"], chans, ninst, common, len(binst))
              for b in blocks}
     reuse = ccv_links.hard_reuse([b["name"] for b in blocks])
-    targets = [(os.path.join(TOPDIR, "ccv_core_top.sv"),
+    targets = [(os.path.join(TOPDIR, "ccv_top.sv"),
                 gen_top(d, binst, chans, cinst, ninst, common, ports, reuse)),
-               (os.path.join(TBDIR, "tb_core_top.sv"),
+               (os.path.join(TBDIR, "tb_top.sv"),
                 gen_tb(d, binst, chans, common))]
     for b in blocks:
         t = b["name"]
@@ -1189,7 +1192,7 @@ def main():
                                     ft.get(k, []), cinst, ninst,
                                     vals if baked else None, users)))
     eports = ext_ports(chans)
-    targets.append((os.path.join(TOPDIR, "dpi", "ccv_ext.sv"),
+    targets.append((os.path.join(TBDIR, "tb_ext.sv"),
                     gen_shim("ext", eports, own_ports=True)))
     targets.append((os.path.join(TBDIR, "tb_sv_hosted.sv"),
                     gen_tb_hosted(chans, common)))

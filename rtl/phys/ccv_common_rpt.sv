@@ -1,9 +1,9 @@
-//===-- ccv_seq_rpt.sv - sequential repeater for one channel instance -----===//
+//===-- ccv_common_rpt.sv - sequential repeater for one channel instance -----===//
 //
 // Spec: docs/physical.md, "Sequential repeaters"
-// Reusable: one instance per channel end in every hardening wrapper; clk is
-//           whatever that link is clocked by (core_clk today), so clk/rst_n
-//           are generic formals.
+// One instance per channel end in every hardening wrapper; clk is
+// whatever that link is clocked by (core_clk today), so clk/rst_n
+// are generic formals.
 //
 // STAGES flops in every direction of one credited channel instance -- its
 // SLOTS slots and its one wake -- so a link can span more distance than one
@@ -40,7 +40,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_seq_rpt #(
+module ccv_common_rpt #(
   parameter int STAGES    = 1,
   parameter int SLOTS     = 1,
   parameter int PAYLOAD_W = 32,

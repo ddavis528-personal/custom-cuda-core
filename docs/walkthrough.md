@@ -300,7 +300,7 @@ structure or a process per instruction.
 
 ## 8. The same run in SystemVerilog
 
-The top level is generated too: `rtl/top/ccv_core_top.sv`. It holds one
+The top level is generated too: `rtl/top/ccv_top.sv`. It holds one
 hardening wrapper per block instance and the nets between them, and nothing
 else. There is no gate, flop or tie-off at the top (`check-top-pure.py`). The
 DCU's wrapper, as the top instantiates it:
@@ -325,7 +325,7 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-  ccv_seq_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+  ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
     .clk(core_clk), .rst_n(rst_n),
     ...
 ```
@@ -341,7 +341,7 @@ open:
 ```systemverilog
   localparam int CG_HW = ccv_prov_pkg::CCV_CG_HYST_W;
   logic gclk, cg_gated;
-  ccv_clk_gate u_cg (
+  ccv_common_clk u_cg (
     .clk         (core_clk),
     .rst_n       (rst_n),
     .quiesced    (1'b1),
@@ -383,23 +383,23 @@ to be the same one.
 
 ## 9. Every message checked
 
-The checker bank (`rtl/generated/ccv_skel_checkers.sv`) is generated from the
+The checker bank (`rtl/generated/ccv_common_chk_bank.sv`) is generated from the
 schema and Verilated into the C++ skeleton. The same module sits beside the
 SV top under `CCV_CHECK`.
 
 | Checker | In the bank | Judges |
 |---|---|---|
-| `ccv_credit_checker` | 163 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
-| `ccv_wake_checker` | 110 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
-| `ccv_atomic_checker` | 13 | a channel's slots that must move together |
-| `ccv_lockstep_checker` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
-| `ccv_binding_checker` | 1 | a slot's group key stays bound |
-| `ccv_outstanding_checker` | 1 | request / response pairs across two channels |
+| `ccv_common_chk_credit` | 163 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
+| `ccv_common_chk_wake` | 110 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
+| `ccv_common_chk_atomic` | 13 | a channel's slots that must move together |
+| `ccv_common_chk_lockstep` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
+| `ccv_common_chk_binding` | 1 | a slot's group key stays bound |
+| `ccv_common_chk_outstanding` | 1 | request / response pairs across two channels |
 
 One of them: slot 0 of the channel from section 5.
 
 ```systemverilog
-  ccv_credit_checker #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
+  ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
     .ch_payload(payload[42344:41133])
 `ifdef CCV_TRACE
@@ -416,7 +416,7 @@ now (section 10), and caught in simulation by the checker's end-of-test
 check:
 
 ```
-[20000] %Error: ccv_credit_checker.sv:293: Assertion failed in bank.ccv_skel_checkers.u_fet_dec_instr_s0: CCV quiesced_at_end failed: 3 message(s) never credited back
+[20000] %Error: ccv_common_chk_credit.sv:293: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s0: CCV quiesced_at_end failed: 3 message(s) never credited back
 SKEL cycles=2000 blocks=45 chan_types=48 chan_insts=110 slots=163 sent=192201 received=192201 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=149 idle_slots=0 violations=14
 ```
 
@@ -446,10 +446,10 @@ model, where the clock is an input and the ICG's latch switches as it does:
   `glitch_rise`, `glitch_fall`.
 - **The cycle behaviour** against an independent model: `edge_decides`,
   `spec`, `wake_second_edge`, `wake_hold`.
-- **Both halves of the wake contract,** with `ccv_wake_checker`:
+- **Both halves of the wake contract,** with `ccv_common_chk_wake`:
   `wake_keeps_rx` and `q33_valid_meets_clock`.
 
-The gate itself is the ctech ICG `ccv_ctech_icg`, one module with a view per
+The gate itself is the ctech ICG `ccv_common_ctech_icg`, one module with a view per
 use. The views are `asap7`, `sim`, `sky130_fd_sc_hd`: behavioural for
 simulation and formal, and one per process library, each nothing but that
 library's cell (`docs/clock-gate.md`).

@@ -178,7 +178,7 @@ section "Formal proofs -- one credited link, and the block clock gate"
 run "formal proofs" ./tools/check-formal.sh
 
 section "Physical primitives -- sequential repeater"
-# rtl/phys/ccv_seq_rpt.sv through N = 0..4 stages on both simulators, the
+# rtl/phys/ccv_common_rpt.sv through N = 0..4 stages on both simulators, the
 # checker at three points along the link, its enables on the Yosys netlist,
 # and mutants that must each be caught -- one of them only by the netlist.
 run "sequential repeater" ./tools/check-phys.sh
@@ -217,11 +217,11 @@ if command -v verilator >/dev/null 2>&1; then
   # file:define -- the credit checker is linted with and without CCV_TRACE,
   # because the trace sideband changes its port list and each variant is a
   # build someone will run.
-  for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_credit_checker.sv: \
-              rtl/if/ccv_credit_checker.sv:CCV_TRACE rtl/if/ccv_atomic_checker.sv: \
-              rtl/if/ccv_lockstep_checker.sv: rtl/if/ccv_lockstep_checker.sv:CCV_TRACE \
-              rtl/if/ccv_binding_checker.sv: rtl/if/ccv_outstanding_checker.sv: \
-              rtl/if/ccv_wake_checker.sv: rtl/clk/ccv_clk_gate.sv:; do
+  for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_common_chk_credit.sv: \
+              rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
+              rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
+              rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: \
+              rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
     f=${spec%%:*}; def=${spec#*:}
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut

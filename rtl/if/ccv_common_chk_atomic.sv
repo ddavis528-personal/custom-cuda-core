@@ -1,9 +1,9 @@
-//===-- ccv_atomic_checker.sv - slots that move as one -------------------===//
+//===-- ccv_common_chk_atomic.sv - slots that move as one -------------------===//
 //
 // Spec: interface decisions (2026-09-24), acceptance attribute;
 //       docs/skeleton.md
-// Reusable: one instance per multi-slot channel instance; clk/rst_n are
-//           generic formals.
+// One instance per multi-slot channel instance; clk/rst_n are
+// generic formals.
 //
 // A rate > 1 channel is independent credited slots by default -- the
 // permissive superset, since SPM and DCU need partial acceptance. A channel
@@ -29,7 +29,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_atomic_checker #(
+module ccv_common_chk_atomic #(
   parameter int MODE    = `CCV_MODE_ASSERT,
   // No CHANNEL parameter: nothing here would read it, and the bank's
   // instance name already names the channel in any failure message.

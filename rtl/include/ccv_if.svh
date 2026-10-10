@@ -158,7 +158,7 @@
 // per interface type and hiding them would trade a real readability cost for
 // a cosmetic one.
 //
-//   `CCV_CHECKER(issue_if_checker, u_iss_chk, `CCV_IF_MODE_OUT)
+//   `CCV_CHECKER(ccv_common_chk_issue, u_iss_chk, `CCV_IF_MODE_OUT)
 //       (.clk(clk), .rst(rst), .iss(iss), .iss_ready(iss_ready));
 //
 // Convention: checker instances go at the END of a module, named u_<port>_chk.
@@ -175,7 +175,7 @@
 // yourself; that is the part that matters, and the side macros still supply
 // it:
 //
-//     ccv_credit_checker #(
+//     ccv_common_chk_credit #(
 //       .MODE(`CCV_IF_MODE_OUT), .PAYLOAD_W(64), .ROUND_TRIP(2)
 //     ) u_chk ( ... );
 

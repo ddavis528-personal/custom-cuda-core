@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """THE TOP-LEVEL RULE, checked on the elaborated netlist, at both levels of
-the physical hierarchy: ccv_core_top holds hardening wrappers and the nets
+the physical hierarchy: ccv_top holds hardening wrappers and the nets
 between them, and each wrapper holds its block, its repeaters and the nets
 between them -- and nothing else.
 
@@ -15,7 +15,7 @@ moved was the clock gates: each block gates core_clk inside itself, on its
 own quiescence or stall, so the signals that decide sleep never leave it.
 
 Yosys elaborates the top (with `proc`, so a stray always-block becomes a
-cell), and on ccv_core_top and on every wrapper module:
+cell), and on ccv_top and on every wrapper module:
 
   R1  every cell is what that level may hold: at the top, the 45 wrappers,
       one per block instance, named for it; in a wrapper, exactly one block
@@ -49,10 +49,10 @@ must then fail, naming that rule:
       type is a template used as it is, with no parameter override, and no
       two templates of the type are the same circuit
   R7  every block has its clock gate (docs/clock-gate.md): exactly one
-      ccv_clk_gate, clocked by the block's core_clk port, and under
+      ccv_common_clk, clocked by the block's core_clk port, and under
       CCV_CHECK its clk_gated port is that gate's own `gated` -- the
       observation the wake checkers read is the real decision, not a tie.
-      And the ctech ICG appears inside ccv_clk_gate and nowhere else
+      And the ctech ICG appears inside ccv_common_clk and nowhere else
 
   gatetie   FET's clk_gated tied instead of the gate's report R7
   gateclk   FET's gate clocked by something other than core_clk R7
@@ -67,8 +67,8 @@ import tempfile
 import ccv_ctech
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-TOP = os.path.join(ROOT, "rtl", "top", "ccv_core_top.sv")
-BANK = "ccv_skel_checkers"
+TOP = os.path.join(ROOT, "rtl", "top", "ccv_top.sv")
+BANK = "ccv_common_chk_bank"
 
 
 def hard_reuse():
@@ -91,7 +91,7 @@ def expected_instances():
 
 def base(t):
     """A cell type without Yosys's parameter decoration: $paramod\\ccv_lane_w\\
-    RPT_...=1 and $paramod$<hash>\\ccv_seq_rpt are ccv_lane_w and ccv_seq_rpt."""
+    RPT_...=1 and $paramod$<hash>\\ccv_common_rpt are ccv_lane_w and ccv_common_rpt."""
     m = re.match(r"^\$paramod[^\\]*\\([^\\]+)", t)
     return m.group(1) if m else t
 
@@ -105,8 +105,8 @@ def elaborate(files, defines, tmp):
         % " ".join("-D" + d for d in defines)
     script = "%s rtl/ccv_assert_pkg.sv; " % rv
     if defines:
-        script += "%s -lib rtl/generated/ccv_skel_checkers.sv; " % rv
-    script += ("%s %s; hierarchy -check -top ccv_core_top; proc; "
+        script += "%s -lib rtl/generated/ccv_common_chk_bank.sv; " % rv
+    script += ("%s %s; hierarchy -check -top ccv_top; proc; "
                "write_json %s" % (rv, " ".join(files), out))
     r = subprocess.run(["yosys", "-q", "-p", script], cwd=ROOT,
                        capture_output=True, text=True)
@@ -182,9 +182,20 @@ def check(where, mod, modules, allowed):
     return out, len(cells), bank is not None
 
 
+def own_wrapper(btype, nm):
+    """An instance's own wrapper (one with feedthroughs): ccv_<type>_w_<NN>,
+    or the type's ccv_<type>_w where the type has one instance (gen-top)."""
+    return "ccv_%s_w" % btype if nm == btype else "ccv_%s_w_%s" % (btype, nm[len(btype) + 1:])
+
+
+def is_wrapper_of(t, btype, nm):
+    return t in ("ccv_%s_w" % btype, own_wrapper(btype, nm)) or \
+        re.match(r"^ccv_%s_w_v\d+$" % btype, t) is not None
+
+
 def check_all(modules, with_bank):
     want = expected_instances()
-    top = modules["ccv_core_top"]
+    top = modules["ccv_top"]
 
     def top_allowed(name, t):
         if with_bank and t == BANK:
@@ -192,35 +203,33 @@ def check_all(modules, with_bank):
         if name not in want:
             return "is not a wrapper instance"
         btype, nm = want[name]
-        if t not in ("ccv_%s_w" % btype, "ccv_%s_w" % nm) and \
-                not re.match(r"^ccv_%s_w_v\d+$" % btype, t):
-            return "is not %s's wrapper (ccv_%s_w[_v<n>] or ccv_%s_w)" % (name, btype, nm)
+        if not is_wrapper_of(t, btype, nm):
+            return "is not %s's wrapper (ccv_%s_w[_v<n>] or %s)" % (
+                name, btype, own_wrapper(btype, nm))
         return None
 
-    bad, nw, has_bank = check("ccv_core_top", top, modules, top_allowed)
+    bad, nw, has_bank = check("ccv_top", top, modules, top_allowed)
     present = set(n for n, c in top["cells"].items() if top_allowed(n, base(c["type"])) is None)
     for name in sorted(set(want) - present):
-        bad.append(("R1", "ccv_core_top: wrapper %s is missing" % name))
+        bad.append(("R1", "ccv_top: wrapper %s is missing" % name))
     if with_bank and not has_bank:
-        bad.append(("R1", "ccv_core_top: no checker bank under CCV_CHECK"))
+        bad.append(("R1", "ccv_top: no checker bank under CCV_CHECK"))
 
     # Every wrapper module the top instantiates, parameterised or not.
     nwrap = 0
     for mname in sorted({c["type"] for c in top["cells"].values()}):
         t = base(mname)
-        if not t.endswith("_w"):
+        if not re.match(r"^ccv_\w+?_w(_v?\d+)?$", t):
             continue
         nwrap += 1
-        btype = next((bt for bt, nm in want.values()
-                      if t in ("ccv_%s_w" % bt, "ccv_%s_w" % nm)
-                      or re.match(r"^ccv_%s_w_v\d+$" % bt, t)), None)
+        btype = next((bt for bt, nm in want.values() if is_wrapper_of(t, bt, nm)), None)
         seen_blk = []
 
         def w_allowed(name, ct, btype=btype, seen_blk=seen_blk):
             if name == "u_blk" and ct == "ccv_%s" % btype:
                 seen_blk.append(name)
                 return None
-            if ct == "ccv_seq_rpt" and re.match(r"^u_(rpt|ft\d+)_", name):
+            if ct == "ccv_common_rpt" and re.match(r"^u_(rpt|ft\d+)_", name):
                 return None
             return "is not the wrapper's block (u_blk) or a repeater"
 
@@ -237,16 +246,16 @@ def check_gates(modules, with_bank):
     bad = []
     blocks = set()
     for mname, mod in modules.items():
-        if base(mname).endswith("_w"):
+        if re.match(r"^ccv_\w+?_w(_v?\d+)?$", base(mname)):
             for n, c in mod["cells"].items():
                 if n == "u_blk":
                     blocks.add(c["type"])
     for b in sorted(blocks):
         mod = modules[b]
         gates = [(n, c) for n, c in mod["cells"].items()
-                 if base(c["type"]) == "ccv_clk_gate"]
+                 if base(c["type"]) == "ccv_common_clk"]
         if len(gates) != 1:
-            bad.append(("R7", "%s: %d clock gates, want exactly one ccv_clk_gate"
+            bad.append(("R7", "%s: %d clock gates, want exactly one ccv_common_clk"
                         % (b, len(gates))))
             continue
         n, c = gates[0]
@@ -258,11 +267,11 @@ def check_gates(modules, with_bank):
             bad.append(("R7", "%s: clk_gated is not %s's `gated` -- the wake "
                         "checkers would read a tie, not the gate" % (b, n)))
     for mname, mod in modules.items():
-        if base(mname) == "ccv_clk_gate":
+        if base(mname) == "ccv_common_clk":
             continue
         for n, c in mod["cells"].items():
-            if base(c["type"]) == "ccv_ctech_icg":
-                bad.append(("R7", "%s: a ctech ICG (%s) outside ccv_clk_gate"
+            if base(c["type"]) == "ccv_common_ctech_icg":
+                bad.append(("R7", "%s: a ctech ICG (%s) outside ccv_common_clk"
                             % (base(mname), n)))
     return bad, len(blocks)
 
@@ -274,7 +283,7 @@ def check_reuse(modules, reuse):
     templates of a type are the same circuit, so the set is minimal.
     Returns (findings, {type: (templates, instances)})."""
     want = expected_instances()
-    top = modules["ccv_core_top"]
+    top = modules["ccv_top"]
     bad, summary = [], {}
     for btype in sorted(reuse):
         insts = {n: c for n, c in top["cells"].items()
@@ -282,7 +291,7 @@ def check_reuse(modules, reuse):
         mods = set()
         for n, c in sorted(insts.items()):
             if c["type"].startswith("$paramod"):
-                bad.append(("R6", "ccv_core_top: %s is a parameterised %s -- "
+                bad.append(("R6", "ccv_top: %s is a parameterised %s -- "
                             "not a hard-reuse template" % (n, base(c["type"]))))
             mods.add(c["type"])
 
@@ -348,10 +357,10 @@ def sources(override=None, extra=()):
     with mutated copies replacing or joining them."""
     d = os.path.join(ROOT, "rtl", "top")
     files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
-    files.append(os.path.join(ROOT, "rtl", "phys", "ccv_seq_rpt.sv"))
+    files.append(os.path.join(ROOT, "rtl", "phys", "ccv_common_rpt.sv"))
     # Each block's clock gate and its ctech cell: inside the block, so no
     # rule here applies to them, but the block does not elaborate without.
-    files.append(os.path.join(ROOT, "rtl", "clk", "ccv_clk_gate.sv"))
+    files.append(os.path.join(ROOT, "rtl", "clk", "ccv_common_clk.sv"))
     files += ccv_ctech.files()
     files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
     files.append(TOP)

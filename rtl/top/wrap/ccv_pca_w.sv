@@ -105,7 +105,7 @@ module ccv_pca_w #(
   );
 
   // ccv_rcu_pca_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
+  ccv_common_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rcu_pca_mig_valid}), .src_payload({rcu_pca_mig_payload}),
     .src_wake(rcu_pca_mig_wake), .src_credit({rcu_pca_mig_credit}), .src_stall({rcu_pca_mig_stall}),
@@ -116,7 +116,7 @@ module ccv_pca_w #(
 `endif
   );
   // ccv_pca_rcu_mig, source end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
+  ccv_common_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_pca_rcu_mig_valid}), .src_payload({b_pca_rcu_mig_payload}),
     .src_wake(b_pca_rcu_mig_wake), .src_credit({b_pca_rcu_mig_credit}), .src_stall({b_pca_rcu_mig_stall}),
@@ -127,7 +127,7 @@ module ccv_pca_w #(
 `endif
   );
   // ccv_fet_pca_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_fet_pca_mig (
+  ccv_common_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_fet_pca_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({fet_pca_mig_valid}), .src_payload({fet_pca_mig_payload}),
     .src_wake(fet_pca_mig_wake), .src_credit({fet_pca_mig_credit}), .src_stall({fet_pca_mig_stall}),
@@ -138,7 +138,7 @@ module ccv_pca_w #(
 `endif
   );
   // ccv_pca_fet_mig, source end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_pca_fet_mig (
+  ccv_common_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_pca_fet_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_pca_fet_mig_valid}), .src_payload({b_pca_fet_mig_payload}),
     .src_wake(b_pca_fet_mig_wake), .src_credit({b_pca_fet_mig_credit}), .src_stall({b_pca_fet_mig_stall}),
@@ -149,7 +149,7 @@ module ccv_pca_w #(
 `endif
   );
   // ccv_pca_rau_mig_done, source end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_RAU_MIG_DONE), .SLOTS(1), .PAYLOAD_W(6)) u_rpt_pca_rau_mig_done (
+  ccv_common_rpt #(.STAGES(RPT_PCA_RAU_MIG_DONE), .SLOTS(1), .PAYLOAD_W(6)) u_rpt_pca_rau_mig_done (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_pca_rau_mig_done_valid}), .src_payload({b_pca_rau_mig_done_payload}),
     .src_wake(b_pca_rau_mig_done_wake), .src_credit({b_pca_rau_mig_done_credit}), .src_stall({b_pca_rau_mig_done_stall}),

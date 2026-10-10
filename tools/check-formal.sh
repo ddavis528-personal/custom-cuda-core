@@ -5,7 +5,7 @@
 # a vacuity guard, proving nothing about any design. This proves, for ALL
 # time, not a bounded window: unbounded model checking by PDR (ABC), on one
 # credited link -- a protocol-following sender and receiver, N sequential
-# repeater stages (rtl/phys/ccv_seq_rpt.sv), the credit checker at both ends.
+# repeater stages (rtl/phys/ccv_common_rpt.sv), the credit checker at both ends.
 #
 #   proved                                     must fail (counterexample)
 #   safety, N = 0, 1, 2, any traffic: data     a receiver consuming two for
@@ -24,7 +24,7 @@
 #     drains (FV_FAIR) -- the ONE property that
 #     needs an assumption, proved on its own
 #
-# The block clock gate (rtl/clk/ccv_clk_gate.sv) is proved at the end, on
+# The block clock gate (rtl/clk/ccv_common_clk.sv) is proved at the end, on
 # the multiclock model; see that section.
 #
 # SBY 0.69's ABC integration crashes on Yosys 0.33's witness files, even on a
@@ -51,7 +51,7 @@ LOOP=$(sed -n 's/.*localparam int CCV_CREDIT_DEPTH = \([0-9]*\);/\1/p' rtl/gener
 #   TARGET "all" keeps every assertion, "-PAT" every one but those ending in
 #   PAT, "PAT" only those. Prints "proved", "cex <frame>", or "error".
 prove() {
-  local name=$1 n=$2 depth=$3 defs=$4 target=$5 rpt=${6:-$R/rtl/phys/ccv_seq_rpt.sv}
+  local name=$1 n=$2 depth=$3 defs=$4 target=$5 rpt=${6:-$R/rtl/phys/ccv_common_rpt.sv}
   local d="$B/$name"
   mkdir -p "$d"
   local keep=""
@@ -64,7 +64,7 @@ prove() {
   for x in $defs; do dflags="$dflags -D$x"; done
   cat >"$d/m.ys" <<YS
 read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated $R/rtl/ccv_assert_pkg.sv
-read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated $R/rtl/if/ccv_credit_checker.sv
+read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated $R/rtl/if/ccv_common_chk_credit.sv
 read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated $rpt
 read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated $R/test/formal/fv_link.sv
 chparam -set N $n -set DEPTH $depth fv_link
@@ -137,11 +137,11 @@ for spec in "double_pop:FV_MUT_DOUBLE_POP:credit_per_msg" \
 done
 mkdir -p "$B/rpt"
 sed 's/        if (valid_q\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /' \
-  rtl/phys/ccv_seq_rpt.sv >"$B/rpt/enable_now.sv"
+  rtl/phys/ccv_common_rpt.sv >"$B/rpt/enable_now.sv"
 sed 's/          if (v\[k\*S+j\]) lead_q <= /          if (valid_q[j]) lead_q <= /' \
-  rtl/phys/ccv_seq_rpt.sv >"$B/rpt/lead_late.sv"
+  rtl/phys/ccv_common_rpt.sv >"$B/rpt/lead_late.sv"
 for m in enable_now lead_late; do
-  if cmp -s rtl/phys/ccv_seq_rpt.sv "$B/rpt/$m.sv"; then bad "repeater mutant $m" "did not apply"; continue; fi
+  if cmp -s rtl/phys/ccv_common_rpt.sv "$B/rpt/$m.sv"; then bad "repeater mutant $m" "did not apply"; continue; fi
   r=$(prove "mut_$m" 1 $((LOOP + 2)) "" data_in_order "$B/rpt/$m.sv")
   [ "${r%% *}" = cex ] && say "  ...repeater $m: data_in_order fails" "PASS ($r)" ||
     bad "repeater mutant $m" "$r: not refuted"
@@ -154,7 +154,7 @@ for tgt in reach_three reach_full; do
     bad "non-vacuity $tgt" "$r: unreachable -- the assumptions may be too strong"
 done
 
-# == The block clock gate: rtl/clk/ccv_clk_gate.sv ============================
+# == The block clock gate: rtl/clk/ccv_common_clk.sv ============================
 # test/formal/fv_clk_gate.sv, on Yosys's MULTICLOCK model (clk2fflogic):
 # clk is an input toggling at global steps, each phase one step or two, so
 # the ctech ICG's latch and AND are modelled as they switch -- the glitch an
@@ -169,7 +169,7 @@ done
 #     opens the edge ending the NEXT cycle       short; reset left off the
 #     and WAKE_HOLD more, override / reset /     enable
 #     te open it
-#   Q-33 with ccv_wake_checker: the sender's   a wake hold one short of
+#   Q-33 with ccv_common_chk_wake: the sender's   a wake hold one short of
 #     half assumed, the receiver's half          CCV_WAKE_LAT: wake_keeps_rx
 #     (wake_keeps_rx) and "no valid meets a
 #     withheld edge" proved
@@ -177,7 +177,7 @@ done
 #     captured right after a sleep
 prove_cg() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
   local name=$1 defs=$2 target=$3 hq=$4 hs=$5 hold=$6
-  local gate=${7:-$R/rtl/clk/ccv_clk_gate.sv} icg=${8:-$R/rtl/ctech/sim/ccv_ctech_icg.sv}
+  local gate=${7:-$R/rtl/clk/ccv_common_clk.sv} icg=${8:-$R/rtl/ctech/sim/ccv_common_ctech_icg.sv}
   local d="$B/$name"
   mkdir -p "$d"
   local keep=""
@@ -191,7 +191,7 @@ prove_cg() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
   local rv="read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated"
   cat >"$d/m.ys" <<YS
 $rv $R/rtl/ccv_assert_pkg.sv
-$rv $R/rtl/if/ccv_wake_checker.sv
+$rv $R/rtl/if/ccv_common_chk_wake.sv
 $rv $icg
 $rv $gate
 $rv $R/test/formal/fv_clk_gate.sv
@@ -245,8 +245,8 @@ for cfg in "3 5 $HOLD" "$(pkgval CCV_CG_HYST_QUIESCE) $(pkgval CCV_CG_HYST_STALL
 done
 
 mkdir -p "$B/cg_mut"
-G=rtl/clk/ccv_clk_gate.sv
-I=rtl/ctech/sim/ccv_ctech_icg.sv
+G=rtl/clk/ccv_common_clk.sv
+I=rtl/ctech/sim/ccv_common_ctech_icg.sv
 sed 's/  logic          wake_q;/  logic          wake_q, wake_d1;/; s/      wake_q <= |wake;/      wake_d1 <= |wake;\n      wake_q <= wake_d1;/' \
   $G >"$B/cg_mut/wake_late.sv"
 sed 's/  wire           en     = !sleep || wake_q || cg_override || !rst_n;/  wire           en     = !sleep || wake_q || (|wake) || cg_override || !rst_n;/' \

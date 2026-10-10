@@ -64,7 +64,7 @@ module ccv_cru_w #(
   );
 
   // ccv_ooe_cru_fault, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_CRU_FAULT), .SLOTS(1), .PAYLOAD_W(172)) u_rpt_ooe_cru_fault (
+  ccv_common_rpt #(.STAGES(RPT_OOE_CRU_FAULT), .SLOTS(1), .PAYLOAD_W(172)) u_rpt_ooe_cru_fault (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_cru_fault_valid}), .src_payload({ooe_cru_fault_payload}),
     .src_wake(ooe_cru_fault_wake), .src_credit({ooe_cru_fault_credit}), .src_stall({ooe_cru_fault_stall}),
@@ -75,7 +75,7 @@ module ccv_cru_w #(
 `endif
   );
   // ccv_cru_rau_cfg, source end
-  ccv_seq_rpt #(.STAGES(RPT_CRU_RAU_CFG), .SLOTS(1), .PAYLOAD_W(74)) u_rpt_cru_rau_cfg (
+  ccv_common_rpt #(.STAGES(RPT_CRU_RAU_CFG), .SLOTS(1), .PAYLOAD_W(74)) u_rpt_cru_rau_cfg (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_cru_rau_cfg_valid}), .src_payload({b_cru_rau_cfg_payload}),
     .src_wake(b_cru_rau_cfg_wake), .src_credit({b_cru_rau_cfg_credit}), .src_stall({b_cru_rau_cfg_stall}),

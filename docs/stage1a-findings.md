@@ -330,7 +330,7 @@ fall out of the convention rather than being hand-built per block.
 
 > **Since (2026-09-23 partition).** It turned out to be *one checker, full
 > stop*: every one of the 40 channels (now 41) runs the same credited protocol, so
-> `ccv_credit_checker.sv` is generic over payload **width** rather than payload
+> `ccv_common_chk_credit.sv` is generic over payload **width** rather than payload
 > type — it never interprets the payload, only the protocol around it. The
 > mechanism below is unchanged; only the count is.
 
@@ -634,7 +634,7 @@ as "possibly-X" modelling, and made `CCV_ASSUME_KNOWN` the required
 companion. Its "verified: proves cleanly" was measuring an environment
 pinned to all ones: every checker that assumed its inputs known was proving
 things about a sender whose valid never fell. The fail-open register already
-held the symptom and not the cause. `ccv_outstanding_checker`'s harness
+held the symptom and not the cause. `ccv_common_chk_outstanding`'s harness
 "admitted no trace at all" once it assumed its register-driven inputs known;
 that is this: a register driven from reset cannot be 1 for ever.
 

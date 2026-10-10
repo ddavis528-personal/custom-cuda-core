@@ -98,7 +98,7 @@ manifest. The gate must pass first, and the branch is never merged back.
 | [`docs/design-snapshots/`](docs/design-snapshots/README.md) | **Pinned copies of the design docs that live outside the repo**: the OOE microarchitecture doc (living) and the OOE interface review and change set (closed). Refreshed, never edited, and checked: every review row the repo cites must be in the snapshot. |
 | [`docs/ooe-4b.md`](docs/ooe-4b.md) | **Handoff for the OOE model session (Stage 4b).** Sources of truth, where the code goes, the swap-boundary rules the gate enforces, OOE's ports and contracts, what the environment can and cannot exercise yet, and how the sessions divide the work. |
 | [`docs/coverage.md`](docs/coverage.md) | **Kernel coverage.** What the S1/S2 kernels reach, held to by coverage counts in the gate; what they do not reach yet, and which open blocks each gap. |
-| [`docs/clock-gate.md`](docs/clock-gate.md) | **Clock gating.** The ctech layer (one module per cell, a behavioural view for simulation and one per process library for synthesis), and `ccv_clk_gate`, every block's gate: sleep on quiescence or stall with CSR-programmable hysteresis, a CSR override, and a registered wake that opens the edge after next. What is proved about it, and how. |
+| [`docs/clock-gate.md`](docs/clock-gate.md) | **Clock gating.** The ctech layer (one module per cell, a behavioural view for simulation and one per process library for synthesis), and `ccv_common_clk`, every block's gate: sleep on quiescence or stall with CSR-programmable hysteresis, a CSR override, and a registered wake that opens the edge after next. What is proved about it, and how. |
 | [`docs/physical.md`](docs/physical.md) | **Getting to abutment.** The sequential repeater widget; the hardening wrappers and `params/links.json`, which says how many stages of each channel each wrapper holds; what a repeated link changes (round trip, checker placement, credit depth and rate); clocking options. |
 | [`docs/skeleton-slots.md`](docs/skeleton-slots.md) | **Generated.** The skeleton's slot count derived term by term, and every channel with its slot attributes (decided or default) and id classes. The one number a clean run cannot validate, written where it can be re-derived. |
 | [`docs/rtl-coding-style.md`](docs/rtl-coding-style.md) | §9's style guide, with every lint rule cited by id. |
@@ -132,13 +132,13 @@ rtl/if/                     the credit checker (one per slot), plus the atomic
 rtl/lint/                   lint fixtures -- bad_* must fail, good_* must not
 rtl/phys/                   physical-implementation primitives: the
                               sequential repeater (docs/physical.md)
-rtl/clk/                    ccv_clk_gate, every block's clock gate
+rtl/clk/                    ccv_common_clk, every block's clock gate
                               (docs/clock-gate.md)
 rtl/ctech/                  ctech cells, one directory per view: sim/ for
                               simulation and formal, <library>/ per process
                               library; tools/ccv_ctech.py picks one
 rtl/top/                    GENERATED, tracked: the SV top level
-                              ccv_core_top.sv   45 blocks, 110 channel instances
+                              ccv_top.sv   45 blocks, 110 channel instances
                               ports/            each block's port list
                               stubs/            stub blocks, swapped at 4c
                               wrap/             hardening wrappers: block +
@@ -213,7 +213,7 @@ nothing else prevents them from drifting.
 Each is documented, enforced by lint, and backed by a measurement rather than
 a preference.
 
-**Interface checkers.** One checker — `rtl/if/ccv_credit_checker.sv`, not one
+**Interface checkers.** One checker — `rtl/if/ccv_common_chk_credit.sv`, not one
 per interface — serves protocol assertions, formal cut-points and event
 emission at every boundary at once. Every boundary runs the same credited
 protocol, so only the payload width differs. Connected by instantiation, not

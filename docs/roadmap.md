@@ -74,30 +74,30 @@ lockstep across the 32 lanes.
 
 ### What a new design file has to carry
 
-Twenty-seven lint rules is more than anyone will hold in their head, so the
+Twenty-eight lint rules is more than anyone will hold in their head, so the
 obligations that are not obvious from reading existing code:
 
 ```systemverilog
-//===-- sched_iq.sv - issue queue ---------------------------------------===//
+//===-- ccv_ooe.sv - OOE block top --------------------------------------===//
 //
-// Spec: docs/blocks/scheduler-4a.md        <- CCV-L11, the Stage 4a spec
-// Block: scheduler                          <- CCV-L21, checked against
+// Spec: docs/blocks/ooe-4a.md              <- CCV-L11, the Stage 4a spec
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 
-`define CCV_CLK sched_core_clk              <- CCV-L02
-`define CCV_RST sched_rst_r06h
+`define CCV_CLK ooe_core_clk                <- CCV-L02
+`define CCV_RST ooe_rst_r06h
 
-module sched_iq ( ... );                    <- CCV-L01, filename must match
-
-  // The block gates its clock as its first act, through ccv_clk_gate --
+module ccv_ooe ( ... );                     <- CCV-L01, filename must match;
+                                               CCV-L28, the name makes it
+                                               OOE's top (stage letter q)
+  // A block top gates its clock as its first act, through ccv_common_clk --
   // CCV-L22 forbids clocking anything on the ungated core_clk, and CCV-L27
   // forbids building the gate by hand (docs/clock-gate.md).
-  ccv_clk_gate u_cg (.clk(core_clk), ..., .gclk(sched_core_clk), .gated(clk_gated));
+  ccv_common_clk u_cg (.clk(core_clk), ..., .gclk(ooe_core_clk), .gated(clk_gated));
 
   // Every CONTROL input used in an if or a case needs one of these, or the
   // case needs an X-default -- CCV-L08.
-  `CCV_ASSERT_KNOWN(iq_push_known, iq_push_cs00h)
+  `CCV_ASSERT_KNOWN(iq_push_known, iq_push_cq00h)
 
   ...
 
@@ -107,10 +107,13 @@ endmodule
 `undef CCV_RST                                 inherits this one's clock
 ```
 
-A **reusable** module — a checker or a primitive, instantiated inside many
-blocks — declares `// Reusable: <why>` instead of `// Block:`, takes
-`clk`/`rst` as generic formals, and is exempt from the clock-naming and stage
-rules. `rtl/if/ccv_credit_checker.sv` is the worked example.
+A module's name says what it is (CCV-L28, DA's response OI-37). A
+**sub-block** is `<block>_<name>` (`ooe_pick`): no gate of its own, and it
+runs on `<block>_core_clk`, never `core_clk`. A **common** module — a checker
+or a primitive, instantiated inside many blocks — is `ccv_common_<type>` (or
+`<block>_common_<type>` within one block), takes `clk`/`rst` as generic
+formals, and is exempt from the clock-naming and stage rules.
+`rtl/if/ccv_common_chk_credit.sv` is the worked example.
 
 Run `tools/lint-rtl.py <file>` while writing; it is fast and the messages
 name the rule, which the style guide then explains.
@@ -181,7 +184,7 @@ redirect, and two migration pairs). Encoded and machine-checked:
   (`ccv_prov_pkg`, `ccv_prelim_pkg`), so a module referencing one is visibly
   unfinished at every use site — which is what stops a placeholder from being
   believed.
-- `rtl/if/ccv_credit_checker.sv` — the one parameterised checker.
+- `rtl/if/ccv_common_chk_credit.sv` — the one parameterised checker.
 - `EV_CH_XFER` — the load-bearing event content §8 said would fall out of the
   interface grill-me. The channel list **is** the load-bearing event list.
 
@@ -303,9 +306,9 @@ five of its spike questions closed — four confirmed, one (`bind`) reversed.
   information (F-12)
 - `rtl/include/ccv_if.svh` — modes, mode-resolved contracts, satisfiability
   covers, guarded emission
-- `rtl/if/ccv_credit_checker.sv` — the one parameterised checker, now driven
+- `rtl/if/ccv_common_chk_credit.sv` — the one parameterised checker, now driven
   by the real topology (one instance per slot) rather than a worked example.
-- `rtl/if/ccv_atomic_checker.sv`, `ccv_lockstep_checker.sv` — the two
+- `rtl/if/ccv_common_chk_atomic.sv`, `ccv_common_chk_lockstep.sv` — the two
   checkers that look across slots and across lane instances.
 - `tools/check-if.sh` — exit criteria
 - CCV-L12 … CCV-L15 in the linter
@@ -325,7 +328,7 @@ something a checker can reason about.
 
 - `params/blocks.json` — domain and block letters
 - CCV-L02 rewritten, CCV-L19 … CCV-L24 added
-- `rtl/lint/bad_naming.sv` / `good_naming.sv`
+- `rtl/lint/bad_naming.sv` / `good_naming.sv` (now `ccv_reference.sv`, OI-37)
 
 **Block letters: assigned, and the ceiling held.** The partition came in at 14
 block types, so with `z` (reset tree) and `y` (fixtures) reserved there are 8

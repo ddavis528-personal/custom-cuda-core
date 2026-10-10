@@ -12,7 +12,7 @@
     {
       "name": "nonexistent_t",
       "provisional": true,
-      "doc": "CCV-L12: no rtl/if/nonexistent_if_checker.sv exists.",
+      "doc": "CCV-L12: no rtl/if/ccv_common_chk_nonexistent.sv exists.",
       "direction": "producer_to_consumer",
       "backpressure": "ready",
       "fields": [

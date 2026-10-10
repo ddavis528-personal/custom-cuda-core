@@ -1,14 +1,15 @@
-//===-- good_naming.sv - net naming, compliant ---------------------------===//
+//===-- ccv_reference.sv - a block top and its net naming, compliant ---===//
 //
 // Spec: docs/rtl-coding-style.md, net naming section
-// Block: reference
 //
 // The false-positive regression. A naming rule set that fires on correct code
 // gets switched off, so this exercises every construct bad_naming.sv gets
-// wrong, done right. tools/check-1d.sh fails if ANY finding is reported here.
+// wrong, done right. Its name makes it the top of block `reference`
+// (params/blocks.json, the lint fixtures' block), so it gates core_clk and
+// its stage tags carry that block's letter, y (OI-37). tools/check-1d.sh fails if ANY finding is reported here.
 //===----------------------------------------------------------------------===//
 
-module good_naming #(
+module ccv_reference #(
   // A TYPED parameter is a parameter, not a net: UPPER_SNAKE is right here.
   // CCV-L19 once read the `logic` as a net declaration.
   parameter logic [39:0] LEAD_MASK = 40'h3f
@@ -23,8 +24,8 @@ module good_naming #(
 
   // The block gates the incoming clock as its first act, and everything
   // sequential below runs on the gated copy.
-  logic ref_core_clk;
-  ccv_clk_gate u_cg (
+  logic reference_core_clk;
+  ccv_common_clk u_cg (
     .clk        (core_clk),
     .rst_n      (!ref_rst_r00h),
     .quiesced   (1'b0),
@@ -34,20 +35,20 @@ module good_naming #(
     .wake       (1'b0),
     .cg_override(1'b1),
     .te         (1'b0),
-    .gclk       (ref_core_clk),
+    .gclk       (reference_core_clk),
     .gated      ()
   );
 
   logic [3:0] mid_cy01h;
 
   // Stage 00 in, stage 01 out: a flop advances exactly one stage.
-  always_ff @(posedge ref_core_clk) begin
+  always_ff @(posedge reference_core_clk) begin
     if (ref_rst_r00h) mid_cy01h <= '0;
     else              mid_cy01h <= in_data_cy00h;
   end
 
   // Stage 01 in, stage 02 out.
-  always_ff @(posedge ref_core_clk) begin
+  always_ff @(posedge reference_core_clk) begin
     if (ref_rst_r00h) out_p_cy02h <= '0;
     else              out_p_cy02h <= mid_cy01h;
   end

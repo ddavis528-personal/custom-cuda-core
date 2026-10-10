@@ -38,14 +38,14 @@ mkdir -p "$B"
 # Block implementations, one list for both hosts (sim/skel/blocks.list).
 BLOCKS=$(grep -v '^#' sim/skel/blocks.list | sed "s|^|$R/|" | tr '\n' ' ')
 VCOMMON="--cc --exe --build -j 0 -Wno-fatal -Wno-TIMESCALEMOD -Irtl/include -Irtl/generated"
-if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_skel_checkers \
+if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_common_chk_bank \
      --Mdir "$B/skel" -o ccv-skel \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
-     rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
-     rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv \
-     rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv \
-     rtl/if/ccv_wake_checker.sv \
-     rtl/generated/ccv_skel_checkers.sv \
+     rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
+     rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv \
+     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv \
+     rtl/if/ccv_common_chk_wake.sv \
+     rtl/generated/ccv_common_chk_bank.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
      "$R/sim/skel/exerciser.cpp" $BLOCKS \
      "$R/sim/skel/oracle.cpp" "$R/sim/src/event.cpp" \
@@ -53,10 +53,10 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_skel_checkers \
   bad "skeleton builds" "$(grep -m1 -i error "$B/skel.log")"
   exit 1
 fi
-if ! verilator $VCOMMON --top-module ccv_skel_layout_probe \
+if ! verilator $VCOMMON --top-module tb_layout_probe \
      --Mdir "$B/probe" -o layout-probe \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/skel -I$R/sim/generated" \
-     rtl/generated/ccv_skel_layout_probe.sv "$R/sim/skel/layout_probe.cpp" \
+     sim/generated/tb_layout_probe.sv "$R/sim/skel/layout_probe.cpp" \
      >"$B/probe.log" 2>&1; then
   bad "layout probe builds" "$(grep -m1 -i error "$B/probe.log")"
   exit 1
@@ -78,12 +78,12 @@ field() {
 # checked. So it is recomputed here from the schema by separate code, and the
 # binary, the generated bank and the derivation document must all agree.
 eval "$(python3 tools/skel-expect.py)"
-bank_cc=$(grep -c "^  ccv_credit_checker #" rtl/generated/ccv_skel_checkers.sv)
-bank_ac=$(grep -c "^  ccv_atomic_checker #" rtl/generated/ccv_skel_checkers.sv)
-bank_lc=$(grep -c "^  ccv_lockstep_checker #" rtl/generated/ccv_skel_checkers.sv)
-bank_bc=$(grep -c "^  ccv_binding_checker #" rtl/generated/ccv_skel_checkers.sv)
-bank_oc=$(grep -c "^  ccv_outstanding_checker #" rtl/generated/ccv_skel_checkers.sv)
-bank_fx=$(grep -c "^  ccv_credit_checker #.*FIXED_LAT(1)" rtl/generated/ccv_skel_checkers.sv)
+bank_cc=$(grep -c "^  ccv_common_chk_credit #" rtl/generated/ccv_common_chk_bank.sv)
+bank_ac=$(grep -c "^  ccv_common_chk_atomic #" rtl/generated/ccv_common_chk_bank.sv)
+bank_lc=$(grep -c "^  ccv_common_chk_lockstep #" rtl/generated/ccv_common_chk_bank.sv)
+bank_bc=$(grep -c "^  ccv_common_chk_binding #" rtl/generated/ccv_common_chk_bank.sv)
+bank_oc=$(grep -c "^  ccv_common_chk_outstanding #" rtl/generated/ccv_common_chk_bank.sv)
+bank_fx=$(grep -c "^  ccv_common_chk_credit #.*FIXED_LAT(1)" rtl/generated/ccv_common_chk_bank.sv)
 doc_n=$(grep -oE "\*\*[0-9]+ slots\*\*" docs/skeleton-slots.md | grep -oE "[0-9]+")
 "$SKEL" --cycles 4 >"$B/skel_count.log" 2>&1
 bin_n=$(field "$B/skel_count.log" slots)
@@ -108,9 +108,9 @@ ports() {
   yosys -p "read_verilog -sv -formal $1 -Irtl/include -Irtl/generated \
               rtl/ccv_assert_pkg.sv; \
             read_verilog -sv -formal $1 -Irtl/include -Irtl/generated \
-              rtl/if/ccv_credit_checker.sv; \
-            prep -top ccv_credit_checker; select -list i:*" 2>/dev/null \
-    | grep -oE "ccv_credit_checker/[a-z_]+" | sed 's|.*/||' | sort | tr '\n' ' '
+              rtl/if/ccv_common_chk_credit.sv; \
+            prep -top ccv_common_chk_credit; select -list i:*" 2>/dev/null \
+    | grep -oE "ccv_common_chk_credit/[a-z_]+" | sed 's|.*/||' | sort | tr '\n' ' '
 }
 if command -v yosys >/dev/null 2>&1; then
   plain=$(ports ""); traced=$(ports "-DCCV_TRACE")

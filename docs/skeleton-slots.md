@@ -21,7 +21,7 @@ multi-instance endpoint (LANE has 32).
 | 1 | 9 | 1 | 9 |
 | **48** | | | **163** |
 
-48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **163 slots**, one `ccv_credit_checker` each.
+48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **163 slots**, one `ccv_common_chk_credit` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 

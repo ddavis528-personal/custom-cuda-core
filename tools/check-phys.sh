@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Physical-implementation primitives: the sequential repeater
-# (rtl/phys/ccv_seq_rpt.sv, docs/physical.md).
+# (rtl/phys/ccv_common_rpt.sv, docs/physical.md).
 #
 #   clean                                        negative control
 #   lint -Wall, every shape (0/1/3 stages,       --
@@ -27,8 +27,8 @@ say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 field() { tr ' ' '\n' <<<"$1" | sed -n "s/^$2=//p" | head -1; }
 
-RPT=rtl/phys/ccv_seq_rpt.sv
-SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv"
+RPT=rtl/phys/ccv_common_rpt.sv
+SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv"
 TB=test/phys/tb_seq_rpt.sv
 INC="-Irtl/include -Irtl/generated"
 
@@ -38,7 +38,7 @@ if command -v verilator >/dev/null 2>&1; then
   for G in "-GSTAGES=0" "-GSTAGES=1 -GPAYLOAD_W=8" "-GSTAGES=3 -GPAYLOAD_W=20 -GLEAD_MASK=20'hf"; do
     for D in "" "-DCCV_TRACE"; do
       verilator --lint-only --assert -Wall -Wno-DECLFILENAME $D $INC \
-        --top-module ccv_seq_rpt $G rtl/ccv_assert_pkg.sv $RPT >"$B/lint.log" 2>&1 ||
+        --top-module ccv_common_rpt $G rtl/ccv_assert_pkg.sv $RPT >"$B/lint.log" 2>&1 ||
         lf="$lf [$G $D]"
     done
   done

@@ -1,9 +1,9 @@
-//===-- ccv_binding_checker.sv - a slot carries its own group ------------===//
+//===-- ccv_common_chk_binding.sv - a slot carries its own group ------------===//
 //
 // Spec: skeleton review response (2026-09-25), binding_key;
 //       docs/skeleton.md
-// Reusable: one instance per channel instance with a binding key; clk/rst_n
-//           are generic formals.
+// One instance per channel instance with a binding key; clk/rst_n
+// are generic formals.
 //
 // `slot_binding: bound` says slot index carries meaning. Until a payload
 // field NAMES the group a message belongs to, that meaning is text: nothing
@@ -19,7 +19,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_binding_checker #(
+module ccv_common_chk_binding #(
   parameter int MODE  = `CCV_MODE_ASSERT,
   parameter int N     = 2,        // slots in the channel instance
   parameter int GROUP = 1,        // slots per binding group

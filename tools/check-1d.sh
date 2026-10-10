@@ -34,6 +34,16 @@ python3 tools/lint-rtl.py --schema=rtl/lint/bad_interfaces.json \
   rtl/lint/bad_if_checker.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
+python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
+  rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
+# The generated design (rtl/top, rtl/generated) is outside the per-file walk,
+# so its names are checked by a pass of their own. Its counter-example: the
+# real top under the name it had before OI-37.
+mkdir -p "$TMP/gen"
+sed 's/^module ccv_top /module ccv_core_top /' rtl/top/ccv_top.sv >"$TMP/gen/ccv_core_top.sv"
+python3 tools/lint-rtl.py --names="$TMP/gen" rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
+cat "$TMP/names.log" >>"$TMP/bad.log"
 if grep -q "CCV-L" "$TMP/bad.log"; then false; else true; fi
 if [ $? -eq 0 ]; then
   bad "lint fails the non-compliant sample" "it passed"
@@ -70,20 +80,53 @@ else
   say "every lint rule is documented in the guide" "PASS"
 fi
 
+# -- the module namespace, refused by name (DA's response OI-37) -----------
+# Each shape the lint must refuse, under the rule that refuses it, by the
+# module's or the block's own name: a refusal that went quiet is named here,
+# not hidden among the others that still fire.
+nmiss=""
+for want in "CCV-L28: module widget:" "CCV-L28: module ccv_nosuch:" \
+            "CCV-L28: module ccv_nosuch_w:" "CCV-L28: module ccv_reference_pick:" \
+            "CCV-L28: module ccv_common:" "CCV-L28: module reference_common:" \
+            "CCV-L22: module ccv_reference is a block top" \
+            "CCV-L22: module ccv_top is the core top" \
+            "CCV-L22: module ccv_reference_w instantiates" \
+            "CCV-L22: module reference_gated instantiates" \
+            "CCV-L22: module reference_ungated is a sub-block" \
+            "CCV-L22: module reference_borrowed is a sub-block" \
+            "CCV-L22: module ccv_common_rpt_gated instantiates" \
+            "CCV-L28: block fet's module is ccv_fetch" \
+            "CCV-L28: block common is a reserved" "CCV-L28: block top is a reserved" \
+            "CCV-L28: block ooe_w is not one" "CCV-L28: block Lane is not one" \
+            "CCV-L28: module ccv_core_top:"; do
+  grep -qF "$want" "$TMP/names.log" || nmiss="$nmiss [$want]"
+done
+nn=$(grep -c "CCV-L2[28]" "$TMP/names.log")
+if [ -n "$nmiss" ]; then
+  bad "every namespace shape refused by name" "not refused:$nmiss"
+elif [ "$nn" != 19 ]; then
+  bad "every namespace shape refused by name" "$nn refusals, want exactly the 19 named"
+else
+  say "module namespace: 19 refusals, each by name" "PASS"
+fi
+
 # -- compliant code must be SILENT -----------------------------------------
 # The false-positive regression, and it matters more than usual for the
 # X-determinism rules: a rule that fires on correct code gets switched off, and
-# a rule that is switched off protects nothing. good_xprop.sv exercises all
+# a rule that is switched off protects nothing. reference_common_xprop.sv exercises all
 # three legal routes on control inputs exactly as suspicious as the fixture's.
 gfail=0
-for g in rtl/lint/good_xprop.sv rtl/lint/good_naming.sv \
-         rtl/lint/good_gated_enable.sv rtl/lint/good_yosys_subset.sv; do
+# One fixture per shape the namespace accepts: a block top, its wrapper, a
+# sub-block and two common modules, all of the lint fixtures' own block.
+for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
+         rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
+         rtl/lint/reference_common_yosys.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (4 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (5 fixtures)" "PASS"
 
 # CCV-L26 makes a claim about a TOOL, so the claim is checked against the
 # tool: every form the rule permits must actually be readable by Yosys. A
@@ -92,8 +135,8 @@ done
 # gets measured on every run. If a Yosys upgrade widens what it accepts, the
 # rule is merely conservative; if one narrows it, this fails.
 if command -v yosys >/dev/null 2>&1; then
-  if yosys -q -p "read_verilog -sv -formal rtl/lint/good_yosys_subset.sv; \
-                  prep -top good_yosys_subset" >"$TMP/l26.log" 2>&1; then
+  if yosys -q -p "read_verilog -sv -formal rtl/lint/reference_common_yosys.sv; \
+                  prep -top reference_common_yosys" >"$TMP/l26.log" 2>&1; then
     say "yosys reads every form CCV-L26 permits" "PASS"
   else
     bad "yosys reads every form CCV-L26 permits" \

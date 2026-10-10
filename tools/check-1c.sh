@@ -85,15 +85,15 @@ if command -v verilator >/dev/null 2>&1; then
   if verilator --binary -j 0 --timing -Wno-fatal \
        -Irtl/include -Irtl/generated \
        -CFLAGS "-I$R/sim/include -I$R/sim/generated" \
-       --top-module ccv_event_smoke --Mdir "$TMP/eobj" \
-       "$R/test/smoke/ccv_event_smoke.sv" "$R/sim/src/event.cpp" \
+       --top-module event_smoke --Mdir "$TMP/eobj" \
+       "$R/test/smoke/event_smoke.sv" "$R/sim/src/event.cpp" \
        "$R/sim/dpi/ccv_event_dpi.cpp" \
-       >"$TMP/dpi.log" 2>&1 && [ -x "$TMP/eobj/Vccv_event_smoke" ]; then
-    out=$(cd "$TMP" && ./eobj/Vccv_event_smoke 2>&1)
+       >"$TMP/dpi.log" 2>&1 && [ -x "$TMP/eobj/Vevent_smoke" ]; then
+    out=$(cd "$TMP" && ./eobj/Vevent_smoke 2>&1)
     if echo "$out" | grep -q "CCV_EVENT_SMOKE: OK" && \
        echo "$out" | grep -q "emitted 16 events"; then
       say "DPI-C emit from SystemVerilog" "PASS"
-      TRACE="$TMP/ccv_event_smoke.ccvtrace"
+      TRACE="$TMP/event_smoke.ccvtrace"
     else
       bad "DPI-C emit from SystemVerilog" "$(echo "$out" | head -2 | tr '\n' ' ')"
     fi

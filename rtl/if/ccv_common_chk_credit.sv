@@ -1,9 +1,9 @@
-//===-- ccv_credit_checker.sv - the one interface checker ----------------===//
+//===-- ccv_common_chk_credit.sv - the one interface checker ----------------===//
 //
 // Spec: docs/interface-checker-convention.md, plus the block-level grill-me's
 //       interface conventions (2026-09-23)
-// Reusable: one instance sits at every one of the 40 channel boundaries and
-//           binds to each block's own clock, so clk/rst_n are generic formals.
+// One instance sits at every one of the 40 channel boundaries and
+// binds to each block's own clock, so clk/rst_n are generic formals.
 //
 // ONE parameterized implementation, instantiated per boundary, rather than
 // per-interface assertions. Stage 1 found multi-cycle SVA unavailable on this
@@ -39,7 +39,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_credit_checker #(
+module ccv_common_chk_credit #(
   parameter int MODE       = `CCV_MODE_ASSERT,
   parameter int PAYLOAD_W  = 32,
   parameter int ROUND_TRIP = ccv_params_pkg::CCV_RT_ABUT,
@@ -60,7 +60,7 @@ module ccv_credit_checker #(
   // every channel without lead fields, which makes the property vacuous.
   parameter logic [PAYLOAD_W-1:0] LEAD_MASK = '0,
   // Sequential repeater stages between THIS checker and the sender
-  // (rtl/phys/ccv_seq_rpt.sv). Only the stall rule depends on where along a
+  // (rtl/phys/ccv_common_rpt.sv). Only the stall rule depends on where along a
   // repeated link the checker sits: a stall seen here reaches the sender
   // SRC_STAGES cycles later, and the first valid it can suppress takes as
   // long again to come back. 0 is the sender's own port, as on every

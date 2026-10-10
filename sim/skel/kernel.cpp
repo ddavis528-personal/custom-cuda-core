@@ -2082,7 +2082,7 @@ private:
     if (p == page_.end()) {
       // At most ONE miss outstanding: the refill names no page, so a second
       // miss would be unmatchable. Asserted across the pair by the bank's
-      // ccv_outstanding_checker. itlb-double breaks it on purpose, by also
+      // ccv_common_chk_outstanding. itlb-double breaks it on purpose, by also
       // asking for the next page.
       if (!itlb_wait_.empty()) return;
       if (k_.brk == "itlb-double") {

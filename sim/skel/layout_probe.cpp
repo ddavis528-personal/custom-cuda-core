@@ -1,12 +1,12 @@
 //===-- layout_probe.cpp - C++ field offsets vs the SV packed structs ----===//
 //
-// Drives random payloads into ccv_skel_layout_probe, which reads every field
+// Drives random payloads into tb_layout_probe, which reads every field
 // back through the REAL generated SystemVerilog typedef, and compares each
 // against the C++ offset table the skeleton uses. Any disagreement is a
 // swap-boundary bug: RTL and model would read the same bits as different
 // fields. F-12 is why this is checked rather than assumed.
 //===----------------------------------------------------------------------===//
-#include "Vccv_skel_layout_probe.h"
+#include "Vtb_layout_probe.h"
 #include "verilated.h"
 
 #include "bits.h"
@@ -86,7 +86,7 @@ unsigned check(const char *chan, const char *field, const T &port,
   return 0;
 }
 
-#include "ccv_skel_layout_probe.inc"
+#include "tb_layout_probe.inc"
 
 } // namespace
 
@@ -95,7 +95,7 @@ int main(int argc, char **argv) {
   ctx->commandArgs(argc, argv);
   for (int i = 1; i < argc; ++i)
     if (!std::strcmp(argv[i], "--mutate")) g_mutate = true;
-  Vccv_skel_layout_probe p(ctx.get());
+  Vtb_layout_probe p(ctx.get());
   unsigned bad = 0, rounds = 64;
   for (unsigned r = 0; r != rounds; ++r)
     bad += probeOnce(p, 0x5eed0000ull + r);

@@ -837,7 +837,7 @@
         "answered_by": "ccv_miu_fet_itlb",
         "max": 1
       },
-      "outstanding_why": "FET has at most one ITLB miss outstanding, which makes a correlation tag unnecessary: code is a handful of pages, the ITLB is 4-8 entries, and fetch stalls on a miss anyway. Asserted (ccv_outstanding_checker), not tagged. Revisit if multi-warp fetch across distant code regions proves otherwise."
+      "outstanding_why": "FET has at most one ITLB miss outstanding, which makes a correlation tag unnecessary: code is a handful of pages, the ITLB is 4-8 entries, and fetch stalls on a miss anyway. Asserted (ccv_common_chk_outstanding), not tagged. Revisit if multi-warp fetch across distant code regions proves otherwise."
     },
     {
       "name": "ccv_mlc_exb_req",
@@ -1463,7 +1463,7 @@
         "atomic"
       ],
       "applies": "rate > 1",
-      "doc": "atomic: a group of messages moves together -- valids and credits both all-or-none across the slots, since a message is its valid AND its payload despite the one-cycle stagger. Checked by ccv_atomic_checker; lets RTL collapse to one counter."
+      "doc": "atomic: a group of messages moves together -- valids and credits both all-or-none across the slots, since a message is its valid AND its payload despite the one-cycle stagger. Checked by ccv_common_chk_atomic; lets RTL collapse to one counter."
     },
     "slot_binding": {
       "default": "free",
@@ -1496,7 +1496,7 @@
         true
       ],
       "applies": "a channel replicated across a multi-instance endpoint",
-      "doc": "All instances advance together: slot k's valid and credit are the same on every instance each cycle, and -- with the trace sideband -- carry the same instruction id. Checked by ccv_lockstep_checker. Without it, 32 lanes with per-lane flow control is not a SIMD machine."
+      "doc": "All instances advance together: slot k's valid and credit are the same on every instance each cycle, and -- with the trace sideband -- carry the same instruction id. Checked by ccv_common_chk_lockstep. Without it, 32 lanes with per-lane flow control is not a SIMD machine."
     },
     "fixed_latency": {
       "default": false,
@@ -1505,7 +1505,7 @@
         true
       ],
       "applies": "any channel",
-      "doc": "true: the receiver never asserts stall and returns a credit for every message the cycle it lands, so a message's arrival time is fixed by the sender's schedule. The OOE fixed-latency contract rests on it (A-47): OOE schedules wakeup from contracted latencies with no grant, late or cancel signal. Checked by ccv_credit_checker's FIXED_LAT properties."
+      "doc": "true: the receiver never asserts stall and returns a credit for every message the cycle it lands, so a message's arrival time is fixed by the sender's schedule. The OOE fixed-latency contract rests on it (A-47): OOE schedules wakeup from contracted latencies with no grant, late or cancel signal. Checked by ccv_common_chk_credit's FIXED_LAT properties."
     }
   },
   "_id_classes_comment": [

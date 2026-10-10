@@ -1,13 +1,13 @@
-//===-- ccv_ctech_icg.sv - integrated clock gate: SIMULATION view ---------===//
+//===-- ccv_common_ctech_icg.sv - integrated clock gate: SIMULATION view ---------===//
 //
 // Spec: docs/clock-gate.md, "The ctech layer"
-// Ctech: icg -- the behavioural view, for simulation and formal only
+// The icg cell's behavioural view, for simulation and formal only.
 //
 // A ctech cell is a module with one fixed port list and one definition per
 // VIEW, selected by the file list (tools/ccv_ctech.py): this one for
 // simulation and formal, and one per process library that is nothing but an
 // instance of that library's cell (rtl/ctech/<library>/). RTL instantiates
-// ccv_ctech_icg and never a library cell, so the design is written once and
+// ccv_common_ctech_icg and never a library cell, so the design is written once and
 // the cell is a file-list choice -- and synthesis gets a real ICG, not
 // whatever it would infer from a latch and an AND.
 //
@@ -27,7 +27,7 @@
 // every simulation and quietly give up the cell's timing checks.
 //===----------------------------------------------------------------------===//
 
-module ccv_ctech_icg (
+module ccv_common_ctech_icg (
   input  logic clk,
   input  logic en,
   input  logic te,

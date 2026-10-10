@@ -1,7 +1,7 @@
 //===-- atomic_smoke.sv - lockstep traffic for the atomic checker ------===//
 //
 // Spec: interface decisions (2026-09-24), acceptance attribute
-// Reusable: a formal harness; clk/rst_n are generic formals.
+// A formal harness; clk/rst_n are generic formals.
 //
 // Free inputs, but broadcast to every slot, so traffic is lockstep by
 // construction. Under sby cover mode the asserts must hold and both
@@ -17,7 +17,7 @@ module atomic_smoke (
   input logic v,
   input logic c
 );
-  ccv_atomic_checker #(.N(4)) u_chk (
+  ccv_common_chk_atomic #(.N(4)) u_chk (
     .clk(clk), .rst_n(rst_n), .enable(en),
     .valid({4{v}}), .credit({4{c}}));
 endmodule

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# The SystemVerilog top level: rtl/top/ccv_core_top.sv, its generated block
-# port lists and stubs, and test/top/tb_core_top.sv -- all from
+# The SystemVerilog top level: rtl/top/ccv_top.sv, its generated block
+# port lists and stubs, and test/top/tb_top.sv -- all from
 # tools/gen-top.py.
 #
 # With stub blocks nothing moves, so what this proves is structural:
@@ -9,7 +9,7 @@
 #   - it simulates, in Icarus and in Verilator, with the bank attached;
 #   - synthesis sees no checker at all unless CCV_CHECK is defined (B-1);
 #   - it holds block instances and nets and nothing else -- no gate, flop,
-#     constant or clock gate -- every block holds its one ccv_clk_gate, whose
+#     constant or clock gate -- every block holds its one ccv_common_clk, whose
 #     own decision is the block's clk_gated, and eleven deliberately impure
 #     copies are refused (tools/check-top-pure.py);
 #   - its connectivity, EXTRACTED from the elaborated netlist, is bit for bit
@@ -23,24 +23,24 @@ fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 
-CHK="rtl/if/ccv_credit_checker.sv rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv rtl/if/ccv_wake_checker.sv rtl/generated/ccv_skel_checkers.sv"
+CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
 STUBS=$(ls rtl/top/stubs/*.sv | tr '\n' ' ')
 # The assertion package first: the checkers import it, and every tool wants a
 # package declared before its first use.
 PKG="rtl/ccv_assert_pkg.sv"
 # The hardening wrappers, and the repeater they instantiate at every end.
-WRAP="rtl/phys/ccv_seq_rpt.sv $(ls rtl/top/wrap/*.sv | tr '\n' ' ')"
+WRAP="rtl/phys/ccv_common_rpt.sv $(ls rtl/top/wrap/*.sv | tr '\n' ' ')"
 # Every block's clock gate, and the ctech view its ICG resolves to
 # ($CCV_CTECH, default the simulation view; tools/ccv_ctech.py).
-GATE="rtl/clk/ccv_clk_gate.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
-TOP="$GATE $STUBS $WRAP rtl/top/ccv_core_top.sv"
+GATE="rtl/clk/ccv_common_clk.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
+TOP="$GATE $STUBS $WRAP rtl/top/ccv_top.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
 
 # -- Verilator -Wall, three builds people will actually run -----------------
 if command -v verilator >/dev/null 2>&1; then
   for D in "" "-DCCV_CHECK" "-DCCV_CHECK -DCCV_TRACE"; do
     if verilator --lint-only --assert -Wall -Wno-DECLFILENAME -Wno-TIMESCALEMOD \
-         $D $INC --top-module ccv_core_top $PKG $CHK $TOP >"$B/top_lint.log" 2>&1; then
+         $D $INC --top-module ccv_top $PKG $CHK $TOP >"$B/top_lint.log" 2>&1; then
       say "verilator -Wall: top ${D:-(synthesis view)}" "PASS"
     else
       bad "verilator -Wall: top ${D:-(synthesis view)}" \
@@ -51,7 +51,7 @@ if command -v verilator >/dev/null 2>&1; then
   if verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
        -DCCV_CHECK -DCCV_TRACE $INC --top-module tb --Mdir "$B/top_vo" \
        -CFLAGS "-I$R/sim/include -I$R/sim/generated" \
-       $PKG $CHK $TOP test/top/tb_core_top.sv \
+       $PKG $CHK $TOP test/top/tb_top.sv \
        "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
        >"$B/top_vb.log" 2>&1; then
     out=$({ "$B/top_vo/Vtb" 2>&1 || true; } 2>/dev/null)
@@ -78,7 +78,7 @@ fi
 if command -v iverilog >/dev/null 2>&1; then
   for D in "" "-DCCV_CHECK"; do
     if iverilog -g2012 -gassertions $D $INC -o "$B/top.vvp" -s tb \
-         $PKG $CHK $TOP test/top/tb_core_top.sv >"$B/top_iv.log" 2>&1; then
+         $PKG $CHK $TOP test/top/tb_top.sv >"$B/top_iv.log" 2>&1; then
       out=$(vvp "$B/top.vvp" 2>&1)
       if echo "$out" | grep -q TOP_OK && ! echo "$out" | grep -q "CCV .* failed"; then
         say "icarus: top simulates ${D:-(no checkers)}" "PASS"
@@ -95,8 +95,8 @@ fi
 if command -v yosys >/dev/null 2>&1; then
   view() {   # $1 = defines, $2 = extra files; prints "<blocks> <checkers>"
     yosys -p "read_verilog -sv -formal $1 $INC $PKG $2 $TOP; \
-              hierarchy -check -top ccv_core_top; select -list t:ccv_*" \
-      2>&1 | awk '/^ccv_core_top\/u_/ {n++} /^ccv_core_top\/u_checkers$/ {c++}
+              hierarchy -check -top ccv_top; select -list t:ccv_*" \
+      2>&1 | awk '/^ccv_top\/u_/ {n++} /^ccv_top\/u_checkers$/ {c++}
                   END {print n+0, c+0}'
   }
   read -r nb nc <<<"$(view "" "")"

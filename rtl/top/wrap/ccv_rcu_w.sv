@@ -1176,7 +1176,7 @@ module ccv_rcu_w #(
   );
 
   // ccv_ooe_rcu_issue, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(9), .PAYLOAD_W(175)) u_rpt_ooe_rcu_issue (
+  ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(9), .PAYLOAD_W(175)) u_rpt_ooe_rcu_issue (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid}), .src_payload({ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload}),
     .src_wake(ooe_rcu_issue_wake), .src_credit({ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit}), .src_stall({ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall}),
@@ -1187,7 +1187,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C00), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c00 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C00), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c00 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c00_valid}), .src_payload({b_rcu_lane_ops_c00_payload}),
     .src_wake(b_rcu_lane_ops_c00_wake), .src_credit({b_rcu_lane_ops_c00_credit}), .src_stall({b_rcu_lane_ops_c00_stall}),
@@ -1198,7 +1198,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C01), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c01 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C01), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c01 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c01_valid}), .src_payload({b_rcu_lane_ops_c01_payload}),
     .src_wake(b_rcu_lane_ops_c01_wake), .src_credit({b_rcu_lane_ops_c01_credit}), .src_stall({b_rcu_lane_ops_c01_stall}),
@@ -1209,7 +1209,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C02), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c02 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C02), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c02 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c02_valid}), .src_payload({b_rcu_lane_ops_c02_payload}),
     .src_wake(b_rcu_lane_ops_c02_wake), .src_credit({b_rcu_lane_ops_c02_credit}), .src_stall({b_rcu_lane_ops_c02_stall}),
@@ -1220,7 +1220,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C03), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c03 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C03), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c03 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c03_valid}), .src_payload({b_rcu_lane_ops_c03_payload}),
     .src_wake(b_rcu_lane_ops_c03_wake), .src_credit({b_rcu_lane_ops_c03_credit}), .src_stall({b_rcu_lane_ops_c03_stall}),
@@ -1231,7 +1231,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C04), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c04 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C04), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c04 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c04_valid}), .src_payload({b_rcu_lane_ops_c04_payload}),
     .src_wake(b_rcu_lane_ops_c04_wake), .src_credit({b_rcu_lane_ops_c04_credit}), .src_stall({b_rcu_lane_ops_c04_stall}),
@@ -1242,7 +1242,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C05), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c05 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C05), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c05 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c05_valid}), .src_payload({b_rcu_lane_ops_c05_payload}),
     .src_wake(b_rcu_lane_ops_c05_wake), .src_credit({b_rcu_lane_ops_c05_credit}), .src_stall({b_rcu_lane_ops_c05_stall}),
@@ -1253,7 +1253,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C06), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c06 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C06), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c06 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c06_valid}), .src_payload({b_rcu_lane_ops_c06_payload}),
     .src_wake(b_rcu_lane_ops_c06_wake), .src_credit({b_rcu_lane_ops_c06_credit}), .src_stall({b_rcu_lane_ops_c06_stall}),
@@ -1264,7 +1264,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C07), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c07 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C07), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c07 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c07_valid}), .src_payload({b_rcu_lane_ops_c07_payload}),
     .src_wake(b_rcu_lane_ops_c07_wake), .src_credit({b_rcu_lane_ops_c07_credit}), .src_stall({b_rcu_lane_ops_c07_stall}),
@@ -1275,7 +1275,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C08), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c08 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C08), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c08 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c08_valid}), .src_payload({b_rcu_lane_ops_c08_payload}),
     .src_wake(b_rcu_lane_ops_c08_wake), .src_credit({b_rcu_lane_ops_c08_credit}), .src_stall({b_rcu_lane_ops_c08_stall}),
@@ -1286,7 +1286,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C09), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c09 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C09), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c09 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c09_valid}), .src_payload({b_rcu_lane_ops_c09_payload}),
     .src_wake(b_rcu_lane_ops_c09_wake), .src_credit({b_rcu_lane_ops_c09_credit}), .src_stall({b_rcu_lane_ops_c09_stall}),
@@ -1297,7 +1297,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C10), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c10 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C10), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c10 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c10_valid}), .src_payload({b_rcu_lane_ops_c10_payload}),
     .src_wake(b_rcu_lane_ops_c10_wake), .src_credit({b_rcu_lane_ops_c10_credit}), .src_stall({b_rcu_lane_ops_c10_stall}),
@@ -1308,7 +1308,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C11), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c11 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C11), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c11 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c11_valid}), .src_payload({b_rcu_lane_ops_c11_payload}),
     .src_wake(b_rcu_lane_ops_c11_wake), .src_credit({b_rcu_lane_ops_c11_credit}), .src_stall({b_rcu_lane_ops_c11_stall}),
@@ -1319,7 +1319,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C12), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c12 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C12), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c12 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c12_valid}), .src_payload({b_rcu_lane_ops_c12_payload}),
     .src_wake(b_rcu_lane_ops_c12_wake), .src_credit({b_rcu_lane_ops_c12_credit}), .src_stall({b_rcu_lane_ops_c12_stall}),
@@ -1330,7 +1330,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C13), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c13 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C13), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c13 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c13_valid}), .src_payload({b_rcu_lane_ops_c13_payload}),
     .src_wake(b_rcu_lane_ops_c13_wake), .src_credit({b_rcu_lane_ops_c13_credit}), .src_stall({b_rcu_lane_ops_c13_stall}),
@@ -1341,7 +1341,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C14), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c14 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C14), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c14 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c14_valid}), .src_payload({b_rcu_lane_ops_c14_payload}),
     .src_wake(b_rcu_lane_ops_c14_wake), .src_credit({b_rcu_lane_ops_c14_credit}), .src_stall({b_rcu_lane_ops_c14_stall}),
@@ -1352,7 +1352,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C15), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c15 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C15), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c15 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c15_valid}), .src_payload({b_rcu_lane_ops_c15_payload}),
     .src_wake(b_rcu_lane_ops_c15_wake), .src_credit({b_rcu_lane_ops_c15_credit}), .src_stall({b_rcu_lane_ops_c15_stall}),
@@ -1363,7 +1363,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C16), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c16 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C16), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c16 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c16_valid}), .src_payload({b_rcu_lane_ops_c16_payload}),
     .src_wake(b_rcu_lane_ops_c16_wake), .src_credit({b_rcu_lane_ops_c16_credit}), .src_stall({b_rcu_lane_ops_c16_stall}),
@@ -1374,7 +1374,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C17), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c17 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C17), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c17 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c17_valid}), .src_payload({b_rcu_lane_ops_c17_payload}),
     .src_wake(b_rcu_lane_ops_c17_wake), .src_credit({b_rcu_lane_ops_c17_credit}), .src_stall({b_rcu_lane_ops_c17_stall}),
@@ -1385,7 +1385,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C18), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c18 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C18), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c18 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c18_valid}), .src_payload({b_rcu_lane_ops_c18_payload}),
     .src_wake(b_rcu_lane_ops_c18_wake), .src_credit({b_rcu_lane_ops_c18_credit}), .src_stall({b_rcu_lane_ops_c18_stall}),
@@ -1396,7 +1396,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C19), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c19 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C19), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c19 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c19_valid}), .src_payload({b_rcu_lane_ops_c19_payload}),
     .src_wake(b_rcu_lane_ops_c19_wake), .src_credit({b_rcu_lane_ops_c19_credit}), .src_stall({b_rcu_lane_ops_c19_stall}),
@@ -1407,7 +1407,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C20), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c20 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C20), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c20 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c20_valid}), .src_payload({b_rcu_lane_ops_c20_payload}),
     .src_wake(b_rcu_lane_ops_c20_wake), .src_credit({b_rcu_lane_ops_c20_credit}), .src_stall({b_rcu_lane_ops_c20_stall}),
@@ -1418,7 +1418,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C21), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c21 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C21), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c21 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c21_valid}), .src_payload({b_rcu_lane_ops_c21_payload}),
     .src_wake(b_rcu_lane_ops_c21_wake), .src_credit({b_rcu_lane_ops_c21_credit}), .src_stall({b_rcu_lane_ops_c21_stall}),
@@ -1429,7 +1429,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C22), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c22 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C22), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c22 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c22_valid}), .src_payload({b_rcu_lane_ops_c22_payload}),
     .src_wake(b_rcu_lane_ops_c22_wake), .src_credit({b_rcu_lane_ops_c22_credit}), .src_stall({b_rcu_lane_ops_c22_stall}),
@@ -1440,7 +1440,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C23), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c23 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C23), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c23 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c23_valid}), .src_payload({b_rcu_lane_ops_c23_payload}),
     .src_wake(b_rcu_lane_ops_c23_wake), .src_credit({b_rcu_lane_ops_c23_credit}), .src_stall({b_rcu_lane_ops_c23_stall}),
@@ -1451,7 +1451,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C24), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c24 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C24), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c24 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c24_valid}), .src_payload({b_rcu_lane_ops_c24_payload}),
     .src_wake(b_rcu_lane_ops_c24_wake), .src_credit({b_rcu_lane_ops_c24_credit}), .src_stall({b_rcu_lane_ops_c24_stall}),
@@ -1462,7 +1462,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C25), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c25 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C25), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c25 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c25_valid}), .src_payload({b_rcu_lane_ops_c25_payload}),
     .src_wake(b_rcu_lane_ops_c25_wake), .src_credit({b_rcu_lane_ops_c25_credit}), .src_stall({b_rcu_lane_ops_c25_stall}),
@@ -1473,7 +1473,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C26), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c26 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C26), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c26 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c26_valid}), .src_payload({b_rcu_lane_ops_c26_payload}),
     .src_wake(b_rcu_lane_ops_c26_wake), .src_credit({b_rcu_lane_ops_c26_credit}), .src_stall({b_rcu_lane_ops_c26_stall}),
@@ -1484,7 +1484,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C27), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c27 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C27), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c27 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c27_valid}), .src_payload({b_rcu_lane_ops_c27_payload}),
     .src_wake(b_rcu_lane_ops_c27_wake), .src_credit({b_rcu_lane_ops_c27_credit}), .src_stall({b_rcu_lane_ops_c27_stall}),
@@ -1495,7 +1495,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C28), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c28 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C28), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c28 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c28_valid}), .src_payload({b_rcu_lane_ops_c28_payload}),
     .src_wake(b_rcu_lane_ops_c28_wake), .src_credit({b_rcu_lane_ops_c28_credit}), .src_stall({b_rcu_lane_ops_c28_stall}),
@@ -1506,7 +1506,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C29), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c29 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C29), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c29 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c29_valid}), .src_payload({b_rcu_lane_ops_c29_payload}),
     .src_wake(b_rcu_lane_ops_c29_wake), .src_credit({b_rcu_lane_ops_c29_credit}), .src_stall({b_rcu_lane_ops_c29_stall}),
@@ -1517,7 +1517,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C30), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c30 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C30), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c30 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c30_valid}), .src_payload({b_rcu_lane_ops_c30_payload}),
     .src_wake(b_rcu_lane_ops_c30_wake), .src_credit({b_rcu_lane_ops_c30_credit}), .src_stall({b_rcu_lane_ops_c30_stall}),
@@ -1528,7 +1528,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_lane_ops, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_LANE_OPS_C31), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c31 (
+  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C31), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c31 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_lane_ops_c31_valid}), .src_payload({b_rcu_lane_ops_c31_payload}),
     .src_wake(b_rcu_lane_ops_c31_wake), .src_credit({b_rcu_lane_ops_c31_credit}), .src_stall({b_rcu_lane_ops_c31_stall}),
@@ -1539,7 +1539,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C00), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c00 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C00), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c00 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c00_valid}), .src_payload({lane_rcu_res_c00_payload}),
     .src_wake(lane_rcu_res_c00_wake), .src_credit({lane_rcu_res_c00_credit}), .src_stall({lane_rcu_res_c00_stall}),
@@ -1550,7 +1550,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C01), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c01 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C01), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c01 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c01_valid}), .src_payload({lane_rcu_res_c01_payload}),
     .src_wake(lane_rcu_res_c01_wake), .src_credit({lane_rcu_res_c01_credit}), .src_stall({lane_rcu_res_c01_stall}),
@@ -1561,7 +1561,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C02), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c02 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C02), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c02 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c02_valid}), .src_payload({lane_rcu_res_c02_payload}),
     .src_wake(lane_rcu_res_c02_wake), .src_credit({lane_rcu_res_c02_credit}), .src_stall({lane_rcu_res_c02_stall}),
@@ -1572,7 +1572,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C03), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c03 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C03), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c03 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c03_valid}), .src_payload({lane_rcu_res_c03_payload}),
     .src_wake(lane_rcu_res_c03_wake), .src_credit({lane_rcu_res_c03_credit}), .src_stall({lane_rcu_res_c03_stall}),
@@ -1583,7 +1583,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C04), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c04 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C04), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c04 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c04_valid}), .src_payload({lane_rcu_res_c04_payload}),
     .src_wake(lane_rcu_res_c04_wake), .src_credit({lane_rcu_res_c04_credit}), .src_stall({lane_rcu_res_c04_stall}),
@@ -1594,7 +1594,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C05), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c05 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C05), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c05 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c05_valid}), .src_payload({lane_rcu_res_c05_payload}),
     .src_wake(lane_rcu_res_c05_wake), .src_credit({lane_rcu_res_c05_credit}), .src_stall({lane_rcu_res_c05_stall}),
@@ -1605,7 +1605,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C06), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c06 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C06), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c06 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c06_valid}), .src_payload({lane_rcu_res_c06_payload}),
     .src_wake(lane_rcu_res_c06_wake), .src_credit({lane_rcu_res_c06_credit}), .src_stall({lane_rcu_res_c06_stall}),
@@ -1616,7 +1616,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C07), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c07 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C07), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c07 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c07_valid}), .src_payload({lane_rcu_res_c07_payload}),
     .src_wake(lane_rcu_res_c07_wake), .src_credit({lane_rcu_res_c07_credit}), .src_stall({lane_rcu_res_c07_stall}),
@@ -1627,7 +1627,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C08), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c08 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C08), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c08 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c08_valid}), .src_payload({lane_rcu_res_c08_payload}),
     .src_wake(lane_rcu_res_c08_wake), .src_credit({lane_rcu_res_c08_credit}), .src_stall({lane_rcu_res_c08_stall}),
@@ -1638,7 +1638,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C09), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c09 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C09), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c09 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c09_valid}), .src_payload({lane_rcu_res_c09_payload}),
     .src_wake(lane_rcu_res_c09_wake), .src_credit({lane_rcu_res_c09_credit}), .src_stall({lane_rcu_res_c09_stall}),
@@ -1649,7 +1649,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C10), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c10 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C10), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c10 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c10_valid}), .src_payload({lane_rcu_res_c10_payload}),
     .src_wake(lane_rcu_res_c10_wake), .src_credit({lane_rcu_res_c10_credit}), .src_stall({lane_rcu_res_c10_stall}),
@@ -1660,7 +1660,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C11), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c11 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C11), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c11 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c11_valid}), .src_payload({lane_rcu_res_c11_payload}),
     .src_wake(lane_rcu_res_c11_wake), .src_credit({lane_rcu_res_c11_credit}), .src_stall({lane_rcu_res_c11_stall}),
@@ -1671,7 +1671,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C12), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c12 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C12), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c12 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c12_valid}), .src_payload({lane_rcu_res_c12_payload}),
     .src_wake(lane_rcu_res_c12_wake), .src_credit({lane_rcu_res_c12_credit}), .src_stall({lane_rcu_res_c12_stall}),
@@ -1682,7 +1682,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C13), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c13 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C13), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c13 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c13_valid}), .src_payload({lane_rcu_res_c13_payload}),
     .src_wake(lane_rcu_res_c13_wake), .src_credit({lane_rcu_res_c13_credit}), .src_stall({lane_rcu_res_c13_stall}),
@@ -1693,7 +1693,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C14), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c14 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C14), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c14 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c14_valid}), .src_payload({lane_rcu_res_c14_payload}),
     .src_wake(lane_rcu_res_c14_wake), .src_credit({lane_rcu_res_c14_credit}), .src_stall({lane_rcu_res_c14_stall}),
@@ -1704,7 +1704,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C15), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c15 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C15), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c15 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c15_valid}), .src_payload({lane_rcu_res_c15_payload}),
     .src_wake(lane_rcu_res_c15_wake), .src_credit({lane_rcu_res_c15_credit}), .src_stall({lane_rcu_res_c15_stall}),
@@ -1715,7 +1715,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C16), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c16 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C16), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c16 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c16_valid}), .src_payload({lane_rcu_res_c16_payload}),
     .src_wake(lane_rcu_res_c16_wake), .src_credit({lane_rcu_res_c16_credit}), .src_stall({lane_rcu_res_c16_stall}),
@@ -1726,7 +1726,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C17), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c17 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C17), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c17 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c17_valid}), .src_payload({lane_rcu_res_c17_payload}),
     .src_wake(lane_rcu_res_c17_wake), .src_credit({lane_rcu_res_c17_credit}), .src_stall({lane_rcu_res_c17_stall}),
@@ -1737,7 +1737,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C18), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c18 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C18), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c18 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c18_valid}), .src_payload({lane_rcu_res_c18_payload}),
     .src_wake(lane_rcu_res_c18_wake), .src_credit({lane_rcu_res_c18_credit}), .src_stall({lane_rcu_res_c18_stall}),
@@ -1748,7 +1748,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C19), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c19 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C19), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c19 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c19_valid}), .src_payload({lane_rcu_res_c19_payload}),
     .src_wake(lane_rcu_res_c19_wake), .src_credit({lane_rcu_res_c19_credit}), .src_stall({lane_rcu_res_c19_stall}),
@@ -1759,7 +1759,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C20), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c20 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C20), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c20 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c20_valid}), .src_payload({lane_rcu_res_c20_payload}),
     .src_wake(lane_rcu_res_c20_wake), .src_credit({lane_rcu_res_c20_credit}), .src_stall({lane_rcu_res_c20_stall}),
@@ -1770,7 +1770,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C21), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c21 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C21), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c21 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c21_valid}), .src_payload({lane_rcu_res_c21_payload}),
     .src_wake(lane_rcu_res_c21_wake), .src_credit({lane_rcu_res_c21_credit}), .src_stall({lane_rcu_res_c21_stall}),
@@ -1781,7 +1781,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C22), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c22 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C22), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c22 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c22_valid}), .src_payload({lane_rcu_res_c22_payload}),
     .src_wake(lane_rcu_res_c22_wake), .src_credit({lane_rcu_res_c22_credit}), .src_stall({lane_rcu_res_c22_stall}),
@@ -1792,7 +1792,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C23), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c23 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C23), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c23 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c23_valid}), .src_payload({lane_rcu_res_c23_payload}),
     .src_wake(lane_rcu_res_c23_wake), .src_credit({lane_rcu_res_c23_credit}), .src_stall({lane_rcu_res_c23_stall}),
@@ -1803,7 +1803,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C24), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c24 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C24), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c24 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c24_valid}), .src_payload({lane_rcu_res_c24_payload}),
     .src_wake(lane_rcu_res_c24_wake), .src_credit({lane_rcu_res_c24_credit}), .src_stall({lane_rcu_res_c24_stall}),
@@ -1814,7 +1814,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C25), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c25 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C25), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c25 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c25_valid}), .src_payload({lane_rcu_res_c25_payload}),
     .src_wake(lane_rcu_res_c25_wake), .src_credit({lane_rcu_res_c25_credit}), .src_stall({lane_rcu_res_c25_stall}),
@@ -1825,7 +1825,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C26), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c26 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C26), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c26 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c26_valid}), .src_payload({lane_rcu_res_c26_payload}),
     .src_wake(lane_rcu_res_c26_wake), .src_credit({lane_rcu_res_c26_credit}), .src_stall({lane_rcu_res_c26_stall}),
@@ -1836,7 +1836,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C27), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c27 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C27), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c27 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c27_valid}), .src_payload({lane_rcu_res_c27_payload}),
     .src_wake(lane_rcu_res_c27_wake), .src_credit({lane_rcu_res_c27_credit}), .src_stall({lane_rcu_res_c27_stall}),
@@ -1847,7 +1847,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C28), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c28 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C28), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c28 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c28_valid}), .src_payload({lane_rcu_res_c28_payload}),
     .src_wake(lane_rcu_res_c28_wake), .src_credit({lane_rcu_res_c28_credit}), .src_stall({lane_rcu_res_c28_stall}),
@@ -1858,7 +1858,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C29), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c29 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C29), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c29 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c29_valid}), .src_payload({lane_rcu_res_c29_payload}),
     .src_wake(lane_rcu_res_c29_wake), .src_credit({lane_rcu_res_c29_credit}), .src_stall({lane_rcu_res_c29_stall}),
@@ -1869,7 +1869,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C30), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c30 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C30), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c30 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c30_valid}), .src_payload({lane_rcu_res_c30_payload}),
     .src_wake(lane_rcu_res_c30_wake), .src_credit({lane_rcu_res_c30_credit}), .src_stall({lane_rcu_res_c30_stall}),
@@ -1880,7 +1880,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_lane_rcu_res, destination end
-  ccv_seq_rpt #(.STAGES(RPT_LANE_RCU_RES_C31), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c31 (
+  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C31), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c31 (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({lane_rcu_res_c31_valid}), .src_payload({lane_rcu_res_c31_payload}),
     .src_wake(lane_rcu_res_c31_wake), .src_credit({lane_rcu_res_c31_credit}), .src_stall({lane_rcu_res_c31_stall}),
@@ -1891,7 +1891,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_ooe_done, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
+  ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_ooe_done_s6_valid, b_rcu_ooe_done_s5_valid, b_rcu_ooe_done_s4_valid, b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid}), .src_payload({b_rcu_ooe_done_s6_payload, b_rcu_ooe_done_s5_payload, b_rcu_ooe_done_s4_payload, b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload}),
     .src_wake(b_rcu_ooe_done_wake), .src_credit({b_rcu_ooe_done_s6_credit, b_rcu_ooe_done_s5_credit, b_rcu_ooe_done_s4_credit, b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit}), .src_stall({b_rcu_ooe_done_s6_stall, b_rcu_ooe_done_s5_stall, b_rcu_ooe_done_s4_stall, b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall}),
@@ -1902,7 +1902,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_miu_addr, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(2151)) u_rpt_rcu_miu_addr (
+  ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(2151)) u_rpt_rcu_miu_addr (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_miu_addr_s3_valid, b_rcu_miu_addr_s2_valid, b_rcu_miu_addr_s1_valid, b_rcu_miu_addr_s0_valid}), .src_payload({b_rcu_miu_addr_s3_payload, b_rcu_miu_addr_s2_payload, b_rcu_miu_addr_s1_payload, b_rcu_miu_addr_s0_payload}),
     .src_wake(b_rcu_miu_addr_wake), .src_credit({b_rcu_miu_addr_s3_credit, b_rcu_miu_addr_s2_credit, b_rcu_miu_addr_s1_credit, b_rcu_miu_addr_s0_credit}), .src_stall({b_rcu_miu_addr_s3_stall, b_rcu_miu_addr_s2_stall, b_rcu_miu_addr_s1_stall, b_rcu_miu_addr_s0_stall}),
@@ -1913,7 +1913,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_miu_rcu_data, destination end
-  ccv_seq_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114)) u_rpt_miu_rcu_data (
+  ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114)) u_rpt_miu_rcu_data (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({miu_rcu_data_s3_valid, miu_rcu_data_s2_valid, miu_rcu_data_s1_valid, miu_rcu_data_s0_valid}), .src_payload({miu_rcu_data_s3_payload, miu_rcu_data_s2_payload, miu_rcu_data_s1_payload, miu_rcu_data_s0_payload}),
     .src_wake(miu_rcu_data_wake), .src_credit({miu_rcu_data_s3_credit, miu_rcu_data_s2_credit, miu_rcu_data_s1_credit, miu_rcu_data_s0_credit}), .src_stall({miu_rcu_data_s3_stall, miu_rcu_data_s2_stall, miu_rcu_data_s1_stall, miu_rcu_data_s0_stall}),
@@ -1924,7 +1924,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rau_rcu_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_rcu_mig (
+  ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_rcu_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_rcu_mig_valid}), .src_payload({rau_rcu_mig_payload}),
     .src_wake(rau_rcu_mig_wake), .src_credit({rau_rcu_mig_credit}), .src_stall({rau_rcu_mig_stall}),
@@ -1935,7 +1935,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_ooe_rcu_map, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(222)) u_rpt_ooe_rcu_map (
+  ccv_common_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(222)) u_rpt_ooe_rcu_map (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_rcu_map_valid}), .src_payload({ooe_rcu_map_payload}),
     .src_wake(ooe_rcu_map_wake), .src_credit({ooe_rcu_map_credit}), .src_stall({ooe_rcu_map_stall}),
@@ -1946,7 +1946,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_rcu_pca_mig, source end
-  ccv_seq_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
+  ccv_common_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_rcu_pca_mig_valid}), .src_payload({b_rcu_pca_mig_payload}),
     .src_wake(b_rcu_pca_mig_wake), .src_credit({b_rcu_pca_mig_credit}), .src_stall({b_rcu_pca_mig_stall}),
@@ -1957,7 +1957,7 @@ module ccv_rcu_w #(
 `endif
   );
   // ccv_pca_rcu_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
+  ccv_common_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({pca_rcu_mig_valid}), .src_payload({pca_rcu_mig_payload}),
     .src_wake(pca_rcu_mig_wake), .src_credit({pca_rcu_mig_credit}), .src_stall({pca_rcu_mig_stall}),

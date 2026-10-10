@@ -6,7 +6,7 @@ and rules added late mostly generate backlog rather than catching bugs.
 
 Enforced by `tools/lint-rtl.py`, not by discipline. Every rule below carries
 its lint id, and `tools/check-1d.sh` fails if a rule exists without a
-counter-example in `rtl/lint/bad_module.sv` or without a paragraph here — so
+counter-example in a `rtl/lint/bad_*` fixture or without a paragraph here — so
 the guide, the linter and the fixture cannot drift apart.
 
 Most of this is ordinary discipline. §9 flags two parts as **load-bearing**:
@@ -21,7 +21,7 @@ Three layers, deliberately not one:
 
 | Layer | Covers | Why not the others |
 |---|---|---|
-| `tools/lint-rtl.py` | CCV-L01 … CCV-L11 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
+| `tools/lint-rtl.py` | CCV-L01 … CCV-L28 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 
@@ -289,25 +289,66 @@ not datapath.
   matches the base name and carries the tag as metadata. A retimed RTL
   therefore still correlates against an unchanged model — which is the point,
   not a concession. **Event-schema field names carry no stage tags.**
-- **Not on a reusable module's formals.** See CCV-L21.
+- **Not on a common module's formals.** See *Module names* below.
 
-### Design modules and reusable modules
+### CCV-L28 — module names: a module's name says what it is
 
-Design RTL declares which block it belongs to:
+No comment says what a module is; its name does (DA's response OI-37). Every
+module in `rtl/` takes exactly one of six shapes, each decidable from the name
+and the block list in `params/blocks.json` alone:
 
-    // Block: scheduler
+| Shape | What it is | Its gate (CCV-L22) | Today |
+|---|---|---|---|
+| `ccv_<block>` | a block's top | gates `core_clk`, once | `ccv_ooe` |
+| `ccv_<block>_w` | its hardening wrapper: the block and its repeaters, nothing else | none | `ccv_lane_w` |
+| `<block>_<name>` | a sub-block, inside one block | none: runs on `<block>_core_clk` | `ooe_pick` |
+| `ccv_common_<type>[_<name>]` | a common module, shared across blocks | none | `ccv_common_clk` |
+| `<block>_common_<type>[_<name>]` | a common module within one block | none | — |
+| `ccv_top` | the core top, the one named exception | gates, if it ever holds logic | `ccv_top` |
 
-A **reusable** module — an interface checker, a primitive — declares itself
-instead, with a reason:
+Anything else is a finding. A wrapper may carry a tag after `_w`: `_v<N>` for
+a hard-reuse template, `_<NN>` for one instance's own wrapper (one with
+feedthroughs), so every wrapper's name starts `ccv_<block>_w`. The generated
+design (`rtl/top/`, `rtl/generated/`) takes the same shapes, checked by a pass
+of its own since the per-file walk skips generated files. Testbenches and
+harnesses are outside the namespace: they live in `test/`, `spike/` and
+`sim/generated/`, and name themselves (`tb_*`).
 
-    // Reusable: one interface checker is instantiated inside many blocks and
-    //           binds to each one's own uniquified clock.
-
-Reusable modules take `clk`/`rst` as generic formals and are exempt from the
-clock-naming and stage rules, because a formal named for one block would read
-as a lie in every other. This is **declared, never inferred** — inferring it
-from "the clock is not named like a clock" would let every non-compliant file
+**Why names, not markers.** `// Block:` and `// Reusable:` used to declare
+this, and `// Ctech:` a ctech cell. A marker is a pragma a reader has to go
+and find; a name is read at every instance, and a mistake in it shows at the
+use site. So it stays **declared, never inferred**: inferring "common" from
+"the clock is not named like a clock" would let every non-compliant file
 exempt itself by being non-compliant.
+
+**The block list is part of the rule.** A block name is one lowercase token,
+since every shape splits at the first underscore: a block named `ooe_w` would
+make OOE's wrapper read as a block top. `common` and `top` are not block
+names, or `ccv_common_clk` and `ccv_top` would read as block tops. Where a
+block states its `module`, it is `ccv_<name>`. The lint refuses each of these
+in `params/blocks.json`.
+
+**What the name gives the other rules:**
+
+- A block top, wrapper or sub-block belongs to its block, whose letter is what
+  CCV-L21 checks a stage tag against.
+- A common module takes `clk`/`rst` as generic formals and is exempt from the
+  clock-naming and stage rules: one instance of it lives inside many blocks and
+  binds to each one's own uniquified clock, so a formal named for one block
+  would read as a lie in every other.
+- A common module's type is what some rules key on: `chk` is an interface
+  checker (CCV-L14, CCV-L15), `ctech` a ctech cell (CCV-L27). Today's common
+  modules are `ccv_common_clk` (the clock gate), `ccv_common_rpt` (the
+  sequential repeater), `ccv_common_ctech_icg` (the ICG, one definition per
+  view), `ccv_common_chk_<kind>` (the six channel checkers) and
+  `ccv_common_chk_bank` (the generated checker bank).
+
+The counter-examples are `rtl/lint/bad_module_names.sv` and
+`rtl/lint/bad_blocks.json`, and `tools/check-1d.sh` looks for each one's
+refusal by its own name. The compliant side is one fixture per shape, all of
+the lint fixtures' own block `reference`: `ccv_reference.sv`,
+`ccv_reference_w.sv`, `reference_gated_enable.sv` and
+`reference_common_xprop.sv`.
 
 ### CCV-L02 — every macro user names its own clock and reset
 
@@ -340,7 +381,7 @@ Only parameters and localparams carry upper case.
 
 A net driving a clock edge must match the clock shape, and its domain segment
 must be registered. Conversely a clock may appear only in an edge expression
-or a port map — the block's gate is `ccv_clk_gate`'s `gclk` port, which is the
+or a port map — the block's gate is `ccv_common_clk`'s `gclk` port, which is the
 whole reason `<block>_core_clk` exists. Anywhere else is a clock read as data.
 A clock built from a clock with logic is CCV-L27's business: only a ctech cell
 does that.
@@ -358,10 +399,8 @@ generates it:
 - **domain letter** matches the domain of the generating clock — a signal
   labelled for the wrong domain is how a crossing hides;
 - **edge letter** matches `posedge`/`negedge`;
-- **block letter** is registered, and is this file's own block (or `r`).
-
-A design file with sequential logic must declare `// Block:` or `// Reusable:`,
-since without a block name there is nothing to check the block letter against.
+- **block letter** is registered, and is the block the module's name gives
+  (CCV-L28), or `r`.
 
 ### CCV-L22 — a block runs on its own gated clock
 
@@ -372,15 +411,15 @@ ungated net **silently defeats that gate**: the design still works, produces
 identical results, and never saves the power it was supposed to. Nothing in
 simulation shows it, which is exactly why it needs a rule.
 
-The gate is `ccv_clk_gate` (`docs/clock-gate.md`): a block with sequential
-logic must instantiate it with `.clk(core_clk)`, and runs on its `gclk`. The
-sleep policy, the registered wake and its hold, and the ctech ICG are all
-inside it, so no block builds its own. The wake detector the exception allows
+The gate is `ccv_common_clk` (`docs/clock-gate.md`): a block top with
+sequential logic must instantiate it with `.clk(core_clk)`, and runs on its
+`gclk`. The sleep policy, the registered wake and its hold, and the ctech ICG
+are all inside it, so no block builds its own. The wake detector the exception allows
 is the edge detector a block needs for a level-sensitive wake source, such as
 a stall that releases.
 
 ```systemverilog
-ccv_clk_gate u_cg (
+ccv_common_clk u_cg (
   .clk(core_clk), .rst_n(sched_rst_r06h_n),
   .quiesced(sched_idle_cs03h), .stalled(sched_blocked_cs03h),
   .hyst_quiesce(sched_csr_hyst_q), .hyst_stall(sched_csr_hyst_s),
@@ -390,14 +429,26 @@ ccv_clk_gate u_cg (
 ```
 
 `check-top-pure.py` R7 checks the same thing on the elaborated netlist: every
-block has exactly one `ccv_clk_gate`, on its `core_clk` port, and its
+block has exactly one `ccv_common_clk`, on its `core_clk` port, and its
 `clk_gated` port is that gate's `gated`.
+
+**Only a block top gates, and a sub-block never sees `core_clk`** (OI-37).
+The module names say which is which (CCV-L28), so the rule reads:
+
+- a wrapper, a sub-block or a common module that instantiates
+  `ccv_common_clk` is refused. A second gate inside a block would make a
+  sleep decision where the block's quiescence and stall are not visible;
+- a sub-block that names `core_clk` is refused. It takes `<block>_core_clk`,
+  which its block top's gate makes, and on `core_clk` it would escape the gate
+  as silently as a flop in the top would;
+- a sub-block on another block's clock (`ooe_core_clk` inside a `lane_*`
+  module) is refused: a crossing nobody declared.
 
 ### CCV-L27 — every clock gate is the ctech ICG
 
 Outside `rtl/ctech/`, no clock is built from a clock with logic, and no
-`always_latch` exists. A clock gate is `ccv_ctech_icg`, reached through
-`ccv_clk_gate`. It is simulated as a latch and an AND gate, and synthesised as
+`always_latch` exists. A clock gate is `ccv_common_ctech_icg`, reached through
+`ccv_common_clk`. It is simulated as a latch and an AND gate, and synthesised as
 the library's ICG cell, whatever synthesis would have inferred (see
 `docs/clock-gate.md`, *The ctech layer*).
 
@@ -406,15 +457,17 @@ silicon it glitches whenever `en` moves while the clock is high, and synthesis
 may or may not recognise it as a gate. Renaming a clock (`assign a_clk =
 b_clk;`) is wiring, and is allowed.
 
-The rule also ties the marker to the directory. A file in `rtl/ctech/` must
-say `// Ctech: <cell> -- <view>`, and no file elsewhere may, since that
-marker is what exempts a file from CCV-L08's clock check and from this rule.
-A library view's `lib_cells.v` holds the library's port declarations, not our
-RTL, and is not linted.
+The rule also ties the name to the directory. A ctech cell is
+`ccv_common_ctech_<cell>` (CCV-L28), defined once per view in
+`rtl/ctech/<view>/`: a module so named anywhere else is refused, and so is any
+other module in a view's directory, since the name is what exempts a file from
+CCV-L08's clock check and from this rule. The name says which cell, the
+directory which view. A library view's `lib_cells.v` holds the library's port
+declarations, not our RTL, and is not linted.
 
 ### The top level: block instances and nets, nothing else
 
-`ccv_core_top` holds hardening wrappers and the nets between them, and each
+`ccv_top` holds hardening wrappers and the nets between them, and each
 wrapper holds its one block, its sequential repeaters and the nets between
 them. Neither level has a gate, flop, constant tie-off or clock gate, or glue
 of any kind, outside a block or a repeater. This is a hard rule, for three
@@ -463,7 +516,7 @@ output, and a clock gate and a tie-off inside a wrapper.
 What the rule doesn't yet give is *full* abutment. Every net would have to
 join neighbours, and today `core_clk`, `rst_n`, the kill broadcast and the
 CSR star fan out across the core. That is Q-42. A channel too long for one
-cycle is covered by sequential repeaters (`rtl/phys/ccv_seq_rpt.sv`,
+cycle is covered by sequential repeaters (`rtl/phys/ccv_common_rpt.sv`,
 [`physical.md`](physical.md)), not by glue at the top.
 
 ### CCV-L23 — stage arithmetic
@@ -517,7 +570,7 @@ guess:
 | `foo_t [A] x` — a packed array of packed structs, as a port | **accepted and mis-elaborated**: sized by `A` alone, fields made implicit 1-bit nets, warnings only |
 
 The idiom to reach for instead is one flat vector indexed with part-selects,
-`x[i*W +: W]`, which is what `rtl/if/ccv_credit_checker.sv` now does, or,
+`x[i*W +: W]`, which is what `rtl/if/ccv_common_chk_credit.sv` now does, or,
 for an array of structs at a port, one struct-typed port per element, which
 is what the generated top does. The array-of-structs case is the dangerous
 one: Yosys doesn't reject it, it sizes the port by the array bound, turns the
@@ -527,7 +580,7 @@ refusing the construct.
 
 The rule flags only what Yosys rejects. A rule that also flags accepted forms
 gets exempted, and an exemption habit is how rules die. To keep that honest in
-the direction that matters, `rtl/lint/good_yosys_subset.sv` exercises every
+the direction that matters, `rtl/lint/reference_common_yosys.sv` exercises every
 permitted form and `check-1d` reads it **with Yosys** on every run: a form the
 rule permits but Yosys rejects would be the worst outcome available — both
 simulators green, lint silent, formal dead.
@@ -701,7 +754,7 @@ what Yosys does today.
 That distinction is why the earlier decision not to lint it was wrong. It was
 right about the evidence and wrong about the rule — what is being enforced is
 a design decision, not a belief about a tool, and a design decision is exactly
-what lint is for. `rtl/lint/good_gated_enable.sv` is the standing proof that
+what lint is for. `rtl/lint/reference_gated_enable.sv` is the standing proof that
 the preferred form is clean under every other rule.
 
 `` `CCV_XHOLD `` remains available for the case this does not cover: an enable
@@ -805,7 +858,7 @@ associated checker module. No typedef may exist without one; lint enforces
 this."* And §4: *"a field added to the struct and not to the checker is a lint
 failure."*
 
-`schema/interfaces.json` declares the typedef; `rtl/if/<name>_if_checker.sv`
+`schema/interfaces.json` declares the typedef; `rtl/if/ccv_common_chk_<name>.sv`
 must exist, and must reference every field marked `control: true`.
 
 Control fields specifically, not all fields — §6 prohibits X on control and
@@ -1015,7 +1068,7 @@ Three things to know before using them:
 - **`CCV_ASSERT_RESPONSE_WITHIN` assumes one outstanding request**; the age
   counter clears on any `ack`. A pipelined interface with several in flight
   needs one age per outstanding message, which is what
-  `ccv_credit_checker.sv` carries. It was one counter until its negative
+  `ccv_common_chk_credit.sv` carries. It was one counter until its negative
   controls showed a second message could wait ~2N (`fail-open-register.md`).
 
 `CCV_ASSERT_RESPONSE_WITHIN` is what replaces liveness. `s_eventually` does not

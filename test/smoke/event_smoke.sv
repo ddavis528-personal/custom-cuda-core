@@ -1,4 +1,4 @@
-//===-- ccv_event_smoke.sv - Stage 1c exit criteria ---------------------===//
+//===-- event_smoke.sv - Stage 1c exit criteria ---------------------===//
 //
 // §8's Stage 1c exit criterion, second half:
 //
@@ -15,14 +15,14 @@
 //===----------------------------------------------------------------------===//
 `include "ccv_trace.svh"
 
-module ccv_event_smoke;
+module event_smoke;
 
   longint cycle;
   longint uid;
   int     rc;
 
   initial begin
-    rc = ccv_trace_open("ccv_event_smoke.ccvtrace");
+    rc = ccv_trace_open("event_smoke.ccvtrace");
     if (rc == 0) begin
       $display("CCV_EVENT_SMOKE: FAIL -- could not open trace");
       $finish;

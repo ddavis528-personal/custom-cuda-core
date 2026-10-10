@@ -1,7 +1,7 @@
-//===-- ccv_wake_checker.sv - wake leads valid by CCV_WAKE_LAT ------------===//
+//===-- ccv_common_chk_wake.sv - wake leads valid by CCV_WAKE_LAT ------------===//
 //
 // Spec: open item Q-33 (docs/open-items.md); schema channel_signals `_wake`
-// Reusable: one instance per channel instance; clk/rst_n are generic formals.
+// One instance per channel instance; clk/rst_n are generic formals.
 //
 // THE CONTRACT. If valid asserts toward a gated receiver at cycle T, the
 // channel's wake must have asserted at or before T - LAT. A receiver's clock
@@ -25,7 +25,7 @@
 // if a receiver keeps a promise: a wake at T means the receiver is running
 // at T + LAT -- the earliest cycle the sender may rely on it. Stated here
 // with its own role, RX_MODE, because it binds the other side: the sender
-// is checked by MODE, the receiver by RX_MODE. ccv_clk_gate keeps it: it
+// is checked by MODE, the receiver by RX_MODE. ccv_common_clk keeps it: it
 // registers the wake and opens the edge after next, then holds open through
 // T + LAT; tools/check-formal.sh proves the gate against this property.
 //
@@ -37,14 +37,14 @@
 //
 // A tracking register rather than a sequence, because no multi-cycle
 // construct exists in any tool (F-2). Ternary selects, not `if` on the
-// inputs (CCV-L08), as in ccv_outstanding_checker.
+// inputs (CCV-L08), as in ccv_common_chk_outstanding.
 //===----------------------------------------------------------------------===//
 `include "ccv_if.svh"
 
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_wake_checker #(
+module ccv_common_chk_wake #(
   parameter int MODE = `CCV_MODE_ASSERT,
   parameter int RX_MODE = `CCV_MODE_ASSERT,
   parameter int LAT  = ccv_params_pkg::CCV_WAKE_LAT,

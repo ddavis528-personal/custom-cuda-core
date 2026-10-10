@@ -1,4 +1,4 @@
-//===-- good_xprop.sv - X-determinism, all three legal routes ------------===//
+//===-- reference_common_xprop.sv - X-determinism, all three routes ----===//
 //
 // Spec: docs/rtl-coding-style.md, X-propagation section
 //
@@ -11,16 +11,16 @@
 `include "ccv_assert.svh"
 `include "ccv_xprop.svh"
 
-// Reusable modules -- interface checkers and primitives -- take `clk`/`rst` as
-// generic FORMALS, because one checker is instantiated inside many blocks and
-// binds to each block's own uniquified clock. Design blocks use the real net
-// names (`<blk>_core_clk`, `<blk>_rst_r<NN>h`); a formal named for one block
-// would read as a lie in every other.
-// Reusable: lint fixture for the X-determinism rules.
+// A common module takes `clk`/`rst` as generic FORMALS, because one instance
+// of it lives inside many blocks and binds to each block's own uniquified
+// clock. Design blocks use the real net names (`<blk>_core_clk`,
+// `<blk>_rst_r<NN>h`); a formal named for one block would read as a lie in
+// every other. Its name says it is common (<block>_common_<type>), so the
+// clock-naming and stage rules know to stand aside (OI-37).
 `define CCV_CLK clk
 `define CCV_RST rst
 
-module good_xprop (
+module reference_common_xprop (
   input  logic       clk,
   input  logic       rst,
   input  logic       ctrl_in,

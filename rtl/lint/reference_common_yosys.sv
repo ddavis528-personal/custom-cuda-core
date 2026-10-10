@@ -1,7 +1,8 @@
-//===-- good_yosys_subset.sv - every form CCV-L26 permits ----------------===//
+//===-- reference_common_yosys.sv - every form CCV-L26 permits ---------===//
 //
 // Spec: docs/rtl-coding-style.md, CCV-L26
-// Reusable: a lint fixture, not a design block; clk is a generic formal.
+// A common module of block `reference`, by its name, so clk is a generic
+// formal (OI-37).
 //
 // The false-positive regression for CCV-L26, and more than that: the gate also
 // reads this file with Yosys. A form the rule PERMITS but Yosys cannot parse
@@ -10,7 +11,7 @@
 // rejected side.
 //===----------------------------------------------------------------------===//
 
-module good_yosys_subset #(
+module reference_common_yosys #(
   parameter int W = 6
 ) (
   input  logic [W-1:0]   a,

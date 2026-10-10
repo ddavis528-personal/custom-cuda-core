@@ -1,9 +1,9 @@
-//===-- ccv_lockstep_checker.sv - instances that advance as one ----------===//
+//===-- ccv_common_chk_lockstep.sv - instances that advance as one ----------===//
 //
 // Spec: interface decisions (revised 2026-09-25), lockstep attribute;
 //       docs/skeleton.md
-// Reusable: one instance per lockstep channel TYPE, spanning all of its
-//           instances; clk/rst_n are generic formals.
+// One instance per lockstep channel TYPE, spanning all of its
+// instances; clk/rst_n are generic formals.
 //
 // Every other checker looks inside one channel instance. This one looks
 // ACROSS them. The 32 lane copies of rcu->lane and lane->rcu are one SIMD
@@ -31,7 +31,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_lockstep_checker #(
+module ccv_common_chk_lockstep #(
   parameter int MODE  = `CCV_MODE_ASSERT,
   parameter int INSTS = 32,       // instances that must advance together
   parameter int N     = 4         // slots per instance

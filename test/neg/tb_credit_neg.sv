@@ -39,7 +39,7 @@ module tb;
 
   // The low byte LEADS: it is due with valid (lead_known_at_valid). No other
   // case drives it unknown, so the mask changes no other case's result.
-  ccv_credit_checker #(.PAYLOAD_W(32), .LEAD_MASK(32'h0000_00ff)) u_chk (
+  ccv_common_chk_credit #(.PAYLOAD_W(32), .LEAD_MASK(32'h0000_00ff)) u_chk (
     .clk(clk), .rst_n(rst_n), .ch_valid(v), .ch_payload(pl),
     .ch_credit(cr), .ch_stall(st));
 

@@ -1,8 +1,8 @@
-//===-- ccv_clk_gate.sv - a block's clock gate ----------------------------===//
+//===-- ccv_common_clk.sv - a block's clock gate ----------------------------===//
 //
 // Spec: docs/clock-gate.md
-// Reusable: one instance per block, its first act; clk is the block's
-//           ungated core_clk, so clk/rst_n are generic formals.
+// One instance per block top, its first act; clk is the block's
+// ungated core_clk, so clk/rst_n are generic formals.
 //
 // Every block runs on the gclk of one of these (CCV-L22), and every clock
 // gate in the design is the ctech ICG inside one (CCV-L27). Around the cell,
@@ -27,7 +27,7 @@
 //   block reports (WAKE_HOLD more edges), so a valid that follows its wake
 //   by the Q-33 minimum is captured: the receiver's half of the wake
 //   contract, wake_keeps_rx, which tools/check-formal.sh proves against
-//   ccv_wake_checker. The block ORs into `wake` everything that must reach
+//   ccv_common_chk_wake. The block ORs into `wake` everything that must reach
 //   it while asleep: every inbound channel's _wake, and any credit, stall
 //   release or request it sleeps waiting for.
 //
@@ -52,7 +52,7 @@
 `define CCV_CLK clk
 `define CCV_RST !rst_n
 
-module ccv_clk_gate #(
+module ccv_common_clk #(
   parameter int HYST_W    = ccv_prov_pkg::CCV_CG_HYST_W,
   parameter int WAKE_HOLD = ccv_params_pkg::CCV_WAKE_LAT - 1,
   parameter int NWAKE     = 1
@@ -73,7 +73,7 @@ module ccv_clk_gate #(
   // Registered wake, then WAKE_HOLD more edges: open from T + 1 through
   // T + 1 + WAKE_HOLD. Short of T + CCV_WAKE_LAT breaks Q-33.
   if (WAKE_HOLD + 1 < ccv_params_pkg::CCV_WAKE_LAT) begin : g_bad_hold
-    ccv_clk_gate_wake_hold_short_of_CCV_WAKE_LAT u_refuse ();
+    ccv_common_clk_wake_hold_short_of_CCV_WAKE_LAT u_refuse ();
   end
 
   localparam int HW = $clog2(WAKE_HOLD + 1);
@@ -117,7 +117,7 @@ module ccv_clk_gate #(
     end
   end
 
-  ccv_ctech_icg u_icg (
+  ccv_common_ctech_icg u_icg (
     .clk (clk),
     .en  (en),
     .te  (te),

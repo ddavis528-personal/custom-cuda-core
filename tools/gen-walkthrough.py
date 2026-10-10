@@ -232,16 +232,16 @@ def build():
     ports = "\n".join(l for l in rd("rtl", "top", "ports", "ccv_dcu_ports.svh").splitlines()
                       if ("miu_dcu_req_s0_" in l or "miu_dcu_req_wake" in l)
                     and "_tid" not in l)
-    chk = lines_between(rd("rtl", "generated", "ccv_skel_checkers.sv"),
-                        r"ccv_credit_checker .* u_miu_dcu_req_s0 \(", r"^  \);")
+    chk = lines_between(rd("rtl", "generated", "ccv_common_chk_bank.sv"),
+                        r"ccv_common_chk_credit .* u_miu_dcu_req_s0 \(", r"^  \);")
 
     # -- the machine --------------------------------------------------------
-    top = rd("rtl", "top", "ccv_core_top.sv")
-    inst = re.findall(r"^  (ccv_(\w+?)_w(?:_v\d+)?) u_(\w+) \(", top, re.M)
+    top = rd("rtl", "top", "ccv_top.sv")
+    inst = re.findall(r"^  (ccv_(\w+?)_w(?:_v?\d+)?) u_(\w+) \(", top, re.M)
     per = collections.Counter(t for _, t, _ in inst)
     ext_ch = sum(1 for c in chans if "EXTERNAL" in (c["src"], c["dst"]))
-    bank = rd("rtl", "generated", "ccv_skel_checkers.sv")
-    chk_counts = collections.Counter(re.findall(r"^\s+(ccv_\w+_checker)\b", bank, re.M))
+    bank = rd("rtl", "generated", "ccv_common_chk_bank.sv")
+    chk_counts = collections.Counter(re.findall(r"^\s+(ccv_common_chk_\w+)\b", bank, re.M))
     need(sum(per.values()) == int(field(s0line, "blocks")), "instance count disagrees with SKEL")
 
     wrap_inst = lines_between(top, r"^  ccv_dcu_w u_dcu \(", r"miu_dcu_req_s0_valid")
@@ -251,7 +251,7 @@ def build():
                              r"u_rpt_miu_dcu_req \(", r"\.clk\(core_clk\)")
     gate = lines_between(rd("rtl", "top", "stubs", "ccv_dcu.sv"),
                          r"localparam int CG_HW", r"^`endif")
-    en_line = next(l.strip() for l in rd("rtl", "clk", "ccv_clk_gate.sv").splitlines()
+    en_line = next(l.strip() for l in rd("rtl", "clk", "ccv_common_clk.sv").splitlines()
                    if re.search(r"wire\s+en\s*=", l))
     links = json.loads(rd("params", "links.json"))
 
@@ -266,8 +266,8 @@ def build():
     have = labels_in("test/formal/fv_clk_gate.sv")
     for p in cg_props:
         need(p in have, "fv_clk_gate.sv has no property %s" % p)
-    need("wake_keeps_rx" in labels_in("rtl/if/ccv_wake_checker.sv"), "no wake_keeps_rx")
-    need("quiesced_at_end" in rd("rtl", "if", "ccv_credit_checker.sv"), "no quiesced_at_end")
+    need("wake_keeps_rx" in labels_in("rtl/if/ccv_common_chk_wake.sv"), "no wake_keeps_rx")
+    need("quiesced_at_end" in rd("rtl", "if", "ccv_common_chk_credit.sv"), "no quiesced_at_end")
 
     sections = re.findall(r'^section "([^"]+)"', rd("tools", "verify.sh"), re.M)
     oi = rd("docs", "open-items.md")
@@ -287,12 +287,12 @@ def build():
             a[0], a[1], ("`%s`" % b[0]) if b[0] else "", b[1]))
     chk_tbl = ["| Checker | In the bank | Judges |", "|---|---|---|"]
     judges = {
-        "ccv_credit_checker": "one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing",
-        "ccv_wake_checker": "one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver)",
-        "ccv_atomic_checker": "a channel's slots that must move together",
-        "ccv_lockstep_checker": "copies of a channel that must move in lockstep across the 32 lanes",
-        "ccv_binding_checker": "a slot's group key stays bound",
-        "ccv_outstanding_checker": "request / response pairs across two channels",
+        "ccv_common_chk_credit": "one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing",
+        "ccv_common_chk_wake": "one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver)",
+        "ccv_common_chk_atomic": "a channel's slots that must move together",
+        "ccv_common_chk_lockstep": "copies of a channel that must move in lockstep across the 32 lanes",
+        "ccv_common_chk_binding": "a slot's group key stays bound",
+        "ccv_common_chk_outstanding": "request / response pairs across two channels",
     }
     for k in sorted(chk_counts, key=lambda k: -chk_counts[k]):
         chk_tbl.append("| `%s` | %d | %s |" % (k, chk_counts[k], judges.get(k, "")))
@@ -481,7 +481,7 @@ structure or a process per instruction.
 
 ## 8. The same run in SystemVerilog
 
-The top level is generated too: `rtl/top/ccv_core_top.sv`. It holds one
+The top level is generated too: `rtl/top/ccv_top.sv`. It holds one
 hardening wrapper per block instance and the nets between them, and nothing
 else. There is no gate, flop or tie-off at the top (`check-top-pure.py`). The
 DCU's wrapper, as the top instantiates it:
@@ -538,7 +538,7 @@ to be the same one.
 
 ## 9. Every message checked
 
-The checker bank (`rtl/generated/ccv_skel_checkers.sv`) is generated from the
+The checker bank (`rtl/generated/ccv_common_chk_bank.sv`) is generated from the
 schema and Verilated into the C++ skeleton. The same module sits beside the
 SV top under `CCV_CHECK`.
 
@@ -588,10 +588,10 @@ model, where the clock is an input and the ICG's latch switches as it does:
   `{cg_props[1]}`, `{cg_props[2]}`.
 - **The cycle behaviour** against an independent model: `{cg_props[3]}`,
   `{cg_props[4]}`, `{cg_props[5]}`, `{cg_props[6]}`.
-- **Both halves of the wake contract,** with `ccv_wake_checker`:
+- **Both halves of the wake contract,** with `ccv_common_chk_wake`:
   `wake_keeps_rx` and `{cg_props[7]}`.
 
-The gate itself is the ctech ICG `ccv_ctech_icg`, one module with a view per
+The gate itself is the ctech ICG `ccv_common_ctech_icg`, one module with a view per
 use. The views are {', '.join('`%s`' % v for v in views)}: behavioural for
 simulation and formal, and one per process library, each nothing but that
 library's cell (`docs/clock-gate.md`).

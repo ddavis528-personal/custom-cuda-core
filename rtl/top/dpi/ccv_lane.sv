@@ -29,7 +29,7 @@ module ccv_lane (
   // reset values until the block decodes its own.
   localparam int CG_HW = ccv_prov_pkg::CCV_CG_HYST_W;
   logic gclk, cg_gated;
-  ccv_clk_gate u_cg (
+  ccv_common_clk u_cg (
     .clk         (core_clk),
     .rst_n       (rst_n),
     .quiesced    (1'b0),

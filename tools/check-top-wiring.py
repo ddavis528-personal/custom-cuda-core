@@ -71,11 +71,11 @@ def elaborate(top_path, out_json):
     inc = " ".join("-I" + os.path.join(ROOT, p) for p in
                    ("rtl/include", "rtl/generated", "rtl/top/ports"))
     rv = "read_verilog -sv -formal %s" % inc
-    script = ("%s %s; %s -lib %s; %s %s %s %s; hierarchy -check -top ccv_core_top; "
+    script = ("%s %s; %s -lib %s; %s %s %s %s; hierarchy -check -top ccv_top; "
               "proc; flatten; chformal -remove; techmap; opt -fast; opt_clean; "
               "write_json %s"
               % (rv, os.path.join(ROOT, "rtl", "ccv_assert_pkg.sv"), rv, " ".join(stubs),
-                 rv, os.path.join(ROOT, "rtl", "phys", "ccv_seq_rpt.sv"),
+                 rv, os.path.join(ROOT, "rtl", "phys", "ccv_common_rpt.sv"),
                  " ".join(wraps), top_path, out_json))
     r = subprocess.run(["yosys", "-q", "-p", script], capture_output=True, text=True)
     if r.returncode:
@@ -85,7 +85,7 @@ def elaborate(top_path, out_json):
         if tell in log:
             line = next(l for l in log.splitlines() if tell in l)
             sys.exit("yosys mis-elaborated the top (%s): %s" % (tell, line.strip()))
-    return json.load(open(out_json))["modules"]["ccv_core_top"]
+    return json.load(open(out_json))["modules"]["ccv_top"]
 
 
 PORT_RE = re.compile(r"(?P<base>.+?)(?:_c(?P<copy>\d\d))?(?:_s(?P<slot>\d+))?"
@@ -122,7 +122,7 @@ def main():
     dump = next((a.split("=", 1)[1] for a in sys.argv if a.startswith("--wiring=")),
                 os.path.join(ROOT, "build", "wiring.txt"))
     ch, ninst = schema()
-    top_src = os.path.join(ROOT, "rtl", "top", "ccv_core_top.sv")
+    top_src = os.path.join(ROOT, "rtl", "top", "ccv_top.sv")
     with tempfile.TemporaryDirectory() as t:
         top_path = top_src
         if mutate:
@@ -130,7 +130,7 @@ def main():
             want = ".rcu_lane_ops_s0_valid(rcu_lane_ops_c03_s0_valid)"
             if want not in src:
                 sys.exit("mutation site not found")
-            top_path = os.path.join(t, "ccv_core_top.sv")
+            top_path = os.path.join(t, "ccv_top.sv")
             open(top_path, "w").write(
                 src.replace(want, ".rcu_lane_ops_s0_valid(rcu_lane_ops_c07_s0_valid)", 1))
         top = elaborate(top_path, os.path.join(t, "top.json"))

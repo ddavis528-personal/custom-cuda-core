@@ -5,7 +5,7 @@
 // this file is stale.
 
 `timescale 1ns/1ps
-// Clock, reset and tie-offs for ccv_core_top. With stub blocks nothing
+// Clock, reset and tie-offs for ccv_top. With stub blocks nothing
 // moves; what this proves is that the whole top elaborates and runs
 // in each simulator, with the checker bank attached under CCV_CHECK.
 // The machine's real testbench is the C++ skeleton (sim/skel/).
@@ -23,7 +23,7 @@ module tb;
 `endif
   logic ext_exb_in_credit, ext_exb_in_stall;
 
-  ccv_core_top u_top (
+  ccv_top u_top (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req('0),

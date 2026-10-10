@@ -1,7 +1,7 @@
-//===-- ccv_ctech_icg.sv - integrated clock gate: ASAP7 view --------------===//
+//===-- ccv_common_ctech_icg.sv - integrated clock gate: ASAP7 view --------------===//
 //
 // Spec: docs/clock-gate.md, "The ctech layer"
-// Ctech: icg -- ASAP7 7 nm predictive library, RVT
+// The icg cell's ASAP7 view: the 7 nm predictive library, RVT.
 //
 // The library's ICG, and nothing else. Pin roles from its Liberty cell
 // (asap7sc7p5t_SEQ_RVT, clock_gating_integrated_cell latch_posedge_precontrol):
@@ -9,7 +9,7 @@
 // GCLK clock_gate_out_pin, state_function CLK & IQ.
 //===----------------------------------------------------------------------===//
 
-module ccv_ctech_icg (
+module ccv_common_ctech_icg (
   input  logic clk,
   input  logic en,
   input  logic te,

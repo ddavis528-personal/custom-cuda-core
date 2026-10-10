@@ -1,7 +1,7 @@
 //===-- credit_smoke.sv - a protocol-correct producer/consumer pair -----===//
 //
 // Spec: docs/interface-checker-convention.md
-// Reusable: exercises the shared checker; clk/rst_n are generic formals.
+// Exercises the shared checker; clk/rst_n are generic formals.
 //
 // Protocol-CORRECT, so nothing may fire. That polarity is the point: the
 // spike cases prove the machinery CAN fire, and this proves it does not fire
@@ -104,7 +104,7 @@ module credit_smoke #(
   // Instantiated directly rather than through `CCV_CHECKER, because this one
   // needs parameters beyond the mode and SystemVerilog allows one parameter
   // list. The mode still comes from the side macro.
-  ccv_credit_checker #(
+  ccv_common_chk_credit #(
     .MODE(`CCV_IF_MODE_OUT),
     .PAYLOAD_W(PAYLOAD_W), .ROUND_TRIP(ROUND_TRIP), .DEPTH(DEPTH),
     .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N)

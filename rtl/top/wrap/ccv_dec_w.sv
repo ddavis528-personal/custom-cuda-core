@@ -186,7 +186,7 @@ module ccv_dec_w #(
   );
 
   // ccv_fet_dec_instr, destination end
-  ccv_seq_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(160)) u_rpt_fet_dec_instr (
+  ccv_common_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(160)) u_rpt_fet_dec_instr (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({fet_dec_instr_s7_valid, fet_dec_instr_s6_valid, fet_dec_instr_s5_valid, fet_dec_instr_s4_valid, fet_dec_instr_s3_valid, fet_dec_instr_s2_valid, fet_dec_instr_s1_valid, fet_dec_instr_s0_valid}), .src_payload({fet_dec_instr_s7_payload, fet_dec_instr_s6_payload, fet_dec_instr_s5_payload, fet_dec_instr_s4_payload, fet_dec_instr_s3_payload, fet_dec_instr_s2_payload, fet_dec_instr_s1_payload, fet_dec_instr_s0_payload}),
     .src_wake(fet_dec_instr_wake), .src_credit({fet_dec_instr_s7_credit, fet_dec_instr_s6_credit, fet_dec_instr_s5_credit, fet_dec_instr_s4_credit, fet_dec_instr_s3_credit, fet_dec_instr_s2_credit, fet_dec_instr_s1_credit, fet_dec_instr_s0_credit}), .src_stall({fet_dec_instr_s7_stall, fet_dec_instr_s6_stall, fet_dec_instr_s5_stall, fet_dec_instr_s4_stall, fet_dec_instr_s3_stall, fet_dec_instr_s2_stall, fet_dec_instr_s1_stall, fet_dec_instr_s0_stall}),
@@ -197,7 +197,7 @@ module ccv_dec_w #(
 `endif
   );
   // ccv_dec_ooe_uop, source end
-  ccv_seq_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(211)) u_rpt_dec_ooe_uop (
+  ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(211)) u_rpt_dec_ooe_uop (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_dec_ooe_uop_s5_valid, b_dec_ooe_uop_s4_valid, b_dec_ooe_uop_s3_valid, b_dec_ooe_uop_s2_valid, b_dec_ooe_uop_s1_valid, b_dec_ooe_uop_s0_valid}), .src_payload({b_dec_ooe_uop_s5_payload, b_dec_ooe_uop_s4_payload, b_dec_ooe_uop_s3_payload, b_dec_ooe_uop_s2_payload, b_dec_ooe_uop_s1_payload, b_dec_ooe_uop_s0_payload}),
     .src_wake(b_dec_ooe_uop_wake), .src_credit({b_dec_ooe_uop_s5_credit, b_dec_ooe_uop_s4_credit, b_dec_ooe_uop_s3_credit, b_dec_ooe_uop_s2_credit, b_dec_ooe_uop_s1_credit, b_dec_ooe_uop_s0_credit}), .src_stall({b_dec_ooe_uop_s5_stall, b_dec_ooe_uop_s4_stall, b_dec_ooe_uop_s3_stall, b_dec_ooe_uop_s2_stall, b_dec_ooe_uop_s1_stall, b_dec_ooe_uop_s0_stall}),

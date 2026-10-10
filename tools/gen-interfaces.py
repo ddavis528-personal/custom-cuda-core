@@ -401,7 +401,7 @@ def main():
                 err("lead_fields are set with no reason recorded"); return 1
         # A request whose responses come back on another channel, with at
         # most `max` outstanding. Stated instead of a correlation tag, and
-        # checked across the pair by ccv_outstanding_checker.
+        # checked across the pair by ccv_common_chk_outstanding.
         out = c.get("outstanding")
         if out is not None:
             names = {x["name"]: x for x in d["channels"]}

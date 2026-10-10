@@ -2,7 +2,7 @@
 //
 // The other way round from main.cpp. There, C++ owns the clock and the wires
 // -- Machine::step() commits every slot -- and the SV checker bank is a
-// Verilated guest. Here the SV top owns both: ccv_core_top is built from the
+// Verilated guest. Here the SV top owns both: ccv_top is built from the
 // DPI shims in rtl/top/dpi/ (tools/gen-top.py), every connection between two
 // blocks is a net in that top, and each shim calls in once per clock edge to
 // run ITS block's cycle. A C++ block never sees another block's state, only
