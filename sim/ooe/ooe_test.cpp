@@ -1049,9 +1049,22 @@ void testSections() {
   EXPECT(maxLane(run(cfgS(1), kLane, 2, {0, 1, 2, 3})) == 1, "two ops shared section 0");
   g_test = "sections: 16-bit ops pair up";
   EXPECT(maxLane(run(cfgS(0), kLane, 1, {0, 1, 2, 3})) == 2, "16-bit ops not two a cycle");
-  g_test = "sections: FP widens to a section pair";
-  EXPECT(maxLane(run(cfgS(0), kFp, 2, {0, 1})) == 1, "FP ops in sections 0 and 1 co-issued");
-  EXPECT(maxLane(run(cfgS(0), kFp, 2, {0, 2})) == 2, "FP ops in sections 0 and 2 did not co-issue");
+  g_test = "sections: FP widens to its minimum";
+  {
+    // At an FP minimum of 2, ops in sections 0 and 1 widen to one pair and
+    // cannot co-issue; in 0 and 2 they can. Set here, so the widening stays
+    // tested whatever CCV_P_FOOT_MIN_FP holds.
+    Config c = cfgS(0);
+    c.foot_min[Config::kGrpFp] = 2;
+    EXPECT(maxLane(run(c, kFp, 2, {0, 1})) == 1, "FP ops in sections 0 and 1 co-issued at a minimum of 2");
+    EXPECT(maxLane(run(c, kFp, 2, {0, 2})) == 2, "FP ops in sections 0 and 2 did not co-issue at a minimum of 2");
+    // The default is the parameter: 1 under DA's response IS-7, so 8-bit FP
+    // of four warps co-issues four a cycle, as integer does.
+    const size_t want = 4 / ccv::prov::kFootMinFp;
+    const size_t got = maxLane(run(cfgS(0), kFp, 2, {0, 1, 2, 3}));
+    EXPECT(got == want, "8-bit FP of four warps: %zu a cycle, want %zu at CCV_P_FOOT_MIN_FP %u", got, want,
+           ccv::prov::kFootMinFp);
+  }
   g_test = "sections: SFU takes the whole lane";
   EXPECT(maxLane(run(cfgS(0), kSfu, 2, {0, 2})) == 1, "two SFU ops in a cycle");
 
