@@ -1,6 +1,5 @@
 //===-- ooe_ready.sv - OOE ready from the dependency matrix --------===//
 //
-// Block: ooe
 // Spec: docs/design-snapshots/ooe-microarchitecture.md, Scheduling: Wakeup
 //       (live: OOE microarchitecture, Wakeup and the scheduler timing
 //       estimate, OA-1; A-62, A-73, OA-4)

@@ -1,6 +1,5 @@
 //===-- ooe_pick.sv - OOE per-resource select ---------------------===//
 //
-// Block: ooe
 // Spec: docs/design-snapshots/ooe-microarchitecture.md, Scheduling: Select
 //       (live: OOE microarchitecture, Select; DA's response OI-31)
 //
