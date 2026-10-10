@@ -71,6 +71,46 @@ Built (`rtl/ooe/`):
   about 30 NGD on paper at 192 entries, still over a stage. So allocation
   likely needs candidates prepared a cycle ahead, which changes when a
   freed entry can be taken, and with it the model. That is OI-38, for OA.
+- **`ooe_age`**, an RS class's age matrix: a bit per ordered pair, set
+  when the column's entry was allocated first. Up to four allocations a
+  cycle, in port order; each writes its row (every valid entry, and every
+  lower port's, is older) and clears its column. The matrix is un-reset
+  payload guarded by the RS valid bits (decision 6), and an assertion
+  checks V-13's antisymmetry over every valid pair. `test/ooe/age_tb.cpp`
+  snapshots the model's RS ages (`Core::rsAge`) before every cycle and
+  drives the RTL with the allocations between snapshots, for both classes:
+  25 million RCU pairs and 5 million MIU pairs compared, none differ.
+  Controls no-valid and port-reverse must each be caught. Logic depth is
+  8.8 NGD in 8 levels at 30 entries.
+- **`ooe_decq`**, the decode queue (decision 3): 12 entries shared by the
+  four tier-1 slots, six arrivals and up to four dequeues per slot a
+  cycle. Each entry holds its payload, a busy bit, its owner and its
+  position in the owner's FIFO. That is the per-warp FIFO, kept as
+  positions rather than pointers: a dequeue of n frees the owner's
+  entries below n and moves the rest down by n, and rename reads a slot's
+  k-th oldest as the entry it owns at position k. An arrival takes the
+  free entry with as many free entries below it as arrivals ahead of its
+  port (a banked prefix count). The model now numbers its decode-queue
+  uops and records the slots a squash flushed (`Core::decodeQueue`,
+  `Core::decqFlushed`); `test/ooe/decq_tb.cpp` drives the RTL from those
+  before every cycle and compares every slot's four oldest, its count and
+  the credits. Over 25 seeds: 103,896 arrivals, 98,193 dequeues, 2,357
+  flushes and 47,940 cycles with the pool full, none differ. Controls
+  drop-flush and enq-swap must each be caught. **Timing is not met:**
+  31.9 NGD in 28 levels. An entry freed at an edge can take an arrival at
+  the same edge, as in the model (`canAccept` runs after the cycle's
+  dequeues), and that path costs about 9 NGD. With the entry free only
+  from the next edge it is 23.1 NGD, inside the stage. The model's
+  `decq_late_credit` knob is that behaviour: no S1 kernel moves by a
+  cycle at 12 entries (or at 4), and the four-warp synthetic sweep moves
+  within its own noise. It is OI-39, for OA and DA, the same shape as
+  OI-38.
+
+  Verilator 5.020 miscompiled an earlier form of this module: an
+  `always_ff` whose reset and update were an if/else of two function
+  calls. `-fno-reorder` fixed it, and Icarus ran it correctly. Each
+  sequential sub-block's flop now takes one function, `step()`, with reset
+  folded in.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 

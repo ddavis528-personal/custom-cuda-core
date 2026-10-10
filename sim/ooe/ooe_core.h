@@ -170,6 +170,10 @@ struct Config {
   /// unissued store, atomic, fence or ordered access. Off: memops issue in
   /// program order per warp (OI-15).
   bool loads_pass_loads = false;
+  /// The decode queue's credit return (ooe_decq timing, OI-38's shape): an
+  /// entry freed in a cycle takes no arrival until the next, so this
+  /// cycle's arrivals see it still held. Off is the agreed behaviour.
+  bool decq_late_credit = false;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -482,6 +486,11 @@ public:
   /// Can the decode queue take a uop of this warp? (Credit: the adapter
   /// leaves a uop in the channel while this is false.)
   bool canAccept(unsigned warp) const;
+  /// Decode-queue entries the credit check counts as held: the queue, plus
+  /// under decq_late_credit those freed this cycle.
+  unsigned decqHeld() const {
+    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0);
+  }
   /// The adapter left a uop of this warp in the channel because canAccept
   /// said no: count which limit held it (the decode-queue events).
   void noteRefused(unsigned warp);
@@ -704,6 +713,10 @@ private:
 
   // decode queue: shared, in arrival order
   std::deque<Uop> decq_;
+  std::deque<uint64_t> decq_seq_;           ///< each queued uop's arrival number
+  uint64_t next_decq_seq_ = 0;
+  uint32_t decq_flushed_ = 0;               ///< slots a squash flushed this cycle
+  unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
 
   // reservation stations and the matrix
   std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU
@@ -763,6 +776,16 @@ public:
   unsigned rsEntries() const { return n_; }
   bool rsValid(unsigned e) const { return rs_[e].valid; }
   bool rsIssued(unsigned e) const { return rs_[e].issued; }
+  /// Allocation order (smaller is older): what ooe_age's matrix encodes.
+  uint64_t rsAge(unsigned e) const { return rs_[e].age; }
+  /// The decode queue in arrival order, for ooe_decq: each uop's tier-1
+  /// slot and its arrival number (a count over the core's life).
+  struct DecqView { unsigned slot; uint64_t seq; };
+  std::vector<DecqView> decodeQueue() const;
+  /// Slots whose decode-queue uops a squash dropped since this cycle began.
+  uint32_t decqFlushed() const { return decq_flushed_; }
+  /// The first RCU-class entry index past the last; MIU entries follow.
+  unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
   bool rsReady(unsigned e) const { return rowReady(e); }
   unsigned nameRow(unsigned n) const { return n / kPos_; }
   unsigned namePos(unsigned n) const { return n % kPos_; }

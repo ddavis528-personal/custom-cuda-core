@@ -33,7 +33,8 @@ std::string Config::apply(const std::string &spec) {
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
-                                     {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads}};
+                                     {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
+                                     {"decq_late_credit", &decq_late_credit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -202,16 +203,22 @@ Core::RobEntry *Core::byTag(unsigned tag, unsigned *slot) {
 
 // ---- inputs ---------------------------------------------------------------------------
 
+std::vector<Core::DecqView> Core::decodeQueue() const {
+  std::vector<DecqView> v;
+  for (size_t i = 0; i != decq_.size(); ++i) v.push_back({unsigned(slotOf(decq_[i].warp)), decq_seq_[i]});
+  return v;
+}
+
 bool Core::canAccept(unsigned warp) const {
   const unsigned max = cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq;
-  if (decq_.size() >= cfg_.decq) return false;
+  if (decqHeld() >= cfg_.decq) return false;
   const int s = slotOf(warp);
   if (s < 0) return true;      // refused, and reported, when it is taken
   return slot_[s].decq < max;
 }
 
 void Core::noteRefused(unsigned warp) {
-  if (decq_.size() >= cfg_.decq) {
+  if (decqHeld() >= cfg_.decq) {
     count("stall.decq_full");
     oev(OoeEv::kDecqFull, warp, decq_.size());
     return;
@@ -232,6 +239,7 @@ void Core::uop(const Uop &u) {
     return;
   }
   decq_.push_back(u);
+  decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
@@ -251,6 +259,8 @@ void Core::cycle(uint64_t now) {
   now_ = now;
   gfree_.clock();      // last cycle's frees become allocatable
   pfree_.clock();
+  decq_flushed_ = 0;
+  decq_freed_ = 0;
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -1043,8 +1053,15 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
   s.tail = (s.head + s.count) % cfg_.rob_depth;
   // Wrong-path uops still in the decode queue: their epoch is stale once the
   // caller advances it, so drop them now and free the space.
+  decq_flushed_ |= 1u << slot;
   for (auto it = decq_.begin(); it != decq_.end();)
-    if (it->warp == s.warp) { it = decq_.erase(it); --s.decq; ev("epoch_drop", s.warp); }
+    if (it->warp == s.warp) {
+      decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+      ++decq_freed_;
+      it = decq_.erase(it);
+      --s.decq;
+      ev("epoch_drop", s.warp);
+    }
     else ++it;
 }
 
@@ -1945,12 +1962,16 @@ void Core::rename() {
       // V-53: no stale-epoch uop is renamed.
       if (it->fetch_epoch != epoch_[w]) {
         ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
         decq_.erase(it);
         --slot_[si].decq;
         progress = true;
         continue;
       }
       if (tryRename(si, *it)) {
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
         decq_.erase(it);
         --slot_[si].decq;
         --budget;

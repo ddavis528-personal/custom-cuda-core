@@ -1323,6 +1323,15 @@ void sweep() {
       const double cy = run(c);
       std::printf("| %s | %u | %.0f | %.3f |\n", k.name, v, cy, cy / ref);
     }
+  // ooe_decq's timing arm (OI-38's shape): an entry freed in a cycle takes
+  // no arrival until the next.
+  for (unsigned v : {6u, 8u, 12u}) {
+    Config c = base;
+    c.decq = v;
+    c.decq_late_credit = true;
+    const double cy = run(c);
+    std::printf("| decq, decq_late_credit | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+  }
 }
 
 

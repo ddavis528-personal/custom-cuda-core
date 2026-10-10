@@ -7,7 +7,10 @@
 # - ooe_ready against the live model through its random unit tests
 #   (test/ooe/ready_tb.cpp);
 # - ooe_freelist against the model's own free lists, live, for the GPR rows
-#   and the predicates (test/ooe/freelist_tb.cpp).
+#   and the predicates (test/ooe/freelist_tb.cpp);
+# - ooe_age against the model's RS ages, live, for both RS classes
+#   (test/ooe/age_tb.cpp);
+# - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -99,5 +102,64 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
       say "  control $c (freelist $name)" "caught"
     fi
   done
+done
+
+# ooe_age, driven from the model's RS allocations before every cycle: each
+# RS class.
+for cfg in "rcu 0 $n_rcu" "miu 1 $n_miu"; do
+  set -- $cfg
+  name=$1 cls=$2 n=$3
+  dir=build/ooe-rtl/age_$name
+  mkdir -p "$dir"
+  if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+        -GN="$n" -GA="$width" --top-module ooe_age --Mdir "$dir" -o age_tb \
+        -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+        -CFLAGS "-std=c++17 -O2 -DAGE_N=$n -DAGE_A=$width -DAGE_CLS=$cls -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_age.sv" "$PWD/test/ooe/age_tb.cpp" \
+        "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+    say "age $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
+  fi
+  if out=$("$dir/age_tb" "$seeds" 2>&1); then
+    say "age $name ($n entries, $width ports) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+  else
+    say "age $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+  fi
+  for c in no-valid port-reverse; do
+    if AGE_CONTROL=$c "$dir/age_tb" 3 >/dev/null 2>&1; then
+      say "  control $c (age $name)" "MISSED"; fail=1
+    else
+      say "  control $c (age $name)" "caught"
+    fi
+  done
+done
+
+# ooe_decq, driven from the model's decode queue before every cycle. A
+# control may be caught by the RTL's own assertion before the comparison:
+# either fails the run.
+slots=$(sed -n 's/.*localparam int CCV_TIER1_WARPS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+decq=$(sed -n 's/.*localparam int CCV_P_DECQ = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+decq_warp=$(sed -n 's/.*localparam int CCV_P_DECQ_WARP_MAX = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_dec_ooe_uop'))")
+dir=build/ooe-rtl/decq
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GS="$slots" -GQ="$decq" -GD="$decq_warp" -GE="$uops" -GR="$width" -GP=16 --top-module ooe_decq \
+      --Mdir "$dir" -o decq_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DDQ_S=$slots -DDQ_Q=$decq -DDQ_D=$decq_warp -DDQ_E=$uops -DDQ_R=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_decq.sv" "$PWD/test/ooe/decq_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "decq: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/decq_tb" "$seeds" 2>&1); then
+  say "decq ($decq entries, $slots slots, $uops in, $width out) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in drop-flush enq-swap; do
+  if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (decq)" "MISSED"; fail=1
+  else
+    say "  control $c (decq)" "caught"
+  fi
 done
 exit $fail
