@@ -994,9 +994,13 @@ def gen_shim(btype, P, own_ports=False):
     L.append("")
     L.append("  int h;")
     L.append("  bit skew;              // negative control: one extra register")
-    L.append("  longint cyc = 0;")
+    # The count starts in the initial block, not in its declaration: a
+    # declared value that a process also assigns is PROCASSINIT under
+    # Verilator 5.052 -Wall.
+    L.append("  longint cyc;")
     L.append("  bit [%d:0] drv, q, q2;" % (ow - 1))
     L.append("  initial begin")
+    L.append("    cyc = 0;")
     L.append("    h = ccv_dpi_register($sformatf(\"%m\"));")
     L.append("    skew = ccv_dpi_skew(h);")
     L.append("  end")
@@ -1151,7 +1155,9 @@ def gen_tb_hosted(chans, common):
     L.append("    #1 rst_n = 1'b1;")
     L.append("  end")
     L.append("  // Between edges every block has run the cycle: ask whether it is over.")
-    L.append("  longint c = 0;")
+    # As the shims' cycle count: initialised in a process (PROCASSINIT).
+    L.append("  longint c;")
+    L.append("  initial c = 0;")
     L.append("  always @(negedge core_clk) begin")
     L.append("    if (ccv_dpi_done(c)) begin")
     L.append("      ccv_dpi_report();")

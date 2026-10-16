@@ -244,8 +244,8 @@ instruction can be followed across every block it touches. Seq 12,
      62  EV_WAKEUP                      ooe          
      93  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
      93  EV_ISSUE                       ooe          
-     94  ccv_ooe_miu_memop              ooe  -> miu       
      94  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+     94  ccv_ooe_miu_memop              ooe  -> miu       
      96  ccv_rcu_miu_addr               rcu  -> miu       
      98  ccv_miu_dcu_req                miu  -> dcu       
     100  ccv_dcu_mlc_req                dcu  -> mlc       
@@ -256,8 +256,8 @@ instruction can be followed across every block it touches. Seq 12,
     119  ccv_exb_mlc_rsp                exb  -> mlc       
     121  ccv_mlc_dcu_rsp                mlc  -> dcu       
     123  ccv_dcu_miu_rsp                dcu  -> miu       
-    125  ccv_miu_rcu_data               miu  -> rcu       
     125  ccv_miu_ooe_cmpl               miu  -> ooe       
+    125  ccv_miu_rcu_data               miu  -> rcu       
     128  EV_RETIRE                      ooe          
 ```
 
@@ -416,7 +416,7 @@ now (section 10), and caught in simulation by the checker's end-of-test
 check:
 
 ```
-[20000] %Error: ccv_common_chk_credit.sv:293: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s0: CCV quiesced_at_end failed: 3 message(s) never credited back
+[20000] %Error: ccv_common_chk_credit.sv:293: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
 SKEL cycles=2000 blocks=45 chan_types=48 chan_insts=110 slots=163 sent=192201 received=192201 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=149 idle_slots=0 violations=14
 ```
 

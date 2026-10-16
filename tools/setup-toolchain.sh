@@ -14,14 +14,40 @@ SUDO=""
 echo "== apt packages =="
 $SUDO apt-get update -qq
 $SUDO apt-get install -y --no-install-recommends \
-  verilator \
   iverilog \
   yosys \
   cvc5 \
   build-essential \
   cmake \
   ninja-build \
-  python3
+  python3 \
+  git autoconf flex bison libfl2 libfl-dev zlib1g-dev help2man perl ccache
+
+# Verilator is built from a release tag, not taken from apt: Debian's 5.020
+# dates from January 2024, and a newer release is a decision (DA's response
+# OI-40), so the version is pinned here and in tools/toolchain.lock.json.
+# It installs under its own prefix and is linked into /usr/local/bin, which
+# PATH searches before /usr/bin; Debian's package is removed so that one
+# Verilator is on the machine. Building takes a while; a container that
+# already has this version skips it.
+VERILATOR_TAG=v5.052
+VERILATOR_PREFIX=/opt/verilator-${VERILATOR_TAG#v}
+echo "== Verilator $VERILATOR_TAG =="
+if ! "$VERILATOR_PREFIX/bin/verilator" --version 2>/dev/null |
+     grep -q "rev $VERILATOR_TAG\$"; then
+  tmp=$(mktemp -d)
+  git clone --depth 1 --branch "$VERILATOR_TAG" \
+    https://github.com/verilator/verilator "$tmp/verilator"
+  (cd "$tmp/verilator" && autoconf && ./configure --prefix="$VERILATOR_PREFIX" &&
+   make -j"$(nproc)" && $SUDO make install)
+  rm -rf "$tmp"
+fi
+for b in "$VERILATOR_PREFIX"/bin/*; do
+  $SUDO ln -sf "$b" /usr/local/bin/
+done
+if dpkg -s verilator >/dev/null 2>&1; then
+  $SUDO apt-get remove -y verilator
+fi
 
 # SymbiYosys is not packaged. It is the driver for §7's formal work; Yosys
 # alone is the engine underneath it.
@@ -37,7 +63,8 @@ echo
 echo "== versions =="
 for t in verilator iverilog yosys sby cvc5; do
   printf '  %-12s ' "$t"
-  command -v "$t" >/dev/null 2>&1 && "$t" --version 2>&1 | head -1 || echo "MISSING"
+  flag=--version; [ "$t" = iverilog ] && flag=-V   # Icarus has no --version
+  command -v "$t" >/dev/null 2>&1 && "$t" $flag 2>&1 | head -1 || echo "MISSING"
 done
 
 cat <<'NOTE'

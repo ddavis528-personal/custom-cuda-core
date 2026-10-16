@@ -57,9 +57,10 @@ module ccv_dcu (
 
   int h;
   bit skew;              // negative control: one extra register
-  longint cyc = 0;
+  longint cyc;
   bit [6634:0] drv, q, q2;
   initial begin
+    cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
     skew = ccv_dpi_skew(h);
   end

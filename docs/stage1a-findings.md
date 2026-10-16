@@ -54,7 +54,8 @@ shapes 1b more than any other:
 | concurrent `assert property` | **rejected** | accepted | **rejected** |
 
 There is no spelling of a named, message-carrying, temporal property that all
-three accept. A property written by hand for one tool is broken in at least
+three accept. **Since Verilator 5.052** (2026-10-16, DA's response OI-40): the Verilator
+column is unchanged; no cell in this table moved. A property written by hand for one tool is broken in at least
 one other, silently or loudly.
 
 **Decision (1b):** every property in this project is written through a macro,
@@ -96,6 +97,13 @@ somebody has to justify per interface. **This lands on Stage 2's plate**, where
 interface contracts are written, and it is the sort of thing that would
 otherwise surface at Stage 5 as "we cannot express the property we need."
 
+**Since Verilator 5.052** (2026-10-16, DA's response OI-40): Verilator now
+checks `##n` delays, named sequences and properties, property local variables
+and `throughout` (cases 09, 10, 19, 22), and parses `s_eventually` (case 21).
+Icarus 12.0 and Yosys 0.33 still reject all five, so the consequence stands: a
+property must elaborate in every flow (§7), formal reads none of these, and
+checkers keep their own tracking state.
+
 ## F-3 — `$assertoff` is unavailable, and the substitute is better anyway
 
 §7 specifies `$assertoff`/`$asserton`/`$assertkill` as the runtime knob,
@@ -124,6 +132,11 @@ would mean nothing, and nothing about the run would look wrong. So under
 `CHECK` in the sby column is the evidence that the knob has not quietly
 disarmed the formal flow, and it should stay in the regression permanently for
 exactly that reason.
+
+**Since Verilator 5.052** (2026-10-16): Verilator implements `$assertoff`
+(cases 16 and 27, `SILENCED`). Icarus 12.0 still does not, so the guard signal
+stays the one knob that works in all three tools, and under formal it is still
+a constant.
 
 ## F-4 — SystemVerilog interfaces cannot be block boundaries. Settled.
 
