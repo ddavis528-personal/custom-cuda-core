@@ -285,7 +285,7 @@ void Core::cycle(uint64_t now) {
 }
 
 bool Core::busy() const {
-  if (!decq_.empty() || !redirects_.empty() || free_mask_ ||
+  if (!decq_.empty() || !redirects_.empty() || free_mask_ || !restore_q_.empty() ||
       !commits_.empty() || !discards_.empty() || !held_issues_.empty() ||
       !held_memops_.empty())
     return true;
@@ -313,8 +313,13 @@ std::array<unsigned, kArchPreds> Core::committedPredMap(unsigned warp) const {
 // ---- free lists, floors and ceilings (A-26, A-34, A-39, A-40) ------------------------
 
 bool Core::gprAllowed(unsigned slot, unsigned n) const {
+  return gAvail() >= n && gprReserved(slot, n);
+}
+
+/// The slot's ceiling, and every other slot's reservation, with n more
+/// taken: the floors (A-26, A-34), whatever the candidate buffer holds.
+bool Core::gprReserved(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (gAvail() < n) return false;
   if (s.held_gpr + n > kArchGprs + cfg_.ren_ceil) return false;
   // Every other tier-1 slot, occupied or not, keeps its architectural 16
   // plus its floor reserved: free registers must still cover them.
@@ -324,12 +329,15 @@ bool Core::gprAllowed(unsigned slot, unsigned n) const {
       const unsigned want = kArchGprs + cfg_.ren_floor;
       owed += slot_[v].held_gpr < want ? want - slot_[v].held_gpr : 0;
     }
-  return gfree_.ready() - n >= owed;
+  return gfree_.ready() >= n + owed;
 }
 
 bool Core::predAllowed(unsigned slot, unsigned n) const {
+  return pAvail() >= n && predReserved(slot, n);
+}
+
+bool Core::predReserved(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (pAvail() < n) return false;
   if (s.held_pred + n > kArchPreds + cfg_.pred_ren_ceil) return false;
   unsigned owed = 0;
   for (unsigned v = 0; v != slot_.size(); ++v)
@@ -337,7 +345,7 @@ bool Core::predAllowed(unsigned slot, unsigned n) const {
       const unsigned want = kArchPreds + cfg_.pred_ren_floor;
       owed += slot_[v].held_pred < want ? want - slot_[v].held_pred : 0;
     }
-  return pfree_.ready() - n >= owed;
+  return pfree_.ready() >= n + owed;
 }
 
 unsigned Core::allocGpr(unsigned slot) {
@@ -1105,6 +1113,8 @@ void Core::epochNotice(unsigned slot) {
 
 void Core::releaseSlot(unsigned slot) {
   Slot &s = slot_[slot];
+  // A restore still taking registers is abandoned with the slot.
+  restore_q_.erase(std::remove(restore_q_.begin(), restore_q_.end(), slot), restore_q_.end());
   for (unsigned i = 0; i != cfg_.rob_depth; ++i)
     if (s.rob[i].valid) err("V-28: slot %u released with rob entry %u", slot, i);
   for (unsigned a = 0; a != kArchGprs; ++a) freeGpr(slot, s.crat[a]);
@@ -1149,29 +1159,25 @@ void Core::control() {
       // Restore-allocate (A-64): 16 GPRs and 4 predicates from the slot's
       // reservation, which the floor guarantees (V-30), then the map so
       // PCA's rows land in them. The warp waits for restore-activate.
-      direct_alloc_ = true;
-      if (!gprAllowed(a.slot, kArchGprs) || (cfg_.rename_preds && !predAllowed(a.slot, kArchPreds)))
+      if (!gprReserved(a.slot, kArchGprs) || (cfg_.rename_preds && !predReserved(a.slot, kArchPreds)))
         err("V-30: restore-allocate for slot %u finds its reservation short", a.slot);
-      direct_alloc_ = false;
-      // All 20 at once, more than the candidate buffer holds: restore takes
-      // them from the pool directly (OI-41, an interim the RTL lacks).
-      direct_alloc_ = true;
-      for (unsigned g = 0; g != kArchGprs && gAvail(); ++g) s.crat[g] = s.rat[g] = allocGpr(a.slot);
-      for (unsigned p = 0; p != kArchPreds; ++p) s.cprat[p] = s.prat[p] = allocPred(a.slot, p);
-      direct_alloc_ = false;
-      RatMap m;
-      m.warp = a.warp;
-      m.direction = 1;
-      std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
-      std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
-      out.maps.push_back(m);
+      // The registers come through the candidate buffers, up to a port's
+      // worth a cycle, while rename stalls (OA's response OI-41): see
+      // restoreStep. The map goes when both are done.
       s.st = WarpState::kAllocated;
+      s.restoring = true;
+      s.restore_gpr = kArchGprs;
+      s.restore_pred = kArchPreds;
+      s.restore_at = now_;
+      restore_q_.push_back(a.slot);
       s.retired_since_restore = 0;
       break;
     }
     case kAllocRestoreActivate:
       if (s.st != WarpState::kAllocated || s.warp != a.warp)
         err("V-49: restore-activate for slot %u without its restore-allocate", a.slot);
+      else if (s.restoring)
+        err("V-49: restore-activate for slot %u before its map", a.slot);
       else s.st = WarpState::kActive;
       break;
     case kAllocFree:
@@ -1981,7 +1987,45 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   return true;
 }
 
+/// One cycle of restore-allocate (OA's response OI-41): the oldest accepted
+/// restore takes up to rename_width GPRs and as many predicates from the
+/// candidate buffers, through rename's ports. When both are done its map
+/// goes to RCU, and V-64 holds it to ceil(16 / width) + 1 cycles.
+void Core::restoreStep() {
+  const unsigned si = restore_q_.front();
+  Slot &s = slot_[si];
+  const unsigned width = cfg_.rename_width;
+  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr)
+    s.crat[kArchGprs - s.restore_gpr] = s.rat[kArchGprs - s.restore_gpr] = allocGpr(si);
+  for (unsigned k = 0; k != width && s.restore_pred && (!cfg_.rename_preds || predAllowed(si, 1));
+       ++k, --s.restore_pred)
+    s.cprat[kArchPreds - s.restore_pred] = s.prat[kArchPreds - s.restore_pred] =
+        allocPred(si, kArchPreds - s.restore_pred);
+  if (s.restore_gpr || s.restore_pred) return;
+  const uint64_t took = now_ - s.restore_at + 1;
+  const uint64_t bound = (std::max(kArchGprs, kArchPreds) + width - 1) / width + 1;
+  if (took > bound)
+    err("V-64: restore-allocate for slot %u took %llu cycles; the bound is %llu", si,
+        (unsigned long long)took, (unsigned long long)bound);
+  ++histograms["restore_cycles"][took];
+  RatMap m;
+  m.warp = s.warp;
+  m.direction = 1;
+  std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+  std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
+  out.maps.push_back(m);
+  s.restoring = false;
+  restore_q_.pop_front();
+}
+
 void Core::rename() {
+  // A restore-allocate in progress owns the allocation ports: no warp
+  // renames until it is done (OA's response OI-41).
+  if (!restore_q_.empty()) {
+    restoreStep();
+    count("stall.restore");
+    return;
+  }
   unsigned budget = cfg_.rename_width;
   std::vector<bool> blocked(slot_.size(), false);
   for (bool progress = true; progress && budget;) {
@@ -2049,6 +2093,14 @@ void Core::checkInvariants() {
     if (counters["invariant." + id] <= kReportOnce) err("%s: %s", id.c_str(), what.c_str());
   };
   char buf[256];
+  // Each free list has rename_width allocation ports (ooe_freelist's A):
+  // rename and restore-allocate share them, never both in a cycle (OI-41).
+  for (const FreeVec *f : {&gfree_, &pfree_})
+    if (f->cycleAllocs().size() > cfg_.rename_width) {
+      std::snprintf(buf, sizeof buf, "%zu %s allocations in one cycle, %u ports", f->cycleAllocs().size(),
+                    f == &gfree_ ? "GPR" : "predicate", cfg_.rename_width);
+      bad("free-list-ports", buf);
+    }
   // The ready path as the RTL builds it: a row is ready iff every cell it
   // depends on selects a raised wake line of its producer. Holding this
   // every cycle is what lets ooe_ready be checked against the model's

@@ -33,8 +33,8 @@ by structure, from synthesis serial gate counts (DA's response OI-39,
 holds a freed entry for a cycle, because it fits its stage only so (OI-39).
 The free list does too, in OA's OI-38 design: an 8-entry candidate buffer
 refilled from four interleaved banks (built: 23.5 NGD). The RS and ROB keep same-edge reuse
-unless their RTL measures over the stage. The design snapshot (rev 189)
-still states OA's OOE-wide rule; OA has been asked to update the live doc.
+unless their RTL measures over the stage. The design doc states this
+rule from rev 193 (OA's response OI-39).
 
 Built (`rtl/ooe/`):
 
@@ -83,10 +83,11 @@ Built (`rtl/ooe/`):
   rebuilt slot by slot as a gather, the buffered mask kept as state, and
   the taken count encoded from the request prefix rather than counted.
 
-  Restore-allocate takes 16 GPRs and 4 predicates at once, more than the
-  buffer holds. The model takes them from the pool directly, past the
-  buffer, and counts it (`FreeVec::allocDirect`). The RTL has no such path
-  yet, and the bench follows no core past one. That is OI-41, for OA.
+  Restore-allocate takes its 16 GPRs and 4 predicates through the same
+  buffer and ports, up to four a cycle, while rename stalls for every
+  warp (OA's response OI-41). So the RTL needs no second path, and the
+  bench fails a cycle with more allocations than ports instead of skipping
+  it. The model holds the port count as an invariant every cycle.
 - **`ooe_age`**, an RS class's age matrix: a bit per ordered pair, set
   when the column's entry was allocated first. Up to four allocations a
   cycle, in port order; each writes its row (every valid entry, and every

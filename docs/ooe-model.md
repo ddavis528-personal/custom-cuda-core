@@ -159,6 +159,19 @@ and V-04 count those freed this cycle too. Allocation order is
 bank-interleaved, so `--break free-new` now first shows at seq 379 (R4),
 where it showed at seq 382 (R1) under the rotating pointer.
 
+Restore-allocate takes its 16 GPRs and 4 predicates through the same
+buffers and ports (OA's response OI-41). The floor check is made at
+acceptance against every free register, buffered or not (V-30). Then the
+oldest accepted restore owns the allocation ports: up to `rename_width`
+registers a cycle from each buffer, and rename stalls for every warp
+until it is done (`stall.restore`). Its map goes to RCU in the cycle the
+last register is taken, and V-64 holds that to ceil(16 / width) + 1
+cycles from acceptance (`restore_cycles`). A restore-activate before the
+map is refused (V-49). An invariant holds every cycle that neither list
+makes more allocations than it has ports, as `ooe_freelist` builds them.
+`testRestore` covers it: four cycles with a busy second warp, which still
+retires its program.
+
 ## Bypass groups
 
 A dependant's wake belongs to the producer and consumer pair, not to the
@@ -334,8 +347,8 @@ today's size would limit a larger one.
 refill banks (OA's response OI-38): allocation takes the buffer's head, and
 each edge refills it from the banks, so a freed row reaches allocation two
 cycles later. `fl_buf=0` is the earlier rotating-pointer list, one cycle;
-no kernel or sweep arm moves between them. Restore-allocate's 20 registers
-bypass the buffer (OI-41).
+no kernel or sweep arm moves between them. Restore-allocate takes its
+registers through the buffer too (OI-41, see Free lists).
 
 `decq_late_credit` (on, DA's response OI-39): a decode-queue entry freed in
 a cycle counts as held for that cycle's arrivals, so it takes one only from

@@ -863,12 +863,64 @@ void testDemote() {
   // Restore into the same slot: allocate, map direction 1, activate.
   Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
   e.core.alloc(ra);
-  e.step();
   bool map1 = false;
-  for (const RatMap &m : e.log.back().maps) map1 = m.direction == 1 && m.gpr[0] != c.phys_zero;
+  for (unsigned k = 0; k != 10 && !map1; ++k) {
+    e.step();
+    for (const RatMap &m : e.log.back().maps) map1 = m.direction == 1 && m.gpr[0] != c.phys_zero;
+  }
   EXPECT(map1, "no restore map");
   EXPECT(e.core.heldGprs(0) == 16, "restore allocated %u", e.core.heldGprs(0));
   for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
+/// Restore-allocate through the candidate buffers (OA's response OI-41):
+/// rename stalls for every warp while it takes its registers, its map
+/// comes within V-64's bound, and a restore-activate before the map is
+/// refused (V-49).
+void testRestore() {
+  g_test = "restore";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c);
+  e.keep_log = true;
+  std::mt19937 rng(3);
+  e.launch(5, 1, randomProgram(rng, 80, false));
+  for (unsigned k = 0; k != 6; ++k) e.step();
+  const uint64_t stalls = e.core.counters["stall.restore"];
+  Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
+  e.core.alloc(ra);
+  unsigned took = 0;
+  RatMap map{};
+  bool got = false;
+  while (!got && took != 20) {
+    e.step();
+    ++took;
+    for (const RatMap &m : e.log.back().maps)
+      if (m.direction == 1) { map = m; got = true; }
+  }
+  const unsigned w = c.rename_width, least = (kArchGprs + w - 1) / w, bound = least + 1;
+  EXPECT(got, "no restore map");
+  EXPECT(took >= least && took <= bound, "the map came %u cycles after acceptance; ports allow %u, V-64 %u",
+         took, least, bound);
+  EXPECT(e.core.counters["stall.restore"] - stalls == took, "rename stalled %llu cycles for a %u-cycle restore",
+         (unsigned long long)(e.core.counters["stall.restore"] - stalls), took);
+  EXPECT(e.core.heldGprs(0) == kArchGprs, "restore allocated %u", e.core.heldGprs(0));
+  const std::set<unsigned> rows(map.gpr.begin(), map.gpr.end());
+  EXPECT(rows.size() == kArchGprs && !rows.count(c.phys_zero), "the map names %zu distinct rows", rows.size());
+  Alloc act; act.warp = 0; act.slot = 0; act.op = kAllocRestoreActivate;
+  e.core.alloc(act);
+  e.finish();   // the other warp, stalled meanwhile, still retires its program
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  // Activating before the map is a protocol error.
+  e.errors.clear();
+  Alloc rb; rb.warp = 10; rb.slot = 2; rb.op = kAllocRestoreAlloc;
+  Alloc ab = rb; ab.op = kAllocRestoreActivate;
+  e.core.alloc(rb);
+  e.core.alloc(ab);
+  e.step();
+  bool refused = false;
+  for (const std::string &x : e.errors) refused = refused || x.find("before its map") != std::string::npos;
+  EXPECT(refused, "a restore-activate before the map was accepted");
 }
 
 void testKill() {
@@ -1490,6 +1542,7 @@ int main(int argc, char **argv) {
   testSquash();
   testFloorCeiling();
   testDemote();
+  testRestore();
   testKill();
   testFault();
   testBarrier();

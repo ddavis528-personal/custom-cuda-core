@@ -15,9 +15,9 @@
 // under --assert.
 //
 // FL_POOL selects the pool: 0 the GPR rows (CCV_P_PHYS_REGS), 1 the
-// predicates (CCV_P_PRED_REGS). Each new core resets the RTL. A core whose
-// restore-allocate took registers around the buffer (OI-41, an interim the
-// RTL lacks) is followed no further, and counted.
+// predicates (CCV_P_PRED_REGS). Each new core resets the RTL. Every
+// allocation goes through the buffer and its ports, restore-allocate's too
+// (OA's response OI-41), so a cycle with more allocations than ports fails.
 //
 // Negative controls (FL_CONTROL=<name>) perturb the driving and must be
 // caught: drop-free (frees never reach the RTL) and extra-alloc (one more
@@ -44,7 +44,7 @@ std::unique_ptr<Vooe_freelist> dut;
 std::string control;
 uint64_t current = 0;   // the serial of the core being followed
 bool desync = false;     // a core whose pool size differs from the RTL's: skipped
-unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, directs = 0, mismatches = 0;
+unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, mismatches = 0;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K);
 
@@ -109,9 +109,8 @@ void hook(const Core &c) {
   }
   if (unsigned(dut->rot_cq02h) != e.rot) fail("bank order differs", unsigned(dut->rot_cq02h), e.rot);
   // 2. This edge's allocations and frees.
-  if (fv.directs()) { ++skipped; ++directs; desync = true; return; }
   const auto &al = fv.cycleAllocs();
-  if (al.size() > FL_A) { ++skipped; desync = true; return; }   // beyond the ports
+  if (al.size() > FL_A) { fail("more allocations than ports", unsigned(al.size()), FL_A); desync = true; return; }
   const auto &fr = fv.cycleFrees();
   unsigned req = unsigned(al.size());
   if (control == "extra-alloc" && req && req < FL_A) ++req;
@@ -141,9 +140,9 @@ int main(int argc, char **argv) {
   const int model_fails = ooeTestRandomPreHooked(seeds, hook);
   dut->final();
   std::printf("freelist_tb pool=%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu frees=%llu "
-              "skipped=%llu restore-cores=%llu mismatches=%llu model_failures=%d\n",
+              "skipped=%llu mismatches=%llu model_failures=%d\n",
               FL_POOL ? "pred" : "gpr", control.empty() ? "none" : control.c_str(), seeds, cores, cycles,
-              allocs, frees, skipped, directs, mismatches, model_fails);
+              allocs, frees, skipped, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

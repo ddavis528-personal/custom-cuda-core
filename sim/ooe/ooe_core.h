@@ -448,7 +448,6 @@ public:
     banks_ = cap ? banks : 1;
     bptr_.assign(banks_, 0);
     rot_ = 0;
-    direct_ = 0;
     edge_ = Edge{buf_, bit_, bptr_, rot_};
   }
   /// Free entries, including those freed this cycle.
@@ -478,22 +477,6 @@ public:
     }
     return n;   // caller checked avail()
   }
-  /// An allocation that does not go through the buffer: restore-allocate's
-  /// 16 at once (OI-41, an interim the RTL does not build). The first free,
-  /// unbuffered entry in bank order. Counted, so a check can tell.
-  unsigned allocDirect() {
-    if (!cap_) return alloc();
-    const unsigned n = unsigned(bit_.size());
-    for (unsigned p = 0; p != n; ++p)
-      if (bit_[p] && !inbuf_[p]) {
-        take(p);
-        ++direct_;
-        return p;
-      }
-    return n;
-  }
-  /// Free entries outside the buffer, for allocDirect.
-  size_t unbuffered() const { return ready_ - (cap_ ? buf_.size() : 0); }
   /// False when the entry is already free (a double free).
   bool free(unsigned p) {
     if (has(p)) return false;
@@ -504,11 +487,9 @@ public:
   }
   /// The allocations, in order, and frees since the last clock(): one clock
   /// edge's worth, including those made by inputs between cycles
-  /// (ooe_freelist's testbench drives the RTL with them). directs() counts
-  /// allocDirect calls in the same window.
+  /// (ooe_freelist's testbench drives the RTL with them).
   const std::vector<unsigned> &cycleAllocs() const { return allocs_; }
   const std::vector<unsigned> &cycleFrees() const { return frees_; }
-  unsigned directs() const { return direct_; }
   unsigned pointer() const { return ptr_; }
   unsigned capacity() const { return unsigned(bit_.size()); }
   unsigned bufferCap() const { return cap_; }
@@ -524,7 +505,6 @@ public:
   void clock() {
     allocs_.clear();
     frees_.clear();
-    direct_ = 0;
     if (cap_) refill();
     if (npend_) {
       for (size_t p = 0; p != pend_.size(); ++p)
@@ -573,7 +553,7 @@ private:
   std::deque<unsigned> buf_;
   std::vector<unsigned> allocs_, frees_, bptr_;
   size_t ready_ = 0, npend_ = 0;
-  unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0, direct_ = 0;
+  unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
   Edge edge_;
 };
 
@@ -730,6 +710,11 @@ private:
     bool notice_sent = false;
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;
+    /// Restore-allocate in progress (OI-41): registers still to take, and
+    /// the cycle it was accepted (V-64).
+    bool restoring = false;
+    unsigned restore_gpr = 0, restore_pred = 0;
+    uint64_t restore_at = 0;
   };
 
   // -- pipeline steps (cycle() calls them in this order) ------------------------
@@ -936,11 +921,17 @@ private:
   // granted last cycle, in the payload-read stage (payload_stages = 1)
   bool cancel_live_ = false;          ///< a transitive cancel still spreading
   // Restore-allocate's 20 registers bypass the candidate buffer (OI-41).
-  bool direct_alloc_ = false;
-  size_t gAvail() const { return direct_alloc_ ? gfree_.unbuffered() : gfree_.avail(); }
-  size_t pAvail() const { return direct_alloc_ ? pfree_.unbuffered() : pfree_.avail(); }
-  unsigned gTake() { return direct_alloc_ ? gfree_.allocDirect() : gfree_.alloc(); }
-  unsigned pTake() { return direct_alloc_ ? pfree_.allocDirect() : pfree_.alloc(); }
+  size_t gAvail() const { return gfree_.avail(); }
+  size_t pAvail() const { return pfree_.avail(); }
+  unsigned gTake() { return gfree_.alloc(); }
+  unsigned pTake() { return pfree_.alloc(); }
+  /// Restore-allocate (OA's response OI-41): accepted slots, oldest first.
+  /// The front one drains the candidate buffers through rename's ports,
+  /// and rename stalls for every warp until the queue is empty.
+  std::deque<unsigned> restore_q_;
+  void restoreStep();
+  bool gprReserved(unsigned slot, unsigned n) const;
+  bool predReserved(unsigned slot, unsigned n) const;
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;
   std::vector<Memop> held_memops_;
