@@ -52,6 +52,14 @@ module ccv_reference (
   // CCV-L24: `_b` claims to be a complement but is driven without inversion.
   assign out_e_cy01h_b = in_data_cy00h[0];
 
+  // CCV-L23 behind a comparison (OI-40). The `<=` in the condition is not an
+  // assignment, and reading it must not swallow the one after it: the
+  // finding names out_i_cy03h, which is 00 -> 03, and not in_data_cy00h.
+  logic [3:0] out_i_cy03h;
+  always_ff @(posedge core_clk) begin
+    if (in_data_cy00h <= 4'd7) out_i_cy03h <= in_data_cy00h;
+  end
+
   assign BadCamelNet = in_data_cy00h;
 
 endmodule
@@ -64,12 +72,18 @@ module bad_naming_clocks (
   input  logic       ref_rst_r00h,
   input  logic [3:0] in_data_cy00h,
   output logic [3:0] out_f_cy01h,
-  output logic [3:0] out_g_cy00h
+  output logic [3:0] out_g_cy00h,
+  output logic [3:0] out_i_cy00h
 );
   always_ff @(posedge gclk) begin
     out_f_cy01h <= in_data_cy00h;
   end
   assign out_g_cy00h = in_data_cy00h & {4{core_clk}};
+
+  // The same behind a macro call with no semicolon (OI-40): its `==` is not
+  // an assignment, and the finding names out_i_cy00h, not in_data_cy00h.
+  `CCV_ASSERT_AT(core_clk, ref_rst_r00h, in_data_known, in_data_cy00h == in_data_cy00h)
+  assign out_i_cy00h = in_data_cy00h & {4{core_clk}};
 endmodule
 
 // CCV-L02: uses the assertion macros without naming its clock and reset, so

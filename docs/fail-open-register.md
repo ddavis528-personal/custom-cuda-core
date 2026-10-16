@@ -36,7 +36,8 @@ broken it once and watched it notice.
 | Satisfiability covers | open | cases 34/35: vacuous proof passes, cover misses | `check-1a.sh` |
 | Checker connection (`bind` vs instantiation) | **silent** | case 31 must stay SILENT, case 32 CHECK | `check-1a.sh` |
 | Lint rules | open | every rule must fire on a fixture, rule by rule | `check-1d.sh` |
-| …and not on compliant code | open | five compliant fixtures, one per namespace shape (`ccv_reference*.sv`, `reference_*.sv`), must report nothing | `check-1d.sh` |
+| …and not on compliant code | open | six compliant fixtures, one per namespace shape (`ccv_reference*.sv`, `reference_*.sv`) and `reference_compare.sv`'s comparisons, must report nothing | `check-1d.sh` |
+| How the rules read an assignment (CCV-L20, L23, L24) | **silent** | a comparison read as an assignment ran to the next semicolon and took the statements after it as its right-hand side, so the real assignment there was never checked, or its finding named the compared net (OI-40). Two findings behind a comparison, in `bad_naming.sv`, must each name the net that is wrong | `check-1d.sh` |
 | Module classification by name (CCV-L28) | **silent** | a common module is exempt from the clock-naming and stage rules, so a name misread as common silences them, and a block top read as anything else loses its gate check. 19 refusals (`bad_module_names.sv`, `bad_blocks.json`, the real top under its pre-OI-37 name for the generated-tree pass) must each be found by name, exactly 19 | `check-1d.sh` |
 | Event emission cycle accuracy | **silent** | paper-derived cycles must match exactly | `check-emit-calib.sh` |
 | X-determinism construct choice | open | three constructions must DISAGREE on X | `check-xprop.sh` |

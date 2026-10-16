@@ -386,6 +386,16 @@ whole reason `<block>_core_clk` exists. Anywhere else is a clock read as data.
 A clock built from a clock with logic is CCV-L27's business: only a ctech cell
 does that.
 
+**How an assignment is read.** CCV-L20, L23 and L24 all read assignments,
+and read as a pattern a comparison looks like one: `a == b`, or `a <= b` in
+a condition or a macro call. The lint counts neither. An `=` that starts
+`==` is a comparison, and nothing inside parentheses is an assignment's
+left-hand side. Refusing one consumes nothing after it, so a macro call
+with no semicolon, `CCV_ASSERT(n, a == b)`, no longer takes the `always_ff`
+after it as its right-hand side (OI-40). `rtl/lint/reference_compare.sv`
+must stay silent, and two findings behind a comparison in
+`rtl/lint/bad_naming.sv` must name the net that is wrong.
+
 Because `_core_` marks synchronous, an `always_ff` mixing a `*_core_clk`-
 generated signal with a `test_clk`-generated one is a crossing detectable from
 the names alone. Nothing uses `test_clk` yet; it is registered so the first

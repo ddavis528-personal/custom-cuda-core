@@ -110,6 +110,26 @@ else
   say "module namespace: 19 refusals, each by name" "PASS"
 fi
 
+# -- a comparison is not an assignment, and reading one consumes nothing ----
+# CCV-L20, L23 and L24 read assignments, and `==`, or `<=` in a condition or
+# a macro call, read as one too (OI-40). Refusing a comparison is half of it:
+# the other half is that the refusal does not swallow the statement after
+# it, which is a rule going quiet with nothing to show. So each finding
+# behind a comparison must name the net that is wrong, not the one compared.
+amiss=""
+for want in "CCV-L23: out_i_cy03h is at stage 03" \
+            "CCV-L20: clock 'core_clk' is read as data by 'out_i_cy00h'"; do
+  grep -qF "$want" "$TMP/bad.log" || amiss="$amiss [$want]"
+done
+if [ -n "$amiss" ]; then
+  bad "assignments behind a comparison are read" "not found:$amiss"
+elif grep -qE "read as data by '(in_data_cy00h|a_cy00h)'|CCV-L23: in_data_cy00h " "$TMP/bad.log"; then
+  bad "assignments behind a comparison are read" \
+    "a comparison read as an assignment: $(grep -m1 -E "by '(in_data|a)_cy00h'|L23: in_data_cy00h " "$TMP/bad.log")"
+else
+  say "assignments behind a comparison are read" "PASS"
+fi
+
 # -- compliant code must be SILENT -----------------------------------------
 # The false-positive regression, and it matters more than usual for the
 # X-determinism rules: a rule that fires on correct code gets switched off, and
@@ -117,16 +137,18 @@ fi
 # three legal routes on control inputs exactly as suspicious as the fixture's.
 gfail=0
 # One fixture per shape the namespace accepts: a block top, its wrapper, a
-# sub-block and two common modules, all of the lint fixtures' own block.
+# sub-block and two common modules, all of the lint fixtures' own block. And
+# reference_compare.sv: comparisons in a condition and in a macro call with
+# no semicolon, each of which drew a finding before OI-40.
 for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
-         rtl/lint/reference_common_yosys.sv; do
+         rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (5 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (6 fixtures)" "PASS"
 
 # CCV-L26 makes a claim about a TOOL, so the claim is checked against the
 # tool: every form the rule permits must actually be readable by Yosys. A
