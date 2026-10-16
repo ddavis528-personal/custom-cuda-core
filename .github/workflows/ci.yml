@@ -25,13 +25,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The toolchain is the one tools/setup-toolchain.sh installs, so CI and
+      # every container run the gate on the same pinned versions. CI once
+      # kept its own apt list, which went on installing Debian's Verilator
+      # after the gate moved to a release built from source (OI-40), and an
+      # unpinned SymbiYosys. Verilator's build is cached by its tag.
+      - name: Verilator tag
+        id: vl
+        run: echo "tag=$(sed -n 's/^VERILATOR_TAG=//p' tools/setup-toolchain.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Verilator
+        uses: actions/cache@v4
+        with:
+          path: ~/verilator-${{ steps.vl.outputs.tag }}
+          key: verilator-${{ steps.vl.outputs.tag }}-${{ runner.os }}
+
       - name: Install toolchain
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            verilator iverilog yosys cvc5 build-essential python3
-          git clone --depth 1 https://github.com/YosysHQ/sby /tmp/sby
-          cd /tmp/sby && sudo make install PREFIX=/usr/local
+        run: VERILATOR_PREFIX="$HOME/verilator-${{ steps.vl.outputs.tag }}" ./tools/setup-toolchain.sh
 
       - name: Verify
         run: ./tools/verify.sh
