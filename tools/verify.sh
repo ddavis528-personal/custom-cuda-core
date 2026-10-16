@@ -56,6 +56,10 @@ fi
 # compiled them, so a build/ another version made is cleared (OI-40).
 run "build/ made by this Verilator" python3 tools/build-stamp.py
 run "another Verilator's build/ refused" python3 tools/build-stamp.py --selftest
+# OI's 5.020 miscompile (an if/else of two function calls in an always_ff),
+# frozen with its flop in both forms: the pinned Verilator must compile both
+# alike, and a planted difference must be caught (OI-40).
+run "this Verilator compiles OI's 5.020 miscompile right" ./tools/check-vl-reorder.sh
 
 section "documentation"
 # Docs decay more quietly than code: a drifted count or a dangling reference
