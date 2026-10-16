@@ -174,6 +174,29 @@ Built (`rtl/ooe/`):
   shadow, which makes the bench's no-carry control (no hop past the first)
   catchable. Controls no-miss, no-fin, no-dep and no-carry must each be
   caught.
+- **`ooe_rs`**, the RS valid bits, allocation and the dependency matrix.
+  Each class has four ports; port k takes the free entry with exactly k
+  free below it in its class, first fit as the model's `rsAlloc`. An entry
+  freed this cycle counts as free, so the RS keeps same-edge reuse. The
+  free counts saturate at four and are kept as thermometers, so two add
+  as an AND-OR, and they come from a Sklansky prefix tree. Counted with
+  saturating adders in banks, the allocation alone was 60 NGD; the tree
+  makes it 12.6. An allocation writes the whole row, naming entries
+  granted this cycle to another port, in either class, by port; a free
+  clears the entry's column. The model logs each cycle's allocations in
+  order and its frees (`Core::wakeLog`); `test/ooe/rs_tb.cpp` compares the
+  grants, the valid bits and every valid row's bits and line selects. Over
+  25 seeds: 100,804 allocations, 36,698 of them into an entry freed that
+  cycle, 4,294 in-group references, none differ. Controls no-same-edge and
+  drop-group must each be caught.
+
+  Depth decides same-edge reuse (DA's response OI-39). `ooe_rs` is 20.1
+  NGD in 19 levels with it and 18.4 without. The path that decides it
+  starts at the confirmation: `ooe_confirm`'s confirmations, from flops,
+  as the frees, through allocation into the row write
+  (`test/ooe/ooe_rs_confirm.sv`, a probe). That is 24.5 NGD in 21 levels,
+  under the stage, so the RS keeps same-edge reuse. The margin is 0.5 NGD,
+  measured as every other block here is: logic only, no flop or wire.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 

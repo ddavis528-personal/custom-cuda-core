@@ -14,7 +14,9 @@
 # - ooe_wake against the model's wake lines and L1 miss cancels, live
 #   (test/ooe/wake_tb.cpp);
 # - ooe_confirm against the model's cancel hops and confirmations, live
-#   (test/ooe/confirm_tb.cpp).
+#   (test/ooe/confirm_tb.cpp);
+# - ooe_rs against the model's RS allocations, frees and dependency cells,
+#   live (test/ooe/rs_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -243,6 +245,32 @@ for c in no-miss no-fin no-dep no-carry; do
     say "  control $c (confirm)" "MISSED"; fail=1
   else
     say "  control $c (confirm)" "caught"
+  fi
+done
+
+# ooe_rs, driven from the model's RS allocations and frees after every
+# cycle. A control may be caught by the RTL's own assertion before the
+# comparison: either fails the run.
+dir=build/ooe-rtl/rs
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GN="$n" -GNR="$n_rcu" -GA="$width" --top-module ooe_rs --Mdir "$dir" -o rs_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rs: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rs_tb" "$seeds" 2>&1); then
+  say "rs ($n entries, $width ports a class) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-same-edge drop-group; do
+  if RS_CONTROL=$c "$dir/rs_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (rs)" "MISSED"; fail=1
+  else
+    say "  control $c (rs)" "caught"
   fi
 done
 exit $fail

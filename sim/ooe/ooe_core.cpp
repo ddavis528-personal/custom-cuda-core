@@ -265,8 +265,10 @@ void Core::cycle(uint64_t now) {
   decq_flushed_ = 0;
   decq_freed_ = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod})
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.rfree})
     v->assign(n_, 0);
+  wlog_.ralloc.clear();
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
   wlog_.cf_dep.clear();
@@ -538,6 +540,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
       rs_[e].copy = copy;
       rs_[e].age = next_age_++;
       rs_[e].eligible_at = now_ + cfg_.rename_stages;
+      wlog_.ralloc.push_back(e);
       for (unsigned j = 0; j != n_; ++j) {
         cell(e, j) = 0;
         woff_[size_t(e) * n_ + j] = kLateOff;
@@ -565,6 +568,7 @@ void Core::rsFree(unsigned e) {
   --slot_[x.slot].rs_held;
   x.valid = false;
   if (e < wlog_.stop.size()) wlog_.stop[e] = 1;
+  if (e < wlog_.rfree.size()) wlog_.rfree[e] = 1;
 }
 
 /// Record that entry e reads physical register preg. `group` is the

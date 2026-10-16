@@ -91,3 +91,21 @@ line=$(yosys-abc -c "read_blif $out/confirm.blif; read_library test/ooe/ngd.genl
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries:              %5s NGD in %s levels (budget 25)\n' confirm "$n" "$d" "$l"
+# ooe_rs over both classes, its allocation and matrix write; and the path
+# that decides its same-edge reuse (DA's response OI-39): ooe_confirm's
+# confirmations as its frees, from flops through allocation into the row
+# write (test/ooe/ooe_rs_confirm.sv, a probe, not a block). Each holds the
+# 45 x 45 matrix: several minutes of synthesis apiece.
+for cfg in "rs rtl/ooe/ooe_rs.sv ooe_rs" "rs_confirm rtl/ooe/ooe_confirm.sv rtl/ooe/ooe_rs.sv test/ooe/ooe_rs_confirm.sv ooe_rs_confirm"; do
+  set -- $cfg
+  name=$1; shift
+  top=${!#}
+  files=${*%$top}
+  yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv $files;
+               chparam -set N $n -set NR $n_rcu -set A $width $top; hierarchy -top $top; flatten; chformal -remove;
+               synth -flatten -top $top; attrmap -remove init; dfflegalize -cell \$_DFF_P_ x; write_blif $out/$name.blif"
+  line=$(yosys-abc -c "read_blif $out/$name.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+  d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
+  l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
+  printf '  %-10s %3s entries, %s ports a class: %5s NGD in %s levels (budget 25)\n' "$name" "$n" "$width" "$d" "$l"
+done

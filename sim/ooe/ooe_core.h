@@ -818,6 +818,10 @@ public:
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
     std::vector<uint8_t> replay, conf, hop_iss, hop_dep, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
+    /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
+    /// in allocation order, and those freed.
+    std::vector<unsigned> ralloc;
+    std::vector<uint8_t> rfree;
   };
   /// The timer's word on an entry: issued, its full-latency wake raised, and
   /// not speculative, so confirmation may take it (confirmPass).
