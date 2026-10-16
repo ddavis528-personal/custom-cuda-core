@@ -33,7 +33,8 @@ $SUDO apt-get install -y --no-install-recommends \
 # A build/ an earlier version made is cleared by the next tools/verify.sh
 # (tools/build-stamp.py): make would otherwise keep its objects.
 VERILATOR_TAG=v5.052
-VERILATOR_PREFIX=/opt/verilator-${VERILATOR_TAG#v}
+# CI points the prefix at a directory its cache can restore (ci.yml).
+VERILATOR_PREFIX=${VERILATOR_PREFIX:-/opt/verilator-${VERILATOR_TAG#v}}
 echo "== Verilator $VERILATOR_TAG =="
 if ! "$VERILATOR_PREFIX/bin/verilator" --version 2>/dev/null |
      grep -q "rev $VERILATOR_TAG\$"; then
@@ -52,12 +53,18 @@ if dpkg -s verilator >/dev/null 2>&1; then
 fi
 
 # SymbiYosys is not packaged. It is the driver for §7's formal work; Yosys
-# alone is the engine underneath it.
-echo "== SymbiYosys =="
-if ! command -v sby >/dev/null 2>&1; then
+# alone is the engine underneath it. Pinned to a tag, and the version is
+# stamped rather than left to `git describe`: SBY tags one commit as v0.68,
+# v0.69 and v0.70, so describe names whichever tag is newest, and a clone of
+# its main branch, untagged since 2026-10-15, names none. Either way the
+# string drifted from tools/toolchain.lock.json with no change in the code.
+SBY_TAG=v0.69
+echo "== SymbiYosys $SBY_TAG =="
+if [ "$(sby --version 2>/dev/null | head -1)" != "SBY $SBY_TAG" ]; then
   tmp=$(mktemp -d)
-  git clone --depth 1 https://github.com/YosysHQ/sby "$tmp/sby"
-  (cd "$tmp/sby" && $SUDO make install PREFIX=/usr/local)
+  git clone --depth 1 --branch "$SBY_TAG" https://github.com/YosysHQ/sby "$tmp/sby"
+  (cd "$tmp/sby" &&
+   $SUDO make install PREFIX=/usr/local YOSYS_RELEASE_VERSION="SBY $SBY_TAG")
   rm -rf "$tmp"
 fi
 
@@ -66,7 +73,13 @@ echo "== versions =="
 for t in verilator iverilog yosys sby cvc5; do
   printf '  %-12s ' "$t"
   flag=--version; [ "$t" = iverilog ] && flag=-V   # Icarus has no --version
-  command -v "$t" >/dev/null 2>&1 && "$t" $flag 2>&1 | head -1 || echo "MISSING"
+  if command -v "$t" >/dev/null 2>&1; then
+    # Icarus prints its version and exits 1 with no input file, which
+    # pipefail would otherwise read as the tool missing.
+    echo "$("$t" $flag 2>&1 | head -1 || true)"
+  else
+    echo "MISSING"
+  fi
 done
 
 cat <<'NOTE'
