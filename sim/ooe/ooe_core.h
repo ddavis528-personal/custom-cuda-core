@@ -822,6 +822,17 @@ public:
     /// in allocation order, and those freed.
     std::vector<unsigned> ralloc;
     std::vector<uint8_t> rfree;
+    /// ooe_select's (test/ooe/select_tb.cpp), as the sectioned select saw
+    /// them: each entry's valid, issued, eligible (rename's stages past),
+    /// warp active, ready and sources-confirmed bits, its slot, footprint
+    /// (resOf), whether it is a copy, and a memop's live copy (sel_chas,
+    /// sel_cidx); the resources and warps a bulk discard took; then the
+    /// candidates and the grants. sel_live: the sectioned select ran.
+    std::vector<uint8_t> sel_valid, sel_iss, sel_elig, sel_active, sel_ready, sel_conf, sel_slot, sel_copy,
+        sel_chas, sel_cand, sel_grant;
+    std::vector<unsigned> sel_res, sel_cidx;
+    unsigned sel_busy = 0, sel_block = 0;
+    bool sel_live = false;
   };
   /// The timer's word on an entry: issued, its full-latency wake raised, and
   /// not speculative, so confirmation may take it (confirmPass).

@@ -16,7 +16,9 @@
 # - ooe_confirm against the model's cancel hops and confirmations, live
 #   (test/ooe/confirm_tb.cpp);
 # - ooe_rs against the model's RS allocations, frees and dependency cells,
-#   live (test/ooe/rs_tb.cpp).
+#   live (test/ooe/rs_tb.cpp);
+# - ooe_select against the model's sectioned select, live
+#   (test/ooe/select_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -271,6 +273,30 @@ for c in no-same-edge drop-group; do
     say "  control $c (rs)" "MISSED"; fail=1
   else
     say "  control $c (rs)" "caught"
+  fi
+done
+
+# ooe_select, with its two ooe_picks, driven from the model's sectioned
+# select after every cycle it ran.
+dir=build/ooe-rtl/select
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GN="$n" -GNR="$n_rcu" -GS="$slots" --top-module ooe_select --Mdir "$dir" -o select_tb \
+      -CFLAGS "-std=c++17 -O2 -DSEL_N=$n -DSEL_NR=$n_rcu -DSEL_S=$slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/test/ooe/select_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "select: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/select_tb" "$seeds" 2>&1); then
+  say "select ($n entries, 9 resources) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "select == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-order no-conf no-busy; do
+  if SELECT_CONTROL=$c "$dir/select_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (select)" "MISSED"; fail=1
+  else
+    say "  control $c (select)" "caught"
   fi
 done
 exit $fail

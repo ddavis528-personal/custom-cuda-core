@@ -266,8 +266,14 @@ void Core::cycle(uint64_t now) {
   decq_freed_ = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
-                 &wlog_.rfree})
+                 &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
+                 &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
+                 &wlog_.sel_cand, &wlog_.sel_grant})
     v->assign(n_, 0);
+  wlog_.sel_res.assign(n_, 0);
+  wlog_.sel_cidx.assign(n_, 0);
+  wlog_.sel_busy = wlog_.sel_block = 0;
+  wlog_.sel_live = false;
   wlog_.ralloc.clear();
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
@@ -1543,13 +1549,35 @@ void Core::selectSectioned() {
   std::vector<unsigned> cand;
   for (unsigned e = 0; e != n_; ++e)
     if (ready(e)) cand.push_back(e);
+  // ooe_select's inputs as this select sees them, and its candidates.
+  wlog_.sel_live = true;
+  wlog_.sel_busy = busy;
+  for (unsigned si = 0; si != slot_.size(); ++si) wlog_.sel_block |= unsigned(memop_block[si]) << si;
+  for (unsigned e = 0; e != n_ && e < wlog_.sel_valid.size(); ++e) {
+    const RsEntry &x = rs_[e];
+    wlog_.sel_valid[e] = x.valid;
+    if (!x.valid) continue;
+    const Slot &s = slot_[x.slot];
+    const RobEntry &r = s.rob[x.rob];
+    wlog_.sel_iss[e] = x.issued;
+    wlog_.sel_elig[e] = x.eligible_at <= now_;
+    wlog_.sel_active[e] = s.st == WarpState::kActive;
+    wlog_.sel_ready[e] = rowReady(e);
+    wlog_.sel_conf[e] = rowConfirmed(e);
+    wlog_.sel_slot[e] = uint8_t(x.slot);
+    wlog_.sel_res[e] = x.res;
+    wlog_.sel_copy[e] = x.copy;
+    wlog_.sel_chas[e] = x.cls == RsCls::kMiu && r.copy && r.rs_copy != kNoEntry;
+    wlog_.sel_cidx[e] = wlog_.sel_chas[e] ? r.rs_copy : 0;
+  }
+  for (unsigned e : cand) wlog_.sel_cand[e] = 1;
   std::vector<PickReq> preq;
   for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
   std::vector<unsigned> grant;
   unsigned lost = 0;
   const std::vector<bool> won = pickResources(preq, kRes, &lost);
   for (size_t i = 0; i != cand.size(); ++i)
-    if (won[i]) grant.push_back(cand[i]);
+    if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
   // inject_double_grant: the oldest lane op, and the oldest memop, left out

@@ -197,6 +197,25 @@ Built (`rtl/ooe/`):
   (`test/ooe/ooe_rs_confirm.sv`, a probe). That is 24.5 NGD in 21 levels,
   under the stage, so the RS keeps same-edge reuse. The margin is 0.5 NGD,
   measured as every other block here is: logic only, no flop or wire.
+- **`ooe_select`**, the requests and the two per-class `ooe_pick`s. An
+  entry requests its footprint when it is valid, not issued, past rename's
+  stages, its warp active, its row ready and its resources free of a bulk
+  discard. A copy also needs confirmed sources, and a memop confirmed
+  sources, no bulk discard of its warp, its copy issued in an earlier
+  cycle, and no older unissued memop of its warp: a row-wide OR over the
+  age matrix. Confirmed sources is "no dependency bit left", since a
+  confirmed entry is freed and its column cleared in the cycle it
+  confirms. The model's `selectSectioned` logs its inputs, candidates and
+  grants as it runs; `test/ooe/select_tb.cpp` drives the RTL with them.
+  It follows cores with sectioned lanes, renamed predicates and memops in
+  program order (OA-13's relaxation is not built, OI-15 holds). Over 25
+  seeds: 18,516 select cycles, 42,610 candidates and 16,642 grants (3,442
+  memops), none differ. Controls no-order, no-conf and no-busy must each
+  be caught. Logic depth is 19.5 NGD in 16 levels: inside the stage, but
+  over OA-1's 14.6 of select logic, which costed the pick alone. The
+  request terms (confirmation, memop order, the copy, warp active) come
+  first. All of them depend only on state from earlier cycles, so they
+  can move into the previous cycle's flops if the margin is needed.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 

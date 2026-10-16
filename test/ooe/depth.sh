@@ -109,3 +109,14 @@ for cfg in "rs rtl/ooe/ooe_rs.sv ooe_rs" "rs_confirm rtl/ooe/ooe_confirm.sv rtl/
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s ports a class: %5s NGD in %s levels (budget 25)\n' "$name" "$n" "$width" "$d" "$l"
 done
+# ooe_select over both classes: the requests (warp state, confirmation,
+# the memop order check as a row-wide OR over the age matrix, the copy)
+# and the two picks. OA-1's select stage is 17.6 NGD with a 3.0 flop, so
+# 14.6 of logic, with ready taken from a flop.
+yosys -q -p "read_verilog -sv rtl/ooe/ooe_pick.sv rtl/ooe/ooe_select.sv;
+             chparam -set N $n -set NR $n_rcu -set S $slots ooe_select; synth -flatten -top ooe_select;
+             write_blif $out/select.blif"
+line=$(yosys-abc -c "read_blif $out/select.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
+l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
+printf '  %-10s %3s entries, 9 resources:  %5s NGD in %s levels (estimate 14.6 of logic)\n' select "$n" "$d" "$l"
