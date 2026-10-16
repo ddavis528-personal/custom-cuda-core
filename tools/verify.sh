@@ -91,6 +91,13 @@ run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
 run "generate SV top"       python3 tools/gen-top.py
 run "SV top stable"         python3 tools/gen-top.py --check
+# A generator that stops writing a file must not leave it behind, or the
+# globs that build from these directories go on compiling it, and only a
+# fresh checkout sees the difference (OI-40). Each generator prunes its own;
+# a file no generator owns is removed here, after all of them have run.
+run "stale generated files removed" python3 tools/genout.py
+run "generated dirs hold only generated files" python3 tools/genout.py --check
+run "stale generated files refused" python3 tools/genout.py --selftest
 
 section "Stage 1a -- tool-support spike"
 # Every Stage 1 conclusion is a measurement of a third-party tool, and some

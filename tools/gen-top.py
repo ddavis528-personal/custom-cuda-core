@@ -66,6 +66,7 @@ import ccv_links
 import json
 import os
 import sys
+import genout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOPDIR = os.path.join(ROOT, "rtl", "top")
@@ -1223,6 +1224,8 @@ def main():
             stale.append(os.path.relpath(os.path.join(wdir, f), ROOT))
             if not check:
                 os.remove(os.path.join(wdir, f))
+    # A file this generator wrote last run and no longer does (OI-40).
+    stale += genout.sync("gen-top", [p for p, _ in targets] + [hdr], check)
     msg = ("%d files: top, %d port lists, %d stubs, %d DPI shims, %d wrappers, "
            "2 testbenches" % (len(targets), len(blocks), len(blocks),
                               len(blocks) + 1, len(want)))

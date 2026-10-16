@@ -66,8 +66,8 @@ def elaborate(top_path, out_json):
     to single-bit cells with constants propagated -- so a repeater stage is
     one flop per bit and a lead-mask merge is plain wiring."""
     d = os.path.join(ROOT, "rtl", "top")
-    stubs = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
-    wraps = sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
+    stubs = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")) if f.endswith(".sv"))
+    wraps = sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")) if f.endswith(".sv"))
     inc = " ".join("-I" + os.path.join(ROOT, p) for p in
                    ("rtl/include", "rtl/generated", "rtl/top/ports"))
     rv = "read_verilog -sv -formal %s" % inc

@@ -18,6 +18,7 @@ import os
 import re
 import sys
 from ccv_schema import field_width
+import genout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "schema", "interfaces.json")
@@ -529,6 +530,8 @@ def main():
             if not check:
                 with open(path, "w") as f:
                     f.write(text)
+    # A file this generator wrote last run and no longer does (OI-40).
+    stale += genout.sync("gen-interfaces", [p for p, _ in targets], check)
     if check:
         if stale:
             sys.stderr.write("generated interface files are stale: %s\n"

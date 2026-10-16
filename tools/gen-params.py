@@ -18,6 +18,7 @@ the design's own file.
 import json
 import os
 import sys
+import genout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "params", "ccv_params.json")
@@ -481,6 +482,8 @@ def main():
             if not check:
                 with open(path, "w") as f:
                     f.write(text)
+    # A file this generator wrote last run and no longer does (OI-40).
+    stale += genout.sync("gen-params", [p for p, _ in targets], check)
     if check:
         if stale:
             sys.stderr.write("generated parameter files are stale: %s\n"

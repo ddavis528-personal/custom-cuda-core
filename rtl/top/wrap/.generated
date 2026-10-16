@@ -1,0 +1,18 @@
+{
+ "gen-top": [
+  "ccv_cru_w.sv",
+  "ccv_dcu_w.sv",
+  "ccv_dec_w.sv",
+  "ccv_exb_w.sv",
+  "ccv_fet_w.sv",
+  "ccv_lane_w.sv",
+  "ccv_miu_w.sv",
+  "ccv_mlc_w.sv",
+  "ccv_ooe_w.sv",
+  "ccv_pca_w.sv",
+  "ccv_rau_w.sv",
+  "ccv_rcu_w.sv",
+  "ccv_spm_w.sv",
+  "ccv_syu_w.sv"
+ ]
+}

@@ -16,7 +16,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
   `docs/walkthrough.md`. Regenerate them with `tools/gen-*.py`;
-  `tools/verify.sh` fails if any is stale.
+  `tools/verify.sh` fails if any is stale. Each generated directory's
+  `.generated` says which generator wrote which file, and a file no
+  generator writes any more is removed (`tools/genout.py`).
 - Kernel oracles come from the pinned compiler snapshot (`tools/compiler.lock`,
   `tools/gen-oracle.sh`). Nothing of ccv-sim's output is checked in.
 

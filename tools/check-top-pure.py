@@ -356,13 +356,13 @@ def sources(override=None, extra=()):
     """The files Yosys reads: stubs, the repeater, the wrappers, the top --
     with mutated copies replacing or joining them."""
     d = os.path.join(ROOT, "rtl", "top")
-    files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
+    files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")) if f.endswith(".sv"))
     files.append(os.path.join(ROOT, "rtl", "phys", "ccv_common_rpt.sv"))
     # Each block's clock gate and its ctech cell: inside the block, so no
     # rule here applies to them, but the block does not elaborate without.
     files.append(os.path.join(ROOT, "rtl", "clk", "ccv_common_clk.sv"))
     files += ccv_ctech.files()
-    files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
+    files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")) if f.endswith(".sv"))
     files.append(TOP)
     for old, new in (override or {}).items():
         files = [new if f == old else f for f in files]
