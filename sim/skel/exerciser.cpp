@@ -291,8 +291,11 @@ private:
     uint64_t tid = expectedTid(*g.ci, st, q);
     if (cfg_.misbind && cd.lockstep && g.ci->inst == 7)
       // Lane 7 carries slot s+1's instruction in slot s -- the SIMD
-      // violation binding exists to rule out.
-      tid = expectedTid(*g.ci, streamOf(cd, (s + 1) % cd.rate, kv), q);
+      // violation binding exists to rule out. A one-slot channel (the
+      // sectioned lane channels, OI-28) has no other slot, so lane 7 carries
+      // its stream's next instruction instead: a lane a step out of line.
+      tid = cd.rate > 1 ? expectedTid(*g.ci, streamOf(cd, (s + 1) % cd.rate, kv), q)
+                        : expectedTid(*g.ci, st, q + 1);
     if (cfg_.wrong_class)
       for (unsigned k = 0; k != 3; ++k)
         if (!((cd.id_classes >> k) & 1u)) {

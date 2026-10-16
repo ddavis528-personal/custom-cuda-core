@@ -253,7 +253,7 @@ module ccv_fet_w #(
   );
 
   // ccv_fet_dec_instr, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(160)) u_rpt_fet_dec_instr (
+  ccv_common_rpt #(.STAGES(RPT_FET_DEC_INSTR), .SLOTS(8), .PAYLOAD_W(160)) u_rpt_fet_dec_instr (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_dec_instr_s7_valid, b_fet_dec_instr_s6_valid, b_fet_dec_instr_s5_valid, b_fet_dec_instr_s4_valid, b_fet_dec_instr_s3_valid, b_fet_dec_instr_s2_valid, b_fet_dec_instr_s1_valid, b_fet_dec_instr_s0_valid}), .src_payload({b_fet_dec_instr_s7_payload, b_fet_dec_instr_s6_payload, b_fet_dec_instr_s5_payload, b_fet_dec_instr_s4_payload, b_fet_dec_instr_s3_payload, b_fet_dec_instr_s2_payload, b_fet_dec_instr_s1_payload, b_fet_dec_instr_s0_payload}),
     .src_wake(b_fet_dec_instr_wake), .src_credit({b_fet_dec_instr_s7_credit, b_fet_dec_instr_s6_credit, b_fet_dec_instr_s5_credit, b_fet_dec_instr_s4_credit, b_fet_dec_instr_s3_credit, b_fet_dec_instr_s2_credit, b_fet_dec_instr_s1_credit, b_fet_dec_instr_s0_credit}), .src_stall({b_fet_dec_instr_s7_stall, b_fet_dec_instr_s6_stall, b_fet_dec_instr_s5_stall, b_fet_dec_instr_s4_stall, b_fet_dec_instr_s3_stall, b_fet_dec_instr_s2_stall, b_fet_dec_instr_s1_stall, b_fet_dec_instr_s0_stall}),
@@ -264,7 +264,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_ooe_fet_redirect, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(109)) u_rpt_ooe_fet_redirect (
+  ccv_common_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(109)) u_rpt_ooe_fet_redirect (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_fet_redirect_valid}), .src_payload({ooe_fet_redirect_payload}),
     .src_wake(ooe_fet_redirect_wake), .src_credit({ooe_fet_redirect_credit}), .src_stall({ooe_fet_redirect_stall}),
@@ -275,7 +275,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_ooe_fet_ckpt_free, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_FET_CKPT_FREE), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_ooe_fet_ckpt_free (
+  ccv_common_rpt #(.STAGES(RPT_OOE_FET_CKPT_FREE), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_ooe_fet_ckpt_free (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_fet_ckpt_free_valid}), .src_payload({ooe_fet_ckpt_free_payload}),
     .src_wake(ooe_fet_ckpt_free_wake), .src_credit({ooe_fet_ckpt_free_credit}), .src_stall({ooe_fet_ckpt_free_stall}),
@@ -286,7 +286,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_fet_mlc_ifill, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(50)) u_rpt_fet_mlc_ifill (
+  ccv_common_rpt #(.STAGES(RPT_FET_MLC_IFILL), .SLOTS(1), .PAYLOAD_W(50)) u_rpt_fet_mlc_ifill (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_mlc_ifill_valid}), .src_payload({b_fet_mlc_ifill_payload}),
     .src_wake(b_fet_mlc_ifill_wake), .src_credit({b_fet_mlc_ifill_credit}), .src_stall({b_fet_mlc_ifill_stall}),
@@ -297,7 +297,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_mlc_fet_ifill_rsp, destination end
-  ccv_seq_rpt #(.STAGES(RPT_MLC_FET_IFILL_RSP), .SLOTS(1), .PAYLOAD_W(1026)) u_rpt_mlc_fet_ifill_rsp (
+  ccv_common_rpt #(.STAGES(RPT_MLC_FET_IFILL_RSP), .SLOTS(1), .PAYLOAD_W(1026)) u_rpt_mlc_fet_ifill_rsp (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({mlc_fet_ifill_rsp_valid}), .src_payload({mlc_fet_ifill_rsp_payload}),
     .src_wake(mlc_fet_ifill_rsp_wake), .src_credit({mlc_fet_ifill_rsp_credit}), .src_stall({mlc_fet_ifill_rsp_stall}),
@@ -308,7 +308,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_miu_fet_itlb, destination end
-  ccv_seq_rpt #(.STAGES(RPT_MIU_FET_ITLB), .SLOTS(1), .PAYLOAD_W(64)) u_rpt_miu_fet_itlb (
+  ccv_common_rpt #(.STAGES(RPT_MIU_FET_ITLB), .SLOTS(1), .PAYLOAD_W(64)) u_rpt_miu_fet_itlb (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({miu_fet_itlb_valid}), .src_payload({miu_fet_itlb_payload}),
     .src_wake(miu_fet_itlb_wake), .src_credit({miu_fet_itlb_credit}), .src_stall({miu_fet_itlb_stall}),
@@ -319,7 +319,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_fet_miu_itlb_req, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
+  ccv_common_rpt #(.STAGES(RPT_FET_MIU_ITLB_REQ), .SLOTS(1), .PAYLOAD_W(60)) u_rpt_fet_miu_itlb_req (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_miu_itlb_req_valid}), .src_payload({b_fet_miu_itlb_req_payload}),
     .src_wake(b_fet_miu_itlb_req_wake), .src_credit({b_fet_miu_itlb_req_credit}), .src_stall({b_fet_miu_itlb_req_stall}),
@@ -330,7 +330,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_rau_fet_launch, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(186)) u_rpt_rau_fet_launch (
+  ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(186)) u_rpt_rau_fet_launch (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_fet_launch_valid}), .src_payload({rau_fet_launch_payload}),
     .src_wake(rau_fet_launch_wake), .src_credit({rau_fet_launch_credit}), .src_stall({rau_fet_launch_stall}),
@@ -341,7 +341,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_fet_pca_mig, source end
-  ccv_seq_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_fet_pca_mig (
+  ccv_common_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_fet_pca_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_fet_pca_mig_valid}), .src_payload({b_fet_pca_mig_payload}),
     .src_wake(b_fet_pca_mig_wake), .src_credit({b_fet_pca_mig_credit}), .src_stall({b_fet_pca_mig_stall}),
@@ -352,7 +352,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_pca_fet_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_pca_fet_mig (
+  ccv_common_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_pca_fet_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({pca_fet_mig_valid}), .src_payload({pca_fet_mig_payload}),
     .src_wake(pca_fet_mig_wake), .src_credit({pca_fet_mig_credit}), .src_stall({pca_fet_mig_stall}),
@@ -363,7 +363,7 @@ module ccv_fet_w #(
 `endif
   );
   // ccv_rau_fet_mig, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_FET_MIG), .SLOTS(1), .PAYLOAD_W(11)) u_rpt_rau_fet_mig (
+  ccv_common_rpt #(.STAGES(RPT_RAU_FET_MIG), .SLOTS(1), .PAYLOAD_W(11)) u_rpt_rau_fet_mig (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_fet_mig_valid}), .src_payload({rau_fet_mig_payload}),
     .src_wake(rau_fet_mig_wake), .src_credit({rau_fet_mig_credit}), .src_stall({rau_fet_mig_stall}),

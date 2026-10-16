@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 #include "ooe_core.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -34,6 +35,12 @@ namespace {
 
 int g_fail = 0;
 bool g_quiet = false;     ///< a negative control's expected failures
+/// Called after every core cycle of every Env: an RTL testbench compiled
+/// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
+void (*g_cycle_hook)(const Core &) = nullptr;
+/// Called just before every core cycle, after that cycle's inputs: the
+/// whole interval between two FreeVec::clock() calls is then visible.
+void (*g_pre_cycle_hook)(const Core &) = nullptr;
 std::string g_test;
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
@@ -54,12 +61,20 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 8 | memk << 6 | uint32_t(br) << 5 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
-unsigned unitOf(Kind k) { return k == kLane || k == kSetp ? 1 : k == kSfu ? 4 : 0; }
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp ? 1 : k == kSfu ? 4 : 0; }
+/// Its bypass group as a producer (sched_attr's bypass_group).
+unsigned pgroupOf(Kind k) {
+  return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred : Config::kGrpInt;
+}
+/// Its group as a consumer: a memop consumes as address calculation, and
+/// an op RCU executes takes no bypass (V-48).
 int groupOf(Kind k) {
-  return k == kLoad || k == kStore ? int(Config::kConsMem) : int(unitOf(k));
+  if (k == kLoad || k == kStore) return int(Config::kGrpAddr);
+  if (k == kRcuOp || k == kPlogic || k == kBranch) return -1;
+  return int(pgroupOf(k));
 }
 
 /// One instruction of a synthetic trace.
@@ -68,6 +83,8 @@ struct Op {
   unsigned dst = 0, src[3] = {}, nsrc = 0, pdst = 0, pguard = 0, pq[2] = {};
   bool guard = false, cross = false, taken = false, pred_taken = false;
   uint32_t mask = kFullMask;
+  unsigned w = 0;                ///< sectioned: the destination's width code
+  bool backward = false;         ///< a backward branch (OA-14's rotation)
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -80,11 +97,14 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.ilen = 1;
   for (unsigned i = 0; i != 3; ++i) u.src[i] = o.src[i];
   u.dst = o.dst;
+  u.w = o.w;
+  u.backward = o.backward;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
   u.shape.guard = o.guard;
   u.pred_guard = o.pguard;
   switch (o.k) {
   case kLane: u.attr_raw = attr(0, 0, o.cross, 1, 0, 0, 0, 0, 1); break;
+  case kFp: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 1); break;     // a lane FP op
   case kSfu: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 4); break;   // a spare lane unit
   case kRcuOp: u.attr_raw = attr(0, 1, 0, 1, 0, 0, 0, 0, 0); break;
   case kSetp:
@@ -112,6 +132,8 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = 2; break;
   }
+  u.attr_raw |= pgroupOf(o.k) << 13;
+  if (o.k == kLoad || o.k == kStore) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -150,6 +172,7 @@ struct Env {
   };
   std::vector<Warp> w;
   std::map<uint64_t, Op> op_of;                  ///< tid -> op
+  uint64_t lane_ops = 0, lane_ops_one_section = 0;   ///< sectioned stats
   std::map<uint64_t, bool> correct;              ///< tid -> correct path
   std::map<uint64_t, size_t> idx_of;             ///< tid -> program index
   std::multimap<uint64_t, Uop> fetched;          ///< arrival cycle -> uop
@@ -164,13 +187,13 @@ struct Env {
   /// producer's bypass readers from issue + the table's offset for the pair.
   struct Ready {
     uint64_t issue = 0, late = 0, tid = 0;
-    unsigned unit = 0;
+    unsigned unit = 0, pgroup = 0;
     bool timed = false, cross = false;
   };
   uint64_t readableFor(const Ready &r, int group) const {
     if (!r.timed || r.cross || group < 0 || !cfg.bypass) return r.late;
-    const unsigned b = cfg.bypOff(r.unit, unsigned(group));
-    return b && b < cfg.unitLat(r.unit) ? r.issue + b : r.late;
+    const unsigned b = cfg.bypWake(r.unit, r.pgroup, unsigned(group));
+    return b ? r.issue + b : r.late;
   }
   std::map<unsigned, Ready> gready, pready;
   struct Viol { uint64_t at; std::string what; };
@@ -310,7 +333,7 @@ struct Env {
 
   /// When a source written by `p` is readable for this consumer.
   void checkRead(uint64_t tid, unsigned preg, bool pred, int group) {
-    if (pred ? preg == cfg.pred_zero : preg == cfg.phys_zero) return;
+    if (pred ? preg == cfg.pred_zero : core.isZeroName(preg)) return;
     auto &m = pred ? pready : gready;
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
@@ -329,7 +352,7 @@ struct Env {
   void onIssue(const Issue &is) {
     const Op &o = op_of[is.tid];
     if (is.copy) {
-      checkRead(is.tid, is.pold, false, 1);
+      checkRead(is.tid, is.pold, false, int(Config::kGrpInt));
       return;
     }
     last_issue[is.tid] = t;
@@ -348,11 +371,11 @@ struct Env {
     const unsigned unit = unitOf(o.k);
     const unsigned lat = cfg.unitLat(unit);
     if (is.pdst && o.k != kLoad) {
-      gready[is.pdst] = {t, t + lat, is.tid, unit, true, o.cross};
+      gready[is.pdst] = {t, t + lat, is.tid, unit, pgroupOf(o.k), true, o.cross};
       gwriter[is.pdst] = {is.tid, t};
       landings.insert({t + lat, {is.pdst, is.tid}});
     }
-    if (is.pred_we) pready[is.ppdst] = {t, t + lat, is.tid, unit, true, false};
+    if (is.pred_we) pready[is.ppdst] = {t, t + lat, is.tid, unit, pgroupOf(o.k), true, false};
     // RCU's done: within the bound (V-35), at a fixed latency per issue.
     if (o.k != kLoad && o.k != kStore) {
       const unsigned bound = cfg.issue_link + lat - 1 + cfg.done_link;
@@ -382,7 +405,7 @@ struct Env {
       if (m.pdst) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
         const uint64_t rd = hit ? t + cfg.lat_l1_wake : when + data_after_cmpl;
-        gready[m.pdst] = {t, rd, m.tid, 2, false, false};
+        gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
         gwriter[m.pdst] = {m.tid, t};
         landings.insert({rd, {m.pdst, m.tid}});
       }
@@ -390,7 +413,7 @@ struct Env {
       when = t + 4 + rnd(miss_extra);
       if (o.k == kLoad && m.pdst) {
         const uint64_t rd = when + data_after_cmpl;
-        gready[m.pdst] = {t, rd, m.tid, 2, false, false};
+        gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
         gwriter[m.pdst] = {m.tid, t};
         landings.insert({rd, {m.pdst, m.tid}});
       }
@@ -420,11 +443,39 @@ struct Env {
       it = landings.erase(it);
     }
     fetApply();
+    if (g_pre_cycle_hook) g_pre_cycle_hook(core);
     core.cycle(t);
+    if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
+    // Sectioned lanes (OI-28): the lane ops leaving in one cycle use
+    // disjoint sections of the four operand ports, each op every section its
+    // operands sit in. Checked from the names alone, not the core's
+    // footprints.
+    if (cfg.sectioned) {
+      unsigned used = 0;
+      for (const Issue &is : o.issues) {
+        const Op &op = op_of[is.tid];
+        const bool lane = is.copy || op.k == kLane || op.k == kSfu || op.k == kSetp || op.k == kFp;
+        if (!lane) continue;
+        unsigned m = 0;
+        if (is.copy) {
+          m = core.sectionsOf(is.pdst) | core.sectionsOf(is.pold);
+        } else {
+          if (op.k != kSetp) m |= core.sectionsOf(is.pdst);
+          for (unsigned i = 0; i != op.nsrc; ++i) m |= core.sectionsOf(is.psrc[i]);
+          if (is.merge && op.k != kSetp) m |= core.sectionsOf(is.pold);
+        }
+        if (used & m)
+          errors.push_back("cycle " + std::to_string(t) + ": two lane ops share a section (tid " +
+                           std::to_string(is.tid) + ")");
+        used |= m;
+        ++lane_ops;
+        if (m && !(m & (m - 1))) ++lane_ops_one_section;
+      }
+    }
     for (const Redirect &r : o.redirects) redirects.insert({t + cfg.redirect_lat, r});
     if (o.free_mask) frees.insert({t + cfg.redirect_lat, o.free_mask});
     for (const Retired &r : core.retired) {
@@ -487,9 +538,14 @@ struct Env {
 
 // ---- program generators ----------------------------------------------------------------
 
-std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed, bool sfu = false) {
+std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed, bool sfu = false,
+                              bool narrow = false) {
   auto r = [&](unsigned k) { return unsigned(rng() % k); };
   std::vector<Op> p;
+  // Sectioned: each architectural register has one width for the program,
+  // as the committed chwidth table gives it: R0-R3 32-bit, the rest any.
+  std::array<unsigned, 16> width{};
+  for (unsigned i = 4; i != 16 && narrow; ++i) width[i] = r(4);
   // a prologue that writes some registers and predicates
   for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
   { Op o; o.k = kSetp; o.pdst = 1; o.src[0] = 0; o.src[1] = 1; o.nsrc = 2; p.push_back(o); }
@@ -510,6 +566,8 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
+    o.w = width[o.dst];
+    o.backward = o.k == kBranch && r(2) == 0;
     p.push_back(o);
   }
   Op e;
@@ -530,10 +588,10 @@ Config baseConfig() {
 Config groupConfig() {
   Config c = baseConfig();
   c.unit_lat[4] = 12;
-  c.byp[4][4] = 6;      // SFU -> SFU
-  c.byp[4][1] = 9;      // SFU -> ALU
-  c.byp[1][4] = 5;      // ALU -> SFU
-  c.byp[0][1] = 2;      // RCU op -> ALU
+  c.fast[4] = 6;                                   // SFU's fastest bypass point
+  c.byp[Config::kGrpSfu][Config::kGrpSfu] = 0;     // SFU -> SFU at 6
+  c.byp[Config::kGrpSfu][Config::kGrpInt] = 3;     // SFU -> ALU at 9
+  c.byp[Config::kGrpInt][Config::kGrpSfu] = 1;     // ALU -> SFU at 4 + 1
   return c;
 }
 
@@ -600,22 +658,27 @@ void testBypassGroups() {
   add(kSfu, 5, 4);    // tid 5: ALU -> SFU, 5
   add(kLane, 6, 4);   // tid 6: ALU -> ALU, the default CCV_LAT_LANE_BYP
   add(kRcuOp, 7, -1); // tid 7
-  add(kLane, 8, 7);   // tid 8: RCU -> ALU, 2
+  add(kLane, 8, 7);   // tid 8: RCU -> ALU: single-time, CCV_LAT_RCU
   add(kRcuOp, 9, 4);  // tid 9: ALU -> RCU: no bypass, CCV_LAT_LANE
   add(kRcuOp, 10, 1); // tid 10: SFU -> RCU: no bypass, the SFU's 12
+  add(kFp, 11, 4);    // tid 11: ALU -> FP, CCV_LAT_LANE_BYP + 2
+  add(kLane, 12, 11); // tid 12: FP -> ALU, + 2
+  add(kFp, 13, 11);   // tid 13: FP -> FP, in-unit + 0
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
   e.finish();
   struct W { uint64_t prod, cons; unsigned want; const char *what; };
   const W ws[] = {{1, 2, 6, "SFU -> SFU"}, {1, 3, 9, "SFU -> ALU"}, {4, 5, 5, "ALU -> SFU"},
-                  {4, 6, c.lat_lane_byp, "ALU -> ALU"}, {7, 8, 2, "RCU -> ALU"},
-                  {4, 9, c.lat_lane, "ALU -> RCU"}, {1, 10, 12, "SFU -> RCU"}};
+                  {4, 6, c.lat_lane_byp, "ALU -> ALU"}, {7, 8, c.lat_rcu, "RCU -> ALU"},
+                  {4, 9, c.lat_lane, "ALU -> RCU"}, {1, 10, 12, "SFU -> RCU"},
+                  {4, 11, c.lat_lane_byp + 2, "ALU -> FP"}, {11, 12, c.lat_lane_byp + 2, "FP -> ALU"},
+                  {11, 13, c.lat_lane_byp, "FP -> FP"}};
   for (const W &w : ws)
     EXPECT(issueCycle(e, w.cons) - issueCycle(e, w.prod) == w.want, "%s woke after %llu, want %u",
            w.what, (unsigned long long)(issueCycle(e, w.cons) - issueCycle(e, w.prod)), w.want);
-  // A pair at or over the producer's latency is refused at elaboration.
+  // A fastest point at or over the unit's latency is refused at elaboration.
   Config bad = groupConfig();
-  bad.byp[4][1] = 12;
+  bad.fast[4] = 12;
   EXPECT(!bad.check().empty(), "a bypass no faster than the register file was accepted");
 }
 
@@ -623,7 +686,10 @@ void testL1Spec() {
   g_test = "l1-spec";
   for (int miss = 0; miss != 2; ++miss) {
     Config c = baseConfig();
-    c.lat_l1_cmpl = 20;            // a long shadow, so a grandchild issues inside it
+    // A long shadow, one lane latency past the wake, so a grandchild issues
+    // inside it. (It read 20, against a wake of 13, until CCV_LAT_RCU_ADDR_BASE
+    // moved the wake to 16: OA-5.)
+    c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
     Env e(c);
     e.keep_log = true;
     e.miss_pct = miss ? 100 : 0;
@@ -693,7 +759,7 @@ void testMaskedLoad() {
   uint64_t copy_at = 0;
   for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
     for (const Issue &i : e.log[cyc].issues)
-      if (i.copy) { ++copies; copy_at = cyc; EXPECT(i.merge && i.pold != c.phys_zero, "copy without its old destination"); }
+      if (i.copy) { ++copies; copy_at = cyc; EXPECT(i.merge && !e.core.isZeroName(i.pold), "copy without its old destination"); }
   EXPECT(copies == 1, "%u copies (V-20: exactly one)", copies);
   EXPECT(copy_at == issueCycle(e, 2), "the copy left apart from its load");
   EXPECT(copy_at - issueCycle(e, 1) >= c.lat_lane, "the copy read R5 before it landed");
@@ -883,6 +949,41 @@ void testBarrier() {
   e.finish();
 }
 
+/// The free list as the RTL builds it (OI-22): allocation from a rotating
+/// pointer, so a freed register comes back only once the pointer wraps, and a
+/// register freed in a cycle is not allocated until the next.
+/// V-59 is an elaboration check: a configuration whose shortest wake is
+/// under 3 cycles is refused, since cancel moves one hop a cycle (OA-1).
+void testV59() {
+  g_test = "v-59";
+  Config c = baseConfig();
+  EXPECT(c.check().empty(), "the base configuration passes: %s", c.check().c_str());
+  c.lat_rcu = 2;
+  EXPECT(c.check().rfind("V-59", 0) == 0, "an RCU latency of 2 refused: '%s'", c.check().c_str());
+  c = baseConfig();
+  c.bypass = true;
+  c.lat_lane_byp = 2;
+  EXPECT(c.check().rfind("V-59", 0) == 0, "a bypass at 2 refused: '%s'", c.check().c_str());
+}
+
+void testFreeVec() {
+  g_test = "free-vec";
+  FreeVec f;
+  f.reset(8);
+  for (unsigned i = 0; i != 3; ++i) EXPECT(f.alloc() == i, "first pass in order");
+  EXPECT(f.free(1), "free p1");
+  EXPECT(!f.free(1), "a double free is refused");
+  EXPECT(f.size() == 6 && f.ready() == 5, "p1 pending until the clock");
+  for (unsigned i = 3; i != 8; ++i) EXPECT(f.alloc() == i, "past the freed p1 to the end");
+  EXPECT(f.empty(), "p1 not allocatable in the cycle it was freed");
+  f.clock();
+  EXPECT(f.alloc() == 1, "p1 after the pointer wraps");
+  EXPECT(f.empty() && f.size() == 0, "all allocated");
+  for (unsigned p : {6u, 2u, 4u}) f.free(p);
+  f.clock();
+  EXPECT(f.alloc() == 2 && f.alloc() == 4 && f.alloc() == 6, "rotating from p2");
+}
+
 void testChwidth() {
   g_test = "chwidth";
   Config c = baseConfig();
@@ -898,9 +999,179 @@ void testChwidth() {
     if (i.tid == 2) EXPECT(i.chwidth == 2, "the younger op read chwidth %u, not the committed one", i.chwidth);
 }
 
+/// Sectioned lanes (OI-29 to OI-33): narrow registers placed in sections,
+/// footprints widened per unit, and lane ops co-issued on disjoint sections.
+void testSections() {
+  auto cfgS = [](unsigned place) {
+    Config c = baseConfig();
+    c.sectioned = true;
+    c.place = place;
+    c.l1_spec = false;
+    return c;
+  };
+  // Independent ops per warp, each writing its own register at width w.
+  auto indep = [](Kind k, unsigned w, unsigned n) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != n; ++i) { Op o; o.k = k; o.dst = 4 + i; o.w = w; p.push_back(o); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    return p;
+  };
+  // The most lane ops issued in any one cycle.
+  auto maxLane = [](const Env &e) {
+    size_t m = 0;
+    for (const Outputs &o : e.log) {
+      size_t n = 0;
+      for (const Issue &i : o.issues) n += i.port < 4;
+      m = std::max(m, n);
+    }
+    return m;
+  };
+  auto run = [&](const Config &c, Kind k, unsigned w, std::vector<unsigned> slots) {
+    Env e(c);
+    e.keep_log = true;
+    for (unsigned s : slots) e.launch(s * 5, s, indep(k, w, 8));
+    e.finish();
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+    return e;
+  };
+
+  g_test = "sections: 8-bit ops of four warps co-issue";
+  {
+    Env e = run(cfgS(0), kLane, 2, {0, 1, 2, 3});
+    EXPECT(maxLane(e) == 4, "at most %zu lane ops in a cycle", maxLane(e));
+    EXPECT(e.lane_ops_one_section == e.lane_ops, "%llu of %llu took one section",
+           (unsigned long long)e.lane_ops_one_section, (unsigned long long)e.lane_ops);
+    // Home = slot index: warp s's registers sit in section s.
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.port < 4) EXPECT(e.core.namePos(i.pdst) == (i.warp / 5) % 4 && i.port == (i.warp / 5) % 4,
+                               "warp %u wrote section %u from port %u", i.warp, e.core.namePos(i.pdst), i.port);
+  }
+  g_test = "sections: 32-bit ops take the whole lane";
+  EXPECT(maxLane(run(cfgS(0), kLane, 0, {0, 1, 2, 3})) == 1, "two 32-bit ops in a cycle");
+  g_test = "sections: home 0 puts every warp in section 0";
+  EXPECT(maxLane(run(cfgS(1), kLane, 2, {0, 1, 2, 3})) == 1, "two ops shared section 0");
+  g_test = "sections: 16-bit ops pair up";
+  EXPECT(maxLane(run(cfgS(0), kLane, 1, {0, 1, 2, 3})) == 2, "16-bit ops not two a cycle");
+  g_test = "sections: FP widens to its minimum";
+  {
+    // At an FP minimum of 2, ops in sections 0 and 1 widen to one pair and
+    // cannot co-issue; in 0 and 2 they can. Set here, so the widening stays
+    // tested whatever CCV_P_FOOT_MIN_FP holds.
+    Config c = cfgS(0);
+    c.foot_min[Config::kGrpFp] = 2;
+    EXPECT(maxLane(run(c, kFp, 2, {0, 1})) == 1, "FP ops in sections 0 and 1 co-issued at a minimum of 2");
+    EXPECT(maxLane(run(c, kFp, 2, {0, 2})) == 2, "FP ops in sections 0 and 2 did not co-issue at a minimum of 2");
+    // The default is the parameter: 1 under DA's response IS-7, so 8-bit FP
+    // of four warps co-issues four a cycle, as integer does.
+    const size_t want = 4 / ccv::prov::kFootMinFp;
+    const size_t got = maxLane(run(cfgS(0), kFp, 2, {0, 1, 2, 3}));
+    EXPECT(got == want, "8-bit FP of four warps: %zu a cycle, want %zu at CCV_P_FOOT_MIN_FP %u", got, want,
+           ccv::prov::kFootMinFp);
+  }
+  g_test = "sections: SFU takes the whole lane";
+  EXPECT(maxLane(run(cfgS(0), kSfu, 2, {0, 2})) == 1, "two SFU ops in a cycle");
+
+  g_test = "sections: a narrow op follows its source; a merge keeps its position";
+  {
+    Config c = cfgS(0);
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    // Slot 1's home is section 1 (8-bit) or sections 2-3 (16-bit); the
+    // source and merge rules must override it.
+    Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);                               // tid 1: 16-bit, sections 2-3
+    Op b; b.k = kLane; b.dst = 5; b.w = 2; b.src[0] = 4; b.nsrc = 1; p.push_back(b);     // tid 2: follows R4 to 2
+    Op m; m.k = kLane; m.dst = 5; m.w = 2; m.mask = 0xffff; p.push_back(m);              // tid 3: merges R5 at 2
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(5, 1, p);
+    e.finish();
+    unsigned seen = 0;
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.port < 4 && !i.copy) {
+          ++seen;
+          EXPECT(e.core.namePos(i.pdst) == 2, "tid %llu placed at %u, not section 2",
+                 (unsigned long long)i.tid, e.core.namePos(i.pdst));
+          EXPECT(i.port == 2, "tid %llu issued on port %u", (unsigned long long)i.tid, i.port);
+        }
+    EXPECT(seen == 3, "%u lane issues", seen);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+
+  g_test = "sections: narrow loads of two warps take their own MIU pipes";
+  {
+    Config c = cfgS(0);
+    Env e(c);
+    e.keep_log = true;
+    for (unsigned s : {0u, 2u}) {
+      std::vector<Op> p;
+      for (unsigned i = 0; i != 6; ++i) { Op l; l.k = kLoad; l.dst = 4 + i; l.w = 2; l.nsrc = 1; p.push_back(l); }
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(s * 5, s, p);
+    }
+    e.finish();
+    size_t most = 0;
+    for (const Outputs &o : e.log) {
+      unsigned used = 0;
+      for (const Memop &m : o.memops) {
+        EXPECT(m.port == (m.warp / 5) % 4, "warp %u's load on pipe %u", m.warp, m.port);
+        EXPECT(!(used >> m.port & 1u), "pipe %u granted twice", m.port);
+        used |= 1u << m.port;
+      }
+      most = std::max(most, o.memops.size());
+    }
+    EXPECT(most == 2, "at most %zu loads in a cycle", most);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+
+  g_test = "sections: a masked load's copy issues before its load (V-61)";
+  {
+    Config c = cfgS(0);
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op w; w.k = kLane; w.dst = 5; w.w = 2; p.push_back(w);                                  // tid 1
+    Op ld; ld.k = kLoad; ld.dst = 5; ld.w = 2; ld.nsrc = 1; ld.mask = 0xffff; p.push_back(ld);  // tid 2
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    uint64_t copy_at = ~0ull;
+    for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
+      for (const Issue &i : e.log[cyc].issues) if (i.copy) copy_at = cyc;
+    uint64_t load_at = ~0ull;
+    for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
+      for (const Memop &m : e.log[cyc].memops) if (m.tid == 2) load_at = cyc;
+    EXPECT(copy_at != ~0ull && load_at != ~0ull && copy_at < load_at, "copy at %llu, load at %llu",
+           (unsigned long long)copy_at, (unsigned long long)load_at);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+
+  g_test = "sections: a load passes an older waiting load only under OA-13";
+  for (int pass = 0; pass != 2; ++pass) {
+    Config c = cfgS(0);
+    c.loads_pass_loads = pass;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op f; f.k = kSfu; f.dst = 1; p.push_back(f);                                    // tid 1: a slow address
+    Op a; a.k = kLoad; a.dst = 4; a.src[0] = 1; a.nsrc = 1; p.push_back(a);         // tid 2: waits on it
+    Op b; b.k = kLoad; b.dst = 5; b.src[0] = 0; b.nsrc = 1; p.push_back(b);         // tid 3: ready
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    uint64_t at[4] = {};
+    for (size_t cyc = 0; cyc != e.log.size(); ++cyc)
+      for (const Memop &m : e.log[cyc].memops) if (m.tid < 4) at[m.tid] = cyc;
+    EXPECT(pass ? at[3] < at[2] : at[3] > at[2], "loads at %llu and %llu with loads_pass_loads=%d",
+           (unsigned long long)at[2], (unsigned long long)at[3], pass);
+    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+  }
+}
+
 void testRandom(unsigned seeds) {
   for (unsigned seed = 1; seed <= seeds; ++seed) {
-    for (int mode = 0; mode != 4; ++mode) {
+    for (int mode = 0; mode != 8; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
       // Odd seeds run the bypass-group configuration, SFU ops included.
@@ -908,6 +1179,12 @@ void testRandom(unsigned seeds) {
       Config c = groups ? groupConfig() : baseConfig();
       c.bypass = mode & 1;
       c.l1_spec = (mode & 2) != 0;
+      // Modes 4-7: sectioned lanes and narrow registers, each placement
+      // rule in turn, with loads passing loads on odd seeds (OA-13).
+      const bool sec = (mode & 4) != 0;
+      c.sectioned = sec;
+      c.place = seed % 5;
+      c.loads_pass_loads = sec && seed % 2 == 1;
       std::mt19937 rng(seed * 4 + unsigned(mode));
       // Every fifth seed: a floorplan where load data lands after the
       // completion (the links split does this), and the core told so.
@@ -917,7 +1194,7 @@ void testRandom(unsigned seeds) {
       e.data_after_cmpl = c.cmpl_wake_delay;
       e.rcu_fast = seed % 3 == 0;
       const unsigned warps = 1 + seed % 4;
-      for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, groups));
+      for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, groups, sec));
       e.finish();
       const int before = g_fail;
       for (unsigned i = 0; i != warps; ++i) {
@@ -960,7 +1237,9 @@ void testControls() {
       {"shallow-cancel", [](Config &c) { c.inject_shallow_cancel = true; }},
       {"early-wake", [](Config &c) { c.inject_early_wake = true; }},
       {"cmpl-wake-delay-ignored", [](Config &c) { c.cmpl_wake_delay = 0; c.inject_free_new = false; }},
-      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = 20; c.byp[4][1] = 3; }},
+      {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.fast[4] = 3; }},
+      {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
+      {"narrow-footprint", [](Config &c) { c.sectioned = true; c.inject_narrow_footprint = true; }},
   };
   for (const C &x : cs) {
     const int saved = g_fail;
@@ -970,7 +1249,7 @@ void testControls() {
       g_test = name;
       Config c = baseConfig();
       c.l1_spec = true;
-      c.lat_l1_cmpl = 20;      // a shadow long enough for grandchildren
+      c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;   // a shadow long enough for grandchildren
       x.set(c);
       std::mt19937 rng(seed);
       Env e(c, seed);
@@ -978,10 +1257,17 @@ void testControls() {
       // The last control: data lands two cycles after its completion, and
       // the core is not told.
       if (std::string(x.name) == "cmpl-wake-delay-ignored") e.data_after_cmpl = 2;
-      // The core bypasses SFU -> ALU at 3; the contract says 9.
+      // The core bypasses SFU at 3 (SFU -> ALU at 6); the contract says 6 (9).
       const bool groups = std::string(x.name) == "bypass-faster-than-contract";
-      if (groups) e.cfg.byp[4][1] = 9;
-      e.launch(0, 0, randomProgram(rng, 150, true, groups));
+      if (groups) e.cfg.fast[4] = 6;
+      // An RCU faster than its contract is what exposes completing early.
+      if (std::string(x.name) == "complete-before-rs-free") e.rcu_fast = true;
+      // A footprint narrower than the operands: four warps of narrow
+      // registers, so two lane ops land in one cycle on a shared section.
+      if (c.inject_narrow_footprint)
+        for (unsigned i = 0; i != 4; ++i) e.launch(i * 5, i, randomProgram(rng, 150, true, false, true));
+      else
+        e.launch(0, 0, randomProgram(rng, 150, true, groups));
       const int before = g_fail;
       g_quiet = true;
       e.finish(20000);
@@ -1023,6 +1309,9 @@ void sweep() {
     return double(total) / 6;
   };
   Config base = baseConfig();
+  // No per-warp limits unless swept: the parameters' "no limit" values
+  // equal today's sizes, and would limit a larger one.
+  base.rs_warp_cap = base.decq_warp_max = 0;
   const double ref = run(base);
   std::printf("| knob | value | cycles | vs default |\n|---|---|---|---|\n");
   std::printf("| (default) | | %.0f | 1.000 |\n", ref);
@@ -1034,14 +1323,157 @@ void sweep() {
       const double cy = run(c);
       std::printf("| %s | %u | %.0f | %.3f |\n", k.name, v, cy, cy / ref);
     }
+  // ooe_decq's timing arm (OI-38's shape): an entry freed in a cycle takes
+  // no arrival until the next.
+  for (unsigned v : {6u, 8u, 12u}) {
+    Config c = base;
+    c.decq = v;
+    c.decq_late_credit = true;
+    const double cy = run(c);
+    std::printf("| decq, decq_late_credit | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+  }
+}
+
+
+/// OI-34: placement and OA-13 arms on synthetic narrow loops, one warp and
+/// four. Each kernel is a loop body repeated with a backward taken branch:
+///   vaddN: ld a, ld b (N-bit), add, st;
+///   redN: ld x, acc += x (loop-carried, N-bit), and the final store;
+///   cvt8: ld x (8-bit), x + x (8-bit), a convert to FP32, an FP op, st;
+///   aluN: eight N-bit accumulators, initialised, one op each per
+///   iteration, each reading a shared narrow operand R12 (lane-bound; alu32
+///   is the full-width reference); aluN-self the same with no shared
+///   operand (acc = acc op acc), the ceiling for a lone warp;
+///   fpN-self: the same in N-bit FP (E4M3 at 8 bits, IS-7), where the
+///   unit minimum, not placement, sets the footprint.
+/// The loop control (an RCU index add, a 32-bit setp, the branch) is in
+/// every body, as compiled code carries it.
+void sweepSections() {
+  enum KK { kVadd, kRed, kCvt, kAlu, kAluSelf };
+  auto body = [](KK kk, unsigned w, unsigned iters, Kind op = kLane) {
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+    // aluN: the narrow operand R12 and eight accumulators, each initialised.
+    for (unsigned r = 4; r != 13 && (kk == kAlu || kk == kAluSelf); ++r) { Op o; o.k = kLane; o.dst = r; o.w = w; p.push_back(o); }
+    for (unsigned it = 0; it != iters; ++it) {
+      if (kk == kAlu || kk == kAluSelf) {
+        // Eight independent accumulators, one op each per iteration.
+        for (unsigned j = 0; j != 8; ++j) {
+          Op a; a.k = op; a.dst = 4 + j; a.w = w; a.src[0] = 4 + j; a.src[1] = kk == kAlu ? 12 : 4 + j; a.nsrc = 2; p.push_back(a);
+        }
+      } else {
+        Op x; x.k = kLoad; x.dst = 4; x.w = w; x.src[0] = 0; x.nsrc = 1; p.push_back(x);
+      }
+      if (kk == kAlu || kk == kAluSelf) {
+      } else if (kk == kVadd) {
+        Op y; y.k = kLoad; y.dst = 5; y.w = w; y.src[0] = 0; y.nsrc = 1; p.push_back(y);
+        Op a; a.k = kLane; a.dst = 6; a.w = w; a.src[0] = 4; a.src[1] = 5; a.nsrc = 2; p.push_back(a);
+        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 6; s.nsrc = 2; p.push_back(s);
+      } else if (kk == kRed) {
+        Op a; a.k = kLane; a.dst = 7; a.w = w; a.src[0] = 7; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
+      } else {
+        Op a; a.k = kLane; a.dst = 5; a.w = w; a.src[0] = 4; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
+        Op c; c.k = kFp; c.dst = 8; c.src[0] = 5; c.nsrc = 1; p.push_back(c);            // cvt to FP32
+        Op f; f.k = kFp; f.dst = 9; f.src[0] = 8; f.src[1] = 8; f.nsrc = 2; p.push_back(f);
+        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 9; s.nsrc = 2; p.push_back(s);
+      }
+      Op r; r.k = kRcuOp; r.dst = 0; r.src[0] = 0; r.nsrc = 1; p.push_back(r);           // index += stride
+      Op t; t.k = kSetp; t.pdst = 1; t.src[0] = 0; t.src[1] = 1; t.nsrc = 2; p.push_back(t);
+      const bool more = it + 1 != iters;
+      Op b; b.k = kBranch; b.pguard = 1; b.taken = b.pred_taken = more; b.backward = true; p.push_back(b);
+    }
+    if (kk == kRed) { Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 7; s.nsrc = 2; p.push_back(s); }
+    Op e; e.k = kExit; p.push_back(e);
+    return p;
+  };
+  struct Kern { const char *name; KK kk; unsigned w; Kind op = kLane; };
+  const Kern ks[] = {{"alu8", kAlu, 2}, {"alu16", kAlu, 1}, {"alu32", kAlu, 0}, {"alu8-self", kAluSelf, 2},
+                     {"alu32-self", kAluSelf, 0}, {"vadd8", kVadd, 2},
+                     {"vadd16", kVadd, 1}, {"red8", kRed, 2}, {"cvt8", kCvt, 2},
+                     {"fp8-self", kAluSelf, 2, kFp}, {"fp32-self", kAluSelf, 0, kFp}};
+  const char *pn[] = {"slot", "0", "rotate-0", "rotate-slot", "slot+reg"};
+  // Footprint and operand spread per bypass group (AR's response OI-34):
+  // integer at the kernel's width, FP over every width (cvt writes 32 bits).
+  // AR-16: under the decided default (place 0, home = slot index) one
+  // warp's narrow ops share a section, so its rows are 1.0x by design.
+  std::printf("One-warp rows at place=slot are 1.0x by design (AR-16): narrow rates are aggregate across warps.\n\n");
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
+              "|---|---|---|---|---|---|---|---|---|---|\n");
+  for (const Kern &k : ks)
+    for (unsigned warps : {1u, 4u}) {
+      double ref = 0;
+      for (unsigned place = 0; place != 5; ++place)
+        for (int oa13 = 0; oa13 != 2; ++oa13) {
+          if (k.kk != kVadd && oa13) continue;   // at most one load per body: OA-13 moves nothing
+          if (k.w == 0 && place) continue;        // 32-bit: no placement
+          Config c = baseConfig();
+          c.sectioned = true;
+          c.place = place;
+          c.loads_pass_loads = oa13;
+          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0;
+          // [int, FP] x [footprint, spread]: op count and section sum.
+          uint64_t n[2][2] = {}, sum[2][2] = {};
+          const unsigned seeds = 4;
+          for (unsigned seed = 1; seed <= seeds; ++seed) {
+            Env e(c, seed);
+            e.miss_pct = 10;
+            for (unsigned i = 0; i != warps; ++i) e.launch(i * 5, i, body(k.kk, k.w, 32, k.op));
+            e.finish();
+            EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+            cyc += e.t;
+            for (auto &kv : e.core.histograms) {
+              const std::string &name = kv.first;
+              const bool foot = name.rfind("foot.", 0) == 0, spread = name.rfind("spread.", 0) == 0;
+              if (!foot && !spread) continue;
+              const std::string gw = name.substr(foot ? 5 : 7);
+              int g = -1;
+              if (gw == "g0.w" + std::to_string(k.w)) g = 0;
+              else if (gw.rfind("g1.", 0) == 0) g = 1;
+              if (g < 0) continue;
+              for (auto &h : kv.second) { n[g][spread] += h.second; sum[g][spread] += h.first * h.second; }
+            }
+            for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
+            lost += e.core.counters["select.lost_resource"];
+          }
+          const double cy = double(cyc) / seeds;
+          if (place == 0 && !oa13) ref = cy;
+          auto mean = [&](int g, int sp) { return n[g][sp] ? double(sum[g][sp]) / double(n[g][sp]) : 0.0; };
+          char fp[32] = "-";
+          if (n[1][0]) std::snprintf(fp, sizeof fp, "%.2f / %.2f", mean(1, 0), mean(1, 1));
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps, pn[place],
+                      oa13 ? "on" : "off", cy, cy / ref, mean(0, 0), mean(0, 1), fp,
+                      cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
+        }
+    }
 }
 
 } // namespace
 
+#ifdef OOE_TEST_AS_LIBRARY
+/// The random tests with a hook on every core cycle: what an RTL testbench
+/// runs. Returns the failure count.
+int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
+  g_cycle_hook = hook;
+  testRandom(seeds);
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
+/// The same, with the hook just before each core cycle instead.
+int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {
+  g_pre_cycle_hook = hook;
+  testRandom(seeds);
+  g_pre_cycle_hook = nullptr;
+  return g_fail;
+}
+#else
 int main(int argc, char **argv) {
   unsigned seeds = 25;
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--seeds" && i + 1 < argc) seeds = unsigned(std::atoi(argv[++i]));
+  if (argc > 1 && std::string(argv[1]) == "--sweep-sections") {
+    sweepSections();
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--sweep") {
     sweep();
     return g_fail ? 1 : 0;
@@ -1062,9 +1494,13 @@ int main(int argc, char **argv) {
   testFault();
   testBarrier();
   testChwidth();
+  testSections();
+  testFreeVec();
+  testV59();
   testFixedWindowPreds();
   testRandom(seeds);
   testControls();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
 }
+#endif

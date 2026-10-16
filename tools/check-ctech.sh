@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # The ctech layer and the block clock gate built on it (docs/clock-gate.md).
 #
-# A ctech cell is one module, ccv_ctech_<cell>, with a definition per view:
+# A ctech cell is one module, ccv_common_ctech_<cell>, with a definition per view:
 # rtl/ctech/sim/ for simulation and formal, rtl/ctech/<library>/ per process
 # library, chosen by the file list (tools/ccv_ctech.py). What must hold:
 #
 #   views agree       every view defines the same cells with the same ports,
 #                     and a library view's lib_cells.v matches the vendor's
 #                     own cell model where one is vendored (sky130)
-#   synthesis         ccv_clk_gate with each library view is ONE library ICG,
+#   synthesis         ccv_common_clk with each library view is ONE library ICG,
 #                     driving gclk straight, and no latch; the simulation
 #                     view is refused by name
 #   simulation        test/ctech/tb_ctech_icg.sv -- enable moving in either
@@ -41,7 +41,7 @@ if ! command -v yosys >/dev/null 2>&1; then
 fi
 
 # -- the views agree ----------------------------------------------------------
-# Ports as Yosys elaborates them: name, direction, width, per ccv_ctech_ cell.
+# Ports as Yosys elaborates them: name, direction, width, per ccv_common_ctech_ cell.
 ports_of() {  # VIEW -> "cell port dir width" lines
   local v=$1 lib=""
   [ -f "rtl/ctech/$v/lib_cells.v" ] && lib="read_verilog -lib rtl/ctech/$v/lib_cells.v;"
@@ -51,7 +51,7 @@ ports_of() {  # VIEW -> "cell port dir width" lines
 import json, sys
 m = json.load(open(sys.argv[1]))["modules"]
 for n in sorted(m):
-    if n.startswith("ccv_ctech_"):
+    if n.startswith("ccv_common_ctech_"):
         for p, v in sorted(m[n]["ports"].items()):
             print(n, p, v["direction"], len(v["bits"]))
 PY
@@ -90,9 +90,9 @@ synth_gate() {  # VIEW
   [ -f "rtl/ctech/$v/lib_cells.v" ] && lib="read_verilog -lib rtl/ctech/$v/lib_cells.v;"
   yosys -q -p "read_verilog -sv -formal -DSYNTHESIS -Irtl/include -Irtl/generated \
                  rtl/ccv_assert_pkg.sv $(python3 tools/ccv_ctech.py "$v" --synth | tr '\n' ' ') \
-                 rtl/clk/ccv_clk_gate.sv; $lib
-               hierarchy -check -top ccv_clk_gate; chformal -remove;
-               synth -top ccv_clk_gate -flatten; write_json $B/cg_$v.json" >"$B/synth_$v.log" 2>&1
+                 rtl/clk/ccv_common_clk.sv; $lib
+               hierarchy -check -top ccv_common_clk; chformal -remove;
+               synth -top ccv_common_clk -flatten; write_json $B/cg_$v.json" >"$B/synth_$v.log" 2>&1
 }
 for v in $LIBS; do
   if ! synth_gate "$v"; then
@@ -101,7 +101,7 @@ for v in $LIBS; do
   fi
   verdict=$(python3 - "$B/cg_$v.json" <<'PY'
 import json, sys
-m = json.load(open(sys.argv[1]))["modules"]["ccv_clk_gate"]
+m = json.load(open(sys.argv[1]))["modules"]["ccv_common_clk"]
 cells = m["cells"]
 lib = [(n, c) for n, c in cells.items() if not c["type"].startswith("$")]
 latch = [n for n, c in cells.items() if "LATCH" in c["type"].upper()]
@@ -145,13 +145,13 @@ verilate() {  # NAME "FILES"
     "$B/$1_vo/Vtb" >"$B/$1.log" 2>&1
   grep -h "ICG_OK\|ICG_FAIL\|ICG_ERR" "$B/$1.log" 2>/dev/null | head -1
 }
-SIMV=rtl/ctech/sim/ccv_ctech_icg.sv
+SIMV=rtl/ctech/sim/ccv_common_ctech_icg.sv
 VFILES="$VENDOR/sky130_fd_sc_hd__sdlclkp_1.v $VENDOR/sky130_fd_sc_hd__sdlclkp.functional.v $VENDOR/sky130_fd_sc_hd__udp_dlatch_p.v"
 if command -v iverilog >/dev/null 2>&1; then
   r=$(icarus sim_iv "$SIMV")
   [[ "$r" == ICG_OK* ]] && say "icarus: sim view, enable in either phase" "PASS (${r#ICG_OK })" ||
     bad "icarus: sim view" "${r:-no result ($B/sim_iv.ib.log)}"
-  r=$(icarus sky130_iv "rtl/ctech/sky130_fd_sc_hd/ccv_ctech_icg.sv $VFILES")
+  r=$(icarus sky130_iv "rtl/ctech/sky130_fd_sc_hd/ccv_common_ctech_icg.sv $VFILES")
   [[ "$r" == ICG_OK* ]] && say "icarus: sky130 view through the vendor cell" "PASS" ||
     bad "icarus: sky130 view" "${r:-no result}"
   r=$(icarus ref_iv "$SIMV $VFILES" -DVENDOR_REF)
@@ -159,7 +159,7 @@ if command -v iverilog >/dev/null 2>&1; then
     bad "icarus: sim view vs the sky130 cell" "${r:-no result}"
 fi
 if command -v verilator >/dev/null 2>&1; then
-  if verilator --lint-only -Wall -Wno-DECLFILENAME --top-module ccv_ctech_icg $SIMV \
+  if verilator --lint-only -Wall -Wno-DECLFILENAME --top-module ccv_common_ctech_icg $SIMV \
        >"$B/lint.log" 2>&1; then
     say "verilator -Wall: sim view" "PASS"
   else

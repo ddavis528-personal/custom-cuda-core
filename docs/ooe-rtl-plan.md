@@ -8,7 +8,111 @@ for OOE. This file is the agenda: each decision, the options, and a
 recommendation. The model changes first wherever a decision changes
 behaviour, so the RTL still has one reference to correlate against.
 
-## Blocking decisions
+## Status (2026-10-09)
+
+Settled since this agenda was written:
+
+- **1, the stage budget.** Q-7 is closed: NGD is normalized gate delays,
+  the same at every corner. OA's paper estimate (OA-1, revised for the
+  sectioned select) puts ready at 16.1 NGD and the per-resource select at
+  17.6 (30 entries) and 15.7 (15 entries). The model carries rename as
+  three stages and a payload stage (OI-26).
+- **2, the free list.** (a), a bit-vector with a rotating start (OI-22).
+- **5, the S1 modes.** Bypass, L1 speculation and predicate renaming are
+  all on in the kernels, so the RTL carries one rename scheme.
+
+Decided at the RTL grill-me (DA's response OI-36, 2026-10-10): **3**, per-warp
+decode FIFOs on a shared 12-entry credit pool; **4**, payload in the RS, read
+through the grant; **6**, the reset line as the design doc's Reset line
+section states it (OA's response OI-36). Sub-blocks are named
+`ooe_<name>` and run on `ooe_core_clk` (DA's responses OI-37).
+
+Built (`rtl/ooe/`):
+
+- **`ooe_pick`**, one RS class's per-resource select, combinational.
+  `test/ooe/run-rtl.sh` holds it in lockstep with `ooe::pickResources`,
+  the function the model's select calls, at both classes' sizes. Its
+  controls (youngest-wins, any-wins, no-mask) must each be caught.
+  `test/ooe/depth.sh` maps it to NAND-equivalent gates (each gate at its
+  fanout-of-4 delay). The 30-entry pick's logic is 9.4 NGD in 7 levels,
+  against the estimate's 9.1 of logic. The 15-entry pick's is 8.1 in 6,
+  against 7.7. Both are inside the estimate's stated ±15%, so the select
+  stage is about 17.9 and 16.1 NGD of 25.
+- **`ooe_ready`**, the ready stage over all 45 entries, combinational:
+  - each producer drives four wake lines: its fastest bypass point plus
+    each of the three bypass penalties, and last the PRF read;
+  - each matrix cell selects one line, and a row is ready when every cell
+    it depends on sees its line raised.
+
+  The model carries the same structure (`Core::cellCode`,
+  `Core::wakeLine`) and checks every cycle that it reproduces `rowReady`
+  ("ready-structure"; a one-cycle mutation of the lines is caught).
+  `test/ooe/ready_tb.cpp` runs the model's random unit tests and drives
+  the RTL from the live core after every cycle. Cycles whose knob-set
+  bypass table has more distinct penalties than the lines carry are
+  skipped and counted. Controls code-shift and no-late must each be
+  caught. Logic depth is 9.8 NGD in 8 levels, against the estimate's 9.1,
+  so the ready stage is about 16.8 NGD of 25.
+
+- **`ooe_freelist`**, a free list: a bit per entry, up to four allocations
+  a cycle in rotating order from a pointer, any number of frees a cycle.
+  It is the first sequential sub-block, with all its state reset. Its state
+  is one register, {pointer, free bits}, whose next value is a function of
+  that register and the cycle's inputs alone. That is how a one-cycle loop
+  over several fields is written under CCV-L23. `test/ooe/freelist_tb.cpp`
+  drives it, just before every model cycle, with one clock edge's
+  allocations and frees on the model's own `FreeVec`, for the GPR rows
+  (192) and the predicates (48). Over 25 seeds and 200 cores it matches
+  every grant, every free bit and the pointer. Controls drop-free and
+  extra-alloc must each be caught. **Timing is not met.** Written as a
+  behavioural scan, the allocation path synthesises to a ripple chain:
+  344 NGD in 250 levels at 48 entries. A parallel-prefix form (rotate by
+  masking at the pointer, a saturating prefix count, one-hot to index) is
+  about 30 NGD on paper at 192 entries, still over a stage. So allocation
+  likely needs candidates prepared a cycle ahead, which changes when a
+  freed entry can be taken, and with it the model. That is OI-38, for OA.
+- **`ooe_age`**, an RS class's age matrix: a bit per ordered pair, set
+  when the column's entry was allocated first. Up to four allocations a
+  cycle, in port order; each writes its row (every valid entry, and every
+  lower port's, is older) and clears its column. The matrix is un-reset
+  payload guarded by the RS valid bits (decision 6), and an assertion
+  checks V-13's antisymmetry over every valid pair. `test/ooe/age_tb.cpp`
+  snapshots the model's RS ages (`Core::rsAge`) before every cycle and
+  drives the RTL with the allocations between snapshots, for both classes:
+  25 million RCU pairs and 5 million MIU pairs compared, none differ.
+  Controls no-valid and port-reverse must each be caught. Logic depth is
+  8.8 NGD in 8 levels at 30 entries.
+- **`ooe_decq`**, the decode queue (decision 3): 12 entries shared by the
+  four tier-1 slots, six arrivals and up to four dequeues per slot a
+  cycle. Each entry holds its payload, a busy bit, its owner and its
+  position in the owner's FIFO. That is the per-warp FIFO, kept as
+  positions rather than pointers: a dequeue of n frees the owner's
+  entries below n and moves the rest down by n, and rename reads a slot's
+  k-th oldest as the entry it owns at position k. An arrival takes the
+  free entry with as many free entries below it as arrivals ahead of its
+  port (a banked prefix count). The model now numbers its decode-queue
+  uops and records the slots a squash flushed (`Core::decodeQueue`,
+  `Core::decqFlushed`); `test/ooe/decq_tb.cpp` drives the RTL from those
+  before every cycle and compares every slot's four oldest, its count and
+  the credits. Over 25 seeds: 103,896 arrivals, 98,193 dequeues, 2,357
+  flushes and 47,940 cycles with the pool full, none differ. Controls
+  drop-flush and enq-swap must each be caught. **Timing is not met:**
+  31.9 NGD in 28 levels. An entry freed at an edge can take an arrival at
+  the same edge, as in the model (`canAccept` runs after the cycle's
+  dequeues), and that path costs about 9 NGD. With the entry free only
+  from the next edge it is 23.1 NGD, inside the stage. The model's
+  `decq_late_credit` knob is that behaviour: no S1 kernel moves by a
+  cycle at 12 entries (or at 4), and the four-warp synthetic sweep moves
+  within its own noise. It is OI-39, for OA and DA, the same shape as
+  OI-38.
+
+  Verilator 5.020 miscompiled an earlier form of this module: an
+  `always_ff` whose reset and update were an if/else of two function
+  calls. `-fno-reorder` fixed it, and Icarus ran it correctly. Each
+  sequential sub-block's flop now takes one function, `step()`, with reset
+  folded in.
+
+## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The
 model wakes and selects in one cycle (a dependant issues exactly its

@@ -1,10 +1,10 @@
 //===-- fv_link.sv - one credited link, for formal proof ------------------===//
 //
 // Spec: docs/interface-checker-convention.md; docs/physical.md; Q-43
-// Reusable: a formal harness; clk is the solver's clock.
+// A formal harness; clk is the solver's clock.
 //
 // A sender and a receiver that follow the channel protocol at their own
-// ports, joined by N sequential repeater stages (rtl/phys/ccv_seq_rpt.sv),
+// ports, joined by N sequential repeater stages (rtl/phys/ccv_common_rpt.sv),
 // with the credit checker asserting at both ends. Every input is free: what
 // the sender wants to send, when the receiver drains, when it stalls. The
 // endpoints do what the C++ skeleton's Sender and Receiver do (channel.h),
@@ -103,7 +103,7 @@ module fv_link #(
   logic          r_valid, r_credit, r_stall, r_wake;
   logic [W-1:0]  r_payload;
   logic [63:0]   r_tid;
-  ccv_seq_rpt #(.STAGES(N), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt (
+  ccv_common_rpt #(.STAGES(N), .SLOTS(1), .PAYLOAD_W(W), .LEAD_MASK(LEAD)) u_rpt (
     .clk(clk), .rst_n(rst_n),
     .src_valid(s_valid), .src_payload(s_payload), .src_wake(s_wake),
     .src_credit(s_credit), .src_stall(s_stall),
@@ -144,7 +144,7 @@ module fv_link #(
 
   // -- the interface checker, at both ends of the link ----------------------
   localparam int RT = ccv_params_pkg::CCV_RT_ABUT + 2 * N;
-  ccv_credit_checker #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
+  ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
                        .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2 * N),
                        .LEAD_MASK(LEAD), .SRC_STAGES(0)) u_chk_src (
     .clk(clk), .rst_n(rst_n), .ch_valid(s_valid), .ch_payload(s_payload),
@@ -153,7 +153,7 @@ module fv_link #(
     , .ch_tid(s_tid)
 `endif
   );
-  ccv_credit_checker #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
+  ccv_common_chk_credit #(.PAYLOAD_W(W), .ROUND_TRIP(RT), .DEPTH(DEPTH),
                        .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + 2 * N),
                        .LEAD_MASK(LEAD), .SRC_STAGES(N)) u_chk_dst (
     .clk(clk), .rst_n(rst_n), .ch_valid(r_valid), .ch_payload(r_payload),

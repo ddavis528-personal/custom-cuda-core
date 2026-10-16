@@ -1,0 +1,3714 @@
+// GENERATED FILE -- DO NOT EDIT.
+//
+// Produced by tools/gen-top.py from schema/interfaces.json and
+// params/blocks.json. Edit a source and regenerate; tools/verify.sh fails if
+// this file is stale.
+
+// The CCV core: 45 block instances, 110 channel instances.
+//
+// THE RULE: this module holds block instances and the nets between
+// them, and nothing else -- no gate, no flop, no constant, no clock
+// gate (rtl-coding-style.md, "The top level"). Everything can then be
+// validated here, and the floorplan can abut the blocks. Each block
+// gates core_clk inside itself. tools/check-top-pure.py enforces it on
+// the elaborated netlist. The one exception is the checker bank under
+// CCV_CHECK, which observes and is absent from every synthesis view.
+//
+// Channel nets are flat, instance-major then slot -- the same order
+// as the C++ skeleton's slot map, so the checker bank is fed by
+// concatenation. tools/check-top.sh extracts this netlist's
+// connectivity from Yosys and compares it, bit for bit, with the
+// wiring the C++ skeleton reports.
+//
+// COMMON PORTS, by fabric (schema common_ports):
+//   kill_valid / _warp_mask /    broadcast from RAU, the one true
+//   _epoch                       broadcast, to the eight blocks that
+//                                own warp state; kill_ack and its
+//                                epoch gathered back at RAU
+//   wake                         not a common port: each channel
+//                                carries <name>_wake, sender to
+//                                receiver
+//   core_clk                     UNGATED, to every block; each gates
+//                                it inside itself (CCV-L22)
+//   clk_gated                    CCV_CHECK only: each block's gate
+//                                state, to the checker bank alone
+//   csr_*                        a star from CRU, which owns the
+//                                CSR fabric; CRU's own csr ports
+//                                are the host side, at this
+//                                boundary, and CRU has no slot in
+//                                its own vectors
+// rst_n fans out directly; the reset tree (block letter z) is not
+// modelled yet (Q-37).
+//
+// Block instance index (the per-block common-port vectors are in this
+// order, less the vector's owner):
+//    0  u_fet
+//    1  u_dec
+//    2  u_ooe
+//    3  u_rcu
+//    4  u_lane_00
+//    5  u_lane_01
+//    6  u_lane_02
+//    7  u_lane_03
+//    8  u_lane_04
+//    9  u_lane_05
+//   10  u_lane_06
+//   11  u_lane_07
+//   12  u_lane_08
+//   13  u_lane_09
+//   14  u_lane_10
+//   15  u_lane_11
+//   16  u_lane_12
+//   17  u_lane_13
+//   18  u_lane_14
+//   19  u_lane_15
+//   20  u_lane_16
+//   21  u_lane_17
+//   22  u_lane_18
+//   23  u_lane_19
+//   24  u_lane_20
+//   25  u_lane_21
+//   26  u_lane_22
+//   27  u_lane_23
+//   28  u_lane_24
+//   29  u_lane_25
+//   30  u_lane_26
+//   31  u_lane_27
+//   32  u_lane_28
+//   33  u_lane_29
+//   34  u_lane_30
+//   35  u_lane_31
+//   36  u_miu
+//   37  u_spm
+//   38  u_dcu
+//   39  u_mlc
+//   40  u_rau
+//   41  u_syu
+//   42  u_pca
+//   43  u_cru
+//   44  u_exb
+`include "ccv_interfaces.svh"
+
+module ccv_top (
+  input  logic core_clk,
+  input  logic rst_n,
+  input  logic [48:0] csr_req,
+  output logic [32:0] csr_rsp,
+  output logic csr_credit,
+  output logic exb_ext_out_valid,
+  output ccv_exb_ext_out_t exb_ext_out_payload,
+  input  logic exb_ext_out_credit,
+  input  logic exb_ext_out_stall,
+  output logic exb_ext_out_wake,
+  input  logic ext_exb_in_valid,
+  input  ccv_ext_exb_in_t ext_exb_in_payload,
+  output logic ext_exb_in_credit,
+  output logic ext_exb_in_stall,
+  input  logic ext_exb_in_wake
+`ifdef CCV_TRACE
+  , output logic [63:0] exb_ext_out_tid
+  , input  logic [63:0] ext_exb_in_tid
+`endif
+);
+
+  // Common-port fabrics.
+  logic kill_valid;   // from rau
+  logic [31:0] kill_warp_mask;   // from rau
+  logic [1:0] kill_epoch;   // from rau
+  logic [7:0] kill_ack;   // gathered at rau from fet, dec, ooe, rcu, miu, spm, syu, pca
+  logic [15:0] kill_ack_epoch;   // gathered at rau from fet, dec, ooe, rcu, miu, spm, syu, pca
+  logic [2155:0] csr_reqs;   // csr_req, star from cru, its own omitted
+  logic [1451:0] csr_rsps;   // csr_rsp, star from cru, its own omitted
+  logic [43:0] csr_credits;   // csr_credit, star from cru, its own omitted
+`ifdef CCV_CHECK
+  // clk_gated of every block instance, to the checker bank alone.
+  logic fet_clk_gated;
+  logic dec_clk_gated;
+  logic ooe_clk_gated;
+  logic rcu_clk_gated;
+  logic lane_00_clk_gated;
+  logic lane_01_clk_gated;
+  logic lane_02_clk_gated;
+  logic lane_03_clk_gated;
+  logic lane_04_clk_gated;
+  logic lane_05_clk_gated;
+  logic lane_06_clk_gated;
+  logic lane_07_clk_gated;
+  logic lane_08_clk_gated;
+  logic lane_09_clk_gated;
+  logic lane_10_clk_gated;
+  logic lane_11_clk_gated;
+  logic lane_12_clk_gated;
+  logic lane_13_clk_gated;
+  logic lane_14_clk_gated;
+  logic lane_15_clk_gated;
+  logic lane_16_clk_gated;
+  logic lane_17_clk_gated;
+  logic lane_18_clk_gated;
+  logic lane_19_clk_gated;
+  logic lane_20_clk_gated;
+  logic lane_21_clk_gated;
+  logic lane_22_clk_gated;
+  logic lane_23_clk_gated;
+  logic lane_24_clk_gated;
+  logic lane_25_clk_gated;
+  logic lane_26_clk_gated;
+  logic lane_27_clk_gated;
+  logic lane_28_clk_gated;
+  logic lane_29_clk_gated;
+  logic lane_30_clk_gated;
+  logic lane_31_clk_gated;
+  logic miu_clk_gated;
+  logic spm_clk_gated;
+  logic dcu_clk_gated;
+  logic mlc_clk_gated;
+  logic rau_clk_gated;
+  logic syu_clk_gated;
+  logic pca_clk_gated;
+  logic cru_clk_gated;
+  logic exb_clk_gated;
+`endif
+
+  // ccv_fet_dec_instr: fet -> dec, 1 copy x 8 slots
+  logic fet_dec_instr_s0_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s0_payload;
+  logic fet_dec_instr_s0_credit;
+  logic fet_dec_instr_s0_stall;
+  logic fet_dec_instr_s1_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s1_payload;
+  logic fet_dec_instr_s1_credit;
+  logic fet_dec_instr_s1_stall;
+  logic fet_dec_instr_s2_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s2_payload;
+  logic fet_dec_instr_s2_credit;
+  logic fet_dec_instr_s2_stall;
+  logic fet_dec_instr_s3_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s3_payload;
+  logic fet_dec_instr_s3_credit;
+  logic fet_dec_instr_s3_stall;
+  logic fet_dec_instr_s4_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s4_payload;
+  logic fet_dec_instr_s4_credit;
+  logic fet_dec_instr_s4_stall;
+  logic fet_dec_instr_s5_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s5_payload;
+  logic fet_dec_instr_s5_credit;
+  logic fet_dec_instr_s5_stall;
+  logic fet_dec_instr_s6_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s6_payload;
+  logic fet_dec_instr_s6_credit;
+  logic fet_dec_instr_s6_stall;
+  logic fet_dec_instr_s7_valid;
+  ccv_fet_dec_instr_t fet_dec_instr_s7_payload;
+  logic fet_dec_instr_s7_credit;
+  logic fet_dec_instr_s7_stall;
+  logic fet_dec_instr_wake;
+`ifdef CCV_TRACE
+  logic [63:0] fet_dec_instr_s0_tid;
+  logic [63:0] fet_dec_instr_s1_tid;
+  logic [63:0] fet_dec_instr_s2_tid;
+  logic [63:0] fet_dec_instr_s3_tid;
+  logic [63:0] fet_dec_instr_s4_tid;
+  logic [63:0] fet_dec_instr_s5_tid;
+  logic [63:0] fet_dec_instr_s6_tid;
+  logic [63:0] fet_dec_instr_s7_tid;
+`endif
+  // ccv_dec_ooe_uop: dec -> ooe, 1 copy x 6 slots
+  logic dec_ooe_uop_s0_valid;
+  ccv_dec_ooe_uop_t dec_ooe_uop_s0_payload;
+  logic dec_ooe_uop_s0_credit;
+  logic dec_ooe_uop_s0_stall;
+  logic dec_ooe_uop_s1_valid;
+  ccv_dec_ooe_uop_t dec_ooe_uop_s1_payload;
+  logic dec_ooe_uop_s1_credit;
+  logic dec_ooe_uop_s1_stall;
+  logic dec_ooe_uop_s2_valid;
+  ccv_dec_ooe_uop_t dec_ooe_uop_s2_payload;
+  logic dec_ooe_uop_s2_credit;
+  logic dec_ooe_uop_s2_stall;
+  logic dec_ooe_uop_s3_valid;
+  ccv_dec_ooe_uop_t dec_ooe_uop_s3_payload;
+  logic dec_ooe_uop_s3_credit;
+  logic dec_ooe_uop_s3_stall;
+  logic dec_ooe_uop_s4_valid;
+  ccv_dec_ooe_uop_t dec_ooe_uop_s4_payload;
+  logic dec_ooe_uop_s4_credit;
+  logic dec_ooe_uop_s4_stall;
+  logic dec_ooe_uop_s5_valid;
+  ccv_dec_ooe_uop_t dec_ooe_uop_s5_payload;
+  logic dec_ooe_uop_s5_credit;
+  logic dec_ooe_uop_s5_stall;
+  logic dec_ooe_uop_wake;
+`ifdef CCV_TRACE
+  logic [63:0] dec_ooe_uop_s0_tid;
+  logic [63:0] dec_ooe_uop_s1_tid;
+  logic [63:0] dec_ooe_uop_s2_tid;
+  logic [63:0] dec_ooe_uop_s3_tid;
+  logic [63:0] dec_ooe_uop_s4_tid;
+  logic [63:0] dec_ooe_uop_s5_tid;
+`endif
+  // ccv_ooe_rcu_issue: ooe -> rcu, 1 copy x 9 slots
+  logic ooe_rcu_issue_s0_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s0_payload;
+  logic ooe_rcu_issue_s0_credit;
+  logic ooe_rcu_issue_s0_stall;
+  logic ooe_rcu_issue_s1_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s1_payload;
+  logic ooe_rcu_issue_s1_credit;
+  logic ooe_rcu_issue_s1_stall;
+  logic ooe_rcu_issue_s2_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s2_payload;
+  logic ooe_rcu_issue_s2_credit;
+  logic ooe_rcu_issue_s2_stall;
+  logic ooe_rcu_issue_s3_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s3_payload;
+  logic ooe_rcu_issue_s3_credit;
+  logic ooe_rcu_issue_s3_stall;
+  logic ooe_rcu_issue_s4_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s4_payload;
+  logic ooe_rcu_issue_s4_credit;
+  logic ooe_rcu_issue_s4_stall;
+  logic ooe_rcu_issue_s5_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s5_payload;
+  logic ooe_rcu_issue_s5_credit;
+  logic ooe_rcu_issue_s5_stall;
+  logic ooe_rcu_issue_s6_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s6_payload;
+  logic ooe_rcu_issue_s6_credit;
+  logic ooe_rcu_issue_s6_stall;
+  logic ooe_rcu_issue_s7_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s7_payload;
+  logic ooe_rcu_issue_s7_credit;
+  logic ooe_rcu_issue_s7_stall;
+  logic ooe_rcu_issue_s8_valid;
+  ccv_ooe_rcu_issue_t ooe_rcu_issue_s8_payload;
+  logic ooe_rcu_issue_s8_credit;
+  logic ooe_rcu_issue_s8_stall;
+  logic ooe_rcu_issue_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_rcu_issue_s0_tid;
+  logic [63:0] ooe_rcu_issue_s1_tid;
+  logic [63:0] ooe_rcu_issue_s2_tid;
+  logic [63:0] ooe_rcu_issue_s3_tid;
+  logic [63:0] ooe_rcu_issue_s4_tid;
+  logic [63:0] ooe_rcu_issue_s5_tid;
+  logic [63:0] ooe_rcu_issue_s6_tid;
+  logic [63:0] ooe_rcu_issue_s7_tid;
+  logic [63:0] ooe_rcu_issue_s8_tid;
+`endif
+  // ccv_rcu_lane_ops: rcu -> lane, 32 copies x 1 slot
+  logic rcu_lane_ops_c00_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c00_payload;
+  logic rcu_lane_ops_c00_credit;
+  logic rcu_lane_ops_c00_stall;
+  logic rcu_lane_ops_c00_wake;
+  logic rcu_lane_ops_c01_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c01_payload;
+  logic rcu_lane_ops_c01_credit;
+  logic rcu_lane_ops_c01_stall;
+  logic rcu_lane_ops_c01_wake;
+  logic rcu_lane_ops_c02_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c02_payload;
+  logic rcu_lane_ops_c02_credit;
+  logic rcu_lane_ops_c02_stall;
+  logic rcu_lane_ops_c02_wake;
+  logic rcu_lane_ops_c03_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c03_payload;
+  logic rcu_lane_ops_c03_credit;
+  logic rcu_lane_ops_c03_stall;
+  logic rcu_lane_ops_c03_wake;
+  logic rcu_lane_ops_c04_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c04_payload;
+  logic rcu_lane_ops_c04_credit;
+  logic rcu_lane_ops_c04_stall;
+  logic rcu_lane_ops_c04_wake;
+  logic rcu_lane_ops_c05_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c05_payload;
+  logic rcu_lane_ops_c05_credit;
+  logic rcu_lane_ops_c05_stall;
+  logic rcu_lane_ops_c05_wake;
+  logic rcu_lane_ops_c06_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c06_payload;
+  logic rcu_lane_ops_c06_credit;
+  logic rcu_lane_ops_c06_stall;
+  logic rcu_lane_ops_c06_wake;
+  logic rcu_lane_ops_c07_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c07_payload;
+  logic rcu_lane_ops_c07_credit;
+  logic rcu_lane_ops_c07_stall;
+  logic rcu_lane_ops_c07_wake;
+  logic rcu_lane_ops_c08_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c08_payload;
+  logic rcu_lane_ops_c08_credit;
+  logic rcu_lane_ops_c08_stall;
+  logic rcu_lane_ops_c08_wake;
+  logic rcu_lane_ops_c09_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c09_payload;
+  logic rcu_lane_ops_c09_credit;
+  logic rcu_lane_ops_c09_stall;
+  logic rcu_lane_ops_c09_wake;
+  logic rcu_lane_ops_c10_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c10_payload;
+  logic rcu_lane_ops_c10_credit;
+  logic rcu_lane_ops_c10_stall;
+  logic rcu_lane_ops_c10_wake;
+  logic rcu_lane_ops_c11_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c11_payload;
+  logic rcu_lane_ops_c11_credit;
+  logic rcu_lane_ops_c11_stall;
+  logic rcu_lane_ops_c11_wake;
+  logic rcu_lane_ops_c12_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c12_payload;
+  logic rcu_lane_ops_c12_credit;
+  logic rcu_lane_ops_c12_stall;
+  logic rcu_lane_ops_c12_wake;
+  logic rcu_lane_ops_c13_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c13_payload;
+  logic rcu_lane_ops_c13_credit;
+  logic rcu_lane_ops_c13_stall;
+  logic rcu_lane_ops_c13_wake;
+  logic rcu_lane_ops_c14_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c14_payload;
+  logic rcu_lane_ops_c14_credit;
+  logic rcu_lane_ops_c14_stall;
+  logic rcu_lane_ops_c14_wake;
+  logic rcu_lane_ops_c15_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c15_payload;
+  logic rcu_lane_ops_c15_credit;
+  logic rcu_lane_ops_c15_stall;
+  logic rcu_lane_ops_c15_wake;
+  logic rcu_lane_ops_c16_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c16_payload;
+  logic rcu_lane_ops_c16_credit;
+  logic rcu_lane_ops_c16_stall;
+  logic rcu_lane_ops_c16_wake;
+  logic rcu_lane_ops_c17_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c17_payload;
+  logic rcu_lane_ops_c17_credit;
+  logic rcu_lane_ops_c17_stall;
+  logic rcu_lane_ops_c17_wake;
+  logic rcu_lane_ops_c18_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c18_payload;
+  logic rcu_lane_ops_c18_credit;
+  logic rcu_lane_ops_c18_stall;
+  logic rcu_lane_ops_c18_wake;
+  logic rcu_lane_ops_c19_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c19_payload;
+  logic rcu_lane_ops_c19_credit;
+  logic rcu_lane_ops_c19_stall;
+  logic rcu_lane_ops_c19_wake;
+  logic rcu_lane_ops_c20_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c20_payload;
+  logic rcu_lane_ops_c20_credit;
+  logic rcu_lane_ops_c20_stall;
+  logic rcu_lane_ops_c20_wake;
+  logic rcu_lane_ops_c21_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c21_payload;
+  logic rcu_lane_ops_c21_credit;
+  logic rcu_lane_ops_c21_stall;
+  logic rcu_lane_ops_c21_wake;
+  logic rcu_lane_ops_c22_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c22_payload;
+  logic rcu_lane_ops_c22_credit;
+  logic rcu_lane_ops_c22_stall;
+  logic rcu_lane_ops_c22_wake;
+  logic rcu_lane_ops_c23_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c23_payload;
+  logic rcu_lane_ops_c23_credit;
+  logic rcu_lane_ops_c23_stall;
+  logic rcu_lane_ops_c23_wake;
+  logic rcu_lane_ops_c24_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c24_payload;
+  logic rcu_lane_ops_c24_credit;
+  logic rcu_lane_ops_c24_stall;
+  logic rcu_lane_ops_c24_wake;
+  logic rcu_lane_ops_c25_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c25_payload;
+  logic rcu_lane_ops_c25_credit;
+  logic rcu_lane_ops_c25_stall;
+  logic rcu_lane_ops_c25_wake;
+  logic rcu_lane_ops_c26_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c26_payload;
+  logic rcu_lane_ops_c26_credit;
+  logic rcu_lane_ops_c26_stall;
+  logic rcu_lane_ops_c26_wake;
+  logic rcu_lane_ops_c27_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c27_payload;
+  logic rcu_lane_ops_c27_credit;
+  logic rcu_lane_ops_c27_stall;
+  logic rcu_lane_ops_c27_wake;
+  logic rcu_lane_ops_c28_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c28_payload;
+  logic rcu_lane_ops_c28_credit;
+  logic rcu_lane_ops_c28_stall;
+  logic rcu_lane_ops_c28_wake;
+  logic rcu_lane_ops_c29_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c29_payload;
+  logic rcu_lane_ops_c29_credit;
+  logic rcu_lane_ops_c29_stall;
+  logic rcu_lane_ops_c29_wake;
+  logic rcu_lane_ops_c30_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c30_payload;
+  logic rcu_lane_ops_c30_credit;
+  logic rcu_lane_ops_c30_stall;
+  logic rcu_lane_ops_c30_wake;
+  logic rcu_lane_ops_c31_valid;
+  ccv_rcu_lane_ops_t rcu_lane_ops_c31_payload;
+  logic rcu_lane_ops_c31_credit;
+  logic rcu_lane_ops_c31_stall;
+  logic rcu_lane_ops_c31_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rcu_lane_ops_c00_tid;
+  logic [63:0] rcu_lane_ops_c01_tid;
+  logic [63:0] rcu_lane_ops_c02_tid;
+  logic [63:0] rcu_lane_ops_c03_tid;
+  logic [63:0] rcu_lane_ops_c04_tid;
+  logic [63:0] rcu_lane_ops_c05_tid;
+  logic [63:0] rcu_lane_ops_c06_tid;
+  logic [63:0] rcu_lane_ops_c07_tid;
+  logic [63:0] rcu_lane_ops_c08_tid;
+  logic [63:0] rcu_lane_ops_c09_tid;
+  logic [63:0] rcu_lane_ops_c10_tid;
+  logic [63:0] rcu_lane_ops_c11_tid;
+  logic [63:0] rcu_lane_ops_c12_tid;
+  logic [63:0] rcu_lane_ops_c13_tid;
+  logic [63:0] rcu_lane_ops_c14_tid;
+  logic [63:0] rcu_lane_ops_c15_tid;
+  logic [63:0] rcu_lane_ops_c16_tid;
+  logic [63:0] rcu_lane_ops_c17_tid;
+  logic [63:0] rcu_lane_ops_c18_tid;
+  logic [63:0] rcu_lane_ops_c19_tid;
+  logic [63:0] rcu_lane_ops_c20_tid;
+  logic [63:0] rcu_lane_ops_c21_tid;
+  logic [63:0] rcu_lane_ops_c22_tid;
+  logic [63:0] rcu_lane_ops_c23_tid;
+  logic [63:0] rcu_lane_ops_c24_tid;
+  logic [63:0] rcu_lane_ops_c25_tid;
+  logic [63:0] rcu_lane_ops_c26_tid;
+  logic [63:0] rcu_lane_ops_c27_tid;
+  logic [63:0] rcu_lane_ops_c28_tid;
+  logic [63:0] rcu_lane_ops_c29_tid;
+  logic [63:0] rcu_lane_ops_c30_tid;
+  logic [63:0] rcu_lane_ops_c31_tid;
+`endif
+  // ccv_lane_rcu_res: lane -> rcu, 32 copies x 1 slot
+  logic lane_rcu_res_c00_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c00_payload;
+  logic lane_rcu_res_c00_credit;
+  logic lane_rcu_res_c00_stall;
+  logic lane_rcu_res_c00_wake;
+  logic lane_rcu_res_c01_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c01_payload;
+  logic lane_rcu_res_c01_credit;
+  logic lane_rcu_res_c01_stall;
+  logic lane_rcu_res_c01_wake;
+  logic lane_rcu_res_c02_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c02_payload;
+  logic lane_rcu_res_c02_credit;
+  logic lane_rcu_res_c02_stall;
+  logic lane_rcu_res_c02_wake;
+  logic lane_rcu_res_c03_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c03_payload;
+  logic lane_rcu_res_c03_credit;
+  logic lane_rcu_res_c03_stall;
+  logic lane_rcu_res_c03_wake;
+  logic lane_rcu_res_c04_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c04_payload;
+  logic lane_rcu_res_c04_credit;
+  logic lane_rcu_res_c04_stall;
+  logic lane_rcu_res_c04_wake;
+  logic lane_rcu_res_c05_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c05_payload;
+  logic lane_rcu_res_c05_credit;
+  logic lane_rcu_res_c05_stall;
+  logic lane_rcu_res_c05_wake;
+  logic lane_rcu_res_c06_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c06_payload;
+  logic lane_rcu_res_c06_credit;
+  logic lane_rcu_res_c06_stall;
+  logic lane_rcu_res_c06_wake;
+  logic lane_rcu_res_c07_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c07_payload;
+  logic lane_rcu_res_c07_credit;
+  logic lane_rcu_res_c07_stall;
+  logic lane_rcu_res_c07_wake;
+  logic lane_rcu_res_c08_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c08_payload;
+  logic lane_rcu_res_c08_credit;
+  logic lane_rcu_res_c08_stall;
+  logic lane_rcu_res_c08_wake;
+  logic lane_rcu_res_c09_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c09_payload;
+  logic lane_rcu_res_c09_credit;
+  logic lane_rcu_res_c09_stall;
+  logic lane_rcu_res_c09_wake;
+  logic lane_rcu_res_c10_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c10_payload;
+  logic lane_rcu_res_c10_credit;
+  logic lane_rcu_res_c10_stall;
+  logic lane_rcu_res_c10_wake;
+  logic lane_rcu_res_c11_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c11_payload;
+  logic lane_rcu_res_c11_credit;
+  logic lane_rcu_res_c11_stall;
+  logic lane_rcu_res_c11_wake;
+  logic lane_rcu_res_c12_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c12_payload;
+  logic lane_rcu_res_c12_credit;
+  logic lane_rcu_res_c12_stall;
+  logic lane_rcu_res_c12_wake;
+  logic lane_rcu_res_c13_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c13_payload;
+  logic lane_rcu_res_c13_credit;
+  logic lane_rcu_res_c13_stall;
+  logic lane_rcu_res_c13_wake;
+  logic lane_rcu_res_c14_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c14_payload;
+  logic lane_rcu_res_c14_credit;
+  logic lane_rcu_res_c14_stall;
+  logic lane_rcu_res_c14_wake;
+  logic lane_rcu_res_c15_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c15_payload;
+  logic lane_rcu_res_c15_credit;
+  logic lane_rcu_res_c15_stall;
+  logic lane_rcu_res_c15_wake;
+  logic lane_rcu_res_c16_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c16_payload;
+  logic lane_rcu_res_c16_credit;
+  logic lane_rcu_res_c16_stall;
+  logic lane_rcu_res_c16_wake;
+  logic lane_rcu_res_c17_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c17_payload;
+  logic lane_rcu_res_c17_credit;
+  logic lane_rcu_res_c17_stall;
+  logic lane_rcu_res_c17_wake;
+  logic lane_rcu_res_c18_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c18_payload;
+  logic lane_rcu_res_c18_credit;
+  logic lane_rcu_res_c18_stall;
+  logic lane_rcu_res_c18_wake;
+  logic lane_rcu_res_c19_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c19_payload;
+  logic lane_rcu_res_c19_credit;
+  logic lane_rcu_res_c19_stall;
+  logic lane_rcu_res_c19_wake;
+  logic lane_rcu_res_c20_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c20_payload;
+  logic lane_rcu_res_c20_credit;
+  logic lane_rcu_res_c20_stall;
+  logic lane_rcu_res_c20_wake;
+  logic lane_rcu_res_c21_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c21_payload;
+  logic lane_rcu_res_c21_credit;
+  logic lane_rcu_res_c21_stall;
+  logic lane_rcu_res_c21_wake;
+  logic lane_rcu_res_c22_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c22_payload;
+  logic lane_rcu_res_c22_credit;
+  logic lane_rcu_res_c22_stall;
+  logic lane_rcu_res_c22_wake;
+  logic lane_rcu_res_c23_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c23_payload;
+  logic lane_rcu_res_c23_credit;
+  logic lane_rcu_res_c23_stall;
+  logic lane_rcu_res_c23_wake;
+  logic lane_rcu_res_c24_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c24_payload;
+  logic lane_rcu_res_c24_credit;
+  logic lane_rcu_res_c24_stall;
+  logic lane_rcu_res_c24_wake;
+  logic lane_rcu_res_c25_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c25_payload;
+  logic lane_rcu_res_c25_credit;
+  logic lane_rcu_res_c25_stall;
+  logic lane_rcu_res_c25_wake;
+  logic lane_rcu_res_c26_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c26_payload;
+  logic lane_rcu_res_c26_credit;
+  logic lane_rcu_res_c26_stall;
+  logic lane_rcu_res_c26_wake;
+  logic lane_rcu_res_c27_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c27_payload;
+  logic lane_rcu_res_c27_credit;
+  logic lane_rcu_res_c27_stall;
+  logic lane_rcu_res_c27_wake;
+  logic lane_rcu_res_c28_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c28_payload;
+  logic lane_rcu_res_c28_credit;
+  logic lane_rcu_res_c28_stall;
+  logic lane_rcu_res_c28_wake;
+  logic lane_rcu_res_c29_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c29_payload;
+  logic lane_rcu_res_c29_credit;
+  logic lane_rcu_res_c29_stall;
+  logic lane_rcu_res_c29_wake;
+  logic lane_rcu_res_c30_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c30_payload;
+  logic lane_rcu_res_c30_credit;
+  logic lane_rcu_res_c30_stall;
+  logic lane_rcu_res_c30_wake;
+  logic lane_rcu_res_c31_valid;
+  ccv_lane_rcu_res_t lane_rcu_res_c31_payload;
+  logic lane_rcu_res_c31_credit;
+  logic lane_rcu_res_c31_stall;
+  logic lane_rcu_res_c31_wake;
+`ifdef CCV_TRACE
+  logic [63:0] lane_rcu_res_c00_tid;
+  logic [63:0] lane_rcu_res_c01_tid;
+  logic [63:0] lane_rcu_res_c02_tid;
+  logic [63:0] lane_rcu_res_c03_tid;
+  logic [63:0] lane_rcu_res_c04_tid;
+  logic [63:0] lane_rcu_res_c05_tid;
+  logic [63:0] lane_rcu_res_c06_tid;
+  logic [63:0] lane_rcu_res_c07_tid;
+  logic [63:0] lane_rcu_res_c08_tid;
+  logic [63:0] lane_rcu_res_c09_tid;
+  logic [63:0] lane_rcu_res_c10_tid;
+  logic [63:0] lane_rcu_res_c11_tid;
+  logic [63:0] lane_rcu_res_c12_tid;
+  logic [63:0] lane_rcu_res_c13_tid;
+  logic [63:0] lane_rcu_res_c14_tid;
+  logic [63:0] lane_rcu_res_c15_tid;
+  logic [63:0] lane_rcu_res_c16_tid;
+  logic [63:0] lane_rcu_res_c17_tid;
+  logic [63:0] lane_rcu_res_c18_tid;
+  logic [63:0] lane_rcu_res_c19_tid;
+  logic [63:0] lane_rcu_res_c20_tid;
+  logic [63:0] lane_rcu_res_c21_tid;
+  logic [63:0] lane_rcu_res_c22_tid;
+  logic [63:0] lane_rcu_res_c23_tid;
+  logic [63:0] lane_rcu_res_c24_tid;
+  logic [63:0] lane_rcu_res_c25_tid;
+  logic [63:0] lane_rcu_res_c26_tid;
+  logic [63:0] lane_rcu_res_c27_tid;
+  logic [63:0] lane_rcu_res_c28_tid;
+  logic [63:0] lane_rcu_res_c29_tid;
+  logic [63:0] lane_rcu_res_c30_tid;
+  logic [63:0] lane_rcu_res_c31_tid;
+`endif
+  // ccv_rcu_ooe_done: rcu -> ooe, 1 copy x 7 slots
+  logic rcu_ooe_done_s0_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s0_payload;
+  logic rcu_ooe_done_s0_credit;
+  logic rcu_ooe_done_s0_stall;
+  logic rcu_ooe_done_s1_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s1_payload;
+  logic rcu_ooe_done_s1_credit;
+  logic rcu_ooe_done_s1_stall;
+  logic rcu_ooe_done_s2_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s2_payload;
+  logic rcu_ooe_done_s2_credit;
+  logic rcu_ooe_done_s2_stall;
+  logic rcu_ooe_done_s3_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s3_payload;
+  logic rcu_ooe_done_s3_credit;
+  logic rcu_ooe_done_s3_stall;
+  logic rcu_ooe_done_s4_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s4_payload;
+  logic rcu_ooe_done_s4_credit;
+  logic rcu_ooe_done_s4_stall;
+  logic rcu_ooe_done_s5_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s5_payload;
+  logic rcu_ooe_done_s5_credit;
+  logic rcu_ooe_done_s5_stall;
+  logic rcu_ooe_done_s6_valid;
+  ccv_rcu_ooe_done_t rcu_ooe_done_s6_payload;
+  logic rcu_ooe_done_s6_credit;
+  logic rcu_ooe_done_s6_stall;
+  logic rcu_ooe_done_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rcu_ooe_done_s0_tid;
+  logic [63:0] rcu_ooe_done_s1_tid;
+  logic [63:0] rcu_ooe_done_s2_tid;
+  logic [63:0] rcu_ooe_done_s3_tid;
+  logic [63:0] rcu_ooe_done_s4_tid;
+  logic [63:0] rcu_ooe_done_s5_tid;
+  logic [63:0] rcu_ooe_done_s6_tid;
+`endif
+  // ccv_rcu_miu_addr: rcu -> miu, 1 copy x 4 slots
+  logic rcu_miu_addr_s0_valid;
+  ccv_rcu_miu_addr_t rcu_miu_addr_s0_payload;
+  logic rcu_miu_addr_s0_credit;
+  logic rcu_miu_addr_s0_stall;
+  logic rcu_miu_addr_s1_valid;
+  ccv_rcu_miu_addr_t rcu_miu_addr_s1_payload;
+  logic rcu_miu_addr_s1_credit;
+  logic rcu_miu_addr_s1_stall;
+  logic rcu_miu_addr_s2_valid;
+  ccv_rcu_miu_addr_t rcu_miu_addr_s2_payload;
+  logic rcu_miu_addr_s2_credit;
+  logic rcu_miu_addr_s2_stall;
+  logic rcu_miu_addr_s3_valid;
+  ccv_rcu_miu_addr_t rcu_miu_addr_s3_payload;
+  logic rcu_miu_addr_s3_credit;
+  logic rcu_miu_addr_s3_stall;
+  logic rcu_miu_addr_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rcu_miu_addr_s0_tid;
+  logic [63:0] rcu_miu_addr_s1_tid;
+  logic [63:0] rcu_miu_addr_s2_tid;
+  logic [63:0] rcu_miu_addr_s3_tid;
+`endif
+  // ccv_miu_rcu_data: miu -> rcu, 1 copy x 4 slots
+  logic miu_rcu_data_s0_valid;
+  ccv_miu_rcu_data_t miu_rcu_data_s0_payload;
+  logic miu_rcu_data_s0_credit;
+  logic miu_rcu_data_s0_stall;
+  logic miu_rcu_data_s1_valid;
+  ccv_miu_rcu_data_t miu_rcu_data_s1_payload;
+  logic miu_rcu_data_s1_credit;
+  logic miu_rcu_data_s1_stall;
+  logic miu_rcu_data_s2_valid;
+  ccv_miu_rcu_data_t miu_rcu_data_s2_payload;
+  logic miu_rcu_data_s2_credit;
+  logic miu_rcu_data_s2_stall;
+  logic miu_rcu_data_s3_valid;
+  ccv_miu_rcu_data_t miu_rcu_data_s3_payload;
+  logic miu_rcu_data_s3_credit;
+  logic miu_rcu_data_s3_stall;
+  logic miu_rcu_data_wake;
+`ifdef CCV_TRACE
+  logic [63:0] miu_rcu_data_s0_tid;
+  logic [63:0] miu_rcu_data_s1_tid;
+  logic [63:0] miu_rcu_data_s2_tid;
+  logic [63:0] miu_rcu_data_s3_tid;
+`endif
+  // ccv_ooe_miu_memop: ooe -> miu, 1 copy x 4 slots
+  logic ooe_miu_memop_s0_valid;
+  ccv_ooe_miu_memop_t ooe_miu_memop_s0_payload;
+  logic ooe_miu_memop_s0_credit;
+  logic ooe_miu_memop_s0_stall;
+  logic ooe_miu_memop_s1_valid;
+  ccv_ooe_miu_memop_t ooe_miu_memop_s1_payload;
+  logic ooe_miu_memop_s1_credit;
+  logic ooe_miu_memop_s1_stall;
+  logic ooe_miu_memop_s2_valid;
+  ccv_ooe_miu_memop_t ooe_miu_memop_s2_payload;
+  logic ooe_miu_memop_s2_credit;
+  logic ooe_miu_memop_s2_stall;
+  logic ooe_miu_memop_s3_valid;
+  ccv_ooe_miu_memop_t ooe_miu_memop_s3_payload;
+  logic ooe_miu_memop_s3_credit;
+  logic ooe_miu_memop_s3_stall;
+  logic ooe_miu_memop_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_miu_memop_s0_tid;
+  logic [63:0] ooe_miu_memop_s1_tid;
+  logic [63:0] ooe_miu_memop_s2_tid;
+  logic [63:0] ooe_miu_memop_s3_tid;
+`endif
+  // ccv_miu_ooe_cmpl: miu -> ooe, 1 copy x 4 slots
+  logic miu_ooe_cmpl_s0_valid;
+  ccv_miu_ooe_cmpl_t miu_ooe_cmpl_s0_payload;
+  logic miu_ooe_cmpl_s0_credit;
+  logic miu_ooe_cmpl_s0_stall;
+  logic miu_ooe_cmpl_s1_valid;
+  ccv_miu_ooe_cmpl_t miu_ooe_cmpl_s1_payload;
+  logic miu_ooe_cmpl_s1_credit;
+  logic miu_ooe_cmpl_s1_stall;
+  logic miu_ooe_cmpl_s2_valid;
+  ccv_miu_ooe_cmpl_t miu_ooe_cmpl_s2_payload;
+  logic miu_ooe_cmpl_s2_credit;
+  logic miu_ooe_cmpl_s2_stall;
+  logic miu_ooe_cmpl_s3_valid;
+  ccv_miu_ooe_cmpl_t miu_ooe_cmpl_s3_payload;
+  logic miu_ooe_cmpl_s3_credit;
+  logic miu_ooe_cmpl_s3_stall;
+  logic miu_ooe_cmpl_wake;
+`ifdef CCV_TRACE
+  logic [63:0] miu_ooe_cmpl_s0_tid;
+  logic [63:0] miu_ooe_cmpl_s1_tid;
+  logic [63:0] miu_ooe_cmpl_s2_tid;
+  logic [63:0] miu_ooe_cmpl_s3_tid;
+`endif
+  // ccv_ooe_miu_retire: ooe -> miu, 1 copy x 4 slots
+  logic ooe_miu_retire_s0_valid;
+  ccv_ooe_miu_retire_t ooe_miu_retire_s0_payload;
+  logic ooe_miu_retire_s0_credit;
+  logic ooe_miu_retire_s0_stall;
+  logic ooe_miu_retire_s1_valid;
+  ccv_ooe_miu_retire_t ooe_miu_retire_s1_payload;
+  logic ooe_miu_retire_s1_credit;
+  logic ooe_miu_retire_s1_stall;
+  logic ooe_miu_retire_s2_valid;
+  ccv_ooe_miu_retire_t ooe_miu_retire_s2_payload;
+  logic ooe_miu_retire_s2_credit;
+  logic ooe_miu_retire_s2_stall;
+  logic ooe_miu_retire_s3_valid;
+  ccv_ooe_miu_retire_t ooe_miu_retire_s3_payload;
+  logic ooe_miu_retire_s3_credit;
+  logic ooe_miu_retire_s3_stall;
+  logic ooe_miu_retire_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_miu_retire_s0_tid;
+  logic [63:0] ooe_miu_retire_s1_tid;
+  logic [63:0] ooe_miu_retire_s2_tid;
+  logic [63:0] ooe_miu_retire_s3_tid;
+`endif
+  // ccv_ooe_fet_redirect: ooe -> fet, 1 copy x 1 slot
+  logic ooe_fet_redirect_valid;
+  ccv_ooe_fet_redirect_t ooe_fet_redirect_payload;
+  logic ooe_fet_redirect_credit;
+  logic ooe_fet_redirect_stall;
+  logic ooe_fet_redirect_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_fet_redirect_tid;
+`endif
+  // ccv_ooe_fet_ckpt_free: ooe -> fet, 1 copy x 1 slot
+  logic ooe_fet_ckpt_free_valid;
+  ccv_ooe_fet_ckpt_free_t ooe_fet_ckpt_free_payload;
+  logic ooe_fet_ckpt_free_credit;
+  logic ooe_fet_ckpt_free_stall;
+  logic ooe_fet_ckpt_free_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_fet_ckpt_free_tid;
+`endif
+  // ccv_miu_spm_req: miu -> spm, 1 copy x 4 slots
+  logic miu_spm_req_s0_valid;
+  ccv_miu_spm_req_t miu_spm_req_s0_payload;
+  logic miu_spm_req_s0_credit;
+  logic miu_spm_req_s0_stall;
+  logic miu_spm_req_s1_valid;
+  ccv_miu_spm_req_t miu_spm_req_s1_payload;
+  logic miu_spm_req_s1_credit;
+  logic miu_spm_req_s1_stall;
+  logic miu_spm_req_s2_valid;
+  ccv_miu_spm_req_t miu_spm_req_s2_payload;
+  logic miu_spm_req_s2_credit;
+  logic miu_spm_req_s2_stall;
+  logic miu_spm_req_s3_valid;
+  ccv_miu_spm_req_t miu_spm_req_s3_payload;
+  logic miu_spm_req_s3_credit;
+  logic miu_spm_req_s3_stall;
+  logic miu_spm_req_wake;
+`ifdef CCV_TRACE
+  logic [63:0] miu_spm_req_s0_tid;
+  logic [63:0] miu_spm_req_s1_tid;
+  logic [63:0] miu_spm_req_s2_tid;
+  logic [63:0] miu_spm_req_s3_tid;
+`endif
+  // ccv_spm_miu_rsp: spm -> miu, 1 copy x 4 slots
+  logic spm_miu_rsp_s0_valid;
+  ccv_spm_miu_rsp_t spm_miu_rsp_s0_payload;
+  logic spm_miu_rsp_s0_credit;
+  logic spm_miu_rsp_s0_stall;
+  logic spm_miu_rsp_s1_valid;
+  ccv_spm_miu_rsp_t spm_miu_rsp_s1_payload;
+  logic spm_miu_rsp_s1_credit;
+  logic spm_miu_rsp_s1_stall;
+  logic spm_miu_rsp_s2_valid;
+  ccv_spm_miu_rsp_t spm_miu_rsp_s2_payload;
+  logic spm_miu_rsp_s2_credit;
+  logic spm_miu_rsp_s2_stall;
+  logic spm_miu_rsp_s3_valid;
+  ccv_spm_miu_rsp_t spm_miu_rsp_s3_payload;
+  logic spm_miu_rsp_s3_credit;
+  logic spm_miu_rsp_s3_stall;
+  logic spm_miu_rsp_wake;
+`ifdef CCV_TRACE
+  logic [63:0] spm_miu_rsp_s0_tid;
+  logic [63:0] spm_miu_rsp_s1_tid;
+  logic [63:0] spm_miu_rsp_s2_tid;
+  logic [63:0] spm_miu_rsp_s3_tid;
+`endif
+  // ccv_miu_dcu_req: miu -> dcu, 1 copy x 4 slots
+  logic miu_dcu_req_s0_valid;
+  ccv_miu_dcu_req_t miu_dcu_req_s0_payload;
+  logic miu_dcu_req_s0_credit;
+  logic miu_dcu_req_s0_stall;
+  logic miu_dcu_req_s1_valid;
+  ccv_miu_dcu_req_t miu_dcu_req_s1_payload;
+  logic miu_dcu_req_s1_credit;
+  logic miu_dcu_req_s1_stall;
+  logic miu_dcu_req_s2_valid;
+  ccv_miu_dcu_req_t miu_dcu_req_s2_payload;
+  logic miu_dcu_req_s2_credit;
+  logic miu_dcu_req_s2_stall;
+  logic miu_dcu_req_s3_valid;
+  ccv_miu_dcu_req_t miu_dcu_req_s3_payload;
+  logic miu_dcu_req_s3_credit;
+  logic miu_dcu_req_s3_stall;
+  logic miu_dcu_req_wake;
+`ifdef CCV_TRACE
+  logic [63:0] miu_dcu_req_s0_tid;
+  logic [63:0] miu_dcu_req_s1_tid;
+  logic [63:0] miu_dcu_req_s2_tid;
+  logic [63:0] miu_dcu_req_s3_tid;
+`endif
+  // ccv_dcu_miu_rsp: dcu -> miu, 1 copy x 4 slots
+  logic dcu_miu_rsp_s0_valid;
+  ccv_dcu_miu_rsp_t dcu_miu_rsp_s0_payload;
+  logic dcu_miu_rsp_s0_credit;
+  logic dcu_miu_rsp_s0_stall;
+  logic dcu_miu_rsp_s1_valid;
+  ccv_dcu_miu_rsp_t dcu_miu_rsp_s1_payload;
+  logic dcu_miu_rsp_s1_credit;
+  logic dcu_miu_rsp_s1_stall;
+  logic dcu_miu_rsp_s2_valid;
+  ccv_dcu_miu_rsp_t dcu_miu_rsp_s2_payload;
+  logic dcu_miu_rsp_s2_credit;
+  logic dcu_miu_rsp_s2_stall;
+  logic dcu_miu_rsp_s3_valid;
+  ccv_dcu_miu_rsp_t dcu_miu_rsp_s3_payload;
+  logic dcu_miu_rsp_s3_credit;
+  logic dcu_miu_rsp_s3_stall;
+  logic dcu_miu_rsp_wake;
+`ifdef CCV_TRACE
+  logic [63:0] dcu_miu_rsp_s0_tid;
+  logic [63:0] dcu_miu_rsp_s1_tid;
+  logic [63:0] dcu_miu_rsp_s2_tid;
+  logic [63:0] dcu_miu_rsp_s3_tid;
+`endif
+  // ccv_dcu_mlc_req: dcu -> mlc, 1 copy x 1 slot
+  logic dcu_mlc_req_valid;
+  ccv_dcu_mlc_req_t dcu_mlc_req_payload;
+  logic dcu_mlc_req_credit;
+  logic dcu_mlc_req_stall;
+  logic dcu_mlc_req_wake;
+`ifdef CCV_TRACE
+  logic [63:0] dcu_mlc_req_tid;
+`endif
+  // ccv_mlc_dcu_rsp: mlc -> dcu, 1 copy x 1 slot
+  logic mlc_dcu_rsp_valid;
+  ccv_mlc_dcu_rsp_t mlc_dcu_rsp_payload;
+  logic mlc_dcu_rsp_credit;
+  logic mlc_dcu_rsp_stall;
+  logic mlc_dcu_rsp_wake;
+`ifdef CCV_TRACE
+  logic [63:0] mlc_dcu_rsp_tid;
+`endif
+  // ccv_mlc_dcu_probe: mlc -> dcu, 1 copy x 1 slot
+  logic mlc_dcu_probe_valid;
+  ccv_mlc_dcu_probe_t mlc_dcu_probe_payload;
+  logic mlc_dcu_probe_credit;
+  logic mlc_dcu_probe_stall;
+  logic mlc_dcu_probe_wake;
+`ifdef CCV_TRACE
+  logic [63:0] mlc_dcu_probe_tid;
+`endif
+  // ccv_dcu_mlc_probe_ack: dcu -> mlc, 1 copy x 1 slot
+  logic dcu_mlc_probe_ack_valid;
+  ccv_dcu_mlc_probe_ack_t dcu_mlc_probe_ack_payload;
+  logic dcu_mlc_probe_ack_credit;
+  logic dcu_mlc_probe_ack_stall;
+  logic dcu_mlc_probe_ack_wake;
+`ifdef CCV_TRACE
+  logic [63:0] dcu_mlc_probe_ack_tid;
+`endif
+  // ccv_fet_mlc_ifill: fet -> mlc, 1 copy x 1 slot
+  logic fet_mlc_ifill_valid;
+  ccv_fet_mlc_ifill_t fet_mlc_ifill_payload;
+  logic fet_mlc_ifill_credit;
+  logic fet_mlc_ifill_stall;
+  logic fet_mlc_ifill_wake;
+`ifdef CCV_TRACE
+  logic [63:0] fet_mlc_ifill_tid;
+`endif
+  // ccv_mlc_fet_ifill_rsp: mlc -> fet, 1 copy x 1 slot
+  logic mlc_fet_ifill_rsp_valid;
+  ccv_mlc_fet_ifill_rsp_t mlc_fet_ifill_rsp_payload;
+  logic mlc_fet_ifill_rsp_credit;
+  logic mlc_fet_ifill_rsp_stall;
+  logic mlc_fet_ifill_rsp_wake;
+`ifdef CCV_TRACE
+  logic [63:0] mlc_fet_ifill_rsp_tid;
+`endif
+  // ccv_miu_fet_itlb: miu -> fet, 1 copy x 1 slot
+  logic miu_fet_itlb_valid;
+  ccv_miu_fet_itlb_t miu_fet_itlb_payload;
+  logic miu_fet_itlb_credit;
+  logic miu_fet_itlb_stall;
+  logic miu_fet_itlb_wake;
+`ifdef CCV_TRACE
+  logic [63:0] miu_fet_itlb_tid;
+`endif
+  // ccv_fet_miu_itlb_req: fet -> miu, 1 copy x 1 slot
+  logic fet_miu_itlb_req_valid;
+  ccv_fet_miu_itlb_req_t fet_miu_itlb_req_payload;
+  logic fet_miu_itlb_req_credit;
+  logic fet_miu_itlb_req_stall;
+  logic fet_miu_itlb_req_wake;
+`ifdef CCV_TRACE
+  logic [63:0] fet_miu_itlb_req_tid;
+`endif
+  // ccv_mlc_exb_req: mlc -> exb, 1 copy x 1 slot
+  logic mlc_exb_req_valid;
+  ccv_mlc_exb_req_t mlc_exb_req_payload;
+  logic mlc_exb_req_credit;
+  logic mlc_exb_req_stall;
+  logic mlc_exb_req_wake;
+`ifdef CCV_TRACE
+  logic [63:0] mlc_exb_req_tid;
+`endif
+  // ccv_exb_mlc_rsp: exb -> mlc, 1 copy x 1 slot
+  logic exb_mlc_rsp_valid;
+  ccv_exb_mlc_rsp_t exb_mlc_rsp_payload;
+  logic exb_mlc_rsp_credit;
+  logic exb_mlc_rsp_stall;
+  logic exb_mlc_rsp_wake;
+`ifdef CCV_TRACE
+  logic [63:0] exb_mlc_rsp_tid;
+`endif
+  // ccv_rau_fet_launch: rau -> fet, 1 copy x 1 slot
+  logic rau_fet_launch_valid;
+  ccv_rau_fet_launch_t rau_fet_launch_payload;
+  logic rau_fet_launch_credit;
+  logic rau_fet_launch_stall;
+  logic rau_fet_launch_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_fet_launch_tid;
+`endif
+  // ccv_rau_ooe_alloc: rau -> ooe, 1 copy x 1 slot
+  logic rau_ooe_alloc_valid;
+  ccv_rau_ooe_alloc_t rau_ooe_alloc_payload;
+  logic rau_ooe_alloc_credit;
+  logic rau_ooe_alloc_stall;
+  logic rau_ooe_alloc_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_ooe_alloc_tid;
+`endif
+  // ccv_ooe_rau_status: ooe -> rau, 1 copy x 1 slot
+  logic ooe_rau_status_valid;
+  ccv_ooe_rau_status_t ooe_rau_status_payload;
+  logic ooe_rau_status_credit;
+  logic ooe_rau_status_stall;
+  logic ooe_rau_status_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_rau_status_tid;
+`endif
+  // ccv_rau_ooe_demote: rau -> ooe, 1 copy x 1 slot
+  logic rau_ooe_demote_valid;
+  ccv_rau_ooe_demote_t rau_ooe_demote_payload;
+  logic rau_ooe_demote_credit;
+  logic rau_ooe_demote_stall;
+  logic rau_ooe_demote_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_ooe_demote_tid;
+`endif
+  // ccv_ooe_rau_drained: ooe -> rau, 1 copy x 1 slot
+  logic ooe_rau_drained_valid;
+  ccv_ooe_rau_drained_t ooe_rau_drained_payload;
+  logic ooe_rau_drained_credit;
+  logic ooe_rau_drained_stall;
+  logic ooe_rau_drained_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_rau_drained_tid;
+`endif
+  // ccv_rau_rcu_mig: rau -> rcu, 1 copy x 1 slot
+  logic rau_rcu_mig_valid;
+  ccv_rau_rcu_mig_t rau_rcu_mig_payload;
+  logic rau_rcu_mig_credit;
+  logic rau_rcu_mig_stall;
+  logic rau_rcu_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_rcu_mig_tid;
+`endif
+  // ccv_ooe_rcu_map: ooe -> rcu, 1 copy x 1 slot
+  logic ooe_rcu_map_valid;
+  ccv_ooe_rcu_map_t ooe_rcu_map_payload;
+  logic ooe_rcu_map_credit;
+  logic ooe_rcu_map_stall;
+  logic ooe_rcu_map_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_rcu_map_tid;
+`endif
+  // ccv_rcu_pca_mig: rcu -> pca, 1 copy x 1 slot
+  logic rcu_pca_mig_valid;
+  ccv_rcu_pca_mig_t rcu_pca_mig_payload;
+  logic rcu_pca_mig_credit;
+  logic rcu_pca_mig_stall;
+  logic rcu_pca_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rcu_pca_mig_tid;
+`endif
+  // ccv_pca_rcu_mig: pca -> rcu, 1 copy x 1 slot
+  logic pca_rcu_mig_valid;
+  ccv_pca_rcu_mig_t pca_rcu_mig_payload;
+  logic pca_rcu_mig_credit;
+  logic pca_rcu_mig_stall;
+  logic pca_rcu_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] pca_rcu_mig_tid;
+`endif
+  // ccv_fet_pca_mig: fet -> pca, 1 copy x 1 slot
+  logic fet_pca_mig_valid;
+  ccv_fet_pca_mig_t fet_pca_mig_payload;
+  logic fet_pca_mig_credit;
+  logic fet_pca_mig_stall;
+  logic fet_pca_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] fet_pca_mig_tid;
+`endif
+  // ccv_pca_fet_mig: pca -> fet, 1 copy x 1 slot
+  logic pca_fet_mig_valid;
+  ccv_pca_fet_mig_t pca_fet_mig_payload;
+  logic pca_fet_mig_credit;
+  logic pca_fet_mig_stall;
+  logic pca_fet_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] pca_fet_mig_tid;
+`endif
+  // ccv_rau_fet_mig: rau -> fet, 1 copy x 1 slot
+  logic rau_fet_mig_valid;
+  ccv_rau_fet_mig_t rau_fet_mig_payload;
+  logic rau_fet_mig_credit;
+  logic rau_fet_mig_stall;
+  logic rau_fet_mig_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_fet_mig_tid;
+`endif
+  // ccv_pca_rau_mig_done: pca -> rau, 1 copy x 1 slot
+  logic pca_rau_mig_done_valid;
+  ccv_pca_rau_mig_done_t pca_rau_mig_done_payload;
+  logic pca_rau_mig_done_credit;
+  logic pca_rau_mig_done_stall;
+  logic pca_rau_mig_done_wake;
+`ifdef CCV_TRACE
+  logic [63:0] pca_rau_mig_done_tid;
+`endif
+  // ccv_rau_miu_cta: rau -> miu, 1 copy x 1 slot
+  logic rau_miu_cta_valid;
+  ccv_rau_miu_cta_t rau_miu_cta_payload;
+  logic rau_miu_cta_credit;
+  logic rau_miu_cta_stall;
+  logic rau_miu_cta_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_miu_cta_tid;
+`endif
+  // ccv_ooe_syu_bar: ooe -> syu, 1 copy x 1 slot
+  logic ooe_syu_bar_valid;
+  ccv_ooe_syu_bar_t ooe_syu_bar_payload;
+  logic ooe_syu_bar_credit;
+  logic ooe_syu_bar_stall;
+  logic ooe_syu_bar_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_syu_bar_tid;
+`endif
+  // ccv_syu_ooe_rel: syu -> ooe, 1 copy x 1 slot
+  logic syu_ooe_rel_valid;
+  ccv_syu_ooe_rel_t syu_ooe_rel_payload;
+  logic syu_ooe_rel_credit;
+  logic syu_ooe_rel_stall;
+  logic syu_ooe_rel_wake;
+`ifdef CCV_TRACE
+  logic [63:0] syu_ooe_rel_tid;
+`endif
+  // ccv_rau_syu_alloc: rau -> syu, 1 copy x 1 slot
+  logic rau_syu_alloc_valid;
+  ccv_rau_syu_alloc_t rau_syu_alloc_payload;
+  logic rau_syu_alloc_credit;
+  logic rau_syu_alloc_stall;
+  logic rau_syu_alloc_wake;
+`ifdef CCV_TRACE
+  logic [63:0] rau_syu_alloc_tid;
+`endif
+  // ccv_ooe_cru_fault: ooe -> cru, 1 copy x 1 slot
+  logic ooe_cru_fault_valid;
+  ccv_ooe_cru_fault_t ooe_cru_fault_payload;
+  logic ooe_cru_fault_credit;
+  logic ooe_cru_fault_stall;
+  logic ooe_cru_fault_wake;
+`ifdef CCV_TRACE
+  logic [63:0] ooe_cru_fault_tid;
+`endif
+  // ccv_cru_rau_cfg: cru -> rau, 1 copy x 1 slot
+  logic cru_rau_cfg_valid;
+  ccv_cru_rau_cfg_t cru_rau_cfg_payload;
+  logic cru_rau_cfg_credit;
+  logic cru_rau_cfg_stall;
+  logic cru_rau_cfg_wake;
+`ifdef CCV_TRACE
+  logic [63:0] cru_rau_cfg_tid;
+`endif
+
+  ccv_fet_w u_fet (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[0]),
+    .kill_ack_epoch(kill_ack_epoch[0 +: 2]),
+    .csr_req(csr_reqs[0 +: 49]),
+    .csr_rsp(csr_rsps[0 +: 33]),
+    .csr_credit(csr_credits[0]),
+    .fet_dec_instr_s0_valid(fet_dec_instr_s0_valid),
+    .fet_dec_instr_s0_payload(fet_dec_instr_s0_payload),
+    .fet_dec_instr_s0_credit(fet_dec_instr_s0_credit),
+    .fet_dec_instr_s0_stall(fet_dec_instr_s0_stall),
+    .fet_dec_instr_s1_valid(fet_dec_instr_s1_valid),
+    .fet_dec_instr_s1_payload(fet_dec_instr_s1_payload),
+    .fet_dec_instr_s1_credit(fet_dec_instr_s1_credit),
+    .fet_dec_instr_s1_stall(fet_dec_instr_s1_stall),
+    .fet_dec_instr_s2_valid(fet_dec_instr_s2_valid),
+    .fet_dec_instr_s2_payload(fet_dec_instr_s2_payload),
+    .fet_dec_instr_s2_credit(fet_dec_instr_s2_credit),
+    .fet_dec_instr_s2_stall(fet_dec_instr_s2_stall),
+    .fet_dec_instr_s3_valid(fet_dec_instr_s3_valid),
+    .fet_dec_instr_s3_payload(fet_dec_instr_s3_payload),
+    .fet_dec_instr_s3_credit(fet_dec_instr_s3_credit),
+    .fet_dec_instr_s3_stall(fet_dec_instr_s3_stall),
+    .fet_dec_instr_s4_valid(fet_dec_instr_s4_valid),
+    .fet_dec_instr_s4_payload(fet_dec_instr_s4_payload),
+    .fet_dec_instr_s4_credit(fet_dec_instr_s4_credit),
+    .fet_dec_instr_s4_stall(fet_dec_instr_s4_stall),
+    .fet_dec_instr_s5_valid(fet_dec_instr_s5_valid),
+    .fet_dec_instr_s5_payload(fet_dec_instr_s5_payload),
+    .fet_dec_instr_s5_credit(fet_dec_instr_s5_credit),
+    .fet_dec_instr_s5_stall(fet_dec_instr_s5_stall),
+    .fet_dec_instr_s6_valid(fet_dec_instr_s6_valid),
+    .fet_dec_instr_s6_payload(fet_dec_instr_s6_payload),
+    .fet_dec_instr_s6_credit(fet_dec_instr_s6_credit),
+    .fet_dec_instr_s6_stall(fet_dec_instr_s6_stall),
+    .fet_dec_instr_s7_valid(fet_dec_instr_s7_valid),
+    .fet_dec_instr_s7_payload(fet_dec_instr_s7_payload),
+    .fet_dec_instr_s7_credit(fet_dec_instr_s7_credit),
+    .fet_dec_instr_s7_stall(fet_dec_instr_s7_stall),
+    .fet_dec_instr_wake(fet_dec_instr_wake),
+    .ooe_fet_redirect_valid(ooe_fet_redirect_valid),
+    .ooe_fet_redirect_payload(ooe_fet_redirect_payload),
+    .ooe_fet_redirect_credit(ooe_fet_redirect_credit),
+    .ooe_fet_redirect_stall(ooe_fet_redirect_stall),
+    .ooe_fet_redirect_wake(ooe_fet_redirect_wake),
+    .ooe_fet_ckpt_free_valid(ooe_fet_ckpt_free_valid),
+    .ooe_fet_ckpt_free_payload(ooe_fet_ckpt_free_payload),
+    .ooe_fet_ckpt_free_credit(ooe_fet_ckpt_free_credit),
+    .ooe_fet_ckpt_free_stall(ooe_fet_ckpt_free_stall),
+    .ooe_fet_ckpt_free_wake(ooe_fet_ckpt_free_wake),
+    .fet_mlc_ifill_valid(fet_mlc_ifill_valid),
+    .fet_mlc_ifill_payload(fet_mlc_ifill_payload),
+    .fet_mlc_ifill_credit(fet_mlc_ifill_credit),
+    .fet_mlc_ifill_stall(fet_mlc_ifill_stall),
+    .fet_mlc_ifill_wake(fet_mlc_ifill_wake),
+    .mlc_fet_ifill_rsp_valid(mlc_fet_ifill_rsp_valid),
+    .mlc_fet_ifill_rsp_payload(mlc_fet_ifill_rsp_payload),
+    .mlc_fet_ifill_rsp_credit(mlc_fet_ifill_rsp_credit),
+    .mlc_fet_ifill_rsp_stall(mlc_fet_ifill_rsp_stall),
+    .mlc_fet_ifill_rsp_wake(mlc_fet_ifill_rsp_wake),
+    .miu_fet_itlb_valid(miu_fet_itlb_valid),
+    .miu_fet_itlb_payload(miu_fet_itlb_payload),
+    .miu_fet_itlb_credit(miu_fet_itlb_credit),
+    .miu_fet_itlb_stall(miu_fet_itlb_stall),
+    .miu_fet_itlb_wake(miu_fet_itlb_wake),
+    .fet_miu_itlb_req_valid(fet_miu_itlb_req_valid),
+    .fet_miu_itlb_req_payload(fet_miu_itlb_req_payload),
+    .fet_miu_itlb_req_credit(fet_miu_itlb_req_credit),
+    .fet_miu_itlb_req_stall(fet_miu_itlb_req_stall),
+    .fet_miu_itlb_req_wake(fet_miu_itlb_req_wake),
+    .rau_fet_launch_valid(rau_fet_launch_valid),
+    .rau_fet_launch_payload(rau_fet_launch_payload),
+    .rau_fet_launch_credit(rau_fet_launch_credit),
+    .rau_fet_launch_stall(rau_fet_launch_stall),
+    .rau_fet_launch_wake(rau_fet_launch_wake),
+    .fet_pca_mig_valid(fet_pca_mig_valid),
+    .fet_pca_mig_payload(fet_pca_mig_payload),
+    .fet_pca_mig_credit(fet_pca_mig_credit),
+    .fet_pca_mig_stall(fet_pca_mig_stall),
+    .fet_pca_mig_wake(fet_pca_mig_wake),
+    .pca_fet_mig_valid(pca_fet_mig_valid),
+    .pca_fet_mig_payload(pca_fet_mig_payload),
+    .pca_fet_mig_credit(pca_fet_mig_credit),
+    .pca_fet_mig_stall(pca_fet_mig_stall),
+    .pca_fet_mig_wake(pca_fet_mig_wake),
+    .rau_fet_mig_valid(rau_fet_mig_valid),
+    .rau_fet_mig_payload(rau_fet_mig_payload),
+    .rau_fet_mig_credit(rau_fet_mig_credit),
+    .rau_fet_mig_stall(rau_fet_mig_stall),
+    .rau_fet_mig_wake(rau_fet_mig_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(fet_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .fet_dec_instr_s0_tid(fet_dec_instr_s0_tid)
+    , .fet_dec_instr_s1_tid(fet_dec_instr_s1_tid)
+    , .fet_dec_instr_s2_tid(fet_dec_instr_s2_tid)
+    , .fet_dec_instr_s3_tid(fet_dec_instr_s3_tid)
+    , .fet_dec_instr_s4_tid(fet_dec_instr_s4_tid)
+    , .fet_dec_instr_s5_tid(fet_dec_instr_s5_tid)
+    , .fet_dec_instr_s6_tid(fet_dec_instr_s6_tid)
+    , .fet_dec_instr_s7_tid(fet_dec_instr_s7_tid)
+    , .ooe_fet_redirect_tid(ooe_fet_redirect_tid)
+    , .ooe_fet_ckpt_free_tid(ooe_fet_ckpt_free_tid)
+    , .fet_mlc_ifill_tid(fet_mlc_ifill_tid)
+    , .mlc_fet_ifill_rsp_tid(mlc_fet_ifill_rsp_tid)
+    , .miu_fet_itlb_tid(miu_fet_itlb_tid)
+    , .fet_miu_itlb_req_tid(fet_miu_itlb_req_tid)
+    , .rau_fet_launch_tid(rau_fet_launch_tid)
+    , .fet_pca_mig_tid(fet_pca_mig_tid)
+    , .pca_fet_mig_tid(pca_fet_mig_tid)
+    , .rau_fet_mig_tid(rau_fet_mig_tid)
+`endif
+  );
+
+  ccv_dec_w u_dec (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[1]),
+    .kill_ack_epoch(kill_ack_epoch[2 +: 2]),
+    .csr_req(csr_reqs[49 +: 49]),
+    .csr_rsp(csr_rsps[33 +: 33]),
+    .csr_credit(csr_credits[1]),
+    .fet_dec_instr_s0_valid(fet_dec_instr_s0_valid),
+    .fet_dec_instr_s0_payload(fet_dec_instr_s0_payload),
+    .fet_dec_instr_s0_credit(fet_dec_instr_s0_credit),
+    .fet_dec_instr_s0_stall(fet_dec_instr_s0_stall),
+    .fet_dec_instr_s1_valid(fet_dec_instr_s1_valid),
+    .fet_dec_instr_s1_payload(fet_dec_instr_s1_payload),
+    .fet_dec_instr_s1_credit(fet_dec_instr_s1_credit),
+    .fet_dec_instr_s1_stall(fet_dec_instr_s1_stall),
+    .fet_dec_instr_s2_valid(fet_dec_instr_s2_valid),
+    .fet_dec_instr_s2_payload(fet_dec_instr_s2_payload),
+    .fet_dec_instr_s2_credit(fet_dec_instr_s2_credit),
+    .fet_dec_instr_s2_stall(fet_dec_instr_s2_stall),
+    .fet_dec_instr_s3_valid(fet_dec_instr_s3_valid),
+    .fet_dec_instr_s3_payload(fet_dec_instr_s3_payload),
+    .fet_dec_instr_s3_credit(fet_dec_instr_s3_credit),
+    .fet_dec_instr_s3_stall(fet_dec_instr_s3_stall),
+    .fet_dec_instr_s4_valid(fet_dec_instr_s4_valid),
+    .fet_dec_instr_s4_payload(fet_dec_instr_s4_payload),
+    .fet_dec_instr_s4_credit(fet_dec_instr_s4_credit),
+    .fet_dec_instr_s4_stall(fet_dec_instr_s4_stall),
+    .fet_dec_instr_s5_valid(fet_dec_instr_s5_valid),
+    .fet_dec_instr_s5_payload(fet_dec_instr_s5_payload),
+    .fet_dec_instr_s5_credit(fet_dec_instr_s5_credit),
+    .fet_dec_instr_s5_stall(fet_dec_instr_s5_stall),
+    .fet_dec_instr_s6_valid(fet_dec_instr_s6_valid),
+    .fet_dec_instr_s6_payload(fet_dec_instr_s6_payload),
+    .fet_dec_instr_s6_credit(fet_dec_instr_s6_credit),
+    .fet_dec_instr_s6_stall(fet_dec_instr_s6_stall),
+    .fet_dec_instr_s7_valid(fet_dec_instr_s7_valid),
+    .fet_dec_instr_s7_payload(fet_dec_instr_s7_payload),
+    .fet_dec_instr_s7_credit(fet_dec_instr_s7_credit),
+    .fet_dec_instr_s7_stall(fet_dec_instr_s7_stall),
+    .fet_dec_instr_wake(fet_dec_instr_wake),
+    .dec_ooe_uop_s0_valid(dec_ooe_uop_s0_valid),
+    .dec_ooe_uop_s0_payload(dec_ooe_uop_s0_payload),
+    .dec_ooe_uop_s0_credit(dec_ooe_uop_s0_credit),
+    .dec_ooe_uop_s0_stall(dec_ooe_uop_s0_stall),
+    .dec_ooe_uop_s1_valid(dec_ooe_uop_s1_valid),
+    .dec_ooe_uop_s1_payload(dec_ooe_uop_s1_payload),
+    .dec_ooe_uop_s1_credit(dec_ooe_uop_s1_credit),
+    .dec_ooe_uop_s1_stall(dec_ooe_uop_s1_stall),
+    .dec_ooe_uop_s2_valid(dec_ooe_uop_s2_valid),
+    .dec_ooe_uop_s2_payload(dec_ooe_uop_s2_payload),
+    .dec_ooe_uop_s2_credit(dec_ooe_uop_s2_credit),
+    .dec_ooe_uop_s2_stall(dec_ooe_uop_s2_stall),
+    .dec_ooe_uop_s3_valid(dec_ooe_uop_s3_valid),
+    .dec_ooe_uop_s3_payload(dec_ooe_uop_s3_payload),
+    .dec_ooe_uop_s3_credit(dec_ooe_uop_s3_credit),
+    .dec_ooe_uop_s3_stall(dec_ooe_uop_s3_stall),
+    .dec_ooe_uop_s4_valid(dec_ooe_uop_s4_valid),
+    .dec_ooe_uop_s4_payload(dec_ooe_uop_s4_payload),
+    .dec_ooe_uop_s4_credit(dec_ooe_uop_s4_credit),
+    .dec_ooe_uop_s4_stall(dec_ooe_uop_s4_stall),
+    .dec_ooe_uop_s5_valid(dec_ooe_uop_s5_valid),
+    .dec_ooe_uop_s5_payload(dec_ooe_uop_s5_payload),
+    .dec_ooe_uop_s5_credit(dec_ooe_uop_s5_credit),
+    .dec_ooe_uop_s5_stall(dec_ooe_uop_s5_stall),
+    .dec_ooe_uop_wake(dec_ooe_uop_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(dec_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .fet_dec_instr_s0_tid(fet_dec_instr_s0_tid)
+    , .fet_dec_instr_s1_tid(fet_dec_instr_s1_tid)
+    , .fet_dec_instr_s2_tid(fet_dec_instr_s2_tid)
+    , .fet_dec_instr_s3_tid(fet_dec_instr_s3_tid)
+    , .fet_dec_instr_s4_tid(fet_dec_instr_s4_tid)
+    , .fet_dec_instr_s5_tid(fet_dec_instr_s5_tid)
+    , .fet_dec_instr_s6_tid(fet_dec_instr_s6_tid)
+    , .fet_dec_instr_s7_tid(fet_dec_instr_s7_tid)
+    , .dec_ooe_uop_s0_tid(dec_ooe_uop_s0_tid)
+    , .dec_ooe_uop_s1_tid(dec_ooe_uop_s1_tid)
+    , .dec_ooe_uop_s2_tid(dec_ooe_uop_s2_tid)
+    , .dec_ooe_uop_s3_tid(dec_ooe_uop_s3_tid)
+    , .dec_ooe_uop_s4_tid(dec_ooe_uop_s4_tid)
+    , .dec_ooe_uop_s5_tid(dec_ooe_uop_s5_tid)
+`endif
+  );
+
+  ccv_ooe_w u_ooe (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[2]),
+    .kill_ack_epoch(kill_ack_epoch[4 +: 2]),
+    .csr_req(csr_reqs[98 +: 49]),
+    .csr_rsp(csr_rsps[66 +: 33]),
+    .csr_credit(csr_credits[2]),
+    .dec_ooe_uop_s0_valid(dec_ooe_uop_s0_valid),
+    .dec_ooe_uop_s0_payload(dec_ooe_uop_s0_payload),
+    .dec_ooe_uop_s0_credit(dec_ooe_uop_s0_credit),
+    .dec_ooe_uop_s0_stall(dec_ooe_uop_s0_stall),
+    .dec_ooe_uop_s1_valid(dec_ooe_uop_s1_valid),
+    .dec_ooe_uop_s1_payload(dec_ooe_uop_s1_payload),
+    .dec_ooe_uop_s1_credit(dec_ooe_uop_s1_credit),
+    .dec_ooe_uop_s1_stall(dec_ooe_uop_s1_stall),
+    .dec_ooe_uop_s2_valid(dec_ooe_uop_s2_valid),
+    .dec_ooe_uop_s2_payload(dec_ooe_uop_s2_payload),
+    .dec_ooe_uop_s2_credit(dec_ooe_uop_s2_credit),
+    .dec_ooe_uop_s2_stall(dec_ooe_uop_s2_stall),
+    .dec_ooe_uop_s3_valid(dec_ooe_uop_s3_valid),
+    .dec_ooe_uop_s3_payload(dec_ooe_uop_s3_payload),
+    .dec_ooe_uop_s3_credit(dec_ooe_uop_s3_credit),
+    .dec_ooe_uop_s3_stall(dec_ooe_uop_s3_stall),
+    .dec_ooe_uop_s4_valid(dec_ooe_uop_s4_valid),
+    .dec_ooe_uop_s4_payload(dec_ooe_uop_s4_payload),
+    .dec_ooe_uop_s4_credit(dec_ooe_uop_s4_credit),
+    .dec_ooe_uop_s4_stall(dec_ooe_uop_s4_stall),
+    .dec_ooe_uop_s5_valid(dec_ooe_uop_s5_valid),
+    .dec_ooe_uop_s5_payload(dec_ooe_uop_s5_payload),
+    .dec_ooe_uop_s5_credit(dec_ooe_uop_s5_credit),
+    .dec_ooe_uop_s5_stall(dec_ooe_uop_s5_stall),
+    .dec_ooe_uop_wake(dec_ooe_uop_wake),
+    .ooe_rcu_issue_s0_valid(ooe_rcu_issue_s0_valid),
+    .ooe_rcu_issue_s0_payload(ooe_rcu_issue_s0_payload),
+    .ooe_rcu_issue_s0_credit(ooe_rcu_issue_s0_credit),
+    .ooe_rcu_issue_s0_stall(ooe_rcu_issue_s0_stall),
+    .ooe_rcu_issue_s1_valid(ooe_rcu_issue_s1_valid),
+    .ooe_rcu_issue_s1_payload(ooe_rcu_issue_s1_payload),
+    .ooe_rcu_issue_s1_credit(ooe_rcu_issue_s1_credit),
+    .ooe_rcu_issue_s1_stall(ooe_rcu_issue_s1_stall),
+    .ooe_rcu_issue_s2_valid(ooe_rcu_issue_s2_valid),
+    .ooe_rcu_issue_s2_payload(ooe_rcu_issue_s2_payload),
+    .ooe_rcu_issue_s2_credit(ooe_rcu_issue_s2_credit),
+    .ooe_rcu_issue_s2_stall(ooe_rcu_issue_s2_stall),
+    .ooe_rcu_issue_s3_valid(ooe_rcu_issue_s3_valid),
+    .ooe_rcu_issue_s3_payload(ooe_rcu_issue_s3_payload),
+    .ooe_rcu_issue_s3_credit(ooe_rcu_issue_s3_credit),
+    .ooe_rcu_issue_s3_stall(ooe_rcu_issue_s3_stall),
+    .ooe_rcu_issue_s4_valid(ooe_rcu_issue_s4_valid),
+    .ooe_rcu_issue_s4_payload(ooe_rcu_issue_s4_payload),
+    .ooe_rcu_issue_s4_credit(ooe_rcu_issue_s4_credit),
+    .ooe_rcu_issue_s4_stall(ooe_rcu_issue_s4_stall),
+    .ooe_rcu_issue_s5_valid(ooe_rcu_issue_s5_valid),
+    .ooe_rcu_issue_s5_payload(ooe_rcu_issue_s5_payload),
+    .ooe_rcu_issue_s5_credit(ooe_rcu_issue_s5_credit),
+    .ooe_rcu_issue_s5_stall(ooe_rcu_issue_s5_stall),
+    .ooe_rcu_issue_s6_valid(ooe_rcu_issue_s6_valid),
+    .ooe_rcu_issue_s6_payload(ooe_rcu_issue_s6_payload),
+    .ooe_rcu_issue_s6_credit(ooe_rcu_issue_s6_credit),
+    .ooe_rcu_issue_s6_stall(ooe_rcu_issue_s6_stall),
+    .ooe_rcu_issue_s7_valid(ooe_rcu_issue_s7_valid),
+    .ooe_rcu_issue_s7_payload(ooe_rcu_issue_s7_payload),
+    .ooe_rcu_issue_s7_credit(ooe_rcu_issue_s7_credit),
+    .ooe_rcu_issue_s7_stall(ooe_rcu_issue_s7_stall),
+    .ooe_rcu_issue_s8_valid(ooe_rcu_issue_s8_valid),
+    .ooe_rcu_issue_s8_payload(ooe_rcu_issue_s8_payload),
+    .ooe_rcu_issue_s8_credit(ooe_rcu_issue_s8_credit),
+    .ooe_rcu_issue_s8_stall(ooe_rcu_issue_s8_stall),
+    .ooe_rcu_issue_wake(ooe_rcu_issue_wake),
+    .rcu_ooe_done_s0_valid(rcu_ooe_done_s0_valid),
+    .rcu_ooe_done_s0_payload(rcu_ooe_done_s0_payload),
+    .rcu_ooe_done_s0_credit(rcu_ooe_done_s0_credit),
+    .rcu_ooe_done_s0_stall(rcu_ooe_done_s0_stall),
+    .rcu_ooe_done_s1_valid(rcu_ooe_done_s1_valid),
+    .rcu_ooe_done_s1_payload(rcu_ooe_done_s1_payload),
+    .rcu_ooe_done_s1_credit(rcu_ooe_done_s1_credit),
+    .rcu_ooe_done_s1_stall(rcu_ooe_done_s1_stall),
+    .rcu_ooe_done_s2_valid(rcu_ooe_done_s2_valid),
+    .rcu_ooe_done_s2_payload(rcu_ooe_done_s2_payload),
+    .rcu_ooe_done_s2_credit(rcu_ooe_done_s2_credit),
+    .rcu_ooe_done_s2_stall(rcu_ooe_done_s2_stall),
+    .rcu_ooe_done_s3_valid(rcu_ooe_done_s3_valid),
+    .rcu_ooe_done_s3_payload(rcu_ooe_done_s3_payload),
+    .rcu_ooe_done_s3_credit(rcu_ooe_done_s3_credit),
+    .rcu_ooe_done_s3_stall(rcu_ooe_done_s3_stall),
+    .rcu_ooe_done_s4_valid(rcu_ooe_done_s4_valid),
+    .rcu_ooe_done_s4_payload(rcu_ooe_done_s4_payload),
+    .rcu_ooe_done_s4_credit(rcu_ooe_done_s4_credit),
+    .rcu_ooe_done_s4_stall(rcu_ooe_done_s4_stall),
+    .rcu_ooe_done_s5_valid(rcu_ooe_done_s5_valid),
+    .rcu_ooe_done_s5_payload(rcu_ooe_done_s5_payload),
+    .rcu_ooe_done_s5_credit(rcu_ooe_done_s5_credit),
+    .rcu_ooe_done_s5_stall(rcu_ooe_done_s5_stall),
+    .rcu_ooe_done_s6_valid(rcu_ooe_done_s6_valid),
+    .rcu_ooe_done_s6_payload(rcu_ooe_done_s6_payload),
+    .rcu_ooe_done_s6_credit(rcu_ooe_done_s6_credit),
+    .rcu_ooe_done_s6_stall(rcu_ooe_done_s6_stall),
+    .rcu_ooe_done_wake(rcu_ooe_done_wake),
+    .ooe_miu_memop_s0_valid(ooe_miu_memop_s0_valid),
+    .ooe_miu_memop_s0_payload(ooe_miu_memop_s0_payload),
+    .ooe_miu_memop_s0_credit(ooe_miu_memop_s0_credit),
+    .ooe_miu_memop_s0_stall(ooe_miu_memop_s0_stall),
+    .ooe_miu_memop_s1_valid(ooe_miu_memop_s1_valid),
+    .ooe_miu_memop_s1_payload(ooe_miu_memop_s1_payload),
+    .ooe_miu_memop_s1_credit(ooe_miu_memop_s1_credit),
+    .ooe_miu_memop_s1_stall(ooe_miu_memop_s1_stall),
+    .ooe_miu_memop_s2_valid(ooe_miu_memop_s2_valid),
+    .ooe_miu_memop_s2_payload(ooe_miu_memop_s2_payload),
+    .ooe_miu_memop_s2_credit(ooe_miu_memop_s2_credit),
+    .ooe_miu_memop_s2_stall(ooe_miu_memop_s2_stall),
+    .ooe_miu_memop_s3_valid(ooe_miu_memop_s3_valid),
+    .ooe_miu_memop_s3_payload(ooe_miu_memop_s3_payload),
+    .ooe_miu_memop_s3_credit(ooe_miu_memop_s3_credit),
+    .ooe_miu_memop_s3_stall(ooe_miu_memop_s3_stall),
+    .ooe_miu_memop_wake(ooe_miu_memop_wake),
+    .miu_ooe_cmpl_s0_valid(miu_ooe_cmpl_s0_valid),
+    .miu_ooe_cmpl_s0_payload(miu_ooe_cmpl_s0_payload),
+    .miu_ooe_cmpl_s0_credit(miu_ooe_cmpl_s0_credit),
+    .miu_ooe_cmpl_s0_stall(miu_ooe_cmpl_s0_stall),
+    .miu_ooe_cmpl_s1_valid(miu_ooe_cmpl_s1_valid),
+    .miu_ooe_cmpl_s1_payload(miu_ooe_cmpl_s1_payload),
+    .miu_ooe_cmpl_s1_credit(miu_ooe_cmpl_s1_credit),
+    .miu_ooe_cmpl_s1_stall(miu_ooe_cmpl_s1_stall),
+    .miu_ooe_cmpl_s2_valid(miu_ooe_cmpl_s2_valid),
+    .miu_ooe_cmpl_s2_payload(miu_ooe_cmpl_s2_payload),
+    .miu_ooe_cmpl_s2_credit(miu_ooe_cmpl_s2_credit),
+    .miu_ooe_cmpl_s2_stall(miu_ooe_cmpl_s2_stall),
+    .miu_ooe_cmpl_s3_valid(miu_ooe_cmpl_s3_valid),
+    .miu_ooe_cmpl_s3_payload(miu_ooe_cmpl_s3_payload),
+    .miu_ooe_cmpl_s3_credit(miu_ooe_cmpl_s3_credit),
+    .miu_ooe_cmpl_s3_stall(miu_ooe_cmpl_s3_stall),
+    .miu_ooe_cmpl_wake(miu_ooe_cmpl_wake),
+    .ooe_miu_retire_s0_valid(ooe_miu_retire_s0_valid),
+    .ooe_miu_retire_s0_payload(ooe_miu_retire_s0_payload),
+    .ooe_miu_retire_s0_credit(ooe_miu_retire_s0_credit),
+    .ooe_miu_retire_s0_stall(ooe_miu_retire_s0_stall),
+    .ooe_miu_retire_s1_valid(ooe_miu_retire_s1_valid),
+    .ooe_miu_retire_s1_payload(ooe_miu_retire_s1_payload),
+    .ooe_miu_retire_s1_credit(ooe_miu_retire_s1_credit),
+    .ooe_miu_retire_s1_stall(ooe_miu_retire_s1_stall),
+    .ooe_miu_retire_s2_valid(ooe_miu_retire_s2_valid),
+    .ooe_miu_retire_s2_payload(ooe_miu_retire_s2_payload),
+    .ooe_miu_retire_s2_credit(ooe_miu_retire_s2_credit),
+    .ooe_miu_retire_s2_stall(ooe_miu_retire_s2_stall),
+    .ooe_miu_retire_s3_valid(ooe_miu_retire_s3_valid),
+    .ooe_miu_retire_s3_payload(ooe_miu_retire_s3_payload),
+    .ooe_miu_retire_s3_credit(ooe_miu_retire_s3_credit),
+    .ooe_miu_retire_s3_stall(ooe_miu_retire_s3_stall),
+    .ooe_miu_retire_wake(ooe_miu_retire_wake),
+    .ooe_fet_redirect_valid(ooe_fet_redirect_valid),
+    .ooe_fet_redirect_payload(ooe_fet_redirect_payload),
+    .ooe_fet_redirect_credit(ooe_fet_redirect_credit),
+    .ooe_fet_redirect_stall(ooe_fet_redirect_stall),
+    .ooe_fet_redirect_wake(ooe_fet_redirect_wake),
+    .ooe_fet_ckpt_free_valid(ooe_fet_ckpt_free_valid),
+    .ooe_fet_ckpt_free_payload(ooe_fet_ckpt_free_payload),
+    .ooe_fet_ckpt_free_credit(ooe_fet_ckpt_free_credit),
+    .ooe_fet_ckpt_free_stall(ooe_fet_ckpt_free_stall),
+    .ooe_fet_ckpt_free_wake(ooe_fet_ckpt_free_wake),
+    .rau_ooe_alloc_valid(rau_ooe_alloc_valid),
+    .rau_ooe_alloc_payload(rau_ooe_alloc_payload),
+    .rau_ooe_alloc_credit(rau_ooe_alloc_credit),
+    .rau_ooe_alloc_stall(rau_ooe_alloc_stall),
+    .rau_ooe_alloc_wake(rau_ooe_alloc_wake),
+    .ooe_rau_status_valid(ooe_rau_status_valid),
+    .ooe_rau_status_payload(ooe_rau_status_payload),
+    .ooe_rau_status_credit(ooe_rau_status_credit),
+    .ooe_rau_status_stall(ooe_rau_status_stall),
+    .ooe_rau_status_wake(ooe_rau_status_wake),
+    .rau_ooe_demote_valid(rau_ooe_demote_valid),
+    .rau_ooe_demote_payload(rau_ooe_demote_payload),
+    .rau_ooe_demote_credit(rau_ooe_demote_credit),
+    .rau_ooe_demote_stall(rau_ooe_demote_stall),
+    .rau_ooe_demote_wake(rau_ooe_demote_wake),
+    .ooe_rau_drained_valid(ooe_rau_drained_valid),
+    .ooe_rau_drained_payload(ooe_rau_drained_payload),
+    .ooe_rau_drained_credit(ooe_rau_drained_credit),
+    .ooe_rau_drained_stall(ooe_rau_drained_stall),
+    .ooe_rau_drained_wake(ooe_rau_drained_wake),
+    .ooe_rcu_map_valid(ooe_rcu_map_valid),
+    .ooe_rcu_map_payload(ooe_rcu_map_payload),
+    .ooe_rcu_map_credit(ooe_rcu_map_credit),
+    .ooe_rcu_map_stall(ooe_rcu_map_stall),
+    .ooe_rcu_map_wake(ooe_rcu_map_wake),
+    .ooe_syu_bar_valid(ooe_syu_bar_valid),
+    .ooe_syu_bar_payload(ooe_syu_bar_payload),
+    .ooe_syu_bar_credit(ooe_syu_bar_credit),
+    .ooe_syu_bar_stall(ooe_syu_bar_stall),
+    .ooe_syu_bar_wake(ooe_syu_bar_wake),
+    .syu_ooe_rel_valid(syu_ooe_rel_valid),
+    .syu_ooe_rel_payload(syu_ooe_rel_payload),
+    .syu_ooe_rel_credit(syu_ooe_rel_credit),
+    .syu_ooe_rel_stall(syu_ooe_rel_stall),
+    .syu_ooe_rel_wake(syu_ooe_rel_wake),
+    .ooe_cru_fault_valid(ooe_cru_fault_valid),
+    .ooe_cru_fault_payload(ooe_cru_fault_payload),
+    .ooe_cru_fault_credit(ooe_cru_fault_credit),
+    .ooe_cru_fault_stall(ooe_cru_fault_stall),
+    .ooe_cru_fault_wake(ooe_cru_fault_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(ooe_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .dec_ooe_uop_s0_tid(dec_ooe_uop_s0_tid)
+    , .dec_ooe_uop_s1_tid(dec_ooe_uop_s1_tid)
+    , .dec_ooe_uop_s2_tid(dec_ooe_uop_s2_tid)
+    , .dec_ooe_uop_s3_tid(dec_ooe_uop_s3_tid)
+    , .dec_ooe_uop_s4_tid(dec_ooe_uop_s4_tid)
+    , .dec_ooe_uop_s5_tid(dec_ooe_uop_s5_tid)
+    , .ooe_rcu_issue_s0_tid(ooe_rcu_issue_s0_tid)
+    , .ooe_rcu_issue_s1_tid(ooe_rcu_issue_s1_tid)
+    , .ooe_rcu_issue_s2_tid(ooe_rcu_issue_s2_tid)
+    , .ooe_rcu_issue_s3_tid(ooe_rcu_issue_s3_tid)
+    , .ooe_rcu_issue_s4_tid(ooe_rcu_issue_s4_tid)
+    , .ooe_rcu_issue_s5_tid(ooe_rcu_issue_s5_tid)
+    , .ooe_rcu_issue_s6_tid(ooe_rcu_issue_s6_tid)
+    , .ooe_rcu_issue_s7_tid(ooe_rcu_issue_s7_tid)
+    , .ooe_rcu_issue_s8_tid(ooe_rcu_issue_s8_tid)
+    , .rcu_ooe_done_s0_tid(rcu_ooe_done_s0_tid)
+    , .rcu_ooe_done_s1_tid(rcu_ooe_done_s1_tid)
+    , .rcu_ooe_done_s2_tid(rcu_ooe_done_s2_tid)
+    , .rcu_ooe_done_s3_tid(rcu_ooe_done_s3_tid)
+    , .rcu_ooe_done_s4_tid(rcu_ooe_done_s4_tid)
+    , .rcu_ooe_done_s5_tid(rcu_ooe_done_s5_tid)
+    , .rcu_ooe_done_s6_tid(rcu_ooe_done_s6_tid)
+    , .ooe_miu_memop_s0_tid(ooe_miu_memop_s0_tid)
+    , .ooe_miu_memop_s1_tid(ooe_miu_memop_s1_tid)
+    , .ooe_miu_memop_s2_tid(ooe_miu_memop_s2_tid)
+    , .ooe_miu_memop_s3_tid(ooe_miu_memop_s3_tid)
+    , .miu_ooe_cmpl_s0_tid(miu_ooe_cmpl_s0_tid)
+    , .miu_ooe_cmpl_s1_tid(miu_ooe_cmpl_s1_tid)
+    , .miu_ooe_cmpl_s2_tid(miu_ooe_cmpl_s2_tid)
+    , .miu_ooe_cmpl_s3_tid(miu_ooe_cmpl_s3_tid)
+    , .ooe_miu_retire_s0_tid(ooe_miu_retire_s0_tid)
+    , .ooe_miu_retire_s1_tid(ooe_miu_retire_s1_tid)
+    , .ooe_miu_retire_s2_tid(ooe_miu_retire_s2_tid)
+    , .ooe_miu_retire_s3_tid(ooe_miu_retire_s3_tid)
+    , .ooe_fet_redirect_tid(ooe_fet_redirect_tid)
+    , .ooe_fet_ckpt_free_tid(ooe_fet_ckpt_free_tid)
+    , .rau_ooe_alloc_tid(rau_ooe_alloc_tid)
+    , .ooe_rau_status_tid(ooe_rau_status_tid)
+    , .rau_ooe_demote_tid(rau_ooe_demote_tid)
+    , .ooe_rau_drained_tid(ooe_rau_drained_tid)
+    , .ooe_rcu_map_tid(ooe_rcu_map_tid)
+    , .ooe_syu_bar_tid(ooe_syu_bar_tid)
+    , .syu_ooe_rel_tid(syu_ooe_rel_tid)
+    , .ooe_cru_fault_tid(ooe_cru_fault_tid)
+`endif
+  );
+
+  ccv_rcu_w u_rcu (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[3]),
+    .kill_ack_epoch(kill_ack_epoch[6 +: 2]),
+    .csr_req(csr_reqs[147 +: 49]),
+    .csr_rsp(csr_rsps[99 +: 33]),
+    .csr_credit(csr_credits[3]),
+    .ooe_rcu_issue_s0_valid(ooe_rcu_issue_s0_valid),
+    .ooe_rcu_issue_s0_payload(ooe_rcu_issue_s0_payload),
+    .ooe_rcu_issue_s0_credit(ooe_rcu_issue_s0_credit),
+    .ooe_rcu_issue_s0_stall(ooe_rcu_issue_s0_stall),
+    .ooe_rcu_issue_s1_valid(ooe_rcu_issue_s1_valid),
+    .ooe_rcu_issue_s1_payload(ooe_rcu_issue_s1_payload),
+    .ooe_rcu_issue_s1_credit(ooe_rcu_issue_s1_credit),
+    .ooe_rcu_issue_s1_stall(ooe_rcu_issue_s1_stall),
+    .ooe_rcu_issue_s2_valid(ooe_rcu_issue_s2_valid),
+    .ooe_rcu_issue_s2_payload(ooe_rcu_issue_s2_payload),
+    .ooe_rcu_issue_s2_credit(ooe_rcu_issue_s2_credit),
+    .ooe_rcu_issue_s2_stall(ooe_rcu_issue_s2_stall),
+    .ooe_rcu_issue_s3_valid(ooe_rcu_issue_s3_valid),
+    .ooe_rcu_issue_s3_payload(ooe_rcu_issue_s3_payload),
+    .ooe_rcu_issue_s3_credit(ooe_rcu_issue_s3_credit),
+    .ooe_rcu_issue_s3_stall(ooe_rcu_issue_s3_stall),
+    .ooe_rcu_issue_s4_valid(ooe_rcu_issue_s4_valid),
+    .ooe_rcu_issue_s4_payload(ooe_rcu_issue_s4_payload),
+    .ooe_rcu_issue_s4_credit(ooe_rcu_issue_s4_credit),
+    .ooe_rcu_issue_s4_stall(ooe_rcu_issue_s4_stall),
+    .ooe_rcu_issue_s5_valid(ooe_rcu_issue_s5_valid),
+    .ooe_rcu_issue_s5_payload(ooe_rcu_issue_s5_payload),
+    .ooe_rcu_issue_s5_credit(ooe_rcu_issue_s5_credit),
+    .ooe_rcu_issue_s5_stall(ooe_rcu_issue_s5_stall),
+    .ooe_rcu_issue_s6_valid(ooe_rcu_issue_s6_valid),
+    .ooe_rcu_issue_s6_payload(ooe_rcu_issue_s6_payload),
+    .ooe_rcu_issue_s6_credit(ooe_rcu_issue_s6_credit),
+    .ooe_rcu_issue_s6_stall(ooe_rcu_issue_s6_stall),
+    .ooe_rcu_issue_s7_valid(ooe_rcu_issue_s7_valid),
+    .ooe_rcu_issue_s7_payload(ooe_rcu_issue_s7_payload),
+    .ooe_rcu_issue_s7_credit(ooe_rcu_issue_s7_credit),
+    .ooe_rcu_issue_s7_stall(ooe_rcu_issue_s7_stall),
+    .ooe_rcu_issue_s8_valid(ooe_rcu_issue_s8_valid),
+    .ooe_rcu_issue_s8_payload(ooe_rcu_issue_s8_payload),
+    .ooe_rcu_issue_s8_credit(ooe_rcu_issue_s8_credit),
+    .ooe_rcu_issue_s8_stall(ooe_rcu_issue_s8_stall),
+    .ooe_rcu_issue_wake(ooe_rcu_issue_wake),
+    .rcu_lane_ops_c00_valid(rcu_lane_ops_c00_valid),
+    .rcu_lane_ops_c00_payload(rcu_lane_ops_c00_payload),
+    .rcu_lane_ops_c00_credit(rcu_lane_ops_c00_credit),
+    .rcu_lane_ops_c00_stall(rcu_lane_ops_c00_stall),
+    .rcu_lane_ops_c00_wake(rcu_lane_ops_c00_wake),
+    .rcu_lane_ops_c01_valid(rcu_lane_ops_c01_valid),
+    .rcu_lane_ops_c01_payload(rcu_lane_ops_c01_payload),
+    .rcu_lane_ops_c01_credit(rcu_lane_ops_c01_credit),
+    .rcu_lane_ops_c01_stall(rcu_lane_ops_c01_stall),
+    .rcu_lane_ops_c01_wake(rcu_lane_ops_c01_wake),
+    .rcu_lane_ops_c02_valid(rcu_lane_ops_c02_valid),
+    .rcu_lane_ops_c02_payload(rcu_lane_ops_c02_payload),
+    .rcu_lane_ops_c02_credit(rcu_lane_ops_c02_credit),
+    .rcu_lane_ops_c02_stall(rcu_lane_ops_c02_stall),
+    .rcu_lane_ops_c02_wake(rcu_lane_ops_c02_wake),
+    .rcu_lane_ops_c03_valid(rcu_lane_ops_c03_valid),
+    .rcu_lane_ops_c03_payload(rcu_lane_ops_c03_payload),
+    .rcu_lane_ops_c03_credit(rcu_lane_ops_c03_credit),
+    .rcu_lane_ops_c03_stall(rcu_lane_ops_c03_stall),
+    .rcu_lane_ops_c03_wake(rcu_lane_ops_c03_wake),
+    .rcu_lane_ops_c04_valid(rcu_lane_ops_c04_valid),
+    .rcu_lane_ops_c04_payload(rcu_lane_ops_c04_payload),
+    .rcu_lane_ops_c04_credit(rcu_lane_ops_c04_credit),
+    .rcu_lane_ops_c04_stall(rcu_lane_ops_c04_stall),
+    .rcu_lane_ops_c04_wake(rcu_lane_ops_c04_wake),
+    .rcu_lane_ops_c05_valid(rcu_lane_ops_c05_valid),
+    .rcu_lane_ops_c05_payload(rcu_lane_ops_c05_payload),
+    .rcu_lane_ops_c05_credit(rcu_lane_ops_c05_credit),
+    .rcu_lane_ops_c05_stall(rcu_lane_ops_c05_stall),
+    .rcu_lane_ops_c05_wake(rcu_lane_ops_c05_wake),
+    .rcu_lane_ops_c06_valid(rcu_lane_ops_c06_valid),
+    .rcu_lane_ops_c06_payload(rcu_lane_ops_c06_payload),
+    .rcu_lane_ops_c06_credit(rcu_lane_ops_c06_credit),
+    .rcu_lane_ops_c06_stall(rcu_lane_ops_c06_stall),
+    .rcu_lane_ops_c06_wake(rcu_lane_ops_c06_wake),
+    .rcu_lane_ops_c07_valid(rcu_lane_ops_c07_valid),
+    .rcu_lane_ops_c07_payload(rcu_lane_ops_c07_payload),
+    .rcu_lane_ops_c07_credit(rcu_lane_ops_c07_credit),
+    .rcu_lane_ops_c07_stall(rcu_lane_ops_c07_stall),
+    .rcu_lane_ops_c07_wake(rcu_lane_ops_c07_wake),
+    .rcu_lane_ops_c08_valid(rcu_lane_ops_c08_valid),
+    .rcu_lane_ops_c08_payload(rcu_lane_ops_c08_payload),
+    .rcu_lane_ops_c08_credit(rcu_lane_ops_c08_credit),
+    .rcu_lane_ops_c08_stall(rcu_lane_ops_c08_stall),
+    .rcu_lane_ops_c08_wake(rcu_lane_ops_c08_wake),
+    .rcu_lane_ops_c09_valid(rcu_lane_ops_c09_valid),
+    .rcu_lane_ops_c09_payload(rcu_lane_ops_c09_payload),
+    .rcu_lane_ops_c09_credit(rcu_lane_ops_c09_credit),
+    .rcu_lane_ops_c09_stall(rcu_lane_ops_c09_stall),
+    .rcu_lane_ops_c09_wake(rcu_lane_ops_c09_wake),
+    .rcu_lane_ops_c10_valid(rcu_lane_ops_c10_valid),
+    .rcu_lane_ops_c10_payload(rcu_lane_ops_c10_payload),
+    .rcu_lane_ops_c10_credit(rcu_lane_ops_c10_credit),
+    .rcu_lane_ops_c10_stall(rcu_lane_ops_c10_stall),
+    .rcu_lane_ops_c10_wake(rcu_lane_ops_c10_wake),
+    .rcu_lane_ops_c11_valid(rcu_lane_ops_c11_valid),
+    .rcu_lane_ops_c11_payload(rcu_lane_ops_c11_payload),
+    .rcu_lane_ops_c11_credit(rcu_lane_ops_c11_credit),
+    .rcu_lane_ops_c11_stall(rcu_lane_ops_c11_stall),
+    .rcu_lane_ops_c11_wake(rcu_lane_ops_c11_wake),
+    .rcu_lane_ops_c12_valid(rcu_lane_ops_c12_valid),
+    .rcu_lane_ops_c12_payload(rcu_lane_ops_c12_payload),
+    .rcu_lane_ops_c12_credit(rcu_lane_ops_c12_credit),
+    .rcu_lane_ops_c12_stall(rcu_lane_ops_c12_stall),
+    .rcu_lane_ops_c12_wake(rcu_lane_ops_c12_wake),
+    .rcu_lane_ops_c13_valid(rcu_lane_ops_c13_valid),
+    .rcu_lane_ops_c13_payload(rcu_lane_ops_c13_payload),
+    .rcu_lane_ops_c13_credit(rcu_lane_ops_c13_credit),
+    .rcu_lane_ops_c13_stall(rcu_lane_ops_c13_stall),
+    .rcu_lane_ops_c13_wake(rcu_lane_ops_c13_wake),
+    .rcu_lane_ops_c14_valid(rcu_lane_ops_c14_valid),
+    .rcu_lane_ops_c14_payload(rcu_lane_ops_c14_payload),
+    .rcu_lane_ops_c14_credit(rcu_lane_ops_c14_credit),
+    .rcu_lane_ops_c14_stall(rcu_lane_ops_c14_stall),
+    .rcu_lane_ops_c14_wake(rcu_lane_ops_c14_wake),
+    .rcu_lane_ops_c15_valid(rcu_lane_ops_c15_valid),
+    .rcu_lane_ops_c15_payload(rcu_lane_ops_c15_payload),
+    .rcu_lane_ops_c15_credit(rcu_lane_ops_c15_credit),
+    .rcu_lane_ops_c15_stall(rcu_lane_ops_c15_stall),
+    .rcu_lane_ops_c15_wake(rcu_lane_ops_c15_wake),
+    .rcu_lane_ops_c16_valid(rcu_lane_ops_c16_valid),
+    .rcu_lane_ops_c16_payload(rcu_lane_ops_c16_payload),
+    .rcu_lane_ops_c16_credit(rcu_lane_ops_c16_credit),
+    .rcu_lane_ops_c16_stall(rcu_lane_ops_c16_stall),
+    .rcu_lane_ops_c16_wake(rcu_lane_ops_c16_wake),
+    .rcu_lane_ops_c17_valid(rcu_lane_ops_c17_valid),
+    .rcu_lane_ops_c17_payload(rcu_lane_ops_c17_payload),
+    .rcu_lane_ops_c17_credit(rcu_lane_ops_c17_credit),
+    .rcu_lane_ops_c17_stall(rcu_lane_ops_c17_stall),
+    .rcu_lane_ops_c17_wake(rcu_lane_ops_c17_wake),
+    .rcu_lane_ops_c18_valid(rcu_lane_ops_c18_valid),
+    .rcu_lane_ops_c18_payload(rcu_lane_ops_c18_payload),
+    .rcu_lane_ops_c18_credit(rcu_lane_ops_c18_credit),
+    .rcu_lane_ops_c18_stall(rcu_lane_ops_c18_stall),
+    .rcu_lane_ops_c18_wake(rcu_lane_ops_c18_wake),
+    .rcu_lane_ops_c19_valid(rcu_lane_ops_c19_valid),
+    .rcu_lane_ops_c19_payload(rcu_lane_ops_c19_payload),
+    .rcu_lane_ops_c19_credit(rcu_lane_ops_c19_credit),
+    .rcu_lane_ops_c19_stall(rcu_lane_ops_c19_stall),
+    .rcu_lane_ops_c19_wake(rcu_lane_ops_c19_wake),
+    .rcu_lane_ops_c20_valid(rcu_lane_ops_c20_valid),
+    .rcu_lane_ops_c20_payload(rcu_lane_ops_c20_payload),
+    .rcu_lane_ops_c20_credit(rcu_lane_ops_c20_credit),
+    .rcu_lane_ops_c20_stall(rcu_lane_ops_c20_stall),
+    .rcu_lane_ops_c20_wake(rcu_lane_ops_c20_wake),
+    .rcu_lane_ops_c21_valid(rcu_lane_ops_c21_valid),
+    .rcu_lane_ops_c21_payload(rcu_lane_ops_c21_payload),
+    .rcu_lane_ops_c21_credit(rcu_lane_ops_c21_credit),
+    .rcu_lane_ops_c21_stall(rcu_lane_ops_c21_stall),
+    .rcu_lane_ops_c21_wake(rcu_lane_ops_c21_wake),
+    .rcu_lane_ops_c22_valid(rcu_lane_ops_c22_valid),
+    .rcu_lane_ops_c22_payload(rcu_lane_ops_c22_payload),
+    .rcu_lane_ops_c22_credit(rcu_lane_ops_c22_credit),
+    .rcu_lane_ops_c22_stall(rcu_lane_ops_c22_stall),
+    .rcu_lane_ops_c22_wake(rcu_lane_ops_c22_wake),
+    .rcu_lane_ops_c23_valid(rcu_lane_ops_c23_valid),
+    .rcu_lane_ops_c23_payload(rcu_lane_ops_c23_payload),
+    .rcu_lane_ops_c23_credit(rcu_lane_ops_c23_credit),
+    .rcu_lane_ops_c23_stall(rcu_lane_ops_c23_stall),
+    .rcu_lane_ops_c23_wake(rcu_lane_ops_c23_wake),
+    .rcu_lane_ops_c24_valid(rcu_lane_ops_c24_valid),
+    .rcu_lane_ops_c24_payload(rcu_lane_ops_c24_payload),
+    .rcu_lane_ops_c24_credit(rcu_lane_ops_c24_credit),
+    .rcu_lane_ops_c24_stall(rcu_lane_ops_c24_stall),
+    .rcu_lane_ops_c24_wake(rcu_lane_ops_c24_wake),
+    .rcu_lane_ops_c25_valid(rcu_lane_ops_c25_valid),
+    .rcu_lane_ops_c25_payload(rcu_lane_ops_c25_payload),
+    .rcu_lane_ops_c25_credit(rcu_lane_ops_c25_credit),
+    .rcu_lane_ops_c25_stall(rcu_lane_ops_c25_stall),
+    .rcu_lane_ops_c25_wake(rcu_lane_ops_c25_wake),
+    .rcu_lane_ops_c26_valid(rcu_lane_ops_c26_valid),
+    .rcu_lane_ops_c26_payload(rcu_lane_ops_c26_payload),
+    .rcu_lane_ops_c26_credit(rcu_lane_ops_c26_credit),
+    .rcu_lane_ops_c26_stall(rcu_lane_ops_c26_stall),
+    .rcu_lane_ops_c26_wake(rcu_lane_ops_c26_wake),
+    .rcu_lane_ops_c27_valid(rcu_lane_ops_c27_valid),
+    .rcu_lane_ops_c27_payload(rcu_lane_ops_c27_payload),
+    .rcu_lane_ops_c27_credit(rcu_lane_ops_c27_credit),
+    .rcu_lane_ops_c27_stall(rcu_lane_ops_c27_stall),
+    .rcu_lane_ops_c27_wake(rcu_lane_ops_c27_wake),
+    .rcu_lane_ops_c28_valid(rcu_lane_ops_c28_valid),
+    .rcu_lane_ops_c28_payload(rcu_lane_ops_c28_payload),
+    .rcu_lane_ops_c28_credit(rcu_lane_ops_c28_credit),
+    .rcu_lane_ops_c28_stall(rcu_lane_ops_c28_stall),
+    .rcu_lane_ops_c28_wake(rcu_lane_ops_c28_wake),
+    .rcu_lane_ops_c29_valid(rcu_lane_ops_c29_valid),
+    .rcu_lane_ops_c29_payload(rcu_lane_ops_c29_payload),
+    .rcu_lane_ops_c29_credit(rcu_lane_ops_c29_credit),
+    .rcu_lane_ops_c29_stall(rcu_lane_ops_c29_stall),
+    .rcu_lane_ops_c29_wake(rcu_lane_ops_c29_wake),
+    .rcu_lane_ops_c30_valid(rcu_lane_ops_c30_valid),
+    .rcu_lane_ops_c30_payload(rcu_lane_ops_c30_payload),
+    .rcu_lane_ops_c30_credit(rcu_lane_ops_c30_credit),
+    .rcu_lane_ops_c30_stall(rcu_lane_ops_c30_stall),
+    .rcu_lane_ops_c30_wake(rcu_lane_ops_c30_wake),
+    .rcu_lane_ops_c31_valid(rcu_lane_ops_c31_valid),
+    .rcu_lane_ops_c31_payload(rcu_lane_ops_c31_payload),
+    .rcu_lane_ops_c31_credit(rcu_lane_ops_c31_credit),
+    .rcu_lane_ops_c31_stall(rcu_lane_ops_c31_stall),
+    .rcu_lane_ops_c31_wake(rcu_lane_ops_c31_wake),
+    .lane_rcu_res_c00_valid(lane_rcu_res_c00_valid),
+    .lane_rcu_res_c00_payload(lane_rcu_res_c00_payload),
+    .lane_rcu_res_c00_credit(lane_rcu_res_c00_credit),
+    .lane_rcu_res_c00_stall(lane_rcu_res_c00_stall),
+    .lane_rcu_res_c00_wake(lane_rcu_res_c00_wake),
+    .lane_rcu_res_c01_valid(lane_rcu_res_c01_valid),
+    .lane_rcu_res_c01_payload(lane_rcu_res_c01_payload),
+    .lane_rcu_res_c01_credit(lane_rcu_res_c01_credit),
+    .lane_rcu_res_c01_stall(lane_rcu_res_c01_stall),
+    .lane_rcu_res_c01_wake(lane_rcu_res_c01_wake),
+    .lane_rcu_res_c02_valid(lane_rcu_res_c02_valid),
+    .lane_rcu_res_c02_payload(lane_rcu_res_c02_payload),
+    .lane_rcu_res_c02_credit(lane_rcu_res_c02_credit),
+    .lane_rcu_res_c02_stall(lane_rcu_res_c02_stall),
+    .lane_rcu_res_c02_wake(lane_rcu_res_c02_wake),
+    .lane_rcu_res_c03_valid(lane_rcu_res_c03_valid),
+    .lane_rcu_res_c03_payload(lane_rcu_res_c03_payload),
+    .lane_rcu_res_c03_credit(lane_rcu_res_c03_credit),
+    .lane_rcu_res_c03_stall(lane_rcu_res_c03_stall),
+    .lane_rcu_res_c03_wake(lane_rcu_res_c03_wake),
+    .lane_rcu_res_c04_valid(lane_rcu_res_c04_valid),
+    .lane_rcu_res_c04_payload(lane_rcu_res_c04_payload),
+    .lane_rcu_res_c04_credit(lane_rcu_res_c04_credit),
+    .lane_rcu_res_c04_stall(lane_rcu_res_c04_stall),
+    .lane_rcu_res_c04_wake(lane_rcu_res_c04_wake),
+    .lane_rcu_res_c05_valid(lane_rcu_res_c05_valid),
+    .lane_rcu_res_c05_payload(lane_rcu_res_c05_payload),
+    .lane_rcu_res_c05_credit(lane_rcu_res_c05_credit),
+    .lane_rcu_res_c05_stall(lane_rcu_res_c05_stall),
+    .lane_rcu_res_c05_wake(lane_rcu_res_c05_wake),
+    .lane_rcu_res_c06_valid(lane_rcu_res_c06_valid),
+    .lane_rcu_res_c06_payload(lane_rcu_res_c06_payload),
+    .lane_rcu_res_c06_credit(lane_rcu_res_c06_credit),
+    .lane_rcu_res_c06_stall(lane_rcu_res_c06_stall),
+    .lane_rcu_res_c06_wake(lane_rcu_res_c06_wake),
+    .lane_rcu_res_c07_valid(lane_rcu_res_c07_valid),
+    .lane_rcu_res_c07_payload(lane_rcu_res_c07_payload),
+    .lane_rcu_res_c07_credit(lane_rcu_res_c07_credit),
+    .lane_rcu_res_c07_stall(lane_rcu_res_c07_stall),
+    .lane_rcu_res_c07_wake(lane_rcu_res_c07_wake),
+    .lane_rcu_res_c08_valid(lane_rcu_res_c08_valid),
+    .lane_rcu_res_c08_payload(lane_rcu_res_c08_payload),
+    .lane_rcu_res_c08_credit(lane_rcu_res_c08_credit),
+    .lane_rcu_res_c08_stall(lane_rcu_res_c08_stall),
+    .lane_rcu_res_c08_wake(lane_rcu_res_c08_wake),
+    .lane_rcu_res_c09_valid(lane_rcu_res_c09_valid),
+    .lane_rcu_res_c09_payload(lane_rcu_res_c09_payload),
+    .lane_rcu_res_c09_credit(lane_rcu_res_c09_credit),
+    .lane_rcu_res_c09_stall(lane_rcu_res_c09_stall),
+    .lane_rcu_res_c09_wake(lane_rcu_res_c09_wake),
+    .lane_rcu_res_c10_valid(lane_rcu_res_c10_valid),
+    .lane_rcu_res_c10_payload(lane_rcu_res_c10_payload),
+    .lane_rcu_res_c10_credit(lane_rcu_res_c10_credit),
+    .lane_rcu_res_c10_stall(lane_rcu_res_c10_stall),
+    .lane_rcu_res_c10_wake(lane_rcu_res_c10_wake),
+    .lane_rcu_res_c11_valid(lane_rcu_res_c11_valid),
+    .lane_rcu_res_c11_payload(lane_rcu_res_c11_payload),
+    .lane_rcu_res_c11_credit(lane_rcu_res_c11_credit),
+    .lane_rcu_res_c11_stall(lane_rcu_res_c11_stall),
+    .lane_rcu_res_c11_wake(lane_rcu_res_c11_wake),
+    .lane_rcu_res_c12_valid(lane_rcu_res_c12_valid),
+    .lane_rcu_res_c12_payload(lane_rcu_res_c12_payload),
+    .lane_rcu_res_c12_credit(lane_rcu_res_c12_credit),
+    .lane_rcu_res_c12_stall(lane_rcu_res_c12_stall),
+    .lane_rcu_res_c12_wake(lane_rcu_res_c12_wake),
+    .lane_rcu_res_c13_valid(lane_rcu_res_c13_valid),
+    .lane_rcu_res_c13_payload(lane_rcu_res_c13_payload),
+    .lane_rcu_res_c13_credit(lane_rcu_res_c13_credit),
+    .lane_rcu_res_c13_stall(lane_rcu_res_c13_stall),
+    .lane_rcu_res_c13_wake(lane_rcu_res_c13_wake),
+    .lane_rcu_res_c14_valid(lane_rcu_res_c14_valid),
+    .lane_rcu_res_c14_payload(lane_rcu_res_c14_payload),
+    .lane_rcu_res_c14_credit(lane_rcu_res_c14_credit),
+    .lane_rcu_res_c14_stall(lane_rcu_res_c14_stall),
+    .lane_rcu_res_c14_wake(lane_rcu_res_c14_wake),
+    .lane_rcu_res_c15_valid(lane_rcu_res_c15_valid),
+    .lane_rcu_res_c15_payload(lane_rcu_res_c15_payload),
+    .lane_rcu_res_c15_credit(lane_rcu_res_c15_credit),
+    .lane_rcu_res_c15_stall(lane_rcu_res_c15_stall),
+    .lane_rcu_res_c15_wake(lane_rcu_res_c15_wake),
+    .lane_rcu_res_c16_valid(lane_rcu_res_c16_valid),
+    .lane_rcu_res_c16_payload(lane_rcu_res_c16_payload),
+    .lane_rcu_res_c16_credit(lane_rcu_res_c16_credit),
+    .lane_rcu_res_c16_stall(lane_rcu_res_c16_stall),
+    .lane_rcu_res_c16_wake(lane_rcu_res_c16_wake),
+    .lane_rcu_res_c17_valid(lane_rcu_res_c17_valid),
+    .lane_rcu_res_c17_payload(lane_rcu_res_c17_payload),
+    .lane_rcu_res_c17_credit(lane_rcu_res_c17_credit),
+    .lane_rcu_res_c17_stall(lane_rcu_res_c17_stall),
+    .lane_rcu_res_c17_wake(lane_rcu_res_c17_wake),
+    .lane_rcu_res_c18_valid(lane_rcu_res_c18_valid),
+    .lane_rcu_res_c18_payload(lane_rcu_res_c18_payload),
+    .lane_rcu_res_c18_credit(lane_rcu_res_c18_credit),
+    .lane_rcu_res_c18_stall(lane_rcu_res_c18_stall),
+    .lane_rcu_res_c18_wake(lane_rcu_res_c18_wake),
+    .lane_rcu_res_c19_valid(lane_rcu_res_c19_valid),
+    .lane_rcu_res_c19_payload(lane_rcu_res_c19_payload),
+    .lane_rcu_res_c19_credit(lane_rcu_res_c19_credit),
+    .lane_rcu_res_c19_stall(lane_rcu_res_c19_stall),
+    .lane_rcu_res_c19_wake(lane_rcu_res_c19_wake),
+    .lane_rcu_res_c20_valid(lane_rcu_res_c20_valid),
+    .lane_rcu_res_c20_payload(lane_rcu_res_c20_payload),
+    .lane_rcu_res_c20_credit(lane_rcu_res_c20_credit),
+    .lane_rcu_res_c20_stall(lane_rcu_res_c20_stall),
+    .lane_rcu_res_c20_wake(lane_rcu_res_c20_wake),
+    .lane_rcu_res_c21_valid(lane_rcu_res_c21_valid),
+    .lane_rcu_res_c21_payload(lane_rcu_res_c21_payload),
+    .lane_rcu_res_c21_credit(lane_rcu_res_c21_credit),
+    .lane_rcu_res_c21_stall(lane_rcu_res_c21_stall),
+    .lane_rcu_res_c21_wake(lane_rcu_res_c21_wake),
+    .lane_rcu_res_c22_valid(lane_rcu_res_c22_valid),
+    .lane_rcu_res_c22_payload(lane_rcu_res_c22_payload),
+    .lane_rcu_res_c22_credit(lane_rcu_res_c22_credit),
+    .lane_rcu_res_c22_stall(lane_rcu_res_c22_stall),
+    .lane_rcu_res_c22_wake(lane_rcu_res_c22_wake),
+    .lane_rcu_res_c23_valid(lane_rcu_res_c23_valid),
+    .lane_rcu_res_c23_payload(lane_rcu_res_c23_payload),
+    .lane_rcu_res_c23_credit(lane_rcu_res_c23_credit),
+    .lane_rcu_res_c23_stall(lane_rcu_res_c23_stall),
+    .lane_rcu_res_c23_wake(lane_rcu_res_c23_wake),
+    .lane_rcu_res_c24_valid(lane_rcu_res_c24_valid),
+    .lane_rcu_res_c24_payload(lane_rcu_res_c24_payload),
+    .lane_rcu_res_c24_credit(lane_rcu_res_c24_credit),
+    .lane_rcu_res_c24_stall(lane_rcu_res_c24_stall),
+    .lane_rcu_res_c24_wake(lane_rcu_res_c24_wake),
+    .lane_rcu_res_c25_valid(lane_rcu_res_c25_valid),
+    .lane_rcu_res_c25_payload(lane_rcu_res_c25_payload),
+    .lane_rcu_res_c25_credit(lane_rcu_res_c25_credit),
+    .lane_rcu_res_c25_stall(lane_rcu_res_c25_stall),
+    .lane_rcu_res_c25_wake(lane_rcu_res_c25_wake),
+    .lane_rcu_res_c26_valid(lane_rcu_res_c26_valid),
+    .lane_rcu_res_c26_payload(lane_rcu_res_c26_payload),
+    .lane_rcu_res_c26_credit(lane_rcu_res_c26_credit),
+    .lane_rcu_res_c26_stall(lane_rcu_res_c26_stall),
+    .lane_rcu_res_c26_wake(lane_rcu_res_c26_wake),
+    .lane_rcu_res_c27_valid(lane_rcu_res_c27_valid),
+    .lane_rcu_res_c27_payload(lane_rcu_res_c27_payload),
+    .lane_rcu_res_c27_credit(lane_rcu_res_c27_credit),
+    .lane_rcu_res_c27_stall(lane_rcu_res_c27_stall),
+    .lane_rcu_res_c27_wake(lane_rcu_res_c27_wake),
+    .lane_rcu_res_c28_valid(lane_rcu_res_c28_valid),
+    .lane_rcu_res_c28_payload(lane_rcu_res_c28_payload),
+    .lane_rcu_res_c28_credit(lane_rcu_res_c28_credit),
+    .lane_rcu_res_c28_stall(lane_rcu_res_c28_stall),
+    .lane_rcu_res_c28_wake(lane_rcu_res_c28_wake),
+    .lane_rcu_res_c29_valid(lane_rcu_res_c29_valid),
+    .lane_rcu_res_c29_payload(lane_rcu_res_c29_payload),
+    .lane_rcu_res_c29_credit(lane_rcu_res_c29_credit),
+    .lane_rcu_res_c29_stall(lane_rcu_res_c29_stall),
+    .lane_rcu_res_c29_wake(lane_rcu_res_c29_wake),
+    .lane_rcu_res_c30_valid(lane_rcu_res_c30_valid),
+    .lane_rcu_res_c30_payload(lane_rcu_res_c30_payload),
+    .lane_rcu_res_c30_credit(lane_rcu_res_c30_credit),
+    .lane_rcu_res_c30_stall(lane_rcu_res_c30_stall),
+    .lane_rcu_res_c30_wake(lane_rcu_res_c30_wake),
+    .lane_rcu_res_c31_valid(lane_rcu_res_c31_valid),
+    .lane_rcu_res_c31_payload(lane_rcu_res_c31_payload),
+    .lane_rcu_res_c31_credit(lane_rcu_res_c31_credit),
+    .lane_rcu_res_c31_stall(lane_rcu_res_c31_stall),
+    .lane_rcu_res_c31_wake(lane_rcu_res_c31_wake),
+    .rcu_ooe_done_s0_valid(rcu_ooe_done_s0_valid),
+    .rcu_ooe_done_s0_payload(rcu_ooe_done_s0_payload),
+    .rcu_ooe_done_s0_credit(rcu_ooe_done_s0_credit),
+    .rcu_ooe_done_s0_stall(rcu_ooe_done_s0_stall),
+    .rcu_ooe_done_s1_valid(rcu_ooe_done_s1_valid),
+    .rcu_ooe_done_s1_payload(rcu_ooe_done_s1_payload),
+    .rcu_ooe_done_s1_credit(rcu_ooe_done_s1_credit),
+    .rcu_ooe_done_s1_stall(rcu_ooe_done_s1_stall),
+    .rcu_ooe_done_s2_valid(rcu_ooe_done_s2_valid),
+    .rcu_ooe_done_s2_payload(rcu_ooe_done_s2_payload),
+    .rcu_ooe_done_s2_credit(rcu_ooe_done_s2_credit),
+    .rcu_ooe_done_s2_stall(rcu_ooe_done_s2_stall),
+    .rcu_ooe_done_s3_valid(rcu_ooe_done_s3_valid),
+    .rcu_ooe_done_s3_payload(rcu_ooe_done_s3_payload),
+    .rcu_ooe_done_s3_credit(rcu_ooe_done_s3_credit),
+    .rcu_ooe_done_s3_stall(rcu_ooe_done_s3_stall),
+    .rcu_ooe_done_s4_valid(rcu_ooe_done_s4_valid),
+    .rcu_ooe_done_s4_payload(rcu_ooe_done_s4_payload),
+    .rcu_ooe_done_s4_credit(rcu_ooe_done_s4_credit),
+    .rcu_ooe_done_s4_stall(rcu_ooe_done_s4_stall),
+    .rcu_ooe_done_s5_valid(rcu_ooe_done_s5_valid),
+    .rcu_ooe_done_s5_payload(rcu_ooe_done_s5_payload),
+    .rcu_ooe_done_s5_credit(rcu_ooe_done_s5_credit),
+    .rcu_ooe_done_s5_stall(rcu_ooe_done_s5_stall),
+    .rcu_ooe_done_s6_valid(rcu_ooe_done_s6_valid),
+    .rcu_ooe_done_s6_payload(rcu_ooe_done_s6_payload),
+    .rcu_ooe_done_s6_credit(rcu_ooe_done_s6_credit),
+    .rcu_ooe_done_s6_stall(rcu_ooe_done_s6_stall),
+    .rcu_ooe_done_wake(rcu_ooe_done_wake),
+    .rcu_miu_addr_s0_valid(rcu_miu_addr_s0_valid),
+    .rcu_miu_addr_s0_payload(rcu_miu_addr_s0_payload),
+    .rcu_miu_addr_s0_credit(rcu_miu_addr_s0_credit),
+    .rcu_miu_addr_s0_stall(rcu_miu_addr_s0_stall),
+    .rcu_miu_addr_s1_valid(rcu_miu_addr_s1_valid),
+    .rcu_miu_addr_s1_payload(rcu_miu_addr_s1_payload),
+    .rcu_miu_addr_s1_credit(rcu_miu_addr_s1_credit),
+    .rcu_miu_addr_s1_stall(rcu_miu_addr_s1_stall),
+    .rcu_miu_addr_s2_valid(rcu_miu_addr_s2_valid),
+    .rcu_miu_addr_s2_payload(rcu_miu_addr_s2_payload),
+    .rcu_miu_addr_s2_credit(rcu_miu_addr_s2_credit),
+    .rcu_miu_addr_s2_stall(rcu_miu_addr_s2_stall),
+    .rcu_miu_addr_s3_valid(rcu_miu_addr_s3_valid),
+    .rcu_miu_addr_s3_payload(rcu_miu_addr_s3_payload),
+    .rcu_miu_addr_s3_credit(rcu_miu_addr_s3_credit),
+    .rcu_miu_addr_s3_stall(rcu_miu_addr_s3_stall),
+    .rcu_miu_addr_wake(rcu_miu_addr_wake),
+    .miu_rcu_data_s0_valid(miu_rcu_data_s0_valid),
+    .miu_rcu_data_s0_payload(miu_rcu_data_s0_payload),
+    .miu_rcu_data_s0_credit(miu_rcu_data_s0_credit),
+    .miu_rcu_data_s0_stall(miu_rcu_data_s0_stall),
+    .miu_rcu_data_s1_valid(miu_rcu_data_s1_valid),
+    .miu_rcu_data_s1_payload(miu_rcu_data_s1_payload),
+    .miu_rcu_data_s1_credit(miu_rcu_data_s1_credit),
+    .miu_rcu_data_s1_stall(miu_rcu_data_s1_stall),
+    .miu_rcu_data_s2_valid(miu_rcu_data_s2_valid),
+    .miu_rcu_data_s2_payload(miu_rcu_data_s2_payload),
+    .miu_rcu_data_s2_credit(miu_rcu_data_s2_credit),
+    .miu_rcu_data_s2_stall(miu_rcu_data_s2_stall),
+    .miu_rcu_data_s3_valid(miu_rcu_data_s3_valid),
+    .miu_rcu_data_s3_payload(miu_rcu_data_s3_payload),
+    .miu_rcu_data_s3_credit(miu_rcu_data_s3_credit),
+    .miu_rcu_data_s3_stall(miu_rcu_data_s3_stall),
+    .miu_rcu_data_wake(miu_rcu_data_wake),
+    .rau_rcu_mig_valid(rau_rcu_mig_valid),
+    .rau_rcu_mig_payload(rau_rcu_mig_payload),
+    .rau_rcu_mig_credit(rau_rcu_mig_credit),
+    .rau_rcu_mig_stall(rau_rcu_mig_stall),
+    .rau_rcu_mig_wake(rau_rcu_mig_wake),
+    .ooe_rcu_map_valid(ooe_rcu_map_valid),
+    .ooe_rcu_map_payload(ooe_rcu_map_payload),
+    .ooe_rcu_map_credit(ooe_rcu_map_credit),
+    .ooe_rcu_map_stall(ooe_rcu_map_stall),
+    .ooe_rcu_map_wake(ooe_rcu_map_wake),
+    .rcu_pca_mig_valid(rcu_pca_mig_valid),
+    .rcu_pca_mig_payload(rcu_pca_mig_payload),
+    .rcu_pca_mig_credit(rcu_pca_mig_credit),
+    .rcu_pca_mig_stall(rcu_pca_mig_stall),
+    .rcu_pca_mig_wake(rcu_pca_mig_wake),
+    .pca_rcu_mig_valid(pca_rcu_mig_valid),
+    .pca_rcu_mig_payload(pca_rcu_mig_payload),
+    .pca_rcu_mig_credit(pca_rcu_mig_credit),
+    .pca_rcu_mig_stall(pca_rcu_mig_stall),
+    .pca_rcu_mig_wake(pca_rcu_mig_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(rcu_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .ooe_rcu_issue_s0_tid(ooe_rcu_issue_s0_tid)
+    , .ooe_rcu_issue_s1_tid(ooe_rcu_issue_s1_tid)
+    , .ooe_rcu_issue_s2_tid(ooe_rcu_issue_s2_tid)
+    , .ooe_rcu_issue_s3_tid(ooe_rcu_issue_s3_tid)
+    , .ooe_rcu_issue_s4_tid(ooe_rcu_issue_s4_tid)
+    , .ooe_rcu_issue_s5_tid(ooe_rcu_issue_s5_tid)
+    , .ooe_rcu_issue_s6_tid(ooe_rcu_issue_s6_tid)
+    , .ooe_rcu_issue_s7_tid(ooe_rcu_issue_s7_tid)
+    , .ooe_rcu_issue_s8_tid(ooe_rcu_issue_s8_tid)
+    , .rcu_lane_ops_c00_tid(rcu_lane_ops_c00_tid)
+    , .rcu_lane_ops_c01_tid(rcu_lane_ops_c01_tid)
+    , .rcu_lane_ops_c02_tid(rcu_lane_ops_c02_tid)
+    , .rcu_lane_ops_c03_tid(rcu_lane_ops_c03_tid)
+    , .rcu_lane_ops_c04_tid(rcu_lane_ops_c04_tid)
+    , .rcu_lane_ops_c05_tid(rcu_lane_ops_c05_tid)
+    , .rcu_lane_ops_c06_tid(rcu_lane_ops_c06_tid)
+    , .rcu_lane_ops_c07_tid(rcu_lane_ops_c07_tid)
+    , .rcu_lane_ops_c08_tid(rcu_lane_ops_c08_tid)
+    , .rcu_lane_ops_c09_tid(rcu_lane_ops_c09_tid)
+    , .rcu_lane_ops_c10_tid(rcu_lane_ops_c10_tid)
+    , .rcu_lane_ops_c11_tid(rcu_lane_ops_c11_tid)
+    , .rcu_lane_ops_c12_tid(rcu_lane_ops_c12_tid)
+    , .rcu_lane_ops_c13_tid(rcu_lane_ops_c13_tid)
+    , .rcu_lane_ops_c14_tid(rcu_lane_ops_c14_tid)
+    , .rcu_lane_ops_c15_tid(rcu_lane_ops_c15_tid)
+    , .rcu_lane_ops_c16_tid(rcu_lane_ops_c16_tid)
+    , .rcu_lane_ops_c17_tid(rcu_lane_ops_c17_tid)
+    , .rcu_lane_ops_c18_tid(rcu_lane_ops_c18_tid)
+    , .rcu_lane_ops_c19_tid(rcu_lane_ops_c19_tid)
+    , .rcu_lane_ops_c20_tid(rcu_lane_ops_c20_tid)
+    , .rcu_lane_ops_c21_tid(rcu_lane_ops_c21_tid)
+    , .rcu_lane_ops_c22_tid(rcu_lane_ops_c22_tid)
+    , .rcu_lane_ops_c23_tid(rcu_lane_ops_c23_tid)
+    , .rcu_lane_ops_c24_tid(rcu_lane_ops_c24_tid)
+    , .rcu_lane_ops_c25_tid(rcu_lane_ops_c25_tid)
+    , .rcu_lane_ops_c26_tid(rcu_lane_ops_c26_tid)
+    , .rcu_lane_ops_c27_tid(rcu_lane_ops_c27_tid)
+    , .rcu_lane_ops_c28_tid(rcu_lane_ops_c28_tid)
+    , .rcu_lane_ops_c29_tid(rcu_lane_ops_c29_tid)
+    , .rcu_lane_ops_c30_tid(rcu_lane_ops_c30_tid)
+    , .rcu_lane_ops_c31_tid(rcu_lane_ops_c31_tid)
+    , .lane_rcu_res_c00_tid(lane_rcu_res_c00_tid)
+    , .lane_rcu_res_c01_tid(lane_rcu_res_c01_tid)
+    , .lane_rcu_res_c02_tid(lane_rcu_res_c02_tid)
+    , .lane_rcu_res_c03_tid(lane_rcu_res_c03_tid)
+    , .lane_rcu_res_c04_tid(lane_rcu_res_c04_tid)
+    , .lane_rcu_res_c05_tid(lane_rcu_res_c05_tid)
+    , .lane_rcu_res_c06_tid(lane_rcu_res_c06_tid)
+    , .lane_rcu_res_c07_tid(lane_rcu_res_c07_tid)
+    , .lane_rcu_res_c08_tid(lane_rcu_res_c08_tid)
+    , .lane_rcu_res_c09_tid(lane_rcu_res_c09_tid)
+    , .lane_rcu_res_c10_tid(lane_rcu_res_c10_tid)
+    , .lane_rcu_res_c11_tid(lane_rcu_res_c11_tid)
+    , .lane_rcu_res_c12_tid(lane_rcu_res_c12_tid)
+    , .lane_rcu_res_c13_tid(lane_rcu_res_c13_tid)
+    , .lane_rcu_res_c14_tid(lane_rcu_res_c14_tid)
+    , .lane_rcu_res_c15_tid(lane_rcu_res_c15_tid)
+    , .lane_rcu_res_c16_tid(lane_rcu_res_c16_tid)
+    , .lane_rcu_res_c17_tid(lane_rcu_res_c17_tid)
+    , .lane_rcu_res_c18_tid(lane_rcu_res_c18_tid)
+    , .lane_rcu_res_c19_tid(lane_rcu_res_c19_tid)
+    , .lane_rcu_res_c20_tid(lane_rcu_res_c20_tid)
+    , .lane_rcu_res_c21_tid(lane_rcu_res_c21_tid)
+    , .lane_rcu_res_c22_tid(lane_rcu_res_c22_tid)
+    , .lane_rcu_res_c23_tid(lane_rcu_res_c23_tid)
+    , .lane_rcu_res_c24_tid(lane_rcu_res_c24_tid)
+    , .lane_rcu_res_c25_tid(lane_rcu_res_c25_tid)
+    , .lane_rcu_res_c26_tid(lane_rcu_res_c26_tid)
+    , .lane_rcu_res_c27_tid(lane_rcu_res_c27_tid)
+    , .lane_rcu_res_c28_tid(lane_rcu_res_c28_tid)
+    , .lane_rcu_res_c29_tid(lane_rcu_res_c29_tid)
+    , .lane_rcu_res_c30_tid(lane_rcu_res_c30_tid)
+    , .lane_rcu_res_c31_tid(lane_rcu_res_c31_tid)
+    , .rcu_ooe_done_s0_tid(rcu_ooe_done_s0_tid)
+    , .rcu_ooe_done_s1_tid(rcu_ooe_done_s1_tid)
+    , .rcu_ooe_done_s2_tid(rcu_ooe_done_s2_tid)
+    , .rcu_ooe_done_s3_tid(rcu_ooe_done_s3_tid)
+    , .rcu_ooe_done_s4_tid(rcu_ooe_done_s4_tid)
+    , .rcu_ooe_done_s5_tid(rcu_ooe_done_s5_tid)
+    , .rcu_ooe_done_s6_tid(rcu_ooe_done_s6_tid)
+    , .rcu_miu_addr_s0_tid(rcu_miu_addr_s0_tid)
+    , .rcu_miu_addr_s1_tid(rcu_miu_addr_s1_tid)
+    , .rcu_miu_addr_s2_tid(rcu_miu_addr_s2_tid)
+    , .rcu_miu_addr_s3_tid(rcu_miu_addr_s3_tid)
+    , .miu_rcu_data_s0_tid(miu_rcu_data_s0_tid)
+    , .miu_rcu_data_s1_tid(miu_rcu_data_s1_tid)
+    , .miu_rcu_data_s2_tid(miu_rcu_data_s2_tid)
+    , .miu_rcu_data_s3_tid(miu_rcu_data_s3_tid)
+    , .rau_rcu_mig_tid(rau_rcu_mig_tid)
+    , .ooe_rcu_map_tid(ooe_rcu_map_tid)
+    , .rcu_pca_mig_tid(rcu_pca_mig_tid)
+    , .pca_rcu_mig_tid(pca_rcu_mig_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_00 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[196 +: 49]),
+    .csr_rsp(csr_rsps[132 +: 33]),
+    .csr_credit(csr_credits[4]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c00_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c00_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c00_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c00_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c00_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c00_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c00_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c00_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c00_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c00_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_00_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c00_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c00_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_01 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[245 +: 49]),
+    .csr_rsp(csr_rsps[165 +: 33]),
+    .csr_credit(csr_credits[5]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c01_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c01_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c01_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c01_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c01_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c01_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c01_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c01_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c01_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c01_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_01_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c01_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c01_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_02 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[294 +: 49]),
+    .csr_rsp(csr_rsps[198 +: 33]),
+    .csr_credit(csr_credits[6]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c02_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c02_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c02_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c02_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c02_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c02_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c02_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c02_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c02_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c02_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_02_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c02_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c02_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_03 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[343 +: 49]),
+    .csr_rsp(csr_rsps[231 +: 33]),
+    .csr_credit(csr_credits[7]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c03_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c03_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c03_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c03_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c03_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c03_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c03_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c03_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c03_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c03_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_03_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c03_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c03_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_04 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[392 +: 49]),
+    .csr_rsp(csr_rsps[264 +: 33]),
+    .csr_credit(csr_credits[8]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c04_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c04_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c04_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c04_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c04_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c04_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c04_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c04_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c04_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c04_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_04_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c04_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c04_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_05 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[441 +: 49]),
+    .csr_rsp(csr_rsps[297 +: 33]),
+    .csr_credit(csr_credits[9]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c05_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c05_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c05_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c05_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c05_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c05_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c05_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c05_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c05_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c05_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_05_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c05_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c05_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_06 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[490 +: 49]),
+    .csr_rsp(csr_rsps[330 +: 33]),
+    .csr_credit(csr_credits[10]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c06_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c06_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c06_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c06_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c06_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c06_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c06_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c06_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c06_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c06_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_06_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c06_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c06_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_07 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[539 +: 49]),
+    .csr_rsp(csr_rsps[363 +: 33]),
+    .csr_credit(csr_credits[11]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c07_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c07_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c07_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c07_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c07_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c07_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c07_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c07_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c07_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c07_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_07_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c07_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c07_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_08 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[588 +: 49]),
+    .csr_rsp(csr_rsps[396 +: 33]),
+    .csr_credit(csr_credits[12]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c08_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c08_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c08_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c08_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c08_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c08_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c08_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c08_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c08_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c08_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_08_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c08_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c08_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_09 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[637 +: 49]),
+    .csr_rsp(csr_rsps[429 +: 33]),
+    .csr_credit(csr_credits[13]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c09_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c09_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c09_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c09_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c09_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c09_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c09_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c09_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c09_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c09_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_09_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c09_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c09_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_10 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[686 +: 49]),
+    .csr_rsp(csr_rsps[462 +: 33]),
+    .csr_credit(csr_credits[14]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c10_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c10_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c10_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c10_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c10_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c10_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c10_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c10_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c10_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c10_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_10_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c10_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c10_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_11 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[735 +: 49]),
+    .csr_rsp(csr_rsps[495 +: 33]),
+    .csr_credit(csr_credits[15]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c11_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c11_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c11_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c11_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c11_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c11_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c11_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c11_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c11_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c11_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_11_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c11_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c11_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_12 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[784 +: 49]),
+    .csr_rsp(csr_rsps[528 +: 33]),
+    .csr_credit(csr_credits[16]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c12_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c12_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c12_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c12_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c12_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c12_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c12_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c12_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c12_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c12_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_12_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c12_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c12_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_13 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[833 +: 49]),
+    .csr_rsp(csr_rsps[561 +: 33]),
+    .csr_credit(csr_credits[17]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c13_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c13_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c13_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c13_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c13_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c13_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c13_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c13_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c13_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c13_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_13_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c13_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c13_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_14 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[882 +: 49]),
+    .csr_rsp(csr_rsps[594 +: 33]),
+    .csr_credit(csr_credits[18]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c14_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c14_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c14_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c14_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c14_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c14_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c14_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c14_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c14_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c14_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_14_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c14_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c14_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_15 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[931 +: 49]),
+    .csr_rsp(csr_rsps[627 +: 33]),
+    .csr_credit(csr_credits[19]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c15_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c15_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c15_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c15_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c15_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c15_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c15_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c15_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c15_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c15_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_15_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c15_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c15_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_16 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[980 +: 49]),
+    .csr_rsp(csr_rsps[660 +: 33]),
+    .csr_credit(csr_credits[20]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c16_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c16_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c16_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c16_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c16_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c16_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c16_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c16_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c16_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c16_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_16_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c16_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c16_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_17 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1029 +: 49]),
+    .csr_rsp(csr_rsps[693 +: 33]),
+    .csr_credit(csr_credits[21]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c17_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c17_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c17_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c17_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c17_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c17_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c17_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c17_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c17_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c17_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_17_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c17_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c17_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_18 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1078 +: 49]),
+    .csr_rsp(csr_rsps[726 +: 33]),
+    .csr_credit(csr_credits[22]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c18_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c18_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c18_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c18_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c18_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c18_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c18_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c18_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c18_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c18_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_18_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c18_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c18_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_19 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1127 +: 49]),
+    .csr_rsp(csr_rsps[759 +: 33]),
+    .csr_credit(csr_credits[23]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c19_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c19_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c19_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c19_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c19_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c19_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c19_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c19_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c19_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c19_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_19_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c19_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c19_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_20 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1176 +: 49]),
+    .csr_rsp(csr_rsps[792 +: 33]),
+    .csr_credit(csr_credits[24]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c20_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c20_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c20_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c20_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c20_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c20_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c20_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c20_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c20_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c20_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_20_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c20_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c20_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_21 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1225 +: 49]),
+    .csr_rsp(csr_rsps[825 +: 33]),
+    .csr_credit(csr_credits[25]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c21_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c21_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c21_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c21_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c21_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c21_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c21_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c21_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c21_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c21_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_21_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c21_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c21_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_22 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1274 +: 49]),
+    .csr_rsp(csr_rsps[858 +: 33]),
+    .csr_credit(csr_credits[26]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c22_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c22_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c22_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c22_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c22_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c22_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c22_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c22_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c22_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c22_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_22_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c22_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c22_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_23 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1323 +: 49]),
+    .csr_rsp(csr_rsps[891 +: 33]),
+    .csr_credit(csr_credits[27]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c23_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c23_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c23_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c23_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c23_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c23_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c23_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c23_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c23_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c23_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_23_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c23_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c23_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_24 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1372 +: 49]),
+    .csr_rsp(csr_rsps[924 +: 33]),
+    .csr_credit(csr_credits[28]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c24_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c24_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c24_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c24_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c24_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c24_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c24_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c24_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c24_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c24_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_24_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c24_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c24_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_25 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1421 +: 49]),
+    .csr_rsp(csr_rsps[957 +: 33]),
+    .csr_credit(csr_credits[29]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c25_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c25_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c25_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c25_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c25_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c25_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c25_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c25_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c25_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c25_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_25_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c25_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c25_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_26 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1470 +: 49]),
+    .csr_rsp(csr_rsps[990 +: 33]),
+    .csr_credit(csr_credits[30]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c26_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c26_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c26_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c26_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c26_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c26_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c26_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c26_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c26_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c26_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_26_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c26_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c26_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_27 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1519 +: 49]),
+    .csr_rsp(csr_rsps[1023 +: 33]),
+    .csr_credit(csr_credits[31]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c27_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c27_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c27_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c27_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c27_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c27_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c27_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c27_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c27_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c27_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_27_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c27_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c27_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_28 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1568 +: 49]),
+    .csr_rsp(csr_rsps[1056 +: 33]),
+    .csr_credit(csr_credits[32]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c28_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c28_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c28_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c28_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c28_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c28_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c28_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c28_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c28_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c28_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_28_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c28_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c28_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_29 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1617 +: 49]),
+    .csr_rsp(csr_rsps[1089 +: 33]),
+    .csr_credit(csr_credits[33]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c29_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c29_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c29_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c29_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c29_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c29_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c29_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c29_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c29_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c29_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_29_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c29_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c29_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_30 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1666 +: 49]),
+    .csr_rsp(csr_rsps[1122 +: 33]),
+    .csr_credit(csr_credits[34]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c30_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c30_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c30_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c30_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c30_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c30_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c30_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c30_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c30_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c30_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_30_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c30_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c30_tid)
+`endif
+  );
+
+  ccv_lane_w u_lane_31 (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1715 +: 49]),
+    .csr_rsp(csr_rsps[1155 +: 33]),
+    .csr_credit(csr_credits[35]),
+    .rcu_lane_ops_valid(rcu_lane_ops_c31_valid),
+    .rcu_lane_ops_payload(rcu_lane_ops_c31_payload),
+    .rcu_lane_ops_credit(rcu_lane_ops_c31_credit),
+    .rcu_lane_ops_stall(rcu_lane_ops_c31_stall),
+    .rcu_lane_ops_wake(rcu_lane_ops_c31_wake),
+    .lane_rcu_res_valid(lane_rcu_res_c31_valid),
+    .lane_rcu_res_payload(lane_rcu_res_c31_payload),
+    .lane_rcu_res_credit(lane_rcu_res_c31_credit),
+    .lane_rcu_res_stall(lane_rcu_res_c31_stall),
+    .lane_rcu_res_wake(lane_rcu_res_c31_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(lane_31_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_lane_ops_tid(rcu_lane_ops_c31_tid)
+    , .lane_rcu_res_tid(lane_rcu_res_c31_tid)
+`endif
+  );
+
+  ccv_miu_w u_miu (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[4]),
+    .kill_ack_epoch(kill_ack_epoch[8 +: 2]),
+    .csr_req(csr_reqs[1764 +: 49]),
+    .csr_rsp(csr_rsps[1188 +: 33]),
+    .csr_credit(csr_credits[36]),
+    .rcu_miu_addr_s0_valid(rcu_miu_addr_s0_valid),
+    .rcu_miu_addr_s0_payload(rcu_miu_addr_s0_payload),
+    .rcu_miu_addr_s0_credit(rcu_miu_addr_s0_credit),
+    .rcu_miu_addr_s0_stall(rcu_miu_addr_s0_stall),
+    .rcu_miu_addr_s1_valid(rcu_miu_addr_s1_valid),
+    .rcu_miu_addr_s1_payload(rcu_miu_addr_s1_payload),
+    .rcu_miu_addr_s1_credit(rcu_miu_addr_s1_credit),
+    .rcu_miu_addr_s1_stall(rcu_miu_addr_s1_stall),
+    .rcu_miu_addr_s2_valid(rcu_miu_addr_s2_valid),
+    .rcu_miu_addr_s2_payload(rcu_miu_addr_s2_payload),
+    .rcu_miu_addr_s2_credit(rcu_miu_addr_s2_credit),
+    .rcu_miu_addr_s2_stall(rcu_miu_addr_s2_stall),
+    .rcu_miu_addr_s3_valid(rcu_miu_addr_s3_valid),
+    .rcu_miu_addr_s3_payload(rcu_miu_addr_s3_payload),
+    .rcu_miu_addr_s3_credit(rcu_miu_addr_s3_credit),
+    .rcu_miu_addr_s3_stall(rcu_miu_addr_s3_stall),
+    .rcu_miu_addr_wake(rcu_miu_addr_wake),
+    .miu_rcu_data_s0_valid(miu_rcu_data_s0_valid),
+    .miu_rcu_data_s0_payload(miu_rcu_data_s0_payload),
+    .miu_rcu_data_s0_credit(miu_rcu_data_s0_credit),
+    .miu_rcu_data_s0_stall(miu_rcu_data_s0_stall),
+    .miu_rcu_data_s1_valid(miu_rcu_data_s1_valid),
+    .miu_rcu_data_s1_payload(miu_rcu_data_s1_payload),
+    .miu_rcu_data_s1_credit(miu_rcu_data_s1_credit),
+    .miu_rcu_data_s1_stall(miu_rcu_data_s1_stall),
+    .miu_rcu_data_s2_valid(miu_rcu_data_s2_valid),
+    .miu_rcu_data_s2_payload(miu_rcu_data_s2_payload),
+    .miu_rcu_data_s2_credit(miu_rcu_data_s2_credit),
+    .miu_rcu_data_s2_stall(miu_rcu_data_s2_stall),
+    .miu_rcu_data_s3_valid(miu_rcu_data_s3_valid),
+    .miu_rcu_data_s3_payload(miu_rcu_data_s3_payload),
+    .miu_rcu_data_s3_credit(miu_rcu_data_s3_credit),
+    .miu_rcu_data_s3_stall(miu_rcu_data_s3_stall),
+    .miu_rcu_data_wake(miu_rcu_data_wake),
+    .ooe_miu_memop_s0_valid(ooe_miu_memop_s0_valid),
+    .ooe_miu_memop_s0_payload(ooe_miu_memop_s0_payload),
+    .ooe_miu_memop_s0_credit(ooe_miu_memop_s0_credit),
+    .ooe_miu_memop_s0_stall(ooe_miu_memop_s0_stall),
+    .ooe_miu_memop_s1_valid(ooe_miu_memop_s1_valid),
+    .ooe_miu_memop_s1_payload(ooe_miu_memop_s1_payload),
+    .ooe_miu_memop_s1_credit(ooe_miu_memop_s1_credit),
+    .ooe_miu_memop_s1_stall(ooe_miu_memop_s1_stall),
+    .ooe_miu_memop_s2_valid(ooe_miu_memop_s2_valid),
+    .ooe_miu_memop_s2_payload(ooe_miu_memop_s2_payload),
+    .ooe_miu_memop_s2_credit(ooe_miu_memop_s2_credit),
+    .ooe_miu_memop_s2_stall(ooe_miu_memop_s2_stall),
+    .ooe_miu_memop_s3_valid(ooe_miu_memop_s3_valid),
+    .ooe_miu_memop_s3_payload(ooe_miu_memop_s3_payload),
+    .ooe_miu_memop_s3_credit(ooe_miu_memop_s3_credit),
+    .ooe_miu_memop_s3_stall(ooe_miu_memop_s3_stall),
+    .ooe_miu_memop_wake(ooe_miu_memop_wake),
+    .miu_ooe_cmpl_s0_valid(miu_ooe_cmpl_s0_valid),
+    .miu_ooe_cmpl_s0_payload(miu_ooe_cmpl_s0_payload),
+    .miu_ooe_cmpl_s0_credit(miu_ooe_cmpl_s0_credit),
+    .miu_ooe_cmpl_s0_stall(miu_ooe_cmpl_s0_stall),
+    .miu_ooe_cmpl_s1_valid(miu_ooe_cmpl_s1_valid),
+    .miu_ooe_cmpl_s1_payload(miu_ooe_cmpl_s1_payload),
+    .miu_ooe_cmpl_s1_credit(miu_ooe_cmpl_s1_credit),
+    .miu_ooe_cmpl_s1_stall(miu_ooe_cmpl_s1_stall),
+    .miu_ooe_cmpl_s2_valid(miu_ooe_cmpl_s2_valid),
+    .miu_ooe_cmpl_s2_payload(miu_ooe_cmpl_s2_payload),
+    .miu_ooe_cmpl_s2_credit(miu_ooe_cmpl_s2_credit),
+    .miu_ooe_cmpl_s2_stall(miu_ooe_cmpl_s2_stall),
+    .miu_ooe_cmpl_s3_valid(miu_ooe_cmpl_s3_valid),
+    .miu_ooe_cmpl_s3_payload(miu_ooe_cmpl_s3_payload),
+    .miu_ooe_cmpl_s3_credit(miu_ooe_cmpl_s3_credit),
+    .miu_ooe_cmpl_s3_stall(miu_ooe_cmpl_s3_stall),
+    .miu_ooe_cmpl_wake(miu_ooe_cmpl_wake),
+    .ooe_miu_retire_s0_valid(ooe_miu_retire_s0_valid),
+    .ooe_miu_retire_s0_payload(ooe_miu_retire_s0_payload),
+    .ooe_miu_retire_s0_credit(ooe_miu_retire_s0_credit),
+    .ooe_miu_retire_s0_stall(ooe_miu_retire_s0_stall),
+    .ooe_miu_retire_s1_valid(ooe_miu_retire_s1_valid),
+    .ooe_miu_retire_s1_payload(ooe_miu_retire_s1_payload),
+    .ooe_miu_retire_s1_credit(ooe_miu_retire_s1_credit),
+    .ooe_miu_retire_s1_stall(ooe_miu_retire_s1_stall),
+    .ooe_miu_retire_s2_valid(ooe_miu_retire_s2_valid),
+    .ooe_miu_retire_s2_payload(ooe_miu_retire_s2_payload),
+    .ooe_miu_retire_s2_credit(ooe_miu_retire_s2_credit),
+    .ooe_miu_retire_s2_stall(ooe_miu_retire_s2_stall),
+    .ooe_miu_retire_s3_valid(ooe_miu_retire_s3_valid),
+    .ooe_miu_retire_s3_payload(ooe_miu_retire_s3_payload),
+    .ooe_miu_retire_s3_credit(ooe_miu_retire_s3_credit),
+    .ooe_miu_retire_s3_stall(ooe_miu_retire_s3_stall),
+    .ooe_miu_retire_wake(ooe_miu_retire_wake),
+    .miu_spm_req_s0_valid(miu_spm_req_s0_valid),
+    .miu_spm_req_s0_payload(miu_spm_req_s0_payload),
+    .miu_spm_req_s0_credit(miu_spm_req_s0_credit),
+    .miu_spm_req_s0_stall(miu_spm_req_s0_stall),
+    .miu_spm_req_s1_valid(miu_spm_req_s1_valid),
+    .miu_spm_req_s1_payload(miu_spm_req_s1_payload),
+    .miu_spm_req_s1_credit(miu_spm_req_s1_credit),
+    .miu_spm_req_s1_stall(miu_spm_req_s1_stall),
+    .miu_spm_req_s2_valid(miu_spm_req_s2_valid),
+    .miu_spm_req_s2_payload(miu_spm_req_s2_payload),
+    .miu_spm_req_s2_credit(miu_spm_req_s2_credit),
+    .miu_spm_req_s2_stall(miu_spm_req_s2_stall),
+    .miu_spm_req_s3_valid(miu_spm_req_s3_valid),
+    .miu_spm_req_s3_payload(miu_spm_req_s3_payload),
+    .miu_spm_req_s3_credit(miu_spm_req_s3_credit),
+    .miu_spm_req_s3_stall(miu_spm_req_s3_stall),
+    .miu_spm_req_wake(miu_spm_req_wake),
+    .spm_miu_rsp_s0_valid(spm_miu_rsp_s0_valid),
+    .spm_miu_rsp_s0_payload(spm_miu_rsp_s0_payload),
+    .spm_miu_rsp_s0_credit(spm_miu_rsp_s0_credit),
+    .spm_miu_rsp_s0_stall(spm_miu_rsp_s0_stall),
+    .spm_miu_rsp_s1_valid(spm_miu_rsp_s1_valid),
+    .spm_miu_rsp_s1_payload(spm_miu_rsp_s1_payload),
+    .spm_miu_rsp_s1_credit(spm_miu_rsp_s1_credit),
+    .spm_miu_rsp_s1_stall(spm_miu_rsp_s1_stall),
+    .spm_miu_rsp_s2_valid(spm_miu_rsp_s2_valid),
+    .spm_miu_rsp_s2_payload(spm_miu_rsp_s2_payload),
+    .spm_miu_rsp_s2_credit(spm_miu_rsp_s2_credit),
+    .spm_miu_rsp_s2_stall(spm_miu_rsp_s2_stall),
+    .spm_miu_rsp_s3_valid(spm_miu_rsp_s3_valid),
+    .spm_miu_rsp_s3_payload(spm_miu_rsp_s3_payload),
+    .spm_miu_rsp_s3_credit(spm_miu_rsp_s3_credit),
+    .spm_miu_rsp_s3_stall(spm_miu_rsp_s3_stall),
+    .spm_miu_rsp_wake(spm_miu_rsp_wake),
+    .miu_dcu_req_s0_valid(miu_dcu_req_s0_valid),
+    .miu_dcu_req_s0_payload(miu_dcu_req_s0_payload),
+    .miu_dcu_req_s0_credit(miu_dcu_req_s0_credit),
+    .miu_dcu_req_s0_stall(miu_dcu_req_s0_stall),
+    .miu_dcu_req_s1_valid(miu_dcu_req_s1_valid),
+    .miu_dcu_req_s1_payload(miu_dcu_req_s1_payload),
+    .miu_dcu_req_s1_credit(miu_dcu_req_s1_credit),
+    .miu_dcu_req_s1_stall(miu_dcu_req_s1_stall),
+    .miu_dcu_req_s2_valid(miu_dcu_req_s2_valid),
+    .miu_dcu_req_s2_payload(miu_dcu_req_s2_payload),
+    .miu_dcu_req_s2_credit(miu_dcu_req_s2_credit),
+    .miu_dcu_req_s2_stall(miu_dcu_req_s2_stall),
+    .miu_dcu_req_s3_valid(miu_dcu_req_s3_valid),
+    .miu_dcu_req_s3_payload(miu_dcu_req_s3_payload),
+    .miu_dcu_req_s3_credit(miu_dcu_req_s3_credit),
+    .miu_dcu_req_s3_stall(miu_dcu_req_s3_stall),
+    .miu_dcu_req_wake(miu_dcu_req_wake),
+    .dcu_miu_rsp_s0_valid(dcu_miu_rsp_s0_valid),
+    .dcu_miu_rsp_s0_payload(dcu_miu_rsp_s0_payload),
+    .dcu_miu_rsp_s0_credit(dcu_miu_rsp_s0_credit),
+    .dcu_miu_rsp_s0_stall(dcu_miu_rsp_s0_stall),
+    .dcu_miu_rsp_s1_valid(dcu_miu_rsp_s1_valid),
+    .dcu_miu_rsp_s1_payload(dcu_miu_rsp_s1_payload),
+    .dcu_miu_rsp_s1_credit(dcu_miu_rsp_s1_credit),
+    .dcu_miu_rsp_s1_stall(dcu_miu_rsp_s1_stall),
+    .dcu_miu_rsp_s2_valid(dcu_miu_rsp_s2_valid),
+    .dcu_miu_rsp_s2_payload(dcu_miu_rsp_s2_payload),
+    .dcu_miu_rsp_s2_credit(dcu_miu_rsp_s2_credit),
+    .dcu_miu_rsp_s2_stall(dcu_miu_rsp_s2_stall),
+    .dcu_miu_rsp_s3_valid(dcu_miu_rsp_s3_valid),
+    .dcu_miu_rsp_s3_payload(dcu_miu_rsp_s3_payload),
+    .dcu_miu_rsp_s3_credit(dcu_miu_rsp_s3_credit),
+    .dcu_miu_rsp_s3_stall(dcu_miu_rsp_s3_stall),
+    .dcu_miu_rsp_wake(dcu_miu_rsp_wake),
+    .miu_fet_itlb_valid(miu_fet_itlb_valid),
+    .miu_fet_itlb_payload(miu_fet_itlb_payload),
+    .miu_fet_itlb_credit(miu_fet_itlb_credit),
+    .miu_fet_itlb_stall(miu_fet_itlb_stall),
+    .miu_fet_itlb_wake(miu_fet_itlb_wake),
+    .fet_miu_itlb_req_valid(fet_miu_itlb_req_valid),
+    .fet_miu_itlb_req_payload(fet_miu_itlb_req_payload),
+    .fet_miu_itlb_req_credit(fet_miu_itlb_req_credit),
+    .fet_miu_itlb_req_stall(fet_miu_itlb_req_stall),
+    .fet_miu_itlb_req_wake(fet_miu_itlb_req_wake),
+    .rau_miu_cta_valid(rau_miu_cta_valid),
+    .rau_miu_cta_payload(rau_miu_cta_payload),
+    .rau_miu_cta_credit(rau_miu_cta_credit),
+    .rau_miu_cta_stall(rau_miu_cta_stall),
+    .rau_miu_cta_wake(rau_miu_cta_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(miu_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_miu_addr_s0_tid(rcu_miu_addr_s0_tid)
+    , .rcu_miu_addr_s1_tid(rcu_miu_addr_s1_tid)
+    , .rcu_miu_addr_s2_tid(rcu_miu_addr_s2_tid)
+    , .rcu_miu_addr_s3_tid(rcu_miu_addr_s3_tid)
+    , .miu_rcu_data_s0_tid(miu_rcu_data_s0_tid)
+    , .miu_rcu_data_s1_tid(miu_rcu_data_s1_tid)
+    , .miu_rcu_data_s2_tid(miu_rcu_data_s2_tid)
+    , .miu_rcu_data_s3_tid(miu_rcu_data_s3_tid)
+    , .ooe_miu_memop_s0_tid(ooe_miu_memop_s0_tid)
+    , .ooe_miu_memop_s1_tid(ooe_miu_memop_s1_tid)
+    , .ooe_miu_memop_s2_tid(ooe_miu_memop_s2_tid)
+    , .ooe_miu_memop_s3_tid(ooe_miu_memop_s3_tid)
+    , .miu_ooe_cmpl_s0_tid(miu_ooe_cmpl_s0_tid)
+    , .miu_ooe_cmpl_s1_tid(miu_ooe_cmpl_s1_tid)
+    , .miu_ooe_cmpl_s2_tid(miu_ooe_cmpl_s2_tid)
+    , .miu_ooe_cmpl_s3_tid(miu_ooe_cmpl_s3_tid)
+    , .ooe_miu_retire_s0_tid(ooe_miu_retire_s0_tid)
+    , .ooe_miu_retire_s1_tid(ooe_miu_retire_s1_tid)
+    , .ooe_miu_retire_s2_tid(ooe_miu_retire_s2_tid)
+    , .ooe_miu_retire_s3_tid(ooe_miu_retire_s3_tid)
+    , .miu_spm_req_s0_tid(miu_spm_req_s0_tid)
+    , .miu_spm_req_s1_tid(miu_spm_req_s1_tid)
+    , .miu_spm_req_s2_tid(miu_spm_req_s2_tid)
+    , .miu_spm_req_s3_tid(miu_spm_req_s3_tid)
+    , .spm_miu_rsp_s0_tid(spm_miu_rsp_s0_tid)
+    , .spm_miu_rsp_s1_tid(spm_miu_rsp_s1_tid)
+    , .spm_miu_rsp_s2_tid(spm_miu_rsp_s2_tid)
+    , .spm_miu_rsp_s3_tid(spm_miu_rsp_s3_tid)
+    , .miu_dcu_req_s0_tid(miu_dcu_req_s0_tid)
+    , .miu_dcu_req_s1_tid(miu_dcu_req_s1_tid)
+    , .miu_dcu_req_s2_tid(miu_dcu_req_s2_tid)
+    , .miu_dcu_req_s3_tid(miu_dcu_req_s3_tid)
+    , .dcu_miu_rsp_s0_tid(dcu_miu_rsp_s0_tid)
+    , .dcu_miu_rsp_s1_tid(dcu_miu_rsp_s1_tid)
+    , .dcu_miu_rsp_s2_tid(dcu_miu_rsp_s2_tid)
+    , .dcu_miu_rsp_s3_tid(dcu_miu_rsp_s3_tid)
+    , .miu_fet_itlb_tid(miu_fet_itlb_tid)
+    , .fet_miu_itlb_req_tid(fet_miu_itlb_req_tid)
+    , .rau_miu_cta_tid(rau_miu_cta_tid)
+`endif
+  );
+
+  ccv_spm_w u_spm (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[5]),
+    .kill_ack_epoch(kill_ack_epoch[10 +: 2]),
+    .csr_req(csr_reqs[1813 +: 49]),
+    .csr_rsp(csr_rsps[1221 +: 33]),
+    .csr_credit(csr_credits[37]),
+    .miu_spm_req_s0_valid(miu_spm_req_s0_valid),
+    .miu_spm_req_s0_payload(miu_spm_req_s0_payload),
+    .miu_spm_req_s0_credit(miu_spm_req_s0_credit),
+    .miu_spm_req_s0_stall(miu_spm_req_s0_stall),
+    .miu_spm_req_s1_valid(miu_spm_req_s1_valid),
+    .miu_spm_req_s1_payload(miu_spm_req_s1_payload),
+    .miu_spm_req_s1_credit(miu_spm_req_s1_credit),
+    .miu_spm_req_s1_stall(miu_spm_req_s1_stall),
+    .miu_spm_req_s2_valid(miu_spm_req_s2_valid),
+    .miu_spm_req_s2_payload(miu_spm_req_s2_payload),
+    .miu_spm_req_s2_credit(miu_spm_req_s2_credit),
+    .miu_spm_req_s2_stall(miu_spm_req_s2_stall),
+    .miu_spm_req_s3_valid(miu_spm_req_s3_valid),
+    .miu_spm_req_s3_payload(miu_spm_req_s3_payload),
+    .miu_spm_req_s3_credit(miu_spm_req_s3_credit),
+    .miu_spm_req_s3_stall(miu_spm_req_s3_stall),
+    .miu_spm_req_wake(miu_spm_req_wake),
+    .spm_miu_rsp_s0_valid(spm_miu_rsp_s0_valid),
+    .spm_miu_rsp_s0_payload(spm_miu_rsp_s0_payload),
+    .spm_miu_rsp_s0_credit(spm_miu_rsp_s0_credit),
+    .spm_miu_rsp_s0_stall(spm_miu_rsp_s0_stall),
+    .spm_miu_rsp_s1_valid(spm_miu_rsp_s1_valid),
+    .spm_miu_rsp_s1_payload(spm_miu_rsp_s1_payload),
+    .spm_miu_rsp_s1_credit(spm_miu_rsp_s1_credit),
+    .spm_miu_rsp_s1_stall(spm_miu_rsp_s1_stall),
+    .spm_miu_rsp_s2_valid(spm_miu_rsp_s2_valid),
+    .spm_miu_rsp_s2_payload(spm_miu_rsp_s2_payload),
+    .spm_miu_rsp_s2_credit(spm_miu_rsp_s2_credit),
+    .spm_miu_rsp_s2_stall(spm_miu_rsp_s2_stall),
+    .spm_miu_rsp_s3_valid(spm_miu_rsp_s3_valid),
+    .spm_miu_rsp_s3_payload(spm_miu_rsp_s3_payload),
+    .spm_miu_rsp_s3_credit(spm_miu_rsp_s3_credit),
+    .spm_miu_rsp_s3_stall(spm_miu_rsp_s3_stall),
+    .spm_miu_rsp_wake(spm_miu_rsp_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(spm_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .miu_spm_req_s0_tid(miu_spm_req_s0_tid)
+    , .miu_spm_req_s1_tid(miu_spm_req_s1_tid)
+    , .miu_spm_req_s2_tid(miu_spm_req_s2_tid)
+    , .miu_spm_req_s3_tid(miu_spm_req_s3_tid)
+    , .spm_miu_rsp_s0_tid(spm_miu_rsp_s0_tid)
+    , .spm_miu_rsp_s1_tid(spm_miu_rsp_s1_tid)
+    , .spm_miu_rsp_s2_tid(spm_miu_rsp_s2_tid)
+    , .spm_miu_rsp_s3_tid(spm_miu_rsp_s3_tid)
+`endif
+  );
+
+  ccv_dcu_w u_dcu (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1862 +: 49]),
+    .csr_rsp(csr_rsps[1254 +: 33]),
+    .csr_credit(csr_credits[38]),
+    .miu_dcu_req_s0_valid(miu_dcu_req_s0_valid),
+    .miu_dcu_req_s0_payload(miu_dcu_req_s0_payload),
+    .miu_dcu_req_s0_credit(miu_dcu_req_s0_credit),
+    .miu_dcu_req_s0_stall(miu_dcu_req_s0_stall),
+    .miu_dcu_req_s1_valid(miu_dcu_req_s1_valid),
+    .miu_dcu_req_s1_payload(miu_dcu_req_s1_payload),
+    .miu_dcu_req_s1_credit(miu_dcu_req_s1_credit),
+    .miu_dcu_req_s1_stall(miu_dcu_req_s1_stall),
+    .miu_dcu_req_s2_valid(miu_dcu_req_s2_valid),
+    .miu_dcu_req_s2_payload(miu_dcu_req_s2_payload),
+    .miu_dcu_req_s2_credit(miu_dcu_req_s2_credit),
+    .miu_dcu_req_s2_stall(miu_dcu_req_s2_stall),
+    .miu_dcu_req_s3_valid(miu_dcu_req_s3_valid),
+    .miu_dcu_req_s3_payload(miu_dcu_req_s3_payload),
+    .miu_dcu_req_s3_credit(miu_dcu_req_s3_credit),
+    .miu_dcu_req_s3_stall(miu_dcu_req_s3_stall),
+    .miu_dcu_req_wake(miu_dcu_req_wake),
+    .dcu_miu_rsp_s0_valid(dcu_miu_rsp_s0_valid),
+    .dcu_miu_rsp_s0_payload(dcu_miu_rsp_s0_payload),
+    .dcu_miu_rsp_s0_credit(dcu_miu_rsp_s0_credit),
+    .dcu_miu_rsp_s0_stall(dcu_miu_rsp_s0_stall),
+    .dcu_miu_rsp_s1_valid(dcu_miu_rsp_s1_valid),
+    .dcu_miu_rsp_s1_payload(dcu_miu_rsp_s1_payload),
+    .dcu_miu_rsp_s1_credit(dcu_miu_rsp_s1_credit),
+    .dcu_miu_rsp_s1_stall(dcu_miu_rsp_s1_stall),
+    .dcu_miu_rsp_s2_valid(dcu_miu_rsp_s2_valid),
+    .dcu_miu_rsp_s2_payload(dcu_miu_rsp_s2_payload),
+    .dcu_miu_rsp_s2_credit(dcu_miu_rsp_s2_credit),
+    .dcu_miu_rsp_s2_stall(dcu_miu_rsp_s2_stall),
+    .dcu_miu_rsp_s3_valid(dcu_miu_rsp_s3_valid),
+    .dcu_miu_rsp_s3_payload(dcu_miu_rsp_s3_payload),
+    .dcu_miu_rsp_s3_credit(dcu_miu_rsp_s3_credit),
+    .dcu_miu_rsp_s3_stall(dcu_miu_rsp_s3_stall),
+    .dcu_miu_rsp_wake(dcu_miu_rsp_wake),
+    .dcu_mlc_req_valid(dcu_mlc_req_valid),
+    .dcu_mlc_req_payload(dcu_mlc_req_payload),
+    .dcu_mlc_req_credit(dcu_mlc_req_credit),
+    .dcu_mlc_req_stall(dcu_mlc_req_stall),
+    .dcu_mlc_req_wake(dcu_mlc_req_wake),
+    .mlc_dcu_rsp_valid(mlc_dcu_rsp_valid),
+    .mlc_dcu_rsp_payload(mlc_dcu_rsp_payload),
+    .mlc_dcu_rsp_credit(mlc_dcu_rsp_credit),
+    .mlc_dcu_rsp_stall(mlc_dcu_rsp_stall),
+    .mlc_dcu_rsp_wake(mlc_dcu_rsp_wake),
+    .mlc_dcu_probe_valid(mlc_dcu_probe_valid),
+    .mlc_dcu_probe_payload(mlc_dcu_probe_payload),
+    .mlc_dcu_probe_credit(mlc_dcu_probe_credit),
+    .mlc_dcu_probe_stall(mlc_dcu_probe_stall),
+    .mlc_dcu_probe_wake(mlc_dcu_probe_wake),
+    .dcu_mlc_probe_ack_valid(dcu_mlc_probe_ack_valid),
+    .dcu_mlc_probe_ack_payload(dcu_mlc_probe_ack_payload),
+    .dcu_mlc_probe_ack_credit(dcu_mlc_probe_ack_credit),
+    .dcu_mlc_probe_ack_stall(dcu_mlc_probe_ack_stall),
+    .dcu_mlc_probe_ack_wake(dcu_mlc_probe_ack_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(dcu_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .miu_dcu_req_s0_tid(miu_dcu_req_s0_tid)
+    , .miu_dcu_req_s1_tid(miu_dcu_req_s1_tid)
+    , .miu_dcu_req_s2_tid(miu_dcu_req_s2_tid)
+    , .miu_dcu_req_s3_tid(miu_dcu_req_s3_tid)
+    , .dcu_miu_rsp_s0_tid(dcu_miu_rsp_s0_tid)
+    , .dcu_miu_rsp_s1_tid(dcu_miu_rsp_s1_tid)
+    , .dcu_miu_rsp_s2_tid(dcu_miu_rsp_s2_tid)
+    , .dcu_miu_rsp_s3_tid(dcu_miu_rsp_s3_tid)
+    , .dcu_mlc_req_tid(dcu_mlc_req_tid)
+    , .mlc_dcu_rsp_tid(mlc_dcu_rsp_tid)
+    , .mlc_dcu_probe_tid(mlc_dcu_probe_tid)
+    , .dcu_mlc_probe_ack_tid(dcu_mlc_probe_ack_tid)
+`endif
+  );
+
+  ccv_mlc_w u_mlc (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[1911 +: 49]),
+    .csr_rsp(csr_rsps[1287 +: 33]),
+    .csr_credit(csr_credits[39]),
+    .dcu_mlc_req_valid(dcu_mlc_req_valid),
+    .dcu_mlc_req_payload(dcu_mlc_req_payload),
+    .dcu_mlc_req_credit(dcu_mlc_req_credit),
+    .dcu_mlc_req_stall(dcu_mlc_req_stall),
+    .dcu_mlc_req_wake(dcu_mlc_req_wake),
+    .mlc_dcu_rsp_valid(mlc_dcu_rsp_valid),
+    .mlc_dcu_rsp_payload(mlc_dcu_rsp_payload),
+    .mlc_dcu_rsp_credit(mlc_dcu_rsp_credit),
+    .mlc_dcu_rsp_stall(mlc_dcu_rsp_stall),
+    .mlc_dcu_rsp_wake(mlc_dcu_rsp_wake),
+    .mlc_dcu_probe_valid(mlc_dcu_probe_valid),
+    .mlc_dcu_probe_payload(mlc_dcu_probe_payload),
+    .mlc_dcu_probe_credit(mlc_dcu_probe_credit),
+    .mlc_dcu_probe_stall(mlc_dcu_probe_stall),
+    .mlc_dcu_probe_wake(mlc_dcu_probe_wake),
+    .dcu_mlc_probe_ack_valid(dcu_mlc_probe_ack_valid),
+    .dcu_mlc_probe_ack_payload(dcu_mlc_probe_ack_payload),
+    .dcu_mlc_probe_ack_credit(dcu_mlc_probe_ack_credit),
+    .dcu_mlc_probe_ack_stall(dcu_mlc_probe_ack_stall),
+    .dcu_mlc_probe_ack_wake(dcu_mlc_probe_ack_wake),
+    .fet_mlc_ifill_valid(fet_mlc_ifill_valid),
+    .fet_mlc_ifill_payload(fet_mlc_ifill_payload),
+    .fet_mlc_ifill_credit(fet_mlc_ifill_credit),
+    .fet_mlc_ifill_stall(fet_mlc_ifill_stall),
+    .fet_mlc_ifill_wake(fet_mlc_ifill_wake),
+    .mlc_fet_ifill_rsp_valid(mlc_fet_ifill_rsp_valid),
+    .mlc_fet_ifill_rsp_payload(mlc_fet_ifill_rsp_payload),
+    .mlc_fet_ifill_rsp_credit(mlc_fet_ifill_rsp_credit),
+    .mlc_fet_ifill_rsp_stall(mlc_fet_ifill_rsp_stall),
+    .mlc_fet_ifill_rsp_wake(mlc_fet_ifill_rsp_wake),
+    .mlc_exb_req_valid(mlc_exb_req_valid),
+    .mlc_exb_req_payload(mlc_exb_req_payload),
+    .mlc_exb_req_credit(mlc_exb_req_credit),
+    .mlc_exb_req_stall(mlc_exb_req_stall),
+    .mlc_exb_req_wake(mlc_exb_req_wake),
+    .exb_mlc_rsp_valid(exb_mlc_rsp_valid),
+    .exb_mlc_rsp_payload(exb_mlc_rsp_payload),
+    .exb_mlc_rsp_credit(exb_mlc_rsp_credit),
+    .exb_mlc_rsp_stall(exb_mlc_rsp_stall),
+    .exb_mlc_rsp_wake(exb_mlc_rsp_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(mlc_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .dcu_mlc_req_tid(dcu_mlc_req_tid)
+    , .mlc_dcu_rsp_tid(mlc_dcu_rsp_tid)
+    , .mlc_dcu_probe_tid(mlc_dcu_probe_tid)
+    , .dcu_mlc_probe_ack_tid(dcu_mlc_probe_ack_tid)
+    , .fet_mlc_ifill_tid(fet_mlc_ifill_tid)
+    , .mlc_fet_ifill_rsp_tid(mlc_fet_ifill_rsp_tid)
+    , .mlc_exb_req_tid(mlc_exb_req_tid)
+    , .exb_mlc_rsp_tid(exb_mlc_rsp_tid)
+`endif
+  );
+
+  ccv_rau_w u_rau (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_acks(kill_ack),
+    .kill_ack_epochs(kill_ack_epoch),
+    .csr_req(csr_reqs[1960 +: 49]),
+    .csr_rsp(csr_rsps[1320 +: 33]),
+    .csr_credit(csr_credits[40]),
+    .rau_fet_launch_valid(rau_fet_launch_valid),
+    .rau_fet_launch_payload(rau_fet_launch_payload),
+    .rau_fet_launch_credit(rau_fet_launch_credit),
+    .rau_fet_launch_stall(rau_fet_launch_stall),
+    .rau_fet_launch_wake(rau_fet_launch_wake),
+    .rau_ooe_alloc_valid(rau_ooe_alloc_valid),
+    .rau_ooe_alloc_payload(rau_ooe_alloc_payload),
+    .rau_ooe_alloc_credit(rau_ooe_alloc_credit),
+    .rau_ooe_alloc_stall(rau_ooe_alloc_stall),
+    .rau_ooe_alloc_wake(rau_ooe_alloc_wake),
+    .ooe_rau_status_valid(ooe_rau_status_valid),
+    .ooe_rau_status_payload(ooe_rau_status_payload),
+    .ooe_rau_status_credit(ooe_rau_status_credit),
+    .ooe_rau_status_stall(ooe_rau_status_stall),
+    .ooe_rau_status_wake(ooe_rau_status_wake),
+    .rau_ooe_demote_valid(rau_ooe_demote_valid),
+    .rau_ooe_demote_payload(rau_ooe_demote_payload),
+    .rau_ooe_demote_credit(rau_ooe_demote_credit),
+    .rau_ooe_demote_stall(rau_ooe_demote_stall),
+    .rau_ooe_demote_wake(rau_ooe_demote_wake),
+    .ooe_rau_drained_valid(ooe_rau_drained_valid),
+    .ooe_rau_drained_payload(ooe_rau_drained_payload),
+    .ooe_rau_drained_credit(ooe_rau_drained_credit),
+    .ooe_rau_drained_stall(ooe_rau_drained_stall),
+    .ooe_rau_drained_wake(ooe_rau_drained_wake),
+    .rau_rcu_mig_valid(rau_rcu_mig_valid),
+    .rau_rcu_mig_payload(rau_rcu_mig_payload),
+    .rau_rcu_mig_credit(rau_rcu_mig_credit),
+    .rau_rcu_mig_stall(rau_rcu_mig_stall),
+    .rau_rcu_mig_wake(rau_rcu_mig_wake),
+    .rau_fet_mig_valid(rau_fet_mig_valid),
+    .rau_fet_mig_payload(rau_fet_mig_payload),
+    .rau_fet_mig_credit(rau_fet_mig_credit),
+    .rau_fet_mig_stall(rau_fet_mig_stall),
+    .rau_fet_mig_wake(rau_fet_mig_wake),
+    .pca_rau_mig_done_valid(pca_rau_mig_done_valid),
+    .pca_rau_mig_done_payload(pca_rau_mig_done_payload),
+    .pca_rau_mig_done_credit(pca_rau_mig_done_credit),
+    .pca_rau_mig_done_stall(pca_rau_mig_done_stall),
+    .pca_rau_mig_done_wake(pca_rau_mig_done_wake),
+    .rau_miu_cta_valid(rau_miu_cta_valid),
+    .rau_miu_cta_payload(rau_miu_cta_payload),
+    .rau_miu_cta_credit(rau_miu_cta_credit),
+    .rau_miu_cta_stall(rau_miu_cta_stall),
+    .rau_miu_cta_wake(rau_miu_cta_wake),
+    .rau_syu_alloc_valid(rau_syu_alloc_valid),
+    .rau_syu_alloc_payload(rau_syu_alloc_payload),
+    .rau_syu_alloc_credit(rau_syu_alloc_credit),
+    .rau_syu_alloc_stall(rau_syu_alloc_stall),
+    .rau_syu_alloc_wake(rau_syu_alloc_wake),
+    .cru_rau_cfg_valid(cru_rau_cfg_valid),
+    .cru_rau_cfg_payload(cru_rau_cfg_payload),
+    .cru_rau_cfg_credit(cru_rau_cfg_credit),
+    .cru_rau_cfg_stall(cru_rau_cfg_stall),
+    .cru_rau_cfg_wake(cru_rau_cfg_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(rau_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rau_fet_launch_tid(rau_fet_launch_tid)
+    , .rau_ooe_alloc_tid(rau_ooe_alloc_tid)
+    , .ooe_rau_status_tid(ooe_rau_status_tid)
+    , .rau_ooe_demote_tid(rau_ooe_demote_tid)
+    , .ooe_rau_drained_tid(ooe_rau_drained_tid)
+    , .rau_rcu_mig_tid(rau_rcu_mig_tid)
+    , .rau_fet_mig_tid(rau_fet_mig_tid)
+    , .pca_rau_mig_done_tid(pca_rau_mig_done_tid)
+    , .rau_miu_cta_tid(rau_miu_cta_tid)
+    , .rau_syu_alloc_tid(rau_syu_alloc_tid)
+    , .cru_rau_cfg_tid(cru_rau_cfg_tid)
+`endif
+  );
+
+  ccv_syu_w u_syu (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[6]),
+    .kill_ack_epoch(kill_ack_epoch[12 +: 2]),
+    .csr_req(csr_reqs[2009 +: 49]),
+    .csr_rsp(csr_rsps[1353 +: 33]),
+    .csr_credit(csr_credits[41]),
+    .ooe_syu_bar_valid(ooe_syu_bar_valid),
+    .ooe_syu_bar_payload(ooe_syu_bar_payload),
+    .ooe_syu_bar_credit(ooe_syu_bar_credit),
+    .ooe_syu_bar_stall(ooe_syu_bar_stall),
+    .ooe_syu_bar_wake(ooe_syu_bar_wake),
+    .syu_ooe_rel_valid(syu_ooe_rel_valid),
+    .syu_ooe_rel_payload(syu_ooe_rel_payload),
+    .syu_ooe_rel_credit(syu_ooe_rel_credit),
+    .syu_ooe_rel_stall(syu_ooe_rel_stall),
+    .syu_ooe_rel_wake(syu_ooe_rel_wake),
+    .rau_syu_alloc_valid(rau_syu_alloc_valid),
+    .rau_syu_alloc_payload(rau_syu_alloc_payload),
+    .rau_syu_alloc_credit(rau_syu_alloc_credit),
+    .rau_syu_alloc_stall(rau_syu_alloc_stall),
+    .rau_syu_alloc_wake(rau_syu_alloc_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(syu_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .ooe_syu_bar_tid(ooe_syu_bar_tid)
+    , .syu_ooe_rel_tid(syu_ooe_rel_tid)
+    , .rau_syu_alloc_tid(rau_syu_alloc_tid)
+`endif
+  );
+
+  ccv_pca_w u_pca (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .kill_valid(kill_valid),
+    .kill_warp_mask(kill_warp_mask),
+    .kill_epoch(kill_epoch),
+    .kill_ack(kill_ack[7]),
+    .kill_ack_epoch(kill_ack_epoch[14 +: 2]),
+    .csr_req(csr_reqs[2058 +: 49]),
+    .csr_rsp(csr_rsps[1386 +: 33]),
+    .csr_credit(csr_credits[42]),
+    .rcu_pca_mig_valid(rcu_pca_mig_valid),
+    .rcu_pca_mig_payload(rcu_pca_mig_payload),
+    .rcu_pca_mig_credit(rcu_pca_mig_credit),
+    .rcu_pca_mig_stall(rcu_pca_mig_stall),
+    .rcu_pca_mig_wake(rcu_pca_mig_wake),
+    .pca_rcu_mig_valid(pca_rcu_mig_valid),
+    .pca_rcu_mig_payload(pca_rcu_mig_payload),
+    .pca_rcu_mig_credit(pca_rcu_mig_credit),
+    .pca_rcu_mig_stall(pca_rcu_mig_stall),
+    .pca_rcu_mig_wake(pca_rcu_mig_wake),
+    .fet_pca_mig_valid(fet_pca_mig_valid),
+    .fet_pca_mig_payload(fet_pca_mig_payload),
+    .fet_pca_mig_credit(fet_pca_mig_credit),
+    .fet_pca_mig_stall(fet_pca_mig_stall),
+    .fet_pca_mig_wake(fet_pca_mig_wake),
+    .pca_fet_mig_valid(pca_fet_mig_valid),
+    .pca_fet_mig_payload(pca_fet_mig_payload),
+    .pca_fet_mig_credit(pca_fet_mig_credit),
+    .pca_fet_mig_stall(pca_fet_mig_stall),
+    .pca_fet_mig_wake(pca_fet_mig_wake),
+    .pca_rau_mig_done_valid(pca_rau_mig_done_valid),
+    .pca_rau_mig_done_payload(pca_rau_mig_done_payload),
+    .pca_rau_mig_done_credit(pca_rau_mig_done_credit),
+    .pca_rau_mig_done_stall(pca_rau_mig_done_stall),
+    .pca_rau_mig_done_wake(pca_rau_mig_done_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(pca_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .rcu_pca_mig_tid(rcu_pca_mig_tid)
+    , .pca_rcu_mig_tid(pca_rcu_mig_tid)
+    , .fet_pca_mig_tid(fet_pca_mig_tid)
+    , .pca_fet_mig_tid(pca_fet_mig_tid)
+    , .pca_rau_mig_done_tid(pca_rau_mig_done_tid)
+`endif
+  );
+
+  ccv_cru_w u_cru (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_req),
+    .csr_reqs(csr_reqs),
+    .csr_rsp(csr_rsp),
+    .csr_rsps(csr_rsps),
+    .csr_credit(csr_credit),
+    .csr_credits(csr_credits),
+    .ooe_cru_fault_valid(ooe_cru_fault_valid),
+    .ooe_cru_fault_payload(ooe_cru_fault_payload),
+    .ooe_cru_fault_credit(ooe_cru_fault_credit),
+    .ooe_cru_fault_stall(ooe_cru_fault_stall),
+    .ooe_cru_fault_wake(ooe_cru_fault_wake),
+    .cru_rau_cfg_valid(cru_rau_cfg_valid),
+    .cru_rau_cfg_payload(cru_rau_cfg_payload),
+    .cru_rau_cfg_credit(cru_rau_cfg_credit),
+    .cru_rau_cfg_stall(cru_rau_cfg_stall),
+    .cru_rau_cfg_wake(cru_rau_cfg_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(cru_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .ooe_cru_fault_tid(ooe_cru_fault_tid)
+    , .cru_rau_cfg_tid(cru_rau_cfg_tid)
+`endif
+  );
+
+  ccv_exb_w u_exb (
+    .core_clk(core_clk),
+    .rst_n(rst_n),
+    .csr_req(csr_reqs[2107 +: 49]),
+    .csr_rsp(csr_rsps[1419 +: 33]),
+    .csr_credit(csr_credits[43]),
+    .mlc_exb_req_valid(mlc_exb_req_valid),
+    .mlc_exb_req_payload(mlc_exb_req_payload),
+    .mlc_exb_req_credit(mlc_exb_req_credit),
+    .mlc_exb_req_stall(mlc_exb_req_stall),
+    .mlc_exb_req_wake(mlc_exb_req_wake),
+    .exb_mlc_rsp_valid(exb_mlc_rsp_valid),
+    .exb_mlc_rsp_payload(exb_mlc_rsp_payload),
+    .exb_mlc_rsp_credit(exb_mlc_rsp_credit),
+    .exb_mlc_rsp_stall(exb_mlc_rsp_stall),
+    .exb_mlc_rsp_wake(exb_mlc_rsp_wake),
+    .exb_ext_out_valid(exb_ext_out_valid),
+    .exb_ext_out_payload(exb_ext_out_payload),
+    .exb_ext_out_credit(exb_ext_out_credit),
+    .exb_ext_out_stall(exb_ext_out_stall),
+    .exb_ext_out_wake(exb_ext_out_wake),
+    .ext_exb_in_valid(ext_exb_in_valid),
+    .ext_exb_in_payload(ext_exb_in_payload),
+    .ext_exb_in_credit(ext_exb_in_credit),
+    .ext_exb_in_stall(ext_exb_in_stall),
+    .ext_exb_in_wake(ext_exb_in_wake)
+`ifdef CCV_CHECK
+    , .clk_gated(exb_clk_gated)
+`endif
+`ifdef CCV_TRACE
+    , .mlc_exb_req_tid(mlc_exb_req_tid)
+    , .exb_mlc_rsp_tid(exb_mlc_rsp_tid)
+    , .exb_ext_out_tid(exb_ext_out_tid)
+    , .ext_exb_in_tid(ext_exb_in_tid)
+`endif
+  );
+
+`ifdef CCV_CHECK
+  // The SAME checker bank the C++ skeleton Verilates, on the real
+  // nets: the one thing here that is not a block. It only observes,
+  // and it is absent unless CCV_CHECK is defined, so synthesis and
+  // the floorplan never see it.
+  ccv_common_chk_bank u_checkers (
+    .clk(core_clk), .rst_n(rst_n), .force_atomic(1'b0), .pair_enable(1'b1),
+    .valid({ext_exb_in_valid, cru_rau_cfg_valid, ooe_cru_fault_valid, rau_syu_alloc_valid, syu_ooe_rel_valid, ooe_syu_bar_valid, rau_miu_cta_valid, pca_rau_mig_done_valid, rau_fet_mig_valid, pca_fet_mig_valid, fet_pca_mig_valid, pca_rcu_mig_valid, rcu_pca_mig_valid, ooe_rcu_map_valid, rau_rcu_mig_valid, ooe_rau_drained_valid, rau_ooe_demote_valid, ooe_rau_status_valid, rau_ooe_alloc_valid, rau_fet_launch_valid, exb_ext_out_valid, exb_mlc_rsp_valid, mlc_exb_req_valid, fet_miu_itlb_req_valid, miu_fet_itlb_valid, mlc_fet_ifill_rsp_valid, fet_mlc_ifill_valid, dcu_mlc_probe_ack_valid, mlc_dcu_probe_valid, mlc_dcu_rsp_valid, dcu_mlc_req_valid, dcu_miu_rsp_s3_valid, dcu_miu_rsp_s2_valid, dcu_miu_rsp_s1_valid, dcu_miu_rsp_s0_valid, miu_dcu_req_s3_valid, miu_dcu_req_s2_valid, miu_dcu_req_s1_valid, miu_dcu_req_s0_valid, spm_miu_rsp_s3_valid, spm_miu_rsp_s2_valid, spm_miu_rsp_s1_valid, spm_miu_rsp_s0_valid, miu_spm_req_s3_valid, miu_spm_req_s2_valid, miu_spm_req_s1_valid, miu_spm_req_s0_valid, ooe_fet_ckpt_free_valid, ooe_fet_redirect_valid, ooe_miu_retire_s3_valid, ooe_miu_retire_s2_valid, ooe_miu_retire_s1_valid, ooe_miu_retire_s0_valid, miu_ooe_cmpl_s3_valid, miu_ooe_cmpl_s2_valid, miu_ooe_cmpl_s1_valid, miu_ooe_cmpl_s0_valid, ooe_miu_memop_s3_valid, ooe_miu_memop_s2_valid, ooe_miu_memop_s1_valid, ooe_miu_memop_s0_valid, miu_rcu_data_s3_valid, miu_rcu_data_s2_valid, miu_rcu_data_s1_valid, miu_rcu_data_s0_valid, rcu_miu_addr_s3_valid, rcu_miu_addr_s2_valid, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_valid, rcu_ooe_done_s6_valid, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_valid, rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid, lane_rcu_res_c31_valid, lane_rcu_res_c30_valid, lane_rcu_res_c29_valid, lane_rcu_res_c28_valid, lane_rcu_res_c27_valid, lane_rcu_res_c26_valid, lane_rcu_res_c25_valid, lane_rcu_res_c24_valid, lane_rcu_res_c23_valid, lane_rcu_res_c22_valid, lane_rcu_res_c21_valid, lane_rcu_res_c20_valid, lane_rcu_res_c19_valid, lane_rcu_res_c18_valid, lane_rcu_res_c17_valid, lane_rcu_res_c16_valid, lane_rcu_res_c15_valid, lane_rcu_res_c14_valid, lane_rcu_res_c13_valid, lane_rcu_res_c12_valid, lane_rcu_res_c11_valid, lane_rcu_res_c10_valid, lane_rcu_res_c09_valid, lane_rcu_res_c08_valid, lane_rcu_res_c07_valid, lane_rcu_res_c06_valid, lane_rcu_res_c05_valid, lane_rcu_res_c04_valid, lane_rcu_res_c03_valid, lane_rcu_res_c02_valid, lane_rcu_res_c01_valid, lane_rcu_res_c00_valid, rcu_lane_ops_c31_valid, rcu_lane_ops_c30_valid, rcu_lane_ops_c29_valid, rcu_lane_ops_c28_valid, rcu_lane_ops_c27_valid, rcu_lane_ops_c26_valid, rcu_lane_ops_c25_valid, rcu_lane_ops_c24_valid, rcu_lane_ops_c23_valid, rcu_lane_ops_c22_valid, rcu_lane_ops_c21_valid, rcu_lane_ops_c20_valid, rcu_lane_ops_c19_valid, rcu_lane_ops_c18_valid, rcu_lane_ops_c17_valid, rcu_lane_ops_c16_valid, rcu_lane_ops_c15_valid, rcu_lane_ops_c14_valid, rcu_lane_ops_c13_valid, rcu_lane_ops_c12_valid, rcu_lane_ops_c11_valid, rcu_lane_ops_c10_valid, rcu_lane_ops_c09_valid, rcu_lane_ops_c08_valid, rcu_lane_ops_c07_valid, rcu_lane_ops_c06_valid, rcu_lane_ops_c05_valid, rcu_lane_ops_c04_valid, rcu_lane_ops_c03_valid, rcu_lane_ops_c02_valid, rcu_lane_ops_c01_valid, rcu_lane_ops_c00_valid, ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid, dec_ooe_uop_s5_valid, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_valid, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_valid, fet_dec_instr_s7_valid, fet_dec_instr_s6_valid, fet_dec_instr_s5_valid, fet_dec_instr_s4_valid, fet_dec_instr_s3_valid, fet_dec_instr_s2_valid, fet_dec_instr_s1_valid, fet_dec_instr_s0_valid}),
+    .credit({ext_exb_in_credit, cru_rau_cfg_credit, ooe_cru_fault_credit, rau_syu_alloc_credit, syu_ooe_rel_credit, ooe_syu_bar_credit, rau_miu_cta_credit, pca_rau_mig_done_credit, rau_fet_mig_credit, pca_fet_mig_credit, fet_pca_mig_credit, pca_rcu_mig_credit, rcu_pca_mig_credit, ooe_rcu_map_credit, rau_rcu_mig_credit, ooe_rau_drained_credit, rau_ooe_demote_credit, ooe_rau_status_credit, rau_ooe_alloc_credit, rau_fet_launch_credit, exb_ext_out_credit, exb_mlc_rsp_credit, mlc_exb_req_credit, fet_miu_itlb_req_credit, miu_fet_itlb_credit, mlc_fet_ifill_rsp_credit, fet_mlc_ifill_credit, dcu_mlc_probe_ack_credit, mlc_dcu_probe_credit, mlc_dcu_rsp_credit, dcu_mlc_req_credit, dcu_miu_rsp_s3_credit, dcu_miu_rsp_s2_credit, dcu_miu_rsp_s1_credit, dcu_miu_rsp_s0_credit, miu_dcu_req_s3_credit, miu_dcu_req_s2_credit, miu_dcu_req_s1_credit, miu_dcu_req_s0_credit, spm_miu_rsp_s3_credit, spm_miu_rsp_s2_credit, spm_miu_rsp_s1_credit, spm_miu_rsp_s0_credit, miu_spm_req_s3_credit, miu_spm_req_s2_credit, miu_spm_req_s1_credit, miu_spm_req_s0_credit, ooe_fet_ckpt_free_credit, ooe_fet_redirect_credit, ooe_miu_retire_s3_credit, ooe_miu_retire_s2_credit, ooe_miu_retire_s1_credit, ooe_miu_retire_s0_credit, miu_ooe_cmpl_s3_credit, miu_ooe_cmpl_s2_credit, miu_ooe_cmpl_s1_credit, miu_ooe_cmpl_s0_credit, ooe_miu_memop_s3_credit, ooe_miu_memop_s2_credit, ooe_miu_memop_s1_credit, ooe_miu_memop_s0_credit, miu_rcu_data_s3_credit, miu_rcu_data_s2_credit, miu_rcu_data_s1_credit, miu_rcu_data_s0_credit, rcu_miu_addr_s3_credit, rcu_miu_addr_s2_credit, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_credit, rcu_ooe_done_s6_credit, rcu_ooe_done_s5_credit, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit, lane_rcu_res_c31_credit, lane_rcu_res_c30_credit, lane_rcu_res_c29_credit, lane_rcu_res_c28_credit, lane_rcu_res_c27_credit, lane_rcu_res_c26_credit, lane_rcu_res_c25_credit, lane_rcu_res_c24_credit, lane_rcu_res_c23_credit, lane_rcu_res_c22_credit, lane_rcu_res_c21_credit, lane_rcu_res_c20_credit, lane_rcu_res_c19_credit, lane_rcu_res_c18_credit, lane_rcu_res_c17_credit, lane_rcu_res_c16_credit, lane_rcu_res_c15_credit, lane_rcu_res_c14_credit, lane_rcu_res_c13_credit, lane_rcu_res_c12_credit, lane_rcu_res_c11_credit, lane_rcu_res_c10_credit, lane_rcu_res_c09_credit, lane_rcu_res_c08_credit, lane_rcu_res_c07_credit, lane_rcu_res_c06_credit, lane_rcu_res_c05_credit, lane_rcu_res_c04_credit, lane_rcu_res_c03_credit, lane_rcu_res_c02_credit, lane_rcu_res_c01_credit, lane_rcu_res_c00_credit, rcu_lane_ops_c31_credit, rcu_lane_ops_c30_credit, rcu_lane_ops_c29_credit, rcu_lane_ops_c28_credit, rcu_lane_ops_c27_credit, rcu_lane_ops_c26_credit, rcu_lane_ops_c25_credit, rcu_lane_ops_c24_credit, rcu_lane_ops_c23_credit, rcu_lane_ops_c22_credit, rcu_lane_ops_c21_credit, rcu_lane_ops_c20_credit, rcu_lane_ops_c19_credit, rcu_lane_ops_c18_credit, rcu_lane_ops_c17_credit, rcu_lane_ops_c16_credit, rcu_lane_ops_c15_credit, rcu_lane_ops_c14_credit, rcu_lane_ops_c13_credit, rcu_lane_ops_c12_credit, rcu_lane_ops_c11_credit, rcu_lane_ops_c10_credit, rcu_lane_ops_c09_credit, rcu_lane_ops_c08_credit, rcu_lane_ops_c07_credit, rcu_lane_ops_c06_credit, rcu_lane_ops_c05_credit, rcu_lane_ops_c04_credit, rcu_lane_ops_c03_credit, rcu_lane_ops_c02_credit, rcu_lane_ops_c01_credit, rcu_lane_ops_c00_credit, ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit, dec_ooe_uop_s5_credit, dec_ooe_uop_s4_credit, dec_ooe_uop_s3_credit, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_credit, dec_ooe_uop_s0_credit, fet_dec_instr_s7_credit, fet_dec_instr_s6_credit, fet_dec_instr_s5_credit, fet_dec_instr_s4_credit, fet_dec_instr_s3_credit, fet_dec_instr_s2_credit, fet_dec_instr_s1_credit, fet_dec_instr_s0_credit}),
+    .stall({ext_exb_in_stall, cru_rau_cfg_stall, ooe_cru_fault_stall, rau_syu_alloc_stall, syu_ooe_rel_stall, ooe_syu_bar_stall, rau_miu_cta_stall, pca_rau_mig_done_stall, rau_fet_mig_stall, pca_fet_mig_stall, fet_pca_mig_stall, pca_rcu_mig_stall, rcu_pca_mig_stall, ooe_rcu_map_stall, rau_rcu_mig_stall, ooe_rau_drained_stall, rau_ooe_demote_stall, ooe_rau_status_stall, rau_ooe_alloc_stall, rau_fet_launch_stall, exb_ext_out_stall, exb_mlc_rsp_stall, mlc_exb_req_stall, fet_miu_itlb_req_stall, miu_fet_itlb_stall, mlc_fet_ifill_rsp_stall, fet_mlc_ifill_stall, dcu_mlc_probe_ack_stall, mlc_dcu_probe_stall, mlc_dcu_rsp_stall, dcu_mlc_req_stall, dcu_miu_rsp_s3_stall, dcu_miu_rsp_s2_stall, dcu_miu_rsp_s1_stall, dcu_miu_rsp_s0_stall, miu_dcu_req_s3_stall, miu_dcu_req_s2_stall, miu_dcu_req_s1_stall, miu_dcu_req_s0_stall, spm_miu_rsp_s3_stall, spm_miu_rsp_s2_stall, spm_miu_rsp_s1_stall, spm_miu_rsp_s0_stall, miu_spm_req_s3_stall, miu_spm_req_s2_stall, miu_spm_req_s1_stall, miu_spm_req_s0_stall, ooe_fet_ckpt_free_stall, ooe_fet_redirect_stall, ooe_miu_retire_s3_stall, ooe_miu_retire_s2_stall, ooe_miu_retire_s1_stall, ooe_miu_retire_s0_stall, miu_ooe_cmpl_s3_stall, miu_ooe_cmpl_s2_stall, miu_ooe_cmpl_s1_stall, miu_ooe_cmpl_s0_stall, ooe_miu_memop_s3_stall, ooe_miu_memop_s2_stall, ooe_miu_memop_s1_stall, ooe_miu_memop_s0_stall, miu_rcu_data_s3_stall, miu_rcu_data_s2_stall, miu_rcu_data_s1_stall, miu_rcu_data_s0_stall, rcu_miu_addr_s3_stall, rcu_miu_addr_s2_stall, rcu_miu_addr_s1_stall, rcu_miu_addr_s0_stall, rcu_ooe_done_s6_stall, rcu_ooe_done_s5_stall, rcu_ooe_done_s4_stall, rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall, lane_rcu_res_c31_stall, lane_rcu_res_c30_stall, lane_rcu_res_c29_stall, lane_rcu_res_c28_stall, lane_rcu_res_c27_stall, lane_rcu_res_c26_stall, lane_rcu_res_c25_stall, lane_rcu_res_c24_stall, lane_rcu_res_c23_stall, lane_rcu_res_c22_stall, lane_rcu_res_c21_stall, lane_rcu_res_c20_stall, lane_rcu_res_c19_stall, lane_rcu_res_c18_stall, lane_rcu_res_c17_stall, lane_rcu_res_c16_stall, lane_rcu_res_c15_stall, lane_rcu_res_c14_stall, lane_rcu_res_c13_stall, lane_rcu_res_c12_stall, lane_rcu_res_c11_stall, lane_rcu_res_c10_stall, lane_rcu_res_c09_stall, lane_rcu_res_c08_stall, lane_rcu_res_c07_stall, lane_rcu_res_c06_stall, lane_rcu_res_c05_stall, lane_rcu_res_c04_stall, lane_rcu_res_c03_stall, lane_rcu_res_c02_stall, lane_rcu_res_c01_stall, lane_rcu_res_c00_stall, rcu_lane_ops_c31_stall, rcu_lane_ops_c30_stall, rcu_lane_ops_c29_stall, rcu_lane_ops_c28_stall, rcu_lane_ops_c27_stall, rcu_lane_ops_c26_stall, rcu_lane_ops_c25_stall, rcu_lane_ops_c24_stall, rcu_lane_ops_c23_stall, rcu_lane_ops_c22_stall, rcu_lane_ops_c21_stall, rcu_lane_ops_c20_stall, rcu_lane_ops_c19_stall, rcu_lane_ops_c18_stall, rcu_lane_ops_c17_stall, rcu_lane_ops_c16_stall, rcu_lane_ops_c15_stall, rcu_lane_ops_c14_stall, rcu_lane_ops_c13_stall, rcu_lane_ops_c12_stall, rcu_lane_ops_c11_stall, rcu_lane_ops_c10_stall, rcu_lane_ops_c09_stall, rcu_lane_ops_c08_stall, rcu_lane_ops_c07_stall, rcu_lane_ops_c06_stall, rcu_lane_ops_c05_stall, rcu_lane_ops_c04_stall, rcu_lane_ops_c03_stall, rcu_lane_ops_c02_stall, rcu_lane_ops_c01_stall, rcu_lane_ops_c00_stall, ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall, dec_ooe_uop_s5_stall, dec_ooe_uop_s4_stall, dec_ooe_uop_s3_stall, dec_ooe_uop_s2_stall, dec_ooe_uop_s1_stall, dec_ooe_uop_s0_stall, fet_dec_instr_s7_stall, fet_dec_instr_s6_stall, fet_dec_instr_s5_stall, fet_dec_instr_s4_stall, fet_dec_instr_s3_stall, fet_dec_instr_s2_stall, fet_dec_instr_s1_stall, fet_dec_instr_s0_stall}),
+    .payload({ext_exb_in_payload, cru_rau_cfg_payload, ooe_cru_fault_payload, rau_syu_alloc_payload, syu_ooe_rel_payload, ooe_syu_bar_payload, rau_miu_cta_payload, pca_rau_mig_done_payload, rau_fet_mig_payload, pca_fet_mig_payload, fet_pca_mig_payload, pca_rcu_mig_payload, rcu_pca_mig_payload, ooe_rcu_map_payload, rau_rcu_mig_payload, ooe_rau_drained_payload, rau_ooe_demote_payload, ooe_rau_status_payload, rau_ooe_alloc_payload, rau_fet_launch_payload, exb_ext_out_payload, exb_mlc_rsp_payload, mlc_exb_req_payload, fet_miu_itlb_req_payload, miu_fet_itlb_payload, mlc_fet_ifill_rsp_payload, fet_mlc_ifill_payload, dcu_mlc_probe_ack_payload, mlc_dcu_probe_payload, mlc_dcu_rsp_payload, dcu_mlc_req_payload, dcu_miu_rsp_s3_payload, dcu_miu_rsp_s2_payload, dcu_miu_rsp_s1_payload, dcu_miu_rsp_s0_payload, miu_dcu_req_s3_payload, miu_dcu_req_s2_payload, miu_dcu_req_s1_payload, miu_dcu_req_s0_payload, spm_miu_rsp_s3_payload, spm_miu_rsp_s2_payload, spm_miu_rsp_s1_payload, spm_miu_rsp_s0_payload, miu_spm_req_s3_payload, miu_spm_req_s2_payload, miu_spm_req_s1_payload, miu_spm_req_s0_payload, ooe_fet_ckpt_free_payload, ooe_fet_redirect_payload, ooe_miu_retire_s3_payload, ooe_miu_retire_s2_payload, ooe_miu_retire_s1_payload, ooe_miu_retire_s0_payload, miu_ooe_cmpl_s3_payload, miu_ooe_cmpl_s2_payload, miu_ooe_cmpl_s1_payload, miu_ooe_cmpl_s0_payload, ooe_miu_memop_s3_payload, ooe_miu_memop_s2_payload, ooe_miu_memop_s1_payload, ooe_miu_memop_s0_payload, miu_rcu_data_s3_payload, miu_rcu_data_s2_payload, miu_rcu_data_s1_payload, miu_rcu_data_s0_payload, rcu_miu_addr_s3_payload, rcu_miu_addr_s2_payload, rcu_miu_addr_s1_payload, rcu_miu_addr_s0_payload, rcu_ooe_done_s6_payload, rcu_ooe_done_s5_payload, rcu_ooe_done_s4_payload, rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload, lane_rcu_res_c31_payload, lane_rcu_res_c30_payload, lane_rcu_res_c29_payload, lane_rcu_res_c28_payload, lane_rcu_res_c27_payload, lane_rcu_res_c26_payload, lane_rcu_res_c25_payload, lane_rcu_res_c24_payload, lane_rcu_res_c23_payload, lane_rcu_res_c22_payload, lane_rcu_res_c21_payload, lane_rcu_res_c20_payload, lane_rcu_res_c19_payload, lane_rcu_res_c18_payload, lane_rcu_res_c17_payload, lane_rcu_res_c16_payload, lane_rcu_res_c15_payload, lane_rcu_res_c14_payload, lane_rcu_res_c13_payload, lane_rcu_res_c12_payload, lane_rcu_res_c11_payload, lane_rcu_res_c10_payload, lane_rcu_res_c09_payload, lane_rcu_res_c08_payload, lane_rcu_res_c07_payload, lane_rcu_res_c06_payload, lane_rcu_res_c05_payload, lane_rcu_res_c04_payload, lane_rcu_res_c03_payload, lane_rcu_res_c02_payload, lane_rcu_res_c01_payload, lane_rcu_res_c00_payload, rcu_lane_ops_c31_payload, rcu_lane_ops_c30_payload, rcu_lane_ops_c29_payload, rcu_lane_ops_c28_payload, rcu_lane_ops_c27_payload, rcu_lane_ops_c26_payload, rcu_lane_ops_c25_payload, rcu_lane_ops_c24_payload, rcu_lane_ops_c23_payload, rcu_lane_ops_c22_payload, rcu_lane_ops_c21_payload, rcu_lane_ops_c20_payload, rcu_lane_ops_c19_payload, rcu_lane_ops_c18_payload, rcu_lane_ops_c17_payload, rcu_lane_ops_c16_payload, rcu_lane_ops_c15_payload, rcu_lane_ops_c14_payload, rcu_lane_ops_c13_payload, rcu_lane_ops_c12_payload, rcu_lane_ops_c11_payload, rcu_lane_ops_c10_payload, rcu_lane_ops_c09_payload, rcu_lane_ops_c08_payload, rcu_lane_ops_c07_payload, rcu_lane_ops_c06_payload, rcu_lane_ops_c05_payload, rcu_lane_ops_c04_payload, rcu_lane_ops_c03_payload, rcu_lane_ops_c02_payload, rcu_lane_ops_c01_payload, rcu_lane_ops_c00_payload, ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload, dec_ooe_uop_s5_payload, dec_ooe_uop_s4_payload, dec_ooe_uop_s3_payload, dec_ooe_uop_s2_payload, dec_ooe_uop_s1_payload, dec_ooe_uop_s0_payload, fet_dec_instr_s7_payload, fet_dec_instr_s6_payload, fet_dec_instr_s5_payload, fet_dec_instr_s4_payload, fet_dec_instr_s3_payload, fet_dec_instr_s2_payload, fet_dec_instr_s1_payload, fet_dec_instr_s0_payload}),
+    .wake({ext_exb_in_wake, cru_rau_cfg_wake, ooe_cru_fault_wake, rau_syu_alloc_wake, syu_ooe_rel_wake, ooe_syu_bar_wake, rau_miu_cta_wake, pca_rau_mig_done_wake, rau_fet_mig_wake, pca_fet_mig_wake, fet_pca_mig_wake, pca_rcu_mig_wake, rcu_pca_mig_wake, ooe_rcu_map_wake, rau_rcu_mig_wake, ooe_rau_drained_wake, rau_ooe_demote_wake, ooe_rau_status_wake, rau_ooe_alloc_wake, rau_fet_launch_wake, exb_ext_out_wake, exb_mlc_rsp_wake, mlc_exb_req_wake, fet_miu_itlb_req_wake, miu_fet_itlb_wake, mlc_fet_ifill_rsp_wake, fet_mlc_ifill_wake, dcu_mlc_probe_ack_wake, mlc_dcu_probe_wake, mlc_dcu_rsp_wake, dcu_mlc_req_wake, dcu_miu_rsp_wake, miu_dcu_req_wake, spm_miu_rsp_wake, miu_spm_req_wake, ooe_fet_ckpt_free_wake, ooe_fet_redirect_wake, ooe_miu_retire_wake, miu_ooe_cmpl_wake, ooe_miu_memop_wake, miu_rcu_data_wake, rcu_miu_addr_wake, rcu_ooe_done_wake, lane_rcu_res_c31_wake, lane_rcu_res_c30_wake, lane_rcu_res_c29_wake, lane_rcu_res_c28_wake, lane_rcu_res_c27_wake, lane_rcu_res_c26_wake, lane_rcu_res_c25_wake, lane_rcu_res_c24_wake, lane_rcu_res_c23_wake, lane_rcu_res_c22_wake, lane_rcu_res_c21_wake, lane_rcu_res_c20_wake, lane_rcu_res_c19_wake, lane_rcu_res_c18_wake, lane_rcu_res_c17_wake, lane_rcu_res_c16_wake, lane_rcu_res_c15_wake, lane_rcu_res_c14_wake, lane_rcu_res_c13_wake, lane_rcu_res_c12_wake, lane_rcu_res_c11_wake, lane_rcu_res_c10_wake, lane_rcu_res_c09_wake, lane_rcu_res_c08_wake, lane_rcu_res_c07_wake, lane_rcu_res_c06_wake, lane_rcu_res_c05_wake, lane_rcu_res_c04_wake, lane_rcu_res_c03_wake, lane_rcu_res_c02_wake, lane_rcu_res_c01_wake, lane_rcu_res_c00_wake, rcu_lane_ops_c31_wake, rcu_lane_ops_c30_wake, rcu_lane_ops_c29_wake, rcu_lane_ops_c28_wake, rcu_lane_ops_c27_wake, rcu_lane_ops_c26_wake, rcu_lane_ops_c25_wake, rcu_lane_ops_c24_wake, rcu_lane_ops_c23_wake, rcu_lane_ops_c22_wake, rcu_lane_ops_c21_wake, rcu_lane_ops_c20_wake, rcu_lane_ops_c19_wake, rcu_lane_ops_c18_wake, rcu_lane_ops_c17_wake, rcu_lane_ops_c16_wake, rcu_lane_ops_c15_wake, rcu_lane_ops_c14_wake, rcu_lane_ops_c13_wake, rcu_lane_ops_c12_wake, rcu_lane_ops_c11_wake, rcu_lane_ops_c10_wake, rcu_lane_ops_c09_wake, rcu_lane_ops_c08_wake, rcu_lane_ops_c07_wake, rcu_lane_ops_c06_wake, rcu_lane_ops_c05_wake, rcu_lane_ops_c04_wake, rcu_lane_ops_c03_wake, rcu_lane_ops_c02_wake, rcu_lane_ops_c01_wake, rcu_lane_ops_c00_wake, ooe_rcu_issue_wake, dec_ooe_uop_wake, fet_dec_instr_wake}),
+    .rx_gated({exb_clk_gated, rau_clk_gated, cru_clk_gated, syu_clk_gated, ooe_clk_gated, syu_clk_gated, miu_clk_gated, rau_clk_gated, fet_clk_gated, fet_clk_gated, pca_clk_gated, rcu_clk_gated, pca_clk_gated, rcu_clk_gated, rcu_clk_gated, rau_clk_gated, ooe_clk_gated, rau_clk_gated, ooe_clk_gated, fet_clk_gated, 1'b0, mlc_clk_gated, exb_clk_gated, miu_clk_gated, fet_clk_gated, fet_clk_gated, mlc_clk_gated, mlc_clk_gated, dcu_clk_gated, dcu_clk_gated, mlc_clk_gated, miu_clk_gated, dcu_clk_gated, miu_clk_gated, spm_clk_gated, fet_clk_gated, fet_clk_gated, miu_clk_gated, ooe_clk_gated, miu_clk_gated, rcu_clk_gated, miu_clk_gated, ooe_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, rcu_clk_gated, lane_31_clk_gated, lane_30_clk_gated, lane_29_clk_gated, lane_28_clk_gated, lane_27_clk_gated, lane_26_clk_gated, lane_25_clk_gated, lane_24_clk_gated, lane_23_clk_gated, lane_22_clk_gated, lane_21_clk_gated, lane_20_clk_gated, lane_19_clk_gated, lane_18_clk_gated, lane_17_clk_gated, lane_16_clk_gated, lane_15_clk_gated, lane_14_clk_gated, lane_13_clk_gated, lane_12_clk_gated, lane_11_clk_gated, lane_10_clk_gated, lane_09_clk_gated, lane_08_clk_gated, lane_07_clk_gated, lane_06_clk_gated, lane_05_clk_gated, lane_04_clk_gated, lane_03_clk_gated, lane_02_clk_gated, lane_01_clk_gated, lane_00_clk_gated, rcu_clk_gated, ooe_clk_gated, dec_clk_gated})
+`ifdef CCV_TRACE
+    , .tid({ext_exb_in_tid, cru_rau_cfg_tid, ooe_cru_fault_tid, rau_syu_alloc_tid, syu_ooe_rel_tid, ooe_syu_bar_tid, rau_miu_cta_tid, pca_rau_mig_done_tid, rau_fet_mig_tid, pca_fet_mig_tid, fet_pca_mig_tid, pca_rcu_mig_tid, rcu_pca_mig_tid, ooe_rcu_map_tid, rau_rcu_mig_tid, ooe_rau_drained_tid, rau_ooe_demote_tid, ooe_rau_status_tid, rau_ooe_alloc_tid, rau_fet_launch_tid, exb_ext_out_tid, exb_mlc_rsp_tid, mlc_exb_req_tid, fet_miu_itlb_req_tid, miu_fet_itlb_tid, mlc_fet_ifill_rsp_tid, fet_mlc_ifill_tid, dcu_mlc_probe_ack_tid, mlc_dcu_probe_tid, mlc_dcu_rsp_tid, dcu_mlc_req_tid, dcu_miu_rsp_s3_tid, dcu_miu_rsp_s2_tid, dcu_miu_rsp_s1_tid, dcu_miu_rsp_s0_tid, miu_dcu_req_s3_tid, miu_dcu_req_s2_tid, miu_dcu_req_s1_tid, miu_dcu_req_s0_tid, spm_miu_rsp_s3_tid, spm_miu_rsp_s2_tid, spm_miu_rsp_s1_tid, spm_miu_rsp_s0_tid, miu_spm_req_s3_tid, miu_spm_req_s2_tid, miu_spm_req_s1_tid, miu_spm_req_s0_tid, ooe_fet_ckpt_free_tid, ooe_fet_redirect_tid, ooe_miu_retire_s3_tid, ooe_miu_retire_s2_tid, ooe_miu_retire_s1_tid, ooe_miu_retire_s0_tid, miu_ooe_cmpl_s3_tid, miu_ooe_cmpl_s2_tid, miu_ooe_cmpl_s1_tid, miu_ooe_cmpl_s0_tid, ooe_miu_memop_s3_tid, ooe_miu_memop_s2_tid, ooe_miu_memop_s1_tid, ooe_miu_memop_s0_tid, miu_rcu_data_s3_tid, miu_rcu_data_s2_tid, miu_rcu_data_s1_tid, miu_rcu_data_s0_tid, rcu_miu_addr_s3_tid, rcu_miu_addr_s2_tid, rcu_miu_addr_s1_tid, rcu_miu_addr_s0_tid, rcu_ooe_done_s6_tid, rcu_ooe_done_s5_tid, rcu_ooe_done_s4_tid, rcu_ooe_done_s3_tid, rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid, lane_rcu_res_c31_tid, lane_rcu_res_c30_tid, lane_rcu_res_c29_tid, lane_rcu_res_c28_tid, lane_rcu_res_c27_tid, lane_rcu_res_c26_tid, lane_rcu_res_c25_tid, lane_rcu_res_c24_tid, lane_rcu_res_c23_tid, lane_rcu_res_c22_tid, lane_rcu_res_c21_tid, lane_rcu_res_c20_tid, lane_rcu_res_c19_tid, lane_rcu_res_c18_tid, lane_rcu_res_c17_tid, lane_rcu_res_c16_tid, lane_rcu_res_c15_tid, lane_rcu_res_c14_tid, lane_rcu_res_c13_tid, lane_rcu_res_c12_tid, lane_rcu_res_c11_tid, lane_rcu_res_c10_tid, lane_rcu_res_c09_tid, lane_rcu_res_c08_tid, lane_rcu_res_c07_tid, lane_rcu_res_c06_tid, lane_rcu_res_c05_tid, lane_rcu_res_c04_tid, lane_rcu_res_c03_tid, lane_rcu_res_c02_tid, lane_rcu_res_c01_tid, lane_rcu_res_c00_tid, rcu_lane_ops_c31_tid, rcu_lane_ops_c30_tid, rcu_lane_ops_c29_tid, rcu_lane_ops_c28_tid, rcu_lane_ops_c27_tid, rcu_lane_ops_c26_tid, rcu_lane_ops_c25_tid, rcu_lane_ops_c24_tid, rcu_lane_ops_c23_tid, rcu_lane_ops_c22_tid, rcu_lane_ops_c21_tid, rcu_lane_ops_c20_tid, rcu_lane_ops_c19_tid, rcu_lane_ops_c18_tid, rcu_lane_ops_c17_tid, rcu_lane_ops_c16_tid, rcu_lane_ops_c15_tid, rcu_lane_ops_c14_tid, rcu_lane_ops_c13_tid, rcu_lane_ops_c12_tid, rcu_lane_ops_c11_tid, rcu_lane_ops_c10_tid, rcu_lane_ops_c09_tid, rcu_lane_ops_c08_tid, rcu_lane_ops_c07_tid, rcu_lane_ops_c06_tid, rcu_lane_ops_c05_tid, rcu_lane_ops_c04_tid, rcu_lane_ops_c03_tid, rcu_lane_ops_c02_tid, rcu_lane_ops_c01_tid, rcu_lane_ops_c00_tid, ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid, ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid, dec_ooe_uop_s5_tid, dec_ooe_uop_s4_tid, dec_ooe_uop_s3_tid, dec_ooe_uop_s2_tid, dec_ooe_uop_s1_tid, dec_ooe_uop_s0_tid, fet_dec_instr_s7_tid, fet_dec_instr_s6_tid, fet_dec_instr_s5_tid, fet_dec_instr_s4_tid, fet_dec_instr_s3_tid, fet_dec_instr_s2_tid, fet_dec_instr_s1_tid, fet_dec_instr_s0_tid})
+`endif
+  );
+`endif
+
+endmodule

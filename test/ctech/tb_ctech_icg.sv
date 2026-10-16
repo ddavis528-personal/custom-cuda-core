@@ -2,7 +2,7 @@
 //
 // Spec: docs/clock-gate.md, "The ctech layer"
 //
-// Whichever view of ccv_ctech_icg the build compiles, driven with en and te
+// Whichever view of ccv_common_ctech_icg the build compiles, driven with en and te
 // that move at random -- in the low phase, in the high phase, anywhere but
 // on an edge -- for 2000 cycles:
 //
@@ -24,7 +24,7 @@
 module tb;
   logic clk = 1'b0, en = 1'b0, te = 1'b0;
   wire  gclk;
-  ccv_ctech_icg u_dut (.clk(clk), .en(en), .te(te), .gclk(gclk));
+  ccv_common_ctech_icg u_dut (.clk(clk), .en(en), .te(te), .gclk(gclk));
 `ifdef VENDOR_REF
   wire  gclk_ref;
   sky130_fd_sc_hd__sdlclkp_1 u_ref (.CLK(clk), .GATE(en), .SCE(te), .GCLK(gclk_ref));

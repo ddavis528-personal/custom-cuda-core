@@ -149,27 +149,27 @@ inline constexpr DpiPort kDpiPorts_dec[] = {
   {0, -1, 6, DpiSig::TID, 64, false},  // fet_dec_instr_s6_tid
   {0, -1, 7, DpiSig::TID, 64, false},  // fet_dec_instr_s7_tid
   {1, -1, 0, DpiSig::VALID, 1, true},  // dec_ooe_uop_s0_valid
-  {1, -1, 0, DpiSig::PAYLOAD, 201, true},  // dec_ooe_uop_s0_payload
+  {1, -1, 0, DpiSig::PAYLOAD, 211, true},  // dec_ooe_uop_s0_payload
   {1, -1, 0, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s0_credit
   {1, -1, 0, DpiSig::STALL, 1, false},  // dec_ooe_uop_s0_stall
   {1, -1, 1, DpiSig::VALID, 1, true},  // dec_ooe_uop_s1_valid
-  {1, -1, 1, DpiSig::PAYLOAD, 201, true},  // dec_ooe_uop_s1_payload
+  {1, -1, 1, DpiSig::PAYLOAD, 211, true},  // dec_ooe_uop_s1_payload
   {1, -1, 1, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s1_credit
   {1, -1, 1, DpiSig::STALL, 1, false},  // dec_ooe_uop_s1_stall
   {1, -1, 2, DpiSig::VALID, 1, true},  // dec_ooe_uop_s2_valid
-  {1, -1, 2, DpiSig::PAYLOAD, 201, true},  // dec_ooe_uop_s2_payload
+  {1, -1, 2, DpiSig::PAYLOAD, 211, true},  // dec_ooe_uop_s2_payload
   {1, -1, 2, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s2_credit
   {1, -1, 2, DpiSig::STALL, 1, false},  // dec_ooe_uop_s2_stall
   {1, -1, 3, DpiSig::VALID, 1, true},  // dec_ooe_uop_s3_valid
-  {1, -1, 3, DpiSig::PAYLOAD, 201, true},  // dec_ooe_uop_s3_payload
+  {1, -1, 3, DpiSig::PAYLOAD, 211, true},  // dec_ooe_uop_s3_payload
   {1, -1, 3, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s3_credit
   {1, -1, 3, DpiSig::STALL, 1, false},  // dec_ooe_uop_s3_stall
   {1, -1, 4, DpiSig::VALID, 1, true},  // dec_ooe_uop_s4_valid
-  {1, -1, 4, DpiSig::PAYLOAD, 201, true},  // dec_ooe_uop_s4_payload
+  {1, -1, 4, DpiSig::PAYLOAD, 211, true},  // dec_ooe_uop_s4_payload
   {1, -1, 4, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s4_credit
   {1, -1, 4, DpiSig::STALL, 1, false},  // dec_ooe_uop_s4_stall
   {1, -1, 5, DpiSig::VALID, 1, true},  // dec_ooe_uop_s5_valid
-  {1, -1, 5, DpiSig::PAYLOAD, 201, true},  // dec_ooe_uop_s5_payload
+  {1, -1, 5, DpiSig::PAYLOAD, 211, true},  // dec_ooe_uop_s5_payload
   {1, -1, 5, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s5_credit
   {1, -1, 5, DpiSig::STALL, 1, false},  // dec_ooe_uop_s5_stall
   {1, -1, 0, DpiSig::TID, 64, true},  // dec_ooe_uop_s0_tid
@@ -181,27 +181,27 @@ inline constexpr DpiPort kDpiPorts_dec[] = {
 };
 inline constexpr DpiPort kDpiPorts_ooe[] = {
   {1, -1, 0, DpiSig::VALID, 1, false},  // dec_ooe_uop_s0_valid
-  {1, -1, 0, DpiSig::PAYLOAD, 201, false},  // dec_ooe_uop_s0_payload
+  {1, -1, 0, DpiSig::PAYLOAD, 211, false},  // dec_ooe_uop_s0_payload
   {1, -1, 0, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s0_credit
   {1, -1, 0, DpiSig::STALL, 1, true},  // dec_ooe_uop_s0_stall
   {1, -1, 1, DpiSig::VALID, 1, false},  // dec_ooe_uop_s1_valid
-  {1, -1, 1, DpiSig::PAYLOAD, 201, false},  // dec_ooe_uop_s1_payload
+  {1, -1, 1, DpiSig::PAYLOAD, 211, false},  // dec_ooe_uop_s1_payload
   {1, -1, 1, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s1_credit
   {1, -1, 1, DpiSig::STALL, 1, true},  // dec_ooe_uop_s1_stall
   {1, -1, 2, DpiSig::VALID, 1, false},  // dec_ooe_uop_s2_valid
-  {1, -1, 2, DpiSig::PAYLOAD, 201, false},  // dec_ooe_uop_s2_payload
+  {1, -1, 2, DpiSig::PAYLOAD, 211, false},  // dec_ooe_uop_s2_payload
   {1, -1, 2, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s2_credit
   {1, -1, 2, DpiSig::STALL, 1, true},  // dec_ooe_uop_s2_stall
   {1, -1, 3, DpiSig::VALID, 1, false},  // dec_ooe_uop_s3_valid
-  {1, -1, 3, DpiSig::PAYLOAD, 201, false},  // dec_ooe_uop_s3_payload
+  {1, -1, 3, DpiSig::PAYLOAD, 211, false},  // dec_ooe_uop_s3_payload
   {1, -1, 3, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s3_credit
   {1, -1, 3, DpiSig::STALL, 1, true},  // dec_ooe_uop_s3_stall
   {1, -1, 4, DpiSig::VALID, 1, false},  // dec_ooe_uop_s4_valid
-  {1, -1, 4, DpiSig::PAYLOAD, 201, false},  // dec_ooe_uop_s4_payload
+  {1, -1, 4, DpiSig::PAYLOAD, 211, false},  // dec_ooe_uop_s4_payload
   {1, -1, 4, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s4_credit
   {1, -1, 4, DpiSig::STALL, 1, true},  // dec_ooe_uop_s4_stall
   {1, -1, 5, DpiSig::VALID, 1, false},  // dec_ooe_uop_s5_valid
-  {1, -1, 5, DpiSig::PAYLOAD, 201, false},  // dec_ooe_uop_s5_payload
+  {1, -1, 5, DpiSig::PAYLOAD, 211, false},  // dec_ooe_uop_s5_payload
   {1, -1, 5, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s5_credit
   {1, -1, 5, DpiSig::STALL, 1, true},  // dec_ooe_uop_s5_stall
   {1, -1, 0, DpiSig::TID, 64, false},  // dec_ooe_uop_s0_tid
@@ -211,25 +211,50 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {1, -1, 4, DpiSig::TID, 64, false},  // dec_ooe_uop_s4_tid
   {1, -1, 5, DpiSig::TID, 64, false},  // dec_ooe_uop_s5_tid
   {2, -1, 0, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s0_valid
-  {2, -1, 0, DpiSig::PAYLOAD, 149, true},  // ooe_rcu_issue_s0_payload
+  {2, -1, 0, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s0_payload
   {2, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s0_credit
   {2, -1, 0, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s0_stall
   {2, -1, 1, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s1_valid
-  {2, -1, 1, DpiSig::PAYLOAD, 149, true},  // ooe_rcu_issue_s1_payload
+  {2, -1, 1, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s1_payload
   {2, -1, 1, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s1_credit
   {2, -1, 1, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s1_stall
   {2, -1, 2, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s2_valid
-  {2, -1, 2, DpiSig::PAYLOAD, 149, true},  // ooe_rcu_issue_s2_payload
+  {2, -1, 2, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s2_payload
   {2, -1, 2, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s2_credit
   {2, -1, 2, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s2_stall
   {2, -1, 3, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s3_valid
-  {2, -1, 3, DpiSig::PAYLOAD, 149, true},  // ooe_rcu_issue_s3_payload
+  {2, -1, 3, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s3_payload
   {2, -1, 3, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s3_credit
   {2, -1, 3, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s3_stall
+  {2, -1, 4, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s4_valid
+  {2, -1, 4, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s4_payload
+  {2, -1, 4, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s4_credit
+  {2, -1, 4, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s4_stall
+  {2, -1, 5, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s5_valid
+  {2, -1, 5, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s5_payload
+  {2, -1, 5, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s5_credit
+  {2, -1, 5, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s5_stall
+  {2, -1, 6, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s6_valid
+  {2, -1, 6, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s6_payload
+  {2, -1, 6, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s6_credit
+  {2, -1, 6, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s6_stall
+  {2, -1, 7, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s7_valid
+  {2, -1, 7, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s7_payload
+  {2, -1, 7, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s7_credit
+  {2, -1, 7, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s7_stall
+  {2, -1, 8, DpiSig::VALID, 1, true},  // ooe_rcu_issue_s8_valid
+  {2, -1, 8, DpiSig::PAYLOAD, 175, true},  // ooe_rcu_issue_s8_payload
+  {2, -1, 8, DpiSig::CREDIT, 1, false},  // ooe_rcu_issue_s8_credit
+  {2, -1, 8, DpiSig::STALL, 1, false},  // ooe_rcu_issue_s8_stall
   {2, -1, 0, DpiSig::TID, 64, true},  // ooe_rcu_issue_s0_tid
   {2, -1, 1, DpiSig::TID, 64, true},  // ooe_rcu_issue_s1_tid
   {2, -1, 2, DpiSig::TID, 64, true},  // ooe_rcu_issue_s2_tid
   {2, -1, 3, DpiSig::TID, 64, true},  // ooe_rcu_issue_s3_tid
+  {2, -1, 4, DpiSig::TID, 64, true},  // ooe_rcu_issue_s4_tid
+  {2, -1, 5, DpiSig::TID, 64, true},  // ooe_rcu_issue_s5_tid
+  {2, -1, 6, DpiSig::TID, 64, true},  // ooe_rcu_issue_s6_tid
+  {2, -1, 7, DpiSig::TID, 64, true},  // ooe_rcu_issue_s7_tid
+  {2, -1, 8, DpiSig::TID, 64, true},  // ooe_rcu_issue_s8_tid
   {5, -1, 0, DpiSig::VALID, 1, false},  // rcu_ooe_done_s0_valid
   {5, -1, 0, DpiSig::PAYLOAD, 73, false},  // rcu_ooe_done_s0_payload
   {5, -1, 0, DpiSig::CREDIT, 1, true},  // rcu_ooe_done_s0_credit
@@ -246,24 +271,39 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {5, -1, 3, DpiSig::PAYLOAD, 73, false},  // rcu_ooe_done_s3_payload
   {5, -1, 3, DpiSig::CREDIT, 1, true},  // rcu_ooe_done_s3_credit
   {5, -1, 3, DpiSig::STALL, 1, true},  // rcu_ooe_done_s3_stall
+  {5, -1, 4, DpiSig::VALID, 1, false},  // rcu_ooe_done_s4_valid
+  {5, -1, 4, DpiSig::PAYLOAD, 73, false},  // rcu_ooe_done_s4_payload
+  {5, -1, 4, DpiSig::CREDIT, 1, true},  // rcu_ooe_done_s4_credit
+  {5, -1, 4, DpiSig::STALL, 1, true},  // rcu_ooe_done_s4_stall
+  {5, -1, 5, DpiSig::VALID, 1, false},  // rcu_ooe_done_s5_valid
+  {5, -1, 5, DpiSig::PAYLOAD, 73, false},  // rcu_ooe_done_s5_payload
+  {5, -1, 5, DpiSig::CREDIT, 1, true},  // rcu_ooe_done_s5_credit
+  {5, -1, 5, DpiSig::STALL, 1, true},  // rcu_ooe_done_s5_stall
+  {5, -1, 6, DpiSig::VALID, 1, false},  // rcu_ooe_done_s6_valid
+  {5, -1, 6, DpiSig::PAYLOAD, 73, false},  // rcu_ooe_done_s6_payload
+  {5, -1, 6, DpiSig::CREDIT, 1, true},  // rcu_ooe_done_s6_credit
+  {5, -1, 6, DpiSig::STALL, 1, true},  // rcu_ooe_done_s6_stall
   {5, -1, 0, DpiSig::TID, 64, false},  // rcu_ooe_done_s0_tid
   {5, -1, 1, DpiSig::TID, 64, false},  // rcu_ooe_done_s1_tid
   {5, -1, 2, DpiSig::TID, 64, false},  // rcu_ooe_done_s2_tid
   {5, -1, 3, DpiSig::TID, 64, false},  // rcu_ooe_done_s3_tid
+  {5, -1, 4, DpiSig::TID, 64, false},  // rcu_ooe_done_s4_tid
+  {5, -1, 5, DpiSig::TID, 64, false},  // rcu_ooe_done_s5_tid
+  {5, -1, 6, DpiSig::TID, 64, false},  // rcu_ooe_done_s6_tid
   {8, -1, 0, DpiSig::VALID, 1, true},  // ooe_miu_memop_s0_valid
-  {8, -1, 0, DpiSig::PAYLOAD, 91, true},  // ooe_miu_memop_s0_payload
+  {8, -1, 0, DpiSig::PAYLOAD, 97, true},  // ooe_miu_memop_s0_payload
   {8, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s0_credit
   {8, -1, 0, DpiSig::STALL, 1, false},  // ooe_miu_memop_s0_stall
   {8, -1, 1, DpiSig::VALID, 1, true},  // ooe_miu_memop_s1_valid
-  {8, -1, 1, DpiSig::PAYLOAD, 91, true},  // ooe_miu_memop_s1_payload
+  {8, -1, 1, DpiSig::PAYLOAD, 97, true},  // ooe_miu_memop_s1_payload
   {8, -1, 1, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s1_credit
   {8, -1, 1, DpiSig::STALL, 1, false},  // ooe_miu_memop_s1_stall
   {8, -1, 2, DpiSig::VALID, 1, true},  // ooe_miu_memop_s2_valid
-  {8, -1, 2, DpiSig::PAYLOAD, 91, true},  // ooe_miu_memop_s2_payload
+  {8, -1, 2, DpiSig::PAYLOAD, 97, true},  // ooe_miu_memop_s2_payload
   {8, -1, 2, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s2_credit
   {8, -1, 2, DpiSig::STALL, 1, false},  // ooe_miu_memop_s2_stall
   {8, -1, 3, DpiSig::VALID, 1, true},  // ooe_miu_memop_s3_valid
-  {8, -1, 3, DpiSig::PAYLOAD, 91, true},  // ooe_miu_memop_s3_payload
+  {8, -1, 3, DpiSig::PAYLOAD, 97, true},  // ooe_miu_memop_s3_payload
   {8, -1, 3, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s3_credit
   {8, -1, 3, DpiSig::STALL, 1, false},  // ooe_miu_memop_s3_stall
   {8, -1, 0, DpiSig::TID, 64, true},  // ooe_miu_memop_s0_tid
@@ -341,7 +381,7 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {32, -1, 0, DpiSig::STALL, 1, false},  // ooe_rau_drained_stall
   {32, -1, 0, DpiSig::TID, 64, true},  // ooe_rau_drained_tid
   {34, -1, 0, DpiSig::VALID, 1, true},  // ooe_rcu_map_valid
-  {34, -1, 0, DpiSig::PAYLOAD, 158, true},  // ooe_rcu_map_payload
+  {34, -1, 0, DpiSig::PAYLOAD, 222, true},  // ooe_rcu_map_payload
   {34, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_rcu_map_credit
   {34, -1, 0, DpiSig::STALL, 1, false},  // ooe_rcu_map_stall
   {34, -1, 0, DpiSig::TID, 64, true},  // ooe_rcu_map_tid
@@ -363,1305 +403,370 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
 };
 inline constexpr DpiPort kDpiPorts_rcu[] = {
   {2, -1, 0, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s0_valid
-  {2, -1, 0, DpiSig::PAYLOAD, 149, false},  // ooe_rcu_issue_s0_payload
+  {2, -1, 0, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s0_payload
   {2, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s0_credit
   {2, -1, 0, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s0_stall
   {2, -1, 1, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s1_valid
-  {2, -1, 1, DpiSig::PAYLOAD, 149, false},  // ooe_rcu_issue_s1_payload
+  {2, -1, 1, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s1_payload
   {2, -1, 1, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s1_credit
   {2, -1, 1, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s1_stall
   {2, -1, 2, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s2_valid
-  {2, -1, 2, DpiSig::PAYLOAD, 149, false},  // ooe_rcu_issue_s2_payload
+  {2, -1, 2, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s2_payload
   {2, -1, 2, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s2_credit
   {2, -1, 2, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s2_stall
   {2, -1, 3, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s3_valid
-  {2, -1, 3, DpiSig::PAYLOAD, 149, false},  // ooe_rcu_issue_s3_payload
+  {2, -1, 3, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s3_payload
   {2, -1, 3, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s3_credit
   {2, -1, 3, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s3_stall
+  {2, -1, 4, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s4_valid
+  {2, -1, 4, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s4_payload
+  {2, -1, 4, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s4_credit
+  {2, -1, 4, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s4_stall
+  {2, -1, 5, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s5_valid
+  {2, -1, 5, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s5_payload
+  {2, -1, 5, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s5_credit
+  {2, -1, 5, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s5_stall
+  {2, -1, 6, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s6_valid
+  {2, -1, 6, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s6_payload
+  {2, -1, 6, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s6_credit
+  {2, -1, 6, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s6_stall
+  {2, -1, 7, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s7_valid
+  {2, -1, 7, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s7_payload
+  {2, -1, 7, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s7_credit
+  {2, -1, 7, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s7_stall
+  {2, -1, 8, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s8_valid
+  {2, -1, 8, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s8_payload
+  {2, -1, 8, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s8_credit
+  {2, -1, 8, DpiSig::STALL, 1, true},  // ooe_rcu_issue_s8_stall
   {2, -1, 0, DpiSig::TID, 64, false},  // ooe_rcu_issue_s0_tid
   {2, -1, 1, DpiSig::TID, 64, false},  // ooe_rcu_issue_s1_tid
   {2, -1, 2, DpiSig::TID, 64, false},  // ooe_rcu_issue_s2_tid
   {2, -1, 3, DpiSig::TID, 64, false},  // ooe_rcu_issue_s3_tid
-  {3, 0, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c00_s0_valid
-  {3, 0, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c00_s0_payload
-  {3, 0, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c00_s0_credit
-  {3, 0, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c00_s0_stall
-  {3, 0, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c00_s1_valid
-  {3, 0, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c00_s1_payload
-  {3, 0, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c00_s1_credit
-  {3, 0, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c00_s1_stall
-  {3, 0, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c00_s2_valid
-  {3, 0, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c00_s2_payload
-  {3, 0, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c00_s2_credit
-  {3, 0, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c00_s2_stall
-  {3, 0, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c00_s3_valid
-  {3, 0, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c00_s3_payload
-  {3, 0, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c00_s3_credit
-  {3, 0, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c00_s3_stall
-  {3, 1, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c01_s0_valid
-  {3, 1, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c01_s0_payload
-  {3, 1, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c01_s0_credit
-  {3, 1, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c01_s0_stall
-  {3, 1, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c01_s1_valid
-  {3, 1, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c01_s1_payload
-  {3, 1, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c01_s1_credit
-  {3, 1, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c01_s1_stall
-  {3, 1, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c01_s2_valid
-  {3, 1, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c01_s2_payload
-  {3, 1, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c01_s2_credit
-  {3, 1, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c01_s2_stall
-  {3, 1, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c01_s3_valid
-  {3, 1, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c01_s3_payload
-  {3, 1, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c01_s3_credit
-  {3, 1, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c01_s3_stall
-  {3, 2, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c02_s0_valid
-  {3, 2, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c02_s0_payload
-  {3, 2, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c02_s0_credit
-  {3, 2, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c02_s0_stall
-  {3, 2, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c02_s1_valid
-  {3, 2, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c02_s1_payload
-  {3, 2, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c02_s1_credit
-  {3, 2, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c02_s1_stall
-  {3, 2, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c02_s2_valid
-  {3, 2, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c02_s2_payload
-  {3, 2, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c02_s2_credit
-  {3, 2, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c02_s2_stall
-  {3, 2, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c02_s3_valid
-  {3, 2, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c02_s3_payload
-  {3, 2, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c02_s3_credit
-  {3, 2, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c02_s3_stall
-  {3, 3, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c03_s0_valid
-  {3, 3, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c03_s0_payload
-  {3, 3, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c03_s0_credit
-  {3, 3, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c03_s0_stall
-  {3, 3, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c03_s1_valid
-  {3, 3, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c03_s1_payload
-  {3, 3, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c03_s1_credit
-  {3, 3, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c03_s1_stall
-  {3, 3, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c03_s2_valid
-  {3, 3, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c03_s2_payload
-  {3, 3, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c03_s2_credit
-  {3, 3, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c03_s2_stall
-  {3, 3, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c03_s3_valid
-  {3, 3, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c03_s3_payload
-  {3, 3, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c03_s3_credit
-  {3, 3, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c03_s3_stall
-  {3, 4, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c04_s0_valid
-  {3, 4, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c04_s0_payload
-  {3, 4, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c04_s0_credit
-  {3, 4, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c04_s0_stall
-  {3, 4, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c04_s1_valid
-  {3, 4, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c04_s1_payload
-  {3, 4, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c04_s1_credit
-  {3, 4, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c04_s1_stall
-  {3, 4, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c04_s2_valid
-  {3, 4, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c04_s2_payload
-  {3, 4, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c04_s2_credit
-  {3, 4, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c04_s2_stall
-  {3, 4, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c04_s3_valid
-  {3, 4, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c04_s3_payload
-  {3, 4, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c04_s3_credit
-  {3, 4, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c04_s3_stall
-  {3, 5, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c05_s0_valid
-  {3, 5, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c05_s0_payload
-  {3, 5, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c05_s0_credit
-  {3, 5, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c05_s0_stall
-  {3, 5, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c05_s1_valid
-  {3, 5, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c05_s1_payload
-  {3, 5, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c05_s1_credit
-  {3, 5, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c05_s1_stall
-  {3, 5, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c05_s2_valid
-  {3, 5, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c05_s2_payload
-  {3, 5, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c05_s2_credit
-  {3, 5, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c05_s2_stall
-  {3, 5, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c05_s3_valid
-  {3, 5, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c05_s3_payload
-  {3, 5, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c05_s3_credit
-  {3, 5, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c05_s3_stall
-  {3, 6, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c06_s0_valid
-  {3, 6, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c06_s0_payload
-  {3, 6, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c06_s0_credit
-  {3, 6, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c06_s0_stall
-  {3, 6, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c06_s1_valid
-  {3, 6, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c06_s1_payload
-  {3, 6, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c06_s1_credit
-  {3, 6, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c06_s1_stall
-  {3, 6, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c06_s2_valid
-  {3, 6, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c06_s2_payload
-  {3, 6, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c06_s2_credit
-  {3, 6, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c06_s2_stall
-  {3, 6, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c06_s3_valid
-  {3, 6, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c06_s3_payload
-  {3, 6, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c06_s3_credit
-  {3, 6, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c06_s3_stall
-  {3, 7, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c07_s0_valid
-  {3, 7, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c07_s0_payload
-  {3, 7, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c07_s0_credit
-  {3, 7, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c07_s0_stall
-  {3, 7, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c07_s1_valid
-  {3, 7, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c07_s1_payload
-  {3, 7, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c07_s1_credit
-  {3, 7, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c07_s1_stall
-  {3, 7, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c07_s2_valid
-  {3, 7, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c07_s2_payload
-  {3, 7, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c07_s2_credit
-  {3, 7, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c07_s2_stall
-  {3, 7, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c07_s3_valid
-  {3, 7, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c07_s3_payload
-  {3, 7, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c07_s3_credit
-  {3, 7, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c07_s3_stall
-  {3, 8, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c08_s0_valid
-  {3, 8, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c08_s0_payload
-  {3, 8, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c08_s0_credit
-  {3, 8, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c08_s0_stall
-  {3, 8, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c08_s1_valid
-  {3, 8, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c08_s1_payload
-  {3, 8, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c08_s1_credit
-  {3, 8, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c08_s1_stall
-  {3, 8, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c08_s2_valid
-  {3, 8, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c08_s2_payload
-  {3, 8, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c08_s2_credit
-  {3, 8, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c08_s2_stall
-  {3, 8, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c08_s3_valid
-  {3, 8, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c08_s3_payload
-  {3, 8, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c08_s3_credit
-  {3, 8, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c08_s3_stall
-  {3, 9, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c09_s0_valid
-  {3, 9, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c09_s0_payload
-  {3, 9, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c09_s0_credit
-  {3, 9, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c09_s0_stall
-  {3, 9, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c09_s1_valid
-  {3, 9, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c09_s1_payload
-  {3, 9, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c09_s1_credit
-  {3, 9, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c09_s1_stall
-  {3, 9, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c09_s2_valid
-  {3, 9, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c09_s2_payload
-  {3, 9, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c09_s2_credit
-  {3, 9, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c09_s2_stall
-  {3, 9, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c09_s3_valid
-  {3, 9, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c09_s3_payload
-  {3, 9, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c09_s3_credit
-  {3, 9, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c09_s3_stall
-  {3, 10, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c10_s0_valid
-  {3, 10, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c10_s0_payload
-  {3, 10, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c10_s0_credit
-  {3, 10, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c10_s0_stall
-  {3, 10, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c10_s1_valid
-  {3, 10, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c10_s1_payload
-  {3, 10, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c10_s1_credit
-  {3, 10, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c10_s1_stall
-  {3, 10, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c10_s2_valid
-  {3, 10, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c10_s2_payload
-  {3, 10, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c10_s2_credit
-  {3, 10, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c10_s2_stall
-  {3, 10, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c10_s3_valid
-  {3, 10, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c10_s3_payload
-  {3, 10, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c10_s3_credit
-  {3, 10, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c10_s3_stall
-  {3, 11, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c11_s0_valid
-  {3, 11, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c11_s0_payload
-  {3, 11, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c11_s0_credit
-  {3, 11, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c11_s0_stall
-  {3, 11, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c11_s1_valid
-  {3, 11, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c11_s1_payload
-  {3, 11, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c11_s1_credit
-  {3, 11, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c11_s1_stall
-  {3, 11, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c11_s2_valid
-  {3, 11, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c11_s2_payload
-  {3, 11, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c11_s2_credit
-  {3, 11, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c11_s2_stall
-  {3, 11, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c11_s3_valid
-  {3, 11, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c11_s3_payload
-  {3, 11, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c11_s3_credit
-  {3, 11, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c11_s3_stall
-  {3, 12, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c12_s0_valid
-  {3, 12, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c12_s0_payload
-  {3, 12, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c12_s0_credit
-  {3, 12, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c12_s0_stall
-  {3, 12, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c12_s1_valid
-  {3, 12, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c12_s1_payload
-  {3, 12, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c12_s1_credit
-  {3, 12, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c12_s1_stall
-  {3, 12, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c12_s2_valid
-  {3, 12, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c12_s2_payload
-  {3, 12, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c12_s2_credit
-  {3, 12, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c12_s2_stall
-  {3, 12, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c12_s3_valid
-  {3, 12, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c12_s3_payload
-  {3, 12, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c12_s3_credit
-  {3, 12, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c12_s3_stall
-  {3, 13, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c13_s0_valid
-  {3, 13, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c13_s0_payload
-  {3, 13, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c13_s0_credit
-  {3, 13, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c13_s0_stall
-  {3, 13, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c13_s1_valid
-  {3, 13, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c13_s1_payload
-  {3, 13, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c13_s1_credit
-  {3, 13, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c13_s1_stall
-  {3, 13, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c13_s2_valid
-  {3, 13, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c13_s2_payload
-  {3, 13, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c13_s2_credit
-  {3, 13, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c13_s2_stall
-  {3, 13, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c13_s3_valid
-  {3, 13, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c13_s3_payload
-  {3, 13, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c13_s3_credit
-  {3, 13, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c13_s3_stall
-  {3, 14, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c14_s0_valid
-  {3, 14, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c14_s0_payload
-  {3, 14, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c14_s0_credit
-  {3, 14, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c14_s0_stall
-  {3, 14, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c14_s1_valid
-  {3, 14, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c14_s1_payload
-  {3, 14, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c14_s1_credit
-  {3, 14, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c14_s1_stall
-  {3, 14, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c14_s2_valid
-  {3, 14, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c14_s2_payload
-  {3, 14, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c14_s2_credit
-  {3, 14, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c14_s2_stall
-  {3, 14, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c14_s3_valid
-  {3, 14, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c14_s3_payload
-  {3, 14, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c14_s3_credit
-  {3, 14, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c14_s3_stall
-  {3, 15, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c15_s0_valid
-  {3, 15, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c15_s0_payload
-  {3, 15, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c15_s0_credit
-  {3, 15, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c15_s0_stall
-  {3, 15, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c15_s1_valid
-  {3, 15, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c15_s1_payload
-  {3, 15, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c15_s1_credit
-  {3, 15, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c15_s1_stall
-  {3, 15, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c15_s2_valid
-  {3, 15, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c15_s2_payload
-  {3, 15, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c15_s2_credit
-  {3, 15, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c15_s2_stall
-  {3, 15, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c15_s3_valid
-  {3, 15, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c15_s3_payload
-  {3, 15, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c15_s3_credit
-  {3, 15, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c15_s3_stall
-  {3, 16, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c16_s0_valid
-  {3, 16, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c16_s0_payload
-  {3, 16, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c16_s0_credit
-  {3, 16, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c16_s0_stall
-  {3, 16, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c16_s1_valid
-  {3, 16, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c16_s1_payload
-  {3, 16, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c16_s1_credit
-  {3, 16, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c16_s1_stall
-  {3, 16, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c16_s2_valid
-  {3, 16, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c16_s2_payload
-  {3, 16, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c16_s2_credit
-  {3, 16, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c16_s2_stall
-  {3, 16, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c16_s3_valid
-  {3, 16, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c16_s3_payload
-  {3, 16, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c16_s3_credit
-  {3, 16, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c16_s3_stall
-  {3, 17, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c17_s0_valid
-  {3, 17, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c17_s0_payload
-  {3, 17, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c17_s0_credit
-  {3, 17, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c17_s0_stall
-  {3, 17, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c17_s1_valid
-  {3, 17, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c17_s1_payload
-  {3, 17, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c17_s1_credit
-  {3, 17, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c17_s1_stall
-  {3, 17, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c17_s2_valid
-  {3, 17, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c17_s2_payload
-  {3, 17, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c17_s2_credit
-  {3, 17, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c17_s2_stall
-  {3, 17, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c17_s3_valid
-  {3, 17, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c17_s3_payload
-  {3, 17, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c17_s3_credit
-  {3, 17, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c17_s3_stall
-  {3, 18, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c18_s0_valid
-  {3, 18, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c18_s0_payload
-  {3, 18, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c18_s0_credit
-  {3, 18, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c18_s0_stall
-  {3, 18, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c18_s1_valid
-  {3, 18, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c18_s1_payload
-  {3, 18, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c18_s1_credit
-  {3, 18, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c18_s1_stall
-  {3, 18, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c18_s2_valid
-  {3, 18, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c18_s2_payload
-  {3, 18, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c18_s2_credit
-  {3, 18, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c18_s2_stall
-  {3, 18, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c18_s3_valid
-  {3, 18, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c18_s3_payload
-  {3, 18, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c18_s3_credit
-  {3, 18, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c18_s3_stall
-  {3, 19, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c19_s0_valid
-  {3, 19, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c19_s0_payload
-  {3, 19, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c19_s0_credit
-  {3, 19, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c19_s0_stall
-  {3, 19, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c19_s1_valid
-  {3, 19, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c19_s1_payload
-  {3, 19, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c19_s1_credit
-  {3, 19, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c19_s1_stall
-  {3, 19, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c19_s2_valid
-  {3, 19, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c19_s2_payload
-  {3, 19, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c19_s2_credit
-  {3, 19, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c19_s2_stall
-  {3, 19, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c19_s3_valid
-  {3, 19, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c19_s3_payload
-  {3, 19, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c19_s3_credit
-  {3, 19, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c19_s3_stall
-  {3, 20, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c20_s0_valid
-  {3, 20, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c20_s0_payload
-  {3, 20, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c20_s0_credit
-  {3, 20, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c20_s0_stall
-  {3, 20, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c20_s1_valid
-  {3, 20, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c20_s1_payload
-  {3, 20, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c20_s1_credit
-  {3, 20, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c20_s1_stall
-  {3, 20, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c20_s2_valid
-  {3, 20, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c20_s2_payload
-  {3, 20, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c20_s2_credit
-  {3, 20, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c20_s2_stall
-  {3, 20, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c20_s3_valid
-  {3, 20, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c20_s3_payload
-  {3, 20, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c20_s3_credit
-  {3, 20, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c20_s3_stall
-  {3, 21, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c21_s0_valid
-  {3, 21, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c21_s0_payload
-  {3, 21, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c21_s0_credit
-  {3, 21, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c21_s0_stall
-  {3, 21, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c21_s1_valid
-  {3, 21, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c21_s1_payload
-  {3, 21, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c21_s1_credit
-  {3, 21, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c21_s1_stall
-  {3, 21, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c21_s2_valid
-  {3, 21, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c21_s2_payload
-  {3, 21, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c21_s2_credit
-  {3, 21, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c21_s2_stall
-  {3, 21, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c21_s3_valid
-  {3, 21, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c21_s3_payload
-  {3, 21, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c21_s3_credit
-  {3, 21, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c21_s3_stall
-  {3, 22, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c22_s0_valid
-  {3, 22, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c22_s0_payload
-  {3, 22, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c22_s0_credit
-  {3, 22, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c22_s0_stall
-  {3, 22, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c22_s1_valid
-  {3, 22, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c22_s1_payload
-  {3, 22, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c22_s1_credit
-  {3, 22, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c22_s1_stall
-  {3, 22, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c22_s2_valid
-  {3, 22, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c22_s2_payload
-  {3, 22, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c22_s2_credit
-  {3, 22, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c22_s2_stall
-  {3, 22, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c22_s3_valid
-  {3, 22, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c22_s3_payload
-  {3, 22, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c22_s3_credit
-  {3, 22, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c22_s3_stall
-  {3, 23, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c23_s0_valid
-  {3, 23, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c23_s0_payload
-  {3, 23, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c23_s0_credit
-  {3, 23, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c23_s0_stall
-  {3, 23, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c23_s1_valid
-  {3, 23, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c23_s1_payload
-  {3, 23, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c23_s1_credit
-  {3, 23, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c23_s1_stall
-  {3, 23, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c23_s2_valid
-  {3, 23, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c23_s2_payload
-  {3, 23, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c23_s2_credit
-  {3, 23, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c23_s2_stall
-  {3, 23, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c23_s3_valid
-  {3, 23, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c23_s3_payload
-  {3, 23, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c23_s3_credit
-  {3, 23, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c23_s3_stall
-  {3, 24, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c24_s0_valid
-  {3, 24, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c24_s0_payload
-  {3, 24, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c24_s0_credit
-  {3, 24, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c24_s0_stall
-  {3, 24, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c24_s1_valid
-  {3, 24, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c24_s1_payload
-  {3, 24, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c24_s1_credit
-  {3, 24, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c24_s1_stall
-  {3, 24, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c24_s2_valid
-  {3, 24, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c24_s2_payload
-  {3, 24, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c24_s2_credit
-  {3, 24, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c24_s2_stall
-  {3, 24, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c24_s3_valid
-  {3, 24, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c24_s3_payload
-  {3, 24, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c24_s3_credit
-  {3, 24, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c24_s3_stall
-  {3, 25, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c25_s0_valid
-  {3, 25, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c25_s0_payload
-  {3, 25, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c25_s0_credit
-  {3, 25, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c25_s0_stall
-  {3, 25, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c25_s1_valid
-  {3, 25, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c25_s1_payload
-  {3, 25, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c25_s1_credit
-  {3, 25, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c25_s1_stall
-  {3, 25, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c25_s2_valid
-  {3, 25, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c25_s2_payload
-  {3, 25, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c25_s2_credit
-  {3, 25, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c25_s2_stall
-  {3, 25, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c25_s3_valid
-  {3, 25, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c25_s3_payload
-  {3, 25, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c25_s3_credit
-  {3, 25, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c25_s3_stall
-  {3, 26, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c26_s0_valid
-  {3, 26, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c26_s0_payload
-  {3, 26, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c26_s0_credit
-  {3, 26, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c26_s0_stall
-  {3, 26, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c26_s1_valid
-  {3, 26, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c26_s1_payload
-  {3, 26, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c26_s1_credit
-  {3, 26, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c26_s1_stall
-  {3, 26, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c26_s2_valid
-  {3, 26, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c26_s2_payload
-  {3, 26, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c26_s2_credit
-  {3, 26, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c26_s2_stall
-  {3, 26, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c26_s3_valid
-  {3, 26, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c26_s3_payload
-  {3, 26, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c26_s3_credit
-  {3, 26, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c26_s3_stall
-  {3, 27, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c27_s0_valid
-  {3, 27, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c27_s0_payload
-  {3, 27, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c27_s0_credit
-  {3, 27, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c27_s0_stall
-  {3, 27, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c27_s1_valid
-  {3, 27, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c27_s1_payload
-  {3, 27, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c27_s1_credit
-  {3, 27, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c27_s1_stall
-  {3, 27, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c27_s2_valid
-  {3, 27, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c27_s2_payload
-  {3, 27, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c27_s2_credit
-  {3, 27, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c27_s2_stall
-  {3, 27, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c27_s3_valid
-  {3, 27, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c27_s3_payload
-  {3, 27, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c27_s3_credit
-  {3, 27, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c27_s3_stall
-  {3, 28, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c28_s0_valid
-  {3, 28, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c28_s0_payload
-  {3, 28, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c28_s0_credit
-  {3, 28, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c28_s0_stall
-  {3, 28, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c28_s1_valid
-  {3, 28, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c28_s1_payload
-  {3, 28, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c28_s1_credit
-  {3, 28, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c28_s1_stall
-  {3, 28, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c28_s2_valid
-  {3, 28, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c28_s2_payload
-  {3, 28, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c28_s2_credit
-  {3, 28, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c28_s2_stall
-  {3, 28, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c28_s3_valid
-  {3, 28, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c28_s3_payload
-  {3, 28, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c28_s3_credit
-  {3, 28, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c28_s3_stall
-  {3, 29, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c29_s0_valid
-  {3, 29, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c29_s0_payload
-  {3, 29, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c29_s0_credit
-  {3, 29, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c29_s0_stall
-  {3, 29, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c29_s1_valid
-  {3, 29, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c29_s1_payload
-  {3, 29, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c29_s1_credit
-  {3, 29, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c29_s1_stall
-  {3, 29, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c29_s2_valid
-  {3, 29, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c29_s2_payload
-  {3, 29, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c29_s2_credit
-  {3, 29, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c29_s2_stall
-  {3, 29, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c29_s3_valid
-  {3, 29, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c29_s3_payload
-  {3, 29, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c29_s3_credit
-  {3, 29, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c29_s3_stall
-  {3, 30, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c30_s0_valid
-  {3, 30, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c30_s0_payload
-  {3, 30, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c30_s0_credit
-  {3, 30, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c30_s0_stall
-  {3, 30, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c30_s1_valid
-  {3, 30, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c30_s1_payload
-  {3, 30, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c30_s1_credit
-  {3, 30, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c30_s1_stall
-  {3, 30, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c30_s2_valid
-  {3, 30, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c30_s2_payload
-  {3, 30, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c30_s2_credit
-  {3, 30, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c30_s2_stall
-  {3, 30, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c30_s3_valid
-  {3, 30, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c30_s3_payload
-  {3, 30, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c30_s3_credit
-  {3, 30, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c30_s3_stall
-  {3, 31, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c31_s0_valid
-  {3, 31, 0, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c31_s0_payload
-  {3, 31, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c31_s0_credit
-  {3, 31, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c31_s0_stall
-  {3, 31, 1, DpiSig::VALID, 1, true},  // rcu_lane_ops_c31_s1_valid
-  {3, 31, 1, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c31_s1_payload
-  {3, 31, 1, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c31_s1_credit
-  {3, 31, 1, DpiSig::STALL, 1, false},  // rcu_lane_ops_c31_s1_stall
-  {3, 31, 2, DpiSig::VALID, 1, true},  // rcu_lane_ops_c31_s2_valid
-  {3, 31, 2, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c31_s2_payload
-  {3, 31, 2, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c31_s2_credit
-  {3, 31, 2, DpiSig::STALL, 1, false},  // rcu_lane_ops_c31_s2_stall
-  {3, 31, 3, DpiSig::VALID, 1, true},  // rcu_lane_ops_c31_s3_valid
-  {3, 31, 3, DpiSig::PAYLOAD, 143, true},  // rcu_lane_ops_c31_s3_payload
-  {3, 31, 3, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c31_s3_credit
-  {3, 31, 3, DpiSig::STALL, 1, false},  // rcu_lane_ops_c31_s3_stall
-  {3, 0, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c00_s0_tid
-  {3, 0, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c00_s1_tid
-  {3, 0, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c00_s2_tid
-  {3, 0, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c00_s3_tid
-  {3, 1, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c01_s0_tid
-  {3, 1, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c01_s1_tid
-  {3, 1, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c01_s2_tid
-  {3, 1, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c01_s3_tid
-  {3, 2, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c02_s0_tid
-  {3, 2, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c02_s1_tid
-  {3, 2, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c02_s2_tid
-  {3, 2, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c02_s3_tid
-  {3, 3, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c03_s0_tid
-  {3, 3, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c03_s1_tid
-  {3, 3, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c03_s2_tid
-  {3, 3, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c03_s3_tid
-  {3, 4, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c04_s0_tid
-  {3, 4, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c04_s1_tid
-  {3, 4, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c04_s2_tid
-  {3, 4, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c04_s3_tid
-  {3, 5, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c05_s0_tid
-  {3, 5, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c05_s1_tid
-  {3, 5, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c05_s2_tid
-  {3, 5, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c05_s3_tid
-  {3, 6, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c06_s0_tid
-  {3, 6, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c06_s1_tid
-  {3, 6, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c06_s2_tid
-  {3, 6, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c06_s3_tid
-  {3, 7, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c07_s0_tid
-  {3, 7, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c07_s1_tid
-  {3, 7, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c07_s2_tid
-  {3, 7, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c07_s3_tid
-  {3, 8, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c08_s0_tid
-  {3, 8, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c08_s1_tid
-  {3, 8, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c08_s2_tid
-  {3, 8, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c08_s3_tid
-  {3, 9, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c09_s0_tid
-  {3, 9, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c09_s1_tid
-  {3, 9, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c09_s2_tid
-  {3, 9, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c09_s3_tid
-  {3, 10, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c10_s0_tid
-  {3, 10, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c10_s1_tid
-  {3, 10, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c10_s2_tid
-  {3, 10, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c10_s3_tid
-  {3, 11, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c11_s0_tid
-  {3, 11, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c11_s1_tid
-  {3, 11, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c11_s2_tid
-  {3, 11, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c11_s3_tid
-  {3, 12, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c12_s0_tid
-  {3, 12, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c12_s1_tid
-  {3, 12, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c12_s2_tid
-  {3, 12, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c12_s3_tid
-  {3, 13, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c13_s0_tid
-  {3, 13, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c13_s1_tid
-  {3, 13, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c13_s2_tid
-  {3, 13, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c13_s3_tid
-  {3, 14, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c14_s0_tid
-  {3, 14, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c14_s1_tid
-  {3, 14, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c14_s2_tid
-  {3, 14, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c14_s3_tid
-  {3, 15, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c15_s0_tid
-  {3, 15, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c15_s1_tid
-  {3, 15, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c15_s2_tid
-  {3, 15, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c15_s3_tid
-  {3, 16, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c16_s0_tid
-  {3, 16, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c16_s1_tid
-  {3, 16, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c16_s2_tid
-  {3, 16, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c16_s3_tid
-  {3, 17, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c17_s0_tid
-  {3, 17, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c17_s1_tid
-  {3, 17, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c17_s2_tid
-  {3, 17, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c17_s3_tid
-  {3, 18, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c18_s0_tid
-  {3, 18, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c18_s1_tid
-  {3, 18, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c18_s2_tid
-  {3, 18, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c18_s3_tid
-  {3, 19, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c19_s0_tid
-  {3, 19, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c19_s1_tid
-  {3, 19, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c19_s2_tid
-  {3, 19, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c19_s3_tid
-  {3, 20, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c20_s0_tid
-  {3, 20, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c20_s1_tid
-  {3, 20, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c20_s2_tid
-  {3, 20, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c20_s3_tid
-  {3, 21, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c21_s0_tid
-  {3, 21, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c21_s1_tid
-  {3, 21, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c21_s2_tid
-  {3, 21, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c21_s3_tid
-  {3, 22, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c22_s0_tid
-  {3, 22, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c22_s1_tid
-  {3, 22, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c22_s2_tid
-  {3, 22, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c22_s3_tid
-  {3, 23, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c23_s0_tid
-  {3, 23, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c23_s1_tid
-  {3, 23, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c23_s2_tid
-  {3, 23, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c23_s3_tid
-  {3, 24, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c24_s0_tid
-  {3, 24, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c24_s1_tid
-  {3, 24, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c24_s2_tid
-  {3, 24, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c24_s3_tid
-  {3, 25, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c25_s0_tid
-  {3, 25, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c25_s1_tid
-  {3, 25, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c25_s2_tid
-  {3, 25, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c25_s3_tid
-  {3, 26, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c26_s0_tid
-  {3, 26, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c26_s1_tid
-  {3, 26, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c26_s2_tid
-  {3, 26, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c26_s3_tid
-  {3, 27, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c27_s0_tid
-  {3, 27, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c27_s1_tid
-  {3, 27, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c27_s2_tid
-  {3, 27, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c27_s3_tid
-  {3, 28, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c28_s0_tid
-  {3, 28, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c28_s1_tid
-  {3, 28, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c28_s2_tid
-  {3, 28, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c28_s3_tid
-  {3, 29, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c29_s0_tid
-  {3, 29, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c29_s1_tid
-  {3, 29, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c29_s2_tid
-  {3, 29, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c29_s3_tid
-  {3, 30, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c30_s0_tid
-  {3, 30, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c30_s1_tid
-  {3, 30, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c30_s2_tid
-  {3, 30, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c30_s3_tid
-  {3, 31, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c31_s0_tid
-  {3, 31, 1, DpiSig::TID, 64, true},  // rcu_lane_ops_c31_s1_tid
-  {3, 31, 2, DpiSig::TID, 64, true},  // rcu_lane_ops_c31_s2_tid
-  {3, 31, 3, DpiSig::TID, 64, true},  // rcu_lane_ops_c31_s3_tid
-  {4, 0, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c00_s0_valid
-  {4, 0, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c00_s0_payload
-  {4, 0, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c00_s0_credit
-  {4, 0, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c00_s0_stall
-  {4, 0, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c00_s1_valid
-  {4, 0, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c00_s1_payload
-  {4, 0, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c00_s1_credit
-  {4, 0, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c00_s1_stall
-  {4, 0, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c00_s2_valid
-  {4, 0, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c00_s2_payload
-  {4, 0, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c00_s2_credit
-  {4, 0, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c00_s2_stall
-  {4, 0, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c00_s3_valid
-  {4, 0, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c00_s3_payload
-  {4, 0, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c00_s3_credit
-  {4, 0, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c00_s3_stall
-  {4, 1, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c01_s0_valid
-  {4, 1, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c01_s0_payload
-  {4, 1, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c01_s0_credit
-  {4, 1, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c01_s0_stall
-  {4, 1, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c01_s1_valid
-  {4, 1, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c01_s1_payload
-  {4, 1, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c01_s1_credit
-  {4, 1, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c01_s1_stall
-  {4, 1, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c01_s2_valid
-  {4, 1, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c01_s2_payload
-  {4, 1, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c01_s2_credit
-  {4, 1, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c01_s2_stall
-  {4, 1, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c01_s3_valid
-  {4, 1, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c01_s3_payload
-  {4, 1, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c01_s3_credit
-  {4, 1, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c01_s3_stall
-  {4, 2, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c02_s0_valid
-  {4, 2, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c02_s0_payload
-  {4, 2, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c02_s0_credit
-  {4, 2, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c02_s0_stall
-  {4, 2, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c02_s1_valid
-  {4, 2, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c02_s1_payload
-  {4, 2, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c02_s1_credit
-  {4, 2, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c02_s1_stall
-  {4, 2, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c02_s2_valid
-  {4, 2, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c02_s2_payload
-  {4, 2, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c02_s2_credit
-  {4, 2, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c02_s2_stall
-  {4, 2, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c02_s3_valid
-  {4, 2, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c02_s3_payload
-  {4, 2, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c02_s3_credit
-  {4, 2, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c02_s3_stall
-  {4, 3, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c03_s0_valid
-  {4, 3, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c03_s0_payload
-  {4, 3, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c03_s0_credit
-  {4, 3, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c03_s0_stall
-  {4, 3, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c03_s1_valid
-  {4, 3, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c03_s1_payload
-  {4, 3, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c03_s1_credit
-  {4, 3, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c03_s1_stall
-  {4, 3, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c03_s2_valid
-  {4, 3, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c03_s2_payload
-  {4, 3, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c03_s2_credit
-  {4, 3, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c03_s2_stall
-  {4, 3, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c03_s3_valid
-  {4, 3, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c03_s3_payload
-  {4, 3, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c03_s3_credit
-  {4, 3, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c03_s3_stall
-  {4, 4, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c04_s0_valid
-  {4, 4, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c04_s0_payload
-  {4, 4, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c04_s0_credit
-  {4, 4, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c04_s0_stall
-  {4, 4, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c04_s1_valid
-  {4, 4, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c04_s1_payload
-  {4, 4, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c04_s1_credit
-  {4, 4, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c04_s1_stall
-  {4, 4, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c04_s2_valid
-  {4, 4, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c04_s2_payload
-  {4, 4, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c04_s2_credit
-  {4, 4, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c04_s2_stall
-  {4, 4, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c04_s3_valid
-  {4, 4, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c04_s3_payload
-  {4, 4, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c04_s3_credit
-  {4, 4, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c04_s3_stall
-  {4, 5, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c05_s0_valid
-  {4, 5, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c05_s0_payload
-  {4, 5, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c05_s0_credit
-  {4, 5, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c05_s0_stall
-  {4, 5, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c05_s1_valid
-  {4, 5, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c05_s1_payload
-  {4, 5, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c05_s1_credit
-  {4, 5, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c05_s1_stall
-  {4, 5, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c05_s2_valid
-  {4, 5, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c05_s2_payload
-  {4, 5, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c05_s2_credit
-  {4, 5, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c05_s2_stall
-  {4, 5, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c05_s3_valid
-  {4, 5, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c05_s3_payload
-  {4, 5, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c05_s3_credit
-  {4, 5, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c05_s3_stall
-  {4, 6, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c06_s0_valid
-  {4, 6, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c06_s0_payload
-  {4, 6, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c06_s0_credit
-  {4, 6, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c06_s0_stall
-  {4, 6, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c06_s1_valid
-  {4, 6, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c06_s1_payload
-  {4, 6, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c06_s1_credit
-  {4, 6, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c06_s1_stall
-  {4, 6, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c06_s2_valid
-  {4, 6, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c06_s2_payload
-  {4, 6, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c06_s2_credit
-  {4, 6, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c06_s2_stall
-  {4, 6, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c06_s3_valid
-  {4, 6, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c06_s3_payload
-  {4, 6, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c06_s3_credit
-  {4, 6, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c06_s3_stall
-  {4, 7, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c07_s0_valid
-  {4, 7, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c07_s0_payload
-  {4, 7, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c07_s0_credit
-  {4, 7, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c07_s0_stall
-  {4, 7, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c07_s1_valid
-  {4, 7, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c07_s1_payload
-  {4, 7, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c07_s1_credit
-  {4, 7, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c07_s1_stall
-  {4, 7, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c07_s2_valid
-  {4, 7, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c07_s2_payload
-  {4, 7, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c07_s2_credit
-  {4, 7, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c07_s2_stall
-  {4, 7, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c07_s3_valid
-  {4, 7, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c07_s3_payload
-  {4, 7, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c07_s3_credit
-  {4, 7, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c07_s3_stall
-  {4, 8, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c08_s0_valid
-  {4, 8, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c08_s0_payload
-  {4, 8, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c08_s0_credit
-  {4, 8, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c08_s0_stall
-  {4, 8, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c08_s1_valid
-  {4, 8, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c08_s1_payload
-  {4, 8, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c08_s1_credit
-  {4, 8, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c08_s1_stall
-  {4, 8, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c08_s2_valid
-  {4, 8, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c08_s2_payload
-  {4, 8, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c08_s2_credit
-  {4, 8, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c08_s2_stall
-  {4, 8, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c08_s3_valid
-  {4, 8, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c08_s3_payload
-  {4, 8, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c08_s3_credit
-  {4, 8, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c08_s3_stall
-  {4, 9, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c09_s0_valid
-  {4, 9, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c09_s0_payload
-  {4, 9, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c09_s0_credit
-  {4, 9, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c09_s0_stall
-  {4, 9, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c09_s1_valid
-  {4, 9, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c09_s1_payload
-  {4, 9, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c09_s1_credit
-  {4, 9, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c09_s1_stall
-  {4, 9, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c09_s2_valid
-  {4, 9, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c09_s2_payload
-  {4, 9, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c09_s2_credit
-  {4, 9, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c09_s2_stall
-  {4, 9, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c09_s3_valid
-  {4, 9, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c09_s3_payload
-  {4, 9, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c09_s3_credit
-  {4, 9, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c09_s3_stall
-  {4, 10, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c10_s0_valid
-  {4, 10, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c10_s0_payload
-  {4, 10, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c10_s0_credit
-  {4, 10, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c10_s0_stall
-  {4, 10, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c10_s1_valid
-  {4, 10, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c10_s1_payload
-  {4, 10, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c10_s1_credit
-  {4, 10, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c10_s1_stall
-  {4, 10, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c10_s2_valid
-  {4, 10, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c10_s2_payload
-  {4, 10, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c10_s2_credit
-  {4, 10, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c10_s2_stall
-  {4, 10, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c10_s3_valid
-  {4, 10, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c10_s3_payload
-  {4, 10, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c10_s3_credit
-  {4, 10, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c10_s3_stall
-  {4, 11, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c11_s0_valid
-  {4, 11, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c11_s0_payload
-  {4, 11, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c11_s0_credit
-  {4, 11, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c11_s0_stall
-  {4, 11, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c11_s1_valid
-  {4, 11, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c11_s1_payload
-  {4, 11, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c11_s1_credit
-  {4, 11, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c11_s1_stall
-  {4, 11, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c11_s2_valid
-  {4, 11, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c11_s2_payload
-  {4, 11, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c11_s2_credit
-  {4, 11, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c11_s2_stall
-  {4, 11, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c11_s3_valid
-  {4, 11, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c11_s3_payload
-  {4, 11, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c11_s3_credit
-  {4, 11, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c11_s3_stall
-  {4, 12, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c12_s0_valid
-  {4, 12, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c12_s0_payload
-  {4, 12, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c12_s0_credit
-  {4, 12, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c12_s0_stall
-  {4, 12, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c12_s1_valid
-  {4, 12, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c12_s1_payload
-  {4, 12, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c12_s1_credit
-  {4, 12, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c12_s1_stall
-  {4, 12, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c12_s2_valid
-  {4, 12, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c12_s2_payload
-  {4, 12, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c12_s2_credit
-  {4, 12, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c12_s2_stall
-  {4, 12, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c12_s3_valid
-  {4, 12, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c12_s3_payload
-  {4, 12, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c12_s3_credit
-  {4, 12, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c12_s3_stall
-  {4, 13, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c13_s0_valid
-  {4, 13, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c13_s0_payload
-  {4, 13, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c13_s0_credit
-  {4, 13, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c13_s0_stall
-  {4, 13, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c13_s1_valid
-  {4, 13, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c13_s1_payload
-  {4, 13, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c13_s1_credit
-  {4, 13, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c13_s1_stall
-  {4, 13, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c13_s2_valid
-  {4, 13, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c13_s2_payload
-  {4, 13, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c13_s2_credit
-  {4, 13, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c13_s2_stall
-  {4, 13, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c13_s3_valid
-  {4, 13, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c13_s3_payload
-  {4, 13, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c13_s3_credit
-  {4, 13, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c13_s3_stall
-  {4, 14, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c14_s0_valid
-  {4, 14, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c14_s0_payload
-  {4, 14, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c14_s0_credit
-  {4, 14, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c14_s0_stall
-  {4, 14, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c14_s1_valid
-  {4, 14, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c14_s1_payload
-  {4, 14, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c14_s1_credit
-  {4, 14, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c14_s1_stall
-  {4, 14, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c14_s2_valid
-  {4, 14, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c14_s2_payload
-  {4, 14, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c14_s2_credit
-  {4, 14, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c14_s2_stall
-  {4, 14, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c14_s3_valid
-  {4, 14, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c14_s3_payload
-  {4, 14, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c14_s3_credit
-  {4, 14, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c14_s3_stall
-  {4, 15, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c15_s0_valid
-  {4, 15, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c15_s0_payload
-  {4, 15, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c15_s0_credit
-  {4, 15, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c15_s0_stall
-  {4, 15, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c15_s1_valid
-  {4, 15, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c15_s1_payload
-  {4, 15, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c15_s1_credit
-  {4, 15, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c15_s1_stall
-  {4, 15, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c15_s2_valid
-  {4, 15, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c15_s2_payload
-  {4, 15, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c15_s2_credit
-  {4, 15, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c15_s2_stall
-  {4, 15, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c15_s3_valid
-  {4, 15, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c15_s3_payload
-  {4, 15, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c15_s3_credit
-  {4, 15, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c15_s3_stall
-  {4, 16, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c16_s0_valid
-  {4, 16, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c16_s0_payload
-  {4, 16, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c16_s0_credit
-  {4, 16, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c16_s0_stall
-  {4, 16, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c16_s1_valid
-  {4, 16, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c16_s1_payload
-  {4, 16, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c16_s1_credit
-  {4, 16, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c16_s1_stall
-  {4, 16, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c16_s2_valid
-  {4, 16, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c16_s2_payload
-  {4, 16, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c16_s2_credit
-  {4, 16, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c16_s2_stall
-  {4, 16, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c16_s3_valid
-  {4, 16, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c16_s3_payload
-  {4, 16, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c16_s3_credit
-  {4, 16, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c16_s3_stall
-  {4, 17, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c17_s0_valid
-  {4, 17, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c17_s0_payload
-  {4, 17, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c17_s0_credit
-  {4, 17, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c17_s0_stall
-  {4, 17, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c17_s1_valid
-  {4, 17, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c17_s1_payload
-  {4, 17, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c17_s1_credit
-  {4, 17, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c17_s1_stall
-  {4, 17, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c17_s2_valid
-  {4, 17, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c17_s2_payload
-  {4, 17, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c17_s2_credit
-  {4, 17, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c17_s2_stall
-  {4, 17, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c17_s3_valid
-  {4, 17, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c17_s3_payload
-  {4, 17, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c17_s3_credit
-  {4, 17, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c17_s3_stall
-  {4, 18, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c18_s0_valid
-  {4, 18, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c18_s0_payload
-  {4, 18, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c18_s0_credit
-  {4, 18, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c18_s0_stall
-  {4, 18, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c18_s1_valid
-  {4, 18, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c18_s1_payload
-  {4, 18, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c18_s1_credit
-  {4, 18, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c18_s1_stall
-  {4, 18, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c18_s2_valid
-  {4, 18, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c18_s2_payload
-  {4, 18, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c18_s2_credit
-  {4, 18, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c18_s2_stall
-  {4, 18, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c18_s3_valid
-  {4, 18, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c18_s3_payload
-  {4, 18, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c18_s3_credit
-  {4, 18, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c18_s3_stall
-  {4, 19, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c19_s0_valid
-  {4, 19, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c19_s0_payload
-  {4, 19, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c19_s0_credit
-  {4, 19, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c19_s0_stall
-  {4, 19, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c19_s1_valid
-  {4, 19, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c19_s1_payload
-  {4, 19, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c19_s1_credit
-  {4, 19, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c19_s1_stall
-  {4, 19, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c19_s2_valid
-  {4, 19, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c19_s2_payload
-  {4, 19, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c19_s2_credit
-  {4, 19, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c19_s2_stall
-  {4, 19, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c19_s3_valid
-  {4, 19, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c19_s3_payload
-  {4, 19, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c19_s3_credit
-  {4, 19, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c19_s3_stall
-  {4, 20, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c20_s0_valid
-  {4, 20, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c20_s0_payload
-  {4, 20, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c20_s0_credit
-  {4, 20, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c20_s0_stall
-  {4, 20, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c20_s1_valid
-  {4, 20, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c20_s1_payload
-  {4, 20, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c20_s1_credit
-  {4, 20, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c20_s1_stall
-  {4, 20, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c20_s2_valid
-  {4, 20, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c20_s2_payload
-  {4, 20, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c20_s2_credit
-  {4, 20, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c20_s2_stall
-  {4, 20, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c20_s3_valid
-  {4, 20, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c20_s3_payload
-  {4, 20, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c20_s3_credit
-  {4, 20, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c20_s3_stall
-  {4, 21, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c21_s0_valid
-  {4, 21, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c21_s0_payload
-  {4, 21, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c21_s0_credit
-  {4, 21, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c21_s0_stall
-  {4, 21, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c21_s1_valid
-  {4, 21, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c21_s1_payload
-  {4, 21, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c21_s1_credit
-  {4, 21, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c21_s1_stall
-  {4, 21, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c21_s2_valid
-  {4, 21, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c21_s2_payload
-  {4, 21, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c21_s2_credit
-  {4, 21, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c21_s2_stall
-  {4, 21, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c21_s3_valid
-  {4, 21, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c21_s3_payload
-  {4, 21, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c21_s3_credit
-  {4, 21, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c21_s3_stall
-  {4, 22, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c22_s0_valid
-  {4, 22, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c22_s0_payload
-  {4, 22, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c22_s0_credit
-  {4, 22, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c22_s0_stall
-  {4, 22, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c22_s1_valid
-  {4, 22, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c22_s1_payload
-  {4, 22, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c22_s1_credit
-  {4, 22, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c22_s1_stall
-  {4, 22, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c22_s2_valid
-  {4, 22, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c22_s2_payload
-  {4, 22, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c22_s2_credit
-  {4, 22, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c22_s2_stall
-  {4, 22, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c22_s3_valid
-  {4, 22, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c22_s3_payload
-  {4, 22, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c22_s3_credit
-  {4, 22, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c22_s3_stall
-  {4, 23, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c23_s0_valid
-  {4, 23, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c23_s0_payload
-  {4, 23, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c23_s0_credit
-  {4, 23, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c23_s0_stall
-  {4, 23, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c23_s1_valid
-  {4, 23, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c23_s1_payload
-  {4, 23, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c23_s1_credit
-  {4, 23, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c23_s1_stall
-  {4, 23, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c23_s2_valid
-  {4, 23, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c23_s2_payload
-  {4, 23, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c23_s2_credit
-  {4, 23, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c23_s2_stall
-  {4, 23, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c23_s3_valid
-  {4, 23, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c23_s3_payload
-  {4, 23, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c23_s3_credit
-  {4, 23, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c23_s3_stall
-  {4, 24, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c24_s0_valid
-  {4, 24, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c24_s0_payload
-  {4, 24, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c24_s0_credit
-  {4, 24, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c24_s0_stall
-  {4, 24, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c24_s1_valid
-  {4, 24, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c24_s1_payload
-  {4, 24, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c24_s1_credit
-  {4, 24, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c24_s1_stall
-  {4, 24, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c24_s2_valid
-  {4, 24, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c24_s2_payload
-  {4, 24, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c24_s2_credit
-  {4, 24, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c24_s2_stall
-  {4, 24, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c24_s3_valid
-  {4, 24, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c24_s3_payload
-  {4, 24, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c24_s3_credit
-  {4, 24, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c24_s3_stall
-  {4, 25, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c25_s0_valid
-  {4, 25, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c25_s0_payload
-  {4, 25, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c25_s0_credit
-  {4, 25, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c25_s0_stall
-  {4, 25, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c25_s1_valid
-  {4, 25, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c25_s1_payload
-  {4, 25, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c25_s1_credit
-  {4, 25, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c25_s1_stall
-  {4, 25, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c25_s2_valid
-  {4, 25, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c25_s2_payload
-  {4, 25, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c25_s2_credit
-  {4, 25, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c25_s2_stall
-  {4, 25, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c25_s3_valid
-  {4, 25, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c25_s3_payload
-  {4, 25, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c25_s3_credit
-  {4, 25, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c25_s3_stall
-  {4, 26, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c26_s0_valid
-  {4, 26, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c26_s0_payload
-  {4, 26, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c26_s0_credit
-  {4, 26, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c26_s0_stall
-  {4, 26, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c26_s1_valid
-  {4, 26, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c26_s1_payload
-  {4, 26, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c26_s1_credit
-  {4, 26, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c26_s1_stall
-  {4, 26, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c26_s2_valid
-  {4, 26, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c26_s2_payload
-  {4, 26, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c26_s2_credit
-  {4, 26, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c26_s2_stall
-  {4, 26, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c26_s3_valid
-  {4, 26, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c26_s3_payload
-  {4, 26, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c26_s3_credit
-  {4, 26, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c26_s3_stall
-  {4, 27, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c27_s0_valid
-  {4, 27, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c27_s0_payload
-  {4, 27, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c27_s0_credit
-  {4, 27, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c27_s0_stall
-  {4, 27, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c27_s1_valid
-  {4, 27, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c27_s1_payload
-  {4, 27, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c27_s1_credit
-  {4, 27, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c27_s1_stall
-  {4, 27, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c27_s2_valid
-  {4, 27, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c27_s2_payload
-  {4, 27, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c27_s2_credit
-  {4, 27, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c27_s2_stall
-  {4, 27, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c27_s3_valid
-  {4, 27, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c27_s3_payload
-  {4, 27, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c27_s3_credit
-  {4, 27, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c27_s3_stall
-  {4, 28, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c28_s0_valid
-  {4, 28, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c28_s0_payload
-  {4, 28, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c28_s0_credit
-  {4, 28, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c28_s0_stall
-  {4, 28, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c28_s1_valid
-  {4, 28, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c28_s1_payload
-  {4, 28, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c28_s1_credit
-  {4, 28, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c28_s1_stall
-  {4, 28, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c28_s2_valid
-  {4, 28, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c28_s2_payload
-  {4, 28, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c28_s2_credit
-  {4, 28, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c28_s2_stall
-  {4, 28, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c28_s3_valid
-  {4, 28, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c28_s3_payload
-  {4, 28, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c28_s3_credit
-  {4, 28, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c28_s3_stall
-  {4, 29, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c29_s0_valid
-  {4, 29, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c29_s0_payload
-  {4, 29, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c29_s0_credit
-  {4, 29, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c29_s0_stall
-  {4, 29, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c29_s1_valid
-  {4, 29, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c29_s1_payload
-  {4, 29, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c29_s1_credit
-  {4, 29, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c29_s1_stall
-  {4, 29, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c29_s2_valid
-  {4, 29, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c29_s2_payload
-  {4, 29, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c29_s2_credit
-  {4, 29, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c29_s2_stall
-  {4, 29, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c29_s3_valid
-  {4, 29, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c29_s3_payload
-  {4, 29, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c29_s3_credit
-  {4, 29, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c29_s3_stall
-  {4, 30, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c30_s0_valid
-  {4, 30, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c30_s0_payload
-  {4, 30, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c30_s0_credit
-  {4, 30, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c30_s0_stall
-  {4, 30, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c30_s1_valid
-  {4, 30, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c30_s1_payload
-  {4, 30, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c30_s1_credit
-  {4, 30, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c30_s1_stall
-  {4, 30, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c30_s2_valid
-  {4, 30, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c30_s2_payload
-  {4, 30, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c30_s2_credit
-  {4, 30, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c30_s2_stall
-  {4, 30, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c30_s3_valid
-  {4, 30, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c30_s3_payload
-  {4, 30, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c30_s3_credit
-  {4, 30, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c30_s3_stall
-  {4, 31, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c31_s0_valid
-  {4, 31, 0, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c31_s0_payload
-  {4, 31, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c31_s0_credit
-  {4, 31, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c31_s0_stall
-  {4, 31, 1, DpiSig::VALID, 1, false},  // lane_rcu_res_c31_s1_valid
-  {4, 31, 1, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c31_s1_payload
-  {4, 31, 1, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c31_s1_credit
-  {4, 31, 1, DpiSig::STALL, 1, true},  // lane_rcu_res_c31_s1_stall
-  {4, 31, 2, DpiSig::VALID, 1, false},  // lane_rcu_res_c31_s2_valid
-  {4, 31, 2, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c31_s2_payload
-  {4, 31, 2, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c31_s2_credit
-  {4, 31, 2, DpiSig::STALL, 1, true},  // lane_rcu_res_c31_s2_stall
-  {4, 31, 3, DpiSig::VALID, 1, false},  // lane_rcu_res_c31_s3_valid
-  {4, 31, 3, DpiSig::PAYLOAD, 34, false},  // lane_rcu_res_c31_s3_payload
-  {4, 31, 3, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c31_s3_credit
-  {4, 31, 3, DpiSig::STALL, 1, true},  // lane_rcu_res_c31_s3_stall
-  {4, 0, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c00_s0_tid
-  {4, 0, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c00_s1_tid
-  {4, 0, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c00_s2_tid
-  {4, 0, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c00_s3_tid
-  {4, 1, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c01_s0_tid
-  {4, 1, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c01_s1_tid
-  {4, 1, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c01_s2_tid
-  {4, 1, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c01_s3_tid
-  {4, 2, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c02_s0_tid
-  {4, 2, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c02_s1_tid
-  {4, 2, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c02_s2_tid
-  {4, 2, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c02_s3_tid
-  {4, 3, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c03_s0_tid
-  {4, 3, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c03_s1_tid
-  {4, 3, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c03_s2_tid
-  {4, 3, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c03_s3_tid
-  {4, 4, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c04_s0_tid
-  {4, 4, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c04_s1_tid
-  {4, 4, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c04_s2_tid
-  {4, 4, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c04_s3_tid
-  {4, 5, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c05_s0_tid
-  {4, 5, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c05_s1_tid
-  {4, 5, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c05_s2_tid
-  {4, 5, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c05_s3_tid
-  {4, 6, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c06_s0_tid
-  {4, 6, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c06_s1_tid
-  {4, 6, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c06_s2_tid
-  {4, 6, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c06_s3_tid
-  {4, 7, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c07_s0_tid
-  {4, 7, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c07_s1_tid
-  {4, 7, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c07_s2_tid
-  {4, 7, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c07_s3_tid
-  {4, 8, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c08_s0_tid
-  {4, 8, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c08_s1_tid
-  {4, 8, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c08_s2_tid
-  {4, 8, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c08_s3_tid
-  {4, 9, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c09_s0_tid
-  {4, 9, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c09_s1_tid
-  {4, 9, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c09_s2_tid
-  {4, 9, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c09_s3_tid
-  {4, 10, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c10_s0_tid
-  {4, 10, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c10_s1_tid
-  {4, 10, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c10_s2_tid
-  {4, 10, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c10_s3_tid
-  {4, 11, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c11_s0_tid
-  {4, 11, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c11_s1_tid
-  {4, 11, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c11_s2_tid
-  {4, 11, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c11_s3_tid
-  {4, 12, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c12_s0_tid
-  {4, 12, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c12_s1_tid
-  {4, 12, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c12_s2_tid
-  {4, 12, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c12_s3_tid
-  {4, 13, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c13_s0_tid
-  {4, 13, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c13_s1_tid
-  {4, 13, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c13_s2_tid
-  {4, 13, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c13_s3_tid
-  {4, 14, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c14_s0_tid
-  {4, 14, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c14_s1_tid
-  {4, 14, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c14_s2_tid
-  {4, 14, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c14_s3_tid
-  {4, 15, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c15_s0_tid
-  {4, 15, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c15_s1_tid
-  {4, 15, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c15_s2_tid
-  {4, 15, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c15_s3_tid
-  {4, 16, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c16_s0_tid
-  {4, 16, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c16_s1_tid
-  {4, 16, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c16_s2_tid
-  {4, 16, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c16_s3_tid
-  {4, 17, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c17_s0_tid
-  {4, 17, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c17_s1_tid
-  {4, 17, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c17_s2_tid
-  {4, 17, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c17_s3_tid
-  {4, 18, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c18_s0_tid
-  {4, 18, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c18_s1_tid
-  {4, 18, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c18_s2_tid
-  {4, 18, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c18_s3_tid
-  {4, 19, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c19_s0_tid
-  {4, 19, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c19_s1_tid
-  {4, 19, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c19_s2_tid
-  {4, 19, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c19_s3_tid
-  {4, 20, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c20_s0_tid
-  {4, 20, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c20_s1_tid
-  {4, 20, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c20_s2_tid
-  {4, 20, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c20_s3_tid
-  {4, 21, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c21_s0_tid
-  {4, 21, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c21_s1_tid
-  {4, 21, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c21_s2_tid
-  {4, 21, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c21_s3_tid
-  {4, 22, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c22_s0_tid
-  {4, 22, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c22_s1_tid
-  {4, 22, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c22_s2_tid
-  {4, 22, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c22_s3_tid
-  {4, 23, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c23_s0_tid
-  {4, 23, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c23_s1_tid
-  {4, 23, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c23_s2_tid
-  {4, 23, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c23_s3_tid
-  {4, 24, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c24_s0_tid
-  {4, 24, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c24_s1_tid
-  {4, 24, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c24_s2_tid
-  {4, 24, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c24_s3_tid
-  {4, 25, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c25_s0_tid
-  {4, 25, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c25_s1_tid
-  {4, 25, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c25_s2_tid
-  {4, 25, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c25_s3_tid
-  {4, 26, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c26_s0_tid
-  {4, 26, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c26_s1_tid
-  {4, 26, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c26_s2_tid
-  {4, 26, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c26_s3_tid
-  {4, 27, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c27_s0_tid
-  {4, 27, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c27_s1_tid
-  {4, 27, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c27_s2_tid
-  {4, 27, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c27_s3_tid
-  {4, 28, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c28_s0_tid
-  {4, 28, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c28_s1_tid
-  {4, 28, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c28_s2_tid
-  {4, 28, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c28_s3_tid
-  {4, 29, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c29_s0_tid
-  {4, 29, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c29_s1_tid
-  {4, 29, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c29_s2_tid
-  {4, 29, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c29_s3_tid
-  {4, 30, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c30_s0_tid
-  {4, 30, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c30_s1_tid
-  {4, 30, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c30_s2_tid
-  {4, 30, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c30_s3_tid
-  {4, 31, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c31_s0_tid
-  {4, 31, 1, DpiSig::TID, 64, false},  // lane_rcu_res_c31_s1_tid
-  {4, 31, 2, DpiSig::TID, 64, false},  // lane_rcu_res_c31_s2_tid
-  {4, 31, 3, DpiSig::TID, 64, false},  // lane_rcu_res_c31_s3_tid
+  {2, -1, 4, DpiSig::TID, 64, false},  // ooe_rcu_issue_s4_tid
+  {2, -1, 5, DpiSig::TID, 64, false},  // ooe_rcu_issue_s5_tid
+  {2, -1, 6, DpiSig::TID, 64, false},  // ooe_rcu_issue_s6_tid
+  {2, -1, 7, DpiSig::TID, 64, false},  // ooe_rcu_issue_s7_tid
+  {2, -1, 8, DpiSig::TID, 64, false},  // ooe_rcu_issue_s8_tid
+  {3, 0, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c00_valid
+  {3, 0, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c00_payload
+  {3, 0, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c00_credit
+  {3, 0, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c00_stall
+  {3, 1, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c01_valid
+  {3, 1, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c01_payload
+  {3, 1, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c01_credit
+  {3, 1, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c01_stall
+  {3, 2, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c02_valid
+  {3, 2, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c02_payload
+  {3, 2, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c02_credit
+  {3, 2, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c02_stall
+  {3, 3, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c03_valid
+  {3, 3, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c03_payload
+  {3, 3, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c03_credit
+  {3, 3, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c03_stall
+  {3, 4, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c04_valid
+  {3, 4, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c04_payload
+  {3, 4, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c04_credit
+  {3, 4, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c04_stall
+  {3, 5, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c05_valid
+  {3, 5, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c05_payload
+  {3, 5, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c05_credit
+  {3, 5, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c05_stall
+  {3, 6, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c06_valid
+  {3, 6, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c06_payload
+  {3, 6, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c06_credit
+  {3, 6, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c06_stall
+  {3, 7, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c07_valid
+  {3, 7, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c07_payload
+  {3, 7, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c07_credit
+  {3, 7, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c07_stall
+  {3, 8, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c08_valid
+  {3, 8, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c08_payload
+  {3, 8, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c08_credit
+  {3, 8, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c08_stall
+  {3, 9, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c09_valid
+  {3, 9, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c09_payload
+  {3, 9, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c09_credit
+  {3, 9, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c09_stall
+  {3, 10, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c10_valid
+  {3, 10, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c10_payload
+  {3, 10, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c10_credit
+  {3, 10, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c10_stall
+  {3, 11, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c11_valid
+  {3, 11, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c11_payload
+  {3, 11, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c11_credit
+  {3, 11, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c11_stall
+  {3, 12, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c12_valid
+  {3, 12, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c12_payload
+  {3, 12, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c12_credit
+  {3, 12, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c12_stall
+  {3, 13, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c13_valid
+  {3, 13, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c13_payload
+  {3, 13, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c13_credit
+  {3, 13, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c13_stall
+  {3, 14, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c14_valid
+  {3, 14, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c14_payload
+  {3, 14, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c14_credit
+  {3, 14, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c14_stall
+  {3, 15, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c15_valid
+  {3, 15, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c15_payload
+  {3, 15, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c15_credit
+  {3, 15, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c15_stall
+  {3, 16, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c16_valid
+  {3, 16, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c16_payload
+  {3, 16, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c16_credit
+  {3, 16, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c16_stall
+  {3, 17, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c17_valid
+  {3, 17, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c17_payload
+  {3, 17, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c17_credit
+  {3, 17, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c17_stall
+  {3, 18, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c18_valid
+  {3, 18, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c18_payload
+  {3, 18, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c18_credit
+  {3, 18, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c18_stall
+  {3, 19, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c19_valid
+  {3, 19, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c19_payload
+  {3, 19, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c19_credit
+  {3, 19, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c19_stall
+  {3, 20, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c20_valid
+  {3, 20, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c20_payload
+  {3, 20, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c20_credit
+  {3, 20, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c20_stall
+  {3, 21, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c21_valid
+  {3, 21, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c21_payload
+  {3, 21, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c21_credit
+  {3, 21, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c21_stall
+  {3, 22, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c22_valid
+  {3, 22, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c22_payload
+  {3, 22, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c22_credit
+  {3, 22, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c22_stall
+  {3, 23, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c23_valid
+  {3, 23, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c23_payload
+  {3, 23, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c23_credit
+  {3, 23, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c23_stall
+  {3, 24, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c24_valid
+  {3, 24, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c24_payload
+  {3, 24, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c24_credit
+  {3, 24, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c24_stall
+  {3, 25, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c25_valid
+  {3, 25, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c25_payload
+  {3, 25, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c25_credit
+  {3, 25, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c25_stall
+  {3, 26, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c26_valid
+  {3, 26, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c26_payload
+  {3, 26, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c26_credit
+  {3, 26, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c26_stall
+  {3, 27, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c27_valid
+  {3, 27, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c27_payload
+  {3, 27, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c27_credit
+  {3, 27, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c27_stall
+  {3, 28, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c28_valid
+  {3, 28, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c28_payload
+  {3, 28, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c28_credit
+  {3, 28, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c28_stall
+  {3, 29, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c29_valid
+  {3, 29, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c29_payload
+  {3, 29, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c29_credit
+  {3, 29, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c29_stall
+  {3, 30, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c30_valid
+  {3, 30, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c30_payload
+  {3, 30, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c30_credit
+  {3, 30, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c30_stall
+  {3, 31, 0, DpiSig::VALID, 1, true},  // rcu_lane_ops_c31_valid
+  {3, 31, 0, DpiSig::PAYLOAD, 344, true},  // rcu_lane_ops_c31_payload
+  {3, 31, 0, DpiSig::CREDIT, 1, false},  // rcu_lane_ops_c31_credit
+  {3, 31, 0, DpiSig::STALL, 1, false},  // rcu_lane_ops_c31_stall
+  {3, 0, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c00_tid
+  {3, 1, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c01_tid
+  {3, 2, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c02_tid
+  {3, 3, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c03_tid
+  {3, 4, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c04_tid
+  {3, 5, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c05_tid
+  {3, 6, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c06_tid
+  {3, 7, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c07_tid
+  {3, 8, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c08_tid
+  {3, 9, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c09_tid
+  {3, 10, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c10_tid
+  {3, 11, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c11_tid
+  {3, 12, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c12_tid
+  {3, 13, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c13_tid
+  {3, 14, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c14_tid
+  {3, 15, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c15_tid
+  {3, 16, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c16_tid
+  {3, 17, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c17_tid
+  {3, 18, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c18_tid
+  {3, 19, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c19_tid
+  {3, 20, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c20_tid
+  {3, 21, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c21_tid
+  {3, 22, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c22_tid
+  {3, 23, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c23_tid
+  {3, 24, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c24_tid
+  {3, 25, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c25_tid
+  {3, 26, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c26_tid
+  {3, 27, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c27_tid
+  {3, 28, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c28_tid
+  {3, 29, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c29_tid
+  {3, 30, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c30_tid
+  {3, 31, 0, DpiSig::TID, 64, true},  // rcu_lane_ops_c31_tid
+  {4, 0, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c00_valid
+  {4, 0, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c00_payload
+  {4, 0, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c00_credit
+  {4, 0, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c00_stall
+  {4, 1, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c01_valid
+  {4, 1, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c01_payload
+  {4, 1, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c01_credit
+  {4, 1, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c01_stall
+  {4, 2, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c02_valid
+  {4, 2, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c02_payload
+  {4, 2, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c02_credit
+  {4, 2, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c02_stall
+  {4, 3, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c03_valid
+  {4, 3, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c03_payload
+  {4, 3, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c03_credit
+  {4, 3, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c03_stall
+  {4, 4, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c04_valid
+  {4, 4, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c04_payload
+  {4, 4, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c04_credit
+  {4, 4, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c04_stall
+  {4, 5, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c05_valid
+  {4, 5, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c05_payload
+  {4, 5, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c05_credit
+  {4, 5, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c05_stall
+  {4, 6, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c06_valid
+  {4, 6, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c06_payload
+  {4, 6, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c06_credit
+  {4, 6, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c06_stall
+  {4, 7, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c07_valid
+  {4, 7, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c07_payload
+  {4, 7, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c07_credit
+  {4, 7, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c07_stall
+  {4, 8, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c08_valid
+  {4, 8, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c08_payload
+  {4, 8, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c08_credit
+  {4, 8, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c08_stall
+  {4, 9, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c09_valid
+  {4, 9, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c09_payload
+  {4, 9, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c09_credit
+  {4, 9, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c09_stall
+  {4, 10, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c10_valid
+  {4, 10, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c10_payload
+  {4, 10, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c10_credit
+  {4, 10, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c10_stall
+  {4, 11, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c11_valid
+  {4, 11, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c11_payload
+  {4, 11, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c11_credit
+  {4, 11, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c11_stall
+  {4, 12, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c12_valid
+  {4, 12, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c12_payload
+  {4, 12, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c12_credit
+  {4, 12, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c12_stall
+  {4, 13, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c13_valid
+  {4, 13, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c13_payload
+  {4, 13, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c13_credit
+  {4, 13, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c13_stall
+  {4, 14, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c14_valid
+  {4, 14, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c14_payload
+  {4, 14, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c14_credit
+  {4, 14, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c14_stall
+  {4, 15, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c15_valid
+  {4, 15, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c15_payload
+  {4, 15, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c15_credit
+  {4, 15, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c15_stall
+  {4, 16, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c16_valid
+  {4, 16, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c16_payload
+  {4, 16, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c16_credit
+  {4, 16, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c16_stall
+  {4, 17, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c17_valid
+  {4, 17, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c17_payload
+  {4, 17, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c17_credit
+  {4, 17, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c17_stall
+  {4, 18, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c18_valid
+  {4, 18, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c18_payload
+  {4, 18, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c18_credit
+  {4, 18, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c18_stall
+  {4, 19, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c19_valid
+  {4, 19, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c19_payload
+  {4, 19, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c19_credit
+  {4, 19, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c19_stall
+  {4, 20, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c20_valid
+  {4, 20, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c20_payload
+  {4, 20, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c20_credit
+  {4, 20, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c20_stall
+  {4, 21, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c21_valid
+  {4, 21, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c21_payload
+  {4, 21, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c21_credit
+  {4, 21, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c21_stall
+  {4, 22, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c22_valid
+  {4, 22, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c22_payload
+  {4, 22, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c22_credit
+  {4, 22, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c22_stall
+  {4, 23, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c23_valid
+  {4, 23, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c23_payload
+  {4, 23, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c23_credit
+  {4, 23, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c23_stall
+  {4, 24, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c24_valid
+  {4, 24, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c24_payload
+  {4, 24, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c24_credit
+  {4, 24, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c24_stall
+  {4, 25, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c25_valid
+  {4, 25, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c25_payload
+  {4, 25, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c25_credit
+  {4, 25, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c25_stall
+  {4, 26, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c26_valid
+  {4, 26, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c26_payload
+  {4, 26, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c26_credit
+  {4, 26, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c26_stall
+  {4, 27, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c27_valid
+  {4, 27, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c27_payload
+  {4, 27, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c27_credit
+  {4, 27, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c27_stall
+  {4, 28, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c28_valid
+  {4, 28, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c28_payload
+  {4, 28, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c28_credit
+  {4, 28, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c28_stall
+  {4, 29, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c29_valid
+  {4, 29, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c29_payload
+  {4, 29, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c29_credit
+  {4, 29, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c29_stall
+  {4, 30, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c30_valid
+  {4, 30, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c30_payload
+  {4, 30, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c30_credit
+  {4, 30, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c30_stall
+  {4, 31, 0, DpiSig::VALID, 1, false},  // lane_rcu_res_c31_valid
+  {4, 31, 0, DpiSig::PAYLOAD, 44, false},  // lane_rcu_res_c31_payload
+  {4, 31, 0, DpiSig::CREDIT, 1, true},  // lane_rcu_res_c31_credit
+  {4, 31, 0, DpiSig::STALL, 1, true},  // lane_rcu_res_c31_stall
+  {4, 0, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c00_tid
+  {4, 1, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c01_tid
+  {4, 2, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c02_tid
+  {4, 3, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c03_tid
+  {4, 4, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c04_tid
+  {4, 5, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c05_tid
+  {4, 6, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c06_tid
+  {4, 7, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c07_tid
+  {4, 8, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c08_tid
+  {4, 9, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c09_tid
+  {4, 10, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c10_tid
+  {4, 11, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c11_tid
+  {4, 12, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c12_tid
+  {4, 13, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c13_tid
+  {4, 14, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c14_tid
+  {4, 15, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c15_tid
+  {4, 16, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c16_tid
+  {4, 17, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c17_tid
+  {4, 18, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c18_tid
+  {4, 19, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c19_tid
+  {4, 20, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c20_tid
+  {4, 21, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c21_tid
+  {4, 22, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c22_tid
+  {4, 23, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c23_tid
+  {4, 24, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c24_tid
+  {4, 25, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c25_tid
+  {4, 26, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c26_tid
+  {4, 27, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c27_tid
+  {4, 28, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c28_tid
+  {4, 29, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c29_tid
+  {4, 30, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c30_tid
+  {4, 31, 0, DpiSig::TID, 64, false},  // lane_rcu_res_c31_tid
   {5, -1, 0, DpiSig::VALID, 1, true},  // rcu_ooe_done_s0_valid
   {5, -1, 0, DpiSig::PAYLOAD, 73, true},  // rcu_ooe_done_s0_payload
   {5, -1, 0, DpiSig::CREDIT, 1, false},  // rcu_ooe_done_s0_credit
@@ -1678,10 +783,25 @@ inline constexpr DpiPort kDpiPorts_rcu[] = {
   {5, -1, 3, DpiSig::PAYLOAD, 73, true},  // rcu_ooe_done_s3_payload
   {5, -1, 3, DpiSig::CREDIT, 1, false},  // rcu_ooe_done_s3_credit
   {5, -1, 3, DpiSig::STALL, 1, false},  // rcu_ooe_done_s3_stall
+  {5, -1, 4, DpiSig::VALID, 1, true},  // rcu_ooe_done_s4_valid
+  {5, -1, 4, DpiSig::PAYLOAD, 73, true},  // rcu_ooe_done_s4_payload
+  {5, -1, 4, DpiSig::CREDIT, 1, false},  // rcu_ooe_done_s4_credit
+  {5, -1, 4, DpiSig::STALL, 1, false},  // rcu_ooe_done_s4_stall
+  {5, -1, 5, DpiSig::VALID, 1, true},  // rcu_ooe_done_s5_valid
+  {5, -1, 5, DpiSig::PAYLOAD, 73, true},  // rcu_ooe_done_s5_payload
+  {5, -1, 5, DpiSig::CREDIT, 1, false},  // rcu_ooe_done_s5_credit
+  {5, -1, 5, DpiSig::STALL, 1, false},  // rcu_ooe_done_s5_stall
+  {5, -1, 6, DpiSig::VALID, 1, true},  // rcu_ooe_done_s6_valid
+  {5, -1, 6, DpiSig::PAYLOAD, 73, true},  // rcu_ooe_done_s6_payload
+  {5, -1, 6, DpiSig::CREDIT, 1, false},  // rcu_ooe_done_s6_credit
+  {5, -1, 6, DpiSig::STALL, 1, false},  // rcu_ooe_done_s6_stall
   {5, -1, 0, DpiSig::TID, 64, true},  // rcu_ooe_done_s0_tid
   {5, -1, 1, DpiSig::TID, 64, true},  // rcu_ooe_done_s1_tid
   {5, -1, 2, DpiSig::TID, 64, true},  // rcu_ooe_done_s2_tid
   {5, -1, 3, DpiSig::TID, 64, true},  // rcu_ooe_done_s3_tid
+  {5, -1, 4, DpiSig::TID, 64, true},  // rcu_ooe_done_s4_tid
+  {5, -1, 5, DpiSig::TID, 64, true},  // rcu_ooe_done_s5_tid
+  {5, -1, 6, DpiSig::TID, 64, true},  // rcu_ooe_done_s6_tid
   {6, -1, 0, DpiSig::VALID, 1, true},  // rcu_miu_addr_s0_valid
   {6, -1, 0, DpiSig::PAYLOAD, 2151, true},  // rcu_miu_addr_s0_payload
   {6, -1, 0, DpiSig::CREDIT, 1, false},  // rcu_miu_addr_s0_credit
@@ -1703,19 +823,19 @@ inline constexpr DpiPort kDpiPorts_rcu[] = {
   {6, -1, 2, DpiSig::TID, 64, true},  // rcu_miu_addr_s2_tid
   {6, -1, 3, DpiSig::TID, 64, true},  // rcu_miu_addr_s3_tid
   {7, -1, 0, DpiSig::VALID, 1, false},  // miu_rcu_data_s0_valid
-  {7, -1, 0, DpiSig::PAYLOAD, 1110, false},  // miu_rcu_data_s0_payload
+  {7, -1, 0, DpiSig::PAYLOAD, 1114, false},  // miu_rcu_data_s0_payload
   {7, -1, 0, DpiSig::CREDIT, 1, true},  // miu_rcu_data_s0_credit
   {7, -1, 0, DpiSig::STALL, 1, true},  // miu_rcu_data_s0_stall
   {7, -1, 1, DpiSig::VALID, 1, false},  // miu_rcu_data_s1_valid
-  {7, -1, 1, DpiSig::PAYLOAD, 1110, false},  // miu_rcu_data_s1_payload
+  {7, -1, 1, DpiSig::PAYLOAD, 1114, false},  // miu_rcu_data_s1_payload
   {7, -1, 1, DpiSig::CREDIT, 1, true},  // miu_rcu_data_s1_credit
   {7, -1, 1, DpiSig::STALL, 1, true},  // miu_rcu_data_s1_stall
   {7, -1, 2, DpiSig::VALID, 1, false},  // miu_rcu_data_s2_valid
-  {7, -1, 2, DpiSig::PAYLOAD, 1110, false},  // miu_rcu_data_s2_payload
+  {7, -1, 2, DpiSig::PAYLOAD, 1114, false},  // miu_rcu_data_s2_payload
   {7, -1, 2, DpiSig::CREDIT, 1, true},  // miu_rcu_data_s2_credit
   {7, -1, 2, DpiSig::STALL, 1, true},  // miu_rcu_data_s2_stall
   {7, -1, 3, DpiSig::VALID, 1, false},  // miu_rcu_data_s3_valid
-  {7, -1, 3, DpiSig::PAYLOAD, 1110, false},  // miu_rcu_data_s3_payload
+  {7, -1, 3, DpiSig::PAYLOAD, 1114, false},  // miu_rcu_data_s3_payload
   {7, -1, 3, DpiSig::CREDIT, 1, true},  // miu_rcu_data_s3_credit
   {7, -1, 3, DpiSig::STALL, 1, true},  // miu_rcu_data_s3_stall
   {7, -1, 0, DpiSig::TID, 64, false},  // miu_rcu_data_s0_tid
@@ -1728,7 +848,7 @@ inline constexpr DpiPort kDpiPorts_rcu[] = {
   {33, -1, 0, DpiSig::STALL, 1, true},  // rau_rcu_mig_stall
   {33, -1, 0, DpiSig::TID, 64, false},  // rau_rcu_mig_tid
   {34, -1, 0, DpiSig::VALID, 1, false},  // ooe_rcu_map_valid
-  {34, -1, 0, DpiSig::PAYLOAD, 158, false},  // ooe_rcu_map_payload
+  {34, -1, 0, DpiSig::PAYLOAD, 222, false},  // ooe_rcu_map_payload
   {34, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_rcu_map_credit
   {34, -1, 0, DpiSig::STALL, 1, true},  // ooe_rcu_map_stall
   {34, -1, 0, DpiSig::TID, 64, false},  // ooe_rcu_map_tid
@@ -1744,46 +864,16 @@ inline constexpr DpiPort kDpiPorts_rcu[] = {
   {36, -1, 0, DpiSig::TID, 64, false},  // pca_rcu_mig_tid
 };
 inline constexpr DpiPort kDpiPorts_lane[] = {
-  {3, -1, 0, DpiSig::VALID, 1, false},  // rcu_lane_ops_s0_valid
-  {3, -1, 0, DpiSig::PAYLOAD, 143, false},  // rcu_lane_ops_s0_payload
-  {3, -1, 0, DpiSig::CREDIT, 1, true},  // rcu_lane_ops_s0_credit
-  {3, -1, 0, DpiSig::STALL, 1, true},  // rcu_lane_ops_s0_stall
-  {3, -1, 1, DpiSig::VALID, 1, false},  // rcu_lane_ops_s1_valid
-  {3, -1, 1, DpiSig::PAYLOAD, 143, false},  // rcu_lane_ops_s1_payload
-  {3, -1, 1, DpiSig::CREDIT, 1, true},  // rcu_lane_ops_s1_credit
-  {3, -1, 1, DpiSig::STALL, 1, true},  // rcu_lane_ops_s1_stall
-  {3, -1, 2, DpiSig::VALID, 1, false},  // rcu_lane_ops_s2_valid
-  {3, -1, 2, DpiSig::PAYLOAD, 143, false},  // rcu_lane_ops_s2_payload
-  {3, -1, 2, DpiSig::CREDIT, 1, true},  // rcu_lane_ops_s2_credit
-  {3, -1, 2, DpiSig::STALL, 1, true},  // rcu_lane_ops_s2_stall
-  {3, -1, 3, DpiSig::VALID, 1, false},  // rcu_lane_ops_s3_valid
-  {3, -1, 3, DpiSig::PAYLOAD, 143, false},  // rcu_lane_ops_s3_payload
-  {3, -1, 3, DpiSig::CREDIT, 1, true},  // rcu_lane_ops_s3_credit
-  {3, -1, 3, DpiSig::STALL, 1, true},  // rcu_lane_ops_s3_stall
-  {3, -1, 0, DpiSig::TID, 64, false},  // rcu_lane_ops_s0_tid
-  {3, -1, 1, DpiSig::TID, 64, false},  // rcu_lane_ops_s1_tid
-  {3, -1, 2, DpiSig::TID, 64, false},  // rcu_lane_ops_s2_tid
-  {3, -1, 3, DpiSig::TID, 64, false},  // rcu_lane_ops_s3_tid
-  {4, -1, 0, DpiSig::VALID, 1, true},  // lane_rcu_res_s0_valid
-  {4, -1, 0, DpiSig::PAYLOAD, 34, true},  // lane_rcu_res_s0_payload
-  {4, -1, 0, DpiSig::CREDIT, 1, false},  // lane_rcu_res_s0_credit
-  {4, -1, 0, DpiSig::STALL, 1, false},  // lane_rcu_res_s0_stall
-  {4, -1, 1, DpiSig::VALID, 1, true},  // lane_rcu_res_s1_valid
-  {4, -1, 1, DpiSig::PAYLOAD, 34, true},  // lane_rcu_res_s1_payload
-  {4, -1, 1, DpiSig::CREDIT, 1, false},  // lane_rcu_res_s1_credit
-  {4, -1, 1, DpiSig::STALL, 1, false},  // lane_rcu_res_s1_stall
-  {4, -1, 2, DpiSig::VALID, 1, true},  // lane_rcu_res_s2_valid
-  {4, -1, 2, DpiSig::PAYLOAD, 34, true},  // lane_rcu_res_s2_payload
-  {4, -1, 2, DpiSig::CREDIT, 1, false},  // lane_rcu_res_s2_credit
-  {4, -1, 2, DpiSig::STALL, 1, false},  // lane_rcu_res_s2_stall
-  {4, -1, 3, DpiSig::VALID, 1, true},  // lane_rcu_res_s3_valid
-  {4, -1, 3, DpiSig::PAYLOAD, 34, true},  // lane_rcu_res_s3_payload
-  {4, -1, 3, DpiSig::CREDIT, 1, false},  // lane_rcu_res_s3_credit
-  {4, -1, 3, DpiSig::STALL, 1, false},  // lane_rcu_res_s3_stall
-  {4, -1, 0, DpiSig::TID, 64, true},  // lane_rcu_res_s0_tid
-  {4, -1, 1, DpiSig::TID, 64, true},  // lane_rcu_res_s1_tid
-  {4, -1, 2, DpiSig::TID, 64, true},  // lane_rcu_res_s2_tid
-  {4, -1, 3, DpiSig::TID, 64, true},  // lane_rcu_res_s3_tid
+  {3, -1, 0, DpiSig::VALID, 1, false},  // rcu_lane_ops_valid
+  {3, -1, 0, DpiSig::PAYLOAD, 344, false},  // rcu_lane_ops_payload
+  {3, -1, 0, DpiSig::CREDIT, 1, true},  // rcu_lane_ops_credit
+  {3, -1, 0, DpiSig::STALL, 1, true},  // rcu_lane_ops_stall
+  {3, -1, 0, DpiSig::TID, 64, false},  // rcu_lane_ops_tid
+  {4, -1, 0, DpiSig::VALID, 1, true},  // lane_rcu_res_valid
+  {4, -1, 0, DpiSig::PAYLOAD, 44, true},  // lane_rcu_res_payload
+  {4, -1, 0, DpiSig::CREDIT, 1, false},  // lane_rcu_res_credit
+  {4, -1, 0, DpiSig::STALL, 1, false},  // lane_rcu_res_stall
+  {4, -1, 0, DpiSig::TID, 64, true},  // lane_rcu_res_tid
 };
 inline constexpr DpiPort kDpiPorts_miu[] = {
   {6, -1, 0, DpiSig::VALID, 1, false},  // rcu_miu_addr_s0_valid
@@ -1807,19 +897,19 @@ inline constexpr DpiPort kDpiPorts_miu[] = {
   {6, -1, 2, DpiSig::TID, 64, false},  // rcu_miu_addr_s2_tid
   {6, -1, 3, DpiSig::TID, 64, false},  // rcu_miu_addr_s3_tid
   {7, -1, 0, DpiSig::VALID, 1, true},  // miu_rcu_data_s0_valid
-  {7, -1, 0, DpiSig::PAYLOAD, 1110, true},  // miu_rcu_data_s0_payload
+  {7, -1, 0, DpiSig::PAYLOAD, 1114, true},  // miu_rcu_data_s0_payload
   {7, -1, 0, DpiSig::CREDIT, 1, false},  // miu_rcu_data_s0_credit
   {7, -1, 0, DpiSig::STALL, 1, false},  // miu_rcu_data_s0_stall
   {7, -1, 1, DpiSig::VALID, 1, true},  // miu_rcu_data_s1_valid
-  {7, -1, 1, DpiSig::PAYLOAD, 1110, true},  // miu_rcu_data_s1_payload
+  {7, -1, 1, DpiSig::PAYLOAD, 1114, true},  // miu_rcu_data_s1_payload
   {7, -1, 1, DpiSig::CREDIT, 1, false},  // miu_rcu_data_s1_credit
   {7, -1, 1, DpiSig::STALL, 1, false},  // miu_rcu_data_s1_stall
   {7, -1, 2, DpiSig::VALID, 1, true},  // miu_rcu_data_s2_valid
-  {7, -1, 2, DpiSig::PAYLOAD, 1110, true},  // miu_rcu_data_s2_payload
+  {7, -1, 2, DpiSig::PAYLOAD, 1114, true},  // miu_rcu_data_s2_payload
   {7, -1, 2, DpiSig::CREDIT, 1, false},  // miu_rcu_data_s2_credit
   {7, -1, 2, DpiSig::STALL, 1, false},  // miu_rcu_data_s2_stall
   {7, -1, 3, DpiSig::VALID, 1, true},  // miu_rcu_data_s3_valid
-  {7, -1, 3, DpiSig::PAYLOAD, 1110, true},  // miu_rcu_data_s3_payload
+  {7, -1, 3, DpiSig::PAYLOAD, 1114, true},  // miu_rcu_data_s3_payload
   {7, -1, 3, DpiSig::CREDIT, 1, false},  // miu_rcu_data_s3_credit
   {7, -1, 3, DpiSig::STALL, 1, false},  // miu_rcu_data_s3_stall
   {7, -1, 0, DpiSig::TID, 64, true},  // miu_rcu_data_s0_tid
@@ -1827,19 +917,19 @@ inline constexpr DpiPort kDpiPorts_miu[] = {
   {7, -1, 2, DpiSig::TID, 64, true},  // miu_rcu_data_s2_tid
   {7, -1, 3, DpiSig::TID, 64, true},  // miu_rcu_data_s3_tid
   {8, -1, 0, DpiSig::VALID, 1, false},  // ooe_miu_memop_s0_valid
-  {8, -1, 0, DpiSig::PAYLOAD, 91, false},  // ooe_miu_memop_s0_payload
+  {8, -1, 0, DpiSig::PAYLOAD, 97, false},  // ooe_miu_memop_s0_payload
   {8, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s0_credit
   {8, -1, 0, DpiSig::STALL, 1, true},  // ooe_miu_memop_s0_stall
   {8, -1, 1, DpiSig::VALID, 1, false},  // ooe_miu_memop_s1_valid
-  {8, -1, 1, DpiSig::PAYLOAD, 91, false},  // ooe_miu_memop_s1_payload
+  {8, -1, 1, DpiSig::PAYLOAD, 97, false},  // ooe_miu_memop_s1_payload
   {8, -1, 1, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s1_credit
   {8, -1, 1, DpiSig::STALL, 1, true},  // ooe_miu_memop_s1_stall
   {8, -1, 2, DpiSig::VALID, 1, false},  // ooe_miu_memop_s2_valid
-  {8, -1, 2, DpiSig::PAYLOAD, 91, false},  // ooe_miu_memop_s2_payload
+  {8, -1, 2, DpiSig::PAYLOAD, 97, false},  // ooe_miu_memop_s2_payload
   {8, -1, 2, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s2_credit
   {8, -1, 2, DpiSig::STALL, 1, true},  // ooe_miu_memop_s2_stall
   {8, -1, 3, DpiSig::VALID, 1, false},  // ooe_miu_memop_s3_valid
-  {8, -1, 3, DpiSig::PAYLOAD, 91, false},  // ooe_miu_memop_s3_payload
+  {8, -1, 3, DpiSig::PAYLOAD, 97, false},  // ooe_miu_memop_s3_payload
   {8, -1, 3, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s3_credit
   {8, -1, 3, DpiSig::STALL, 1, true},  // ooe_miu_memop_s3_stall
   {8, -1, 0, DpiSig::TID, 64, false},  // ooe_miu_memop_s0_tid
@@ -2278,11 +1368,11 @@ inline constexpr DpiPort kDpiPorts_ext[] = {
 
 inline constexpr DpiType kDpiTypes[] = {
   {"fet", kDpiPorts_fet, 90, 4786, 2508},
-  {"dec", kDpiPorts_dec, 70, 3424, 1612},
-  {"ooe", kDpiPorts_ooe, 180, 5984, 2815},
-  {"rcu", kDpiPorts_rcu, 1380, 57315, 37417},
-  {"lane", kDpiPorts_lane, 40, 1244, 404},
-  {"miu", kDpiPorts_miu, 195, 35730, 16849},
+  {"dec", kDpiPorts_dec, 70, 3484, 1672},
+  {"ooe", kDpiPorts_ooe, 220, 7866, 4213},
+  {"rcu", kDpiPorts_rcu, 460, 36025, 24113},
+  {"lane", kDpiPorts_lane, 10, 522, 111},
+  {"miu", kDpiPorts_miu, 195, 35770, 16865},
   {"spm", kDpiPorts_spm, 40, 10576, 4400},
   {"dcu", kDpiPorts_dcu, 60, 12966, 6635},
   {"mlc", kDpiPorts_mlc, 40, 6974, 3465},

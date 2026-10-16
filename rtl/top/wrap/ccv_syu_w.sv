@@ -79,7 +79,7 @@ module ccv_syu_w #(
   );
 
   // ccv_ooe_syu_bar, destination end
-  ccv_seq_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(13)) u_rpt_ooe_syu_bar (
+  ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(13)) u_rpt_ooe_syu_bar (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({ooe_syu_bar_valid}), .src_payload({ooe_syu_bar_payload}),
     .src_wake(ooe_syu_bar_wake), .src_credit({ooe_syu_bar_credit}), .src_stall({ooe_syu_bar_stall}),
@@ -90,7 +90,7 @@ module ccv_syu_w #(
 `endif
   );
   // ccv_syu_ooe_rel, source end
-  ccv_seq_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(36)) u_rpt_syu_ooe_rel (
+  ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(36)) u_rpt_syu_ooe_rel (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({b_syu_ooe_rel_valid}), .src_payload({b_syu_ooe_rel_payload}),
     .src_wake(b_syu_ooe_rel_wake), .src_credit({b_syu_ooe_rel_credit}), .src_stall({b_syu_ooe_rel_stall}),
@@ -101,7 +101,7 @@ module ccv_syu_w #(
 `endif
   );
   // ccv_rau_syu_alloc, destination end
-  ccv_seq_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(17)) u_rpt_rau_syu_alloc (
+  ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(17)) u_rpt_rau_syu_alloc (
     .clk(core_clk), .rst_n(rst_n),
     .src_valid({rau_syu_alloc_valid}), .src_payload({rau_syu_alloc_payload}),
     .src_wake(rau_syu_alloc_wake), .src_credit({rau_syu_alloc_credit}), .src_stall({rau_syu_alloc_stall}),

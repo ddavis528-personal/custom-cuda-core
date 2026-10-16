@@ -53,9 +53,6 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # disabled, which is worse than no rule at all because it still looks enforced.
 SCOPE_PROBE = ("spike/cases/",)
 SCOPE_TB = ("spike/", "test/")
-# Interface checkers are design-scope, plus four rules of their own from
-# docs/interface-checker-convention.md.
-SCOPE_CHECKER = ("rtl/if/", "rtl/lint/")
 
 # Rules that apply in each scope. `design` gets everything not listed here.
 PROBE_RULES = {"CCV-L10"}
@@ -200,7 +197,7 @@ def clk_domain(name):
 
 
 def always_blocks(src):
-    """(kind, clock_or_None, body, line) for each always block.
+    """(kind, clock_or_None, body, line, pos) for each always block.
 
     Brace-free HDL, so the body runs to the next block-level construct rather
     than to a matched delimiter. Good enough to attribute assignments to a
@@ -216,7 +213,80 @@ def always_blocks(src):
         nxt = re.search(r"\balways(_ff|_comb|_latch)?\b|\bassign\b|\bendmodule\b",
                         rest)
         body = rest[:nxt.start()] if nxt else rest
-        out.append((kind, clk, body, line_of(src, m.start())))
+        out.append((kind, clk, body, line_of(src, m.start()), m.start()))
+    return out
+
+
+# --------------------------------------------------------------------------
+# Module names (docs/rtl-coding-style.md, Module names; DA's response OI-37)
+#
+# A module's name says what it is. No marker comment and no directory does:
+# a marker is a pragma, and a directory is where a file happens to sit. The
+# namespace has six shapes, each decidable from the name and the block list
+# in params/blocks.json alone:
+#
+#   ccv_<block>                      block top: gates core_clk (CCV-L22)
+#   ccv_<block>_w[_v<N>|_<NN>]       hardening wrapper: the block, its repeaters
+#   <block>_<name>                   sub-block: inside one block, on its clock
+#   ccv_common_<type>[_<name>]       common module, global
+#   <block>_common_<type>[_<name>]   common module, one block's
+#   ccv_top                          the core top, the one named exception
+#
+# Anything else is CCV-L28. A block name is one token, so a name splits at
+# its first underscore; "common" and "top" are not block names. Both are
+# refused in params/blocks.json (check_blocks), so no two shapes can match
+# one name. The <type> of a common module is what some rules key on: `chk`
+# is an interface checker (CCV-L14, L15), `ctech` a ctech cell (CCV-L27).
+# --------------------------------------------------------------------------
+class Cls:
+    def __init__(self, kind=None, block=None, typ=None, why=None):
+        self.kind, self.block, self.typ, self.why = kind, block, typ, why
+
+
+SHAPES = ("ccv_<block>, ccv_<block>_w, <block>_<name>, ccv_common_<type>, "
+          "<block>_common_<type> or ccv_top")
+
+
+def classify(name, blocknames):
+    if name == "ccv_top":
+        return Cls("top")
+    m = re.match(r"^ccv_common(?:_([a-z0-9]+)(?:_[a-z0-9_]+)?)?$", name)
+    if m:
+        if not m.group(1):
+            return Cls(why="a common module carries its type: ccv_common_<type>")
+        return Cls("common", None, m.group(1))
+    m = re.match(r"^ccv_([a-z0-9]+)(?:_(\w+))?$", name)
+    if m:
+        b, rest = m.group(1), m.group(2)
+        if b not in blocknames:
+            return Cls(why="%r is not a block in params/blocks.json, so ccv_%s "
+                       "is no block's top, wrapper or common module" % (b, b))
+        if rest is None:
+            return Cls("block", b)
+        if re.fullmatch(r"w(?:_v?\d+)?", rest):
+            return Cls("wrapper", b)
+        return Cls(why="after ccv_%s only a wrapper's _w may follow; a "
+                   "sub-block of %s is %s_<name>" % (b, b, b))
+    m = re.match(r"^([a-z0-9]+)_(\w+)$", name)
+    if m and m.group(1) in blocknames:
+        b, rest = m.group(1), m.group(2)
+        cm = re.match(r"^common(?:_([a-z0-9]+)(?:_[a-z0-9_]+)?)?$", rest)
+        if cm:
+            if not cm.group(1):
+                return Cls(why="a common module carries its type: "
+                           "%s_common_<type>" % b)
+            return Cls("common", b, cm.group(1))
+        return Cls("sub", b)
+    return Cls(why="it takes none of the shapes " + SHAPES)
+
+
+def module_spans(src):
+    """(start, end, name, line) for each module in comment-stripped text."""
+    out = []
+    for m in re.finditer(r"^[ \t]*module\s+([A-Za-z_]\w*)", src, re.M):
+        e = re.search(r"\bendmodule\b", src[m.end():])
+        end = m.end() + e.end() if e else len(src)
+        out.append((m.start(), end, m.group(1), line_of(src, m.start())))
     return out
 
 
@@ -275,11 +345,27 @@ def check_file(path, rel):
     # naming, not ours, and it is never synthesised.
     if re.match(r"rtl/ctech/[^/]+/lib_cells\.v$", rel):
         return []
+    # A file's modules and what each one's name makes it (OI-37). One module
+    # a file is CCV-L01, so the first is the file's; a fixture holding
+    # several is still judged module by module, where it matters.
+    _, blocks_by_letter = load_blocks()
+    blocknames = {b["name"] for b in blocks_by_letter.values()}
+    spans = module_spans(src)
+    cls = {n: classify(n, blocknames) for _, _, n, _ in spans}
+    file_cls = cls[spans[0][2]] if spans else Cls()
+
+    def cls_at(pos):
+        for s0, e0, n, _ in spans:
+            if s0 <= pos < e0:
+                return cls[n]
+        return file_cls
+
     # A ctech cell (docs/clock-gate.md): the one place a latch, a clock read
     # as data, a clock built from a clock, or a library cell may appear. It
-    # is where the marker says AND where the directory says, or neither.
+    # is a ccv_common_ctech_<cell> in rtl/ctech/<view>/, both or neither
+    # (CCV-L27): the name says what it is, the directory which view.
     in_ctech = rel.startswith("rtl/ctech/")
-    ctech = in_ctech and re.search(r"^\s*//\s*Ctech:\s*\S", raw, re.M) is not None
+    ctech = in_ctech and file_cls.typ == "ctech"
 
     exempt = {}
     for m in EXEMPT_RE.finditer(raw):
@@ -600,8 +686,8 @@ def check_file(path, rel):
                     "nothing (F-9). Instantiate with `CCV_CHECKER instead")
 
     # -- interface checker rules (docs/interface-checker-convention.md) -----
-    is_checker = (any(rel.startswith(r) for r in SCOPE_CHECKER)
-                  and mods and mods[0][1].endswith("_checker"))
+    is_checker = (not is_tb and file_cls.kind == "common"
+                  and file_cls.typ == "chk")
     if is_checker:
         name = mods[0][1]
 
@@ -634,42 +720,84 @@ def check_file(path, rel):
     # -- net naming --------------------------------------------------------
     if not is_tb and not is_header:
         domains, blocks = load_blocks()
-        declared = re.search(r"^\s*//\s*Block:\s*(\w+)", raw, re.M)
-        blk_name = declared.group(1) if declared else None
+        letter_of = {b["name"]: L for L, b in blocks.items()}
 
-        # A REUSABLE module -- an interface checker, a primitive -- takes
+        # A COMMON module -- an interface checker, a primitive -- takes
         # `clk`/`rst` as generic formals, because one instance of it lives
         # inside many blocks and binds to each block's own uniquified clock. A
         # formal named for one block would read as a lie in every other, so
         # the clock-name and stage rules do not apply to it.
         #
-        # This is DECLARED, never inferred. Inferring it from "the clock is
-        # not named like a clock" would let every non-compliant file exempt
+        # Its NAME says so (ccv_common_<type>, <block>_common_<type>), never
+        # an inference from the code: inferring it from "the clock is not
+        # named like a clock" would let every non-compliant file exempt
         # itself by being non-compliant.
-        reusable = re.search(r"^\s*//\s*Reusable:\s*(\S.*)", raw, re.M)
+        def reusable(pos):
+            return cls_at(pos).kind == "common"
 
-        # -- CCV-L27: the ctech marker and the ctech directory agree -------
-        marked = re.search(r"^\s*//\s*Ctech:\s*\S", raw, re.M)
-        if marked and not in_ctech:
-            add("CCV-L27", line_of(raw, marked.start()),
-                "`// Ctech:` outside rtl/ctech/. The marker is what lets a "
-                "file hold a latch or a hand-built clock, so only a ctech "
-                "view may carry it: rtl/ctech/<view>/ccv_ctech_<cell>.sv")
-        if in_ctech and not marked:
-            add("CCV-L27", 1,
-                "a file in rtl/ctech/ without `// Ctech: <cell> -- <view>`. "
-                "Say which cell and which view it is")
+        def blk_name_at(pos):
+            c = cls_at(pos)
+            return c.block if c.kind in ("block", "wrapper", "sub") else None
 
-        if not reusable and not blk_name and re.search(r"\balways_ff\b", src):
-            add("CCV-L21", 1,
-                "design RTL with sequential logic declares neither "
-                "`// Block: <name>` nor `// Reusable: <why>`. The block name "
-                "is what the stage tag's block letter is checked against, so "
-                "without it the naming rules cannot be applied at all")
-        blk_letter = None
-        for L, b in blocks.items():
-            if b["name"] == blk_name:
-                blk_letter = L
+        # -- CCV-L28: every module takes one of the namespace's shapes -----
+        for s0, e0, n, ln in spans:
+            c = cls[n]
+            if c.kind is None:
+                add("CCV-L28", ln, "module %s: %s (OI-37)" % (n, c.why))
+
+        # -- CCV-L27: a ctech cell is named one, in a view's directory -----
+        for s0, e0, n, ln in spans:
+            if cls[n].typ == "ctech" and not in_ctech:
+                add("CCV-L27", ln,
+                    "module %s is named as a ctech cell outside rtl/ctech/. "
+                    "The name is what lets a file hold a latch or a "
+                    "hand-built clock, so only a view may carry it: "
+                    "rtl/ctech/<view>/ccv_common_ctech_<cell>.sv" % n)
+        if in_ctech and spans and file_cls.typ != "ctech":
+            add("CCV-L27", spans[0][3],
+                "module %s in rtl/ctech/ is not a ctech cell. A view holds "
+                "only ccv_common_ctech_<cell>, one per cell" % spans[0][2])
+
+        # -- CCV-L22: only a block top gates, and a sub-block never sees
+        # the ungated clock --------------------------------------------------
+        # The gate belongs to the block top, which takes core_clk and hands
+        # its gated clock down. A second gate inside the block would put a
+        # sleep decision where the block's quiescence and stall are not
+        # visible; a sub-block clocked on core_clk escapes the block's gate
+        # silently; and a sub-block on another block's clock is a crossing
+        # nothing declared. All three work in simulation.
+        for s0, e0, n, ln in spans:
+            c = cls[n]
+            body = src[s0:e0]
+            gm = re.search(r"\bccv_common_clk\b", body)
+            if c.kind in ("wrapper", "sub", "common") and gm and n != "ccv_common_clk":
+                add("CCV-L22", ln + body[:gm.start()].count("\n"),
+                    "module %s instantiates ccv_common_clk, but only a block "
+                    "top gates (OI-37). %s" % (n, {
+                        "wrapper": "A wrapper's block gates core_clk itself, "
+                                   "inside the wrapper",
+                        "sub": "A sub-block runs on the clock its block "
+                               "top's gate makes",
+                        "common": "A common module runs on the clock the "
+                                  "block instantiating it hands it"}[c.kind]))
+            if c.kind != "sub":
+                continue
+            um = re.search(r"\bcore_clk\b", body)
+            if um:
+                add("CCV-L22", ln + body[:um.start()].count("\n"),
+                    "module %s is a sub-block of %s and names core_clk, the "
+                    "UNGATED clock. A sub-block takes %s_core_clk, which its "
+                    "block top's gate makes; on core_clk it escapes the gate "
+                    "with nothing in simulation to show it" % (n, c.block, c.block))
+            for cm in re.finditer(r"\b([a-z]\w*_clk(?:_b)?)\b", body):
+                pm = CLK_RE.match(cm.group(1))
+                pre = pm.group(1) if pm else None
+                if pre and pre in letter_of and pre != c.block:
+                    add("CCV-L22", ln + body[:cm.start()].count("\n"),
+                        "module %s is a sub-block of %s but runs on %s, block "
+                        "%s's clock. A sub-block runs on its own block's gated "
+                        "clock, %s_core_clk" % (n, c.block, cm.group(1), pre, c.block))
+                    break
 
         # -- CCV-L19: lowercase, underscore-separated ----------------------
         # Parameters keep UPPER_SNAKE; everything else is lower_snake_case.
@@ -689,8 +817,8 @@ def check_file(path, rel):
                     "localparams carry upper case" % n)
 
         # -- CCV-L20: clocks are named for it, and only clocks are clocks ---
-        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
-            if not clk:
+        for kind, clk, body, ln, pos in always_blocks(src):
+            if not clk or reusable(pos):
                 continue
             cname, edge = clk
             base = cname.split(".")[-1]
@@ -719,50 +847,58 @@ def check_file(path, rel):
             # sleeps, may run on the ungated net. Clocking anything else on it
             # silently defeats the gate: the design works, produces identical
             # results, and never saves the power. Nothing in simulation shows it.
-            if base == "core_clk" and blk_name:
+            if base == "core_clk" and cls_at(pos).kind == "block":
                 body_names = set(re.findall(r"[a-z]\w*", body))
                 if not any("wake" in n or "detect" in n for n in body_names):
                     add("CCV-L22", ln,
                         "block %r clocks logic on %r, which is the UNGATED "
                         "clock. Only the wake detector may use it; everything "
-                        "else runs on `clk`, or the block's gate is defeated "
-                        "with nothing in simulation to show it"
-                        % (blk_name, base))
+                        "else runs on the gate's clock, or the block's gate "
+                        "is defeated with nothing in simulation to show it"
+                        % (cls_at(pos).block, base))
 
         # A clock net may feed an edge expression, a port map, or ANOTHER
         # CLOCK NET -- that last one is the block's gate, which is the whole
         # reason `<block>_core_clk` exists. Anything else is a clock read as
         # data, which is how a clock ends up in a datapath unnoticed.
-        if not reusable:
-            for m in re.finditer(r"(?:assign\s+)?([a-z]\w*)\s*(?:<=|=)\s*([^;]+);",
-                                 src):
-                lhs, rhs = m.group(1), m.group(2)
-                if clk_domain(lhs):
-                    continue        # a clock from a clock: CCV-L27's business
-                for cm in re.finditer(r"\b([a-z]\w*_clk(?:_b)?)\b", rhs):
-                    add("CCV-L20", line_of(src, m.start()),
-                        "clock %r is read as data by %r. A clock belongs in "
-                        "an edge expression, a port map, or the right-hand "
-                        "side of another clock -- nowhere else"
-                        % (cm.group(1), lhs))
+        for m in re.finditer(r"(?:assign\s+)?([a-z]\w*)\s*(?:<=|=)\s*([^;]+);",
+                             src):
+            lhs, rhs = m.group(1), m.group(2)
+            if reusable(m.start()):
+                continue        # a common module's generic formals
+            if clk_domain(lhs):
+                continue        # a clock from a clock: CCV-L27's business
+            for cm in re.finditer(r"\b([a-z]\w*_clk(?:_b)?)\b", rhs):
+                add("CCV-L20", line_of(src, m.start()),
+                    "clock %r is read as data by %r. A clock belongs in "
+                    "an edge expression, a port map, or the right-hand "
+                    "side of another clock -- nowhere else"
+                    % (cm.group(1), lhs))
 
-        # -- CCV-L22, the other half: a block HAS its gate -----------------
-        # A block with sequential logic gates core_clk through ccv_clk_gate,
-        # which is where the sleep policy, the wake guarantee and the ctech
-        # ICG live. Checked textually: an instance of it taking core_clk.
-        if blk_name and re.search(r"\balways_ff\b", src):
-            gm = re.search(r"\bccv_clk_gate\b[^;]*?\.clk\s*\(\s*core_clk\s*\)",
-                           src, re.S)
+        # -- CCV-L22, the other half: a block top HAS its gate -------------
+        # A block top with sequential logic gates core_clk through
+        # ccv_common_clk, which is where the sleep policy, the wake guarantee
+        # and the ctech ICG live. Checked textually: an instance of it taking
+        # core_clk. Only the top of a block: its sub-blocks run on the clock
+        # it makes (OI-37). ccv_top, which holds no logic, would gate too.
+        for s0, e0, n, ln in spans:
+            body = src[s0:e0]
+            if cls[n].kind not in ("block", "top") or \
+                    not re.search(r"\balways_ff\b", body):
+                continue
+            gm = re.search(r"\bccv_common_clk\b[^;]*?\.clk\s*\(\s*core_clk\s*\)",
+                           body, re.S)
             if not gm:
-                add("CCV-L22", 1,
-                    "block %r has sequential logic but no ccv_clk_gate taking "
-                    "core_clk. Every block's first act is its gate: the sleep "
-                    "policy, the wake path and the ctech ICG are all inside "
-                    "it (docs/clock-gate.md)" % blk_name)
+                add("CCV-L22", ln,
+                    "module %s is %s with sequential logic but no "
+                    "ccv_common_clk taking core_clk. Every block's first act "
+                    "is its gate: the sleep policy, the wake path and the "
+                    "ctech ICG are all inside it (docs/clock-gate.md)"
+                    % (n, "the core top" if cls[n].kind == "top" else "a block top"))
 
         # -- CCV-L27: clock gates are ctech cells ---------------------------
-        # Every clock gate in the design is ccv_ctech_icg, reached through
-        # ccv_clk_gate, so that synthesis gets the library's ICG rather than
+        # Every clock gate in the design is ccv_common_ctech_icg, reached through
+        # ccv_common_clk, so that synthesis gets the library's ICG rather than
         # whatever it infers from an AND -- which glitches when its enable
         # moves while the clock is high, and which nothing in RTL simulation
         # shows. So outside rtl/ctech/: no clock built from a clock with
@@ -779,7 +915,7 @@ def check_file(path, rel):
                     add("CCV-L27", line_of(src, m.start()),
                         "clock %r is built from a clock by hand (%s). Every "
                         "clock gate is the ctech ICG: instantiate "
-                        "ccv_clk_gate, whose ccv_ctech_icg becomes the "
+                        "ccv_common_clk, whose ccv_common_ctech_icg becomes the "
                         "library's cell in synthesis. An AND gate glitches "
                         "when its enable moves while the clock is high, and "
                         "no RTL simulation shows it" % (lhs, rhs[:40]))
@@ -790,9 +926,11 @@ def check_file(path, rel):
                     "anything else that needs one is a ctech cell")
 
         # -- CCV-L21: stage tags are well formed and consistent -------------
-        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
-            if kind != "ff" or not clk:
+        for kind, clk, body, ln, pos in always_blocks(src):
+            if kind != "ff" or not clk or reusable(pos):
                 continue
+            blk_name = blk_name_at(pos)
+            blk_letter = letter_of.get(blk_name)
             cbase, edge = clk[0].split(".")[-1], clk[1]
             dom_seg = clk_domain(cbase)
             want_dom = domains["by_segment"].get(dom_seg) if domains else None
@@ -820,9 +958,9 @@ def check_file(path, rel):
                         "in params/blocks.json" % (lhs, b))
                 elif blk_letter and b != blk_letter and b != "r":
                     add("CCV-L21", aln,
-                        "%s carries block letter %r but this file declares "
-                        "`// Block: %s` (letter %r). A block may only generate "
-                        "signals in its own numbering space"
+                        "%s carries block letter %r but is generated in block "
+                        "%s (letter %r), by its module's name. A block may "
+                        "only generate signals in its own numbering space"
                         % (lhs, b, blk_name, blk_letter))
 
         # -- CCV-L23: stage arithmetic --------------------------------------
@@ -845,7 +983,9 @@ def check_file(path, rel):
                     out.append(st[2])
             return out
 
-        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
+        for kind, clk, body, ln, pos in always_blocks(src):
+            if reusable(pos):
+                continue
             seq = (kind == "ff")
             for am in re.finditer(
                     r"([a-z]\w*)\s*(?:\[[^\]]*\])?\s*(<=|=)\s*([^;]+);", body):
@@ -885,8 +1025,8 @@ def check_file(path, rel):
         #
         # `CCV_XHOLD is the sanctioned escape and is naturally exempt -- a
         # macro call carries no ternary for this to match.
-        for kind, clk, body, ln in (() if reusable else always_blocks(src)):
-            if kind != "ff":
+        for kind, clk, body, ln, pos in always_blocks(src):
+            if kind != "ff" or reusable(pos):
                 continue
             for am in re.finditer(
                     r"([a-z]\w*)\s*<=\s*([^;]*\?[^;]*);", body):
@@ -990,7 +1130,7 @@ def check_interface_coverage(schema=None):
         d = json.load(f)
     for i in d.get("interfaces", []):
         base = i["name"][:-2] if i["name"].endswith("_t") else i["name"]
-        path = os.path.join(ROOT, "rtl", "if", "%s_if_checker.sv" % base)
+        path = os.path.join(ROOT, "rtl", "if", "ccv_common_chk_%s.sv" % base)
         rel = os.path.relpath(path, ROOT)
         if not os.path.exists(path):
             F.append(Finding("CCV-L12", "schema/interfaces.json", 1,
@@ -1007,6 +1147,61 @@ def check_interface_coverage(schema=None):
                                  "its checker; a field added to the struct and "
                                  "not to the checker is a lint failure (§4)"
                                  % (fld["name"], i["name"])))
+    return F
+
+
+def check_module_names(roots=("rtl/top", "rtl/generated")):
+    """CCV-L28 over the generated design, which the per-file walk skips: the
+    top, its wrappers, stubs and shims, and the checker bank are modules in
+    the tree like any other, and take its shapes (OI-37)."""
+    F = []
+    _, blocks = load_blocks()
+    names = {b["name"] for b in blocks.values()}
+    for r in roots:
+        for dirpath, _, filenames in os.walk(os.path.join(ROOT, r)):
+            for fn in sorted(filenames):
+                if not fn.endswith((".sv", ".v")):
+                    continue
+                full = os.path.join(dirpath, fn)
+                rel = os.path.relpath(full, ROOT)
+                src = strip_comments(open(full).read())
+                for _, _, n, ln in module_spans(src):
+                    c = classify(n, names)
+                    if c.kind is None:
+                        F.append(Finding("CCV-L28", rel, ln,
+                                         "module %s: %s (OI-37)" % (n, c.why)))
+    return F
+
+
+def check_blocks(path=None):
+    """CCV-L28's other half: the block list the shapes are read against.
+    A block name is one lowercase token, since every shape splits at the
+    first underscore: a block named ooe_w would make OOE's wrapper read as
+    a block top, and one named a_b would make a's sub-block b read as a
+    block. "common" and "top" would make ccv_common_* and ccv_top read as
+    block tops. And a block's module, where blocks.json states one, is
+    ccv_<name>: the field is what a reader of the list sees."""
+    F = []
+    src = path or os.path.join(ROOT, "params", "blocks.json")
+    rel = os.path.relpath(src, ROOT)
+    with open(src) as f:
+        d = json.load(f)
+    for b in d.get("blocks", []):
+        n = b["name"]
+        if not re.fullmatch(r"[a-z][a-z0-9]*", n):
+            F.append(Finding("CCV-L28", rel, 1,
+                             "block %s is not one lowercase token: every "
+                             "module-name shape splits at the first "
+                             "underscore, so a block named with one would "
+                             "make another block's names ambiguous" % n))
+        elif n in ("common", "top"):
+            F.append(Finding("CCV-L28", rel, 1,
+                             "block %s is a reserved name: ccv_%s would read "
+                             "as its block top" % (n, n)))
+        if "module" in b and b["module"] != "ccv_" + n:
+            F.append(Finding("CCV-L28", rel, 1,
+                             "block %s's module is %s; a block top is named "
+                             "ccv_%s" % (n, b["module"], n)))
     return F
 
 
@@ -1042,12 +1237,18 @@ def iter_sv(paths):
 def main():
     args = [a for a in sys.argv[1:] if not a.startswith("-")]
     quiet = "-q" in sys.argv
-    # Lets tools/check-1d.sh point CCV-L12 at a fixture schema, since a
-    # cross-file rule cannot be counter-exampled by a .sv file alone.
-    schema = None
+    # Lets tools/check-1d.sh point CCV-L12 at a fixture schema, CCV-L28's
+    # block-list half at a fixture list, and its generated-tree half at a
+    # fixture directory, since a cross-file rule cannot be counter-exampled
+    # by a .sv file alone.
+    schema = blocks = names = None
     for a in sys.argv[1:]:
+        if a.startswith("--names="):
+            names = a.split("=", 1)[1]
         if a.startswith("--schema="):
             schema = a.split("=", 1)[1]
+        if a.startswith("--blocks="):
+            blocks = a.split("=", 1)[1]
     targets = args or ["rtl", "test", "spike"]
     findings = []
     n = 0
@@ -1058,6 +1259,12 @@ def main():
     # single-file invocation has no opinion about the schema.
     if not args or schema:
         findings.extend(check_interface_coverage(schema))
+    if not args or blocks:
+        findings.extend(check_blocks(blocks))
+    if not args:
+        findings.extend(check_module_names())
+    if names:
+        findings.extend(check_module_names((names,)))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):
         print(f)
     if not quiet:

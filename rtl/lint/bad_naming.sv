@@ -1,13 +1,17 @@
 //===-- bad_naming.sv - lint fixture for the net naming rules -----------===//
 //
 // Spec: docs/rtl-coding-style.md, net naming section
-// Block: reference
 //
 // Every violation is intentional. tools/check-1d.sh fails if any rule stops
 // firing here. DO NOT FIX THE VIOLATIONS IN THIS FILE.
+//
+// The first module is block `reference`'s top by its name (OI-37), which
+// is what its stage tags' block letter and the gate rules are read
+// against. The others are counter-examples of their own rules, named in no
+// shape, so CCV-L28 refuses them too.
 //===----------------------------------------------------------------------===//
 
-module bad_naming (
+module ccv_reference (
   input  logic       core_clk,
   input  logic       bad_rst_r00h,
   input  logic [3:0] in_data_cy00h,
@@ -95,10 +99,10 @@ endmodule
 
 // CCV-L27: a clock gate built by hand -- an AND, which glitches when its
 // enable moves while the clock is high -- and a latch, outside rtl/ctech/.
-// Both belong to the ctech ICG, reached through ccv_clk_gate. The marker
-// below is the third violation: only a ctech view may carry it.
-// Ctech: icg -- misplaced
-module bad_naming_gates (
+// Both belong to the ctech ICG, reached through ccv_common_clk. The name is
+// the third violation: a ccv_common_ctech_<cell> is a ctech cell, and only
+// a view in rtl/ctech/<view>/ may hold one.
+module ccv_common_ctech_gates (
   input  logic       core_clk,
   input  logic       blk_en_cy00h,
   output logic       bad_core_clk,

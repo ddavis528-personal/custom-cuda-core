@@ -130,6 +130,23 @@ done
 [ -z "$why" ] && say "split: every S1 kernel == ccv-sim" "PASS (vadd $(field build/k_vadd.log cycles) cycles)" ||
   bad "split: S1 kernels" "${why# }"
 
+# The lane-local bypass across the split (A-59, TI-8): stages on both lane
+# channels stretch CCV_LAT_LANE and the window the lanes forward from, but
+# not CCV_LAT_LANE_BYP, since producer and dependant cross the same links.
+why=""
+for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
+  CCV_OOE_CONFIG=bypass=1 ./build/skel/ccv-skel --kernel "build/oracle/$k/oracle.jsonl" >"build/kb_$k.log" 2>&1
+  for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 \
+            check_failures=0 overflows=0 credit_leaks=0 violations=0; do
+    [ "$(field "build/kb_$k.log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why $k:$kv"
+  done
+done
+nb=$(sed -n 's/^COVER .*lane_byp=\([0-9]*\).*/\1/p' build/kb_byp.log)
+[ "${nb:-0}" -gt 0 ] || why="$why byp:lane_byp=${nb:-none}"
+lat=$(sed -n 's/^static constexpr uint32_t kLatLane = \([0-9]*\);/\1/p' sim/generated/ccv_params.h)
+[ -z "$why" ] && say "split: every kernel with OOE's bypass" "PASS (CCV_LAT_LANE $lat, still forwarded at 4; byp's $nb)" ||
+  bad "split: kernels with OOE's bypass" "${why# }"
+
 ./tools/check-sv-hosted.sh >build/svh_suite.log 2>&1
 if grep -q "FAIL" build/svh_suite.log; then
   bad "split: SV-hosted == C++-hosted" "$(grep -m1 FAIL build/svh_suite.log | xargs)"

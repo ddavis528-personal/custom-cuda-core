@@ -61,7 +61,7 @@ struct SlotEnd {
 
 /// A slot: a sender's end and a receiver's end, and between them `stages`
 /// sequential repeater stages (params/links.json), modelled flop for flop
-/// as rtl/phys/ccv_seq_rpt.sv builds them. With no stages -- every abutted
+/// as rtl/phys/ccv_common_rpt.sv builds them. With no stages -- every abutted
 /// link -- the two ends are one and the same, exactly the old model.
 struct Slot {
   Bits lead_mask;        ///< payload bits driven with valid; empty if none

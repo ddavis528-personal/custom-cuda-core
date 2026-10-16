@@ -1,8 +1,8 @@
 # Clock gating: the ctech layer and the block clock gate
 
 Every block runs on a clock it gates itself (CCV-L22), and every clock gate in
-the design is one module, `ccv_clk_gate`, whose gating element is one ctech
-cell, `ccv_ctech_icg`. This page covers both: the ctech mechanism, which forces
+the design is one module, `ccv_common_clk`, whose gating element is one ctech
+cell, `ccv_common_ctech_icg`. This page covers both: the ctech mechanism, which forces
 a real ICG in synthesis while simulating a behavioural model, and the gate's
 sleep policy and wake guarantee.
 
@@ -11,7 +11,7 @@ sleep policy and wake guarantee.
 | `rtl/ctech/sim/` | simulation and formal view of every ctech cell: behavioural, latch included |
 | `rtl/ctech/<library>/` | one view per process library: nothing but an instance of the library's cell |
 | `tools/ccv_ctech.py` | picks a view's files; every build takes its view from here |
-| `rtl/clk/ccv_clk_gate.sv` | the block clock gate: sleep policy, wake path, the ICG |
+| `rtl/clk/ccv_common_clk.sv` | the block clock gate: sleep policy, wake path, the ICG |
 | `tools/check-ctech.sh` | the views agree; synthesis gets the cell; simulation is glitch-free |
 | `test/formal/fv_clk_gate.sv` | the gate's proofs, run by `tools/check-formal.sh` |
 
@@ -21,11 +21,11 @@ A **ctech cell** is a module with one fixed port list and one definition per
 **view**. RTL instantiates the ctech module, never a library cell, so the
 design is written once and the cell is a file-list choice.
 
-- **The simulation view** (`rtl/ctech/sim/ccv_ctech_<cell>.sv`) models the
+- **The simulation view** (`rtl/ctech/sim/ccv_common_ctech_<cell>.sv`) models the
   cell's function. For the ICG that includes the latch: the enable is captured
   while `clk` is low and held while it is high, so an enable that moves during
   the high phase cannot chop the gated clock.
-- **A library view** (`rtl/ctech/<library>/ccv_ctech_<cell>.sv`) is one
+- **A library view** (`rtl/ctech/<library>/ccv_common_ctech_<cell>.sv`) is one
   instance of that library's cell, pins mapped, and nothing else. Its
   `lib_cells.v` declares the ports of the cells it uses, so the view elaborates
   in this repository's checks without the PDK; a synthesis file list leaves it
@@ -42,9 +42,9 @@ design is written once and the cell is a file-list choice.
   synthesised behavioural latch would work in every simulation and quietly
   give up the cell's clock-gating timing checks.
 - **Only `rtl/ctech/` may hold a latch, a clock built from a clock, or a clock
-  read as data.** CCV-L27 enforces it everywhere else, and requires every file
-  in `rtl/ctech/` to carry `// Ctech: <cell> -- <view>` (and no file outside
-  it).
+  read as data.** CCV-L27 enforces it everywhere else. A ctech cell is named
+  `ccv_common_ctech_<cell>` (CCV-L28), and that name is allowed in
+  `rtl/ctech/<view>/` and nowhere else; the directory says which view.
 - **Every view defines the same cells with the same ports.**
   `tools/check-ctech.sh` compares them on every run. Where the vendor's own
   model is vendored (sky130, under `test/ctech/vendor/`), `lib_cells.v` is
@@ -60,7 +60,7 @@ cells can be checked. The target library is Q-48.
 | `asap7` | `ICGx1_ASAP7_75t_R` | CLK, ENA, SE, GCLK | its Liberty pin roles (structurally only) |
 
 **Adding a library:** a directory `rtl/ctech/<library>/` holding a
-`ccv_ctech_<cell>.sv` for every cell in `sim/`, plus `lib_cells.v`. The
+`ccv_common_ctech_<cell>.sv` for every cell in `sim/`, plus `lib_cells.v`. The
 consistency and synthesis checks pick it up with no edit.
 
 **Adding a cell** (a metaflop is the next one): its simulation view in `sim/`,
@@ -72,7 +72,7 @@ view of it, the consistency check fails, which is the point.
 
 - **The views agree:** same cells and ports in every view, and sky130's
   `lib_cells.v` matches the vendor's cell.
-- **Synthesis:** `ccv_clk_gate` with each library view synthesises to exactly
+- **Synthesis:** `ccv_common_clk` with each library view synthesises to exactly
   one library ICG, with `clk` on its clock pin and its output as `gclk`, both
   direct, and no latch. The simulation view is refused, by name.
 - **Simulation:** `test/ctech/tb_ctech_icg.sv` moves `en` and `te` at random
@@ -84,7 +84,7 @@ view of it, the consistency check fails, which is the point.
 - **Mutants:** the simulation view with no latch, and with its latch open in
   the high phase. Both simulators must fail each one.
 
-## The block clock gate, `ccv_clk_gate`
+## The block clock gate, `ccv_common_clk`
 
 One per block, the block's first act. It takes `core_clk` ungated.
 
@@ -124,7 +124,7 @@ A smaller `WAKE_HOLD` is refused at elaboration.
 
 The hold is what makes Q-33 work from the receiver's side. A sender may put
 valid `CCV_WAKE_LAT` cycles after its wake, and the receiver must still be
-running then, even with nothing to do in between. `ccv_wake_checker` states
+running then, even with nothing to do in between. `ccv_common_chk_wake` states
 that half as `wake_keeps_rx`. The register costs one of the 4 cycles
 `CCV_WAKE_LAT` allows, so no sender changes.
 
@@ -160,13 +160,13 @@ never to close: `cg_override` = 1, the thresholds at their reset values,
 bank reads the gate's own decision. The shims clock on `gclk`, and the
 SV-hosted run still matches the C++ skeleton cycle for cycle.
 `check-top-pure.py` rule R7 requires every block to have exactly one
-`ccv_clk_gate`, clocked by its `core_clk` port, with `clk_gated` driven by
+`ccv_common_clk`, clocked by its `core_clk` port, with `clk_gated` driven by
 that gate's `gated`. It also allows the ICG nowhere else. Mutants `gatetie`
 and `gateclk` must each be refused.
 
 ## Proved: the gate, as it switches
 
-`tools/check-formal.sh` proves `ccv_clk_gate`, with the simulation view of its
+`tools/check-formal.sh` proves `ccv_common_clk`, with the simulation view of its
 ICG, on Yosys's multiclock model. There `clk` is an input and each phase lasts
 one global step or two (F-21), so the latch and the AND are modelled as they
 switch. The cycle model runs with thresholds 3/5 and at the reset values 8/16.
@@ -180,7 +180,7 @@ cycle in reset.
 | `edge_decides`: the edge that ends a cycle reaches the block exactly when `gated` was low | inputs move as flops on clk | |
 | `spec`: `gated` equals a model built from input histories (shift registers, not the gate's counters) | as above | hysteresis one short; the wake back on the enable path, unregistered |
 | `wake_second_edge`, `wake_hold`, `override_opens`, `reset_opens`, `te_opens` | as above | the wake a cycle later still; reset left off the enable |
-| `wake_keeps_rx`: running `CCV_WAKE_LAT` cycles after any wake | `ccv_wake_checker`, the sender's half assumed | a wake hold one short |
+| `wake_keeps_rx`: running `CCV_WAKE_LAT` cycles after any wake | `ccv_common_chk_wake`, the sender's half assumed | a wake hold one short |
 | `q33_valid_meets_clock`: no contract-keeping valid arrives on a withheld edge | as above | |
 | witnesses: the gate closes; a valid is captured right after a sleep | | |
 

@@ -10,8 +10,9 @@ block's internals replace its stub; every kernel stays functionally correct
 against ccv-sim; arbitration-sensitive events are emitted; sizing-sweep data is
 collected. RTL (4c) comes later, after the 4a items still missing for OOE: the
 reset line ([`reset-line-template.md`](reset-line-template.md)), per-stage NGD
-budgets, and the scheduler's timing-ceiling estimate, which also needs Q-7
-(is 25 NGD a Vmin or a nominal number?).
+budgets, and the scheduler's timing-ceiling estimate against 25 NGD per stage
+(Q-7 is closed: NGD is normalized gate delays, the same budget at every
+corner).
 
 **Status (2026-10-04).** The model is in [`sim/ooe/`](../sim/ooe/) and is
 what `makeOoe` builds; the stub stays selectable with `CCV_OOE_IMPL=stub`.
@@ -82,9 +83,9 @@ session are in [`ooe-model.md`](ooe-model.md).
 | Channel | Dir | Rate | Contract notes |
 |---|---|---|---|
 | `ccv_dec_ooe_uop` | in | 6 | ordered per `warp_id`; `sched_attr` (A-66), `group_mask` (A-69), `fetch_epoch` (A-70); `mem_op`/`space`/`ordering` passed to MIU unexamined (A-68) |
-| `ccv_ooe_rcu_issue` | out | 4 | fixed latency; zero registers (A-64); merge (A-33); `CCV_OP_PRF_COPY` beside a masked load (A-38) |
-| `ccv_rcu_ooe_done` | in | 4 | fixed latency, so OOE never stalls it; branch resolution rides here |
-| `ccv_ooe_miu_memop` | out | 4 | bulk discard is `mem_op` 0xF with `discard_tail` (A-41, A-53) |
+| `ccv_ooe_rcu_issue` | out | 9 | one bound slot per select resource, S0-S3, P0-P3, R: a lead in its footprint's lowest slot, continuation on the rest, footprints disjoint (V-60, TI-9); fixed latency; zero registers (A-64); merge (A-33); `CCV_OP_PRF_COPY` beside a masked load (A-38) |
+| `ccv_rcu_ooe_done` | in | 7 (`CCV_DONE_SLOTS`) | fixed latency, so OOE never stalls it; branch resolution rides here; none for a memop (OI-4) |
+| `ccv_ooe_miu_memop` | out | 4 | `pipes`, the memop's footprint over P0-P3, and `dst_pos` (OI-33); bulk discard is `mem_op` 0xF with `discard_tail` (A-41, A-53) |
 | `ccv_miu_ooe_cmpl` | in | 4 | fixed latency; an L1 hit completes at exactly `CCV_LAT_L1_CMPL` (A-47, A-61) |
 | `ccv_ooe_miu_retire` | out | 4 | commit or discard for stores |
 | `ccv_ooe_fet_redirect` | out | 1 | fixed latency; latency-matched with `ckpt_free` (A-58); `epoch_only` notices for demotion and kill (A-74) |
@@ -92,7 +93,7 @@ session are in [`ooe-model.md`](ooe-model.md).
 | `ccv_rau_ooe_alloc` | in | 1 | `alloc_op`: free, launch, restore-allocate, restore-activate (A-64); `tier1_id` (A-65) |
 | `ccv_rau_ooe_demote`, `ccv_ooe_rau_drained` | in / out | 1 | drained only after the demotion's epoch notice lands (A-74) |
 | `ccv_ooe_rau_status`, `ccv_ooe_cru_fault` | out | 1 | progress, stall and fault reporting |
-| `ccv_ooe_rcu_map` | out | 1 | the RAT map for migration (restore direction 1) |
+| `ccv_ooe_rcu_map` | out | 1 | the RAT map for migration (restore direction 1), with each register's position and width (TI-9) |
 | `ccv_ooe_syu_bar`, `ccv_syu_ooe_rel` | out / in | 1 | barriers |
 | `kill_*` common ports | in / out | | `kill_ack` only after the kill's epoch notice lands (A-74) |
 
@@ -102,30 +103,55 @@ Latencies the scheduler wakes on are all generated: `CCV_LAT_RCU`,
 
 ## Still open at the interface
 
-- **A-75: what OOE needs from DEC so it never decodes `opcode`.** The stub
-  still looks the opcode up in the skeleton's table for five things:
-  - which source fields are real reads;
-  - whether the predicate is a guard (an enable, so the write merges) or
-    data (`sel`);
-  - predicate logic's two predicate sources, carried as qualifiers in `imm`
-    and needing renaming;
-  - exit;
-  - which identity `srd` substitutes.
-
-  Now TI-1 in the register (Needs OA, DA); until it is settled, the model
-  may use the same table lookup, marked as temporary.
+- **A-75, now TI-1: settled and applied (Daniel, 2026-10-08).** DEC
+  delivers what OOE used to look up in the skeleton's opcode table:
+  `src_valid`[3], which source fields are real reads; `pred_use`[2], none,
+  guard (an enable, so the write merges) or data (`sel`); `imm_kind`[2],
+  whether `imm` is a literal, predicate logic's two qualifiers, or `srd`'s
+  `warp_base` or `ctaid` identity; and exit as `sched_attr`'s serial code 3.
+  OOE renames predicate logic's sources and sends them in `imm` on
+  `ccv_ooe_rcu_issue`, each `CCV_P_W_PHYS_PRED` bits and a negate, and RCU
+  reads them as it reads `phys_pred_guard`. The adapter reads the fields;
+  nothing in OOE looks at `opcode`. Controls: `drop-src-valid` (vadd) and
+  `arch-pred-srcs` (the plog kernel). OI-3, predicate renaming on the
+  kernels, is unblocked.
+- **Sectioned lanes, TI-9: the schema is in, on TI's proposed answers.**
+  `ccv_ooe_rcu_issue` is nine bound slots, S0-S3, P0-P3 and R; an op sits in
+  its footprint's lowest slot with `footprint` and `bypass_group`, and every
+  other slot of its footprint carries `cont` = 1 and its `rob_tag`. Every
+  register name carries a 2-bit position and a 2-bit width code (0 = 32,
+  1 = 16, 2 = 8, 3 = 4), and a memop names its pipes on
+  `ccv_ooe_miu_memop`. RCU refuses a footprint overlap (V-60). The kernels
+  now run the sectioned model with its nine one-grant picks (OI-31), which
+  replaced TI's interim `resource_cap`; the adapter sends each operand's row
+  and position from its name. Every S1 register is 32-bit at position 0.
+  Controls: `no-resource-cap` (the model's `inject_double_grant`),
+  `bad-pos`, `narrow-pipes`.
 - A-71 (an unaligned lane word), now TI-2, is deferred to the ISA track and
   does not touch OOE.
 
 ## What the environment can and cannot exercise yet
 
-Ten kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
+Thirteen kernels in `test/kernels/` run on both hosts, with ccv-sim's oracle and
 coverage counts. They exercise:
 - rename, merge, the zero registers and the copy-only op;
 - mispredicts with checkpoint restore and free;
 - checkpoint pressure;
 - the free list wrapping;
-- dropping a stale-epoch uop.
+- dropping a stale-epoch uop;
+- L1 hits at the contract, and the model's `l1_spec`, on by default since
+  OI-5; `tools/check-kernel.sh` also runs every kernel with it alone, with
+  `bypass` alone, and with both off (`CCV_OOE_CONFIG=bypass=0,l1_spec=0`);
+- the lane-local bypass (A-59, TI-8): the model's `bypass`, on by default
+  since OI-5. The lanes now
+  answer at `CCV_LAT_LANE`, so a dependant woken at `CCV_LAT_LANE_BYP`
+  reads the register file before the write and takes its operand from the
+  lane: RCU names the producer in `operand_byp` on `ccv_rcu_lane_ops`. The
+  `byp` kernel forwards four operands; `no-lane-bypass` and an OOE
+  bypassing at 3 must fail;
+- the sectioned select (OI-31) over nine resource slots, at 32 bits only:
+  V-60 at RCU, with `no-resource-cap`, `bad-pos` and `narrow-pipes` as its
+  controls.
 
 They cannot yet exercise the following. Each needs stub work, which belongs
 to the top-level session, in this order:
@@ -136,6 +162,10 @@ to the top-level session, in this order:
 4. **Demotion, kill and restore**: neither the RAU nor PCA stub models them,
    and restore is also blocked on Q-39.
 5. **Most of the compiler corpus**: DEC's table lacks several ops.
+6. **Narrow ops**: the RCU, LANE and MIU stubs refuse anything narrower than
+   32 bits by name. Per-section execution, slice write-back and sliced
+   address reads come once TI-10 (the section owner on `ccv_rcu_lane_ops`)
+   settles; vadd16 is the first kernel.
 
 ## Running it
 

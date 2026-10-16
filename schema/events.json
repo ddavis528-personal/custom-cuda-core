@@ -146,6 +146,266 @@
         "c": "reason"
       },
       "tolerance": null
+    },
+    {
+      "name": "EV_OOE_GPR_EMPTY",
+      "id": 13,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "Rename blocks on a GPR with the free list empty. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "owned_gprs",
+        "c": "free_gprs"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_RENAME_LIMIT",
+      "id": 14,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "Rename blocks on another slot's floor or on this warp's ceiling. b: 0 floor, 1 ceiling; c: 0 GPR, 1 predicate. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "limit",
+        "c": "pool"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_PRED_EMPTY",
+      "id": 15,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "Rename blocks on a predicate with the predicate free list empty. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "owned_preds",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_ROB_FULL",
+      "id": 16,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "The warp's ROB has no entry at rename. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_count",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_ROB_SLOT_HELD",
+      "id": 17,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "The next ROB slot is held by a squashed op still in flight (deferred free, OI-10). Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_tag",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_RS_FULL",
+      "id": 18,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A reservation-station class has no free entry at rename. b: 0 RCU class, 1 MIU class. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rs_class",
+        "c": "free_entries"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_RS_WARP_CAP",
+      "id": 19,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "The warp holds its reservation-station cap at rename. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rs_held",
+        "c": "cap"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_DECQ_FULL",
+      "id": 20,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "DEC is held: a uop stays in ccv_dec_ooe_uop with the decode queue full. a is the warp of the oldest held uop. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "occupancy",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_DECQ_WARP_MAX",
+      "id": 21,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A uop stays in the channel with its warp at its decode-queue maximum. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "warp_entries",
+        "c": "maximum"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_CHWIDTH_HOLD",
+      "id": 22,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "Rename is held behind an in-flight chwidth change. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_tag",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_BARRIER_HOLD",
+      "id": 23,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "Rename is held on a barrier wait. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "barrier_id",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_REDIRECT_BUSY",
+      "id": 24,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A mispredict or epoch notice waits for the rate-1 redirect channel. b: redirects queued. Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "queued",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_MEMOP_HELD",
+      "id": 25,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A memop is ready but for an unconfirmed source while an MIU issue slot goes unused (\"would have issued\"). Per cycle: fires every cycle the condition holds, so its count is a duration. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rs_entry",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_MEMOP_HOLD_CYCLES",
+      "id": 26,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A memop issues; once per issue. c: cycles from all operands woken to issue. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_tag",
+        "c": "cycles"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_DEFERRED_FREE",
+      "id": 27,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A squash leaves an entry holding its registers for an op still in flight (OI-10); once per such entry. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_tag",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_READY_NOT_SELECTED",
+      "id": 28,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "An entry is ready and not issued; per cycle, per entry. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rs_entry",
+        "c": "unused"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_CANCEL_REPLAY",
+      "id": 29,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A withdrawn wake returns an issued entry to Waiting. c: depth from the missed load. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rs_entry",
+        "c": "depth"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_DEMOTE_TRIGGER",
+      "id": 30,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A demotion trigger crosses its threshold at the ROB head; once per head. b: 0 MLC miss, 1 barrier, 2 fallback timer; c: cycles the head has stalled. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "trigger",
+        "c": "stall_cycles"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_CROSS_GROUP_SQUASH",
+      "id": 31,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A mispredict squashes entries of other PC groups; once per squash. OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "other_group_entries",
+        "c": "branch_rob_tag"
+      },
+      "tolerance": null
+    },
+    {
+      "name": "EV_OOE_COPY_ISSUE",
+      "id": 32,
+      "class": "arbitration_sensitive",
+      "provisional": true,
+      "doc": "A masked load issues its copy-only op (CCV_OP_PRF_COPY, A-38). OOE's arbitration-sensitive set (register OI-7; docs/ooe-model.md, \"Events owed to the schema\").",
+      "fields": {
+        "a": "warp_id",
+        "b": "rob_tag",
+        "c": "issue_slot"
+      },
+      "tolerance": null
     }
   ],
   "uid_layout": {

@@ -19,7 +19,7 @@ fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 
-RTL="rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv test/smoke/credit_smoke.sv"
+RTL="rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv test/smoke/credit_smoke.sv"
 TB="test/smoke/tb_credit.sv"
 # TIMESCALEMOD: the testbench declares a timescale and the design does not,
 # which is correct -- §9 keeps delays out of design RTL - and benign.
@@ -99,7 +99,7 @@ if command -v verilator >/dev/null 2>&1; then
     if verilator --binary -j 0 --assert --timing $VFLAGS \
          -CFLAGS "-I$R/sim/include -I$R/sim/generated" \
          --top-module tb --Mdir "$TMP/neg_$par" \
-         rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
+         rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
          "$TMP/neg_$par.sv" $TB \
          "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
          >"$TMP/neg_$par.log" 2>&1 && [ -x "$TMP/neg_$par/Vtb" ]; then
@@ -192,7 +192,7 @@ NEG_CASES="overrun:no_overrun at_depth:- phantom:no_phantom_credit
   timeout:response_within_n timeout_at_n:-
   timeout_n1:response_within_n timeout_second:response_within_n
   second_late:response_within_n"
-NEG_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv test/neg/tb_credit_neg.sv"
+NEG_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv test/neg/tb_credit_neg.sv"
 
 fired() {   # the sorted, de-duplicated set of properties named in a log
   grep -o "CCV [a-z_0-9]* failed" "$1" 2>/dev/null | awk '{print $2}' \
@@ -265,7 +265,7 @@ done
 
 # -- the wake contract (Q-33) ----------------------------------------------
 # Valid toward a gated receiver at T needs this channel's wake at or before
-# T - CCV_WAKE_LAT. test/neg/tb_wake_neg.sv drives ccv_wake_checker directly.
+# T - CCV_WAKE_LAT. test/neg/tb_wake_neg.sv drives ccv_common_chk_wake directly.
 # wake_t3 is the control the contract asks for: a wake one cycle too late
 # must fire; wake_t4, the legal limit, must not. The others pin the reading
 # of "gated" written in the checker's header: an earlier wake does not
@@ -278,7 +278,7 @@ WAKE_CASES="wake_t3:wake_leads_valid wake_t4:- no_wake:wake_leads_valid
   awake:- early_wake:wake_leads_valid other_wake:-
   other_wake_short:wake_leads_valid resleep:wake_leads_valid
   rx_early:wake_keeps_rx"
-WAKE_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_wake_checker.sv test/neg/tb_wake_neg.sv"
+WAKE_SRC="rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_wake.sv test/neg/tb_wake_neg.sv"
 wv=0; wi=0
 command -v verilator >/dev/null 2>&1 &&
   verilator --binary -j 0 --assert --timing $VFLAGS \
@@ -362,7 +362,7 @@ fi
 # checker, not only as spike cases 34/35.
 if command -v sby >/dev/null 2>&1 && command -v yosys >/dev/null 2>&1; then
   mkdir -p "$TMP/f"
-  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_credit_checker.sv \
+  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
      test/smoke/credit_smoke.sv "$TMP/f/"
   cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$TMP/f/"
   cat > "$TMP/f/c.sby" <<SBY
@@ -375,13 +375,13 @@ smtbmc cvc5
 
 [script]
 read_verilog -sv -formal -I. ccv_assert_pkg.sv
-read_verilog -sv -formal -I. ccv_credit_checker.sv
+read_verilog -sv -formal -I. ccv_common_chk_credit.sv
 read_verilog -sv -formal -I. credit_smoke.sv
 prep -top credit_smoke
 
 [files]
 ccv_assert_pkg.sv
-ccv_credit_checker.sv
+ccv_common_chk_credit.sv
 credit_smoke.sv
 ccv_assert.svh
 ccv_if.svh
@@ -406,7 +406,7 @@ SBY
   # must be able to move -- an unreachable cover here would mean the
   # enable or lockstep logic can never be satisfied.
   mkdir -p "$TMP/fa"
-  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_atomic_checker.sv \
+  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_atomic.sv \
      test/smoke/atomic_smoke.sv "$TMP/fa/"
   cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$TMP/fa/"
   cat > "$TMP/fa/a.sby" <<SBY
@@ -419,13 +419,13 @@ smtbmc cvc5
 
 [script]
 read_verilog -sv -formal -I. ccv_assert_pkg.sv
-read_verilog -sv -formal -I. ccv_atomic_checker.sv
+read_verilog -sv -formal -I. ccv_common_chk_atomic.sv
 read_verilog -sv -formal -I. atomic_smoke.sv
 prep -top atomic_smoke
 
 [files]
 ccv_assert_pkg.sv
-ccv_atomic_checker.sv
+ccv_common_chk_atomic.sv
 atomic_smoke.sv
 ccv_assert.svh
 ccv_if.svh
@@ -447,7 +447,7 @@ SBY
   # must be able to move -- an unreachable cover here would mean the
   # enable or lockstep logic can never be satisfied.
   mkdir -p "$TMP/fl"
-  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_lockstep_checker.sv \
+  cp rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_lockstep.sv \
      test/smoke/lockstep_smoke.sv "$TMP/fl/"
   cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$TMP/fl/"
   cat > "$TMP/fl/l.sby" <<SBY
@@ -460,13 +460,13 @@ smtbmc cvc5
 
 [script]
 read_verilog -sv -formal -I. ccv_assert_pkg.sv
-read_verilog -sv -formal -I. ccv_lockstep_checker.sv
+read_verilog -sv -formal -I. ccv_common_chk_lockstep.sv
 read_verilog -sv -formal -I. lockstep_smoke.sv
 prep -top lockstep_smoke
 
 [files]
 ccv_assert_pkg.sv
-ccv_lockstep_checker.sv
+ccv_common_chk_lockstep.sv
 lockstep_smoke.sv
 ccv_assert.svh
 ccv_if.svh
@@ -489,7 +489,7 @@ SBY
   for pair in binding:b outstanding:o; do
     chk=${pair%%:*}; dir="$TMP/f${pair#*:}"
     mkdir -p "$dir"
-    cp rtl/ccv_assert_pkg.sv "rtl/if/ccv_${chk}_checker.sv" \
+    cp rtl/ccv_assert_pkg.sv "rtl/if/ccv_common_chk_${chk}.sv" \
        "test/smoke/${chk}_smoke.sv" "$dir/"
     cp rtl/include/*.svh rtl/generated/*.svh rtl/generated/*.sv "$dir/"
     cat > "$dir/c.sby" <<SBY
@@ -502,13 +502,13 @@ smtbmc cvc5
 
 [script]
 read_verilog -sv -formal -I. ccv_assert_pkg.sv
-read_verilog -sv -formal -I. ccv_${chk}_checker.sv
+read_verilog -sv -formal -I. ccv_common_chk_${chk}.sv
 read_verilog -sv -formal -I. ${chk}_smoke.sv
 prep -top ${chk}_smoke
 
 [files]
 ccv_assert_pkg.sv
-ccv_${chk}_checker.sv
+ccv_common_chk_${chk}.sv
 ${chk}_smoke.sv
 ccv_assert.svh
 ccv_if.svh

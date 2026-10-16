@@ -80,7 +80,7 @@ module issue_queue (
 **Every interface typedef has exactly one associated checker module.** No typedef may exist without one; lint enforces this.
 
 ```systemverilog
-module ccv_credit_checker #(
+module ccv_common_chk_credit #(
   parameter mode_e MODE = ASSERT
 ) (
   input logic   clk,
@@ -110,14 +110,14 @@ The mode resolution lives in the Stage 1b primitive library, not in each checker
 > boundaries (41 since the external port became a pair) obey identical conventions -- credited, registered both sides,
 > valid one cycle ahead -- so the protocol properties are the same everywhere
 > and only widths differ. There is therefore **one** checker,
-> `rtl/if/ccv_credit_checker.sv`, parameterised by payload width and round
+> `rtl/if/ccv_common_chk_credit.sv`, parameterised by payload width and round
 > trip, not one per type. Everything below about modes, satisfiability covers
 > and emission holds unchanged; it simply applies to one module.
 >
 > **Since (Stage 3).** Four more checkers exist, but not per type:
-> `ccv_atomic_checker` looks across a channel's slots,
-> `ccv_lockstep_checker` across the 32 lane instances, `ccv_binding_checker`
-> at a slot's group key, and `ccv_outstanding_checker` across a
+> `ccv_common_chk_atomic` looks across a channel's slots,
+> `ccv_common_chk_lockstep` across the 32 lane instances, `ccv_common_chk_binding`
+> at a slot's group key, and `ccv_common_chk_outstanding` across a
 > request/response channel pair. The credit checker is instantiated once per
 > slot, 340 times.
 >
@@ -386,7 +386,7 @@ The two questions the spike raised that this document had not asked:
   criterion, and is not decided here.
 
   > **ANSWERED at Stage 3: the SV checker itself.** The C++ skeleton
-  > Verilates `ccv_skel_checkers`, the bank of real checkers, rather than
+  > Verilates `ccv_common_chk_bank`, the bank of real checkers, rather than
   > porting them. So a C++ stub and a swapped-in RTL block are judged by
   > identical logic, and `EV_CH_XFER` comes from identical code on both sides
   > (`skeleton.md`, decision 3).

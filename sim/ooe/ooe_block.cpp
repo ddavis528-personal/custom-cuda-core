@@ -9,7 +9,7 @@
 //     events, and check failures for the core's contract and invariant errors;
 //   - the negative controls that act on a message (corrupt-ckpt, stale-free,
 //     drop-negate, skip-copy, corrupt-disp); free-new acts inside the core;
-//   - A-75's temporary opcode lookup (UopShape), until DEC delivers it;
+//   - DEC's src_valid, pred_use and imm_kind into UopShape (A-75, TI-1);
 //   - the S1 configuration (docs/ooe-model.md, "S1 modes"): which of the
 //     core's mechanisms the S1 neighbours can carry today.
 //===----------------------------------------------------------------------===//
@@ -34,9 +34,20 @@ class OoeModel : public Stub {
 public:
   OoeModel(int inst, Kernel &k) : Stub(inst, k), core_(config(k)) {
     k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+    // A launched warp's predicates map to the zero predicate (A-64).
+    if (core_.config().rename_preds) k.prat0.assign(kArchPreds, ccv::prov::kPredZero);
     core_.on_error = [this](const std::string &m) { k_.fail("ooe: %s", m.c_str()); };
     core_.on_event = [this](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       event(n, w, a, b, tid);
+    };
+    // OOE's structural events (OI-7): ids in schema order from EV_OOE_GPR_EMPTY.
+    static_assert(EV_OOE_COPY_ISSUE - EV_OOE_GPR_EMPTY + 1 == unsigned(ooe::OoeEv::kCount),
+                  "OoeEv must list schema/events.json's EV_OOE_* in id order");
+    static_assert(EV_OOE_DECQ_FULL == EV_OOE_GPR_EMPTY + unsigned(ooe::OoeEv::kDecqFull) &&
+                  EV_OOE_CANCEL_REPLAY == EV_OOE_GPR_EMPTY + unsigned(ooe::OoeEv::kCancelReplay),
+                  "OoeEv out of id order");
+    core_.on_ooe_event = [this](ooe::OoeEv k, unsigned w, uint64_t b, uint64_t c, uint64_t tid) {
+      emit(now_, tid, EventId(EV_OOE_GPR_EMPTY + unsigned(k)), UNIT_OOE, w, uint32_t(b), uint32_t(c));
     };
   }
   ~OoeModel() override {
@@ -64,6 +75,7 @@ public:
 
 private:
   ooe::Core core_;
+  bool bad_pos_done_ = false;   ///< the bad-pos control names one register
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
@@ -73,10 +85,20 @@ private:
   /// CCV_OOE_CONFIG ("name=value,...") overrides any of it for a sweep.
   static ooe::Config config(Kernel &k) {
     ooe::Config c;
-    c.bypass = false;        // RCU reads the PRF when it takes the issue
-    c.l1_spec = false;       // MIU completes no load at the L1 contract
-    c.rename_preds = false;  // RCU and compareFinal read physPred windows
-    c.memop_rcu_done = true; // RCU sends a done for loads and stores too
+    // The design's modes: the lanes forward at CCV_LAT_LANE_BYP (TI-8) and
+    // MIU completes an L1 hit at the contract (A-46), so both are on (OI-5).
+    // CCV_OOE_CONFIG=bypass=0,l1_spec=0 runs the conservative path.
+    // Predicates are renamed (Q-21, A-39): RCU reads the renamed sources
+    // (TI-1) and the final compare reads through Kernel::prat0 (OI-3).
+    // CCV_OOE_CONFIG=rename_preds=0 restores the fixed physPred windows.
+    c.memop_rcu_done = false; // RCU sends no done for a memop (OI-4)
+    // Sectioned lanes (OI-29 to OI-33): registers are slices of rows, and
+    // select grants the nine resources one op each (V-60). Every S1 op is
+    // full width, so a cycle carries one lane op, one memop and one RCU op.
+    // no-resource-cap grants a second lane op onto held sections, and RCU
+    // must refuse the overlap (V-60).
+    c.sectioned = true;
+    c.inject_double_grant = k.brk == "no-resource-cap";
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
     c.inject_free_new = k.brk == "free-new";
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
@@ -87,8 +109,17 @@ private:
       if (ci.chan == chanId("ccv_miu_rcu_data")) data_link = ccv::kLatHop + ci.stages;
       if (ci.chan == chanId("ccv_miu_ooe_cmpl")) cmpl_link = ccv::kLatHop + ci.stages;
     }
+    // CCV_LAT_L1_MISS_WAKE is generated from the same links (OI-13), plus
+    // the cycle an event-driven wake loses against a timed one (OA's
+    // response OI-26); a build whose parameters and wiring disagree is
+    // stale, not a run.
     const int d = int(data_link) - int(cmpl_link) - int(c.issue_link) + 1;
-    c.cmpl_wake_delay = d > 0 ? unsigned(d) : 0;
+    const unsigned want = unsigned(d > 0 ? d : 0) + 1;
+    if (want != c.cmpl_wake_delay) {
+      std::fprintf(stderr, "ooe: CCV_LAT_L1_MISS_WAKE %u, but the wiring gives %u: regenerate\n",
+                   c.cmpl_wake_delay, want);
+      std::abort();
+    }
     if (const char *s = std::getenv("CCV_OOE_CONFIG")) {
       const std::string e = c.apply(s);
       if (!e.empty()) {
@@ -159,22 +190,21 @@ private:
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
     u.decode_fault = get(p, c.dec_ooe, "decode_fault") != 0;
-    // TEMPORARY (A-75): what DEC does not yet deliver -- which source
-    // fields are real reads, guard or data predicate, predicate logic's
-    // sources, exit, srd's identity -- from the skeleton's opcode table.
-    // Nothing else in OOE looks at opcode.
+    // What DEC decodes so OOE never looks at opcode (A-75, TI-1): which
+    // source fields are real reads, how the predicate is read, what imm
+    // holds, and exit as sched_attr's serial code 3.
     if (!u.decode_fault) {
-      const OpInfo *op = opByCode(u.opcode);
-      if (!op) {
-        k_.fail("ooe: a uop it cannot execute");
+      u.shape.gpr_reads = uint8_t(get(p, c.dec_ooe, "src_valid") & 7u);
+      const unsigned pu = unsigned(get(p, c.dec_ooe, "pred_use"));
+      const unsigned ik = unsigned(get(p, c.dec_ooe, "imm_kind"));
+      u.shape.guard = pu == kPredUseGuard;
+      u.shape.pdata = pu == kPredUseData;
+      u.shape.pred_logic = ik == kImmPredSrcs;
+      u.shape.exit = u.attr.serial == kSerExit;
+      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
+      if (pu > kPredUseData) {
+        k_.fail("ooe: pred_use %u is not a code", pu);
         u.decode_fault = true;
-      } else {
-        for (unsigned i = 0; i != op->nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
-        u.shape.guard = op->guard;
-        u.shape.pdata = op->pdata;
-        u.shape.pred_logic = op->cls == kPredLogic;
-        u.shape.exit = op->cls == kExit;
-        u.shape.srd = op->srd_sel < 0 ? -1 : op->or_lane ? 0 : 1;
       }
     }
     return u;
@@ -245,7 +275,7 @@ private:
       if (best < 0) return;
       const Receiver *r = peek(c.dec_ooe, unsigned(best));
       const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
-      if (!core_.canAccept(w)) { held.insert(w); continue; }
+      if (!core_.canAccept(w)) { core_.noteRefused(w); held.insert(w); continue; }
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -255,20 +285,29 @@ private:
   void sendOutputs() {
     const Ch &c = ch();
     const ooe::Outputs &o = core_.out;
+    std::vector<std::pair<const ooe::Issue *, Bits>> issues;
     for (const ooe::Issue &x : o.issues) {
       Bits is = msgOf(c.ooe_rcu);
       put(is, c.ooe_rcu, "rob_tag", x.rob_tag);
       put(is, c.ooe_rcu, "warp_id", x.warp);
       put(is, c.ooe_rcu, "issue_mask", x.issue_mask);
-      put(is, c.ooe_rcu, "phys_src", (x.psrc[0] << 8) | x.psrc[1]);
-      put(is, c.ooe_rcu, "phys_src2", x.psrc[2]);
+      // A name is a row and a position (sectioned; unsectioned the position
+      // is 0): rows in the phys_ fields, positions beside them.
+      const auto row = [this](unsigned n) { return core_.nameRow(n); };
+      const auto pos = [this](unsigned n) { return core_.namePos(n); };
+      put(is, c.ooe_rcu, "phys_src", (row(x.psrc[0]) << 8) | row(x.psrc[1]));
+      put(is, c.ooe_rcu, "phys_src2", row(x.psrc[2]));
+      put(is, c.ooe_rcu, "src_pos",
+          pos(x.psrc[0]) | pos(x.psrc[1]) << ccv::kWPhysPos | pos(x.psrc[2]) << (2 * ccv::kWPhysPos));
       if (x.send_imm) put(is, c.ooe_rcu, "imm", x.imm);
-      put(is, c.ooe_rcu, "phys_dst", x.pdst);
+      put(is, c.ooe_rcu, "phys_dst", row(x.pdst));
+      put(is, c.ooe_rcu, "dst_pos", pos(x.pdst));
       put(is, c.ooe_rcu, "phys_pred_guard", x.ppguard);
       put(is, c.ooe_rcu, "phys_pred_dst", x.ppdst);
       put(is, c.ooe_rcu, "pred_we", x.pred_we);
       put(is, c.ooe_rcu, "merge_en", x.merge);
-      put(is, c.ooe_rcu, "phys_old_dst", x.pold);
+      put(is, c.ooe_rcu, "phys_old_dst", row(x.pold));
+      put(is, c.ooe_rcu, "old_dst_pos", pos(x.pold));
       put(is, c.ooe_rcu, "phys_pred_old_dst", x.ppold);
       put(is, c.ooe_rcu, "chwidth", x.chwidth);
       // corrupt-ckpt and stale-free ride drop-negate's forced mispredict:
@@ -276,11 +315,26 @@ private:
       put(is, c.ooe_rcu, "pred_neg", x.pred_neg && k_.brk != "drop-negate" &&
                                      k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
       put(is, c.ooe_rcu, "opcode", x.copy ? kOpCopy : x.opcode);
+      put(is, c.ooe_rcu, "bypass_group", x.byp_group);
+      // Every S1 register is full width (at position 0); each operand
+      // carries the warp's width code. bad-pos names the
+      // first lane op's 32-bit destination at position 1, which overruns its
+      // row: RCU must refuse it.
+      for (unsigned i = 0; i != 3; ++i)
+        is.set(field(c.ooe_rcu, "src_width").lsb + ccv::kWChwidth * i, ccv::kWChwidth, x.chwidth);
+      put(is, c.ooe_rcu, "dst_width", x.chwidth);
+      const OpInfo *gop = x.copy ? nullptr : opByCode(x.opcode);
+      if (k_.brk == "bad-pos" && x.res == ooe::Issue::kLaneOp && gop && gop->gdst &&
+          !bad_pos_done_) {
+        put(is, c.ooe_rcu, "dst_pos", 1);
+        bad_pos_done_ = true;
+      }
       // skip-copy: the load issues alone, so its inactive lanes keep whatever
       // the fresh register held (A-38).
       if (x.copy && k_.brk == "skip-copy") continue;
-      sendOn(c.ooe_rcu, x.port, is, x.tid);
+      issues.emplace_back(&x, is);
     }
+    sendIssues(issues);
     for (const ooe::Memop &x : o.memops) {
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", x.rob_tag);
@@ -292,7 +346,8 @@ private:
         mo.set(d.lsb, ccv::prov::kWRobIdx, x.disp);
       } else {
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
-        put(mo, c.ooe_miu, "phys_dst", x.pdst);
+        put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
+        put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));
         put(mo, c.ooe_miu, "phys_pred", x.ppred);
         put(mo, c.ooe_miu, "disp",                 // truncated to CCV_W_DISP
             x.disp + (k_.brk == "corrupt-disp" && uidSeq(x.tid) == 6 ? 4u : 0u));
@@ -300,6 +355,10 @@ private:
         put(mo, c.ooe_miu, "space", x.space);
         put(mo, c.ooe_miu, "ordering", x.ordering);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
+        // The memop's pipe footprint at its data position (0 in S1).
+        // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
+        put(mo, c.ooe_miu, "pipes",
+            k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
       }
       sendOn(c.ooe_miu, x.port, mo, x.tid);
     }
@@ -344,6 +403,44 @@ private:
       k_.fail("ooe: a map, drained, barrier or kill ack with no S1 consumer");
   }
 
+  /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an
+  /// op goes in its footprint's lowest slot, and the rest of its footprint
+  /// carries continuation, its rob_tag and cont = 1. Leads go first, then
+  /// continuations. Under no-resource-cap (inject_double_grant) two ops claim
+  /// one group in a cycle: the second lead takes the next free slot, as a
+  /// select with no per-resource pick would place it, continuations take
+  /// what is left, and RCU must refuse the overlap (V-60) or the slot.
+  void sendIssues(const std::vector<std::pair<const ooe::Issue *, Bits>> &issues) {
+    const Ch &c = ch();
+    const bool loose = k_.brk == "no-resource-cap";
+    auto group = [](const ooe::Issue &x) {
+      return x.res == ooe::Issue::kRcuOp ? kSlotR
+             : x.res == ooe::Issue::kMemop ? kSlotP0 : kSlotS0;
+    };
+    for (const auto &p : issues) {
+      const ooe::Issue &x = *p.first;
+      const unsigned fp = x.res == ooe::Issue::kRcuOp ? 0u : x.footprint;
+      unsigned s = group(x) + (fp ? unsigned(__builtin_ctz(fp)) : 0u);
+      for (unsigned k = 0; loose && k != kSlotR && !can(c.ooe_rcu, s); ++k)
+        s = (s + 1) % (kSlotR + 1);
+      Bits msg = p.second;
+      put(msg, c.ooe_rcu, "footprint", fp);
+      sendOn(c.ooe_rcu, s, msg, x.tid);
+    }
+    for (const auto &p : issues) {
+      const ooe::Issue &x = *p.first;
+      if (x.res == ooe::Issue::kRcuOp) continue;
+      for (unsigned b = unsigned(__builtin_ctz(x.footprint)) + 1; b < kSecs; ++b) {
+        const unsigned s = group(x) + b;
+        if (!((x.footprint >> b) & 1u) || (loose && !can(c.ooe_rcu, s))) continue;
+        Bits ct = msgOf(c.ooe_rcu);
+        put(ct, c.ooe_rcu, "rob_tag", x.rob_tag);
+        put(ct, c.ooe_rcu, "cont", 1);
+        sendOn(c.ooe_rcu, s, ct, x.tid);
+      }
+    }
+  }
+
   void sendOn(unsigned chan, unsigned port, const Bits &msg, uint64_t tid) {
     if (!can(chan, port)) {
       // Every OOE output is fixed-latency or credited from a pool OOE sized
@@ -363,8 +460,14 @@ private:
       ++k_.retired;
       k_.retire_order.push_back(uidSeq(r.tid));
       if (r.exit) k_.exited = true;
-      if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = r.pnew;   // the final compare's map
+      if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = core_.nameRow(r.pnew);   // the final compare's map (rows)
+      // The predicate map likewise, while predicates are renamed (OI-3);
+      // left empty, the final compare reads the fixed physPred windows.
+      if (r.warp == 0 && r.writes_pred) {
+        k_.prat0[r.pdst] = r.ppnew;
+      }
     }
+
   }
 
   bool busy() const override { return core_.busy(); }

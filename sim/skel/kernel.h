@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -96,6 +97,26 @@ struct Kernel {
   ///                  switched-off lanes' poison lands (pguard kernel; A-43)
   ///   conflate-pred  DEC writes a guarded compare's predicate to its guard,
   ///                  as one pred_reg field did (Q-21; run on the pguard kernel)
+  ///   swap-prat0     the final compare reads P0 and P1 through a predicate
+  ///                  map with the two swapped, as an OOE reporting a wrong
+  ///                  committed map would (OI-3; pguard kernel)
+  ///   drop-src-valid DEC clears a two-source ALU op's second src_valid bit,
+  ///                  so OOE does not wait on it (TI-1; vadd: seq 14 reads R9
+  ///                  stale)
+  ///   arch-pred-srcs RCU reads predicate logic's sources as DEC's qualifiers,
+  ///                  not OOE's renamed predicates (TI-1; plog)
+  ///   no-lane-bypass RCU never sets operand_byp, so a dependant OOE woke at
+  ///                  CCV_LAT_LANE_BYP takes the stale value it read from the
+  ///                  register file (TI-8; with CCV_OOE_CONFIG=bypass=1)
+  ///   no-resource-cap OOE's select grants a second lane op and a second memop
+  ///                  onto resources already held (inject_double_grant), and
+  ///                  the second lead takes the next free slot of
+  ///                  ccv_ooe_rcu_issue: RCU refuses the overlap (V-60, TI-9)
+  ///   bad-pos        OOE names the first GPR-writing lane op's 32-bit
+  ///                  destination at position 1, overrunning its row: RCU
+  ///                  refuses it (TI-9)
+  ///   narrow-pipes   OOE gives every memop the one pipe P0, not a 32-bit
+  ///                  memop's four: MIU refuses it (OI-33, TI-9)
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------
@@ -103,6 +124,11 @@ struct Kernel {
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
   std::vector<unsigned> rat0;                      ///< OOE's GPR map for warp 0
+  /// OOE's committed predicate map for warp 0, which the final compare reads
+  /// through (OI-3). An OOE that renames predicates sets it at retirement,
+  /// as it does rat0; left empty, the compare reads the fixed physPred
+  /// windows, which is right only while predicates are not renamed.
+  std::vector<unsigned> prat0;
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   bool exited = false;
@@ -118,12 +144,27 @@ struct Kernel {
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
-      "dcu_id_wait", "epoch_drop"};
+      "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "reexec", "lane_byp"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 
   void fail(const char *fmt, ...);
+  /// A check on the VALUES an execution read, held rather than failed. OOE
+  /// may issue an op on an L1 hit it speculated, cancel it when the hit does
+  /// not come, and replay it under the same id (A-46): the cancelled
+  /// execution read stale operands by design. A held failure is dropped if
+  /// the same instruction executes again at the same place (`executing`),
+  /// and fails at the end of the run if it never does (flushHeld, before the
+  /// final compare). The lane returns ccv-sim's result whatever its
+  /// operands, so a dropped execution cannot hide a wrong architectural
+  /// value; the final compare would still see one.
+  void failHeld(const std::string &where, uint64_t tid, const char *fmt, ...);
+  void executing(const std::string &where, uint64_t tid);
+  void flushHeld();
+  std::map<std::pair<std::string, uint64_t>, std::vector<std::string>> held;
+  std::set<std::pair<std::string, uint64_t>> executed;
+  std::set<uint64_t> reexecuted;                   ///< tids that ran twice
 };
 
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);

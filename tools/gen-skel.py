@@ -5,7 +5,7 @@ Two outputs, both derived, neither hand-maintained:
 
   sim/generated/ccv_skel_wiring.h      block instances, channel instances,
                                        per-field bit layout, slot map (C++)
-  rtl/generated/ccv_skel_checkers.sv   one ccv_credit_checker per slot of
+  rtl/generated/ccv_common_chk_bank.sv   one ccv_common_chk_credit per slot of
                                        every channel instance (SV)
 
 WHY THE CHECKER BANK IS SV, VERILATED INTO THE C++ SKELETON. Stage 3's exit
@@ -48,9 +48,11 @@ SCHEMA = os.path.join(ROOT, "schema", "interfaces.json")
 PARAMS = os.path.join(ROOT, "params", "ccv_params.json")
 BLOCKS = os.path.join(ROOT, "params", "blocks.json")
 OUT_H = os.path.join(ROOT, "sim", "generated", "ccv_skel_wiring.h")
-OUT_SV = os.path.join(ROOT, "rtl", "generated", "ccv_skel_checkers.sv")
-OUT_PROBE_SV = os.path.join(ROOT, "rtl", "generated", "ccv_skel_layout_probe.sv")
-OUT_PROBE_INC = os.path.join(ROOT, "sim", "generated", "ccv_skel_layout_probe.inc")
+OUT_SV = os.path.join(ROOT, "rtl", "generated", "ccv_common_chk_bank.sv")
+# The probe is a test harness, not design: it sits beside its C++ include
+# rather than in rtl/, where every module takes a design shape (OI-37).
+OUT_PROBE_SV = os.path.join(ROOT, "sim", "generated", "tb_layout_probe.sv")
+OUT_PROBE_INC = os.path.join(ROOT, "sim", "generated", "tb_layout_probe.inc")
 OUT_SLOTS_MD = os.path.join(ROOT, "docs", "skeleton-slots.md")
 
 BANNER_C = """// GENERATED FILE -- DO NOT EDIT.
@@ -283,7 +285,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
 
 def gen_sv(chans, cinst, nslots, pbits):
     L = [BANNER_C.replace("C++", "SV"), ""]
-    L.append("// One ccv_credit_checker per slot of every channel instance --")
+    L.append("// One ccv_common_chk_credit per slot of every channel instance --")
     L.append("// %d in all. Verilated into the C++ skeleton, which drives these"
              % nslots)
     L.append("// ports from its channels every cycle, so the skeleton is judged")
@@ -291,7 +293,7 @@ def gen_sv(chans, cinst, nslots, pbits):
     L.append("`include \"ccv_if.svh\"")
     L.append("`include \"ccv_params_pkg.sv\"")
     L.append("")
-    L.append("module ccv_skel_checkers (")
+    L.append("module ccv_common_chk_bank (")
     L.append("  input logic                 clk,")
     L.append("  input logic                 rst_n,")
     L.append("  input logic [%d:0]          valid," % (nslots - 1))
@@ -340,7 +342,7 @@ def gen_sv(chans, cinst, nslots, pbits):
                 lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
                        ".TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + %d), "
                        ".SRC_STAGES(%d)" % (2 * n, 2 * n, ci["src_stages"]))
-            L.append("  ccv_credit_checker #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
+            L.append("  ccv_common_chk_credit #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
                      "u_%s_s%d (" % (c["bits"], c["id"], lm, tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "
                      ".ch_credit(credit[%d]), .ch_stall(stall[%d])," % (k, k, k))
@@ -351,7 +353,7 @@ def gen_sv(chans, cinst, nslots, pbits):
             L.append("  );")
         if c["rate"] > 1:
             lo, hi = ci["slot_base"], ci["slot_base"] + c["rate"] - 1
-            L.append("  ccv_atomic_checker #(.N(%d)) u_%s_atomic ("
+            L.append("  ccv_common_chk_atomic #(.N(%d)) u_%s_atomic ("
                      % (c["rate"], tag))
             L.append("    .clk(clk), .rst_n(rst_n), .enable(1'b%d | force_atomic),"
                      % (1 if c["attrs"]["acceptance"] == "atomic" else 0))
@@ -368,7 +370,7 @@ def gen_sv(chans, cinst, nslots, pbits):
             "payload[%d:%d]" % (ci["payload_base"] + s * c["bits"] + klsb + kw - 1,
                                 ci["payload_base"] + s * c["bits"] + klsb)
             for s in reversed(range(c["rate"])))
-        L.append("  ccv_binding_checker #(.N(%d), .GROUP(%d), .W(%d)) u_%s_binding ("
+        L.append("  ccv_common_chk_binding #(.N(%d), .GROUP(%d), .W(%d)) u_%s_binding ("
                  % (c["rate"], c["attrs"]["binding_group"], kw, tag))
         L.append("    .clk(clk), .rst_n(rst_n), .valid(valid[%d:%d]),"
                  % (hi, lo))
@@ -383,7 +385,7 @@ def gen_sv(chans, cinst, nslots, pbits):
         # Watched where the link leaves the source's wrapper, the valid and
         # wake reach the receiver the rest of the stages later.
         arrive = ci["stages"] - ci["src_stages"]
-        L.append("  ccv_wake_checker %su_%s_wake (.clk(clk), .rst_n(rst_n), "
+        L.append("  ccv_common_chk_wake %su_%s_wake (.clk(clk), .rst_n(rst_n), "
                  ".rx_gated(rx_gated[%d]), .wake_seen(wake[%d]), .valid_seen(|valid[%d:%d]));"
                  % ("#(.ARRIVE(%d)) " % arrive if arrive else "", tag, k, k, hi, lo))
     byname = {c["name"]: c for c in chans}
@@ -393,7 +395,7 @@ def gen_sv(chans, cinst, nslots, pbits):
         rsp = byname[c["outstanding"]["answered_by"]]
         rq = next(ci for ci in cinst if ci["chan"] is c)["slot_base"]
         rs = next(ci for ci in cinst if ci["chan"] is rsp)["slot_base"]
-        L.append("  ccv_outstanding_checker #(.MAX(%d)) u_%s_outstanding ("
+        L.append("  ccv_common_chk_outstanding #(.MAX(%d)) u_%s_outstanding ("
                  % (c["outstanding"]["max"], c["name"][4:]))
         L.append("    .clk(clk), .rst_n(rst_n), .enable(pair_enable),")
         L.append("    .req_valid(valid[%d]), .rsp_valid(valid[%d]));  // %s"
@@ -407,7 +409,7 @@ def gen_sv(chans, cinst, nslots, pbits):
         # The instances' slots are contiguous and instance-major, because the
         # slot map is built channel instance by channel instance.
         assert all(ci["slot_base"] == lo + ci["inst"] * c["rate"] for ci in first)
-        L.append("  ccv_lockstep_checker #(.INSTS(%d), .N(%d)) u_%s_lockstep ("
+        L.append("  ccv_common_chk_lockstep #(.INSTS(%d), .N(%d)) u_%s_lockstep ("
                  % (c["ninst"], c["rate"], c["name"][4:]))
         L.append("    .clk(clk), .rst_n(rst_n),")
         L.append("    .valid(valid[%d:%d]), .credit(credit[%d:%d])" % (hi, lo, hi, lo))
@@ -433,7 +435,7 @@ def gen_probe_sv(chans):
     L = [BANNER_C.replace("C++", "SV"), ""]
     L.append("`include \"ccv_interfaces.svh\"")
     L.append("")
-    L.append("module ccv_skel_layout_probe (")
+    L.append("module tb_layout_probe (")
     ports = []
     for c in chans:
         ports.append("  input  logic [%d:0] c%d" % (c["bits"] - 1, c["id"]))
@@ -453,7 +455,7 @@ def gen_probe_sv(chans):
 
 def gen_probe_inc(chans):
     L = [BANNER_C, "// Included by sim/skel/layout_probe.cpp, which supplies put/eq.", ""]
-    L.append("static unsigned probeOnce(Vccv_skel_layout_probe &p, uint64_t seed) {")
+    L.append("static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {")
     L.append("  unsigned bad = 0;")
     for c in chans:
         L.append("  {")
@@ -501,7 +503,7 @@ def gen_slots_md(chans, cinst, nslots):
     L.append("")
     L.append("%d channel types; **%d channel instances** (%d types at one "
              "instance, plus %d at 32 each); **%d slots**, one "
-             "`ccv_credit_checker` each."
+             "`ccv_common_chk_credit` each."
              % (len(chans), len(cinst),
                 sum(1 for c in chans if c["ninst"] == 1),
                 sum(1 for c in chans if c["ninst"] > 1), nslots))

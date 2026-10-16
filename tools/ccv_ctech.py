@@ -27,10 +27,10 @@ def views():
 
 
 def cells(view):
-    """The ccv_ctech_* modules a view defines, by file name."""
+    """The ccv_common_ctech_* modules a view defines, by file name."""
     d = os.path.join(CTECH, view)
     return sorted(f[:-3] for f in os.listdir(d)
-                  if f.startswith("ccv_ctech_") and f.endswith(".sv"))
+                  if f.startswith("ccv_common_ctech_") and f.endswith(".sv"))
 
 
 def files(view=None, synth=False, rel=False):

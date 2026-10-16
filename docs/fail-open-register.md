@@ -36,7 +36,8 @@ broken it once and watched it notice.
 | Satisfiability covers | open | cases 34/35: vacuous proof passes, cover misses | `check-1a.sh` |
 | Checker connection (`bind` vs instantiation) | **silent** | case 31 must stay SILENT, case 32 CHECK | `check-1a.sh` |
 | Lint rules | open | every rule must fire on a fixture, rule by rule | `check-1d.sh` |
-| …and not on compliant code | open | three `good_*` fixtures must report nothing | `check-1d.sh` |
+| …and not on compliant code | open | five compliant fixtures, one per namespace shape (`ccv_reference*.sv`, `reference_*.sv`), must report nothing | `check-1d.sh` |
+| Module classification by name (CCV-L28) | **silent** | a common module is exempt from the clock-naming and stage rules, so a name misread as common silences them, and a block top read as anything else loses its gate check. 19 refusals (`bad_module_names.sv`, `bad_blocks.json`, the real top under its pre-OI-37 name for the generated-tree pass) must each be found by name, exactly 19 | `check-1d.sh` |
 | Event emission cycle accuracy | **silent** | paper-derived cycles must match exactly | `check-emit-calib.sh` |
 | X-determinism construct choice | open | three constructions must DISAGREE on X | `check-xprop.sh` |
 | Clock-gate sharing | open | one ICG for eight flops, not eight | `check-clockgate.sh` |
@@ -45,11 +46,11 @@ broken it once and watched it notice.
 | Checker credit depth vs the credit loop | **silent** | a depth below the loop runs the channel below full bandwidth with no protocol violation (Q-43). A `DEPTH` one below the loop must trip `cfg_depth_covers_credit_loop`; full rate at the loop and not below it is proved (`check-formal.sh`) | `check-if.sh`, `check-formal.sh` |
 | Checker timeout vs round trip | **silent** | `TIMEOUT_N=1` build must trip `cfg_timeout_covers_round_trip` | `check-if.sh` |
 | Reference producer honours stall at every phase | **silent** | stall pulse swept across 28 phases; the old late-stall producer (`CCV_NEG_LATE_STALL`) must be caught | `check-if.sh` |
-| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 347 checkers fire by name; `fixed-all`: all 274 fixed-latency ones | `check-skel.sh` |
-| Atomic acceptance | **silent** | `--break atomic-all`: all 77 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
+| Skeleton checker bank wiring (every slot) | **silent** | `--break phantom-all` / `stall-all`: all 163 checkers fire by name; `fixed-all`: all 90 fixed-latency ones | `check-skel.sh` |
+| Atomic acceptance | **silent** | `--break atomic-all`: all 13 groups fire both properties; `--force-atomic` must stay clean | `check-skel.sh` |
 | Ordered consumption (per key) | **silent** | `--break misorder` must be caught on exactly the ordered channels | `check-skel.sh` |
 | Lane lockstep | **silent** | `--break lockstep-all`: one lane alone — both lockstep checkers fire, nothing else | `check-skel.sh` |
-| Lane slot binding (same instruction per slot) | **silent** | `--break misbind`: lane 7 carries slot k+1's instruction in slot k — only `lockstep_id` fires | `check-skel.sh` |
+| Lane slot binding (same instruction per slot) | **silent** | `--break misbind`: lane 7 carries slot k+1's instruction in slot k, or its stream's next one on a one-slot channel — only `lockstep_id` fires | `check-skel.sh` |
 | Slot attribute specification | **silent** | each rule in `gen-interfaces.py` rejects its bad case (checked once, by mutation) | `gen-interfaces.py` |
 | Id class per channel | **silent** | `--break wrong-class`: all 41 channels report | `check-skel.sh` |
 | Trace id kept out of synthesis | **silent** | Yosys asked both ways: no `ch_tid` without `CCV_TRACE`, present with | `check-skel.sh` |
@@ -69,6 +70,10 @@ broken it once and watched it notice.
 | `srd`'s identity (OOE's shadow of RAU's table) | **silent** | every kernel but one runs CTA 0, where a missing or wrong `%ctaid` reads as right. The srd kernel runs CTA 7, and `--break corrupt-ctaid` must be rejected by the lanes computing `srd` | `check-kernel.sh` |
 | DEC's selector range check | **silent** | an unallocated selector folded into the zero checks would have nothing to fail on. `--break srd-selector` must be named by the range check | `check-kernel.sh` |
 | The lane mask one cycle ahead (lead fields, Q-40) | **silent** | the final state is the same whichever cycle the mask arrives in. The lane uses the mask it took off the wire in the valid cycle, so `--break late-lead`, which drives it with the operands instead, must make every lane reject a stale mask | `check-kernel.sh` |
+| Disjoint footprints on the nine issue slots (V-60, TI-9) | **silent** | the stubs execute each op whole, so two ops granted one section still give every kernel its final state. `--break no-resource-cap` makes OOE's select grant a second lane op and a second memop onto resources already held (`inject_double_grant`); RCU must refuse each of the 12 shared slots | `check-kernel.sh` |
+| A register fits its row at its position (OI-29, TI-9) | **silent** | every S1 register is 32-bit at position 0, so a wrong position changes no value. `--break bad-pos` names a 32-bit destination at position 1; RCU and all 32 lanes must refuse it | `check-kernel.sh` |
+| A memop's pipe footprint (OI-33, TI-9) | **silent** | MIU serves each memop whole whatever `pipes` says. `--break narrow-pipes` gives every 32-bit memop one pipe; MIU must refuse all eight of vadd's | `check-kernel.sh` |
+| Channel rates tied to the parameters deriving them (TI-9) | **silent** | every tool reads a channel's literal rate, so a parameter that grows (a pipe, a latency class) would leave the channel narrow and nothing would fail. `gen-interfaces.py --selftest` sets each tied rate one off and must see it refused by name | `verify.sh` |
 | A masked-off lane does nothing, and RCU relies on it | **silent** | a lane result from the oracle is right on every lane, so writing back a masked-off lane was invisible. A masked-off lane now drives poison, and `--break ignore-mask` (RCU writes every lane) must put it into pguard's P1 | `check-kernel.sh` |
 | Guard and predicate destination as separate fields | **silent** | with guard = destination (every S1 kernel before pguard) one field serves both and nothing can tell. `--break conflate-pred` on the pguard kernel must make the next guard wrong at the lanes, and both predicates wrong at the end | `check-kernel.sh` |
 | The wake contract (Q-33) | **silent** | no stub sleeps, so in the skeleton and the SV top every wake checker holds without being exercised -- exactly the shape of a vacuous pass. Its own testbench must make `wake_t3` fire and `wake_t4` stay quiet, with six more cases around the reading of "gated", and `rx_early` must trip only the receiver's half, on both simulators | `check-if.sh` |
@@ -89,9 +94,9 @@ broken it once and watched it notice.
 | SV-hosted C++ == C++-hosted | **silent** | a comparison too coarse to see a block running a cycle late would call two different machines the same. `+ccv_shim_delay` puts one block's outputs a cycle late, with every port still legal: DEC late differs in 223 cycles, one lane in 173. A skew on a block the kernel never uses is invisible, so the controls target blocks on its path. Also: every shim must register (`SVHOST shims=46/46`), since a stub left in the file list would idle quietly | `check-sv-hosted.sh` |
 | Oracle records from the pinned compiler snapshot | **silent** | a snapshot that isn't what the lock says would feed the skeleton a different machine's answers, and every kernel would still agree with them. `tools/fetch-compiler.sh` uses a snapshot only if it names the lock's source commit and its `ccv-sim` matches the sha256 in its own manifest; a binary altered by one byte was refused once, by name. A fetch that fails fails the gate rather than skipping. When the records stopped being checked in, the live ones were byte-identical to the four they replaced | `check-kernel.sh` |
 | ccv-sim `-oracle` memory flags | **silent** | the record reported `"load":0` beside 32 reads (compiler F-141). It now refuses a step whose traffic the descriptor does not declare; checked once by dropping `LD_GLOBAL`'s flag | compiler repo |
-| The simulation view of a ctech cell reaching synthesis | **silent** | a behavioural latch-and-AND synthesises, works in every simulation, and gives up the library ICG's clock-gating checks. Under `SYNTHESIS` the view instantiates `ccv_ctech_sim_view_in_synthesis`, which does not exist; synthesising `ccv_clk_gate` with it must fail naming that module, and with each library view must give exactly one library ICG and no latch | `check-ctech.sh` |
+| The simulation view of a ctech cell reaching synthesis | **silent** | a behavioural latch-and-AND synthesises, works in every simulation, and gives up the library ICG's clock-gating checks. Under `SYNTHESIS` the view instantiates `ccv_ctech_sim_view_in_synthesis`, which does not exist; synthesising `ccv_common_clk` with it must fail naming that module, and with each library view must give exactly one library ICG and no latch | `check-ctech.sh` |
 | A clock gate that glitches | **silent** | an AND of clock and enable passes every RTL simulation whose enable only moves at edges. The testbench moves `en` in either phase and requires every gclk edge at a clk edge; the formal model lets every input move at any step. An ICG with no latch, and one latched in the high phase, must fail both, on both simulators. The first formal model could not fail them at all (F-21) | `check-ctech.sh`, `check-formal.sh` |
-| `clk_gated`, the bank's view of each receiver's gate | **silent** | a tie reads as a receiver that never sleeps, so every wake checker holds without being exercised. R7 requires each block's `clk_gated` to be its `ccv_clk_gate`'s own `gated`; `gatetie` (tied) and `gateclk` (gate off `core_clk`) must be refused | `check-top.sh` |
+| `clk_gated`, the bank's view of each receiver's gate | **silent** | a tie reads as a receiver that never sleeps, so every wake checker holds without being exercised. R7 requires each block's `clk_gated` to be its `ccv_common_clk`'s own `gated`; `gatetie` (tied) and `gateclk` (gate off `core_clk`) must be refused | `check-top.sh` |
 | The wake contract's receiver half | **silent** | the checker's reading of Q-33 excused a receiver that slept again before `LAT`, and charged the sender. A clock gate holding open one cycle too few passed the Q-33 proof. `wake_keeps_rx` now states it: `rx_early` must trip only it, and the one-short hold mutant must fail it | `check-if.sh`, `check-formal.sh` |
 
 The ones marked **silent** are the dangerous class: they do not merely fail to
@@ -126,7 +131,7 @@ with its own failure mode, and it needs the same treatment as any other.
 
 ## The covers caught a vacuous checker, first time out
 
-`ccv_outstanding_checker` was first written, like the credit checker, with
+`ccv_common_chk_outstanding` was first written, like the credit checker, with
 `CCV_ASSUME_KNOWN` on its two inputs to satisfy CCV-L08. Its formal harness
 drives those inputs from a register. With the two assumptions in place,
 **every cover in the harness was unreachable**, including a plain

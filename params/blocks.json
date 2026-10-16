@@ -22,7 +22,16 @@
     "A-2's sub-question -- do testbench-side memory interfaces consume block",
     "letters -- answers itself from the partition: EXB is the coherent",
     "boundary and everything past it is testbench, so nothing beyond EXB is",
-    "tagged and no letter is spent on it."
+    "tagged and no letter is spent on it.",
+    "",
+    "MODULE NAMES (DA's response OI-37). The block names below are also the",
+    "RTL namespace: a block's top is ccv_<name>, its wrapper ccv_<name>_w,",
+    "its sub-blocks <name>_<x> and its common modules <name>_common_<type>,",
+    "and tools/lint-rtl.py reads a module's block from its name (CCV-L28).",
+    "So a name is one lowercase token with no underscore, since every shape",
+    "splits at the first one, and \"common\" and \"top\" are not block",
+    "names: ccv_common_<type> and ccv_top are taken. Where a block states its",
+    "module, it is ccv_<name>. The lint refuses each of these."
   ],
 
   "domains": [
@@ -41,9 +50,9 @@
   ],
 
   "blocks": [
-    { "letter": "f", "name": "fet",  "module": "ccv_fetch",  "instances": 1,
+    { "letter": "f", "name": "fet",  "module": "ccv_fet",  "instances": 1,
       "doc": "Fetch, L1 I-cache, ITLB, length decode and align." },
-    { "letter": "d", "name": "dec",  "module": "ccv_decode", "instances": 1,
+    { "letter": "d", "name": "dec",  "module": "ccv_dec", "instances": 1,
       "doc": "Format decode, 6-wide output, and two separate illegal-instruction obligations: reserved fields must be zero, and a legal field must not hold an unallocated value (srd selectors 2-15). The second is a range comparison, not a zero comparison, so allocating a selector later is a one-line change to a named check." },
     { "letter": "q", "name": "ooe",  "module": "ccv_ooe",    "instances": 1,
       "doc": "RAT, free list, RS, 4 ROBs, scheduler, wakeup/select, squash, demotion trigger. Most-connected block, and first in the risk-first build order." },

@@ -5,7 +5,7 @@
 // this file is stale.
 
 `timescale 1ns/1ps
-// The SV-hosted run: ccv_core_top built from rtl/top/dpi/ shims, so
+// The SV-hosted run: ccv_top built from rtl/top/dpi/ shims, so
 // every block is the C++ skeleton's and every connection between them
 // is this top's Verilog. The kernel, trace and negative controls come
 // in as plusargs the host reads (+ccv_oracle= +ccv_trace= +ccv_break=
@@ -36,7 +36,7 @@ module tb;
   logic [63:0] ext_exb_in_tid;
 `endif
 
-  ccv_core_top u_top (
+  ccv_top u_top (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .csr_req('0),
@@ -57,7 +57,7 @@ module tb;
       .ext_exb_in_tid(ext_exb_in_tid)
 `endif
   );
-  ccv_ext u_ext (
+  tb_ext u_ext (
     .core_clk(core_clk),
     .rst_n(rst_n),
     .exb_ext_out_valid(exb_ext_out_valid),

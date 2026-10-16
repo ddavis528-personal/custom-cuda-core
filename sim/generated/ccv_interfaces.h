@@ -18,13 +18,13 @@ enum Channel : uint16_t {
   CH_FET_DEC_INSTR = 0,
   /// dec -> ooe, 6/cycle
   CH_DEC_OOE_UOP = 1,
-  /// ooe -> rcu, 4/cycle
+  /// ooe -> rcu, 9/cycle
   CH_OOE_RCU_ISSUE = 2,
-  /// rcu -> lane, 4/cycle
+  /// rcu -> lane, 1/cycle
   CH_RCU_LANE_OPS = 3,
-  /// lane -> rcu, 4/cycle
+  /// lane -> rcu, 1/cycle
   CH_LANE_RCU_RES = 4,
-  /// rcu -> ooe, 4/cycle
+  /// rcu -> ooe, 7/cycle
   CH_RCU_OOE_DONE = 5,
   /// rcu -> miu, 4/cycle
   CH_RCU_MIU_ADDR = 6,
@@ -124,10 +124,10 @@ inline const ChannelInfo &channelInfo(Channel c) {
   static const ChannelInfo kInfo[] = {
       {"ccv_fet_dec_instr", "fet", "dec", 8},
       {"ccv_dec_ooe_uop", "dec", "ooe", 6},
-      {"ccv_ooe_rcu_issue", "ooe", "rcu", 4},
-      {"ccv_rcu_lane_ops", "rcu", "lane", 4},
-      {"ccv_lane_rcu_res", "lane", "rcu", 4},
-      {"ccv_rcu_ooe_done", "rcu", "ooe", 4},
+      {"ccv_ooe_rcu_issue", "ooe", "rcu", 9},
+      {"ccv_rcu_lane_ops", "rcu", "lane", 1},
+      {"ccv_lane_rcu_res", "lane", "rcu", 1},
+      {"ccv_rcu_ooe_done", "rcu", "ooe", 7},
       {"ccv_rcu_miu_addr", "rcu", "miu", 4},
       {"ccv_miu_rcu_data", "miu", "rcu", 4},
       {"ccv_ooe_miu_memop", "ooe", "miu", 4},

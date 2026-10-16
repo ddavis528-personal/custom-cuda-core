@@ -39,13 +39,13 @@ localparam int CCV_NUM_CHANNELS = 48;
 localparam int CCV_CH_FET_DEC_INSTR = 0;
 // dec -> ooe, 6/cycle
 localparam int CCV_CH_DEC_OOE_UOP = 1;
-// ooe -> rcu, 4/cycle
+// ooe -> rcu, 9/cycle
 localparam int CCV_CH_OOE_RCU_ISSUE = 2;
-// rcu -> lane, 4/cycle
+// rcu -> lane, 1/cycle
 localparam int CCV_CH_RCU_LANE_OPS = 3;
-// lane -> rcu, 4/cycle
+// lane -> rcu, 1/cycle
 localparam int CCV_CH_LANE_RCU_RES = 4;
-// rcu -> ooe, 4/cycle
+// rcu -> ooe, 7/cycle
 localparam int CCV_CH_RCU_OOE_DONE = 5;
 // rcu -> miu, 4/cycle
 localparam int CCV_CH_RCU_MIU_ADDR = 6;
@@ -155,7 +155,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    group_mask;
   logic [ccv_prov_pkg::CCV_P_W_FETCH_EPOCH-1:0]  fetch_epoch;
   logic [ccv_prelim_pkg::CCV_L_W_CLASS-1:0]      uop_class;
-  logic [ccv_prov_pkg::CCV_P_W_SCHED_ATTR-1:0]   sched_attr;
+  logic [ccv_prelim_pkg::CCV_P_W_SCHED_ATTR-1:0] sched_attr;
   logic [ccv_prelim_pkg::CCV_L_W_MEM_OP-1:0]     mem_op;
   logic [ccv_prelim_pkg::CCV_L_W_SPACE-1:0]      space;
   logic [ccv_prelim_pkg::CCV_L_W_ORDERING-1:0]   ordering;
@@ -167,6 +167,9 @@ typedef struct packed {
   logic                                          pred_neg;
   logic [ccv_params_pkg::CCV_W_ARCH_PRED-1:0]    pred_dst;
   logic                                          pred_we;
+  logic [3-1:0]                                  src_valid;
+  logic [2-1:0]                                  pred_use;
+  logic [2-1:0]                                  imm_kind;
   logic [ccv_prov_pkg::CCV_P_W_IMM-1:0]          imm;
   logic [ccv_params_pkg::CCV_W_ILEN-1:0]         ilen;
   logic [ccv_prov_pkg::CCV_P_W_CKPT_ID-1:0]      checkpoint_id;
@@ -189,6 +192,14 @@ typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred_old_dst;
   logic                                          pred_we;
   logic                                          merge_en;
+  logic                                          cont;
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       footprint;
+  logic [ccv_prelim_pkg::CCV_P_W_BYP_GROUP-1:0]  bypass_group;
+  logic [3*ccv_params_pkg::CCV_W_PHYS_POS-1:0]   src_pos;
+  logic [3*ccv_params_pkg::CCV_W_CHWIDTH-1:0]    src_width;
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     old_dst_pos;
+  logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      dst_width;
   logic [ccv_prelim_pkg::CCV_L_W_OPCODE-1:0]     opcode;
   logic [ccv_prov_pkg::CCV_P_W_IMM-1:0]          imm;
   logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      chwidth;
@@ -198,18 +209,25 @@ typedef struct packed {
 // LEAD fields are driven with valid, one cycle ahead of the
 // rest of the payload (schema lead_fields).
 typedef struct packed {
-  logic [ccv_prelim_pkg::CCV_L_W_OPCODE-1:0]     opcode;
+  logic [ccv_params_pkg::CCV_SECTIONS*ccv_prelim_pkg::CCV_L_W_OPCODE-1:0] sec_opcode;
   logic [ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE*ccv_params_pkg::CCV_W_LANE_DATA-1:0] operand;
   logic [ccv_params_pkg::CCV_W_LANE_DATA-1:0]    merge_data;
-  logic                                          pred_bit;  // LEAD
-  logic                                          pred_data;  // LEAD
-  logic [4-1:0]                                  section_en;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       section_en;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_owner;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_bit;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_data;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS*(ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE+1)*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_opnd_pos;
+  logic [ccv_params_pkg::CCV_SECTIONS*(ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE+1)*ccv_params_pkg::CCV_W_CHWIDTH-1:0] sec_opnd_width;
+  logic [ccv_params_pkg::CCV_SECTIONS*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_dst_pos;
+  logic [ccv_params_pkg::CCV_SECTIONS*ccv_params_pkg::CCV_W_CHWIDTH-1:0] sec_dst_width;
+  logic [ccv_params_pkg::CCV_SECTIONS*(ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE+1)*ccv_prov_pkg::CCV_P_W_LANE_BYP_SEL-1:0] operand_byp;
 } ccv_rcu_lane_ops_t;
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_LANE_DATA-1:0]    result;
-  logic                                          pred_out;
-  logic                                          lane_fault;
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_valid;
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_out;
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_fault;
 } ccv_lane_rcu_res_t;
 
 typedef struct packed {
@@ -233,6 +251,8 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    active_mask;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    pred_result;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;
+  logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      dst_width;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred;
   logic                                          pred_we;
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         load_data;
@@ -241,12 +261,14 @@ typedef struct packed {
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;
+  logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    issue_mask;
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_prelim_pkg::CCV_L_W_MEM_OP-1:0]     mem_op;
   logic [ccv_params_pkg::CCV_W_CHWIDTH-1:0]      chwidth;
+  logic [ccv_params_pkg::CCV_MIU_PIPES-1:0]      pipes;
   logic [ccv_params_pkg::CCV_W_DISP-1:0]         disp;
   logic                                          scale_en;
   logic [ccv_prelim_pkg::CCV_L_W_SPACE-1:0]      space;
@@ -431,6 +453,8 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic                                          direction;
   logic [ccv_params_pkg::CCV_GPRS*ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0] gpr_map;
+  logic [ccv_params_pkg::CCV_GPRS*ccv_params_pkg::CCV_W_PHYS_POS-1:0] gpr_pos;
+  logic [ccv_params_pkg::CCV_GPRS*ccv_params_pkg::CCV_W_CHWIDTH-1:0] gpr_width;
   logic [ccv_params_pkg::CCV_PREDS*ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0] pred_map;
 } ccv_ooe_rcu_map_t;
 

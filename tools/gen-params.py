@@ -346,7 +346,24 @@ def selftest(d):
              ("link_n('rcu_miu_addr')", "links", 1, "CCV_LAT_L1_WAKE"),
              ("link_n('ooe_miu_memop')", "links", 9, "CCV_LAT_L1_WAKE"),
              ("link_n('miu_ooe_cmpl')", "links", 1, "CCV_LAT_L1_CMPL"),
-             ("CCV_LAT_RCU_ADDR_BASE", "value", 5, "CCV_LAT_RCU_ADDR"),
+             # OI-13: a slower data path makes a miss's dependant wait.
+             ("link_n('miu_rcu_data')", "links", 3, "CCV_LAT_L1_MISS_WAKE"),
+             ("CCV_P_RS_WARP_CAP", "value", 46, "CCV_P_RS_WARP_CAP"),
+             ("CCV_P_DECQ_WARP_MAX", "value", 13, "CCV_P_DECQ_WARP_MAX"),
+             # OI-16: sched_attr's width follows its two code counts.
+             ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_W_SCHED_ATTR"),
+             ("CCV_P_BYP_GROUPS", "value", 9, "CCV_P_W_SCHED_ATTR"),
+             ("CCV_LAT_RCU_ADDR_BASE", "value", 2, "CCV_LAT_RCU_ADDR"),
+             # Sectioned lanes: pipes must match sections for the memop
+             # read budget to hold at every width, a footprint minimum
+             # cannot exceed the sections, and the resource count follows.
+             ("CCV_MIU_PIPES", "value", 2, "CCV_PRF_MEMOP_READ_BITS"),
+             ("CCV_P_FOOT_MIN_SFU", "value", 5, "CCV_P_FOOT_MIN_SFU"),
+             ("CCV_ISSUE_RESOURCES", "value", 8, "CCV_ISSUE_RESOURCES"),
+             # OA's response TI-9: the done pool is the sum over the pipes.
+             ("CCV_DONE_SLOTS", "value", 5, "CCV_DONE_SLOTS"),
+             # TI-1: imm carries predicate logic's two renamed sources.
+             ("CCV_P_W_IMM", "value", 12, "CCV_P_W_IMM"),
              ("CCV_RT_ABUT", "value", 4, "CCV_LAT_HOP"),
              ("CCV_P_PHYS_ZERO", "value", 191, "CCV_P_PHYS_ZERO"),
              ("CCV_P_PRED_REGS", "value", 64, "CCV_P_W_PHYS_PRED"),
@@ -354,6 +371,10 @@ def selftest(d):
              # and more checkpoints widen it.
              ("CCV_P_W_FETCH_EPOCH", "value", 2, "CCV_P_W_FETCH_EPOCH"),
              ("CCV_P_BR_CKPTS", "value", 7, "CCV_P_W_FETCH_EPOCH"),
+             # TI-8: a bypass no faster than the register file is refused,
+             # and the bypass select's age field follows CCV_LAT_LANE.
+             ("CCV_LAT_LANE_BYP", "value", 7, "CCV_LAT_LANE_BYP"),
+             ("CCV_P_W_LANE_BYP_AGE", "value", 1, "CCV_P_W_LANE_BYP_AGE"),
              ("CCV_LAT_LANE", "derive",
               "CCV_LAT_LANE_BASE + link_n('rcu_lane_opz')", "CCV_LAT_LANE")]
     missed = []

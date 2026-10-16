@@ -2,7 +2,7 @@
 //
 // Spec: docs/clock-gate.md
 //
-// ccv_clk_gate with the SIMULATION view of its ctech ICG, latch and all,
+// ccv_common_clk with the SIMULATION view of its ctech ICG, latch and all,
 // proved by tools/check-formal.sh on Yosys's multiclock model
 // (clk2fflogic): `clk` is an input like any other, toggling every global
 // step, so the latch, the AND and the gated clock are modelled as they
@@ -24,7 +24,7 @@
 //               spec           `gated` equals an independent model built
 //                              from input HISTORIES (shift registers), not
 //                              the design's saturating counters
-//   FV_Q33    ccv_wake_checker on this gate's own `gated`, the sender's
+//   FV_Q33    ccv_common_chk_wake on this gate's own `gated`, the sender's
 //             half ASSUMED and the receiver's asserted: proves
 //             wake_keeps_rx (the gate runs LAT cycles after any wake) and
 //             q33_valid_meets_clock (so no valid that keeps the contract
@@ -62,7 +62,7 @@ module fv_clk_gate #(
   wire [HW-1:0] hyst_s = HW'(HS);
 `endif
   logic gclk, gated;
-  ccv_clk_gate #(.WAKE_HOLD(HOLD)) dut (
+  ccv_common_clk #(.WAKE_HOLD(HOLD)) dut (
     .clk         (clk),
     .rst_n       (rst_n),
     .quiesced    (quiesced),
@@ -162,11 +162,11 @@ module fv_clk_gate #(
   end
 
 `ifdef FV_Q33
-  // -- Q-33, both halves, as ccv_wake_checker states them about THIS gate ---
+  // -- Q-33, both halves, as ccv_common_chk_wake states them about THIS gate ---
   // The sender's half assumed, the receiver's asserted: the gate keeps
   // wake_keeps_rx (running LAT cycles after any wake), and so any sender
   // keeping its half never lands a valid on a withheld edge.
-  ccv_wake_checker #(.MODE(`CCV_MODE_ASSUME), .RX_MODE(`CCV_MODE_ASSERT),
+  ccv_common_chk_wake #(.MODE(`CCV_MODE_ASSUME), .RX_MODE(`CCV_MODE_ASSERT),
                      .LAT(ccv_params_pkg::CCV_WAKE_LAT)) u_contract (
     .clk       (clk),
     .rst_n     (rst_n),

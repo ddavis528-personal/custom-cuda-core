@@ -76,6 +76,7 @@ run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
 run "derived params refuse drift" python3 tools/gen-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
+run "rates refuse drift"     python3 tools/gen-interfaces.py --selftest
 # docs/payload-spec.md is generated but TRACKED, unlike the rtl/sim ones --
 # it is the per-block sessions' worklist, so it has to be readable on GitHub
 # without running anything. Being generated is what stops it disagreeing with
@@ -154,6 +155,11 @@ section "Stage 4b -- OOE model unit tests (sim/ooe/)"
 # The harness's own controls must each be caught, and are held by name.
 run "OOE unit tests" ./tools/check-ooe-unit.sh
 
+section "Stage 4c -- OOE RTL (rtl/ooe/)"
+# Each OOE RTL module in lockstep with the model code it implements, at the
+# parameters' sizes, with the harness's controls each caught.
+run "OOE RTL == model" ./test/ooe/run-rtl.sh
+
 section "SV top -- rtl/top/ (generated, tracked)"
 # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
 # instances, with the checker bank under CCV_CHECK. After the skeleton, which
@@ -172,7 +178,7 @@ section "Formal proofs -- one credited link, and the block clock gate"
 run "formal proofs" ./tools/check-formal.sh
 
 section "Physical primitives -- sequential repeater"
-# rtl/phys/ccv_seq_rpt.sv through N = 0..4 stages on both simulators, the
+# rtl/phys/ccv_common_rpt.sv through N = 0..4 stages on both simulators, the
 # checker at three points along the link, its enables on the Yosys netlist,
 # and mutants that must each be caught -- one of them only by the netlist.
 run "sequential repeater" ./tools/check-phys.sh
@@ -211,11 +217,11 @@ if command -v verilator >/dev/null 2>&1; then
   # file:define -- the credit checker is linted with and without CCV_TRACE,
   # because the trace sideband changes its port list and each variant is a
   # build someone will run.
-  for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_credit_checker.sv: \
-              rtl/if/ccv_credit_checker.sv:CCV_TRACE rtl/if/ccv_atomic_checker.sv: \
-              rtl/if/ccv_lockstep_checker.sv: rtl/if/ccv_lockstep_checker.sv:CCV_TRACE \
-              rtl/if/ccv_binding_checker.sv: rtl/if/ccv_outstanding_checker.sv: \
-              rtl/if/ccv_wake_checker.sv: rtl/clk/ccv_clk_gate.sv:; do
+  for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_common_chk_credit.sv: \
+              rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
+              rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
+              rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: \
+              rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
     f=${spec%%:*}; def=${spec#*:}
     top=$(basename "$f" .sv)
     [ "$top" = "ccv_assert_smoke" ] && top=dut
@@ -244,7 +250,7 @@ cat <<'PENDING'
            Payload widths: every field sized, tiered settled/prov/prelim.
            Rate>1: independent slots, with acceptance / ordering / binding
            per channel. Remaining: per-interface NGD budgets
-  Stage 3  S0 plumbing DONE: 45 blocks, 110 channel instances, 347 slots,
+  Stage 3  S0 plumbing DONE: 45 blocks, 110 channel instances, 163 slots,
            checker bank Verilated in, trace identity carried, Perfetto
            trace, layout cross-checked, slot count re-derived.
            S1 DONE: vadd end to end on functional stubs, final state

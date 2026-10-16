@@ -56,9 +56,9 @@ struct Config {
   unsigned rename_width = ccv::kIssueWidth;       ///< doc: "4 uops per cycle"
   unsigned rs_rcu = ccv::prov::kRsRcu;
   unsigned rs_miu = ccv::prov::kRsMiu;
-  unsigned rs_warp_cap = 0;                       ///< KNOB: 0 = the class size
+  unsigned rs_warp_cap = ccv::prov::kRsWarpCap;   ///< 0 or >= both classes = no cap
   unsigned decq = ccv::prov::kDecq;
-  unsigned decq_warp_max = 0;                     ///< KNOB: 0 = decq
+  unsigned decq_warp_max = ccv::prov::kDecqWarpMax; ///< 0 or >= decq = no limit
   unsigned ckpts = ccv::prov::kBrCkpts;
   unsigned phys_regs = ccv::prov::kPhysRegs;
   unsigned pred_regs = ccv::prov::kPredRegs;
@@ -87,33 +87,64 @@ struct Config {
   /// A dependant must reach RCU after the data does, so it wakes this many
   /// cycles after the completion lands: max(0, ccv_miu_rcu_data crossing -
   /// ccv_miu_ooe_cmpl crossing - ccv_ooe_rcu_issue crossing + 1). The
-  /// adapter derives it from the wiring; 0 with no repeaters.
-  unsigned cmpl_wake_delay = 0;
-  /// Demotion trigger thresholds (CSRs, one per trigger; Q18). Only the
-  /// fallback has a parameter; the other two are KNOBs that default to it.
+  /// CCV_LAT_L1_MISS_WAKE (OI-13), generated from the links; 0 with no repeaters.
+  unsigned cmpl_wake_delay = ccv::prov::kLatL1MissWake;
+  /// Select's payload-read stage (OA-1, OI-26): a grant leaves on the
+  /// channel this many cycles later. Wakes count from the grant, so the
+  /// stage shifts producer and dependant alike; only the contracts timed
+  /// from the channel (V-35, V-44, the L1 shadow, a copy's landing) add it.
+  /// 0 or 1.
+  unsigned payload_stages = 1;
+  /// Rename's stages (OA-1, OI-29): RAT read, producer lookup, matrix write.
+  /// An entry renamed in cycle t can be selected from t + rename_stages.
+  unsigned rename_stages = 3;
+  /// Demotion trigger thresholds (CSRs, one per trigger; Q18), each its own
+  /// parameter (OI-6); the values wait on OA-8.
   unsigned demote_fallback = ccv::prov::kDemotionThreshold;
-  unsigned demote_mlc_miss = ccv::prov::kDemotionThreshold;
-  unsigned demote_barrier = ccv::prov::kDemotionThreshold;
+  unsigned demote_mlc_miss = ccv::prov::kDemotionThresholdMlc;
+  unsigned demote_barrier = ccv::prov::kDemotionThresholdBarrier;
 
   // -- what the neighbours can do today (docs/ooe-model.md, "S1 modes") -------
-  /// Bypass groups (docs/ooe-model.md, "Bypass groups"). A producer's
-  /// unit is its lat_class; a consumer's group is its lat_class (0 for an
-  /// op RCU executes), or kConsMem for a memop. byp[unit][group], when
-  /// non-zero and under the producer's latency, is how many cycles after
-  /// the producer's issue that consumer may issue on its result, by bypass;
-  /// 0 means no bypass, so the consumer waits the producer's full latency.
-  /// Lane ALU to lane ALU defaults to CCV_LAT_LANE_BYP (A-59), and every
-  /// other pair has no bypass until its sessions name one.
-  bool bypass = true;            ///< master enable; off in S1 (no RCU bypass)
-  static constexpr unsigned kUnits = 8, kConsMem = 8, kConsGroups = 9;
-  std::array<std::array<uint8_t, kConsGroups>, kUnits> byp{};
-  /// Full latency of the spare lat_class codes 4-7 (SFU and the like), as
-  /// the LANE session names them; 0 means none yet: wake on the done.
-  std::array<unsigned, kUnits> unit_lat{};
-  /// The bypass offset for a pair, or 0 for none.
-  unsigned bypOff(unsigned unit, unsigned group) const {
-    if (byp[unit][group]) return byp[unit][group];
-    return unit == 1 && group == 1 ? lat_lane_byp : 0;
+  /// Bypass groups (docs/ooe-model.md, "Bypass groups"; OI-16, Daniel's
+  /// responses OA-4). A producer's lat_class sets its full latency and its
+  /// fastest bypass point; its bypass_group and the consumer's index the
+  /// penalty table. A consumer may issue on the result fast[unit] +
+  /// byp[producer group][consumer group] cycles after the producer's issue,
+  /// if that is under the full latency; kNoByp, or a unit with no fastest
+  /// point (single-time: RCU, warp-collective, loads), means the PRF read.
+  bool bypass = true;            ///< master enable
+  static constexpr unsigned kUnits = ccv::prelim::kPLatClasses;
+  static constexpr unsigned kGroups = ccv::prelim::kPBypGroups;
+  enum : unsigned { kGrpInt = 0, kGrpFp = 1, kGrpAddr = 2, kGrpSfu = 3, kGrpColl = 4, kGrpPred = 5 };
+  static constexpr uint8_t kNoByp = 0xFF;
+  std::array<std::array<uint8_t, kGroups>, kGroups> byp = defaultByp();
+  /// The fastest bypass point per lat_class; 0 for a single-time unit. The
+  /// lane's is lat_lane_byp (CCV_LAT_LANE_BYP). SFU has none until a
+  /// CCV_LAT_SFU_BYP exists (OA's response OI-16), so SFU wakes at its
+  /// full latency.
+  std::array<unsigned, kUnits> fast{};
+  /// Full latency of lat_class codes 4-7: SFU and warp-collective from
+  /// their parameters, the spares 0 (wake on the done).
+  std::array<unsigned, kUnits> unit_lat = {0, 0, 0, 0, ccv::prov::kLatSfu, ccv::prov::kLatCollective, 0, 0};
+  static std::array<std::array<uint8_t, kGroups>, kGroups> defaultByp() {
+    std::array<std::array<uint8_t, kGroups>, kGroups> t;
+    for (auto &row : t) row.fill(kNoByp);
+    const unsigned same = ccv::prov::kLatBypPenSame, intfp = ccv::prov::kLatBypPenIntFp,
+                   sfu = ccv::prov::kLatBypPenSfu;
+    t[kGrpInt][kGrpInt] = t[kGrpFp][kGrpFp] = t[kGrpSfu][kGrpSfu] = uint8_t(same);
+    t[kGrpInt][kGrpFp] = t[kGrpFp][kGrpInt] = uint8_t(intfp);
+    t[kGrpInt][kGrpSfu] = t[kGrpFp][kGrpSfu] = t[kGrpSfu][kGrpInt] = t[kGrpSfu][kGrpFp] = uint8_t(sfu);
+    return t;
+  }
+  unsigned fastOf(unsigned unit) const { return unit == 1 ? lat_lane_byp : fast[unit]; }
+  /// The bypass wake for a pair, in cycles after the producer's issue, or
+  /// 0 for none: the consumer waits the producer's full latency.
+  unsigned bypWake(unsigned unit, unsigned pg, unsigned cg) const {
+    if (unit >= kUnits || pg >= kGroups || cg >= kGroups || byp[pg][cg] == kNoByp) return 0;
+    const unsigned f = fastOf(unit);
+    if (!f) return 0;
+    const unsigned w = f + byp[pg][cg];
+    return w < unitLat(unit) ? w : 0;
   }
   /// A unit's full latency: when any reader may issue on its result through
   /// the register file; 0 if it wakes on its done.
@@ -123,6 +154,34 @@ struct Config {
   /// Speculative wake of L1-load dependants at CCV_LAT_L1_WAKE, cancelled on
   /// a miss (A-46). Off while MIU completes no load at the L1 contract.
   bool l1_spec = true;
+  // -- narrow registers and lane sections (OI-28 to OI-33, Daniel's 2026-10-08) -
+  /// Sectioned lanes: a register is a slice of a PRF row, named row * 4 +
+  /// position, an op claims the union of its operands' sections widened to
+  /// its unit's minimum, and select grants nine resources (S0-S3, R, P0-P3).
+  /// Off in S1 until OI-32's schema carries positions: names are then rows.
+  bool sectioned = false;
+  /// Placement of a narrow destination with no narrow source (OA-14):
+  /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
+  /// every warp; 2 the home position, advanced at each taken backward branch
+  /// from 0; 3 the same, from the slot index (OA-14 leaves the start open);
+  /// 4 the slot index plus the architectural destination (OI-34's own arm).
+  unsigned place = 0;
+  /// OA-13: a load passes older loads of its warp, blocked only by an older
+  /// unissued store, atomic, fence or ordered access. Off: memops issue in
+  /// program order per warp (OI-15).
+  bool loads_pass_loads = false;
+  /// The decode queue's credit return (ooe_decq timing, OI-38's shape): an
+  /// entry freed in a cycle takes no arrival until the next, so this
+  /// cycle's arrivals see it still held. Off is the agreed behaviour.
+  bool decq_late_credit = false;
+  /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
+  /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
+  /// reaches the model: integer, FP (provisional, IS-7), address
+  /// calculation (in MIU pipes), SFU; warp-collective and predicate 0 (R
+  /// only). Groups 6 and 7 are spare and take the integer minimum.
+  std::array<unsigned, kGroups> foot_min = {
+      ccv::prov::kFootMinInt, ccv::prov::kFootMinFp, ccv::prov::kFootMinAddr, ccv::prov::kFootMinSfu,
+      ccv::prov::kFootMinCollective, ccv::prov::kFootMinPred, ccv::prov::kFootMinInt, ccv::prov::kFootMinInt};
   /// Rename predicates through the predicate RAT and pool (Q-21, A-39). Off
   /// while RCU reads predicate-logic sources and the final compare reads
   /// predicates by a fixed window (physPred), which A-75 and a testbench
@@ -141,6 +200,12 @@ struct Config {
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
+  bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
+  bool inject_narrow_footprint = false; ///< a lane op claims only its lowest section (OI-30)
+  /// Sectioned select grants one more lane op a cycle onto sections already
+  /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
+  /// must refuse.
+  bool inject_double_grant = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -156,11 +221,12 @@ struct SchedAttr {
   bool rs_miu = false, exec_rcu = false, cross_lane = false;
   bool writes_gpr = false, writes_pred = false, branch = false;
   unsigned mem_kind = 0, serial = 0, lat_class = 0;
+  unsigned bypass_group = 0;    ///< OI-16: [15:13]
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3 };
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
 /// derives these from the skeleton's opcode table -- the one place OOE still
@@ -193,6 +259,11 @@ struct Uop {
   bool pred_taken = false;
   bool scale_en = false;
   bool decode_fault = false;
+  /// The destination's element width, from the committed chwidth table:
+  /// 0 32-bit, 1 16-bit, 2 8-bit, 3 4-bit (sectioned; a 4-bit register takes
+  /// an 8-bit section, OI-29). Sources carry their own in their names.
+  unsigned w = 0;
+  bool backward = false;             ///< a branch whose target is behind it (OA-14)
   UopShape shape;
 };
 
@@ -217,6 +288,19 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
 
 // ---- decoded outputs ----------------------------------------------------------------
 
+/// One ready requester of the per-resource select: its resource mask and
+/// its age (smaller is older).
+struct PickReq {
+  unsigned res = 0;
+  uint64_t age = 0;
+};
+/// The per-resource select (OI-31, V-60), the reference the RTL's
+/// ooe_pick is checked against: each resource grants its oldest
+/// requester, and a requester issues only if it wins every resource it
+/// names. Returns which requesters issue; *lost counts those that won some
+/// resources but not all.
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr);
+
 struct Issue {          ///< ccv_ooe_rcu_issue
   uint64_t tid = 0;
   unsigned port = 0;    ///< issue slot
@@ -232,6 +316,12 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
   uint8_t gpr_reads = 0;         ///< likewise
+  /// The resource group the op issues on (ccv_ooe_rcu_issue's slots) and
+  /// its footprint there: lane sections, MIU pipes, or R alone (footprint 0).
+  enum : uint8_t { kLaneOp = 0, kMemop = 1, kRcuOp = 2 };
+  uint8_t res = kLaneOp;
+  uint8_t footprint = 0xF;
+  uint8_t byp_group = 0;         ///< sched_attr's bypass_group (OI-16)
 };
 struct Memop {          ///< ccv_ooe_miu_memop
   uint64_t tid = 0;
@@ -304,9 +394,88 @@ struct Retired {
   bool exit = false;
   bool writes_gpr = false;
   unsigned dst = 0, pnew = 0;
+  bool writes_pred = false;         ///< a renamed predicate destination
+  unsigned pdst = 0, ppnew = 0;
 };
 
 // ---- the model -------------------------------------------------------------------------
+
+/// A free list as the RTL builds it (OI-22, docs/ooe-rtl-plan.md item 2): one
+/// bit per register, allocated by a priority encoder that starts at a rotating
+/// pointer and moves past each register it hands out, so a freed register
+/// comes back late. A free sets its bit at the clock edge (clock()), so a
+/// register freed in a cycle is not allocated in that cycle. Any number of
+/// frees a cycle costs nothing.
+/// OOE's structural events (docs/ooe-model.md, "Events"; OI-7), in the order
+/// of their ids in schema/events.json, EV_OOE_GPR_EMPTY first. Each carries
+/// warp_id as a; b and c are the schema's fields.
+enum class OoeEv : unsigned {
+  kGprEmpty, kRenameLimit, kPredEmpty, kRobFull, kRobSlotHeld, kRsFull, kRsWarpCap,
+  kDecqFull, kDecqWarpMax, kChwidthHold, kBarrierHold, kRedirectBusy, kMemopHeld,
+  kMemopHoldCycles, kDeferredFree, kReadyNotSelected, kCancelReplay, kDemoteTrigger,
+  kCrossGroupSquash, kCopyIssue, kCount
+};
+
+class FreeVec {
+public:
+  void reset(unsigned n) {
+    bit_.assign(n, 1);
+    pend_.assign(n, 0);
+    ready_ = n;
+    npend_ = 0;
+    ptr_ = 0;
+  }
+  /// Free registers, including those freed this cycle.
+  size_t size() const { return ready_ + npend_; }
+  /// Free registers allocation can take this cycle.
+  size_t ready() const { return ready_; }
+  bool empty() const { return ready_ == 0; }
+  bool has(unsigned p) const { return bit_[p] || pend_[p]; }
+  unsigned alloc() {
+    const unsigned n = unsigned(bit_.size());
+    for (unsigned i = 0; i != n; ++i) {
+      const unsigned p = (ptr_ + i) % n;
+      if (!bit_[p]) continue;
+      bit_[p] = 0;
+      --ready_;
+      ptr_ = (p + 1) % n;
+      allocs_.push_back(p);
+      return p;
+    }
+    return n;   // caller checked ready()
+  }
+  /// False when the register is already free (a double free).
+  bool free(unsigned p) {
+    if (has(p)) return false;
+    pend_[p] = 1;
+    ++npend_;
+    frees_.push_back(p);
+    return true;
+  }
+  /// The allocations, in order, and frees since the last clock(): one clock
+  /// edge's worth, including those made by inputs between cycles
+  /// (ooe_freelist's testbench drives the RTL with them).
+  const std::vector<unsigned> &cycleAllocs() const { return allocs_; }
+  const std::vector<unsigned> &cycleFrees() const { return frees_; }
+  unsigned pointer() const { return ptr_; }
+  unsigned capacity() const { return unsigned(bit_.size()); }
+  bool bit(unsigned p) const { return bit_[p]; }
+  void clock() {
+    allocs_.clear();
+    frees_.clear();
+    if (!npend_) return;
+    for (size_t p = 0; p != pend_.size(); ++p)
+      if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
+    ready_ += npend_;
+    npend_ = 0;
+  }
+
+private:
+  std::vector<uint8_t> bit_, pend_;
+  std::vector<unsigned> allocs_, frees_;
+  size_t ready_ = 0, npend_ = 0;
+  unsigned ptr_ = 0;
+};
 
 class Core {
 public:
@@ -317,6 +486,14 @@ public:
   /// Can the decode queue take a uop of this warp? (Credit: the adapter
   /// leaves a uop in the channel while this is false.)
   bool canAccept(unsigned warp) const;
+  /// Decode-queue entries the credit check counts as held: the queue, plus
+  /// under decq_late_credit those freed this cycle.
+  unsigned decqHeld() const {
+    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0);
+  }
+  /// The adapter left a uop of this warp in the channel because canAccept
+  /// said no: count which limit held it (the decode-queue events).
+  void noteRefused(unsigned warp);
   void uop(const Uop &u);
   void done(const Done &d);
   void cmpl(const Cmpl &c);
@@ -333,6 +510,8 @@ public:
   // -- observation ------------------------------------------------------------------
   /// Hooks for events and coverage: (name, warp, a, b, tid).
   std::function<void(const char *, unsigned, uint64_t, uint64_t, uint64_t)> on_event;
+  /// The structural events, (kind, warp, b, c, tid); see OoeEv.
+  std::function<void(OoeEv, unsigned, uint64_t, uint64_t, uint64_t)> on_ooe_event;
   /// A broken invariant or a contract violation: the adapter makes it a
   /// check failure.
   std::function<void(const std::string &)> on_error;
@@ -409,6 +588,9 @@ private:
     bool ever_issued = false;
     unsigned replays = 0;
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
+    uint64_t ready_since = 0;      ///< first cycle a memop's row was ready
+    uint64_t eligible_at = 0;      ///< first cycle select may take it (rename's stages)
+    unsigned res = 0;              ///< sectioned: the resources it needs (resOf)
   };
 
   struct Ckpt {
@@ -434,6 +616,8 @@ private:
     unsigned decq = 0;                        ///< decode-queue entries
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
+    unsigned bar_id = 0;                      ///< the held barrier (events)
+    unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
     bool fault_stop = false;                  ///< V-24
     uint64_t head_since = 0;                  ///< head-stall timer (demotion)
@@ -479,6 +663,7 @@ private:
   void wake(unsigned e);
   void emitWakeups();
   void cancel(unsigned e);
+  bool cancelHop(unsigned root);
   void confirmPass();
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
@@ -489,6 +674,22 @@ private:
   bool gprAllowed(unsigned slot, unsigned n) const;
   bool predAllowed(unsigned slot, unsigned n) const;
   unsigned allocGpr(unsigned slot);
+  /// Sectioned: allocate a register of width code w for a slot, preferring
+  /// position pos (a hint: another position if it must).
+  unsigned allocSlice(unsigned slot, unsigned w, unsigned pos);
+  /// Sectioned: how a width w register at pos would be placed, without
+  /// placing it: 0 an owned partial row, 1 a new row, 2 neither (stall).
+  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const;
+  unsigned placePos(unsigned slot, const Uop &u, bool merge) const;
+  /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
+  /// 4 RCU (R), 5-8 MIU pipes P0-P3.
+  unsigned resOf(const RobEntry &r, bool copy_half, bool widen = true) const;
+  void selectSectioned();
+  Issue makeIssue(unsigned slot, unsigned idx, unsigned port) const;
+  void issueCopy(unsigned slot, unsigned idx, unsigned port);
+  unsigned secMask(unsigned w, unsigned pos) const {
+    return w == 0 ? 0xFu : w == 1 ? (3u << (pos & 2u)) : (1u << (pos & 3u));
+  }
   unsigned allocPred(unsigned slot, unsigned arch);
   void freeGpr(unsigned slot, unsigned p);
   void freePred(unsigned slot, unsigned p);
@@ -498,6 +699,9 @@ private:
   void releaseSlot(unsigned slot);
   void ev(const char *name, unsigned warp = 0, uint64_t a = 0, uint64_t b = 0,
           uint64_t tid = 0);
+  void oev(OoeEv k, unsigned warp, uint64_t b = 0, uint64_t c = 0, uint64_t tid = 0) {
+    if (on_ooe_event) on_ooe_event(k, warp, b, c, tid);
+  }
   void err(const char *fmt, ...);
   void count(const std::string &k, uint64_t n = 1) { counters[k] += n; }
 
@@ -509,6 +713,10 @@ private:
 
   // decode queue: shared, in arrival order
   std::deque<Uop> decq_;
+  std::deque<uint64_t> decq_seq_;           ///< each queued uop's arrival number
+  uint64_t next_decq_seq_ = 0;
+  uint32_t decq_flushed_ = 0;               ///< slots a squash flushed this cycle
+  unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
 
   // reservation stations and the matrix
   std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU
@@ -531,10 +739,65 @@ private:
   // masked load and its copy), and whether its value has landed
   std::vector<std::array<unsigned, 2>> gprod_, pprod_;
 
-  // free lists: FIFO, so a freed register comes back late with a stale value
-  std::deque<unsigned> gfree_, pfree_;
+  // free lists: bit-vectors with rotating-start allocation (OI-22)
+  FreeVec gfree_, pfree_;
   std::vector<uint8_t> gowner_, powner_;      ///< slot + 1, 0 = free
   std::vector<uint8_t> gever_;                ///< ever allocated (reg_reuse)
+  // Sectioned registers: a name is row * kPos_ + position (kPos_ 1 when not
+  // sectioned, so a name is a row). A row is owned by one tier-1 slot while
+  // any of its sections is live (OI-29); gfree_ holds the wholly free rows.
+  unsigned kPos_ = 1;
+  std::vector<uint8_t> gw_;                   ///< name -> width code
+  std::vector<uint8_t> rowOwner_, rowSec_;    ///< row -> slot + 1; live sections
+  // The ready path as the RTL builds it (OA-1; A-62, A-73, OA-4): each
+  // producer drives kWakeLines wake lines, its fastest bypass point plus
+  // each bypass penalty, and the PRF read; each matrix cell selects one.
+  std::vector<unsigned> pens_;        ///< the distinct penalties, sorted
+  uint64_t serial_ = 0;
+  bool pens_fit_ = true;              ///< at most kWakeLines - 1 of them
+public:
+  static constexpr unsigned kWakeLines = 4, kLateLine = kWakeLines - 1;
+  /// A matrix cell: entry i waits on entry j.
+  bool depBit(unsigned i, unsigned j) const { return cell(i, j) & 1; }
+  /// The wake line cell (i, j) selects: a bypass penalty's index into the
+  /// producer's lines, or kLateLine for the PRF read.
+  unsigned cellCode(unsigned i, unsigned j) const;
+  /// Producer j's wake line k this cycle.
+  bool wakeLine(unsigned j, unsigned k) const;
+  /// Whether the configured penalties fit the lines (a knob-set table may
+  /// not); the structural check runs only when they do.
+  bool wakeLinesFit() const { return pens_fit_; }
+  /// A number unique to this core among all constructed in the process, so
+  /// an observer can tell a new core from one at a reused address.
+  uint64_t serial() const { return serial_; }
+  /// The GPR row free list and the predicate free list (ooe_freelist).
+  const FreeVec &gprFree() const { return gfree_; }
+  const FreeVec &predFree() const { return pfree_; }
+  unsigned rsEntries() const { return n_; }
+  bool rsValid(unsigned e) const { return rs_[e].valid; }
+  bool rsIssued(unsigned e) const { return rs_[e].issued; }
+  /// Allocation order (smaller is older): what ooe_age's matrix encodes.
+  uint64_t rsAge(unsigned e) const { return rs_[e].age; }
+  /// The decode queue in arrival order, for ooe_decq: each uop's tier-1
+  /// slot and its arrival number (a count over the core's life).
+  struct DecqView { unsigned slot; uint64_t seq; };
+  std::vector<DecqView> decodeQueue() const;
+  /// Slots whose decode-queue uops a squash dropped since this cycle began.
+  uint32_t decqFlushed() const { return decq_flushed_; }
+  /// The first RCU-class entry index past the last; MIU entries follow.
+  unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
+  bool rsReady(unsigned e) const { return rowReady(e); }
+  unsigned nameRow(unsigned n) const { return n / kPos_; }
+  unsigned namePos(unsigned n) const { return n % kPos_; }
+  bool isZeroName(unsigned n) const { return n / kPos_ == cfg_.phys_zero; }
+  unsigned zeroName() const { return cfg_.phys_zero * kPos_; }
+  unsigned nameWidth(unsigned n) const { return n < gw_.size() ? gw_[n] : 0; }
+  /// The sections a register occupies; none for the zero register.
+  unsigned sectionsOf(unsigned n) const {
+    if (isZeroName(n)) return 0;
+    return cfg_.sectioned ? secMask(nameWidth(n), namePos(n)) : 0xFu;
+  }
+private:
 
   // inputs not yet taken
   std::vector<Done> dones_;
@@ -551,6 +814,11 @@ private:
   uint64_t free_mask_ = 0;
   std::deque<Commit> commits_;
   std::deque<Memop> discards_;       ///< bulk discards, waiting for a slot
+  // granted last cycle, in the payload-read stage (payload_stages = 1)
+  bool cancel_live_ = false;          ///< a transitive cancel still spreading
+  unsigned cancel_depth_ = 0;
+  std::vector<Issue> held_issues_;
+  std::vector<Memop> held_memops_;
 };
 
 } // namespace ooe

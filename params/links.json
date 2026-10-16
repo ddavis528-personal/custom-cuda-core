@@ -2,7 +2,7 @@
   "_doc": [
     "WHERE EACH CHANNEL'S SEQUENTIAL REPEATERS LIVE (docs/physical.md, 'Wrappers and links').",
     "",
-    "Every block instance sits in a hardening wrapper of the same name (fet, lane_05, ...), and every channel instance runs from its source's wrapper to its destination's. A LINK entry says how many repeater stages (rtl/phys/ccv_seq_rpt.sv) each wrapper along that path holds. Any channel instance no entry covers is 'src:0 > dst:0': abutted, no repeaters.",
+    "Every block instance sits in a hardening wrapper of the same name (fet, lane_05, ...), and every channel instance runs from its source's wrapper to its destination's. A LINK entry says how many repeater stages (rtl/phys/ccv_common_rpt.sv) each wrapper along that path holds. Any channel instance no entry covers is 'src:0 > dst:0': abutted, no repeaters.",
     "",
     "  channel  the channel name without ccv_, e.g. fet_dec_instr",
     "  copies   which copies of a replicated channel (rcu_lane_ops has 32): \"all\" (the default), or a list such as [5, 6]. An entry naming copies beats an \"all\" entry for those copies; any other overlap is an error.",

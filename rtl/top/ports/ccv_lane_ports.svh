@@ -23,58 +23,22 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
-  // rcu -> lane, slot 0 of 4
-  input  logic rcu_lane_ops_s0_valid,
-  input  ccv_rcu_lane_ops_t rcu_lane_ops_s0_payload,
-  output logic rcu_lane_ops_s0_credit,
-  output logic rcu_lane_ops_s0_stall,
-  // rcu -> lane, slot 1 of 4
-  input  logic rcu_lane_ops_s1_valid,
-  input  ccv_rcu_lane_ops_t rcu_lane_ops_s1_payload,
-  output logic rcu_lane_ops_s1_credit,
-  output logic rcu_lane_ops_s1_stall,
-  // rcu -> lane, slot 2 of 4
-  input  logic rcu_lane_ops_s2_valid,
-  input  ccv_rcu_lane_ops_t rcu_lane_ops_s2_payload,
-  output logic rcu_lane_ops_s2_credit,
-  output logic rcu_lane_ops_s2_stall,
-  // rcu -> lane, slot 3 of 4
-  input  logic rcu_lane_ops_s3_valid,
-  input  ccv_rcu_lane_ops_t rcu_lane_ops_s3_payload,
-  output logic rcu_lane_ops_s3_credit,
-  output logic rcu_lane_ops_s3_stall,
+  // rcu -> lane
+  input  logic rcu_lane_ops_valid,
+  input  ccv_rcu_lane_ops_t rcu_lane_ops_payload,
+  output logic rcu_lane_ops_credit,
+  output logic rcu_lane_ops_stall,
   input  logic rcu_lane_ops_wake,
-  // lane -> rcu, slot 0 of 4
-  output logic lane_rcu_res_s0_valid,
-  output ccv_lane_rcu_res_t lane_rcu_res_s0_payload,
-  input  logic lane_rcu_res_s0_credit,
-  input  logic lane_rcu_res_s0_stall,
-  // lane -> rcu, slot 1 of 4
-  output logic lane_rcu_res_s1_valid,
-  output ccv_lane_rcu_res_t lane_rcu_res_s1_payload,
-  input  logic lane_rcu_res_s1_credit,
-  input  logic lane_rcu_res_s1_stall,
-  // lane -> rcu, slot 2 of 4
-  output logic lane_rcu_res_s2_valid,
-  output ccv_lane_rcu_res_t lane_rcu_res_s2_payload,
-  input  logic lane_rcu_res_s2_credit,
-  input  logic lane_rcu_res_s2_stall,
-  // lane -> rcu, slot 3 of 4
-  output logic lane_rcu_res_s3_valid,
-  output ccv_lane_rcu_res_t lane_rcu_res_s3_payload,
-  input  logic lane_rcu_res_s3_credit,
-  input  logic lane_rcu_res_s3_stall,
+  // lane -> rcu
+  output logic lane_rcu_res_valid,
+  output ccv_lane_rcu_res_t lane_rcu_res_payload,
+  input  logic lane_rcu_res_credit,
+  input  logic lane_rcu_res_stall,
   output logic lane_rcu_res_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
 `ifdef CCV_TRACE
-  , input  logic [63:0] rcu_lane_ops_s0_tid
-  , input  logic [63:0] rcu_lane_ops_s1_tid
-  , input  logic [63:0] rcu_lane_ops_s2_tid
-  , input  logic [63:0] rcu_lane_ops_s3_tid
-  , output logic [63:0] lane_rcu_res_s0_tid
-  , output logic [63:0] lane_rcu_res_s1_tid
-  , output logic [63:0] lane_rcu_res_s2_tid
-  , output logic [63:0] lane_rcu_res_s3_tid
+  , input  logic [63:0] rcu_lane_ops_tid
+  , output logic [63:0] lane_rcu_res_tid
 `endif

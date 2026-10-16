@@ -1,7 +1,7 @@
 //===-- emit_calib.sv - emit-path cycle calibration ---------------------===//
 //
 // Spec: docs/rtl-coding-style.md, event emission
-// Reusable: calibration fixture; clk/rst are generic formals.
+// Calibration fixture; clk/rst are generic formals.
 //
 // WHY A TEST OF THE EMIT PATH IS NOT ENOUGH.
 //

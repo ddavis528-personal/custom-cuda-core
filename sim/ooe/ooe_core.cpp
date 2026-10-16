@@ -28,16 +28,22 @@ std::string Config::apply(const std::string &spec) {
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
-      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"demote_fallback", &demote_fallback},
-      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}};
+      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
+      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}};
+  // `sectioned` itself is not a knob until the adapter places operands by
+  // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
-                                     {"rename_preds", &rename_preds}};
+                                     {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
+                                     {"decq_late_credit", &decq_late_credit}};
   std::stringstream ss(spec);
-  // byp.P.C=N and lat.U=N: the bypass table and the spare units' latencies.
+  // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
+  // table by group, the units' fastest points and the latencies 4-7.
   std::map<std::string, uint8_t *> bt;
-  for (unsigned p = 0; p != kUnits; ++p)
-    for (unsigned g = 0; g != kConsGroups; ++g)
+  for (unsigned p = 0; p != kGroups; ++p)
+    for (unsigned g = 0; g != kGroups; ++g)
       bt["byp." + std::to_string(p) + "." + std::to_string(g)] = &byp[p][g];
+  for (unsigned p = 0; p != kUnits; ++p) u["fast." + std::to_string(p)] = &fast[p];
+  for (unsigned g = 0; g != kGroups; ++g) u["foot." + std::to_string(g)] = &foot_min[g];
   for (unsigned p = 4; p != kUnits; ++p) u["lat." + std::to_string(p)] = &unit_lat[p];
   std::string kv;
   while (std::getline(ss, kv, ',')) {
@@ -58,6 +64,28 @@ std::string Config::apply(const std::string &spec) {
 
 std::string Config::check() const {
   char buf[200];
+  if (payload_stages > 1) return "payload_stages: 0 or 1";
+  if (rename_stages < 1) return "rename_stages: at least 1";
+  if (place > 4) return "place: 0 (home = slot), 1 (home = 0), 2 (rotate from 0), 3 (rotate from slot) or 4 (slot + register)";
+  for (unsigned f : foot_min)
+    if (f != 0 && f != 1 && f != 2 && f != 4) return "foot.G: 0, 1, 2 or 4 sections";
+  // V-59 (elaboration): every wake offset is at least 2 + the cancel's hop
+  // time, 1 cycle, so a transitive cancel lands before the next hop's ready
+  // computation (OA-1). Wakes are raised a cycle early, so a dependant of a
+  // producer granted at t is selected no sooner than t + 3.
+  {
+    unsigned lo = std::min({lat_rcu, lat_lane, lat_l1_wake});
+    for (unsigned u = 0; u != kUnits; ++u) {
+      if (unit_lat[u]) lo = std::min(lo, unit_lat[u]);
+      for (unsigned pg = 0; pg != kGroups && bypass; ++pg)
+        for (unsigned cg = 0; cg != kGroups; ++cg)
+          if (bypWake(u, pg, cg)) lo = std::min(lo, bypWake(u, pg, cg));
+    }
+    if (lo < 3) {
+      std::snprintf(buf, sizeof buf, "V-59: a wake offset of %u, under 2 + the 1-cycle cancel hop", lo);
+      return buf;
+    }
+  }
   // V-31: ceiling + (slots - 1) x floor <= rename pool, both pools (A-40).
   const unsigned gren = phys_regs - slots * kArchGprs;
   if (phys_regs < slots * kArchGprs || ren_ceil + (slots - 1) * ren_floor > gren) {
@@ -80,13 +108,12 @@ std::string Config::check() const {
   if (ckpts > (1u << ccv::prov::kWCkptId)) return "ckpts exceeds checkpoint_id";
   if (issue_width == 0 || rename_width == 0 || retire_per_rob == 0) return "a zero width";
   if (lat_lane_byp > lat_lane) return "CCV_LAT_LANE_BYP exceeds CCV_LAT_LANE";
-  for (unsigned p = 0; p != kUnits; ++p)
-    for (unsigned g = 0; g != kConsGroups; ++g)
-      if (byp[p][g] && (byp[p][g] >= unitLat(p) || byp[p][g] == 0xFF)) {
-        std::snprintf(buf, sizeof buf, "bypass %u -> %u is %u cycles, not under unit %u's "
-                      "latency %u", p, g, unsigned(byp[p][g]), p, unitLat(p));
-        return buf;
-      }
+  for (unsigned u = 0; u != kUnits; ++u)
+    if (fastOf(u) && fastOf(u) >= unitLat(u)) {
+      std::snprintf(buf, sizeof buf, "unit %u's fastest bypass %u is not under its latency %u",
+                    u, fastOf(u), unitLat(u));
+      return buf;
+    }
   return "";
 }
 
@@ -101,23 +128,27 @@ SchedAttr SchedAttr::decode(uint32_t a) {
   s.branch = (a >> 5) & 1u;
   s.serial = (a >> 3) & 3u;
   s.lat_class = a & 7u;
+  s.bypass_group = (a >> 13) & 7u;
   return s;
 }
 
 // ---- construction ------------------------------------------------------------------
 
 Core::Core(const Config &cfg) : cfg_(cfg) {
+  static uint64_t next_serial = 0;
+  serial_ = ++next_serial;
   const std::string e = cfg_.check();
   if (!e.empty()) {
     std::fprintf(stderr, "ooe: %s\n", e.c_str());
     std::abort();
   }
+  kPos_ = cfg_.sectioned ? 4 : 1;
   slot_.resize(cfg_.slots);
   for (Slot &s : slot_) {
     s.rob.resize(cfg_.rob_depth);
     s.ckpt.resize(cfg_.ckpts);
-    s.rat.fill(cfg_.phys_zero);
-    s.crat.fill(cfg_.phys_zero);
+    s.rat.fill(zeroName());
+    s.crat.fill(zeroName());
     s.prat.fill(cfg_.pred_zero);
     s.cprat.fill(cfg_.pred_zero);
   }
@@ -128,13 +159,22 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   woff_.assign(size_t(n_) * n_, kLateOff);
   cok_.assign(size_t(n_) * n_, 0);
   skew_ = cfg_.inject_early_wake ? 1 : 0;
-  gprod_.assign(cfg_.phys_regs, {kNoEntry, kNoEntry});
+  for (const auto &row : cfg_.byp)
+    for (uint8_t v : row)
+      if (v != Config::kNoByp && std::find(pens_.begin(), pens_.end(), v) == pens_.end()) pens_.push_back(v);
+  std::sort(pens_.begin(), pens_.end());
+  pens_fit_ = pens_.size() <= kWakeLines - 1;
+  const unsigned names = cfg_.phys_regs * kPos_;
+  gprod_.assign(names, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
-  for (unsigned p = 0; p != cfg_.phys_regs; ++p) gfree_.push_back(p);
-  for (unsigned p = 0; p != cfg_.pred_regs; ++p) pfree_.push_back(p);
-  gowner_.assign(cfg_.phys_regs, 0);
+  gfree_.reset(cfg_.phys_regs);
+  pfree_.reset(cfg_.pred_regs);
+  gowner_.assign(names, 0);
   powner_.assign(cfg_.pred_regs, 0);
-  gever_.assign(cfg_.phys_regs, 0);
+  gever_.assign(names, 0);
+  gw_.assign(names, 0);
+  rowOwner_.assign(cfg_.phys_regs, 0);
+  rowSec_.assign(cfg_.phys_regs, 0);
 }
 
 void Core::ev(const char *name, unsigned warp, uint64_t a, uint64_t b, uint64_t tid) {
@@ -163,12 +203,30 @@ Core::RobEntry *Core::byTag(unsigned tag, unsigned *slot) {
 
 // ---- inputs ---------------------------------------------------------------------------
 
+std::vector<Core::DecqView> Core::decodeQueue() const {
+  std::vector<DecqView> v;
+  for (size_t i = 0; i != decq_.size(); ++i) v.push_back({unsigned(slotOf(decq_[i].warp)), decq_seq_[i]});
+  return v;
+}
+
 bool Core::canAccept(unsigned warp) const {
   const unsigned max = cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq;
-  if (decq_.size() >= cfg_.decq) return false;
+  if (decqHeld() >= cfg_.decq) return false;
   const int s = slotOf(warp);
   if (s < 0) return true;      // refused, and reported, when it is taken
   return slot_[s].decq < max;
+}
+
+void Core::noteRefused(unsigned warp) {
+  if (decqHeld() >= cfg_.decq) {
+    count("stall.decq_full");
+    oev(OoeEv::kDecqFull, warp, decq_.size());
+    return;
+  }
+  count("stall.decq_warp_max");
+  const int s = slotOf(warp);
+  oev(OoeEv::kDecqWarpMax, warp, s < 0 ? 0 : slot_[s].decq,
+      cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq);
 }
 
 /// Into the decode queue, after this cycle's rename: renamed from the next.
@@ -181,8 +239,8 @@ void Core::uop(const Uop &u) {
     return;
   }
   decq_.push_back(u);
+  decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
-  if (decq_.size() == cfg_.decq) count("stall.decq_full");
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
@@ -199,6 +257,10 @@ void Core::kill(uint32_t mask, unsigned epoch) {
 
 void Core::cycle(uint64_t now) {
   now_ = now;
+  gfree_.clock();      // last cycle's frees become allocatable
+  pfree_.clock();
+  decq_flushed_ = 0;
+  decq_freed_ = 0;
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -206,6 +268,12 @@ void Core::cycle(uint64_t now) {
   control();           // RAU's alloc and demote, kill, barrier release
   retire();
   select();
+  // Payload read (OA-1): what select granted leaves on the channels a cycle
+  // later, so this cycle's grants wait and last cycle's go out.
+  if (cfg_.payload_stages) {
+    std::swap(out.issues, held_issues_);
+    std::swap(out.memops, held_memops_);
+  }
   rename();            // the decode queue; uop() refills it after the clock
   sendRedirect();
   if (check_invariants) checkInvariants();
@@ -213,7 +281,8 @@ void Core::cycle(uint64_t now) {
 
 bool Core::busy() const {
   if (!decq_.empty() || !redirects_.empty() || free_mask_ ||
-      !commits_.empty() || !discards_.empty())
+      !commits_.empty() || !discards_.empty() || !held_issues_.empty() ||
+      !held_memops_.empty())
     return true;
   for (const Slot &s : slot_) {
     if (s.count) return true;
@@ -224,7 +293,7 @@ bool Core::busy() const {
 
 std::vector<unsigned> Core::committedGprMap(unsigned warp) const {
   const int s = slotOf(warp);
-  if (s < 0) return std::vector<unsigned>(kArchGprs, cfg_.phys_zero);
+  if (s < 0) return std::vector<unsigned>(kArchGprs, zeroName());
   return std::vector<unsigned>(slot_[s].crat.begin(), slot_[s].crat.end());
 }
 
@@ -240,7 +309,7 @@ std::array<unsigned, kArchPreds> Core::committedPredMap(unsigned warp) const {
 
 bool Core::gprAllowed(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (gfree_.size() < n) return false;
+  if (gfree_.ready() < n) return false;
   if (s.held_gpr + n > kArchGprs + cfg_.ren_ceil) return false;
   // Every other tier-1 slot, occupied or not, keeps its architectural 16
   // plus its floor reserved: free registers must still cover them.
@@ -250,12 +319,12 @@ bool Core::gprAllowed(unsigned slot, unsigned n) const {
       const unsigned want = kArchGprs + cfg_.ren_floor;
       owed += slot_[v].held_gpr < want ? want - slot_[v].held_gpr : 0;
     }
-  return gfree_.size() - n >= owed;
+  return gfree_.ready() - n >= owed;
 }
 
 bool Core::predAllowed(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (pfree_.size() < n) return false;
+  if (pfree_.ready() < n) return false;
   if (s.held_pred + n > kArchPreds + cfg_.pred_ren_ceil) return false;
   unsigned owed = 0;
   for (unsigned v = 0; v != slot_.size(); ++v)
@@ -263,12 +332,12 @@ bool Core::predAllowed(unsigned slot, unsigned n) const {
       const unsigned want = kArchPreds + cfg_.pred_ren_floor;
       owed += slot_[v].held_pred < want ? want - slot_[v].held_pred : 0;
     }
-  return pfree_.size() - n >= owed;
+  return pfree_.ready() - n >= owed;
 }
 
 unsigned Core::allocGpr(unsigned slot) {
-  const unsigned p = gfree_.front();
-  gfree_.pop_front();
+  if (cfg_.sectioned) return allocSlice(slot, 0, 0);
+  const unsigned p = gfree_.alloc();
   if (gowner_[p]) err("V-03: GPR p%u allocated while slot %u owns it", p, gowner_[p] - 1);
   gowner_[p] = uint8_t(slot + 1);
   ++slot_[slot].held_gpr;
@@ -277,10 +346,117 @@ unsigned Core::allocGpr(unsigned slot) {
   return p;
 }
 
+/// Sectioned allocation (OI-29). A 32-bit register takes a free row. A
+/// narrow one takes its sections at the wanted position in a row its slot
+/// already owns, else a free row; failing both, another position in an
+/// owned row (its footprint then widens, but it does not wait).
+unsigned Core::planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const {
+  if (w == 0) { pos = 0; return allow_row && gfree_.ready() ? 1 : 2; }
+  const unsigned step = w == 1 ? 2 : 1;
+  pos = w == 1 ? (pos & 2u) : (pos & 3u);
+  auto partial = [&](unsigned p) {
+    const unsigned m = secMask(w, p);
+    for (unsigned row = 0; row != cfg_.phys_regs; ++row)
+      if (rowOwner_[row] == slot + 1 && !(rowSec_[row] & m)) return true;
+    return false;
+  };
+  if (partial(pos)) return 0;
+  if (allow_row && gfree_.ready()) return 1;
+  for (unsigned k = step; k < 4; k += step) {
+    const unsigned p = (pos + k) & 3u;
+    if (partial(p)) { pos = p; return 0; }
+  }
+  return 2;
+}
+
+unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos) {
+  unsigned want = pos;
+  const unsigned plan = planSlice(slot, w, want, gprAllowed(slot, 1));
+  if (plan == 2) { err("V-04: no slice for slot %u at width %u", slot, w); return zeroName(); }
+  const unsigned m = secMask(w, want);
+  unsigned row = cfg_.phys_regs;
+  if (plan == 0) {
+    for (unsigned r = 0; r != cfg_.phys_regs && row == cfg_.phys_regs; ++r)
+      if (rowOwner_[r] == slot + 1 && !(rowSec_[r] & m)) row = r;
+  } else {
+    row = gfree_.alloc();
+    if (rowOwner_[row]) err("V-03: row %u allocated while slot %u owns it", row, rowOwner_[row] - 1);
+    rowOwner_[row] = uint8_t(slot + 1);
+    ++slot_[slot].held_gpr;
+  }
+  rowSec_[row] = uint8_t(rowSec_[row] | m);
+  const unsigned p = row * kPos_ + want;
+  gw_[p] = uint8_t(w);
+  if (gever_[p]) ev("reg_reuse", slot_[slot].warp, p);
+  gever_[p] = 1;
+  if (want != (w == 1 ? (pos & 2u) : (pos & 3u))) count("place.fallback_position");
+  return p;
+}
+
+/// Where a narrow destination goes (AR-15, OA-14): a merged op's old
+/// destination's position; else an existing narrow source's, never a
+/// third; else the warp's home position (place: slot index, 0, or the
+/// slot's rotating counter).
+unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
+  const unsigned w = u.w;
+  if (!cfg_.sectioned || w == 0) return 0;
+  const Slot &s = slot_[slot];
+  auto align = [&](unsigned p) { return w == 1 ? (p & 2u) : (p & 3u); };
+  const unsigned old = s.rat[u.dst & 15];
+  if (merge && !isZeroName(old) && nameWidth(old) == w) return align(namePos(old));
+  for (unsigned i = 0; i != 3; ++i) {
+    if (!((u.shape.gpr_reads >> i) & 1u)) continue;
+    const unsigned n = s.rat[u.src[i] & 15];
+    if (!isZeroName(n) && nameWidth(n) != 0) return align(namePos(n));
+  }
+  const unsigned home = cfg_.place == 1   ? 0
+                        : cfg_.place == 2 ? s.home_ctr
+                        : cfg_.place == 3 ? s.home_ctr + slot
+                        : cfg_.place == 4 ? slot + (u.dst & 15)
+                                          : slot;
+  return w == 1 ? (home % 2) * 2 : home % 4;
+}
+
+/// An entry's resources (OI-31, OI-33, AR-12). A memop takes the MIU pipes
+/// of its data register's sections; an op RCU executes, or a
+/// warp-collective or predicate op, takes R; a lane op takes the union of
+/// its operands' sections (OI-30 revised), widened to its unit's minimum.
+unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
+  const Uop &u = r.u;
+  const SchedAttr &a = u.attr;
+  if (r.is_mem && !copy_half) {
+    // The data register: a load's destination; a store's highest read source.
+    unsigned data = r.alloc_gpr ? r.pnew : zeroName();
+    if (!r.alloc_gpr)
+      for (unsigned i = 0; i != 3; ++i)
+        if ((u.shape.gpr_reads >> i) & 1u) data = r.psrc[i];
+    unsigned m = sectionsOf(data);
+    if (!m) m = 0xFu;
+    return m << 5;
+  }
+  if (!copy_half && (a.exec_rcu || u.shape.exit || u.decode_fault)) return 1u << 4;
+  const unsigned fm = copy_half ? 1 : cfg_.foot_min[a.bypass_group & 7];
+  if (!fm) return 1u << 4;
+  unsigned m = 0;
+  if (r.alloc_gpr) m |= sectionsOf(r.pnew);
+  if (copy_half) {
+    m |= sectionsOf(r.pold);
+  } else {
+    for (unsigned i = 0; i != 3; ++i)
+      if ((u.shape.gpr_reads >> i) & 1u) m |= sectionsOf(r.psrc[i]);
+    if (r.merge && r.alloc_gpr) m |= sectionsOf(r.pold);
+  }
+  if (!m) m = 1;                       // no GPR operand: section 0
+  if (cfg_.inject_narrow_footprint) return m & (~m + 1u);
+  if (!widen) return m;                // operand spread alone (AR, OI-34)
+  if (fm >= 4) m = 0xFu;
+  else if (fm == 2) m |= ((m & 0x5u) << 1) | ((m & 0xAu) >> 1);
+  return m;
+}
+
 unsigned Core::allocPred(unsigned slot, unsigned arch) {
   if (!cfg_.rename_preds) return cfg_.pred_window(slot_[slot].warp, arch);
-  const unsigned p = pfree_.front();
-  pfree_.pop_front();
+  const unsigned p = pfree_.alloc();
   if (powner_[p]) err("V-03: predicate pp%u allocated while slot %u owns it", p, powner_[p] - 1);
   powner_[p] = uint8_t(slot + 1);
   ++slot_[slot].held_pred;
@@ -288,7 +464,26 @@ unsigned Core::allocPred(unsigned slot, unsigned arch) {
 }
 
 void Core::freeGpr(unsigned slot, unsigned p) {
-  if (p == cfg_.phys_zero) return;          // never freed (A-64)
+  if (isZeroName(p)) return;                // never freed (A-64)
+  if (cfg_.sectioned) {
+    // A slice frees its sections; its row returns to the pool when its last
+    // live section frees (OI-29).
+    const unsigned row = nameRow(p);
+    if (row >= cfg_.phys_regs) { err("V-29: free of GPR %u outside the pool", p); return; }
+    if (rowOwner_[row] != slot + 1) {
+      err("V-62: slot %u frees p%u in row %u, owned by %d", slot, p, row, int(rowOwner_[row]) - 1);
+      return;
+    }
+    const unsigned m = sectionsOf(p);
+    if ((rowSec_[row] & m) != m) { err("V-01: GPR p%u freed twice", p); return; }
+    rowSec_[row] = uint8_t(rowSec_[row] & ~m);
+    if (!rowSec_[row]) {
+      rowOwner_[row] = 0;
+      --slot_[slot].held_gpr;
+      if (!gfree_.free(row)) err("V-01: row %u freed twice", row);
+    }
+    return;
+  }
   if (p >= cfg_.phys_regs) { err("V-29: free of GPR %u outside the pool", p); return; }
   if (gowner_[p] != slot + 1) {
     err("V-01: slot %u frees GPR p%u, owned by %d", slot, p, int(gowner_[p]) - 1);
@@ -296,7 +491,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
   }
   gowner_[p] = 0;
   --slot_[slot].held_gpr;
-  gfree_.push_back(p);
+  if (!gfree_.free(p)) err("V-01: GPR p%u freed twice", p);
 }
 
 void Core::freePred(unsigned slot, unsigned p) {
@@ -308,7 +503,7 @@ void Core::freePred(unsigned slot, unsigned p) {
   }
   powner_[p] = 0;
   --slot_[slot].held_pred;
-  pfree_.push_back(p);
+  if (!pfree_.free(p)) err("V-02: predicate pp%u freed twice", p);
 }
 
 // ---- reservation stations and the dependency matrix (A-62, A-73) ---------------------
@@ -325,6 +520,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
       rs_[e].rob = rob;
       rs_[e].copy = copy;
       rs_[e].age = next_age_++;
+      rs_[e].eligible_at = now_ + cfg_.rename_stages;
       for (unsigned j = 0; j != n_; ++j) {
         cell(e, j) = 0;
         woff_[size_t(e) * n_ + j] = kLateOff;
@@ -359,7 +555,7 @@ void Core::rsFree(unsigned e) {
 /// The cell waits for a bypass wake only if every use it makes of the
 /// producer may take that bypass (V-48), else for the full-latency wake.
 void Core::dep(unsigned e, unsigned preg, bool pred, int group) {
-  if (pred ? preg == cfg_.pred_zero : preg == cfg_.phys_zero) return;
+  if (pred ? preg == cfg_.pred_zero : isZeroName(preg)) return;
   const auto &prods = pred ? pprod_[preg] : gprod_[preg];
   for (unsigned j : prods) {
     if (j == kNoEntry || !rs_[j].valid) continue;
@@ -372,8 +568,8 @@ void Core::dep(unsigned e, unsigned preg, bool pred, int group) {
     // memop, a copy-only op or a unit that wakes on its done.
     if (cfg_.bypass && group >= 0 && !p.copy && !pr.is_mem && !pr.u.attr.cross_lane &&
         unit < Config::kUnits && cfg_.unitLat(unit)) {
-      const unsigned b = cfg_.bypOff(unit, unsigned(group));
-      if (b && b < cfg_.unitLat(unit)) off = uint8_t(b);
+      const unsigned b = cfg_.bypWake(unit, pr.u.attr.bypass_group, unsigned(group));
+      if (b) off = uint8_t(b);
     }
     uint8_t &c = cell(e, j);
     uint8_t &w = woff_[size_t(e) * n_ + j];
@@ -384,14 +580,14 @@ void Core::dep(unsigned e, unsigned preg, bool pred, int group) {
 
 void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   const Uop &u = r.u;
-  // The consumer's bypass group for its GPR operands: its unit (0 for an
-  // op RCU executes), or the memop group -- RCU sends a memop's address and
-  // data to MIU.
-  const int group = r.is_mem ? int(Config::kConsMem) : int(u.attr.lat_class & 7);
+  // The consumer's bypass group for its GPR operands: its bypass_group; a
+  // memop consumes as address calculation, since RCU sends its address and
+  // data to MIU; and an op RCU executes takes no bypass (V-48).
+  const int group = r.is_mem ? int(Config::kGrpAddr) : u.attr.exec_rcu ? -1 : int(u.attr.bypass_group);
   if (copy_half) {
-    // The copy-only op: the old destination through a lane (unit 1) as
-    // merge_data, under the load's guard (A-38).
-    dep(e, r.pold, false, 1);
+    // The copy-only op: the old destination through a lane as merge_data,
+    // under the load's guard (A-38).
+    dep(e, r.pold, false, int(Config::kGrpInt));
     if (u.shape.guard) dep(e, r.ppguard, true, -1);
     return;
   }
@@ -418,6 +614,25 @@ bool Core::cellOk(unsigned i, unsigned j) const {
   // stands (a cancel clears issued). dep() gives offsets only to timed
   // producers.
   return p.issued && now_ + skew_ >= p.issue_at + w;
+}
+
+unsigned Core::cellCode(unsigned i, unsigned j) const {
+  const uint8_t w = woff_[size_t(i) * n_ + j];
+  if (w == kLateOff) return kLateLine;
+  const unsigned unit = slot_[rs_[j].slot].rob[rs_[j].rob].u.attr.lat_class;
+  const unsigned pen = w - cfg_.fastOf(unit);
+  for (unsigned k = 0; k != pens_.size(); ++k)
+    if (pens_[k] == pen) return k;
+  return kWakeLines;   // no line carries it: the structural check reports it
+}
+
+bool Core::wakeLine(unsigned j, unsigned k) const {
+  const RsEntry &p = rs_[j];
+  if (k == kLateLine) return p.late;
+  if (k >= pens_.size() || !p.issued) return false;
+  const unsigned unit = slot_[p.slot].rob[p.rob].u.attr.lat_class;
+  const unsigned f = unit < Config::kUnits ? cfg_.fastOf(unit) : 0;
+  return f && now_ + skew_ >= p.issue_at + f + pens_[k];
 }
 
 bool Core::rowReady(unsigned i) const {
@@ -491,14 +706,28 @@ void Core::cancel(unsigned e) {
   x.spec = false;
   x.on_completion = true;
   count("cancel.miss");
-  unsigned depth = 0;
-  for (bool changed = true; changed; ++depth) {
-    changed = false;
-    if (cfg_.inject_shallow_cancel && depth == 1) break;
-    for (unsigned i = 0; i != n_; ++i) {
+  // One hop now; cancelHop() takes one more a cycle until nothing changes
+  // (OA-1: transitive cancel moves one hop per cycle, held by V-59).
+  if (!cancel_live_) cancel_depth_ = 0;
+  cancel_live_ = true;
+  cancelHop(e);
+}
+
+/// One hop of transitive cancel: every issued, unconfirmed entry whose row
+/// is no longer ready -- a producer it issued on was withdrawn or returned
+/// to Waiting -- returns to Waiting. False when nothing changed.
+bool Core::cancelHop(unsigned root) {
+  // Decide the whole hop first, so a return to Waiting in this hop does not
+  // reach that entry's own dependants until the next.
+  std::vector<unsigned> hop;
+  for (unsigned i = 0; i != n_; ++i) {
+    const RsEntry &y = rs_[i];
+    if (y.valid && y.issued && !y.confirmed && i != root && !rowReady(i)) hop.push_back(i);
+  }
+  bool changed = false;
+  {
+    for (unsigned i : hop) {
       RsEntry &y = rs_[i];
-      if (!y.valid || !y.issued || y.confirmed || i == e) continue;
-      if (rowReady(i)) continue;
       // Issued on a wake that has been withdrawn: back to Waiting.
       RobEntry &r = slot_[y.slot].rob[y.rob];
       if (r.is_mem || y.copy) {
@@ -517,11 +746,13 @@ void Core::cancel(unsigned e) {
         r.resolved = false;
       }
       count("cancel.replay");
-      ev("cancel", slot_[y.slot].warp, i, depth + 1, r.u.tid);
+      ev("cancel", slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
+      oev(OoeEv::kCancelReplay, slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
       changed = true;
     }
   }
-  ++histograms["cancel_depth"][depth];
+  if (changed) ++cancel_depth_;
+  return changed;
 }
 
 /// Confirm results that can no longer be cancelled, oldest first (producers
@@ -548,6 +779,13 @@ void Core::confirmPass() {
 }
 
 void Core::advanceWakes() {
+  // Transitive cancel's next hop, from what the last cycle withdrew.
+  if (cancel_live_) {
+    if (cfg_.inject_shallow_cancel || !cancelHop(kNoEntry)) {
+      ++histograms["cancel_depth"][cancel_depth_];
+      cancel_live_ = false;
+    }
+  }
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
@@ -556,7 +794,8 @@ void Core::advanceWakes() {
   // L1 contract: no completion at CCV_LAT_L1_CMPL is the miss (A-46, A-54).
   for (unsigned e = cfg_.rs_rcu; e != n_; ++e) {
     RsEntry &x = rs_[e];
-    if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.lat_l1_cmpl) cancel(e);
+    if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+      cancel(e);
   }
   // Copy-only ops land at their contracted cycle and send no done (A-38).
   for (unsigned s = 0; s != slot_.size(); ++s)
@@ -595,7 +834,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   // A ROB entry outlives its RS entries: it completes only once every one
   // is confirmed and freed, so no result it reports can still be cancelled
   // and no RS entry ever names a retired ROB slot.
-  c = c && r.rs_main == kNoEntry && r.rs_copy == kNoEntry;
+  c = c && ((r.rs_main == kNoEntry && r.rs_copy == kNoEntry) || cfg_.inject_complete_early);
   if (!c) return;
   r.complete = true;
   // A branch acts on its outcome only once confirmed: a resolution read
@@ -618,7 +857,7 @@ void Core::takeCompletions() {
     const unsigned idx = d.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (!r->is_mem) {
       const unsigned lc = r->u.attr.lat_class;
-      const uint64_t took = now_ - r->rcu_issue_at;
+      const uint64_t took = now_ - (r->rcu_issue_at + cfg_.payload_stages);
       ++histograms["done_after_issue.lat" + std::to_string(lc)][took];
       // V-35, the arrival-cycle checker on ccv_rcu_ooe_done (repo Q-53).
       // A dependant issued at the contracted latency reaches RCU one issue
@@ -676,9 +915,10 @@ void Core::takeCompletions() {
       RsEntry &x = rs_[r->rs_main];
       if (x.spec) {
         // An L1 hit lands at exactly CCV_LAT_L1_CMPL (A-46, V-44).
-        if (now_ != x.issue_at + cfg_.lat_l1_cmpl)
+        if (now_ != x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
           err("V-44: rob tag %u completed %llu cycles after issue; the L1 contract is %u",
-              c.rob_tag, (unsigned long long)(now_ - x.issue_at), cfg_.lat_l1_cmpl);
+              c.rob_tag, (unsigned long long)(now_ - x.issue_at - cfg_.payload_stages),
+              cfg_.lat_l1_cmpl);
         x.spec = false;               // the speculative wake stands
         count("load.l1_hit");
       } else {
@@ -768,12 +1008,12 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
   bool stores_at_miu = false;
-  unsigned n = 0, deferred = 0;
+  unsigned n = 0, deferred = 0, other = 0;
   for (unsigned k = first; k < s.count; ++k) {
     const unsigned idx = (s.head + k) % cfg_.rob_depth;
     RobEntry &r = s.rob[idx];
     ++n;
-    if (!to_retirement && r.u.group_mask != gmask) count("squash.cross_group");   // A-31
+    if (!to_retirement && r.u.group_mask != gmask) { count("squash.cross_group"); ++other; }   // A-31
     if (r.rs_main != kNoEntry) rsFree(r.rs_main);
     if (r.rs_copy != kNoEntry) rsFree(r.rs_copy);
     r.rs_main = r.rs_copy = kNoEntry;
@@ -786,10 +1026,14 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
       r.stale_dones = r.rcu_dones_owed;
       ++deferred;
       ev("deferred_free", s.warp, tagOf(slot, idx), 0, r.u.tid);
+      oev(OoeEv::kDeferredFree, s.warp, tagOf(slot, idx), 0, r.u.tid);
     } else {
       releaseEntry(slot, idx);
     }
   }
+  if (other)
+    oev(OoeEv::kCrossGroupSquash, s.warp, other, tagOf(slot, unsigned(keep_idx)),
+        s.rob[unsigned(keep_idx)].u.tid);
   count("squash.entries", n);
   count("squash.deferred", deferred);
   if (stores_at_miu) {
@@ -809,8 +1053,15 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
   s.tail = (s.head + s.count) % cfg_.rob_depth;
   // Wrong-path uops still in the decode queue: their epoch is stale once the
   // caller advances it, so drop them now and free the space.
+  decq_flushed_ |= 1u << slot;
   for (auto it = decq_.begin(); it != decq_.end();)
-    if (it->warp == s.warp) { it = decq_.erase(it); --s.decq; ev("epoch_drop", s.warp); }
+    if (it->warp == s.warp) {
+      decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+      ++decq_freed_;
+      it = decq_.erase(it);
+      --s.decq;
+      ev("epoch_drop", s.warp);
+    }
     else ++it;
 }
 
@@ -845,8 +1096,8 @@ void Core::releaseSlot(unsigned slot) {
   Slot fresh;
   fresh.rob.resize(cfg_.rob_depth);
   fresh.ckpt.resize(cfg_.ckpts);
-  fresh.rat.fill(cfg_.phys_zero);
-  fresh.crat.fill(cfg_.phys_zero);
+  fresh.rat.fill(zeroName());
+  fresh.crat.fill(zeroName());
   fresh.prat.fill(cfg_.pred_zero);
   fresh.cprat.fill(cfg_.pred_zero);
   s = fresh;
@@ -1084,6 +1335,9 @@ void Core::retire() {
       rt.writes_gpr = r.alloc_gpr;
       rt.dst = r.u.dst & 15;
       rt.pnew = r.pnew;
+      rt.writes_pred = r.alloc_pred;
+      rt.pdst = r.u.pred_dst & 3;
+      rt.ppnew = r.ppnew;
       retired.push_back(rt);
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
       ++s.retired_since_restore;
@@ -1101,12 +1355,14 @@ void Core::retire() {
         out.status.push_back({s.warp, false, true, true, s.retired_since_restore});
         s.miss_reported = true;
         count("demote_trigger.mlc_miss");
+        oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
       const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
       if (stall > lim && !s.stalled_reported) {
         out.status.push_back({s.warp, false, true, h.mlc_miss, s.retired_since_restore});
         s.stalled_reported = true;
         count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
+        oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
       }
     }
   }
@@ -1139,7 +1395,157 @@ bool Core::predHold(unsigned slot, const RobEntry &r) const {
   return false;
 }
 
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost) {
+  std::vector<size_t> win(nres, SIZE_MAX);
+  for (size_t e = 0; e != req.size(); ++e)
+    for (unsigned k = 0; k != nres; ++k)
+      if (((req[e].res >> k) & 1u) && (win[k] == SIZE_MAX || req[e].age < req[win[k]].age)) win[k] = e;
+  std::vector<bool> grant(req.size(), false);
+  for (size_t e = 0; e != req.size(); ++e) {
+    bool all = true, some = false;
+    for (unsigned k = 0; k != nres; ++k)
+      if ((req[e].res >> k) & 1u) {
+        if (win[k] == e) some = true;
+        else all = false;
+      }
+    grant[e] = all && req[e].res != 0;
+    if (lost && !all && some) ++*lost;
+  }
+  return grant;
+}
+
+/// Select over resources (OI-31, OI-33): S0-S3, R and P0-P3, bits 0 to 8.
+/// Each resource grants its oldest ready requester; an entry issues only
+/// if it wins every resource its footprint names, so co-issued footprints
+/// are disjoint by construction (V-60) and no grant count feeds another
+/// pick. The oldest ready entry wins all its resources, so it always
+/// issues. A masked load's copy is a lane op of its own and issues at
+/// least a cycle before its load (V-61).
+void Core::selectSectioned() {
+  constexpr unsigned kRes = 9, kP0 = 5;
+  unsigned busy = 0;
+  std::vector<bool> memop_block(slot_.size(), false);
+  // A bulk discard takes P0 for the cycle, and no memop of its warp goes
+  // with it (V-23).
+  if (!discards_.empty()) {
+    Memop d = discards_.front();
+    discards_.pop_front();
+    d.port = 0;
+    busy |= 1u << kP0;
+    const int si = slotOf(d.warp);
+    if (si >= 0) memop_block[si] = true;
+    out.memops.push_back(d);
+  }
+  auto memopOrderOk = [&](const Slot &s, const RobEntry &r) {
+    // Program order per warp (OI-15), or OA-13's relaxation: a plain load
+    // passes older loads, never a store, atomic, fence or ordered access.
+    const bool plain_load = r.is_load && r.u.ordering == 0 && r.u.attr.mem_kind == kMemKLoad;
+    for (unsigned k = 0; k != s.count; ++k) {
+      const RobEntry &o = s.rob[(s.head + k) % cfg_.rob_depth];
+      if (&o == &r) break;
+      if (!o.valid || !o.is_mem || o.rs_main == kNoEntry || rs_[o.rs_main].issued) continue;
+      if (cfg_.loads_pass_loads && plain_load && o.is_load && o.u.ordering == 0 &&
+          o.u.attr.mem_kind == kMemKLoad)
+        continue;
+      return false;
+    }
+    return true;
+  };
+  auto ready = [&](unsigned e, bool order = true) -> bool {
+    const RsEntry &x = rs_[e];
+    if (!x.valid || x.issued || x.eligible_at > now_ || (x.res & busy)) return false;
+    const Slot &s = slot_[x.slot];
+    if (s.st != WarpState::kActive) return false;
+    if (!rowReady(e)) return false;
+    const RobEntry &r = s.rob[x.rob];
+    if (predHold(x.slot, r)) return false;
+    // The copy's sources are confirmed before it issues, so it cannot be
+    // cancelled once its load has gone (V-61).
+    if (x.copy) return rowConfirmed(e);
+    if (x.cls != RsCls::kMiu) return true;
+    if (memop_block[x.slot] || !rowConfirmed(e)) return false;
+    // V-61: the copy went in an earlier cycle (or has confirmed and freed).
+    if (r.copy && r.rs_copy != kNoEntry && (!rs_[r.rs_copy].issued || rs_[r.rs_copy].issue_at >= now_))
+      return false;
+    return !order || memopOrderOk(s, r);
+  };
+  std::vector<unsigned> cand;
+  for (unsigned e = 0; e != n_; ++e)
+    if (ready(e)) cand.push_back(e);
+  std::vector<PickReq> preq;
+  for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
+  std::vector<unsigned> grant;
+  unsigned lost = 0;
+  const std::vector<bool> won = pickResources(preq, kRes, &lost);
+  for (size_t i = 0; i != cand.size(); ++i)
+    if (won[i]) grant.push_back(cand[i]);
+  if (lost) count("select.lost_resource", lost);   // won a section, lost another
+  std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
+  // inject_double_grant: the oldest lane op, and the oldest memop, left out
+  // are granted anyway, onto sections or pipes a granted op holds.
+  std::vector<unsigned> extra;
+  if (cfg_.inject_double_grant) {
+    unsigned held = 0;
+    for (unsigned e : grant) held |= rs_[e].res;
+    // A memop behind an older one granted this cycle is a candidate too, as
+    // a select issuing the two in program order would make it.
+    std::vector<unsigned> pool = cand;
+    for (unsigned e = 0; e != n_; ++e)
+      if (rs_[e].cls == RsCls::kMiu && std::find(cand.begin(), cand.end(), e) == cand.end() && ready(e, false))
+        pool.push_back(e);
+    for (unsigned grp : {0xFu, 0xFu << 5}) {
+      unsigned x = kNoEntry;
+      for (unsigned e : pool)
+        if ((rs_[e].res & grp) && (rs_[e].res & held & grp) &&
+            std::find(grant.begin(), grant.end(), e) == grant.end() &&
+            (x == kNoEntry || rs_[e].age < rs_[x].age))
+          x = e;
+      if (x != kNoEntry) extra.push_back(x);
+    }
+    grant.insert(grant.end(), extra.begin(), extra.end());
+  }
+  const auto isExtra = [&](unsigned e) { return std::find(extra.begin(), extra.end(), e) != extra.end(); };
+  unsigned used = busy, issued = 0;
+  for (unsigned e : grant) {
+    if ((used & rs_[e].res) && !isExtra(e)) { err("V-60: a resource granted twice in a cycle"); continue; }
+    used |= rs_[e].res;
+    const RsEntry &x = rs_[e];
+    const RobEntry &r = slot_[x.slot].rob[x.rob];
+    unsigned port = unsigned(__builtin_ctz(x.res));
+    // An injected second memop takes MIU's next slot, its pipes still held.
+    if (isExtra(e) && (x.res >> 5)) port = kP0 + 1;
+    const unsigned secs = unsigned(__builtin_popcount(x.res & 0xFu));
+    if (secs) {
+      ++histograms["sections_per_op.w" + std::to_string(r.u.w)][secs];
+      // AR's split (OI-34): by bypass group (the copy apart), the footprint
+      // beside the operands' own spread, so placement and the unit minimum
+      // read separately.
+      const std::string g = x.copy ? "copy" : "g" + std::to_string(r.u.attr.bypass_group & 7);
+      const std::string k = g + ".w" + std::to_string(r.u.w);
+      ++histograms["foot." + k][secs];
+      ++histograms["spread." + k][unsigned(__builtin_popcount(resOf(r, x.copy, false) & 0xFu))];
+    }
+    // V-63: every lane operand inside the footprint.
+    if (!(x.res >> 4) && !cfg_.inject_narrow_footprint) {
+      const unsigned want = resOf(r, x.copy) & 0xFu;
+      if ((want & ~x.res) != 0) err("V-63: rob tag %u has an operand outside its footprint", tagOf(x.slot, x.rob));
+    }
+    if (x.copy) issueCopy(x.slot, x.rob, port);
+    else doIssue(e, port, false, 0);
+    ++issued;
+  }
+  ++histograms["issue_per_cycle"][issued];
+  ++histograms["sections_idle"][4 - unsigned(__builtin_popcount(used & 0xFu))];
+  for (unsigned e : cand)
+    if (!rs_[e].issued) {
+      count("ready_not_selected");
+      oev(OoeEv::kReadyNotSelected, slot_[rs_[e].slot].warp, e, 0, slot_[rs_[e].slot].rob[rs_[e].rob].u.tid);
+    }
+  rr_select_ = (rr_select_ + 1) % slot_.size();
+}
+
 void Core::select() {
+  if (cfg_.sectioned) { selectSectioned(); return; }
   unsigned ports = 0, mports = 0;
   std::vector<bool> memop_block(slot_.size(), false);
   // Bulk discards first: each takes a memop slot, and no memop of the same
@@ -1156,7 +1562,7 @@ void Core::select() {
   // Ready entries per warp, oldest first, per class.
   auto ready = [&](unsigned e, bool miu) -> bool {
     const RsEntry &x = rs_[e];
-    if (!x.valid || x.issued || x.copy) return false;
+    if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive) return false;
     if (!rowReady(e)) return false;
@@ -1212,36 +1618,40 @@ void Core::select() {
   ++histograms["issue_per_cycle"][ports];
   for (unsigned e = 0; e != n_; ++e) {
     const RsEntry &x = rs_[e];
-    if (!x.valid || x.issued || x.copy || slot_[x.slot].st != WarpState::kActive || !rowReady(e))
+    if (!x.valid || x.issued || x.copy || x.eligible_at > now_ ||
+        slot_[x.slot].st != WarpState::kActive || !rowReady(e))
       continue;
     const bool miu = e >= cfg_.rs_rcu;
+    if (miu && !x.ready_seen) {
+      rs_[e].ready_seen = true;
+      rs_[e].ready_since = now_;
+    }
     // Counterfactual (Memory operations): a memop held only on an
     // unconfirmed source while an MIU slot went unused.
-    if (miu && !rowConfirmed(e) && mports != cfg_.memop_width) count("memop.held_unconfirmed");
-    else if (predHold(x.slot, slot_[x.slot].rob[x.rob])) count("hold.pred_window");
-    else count("ready_not_selected");   // per warp per cycle (Events)
+    const unsigned w = slot_[x.slot].warp;
+    const uint64_t tid = slot_[x.slot].rob[x.rob].u.tid;
+    if (miu && !rowConfirmed(e) && mports != cfg_.memop_width) {
+      count("memop.held_unconfirmed");
+      oev(OoeEv::kMemopHeld, w, e, 0, tid);
+    } else if (predHold(x.slot, slot_[x.slot].rob[x.rob])) {
+      count("hold.pred_window");
+    } else {
+      count("ready_not_selected");   // per entry per cycle (Events)
+      oev(OoeEv::kReadyNotSelected, w, e, 0, tid);
+    }
   }
   rr_select_ = (rr_select_ + 1) % slot_.size();
 }
 
-void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port) {
-  RsEntry &x = rs_[e];
-  Slot &s = slot_[x.slot];
-  RobEntry &r = s.rob[x.rob];
+/// The issue a granted entry sends on ccv_ooe_rcu_issue.
+Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port) const {
+  const Slot &s = slot_[slot];
+  const RobEntry &r = s.rob[idx];
   const Uop &u = r.u;
-  x.issued = true;
-  x.issue_at = now_;
-  const bool first = !x.ever_issued;
-  x.ever_issued = true;
-  setWakes(e);
-  // V-05: merge_en = 0 only with a full mask and no guard.
-  if (!r.merge && (u.group_mask != kFullMask || u.shape.guard))
-    err("V-05: rob tag %u issues without merge under a partial mask or guard", tagOf(x.slot, x.rob));
-
   Issue is;
   is.tid = u.tid;
   is.port = port;
-  is.rob_tag = tagOf(x.slot, x.rob);
+  is.rob_tag = tagOf(slot, idx);
   is.warp = s.warp;
   is.issue_mask = u.group_mask;          // V-54: the mask it arrived with
   for (unsigned i = 0; i != 3; ++i) is.psrc[i] = r.psrc[i];
@@ -1258,12 +1668,86 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   is.chwidth = s.chwidth;
   is.guarded = u.shape.guard;
   is.gpr_reads = u.shape.gpr_reads;
+  // The resource group and footprint. Sectioned: the entry's own resources
+  // (resOf). Otherwise every op is full width.
+  is.res = r.is_mem ? Issue::kMemop : u.attr.exec_rcu ? Issue::kRcuOp : Issue::kLaneOp;
+  is.footprint = is.res == Issue::kRcuOp ? 0 : 0xF;
+  if (cfg_.sectioned) {
+    const unsigned m = resOf(r, false);
+    is.res = m >> 5 ? Issue::kMemop : m >> 4 ? Issue::kRcuOp : Issue::kLaneOp;
+    is.footprint = uint8_t(is.res == Issue::kMemop ? m >> 5 : is.res == Issue::kRcuOp ? 0 : m & 0xFu);
+  }
+  is.byp_group = uint8_t((u.attr_raw >> 13) & 7u);
   if (!r.is_mem) {
     is.send_imm = true;
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
     // (the lane ORs its index in), %ctaid for selector 1.
     is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5 : u.shape.srd == 1 ? s.ctaid : u.imm;
+    // Predicate logic's two sources, renamed: each physical predicate with
+    // its negate above it, where DEC's qualifiers were (TI-1).
+    if (u.shape.pred_logic) {
+      constexpr unsigned w = ccv::prov::kWPhysPred;
+      auto q = [&](unsigned pp, unsigned qual) { return pp | ((qual >> 2) & 1u) << w; };
+      is.imm = q(r.pq[0], u.imm & 7) | q(r.pq[1], (u.imm >> 3) & 7) << (w + 1);
+    }
   }
+  return is;
+}
+
+/// The masked load's copy-only op (A-33, A-38): the load's issue under
+/// CCV_OP_PRF_COPY. An unguarded load masked only by its issue mask names
+/// the zero predicate negated: all ones.
+void Core::issueCopy(unsigned slot, unsigned idx, unsigned copy_port) {
+  Slot &s = slot_[slot];
+  RobEntry &r = s.rob[idx];
+  const Uop &u = r.u;
+  const Issue is = makeIssue(slot, idx, copy_port);
+  RsEntry &c = rs_[r.rs_copy];
+  c.issued = true;
+  c.issue_at = now_;
+  c.ever_issued = true;
+  setWakes(r.rs_copy);
+  Issue cp = is;
+  cp.port = copy_port;
+  cp.copy = true;
+  cp.res = Issue::kLaneOp;       // the copy runs through a lane
+  cp.footprint = uint8_t(cfg_.sectioned ? resOf(r, true) & 0xFu : 0xFu);
+  cp.send_imm = true;
+  cp.imm = 0;
+  if (!u.shape.guard) {
+    cp.ppguard = cfg_.pred_zero;
+    cp.pred_neg = true;
+  }
+  out.issues.push_back(cp);
+  r.copy_pending = true;
+  r.copy_land = now_ + cfg_.payload_stages + cfg_.lat_lane;
+  ev("copy", s.warp, is.rob_tag, 0, u.tid);
+  oev(OoeEv::kCopyIssue, s.warp, is.rob_tag, copy_port, u.tid);
+  ev("issue", s.warp, copy_port, r.rs_copy, u.tid);
+}
+
+void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port) {
+  RsEntry &x = rs_[e];
+  Slot &s = slot_[x.slot];
+  RobEntry &r = s.rob[x.rob];
+  const Uop &u = r.u;
+  x.issued = true;
+  x.issue_at = now_;
+  // Memop hold cycles (Events): from the first cycle its operands were all
+  // woken to its issue, the cost of waiting for confirmation.
+  if (x.cls == RsCls::kMiu) {
+    const uint64_t held = x.ready_seen ? now_ - x.ready_since : 0;
+    ++histograms["memop_hold_cycles"][held];
+    oev(OoeEv::kMemopHoldCycles, s.warp, tagOf(x.slot, x.rob), held, u.tid);
+  }
+  const bool first = !x.ever_issued;
+  x.ever_issued = true;
+  setWakes(e);
+  // V-05: merge_en = 0 only with a full mask and no guard.
+  if (!r.merge && (u.group_mask != kFullMask || u.shape.guard))
+    err("V-05: rob tag %u issues without merge under a partial mask or guard", tagOf(x.slot, x.rob));
+
+  const Issue is = makeIssue(x.slot, x.rob, port);
   out.issues.push_back(is);
   if (!r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;
   r.rcu_issue_at = now_;
@@ -1271,40 +1755,17 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   if (first) {
     if (r.merge) ev("merge", s.warp, is.rob_tag, 0, u.tid);
     for (unsigned i = 0; i != 3; ++i)
-      if (((u.shape.gpr_reads >> i) & 1u) && r.psrc[i] == cfg_.phys_zero) ev("zero_read", s.warp, i, 0, u.tid);
-    if (r.merge && r.alloc_gpr && r.pold == cfg_.phys_zero) ev("zero_read", s.warp, 3, 0, u.tid);
+      if (((u.shape.gpr_reads >> i) & 1u) && isZeroName(r.psrc[i])) ev("zero_read", s.warp, i, 0, u.tid);
+    if (r.merge && r.alloc_gpr && isZeroName(r.pold)) ev("zero_read", s.warp, 3, 0, u.tid);
   } else {
     count("reissue");
   }
 
-  if (with_copy) {
-    // The masked load's copy-only op (A-33, A-38): the load's issue under
-    // CCV_OP_PRF_COPY. An unguarded load masked only by its issue mask names
-    // the zero predicate negated: all ones.
-    RsEntry &c = rs_[r.rs_copy];
-    c.issued = true;
-    c.issue_at = now_;
-    c.ever_issued = true;
-    setWakes(r.rs_copy);
-    Issue cp = is;
-    cp.port = copy_port;
-    cp.copy = true;
-    cp.send_imm = true;
-    cp.imm = 0;
-    if (!u.shape.guard) {
-      cp.ppguard = cfg_.pred_zero;
-      cp.pred_neg = true;
-    }
-    out.issues.push_back(cp);
-    r.copy_pending = true;
-    r.copy_land = now_ + cfg_.lat_lane;
-    ev("copy", s.warp, is.rob_tag, 0, u.tid);
-    ev("issue", s.warp, copy_port, r.rs_copy, u.tid);
-  }
+  if (with_copy) issueCopy(x.slot, x.rob, copy_port);
   if (r.is_mem) {
     Memop m;
     m.tid = u.tid;
-    m.port = port;
+    m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
@@ -1327,10 +1788,26 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   Slot &s = slot_[si];
   if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
   if (s.fault_stop) { count("hold.fault"); return false; }
-  if (s.chwidth_hold) { count("hold.chwidth"); ev("stall", s.warp, 1); return false; }
-  if (s.bar_hold) { count("hold.barrier"); ev("stall", s.warp, 2); return false; }
-  if (s.count == cfg_.rob_depth) { count("stall.rob_full"); return false; }
-  if (s.rob[s.tail].valid) { count("stall.rob_slot_held"); return false; }
+  if (s.chwidth_hold) {
+    count("hold.chwidth");
+    oev(OoeEv::kChwidthHold, s.warp, tagOf(si, s.chwidth_rob), 0, u.tid);
+    return false;
+  }
+  if (s.bar_hold) {
+    count("hold.barrier");
+    oev(OoeEv::kBarrierHold, s.warp, s.bar_id, 0, u.tid);
+    return false;
+  }
+  if (s.count == cfg_.rob_depth) {
+    count("stall.rob_full");
+    oev(OoeEv::kRobFull, s.warp, s.count, 0, u.tid);
+    return false;
+  }
+  if (s.rob[s.tail].valid) {
+    count("stall.rob_slot_held");
+    oev(OoeEv::kRobSlotHeld, s.warp, tagOf(si, s.tail), 0, u.tid);
+    return false;
+  }
   const SchedAttr &a = u.attr;
   const bool nop = u.shape.exit || u.decode_fault;
   const bool mem = !nop && a.rs_miu;
@@ -1344,20 +1821,50 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rs_[e].valid;
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rs_[e].valid;
     const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
-    if (free_rcu < need_rcu) { count("stall.rs_full.rcu"); return false; }
-    if (free_miu < need_miu) { count("stall.rs_full.miu"); return false; }
+    if (free_rcu < need_rcu) {
+      count("stall.rs_full.rcu");
+      oev(OoeEv::kRsFull, s.warp, 0, free_rcu, u.tid);
+      return false;
+    }
+    if (free_miu < need_miu) {
+      count("stall.rs_full.miu");
+      oev(OoeEv::kRsFull, s.warp, 1, free_miu, u.tid);
+      return false;
+    }
     const unsigned cap = cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_;
-    if (s.rs_held + need_rcu + need_miu > cap) { count("stall.rs_warp_cap"); return false; }
+    if (s.rs_held + need_rcu + need_miu > cap) {
+      count("stall.rs_warp_cap");
+      oev(OoeEv::kRsWarpCap, s.warp, s.rs_held, cap, u.tid);
+      return false;
+    }
   }
-  if (wgpr && !gprAllowed(si, 1)) {
-    if (gfree_.empty()) count("stall.gpr_empty");
-    else if (s.held_gpr + 1 > kArchGprs + cfg_.ren_ceil) count("stall.gpr_ceiling");
-    else count("stall.gpr_floor");
+  unsigned pos = 0, plan = 0;
+  if (wgpr && cfg_.sectioned) {
+    pos = placePos(si, u, merge);
+    plan = planSlice(si, u.w, pos, gprAllowed(si, 1));
+  }
+  if (wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
+    if (gfree_.empty()) {
+      count("stall.gpr_empty");
+      oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
+    } else if (s.held_gpr + 1 > kArchGprs + cfg_.ren_ceil) {
+      count("stall.gpr_ceiling");
+      oev(OoeEv::kRenameLimit, s.warp, 1, 0, u.tid);
+    } else {
+      count("stall.gpr_floor");
+      oev(OoeEv::kRenameLimit, s.warp, 0, 0, u.tid);
+    }
     return false;
   }
   if (!nop && u.pred_we && cfg_.rename_preds && !predAllowed(si, 1)) {
-    if (pfree_.empty()) count("stall.pred_empty");
-    else count("stall.pred_floor_ceiling");
+    if (pfree_.empty()) {
+      count("stall.pred_empty");
+      oev(OoeEv::kPredEmpty, s.warp, s.held_pred, 0, u.tid);
+    } else {
+      count("stall.pred_floor_ceiling");
+      oev(OoeEv::kRenameLimit, s.warp, s.held_pred + 1 > kArchPreds + cfg_.pred_ren_ceil ? 1 : 0,
+          1, u.tid);
+    }
     return false;
   }
   if (!nop && a.branch) {
@@ -1391,7 +1898,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.pq[1] = s.prat[(u.imm >> 3) & 3];
     }
     if (wgpr) {
-      r.pnew = allocGpr(si);
+      r.pnew = cfg_.sectioned ? allocSlice(si, u.w, pos) : allocGpr(si);
       r.alloc_gpr = true;
       s.rat[u.dst & 15] = r.pnew;
     }
@@ -1409,7 +1916,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.ckpt_live = true;
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
-    if (a.serial == kSerBarrier) s.bar_hold = true;
+    if (a.serial == kSerBarrier) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
     r.rs_main = rsAlloc(mem ? RsCls::kMiu : RsCls::kRcu, si, idx, false);
     rs_[r.rs_main].produces = wgpr || u.pred_we;
@@ -1419,6 +1926,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     addDeps(r.rs_main, r, false);
     if (copy) addDeps(r.rs_copy, r, true);
+    if (cfg_.sectioned) {
+      rs_[r.rs_main].res = resOf(r, false);
+      if (copy) rs_[r.rs_copy].res = resOf(r, true);
+    }
+    // OA-14: the rotating home advances at each taken backward branch. It is
+    // a hint, not state: nothing checkpoints or restores it.
+    if (a.branch && u.pred_taken && u.backward) s.home_ctr = (s.home_ctr + 1) & 3u;
     // This uop is now the producer of its destinations.
     if (wgpr) gprod_[r.pnew] = {r.rs_main, copy ? r.rs_copy : kNoEntry};
     if (u.pred_we) pprod_[r.ppnew] = {r.rs_main, kNoEntry};
@@ -1448,12 +1962,16 @@ void Core::rename() {
       // V-53: no stale-epoch uop is renamed.
       if (it->fetch_epoch != epoch_[w]) {
         ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
         decq_.erase(it);
         --slot_[si].decq;
         progress = true;
         continue;
       }
       if (tryRename(si, *it)) {
+        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+        ++decq_freed_;
         decq_.erase(it);
         --slot_[si].decq;
         --budget;
@@ -1478,7 +1996,10 @@ void Core::sendRedirect() {
       slot_[si].notice_sent = true;
       slot_[si].notice_lands = now_ + cfg_.redirect_lat;
     }
-    if (!redirects_.empty()) count("stall.redirect_busy", redirects_.size());
+    if (!redirects_.empty()) {
+      count("stall.redirect_busy", redirects_.size());
+      oev(OoeEv::kRedirectBusy, redirects_.front().warp, redirects_.size(), 0, redirects_.front().tid);
+    }
   }
   // Every checkpoint freed this cycle, in one message (A-56).
   out.free_mask = free_mask_;
@@ -1495,26 +2016,67 @@ void Core::checkInvariants() {
     if (counters["invariant." + id] <= kReportOnce) err("%s: %s", id.c_str(), what.c_str());
   };
   char buf[256];
+  // The ready path as the RTL builds it: a row is ready iff every cell it
+  // depends on selects a raised wake line of its producer. Holding this
+  // every cycle is what lets ooe_ready be checked against the model's
+  // own state (test/ooe/ready_tb.cpp).
+  if (pens_fit_)
+    for (unsigned i = 0; i != n_; ++i) {
+      if (!rs_[i].valid) continue;
+      bool st = true;
+      for (unsigned j = 0; j != n_ && st; ++j)
+        if (depBit(i, j)) {
+          const unsigned k = cellCode(i, j);
+          st = k < kWakeLines && wakeLine(j, k);
+        }
+      if (st != rowReady(i)) {
+        std::snprintf(buf, sizeof buf, "entry %u: wake lines say %s, the model %s", i, st ? "ready" : "waiting",
+                      rowReady(i) ? "ready" : "waiting");
+        bad("ready-structure", buf);
+      }
+    }
   // V-01: free list + every slot's owned registers partition the pool, and
   // a slot owns exactly its committed map plus its in-flight destinations.
   std::vector<int> where(cfg_.phys_regs, -1);
-  for (unsigned p : gfree_) {
-    if (p >= cfg_.phys_regs) { bad("V-29", "the free list holds a register outside the pool"); continue; }
-    if (where[p] != -1) bad("V-01", "a register is on the free list twice");
-    where[p] = 99;
-  }
+  for (unsigned p = 0; p != cfg_.phys_regs; ++p)
+    if (gfree_.has(p)) where[p] = 99;
   for (unsigned si = 0; si != slot_.size(); ++si) {
     const Slot &s = slot_[si];
     std::set<unsigned> own;
-    for (unsigned p : s.crat) if (p != cfg_.phys_zero) own.insert(p);
+    for (unsigned p : s.crat) if (!isZeroName(p)) own.insert(p);
     for (const RobEntry &r : s.rob)
       if (r.valid && r.alloc_gpr) {
-        if (r.pnew == cfg_.phys_zero) bad("V-29", "a write names the zero register");
+        if (isZeroName(r.pnew)) bad("V-29", "a write names the zero register");
         if (!own.insert(r.pnew).second) {
           std::snprintf(buf, sizeof buf, "slot %u: p%u is both committed and in flight", si, r.pnew);
           bad("V-01", buf);
         }
       }
+    if (cfg_.sectioned) {
+      // Sectioned (OI-29): the slot's live slices, by row. Every live section
+      // of a row belongs to its owner (V-62), the row's section mask is
+      // exactly its live slices', which never overlap, and the slot counts
+      // its rows.
+      std::map<unsigned, unsigned> rowsec;
+      for (unsigned p : own) {
+        const unsigned row = nameRow(p), m = sectionsOf(p);
+        if (rowsec[row] & m) {
+          std::snprintf(buf, sizeof buf, "slot %u: slices overlap in row %u", si, row);
+          bad("V-01", buf);
+        }
+        rowsec[row] |= m;
+      }
+      for (const auto &rm : rowsec) {
+        if (rm.first >= cfg_.phys_regs) continue;
+        if (rowOwner_[rm.first] != si + 1 || rowSec_[rm.first] != rm.second) {
+          std::snprintf(buf, sizeof buf, "row %u: owner %d, sections %x; slot %u lives in %x", rm.first,
+                        int(rowOwner_[rm.first]) - 1, unsigned(rowSec_[rm.first]), si, rm.second);
+          bad("V-62", buf);
+        }
+      }
+      own.clear();
+      for (const auto &rm : rowsec) own.insert(rm.first);
+    }
     if (own.size() != s.held_gpr) {
       std::snprintf(buf, sizeof buf, "slot %u owns %zu registers but counts %u", si, own.size(), s.held_gpr);
       bad("V-01", buf);
@@ -1544,6 +2106,12 @@ void Core::checkInvariants() {
       }
     }
     if (live != branches) bad("V-07", "live checkpoints and unresolved branches differ");
+    // V-58 (OI-11): a ROB entry completes only after every RS entry of its
+    // uop has confirmed and freed.
+    for (const RobEntry &r : s.rob)
+      if (r.valid && !r.squashed && r.complete &&
+          (r.rs_main != kNoEntry || r.rs_copy != kNoEntry))
+        bad("V-58", "a complete ROB entry still holds an RS entry");
     if (s.rs_held > (cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_)) bad("V-14", "a warp over its RS cap");
   }
   unsigned accounted = 0;
@@ -1581,8 +2149,9 @@ void Core::checkInvariants() {
         else if (rs_[j].age > rs_[i].age) bad("V-10", "a dependency on a younger entry");
       }
   // V-15: after a cancel settles, nothing issued and unconfirmed is waiting
-  // on a withdrawn wake.
-  for (unsigned i = 0; i != n_; ++i)
+  // on a withdrawn wake. While one spreads, a hop a cycle (V-59), the
+  // entries it has not reached yet are exactly such entries.
+  for (unsigned i = 0; i != n_ && !cancel_live_; ++i)
     if (rs_[i].valid && rs_[i].issued && !rs_[i].confirmed && !rowReady(i))
       bad("V-15", "an issued entry's producer is no longer woken");
 }

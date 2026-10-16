@@ -1,0 +1,17 @@
+{
+  "_comment": [
+    "Lint fixture for CCV-L28's block-list half, which is a cross-file rule:",
+    "tools/check-1d.sh points it at this list instead of params/blocks.json.",
+    "Every block below is refused by name. fet is the stale module field",
+    "blocks.json carried until OI-37 (ccv_fetch, where the RTL has ccv_fet)."
+  ],
+  "domains": [],
+  "blocks": [
+    { "letter": "q", "name": "ooe",    "module": "ccv_ooe",   "instances": 1 },
+    { "letter": "f", "name": "fet",    "module": "ccv_fetch", "instances": 1 },
+    { "letter": "g", "name": "common",                        "instances": 1 },
+    { "letter": "h", "name": "top",                           "instances": 1 },
+    { "letter": "j", "name": "ooe_w",                         "instances": 1 },
+    { "letter": "k", "name": "Lane",                          "instances": 1 }
+  ]
+}

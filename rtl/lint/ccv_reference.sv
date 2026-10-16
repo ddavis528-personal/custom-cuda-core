@@ -1,0 +1,65 @@
+//===-- ccv_reference.sv - a block top and its net naming, compliant ---===//
+//
+// Spec: docs/rtl-coding-style.md, net naming section
+//
+// The false-positive regression. A naming rule set that fires on correct code
+// gets switched off, so this exercises every construct bad_naming.sv gets
+// wrong, done right. Its name makes it the top of block `reference`
+// (params/blocks.json, the lint fixtures' block), so it gates core_clk and
+// its stage tags carry that block's letter, y (OI-37). tools/check-1d.sh fails if ANY finding is reported here.
+//===----------------------------------------------------------------------===//
+
+module ccv_reference #(
+  // A TYPED parameter is a parameter, not a net: UPPER_SNAKE is right here.
+  // CCV-L19 once read the `logic` as a net declaration.
+  parameter logic [39:0] LEAD_MASK = 40'h3f
+) (
+  input  logic       core_clk,
+  input  logic       ref_rst_r00h,
+  input  logic [3:0] in_data_cy00h,
+  output logic [3:0] out_p_cy02h,
+  output logic [3:0] out_q_cy01h,
+  output logic       out_r_cy01h_b
+);
+
+  // The block gates the incoming clock as its first act, and everything
+  // sequential below runs on the gated copy.
+  logic reference_core_clk;
+  ccv_common_clk u_cg (
+    .clk        (core_clk),
+    .rst_n      (!ref_rst_r00h),
+    .quiesced   (1'b0),
+    .stalled    (1'b0),
+    .hyst_quiesce(6'd8),
+    .hyst_stall (6'd16),
+    .wake       (1'b0),
+    .cg_override(1'b1),
+    .te         (1'b0),
+    .gclk       (reference_core_clk),
+    .gated      ()
+  );
+
+  logic [3:0] mid_cy01h;
+
+  // Stage 00 in, stage 01 out: a flop advances exactly one stage.
+  always_ff @(posedge reference_core_clk) begin
+    if (ref_rst_r00h) mid_cy01h <= '0;
+    else              mid_cy01h <= in_data_cy00h;
+  end
+
+  // Stage 01 in, stage 02 out.
+  always_ff @(posedge reference_core_clk) begin
+    if (ref_rst_r00h) out_p_cy02h <= '0;
+    else              out_p_cy02h <= mid_cy01h;
+  end
+
+  // Combinational: stage preserved, not advanced. The reset net's own tag
+  // (block letter `r`) takes no part in the arithmetic, because the reset
+  // tree is pipelined by physical distance rather than datapath depth.
+  always_comb out_q_cy01h = mid_cy01h + 4'd1;
+
+  // `_b` is a genuine complement of a net that exists, at the same stage --
+  // inversion is combinational, so it advances nothing.
+  assign out_r_cy01h_b = ~mid_cy01h[0];
+
+endmodule

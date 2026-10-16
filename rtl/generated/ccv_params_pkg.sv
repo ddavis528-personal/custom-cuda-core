@@ -54,9 +54,29 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (grill-me 2026-09-23)
   localparam int CCV_FETCH_PER_WARP = 2;
 
-  // Rename and issue width. The binding width of the machine.
-  // decided at the block-level grill-me (grill-me 2026-09-23)
+  // Rename and retire width, four uops a cycle. It never meant four ALU ops: 32 lanes x 32 bits is the 1024-bit datapath, so a full-width lane op takes the whole lane array for a cycle (OI-28). Issue is per resource, CCV_ISSUE_RESOURCES slots on ccv_ooe_rcu_issue.
+  // decided at the block-level grill-me (grill-me 2026-09-23; reread by Daniel's response OI-28 (2026-10-08))
   localparam int CCV_ISSUE_WIDTH = 4;
+
+  // 8-bit sections per lane, with joinable boundaries: a full-width op gangs all four, and narrow ops co-issue only in disjoint sections (one at 32 bits, two at 16, four at 8). The PRF is CCV_SECTIONS banks, each 256 bits a row, and a register name is a row plus a position.
+  // decided at the block-level grill-me (Daniel's response OI-28 (2026-10-08); change doc 'Interface spec changes -- sectioned lanes')
+  localparam int CCV_SECTIONS = 4;
+
+  // MIU's AGU pipes, P0-P3: a memop's footprint is four pipes at 32 bits, two at 16 and one at 8, so the port sustains one full-width memop or four 8-bit ones. Matching CCV_SECTIONS is what keeps the memop operand-read budget the same at every width (CCV_PRF_MEMOP_READ_BITS).
+  // decided at the block-level grill-me (AR's response OI-33 (2026-10-08))
+  localparam int CCV_MIU_PIPES = 4;
+
+  // Slots on ccv_ooe_rcu_issue, one per select resource, in this order: the lane sections S0-S3, the MIU pipes P0-P3, and the RCU unit R. An op takes its lowest resource's slot and marks the rest of its footprint continuation.  Derived: = CCV_SECTIONS + CCV_MIU_PIPES + 1.
+  // decided at the block-level grill-me (change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); OI-31, OI-33)
+  localparam int CCV_ISSUE_RESOURCES = 9;
+
+  // A register's position in its row, the section its lowest byte sits in: a 32-bit register at 0, a 16-bit one at 0 or 2, an 8-bit one anywhere. A register name is a row (CCV_P_W_PHYS_REG) plus this; the zero register is valid at any position.  Derived: = clog2(CCV_SECTIONS).
+  // decided at the block-level grill-me (Daniel's response OI-29 (2026-10-08))
+  localparam int CCV_W_PHYS_POS = 2;
+
+  // PRF read bandwidth for memop operands, a budget line kept as a check: base, index and store data, three full rows for one 32-bit memop or three slices each for four 8-bit ones, the same at every width. The requirement fails if the pipes and sections stop matching. Memop reads never use a lane port, or memory serialises with ALU work.  Derived: = 3 * CCV_WARP_LANES * CCV_W_LANE_DATA.  Requires: CCV_MIU_PIPES * 3 * (CCV_WARP_LANES * CCV_W_LANE_DATA // CCV_SECTIONS) == CCV_PRF_MEMOP_READ_BITS.
+  // decided at the block-level grill-me (change doc 'Interface spec changes -- sectioned lanes' (2026-10-08); AR-12)
+  localparam int CCV_PRF_MEMOP_READ_BITS = 3072;
 
   // One ROB per tier-1 warp.
   // decided at the block-level grill-me (grill-me 2026-09-23)
@@ -102,7 +122,7 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (OOE Stage 4 session (2026-10-02), interface change set; arch open A-50)
   localparam int CCV_W_PRED_STATE = 128;
 
-  // Normalized gate delay in one cycle. OPEN (§2): whether 25 is the Vmin-corner number or a nominal one. Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block.
+  // Normalized gate delays in one cycle: NAND equivalents, measured by logical effort. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block.
   // physical target, not a structure size (§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process)
   localparam int CCV_NGD_BUDGET = 25;
 
@@ -210,7 +230,7 @@ package ccv_params_pkg;
   // decided at the block-level grill-me (ports spec 2026-09-23)
   localparam int CCV_DRAIN_WAIT = 2;
 
-  // Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_wake_checker). The receiver's side is ccv_clk_gate: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.
+  // Wake latency: round trip plus 2. The sender's side of Q-33: a channel's wake leads valid toward a gated receiver by at least this many cycles (ccv_common_chk_wake). The receiver's side is ccv_common_clk: it registers the wake (Q-49), so a wake in cycle T opens the edge ending T + 1, and holds the gate open through T + this, so a valid that follows the wake by exactly this much is still captured.
   // decided at the block-level grill-me (ports spec 2026-09-23)
   localparam int CCV_WAKE_LAT = 4;
 
@@ -264,11 +284,19 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: Stage 4b sweep
   localparam int CCV_DEMOTION_THRESHOLD = 50;
 
-  // Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_clk_gate inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values.
+  // Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). Starts at the fallback's value until RAU's session or the Stage 4b sweep sets it; formal sets all three small. Replaces the OOE model's demote_mlc_miss knob.
+  // PROVISIONAL -- decided by: RAU per-block session (register OA-8)
+  localparam int CCV_DEMOTION_THRESHOLD_MLC = 50;
+
+  // Threshold of the barrier-wait demotion trigger: how long a barrier wait may hold the ROB head before the warp demotes. A CSR (Q18). Starts at the fallback's value. Replaces the OOE model's demote_barrier knob.
+  // PROVISIONAL -- decided by: RAU per-block session (register OA-8)
+  localparam int CCV_DEMOTION_THRESHOLD_BARRIER = 50;
+
+  // Width of the block clock gate's hysteresis thresholds, which are CSR fields (Q-47): up to 63 cycles. The thresholds are ccv_common_clk inputs; CCV_CG_HYST_QUIESCE and CCV_CG_HYST_STALL are their reset values.
   // PROVISIONAL -- decided by: the CSR map (Q-47)
   localparam int CCV_CG_HYST_W = 6;
 
-  // Block clock gate (ccv_clk_gate): consecutive quiesced cycles before the gate closes -- the reset value of the block's hysteresis CSR (Q-47). Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. A block programs its own through the CSR.
+  // Block clock gate (ccv_common_clk): consecutive quiesced cycles before the gate closes -- the reset value of the block's hysteresis CSR (Q-47). Placeholder. Too short and a block thrashes between sleep and wake on bursty traffic, paying the wake hold each time; too long and it burns clock power idling. A block programs its own through the CSR.
   // PROVISIONAL -- decided by: power analysis, with the first real block
   localparam int CCV_CG_HYST_QUIESCE = 8;
 
@@ -307,6 +335,14 @@ package ccv_prov_pkg;
   // Decode queue depth ahead of rename.
   // PROVISIONAL -- decided by: OOE per-block session
   localparam int CCV_P_DECQ = 12;
+
+  // Reservation-station entries one warp may hold at once, across both classes, so a stalled warp cannot fill the stations. The first-build value is both classes' total, which is no cap; the sweep sets it. Replaces the OOE model's rs_warp_cap knob.  Requires: CCV_P_RS_WARP_CAP <= CCV_P_RS_RCU + CCV_P_RS_MIU.
+  // PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)
+  localparam int CCV_P_RS_WARP_CAP = 45;
+
+  // Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit; the sweep sets it. Replaces the OOE model's decq_warp_max knob.  Requires: CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ.
+  // PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)
+  localparam int CCV_P_DECQ_WARP_MAX = 12;
 
   // GPR rename registers deliberately left unreachable by any warp's ceiling, as margin.
   // PROVISIONAL -- decided by: OOE per-block session
@@ -352,29 +388,89 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_LANE = 7;
 
-  // Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and which consumers may take the bypass is open (Q-55).
+  // Lane-local bypass (A-59): a dependent lane op may issue this many cycles after its producer, measured issue to dependent issue. Producer and dependant execute at the same lane index and both cross ccv_ooe_rcu_issue and ccv_rcu_lane_ops, so the links cancel and none enters it; the floorplan cannot change it. Applies only where the scheduler marks the pair bypassable: dependants of cross-lane ops wake at CCV_LAT_LANE, and a consumer takes it only if every use it makes of the producer is a lane operand (A-62, Q-55). The lane forwards the value; RCU names it with operand_byp on ccv_rcu_lane_ops (TI-8).  Requires: CCV_LAT_LANE_BYP < CCV_LAT_LANE.
   // PROVISIONAL -- decided by: LANE per-block session
   localparam int CCV_LAT_LANE_BYP = 4;
+
+  // How far back a lane's bypass reaches, in bits: a forwarded result is named by its age, the cycles between the producer's and the dependant's arrival at the lane, less CCV_LAT_LANE_BYP. Ages run from CCV_LAT_LANE_BYP up to CCV_LAT_LANE - 1, after which RCU's register file holds the value. The links stretch the window: stages on either lane channel delay the write-back but not the dependant, so this follows params/links.json through CCV_LAT_LANE.  Derived: = max(1, clog2(CCV_LAT_LANE - CCV_LAT_LANE_BYP)).
+  // PROVISIONAL -- decided by: generated
+  localparam int CCV_P_W_LANE_BYP_AGE = 2;
+
+  // One bypass select on ccv_rcu_lane_ops, per operand port and per section, LSB first: [0] forward, [clog2(CCV_SECTIONS):1] the producer's lead section, then its age less CCV_LAT_LANE_BYP. With [0] clear the section's byte of that port is the value RCU read.  Derived: = 1 + clog2(CCV_SECTIONS) + CCV_P_W_LANE_BYP_AGE.
+  // PROVISIONAL -- decided by: generated
+  localparam int CCV_P_W_LANE_BYP_SEL = 5;
+
+  // CCV_FOOT_MIN for bypass_group 0, integer: the fewest sections an integer op claims. Its footprint is the union of its operands' sections, widened to this.  Requires: CCV_P_FOOT_MIN_INT <= CCV_SECTIONS.
+  // PROVISIONAL -- decided by: LANE per-block session
+  localparam int CCV_P_FOOT_MIN_INT = 1;
+
+  // CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines it: section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1. Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 2.04x over fp32 at 1 against 1.47x at 2 (four warps). The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS).  Requires: CCV_P_FOOT_MIN_FP <= CCV_SECTIONS.
+  // PROVISIONAL -- decided by: Daniel, on IS-7
+  localparam int CCV_P_FOOT_MIN_FP = 1;
+
+  // CCV_FOOT_MIN for bypass_group 2, address calculation: counted in MIU pipes, not lane sections. A memop's footprint is the pipes at its data position, widened to this.  Requires: CCV_P_FOOT_MIN_ADDR <= CCV_MIU_PIPES.
+  // PROVISIONAL -- decided by: MIU per-block session
+  localparam int CCV_P_FOOT_MIN_ADDR = 1;
+
+  // CCV_FOOT_MIN for bypass_group 3, the SFU: every section, so a narrow SFU op runs full width and selects its narrow operand by position (OA-15).  Requires: CCV_P_FOOT_MIN_SFU <= CCV_SECTIONS.
+  // PROVISIONAL -- decided by: LANE per-block session
+  localparam int CCV_P_FOOT_MIN_SFU = 4;
+
+  // CCV_FOOT_MIN for bypass_group 4, warp-collective: 0, since these execute in RCU and take R only.
+  // PROVISIONAL -- decided by: RCU per-block session
+  localparam int CCV_P_FOOT_MIN_COLLECTIVE = 0;
+
+  // CCV_FOOT_MIN for bypass_group 5, predicate: 0, since predicate logic executes in RCU and takes R only.
+  // PROVISIONAL -- decided by: RCU per-block session
+  localparam int CCV_P_FOOT_MIN_PRED = 0;
+
+  // Slots on ccv_rcu_ooe_done, a free pool. Dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class: the most that can land in one cycle is the sum over the fixed-latency pipes of each pipe's issues a cycle. The lane class takes as many as the sections hold at the integer minimum, the SFU as many at its minimum, and R's two classes (RCU-only at CCV_LAT_RCU, warp-collective at CCV_LAT_COLLECTIVE) one each: 4 + 1 + 2. Memops complete on ccv_miu_ooe_cmpl (OI-4). The lane term counts results per section per fixed-latency class, not per unit, so FP's minimum adds no term while FP shares the lane's latency class: select gives a section to one op a cycle, so an FP op and an integer op in one section cannot complete together. A latency class of its own for FP would add CCV_SECTIONS // CCV_P_FOOT_MIN_FP here (four slots), a bank write port per section, and a lat_class code of its own (OA's response IS-7).  Derived: = CCV_SECTIONS // CCV_P_FOOT_MIN_INT + CCV_SECTIONS // CCV_P_FOOT_MIN_SFU + 2.
+  // PROVISIONAL -- decided by: LANE per-block session
+  localparam int CCV_DONE_SLOTS = 7;
+
+  // Bypass penalty within one group (integer to integer, FP to FP, SFU to SFU): cycles after the producer's fastest bypass point, CCV_LAT_LANE_BYP for a lane producer.
+  // PROVISIONAL -- decided by: LANE per-block session (register OA-4)
+  localparam int CCV_LAT_BYP_PEN_SAME = 0;
+
+  // Bypass penalty from integer to FP and from FP to integer, in cycles after the producer's fastest bypass point, capped at the PRF read.
+  // PROVISIONAL -- decided by: LANE per-block session (register OA-4)
+  localparam int CCV_LAT_BYP_PEN_INT_FP = 2;
+
+  // Bypass penalty from integer or FP to SFU and from SFU to integer or FP, in cycles after the producer's fastest bypass point, capped at the PRF read. With today's values a lane producer's wake for an SFU consumer lands at CCV_LAT_LANE_BYP + 3 = CCV_LAT_LANE, the PRF read (OA's response OI-16). SFU's own fastest bypass point is not yet named (OA proposes CCV_LAT_SFU_BYP, for DA); until it is, an SFU producer wakes every consumer at CCV_LAT_SFU.
+  // PROVISIONAL -- decided by: LANE per-block session (register OA-4)
+  localparam int CCV_LAT_BYP_PEN_SFU = 3;
+
+  // Full latency of lat_class 4, the SFU (rcp, rsqrt, sqrt, ex2, lg2, sin, cos, rcp.u32): issue to the result readable in the PRF. A placeholder until a LANE session confirms it.
+  // PROVISIONAL -- decided by: LANE per-block session
+  localparam int CCV_LAT_SFU = 12;
+
+  // Full latency of lat_class 5, the warp-collective ops RCU executes (shfl, vote, ballot, unballot): issue to the result readable in the PRF. Cross-lane, so nothing bypasses from them (A-59). A placeholder until an RCU session confirms it.
+  // PROVISIONAL -- decided by: RCU per-block session
+  localparam int CCV_LAT_COLLECTIVE = 5;
 
   // Contracted L1 hit latency, from the cycle MIU holds both the memop and its address from RCU (A-61) to the hit's completion: base plus the MIU-to-DCU stages out and back (A-48). A hit completes on ccv_miu_ooe_cmpl, with its data on ccv_miu_rcu_data, at exactly this cycle; no completion then is the miss indication (A-46).  Derived: = CCV_LAT_L1_HIT_BASE + link_n('miu_dcu_req') + link_n('dcu_miu_rsp').
   // PROVISIONAL -- decided by: generated
   localparam int CCV_LAT_L1_HIT = 7;
 
-  // RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 2 is the accepted starting point (Daniel, 2026-10-03; the OOE session named the parameter, the schema owner proposed the value). Tunable: RCU's session confirms or moves it.
+  // RCU's time from accepting a memory op's issue to its address operands leaving on ccv_rcu_miu_addr: the PRF read and the output flop. 5 is a placeholder (Daniel, 2026-10-08, register OA-5), replacing the starting point of 2 accepted on 2026-10-03. Tunable: RCU's session confirms or moves it.
   // PROVISIONAL -- decided by: RCU per-block session
-  localparam int CCV_LAT_RCU_ADDR_BASE = 2;
+  localparam int CCV_LAT_RCU_ADDR_BASE = 5;
 
   // RCU's issue-to-address time (A-61). Inside RCU, so no link enters it; the crossings either side are counted where it is used.  Derived: = CCV_LAT_RCU_ADDR_BASE.
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_RCU_ADDR = 2;
+  localparam int CCV_LAT_RCU_ADDR = 5;
 
   // Issue to the earliest issue of an L1-hit load's dependant (A-57, A-61). MIU starts when it holds both the memop and the address from RCU, the max of the two paths from OOE's issue; the hit's data then crosses to RCU, and the dependant's own issue crosses ccv_ooe_rcu_issue, which is subtracted. When the address path binds, the issue crossing cancels.  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('ooe_rcu_issue')).
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_WAKE = 13;
+  localparam int CCV_LAT_L1_WAKE = 16;
 
   // Issue to OOE holding an L1 hit's completion (A-57, A-61): when OOE learns hit or miss, which sets the cancel shadow. Same start as CCV_LAT_L1_WAKE, then the completion's crossing back to OOE.  Derived: = max(CCV_LAT_HOP + link_n('ooe_miu_memop'), CCV_LAT_HOP + link_n('ooe_rcu_issue') + CCV_LAT_RCU_ADDR + CCV_LAT_HOP + link_n('rcu_miu_addr')) + CCV_LAT_L1_HIT + CCV_LAT_HOP + link_n('miu_ooe_cmpl').
   // PROVISIONAL -- decided by: generated
-  localparam int CCV_LAT_L1_CMPL = 15;
+  localparam int CCV_LAT_L1_CMPL = 18;
+
+  // After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring.  Derived: = max(0, CCV_LAT_HOP + link_n('miu_rcu_data') - (CCV_LAT_HOP + link_n('miu_ooe_cmpl')) - (CCV_LAT_HOP + link_n('ooe_rcu_issue')) + 1) + 1.
+  // PROVISIONAL -- decided by: generated
+  localparam int CCV_LAT_L1_MISS_WAKE = 1;
 
   // Physical GPRs: one global pool, allocated by OOE's free lists (RAU allocates none; A-30). Each tier-1 slot, occupied or not, reserves its 16 architectural registers plus CCV_P_REN_FLOOR, so 64 of the 192 are architectural and 128 rename.  Requires: CCV_P_PHYS_REGS > CCV_TIER1_WARPS * CCV_GPRS.
   // PROVISIONAL -- decided by: OOE and RCU per-block sessions
@@ -404,7 +500,7 @@ package ccv_prov_pkg;
   // PROVISIONAL -- decided by: DCU and MLC per-block sessions
   localparam int CCV_P_LINE_BYTES = 128;
 
-  // Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that.
+  // Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that.  Requires: CCV_P_W_IMM >= 2 * (CCV_P_W_PHYS_PRED + 1).
   // PROVISIONAL -- decided by: DEC per-block session
   localparam int CCV_P_W_IMM = 32;
 
@@ -427,10 +523,6 @@ package ccv_prov_pkg;
   // The hardwired zero predicate (A-64): the all-ones predicate index, outside the pool, reading zero and never written. At launch OOE maps all 4 architectural predicates to it (A-67).  Derived: = 2 ** CCV_P_W_PHYS_PRED - 1.  Requires: CCV_P_PRED_ZERO >= CCV_P_PRED_REGS.
   // PROVISIONAL -- decided by: generated
   localparam int CCV_P_PRED_ZERO = 63;
-
-  // Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, spare), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). Each further fixed-latency lane unit (SFU and others) takes a spare lat_class code, 4 to 7, once the LANE session sets its latency, with its own generated wake parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03.
-  // PROVISIONAL -- decided by: DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)
-  localparam int CCV_P_W_SCHED_ATTR = 13;
 
   // req_id on MIU -> SPM: correlates a response with its request. Per hop, never shared across hops, and not rob_tag (one instruction can be several transactions; FET has no ROB tag). Eight outstanding scratchpad accesses: four slots, two deep.
   // PROVISIONAL -- decided by: the owning block's session, from its outstanding window
@@ -475,6 +567,26 @@ endpackage
 // This tier exists so the skeleton can be wired end to end
 // without anyone having to pretend the encodings are known.
 package ccv_prelim_pkg;
+
+  // PRF read bandwidth into the lanes, a budget line: four operand ports (three sources and the merge source) of 1,024 bits, one byte a section per lane, each byte from its own section bank. Sixteen survives only as a count of slice reads.  Derived: = (CCV_L_OPERANDS_PER_LANE + 1) * CCV_WARP_LANES * CCV_W_LANE_DATA.
+  // PRELIMINARY -- churn: HIGH  (the FIELD may change shape, not just this number)
+  localparam int CCV_L_PRF_LANE_READ_BITS = 4096;
+
+  // bypass_group's width, on sched_attr and on ccv_ooe_rcu_issue.  Derived: = clog2(CCV_P_BYP_GROUPS).
+  // PRELIMINARY -- churn: MED
+  localparam int CCV_P_W_BYP_GROUP = 3;
+
+  // Latency classes the scheduler distinguishes: the codes of sched_attr's 3-bit lat_class (0 RCU, 1 lane, 2 L1 load, 3 on completion, 4 SFU, 5 warp-collective, 6-7 spare). A class sets a producer's full latency; which consumers it may wake early is its bypass_group's (OI-16, Daniel's responses OA-4).
+  // PRELIMINARY -- churn: MED
+  localparam int CCV_P_LAT_CLASSES = 8;
+
+  // Bypass groups: the codes of sched_attr's 3-bit bypass_group (0 integer, 1 floating point, 2 address calculation, 3 SFU, 4 warp-collective, 5 predicate, 6-7 spare), which index the bypass table both ways, byp[producer group][consumer group] (OI-16). A memop consumes as address calculation. A cell is a penalty in cycles after the producer's fastest bypass point, capped at the PRF read: in-unit CCV_LAT_BYP_PEN_SAME, integer and FP to each other CCV_LAT_BYP_PEN_INT_FP, integer or FP and SFU to each other CCV_LAT_BYP_PEN_SFU. Address-calculation, warp-collective and predicate consumers never bypass, nor does a warp-collective or predicate producer (A-59, A-62, V-48).
+  // PRELIMINARY -- churn: MED
+  localparam int CCV_P_BYP_GROUPS = 8;
+
+  // Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03.  Derived: = 10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS).
+  // PRELIMINARY -- churn: MED
+  localparam int CCV_P_W_SCHED_ATTR = 16;
 
   // Eight uop classes: integer, float, SFU and convert, memory, control, collective, predicate, spare. DEC decides whether class is derivable from opcode at all.
   // PRELIMINARY -- churn: LOW

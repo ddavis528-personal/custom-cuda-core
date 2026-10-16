@@ -36,7 +36,7 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc) |
-| PF-15 | `chwidth` without serialising rename | rename | deferred |
+| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16) |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
 | PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
@@ -46,7 +46,11 @@ it.
 | PF-22 | Retire wider than two per ROB | retire | deferred (sweep: not worth it now) |
 | PF-23 | Demotion abandons outstanding loads | demotion | deferred |
 | PF-24 | Divergent branch prediction | FET | deferred (doc) |
-| PF-25 | Predicate renaming in place of the fixed-window holds | rename | owed, not optional (S1 mode) |
+| PF-25 | Predicate renaming in place of the fixed-window holds | rename | adopted (OI-3) |
+| PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
+| PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | dropped (DA's revised OI-30) |
+| PF-28 | Loads pass older loads | scheduler, MIU | deferred (DA's response OA-13) |
+| PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35) |
 
 ## Entries
 
@@ -118,11 +122,13 @@ it.
 
 ### PF-6 Memory disambiguation: loads pass older stores
 
-- **Now:** memops issue in program order per warp. MIU orders memory, and
-  OOE does no disambiguation (decision 2).
-- **Alternative:** a younger load issues past an older store whose address
-  is unknown, with a violation check and replay, or a store-set style
-  predictor.
+- **Now:** memops issue in program order per warp, load behind load as well
+  as load behind store. MIU orders memory, and OOE does no disambiguation
+  (decision 2). OA ratified this as a conservative first-build choice and
+  asked for it here (OA's response to OI-15).
+- **Alternative:** a younger load issues past older loads freely, and past
+  an older store whose address is unknown with a violation check and
+  replay, or a store-set style predictor.
 - **Cost:** an address compare against older stores, an ordering-violation
   replay or squash, and a predictor.
 - **Signal:** cycles ready loads wait on older unissued memops (to add:
@@ -224,6 +230,25 @@ it.
   (F-WIDTH, F-FORMAT) must read speculative state.
 - **Signal:** `hold.chwidth`. The doc expects these changes mostly at kernel
   entry, so it should stay small.
+- **Design of record** (OA-16, deferred by DA's response of 2026-10-09):
+  - the width lives in the RAT entry beside row and position: 2 bits per
+    entry, 32 per checkpoint;
+  - a narrowing `chwidth` renames in place: same row, the low section or
+    half of the old set, the new width, with the vacated sections freed
+    at retire;
+  - every widening, 4 to 8 included, is a lane op that writes the
+    zero-extended value, which is what keeps O-38's cleared bits true;
+  - `chwidth.multi` becomes a multi-register rename, using rename
+    bandwidth in proportion to its register count;
+  - F-WIDTH and F-FORMAT move to rename and become speculative;
+  - it needs invariant 2's mechanism clause struck (IS's response OA-16),
+    and the fault model's stage table and the 4-bit decision's detection
+    section rewritten.
+- **Measured:** in the pinned compiler snapshot, only vadd16 and
+  vadd16_loop carry `chwidth`, one `chwidth.multi` each at kernel entry,
+  and none inside a loop. So the hold costs one drain per narrow kernel
+  (OI's response OA-16).
+- **Trigger:** a corpus kernel that widens inside a loop (asked of CP).
 
 ### PF-16 More than one redirect a cycle
 
@@ -321,6 +346,100 @@ it.
   writes behind older readers and writers (`hold.pred_window`).
 - **Alternative:** the design's own predicate renaming (Q-21, A-39), which
   the model already has.
-- **Status:** owed, not optional. It turns on with A-75 and the
-  predicate-map hook ([`ooe-model.md`](ooe-model.md), "S1 modes"). Listed
-  so the hold's cost on S1 kernels is not mistaken for the design's.
+- **Status:** adopted. TI-1 (A-75) brought the renamed predicate sources
+  and OI-3 the predicate-map hook, so the kernels run renamed by default
+  ([`ooe-model.md`](ooe-model.md), "S1 modes").
+
+### PF-26 Co-issue lane ops whose lane masks are disjoint
+
+- **Now:** each lane block has four operand ports, so lane ops share a
+  cycle only by taking separate slices of them: narrow `chwidth` ops in
+  different sections. Two full-width lane ops never co-issue, even when
+  their issue masks are disjoint (Daniel, 2026-10-08).
+- **Alternative:** also co-issue lane ops whose lane masks are disjoint,
+  for example the divergent PC groups of one warp, or partial-warp ops of
+  different warps. RCU steers each lane's ports to the op that owns that
+  lane.
+- **Cost:** a pairwise mask-disjointness check among one cycle's grants,
+  which is the serial path banked select avoids (OA-1). A precomputed
+  overlap bit per entry pair, set at rename like the age matrix, keeps it
+  off the loop. RCU also needs per-lane port steering.
+- **Signal:** cycles where a ready lane op waits behind another lane op
+  whose mask is disjoint from it (to add, `ready_not_selected` split by
+  that cause).
+
+### PF-27 Fold section alignment into the producing op
+
+- **Status:** dropped, 2026-10-08. DA's revised response OI-30 replaced
+  forced alignment with the footprint rule: an op claims the union of its
+  operands' sections, and the lane swizzles bytes within its own 32-bit
+  word, so no section moves exist to fold. The entry is kept as the record
+  of the alternative.
+
+- **Now:** where a narrow op's operands sit in different sections, rename
+  inserts an explicit move, executed in RCU on RCU's own grant (DA's
+  responses OI-30 and AR-13, 2026-10-08). It costs no section throughput,
+  but it takes an issue slot and a temporary slice, and it adds RCU's
+  latency to the consumer.
+- **Alternative:** the producing load or ALU op writes its result straight
+  into the section its consumer needs, so no move exists.
+- **Cost:** the producer's latency would then depend on its destination's
+  slice position. That is variable latency into the bypass network and a
+  new set of bypass cases, which is why it was rejected for now. A
+  read-path byte rotate on one operand port is the other way to remove
+  the moves (AR-13).
+- **Signal:** inserted moves per narrow op on `vadd16` (to add, once slice
+  placement exists: `rename.section_move`). Also the cycles a move waits
+  because four narrow ops hold the four issue slots (AR-13's open point).
+
+### PF-28 Loads pass older loads
+
+- **Now:** memops issue in program order per warp, one a cycle (decision 2;
+  DA's response OA-13, 2026-10-09). PF-6 is the store side.
+- **Alternative:** a plain load issues past older unissued loads of its
+  warp, never past a store, atomic or fence (OA-13). Read-read coherence
+  still binds two loads to the same address, and the ISA has no
+  per-access ordering qualifier, so every load must honour it (IS's
+  response OA-13). The form of record is detect-and-squash: loads issue
+  freely, and a younger load is squashed when an older load to the same
+  address returns a different value. The squash uses IS-4's contiguous
+  squash. If the replay rate proves material, the escalation is a
+  per-access ordering qualifier on Format D.
+- **Cost:** a same-address compare against in-flight loads, a second user
+  of the CAM that store-to-load forwarding needs (PF-7), and the replay
+  path.
+- **Measured:** the OI-34 sweep's `loads_pass_loads` arm (a model with no
+  addresses, so an upper bound): 0% on every loop but one, 6% on vadd8
+  under slot + register placement. One iteration's loads become ready
+  together.
+- **Signal:** cycles ready loads wait on older unissued loads (to add, a
+  split of `hold.memop_order` by the older memop's kind). Revisit when the
+  corpus has gathers or pointer chasing, or if the sweep gain exceeds a
+  few percent.
+
+### PF-29 Narrow co-issue within one warp
+
+- **Now:** a narrow destination with no narrow source takes the warp's home
+  position, its tier-1 slot index (8-bit), or the index mod 2 (16-bit)
+  (DA's response OI-35, 2026-10-09). Narrow ops co-issue across warps.
+  One warp's narrow ops share a section, so a lone warp runs narrow code
+  at the 32-bit rate (AR-16: the 2x and 4x rates are aggregate across
+  warps).
+- **Alternative:** `chwidth` declares a 2-bit preferred position per
+  register, which rename takes as the home for a destination with no
+  narrow source. The compiler spreads independent values across sections
+  and gives each section with readers its own copy of a shared narrow
+  operand, so each reader's footprint stays one section (OA's response
+  OI-35). A wrong declaration costs co-issue only (AR-15).
+- **Cost:** 2 bits per register in `chwidth` and `chwidth.multi` (IS's
+  encoding to find), 2 bits per RAT entry, a CP placement pass, and the
+  registers the copies take. Hardware replication was rejected: rename
+  cannot tell which values will be shared.
+- **Measured (OI-34):** home = slot + architectural register, a stand-in
+  for a declared position, gives a lone warp 1.38x on eight independent
+  accumulators (alu8-self). It costs 1.55x on four warps when every op
+  reads one shared narrow operand, because that operand's section joins
+  every footprint. That is the case the per-section copies exist for.
+- **Signal:** `foot.*` against `spread.*` and `sections_idle` on one-warp
+  narrow kernels. Revisit when a one-warp narrow kernel matters (asked of
+  CP).

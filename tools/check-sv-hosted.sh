@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The C++ skeleton's blocks, hosted by the SV top.
 #
-# ccv_core_top built from rtl/top/dpi/ -- a DPI shim per block type, same
+# ccv_top built from rtl/top/dpi/ -- a DPI shim per block type, same
 # module names and port lists as the stubs -- so every block is the C++
 # skeleton's functional stub and every connection between two blocks is a net
 # in the generated Verilog. The same kernels, run by the C++ skeleton's own
@@ -43,9 +43,9 @@ if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
   exit 1
 fi
 
-CHK="rtl/if/ccv_credit_checker.sv rtl/if/ccv_atomic_checker.sv rtl/if/ccv_lockstep_checker.sv rtl/if/ccv_binding_checker.sv rtl/if/ccv_outstanding_checker.sv rtl/if/ccv_wake_checker.sv rtl/generated/ccv_skel_checkers.sv"
-GATE="rtl/clk/ccv_clk_gate.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
-SV="rtl/ccv_assert_pkg.sv $CHK $GATE rtl/top/dpi/*.sv rtl/phys/ccv_seq_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_core_top.sv test/top/tb_sv_hosted.sv"
+CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
+GATE="rtl/clk/ccv_common_clk.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
+SV="rtl/ccv_assert_pkg.sv $CHK $GATE rtl/top/dpi/*.sv rtl/phys/ccv_common_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_top.sv test/top/tb_ext.sv test/top/tb_sv_hosted.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
 
 # -- lint and build ----------------------------------------------------------
@@ -116,7 +116,10 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             vadd:corrupt-ckpt vadd:stale-free vadd:attr-store-as-load:3000 \
             merge:dirty-zero merge:wrong-merge mload:skip-copy \
             mload:late-copy mload:copy-from-new unal:one-line loop:free-new \
-            vadd:corrupt-group-mask loop:stale-epoch; do
+            vadd:corrupt-group-mask loop:stale-epoch pguard:swap-prat0 \
+            hit:early-hit hit:late-hit-data hit:no-rcu-bypass \
+            vadd:drop-src-valid plog:arch-pred-srcs vadd:no-resource-cap \
+            vadd:bad-pos vadd:narrow-pipes; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)
@@ -127,6 +130,26 @@ if [ -z "$diffs" ]; then
   say "every kernel control: the same KERNEL line" "PASS ($nctl controls)"
 else
   bad "every kernel control: the same KERNEL line" "differ:$diffs"
+fi
+
+# -- OOE's bypass on, both hosts ---------------------------------------------
+# The lane-local bypass (A-59, TI-8): with OOE waking lane dependants at
+# CCV_LAT_LANE_BYP, the lanes forward through operand_byp. Every kernel, and
+# the control that drops the forwarding, must print the same KERNEL and
+# COVER lines on both hosts.
+diffs=""
+nbyp=0
+for spec in $(ls -d test/kernels/*/ | xargs -n1 basename) byp:no-lane-bypass; do
+  IFS=: read -r k brk <<<"$spec"
+  a=$(CCV_OOE_CONFIG=bypass=1 cpp "$k" ${brk:+--break "$brk"} | grep -E '^(KERNEL|COVER) ')
+  s=$(CCV_OOE_CONFIG=bypass=1 svh "$k" ${brk:++ccv_break=$brk} | grep -E '^(KERNEL|COVER) ')
+  nbyp=$((nbyp + 1))
+  [ -n "$a" ] && [ "$a" = "$s" ] || diffs="$diffs $spec"
+done
+if [ -z "$diffs" ]; then
+  say "with OOE's bypass: the same KERNEL line" "PASS ($nbyp runs, no-lane-bypass among them)"
+else
+  bad "with OOE's bypass: the same KERNEL line" "differ:$diffs"
 fi
 
 # -- the partner: one block one cycle late must not compare equal ------------

@@ -26,7 +26,8 @@
 // message lands, so the controls above answer their forced valids there
 // with exactly that prompt credit: each still fires only what it targets.
 //   misbind       lane 7 of a lockstep channel carries slot k+1's
-//                 instruction in slot k: matching valids, different ids
+//                 instruction in slot k (on a one-slot channel, its
+//                 stream's next one): matching valids, different ids
 //   misorder      ordered channels: a head taken that is not the oldest of
 //                 its stream or key
 //   wrong-class   every message stamped with an id class its channel may
@@ -79,7 +80,7 @@
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
 //===----------------------------------------------------------------------===//
-#include "Vccv_skel_checkers.h"
+#include "Vccv_common_chk_bank.h"
 #include "verilated.h"
 
 #include "ccv/event.h"
@@ -108,7 +109,7 @@ template <typename W> void setBit(W &w, uint64_t i, bool v) {
 /// Present this cycle's signals to the checker bank, where the bank watches
 /// each link: as it leaves the source's wrapper, src_stages repeater stages
 /// from the sender -- the same point the SV top's bank sees.
-void drive(Vccv_skel_checkers &bank, Machine &m) {
+void drive(Vccv_common_chk_bank &bank, Machine &m) {
   auto &slots = m.slots();
   for (const ChanInst &ci : kChanInsts) {
     const ChanDesc &cd = kChans[ci.chan];
@@ -138,7 +139,7 @@ void drive(Vccv_skel_checkers &bank, Machine &m) {
 /// S1: a kernel through the machine, to completion.
 int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
               const std::string &trace, VerilatedContext &ctx,
-              Vccv_skel_checkers &bank) {
+              Vccv_common_chk_bank &bank) {
   Kernel k;
   if (std::string e = k.orc.load(path); !e.empty()) {
     std::fprintf(stderr, "%s\n", e.c_str());
@@ -217,7 +218,8 @@ int main(int argc, char **argv) {
                       brk == "corrupt-group-mask" || brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
-                      brk == "conflate-pred" || brk == "late-lead" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
@@ -275,7 +277,7 @@ int main(int argc, char **argv) {
   // report that says how many and where is worth more than one that says
   // "something".
   ctx->errorLimit(1 << 30);
-  auto bank = std::make_unique<Vccv_skel_checkers>(ctx.get(), "bank");
+  auto bank = std::make_unique<Vccv_common_chk_bank>(ctx.get(), "bank");
 
   if (!trace.empty() && !ccv::traceWriter().open(trace)) {
     std::fprintf(stderr, "cannot open trace %s\n", trace.c_str());
@@ -309,7 +311,7 @@ int main(int argc, char **argv) {
   bank->force_atomic = cfg.force_atomic;
   // The exerciser's traffic is synthetic: it sends requests and responses
   // independently, so a request/response pairing cannot hold (see
-  // ccv_outstanding_checker). The functional stubs turn it on.
+  // ccv_common_chk_outstanding). The functional stubs turn it on.
   bank->pair_enable = 0;
   Machine m(ccv::kCreditDepth, [&](int inst) { return makeExerciser(inst, cfg); });
 

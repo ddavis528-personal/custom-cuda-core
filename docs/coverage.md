@@ -14,7 +14,9 @@ checkpoint frees, cycles FET stalled with every checkpoint live, the most
 checkpoints live at once, merges, copy-only ops, zero-register reads,
 physical registers reallocated after a free, memops touching more than one
 line, the most lines one memop touched, store lines with a partial byte mask,
-and cycles MIU waited for a DCU request id. `tools/check-kernel.sh` holds
+cycles MIU waited for a DCU request id, loads completed as L1 hits at the
+contract (`l1_hit`) or hit but too late for it (`l1_late`), and instructions a
+lane executed twice because OOE cancelled and replayed them (`reexec`). `tools/check-kernel.sh` holds
 each kernel to the bins it exists for, so a stub change that stops reaching
 a path fails the gate rather than passing it vacuously. The SV-hosted run
 must print the same `COVER` line as the C++ one.
@@ -30,6 +32,10 @@ must print the same `COVER` line as the C++ one.
 | Scattered lane addresses | gather | one line per lane: 32 line requests for one memop, MIU waiting on DCU request ids and reusing them (`lines_peak=32 dcu_id_wait>0`); reversed order within a line; broadcast; a store with a 4-byte mask in each of 32 lines | (MIU's per-lane address and data checks) |
 | Branch mispredicts (redirect, checkpoint restore) | loop, brs | a backward branch mispredicted 99 times, then a correct fall-through (`redirect=99`); a uniform taken forward branch | drop-negate, corrupt-ckpt, stale-free |
 | Rename free list wrapping | loop | about 200 writes against 192 registers (`reg_reuse>0`) | free-new |
+| L1 hits at the contract (A-46, OI-5) | hit | DCU holds lines (a small direct-mapped array); MIU completes a load whose lines all hit at exactly `CCV_LAT_L1_CMPL` after OOE issued it, data and completion together, and anything later is the miss indication. Four pointer-chasing hits on time (`l1_hit=4`) | early-hit, late-hit-data |
+| L1 speculation (OOE's `l1_spec`) | every kernel | on by default (OI-5), and each kernel passes again with it alone and with both modes off: the dependants of a load woken at `CCV_LAT_L1_WAKE` and replayed on a miss: RCU's register read sees the same cycle's write, and a lane judges a replayed op on its last execution (`Kernel::failHeld`); hit replays its miss's dependant (`reexec=1`) | no-rcu-bypass, late-hit-data |
+| Lane-local bypass (OOE's `bypass`; A-59, TI-8) | every kernel; byp, merge | on by default (OI-5), and each kernel passes again with it alone and with both modes off, lane dependants woken at `CCV_LAT_LANE_BYP`: the lanes answer at `CCV_LAT_LANE`, so the dependant reads the register file before the write, RCU names the producer's lead section and age in `operand_byp`, and the lane forwards its own result. byp forwards four operands, MADLO's third among them (`lane_byp=4` with the bypass, `lane_byp=0` with both modes off; five while full-width lane ops could co-issue, before one lane op a cycle); merge forwards a merge_data. Not reached: a forward into a masked load's copy-only op, since OOE issues a memop and its copy only on confirmed sources (V-17) | no-lane-bypass; an OOE bypassing at 3, which RCU refuses |
+| Decode-free scheduling (A-75, TI-1) | every kernel; plog | OOE renames and waits on the sources DEC's `src_valid` marks, reads guard or data from `pred_use`, and takes exit and `srd`'s identity from `sched_attr` and `imm_kind`, never from `opcode`. Predicate logic reaches RCU with its two sources renamed in `imm`: plog computes P3 = !P1 \| P2 from real values and guards an add with it (`merge=3`) | drop-src-valid (vadd), arch-pred-srcs (plog) |
 | Checkpoint pressure | brs | five unresolved branches against `CCV_P_BR_CKPTS` = 4: FET stalls until a free (`ckpt_peak=4 ckpt_full>0 ckpt_free=5`) | |
 
 ## What is not reached, and why
@@ -56,6 +62,23 @@ must print the same `COVER` line as the C++ one.
 4. **Per-warp concurrency.** One warp, one CTA throughout: no tier-1 slot
    other than 0, no binding-group contention, no SPM, no barriers, no
    migration.
+5. **Narrow ops (Daniel's responses OI-28 to OI-31; TI-9).** A lane block
+   has four 32-bit operand ports, three sources and merge, each in four
+   8-bit sections; a full-width lane op takes every section, so one issues
+   a cycle, and four co-issue only as narrow ops in separate sections. The
+   channels now have that shape (nine resource slots on the issue, one
+   message a lane), and the lane ports are limited: the kernels run OOE's
+   sectioned select (OI-31), which at 32 bits issues one lane op, one memop
+   and one RCU op a cycle, so cycle counts are no longer optimistic on that
+   account. What is not reached is anything narrower than 32 bits: every S1
+   kernel is full width, the stubs refuse a narrow op by name, and a
+   footprint is always a whole group. The model and its sweep already
+   place and co-issue narrow ops (OI-34); what the kernels lack is the
+   stubs' half: a narrow kernel, vadd16, needs per-section execution,
+   slice write-back and sliced address reads in the RCU, LANE and MIU
+   stubs (after TI-10), then co-issue and footprint-width bins (AR-15),
+   section-level forwarding, and the V-60 control re-aimed at two narrow
+   ops granted one section.
 
 ## Next, in order
 

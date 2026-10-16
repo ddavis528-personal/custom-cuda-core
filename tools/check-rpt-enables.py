@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The sequential repeater's enables, checked on the netlist Yosys infers.
 
-  tools/check-rpt-enables.py [--file=rtl/phys/ccv_seq_rpt.sv]
+  tools/check-rpt-enables.py [--file=rtl/phys/ccv_common_rpt.sv]
 
 Simulation cannot see this: a payload register that loads every cycle carries
 the same data as one enabled by valid, since the payload only matters when
@@ -39,14 +39,14 @@ def netlist(path, stages, slots, width, lead, trace, tmp):
     d = "-DCCV_TRACE " if trace else ""
     script = ("read_verilog -sv -formal %s-Irtl/include -Irtl/generated "
               "rtl/ccv_assert_pkg.sv %s; chparam -set STAGES %d -set SLOTS %d "
-              "-set PAYLOAD_W %d -set LEAD_MASK %d ccv_seq_rpt; hierarchy -top "
-              "ccv_seq_rpt; proc; opt; write_json %s"
+              "-set PAYLOAD_W %d -set LEAD_MASK %d ccv_common_rpt; hierarchy -top "
+              "ccv_common_rpt; proc; opt; write_json %s"
               % (d, path, stages, slots, width, lead, out))
     r = subprocess.run(["yosys", "-q", "-p", script], cwd=ROOT,
                        capture_output=True, text=True)
     if r.returncode:
         sys.exit("yosys failed: %s" % (r.stderr or r.stdout)[:500])
-    return json.load(open(out))["modules"]["ccv_seq_rpt"]
+    return json.load(open(out))["modules"]["ccv_common_rpt"]
 
 
 def check(mod, stages, slots, width, lead, trace):
@@ -124,7 +124,7 @@ def _off(names, b, net):
 
 
 def main():
-    path = "rtl/phys/ccv_seq_rpt.sv"
+    path = "rtl/phys/ccv_common_rpt.sv"
     for a in sys.argv[1:]:
         if a.startswith("--file="):
             path = a.split("=", 1)[1]
