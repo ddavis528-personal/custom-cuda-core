@@ -748,7 +748,7 @@ private:
   void wake(unsigned e);
   void emitWakeups();
   void cancel(unsigned e);
-  bool cancelHop(unsigned root);
+  bool cancelHop();
   void confirmPass();
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
@@ -811,6 +811,13 @@ public:
   enum : uint8_t { kWakeTimed = 0, kWakeCopy = 1, kWakeSpec = 2, kWakeMem = 3 };
   struct WakeLog {
     std::vector<uint8_t> grant, kind, cls, done, cmpl, stop, miss, fin;
+    /// ooe_confirm's (test/ooe/confirm_tb.cpp): the cancel hop's inputs as
+    /// it ran (each entry issued and unconfirmed, the dependency bits) and
+    /// the entries it returned to Waiting; confirmation's inputs (issued and
+    /// unconfirmed, the result final, a destination, the dependency bits)
+    /// and the entries it confirmed. hop_live: a hop ran this cycle.
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, cf_iss, cf_fin, cf_prod, cf_dep;
+    bool hop_live = false;
   };
   /// The timer's word on an entry: issued, its full-latency wake raised, and
   /// not speculative, so confirmation may take it (confirmPass).
@@ -920,6 +927,7 @@ private:
   std::deque<Memop> discards_;       ///< bulk discards, waiting for a slot
   // granted last cycle, in the payload-read stage (payload_stages = 1)
   bool cancel_live_ = false;          ///< a transitive cancel still spreading
+  bool miss_now_ = false;             ///< an L1 miss this cycle (inject_shallow_cancel)
   // Restore-allocate's 20 registers bypass the candidate buffer (OI-41).
   size_t gAvail() const { return gfree_.avail(); }
   size_t pAvail() const { return pfree_.avail(); }

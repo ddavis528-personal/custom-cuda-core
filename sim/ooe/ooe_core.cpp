@@ -264,8 +264,12 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
-  for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin})
+  for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod})
     v->assign(n_, 0);
+  wlog_.hop_live = false;
+  wlog_.hop_dep.clear();
+  wlog_.cf_dep.clear();
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -728,24 +732,29 @@ void Core::cancel(unsigned e) {
   x.spec = false;
   x.on_completion = true;
   count("cancel.miss");
-  // One hop now; cancelHop() takes one more a cycle until nothing changes
-  // (OA-1: transitive cancel moves one hop per cycle, held by V-59).
+  // advanceWakes takes the hops, one a cycle from this one, until nothing
+  // changes (OA-1: transitive cancel moves one hop per cycle, held by V-59).
   if (!cancel_live_) cancel_depth_ = 0;
   cancel_live_ = true;
-  cancelHop(e);
+  miss_now_ = true;
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on was withdrawn or returned
-/// to Waiting -- returns to Waiting. False when nothing changed.
-bool Core::cancelHop(unsigned root) {
+/// is no longer ready -- a producer it issued on missed this cycle or
+/// returned to Waiting last cycle -- returns to Waiting. False when nothing
+/// changed. One hop a cycle, as ooe_confirm takes it.
+bool Core::cancelHop() {
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
   std::vector<unsigned> hop;
   for (unsigned i = 0; i != n_; ++i) {
     const RsEntry &y = rs_[i];
-    if (y.valid && y.issued && !y.confirmed && i != root && !rowReady(i)) hop.push_back(i);
+    if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
+    if (y.valid && y.issued && !y.confirmed && !rowReady(i)) hop.push_back(i);
   }
+  wlog_.hop_dep.assign(size_t(n_) * n_, 0);
+  for (size_t k = 0; k != wlog_.hop_dep.size(); ++k) wlog_.hop_dep[k] = cell_[k] & 1;
+  wlog_.hop_live = true;
   bool changed = false;
   {
     for (unsigned i : hop) {
@@ -760,6 +769,7 @@ bool Core::cancelHop(unsigned root) {
       y.late = false;
       ++y.replays;
       if (i < wlog_.stop.size()) wlog_.stop[i] = 1;
+      if (i < wlog_.replay.size()) wlog_.replay[i] = 1;
       // Its done still comes, at the contracted cycle: void it (A-47). If
       // it has come already, void what it said.
       if (r.rcu_dones_owed > r.stale_dones) {
@@ -787,13 +797,35 @@ void Core::confirmPass() {
     if (rs_[e].valid && rs_[e].issued && !rs_[e].confirmed) order.push_back(e);
   std::sort(order.begin(), order.end(),
             [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
+  // One level a cycle, as ooe_confirm builds it: a source counts as
+  // confirmed only if it was before this pass. Every confirmed entry is
+  // freed below, clearing its column, so a consumer of one confirmed now
+  // confirms from the next cycle.
+  std::vector<uint8_t> was(n_);
+  for (unsigned j = 0; j != n_; ++j) was[j] = rs_[j].confirmed;
+  wlog_.cf_dep.assign(size_t(n_) * n_, 0);
+  for (size_t k = 0; k != wlog_.cf_dep.size(); ++k) wlog_.cf_dep[k] = cell_[k] & 1;
+  for (unsigned e = 0; e != n_ && e < wlog_.cf_iss.size(); ++e) {
+    const RsEntry &x = rs_[e];
+    wlog_.cf_iss[e] = x.valid && x.issued && !x.confirmed;
+    wlog_.cf_fin[e] = x.late && !x.spec;
+    wlog_.cf_prod[e] = x.produces;
+  }
   for (unsigned e : order) {
     RsEntry &x = rs_[e];
-    if (!rowConfirmed(e)) continue;
-    if (!x.produces) { x.confirmed = true; continue; }   // nothing to wake
+    bool sources = true;
+    for (unsigned j = 0; j != n_ && sources; ++j)
+      if ((cell(e, j) & 1) && !was[j]) sources = false;
+    if (!sources) continue;
+    if (!x.produces) {   // nothing to wake
+      x.confirmed = true;
+      if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
+      continue;
+    }
     if (x.late && !x.spec) {
       x.confirmed = true;
       if (e < wlog_.fin.size()) wlog_.fin[e] = 1;
+      if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
     }
   }
   for (unsigned e : order)
@@ -805,13 +837,7 @@ void Core::confirmPass() {
 }
 
 void Core::advanceWakes() {
-  // Transitive cancel's next hop, from what the last cycle withdrew.
-  if (cancel_live_) {
-    if (cfg_.inject_shallow_cancel || !cancelHop(kNoEntry)) {
-      ++histograms["cancel_depth"][cancel_depth_];
-      cancel_live_ = false;
-    }
-  }
+  miss_now_ = false;
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
@@ -822,6 +848,14 @@ void Core::advanceWakes() {
     RsEntry &x = rs_[e];
     if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
       cancel(e);
+  }
+  // Transitive cancel: one hop a cycle, from this cycle's misses and the
+  // entries the last hop returned to Waiting (OA-1, V-59).
+  if (cancel_live_) {
+    if ((cfg_.inject_shallow_cancel && !miss_now_) || !cancelHop()) {
+      ++histograms["cancel_depth"][cancel_depth_];
+      cancel_live_ = false;
+    }
   }
   // Copy-only ops land at their contracted cycle and send no done (A-38).
   for (unsigned s = 0; s != slot_.size(); ++s)

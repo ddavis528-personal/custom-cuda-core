@@ -1241,6 +1241,10 @@ void testRandom(unsigned seeds) {
       // Every fifth seed: a floorplan where load data lands after the
       // completion (the links split does this), and the core told so.
       if (seed % 5 == 0) c.cmpl_wake_delay = 2;
+      // Every seventh seed from the third: a long L1 shadow, the completion
+      // a lane latency past the wake, so grandchildren issue on a load that
+      // then misses and transitive cancel takes more than one hop.
+      if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
       Env e(c, seed * 7 + unsigned(mode));
       e.miss_pct = 30;
       e.data_after_cmpl = c.cmpl_wake_delay;

@@ -154,6 +154,26 @@ Built (`rtl/ooe/`):
   or whose completion delay is not the parameter's are skipped and
   counted, 64% of cycles. Controls late-grant, drop-cmpl and drop-stop must
   each be caught. Logic depth is 13.9 NGD in 12 levels at 45 timers.
+- **`ooe_confirm`**, confirmation and transitive cancel. Its hop returns
+  to Waiting every issued, unconfirmed entry that depends on an entry
+  that missed this cycle or returned to Waiting last cycle, through a
+  register of last cycle's replays. The miss comes from the timers' next
+  state, so the first hop lands in the miss's own cycle. Confirmation takes
+  an issued entry with no dependency bit left whose result is final
+  (`ooe_wake`'s fin) or that writes nothing. Both are a row-wide OR over
+  the matrix: 8.6 NGD in 6 levels at 45 entries. The model's `confirmPass`
+  chained confirmations oldest first within a cycle, and a miss meeting a
+  live cancel took two hops in a cycle; both now take one level a cycle,
+  as the RTL does. A probe found neither had ever happened in an S1 kernel
+  or a random seed, and no kernel moves by a cycle. The model logs each
+  hop's and pass's inputs and decisions (`Core::wakeLog`);
+  `test/ooe/confirm_tb.cpp` drives the RTL with the inputs and compares
+  both decisions every cycle. Over 25 seeds: 961 replays and 82,148
+  confirmations, none differ. At today's latencies no cancel needs a
+  second hop, so one random seed in seven now runs the controls' long L1
+  shadow, which makes the bench's no-carry control (no hop past the first)
+  catchable. Controls no-miss, no-fin, no-dep and no-carry must each be
+  caught.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 

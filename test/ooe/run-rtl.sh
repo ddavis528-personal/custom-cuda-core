@@ -12,7 +12,9 @@
 #   (test/ooe/age_tb.cpp);
 # - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp);
 # - ooe_wake against the model's wake lines and L1 miss cancels, live
-#   (test/ooe/wake_tb.cpp).
+#   (test/ooe/wake_tb.cpp);
+# - ooe_confirm against the model's cancel hops and confirmations, live
+#   (test/ooe/confirm_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -216,6 +218,31 @@ for c in late-grant drop-cmpl drop-stop; do
     say "  control $c (wake)" "MISSED"; fail=1
   else
     say "  control $c (wake)" "caught"
+  fi
+done
+
+# ooe_confirm, driven from the model's cancel hop and confirmation pass
+# after every cycle.
+dir=build/ooe-rtl/confirm
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GN="$n" --top-module ooe_confirm --Mdir "$dir" -o confirm_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DCONFIRM_N=$n -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/confirm_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "confirm: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/confirm_tb" "$seeds" 2>&1); then
+  say "confirm ($n entries) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "confirm == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-miss no-fin no-dep no-carry; do
+  if CONFIRM_CONTROL=$c "$dir/confirm_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (confirm)" "MISSED"; fail=1
+  else
+    say "  control $c (confirm)" "caught"
   fi
 done
 exit $fail

@@ -38,9 +38,9 @@ selected in t+2. Inside a cycle:
 
 1. Dones and completions: ROB completion, branch outcome, a load's wake when
    it wakes on its completion, and L1-hit confirmation.
-2. Timed wakes. A missed L1 slot cancels transitively. Copy-only ops land.
-   Results confirm oldest first. Confirmed RS entries free. Squashed entries
-   whose op has landed release.
+2. Timed wakes. A missed L1 slot withdraws its wake, and one cancel hop
+   runs. Copy-only ops land. Results confirm, one level a cycle. Confirmed
+   RS entries free. Squashed entries whose op has landed release.
 3. RAU's alloc and demote, kill, and barrier release.
 4. Retire: up to `CCV_RETIRE_PER_ROB` per warp, with store commits sharing the
    four `ccv_ooe_miu_retire` slots in rotating warp order.
@@ -60,14 +60,33 @@ field:
   from the grant, so producer and dependant move together. Only the
   contracts timed from the channel add the stage: the L1 shadow and V-44,
   V-35's done bound, and a copy-only op's landing.
-- **Transitive cancel moves one hop a cycle** (`cancelHop`). A miss returns
-  its direct dependants to Waiting at once, and each later cycle takes the
-  next hop, deciding the whole hop before applying it, until nothing
-  changes. V-59 makes that safe: every wake offset is at least 3, 2 plus
-  the hop, so the cancel lands before the next hop's ready computation.
+- **Transitive cancel moves one hop a cycle** (`cancelHop`), as
+  `ooe_confirm` builds it. Each cycle, after its misses are found, one hop
+  returns to Waiting every issued, unconfirmed entry that depends on an
+  entry that missed this cycle or returned to Waiting last cycle. The hop
+  is decided whole before it is applied. A miss's direct dependants
+  therefore go back in the miss's own cycle, and a miss that meets a
+  cancel already spreading shares its hop rather than taking a second.
+  V-59 makes that safe: every wake offset is at least 3, 2 plus the hop,
+  so the cancel lands before the next hop's ready computation.
   `Config::check` refuses a shorter offset (unit test `v-59`). V-15 is
   checked only once a cancel has settled. The wavefront it has not reached
-  is exactly what V-15 forbids at rest.
+  is exactly what V-15 forbids at rest. At today's latencies a second hop
+  never happens: the L1 shadow (CCV_LAT_L1_WAKE 16, the miss found at 19)
+  is shorter than any dependant's own wake. One random seed in seven runs
+  the long shadow the controls use, so the later hops are exercised.
+- **Confirmation takes one level a cycle** (`confirmPass`), as
+  `ooe_confirm` builds it. An issued entry confirms when every source was
+  confirmed before this cycle's pass, which, since a confirmed entry is
+  freed and its column cleared, means no dependency bit is left. It also
+  needs its own result final (its full-latency wake raised, no L1 check
+  pending) or no destination. A consumer of an entry confirmed this cycle
+  confirms from the next. Before this, the pass ran oldest first and
+  chained within a cycle. Measured with a probe, the chain never went past
+  one level in any S1 kernel or random seed, only in the long-shadow
+  controls and once in the `l1-spec` test, and no kernel moves by a cycle
+  in either mode. Nor did the earlier second hop in a cycle ever happen
+  outside the controls.
 
 The post-miss wake's extra cycle (OA's response OI-26) is in
 `CCV_LAT_L1_MISS_WAKE`, now defined from the completion's arrival to the
