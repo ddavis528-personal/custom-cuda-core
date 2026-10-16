@@ -352,6 +352,19 @@ pass, not the substitution: group flops by enable, clock and reset; pick a
 minimum group width; keep reset on the data path. Recorded in F-18 while the
 reasoning is fresh.
 
+### Local clock gating ✅ (rule and enforcement)
+
+Daniel's rule of 2026-10-16, in `docs/rtl-coding-style.md`: every register
+behind an `if` on a named enable (CG-1), the enable within 8 NGD of logic
+(CG-2), and at least 75% DCGE per enable group in idle, medium and high
+activity scenarios (CG-3). `tools/check-cg.py` measures CG-2 and CG-3 on the
+Yosys netlist, replaying each unit's bench trace into it. Waivers are in
+`rtl/cg-waivers.json`, and pre-rule RTL is on `rtl/cg-ratchet.json`, which
+only shrinks. TI's two modules meet the rule or carry waivers. OI's four
+are on the ratchet, with their conversion as TI-14: the decode queue's
+inferred enables measure 19.1 NGD and the free list's 17.9, so that is
+design work, not a rewrite of syntax.
+
 ### CI harness ✅
 
 `tools/verify.sh` and `.github/workflows/ci.yml`. §8 puts this at Stage 1
