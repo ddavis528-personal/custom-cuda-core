@@ -136,9 +136,9 @@ for spec in "double_pop:FV_MUT_DOUBLE_POP:credit_per_msg" \
     bad "mutant double-pop vs $tgt" "$r: not refuted"
 done
 mkdir -p "$B/rpt"
-sed 's/        if (valid_q\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /' \
+sed 's/        if (pay_en\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /' \
   rtl/phys/ccv_common_rpt.sv >"$B/rpt/enable_now.sv"
-sed 's/          if (v\[k\*S+j\]) lead_q <= /          if (valid_q[j]) lead_q <= /' \
+sed 's/          if (lead_en) lead_q <= /          if (pay_en[j]) lead_q <= /' \
   rtl/phys/ccv_common_rpt.sv >"$B/rpt/lead_late.sv"
 for m in enable_now lead_late; do
   if cmp -s rtl/phys/ccv_common_rpt.sv "$B/rpt/$m.sv"; then bad "repeater mutant $m" "did not apply"; continue; fi

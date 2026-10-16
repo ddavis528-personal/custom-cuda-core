@@ -1,5 +1,6 @@
-// check-cg fixture: CG-3. hit_q is enabled by every valid and almost never
-// changes, so its DCGE is near zero whenever anything arrives.
+// check-cg fixture: CG-3. hit_q, eight flops on one enable, is enabled by
+// every valid, and each bit is a five-input AND that is almost never true,
+// so it changes on well under CCV_DCGE_MIN_PCT of its enabled cycles.
 // tools/check-cg.py --selftest.
 module cg_fx_dcge (
   input  logic        clk,
@@ -9,18 +10,15 @@ module cg_fx_dcge (
   output logic        out_v,
   output logic [15:0] out_d
 );
-  logic        hit_q;
-  logic [15:0] d_q;
+  logic [7:0] hit_q;
+  wire        hit_en = in_v;
 
   always_ff @(posedge clk) begin
-    if (rst)       hit_q <= 1'b0;
-    else if (in_v) hit_q <= (in_d == 16'hffff);
+    if (rst)         hit_q <= '0;
+    else if (hit_en)
+      for (int i = 0; i < 8; i++) hit_q[i] <= &in_d[i +: 5];
   end
 
-  always_ff @(posedge clk) begin
-    if (in_v) d_q <= in_d;
-  end
-
-  assign out_v = hit_q;
-  assign out_d = d_q;
+  assign out_v = ^hit_q;
+  assign out_d = {8'h00, hit_q};
 endmodule

@@ -9,11 +9,12 @@ module cg_fx_deep (
   output logic [15:0] out_d
 );
   logic [15:0] acc_q, d_q;
+  wire         acc_en  = in_v;
   wire         deep_en = (acc_q + in_d) == 16'hbeef;
 
   always_ff @(posedge clk) begin
-    if (rst)       acc_q <= '0;
-    else if (in_v) acc_q <= acc_q + in_d;
+    if (rst)         acc_q <= '0;
+    else if (acc_en) acc_q <= acc_q + in_d;
   end
 
   always_ff @(posedge clk) begin

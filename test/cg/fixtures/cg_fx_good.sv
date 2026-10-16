@@ -1,6 +1,9 @@
-// check-cg fixture: compliant. Every register is under a named enable,
-// except the LFSR, which runs free and changes every cycle, so it is
-// ungated by measurement (CG-1's exception). tools/check-cg.py --selftest.
+// check-cg fixture: compliant. d_q and st_q share one clock gate of 20
+// flops on a named _en enable: st_q's reset is the module's, which acts only
+// in reset cycles, so it does not split the group and leave st_q's four
+// flops under CCV_CG_MIN_FLOPS. The LFSR runs free and changes every cycle,
+// so it is ungated by measurement (CG-1 and CG-4's exception).
+// tools/check-cg.py --selftest.
 module cg_fx_good (
   input  logic        clk,
   input  logic        rst,
@@ -9,18 +12,18 @@ module cg_fx_good (
   output logic        out_v,
   output logic [15:0] out_d
 );
-  logic        v_q;
   logic [15:0] d_q;
+  logic [3:0]  st_q;
   logic [7:0]  lfsr_q;
-  wire         v_chg = in_v ^ v_q;
+  wire         ld_en = in_v;
 
   always_ff @(posedge clk) begin
-    if (rst)        v_q <= 1'b0;
-    else if (v_chg) v_q <= in_v;
+    if (ld_en) d_q <= in_d;
   end
 
   always_ff @(posedge clk) begin
-    if (in_v) d_q <= in_d;
+    if (rst)        st_q <= '0;
+    else if (ld_en) st_q <= in_d[15:12];
   end
 
   always_ff @(posedge clk) begin
@@ -28,6 +31,6 @@ module cg_fx_good (
     else     lfsr_q <= {lfsr_q[6:0], lfsr_q[7] ^ lfsr_q[5] ^ lfsr_q[4] ^ lfsr_q[3]};
   end
 
-  assign out_v = v_q;
+  assign out_v = lfsr_q[0] ^ (^st_q);
   assign out_d = d_q ^ {8'h00, lfsr_q};
 endmodule

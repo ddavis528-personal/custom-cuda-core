@@ -72,7 +72,10 @@ def check(mod, stages, slots, width, lead, trace):
         q = c["connections"]["Q"]
         en = c["connections"].get("EN")
         who = sorted(names.get(q[0], {("?", 0)}))
-        net = next((n for n, _ in who if n.startswith("g_stage[")), None)
+        # The register, not an alias of it: pay_en is valid_q under its
+        # enable's name (docs/rtl-coding-style.md, "Local clock gating").
+        stage = [n for n, _ in who if n.startswith("g_stage[")]
+        net = next((n for n in stage if n.endswith("_q")), stage[0] if stage else None)
         if net is None:
             if all(n.startswith("$formal") for n, _ in who):
                 continue          # the known-assertion's plumbing, under -formal

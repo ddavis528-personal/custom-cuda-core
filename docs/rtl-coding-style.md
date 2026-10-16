@@ -241,6 +241,10 @@ clocks    [<block>_]<domain>_clk[_b]   core_clk           top level
 
 reset     <block>_rst_r<NN><l|h>       sched_rst_r06h
 
+enables   <name>_en[_<stage>][_n|_b]   ld_en_cs00h        a clock enable:
+                                        pay_en             what an always_ff's
+                                                           `if` gates on
+
 stage     <domain><block><NN><l|h>     c = core domain
                                         s = scheduler block
                                         03 = pipe stage
@@ -561,11 +565,12 @@ be proven X-free.
 ### Local clock gating: CG-1, CG-2, CG-3
 
 **Every register is behind an enable, and the enable is a good one** (Daniel,
-2026-10-16). Most power in a design like this is clock: a flop clocked on a
+2026-10-16; refined the same day with the gate size, the budget and the
+names). Most power in a design like this is clock: a flop clocked on a
 cycle it does not change burns it for nothing, and synthesis removes that
 clock only where the RTL gives it an enable to build a gate from. So the
 non-reset part of every `always_ff` is wrapped in an `if` on a named enable,
-and the enable has to be worth gating on. Three rules, checked by
+and the enable has to be worth gating on. Four rules, checked by
 `tools/check-cg.py`:
 
 ```systemverilog
@@ -576,33 +581,48 @@ end
 ```
 
 - **CG-1, form.** Each statement of an `always_ff`'s non-reset part is
-  `if (<enable>)` with no `else`, the enable a named signal (`ld_en_cs00h`,
-  `valid_q[j]`; a `!` is allowed). Inside it, anything. Several enables in
-  one block are fine, one `if` each. What fails: a register written with no
-  enable, an enable `if` with an `else` (the register is written on both
-  paths, so nothing holds), and an enable that is an expression. Name it: a
-  named net is one a reader, a timing report and a waiver can point at.
-- **CG-2, enable depth.** Every enable group's enable cone is at most
+  `if (<enable>)` with no `else`, the enable a net named
+  `<name>_en[_<stage>][_n|_b]` (`ld_en_cs00h`, `pay_en[j]`; a `!` is
+  allowed). Inside it, anything. Several enables in one block are fine, one
+  `if` each. What fails: a register written with no enable, an enable `if`
+  with an `else` (the register is written on both paths, so nothing holds),
+  an enable that is an expression, and one not named `_en`. A valid that is
+  also an enable gets an `_en` alias (`wire [S-1:0] pay_en = valid_q;`), so
+  every clock enable is one name a reader, a timing report, a power report
+  and a waiver can find.
+- **A clock gate is at least `CCV_CG_MIN_FLOPS` = 8 flops** behind one
+  logically distinct enable. A smaller group gets no ICG, which would cost
+  about the clock load it saves, so its flops are clocked every cycle and
+  count as ungated (CG-4). CG-2 and CG-3 judge clock gates only.
+- **CG-2, enable depth.** Every clock gate's enable cone is at most
   `CCV_NGD_CG_EN` = 8 NGD, from the flops and inputs that feed it. A clock
   gate's enable sets up to the rising edge at the root of its clock branch,
   earlier than the flops behind it see that edge, so it gets a fraction of
   the cycle, not the 25 NGD a flop's D gets. The explicit ICG inside every
   `ccv_common_clk` is held to the same number.
-- **CG-3, efficiency.** Every enable group's **DCGE**, the share of its
+- **CG-3, efficiency.** Every clock gate's **DCGE**, the share of its
   enabled cycles in which its value changes, is at least
   `CCV_DCGE_MIN_PCT` = 75%, in each of three scenarios: **idle**, **medium**
   and **high** activity. An enable that is on while nothing changes clocks
   the flops for nothing, which is the power the gate was meant to save. A
   scenario in which the group is never enabled passes: the gate is closed.
+- **CG-4, coverage.** Every flop is in a clock gate, or, clocked every
+  cycle, changes in at least 75% of counted cycles in every scenario. This
+  is where a group under 8 flops lands, and a flop whose enable synthesis
+  dropped. A register CG-1 already reports as written every cycle is judged
+  there, not twice.
 
 **An enable group is what synthesis would gate**: the flops Yosys infers one
 enable for, read from the synthesised netlist, not from the source. A
 register written under nested `if`s splits into groups with different
 enables, and a register written with no `if` at all may still get enables
 Yosys finds in its logic. CG-2 and CG-3 measure those groups, so they hold
-however the RTL is written. CG-1 is what makes the enable deliberate. For a
-reset with priority over the enable, the group's clock runs when either is
-active, and its depth is the deeper of the two.
+however the RTL is written. CG-1 is what makes the enable deliberate. The
+unit's own reset does not split a group: it acts only in reset cycles, which
+are never counted, so a register with it and one without share a gate when
+their enable is the same. Any other synchronous reset with priority over the
+enable is part of the group's enable: its clock runs when either is active,
+and its depth is the deeper of the two.
 
 **How it is measured.** A *unit* is one module at one parameterisation, with
 a bench that runs the three scenarios and dumps a VCD (`test/**/cg-units.json`;
@@ -624,19 +644,33 @@ changes when no message does is the commonest way to get this wrong: it
 makes the scenario busier than its traffic, and every DCGE looks better
 than it is.
 
-**Exceptions.** Two, both explicit:
+**Exceptions.** Three, in this order, and the order matters:
 
-- **By measurement.** A register written every cycle (CG-1) is accepted when,
-  clocked every cycle, it changes in at least 75% of counted cycles in every
+- **By measurement.** A register clocked every cycle (CG-1, CG-4) is
+  accepted when it changes in at least 75% of counted cycles in every
   scenario: a gate would save it little. A free-running LFSR passes this way;
   a status register that holds while idle does not.
-- **By waiver.** `rtl/cg-waivers.json` holds one entry per module, rule and
-  register, with who wrote it, when, and why the rule cannot or should not be
-  met, citing what was measured. A waiver that excuses nothing is refused, so
-  the file cannot outlive what it waives. Today's waivers are the
-  repeater's pulse flops (an enable that sees a repeater's input reaches the
-  gate after a cycle of wire), the clock gate's registered wake (Q-49 keeps
-  that path off any gate's enable) and one counter enable at 8.9 NGD.
+- **By budget.** Each block may leave `CCV_CG_BUDGET_PCT` = 2% of its flops
+  outside the rules with no waiver, so that a handful of flops never forces
+  unnatural RTL. The count is per instance, over the block's whole
+  hierarchy: its hardening wrapper (the block and its repeaters), every
+  common module counted once for each place it is used. Within a block the
+  findings are taken smallest first while they fit, and a finding in a
+  module several blocks use is excused only if every one of them takes it.
+  The budget applies only to a block whose top is RTL, not a generated
+  stub; today none is, so it applies nowhere yet.
+- **By waiver, last.** `rtl/cg-waivers.json` holds one entry per module,
+  rule and register, with who wrote it, when, and why the rule cannot or
+  should not be met, citing what was measured. Waivers are the last resort:
+  where a rule would be met by refactoring, refactor (the age matrix's 900
+  one-flop enables are a refactor, not a waiver). A waiver that excuses
+  nothing is refused, and that includes one for a finding a block's budget
+  already takes, so the file shrinks on its own as blocks get RTL. Today's
+  waivers: the repeater's pulse flops (an enable that sees a repeater's input
+  reaches the gate after a cycle of wire); the clock gate's registered wake
+  (Q-49 keeps that path off any gate's enable); and the gate's two counters
+  and its hold, 14 flops in groups under 8, which every block's budget will
+  take.
 
 **The ratchet.** RTL written before the rule is listed in
 `rtl/cg-ratchet.json` and excused while its owner converts it. The list only
@@ -648,9 +682,12 @@ list is refused. Checkers (`ccv_common_chk_*`, present only under
 
 **What this does not see.** An enable's inputs are taken to arrive at zero:
 one built from another module's combinational output is measured from the
-module boundary only. The thresholds are per group, so a narrow group
-behind its own enable counts the same as a wide one; the ICG it costs is
-not weighed against the flops it saves.
+module boundary only. A group is one enable net and its polarity, with the
+unit's reset folded in, so two enables that are logically equal but built
+separately count as two groups and may each fall under 8. And a finding's
+size in a block's budget is counted by register name, every flop of that
+register in each instance, which over-counts a finding that covers only
+part of a register.
 
 ### CCV-L26 — nothing Yosys cannot parse
 

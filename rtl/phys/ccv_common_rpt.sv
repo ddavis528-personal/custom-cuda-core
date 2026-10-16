@@ -98,6 +98,9 @@ module ccv_common_rpt #(
   for (genvar k = 0; k < STAGES; k++) begin : g_stage
     logic [S-1:0] valid_q, credit_q, stall_q;
     logic         wake_q;
+    // The payload's clock enable, named as one (docs/rtl-coding-style.md,
+    // "Local clock gating"): this stage's own valid flop.
+    wire  [S-1:0] pay_en = valid_q;
 
     always_ff @(posedge clk) begin
       if (!rst_n) begin
@@ -119,14 +122,15 @@ module ccv_common_rpt #(
       // The payload register, enabled by the previous cycle's valid -- this
       // stage's own valid flop. No reset: it is data, meaningful only when due.
       always_ff @(posedge clk) begin
-        if (valid_q[j]) pay_q <= p[(k*S+j)*W +: W];
+        if (pay_en[j]) pay_q <= p[(k*S+j)*W +: W];
       end
 
       if (HAS_LEAD) begin : g_lead
         // The lead slice, enabled by the same cycle's valid: it rides with it.
         logic [W-1:0] lead_q;
+        wire          lead_en = v[k*S+j];
         always_ff @(posedge clk) begin
-          if (v[k*S+j]) lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
+          if (lead_en) lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
         end
         assign p[((k+1)*S+j)*W +: W] = (pay_q & ~LEAD_MASK) | lead_q;
       end else begin : g_nolead
@@ -137,7 +141,7 @@ module ccv_common_rpt #(
       // The trace id rides beside the payload and lands with it.
       logic [63:0] tid_q;
       always_ff @(posedge clk) begin
-        if (valid_q[j]) tid_q <= t[(k*S+j)*64 +: 64];
+        if (pay_en[j]) tid_q <= t[(k*S+j)*64 +: 64];
       end
       assign t[((k+1)*S+j)*64 +: 64] = tid_q;
 `endif

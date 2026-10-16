@@ -30,12 +30,15 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 ```
 
 Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
-register behind a named enable, enable cones within 8 NGD, DCGE of at least
-75% per enable group in idle, medium and high scenarios. `tools/check-cg.py`
-measures it from each module's unit (`test/**/cg-units.json`). Exceptions
-are waivers with a reason (`rtl/cg-waivers.json`), each written by the
-module's owner. RTL older than the rule sits on `rtl/cg-ratchet.json`, which
-only shrinks: its owner removes an entry once the module passes.
+register behind an `if` on an enable named `<name>_en`; a clock gate is 8
+flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
+idle, medium and high scenarios; anything else must toggle 75% of the time.
+`tools/check-cg.py` measures it from each module's unit
+(`test/**/cg-units.json`). Each block may leave 2% of its flops, per
+instance, outside the rules; past that, refactor, and a waiver
+(`rtl/cg-waivers.json`, written by the module's owner) is the last resort.
+RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
+its owner removes an entry once the module passes.
 
 Quicker loops: `tools/check-skel.sh` builds `build/skel/ccv-skel`;
 `tools/check-kernel.sh` runs every kernel with its coverage bins and its

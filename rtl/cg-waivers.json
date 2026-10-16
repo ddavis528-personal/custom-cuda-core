@@ -2,28 +2,68 @@
   "_comment": "Explicit exceptions to the local clock-gating rules (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'). One entry per module, rule (CG-1, CG-2 or CG-3) and register; why says what was measured and why the rule cannot or should not be met. A waiver that excuses nothing is refused.",
   "waivers": [
     {
-      "module": "ccv_common_rpt", "rule": "CG-1", "target": "valid_q", "by": "TI", "date": "2026-10-16",
-      "why": "A repeater stage exists because its input arrives after a cycle of wire. Any enable that could tell a new valid from a held one has to see that input, and an ICG enable must set up before the flop's own D does, so it would turn a wire-limited path into a gate-limited one. The pulse flops are 3 * SLOTS + 1 a stage; the payload, which is most of the flops, is gated by this flop (CG-2 0.0 NGD, DCGE 79-100%)."
+      "module": "ccv_common_rpt",
+      "rule": "CG-1",
+      "target": "valid_q",
+      "by": "TI",
+      "date": "2026-10-16",
+      "why": "A repeater stage exists because its input arrives after a cycle of wire. Any enable that could tell a new valid from a held one has to see that input, and an ICG enable must set up before the flop's own D does, so it would turn a wire-limited path into a gate-limited one. The pulse flops are 3 * SLOTS + 1 a stage; the payload, most of the flops, is gated by this flop (pay_en, 0.0 NGD, DCGE 99-100%). Interim: once a block has RTL, its 2% budget takes these and this waiver is refused as stale."
     },
     {
-      "module": "ccv_common_rpt", "rule": "CG-1", "target": "credit_q", "by": "TI", "date": "2026-10-16",
+      "module": "ccv_common_rpt",
+      "rule": "CG-1",
+      "target": "credit_q",
+      "by": "TI",
+      "date": "2026-10-16",
       "why": "As valid_q: the credit arrives over the link's wire, so an enable that sees it reaches the clock gate late."
     },
     {
-      "module": "ccv_common_rpt", "rule": "CG-1", "target": "stall_q", "by": "TI", "date": "2026-10-16",
+      "module": "ccv_common_rpt",
+      "rule": "CG-1",
+      "target": "stall_q",
+      "by": "TI",
+      "date": "2026-10-16",
       "why": "As valid_q: the stall arrives over the link's wire, so an enable that sees it reaches the clock gate late."
     },
     {
-      "module": "ccv_common_rpt", "rule": "CG-1", "target": "wake_q", "by": "TI", "date": "2026-10-16",
+      "module": "ccv_common_rpt",
+      "rule": "CG-1",
+      "target": "wake_q",
+      "by": "TI",
+      "date": "2026-10-16",
       "why": "As valid_q: the wake arrives over the link's wire, so an enable that sees it reaches the clock gate late. One flop a stage."
     },
     {
-      "module": "ccv_common_clk", "rule": "CG-1", "target": "wake_q", "by": "TI", "date": "2026-10-16",
+      "module": "ccv_common_clk",
+      "rule": "CG-1",
+      "target": "wake_q",
+      "by": "TI",
+      "date": "2026-10-16",
       "why": "The registered wake is the one path from another block into the gate, and Q-49 ends it at a flop so it never reaches a clock gate's enable. An enable that saw `wake` would put it back there. One flop."
     },
     {
-      "module": "ccv_common_clk", "rule": "CG-2", "target": "s_run_q", "by": "TI", "date": "2026-10-16",
-      "why": "8.9 NGD measured, against 7.4 for q_run_q, whose enable is the same logic: a 6-bit compare against the hysteresis CSR beside a zero test, then a mux. The compare is on the path because a threshold lowered mid-count takes effect at once (docs/clock-gate.md); registering it would take a CSR change one cycle late, which changes the proved hysteresis. DCGE is 100% in every scenario. Raised for Daniel with the clock-gating rule."
+      "module": "ccv_common_clk",
+      "rule": "CG-4",
+      "target": "q_run_q",
+      "by": "TI",
+      "date": "2026-10-16",
+      "why": "6 flops on their own change-only enable (DCGE 100%), under CCV_CG_MIN_FLOPS, so no clock gate. The gate's counters and hold are 14 flops in all, on the free-running clock. One gate over all three needs an enable that ORs the three, past 8 NGD because of the hysteresis compare, or a coarser enable whose DCGE falls to about 0% in idle. Interim: once a block has RTL, its 2% budget takes these 14 flops (CCV_CG_BUDGET_PCT) and this waiver is refused as stale."
+    },
+    {
+      "module": "ccv_common_clk",
+      "rule": "CG-4",
+      "target": "s_run_q",
+      "by": "TI",
+      "date": "2026-10-16",
+      "why": "6 flops on their own change-only enable (DCGE 100%), under CCV_CG_MIN_FLOPS, so no clock gate. The gate's counters and hold are 14 flops in all, on the free-running clock. One gate over all three needs an enable that ORs the three, past 8 NGD because of the hysteresis compare, or a coarser enable whose DCGE falls to about 0% in idle. Interim: once a block has RTL, its 2% budget takes these 14 flops (CCV_CG_BUDGET_PCT) and this waiver is refused as stale."
+    },
+    {
+      "module": "ccv_common_clk",
+      "rule": "CG-4",
+      "target": "hold_q",
+      "by": "TI",
+      "date": "2026-10-16",
+      "why": "2 flops on their own change-only enable (DCGE 100%), under CCV_CG_MIN_FLOPS, so no clock gate. The gate's counters and hold are 14 flops in all, on the free-running clock. One gate over all three needs an enable that ORs the three, past 8 NGD because of the hysteresis compare, or a coarser enable whose DCGE falls to about 0% in idle. Interim: once a block has RTL, its 2% budget takes these 14 flops (CCV_CG_BUDGET_PCT) and this waiver is refused as stale."
     }
   ]
 }

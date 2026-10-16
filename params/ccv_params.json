@@ -277,6 +277,22 @@
       "doc": "Minimum dynamic clock-gating efficiency of every enable group, in percent: of the cycles its clock is enabled, the share in which its value changes. Held in each of the idle, medium and high activity scenarios; a scenario with no enabled cycle passes. tools/check-cg.py measures it (CG-3, docs/rtl-coding-style.md)."
     },
     {
+      "name": "CCV_CG_MIN_FLOPS",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_CG_MIN_FLOPS >= 1",
+      "doc": "Fewest flops behind one logically distinct enable for it to be a clock gate. A smaller group gets no ICG, which would cost about the clock load it saves: its flops are clocked every cycle and count as ungated (CG-4, docs/rtl-coding-style.md)."
+    },
+    {
+      "name": "CCV_CG_BUDGET_PCT",
+      "value": 2,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_CG_BUDGET_PCT < 100",
+      "doc": "Share of a block's flops, counted per instance over its whole hierarchy, that may sit outside the clock-gating rules without a waiver: an automatic waiver for small cases that would otherwise need unnatural RTL. tools/check-cg.py applies it block by block, smallest findings first, before any explicit waiver."
+    },
+    {
       "name": "CCV_W_WARP_ID",
       "value": 5,
       "status": "arch",

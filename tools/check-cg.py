@@ -8,30 +8,37 @@
 The rules are docs/rtl-coding-style.md, "Local clock gating":
 
   CG-1  form: every non-reset statement of an always_ff is `if (<enable>)`
-        with no `else`, the enable a named signal. A register written outside
-        one is accepted by measurement when, clocked every cycle, it changes
-        in at least CCV_DCGE_MIN_PCT of non-reset cycles in every scenario:
-        a gate would save it little.
-  CG-2  enable depth: every enable group's enable cone is at most
+        with no `else`, the enable a net named <name>_en[_<stage>][_n|_b]. A
+        register written outside one is accepted by measurement when,
+        clocked every cycle, it changes in at least CCV_DCGE_MIN_PCT of
+        non-reset cycles in every scenario: a gate would save it little.
+  CG-2  enable depth: every clock gate's enable cone is at most
         CCV_NGD_CG_EN NGD, and so is every explicit ICG's.
-  CG-3  DCGE: every enable group changes value in at least CCV_DCGE_MIN_PCT
+  CG-3  DCGE: every clock gate changes value in at least CCV_DCGE_MIN_PCT
         of the cycles its clock is enabled, in each of the idle, medium and
-        high scenarios. A scenario that never enables the group passes.
+        high scenarios. A scenario that never enables the gate passes.
+  CG-4  coverage: every flop is in a clock gate, or changes in at least
+        CCV_DCGE_MIN_PCT of counted cycles in every scenario.
 
-An enable group is what synthesis would gate: the flops Yosys infers one
-enable for. CG-2 and CG-3 measure the netlist, not the source, so they hold
-whichever way the RTL is written. CG-1 is what makes the enable deliberate.
+A clock gate is a group of at least CCV_CG_MIN_FLOPS flops that Yosys infers
+one enable for; the unit's own reset does not split a group. A smaller group
+gets no ICG, and its flops count as ungated (CG-4). CG-2 to CG-4 measure the
+netlist, not the source, so they hold whichever way the RTL is written; CG-1
+is what makes the enable deliberate.
 
 A unit is one module at one parameterization, with a bench that runs the
 three scenarios and dumps a VCD (test/**/cg-units.json). The bench's port
 trace is replayed into the unit's netlist, which must reproduce the bench's
 outputs on every cycle, so what is measured is what the bench ran.
 
-Exceptions: rtl/cg-waivers.json, one entry per (module, rule, register),
-each with a reason; a waiver that excuses nothing is refused. The ratchet,
-rtl/cg-ratchet.json, holds the modules written before the rule. It can only
-shrink: an entry outside RATCHET_BASELINE is refused, and so is a listed
-module with nothing left to excuse.
+Exceptions, in order. The ratchet, rtl/cg-ratchet.json, holds the modules
+written before the rule; it only shrinks: an entry outside RATCHET_BASELINE
+is refused, and so is a listed module with nothing left to excuse. Each
+block with RTL may leave CCV_CG_BUDGET_PCT of its flops, counted per
+instance over its hierarchy, outside the rules, smallest findings first.
+Last, rtl/cg-waivers.json: one entry per (module, rule, register), each with
+a reason; a waiver that excuses nothing, including one for what a budget
+already takes, is refused.
 """
 import argparse
 import collections
@@ -70,6 +77,13 @@ lint = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(lint)
 
 
+def reg_is(name, reg):
+    """Whether a netlist name is register `reg`: at any scope (a generate
+    block, an instance), and any element of it if it is an array."""
+    base = re.sub(r"(\[\d+\])+$", "", name)
+    return base == reg or base.endswith("." + reg)
+
+
 def param(name):
     for p in json.load(open(os.path.join(ROOT, "params", "ccv_params.json")))["params"]:
         if p["name"] == name:
@@ -79,6 +93,8 @@ def param(name):
 
 NGD_MAX = float(param("CCV_NGD_CG_EN"))
 DCGE_MIN = float(param("CCV_DCGE_MIN_PCT"))
+MIN_FLOPS = int(param("CCV_CG_MIN_FLOPS"))
+BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
 
 
 def run(cmd, cwd=ROOT, **kw):
@@ -266,8 +282,17 @@ NAMED_RE = re.compile(r"^[!~]?\s*[A-Za-z_]\w*(\s*\[[^\[\]]*\])*(\s*\.\s*\w+)*$")
 RESET_RE = re.compile(r"`CCV_RST|\b(rst\w*|\w*_rst(_\w*)?|reset\w*)\b")
 
 
+# An enable's name: <what>_en, then a stage tag and _n or _b if it has them
+# (docs/rtl-coding-style.md, "Net naming").
+EN_NAME_RE = re.compile(r"^[a-z]\w*_en(_[a-z][a-z]\d{2}[lh])?(_[nb])?$")
+
+
 def named(cond):
     return bool(NAMED_RE.match(cond.replace(" ", "")))
+
+
+def enable_name(cond):
+    return re.match(r"[A-Za-z_]\w*", cond.replace(" ", "").lstrip("!~")).group(0)
 
 
 def nonreset(node, out):
@@ -286,6 +311,9 @@ def nonreset(node, out):
         elif not named(cond):
             out.append(("the enable is an expression (%s), not a named signal"
                         % cond.replace(" ", ""), regs_of(node)))
+        elif not EN_NAME_RE.match(enable_name(cond)):
+            out.append(("the enable %s is not named <what>_en[_<stage>][_n|_b]"
+                        % enable_name(cond), regs_of(node)))
     elif kind in ("assign", "case"):
         if node[1]:
             out.append(("written every cycle, under no enable", set(node[1])))
@@ -328,6 +356,15 @@ def form_findings(text, first=1):
                 nonreset(s, bad)
         for why, regs in bad:
             out.append((line, why, sorted(regs)))
+    return out
+
+
+def module_regs(text):
+    """Every register an always_ff in the module text assigns."""
+    out = set()
+    for kind, _, body, _, _ in lint.always_blocks(text):
+        if kind == "ff":
+            out |= assigned(tokens(body))
     return out
 
 
@@ -385,23 +422,35 @@ FUNC = {
 
 class Group:
     """Flops one clock enable drives. kind: 'E' (enable), 'ER' (enable,
-    or a synchronous reset that overrides it), or 'ungated'."""
+    or a synchronous reset that overrides it), or 'ungated'. A group is a
+    clock gate only at CCV_CG_MIN_FLOPS flops or more: below that no ICG is
+    built for it, and its flops are clocked every cycle."""
+
+    @property
+    def gated(self):
+        return self.kind != "ungated" and len(self.q) >= MIN_FLOPS
 
     def __init__(self, key, kind, e, epol, r, rpol):
         self.key, self.kind = key, kind
         self.e, self.epol, self.r, self.rpol = e, epol, r, rpol
         self.q = []          # Q nets
         self.depth = 0.0
+        self.best = set()    # each Q net's register name
         self.name = ""
         self.regs = set()    # full register names with bits in the group
         self.en_name = ""
 
 
 class Netlist:
-    def __init__(self, path, top):
+    def __init__(self, path, top, reset=None):
+        """reset: the unit's reset port as "name" or "!name", or None."""
         d = json.load(open(path))
         m = d["modules"][top]
         self.ports = m["ports"]
+        rbit = rhigh = None
+        if reset:
+            rbit = self.ports[reset.lstrip("!")]["bits"][0]
+            rhigh = not reset.startswith("!")
         self.cells = m["cells"]
         self.alias = collections.defaultdict(list)    # net -> [(name, idx)]
         for name, nn in m["netnames"].items():
@@ -448,6 +497,12 @@ class Netlist:
                     r, rp = None, None
             q = con["Q"][0]
             self.flops.append(q)
+            # A synchronous reset that is the unit's reset port acts only in
+            # reset cycles, which are never counted: outside them the clock
+            # runs on the enable alone, so it does not split a group, and a
+            # register with that reset shares a gate with one without.
+            if k == "ER" and r == rbit and rp == rhigh:
+                k, r, rp = "E", None, None
             if k == "ungated":
                 key = ("ungated", self.best(q)[0])
             else:
@@ -462,6 +517,7 @@ class Netlist:
                 n, i = self.best(q)
                 byreg[n].append(i)
                 g.regs |= {a[0] for a in self.alias[q]}
+                g.best.add(n)
             g.name = ", ".join("%s%s" % (n, ranges(ix)) for n, ix in sorted(byreg.items()))
             if g.kind != "ungated":
                 g.en_name = self.net_name(g.e, g.epol)
@@ -671,7 +727,7 @@ class Unit:
         if r.returncode:
             raise SystemExit("check-cg: unit %s: yosys failed:\n%s"
                              % (self.name, (r.stdout + r.stderr)[-2000:]))
-        self.nl = Netlist(os.path.join(self.dir, "net.json"), self.module)
+        self.nl = Netlist(os.path.join(self.dir, "net.json"), self.module, s.get("reset"))
 
     # -- CG-2 -----------------------------------------------------------------
     def measure_depth(self):
@@ -884,6 +940,10 @@ endmodule
                              "activity": toggles / float(iw * max(1, len(counted))),
                              "en": g_en, "use": g_use}
 
+    def reg_qs(self, reg):
+        """The Q nets of every register named `reg`, at any scope."""
+        return [q for q in self.nl.flops if any(reg_is(n, reg) for n, _ in self.nl.alias.get(q, []))]
+
     def reg_rate(self, reg, sc):
         """For each full register name ending in `reg`: the share of counted
         cycles in which any of its bits changes, clocked every cycle."""
@@ -891,7 +951,7 @@ endmodule
         byname = collections.defaultdict(int)
         for q in self.nl.flops:
             for name, _ in self.nl.alias.get(q, []):
-                if name == reg or name.endswith("." + reg):
+                if reg_is(name, reg):
                     byname[name] |= 1 << self.qpos[q]
         dat = self.data[sc]
         obs = dat["obs"]
@@ -921,8 +981,9 @@ def dcge(u, key, sc):
 # == The findings ==============================================================
 
 class Finding:
-    def __init__(self, rule, module, regs, msg, unit=None):
+    def __init__(self, rule, module, regs, msg, unit=None, flops=0):
         self.rule, self.module, self.regs, self.msg, self.unit = rule, module, set(regs), msg, unit
+        self.flops = flops
         self.status = "open"
 
     def __str__(self):
@@ -931,25 +992,26 @@ class Finding:
 
 
 def unit_findings(u):
-    """CG-2 and CG-3 for one measured unit."""
+    """CG-2 and CG-3 for one measured unit: its clock gates, the groups of
+    CCV_CG_MIN_FLOPS flops or more."""
     out = []
     for key, g in sorted(u.nl.groups.items(), key=lambda kv: kv[1].name):
-        if g.kind == "ungated":
+        if not g.gated:
             continue
         if g.depth > NGD_MAX:
-            out.append(Finding("CG-2", u.module, g.regs,
+            out.append(Finding("CG-2", u.module, g.best,
                                "enable of %s is %.1f NGD deep, over %g (en: %s)"
-                               % (g.name, g.depth, NGD_MAX, g.en_name), u.name))
+                               % (g.name, g.depth, NGD_MAX, g.en_name), u.name, len(g.q)))
         for sc in SCENARIOS:
             if sc not in u.data:
                 continue
             v = dcge(u, key, sc)
             if v is not None and v < DCGE_MIN:
-                out.append(Finding("CG-3", u.module, g.regs,
+                out.append(Finding("CG-3", u.module, g.best,
                                    "%s changes on %.0f%% of its %d enabled cycles in %s, "
                                    "under %g%% (en: %s)"
                                    % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
-                                      g.en_name), u.name))
+                                      g.en_name), u.name, len(g.q)))
     for c, dep in sorted(u.icg_depth.items()):
         if dep > NGD_MAX:
             out.append(Finding("CG-2", u.module, {c},
@@ -988,11 +1050,12 @@ def form_check(modules, units):
     for mod, (rel, text, first) in sorted(modules.items()):
         for line, why, regs in form_findings(text, first):
             for reg in regs:
-                ok, notes = bool(by_mod.get(mod)), []
+                ok, notes, flops = bool(by_mod.get(mod)), [], 0
                 for u in by_mod.get(mod, []):
                     if u.errors or not all(sc in u.data for sc in SCENARIOS):
                         ok = False
                         continue
+                    flops = max(flops, len(u.reg_qs(reg)))
                     seen = False
                     for sc in SCENARIOS:
                         for name, rate in sorted(u.reg_rate(reg, sc).items()):
@@ -1008,26 +1071,203 @@ def form_check(modules, units):
                 msg = "%s:%d: %s %s" % (rel, line, reg, why)
                 if every and notes:
                     msg += " (%s)" % notes[0]
-                out.append(Finding("CG-1", mod, {reg}, msg))
+                out.append(Finding("CG-1", mod, {reg}, msg, flops=flops))
     return out
+
+
+def coverage_check(modules, units):
+    """CG-4: every flop is in a clock gate of CCV_CG_MIN_FLOPS or more, or,
+    clocked every cycle, changes in at least CCV_DCGE_MIN_PCT of counted
+    cycles in every scenario. Registers CG-1 already reports as written
+    every cycle are judged there, not again here."""
+    every, regs_of_mod = collections.defaultdict(set), {}
+    for mod, (rel, text, first) in modules.items():
+        regs_of_mod[mod] = module_regs(text)
+        for _, why, regs in form_findings(text, first):
+            if why.startswith("written every cycle"):
+                every[mod] |= set(regs)
+    out = []
+    for u in units:
+        if u.errors or not all(sc in u.data for sc in SCENARIOS):
+            continue
+        assigned_here = regs_of_mod.get(u.module, set())
+
+        def name_of(q):
+            # The register the RTL assigns, not a wire that aliases it.
+            for n, _ in sorted(u.nl.alias.get(q, []), key=lambda a: (len(a[0]), a)):
+                if any(reg_is(n, r) for r in assigned_here):
+                    return n
+            return u.nl.best(q)[0]
+        loose = collections.defaultdict(list)
+        for g in u.nl.groups.values():
+            if not g.gated:
+                for q in g.q:
+                    loose[name_of(q)].append(q)
+        for reg, qs in sorted(loose.items()):
+            if any(reg_is(reg, r) for r in every.get(u.module, ())):
+                continue
+            mask = sum(1 << u.qpos[q] for q in qs)
+            worst = None
+            for sc in SCENARIOS:
+                dat = u.data[sc]
+                obs = dat["obs"]
+                ch = sum(1 for t in dat["counted"] if (obs[t] ^ obs[t + 1]) & mask)
+                rate = 100.0 * ch / max(1, dat["cycles"])
+                if rate < DCGE_MIN and (worst is None or rate < worst[1]):
+                    worst = (sc, rate)
+            if worst:
+                out.append(Finding("CG-4", u.module, {reg},
+                                   "%s: %d flop(s) in no clock gate of %d or more, changing "
+                                   "on %.0f%% of %s cycles" % (reg, len(qs), MIN_FLOPS,
+                                                               worst[1], worst[0]),
+                                   u.name, len(qs)))
+    return out
+
+
+# == The budget ================================================================
+
+def elaborate(name, top, files, blackbox=(), known=()):
+    """A partition's flops, instance by instance: synthesised with its
+    hierarchy kept, each module's flops counted once and multiplied by how
+    many times the partition instantiates it. Returns the total and, per
+    instantiated module (by its source name), its multiplicity and its flop
+    count per register name."""
+    work = os.path.join(BUILD, "part_" + name)
+    os.makedirs(work, exist_ok=True)
+    jf = os.path.join(work, "part.json")
+    cmds = ["read_verilog -sv -formal -Irtl/include -Irtl/generated %s"
+            % " ".join(["rtl/ccv_assert_pkg.sv"] + list(files))]
+    for bb in blackbox:
+        cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated %s" % bb)
+    cmds += ["hierarchy -top %s" % top, "chformal -remove", "synth -top %s" % top,
+             "write_json %s" % jf]
+    r = run(["yosys", "-q", "-p", "; ".join(cmds)])
+    if r.returncode:
+        raise SystemExit("check-cg: partition %s: yosys failed:\n%s"
+                         % (name, (r.stdout + r.stderr)[-2000:]))
+    mods = json.load(open(jf))["modules"]
+    per = {}
+    for mn, m in mods.items():
+        alias = collections.defaultdict(set)
+        for nn, v in m["netnames"].items():
+            if v["hide_name"] or "$" in nn:
+                continue
+            for b in v["bits"]:
+                if isinstance(b, int):
+                    alias[b].add(re.sub(r"(\[\d+\])+$", "", nn.split(".")[-1]))
+        cnt, regs, kids = 0, collections.Counter(), []
+        for c in m["cells"].values():
+            t = c["type"]
+            if t in mods:
+                kids.append(t)
+            elif FLOP_RE.match(t):
+                cnt += 1
+                for nn in alias.get(c["connections"]["Q"][0], ()):
+                    regs[nn] += 1
+        per[mn] = (cnt, regs, kids)
+    known = set(known) | {top}
+
+    def base(mn):
+        if not mn.startswith("$paramod"):
+            return mn
+        for tok in mn.split("\\"):
+            if tok in known:
+                return tok
+        return mn
+
+    mult = collections.Counter()
+
+    def walk(mn, k):
+        mult[mn] += k
+        for kid in per[mn][2]:
+            walk(kid, k)
+    walk(next(mn for mn in mods if base(mn) == top), 1)
+    return {"total": sum(per[mn][0] * k for mn, k in mult.items()),
+            "inst": [(base(mn), k, per[mn][1]) for mn, k in mult.items()]}
+
+
+def partitions(modules):
+    """The blocks with RTL, each as (name, top, files, blackboxes): a block
+    whose top, ccv_<block>, is written by hand rather than generated as a
+    stub. The partition is its hardening wrapper, the block and its
+    repeaters, where one is generated. Today every block top is a stub."""
+    blocks = json.load(open(os.path.join(ROOT, "params", "blocks.json")))
+    names = [b["name"] for b in (blocks["blocks"] if isinstance(blocks, dict) else blocks)]
+    files, defined = [], {}
+    for path in sorted(glob.glob(os.path.join(ROOT, "rtl", "**", "*.sv"), recursive=True)):
+        rel = os.path.relpath(path, ROOT)
+        if rel.startswith(DESIGN_SKIP):
+            continue
+        files.append(rel)
+        for _, _, n, _ in lint.module_spans(lint.strip_comments(open(path).read())):
+            defined[n] = rel
+    out = []
+    for b in names:
+        if "ccv_%s" % b not in defined:
+            continue
+        wrap = os.path.join("rtl", "top", "wrap", "ccv_%s_w.sv" % b)
+        top = "ccv_%s_w" % b if os.path.exists(os.path.join(ROOT, wrap)) else "ccv_%s" % b
+        fs = files + ([wrap] if top.endswith("_w") else [])
+        out.append((b, top, fs, ["rtl/ctech/sim/%s.sv" % ICG]))
+    return out
+
+
+def apply_budget(findings, parts, known):
+    """Each block may leave CCV_CG_BUDGET_PCT of its flops, counted per
+    instance, outside the rules. Within each block the open findings are
+    taken smallest first while they fit; a finding is excused only when every
+    block that instantiates its module takes it. Returns a line per block."""
+    open_f = [f for f in findings if f.status == "open"]
+    present, taken, lines = collections.defaultdict(set), collections.defaultdict(set), []
+    for name, top, files, bbs in parts:
+        el = elaborate(name, top, files, bbs, known)
+        budget = el["total"] * BUDGET_PCT / 100.0
+        items = []
+        for k, f in enumerate(open_f):
+            lasts = {re.sub(r"(\[[\d:,]+\])+$", "", r.split(".")[-1]) for r in f.regs}
+            here = [(m, regs) for b, m, regs in el["inst"] if b == f.module]
+            if not here:
+                continue
+            present[k].add(name)
+            n = sum(m * sum(regs.get(x, 0) for x in lasts) for m, regs in here)
+            items.append((n, k))
+        used, count = 0, 0
+        for n, k in sorted(items):
+            if used + n > budget:
+                break
+            used += n
+            count += n > 0
+            taken[k].add(name)
+        lines.append("budget: block %-6s %6d flops, %.1f allowed, %d used by %d finding(s)"
+                     % (name, el["total"], budget, used, count))
+    for k, f in enumerate(open_f):
+        if present[k] and present[k] <= taken[k]:
+            f.status = "budget"
+    return lines
 
 
 def load(path, key):
     return json.load(open(path))[key] if os.path.exists(path) else ([] if key == "waivers" else {})
 
 
-def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE):
-    """Apply the ratchet and the waivers. Returns the failures."""
+def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE, parts=(),
+           known=()):
+    """Apply the ratchet, then each block's budget, then the waivers, so a
+    waiver for what a budget already takes is refused as excusing nothing.
+    Returns the failures and the budget's lines."""
     fails = []
     for f in findings:
         if f.module in ratchet:
             f.status = "ratchet"
+    lines = apply_budget(findings, parts, known) if parts else []
+    for f in findings:
+        if f.status != "open":
             continue
         for w in waivers:
             if w["module"] != f.module or w["rule"] != f.rule:
                 continue
             t = w["target"]
-            if any(r == t or r.endswith("." + t) for r in f.regs):
+            if any(reg_is(r, t) for r in f.regs):
                 f.status = "waived"
                 w["_used"] = True
                 break
@@ -1062,7 +1302,7 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
         for e in u.errors:
             if u.module not in ratchet:
                 fails.append("unit %s: %s" % (u.name, e))
-    return fails
+    return fails, lines
 
 
 def load_units():
@@ -1078,13 +1318,14 @@ def load_units():
 
 
 def report(u, verbose):
-    gated = [g for g in u.nl.groups.values() if g.kind != "ungated"]
-    worst = max([g.depth for g in gated] + list(u.icg_depth.values()) + [0.0])
+    gates = [g for g in u.nl.groups.values() if g.gated]
+    small = [g for g in u.nl.groups.values() if g.kind != "ungated" and not g.gated]
+    worst = max([g.depth for g in gates] + list(u.icg_depth.values()) + [0.0])
     flops = len(u.nl.flops)
-    gflops = sum(len(g.q) for g in gated)
-    line = "  unit %-16s %-16s %3d flops, %3d gated in %2d groups, worst enable %4.1f NGD" % (
-        u.name, u.module, flops, gflops, len(gated), worst)
-    print(line)
+    gflops = sum(len(g.q) for g in gates)
+    print("  unit %-14s %-16s %4d flops, %4d in %2d clock gates (%d groups under %d), "
+          "worst enable %4.1f NGD" % (u.name, u.module, flops, gflops, len(gates), len(small),
+                                      MIN_FLOPS, worst))
     if u.errors:
         for e in u.errors:
             print("    not measured: %s" % e.splitlines()[0])
@@ -1092,9 +1333,9 @@ def report(u, verbose):
     for sc in SCENARIOS:
         if sc not in u.data:
             continue
-        vals = [dcge(u, k, sc) for k, g in u.nl.groups.items() if g.kind != "ungated"]
+        vals = [dcge(u, k, sc) for k, g in u.nl.groups.items() if g.gated]
         vals = [v for v in vals if v is not None]
-        print("    %-6s %5d cycles, activity %.3f, %2d groups enabled, lowest DCGE %s"
+        print("    %-6s %5d cycles, activity %.3f, %2d gates enabled, lowest DCGE %s"
               % (sc, u.data[sc]["cycles"], u.data[sc]["activity"], len(vals),
                  "%.0f%%" % min(vals) if vals else "-"))
     if verbose:
@@ -1103,10 +1344,11 @@ def report(u, verbose):
             for sc in SCENARIOS:
                 v = dcge(u, key, sc) if sc in u.data else None
                 cells.append("%5s" % ("-" if v is None else "%.0f%%" % v))
-            print("    %-8s %4.1f NGD  %s  %s  (en: %s)" % (
-                g.kind, g.depth, " ".join(cells), g.name, g.en_name or "always"))
+            kind = "gate" if g.gated else ("ungated" if g.kind == "ungated" else "small")
+            print("    %-8s %3d flops %4.1f NGD  %s  %s  (en: %s)" % (
+                kind, len(g.q), g.depth, " ".join(cells), g.name, g.en_name or "always"))
         for c, dep in sorted(u.icg_depth.items()):
-            print("    ICG      %4.1f NGD  %s's enable" % (dep, c))
+            print("    ICG                %4.1f NGD  %s's enable" % (dep, c))
 
 
 def main_check(only=None, verbose=False):
@@ -1125,19 +1367,27 @@ def main_check(only=None, verbose=False):
         if u.errors:
             continue
         findings += unit_findings(u) + scenario_findings(u)
-    findings += form_check(modules, units)
+    findings += form_check(modules, units) + coverage_check(modules, units)
     if only:
         for f in findings:
             print("    " + str(f))
         return 0
-    fails = policy(findings, modules, units, waivers, ratchet)
+    parts = partitions(modules)
+    fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
+                          known=modules)
+    for l in lines:
+        print("  " + l)
+    if not parts:
+        print("  budget: no block has RTL yet (every block top is a generated stub), "
+              "so none is applied")
     for mod in sorted(ratchet):
         n = sum(1 for f in findings if f.module == mod)
         print("  ratchet: %-14s %s" % (mod, "%d finding(s) excused" % n if n else
                                        "not measured: no unit"))
     nw = sum(1 for f in findings if f.status == "waived")
-    print("  %d module(s), %d unit(s), %d waiver(s) in use, %d on the ratchet"
-          % (len(modules), len(units), nw, len(ratchet)))
+    nb = sum(1 for f in findings if f.status == "budget")
+    print("  %d module(s), %d unit(s), %d waiver(s) in use, %d finding(s) in a block's "
+          "budget, %d on the ratchet" % (len(modules), len(units), nw, nb, len(ratchet)))
     for f in fails:
         sys.stderr.write("check-cg: %s\n" % f)
     return 1 if fails else 0
@@ -1157,11 +1407,15 @@ def fixture_unit(name, module, scope=None):
     }, "selftest")
 
 
+MEASURED_FIXTURES = ("cg_fx_good", "cg_fx_form", "cg_fx_deep", "cg_fx_dcge", "cg_fx_small",
+                     "cg_fx_wide")
+
+
 def selftest():
     bad = []
     os.makedirs(os.path.join(BUILD, "fixture"), exist_ok=True)
     bench = os.path.join(BUILD, "fixture", "bench")
-    files = sorted(glob.glob(os.path.join(FIXTURE_DIR, "*.sv")))
+    files = ["test/cg/fixtures/%s.sv" % m for m in MEASURED_FIXTURES]
     r = run(["verilator", "--binary", "--timing", "--trace", "-Wno-fatal", "-Wno-lint",
              "-Wno-style", "--top-module", "tb_cg_fixture", "--Mdir", bench, "-o", "tb",
              os.path.join(ROOT, "test", "cg", "tb_cg_fixture.sv")] + files)
@@ -1175,10 +1429,8 @@ def selftest():
         if r.returncode:
             sys.stderr.write(r.stdout + r.stderr)
             return 1
-    mods = {}
-    for f in files:
-        name = os.path.basename(f)[:-3]
-        mods[name] = (os.path.relpath(f, ROOT), lint.strip_comments(open(f).read()), 1)
+    mods = {m: (f, lint.strip_comments(open(os.path.join(ROOT, f)).read()), 1)
+            for m, f in zip(MEASURED_FIXTURES, files)}
     units = {m: fixture_unit("fx_" + m.split("_")[-1], m) for m in mods}
     for u in units.values():
         u.measure(vcds=vcds)
@@ -1188,15 +1440,19 @@ def selftest():
         for x in bad:
             sys.stderr.write("check-cg selftest: %s\n" % x)
         return 1
-    every = []
-    for u in units.values():
-        every += unit_findings(u) + scenario_findings(u)
-    every += form_check(mods, list(units.values()))
+    allu = list(units.values())
+
+    def findings():
+        out = []
+        for u in allu:
+            out += unit_findings(u) + scenario_findings(u)
+        return out + form_check(mods, allu) + coverage_check(mods, allu)
+    every = findings()
 
     def has(rule, mod, reg, fs=None):
         return [f for f in (every if fs is None else fs)
                 if f.rule == rule and f.module == mod and
-                (reg is None or any(r == reg or r.endswith("." + reg) for r in f.regs))]
+                (reg is None or any(reg_is(r, reg) for r in f.regs))]
 
     checks = 0
 
@@ -1206,27 +1462,42 @@ def selftest():
         if not cond:
             bad.append(what)
 
-    # 1. The compliant fixture has nothing, the free-running LFSR included:
-    #    clocked every cycle it changes every cycle, the measured exception.
-    expect(not [f for f in every if f.module == "cg_fx_good"],
-           "the compliant fixture has findings: %s"
-           % [str(f) for f in every if f.module == "cg_fx_good"])
+    # 1. The compliant fixtures have nothing: a 16-flop gate, a 128-flop
+    #    gate, and a free-running LFSR, which is ungated by measurement.
+    for m in ("cg_fx_good", "cg_fx_wide"):
+        expect(not [f for f in every if f.module == m],
+               "compliant fixture %s has findings: %s"
+               % (m, [str(f) for f in every if f.module == m]))
+    # 1b. The module's reset does not split an enable: st_q, with it, and d_q,
+    #     without, are one gate.
+    gs = [g for g in units["cg_fx_good"].nl.groups.values()
+          if any(reg_is(r, "st_q") for r in g.best)]
+    expect(len(gs) == 1 and gs[0].gated and any(reg_is(r, "d_q") for r in gs[0].best),
+           "a register with the module's reset did not share its enable's gate")
     # 2. CG-1: a register written every cycle, idle when its input is.
     expect(has("CG-1", "cg_fx_form", "d_q"), "CG-1 missed a register under no enable")
     # 3. CG-1: an enable that is an expression.
     expect(any("expression" in f.msg for f in has("CG-1", "cg_fx_form", "e_q")),
            "CG-1 missed an expression enable")
-    # 4. CG-2: an add and a compare into the gate.
+    # 4. CG-1: an enable named, but not <what>_en.
+    expect(any("not named" in f.msg for f in has("CG-1", "cg_fx_form", "n_q")),
+           "CG-1 missed an enable not named _en")
+    # 5. CG-2: an add and a compare into the gate.
     expect(has("CG-2", "cg_fx_deep", "d_q"), "CG-2 missed a deep enable")
     expect(not has("CG-2", "cg_fx_deep", "acc_q"), "CG-2 flagged a shallow enable")
-    # 5. CG-3: enabled on every valid, almost never changing.
-    expect(has("CG-3", "cg_fx_dcge", "hit_q"), "CG-3 missed a low-DCGE group")
-    expect(not has("CG-3", "cg_fx_dcge", "d_q"), "CG-3 flagged a good group")
-    # 6. The replay: a trace from another module is refused.
+    # 6. CG-3: eight flops enabled on every valid, almost never changing.
+    expect(has("CG-3", "cg_fx_dcge", "hit_q"), "CG-3 missed a low-DCGE gate")
+    expect(not has("CG-3", "cg_fx_wide", None), "CG-3 flagged a good gate")
+    # 7. CG-4: a 4-flop group is no clock gate, and it holds still when idle.
+    expect(has("CG-4", "cg_fx_small", "c_q"), "CG-4 missed flops in a group under %d"
+           % MIN_FLOPS)
+    expect(not has("CG-3", "cg_fx_small", None) and not has("CG-2", "cg_fx_small", None),
+           "a group under %d was judged as a clock gate" % MIN_FLOPS)
+    # 8. The replay: a trace from another module is refused.
     u = fixture_unit("fx_swap", "cg_fx_good", scope="tb_cg_fixture.u_dcge")
     u.measure(vcds=vcds)
     expect(any("differ" in e for e in u.errors), "a trace of another module replayed clean")
-    # 7. The scenarios: swapped idle and high, and one too short.
+    # 9. The scenarios: swapped idle and high, and one too short.
     g = units["cg_fx_good"]
     saved = dict(g.data)
     g.data["idle"], g.data["high"] = saved["high"], saved["idle"]
@@ -1237,44 +1508,64 @@ def selftest():
     expect(any("under %d" % MIN_CYCLES in f.msg for f in scenario_findings(g)),
            "a short scenario passed")
     g.data = saved
-    # 8. Waivers: one that excuses a finding clears it; one that excuses
-    #    nothing is refused.
-    allu = list(units.values())
-    ok_mods = {m: mods[m] for m in ("cg_fx_good", "cg_fx_dcge")}
-    fs = [f for f in every if f.module in ok_mods]
-    for f in fs:
-        f.status = "open"
-    w = [{"module": "cg_fx_dcge", "rule": "CG-3", "target": "hit_q", "why": "control",
-          "by": "TI", "date": "2026-10-16"}]
-    fails = policy(fs, ok_mods, [x for x in allu if x.module in ok_mods], w, {})
+
+    def run_policy(mods_in, waivers=(), ratchet=None, baseline=RATCHET_BASELINE, parts=()):
+        fs = [f for f in findings() if f.module in mods_in]
+        us = [x for x in allu if x.module in mods_in]
+        ws = [dict(w) for w in waivers]
+        fails, _ = policy(fs, {m: mods[m] for m in mods_in if m in mods}, us, ws,
+                          ratchet or {}, baseline=baseline, parts=parts,
+                          known=set(mods) | {"cg_fx_blk_ok", "cg_fx_blk_over"})
+        return fails, fs
+
+    # 10. Waivers: one that excuses a finding clears it; one that excuses
+    #     nothing is refused.
+    w_ok = {"module": "cg_fx_dcge", "rule": "CG-3", "target": "hit_q", "why": "control",
+            "by": "TI", "date": "2026-10-16"}
+    fails, _ = run_policy(("cg_fx_good", "cg_fx_dcge"), [w_ok])
     expect(not fails, "a waiver did not clear its finding: %s" % fails)
-    for f in fs:
-        f.status = "open"
-    w = [{"module": "cg_fx_good", "rule": "CG-3", "target": "d_q", "why": "control",
-          "by": "TI", "date": "2026-10-16"}]
-    fails = policy(fs, ok_mods, [x for x in allu if x.module in ok_mods], w, {})
+    w_stale = {"module": "cg_fx_good", "rule": "CG-3", "target": "d_q", "why": "control",
+               "by": "TI", "date": "2026-10-16"}
+    fails, _ = run_policy(("cg_fx_good",), [w_stale])
     expect(any("excuses nothing" in x for x in fails), "a stale waiver was accepted")
-    # 9. The ratchet: a listed module that meets the rule must leave it; a
-    #    module outside the baseline cannot join it.
-    for f in every:
-        f.status = "open"
-    fails = policy(list(every), mods, allu, [], {"cg_fx_good": {}, "cg_fx_form": {}},
-                   baseline={"cg_fx_good"})
+    # 11. The ratchet: a listed module that meets the rule must leave it; a
+    #     module outside the baseline cannot join it.
+    fails, _ = run_policy(tuple(mods), ratchet={"cg_fx_good": {}, "cg_fx_form": {}},
+                          baseline={"cg_fx_good"})
     expect(any("cg_fx_good now meets the rule" in x for x in fails),
            "a ratcheted module that passes stayed on the list")
-    expect(any("cg_fx_form was not on the list" in x for x in fails),
-           "the ratchet grew")
-    # 10. Coverage: a module with flops and no unit.
-    for f in every:
-        f.status = "open"
-    fails = policy([], mods, [x for x in allu if x.module != "cg_fx_form"], [], {})
+    expect(any("cg_fx_form was not on the list" in x for x in fails), "the ratchet grew")
+    # 12. Coverage: a module with flops and no unit.
+    fails, _ = policy([], mods, [x for x in allu if x.module != "cg_fx_form"], [], {})
     expect(any("cg_fx_form" in x and "no clock-gating unit" in x for x in fails),
            "a module with no unit passed")
+    # 13. The block budget, counted per instance: a block of 260 flops takes
+    #     the 4-flop finding; one of 136, holding it twice, does not; a block
+    #     that must take it everywhere it is used does not when either
+    #     refuses; and a waiver for what a budget took is refused.
+    fx = ["test/cg/fixtures/%s.sv" % m for m in ("cg_fx_wide", "cg_fx_small")]
+    p_ok = ("fx_ok", "cg_fx_blk_ok", fx + ["test/cg/fixtures/cg_fx_blk_ok.sv"], [])
+    p_over = ("fx_over", "cg_fx_blk_over", fx + ["test/cg/fixtures/cg_fx_blk_over.sv"], [])
+    small = ("cg_fx_small", "cg_fx_wide")
+    fails, fs = run_policy(small, parts=[p_ok])
+    expect(not fails and any(f.status == "budget" for f in has("CG-4", "cg_fx_small", "c_q", fs)),
+           "a block's budget did not take a finding that fits: %s" % fails)
+    fails, fs = run_policy(small, parts=[p_over])
+    expect(any("CG-4 cg_fx_small" in x for x in fails),
+           "a block's budget took a finding that does not fit")
+    fails, fs = run_policy(small, parts=[p_ok, p_over])
+    expect(any("CG-4 cg_fx_small" in x for x in fails),
+           "a finding was excused although one block using it refused it")
+    w_small = {"module": "cg_fx_small", "rule": "CG-4", "target": "c_q", "why": "control",
+               "by": "TI", "date": "2026-10-16"}
+    fails, _ = run_policy(small, [w_small], parts=[p_ok])
+    expect(any("excuses nothing" in x for x in fails),
+           "a waiver for what a block's budget takes was accepted")
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
-        print("  form, enable depth, DCGE, replay, scenarios, waivers, ratchet, "
-              "coverage (%d controls)" % checks)
+        print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
+              "ratchet, coverage, block budget (%d controls)" % checks)
     return 1 if bad else 0
 
 
