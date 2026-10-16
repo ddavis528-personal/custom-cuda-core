@@ -328,10 +328,11 @@ ones the model's knobs stood for (OI-6, OI-13; `456b3e9`), and each
 no per-warp limits unless it sweeps one, since a "no limit" value equal to
 today's size would limit a larger one.
 
-`decq_late_credit` (off) is a timing arm for the RTL's decode queue
-(OI-39): an entry freed in a cycle counts as held for that cycle's
-arrivals, so it takes one only from the next. `ooe-test --sweep` runs it at
-6, 8 and 12 entries.
+`decq_late_credit` (on, DA's response OI-39): a decode-queue entry freed in
+a cycle counts as held for that cycle's arrivals, so it takes one only from
+the next. That is what lets the RTL's queue fit its stage. `ooe-test
+--sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
+and 12 entries for comparison.
 
 ## Events and counters
 

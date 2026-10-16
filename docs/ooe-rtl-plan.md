@@ -27,6 +27,14 @@ through the grant; **6**, the reset line as the design doc's Reset line
 section states it (OA's response OI-36). Sub-blocks are named
 `ooe_<name>` and run on `ooe_core_clk` (DA's responses OI-37).
 
+Reuse of a freed resource at the edge that frees it is decided structure
+by structure, from synthesis serial gate counts (DA's response OI-39,
+2026-10-16). It replaces OA's proposed OOE-wide rule. The decode queue
+holds a freed entry for a cycle, because it fits its stage only so (OI-39).
+The free list does too, in OA's OI-38 design: an 8-entry candidate buffer
+refilled from four interleaved banks. The RS and ROB keep same-edge reuse
+unless their RTL measures over the stage.
+
 Built (`rtl/ooe/`):
 
 - **`ooe_pick`**, one RS class's per-resource select, combinational.
@@ -96,15 +104,13 @@ Built (`rtl/ooe/`):
   before every cycle and compares every slot's four oldest, its count and
   the credits. Over 25 seeds: 103,896 arrivals, 98,193 dequeues, 2,357
   flushes and 47,940 cycles with the pool full, none differ. Controls
-  drop-flush and enq-swap must each be caught. **Timing is not met:**
-  31.9 NGD in 28 levels. An entry freed at an edge can take an arrival at
-  the same edge, as in the model (`canAccept` runs after the cycle's
-  dequeues), and that path costs about 9 NGD. With the entry free only
-  from the next edge it is 23.1 NGD, inside the stage. The model's
-  `decq_late_credit` knob is that behaviour: no S1 kernel moves by a
-  cycle at 12 entries (or at 4), and the four-warp synthetic sweep moves
-  within its own noise. It is OI-39, for OA and DA, the same shape as
-  OI-38.
+  drop-flush and enq-swap must each be caught. Logic depth is 23.1 NGD
+  in 22 levels, inside the stage, because an entry freed at an edge takes
+  no arrival until the next (DA's response OI-39; the model's
+  `decq_late_credit`, now on). With same-edge reuse, as the model had it,
+  it was 31.9 NGD: that path cost about 9 NGD. Turning the knob on moves
+  no S1 kernel by a cycle, and the four-warp synthetic sweep stays within
+  its own noise.
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function

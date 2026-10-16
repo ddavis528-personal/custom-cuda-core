@@ -170,10 +170,10 @@ struct Config {
   /// unissued store, atomic, fence or ordered access. Off: memops issue in
   /// program order per warp (OI-15).
   bool loads_pass_loads = false;
-  /// The decode queue's credit return (ooe_decq timing, OI-38's shape): an
-  /// entry freed in a cycle takes no arrival until the next, so this
-  /// cycle's arrivals see it still held. Off is the agreed behaviour.
-  bool decq_late_credit = false;
+  /// The decode queue's credit return: an entry freed in a cycle takes no
+  /// arrival until the next, so this cycle's arrivals see it still held.
+  /// On (DA's response OI-39), because ooe_decq fits its stage only so.
+  bool decq_late_credit = true;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address

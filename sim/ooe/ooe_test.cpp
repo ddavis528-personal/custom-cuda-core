@@ -1323,14 +1323,13 @@ void sweep() {
       const double cy = run(c);
       std::printf("| %s | %u | %.0f | %.3f |\n", k.name, v, cy, cy / ref);
     }
-  // ooe_decq's timing arm (OI-38's shape): an entry freed in a cycle takes
-  // no arrival until the next.
+  // The decode queue with same-edge reuse, as before DA's response OI-39.
   for (unsigned v : {6u, 8u, 12u}) {
     Config c = base;
     c.decq = v;
-    c.decq_late_credit = true;
+    c.decq_late_credit = false;
     const double cy = run(c);
-    std::printf("| decq, decq_late_credit | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+    std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
   }
 }
 

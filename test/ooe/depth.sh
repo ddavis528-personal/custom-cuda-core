@@ -43,9 +43,9 @@ d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries, 4 ports:     %5s NGD in %s levels (no estimate; one stage)\n' age "$n_rcu" "$d" "$l"
 # ooe_decq at its parameters, the payload cut to 16 bits (its width adds
-# fanout, not depth): no estimate in OA-1; one stage is the budget, and it
-# is not met while an entry freed at an edge can take an arrival at that
-# edge (OI-39).
+# fanout, not depth): no estimate in OA-1; one stage is the budget, met
+# because an entry freed at an edge takes no arrival until the next
+# (DA's response OI-39).
 slots=$(val CCV_TIER1_WARPS) decq=$(val CCV_P_DECQ) decq_warp=$(val CCV_P_DECQ_WARP_MAX) width=$(val CCV_ISSUE_WIDTH)
 uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_dec_ooe_uop'))")
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_decq.sv;
@@ -54,4 +54,4 @@ yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_asse
 line=$(yosys-abc -c "read_blif $out/decq.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
-printf '  %-10s %3s entries, %s in:       %5s NGD in %s levels (budget 25; OI-39)\n' decq "$decq" "$uops" "$d" "$l"
+printf '  %-10s %3s entries, %s in:       %5s NGD in %s levels (budget 25)\n' decq "$decq" "$uops" "$d" "$l"

@@ -2,7 +2,8 @@
 //
 // Spec: docs/ooe-rtl-plan.md, decision 3 (DA's response OI-36): per-warp
 //       decode FIFOs on a shared 12-entry credit pool, the same behaviour as
-//       the model's shared queue; decision 6 for the reset line.
+//       the model's shared queue, except that a freed entry is held for that
+//       cycle's arrivals (DA's response OI-39); decision 6 for the reset line.
 //
 // The uops wait here between DEC (ccv_dec_ooe_uop, up to E a cycle) and
 // rename, which takes each warp's oldest in order, up to R a cycle from one
@@ -18,12 +19,14 @@
 // owned by s at position k. Nothing compacts and nothing is searched in
 // series.
 //
-// One clock edge, in the model's order: rename's dequeues and a squash's
-// flushes free their entries, and the cycle's arrivals may take them, in
-// port order (port 0 first). An arrival takes the free entry with as many
-// free entries below it as there are arrivals ahead of its port. A flush
-// drops every uop its slot holds; uops arriving at the same edge carry the
-// new epoch and stay.
+// One clock edge: rename's dequeues and a squash's flushes free their
+// entries, and the cycle's arrivals take entries that were already idle, in
+// port order (port 0 first). An entry freed at an edge takes no arrival
+// until the next (DA's response OI-39, decided by depth: 31.9 NGD with
+// same-edge reuse, 23.1 without), which is the model's decq_late_credit. An
+// arrival takes the idle entry with as many idle entries below it as there
+// are arrivals ahead of its port. A flush drops every uop its slot holds;
+// uops arriving at the same edge carry the new epoch and stay.
 //
 // The reference is the model's decode queue (Core::decodeQueue,
 // Core::decqFlushed); test/ooe/decq_tb.cpp drives this module from the
@@ -139,7 +142,7 @@ module ooe_decq #(
       ps    = st[OPOS + e * LD +: LD];
       dq    = dn[32'(ow) * LR +: LR];
       fr[e] = st[OBUSY + e] && (fl[ow] || LC'(ps) < LC'(dq));
-      av[e] = !st[OBUSY + e] || fr[e];
+      av[e] = !st[OBUSY + e];   // not fr[e]: freed entries wait a cycle (OI-39)
     end
     for (int b = 0; b < NBANK; b++) begin
       bc[b * LU +: LU] = '0;
@@ -203,7 +206,7 @@ module ooe_decq #(
       if (n > c) under = 1'b1;
       a = ahead_in(ev, es, E, s);
       if (c - n + a > D) over = 1'b1;
-      room = room + n - a;
+      room = room - a;          // freed entries are no room until the next edge
     end
     if (room < 0) over = 1'b1;
     faults = {under, over};
