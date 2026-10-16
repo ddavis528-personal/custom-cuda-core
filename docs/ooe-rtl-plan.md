@@ -124,7 +124,35 @@ Built (`rtl/ooe/`):
   `always_ff` whose reset and update were an if/else of two function
   calls. `-fno-reorder` fixed it, and Icarus ran it correctly. Each
   sequential sub-block's flop now takes one function, `step()`, with reset
-  folded in.
+  folded in. The gate now runs Verilator 5.052 (OI-40), and every OOE
+  bench passes under it; the `step()` form stays, as the clearer one.
+- **`ooe_wake`**, the wake timers (OA-1: "wake generation is registered
+  timers, off this path"): one per RS entry, driving the four lines
+  `ooe_ready` reads as flops, so each is decided at the edge before the
+  cycle it holds for. A grant starts the timer; its age counts cycles
+  since and saturates. Line k < 3 rises at the class's fastest bypass
+  point plus the k-th penalty. The full-latency line rises at the class's
+  latency, at CCV_LAT_LANE for a masked load's copy, at CCV_LAT_L1_WAKE for
+  an L1-contracted load, or, for a timer that waits, on its done (RCU
+  class) or CCV_LAT_L1_MISS_WAKE after its completion. An L1 load with no
+  completion by payload stages + CCV_LAT_L1_CMPL is the miss: the line
+  drops and a miss pulse starts cancel's first hop. A replay or a free
+  clears issued, which every line is gated by (the reset line's guard).
+  A fifth output, fin, is the timer's word to confirmation: the
+  full-latency line raised and no miss check pending. Confirmation frees
+  an entry in the cycle its line rises, so a completion's effect is seen
+  only there. The model logs what reached each timer every cycle
+  (`Core::wakeLog`: grants with their kind and class, dones, completions,
+  stops, misses, and confirmations on the timer's word);
+  `test/ooe/wake_tb.cpp` clocks the RTL with them after every model cycle
+  and compares every valid entry's lines with `Core::wakeLine`, every miss,
+  and fin with each confirmation and `Core::rsFinal`. Over 25 seeds: 28,140
+  grants, 3,233 completions, 448 misses, 21,892 confirmations and 2.26
+  million line comparisons, none differ. Cores whose bypass table has four
+  penalties (the bypass-group seeds, which `ooe_ready`'s bench skips too)
+  or whose completion delay is not the parameter's are skipped and
+  counted, 64% of cycles. Controls late-grant, drop-cmpl and drop-stop must
+  each be caught. Logic depth is 13.9 NGD in 12 levels at 45 timers.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 

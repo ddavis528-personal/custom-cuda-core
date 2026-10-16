@@ -264,6 +264,8 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
+  for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin})
+    v->assign(n_, 0);
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -550,6 +552,7 @@ void Core::rsFree(unsigned e) {
   if (r.rs_copy == e) r.rs_copy = kNoEntry;
   --slot_[x.slot].rs_held;
   x.valid = false;
+  if (e < wlog_.stop.size()) wlog_.stop[e] = 1;
 }
 
 /// Record that entry e reads physical register preg. `group` is the
@@ -658,8 +661,14 @@ void Core::setWakes(unsigned e) {
   const SchedAttr &a = r.u.attr;
   x.late = false;
   x.spec = x.on_completion = false;
+  if (e < wlog_.grant.size()) {
+    wlog_.grant[e] = 1;
+    wlog_.cls[e] = uint8_t(a.lat_class);
+    wlog_.kind[e] = kWakeTimed;
+  }
   if (x.copy) {
     x.late_at = now_ + cfg_.lat_lane;     // a lane op; no done (A-38)
+    if (e < wlog_.kind.size()) wlog_.kind[e] = kWakeCopy;
     return;
   }
   if (r.is_mem) {
@@ -671,6 +680,7 @@ void Core::setWakes(unsigned e) {
     } else {
       x.on_completion = true;
     }
+    if (e < wlog_.kind.size()) wlog_.kind[e] = x.spec ? kWakeSpec : kWakeMem;
     return;
   }
   // A fixed-latency unit: the full-latency wake at its latency, and its
@@ -705,6 +715,7 @@ void Core::emitWakeups() {
 /// Waiting; the load itself stays at MIU and wakes again on its completion.
 void Core::cancel(unsigned e) {
   RsEntry &x = rs_[e];
+  if (e < wlog_.miss.size()) wlog_.miss[e] = 1;
   x.late = false;
   x.spec = false;
   x.on_completion = true;
@@ -740,6 +751,7 @@ bool Core::cancelHop(unsigned root) {
       y.issued = false;
       y.late = false;
       ++y.replays;
+      if (i < wlog_.stop.size()) wlog_.stop[i] = 1;
       // Its done still comes, at the contracted cycle: void it (A-47). If
       // it has come already, void what it said.
       if (r.rcu_dones_owed > r.stale_dones) {
@@ -771,7 +783,10 @@ void Core::confirmPass() {
     RsEntry &x = rs_[e];
     if (!rowConfirmed(e)) continue;
     if (!x.produces) { x.confirmed = true; continue; }   // nothing to wake
-    if (x.late && !x.spec) x.confirmed = true;
+    if (x.late && !x.spec) {
+      x.confirmed = true;
+      if (e < wlog_.fin.size()) wlog_.fin[e] = 1;
+    }
   }
   for (unsigned e : order)
     if (rs_[e].valid && rs_[e].confirmed) {
@@ -885,6 +900,8 @@ void Core::takeCompletions() {
       r->fault_lanes = d.fault_lane_mask;
     }
     // A done is a completion for an RS entry that wakes on it.
+    if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && r->rs_main < wlog_.done.size())
+      wlog_.done[r->rs_main] = 1;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && rs_[r->rs_main].on_completion &&
         rs_[r->rs_main].cls == RsCls::kRcu)
       wake(r->rs_main);
@@ -916,6 +933,7 @@ void Core::takeCompletions() {
     r->mlc_miss = c.mlc_miss;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid) {
       RsEntry &x = rs_[r->rs_main];
+      if (r->rs_main < wlog_.cmpl.size()) wlog_.cmpl[r->rs_main] = 1;
       if (x.spec) {
         // An L1 hit lands at exactly CCV_LAT_L1_CMPL (A-46, V-44).
         if (now_ != x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)

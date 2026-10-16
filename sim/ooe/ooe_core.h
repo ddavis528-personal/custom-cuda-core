@@ -816,6 +816,25 @@ private:
   std::deque<uint64_t> decq_seq_;           ///< each queued uop's arrival number
   uint64_t next_decq_seq_ = 0;
   uint32_t decq_flushed_ = 0;               ///< slots a squash flushed this cycle
+public:
+  /// What reached each RS entry's wake timer this cycle, for ooe_wake
+  /// (test/ooe/wake_tb.cpp): its grant with the timer kind and latency
+  /// class, a done or completion for its ROB entry, a stop (a replay
+  /// clearing issued, or the entry freed), the L1 miss its timer found, and
+  /// the results confirmed on the timer's word (its full-latency wake, not
+  /// speculative). Observation only: nothing in the model reads it.
+  enum : uint8_t { kWakeTimed = 0, kWakeCopy = 1, kWakeSpec = 2, kWakeMem = 3 };
+  struct WakeLog {
+    std::vector<uint8_t> grant, kind, cls, done, cmpl, stop, miss, fin;
+  };
+  /// The timer's word on an entry: issued, its full-latency wake raised, and
+  /// not speculative, so confirmation may take it (confirmPass).
+  bool rsFinal(unsigned e) const { return rs_[e].issued && rs_[e].late && !rs_[e].spec; }
+  const WakeLog &wakeLog() const { return wlog_; }
+  /// The distinct bypass penalties, sorted: wake line k is penalty k's.
+  const std::vector<unsigned> &wakePens() const { return pens_; }
+private:
+  WakeLog wlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
 
   // reservation stations and the matrix

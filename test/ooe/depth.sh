@@ -70,3 +70,14 @@ for cfg in "freelist_g $phys" "freelist_p $preds"; do
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s-entry buffer: %5s NGD in %s levels (budget 25)\n' "$1" "$2" "$fl_buf" "$d" "$l"
 done
+# ooe_wake over both classes, at its default latencies (the parameters'
+# values; run-rtl.sh passes the same): no estimate in OA-1, whose ready
+# stage takes the lines from flops ("wake generation is registered timers,
+# off this path"); the timers' own update must fit a stage.
+yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_wake.sv;
+             chparam -set N $n -set NR $n_rcu ooe_wake;
+             chformal -remove; synth -flatten -top ooe_wake; dfflegalize -cell \$_DFF_P_ x; write_blif $out/wake.blif"
+line=$(yosys-abc -c "read_blif $out/wake.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
+l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
+printf '  %-10s %3s timers, 4 lines:     %5s NGD in %s levels (budget 25)\n' wake "$n" "$d" "$l"

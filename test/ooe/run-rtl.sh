@@ -10,7 +10,9 @@
 #   and the predicates, in its buffered form (test/ooe/freelist_tb.cpp);
 # - ooe_age against the model's RS ages, live, for both RS classes
 #   (test/ooe/age_tb.cpp);
-# - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp).
+# - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp);
+# - ooe_wake against the model's wake lines and L1 miss cancels, live
+#   (test/ooe/wake_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -164,6 +166,56 @@ for c in drop-flush enq-swap; do
     say "  control $c (decq)" "MISSED"; fail=1
   else
     say "  control $c (decq)" "caught"
+  fi
+done
+
+# ooe_wake, driven from the model's wake log after every cycle. Its
+# latencies, bypass points and penalties are the parameters'; the model's
+# payload stages come from its Config. wake_tb skips a core configured
+# otherwise.
+read -r wake_g wake_d < <(python3 - <<'PY'
+import re
+pkg = open('rtl/generated/ccv_params_pkg.sv').read()
+def p(n): return int(re.search(r'localparam int %s = (\d+);' % n, pkg).group(1))
+core = open('sim/ooe/ooe_core.h').read()
+stages = int(re.search(r'unsigned payload_stages = (\d+);', core).group(1))
+lat = [p('CCV_LAT_RCU'), p('CCV_LAT_LANE'), 0, 0, p('CCV_LAT_SFU'), p('CCV_LAT_COLLECTIVE'), 0, 0]
+fast = [0, p('CCV_LAT_LANE_BYP'), 0, 0, 0, 0, 0, 0]
+pens = sorted({p('CCV_LAT_BYP_PEN_SAME'), p('CCV_LAT_BYP_PEN_INT_FP'), p('CCV_LAT_BYP_PEN_SFU')})
+pens3 = (pens + [0, 0, 0])[:3]
+pack = lambda v, w: sum(x << (w * i) for i, x in enumerate(v))
+g = dict(NR=p('CCV_P_RS_RCU'), N=p('CCV_P_RS_RCU') + p('CCV_P_RS_MIU'), NPEN=len(pens),
+         LAT_COPY=p('CCV_LAT_LANE'), LAT_SPEC=p('CCV_LAT_L1_WAKE'),
+         LAT_MISS=stages + p('CCV_LAT_L1_CMPL'), CMPL_DLY=p('CCV_LAT_L1_MISS_WAKE'))
+gs = ' '.join('-G%s=%d' % kv for kv in g.items())
+gs += " -GLAT=64'h%x -GFAST=64'h%x -GPEN=24'h%x" % (pack(lat, 8), pack(fast, 8), pack(pens3, 8))
+d = {'WAKE_' + k: v for k, v in g.items()}
+for i in range(8): d['WAKE_LAT%d' % i] = lat[i]; d['WAKE_FAST%d' % i] = fast[i]
+for i in range(3): d['WAKE_PEN%d' % i] = pens3[i]
+print(gs.replace(' ', ',') + ' ' + ','.join('-D%s=%d' % kv for kv in d.items()))
+PY
+)
+dir=build/ooe-rtl/wake
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      ${wake_g//,/ } --top-module ooe_wake --Mdir "$dir" -o wake_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 ${wake_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "wake: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+n=$((n_rcu + n_miu))
+if out=$("$dir/wake_tb" "$seeds" 2>&1); then
+  say "wake ($n timers, 4 lines) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "wake == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in late-grant drop-cmpl drop-stop; do
+  if WAKE_CONTROL=$c "$dir/wake_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (wake)" "MISSED"; fail=1
+  else
+    say "  control $c (wake)" "caught"
   fi
 done
 exit $fail
