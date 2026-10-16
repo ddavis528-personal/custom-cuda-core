@@ -52,6 +52,10 @@ if [ -n "$missing" ]; then
   echo "  (checks needing a missing tool SKIP rather than fail, so a partial"
   echo "   environment still gates what it can)"
 fi
+# Before anything builds: make tracks sources, not the Verilator that
+# compiled them, so a build/ another version made is cleared (OI-40).
+run "build/ made by this Verilator" python3 tools/build-stamp.py
+run "another Verilator's build/ refused" python3 tools/build-stamp.py --selftest
 
 section "documentation"
 # Docs decay more quietly than code: a drifted count or a dangling reference

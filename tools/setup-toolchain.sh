@@ -30,6 +30,8 @@ $SUDO apt-get install -y --no-install-recommends \
 # PATH searches before /usr/bin; Debian's package is removed so that one
 # Verilator is on the machine. Building takes a while; a container that
 # already has this version skips it.
+# A build/ an earlier version made is cleared by the next tools/verify.sh
+# (tools/build-stamp.py): make would otherwise keep its objects.
 VERILATOR_TAG=v5.052
 VERILATOR_PREFIX=/opt/verilator-${VERILATOR_TAG#v}
 echo "== Verilator $VERILATOR_TAG =="
