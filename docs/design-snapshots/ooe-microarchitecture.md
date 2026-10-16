@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU tab=OOE_microarchitecture rev=193 exported=2026-10-16 status=living -->
-> **Snapshot: do not edit.** Exported from *OOE microarchitecture — Stage 4 grill-me*, tab *OOE microarchitecture*, at revision 193 on 2026-10-16 ([live doc](https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU tab=OOE_microarchitecture rev=195 exported=2026-10-16 status=living -->
+> **Snapshot: do not edit.** Exported from *OOE microarchitecture — Stage 4 grill-me*, tab *OOE microarchitecture*, at revision 195 on 2026-10-16 ([live doc](https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # OOE microarchitecture — Stage 4 grill-me
 
@@ -260,6 +260,12 @@ Oldest first, one pick per resource (DA's response OI-31). Each RS entry carries
 
 Every wake is speculative until the producer's result is confirmed. When a result misses its scheduled slot, OOE cancels that producer's dependants and everything woken behind them, transitively through the matrix. Cancelled entries return to Waiting.
 
+**One level and one hop a cycle** (OI-42, as built in ooe\_confirm at 8.6 NGD).
+
+- **Cancel.** Each cycle, after that cycle's misses are found, one hop returns to Waiting every issued, unconfirmed entry that depends on an entry that missed this cycle or returned to Waiting last cycle. The hop is decided whole, from a register of last cycle's replays. The miss is taken from the wake timers' next state (ooe\_wake), so the first hop lands in the miss's own cycle. V-59 is what makes one hop a cycle safe. At today's latencies no cancel needs a second hop: the miss is found at issue + 19 (the payload stage plus CCV\_LAT\_L1\_CMPL), before any grandchild can be selected. So the transitive path runs only under a longer shadow, which the random tests exercise on purpose.
+- **Confirm.** An issued entry confirms when it has no dependency bit left and it either writes nothing or its timer's **fin** output says its result is final: issued, the full-latency wake raised, and no L1 check pending. A confirmed entry is freed and its column cleared, so a consumer of an entry confirmed this cycle confirms from the next. Confirmation never chains within a cycle. A cancelled producer never confirms, so its column bit stays set, and no consumer can confirm past it.
+- **Cost.** No S1 kernel moves a cycle in either mode. The old model's chain never went past one level outside the negative controls.
+
 **Miss detection (A-46).** The L1 outcome is the contract, and nothing beyond it. An L1 hit completes on `ccv_miu_ooe_cmpl` at exactly the contracted cycle, and its data lands on ccv\_miu\_rcu\_data at the contracted cycle too, since dependants woken at hit latency read it. No completion at that cycle is the miss indication, so a load still has exactly one completion. Past L1 (MLC and beyond) no latency is relied on: after a miss, dependants wake when the data is readable at RCU: the completion's arrival plus max(0, data crossing − completion crossing − issue crossing + 1), generated beside CCV\_LAT\_L1\_WAKE (OI-13). That wake is driven by the completion's arrival, not a timer, so it reaches the ready stage a cycle later than a timed wake. CCV\_LAT\_L1\_MISS\_WAKE is defined from completion arrival to the dependant's earliest select and includes that cycle, so the scheduler never adds it (OI-26). Scratchpad loads, with variable bank-conflict latency, and atomics never wake speculatively. The mechanism is general, so any future variable-latency source can cancel the same way.
 
 > **Figure, as text** (drawn in the live doc): Load-miss cancel · transitive poison through the dependency matrix
@@ -303,7 +309,7 @@ The loop is split into three stages: **ready**, **select** and **payload read**.
 - **Ready fits easily.** The four wake vectors and the 3-bit cells (A-62, A-73, OA-4) cost about 1 NGD over a single-wake matrix, because the 2-bit select decode runs in parallel with the broadcast. Wake generation is registered timers, off this path.
 - **The per-resource pick fits with 7.4 NGD to spare.** It needs no count of older grants, only an OR of older requests, and the footprint check is one gate. It keeps oldest-first across warps.
 - **Withdrawn: the 4-shared-grant select (26.0 NGD) and the banking that answered it** (DA's response OI-31). The lanes take one full-width op a cycle, or narrow ops in disjoint sections (OI-28), so four shared grants were never needed.
-- **Cancel needs no single-cycle closure.** Transitive cancel moves one hop per cycle. A dependant issued at cycle t raises its own earliest wake at t + 2 (minimum latency 3, one cycle early), and its cancel lands by then. V-59 holds this as an elaboration check.
+- **Cancel needs no single-cycle closure.** Transitive cancel moves one hop per cycle, after that cycle's misses, and confirmation moves one level per cycle (OI-42). A dependant issued at cycle t raises its own earliest wake at t + 2 (minimum latency 3, one cycle early), and its cancel lands by then. V-59 holds this as an elaboration check. ooe\_confirm measured 8.6 NGD in 6 levels at 45 entries.
 - **The shortest wake still has its cycle.** With the 3-cycle RCU latency, a producer granted at t loads its timer at the end of t, counts in t + 1, drives its wake in t + 2, and its dependant is selected in t + 3. Any minimum latency of 2 or more works. A 1-cycle producer would need a direct grant-to-ready path, which this design does not build.
 
 **Scaling and the RS ceiling for OA-7**
