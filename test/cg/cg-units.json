@@ -1,0 +1,32 @@
+{
+  "_comment": "Clock-gating units for TI's RTL (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'). A unit is one module at one parameterization with a bench that runs the idle, medium and high scenarios and dumps a VCD; the bench's port trace is replayed into the unit's netlist. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
+  "units": [
+    {
+      "name": "rpt",
+      "module": "ccv_common_rpt",
+      "files": ["rtl/phys/ccv_common_rpt.sv"],
+      "params": {"STAGES": 2, "SLOTS": 2, "PAYLOAD_W": 16, "LEAD_MASK": "16'h00ff"},
+      "clock": "clk",
+      "reset": "!rst_n",
+      "bench": {
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+        "scope": "tb_cg_rpt.dut"
+      }
+    },
+    {
+      "name": "clk",
+      "module": "ccv_common_clk",
+      "files": ["rtl/clk/ccv_common_clk.sv"],
+      "params": {"NWAKE": 2},
+      "blackbox": {"ccv_common_ctech_icg": "rtl/ctech/sim/ccv_common_ctech_icg.sv"},
+      "clock": "clk",
+      "reset": "!rst_n",
+      "bench": {
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_clk --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/ctech/sim/ccv_common_ctech_icg.sv rtl/clk/ccv_common_clk.sv test/cg/tb_cg_clk.sv",
+        "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+        "scope": "tb_cg_clk.dut"
+      }
+    }
+  ]
+}

@@ -17,13 +17,14 @@ more than style violations normally do. Those are marked.
 
 ## Enforcement, and what enforces what
 
-Three layers, deliberately not one:
+Four layers, deliberately not one:
 
 | Layer | Covers | Why not the others |
 |---|---|---|
 | `tools/lint-rtl.py` | CCV-L01 … CCV-L28 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
+| `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -557,6 +558,100 @@ forms give the same enable flop, but only one of them says so.
 `` `CCV_XHOLD `` is the sanctioned escape, for an enable that genuinely cannot
 be proven X-free.
 
+### Local clock gating: CG-1, CG-2, CG-3
+
+**Every register is behind an enable, and the enable is a good one** (Daniel,
+2026-10-16). Most power in a design like this is clock: a flop clocked on a
+cycle it does not change burns it for nothing, and synthesis removes that
+clock only where the RTL gives it an enable to build a gate from. So the
+non-reset part of every `always_ff` is wrapped in an `if` on a named enable,
+and the enable has to be worth gating on. Three rules, checked by
+`tools/check-cg.py`:
+
+```systemverilog
+always_ff @(posedge `CCV_CLK) begin
+  if (`CCV_RST)         q_cs01h <= '0;
+  else if (ld_en_cs00h) q_cs01h <= d_cs00h;   // CG-1: a named enable
+end
+```
+
+- **CG-1, form.** Each statement of an `always_ff`'s non-reset part is
+  `if (<enable>)` with no `else`, the enable a named signal (`ld_en_cs00h`,
+  `valid_q[j]`; a `!` is allowed). Inside it, anything. Several enables in
+  one block are fine, one `if` each. What fails: a register written with no
+  enable, an enable `if` with an `else` (the register is written on both
+  paths, so nothing holds), and an enable that is an expression. Name it: a
+  named net is one a reader, a timing report and a waiver can point at.
+- **CG-2, enable depth.** Every enable group's enable cone is at most
+  `CCV_NGD_CG_EN` = 8 NGD, from the flops and inputs that feed it. A clock
+  gate's enable sets up to the rising edge at the root of its clock branch,
+  earlier than the flops behind it see that edge, so it gets a fraction of
+  the cycle, not the 25 NGD a flop's D gets. The explicit ICG inside every
+  `ccv_common_clk` is held to the same number.
+- **CG-3, efficiency.** Every enable group's **DCGE**, the share of its
+  enabled cycles in which its value changes, is at least
+  `CCV_DCGE_MIN_PCT` = 75%, in each of three scenarios: **idle**, **medium**
+  and **high** activity. An enable that is on while nothing changes clocks
+  the flops for nothing, which is the power the gate was meant to save. A
+  scenario in which the group is never enabled passes: the gate is closed.
+
+**An enable group is what synthesis would gate**: the flops Yosys infers one
+enable for, read from the synthesised netlist, not from the source. A
+register written under nested `if`s splits into groups with different
+enables, and a register written with no `if` at all may still get enables
+Yosys finds in its logic. CG-2 and CG-3 measure those groups, so they hold
+however the RTL is written. CG-1 is what makes the enable deliberate. For a
+reset with priority over the enable, the group's clock runs when either is
+active, and its depth is the deeper of the two.
+
+**How it is measured.** A *unit* is one module at one parameterisation, with
+a bench that runs the three scenarios and dumps a VCD (`test/**/cg-units.json`;
+TI's are in `test/cg/`). `check-cg.py` synthesises the unit with Yosys,
+groups its flops by enable, and maps each enable's cone with ABC onto
+`test/ooe/ngd.genlib`, the same recipe as `test/ooe/depth.sh`. Then it
+replays each scenario's port trace into the netlist, brings every group's
+enable and value out on a port, and counts. The replay must reproduce the
+bench's outputs on every cycle, so what is measured is what the bench ran;
+reset cycles, and cycles before the first reset, are not counted.
+
+**The scenarios are part of the measurement**, and DCGE is only as good as
+they are. Idle: the unit's inputs present no work and hold still. Medium:
+work on a fraction of cycles, roughly a third, with data that changes when a
+message does. High: work every cycle the unit can take it. Each counts at
+least 1,000 cycles, and the inputs' toggle rate must rise from idle to
+medium to high, or the scenarios are refused as mislabelled. Data that
+changes when no message does is the commonest way to get this wrong: it
+makes the scenario busier than its traffic, and every DCGE looks better
+than it is.
+
+**Exceptions.** Two, both explicit:
+
+- **By measurement.** A register written every cycle (CG-1) is accepted when,
+  clocked every cycle, it changes in at least 75% of counted cycles in every
+  scenario: a gate would save it little. A free-running LFSR passes this way;
+  a status register that holds while idle does not.
+- **By waiver.** `rtl/cg-waivers.json` holds one entry per module, rule and
+  register, with who wrote it, when, and why the rule cannot or should not be
+  met, citing what was measured. A waiver that excuses nothing is refused, so
+  the file cannot outlive what it waives. Today's waivers are the
+  repeater's pulse flops (an enable that sees a repeater's input reaches the
+  gate after a cycle of wire), the clock gate's registered wake (Q-49 keeps
+  that path off any gate's enable) and one counter enable at 8.9 NGD.
+
+**The ratchet.** RTL written before the rule is listed in
+`rtl/cg-ratchet.json` and excused while its owner converts it. The list only
+shrinks: `check-cg.py` refuses an entry that was not on it when the rule was
+made, and refuses a listed module that now meets the rule until it is
+removed. A module with flops that is neither measured by a unit nor on the
+list is refused. Checkers (`ccv_common_chk_*`, present only under
+`CCV_CHECK`) and ctech cells are not silicon logic and are not checked.
+
+**What this does not see.** An enable's inputs are taken to arrive at zero:
+one built from another module's combinational output is measured from the
+module boundary only. The thresholds are per group, so a narrow group
+behind its own enable counts the same as a wide one; the ICG it costs is
+not weighed against the flops it saves.
+
 ### CCV-L26 — nothing Yosys cannot parse
 
 Both simulators accept these; Yosys 0.33 does not. So a file using them is
@@ -736,7 +831,9 @@ The one place `if` on control is *preferred* rather than merely tolerated.
     end
 
 This is the shape that carries an enable to synthesis as a clock-gating
-candidate. The X obligation is discharged by **prohibition** — a
+candidate, and since 2026-10-16 it is required, not only preferred: see
+*Local clock gating* above for the form (CG-1) and what makes the enable a
+good one (CG-2, CG-3). The X obligation is discharged by **prohibition** — a
 `` `CCV_ASSERT_KNOWN `` on the enable — not by merging, and the rules as
 written already permit exactly this.
 

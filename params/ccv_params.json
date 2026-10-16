@@ -261,6 +261,22 @@
       "doc": "Normalized gate delays in one cycle: NAND equivalents, measured by logical effort. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
     },
     {
+      "name": "CCV_NGD_CG_EN",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_NGD_CG_EN < CCV_NGD_BUDGET",
+      "doc": "Logic depth allowed into a local clock gate's enable, in NGD from the flops and inputs that feed it. An ICG's enable sets up to the rising edge at the root of its clock branch, earlier than the flops behind it, so it gets a fraction of the cycle. tools/check-cg.py measures every enable group Yosys infers (CG-2, docs/rtl-coding-style.md)."
+    },
+    {
+      "name": "CCV_DCGE_MIN_PCT",
+      "value": 75,
+      "status": "target",
+      "source": "Daniel, 2026-10-16 (local clock gating)",
+      "require": "CCV_DCGE_MIN_PCT <= 100",
+      "doc": "Minimum dynamic clock-gating efficiency of every enable group, in percent: of the cycles its clock is enabled, the share in which its value changes. Held in each of the idle, medium and high activity scenarios; a scenario with no enabled cycle passes. tools/check-cg.py measures it (CG-3, docs/rtl-coding-style.md)."
+    },
+    {
       "name": "CCV_W_WARP_ID",
       "value": 5,
       "status": "arch",

@@ -54,6 +54,7 @@ so this is a build artifact rather than something to remember.
 | `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/skel/ooe.cpp` | — | — |
 | `sim/skel/stub.h` | — | — |
+| `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |

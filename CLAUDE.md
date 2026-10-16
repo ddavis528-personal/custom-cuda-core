@@ -29,6 +29,14 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 ./tools/verify.sh            # ~25 min; must be green before a push
 ```
 
+Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
+register behind a named enable, enable cones within 8 NGD, DCGE of at least
+75% per enable group in idle, medium and high scenarios. `tools/check-cg.py`
+measures it from each module's unit (`test/**/cg-units.json`). Exceptions
+are waivers with a reason (`rtl/cg-waivers.json`), each written by the
+module's owner. RTL older than the rule sits on `rtl/cg-ratchet.json`, which
+only shrinks: its owner removes an entry once the module passes.
+
 Quicker loops: `tools/check-skel.sh` builds `build/skel/ccv-skel`;
 `tools/check-kernel.sh` runs every kernel with its coverage bins and its
 negative controls; `tools/check-sv-hosted.sh` runs the same blocks inside the

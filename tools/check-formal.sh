@@ -251,8 +251,8 @@ sed 's/  logic          wake_q;/  logic          wake_q, wake_d1;/; s/      wake
   $G >"$B/cg_mut/wake_late.sv"
 sed 's/  wire           en     = !sleep || wake_q || cg_override || !rst_n;/  wire           en     = !sleep || wake_q || (|wake) || cg_override || !rst_n;/' \
   $G >"$B/cg_mut/wake_comb.sv"
-sed "s/      if (wake_q)             hold_q <= HOLD;/      if (wake_q)             hold_q <= HOLD - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
-sed "s/  wire           q_full = (q_run_q >= hq);/  wire           q_full = (q_run_q + 1'b1 >= hq);/" $G >"$B/cg_mut/hyst_early.sv"
+sed "s/      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;/      if (hold_en) hold_q <= wake_q ? HOLD - 1'b1 : hold_q - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
+sed "s/  wire           q_full = (q_run_q >= CW'(hyst_quiesce))/  wire           q_full = (q_run_q + 1'b1 >= CW'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_early.sv"
 sed 's/ || cg_override || !rst_n;/ || cg_override;/' $G >"$B/cg_mut/no_reset.sv"
 awk '/always_latch begin/{print "  assign en_l = en | te;"; skip=2; next} skip>0{skip--; next} {print}' \
   $I >"$B/cg_mut/no_latch.sv"

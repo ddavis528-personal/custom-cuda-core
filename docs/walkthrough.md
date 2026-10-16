@@ -469,6 +469,7 @@ a script is one. Its sections:
 - Interface checker convention
 - X-propagation
 - Clock gating -- the ctech layer and the block gate
+- Local clock gating -- CG-1, CG-2, CG-3
 - Clock gating (exploratory)
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)
