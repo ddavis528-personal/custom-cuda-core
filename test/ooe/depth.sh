@@ -55,3 +55,18 @@ line=$(yosys-abc -c "read_blif $out/decq.blif; read_library test/ooe/ngd.genlib;
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries, %s in:       %5s NGD in %s levels (budget 25)\n' decq "$decq" "$uops" "$d" "$l"
+# ooe_freelist at both pools, in its buffered form (OA's response OI-38):
+# the grant is the buffer's head; the loop is the banked refill.
+phys=$(val CCV_P_PHYS_REGS) preds=$(val CCV_P_PRED_REGS)
+fl_buf=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+fl_banks=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+for cfg in "freelist_g $phys" "freelist_p $preds"; do
+  set -- $cfg
+  yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_freelist.sv;
+               chparam -set N $2 -set A $width -set B $fl_buf -set K $fl_banks ooe_freelist;
+               chformal -remove; synth -flatten -top ooe_freelist; dfflegalize -cell \$_DFF_P_ x; write_blif $out/$1.blif"
+  line=$(yosys-abc -c "read_blif $out/$1.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+  d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
+  l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
+  printf '  %-10s %3s entries, %s-entry buffer: %5s NGD in %s levels (budget 25)\n' "$1" "$2" "$fl_buf" "$d" "$l"
+done

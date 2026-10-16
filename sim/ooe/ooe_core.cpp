@@ -24,7 +24,8 @@ std::string Config::apply(const std::string &spec) {
       {"issue_width", &issue_width}, {"memop_width", &memop_width},
       {"rename_width", &rename_width}, {"rs_rcu", &rs_rcu}, {"rs_miu", &rs_miu},
       {"rs_warp_cap", &rs_warp_cap}, {"decq", &decq}, {"decq_warp_max", &decq_warp_max},
-      {"phys_regs", &phys_regs}, {"pred_regs", &pred_regs}, {"ren_floor", &ren_floor},
+      {"phys_regs", &phys_regs}, {"pred_regs", &pred_regs},
+      {"fl_buf", &fl_buf}, {"fl_banks", &fl_banks}, {"ren_floor", &ren_floor},
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
@@ -108,6 +109,8 @@ std::string Config::check() const {
   if (ckpts > (1u << ccv::prov::kWCkptId)) return "ckpts exceeds checkpoint_id";
   if (issue_width == 0 || rename_width == 0 || retire_per_rob == 0) return "a zero width";
   if (lat_lane_byp > lat_lane) return "CCV_LAT_LANE_BYP exceeds CCV_LAT_LANE";
+  if (fl_buf && (fl_banks == 0 || phys_regs % fl_banks || pred_regs % fl_banks))
+    return "fl_banks must divide phys_regs and pred_regs";
   for (unsigned u = 0; u != kUnits; ++u)
     if (fastOf(u) && fastOf(u) >= unitLat(u)) {
       std::snprintf(buf, sizeof buf, "unit %u's fastest bypass %u is not under its latency %u",
@@ -167,8 +170,8 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   const unsigned names = cfg_.phys_regs * kPos_;
   gprod_.assign(names, {kNoEntry, kNoEntry});
   pprod_.assign(std::max(cfg_.pred_regs, 4u * kWarpIds), {kNoEntry, kNoEntry});
-  gfree_.reset(cfg_.phys_regs);
-  pfree_.reset(cfg_.pred_regs);
+  gfree_.reset(cfg_.phys_regs, cfg_.fl_buf, cfg_.fl_banks);
+  pfree_.reset(cfg_.pred_regs, cfg_.fl_buf, cfg_.fl_banks);
   gowner_.assign(names, 0);
   powner_.assign(cfg_.pred_regs, 0);
   gever_.assign(names, 0);
@@ -309,7 +312,7 @@ std::array<unsigned, kArchPreds> Core::committedPredMap(unsigned warp) const {
 
 bool Core::gprAllowed(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (gfree_.ready() < n) return false;
+  if (gAvail() < n) return false;
   if (s.held_gpr + n > kArchGprs + cfg_.ren_ceil) return false;
   // Every other tier-1 slot, occupied or not, keeps its architectural 16
   // plus its floor reserved: free registers must still cover them.
@@ -324,7 +327,7 @@ bool Core::gprAllowed(unsigned slot, unsigned n) const {
 
 bool Core::predAllowed(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
-  if (pfree_.ready() < n) return false;
+  if (pAvail() < n) return false;
   if (s.held_pred + n > kArchPreds + cfg_.pred_ren_ceil) return false;
   unsigned owed = 0;
   for (unsigned v = 0; v != slot_.size(); ++v)
@@ -337,7 +340,7 @@ bool Core::predAllowed(unsigned slot, unsigned n) const {
 
 unsigned Core::allocGpr(unsigned slot) {
   if (cfg_.sectioned) return allocSlice(slot, 0, 0);
-  const unsigned p = gfree_.alloc();
+  const unsigned p = gTake();
   if (gowner_[p]) err("V-03: GPR p%u allocated while slot %u owns it", p, gowner_[p] - 1);
   gowner_[p] = uint8_t(slot + 1);
   ++slot_[slot].held_gpr;
@@ -351,7 +354,7 @@ unsigned Core::allocGpr(unsigned slot) {
 /// already owns, else a free row; failing both, another position in an
 /// owned row (its footprint then widens, but it does not wait).
 unsigned Core::planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const {
-  if (w == 0) { pos = 0; return allow_row && gfree_.ready() ? 1 : 2; }
+  if (w == 0) { pos = 0; return allow_row && gAvail() ? 1 : 2; }
   const unsigned step = w == 1 ? 2 : 1;
   pos = w == 1 ? (pos & 2u) : (pos & 3u);
   auto partial = [&](unsigned p) {
@@ -361,7 +364,7 @@ unsigned Core::planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_ro
     return false;
   };
   if (partial(pos)) return 0;
-  if (allow_row && gfree_.ready()) return 1;
+  if (allow_row && gAvail()) return 1;
   for (unsigned k = step; k < 4; k += step) {
     const unsigned p = (pos + k) & 3u;
     if (partial(p)) { pos = p; return 0; }
@@ -379,7 +382,7 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos) {
     for (unsigned r = 0; r != cfg_.phys_regs && row == cfg_.phys_regs; ++r)
       if (rowOwner_[r] == slot + 1 && !(rowSec_[r] & m)) row = r;
   } else {
-    row = gfree_.alloc();
+    row = gTake();
     if (rowOwner_[row]) err("V-03: row %u allocated while slot %u owns it", row, rowOwner_[row] - 1);
     rowOwner_[row] = uint8_t(slot + 1);
     ++slot_[slot].held_gpr;
@@ -456,7 +459,7 @@ unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
 
 unsigned Core::allocPred(unsigned slot, unsigned arch) {
   if (!cfg_.rename_preds) return cfg_.pred_window(slot_[slot].warp, arch);
-  const unsigned p = pfree_.alloc();
+  const unsigned p = pTake();
   if (powner_[p]) err("V-03: predicate pp%u allocated while slot %u owns it", p, powner_[p] - 1);
   powner_[p] = uint8_t(slot + 1);
   ++slot_[slot].held_pred;
@@ -1128,10 +1131,16 @@ void Core::control() {
       // Restore-allocate (A-64): 16 GPRs and 4 predicates from the slot's
       // reservation, which the floor guarantees (V-30), then the map so
       // PCA's rows land in them. The warp waits for restore-activate.
+      direct_alloc_ = true;
       if (!gprAllowed(a.slot, kArchGprs) || (cfg_.rename_preds && !predAllowed(a.slot, kArchPreds)))
         err("V-30: restore-allocate for slot %u finds its reservation short", a.slot);
-      for (unsigned g = 0; g != kArchGprs && !gfree_.empty(); ++g) s.crat[g] = s.rat[g] = allocGpr(a.slot);
+      direct_alloc_ = false;
+      // All 20 at once, more than the candidate buffer holds: restore takes
+      // them from the pool directly (OI-41, an interim the RTL lacks).
+      direct_alloc_ = true;
+      for (unsigned g = 0; g != kArchGprs && gAvail(); ++g) s.crat[g] = s.rat[g] = allocGpr(a.slot);
       for (unsigned p = 0; p != kArchPreds; ++p) s.cprat[p] = s.prat[p] = allocPred(a.slot, p);
+      direct_alloc_ = false;
       RatMap m;
       m.warp = a.warp;
       m.direction = 1;
@@ -1844,7 +1853,10 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     plan = planSlice(si, u.w, pos, gprAllowed(si, 1));
   }
   if (wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
-    if (gfree_.empty()) {
+    if (gfree_.empty() && gfree_.ready()) {
+      count("stall.gpr_buffer");   // rows free, none buffered yet (OI-38)
+      oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
+    } else if (gfree_.empty()) {
       count("stall.gpr_empty");
       oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
     } else if (s.held_gpr + 1 > kArchGprs + cfg_.ren_ceil) {
@@ -1857,7 +1869,10 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     return false;
   }
   if (!nop && u.pred_we && cfg_.rename_preds && !predAllowed(si, 1)) {
-    if (pfree_.empty()) {
+    if (pfree_.empty() && pfree_.ready()) {
+      count("stall.pred_buffer");
+      oev(OoeEv::kPredEmpty, s.warp, s.held_pred, 0, u.tid);
+    } else if (pfree_.empty()) {
       count("stall.pred_empty");
       oev(OoeEv::kPredEmpty, s.warp, s.held_pred, 0, u.tid);
     } else {

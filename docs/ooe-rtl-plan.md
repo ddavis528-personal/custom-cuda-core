@@ -32,8 +32,9 @@ by structure, from synthesis serial gate counts (DA's response OI-39,
 2026-10-16). It replaces OA's proposed OOE-wide rule. The decode queue
 holds a freed entry for a cycle, because it fits its stage only so (OI-39).
 The free list does too, in OA's OI-38 design: an 8-entry candidate buffer
-refilled from four interleaved banks. The RS and ROB keep same-edge reuse
-unless their RTL measures over the stage.
+refilled from four interleaved banks (built: 23.5 NGD). The RS and ROB keep same-edge reuse
+unless their RTL measures over the stage. The design snapshot (rev 189)
+still states OA's OOE-wide rule; OA has been asked to update the live doc.
 
 Built (`rtl/ooe/`):
 
@@ -62,23 +63,30 @@ Built (`rtl/ooe/`):
   caught. Logic depth is 9.8 NGD in 8 levels, against the estimate's 9.1,
   so the ready stage is about 16.8 NGD of 25.
 
-- **`ooe_freelist`**, a free list: a bit per entry, up to four allocations
-  a cycle in rotating order from a pointer, any number of frees a cycle.
-  It is the first sequential sub-block, with all its state reset. Its state
-  is one register, {pointer, free bits}, whose next value is a function of
-  that register and the cycle's inputs alone. That is how a one-cycle loop
-  over several fields is written under CCV-L23. `test/ooe/freelist_tb.cpp`
-  drives it, just before every model cycle, with one clock edge's
-  allocations and frees on the model's own `FreeVec`, for the GPR rows
-  (192) and the predicates (48). Over 25 seeds and 200 cores it matches
-  every grant, every free bit and the pointer. Controls drop-free and
-  extra-alloc must each be caught. **Timing is not met.** Written as a
-  behavioural scan, the allocation path synthesises to a ripple chain:
-  344 NGD in 250 levels at 48 entries. A parallel-prefix form (rotate by
-  masking at the pointer, a saturating prefix count, one-hot to index) is
-  about 30 NGD on paper at 192 entries, still over a stage. So allocation
-  likely needs candidates prepared a cycle ahead, which changes when a
-  freed entry can be taken, and with it the model. That is OI-38, for OA.
+- **`ooe_freelist`**, a free list in OA's design (OA's response OI-38):
+  a bit per entry, and an 8-entry buffer of free entries that is the only
+  source of allocations. Up to four allocations a cycle take the buffer's
+  head, so the grant has no search. At each edge four interleaved banks
+  (entry mod 4) each find their first free, unbuffered entry after their
+  own rotating pointer, and append in a rotating bank order while there is
+  room. A free reaches refill a cycle later and allocation the cycle after,
+  the one-cycle hold DA's response OI-39 allows where depth needs it. The
+  model's `FreeVec` is the same structure (`fl_buf`, `fl_banks`; 0 is the
+  old rotating-pointer list), and no S1 kernel or four-warp sweep arm moves
+  by a cycle between them. `test/ooe/freelist_tb.cpp` compares, before
+  every model cycle, the RTL's state after the last edge with the model's
+  (`FreeVec::lastEdge`: free bits, buffer in order, bank pointers, bank
+  order), then drives that cycle's allocations and frees. Over 25 seeds and
+  200 cores, GPR rows (192) and predicates (48), none differ; controls
+  drop-free and extra-alloc must each be caught. Logic depth is 23.5 NGD at
+  192 entries and 24.7 at 48: a log-depth find-first per bank, the buffer
+  rebuilt slot by slot as a gather, the buffered mask kept as state, and
+  the taken count encoded from the request prefix rather than counted.
+
+  Restore-allocate takes 16 GPRs and 4 predicates at once, more than the
+  buffer holds. The model takes them from the pool directly, past the
+  buffer, and counts it (`FreeVec::allocDirect`). The RTL has no such path
+  yet, and the bench follows no core past one. That is OI-41, for OA.
 - **`ooe_age`**, an RS class's age matrix: a bit per ordered pair, set
   when the column's entry was allocated first. Up to four allocations a
   cycle, in port order; each writes its row (every valid entry, and every

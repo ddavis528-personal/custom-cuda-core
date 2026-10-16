@@ -147,15 +147,17 @@ example, is PF-1.
 
 Each pool (GPRs, predicates) is a bit-vector with rotating-start
 allocation, as the RTL builds it (`FreeVec`; OA's answer to OI-17, done
-as OI-22). Allocation takes the first free register at or after a pointer,
-which then moves past it, so a freed register comes back only once the
-pointer wraps. A free sets its bit at the clock edge: a register freed in a
-cycle is not allocated in that cycle. Any number of frees a cycle costs
-nothing, so a squash's 32 or a kill's 16 need no drain. Rename's floor and
-ceiling checks count only registers allocatable this cycle; V-01, V-02 and
-V-04 count those freed this cycle too. On the S1 kernels, one warp freeing
-in order, the order is the old FIFO's, so `--break free-new` still fails at
-the same line (seq 382).
+as OI-22), in OA's structure (OA's response OI-38): allocation takes the
+head of an 8-entry candidate buffer, which four interleaved banks refill at
+each edge, each from the first free, unbuffered register after its own
+pointer. A free sets its bit at the clock edge and reaches the buffer at
+the next, so a register freed in cycle t is allocatable from t + 2. Any
+number of frees a cycle costs nothing, so a squash's 32 or a kill's 16
+need no drain. Rename's allocation checks the buffer; its floor and
+ceiling checks count every free register not freed this cycle; V-01, V-02
+and V-04 count those freed this cycle too. Allocation order is
+bank-interleaved, so `--break free-new` now first shows at seq 379 (R4),
+where it showed at seq 382 (R1) under the rotating pointer.
 
 ## Bypass groups
 
@@ -327,6 +329,13 @@ ones the model's knobs stood for (OI-6, OI-13; `456b3e9`), and each
 `unit_lat` for `lat_class` 4 to 7 waits on OA-4. The sizing sweep runs with
 no per-warp limits unless it sweeps one, since a "no limit" value equal to
 today's size would limit a larger one.
+
+`fl_buf` (8) and `fl_banks` (4) are the free lists' candidate buffer and
+refill banks (OA's response OI-38): allocation takes the buffer's head, and
+each edge refills it from the banks, so a freed row reaches allocation two
+cycles later. `fl_buf=0` is the earlier rotating-pointer list, one cycle;
+no kernel or sweep arm moves between them. Restore-allocate's 20 registers
+bypass the buffer (OI-41).
 
 `decq_late_credit` (on, DA's response OI-39): a decode-queue entry freed in
 a cycle counts as held for that cycle's arrivals, so it takes one only from

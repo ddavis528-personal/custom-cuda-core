@@ -62,6 +62,11 @@ struct Config {
   unsigned ckpts = ccv::prov::kBrCkpts;
   unsigned phys_regs = ccv::prov::kPhysRegs;
   unsigned pred_regs = ccv::prov::kPredRegs;
+  /// The free lists' candidate buffer and refill banks (OA's response
+  /// OI-38); fl_buf 0 is the earlier rotating-pointer list. To be raised as
+  /// parameters if they stay (TI's response of 2026-10-16).
+  unsigned fl_buf = 8;
+  unsigned fl_banks = 4;
   unsigned ren_floor = ccv::prov::kRenFloor;
   unsigned ren_ceil = ccv::prov::kRenCeil;
   unsigned pred_ren_floor = ccv::prov::kPredRenFloor;
@@ -416,35 +421,80 @@ enum class OoeEv : unsigned {
   kCrossGroupSquash, kCopyIssue, kCount
 };
 
+/// A free list (OI-22; structure OA's response OI-38). A bit per entry, set
+/// while it is free. With a candidate buffer (cap > 0, the default) the
+/// only source of allocations is a buffer of up to `cap` free entries, in
+/// order; alloc() takes its head. At each clock edge the buffer is refilled
+/// from `banks` interleaved banks (entry mod banks), in a rotating bank
+/// order: each bank appends at most one entry, the first free one not
+/// already buffered at or after its own rotating pointer, while there is
+/// room. A free reaches the free bits at the next edge, so it is visible
+/// to refill a cycle after it is freed and to allocation the cycle after
+/// that. Buffered entries stay free in the bits, so the admission floors
+/// (ready()) count them. With cap 0 it is the earlier structure: the first
+/// free entry at or after one rotating pointer, a free allocatable from the
+/// next cycle. ooe_freelist builds the buffered form.
 class FreeVec {
 public:
-  void reset(unsigned n) {
+  void reset(unsigned n, unsigned cap = 0, unsigned banks = 1) {
     bit_.assign(n, 1);
     pend_.assign(n, 0);
+    inbuf_.assign(n, 0);
+    buf_.clear();
     ready_ = n;
     npend_ = 0;
     ptr_ = 0;
+    cap_ = cap;
+    banks_ = cap ? banks : 1;
+    bptr_.assign(banks_, 0);
+    rot_ = 0;
+    direct_ = 0;
+    edge_ = Edge{buf_, bit_, bptr_, rot_};
   }
-  /// Free registers, including those freed this cycle.
+  /// Free entries, including those freed this cycle.
   size_t size() const { return ready_ + npend_; }
-  /// Free registers allocation can take this cycle.
+  /// Free entries the admission floors count: all but this cycle's frees.
   size_t ready() const { return ready_; }
-  bool empty() const { return ready_ == 0; }
+  /// Entries allocation can take this cycle: the buffer, or the free bits.
+  size_t avail() const { return cap_ ? buf_.size() : ready_; }
+  bool empty() const { return avail() == 0; }
   bool has(unsigned p) const { return bit_[p] || pend_[p]; }
   unsigned alloc() {
     const unsigned n = unsigned(bit_.size());
+    if (cap_) {
+      if (buf_.empty()) return n;   // caller checked avail()
+      const unsigned p = buf_.front();
+      buf_.pop_front();
+      inbuf_[p] = 0;
+      take(p);
+      return p;
+    }
     for (unsigned i = 0; i != n; ++i) {
       const unsigned p = (ptr_ + i) % n;
       if (!bit_[p]) continue;
-      bit_[p] = 0;
-      --ready_;
+      take(p);
       ptr_ = (p + 1) % n;
-      allocs_.push_back(p);
       return p;
     }
-    return n;   // caller checked ready()
+    return n;   // caller checked avail()
   }
-  /// False when the register is already free (a double free).
+  /// An allocation that does not go through the buffer: restore-allocate's
+  /// 16 at once (OI-41, an interim the RTL does not build). The first free,
+  /// unbuffered entry in bank order. Counted, so a check can tell.
+  unsigned allocDirect() {
+    if (!cap_) return alloc();
+    const unsigned n = unsigned(bit_.size());
+    for (unsigned p = 0; p != n; ++p)
+      if (bit_[p] && !inbuf_[p]) {
+        take(p);
+        ++direct_;
+        return p;
+      }
+    return n;
+  }
+  /// Free entries outside the buffer, for allocDirect.
+  size_t unbuffered() const { return ready_ - (cap_ ? buf_.size() : 0); }
+  /// False when the entry is already free (a double free).
   bool free(unsigned p) {
     if (has(p)) return false;
     pend_[p] = 1;
@@ -454,27 +504,77 @@ public:
   }
   /// The allocations, in order, and frees since the last clock(): one clock
   /// edge's worth, including those made by inputs between cycles
-  /// (ooe_freelist's testbench drives the RTL with them).
+  /// (ooe_freelist's testbench drives the RTL with them). directs() counts
+  /// allocDirect calls in the same window.
   const std::vector<unsigned> &cycleAllocs() const { return allocs_; }
   const std::vector<unsigned> &cycleFrees() const { return frees_; }
+  unsigned directs() const { return direct_; }
   unsigned pointer() const { return ptr_; }
   unsigned capacity() const { return unsigned(bit_.size()); }
+  unsigned bufferCap() const { return cap_; }
+  unsigned banks() const { return banks_; }
+  /// The buffer, head first; each bank's pointer (an index within the
+  /// bank); the bank refill starts with next edge.
+  const std::deque<unsigned> &buffer() const { return buf_; }
+  unsigned bankPointer(unsigned b) const { return bptr_[b]; }
+  unsigned rotation() const { return rot_; }
   bool bit(unsigned p) const { return bit_[p]; }
+  /// The clock edge: refill the buffer from the free bits as they stand,
+  /// then this cycle's frees join the bits.
   void clock() {
     allocs_.clear();
     frees_.clear();
-    if (!npend_) return;
-    for (size_t p = 0; p != pend_.size(); ++p)
-      if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
-    ready_ += npend_;
-    npend_ = 0;
+    direct_ = 0;
+    if (cap_) refill();
+    if (npend_) {
+      for (size_t p = 0; p != pend_.size(); ++p)
+        if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
+      ready_ += npend_;
+      npend_ = 0;
+    }
+    edge_.buf = buf_;
+    edge_.bits = bit_;
+    edge_.bptr = bptr_;
+    edge_.rot = rot_;
   }
+  /// The state just after the last clock edge, before any allocation since:
+  /// what ooe_freelist holds after the same edge (its testbench compares).
+  struct Edge {
+    std::deque<unsigned> buf;
+    std::vector<uint8_t> bits;
+    std::vector<unsigned> bptr;
+    unsigned rot = 0;
+  };
+  const Edge &lastEdge() const { return edge_; }
 
 private:
-  std::vector<uint8_t> bit_, pend_;
-  std::vector<unsigned> allocs_, frees_;
+  void take(unsigned p) {
+    bit_[p] = 0;
+    --ready_;
+    allocs_.push_back(p);
+  }
+  void refill() {
+    const unsigned n = unsigned(bit_.size()), per = n / banks_;
+    for (unsigned j = 0; j != banks_ && buf_.size() < cap_; ++j) {
+      const unsigned b = (rot_ + j) % banks_;
+      for (unsigned i = 0; i != per; ++i) {
+        const unsigned q = (bptr_[b] + i) % per, p = q * banks_ + b;
+        if (!bit_[p] || inbuf_[p]) continue;
+        buf_.push_back(p);
+        inbuf_[p] = 1;
+        bptr_[b] = (q + 1) % per;
+        break;
+      }
+    }
+    rot_ = (rot_ + 1) % banks_;
+  }
+
+  std::vector<uint8_t> bit_, pend_, inbuf_;
+  std::deque<unsigned> buf_;
+  std::vector<unsigned> allocs_, frees_, bptr_;
   size_t ready_ = 0, npend_ = 0;
-  unsigned ptr_ = 0;
+  unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0, direct_ = 0;
+  Edge edge_;
 };
 
 class Core {
@@ -816,6 +916,12 @@ private:
   std::deque<Memop> discards_;       ///< bulk discards, waiting for a slot
   // granted last cycle, in the payload-read stage (payload_stages = 1)
   bool cancel_live_ = false;          ///< a transitive cancel still spreading
+  // Restore-allocate's 20 registers bypass the candidate buffer (OI-41).
+  bool direct_alloc_ = false;
+  size_t gAvail() const { return direct_alloc_ ? gfree_.unbuffered() : gfree_.avail(); }
+  size_t pAvail() const { return direct_alloc_ ? pfree_.unbuffered() : pfree_.avail(); }
+  unsigned gTake() { return direct_alloc_ ? gfree_.allocDirect() : gfree_.alloc(); }
+  unsigned pTake() { return direct_alloc_ ? pfree_.allocDirect() : pfree_.alloc(); }
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;
   std::vector<Memop> held_memops_;

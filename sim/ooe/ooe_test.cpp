@@ -1293,6 +1293,7 @@ void sweep() {
       {"rs_warp_cap", {6, 10, 15, 0}, &Config::rs_warp_cap},
       {"rob_depth", {8, 12, 16, 24, 32}, &Config::rob_depth},
       {"decq", {4, 6, 8, 12, 18}, &Config::decq},
+      {"fl_buf", {0, 4, 8, 16}, &Config::fl_buf},
       {"rename_width", {1, 2, 3, 4}, &Config::rename_width},
       {"retire_per_rob", {1, 2, 4}, &Config::retire_per_rob},
   };
