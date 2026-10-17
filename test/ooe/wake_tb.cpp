@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 #include "Vooe_wake.h"
 #include "verilated.h"
+#include "cg_trace.h"
 #include "ooe_core.h"
 
 #include <cstdio>
@@ -60,11 +61,24 @@ template <typename W> bool getBit(const W &w, unsigned i) {
   else return (w[i / 32] >> (i % 32)) & 1u;
 }
 
+CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
+
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
+  cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  cg.dump();
+}
+
+// An idle cycle: nothing reaches a timer; a grant's kind and class hold.
+void idleTick() {
+  dut->grant_cq01h = 0;
+  dut->done_cq01h = 0;
+  dut->cmpl_cq01h = 0;
+  dut->stop_cq01h = 0;
+  tick();
 }
 
 void fail(const char *what, unsigned e, unsigned k, bool rtl, bool model) {
@@ -157,6 +171,7 @@ void hook(const Core &c) {
   for (unsigned j = 0; j != N; ++j) grants += w.grant[j];
   held2 = held;
   held = w;
+  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
 }
 } // namespace
 
@@ -165,7 +180,27 @@ int main(int argc, char **argv) {
   if (const char *c = std::getenv("WAKE_CONTROL")) control = c;
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
+  std::string vcd;
+  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_wake>(ctx.get());
+  if (cg.on()) {
+    cg.open(*dut, vcd);
+    clearInputs();
+    dut->ooe_rst_r00h = 1;
+    for (unsigned k = 0; k != 4; ++k) tick();
+    dut->ooe_rst_r00h = 0;
+    if (cg.idle()) {
+      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
+    } else {
+      ooeTestRandomHooked(CgRun::kSeeds, hook);
+    }
+    cg.close();
+    dut->final();
+    cg.vcd.reset();
+    dut.reset();
+    ctx.reset();
+    return 0;
+  }
   const int model_fails = ooeTestRandomHooked(seeds, hook);
   dut->final();
   std::printf("wake_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu grants=%llu cmpls=%llu "

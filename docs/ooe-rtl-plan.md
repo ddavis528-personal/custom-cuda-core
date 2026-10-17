@@ -147,13 +147,21 @@ Built (`rtl/ooe/`):
   stops, misses, and confirmations on the timer's word);
   `test/ooe/wake_tb.cpp` clocks the RTL with them after every model cycle
   and compares every valid entry's lines with `Core::wakeLine`, every miss,
-  and fin with each confirmation and `Core::rsFinal`. Over 25 seeds: 28,140
-  grants, 3,233 completions, 448 misses, 21,892 confirmations and 2.26
+  and fin with each confirmation and `Core::rsFinal`. Over 25 seeds: 26,771
+  grants, 3,068 completions, 427 misses, 20,801 confirmations and 2.15
   million line comparisons, none differ. Cores whose bypass table has four
   penalties (the bypass-group seeds, which `ooe_ready`'s bench skips too)
   or whose completion delay is not the parameter's are skipped and
-  counted, 64% of cycles. Controls late-grant, drop-cmpl and drop-stop must
-  each be caught. Logic depth is 13.9 NGD in 12 levels at 45 timers.
+  counted, 67% of cycles. Controls late-grant, drop-cmpl and drop-stop must
+  each be caught. Logic depth is 15.3 NGD in 13 levels at 45 timers.
+  Local clock gating (TI-14): each timer is its own 20-flop gate, clocked
+  on its grant or stop, while issued until its age saturates, on a done or
+  completion after that, and one edge more to clear a miss pulse or a
+  final flag a stop left. `tools/check-cg.py --unit ooe_wake` measures
+  4.8 NGD of enable and a lowest DCGE of 99% (medium) and 98% (high); idle
+  clocks nothing. The earlier 13.9 NGD was short: Yosys dropped the age
+  increment of the `(age == AMAX) ? AMAX : age + 1` form, which only the
+  CG replay (the netlist against the bench's trace) showed.
 - **`ooe_confirm`**, confirmation and transitive cancel. Its hop returns
   to Waiting every issued, unconfirmed entry that depends on an entry
   that missed this cycle or returned to Waiting last cycle, through a

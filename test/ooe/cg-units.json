@@ -1,0 +1,23 @@
+{
+  "_comment": "Clock-gating units for OI's OOE RTL (tools/check-cg.py; docs/rtl-coding-style.md, 'Local clock gating'). Each bench is the module's live-model bench (test/ooe/*_tb.cpp) in its --cg mode (test/ooe/cg_trace.h), built by test/ooe/cg-build.sh at the parameters test/ooe/run-rtl.sh uses: idle is reset and then no work, medium the model's traffic with two idle cycles after each model cycle, high the model's traffic every cycle. The RS sizes here are rtl/generated/ccv_params_pkg.sv's (45 entries, 30 RCU); ooe_wake's latencies are its defaults, which are the parameters' values. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
+  "units": [
+    {
+      "name": "ooe_wake",
+      "module": "ooe_wake",
+      "files": [
+        "rtl/ooe/ooe_wake.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_wake {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_wake"
+      }
+    }
+  ]
+}

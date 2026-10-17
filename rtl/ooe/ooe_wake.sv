@@ -52,9 +52,8 @@
 //
 // Reset line (decision 6): issued resets to 0; the age, kind, class, the
 // timer flags and the lines are payload, read only through issued (a line
-// is never raised without it). State is one register, and its next value a
-// function of it and this cycle's inputs (CCV-L23); the flop takes one
-// function, step(), with reset folded in (see ooe_decq).
+// is never raised without it). Local clock gating: each entry's state is
+// one enable group, clocked only while the entry is in use.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -107,8 +106,6 @@ module ooe_wake #(
   localparam int EW    = FAGE + AW;
   localparam int SW    = N * EW;
 
-  localparam logic [AW-1:0] AMAX = '1;
-
   `CCV_ASSERT_KNOWN(grant_known, grant_cq01h)
   `CCV_ASSERT_KNOWN(done_known, done_cq01h)
   `CCV_ASSERT_KNOWN(cmpl_known, cmpl_cq01h)
@@ -151,7 +148,7 @@ module ooe_wake #(
     logic [EW-1:0] n;
     logic          iss, arm, spec, cmpld, late, miss, fire;
     logic [1:0]    k;
-    logic [2:0]    c;
+    logic [2:0]    cl;
     logic [AW-1:0] age;
     n     = e;
     iss   = e[FISS];
@@ -160,13 +157,14 @@ module ooe_wake #(
     cmpld = e[FCMPL];
     late  = e[FLINE + 3];
     k     = e[FKIND +: 2];
-    c     = e[FCLS +: 3];
-    age   = (e[FAGE +: AW] == AMAX) ? AMAX : e[FAGE +: AW] + AW'(1);
+    cl    = e[FCLS +: 3];
+    age   = e[FAGE +: AW];
+    if (!(&age)) age = age + 1'b1;   // saturating
     // The grant, at the edge after its select.
     if (grant) begin
       iss   = 1'b1;
       k     = kind;
-      c     = cls;
+      cl    = cls;
       cmpld = 1'b0;
       late  = 1'b0;
       spec  = kind == KSPEC;
@@ -183,7 +181,7 @@ module ooe_wake #(
         age   = '0;
       end
     end
-    fire = arm && reached(age, late_time(k, c, cmpld));
+    fire = arm && reached(age, late_time(k, cl, cmpld));
     if (fire) late = 1'b1;
     miss = iss && spec && reached(age, 8'(LAT_MISS));
     if (miss) begin
@@ -198,45 +196,14 @@ module ooe_wake #(
     n[FSPEC]      = spec;
     n[FCMPL]      = cmpld;
     n[FMISS]      = miss && !stop;
-    for (int l = 0; l < 3; l++) n[FLINE + l] = iss && byp_line(age, c, l);
+    for (int l = 0; l < 3; l++) n[FLINE + l] = iss && byp_line(age, cl, l);
     n[FLINE + 3]  = iss && late;
     n[FKIND +: 2] = k;
-    n[FCLS +: 3]  = c;
+    n[FCLS +: 3]  = cl;
     n[FAGE +: AW] = age;
     entry_next = n;
   endfunction
 
-  function automatic logic [SW-1:0] next_state(input logic [SW-1:0] st, input logic [N-1:0] grant,
-                                               input logic [2*N-1:0] kind, input logic [3*N-1:0] cls,
-                                               input logic [N-1:0] done, input logic [N-1:0] cmpl,
-                                               input logic [N-1:0] stop);
-    logic [SW-1:0] n;
-    for (int j = 0; j < N; j++)
-      n[j * EW +: EW] = entry_next(st[j * EW +: EW], grant[j], kind[j * 2 +: 2], cls[j * 3 +: 3],
-                                   done[j] && j < NR, cmpl[j], stop[j]);
-    next_state = n;
-  endfunction
-
-  // The reset state: nothing issued, no line raised, no miss.
-  function automatic logic [SW-1:0] reset_of(input logic [SW-1:0] st);
-    logic [SW-1:0] m;
-    m = st;
-    for (int j = 0; j < N; j++) begin
-      m[j * EW + FISS]       = 1'b0;
-      m[j * EW + FMISS]      = 1'b0;
-      m[j * EW + FFIN]       = 1'b0;
-      m[j * EW + FLINE +: 4] = '0;
-    end
-    reset_of = m;
-  endfunction
-
-  // One edge: reset, or the update.
-  function automatic logic [SW-1:0] step(input logic [SW-1:0] st, input logic rst,
-                                         input logic [N-1:0] grant, input logic [2*N-1:0] kind,
-                                         input logic [3*N-1:0] cls, input logic [N-1:0] done,
-                                         input logic [N-1:0] cmpl, input logic [N-1:0] stop);
-    step = rst ? reset_of(st) : next_state(st, grant, kind, cls, done, cmpl, stop);
-  endfunction
 
   logic [SW-1:0] st_cq02h;
   logic [N-1:0]  iss_cq02h;
@@ -251,9 +218,28 @@ module ooe_wake #(
   // Select never grants an issued entry: its issued flag masks its ready.
   `CCV_ASSERT(grant_not_issued, (grant_cq01h & iss_cq02h) == '0)
 
-  always_ff @(posedge ooe_core_clk) begin
-    st_cq02h <= step(st_cq02h, ooe_rst_r00h, grant_cq01h, kind_cq01h, cls_cq01h, done_cq01h,
-                     cmpl_cq01h, stop_cq01h);
+  // Local clock gating: an entry's timer is clocked on the edge that grants
+  // or stops it, and while it is issued until its age saturates; past that
+  // only a done or a completion changes it. A miss pulse, and a final flag
+  // left by a stop, take one more edge to clear. A free entry holds still.
+  logic [N-1:0] ent_en_cq02h;
+  always_comb
+    for (int j = 0; j < N; j++)
+      ent_en_cq02h[j] = grant_cq01h[j] || stop_cq01h[j] || miss_cq02h[j] || (fin_cq02h[j] && !iss_cq02h[j]) ||
+                        (iss_cq02h[j] && (!(&st_cq02h[j * EW + FAGE +: AW]) || cmpl_cq01h[j] ||
+                                          (done_cq01h[j] && j < NR)));
+
+  for (genvar j = 0; j < N; j++) begin : g_ent
+    always_ff @(posedge ooe_core_clk) begin
+      // The reset state: nothing issued, no line raised, no miss. The whole
+      // entry resets, its payload too, so the entry is one enable group.
+      if (ooe_rst_r00h) st_cq02h[j * EW +: EW] <= '0;
+      else if (ent_en_cq02h[j]) begin
+        st_cq02h[j * EW +: EW] <= entry_next(st_cq02h[j * EW +: EW], grant_cq01h[j], kind_cq01h[j * 2 +: 2],
+                                             cls_cq01h[j * 3 +: 3], done_cq01h[j] && j < NR, cmpl_cq01h[j],
+                                             stop_cq01h[j]);
+      end
+    end
   end
 
 endmodule

@@ -5,7 +5,6 @@
     "ooe_confirm":  {"owner": "OI", "since": "2026-10-16"},
     "ooe_decq":     {"owner": "OI", "since": "2026-10-16"},
     "ooe_freelist": {"owner": "OI", "since": "2026-10-16"},
-    "ooe_rs":       {"owner": "OI", "since": "2026-10-16"},
-    "ooe_wake":     {"owner": "OI", "since": "2026-10-16"}
+    "ooe_rs":       {"owner": "OI", "since": "2026-10-16"}
   }
 }
