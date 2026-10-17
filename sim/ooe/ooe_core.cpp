@@ -278,6 +278,7 @@ void Core::cycle(uint64_t now) {
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
   wlog_.cf_dep.clear();
+  rlog_ = RatLog();
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -1047,6 +1048,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   // Restore OOE's RAT in the same cycle FET restores its groups (Q8).
   s.rat = cp.gpr;
   s.prat = cp.pred;
+  rlog_.restore.push_back({slot, r.u.ckpt});
   advanceEpoch(slot);
   Redirect rd;
   rd.tid = r.u.tid;
@@ -1166,6 +1168,7 @@ void Core::releaseSlot(unsigned slot) {
   if (s.held_gpr || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr, s.held_pred);
   slot_of_[s.warp % kWarpIds] = -1;
+  rlog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
   (void)keep_epoch_warp;    // the epoch is per warp_id and survives (A-74)
   Slot fresh;
@@ -1251,6 +1254,7 @@ void Core::control() {
     squashAfter(unsigned(si), -1, true);
     s.rat = s.crat;
     s.prat = s.cprat;
+    rlog_.squash |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
     advanceEpoch(unsigned(si));
     epochNotice(unsigned(si));
@@ -1270,6 +1274,7 @@ void Core::control() {
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
+      rlog_.squash |= 1u << si;
       advanceEpoch(si);
       epochNotice(si);
       s.st = WarpState::kKilling;
@@ -1385,6 +1390,17 @@ void Core::retire() {
       }
       // Commit the mapping; free the one it replaced: no older instruction
       // can still read it, and every younger one reads the new name.
+      if (r.alloc_gpr || r.u.pred_we) {
+        RatLog::Ret w;
+        w.slot = si;
+        w.gwe = r.alloc_gpr;
+        w.dst = r.u.dst & 15;
+        w.gname = r.pnew;
+        w.pwe = r.u.pred_we;
+        w.pdst = r.u.pred_dst & 3;
+        w.pname = r.ppnew;
+        rlog_.ret.push_back(w);
+      }
       if (r.alloc_gpr) {
         s.crat[r.u.dst & 15] = r.pnew;
         freeGpr(si, cfg_.inject_free_new ? r.pnew : r.pold);
@@ -2020,6 +2036,29 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       c.pred = s.prat;
       r.ckpt_live = true;
     }
+    {
+      RatLog::Ren w;
+      w.slot = si;
+      for (unsigned i = 0; i != 3; ++i) { w.src[i] = u.src[i] & 15; w.psrc[i] = r.psrc[i]; }
+      w.dst = u.dst & 15;
+      w.pold = r.pold;
+      w.gwe = wgpr;
+      w.gname = r.pnew;
+      w.pguard = u.pred_guard & 3;
+      w.ppguard = r.ppguard;
+      w.pdst = u.pred_dst & 3;
+      w.ppold = r.ppold;
+      w.pwe = u.pred_we;
+      w.pname = r.ppnew;
+      w.plogic = u.shape.pred_logic;
+      w.pq[0] = u.imm & 3;
+      w.pq[1] = (u.imm >> 3) & 3;
+      w.pqn[0] = r.pq[0];
+      w.pqn[1] = r.pq[1];
+      w.br = a.branch;
+      w.ckpt = u.ckpt;
+      rlog_.ren.push_back(w);
+    }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
     if (a.serial == kSerBarrier) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
@@ -2061,12 +2100,34 @@ void Core::restoreStep() {
   const unsigned si = restore_q_.front();
   Slot &s = slot_[si];
   const unsigned width = cfg_.rename_width;
-  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr)
-    s.crat[kArchGprs - s.restore_gpr] = s.rat[kArchGprs - s.restore_gpr] = allocGpr(si);
+  // The k-th GPR and the k-th predicate share rename port k (RatLog).
+  const size_t base = rlog_.ren.size();
+  auto port = [&](unsigned k) -> RatLog::Ren & {
+    while (rlog_.ren.size() <= base + k) {
+      RatLog::Ren w;
+      w.slot = si;
+      w.rst = true;
+      rlog_.ren.push_back(w);
+    }
+    return rlog_.ren[base + k];
+  };
+  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr) {
+    const unsigned a = kArchGprs - s.restore_gpr;
+    s.crat[a] = s.rat[a] = allocGpr(si);
+    RatLog::Ren &w = port(k);
+    w.gwe = true;
+    w.dst = a;
+    w.gname = s.rat[a];
+  }
   for (unsigned k = 0; k != width && s.restore_pred && (!cfg_.rename_preds || predAllowed(si, 1));
-       ++k, --s.restore_pred)
-    s.cprat[kArchPreds - s.restore_pred] = s.prat[kArchPreds - s.restore_pred] =
-        allocPred(si, kArchPreds - s.restore_pred);
+       ++k, --s.restore_pred) {
+    const unsigned a = kArchPreds - s.restore_pred;
+    s.cprat[a] = s.prat[a] = allocPred(si, a);
+    RatLog::Ren &w = port(k);
+    w.pwe = true;
+    w.pdst = a;
+    w.pname = s.prat[a];
+  }
   if (s.restore_gpr || s.restore_pred) return;
   const uint64_t took = now_ - s.restore_at + 1;
   const uint64_t bound = (std::max(kArchGprs, kArchPreds) + width - 1) / width + 1;

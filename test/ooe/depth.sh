@@ -10,6 +10,9 @@
 # Usage: test/ooe/depth.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
+# Yosys through TI's shim: a warning that means the netlist is not the RTL
+# fails the run (tools/check-yosys-strict.sh, OI-44).
+export PATH="$PWD/tools/shim:$PATH"
 pkg=rtl/generated/ccv_params_pkg.sv
 val() { sed -n "s/.*localparam int $1 = \([0-9]*\);.*/\1/p" "$pkg"; }
 n_rcu=$(val CCV_P_RS_RCU) n_miu=$(val CCV_P_RS_MIU) secs=$(val CCV_SECTIONS) pipes=$(val CCV_MIU_PIPES)
@@ -117,6 +120,19 @@ for cfg in "rs rtl/ooe/ooe_rs.sv ooe_rs" "rs_confirm rtl/ooe/ooe_confirm.sv rtl/
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s ports a class: %5s NGD in %s levels (budget 25)\n' "$name" "$n" "$width" "$d" "$l"
 done
+# ooe_rat: rename's reads, each a slot's map with the lower ports' writes
+# over it, then a 16:1 read, and the maps' and checkpoints' next values.
+# Rename's first stage (the design doc's Scheduler timing estimate) is this
+# and the free-list grant, read from the candidate buffer's head.
+read -r rat_g _ < <(python3 test/ooe/rat-params.py)
+rat_set=$(echo "$rat_g" | tr ',' '\n' | sed -n 's/^-G\([A-Z]*\)=\(.*\)$/-set \1 \2/p' | tr '\n' ' ')
+yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_rat.sv;
+             chparam $rat_set ooe_rat;
+             chformal -remove; synth -flatten -top ooe_rat; dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/rat.json"; ungate $out/rat
+line=$(yosys-abc -c "read_blif $out/rat.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
+l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
+printf '  %-10s %3s slots, %s ports:       %5s NGD in %s levels (budget 25)\n' rat 4 4 "$d" "$l"
 # ooe_select over both classes: the requests (warp state, confirmation,
 # the memop order check as a row-wide OR over the age matrix, the copy)
 # and the two picks. OA-1's select stage is 17.6 NGD with a 3.0 flop, so

@@ -1514,6 +1514,31 @@ int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = nullptr;
   return g_fail;
 }
+/// The directed tests (every one that drives a core and injects no bug:
+/// demotion, kill, restore, faults, squashes and the rest) with a hook on
+/// every core cycle, for the paths random traffic does not take. Returns
+/// the failure count.
+int ooeTestDirectedHooked(void (*hook)(const Core &)) {
+  g_cycle_hook = hook;
+  testWakeTimes();
+  testBypassGroups();
+  testL1Spec();
+  testL1WakeAfterCmpl();
+  testMaskedLoad();
+  testSquash();
+  testFloorCeiling();
+  testDemote();
+  testRestore();
+  testKill();
+  testFault();
+  testBarrier();
+  testChwidth();
+  testSections();
+  testV59();
+  testFixedWindowPreds();
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
 /// The same, with the hook just before each core cycle instead.
 int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_pre_cycle_hook = hook;

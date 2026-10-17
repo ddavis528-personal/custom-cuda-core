@@ -152,6 +152,30 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_freelist"
       }
+    },
+    {
+      "name": "ooe_rat",
+      "module": "ooe_rat",
+      "files": [
+        "rtl/ooe/ooe_rat.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "R": 2,
+        "C": 4,
+        "GW": 10,
+        "PW": 6,
+        "GZERO": "10'd1020",
+        "PZERO": "6'd63"
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rat {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_rat"
+      }
     }
   ]
 }
