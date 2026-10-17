@@ -56,6 +56,10 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUILD = os.path.join(ROOT, "build", "cg")
+# Yosys, strict (tools/shim/yosys, OI-44): run alone, as under the gate.
+SHIM = os.path.join(ROOT, "tools", "shim")
+if SHIM not in os.environ.get("PATH", "").split(os.pathsep):
+    os.environ["PATH"] = SHIM + os.pathsep + os.environ.get("PATH", "")
 GENLIB = os.path.join(ROOT, "test", "ooe", "ngd.genlib")
 SCENARIOS = ("idle", "medium", "high")
 # A scenario shorter than this says little about an enable's quality.
@@ -1133,19 +1137,24 @@ def coverage_check(modules, units):
 
 # == The budget ================================================================
 
-def elaborate(name, top, files, blackbox=(), known=()):
+def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=()):
     """A partition's flops, instance by instance: synthesised with its
     hierarchy kept, each module's flops counted once and multiplied by how
     many times the partition instantiates it. Returns the total and, per
     instantiated module (by its source name), its multiplicity and its flop
-    count per register name."""
+    count per register name. Nothing replays this netlist, so crosscheck()
+    holds it to the replayed one wherever a unit measures the same module."""
     work = os.path.join(BUILD, "part_" + name)
     os.makedirs(work, exist_ok=True)
     jf = os.path.join(work, "part.json")
-    cmds = ["read_verilog -sv -formal -Irtl/include -Irtl/generated %s"
-            % " ".join(["rtl/ccv_assert_pkg.sv"] + list(files))]
+    cmds = ["read_verilog -sv -formal %s -Irtl/include -Irtl/generated %s"
+            % (" ".join("-D%s" % d for d in defines),
+               " ".join(["rtl/ccv_assert_pkg.sv"] + list(files)))]
     for bb in blackbox:
         cmds.append("read_verilog -sv -lib -Irtl/include -Irtl/generated %s" % bb)
+    if params:
+        cmds.append("chparam %s %s" % (" ".join(
+            "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
     cmds += ["hierarchy -top %s" % top, "chformal -remove", "synth -top %s" % top,
              "write_json %s" % jf]
     r = run(["yosys", "-q", "-p", "; ".join(cmds)])
@@ -1236,7 +1245,7 @@ def module_budget(findings, units):
         for k, f in enumerate(cand):
             if f.module != u.module or (f.unit is not None and f.unit != u.name):
                 continue
-            n = f.flops if f.unit == u.name else sum(len(u.reg_qs(r)) for r in f.regs)
+            n = unit_flops(u, f)
             seen[k].add(u.name)
             items.append((n, f.rule, sorted(f.regs), k))
         used = count = 0
@@ -1255,6 +1264,61 @@ def module_budget(findings, units):
     return lines
 
 
+def took_flops(el, f):
+    """A finding's flops in an elaborated partition: its registers, by name,
+    in every instance of its module."""
+    lasts = {re.sub(r"(\[[\d:,]+\])+$", "", r.split(".")[-1]) for r in f.regs}
+    return sum(m * sum(regs.get(x, 0) for x in lasts)
+               for b, m, regs in el["inst"] if b == f.module)
+
+
+def unit_flops(u, f):
+    """A finding's flops as its unit's replayed netlist counts them, as the
+    module budget took them."""
+    return f.flops if f.unit == u.name else sum(len(u.reg_qs(r)) for r in f.regs)
+
+
+def crosscheck(findings, units, known, skew=()):
+    """The block budget counts flops in a netlist synthesised with its
+    hierarchy kept, which nothing replays; a unit's netlist is flattened and
+    replayed against the simulated RTL. Yosys can read one RTL differently
+    in two flows (OI-44), so each measured unit's module is elaborated the
+    block budget's way, at the unit's parameters, and must count what the
+    replayed netlist counts: all its flops, and those of every finding its
+    module budget took. `skew` adds defines to the elaborated read alone:
+    the selftest's stand-in for such a misread. Returns the units' lines
+    and the disagreements."""
+    took = [f for f in findings if f.status == "module"]
+    lines, fails = [], []
+    for u in units:
+        if u.errors or u.nl is None:
+            continue
+        s = u.spec
+        el = elaborate("unit_" + u.name, u.module, s["files"],
+                       [s["blackbox"][b] for b in sorted(s.get("blackbox", {}))], known,
+                       s.get("params"), list(s.get("defines", [])) + list(skew))
+        diff = []
+        if el["total"] != len(u.nl.flops):
+            diff.append("%d flops, the replayed netlist %d" % (el["total"], len(u.nl.flops)))
+        n = 0
+        for f in took:
+            if f.module != u.module or (f.unit is not None and f.unit != u.name):
+                continue
+            n += 1
+            got, want = took_flops(el, f), unit_flops(u, f)
+            if got != want:
+                diff.append("%s %s: %d flops, the replayed netlist %d"
+                            % (f.rule, "/".join(sorted(f.regs)), got, want))
+        if diff:
+            fails.append("unit %s: synthesised with its hierarchy kept, %s counts %s; the "
+                         "block budget would count the wrong design"
+                         % (u.name, u.module, "; ".join(diff)))
+        else:
+            lines.append("flop count: unit %-12s %5d flops, and %d budgeted finding(s), "
+                         "alike kept and replayed" % (u.name, el["total"], n))
+    return lines, fails
+
+
 def block_budget(findings, parts, known):
     """What the module budgets took still counts against each block's
     CCV_CG_BUDGET_PCT, per instance over the block's hierarchy. Returns the
@@ -1266,9 +1330,7 @@ def block_budget(findings, parts, known):
         budget = el["total"] * BUDGET_PCT / 100.0
         used, items = 0, []
         for f in took:
-            lasts = {re.sub(r"(\[[\d:,]+\])+$", "", r.split(".")[-1]) for r in f.regs}
-            n = sum(m * sum(regs.get(x, 0) for x in lasts)
-                    for b, m, regs in el["inst"] if b == f.module)
+            n = took_flops(el, f)
             if n:
                 used += n
                 items.append((n, f))
@@ -1417,6 +1479,9 @@ def main_check(only=None, verbose=False):
     parts = partitions(modules)
     fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
                           known=modules)
+    more, over = crosscheck(findings, units, modules)
+    lines += more
+    fails += over
     for l in lines:
         print("  " + l)
     if not parts:
@@ -1616,11 +1681,24 @@ def selftest():
     fails, _ = run_policy(small, parts=[p_over])
     expect(any("block fx_over" in x and "over its" in x for x in fails),
            "a block over its 2% with its modules' auto-waivers passed")
+    # 15. The block budget's flop counts, from netlists nothing replays,
+    #     agree with the replayed ones: for every fixture, totals and what the
+    #     module budgets took; and a module the elaborated read takes
+    #     differently, one flop fewer in cg_fx_small's counter, is refused.
+    _, fs = run_policy(tuple(mods))
+    _, xf = crosscheck(fs, allu, set(mods))
+    expect(not xf, "kept and replayed flop counts differ on the fixtures: %s" % xf)
+    _, xf = crosscheck(fs, [units["cg_fx_small"], units["cg_fx_big"]], set(mods),
+                       skew=["CG_FX_MISREAD"])
+    expect(any("unit fx_small" in x and "c_q" in x and "3 flops" in x for x in xf)
+           and not any("fx_big" in x for x in xf),
+           "a module elaborated with one flop fewer than its replayed netlist passed: %s" % xf)
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
-              "ratchet, coverage, module and block budgets (%d controls)" % checks)
+              "ratchet, coverage, module and block budgets, kept and replayed flop counts "
+              "(%d controls)" % checks)
     return 1 if bad else 0
 
 

@@ -22,6 +22,9 @@
 #                            tools themselves (minutes, not seconds)
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# Every Yosys the gate runs, SymbiYosys's included, is the strict one: the
+# warnings that mean a netlist is not the RTL fail the run (OI-44).
+export PATH="$PWD/tools/shim:$PATH"
 
 FULL=0
 [ "${1:-}" = "--full" ] && FULL=1
@@ -60,6 +63,10 @@ run "another Verilator's build/ refused" python3 tools/build-stamp.py --selftest
 # frozen with its flop in both forms: the pinned Verilator must compile both
 # alike, and a planted difference must be caught (OI-40).
 run "this Verilator compiles OI's 5.020 miscompile right" ./tools/check-vl-reorder.sh
+# Yosys's warnings that mean the netlist is not the RTL (bits set to undef,
+# an implicit net, conflicting drivers, an undriven read, a loop) fail every
+# run: each provoked by a fixture that plain Yosys passes (OI-44).
+run "Yosys, strict, everywhere the gate runs it" ./tools/check-yosys-strict.sh --gate
 
 section "documentation"
 # Docs decay more quietly than code: a drifted count or a dangling reference

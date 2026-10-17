@@ -42,6 +42,10 @@ the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
 its owner removes an entry once the module passes.
 
+Every Yosys the gate runs, SymbiYosys's included, is `tools/shim/yosys`:
+the warnings that mean a netlist is not the RTL are errors (OI-44). Run a
+Yosys flow alone the same way: `PATH="$PWD/tools/shim:$PATH"`.
+
 Quicker loops: `tools/check-skel.sh` builds `build/skel/ccv-skel`;
 `tools/check-kernel.sh` runs every kernel with its coverage bins and its
 negative controls; `tools/check-sv-hosted.sh` runs the same blocks inside the

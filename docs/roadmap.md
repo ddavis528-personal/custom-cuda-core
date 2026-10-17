@@ -366,10 +366,14 @@ within 2% of each block, per instance, checked once a block top is RTL.
 Waivers (`rtl/cg-waivers.json`) are the last resort, and pre-rule RTL is on
 `rtl/cg-ratchet.json`, which only shrinks. TI's two modules meet the rule
 or carry four waivers, two of them the clock gate's counters, open with
-Daniel. OI's four are on the ratchet, with their conversion as
-TI-14: the decode queue's inferred enables measure 19.1 NGD and the free
-list's 17.9, and the age matrix's 900 enables are one flop each, so that is
-design work, not a rewrite of syntax.
+Daniel. OI converted its four (TI-14: 7af637e, d3905fc), and the ratchet
+is empty: ten units, every OOE flop in a clock gate. Clock-gated, the RS's
+same-edge reuse path is 25.2 NGD, 0.2 over the stage, which Daniel accepted
+(OI-43, 2026-10-17). Converting them showed Yosys reading `ooe_wake`
+differently from Verilator, silently (OI-44), so every Yosys the gate runs
+now fails on the warnings that mean a netlist is not the RTL
+(`tools/shim/yosys`), and the block budget's hierarchy-kept flop counts are
+held to the replayed units'.
 
 ### CI harness ✅
 

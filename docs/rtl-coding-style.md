@@ -624,6 +624,25 @@ their enable is the same. Any other synchronous reset with priority over the
 enable is part of the group's enable: its clock runs when either is active,
 and its depth is the deeper of the two.
 
+**A field held inside a group keeps the group's enable only if it is
+written to** (OI, measured converting the OOE RTL, 2026-10-17). Under a
+group's `if (<name>_en)`, a field kept through a nested `if`
+(`if (sel) f_q <= x;`) gives Yosys a finer enable: `<name>_en && sel` gates
+that field alone, a group of its own with its own depth and DCGE. In the
+RS that made each row's grant, 12 NGD and more, the enable of the row's
+line selects, which fails CG-2. Two forms keep the coarse enable:
+
+- **AND-OR on D.** Write the held value as next-state logic,
+  `({W{sel}} & x) | ({W{!sel}} & f_q)`, so the hold costs the 25 NGD path to
+  D and not the 8 NGD path to a gate (`ooe_freelist`'s buffer and bank
+  pointers). This is not the feedback mux CCV-L25 refuses: the group's
+  enable is still the `if`; the AND-OR chooses what the group writes when it
+  is clocked.
+- **A guarded payload is not held.** A field read only through its own guard
+  bit (valid, busy) is written, or cleared, whenever its group is clocked,
+  so it has no enable of its own (`ooe_decq`'s payloads, owners and
+  positions, read only through busy).
+
 **How it is measured.** A *unit* is one module at one parameterisation, with
 a bench that runs the three scenarios and dumps a VCD (`test/**/cg-units.json`;
 TI's are in `test/cg/`). `check-cg.py` synthesises the unit with Yosys,
@@ -632,7 +651,12 @@ groups its flops by enable, and maps each enable's cone with ABC onto
 replays each scenario's port trace into the netlist, brings every group's
 enable and value out on a port, and counts. The replay must reproduce the
 bench's outputs on every cycle, so what is measured is what the bench ran;
-reset cycles, and cycles before the first reset, are not counted.
+reset cycles, and cycles before the first reset, are not counted. The
+replay is also what shows Yosys reading the RTL differently from Verilator
+(OI-44). The block budget counts flops in a netlist synthesised with its
+hierarchy kept, which nothing replays, so each unit's module is synthesised
+that way too and must count what its replayed netlist counts: its flops, and
+those of every finding its module budget took.
 
 **The scenarios are part of the measurement**, and DCGE is only as good as
 they are. Idle: the unit's inputs present no work and hold still. Medium:
@@ -726,6 +750,19 @@ one: Yosys doesn't reject it, it sizes the port by the array bound, turns the
 fields into implicit 1-bit nets, and only warns.
 `tools/check-top-wiring.py` refuses those warnings as well as the lint rule
 refusing the construct.
+
+**What Yosys reads, it must read as written** (OI-44, 2026-10-17). Every
+Yosys the gate runs, SymbiYosys's included, is `tools/shim/yosys`, which
+makes an error of each warning that means the netlist is not the RTL: a
+select out of bounds (bits set to undef), an implicitly declared
+identifier (the array-of-structs case above among them), conflicting
+drivers, a net read with no driver, a combinational loop.
+`tools/check-yosys-strict.sh` provokes each with a fixture in `test/yosys/`
+that plain Yosys passes with a warning. Run a flow outside the gate the same
+way, `PATH="$PWD/tools/shim:$PATH"`; `tools/check-cg.py` does so itself. A
+misread with no warning is still possible: Yosys 0.33 once dropped a
+saturating increment inside a function in `ooe_wake`, silently, and only
+check-cg's replay showed it.
 
 The rule flags only what Yosys rejects. A rule that also flags accepted forms
 gets exempted, and an exemption habit is how rules die. To keep that honest in
