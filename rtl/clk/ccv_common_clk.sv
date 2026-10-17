@@ -77,8 +77,8 @@ module ccv_common_clk #(
   end
 
   localparam int HW = $clog2(WAKE_HOLD + 1);
-  localparam int CW = HYST_W > HW ? HYST_W : HW;
-  localparam logic [CW-1:0] HOLD = CW'(WAKE_HOLD);
+  localparam int CW = HYST_W;
+  localparam logic [HW-1:0] HOLD = HW'(WAKE_HOLD);
 
   `CCV_ASSERT_KNOWN(quiesced_known, quiesced)
   `CCV_ASSERT_KNOWN(stalled_known,  stalled)
@@ -86,19 +86,28 @@ module ccv_common_clk #(
   `CCV_ASSERT_KNOWN(override_known, cg_override)
   `CCV_ASSERT_KNOWN(hyst_known,     {hyst_quiesce, hyst_stall})
 
-  // The thresholds as used: 0 counts as 1.
-  wire [CW-1:0] hq = (hyst_quiesce == '0) ? CW'(1) : CW'(hyst_quiesce);
-  wire [CW-1:0] hs = (hyst_stall   == '0) ? CW'(1) : CW'(hyst_stall);
-
   // Consecutive quiesced / stalled cycles, saturating at the threshold; the
   // registered wake; edges still owed to it. On the ungated clock: they must
-  // see every cycle. `>=`, so a threshold lowered mid-count takes effect.
-  logic [CW-1:0] q_run_q, s_run_q, hold_q;
+  // see every cycle. `>=`, so a threshold lowered mid-count takes effect. A
+  // threshold of 0 counts as 1: full is `>= max(threshold, 1)`, written as a
+  // compare beside a zero test rather than a mux into the compare, which
+  // keeps it off the depth of the enable below.
+  logic [CW-1:0] q_run_q, s_run_q;
+  logic [HW-1:0] hold_q;
   logic          wake_q;
-  wire           q_full = (q_run_q >= hq);
-  wire           s_full = (s_run_q >= hs);
+  wire           q_full = (q_run_q >= CW'(hyst_quiesce)) && (q_run_q != '0);
+  wire           s_full = (s_run_q >= CW'(hyst_stall)) && (s_run_q != '0);
   wire           sleep  = (q_full || s_full) && (hold_q == '0);
   wire           en     = !sleep || wake_q || cg_override || !rst_n;
+
+  // Each counter loads only when its value moves (local clock gating,
+  // docs/rtl-coding-style.md): clear and staying clear, or full and staying
+  // full, it holds and its clock can stop. wake_q is the one path in from
+  // another block (Q-49); an enable that saw `wake` would put that path on
+  // a clock gate, so it is written every cycle (rtl/cg-waivers.json).
+  wire q_en    = quiesced ? !q_full : (q_run_q != '0);
+  wire s_en    = stalled  ? !s_full : (s_run_q != '0);
+  wire hold_en = wake_q   ? (hold_q != HOLD) : (hold_q != '0);
 
   always_ff @(posedge clk) begin
     if (!rst_n) begin
@@ -107,13 +116,10 @@ module ccv_common_clk #(
       wake_q  <= 1'b0;
       hold_q  <= '0;
     end else begin
-      if (!quiesced)    q_run_q <= '0;
-      else if (!q_full) q_run_q <= q_run_q + 1'b1;
-      if (!stalled)     s_run_q <= '0;
-      else if (!s_full) s_run_q <= s_run_q + 1'b1;
+      if (q_en)    q_run_q <= quiesced ? q_run_q + 1'b1 : '0;
+      if (s_en)    s_run_q <= stalled ? s_run_q + 1'b1 : '0;
       wake_q <= |wake;
-      if (wake_q)             hold_q <= HOLD;
-      else if (hold_q != '0)  hold_q <= hold_q - 1'b1;
+      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;
     end
   end
 

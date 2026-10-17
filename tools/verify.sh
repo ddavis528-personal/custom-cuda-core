@@ -56,6 +56,10 @@ fi
 # compiled them, so a build/ another version made is cleared (OI-40).
 run "build/ made by this Verilator" python3 tools/build-stamp.py
 run "another Verilator's build/ refused" python3 tools/build-stamp.py --selftest
+# OI's 5.020 miscompile (an if/else of two function calls in an always_ff),
+# frozen with its flop in both forms: the pinned Verilator must compile both
+# alike, and a planted difference must be caught (OI-40).
+run "this Verilator compiles OI's 5.020 miscompile right" ./tools/check-vl-reorder.sh
 
 section "documentation"
 # Docs decay more quietly than code: a drifted count or a dangling reference
@@ -141,6 +145,17 @@ section "Clock gating -- the ctech layer and the block gate"
 # without a proper latch must fail. The gate's behaviour is proved in the
 # formal section.
 run "ctech and clock gate" ./tools/check-ctech.sh
+
+section "Local clock gating -- CG-1, CG-2, CG-3"
+# docs/rtl-coding-style.md, "Local clock gating" (Daniel, 2026-10-16): every
+# register behind a named enable (CG-1), every enable cone within
+# CCV_NGD_CG_EN NGD (CG-2), every enable group's DCGE at least
+# CCV_DCGE_MIN_PCT in the idle, medium and high scenarios (CG-3), measured on
+# the netlist with each bench's trace replayed into it. Waivers in
+# rtl/cg-waivers.json, the ratchet in rtl/cg-ratchet.json. The controls run
+# the same pipeline on test/cg/fixtures/ and must each be caught.
+run "local clock gating" python3 tools/check-cg.py
+run "clock gating that should fail does" python3 tools/check-cg.py --selftest
 
 section "Clock gating (exploratory)"
 # Synthesis is deferred (§6), and nothing depends on this. It is in the gate

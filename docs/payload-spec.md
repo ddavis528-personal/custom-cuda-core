@@ -286,7 +286,7 @@ rcu → pca · rate 1 · control
 
 ### `ccv_pca_rcu_mig`
 
-Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate state), addressed by warp_id and mig_row so RCU writes it without state. The PC groups and their lane masks return to FET on ccv_pca_fet_mig.
+Architectural state back in on restore, one 1024-bit row per message in the same row numbering as ccv_rcu_pca_mig (0 to 15 GPRs, 16 and up predicate state), addressed by warp_id and mig_row so RCU writes it without state. RCU consumes a row only once it holds the warp's map (ccv_ooe_rcu_map, which it pairs with ccv_rau_rcu_mig in either order, A-45) and writes the row as it consumes it, so a row's credit coming back means the row is written (TI-13). The PC groups and their lane masks return to FET on ccv_pca_fet_mig.
 
 pca → rcu · rate 1 · control
 
@@ -299,7 +299,7 @@ pca → rcu · rate 1 · control
 
 ### `ccv_pca_rau_mig_done`
 
-A migration has landed, either way. direction 0: a demotion, PCA holds every row from RCU and the PC groups from FET for warp_id, and RAU may reallocate the warp's slot. direction 1: a restore, PCA has sent every row to RCU and the PC groups to FET, and RAU may activate the warp. One ack from the block that sees both halves, rather than one from each sender (arch open A-3; the restore COMMAND is Q-39).
+A migration has landed, either way. direction 0: a demotion, PCA holds every row from RCU and the PC groups from FET for warp_id, and RAU may reallocate the warp's slot. direction 1: a restore, every row PCA sent to RCU on ccv_pca_rcu_mig has had its credit back, so RCU has written it, and PCA has sent the PC groups to FET; RAU may activate the warp. PCA sends it only once the last row's credit is back: a row sent but still in RCU's receiver, waiting for the warp's map, is not written, and a warp activated on it could read the row before it lands. Done means written (TI-13). One ack from the block that sees both halves, rather than one from each sender (arch open A-3; the restore COMMAND is Q-39).
 
 pca → rau · rate 1 · control
 

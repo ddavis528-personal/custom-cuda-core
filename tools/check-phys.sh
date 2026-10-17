@@ -130,10 +130,10 @@ mut() {   # $1 name, $2 sed expression
   sed "$2" $RPT >"$B/mut/$1.sv"
   cmp -s $RPT "$B/mut/$1.sv" && { bad "mutant $1" "did not apply"; return 1; }
 }
-mut enable-now 's/        if (valid_q\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /'
-mut lead-late  's/          if (v\[k\*S+j\]) lead_q <= /          if (valid_q[j]) lead_q <= /'
+mut enable-now 's/        if (pay_en\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /'
+mut lead-late  's/          if (lead_en) lead_q <= /          if (pay_en[j]) lead_q <= /'
 mut credit-short 's/    assign cr\[k\*S +: S\]    = credit_q;/    assign cr[k*S +: S]    = cr[(k+1)*S +: S];/'
-mut free-run   's/        if (valid_q\[j\]) pay_q <= /        pay_q <= /'
+mut free-run   's/        if (pay_en\[j\]) pay_q <= /        pay_q <= /'
 if command -v iverilog >/dev/null 2>&1; then
   caught=""
   for spec in enable-now:data_errors lead-late:data_errors credit-short:latency_errors; do
