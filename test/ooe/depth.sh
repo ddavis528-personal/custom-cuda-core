@@ -5,6 +5,8 @@
 # fanout-of-4 delay over a NAND2's, so 1.00 is one NAND-equivalent stage)
 # and reports the critical path. Flops, broadcast fanout and wire are not
 # in it: compare against the estimate's logic terms only.
+# A clock-gated flop is mapped as the design has it (test/ooe/ungate.py):
+# its D is the next value, its enable timed apart, to its ICG.
 # Usage: test/ooe/depth.sh
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -13,6 +15,12 @@ val() { sed -n "s/.*localparam int $1 = \([0-9]*\);.*/\1/p" "$pkg"; }
 n_rcu=$(val CCV_P_RS_RCU) n_miu=$(val CCV_P_RS_MIU) secs=$(val CCV_SECTIONS) pipes=$(val CCV_MIU_PIPES)
 out=build/ooe-rtl/depth
 mkdir -p "$out"
+# A clock-gated flop takes its next value straight from its D; its enable
+# is timed apart, to its ICG (test/ooe/ungate.py). <base>.json to <base>.blif.
+ungate() {
+  python3 test/ooe/ungate.py "$1.json" "$1.ug.json" 2>/dev/null
+  yosys -q -p "read_json $1.ug.json; write_blif $1.blif"
+}
 # name, N, R, OA's logic terms in NGD (age AND, OR of older requests, win,
 # footprint AND; the issued mask is the caller's)
 for cfg in "pick_rcu $n_rcu $((secs + 1)) 9.1" "pick_miu $n_miu $pipes 7.7"; do
@@ -37,7 +45,7 @@ printf '  %-10s %3s entries, 4 wake lines: %5s NGD in %s levels (estimate 9.1)\n
 # OA-1 (the update is off select's loop); it must fit a stage.
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_age.sv;
              chparam -set N $n_rcu ooe_age; chformal -remove; synth -flatten -top ooe_age;
-             dfflegalize -cell \$_DFF_P_ x; write_blif $out/age.blif"
+             dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/age.json"; ungate $out/age
 line=$(yosys-abc -c "read_blif $out/age.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
@@ -50,7 +58,7 @@ slots=$(val CCV_TIER1_WARPS) decq=$(val CCV_P_DECQ) decq_warp=$(val CCV_P_DECQ_W
 uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_dec_ooe_uop'))")
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_decq.sv;
              chparam -set S $slots -set Q $decq -set D $decq_warp -set E $uops -set R $width -set P 16 ooe_decq;
-             chformal -remove; synth -flatten -top ooe_decq; dfflegalize -cell \$_DFF_P_ x; write_blif $out/decq.blif"
+             chformal -remove; synth -flatten -top ooe_decq; dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/decq.json"; ungate $out/decq
 line=$(yosys-abc -c "read_blif $out/decq.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
@@ -64,7 +72,7 @@ for cfg in "freelist_g $phys" "freelist_p $preds"; do
   set -- $cfg
   yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_freelist.sv;
                chparam -set N $2 -set A $width -set B $fl_buf -set K $fl_banks ooe_freelist;
-               chformal -remove; synth -flatten -top ooe_freelist; dfflegalize -cell \$_DFF_P_ x; write_blif $out/$1.blif"
+               chformal -remove; synth -flatten -top ooe_freelist; dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/$1.json"; ungate $out/$1
   line=$(yosys-abc -c "read_blif $out/$1.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
   d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
@@ -76,7 +84,7 @@ done
 # off this path"); the timers' own update must fit a stage.
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_wake.sv;
              chparam -set N $n -set NR $n_rcu ooe_wake;
-             chformal -remove; synth -flatten -top ooe_wake; dfflegalize -cell \$_DFF_P_ x; write_blif $out/wake.blif"
+             chformal -remove; synth -flatten -top ooe_wake; dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/wake.json"; ungate $out/wake
 line=$(yosys-abc -c "read_blif $out/wake.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
@@ -86,7 +94,7 @@ printf '  %-10s %3s timers, 4 lines:     %5s NGD in %s levels (budget 25)\n' wak
 # estimate in OA-1; it must fit a stage.
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_confirm.sv;
              chparam -set N $n ooe_confirm;
-             chformal -remove; synth -flatten -top ooe_confirm; dfflegalize -cell \$_DFF_P_ x; write_blif $out/confirm.blif"
+             chformal -remove; synth -flatten -top ooe_confirm; dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/confirm.json"; ungate $out/confirm
 line=$(yosys-abc -c "read_blif $out/confirm.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
@@ -103,7 +111,7 @@ for cfg in "rs rtl/ooe/ooe_rs.sv ooe_rs" "rs_confirm rtl/ooe/ooe_confirm.sv rtl/
   files=${*%$top}
   yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv $files;
                chparam -set N $n -set NR $n_rcu -set A $width $top; hierarchy -top $top; flatten; chformal -remove;
-               synth -flatten -top $top; attrmap -remove init; dfflegalize -cell \$_DFF_P_ x; write_blif $out/$name.blif"
+               synth -flatten -top $top; attrmap -remove init; dfflegalize -cell \$_DFF_P_ x -cell \$_DFFE_PP_ x; write_json $out/$name.json"; ungate $out/$name
   line=$(yosys-abc -c "read_blif $out/$name.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
   d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
