@@ -34,9 +34,11 @@ register behind an `if` on an enable named `<name>_en`; a clock gate is 8
 flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
 idle, medium and high scenarios; anything else must toggle 75% of the time.
 `tools/check-cg.py` measures it from each module's unit
-(`test/**/cg-units.json`). Each block may leave 2% of its flops, per
-instance, outside the rules; past that, refactor, and a waiver
-(`rtl/cg-waivers.json`, written by the module's owner) is the last resort.
+(`test/**/cg-units.json`). Each module may leave the larger of 2% of its
+flops and fewer than 8 flops outside the rules, and what its modules take
+must stay within 2% of each block's flops, per instance. Past that,
+refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
+the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
 its owner removes an entry once the module passes.
 

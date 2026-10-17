@@ -290,7 +290,15 @@
       "status": "target",
       "source": "Daniel, 2026-10-16 (local clock gating)",
       "require": "CCV_CG_BUDGET_PCT < 100",
-      "doc": "Share of a block's flops, counted per instance over its whole hierarchy, that may sit outside the clock-gating rules without a waiver: an automatic waiver for small cases that would otherwise need unnatural RTL. tools/check-cg.py applies it block by block, smallest findings first, before any explicit waiver."
+      "doc": "Share of flops that may sit outside the clock-gating rules without a waiver: an automatic waiver for small cases that would otherwise need unnatural RTL. Applied to each module, at each unit's parameters, smallest findings first and before any explicit waiver; what the modules take then counts against the same share of each block's flops, per instance over its whole hierarchy. tools/check-cg.py."
+    },
+    {
+      "name": "CCV_CG_MODULE_FLOPS",
+      "value": 8,
+      "status": "target",
+      "source": "Daniel, 2026-10-17 (local clock gating)",
+      "require": "CCV_CG_MODULE_FLOPS >= 1",
+      "doc": "A module may leave fewer than this many flops outside the clock-gating rules without a waiver, whatever its size: the floor under CCV_CG_BUDGET_PCT, which gives a small module less than a flop. They still count against the block's CCV_CG_BUDGET_PCT. tools/check-cg.py."
     },
     {
       "name": "CCV_W_WARP_ID",
