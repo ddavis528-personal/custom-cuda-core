@@ -39,10 +39,10 @@
 //
 // State is one register, and its next value a function of it and this
 // cycle's inputs alone (CCV-L23, as ooe_freelist); reset rewrites only its
-// reset fields. The flop takes one function, step(), with reset folded in.
-// Written as an if/else of two function calls in the always_ff, an earlier
-// form of this update was miscompiled by Verilator 5.020's statement
-// reordering (-fno-reorder fixed it, and Icarus ran it correctly).
+// reset fields. (Verilator 5.020's statement reordering miscompiled an
+// earlier if/else form of this update; the gate now runs 5.052, OI-40.)
+// Local clock gating: the register is clocked on an arrival, a dequeue or
+// a flush.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -168,8 +168,13 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) begin
       ow = st[OOWN + e * LS +: LS];
       ps = st[OPOS + e * LD +: LD];
-      if (fr[e]) m[OBUSY + e] = 1'b0;
-      else if (st[OBUSY + e]) m[OPOS + e * LD +: LD] = ps - LD'(dn[32'(ow) * LR +: LR]);
+      // A held entry keeps its fields; an idle one's are cleared, being read
+      // only through busy. So no field is held through an if, and the
+      // update's one enable is its clock gate's (local clock gating).
+      m[OBUSY + e]           = st[OBUSY + e] && !fr[e];
+      m[OPAY + e * P +: P]   = st[OPAY + e * P +: P] & {P{st[OBUSY + e]}};
+      m[OOWN + e * LS +: LS] = ow & {LS{st[OBUSY + e]}};
+      m[OPOS + e * LD +: LD] = (ps - LD'(dn[32'(ow) * LR +: LR])) & {LD{m[OBUSY + e]}};
       for (int k = 0; k < E; k++)
         if (ev[k] && av[e] && bl[e * LU +: LU] == LU'(ah[k * LE +: LE])) begin
           sl   = es[k * LS +: LS];
@@ -212,21 +217,6 @@ module ooe_decq #(
     faults = {under, over};
   endfunction
 
-  // The reset state: busy bits and counts cleared, the rest kept.
-  function automatic logic [SW-1:0] reset_of(input logic [SW-1:0] st);
-    logic [SW-1:0] m;
-    m = st;
-    m[OBUSY +: Q + S * LC] = '0;
-    reset_of = m;
-  endfunction
-
-  // One edge: reset, or the update.
-  function automatic logic [SW-1:0] step(input logic [SW-1:0] st, input logic rst, input logic [E-1:0] ev,
-                                         input logic [E*LS-1:0] es, input logic [E*P-1:0] ep,
-                                         input logic [S*LR-1:0] dn, input logic [S-1:0] fl);
-    step = rst ? reset_of(st) : next_state(st, ev, es, ep, dn, fl);
-  endfunction
-
   logic [SW-1:0] st_cq02h;
   logic [1:0]    fault_cq02h;
   assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, deq_n_cq01h, flush_cq01h);
@@ -259,9 +249,19 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) used_cq02h = used_cq02h + LU'(st_cq02h[OBUSY + e]);
   end
 
+  // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
+  // an arrival, a dequeue or a flush, and is clocked on those alone.
+  logic          decq_en_cq01h;
+  logic [SW-1:0] nx_cq01h;
+  assign decq_en_cq01h = |enq_v_cq01h || |deq_n_cq01h || |flush_cq01h;
+  assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, deq_n_cq01h,
+                                    flush_cq01h);
+
   always_ff @(posedge ooe_core_clk) begin
-    st_cq02h <= step(st_cq02h, ooe_rst_r00h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, deq_n_cq01h,
-                     flush_cq01h);
+    // The reset state: busy bits and counts cleared; the payloads, owners
+    // and positions are payload, guarded by busy.
+    if (ooe_rst_r00h)       st_cq02h[OBUSY +: Q + S * LC] <= '0;
+    else if (decq_en_cq01h) st_cq02h <= nx_cq01h;
   end
 
 endmodule

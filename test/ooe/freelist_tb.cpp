@@ -26,12 +26,15 @@
 //===----------------------------------------------------------------------===//
 #include "Vooe_freelist.h"
 #include "verilated.h"
+#include "cg_trace.h"
 #include "ooe_core.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
 #include <string>
+#include <vector>
 
 using ccv::ooe::Core;
 using ccv::ooe::FreeVec;
@@ -44,6 +47,11 @@ std::unique_ptr<Vooe_freelist> dut;
 std::string control;
 uint64_t current = 0;   // the serial of the core being followed
 bool desync = false;     // a core whose pool size differs from the RTL's: skipped
+CgRun cg;                // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
+// In a clock-gating run the idle cycles turn the RTL's bank order where the
+// model's does not, so the two refill differently: each model entry maps to
+// the entry the RTL granted in its place, and frees go through the map.
+std::vector<int> rtl_of;
 unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, mismatches = 0;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K);
@@ -68,8 +76,38 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
+  cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  cg.dump();
+}
+
+// An idle cycle: no allocation, no free.
+void idleTick() {
+  dut->alloc_req_cq01h = 0;
+  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
+  tick();
+}
+
+// A clock-gating run's edge: the model's allocations, as many as the RTL's
+// buffer holds, and its frees of entries the RTL granted.
+void cgEdge(const FreeVec &fv) {
+  const auto &al = fv.cycleAllocs();
+  const auto &fr = fv.cycleFrees();
+  dut->ooe_core_clk = 0;
+  dut->eval();
+  const unsigned req = std::min<unsigned>({unsigned(al.size()), unsigned(dut->cnt_cq02h), FL_A});
+  dut->alloc_req_cq01h = (1u << req) - 1u;
+  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
+  for (unsigned p : fr)
+    if (rtl_of[p] >= 0) {
+      setBit(dut->free_mask_cq01h, unsigned(rtl_of[p]), true);
+      rtl_of[p] = -1;
+    }
+  dut->eval();
+  for (unsigned k = 0; k != req; ++k) rtl_of[al[k]] = int(getField(dut->alloc_idx_cq02h, k * W, W));
+  tick();
+  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
 }
 
 void fail(const char *what, unsigned a, unsigned b) {
@@ -88,8 +126,10 @@ void hook(const Core &c) {
     dut->ooe_rst_r00h = 1;
     tick();
     dut->ooe_rst_r00h = 0;
+    rtl_of.assign(FL_N, -1);
   }
   if (desync) { ++skipped; return; }
+  if (cg.on()) { cgEdge(fv); return; }
   ++cycles;
   // 1. The state after the last edge.
   dut->ooe_core_clk = 0;
@@ -132,11 +172,30 @@ void hook(const Core &c) {
 } // namespace
 
 int main(int argc, char **argv) {
-  const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
+  const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("FL_CONTROL")) control = c;
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
+  std::string vcd;
+  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_freelist>(ctx.get());
+  if (cg.on()) {
+    cg.open(*dut, vcd);
+    dut->ooe_rst_r00h = 1;
+    for (unsigned k = 0; k != 4; ++k) idleTick();
+    dut->ooe_rst_r00h = 0;
+    if (cg.idle()) {
+      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
+    } else {
+      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
+    }
+    cg.close();
+    dut->final();
+    cg.vcd.reset();
+    dut.reset();
+    ctx.reset();
+    return 0;
+  }
   const int model_fails = ooeTestRandomPreHooked(seeds, hook);
   dut->final();
   std::printf("freelist_tb pool=%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu frees=%llu "

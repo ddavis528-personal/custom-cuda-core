@@ -90,6 +90,68 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_rs"
       }
+    },
+    {
+      "name": "ooe_decq",
+      "module": "ooe_decq",
+      "files": [
+        "rtl/ooe/ooe_decq.sv"
+      ],
+      "params": {
+        "S": 4,
+        "Q": 12,
+        "D": 12,
+        "E": 6,
+        "R": 4,
+        "P": 16
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_decq {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_decq"
+      }
+    },
+    {
+      "name": "ooe_freelist_gpr",
+      "module": "ooe_freelist",
+      "files": [
+        "rtl/ooe/ooe_freelist.sv"
+      ],
+      "params": {
+        "N": 192,
+        "A": 4,
+        "B": 8,
+        "K": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_freelist_gpr {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_freelist"
+      }
+    },
+    {
+      "name": "ooe_freelist_pred",
+      "module": "ooe_freelist",
+      "files": [
+        "rtl/ooe/ooe_freelist.sv"
+      ],
+      "params": {
+        "N": 48,
+        "A": 4,
+        "B": 8,
+        "K": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_freelist_pred {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_freelist"
+      }
     }
   ]
 }

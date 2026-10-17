@@ -32,7 +32,7 @@ by structure, from synthesis serial gate counts (DA's response OI-39,
 2026-10-16). It replaces OA's proposed OOE-wide rule. The decode queue
 holds a freed entry for a cycle, because it fits its stage only so (OI-39).
 The free list does too, in OA's OI-38 design: an 8-entry candidate buffer
-refilled from four interleaved banks (built: 23.5 NGD). The RS and ROB keep same-edge reuse
+refilled from four interleaved banks (built: 23.0 NGD). The RS and ROB keep same-edge reuse
 unless their RTL measures over the stage. The design doc states this
 rule from rev 193 (OA's response OI-39).
 
@@ -78,10 +78,23 @@ Built (`rtl/ooe/`):
   (`FreeVec::lastEdge`: free bits, buffer in order, bank pointers, bank
   order), then drives that cycle's allocations and frees. Over 25 seeds and
   200 cores, GPR rows (192) and predicates (48), none differ; controls
-  drop-free and extra-alloc must each be caught. Logic depth is 23.5 NGD at
-  192 entries and 24.7 at 48: a log-depth find-first per bank, the buffer
-  rebuilt slot by slot as a gather, the buffered mask kept as state, and
-  the taken count encoded from the request prefix rather than counted.
+  drop-free and extra-alloc must each be caught. Logic depth is 23.0 NGD at
+  192 entries and 23.4 at 48 (gated-flop flow; 23.5 and 24.7 before): a
+  log-depth find-first per bank, the buffer rebuilt slot by slot as a
+  gather, the buffered mask kept as state, and the taken count encoded from
+  the request prefix rather than counted.
+
+  Local clock gating (TI-14): the free bits are one gate, clocked on an
+  allocation or a free; the buffer, its count, the bank pointers and the
+  buffered mask on an allocation or while the buffer has room. Whether a
+  refill really comes is a search of the pool, 9 to 11 NGD as an enable,
+  so the gate takes room alone. The buffer's gather and the pointers' moves
+  are AND-ORs, not held `if`s, so synthesis keeps those enables rather than
+  one per slot or per bank. The two-bit bank order turns every edge,
+  ungated, within the module's allowance. `check-cg`: worst enable 7.8 NGD
+  (GPR) and 5.6 (predicates), 100% DCGE in every scenario. In its clock-
+  gating mode the bench frees through a map from the model's entries to
+  the RTL's, since the idle cycles turn the RTL's bank order alone.
 
   Restore-allocate takes its 16 GPRs and 4 predicates through the same
   buffer and ports, up to four a cycle, while rename stalls for every
@@ -117,13 +130,19 @@ Built (`rtl/ooe/`):
   before every cycle and compares every slot's four oldest, its count and
   the credits. Over 25 seeds: 103,896 arrivals, 98,193 dequeues, 2,357
   flushes and 47,940 cycles with the pool full, none differ. Controls
-  drop-flush and enq-swap must each be caught. Logic depth is 23.1 NGD
-  in 22 levels, inside the stage, because an entry freed at an edge takes
+  drop-flush and enq-swap must each be caught. Logic depth is 19.6 NGD
+  in 19 levels (gated-flop flow; 23.1 before), inside the stage, because an entry freed at an edge takes
   no arrival until the next (DA's response OI-39; the model's
   `decq_late_credit`, now on). With same-edge reuse, as the model had it,
   it was 31.9 NGD: that path cost about 9 NGD. Turning the knob on moves
   no S1 kernel by a cycle, and the four-warp synthetic sweep stays within
   its own noise.
+
+  Local clock gating (TI-14): the queue is clocked on an arrival, a
+  dequeue or a flush. An idle entry's payload, owner and position are
+  cleared rather than held (they are read only through busy), so no field
+  is held through an `if` and synthesis keeps that one enable. `check-cg`:
+  5.5 NGD of enable, 98% DCGE in medium and high, idle clocks nothing.
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function

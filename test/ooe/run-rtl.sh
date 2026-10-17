@@ -95,7 +95,7 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   dir=build/ooe-rtl/freelist_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        --trace -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
         -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
@@ -155,7 +155,7 @@ uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('sc
 dir=build/ooe-rtl/decq
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      -GS="$slots" -GQ="$decq" -GD="$decq_warp" -GE="$uops" -GR="$width" -GP=16 --top-module ooe_decq \
+      --trace -GS="$slots" -GQ="$decq" -GD="$decq_warp" -GE="$uops" -GR="$width" -GP=16 --top-module ooe_decq \
       --Mdir "$dir" -o decq_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -DDQ_S=$slots -DDQ_Q=$decq -DDQ_D=$decq_warp -DDQ_E=$uops -DDQ_R=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_decq.sv" "$PWD/test/ooe/decq_tb.cpp" \

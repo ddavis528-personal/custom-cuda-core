@@ -37,8 +37,9 @@
 // the count is never granted or matched.
 //
 // State is one register, and its next value a function of it and this
-// cycle's inputs alone (CCV-L23); the flop takes one function, step(),
-// with reset folded in (see ooe_decq).
+// cycle's inputs alone (CCV-L23). Local clock gating: the free bits are
+// clocked on an allocation or a free, the buffer side on an allocation or
+// a refill, and the two-bit bank order every edge.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -163,6 +164,8 @@ module ooe_freelist #(
     logic [K*LB-1:0]   rank;               // each bank's rank among the found
     logic [LB-1:0]     cnt, kk, rem, nfound, room, r;
     logic [LK-1:0]     rot, bj;
+    logic [LM-1:0]     nxp;
+    logic              adv;
     bits  = st[OBITS +: N];
     buf_q = st[OBUF +: B * W];
     cnt   = st[OCNT +: LB];
@@ -220,8 +223,10 @@ module ooe_freelist #(
     nbuf = '0;
     for (int i = 0; i < B; i++) begin
       if (LB'(i) < rem) begin
+        // An AND-OR over the shifts, kk == 0 among them: a slot is never
+        // held through an if, so the buffer keeps one clock gate.
         for (int q = 0; q <= A; q++)
-          if (kk == LB'(q) && i + q < B) nbuf[i * W +: W] = buf_q[(i + q) * W +: W];
+          if (i + q < B) nbuf[i * W +: W] = nbuf[i * W +: W] | (buf_q[(i + q) * W +: W] & {W{kk == LB'(q)}});
       end else begin
         r = LB'(i) - rem;
         for (int rr = 0; rr < K; rr++)
@@ -229,33 +234,20 @@ module ooe_freelist #(
       end
     end
     // A bank whose candidate went in moves its pointer past it.
+    // Written as an AND-OR, not a held if, so the pointers share the
+    // buffer's clock gate rather than each taking its own (local clock
+    // gating).
     added = '0;
-    for (int bb = 0; bb < K; bb++)
-      if (found[bb] && rank[bb * LB +: LB] < room) begin   // rank < nfound already
-        for (int i = 0; i < M; i++) added[i * K + bb] = oh[bb * M + i];
-        bptr[bb * LM +: LM]     = (32'(cand[bb * LM +: LM]) == M - 1) ? '0 : cand[bb * LM +: LM] + LM'(1);
-      end
+    for (int bb = 0; bb < K; bb++) begin
+      adv = found[bb] && rank[bb * LB +: LB] < room;   // rank < nfound already
+      for (int i = 0; i < M; i++) added[i * K + bb] = adv && oh[bb * M + i];
+      nxp = (32'(cand[bb * LM +: LM]) == M - 1) ? '0 : cand[bb * LM +: LM] + LM'(1);
+      bptr[bb * LM +: LM] = ({LM{adv}} & nxp) | ({LM{!adv}} & bptr[bb * LM +: LM]);
+    end
     rot = (32'(rot) == K - 1) ? '0 : rot + LK'(1);
     next_state = {(inbuf & ~taken) | added, rot, bptr,
                   (32'(rem) + 32'(nfound) > B) ? LB'(B) : rem + nfound,
                   nbuf, (bits & ~taken) | freed};
-  endfunction
-
-  // The reset state: all free, the buffer empty, pointers and order at 0.
-  function automatic logic [SW-1:0] reset_of(input logic [SW-1:0] st);
-    logic [SW-1:0] m;
-    m = st;
-    m[OBITS +: N]          = '1;
-    m[OCNT +: LB]          = '0;
-    m[OPTR +: K * LM + LK] = '0;
-    m[OIN +: N]            = '0;
-    reset_of = m;
-  endfunction
-
-  // One edge: reset, or the update.
-  function automatic logic [SW-1:0] step(input logic [SW-1:0] st, input logic rst,
-                                         input logic [A-1:0] req, input logic [N-1:0] freed);
-    step = rst ? reset_of(st) : next_state(st, req, freed);
   endfunction
 
   logic [SW-1:0] st_cq02h;
@@ -282,8 +274,34 @@ module ooe_freelist #(
   end
   `CCV_ASSERT(no_double_free, (free_mask_cq01h & free_cq02h & ~granted_cq02h) == '0)
 
+  // Local clock gating (docs/rtl-coding-style.md). The free bits change on
+  // an allocation or a free; the buffer, its count, the bank pointers and
+  // the buffered set on an allocation, or while the buffer has room (a
+  // refill may come; whether one does is a search of the pool, too deep for
+  // an enable). The bank order turns every edge, two flops
+  // with no gate.
+  logic          bits_en_cq01h, buf_en_cq01h;
+  logic [SW-1:0] nx_cq01h;
+  assign nx_cq01h      = next_state(st_cq02h, alloc_req_cq01h, free_mask_cq01h);
+  assign bits_en_cq01h = |alloc_req_cq01h || |free_mask_cq01h;
+  assign buf_en_cq01h  = |alloc_req_cq01h || 32'(st_cq02h[OCNT +: LB]) < B;
+
   always_ff @(posedge ooe_core_clk) begin
-    st_cq02h <= step(st_cq02h, ooe_rst_r00h, alloc_req_cq01h, free_mask_cq01h);
+    // The reset state: all free, the buffer empty, pointers and order at 0.
+    // The buffer's entries are payload.
+    if (ooe_rst_r00h) begin
+      st_cq02h[OBITS +: N]          <= '1;
+      st_cq02h[OCNT +: LB]          <= '0;
+      st_cq02h[OPTR +: K * LM + LK] <= '0;
+      st_cq02h[OIN +: N]            <= '0;
+    end else begin
+      if (bits_en_cq01h) st_cq02h[OBITS +: N] <= nx_cq01h[OBITS +: N];
+      if (buf_en_cq01h) begin
+        st_cq02h[OBUF +: B * W + LB + K * LM] <= nx_cq01h[OBUF +: B * W + LB + K * LM];
+        st_cq02h[OIN +: N]                    <= nx_cq01h[OIN +: N];
+      end
+      st_cq02h[OROT +: LK] <= nx_cq01h[OROT +: LK];
+    end
   end
 
 endmodule

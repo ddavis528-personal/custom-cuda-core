@@ -23,6 +23,7 @@
 //===----------------------------------------------------------------------===//
 #include "Vooe_decq.h"
 #include "verilated.h"
+#include "cg_trace.h"
 #include "ooe_core.h"
 
 #include <algorithm>
@@ -71,11 +72,23 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
   return v;
 }
 
+CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
+
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
+  cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  cg.dump();
+}
+
+// An idle cycle: nothing arrives, nothing is taken or flushed.
+void idleTick() {
+  dut->enq_v_cq01h = 0;
+  dut->deq_n_cq01h = 0;
+  dut->flush_cq01h = 0;
+  tick();
 }
 
 void fail(const char *what, unsigned slot, unsigned rtl, unsigned model) {
@@ -168,15 +181,37 @@ void hook(const Core &c) {
   full += total == DQ_Q;
   if (unsigned(dut->used_cq02h) != total) fail("credits differ", 0, unsigned(dut->used_cq02h), total);
   was = now;
+  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
 }
 } // namespace
 
 int main(int argc, char **argv) {
-  const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
+  const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("DECQ_CONTROL")) control = c;
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
+  std::string vcd;
+  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_decq>(ctx.get());
+  if (cg.on()) {
+    // Idle cycles change nothing, so the comparisons still hold; the run
+    // passes or fails only on the bench's exit, which this mode ignores.
+    cg.open(*dut, vcd);
+    dut->ooe_rst_r00h = 1;
+    for (unsigned k = 0; k != 4; ++k) idleTick();
+    dut->ooe_rst_r00h = 0;
+    if (cg.idle()) {
+      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
+    } else {
+      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
+    }
+    cg.close();
+    dut->final();
+    cg.vcd.reset();
+    dut.reset();
+    ctx.reset();
+    return 0;
+  }
   const int model_fails = ooeTestRandomPreHooked(seeds, hook);
   dut->final();
   std::printf("decq_tb control=%s seeds=%u cores=%llu cycles=%llu arrivals=%llu taken=%llu flushes=%llu "
