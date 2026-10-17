@@ -1,6 +1,6 @@
-// check-cg fixture: a block whose budget cannot take cg_fx_small's finding.
-// 128 + 2 x 4 = 136 flops; 2% is 2.7, and the finding is 8 across its two
-// instances. tools/check-cg.py --selftest.
+// check-cg fixture: a block over its 2% with what its modules auto-waived.
+// cg_fx_small's 4 flops are within its own module allowance, but twice
+// here: 128 + 2 x 4 = 136 flops, 2% is 2.7, used 8. tools/check-cg.py --selftest.
 module cg_fx_blk_over (
   input  logic        clk,
   input  logic        rst,

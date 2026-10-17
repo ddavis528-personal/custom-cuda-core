@@ -359,12 +359,14 @@ behind an `if` on an enable named `_en` (CG-1); a clock gate is 8 flops or
 more, with its enable within 8 NGD of logic (CG-2) and at least 75% DCGE in
 idle, medium and high activity scenarios (CG-3); every other flop toggles
 75% of the time (CG-4). `tools/check-cg.py` measures CG-2 to CG-4 on the
-Yosys netlist, replaying each unit's bench trace into it. Each block may
-leave 2% of its flops, per instance, outside the rules; it applies once a
-block top is RTL rather than a stub. Waivers (`rtl/cg-waivers.json`) are the
-last resort, and pre-rule RTL is on `rtl/cg-ratchet.json`, which only
-shrinks. TI's two modules meet the rule or carry interim waivers the block
-budgets will retire. OI's four are on the ratchet, with their conversion as
+Yosys netlist, replaying each unit's bench trace into it. Each module may
+leave the larger of 2% of its flops and fewer than 8 flops outside the
+rules, so it is settled module by module; what the modules take must stay
+within 2% of each block, per instance, checked once a block top is RTL.
+Waivers (`rtl/cg-waivers.json`) are the last resort, and pre-rule RTL is on
+`rtl/cg-ratchet.json`, which only shrinks. TI's two modules meet the rule
+or carry four waivers, two of them the clock gate's counters, open with
+Daniel. OI's four are on the ratchet, with their conversion as
 TI-14: the decode queue's inferred enables measure 19.1 NGD and the free
 list's 17.9, and the age matrix's 900 enables are one flop each, so that is
 design work, not a rewrite of syntax.

@@ -650,27 +650,34 @@ than it is.
   accepted when it changes in at least 75% of counted cycles in every
   scenario: a gate would save it little. A free-running LFSR passes this way;
   a status register that holds while idle does not.
-- **By budget.** Each block may leave `CCV_CG_BUDGET_PCT` = 2% of its flops
-  outside the rules with no waiver, so that a handful of flops never forces
-  unnatural RTL. The count is per instance, over the block's whole
-  hierarchy: its hardening wrapper (the block and its repeaters), every
-  common module counted once for each place it is used. Within a block the
-  findings are taken smallest first while they fit, and a finding in a
-  module several blocks use is excused only if every one of them takes it.
-  The budget applies only to a block whose top is RTL, not a generated
-  stub; today none is, so it applies nowhere yet.
+- **By budget, at the module and then at the block.** So that a handful of
+  flops never forces unnatural RTL, and so that it is settled module by
+  module rather than found when a block is assembled:
+  - Each module, at each unit's parameters, may leave the larger of
+    `CCV_CG_BUDGET_PCT` = 2% of its flops and fewer than
+    `CCV_CG_MODULE_FLOPS` = 8 flops outside the rules with no waiver. The
+    fixed count is for small modules, whose 2% is less than a flop. Its
+    findings are taken smallest first while they fit. Only findings about
+    flops count: written every cycle (CG-1), a deep or wasteful gate (CG-2,
+    CG-3), a flop in no gate (CG-4). A form or a name (CG-1) is never
+    auto-waived, and neither is a scenario problem.
+  - What the modules take still counts against each block: per instance,
+    over the block's whole hierarchy (its hardening wrapper, the block and
+    its repeaters, every common module once for each place it is used), the
+    flops its modules auto-waived must stay within 2% of the block's flops.
+    Explicit waivers do not count here. This applies once a block top is RTL,
+    not a generated stub; today none is.
 - **By waiver, last.** `rtl/cg-waivers.json` holds one entry per module,
   rule and register, with who wrote it, when, and why the rule cannot or
   should not be met, citing what was measured. Waivers are the last resort:
   where a rule would be met by refactoring, refactor (the age matrix's 900
   one-flop enables are a refactor, not a waiver). A waiver that excuses
-  nothing is refused, and that includes one for a finding a block's budget
-  already takes, so the file shrinks on its own as blocks get RTL. Today's
-  waivers: the repeater's pulse flops (an enable that sees a repeater's input
-  reaches the gate after a cycle of wire); the clock gate's registered wake
-  (Q-49 keeps that path off any gate's enable); and the gate's two counters
-  and its hold, 14 flops in groups under 8, which every block's budget will
-  take.
+  nothing is refused, and that includes one for a finding a module's budget
+  already takes. Today's waivers: two of the repeater's pulse registers,
+  past its allowance (an enable that sees a repeater's input reaches the
+  gate after a cycle of wire); and the clock gate's two hysteresis counters,
+  12 flops in groups under 8, past its allowance, where one shallow gate
+  would need the threshold compare registered (a CSR change a cycle late).
 
 **The ratchet.** RTL written before the rule is listed in
 `rtl/cg-ratchet.json` and excused while its owner converts it. The list only

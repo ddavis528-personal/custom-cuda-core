@@ -33,11 +33,13 @@ outputs on every cycle, so what is measured is what the bench ran.
 
 Exceptions, in order. The ratchet, rtl/cg-ratchet.json, holds the modules
 written before the rule; it only shrinks: an entry outside RATCHET_BASELINE
-is refused, and so is a listed module with nothing left to excuse. Each
-block with RTL may leave CCV_CG_BUDGET_PCT of its flops, counted per
-instance over its hierarchy, outside the rules, smallest findings first.
-Last, rtl/cg-waivers.json: one entry per (module, rule, register), each with
-a reason; a waiver that excuses nothing, including one for what a budget
+is refused, and so is a listed module with nothing left that its budget
+does not take. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
+flops and fewer than CCV_CG_MODULE_FLOPS flops outside the rules, smallest
+findings first, findings about flops only; what the modules take counts,
+per instance, against CCV_CG_BUDGET_PCT of each block with RTL. Last,
+rtl/cg-waivers.json: one entry per (module, rule, register), each with a
+reason; a waiver that excuses nothing, including one for what a budget
 already takes, is refused.
 """
 import argparse
@@ -95,6 +97,7 @@ NGD_MAX = float(param("CCV_NGD_CG_EN"))
 DCGE_MIN = float(param("CCV_DCGE_MIN_PCT"))
 MIN_FLOPS = int(param("CCV_CG_MIN_FLOPS"))
 BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
+MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 
 
 def run(cmd, cwd=ROOT, **kw):
@@ -981,9 +984,13 @@ def dcge(u, key, sc):
 # == The findings ==============================================================
 
 class Finding:
-    def __init__(self, rule, module, regs, msg, unit=None, flops=0):
+    """budgetable: about flops that are ungated or badly gated (CG-1's
+    written every cycle, CG-2, CG-3 on a gate, CG-4), which a budget may
+    take. A form or name finding, or one about the scenarios, never is."""
+
+    def __init__(self, rule, module, regs, msg, unit=None, flops=0, budgetable=False):
         self.rule, self.module, self.regs, self.msg, self.unit = rule, module, set(regs), msg, unit
-        self.flops = flops
+        self.flops, self.budgetable = flops, budgetable
         self.status = "open"
 
     def __str__(self):
@@ -1001,7 +1008,7 @@ def unit_findings(u):
         if g.depth > NGD_MAX:
             out.append(Finding("CG-2", u.module, g.best,
                                "enable of %s is %.1f NGD deep, over %g (en: %s)"
-                               % (g.name, g.depth, NGD_MAX, g.en_name), u.name, len(g.q)))
+                               % (g.name, g.depth, NGD_MAX, g.en_name), u.name, len(g.q), True))
         for sc in SCENARIOS:
             if sc not in u.data:
                 continue
@@ -1011,7 +1018,7 @@ def unit_findings(u):
                                    "%s changes on %.0f%% of its %d enabled cycles in %s, "
                                    "under %g%% (en: %s)"
                                    % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
-                                      g.en_name), u.name, len(g.q)))
+                                      g.en_name), u.name, len(g.q), True))
     for c, dep in sorted(u.icg_depth.items()):
         if dep > NGD_MAX:
             out.append(Finding("CG-2", u.module, {c},
@@ -1071,7 +1078,7 @@ def form_check(modules, units):
                 msg = "%s:%d: %s %s" % (rel, line, reg, why)
                 if every and notes:
                     msg += " (%s)" % notes[0]
-                out.append(Finding("CG-1", mod, {reg}, msg, flops=flops))
+                out.append(Finding("CG-1", mod, {reg}, msg, flops=flops, budgetable=every))
     return out
 
 
@@ -1120,7 +1127,7 @@ def coverage_check(modules, units):
                                    "%s: %d flop(s) in no clock gate of %d or more, changing "
                                    "on %.0f%% of %s cycles" % (reg, len(qs), MIN_FLOPS,
                                                                worst[1], worst[0]),
-                                   u.name, len(qs)))
+                                   u.name, len(qs), True))
     return out
 
 
@@ -1212,38 +1219,68 @@ def partitions(modules):
     return out
 
 
-def apply_budget(findings, parts, known):
-    """Each block may leave CCV_CG_BUDGET_PCT of its flops, counted per
-    instance, outside the rules. Within each block the open findings are
-    taken smallest first while they fit; a finding is excused only when every
-    block that instantiates its module takes it. Returns a line per block."""
-    open_f = [f for f in findings if f.status == "open"]
-    present, taken, lines = collections.defaultdict(set), collections.defaultdict(set), []
+def module_budget(findings, units):
+    """Each unit may leave the larger of CCV_CG_BUDGET_PCT of its flops and
+    fewer than CCV_CG_MODULE_FLOPS flops outside the rules: its budgetable
+    findings are taken smallest first while they fit. A finding of a module
+    measured in several units is excused only if every one takes it. Returns
+    a line per unit."""
+    cand = [f for f in findings if f.status == "open" and f.budgetable]
+    seen, taken, lines = collections.defaultdict(set), collections.defaultdict(set), []
+    for u in units:
+        if u.errors or u.nl is None:
+            continue
+        total = len(u.nl.flops)
+        allow = max(total * BUDGET_PCT / 100.0, MODULE_FLOPS - 1)
+        items = []
+        for k, f in enumerate(cand):
+            if f.module != u.module or (f.unit is not None and f.unit != u.name):
+                continue
+            n = f.flops if f.unit == u.name else sum(len(u.reg_qs(r)) for r in f.regs)
+            seen[k].add(u.name)
+            items.append((n, f.rule, sorted(f.regs), k))
+        used = count = 0
+        for n, _, _, k in sorted(items):
+            if used + n > allow:
+                break
+            used += n
+            count += 1
+            taken[k].add(u.name)
+        if items:
+            lines.append("module budget: unit %-12s %5d flops, %4.1f allowed, %d auto-waived "
+                         "in %d finding(s)" % (u.name, total, allow, used, count))
+    for k, f in enumerate(cand):
+        if seen[k] and seen[k] <= taken[k]:
+            f.status = "module"
+    return lines
+
+
+def block_budget(findings, parts, known):
+    """What the module budgets took still counts against each block's
+    CCV_CG_BUDGET_PCT, per instance over the block's hierarchy. Returns the
+    blocks' lines and the blocks over it."""
+    took = [f for f in findings if f.status == "module"]
+    lines, fails = [], []
     for name, top, files, bbs in parts:
         el = elaborate(name, top, files, bbs, known)
         budget = el["total"] * BUDGET_PCT / 100.0
-        items = []
-        for k, f in enumerate(open_f):
+        used, items = 0, []
+        for f in took:
             lasts = {re.sub(r"(\[[\d:,]+\])+$", "", r.split(".")[-1]) for r in f.regs}
-            here = [(m, regs) for b, m, regs in el["inst"] if b == f.module]
-            if not here:
-                continue
-            present[k].add(name)
-            n = sum(m * sum(regs.get(x, 0) for x in lasts) for m, regs in here)
-            items.append((n, k))
-        used, count = 0, 0
-        for n, k in sorted(items):
-            if used + n > budget:
-                break
-            used += n
-            count += n > 0
-            taken[k].add(name)
-        lines.append("budget: block %-6s %6d flops, %.1f allowed, %d used by %d finding(s)"
-                     % (name, el["total"], budget, used, count))
-    for k, f in enumerate(open_f):
-        if present[k] and present[k] <= taken[k]:
-            f.status = "budget"
-    return lines
+            n = sum(m * sum(regs.get(x, 0) for x in lasts)
+                    for b, m, regs in el["inst"] if b == f.module)
+            if n:
+                used += n
+                items.append((n, f))
+        lines.append("block budget: %-8s %6d flops, %.1f allowed, %d auto-waived in its modules"
+                     % (name, el["total"], budget, used))
+        if used > budget:
+            worst = ", ".join("%s %s (%d)" % (f.module, "/".join(sorted(f.regs)), n)
+                              for n, f in sorted(items, key=lambda x: -x[0])[:3])
+            fails.append("block %s: %d flops auto-waived in its modules, over its %g%% of %d "
+                         "flops (%.1f); largest: %s" % (name, used, BUDGET_PCT, el["total"],
+                                                        budget, worst))
+    return lines, fails
 
 
 def load(path, key):
@@ -1252,14 +1289,15 @@ def load(path, key):
 
 def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE, parts=(),
            known=()):
-    """Apply the ratchet, then each block's budget, then the waivers, so a
-    waiver for what a budget already takes is refused as excusing nothing.
-    Returns the failures and the budget's lines."""
+    """Apply each module's budget, then the ratchet, then the waivers, so a
+    waiver for what a budget already takes is refused as excusing nothing;
+    then check that each block's budget holds what its modules' took.
+    Returns the failures and the budgets' lines."""
     fails = []
+    lines = module_budget(findings, units)
     for f in findings:
-        if f.module in ratchet:
+        if f.status == "open" and f.module in ratchet:
             f.status = "ratchet"
-    lines = apply_budget(findings, parts, known) if parts else []
     for f in findings:
         if f.status != "open":
             continue
@@ -1272,6 +1310,10 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
                 w["_used"] = True
                 break
     fails += [str(f) for f in findings if f.status == "open"]
+    if parts:
+        more, over = block_budget(findings, parts, known)
+        lines += more
+        fails += over
     for w in waivers:
         for k in ("module", "rule", "target", "why", "by", "date"):
             if not w.get(k):
@@ -1287,7 +1329,7 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
                          "the list only shrinks" % mod)
         elif mod not in modules:
             fails.append("ratchet: %s is not a design module with flops: remove it" % mod)
-        elif mod in measured and not any(f.module == mod for f in findings):
+        elif mod in measured and all(f.status == "module" for f in findings if f.module == mod):
             fails.append("ratchet: %s now meets the rule: remove it from %s"
                          % (mod, os.path.relpath(RATCHET, ROOT)))
     have = {u.module for u in units}
@@ -1378,16 +1420,17 @@ def main_check(only=None, verbose=False):
     for l in lines:
         print("  " + l)
     if not parts:
-        print("  budget: no block has RTL yet (every block top is a generated stub), "
-              "so none is applied")
+        print("  block budget: no block has RTL yet (every block top is a generated stub), "
+              "so none is checked")
     for mod in sorted(ratchet):
-        n = sum(1 for f in findings if f.module == mod)
+        n = sum(1 for f in findings if f.module == mod and f.status == "ratchet")
         print("  ratchet: %-14s %s" % (mod, "%d finding(s) excused" % n if n else
                                        "not measured: no unit"))
     nw = sum(1 for f in findings if f.status == "waived")
-    nb = sum(1 for f in findings if f.status == "budget")
-    print("  %d module(s), %d unit(s), %d waiver(s) in use, %d finding(s) in a block's "
-          "budget, %d on the ratchet" % (len(modules), len(units), nw, nb, len(ratchet)))
+    nb = sum(1 for f in findings if f.status == "module")
+    print("  %d module(s), %d unit(s), %d finding(s) auto-waived by a module budget, %d "
+          "waiver(s) in use, %d on the ratchet" % (len(modules), len(units), nb, nw,
+                                                   len(ratchet)))
     for f in fails:
         sys.stderr.write("check-cg: %s\n" % f)
     return 1 if fails else 0
@@ -1408,7 +1451,7 @@ def fixture_unit(name, module, scope=None):
 
 
 MEASURED_FIXTURES = ("cg_fx_good", "cg_fx_form", "cg_fx_deep", "cg_fx_dcge", "cg_fx_small",
-                     "cg_fx_wide")
+                     "cg_fx_wide", "cg_fx_big", "cg_fx_name")
 
 
 def selftest():
@@ -1539,33 +1582,45 @@ def selftest():
     fails, _ = policy([], mods, [x for x in allu if x.module != "cg_fx_form"], [], {})
     expect(any("cg_fx_form" in x and "no clock-gating unit" in x for x in fails),
            "a module with no unit passed")
-    # 13. The block budget, counted per instance: a block of 260 flops takes
-    #     the 4-flop finding; one of 136, holding it twice, does not; a block
-    #     that must take it everywhere it is used does not when either
-    #     refuses; and a waiver for what a budget took is refused.
+    # 13. The module budget. Fewer than CCV_CG_MODULE_FLOPS flops are taken
+    #     whatever the module's size; past that, 2% of its flops; past both,
+    #     the finding stands; a name is never taken; a waiver for what a
+    #     module budget took is refused.
+    fails, fs = run_policy(("cg_fx_small",))
+    expect(not fails and all(f.status == "module" for f in has("CG-4", "cg_fx_small", "c_q", fs)),
+           "a module's 4 loose flops were not taken by its fixed allowance: %s" % fails)
+    fails, fs = run_policy(("cg_fx_big",))
+    expect(not fails and all(f.status == "module" for f in has("CG-1", "cg_fx_big", "idle_q", fs))
+           and has("CG-1", "cg_fx_big", "idle_q", fs),
+           "a 521-flop module's 9 loose flops were not taken by its 2%%: %s" % fails)
+    fails, _ = run_policy(("cg_fx_form",))
+    expect(any("CG-1 cg_fx_form" in x and "d_q" in x for x in fails),
+           "16 loose flops in a small module were taken")
+    fails, fs = run_policy(("cg_fx_name",))
+    expect(any("not named" in x for x in fails)
+           and all(f.status == "module" for f in has("CG-4", "cg_fx_name", "n_q", fs)),
+           "a misnamed enable was auto-waived, or its flops were not: %s" % fails)
+    w_small = {"module": "cg_fx_small", "rule": "CG-4", "target": "c_q", "why": "control",
+               "by": "TI", "date": "2026-10-17"}
+    fails, _ = run_policy(("cg_fx_small",), [w_small])
+    expect(any("excuses nothing" in x for x in fails),
+           "a waiver for what a module budget takes was accepted")
+    # 14. The block budget: what the modules took counts against 2% of the
+    #     block's flops, per instance. 4 of 260 holds; 8 of 136 does not.
     fx = ["test/cg/fixtures/%s.sv" % m for m in ("cg_fx_wide", "cg_fx_small")]
     p_ok = ("fx_ok", "cg_fx_blk_ok", fx + ["test/cg/fixtures/cg_fx_blk_ok.sv"], [])
     p_over = ("fx_over", "cg_fx_blk_over", fx + ["test/cg/fixtures/cg_fx_blk_over.sv"], [])
     small = ("cg_fx_small", "cg_fx_wide")
-    fails, fs = run_policy(small, parts=[p_ok])
-    expect(not fails and any(f.status == "budget" for f in has("CG-4", "cg_fx_small", "c_q", fs)),
-           "a block's budget did not take a finding that fits: %s" % fails)
-    fails, fs = run_policy(small, parts=[p_over])
-    expect(any("CG-4 cg_fx_small" in x for x in fails),
-           "a block's budget took a finding that does not fit")
-    fails, fs = run_policy(small, parts=[p_ok, p_over])
-    expect(any("CG-4 cg_fx_small" in x for x in fails),
-           "a finding was excused although one block using it refused it")
-    w_small = {"module": "cg_fx_small", "rule": "CG-4", "target": "c_q", "why": "control",
-               "by": "TI", "date": "2026-10-16"}
-    fails, _ = run_policy(small, [w_small], parts=[p_ok])
-    expect(any("excuses nothing" in x for x in fails),
-           "a waiver for what a block's budget takes was accepted")
+    fails, _ = run_policy(small, parts=[p_ok])
+    expect(not fails, "a block within its 2%% failed: %s" % fails)
+    fails, _ = run_policy(small, parts=[p_over])
+    expect(any("block fx_over" in x and "over its" in x for x in fails),
+           "a block over its 2% with its modules' auto-waivers passed")
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
-              "ratchet, coverage, block budget (%d controls)" % checks)
+              "ratchet, coverage, module and block budgets (%d controls)" % checks)
     return 1 if bad else 0
 
 
