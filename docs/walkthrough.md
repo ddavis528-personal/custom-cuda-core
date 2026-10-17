@@ -363,7 +363,7 @@ The gate's enable reads only flops of its own block. The wake is registered
 first (Q-49):
 
 ```systemverilog
-wire           en     = !sleep || wake_q || cg_override || !rst_n;
+wire           en    = !sleep || wake_q || cg_override || !rst_n;
 ```
 
 The same top can be built with the C++ blocks inside it: `rtl/top/dpi/` holds
@@ -493,7 +493,7 @@ From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
 - **Open:** Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50, Q-57
-- **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53
+- **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53, Q-59
 
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.

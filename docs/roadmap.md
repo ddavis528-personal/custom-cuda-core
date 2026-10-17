@@ -365,8 +365,10 @@ rules, so it is settled module by module; what the modules take must stay
 within 2% of each block, per instance, checked once a block top is RTL.
 Waivers (`rtl/cg-waivers.json`) are the last resort, and pre-rule RTL is on
 `rtl/cg-ratchet.json`, which only shrinks. TI's two modules meet the rule
-or carry four waivers, two of them the clock gate's counters, open with
-Daniel. OI converted its four (TI-14: 7af637e, d3905fc), and the ratchet
+or carry two waivers, both the repeater's pulse registers. The clock gate's
+counters became one 14-flop gate once Daniel set the CSR contract (Q-59,
+2026-10-17): CSRs are written only while their blocks are idle, on a divided
+clock, with no write-to-use latency promised. OI converted its four (TI-14: 7af637e, d3905fc), and the ratchet
 is empty: ten units, every OOE flop in a clock gate. Clock-gated, the RS's
 same-edge reuse path is 25.2 NGD, 0.2 over the stage, which Daniel accepted
 (OI-43, 2026-10-17). Converting them showed Yosys reading `ooe_wake`

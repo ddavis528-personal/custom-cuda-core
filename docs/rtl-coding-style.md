@@ -699,9 +699,9 @@ than it is.
   nothing is refused, and that includes one for a finding a module's budget
   already takes. Today's waivers: two of the repeater's pulse registers,
   past its allowance (an enable that sees a repeater's input reaches the
-  gate after a cycle of wire); and the clock gate's two hysteresis counters,
-  12 flops in groups under 8, past its allowance, where one shallow gate
-  would need the threshold compare registered (a CSR change a cycle late).
+  gate after a cycle of wire). The clock gate's hysteresis counters had two
+  until its threshold compare was registered, which Daniel's CSR contract
+  allows (no write-to-use latency, Q-59); they are now one 14-flop gate.
 
 **The ratchet.** RTL written before the rule is listed in
 `rtl/cg-ratchet.json` and excused while its owner converts it. The list only

@@ -16,22 +16,6 @@
       "by": "TI",
       "date": "2026-10-17",
       "why": "As valid_q: the stall arrives over the link's wire, so an enable that sees it reaches the clock gate late. Past the module's allowance of 7, which wake_q and credit_q fill."
-    },
-    {
-      "module": "ccv_common_clk",
-      "rule": "CG-4",
-      "target": "q_run_q",
-      "by": "TI",
-      "date": "2026-10-17",
-      "why": "6 flops on their own change-only enable (DCGE 100%), under CCV_CG_MIN_FLOPS, so no clock gate. q_run_q and s_run_q are 12 flops, past the module's allowance of 7, which wake_q and hold_q (3) use. One gate over both counters needs an enable that ORs theirs, past 8 NGD because of the hysteresis compare, or a coarser one whose DCGE falls to about 0% in idle. Registering the compare would make one shallow gate, but a CSR change would then take effect a cycle later than docs/clock-gate.md says: Daniel's call (DA tab, 2026-10-17)."
-    },
-    {
-      "module": "ccv_common_clk",
-      "rule": "CG-4",
-      "target": "s_run_q",
-      "by": "TI",
-      "date": "2026-10-17",
-      "why": "6 flops on their own change-only enable (DCGE 100%), under CCV_CG_MIN_FLOPS, so no clock gate. q_run_q and s_run_q are 12 flops, past the module's allowance of 7, which wake_q and hold_q (3) use. One gate over both counters needs an enable that ORs theirs, past 8 NGD because of the hysteresis compare, or a coarser one whose DCGE falls to about 0% in idle. Registering the compare would make one shallow gate, but a CSR change would then take effect a cycle later than docs/clock-gate.md says: Daniel's call (DA tab, 2026-10-17)."
     }
   ]
 }

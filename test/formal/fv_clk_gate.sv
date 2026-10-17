@@ -29,6 +29,13 @@
 //             wake_keeps_rx (the gate runs LAT cycles after any wake) and
 //             q33_valid_meets_clock (so no valid that keeps the contract
 //             arrives in a cycle whose edge the gate withholds).
+//   FV_EPISODE  the thresholds free, moving as flops would (CSRs, Q-59),
+//             against a model of run LENGTHS: wherever each threshold has
+//             held one value through the current run of quiesced / stalled
+//             cycles, `gated` is what that value gives (episode). A CSR is
+//             written only while its block is idle (Daniel, 2026-10-17), so
+//             this is the whole promise; a value written mid-run takes
+//             effect at the counter's next step or at the next run.
 //   FV_REACH  non-vacuity: the gate does close (reach_gated), and a valid
 //             is captured in a cycle right after a sleep (reach_woken).
 //===----------------------------------------------------------------------===//
@@ -53,7 +60,8 @@ module fv_clk_gate #(
   localparam int HW = ccv_prov_pkg::CCV_CG_HYST_W;
   // The thresholds are CSR inputs. The cycle model needs them fixed, at HQ
   // and HS; the clean-clock and Q-33 proofs hold for ANY values, changing
-  // at any time (FV_FREE_HYST).
+  // at any time (FV_FREE_HYST), and the episode model for any values held
+  // through a run.
 `ifdef FV_FREE_HYST
   wire [HW-1:0] hyst_q = hyst_q_in;
   wire [HW-1:0] hyst_s = hyst_s_in;
@@ -107,6 +115,14 @@ module fv_clk_gate #(
   always @* if (started && !rose)
     assume (rst_n == rst_n_p && quiesced == q_p && stalled == s_p &&
             wake == w_p && cg_override == o_p && te == te_p && valid == v_p);
+`ifdef FV_EPISODE
+  logic [HW-1:0] hq_p, hs_p;
+  always @($global_clock) begin
+    hq_p <= hyst_q;
+    hs_p <= hyst_s;
+  end
+  always @* if (started && !rose) assume (hyst_q == hq_p && hyst_s == hs_p);
+`endif
 `endif
 
   // -- the gated clock is clean, whatever the enable does -------------------
@@ -160,6 +176,38 @@ module fv_clk_gate #(
 `endif
 `endif
   end
+
+`ifdef FV_EPISODE
+  // -- the thresholds as CSRs: promised from the start of a steady run -----
+  // Each run's length, counted on (not saturating at the threshold, as the
+  // gate's counters do), the threshold in its last cycle, and whether the
+  // threshold held that value through all of it. A run of n cycles reaches
+  // threshold t when n >= max(t, 1).
+  localparam int RW = HW + 1;
+  logic [RW-1:0] qrun, srun;
+  logic [HW-1:0] qthr, sthr;
+  logic          qok, sok;
+  always @(posedge clk) begin
+    if (!rst_n) begin
+      qrun <= '0;
+      srun <= '0;
+      qok  <= 1'b1;
+      sok  <= 1'b1;
+    end else begin
+      qrun <= !quiesced ? '0 : ((&qrun) ? qrun : qrun + 1'b1);
+      srun <= !stalled  ? '0 : ((&srun) ? srun : srun + 1'b1);
+      qok  <= !quiesced || qrun == '0 || (qok && hyst_q == qthr);
+      sok  <= !stalled  || srun == '0 || (sok && hyst_s == sthr);
+    end
+    qthr <= hyst_q;
+    sthr <= hyst_s;
+  end
+  wire ep_q = qrun != '0 && qrun >= RW'(qthr);
+  wire ep_s = srun != '0 && srun >= RW'(sthr);
+  wire exp_gated_ep = rst_n && !te && !cg_override && !(|wh) && (ep_q || ep_s);
+  always @(posedge clk) if (started && reset_seen && qok && sok)
+    episode: assert (gated == exp_gated_ep);
+`endif
 
 `ifdef FV_Q33
   // -- Q-33, both halves, as ccv_common_chk_wake states them about THIS gate ---
