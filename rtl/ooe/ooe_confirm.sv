@@ -32,7 +32,9 @@
 //
 // Reset line (decision 6): the replay register resets to empty. Local clock
 // gating (docs/rtl-coding-style.md): it is written only while a cancel
-// spreads (rep_en), so an idle core clocks none of it.
+// spreads (rep_en): a miss whose column ooe_rs flags as possibly named
+// (hcol), or a hop under way. An idle core clocks none of it, and a miss
+// nothing waits on clocks none of it either.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -45,6 +47,7 @@ module ooe_confirm #(
   input  logic [N-1:0]   iss_cq01h,      // issued and unconfirmed
   input  logic [N*N-1:0] dep_cq01h,      // row i, column j: i waits on j
   input  logic [N-1:0]   miss_cq01h,     // missed its L1 slot this cycle
+  input  logic [N-1:0]   hcol_cq01h,     // a row may name it (ooe_rs's column flags)
   input  logic [N-1:0]   fin_cq01h,      // its timer calls its result final
   input  logic [N-1:0]   prod_cq01h,     // writes a register some entry may wake on
   output logic [N-1:0]   replay_cq02h,   // returns to Waiting this cycle
@@ -71,10 +74,12 @@ module ooe_confirm #(
   endfunction
 
   logic [N-1:0] rep_cq02h;   // the entries the last hop returned to Waiting
-  // The register changes only while a cancel spreads: a miss this cycle,
-  // or a hop still under way. Otherwise the hop is empty and it holds empty.
+  // The register changes only while a cancel spreads: a miss of an entry
+  // some row may wait on, or a hop still under way. Otherwise the hop is
+  // empty and the register holds empty. The flags are a superset of the
+  // columns with a set bit, so a miss they leave out starts no hop.
   logic         rep_en_cq02h;
-  assign rep_en_cq02h = |miss_cq01h || |rep_cq02h;
+  assign rep_en_cq02h = |(miss_cq01h & hcol_cq01h) || |rep_cq02h;
   always_comb begin
     replay_cq02h = hop(iss_cq01h, dep_cq01h, miss_cq01h | rep_cq02h);
     conf_cq01h   = confirm(iss_cq01h, dep_cq01h, fin_cq01h, prod_cq01h);

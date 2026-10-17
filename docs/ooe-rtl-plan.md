@@ -98,7 +98,11 @@ Built (`rtl/ooe/`):
   drives the RTL with the allocations between snapshots, for both classes:
   25 million RCU pairs and 5 million MIU pairs compared, none differ.
   Controls no-valid and port-reverse must each be caught. Logic depth is
-  8.8 NGD in 8 levels at 30 entries.
+  10.1 NGD in 9 levels at 30 entries. Local clock gating (TI-14): the
+  matrix is one gate, clocked on an allocation (`older_en`, 2.2 NGD); its
+  column clear is written as an AND, not a held `if`, so synthesis keeps
+  that enable rather than a per-bit one. `check-cg` measures a lowest DCGE
+  of 99% for the MIU class and 100% for the RCU class, medium and high.
 - **`ooe_decq`**, the decode queue (decision 3): 12 entries shared by the
   four tier-1 slots, six arrivals and up to four dequeues per slot a
   cycle. Each entry holds its payload, a busy bit, its owner and its
@@ -169,7 +173,7 @@ Built (`rtl/ooe/`):
   state, so the first hop lands in the miss's own cycle. Confirmation takes
   an issued entry with no dependency bit left whose result is final
   (`ooe_wake`'s fin) or that writes nothing. Both are a row-wide OR over
-  the matrix: 8.6 NGD in 6 levels at 45 entries. The model's `confirmPass`
+  the matrix: 9.1 NGD in 7 levels at 45 entries. The model's `confirmPass`
   chained confirmations oldest first within a cycle, and a miss meeting a
   live cancel took two hops in a cycle; both now take one level a cycle,
   as the RTL does. A probe found neither had ever happened in an S1 kernel
@@ -180,8 +184,14 @@ Built (`rtl/ooe/`):
   confirmations, none differ. At today's latencies no cancel needs a
   second hop, so one random seed in seven now runs the controls' long L1
   shadow, which makes the bench's no-carry control (no hop past the first)
-  catchable. Controls no-miss, no-fin, no-dep and no-carry must each be
-  caught.
+  catchable. Controls no-miss, no-fin, no-dep, no-carry and no-hcol must
+  each be caught. Local clock gating (TI-14): the replay register is one
+  gate, clocked while a cancel spreads: a hop under way, or a miss of an
+  entry whose column `ooe_rs` flags (`hcol`, below). Clocked on every miss
+  it changed on 65% of its enabled cycles, since a miss nothing waits on
+  writes zero over zero; the exact enable, the hop's own OR, is 13.0 NGD.
+  With the flags it is 7.3 NGD and 79% (medium and high). The bench keeps
+  the flags as `ooe_rs` does, and no-hcol (all clear) starts no hop.
 - **`ooe_rs`**, the RS valid bits, allocation and the dependency matrix.
   Each class has four ports; port k takes the free entry with exactly k
   free below it in its class, first fit as the model's `rsAlloc`. An entry
@@ -195,16 +205,40 @@ Built (`rtl/ooe/`):
   order and its frees (`Core::wakeLog`); `test/ooe/rs_tb.cpp` compares the
   grants, the valid bits and every valid row's bits and line selects. Over
   25 seeds: 100,804 allocations, 36,698 of them into an entry freed that
-  cycle, 4,294 in-group references, none differ. Controls no-same-edge and
-  drop-group must each be caught.
+  cycle, 4,294 in-group references, none differ. Controls no-same-edge,
+  drop-group and stale-hcol must each be caught.
 
-  Depth decides same-edge reuse (DA's response OI-39). `ooe_rs` is 20.1
+  Column flags (`hcol`, for `ooe_confirm`): per class, a column is flagged
+  from the edge a row of the class naming it is written until the entry is
+  freed, so a set bit in a valid row is always flagged. The bench keeps
+  that definition and compares every column after every edge; stale-hcol
+  keeps its reference through a free and must be caught.
+
+  Local clock gating (TI-14): each class's state (valid bits, rows, line
+  selects and flags) is one gate, clocked on an allocation in the class, a
+  free in it, or a free of a column its flags name, so an MIU row is not
+  clocked by an RCU free it does not wait on. A held row keeps its line
+  selects where its bits were set, an AND with the bit's flop rather than a
+  held `if`: synthesis would otherwise take each row's grant as its enable,
+  12 NGD and more. `check-cg`: 7.2 NGD of enable, 98% DCGE in medium and
+  high, nothing clocked in idle.
+
+  Depth decides same-edge reuse (DA's response OI-39). `ooe_rs` is 20.2
   NGD in 19 levels with it and 18.4 without. The path that decides it
   starts at the confirmation: `ooe_confirm`'s confirmations, from flops,
   as the frees, through allocation into the row write
-  (`test/ooe/ooe_rs_confirm.sv`, a probe). That is 24.5 NGD in 21 levels,
-  under the stage, so the RS keeps same-edge reuse. The margin is 0.5 NGD,
-  measured as every other block here is: logic only, no flop or wire.
+  (`test/ooe/ooe_rs_confirm.sv`, a probe). That was 24.5 NGD in 21 levels,
+  under the stage, so the RS keeps same-edge reuse, with a margin of
+  0.5 NGD, measured as every other block here is: logic only, no flop or
+  wire. Clock-gated, it is 25.2 NGD in 23 levels, 0.2 over: the gated RTL
+  adds about 0.8 NGD on this path (the committed RTL measures 24.4 under the
+  same flow), within the spread ABC shows between equivalent forms (24.7 to
+  26.2 here), but over. Open for DA under OI-39.
+
+  `test/ooe/depth.sh` now maps a clock-gated flop as the design has it: a
+  plain flop on its next value, the enable timed apart to its ICG and held
+  within 8 NGD by `check-cg` (`test/ooe/ungate.py`). Mapped as a flop and a
+  hold mux, the probe was 27.6 NGD; that mux is not in a gated design.
 - **`ooe_select`**, the requests and the two per-class `ooe_pick`s. An
   entry requests its footprint when it is valid, not issued, past rename's
   stages, its warp active, its row ready and its resources free of a bulk

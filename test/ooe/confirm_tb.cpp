@@ -14,7 +14,11 @@
 // be caught: no-miss (misses never reach the RTL), no-fin (every result
 // is called final), no-dep (the dependency bits never reach it) and
 // no-carry (the RTL is reset after every cycle, so no hop reaches past the
-// first).
+// first) and no-hcol (the column flags are all clear, so no miss starts a
+// hop).
+//
+// The column flags (ooe_rs's hcol) are kept here as ooe_rs keeps them:
+// set while a row names the entry, held until the entry is freed.
 // Usage: confirm_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_confirm.h"
@@ -38,6 +42,7 @@ std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_confirm> dut;
 std::string control;
 uint64_t current = 0;    // the serial of the core being followed
+std::vector<uint8_t> hcol, freed;   // the column flags, as ooe_rs keeps them, and last cycle's frees
 unsigned long long cycles = 0, cores = 0, hops = 0, misses = 0, replays = 0, confs = 0, mismatches = 0;
 
 template <typename W> void setBit(W &w, unsigned i, bool v) {
@@ -82,6 +87,8 @@ void hook(const Core &c) {
   if (c.serial() != current) {
     current = c.serial();
     ++cores;
+    hcol.assign(N, 0);
+    freed.assign(N, 0);
     dut->ooe_rst_r00h = 1;
     tick();
     dut->ooe_rst_r00h = 0;
@@ -94,6 +101,13 @@ void hook(const Core &c) {
   const auto &iss = w.hop_live ? w.hop_iss : w.cf_iss;
   const auto &dep = w.hop_live ? w.hop_dep : w.cf_dep;
   hops += w.hop_live;
+  for (unsigned j = 0; j != N; ++j) {
+    bool named = false;
+    for (unsigned i = 0; i != N && !dep.empty(); ++i) named = named || dep[size_t(i) * N + j];
+    hcol[j] = (hcol[j] && !freed[j]) || named;
+    freed[j] = j < w.rfree.size() && w.rfree[j];
+    setBit(dut->hcol_cq01h, j, hcol[j] && control != "no-hcol");
+  }
   for (unsigned i = 0; i != N; ++i) {
     setBit(dut->iss_cq01h, i, iss[i]);
     setBit(dut->miss_cq01h, i, w.miss[i] && control != "no-miss");

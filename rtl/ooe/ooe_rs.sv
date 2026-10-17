@@ -29,9 +29,14 @@
 // compares the grants before the edge and, after it, the valid bits and
 // every valid row's dependency bits and line selects.
 //
-// State is one register, its next value a function of it and this cycle's
-// inputs (CCV-L23); the flop takes one function, step(), with reset folded
-// in.
+// hcol_cq02h is a flag per column, set from the edge a row naming the entry
+// is written until the entry is freed: a superset of the entries any row
+// waits on, so ooe_confirm can tell a miss that may start a hop from one
+// with no dependant, with one AND a column.
+//
+// Local clock gating: each class's state is clocked on an allocation in it,
+// a free in it, or a free of a column one of its rows names (kept as the
+// class's column flags, whose OR is hcol_cq02h).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -55,14 +60,9 @@ module ooe_rs #(
   output logic [P*W-1:0]   gnt_idx_cq02h, // port p's entry
   output logic [N-1:0]     valid_cq02h,
   output logic [N*N-1:0]   dep_cq02h,    // row i, column j: i waits on j
-  output logic [2*N*N-1:0] code_cq02h    // the cell's wake-line select
+  output logic [2*N*N-1:0] code_cq02h,   // the cell's wake-line select
+  output logic [N-1:0]     hcol_cq02h    // a row has named the entry since it was allocated
 );
-
-  // The state's fields.
-  localparam int OVAL  = 0;
-  localparam int ODEP  = OVAL + N;
-  localparam int OCODE = ODEP + N * N;
-  localparam int SW    = OCODE + 2 * N * N;
 
   `CCV_ASSERT_KNOWN(req_known, req_cq01h)
   `CCV_ASSERT_KNOWN(free_known, free_cq01h)
@@ -106,13 +106,13 @@ module ooe_rs #(
 
   // Port p's grant, one-hot over the entries: in its class, free, with as
   // many free below it as the port's number within the class.
-  function automatic logic [P*N-1:0] grants(input logic [SW-1:0] st, input logic [P-1:0] req,
+  function automatic logic [P*N-1:0] grants(input logic [N-1:0] vl, input logic [P-1:0] req,
                                             input logic [N-1:0] fr);
     logic [N-1:0]   av;
     logic [N*A-1:0] bl;
     logic [P*N-1:0] g;
     logic           k_ok;
-    for (int e = 0; e < N; e++) av[e] = !st[OVAL + e] || fr[e];
+    for (int e = 0; e < N; e++) av[e] = !vl[e] || fr[e];
     bl = below(av);
     for (int p = 0; p < P; p++)
       for (int e = 0; e < N; e++) begin
@@ -145,78 +145,95 @@ module ooe_rs #(
     rows_of = {cd, d};
   endfunction
 
-  function automatic logic [SW-1:0] next_state(input logic [SW-1:0] st, input logic [P-1:0] req,
-                                               input logic [P*N-1:0] rd, input logic [2*P*N-1:0] rc,
-                                               input logic [P*P-1:0] gd, input logic [2*P*P-1:0] gc,
-                                               input logic [N-1:0] fr);
-    logic [SW-1:0]    m;
-    logic [P*N-1:0]   g, d;
-    logic [2*P*N-1:0] cd;
-    logic [N-1:0]     row;
-    logic [2*N-1:0]   crow;
-    logic             hit;
-    m = st;
-    g = grants(st, req, fr);
-    {cd, d} = rows_of(g, rd, rc, gd, gc);
-    for (int i = 0; i < N; i++) begin
-      hit  = 1'b0;
-      row  = '0;
-      crow = '0;
-      for (int p = 0; p < P; p++)
-        if (g[p * N + i]) begin
-          hit  = 1'b1;
-          row  = d[p * N +: N];
-          crow = cd[p * 2 * N +: 2 * N];
-        end
-      if (hit) begin
-        m[ODEP + i * N +: N]           = row;
-        m[OCODE + i * 2 * N +: 2 * N] = crow;
-      end else begin
-        m[ODEP + i * N +: N] = st[ODEP + i * N +: N] & ~fr;
-      end
-      m[OVAL + i] = hit || (st[OVAL + i] && !fr[i]);
-    end
-    next_state = m;
-  endfunction
-
-  // The reset state: every entry free. The cells are payload.
-  function automatic logic [SW-1:0] reset_of(input logic [SW-1:0] st);
-    logic [SW-1:0] m;
-    m = st;
-    m[OVAL +: N] = '0;
-    reset_of = m;
-  endfunction
-
-  // One edge: reset, or the update.
-  function automatic logic [SW-1:0] step(input logic [SW-1:0] st, input logic rst, input logic [P-1:0] req,
-                                         input logic [P*N-1:0] rd, input logic [2*P*N-1:0] rc,
-                                         input logic [P*P-1:0] gd, input logic [2*P*P-1:0] gc,
-                                         input logic [N-1:0] fr);
-    step = rst ? reset_of(st) : next_state(st, req, rd, rc, gd, gc, fr);
-  endfunction
-
-  logic [SW-1:0]  st_cq02h;
-  logic [P*N-1:0] g_cq02h;
+  logic [N-1:0]     hr_cq02h, hm_cq02h;   // the column flags, from RCU rows and MIU rows
+  logic [P*N-1:0]   g_cq02h;
+  logic [P*N-1:0]   d_cq02h;
+  logic [2*P*N-1:0] cd_cq02h;
   always_comb begin
-    g_cq02h = grants(st_cq02h, req_cq01h, free_cq01h);
+    g_cq02h = grants(valid_cq02h, req_cq01h, free_cq01h);
+    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h, row_code_cq01h, grp_dep_cq01h, grp_code_cq01h);
     for (int p = 0; p < P; p++) begin
       gnt_v_cq02h[p]           = |g_cq02h[p * N +: N];
       gnt_idx_cq02h[p * W +: W] = '0;
       for (int e = 0; e < N; e++) if (g_cq02h[p * N + e]) gnt_idx_cq02h[p * W +: W] = W'(e);
     end
   end
-  assign valid_cq02h = st_cq02h[OVAL +: N];
-  assign dep_cq02h   = st_cq02h[ODEP +: N * N];
-  assign code_cq02h  = st_cq02h[OCODE +: 2 * N * N];
 
   // Rename checks the RS for room first, so every port that asks is granted.
   `CCV_ASSERT(alloc_granted, (req_cq01h & ~gnt_v_cq02h) == '0)
   // A free names a valid entry.
   `CCV_ASSERT(free_valid, (free_cq01h & ~valid_cq02h) == '0)
 
+  // The next state. An entry a port takes gets the port's row; every other
+  // row keeps its bits, less the columns freed this cycle, and its line
+  // selects where its bits were set (a select is read only there, and
+  // taking the bit from its flop keeps the free off the select's write). Per class, a
+  // column is flagged from the edge a row of the class naming it is written
+  // until the entry is freed, unless a row written at that same edge names
+  // its next occupant; a set bit in a class's row is always flagged there.
+  logic [N-1:0]     valid_nx;
+  logic [N*N-1:0]   dep_nx;
+  logic [2*N*N-1:0] code_nx;
+  logic [N-1:0]     hr_nx, hm_nx, named_r, named_m;
+  logic [2*N*N-1:0] dep2;    // each cell's bit, twice, as the line selects lie
+  logic             hit;
+  always_comb begin
+    for (int c = 0; c < N * N; c++) dep2[c * 2 +: 2] = {2{dep_cq02h[c]}};
+    named_r = '0;
+    named_m = '0;
+    for (int i = 0; i < N; i++) begin
+      hit = 1'b0;
+      dep_nx[i * N +: N]           = dep_cq02h[i * N +: N] & ~free_cq01h;
+      code_nx[i * 2 * N +: 2 * N] = code_cq02h[i * 2 * N +: 2 * N] & dep2[i * 2 * N +: 2 * N];
+      for (int p = 0; p < P; p++)
+        if (g_cq02h[p * N + i]) begin
+          hit                          = 1'b1;
+          dep_nx[i * N +: N]           = d_cq02h[p * N +: N];
+          code_nx[i * 2 * N +: 2 * N] = cd_cq02h[p * 2 * N +: 2 * N];
+        end
+      valid_nx[i] = hit || (valid_cq02h[i] && !free_cq01h[i]);
+    end
+    for (int p = 0; p < P; p++)
+      if (|g_cq02h[p * N +: N]) begin
+        if (p < A) named_r = named_r | d_cq02h[p * N +: N];
+        else       named_m = named_m | d_cq02h[p * N +: N];
+      end
+    hr_nx = (hr_cq02h & ~free_cq01h) | named_r;
+    hm_nx = (hm_cq02h & ~free_cq01h) | named_m;
+  end
+  assign hcol_cq02h = hr_cq02h | hm_cq02h;
+
+  // Local clock gating (docs/rtl-coding-style.md). A class's state, its
+  // valid bits, rows, line selects and column flags, changes only on an
+  // allocation in the class, a free in it, or a free of a column its flags
+  // name, and is clocked on those alone. An idle RS clocks none of it.
+  logic rcu_en_cq01h, miu_en_cq01h;
+  assign rcu_en_cq01h = |req_cq01h[A-1:0] || |free_cq01h[NR-1:0] || |(free_cq01h & hr_cq02h);
+  assign miu_en_cq01h = |req_cq01h[P-1:A] || |free_cq01h[N-1:NR] || |(free_cq01h & hm_cq02h);
+
   always_ff @(posedge ooe_core_clk) begin
-    st_cq02h <= step(st_cq02h, ooe_rst_r00h, req_cq01h, row_dep_cq01h, row_code_cq01h, grp_dep_cq01h,
-                     grp_code_cq01h, free_cq01h);
+    // The reset state: every entry free, no column with a dependant. The
+    // rows and line selects are payload.
+    if (ooe_rst_r00h) begin
+      valid_cq02h <= '0;
+      hr_cq02h    <= '0;
+      hm_cq02h    <= '0;
+    end else begin
+      if (rcu_en_cq01h) valid_cq02h[NR-1:0] <= valid_nx[NR-1:0];
+      if (miu_en_cq01h) valid_cq02h[N-1:NR] <= valid_nx[N-1:NR];
+      if (rcu_en_cq01h) hr_cq02h <= hr_nx;
+      if (miu_en_cq01h) hm_cq02h <= hm_nx;
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rcu_en_cq01h) begin
+      dep_cq02h[NR*N-1:0]    <= dep_nx[NR*N-1:0];
+      code_cq02h[2*NR*N-1:0] <= code_nx[2*NR*N-1:0];
+    end
+    if (miu_en_cq01h) begin
+      dep_cq02h[N*N-1:NR*N]    <= dep_nx[N*N-1:NR*N];
+      code_cq02h[2*N*N-1:2*NR*N] <= code_nx[2*N*N-1:2*NR*N];
+    end
   end
 
 endmodule

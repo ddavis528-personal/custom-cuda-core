@@ -26,7 +26,9 @@
 // is that read-valid property, stated over pairs of valid entries.
 //
 // State is one register and its next value a function of it and this
-// cycle's inputs alone (CCV-L23, as ooe_freelist).
+// cycle's inputs alone (CCV-L23, as ooe_freelist). Local clock gating
+// (docs/rtl-coding-style.md): a cycle with no allocation writes nothing, so
+// the matrix is clocked only on an allocation (older_en).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -68,9 +70,7 @@ module ooe_age #(
     m   = s;
     any = '0;
     for (int k = 0; k < A; k++) any = any | oh[k*N +: N];
-    for (int e = 0; e < N; e++)
-      for (int j = 0; j < N; j++)
-        if (any[j]) m[e*N + j] = 1'b0;
+    for (int e = 0; e < N; e++) m[e*N +: N] = s[e*N +: N] & ~any;
     below = valid;
     for (int k = 0; k < A; k++) begin
       for (int e = 0; e < N; e++)
@@ -109,8 +109,12 @@ module ooe_age #(
   end
   `CCV_ASSERT(antisymmetric, asym_cq02h)
 
-  always_ff @(posedge ooe_core_clk)
-    older_cq02h <= next_state(older_cq02h, valid_cq01h, oh_cq01h);
+  logic older_en_cq01h;
+  assign older_en_cq01h = |alloc_v_cq01h;
+
+  always_ff @(posedge ooe_core_clk) begin
+    if (older_en_cq01h) older_cq02h <= next_state(older_cq02h, valid_cq01h, oh_cq01h);
+  end
 
 endmodule
 `undef CCV_CLK

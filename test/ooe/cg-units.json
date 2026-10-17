@@ -35,6 +35,61 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_wake"
       }
+    },
+    {
+      "name": "ooe_age_rcu",
+      "module": "ooe_age",
+      "files": [
+        "rtl/ooe/ooe_age.sv"
+      ],
+      "params": {
+        "N": 30,
+        "A": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_age_rcu {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_age"
+      }
+    },
+    {
+      "name": "ooe_age_miu",
+      "module": "ooe_age",
+      "files": [
+        "rtl/ooe/ooe_age.sv"
+      ],
+      "params": {
+        "N": 15,
+        "A": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_age_miu {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_age"
+      }
+    },
+    {
+      "name": "ooe_rs",
+      "module": "ooe_rs",
+      "files": [
+        "rtl/ooe/ooe_rs.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "A": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rs {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_rs"
+      }
     }
   ]
 }

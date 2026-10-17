@@ -18,10 +18,20 @@
 // row's references to entries allocated in the same cycle never reach the
 // RTL). The rows' comparison holds column clearing: a valid row that kept
 // a freed entry's bit differs.
-// Usage: rs_tb [seeds]
+//
+// The column flags (hcol_cq02h) are compared, every column after every
+// edge, with their definition kept here: set when a row naming the entry is
+// written, clear from the edge that frees it unless a row written at that
+// edge names its next occupant. Control stale-hcol keeps the reference's
+// flags through a free, and must be caught: the comparison holds clearing.
+//
+// With --cg <scenario> <vcd> it is ooe_rs's clock-gating bench
+// (test/ooe/cg_trace.h), and compares nothing.
+// Usage: rs_tb [seeds] | rs_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rs.h"
 #include "verilated.h"
+#include "cg_trace.h"
 #include "ooe_core.h"
 
 #include <algorithm>
@@ -45,6 +55,7 @@ std::unique_ptr<Vooe_rs> dut;
 std::string control;
 uint64_t current = 0;
 std::vector<uint8_t> late_free;   // no-same-edge: last cycle's frees
+std::vector<uint8_t> hcol;        // the column flags' reference
 unsigned long long cycles = 0, cores = 0, allocs = 0, group = 0, frees = 0, reuse = 0, rows = 0, cells = 0,
                    mismatches = 0;
 
@@ -66,11 +77,22 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
 }
 template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
 
+CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
+
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
+  cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  cg.dump();
+}
+
+// An idle cycle: no allocation and no free; the rows hold.
+void idleTick() {
+  clearAll(dut->req_cq01h, P);
+  clearAll(dut->free_cq01h, N);
+  tick();
 }
 
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
@@ -88,6 +110,7 @@ void hook(const Core &c) {
     current = c.serial();
     ++cores;
     late_free.assign(N, 0);
+    hcol.assign(N, 0);
     clearAll(dut->req_cq01h, P);
     clearAll(dut->free_cq01h, N);
     dut->ooe_rst_r00h = 1;
@@ -153,6 +176,20 @@ void hook(const Core &c) {
     else if (idx != e) fail("granted a different entry", p, 0, idx, e);
   }
   tick();
+  if (cg.on()) {
+    for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
+    return;
+  }
+  // The column flags' reference, then the RTL's.
+  std::vector<uint8_t> named(N, 0);
+  for (unsigned p = 0; p != P; ++p)
+    if (entry_of[p] != N)
+      for (unsigned j = 0; j != N; ++j) named[j] |= c.depBit(entry_of[p], j);
+  for (unsigned j = 0; j != N; ++j) {
+    hcol[j] = ((hcol[j] && (!w.rfree[j] || control == "stale-hcol")) || named[j]) ? 1 : 0;
+    const bool h = getBit(dut->hcol_cq02h, j);
+    if (h != bool(hcol[j])) fail("column flag differs", j, 0, h, hcol[j]);
+  }
   // After it: the valid bits and every valid row.
   for (unsigned i = 0; i != N; ++i) {
     const bool v = getBit(dut->valid_cq02h, i);
@@ -172,11 +209,32 @@ void hook(const Core &c) {
 } // namespace
 
 int main(int argc, char **argv) {
-  const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
+  const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
   if (const char *c = std::getenv("RS_CONTROL")) control = c;
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
+  std::string vcd;
+  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_rs>(ctx.get());
+  if (cg.on()) {
+    cg.open(*dut, vcd);
+    clearAll(dut->req_cq01h, P);
+    clearAll(dut->free_cq01h, N);
+    dut->ooe_rst_r00h = 1;
+    for (unsigned k = 0; k != 4; ++k) tick();
+    dut->ooe_rst_r00h = 0;
+    if (cg.idle()) {
+      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
+    } else {
+      ooeTestRandomHooked(CgRun::kSeeds, hook);
+    }
+    cg.close();
+    dut->final();
+    cg.vcd.reset();
+    dut.reset();
+    ctx.reset();
+    return 0;
+  }
   const int model_fails = ooeTestRandomHooked(seeds, hook);
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "

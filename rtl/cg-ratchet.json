@@ -1,10 +1,7 @@
 {
   "_comment": "Modules written before the local clock-gating rule (Daniel, 2026-10-16), excused from it while their owners convert them (tools/check-cg.py). The list only shrinks: check-cg refuses a module that was not on it when the rule was made, and a listed module that now meets the rule.",
   "modules": {
-    "ooe_age":      {"owner": "OI", "since": "2026-10-16"},
-    "ooe_confirm":  {"owner": "OI", "since": "2026-10-16"},
     "ooe_decq":     {"owner": "OI", "since": "2026-10-16"},
-    "ooe_freelist": {"owner": "OI", "since": "2026-10-16"},
-    "ooe_rs":       {"owner": "OI", "since": "2026-10-16"}
+    "ooe_freelist": {"owner": "OI", "since": "2026-10-16"}
   }
 }

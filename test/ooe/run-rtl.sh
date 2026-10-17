@@ -124,7 +124,7 @@ for cfg in "rcu 0 $n_rcu" "miu 1 $n_miu"; do
   dir=build/ooe-rtl/age_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        -GN="$n" -GA="$width" --top-module ooe_age --Mdir "$dir" -o age_tb \
+        --trace -GN="$n" -GA="$width" --top-module ooe_age --Mdir "$dir" -o age_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
         -CFLAGS "-std=c++17 -O2 -DAGE_N=$n -DAGE_A=$width -DAGE_CLS=$cls -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_age.sv" "$PWD/test/ooe/age_tb.cpp" \
@@ -222,7 +222,7 @@ if out=$("$dir/confirm_tb" "$seeds" 2>&1); then
 else
   say "confirm == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-miss no-fin no-dep no-carry; do
+for c in no-miss no-fin no-dep no-carry no-hcol; do
   if CONFIRM_CONTROL=$c "$dir/confirm_tb" 3 >/dev/null 2>&1; then
     say "  control $c (confirm)" "MISSED"; fail=1
   else
@@ -236,7 +236,7 @@ done
 dir=build/ooe-rtl/rs
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      -GN="$n" -GNR="$n_rcu" -GA="$width" --top-module ooe_rs --Mdir "$dir" -o rs_tb \
+      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" --top-module ooe_rs --Mdir "$dir" -o rs_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" \
@@ -248,7 +248,7 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-same-edge drop-group; do
+for c in no-same-edge drop-group stale-hcol; do
   if RS_CONTROL=$c "$dir/rs_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
