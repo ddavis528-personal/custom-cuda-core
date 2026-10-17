@@ -30,9 +30,9 @@
 // drives this module with the inputs and compares both decisions, cycle by
 // cycle, the hop register included.
 //
-// Reset line (decision 6): the replay register resets to empty. State is
-// one register, its next value a function of it and this cycle's inputs
-// (CCV-L23); the flop takes one function, step(), with reset folded in.
+// Reset line (decision 6): the replay register resets to empty. Local clock
+// gating (docs/rtl-coding-style.md): it is written only while a cancel
+// spreads (rep_en), so an idle core clocks none of it.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -70,13 +70,11 @@ module ooe_confirm #(
     confirm = c;
   endfunction
 
-  // One edge: reset, or this cycle's replays.
-  function automatic logic [N-1:0] step(input logic [N-1:0] rep, input logic rst, input logic [N-1:0] iss,
-                                        input logic [N*N-1:0] dep, input logic [N-1:0] miss);
-    step = rst ? '0 : hop(iss, dep, miss | rep);
-  endfunction
-
   logic [N-1:0] rep_cq02h;   // the entries the last hop returned to Waiting
+  // The register changes only while a cancel spreads: a miss this cycle,
+  // or a hop still under way. Otherwise the hop is empty and it holds empty.
+  logic         rep_en_cq02h;
+  assign rep_en_cq02h = |miss_cq01h || |rep_cq02h;
   always_comb begin
     replay_cq02h = hop(iss_cq01h, dep_cq01h, miss_cq01h | rep_cq02h);
     conf_cq01h   = confirm(iss_cq01h, dep_cq01h, fin_cq01h, prod_cq01h);
@@ -86,7 +84,8 @@ module ooe_confirm #(
   `CCV_ASSERT(replay_or_confirm, (replay_cq02h & conf_cq01h) == '0)
 
   always_ff @(posedge ooe_core_clk) begin
-    rep_cq02h <= step(rep_cq02h, ooe_rst_r00h, iss_cq01h, dep_cq01h, miss_cq01h);
+    if (ooe_rst_r00h)      rep_cq02h <= '0;
+    else if (rep_en_cq02h) rep_cq02h <= hop(iss_cq01h, dep_cq01h, miss_cq01h | rep_cq02h);
   end
 
 endmodule
