@@ -1,0 +1,50 @@
+{
+  "_comment": "Port findings of tools/check-ngd.py that stood when the logic depth rule was made (Daniel, 2026-10-17; docs/rtl-coding-style.md, 'Logic depth'): each a port over the default CCV_NGD_PORT, or a path straight through a module, awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign. The list only shrinks: check-ngd refuses an entry that now meets its budget, and one that was not here when the rule was made. ooe_rat's entries join when OI's b9c3a44 is merged.",
+  "modules": {
+    "ooe_confirm": [
+      "NGD-2 conf_cq01h",
+      "NGD-2 replay_cq02h"
+    ],
+    "ooe_wake": [
+      "NGD-3 cls_cq01h",
+      "NGD-3 cmpl_cq01h",
+      "NGD-3 grant_cq01h",
+      "NGD-3 kind_cq01h"
+    ],
+    "ooe_rs": [
+      "NGD-2 gnt_idx_cq02h",
+      "NGD-2 gnt_v_cq02h",
+      "NGD-3 free_cq01h",
+      "NGD-3 grp_code_cq01h",
+      "NGD-3 grp_dep_cq01h",
+      "NGD-3 req_cq01h",
+      "NGD-3 row_code_cq01h"
+    ],
+    "ooe_decq": [
+      "NGD-2 head_pay_cq02h",
+      "NGD-2 used_cq02h",
+      "NGD-3 deq_n_cq01h",
+      "NGD-3 enq_slot_cq01h",
+      "NGD-3 enq_v_cq01h",
+      "NGD-3 flush_cq01h"
+    ],
+    "ooe_freelist": [
+      "NGD-2 alloc_idx_cq02h",
+      "NGD-2 alloc_v_cq02h",
+      "NGD-3 alloc_req_cq01h"
+    ],
+    "ooe_pick": [
+      "NGD-2 issue_cq03h",
+      "NGD-2 lost_cq03h",
+      "NGD-2 win_cq03h"
+    ],
+    "ooe_ready": [
+      "NGD-2 ready_cq02h"
+    ],
+    "ooe_select": [
+      "NGD-2 cand_cq03h",
+      "NGD-2 grant_cq03h",
+      "NGD-2 lost_cq03h"
+    ]
+  }
+}

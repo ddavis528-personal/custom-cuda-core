@@ -1,0 +1,7 @@
+{
+  "module": "ngd_fx_bsrc",
+  "ports": {
+    "y": {"required": 14, "by": "selftest", "date": "2026-10-17",
+          "why": "the convergence control: 14 meets ngd_fx_bdst.a's 15 directly, and not through an XOR"}
+  }
+}

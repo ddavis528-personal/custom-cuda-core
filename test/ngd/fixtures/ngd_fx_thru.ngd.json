@@ -1,0 +1,9 @@
+{
+  "module": "ngd_fx_thru",
+  "ports": {
+    "a": {"arrival": 6, "by": "selftest", "date": "2026-10-17",
+          "why": "a path straight through needs explicit budgets: a arrives at 6"},
+    "y": {"required": 18, "by": "selftest", "date": "2026-10-17",
+          "why": "and y is required by 18, so the gate between fits"}
+  }
+}

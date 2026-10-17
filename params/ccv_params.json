@@ -258,7 +258,15 @@
       "value": 25,
       "status": "target",
       "source": "§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process",
-      "doc": "Normalized gate delays in one cycle: NAND equivalents, measured by logical effort. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block."
+      "doc": "Normalized gate delays of combinational logic between two flops in one cycle: NAND equivalents, measured by logical effort. The flop's own clock-to-Q and setup are outside it (Daniel, 2026-10-17): every depth here is measured with the flops cut out, so the whole 25 is logic. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). A path that crosses a module boundary is budgeted per port (CCV_NGD_PORT) and timed whole on the assembled block (tools/check-ngd.py)."
+    },
+    {
+      "name": "CCV_NGD_PORT",
+      "value": 12,
+      "status": "target",
+      "source": "Daniel, 2026-10-17 (module port budgets)",
+      "require": "2 * CCV_NGD_PORT <= CCV_NGD_BUDGET",
+      "doc": "Default logic budget on each side of a module port, so a path between two modules' flops fits CCV_NGD_BUDGET without anyone having planned it: an output is reached within CCV_NGD_PORT of its module's flops, and an input, arriving at CCV_NGD_BUDGET - CCV_NGD_PORT, reaches its module's flops within the rest. A path straight through a module, input to output, fits no default and needs explicit budgets, as does any port over this one; those come from the architect, in the module's <module>.ngd.json beside its RTL, and must converge, each driver's required time no later than its receiver's arrival, which the assembled block checks from those files. tools/check-ngd.py measures every module at its units' parameters."
     },
     {
       "name": "CCV_NGD_CG_EN",
