@@ -138,11 +138,14 @@ done
 mkdir -p "$B/rpt"
 sed 's/        if (pay_en\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /' \
   rtl/phys/ccv_common_rpt.sv >"$B/rpt/enable_now.sv"
-sed 's/          if (lead_en) lead_q <= /          if (pay_en[j]) lead_q <= /' \
+sed 's/            if (lead_en) lead_q <= /            if (pay_en[j]) lead_q <= /' \
   rtl/phys/ccv_common_rpt.sv >"$B/rpt/lead_late.sv"
-for m in enable_now lead_late; do
+# lead_late on a link of two stages: the first stage's lead has no enable (its
+# valid is an input), so only a later stage's lead can be taken late.
+for spec in enable_now:1 lead_late:2; do
+  m=${spec%%:*}; n=${spec##*:}
   if cmp -s rtl/phys/ccv_common_rpt.sv "$B/rpt/$m.sv"; then bad "repeater mutant $m" "did not apply"; continue; fi
-  r=$(prove "mut_$m" 1 $((LOOP + 2)) "" data_in_order "$B/rpt/$m.sv")
+  r=$(prove "mut_$m" $n $((LOOP + 2 * n)) "" data_in_order "$B/rpt/$m.sv")
   [ "${r%% *}" = cex ] && say "  ...repeater $m: data_in_order fails" "PASS ($r)" ||
     bad "repeater mutant $m" "$r: not refuted"
 done
@@ -260,13 +263,13 @@ G=rtl/clk/ccv_common_clk.sv
 I=rtl/ctech/sim/ccv_common_ctech_icg.sv
 sed 's/  logic          wake_q;/  logic          wake_q, wake_d1;/; s/      wake_q <= |wake;/      wake_d1 <= |wake;\n      wake_q <= wake_d1;/' \
   $G >"$B/cg_mut/wake_late.sv"
-sed 's/= !sleep || wake_q || cg_override || !rst_n;/= !sleep || wake_q || (|wake) || cg_override || !rst_n;/' \
+sed 's/= !sleep || wake_q || override_q || !rst_n_q;/= !sleep || wake_q || (|wake) || override_q || !rst_n_q;/' \
   $G >"$B/cg_mut/wake_comb.sv"
 sed "s/      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;/      if (hold_en) hold_q <= wake_q ? HOLD - 1'b1 : hold_q - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 2'd2 >= (CW+1)'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_early.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/(q_run_q + 1'b1 >= CW'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_wrap.sv"
 sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(thr_rst))/; s/^  logic          wake_q;\$/  logic          wake_q;\n  logic [CW-1:0] thr_rst;\n  always_ff @(posedge clk) if (!rst_n) thr_rst <= hyst_quiesce;/" $G >"$B/cg_mut/thr_reset.sv"
-sed 's/ || cg_override || !rst_n;/ || cg_override;/' $G >"$B/cg_mut/no_reset.sv"
+sed 's/ || override_q || !rst_n_q;/ || override_q;/' $G >"$B/cg_mut/no_reset.sv"
 awk '/always_latch begin/{print "  assign en_l = en | te;"; skip=2; next} skip>0{skip--; next} {print}' \
   $I >"$B/cg_mut/no_latch.sv"
 sed 's/    if (!clk) en_l = en | te;/    if (clk) en_l = en | te;/' $I >"$B/cg_mut/high_latch.sv"

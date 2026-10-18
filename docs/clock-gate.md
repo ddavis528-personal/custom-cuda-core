@@ -100,9 +100,17 @@ One per block, the block's first act. It takes `core_clk` ungated.
 | `gclk` | out | the block's clock: everything sequential in the block runs on it |
 | `gated` | out | 1: the coming edge will not reach the block. The block's `clk_gated` |
 
+**Every input is flopped before use** (CG-5, RST-1; Daniel, 2026-10-18):
+the reset, `quiesced`, `stalled` and `cg_override` each go through a flop on
+the ungated clock first, so each acts a cycle after it arrives. The reset
+contract (synchronous, the same cycle at every receiver, latency balanced
+globally) and the CSR contract (no write-to-use latency) allow it, and the
+hysteresis absorbs it. `wake` was already registered (Q-49).
+
 **Sleep entry, with hysteresis.** The gate closes once `quiesced` has held
-for `hyst_quiesce` consecutive cycles, or `stalled` for `hyst_stall`. The edge
-that ends the last of those cycles is delivered, and the next one is not.
+for `hyst_quiesce` consecutive cycles, or `stalled` for `hyst_stall`, counted
+a cycle late, as the flopped reports arrive. The edge after the last counted
+one is delivered, and the next one is not.
 Both conditions come from the gated domain, so once the gate closes they hold
 still and the block stays asleep until something outside it changes. The two
 are separate because a stall usually ends by itself within a few cycles.
@@ -146,23 +154,24 @@ that half as `wake_keeps_rx`. The register costs one of the 4 cycles
 **Override, reset, test.**
 - `cg_override` forces the gate open. It is a CSR (Q-47).
 - So does reset: resets are synchronous, so a block in reset must be clocked
-  or it never resets, and `!rst_n` opens the gate the cycle it arrives.
+  or it never resets, and the gate's flopped reset opens it the cycle after
+  `rst_n` falls. The block's own flopped reset is clocked by it from then.
 - `te` goes to the cell's own test pin, as scan expects. It is not part of
   the functional enable. It joins the TAP and scan fabrics after Stage 4
   (Q-46).
 
 **Where the gate's state lives.** The gate has two threshold counters of
-`CCV_CG_HYST_W` bits, each with a full flag, a hold counter and the wake
-register: 17 flops at the defaults. They run on the ungated clock, because
+`CCV_CG_HYST_W` bits, each with a full flag, a hold counter, the wake
+register and the four input flops: 21 flops at the defaults. They run on the ungated clock, because
 they must see every cycle and a gate clocked by its own output is a loop that
 timing analysis does not like. The counters and flags are one local clock
 gate of 14 flops, clocked only when a counter moves (4.7 NGD, DCGE 100% in
-every scenario; `tools/check-cg.py`); the wake register and the hold counter
-are within the module's allowance.
+every scenario; `tools/check-cg.py`); the wake register, the hold counter
+and the input flops, 7, are within the module's allowance of fewer than 8.
 
-**Timing.** Every input of the enable is a flop in the same block: the wake
-register, the full flags, the hold counter, the override CSR and the reset
-pipeline. The thresholds reach only the flags' D. So the enable path is
+**Timing.** Every input of the enable is a flop of the gate's own: the wake
+register, the full flags, the hold counter, the flopped override and the
+flopped reset (CG-5). The thresholds reach only the flags' D. So the enable path is
 local, as a clock gate's must be, and shallow: 3.2 NGD. It sets up to the rising
 edge at the root of the block's clock tree, earlier than the flops see it.
 

@@ -14,14 +14,18 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          plan a port that fits them. A port over 12 needs explicit budgets
          from the architect, kept beside the module's RTL in
          <module>.ngd.json, one consistent format for every module.
-  THRU   No module has logic on a path from an input port to an output port
-         (Daniel, 2026-10-18), so every flop-to-flop path between modules
-         crosses exactly one port, two segments, and budgets are pairwise.
-         In a parent, a path that touches none of its own flops carries no
-         logic either. Wires and buffers are not logic. An inner helper (a
+  THRU   No module has a path from an input port to an output port, not
+         even a wire (Daniel, 2026-10-18): a wire is connected directly
+         instead, and logic is grouped with one sequential side. So every
+         flop-to-flop path between modules crosses exactly one port, two
+         segments, and budgets are pairwise. In a parent, a path that
+         touches none of its own flops carries no logic either: wired child
+         to child is the parent's connection. An inner helper (a
          combinational module timed only inside its parent, declared in its
          budget file) is exempt, and its logic counts as its parent's; a
-         checker-only observation port is exempt.
+         checker-only observation port is exempt; and a channel the
+         generated hardening wrappers carry across themselves, the one
+         feedthrough allowed (rtl/top/, never a unit here).
   BLOCK  Once a block top is RTL, the assembled block is checked twice.
          First from the budget files: each level of its hierarchy is timed
          with its children cut out at their budgets, so every connection,
@@ -47,8 +51,8 @@ The rules, as findings:
          an input at its arrival)
   NGD-3  an input that, from its arrival, reaches a flop over the stage
   NGD-4  a budget file that is malformed, or names a port its module lacks
-  NGD-5  logic on a path straight through a module, or, in a parent, on a
-         path that touches none of its own flops
+  NGD-5  a path straight through a module, wire or logic, or, in a parent,
+         logic on a path that touches none of its own flops
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets from OA or a redesign; the list only
@@ -428,8 +432,10 @@ class Unit:
 
 def load_units():
     out, names = [], set()
-    for pat in ("cg-units.json", "ngd-units.json"):
-        for f in sorted(glob.glob(os.path.join(ROOT, "test", "**", pat), recursive=True)):
+    files = [f for pat in ("cg-units.json", "ngd-units.json")
+             for f in sorted(glob.glob(os.path.join(ROOT, "test", "**", pat), recursive=True))]
+    for f in files + [cg.RPT_UNITS]:
+        if os.path.exists(f):
             for spec in json.load(open(f))["units"]:
                 if spec["name"] in names:
                     raise SystemExit("check-ngd: unit %s defined twice" % spec["name"])
@@ -593,9 +599,10 @@ def findings(u, budgets):
     for (i, o), d in sorted(t.io.items()):
         if i in t.cut or o in t.cut or is_clock(i) or budgets.observation(mod, o):
             continue
-        if d > EPS:
-            out.append(("NGD-5 %s>%s" % (i, o), "NGD-5 %s (unit %s): %.1f NGD of logic straight "
-                        "through, input %s to output %s" % (mod, u.name, d, i, o)))
+        what = ("%.1f NGD of logic" % d) if d > EPS else "a wire"
+        out.append(("NGD-5 %s>%s" % (i, o), "NGD-5 %s (unit %s): %s straight through, input "
+                    "%s to output %s: connect a wire directly, group logic with a "
+                    "sequential side" % (mod, u.name, what, i, o)))
     return out
 
 
@@ -837,7 +844,8 @@ def selftest():
             bad.append(what)
 
     fx = {m: fixture("fx_" + m[7:], m) for m in
-          ("ngd_fx_ok", "ngd_fx_out", "ngd_fx_in", "ngd_fx_thru", "ngd_fx_stage")}
+          ("ngd_fx_ok", "ngd_fx_out", "ngd_fx_in", "ngd_fx_thru", "ngd_fx_stage",
+           "ngd_fx_wire")}
     for u in fx.values():
         u.measure()
     none = Budgets()
@@ -854,12 +862,15 @@ def selftest():
         expect(False, "a timing pass with a wrong NAND2 delay agreed with ABC")
     except SystemExit as e:
         expect("is not ABC's" in str(e), "a wrong delay table stopped the run otherwise: %s" % e)
-    # 2. Within every default, an input wired straight to an output among
-    #    them: nothing.
+    # 2. Within every default: nothing. An input wired straight to an
+    #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
     ok = fx["ngd_fx_ok"]
     expect(not keys(ok), "the compliant fixture has findings: %s" % findings(ok, none))
-    expect(ok.t.io.get(("w", "z"), NEG) == 0.0,
-           "a wire straight through was not timed as a wire: %s" % ok.t.io.get(("w", "z")))
+    wire = fx["ngd_fx_wire"]
+    expect(wire.t.io.get(("w", "z"), NEG) == 0.0,
+           "a wire straight through was not timed as a wire: %s" % wire.t.io.get(("w", "z")))
+    expect(keys(wire) == {"NGD-5 w>z"}, "a wire straight through passed, or more was found: "
+           "%s" % findings(wire, none))
     # 3. An output its flops reach too late (NGD-2), an input that reaches
     #    a flop too late (NGD-3), flop to flop over the stage (NGD-1).
     expect("NGD-2 y" in keys(fx["ngd_fx_out"]), "a deep output passed: %.1f"

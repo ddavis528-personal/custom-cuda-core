@@ -9,7 +9,7 @@
 //
 // Inputs change just after the falling edge; the rising edge samples them.
 module tb_cg_fixture;
-  logic        clk = 1'b0, rst = 1'b1, in_v = 1'b0;
+  logic        clk = 1'b0, rst = 1'b1, in_v = 1'b0, v_prev = 1'b0;
   logic [15:0] in_d = 16'h1234;
   wire         good_v, form_v, deep_v, dcge_v, small_v, wide_v, big_v, name_v;
   wire  [15:0] good_d, form_d, deep_d, dcge_d, small_d, wide_d, big_d, name_d;
@@ -51,7 +51,10 @@ module tb_cg_fixture;
         "high":   in_v = 1'b1;
         default:  $fatal(1, "unknown scenario %s", scen);
       endcase
-      if (in_v) in_d = rng[31:16];
+      // The data follows its valid by a cycle, which every fixture flops
+      // first and uses as the enable (CG-5).
+      if (v_prev) in_d = rng[31:16];
+      v_prev = in_v;
       cycle();
     end
     $finish;

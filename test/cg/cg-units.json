@@ -1,15 +1,15 @@
 {
-  "_comment": "Clock-gating units for TI's RTL (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'). A unit is one module at one parameterization with a bench that runs the idle, medium and high scenarios and dumps a VCD; the bench's port trace is replayed into the unit's netlist. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
+  "_comment": "Clock-gating units for TI's RTL (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'). rpt is a lane-sized repeater, two stages of one 344-bit slot: the module's own unit; every repeater the design instantiates is a unit of its own too (rtl/top/rpt-units.json), and the selftest shows what a lead slice costs one (test/cg/fixtures/rpt-units.json). A unit is one module at one parameterization with a bench that runs the idle, medium and high scenarios and dumps a VCD; the bench's port trace is replayed into the unit's netlist. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
   "units": [
     {
       "name": "rpt",
       "module": "ccv_common_rpt",
       "files": ["rtl/phys/ccv_common_rpt.sv"],
-      "params": {"STAGES": 2, "SLOTS": 2, "PAYLOAD_W": 16, "LEAD_MASK": "16'h00ff"},
+      "params": {"STAGES": 2, "SLOTS": 1, "PAYLOAD_W": 344, "LEAD_MASK": "344'h0"},
       "clock": "clk",
       "reset": "!rst_n",
       "bench": {
-        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=2 -GS=1 -GW=344 \"-GLEAD=344'h0\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
         "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
         "scope": "tb_cg_rpt.dut"
       }

@@ -1,8 +1,9 @@
 // check-cg fixture: a large module with a little left over. A 32-deep,
-// 16-bit shift register is one 512-flop clock gate; idle_q, 9 flops
-// written every cycle, holds still when its input does. 9 is past the
-// fixed allowance of fewer than CCV_CG_MODULE_FLOPS, so only the 2% of
-// 521 flops (10.4) takes it. tools/check-cg.py --selftest.
+// 16-bit shift register is one 512-flop clock gate; idle_q, 8 flops
+// written every cycle, holds still when its input does, and the flopped
+// reset and valid are 2 more. 10 is past the fixed allowance of fewer than
+// CCV_CG_MODULE_FLOPS, so only the 2% of 522 flops (10.4) takes them.
+// tools/check-cg.py --selftest.
 module cg_fx_big (
   input  logic        clk,
   input  logic        rst,
@@ -11,9 +12,15 @@ module cg_fx_big (
   output logic        out_v,
   output logic [15:0] out_d
 );
+  logic        rst_q, v_q;
   logic [15:0] s_q [32];
-  logic [8:0]  idle_q;
-  wire         sh_en = in_v;
+  logic [7:0]  idle_q;
+  wire         sh_en = v_q;
+
+  always_ff @(posedge clk) begin
+    rst_q <= rst;
+    v_q   <= in_v;
+  end
 
   always_ff @(posedge clk) begin
     if (sh_en) begin
@@ -23,8 +30,8 @@ module cg_fx_big (
   end
 
   always_ff @(posedge clk) begin
-    if (rst) idle_q <= '0;
-    else     idle_q <= in_d[8:0];
+    if (rst_q) idle_q <= '0;
+    else       idle_q <= in_d[7:0];
   end
 
   assign out_v = ^idle_q;

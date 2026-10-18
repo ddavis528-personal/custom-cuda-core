@@ -19,6 +19,10 @@ The rules are docs/rtl-coding-style.md, "Local clock gating":
         high scenarios. A scenario that never enables the gate passes.
   CG-4  coverage: every flop is in a clock gate, or changes in at least
         CCV_DCGE_MIN_PCT of counted cycles in every scenario.
+  CG-5  enable sources (2026-10-18): every clock gate's and ICG's enable
+        cone starts only at the module's own flops, never an input.
+  RST-1 the reset (2026-10-18): the reset port reaches nothing but the D
+        pins of plain flops that capture it; every use is from those.
 
 A clock gate is a group of at least CCV_CG_MIN_FLOPS flops that Yosys infers
 one enable for; the unit's own reset does not split a group. A smaller group
@@ -27,14 +31,16 @@ netlist, not the source, so they hold whichever way the RTL is written; CG-1
 is what makes the enable deliberate.
 
 A unit is one module at one parameterization, with a bench that runs the
-three scenarios and dumps a VCD (test/**/cg-units.json). The bench's port
+three scenarios and dumps a VCD (test/**/cg-units.json), and every repeater
+the design instantiates is one (rtl/top/rpt-units.json, from gen-top). The bench's port
 trace is replayed into the unit's netlist, which must reproduce the bench's
 outputs on every cycle, so what is measured is what the bench ran.
 
 Exceptions, in order. The ratchet, rtl/cg-ratchet.json, holds the modules
-written before the rule; it only shrinks: an entry outside RATCHET_BASELINE
-is refused, and so is a listed module with nothing left that its budget
-does not take. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
+written before the rule, and the CG-5 and RST-1 findings that stood when
+those were made; it only shrinks: an entry outside its baseline is refused,
+and so is one with nothing left to excuse. CG-5 and RST-1 are structural:
+no budget takes them. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
 flops and fewer than CCV_CG_MODULE_FLOPS flops outside the rules, smallest
 findings first, findings about flops only; what the modules take counts,
 per instance, against CCV_CG_BUDGET_PCT of each block with RTL. Last,
@@ -71,6 +77,21 @@ RATCHET = os.path.join(ROOT, "rtl", "cg-ratchet.json")
 # this: a module written since meets the rule or carries waivers.
 RATCHET_BASELINE = {"ooe_age", "ooe_decq", "ooe_freelist", "ooe_wake",
                     "ooe_confirm", "ooe_rs"}
+# CG-5 and RST-1 (2026-10-18) are ratcheted per finding, not per module, so
+# a module on this list is still held to CG-1 to CG-4: the findings that
+# stood when the rules were made, as "<rule> <register or port>" in the
+# ratchet's "findings", ooe_rat's then on OI's branch (b9c3a44). Never add
+# to this.
+FINDING_RULES = ("CG-5", "RST-1")
+FINDINGS_BASELINE = {(m, k) for m, ks in {
+    "ooe_age": ["CG-5 older_cq02h"],
+    "ooe_confirm": ["CG-5 rep_cq02h", "RST-1 ooe_rst_r00h"],
+    "ooe_decq": ["CG-5 st_cq02h", "RST-1 ooe_rst_r00h"],
+    "ooe_freelist": ["CG-5 st_cq02h", "RST-1 ooe_rst_r00h"],
+    "ooe_rat": ["CG-5 ckpt_cq02h", "CG-5 crat_cq02h", "CG-5 rat_cq02h", "RST-1 ooe_rst_r00h"],
+    "ooe_rs": ["CG-5 code_cq02h", "CG-5 dep2", "CG-5 hm_cq02h", "CG-5 hr_cq02h", "CG-5 valid_cq02h", "RST-1 ooe_rst_r00h"],
+    "ooe_wake": ["CG-5 iss_cq02h", "CG-5 st_cq02h", "RST-1 ooe_rst_r00h"],
+}.items() for k in ks}
 # Where design RTL lives, and what in it is not design: generated files,
 # the top level (instances and nets only), the ctech views, lint fixtures.
 DESIGN_SKIP = ("rtl/include/", "rtl/generated/", "rtl/top/", "rtl/ctech/",
@@ -459,6 +480,25 @@ class Netlist:
             rbit = self.ports[reset.lstrip("!")]["bits"][0]
             rhigh = not reset.startswith("!")
         self.cells = m["cells"]
+        # The module's reset: its port, and the flops that capture it
+        # straight, plain flops in a chain from the port (RST-1), each net
+        # with its stage. A synchronous reset on any of them, at the port's
+        # polarity, is the module's reset.
+        self.rbit, self.rhigh = rbit, rhigh
+        self.reset_nets = {}
+        if rbit is not None:
+            plain = collections.defaultdict(list)
+            for c in self.cells.values():
+                if c["type"] == "$_DFF_P_":
+                    plain[c["connections"]["D"][0]].append(c["connections"]["Q"][0])
+            self.reset_nets[rbit] = 0
+            frontier, k = [rbit], 0
+            while frontier:
+                k += 1
+                frontier = [q for n in frontier for q in plain.get(n, [])
+                            if q not in self.reset_nets]
+                for q in frontier:
+                    self.reset_nets[q] = k
         self.alias = collections.defaultdict(list)    # net -> [(name, idx)]
         for name, nn in m["netnames"].items():
             if nn["hide_name"] or "$" in name:
@@ -504,11 +544,12 @@ class Netlist:
                     r, rp = None, None
             q = con["Q"][0]
             self.flops.append(q)
-            # A synchronous reset that is the unit's reset port acts only in
-            # reset cycles, which are never counted: outside them the clock
-            # runs on the enable alone, so it does not split a group, and a
-            # register with that reset shares a gate with one without.
-            if k == "ER" and r == rbit and rp == rhigh:
+            # A synchronous reset that is the unit's reset (its port, or a
+            # flop that captures it) acts only in reset cycles, which are
+            # never counted: outside them the clock runs on the enable alone,
+            # so it does not split a group, and a register with that reset
+            # shares a gate with one without.
+            if k == "ER" and r in self.reset_nets and rp == rhigh:
                 k, r, rp = "E", None, None
             if k == "ungated":
                 key = ("ungated", self.best(q)[0])
@@ -563,6 +604,48 @@ class Netlist:
 
     def inputs(self):
         return {n: p["bits"] for n, p in self.ports.items() if p["direction"] == "input"}
+
+    def cone_inputs(self, net):
+        """The input ports a net's combinational fan-in cone reaches; its
+        other leaves are flops and constants."""
+        if not hasattr(self, "_inbit"):
+            self._inbit = {b: n for n, bits in self.inputs().items() for b in bits
+                           if isinstance(b, int)}
+        out, seen, stack = set(), set(), [net]
+        while stack:
+            x = stack.pop()
+            if x in seen or not isinstance(x, int):
+                continue
+            seen.add(x)
+            if x in self.driver:
+                stack.extend(self.driver[x][1])
+            elif x in self._inbit:
+                out.add(self._inbit[x])
+        return out
+
+    def reset_loads(self):
+        """Where the reset port is used other than on the D pin of a plain
+        flop that captures it, one entry per kind and register, sorted."""
+        out = collections.Counter()
+        for n, p in self.ports.items():
+            if p["direction"] == "output" and self.rbit in p["bits"]:
+                out["output port %s" % n] += 1
+        for cn, c in self.cells.items():
+            dirs = c.get("port_directions", {})
+            for pin, bits in c["connections"].items():
+                if self.rbit not in bits or dirs.get(pin, "input") != "input":
+                    continue
+                if c["type"] == "$_DFF_P_" and pin == "D":
+                    continue
+                if c["type"] in GATES:
+                    what = "logic into %s" % self.net_name(c["connections"]["Y"][0], True)
+                elif FLOP_RE.match(c["type"]):
+                    reg = re.sub(r"\[\d+\]$", "", self.best(c["connections"]["Q"][0])[0])
+                    what = "%s pin of %s" % ({"R": "reset", "E": "enable"}.get(pin, pin), reg)
+                else:
+                    what = "%s pin %s of %s" % (c["type"].lstrip("\\"), pin, cn)
+                out[what] += 1
+        return ["%s%s" % (k, " (%d bits)" % v if v > 1 else "") for k, v in sorted(out.items())]
 
     def outputs(self):
         return {n: p["bits"] for n, p in self.ports.items() if p["direction"] == "output"}
@@ -914,12 +997,16 @@ endmodule
         neg = bool(rst) and rst.startswith("!")
         rname = rst.lstrip("!") if rst else None
         iw = max(1, sum(self.widths[n] for n in self.ins))
+        # A reset flopped locally (RST-1) holds the flops behind it in reset
+        # for as many cycles after the port lets go as it has stages.
+        depth = max(self.nl.reset_nets.values(), default=0)
         for sc, (snaps, obs) in replays.items():
-            live, seen = [], not rst
+            live, seen, ons = [], not rst, []
             for snap in snaps:
                 on = bool(snap.get(rname, 0)) != neg if rst else False
                 seen = seen or on
-                live.append(seen and not on)
+                ons.append(on)
+                live.append(seen and not any(ons[-1 - depth:]))
             ins = [pack(s, self.ins, self.widths) for s in snaps]
             toggles = sum(bin(ins[t] ^ ins[t - 1]).count("1")
                           for t in range(1, len(ins)) if live[t] and live[t - 1])
@@ -1028,6 +1115,38 @@ def unit_findings(u):
             out.append(Finding("CG-2", u.module, {c},
                                "ICG %s's enable is %.1f NGD deep, over %g"
                                % (c, dep, NGD_MAX), u.name))
+    return out
+
+
+def source_findings(u):
+    """CG-5 and RST-1, from the netlist alone (Daniel, 2026-10-18).
+    CG-5: every clock gate's enable cone, and every explicit ICG's, starts
+    only at the module's own flops. An input there is another module's
+    logic on a path to a clock gate, whose enable must settle early, and
+    that module cannot know it. RST-1: the reset port reaches nothing but the
+    D pins of plain flops that capture it; every use of reset is from those."""
+    nl, out = u.nl, []
+    for key, g in sorted(nl.groups.items(), key=lambda kv: kv[1].name):
+        if not g.gated:
+            continue
+        ins = nl.cone_inputs(g.e) | (nl.cone_inputs(g.r) if g.kind == "ER" else set())
+        if ins:
+            out.append(Finding("CG-5", u.module, g.best,
+                               "enable of %s comes from input %s, not only from the module's "
+                               "own flops (en: %s)" % (g.name, ", ".join(sorted(ins)),
+                                                       g.en_name), u.name, len(g.q)))
+    for c, en in sorted(nl.icgs):
+        ins = nl.cone_inputs(en)
+        if ins:
+            out.append(Finding("CG-5", u.module, {c}, "ICG %s's enable comes from input %s, not "
+                               "only from the module's own flops" % (c, ", ".join(sorted(ins))),
+                               u.name))
+    if nl.rbit is not None:
+        loads = nl.reset_loads()
+        if loads:
+            name = u.spec["reset"].lstrip("!")
+            out.append(Finding("RST-1", u.module, {name}, "reset %s is used before it is "
+                               "flopped: %s" % (name, "; ".join(loads)), u.name))
     return out
 
 
@@ -1350,15 +1469,24 @@ def load(path, key):
 
 
 def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE, parts=(),
-           known=()):
-    """Apply each module's budget, then the ratchet, then the waivers, so a
+           known=(), fratchet=None, fbaseline=FINDINGS_BASELINE):
+    """Apply each module's budget, then the ratchets, then the waivers, so a
     waiver for what a budget already takes is refused as excusing nothing;
     then check that each block's budget holds what its modules' took.
     Returns the failures and the budgets' lines."""
     fails = []
+    fratchet = fratchet or {}
     lines = module_budget(findings, units)
     for f in findings:
         if f.status == "open" and f.module in ratchet:
+            f.status = "ratchet"
+    found = collections.defaultdict(set)
+    for f in findings:
+        if f.rule not in FINDING_RULES:
+            continue
+        keys = {"%s %s" % (f.rule, r) for r in f.regs}
+        found[f.module] |= keys
+        if f.status == "open" and keys <= set(fratchet.get(f.module, [])):
             f.status = "ratchet"
     for f in findings:
         if f.status != "open":
@@ -1385,6 +1513,14 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
                          % (w["module"], w["rule"], w["target"]))
     measured = {u.module for u in units
                 if not u.errors and all(sc in u.data for sc in SCENARIOS)}
+    for mod, keys in sorted(fratchet.items()):
+        for k in keys:
+            if (mod, k) not in fbaseline:
+                fails.append("ratchet: %s %s was not on the list when its rule was made; the "
+                             "list only shrinks" % (mod, k))
+            elif mod in measured and k not in found.get(mod, set()):
+                fails.append("ratchet: %s %s now meets the rule: remove it from %s"
+                             % (mod, k, os.path.relpath(RATCHET, ROOT)))
     for mod in sorted(ratchet):
         if mod not in baseline:
             fails.append("ratchet: %s was not on the list when the rule was made; "
@@ -1409,10 +1545,20 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
     return fails, lines
 
 
-def load_units():
+RPT_UNITS = os.path.join(ROOT, "rtl", "top", "rpt-units.json")
+
+
+def load_units(files=None):
+    """Every unit: test/**/cg-units.json, and every repeater the design
+    instantiates (rtl/top/rpt-units.json, tools/gen-top.py), checked like
+    any module (Daniel, 2026-10-18)."""
     out, names = [], set()
-    for f in sorted(glob.glob(os.path.join(ROOT, "test", "**", "cg-units.json"),
-                              recursive=True)):
+    if files is None:
+        files = sorted(glob.glob(os.path.join(ROOT, "test", "**", "cg-units.json"),
+                                 recursive=True)) + [RPT_UNITS]
+    for f in files:
+        if not os.path.exists(f):
+            continue
         for spec in json.load(open(f))["units"]:
             if spec["name"] in names:
                 raise SystemExit("check-cg: unit %s defined twice" % spec["name"])
@@ -1463,11 +1609,14 @@ def main_check(only=None, verbose=False):
         if not units:
             raise SystemExit("check-cg: no unit %s" % only)
     ratchet = load(RATCHET, "modules")
+    fratchet = load(RATCHET, "findings")
     waivers = load(WAIVERS, "waivers")
     findings = []
     for u in units:
         u.measure()
         report(u, verbose)
+        if u.nl is not None:
+            findings += source_findings(u)
         if u.errors:
             continue
         findings += unit_findings(u) + scenario_findings(u)
@@ -1478,7 +1627,7 @@ def main_check(only=None, verbose=False):
         return 0
     parts = partitions(modules)
     fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
-                          known=modules)
+                          known=modules, fratchet=fratchet)
     more, over = crosscheck(findings, units, modules)
     lines += more
     fails += over
@@ -1491,6 +1640,11 @@ def main_check(only=None, verbose=False):
         n = sum(1 for f in findings if f.module == mod and f.status == "ratchet")
         print("  ratchet: %-14s %s" % (mod, "%d finding(s) excused" % n if n else
                                        "not measured: no unit"))
+    for mod in sorted(fratchet):
+        n = collections.Counter(f.rule for f in findings
+                                if f.module == mod and f.status == "ratchet")
+        print("  ratchet: %-14s %s" % (mod, ", ".join("%d %s" % (n[r], r) for r in FINDING_RULES
+                                                      if n[r]) or "nothing excused"))
     nw = sum(1 for f in findings if f.status == "waived")
     nb = sum(1 for f in findings if f.status == "module")
     print("  %d module(s), %d unit(s), %d finding(s) auto-waived by a module budget, %d "
@@ -1553,7 +1707,7 @@ def selftest():
     def findings():
         out = []
         for u in allu:
-            out += unit_findings(u) + scenario_findings(u)
+            out += source_findings(u) + unit_findings(u) + scenario_findings(u)
         return out + form_check(mods, allu) + coverage_check(mods, allu)
     every = findings()
 
@@ -1570,12 +1724,13 @@ def selftest():
         if not cond:
             bad.append(what)
 
-    # 1. The compliant fixtures have nothing: a 16-flop gate, a 128-flop
-    #    gate, and a free-running LFSR, which is ungated by measurement.
+    # 1. The compliant fixtures have nothing but their flopped reset and
+    #    valid, which their allowance takes: a 20-flop gate, a 256-flop gate,
+    #    and a free-running LFSR, which is ungated by measurement.
     for m in ("cg_fx_good", "cg_fx_wide"):
-        expect(not [f for f in every if f.module == m],
-               "compliant fixture %s has findings: %s"
-               % (m, [str(f) for f in every if f.module == m]))
+        other = [str(f) for f in every if f.module == m and
+                 not (f.rule in ("CG-1", "CG-4") and f.regs <= {"rst_q", "v_q"})]
+        expect(not other, "compliant fixture %s has findings: %s" % (m, other))
     # 1b. The module's reset does not split an enable: st_q, with it, and d_q,
     #     without, are one gate.
     gs = [g for g in units["cg_fx_good"].nl.groups.values()
@@ -1617,13 +1772,15 @@ def selftest():
            "a short scenario passed")
     g.data = saved
 
-    def run_policy(mods_in, waivers=(), ratchet=None, baseline=RATCHET_BASELINE, parts=()):
+    def run_policy(mods_in, waivers=(), ratchet=None, baseline=RATCHET_BASELINE, parts=(),
+                   fratchet=None, fbaseline=FINDINGS_BASELINE):
         fs = [f for f in findings() if f.module in mods_in]
         us = [x for x in allu if x.module in mods_in]
         ws = [dict(w) for w in waivers]
         fails, _ = policy(fs, {m: mods[m] for m in mods_in if m in mods}, us, ws,
                           ratchet or {}, baseline=baseline, parts=parts,
-                          known=set(mods) | {"cg_fx_blk_ok", "cg_fx_blk_over"})
+                          known=set(mods) | {"cg_fx_blk_ok", "cg_fx_blk_over"},
+                          fratchet=fratchet, fbaseline=fbaseline)
         return fails, fs
 
     # 10. Waivers: one that excuses a finding clears it; one that excuses
@@ -1693,12 +1850,73 @@ def selftest():
     expect(any("unit fx_small" in x and "c_q" in x and "3 flops" in x for x in xf)
            and not any("fx_big" in x for x in xf),
            "a module elaborated with one flop fewer than its replayed netlist passed: %s" % xf)
+    # 16. CG-5 and RST-1, from a netlist (cg_fx_src): a gate enabled
+    #     straight from an input, the reset port in a gate's enable, an ICG
+    #     enabled from an input; the reset port on a flop's reset pin and
+    #     straight out; and a gate on the module's own flop, which passes.
+    u = Unit({"name": "fx_src", "module": "cg_fx_src",
+              "files": ["test/cg/fixtures/cg_fx_src.sv"], "clock": "clk", "reset": "rst",
+              "blackbox": {ICG: "rtl/ctech/sim/%s.sv" % ICG}}, "selftest")
+    u.synth()
+    sf = source_findings(u)
+    expect(has("CG-5", "cg_fx_src", "a_q", sf), "CG-5 missed a gate enabled from an input")
+    expect(any("rst" in f.msg for f in has("CG-5", "cg_fx_src", "d_q", sf)),
+           "CG-5 missed the reset port in an enable")
+    expect(has("CG-5", "cg_fx_src", "u_icg", sf), "CG-5 missed an ICG enabled from an input")
+    expect(not has("CG-5", "cg_fx_src", "b_q", sf), "CG-5 flagged a gate on a flop")
+    r1 = has("RST-1", "cg_fx_src", None, sf)
+    expect(r1 and "reset pin of c_q" in r1[0].msg and "output port rst_o" in r1[0].msg
+           and "logic into d_en" in r1[0].msg,
+           "RST-1 missed the reset port used before a flop: %s" % [str(f) for f in r1])
+    expect(not has("RST-1", "cg_fx_good", None) and not has("CG-5", "cg_fx_good", None),
+           "a flopped reset and a flopped valid were refused")
+    # 17. CG-5 and RST-1 are ratcheted per finding: one listed is excused and
+    #     the module's others are not, nor a gate only some of whose
+    #     registers are listed; one that now passes, or one outside the
+    #     baseline, is refused.
+    a5 = [f for f in has("CG-5", "cg_fx_src", "a_q", sf) if f.regs >= {"a_q", "a2_q"}]
+    fails, _ = policy(a5, {"cg_fx_src": ("f", "", 1)}, [u], [], {},
+                      fratchet={"cg_fx_src": ["CG-5 a_q"]}, fbaseline={("cg_fx_src", "CG-5 a_q")})
+    expect(a5 and any("a2_q" in x for x in fails),
+           "a gate was excused with one of its two registers listed: %s" % fails)
+    fb = {("cg_fx_form", "CG-5 e_q"), ("cg_fx_good", "CG-5 d_q")}
+    fails, fs = run_policy(("cg_fx_form",), fratchet={"cg_fx_form": ["CG-5 e_q"]},
+                           fbaseline=fb)
+    expect(all(f.status == "ratchet" for f in has("CG-5", "cg_fx_form", "e_q", fs))
+           and any("CG-5 cg_fx_form" in x and "n_q" in x for x in fails),
+           "the finding ratchet excused too little or too much: %s" % fails)
+    fails, _ = run_policy(("cg_fx_good",), fratchet={"cg_fx_good": ["CG-5 d_q"]}, fbaseline=fb)
+    expect(any("CG-5 d_q now meets the rule" in x for x in fails),
+           "a ratcheted finding that passes stayed on the list")
+    fails, _ = run_policy(("cg_fx_form",), fratchet={"cg_fx_form": ["CG-5 n_q"]}, fbaseline=fb)
+    expect(any("CG-5 n_q was not on the list" in x for x in fails), "the finding ratchet grew")
+    # 18. Every repeater instantiation is a unit, checked like any module:
+    #     one stage of a 64-bit slot passes, its valid, credit, stall, wake
+    #     and reset flops within its allowance; with a 16-bit lead, whose
+    #     first-stage flops are written every cycle, it is past it.
+    rus = load_units([os.path.join(FIXTURE_DIR, "rpt-units.json")])
+    rmod = {"ccv_common_rpt": ("rtl/phys/ccv_common_rpt.sv",
+                               lint.strip_comments(open(os.path.join(
+                                   ROOT, "rtl/phys/ccv_common_rpt.sv")).read()), 1)}
+    rfails = {}
+    for ru in rus:
+        ru.measure()
+        fs = source_findings(ru) + unit_findings(ru) + scenario_findings(ru)
+        fs += form_check(rmod, [ru]) + coverage_check(rmod, [ru])
+        rfails[ru.name], _ = policy(fs, rmod, [ru], [w for w in load(WAIVERS, "waivers")
+                                                     if w["module"] == "ccv_common_rpt"], {})
+        if ru.errors:
+            rfails[ru.name] += ru.errors
+    expect(not rfails["fx_rpt_plain"], "a repeater instantiation within its allowance "
+           "failed: %s" % rfails["fx_rpt_plain"])
+    expect(any("lead_q" in x for x in rfails["fx_rpt_lead"]),
+           "a repeater whose lead slice is past its allowance passed: %s" % rfails["fx_rpt_lead"])
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
-              "ratchet, coverage, module and block budgets, kept and replayed flop counts "
-              "(%d controls)" % checks)
+              "ratchet, coverage, module and block budgets, kept and replayed flop counts, "
+              "enable sources and the reset, repeater instantiations (%d controls)" % checks)
     return 1 if bad else 0
 
 

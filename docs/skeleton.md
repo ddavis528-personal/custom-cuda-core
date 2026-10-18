@@ -88,7 +88,9 @@ message whose valid is up, while the rest carries the previous message's
 payload. The receiver takes the lead in the valid cycle and reassembles the
 message when the rest lands. The checker bank does the same before it logs
 the transfer. `rcu_lane_ops` is the only channel with lead fields: the
-lane's mask travels a cycle ahead of the operands it gates.
+lane's mask travels a cycle ahead of the operands it gates. Only valid leads
+otherwise (Daniel, 2026-10-18): a lead is captured in valid's cycle by flops
+written every cycle, against the receiver's ungated allowance (CG-5).
 
 It was ported from `test/smoke/credit_smoke.sv` — and reading that closely is
 how the reference producer's late-stall bug was found: it gated `valid` on a
@@ -892,10 +894,12 @@ reach the lanes, one bit per lane, and the mask always gates.
   RCU writes back only the lanes the mask enables, and
   `--break ignore-mask` (RCU writes every lane) puts that poison into
   pguard's P1.
-- **The mask travels one cycle ahead of the GPR operands.** `section_en`,
-  `sec_owner`, `sec_pred_bit` and `sec_pred_data` are `rcu_lane_ops`'
-  **lead fields** (`lead_fields` in the schema; `pred_bit`, `pred_data` and
-  `section_en` before sectioned lanes).
+- **The mask travels one cycle ahead of the GPR operands.** `section_en`
+  and `sec_pred_bit` are `rcu_lane_ops`' **lead fields** (`lead_fields` in
+  the schema): the lane's valid per section and per lane, the enables of
+  its operand capture. `sec_owner` and `sec_pred_data` led too until
+  2026-10-18; they gate nothing, and a lead costs ungated flops at every
+  receiver and first repeater stage (CG-5), so they travel with the operands.
   - **The choice, stated:** it is the same channel and the same packed
     struct. The lead slice of the payload register is written with valid, not
     a cycle after it. No new signal, port or credit: the mask can't lose step
@@ -1239,7 +1243,7 @@ decisions.
 | `rcu_lane_ops.operand` | `[32i+31:32i]` = source *i*; its byte *k* is section *k* |
 | `rcu_lane_ops` per-section fields | S0 at the LSBs; `sec_opnd_pos`, `sec_opnd_width` and `operand_byp` section-major, entry 4*k* + *i* is section *k*'s port *i* (src0-src2, then merge). The S1 stubs send one full-width op a message: `section_en` 1111, `sec_owner` 0 for every section |
 | `lane_rcu_res.result`, `sec_valid`, `sec_pred_out` | the GPR value; the sections the op held; its predicate result on its lead section |
-| `rcu_lane_ops.sec_pred_data` | a predicate read as data (sel's selector), negate applied; `sec_pred_bit` is the enable. Both, with `section_en` and `sec_owner`, are lead fields: on the wire with valid, a cycle ahead of `operand` |
+| `rcu_lane_ops.sec_pred_data` | a predicate read as data (sel's selector), negate applied, with the operands; `sec_pred_bit` is the enable. `sec_pred_bit` and `section_en` are the lead fields: on the wire with valid, a cycle ahead of `operand` |
 | `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |

@@ -17,11 +17,14 @@ changes around it.
 |---|---|---|
 | forward | valid, wake | every cycle, reset low |
 | forward | payload, trace id | **enabled by the previous cycle's valid**, no reset |
-| forward | lead slice (schema `lead_fields`) | **enabled by the same cycle's valid**, no reset |
+| forward | lead slice (schema `lead_fields`) | taken in **the same cycle as its valid**: at the first stage written every cycle, later enabled by the previous stage's valid flop; no reset |
 | backward | credit, stall | every cycle, reset low |
+| — | the reset | flopped once, `rst_n_q`, before any use (RST-1) |
 
-`STAGES = 0` is wires, so a link can be declared repeated before its length
-is known. The module is reusable (`clk`/`rst_n` are generic formals).
+`STAGES = 0` is wires, used only for a feedthrough the floorplan routes
+across a wrapper where the distance needs no stage: a channel end with no
+stages has no repeater at all (below). The module is reusable (`clk`/`rst_n`
+are generic formals).
 
 **The payload enable is the stage's own valid flop.** The payload follows
 valid by one cycle, so the cycle it sits on a stage's input is exactly the
@@ -30,13 +33,23 @@ an `if` in `always_ff` (the style guide's "Sequential enables"). The payload
 register then loads once per message and holds otherwise: one shared enable
 per stage, a clock-gating candidate, and no toggling on an idle link.
 
-**The lead slice is the exception.** The spec was "always the previous
-cycle's valid", but a lead travels *with* valid, a cycle ahead of the rest of
-the payload (Q-40). So its register is enabled by the same cycle's valid.
-Enabled by the previous cycle's, it would be taken a cycle late, which is the
-skeleton's `--break late-lead` failure. Only channels with lead fields
-(`rcu_lane_ops`) get this register. Every other channel's payload follows the
-previous-cycle rule entirely.
+**The lead slice is the exception.** A lead travels *with* valid, a cycle
+ahead of the rest of the payload (Q-40), so it is taken in valid's cycle.
+Taken a cycle later it would be the skeleton's `--break late-lead` failure.
+At the first stage that valid is the repeater's input, and a clock enable
+comes only from the module's own flops (CG-5; Daniel, 2026-10-18), so the
+first stage's lead is written every cycle, like valid, and counts against
+the instantiation's ungated allowance; at a later stage the previous
+stage's valid flop enables it. That cost is what limits leads: only valid
+leads, except where a lead is itself an enable or buys real IPC
+(`rcu_lane_ops`: `section_en` and `sec_pred_bit`, 8 bits a lane). Every
+other channel's payload follows the previous-cycle rule entirely.
+
+**Every instantiation is checked like any module.** `tools/gen-top.py`
+writes `rtl/top/rpt-units.json`, one unit per distinct repeater the design
+instantiates; `check-cg.py` and `check-ngd.py` measure each, its pulses,
+flopped reset and first-stage lead within the larger of 2% of its flops and
+fewer than 8. None is repeated today.
 
 ## What a repeated link changes
 
@@ -140,17 +153,24 @@ generated `ccv_<blk>_ports.svh`. Block RTL and its port list therefore stay
 the swap boundary: C++ shim, stub or RTL, inside a wrapper that doesn't
 change.
 
-**Every channel end has its repeater, at `STAGES` 0 unless configured.** A
-new split changes stage counts, never structure. How the counts reach the
-wrapper depends on whether its type is hard-reused.
+**A channel end has a repeater only where its link has stages there**
+(Daniel, 2026-10-18: a wire through a module of its own is an unnecessary
+obfuscation, and NGD-5 refuses one in any design module). An end with none
+is connected straight through, `assign`s between the block's port and the
+wrapper's. A parameterised wrapper chooses with a generate-if on the stage
+count the top sets, so a new split still changes parameters only; a
+hard-reuse template has its ends fixed. A feedthrough always has its
+repeater, of no stages if the distance needs none: the one feedthrough
+allowed, in generated wrappers only. How the counts reach the wrapper
+depends on whether its type is hard-reused.
 
 **Hard reuse (`"hard_reuse": ["lane"]` in `params/links.json`).** A listed
 type gets the minimal set of wrapper templates.
 - **Grouping:** its instances are grouped by what their wrapper holds, which
   is each end's stages plus each feedthrough's channel and stages.
 - **Templates:** each group becomes one template with its stages fixed as
-  `localparam`s and no parameters at all, so every instance using it is the
-  same module: one hard macro.
+  `localparam`s (those it uses) and no parameters at all, so every instance
+  using it is the same module: one hard macro.
 - **Names:** the group most instances are in is `ccv_<type>_w`; the others
   are `ccv_<type>_w_v1`, `_v2`, and so on.
 - **Divergence costs only what it must.** Feedthrough ports are named by

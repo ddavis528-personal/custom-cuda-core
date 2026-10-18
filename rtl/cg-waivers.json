@@ -1,21 +1,4 @@
 {
-  "_comment": "Explicit exceptions to the local clock-gating rules (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'). One entry per module, rule (CG-1, CG-2 or CG-3) and register; why says what was measured and why the rule cannot or should not be met. A waiver that excuses nothing is refused.",
-  "waivers": [
-    {
-      "module": "ccv_common_rpt",
-      "rule": "CG-1",
-      "target": "valid_q",
-      "by": "TI",
-      "date": "2026-10-17",
-      "why": "A repeater stage exists because its input arrives after a cycle of wire. Any enable that could tell a new valid from a held one has to see that input, and an ICG enable must set up before the flop's own D does, so it would turn a wire-limited path into a gate-limited one. The pulse flops are 3 * SLOTS + 1 a stage, 14 at the unit's parameters; the module's allowance of 7 takes wake_q and credit_q, and this and stall_q remain. The payload, most of the flops, is gated by this flop (pay_en, 0.0 NGD, DCGE 99-100%)."
-    },
-    {
-      "module": "ccv_common_rpt",
-      "rule": "CG-1",
-      "target": "stall_q",
-      "by": "TI",
-      "date": "2026-10-17",
-      "why": "As valid_q: the stall arrives over the link's wire, so an enable that sees it reaches the clock gate late. Past the module's allowance of 7, which wake_q and credit_q fill."
-    }
-  ]
+ "_comment": "Explicit exceptions to the local clock-gating rules (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'). One entry per module, rule (CG-1, CG-2 or CG-3) and register; why says what was measured and why the rule cannot or should not be met. A waiver that excuses nothing is refused.",
+ "waivers": []
 }

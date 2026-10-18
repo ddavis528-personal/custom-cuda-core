@@ -33,22 +33,29 @@ Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
 register behind an `if` on an enable named `<name>_en`; a clock gate is 8
 flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
 idle, medium and high scenarios; anything else must toggle 75% of the time.
+An enable comes only from the module's own flops, never an input (CG-5), and
+the reset is flopped before any use (RST-1; 2026-10-18): that is why valid
+leads a payload by a cycle, and why a lead field is rare.
 `tools/check-cg.py` measures it from each module's unit
-(`test/**/cg-units.json`). Each module may leave the larger of 2% of its
+(`test/**/cg-units.json`, and every repeater the design instantiates,
+`rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
 flops and fewer than 8 flops outside the rules, and what its modules take
 must stay within 2% of each block's flops, per instance. Past that,
 refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
 the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
-its owner removes an entry once the module passes.
+its owner removes an entry once the module passes (CG-5 and RST-1 per
+register or port).
 
 Logic depth (Daniel, 2026-10-17; `docs/rtl-coding-style.md`): 25 NGD of
 combinational logic between flops, the flop outside it. Each module port has
 12 NGD a side by default; a port over it needs the architect's budgets, one
-file per module beside its RTL (`<module>.ngd.json`). No logic straight
-through a module, input to output, nor in a parent between its children
-(2026-10-18): group it with one sequential side, or declare a combinational
-module an inner helper in its file, timed as its parent's logic. An
+file per module beside its RTL (`<module>.ngd.json`). Nothing straight
+through a module, input to output, not even a wire, nor logic in a parent
+between its children (2026-10-18): connect a wire directly, group logic with
+one sequential side, or declare a combinational module an inner helper in
+its file, timed as its parent's logic. The one feedthrough allowed is a
+channel a generated wrapper carries across itself. An
 assembled block is checked from those files, level by level, for
 convergence to 25, then timed whole, its outputs straight from flops.
 `tools/check-ngd.py` measures every module at its units' parameters; what

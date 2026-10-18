@@ -1,0 +1,31 @@
+{
+  "_comment": "check-cg selftest: two repeater instantiations in rtl/top/rpt-units.json's form (tools/gen-top.py), one stage of one 64-bit slot each, one with a 16-bit lead slice and one with none. The lead's first-stage flops, written every cycle, take the instantiation past its allowance; without them it passes.",
+  "units": [
+    {
+      "name": "fx_rpt_lead",
+      "module": "ccv_common_rpt",
+      "files": ["rtl/phys/ccv_common_rpt.sv"],
+      "params": {"STAGES": 1, "SLOTS": 1, "PAYLOAD_W": 64, "LEAD_MASK": "64'hffff"},
+      "clock": "clk",
+      "reset": "!rst_n",
+      "bench": {
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=1 -GS=1 -GW=64 \"-GLEAD=64'hffff\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+        "scope": "tb_cg_rpt.dut"
+      }
+    },
+    {
+      "name": "fx_rpt_plain",
+      "module": "ccv_common_rpt",
+      "files": ["rtl/phys/ccv_common_rpt.sv"],
+      "params": {"STAGES": 1, "SLOTS": 1, "PAYLOAD_W": 64, "LEAD_MASK": "64'h0"},
+      "clock": "clk",
+      "reset": "!rst_n",
+      "bench": {
+        "build": "verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style -Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=1 -GS=1 -GW=64 \"-GLEAD=64'h0\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv",
+        "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+        "scope": "tb_cg_rpt.dut"
+      }
+    }
+  ]
+}
