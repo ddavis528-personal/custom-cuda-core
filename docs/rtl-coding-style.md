@@ -730,7 +730,8 @@ logic. An NGD is a NAND2 at fanout 4; `test/ooe/ngd.genlib` holds the gates
 at their fanout-of-4 delays, and broadcast fanout and wire are not in it.
 
 **A module is measured alone, so a path that leaves it is budgeted at the
-port.** Each side of a port has a budget, by default `CCV_NGD_PORT` = 12:
+port.** Each side of a port has a budget, by default `CCV_NGD_PORT` =
+floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
 
 - an **output** is required within 12 NGD of its module's flops;
 - an **input** arrives at 25 − 12 = 13 and must reach its module's flops

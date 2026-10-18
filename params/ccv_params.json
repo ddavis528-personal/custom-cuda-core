@@ -264,9 +264,9 @@
       "name": "CCV_NGD_PORT",
       "value": 12,
       "status": "target",
-      "source": "Daniel, 2026-10-17 (module port budgets)",
-      "require": "2 * CCV_NGD_PORT <= CCV_NGD_BUDGET",
-      "doc": "Default logic budget on each side of a module port, so a path between two modules' flops fits CCV_NGD_BUDGET without anyone having planned it: an output is reached within CCV_NGD_PORT of its module's flops, and an input, arriving at CCV_NGD_BUDGET - CCV_NGD_PORT, reaches its module's flops within the rest. A path straight through a module, input to output, fits no default and needs explicit budgets, as does any port over this one; those come from the architect, in the module's <module>.ngd.json beside its RTL, and must converge, each driver's required time no later than its receiver's arrival, which the assembled block checks from those files. tools/check-ngd.py measures every module at its units' parameters."
+      "source": "Daniel, 2026-10-17 (module port budgets; floor of half the stage, 2026-10-18)",
+      "derive": "CCV_NGD_BUDGET // 2",
+      "doc": "Default logic budget on each side of a module port, floor(CCV_NGD_BUDGET / 2), so a path between two modules' flops fits CCV_NGD_BUDGET without anyone having planned it: an output is reached within CCV_NGD_PORT of its module's flops, and an input, arriving at CCV_NGD_BUDGET - CCV_NGD_PORT, reaches its module's flops within the rest. A path straight through a module, input to output, fits no default and needs explicit budgets, as does any port over this one; those come from the architect, in the module's <module>.ngd.json beside its RTL, and must converge, each driver's required time no later than its receiver's arrival, which the assembled block checks from those files. tools/check-ngd.py measures every module at its units' parameters."
     },
     {
       "name": "CCV_NGD_CG_EN",
