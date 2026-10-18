@@ -45,6 +45,24 @@
       "NGD-2 cand_cq03h",
       "NGD-2 grant_cq03h",
       "NGD-2 lost_cq03h"
+    ],
+    "ooe_rat": [
+      "NGD-2 ren_pold_cq01h",
+      "NGD-2 ren_ppguard_cq01h",
+      "NGD-2 ren_ppold_cq01h",
+      "NGD-2 ren_ppq_cq01h",
+      "NGD-2 ren_psrc_cq01h",
+      "NGD-3 ren_dst_cq01h",
+      "NGD-3 ren_gwe_cq01h",
+      "NGD-3 ren_pdst_cq01h",
+      "NGD-3 ren_rst_cq01h",
+      "NGD-3 ren_slot_cq01h",
+      "NGD-3 ren_v_cq01h",
+      "NGD-3 restore_ckpt_cq01h",
+      "NGD-3 ret_dst_cq01h",
+      "NGD-3 ret_gwe_cq01h",
+      "NGD-3 ret_pdst_cq01h",
+      "NGD-3 ret_pwe_cq01h"
     ]
   }
 }
