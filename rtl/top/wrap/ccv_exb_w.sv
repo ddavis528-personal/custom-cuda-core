@@ -6,10 +6,10 @@
 
 // HARDENING WRAPPER ccv_exb_w: ccv_exb and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. Every
-// end has its repeater whether or not the link is repeated.
-// STAGES is a parameter the top sets from params/links.json, 0 meaning
-// wires, so a new split changes parameters and never this structure.
+// and links"). Nothing but instances and nets, like the top. An end
+// whose link has no stages here is connected straight through.
+// Each end's stages are a parameter the top sets from params/links.json;
+// at 0 the end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_exb_w #(
@@ -87,47 +87,91 @@ module ccv_exb_w #(
   );
 
   // ccv_mlc_exb_req, destination end
-  ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .SLOTS(1), .PAYLOAD_W(1090)) u_rpt_mlc_exb_req (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({mlc_exb_req_valid}), .src_payload({mlc_exb_req_payload}),
-    .src_wake(mlc_exb_req_wake), .src_credit({mlc_exb_req_credit}), .src_stall({mlc_exb_req_stall}),
-    .dst_valid({b_mlc_exb_req_valid}), .dst_payload({b_mlc_exb_req_payload}),
-    .dst_wake(b_mlc_exb_req_wake), .dst_credit({b_mlc_exb_req_credit}), .dst_stall({b_mlc_exb_req_stall})
+  if (RPT_MLC_EXB_REQ > 0) begin : g_rpt_mlc_exb_req
+    ccv_common_rpt #(.STAGES(RPT_MLC_EXB_REQ), .SLOTS(1), .PAYLOAD_W(1090)) u_rpt_mlc_exb_req (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({mlc_exb_req_valid}), .src_payload({mlc_exb_req_payload}),
+      .src_wake(mlc_exb_req_wake), .src_credit({mlc_exb_req_credit}), .src_stall({mlc_exb_req_stall}),
+      .dst_valid({b_mlc_exb_req_valid}), .dst_payload({b_mlc_exb_req_payload}),
+      .dst_wake(b_mlc_exb_req_wake), .dst_credit({b_mlc_exb_req_credit}), .dst_stall({b_mlc_exb_req_stall})
 `ifdef CCV_TRACE
-    , .src_tid({mlc_exb_req_tid}), .dst_tid({b_mlc_exb_req_tid})
+      , .src_tid({mlc_exb_req_tid}), .dst_tid({b_mlc_exb_req_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_mlc_exb_req
+    assign {b_mlc_exb_req_valid} = {mlc_exb_req_valid};
+    assign {b_mlc_exb_req_payload} = {mlc_exb_req_payload};
+    assign b_mlc_exb_req_wake = mlc_exb_req_wake;
+    assign {mlc_exb_req_credit} = {b_mlc_exb_req_credit};
+    assign {mlc_exb_req_stall} = {b_mlc_exb_req_stall};
+`ifdef CCV_TRACE
+    assign {b_mlc_exb_req_tid} = {mlc_exb_req_tid};
+`endif
+  end
   // ccv_exb_mlc_rsp, source end
-  ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_exb_mlc_rsp (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_exb_mlc_rsp_valid}), .src_payload({b_exb_mlc_rsp_payload}),
-    .src_wake(b_exb_mlc_rsp_wake), .src_credit({b_exb_mlc_rsp_credit}), .src_stall({b_exb_mlc_rsp_stall}),
-    .dst_valid({exb_mlc_rsp_valid}), .dst_payload({exb_mlc_rsp_payload}),
-    .dst_wake(exb_mlc_rsp_wake), .dst_credit({exb_mlc_rsp_credit}), .dst_stall({exb_mlc_rsp_stall})
+  if (RPT_EXB_MLC_RSP > 0) begin : g_rpt_exb_mlc_rsp
+    ccv_common_rpt #(.STAGES(RPT_EXB_MLC_RSP), .SLOTS(1), .PAYLOAD_W(1082)) u_rpt_exb_mlc_rsp (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_exb_mlc_rsp_valid}), .src_payload({b_exb_mlc_rsp_payload}),
+      .src_wake(b_exb_mlc_rsp_wake), .src_credit({b_exb_mlc_rsp_credit}), .src_stall({b_exb_mlc_rsp_stall}),
+      .dst_valid({exb_mlc_rsp_valid}), .dst_payload({exb_mlc_rsp_payload}),
+      .dst_wake(exb_mlc_rsp_wake), .dst_credit({exb_mlc_rsp_credit}), .dst_stall({exb_mlc_rsp_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_exb_mlc_rsp_tid}), .dst_tid({exb_mlc_rsp_tid})
+      , .src_tid({b_exb_mlc_rsp_tid}), .dst_tid({exb_mlc_rsp_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_exb_mlc_rsp
+    assign {exb_mlc_rsp_valid} = {b_exb_mlc_rsp_valid};
+    assign {exb_mlc_rsp_payload} = {b_exb_mlc_rsp_payload};
+    assign exb_mlc_rsp_wake = b_exb_mlc_rsp_wake;
+    assign {b_exb_mlc_rsp_credit} = {exb_mlc_rsp_credit};
+    assign {b_exb_mlc_rsp_stall} = {exb_mlc_rsp_stall};
+`ifdef CCV_TRACE
+    assign {exb_mlc_rsp_tid} = {b_exb_mlc_rsp_tid};
+`endif
+  end
   // ccv_exb_ext_out, source end
-  ccv_common_rpt #(.STAGES(RPT_EXB_EXT_OUT), .SLOTS(1), .PAYLOAD_W(1225)) u_rpt_exb_ext_out (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_exb_ext_out_valid}), .src_payload({b_exb_ext_out_payload}),
-    .src_wake(b_exb_ext_out_wake), .src_credit({b_exb_ext_out_credit}), .src_stall({b_exb_ext_out_stall}),
-    .dst_valid({exb_ext_out_valid}), .dst_payload({exb_ext_out_payload}),
-    .dst_wake(exb_ext_out_wake), .dst_credit({exb_ext_out_credit}), .dst_stall({exb_ext_out_stall})
+  if (RPT_EXB_EXT_OUT > 0) begin : g_rpt_exb_ext_out
+    ccv_common_rpt #(.STAGES(RPT_EXB_EXT_OUT), .SLOTS(1), .PAYLOAD_W(1225)) u_rpt_exb_ext_out (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_exb_ext_out_valid}), .src_payload({b_exb_ext_out_payload}),
+      .src_wake(b_exb_ext_out_wake), .src_credit({b_exb_ext_out_credit}), .src_stall({b_exb_ext_out_stall}),
+      .dst_valid({exb_ext_out_valid}), .dst_payload({exb_ext_out_payload}),
+      .dst_wake(exb_ext_out_wake), .dst_credit({exb_ext_out_credit}), .dst_stall({exb_ext_out_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_exb_ext_out_tid}), .dst_tid({exb_ext_out_tid})
+      , .src_tid({b_exb_ext_out_tid}), .dst_tid({exb_ext_out_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_exb_ext_out
+    assign {exb_ext_out_valid} = {b_exb_ext_out_valid};
+    assign {exb_ext_out_payload} = {b_exb_ext_out_payload};
+    assign exb_ext_out_wake = b_exb_ext_out_wake;
+    assign {b_exb_ext_out_credit} = {exb_ext_out_credit};
+    assign {b_exb_ext_out_stall} = {exb_ext_out_stall};
+`ifdef CCV_TRACE
+    assign {exb_ext_out_tid} = {b_exb_ext_out_tid};
+`endif
+  end
   // ccv_ext_exb_in, destination end
-  ccv_common_rpt #(.STAGES(RPT_EXT_EXB_IN), .SLOTS(1), .PAYLOAD_W(1176)) u_rpt_ext_exb_in (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({ext_exb_in_valid}), .src_payload({ext_exb_in_payload}),
-    .src_wake(ext_exb_in_wake), .src_credit({ext_exb_in_credit}), .src_stall({ext_exb_in_stall}),
-    .dst_valid({b_ext_exb_in_valid}), .dst_payload({b_ext_exb_in_payload}),
-    .dst_wake(b_ext_exb_in_wake), .dst_credit({b_ext_exb_in_credit}), .dst_stall({b_ext_exb_in_stall})
+  if (RPT_EXT_EXB_IN > 0) begin : g_rpt_ext_exb_in
+    ccv_common_rpt #(.STAGES(RPT_EXT_EXB_IN), .SLOTS(1), .PAYLOAD_W(1176)) u_rpt_ext_exb_in (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({ext_exb_in_valid}), .src_payload({ext_exb_in_payload}),
+      .src_wake(ext_exb_in_wake), .src_credit({ext_exb_in_credit}), .src_stall({ext_exb_in_stall}),
+      .dst_valid({b_ext_exb_in_valid}), .dst_payload({b_ext_exb_in_payload}),
+      .dst_wake(b_ext_exb_in_wake), .dst_credit({b_ext_exb_in_credit}), .dst_stall({b_ext_exb_in_stall})
 `ifdef CCV_TRACE
-    , .src_tid({ext_exb_in_tid}), .dst_tid({b_ext_exb_in_tid})
+      , .src_tid({ext_exb_in_tid}), .dst_tid({b_ext_exb_in_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_ext_exb_in
+    assign {b_ext_exb_in_valid} = {ext_exb_in_valid};
+    assign {b_ext_exb_in_payload} = {ext_exb_in_payload};
+    assign b_ext_exb_in_wake = ext_exb_in_wake;
+    assign {ext_exb_in_credit} = {b_ext_exb_in_credit};
+    assign {ext_exb_in_stall} = {b_ext_exb_in_stall};
+`ifdef CCV_TRACE
+    assign {b_ext_exb_in_tid} = {ext_exb_in_tid};
+`endif
+  end
 endmodule

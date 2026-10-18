@@ -364,8 +364,18 @@ leave the larger of 2% of its flops and fewer than 8 flops outside the
 rules, so it is settled module by module; what the modules take must stay
 within 2% of each block, per instance, checked once a block top is RTL.
 Waivers (`rtl/cg-waivers.json`) are the last resort, and pre-rule RTL is on
-`rtl/cg-ratchet.json`, which only shrinks. TI's two modules meet the rule
-or carry two waivers, both the repeater's pulse registers. The clock gate's
+`rtl/cg-ratchet.json`, which only shrinks. On 2026-10-18 Daniel made it
+strict at the source: a clock enable comes only from the module's own flops
+(CG-5), and the reset is flopped before any use (RST-1, the reset contract:
+synchronous, the same cycle at every receiver, latency balanced globally).
+Valid leads a payload by a cycle so the receiver's flopped valid is the
+enable; a lead field is captured by flops written every cycle, so only
+`rcu_lane_ops`' `section_en` and `sec_pred_bit` still lead. Every repeater
+the design instantiates is a unit of its own, measured like any module. TI's
+two modules meet all of it with no waiver (the clock gate flops its reset,
+reports and override; the repeater its reset, and writes its first stage's
+lead every cycle). Every OOE module is on the ratchet for CG-5 and all but
+`ooe_age` for RST-1, per register (TI-18). The clock gate's
 counters became one 14-flop gate once Daniel set the CSR contract (Q-59,
 2026-10-17): CSRs are written only while their blocks are idle, on a divided
 clock, with no write-to-use latency promised. OI converted its four (TI-14: 7af637e, d3905fc), and the ratchet
@@ -382,16 +392,22 @@ held to the replayed units'.
 Daniel's rule of 2026-10-17, in `docs/rtl-coding-style.md`: 25 NGD of
 combinational logic between flops, the flop outside it; each module port
 12 NGD a side by default, the architect's explicit budgets in one file per
-module beside its RTL (`<module>.ngd.json`) where a port needs more or a
-path runs straight through a module; an assembled block checked from those
-files for convergence to 25, level by level, then timed whole, its ports
-registered on both sides. `tools/check-ngd.py` measures every module at
-its units' parameters on ABC's mapping, with a timing pass that must agree
-with ABC's own longest path. No module is over the stage flop to flop. The
-OOE ports over the default when the rule was made, 45 of them in nine
-modules (`ooe_rat`'s with OI's next merge), are on `rtl/ngd-ratchet.json`,
-for OA's budgets or a redesign. No block top is RTL yet, so the whole-block
-pass runs on fixtures only.
+module beside its RTL (`<module>.ngd.json`) where a port needs more; and,
+2026-10-18, nothing straight through a module, not even a wire, nor logic
+between a parent's children, so every path between modules crosses one port
+in two segments, a combinational module allowed as an inner helper timed in
+its parent, and a generated wrapper's feedthrough the one wire allowed (an
+end with no stages has no repeater); an
+assembled block checked from those files for convergence to 25, level by
+level, then timed whole, its ports registered on both sides.
+`tools/check-ngd.py` measures every module at its units' parameters on
+ABC's mapping, with a timing pass that must agree with ABC's own longest
+path. No module is over the stage flop to flop. What broke the rules when
+they were made, 153 findings in nine OOE modules (`ooe_rat`'s 46 with OI's
+next merge), is on `rtl/ngd-ratchet.json`: ports over the default for OA's
+budgets or a redesign, and paths straight through (and `ooe_select`'s glue
+around its two picks) for a regrouping or an inner declaration. No block
+top is RTL yet, so the whole-block pass runs on fixtures only.
 
 ### CI harness ✅
 

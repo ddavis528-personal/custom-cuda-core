@@ -6,10 +6,10 @@
 
 // HARDENING WRAPPER ccv_rcu_w: ccv_rcu and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. Every
-// end has its repeater whether or not the link is repeated.
-// STAGES is a parameter the top sets from params/links.json, 0 meaning
-// wires, so a new split changes parameters and never this structure.
+// and links"). Nothing but instances and nets, like the top. An end
+// whose link has no stages here is connected straight through.
+// Each end's stages are a parameter the top sets from params/links.json;
+// at 0 the end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_rcu_w #(
@@ -1176,795 +1176,1587 @@ module ccv_rcu_w #(
   );
 
   // ccv_ooe_rcu_issue, destination end
-  ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(9), .PAYLOAD_W(175)) u_rpt_ooe_rcu_issue (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid}), .src_payload({ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload}),
-    .src_wake(ooe_rcu_issue_wake), .src_credit({ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit}), .src_stall({ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall}),
-    .dst_valid({b_ooe_rcu_issue_s8_valid, b_ooe_rcu_issue_s7_valid, b_ooe_rcu_issue_s6_valid, b_ooe_rcu_issue_s5_valid, b_ooe_rcu_issue_s4_valid, b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .dst_payload({b_ooe_rcu_issue_s8_payload, b_ooe_rcu_issue_s7_payload, b_ooe_rcu_issue_s6_payload, b_ooe_rcu_issue_s5_payload, b_ooe_rcu_issue_s4_payload, b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
-    .dst_wake(b_ooe_rcu_issue_wake), .dst_credit({b_ooe_rcu_issue_s8_credit, b_ooe_rcu_issue_s7_credit, b_ooe_rcu_issue_s6_credit, b_ooe_rcu_issue_s5_credit, b_ooe_rcu_issue_s4_credit, b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .dst_stall({b_ooe_rcu_issue_s8_stall, b_ooe_rcu_issue_s7_stall, b_ooe_rcu_issue_s6_stall, b_ooe_rcu_issue_s5_stall, b_ooe_rcu_issue_s4_stall, b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall})
+  if (RPT_OOE_RCU_ISSUE > 0) begin : g_rpt_ooe_rcu_issue
+    ccv_common_rpt #(.STAGES(RPT_OOE_RCU_ISSUE), .SLOTS(9), .PAYLOAD_W(175)) u_rpt_ooe_rcu_issue (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid}), .src_payload({ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload}),
+      .src_wake(ooe_rcu_issue_wake), .src_credit({ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit}), .src_stall({ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall}),
+      .dst_valid({b_ooe_rcu_issue_s8_valid, b_ooe_rcu_issue_s7_valid, b_ooe_rcu_issue_s6_valid, b_ooe_rcu_issue_s5_valid, b_ooe_rcu_issue_s4_valid, b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid}), .dst_payload({b_ooe_rcu_issue_s8_payload, b_ooe_rcu_issue_s7_payload, b_ooe_rcu_issue_s6_payload, b_ooe_rcu_issue_s5_payload, b_ooe_rcu_issue_s4_payload, b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload}),
+      .dst_wake(b_ooe_rcu_issue_wake), .dst_credit({b_ooe_rcu_issue_s8_credit, b_ooe_rcu_issue_s7_credit, b_ooe_rcu_issue_s6_credit, b_ooe_rcu_issue_s5_credit, b_ooe_rcu_issue_s4_credit, b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit}), .dst_stall({b_ooe_rcu_issue_s8_stall, b_ooe_rcu_issue_s7_stall, b_ooe_rcu_issue_s6_stall, b_ooe_rcu_issue_s5_stall, b_ooe_rcu_issue_s4_stall, b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid, ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid}), .dst_tid({b_ooe_rcu_issue_s8_tid, b_ooe_rcu_issue_s7_tid, b_ooe_rcu_issue_s6_tid, b_ooe_rcu_issue_s5_tid, b_ooe_rcu_issue_s4_tid, b_ooe_rcu_issue_s3_tid, b_ooe_rcu_issue_s2_tid, b_ooe_rcu_issue_s1_tid, b_ooe_rcu_issue_s0_tid})
+      , .src_tid({ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid, ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid}), .dst_tid({b_ooe_rcu_issue_s8_tid, b_ooe_rcu_issue_s7_tid, b_ooe_rcu_issue_s6_tid, b_ooe_rcu_issue_s5_tid, b_ooe_rcu_issue_s4_tid, b_ooe_rcu_issue_s3_tid, b_ooe_rcu_issue_s2_tid, b_ooe_rcu_issue_s1_tid, b_ooe_rcu_issue_s0_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_ooe_rcu_issue
+    assign {b_ooe_rcu_issue_s8_valid, b_ooe_rcu_issue_s7_valid, b_ooe_rcu_issue_s6_valid, b_ooe_rcu_issue_s5_valid, b_ooe_rcu_issue_s4_valid, b_ooe_rcu_issue_s3_valid, b_ooe_rcu_issue_s2_valid, b_ooe_rcu_issue_s1_valid, b_ooe_rcu_issue_s0_valid} = {ooe_rcu_issue_s8_valid, ooe_rcu_issue_s7_valid, ooe_rcu_issue_s6_valid, ooe_rcu_issue_s5_valid, ooe_rcu_issue_s4_valid, ooe_rcu_issue_s3_valid, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_valid, ooe_rcu_issue_s0_valid};
+    assign {b_ooe_rcu_issue_s8_payload, b_ooe_rcu_issue_s7_payload, b_ooe_rcu_issue_s6_payload, b_ooe_rcu_issue_s5_payload, b_ooe_rcu_issue_s4_payload, b_ooe_rcu_issue_s3_payload, b_ooe_rcu_issue_s2_payload, b_ooe_rcu_issue_s1_payload, b_ooe_rcu_issue_s0_payload} = {ooe_rcu_issue_s8_payload, ooe_rcu_issue_s7_payload, ooe_rcu_issue_s6_payload, ooe_rcu_issue_s5_payload, ooe_rcu_issue_s4_payload, ooe_rcu_issue_s3_payload, ooe_rcu_issue_s2_payload, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s0_payload};
+    assign b_ooe_rcu_issue_wake = ooe_rcu_issue_wake;
+    assign {ooe_rcu_issue_s8_credit, ooe_rcu_issue_s7_credit, ooe_rcu_issue_s6_credit, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_credit, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_credit} = {b_ooe_rcu_issue_s8_credit, b_ooe_rcu_issue_s7_credit, b_ooe_rcu_issue_s6_credit, b_ooe_rcu_issue_s5_credit, b_ooe_rcu_issue_s4_credit, b_ooe_rcu_issue_s3_credit, b_ooe_rcu_issue_s2_credit, b_ooe_rcu_issue_s1_credit, b_ooe_rcu_issue_s0_credit};
+    assign {ooe_rcu_issue_s8_stall, ooe_rcu_issue_s7_stall, ooe_rcu_issue_s6_stall, ooe_rcu_issue_s5_stall, ooe_rcu_issue_s4_stall, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s2_stall, ooe_rcu_issue_s1_stall, ooe_rcu_issue_s0_stall} = {b_ooe_rcu_issue_s8_stall, b_ooe_rcu_issue_s7_stall, b_ooe_rcu_issue_s6_stall, b_ooe_rcu_issue_s5_stall, b_ooe_rcu_issue_s4_stall, b_ooe_rcu_issue_s3_stall, b_ooe_rcu_issue_s2_stall, b_ooe_rcu_issue_s1_stall, b_ooe_rcu_issue_s0_stall};
+`ifdef CCV_TRACE
+    assign {b_ooe_rcu_issue_s8_tid, b_ooe_rcu_issue_s7_tid, b_ooe_rcu_issue_s6_tid, b_ooe_rcu_issue_s5_tid, b_ooe_rcu_issue_s4_tid, b_ooe_rcu_issue_s3_tid, b_ooe_rcu_issue_s2_tid, b_ooe_rcu_issue_s1_tid, b_ooe_rcu_issue_s0_tid} = {ooe_rcu_issue_s8_tid, ooe_rcu_issue_s7_tid, ooe_rcu_issue_s6_tid, ooe_rcu_issue_s5_tid, ooe_rcu_issue_s4_tid, ooe_rcu_issue_s3_tid, ooe_rcu_issue_s2_tid, ooe_rcu_issue_s1_tid, ooe_rcu_issue_s0_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C00), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c00 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c00_valid}), .src_payload({b_rcu_lane_ops_c00_payload}),
-    .src_wake(b_rcu_lane_ops_c00_wake), .src_credit({b_rcu_lane_ops_c00_credit}), .src_stall({b_rcu_lane_ops_c00_stall}),
-    .dst_valid({rcu_lane_ops_c00_valid}), .dst_payload({rcu_lane_ops_c00_payload}),
-    .dst_wake(rcu_lane_ops_c00_wake), .dst_credit({rcu_lane_ops_c00_credit}), .dst_stall({rcu_lane_ops_c00_stall})
+  if (RPT_RCU_LANE_OPS_C00 > 0) begin : g_rpt_rcu_lane_ops_c00
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C00), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c00 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c00_valid}), .src_payload({b_rcu_lane_ops_c00_payload}),
+      .src_wake(b_rcu_lane_ops_c00_wake), .src_credit({b_rcu_lane_ops_c00_credit}), .src_stall({b_rcu_lane_ops_c00_stall}),
+      .dst_valid({rcu_lane_ops_c00_valid}), .dst_payload({rcu_lane_ops_c00_payload}),
+      .dst_wake(rcu_lane_ops_c00_wake), .dst_credit({rcu_lane_ops_c00_credit}), .dst_stall({rcu_lane_ops_c00_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c00_tid}), .dst_tid({rcu_lane_ops_c00_tid})
+      , .src_tid({b_rcu_lane_ops_c00_tid}), .dst_tid({rcu_lane_ops_c00_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c00
+    assign {rcu_lane_ops_c00_valid} = {b_rcu_lane_ops_c00_valid};
+    assign {rcu_lane_ops_c00_payload} = {b_rcu_lane_ops_c00_payload};
+    assign rcu_lane_ops_c00_wake = b_rcu_lane_ops_c00_wake;
+    assign {b_rcu_lane_ops_c00_credit} = {rcu_lane_ops_c00_credit};
+    assign {b_rcu_lane_ops_c00_stall} = {rcu_lane_ops_c00_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c00_tid} = {b_rcu_lane_ops_c00_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C01), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c01 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c01_valid}), .src_payload({b_rcu_lane_ops_c01_payload}),
-    .src_wake(b_rcu_lane_ops_c01_wake), .src_credit({b_rcu_lane_ops_c01_credit}), .src_stall({b_rcu_lane_ops_c01_stall}),
-    .dst_valid({rcu_lane_ops_c01_valid}), .dst_payload({rcu_lane_ops_c01_payload}),
-    .dst_wake(rcu_lane_ops_c01_wake), .dst_credit({rcu_lane_ops_c01_credit}), .dst_stall({rcu_lane_ops_c01_stall})
+  if (RPT_RCU_LANE_OPS_C01 > 0) begin : g_rpt_rcu_lane_ops_c01
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C01), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c01 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c01_valid}), .src_payload({b_rcu_lane_ops_c01_payload}),
+      .src_wake(b_rcu_lane_ops_c01_wake), .src_credit({b_rcu_lane_ops_c01_credit}), .src_stall({b_rcu_lane_ops_c01_stall}),
+      .dst_valid({rcu_lane_ops_c01_valid}), .dst_payload({rcu_lane_ops_c01_payload}),
+      .dst_wake(rcu_lane_ops_c01_wake), .dst_credit({rcu_lane_ops_c01_credit}), .dst_stall({rcu_lane_ops_c01_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c01_tid}), .dst_tid({rcu_lane_ops_c01_tid})
+      , .src_tid({b_rcu_lane_ops_c01_tid}), .dst_tid({rcu_lane_ops_c01_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c01
+    assign {rcu_lane_ops_c01_valid} = {b_rcu_lane_ops_c01_valid};
+    assign {rcu_lane_ops_c01_payload} = {b_rcu_lane_ops_c01_payload};
+    assign rcu_lane_ops_c01_wake = b_rcu_lane_ops_c01_wake;
+    assign {b_rcu_lane_ops_c01_credit} = {rcu_lane_ops_c01_credit};
+    assign {b_rcu_lane_ops_c01_stall} = {rcu_lane_ops_c01_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c01_tid} = {b_rcu_lane_ops_c01_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C02), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c02 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c02_valid}), .src_payload({b_rcu_lane_ops_c02_payload}),
-    .src_wake(b_rcu_lane_ops_c02_wake), .src_credit({b_rcu_lane_ops_c02_credit}), .src_stall({b_rcu_lane_ops_c02_stall}),
-    .dst_valid({rcu_lane_ops_c02_valid}), .dst_payload({rcu_lane_ops_c02_payload}),
-    .dst_wake(rcu_lane_ops_c02_wake), .dst_credit({rcu_lane_ops_c02_credit}), .dst_stall({rcu_lane_ops_c02_stall})
+  if (RPT_RCU_LANE_OPS_C02 > 0) begin : g_rpt_rcu_lane_ops_c02
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C02), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c02 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c02_valid}), .src_payload({b_rcu_lane_ops_c02_payload}),
+      .src_wake(b_rcu_lane_ops_c02_wake), .src_credit({b_rcu_lane_ops_c02_credit}), .src_stall({b_rcu_lane_ops_c02_stall}),
+      .dst_valid({rcu_lane_ops_c02_valid}), .dst_payload({rcu_lane_ops_c02_payload}),
+      .dst_wake(rcu_lane_ops_c02_wake), .dst_credit({rcu_lane_ops_c02_credit}), .dst_stall({rcu_lane_ops_c02_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c02_tid}), .dst_tid({rcu_lane_ops_c02_tid})
+      , .src_tid({b_rcu_lane_ops_c02_tid}), .dst_tid({rcu_lane_ops_c02_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c02
+    assign {rcu_lane_ops_c02_valid} = {b_rcu_lane_ops_c02_valid};
+    assign {rcu_lane_ops_c02_payload} = {b_rcu_lane_ops_c02_payload};
+    assign rcu_lane_ops_c02_wake = b_rcu_lane_ops_c02_wake;
+    assign {b_rcu_lane_ops_c02_credit} = {rcu_lane_ops_c02_credit};
+    assign {b_rcu_lane_ops_c02_stall} = {rcu_lane_ops_c02_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c02_tid} = {b_rcu_lane_ops_c02_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C03), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c03 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c03_valid}), .src_payload({b_rcu_lane_ops_c03_payload}),
-    .src_wake(b_rcu_lane_ops_c03_wake), .src_credit({b_rcu_lane_ops_c03_credit}), .src_stall({b_rcu_lane_ops_c03_stall}),
-    .dst_valid({rcu_lane_ops_c03_valid}), .dst_payload({rcu_lane_ops_c03_payload}),
-    .dst_wake(rcu_lane_ops_c03_wake), .dst_credit({rcu_lane_ops_c03_credit}), .dst_stall({rcu_lane_ops_c03_stall})
+  if (RPT_RCU_LANE_OPS_C03 > 0) begin : g_rpt_rcu_lane_ops_c03
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C03), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c03 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c03_valid}), .src_payload({b_rcu_lane_ops_c03_payload}),
+      .src_wake(b_rcu_lane_ops_c03_wake), .src_credit({b_rcu_lane_ops_c03_credit}), .src_stall({b_rcu_lane_ops_c03_stall}),
+      .dst_valid({rcu_lane_ops_c03_valid}), .dst_payload({rcu_lane_ops_c03_payload}),
+      .dst_wake(rcu_lane_ops_c03_wake), .dst_credit({rcu_lane_ops_c03_credit}), .dst_stall({rcu_lane_ops_c03_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c03_tid}), .dst_tid({rcu_lane_ops_c03_tid})
+      , .src_tid({b_rcu_lane_ops_c03_tid}), .dst_tid({rcu_lane_ops_c03_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c03
+    assign {rcu_lane_ops_c03_valid} = {b_rcu_lane_ops_c03_valid};
+    assign {rcu_lane_ops_c03_payload} = {b_rcu_lane_ops_c03_payload};
+    assign rcu_lane_ops_c03_wake = b_rcu_lane_ops_c03_wake;
+    assign {b_rcu_lane_ops_c03_credit} = {rcu_lane_ops_c03_credit};
+    assign {b_rcu_lane_ops_c03_stall} = {rcu_lane_ops_c03_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c03_tid} = {b_rcu_lane_ops_c03_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C04), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c04 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c04_valid}), .src_payload({b_rcu_lane_ops_c04_payload}),
-    .src_wake(b_rcu_lane_ops_c04_wake), .src_credit({b_rcu_lane_ops_c04_credit}), .src_stall({b_rcu_lane_ops_c04_stall}),
-    .dst_valid({rcu_lane_ops_c04_valid}), .dst_payload({rcu_lane_ops_c04_payload}),
-    .dst_wake(rcu_lane_ops_c04_wake), .dst_credit({rcu_lane_ops_c04_credit}), .dst_stall({rcu_lane_ops_c04_stall})
+  if (RPT_RCU_LANE_OPS_C04 > 0) begin : g_rpt_rcu_lane_ops_c04
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C04), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c04 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c04_valid}), .src_payload({b_rcu_lane_ops_c04_payload}),
+      .src_wake(b_rcu_lane_ops_c04_wake), .src_credit({b_rcu_lane_ops_c04_credit}), .src_stall({b_rcu_lane_ops_c04_stall}),
+      .dst_valid({rcu_lane_ops_c04_valid}), .dst_payload({rcu_lane_ops_c04_payload}),
+      .dst_wake(rcu_lane_ops_c04_wake), .dst_credit({rcu_lane_ops_c04_credit}), .dst_stall({rcu_lane_ops_c04_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c04_tid}), .dst_tid({rcu_lane_ops_c04_tid})
+      , .src_tid({b_rcu_lane_ops_c04_tid}), .dst_tid({rcu_lane_ops_c04_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c04
+    assign {rcu_lane_ops_c04_valid} = {b_rcu_lane_ops_c04_valid};
+    assign {rcu_lane_ops_c04_payload} = {b_rcu_lane_ops_c04_payload};
+    assign rcu_lane_ops_c04_wake = b_rcu_lane_ops_c04_wake;
+    assign {b_rcu_lane_ops_c04_credit} = {rcu_lane_ops_c04_credit};
+    assign {b_rcu_lane_ops_c04_stall} = {rcu_lane_ops_c04_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c04_tid} = {b_rcu_lane_ops_c04_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C05), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c05 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c05_valid}), .src_payload({b_rcu_lane_ops_c05_payload}),
-    .src_wake(b_rcu_lane_ops_c05_wake), .src_credit({b_rcu_lane_ops_c05_credit}), .src_stall({b_rcu_lane_ops_c05_stall}),
-    .dst_valid({rcu_lane_ops_c05_valid}), .dst_payload({rcu_lane_ops_c05_payload}),
-    .dst_wake(rcu_lane_ops_c05_wake), .dst_credit({rcu_lane_ops_c05_credit}), .dst_stall({rcu_lane_ops_c05_stall})
+  if (RPT_RCU_LANE_OPS_C05 > 0) begin : g_rpt_rcu_lane_ops_c05
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C05), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c05 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c05_valid}), .src_payload({b_rcu_lane_ops_c05_payload}),
+      .src_wake(b_rcu_lane_ops_c05_wake), .src_credit({b_rcu_lane_ops_c05_credit}), .src_stall({b_rcu_lane_ops_c05_stall}),
+      .dst_valid({rcu_lane_ops_c05_valid}), .dst_payload({rcu_lane_ops_c05_payload}),
+      .dst_wake(rcu_lane_ops_c05_wake), .dst_credit({rcu_lane_ops_c05_credit}), .dst_stall({rcu_lane_ops_c05_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c05_tid}), .dst_tid({rcu_lane_ops_c05_tid})
+      , .src_tid({b_rcu_lane_ops_c05_tid}), .dst_tid({rcu_lane_ops_c05_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c05
+    assign {rcu_lane_ops_c05_valid} = {b_rcu_lane_ops_c05_valid};
+    assign {rcu_lane_ops_c05_payload} = {b_rcu_lane_ops_c05_payload};
+    assign rcu_lane_ops_c05_wake = b_rcu_lane_ops_c05_wake;
+    assign {b_rcu_lane_ops_c05_credit} = {rcu_lane_ops_c05_credit};
+    assign {b_rcu_lane_ops_c05_stall} = {rcu_lane_ops_c05_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c05_tid} = {b_rcu_lane_ops_c05_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C06), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c06 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c06_valid}), .src_payload({b_rcu_lane_ops_c06_payload}),
-    .src_wake(b_rcu_lane_ops_c06_wake), .src_credit({b_rcu_lane_ops_c06_credit}), .src_stall({b_rcu_lane_ops_c06_stall}),
-    .dst_valid({rcu_lane_ops_c06_valid}), .dst_payload({rcu_lane_ops_c06_payload}),
-    .dst_wake(rcu_lane_ops_c06_wake), .dst_credit({rcu_lane_ops_c06_credit}), .dst_stall({rcu_lane_ops_c06_stall})
+  if (RPT_RCU_LANE_OPS_C06 > 0) begin : g_rpt_rcu_lane_ops_c06
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C06), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c06 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c06_valid}), .src_payload({b_rcu_lane_ops_c06_payload}),
+      .src_wake(b_rcu_lane_ops_c06_wake), .src_credit({b_rcu_lane_ops_c06_credit}), .src_stall({b_rcu_lane_ops_c06_stall}),
+      .dst_valid({rcu_lane_ops_c06_valid}), .dst_payload({rcu_lane_ops_c06_payload}),
+      .dst_wake(rcu_lane_ops_c06_wake), .dst_credit({rcu_lane_ops_c06_credit}), .dst_stall({rcu_lane_ops_c06_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c06_tid}), .dst_tid({rcu_lane_ops_c06_tid})
+      , .src_tid({b_rcu_lane_ops_c06_tid}), .dst_tid({rcu_lane_ops_c06_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c06
+    assign {rcu_lane_ops_c06_valid} = {b_rcu_lane_ops_c06_valid};
+    assign {rcu_lane_ops_c06_payload} = {b_rcu_lane_ops_c06_payload};
+    assign rcu_lane_ops_c06_wake = b_rcu_lane_ops_c06_wake;
+    assign {b_rcu_lane_ops_c06_credit} = {rcu_lane_ops_c06_credit};
+    assign {b_rcu_lane_ops_c06_stall} = {rcu_lane_ops_c06_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c06_tid} = {b_rcu_lane_ops_c06_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C07), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c07 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c07_valid}), .src_payload({b_rcu_lane_ops_c07_payload}),
-    .src_wake(b_rcu_lane_ops_c07_wake), .src_credit({b_rcu_lane_ops_c07_credit}), .src_stall({b_rcu_lane_ops_c07_stall}),
-    .dst_valid({rcu_lane_ops_c07_valid}), .dst_payload({rcu_lane_ops_c07_payload}),
-    .dst_wake(rcu_lane_ops_c07_wake), .dst_credit({rcu_lane_ops_c07_credit}), .dst_stall({rcu_lane_ops_c07_stall})
+  if (RPT_RCU_LANE_OPS_C07 > 0) begin : g_rpt_rcu_lane_ops_c07
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C07), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c07 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c07_valid}), .src_payload({b_rcu_lane_ops_c07_payload}),
+      .src_wake(b_rcu_lane_ops_c07_wake), .src_credit({b_rcu_lane_ops_c07_credit}), .src_stall({b_rcu_lane_ops_c07_stall}),
+      .dst_valid({rcu_lane_ops_c07_valid}), .dst_payload({rcu_lane_ops_c07_payload}),
+      .dst_wake(rcu_lane_ops_c07_wake), .dst_credit({rcu_lane_ops_c07_credit}), .dst_stall({rcu_lane_ops_c07_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c07_tid}), .dst_tid({rcu_lane_ops_c07_tid})
+      , .src_tid({b_rcu_lane_ops_c07_tid}), .dst_tid({rcu_lane_ops_c07_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c07
+    assign {rcu_lane_ops_c07_valid} = {b_rcu_lane_ops_c07_valid};
+    assign {rcu_lane_ops_c07_payload} = {b_rcu_lane_ops_c07_payload};
+    assign rcu_lane_ops_c07_wake = b_rcu_lane_ops_c07_wake;
+    assign {b_rcu_lane_ops_c07_credit} = {rcu_lane_ops_c07_credit};
+    assign {b_rcu_lane_ops_c07_stall} = {rcu_lane_ops_c07_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c07_tid} = {b_rcu_lane_ops_c07_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C08), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c08 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c08_valid}), .src_payload({b_rcu_lane_ops_c08_payload}),
-    .src_wake(b_rcu_lane_ops_c08_wake), .src_credit({b_rcu_lane_ops_c08_credit}), .src_stall({b_rcu_lane_ops_c08_stall}),
-    .dst_valid({rcu_lane_ops_c08_valid}), .dst_payload({rcu_lane_ops_c08_payload}),
-    .dst_wake(rcu_lane_ops_c08_wake), .dst_credit({rcu_lane_ops_c08_credit}), .dst_stall({rcu_lane_ops_c08_stall})
+  if (RPT_RCU_LANE_OPS_C08 > 0) begin : g_rpt_rcu_lane_ops_c08
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C08), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c08 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c08_valid}), .src_payload({b_rcu_lane_ops_c08_payload}),
+      .src_wake(b_rcu_lane_ops_c08_wake), .src_credit({b_rcu_lane_ops_c08_credit}), .src_stall({b_rcu_lane_ops_c08_stall}),
+      .dst_valid({rcu_lane_ops_c08_valid}), .dst_payload({rcu_lane_ops_c08_payload}),
+      .dst_wake(rcu_lane_ops_c08_wake), .dst_credit({rcu_lane_ops_c08_credit}), .dst_stall({rcu_lane_ops_c08_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c08_tid}), .dst_tid({rcu_lane_ops_c08_tid})
+      , .src_tid({b_rcu_lane_ops_c08_tid}), .dst_tid({rcu_lane_ops_c08_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c08
+    assign {rcu_lane_ops_c08_valid} = {b_rcu_lane_ops_c08_valid};
+    assign {rcu_lane_ops_c08_payload} = {b_rcu_lane_ops_c08_payload};
+    assign rcu_lane_ops_c08_wake = b_rcu_lane_ops_c08_wake;
+    assign {b_rcu_lane_ops_c08_credit} = {rcu_lane_ops_c08_credit};
+    assign {b_rcu_lane_ops_c08_stall} = {rcu_lane_ops_c08_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c08_tid} = {b_rcu_lane_ops_c08_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C09), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c09 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c09_valid}), .src_payload({b_rcu_lane_ops_c09_payload}),
-    .src_wake(b_rcu_lane_ops_c09_wake), .src_credit({b_rcu_lane_ops_c09_credit}), .src_stall({b_rcu_lane_ops_c09_stall}),
-    .dst_valid({rcu_lane_ops_c09_valid}), .dst_payload({rcu_lane_ops_c09_payload}),
-    .dst_wake(rcu_lane_ops_c09_wake), .dst_credit({rcu_lane_ops_c09_credit}), .dst_stall({rcu_lane_ops_c09_stall})
+  if (RPT_RCU_LANE_OPS_C09 > 0) begin : g_rpt_rcu_lane_ops_c09
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C09), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c09 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c09_valid}), .src_payload({b_rcu_lane_ops_c09_payload}),
+      .src_wake(b_rcu_lane_ops_c09_wake), .src_credit({b_rcu_lane_ops_c09_credit}), .src_stall({b_rcu_lane_ops_c09_stall}),
+      .dst_valid({rcu_lane_ops_c09_valid}), .dst_payload({rcu_lane_ops_c09_payload}),
+      .dst_wake(rcu_lane_ops_c09_wake), .dst_credit({rcu_lane_ops_c09_credit}), .dst_stall({rcu_lane_ops_c09_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c09_tid}), .dst_tid({rcu_lane_ops_c09_tid})
+      , .src_tid({b_rcu_lane_ops_c09_tid}), .dst_tid({rcu_lane_ops_c09_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c09
+    assign {rcu_lane_ops_c09_valid} = {b_rcu_lane_ops_c09_valid};
+    assign {rcu_lane_ops_c09_payload} = {b_rcu_lane_ops_c09_payload};
+    assign rcu_lane_ops_c09_wake = b_rcu_lane_ops_c09_wake;
+    assign {b_rcu_lane_ops_c09_credit} = {rcu_lane_ops_c09_credit};
+    assign {b_rcu_lane_ops_c09_stall} = {rcu_lane_ops_c09_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c09_tid} = {b_rcu_lane_ops_c09_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C10), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c10 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c10_valid}), .src_payload({b_rcu_lane_ops_c10_payload}),
-    .src_wake(b_rcu_lane_ops_c10_wake), .src_credit({b_rcu_lane_ops_c10_credit}), .src_stall({b_rcu_lane_ops_c10_stall}),
-    .dst_valid({rcu_lane_ops_c10_valid}), .dst_payload({rcu_lane_ops_c10_payload}),
-    .dst_wake(rcu_lane_ops_c10_wake), .dst_credit({rcu_lane_ops_c10_credit}), .dst_stall({rcu_lane_ops_c10_stall})
+  if (RPT_RCU_LANE_OPS_C10 > 0) begin : g_rpt_rcu_lane_ops_c10
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C10), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c10 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c10_valid}), .src_payload({b_rcu_lane_ops_c10_payload}),
+      .src_wake(b_rcu_lane_ops_c10_wake), .src_credit({b_rcu_lane_ops_c10_credit}), .src_stall({b_rcu_lane_ops_c10_stall}),
+      .dst_valid({rcu_lane_ops_c10_valid}), .dst_payload({rcu_lane_ops_c10_payload}),
+      .dst_wake(rcu_lane_ops_c10_wake), .dst_credit({rcu_lane_ops_c10_credit}), .dst_stall({rcu_lane_ops_c10_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c10_tid}), .dst_tid({rcu_lane_ops_c10_tid})
+      , .src_tid({b_rcu_lane_ops_c10_tid}), .dst_tid({rcu_lane_ops_c10_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c10
+    assign {rcu_lane_ops_c10_valid} = {b_rcu_lane_ops_c10_valid};
+    assign {rcu_lane_ops_c10_payload} = {b_rcu_lane_ops_c10_payload};
+    assign rcu_lane_ops_c10_wake = b_rcu_lane_ops_c10_wake;
+    assign {b_rcu_lane_ops_c10_credit} = {rcu_lane_ops_c10_credit};
+    assign {b_rcu_lane_ops_c10_stall} = {rcu_lane_ops_c10_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c10_tid} = {b_rcu_lane_ops_c10_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C11), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c11 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c11_valid}), .src_payload({b_rcu_lane_ops_c11_payload}),
-    .src_wake(b_rcu_lane_ops_c11_wake), .src_credit({b_rcu_lane_ops_c11_credit}), .src_stall({b_rcu_lane_ops_c11_stall}),
-    .dst_valid({rcu_lane_ops_c11_valid}), .dst_payload({rcu_lane_ops_c11_payload}),
-    .dst_wake(rcu_lane_ops_c11_wake), .dst_credit({rcu_lane_ops_c11_credit}), .dst_stall({rcu_lane_ops_c11_stall})
+  if (RPT_RCU_LANE_OPS_C11 > 0) begin : g_rpt_rcu_lane_ops_c11
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C11), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c11 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c11_valid}), .src_payload({b_rcu_lane_ops_c11_payload}),
+      .src_wake(b_rcu_lane_ops_c11_wake), .src_credit({b_rcu_lane_ops_c11_credit}), .src_stall({b_rcu_lane_ops_c11_stall}),
+      .dst_valid({rcu_lane_ops_c11_valid}), .dst_payload({rcu_lane_ops_c11_payload}),
+      .dst_wake(rcu_lane_ops_c11_wake), .dst_credit({rcu_lane_ops_c11_credit}), .dst_stall({rcu_lane_ops_c11_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c11_tid}), .dst_tid({rcu_lane_ops_c11_tid})
+      , .src_tid({b_rcu_lane_ops_c11_tid}), .dst_tid({rcu_lane_ops_c11_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c11
+    assign {rcu_lane_ops_c11_valid} = {b_rcu_lane_ops_c11_valid};
+    assign {rcu_lane_ops_c11_payload} = {b_rcu_lane_ops_c11_payload};
+    assign rcu_lane_ops_c11_wake = b_rcu_lane_ops_c11_wake;
+    assign {b_rcu_lane_ops_c11_credit} = {rcu_lane_ops_c11_credit};
+    assign {b_rcu_lane_ops_c11_stall} = {rcu_lane_ops_c11_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c11_tid} = {b_rcu_lane_ops_c11_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C12), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c12 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c12_valid}), .src_payload({b_rcu_lane_ops_c12_payload}),
-    .src_wake(b_rcu_lane_ops_c12_wake), .src_credit({b_rcu_lane_ops_c12_credit}), .src_stall({b_rcu_lane_ops_c12_stall}),
-    .dst_valid({rcu_lane_ops_c12_valid}), .dst_payload({rcu_lane_ops_c12_payload}),
-    .dst_wake(rcu_lane_ops_c12_wake), .dst_credit({rcu_lane_ops_c12_credit}), .dst_stall({rcu_lane_ops_c12_stall})
+  if (RPT_RCU_LANE_OPS_C12 > 0) begin : g_rpt_rcu_lane_ops_c12
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C12), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c12 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c12_valid}), .src_payload({b_rcu_lane_ops_c12_payload}),
+      .src_wake(b_rcu_lane_ops_c12_wake), .src_credit({b_rcu_lane_ops_c12_credit}), .src_stall({b_rcu_lane_ops_c12_stall}),
+      .dst_valid({rcu_lane_ops_c12_valid}), .dst_payload({rcu_lane_ops_c12_payload}),
+      .dst_wake(rcu_lane_ops_c12_wake), .dst_credit({rcu_lane_ops_c12_credit}), .dst_stall({rcu_lane_ops_c12_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c12_tid}), .dst_tid({rcu_lane_ops_c12_tid})
+      , .src_tid({b_rcu_lane_ops_c12_tid}), .dst_tid({rcu_lane_ops_c12_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c12
+    assign {rcu_lane_ops_c12_valid} = {b_rcu_lane_ops_c12_valid};
+    assign {rcu_lane_ops_c12_payload} = {b_rcu_lane_ops_c12_payload};
+    assign rcu_lane_ops_c12_wake = b_rcu_lane_ops_c12_wake;
+    assign {b_rcu_lane_ops_c12_credit} = {rcu_lane_ops_c12_credit};
+    assign {b_rcu_lane_ops_c12_stall} = {rcu_lane_ops_c12_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c12_tid} = {b_rcu_lane_ops_c12_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C13), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c13 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c13_valid}), .src_payload({b_rcu_lane_ops_c13_payload}),
-    .src_wake(b_rcu_lane_ops_c13_wake), .src_credit({b_rcu_lane_ops_c13_credit}), .src_stall({b_rcu_lane_ops_c13_stall}),
-    .dst_valid({rcu_lane_ops_c13_valid}), .dst_payload({rcu_lane_ops_c13_payload}),
-    .dst_wake(rcu_lane_ops_c13_wake), .dst_credit({rcu_lane_ops_c13_credit}), .dst_stall({rcu_lane_ops_c13_stall})
+  if (RPT_RCU_LANE_OPS_C13 > 0) begin : g_rpt_rcu_lane_ops_c13
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C13), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c13 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c13_valid}), .src_payload({b_rcu_lane_ops_c13_payload}),
+      .src_wake(b_rcu_lane_ops_c13_wake), .src_credit({b_rcu_lane_ops_c13_credit}), .src_stall({b_rcu_lane_ops_c13_stall}),
+      .dst_valid({rcu_lane_ops_c13_valid}), .dst_payload({rcu_lane_ops_c13_payload}),
+      .dst_wake(rcu_lane_ops_c13_wake), .dst_credit({rcu_lane_ops_c13_credit}), .dst_stall({rcu_lane_ops_c13_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c13_tid}), .dst_tid({rcu_lane_ops_c13_tid})
+      , .src_tid({b_rcu_lane_ops_c13_tid}), .dst_tid({rcu_lane_ops_c13_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c13
+    assign {rcu_lane_ops_c13_valid} = {b_rcu_lane_ops_c13_valid};
+    assign {rcu_lane_ops_c13_payload} = {b_rcu_lane_ops_c13_payload};
+    assign rcu_lane_ops_c13_wake = b_rcu_lane_ops_c13_wake;
+    assign {b_rcu_lane_ops_c13_credit} = {rcu_lane_ops_c13_credit};
+    assign {b_rcu_lane_ops_c13_stall} = {rcu_lane_ops_c13_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c13_tid} = {b_rcu_lane_ops_c13_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C14), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c14 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c14_valid}), .src_payload({b_rcu_lane_ops_c14_payload}),
-    .src_wake(b_rcu_lane_ops_c14_wake), .src_credit({b_rcu_lane_ops_c14_credit}), .src_stall({b_rcu_lane_ops_c14_stall}),
-    .dst_valid({rcu_lane_ops_c14_valid}), .dst_payload({rcu_lane_ops_c14_payload}),
-    .dst_wake(rcu_lane_ops_c14_wake), .dst_credit({rcu_lane_ops_c14_credit}), .dst_stall({rcu_lane_ops_c14_stall})
+  if (RPT_RCU_LANE_OPS_C14 > 0) begin : g_rpt_rcu_lane_ops_c14
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C14), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c14 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c14_valid}), .src_payload({b_rcu_lane_ops_c14_payload}),
+      .src_wake(b_rcu_lane_ops_c14_wake), .src_credit({b_rcu_lane_ops_c14_credit}), .src_stall({b_rcu_lane_ops_c14_stall}),
+      .dst_valid({rcu_lane_ops_c14_valid}), .dst_payload({rcu_lane_ops_c14_payload}),
+      .dst_wake(rcu_lane_ops_c14_wake), .dst_credit({rcu_lane_ops_c14_credit}), .dst_stall({rcu_lane_ops_c14_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c14_tid}), .dst_tid({rcu_lane_ops_c14_tid})
+      , .src_tid({b_rcu_lane_ops_c14_tid}), .dst_tid({rcu_lane_ops_c14_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c14
+    assign {rcu_lane_ops_c14_valid} = {b_rcu_lane_ops_c14_valid};
+    assign {rcu_lane_ops_c14_payload} = {b_rcu_lane_ops_c14_payload};
+    assign rcu_lane_ops_c14_wake = b_rcu_lane_ops_c14_wake;
+    assign {b_rcu_lane_ops_c14_credit} = {rcu_lane_ops_c14_credit};
+    assign {b_rcu_lane_ops_c14_stall} = {rcu_lane_ops_c14_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c14_tid} = {b_rcu_lane_ops_c14_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C15), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c15 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c15_valid}), .src_payload({b_rcu_lane_ops_c15_payload}),
-    .src_wake(b_rcu_lane_ops_c15_wake), .src_credit({b_rcu_lane_ops_c15_credit}), .src_stall({b_rcu_lane_ops_c15_stall}),
-    .dst_valid({rcu_lane_ops_c15_valid}), .dst_payload({rcu_lane_ops_c15_payload}),
-    .dst_wake(rcu_lane_ops_c15_wake), .dst_credit({rcu_lane_ops_c15_credit}), .dst_stall({rcu_lane_ops_c15_stall})
+  if (RPT_RCU_LANE_OPS_C15 > 0) begin : g_rpt_rcu_lane_ops_c15
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C15), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c15 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c15_valid}), .src_payload({b_rcu_lane_ops_c15_payload}),
+      .src_wake(b_rcu_lane_ops_c15_wake), .src_credit({b_rcu_lane_ops_c15_credit}), .src_stall({b_rcu_lane_ops_c15_stall}),
+      .dst_valid({rcu_lane_ops_c15_valid}), .dst_payload({rcu_lane_ops_c15_payload}),
+      .dst_wake(rcu_lane_ops_c15_wake), .dst_credit({rcu_lane_ops_c15_credit}), .dst_stall({rcu_lane_ops_c15_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c15_tid}), .dst_tid({rcu_lane_ops_c15_tid})
+      , .src_tid({b_rcu_lane_ops_c15_tid}), .dst_tid({rcu_lane_ops_c15_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c15
+    assign {rcu_lane_ops_c15_valid} = {b_rcu_lane_ops_c15_valid};
+    assign {rcu_lane_ops_c15_payload} = {b_rcu_lane_ops_c15_payload};
+    assign rcu_lane_ops_c15_wake = b_rcu_lane_ops_c15_wake;
+    assign {b_rcu_lane_ops_c15_credit} = {rcu_lane_ops_c15_credit};
+    assign {b_rcu_lane_ops_c15_stall} = {rcu_lane_ops_c15_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c15_tid} = {b_rcu_lane_ops_c15_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C16), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c16 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c16_valid}), .src_payload({b_rcu_lane_ops_c16_payload}),
-    .src_wake(b_rcu_lane_ops_c16_wake), .src_credit({b_rcu_lane_ops_c16_credit}), .src_stall({b_rcu_lane_ops_c16_stall}),
-    .dst_valid({rcu_lane_ops_c16_valid}), .dst_payload({rcu_lane_ops_c16_payload}),
-    .dst_wake(rcu_lane_ops_c16_wake), .dst_credit({rcu_lane_ops_c16_credit}), .dst_stall({rcu_lane_ops_c16_stall})
+  if (RPT_RCU_LANE_OPS_C16 > 0) begin : g_rpt_rcu_lane_ops_c16
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C16), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c16 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c16_valid}), .src_payload({b_rcu_lane_ops_c16_payload}),
+      .src_wake(b_rcu_lane_ops_c16_wake), .src_credit({b_rcu_lane_ops_c16_credit}), .src_stall({b_rcu_lane_ops_c16_stall}),
+      .dst_valid({rcu_lane_ops_c16_valid}), .dst_payload({rcu_lane_ops_c16_payload}),
+      .dst_wake(rcu_lane_ops_c16_wake), .dst_credit({rcu_lane_ops_c16_credit}), .dst_stall({rcu_lane_ops_c16_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c16_tid}), .dst_tid({rcu_lane_ops_c16_tid})
+      , .src_tid({b_rcu_lane_ops_c16_tid}), .dst_tid({rcu_lane_ops_c16_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c16
+    assign {rcu_lane_ops_c16_valid} = {b_rcu_lane_ops_c16_valid};
+    assign {rcu_lane_ops_c16_payload} = {b_rcu_lane_ops_c16_payload};
+    assign rcu_lane_ops_c16_wake = b_rcu_lane_ops_c16_wake;
+    assign {b_rcu_lane_ops_c16_credit} = {rcu_lane_ops_c16_credit};
+    assign {b_rcu_lane_ops_c16_stall} = {rcu_lane_ops_c16_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c16_tid} = {b_rcu_lane_ops_c16_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C17), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c17 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c17_valid}), .src_payload({b_rcu_lane_ops_c17_payload}),
-    .src_wake(b_rcu_lane_ops_c17_wake), .src_credit({b_rcu_lane_ops_c17_credit}), .src_stall({b_rcu_lane_ops_c17_stall}),
-    .dst_valid({rcu_lane_ops_c17_valid}), .dst_payload({rcu_lane_ops_c17_payload}),
-    .dst_wake(rcu_lane_ops_c17_wake), .dst_credit({rcu_lane_ops_c17_credit}), .dst_stall({rcu_lane_ops_c17_stall})
+  if (RPT_RCU_LANE_OPS_C17 > 0) begin : g_rpt_rcu_lane_ops_c17
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C17), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c17 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c17_valid}), .src_payload({b_rcu_lane_ops_c17_payload}),
+      .src_wake(b_rcu_lane_ops_c17_wake), .src_credit({b_rcu_lane_ops_c17_credit}), .src_stall({b_rcu_lane_ops_c17_stall}),
+      .dst_valid({rcu_lane_ops_c17_valid}), .dst_payload({rcu_lane_ops_c17_payload}),
+      .dst_wake(rcu_lane_ops_c17_wake), .dst_credit({rcu_lane_ops_c17_credit}), .dst_stall({rcu_lane_ops_c17_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c17_tid}), .dst_tid({rcu_lane_ops_c17_tid})
+      , .src_tid({b_rcu_lane_ops_c17_tid}), .dst_tid({rcu_lane_ops_c17_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c17
+    assign {rcu_lane_ops_c17_valid} = {b_rcu_lane_ops_c17_valid};
+    assign {rcu_lane_ops_c17_payload} = {b_rcu_lane_ops_c17_payload};
+    assign rcu_lane_ops_c17_wake = b_rcu_lane_ops_c17_wake;
+    assign {b_rcu_lane_ops_c17_credit} = {rcu_lane_ops_c17_credit};
+    assign {b_rcu_lane_ops_c17_stall} = {rcu_lane_ops_c17_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c17_tid} = {b_rcu_lane_ops_c17_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C18), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c18 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c18_valid}), .src_payload({b_rcu_lane_ops_c18_payload}),
-    .src_wake(b_rcu_lane_ops_c18_wake), .src_credit({b_rcu_lane_ops_c18_credit}), .src_stall({b_rcu_lane_ops_c18_stall}),
-    .dst_valid({rcu_lane_ops_c18_valid}), .dst_payload({rcu_lane_ops_c18_payload}),
-    .dst_wake(rcu_lane_ops_c18_wake), .dst_credit({rcu_lane_ops_c18_credit}), .dst_stall({rcu_lane_ops_c18_stall})
+  if (RPT_RCU_LANE_OPS_C18 > 0) begin : g_rpt_rcu_lane_ops_c18
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C18), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c18 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c18_valid}), .src_payload({b_rcu_lane_ops_c18_payload}),
+      .src_wake(b_rcu_lane_ops_c18_wake), .src_credit({b_rcu_lane_ops_c18_credit}), .src_stall({b_rcu_lane_ops_c18_stall}),
+      .dst_valid({rcu_lane_ops_c18_valid}), .dst_payload({rcu_lane_ops_c18_payload}),
+      .dst_wake(rcu_lane_ops_c18_wake), .dst_credit({rcu_lane_ops_c18_credit}), .dst_stall({rcu_lane_ops_c18_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c18_tid}), .dst_tid({rcu_lane_ops_c18_tid})
+      , .src_tid({b_rcu_lane_ops_c18_tid}), .dst_tid({rcu_lane_ops_c18_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c18
+    assign {rcu_lane_ops_c18_valid} = {b_rcu_lane_ops_c18_valid};
+    assign {rcu_lane_ops_c18_payload} = {b_rcu_lane_ops_c18_payload};
+    assign rcu_lane_ops_c18_wake = b_rcu_lane_ops_c18_wake;
+    assign {b_rcu_lane_ops_c18_credit} = {rcu_lane_ops_c18_credit};
+    assign {b_rcu_lane_ops_c18_stall} = {rcu_lane_ops_c18_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c18_tid} = {b_rcu_lane_ops_c18_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C19), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c19 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c19_valid}), .src_payload({b_rcu_lane_ops_c19_payload}),
-    .src_wake(b_rcu_lane_ops_c19_wake), .src_credit({b_rcu_lane_ops_c19_credit}), .src_stall({b_rcu_lane_ops_c19_stall}),
-    .dst_valid({rcu_lane_ops_c19_valid}), .dst_payload({rcu_lane_ops_c19_payload}),
-    .dst_wake(rcu_lane_ops_c19_wake), .dst_credit({rcu_lane_ops_c19_credit}), .dst_stall({rcu_lane_ops_c19_stall})
+  if (RPT_RCU_LANE_OPS_C19 > 0) begin : g_rpt_rcu_lane_ops_c19
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C19), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c19 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c19_valid}), .src_payload({b_rcu_lane_ops_c19_payload}),
+      .src_wake(b_rcu_lane_ops_c19_wake), .src_credit({b_rcu_lane_ops_c19_credit}), .src_stall({b_rcu_lane_ops_c19_stall}),
+      .dst_valid({rcu_lane_ops_c19_valid}), .dst_payload({rcu_lane_ops_c19_payload}),
+      .dst_wake(rcu_lane_ops_c19_wake), .dst_credit({rcu_lane_ops_c19_credit}), .dst_stall({rcu_lane_ops_c19_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c19_tid}), .dst_tid({rcu_lane_ops_c19_tid})
+      , .src_tid({b_rcu_lane_ops_c19_tid}), .dst_tid({rcu_lane_ops_c19_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c19
+    assign {rcu_lane_ops_c19_valid} = {b_rcu_lane_ops_c19_valid};
+    assign {rcu_lane_ops_c19_payload} = {b_rcu_lane_ops_c19_payload};
+    assign rcu_lane_ops_c19_wake = b_rcu_lane_ops_c19_wake;
+    assign {b_rcu_lane_ops_c19_credit} = {rcu_lane_ops_c19_credit};
+    assign {b_rcu_lane_ops_c19_stall} = {rcu_lane_ops_c19_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c19_tid} = {b_rcu_lane_ops_c19_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C20), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c20 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c20_valid}), .src_payload({b_rcu_lane_ops_c20_payload}),
-    .src_wake(b_rcu_lane_ops_c20_wake), .src_credit({b_rcu_lane_ops_c20_credit}), .src_stall({b_rcu_lane_ops_c20_stall}),
-    .dst_valid({rcu_lane_ops_c20_valid}), .dst_payload({rcu_lane_ops_c20_payload}),
-    .dst_wake(rcu_lane_ops_c20_wake), .dst_credit({rcu_lane_ops_c20_credit}), .dst_stall({rcu_lane_ops_c20_stall})
+  if (RPT_RCU_LANE_OPS_C20 > 0) begin : g_rpt_rcu_lane_ops_c20
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C20), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c20 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c20_valid}), .src_payload({b_rcu_lane_ops_c20_payload}),
+      .src_wake(b_rcu_lane_ops_c20_wake), .src_credit({b_rcu_lane_ops_c20_credit}), .src_stall({b_rcu_lane_ops_c20_stall}),
+      .dst_valid({rcu_lane_ops_c20_valid}), .dst_payload({rcu_lane_ops_c20_payload}),
+      .dst_wake(rcu_lane_ops_c20_wake), .dst_credit({rcu_lane_ops_c20_credit}), .dst_stall({rcu_lane_ops_c20_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c20_tid}), .dst_tid({rcu_lane_ops_c20_tid})
+      , .src_tid({b_rcu_lane_ops_c20_tid}), .dst_tid({rcu_lane_ops_c20_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c20
+    assign {rcu_lane_ops_c20_valid} = {b_rcu_lane_ops_c20_valid};
+    assign {rcu_lane_ops_c20_payload} = {b_rcu_lane_ops_c20_payload};
+    assign rcu_lane_ops_c20_wake = b_rcu_lane_ops_c20_wake;
+    assign {b_rcu_lane_ops_c20_credit} = {rcu_lane_ops_c20_credit};
+    assign {b_rcu_lane_ops_c20_stall} = {rcu_lane_ops_c20_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c20_tid} = {b_rcu_lane_ops_c20_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C21), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c21 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c21_valid}), .src_payload({b_rcu_lane_ops_c21_payload}),
-    .src_wake(b_rcu_lane_ops_c21_wake), .src_credit({b_rcu_lane_ops_c21_credit}), .src_stall({b_rcu_lane_ops_c21_stall}),
-    .dst_valid({rcu_lane_ops_c21_valid}), .dst_payload({rcu_lane_ops_c21_payload}),
-    .dst_wake(rcu_lane_ops_c21_wake), .dst_credit({rcu_lane_ops_c21_credit}), .dst_stall({rcu_lane_ops_c21_stall})
+  if (RPT_RCU_LANE_OPS_C21 > 0) begin : g_rpt_rcu_lane_ops_c21
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C21), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c21 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c21_valid}), .src_payload({b_rcu_lane_ops_c21_payload}),
+      .src_wake(b_rcu_lane_ops_c21_wake), .src_credit({b_rcu_lane_ops_c21_credit}), .src_stall({b_rcu_lane_ops_c21_stall}),
+      .dst_valid({rcu_lane_ops_c21_valid}), .dst_payload({rcu_lane_ops_c21_payload}),
+      .dst_wake(rcu_lane_ops_c21_wake), .dst_credit({rcu_lane_ops_c21_credit}), .dst_stall({rcu_lane_ops_c21_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c21_tid}), .dst_tid({rcu_lane_ops_c21_tid})
+      , .src_tid({b_rcu_lane_ops_c21_tid}), .dst_tid({rcu_lane_ops_c21_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c21
+    assign {rcu_lane_ops_c21_valid} = {b_rcu_lane_ops_c21_valid};
+    assign {rcu_lane_ops_c21_payload} = {b_rcu_lane_ops_c21_payload};
+    assign rcu_lane_ops_c21_wake = b_rcu_lane_ops_c21_wake;
+    assign {b_rcu_lane_ops_c21_credit} = {rcu_lane_ops_c21_credit};
+    assign {b_rcu_lane_ops_c21_stall} = {rcu_lane_ops_c21_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c21_tid} = {b_rcu_lane_ops_c21_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C22), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c22 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c22_valid}), .src_payload({b_rcu_lane_ops_c22_payload}),
-    .src_wake(b_rcu_lane_ops_c22_wake), .src_credit({b_rcu_lane_ops_c22_credit}), .src_stall({b_rcu_lane_ops_c22_stall}),
-    .dst_valid({rcu_lane_ops_c22_valid}), .dst_payload({rcu_lane_ops_c22_payload}),
-    .dst_wake(rcu_lane_ops_c22_wake), .dst_credit({rcu_lane_ops_c22_credit}), .dst_stall({rcu_lane_ops_c22_stall})
+  if (RPT_RCU_LANE_OPS_C22 > 0) begin : g_rpt_rcu_lane_ops_c22
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C22), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c22 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c22_valid}), .src_payload({b_rcu_lane_ops_c22_payload}),
+      .src_wake(b_rcu_lane_ops_c22_wake), .src_credit({b_rcu_lane_ops_c22_credit}), .src_stall({b_rcu_lane_ops_c22_stall}),
+      .dst_valid({rcu_lane_ops_c22_valid}), .dst_payload({rcu_lane_ops_c22_payload}),
+      .dst_wake(rcu_lane_ops_c22_wake), .dst_credit({rcu_lane_ops_c22_credit}), .dst_stall({rcu_lane_ops_c22_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c22_tid}), .dst_tid({rcu_lane_ops_c22_tid})
+      , .src_tid({b_rcu_lane_ops_c22_tid}), .dst_tid({rcu_lane_ops_c22_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c22
+    assign {rcu_lane_ops_c22_valid} = {b_rcu_lane_ops_c22_valid};
+    assign {rcu_lane_ops_c22_payload} = {b_rcu_lane_ops_c22_payload};
+    assign rcu_lane_ops_c22_wake = b_rcu_lane_ops_c22_wake;
+    assign {b_rcu_lane_ops_c22_credit} = {rcu_lane_ops_c22_credit};
+    assign {b_rcu_lane_ops_c22_stall} = {rcu_lane_ops_c22_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c22_tid} = {b_rcu_lane_ops_c22_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C23), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c23 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c23_valid}), .src_payload({b_rcu_lane_ops_c23_payload}),
-    .src_wake(b_rcu_lane_ops_c23_wake), .src_credit({b_rcu_lane_ops_c23_credit}), .src_stall({b_rcu_lane_ops_c23_stall}),
-    .dst_valid({rcu_lane_ops_c23_valid}), .dst_payload({rcu_lane_ops_c23_payload}),
-    .dst_wake(rcu_lane_ops_c23_wake), .dst_credit({rcu_lane_ops_c23_credit}), .dst_stall({rcu_lane_ops_c23_stall})
+  if (RPT_RCU_LANE_OPS_C23 > 0) begin : g_rpt_rcu_lane_ops_c23
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C23), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c23 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c23_valid}), .src_payload({b_rcu_lane_ops_c23_payload}),
+      .src_wake(b_rcu_lane_ops_c23_wake), .src_credit({b_rcu_lane_ops_c23_credit}), .src_stall({b_rcu_lane_ops_c23_stall}),
+      .dst_valid({rcu_lane_ops_c23_valid}), .dst_payload({rcu_lane_ops_c23_payload}),
+      .dst_wake(rcu_lane_ops_c23_wake), .dst_credit({rcu_lane_ops_c23_credit}), .dst_stall({rcu_lane_ops_c23_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c23_tid}), .dst_tid({rcu_lane_ops_c23_tid})
+      , .src_tid({b_rcu_lane_ops_c23_tid}), .dst_tid({rcu_lane_ops_c23_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c23
+    assign {rcu_lane_ops_c23_valid} = {b_rcu_lane_ops_c23_valid};
+    assign {rcu_lane_ops_c23_payload} = {b_rcu_lane_ops_c23_payload};
+    assign rcu_lane_ops_c23_wake = b_rcu_lane_ops_c23_wake;
+    assign {b_rcu_lane_ops_c23_credit} = {rcu_lane_ops_c23_credit};
+    assign {b_rcu_lane_ops_c23_stall} = {rcu_lane_ops_c23_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c23_tid} = {b_rcu_lane_ops_c23_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C24), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c24 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c24_valid}), .src_payload({b_rcu_lane_ops_c24_payload}),
-    .src_wake(b_rcu_lane_ops_c24_wake), .src_credit({b_rcu_lane_ops_c24_credit}), .src_stall({b_rcu_lane_ops_c24_stall}),
-    .dst_valid({rcu_lane_ops_c24_valid}), .dst_payload({rcu_lane_ops_c24_payload}),
-    .dst_wake(rcu_lane_ops_c24_wake), .dst_credit({rcu_lane_ops_c24_credit}), .dst_stall({rcu_lane_ops_c24_stall})
+  if (RPT_RCU_LANE_OPS_C24 > 0) begin : g_rpt_rcu_lane_ops_c24
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C24), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c24 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c24_valid}), .src_payload({b_rcu_lane_ops_c24_payload}),
+      .src_wake(b_rcu_lane_ops_c24_wake), .src_credit({b_rcu_lane_ops_c24_credit}), .src_stall({b_rcu_lane_ops_c24_stall}),
+      .dst_valid({rcu_lane_ops_c24_valid}), .dst_payload({rcu_lane_ops_c24_payload}),
+      .dst_wake(rcu_lane_ops_c24_wake), .dst_credit({rcu_lane_ops_c24_credit}), .dst_stall({rcu_lane_ops_c24_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c24_tid}), .dst_tid({rcu_lane_ops_c24_tid})
+      , .src_tid({b_rcu_lane_ops_c24_tid}), .dst_tid({rcu_lane_ops_c24_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c24
+    assign {rcu_lane_ops_c24_valid} = {b_rcu_lane_ops_c24_valid};
+    assign {rcu_lane_ops_c24_payload} = {b_rcu_lane_ops_c24_payload};
+    assign rcu_lane_ops_c24_wake = b_rcu_lane_ops_c24_wake;
+    assign {b_rcu_lane_ops_c24_credit} = {rcu_lane_ops_c24_credit};
+    assign {b_rcu_lane_ops_c24_stall} = {rcu_lane_ops_c24_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c24_tid} = {b_rcu_lane_ops_c24_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C25), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c25 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c25_valid}), .src_payload({b_rcu_lane_ops_c25_payload}),
-    .src_wake(b_rcu_lane_ops_c25_wake), .src_credit({b_rcu_lane_ops_c25_credit}), .src_stall({b_rcu_lane_ops_c25_stall}),
-    .dst_valid({rcu_lane_ops_c25_valid}), .dst_payload({rcu_lane_ops_c25_payload}),
-    .dst_wake(rcu_lane_ops_c25_wake), .dst_credit({rcu_lane_ops_c25_credit}), .dst_stall({rcu_lane_ops_c25_stall})
+  if (RPT_RCU_LANE_OPS_C25 > 0) begin : g_rpt_rcu_lane_ops_c25
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C25), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c25 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c25_valid}), .src_payload({b_rcu_lane_ops_c25_payload}),
+      .src_wake(b_rcu_lane_ops_c25_wake), .src_credit({b_rcu_lane_ops_c25_credit}), .src_stall({b_rcu_lane_ops_c25_stall}),
+      .dst_valid({rcu_lane_ops_c25_valid}), .dst_payload({rcu_lane_ops_c25_payload}),
+      .dst_wake(rcu_lane_ops_c25_wake), .dst_credit({rcu_lane_ops_c25_credit}), .dst_stall({rcu_lane_ops_c25_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c25_tid}), .dst_tid({rcu_lane_ops_c25_tid})
+      , .src_tid({b_rcu_lane_ops_c25_tid}), .dst_tid({rcu_lane_ops_c25_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c25
+    assign {rcu_lane_ops_c25_valid} = {b_rcu_lane_ops_c25_valid};
+    assign {rcu_lane_ops_c25_payload} = {b_rcu_lane_ops_c25_payload};
+    assign rcu_lane_ops_c25_wake = b_rcu_lane_ops_c25_wake;
+    assign {b_rcu_lane_ops_c25_credit} = {rcu_lane_ops_c25_credit};
+    assign {b_rcu_lane_ops_c25_stall} = {rcu_lane_ops_c25_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c25_tid} = {b_rcu_lane_ops_c25_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C26), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c26 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c26_valid}), .src_payload({b_rcu_lane_ops_c26_payload}),
-    .src_wake(b_rcu_lane_ops_c26_wake), .src_credit({b_rcu_lane_ops_c26_credit}), .src_stall({b_rcu_lane_ops_c26_stall}),
-    .dst_valid({rcu_lane_ops_c26_valid}), .dst_payload({rcu_lane_ops_c26_payload}),
-    .dst_wake(rcu_lane_ops_c26_wake), .dst_credit({rcu_lane_ops_c26_credit}), .dst_stall({rcu_lane_ops_c26_stall})
+  if (RPT_RCU_LANE_OPS_C26 > 0) begin : g_rpt_rcu_lane_ops_c26
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C26), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c26 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c26_valid}), .src_payload({b_rcu_lane_ops_c26_payload}),
+      .src_wake(b_rcu_lane_ops_c26_wake), .src_credit({b_rcu_lane_ops_c26_credit}), .src_stall({b_rcu_lane_ops_c26_stall}),
+      .dst_valid({rcu_lane_ops_c26_valid}), .dst_payload({rcu_lane_ops_c26_payload}),
+      .dst_wake(rcu_lane_ops_c26_wake), .dst_credit({rcu_lane_ops_c26_credit}), .dst_stall({rcu_lane_ops_c26_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c26_tid}), .dst_tid({rcu_lane_ops_c26_tid})
+      , .src_tid({b_rcu_lane_ops_c26_tid}), .dst_tid({rcu_lane_ops_c26_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c26
+    assign {rcu_lane_ops_c26_valid} = {b_rcu_lane_ops_c26_valid};
+    assign {rcu_lane_ops_c26_payload} = {b_rcu_lane_ops_c26_payload};
+    assign rcu_lane_ops_c26_wake = b_rcu_lane_ops_c26_wake;
+    assign {b_rcu_lane_ops_c26_credit} = {rcu_lane_ops_c26_credit};
+    assign {b_rcu_lane_ops_c26_stall} = {rcu_lane_ops_c26_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c26_tid} = {b_rcu_lane_ops_c26_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C27), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c27 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c27_valid}), .src_payload({b_rcu_lane_ops_c27_payload}),
-    .src_wake(b_rcu_lane_ops_c27_wake), .src_credit({b_rcu_lane_ops_c27_credit}), .src_stall({b_rcu_lane_ops_c27_stall}),
-    .dst_valid({rcu_lane_ops_c27_valid}), .dst_payload({rcu_lane_ops_c27_payload}),
-    .dst_wake(rcu_lane_ops_c27_wake), .dst_credit({rcu_lane_ops_c27_credit}), .dst_stall({rcu_lane_ops_c27_stall})
+  if (RPT_RCU_LANE_OPS_C27 > 0) begin : g_rpt_rcu_lane_ops_c27
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C27), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c27 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c27_valid}), .src_payload({b_rcu_lane_ops_c27_payload}),
+      .src_wake(b_rcu_lane_ops_c27_wake), .src_credit({b_rcu_lane_ops_c27_credit}), .src_stall({b_rcu_lane_ops_c27_stall}),
+      .dst_valid({rcu_lane_ops_c27_valid}), .dst_payload({rcu_lane_ops_c27_payload}),
+      .dst_wake(rcu_lane_ops_c27_wake), .dst_credit({rcu_lane_ops_c27_credit}), .dst_stall({rcu_lane_ops_c27_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c27_tid}), .dst_tid({rcu_lane_ops_c27_tid})
+      , .src_tid({b_rcu_lane_ops_c27_tid}), .dst_tid({rcu_lane_ops_c27_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c27
+    assign {rcu_lane_ops_c27_valid} = {b_rcu_lane_ops_c27_valid};
+    assign {rcu_lane_ops_c27_payload} = {b_rcu_lane_ops_c27_payload};
+    assign rcu_lane_ops_c27_wake = b_rcu_lane_ops_c27_wake;
+    assign {b_rcu_lane_ops_c27_credit} = {rcu_lane_ops_c27_credit};
+    assign {b_rcu_lane_ops_c27_stall} = {rcu_lane_ops_c27_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c27_tid} = {b_rcu_lane_ops_c27_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C28), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c28 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c28_valid}), .src_payload({b_rcu_lane_ops_c28_payload}),
-    .src_wake(b_rcu_lane_ops_c28_wake), .src_credit({b_rcu_lane_ops_c28_credit}), .src_stall({b_rcu_lane_ops_c28_stall}),
-    .dst_valid({rcu_lane_ops_c28_valid}), .dst_payload({rcu_lane_ops_c28_payload}),
-    .dst_wake(rcu_lane_ops_c28_wake), .dst_credit({rcu_lane_ops_c28_credit}), .dst_stall({rcu_lane_ops_c28_stall})
+  if (RPT_RCU_LANE_OPS_C28 > 0) begin : g_rpt_rcu_lane_ops_c28
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C28), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c28 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c28_valid}), .src_payload({b_rcu_lane_ops_c28_payload}),
+      .src_wake(b_rcu_lane_ops_c28_wake), .src_credit({b_rcu_lane_ops_c28_credit}), .src_stall({b_rcu_lane_ops_c28_stall}),
+      .dst_valid({rcu_lane_ops_c28_valid}), .dst_payload({rcu_lane_ops_c28_payload}),
+      .dst_wake(rcu_lane_ops_c28_wake), .dst_credit({rcu_lane_ops_c28_credit}), .dst_stall({rcu_lane_ops_c28_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c28_tid}), .dst_tid({rcu_lane_ops_c28_tid})
+      , .src_tid({b_rcu_lane_ops_c28_tid}), .dst_tid({rcu_lane_ops_c28_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c28
+    assign {rcu_lane_ops_c28_valid} = {b_rcu_lane_ops_c28_valid};
+    assign {rcu_lane_ops_c28_payload} = {b_rcu_lane_ops_c28_payload};
+    assign rcu_lane_ops_c28_wake = b_rcu_lane_ops_c28_wake;
+    assign {b_rcu_lane_ops_c28_credit} = {rcu_lane_ops_c28_credit};
+    assign {b_rcu_lane_ops_c28_stall} = {rcu_lane_ops_c28_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c28_tid} = {b_rcu_lane_ops_c28_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C29), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c29 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c29_valid}), .src_payload({b_rcu_lane_ops_c29_payload}),
-    .src_wake(b_rcu_lane_ops_c29_wake), .src_credit({b_rcu_lane_ops_c29_credit}), .src_stall({b_rcu_lane_ops_c29_stall}),
-    .dst_valid({rcu_lane_ops_c29_valid}), .dst_payload({rcu_lane_ops_c29_payload}),
-    .dst_wake(rcu_lane_ops_c29_wake), .dst_credit({rcu_lane_ops_c29_credit}), .dst_stall({rcu_lane_ops_c29_stall})
+  if (RPT_RCU_LANE_OPS_C29 > 0) begin : g_rpt_rcu_lane_ops_c29
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C29), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c29 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c29_valid}), .src_payload({b_rcu_lane_ops_c29_payload}),
+      .src_wake(b_rcu_lane_ops_c29_wake), .src_credit({b_rcu_lane_ops_c29_credit}), .src_stall({b_rcu_lane_ops_c29_stall}),
+      .dst_valid({rcu_lane_ops_c29_valid}), .dst_payload({rcu_lane_ops_c29_payload}),
+      .dst_wake(rcu_lane_ops_c29_wake), .dst_credit({rcu_lane_ops_c29_credit}), .dst_stall({rcu_lane_ops_c29_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c29_tid}), .dst_tid({rcu_lane_ops_c29_tid})
+      , .src_tid({b_rcu_lane_ops_c29_tid}), .dst_tid({rcu_lane_ops_c29_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c29
+    assign {rcu_lane_ops_c29_valid} = {b_rcu_lane_ops_c29_valid};
+    assign {rcu_lane_ops_c29_payload} = {b_rcu_lane_ops_c29_payload};
+    assign rcu_lane_ops_c29_wake = b_rcu_lane_ops_c29_wake;
+    assign {b_rcu_lane_ops_c29_credit} = {rcu_lane_ops_c29_credit};
+    assign {b_rcu_lane_ops_c29_stall} = {rcu_lane_ops_c29_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c29_tid} = {b_rcu_lane_ops_c29_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C30), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c30 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c30_valid}), .src_payload({b_rcu_lane_ops_c30_payload}),
-    .src_wake(b_rcu_lane_ops_c30_wake), .src_credit({b_rcu_lane_ops_c30_credit}), .src_stall({b_rcu_lane_ops_c30_stall}),
-    .dst_valid({rcu_lane_ops_c30_valid}), .dst_payload({rcu_lane_ops_c30_payload}),
-    .dst_wake(rcu_lane_ops_c30_wake), .dst_credit({rcu_lane_ops_c30_credit}), .dst_stall({rcu_lane_ops_c30_stall})
+  if (RPT_RCU_LANE_OPS_C30 > 0) begin : g_rpt_rcu_lane_ops_c30
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C30), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c30 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c30_valid}), .src_payload({b_rcu_lane_ops_c30_payload}),
+      .src_wake(b_rcu_lane_ops_c30_wake), .src_credit({b_rcu_lane_ops_c30_credit}), .src_stall({b_rcu_lane_ops_c30_stall}),
+      .dst_valid({rcu_lane_ops_c30_valid}), .dst_payload({rcu_lane_ops_c30_payload}),
+      .dst_wake(rcu_lane_ops_c30_wake), .dst_credit({rcu_lane_ops_c30_credit}), .dst_stall({rcu_lane_ops_c30_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c30_tid}), .dst_tid({rcu_lane_ops_c30_tid})
+      , .src_tid({b_rcu_lane_ops_c30_tid}), .dst_tid({rcu_lane_ops_c30_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c30
+    assign {rcu_lane_ops_c30_valid} = {b_rcu_lane_ops_c30_valid};
+    assign {rcu_lane_ops_c30_payload} = {b_rcu_lane_ops_c30_payload};
+    assign rcu_lane_ops_c30_wake = b_rcu_lane_ops_c30_wake;
+    assign {b_rcu_lane_ops_c30_credit} = {rcu_lane_ops_c30_credit};
+    assign {b_rcu_lane_ops_c30_stall} = {rcu_lane_ops_c30_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c30_tid} = {b_rcu_lane_ops_c30_tid};
+`endif
+  end
   // ccv_rcu_lane_ops, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C31), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hfffff0000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c31 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_lane_ops_c31_valid}), .src_payload({b_rcu_lane_ops_c31_payload}),
-    .src_wake(b_rcu_lane_ops_c31_wake), .src_credit({b_rcu_lane_ops_c31_credit}), .src_stall({b_rcu_lane_ops_c31_stall}),
-    .dst_valid({rcu_lane_ops_c31_valid}), .dst_payload({rcu_lane_ops_c31_payload}),
-    .dst_wake(rcu_lane_ops_c31_wake), .dst_credit({rcu_lane_ops_c31_credit}), .dst_stall({rcu_lane_ops_c31_stall})
+  if (RPT_RCU_LANE_OPS_C31 > 0) begin : g_rpt_rcu_lane_ops_c31
+    ccv_common_rpt #(.STAGES(RPT_RCU_LANE_OPS_C31), .SLOTS(1), .PAYLOAD_W(344), .LEAD_MASK(344'hf00f00000000000000000000000000000000000000000)) u_rpt_rcu_lane_ops_c31 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_lane_ops_c31_valid}), .src_payload({b_rcu_lane_ops_c31_payload}),
+      .src_wake(b_rcu_lane_ops_c31_wake), .src_credit({b_rcu_lane_ops_c31_credit}), .src_stall({b_rcu_lane_ops_c31_stall}),
+      .dst_valid({rcu_lane_ops_c31_valid}), .dst_payload({rcu_lane_ops_c31_payload}),
+      .dst_wake(rcu_lane_ops_c31_wake), .dst_credit({rcu_lane_ops_c31_credit}), .dst_stall({rcu_lane_ops_c31_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_lane_ops_c31_tid}), .dst_tid({rcu_lane_ops_c31_tid})
+      , .src_tid({b_rcu_lane_ops_c31_tid}), .dst_tid({rcu_lane_ops_c31_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_lane_ops_c31
+    assign {rcu_lane_ops_c31_valid} = {b_rcu_lane_ops_c31_valid};
+    assign {rcu_lane_ops_c31_payload} = {b_rcu_lane_ops_c31_payload};
+    assign rcu_lane_ops_c31_wake = b_rcu_lane_ops_c31_wake;
+    assign {b_rcu_lane_ops_c31_credit} = {rcu_lane_ops_c31_credit};
+    assign {b_rcu_lane_ops_c31_stall} = {rcu_lane_ops_c31_stall};
+`ifdef CCV_TRACE
+    assign {rcu_lane_ops_c31_tid} = {b_rcu_lane_ops_c31_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C00), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c00 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c00_valid}), .src_payload({lane_rcu_res_c00_payload}),
-    .src_wake(lane_rcu_res_c00_wake), .src_credit({lane_rcu_res_c00_credit}), .src_stall({lane_rcu_res_c00_stall}),
-    .dst_valid({b_lane_rcu_res_c00_valid}), .dst_payload({b_lane_rcu_res_c00_payload}),
-    .dst_wake(b_lane_rcu_res_c00_wake), .dst_credit({b_lane_rcu_res_c00_credit}), .dst_stall({b_lane_rcu_res_c00_stall})
+  if (RPT_LANE_RCU_RES_C00 > 0) begin : g_rpt_lane_rcu_res_c00
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C00), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c00 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c00_valid}), .src_payload({lane_rcu_res_c00_payload}),
+      .src_wake(lane_rcu_res_c00_wake), .src_credit({lane_rcu_res_c00_credit}), .src_stall({lane_rcu_res_c00_stall}),
+      .dst_valid({b_lane_rcu_res_c00_valid}), .dst_payload({b_lane_rcu_res_c00_payload}),
+      .dst_wake(b_lane_rcu_res_c00_wake), .dst_credit({b_lane_rcu_res_c00_credit}), .dst_stall({b_lane_rcu_res_c00_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c00_tid}), .dst_tid({b_lane_rcu_res_c00_tid})
+      , .src_tid({lane_rcu_res_c00_tid}), .dst_tid({b_lane_rcu_res_c00_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c00
+    assign {b_lane_rcu_res_c00_valid} = {lane_rcu_res_c00_valid};
+    assign {b_lane_rcu_res_c00_payload} = {lane_rcu_res_c00_payload};
+    assign b_lane_rcu_res_c00_wake = lane_rcu_res_c00_wake;
+    assign {lane_rcu_res_c00_credit} = {b_lane_rcu_res_c00_credit};
+    assign {lane_rcu_res_c00_stall} = {b_lane_rcu_res_c00_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c00_tid} = {lane_rcu_res_c00_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C01), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c01 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c01_valid}), .src_payload({lane_rcu_res_c01_payload}),
-    .src_wake(lane_rcu_res_c01_wake), .src_credit({lane_rcu_res_c01_credit}), .src_stall({lane_rcu_res_c01_stall}),
-    .dst_valid({b_lane_rcu_res_c01_valid}), .dst_payload({b_lane_rcu_res_c01_payload}),
-    .dst_wake(b_lane_rcu_res_c01_wake), .dst_credit({b_lane_rcu_res_c01_credit}), .dst_stall({b_lane_rcu_res_c01_stall})
+  if (RPT_LANE_RCU_RES_C01 > 0) begin : g_rpt_lane_rcu_res_c01
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C01), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c01 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c01_valid}), .src_payload({lane_rcu_res_c01_payload}),
+      .src_wake(lane_rcu_res_c01_wake), .src_credit({lane_rcu_res_c01_credit}), .src_stall({lane_rcu_res_c01_stall}),
+      .dst_valid({b_lane_rcu_res_c01_valid}), .dst_payload({b_lane_rcu_res_c01_payload}),
+      .dst_wake(b_lane_rcu_res_c01_wake), .dst_credit({b_lane_rcu_res_c01_credit}), .dst_stall({b_lane_rcu_res_c01_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c01_tid}), .dst_tid({b_lane_rcu_res_c01_tid})
+      , .src_tid({lane_rcu_res_c01_tid}), .dst_tid({b_lane_rcu_res_c01_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c01
+    assign {b_lane_rcu_res_c01_valid} = {lane_rcu_res_c01_valid};
+    assign {b_lane_rcu_res_c01_payload} = {lane_rcu_res_c01_payload};
+    assign b_lane_rcu_res_c01_wake = lane_rcu_res_c01_wake;
+    assign {lane_rcu_res_c01_credit} = {b_lane_rcu_res_c01_credit};
+    assign {lane_rcu_res_c01_stall} = {b_lane_rcu_res_c01_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c01_tid} = {lane_rcu_res_c01_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C02), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c02 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c02_valid}), .src_payload({lane_rcu_res_c02_payload}),
-    .src_wake(lane_rcu_res_c02_wake), .src_credit({lane_rcu_res_c02_credit}), .src_stall({lane_rcu_res_c02_stall}),
-    .dst_valid({b_lane_rcu_res_c02_valid}), .dst_payload({b_lane_rcu_res_c02_payload}),
-    .dst_wake(b_lane_rcu_res_c02_wake), .dst_credit({b_lane_rcu_res_c02_credit}), .dst_stall({b_lane_rcu_res_c02_stall})
+  if (RPT_LANE_RCU_RES_C02 > 0) begin : g_rpt_lane_rcu_res_c02
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C02), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c02 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c02_valid}), .src_payload({lane_rcu_res_c02_payload}),
+      .src_wake(lane_rcu_res_c02_wake), .src_credit({lane_rcu_res_c02_credit}), .src_stall({lane_rcu_res_c02_stall}),
+      .dst_valid({b_lane_rcu_res_c02_valid}), .dst_payload({b_lane_rcu_res_c02_payload}),
+      .dst_wake(b_lane_rcu_res_c02_wake), .dst_credit({b_lane_rcu_res_c02_credit}), .dst_stall({b_lane_rcu_res_c02_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c02_tid}), .dst_tid({b_lane_rcu_res_c02_tid})
+      , .src_tid({lane_rcu_res_c02_tid}), .dst_tid({b_lane_rcu_res_c02_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c02
+    assign {b_lane_rcu_res_c02_valid} = {lane_rcu_res_c02_valid};
+    assign {b_lane_rcu_res_c02_payload} = {lane_rcu_res_c02_payload};
+    assign b_lane_rcu_res_c02_wake = lane_rcu_res_c02_wake;
+    assign {lane_rcu_res_c02_credit} = {b_lane_rcu_res_c02_credit};
+    assign {lane_rcu_res_c02_stall} = {b_lane_rcu_res_c02_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c02_tid} = {lane_rcu_res_c02_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C03), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c03 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c03_valid}), .src_payload({lane_rcu_res_c03_payload}),
-    .src_wake(lane_rcu_res_c03_wake), .src_credit({lane_rcu_res_c03_credit}), .src_stall({lane_rcu_res_c03_stall}),
-    .dst_valid({b_lane_rcu_res_c03_valid}), .dst_payload({b_lane_rcu_res_c03_payload}),
-    .dst_wake(b_lane_rcu_res_c03_wake), .dst_credit({b_lane_rcu_res_c03_credit}), .dst_stall({b_lane_rcu_res_c03_stall})
+  if (RPT_LANE_RCU_RES_C03 > 0) begin : g_rpt_lane_rcu_res_c03
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C03), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c03 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c03_valid}), .src_payload({lane_rcu_res_c03_payload}),
+      .src_wake(lane_rcu_res_c03_wake), .src_credit({lane_rcu_res_c03_credit}), .src_stall({lane_rcu_res_c03_stall}),
+      .dst_valid({b_lane_rcu_res_c03_valid}), .dst_payload({b_lane_rcu_res_c03_payload}),
+      .dst_wake(b_lane_rcu_res_c03_wake), .dst_credit({b_lane_rcu_res_c03_credit}), .dst_stall({b_lane_rcu_res_c03_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c03_tid}), .dst_tid({b_lane_rcu_res_c03_tid})
+      , .src_tid({lane_rcu_res_c03_tid}), .dst_tid({b_lane_rcu_res_c03_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c03
+    assign {b_lane_rcu_res_c03_valid} = {lane_rcu_res_c03_valid};
+    assign {b_lane_rcu_res_c03_payload} = {lane_rcu_res_c03_payload};
+    assign b_lane_rcu_res_c03_wake = lane_rcu_res_c03_wake;
+    assign {lane_rcu_res_c03_credit} = {b_lane_rcu_res_c03_credit};
+    assign {lane_rcu_res_c03_stall} = {b_lane_rcu_res_c03_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c03_tid} = {lane_rcu_res_c03_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C04), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c04 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c04_valid}), .src_payload({lane_rcu_res_c04_payload}),
-    .src_wake(lane_rcu_res_c04_wake), .src_credit({lane_rcu_res_c04_credit}), .src_stall({lane_rcu_res_c04_stall}),
-    .dst_valid({b_lane_rcu_res_c04_valid}), .dst_payload({b_lane_rcu_res_c04_payload}),
-    .dst_wake(b_lane_rcu_res_c04_wake), .dst_credit({b_lane_rcu_res_c04_credit}), .dst_stall({b_lane_rcu_res_c04_stall})
+  if (RPT_LANE_RCU_RES_C04 > 0) begin : g_rpt_lane_rcu_res_c04
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C04), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c04 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c04_valid}), .src_payload({lane_rcu_res_c04_payload}),
+      .src_wake(lane_rcu_res_c04_wake), .src_credit({lane_rcu_res_c04_credit}), .src_stall({lane_rcu_res_c04_stall}),
+      .dst_valid({b_lane_rcu_res_c04_valid}), .dst_payload({b_lane_rcu_res_c04_payload}),
+      .dst_wake(b_lane_rcu_res_c04_wake), .dst_credit({b_lane_rcu_res_c04_credit}), .dst_stall({b_lane_rcu_res_c04_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c04_tid}), .dst_tid({b_lane_rcu_res_c04_tid})
+      , .src_tid({lane_rcu_res_c04_tid}), .dst_tid({b_lane_rcu_res_c04_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c04
+    assign {b_lane_rcu_res_c04_valid} = {lane_rcu_res_c04_valid};
+    assign {b_lane_rcu_res_c04_payload} = {lane_rcu_res_c04_payload};
+    assign b_lane_rcu_res_c04_wake = lane_rcu_res_c04_wake;
+    assign {lane_rcu_res_c04_credit} = {b_lane_rcu_res_c04_credit};
+    assign {lane_rcu_res_c04_stall} = {b_lane_rcu_res_c04_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c04_tid} = {lane_rcu_res_c04_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C05), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c05 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c05_valid}), .src_payload({lane_rcu_res_c05_payload}),
-    .src_wake(lane_rcu_res_c05_wake), .src_credit({lane_rcu_res_c05_credit}), .src_stall({lane_rcu_res_c05_stall}),
-    .dst_valid({b_lane_rcu_res_c05_valid}), .dst_payload({b_lane_rcu_res_c05_payload}),
-    .dst_wake(b_lane_rcu_res_c05_wake), .dst_credit({b_lane_rcu_res_c05_credit}), .dst_stall({b_lane_rcu_res_c05_stall})
+  if (RPT_LANE_RCU_RES_C05 > 0) begin : g_rpt_lane_rcu_res_c05
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C05), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c05 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c05_valid}), .src_payload({lane_rcu_res_c05_payload}),
+      .src_wake(lane_rcu_res_c05_wake), .src_credit({lane_rcu_res_c05_credit}), .src_stall({lane_rcu_res_c05_stall}),
+      .dst_valid({b_lane_rcu_res_c05_valid}), .dst_payload({b_lane_rcu_res_c05_payload}),
+      .dst_wake(b_lane_rcu_res_c05_wake), .dst_credit({b_lane_rcu_res_c05_credit}), .dst_stall({b_lane_rcu_res_c05_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c05_tid}), .dst_tid({b_lane_rcu_res_c05_tid})
+      , .src_tid({lane_rcu_res_c05_tid}), .dst_tid({b_lane_rcu_res_c05_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c05
+    assign {b_lane_rcu_res_c05_valid} = {lane_rcu_res_c05_valid};
+    assign {b_lane_rcu_res_c05_payload} = {lane_rcu_res_c05_payload};
+    assign b_lane_rcu_res_c05_wake = lane_rcu_res_c05_wake;
+    assign {lane_rcu_res_c05_credit} = {b_lane_rcu_res_c05_credit};
+    assign {lane_rcu_res_c05_stall} = {b_lane_rcu_res_c05_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c05_tid} = {lane_rcu_res_c05_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C06), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c06 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c06_valid}), .src_payload({lane_rcu_res_c06_payload}),
-    .src_wake(lane_rcu_res_c06_wake), .src_credit({lane_rcu_res_c06_credit}), .src_stall({lane_rcu_res_c06_stall}),
-    .dst_valid({b_lane_rcu_res_c06_valid}), .dst_payload({b_lane_rcu_res_c06_payload}),
-    .dst_wake(b_lane_rcu_res_c06_wake), .dst_credit({b_lane_rcu_res_c06_credit}), .dst_stall({b_lane_rcu_res_c06_stall})
+  if (RPT_LANE_RCU_RES_C06 > 0) begin : g_rpt_lane_rcu_res_c06
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C06), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c06 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c06_valid}), .src_payload({lane_rcu_res_c06_payload}),
+      .src_wake(lane_rcu_res_c06_wake), .src_credit({lane_rcu_res_c06_credit}), .src_stall({lane_rcu_res_c06_stall}),
+      .dst_valid({b_lane_rcu_res_c06_valid}), .dst_payload({b_lane_rcu_res_c06_payload}),
+      .dst_wake(b_lane_rcu_res_c06_wake), .dst_credit({b_lane_rcu_res_c06_credit}), .dst_stall({b_lane_rcu_res_c06_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c06_tid}), .dst_tid({b_lane_rcu_res_c06_tid})
+      , .src_tid({lane_rcu_res_c06_tid}), .dst_tid({b_lane_rcu_res_c06_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c06
+    assign {b_lane_rcu_res_c06_valid} = {lane_rcu_res_c06_valid};
+    assign {b_lane_rcu_res_c06_payload} = {lane_rcu_res_c06_payload};
+    assign b_lane_rcu_res_c06_wake = lane_rcu_res_c06_wake;
+    assign {lane_rcu_res_c06_credit} = {b_lane_rcu_res_c06_credit};
+    assign {lane_rcu_res_c06_stall} = {b_lane_rcu_res_c06_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c06_tid} = {lane_rcu_res_c06_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C07), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c07 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c07_valid}), .src_payload({lane_rcu_res_c07_payload}),
-    .src_wake(lane_rcu_res_c07_wake), .src_credit({lane_rcu_res_c07_credit}), .src_stall({lane_rcu_res_c07_stall}),
-    .dst_valid({b_lane_rcu_res_c07_valid}), .dst_payload({b_lane_rcu_res_c07_payload}),
-    .dst_wake(b_lane_rcu_res_c07_wake), .dst_credit({b_lane_rcu_res_c07_credit}), .dst_stall({b_lane_rcu_res_c07_stall})
+  if (RPT_LANE_RCU_RES_C07 > 0) begin : g_rpt_lane_rcu_res_c07
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C07), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c07 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c07_valid}), .src_payload({lane_rcu_res_c07_payload}),
+      .src_wake(lane_rcu_res_c07_wake), .src_credit({lane_rcu_res_c07_credit}), .src_stall({lane_rcu_res_c07_stall}),
+      .dst_valid({b_lane_rcu_res_c07_valid}), .dst_payload({b_lane_rcu_res_c07_payload}),
+      .dst_wake(b_lane_rcu_res_c07_wake), .dst_credit({b_lane_rcu_res_c07_credit}), .dst_stall({b_lane_rcu_res_c07_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c07_tid}), .dst_tid({b_lane_rcu_res_c07_tid})
+      , .src_tid({lane_rcu_res_c07_tid}), .dst_tid({b_lane_rcu_res_c07_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c07
+    assign {b_lane_rcu_res_c07_valid} = {lane_rcu_res_c07_valid};
+    assign {b_lane_rcu_res_c07_payload} = {lane_rcu_res_c07_payload};
+    assign b_lane_rcu_res_c07_wake = lane_rcu_res_c07_wake;
+    assign {lane_rcu_res_c07_credit} = {b_lane_rcu_res_c07_credit};
+    assign {lane_rcu_res_c07_stall} = {b_lane_rcu_res_c07_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c07_tid} = {lane_rcu_res_c07_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C08), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c08 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c08_valid}), .src_payload({lane_rcu_res_c08_payload}),
-    .src_wake(lane_rcu_res_c08_wake), .src_credit({lane_rcu_res_c08_credit}), .src_stall({lane_rcu_res_c08_stall}),
-    .dst_valid({b_lane_rcu_res_c08_valid}), .dst_payload({b_lane_rcu_res_c08_payload}),
-    .dst_wake(b_lane_rcu_res_c08_wake), .dst_credit({b_lane_rcu_res_c08_credit}), .dst_stall({b_lane_rcu_res_c08_stall})
+  if (RPT_LANE_RCU_RES_C08 > 0) begin : g_rpt_lane_rcu_res_c08
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C08), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c08 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c08_valid}), .src_payload({lane_rcu_res_c08_payload}),
+      .src_wake(lane_rcu_res_c08_wake), .src_credit({lane_rcu_res_c08_credit}), .src_stall({lane_rcu_res_c08_stall}),
+      .dst_valid({b_lane_rcu_res_c08_valid}), .dst_payload({b_lane_rcu_res_c08_payload}),
+      .dst_wake(b_lane_rcu_res_c08_wake), .dst_credit({b_lane_rcu_res_c08_credit}), .dst_stall({b_lane_rcu_res_c08_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c08_tid}), .dst_tid({b_lane_rcu_res_c08_tid})
+      , .src_tid({lane_rcu_res_c08_tid}), .dst_tid({b_lane_rcu_res_c08_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c08
+    assign {b_lane_rcu_res_c08_valid} = {lane_rcu_res_c08_valid};
+    assign {b_lane_rcu_res_c08_payload} = {lane_rcu_res_c08_payload};
+    assign b_lane_rcu_res_c08_wake = lane_rcu_res_c08_wake;
+    assign {lane_rcu_res_c08_credit} = {b_lane_rcu_res_c08_credit};
+    assign {lane_rcu_res_c08_stall} = {b_lane_rcu_res_c08_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c08_tid} = {lane_rcu_res_c08_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C09), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c09 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c09_valid}), .src_payload({lane_rcu_res_c09_payload}),
-    .src_wake(lane_rcu_res_c09_wake), .src_credit({lane_rcu_res_c09_credit}), .src_stall({lane_rcu_res_c09_stall}),
-    .dst_valid({b_lane_rcu_res_c09_valid}), .dst_payload({b_lane_rcu_res_c09_payload}),
-    .dst_wake(b_lane_rcu_res_c09_wake), .dst_credit({b_lane_rcu_res_c09_credit}), .dst_stall({b_lane_rcu_res_c09_stall})
+  if (RPT_LANE_RCU_RES_C09 > 0) begin : g_rpt_lane_rcu_res_c09
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C09), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c09 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c09_valid}), .src_payload({lane_rcu_res_c09_payload}),
+      .src_wake(lane_rcu_res_c09_wake), .src_credit({lane_rcu_res_c09_credit}), .src_stall({lane_rcu_res_c09_stall}),
+      .dst_valid({b_lane_rcu_res_c09_valid}), .dst_payload({b_lane_rcu_res_c09_payload}),
+      .dst_wake(b_lane_rcu_res_c09_wake), .dst_credit({b_lane_rcu_res_c09_credit}), .dst_stall({b_lane_rcu_res_c09_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c09_tid}), .dst_tid({b_lane_rcu_res_c09_tid})
+      , .src_tid({lane_rcu_res_c09_tid}), .dst_tid({b_lane_rcu_res_c09_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c09
+    assign {b_lane_rcu_res_c09_valid} = {lane_rcu_res_c09_valid};
+    assign {b_lane_rcu_res_c09_payload} = {lane_rcu_res_c09_payload};
+    assign b_lane_rcu_res_c09_wake = lane_rcu_res_c09_wake;
+    assign {lane_rcu_res_c09_credit} = {b_lane_rcu_res_c09_credit};
+    assign {lane_rcu_res_c09_stall} = {b_lane_rcu_res_c09_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c09_tid} = {lane_rcu_res_c09_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C10), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c10 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c10_valid}), .src_payload({lane_rcu_res_c10_payload}),
-    .src_wake(lane_rcu_res_c10_wake), .src_credit({lane_rcu_res_c10_credit}), .src_stall({lane_rcu_res_c10_stall}),
-    .dst_valid({b_lane_rcu_res_c10_valid}), .dst_payload({b_lane_rcu_res_c10_payload}),
-    .dst_wake(b_lane_rcu_res_c10_wake), .dst_credit({b_lane_rcu_res_c10_credit}), .dst_stall({b_lane_rcu_res_c10_stall})
+  if (RPT_LANE_RCU_RES_C10 > 0) begin : g_rpt_lane_rcu_res_c10
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C10), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c10 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c10_valid}), .src_payload({lane_rcu_res_c10_payload}),
+      .src_wake(lane_rcu_res_c10_wake), .src_credit({lane_rcu_res_c10_credit}), .src_stall({lane_rcu_res_c10_stall}),
+      .dst_valid({b_lane_rcu_res_c10_valid}), .dst_payload({b_lane_rcu_res_c10_payload}),
+      .dst_wake(b_lane_rcu_res_c10_wake), .dst_credit({b_lane_rcu_res_c10_credit}), .dst_stall({b_lane_rcu_res_c10_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c10_tid}), .dst_tid({b_lane_rcu_res_c10_tid})
+      , .src_tid({lane_rcu_res_c10_tid}), .dst_tid({b_lane_rcu_res_c10_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c10
+    assign {b_lane_rcu_res_c10_valid} = {lane_rcu_res_c10_valid};
+    assign {b_lane_rcu_res_c10_payload} = {lane_rcu_res_c10_payload};
+    assign b_lane_rcu_res_c10_wake = lane_rcu_res_c10_wake;
+    assign {lane_rcu_res_c10_credit} = {b_lane_rcu_res_c10_credit};
+    assign {lane_rcu_res_c10_stall} = {b_lane_rcu_res_c10_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c10_tid} = {lane_rcu_res_c10_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C11), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c11 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c11_valid}), .src_payload({lane_rcu_res_c11_payload}),
-    .src_wake(lane_rcu_res_c11_wake), .src_credit({lane_rcu_res_c11_credit}), .src_stall({lane_rcu_res_c11_stall}),
-    .dst_valid({b_lane_rcu_res_c11_valid}), .dst_payload({b_lane_rcu_res_c11_payload}),
-    .dst_wake(b_lane_rcu_res_c11_wake), .dst_credit({b_lane_rcu_res_c11_credit}), .dst_stall({b_lane_rcu_res_c11_stall})
+  if (RPT_LANE_RCU_RES_C11 > 0) begin : g_rpt_lane_rcu_res_c11
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C11), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c11 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c11_valid}), .src_payload({lane_rcu_res_c11_payload}),
+      .src_wake(lane_rcu_res_c11_wake), .src_credit({lane_rcu_res_c11_credit}), .src_stall({lane_rcu_res_c11_stall}),
+      .dst_valid({b_lane_rcu_res_c11_valid}), .dst_payload({b_lane_rcu_res_c11_payload}),
+      .dst_wake(b_lane_rcu_res_c11_wake), .dst_credit({b_lane_rcu_res_c11_credit}), .dst_stall({b_lane_rcu_res_c11_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c11_tid}), .dst_tid({b_lane_rcu_res_c11_tid})
+      , .src_tid({lane_rcu_res_c11_tid}), .dst_tid({b_lane_rcu_res_c11_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c11
+    assign {b_lane_rcu_res_c11_valid} = {lane_rcu_res_c11_valid};
+    assign {b_lane_rcu_res_c11_payload} = {lane_rcu_res_c11_payload};
+    assign b_lane_rcu_res_c11_wake = lane_rcu_res_c11_wake;
+    assign {lane_rcu_res_c11_credit} = {b_lane_rcu_res_c11_credit};
+    assign {lane_rcu_res_c11_stall} = {b_lane_rcu_res_c11_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c11_tid} = {lane_rcu_res_c11_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C12), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c12 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c12_valid}), .src_payload({lane_rcu_res_c12_payload}),
-    .src_wake(lane_rcu_res_c12_wake), .src_credit({lane_rcu_res_c12_credit}), .src_stall({lane_rcu_res_c12_stall}),
-    .dst_valid({b_lane_rcu_res_c12_valid}), .dst_payload({b_lane_rcu_res_c12_payload}),
-    .dst_wake(b_lane_rcu_res_c12_wake), .dst_credit({b_lane_rcu_res_c12_credit}), .dst_stall({b_lane_rcu_res_c12_stall})
+  if (RPT_LANE_RCU_RES_C12 > 0) begin : g_rpt_lane_rcu_res_c12
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C12), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c12 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c12_valid}), .src_payload({lane_rcu_res_c12_payload}),
+      .src_wake(lane_rcu_res_c12_wake), .src_credit({lane_rcu_res_c12_credit}), .src_stall({lane_rcu_res_c12_stall}),
+      .dst_valid({b_lane_rcu_res_c12_valid}), .dst_payload({b_lane_rcu_res_c12_payload}),
+      .dst_wake(b_lane_rcu_res_c12_wake), .dst_credit({b_lane_rcu_res_c12_credit}), .dst_stall({b_lane_rcu_res_c12_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c12_tid}), .dst_tid({b_lane_rcu_res_c12_tid})
+      , .src_tid({lane_rcu_res_c12_tid}), .dst_tid({b_lane_rcu_res_c12_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c12
+    assign {b_lane_rcu_res_c12_valid} = {lane_rcu_res_c12_valid};
+    assign {b_lane_rcu_res_c12_payload} = {lane_rcu_res_c12_payload};
+    assign b_lane_rcu_res_c12_wake = lane_rcu_res_c12_wake;
+    assign {lane_rcu_res_c12_credit} = {b_lane_rcu_res_c12_credit};
+    assign {lane_rcu_res_c12_stall} = {b_lane_rcu_res_c12_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c12_tid} = {lane_rcu_res_c12_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C13), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c13 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c13_valid}), .src_payload({lane_rcu_res_c13_payload}),
-    .src_wake(lane_rcu_res_c13_wake), .src_credit({lane_rcu_res_c13_credit}), .src_stall({lane_rcu_res_c13_stall}),
-    .dst_valid({b_lane_rcu_res_c13_valid}), .dst_payload({b_lane_rcu_res_c13_payload}),
-    .dst_wake(b_lane_rcu_res_c13_wake), .dst_credit({b_lane_rcu_res_c13_credit}), .dst_stall({b_lane_rcu_res_c13_stall})
+  if (RPT_LANE_RCU_RES_C13 > 0) begin : g_rpt_lane_rcu_res_c13
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C13), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c13 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c13_valid}), .src_payload({lane_rcu_res_c13_payload}),
+      .src_wake(lane_rcu_res_c13_wake), .src_credit({lane_rcu_res_c13_credit}), .src_stall({lane_rcu_res_c13_stall}),
+      .dst_valid({b_lane_rcu_res_c13_valid}), .dst_payload({b_lane_rcu_res_c13_payload}),
+      .dst_wake(b_lane_rcu_res_c13_wake), .dst_credit({b_lane_rcu_res_c13_credit}), .dst_stall({b_lane_rcu_res_c13_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c13_tid}), .dst_tid({b_lane_rcu_res_c13_tid})
+      , .src_tid({lane_rcu_res_c13_tid}), .dst_tid({b_lane_rcu_res_c13_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c13
+    assign {b_lane_rcu_res_c13_valid} = {lane_rcu_res_c13_valid};
+    assign {b_lane_rcu_res_c13_payload} = {lane_rcu_res_c13_payload};
+    assign b_lane_rcu_res_c13_wake = lane_rcu_res_c13_wake;
+    assign {lane_rcu_res_c13_credit} = {b_lane_rcu_res_c13_credit};
+    assign {lane_rcu_res_c13_stall} = {b_lane_rcu_res_c13_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c13_tid} = {lane_rcu_res_c13_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C14), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c14 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c14_valid}), .src_payload({lane_rcu_res_c14_payload}),
-    .src_wake(lane_rcu_res_c14_wake), .src_credit({lane_rcu_res_c14_credit}), .src_stall({lane_rcu_res_c14_stall}),
-    .dst_valid({b_lane_rcu_res_c14_valid}), .dst_payload({b_lane_rcu_res_c14_payload}),
-    .dst_wake(b_lane_rcu_res_c14_wake), .dst_credit({b_lane_rcu_res_c14_credit}), .dst_stall({b_lane_rcu_res_c14_stall})
+  if (RPT_LANE_RCU_RES_C14 > 0) begin : g_rpt_lane_rcu_res_c14
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C14), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c14 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c14_valid}), .src_payload({lane_rcu_res_c14_payload}),
+      .src_wake(lane_rcu_res_c14_wake), .src_credit({lane_rcu_res_c14_credit}), .src_stall({lane_rcu_res_c14_stall}),
+      .dst_valid({b_lane_rcu_res_c14_valid}), .dst_payload({b_lane_rcu_res_c14_payload}),
+      .dst_wake(b_lane_rcu_res_c14_wake), .dst_credit({b_lane_rcu_res_c14_credit}), .dst_stall({b_lane_rcu_res_c14_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c14_tid}), .dst_tid({b_lane_rcu_res_c14_tid})
+      , .src_tid({lane_rcu_res_c14_tid}), .dst_tid({b_lane_rcu_res_c14_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c14
+    assign {b_lane_rcu_res_c14_valid} = {lane_rcu_res_c14_valid};
+    assign {b_lane_rcu_res_c14_payload} = {lane_rcu_res_c14_payload};
+    assign b_lane_rcu_res_c14_wake = lane_rcu_res_c14_wake;
+    assign {lane_rcu_res_c14_credit} = {b_lane_rcu_res_c14_credit};
+    assign {lane_rcu_res_c14_stall} = {b_lane_rcu_res_c14_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c14_tid} = {lane_rcu_res_c14_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C15), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c15 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c15_valid}), .src_payload({lane_rcu_res_c15_payload}),
-    .src_wake(lane_rcu_res_c15_wake), .src_credit({lane_rcu_res_c15_credit}), .src_stall({lane_rcu_res_c15_stall}),
-    .dst_valid({b_lane_rcu_res_c15_valid}), .dst_payload({b_lane_rcu_res_c15_payload}),
-    .dst_wake(b_lane_rcu_res_c15_wake), .dst_credit({b_lane_rcu_res_c15_credit}), .dst_stall({b_lane_rcu_res_c15_stall})
+  if (RPT_LANE_RCU_RES_C15 > 0) begin : g_rpt_lane_rcu_res_c15
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C15), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c15 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c15_valid}), .src_payload({lane_rcu_res_c15_payload}),
+      .src_wake(lane_rcu_res_c15_wake), .src_credit({lane_rcu_res_c15_credit}), .src_stall({lane_rcu_res_c15_stall}),
+      .dst_valid({b_lane_rcu_res_c15_valid}), .dst_payload({b_lane_rcu_res_c15_payload}),
+      .dst_wake(b_lane_rcu_res_c15_wake), .dst_credit({b_lane_rcu_res_c15_credit}), .dst_stall({b_lane_rcu_res_c15_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c15_tid}), .dst_tid({b_lane_rcu_res_c15_tid})
+      , .src_tid({lane_rcu_res_c15_tid}), .dst_tid({b_lane_rcu_res_c15_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c15
+    assign {b_lane_rcu_res_c15_valid} = {lane_rcu_res_c15_valid};
+    assign {b_lane_rcu_res_c15_payload} = {lane_rcu_res_c15_payload};
+    assign b_lane_rcu_res_c15_wake = lane_rcu_res_c15_wake;
+    assign {lane_rcu_res_c15_credit} = {b_lane_rcu_res_c15_credit};
+    assign {lane_rcu_res_c15_stall} = {b_lane_rcu_res_c15_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c15_tid} = {lane_rcu_res_c15_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C16), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c16 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c16_valid}), .src_payload({lane_rcu_res_c16_payload}),
-    .src_wake(lane_rcu_res_c16_wake), .src_credit({lane_rcu_res_c16_credit}), .src_stall({lane_rcu_res_c16_stall}),
-    .dst_valid({b_lane_rcu_res_c16_valid}), .dst_payload({b_lane_rcu_res_c16_payload}),
-    .dst_wake(b_lane_rcu_res_c16_wake), .dst_credit({b_lane_rcu_res_c16_credit}), .dst_stall({b_lane_rcu_res_c16_stall})
+  if (RPT_LANE_RCU_RES_C16 > 0) begin : g_rpt_lane_rcu_res_c16
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C16), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c16 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c16_valid}), .src_payload({lane_rcu_res_c16_payload}),
+      .src_wake(lane_rcu_res_c16_wake), .src_credit({lane_rcu_res_c16_credit}), .src_stall({lane_rcu_res_c16_stall}),
+      .dst_valid({b_lane_rcu_res_c16_valid}), .dst_payload({b_lane_rcu_res_c16_payload}),
+      .dst_wake(b_lane_rcu_res_c16_wake), .dst_credit({b_lane_rcu_res_c16_credit}), .dst_stall({b_lane_rcu_res_c16_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c16_tid}), .dst_tid({b_lane_rcu_res_c16_tid})
+      , .src_tid({lane_rcu_res_c16_tid}), .dst_tid({b_lane_rcu_res_c16_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c16
+    assign {b_lane_rcu_res_c16_valid} = {lane_rcu_res_c16_valid};
+    assign {b_lane_rcu_res_c16_payload} = {lane_rcu_res_c16_payload};
+    assign b_lane_rcu_res_c16_wake = lane_rcu_res_c16_wake;
+    assign {lane_rcu_res_c16_credit} = {b_lane_rcu_res_c16_credit};
+    assign {lane_rcu_res_c16_stall} = {b_lane_rcu_res_c16_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c16_tid} = {lane_rcu_res_c16_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C17), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c17 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c17_valid}), .src_payload({lane_rcu_res_c17_payload}),
-    .src_wake(lane_rcu_res_c17_wake), .src_credit({lane_rcu_res_c17_credit}), .src_stall({lane_rcu_res_c17_stall}),
-    .dst_valid({b_lane_rcu_res_c17_valid}), .dst_payload({b_lane_rcu_res_c17_payload}),
-    .dst_wake(b_lane_rcu_res_c17_wake), .dst_credit({b_lane_rcu_res_c17_credit}), .dst_stall({b_lane_rcu_res_c17_stall})
+  if (RPT_LANE_RCU_RES_C17 > 0) begin : g_rpt_lane_rcu_res_c17
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C17), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c17 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c17_valid}), .src_payload({lane_rcu_res_c17_payload}),
+      .src_wake(lane_rcu_res_c17_wake), .src_credit({lane_rcu_res_c17_credit}), .src_stall({lane_rcu_res_c17_stall}),
+      .dst_valid({b_lane_rcu_res_c17_valid}), .dst_payload({b_lane_rcu_res_c17_payload}),
+      .dst_wake(b_lane_rcu_res_c17_wake), .dst_credit({b_lane_rcu_res_c17_credit}), .dst_stall({b_lane_rcu_res_c17_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c17_tid}), .dst_tid({b_lane_rcu_res_c17_tid})
+      , .src_tid({lane_rcu_res_c17_tid}), .dst_tid({b_lane_rcu_res_c17_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c17
+    assign {b_lane_rcu_res_c17_valid} = {lane_rcu_res_c17_valid};
+    assign {b_lane_rcu_res_c17_payload} = {lane_rcu_res_c17_payload};
+    assign b_lane_rcu_res_c17_wake = lane_rcu_res_c17_wake;
+    assign {lane_rcu_res_c17_credit} = {b_lane_rcu_res_c17_credit};
+    assign {lane_rcu_res_c17_stall} = {b_lane_rcu_res_c17_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c17_tid} = {lane_rcu_res_c17_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C18), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c18 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c18_valid}), .src_payload({lane_rcu_res_c18_payload}),
-    .src_wake(lane_rcu_res_c18_wake), .src_credit({lane_rcu_res_c18_credit}), .src_stall({lane_rcu_res_c18_stall}),
-    .dst_valid({b_lane_rcu_res_c18_valid}), .dst_payload({b_lane_rcu_res_c18_payload}),
-    .dst_wake(b_lane_rcu_res_c18_wake), .dst_credit({b_lane_rcu_res_c18_credit}), .dst_stall({b_lane_rcu_res_c18_stall})
+  if (RPT_LANE_RCU_RES_C18 > 0) begin : g_rpt_lane_rcu_res_c18
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C18), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c18 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c18_valid}), .src_payload({lane_rcu_res_c18_payload}),
+      .src_wake(lane_rcu_res_c18_wake), .src_credit({lane_rcu_res_c18_credit}), .src_stall({lane_rcu_res_c18_stall}),
+      .dst_valid({b_lane_rcu_res_c18_valid}), .dst_payload({b_lane_rcu_res_c18_payload}),
+      .dst_wake(b_lane_rcu_res_c18_wake), .dst_credit({b_lane_rcu_res_c18_credit}), .dst_stall({b_lane_rcu_res_c18_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c18_tid}), .dst_tid({b_lane_rcu_res_c18_tid})
+      , .src_tid({lane_rcu_res_c18_tid}), .dst_tid({b_lane_rcu_res_c18_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c18
+    assign {b_lane_rcu_res_c18_valid} = {lane_rcu_res_c18_valid};
+    assign {b_lane_rcu_res_c18_payload} = {lane_rcu_res_c18_payload};
+    assign b_lane_rcu_res_c18_wake = lane_rcu_res_c18_wake;
+    assign {lane_rcu_res_c18_credit} = {b_lane_rcu_res_c18_credit};
+    assign {lane_rcu_res_c18_stall} = {b_lane_rcu_res_c18_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c18_tid} = {lane_rcu_res_c18_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C19), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c19 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c19_valid}), .src_payload({lane_rcu_res_c19_payload}),
-    .src_wake(lane_rcu_res_c19_wake), .src_credit({lane_rcu_res_c19_credit}), .src_stall({lane_rcu_res_c19_stall}),
-    .dst_valid({b_lane_rcu_res_c19_valid}), .dst_payload({b_lane_rcu_res_c19_payload}),
-    .dst_wake(b_lane_rcu_res_c19_wake), .dst_credit({b_lane_rcu_res_c19_credit}), .dst_stall({b_lane_rcu_res_c19_stall})
+  if (RPT_LANE_RCU_RES_C19 > 0) begin : g_rpt_lane_rcu_res_c19
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C19), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c19 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c19_valid}), .src_payload({lane_rcu_res_c19_payload}),
+      .src_wake(lane_rcu_res_c19_wake), .src_credit({lane_rcu_res_c19_credit}), .src_stall({lane_rcu_res_c19_stall}),
+      .dst_valid({b_lane_rcu_res_c19_valid}), .dst_payload({b_lane_rcu_res_c19_payload}),
+      .dst_wake(b_lane_rcu_res_c19_wake), .dst_credit({b_lane_rcu_res_c19_credit}), .dst_stall({b_lane_rcu_res_c19_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c19_tid}), .dst_tid({b_lane_rcu_res_c19_tid})
+      , .src_tid({lane_rcu_res_c19_tid}), .dst_tid({b_lane_rcu_res_c19_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c19
+    assign {b_lane_rcu_res_c19_valid} = {lane_rcu_res_c19_valid};
+    assign {b_lane_rcu_res_c19_payload} = {lane_rcu_res_c19_payload};
+    assign b_lane_rcu_res_c19_wake = lane_rcu_res_c19_wake;
+    assign {lane_rcu_res_c19_credit} = {b_lane_rcu_res_c19_credit};
+    assign {lane_rcu_res_c19_stall} = {b_lane_rcu_res_c19_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c19_tid} = {lane_rcu_res_c19_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C20), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c20 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c20_valid}), .src_payload({lane_rcu_res_c20_payload}),
-    .src_wake(lane_rcu_res_c20_wake), .src_credit({lane_rcu_res_c20_credit}), .src_stall({lane_rcu_res_c20_stall}),
-    .dst_valid({b_lane_rcu_res_c20_valid}), .dst_payload({b_lane_rcu_res_c20_payload}),
-    .dst_wake(b_lane_rcu_res_c20_wake), .dst_credit({b_lane_rcu_res_c20_credit}), .dst_stall({b_lane_rcu_res_c20_stall})
+  if (RPT_LANE_RCU_RES_C20 > 0) begin : g_rpt_lane_rcu_res_c20
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C20), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c20 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c20_valid}), .src_payload({lane_rcu_res_c20_payload}),
+      .src_wake(lane_rcu_res_c20_wake), .src_credit({lane_rcu_res_c20_credit}), .src_stall({lane_rcu_res_c20_stall}),
+      .dst_valid({b_lane_rcu_res_c20_valid}), .dst_payload({b_lane_rcu_res_c20_payload}),
+      .dst_wake(b_lane_rcu_res_c20_wake), .dst_credit({b_lane_rcu_res_c20_credit}), .dst_stall({b_lane_rcu_res_c20_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c20_tid}), .dst_tid({b_lane_rcu_res_c20_tid})
+      , .src_tid({lane_rcu_res_c20_tid}), .dst_tid({b_lane_rcu_res_c20_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c20
+    assign {b_lane_rcu_res_c20_valid} = {lane_rcu_res_c20_valid};
+    assign {b_lane_rcu_res_c20_payload} = {lane_rcu_res_c20_payload};
+    assign b_lane_rcu_res_c20_wake = lane_rcu_res_c20_wake;
+    assign {lane_rcu_res_c20_credit} = {b_lane_rcu_res_c20_credit};
+    assign {lane_rcu_res_c20_stall} = {b_lane_rcu_res_c20_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c20_tid} = {lane_rcu_res_c20_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C21), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c21 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c21_valid}), .src_payload({lane_rcu_res_c21_payload}),
-    .src_wake(lane_rcu_res_c21_wake), .src_credit({lane_rcu_res_c21_credit}), .src_stall({lane_rcu_res_c21_stall}),
-    .dst_valid({b_lane_rcu_res_c21_valid}), .dst_payload({b_lane_rcu_res_c21_payload}),
-    .dst_wake(b_lane_rcu_res_c21_wake), .dst_credit({b_lane_rcu_res_c21_credit}), .dst_stall({b_lane_rcu_res_c21_stall})
+  if (RPT_LANE_RCU_RES_C21 > 0) begin : g_rpt_lane_rcu_res_c21
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C21), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c21 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c21_valid}), .src_payload({lane_rcu_res_c21_payload}),
+      .src_wake(lane_rcu_res_c21_wake), .src_credit({lane_rcu_res_c21_credit}), .src_stall({lane_rcu_res_c21_stall}),
+      .dst_valid({b_lane_rcu_res_c21_valid}), .dst_payload({b_lane_rcu_res_c21_payload}),
+      .dst_wake(b_lane_rcu_res_c21_wake), .dst_credit({b_lane_rcu_res_c21_credit}), .dst_stall({b_lane_rcu_res_c21_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c21_tid}), .dst_tid({b_lane_rcu_res_c21_tid})
+      , .src_tid({lane_rcu_res_c21_tid}), .dst_tid({b_lane_rcu_res_c21_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c21
+    assign {b_lane_rcu_res_c21_valid} = {lane_rcu_res_c21_valid};
+    assign {b_lane_rcu_res_c21_payload} = {lane_rcu_res_c21_payload};
+    assign b_lane_rcu_res_c21_wake = lane_rcu_res_c21_wake;
+    assign {lane_rcu_res_c21_credit} = {b_lane_rcu_res_c21_credit};
+    assign {lane_rcu_res_c21_stall} = {b_lane_rcu_res_c21_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c21_tid} = {lane_rcu_res_c21_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C22), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c22 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c22_valid}), .src_payload({lane_rcu_res_c22_payload}),
-    .src_wake(lane_rcu_res_c22_wake), .src_credit({lane_rcu_res_c22_credit}), .src_stall({lane_rcu_res_c22_stall}),
-    .dst_valid({b_lane_rcu_res_c22_valid}), .dst_payload({b_lane_rcu_res_c22_payload}),
-    .dst_wake(b_lane_rcu_res_c22_wake), .dst_credit({b_lane_rcu_res_c22_credit}), .dst_stall({b_lane_rcu_res_c22_stall})
+  if (RPT_LANE_RCU_RES_C22 > 0) begin : g_rpt_lane_rcu_res_c22
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C22), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c22 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c22_valid}), .src_payload({lane_rcu_res_c22_payload}),
+      .src_wake(lane_rcu_res_c22_wake), .src_credit({lane_rcu_res_c22_credit}), .src_stall({lane_rcu_res_c22_stall}),
+      .dst_valid({b_lane_rcu_res_c22_valid}), .dst_payload({b_lane_rcu_res_c22_payload}),
+      .dst_wake(b_lane_rcu_res_c22_wake), .dst_credit({b_lane_rcu_res_c22_credit}), .dst_stall({b_lane_rcu_res_c22_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c22_tid}), .dst_tid({b_lane_rcu_res_c22_tid})
+      , .src_tid({lane_rcu_res_c22_tid}), .dst_tid({b_lane_rcu_res_c22_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c22
+    assign {b_lane_rcu_res_c22_valid} = {lane_rcu_res_c22_valid};
+    assign {b_lane_rcu_res_c22_payload} = {lane_rcu_res_c22_payload};
+    assign b_lane_rcu_res_c22_wake = lane_rcu_res_c22_wake;
+    assign {lane_rcu_res_c22_credit} = {b_lane_rcu_res_c22_credit};
+    assign {lane_rcu_res_c22_stall} = {b_lane_rcu_res_c22_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c22_tid} = {lane_rcu_res_c22_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C23), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c23 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c23_valid}), .src_payload({lane_rcu_res_c23_payload}),
-    .src_wake(lane_rcu_res_c23_wake), .src_credit({lane_rcu_res_c23_credit}), .src_stall({lane_rcu_res_c23_stall}),
-    .dst_valid({b_lane_rcu_res_c23_valid}), .dst_payload({b_lane_rcu_res_c23_payload}),
-    .dst_wake(b_lane_rcu_res_c23_wake), .dst_credit({b_lane_rcu_res_c23_credit}), .dst_stall({b_lane_rcu_res_c23_stall})
+  if (RPT_LANE_RCU_RES_C23 > 0) begin : g_rpt_lane_rcu_res_c23
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C23), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c23 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c23_valid}), .src_payload({lane_rcu_res_c23_payload}),
+      .src_wake(lane_rcu_res_c23_wake), .src_credit({lane_rcu_res_c23_credit}), .src_stall({lane_rcu_res_c23_stall}),
+      .dst_valid({b_lane_rcu_res_c23_valid}), .dst_payload({b_lane_rcu_res_c23_payload}),
+      .dst_wake(b_lane_rcu_res_c23_wake), .dst_credit({b_lane_rcu_res_c23_credit}), .dst_stall({b_lane_rcu_res_c23_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c23_tid}), .dst_tid({b_lane_rcu_res_c23_tid})
+      , .src_tid({lane_rcu_res_c23_tid}), .dst_tid({b_lane_rcu_res_c23_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c23
+    assign {b_lane_rcu_res_c23_valid} = {lane_rcu_res_c23_valid};
+    assign {b_lane_rcu_res_c23_payload} = {lane_rcu_res_c23_payload};
+    assign b_lane_rcu_res_c23_wake = lane_rcu_res_c23_wake;
+    assign {lane_rcu_res_c23_credit} = {b_lane_rcu_res_c23_credit};
+    assign {lane_rcu_res_c23_stall} = {b_lane_rcu_res_c23_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c23_tid} = {lane_rcu_res_c23_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C24), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c24 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c24_valid}), .src_payload({lane_rcu_res_c24_payload}),
-    .src_wake(lane_rcu_res_c24_wake), .src_credit({lane_rcu_res_c24_credit}), .src_stall({lane_rcu_res_c24_stall}),
-    .dst_valid({b_lane_rcu_res_c24_valid}), .dst_payload({b_lane_rcu_res_c24_payload}),
-    .dst_wake(b_lane_rcu_res_c24_wake), .dst_credit({b_lane_rcu_res_c24_credit}), .dst_stall({b_lane_rcu_res_c24_stall})
+  if (RPT_LANE_RCU_RES_C24 > 0) begin : g_rpt_lane_rcu_res_c24
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C24), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c24 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c24_valid}), .src_payload({lane_rcu_res_c24_payload}),
+      .src_wake(lane_rcu_res_c24_wake), .src_credit({lane_rcu_res_c24_credit}), .src_stall({lane_rcu_res_c24_stall}),
+      .dst_valid({b_lane_rcu_res_c24_valid}), .dst_payload({b_lane_rcu_res_c24_payload}),
+      .dst_wake(b_lane_rcu_res_c24_wake), .dst_credit({b_lane_rcu_res_c24_credit}), .dst_stall({b_lane_rcu_res_c24_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c24_tid}), .dst_tid({b_lane_rcu_res_c24_tid})
+      , .src_tid({lane_rcu_res_c24_tid}), .dst_tid({b_lane_rcu_res_c24_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c24
+    assign {b_lane_rcu_res_c24_valid} = {lane_rcu_res_c24_valid};
+    assign {b_lane_rcu_res_c24_payload} = {lane_rcu_res_c24_payload};
+    assign b_lane_rcu_res_c24_wake = lane_rcu_res_c24_wake;
+    assign {lane_rcu_res_c24_credit} = {b_lane_rcu_res_c24_credit};
+    assign {lane_rcu_res_c24_stall} = {b_lane_rcu_res_c24_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c24_tid} = {lane_rcu_res_c24_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C25), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c25 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c25_valid}), .src_payload({lane_rcu_res_c25_payload}),
-    .src_wake(lane_rcu_res_c25_wake), .src_credit({lane_rcu_res_c25_credit}), .src_stall({lane_rcu_res_c25_stall}),
-    .dst_valid({b_lane_rcu_res_c25_valid}), .dst_payload({b_lane_rcu_res_c25_payload}),
-    .dst_wake(b_lane_rcu_res_c25_wake), .dst_credit({b_lane_rcu_res_c25_credit}), .dst_stall({b_lane_rcu_res_c25_stall})
+  if (RPT_LANE_RCU_RES_C25 > 0) begin : g_rpt_lane_rcu_res_c25
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C25), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c25 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c25_valid}), .src_payload({lane_rcu_res_c25_payload}),
+      .src_wake(lane_rcu_res_c25_wake), .src_credit({lane_rcu_res_c25_credit}), .src_stall({lane_rcu_res_c25_stall}),
+      .dst_valid({b_lane_rcu_res_c25_valid}), .dst_payload({b_lane_rcu_res_c25_payload}),
+      .dst_wake(b_lane_rcu_res_c25_wake), .dst_credit({b_lane_rcu_res_c25_credit}), .dst_stall({b_lane_rcu_res_c25_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c25_tid}), .dst_tid({b_lane_rcu_res_c25_tid})
+      , .src_tid({lane_rcu_res_c25_tid}), .dst_tid({b_lane_rcu_res_c25_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c25
+    assign {b_lane_rcu_res_c25_valid} = {lane_rcu_res_c25_valid};
+    assign {b_lane_rcu_res_c25_payload} = {lane_rcu_res_c25_payload};
+    assign b_lane_rcu_res_c25_wake = lane_rcu_res_c25_wake;
+    assign {lane_rcu_res_c25_credit} = {b_lane_rcu_res_c25_credit};
+    assign {lane_rcu_res_c25_stall} = {b_lane_rcu_res_c25_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c25_tid} = {lane_rcu_res_c25_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C26), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c26 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c26_valid}), .src_payload({lane_rcu_res_c26_payload}),
-    .src_wake(lane_rcu_res_c26_wake), .src_credit({lane_rcu_res_c26_credit}), .src_stall({lane_rcu_res_c26_stall}),
-    .dst_valid({b_lane_rcu_res_c26_valid}), .dst_payload({b_lane_rcu_res_c26_payload}),
-    .dst_wake(b_lane_rcu_res_c26_wake), .dst_credit({b_lane_rcu_res_c26_credit}), .dst_stall({b_lane_rcu_res_c26_stall})
+  if (RPT_LANE_RCU_RES_C26 > 0) begin : g_rpt_lane_rcu_res_c26
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C26), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c26 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c26_valid}), .src_payload({lane_rcu_res_c26_payload}),
+      .src_wake(lane_rcu_res_c26_wake), .src_credit({lane_rcu_res_c26_credit}), .src_stall({lane_rcu_res_c26_stall}),
+      .dst_valid({b_lane_rcu_res_c26_valid}), .dst_payload({b_lane_rcu_res_c26_payload}),
+      .dst_wake(b_lane_rcu_res_c26_wake), .dst_credit({b_lane_rcu_res_c26_credit}), .dst_stall({b_lane_rcu_res_c26_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c26_tid}), .dst_tid({b_lane_rcu_res_c26_tid})
+      , .src_tid({lane_rcu_res_c26_tid}), .dst_tid({b_lane_rcu_res_c26_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c26
+    assign {b_lane_rcu_res_c26_valid} = {lane_rcu_res_c26_valid};
+    assign {b_lane_rcu_res_c26_payload} = {lane_rcu_res_c26_payload};
+    assign b_lane_rcu_res_c26_wake = lane_rcu_res_c26_wake;
+    assign {lane_rcu_res_c26_credit} = {b_lane_rcu_res_c26_credit};
+    assign {lane_rcu_res_c26_stall} = {b_lane_rcu_res_c26_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c26_tid} = {lane_rcu_res_c26_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C27), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c27 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c27_valid}), .src_payload({lane_rcu_res_c27_payload}),
-    .src_wake(lane_rcu_res_c27_wake), .src_credit({lane_rcu_res_c27_credit}), .src_stall({lane_rcu_res_c27_stall}),
-    .dst_valid({b_lane_rcu_res_c27_valid}), .dst_payload({b_lane_rcu_res_c27_payload}),
-    .dst_wake(b_lane_rcu_res_c27_wake), .dst_credit({b_lane_rcu_res_c27_credit}), .dst_stall({b_lane_rcu_res_c27_stall})
+  if (RPT_LANE_RCU_RES_C27 > 0) begin : g_rpt_lane_rcu_res_c27
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C27), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c27 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c27_valid}), .src_payload({lane_rcu_res_c27_payload}),
+      .src_wake(lane_rcu_res_c27_wake), .src_credit({lane_rcu_res_c27_credit}), .src_stall({lane_rcu_res_c27_stall}),
+      .dst_valid({b_lane_rcu_res_c27_valid}), .dst_payload({b_lane_rcu_res_c27_payload}),
+      .dst_wake(b_lane_rcu_res_c27_wake), .dst_credit({b_lane_rcu_res_c27_credit}), .dst_stall({b_lane_rcu_res_c27_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c27_tid}), .dst_tid({b_lane_rcu_res_c27_tid})
+      , .src_tid({lane_rcu_res_c27_tid}), .dst_tid({b_lane_rcu_res_c27_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c27
+    assign {b_lane_rcu_res_c27_valid} = {lane_rcu_res_c27_valid};
+    assign {b_lane_rcu_res_c27_payload} = {lane_rcu_res_c27_payload};
+    assign b_lane_rcu_res_c27_wake = lane_rcu_res_c27_wake;
+    assign {lane_rcu_res_c27_credit} = {b_lane_rcu_res_c27_credit};
+    assign {lane_rcu_res_c27_stall} = {b_lane_rcu_res_c27_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c27_tid} = {lane_rcu_res_c27_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C28), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c28 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c28_valid}), .src_payload({lane_rcu_res_c28_payload}),
-    .src_wake(lane_rcu_res_c28_wake), .src_credit({lane_rcu_res_c28_credit}), .src_stall({lane_rcu_res_c28_stall}),
-    .dst_valid({b_lane_rcu_res_c28_valid}), .dst_payload({b_lane_rcu_res_c28_payload}),
-    .dst_wake(b_lane_rcu_res_c28_wake), .dst_credit({b_lane_rcu_res_c28_credit}), .dst_stall({b_lane_rcu_res_c28_stall})
+  if (RPT_LANE_RCU_RES_C28 > 0) begin : g_rpt_lane_rcu_res_c28
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C28), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c28 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c28_valid}), .src_payload({lane_rcu_res_c28_payload}),
+      .src_wake(lane_rcu_res_c28_wake), .src_credit({lane_rcu_res_c28_credit}), .src_stall({lane_rcu_res_c28_stall}),
+      .dst_valid({b_lane_rcu_res_c28_valid}), .dst_payload({b_lane_rcu_res_c28_payload}),
+      .dst_wake(b_lane_rcu_res_c28_wake), .dst_credit({b_lane_rcu_res_c28_credit}), .dst_stall({b_lane_rcu_res_c28_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c28_tid}), .dst_tid({b_lane_rcu_res_c28_tid})
+      , .src_tid({lane_rcu_res_c28_tid}), .dst_tid({b_lane_rcu_res_c28_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c28
+    assign {b_lane_rcu_res_c28_valid} = {lane_rcu_res_c28_valid};
+    assign {b_lane_rcu_res_c28_payload} = {lane_rcu_res_c28_payload};
+    assign b_lane_rcu_res_c28_wake = lane_rcu_res_c28_wake;
+    assign {lane_rcu_res_c28_credit} = {b_lane_rcu_res_c28_credit};
+    assign {lane_rcu_res_c28_stall} = {b_lane_rcu_res_c28_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c28_tid} = {lane_rcu_res_c28_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C29), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c29 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c29_valid}), .src_payload({lane_rcu_res_c29_payload}),
-    .src_wake(lane_rcu_res_c29_wake), .src_credit({lane_rcu_res_c29_credit}), .src_stall({lane_rcu_res_c29_stall}),
-    .dst_valid({b_lane_rcu_res_c29_valid}), .dst_payload({b_lane_rcu_res_c29_payload}),
-    .dst_wake(b_lane_rcu_res_c29_wake), .dst_credit({b_lane_rcu_res_c29_credit}), .dst_stall({b_lane_rcu_res_c29_stall})
+  if (RPT_LANE_RCU_RES_C29 > 0) begin : g_rpt_lane_rcu_res_c29
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C29), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c29 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c29_valid}), .src_payload({lane_rcu_res_c29_payload}),
+      .src_wake(lane_rcu_res_c29_wake), .src_credit({lane_rcu_res_c29_credit}), .src_stall({lane_rcu_res_c29_stall}),
+      .dst_valid({b_lane_rcu_res_c29_valid}), .dst_payload({b_lane_rcu_res_c29_payload}),
+      .dst_wake(b_lane_rcu_res_c29_wake), .dst_credit({b_lane_rcu_res_c29_credit}), .dst_stall({b_lane_rcu_res_c29_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c29_tid}), .dst_tid({b_lane_rcu_res_c29_tid})
+      , .src_tid({lane_rcu_res_c29_tid}), .dst_tid({b_lane_rcu_res_c29_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c29
+    assign {b_lane_rcu_res_c29_valid} = {lane_rcu_res_c29_valid};
+    assign {b_lane_rcu_res_c29_payload} = {lane_rcu_res_c29_payload};
+    assign b_lane_rcu_res_c29_wake = lane_rcu_res_c29_wake;
+    assign {lane_rcu_res_c29_credit} = {b_lane_rcu_res_c29_credit};
+    assign {lane_rcu_res_c29_stall} = {b_lane_rcu_res_c29_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c29_tid} = {lane_rcu_res_c29_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C30), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c30 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c30_valid}), .src_payload({lane_rcu_res_c30_payload}),
-    .src_wake(lane_rcu_res_c30_wake), .src_credit({lane_rcu_res_c30_credit}), .src_stall({lane_rcu_res_c30_stall}),
-    .dst_valid({b_lane_rcu_res_c30_valid}), .dst_payload({b_lane_rcu_res_c30_payload}),
-    .dst_wake(b_lane_rcu_res_c30_wake), .dst_credit({b_lane_rcu_res_c30_credit}), .dst_stall({b_lane_rcu_res_c30_stall})
+  if (RPT_LANE_RCU_RES_C30 > 0) begin : g_rpt_lane_rcu_res_c30
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C30), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c30 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c30_valid}), .src_payload({lane_rcu_res_c30_payload}),
+      .src_wake(lane_rcu_res_c30_wake), .src_credit({lane_rcu_res_c30_credit}), .src_stall({lane_rcu_res_c30_stall}),
+      .dst_valid({b_lane_rcu_res_c30_valid}), .dst_payload({b_lane_rcu_res_c30_payload}),
+      .dst_wake(b_lane_rcu_res_c30_wake), .dst_credit({b_lane_rcu_res_c30_credit}), .dst_stall({b_lane_rcu_res_c30_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c30_tid}), .dst_tid({b_lane_rcu_res_c30_tid})
+      , .src_tid({lane_rcu_res_c30_tid}), .dst_tid({b_lane_rcu_res_c30_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c30
+    assign {b_lane_rcu_res_c30_valid} = {lane_rcu_res_c30_valid};
+    assign {b_lane_rcu_res_c30_payload} = {lane_rcu_res_c30_payload};
+    assign b_lane_rcu_res_c30_wake = lane_rcu_res_c30_wake;
+    assign {lane_rcu_res_c30_credit} = {b_lane_rcu_res_c30_credit};
+    assign {lane_rcu_res_c30_stall} = {b_lane_rcu_res_c30_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c30_tid} = {lane_rcu_res_c30_tid};
+`endif
+  end
   // ccv_lane_rcu_res, destination end
-  ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C31), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c31 (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({lane_rcu_res_c31_valid}), .src_payload({lane_rcu_res_c31_payload}),
-    .src_wake(lane_rcu_res_c31_wake), .src_credit({lane_rcu_res_c31_credit}), .src_stall({lane_rcu_res_c31_stall}),
-    .dst_valid({b_lane_rcu_res_c31_valid}), .dst_payload({b_lane_rcu_res_c31_payload}),
-    .dst_wake(b_lane_rcu_res_c31_wake), .dst_credit({b_lane_rcu_res_c31_credit}), .dst_stall({b_lane_rcu_res_c31_stall})
+  if (RPT_LANE_RCU_RES_C31 > 0) begin : g_rpt_lane_rcu_res_c31
+    ccv_common_rpt #(.STAGES(RPT_LANE_RCU_RES_C31), .SLOTS(1), .PAYLOAD_W(44)) u_rpt_lane_rcu_res_c31 (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({lane_rcu_res_c31_valid}), .src_payload({lane_rcu_res_c31_payload}),
+      .src_wake(lane_rcu_res_c31_wake), .src_credit({lane_rcu_res_c31_credit}), .src_stall({lane_rcu_res_c31_stall}),
+      .dst_valid({b_lane_rcu_res_c31_valid}), .dst_payload({b_lane_rcu_res_c31_payload}),
+      .dst_wake(b_lane_rcu_res_c31_wake), .dst_credit({b_lane_rcu_res_c31_credit}), .dst_stall({b_lane_rcu_res_c31_stall})
 `ifdef CCV_TRACE
-    , .src_tid({lane_rcu_res_c31_tid}), .dst_tid({b_lane_rcu_res_c31_tid})
+      , .src_tid({lane_rcu_res_c31_tid}), .dst_tid({b_lane_rcu_res_c31_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_lane_rcu_res_c31
+    assign {b_lane_rcu_res_c31_valid} = {lane_rcu_res_c31_valid};
+    assign {b_lane_rcu_res_c31_payload} = {lane_rcu_res_c31_payload};
+    assign b_lane_rcu_res_c31_wake = lane_rcu_res_c31_wake;
+    assign {lane_rcu_res_c31_credit} = {b_lane_rcu_res_c31_credit};
+    assign {lane_rcu_res_c31_stall} = {b_lane_rcu_res_c31_stall};
+`ifdef CCV_TRACE
+    assign {b_lane_rcu_res_c31_tid} = {lane_rcu_res_c31_tid};
+`endif
+  end
   // ccv_rcu_ooe_done, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_ooe_done_s6_valid, b_rcu_ooe_done_s5_valid, b_rcu_ooe_done_s4_valid, b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid}), .src_payload({b_rcu_ooe_done_s6_payload, b_rcu_ooe_done_s5_payload, b_rcu_ooe_done_s4_payload, b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload}),
-    .src_wake(b_rcu_ooe_done_wake), .src_credit({b_rcu_ooe_done_s6_credit, b_rcu_ooe_done_s5_credit, b_rcu_ooe_done_s4_credit, b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit}), .src_stall({b_rcu_ooe_done_s6_stall, b_rcu_ooe_done_s5_stall, b_rcu_ooe_done_s4_stall, b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall}),
-    .dst_valid({rcu_ooe_done_s6_valid, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_valid, rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid}), .dst_payload({rcu_ooe_done_s6_payload, rcu_ooe_done_s5_payload, rcu_ooe_done_s4_payload, rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload}),
-    .dst_wake(rcu_ooe_done_wake), .dst_credit({rcu_ooe_done_s6_credit, rcu_ooe_done_s5_credit, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit}), .dst_stall({rcu_ooe_done_s6_stall, rcu_ooe_done_s5_stall, rcu_ooe_done_s4_stall, rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall})
+  if (RPT_RCU_OOE_DONE > 0) begin : g_rpt_rcu_ooe_done
+    ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_ooe_done_s6_valid, b_rcu_ooe_done_s5_valid, b_rcu_ooe_done_s4_valid, b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid}), .src_payload({b_rcu_ooe_done_s6_payload, b_rcu_ooe_done_s5_payload, b_rcu_ooe_done_s4_payload, b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload}),
+      .src_wake(b_rcu_ooe_done_wake), .src_credit({b_rcu_ooe_done_s6_credit, b_rcu_ooe_done_s5_credit, b_rcu_ooe_done_s4_credit, b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit}), .src_stall({b_rcu_ooe_done_s6_stall, b_rcu_ooe_done_s5_stall, b_rcu_ooe_done_s4_stall, b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall}),
+      .dst_valid({rcu_ooe_done_s6_valid, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_valid, rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid}), .dst_payload({rcu_ooe_done_s6_payload, rcu_ooe_done_s5_payload, rcu_ooe_done_s4_payload, rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload}),
+      .dst_wake(rcu_ooe_done_wake), .dst_credit({rcu_ooe_done_s6_credit, rcu_ooe_done_s5_credit, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit}), .dst_stall({rcu_ooe_done_s6_stall, rcu_ooe_done_s5_stall, rcu_ooe_done_s4_stall, rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_ooe_done_s6_tid, b_rcu_ooe_done_s5_tid, b_rcu_ooe_done_s4_tid, b_rcu_ooe_done_s3_tid, b_rcu_ooe_done_s2_tid, b_rcu_ooe_done_s1_tid, b_rcu_ooe_done_s0_tid}), .dst_tid({rcu_ooe_done_s6_tid, rcu_ooe_done_s5_tid, rcu_ooe_done_s4_tid, rcu_ooe_done_s3_tid, rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid})
+      , .src_tid({b_rcu_ooe_done_s6_tid, b_rcu_ooe_done_s5_tid, b_rcu_ooe_done_s4_tid, b_rcu_ooe_done_s3_tid, b_rcu_ooe_done_s2_tid, b_rcu_ooe_done_s1_tid, b_rcu_ooe_done_s0_tid}), .dst_tid({rcu_ooe_done_s6_tid, rcu_ooe_done_s5_tid, rcu_ooe_done_s4_tid, rcu_ooe_done_s3_tid, rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_ooe_done
+    assign {rcu_ooe_done_s6_valid, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_valid, rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid} = {b_rcu_ooe_done_s6_valid, b_rcu_ooe_done_s5_valid, b_rcu_ooe_done_s4_valid, b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid};
+    assign {rcu_ooe_done_s6_payload, rcu_ooe_done_s5_payload, rcu_ooe_done_s4_payload, rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload} = {b_rcu_ooe_done_s6_payload, b_rcu_ooe_done_s5_payload, b_rcu_ooe_done_s4_payload, b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload};
+    assign rcu_ooe_done_wake = b_rcu_ooe_done_wake;
+    assign {b_rcu_ooe_done_s6_credit, b_rcu_ooe_done_s5_credit, b_rcu_ooe_done_s4_credit, b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit} = {rcu_ooe_done_s6_credit, rcu_ooe_done_s5_credit, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit};
+    assign {b_rcu_ooe_done_s6_stall, b_rcu_ooe_done_s5_stall, b_rcu_ooe_done_s4_stall, b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall} = {rcu_ooe_done_s6_stall, rcu_ooe_done_s5_stall, rcu_ooe_done_s4_stall, rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall};
+`ifdef CCV_TRACE
+    assign {rcu_ooe_done_s6_tid, rcu_ooe_done_s5_tid, rcu_ooe_done_s4_tid, rcu_ooe_done_s3_tid, rcu_ooe_done_s2_tid, rcu_ooe_done_s1_tid, rcu_ooe_done_s0_tid} = {b_rcu_ooe_done_s6_tid, b_rcu_ooe_done_s5_tid, b_rcu_ooe_done_s4_tid, b_rcu_ooe_done_s3_tid, b_rcu_ooe_done_s2_tid, b_rcu_ooe_done_s1_tid, b_rcu_ooe_done_s0_tid};
+`endif
+  end
   // ccv_rcu_miu_addr, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(2151)) u_rpt_rcu_miu_addr (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_miu_addr_s3_valid, b_rcu_miu_addr_s2_valid, b_rcu_miu_addr_s1_valid, b_rcu_miu_addr_s0_valid}), .src_payload({b_rcu_miu_addr_s3_payload, b_rcu_miu_addr_s2_payload, b_rcu_miu_addr_s1_payload, b_rcu_miu_addr_s0_payload}),
-    .src_wake(b_rcu_miu_addr_wake), .src_credit({b_rcu_miu_addr_s3_credit, b_rcu_miu_addr_s2_credit, b_rcu_miu_addr_s1_credit, b_rcu_miu_addr_s0_credit}), .src_stall({b_rcu_miu_addr_s3_stall, b_rcu_miu_addr_s2_stall, b_rcu_miu_addr_s1_stall, b_rcu_miu_addr_s0_stall}),
-    .dst_valid({rcu_miu_addr_s3_valid, rcu_miu_addr_s2_valid, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_valid}), .dst_payload({rcu_miu_addr_s3_payload, rcu_miu_addr_s2_payload, rcu_miu_addr_s1_payload, rcu_miu_addr_s0_payload}),
-    .dst_wake(rcu_miu_addr_wake), .dst_credit({rcu_miu_addr_s3_credit, rcu_miu_addr_s2_credit, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_credit}), .dst_stall({rcu_miu_addr_s3_stall, rcu_miu_addr_s2_stall, rcu_miu_addr_s1_stall, rcu_miu_addr_s0_stall})
+  if (RPT_RCU_MIU_ADDR > 0) begin : g_rpt_rcu_miu_addr
+    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(2151)) u_rpt_rcu_miu_addr (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_miu_addr_s3_valid, b_rcu_miu_addr_s2_valid, b_rcu_miu_addr_s1_valid, b_rcu_miu_addr_s0_valid}), .src_payload({b_rcu_miu_addr_s3_payload, b_rcu_miu_addr_s2_payload, b_rcu_miu_addr_s1_payload, b_rcu_miu_addr_s0_payload}),
+      .src_wake(b_rcu_miu_addr_wake), .src_credit({b_rcu_miu_addr_s3_credit, b_rcu_miu_addr_s2_credit, b_rcu_miu_addr_s1_credit, b_rcu_miu_addr_s0_credit}), .src_stall({b_rcu_miu_addr_s3_stall, b_rcu_miu_addr_s2_stall, b_rcu_miu_addr_s1_stall, b_rcu_miu_addr_s0_stall}),
+      .dst_valid({rcu_miu_addr_s3_valid, rcu_miu_addr_s2_valid, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_valid}), .dst_payload({rcu_miu_addr_s3_payload, rcu_miu_addr_s2_payload, rcu_miu_addr_s1_payload, rcu_miu_addr_s0_payload}),
+      .dst_wake(rcu_miu_addr_wake), .dst_credit({rcu_miu_addr_s3_credit, rcu_miu_addr_s2_credit, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_credit}), .dst_stall({rcu_miu_addr_s3_stall, rcu_miu_addr_s2_stall, rcu_miu_addr_s1_stall, rcu_miu_addr_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_miu_addr_s3_tid, b_rcu_miu_addr_s2_tid, b_rcu_miu_addr_s1_tid, b_rcu_miu_addr_s0_tid}), .dst_tid({rcu_miu_addr_s3_tid, rcu_miu_addr_s2_tid, rcu_miu_addr_s1_tid, rcu_miu_addr_s0_tid})
+      , .src_tid({b_rcu_miu_addr_s3_tid, b_rcu_miu_addr_s2_tid, b_rcu_miu_addr_s1_tid, b_rcu_miu_addr_s0_tid}), .dst_tid({rcu_miu_addr_s3_tid, rcu_miu_addr_s2_tid, rcu_miu_addr_s1_tid, rcu_miu_addr_s0_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_miu_addr
+    assign {rcu_miu_addr_s3_valid, rcu_miu_addr_s2_valid, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_valid} = {b_rcu_miu_addr_s3_valid, b_rcu_miu_addr_s2_valid, b_rcu_miu_addr_s1_valid, b_rcu_miu_addr_s0_valid};
+    assign {rcu_miu_addr_s3_payload, rcu_miu_addr_s2_payload, rcu_miu_addr_s1_payload, rcu_miu_addr_s0_payload} = {b_rcu_miu_addr_s3_payload, b_rcu_miu_addr_s2_payload, b_rcu_miu_addr_s1_payload, b_rcu_miu_addr_s0_payload};
+    assign rcu_miu_addr_wake = b_rcu_miu_addr_wake;
+    assign {b_rcu_miu_addr_s3_credit, b_rcu_miu_addr_s2_credit, b_rcu_miu_addr_s1_credit, b_rcu_miu_addr_s0_credit} = {rcu_miu_addr_s3_credit, rcu_miu_addr_s2_credit, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_credit};
+    assign {b_rcu_miu_addr_s3_stall, b_rcu_miu_addr_s2_stall, b_rcu_miu_addr_s1_stall, b_rcu_miu_addr_s0_stall} = {rcu_miu_addr_s3_stall, rcu_miu_addr_s2_stall, rcu_miu_addr_s1_stall, rcu_miu_addr_s0_stall};
+`ifdef CCV_TRACE
+    assign {rcu_miu_addr_s3_tid, rcu_miu_addr_s2_tid, rcu_miu_addr_s1_tid, rcu_miu_addr_s0_tid} = {b_rcu_miu_addr_s3_tid, b_rcu_miu_addr_s2_tid, b_rcu_miu_addr_s1_tid, b_rcu_miu_addr_s0_tid};
+`endif
+  end
   // ccv_miu_rcu_data, destination end
-  ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114)) u_rpt_miu_rcu_data (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({miu_rcu_data_s3_valid, miu_rcu_data_s2_valid, miu_rcu_data_s1_valid, miu_rcu_data_s0_valid}), .src_payload({miu_rcu_data_s3_payload, miu_rcu_data_s2_payload, miu_rcu_data_s1_payload, miu_rcu_data_s0_payload}),
-    .src_wake(miu_rcu_data_wake), .src_credit({miu_rcu_data_s3_credit, miu_rcu_data_s2_credit, miu_rcu_data_s1_credit, miu_rcu_data_s0_credit}), .src_stall({miu_rcu_data_s3_stall, miu_rcu_data_s2_stall, miu_rcu_data_s1_stall, miu_rcu_data_s0_stall}),
-    .dst_valid({b_miu_rcu_data_s3_valid, b_miu_rcu_data_s2_valid, b_miu_rcu_data_s1_valid, b_miu_rcu_data_s0_valid}), .dst_payload({b_miu_rcu_data_s3_payload, b_miu_rcu_data_s2_payload, b_miu_rcu_data_s1_payload, b_miu_rcu_data_s0_payload}),
-    .dst_wake(b_miu_rcu_data_wake), .dst_credit({b_miu_rcu_data_s3_credit, b_miu_rcu_data_s2_credit, b_miu_rcu_data_s1_credit, b_miu_rcu_data_s0_credit}), .dst_stall({b_miu_rcu_data_s3_stall, b_miu_rcu_data_s2_stall, b_miu_rcu_data_s1_stall, b_miu_rcu_data_s0_stall})
+  if (RPT_MIU_RCU_DATA > 0) begin : g_rpt_miu_rcu_data
+    ccv_common_rpt #(.STAGES(RPT_MIU_RCU_DATA), .SLOTS(4), .PAYLOAD_W(1114)) u_rpt_miu_rcu_data (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({miu_rcu_data_s3_valid, miu_rcu_data_s2_valid, miu_rcu_data_s1_valid, miu_rcu_data_s0_valid}), .src_payload({miu_rcu_data_s3_payload, miu_rcu_data_s2_payload, miu_rcu_data_s1_payload, miu_rcu_data_s0_payload}),
+      .src_wake(miu_rcu_data_wake), .src_credit({miu_rcu_data_s3_credit, miu_rcu_data_s2_credit, miu_rcu_data_s1_credit, miu_rcu_data_s0_credit}), .src_stall({miu_rcu_data_s3_stall, miu_rcu_data_s2_stall, miu_rcu_data_s1_stall, miu_rcu_data_s0_stall}),
+      .dst_valid({b_miu_rcu_data_s3_valid, b_miu_rcu_data_s2_valid, b_miu_rcu_data_s1_valid, b_miu_rcu_data_s0_valid}), .dst_payload({b_miu_rcu_data_s3_payload, b_miu_rcu_data_s2_payload, b_miu_rcu_data_s1_payload, b_miu_rcu_data_s0_payload}),
+      .dst_wake(b_miu_rcu_data_wake), .dst_credit({b_miu_rcu_data_s3_credit, b_miu_rcu_data_s2_credit, b_miu_rcu_data_s1_credit, b_miu_rcu_data_s0_credit}), .dst_stall({b_miu_rcu_data_s3_stall, b_miu_rcu_data_s2_stall, b_miu_rcu_data_s1_stall, b_miu_rcu_data_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({miu_rcu_data_s3_tid, miu_rcu_data_s2_tid, miu_rcu_data_s1_tid, miu_rcu_data_s0_tid}), .dst_tid({b_miu_rcu_data_s3_tid, b_miu_rcu_data_s2_tid, b_miu_rcu_data_s1_tid, b_miu_rcu_data_s0_tid})
+      , .src_tid({miu_rcu_data_s3_tid, miu_rcu_data_s2_tid, miu_rcu_data_s1_tid, miu_rcu_data_s0_tid}), .dst_tid({b_miu_rcu_data_s3_tid, b_miu_rcu_data_s2_tid, b_miu_rcu_data_s1_tid, b_miu_rcu_data_s0_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_miu_rcu_data
+    assign {b_miu_rcu_data_s3_valid, b_miu_rcu_data_s2_valid, b_miu_rcu_data_s1_valid, b_miu_rcu_data_s0_valid} = {miu_rcu_data_s3_valid, miu_rcu_data_s2_valid, miu_rcu_data_s1_valid, miu_rcu_data_s0_valid};
+    assign {b_miu_rcu_data_s3_payload, b_miu_rcu_data_s2_payload, b_miu_rcu_data_s1_payload, b_miu_rcu_data_s0_payload} = {miu_rcu_data_s3_payload, miu_rcu_data_s2_payload, miu_rcu_data_s1_payload, miu_rcu_data_s0_payload};
+    assign b_miu_rcu_data_wake = miu_rcu_data_wake;
+    assign {miu_rcu_data_s3_credit, miu_rcu_data_s2_credit, miu_rcu_data_s1_credit, miu_rcu_data_s0_credit} = {b_miu_rcu_data_s3_credit, b_miu_rcu_data_s2_credit, b_miu_rcu_data_s1_credit, b_miu_rcu_data_s0_credit};
+    assign {miu_rcu_data_s3_stall, miu_rcu_data_s2_stall, miu_rcu_data_s1_stall, miu_rcu_data_s0_stall} = {b_miu_rcu_data_s3_stall, b_miu_rcu_data_s2_stall, b_miu_rcu_data_s1_stall, b_miu_rcu_data_s0_stall};
+`ifdef CCV_TRACE
+    assign {b_miu_rcu_data_s3_tid, b_miu_rcu_data_s2_tid, b_miu_rcu_data_s1_tid, b_miu_rcu_data_s0_tid} = {miu_rcu_data_s3_tid, miu_rcu_data_s2_tid, miu_rcu_data_s1_tid, miu_rcu_data_s0_tid};
+`endif
+  end
   // ccv_rau_rcu_mig, destination end
-  ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_rcu_mig (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({rau_rcu_mig_valid}), .src_payload({rau_rcu_mig_payload}),
-    .src_wake(rau_rcu_mig_wake), .src_credit({rau_rcu_mig_credit}), .src_stall({rau_rcu_mig_stall}),
-    .dst_valid({b_rau_rcu_mig_valid}), .dst_payload({b_rau_rcu_mig_payload}),
-    .dst_wake(b_rau_rcu_mig_wake), .dst_credit({b_rau_rcu_mig_credit}), .dst_stall({b_rau_rcu_mig_stall})
+  if (RPT_RAU_RCU_MIG > 0) begin : g_rpt_rau_rcu_mig
+    ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_rcu_mig (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({rau_rcu_mig_valid}), .src_payload({rau_rcu_mig_payload}),
+      .src_wake(rau_rcu_mig_wake), .src_credit({rau_rcu_mig_credit}), .src_stall({rau_rcu_mig_stall}),
+      .dst_valid({b_rau_rcu_mig_valid}), .dst_payload({b_rau_rcu_mig_payload}),
+      .dst_wake(b_rau_rcu_mig_wake), .dst_credit({b_rau_rcu_mig_credit}), .dst_stall({b_rau_rcu_mig_stall})
 `ifdef CCV_TRACE
-    , .src_tid({rau_rcu_mig_tid}), .dst_tid({b_rau_rcu_mig_tid})
+      , .src_tid({rau_rcu_mig_tid}), .dst_tid({b_rau_rcu_mig_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rau_rcu_mig
+    assign {b_rau_rcu_mig_valid} = {rau_rcu_mig_valid};
+    assign {b_rau_rcu_mig_payload} = {rau_rcu_mig_payload};
+    assign b_rau_rcu_mig_wake = rau_rcu_mig_wake;
+    assign {rau_rcu_mig_credit} = {b_rau_rcu_mig_credit};
+    assign {rau_rcu_mig_stall} = {b_rau_rcu_mig_stall};
+`ifdef CCV_TRACE
+    assign {b_rau_rcu_mig_tid} = {rau_rcu_mig_tid};
+`endif
+  end
   // ccv_ooe_rcu_map, destination end
-  ccv_common_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(222)) u_rpt_ooe_rcu_map (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({ooe_rcu_map_valid}), .src_payload({ooe_rcu_map_payload}),
-    .src_wake(ooe_rcu_map_wake), .src_credit({ooe_rcu_map_credit}), .src_stall({ooe_rcu_map_stall}),
-    .dst_valid({b_ooe_rcu_map_valid}), .dst_payload({b_ooe_rcu_map_payload}),
-    .dst_wake(b_ooe_rcu_map_wake), .dst_credit({b_ooe_rcu_map_credit}), .dst_stall({b_ooe_rcu_map_stall})
+  if (RPT_OOE_RCU_MAP > 0) begin : g_rpt_ooe_rcu_map
+    ccv_common_rpt #(.STAGES(RPT_OOE_RCU_MAP), .SLOTS(1), .PAYLOAD_W(222)) u_rpt_ooe_rcu_map (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({ooe_rcu_map_valid}), .src_payload({ooe_rcu_map_payload}),
+      .src_wake(ooe_rcu_map_wake), .src_credit({ooe_rcu_map_credit}), .src_stall({ooe_rcu_map_stall}),
+      .dst_valid({b_ooe_rcu_map_valid}), .dst_payload({b_ooe_rcu_map_payload}),
+      .dst_wake(b_ooe_rcu_map_wake), .dst_credit({b_ooe_rcu_map_credit}), .dst_stall({b_ooe_rcu_map_stall})
 `ifdef CCV_TRACE
-    , .src_tid({ooe_rcu_map_tid}), .dst_tid({b_ooe_rcu_map_tid})
+      , .src_tid({ooe_rcu_map_tid}), .dst_tid({b_ooe_rcu_map_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_ooe_rcu_map
+    assign {b_ooe_rcu_map_valid} = {ooe_rcu_map_valid};
+    assign {b_ooe_rcu_map_payload} = {ooe_rcu_map_payload};
+    assign b_ooe_rcu_map_wake = ooe_rcu_map_wake;
+    assign {ooe_rcu_map_credit} = {b_ooe_rcu_map_credit};
+    assign {ooe_rcu_map_stall} = {b_ooe_rcu_map_stall};
+`ifdef CCV_TRACE
+    assign {b_ooe_rcu_map_tid} = {ooe_rcu_map_tid};
+`endif
+  end
   // ccv_rcu_pca_mig, source end
-  ccv_common_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_rcu_pca_mig_valid}), .src_payload({b_rcu_pca_mig_payload}),
-    .src_wake(b_rcu_pca_mig_wake), .src_credit({b_rcu_pca_mig_credit}), .src_stall({b_rcu_pca_mig_stall}),
-    .dst_valid({rcu_pca_mig_valid}), .dst_payload({rcu_pca_mig_payload}),
-    .dst_wake(rcu_pca_mig_wake), .dst_credit({rcu_pca_mig_credit}), .dst_stall({rcu_pca_mig_stall})
+  if (RPT_RCU_PCA_MIG > 0) begin : g_rpt_rcu_pca_mig
+    ccv_common_rpt #(.STAGES(RPT_RCU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_rcu_pca_mig (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rcu_pca_mig_valid}), .src_payload({b_rcu_pca_mig_payload}),
+      .src_wake(b_rcu_pca_mig_wake), .src_credit({b_rcu_pca_mig_credit}), .src_stall({b_rcu_pca_mig_stall}),
+      .dst_valid({rcu_pca_mig_valid}), .dst_payload({rcu_pca_mig_payload}),
+      .dst_wake(rcu_pca_mig_wake), .dst_credit({rcu_pca_mig_credit}), .dst_stall({rcu_pca_mig_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_rcu_pca_mig_tid}), .dst_tid({rcu_pca_mig_tid})
+      , .src_tid({b_rcu_pca_mig_tid}), .dst_tid({rcu_pca_mig_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rcu_pca_mig
+    assign {rcu_pca_mig_valid} = {b_rcu_pca_mig_valid};
+    assign {rcu_pca_mig_payload} = {b_rcu_pca_mig_payload};
+    assign rcu_pca_mig_wake = b_rcu_pca_mig_wake;
+    assign {b_rcu_pca_mig_credit} = {rcu_pca_mig_credit};
+    assign {b_rcu_pca_mig_stall} = {rcu_pca_mig_stall};
+`ifdef CCV_TRACE
+    assign {rcu_pca_mig_tid} = {b_rcu_pca_mig_tid};
+`endif
+  end
   // ccv_pca_rcu_mig, destination end
-  ccv_common_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({pca_rcu_mig_valid}), .src_payload({pca_rcu_mig_payload}),
-    .src_wake(pca_rcu_mig_wake), .src_credit({pca_rcu_mig_credit}), .src_stall({pca_rcu_mig_stall}),
-    .dst_valid({b_pca_rcu_mig_valid}), .dst_payload({b_pca_rcu_mig_payload}),
-    .dst_wake(b_pca_rcu_mig_wake), .dst_credit({b_pca_rcu_mig_credit}), .dst_stall({b_pca_rcu_mig_stall})
+  if (RPT_PCA_RCU_MIG > 0) begin : g_rpt_pca_rcu_mig
+    ccv_common_rpt #(.STAGES(RPT_PCA_RCU_MIG), .SLOTS(1), .PAYLOAD_W(1034)) u_rpt_pca_rcu_mig (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({pca_rcu_mig_valid}), .src_payload({pca_rcu_mig_payload}),
+      .src_wake(pca_rcu_mig_wake), .src_credit({pca_rcu_mig_credit}), .src_stall({pca_rcu_mig_stall}),
+      .dst_valid({b_pca_rcu_mig_valid}), .dst_payload({b_pca_rcu_mig_payload}),
+      .dst_wake(b_pca_rcu_mig_wake), .dst_credit({b_pca_rcu_mig_credit}), .dst_stall({b_pca_rcu_mig_stall})
 `ifdef CCV_TRACE
-    , .src_tid({pca_rcu_mig_tid}), .dst_tid({b_pca_rcu_mig_tid})
+      , .src_tid({pca_rcu_mig_tid}), .dst_tid({b_pca_rcu_mig_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_pca_rcu_mig
+    assign {b_pca_rcu_mig_valid} = {pca_rcu_mig_valid};
+    assign {b_pca_rcu_mig_payload} = {pca_rcu_mig_payload};
+    assign b_pca_rcu_mig_wake = pca_rcu_mig_wake;
+    assign {pca_rcu_mig_credit} = {b_pca_rcu_mig_credit};
+    assign {pca_rcu_mig_stall} = {b_pca_rcu_mig_stall};
+`ifdef CCV_TRACE
+    assign {b_pca_rcu_mig_tid} = {pca_rcu_mig_tid};
+`endif
+  end
 endmodule

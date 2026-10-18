@@ -6,10 +6,10 @@
 
 // HARDENING WRAPPER ccv_spm_w: ccv_spm and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. Every
-// end has its repeater whether or not the link is repeated.
-// STAGES is a parameter the top sets from params/links.json, 0 meaning
-// wires, so a new split changes parameters and never this structure.
+// and links"). Nothing but instances and nets, like the top. An end
+// whose link has no stages here is connected straight through.
+// Each end's stages are a parameter the top sets from params/links.json;
+// at 0 the end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_spm_w #(
@@ -126,25 +126,47 @@ module ccv_spm_w #(
   );
 
   // ccv_miu_spm_req, destination end
-  ccv_common_rpt #(.STAGES(RPT_MIU_SPM_REQ), .SLOTS(4), .PAYLOAD_W(1477)) u_rpt_miu_spm_req (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({miu_spm_req_s3_valid, miu_spm_req_s2_valid, miu_spm_req_s1_valid, miu_spm_req_s0_valid}), .src_payload({miu_spm_req_s3_payload, miu_spm_req_s2_payload, miu_spm_req_s1_payload, miu_spm_req_s0_payload}),
-    .src_wake(miu_spm_req_wake), .src_credit({miu_spm_req_s3_credit, miu_spm_req_s2_credit, miu_spm_req_s1_credit, miu_spm_req_s0_credit}), .src_stall({miu_spm_req_s3_stall, miu_spm_req_s2_stall, miu_spm_req_s1_stall, miu_spm_req_s0_stall}),
-    .dst_valid({b_miu_spm_req_s3_valid, b_miu_spm_req_s2_valid, b_miu_spm_req_s1_valid, b_miu_spm_req_s0_valid}), .dst_payload({b_miu_spm_req_s3_payload, b_miu_spm_req_s2_payload, b_miu_spm_req_s1_payload, b_miu_spm_req_s0_payload}),
-    .dst_wake(b_miu_spm_req_wake), .dst_credit({b_miu_spm_req_s3_credit, b_miu_spm_req_s2_credit, b_miu_spm_req_s1_credit, b_miu_spm_req_s0_credit}), .dst_stall({b_miu_spm_req_s3_stall, b_miu_spm_req_s2_stall, b_miu_spm_req_s1_stall, b_miu_spm_req_s0_stall})
+  if (RPT_MIU_SPM_REQ > 0) begin : g_rpt_miu_spm_req
+    ccv_common_rpt #(.STAGES(RPT_MIU_SPM_REQ), .SLOTS(4), .PAYLOAD_W(1477)) u_rpt_miu_spm_req (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({miu_spm_req_s3_valid, miu_spm_req_s2_valid, miu_spm_req_s1_valid, miu_spm_req_s0_valid}), .src_payload({miu_spm_req_s3_payload, miu_spm_req_s2_payload, miu_spm_req_s1_payload, miu_spm_req_s0_payload}),
+      .src_wake(miu_spm_req_wake), .src_credit({miu_spm_req_s3_credit, miu_spm_req_s2_credit, miu_spm_req_s1_credit, miu_spm_req_s0_credit}), .src_stall({miu_spm_req_s3_stall, miu_spm_req_s2_stall, miu_spm_req_s1_stall, miu_spm_req_s0_stall}),
+      .dst_valid({b_miu_spm_req_s3_valid, b_miu_spm_req_s2_valid, b_miu_spm_req_s1_valid, b_miu_spm_req_s0_valid}), .dst_payload({b_miu_spm_req_s3_payload, b_miu_spm_req_s2_payload, b_miu_spm_req_s1_payload, b_miu_spm_req_s0_payload}),
+      .dst_wake(b_miu_spm_req_wake), .dst_credit({b_miu_spm_req_s3_credit, b_miu_spm_req_s2_credit, b_miu_spm_req_s1_credit, b_miu_spm_req_s0_credit}), .dst_stall({b_miu_spm_req_s3_stall, b_miu_spm_req_s2_stall, b_miu_spm_req_s1_stall, b_miu_spm_req_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({miu_spm_req_s3_tid, miu_spm_req_s2_tid, miu_spm_req_s1_tid, miu_spm_req_s0_tid}), .dst_tid({b_miu_spm_req_s3_tid, b_miu_spm_req_s2_tid, b_miu_spm_req_s1_tid, b_miu_spm_req_s0_tid})
+      , .src_tid({miu_spm_req_s3_tid, miu_spm_req_s2_tid, miu_spm_req_s1_tid, miu_spm_req_s0_tid}), .dst_tid({b_miu_spm_req_s3_tid, b_miu_spm_req_s2_tid, b_miu_spm_req_s1_tid, b_miu_spm_req_s0_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_miu_spm_req
+    assign {b_miu_spm_req_s3_valid, b_miu_spm_req_s2_valid, b_miu_spm_req_s1_valid, b_miu_spm_req_s0_valid} = {miu_spm_req_s3_valid, miu_spm_req_s2_valid, miu_spm_req_s1_valid, miu_spm_req_s0_valid};
+    assign {b_miu_spm_req_s3_payload, b_miu_spm_req_s2_payload, b_miu_spm_req_s1_payload, b_miu_spm_req_s0_payload} = {miu_spm_req_s3_payload, miu_spm_req_s2_payload, miu_spm_req_s1_payload, miu_spm_req_s0_payload};
+    assign b_miu_spm_req_wake = miu_spm_req_wake;
+    assign {miu_spm_req_s3_credit, miu_spm_req_s2_credit, miu_spm_req_s1_credit, miu_spm_req_s0_credit} = {b_miu_spm_req_s3_credit, b_miu_spm_req_s2_credit, b_miu_spm_req_s1_credit, b_miu_spm_req_s0_credit};
+    assign {miu_spm_req_s3_stall, miu_spm_req_s2_stall, miu_spm_req_s1_stall, miu_spm_req_s0_stall} = {b_miu_spm_req_s3_stall, b_miu_spm_req_s2_stall, b_miu_spm_req_s1_stall, b_miu_spm_req_s0_stall};
+`ifdef CCV_TRACE
+    assign {b_miu_spm_req_s3_tid, b_miu_spm_req_s2_tid, b_miu_spm_req_s1_tid, b_miu_spm_req_s0_tid} = {miu_spm_req_s3_tid, miu_spm_req_s2_tid, miu_spm_req_s1_tid, miu_spm_req_s0_tid};
+`endif
+  end
   // ccv_spm_miu_rsp, source end
-  ccv_common_rpt #(.STAGES(RPT_SPM_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1033)) u_rpt_spm_miu_rsp (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_spm_miu_rsp_s3_valid, b_spm_miu_rsp_s2_valid, b_spm_miu_rsp_s1_valid, b_spm_miu_rsp_s0_valid}), .src_payload({b_spm_miu_rsp_s3_payload, b_spm_miu_rsp_s2_payload, b_spm_miu_rsp_s1_payload, b_spm_miu_rsp_s0_payload}),
-    .src_wake(b_spm_miu_rsp_wake), .src_credit({b_spm_miu_rsp_s3_credit, b_spm_miu_rsp_s2_credit, b_spm_miu_rsp_s1_credit, b_spm_miu_rsp_s0_credit}), .src_stall({b_spm_miu_rsp_s3_stall, b_spm_miu_rsp_s2_stall, b_spm_miu_rsp_s1_stall, b_spm_miu_rsp_s0_stall}),
-    .dst_valid({spm_miu_rsp_s3_valid, spm_miu_rsp_s2_valid, spm_miu_rsp_s1_valid, spm_miu_rsp_s0_valid}), .dst_payload({spm_miu_rsp_s3_payload, spm_miu_rsp_s2_payload, spm_miu_rsp_s1_payload, spm_miu_rsp_s0_payload}),
-    .dst_wake(spm_miu_rsp_wake), .dst_credit({spm_miu_rsp_s3_credit, spm_miu_rsp_s2_credit, spm_miu_rsp_s1_credit, spm_miu_rsp_s0_credit}), .dst_stall({spm_miu_rsp_s3_stall, spm_miu_rsp_s2_stall, spm_miu_rsp_s1_stall, spm_miu_rsp_s0_stall})
+  if (RPT_SPM_MIU_RSP > 0) begin : g_rpt_spm_miu_rsp
+    ccv_common_rpt #(.STAGES(RPT_SPM_MIU_RSP), .SLOTS(4), .PAYLOAD_W(1033)) u_rpt_spm_miu_rsp (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_spm_miu_rsp_s3_valid, b_spm_miu_rsp_s2_valid, b_spm_miu_rsp_s1_valid, b_spm_miu_rsp_s0_valid}), .src_payload({b_spm_miu_rsp_s3_payload, b_spm_miu_rsp_s2_payload, b_spm_miu_rsp_s1_payload, b_spm_miu_rsp_s0_payload}),
+      .src_wake(b_spm_miu_rsp_wake), .src_credit({b_spm_miu_rsp_s3_credit, b_spm_miu_rsp_s2_credit, b_spm_miu_rsp_s1_credit, b_spm_miu_rsp_s0_credit}), .src_stall({b_spm_miu_rsp_s3_stall, b_spm_miu_rsp_s2_stall, b_spm_miu_rsp_s1_stall, b_spm_miu_rsp_s0_stall}),
+      .dst_valid({spm_miu_rsp_s3_valid, spm_miu_rsp_s2_valid, spm_miu_rsp_s1_valid, spm_miu_rsp_s0_valid}), .dst_payload({spm_miu_rsp_s3_payload, spm_miu_rsp_s2_payload, spm_miu_rsp_s1_payload, spm_miu_rsp_s0_payload}),
+      .dst_wake(spm_miu_rsp_wake), .dst_credit({spm_miu_rsp_s3_credit, spm_miu_rsp_s2_credit, spm_miu_rsp_s1_credit, spm_miu_rsp_s0_credit}), .dst_stall({spm_miu_rsp_s3_stall, spm_miu_rsp_s2_stall, spm_miu_rsp_s1_stall, spm_miu_rsp_s0_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_spm_miu_rsp_s3_tid, b_spm_miu_rsp_s2_tid, b_spm_miu_rsp_s1_tid, b_spm_miu_rsp_s0_tid}), .dst_tid({spm_miu_rsp_s3_tid, spm_miu_rsp_s2_tid, spm_miu_rsp_s1_tid, spm_miu_rsp_s0_tid})
+      , .src_tid({b_spm_miu_rsp_s3_tid, b_spm_miu_rsp_s2_tid, b_spm_miu_rsp_s1_tid, b_spm_miu_rsp_s0_tid}), .dst_tid({spm_miu_rsp_s3_tid, spm_miu_rsp_s2_tid, spm_miu_rsp_s1_tid, spm_miu_rsp_s0_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_spm_miu_rsp
+    assign {spm_miu_rsp_s3_valid, spm_miu_rsp_s2_valid, spm_miu_rsp_s1_valid, spm_miu_rsp_s0_valid} = {b_spm_miu_rsp_s3_valid, b_spm_miu_rsp_s2_valid, b_spm_miu_rsp_s1_valid, b_spm_miu_rsp_s0_valid};
+    assign {spm_miu_rsp_s3_payload, spm_miu_rsp_s2_payload, spm_miu_rsp_s1_payload, spm_miu_rsp_s0_payload} = {b_spm_miu_rsp_s3_payload, b_spm_miu_rsp_s2_payload, b_spm_miu_rsp_s1_payload, b_spm_miu_rsp_s0_payload};
+    assign spm_miu_rsp_wake = b_spm_miu_rsp_wake;
+    assign {b_spm_miu_rsp_s3_credit, b_spm_miu_rsp_s2_credit, b_spm_miu_rsp_s1_credit, b_spm_miu_rsp_s0_credit} = {spm_miu_rsp_s3_credit, spm_miu_rsp_s2_credit, spm_miu_rsp_s1_credit, spm_miu_rsp_s0_credit};
+    assign {b_spm_miu_rsp_s3_stall, b_spm_miu_rsp_s2_stall, b_spm_miu_rsp_s1_stall, b_spm_miu_rsp_s0_stall} = {spm_miu_rsp_s3_stall, spm_miu_rsp_s2_stall, spm_miu_rsp_s1_stall, spm_miu_rsp_s0_stall};
+`ifdef CCV_TRACE
+    assign {spm_miu_rsp_s3_tid, spm_miu_rsp_s2_tid, spm_miu_rsp_s1_tid, spm_miu_rsp_s0_tid} = {b_spm_miu_rsp_s3_tid, b_spm_miu_rsp_s2_tid, b_spm_miu_rsp_s1_tid, b_spm_miu_rsp_s0_tid};
+`endif
+  end
 endmodule

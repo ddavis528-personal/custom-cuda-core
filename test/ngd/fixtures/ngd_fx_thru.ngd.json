@@ -2,8 +2,8 @@
   "module": "ngd_fx_thru",
   "ports": {
     "a": {"arrival": 6, "by": "selftest", "date": "2026-10-17",
-          "why": "a path straight through needs explicit budgets: a arrives at 6"},
+          "why": "budgets that would converge over a path straight through: a arrives at 6"},
     "y": {"required": 18, "by": "selftest", "date": "2026-10-17",
-          "why": "and y is required by 18, so the gate between fits"}
+          "why": "and y is required by 18, with room for the gate between; the path is still refused (NGD-5)"}
   }
 }

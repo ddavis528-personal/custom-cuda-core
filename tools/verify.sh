@@ -153,10 +153,12 @@ section "Clock gating -- the ctech layer and the block gate"
 # formal section.
 run "ctech and clock gate" ./tools/check-ctech.sh
 
-section "Local clock gating -- CG-1, CG-2, CG-3"
+section "Local clock gating -- CG-1 to CG-5, RST-1"
 # docs/rtl-coding-style.md, "Local clock gating" (Daniel, 2026-10-16): every
 # register behind a named enable (CG-1), every enable cone within
-# CCV_NGD_CG_EN NGD (CG-2), every enable group's DCGE at least
+# CCV_NGD_CG_EN NGD (CG-2) and from the module's own flops only (CG-5,
+# 2026-10-18), the reset flopped before any use (RST-1), every repeater the
+# design instantiates a unit of its own, every enable group's DCGE at least
 # CCV_DCGE_MIN_PCT in the idle, medium and high scenarios (CG-3), measured on
 # the netlist with each bench's trace replayed into it. Waivers in
 # rtl/cg-waivers.json, the ratchet in rtl/cg-ratchet.json. The controls run
@@ -164,12 +166,15 @@ section "Local clock gating -- CG-1, CG-2, CG-3"
 run "local clock gating" python3 tools/check-cg.py
 run "clock gating that should fail does" python3 tools/check-cg.py --selftest
 
-section "Logic depth -- NGD-1 to NGD-4"
+section "Logic depth -- NGD-1 to NGD-5"
 # Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"): 25 NGD of
 # logic between flops; each module port 12 a side by default, the
 # architect's budgets beside a module's RTL (<module>.ngd.json) where a port
-# needs more; an assembled block converged from those files level by level,
-# then timed whole, its ports registered on both sides. Each module at its
+# needs more; nothing straight through a module, not even a wire, nor logic
+# in a parent between its children (2026-10-18), inner helpers timed as
+# their parent's logic; an
+# assembled block converged from those files level by level, then timed
+# whole, its ports registered on both sides. Each module at its
 # units' parameters, mapped by ABC; the timing pass must agree with ABC's
 # own longest path.
 run "logic depth" python3 tools/check-ngd.py

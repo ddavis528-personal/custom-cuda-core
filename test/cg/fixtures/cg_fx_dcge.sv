@@ -10,11 +10,17 @@ module cg_fx_dcge (
   output logic        out_v,
   output logic [15:0] out_d
 );
+  logic       rst_q, v_q;
   logic [7:0] hit_q;
-  wire        hit_en = in_v;
+  wire        hit_en = v_q;
 
   always_ff @(posedge clk) begin
-    if (rst)         hit_q <= '0;
+    rst_q <= rst;
+    v_q   <= in_v;
+  end
+
+  always_ff @(posedge clk) begin
+    if (rst_q)       hit_q <= '0;
     else if (hit_en)
       for (int i = 0; i < 8; i++) hit_q[i] <= &in_d[i +: 5];
   end

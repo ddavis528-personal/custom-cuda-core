@@ -11,9 +11,13 @@ by stage, every flop must be one of:
 
   - payload and trace id: an enable flop whose enable is THIS stage's valid
     flop -- the previous cycle's valid;
-  - lead slice: an enable flop whose enable is the stage's INPUT valid -- the
-    same cycle's, since a lead rides with valid;
-  - valid, wake, credit, stall: one each per stage, with reset, no enable.
+  - lead slice: taken in the same cycle as its valid, since a lead rides
+    with valid. At the first stage that valid is the module's input, which
+    may not reach a clock enable (CG-5): a plain flop, written every cycle.
+    At a later stage, an enable flop on the previous stage's valid flop;
+  - valid, wake, credit, stall: one each per stage, reset by the module's
+    flopped reset, no enable;
+  - rst_n_q: the reset, flopped once (RST-1), a plain flop on rst_n.
 
 Anything else fails, with the flop named. `--file` checks a (mutated) copy,
 which is how tools/check-phys.sh proves the check can fail.
@@ -65,6 +69,7 @@ def check(mod, stages, slots, width, lead, trace):
 
     bad = []
     pulse_bits = {}
+    rst_q = bit("rst_n_q") if stages else None
     for cname, c in mod["cells"].items():
         t = c["type"]
         if "dff" not in t:
@@ -72,6 +77,11 @@ def check(mod, stages, slots, width, lead, trace):
         q = c["connections"]["Q"]
         en = c["connections"].get("EN")
         who = sorted(names.get(q[0], {("?", 0)}))
+        if q[0] == rst_q:
+            if t != "$dff" or c["connections"]["D"][0] != bit("rst_n"):
+                bad.append("rst_n_q: the reset, flopped, must be a plain flop on rst_n (is %s)"
+                           % t)
+            continue
         # The register, not an alias of it: pay_en is valid_q under its
         # enable's name (docs/rtl-coding-style.md, "Local clock gating").
         stage = [n for n, _ in who if n.startswith("g_stage[")]
@@ -86,6 +96,10 @@ def check(mod, stages, slots, width, lead, trace):
         if reg in ("valid_q", "wake_q", "credit_q", "stall_q"):
             if en is not None or "sdff" not in t:
                 bad.append("%s: a pulse, must be reset and never enabled (is %s)" % (net, t))
+            elif c["connections"]["SRST"][0] != rst_q:
+                bad.append("%s: reset by %s, not by the flopped reset rst_n_q"
+                           % (net, sorted(names.get(c["connections"]["SRST"][0],
+                                                    {("?", 0)}))[0][0]))
             pulse_bits[(k, reg)] = pulse_bits.get((k, reg), 0) + len(q)
             continue
         j = int(net.split("g_slot[")[1].split("]")[0]) if "g_slot[" in net else 0
@@ -96,6 +110,13 @@ def check(mod, stages, slots, width, lead, trace):
         elif reg == "lead_q":
             want, why = valid_at(k, j), "the stage's slot-%d input valid (the same cycle's)" % j
             mask = lead
+            if k == 0:
+                live = [i for i in range(len(q)) if (mask >> _off(names, q[i], net)) & 1]
+                if live and en is not None:
+                    bad.append("%s: enabled by %s; at the first stage a lead is written every "
+                               "cycle, since its valid is an input (CG-5)"
+                               % (net, sorted(names.get(en[0], {("?", 0)}))[0][0]))
+                continue
         else:
             bad.append("%s: an unexpected register" % net)
             continue

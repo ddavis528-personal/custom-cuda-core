@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-4, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
+| `tools/check-ngd.py` | NGD-1 … NGD-5, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -563,7 +563,7 @@ forms give the same enable flop, but only one of them says so.
 `` `CCV_XHOLD `` is the sanctioned escape, for an enable that genuinely cannot
 be proven X-free.
 
-### Local clock gating: CG-1, CG-2, CG-3
+### Local clock gating: CG-1 … CG-5, and the reset (RST-1)
 
 **Every register is behind an enable, and the enable is a good one** (Daniel,
 2026-10-16; refined the same day with the gate size, the budget and the
@@ -612,6 +612,28 @@ end
   is where a group under 8 flops lands, and a flop whose enable synthesis
   dropped. A register CG-1 already reports as written every cycle is judged
   there, not twice.
+- **CG-5, where an enable comes from** (Daniel, 2026-10-18). Every clock
+  gate's enable cone, and every explicit ICG's, starts only at the module's
+  own flops: no input, however its driver produces it. An input there is
+  another module's logic on a path to a clock gate, whose enable must settle
+  early, and that module has no reliable way to know its output is used
+  that way. This is why a channel's **valid leads its payload by a cycle**:
+  the receiver flops valid, written every cycle, and that flop is the
+  enable for the payload a cycle later. So whatever arrives in a message's
+  first cycle, valid itself and any lead field, is captured by flops written
+  every cycle, which count against the module's allowance (below), and that
+  is what limits leads: only valid leads, except on the few buses where a
+  lead buys a real IPC gain or is itself an enable (today `rcu_lane_ops`'
+  `section_en` and `sec_pred_bit`, the lane's valid per section).
+- **RST-1, the reset is flopped before use** (Daniel, 2026-10-18). A
+  module's reset input reaches nothing but the D pins of plain flops that
+  capture it, `rst_n_q <= rst_n;`, and every use of reset, a clock enable's
+  among them, is from those. The reset contract: synchronous, arriving in
+  the same cycle at every receiver, its latency in cycles flexible and
+  balanced globally, so there is no reason to make timing hard on it. A
+  register reset by the flopped reset still shares a gate with one that is
+  not: check-cg follows the chain of plain flops from the port, and reset
+  cycles, the flops' extra one included, are never counted.
 
 **An enable group is what synthesis would gate**: the flops Yosys infers one
 enable for, read from the synthesised netlist, not from the source. A
@@ -698,30 +720,41 @@ than it is.
   where a rule would be met by refactoring, refactor (the age matrix's 900
   one-flop enables are a refactor, not a waiver). A waiver that excuses
   nothing is refused, and that includes one for a finding a module's budget
-  already takes. Today's waivers: two of the repeater's pulse registers,
-  past its allowance (an enable that sees a repeater's input reaches the
-  gate after a cycle of wire). The clock gate's hysteresis counters had two
+  already takes. Today there are none. The repeater had two, for its valid
+  and stall flops, until every instantiation was measured on its own (below):
+  its allowance takes them. The clock gate's hysteresis counters had two
   until its threshold compare was registered, which Daniel's CSR contract
   allows (no write-to-use latency, Q-59); they are now one 14-flop gate.
 
+**Every repeater instantiation is checked like any module** (Daniel,
+2026-10-18). `tools/gen-top.py` writes `rtl/top/rpt-units.json`, one unit
+per distinct repeater the design instantiates (stages, slots, payload width,
+lead mask), and both `check-cg.py` and `check-ngd.py` measure each: its
+valid, credit, stall and wake flops, its flopped reset and its first stage's
+lead slice, all written every cycle, within its allowance. That is what
+limits leads on a repeated link: one 64-bit slot at one stage passes, and
+with a 16-bit lead it does not (the selftest's control). None is repeated
+today. A link with no stages has no repeater: the wrapper connects the end
+straight through.
+
 **The ratchet.** RTL written before the rule is listed in
-`rtl/cg-ratchet.json` and excused while its owner converts it. The list only
-shrinks: `check-cg.py` refuses an entry that was not on it when the rule was
-made, and refuses a listed module that now meets the rule until it is
-removed. A module with flops that is neither measured by a unit nor on the
+`rtl/cg-ratchet.json` and excused while its owner converts it: whole modules
+for CG-1 to CG-4 (`modules`, none today), and one entry per rule and
+register or port for CG-5 and RST-1 (`findings`, 2026-10-18: every OOE
+module), so a module on it is still held to the rest. The lists only
+shrink: `check-cg.py` refuses an entry that was not on it when its rule was
+made, and refuses one that now meets the rule until it is removed. A module with flops that is neither measured by a unit nor on the
 list is refused. Checkers (`ccv_common_chk_*`, present only under
 `CCV_CHECK`) and ctech cells are not silicon logic and are not checked.
 
-**What this does not see.** An enable's inputs are taken to arrive at zero:
-one built from another module's combinational output is measured from the
-module boundary only. A group is one enable net and its polarity, with the
+**What this does not see.** A group is one enable net and its polarity, with the
 unit's reset folded in, so two enables that are logically equal but built
 separately count as two groups and may each fall under 8. And a finding's
 size in a block's budget is counted by register name, every flop of that
 register in each instance, which over-counts a finding that covers only
 part of a register.
 
-### Logic depth: NGD-1 … NGD-4
+### Logic depth: NGD-1 … NGD-5
 
 **25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
@@ -738,9 +771,34 @@ floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
   within the rest, 12.
 
 Two defaults meet within the stage, so a port that fits them needs no one's
-plan. Anything else needs explicit budgets from the architect: a port over
-12, and any path **straight through** a module, input to output, which fits
-no default (it would arrive at 13 and be required by 12).
+plan. A port over 12 needs explicit budgets from the architect.
+
+**Nothing straight through a module** (Daniel, 2026-10-18). A path from an
+input port to an output port is refused, logic or a plain wire. Logic is
+regrouped with one sequential side or the other, the receiver's flops or
+the driver's; a wire is connected directly instead, since a feedthrough
+module only obscures it. So every
+flop-to-flop path between modules crosses exactly one port, in two segments,
+and a pair of budgets says all there is to say about it; a third segment
+through a module would break the halves, and stacked ones would compound. In
+a parent, the same holds for the glue between its children: a path that
+touches none of the parent's own flops (a child's output to another child's
+input, a parent's input to a child's, a child's output to the parent's) is a
+wire: that is the parent's connection. Three exceptions:
+
+- an **inner helper**, a combinational module timed only inside its parent
+  (a priority pick, a ready function), declared in its own budget file,
+  `{"module": "ooe_pick", "inner": true, "by": …, "date": …, "why": …}`,
+  with no ports and no flops. It is flattened into its parent wherever it is
+  checked, so its logic is the parent's and must sit beside one of the
+  parent's flops like any other: between two of the parent's children, it is
+  glue;
+- an **observation** output, read only by checkers that sample it at the edge
+  as a flop would (`{"observation": true, …}` on the port), held to no port
+  rule;
+- a channel a **generated hardening wrapper** carries across itself where
+  the floorplan routes it but the distance needs no stage: a repeater of no
+  stages, in `rtl/top/` only.
 
 **One budget file per module, beside its RTL**, in one format, listing only
 its non-default ports: `ooe_rs.ngd.json` beside `rtl/ooe/ooe_rs.sv`, say, and
@@ -757,23 +815,31 @@ today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
 ```
 
 An input's `arrival` or an output's `required` time, in NGD from the flop
-that launches it, with who set it, when and why. The architect sets them (OA
-for OOE); the module's owner keeps the file. The module is checked against
-its file, and an assembled block is checked from all of them: the budgets
-must **converge**, each driver's required time, plus any logic between, no
-later than its receiver's arrival.
+that launches it, or `observation`, with who set it, when and why. The
+architect sets them (OA for OOE); the module's owner keeps the file and
+declares an inner helper. The module is checked against its file, and an
+assembled block is checked from all of them: the budgets must **converge**,
+each driver's required time no later than its receiver's arrival.
 
-Four rules, checked by `tools/check-ngd.py` on every module at its units'
+Five rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
 with no flops):
 
 - **NGD-1, the stage.** Flop to flop within a module: at most 25.
-- **NGD-2, outputs.** Each output ready by its required time, from the
-  module's flops and from each input at its arrival.
+- **NGD-2, outputs.** Each output ready by its required time from the
+  module's flops.
 - **NGD-3, inputs.** Each input, from its arrival, reaches the module's flops
   within the stage.
 - **NGD-4, budget files.** Each named for its module, a design module, each
-  entry well formed and on a port of that module, in the right direction.
+  entry exactly one of `arrival`, `required` and `observation`, well formed
+  and on a port of that module, in the right direction; an inner helper's
+  with no ports, of a module with no flops.
+- **NGD-5, nothing straight through.** No path from an input to an output,
+  wire or logic; and in a module that instantiates another (not an inner
+  helper), no logic on a path that touches none of its own flops. The second is checked on the
+  module's own level, its children cut out at their budgets, where each
+  connection between them must also converge. An inner helper is held to
+  NGD-1 alone, its logic counted in its parent's.
 
 **How it is measured.** Yosys synthesises the unit flattened; each clock-gated
 flop becomes a plain flop on its next value (its enable is timed apart, to its
@@ -787,8 +853,8 @@ top is RTL, it is checked twice. First from the budget files, quickly: each
 level of its hierarchy that instantiates others is mapped alone, its
 children cut out, each child's output starting at its required time and each
 child's input to be reached by its arrival, the block's own inputs arriving
-at 13. So every connection, and any glue between children, must converge to
-25 as the files say. Then timed whole, synthesised flattened with its
+at 13, inner helpers flattened into their parents. So every connection must
+converge to 25 as the files say, and any glue between children is NGD-5. Then timed whole, synthesised flattened with its
 hardening wrapper: every flop to flop path within 25, whatever the files
 said. That pass is still needed, but it should find only corner cases, where
 synthesis did across a boundary what it could not module by module (two
@@ -803,11 +869,14 @@ budget of local clock gating (2% per instance) is checked on the same
 assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
 on the tree; the fixtures exercise both.
 
-**The ratchet.** The ports that broke a default when the rule was made sit on
-`rtl/ngd-ratchet.json`, each awaiting the architect's budgets or a redesign.
-The list only shrinks: an entry that now meets its budget, or one that was
-not there when the rule was made, is refused. A design module no unit
-measures is refused.
+**The ratchet.** What broke the rules when they were made sits on
+`rtl/ngd-ratchet.json`: ports over a default (NGD-2, NGD-3, 2026-10-17),
+each awaiting the architect's budgets or a redesign; paths straight through
+or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
+groups the logic with one sequential side, or the module's declaration as an
+inner helper. The list only shrinks: an entry that now meets the rule, or one
+that was not there when its rule was made, is refused. A design module no
+unit measures is refused.
 
 ### CCV-L26 — nothing Yosys cannot parse
 

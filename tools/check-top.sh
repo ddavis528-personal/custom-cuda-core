@@ -121,14 +121,14 @@ if command -v yosys >/dev/null 2>&1; then
     bad "top: only block instances and nets" "$(echo "$out" | grep -m1 -E '^  R[0-9]')"
   fi
   refused=""
-  for m in gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk; do
+  for m in gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk rptunits; do
     python3 tools/check-top-pure.py --mutate=$m >"$B/top_pure_$m.log" 2>&1
     rc=$?
     [ $rc -eq 1 ] && refused="$refused $m" ||
       bad "top rule refuses a $m" "$(grep -m1 -E 'MUTANT|TOP_PURE ok|mutation' "$B/top_pure_$m.log")"
   done
-  [ "$refused" = " gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk" ] &&
-    say "  ...and refuses 11 impure copies: top, wrapper, reuse, gate" "PASS"
+  [ "$refused" = " gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk rptunits" ] &&
+    say "  ...and refuses 12 impure copies: top, wrapper, reuse, gate, units" "PASS"
 fi
 
 # -- connectivity: the elaborated SV top IS the C++ skeleton's wiring -------

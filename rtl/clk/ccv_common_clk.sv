@@ -55,7 +55,7 @@
 `include "ccv_params_pkg.sv"
 
 `define CCV_CLK clk
-`define CCV_RST !rst_n
+`define CCV_RST !rst_n_q
 
 module ccv_common_clk #(
   parameter int HYST_W    = ccv_prov_pkg::CCV_CG_HYST_W,
@@ -85,6 +85,18 @@ module ccv_common_clk #(
   localparam int CW = HYST_W;
   localparam logic [HW-1:0] HOLD = HW'(WAKE_HOLD);
 
+  // Every input is flopped before use (CG-5, RST-1; Daniel, 2026-10-18):
+  // the reset, the block's two reports and the override CSR, each a cycle
+  // late, which the reset contract and the CSR contract allow and the
+  // hysteresis absorbs. The thresholds reach only the counters' data.
+  logic rst_n_q, quiesced_q, stalled_q, override_q;
+  always_ff @(posedge clk) begin
+    rst_n_q    <= rst_n;
+    quiesced_q <= quiesced;
+    stalled_q  <= stalled;
+    override_q <= cg_override;
+  end
+
   `CCV_ASSERT_KNOWN(quiesced_known, quiesced)
   `CCV_ASSERT_KNOWN(stalled_known,  stalled)
   `CCV_ASSERT_KNOWN(wake_known,     wake)
@@ -104,7 +116,7 @@ module ccv_common_clk #(
   logic [HW-1:0] hold_q;
   logic          wake_q;
   wire           sleep = (q_full_q || s_full_q) && (hold_q == '0);
-  wire           en    = !sleep || wake_q || cg_override || !rst_n;
+  wire           en    = !sleep || wake_q || override_q || !rst_n_q;
 
   // The counters and their flags are one clock gate, clocked when either
   // counter moves (local clock gating, docs/rtl-coding-style.md): counting,
@@ -115,13 +127,13 @@ module ccv_common_clk #(
   // an enable that saw `wake` would put that path on a clock gate, so it
   // is written every cycle. It and the hold counter, 3 flops, are too few
   // for a gate and within the module's allowance (rtl-coding-style.md).
-  wire q_mv    = quiesced ? !q_full_q : (q_run_q != '0);
-  wire s_mv    = stalled  ? !s_full_q : (s_run_q != '0);
+  wire q_mv    = quiesced_q ? !q_full_q : (q_run_q != '0);
+  wire s_mv    = stalled_q  ? !s_full_q : (s_run_q != '0);
   wire hyst_en = q_mv || s_mv;
   wire hold_en = wake_q ? (hold_q != HOLD) : (hold_q != '0);
 
   always_ff @(posedge clk) begin
-    if (!rst_n) begin
+    if (!rst_n_q) begin
       q_run_q  <= '0;
       s_run_q  <= '0;
       q_full_q <= 1'b0;
@@ -130,10 +142,10 @@ module ccv_common_clk #(
       hold_q   <= '0;
     end else begin
       if (hyst_en) begin
-        q_run_q  <= quiesced ? q_run_q + CW'(!q_full_q) : '0;
-        s_run_q  <= stalled  ? s_run_q + CW'(!s_full_q) : '0;
-        q_full_q <= quiesced && ((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce));
-        s_full_q <= stalled  && ((CW+1)'(s_run_q) + 1'b1 >= (CW+1)'(hyst_stall));
+        q_run_q  <= quiesced_q ? q_run_q + CW'(!q_full_q) : '0;
+        s_run_q  <= stalled_q  ? s_run_q + CW'(!s_full_q) : '0;
+        q_full_q <= quiesced_q && ((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce));
+        s_full_q <= stalled_q  && ((CW+1)'(s_run_q) + 1'b1 >= (CW+1)'(hyst_stall));
       end
       wake_q <= |wake;
       if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;
@@ -152,7 +164,7 @@ module ccv_common_clk #(
   // The promises, checked wherever this runs; tools/check-formal.sh proves
   // them, with their timing, for all time.
   `CCV_ASSERT(wake_opens,     !(wake_q && gated))
-  `CCV_ASSERT(override_opens, !(cg_override && gated))
+  `CCV_ASSERT(override_opens, !(override_q && gated))
 
 endmodule
 

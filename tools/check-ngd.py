@@ -11,10 +11,21 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          12 NGD: an output is required within 12 of its module's flops, and
          an input arrives at 25 - 12 = 13 and must reach its module's flops
          within the rest. Two defaults meet within the stage, so nobody need
-         plan a port that fits them. A path straight through a module, input
-         to output, fits no default: like a port over 12, it needs explicit
-         budgets from the architect, kept beside the module's RTL in
+         plan a port that fits them. A port over 12 needs explicit budgets
+         from the architect, kept beside the module's RTL in
          <module>.ngd.json, one consistent format for every module.
+  THRU   No module has a path from an input port to an output port, not
+         even a wire (Daniel, 2026-10-18): a wire is connected directly
+         instead, and logic is grouped with one sequential side. So every
+         flop-to-flop path between modules crosses exactly one port, two
+         segments, and budgets are pairwise. In a parent, a path that
+         touches none of its own flops carries no logic either: wired child
+         to child is the parent's connection. An inner helper (a
+         combinational module timed only inside its parent, declared in its
+         budget file) is exempt, and its logic counts as its parent's; a
+         checker-only observation port is exempt; and a channel the
+         generated hardening wrappers carry across themselves, the one
+         feedthrough allowed (rtl/top/, never a unit here).
   BLOCK  Once a block top is RTL, the assembled block is checked twice.
          First from the budget files: each level of its hierarchy is timed
          with its children cut out at their budgets, so every connection,
@@ -40,6 +51,8 @@ The rules, as findings:
          an input at its arrival)
   NGD-3  an input that, from its arrival, reaches a flop over the stage
   NGD-4  a budget file that is malformed, or names a port its module lacks
+  NGD-5  a path straight through a module, wire or logic, or, in a parent,
+         logic on a path that touches none of its own flops
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets from OA or a redesign; the list only
@@ -72,40 +85,97 @@ PORT = float(cg.param("CCV_NGD_PORT"))
 GENLIB = cg.GENLIB
 BUDGET_GLOB = os.path.join(ROOT, "rtl", "**", "*.ngd.json")
 RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
-# The findings that stood when the rule was made (2026-10-17), ooe_rat's
-# then on OI's branch (b9c3a44). Never add to this: a module written since
-# meets the defaults or has the architect's budgets.
+# The findings that stood when each rule was made: NGD-1 to NGD-4 on
+# 2026-10-17, NGD-5 on 2026-10-18 (its through paths had been NGD-2's),
+# ooe_rat's then on OI's branch (b9c3a44). Never add to this: a module
+# written since meets the rules, or has the architect's budgets, or is
+# redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
     "ooe_confirm": [
-        "NGD-2 conf_cq01h", "NGD-2 replay_cq02h",
+        "NGD-5 dep_cq01h>conf_cq01h", "NGD-5 dep_cq01h>replay_cq02h", "NGD-5 fin_cq01h>conf_cq01h",
+        "NGD-5 iss_cq01h>conf_cq01h", "NGD-5 iss_cq01h>replay_cq02h",
+        "NGD-5 miss_cq01h>replay_cq02h", "NGD-5 prod_cq01h>conf_cq01h",
     ],
     "ooe_decq": [
-        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-3 deq_n_cq01h",
-        "NGD-3 enq_slot_cq01h", "NGD-3 enq_v_cq01h", "NGD-3 flush_cq01h",
+        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-3 deq_n_cq01h", "NGD-3 enq_slot_cq01h",
+        "NGD-3 enq_v_cq01h", "NGD-3 flush_cq01h",
     ],
     "ooe_freelist": [
-        "NGD-2 alloc_idx_cq02h", "NGD-2 alloc_v_cq02h", "NGD-3 alloc_req_cq01h",
+        "NGD-3 alloc_req_cq01h", "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
+        "NGD-5 alloc_req_cq01h>alloc_v_cq02h",
     ],
     "ooe_pick": [
-        "NGD-2 issue_cq03h", "NGD-2 lost_cq03h", "NGD-2 win_cq03h",
+        "NGD-5 older_cq03h>issue_cq03h", "NGD-5 older_cq03h>lost_cq03h",
+        "NGD-5 older_cq03h>win_cq03h", "NGD-5 req_cq03h>issue_cq03h", "NGD-5 req_cq03h>lost_cq03h",
+        "NGD-5 req_cq03h>win_cq03h",
     ],
     "ooe_rat": [
-        "NGD-2 ren_pold_cq01h", "NGD-2 ren_ppguard_cq01h", "NGD-2 ren_ppold_cq01h",
-        "NGD-2 ren_ppq_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 ren_dst_cq01h",
+        "NGD-2 ren_pold_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 ren_dst_cq01h",
         "NGD-3 ren_gwe_cq01h", "NGD-3 ren_pdst_cq01h", "NGD-3 ren_rst_cq01h",
         "NGD-3 ren_slot_cq01h", "NGD-3 ren_v_cq01h", "NGD-3 restore_ckpt_cq01h",
         "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-3 ret_pdst_cq01h",
-        "NGD-3 ret_pwe_cq01h",
+        "NGD-3 ret_pwe_cq01h", "NGD-5 ren_dst_cq01h>ren_pold_cq01h",
+        "NGD-5 ren_dst_cq01h>ren_psrc_cq01h", "NGD-5 ren_gname_cq01h>ren_pold_cq01h",
+        "NGD-5 ren_gname_cq01h>ren_psrc_cq01h", "NGD-5 ren_gwe_cq01h>ren_pold_cq01h",
+        "NGD-5 ren_gwe_cq01h>ren_psrc_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppguard_cq01h",
+        "NGD-5 ren_pdst_cq01h>ren_ppold_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppq_cq01h",
+        "NGD-5 ren_pguard_cq01h>ren_ppguard_cq01h", "NGD-5 ren_pname_cq01h>ren_ppguard_cq01h",
+        "NGD-5 ren_pname_cq01h>ren_ppold_cq01h", "NGD-5 ren_pname_cq01h>ren_ppq_cq01h",
+        "NGD-5 ren_pq_cq01h>ren_ppq_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppguard_cq01h",
+        "NGD-5 ren_pwe_cq01h>ren_ppold_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppq_cq01h",
+        "NGD-5 ren_rst_cq01h>ren_pold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppguard_cq01h",
+        "NGD-5 ren_rst_cq01h>ren_ppold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppq_cq01h",
+        "NGD-5 ren_rst_cq01h>ren_psrc_cq01h", "NGD-5 ren_slot_cq01h>ren_pold_cq01h",
+        "NGD-5 ren_slot_cq01h>ren_ppguard_cq01h", "NGD-5 ren_slot_cq01h>ren_ppold_cq01h",
+        "NGD-5 ren_slot_cq01h>ren_ppq_cq01h", "NGD-5 ren_slot_cq01h>ren_psrc_cq01h",
+        "NGD-5 ren_src_cq01h>ren_psrc_cq01h", "NGD-5 ren_v_cq01h>ren_pold_cq01h",
+        "NGD-5 ren_v_cq01h>ren_ppguard_cq01h", "NGD-5 ren_v_cq01h>ren_ppold_cq01h",
+        "NGD-5 ren_v_cq01h>ren_ppq_cq01h", "NGD-5 ren_v_cq01h>ren_psrc_cq01h",
     ],
     "ooe_ready": [
-        "NGD-2 ready_cq02h",
+        "NGD-5 code_cq02h>ready_cq02h", "NGD-5 dep_cq02h>ready_cq02h",
+        "NGD-5 wake_cq02h>ready_cq02h",
     ],
     "ooe_rs": [
         "NGD-2 gnt_idx_cq02h", "NGD-2 gnt_v_cq02h", "NGD-3 free_cq01h", "NGD-3 grp_code_cq01h",
         "NGD-3 grp_dep_cq01h", "NGD-3 req_cq01h", "NGD-3 row_code_cq01h",
+        "NGD-5 free_cq01h>gnt_idx_cq02h", "NGD-5 free_cq01h>gnt_v_cq02h",
+        "NGD-5 req_cq01h>gnt_idx_cq02h", "NGD-5 req_cq01h>gnt_v_cq02h",
     ],
     "ooe_select": [
-        "NGD-2 cand_cq03h", "NGD-2 grant_cq03h", "NGD-2 lost_cq03h",
+        "NGD-5 active_cq03h>cand_cq03h", "NGD-5 active_cq03h>grant_cq03h",
+        "NGD-5 active_cq03h>lost_cq03h", "NGD-5 active_cq03h>pick_m.req_cq03h",
+        "NGD-5 active_cq03h>pick_r.req_cq03h", "NGD-5 block_cq03h>cand_cq03h",
+        "NGD-5 block_cq03h>grant_cq03h", "NGD-5 block_cq03h>lost_cq03h",
+        "NGD-5 block_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>cand_cq03h",
+        "NGD-5 busy_cq03h>grant_cq03h", "NGD-5 busy_cq03h>lost_cq03h",
+        "NGD-5 busy_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>pick_r.req_cq03h",
+        "NGD-5 chas_cq03h>cand_cq03h", "NGD-5 chas_cq03h>grant_cq03h",
+        "NGD-5 chas_cq03h>lost_cq03h", "NGD-5 chas_cq03h>pick_m.req_cq03h",
+        "NGD-5 cidx_cq03h>cand_cq03h", "NGD-5 cidx_cq03h>grant_cq03h",
+        "NGD-5 cidx_cq03h>lost_cq03h", "NGD-5 cidx_cq03h>pick_m.req_cq03h",
+        "NGD-5 copy_cq03h>cand_cq03h", "NGD-5 copy_cq03h>grant_cq03h",
+        "NGD-5 copy_cq03h>lost_cq03h", "NGD-5 copy_cq03h>pick_r.req_cq03h",
+        "NGD-5 dep_cq03h>cand_cq03h", "NGD-5 dep_cq03h>grant_cq03h", "NGD-5 dep_cq03h>lost_cq03h",
+        "NGD-5 dep_cq03h>pick_m.req_cq03h", "NGD-5 dep_cq03h>pick_r.req_cq03h",
+        "NGD-5 elig_cq03h>cand_cq03h", "NGD-5 elig_cq03h>grant_cq03h",
+        "NGD-5 elig_cq03h>lost_cq03h", "NGD-5 elig_cq03h>pick_m.req_cq03h",
+        "NGD-5 elig_cq03h>pick_r.req_cq03h", "NGD-5 iss_cq03h>cand_cq03h",
+        "NGD-5 iss_cq03h>grant_cq03h", "NGD-5 iss_cq03h>lost_cq03h",
+        "NGD-5 iss_cq03h>pick_m.req_cq03h", "NGD-5 iss_cq03h>pick_r.req_cq03h",
+        "NGD-5 older_m_cq03h>cand_cq03h", "NGD-5 older_m_cq03h>grant_cq03h",
+        "NGD-5 older_m_cq03h>lost_cq03h", "NGD-5 older_m_cq03h>pick_m.req_cq03h",
+        "NGD-5 older_r_cq03h>grant_cq03h", "NGD-5 older_r_cq03h>lost_cq03h",
+        "NGD-5 ready_cq03h>cand_cq03h", "NGD-5 ready_cq03h>grant_cq03h",
+        "NGD-5 ready_cq03h>lost_cq03h", "NGD-5 ready_cq03h>pick_m.req_cq03h",
+        "NGD-5 ready_cq03h>pick_r.req_cq03h", "NGD-5 res_cq03h>cand_cq03h",
+        "NGD-5 res_cq03h>grant_cq03h", "NGD-5 res_cq03h>lost_cq03h",
+        "NGD-5 res_cq03h>pick_m.req_cq03h", "NGD-5 res_cq03h>pick_r.req_cq03h",
+        "NGD-5 slot_cq03h>cand_cq03h", "NGD-5 slot_cq03h>grant_cq03h",
+        "NGD-5 slot_cq03h>lost_cq03h", "NGD-5 slot_cq03h>pick_m.req_cq03h",
+        "NGD-5 slot_cq03h>pick_r.req_cq03h", "NGD-5 valid_cq03h>cand_cq03h",
+        "NGD-5 valid_cq03h>grant_cq03h", "NGD-5 valid_cq03h>lost_cq03h",
+        "NGD-5 valid_cq03h>pick_m.req_cq03h", "NGD-5 valid_cq03h>pick_r.req_cq03h",
     ],
     "ooe_wake": [
         "NGD-3 cls_cq01h", "NGD-3 cmpl_cq01h", "NGD-3 grant_cq01h", "NGD-3 kind_cq01h",
@@ -268,6 +338,7 @@ class Timing:
                 if t > NEG:
                     self.io[(p, q)] = t
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
+        self.nflops = len(latches)
 
 
 def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
@@ -294,9 +365,10 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     return t
 
 
-def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True):
+def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inner=()):
     """A module at its parameters, as a Yosys JSON netlist: flattened, or
-    with its hierarchy kept."""
+    with its hierarchy kept, less the `inner` helpers, which are flattened
+    into their parents (a parameterised copy is $paramod\\<module>\\...)."""
     work = os.path.join(BUILD, name)
     os.makedirs(work, exist_ok=True)
     jf = os.path.join(work, "net.json")
@@ -308,8 +380,13 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True):
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
-    cmds += ["hierarchy -top %s" % top, "chformal -remove",
-             "synth %s-top %s" % ("-flatten " if flat else "", top), "write_json %s" % jf]
+    cmds += ["hierarchy -top %s" % top, "chformal -remove"]
+    if not flat and inner:
+        cmds += ["setattr -mod -set keep_hierarchy 1 *",
+                 "setattr -mod -unset keep_hierarchy %s" % " ".join(
+                     "%s $paramod\\%s\\*" % (m, m) for m in sorted(inner))]
+        flat = True
+    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top), "write_json %s" % jf]
     r = run(["yosys", "-q", "-p", "; ".join(cmds)])
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (name, (r.stdout + r.stderr)[-2000:]))
@@ -318,25 +395,47 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True):
 
 # == Units and budgets =========================================================
 
+def children(module, files, modules):
+    """The design modules `module` instantiates, from its source."""
+    out = set()
+    for f in files:
+        src = cg.lint.strip_comments(open(os.path.join(ROOT, f)).read())
+        for s, e, name, _ in cg.lint.module_spans(src):
+            if name == module:
+                out |= {m for m in modules if m != module and re.search(
+                    r"\b%s\s*(#|[A-Za-z_]\w*\s*\()" % re.escape(m), src[s:e])}
+    return out
+
+
 class Unit:
     def __init__(self, spec, src):
         self.spec, self.src = spec, src
         self.name, self.module = spec["name"], spec["module"]
-        self.t = None
+        self.t, self.h = None, []
 
-    def measure(self, lib=LIB):
+    def measure(self, lib=LIB, budgets=None, modules=None):
+        """Flattened, the module's ports; and, if it instantiates a design
+        module that is not an inner helper, its own level with its children
+        cut out (converge), as findings in self.h."""
         s = self.spec
         bbs = s.get("blackbox", {})
+        bbfiles = [bbs[b] for b in sorted(bbs)]
         work, jf = synth("u_" + self.name, self.module, s["files"],
-                         [bbs[b] for b in sorted(bbs)], s.get("params"), s.get("defines", []))
+                         bbfiles, s.get("params"), s.get("defines", []))
         self.t = map_and_time(work, jf, bbs.keys(), lib)
+        if budgets is not None and children(self.module, s["files"], modules or {}) - set(
+                budgets.inner):
+            self.h = converge("u_" + self.name, self.module, s["files"], bbfiles, budgets, lib,
+                              s.get("params"), s.get("defines", []), unit=self.name)
         return self.t
 
 
 def load_units():
     out, names = [], set()
-    for pat in ("cg-units.json", "ngd-units.json"):
-        for f in sorted(glob.glob(os.path.join(ROOT, "test", "**", pat), recursive=True)):
+    files = [f for pat in ("cg-units.json", "ngd-units.json")
+             for f in sorted(glob.glob(os.path.join(ROOT, "test", "**", pat), recursive=True))]
+    for f in files + [cg.RPT_UNITS]:
+        if os.path.exists(f):
             for spec in json.load(open(f))["units"]:
                 if spec["name"] in names:
                     raise SystemExit("check-ngd: unit %s defined twice" % spec["name"])
@@ -368,15 +467,20 @@ class Budgets:
 
       {"module": "ooe_rs",
        "ports": {"free_cq01h":    {"arrival": 3.0,   "by": ..., "date": ..., "why": ...},
-                 "gnt_idx_cq02h": {"required": 20.0, "by": ..., "date": ..., "why": ...}}}
+                 "gnt_idx_cq02h": {"required": 20.0, "by": ..., "date": ..., "why": ...},
+                 "dbg_cq02h":     {"observation": true, "by": ..., "date": ..., "why": ...}}}
 
     An input's arrival or an output's required time, in NGD from the flop
-    that launches it. A port the file does not name takes the default: an
-    output required at CCV_NGD_PORT, an input arriving at CCV_NGD_BUDGET -
-    CCV_NGD_PORT."""
+    that launches it; or an output read only by checkers, which sample it
+    at the edge as a flop would, exempt from the port rules. A port the file
+    does not name takes the default: an output required at CCV_NGD_PORT, an
+    input arriving at CCV_NGD_BUDGET - CCV_NGD_PORT. A combinational helper
+    timed only inside its parent says so instead, and has no ports:
 
-    def __init__(self, files=(), extra=None):
-        self.e, self.files, self.bad = {}, {}, []
+      {"module": "ooe_pick", "inner": true, "by": ..., "date": ..., "why": ...}"""
+
+    def __init__(self, files=(), extra=None, inner=None):
+        self.e, self.files, self.inner, self.bad = {}, {}, {}, []
         for f in files:
             rel = os.path.relpath(f, ROOT)
             try:
@@ -389,17 +493,29 @@ class Budgets:
                 self.bad.append("NGD-4 %s: names module %s, not its file name's" % (rel, mod))
                 continue
             self.files[mod] = rel
+            if d.get("inner"):
+                self.inner[mod] = d
             for port, b in d.get("ports", {}).items():
                 self.e[(mod, port)] = b
         for (mod, port), b in (extra or {}).items():
             self.e[(mod, port)] = b
+        self.inner.update(inner or {})
 
     @classmethod
     def load(cls):
         return cls(sorted(glob.glob(BUDGET_GLOB, recursive=True)))
 
+    def is_inner(self, mod):
+        return mod in self.inner
+
+    def observation(self, mod, port):
+        b = self.e.get((mod, port))
+        return bool(b and b.get("observation"))
+
     def required(self, mod, port):
         b = self.e.get((mod, port))
+        if b and b.get("observation"):
+            return STAGE
         return float(b["required"]) if b and "required" in b else PORT
 
     def arrival(self, mod, port):
@@ -407,8 +523,9 @@ class Budgets:
         return float(b["arrival"]) if b and "arrival" in b else STAGE - PORT
 
     def check(self, units, modules):
-        """NGD-4: each file for a design module, each entry well formed and
-        on a port its module has, of the right direction."""
+        """NGD-4: each file for a design module, an inner helper's with no
+        ports, each entry well formed and on a port its module has, of the
+        right direction."""
         fails = list(self.bad)
         ports = {}
         for u in units:
@@ -417,18 +534,34 @@ class Budgets:
         for mod, rel in sorted(self.files.items()):
             if mod not in modules:
                 fails.append("NGD-4 %s: %s is not a design module" % (rel, mod))
+        for mod, d in sorted(self.inner.items()):
+            where = "%s (%s)" % (mod, self.files.get(mod, "selftest"))
+            for k in ("by", "date", "why"):
+                if not d.get(k):
+                    fails.append("NGD-4 %s: an inner helper with no %s" % (where, k))
+            if any(m == mod for m, _ in self.e):
+                fails.append("NGD-4 %s: an inner helper has no port budgets; its parent's "
+                             "ports carry them" % where)
+            if any(u.module == mod and u.t is not None and u.t.nflops for u in units):
+                fails.append("NGD-4 %s: an inner helper has flops; only a combinational "
+                             "module is timed inside its parent" % where)
         for (mod, port), b in sorted(self.e.items()):
             where = "%s.%s (%s)" % (mod, port, self.files.get(mod, "selftest"))
             for k in ("by", "date", "why"):
                 if not b.get(k):
                     fails.append("NGD-4 %s: no %s" % (where, k))
-            kind = [k for k in ("arrival", "required") if k in b]
+            kind = [k for k in ("arrival", "required", "observation") if k in b]
             if len(kind) != 1:
-                fails.append("NGD-4 %s: names neither or both of arrival and required" % where)
+                fails.append("NGD-4 %s: names not exactly one of arrival, required and "
+                             "observation" % where)
                 continue
-            v = float(b[kind[0]])
-            if not 0 <= v <= STAGE:
-                fails.append("NGD-4 %s: %s %g is outside 0..%g" % (where, kind[0], v, STAGE))
+            if kind[0] == "observation":
+                if b["observation"] is not True:
+                    fails.append("NGD-4 %s: observation is true or absent" % where)
+            else:
+                v = float(b[kind[0]])
+                if not 0 <= v <= STAGE:
+                    fails.append("NGD-4 %s: %s %g is outside 0..%g" % (where, kind[0], v, STAGE))
             if mod in ports:
                 inp = kind[0] == "arrival"
                 if port not in (ports[mod][0] if inp else ports[mod][1]):
@@ -438,23 +571,23 @@ class Budgets:
 
 
 def findings(u, budgets):
-    """The unit's findings, as (key, message): key is what the ratchet lists."""
+    """The unit's findings, as (key, message): key is what the ratchet lists.
+    An inner helper is held only to the stage: its ports are its parent's
+    logic."""
     t, mod, out = u.t, u.module, []
     if t.rr > STAGE + EPS:
         out.append(("NGD-1", "NGD-1 %s (unit %s): flop to flop %.1f NGD, over the %g stage"
                     % (mod, u.name, t.rr, STAGE)))
+    if budgets.is_inner(mod):
+        return out
+    out += u.h
     for o in t.outs:
-        if o in t.cut:
+        if o in t.cut or budgets.observation(mod, o):
             continue
         req = budgets.required(mod, o)
-        worst, why = t.ro[o], "from its flops"
-        for (i, q), d in t.io.items():
-            if q == o and i not in t.cut and budgets.arrival(mod, i) + d > worst:
-                worst, why = budgets.arrival(mod, i) + d, "from input %s, arriving at %g, %.1f " \
-                    "through" % (i, budgets.arrival(mod, i), d)
-        if worst > req + EPS:
-            out.append(("NGD-2 %s" % o, "NGD-2 %s (unit %s): output %s ready at %.1f NGD %s, "
-                        "required at %g" % (mod, u.name, o, worst, why, req)))
+        if t.ro[o] > req + EPS:
+            out.append(("NGD-2 %s" % o, "NGD-2 %s (unit %s): output %s ready %.1f NGD after its "
+                        "flops, required at %g" % (mod, u.name, o, t.ro[o], req)))
     for i in t.ins:
         if i in t.cut or t.ir[i] == NEG:
             continue
@@ -463,6 +596,13 @@ def findings(u, budgets):
             out.append(("NGD-3 %s" % i, "NGD-3 %s (unit %s): input %s, arriving at %g, reaches "
                         "a flop %.1f later, %.1f in all, over the %g stage"
                         % (mod, u.name, i, arr, t.ir[i], arr + t.ir[i], STAGE)))
+    for (i, o), d in sorted(t.io.items()):
+        if i in t.cut or o in t.cut or is_clock(i) or budgets.observation(mod, o):
+            continue
+        what = ("%.1f NGD of logic" % d) if d > EPS else "a wire"
+        out.append(("NGD-5 %s>%s" % (i, o), "NGD-5 %s (unit %s): %s straight through, input "
+                    "%s to output %s: connect a wire directly, group logic with a "
+                    "sequential side" % (mod, u.name, what, i, o)))
     return out
 
 
@@ -508,7 +648,7 @@ def policy(units, budgets, ratchet, modules, baseline=RATCHET_BASELINE):
                 fails.append("ratchet: %s %s was not on the list when the rule was made; the "
                              "list only shrinks" % (mod, k))
             elif k not in found.get(mod, set()) and any(u.module == mod for u in units):
-                fails.append("ratchet: %s %s now meets its budget: remove it from %s"
+                fails.append("ratchet: %s %s now meets the rule: remove it from %s"
                              % (mod, k, os.path.relpath(RATCHET, ROOT)))
     have = {u.module for u in units}
     for mod in sorted(modules):
@@ -530,22 +670,34 @@ def src_name(mod):
     return m.group(1) if m else mod.lstrip("\\")
 
 
-def converge(name, block, files, bbs, budgets, lib=LIB):
-    """The block's hierarchy from its budget files: each module in it that
-    instantiates others (the hardening wrapper aside, which is nets and
-    repeaters) is mapped alone, its children cut out. A child's output
-    starts at its required time, a child's input must be reached by its
-    arrival; the module's own ports take its budgets, or, for the block top,
-    the boundary's: inputs arriving at the default (its outputs, straight from
-    a flop, are the flattened pass's). So every connection, and the glue
-    between, must converge."""
-    work, jf = synth("h_" + name, block, files, bbs, flat=False)
+def converge(name, top, files, bbs, budgets, lib=LIB, params=None, defines=(), unit=None):
+    """A hierarchy from its budget files, inner helpers flattened into their
+    parents: each module in it that instantiates others (the hardening
+    wrapper aside, which is nets and repeaters) is mapped alone, its
+    children cut out. A child's output starts at its required time, a
+    child's input must be reached by its arrival; the module's own ports take
+    its budgets, or, for a block top, the boundary's: inputs arriving at the
+    default (its outputs, straight from a flop, are the flattened pass's).
+    So every connection must converge, and a path that touches none of the
+    module's own flops must be a wire (NGD-5: glue between children is a
+    third segment on a flop-to-flop path).
+
+    For a block, every level, and findings are messages. For a unit
+    (`unit`, its name), the top level only, its children's connections
+    alone (its own ports are its flattened findings'), as (key, message)
+    for the ratchet. A path from a port of the module's to a port of its own
+    is its unit's NGD-5, or a wire, which carries its driver's time to its
+    receiver and is timed by the flattened pass."""
+    work, jf = synth("h_" + name, top, files, bbs, params, defines, flat=False,
+                     inner=sorted(budgets.inner))
     d = json.load(open(jf))
     mods = d["modules"]
     lib_cells = {m for m, v in mods.items() if v.get("attributes", {}).get("blackbox")}
-    fails = []
+    out = []
     for mn, m in sorted(mods.items()):
         if mn in lib_cells or src_name(mn).endswith("_w"):
+            continue
+        if unit and not m.get("attributes", {}).get("top"):
             continue
         kids = {c["type"] for c in m.get("cells", {}).values() if c["type"] in mods} - lib_cells
         if not kids:
@@ -556,46 +708,60 @@ def converge(name, block, files, bbs, budgets, lib=LIB):
         one = os.path.join(sub, "one.json")
         json.dump({"creator": d.get("creator", ""), "modules": {mn: m}}, open(one, "w"))
         t = map_and_time(sub, one, kids | lib_cells, lib)
+        edge = own == top and not unit
+
+        def pin(p):
+            """(module, pin, name) of a cut child's pin; None for the ICG's
+            or a clock's."""
+            cell, typ, pn, _ = t.cut[p]
+            if typ in lib_cells or is_clock(pn):
+                return None
+            return src_name(typ), pn, "%s.%s" % (cell, pn)
 
         def start(p):
             if p in t.cut:
-                cell, typ, pin, _ = t.cut[p]
-                if typ in lib_cells or is_clock(pin):
-                    return None, None
-                return budgets.required(src_name(typ), pin), "%s.%s" % (cell, pin)
+                c = pin(p)
+                return (budgets.required(c[0], c[1]), c[2], True) if c else (None, None, True)
             if is_clock(p):
-                return None, None
-            return (STAGE - PORT if own == block else budgets.arrival(own, p)), p
+                return None, None, False
+            return (STAGE - PORT if edge else budgets.arrival(own, p)), p, False
 
         def end(p):
             if p in t.cut:
-                cell, typ, pin, _ = t.cut[p]
-                if typ in lib_cells or is_clock(pin):
-                    return None, None
-                return budgets.arrival(src_name(typ), pin), "%s.%s" % (cell, pin)
-            if own == block:
-                return None, None      # the flattened pass: straight from a flop
-            return budgets.required(own, p), p
+                c = pin(p)
+                return (budgets.arrival(c[0], c[1]), c[2], True) if c else (None, None, True)
+            if edge:
+                return None, p, False      # the flattened pass: straight from a flop
+            return budgets.required(own, p), p, False
 
-        where = "block %s, in %s" % (name, own)
-        if t.rr > STAGE + EPS:
-            fails.append("%s: flop to flop %.1f NGD, over the %g stage" % (where, t.rr, STAGE))
+        if unit:
+            where = "%s (unit %s)" % (own, unit)
+        else:
+            where = "block %s, in %s" % (name, own)
+        if t.rr > STAGE + EPS and not unit:
+            out.append(("NGD-1", "%s: flop to flop %.1f NGD, over the %g stage"
+                        % (where, t.rr, STAGE)))
         for p in t.ins:
-            a, nm = start(p)
-            if a is not None and t.ir[p] > NEG and a + t.ir[p] > STAGE + EPS:
-                fails.append("%s: %s, starting at %g, reaches a flop at %.1f, over the %g stage"
-                             % (where, nm, a, a + t.ir[p], STAGE))
+            a, nm, kid = start(p)
+            if (kid or not unit) and a is not None and t.ir[p] > NEG and a + t.ir[p] > STAGE + EPS:
+                out.append(("budgets %s>flops" % nm, "%s: %s, starting at %g, reaches a flop at "
+                            "%.1f, over the %g stage" % (where, nm, a, a + t.ir[p], STAGE)))
         for p in t.outs:
-            r, nm = end(p)
-            if r is not None and t.ro[p] > r + EPS:
-                fails.append("%s: %s, required at %g, is reached from a flop at %.1f"
-                             % (where, nm, r, t.ro[p]))
+            r, nm, kid = end(p)
+            if (kid or not unit) and r is not None and t.ro[p] > r + EPS:
+                out.append(("budgets flops>%s" % nm, "%s: %s, required at %g, is reached from "
+                            "a flop at %.1f" % (where, nm, r, t.ro[p])))
         for (p, q), dl in sorted(t.io.items()):
-            (a, na), (r, nr) = start(p), end(q)
-            if a is not None and r is not None and a + dl > r + EPS:
-                fails.append("%s: budgets do not converge: %s, starting at %g, reaches %s at "
-                             "%.1f, required at %g" % (where, na, a, nr, a + dl, r))
-    return fails
+            (a, na, ka), (r, nr, kr) = start(p), end(q)
+            if not (ka or kr) or (ka and na is None) or (kr and nr is None) or is_clock(p):
+                continue
+            if dl > EPS:
+                out.append(("NGD-5 %s>%s" % (na, nr), "NGD-5 %s: %.1f NGD of logic from %s to %s, "
+                            "a path that touches none of its flops" % (where, dl, na, nr)))
+            elif a is not None and r is not None and a > r + EPS:
+                out.append(("budgets %s>%s" % (na, nr), "%s: budgets do not converge: %s, "
+                            "starting at %g, reaches %s, required at %g" % (where, na, a, nr, r)))
+    return out
 
 
 def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
@@ -604,7 +770,7 @@ def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
     stage, every output straight from a flop, every input into its flops
     within the default port budget. `block` is the block's own module (the
     partition's top may be its hardening wrapper). Returns (line, failures)."""
-    fails = converge(name, block or top, files, bbs, budgets, lib)
+    fails = [msg for _, msg in converge(name, block or top, files, bbs, budgets, lib)]
     work, jf = synth("b_" + name, top, files, bbs)
     t = map_and_time(work, jf, [os.path.basename(b)[:-3] for b in bbs], lib)
     if t.rr > STAGE + EPS:
@@ -633,17 +799,20 @@ def main_check(only=None):
         if not units:
             raise SystemExit("check-ngd: no unit %s" % only)
     budgets = Budgets.load()
+    modules = design_modules()
     for u in units:
-        u.measure()
+        u.measure(budgets=budgets, modules=modules)
         report(u, verbose=bool(only))
     if only:
         for _, msg in findings(units[0], budgets):
             print("    " + msg)
         return 0
     ratchet = load(RATCHET, "modules", {})
-    fails = policy(units, budgets, ratchet, design_modules())
+    fails = policy(units, budgets, ratchet, modules)
     for mod in sorted(ratchet):
-        print("  ratchet: %-14s %d port finding(s) awaiting budgets" % (mod, len(ratchet[mod])))
+        n5 = sum(k.startswith("NGD-5") for k in ratchet[mod])
+        print("  ratchet: %-14s %2d port finding(s) awaiting budgets, %2d path(s) straight "
+              "through awaiting a redesign" % (mod, len(ratchet[mod]) - n5, n5))
     parts = cg.partitions(cg.design_modules())
     for name, top, files, bbs in parts:
         line, more = block_check(name, top, files, bbs, budgets, block="ccv_%s" % name)
@@ -675,7 +844,8 @@ def selftest():
             bad.append(what)
 
     fx = {m: fixture("fx_" + m[7:], m) for m in
-          ("ngd_fx_ok", "ngd_fx_out", "ngd_fx_in", "ngd_fx_thru", "ngd_fx_stage")}
+          ("ngd_fx_ok", "ngd_fx_out", "ngd_fx_in", "ngd_fx_thru", "ngd_fx_stage",
+           "ngd_fx_wire")}
     for u in fx.values():
         u.measure()
     none = Budgets()
@@ -692,9 +862,15 @@ def selftest():
         expect(False, "a timing pass with a wrong NAND2 delay agreed with ABC")
     except SystemExit as e:
         expect("is not ABC's" in str(e), "a wrong delay table stopped the run otherwise: %s" % e)
-    # 2. Within every default: nothing.
-    expect(not keys(fx["ngd_fx_ok"]), "the compliant fixture has findings: %s"
-           % findings(fx["ngd_fx_ok"], none))
+    # 2. Within every default: nothing. An input wired straight to an
+    #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
+    ok = fx["ngd_fx_ok"]
+    expect(not keys(ok), "the compliant fixture has findings: %s" % findings(ok, none))
+    wire = fx["ngd_fx_wire"]
+    expect(wire.t.io.get(("w", "z"), NEG) == 0.0,
+           "a wire straight through was not timed as a wire: %s" % wire.t.io.get(("w", "z")))
+    expect(keys(wire) == {"NGD-5 w>z"}, "a wire straight through passed, or more was found: "
+           "%s" % findings(wire, none))
     # 3. An output its flops reach too late (NGD-2), an input that reaches
     #    a flop too late (NGD-3), flop to flop over the stage (NGD-1).
     expect("NGD-2 y" in keys(fx["ngd_fx_out"]), "a deep output passed: %.1f"
@@ -703,15 +879,27 @@ def selftest():
            % fx["ngd_fx_in"].t.ir.get("a", NEG))
     expect("NGD-1" in keys(fx["ngd_fx_stage"]), "a path over the stage passed: %.1f"
            % fx["ngd_fx_stage"].t.rr)
-    # 4. A path straight through fits no default; its module's budget file
-    #    (test/ngd/fixtures/ngd_fx_thru.ngd.json: a at 6, y by 18) clears it.
+    # 4. Logic straight through a module (NGD-5), refused on defaults and
+    #    with budgets that would converge over it (ngd_fx_thru.ngd.json: a
+    #    at 6, y by 18); exempt when the module is an inner helper, or the
+    #    output an observation port.
     thru = fx["ngd_fx_thru"]
-    expect("NGD-2 y" in keys(thru), "a path straight through passed on defaults")
+    expect({"NGD-5 a>y", "NGD-5 b>y"} <= keys(thru), "a path straight through passed: %s"
+           % findings(thru, none))
     tf = os.path.join(ROOT, FIX, "ngd_fx_thru.ngd.json")
     b = Budgets([tf])
     thru_mods = {"ngd_fx_thru": "f"}
+    expect("NGD-5 a>y" in keys(thru, b) and not b.check([thru], thru_mods),
+           "port budgets cleared a path straight through: %s %s"
+           % (findings(thru, b), b.check([thru], thru_mods)))
+    sig = {"by": "selftest", "date": "2026-10-18", "why": "control"}
+    b = Budgets(inner={"ngd_fx_thru": dict(sig)})
     expect(not keys(thru, b) and not b.check([thru], thru_mods),
-           "its budget file did not clear a path straight through: %s %s"
+           "an inner helper was held to its ports: %s %s"
+           % (findings(thru, b), b.check([thru], thru_mods)))
+    b = Budgets(extra={("ngd_fx_thru", "y"): dict(sig, observation=True)})
+    expect(not keys(thru, b) and not b.check([thru], thru_mods),
+           "a path to an observation port was refused: %s %s"
            % (findings(thru, b), b.check([thru], thru_mods)))
     # 5. Budget files refused: one whose module is not its file name's, one
     #    for a module that is not a design module, an entry on a port the
@@ -735,13 +923,26 @@ def selftest():
     expect(any("has no input port" in x for x in
                bfile("ngd_fx_thru.ngd.json", dict(good, ports={"nope": entry}))),
            "a budget for a port the module lacks was accepted")
-    expect(any("neither or both" in x for x in
+    expect(any("not exactly one of" in x for x in
                bfile("ngd_fx_thru.ngd.json", dict(good, ports={"a": dict(entry, required=9)}))),
            "a budget naming both an arrival and a required time was accepted")
     entry_nowhy = {k: v for k, v in entry.items() if k != "why"}
     expect(any("no why" in x for x in
                bfile("ngd_fx_thru.ngd.json", dict(good, ports={"a": entry_nowhy}))),
            "a budget with no why was accepted")
+    expect(any("observation is true" in x for x in
+               bfile("ngd_fx_thru.ngd.json", dict(good, ports={"y": dict(sig, observation=1)}))),
+           "an observation entry not true was accepted")
+    #    And inner helpers refused: one with port budgets, one with flops,
+    #    one with no why.
+    expect(any("has no port budgets" in x for x in
+               bfile("ngd_fx_thru.ngd.json", dict(good, inner=True, **sig))),
+           "an inner helper with port budgets was accepted")
+    f = Budgets(inner={"ngd_fx_ok": dict(sig)}).check([ok], {"ngd_fx_ok": "f"})
+    expect(any("has flops" in x for x in f), "an inner helper with flops was accepted: %s" % f)
+    f = Budgets(inner={"ngd_fx_thru": {"by": "selftest", "date": "2026-10-18"}}).check(
+        [thru], thru_mods)
+    expect(any("with no why" in x for x in f), "an inner helper with no why was accepted")
     # 6. The ratchet: a listed finding excused; one that now passes, or one
     #    outside the baseline, refused; a module with no unit, refused.
     us = [fx["ngd_fx_out"], fx["ngd_fx_ok"]]
@@ -750,7 +951,7 @@ def selftest():
     fails = policy(us, none, {"ngd_fx_out": ["NGD-2 y"]}, mods, base)
     expect(not fails, "a ratcheted finding was not excused: %s" % fails)
     fails = policy(us, none, {"ngd_fx_ok": ["NGD-2 y"]}, mods, base)
-    expect(any("now meets its budget" in x for x in fails),
+    expect(any("now meets the rule" in x for x in fails),
            "a ratchet entry that passes stayed on the list")
     fails = policy(us, none, {"ngd_fx_out": ["NGD-2 y"]}, mods, set())
     expect(any("only shrinks" in x for x in fails), "the ratchet grew")
@@ -759,22 +960,47 @@ def selftest():
            "a module with no unit passed")
     # 7. The assembled block from its budget files, level by level: a
     #    driver required at 14 straight into a receiver arriving at 15
-    #    converges; through an XOR it does not; and with the driver's budget
-    #    moved to 16, neither does the straight connection.
+    #    converges; with the driver's budget moved to 16 it does not. Logic
+    #    between the two children, touching no flop of the parent's, is
+    #    refused (NGD-5), the parent's own or an inner helper's; an inner
+    #    helper before the parent's flop is the parent's logic, and passes,
+    #    where cut out at its default ports it would not.
     files = ["%s/ngd_fx_blk.sv" % FIX]
-    fb = Budgets([os.path.join(ROOT, FIX, "ngd_fx_bsrc.ngd.json"),
-                  os.path.join(ROOT, FIX, "ngd_fx_bdst.ngd.json")])
-    f = converge("fx_asm_ok", "ngd_fx_asm_ok", files, [], fb)
+    bfiles = [os.path.join(ROOT, FIX, "ngd_fx_%s.ngd.json" % m) for m in ("bsrc", "bdst")]
+    fb = Budgets(bfiles)
+    fi = Budgets(bfiles + [os.path.join(ROOT, FIX, "ngd_fx_inner.ngd.json")])
+
+    def msgs(f):
+        return [m for _, m in f]
+    f = msgs(converge("fx_asm_ok", "ngd_fx_asm_ok", files, [], fb))
     expect(not f, "budgets that converge were refused: %s" % f)
-    f = converge("fx_asm_gap", "ngd_fx_asm_gap", files, [], fb)
-    expect(any("do not converge" in x and "u_src.y" in x and "u_dst.a" in x for x in f),
-           "glue between two children past their budgets passed: %s" % f)
-    late = Budgets(extra={("ngd_fx_bsrc", "y"): dict(json.load(open(os.path.join(
-        ROOT, FIX, "ngd_fx_bsrc.ngd.json")))["ports"]["y"], required=16)})
-    late.e[("ngd_fx_bdst", "a")] = fb.e[("ngd_fx_bdst", "a")]
-    f = converge("fx_asm_late", "ngd_fx_asm_ok", files, [], late)
+    late = Budgets(extra={("ngd_fx_bsrc", "y"): dict(fb.e[("ngd_fx_bsrc", "y")], required=16),
+                          ("ngd_fx_bdst", "a"): fb.e[("ngd_fx_bdst", "a")]})
+    f = msgs(converge("fx_asm_late", "ngd_fx_asm_ok", files, [], late))
     expect(any("do not converge" in x for x in f),
            "a driver required after its receiver's arrival passed: %s" % f)
+    f = msgs(converge("fx_asm_gap", "ngd_fx_asm_gap", files, [], fb))
+    expect(any(x.startswith("NGD-5") and "u_src.y to u_dst.a" in x for x in f),
+           "glue between two children passed: %s" % f)
+    f = msgs(converge("fx_asm_igap", "ngd_fx_asm_inner_gap", files, [], fi))
+    expect(any(x.startswith("NGD-5") and "u_src.y to u_dst.a" in x for x in f),
+           "an inner helper between two children passed: %s" % f)
+    f = msgs(converge("fx_asm_inner", "ngd_fx_asm_inner", files, [], fi))
+    expect(not f, "an inner helper before its parent's flop was refused: %s" % f)
+    f = msgs(converge("fx_asm_cut", "ngd_fx_asm_inner", files, [], fb))
+    expect(any("do not converge" in x and "u_inn.a" in x for x in f),
+           "a helper not declared inner was not cut out at its ports: %s" % f)
+    #    A unit's own level is checked the same way, for the ratchet: glue
+    #    in a module with children is its finding, keyed by the pins.
+    blk = {m: "f" for m in ("ngd_fx_bsrc", "ngd_fx_bdst", "ngd_fx_inner", "ngd_fx_asm_gap",
+                            "ngd_fx_asm_inner")}
+    u = fixture("fx_ugap", "ngd_fx_asm_gap", files)
+    u.measure(budgets=fb, modules=blk)
+    expect("NGD-5 u_src.y>u_dst.a" in keys(u, fb), "a unit's glue passed: %s" % u.h)
+    u = fixture("fx_uinner", "ngd_fx_asm_inner", files)
+    u.measure(budgets=fi, modules=blk)
+    expect(not keys(u, fi), "a unit with only an inner helper inside had findings: %s"
+           % findings(u, fi))
     # 8. The assembled block, whole: every path in the stage; outputs from
     #    flops; inputs within the port budget. Two 8-bit multiplies in series
     #    across a module boundary are over the stage, whatever the budgets.
@@ -793,8 +1019,8 @@ def selftest():
         sys.stderr.write("check-ngd selftest: %s\n" % x)
     if not bad:
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
-              "budget files, ratchet, coverage, the assembled block from its budgets and whole "
-              "(%d controls)" % checks)
+              "inner helpers, observation ports, budget files, ratchet, coverage, glue, the "
+              "assembled block from its budgets and whole (%d controls)" % checks)
     return 1 if bad else 0
 
 

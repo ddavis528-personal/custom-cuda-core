@@ -15,9 +15,15 @@
 #   the receiver-end checker told its distance  told it sits at the sender:
 #     from the sender (SRC_STAGES = N) is quiet    stall_honoured fires
 #   payload enabled by the previous cycle's     free-run: payload loads every
-#     valid, lead by the same cycle's, pulses      cycle. Simulation CANNOT see
-#     reset and never enabled -- on the Yosys      it (clean run, asserted);
-#     netlist                                      the netlist check refuses it
+#     valid, lead by the same cycle's (the         cycle. Simulation CANNOT see
+#     first stage's written every cycle, its       it (clean run, asserted);
+#     valid an input), pulses reset by the         the netlist check refuses it
+#     flopped reset and never enabled -- on     lead-gated: the first stage's
+#     the Yosys netlist                            lead enabled by its input
+#                                                  valid (CG-5); raw-reset: the
+#                                                  pulses reset by rst_n itself
+#                                                  (RST-1). Both invisible in
+#                                                  simulation, refused there
 set -uo pipefail
 cd "$(dirname "$0")/.."
 B=build/phys
@@ -131,14 +137,18 @@ mut() {   # $1 name, $2 sed expression
   cmp -s $RPT "$B/mut/$1.sv" && { bad "mutant $1" "did not apply"; return 1; }
 }
 mut enable-now 's/        if (pay_en\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /'
-mut lead-late  's/          if (lead_en) lead_q <= /          if (pay_en[j]) lead_q <= /'
+mut lead-late  's/            if (lead_en) lead_q <= /            if (pay_en[j]) lead_q <= /'
+mut lead-gated 's/            lead_q <= p\[(k\*S+j)\*W +: W\] \& LEAD_MASK;/            if (v[k*S+j]) lead_q <= p[(k*S+j)*W +: W] \& LEAD_MASK;/'
+mut raw-reset  's/      if (!rst_n_q) begin/      if (!rst_n) begin/'
 mut credit-short 's/    assign cr\[k\*S +: S\]    = credit_q;/    assign cr[k*S +: S]    = cr[(k+1)*S +: S];/'
 mut free-run   's/        if (pay_en\[j\]) pay_q <= /        pay_q <= /'
 if command -v iverilog >/dev/null 2>&1; then
   caught=""
-  for spec in enable-now:data_errors lead-late:data_errors credit-short:latency_errors; do
-    m=${spec%%:*}; k=${spec##*:}
-    cmd=$(build iv 2 "$B/mut/$m.sv" "" "$m")
+  # lead-late at N = 4: only a repeater of two stages or more has a lead
+  # register behind its first, the one the mutant moves (N = 2 is two of one).
+  for spec in enable-now:data_errors:2 lead-late:data_errors:4 credit-short:latency_errors:2; do
+    m=${spec%%:*}; n=${spec##*:}; k=${spec#*:}; k=${k%%:*}
+    cmd=$(build iv $n "$B/mut/$m.sv" "" "$m")
     v=$(field "$(run "$cmd")" "$k")
     [ -n "$v" ] && [ "$v" != "0" ] && caught="$caught $m" ||
       bad "mutant $m" "$k=$v: not caught in simulation"
@@ -160,6 +170,18 @@ if command -v iverilog >/dev/null 2>&1; then
   else
     bad "mutant lead-late" "the netlist check passed it"
   fi
+  # lead-gated and raw-reset change no value: clean in simulation, refused on
+  # the netlist (a clock enable or a reset straight from an input).
+  for m in lead-gated raw-reset; do
+    cmd=$(build iv 2 "$B/mut/$m.sv" "" "$m")
+    o=$(run "$cmd")
+    if [ "$(field "$o" data_errors)" = "0" ] && ! grep -q failed <<<"$o" &&
+       ! python3 tools/check-rpt-enables.py --file="$B/mut/$m.sv" >/dev/null 2>&1; then
+      say "  ...$m: invisible in sim, refused by netlist" "PASS"
+    else
+      bad "mutant $m" "want a clean simulation and a refused netlist"
+    fi
+  done
 fi
 
 exit $fail

@@ -325,8 +325,8 @@ otherwise:
     .core_clk(core_clk),
     .rst_n(rst_n),
     ...
-  ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
-    .clk(core_clk), .rst_n(rst_n),
+    ccv_common_rpt #(.STAGES(RPT_MIU_DCU_REQ), .SLOTS(4), .PAYLOAD_W(1212)) u_rpt_miu_dcu_req (
+      .clk(core_clk), .rst_n(rst_n),
     ...
 ```
 
@@ -363,7 +363,7 @@ The gate's enable reads only flops of its own block. The wake is registered
 first (Q-49):
 
 ```systemverilog
-wire           en    = !sleep || wake_q || cg_override || !rst_n;
+wire           en    = !sleep || wake_q || override_q || !rst_n_q;
 ```
 
 The same top can be built with the C++ blocks inside it: `rtl/top/dpi/` holds
@@ -469,8 +469,8 @@ a script is one. Its sections:
 - Interface checker convention
 - X-propagation
 - Clock gating -- the ctech layer and the block gate
-- Local clock gating -- CG-1, CG-2, CG-3
-- Logic depth -- NGD-1 to NGD-4
+- Local clock gating -- CG-1 to CG-5, RST-1
+- Logic depth -- NGD-1 to NGD-5
 - Clock gating (exploratory)
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)

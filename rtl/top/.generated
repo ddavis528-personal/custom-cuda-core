@@ -1,5 +1,6 @@
 {
  "gen-top": [
-  "ccv_top.sv"
+  "ccv_top.sv",
+  "rpt-units.json"
  ]
 }
