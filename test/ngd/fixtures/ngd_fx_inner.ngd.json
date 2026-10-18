@@ -1,0 +1,7 @@
+{
+  "module": "ngd_fx_inner",
+  "inner": true,
+  "by": "selftest",
+  "date": "2026-10-18",
+  "why": "the inner helper control: an XOR timed only inside its parent, flattened into it"
+}

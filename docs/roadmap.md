@@ -382,16 +382,20 @@ held to the replayed units'.
 Daniel's rule of 2026-10-17, in `docs/rtl-coding-style.md`: 25 NGD of
 combinational logic between flops, the flop outside it; each module port
 12 NGD a side by default, the architect's explicit budgets in one file per
-module beside its RTL (`<module>.ngd.json`) where a port needs more or a
-path runs straight through a module; an assembled block checked from those
-files for convergence to 25, level by level, then timed whole, its ports
-registered on both sides. `tools/check-ngd.py` measures every module at
-its units' parameters on ABC's mapping, with a timing pass that must agree
-with ABC's own longest path. No module is over the stage flop to flop. The
-OOE ports over the default when the rule was made, 45 of them in nine
-modules (`ooe_rat`'s with OI's next merge), are on `rtl/ngd-ratchet.json`,
-for OA's budgets or a redesign. No block top is RTL yet, so the whole-block
-pass runs on fixtures only.
+module beside its RTL (`<module>.ngd.json`) where a port needs more; and,
+2026-10-18, no logic straight through a module or between a parent's
+children, so every path between modules crosses one port in two segments,
+a combinational module allowed as an inner helper timed in its parent; an
+assembled block checked from those files for convergence to 25, level by
+level, then timed whole, its ports registered on both sides.
+`tools/check-ngd.py` measures every module at its units' parameters on
+ABC's mapping, with a timing pass that must agree with ABC's own longest
+path. No module is over the stage flop to flop. What broke the rules when
+they were made, 153 findings in nine OOE modules (`ooe_rat`'s 46 with OI's
+next merge), is on `rtl/ngd-ratchet.json`: ports over the default for OA's
+budgets or a redesign, and paths straight through (and `ooe_select`'s glue
+around its two picks) for a regrouping or an inner declaration. No block
+top is RTL yet, so the whole-block pass runs on fixtures only.
 
 ### CI harness ✅
 

@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-4, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
+| `tools/check-ngd.py` | NGD-1 … NGD-5, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -721,7 +721,7 @@ size in a block's budget is counted by register name, every flop of that
 register in each instance, which over-counts a finding that covers only
 part of a register.
 
-### Logic depth: NGD-1 … NGD-4
+### Logic depth: NGD-1 … NGD-5
 
 **25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
@@ -738,9 +738,32 @@ floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
   within the rest, 12.
 
 Two defaults meet within the stage, so a port that fits them needs no one's
-plan. Anything else needs explicit budgets from the architect: a port over
-12, and any path **straight through** a module, input to output, which fits
-no default (it would arrive at 13 and be required by 12).
+plan. A port over 12 needs explicit budgets from the architect.
+
+**No logic straight through a module** (Daniel, 2026-10-18). A path from an
+input port to an output port carries no logic: it is regrouped with one
+sequential side or the other, the receiver's flops or the driver's. So every
+flop-to-flop path between modules crosses exactly one port, in two segments,
+and a pair of budgets says all there is to say about it; a third segment
+through a module would break the halves, and stacked ones would compound. In
+a parent, the same holds for the glue between its children: a path that
+touches none of the parent's own flops (a child's output to another child's
+input, a parent's input to a child's, a child's output to the parent's) is a
+wire. Wires and buffers are not logic. Two exceptions:
+
+- an **inner helper**, a combinational module timed only inside its parent
+  (a priority pick, a ready function), declared in its own budget file,
+  `{"module": "ooe_pick", "inner": true, "by": …, "date": …, "why": …}`,
+  with no ports and no flops. It is flattened into its parent wherever it is
+  checked, so its logic is the parent's and must sit beside one of the
+  parent's flops like any other: between two of the parent's children, it is
+  glue;
+- an **observation** output, read only by checkers that sample it at the edge
+  as a flop would (`{"observation": true, …}` on the port), held to no port
+  rule.
+
+A wire straight through carries its driver's time to its receiver; the
+assembled block's whole pass times it.
 
 **One budget file per module, beside its RTL**, in one format, listing only
 its non-default ports: `ooe_rs.ngd.json` beside `rtl/ooe/ooe_rs.sv`, say, and
@@ -757,23 +780,31 @@ today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
 ```
 
 An input's `arrival` or an output's `required` time, in NGD from the flop
-that launches it, with who set it, when and why. The architect sets them (OA
-for OOE); the module's owner keeps the file. The module is checked against
-its file, and an assembled block is checked from all of them: the budgets
-must **converge**, each driver's required time, plus any logic between, no
-later than its receiver's arrival.
+that launches it, or `observation`, with who set it, when and why. The
+architect sets them (OA for OOE); the module's owner keeps the file and
+declares an inner helper. The module is checked against its file, and an
+assembled block is checked from all of them: the budgets must **converge**,
+each driver's required time no later than its receiver's arrival.
 
-Four rules, checked by `tools/check-ngd.py` on every module at its units'
+Five rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
 with no flops):
 
 - **NGD-1, the stage.** Flop to flop within a module: at most 25.
-- **NGD-2, outputs.** Each output ready by its required time, from the
-  module's flops and from each input at its arrival.
+- **NGD-2, outputs.** Each output ready by its required time from the
+  module's flops.
 - **NGD-3, inputs.** Each input, from its arrival, reaches the module's flops
   within the stage.
 - **NGD-4, budget files.** Each named for its module, a design module, each
-  entry well formed and on a port of that module, in the right direction.
+  entry exactly one of `arrival`, `required` and `observation`, well formed
+  and on a port of that module, in the right direction; an inner helper's
+  with no ports, of a module with no flops.
+- **NGD-5, nothing straight through.** No logic from an input to an output;
+  and in a module that instantiates another (not an inner helper), no logic
+  on a path that touches none of its own flops. The second is checked on the
+  module's own level, its children cut out at their budgets, where each
+  connection between them must also converge. An inner helper is held to
+  NGD-1 alone, its logic counted in its parent's.
 
 **How it is measured.** Yosys synthesises the unit flattened; each clock-gated
 flop becomes a plain flop on its next value (its enable is timed apart, to its
@@ -787,8 +818,8 @@ top is RTL, it is checked twice. First from the budget files, quickly: each
 level of its hierarchy that instantiates others is mapped alone, its
 children cut out, each child's output starting at its required time and each
 child's input to be reached by its arrival, the block's own inputs arriving
-at 13. So every connection, and any glue between children, must converge to
-25 as the files say. Then timed whole, synthesised flattened with its
+at 13, inner helpers flattened into their parents. So every connection must
+converge to 25 as the files say, and any glue between children is NGD-5. Then timed whole, synthesised flattened with its
 hardening wrapper: every flop to flop path within 25, whatever the files
 said. That pass is still needed, but it should find only corner cases, where
 synthesis did across a boundary what it could not module by module (two
@@ -803,11 +834,14 @@ budget of local clock gating (2% per instance) is checked on the same
 assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
 on the tree; the fixtures exercise both.
 
-**The ratchet.** The ports that broke a default when the rule was made sit on
-`rtl/ngd-ratchet.json`, each awaiting the architect's budgets or a redesign.
-The list only shrinks: an entry that now meets its budget, or one that was
-not there when the rule was made, is refused. A design module no unit
-measures is refused.
+**The ratchet.** What broke the rules when they were made sits on
+`rtl/ngd-ratchet.json`: ports over a default (NGD-2, NGD-3, 2026-10-17),
+each awaiting the architect's budgets or a redesign; paths straight through
+or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
+groups the logic with one sequential side, or the module's declaration as an
+inner helper. The list only shrinks: an entry that now meets the rule, or one
+that was not there when its rule was made, is refused. A design module no
+unit measures is refused.
 
 ### CCV-L26 — nothing Yosys cannot parse
 
