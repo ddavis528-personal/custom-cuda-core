@@ -42,6 +42,16 @@ the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
 its owner removes an entry once the module passes.
 
+Logic depth (Daniel, 2026-10-17; `docs/rtl-coding-style.md`): 25 NGD of
+combinational logic between flops, the flop outside it. Each module port has
+12 NGD a side by default; a port over it, or a path straight through a
+module, needs the architect's budgets, one file per module beside its RTL
+(`<module>.ngd.json`). An assembled block is checked from those files, level
+by level, for convergence to 25, then timed whole, its outputs straight from
+flops. `tools/check-ngd.py` measures every module at its units' parameters;
+ports over the default when the rule was made sit on `rtl/ngd-ratchet.json`,
+which only shrinks.
+
 Every Yosys the gate runs, SymbiYosys's included, is `tools/shim/yosys`:
 the warnings that mean a netlist is not the RTL are errors (OI-44). Run a
 Yosys flow alone the same way: `PATH="$PWD/tools/shim:$PATH"`.

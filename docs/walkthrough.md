@@ -470,6 +470,7 @@ a script is one. Its sections:
 - X-propagation
 - Clock gating -- the ctech layer and the block gate
 - Local clock gating -- CG-1, CG-2, CG-3
+- Logic depth -- NGD-1 to NGD-4
 - Clock gating (exploratory)
 - Stage 3 -- skeleton (S0: plumbing)
 - Stage 3 -- skeleton (S1: vadd)

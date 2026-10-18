@@ -164,6 +164,17 @@ section "Local clock gating -- CG-1, CG-2, CG-3"
 run "local clock gating" python3 tools/check-cg.py
 run "clock gating that should fail does" python3 tools/check-cg.py --selftest
 
+section "Logic depth -- NGD-1 to NGD-4"
+# Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"): 25 NGD of
+# logic between flops; each module port 12 a side by default, the
+# architect's budgets beside a module's RTL (<module>.ngd.json) where a port
+# needs more; an assembled block converged from those files level by level,
+# then timed whole, its ports registered on both sides. Each module at its
+# units' parameters, mapped by ABC; the timing pass must agree with ABC's
+# own longest path.
+run "logic depth" python3 tools/check-ngd.py
+run "logic depth that should fail does" python3 tools/check-ngd.py --selftest
+
 section "Clock gating (exploratory)"
 # Synthesis is deferred (§6), and nothing depends on this. It is in the gate
 # for two seconds of runtime because an artifact outside the gate rots, and

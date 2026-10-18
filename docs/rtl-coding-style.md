@@ -25,6 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
+| `tools/check-ngd.py` | NGD-1 … NGD-4, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -719,6 +720,94 @@ separately count as two groups and may each fall under 8. And a finding's
 size in a block's budget is counted by register name, every flop of that
 register in each instance, which over-counts a finding that covers only
 part of a register.
+
+### Logic depth: NGD-1 … NGD-4
+
+**25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
+Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
+every depth here is measured with the flops cut out, so the whole 25 is
+logic. An NGD is a NAND2 at fanout 4; `test/ooe/ngd.genlib` holds the gates
+at their fanout-of-4 delays, and broadcast fanout and wire are not in it.
+
+**A module is measured alone, so a path that leaves it is budgeted at the
+port.** Each side of a port has a budget, by default `CCV_NGD_PORT` =
+floor(`CCV_NGD_BUDGET` / 2) = 12, derived, so it follows the stage:
+
+- an **output** is required within 12 NGD of its module's flops;
+- an **input** arrives at 25 − 12 = 13 and must reach its module's flops
+  within the rest, 12.
+
+Two defaults meet within the stage, so a port that fits them needs no one's
+plan. Anything else needs explicit budgets from the architect: a port over
+12, and any path **straight through** a module, input to output, which fits
+no default (it would arrive at 13 and be required by 12).
+
+**One budget file per module, beside its RTL**, in one format, listing only
+its non-default ports: `ooe_rs.ngd.json` beside `rtl/ooe/ooe_rs.sv`, say, and
+today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
+
+```json
+{
+  "module": "ooe_rs",
+  "ports": {
+    "free_cq01h":    {"arrival": 3.0,   "by": "OA", "date": "…", "why": "…"},
+    "gnt_idx_cq02h": {"required": 20.0, "by": "OA", "date": "…", "why": "…"}
+  }
+}
+```
+
+An input's `arrival` or an output's `required` time, in NGD from the flop
+that launches it, with who set it, when and why. The architect sets them (OA
+for OOE); the module's owner keeps the file. The module is checked against
+its file, and an assembled block is checked from all of them: the budgets
+must **converge**, each driver's required time, plus any logic between, no
+later than its receiver's arrival.
+
+Four rules, checked by `tools/check-ngd.py` on every module at its units'
+parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
+with no flops):
+
+- **NGD-1, the stage.** Flop to flop within a module: at most 25.
+- **NGD-2, outputs.** Each output ready by its required time, from the
+  module's flops and from each input at its arrival.
+- **NGD-3, inputs.** Each input, from its arrival, reaches the module's flops
+  within the stage.
+- **NGD-4, budget files.** Each named for its module, a design module, each
+  entry well formed and on a port of that module, in the right direction.
+
+**How it is measured.** Yosys synthesises the unit flattened; each clock-gated
+flop becomes a plain flop on its next value (its enable is timed apart, to its
+ICG, by CG-2); ABC maps it onto the genlib, as `test/ooe/depth.sh` does. A
+timing pass over the mapped netlist then splits every path by where it starts
+and ends: an input or a flop, an output or a flop. Its longest path must equal
+ABC's own, or the run stops.
+
+**The assembled block, from its budget files and then whole.** Once a block
+top is RTL, it is checked twice. First from the budget files, quickly: each
+level of its hierarchy that instantiates others is mapped alone, its
+children cut out, each child's output starting at its required time and each
+child's input to be reached by its arrival, the block's own inputs arriving
+at 13. So every connection, and any glue between children, must converge to
+25 as the files say. Then timed whole, synthesised flattened with its
+hardening wrapper: every flop to flop path within 25, whatever the files
+said. That pass is still needed, but it should find only corner cases, where
+synthesis did across a boundary what it could not module by module (two
+64-bit parities in series map shallower than their halves; a large function
+split across a port may map deeper or shallower than its halves add up to).
+And its boundary
+is **registered on both sides** (`docs/skeleton.md`): every output straight
+from a flop, every input into its flops within 12. With a link at 0 repeater
+stages, its default in `params/links.json`, a block port is wired straight to
+its neighbour's, so the blocks' own RTL is what keeps the rule. The block
+budget of local clock gating (2% per instance) is checked on the same
+assembly by `tools/check-cg.py`. Today no block top is RTL, so neither runs
+on the tree; the fixtures exercise both.
+
+**The ratchet.** The ports that broke a default when the rule was made sit on
+`rtl/ngd-ratchet.json`, each awaiting the architect's budgets or a redesign.
+The list only shrinks: an entry that now meets its budget, or one that was
+not there when the rule was made, is refused. A design module no unit
+measures is refused.
 
 ### CCV-L26 — nothing Yosys cannot parse
 
