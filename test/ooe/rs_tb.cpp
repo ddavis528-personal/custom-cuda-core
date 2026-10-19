@@ -7,8 +7,8 @@
 // and line select for each entry already in the RS, and for an entry
 // allocated in the same cycle, the port that took it.
 //
-// Before the edge, each port's grant must be the entry the model took.
-// After it, the valid bits must be the model's, and every valid row's
+// After the edge, each port's registered grant must be the entry the model
+// took, and no other port granted; the valid bits must be the model's, and every valid row's
 // dependency bits (Core::depBit) and, where the bit is set and the
 // configured penalties fit the lines, its line select (Core::cellCode).
 //
@@ -164,21 +164,22 @@ void hook(const Core &c) {
     frees += w.rfree[j];
     reuse += w.rfree[j] && port_of[j] >= 0;
   }
-  // Before the edge: the grants.
-  dut->ooe_core_clk = 0;
-  dut->eval();
-  for (unsigned p = 0; p != P; ++p) {
-    const unsigned e = entry_of[p];
-    if (e == N) continue;
-    const bool v = getBit(dut->gnt_v_cq02h, p);
-    const unsigned idx = getField(dut->gnt_idx_cq02h, p * W, W);
-    if (!v) fail("a port the model allocated on was not granted", p, e, 0, 1);
-    else if (idx != e) fail("granted a different entry", p, 0, idx, e);
-  }
   tick();
   if (cg.on()) {
     for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
     return;
+  }
+  // After the edge: the grants, registered, every port's.
+  for (unsigned p = 0; p != P; ++p) {
+    const unsigned e = entry_of[p];
+    const bool v = getBit(dut->gnt_v_cq02h, p);
+    if (e == N) {
+      if (v) fail("a port the model did not allocate on was granted", p, 0, 1, 0);
+      continue;
+    }
+    const unsigned idx = getField(dut->gnt_idx_cq02h, p * W, W);
+    if (!v) fail("a port the model allocated on was not granted", p, e, 0, 1);
+    else if (idx != e) fail("granted a different entry", p, 0, idx, e);
   }
   // The column flags' reference, then the RTL's.
   std::vector<uint8_t> named(N, 0);
@@ -192,7 +193,7 @@ void hook(const Core &c) {
   }
   // After it: the valid bits and every valid row.
   for (unsigned i = 0; i != N; ++i) {
-    const bool v = getBit(dut->valid_cq02h, i);
+    const bool v = getBit(dut->valid_out_cq02h, i);
     if (v != c.rsValid(i)) { fail("valid differs", i, 0, v, c.rsValid(i)); continue; }
     if (!v) continue;
     ++rows;

@@ -17,6 +17,6 @@ module ooe_rs_confirm #(parameter int N = 45, parameter int NR = 30, parameter i
                           .hcol_cq01h(hcol),                          .fin_cq01h(fin), .prod_cq01h(prod), .replay_cq02h(rep), .conf_cq01h(conf));
   ooe_rs #(.N(N), .NR(NR), .A(A)) rs(.ooe_core_clk, .ooe_rst_r00h, .req_cq01h(req), .row_dep_cq01h(rd),
                           .row_code_cq01h(rc), .grp_dep_cq01h(gd), .grp_code_cq01h(gc), .free_cq01h(conf),
-                          .gnt_v_cq02h(gv), .gnt_idx_cq02h(gi), .valid_cq02h(val), .dep_cq02h(dep), .code_cq02h(code),
+                          .gnt_v_cq02h(gv), .gnt_idx_cq02h(gi), .valid_out_cq02h(val), .dep_cq02h(dep), .code_cq02h(code),
                           .hcol_cq02h(hcol));
 endmodule

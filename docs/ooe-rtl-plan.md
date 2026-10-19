@@ -230,6 +230,16 @@ Built (`rtl/ooe/`):
   cycle, 4,294 in-group references, none differ. Controls no-same-edge,
   drop-group and stale-hcol must each be caught.
 
+  The outputs leave from registers of their own (OA's stage-boundary map,
+  item 3; TI-20, NGD-7): the grant, registered at the edge it is made, and
+  a `(* keep *)` copy of the valid bits (`valid_out`), so the valid bits
+  allocation reads drive no output. These 101 flops change with every
+  grant and free, so they take no clock gate, within the module's
+  allowance (check-cg: 95 auto-waived of 126). The bench compares the
+  registered grants after each edge, every port's. With OA's row_dep
+  arrival (by 10, OI-48), the only depth finding left is the confirmation
+  path's free (NGD-3, OI-43 and OI-50).
+
   Column flags (`hcol`, for `ooe_confirm`): per class, a column is flagged
   from the edge a row of the class naming it is written until the entry is
   freed, so a set bit in a valid row is always flagged. The bench keeps
