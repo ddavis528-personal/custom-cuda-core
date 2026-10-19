@@ -56,7 +56,7 @@ it.
 | PF-31 | A warp-uniform register file and scalar datapath | ISA, RCU, rename, compiler | deferred (CP-7, compiler F-106) |
 | PF-32 | Branch resolution fed by a lane compare at the bypass point | LANE, RCU, scheduler | deferred (S1 traces) |
 | PF-33 | Fewer block crossings on the L1-hit path | MIU, DCU, RCU, partitioning | deferred (S1 traces; Q-18) |
-| PF-34 | FP32 atomic add at the RMW site, with same-address combining for `red` | ISA, DCU, SPM, MIU | deferred (IS-14; AR-21) |
+| PF-34 | Same-address combining for atomics, built from lane adds | LANE, RCU, MIU, ISA | deferred (IS-14; DA's response AR-21) |
 | PF-35 | A one-instruction warp reduction in RCU | ISA, RCU, compiler | deferred (IS-14) |
 | PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
 | PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
@@ -581,32 +581,32 @@ it.
   Revisit with Q-18, before floorplan, and once the corpus has pointer
   chasing or indexed gathers whose index is loaded.
 
-### PF-34 FP32 atomic add at the RMW site, with same-address combining
+### PF-34 Same-address combining for atomics, built from lane adds
 
-- **Now:** `atomicAdd(float*)` is a CAS loop, and `cas.global` is not yet
-  selectable, so the corpus issues no atomics (IS-14). No block spec names
-  the RMW ALU for any atomic (AR-21).
-- **Alternative:** `atom.add.f32` for global and shared memory, two of Format
-  M's free points (IS-14). It executes where the integer atomics do, which
-  AR-21 proposes as DCU for global (on a line MIU holds exclusive) and SPM
-  for shared. For `red.add.f32`, the form that returns no old value, lanes
-  of one warp that hit the same address are combined in an adder tree first
-  and applied once, so 32 lanes to one address cost one RMW rather than 32.
-  `atom.add.f32` returns each lane's old value, which must form a
-  serialisation, so it cannot be combined in FP: a parallel prefix rounds
-  differently from sequential adds (AR's response to TI on IS-14).
-- **Cost:** four FP32 adders at DCU, rate-matched to its four lookups a
-  cycle, plus SPM's share, pipelined off the L1-hit path, since atomics take
-  no speculative wake (A-46). The combining tree costs more than the adders.
-  Verification is the larger cost. FP addition is not associative, and the
-  order across warps depends on timing, so the RTL and ccv-sim legitimately
-  disagree on any kernel where two warps add floats to one address. The ISA
-  must state that no order is guaranteed across warps, and the gate needs a
-  check that accepts any order, before the instruction gets points (AR's
-  response IS-14).
-- **Signal:** CAS-loop retries per `atomicAdd(float*)` and same-address lanes
-  per warp atomic, on scatter-add, histogram and embedding-backward kernels
-  (to add, once CP can select `cas.global`).
+- **Now:** every atomic's operation executes in the lanes, integer and FP,
+  global and shared, because no FP arithmetic is built outside the LANE
+  blocks (DA's response AR-21, 2026-10-19). MIU holds the line exclusive
+  (SPM the bank entry) from the atomic's read to its write. Same-address
+  lanes of one instruction go in passes of at most one lane per address,
+  in ascending lane order, each pass a round trip (AR-21). So 32 lanes to
+  one address cost 32 passes, with the line held throughout. Today
+  `atomicAdd(float*)` is still a CAS loop, and `cas.global` is not yet
+  selectable (IS-14). The FP32 adder IS-14 asked about costs nothing, since
+  the lanes have it.
+- **Alternative:** combine same-address lanes before the memory update, for
+  the no-return `red` form only, since `atom`'s per-lane old values must
+  form a serialisation, which a tree cannot produce in FP (AR's response to
+  TI on IS-14). Under DA's ruling the tree must be built from cross-lane
+  moves through RCU plus lane adds: five levels for 32 lanes, segmented by
+  address. Rejected in its first form, an adder tree at DCU and SPM, by
+  DA's response AR-21.
+- **Cost:** five RCU-and-lane round trips per combined instruction, a
+  segmented-reduction control (lanes grouped by address), and the order IS
+  fixes for `red`. Verification is TI's chain check, extended to `red`'s
+  tree (TI's response IS-14).
+- **Signal:** passes per warp atomic and cycles a line is held exclusive, on
+  CP's histogram and scatter-add kernels at low and high contention (IS-14),
+  to add once `cas.global` and the atomics are lowered.
 
 ### PF-35 A one-instruction warp reduction in RCU
 
