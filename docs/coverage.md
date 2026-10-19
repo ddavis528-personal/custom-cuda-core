@@ -14,6 +14,7 @@ checkpoint frees, cycles FET stalled with every checkpoint live, the most
 checkpoints live at once, merges, copy-only ops, zero-register reads,
 physical registers reallocated after a free, memops touching more than one
 line, the most lines one memop touched, store lines with a partial byte mask,
+store lines written whole, without a read of the line first (`full_line`),
 cycles MIU waited for a DCU request id, loads completed as L1 hits at the
 contract (`l1_hit`) or hit but too late for it (`l1_late`), and instructions a
 lane executed twice because OOE cancelled and replayed them (`reexec`). `tools/check-kernel.sh` holds
@@ -25,10 +26,10 @@ must print the same `COVER` line as the C++ one.
 
 | Area | Kernels | What is reached (gate bins) | Control |
 |---|---|---|---|
-| Straight-line ALU, loads, stores | vadd, srd, sel | one line per warp access, aligned; a correctly predicted branch frees its checkpoint (`ckpt_free=1`) | vadd's eleven |
+| Straight-line ALU, loads, stores | vadd, srd, sel | one line per warp access, aligned; a correctly predicted branch frees its checkpoint (`ckpt_free=1`); a store covering its whole line is written without DCU reading the line first (`full_line=1`, AR-19) | vadd's eleven |
 | Guarded writes and merge under rename | merge, pguard | GPR merge through a lane, predicate merge in RCU, zero registers (`merge=4 zero_read=2`) | wrong-merge, dirty-zero, ignore-mask |
 | Masked loads | mload | the copy-only op (A-38), its landing contract (`copy=2`) | skip-copy, copy-from-new, late-copy |
-| Warp access not line-aligned | unal | two lines per access, split at lanes 27, 1 and 15; a store's partial byte mask on two lines (`line_split=3 partial_line=2`) | one-line |
+| Warp access not line-aligned | unal | two lines per access, split at lanes 27, 1 and 15; a store's partial byte mask on two lines (`line_split=3 partial_line=2`), each merged into the line DCU reads, so the four words beside it that it never writes keep their values | one-line, skip-read-partial |
 | Scattered lane addresses | gather | one line per lane: 32 line requests for one memop, MIU waiting on DCU request ids and reusing them (`lines_peak=32 dcu_id_wait>0`); reversed order within a line; broadcast; a store with a 4-byte mask in each of 32 lines | (MIU's per-lane address and data checks) |
 | Branch mispredicts (redirect, checkpoint restore) | loop, brs | a backward branch mispredicted 99 times, then a correct fall-through (`redirect=99`); a uniform taken forward branch | drop-negate, corrupt-ckpt, stale-free |
 | Rename free list wrapping | loop | about 200 writes against 192 registers (`reg_reuse>0`) | free-new |

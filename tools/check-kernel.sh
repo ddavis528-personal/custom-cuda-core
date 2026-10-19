@@ -54,6 +54,10 @@
 #   a warp access split across two lines      one-line (unal): MIU's loaded
 #     (unal) or spread over 32 (gather)          values and the stored words
 #                                                past the boundary are wrong
+#   a store covering its line is written      skip-read-partial (unal): a
+#     without a read (full_line, AR-19); a       partial store written blind
+#     partial one merges into the line read      loses its lines' other four
+#                                                words
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -544,23 +548,37 @@ while read -r k want; do
     bad "$k: == ccv-sim, reaches its bins" "${why# }"
   fi
 done <<'KERNELS'
-unal   line_split=3 lines_peak=2 partial_line=2
-gather lines_peak=32 line_split=2 partial_line=32 dcu_id_wait>0
+unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
-vadd   ckpt_free=1 redirect=0 epoch_drop=0
+vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1
 hit    l1_hit=4 l1_late=0
 byp    copy=1 lane_byp=4
 plog   merge=3
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
+# 19 words: the 17 the lanes past the boundary should have stored in line 1,
+# and two of the words unal pokes beside its store in line 0, which those
+# lanes write over instead (17 before the pokes, AR-19).
 if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
-   [ "$(field "$B/kernel_one-line.log" mem_mismatch)" = 17 ]; then
-  say "--break one-line: the lanes past the boundary" "PASS (loads at MIU, 17 stored words)"
+   [ "$(field "$B/kernel_one-line.log" mem_mismatch)" = 19 ]; then
+  say "--break one-line: the lanes past the boundary" "PASS (loads at MIU, 17 stored words and 2 overwritten)"
 else
   bad "--break one-line" "a warp access split across lines went unchecked: $(grep '^KERNEL' "$B/kernel_one-line.log")"
+fi
+# A store that covers its line is written without reading it (full_line:
+# vadd, sel, srd and pguard each store one whole line), and a partial one
+# merges into the line DCU reads (AR-19). Written blind, unal's two partial
+# lines lose the four words it pokes beside the store and never writes.
+"$SKEL" --kernel build/oracle/unal/oracle.jsonl --break skip-read-partial >"$B/kernel_skip-read-partial.log" 2>&1
+if [ "$(field "$B/kernel_skip-read-partial.log" mem_mismatch)" = 4 ] &&
+   [ "$(field "$B/kernel_skip-read-partial.log" check_failures)" = 0 ]; then
+  say "--break skip-read-partial: words lost" "PASS (unal's 4 words beside its store)"
+else
+  bad "--break skip-read-partial" "a partial store written without a read went unnoticed: $(grep '^KERNEL' "$B/kernel_skip-read-partial.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 if grep -q "^CHECK lane 0: seq 379 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&

@@ -386,6 +386,17 @@ private:
     to_miu_.push_back({o.slot, r, o.tid});
   }
 
+  /// A store whose byte mask covers its whole line: nothing of the old line
+  /// survives it, so it needs no read (AR-19). skip-read-partial takes every
+  /// store for one, and a partial store loses the bytes it does not write.
+  bool fullLine(const Bits &req) const {
+    if (k_.brk == "skip-read-partial") return true;
+    const uint32_t mlsb = field(ch().miu_dcu, "byte_mask").lsb;
+    for (unsigned k = 0; k != kLine; ++k)
+      if (!req.bit(mlsb + k)) return false;
+    return true;
+  }
+
   void mlcReq(unsigned coh, uint64_t pa, const Line *data) {
     const Ch &c = ch();
     Bits r = msgOf(c.dcu_mlc);
@@ -447,10 +458,18 @@ private:
       const Line *l = get(cur_.req, c.miu_dcu, "coh_op") == kCohRead
                           ? lookup(get(cur_.req, c.miu_dcu, "phys_addr"))
                           : nullptr;
+      const uint64_t pa = get(cur_.req, c.miu_dcu, "phys_addr");
       if (l) {
         hitRsp(cur_, *l);
+      } else if (get(cur_.req, c.miu_dcu, "coh_op") == kCohWrite && fullLine(cur_.req)) {
+        // The whole line written: straight to MLC, with no read first.
+        const Line w = getLine(cur_.req, field(c.miu_dcu, "write_data").lsb);
+        install(pa, w);
+        mlcReq(kCohWrite, pa, &w);
+        st_ = kWaitAck;
+        k_.hit("full_line");
       } else {
-        mlcReq(kCohRead, get(cur_.req, c.miu_dcu, "phys_addr"), nullptr);
+        mlcReq(kCohRead, pa, nullptr);
         st_ = kWaitLine;
       }
     }

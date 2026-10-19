@@ -148,7 +148,7 @@ struct Kernel {
   /// COVER line's order; every bin prints, reached or not.
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
-      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
+      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "reexec", "lane_byp"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
