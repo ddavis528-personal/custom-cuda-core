@@ -1892,7 +1892,14 @@ private:
       if (mop == kMemBulkDiscard) k_.fail("dec: mem_op 0xF is OOE's bulk discard");
       put(u, c.dec_ooe, "mem_op", mop);
       put(u, c.dec_ooe, "space", kSpaceGlobal);     // every memory op in the table
-      put(u, c.dec_ooe, "ordering", 0);
+      // ordering-on-load: DEC's table gives a load an ordering, which only a
+      // fence may carry (IS-11): asserted on DEC's output, as V-52 is.
+      const unsigned ord = k_.brk == "ordering-on-load" && op->cls == kLoad ? 1 : 0;
+      const uint32_t sa = schedAttrOf(op);
+      if (ord != 0 && !(attrMem(sa) && attrMemKind(sa) == kMemKFence))
+        k_.fail("dec: pc 0x%llx has ordering %u but is not a fence",
+                (unsigned long long)pc, ord);
+      put(u, c.dec_ooe, "ordering", ord);
     }
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
     // Three source fields: Format A's rs2 is an independent source (mad.lo's

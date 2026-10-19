@@ -117,6 +117,8 @@ struct Kernel {
   ///                  refuses it (TI-9)
   ///   narrow-pipes   OOE gives every memop the one pipe P0, not a 32-bit
   ///                  memop's four: MIU refuses it (OI-33, TI-9)
+  ///   ordering-on-load DEC gives every load ordering 1, which only a fence
+  ///                  may carry: OOE refuses it (IS-11)
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------
