@@ -57,7 +57,10 @@ through a module, input to output, not even a wire, nor logic in a parent
 between its children (2026-10-18): connect a wire directly, group logic with
 one sequential side, or declare a combinational module an inner helper in
 its file, timed as its parent's logic (until a parent instantiates it, held
-alone to 16 NGD, floor(2 × 25 / 3); 2026-10-19). The one feedthrough allowed is a
+alone to 16 NGD, floor(2 × 25 / 3); 2026-10-19). A register that drives an
+output is held on every path it starts, inside as out, to that output's
+budget (2026-10-19): copy it, one for the output and one for the rest, each
+`(* keep *)`, or synthesis merges them back. The one feedthrough allowed is a
 channel a generated wrapper carries across itself. An
 assembled block is checked from those files, level by level, for
 convergence to 25, then timed whole, its outputs straight from flops.

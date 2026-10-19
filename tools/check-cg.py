@@ -107,6 +107,12 @@ ICG = "ccv_common_ctech_icg"
 # CCV_CG_BUDGET_PCT, not the repeater's own allowance (Daniel, 2026-10-19).
 # Its lead slice, lead_q, is not among them.
 RPT = "ccv_common_rpt"
+# A register declared (* keep *) keeps its flops through synthesis: a copy
+# made to part an output's flop from the module's own paths (check-ngd's
+# NGD-7) is merged back into its original otherwise, as a real flow merges
+# one not marked to be preserved. Every flow here and in check-ngd reads the
+# RTL this way, so all count the same flops.
+KEEP_FLOPS = ["proc", "setattr -set keep 1 a:keep %ci1 t:$*dff* %i"]
 RPT_CONTROL = ("valid_q", "wake_q", "credit_q", "stall_q", "rst_n_q")
 
 _spec = importlib.util.spec_from_file_location(
@@ -821,7 +827,7 @@ class Unit:
         if s.get("params"):
             cmds.append("chparam %s %s" % (" ".join(
                 "-set %s %s" % (k, v) for k, v in sorted(s["params"].items())), self.module))
-        cmds += ["hierarchy -top %s" % self.module, "chformal -remove",
+        cmds += ["hierarchy -top %s" % self.module, "chformal -remove"] + KEEP_FLOPS + [
                  "synth -flatten -top %s" % self.module,
                  "write_json %s" % os.path.join(self.dir, "net.json")]
         r = run(["yosys", "-q", "-p", "; ".join(cmds)])
@@ -1285,8 +1291,8 @@ def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=()):
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
-    cmds += ["hierarchy -top %s" % top, "chformal -remove", "synth -top %s" % top,
-             "write_json %s" % jf]
+    cmds += ["hierarchy -top %s" % top, "chformal -remove"] + KEEP_FLOPS + [
+        "synth -top %s" % top, "write_json %s" % jf]
     r = run(["yosys", "-q", "-p", "; ".join(cmds)])
     if r.returncode:
         raise SystemExit("check-cg: partition %s: yosys failed:\n%s"
@@ -1988,12 +1994,21 @@ def selftest():
         expect(bool(over) == want and len(fails) == len(over),
                "a wrapper %s its 2%% with its repeater's control pulses %s: %s"
                % ((("over", "passed") if want else ("within", "failed")) + (fails,)))
+    # 19. A register's (* keep *) copies (check-ngd's NGD-7) survive
+    #     synthesis here too (KEEP_FLOPS): both are counted where unmarked
+    #     copies merge into one, six flops fewer.
+    kf = ["test/ngd/fixtures/ngd_fx_shared.sv"]
+    kept = elaborate("fx_keep", "ngd_fx_split", kf)["total"]
+    bare = elaborate("fx_bare", "ngd_fx_split_bare", kf)["total"]
+    expect(kept == bare + 6, "(* keep *) copies of a 6-bit register were merged, or unmarked "
+           "ones were not: %d flops kept, %d bare" % (kept, bare))
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
               "ratchet, coverage, module and block budgets, kept and replayed flop counts, "
-              "enable sources and the reset, repeater instantiations (%d controls)" % checks)
+              "enable sources and the reset, repeater instantiations, kept copies (%d controls)"
+              % checks)
     return 1 if bad else 0
 
 
