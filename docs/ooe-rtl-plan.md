@@ -303,6 +303,20 @@ Built (`rtl/ooe/`):
   port-reverse, drop-restore, drop-retire and drop-squash must each be
   caught. Logic depth is 13.8 NGD in 13 levels.
 
+  The reads leave from flops (OA's stage-boundary map, item 7; OI-46):
+  each port's read register sits in `ooe_rat`, and the reads come out a
+  cycle on as `ren_p*_cq02h`. Its one clock gate is enabled by a flop of
+  decq's busy from the cycle before (`decq_busy_cq00h`, decq's own flops),
+  which covers every cycle a port can rename, so the enable is local
+  (CG-5); an assertion holds that no port renames without it, and control
+  busy-low must be caught. The register takes every port's reads whenever
+  it clocks, with no hold: only the stage after a cycle a port renamed
+  reads it, so the port's valid stays off D. With OA's arrivals (the uop
+  fields by 2 from decq's output register, ren_slot and ren_v by 11), the
+  module is 12.3 NGD flop to flop and 13.3 input to flop, and nothing
+  passes straight through. The bench runs a cycle behind the model, to
+  drive busy ahead of the renames it covers.
+
   Local clock gating (TI-14): each slot's speculative maps are one gate,
   clocked on a rename write to the slot or a whole-map event; each
   committed GPR entry is its own gate, each slot's committed predicates

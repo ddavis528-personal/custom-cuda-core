@@ -26,6 +26,13 @@
 // maps stand after its own writes. A restore-allocate port (rst) writes
 // both maps and reads nothing.
 //
+// The reads leave from flops (OA's stage-boundary map, item 7): each port's
+// read register here, taking the port's reads each cycle the enable runs.
+// Its clock enable is a flop of decq's busy from the cycle
+// before (OI-46): a group at a rename port at t came from a decq entry
+// present at t - 1, so the flop covers every cycle a port can rename, and
+// the enable is this module's own (CG-5).
+//
 // Rename never names a slot that a restore, squash or release names in the
 // same cycle: a mispredict's epoch drops the warp's queued uops, and a
 // demoting, killed or freed slot does not rename. So the reads come from
@@ -40,13 +47,14 @@
 // map and every live checkpoint.
 //
 // Reset line (decision 6): the four maps reset to the zero registers, as a
-// freed slot's; the checkpoints are payload, read only through a live
-// branch. Local clock gating (docs/rtl-coding-style.md): each slot's
-// speculative maps are one gate, written on a rename to the slot or a
-// whole-map event; each committed GPR entry is its own gate, written on a
-// retirement or restore-allocate naming it or a release; each slot's
-// committed predicates are one gate; each checkpoint is one gate, written
-// when its branch renames.
+// freed slot's, and the busy flop to idle; the checkpoints and the read
+// registers are payload, read only through a live branch or a renamed port.
+// Local clock gating (docs/rtl-coding-style.md): each slot's speculative
+// maps are one gate, written on a rename to the slot or a whole-map event;
+// each committed GPR entry is its own gate, written on a retirement or
+// restore-allocate naming it or a release; each slot's committed predicates
+// are one gate; each checkpoint is one gate, written when its branch
+// renames; the read registers are one gate, clocked while decq was busy.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -83,12 +91,14 @@ module ooe_rat #(
   input  logic [A*2*2-1:0]  ren_pq_cq01h,      // predicate logic's two sources
   input  logic [A-1:0]      ren_br_cq01h,      // a branch: takes a checkpoint
   input  logic [A*LC-1:0]   ren_ckpt_cq01h,    // FET's checkpoint_id
-  // What the reads return.
-  output logic [A*3*GW-1:0] ren_psrc_cq01h,
-  output logic [A*GW-1:0]   ren_pold_cq01h,
-  output logic [A*PW-1:0]   ren_ppguard_cq01h,
-  output logic [A*PW-1:0]   ren_ppold_cq01h,
-  output logic [A*2*PW-1:0] ren_ppq_cq01h,
+  input  logic              decq_busy_cq00h,   // decq holds a group or entry (its own flops)
+  // What each port's reads returned, a cycle on (meaningful for a port that
+  // renamed then, not a restore-allocate port).
+  output logic [A*3*GW-1:0] ren_psrc_cq02h,
+  output logic [A*GW-1:0]   ren_pold_cq02h,
+  output logic [A*PW-1:0]   ren_ppguard_cq02h,
+  output logic [A*PW-1:0]   ren_ppold_cq02h,
+  output logic [A*2*PW-1:0] ren_ppq_cq02h,
   // Retire ports, per slot, in retirement order.
   input  logic [S*R-1:0]    ret_gwe_cq01h,
   input  logic [S*R*4-1:0]  ret_dst_cq01h,
@@ -151,6 +161,10 @@ module ooe_rat #(
 
   // The reads, and each branch port's checkpoint.
   logic [A*MW-1:0] rd_map, ck_map;
+  logic [A*3*GW-1:0] psrc_rd;
+  logic [A*GW-1:0]   pold_rd;
+  logic [A*PW-1:0]   ppguard_rd, ppold_rd;
+  logic [A*2*PW-1:0] ppq_rd;
   always_comb
     for (int k = 0; k < A; k++) begin
       rd_map[k * MW +: MW] = map_at(rat_cq02h, k, 1'b0, ren_v_cq01h, ren_slot_cq01h, ren_rst_cq01h, ren_dst_cq01h,
@@ -159,12 +173,38 @@ module ooe_rat #(
       ck_map[k * MW +: MW] = map_at(rat_cq02h, k, 1'b1, ren_v_cq01h, ren_slot_cq01h, ren_rst_cq01h, ren_dst_cq01h,
                                     ren_gwe_cq01h, ren_gname_cq01h, ren_pdst_cq01h, ren_pwe_cq01h,
                                     ren_pname_cq01h);
-      for (int i = 0; i < 3; i++) ren_psrc_cq01h[(k * 3 + i) * GW +: GW] = gread(rd_map[k * MW +: MW], ren_src_cq01h[(k * 3 + i) * 4 +: 4]);
-      ren_pold_cq01h[k * GW +: GW]    = gread(rd_map[k * MW +: MW], ren_dst_cq01h[k * 4 +: 4]);
-      ren_ppguard_cq01h[k * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pguard_cq01h[k * 2 +: 2]);
-      ren_ppold_cq01h[k * PW +: PW]   = pread(rd_map[k * MW +: MW], ren_pdst_cq01h[k * 2 +: 2]);
-      for (int i = 0; i < 2; i++) ren_ppq_cq01h[(k * 2 + i) * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pq_cq01h[(k * 2 + i) * 2 +: 2]);
+      for (int i = 0; i < 3; i++) psrc_rd[(k * 3 + i) * GW +: GW] = gread(rd_map[k * MW +: MW], ren_src_cq01h[(k * 3 + i) * 4 +: 4]);
+      pold_rd[k * GW +: GW]    = gread(rd_map[k * MW +: MW], ren_dst_cq01h[k * 4 +: 4]);
+      ppguard_rd[k * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pguard_cq01h[k * 2 +: 2]);
+      ppold_rd[k * PW +: PW]   = pread(rd_map[k * MW +: MW], ren_pdst_cq01h[k * 2 +: 2]);
+      for (int i = 0; i < 2; i++) ppq_rd[(k * 2 + i) * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pq_cq01h[(k * 2 + i) * 2 +: 2]);
     end
+
+  // The read registers: one gate, clocked while decq was busy, taking every
+  // port's reads. Nothing reads a port's register but the stage after a
+  // cycle that port renamed (rename's own stage valid), so a port that did
+  // not rename needs no hold, and its valid stays off the register's D.
+  localparam int RW = 3 * GW + GW + PW + PW + 2 * PW;   // one port's reads
+  logic          rd_en_cq01h;
+  logic [A*RW-1:0] rd_cq02h, rd_nx;
+  always_ff @(posedge ooe_core_clk) begin
+    if (ooe_rst_r00h) rd_en_cq01h <= 1'b0;
+    else              rd_en_cq01h <= decq_busy_cq00h;
+  end
+  always_comb
+    for (int k = 0; k < A; k++)
+      rd_nx[k * RW +: RW] = {ppq_rd[k * 2 * PW +: 2 * PW], ppold_rd[k * PW +: PW], ppguard_rd[k * PW +: PW],
+                             pold_rd[k * GW +: GW], psrc_rd[k * 3 * GW +: 3 * GW]};
+  always_ff @(posedge ooe_core_clk) begin
+    if (rd_en_cq01h) rd_cq02h <= rd_nx;
+  end
+  always_comb
+    for (int k = 0; k < A; k++)
+      {ren_ppq_cq02h[k * 2 * PW +: 2 * PW], ren_ppold_cq02h[k * PW +: PW], ren_ppguard_cq02h[k * PW +: PW],
+       ren_pold_cq02h[k * GW +: GW], ren_psrc_cq02h[k * 3 * GW +: 3 * GW]} = rd_cq02h[k * RW +: RW];
+
+  // A port renames only while the enable runs (OI-46's busy covers it).
+  `CCV_ASSERT(busy_covers_rename, !(|ren_v_cq01h) || rd_en_cq01h)
 
   // -- the speculative maps --------------------------------------------------
   // A whole-map event's map, per slot: release, else squash, else restore.
