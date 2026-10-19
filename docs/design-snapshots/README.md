@@ -12,6 +12,7 @@ it.** Never edit one by hand: refresh it.
 | [`interface-review.md`](interface-review.md) | [Interface spec changes — OOE session](https://claude.ai/artifact/EcuSx6yXG4dCmkT2ky2Cb7), Review tab | **closed**: rows A-25 to A-75 |
 | [`interface-changes.md`](interface-changes.md) | the same doc, Changes tab | **closed** |
 | [`ooe-diagrams.md`](ooe-diagrams.md) | the OOE doc's four diagrams, as text | hand-transcribed; see below |
+| [`ar-handoff.md`](ar-handoff.md) | [AR handoff — CCV top-level architecture](https://claude.ai/artifact/5vrJfQoctw1tnTcSVZCAvY) | **closed**: the top-level architect's handoff of 2026-10-18, kept as the state of the role at that date |
 
 Each snapshot starts with a header naming its source, tab, revision, export
 date and status; `tools/check-docs.sh` refuses one without it.
@@ -20,7 +21,10 @@ date and status; `tools/check-docs.sh` refuses one without it.
 the [CCV cross-agent register](https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5)
 under the raiser's prefix (A-75 is TI-1, A-71 is TI-2), and new items are
 raised there, never as A-n rows. The register is a live working record, not
-a design source, so it is not snapshotted. Rows A-1 to A-24 are an earlier
+a design source, so it is not snapshotted. The AR handoff is snapshotted although
+it is not a design source either: it is a one-time orientation note, and the
+snapshot keeps what the role looked like when it changed hands. It is never
+refreshed; a later handoff is a new snapshot. Rows A-1 to A-24 are an earlier
 round, kept on the *Arch opens* tab of the
 [per-block specs doc](https://claude.ai/artifact/DJeg9Hh8rkPDecq4hrAz35) and
 not snapshotted here.
