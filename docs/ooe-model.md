@@ -387,12 +387,15 @@ free past the cap, or from a squash, kill or a squashed op landing, counts
 a cycle late. A confirmation reads only flops in the RTL (ooe_confirm's
 iss, dep, fin and prod; never this cycle's miss), so no confirmation free
 has to wait. `stall.rob_late_credit` counts a ROB slot held only for being
-seen late. `ooe-test --sweep` measures the three over 48 seeds against
-their own same-edge reference, since six seeds' noise is about the size of
-the effect: on 2026-10-19, all late 982 cycles against 956 (+2.7%), TI-19
-at cap 4 962 (+0.6%), at cap 2 964 (+0.8%), with about 0.6% of noise
-between arms. (Six seeds had put all late at +5.7%.) No S1 kernel moves
-under any of them (`sweep.sh`).
+seen late. Allocation itself stays the RS's first fit with same-edge reuse
+(OI-43): only rename's go sees a free late, so the RS bench holds the RTL
+to the model under every setting. `ooe-test --sweep` measures them over 48
+seeds, since six seeds' noise is about the size of the effect. On
+2026-10-19, against TI-19 at cap 4 (963 cycles): same edge 956 (0.993), all
+late 970 (1.007), cap 2 966 (1.004), with about 0.6% of noise between arms.
+(Measured first with allocation also skipping this cycle's late frees,
+which no RTL does, all late read +2.7% over same edge, and six seeds put it
+at +5.7%.) No S1 kernel moves under any of them (`sweep.sh`).
 
 ## Events and counters
 

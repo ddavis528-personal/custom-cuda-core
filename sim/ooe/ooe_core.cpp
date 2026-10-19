@@ -541,8 +541,11 @@ void Core::freePred(unsigned slot, unsigned p) {
 unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   const unsigned lo = c == RsCls::kRcu ? 0 : cfg_.rs_rcu;
   const unsigned hi = c == RsCls::kRcu ? cfg_.rs_rcu : n_;
+  // First fit, same-edge reuse included: the RS's own rule (OI-43), which
+  // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
+  // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rsHeld(e)) {
+    if (!rs_[e].valid) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
