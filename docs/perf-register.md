@@ -56,7 +56,7 @@ it.
 | PF-31 | A warp-uniform register file and scalar datapath | ISA, RCU, rename, compiler | deferred (CP-7, compiler F-106) |
 | PF-32 | Branch resolution fed by a lane compare at the bypass point | LANE, RCU, scheduler | deferred (S1 traces) |
 | PF-33 | Fewer block crossings on the L1-hit path | MIU, DCU, RCU, partitioning | deferred (S1 traces; Q-18) |
-| PF-34 | FP32 atomic add at the RMW site, with same-address combining | ISA, DCU, SPM, MIU | deferred (IS-14; AR-21) |
+| PF-34 | FP32 atomic add at the RMW site, with same-address combining for `red` | ISA, DCU, SPM, MIU | deferred (IS-14; AR-21) |
 | PF-35 | A one-instruction warp reduction in RCU | ISA, RCU, compiler | deferred (IS-14) |
 | PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
 
@@ -588,9 +588,12 @@ it.
 - **Alternative:** `atom.add.f32` for global and shared memory, two of Format
   M's free points (IS-14). It executes where the integer atomics do, which
   AR-21 proposes as DCU for global (on a line MIU holds exclusive) and SPM
-  for shared. Lanes of one warp that hit the same address are combined in an
-  adder tree first and applied once, so 32 lanes to one address cost one RMW
-  rather than 32.
+  for shared. For `red.add.f32`, the form that returns no old value, lanes
+  of one warp that hit the same address are combined in an adder tree first
+  and applied once, so 32 lanes to one address cost one RMW rather than 32.
+  `atom.add.f32` returns each lane's old value, which must form a
+  serialisation, so it cannot be combined in FP: a parallel prefix rounds
+  differently from sequential adds (AR's response to TI on IS-14).
 - **Cost:** four FP32 adders at DCU, rate-matched to its four lookups a
   cycle, plus SPM's share, pipelined off the L1-hit path, since atomics take
   no speculative wake (A-46). The combining tree costs more than the adders.
