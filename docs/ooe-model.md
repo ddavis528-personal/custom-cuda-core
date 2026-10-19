@@ -375,17 +375,22 @@ the next. That is what lets the RTL's queue fit its stage. `ooe-test
 --sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
 and 12 entries for comparison.
 
-`ren_late_credit` (off; OA's stage-boundary item 4, for DA): rename keeps
-its own credits for RS space per class and ROB slots, returned as
-registered pulses, so an entry freed in a cycle takes a rename only from
-the next (`stall.rob_late_credit` counts the ROB's). Free rows need nothing:
-they already reach allocation through the candidate buffer. Measured
-2026-10-19 with `ooe-test --sweep`: 1003 cycles against 949 (+5.7%) on the
-synthetic four-warp traces, and 955 (+0.6%) with four more RCU and two more
-MIU entries. RS alone costs +0.9% and the ROB alone +2.0%; together they
-compound, as both bind on the same traces, and the six-seed mean is noisy
-at the 1% level. No S1 kernel moves (`sweep.sh` runs it): none is RS- or
-ROB-bound.
+`ren_credit` (0, the ideal: rename sees every RS and ROB free in its own
+cycle) is when rename's go decision sees this cycle's frees. 1 is OA's
+stage-boundary item 4, every free a cycle late, which DA did not accept
+(2026-10-19). 2 is TI-19 as OA answers it: a confirmation's RS free counts
+in its cycle up to `ren_free_cap` per class (ooe_rs's free thermometer,
+4; 2 is the trim), and a retirement's ROB free in its cycle (ret_n); a
+free past the cap, or from a squash, kill or a squashed op landing, counts
+a cycle late. A confirmation reads only flops in the RTL (ooe_confirm's
+iss, dep, fin and prod; never this cycle's miss), so no confirmation free
+has to wait. `stall.rob_late_credit` counts a ROB slot held only for being
+seen late. `ooe-test --sweep` measures the three over 48 seeds against
+their own same-edge reference, since six seeds' noise is about the size of
+the effect: on 2026-10-19, all late 982 cycles against 956 (+2.7%), TI-19
+at cap 4 962 (+0.6%), at cap 2 964 (+0.8%), with about 0.6% of noise
+between arms. (Six seeds had put all late at +5.7%.) No S1 kernel moves
+under any of them (`sweep.sh`).
 
 ## Events and counters
 

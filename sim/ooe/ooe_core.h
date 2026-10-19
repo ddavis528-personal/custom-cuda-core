@@ -179,10 +179,15 @@ struct Config {
   /// arrival until the next, so this cycle's arrivals see it still held.
   /// On (DA's response OI-39), because ooe_decq fits its stage only so.
   bool decq_late_credit = true;
-  /// Rename's own credits (OA's stage-boundary item 4): an RS entry or ROB
-  /// slot freed in a cycle takes no rename until the next, as rename's
-  /// counters see the free a cycle late. Off: same-edge reuse.
-  bool ren_late_credit = false;
+  /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
+  /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
+  /// every free (OA's stage-boundary item 4, rename's own credits; not
+  /// accepted, DA 2026-10-19). 2: TI-19 as OA answers it: a confirmation's
+  /// RS free and a retirement's ROB free count in their cycle, the RS's up
+  /// to ren_free_cap per class (its thermometer), and the rest, past the cap
+  /// or from a squash, kill or landing, a cycle late.
+  unsigned ren_credit = 0;
+  unsigned ren_free_cap = 4;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -881,12 +886,18 @@ private:
   WakeLog wlog_;
   RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
-  std::vector<uint8_t> rs_start_;           ///< RS valid at the cycle's start (ren_late_credit)
-  std::vector<uint8_t> rob_start_;          ///< ROB valid at the cycle's start, per slot (ren_late_credit)
-  /// Held for rename this cycle: valid, or under ren_late_credit valid at the start.
-  bool rsHeld(unsigned e) const { return rs_[e].valid || (cfg_.ren_late_credit && rs_start_[e]); }
+  std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
+  std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
+  unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
+  bool free_prompt_ = false;                ///< an RS free now is a confirmation's
+  /// Held for rename this cycle: valid, or freed this cycle and seen late.
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
   bool robHeld(unsigned si, unsigned i) const {
-    return slot_[si].rob[i].valid || (cfg_.ren_late_credit && rob_start_[size_t(si) * cfg_.rob_depth + i]);
+    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i];
+  }
+  /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
+  void robFreed(unsigned si, unsigned i, bool retire) {
+    if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
   }
 
   // reservation stations and the matrix

@@ -30,13 +30,13 @@ std::string Config::apply(const std::string &spec) {
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
-      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}};
+      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
+      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
-                                     {"decq_late_credit", &decq_late_credit},
-                                     {"ren_late_credit", &ren_late_credit}};
+                                     {"decq_late_credit", &decq_late_credit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -265,14 +265,9 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
-  if (cfg_.ren_late_credit) {
-    rs_start_.resize(n_);
-    for (unsigned e = 0; e != n_; ++e) rs_start_[e] = rs_[e].valid;
-    rob_start_.resize(slot_.size() * cfg_.rob_depth);
-    for (unsigned si = 0; si != slot_.size(); ++si)
-      for (unsigned i = 0; i != cfg_.rob_depth; ++i)
-        rob_start_[size_t(si) * cfg_.rob_depth + i] = slot_[si].rob[i].valid;
-  }
+  rs_late_.assign(n_, 0);
+  rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
@@ -583,6 +578,10 @@ void Core::rsFree(unsigned e) {
   if (r.rs_copy == e) r.rs_copy = kNoEntry;
   --slot_[x.slot].rs_held;
   x.valid = false;
+  const unsigned c = e < cfg_.rs_rcu ? 0 : 1;
+  if (cfg_.ren_credit == 1 ||
+      (cfg_.ren_credit == 2 && (!free_prompt_ || rs_prompt_[c]++ >= cfg_.ren_free_cap)))
+    rs_late_[e] = 1;
   if (e < wlog_.stop.size()) wlog_.stop[e] = 1;
   if (e < wlog_.rfree.size()) wlog_.rfree[e] = 1;
 }
@@ -848,12 +847,14 @@ void Core::confirmPass() {
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
     }
   }
+  free_prompt_ = true;   // a confirmation's free: from flops in the RTL (TI-19)
   for (unsigned e : order)
     if (rs_[e].valid && rs_[e].confirmed) {
       const unsigned slot = rs_[e].slot, rob = rs_[e].rob;
       rsFree(e);
       complete(slot, rob);
     }
+  free_prompt_ = false;
 }
 
 void Core::advanceWakes() {
@@ -1083,6 +1084,7 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
   if (r.alloc_pred) freePred(slot, r.ppnew);
   if (r.ckpt_live) { slot_[slot].ckpt[r.u.ckpt].live = false; r.ckpt_live = false; }
   r = RobEntry();
+  robFreed(slot, idx, false);
 }
 
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
@@ -1444,6 +1446,7 @@ void Core::retire() {
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
       ++s.retired_since_restore;
       r = RobEntry();
+      robFreed(si, s.head, true);
       s.head = (s.head + 1) % cfg_.rob_depth;
       --s.count;
       ++n;
