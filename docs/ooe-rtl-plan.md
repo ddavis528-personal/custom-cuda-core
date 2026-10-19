@@ -78,11 +78,15 @@ Built (`rtl/ooe/`):
   (`FreeVec::lastEdge`: free bits, buffer in order, bank pointers, bank
   order), then drives that cycle's allocations and frees. Over 25 seeds and
   200 cores, GPR rows (192) and predicates (48), none differ; controls
-  drop-free and extra-alloc must each be caught. Logic depth is 23.0 NGD at
-  192 entries and 23.4 at 48 (gated-flop flow; 23.5 and 24.7 before): a
-  log-depth find-first per bank, the buffer rebuilt slot by slot as a
-  gather, the buffered mask kept as state, and the taken count encoded from
-  the request prefix rather than counted. The grant ports carry the head
+  drop-free and extra-alloc must each be caught. Logic depth is 21.6 NGD at
+  192 entries and 22.6 at 48, the requests 18.6 and 18.4 to a flop (23.0
+  and 23.4 before): a log-depth find-first per bank, the buffer rebuilt
+  slot by slot as a gather, the buffered mask kept as state, and the taken
+  count one-hot from the request prefix. Every select that depends on how
+  many are taken is formed for each count from the state and picked by
+  that one-hot, so the requests reach the edge through AND-ORs, never a
+  subtract. The free bits, bank pointers and bank order are ports under
+  CCV_CHECK only, read by the bench alone (OA's choice, TI-20). The grant ports carry the head
   from the flops alone (OA's stage-boundary map, item 5): head entry k is
   available while the buffer holds more than k, and rename's port k takes
   it when it asks, so no request reaches an output (NGD-5).

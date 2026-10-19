@@ -41,7 +41,7 @@ case "$unit" in
     if [ "$unit" = ooe_freelist_gpr ]; then pool=0 nf=$(val CCV_P_PHYS_REGS); else pool=1 nf=$(val CCV_P_PRED_REGS); fi
     fb=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
     fk=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
-    vl ooe_freelist "-GN=$nf -GA=$width -GB=$fb -GK=$fk" "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_POOL=$pool" \
+    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk" "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_POOL=$pool" \
       "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
   ooe_rat)
     read -r g d < <(python3 test/ooe/rat-params.py)
