@@ -16,8 +16,6 @@
       "NGD-7 st_cq02h"
     ],
     "ooe_freelist": [
-      "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
-      "NGD-5 alloc_req_cq01h>alloc_v_cq02h",
       "NGD-7 st_cq02h"
     ],
     "ooe_rat": [

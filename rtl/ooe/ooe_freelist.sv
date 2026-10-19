@@ -8,7 +8,10 @@
 // One free list: a bit per pool entry, set while it is free, and a buffer
 // of up to B free entries in order, the only source of allocations. Up to
 // A allocations a cycle take the buffer's first k entries: the grant is the
-// buffer's head, with no search on the allocation path.
+// buffer's head, with no search on the allocation path. The grant ports
+// offer the head from the flops alone (OA's stage-boundary map, item 5):
+// entry k is available while the buffer holds more than k, and rename's
+// port k takes it when it asks, so no request reaches an output.
 //
 // At each clock edge the buffer is refilled. The N entries form K
 // interleaved banks (entry mod K). Each bank finds its first free entry
@@ -59,10 +62,10 @@ module ooe_freelist #(
 ) (
   input  logic           ooe_core_clk,
   input  logic           ooe_rst_r00h,
-  input  logic [A-1:0]   alloc_req_cq01h,    // port k asks for an entry
+  input  logic [A-1:0]   alloc_req_cq01h,    // port k takes its head entry
   input  logic [N-1:0]   free_mask_cq01h,    // entries freed this cycle
-  output logic [A-1:0]   alloc_v_cq02h,      // port k granted
-  output logic [A*W-1:0] alloc_idx_cq02h,    // port k's entry
+  output logic [A-1:0]   alloc_v_cq02h,      // head entry k is available to port k
+  output logic [A*W-1:0] alloc_idx_cq02h,    // head entry k (meaningful while available)
   output logic [N-1:0]   free_cq02h,         // the free bits
   output logic [B*W-1:0] buf_cq02h,          // the buffer, head first
   output logic [LB-1:0]  cnt_cq02h,          // entries in the buffer
@@ -83,12 +86,12 @@ module ooe_freelist #(
   `CCV_ASSERT_KNOWN(free_mask_known, free_mask_cq01h)
 
   // Allocation takes the buffer's head: port k gets entry k.
-  function automatic logic [A+A*W-1:0] grants(input logic [SW-1:0] st, input logic [A-1:0] req);
+  function automatic logic [A+A*W-1:0] grants(input logic [SW-1:0] st);
     logic [A-1:0]   v;
     logic [A*W-1:0] idx;
     for (int k = 0; k < A; k++) begin
-      v[k]          = req[k] && k < 32'(st[OCNT +: LB]);
-      idx[k*W +: W] = v[k] ? st[OBUF + k * W +: W] : '0;
+      v[k]          = k < 32'(st[OCNT +: LB]);
+      idx[k*W +: W] = st[OBUF + k * W +: W];
     end
     grants = {v, idx};
   endfunction
@@ -251,15 +254,15 @@ module ooe_freelist #(
   endfunction
 
   logic [SW-1:0] st_cq02h;
-  always_comb {alloc_v_cq02h, alloc_idx_cq02h} = grants(st_cq02h, alloc_req_cq01h);
+  always_comb {alloc_v_cq02h, alloc_idx_cq02h} = grants(st_cq02h);
   assign free_cq02h = st_cq02h[OBITS +: N];
   assign buf_cq02h  = st_cq02h[OBUF +: B * W];
   assign cnt_cq02h  = st_cq02h[OCNT +: LB];
   assign bptr_cq02h = st_cq02h[OPTR +: K * LM];
   assign rot_cq02h  = st_cq02h[OROT +: LK];
 
-  // Rename checks the buffer's count first, so every port that asks is
-  // granted.
+  // Rename checks the buffer's count first, so every port that asks finds
+  // its head entry available.
   `CCV_ASSERT(alloc_granted, (alloc_req_cq01h & ~alloc_v_cq02h) == '0)
   // Port k asks only if ports 0 to k-1 do, the order rename allocates in.
   `CCV_ASSERT(req_prefix, (alloc_req_cq01h & (alloc_req_cq01h + A'(1))) == '0)
@@ -270,7 +273,7 @@ module ooe_freelist #(
   always_comb begin
     granted_cq02h = '0;
     for (int k = 0; k < A; k++)
-      if (alloc_v_cq02h[k]) granted_cq02h[alloc_idx_cq02h[k*W +: W]] = 1'b1;
+      if (alloc_req_cq01h[k] && alloc_v_cq02h[k]) granted_cq02h[alloc_idx_cq02h[k*W +: W]] = 1'b1;
   end
   `CCV_ASSERT(no_double_free, (free_mask_cq01h & free_cq02h & ~granted_cq02h) == '0)
 
