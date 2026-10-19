@@ -1388,19 +1388,19 @@ void sweep() {
     const double cy = run(c);
     std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
   }
-  // When rename sees this cycle's RS and ROB frees (ren_credit): every one
-  // a cycle late (OA's item 4, not accepted), and TI-19's scheme at its
-  // thermometer cap and the 2-step trim. Their differences are a few
-  // percent, under six seeds' noise, so these run 48 against their own
-  // reference.
+  // When rename sees this cycle's RS and ROB frees (ren_credit), against
+  // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
+  // late (OA's item 4, not accepted) and the 2-step trim. Their differences
+  // are a few percent, under six seeds' noise, so these run 48 against
+  // their own reference.
   const double ref48 = run(base, 48);
   struct RC { unsigned credit, cap; const char *name; };
-  for (const RC &k : {RC{1, 4, "all late"}, RC{2, 4, "TI-19, cap 4"}, RC{2, 2, "TI-19, cap 2"}}) {
+  for (const RC &k : {RC{0, 4, "same edge"}, RC{1, 4, "all late"}, RC{2, 2, "TI-19, cap 2"}}) {
     Config c = base;
     c.ren_credit = k.credit;
     c.ren_free_cap = k.cap;
     const double cy = run(c, 48);
-    std::printf("| ren_credit (48 seeds, same edge %.0f) | %s | %.0f | %.3f |\n", ref48, k.name, cy, cy / ref48);
+    std::printf("| ren_credit (48 seeds, TI-19 cap 4 %.0f) | %s | %.0f | %.3f |\n", ref48, k.name, cy, cy / ref48);
   }
 }
 

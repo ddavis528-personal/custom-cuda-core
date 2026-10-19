@@ -185,8 +185,9 @@ struct Config {
   /// accepted, DA 2026-10-19). 2: TI-19 as OA answers it: a confirmation's
   /// RS free and a retirement's ROB free count in their cycle, the RS's up
   /// to ren_free_cap per class (its thermometer), and the rest, past the cap
-  /// or from a squash, kill or landing, a cycle late.
-  unsigned ren_credit = 0;
+  /// or from a squash, kill or landing, a cycle late. 2 at cap 4 is the
+  /// design (accepted by Daniel, 2026-10-19).
+  unsigned ren_credit = 2;
   unsigned ren_free_cap = 4;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter

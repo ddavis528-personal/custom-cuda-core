@@ -375,8 +375,10 @@ the next. That is what lets the RTL's queue fit its stage. `ooe-test
 --sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
 and 12 entries for comparison.
 
-`ren_credit` (0, the ideal: rename sees every RS and ROB free in its own
-cycle) is when rename's go decision sees this cycle's frees. 1 is OA's
+`ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
+2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
+is when rename's go decision sees this cycle's frees. 0 is the ideal:
+rename sees every RS and ROB free in its own cycle. 1 is OA's
 stage-boundary item 4, every free a cycle late, which DA did not accept
 (2026-10-19). 2 is TI-19 as OA answers it: a confirmation's RS free counts
 in its cycle up to `ren_free_cap` per class (ooe_rs's free thermometer,
