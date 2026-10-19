@@ -172,12 +172,12 @@ void hook(const Core &c) {
   // After the edge: the grants, registered, every port's.
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
-    const bool v = getBit(dut->gnt_v_cq02h, p);
+    const bool v = getBit(dut->gnt_v_cq03h, p);
     if (e == N) {
       if (v) fail("a port the model did not allocate on was granted", p, 0, 1, 0);
       continue;
     }
-    const unsigned idx = getField(dut->gnt_idx_cq02h, p * W, W);
+    const unsigned idx = getField(dut->gnt_idx_cq03h, p * W, W);
     if (!v) fail("a port the model allocated on was not granted", p, e, 0, 1);
     else if (idx != e) fail("granted a different entry", p, 0, idx, e);
   }

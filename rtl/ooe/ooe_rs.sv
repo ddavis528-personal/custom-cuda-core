@@ -56,8 +56,8 @@ module ooe_rs #(
   input  logic [P*P-1:0]   grp_dep_cq01h,  // port p's row: port q's entry, granted this cycle
   input  logic [2*P*P-1:0] grp_code_cq01h, // and its line select
   input  logic [N-1:0]     free_cq01h,   // entries freed this cycle
-  output logic [P-1:0]     gnt_v_cq02h,  // port p was granted, at the last edge
-  output logic [P*W-1:0]   gnt_idx_cq02h, // port p's entry
+  output logic [P-1:0]     gnt_v_cq03h,  // port p was granted, at the last edge
+  output logic [P*W-1:0]   gnt_idx_cq03h, // port p's entry
   output logic [N-1:0]     valid_out_cq02h, // the valid bits (a copy for the outputs)
   output logic [N*N-1:0]   dep_cq02h,    // row i, column j: i waits on j
   output logic [2*N*N-1:0] code_cq02h,   // the cell's wake-line select
@@ -148,17 +148,17 @@ module ooe_rs #(
   (* keep *) logic [N-1:0] valid_cq02h;  // the valid bits, for allocation and the rows
   logic [N-1:0]     hr_cq02h, hm_cq02h;   // the column flags, from RCU rows and MIU rows
   logic [P*N-1:0]   g_cq02h;
-  logic [P-1:0]     gv_cq01h;
-  logic [P*W-1:0]   gi_cq01h;
+  logic [P-1:0]     gv_cq02h;
+  logic [P*W-1:0]   gi_cq02h;
   logic [P*N-1:0]   d_cq02h;
   logic [2*P*N-1:0] cd_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h, req_cq01h, free_cq01h);
     {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h, row_code_cq01h, grp_dep_cq01h, grp_code_cq01h);
     for (int p = 0; p < P; p++) begin
-      gv_cq01h[p]           = |g_cq02h[p * N +: N];
-      gi_cq01h[p * W +: W] = '0;
-      for (int e = 0; e < N; e++) if (g_cq02h[p * N + e]) gi_cq01h[p * W +: W] = W'(e);
+      gv_cq02h[p]           = |g_cq02h[p * N +: N];
+      gi_cq02h[p * W +: W] = '0;
+      for (int e = 0; e < N; e++) if (g_cq02h[p * N + e]) gi_cq02h[p * W +: W] = W'(e);
     end
   end
 
@@ -170,18 +170,18 @@ module ooe_rs #(
   (* keep *) logic [N-1:0] valid_o_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (ooe_rst_r00h) begin
-      gnt_v_cq02h   <= '0;
+      gnt_v_cq03h   <= '0;
       valid_o_cq02h <= '0;
     end else begin
-      gnt_v_cq02h   <= gv_cq01h;
+      gnt_v_cq03h   <= gv_cq02h;
       valid_o_cq02h <= valid_nx;
     end
   end
-  always_ff @(posedge ooe_core_clk) gnt_idx_cq02h <= gi_cq01h;   // payload, read through gnt_v
+  always_ff @(posedge ooe_core_clk) gnt_idx_cq03h <= gi_cq02h;   // payload, read through gnt_v
   assign valid_out_cq02h = valid_o_cq02h;
 
   // Rename checks the RS for room first, so every port that asks is granted.
-  `CCV_ASSERT(alloc_granted, (req_cq01h & ~gv_cq01h) == '0)
+  `CCV_ASSERT(alloc_granted, (req_cq01h & ~gv_cq02h) == '0)
   // A free names a valid entry.
   `CCV_ASSERT(free_valid, (free_cq01h & ~valid_cq02h) == '0)
 
