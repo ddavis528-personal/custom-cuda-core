@@ -278,6 +278,43 @@ Built (`rtl/ooe/`):
   first. All of them depend only on state from earlier cycles, so they
   can move into the previous cycle's flops if the margin is needed.
 
+- **`ooe_rat`**, the register alias tables, the first of rename's two
+  modules. Per tier-1 slot: the speculative GPR and predicate maps, the
+  committed ones (the demotion map) and four checkpoints of the
+  speculative maps, taken when a branch renames and restored in one cycle.
+  A GPR name is a row and a position. One edge applies, per slot, a
+  checkpoint restore, a squash to retirement or a release, then retire's
+  writes to the committed maps, then rename's four ports in order; a port
+  reads its three sources, old destination, guard, old predicate
+  destination and predicate-logic sources as the lower ports of its slot
+  left them (the in-group override), and a branch's checkpoint is the maps
+  after its own writes. A restore-allocate writes both maps through the
+  same ports (OI-41). Rename never names a slot that a whole-map event
+  names in the same cycle (a mispredict's epoch drops the warp's queued
+  uops; a demoting, killed or freed slot does not rename), so the reads
+  come from the flops, and an assertion holds it. Checkpoint live bits
+  stay with branch resolution. The model logs what reached its maps each
+  cycle (`Core::ratLog`); `test/ooe/rat_tb.cpp` drives the RTL from it,
+  through the directed tests (demotion, kill, restore-allocate, which
+  random traffic never reaches) and the random ones, and compares every
+  read and, after the edge, every map and live checkpoint: 101,484 renames,
+  58,373 in-group reads, 7,643 checkpoints, 2,458 restores, 65,854
+  retirements and 36 restore-allocate writes, none differ. Controls
+  port-reverse, drop-restore, drop-retire and drop-squash must each be
+  caught. Logic depth is 13.8 NGD in 13 levels.
+
+  Local clock gating (TI-14): each slot's speculative maps are one gate,
+  clocked on a rename write to the slot or a whole-map event; each
+  committed GPR entry is its own gate, each slot's committed predicates
+  one, and each checkpoint one, written when its branch renames.
+  `check-cg`: 88 gates, worst enable 7.8 NGD, lowest DCGE 94%. Per-entry
+  gates on the speculative maps measured 69%: a mispredict clocks all
+  sixteen entries and most still hold the checkpoint's names. Clocking
+  only the changed entries needs a compare (11.8 to 13.0 NGD as an enable)
+  or "written since checkpoint c" bits (320 flops), so the slot is one
+  gate. Every read and write is a decoder: written through computed
+  indices, Yosys built 420,000 gates and ran out of memory; as decoders it
+  is 52,000.
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The

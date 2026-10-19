@@ -18,7 +18,9 @@
 # - ooe_rs against the model's RS allocations, frees and dependency cells,
 #   live (test/ooe/rs_tb.cpp);
 # - ooe_select against the model's sectioned select, live
-#   (test/ooe/select_tb.cpp).
+#   (test/ooe/select_tb.cpp);
+# - ooe_rat against the model's alias tables and checkpoints, live, through
+#   its directed and random unit tests (test/ooe/rat_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -253,6 +255,34 @@ for c in no-same-edge drop-group stale-hcol; do
     say "  control $c (rs)" "MISSED"; fail=1
   else
     say "  control $c (rs)" "caught"
+  fi
+done
+
+# ooe_rat, driven from the model's RAT log after every cycle, through the
+# directed tests (demotion, kill, restore-allocate) and the random ones. A
+# GPR name is a row and a position; the zero GPR is the zero row at
+# position 0.
+read -r rat_g rat_d < <(python3 test/ooe/rat-params.py)
+dir=build/ooe-rtl/rat
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace ${rat_g//,/ } --top-module ooe_rat --Mdir "$dir" -o rat_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 ${rat_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/rat_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rat: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rat_tb" "$seeds" 2>&1); then
+  say "rat (4 slots, 4 ports) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "rat == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in port-reverse drop-restore drop-retire drop-squash; do
+  if RAT_CONTROL=$c "$dir/rat_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (rat)" "MISSED"; fail=1
+  else
+    say "  control $c (rat)" "caught"
   fi
 done
 

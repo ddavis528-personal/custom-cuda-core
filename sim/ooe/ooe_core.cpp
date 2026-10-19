@@ -35,7 +35,8 @@ std::string Config::apply(const std::string &spec) {
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
-                                     {"decq_late_credit", &decq_late_credit}};
+                                     {"decq_late_credit", &decq_late_credit},
+                                     {"ren_late_credit", &ren_late_credit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -264,6 +265,14 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
+  if (cfg_.ren_late_credit) {
+    rs_start_.resize(n_);
+    for (unsigned e = 0; e != n_; ++e) rs_start_[e] = rs_[e].valid;
+    rob_start_.resize(slot_.size() * cfg_.rob_depth);
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      for (unsigned i = 0; i != cfg_.rob_depth; ++i)
+        rob_start_[size_t(si) * cfg_.rob_depth + i] = slot_[si].rob[i].valid;
+  }
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
@@ -278,6 +287,7 @@ void Core::cycle(uint64_t now) {
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
   wlog_.cf_dep.clear();
+  rlog_ = RatLog();
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -537,7 +547,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   const unsigned lo = c == RsCls::kRcu ? 0 : cfg_.rs_rcu;
   const unsigned hi = c == RsCls::kRcu ? cfg_.rs_rcu : n_;
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid) {
+    if (!rsHeld(e)) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -1047,6 +1057,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   // Restore OOE's RAT in the same cycle FET restores its groups (Q8).
   s.rat = cp.gpr;
   s.prat = cp.pred;
+  rlog_.restore.push_back({slot, r.u.ckpt});
   advanceEpoch(slot);
   Redirect rd;
   rd.tid = r.u.tid;
@@ -1166,6 +1177,7 @@ void Core::releaseSlot(unsigned slot) {
   if (s.held_gpr || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr, s.held_pred);
   slot_of_[s.warp % kWarpIds] = -1;
+  rlog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
   (void)keep_epoch_warp;    // the epoch is per warp_id and survives (A-74)
   Slot fresh;
@@ -1251,6 +1263,7 @@ void Core::control() {
     squashAfter(unsigned(si), -1, true);
     s.rat = s.crat;
     s.prat = s.cprat;
+    rlog_.squash |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
     advanceEpoch(unsigned(si));
     epochNotice(unsigned(si));
@@ -1270,6 +1283,7 @@ void Core::control() {
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
+      rlog_.squash |= 1u << si;
       advanceEpoch(si);
       epochNotice(si);
       s.st = WarpState::kKilling;
@@ -1385,6 +1399,17 @@ void Core::retire() {
       }
       // Commit the mapping; free the one it replaced: no older instruction
       // can still read it, and every younger one reads the new name.
+      if (r.alloc_gpr || r.u.pred_we) {
+        RatLog::Ret w;
+        w.slot = si;
+        w.gwe = r.alloc_gpr;
+        w.dst = r.u.dst & 15;
+        w.gname = r.pnew;
+        w.pwe = r.u.pred_we;
+        w.pdst = r.u.pred_dst & 3;
+        w.pname = r.ppnew;
+        rlog_.ret.push_back(w);
+      }
       if (r.alloc_gpr) {
         s.crat[r.u.dst & 15] = r.pnew;
         freeGpr(si, cfg_.inject_free_new ? r.pnew : r.pold);
@@ -1902,8 +1927,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     oev(OoeEv::kRobFull, s.warp, s.count, 0, u.tid);
     return false;
   }
-  if (s.rob[s.tail].valid) {
-    count("stall.rob_slot_held");
+  if (robHeld(si, s.tail)) {
+    count(s.rob[s.tail].valid ? "stall.rob_slot_held" : "stall.rob_late_credit");
     oev(OoeEv::kRobSlotHeld, s.warp, tagOf(si, s.tail), 0, u.tid);
     return false;
   }
@@ -1917,8 +1942,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
-    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rs_[e].valid;
-    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rs_[e].valid;
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
     const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
     if (free_rcu < need_rcu) {
       count("stall.rs_full.rcu");
@@ -2020,6 +2045,29 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       c.pred = s.prat;
       r.ckpt_live = true;
     }
+    {
+      RatLog::Ren w;
+      w.slot = si;
+      for (unsigned i = 0; i != 3; ++i) { w.src[i] = u.src[i] & 15; w.psrc[i] = r.psrc[i]; }
+      w.dst = u.dst & 15;
+      w.pold = r.pold;
+      w.gwe = wgpr;
+      w.gname = r.pnew;
+      w.pguard = u.pred_guard & 3;
+      w.ppguard = r.ppguard;
+      w.pdst = u.pred_dst & 3;
+      w.ppold = r.ppold;
+      w.pwe = u.pred_we;
+      w.pname = r.ppnew;
+      w.plogic = u.shape.pred_logic;
+      w.pq[0] = u.imm & 3;
+      w.pq[1] = (u.imm >> 3) & 3;
+      w.pqn[0] = r.pq[0];
+      w.pqn[1] = r.pq[1];
+      w.br = a.branch;
+      w.ckpt = u.ckpt;
+      rlog_.ren.push_back(w);
+    }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
     if (a.serial == kSerBarrier) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
@@ -2061,12 +2109,34 @@ void Core::restoreStep() {
   const unsigned si = restore_q_.front();
   Slot &s = slot_[si];
   const unsigned width = cfg_.rename_width;
-  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr)
-    s.crat[kArchGprs - s.restore_gpr] = s.rat[kArchGprs - s.restore_gpr] = allocGpr(si);
+  // The k-th GPR and the k-th predicate share rename port k (RatLog).
+  const size_t base = rlog_.ren.size();
+  auto port = [&](unsigned k) -> RatLog::Ren & {
+    while (rlog_.ren.size() <= base + k) {
+      RatLog::Ren w;
+      w.slot = si;
+      w.rst = true;
+      rlog_.ren.push_back(w);
+    }
+    return rlog_.ren[base + k];
+  };
+  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr) {
+    const unsigned a = kArchGprs - s.restore_gpr;
+    s.crat[a] = s.rat[a] = allocGpr(si);
+    RatLog::Ren &w = port(k);
+    w.gwe = true;
+    w.dst = a;
+    w.gname = s.rat[a];
+  }
   for (unsigned k = 0; k != width && s.restore_pred && (!cfg_.rename_preds || predAllowed(si, 1));
-       ++k, --s.restore_pred)
-    s.cprat[kArchPreds - s.restore_pred] = s.prat[kArchPreds - s.restore_pred] =
-        allocPred(si, kArchPreds - s.restore_pred);
+       ++k, --s.restore_pred) {
+    const unsigned a = kArchPreds - s.restore_pred;
+    s.cprat[a] = s.prat[a] = allocPred(si, a);
+    RatLog::Ren &w = port(k);
+    w.pwe = true;
+    w.pdst = a;
+    w.pname = s.prat[a];
+  }
   if (s.restore_gpr || s.restore_pred) return;
   const uint64_t took = now_ - s.restore_at + 1;
   const uint64_t bound = (std::max(kArchGprs, kArchPreds) + width - 1) / width + 1;

@@ -1,0 +1,7 @@
+{
+  "module": "ooe_select",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-18",
+  "why": "Select over one class: eligibility, resources and the two ooe_pick instances, combinational. OA's stage-boundary map (item 1) makes it a helper of the per-class ooe_sched, between the ready function and the grant flops; its logic is timed there."
+}

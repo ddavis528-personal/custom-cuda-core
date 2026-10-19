@@ -1,0 +1,11 @@
+{
+  "module": "ooe_freelist",
+  "ports": {
+    "alloc_req_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-18",
+      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+    }
+  }
+}

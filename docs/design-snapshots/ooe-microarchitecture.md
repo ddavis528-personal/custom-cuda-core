@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU tab=OOE_microarchitecture rev=195 exported=2026-10-16 status=living -->
-> **Snapshot: do not edit.** Exported from *OOE microarchitecture — Stage 4 grill-me*, tab *OOE microarchitecture*, at revision 195 on 2026-10-16 ([live doc](https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU tab=OOE_microarchitecture rev=197 exported=2026-10-19 status=living -->
+> **Snapshot: do not edit.** Exported from *OOE microarchitecture — Stage 4 grill-me*, tab *OOE microarchitecture*, at revision 197 on 2026-10-19 ([live doc](https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # OOE microarchitecture — Stage 4 grill-me
 
@@ -412,6 +412,41 @@ Stale data from another context can never become visible. A launched warp reads 
 
 Because isolation rests on the merge path and the zero registers, a bug there is a cross-context leak rather than a wrong answer (A-35). Assertions guard it: every lane of a newly allocated physical register is written before any read; a launched warp's RAT maps entirely to the zero registers; and no write, allocation or free ever names a zero register.
 
+## Stage boundaries and module ports
+
+Three synthesis rules decided on 2026-10-16 to 18 set where OOE's flops go (DA tab; TI-14, TI-16, TI-17):
+
+- **Depth:** 25 NGD of combinational logic between flops, with the flop itself outside the 25. Module ports are budgeted 12 NGD a side by default; anything else is listed in the module's `.ngd.json`.
+- **No feedthrough:** no logic, nor even a wire, on a path from a module's input port to its output port. Combinational inner helpers are timed as part of their parent.
+- **Clock enables:** every clock enable is sourced only from the module's own flops, never an input, and reset is flopped locally before any use.
+
+OA-1's estimate counted 3.0 NGD of flop inside the 25, so every stage there gains 3.0 of slack.
+
+**Consequence: credits inside OOE.** No stage register may take its enable from a neighbour's output. So a consumer that allocates from a provider holds its own credit counter, and the provider returns frees as registered pulses. Rename holds credits for RS space per class, free rows and ROB slots. A resource freed at t therefore adds capacity at t + 1 whatever the provider does internally. Same-edge reuse in the RS still chooses the entry, but no longer adds capacity to rename's go decision; OI measures the cost.
+
+| Stage | Launching flops | Logic, owner | Capturing flops |
+| --- | --- | --- | --- |
+| Decode-queue head | decq's entries | head select (19.6), inside ooe\_decq | decq's per-slot output register, the next rename group, updated on dequeue |
+| Rename 1: RAT read | decq's output register | RAT read (13.8), ooe\_rat | ooe\_rat's output register |
+| Rename 2: producer lookup | ooe\_rat's output register | producer map and in-group override, ooe\_rename | rename's stage register |
+| Rename 3: matrix write and allocation | rename's stage register; free-row buffer heads | RS allocation and row write (18.2 to 20.2), ooe\_rs; free-row take, ooe\_freelist | RS rows and valid bits; registered grant (gnt\_idx, gnt\_v) |
+| Ready | ooe\_wake's timers | ready AND (9.8), ooe\_ready, an inner helper of ooe\_sched | ooe\_sched's ready register |
+| Select | ready register; RS issued and dependency flops | per-resource pick (19.5), ooe\_select and ooe\_pick, inner helpers of ooe\_sched | ooe\_sched's grant register |
+| Payload read | grant register | 30:1 payload mux, ooe\_rs | issue register |
+| Confirm and free (same-edge reuse) | RS matrix and issued flops; wake's miss | confirm (8.6), an inner helper of ooe\_rs, through free, allocation and row write (25.2, accepted, OI-43) | RS rows, valid bits and the replay register, now in ooe\_rs |
+| Wake start | grant register | timer load (15.2), ooe\_wake | wake timers |
+
+**Port budgets for the `.ngd.json` files.** Each arrival is in NGD from the launching flop:
+
+- **ooe\_sched:** `iss` and `dep` arrive by 5.
+- **ooe\_wake:** `grant`, `kind` and `cls` arrive by 9; `cmpl` by 10, from MIU's boundary receive flop.
+- **ooe\_rs:** `req` arrives by 6; `grp_dep` by 9; `row_code` and `grp_code` by 10. All come from rename's stage flops.
+- **ooe\_freelist:** `alloc_req` arrives by 2.
+- **ooe\_decq:** `enq_v` and `enq_slot` arrive by 5, from DEC's boundary receive flops; `deq_n` by 5; `flush` by 8.
+- **ooe\_rat:** `ren_slot` and `ren_v` arrive by 11.
+
+Every module output leaves from a flop. Open for OI: whether ooe\_wake's next-state miss depends combinationally on `cmpl`. If it does, it is a through path, and the first cancel hop moves a cycle, which needs V-59 re-checked.
+
 ## Reset line (Stage 4a)
 
 Reset is synchronous and selective (strategy §6). The rule: un-reset state is payload, payload is read only when a valid bit says it was written, and every valid bit is reset. Each un-reset row below names its guard. The RTL carries one CCV\_ASSERT\_READ\_VALID per row (F-8), and the per-block X-pass at 4c is its witness. The list is OI's from OI-36, with OA's additions marked.
@@ -455,6 +490,8 @@ The PRF's own rows are RCU's line, not OOE's. OOE's guarantee toward them is tha
 ## Parameters
 
 Every size is provisional for the first build, in `ccv_prov_pkg`, and gets a knee-finding sweep once the timing model is up. Latencies are assumptions until the LANE, RCU and MIU sessions confirm them.
+
+**Values that become CSRs are configuration** (TI-15, Daniel 2026-10-17): the demotion thresholds, the per-slot floors and ceilings, the RS per-warp cap and the decode-queue per-warp maximum. OOE reads them as steady values, they change only while OOE is idle, and no OOE behaviour depends on when a write lands.
 
 | Parameter | Value | How it was set | Sweep |
 | --- | --- | --- | --- |

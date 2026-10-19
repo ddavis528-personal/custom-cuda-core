@@ -179,6 +179,10 @@ struct Config {
   /// arrival until the next, so this cycle's arrivals see it still held.
   /// On (DA's response OI-39), because ooe_decq fits its stage only so.
   bool decq_late_credit = true;
+  /// Rename's own credits (OA's stage-boundary item 4): an RS entry or ROB
+  /// slot freed in a cycle takes no rename until the next, as rename's
+  /// counters see the free a cycle late. Off: same-edge reuse.
+  bool ren_late_credit = false;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -838,11 +842,52 @@ public:
   /// not speculative, so confirmation may take it (confirmPass).
   bool rsFinal(unsigned e) const { return rs_[e].issued && rs_[e].late && !rs_[e].spec; }
   const WakeLog &wakeLog() const { return wlog_; }
+  /// What reached the register alias tables this cycle, for ooe_rat
+  /// (test/ooe/rat_tb.cpp), in the order the model applied it: checkpoint
+  /// restores (a mispredict), squashes to retirement (a demotion or kill:
+  /// the speculative maps take the committed ones), slot releases, the
+  /// committed maps' writes at retirement, then rename's reads and writes in
+  /// rename order, a restore-allocate's writes among them (rst: both maps).
+  /// Observation only: nothing in the model reads it.
+  struct RatLog {
+    struct Ren {
+      unsigned slot = 0, src[3] = {}, dst = 0, gname = 0, pguard = 0, pdst = 0, pname = 0, pq[2] = {}, ckpt = 0;
+      bool gwe = false, pwe = false, plogic = false, br = false, rst = false;
+      /// What the reads returned: the model's own values.
+      unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0, pqn[2] = {};
+    };
+    struct Ret {
+      unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
+      bool gwe = false, pwe = false;
+    };
+    std::vector<std::pair<unsigned, unsigned>> restore;   ///< {slot, checkpoint}
+    uint32_t squash = 0, release = 0;                       ///< slot masks
+    std::vector<Ret> ret;
+    std::vector<Ren> ren;
+  };
+  const RatLog &ratLog() const { return rlog_; }
+  /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
+  unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
+  unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
+  unsigned cratGpr(unsigned s, unsigned a) const { return slot_[s].crat[a]; }
+  unsigned cratPred(unsigned s, unsigned a) const { return slot_[s].cprat[a]; }
+  bool ckptLive(unsigned s, unsigned c) const { return slot_[s].ckpt[c].live; }
+  unsigned ckptGpr(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].gpr[a]; }
+  unsigned ckptPred(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].pred[a]; }
+  unsigned slots() const { return unsigned(slot_.size()); }
   /// The distinct bypass penalties, sorted: wake line k is penalty k's.
   const std::vector<unsigned> &wakePens() const { return pens_; }
 private:
   WakeLog wlog_;
+  RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  std::vector<uint8_t> rs_start_;           ///< RS valid at the cycle's start (ren_late_credit)
+  std::vector<uint8_t> rob_start_;          ///< ROB valid at the cycle's start, per slot (ren_late_credit)
+  /// Held for rename this cycle: valid, or under ren_late_credit valid at the start.
+  bool rsHeld(unsigned e) const { return rs_[e].valid || (cfg_.ren_late_credit && rs_start_[e]); }
+  bool robHeld(unsigned si, unsigned i) const {
+    return slot_[si].rob[i].valid || (cfg_.ren_late_credit && rob_start_[size_t(si) * cfg_.rob_depth + i]);
+  }
 
   // reservation stations and the matrix
   std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU

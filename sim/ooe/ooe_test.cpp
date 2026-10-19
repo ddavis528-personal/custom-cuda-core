@@ -1388,6 +1388,16 @@ void sweep() {
     const double cy = run(c);
     std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
   }
+  // Rename's own credits, RS entries and ROB slots a cycle late (OA's
+  // stage-boundary item 4), at today's sizes and larger.
+  for (unsigned v : {0u, 1u}) {
+    Config c = base;
+    c.ren_late_credit = true;
+    if (v) { c.rs_rcu += 4; c.rs_miu += 2; }
+    if (!c.check().empty()) continue;
+    const double cy = run(c);
+    std::printf("| ren_late_credit=1 | %s | %.0f | %.3f |\n", v ? "rs +4/+2" : "", cy, cy / ref);
+  }
 }
 
 
@@ -1511,6 +1521,31 @@ void sweepSections() {
 int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = hook;
   testRandom(seeds);
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
+/// The directed tests (every one that drives a core and injects no bug:
+/// demotion, kill, restore, faults, squashes and the rest) with a hook on
+/// every core cycle, for the paths random traffic does not take. Returns
+/// the failure count.
+int ooeTestDirectedHooked(void (*hook)(const Core &)) {
+  g_cycle_hook = hook;
+  testWakeTimes();
+  testBypassGroups();
+  testL1Spec();
+  testL1WakeAfterCmpl();
+  testMaskedLoad();
+  testSquash();
+  testFloorCeiling();
+  testDemote();
+  testRestore();
+  testKill();
+  testFault();
+  testBarrier();
+  testChwidth();
+  testSections();
+  testV59();
+  testFixedWindowPreds();
   g_cycle_hook = nullptr;
   return g_fail;
 }

@@ -375,6 +375,18 @@ the next. That is what lets the RTL's queue fit its stage. `ooe-test
 --sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
 and 12 entries for comparison.
 
+`ren_late_credit` (off; OA's stage-boundary item 4, for DA): rename keeps
+its own credits for RS space per class and ROB slots, returned as
+registered pulses, so an entry freed in a cycle takes a rename only from
+the next (`stall.rob_late_credit` counts the ROB's). Free rows need nothing:
+they already reach allocation through the candidate buffer. Measured
+2026-10-19 with `ooe-test --sweep`: 1003 cycles against 949 (+5.7%) on the
+synthetic four-warp traces, and 955 (+0.6%) with four more RCU and two more
+MIU entries. RS alone costs +0.9% and the ROB alone +2.0%; together they
+compound, as both bind on the same traces, and the six-seed mean is noisy
+at the 1% level. No S1 kernel moves (`sweep.sh` runs it): none is RS- or
+ROB-bound.
+
 ## Events and counters
 
 The model emits the schema's arbitration-sensitive events: `EV_DISPATCH` at

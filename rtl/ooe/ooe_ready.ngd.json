@@ -1,0 +1,7 @@
+{
+  "module": "ooe_ready",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-18",
+  "why": "The ready function of one RS class: a row's codes and dependences against the wake matrix, combinational. OA's stage-boundary map (item 1) makes it a helper of the per-class ooe_sched, beside the matrix flops; its logic is timed there."
+}
