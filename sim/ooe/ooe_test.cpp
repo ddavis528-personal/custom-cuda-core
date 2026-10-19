@@ -1388,6 +1388,16 @@ void sweep() {
     const double cy = run(c);
     std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
   }
+  // Rename's own credits, RS entries and ROB slots a cycle late (OA's
+  // stage-boundary item 4), at today's sizes and larger.
+  for (unsigned v : {0u, 1u}) {
+    Config c = base;
+    c.ren_late_credit = true;
+    if (v) { c.rs_rcu += 4; c.rs_miu += 2; }
+    if (!c.check().empty()) continue;
+    const double cy = run(c);
+    std::printf("| ren_late_credit=1 | %s | %.0f | %.3f |\n", v ? "rs +4/+2" : "", cy, cy / ref);
+  }
 }
 
 

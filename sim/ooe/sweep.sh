@@ -22,7 +22,7 @@ row() {
 CCV_OOE_IMPL=stub row "S1 stub (in order)"
 row "model, S1 modes"
 for kv in rs_rcu=4 rs_rcu=8 rs_miu=2 rob_depth=8 rob_depth=16 decq=4 rename_width=1 \
-          rename_width=2 retire_per_rob=1 lat_lane=9 lat_rcu=5; do
+          rename_width=2 retire_per_rob=1 lat_lane=9 lat_rcu=5 ren_late_credit=1; do
   CCV_OOE_CONFIG=$kv row "model, $kv"
 done
 echo

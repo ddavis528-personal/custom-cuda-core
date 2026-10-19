@@ -179,6 +179,10 @@ struct Config {
   /// arrival until the next, so this cycle's arrivals see it still held.
   /// On (DA's response OI-39), because ooe_decq fits its stage only so.
   bool decq_late_credit = true;
+  /// Rename's own credits (OA's stage-boundary item 4): an RS entry or ROB
+  /// slot freed in a cycle takes no rename until the next, as rename's
+  /// counters see the free a cycle late. Off: same-edge reuse.
+  bool ren_late_credit = false;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -877,6 +881,13 @@ private:
   WakeLog wlog_;
   RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  std::vector<uint8_t> rs_start_;           ///< RS valid at the cycle's start (ren_late_credit)
+  std::vector<uint8_t> rob_start_;          ///< ROB valid at the cycle's start, per slot (ren_late_credit)
+  /// Held for rename this cycle: valid, or under ren_late_credit valid at the start.
+  bool rsHeld(unsigned e) const { return rs_[e].valid || (cfg_.ren_late_credit && rs_start_[e]); }
+  bool robHeld(unsigned si, unsigned i) const {
+    return slot_[si].rob[i].valid || (cfg_.ren_late_credit && rob_start_[size_t(si) * cfg_.rob_depth + i]);
+  }
 
   // reservation stations and the matrix
   std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU

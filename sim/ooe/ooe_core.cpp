@@ -35,7 +35,8 @@ std::string Config::apply(const std::string &spec) {
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
-                                     {"decq_late_credit", &decq_late_credit}};
+                                     {"decq_late_credit", &decq_late_credit},
+                                     {"ren_late_credit", &ren_late_credit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -264,6 +265,14 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
+  if (cfg_.ren_late_credit) {
+    rs_start_.resize(n_);
+    for (unsigned e = 0; e != n_; ++e) rs_start_[e] = rs_[e].valid;
+    rob_start_.resize(slot_.size() * cfg_.rob_depth);
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      for (unsigned i = 0; i != cfg_.rob_depth; ++i)
+        rob_start_[size_t(si) * cfg_.rob_depth + i] = slot_[si].rob[i].valid;
+  }
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
@@ -538,7 +547,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   const unsigned lo = c == RsCls::kRcu ? 0 : cfg_.rs_rcu;
   const unsigned hi = c == RsCls::kRcu ? cfg_.rs_rcu : n_;
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid) {
+    if (!rsHeld(e)) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -1918,8 +1927,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     oev(OoeEv::kRobFull, s.warp, s.count, 0, u.tid);
     return false;
   }
-  if (s.rob[s.tail].valid) {
-    count("stall.rob_slot_held");
+  if (robHeld(si, s.tail)) {
+    count(s.rob[s.tail].valid ? "stall.rob_slot_held" : "stall.rob_late_credit");
     oev(OoeEv::kRobSlotHeld, s.warp, tagOf(si, s.tail), 0, u.tid);
     return false;
   }
@@ -1933,8 +1942,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
-    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rs_[e].valid;
-    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rs_[e].valid;
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
     const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
     if (free_rcu < need_rcu) {
       count("stall.rs_full.rcu");
