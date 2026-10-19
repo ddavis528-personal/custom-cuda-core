@@ -5,7 +5,7 @@
   "agents": {
     "AR": {"session": "session_01FnGhxke3r33MeArLeQJRcD", "title": "CCV core arch",                 "tab": "bc521c46-9710", "updated": "2026-10-19"},
     "OA": {"session": "session_01TbX2MyX6quhjarDR7J2bMR", "title": "OOE block architecture",        "tab": "4c6a3151-83eb", "updated": "2026-10-19"},
-    "IS": {"session": null,                               "title": "ISA",                           "tab": "60e6f93a-7fdc", "updated": "2026-10-19"},
+    "IS": {"session": "session_01989HiTNh4Gx7XMSsdvdE7Z", "title": "ISA",                           "tab": "60e6f93a-7fdc", "updated": "2026-10-19"},
     "TI": {"session": "session_01J4Yp3xeV6DJtgCtcoqVsAq", "title": "CCV core integ",                "tab": "e8b1d9d9-df9b", "updated": "2026-10-19"},
     "OI": {"session": "session_01DMw4FtFbGoVboMGxWpLBuv", "title": "OOE block implementation",      "tab": "384bc26c-cef6", "updated": "2026-10-19"},
     "CP": {"session": "session_019cSebQ45AT3pSnPU71torg", "title": "CCV compiler implementation",   "tab": "099ebfed-9eea", "updated": "2026-10-19"},
