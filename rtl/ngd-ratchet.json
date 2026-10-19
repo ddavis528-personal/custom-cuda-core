@@ -12,14 +12,9 @@
     ],
     "ooe_decq": [
       "NGD-2 head_pay_cq02h",
-      "NGD-2 used_cq02h",
-      "NGD-3 deq_n_cq01h",
-      "NGD-3 enq_slot_cq01h",
-      "NGD-3 enq_v_cq01h",
-      "NGD-3 flush_cq01h"
+      "NGD-2 used_cq02h"
     ],
     "ooe_freelist": [
-      "NGD-3 alloc_req_cq01h",
       "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
       "NGD-5 alloc_req_cq01h>alloc_v_cq02h"
     ],
@@ -30,8 +25,6 @@
       "NGD-3 ren_gwe_cq01h",
       "NGD-3 ren_pdst_cq01h",
       "NGD-3 ren_rst_cq01h",
-      "NGD-3 ren_slot_cq01h",
-      "NGD-3 ren_v_cq01h",
       "NGD-3 restore_ckpt_cq01h",
       "NGD-3 ret_dst_cq01h",
       "NGD-3 ret_gwe_cq01h",
@@ -75,20 +68,10 @@
       "NGD-2 gnt_idx_cq02h",
       "NGD-2 gnt_v_cq02h",
       "NGD-3 free_cq01h",
-      "NGD-3 grp_code_cq01h",
-      "NGD-3 grp_dep_cq01h",
-      "NGD-3 req_cq01h",
-      "NGD-3 row_code_cq01h",
       "NGD-5 free_cq01h>gnt_idx_cq02h",
       "NGD-5 free_cq01h>gnt_v_cq02h",
       "NGD-5 req_cq01h>gnt_idx_cq02h",
       "NGD-5 req_cq01h>gnt_v_cq02h"
-    ],
-    "ooe_wake": [
-      "NGD-3 cls_cq01h",
-      "NGD-3 cmpl_cq01h",
-      "NGD-3 grant_cq01h",
-      "NGD-3 kind_cq01h"
     ]
   }
 }
