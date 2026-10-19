@@ -18,7 +18,8 @@ import re
 import sys
 from pathlib import Path
 
-ROSTER = Path(__file__).with_name("roster.json")
+# Outside .claude/, so any session may edit its own line (some refuse .claude/).
+ROSTER = Path(__file__).resolve().parents[3] / "docs" / "register" / "roster.json"
 HEAD = "REGISTER-NOTICE v1"
 FIELD = re.compile(r"(\w+)=(\S+)")
 ID = re.compile(r"^(re:)?[A-Z]{2}-\d+$")
@@ -31,7 +32,7 @@ def roster():
 def role(r, name):
     a = r["agents"].get(name.upper())
     if a is None:
-        sys.exit(f"notice.py: no register prefix {name!r} in {ROSTER.name}")
+        sys.exit(f"notice.py: no register prefix {name!r} in {ROSTER}")
     return a
 
 

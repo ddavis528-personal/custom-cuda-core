@@ -11,18 +11,22 @@ This skill pushes instead. The agent that writes a row rings the doorbell of
 the agent that row needs. Receivers sleep until rung. A daily sweep catches
 anything a doorbell missed.
 
-Files: `roster.json` (prefix → session, tab) and `notice.py` (compose, parse,
+Files: `docs/register/roster.json` (prefix → session, tab; outside `.claude/`
+so any session may edit its own line) and `notice.py` here (compose, parse,
 route). Run them from the repo root:
 `python3 .claude/skills/register/notice.py …`.
 
 ## 1. At session start
 
-1. Find your prefix in `roster.json`. If its `session` is not yours, put your
+1. Find your prefix in `docs/register/roster.json`. If its `session` is not yours, put your
    session id there. Your id is in `get_session` (claude-code-remote, no
    argument). Commit that line on its own (`register: <PREFIX> is <session>`)
    and push it with your branch.
-2. Run the sweep (section 4).
-3. Arm your daily sweep (section 5), and delete any four-hourly register timer
+2. Check that you have `send_message` (claude-code-remote). Without it you
+   cannot ring anyone. Say so in your tab, and your rows reach the others
+   only through their sweeps.
+3. Run the sweep (section 4).
+4. Arm your daily sweep (section 5), and delete any four-hourly register timer
    you hold.
 
 ## 2. Before ending a turn that wrote to the register (send)
