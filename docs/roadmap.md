@@ -251,7 +251,7 @@ channel path in 355 cycles. The final register file and memory are identical
 to ccv-sim's, with 0 interface violations, and each clean result is paired
 with a control that must fail it (`tools/check-kernel.sh`). It found six
 payload gaps, including store data missing from `ccv_miu_dcu_req` (added
-provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-141). See
+provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-153). See
 [`skeleton.md`](skeleton.md#s1--vadd-through-the-machine).
 
 - `sim/skel/kernel.cpp`, `oracle.cpp` — the functional stubs and the reader
