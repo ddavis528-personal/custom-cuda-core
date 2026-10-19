@@ -405,6 +405,18 @@ late 970 (1.007), cap 2 966 (1.004), with about 0.6% of noise between arms.
 which no RTL does, all late read +2.7% over same edge, and six seeds put it
 at +5.7%.) No S1 kernel moves under any of them (`sweep.sh`).
 
+`ready_reg` (on; OA's response OI-51) makes select read a registered
+ready, as ooe_sched does: a row is ready at select if its lines say so
+now, or said so at the end of the last cycle for this one. Every wake
+rises a cycle early into the register, so rises cost nothing, but a drop
+(a producer returned to Waiting) reaches select a cycle late. An entry may
+then be granted on a stale bit (`select.stale_grant`), and the next hop
+returns it (`cancel.replay_stale`, counted apart from `cancel.replay`); a
+check holds that a stale grant never confirms (OA-17). Over 48 seeds that
+is 7.9 stale grants a run, each replayed, at 960 cycles against 963 with
+the register off: noise. ooe_select's bench logs the registered value as
+`sel_ready`, so a bench of ooe_sched can be cycle-exact.
+
 ## Events and counters
 
 The model emits the schema's arbitration-sensitive events: `EV_DISPATCH` at
@@ -557,6 +569,7 @@ alone, six seeds, cycles relative to the defaults; six seeds are noisy at
 | `rename_width` | 1 → 1.62, 2 → 1.12, 3 → 0.99, **4 → 1.00** |
 | `retire_per_rob` | 1 → 1.00, **2 → 1.00**, 4 → 1.00 |
 | `ren_credit`, 48 seeds | same edge → 0.993, all late → 1.007, **TI-19 at cap 4 → 1.000**, cap 2 → 1.004 |
+| `ready_reg`, 48 seeds | off → 1.003, **on → 1.000** (7.9 stale grants a run, each replayed) |
 
 What it says, provisionally (strategy §8: a metric is only as real as the
 least-built block on its path, and here every neighbour is a stand-in):

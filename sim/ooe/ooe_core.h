@@ -189,6 +189,14 @@ struct Config {
   /// design (accepted by Daniel, 2026-10-19).
   unsigned ren_credit = 2;
   unsigned ren_free_cap = 4;
+  /// Select reads a registered ready (OA's response OI-51), as ooe_sched
+  /// does: a row is ready at select if its lines say so now, or said so at
+  /// the end of the last cycle for this one. Rises are unchanged (every
+  /// wake rises a cycle early into the register); a drop (a producer
+  /// returned to Waiting) reaches select a cycle late, so an entry may be
+  /// granted on a stale bit and is returned by the next hop (OA-17).
+  /// false: select reads the lines as they stand.
+  bool ready_reg = true;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -697,6 +705,7 @@ private:
     bool confirmed = false;        ///< result can no longer be cancelled
     bool msd = false;              ///< missed its L1 slot, until its completion (OI-50's msd)
     bool msd_end = false;          ///< its completion came: msd clears after this cycle's hop
+    bool stale = false;            ///< granted on a stale ready bit (OI-51), until its next replay or issue
     bool ever_issued = false;
     unsigned replays = 0;
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
@@ -774,6 +783,11 @@ private:
   void dep(unsigned e, unsigned preg, bool pred, int group);
   bool cellOk(unsigned i, unsigned j) const;
   bool rowReady(unsigned i) const;
+  /// The row's lines as they will stand next cycle, from the state now:
+  /// what the ready register holds then (OI-51).
+  bool rowReadyNext(unsigned i) const;
+  /// What select reads: the lines now, or the registered ready.
+  bool rowReadySel(unsigned i) const { return rowReady(i) || (cfg_.ready_reg && ready_q_[i]); }
   bool rowConfirmed(unsigned i) const;
   void doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port);
   void setWakes(unsigned e);
@@ -934,6 +948,7 @@ private:
   std::vector<uint8_t> cok_;          ///< per cell, satisfied last cycle (EV_WAKEUP)
   static constexpr uint8_t kLateOff = 0xFF;
   uint64_t skew_ = 0;                 ///< inject_early_wake
+  std::vector<uint8_t> ready_q_;      ///< the registered ready (OI-51): rowReadyNext at the last cycle's end
   unsigned n_ = 0;
   uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }

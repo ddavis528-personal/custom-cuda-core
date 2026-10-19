@@ -159,6 +159,7 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   slot_of_.fill(-1);
   n_ = cfg_.rs_rcu + cfg_.rs_miu;
   rs_.resize(n_);
+  ready_q_.assign(n_, 0);
   cell_.assign(size_t(n_) * n_, 0);
   woff_.assign(size_t(n_) * n_, kLateOff);
   cok_.assign(size_t(n_) * n_, 0);
@@ -298,6 +299,9 @@ void Core::cycle(uint64_t now) {
   }
   rename();            // the decode queue; uop() refills it after the clock
   sendRedirect();
+  // The ready register (OI-51): each row's lines as they will stand next
+  // cycle, from the state now.
+  for (unsigned e = 0; e != n_; ++e) ready_q_[e] = rs_[e].valid && rowReadyNext(e);
   if (check_invariants) checkInvariants();
 }
 
@@ -681,6 +685,21 @@ bool Core::rowReady(unsigned i) const {
   return true;
 }
 
+bool Core::rowReadyNext(unsigned i) const {
+  for (unsigned j = 0; j != n_; ++j) {
+    if (!(cell(i, j) & 1)) continue;
+    const RsEntry &p = rs_[j];
+    const uint8_t w = woff_[size_t(i) * n_ + j];
+    if (w == kLateOff) {
+      // The full-latency wake: raised, or its timer fires next cycle.
+      if (!(p.late || (p.issued && !p.on_completion && now_ + skew_ + 1 >= p.late_at))) return false;
+    } else if (!(p.issued && now_ + skew_ + 1 >= p.issue_at + w)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool Core::rowConfirmed(unsigned i) const {
   for (unsigned j = 0; j != n_; ++j)
     if ((cell(i, j) & 1) && !rs_[j].confirmed) return false;
@@ -803,7 +822,8 @@ bool Core::cancelHop() {
         r.rcu_done = false;
         r.resolved = false;
       }
-      count("cancel.replay");
+      count(y.stale ? "cancel.replay_stale" : "cancel.replay");
+      y.stale = false;
       ev("cancel", slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
       oev(OoeEv::kCancelReplay, slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
       changed = true;
@@ -842,6 +862,9 @@ void Core::confirmPass() {
     for (unsigned j = 0; j != n_ && sources; ++j)
       if ((cell(e, j) & 1) && !was[j]) sources = false;
     if (!sources) continue;
+    // A grant on a stale ready bit stands on a producer that returned to
+    // Waiting: the next hop must return it too, never confirm it (OA-17).
+    if (x.stale && x.issued) err("OA-17: entry %u, granted on a stale ready bit, confirms", e);
     if (!x.produces) {   // nothing to wake
       x.confirmed = true;
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
@@ -1577,7 +1600,7 @@ void Core::selectSectioned() {
     if (!x.valid || x.issued || x.eligible_at > now_ || (x.res & busy)) return false;
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive) return false;
-    if (!rowReady(e)) return false;
+    if (!rowReadySel(e)) return false;
     const RobEntry &r = s.rob[x.rob];
     if (predHold(x.slot, r)) return false;
     // The copy's sources are confirmed before it issues, so it cannot be
@@ -1606,7 +1629,7 @@ void Core::selectSectioned() {
     wlog_.sel_iss[e] = x.issued;
     wlog_.sel_elig[e] = x.eligible_at <= now_;
     wlog_.sel_active[e] = s.st == WarpState::kActive;
-    wlog_.sel_ready[e] = rowReady(e);
+    wlog_.sel_ready[e] = rowReadySel(e);
     wlog_.sel_conf[e] = rowConfirmed(e);
     wlog_.sel_slot[e] = uint8_t(x.slot);
     wlog_.sel_res[e] = x.res;
@@ -1718,7 +1741,7 @@ void Core::select() {
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive) return false;
-    if (!rowReady(e)) return false;
+    if (!rowReadySel(e)) return false;
     const RobEntry &r = s.rob[x.rob];
     if (predHold(x.slot, r)) return false;
     if (!miu) return true;
@@ -1886,6 +1909,9 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   const Uop &u = r.u;
   x.issued = true;
   x.issue_at = now_;
+  // A grant on the registered ready alone: a stale bit (OI-51, OA-17).
+  x.stale = !rowReady(e);
+  if (x.stale) count("select.stale_grant");
   // Memop hold cycles (Events): from the first cycle its operands were all
   // woken to its issue, the cost of waiting for confirmation.
   if (x.cls == RsCls::kMiu) {

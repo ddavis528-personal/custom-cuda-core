@@ -216,11 +216,11 @@ real channels. It then compares the final state with the oracle's.
 
 ```
 KERNEL name=vadd finished=1 cycles=186 from_fetch=155 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-XFER events=644 launched=644 match=yes channels_seen=27
+XFER events=713 launched=713 match=yes channels_seen=27
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 644 messages
+`ccv-sim`'s, and every one of the 713 messages
 launched was seen by the checker bank, which reported nothing. The run
 touches 27/48 channel types. The rest are waiting for
 kernels that need them:
@@ -380,7 +380,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=186 from_fetch=155 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
-TRACES records=718/718 equal=yes byte_identical=no differing_cycles=0
+TRACES records=789/789 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a

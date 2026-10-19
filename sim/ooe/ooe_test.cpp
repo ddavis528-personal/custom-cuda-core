@@ -1018,6 +1018,31 @@ void testV59() {
   EXPECT(c.check().rfind("V-59", 0) == 0, "a bypass at 2 refused: '%s'", c.check().c_str());
 }
 
+/// OI-51: select reads a registered ready, so a drop reaches it a cycle
+/// late. Under misses a warp's dependants are granted on stale bits, and
+/// the next hop returns each; select on the lines as they stand never is.
+void testReadyReg() {
+  g_test = "ready register: stale grants, each replayed";
+  for (bool on : {true, false}) {
+    uint64_t stale = 0, rstale = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      std::mt19937 rng(seed);
+      Config c = baseConfig();
+      c.ready_reg = on;
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish();
+      EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+      stale += e.core.counters["select.stale_grant"];
+      rstale += e.core.counters["cancel.replay_stale"];
+    }
+    if (on) EXPECT(stale && rstale && rstale <= stale, "stale grants %llu, their replays %llu",
+                   (unsigned long long)stale, (unsigned long long)rstale);
+    else EXPECT(!stale && !rstale, "stale grants %llu with no ready register", (unsigned long long)stale);
+  }
+}
+
 void testFreeVec() {
   g_test = "free-vec";
   FreeVec f;
@@ -1402,6 +1427,34 @@ void sweep() {
     const double cy = run(c, 48);
     std::printf("| ren_credit (48 seeds, TI-19 cap 4 %.0f) | %s | %.0f | %.3f |\n", ref48, k.name, cy, cy / ref48);
   }
+  // Select on the lines as they stand, against the registered ready
+  // (OA's response OI-51), 48 seeds: the stale grants it adds, and the
+  // replays they cost, apart from the miss replays.
+  {
+    struct R { double cy = 0, stale = 0, rstale = 0, rmiss = 0; };
+    auto runc = [](const Config &c, unsigned seeds) {
+      R r;
+      for (unsigned seed = 1; seed <= seeds; ++seed) {
+        std::mt19937 rng(seed);
+        Env e(c, seed);
+        e.miss_pct = 20;
+        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+        e.finish();
+        r.cy += double(e.t) / seeds;
+        r.stale += double(e.core.counters["select.stale_grant"]) / seeds;
+        r.rstale += double(e.core.counters["cancel.replay_stale"]) / seeds;
+        r.rmiss += double(e.core.counters["cancel.replay"]) / seeds;
+      }
+      return r;
+    };
+    for (bool on : {true, false}) {
+      Config c = base;
+      c.ready_reg = on;
+      const R r = runc(c, 48);
+      std::printf("| ready_reg (48 seeds; stale grants / their replays / miss replays per run) | %d | %.0f | %.3f | %.1f / %.1f / %.1f |\n",
+                  int(on), r.cy, r.cy / ref48, r.stale, r.rstale, r.rmiss);
+    }
+  }
 }
 
 
@@ -1595,6 +1648,7 @@ int main(int argc, char **argv) {
   testChwidth();
   testSections();
   testFreeVec();
+  testReadyReg();
   testV59();
   testFixedWindowPreds();
   testRandom(seeds);
