@@ -1,0 +1,7 @@
+{
+  "module": "ooe_pick",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-18",
+  "why": "A priority pick over one class's requests by age, combinational. OA's stage-boundary map (OA tab, response to TI-16/TI-17, item 1) makes it a helper of the per-class ooe_sched, whose flops bound it; its logic is timed there."
+}
