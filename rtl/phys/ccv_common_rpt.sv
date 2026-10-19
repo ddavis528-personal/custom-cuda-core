@@ -35,6 +35,10 @@
 //     register.
 //   - valid, wake, credit, stall: pulses, registered every cycle, reset low.
 //   - the reset: flopped once, here, before any use (RST-1).
+//   The pulses and the flopped reset are the channel's own control, captured
+//   every cycle as any receiver's: they count against the hardening
+//   wrapper's ungated budget, not this module's (Daniel, 2026-10-19); the
+//   first stage's lead counts against this module's.
 //
 // What a repeated link changes, which the widget itself cannot: the round
 // trip grows by 2 * STAGES, and credit depth, drain wait and every checker's

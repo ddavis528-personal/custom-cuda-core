@@ -729,12 +729,19 @@ than it is.
 **Every repeater instantiation is checked like any module** (Daniel,
 2026-10-18). `tools/gen-top.py` writes `rtl/top/rpt-units.json`, one unit
 per distinct repeater the design instantiates (stages, slots, payload width,
-lead mask), and both `check-cg.py` and `check-ngd.py` measure each: its
-valid, credit, stall and wake flops, its flopped reset and its first stage's
-lead slice, all written every cycle, within its allowance. That is what
+lead mask), and both `check-cg.py` and `check-ngd.py` measure each. Its
+control pulses, valid, wake, credit and stall at every stage, and its
+flopped reset are the channel's own, captured every cycle as any receiver's
+are; they count against the hardening wrapper's 2%, the block's partition,
+not the repeater's own allowance (Daniel, 2026-10-19), since a repeater is
+little else and would fail on them alone: two stages of one narrow slot are
+9 such flops, and a 4-slot channel 14 at one stage. Its first stage's lead
+slice, written every cycle too, stays within its own allowance. That is what
 limits leads on a repeated link: one 64-bit slot at one stage passes, and
-with a 16-bit lead it does not (the selftest's control). None is repeated
-today. A link with no stages has no repeater: the wrapper connects the end
+with a 16-bit lead it does not (the selftest's controls, with a two-stage
+16-bit slot whose control pulses pass its allowance and count against a
+wrapper: within its 2% beside 514 flops, over it beside 257). None is
+repeated today. A link with no stages has no repeater: the wrapper connects the end
 straight through.
 
 **The ratchet.** RTL written before the rule is listed in

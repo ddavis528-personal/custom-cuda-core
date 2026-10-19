@@ -43,7 +43,12 @@ and so is one with nothing left to excuse. CG-5 and RST-1 are structural:
 no budget takes them. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
 flops and fewer than CCV_CG_MODULE_FLOPS flops outside the rules, smallest
 findings first, findings about flops only; what the modules take counts,
-per instance, against CCV_CG_BUDGET_PCT of each block with RTL. Last,
+per instance, against CCV_CG_BUDGET_PCT of each block with RTL. A
+repeater's control pulses (valid, wake, credit and stall at every stage, and
+its flopped reset) are the channel's own, captured every cycle like any
+receiver's: they go straight to the block's budget, its hardening wrapper
+being the partition, and not to the repeater's own allowance, which its
+lead slice still meets (Daniel, 2026-10-19). Last,
 rtl/cg-waivers.json: one entry per (module, rule, register), each with a
 reason; a waiver that excuses nothing, including one for what a budget
 already takes, is refused.
@@ -97,6 +102,12 @@ FINDINGS_BASELINE = {(m, k) for m, ks in {
 DESIGN_SKIP = ("rtl/include/", "rtl/generated/", "rtl/top/", "rtl/ctech/",
                "rtl/lint/")
 ICG = "ccv_common_ctech_icg"
+# A repeater's control pulses and its flopped reset, by register name
+# (rtl/phys/ccv_common_rpt.sv): counted against the hardening wrapper's
+# CCV_CG_BUDGET_PCT, not the repeater's own allowance (Daniel, 2026-10-19).
+# Its lead slice, lead_q, is not among them.
+RPT = "ccv_common_rpt"
+RPT_CONTROL = ("valid_q", "wake_q", "credit_q", "stall_q", "rst_n_q")
 
 _spec = importlib.util.spec_from_file_location(
     "lint_rtl", os.path.join(ROOT, "tools", "lint-rtl.py"))
@@ -1347,12 +1358,28 @@ def partitions(modules):
     return out
 
 
+def reg_base(r):
+    """A register's name without its generate scope or bit select."""
+    return re.sub(r"(\[[\d:,]+\])+$", "", r.split(".")[-1])
+
+
+def rpt_control(f):
+    """A finding about a repeater's control pulses or its flopped reset
+    only: the wrapper's budget takes it (RPT_CONTROL)."""
+    return f.module == RPT and f.budgetable and f.regs and all(
+        reg_base(r) in RPT_CONTROL for r in f.regs)
+
+
 def module_budget(findings, units):
     """Each unit may leave the larger of CCV_CG_BUDGET_PCT of its flops and
     fewer than CCV_CG_MODULE_FLOPS flops outside the rules: its budgetable
     findings are taken smallest first while they fit. A finding of a module
-    measured in several units is excused only if every one takes it. Returns
-    a line per unit."""
+    measured in several units is excused only if every one takes it. A
+    repeater's control pulses are not its own to take: they count against
+    its wrapper's budget (status "wrapper"). Returns a line per unit."""
+    for f in findings:
+        if f.status == "open" and rpt_control(f):
+            f.status = "wrapper"
     cand = [f for f in findings if f.status == "open" and f.budgetable]
     seen, taken, lines = collections.defaultdict(set), collections.defaultdict(set), []
     for u in units:
@@ -1374,9 +1401,13 @@ def module_budget(findings, units):
             used += n
             count += 1
             taken[k].add(u.name)
-        if items:
+        wrap = sum(unit_flops(u, f) for f in findings if f.status == "wrapper"
+                   and f.module == u.module and f.unit in (None, u.name))
+        if items or wrap:
             lines.append("module budget: unit %-12s %5d flops, %4.1f allowed, %d auto-waived "
-                         "in %d finding(s)" % (u.name, total, allow, used, count))
+                         "in %d finding(s)%s" % (u.name, total, allow, used, count,
+                                                 "; %d control flops to its wrapper's budget"
+                                                 % wrap if wrap else ""))
     for k, f in enumerate(cand):
         if seen[k] and seen[k] <= taken[k]:
             f.status = "module"
@@ -1386,7 +1417,7 @@ def module_budget(findings, units):
 def took_flops(el, f):
     """A finding's flops in an elaborated partition: its registers, by name,
     in every instance of its module."""
-    lasts = {re.sub(r"(\[[\d:,]+\])+$", "", r.split(".")[-1]) for r in f.regs}
+    lasts = {reg_base(r) for r in f.regs}
     return sum(m * sum(regs.get(x, 0) for x in lasts)
                for b, m, regs in el["inst"] if b == f.module)
 
@@ -1407,7 +1438,7 @@ def crosscheck(findings, units, known, skew=()):
     module budget took. `skew` adds defines to the elaborated read alone:
     the selftest's stand-in for such a misread. Returns the units' lines
     and the disagreements."""
-    took = [f for f in findings if f.status == "module"]
+    took = [f for f in findings if f.status in ("module", "wrapper")]
     lines, fails = [], []
     for u in units:
         if u.errors or u.nl is None:
@@ -1440,21 +1471,24 @@ def crosscheck(findings, units, known, skew=()):
 
 def block_budget(findings, parts, known):
     """What the module budgets took still counts against each block's
-    CCV_CG_BUDGET_PCT, per instance over the block's hierarchy. Returns the
-    blocks' lines and the blocks over it."""
-    took = [f for f in findings if f.status == "module"]
+    CCV_CG_BUDGET_PCT, per instance over the block's hierarchy, its
+    hardening wrapper's included, and so do its repeaters' control pulses.
+    Returns the blocks' lines and the blocks over it."""
+    took = [f for f in findings if f.status in ("module", "wrapper")]
     lines, fails = [], []
     for name, top, files, bbs in parts:
         el = elaborate(name, top, files, bbs, known)
         budget = el["total"] * BUDGET_PCT / 100.0
-        used, items = 0, []
+        used, ctl, items = 0, 0, []
         for f in took:
             n = took_flops(el, f)
             if n:
                 used += n
+                ctl += n if f.status == "wrapper" else 0
                 items.append((n, f))
         lines.append("block budget: %-8s %6d flops, %.1f allowed, %d auto-waived in its modules"
-                     % (name, el["total"], budget, used))
+                     "%s" % (name, el["total"], budget, used,
+                             " (%d of them repeater control)" % ctl if ctl else ""))
         if used > budget:
             worst = ", ".join("%s %s (%d)" % (f.module, "/".join(sorted(f.regs)), n)
                               for n, f in sorted(items, key=lambda x: -x[0])[:3])
@@ -1890,27 +1924,70 @@ def selftest():
            "a ratcheted finding that passes stayed on the list")
     fails, _ = run_policy(("cg_fx_form",), fratchet={"cg_fx_form": ["CG-5 n_q"]}, fbaseline=fb)
     expect(any("CG-5 n_q was not on the list" in x for x in fails), "the finding ratchet grew")
-    # 18. Every repeater instantiation is a unit, checked like any module:
-    #     one stage of a 64-bit slot passes, its valid, credit, stall, wake
-    #     and reset flops within its allowance; with a 16-bit lead, whose
-    #     first-stage flops are written every cycle, it is past it.
+    # 18. Every repeater instantiation is a unit, checked like any module.
+    #     Its control pulses (valid, wake, credit and stall at each stage,
+    #     and the flopped reset) count against its wrapper's budget, not its
+    #     own allowance (Daniel, 2026-10-19): two stages of a 16-bit slot,
+    #     nine of them in 41 flops, pass. Its lead slice does not: with a
+    #     16-bit lead, whose first-stage flops are written every cycle, one
+    #     stage of a 64-bit slot is past its allowance; without, it passes.
+    rtext = lint.strip_comments(open(os.path.join(ROOT, "rtl/phys/ccv_common_rpt.sv")).read())
+    rregs = {reg_base(r) for r in module_regs(rtext)}
+    expect(set(RPT_CONTROL) <= rregs and "lead_q" in rregs and "lead_q" not in RPT_CONTROL,
+           "RPT_CONTROL names registers the repeater lacks, or its lead slice: %s, %s"
+           % (sorted(set(RPT_CONTROL) - rregs), sorted(rregs)))
+    expect(not rpt_control(Finding("CG-1", "cg_fx_small", {"valid_q"}, "", flops=1,
+                                   budgetable=True))
+           and not rpt_control(Finding("CG-1", RPT, {"valid_q", "g_stage[0].g_slot[0].lead_q"},
+                                       "", flops=2, budgetable=True))
+           and rpt_control(Finding("CG-1", RPT, {"g_stage[1].valid_q"}, "", flops=1,
+                                   budgetable=True)),
+           "another module's register of a control pulse's name, or a repeater finding with "
+           "its lead slice in it, went to the wrapper's budget, or a stage's valid did not")
     rus = load_units([os.path.join(FIXTURE_DIR, "rpt-units.json")])
-    rmod = {"ccv_common_rpt": ("rtl/phys/ccv_common_rpt.sv",
-                               lint.strip_comments(open(os.path.join(
-                                   ROOT, "rtl/phys/ccv_common_rpt.sv")).read()), 1)}
-    rfails = {}
+    rmod = {RPT: ("rtl/phys/ccv_common_rpt.sv", rtext, 1)}
+    rwaivers = [w for w in load(WAIVERS, "waivers") if w["module"] == RPT]
+    rfails, rfs = {}, {}
     for ru in rus:
         ru.measure()
         fs = source_findings(ru) + unit_findings(ru) + scenario_findings(ru)
         fs += form_check(rmod, [ru]) + coverage_check(rmod, [ru])
-        rfails[ru.name], _ = policy(fs, rmod, [ru], [w for w in load(WAIVERS, "waivers")
-                                                     if w["module"] == "ccv_common_rpt"], {})
+        rfails[ru.name], _ = policy(fs, rmod, [ru], [dict(w) for w in rwaivers], {})
+        rfs[ru.name] = fs
         if ru.errors:
             rfails[ru.name] += ru.errors
     expect(not rfails["fx_rpt_plain"], "a repeater instantiation within its allowance "
            "failed: %s" % rfails["fx_rpt_plain"])
     expect(any("lead_q" in x for x in rfails["fx_rpt_lead"]),
            "a repeater whose lead slice is past its allowance passed: %s" % rfails["fx_rpt_lead"])
+    ctl = [f for f in rfs["fx_rpt_narrow2"] if f.status == "wrapper"]
+    expect(not rfails["fx_rpt_narrow2"] and {reg_base(r) for f in ctl for r in f.regs}
+           == set(RPT_CONTROL),
+           "a two-stage repeater's control pulses were held to its own allowance, or not all "
+           "sent to its wrapper's: %s; %s" % (rfails["fx_rpt_narrow2"],
+                                               sorted(r for f in ctl for r in f.regs)))
+    #     And they count against the wrapper: with one stage beside two
+    #     cg_fx_wide, 7 of 535 flops hold its 2%; with two stages beside
+    #     one, 10 of 298 do not.
+    wide = next(x for x in allu if x.module == "cg_fx_wide")
+    wfs = [f for f in findings() if f.module == "cg_fx_wide"]
+    wmods = {"cg_fx_wide": mods["cg_fx_wide"], RPT: rmod[RPT]}
+    wknown = set(mods) | {RPT, "cg_fx_wrap_ok", "cg_fx_wrap_over"}
+    wfiles = ["rtl/phys/ccv_common_rpt.sv", "test/cg/fixtures/cg_fx_wide.sv"]
+    nar = next(x for x in rus if x.name == "fx_rpt_narrow2")
+    for top, want in (("cg_fx_wrap_ok", False), ("cg_fx_wrap_over", True)):
+        part = (top[6:], top, wfiles + ["test/cg/fixtures/%s.sv" % top], [])
+        fs = wfs + form_check(rmod, [nar]) + coverage_check(rmod, [nar]) + unit_findings(nar)
+        for f in fs:
+            f.status = "open"
+        fails, blines = policy(fs, wmods, [wide, nar], [dict(w) for w in rwaivers], {},
+                               parts=[part], known=wknown)
+        if os.environ.get("CG_SELFTEST_VERBOSE"):
+            print("\n".join("    " + x for x in blines))
+        over = [x for x in fails if "block %s" % top[6:] in x and "over its" in x]
+        expect(bool(over) == want and len(fails) == len(over),
+               "a wrapper %s its 2%% with its repeater's control pulses %s: %s"
+               % ((("over", "passed") if want else ("within", "failed")) + (fails,)))
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
