@@ -397,7 +397,8 @@ module beside its RTL (`<module>.ngd.json`) where a port needs more; and,
 between a parent's children, so every path between modules crosses one port
 in two segments, a combinational module allowed as an inner helper timed in
 its parent (alone, before any parent instantiates it, within 16 NGD,
-2026-10-19), and a generated wrapper's feedthrough the one wire allowed (an
+2026-10-19), a register that drives an output held on every path it starts
+to that output's budget (2026-10-19), and a generated wrapper's feedthrough the one wire allowed (an
 end with no stages has no repeater); an
 assembled block checked from those files for convergence to 25, level by
 level, then timed whole, its ports registered on both sides.

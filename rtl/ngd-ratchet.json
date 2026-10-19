@@ -1,5 +1,5 @@
 {
-  "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. Or an inner helper that no module instantiates yet, a path input to output over CCV_NGD_INNER (NGD-6, 2026-10-19, keyed from>to), awaiting its parent. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
+  "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. Or an inner helper that no module instantiates yet, a path input to output over CCV_NGD_INNER (NGD-6, 2026-10-19, keyed from>to), awaiting its parent. Or a register that drives an output and reaches a flop or another output past that output's required time (NGD-7, 2026-10-19, keyed by register), awaiting a copy for the output and one for the rest. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
   "modules": {
     "ooe_confirm": [
       "NGD-5 dep_cq01h>conf_cq01h",
@@ -12,11 +12,13 @@
     ],
     "ooe_decq": [
       "NGD-2 head_pay_cq02h",
-      "NGD-2 used_cq02h"
+      "NGD-2 used_cq02h",
+      "NGD-7 st_cq02h"
     ],
     "ooe_freelist": [
       "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
-      "NGD-5 alloc_req_cq01h>alloc_v_cq02h"
+      "NGD-5 alloc_req_cq01h>alloc_v_cq02h",
+      "NGD-7 st_cq02h"
     ],
     "ooe_rat": [
       "NGD-2 ren_pold_cq01h",
@@ -62,7 +64,8 @@
       "NGD-5 ren_v_cq01h>ren_ppguard_cq01h",
       "NGD-5 ren_v_cq01h>ren_ppold_cq01h",
       "NGD-5 ren_v_cq01h>ren_ppq_cq01h",
-      "NGD-5 ren_v_cq01h>ren_psrc_cq01h"
+      "NGD-5 ren_v_cq01h>ren_psrc_cq01h",
+      "NGD-7 rat_cq02h"
     ],
     "ooe_rs": [
       "NGD-2 gnt_idx_cq02h",
@@ -71,7 +74,8 @@
       "NGD-5 free_cq01h>gnt_idx_cq02h",
       "NGD-5 free_cq01h>gnt_v_cq02h",
       "NGD-5 req_cq01h>gnt_idx_cq02h",
-      "NGD-5 req_cq01h>gnt_v_cq02h"
+      "NGD-5 req_cq01h>gnt_v_cq02h",
+      "NGD-7 valid_cq02h"
     ],
     "ooe_select": [
       "NGD-6 active_cq03h>grant_cq03h",
