@@ -94,9 +94,10 @@ BUDGET_GLOB = os.path.join(ROOT, "rtl", "**", "*.ngd.json")
 RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # The findings that stood when each rule was made: NGD-1 to NGD-4 on
 # 2026-10-17, NGD-5 on 2026-10-18 (its through paths had been NGD-2's),
-# ooe_rat's then on OI's branch (b9c3a44). Never add to this: a module
-# written since meets the rules, or has the architect's budgets, or is
-# redesigned.
+# ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
+# on OI's branch (d8ffd4c: declared inner, no parent yet). Never add to this:
+# a module written since meets the rules, or has the architect's budgets, or
+# is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
     "ooe_confirm": [
         "NGD-5 dep_cq01h>conf_cq01h", "NGD-5 dep_cq01h>replay_cq02h", "NGD-5 fin_cq01h>conf_cq01h",
@@ -183,6 +184,18 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-5 slot_cq03h>pick_r.req_cq03h", "NGD-5 valid_cq03h>cand_cq03h",
         "NGD-5 valid_cq03h>grant_cq03h", "NGD-5 valid_cq03h>lost_cq03h",
         "NGD-5 valid_cq03h>pick_m.req_cq03h", "NGD-5 valid_cq03h>pick_r.req_cq03h",
+        "NGD-6 active_cq03h>grant_cq03h", "NGD-6 active_cq03h>lost_cq03h",
+        "NGD-6 block_cq03h>grant_cq03h", "NGD-6 block_cq03h>lost_cq03h",
+        "NGD-6 busy_cq03h>grant_cq03h", "NGD-6 busy_cq03h>lost_cq03h",
+        "NGD-6 cidx_cq03h>grant_cq03h", "NGD-6 cidx_cq03h>lost_cq03h",
+        "NGD-6 dep_cq03h>grant_cq03h", "NGD-6 dep_cq03h>lost_cq03h",
+        "NGD-6 elig_cq03h>grant_cq03h", "NGD-6 elig_cq03h>lost_cq03h",
+        "NGD-6 iss_cq03h>grant_cq03h", "NGD-6 iss_cq03h>lost_cq03h",
+        "NGD-6 older_m_cq03h>grant_cq03h", "NGD-6 ready_cq03h>grant_cq03h",
+        "NGD-6 ready_cq03h>lost_cq03h", "NGD-6 res_cq03h>grant_cq03h",
+        "NGD-6 res_cq03h>lost_cq03h", "NGD-6 slot_cq03h>grant_cq03h",
+        "NGD-6 slot_cq03h>lost_cq03h", "NGD-6 valid_cq03h>grant_cq03h",
+        "NGD-6 valid_cq03h>lost_cq03h",
     ],
     "ooe_wake": [
         "NGD-3 cls_cq01h", "NGD-3 cmpl_cq01h", "NGD-3 grant_cq01h", "NGD-3 kind_cq01h",
