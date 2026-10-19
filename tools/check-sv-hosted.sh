@@ -119,7 +119,7 @@ for spec in vadd:corrupt-fetch vadd:corrupt-load vadd:drop-store \
             vadd:corrupt-group-mask loop:stale-epoch pguard:swap-prat0 \
             hit:early-hit hit:late-hit-data hit:no-rcu-bypass \
             vadd:drop-src-valid plog:arch-pred-srcs vadd:no-resource-cap \
-            vadd:bad-pos vadd:narrow-pipes vadd:ordering-on-load; do
+            vadd:bad-pos vadd:narrow-pipes vadd:ordering-on-load vadd:memop-ordering; do
   IFS=: read -r k brk cap <<<"$spec"
   a=$(cpp "$k" --break "$brk" ${cap:+--cycles "$cap"} | grep ^KERNEL)
   s=$(svh "$k" "+ccv_break=$brk" ${cap:++ccv_cycles=$cap} | grep ^KERNEL)

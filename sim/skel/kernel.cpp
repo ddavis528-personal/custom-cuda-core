@@ -570,6 +570,10 @@ private:
         if (get(m.payload, c.ooe_miu, "mem_op") != kMemBulkDiscard && pipes != maskOf(chw, pos))
           k_.fail("miu: rob tag %u has pipes %x, but a %u-bit memop at position %u takes %x",
                   tag, pipes, 32u >> chw, pos, maskOf(chw, pos));
+        // Only a fence carries an ordering (IS-11; AR's response, 0xE).
+        const unsigned ord = unsigned(get(m.payload, c.ooe_miu, "ordering"));
+        if (ord != 0 && get(m.payload, c.ooe_miu, "mem_op") != kMemFence)
+          k_.fail("miu: rob tag %u has ordering %u but is not a fence", tag, ord);
         memop_[tag] = {s, m.payload, now_};
         order_.push_back(tag);
       }
@@ -1889,14 +1893,18 @@ private:
     // MIU unexamined. 0xF is OOE's bulk discard, never DEC's (V-52).
     if (op->cls == kLoad || op->cls == kStore) {
       const unsigned mop = op->cls == kStore ? kMemStore : kMemLoad;
-      if (mop == kMemBulkDiscard) k_.fail("dec: mem_op 0xF is OOE's bulk discard");
+      if (mop == kMemBulkDiscard || mop == kMemAtomicRead || mop == kMemAtomicWrite)
+        k_.fail("dec: mem_op %x is OOE's to generate (V-52, V-72)", mop);
       put(u, c.dec_ooe, "mem_op", mop);
       put(u, c.dec_ooe, "space", kSpaceGlobal);     // every memory op in the table
       // ordering-on-load: DEC's table gives a load an ordering, which only a
       // fence may carry (IS-11): asserted on DEC's output, as V-52 is.
-      const unsigned ord = k_.brk == "ordering-on-load" && op->cls == kLoad ? 1 : 0;
+      // memop-ordering: the same, from a DEC without that assertion, so the
+      // ordering reaches MIU on the memop: MIU refuses it.
+      const bool bad_ord = (k_.brk == "ordering-on-load" || k_.brk == "memop-ordering") && op->cls == kLoad;
+      const unsigned ord = bad_ord ? 1 : 0;
       const uint32_t sa = schedAttrOf(op);
-      if (ord != 0 && !(attrMem(sa) && attrMemKind(sa) == kMemKFence))
+      if (ord != 0 && k_.brk != "memop-ordering" && !(attrMem(sa) && attrMemKind(sa) == kMemKFence))
         k_.fail("dec: pc 0x%llx has ordering %u but is not a fence",
                 (unsigned long long)pc, ord);
       put(u, c.dec_ooe, "ordering", ord);

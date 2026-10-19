@@ -758,7 +758,7 @@
       "decided_at": "Daniel, on IS-7",
       "source": "AR-12, OA's response AR-12 (2026-10-08); DA's response IS-7 (2026-10-09)",
       "require": "CCV_P_FOOT_MIN_FP <= CCV_SECTIONS",
-      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines the formats (section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1); the one-section minimum is Daniel's decision (DA's response IS-7), not the ISA's (IS-11). Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 2.04x over fp32 at 1 against 1.47x at 2 (four warps). The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS)."
+      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines the formats (section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1); the one-section minimum is Daniel's decision (DA's response IS-7), not the ISA's (IS-11). Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measures 1.93x over fp32 at 1 (639 cycles, four warps, at the defaults of 2026-10-19; OI's response IS-9). The run of 2026-10-09 gave 2.04x at 1 against 1.47x at 2. The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS)."
     },
     {
       "name": "CCV_P_FOOT_MIN_ADDR",
@@ -1187,7 +1187,7 @@
       "status": "preliminary",
       "churn": "med",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Architectural memory operation: load, store, atomic family, fence. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.",
+      "doc": "Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 0xE fence, 0xF OOE's bulk discard; 4-0xD spare. DEC emits load, store and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.",
       "decided_at": "MIU block session"
     },
     {

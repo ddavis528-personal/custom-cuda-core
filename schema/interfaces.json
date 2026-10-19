@@ -523,10 +523,11 @@
         "cause",
         "lane_mask",
         "address",
-        "mlc_miss"
+        "mlc_miss",
+        "more"
       ],
       "note": "One struct covering completion and faults together; miss notification rides the same path and is the primary demotion trigger.",
-      "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46).",
+      "doc": "Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion.",
       "id_classes": [
         "instr"
       ],
@@ -1307,6 +1308,7 @@
     "writeback_data": "8*CCV_P_LINE_BYTES",
     "dirty_data": "8*CCV_P_LINE_BYTES",
     "mlc_miss": "1",
+    "more": "1",
     "hit": "1",
     "miss": "1",
     "stalled": "1",

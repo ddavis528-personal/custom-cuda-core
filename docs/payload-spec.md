@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 29 |
-| ⚠️ Some provisional | 19 | 87 |
+| ⚠️ Some provisional | 19 | 88 |
 | ⛔ Some preliminary | 20 | 140 |
-| **Total** | **48** | **256** |
+| **Total** | **48** | **257** |
 
 ## What still has to be decided
 
@@ -97,7 +97,7 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_L_W_MEM_OP` | 4 | med | Architectural memory operation: load, store, atomic family, fence. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it. |
+| `CCV_L_W_MEM_OP` | 4 | med | Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 0xE fence, 0xF OOE's bulk discard; 4-0xD spare. DEC emits load, store and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it. |
 
 ### MLC/EXB session, alongside CCV_L_W_COH_OP
 
@@ -382,7 +382,7 @@ miu → rcu · rate 4 · execution
 
 ### `ccv_miu_ooe_cmpl`
 
-Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46).
+Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion.
 
 miu → ooe · rate 4 · memory
 
@@ -394,7 +394,8 @@ miu → ooe · rate 4 · memory
 | `lane_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `address` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `mlc_miss` | `1` | 1 | literal |
-| **total** | | **110** | ⚠️ 7 provisional |
+| `more` | `1` | 1 | literal |
+| **total** | | **111** | ⚠️ 7 provisional |
 
 ### `ccv_ooe_miu_retire`
 

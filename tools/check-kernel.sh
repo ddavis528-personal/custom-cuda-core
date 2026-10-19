@@ -85,7 +85,8 @@
 #   a memop's pipes are its width's span      narrow-pipes: MIU refuses one
 #     (OI-33, TI-9)                              pipe for a 32-bit memop
 #   only a fence carries an ordering          ordering-on-load: DEC's output
-#     (IS-11)                                    refuses each of vadd's 7 loads
+#     (IS-11)                                    and MIU refuse each of vadd's 7
+#                                                loads; memop-ordering: MIU alone
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -786,10 +787,20 @@ fi
 "$SKEL" --kernel "$K" --break ordering-on-load >"$B/kernel_ordering-on-load.log" 2>&1
 log="$B/kernel_ordering-on-load.log"
 n=$(grep -c "^CHECK dec: pc 0x[0-9a-f]* has ordering 1 but is not a fence" "$log")
-if [ "$n" = 7 ] && [ "$(field "$log" check_failures)" = 7 ]; then
-  say "--break ordering-on-load: DEC refuses each" "PASS (7 loads)"
+m=$(grep -c "^CHECK miu: rob tag [0-9]* has ordering 1 but is not a fence" "$log")
+if [ "$n" = 7 ] && [ "$m" = 7 ] && [ "$(field "$log" check_failures)" = 14 ]; then
+  say "--break ordering-on-load: DEC and MIU refuse" "PASS (7 loads each)"
 else
-  bad "--break ordering-on-load" "$n refusals (want 7): $(grep '^KERNEL' "$log")"
+  bad "--break ordering-on-load" "$n DEC and $m MIU refusals (want 7 each): $(grep '^KERNEL' "$log")"
+fi
+
+"$SKEL" --kernel "$K" --break memop-ordering >"$B/kernel_memop-ordering.log" 2>&1
+log="$B/kernel_memop-ordering.log"
+n=$(grep -c "^CHECK miu: rob tag [0-9]* has ordering 1 but is not a fence" "$log")
+if [ "$n" = 7 ] && [ "$(field "$log" check_failures)" = 7 ]; then
+  say "--break memop-ordering: MIU refuses each" "PASS (7 loads)"
+else
+  bad "--break memop-ordering" "$n refusals (want 7): $(grep '^KERNEL' "$log")"
 fi
 
 exit $fail
