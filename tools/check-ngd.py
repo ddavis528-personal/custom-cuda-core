@@ -22,7 +22,11 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          touches none of its own flops carries no logic either: wired child
          to child is the parent's connection. An inner helper (a
          combinational module timed only inside its parent, declared in its
-         budget file) is exempt, and its logic counts as its parent's; a
+         budget file) is exempt, and its logic counts as its parent's; while
+         no module instantiates it, it is held alone to CCV_NGD_INNER =
+         floor(2 * 25 / 3) = 16 NGD input to output, not the whole stage, as
+         its parent's logic will share the stage with it (Daniel,
+         2026-10-19); a
          checker-only observation port is exempt; and a channel the
          generated hardening wrappers carry across themselves, the one
          feedthrough allowed (rtl/top/, never a unit here).
@@ -53,6 +57,8 @@ The rules, as findings:
   NGD-4  a budget file that is malformed, or names a port its module lacks
   NGD-5  a path straight through a module, wire or logic, or, in a parent,
          logic on a path that touches none of its own flops
+  NGD-6  an inner helper that no module instantiates yet, input to output
+         over CCV_NGD_INNER
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets from OA or a redesign; the list only
@@ -82,14 +88,16 @@ _spec.loader.exec_module(cg)          # puts the strict Yosys on PATH (OI-44)
 
 STAGE = float(cg.param("CCV_NGD_BUDGET"))
 PORT = float(cg.param("CCV_NGD_PORT"))
+INNER = float(cg.param("CCV_NGD_INNER"))
 GENLIB = cg.GENLIB
 BUDGET_GLOB = os.path.join(ROOT, "rtl", "**", "*.ngd.json")
 RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # The findings that stood when each rule was made: NGD-1 to NGD-4 on
 # 2026-10-17, NGD-5 on 2026-10-18 (its through paths had been NGD-2's),
-# ooe_rat's then on OI's branch (b9c3a44). Never add to this: a module
-# written since meets the rules, or has the architect's budgets, or is
-# redesigned.
+# ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
+# on OI's branch (d8ffd4c: declared inner, no parent yet). Never add to this:
+# a module written since meets the rules, or has the architect's budgets, or
+# is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
     "ooe_confirm": [
         "NGD-5 dep_cq01h>conf_cq01h", "NGD-5 dep_cq01h>replay_cq02h", "NGD-5 fin_cq01h>conf_cq01h",
@@ -176,6 +184,18 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-5 slot_cq03h>pick_r.req_cq03h", "NGD-5 valid_cq03h>cand_cq03h",
         "NGD-5 valid_cq03h>grant_cq03h", "NGD-5 valid_cq03h>lost_cq03h",
         "NGD-5 valid_cq03h>pick_m.req_cq03h", "NGD-5 valid_cq03h>pick_r.req_cq03h",
+        "NGD-6 active_cq03h>grant_cq03h", "NGD-6 active_cq03h>lost_cq03h",
+        "NGD-6 block_cq03h>grant_cq03h", "NGD-6 block_cq03h>lost_cq03h",
+        "NGD-6 busy_cq03h>grant_cq03h", "NGD-6 busy_cq03h>lost_cq03h",
+        "NGD-6 cidx_cq03h>grant_cq03h", "NGD-6 cidx_cq03h>lost_cq03h",
+        "NGD-6 dep_cq03h>grant_cq03h", "NGD-6 dep_cq03h>lost_cq03h",
+        "NGD-6 elig_cq03h>grant_cq03h", "NGD-6 elig_cq03h>lost_cq03h",
+        "NGD-6 iss_cq03h>grant_cq03h", "NGD-6 iss_cq03h>lost_cq03h",
+        "NGD-6 older_m_cq03h>grant_cq03h", "NGD-6 ready_cq03h>grant_cq03h",
+        "NGD-6 ready_cq03h>lost_cq03h", "NGD-6 res_cq03h>grant_cq03h",
+        "NGD-6 res_cq03h>lost_cq03h", "NGD-6 slot_cq03h>grant_cq03h",
+        "NGD-6 slot_cq03h>lost_cq03h", "NGD-6 valid_cq03h>grant_cq03h",
+        "NGD-6 valid_cq03h>lost_cq03h",
     ],
     "ooe_wake": [
         "NGD-3 cls_cq01h", "NGD-3 cmpl_cq01h", "NGD-3 grant_cq01h", "NGD-3 kind_cq01h",
@@ -570,15 +590,34 @@ class Budgets:
         return fails
 
 
-def findings(u, budgets):
+def parented(units, modules):
+    """The design modules some unit's module instantiates. An inner helper
+    among them is timed inside that parent; one that is not is held alone to
+    CCV_NGD_INNER (NGD-6)."""
+    out = set()
+    for u in units:
+        out |= children(u.module, u.spec["files"], modules)
+    return out
+
+
+def findings(u, budgets, parents=frozenset()):
     """The unit's findings, as (key, message): key is what the ratchet lists.
     An inner helper is held only to the stage: its ports are its parent's
-    logic."""
+    logic. Until a module instantiates it (`parents`), it is held alone to
+    CCV_NGD_INNER input to output: the parent's logic will share its stage."""
     t, mod, out = u.t, u.module, []
     if t.rr > STAGE + EPS:
         out.append(("NGD-1", "NGD-1 %s (unit %s): flop to flop %.1f NGD, over the %g stage"
                     % (mod, u.name, t.rr, STAGE)))
     if budgets.is_inner(mod):
+        if mod not in parents:
+            for (i, o), d in sorted(t.io.items()):
+                if i in t.cut or o in t.cut or is_clock(i) or d <= INNER + EPS:
+                    continue
+                out.append(("NGD-6 %s>%s" % (i, o), "NGD-6 %s (unit %s): an inner helper no "
+                            "module instantiates yet, %.1f NGD from input %s to output %s, over "
+                            "the %g it is held to alone (CCV_NGD_INNER)"
+                            % (mod, u.name, d, i, o, INNER)))
         return out
     out += u.h
     for o in t.outs:
@@ -637,8 +676,9 @@ def policy(units, budgets, ratchet, modules, baseline=RATCHET_BASELINE):
     measures, refused. Returns the failures."""
     fails = list(budgets.check(units, modules))
     found = collections.defaultdict(set)
+    parents = parented(units, modules)
     for u in units:
-        for key, msg in findings(u, budgets):
+        for key, msg in findings(u, budgets, parents):
             found[u.module].add(key)
             if key not in ratchet.get(u.module, []):
                 fails.append(msg)
@@ -794,25 +834,34 @@ def block_check(name, top, files, bbs, budgets, block=None, lib=LIB):
 
 def main_check(only=None):
     units = load_units()
+    modules = design_modules()
+    parents = parented(units, modules)
     if only:
         units = [u for u in units if u.name == only]
         if not units:
             raise SystemExit("check-ngd: no unit %s" % only)
     budgets = Budgets.load()
-    modules = design_modules()
     for u in units:
         u.measure(budgets=budgets, modules=modules)
         report(u, verbose=bool(only))
     if only:
-        for _, msg in findings(units[0], budgets):
+        for _, msg in findings(units[0], budgets, parents):
             print("    " + msg)
         return 0
     ratchet = load(RATCHET, "modules", {})
     fails = policy(units, budgets, ratchet, modules)
     for mod in sorted(ratchet):
         n5 = sum(k.startswith("NGD-5") for k in ratchet[mod])
+        n6 = sum(k.startswith("NGD-6") for k in ratchet[mod])
         print("  ratchet: %-14s %2d port finding(s) awaiting budgets, %2d path(s) straight "
-              "through awaiting a redesign" % (mod, len(ratchet[mod]) - n5, n5))
+              "through awaiting a redesign%s" % (mod, len(ratchet[mod]) - n5 - n6, n5,
+                                                 ", %d helper path(s) awaiting a parent" % n6
+                                                 if n6 else ""))
+    inner = sorted(m for m in budgets.inner if any(u.module == m for u in units))
+    if inner:
+        print("  inner helpers: %s" % ", ".join(
+            "%s inside its parent" % m if m in parents else
+            "%s alone, within %g (no module instantiates it yet)" % (m, INNER) for m in inner))
     parts = cg.partitions(cg.design_modules())
     for name, top, files, bbs in parts:
         line, more = block_check(name, top, files, bbs, budgets, block="ccv_%s" % name)
@@ -901,6 +950,35 @@ def selftest():
     expect(not keys(thru, b) and not b.check([thru], thru_mods),
            "a path to an observation port was refused: %s %s"
            % (findings(thru, b), b.check([thru], thru_mods)))
+    #    An inner helper no module instantiates is held alone to
+    #    CCV_NGD_INNER, not the stage (NGD-6): a 6 by 6 multiply, between
+    #    the two, is refused alone, through the policy too, and passes once a
+    #    parent puts it between two of its flops. (The one-gate helper above
+    #    passed alone.)
+    hf = ["%s/ngd_fx_helper.sv" % FIX]
+    hlp, par = fixture("fx_helper", "ngd_fx_helper", hf), fixture("fx_hpar",
+                                                                 "ngd_fx_helper_par", hf)
+    hb = Budgets(inner={"ngd_fx_helper": dict(sig)})
+    hmods = {"ngd_fx_helper": "f", "ngd_fx_helper_par": "f"}
+    hlp.measure()
+    par.measure(budgets=hb, modules=hmods)
+    d = max(hlp.t.io.values())
+    expect(INNER + EPS < d < STAGE and par.t.rr < STAGE,
+           "the helper fixture is not between CCV_NGD_INNER and the stage: %.1f, %.1f in its "
+           "parent" % (d, par.t.rr))
+    k = keys(hlp, hb)
+    expect(k and all(x.startswith("NGD-6") for x in k),
+           "an inner helper over CCV_NGD_INNER, which no module instantiates, passed: %s" % k)
+    hp = parented([hlp, par], hmods)
+    expect(hp == {"ngd_fx_helper"}, "the helper's parent was not found: %s" % hp)
+    expect(not {x for x, _ in findings(hlp, hb, hp)} and not keys(par, hb),
+           "an inner helper inside its parent's stage was refused: %s %s"
+           % (findings(hlp, hb, hp), findings(par, hb)))
+    f = policy([hlp], hb, {}, {"ngd_fx_helper": "f"}, set())
+    expect(any(x.startswith("NGD-6 ngd_fx_helper") for x in f),
+           "the policy passed an inner helper over CCV_NGD_INNER alone: %s" % f)
+    f = policy([hlp, par], hb, {}, hmods, set())
+    expect(not f, "the policy held an inner helper inside its parent to CCV_NGD_INNER: %s" % f)
     # 5. Budget files refused: one whose module is not its file name's, one
     #    for a module that is not a design module, an entry on a port the
     #    module lacks, an entry naming both an arrival and a required time,
@@ -1019,8 +1097,9 @@ def selftest():
         sys.stderr.write("check-ngd selftest: %s\n" % x)
     if not bad:
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
-              "inner helpers, observation ports, budget files, ratchet, coverage, glue, the "
-              "assembled block from its budgets and whole (%d controls)" % checks)
+              "inner helpers alone and inside a parent, observation ports, budget files, ratchet, "
+              "coverage, glue, the assembled block from its budgets and whole (%d controls)"
+              % checks)
     return 1 if bad else 0
 
 

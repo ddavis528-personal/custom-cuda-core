@@ -269,6 +269,14 @@
       "doc": "Default logic budget on each side of a module port, floor(CCV_NGD_BUDGET / 2), so a path between two modules' flops fits CCV_NGD_BUDGET without anyone having planned it: an output is reached within CCV_NGD_PORT of its module's flops, and an input, arriving at CCV_NGD_BUDGET - CCV_NGD_PORT, reaches its module's flops within the rest. The halves hold because no module has logic on a path from an input to an output, nor a parent between its children (NGD-5): every path between two modules' flops crosses one port, in two segments. A port over this one needs explicit budgets; those come from the architect, in the module's <module>.ngd.json beside its RTL, and must converge, each driver's required time no later than its receiver's arrival, which the assembled block checks from those files. tools/check-ngd.py measures every module at its units' parameters."
     },
     {
+      "name": "CCV_NGD_INNER",
+      "value": 16,
+      "status": "target",
+      "source": "Daniel, 2026-10-19 (an inner helper no module instantiates yet: floor(2 * 25 / 3), not the full stage)",
+      "derive": "2 * CCV_NGD_BUDGET // 3",
+      "doc": "Logic depth an inner helper (a combinational module declared inner in its <module>.ngd.json, timed as its parent's logic) is held to, input to output, while no module instantiates it: floor(2 * CCV_NGD_BUDGET / 3). Inside a parent its logic is the parent's and the stage applies; alone, the whole stage would be optimistic, since the parent's own logic will share it. tools/check-ngd.py, NGD-6."
+    },
+    {
       "name": "CCV_NGD_CG_EN",
       "value": 8,
       "status": "target",

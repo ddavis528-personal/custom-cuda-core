@@ -1,5 +1,5 @@
 {
-  "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
+  "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. Or an inner helper that no module instantiates yet, a path input to output over CCV_NGD_INNER (NGD-6, 2026-10-19, keyed from>to), awaiting its parent. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
   "modules": {
     "ooe_confirm": [
       "NGD-5 dep_cq01h>conf_cq01h",
@@ -72,6 +72,31 @@
       "NGD-5 free_cq01h>gnt_v_cq02h",
       "NGD-5 req_cq01h>gnt_idx_cq02h",
       "NGD-5 req_cq01h>gnt_v_cq02h"
+    ],
+    "ooe_select": [
+      "NGD-6 active_cq03h>grant_cq03h",
+      "NGD-6 active_cq03h>lost_cq03h",
+      "NGD-6 block_cq03h>grant_cq03h",
+      "NGD-6 block_cq03h>lost_cq03h",
+      "NGD-6 busy_cq03h>grant_cq03h",
+      "NGD-6 busy_cq03h>lost_cq03h",
+      "NGD-6 cidx_cq03h>grant_cq03h",
+      "NGD-6 cidx_cq03h>lost_cq03h",
+      "NGD-6 dep_cq03h>grant_cq03h",
+      "NGD-6 dep_cq03h>lost_cq03h",
+      "NGD-6 elig_cq03h>grant_cq03h",
+      "NGD-6 elig_cq03h>lost_cq03h",
+      "NGD-6 iss_cq03h>grant_cq03h",
+      "NGD-6 iss_cq03h>lost_cq03h",
+      "NGD-6 older_m_cq03h>grant_cq03h",
+      "NGD-6 ready_cq03h>grant_cq03h",
+      "NGD-6 ready_cq03h>lost_cq03h",
+      "NGD-6 res_cq03h>grant_cq03h",
+      "NGD-6 res_cq03h>lost_cq03h",
+      "NGD-6 slot_cq03h>grant_cq03h",
+      "NGD-6 slot_cq03h>lost_cq03h",
+      "NGD-6 valid_cq03h>grant_cq03h",
+      "NGD-6 valid_cq03h>lost_cq03h"
     ]
   }
 }

@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-5, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
+| `tools/check-ngd.py` | NGD-1 … NGD-6, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -754,7 +754,7 @@ size in a block's budget is counted by register name, every flop of that
 register in each instance, which over-counts a finding that covers only
 part of a register.
 
-### Logic depth: NGD-1 … NGD-5
+### Logic depth: NGD-1 … NGD-6
 
 **25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
@@ -792,7 +792,10 @@ wire: that is the parent's connection. Three exceptions:
   with no ports and no flops. It is flattened into its parent wherever it is
   checked, so its logic is the parent's and must sit beside one of the
   parent's flops like any other: between two of the parent's children, it is
-  glue;
+  glue. Until a module instantiates it, nothing times it inside a parent, so
+  it is held alone to `CCV_NGD_INNER` = floor(2 × 25 / 3) = 16 NGD, input to
+  output: the whole stage would be optimistic, since its parent's logic will
+  share it (Daniel, 2026-10-19);
 - an **observation** output, read only by checkers that sample it at the edge
   as a flop would (`{"observation": true, …}` on the port), held to no port
   rule;
@@ -821,7 +824,7 @@ declares an inner helper. The module is checked against its file, and an
 assembled block is checked from all of them: the budgets must **converge**,
 each driver's required time no later than its receiver's arrival.
 
-Five rules, checked by `tools/check-ngd.py` on every module at its units'
+Six rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
 with no flops):
 
@@ -840,6 +843,9 @@ with no flops):
   module's own level, its children cut out at their budgets, where each
   connection between them must also converge. An inner helper is held to
   NGD-1 alone, its logic counted in its parent's.
+- **NGD-6, an inner helper alone.** An inner helper that no module
+  instantiates yet: every path input to output within `CCV_NGD_INNER`, 16.
+  Once a module instantiates it, its parent's rules time it instead.
 
 **How it is measured.** Yosys synthesises the unit flattened; each clock-gated
 flop becomes a plain flop on its next value (its enable is timed apart, to its
@@ -874,7 +880,8 @@ on the tree; the fixtures exercise both.
 each awaiting the architect's budgets or a redesign; paths straight through
 or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
 groups the logic with one sequential side, or the module's declaration as an
-inner helper. The list only shrinks: an entry that now meets the rule, or one
+inner helper; inner helpers over 16 alone (NGD-6, 2026-10-19, keyed
+`from>to`), each awaiting the parent that instantiates it. The list only shrinks: an entry that now meets the rule, or one
 that was not there when its rule was made, is refused. A design module no
 unit measures is refused.
 
