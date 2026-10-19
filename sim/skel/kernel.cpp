@@ -16,6 +16,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <list>
 #include <set>
 #include <tuple>
 
@@ -386,6 +387,17 @@ private:
     to_miu_.push_back({o.slot, r, o.tid});
   }
 
+  /// A store whose byte mask covers its whole line: nothing of the old line
+  /// survives it, so it needs no read (AR-19). skip-read-partial takes every
+  /// store for one, and a partial store loses the bytes it does not write.
+  bool fullLine(const Bits &req) const {
+    if (k_.brk == "skip-read-partial") return true;
+    const uint32_t mlsb = field(ch().miu_dcu, "byte_mask").lsb;
+    for (unsigned k = 0; k != kLine; ++k)
+      if (!req.bit(mlsb + k)) return false;
+    return true;
+  }
+
   void mlcReq(unsigned coh, uint64_t pa, const Line *data) {
     const Ch &c = ch();
     Bits r = msgOf(c.dcu_mlc);
@@ -406,8 +418,13 @@ private:
         const Line *l = get(m.payload, c.miu_dcu, "coh_op") == kCohRead
                             ? lookup(get(m.payload, c.miu_dcu, "phys_addr"))
                             : nullptr;
-        if (l) hitRsp(o, *l);
-        else q_.push_back(o);
+        if (l) {
+          // A hit answered past a miss in flight or waiting (A-46).
+          if (st_ != kIdle || !q_.empty()) k_.hit("hit_under_miss");
+          hitRsp(o, *l);
+        } else {
+          q_.push_back(o);
+        }
       }
     if (has(c.mlc_dcu, 0)) {
       Receiver::Msg m = take(c.mlc_dcu, 0);
@@ -447,10 +464,18 @@ private:
       const Line *l = get(cur_.req, c.miu_dcu, "coh_op") == kCohRead
                           ? lookup(get(cur_.req, c.miu_dcu, "phys_addr"))
                           : nullptr;
+      const uint64_t pa = get(cur_.req, c.miu_dcu, "phys_addr");
       if (l) {
         hitRsp(cur_, *l);
+      } else if (get(cur_.req, c.miu_dcu, "coh_op") == kCohWrite && fullLine(cur_.req)) {
+        // The whole line written: straight to MLC, with no read first.
+        const Line w = getLine(cur_.req, field(c.miu_dcu, "write_data").lsb);
+        install(pa, w);
+        mlcReq(kCohWrite, pa, &w);
+        st_ = kWaitAck;
+        k_.hit("full_line");
       } else {
-        mlcReq(kCohRead, get(cur_.req, c.miu_dcu, "phys_addr"), nullptr);
+        mlcReq(kCohRead, pa, nullptr);
         st_ = kWaitLine;
       }
     }
@@ -497,6 +522,7 @@ private:
     bool hit = true;                 ///< every line hit in DCU
     bool mlc_miss = false;           ///< some line's fill missed MLC
     uint64_t due = 0;                ///< a global load's L1-contract cycle
+    uint64_t serial = 0;             ///< names it to the DCU responses
   };
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
@@ -507,11 +533,18 @@ private:
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
   std::deque<Job> committed_;
-  bool active_ = false;
-  Job job_;
+  /// Jobs in flight, oldest first, up to CCV_MIU_PIPES (AR-19): each sends
+  /// its line requests and completes on its own, so DCU holds requests from
+  /// more than one memop and a hit is not held behind an older miss. One
+  /// starts a cycle, in issue order; a committed store's write never shares
+  /// a line with a job in flight, and a load never with a store's write
+  /// queued or in flight, so neither reads a line around the other.
+  std::list<Job> jobs_;
+  uint64_t serial_ = 0;
   bool dropped_ = false;
   IdPool ids_;
-  std::map<unsigned, uint64_t> outstanding_;   ///< line, by req_id to DCU
+  /// The job and line of each request to DCU, by req_id.
+  std::map<unsigned, std::pair<uint64_t, uint64_t>> outstanding_;
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
 
   void work() override {
@@ -567,21 +600,24 @@ private:
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
         auto o = outstanding_.find(id);
-        if (!active_ || o == outstanding_.end()) {
+        if (o == outstanding_.end()) {
           k_.fail("miu: a DCU response for req_id %u, which is not outstanding", id);
           continue;
         }
-        const uint64_t line = o->second;
+        const auto [serial, line] = o->second;
         outstanding_.erase(o);
         ids_.release(id);
-        job_.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
-        if (!get(m.payload, c.dcu_miu, "hit")) job_.hit = false;
-        if (get(m.payload, c.dcu_miu, "mlc_miss")) job_.mlc_miss = true;
-        ++job_.back;
+        for (Job &j : jobs_)
+          if (j.serial == serial) {
+            j.got[line] = getLine(m.payload, field(c.dcu_miu, "read_data").lsb);
+            if (!get(m.payload, c.dcu_miu, "hit")) j.hit = false;
+            if (get(m.payload, c.dcu_miu, "mlc_miss")) j.mlc_miss = true;
+            ++j.back;
+          }
       }
 
-    if (!active_) start();
-    if (active_) advance();
+    if (jobs_.size() < kMiuPipes) start();
+    advance();
     // A hit's completion and data leave together at the contract cycle, or
     // not as a hit at all: if either channel has no credit then, both go
     // late and OOE takes it for a miss (A-46), never a completion on time
@@ -625,9 +661,9 @@ private:
   void start() {
     const Ch &c = ch();
     if (!committed_.empty()) {
-      job_ = committed_.front();
+      if (inFlight(committed_.front(), false)) return;
+      launch(committed_.front());
       committed_.pop_front();
-      active_ = true;
       return;
     }
     if (order_.empty()) return;
@@ -659,9 +695,6 @@ private:
     // must hold is that no lane is active outside the issue group.
     j.active = uint32_t(get(am, c.rcu_miu, "active_mask"));
     const uint32_t issue = uint32_t(get(mo.msg, c.ooe_miu, "issue_mask"));
-    if (j.active & ~issue)
-      k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
-              tag, j.active & ~issue);
     // The AGU (§5.1): .global is (base << 16) + (index << scale) + disp, and
     // the scale is log2 of the element size, from chwidth, when enabled.
     // .shared has no window shift. disp is sign-extended from CCV_W_DISP.
@@ -701,6 +734,12 @@ private:
         }
       }
     }
+    // A load waits, and every memop behind it, while a store's write to one
+    // of its lines is in flight: DCU would answer it from the line as it was.
+    if (!j.store && inFlight(j, true)) return;
+    if (j.active & ~issue)
+      k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
+              tag, j.active & ~issue);
     check(j, am);
     if (j.lines.size() > 1) k_.hit("line_split");
     k_.peak("lines_peak", j.lines.size());
@@ -722,8 +761,23 @@ private:
           if (sl.line == lr.line)
             k_.fail("miu: load overlaps an uncommitted store -- forwarding is "
                     "not modelled");
-    job_ = j;
-    active_ = true;
+    launch(j);
+  }
+
+  void launch(Job j) {
+    j.serial = ++serial_;
+    jobs_.push_back(std::move(j));
+  }
+
+  /// Whether a job in flight, any or only a store's write, touches one of
+  /// `j`'s lines.
+  bool inFlight(const Job &j, bool stores_only) const {
+    for (const Job &f : jobs_)
+      if (!stores_only || f.store)
+        for (const LineReq &a : f.lines)
+          for (const LineReq &b : j.lines)
+            if (a.line == b.line) return true;
+    return false;
   }
 
   /// The addresses and store data MIU computed from what it was SENT, against
@@ -771,9 +825,13 @@ private:
   void advance() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.miu_dcu].rate;
-    // Up to one line request per DCU slot per cycle.
-    if (job_.next != job_.lines.size() && !ids_.any()) k_.hit("dcu_id_wait");
-    for (unsigned s = 0; s != rate && job_.next != job_.lines.size(); ++s) {
+    // Up to one line request per DCU slot per cycle, the oldest job's first.
+    bool want = false;
+    for (const Job &j : jobs_) want = want || j.next != j.lines.size();
+    if (want && !ids_.any()) k_.hit("dcu_id_wait");
+    unsigned s = 0;
+    for (Job &job_ : jobs_)
+    for (; s != rate && job_.next != job_.lines.size(); ++s) {
       if (!can(c.miu_dcu, s) || !ids_.any()) continue;
       const LineReq &lr = job_.lines[job_.next++];
       Bits r = msgOf(c.miu_dcu);
@@ -790,10 +848,20 @@ private:
       const uint64_t tid =
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
-      outstanding_[id] = lr.line;
+      outstanding_[id] = {job_.serial, lr.line};
     }
-    if (job_.back != job_.lines.size()) return;
-    if (!job_.store) {
+    for (auto it = jobs_.begin(); it != jobs_.end();) {
+      if (it->back != it->lines.size()) { ++it; continue; }
+      if (!it->store) complete(*it);
+      it = jobs_.erase(it);
+    }
+  }
+
+  /// A load with every line back: its data to RCU and its completion to OOE,
+  /// at the L1 contract if every line hit in time, else as a miss.
+  void complete(const Job &job_) {
+    const Ch &c = ch();
+    {
       Bits d = msgOf(c.miu_rcu);
       put(d, c.miu_rcu, "rob_tag", job_.tag);
       put(d, c.miu_rcu, "active_mask", job_.active);
@@ -806,8 +874,8 @@ private:
       const Record *r = rec(job_.tid, "miu");
       for (unsigned l = 0; l != kLanes; ++l) {
         if (!((job_.active >> l) & 1u)) continue;
-        const Line &ln = job_.got[k_.brk == "one-line" ? job_.lines[0].line
-                                                       : job_.addr[l] / kLine * kLine];
+        const Line &ln = job_.got.at(k_.brk == "one-line" ? job_.lines[0].line
+                                                          : job_.addr[l] / kLine * kLine);
         const unsigned off = unsigned(job_.addr[l] % kLine);
         uint32_t v = 0;
         for (unsigned b = 0; b != 4; ++b) v |= uint32_t(ln[off + b]) << (8 * b);
@@ -829,11 +897,10 @@ private:
         to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
       }
     }
-    active_ = false;
   }
 
   bool busy() const override {
-    return active_ || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();
   }
@@ -2060,6 +2127,7 @@ private:
         mispredict = r.taken != 0;
       }
       send(c.fet_dec, s, f, instrUid(r.seq));
+      if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
       ++next_;
       if (mispredict) { await_redirect_ = true; break; }
     }
@@ -2264,12 +2332,15 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
     overflows += m.rx(s).overflows();
     leaks += m.rx(s).leaks();
   }
-  std::printf("KERNEL name=%s finished=%d cycles=%llu retired=%llu "
+  const uint64_t from_fetch =
+      k.fetched && e.finish >= k.first_fetch ? e.finish - k.first_fetch : 0;
+  std::printf("KERNEL name=%s finished=%d cycles=%llu from_fetch=%llu retired=%llu "
               "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
               "mem_mismatch=%u check_failures=%llu class_violations=%llu "
               "overflows=%llu credit_leaks=%llu channels_used=%u/%u violations=%d\n",
               k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
-              (unsigned long long)k.retired, k.orc.issue_groups,
+              (unsigned long long)from_fetch, (unsigned long long)k.retired,
+              k.orc.issue_groups,
               r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
               r.mem_mismatch, (unsigned long long)k.failures,
               (unsigned long long)k.class_violations,

@@ -220,7 +220,7 @@ int main(int argc, char **argv) {
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
                       brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
-                      brk == "ignore-mask";
+                      brk == "ignore-mask" || brk == "skip-read-partial";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

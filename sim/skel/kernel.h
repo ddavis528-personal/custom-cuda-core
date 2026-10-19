@@ -131,6 +131,11 @@ struct Kernel {
   std::vector<unsigned> prat0;
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
+  /// The cycle FET first sent DEC an instruction. The KERNEL line counts the
+  /// run from it beside the total (from_fetch, AR-19), so a comparison need
+  /// not carry the launch and the cold ITLB and ifill misses before it.
+  uint64_t first_fetch = 0;
+  bool fetched = false;
   bool exited = false;
   uint64_t failures = 0;                           ///< check failures
   uint64_t class_violations = 0;
@@ -143,8 +148,9 @@ struct Kernel {
   /// COVER line's order; every bin prints, reached or not.
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
-      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line",
-      "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "reexec", "lane_byp"};
+      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
+      "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
+      "lane_byp"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
