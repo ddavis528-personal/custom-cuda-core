@@ -91,7 +91,7 @@ module ooe_freelist #(
     logic [A*W-1:0] idx;
     for (int k = 0; k < A; k++) begin
       v[k]          = k < 32'(st[OCNT +: LB]);
-      idx[k*W +: W] = st[OBUF + k * W +: W];
+      idx[k*W +: W] = v[k] ? st[OBUF + k * W +: W] : '0;
     end
     grants = {v, idx};
   endfunction
