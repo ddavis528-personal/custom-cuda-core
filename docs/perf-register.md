@@ -636,7 +636,12 @@ it.
   checked at resolution like any branch. The convention makes it easy:
   `call` writes a fixed, ABI-named link register (R14 for `call.short`), and
   frames are static with no recursion (CP-9), so the stack's depth bounds
-  the call depth that predicts correctly.
+  the call depth that predicts correctly. Compiled code always calls on R14
+  and returns with `ret r14`, while an indirect call's stub jumps with
+  `ret rF` for some other register, so FET can tell a return from a jump by
+  the register alone, and the stack is exact for everything the compiler
+  emits (CP's response to AR on CP-9). A direct call's target is PC-relative
+  and known at decode.
 - **Cost:** a few entries of 32-bit code addresses per tier-1 warp. It must
   be checkpointed with the branch state, so a mispredict or a demotion
   restores it. A divergent return, where lanes' `rs` differ, splits PC
