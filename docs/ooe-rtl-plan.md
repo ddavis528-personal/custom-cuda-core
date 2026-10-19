@@ -82,7 +82,10 @@ Built (`rtl/ooe/`):
   192 entries and 23.4 at 48 (gated-flop flow; 23.5 and 24.7 before): a
   log-depth find-first per bank, the buffer rebuilt slot by slot as a
   gather, the buffered mask kept as state, and the taken count encoded from
-  the request prefix rather than counted.
+  the request prefix rather than counted. The grant ports carry the head
+  from the flops alone (OA's stage-boundary map, item 5): head entry k is
+  available while the buffer holds more than k, and rename's port k takes
+  it when it asks, so no request reaches an output (NGD-5).
 
   Local clock gating (TI-14): the free bits are one gate, clocked on an
   allocation or a free; the buffer, its count, the bank pointers and the
