@@ -59,6 +59,7 @@ it.
 | PF-34 | FP32 atomic add at the RMW site, with same-address combining for `red` | ISA, DCU, SPM, MIU | deferred (IS-14; AR-21) |
 | PF-35 | A one-instruction warp reduction in RCU | ISA, RCU, compiler | deferred (IS-14) |
 | PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
+| PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
 
 ## Entries
 
@@ -643,3 +644,26 @@ it.
   resolution.
 - **Signal:** returns per thousand instructions and cycles each waits for
   resolution, on CoreMark (AR-20), to add when FET models a predictor.
+
+### PF-37 Merge masked lanes at write-back in RCU
+
+- **Now:** a guarded or masked lane op carries the old destination's value
+  to the lane as `merge_data`, the fourth operand port on `ccv_rcu_lane_ops`,
+  and an inactive lane returns it as its result on `ccv_lane_rcu_res` (A-33,
+  A-44, A-51). So the merge value crosses the lane both ways. ISA v1.8 §1a.1
+  forbids only toggling the inactive lane's ALU and its operand registers;
+  the buses still carry the value (IS-10).
+- **Alternative:** RCU merges at write-back. It re-reads the old destination
+  from the PRF, as A-43 already does for predicates, and writes only the
+  active lanes' results over it. The old destination's producer has always
+  written by then (OA's response IS-10). The lanes then never see the merge
+  value.
+- **Cost:** one 1,024-bit PRF read per GPR write port, eight more reads
+  beside the 16 at issue, which is half as many again on a 192-row flop
+  array. Against that: `merge_data` leaves `ccv_rcu_lane_ops`, 32 of its 344
+  bits a lane and 1,024 of its 11,008 wires (AR-18), and masked-lane toggling
+  stops on both lane buses.
+- **Signal:** the share of lane ops issued with a partial mask or a guard,
+  and the bus toggle energy in masked lanes, on O-33's own kernels (14% and
+  21.5% lane-activation savings, ISA v1.8 §1a.1). To be settled by AR with the
+  RCU session.
