@@ -556,6 +556,7 @@ mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1
 hit    l1_hit=4 l1_late=0
+late   l1_late=1 l1_hit=1
 byp    copy=1 lane_byp=4
 plog   merge=3
 KERNELS
