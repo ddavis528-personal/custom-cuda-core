@@ -40,7 +40,9 @@ leads a payload by a cycle, and why a lead field is rare.
 (`test/**/cg-units.json`, and every repeater the design instantiates,
 `rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
 flops and fewer than 8 flops outside the rules, and what its modules take
-must stay within 2% of each block's flops, per instance. Past that,
+must stay within 2% of each block's flops, per instance; a repeater's
+control pulses and flopped reset count only there, against its wrapper's 2%
+(2026-10-19), its lead slice against its own allowance. Past that,
 refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
 the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:

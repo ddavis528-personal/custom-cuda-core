@@ -47,9 +47,12 @@ other channel's payload follows the previous-cycle rule entirely.
 
 **Every instantiation is checked like any module.** `tools/gen-top.py`
 writes `rtl/top/rpt-units.json`, one unit per distinct repeater the design
-instantiates; `check-cg.py` and `check-ngd.py` measure each, its pulses,
-flopped reset and first-stage lead within the larger of 2% of its flops and
-fewer than 8. None is repeated today.
+instantiates; `check-cg.py` and `check-ngd.py` measure each, its
+first-stage lead within the larger of 2% of its flops and fewer than 8. Its
+pulses (valid, wake, credit and stall at every stage) and its flopped reset
+are the channel's own control, captured every cycle as any receiver's are,
+and count against the hardening wrapper's 2% instead (Daniel, 2026-10-19).
+None is repeated today.
 
 ## What a repeated link changes
 
