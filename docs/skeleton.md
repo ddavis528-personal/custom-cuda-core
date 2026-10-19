@@ -584,7 +584,7 @@ ID, rendered in `docs/payload-spec.md`.
    (1024) and `byte_mask` (128), mirroring `ccv_miu_spm_req` (56 → 1208 bits
    at rate 4). A separate store-data channel would duplicate flow control for
    nothing, and byte granularity is enough because a 4-bit access faults.
-2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16,
+2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 29,
    the widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`,
    and the shift is derived from `chwidth`. ALU immediates ride on
    `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register

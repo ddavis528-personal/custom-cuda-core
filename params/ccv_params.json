@@ -346,10 +346,10 @@
     },
     {
       "name": "CCV_W_DISP",
-      "value": 16,
+      "value": 29,
       "status": "isa",
-      "source": "Skeleton review response (2026-09-25)",
-      "doc": "Memory displacement, sign-extended at the AGU. The widest memory-format offset is cas's 16-bit signed field (ISA v1.6 §3); Format D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8 all fit. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-155, fixed.)"
+      "source": "Skeleton review response (2026-09-25); IS-11 (2026-10-19)",
+      "doc": "Memory displacement, sign-extended at the AGU. The widest memory-format offset is the 48-bit Format D's: a 48-bit instruction is its 32-bit sibling plus [47:32] (ISA v1.7 §3), so D's simm13 becomes 29 bits and D-prime's simm10 26. The 32-bit forms all fit: cas's 16-bit signed field, D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8. Was 16, cas's field, until IS-11 found the 48-bit siblings truncated. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-155, fixed.)"
     },
     {
       "name": "CCV_W_CTAID",
@@ -758,7 +758,7 @@
       "decided_at": "Daniel, on IS-7",
       "source": "AR-12, OA's response AR-12 (2026-10-08); DA's response IS-7 (2026-10-09)",
       "require": "CCV_P_FOOT_MIN_FP <= CCV_SECTIONS",
-      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines it: section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1. Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 2.04x over fp32 at 1 against 1.47x at 2 (four warps). The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS)."
+      "doc": "CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines the formats (section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1); the one-section minimum is Daniel's decision (DA's response IS-7), not the ISA's (IS-11). Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 2.04x over fp32 at 1 against 1.47x at 2 (four warps). The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS)."
     },
     {
       "name": "CCV_P_FOOT_MIN_ADDR",
@@ -1085,7 +1085,7 @@
       "derive": "10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",
@@ -1187,7 +1187,7 @@
       "status": "preliminary",
       "churn": "med",
       "source": "Payload widths pass (2026-09-25)",
-      "doc": "Architectural memory operation: load, store, atomic family, prefetch, fence. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.",
+      "doc": "Architectural memory operation: load, store, atomic family, fence. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.",
       "decided_at": "MIU block session"
     },
     {
@@ -1237,21 +1237,17 @@
     },
     {
       "name": "CCV_L_W_SPACE",
-      "value": 3,
-      "status": "preliminary",
-      "churn": "low",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Memory space: global, shared, const, local, with spare codes.",
-      "decided_at": "OOE/MIU session"
+      "value": 1,
+      "status": "isa",
+      "source": "Payload widths pass (2026-09-25); OA's response IS-11 (2026-10-19)",
+      "doc": "Memory space: 0 global, 1 shared. No instruction produces another: .local and .const are ld.global and st.global under compiler conventions (ISA v1.7 §5), and .const protection is MIU's address window (O-51). Was 3 bits with const and local codes until IS-11."
     },
     {
       "name": "CCV_L_W_ORDERING",
-      "value": 4,
-      "status": "preliminary",
-      "churn": "med",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Two bits of order and two of scope. Whether scope is a separate field is the open part.",
-      "decided_at": "OOE/MIU session -- is scope a separate field?"
+      "value": 5,
+      "status": "isa",
+      "source": "Payload widths pass (2026-09-25); OA's response IS-11 (2026-10-19)",
+      "doc": "A fence's ordering, in the ISA's layout: [2:0] the scope and [4:3] the ordering, the fence's [10:8] and [12:11] (ISA v1.7 §3, Format E). Meaningful only on a fence and reserved zero otherwise: no load, store or atomic carries an ordering qualifier. Was 4 bits, two of order and two of scope, until IS-11."
     },
     {
       "name": "CCV_L_W_ITLB_ENTRY",
