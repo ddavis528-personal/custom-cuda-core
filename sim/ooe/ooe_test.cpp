@@ -1467,8 +1467,8 @@ void sweepSections() {
   // AR-16: under the decided default (place 0, home = slot index) one
   // warp's narrow ops share a section, so its rows are 1.0x by design.
   std::printf("One-warp rows at place=slot are 1.0x by design (AR-16): narrow rates are aggregate across warps.\n\n");
-  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
-              "|---|---|---|---|---|---|---|---|---|---|\n");
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | element ops/cycle | outside setp cycles | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
   for (const Kern &k : ks)
     for (unsigned warps : {1u, 4u}) {
       double ref = 0;
@@ -1480,7 +1480,7 @@ void sweepSections() {
           c.sectioned = true;
           c.place = place;
           c.loads_pass_loads = oa13;
-          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0;
+          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0, narrow = 0, full = 0;
           // [int, FP] x [footprint, spread]: op count and section sum.
           uint64_t n[2][2] = {}, sum[2][2] = {};
           const unsigned seeds = 4;
@@ -1504,14 +1504,17 @@ void sweepSections() {
             }
             for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
             lost += e.core.counters["select.lost_resource"];
+            narrow += e.core.counters["select.lane_elem"];
+            full += e.core.counters["select.lane_ctl_cycles"];
           }
           const double cy = double(cyc) / seeds;
           if (place == 0 && !oa13) ref = cy;
           auto mean = [&](int g, int sp) { return n[g][sp] ? double(sum[g][sp]) / double(n[g][sp]) : 0.0; };
           char fp[32] = "-";
           if (n[1][0]) std::snprintf(fp, sizeof fp, "%.2f / %.2f", mean(1, 0), mean(1, 1));
-          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps, pn[place],
-                      oa13 ? "on" : "off", cy, cy / ref, mean(0, 0), mean(0, 1), fp,
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps,
+                      pn[place], oa13 ? "on" : "off", cy, cy / ref, double(narrow) / double(cyc),
+                      cyc > full ? double(narrow) / double(cyc - full) : 0.0, mean(0, 0), mean(0, 1), fp,
                       cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
         }
     }

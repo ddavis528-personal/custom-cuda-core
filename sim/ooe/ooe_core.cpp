@@ -1623,6 +1623,16 @@ void Core::selectSectioned() {
   for (size_t i = 0; i != cand.size(); ++i)
     if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
+  // IS-9: lane grants that write a register (element work), and the cycles
+  // a lane op writing none (a setp: loop control) holds sections.
+  bool ctl_lanes = false;
+  for (unsigned e : grant) {
+    const RsEntry &x = rs_[e];
+    if ((x.res & 0x10u) || !(x.res & 0xFu) || x.copy) continue;
+    if (slot_[x.slot].rob[x.rob].alloc_gpr) count("select.lane_elem");
+    else ctl_lanes = true;
+  }
+  if (ctl_lanes) count("select.lane_ctl_cycles");
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
   // inject_double_grant: the oldest lane op, and the oldest memop, left out
   // are granted anyway, onto sections or pipes a granted op holds.
