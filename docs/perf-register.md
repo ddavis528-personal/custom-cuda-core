@@ -54,6 +54,8 @@ it.
 | PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35) |
 | PF-30 | 4-bit work at 8x: nibble sub-sections | LANE, RCU, rename, scheduler | deferred (DA's response OI-29) |
 | PF-31 | A warp-uniform register file and scalar datapath | ISA, RCU, rename, compiler | deferred (CP-7, compiler F-106) |
+| PF-32 | Branch resolution fed by a lane compare at the bypass point | LANE, RCU, scheduler | deferred (S1 traces) |
+| PF-33 | Fewer block crossings on the L1-hit path | MIU, DCU, RCU, partitioning | deferred (S1 traces; Q-18) |
 
 ## Entries
 
@@ -305,9 +307,16 @@ it.
 
 ### PF-20 Rename in the cycle a uop arrives
 
-- **Now:** a uop is written into the decode queue the cycle it lands,
-  renamed the next and selectable the one after. That is two cycles before a
-  ready uop can issue.
+- **Now:** a uop is written into the decode queue the cycle it lands, then
+  takes three rename stages and a payload stage before it is selectable
+  (`rename_stages` = 3 in the model; [`ooe-model.md`](ooe-model.md)).
+  (Updated 2026-10-19 by AR: this line said two cycles, which predates the
+  three-stage rename.)
+- **Measured (S1 traces, 2026-10-19):** on `loop`, every iteration ends in a
+  redirect, and the refill from branch issue to the next issue is 15
+  cycles. `rename_stages` = 1 takes the kernel from 2,736 to 2,536 cycles
+  (7%). FET is a stub that predicts not-taken, so the mispredict rate is
+  pessimistic, but the per-redirect cost is the model's.
 - **Alternative:** bypass an empty decode queue straight into rename, and
   select an entry with no producers the cycle it renames.
 - **Cost:** a longer rename path, and a select input from the rename
@@ -508,3 +517,62 @@ it.
   values hold when rename stalls on an empty free list (to add, in the
   OOE model). Revisit when either is material on a real kernel. The ISA
   half is IS's (CP-7).
+
+### PF-32 Branch resolution fed by a lane compare at the bypass point
+
+- **Now:** `setp` executes in the lane and its predicate returns to RCU in
+  `ccv_lane_rcu_res`'s `sec_pred_out`. The branch resolves in RCU, and
+  predicate results take no bypass (DA's responses OA-4; V-48), so a
+  branch waits the full `CCV_LAT_LANE` = 7 after its compare issues.
+- **Measured (S1 traces, 2026-10-19):** on `loop`, compare to branch is 7 of
+  each iteration's 27 cycles: fetch to first issue 8, add to compare 4,
+  compare to branch 7, branch issue to redirect 5, redirect to FET 2, and
+  a section conflict 1.
+- **Why it matters beyond a stub:** IS-4 makes prediction uniform-only in
+  the first build, so every divergent branch waits for resolution, as does
+  every mispredict. Compare-to-branch latency is on the critical path of
+  both.
+- **Alternative:** deliver a lane compare's predicate to RCU's branch
+  resolution at the lane's bypass point, `CCV_LAT_LANE_BYP` = 4, rather than
+  at write-back. Branches that consume a lane compare get a wake offset of
+  their own.
+- **Cost:** the predicate already travels from lane to RCU; it would have to
+  leave the lane earlier than the result, as an early field or a narrow
+  lockstep channel of its own (32 bits a lane array, one per section).
+  RCU's branch unit gains one bypass input, and the scheduler gains one
+  offset.
+- **Signal:** cycles from a compare's issue to its dependent branch's issue
+  (to add), weighted by branches that resolved a divergence or a
+  mispredict. Revisit when FET predicts and the corpus has divergent
+  kernels, both on roadmap Part 0's next list.
+
+### PF-33 Fewer block crossings on the L1-hit path
+
+- **Now:** an L1-hit load's dependant wakes `CCV_LAT_L1_WAKE` = 16 cycles
+  after the load issues. Of those, 5 are RCU's address read
+  (`CCV_LAT_RCU_ADDR`, a placeholder) and 7 are the L1 hit
+  (`CCV_LAT_L1_HIT`), which itself includes the MIU-to-DCU round trip. The
+  rest are crossings at `CCV_LAT_HOP` = 2: issue to RCU, address to MIU, and
+  data back to RCU, less the issue crossing the dependant pays too. So
+  issue to data in RCU is 2 + 5 + 2 + 7 + 2 = 18 cycles, about 10 of them
+  crossings once the MIU-DCU pair is counted. A load whose address comes
+  from a load also waits for confirmation (PF-4) and for completion at
+  `CCV_LAT_L1_CMPL` = 18.
+- **Measured (S1 traces, 2026-10-19):** on `hit`, an L1-hit pointer chase is
+  19 cycles from load to load. A miss is 34 cycles from issue to completion
+  with a 10-cycle DRAM placeholder; about 20 of the 34 are ten crossings.
+  The stubs run at contract latency, so these are the parameters' numbers,
+  not the stubs'.
+- **Alternative:** return L1-hit data from DCU straight to RCU, one crossing
+  instead of two through MIU. Or fold DCU's lookup into MIU, which removes
+  the MIU-DCU round trip. Either is a partitioning change. Co-locating the
+  AGUs with RCU (Q-18) shrinks the widest interface but removes no crossing
+  by itself.
+- **Cost:** a block boundary moves, and a block boundary is a swap boundary.
+  DCU would need a second data port, to RCU, and MIU would lose sight of
+  hit data it now forwards, which matters for store-to-load forwarding
+  (PF-7).
+- **Signal:** load-to-load interval on address chains, and the share of
+  `CCV_LAT_L1_WAKE` that is crossings, which follows from the parameters.
+  Revisit with Q-18, before floorplan, and once the corpus has pointer
+  chasing or indexed gathers whose index is loaded.
