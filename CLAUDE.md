@@ -113,6 +113,9 @@ https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5. Read its Conventions tab firs
   **OA**; **AR** is the top-level architect; **DA** is Daniel.
 - At session start, search every tab for `TI` in a Needs column (OA-11), and
   answer in the TI tab's responses table.
+- The register skill, `.claude/skills/register/SKILL.md` (OA-18), says how:
+  notify on every write that needs another agent, read only the rows a notice
+  names, and sweep daily from per-tab bookmarks.
 - A per-block session raises an interface change in its own tab with `TI` in
   Needs. The closed A-n register (A-25 to A-75) is pinned in
   `docs/design-snapshots/interface-review.md`; its open items moved to the
