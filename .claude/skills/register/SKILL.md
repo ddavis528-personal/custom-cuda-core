@@ -34,6 +34,9 @@ register row you wrote this turn, decide who must hear of it:
 - **A response (Re = X-n):** the owner of X-n, which is X's prefix. That is
   how a raiser learns it was answered. Add anyone the response asks for
   something by name.
+- **A DA row you recorded:** every agent whose items it settles or changes.
+  Otherwise Daniel's decision reaches them only at the next sweep, up to a
+  day late (AR's response OA-18).
 - **Skip** yourself, `DA` (Daniel is told in your report), `—`, and rows
   that ask nothing of anyone (a close-out, an Impl rollup).
 
