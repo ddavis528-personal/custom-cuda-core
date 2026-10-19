@@ -549,14 +549,14 @@ while read -r k want; do
   fi
 done <<'KERNELS'
 unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
-gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1
 hit    l1_hit=4 l1_late=0
-late   l1_late=1 l1_hit=1
+late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=4
 plog   merge=3
 KERNELS
@@ -747,15 +747,17 @@ fi
 # no-resource-cap makes the model grant a second lane op and a second memop
 # onto resources already held (inject_double_grant): a second op claims a
 # group already held, and RCU refuses every slot the two share: the lane
-# sections for one pair, the pipes for two more.
+# sections for one pair, the pipes for three more. (Two more until MIU was
+# pipelined, AR-19: vadd's memops now complete sooner, so a third pair is
+# ready to issue together. 12 slots then, 16 now.)
 "$SKEL" --kernel "$K" --break no-resource-cap >"$B/kernel_no-resource-cap.log" 2>&1
 log="$B/kernel_no-resource-cap.log"
 if grep -q "^CHECK rcu: V-60: seq 3's footprint 1111 overlaps seq 2's at S0" "$log" &&
    grep -q "^CHECK rcu: V-60: seq 6's footprint 1111 overlaps seq 4's at P0" "$log" &&
-   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = 12 ]; then
-  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: 3 pairs, 12 slots, sections and pipes)"
+   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = 16 ]; then
+  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: 4 pairs, 16 slots, sections and pipes)"
 else
-  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want 12): $(grep '^KERNEL' "$log")"
+  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want 16): $(grep '^KERNEL' "$log")"
 fi
 # A register is a row and a position; a 32-bit one fills its row from 0.
 # OOE naming one at position 1 overruns the row: RCU refuses it, the lanes

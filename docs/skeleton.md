@@ -496,15 +496,15 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json
 ```
 
 vadd (`c[i] = a[i] + b[i]`, 32 threads, one warp, 17 issue groups) runs to
-completion in **199 cycles** on functional stubs behind the same ports the S0
-exerciser used, with the checker bank judging every slot: 168 of them from the
+completion in **186 cycles** on functional stubs behind the same ports the S0
+exerciser used, with the checker bank judging every slot: 155 of them from the
 cycle FET sends DEC its first instruction, the KERNEL line's `from_fetch`
 (AR-19). The first 31, the launch and the cold ITLB and ifill misses, are the
 same in every kernel, so comparisons between kernels or stubs run from the
 first fetch. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
-violations, and the bank's 575 `EV_CH_XFER` events matching every launch
+violations, and the bank's 644 `EV_CH_XFER` events matching every launch
 exactly. It carries traffic on 27 of the 48 channels; the 21 idle ones are
 SPM, barriers, migration (both pairs, its command and done, and OOE's RAT map), probes, faults and branch redirect
 (vadd's one branch is never taken, so it frees its checkpoint on `ooe_fet_ckpt_free` instead), none of which vadd reaches.
