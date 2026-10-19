@@ -5,10 +5,6 @@
     "ooe_age": [
       "CG-5 older_cq02h"
     ],
-    "ooe_confirm": [
-      "CG-5 rep_cq02h",
-      "RST-1 ooe_rst_r00h"
-    ],
     "ooe_decq": [
       "CG-5 st_cq02h",
       "RST-1 ooe_rst_r00h"

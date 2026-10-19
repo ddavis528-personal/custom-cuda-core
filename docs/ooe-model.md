@@ -38,8 +38,8 @@ selected in t+2. Inside a cycle:
 
 1. Dones and completions: ROB completion, branch outcome, a load's wake when
    it wakes on its completion, and L1-hit confirmation.
-2. Timed wakes. A missed L1 slot withdraws its wake, and one cancel hop
-   runs. Copy-only ops land. Results confirm, one level a cycle. Confirmed
+2. One cancel hop, from the state at the cycle's start (OI-50). Timed
+   wakes. A missed L1 slot withdraws its wake. Copy-only ops land. Results confirm, one level a cycle. Confirmed
    RS entries free. Squashed entries whose op has landed release.
 3. RAU's alloc and demote, kill, and barrier release.
 4. Retire: up to `CCV_RETIRE_PER_ROB` per warp, with store commits sharing the
@@ -60,18 +60,19 @@ field:
   from the grant, so producer and dependant move together. Only the
   contracts timed from the channel add the stage: the L1 shadow and V-44,
   V-35's done bound, and a copy-only op's landing.
-- **Transitive cancel moves one hop a cycle** (`cancelHop`), as
-  `ooe_confirm` builds it. Each cycle, after its misses are found, one hop
-  returns to Waiting every issued, unconfirmed entry that depends on an
-  entry that missed this cycle or returned to Waiting last cycle. The hop
-  is decided whole before it is applied. A miss's direct dependants
-  therefore go back in the miss's own cycle, and a miss that meets a
-  cancel already spreading shares its hop rather than taking a second.
-  V-59 makes that safe: every wake offset is at least 3, 2 plus the hop,
-  so the cancel lands before the next hop's ready computation.
-  `Config::check` refuses a shorter offset (unit test `v-59`). V-15 is
-  checked only once a cancel has settled. The wavefront it has not reached
-  is exactly what V-15 forbids at rest. At today's latencies a second hop
+- **Transitive cancel is a level, one hop a cycle** (`cancelHop`), as
+  `ooe_confirm` builds it (OA's response OI-50). At the start of every
+  cycle, before its misses are found, one hop returns to Waiting every
+  issued, unconfirmed entry whose row is no longer ready: a producer it
+  issued on is not issued, or has missed its L1 slot (`msd`, set at the
+  miss and cleared at the load's completion, after that cycle's hop, so
+  it clears only once nothing issued depends on it, V-68). The hop is
+  decided whole before it is applied. A miss's direct dependants therefore
+  go back in the cycle after the miss, and each further level a cycle
+  later (V-67). That is a cycle later than before; over 48 seeds it costs
+  nothing (963 cycles). V-59 still holds the wake offsets at 3 or more,
+  now as a performance check (unit test `v-59`). V-15 is checked only
+  once a cancel has settled, as before. At today's latencies a second hop
   never happens: the L1 shadow (CCV_LAT_L1_WAKE 16, the miss found at 19)
   is shorter than any dependant's own wake. One random seed in seven runs
   the long shadow the controls use, so the later hops are exercised.

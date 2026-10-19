@@ -192,32 +192,28 @@ Built (`rtl/ooe/`):
   clocks nothing. The earlier 13.9 NGD was short: Yosys dropped the age
   increment of the `(age == AMAX) ? AMAX : age + 1` form, which only the
   CG replay (the netlist against the bench's trace) showed.
-- **`ooe_confirm`**, confirmation and transitive cancel. Its hop returns
-  to Waiting every issued, unconfirmed entry that depends on an entry
-  that missed this cycle or returned to Waiting last cycle, through a
-  register of last cycle's replays. The miss comes from the timers' next
-  state, so the first hop lands in the miss's own cycle. Confirmation takes
-  an issued entry with no dependency bit left whose result is final
-  (`ooe_wake`'s fin) or that writes nothing. Both are a row-wide OR over
-  the matrix: 9.1 NGD in 7 levels at 45 entries. The model's `confirmPass`
-  chained confirmations oldest first within a cycle, and a miss meeting a
-  live cancel took two hops in a cycle; both now take one level a cycle,
-  as the RTL does. A probe found neither had ever happened in an S1 kernel
-  or a random seed, and no kernel moves by a cycle. The model logs each
-  hop's and pass's inputs and decisions (`Core::wakeLog`);
-  `test/ooe/confirm_tb.cpp` drives the RTL with the inputs and compares
-  both decisions every cycle. Over 25 seeds: 961 replays and 82,148
-  confirmations, none differ. At today's latencies no cancel needs a
-  second hop, so one random seed in seven now runs the controls' long L1
-  shadow, which makes the bench's no-carry control (no hop past the first)
-  catchable. Controls no-miss, no-fin, no-dep, no-carry and no-hcol must
-  each be caught. Local clock gating (TI-14): the replay register is one
-  gate, clocked while a cancel spreads: a hop under way, or a miss of an
-  entry whose column `ooe_rs` flags (`hcol`, below). Clocked on every miss
-  it changed on 65% of its enabled cycles, since a miss nothing waits on
-  writes zero over zero; the exact enable, the hop's own OR, is 13.0 NGD.
-  With the flags it is 7.3 NGD and 79% (medium and high). The bench keeps
-  the flags as `ooe_rs` does, and no-hcol (all clear) starts no hop.
+- **`ooe_confirm`**, confirmation and transitive cancel, as a level (OA's
+  response OI-50). An issued entry returns to Waiting when it depends on a
+  producer that is not issued or has missed its L1 slot (`msd`: the miss,
+  held from the cycle after it until the load's completion), decided every
+  cycle from flops. A replay reaches the next level only through an edge,
+  so it is still one level a cycle; the first hop now comes a cycle after
+  the miss, which the model takes too and which costs nothing measured
+  (963 cycles over 48 seeds, unchanged). Being a level, it also catches an
+  entry granted from a stale ready bit in the cycle it issues (OA-17). There
+  is no replay register, so no enable and no column flags to gate it.
+  Confirmation takes an issued entry with no dependency bit left whose
+  result is final (`ooe_wake`'s fin) or that writes nothing. It is an inner
+  helper with no flops (`ooe_confirm.ngd.json`): `ooe_wake` and `ooe_rs` each
+  compute it from their own state (OI-50), 8.7 NGD in 7 levels at 45
+  entries. The model logs the hop's and the pass's inputs and decisions
+  (`Core::wakeLog`, `hop_msd` among them); `test/ooe/confirm_tb.cpp` drives
+  the RTL with them and compares both decisions every cycle, then runs
+  OA-17's directed case: a missed load's child, issued after the miss,
+  must replay in each cycle it is issued. Over 25 seeds: 1,038 replays and
+  82,128 confirmations, none differ, never both at once (V-16). Controls
+  no-msd, msd-pulse (the pulse hop OA-17 found unsafe), no-fin and no-dep
+  must each be caught.
 - **`ooe_rs`**, the RS valid bits, allocation and the dependency matrix.
   Each class has four ports; port k takes the free entry with exactly k
   free below it in its class, first fit as the model's `rsAlloc`. An entry

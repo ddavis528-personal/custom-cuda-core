@@ -269,7 +269,7 @@ void Core::cycle(uint64_t now) {
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant})
@@ -753,18 +753,20 @@ void Core::cancel(unsigned e) {
   x.late = false;
   x.spec = false;
   x.on_completion = true;
+  x.msd = true;   // held until its completion: the hop sees it from the next cycle (OI-50)
   count("cancel.miss");
-  // advanceWakes takes the hops, one a cycle from this one, until nothing
-  // changes (OA-1: transitive cancel moves one hop per cycle, held by V-59).
+  // advanceWakes takes the hops, one a cycle from the next, until nothing
+  // changes (OA-1: transitive cancel moves one hop per cycle; OI-50: the
+  // first a cycle after the miss).
   if (!cancel_live_) cancel_depth_ = 0;
   cancel_live_ = true;
   miss_now_ = true;
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on missed this cycle or
-/// returned to Waiting last cycle -- returns to Waiting. False when nothing
-/// changed. One hop a cycle, as ooe_confirm takes it.
+/// is no longer ready -- a producer it issued on has missed (msd) or is not
+/// issued -- returns to Waiting. False when nothing changed. Run at the start
+/// of every cycle, as ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
@@ -772,6 +774,7 @@ bool Core::cancelHop() {
   for (unsigned i = 0; i != n_; ++i) {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
+    if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
     if (y.valid && y.issued && !y.confirmed && !rowReady(i)) hop.push_back(i);
   }
   wlog_.hop_dep.assign(size_t(n_) * n_, 0);
@@ -861,7 +864,18 @@ void Core::confirmPass() {
 }
 
 void Core::advanceWakes() {
+  // Transitive cancel is a level, decided every cycle from the state as it
+  // stands at the cycle's start (OI-50): an issued entry whose row is no
+  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
+  // after the miss, and each further hop a cycle after the last (V-59, V-67).
+  const bool after_miss = miss_now_;
   miss_now_ = false;
+  const bool hopped = (!cfg_.inject_shallow_cancel || after_miss) && cancelHop();
+  // A completion clears a held miss at its edge, after this cycle's hop has
+  // read it: the hardware's msd flop.
+  for (RsEntry &x : rs_)
+    if (x.msd_end) x.msd = x.msd_end = false;
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
@@ -873,13 +887,11 @@ void Core::advanceWakes() {
     if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
       cancel(e);
   }
-  // Transitive cancel: one hop a cycle, from this cycle's misses and the
-  // entries the last hop returned to Waiting (OA-1, V-59).
-  if (cancel_live_) {
-    if ((cfg_.inject_shallow_cancel && !miss_now_) || !cancelHop()) {
-      ++histograms["cancel_depth"][cancel_depth_];
-      cancel_live_ = false;
-    }
+  // A cancel has settled once a cycle's hop changes nothing with no new
+  // miss behind it.
+  if (cancel_live_ && !hopped && !miss_now_) {
+    ++histograms["cancel_depth"][cancel_depth_];
+    cancel_live_ = false;
   }
   // Copy-only ops land at their contracted cycle and send no done (A-38).
   for (unsigned s = 0; s != slot_.size(); ++s)
@@ -1012,6 +1024,7 @@ void Core::takeCompletions() {
         if (r->is_load) count("load.past_l1");
         // Wake once the data is readable at RCU (Config::cmpl_wake_delay).
         x.on_completion = false;
+        x.msd_end = x.msd;   // the hop still sees the miss this cycle (V-68)
         x.late_at = now_ + cfg_.cmpl_wake_delay;
         if (!cfg_.cmpl_wake_delay) wake(r->rs_main);
       }

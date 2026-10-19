@@ -675,6 +675,8 @@ private:
     uint64_t late_at = 0;
     bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
     bool confirmed = false;        ///< result can no longer be cancelled
+    bool msd = false;              ///< missed its L1 slot, until its completion (OI-50's msd)
+    bool msd_end = false;          ///< its completion came: msd clears after this cycle's hop
     bool ever_issued = false;
     unsigned replays = 0;
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
@@ -826,7 +828,7 @@ public:
     /// the entries it returned to Waiting; confirmation's inputs (issued and
     /// unconfirmed, the result final, a destination, the dependency bits)
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
-    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, cf_iss, cf_fin, cf_prod, cf_dep;
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
     /// in allocation order, and those freed.

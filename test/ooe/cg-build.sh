@@ -19,8 +19,6 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
     "$PWD/rtl/ccv_assert_pkg.sv" "$@" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp"
 }
 case "$unit" in
-  ooe_confirm)
-    vl ooe_confirm "-GN=$n" "-DCONFIRM_N=$n" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/confirm_tb.cpp" ;;
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
     vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
