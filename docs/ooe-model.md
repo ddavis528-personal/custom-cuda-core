@@ -513,33 +513,42 @@ added with the event.
 
 ## Sweeps
 
-`sim/ooe/sweep.sh`, run 2026-10-04 at this commit's defaults.
+`sim/ooe/sweep.sh`, run 2026-10-19 at this commit's defaults (refreshed
+for AR-19; the 2026-10-04 figures were stale).
 
 **S1 kernels, cycles.** One warp, short, and DRAM-bound, so they show
-latency, not structure size. The model beats the in-order stub wherever there
-is independent work, and no knob down to a quarter of its size moves them,
-except rename width and the latencies themselves.
+latency, not structure size: no RS, ROB, free-list, decode-queue or
+redirect stall occurs in any of them (AR-19). The model beats the in-order
+stub wherever there is independent work. Of the structures, only a
+quarter-size MIU class (rs_miu=2) moves one (vadd, 222 to 237); rename
+width and the latencies move them by a cycle or two, loop by up to 200.
+None of rename's credit settings moves any. brs is the one kernel the
+stub wins (88 against 92), because the window runs out of branch
+checkpoints first (AR-20).
 
 | config | vadd | sel | srd | pguard | merge | mload | unal | gather | loop | brs |
 |---|---|---|---|---|---|---|---|---|---|---|
-| S1 stub (in order) | 361 | 119 | 111 | 128 | 71 | 126 | 274 | 2364 | 2741 | 82 |
-| model, S1 modes | 306 | 117 | 110 | 125 | 67 | 116 | 263 | 2345 | 2636 | 83 |
-| model, rename_width=1 | 307 | 118 | 111 | 126 | 68 | 117 | 265 | 2347 | 2737 | 85 |
-| model, lat_lane=9 | 308 | 123 | 114 | 133 | 74 | 120 | 267 | 2351 | 3036 | 88 |
+| S1 stub (in order) | 291 | 125 | 115 | 136 | 79 | 111 | 236 | 2334 | 3142 | 88 |
+| model, S1 modes | 222 | 117 | 110 | 125 | 66 | 99 | 222 | 2302 | 2736 | 92 |
+| model, rs_miu=2 | 237 | 117 | 110 | 125 | 66 | 99 | 222 | 2311 | 2736 | 92 |
+| model, rename_width=1 | 222 | 118 | 111 | 126 | 67 | 100 | 224 | 2303 | 2737 | 93 |
+| model, lat_lane=9 | 224 | 121 | 112 | 131 | 68 | 101 | 226 | 2306 | 2936 | 94 |
 
 **Synthetic, four warps, the design's own modes** (bypass and L1 speculation
 on, 20% of loads missing by up to 25 cycles past the L1 contract). The core
-alone, six seeds, cycles relative to the defaults:
+alone, six seeds, cycles relative to the defaults; six seeds are noisy at
+1 to 2%, so a figure that close to 1.00 is not a finding:
 
 | knob | values → relative cycles |
 |---|---|
-| `rs_rcu` | 6 → 2.06, 10 → 1.48, 15 → 1.20, 20 → 1.04, **30 → 1.00**, 45 → 0.99 |
-| `rs_miu` | 3 → 1.80, 5 → 1.36, 8 → 1.11, **15 → 1.00**, 24 → 1.00 |
-| `rs_warp_cap` | 6 → 1.86, 10 → 1.25, 15 → 1.04, **none → 1.00** |
-| `rob_depth` | 8 → 2.45, 12 → 1.77, 16 → 1.47, 24 → 1.15, **32 → 1.00** |
-| `decq` | 4 → 1.11, 6 → 1.06, 8 → 1.02, **12 → 1.00**, 18 → 0.95 |
-| `rename_width` | 1 → 1.88, 2 → 1.20, 3 → 1.02, **4 → 1.00** |
-| `retire_per_rob` | 1 → 1.06, **2 → 1.00**, 4 → 0.99 |
+| `rs_rcu` | 6 → 2.10, 10 → 1.50, 15 → 1.18, 20 → 1.08, **30 → 1.00**, 45 → 0.98 |
+| `rs_miu` | 3 → 1.91, 5 → 1.40, 8 → 1.16, **15 → 1.00**, 24 → 0.98 |
+| `rs_warp_cap` | 6 → 2.01, 10 → 1.32, 15 → 1.08, **none → 1.00** |
+| `rob_depth` | 8 → 2.58, 12 → 1.83, 16 → 1.46, 24 → 1.13, **32 → 1.00** |
+| `decq` | 4 → 1.26, 6 → 1.10, 8 → 1.04, **12 → 1.00**, 18 → 0.94 |
+| `rename_width` | 1 → 1.62, 2 → 1.12, 3 → 0.99, **4 → 1.00** |
+| `retire_per_rob` | 1 → 1.00, **2 → 1.00**, 4 → 1.00 |
+| `ren_credit`, 48 seeds | same edge → 0.993, all late → 1.007, **TI-19 at cap 4 → 1.000**, cap 2 → 1.004 |
 
 What it says, provisionally (strategy §8: a metric is only as real as the
 least-built block on its path, and here every neighbour is a stand-in):
@@ -554,7 +563,10 @@ least-built block on its path, and here every neighbour is a stand-in):
 - A per-warp RS cap costs throughput at any value below the class size here,
   because the synthetic warps never stall long. Its value comes from
   demotion-heavy runs, which need RAU.
-- Two retires per ROB is worth about 6% over one. Four buys nothing.
+- The decode queue still gains past 12 (18 → 0.94).
+- One retire per ROB now costs nothing measurable here (2026-10-04 put it at
+  about 6%); the synthetic warps rarely retire two in a cycle. The S1
+  kernels gain a cycle or two from the second.
 
 **OI-34: sectioned placement and OA-13** (`sim/ooe/run-tests.sh
 --sweep-sections`, 2026-10-09). Synthetic 32-iteration loops, each with its
