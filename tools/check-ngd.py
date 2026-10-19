@@ -105,34 +105,16 @@ RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # 2026-10-17, NGD-5 on 2026-10-18 (its through paths had been NGD-2's),
 # ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
 # on OI's branch (d8ffd4c: declared inner, no parent yet); NGD-7 on
-# 2026-10-19, at 7ae697c. Never add to this:
+# 2026-10-19, at 7ae697c; trimmed to the ratchet as modules pass (last at
+# OI's 4f4871b, 2026-10-19). Never add to this:
 # a module written since meets the rules, or has the architect's budgets, or
 # is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
-    "ooe_confirm": [
-        "NGD-5 dep_cq01h>conf_cq01h", "NGD-5 dep_cq01h>replay_cq02h", "NGD-5 fin_cq01h>conf_cq01h",
-        "NGD-5 iss_cq01h>conf_cq01h", "NGD-5 iss_cq01h>replay_cq02h",
-        "NGD-5 miss_cq01h>replay_cq02h", "NGD-5 prod_cq01h>conf_cq01h",
-    ],
     "ooe_decq": [
-        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-3 deq_n_cq01h", "NGD-3 enq_slot_cq01h",
-        "NGD-3 enq_v_cq01h", "NGD-3 flush_cq01h",
-        "NGD-7 st_cq02h",
-    ],
-    "ooe_freelist": [
-        "NGD-3 alloc_req_cq01h", "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
-        "NGD-5 alloc_req_cq01h>alloc_v_cq02h",
-        "NGD-7 st_cq02h",
-    ],
-    "ooe_pick": [
-        "NGD-5 older_cq03h>issue_cq03h", "NGD-5 older_cq03h>lost_cq03h",
-        "NGD-5 older_cq03h>win_cq03h", "NGD-5 req_cq03h>issue_cq03h", "NGD-5 req_cq03h>lost_cq03h",
-        "NGD-5 req_cq03h>win_cq03h",
+        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-7 st_cq02h",
     ],
     "ooe_rat": [
-        "NGD-2 ren_pold_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 ren_dst_cq01h",
-        "NGD-3 ren_gwe_cq01h", "NGD-3 ren_pdst_cq01h", "NGD-3 ren_rst_cq01h",
-        "NGD-3 ren_slot_cq01h", "NGD-3 ren_v_cq01h", "NGD-3 restore_ckpt_cq01h",
+        "NGD-2 ren_pold_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 restore_ckpt_cq01h",
         "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-3 ret_pdst_cq01h",
         "NGD-3 ret_pwe_cq01h", "NGD-5 ren_dst_cq01h>ren_pold_cq01h",
         "NGD-5 ren_dst_cq01h>ren_psrc_cq01h", "NGD-5 ren_gname_cq01h>ren_pold_cq01h",
@@ -153,51 +135,10 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-5 ren_v_cq01h>ren_ppq_cq01h", "NGD-5 ren_v_cq01h>ren_psrc_cq01h",
         "NGD-7 rat_cq02h",
     ],
-    "ooe_ready": [
-        "NGD-5 code_cq02h>ready_cq02h", "NGD-5 dep_cq02h>ready_cq02h",
-        "NGD-5 wake_cq02h>ready_cq02h",
-    ],
     "ooe_rs": [
-        "NGD-2 gnt_idx_cq02h", "NGD-2 gnt_v_cq02h", "NGD-3 free_cq01h", "NGD-3 grp_code_cq01h",
-        "NGD-3 grp_dep_cq01h", "NGD-3 req_cq01h", "NGD-3 row_code_cq01h",
-        "NGD-5 free_cq01h>gnt_idx_cq02h", "NGD-5 free_cq01h>gnt_v_cq02h",
-        "NGD-5 req_cq01h>gnt_idx_cq02h", "NGD-5 req_cq01h>gnt_v_cq02h",
-        "NGD-7 valid_cq02h",
+        "NGD-3 free_cq01h",
     ],
     "ooe_select": [
-        "NGD-5 active_cq03h>cand_cq03h", "NGD-5 active_cq03h>grant_cq03h",
-        "NGD-5 active_cq03h>lost_cq03h", "NGD-5 active_cq03h>pick_m.req_cq03h",
-        "NGD-5 active_cq03h>pick_r.req_cq03h", "NGD-5 block_cq03h>cand_cq03h",
-        "NGD-5 block_cq03h>grant_cq03h", "NGD-5 block_cq03h>lost_cq03h",
-        "NGD-5 block_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>cand_cq03h",
-        "NGD-5 busy_cq03h>grant_cq03h", "NGD-5 busy_cq03h>lost_cq03h",
-        "NGD-5 busy_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>pick_r.req_cq03h",
-        "NGD-5 chas_cq03h>cand_cq03h", "NGD-5 chas_cq03h>grant_cq03h",
-        "NGD-5 chas_cq03h>lost_cq03h", "NGD-5 chas_cq03h>pick_m.req_cq03h",
-        "NGD-5 cidx_cq03h>cand_cq03h", "NGD-5 cidx_cq03h>grant_cq03h",
-        "NGD-5 cidx_cq03h>lost_cq03h", "NGD-5 cidx_cq03h>pick_m.req_cq03h",
-        "NGD-5 copy_cq03h>cand_cq03h", "NGD-5 copy_cq03h>grant_cq03h",
-        "NGD-5 copy_cq03h>lost_cq03h", "NGD-5 copy_cq03h>pick_r.req_cq03h",
-        "NGD-5 dep_cq03h>cand_cq03h", "NGD-5 dep_cq03h>grant_cq03h", "NGD-5 dep_cq03h>lost_cq03h",
-        "NGD-5 dep_cq03h>pick_m.req_cq03h", "NGD-5 dep_cq03h>pick_r.req_cq03h",
-        "NGD-5 elig_cq03h>cand_cq03h", "NGD-5 elig_cq03h>grant_cq03h",
-        "NGD-5 elig_cq03h>lost_cq03h", "NGD-5 elig_cq03h>pick_m.req_cq03h",
-        "NGD-5 elig_cq03h>pick_r.req_cq03h", "NGD-5 iss_cq03h>cand_cq03h",
-        "NGD-5 iss_cq03h>grant_cq03h", "NGD-5 iss_cq03h>lost_cq03h",
-        "NGD-5 iss_cq03h>pick_m.req_cq03h", "NGD-5 iss_cq03h>pick_r.req_cq03h",
-        "NGD-5 older_m_cq03h>cand_cq03h", "NGD-5 older_m_cq03h>grant_cq03h",
-        "NGD-5 older_m_cq03h>lost_cq03h", "NGD-5 older_m_cq03h>pick_m.req_cq03h",
-        "NGD-5 older_r_cq03h>grant_cq03h", "NGD-5 older_r_cq03h>lost_cq03h",
-        "NGD-5 ready_cq03h>cand_cq03h", "NGD-5 ready_cq03h>grant_cq03h",
-        "NGD-5 ready_cq03h>lost_cq03h", "NGD-5 ready_cq03h>pick_m.req_cq03h",
-        "NGD-5 ready_cq03h>pick_r.req_cq03h", "NGD-5 res_cq03h>cand_cq03h",
-        "NGD-5 res_cq03h>grant_cq03h", "NGD-5 res_cq03h>lost_cq03h",
-        "NGD-5 res_cq03h>pick_m.req_cq03h", "NGD-5 res_cq03h>pick_r.req_cq03h",
-        "NGD-5 slot_cq03h>cand_cq03h", "NGD-5 slot_cq03h>grant_cq03h",
-        "NGD-5 slot_cq03h>lost_cq03h", "NGD-5 slot_cq03h>pick_m.req_cq03h",
-        "NGD-5 slot_cq03h>pick_r.req_cq03h", "NGD-5 valid_cq03h>cand_cq03h",
-        "NGD-5 valid_cq03h>grant_cq03h", "NGD-5 valid_cq03h>lost_cq03h",
-        "NGD-5 valid_cq03h>pick_m.req_cq03h", "NGD-5 valid_cq03h>pick_r.req_cq03h",
         "NGD-6 active_cq03h>grant_cq03h", "NGD-6 active_cq03h>lost_cq03h",
         "NGD-6 block_cq03h>grant_cq03h", "NGD-6 block_cq03h>lost_cq03h",
         "NGD-6 busy_cq03h>grant_cq03h", "NGD-6 busy_cq03h>lost_cq03h",
@@ -210,9 +151,6 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-6 res_cq03h>lost_cq03h", "NGD-6 slot_cq03h>grant_cq03h",
         "NGD-6 slot_cq03h>lost_cq03h", "NGD-6 valid_cq03h>grant_cq03h",
         "NGD-6 valid_cq03h>lost_cq03h",
-    ],
-    "ooe_wake": [
-        "NGD-3 cls_cq01h", "NGD-3 cmpl_cq01h", "NGD-3 grant_cq01h", "NGD-3 kind_cq01h",
     ],
 }.items() for k in ks}
 EPS = 0.005
