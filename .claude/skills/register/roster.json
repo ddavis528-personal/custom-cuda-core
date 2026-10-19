@@ -1,0 +1,15 @@
+{
+  "register": "https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5",
+  "register_id": "JApHYjaUESeq8tsGMGXMU5",
+  "note": "One entry per register prefix. An agent that takes over a role writes its own session id here at session start, in a commit of its own. A null session cannot be notified: its rows wait for that agent's daily sweep.",
+  "agents": {
+    "AR": {"session": "session_01FnGhxke3r33MeArLeQJRcD", "title": "CCV core arch",                 "tab": "bc521c46-9710", "updated": "2026-10-19"},
+    "OA": {"session": "session_01TbX2MyX6quhjarDR7J2bMR", "title": "OOE block architecture",        "tab": "4c6a3151-83eb", "updated": "2026-10-19"},
+    "IS": {"session": null,                               "title": "ISA",                           "tab": "60e6f93a-7fdc", "updated": "2026-10-19"},
+    "TI": {"session": "session_01XZjbFiUXE5S9Rsdus6rnWk", "title": "CCV core integ",                "tab": "e8b1d9d9-df9b", "updated": "2026-10-19"},
+    "OI": {"session": "session_01DMw4FtFbGoVboMGxWpLBuv", "title": "OOE block implementation",      "tab": "384bc26c-cef6", "updated": "2026-10-19"},
+    "CP": {"session": "session_01Gzzm3YDxvhdKn9ircF6Wda", "title": "CCV compiler implementation",   "tab": "099ebfed-9eea", "updated": "2026-10-19"},
+    "DA": {"session": null,                               "title": "Daniel (a person, not a session)", "tab": "d5076b00-ef1b", "updated": "2026-10-19"}
+  },
+  "conventions_tab": "55232329-ff5c"
+}
