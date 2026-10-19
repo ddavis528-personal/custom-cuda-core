@@ -278,7 +278,7 @@ if out=$("$dir/rat_tb" "$seeds" 2>&1); then
 else
   say "rat == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in port-reverse drop-restore drop-retire drop-squash busy-low; do
+for c in port-reverse drop-restore drop-retire drop-squash; do
   if RAT_CONTROL=$c "$dir/rat_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rat)" "MISSED"; fail=1
   else

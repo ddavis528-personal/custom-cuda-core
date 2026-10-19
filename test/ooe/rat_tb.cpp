@@ -8,15 +8,11 @@
 // slot releases, the committed maps' writes at retirement, and rename's
 // ports in rename order, a restore-allocate's writes among them.
 //
-// After the edge, every rename port's reads (registered) must be the
-// model's: three sources, the old destination, the guard, the old
-// predicate destination and, for predicate logic, its two sources; and
-// every slot's speculative and committed maps, and every live checkpoint's
-// contents. The read registers' enable is a flop of decq's busy from the
-// cycle before, so the bench runs a cycle behind the model: the cycle it
-// drives is the model's last but one, with busy as the model's decode queue
-// stood after it or the last cycle renames, and its expectations are a
-// snapshot.
+// Before the edge, every rename port's reads must be the model's: three
+// sources, the old destination, the guard, the old predicate destination
+// and, for predicate logic, its two sources. After it, every slot's
+// speculative and committed maps must be the model's, and every live
+// checkpoint's contents.
 //
 // A register name is opaque to the RAT. The model names a GPR by row alone
 // when it is not sectioned, so the bench gives those the RTL's form, the
@@ -26,8 +22,7 @@
 // caught: port-reverse (a cycle's rename ports in reverse order, so the
 // in-group override reads the wrong writes), drop-restore (no checkpoint
 // restore reaches the RTL), drop-retire (no retirement write does) and
-// drop-squash (no squash to retirement does) and busy-low (decq's busy
-// never raised, so the read registers never clock).
+// drop-squash (no squash to retirement does).
 //
 // With --cg <scenario> <vcd> it is ooe_rat's clock-gating bench
 // (test/ooe/cg_trace.h), and compares nothing.
@@ -87,9 +82,6 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
 }
 template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
 
-// decq's busy, a cycle ahead of the renames it covers.
-void lead(bool busy) { dut->decq_busy_cq00h = busy && control != "busy-low"; }
-
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
@@ -101,7 +93,6 @@ void tick() {
 
 void clearInputs() {
   clearAll(dut->ren_v_cq01h, A);
-  dut->decq_busy_cq00h = 0;
   clearAll(dut->ret_gwe_cq01h, S * R);
   clearAll(dut->ret_pwe_cq01h, S * R);
   clearAll(dut->restore_cq01h, S);
@@ -109,11 +100,9 @@ void clearInputs() {
   clearAll(dut->release_cq01h, S);
 }
 
-// An idle cycle: nothing reaches the maps; the ports' fields hold, and
-// busy as given.
-void idleTick(bool busy = false) {
+// An idle cycle: nothing reaches the maps; the ports' fields hold.
+void idleTick() {
   clearInputs();
-  lead(busy);
   tick();
 }
 
@@ -124,50 +113,23 @@ void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model
 
 unsigned gname(unsigned n) { return n * scale; }
 
-// A model cycle the bench has yet to drive: what reached the maps, the
-// port order, and the maps and live checkpoints after it.
-struct Pending {
-  Core::RatLog w;
-  std::vector<unsigned> order;
-  std::vector<unsigned> rat, crat, ck;   // GPR names (the RTL's form), then predicates, per map
-  std::vector<bool> live;
-  bool busy = false;   // the decode queue held a uop after it
-};
-bool have = false;
-Pending pend;
-
-std::vector<unsigned> mapOf(unsigned (Core::*g)(unsigned, unsigned) const,
-                            unsigned (Core::*p)(unsigned, unsigned) const, const Core &c, unsigned s) {
-  std::vector<unsigned> m;
-  for (unsigned a = 0; a != NG; ++a) m.push_back(gname((c.*g)(s, a)));
-  for (unsigned a = 0; a != NP; ++a) m.push_back((c.*p)(s, a));
-  return m;
-}
-
-void snapshot(const Core &c, Pending &q) {
-  q.w = c.ratLog();
-  q.busy = c.decqHeld() != 0;
-  q.order.resize(q.w.ren.size());
-  for (unsigned k = 0; k != q.order.size(); ++k) q.order[k] = k;
-  if (control == "port-reverse") std::reverse(q.order.begin(), q.order.end());
-  q.rat.clear(); q.crat.clear(); q.ck.clear(); q.live.clear();
-  for (unsigned s = 0; s != S; ++s) {
-    for (unsigned v : mapOf(&Core::ratGpr, &Core::ratPred, c, s)) q.rat.push_back(v);
-    for (unsigned v : mapOf(&Core::cratGpr, &Core::cratPred, c, s)) q.crat.push_back(v);
-    for (unsigned k = 0; k != C; ++k) {
-      q.live.push_back(c.ckptLive(s, k));
-      for (unsigned a = 0; a != NG; ++a) q.ck.push_back(gname(c.ckptGpr(s, k, a)));
-      for (unsigned a = 0; a != NP; ++a) q.ck.push_back(c.ckptPred(s, k, a));
-    }
+void hook(const Core &c) {
+  if (c.serial() != current) {
+    current = c.serial();
+    ++cores;
+    const auto &cfg = c.config();
+    skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > A || cfg.retire_per_rob > R ||
+           cfg.pred_zero != (1u << PW) - 1;
+    scale = cfg.sectioned ? 1 : 4;
+    clearInputs();
+    dut->ooe_rst_r00h = 1;
+    tick();
+    dut->ooe_rst_r00h = 0;
   }
-}
-
-// Drive the pending cycle, with busy for the one after, and check it.
-void drive(const Pending &q, bool busy) {
-  const Core::RatLog &w = q.w;
+  if (skip) { ++skipped; return; }
   ++cycles;
+  const Core::RatLog &w = c.ratLog();
   clearInputs();
-  lead(busy);
   for (const auto &r : w.restore) {
     if (control == "drop-restore") continue;
     setBit(dut->restore_cq01h, r.first, true);
@@ -191,7 +153,10 @@ void drive(const Pending &q, bool busy) {
     setField(dut->ret_pname_cq01h, q * PW, PW, r.pname);
     ++retires;
   }
-  const std::vector<unsigned> &order = q.order;
+  if (w.ren.size() > A) { fail("more renames than ports", 0, 0, unsigned(w.ren.size()), A); return; }
+  std::vector<unsigned> order(w.ren.size());
+  for (unsigned k = 0; k != order.size(); ++k) order[k] = k;
+  if (control == "port-reverse") std::reverse(order.begin(), order.end());
   for (unsigned k = 0; k != order.size(); ++k) {
     const auto &r = w.ren[order[k]];
     setBit(dut->ren_v_cq01h, k, true);
@@ -212,83 +177,59 @@ void drive(const Pending &q, bool busy) {
     ckpts += r.br && !r.rst;
     for (unsigned j = 0; j != k; ++j) in_group += !r.rst && w.ren[order[j]].slot == r.slot;
   }
-  tick();
-  if (cg.on()) return;
-  // After the edge: every rename port's reads, every map, every live checkpoint.
-  for (unsigned k = 0; k != order.size(); ++k) {
+  // Before the edge: every rename port's reads.
+  dut->ooe_core_clk = 0;
+  dut->eval();
+  for (unsigned k = 0; k != order.size() && !cg.on(); ++k) {
     const auto &r = w.ren[order[k]];
     if (r.rst) continue;
     for (unsigned i = 0; i != 3; ++i) {
-      const unsigned got = getField(dut->ren_psrc_cq02h, (k * 3 + i) * GW, GW);
+      const unsigned got = getField(dut->ren_psrc_cq01h, (k * 3 + i) * GW, GW);
       if (got != gname(r.psrc[i])) fail("source read differs", k, i, got, gname(r.psrc[i]));
     }
-    unsigned got = getField(dut->ren_pold_cq02h, k * GW, GW);
+    unsigned got = getField(dut->ren_pold_cq01h, k * GW, GW);
     if (got != gname(r.pold)) fail("old destination differs", k, 0, got, gname(r.pold));
-    got = getField(dut->ren_ppguard_cq02h, k * PW, PW);
+    got = getField(dut->ren_ppguard_cq01h, k * PW, PW);
     if (got != r.ppguard) fail("guard differs", k, 0, got, r.ppguard);
-    got = getField(dut->ren_ppold_cq02h, k * PW, PW);
+    got = getField(dut->ren_ppold_cq01h, k * PW, PW);
     if (got != r.ppold) fail("old predicate destination differs", k, 0, got, r.ppold);
     for (unsigned i = 0; i != 2 && r.plogic; ++i) {
-      got = getField(dut->ren_ppq_cq02h, (k * 2 + i) * PW, PW);
+      got = getField(dut->ren_ppq_cq01h, (k * 2 + i) * PW, PW);
       if (got != r.pqn[i]) fail("predicate-logic source differs", k, i, got, r.pqn[i]);
     }
   }
+  tick();
+  if (cg.on()) {
+    for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
+    return;
+  }
+  // After it: every map, and every live checkpoint.
   for (unsigned s = 0; s != S; ++s) {
-    for (unsigned a = 0; a != NG + NP; ++a) {
-      const unsigned lsb = s * MW + (a < NG ? a * GW : NG * GW + (a - NG) * PW), n = a < NG ? GW : PW;
-      unsigned got = getField(dut->rat_cq02h, lsb, n);
-      if (got != q.rat[s * (NG + NP) + a]) fail("speculative map differs", s, a, got, q.rat[s * (NG + NP) + a]);
-      got = getField(dut->crat_cq02h, lsb, n);
-      if (got != q.crat[s * (NG + NP) + a]) fail("committed map differs", s, a, got, q.crat[s * (NG + NP) + a]);
+    for (unsigned a = 0; a != NG; ++a) {
+      unsigned got = getField(dut->rat_cq02h, s * MW + a * GW, GW);
+      if (got != gname(c.ratGpr(s, a))) fail("speculative GPR map differs", s, a, got, gname(c.ratGpr(s, a)));
+      got = getField(dut->crat_cq02h, s * MW + a * GW, GW);
+      if (got != gname(c.cratGpr(s, a))) fail("committed GPR map differs", s, a, got, gname(c.cratGpr(s, a)));
+    }
+    for (unsigned a = 0; a != NP; ++a) {
+      unsigned got = getField(dut->rat_cq02h, s * MW + NG * GW + a * PW, PW);
+      if (got != c.ratPred(s, a)) fail("speculative predicate map differs", s, a, got, c.ratPred(s, a));
+      got = getField(dut->crat_cq02h, s * MW + NG * GW + a * PW, PW);
+      if (got != c.cratPred(s, a)) fail("committed predicate map differs", s, a, got, c.cratPred(s, a));
     }
     for (unsigned k = 0; k != C; ++k) {
-      if (!q.live[s * C + k]) continue;
-      for (unsigned a = 0; a != NG + NP; ++a) {
-        const unsigned lsb = (s * C + k) * MW + (a < NG ? a * GW : NG * GW + (a - NG) * PW);
-        const unsigned want = q.ck[(s * C + k) * (NG + NP) + a];
-        const unsigned got = getField(dut->ckpt_cq02h, lsb, a < NG ? GW : PW);
-        if (got != want) fail("checkpoint differs", s * C + k, a, got, want);
+      if (!c.ckptLive(s, k)) continue;
+      const unsigned base = (s * C + k) * MW;
+      for (unsigned a = 0; a != NG; ++a) {
+        const unsigned got = getField(dut->ckpt_cq02h, base + a * GW, GW);
+        if (got != gname(c.ckptGpr(s, k, a))) fail("checkpoint GPR differs", s * C + k, a, got, gname(c.ckptGpr(s, k, a)));
+      }
+      for (unsigned a = 0; a != NP; ++a) {
+        const unsigned got = getField(dut->ckpt_cq02h, base + NG * GW + a * PW, PW);
+        if (got != c.ckptPred(s, k, a)) fail("checkpoint predicate differs", s * C + k, a, got, c.ckptPred(s, k, a));
       }
     }
   }
-}
-
-// The last cycle of a core, with no port valid after it.
-void flush() {
-  if (have) drive(pend, false);
-  have = false;
-}
-
-void hook(const Core &c) {
-  if (c.serial() != current) {
-    flush();
-    current = c.serial();
-    ++cores;
-    const auto &cfg = c.config();
-    skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > A || cfg.retire_per_rob > R ||
-           cfg.pred_zero != (1u << PW) - 1;
-    scale = cfg.sectioned ? 1 : 4;
-    clearInputs();
-    dut->ooe_rst_r00h = 1;
-    tick();
-    dut->ooe_rst_r00h = 0;
-  }
-  if (skip) { ++skipped; return; }
-  if (c.ratLog().ren.size() > A) { fail("more renames than ports", 0, 0, unsigned(c.ratLog().ren.size()), A); return; }
-  Pending next;
-  snapshot(c, next);
-  // Busy ahead of the next cycle: the queue held a uop, or it renames.
-  const bool busy = next.w.ren.size() != 0 || (have && pend.busy);
-  if (have) {
-    // Under --cg, idle cycles follow each driven one; the last carries busy.
-    drive(pend, cg.on() && cg.gaps() ? pend.busy : busy);
-    if (cg.on())
-      for (unsigned g = 0; g != cg.gaps(); ++g) idleTick(g + 1 == cg.gaps() ? busy : pend.busy);
-  } else {
-    idleTick(busy);
-  }
-  pend = std::move(next);
-  have = true;
 }
 } // namespace
 
@@ -310,7 +251,6 @@ int main(int argc, char **argv) {
       for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
     } else {
       ooeTestRandomHooked(CgRun::kSeeds, hook);
-      flush();
     }
     cg.close();
     dut->final();
@@ -322,7 +262,6 @@ int main(int argc, char **argv) {
   // The directed tests first: demotion, kill and restore-allocate, which
   // random traffic never reaches.
   const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
-  flush();
   dut->final();
   std::printf("rat_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu renames=%llu in-group=%llu "
               "checkpoints=%llu restores=%llu squashes=%llu releases=%llu retires=%llu restore-writes=%llu "
