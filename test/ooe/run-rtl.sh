@@ -97,7 +97,7 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   dir=build/ooe-rtl/freelist_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
         -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
@@ -212,7 +212,7 @@ done
 dir=build/ooe-rtl/confirm
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace -GN="$n" --top-module ooe_confirm --Mdir "$dir" -o confirm_tb \
+      -GN="$n" --top-module ooe_confirm --Mdir "$dir" -o confirm_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 -DCONFIRM_N=$n -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/confirm_tb.cpp" \
@@ -224,7 +224,7 @@ if out=$("$dir/confirm_tb" "$seeds" 2>&1); then
 else
   say "confirm == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-miss no-fin no-dep no-carry no-hcol; do
+for c in no-msd msd-pulse no-fin no-dep; do
   if CONFIRM_CONTROL=$c "$dir/confirm_tb" 3 >/dev/null 2>&1; then
     say "  control $c (confirm)" "MISSED"; fail=1
   else

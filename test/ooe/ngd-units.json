@@ -1,0 +1,15 @@
+{
+  "_comment": "Timing units for OOE design modules with no flops, which check-cg's units (test/ooe/cg-units.json) do not cover, for tools/check-ngd.py: one module at one parameterisation each. The rest of OOE's combinational units are still in test/ngd/ngd-units.json, held there by TI until they move here.",
+  "units": [
+    {
+      "name": "ooe_confirm",
+      "module": "ooe_confirm",
+      "files": [
+        "rtl/ooe/ooe_confirm.sv"
+      ],
+      "params": {
+        "N": 45
+      }
+    }
+  ]
+}

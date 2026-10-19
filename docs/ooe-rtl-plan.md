@@ -78,11 +78,35 @@ Built (`rtl/ooe/`):
   (`FreeVec::lastEdge`: free bits, buffer in order, bank pointers, bank
   order), then drives that cycle's allocations and frees. Over 25 seeds and
   200 cores, GPR rows (192) and predicates (48), none differ; controls
-  drop-free and extra-alloc must each be caught. Logic depth is 23.0 NGD at
-  192 entries and 23.4 at 48 (gated-flop flow; 23.5 and 24.7 before): a
-  log-depth find-first per bank, the buffer rebuilt slot by slot as a
-  gather, the buffered mask kept as state, and the taken count encoded from
-  the request prefix rather than counted.
+  drop-free and extra-alloc must each be caught. Logic depth is 21.6 NGD at
+  192 entries and 22.6 at 48, the requests 18.6 and 18.4 to a flop (23.0
+  and 23.4 before): a log-depth find-first per bank, the buffer rebuilt
+  slot by slot as a gather, the buffered mask kept as state, and the taken
+  count one-hot from the request prefix. Every select that depends on how
+  many are taken is formed for each count from the state and picked by
+  that one-hot, so the requests reach the edge through AND-ORs, never a
+  subtract. The free bits, bank pointers and bank order are ports under
+  CCV_CHECK only, read by the bench alone (OA's choice, TI-20). The grant ports carry the head
+  from the flops alone (OA's stage-boundary map, item 5): head entry k is
+  available while the buffer holds more than k, and rename's port k takes
+  it when it asks, so no request reaches an output (NGD-5).
+
+  The request is registered (OA's response OI-52): what a cycle takes
+  leaves the buffer at the next edge, so the buffer's next value and its
+  enable come from the module's own flops (CG-5). Those entries, in
+  transit, sit at the head a cycle: the ports offer the entries behind
+  them (a mux on the registered count), and `avail_cq02h`, the count
+  rename sees, leaves them out. A taken entry's free bit still clears at
+  its own edge. The ports read a `(* keep *)` copy of the buffer, its count
+  and the registered count, which start no other path (NGD-7: the state's
+  own paths run through the refill). The reset is flopped before use
+  (RST-1). Depth is 21.6 NGD at 192 entries and 22.2 at 48, the requests
+  13.2 and 13.7 to a flop (they reach only the free bits and the
+  registered count now), the grant ports 11.5 and 10.4 from flops. In the
+  model the late pop costs nothing at the 8-entry buffer (982 cycles in
+  the sweep, as before) and 4.8% at 4. The bench also compares the
+  entries in transit and the available count. The buffer, its count and
+  the entries in transit are bench ports under CCV_CHECK.
 
   Local clock gating (TI-14): the free bits are one gate, clocked on an
   allocation or a free; the buffer, its count, the bank pointers and the
@@ -91,7 +115,9 @@ Built (`rtl/ooe/`):
   so the gate takes room alone. The buffer's gather and the pointers' moves
   are AND-ORs, not held `if`s, so synthesis keeps those enables rather than
   one per slot or per bank. The two-bit bank order turns every edge,
-  ungated, within the module's allowance. `check-cg`: worst enable 7.8 NGD
+  ungated, as do the registered count and its copy (six flops, within the
+  module's allowance). The free bits' enable is still an allocation or a
+  free, from the inputs, the one CG-5 finding left. `check-cg`: worst enable 7.8 NGD
   (GPR) and 5.6 (predicates), 100% DCGE in every scenario. In its clock-
   gating mode the bench frees through a map from the model's entries to
   the RTL's, since the idle cycles turn the RTL's bank order alone.
@@ -185,32 +211,28 @@ Built (`rtl/ooe/`):
   clocks nothing. The earlier 13.9 NGD was short: Yosys dropped the age
   increment of the `(age == AMAX) ? AMAX : age + 1` form, which only the
   CG replay (the netlist against the bench's trace) showed.
-- **`ooe_confirm`**, confirmation and transitive cancel. Its hop returns
-  to Waiting every issued, unconfirmed entry that depends on an entry
-  that missed this cycle or returned to Waiting last cycle, through a
-  register of last cycle's replays. The miss comes from the timers' next
-  state, so the first hop lands in the miss's own cycle. Confirmation takes
-  an issued entry with no dependency bit left whose result is final
-  (`ooe_wake`'s fin) or that writes nothing. Both are a row-wide OR over
-  the matrix: 9.1 NGD in 7 levels at 45 entries. The model's `confirmPass`
-  chained confirmations oldest first within a cycle, and a miss meeting a
-  live cancel took two hops in a cycle; both now take one level a cycle,
-  as the RTL does. A probe found neither had ever happened in an S1 kernel
-  or a random seed, and no kernel moves by a cycle. The model logs each
-  hop's and pass's inputs and decisions (`Core::wakeLog`);
-  `test/ooe/confirm_tb.cpp` drives the RTL with the inputs and compares
-  both decisions every cycle. Over 25 seeds: 961 replays and 82,148
-  confirmations, none differ. At today's latencies no cancel needs a
-  second hop, so one random seed in seven now runs the controls' long L1
-  shadow, which makes the bench's no-carry control (no hop past the first)
-  catchable. Controls no-miss, no-fin, no-dep, no-carry and no-hcol must
-  each be caught. Local clock gating (TI-14): the replay register is one
-  gate, clocked while a cancel spreads: a hop under way, or a miss of an
-  entry whose column `ooe_rs` flags (`hcol`, below). Clocked on every miss
-  it changed on 65% of its enabled cycles, since a miss nothing waits on
-  writes zero over zero; the exact enable, the hop's own OR, is 13.0 NGD.
-  With the flags it is 7.3 NGD and 79% (medium and high). The bench keeps
-  the flags as `ooe_rs` does, and no-hcol (all clear) starts no hop.
+- **`ooe_confirm`**, confirmation and transitive cancel, as a level (OA's
+  response OI-50). An issued entry returns to Waiting when it depends on a
+  producer that is not issued or has missed its L1 slot (`msd`: the miss,
+  held from the cycle after it until the load's completion), decided every
+  cycle from flops. A replay reaches the next level only through an edge,
+  so it is still one level a cycle; the first hop now comes a cycle after
+  the miss, which the model takes too and which costs nothing measured
+  (963 cycles over 48 seeds, unchanged). Being a level, it also catches an
+  entry granted from a stale ready bit in the cycle it issues (OA-17). There
+  is no replay register, so no enable and no column flags to gate it.
+  Confirmation takes an issued entry with no dependency bit left whose
+  result is final (`ooe_wake`'s fin) or that writes nothing. It is an inner
+  helper with no flops (`ooe_confirm.ngd.json`): `ooe_wake` and `ooe_rs` each
+  compute it from their own state (OI-50), 8.7 NGD in 7 levels at 45
+  entries. The model logs the hop's and the pass's inputs and decisions
+  (`Core::wakeLog`, `hop_msd` among them); `test/ooe/confirm_tb.cpp` drives
+  the RTL with them and compares both decisions every cycle, then runs
+  OA-17's directed case: a missed load's child, issued after the miss,
+  must replay in each cycle it is issued. Over 25 seeds: 1,038 replays and
+  82,128 confirmations, none differ, never both at once (V-16). Controls
+  no-msd, msd-pulse (the pulse hop OA-17 found unsafe), no-fin and no-dep
+  must each be caught.
 - **`ooe_rs`**, the RS valid bits, allocation and the dependency matrix.
   Each class has four ports; port k takes the free entry with exactly k
   free below it in its class, first fit as the model's `rsAlloc`. An entry
@@ -226,6 +248,16 @@ Built (`rtl/ooe/`):
   25 seeds: 100,804 allocations, 36,698 of them into an entry freed that
   cycle, 4,294 in-group references, none differ. Controls no-same-edge,
   drop-group and stale-hcol must each be caught.
+
+  The outputs leave from registers of their own (OA's stage-boundary map,
+  item 3; TI-20, NGD-7): the grant, registered at the edge it is made, and
+  a `(* keep *)` copy of the valid bits (`valid_out`), so the valid bits
+  allocation reads drive no output. These 101 flops change with every
+  grant and free, so they take no clock gate, within the module's
+  allowance (check-cg: 95 auto-waived of 126). The bench compares the
+  registered grants after each edge, every port's. With OA's row_dep
+  arrival (by 10, OI-48), the only depth finding left is the confirmation
+  path's free (NGD-3, OI-43 and OI-50).
 
   Column flags (`hcol`, for `ooe_confirm`): per class, a column is flagged
   from the edge a row of the class naming it is written until the entry is

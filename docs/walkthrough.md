@@ -288,8 +288,8 @@ in the same cycle, and gets 32 results back 4 cycles later:
     101  EV_WAKEUP                      ooe          
     102  EV_WAKEUP                      ooe          
     102  EV_ISSUE                       ooe          
-    104  EV_OOE_CANCEL_REPLAY           ooe          
     103  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    105  EV_OOE_CANCEL_REPLAY           ooe          
     105  ccv_rcu_lane_ops               rcu  -> lane   x32
     109  ccv_lane_rcu_res               lane -> rcu    x32
     111  ccv_rcu_ooe_done               rcu  -> ooe       

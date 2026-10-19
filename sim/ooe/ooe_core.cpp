@@ -30,13 +30,13 @@ std::string Config::apply(const std::string &spec) {
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
-      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}};
+      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
+      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
-                                     {"decq_late_credit", &decq_late_credit},
-                                     {"ren_late_credit", &ren_late_credit}};
+                                     {"decq_late_credit", &decq_late_credit}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -265,16 +265,11 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
-  if (cfg_.ren_late_credit) {
-    rs_start_.resize(n_);
-    for (unsigned e = 0; e != n_; ++e) rs_start_[e] = rs_[e].valid;
-    rob_start_.resize(slot_.size() * cfg_.rob_depth);
-    for (unsigned si = 0; si != slot_.size(); ++si)
-      for (unsigned i = 0; i != cfg_.rob_depth; ++i)
-        rob_start_[size_t(si) * cfg_.rob_depth + i] = slot_[si].rob[i].valid;
-  }
+  rs_late_.assign(n_, 0);
+  rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant})
@@ -546,8 +541,11 @@ void Core::freePred(unsigned slot, unsigned p) {
 unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   const unsigned lo = c == RsCls::kRcu ? 0 : cfg_.rs_rcu;
   const unsigned hi = c == RsCls::kRcu ? cfg_.rs_rcu : n_;
+  // First fit, same-edge reuse included: the RS's own rule (OI-43), which
+  // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
+  // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rsHeld(e)) {
+    if (!rs_[e].valid) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -583,6 +581,10 @@ void Core::rsFree(unsigned e) {
   if (r.rs_copy == e) r.rs_copy = kNoEntry;
   --slot_[x.slot].rs_held;
   x.valid = false;
+  const unsigned c = e < cfg_.rs_rcu ? 0 : 1;
+  if (cfg_.ren_credit == 1 ||
+      (cfg_.ren_credit == 2 && (!free_prompt_ || rs_prompt_[c]++ >= cfg_.ren_free_cap)))
+    rs_late_[e] = 1;
   if (e < wlog_.stop.size()) wlog_.stop[e] = 1;
   if (e < wlog_.rfree.size()) wlog_.rfree[e] = 1;
 }
@@ -751,18 +753,20 @@ void Core::cancel(unsigned e) {
   x.late = false;
   x.spec = false;
   x.on_completion = true;
+  x.msd = true;   // held until its completion: the hop sees it from the next cycle (OI-50)
   count("cancel.miss");
-  // advanceWakes takes the hops, one a cycle from this one, until nothing
-  // changes (OA-1: transitive cancel moves one hop per cycle, held by V-59).
+  // advanceWakes takes the hops, one a cycle from the next, until nothing
+  // changes (OA-1: transitive cancel moves one hop per cycle; OI-50: the
+  // first a cycle after the miss).
   if (!cancel_live_) cancel_depth_ = 0;
   cancel_live_ = true;
   miss_now_ = true;
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on missed this cycle or
-/// returned to Waiting last cycle -- returns to Waiting. False when nothing
-/// changed. One hop a cycle, as ooe_confirm takes it.
+/// is no longer ready -- a producer it issued on has missed (msd) or is not
+/// issued -- returns to Waiting. False when nothing changed. Run at the start
+/// of every cycle, as ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
@@ -770,6 +774,7 @@ bool Core::cancelHop() {
   for (unsigned i = 0; i != n_; ++i) {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
+    if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
     if (y.valid && y.issued && !y.confirmed && !rowReady(i)) hop.push_back(i);
   }
   wlog_.hop_dep.assign(size_t(n_) * n_, 0);
@@ -848,16 +853,29 @@ void Core::confirmPass() {
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
     }
   }
+  free_prompt_ = true;   // a confirmation's free: from flops in the RTL (TI-19)
   for (unsigned e : order)
     if (rs_[e].valid && rs_[e].confirmed) {
       const unsigned slot = rs_[e].slot, rob = rs_[e].rob;
       rsFree(e);
       complete(slot, rob);
     }
+  free_prompt_ = false;
 }
 
 void Core::advanceWakes() {
+  // Transitive cancel is a level, decided every cycle from the state as it
+  // stands at the cycle's start (OI-50): an issued entry whose row is no
+  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
+  // after the miss, and each further hop a cycle after the last (V-59, V-67).
+  const bool after_miss = miss_now_;
   miss_now_ = false;
+  const bool hopped = (!cfg_.inject_shallow_cancel || after_miss) && cancelHop();
+  // A completion clears a held miss at its edge, after this cycle's hop has
+  // read it: the hardware's msd flop.
+  for (RsEntry &x : rs_)
+    if (x.msd_end) x.msd = x.msd_end = false;
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
@@ -869,13 +887,11 @@ void Core::advanceWakes() {
     if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
       cancel(e);
   }
-  // Transitive cancel: one hop a cycle, from this cycle's misses and the
-  // entries the last hop returned to Waiting (OA-1, V-59).
-  if (cancel_live_) {
-    if ((cfg_.inject_shallow_cancel && !miss_now_) || !cancelHop()) {
-      ++histograms["cancel_depth"][cancel_depth_];
-      cancel_live_ = false;
-    }
+  // A cancel has settled once a cycle's hop changes nothing with no new
+  // miss behind it.
+  if (cancel_live_ && !hopped && !miss_now_) {
+    ++histograms["cancel_depth"][cancel_depth_];
+    cancel_live_ = false;
   }
   // Copy-only ops land at their contracted cycle and send no done (A-38).
   for (unsigned s = 0; s != slot_.size(); ++s)
@@ -1008,6 +1024,7 @@ void Core::takeCompletions() {
         if (r->is_load) count("load.past_l1");
         // Wake once the data is readable at RCU (Config::cmpl_wake_delay).
         x.on_completion = false;
+        x.msd_end = x.msd;   // the hop still sees the miss this cycle (V-68)
         x.late_at = now_ + cfg_.cmpl_wake_delay;
         if (!cfg_.cmpl_wake_delay) wake(r->rs_main);
       }
@@ -1083,6 +1100,7 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
   if (r.alloc_pred) freePred(slot, r.ppnew);
   if (r.ckpt_live) { slot_[slot].ckpt[r.u.ckpt].live = false; r.ckpt_live = false; }
   r = RobEntry();
+  robFreed(slot, idx, false);
 }
 
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
@@ -1444,6 +1462,7 @@ void Core::retire() {
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
       ++s.retired_since_restore;
       r = RobEntry();
+      robFreed(si, s.head, true);
       s.head = (s.head + 1) % cfg_.rob_depth;
       --s.count;
       ++n;
@@ -1604,6 +1623,16 @@ void Core::selectSectioned() {
   for (size_t i = 0; i != cand.size(); ++i)
     if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
+  // IS-9: lane grants that write a register (element work), and the cycles
+  // a lane op writing none (a setp: loop control) holds sections.
+  bool ctl_lanes = false;
+  for (unsigned e : grant) {
+    const RsEntry &x = rs_[e];
+    if ((x.res & 0x10u) || !(x.res & 0xFu) || x.copy) continue;
+    if (slot_[x.slot].rob[x.rob].alloc_gpr) count("select.lane_elem");
+    else ctl_lanes = true;
+  }
+  if (ctl_lanes) count("select.lane_ctl_cycles");
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
   // inject_double_grant: the oldest lane op, and the oldest memop, left out
   // are granted anyway, onto sections or pipes a granted op holds.

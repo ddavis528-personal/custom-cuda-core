@@ -5,8 +5,10 @@
 // model's (FreeVec, buffered form, OA's response OI-38):
 //   1. compares the RTL's state, which has seen one more edge than the
 //      model has allocated against, with the model's state just after that
-//      edge (FreeVec::lastEdge): free bits, the buffer in order, each bank's
-//      pointer and the bank order;
+//      edge (FreeVec::lastEdge): free bits, the buffer in order, the
+//      entries in transit at its head (last cycle's allocations, which
+//      leave it at the next edge: OA's response OI-52) and the count
+//      rename sees, each bank's pointer and the bank order;
 //   2. drives one edge's activity (FreeVec::cycleAllocs, cycleFrees: the
 //      last cycle's, plus those its inputs made since): as many allocation
 //      requests as the model made, which the RTL must grant with exactly
@@ -96,7 +98,7 @@ void cgEdge(const FreeVec &fv) {
   const auto &fr = fv.cycleFrees();
   dut->ooe_core_clk = 0;
   dut->eval();
-  const unsigned req = std::min<unsigned>({unsigned(al.size()), unsigned(dut->cnt_cq02h), FL_A});
+  const unsigned req = std::min<unsigned>({unsigned(al.size()), unsigned(dut->avail_cq02h), FL_A});
   dut->alloc_req_cq01h = (1u << req) - 1u;
   for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
   for (unsigned p : fr)
@@ -123,9 +125,12 @@ void hook(const Core &c) {
     desync = fv.capacity() != FL_N || fv.bufferCap() != FL_B || fv.banks() != FL_K;
     dut->alloc_req_cq01h = 0;
     for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
+    // The reset is flopped before use (RST-1): the state resets at the
+    // edge after the one that captures it.
     dut->ooe_rst_r00h = 1;
     tick();
     dut->ooe_rst_r00h = 0;
+    tick();
     rtl_of.assign(FL_N, -1);
   }
   if (desync) { ++skipped; return; }
@@ -148,6 +153,9 @@ void hook(const Core &c) {
     if (got != e.bptr[b]) fail("bank pointer differs", got, e.bptr[b]);
   }
   if (unsigned(dut->rot_cq02h) != e.rot) fail("bank order differs", unsigned(dut->rot_cq02h), e.rot);
+  if (unsigned(dut->transit_cq02h) != e.transit) fail("entries in transit differ", unsigned(dut->transit_cq02h), e.transit);
+  if (unsigned(dut->avail_cq02h) != e.buf.size() - e.transit)
+    fail("available count differs", unsigned(dut->avail_cq02h), unsigned(e.buf.size() - e.transit));
   // 2. This edge's allocations and frees.
   const auto &al = fv.cycleAllocs();
   if (al.size() > FL_A) { fail("more allocations than ports", unsigned(al.size()), FL_A); desync = true; return; }
