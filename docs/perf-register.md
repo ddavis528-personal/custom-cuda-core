@@ -58,6 +58,7 @@ it.
 | PF-33 | Fewer block crossings on the L1-hit path | MIU, DCU, RCU, partitioning | deferred (S1 traces; Q-18) |
 | PF-34 | FP32 atomic add at the RMW site, with same-address combining | ISA, DCU, SPM, MIU | deferred (IS-14; AR-21) |
 | PF-35 | A one-instruction warp reduction in RCU | ISA, RCU, compiler | deferred (IS-14) |
+| PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
 
 ## Entries
 
@@ -617,3 +618,25 @@ it.
   result is warp-uniform, so it also feeds PF-31's case if that returns.
 - **Signal:** the shuffle and shared-memory share of the reduction kernels'
   issued instructions, once the shuffles are built (asked of CP in IS-14).
+
+### PF-36 Return-address prediction for `ret`
+
+- **Now:** `ret rs` sets each lane's PC from a register (compiler proposal
+  `calling-convention.md`, CP-9). FET predicts uniform branches only (IS-4)
+  and nothing names an indirect-target predictor, so every return waits
+  for RCU to read `rs` and redirect FET. That costs about the 15-cycle
+  refill the S1 traces measured from branch issue to the next issue
+  (PF-32's measurement).
+- **Alternative:** a per-warp return-address stack in FET, pushed when a
+  call writes its link register and popped at `ret`. The prediction is
+  checked at resolution like any branch. The convention makes it easy:
+  `call` writes a fixed, ABI-named link register (R14 for `call.short`), and
+  frames are static with no recursion (CP-9), so the stack's depth bounds
+  the call depth that predicts correctly.
+- **Cost:** a few entries of 32-bit code addresses per tier-1 warp. It must
+  be checkpointed with the branch state, so a mispredict or a demotion
+  restores it. A divergent return, where lanes' `rs` differ, splits PC
+  groups and cannot be predicted by one stack entry; it falls back to
+  resolution.
+- **Signal:** returns per thousand instructions and cycles each waits for
+  resolution, on CoreMark (AR-20), to add when FET models a predictor.
