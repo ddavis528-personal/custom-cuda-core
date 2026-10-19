@@ -166,13 +166,14 @@ section "Local clock gating -- CG-1 to CG-5, RST-1"
 run "local clock gating" python3 tools/check-cg.py
 run "clock gating that should fail does" python3 tools/check-cg.py --selftest
 
-section "Logic depth -- NGD-1 to NGD-5"
+section "Logic depth -- NGD-1 to NGD-6"
 # Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"): 25 NGD of
 # logic between flops; each module port 12 a side by default, the
 # architect's budgets beside a module's RTL (<module>.ngd.json) where a port
 # needs more; nothing straight through a module, not even a wire, nor logic
 # in a parent between its children (2026-10-18), inner helpers timed as
-# their parent's logic; an
+# their parent's logic, and held alone to 16 until a module instantiates
+# them (2026-10-19); an
 # assembled block converged from those files level by level, then timed
 # whole, its ports registered on both sides. Each module at its
 # units' parameters, mapped by ABC; the timing pass must agree with ABC's
