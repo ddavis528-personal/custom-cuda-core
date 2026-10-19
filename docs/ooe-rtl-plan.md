@@ -91,6 +91,23 @@ Built (`rtl/ooe/`):
   available while the buffer holds more than k, and rename's port k takes
   it when it asks, so no request reaches an output (NGD-5).
 
+  The request is registered (OA's response OI-52): what a cycle takes
+  leaves the buffer at the next edge, so the buffer's next value and its
+  enable come from the module's own flops (CG-5). Those entries, in
+  transit, sit at the head a cycle: the ports offer the entries behind
+  them (a mux on the registered count), and `avail_cq02h`, the count
+  rename sees, leaves them out. A taken entry's free bit still clears at
+  its own edge. The ports read a `(* keep *)` copy of the buffer, its count
+  and the registered count, which start no other path (NGD-7: the state's
+  own paths run through the refill). The reset is flopped before use
+  (RST-1). Depth is 21.6 NGD at 192 entries and 22.2 at 48, the requests
+  13.2 and 13.7 to a flop (they reach only the free bits and the
+  registered count now), the grant ports 11.5 and 10.4 from flops. In the
+  model the late pop costs nothing at the 8-entry buffer (982 cycles in
+  the sweep, as before) and 4.8% at 4. The bench also compares the
+  entries in transit and the available count. The buffer, its count and
+  the entries in transit are bench ports under CCV_CHECK.
+
   Local clock gating (TI-14): the free bits are one gate, clocked on an
   allocation or a free; the buffer, its count, the bank pointers and the
   buffered mask on an allocation or while the buffer has room. Whether a
@@ -98,7 +115,9 @@ Built (`rtl/ooe/`):
   so the gate takes room alone. The buffer's gather and the pointers' moves
   are AND-ORs, not held `if`s, so synthesis keeps those enables rather than
   one per slot or per bank. The two-bit bank order turns every edge,
-  ungated, within the module's allowance. `check-cg`: worst enable 7.8 NGD
+  ungated, as do the registered count and its copy (six flops, within the
+  module's allowance). The free bits' enable is still an allocation or a
+  free, from the inputs, the one CG-5 finding left. `check-cg`: worst enable 7.8 NGD
   (GPR) and 5.6 (predicates), 100% DCGE in every scenario. In its clock-
   gating mode the bench frees through a map from the model's entries to
   the RTL's, since the idle cycles turn the RTL's bank order alone.

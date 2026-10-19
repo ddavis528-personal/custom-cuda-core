@@ -171,13 +171,20 @@ as OI-22), in OA's structure (OA's response OI-38): allocation takes the
 head of an 8-entry candidate buffer, which four interleaved banks refill at
 each edge, each from the first free, unbuffered register after its own
 pointer. A free sets its bit at the clock edge and reaches the buffer at
-the next, so a register freed in cycle t is allocatable from t + 2. Any
+the next, so a register freed in cycle t is allocatable from t + 2. An
+allocation leaves the buffer a cycle late (OA's response OI-52): it sits at
+the head in transit for a cycle, and the next allocations take the entries
+behind it, so the buffer offers its count less the last cycle's take. That
+costs nothing at 8 entries (the sweep's 982 cycles stand) and 4.8% at 4. Any
 number of frees a cycle costs nothing, so a squash's 32 or a kill's 16
 need no drain. Rename's allocation checks the buffer; its floor and
 ceiling checks count every free register not freed this cycle; V-01, V-02
 and V-04 count those freed this cycle too. Allocation order is
-bank-interleaved, so `--break free-new` now first shows at seq 379 (R4),
-where it showed at seq 382 (R1) under the rotating pointer.
+bank-interleaved, so `--break free-new` first showed at seq 379 (R4),
+where it showed at seq 382 (R1) under the rotating pointer. With the pop a
+cycle late (OI-52) a reallocation comes a cycle later, and it shows at seq
+383 (R4), behind the model's own V-01 and V-62 checks, which now see the
+wrong free first.
 
 Restore-allocate takes its 16 GPRs and 4 predicates through the same
 buffers and ports (OA's response OI-41). The floor check is made at

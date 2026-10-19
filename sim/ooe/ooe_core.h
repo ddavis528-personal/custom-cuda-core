@@ -441,7 +441,12 @@ enum class OoeEv : unsigned {
 /// room. A free reaches the free bits at the next edge, so it is visible
 /// to refill a cycle after it is freed and to allocation the cycle after
 /// that. Buffered entries stay free in the bits, so the admission floors
-/// (ready()) count them. With cap 0 it is the earlier structure: the first
+/// (ready()) count them. An allocation clears its entry's free bit at the
+/// edge, but leaves the buffer a cycle later (OA's response OI-52): the
+/// free list registers each cycle's take, and pops that many at the next
+/// edge, so its buffer's clock enable comes from its own flops. Meanwhile
+/// those entries, in transit, sit at the buffer's head, and allocation
+/// takes the entries behind them. With cap 0 it is the earlier structure: the first
 /// free entry at or after one rotating pointer, a free allocatable from the
 /// next cycle. ooe_freelist builds the buffered form.
 class FreeVec {
@@ -451,6 +456,7 @@ public:
     pend_.assign(n, 0);
     inbuf_.assign(n, 0);
     buf_.clear();
+    transit_ = took_ = 0;
     ready_ = n;
     npend_ = 0;
     ptr_ = 0;
@@ -464,17 +470,16 @@ public:
   size_t size() const { return ready_ + npend_; }
   /// Free entries the admission floors count: all but this cycle's frees.
   size_t ready() const { return ready_; }
-  /// Entries allocation can take this cycle: the buffer, or the free bits.
-  size_t avail() const { return cap_ ? buf_.size() : ready_; }
+  /// Entries allocation can take this cycle: the buffer behind the entries
+  /// in transit, or the free bits.
+  size_t avail() const { return cap_ ? buf_.size() - transit_ - took_ : ready_; }
   bool empty() const { return avail() == 0; }
   bool has(unsigned p) const { return bit_[p] || pend_[p]; }
   unsigned alloc() {
     const unsigned n = unsigned(bit_.size());
     if (cap_) {
-      if (buf_.empty()) return n;   // caller checked avail()
-      const unsigned p = buf_.front();
-      buf_.pop_front();
-      inbuf_[p] = 0;
+      if (!avail()) return n;   // caller checked avail()
+      const unsigned p = buf_[transit_ + took_++];
       take(p);
       return p;
     }
@@ -504,9 +509,11 @@ public:
   unsigned capacity() const { return unsigned(bit_.size()); }
   unsigned bufferCap() const { return cap_; }
   unsigned banks() const { return banks_; }
-  /// The buffer, head first; each bank's pointer (an index within the
-  /// bank); the bank refill starts with next edge.
+  /// The buffer, head first, the entries in transit included; how many
+  /// those are (last cycle's allocations); each bank's pointer (an index
+  /// within the bank); the bank refill starts with next edge.
   const std::deque<unsigned> &buffer() const { return buf_; }
+  unsigned inTransit() const { return transit_; }
   unsigned bankPointer(unsigned b) const { return bptr_[b]; }
   unsigned rotation() const { return rot_; }
   bool bit(unsigned p) const { return bit_[p]; }
@@ -515,7 +522,17 @@ public:
   void clock() {
     allocs_.clear();
     frees_.clear();
-    if (cap_) refill();
+    if (cap_) {
+      // Last cycle's allocations leave the buffer; this cycle's stay, in
+      // transit, until the next edge.
+      for (unsigned i = 0; i != transit_; ++i) {
+        inbuf_[buf_.front()] = 0;
+        buf_.pop_front();
+      }
+      transit_ = took_;
+      took_ = 0;
+      refill();
+    }
     if (npend_) {
       for (size_t p = 0; p != pend_.size(); ++p)
         if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
@@ -526,6 +543,7 @@ public:
     edge_.bits = bit_;
     edge_.bptr = bptr_;
     edge_.rot = rot_;
+    edge_.transit = transit_;
   }
   /// The state just after the last clock edge, before any allocation since:
   /// what ooe_freelist holds after the same edge (its testbench compares).
@@ -534,6 +552,7 @@ public:
     std::vector<uint8_t> bits;
     std::vector<unsigned> bptr;
     unsigned rot = 0;
+    unsigned transit = 0;
   };
   const Edge &lastEdge() const { return edge_; }
 
@@ -564,6 +583,7 @@ private:
   std::vector<unsigned> allocs_, frees_, bptr_;
   size_t ready_ = 0, npend_ = 0;
   unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
+  unsigned transit_ = 0, took_ = 0;   // last cycle's allocations, and this cycle's
   Edge edge_;
 };
 

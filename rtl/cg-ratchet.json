@@ -10,8 +10,7 @@
       "RST-1 ooe_rst_r00h"
     ],
     "ooe_freelist": [
-      "CG-5 st_cq02h",
-      "RST-1 ooe_rst_r00h"
+      "CG-5 st_cq02h"
     ],
     "ooe_rat": [
       "CG-5 ckpt_cq02h",
