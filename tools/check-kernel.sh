@@ -99,6 +99,10 @@ say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 # Whole-key match: `violations=` must not match `class_violations=`.
 field() { tr ' ' '\n' <"$1" | sed -n "s/^$2=//p" | head -1; }
+# A run's cycles, and those from FET's first instruction to DEC (AR-19): the
+# launch and the cold ITLB and ifill misses before it are the same in every
+# kernel, so comparisons between kernels and stubs run from_fetch.
+cycles() { echo "$(field "$1" cycles) cycles, $(field "$1" from_fetch) from first fetch"; }
 
 if [ ! -x "$SKEL" ]; then
   say "S1 kernel" "SKIP -- no $SKEL (tools/check-skel.sh builds it)"
@@ -119,8 +123,11 @@ for kv in $want; do
   [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || { ok=0; miss="$kv (got $(field "$log" "${kv%%=*}"))"; }
 done
 cyc=$(field "$log" cycles)
+ff=$(field "$log" from_fetch)
+# from_fetch counts from a cycle inside the run: set, and short of the total.
+[ "${ff:-0}" -gt 0 ] && [ "$ff" -lt "$cyc" ] || { ok=0; miss="from_fetch=$ff of $cyc cycles"; }
 if [ $ok = 1 ]; then
-  say "vadd: final state == ccv-sim, 0 violations" "PASS ($cyc cycles, $(field "$log" channels_used) channels)"
+  say "vadd: final state == ccv-sim, 0 violations" "PASS ($(cycles "$log"), $(field "$log" channels_used) channels)"
 else
   bad "vadd: final state == ccv-sim, 0 violations" "$miss"
 fi
@@ -327,7 +334,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_sel.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "sel: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_sel.log" cycles) cycles)"
+  say "sel: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_sel.log"))"
 else
   bad "sel: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_sel.log")"
 fi
@@ -348,7 +355,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_srd.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "srd: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_srd.log" cycles) cycles)"
+  say "srd: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_srd.log"))"
 else
   bad "srd: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_srd.log")"
 fi
@@ -403,7 +410,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_pguard.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "pguard: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_pguard.log" cycles) cycles)"
+  say "pguard: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_pguard.log"))"
 else
   bad "pguard: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_pguard.log")"
 fi
@@ -437,7 +444,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_merge.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "merge: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_merge.log" cycles) cycles)"
+  say "merge: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_merge.log"))"
 else
   bad "merge: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_merge.log")"
 fi
@@ -475,7 +482,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_mload.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "mload: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_mload.log" cycles) cycles)"
+  say "mload: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_mload.log"))"
 else
   bad "mload: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_mload.log")"
 fi
@@ -532,7 +539,7 @@ while read -r k want; do
     esac
   done
   if [ -z "$why" ]; then
-    say "$k: == ccv-sim, reaches its bins" "PASS ($(field "$log" cycles) cycles; $want)"
+    say "$k: == ccv-sim, reaches its bins" "PASS ($(cycles "$log"); $want)"
   else
     bad "$k: == ccv-sim, reaches its bins" "${why# }"
   fi

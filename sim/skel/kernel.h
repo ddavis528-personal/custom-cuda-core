@@ -131,6 +131,11 @@ struct Kernel {
   std::vector<unsigned> prat0;
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
+  /// The cycle FET first sent DEC an instruction. The KERNEL line counts the
+  /// run from it beside the total (from_fetch, AR-19), so a comparison need
+  /// not carry the launch and the cold ITLB and ifill misses before it.
+  uint64_t first_fetch = 0;
+  bool fetched = false;
   bool exited = false;
   uint64_t failures = 0;                           ///< check failures
   uint64_t class_violations = 0;

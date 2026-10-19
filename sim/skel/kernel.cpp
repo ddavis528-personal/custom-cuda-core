@@ -2060,6 +2060,7 @@ private:
         mispredict = r.taken != 0;
       }
       send(c.fet_dec, s, f, instrUid(r.seq));
+      if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
       ++next_;
       if (mispredict) { await_redirect_ = true; break; }
     }
@@ -2264,12 +2265,15 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
     overflows += m.rx(s).overflows();
     leaks += m.rx(s).leaks();
   }
-  std::printf("KERNEL name=%s finished=%d cycles=%llu retired=%llu "
+  const uint64_t from_fetch =
+      k.fetched && e.finish >= k.first_fetch ? e.finish - k.first_fetch : 0;
+  std::printf("KERNEL name=%s finished=%d cycles=%llu from_fetch=%llu retired=%llu "
               "issue_groups=%u order=%s gpr_mismatch=%u pred_mismatch=%u "
               "mem_mismatch=%u check_failures=%llu class_violations=%llu "
               "overflows=%llu credit_leaks=%llu channels_used=%u/%u violations=%d\n",
               k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
-              (unsigned long long)k.retired, k.orc.issue_groups,
+              (unsigned long long)from_fetch, (unsigned long long)k.retired,
+              k.orc.issue_groups,
               r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
               r.mem_mismatch, (unsigned long long)k.failures,
               (unsigned long long)k.class_violations,
