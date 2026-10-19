@@ -12,9 +12,10 @@ deleted. Any block may add entries. Each counter named below is one the
 block's model already reports (for OOE, `CCV_OOE_STATS`; see
 [`ooe-model.md`](ooe-model.md)), or the entry says it is still to be added.
 
-Every entry today is OOE's, from a scan of the Stage 4 decisions, the
+PF-1 to PF-29 are OOE's, from a scan of the Stage 4 decisions, the
 model's decisions 1 to 11 ([`ooe-model.md`](ooe-model.md)) and the
-interface review rows. Each entry gives the current choice, the
+interface review rows. From PF-30 the top-level architect (AR) adds
+entries from the cross-agent register and the compiler's measurements. Each entry gives the current choice, the
 alternative, what the alternative costs, and the signal that would justify
 it.
 
@@ -51,6 +52,8 @@ it.
 | PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | dropped (DA's revised OI-30) |
 | PF-28 | Loads pass older loads | scheduler, MIU | deferred (DA's response OA-13) |
 | PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35) |
+| PF-30 | 4-bit work at 8x: nibble sub-sections | LANE, RCU, rename, scheduler | deferred (DA's response OI-29) |
+| PF-31 | A warp-uniform register file and scalar datapath | ISA, RCU, rename, compiler | deferred (CP-7, compiler F-106) |
 
 ## Entries
 
@@ -190,13 +193,21 @@ it.
 
 ### PF-12 More bypass paths between groups
 
-- **Now:** only lane ALU to lane ALU bypasses (A-59). Every other pair waits
-  its producer's full latency (see "Bypass groups" in
-  [`ooe-model.md`](ooe-model.md)).
+- **Now:** lane integer and FP results bypass inside the lane at
+  `CCV_LAT_LANE_BYP` (A-59), with penalties set by bypass group: 0 within
+  a group, 2 between integer and FP (DA's responses OA-4). SFU has no
+  bypass point until a `CCV_LAT_SFU_BYP` exists (OA's response OI-16), so
+  its dependants wait the full `CCV_LAT_SFU`. RCU-only, warp-collective,
+  predicate and memop-address consumers take no bypass (V-48). See
+  "Bypass groups" in [`ooe-model.md`](ooe-model.md). (Updated 2026-10-19
+  by AR: this line said only ALU to ALU bypassed, which predates OA-4.)
 - **Alternative:** bypass networks between more pairs: RCU-only results to
   the lanes, SFU to SFU, results to RCU's address path for memops.
 - **Cost:** wires and muxes per pair, and one more wake vector per distinct
-  offset in the scheduler.
+  offset in the scheduler. An SFU bypass point also widens the lane's
+  bypass select: `CCV_P_W_LANE_BYP_AGE` is derived from the lane window
+  alone, and must then take the widest window over producer groups, or
+  RCU cannot name an SFU producer (AR's response TI-8).
 - **Signal:** per pair, the dependants that waited a full latency where a
   bypass would have woken them earlier (to add: a counter per producer unit
   and consumer group).
@@ -443,3 +454,57 @@ it.
 - **Signal:** `foot.*` against `spread.*` and `sections_idle` on one-warp
   narrow kernels. Revisit when a one-warp narrow kernel matters (asked of
   CP).
+
+### PF-30 4-bit work at 8x: nibble sub-sections
+
+- **Now:** a `chwidth` = 4 register takes a whole 8-bit section, and every
+  write leaves bits [7:4] zero, masked at write-back in the lane (IS-6).
+  4-bit work therefore retires at 4x, the 8-bit rate (DA's response OI-29;
+  the OOE microarchitecture's "Narrow registers and lane sections").
+- **Alternative:** split each section into two independently controlled
+  4-bit halves, so eight 4-bit ops co-issue per lane. A register's
+  position grows from 2 bits to 3, and the footprint mask from 4 bits to
+  8. E2M1 FP then needs eight FP4 units per lane, beside the four FP8
+  units DA's response IS-7 already builds.
+- **Cost:** every per-section field on `ccv_rcu_lane_ops` doubles. Its
+  warp-uniform control is 208 bits a lane today (AR-18), so about 400. The
+  lane sections in select go from 4 to 8 (`CCV_ISSUE_RESOURCES` 9 to 13),
+  each RAT entry gains a position bit, and IS-6's mask becomes a nibble
+  write enable. Memory does not keep up: 4-bit data lives packed two to a
+  byte and is reached through `unpacki`, so four MIU pipes supply 256
+  elements a cycle (IS's response OI-33). That is level with an 8x ALU,
+  with no headroom, and `unpacki` takes lane slots from the arithmetic it
+  feeds.
+- **Signal:** no kernel exercises it yet, because the compiler has no
+  8-bit or 4-bit register class (CP-6). Revisit when an INT4 or FP4
+  kernel runs. Measure the rate at which a 4-bit op is ready while all
+  four lane sections are held (to add: a split of the section-busy hold by
+  width), and `sections_idle` on that kernel. An upper bound comes cheaply
+  from an OI-34 sweep arm with eight nibble resources.
+
+### PF-31 A warp-uniform register file and scalar datapath
+
+- **Now:** a warp-uniform value takes a full 1,024-bit GPR row, or the
+  compiler re-reads it from the launch block through the slot form (O-45;
+  CP-4's 8-byte stride reaches sixteen pointer arguments). Uniform
+  arithmetic runs in all 32 lanes. The ISA has 16 GPRs (O-25), and no
+  uniform namespace.
+- **Alternative:** a small per-warp uniform register file with a scalar
+  ALU in RCU, and a uniform-operand selector on vector instructions
+  (the compiler's `proposals/warp-uniform.md`, option C; compiler F-106).
+- **Cost:** ISA encoding space, with no free format tag left (compiler F-54); a
+  second rename table and free list; a scalar datapath and its bypass in
+  RCU; uniformity analysis in the compiler, which exists only as lane-0
+  masking (O-33, whose reach CP-2 cut). On the hardware side it also pays
+  back: every uniform value held in a GPR occupies a whole 192-entry PRF
+  row, 31/32 of it redundant.
+- **Measured (compiler side):** since CP-4 no shape in the fused corpus
+  spills for uniform pressure (CP-7). The cost has moved into instruction
+  count: launch-block re-reads are 20 to 27% of the stream on the loop
+  rows (compiler F-152; the compiler's `benchmarks.md` §4). GEMM's spills are
+  divergent accumulators, which no uniform mechanism reaches (CP-5).
+- **Signal:** the dynamic fraction of issued ops whose operands are all
+  warp-uniform (to add: a ccv-sim counter), and the PRF rows that uniform
+  values hold when rename stalls on an empty free list (to add, in the
+  OOE model). Revisit when either is material on a real kernel. The ISA
+  half is IS's (CP-7).
