@@ -214,7 +214,7 @@ private:
     }
     e.mask = uint32_t(get(u, c.dec_ooe, "group_mask"));
     e.op = opByCode(unsigned(get(u, c.dec_ooe, "opcode")));
-    if (!e.op || get(u, c.dec_ooe, "decode_fault")) {
+    if (!e.op || get(u, c.dec_ooe, "cause") != kFaultNone) {
       k_.fail("ooe: a uop it cannot execute");
       return;
     }

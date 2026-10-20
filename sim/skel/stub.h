@@ -104,6 +104,8 @@ enum : unsigned { kMemLoad = 0, kMemStore = 1,          // ooe_miu_memop.mem_op
 enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_op
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
+enum : unsigned { kFaultNone = 0, kFaultFetch = 1,          // CCV_W_FAULT_CAUSE (ISA §12)
+                  kFaultIllegal = 2 };
 enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // ---- the opcode table ---------------------------------------------------------
 //
