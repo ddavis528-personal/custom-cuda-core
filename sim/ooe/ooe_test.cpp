@@ -1229,17 +1229,19 @@ void testReadyReg() {
   // A shallow decode queue spaces a warp's uops so the race opens (found
   // at decq 4 in the sweep; at decq 2 since the decode queue's flush is
   // applied an edge late, OI-58; at decq 4 and a 60% miss rate since the
-  // take is popped late, OA-21). It is rare, about one run in 240 at any
-  // setting, so the hunt is wide: it stops at the first.
-  for (unsigned run = 0; run != 6 * 3 * 40 && !seen; ++run) {
-    const unsigned seed = run % 40 + 1;
+  // take is popped late, OA-21; at decq 3 and 20% under the registered
+  // go, OA-22). It is rare, one run in 100 to 700 at any setting, and
+  // every change to rename's traffic moves it, so the hunt is wide and
+  // stops at the first. A directed test would hold it better (OI's task).
+  for (unsigned run = 0; run != 6 * 3 * 60 && !seen; ++run) {
+    const unsigned seed = run % 60 + 1;
     std::mt19937 rng(seed);
     Config c = baseConfig();
     c.rs_warp_cap = c.decq_warp_max = 0;
-    c.decq = (unsigned[]){4, 2, 3, 5, 6, 8}[run / 120];
+    c.decq = (unsigned[]){3, 4, 2, 5, 6, 8}[run / 180];
     c.inject_late_event = true;
     Env e(c, seed);
-    e.miss_pct = (unsigned[]){60, 20, 40}[(run / 40) % 3];
+    e.miss_pct = (unsigned[]){20, 60, 40}[(run / 60) % 3];
     const auto report = e.core.on_error;
     e.core.on_error = [&](const std::string &m) {
       seen = seen || m.find("OA-17") != std::string::npos;

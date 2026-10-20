@@ -201,8 +201,9 @@ struct Config {
   /// candidate head uop is a copy; a short cycle's warp takes without
   /// them; and a warp's fits count its ROB retirements a cycle late. 2
   /// (OA-21, DA 2026-10-20: rename's interleaved go forms each warp's fits
-  /// alone, and its exact forms do not fit a stage).
-  unsigned fits_conservative = 2;
+  /// alone, and its exact forms do not fit a stage). The default is 3
+  /// (OA-22, OA 2026-10-20: the go the RTL builds).
+  unsigned fits_conservative = 3;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not

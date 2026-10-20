@@ -393,7 +393,7 @@ under one warp and 3.1 under two. One more decode-queue entry takes back
 all of it under the interleave, 2.3 points under one warp and 1.9 under
 two.
 
-`fits_conservative` (2; OA-21, DA 2026-10-20): a go that lets several warps take
+`fits_conservative` (3; OA-21, DA 2026-10-20, and OA-22): a go that lets several warps take
 in a cycle forms each warp's fits alone, so their sum can exceed the
 shared credits (RS room per class, GPR and predicate names). The model
 admits against running credits, which is exact. 1 forms each warp's fits
@@ -418,6 +418,8 @@ uop is a copy, which takes two), the short cycle's warp takes without
 them, and a warp's fits count its ROB retirements a cycle late. 48
 seeds, the interleave at decq 13: +2.5% against the on-time exact go,
 where 2 was +1.6% but takes no account of a copy's two RCU entries.
+OA accepted it as the default (OA-22, 2026-10-20). Under it at decq 13,
+two warps are +3.6% and one warp +3.6%, so the interleave stays ahead.
 
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
