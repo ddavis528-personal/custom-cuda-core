@@ -257,6 +257,8 @@ struct Config {
   bool inject_no_bar_fault = false;
   /// No F-WIDTH check at dispatch (testWidthFault's control).
   bool inject_no_width_fault = false;
+  /// No F-FORMAT check at dispatch (testFormatFault's control).
+  bool inject_no_format_fault = false;
   /// The fault-address register takes every faulting completion, not only
   /// an older one (V-74's control).
   bool inject_fa_youngest = false;
@@ -319,6 +321,10 @@ struct Uop {
   /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
   /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
   unsigned cause = 0;
+  /// F-FORMAT's inputs (OI-57; TI's 57048d7): bit i set where the op's
+  /// format code is reserved at width code i, and the operand whose
+  /// committed width selects the bit (0-2 src0-src2, 3 the destination).
+  unsigned fmt_rsv = 0, fmt_opnd = 0;
   /// The destination's element width, from the committed chwidth table:
   /// 0 32-bit, 1 16-bit, 2 8-bit, 3 4-bit (sectioned; a 4-bit register takes
   /// an 8-bit section, OI-29). Sources carry their own in their names.
@@ -346,7 +352,7 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
-enum : unsigned { kCauseWidth = 3, kCauseBarrier = 9 };
+enum : unsigned { kCauseWidth = 3, kCauseFormat = 4, kCauseBarrier = 9 };
 /// mem_op codes OOE reads (OA's six, TI's a4fa218).
 enum : unsigned { kMemOpFence = 0xE };
 

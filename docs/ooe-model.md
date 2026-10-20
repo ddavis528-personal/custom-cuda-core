@@ -577,7 +577,9 @@ added with the event.
     chwidth retires and 32 at launch and restore-allocate, and a memop
     whose data register (a load's destination, a store's highest read
     source) is at 4 bits faults as a no-op. Control `no-width-fault` drops
-    the check. F-FORMAT waits on DEC's fmt_rsv and fmt_opnd (OI-57, TI).
+    the check. F-FORMAT (4) reads DEC's fmt_rsv and fmt_opnd (TI's
+    57048d7): it faults where fmt_rsv's bit for the committed width of
+    fmt_opnd's register is set. Control `no-format-fault` drops it.
     Issue still sends one committed chwidth per slot, the model's older
     simplification;
   - V-74: one fault-address register per warp keeps the oldest faulting

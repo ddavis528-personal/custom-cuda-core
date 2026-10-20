@@ -190,6 +190,8 @@ private:
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
     u.cause = unsigned(get(p, c.dec_ooe, "cause"));
+    u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
+    u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
     // What DEC decodes so OOE never looks at opcode (A-75, TI-1): which
     // source fields are real reads, how the predicate is read, what imm
     // holds, and exit as sched_attr's serial code 3.

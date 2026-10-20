@@ -87,6 +87,7 @@ struct Op {
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
+  unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -102,6 +103,8 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.w = o.w;
   u.backward = o.backward;
   u.cause = o.cause;
+  u.fmt_rsv = o.fmt_rsv;
+  u.fmt_opnd = o.fmt_opnd;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
   u.shape.guard = o.guard;
   u.pred_guard = o.pguard;
@@ -1273,6 +1276,44 @@ void testWidthFault() {
   }
 }
 
+/// F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): an FP op whose
+/// format code DEC marks reserved at its operand's committed width faults
+/// at dispatch, cause 4. With R4 at 4 bits and src0 = R4, a format reserved
+/// at 4 bits only (fmt_rsv bit 3) faults; one reserved at 32 bits only
+/// (bit 0) does not. The control drops the check.
+void testFormatFault() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "format fault (control)" : "format fault";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.inject_no_format_fault = control;
+    for (const unsigned rsv : {8u, 1u}) {
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 3; p.push_back(w);
+      Op f; f.k = kFp; f.dst = 5; f.nsrc = 1; f.src[0] = 4; f.fmt_rsv = rsv; f.fmt_opnd = 0; p.push_back(f);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0;
+      for (unsigned k = 0; k != 80; ++k) {
+        e.step();
+        for (const Fault &x : e.log.back().faults) { ++faults; cause = x.cause; }
+      }
+      if (control) {
+        if (rsv == 8) {
+          std::printf("  %-24s %s\n", "control no-format-fault", faults == 0 ? "caught" : "MISSED");
+          EXPECT(faults == 0, "dropping the check should let the op through");
+        }
+        continue;
+      }
+      const bool want = rsv == 8;
+      EXPECT((faults == 1) == want, "fmt_rsv %#x: %u faults", rsv, faults);
+      if (want) EXPECT(cause == kCauseFormat, "cause %u, want F-FORMAT (%u)", cause, kCauseFormat);
+    }
+  }
+}
+
 /// Sectioned lanes (OI-29 to OI-33): narrow registers placed in sections,
 /// footprints widened per unit, and lane ops co-issued on disjoint sections.
 void testSections() {
@@ -1847,6 +1888,7 @@ int main(int argc, char **argv) {
   testMemFault();
   testChwidth();
   testWidthFault();
+  testFormatFault();
   testSections();
   testFreeVec();
   testReadyReg();

@@ -1050,7 +1050,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause || r.fault_cause == kCauseWidth) c = true;   // no-ops: faulted before or at dispatch
+  if (r.u.shape.exit || r.u.cause || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat) c = true;   // no-ops: faulted before or at dispatch
   else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
@@ -2178,7 +2178,12 @@ bool Core::tryRename(unsigned si, const Uop &u) {
         if ((u.shape.gpr_reads >> i) & 1u) rdata = u.src[i];
     width_fault = s.cw[rdata & 15] == 3;
   }
-  const bool nop = u.shape.exit || u.cause || bar_fault || width_fault;
+  // F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): the op's format
+  // code reserved at its operand's committed width, as DEC decoded it.
+  const unsigned fmt_reg = u.fmt_opnd == 3 ? u.dst : u.src[u.fmt_opnd % 3];
+  const bool format_fault = !width_fault && ((u.fmt_rsv >> s.cw[fmt_reg & 15]) & 1u) &&
+                            !cfg_.inject_no_format_fault;
+  const bool nop = u.shape.exit || u.cause || bar_fault || width_fault || format_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -2344,6 +2349,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     r.fault = true;
     r.fault_cause = kCauseWidth;
     count("fault.width");
+  }
+  if (format_fault) {
+    r.fault = true;
+    r.fault_cause = kCauseFormat;
+    count("fault.format");
   }
   if (bar_fault) {
     r.fault = true;
