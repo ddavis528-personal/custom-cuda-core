@@ -65,7 +65,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **20 of 48 channels** carry at least one
+appear above. **19 of 48 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
@@ -88,7 +88,6 @@ preliminary field:
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rau_fet_mig` | `bank_select` |
 | `ccv_rau_rcu_mig` | `bank_select` |
-| `ccv_rau_syu_alloc` | `barrier_count` |
 | `ccv_rcu_lane_ops` | `sec_opcode`, `operand`, `sec_opnd_pos`, `sec_opnd_width`, `operand_byp` |
 
 ## High-churn parameters
@@ -118,7 +117,6 @@ to code that merely carries it, which will not.
 | `CCV_P_W_BYP_GROUP` | 3 | med | LANE per-block session (register OA-4) |
 | `CCV_P_W_SCHED_ATTR` | 16 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
-| `CCV_L_W_BAR_COUNT` | 7 | low | SYU session -- is the count biased? |
 | `CCV_L_W_CLASS` | 3 | low | DEC block session -- is class derivable from opcode? |
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | MMU session, with the page-table format |
 | `CCV_L_W_SPM_OP` | 2 | low | SPM block session |

@@ -384,7 +384,8 @@ the schema says how the top connects it):
     a warp parked at `bar.sync`, since it can be demoted.
 - **Both kill sources land at RAU, the single issuer.** A fault comes direct
   from OOE: `fault_taken` with the `warp_id` on `ccv_ooe_rau_status`, and RAU
-  maps warp to grid to mask. CRU records the fault in parallel for the host
+  kills every warp of the context, not just the faulting grid (DA's response
+  IS-2, 2026-10-20). CRU records the fault in parallel for the host
   and is not on the path that stops execution. The host's kill comes as
   `kill_req` plus `kill_grid` on `ccv_cru_rau_cfg`.
 - **Wake is not a fabric.** It is `_wake`, a fifth channel signal from sender

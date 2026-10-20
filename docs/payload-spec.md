@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 9 | 29 |
-| ⚠️ Some provisional | 19 | 88 |
-| ⛔ Some preliminary | 20 | 140 |
-| **Total** | **48** | **257** |
+| All decided | 9 | 30 |
+| ⚠️ Some provisional | 20 | 92 |
+| ⛔ Some preliminary | 19 | 136 |
+| **Total** | **48** | **258** |
 
 ## What still has to be decided
 
@@ -154,12 +154,6 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_SPM_OP` | 2 | low | Scratchpad bank access: read, write, and room for a read-modify variant. |
 
-### SYU session -- is the count biased?
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_W_BAR_COUNT` | 7 | low | Barrier entries in an allocated range. 7 bits expresses 1..64; 6 would do with a bias. Not stated by the payload pass, so the biasing choice is still open. |
-
 ### divergence model specification
 
 | Parameter | Value | Churn | Basis |
@@ -206,7 +200,7 @@ lane → rcu · rate 1 · execution
 
 ### `ccv_rau_ooe_alloc`
 
-What RAU tells OOE about a warp's residency (A-64, A-65). alloc_op: 0 free, 1 launch, 2 restore-allocate, 3 restore-activate. Launch: OOE maps the warp's 16 architectural GPRs and 4 predicates to the hardwired zero registers (CCV_P_PHYS_ZERO, CCV_P_PRED_ZERO), so no zeroing traffic is sent and the warp may issue at once. Restore-allocate, before the PCA transfer: OOE allocates 16 GPRs and 4 predicates from the slot's reservation, so it never waits, and sends ccv_ooe_rcu_map with direction 1. Restore-activate, after ccv_pca_rau_mig_done: only now may the warp rename and issue. A single activation message would deadlock, since PCA's rows need the map and the map would need the activation. Free: the warp's state is released. tier1_id is the tier-1 slot RAU placed the warp in; OOE keeps its warp-to-slot table from it, which indexes the ROB, rob_tag's slot field, the per-slot reservations and the checkpoint-free bitmap, so ccv_dec_ooe_uop needs no slot field. Identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design.
+What RAU tells OOE about a warp's residency (A-64, A-65). alloc_op: 0 free, 1 launch, 2 restore-allocate, 3 restore-activate. Launch: OOE maps the warp's 16 architectural GPRs and 4 predicates to the hardwired zero registers (CCV_P_PHYS_ZERO, CCV_P_PRED_ZERO), so no zeroing traffic is sent and the warp may issue at once. Restore-allocate, before the PCA transfer: OOE allocates 16 GPRs and 4 predicates from the slot's reservation, so it never waits, and sends ccv_ooe_rcu_map with direction 1. Restore-activate, after ccv_pca_rau_mig_done: only now may the warp rename and issue. A single activation message would deadlock, since PCA's rows need the map and the map would need the activation. Free: the warp's state is released. tier1_id is the tier-1 slot RAU placed the warp in; OOE keeps its warp-to-slot table from it, which indexes the ROB, rob_tag's slot field, the per-slot reservations and the checkpoint-free bitmap, so ccv_dec_ooe_uop needs no slot field. Identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design. BARRIERS (IS-16, ISA v1.9 O-59): on a launch, barrier_count is the warp's CTA's allocated barrier count, 0 to 16. OOE holds it per warp and raises F-BARRIER at dispatch for a barrier instruction whose ID is at or above it, so a faulting reference never reaches SYU. Don't-care on other alloc_ops.
 
 rau → ooe · rate 1 · control
 
@@ -217,11 +211,12 @@ rau → ooe · rate 1 · control
 | `alloc_op` | `2` | 2 | literal |
 | `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
 | `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
-| **total** | | **46** | |
+| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
+| **total** | | **51** | |
 
 ### `ccv_ooe_rau_status`
 
-Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU maps warp to grid to mask from tables it owns. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
+Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU kills every warp of the context: with one resident context (the ASID field's contract), every valid warp context, resident and parked, with no lookup, and it stops every queued launch (DA's response IS-2, 2026-10-20: a fatal fault terminates the context, not the grid). The host's kill_grid on ccv_cru_rau_cfg stays grid-scoped: it is a request, not a fault. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
 
 ooe → rau · rate 1 · control
 
@@ -573,6 +568,20 @@ ooe → syu · rate 1 · control
 | `arrive_or_wait` | `1` | 1 | literal |
 | **total** | | **13** | ⚠️ 3 provisional |
 
+### `ccv_rau_syu_alloc`
+
+Barrier entries allocated to or freed from a CTA slot.
+
+rau → syu · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
+| `barrier_base` | `CCV_W_BAR_ENTRY` | 6 | CCV_W_BAR_ENTRY (arch) |
+| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
+| `allocate_or_free` | `1` | 1 | literal |
+| **total** | | **15** | ⚠️ 3 provisional |
+
 ### `ccv_ooe_cru_fault`
 
 The first fault taken by a context, written once and never overwritten.
@@ -890,20 +899,6 @@ rau → fet · rate 1 · control
 | `direction` | `1` | 1 | literal |
 | `bank_select` | `CCV_L_W_PCA_BANK` | 3 ⛔ | CCV_L_W_PCA_BANK (preliminary, churn med) |
 | **total** | | **11** | ⛔ 3 preliminary |
-
-### `ccv_rau_syu_alloc`
-
-Barrier entries allocated to or freed from a CTA slot.
-
-rau → syu · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
-| `barrier_base` | `CCV_W_BAR_ENTRY` | 6 | CCV_W_BAR_ENTRY (arch) |
-| `barrier_count` | `CCV_L_W_BAR_COUNT` | 7 ⛔ | CCV_L_W_BAR_COUNT (preliminary, churn low) |
-| `allocate_or_free` | `1` | 1 | literal |
-| **total** | | **17** | ⛔ 7 preliminary, ⚠️ 3 provisional |
 
 ### `ccv_cru_rau_cfg`
 

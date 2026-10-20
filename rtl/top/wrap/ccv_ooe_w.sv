@@ -705,7 +705,7 @@ module ccv_ooe_w #(
   end
   // ccv_rau_ooe_alloc, destination end
   if (RPT_RAU_OOE_ALLOC > 0) begin : g_rpt_rau_ooe_alloc
-    ccv_common_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(46)) u_rpt_rau_ooe_alloc (
+    ccv_common_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(51)) u_rpt_rau_ooe_alloc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_ooe_alloc_valid}), .src_payload({rau_ooe_alloc_payload}),
       .src_wake(rau_ooe_alloc_wake), .src_credit({rau_ooe_alloc_credit}), .src_stall({rau_ooe_alloc_stall}),
