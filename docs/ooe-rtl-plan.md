@@ -326,7 +326,7 @@ Built (`rtl/ooe/`):
 
   With the section fallback (FB 1, the design) select is 24.3 NGD, and
   with the half pick too (FB 2) 26.8, past the stage, so the half pick is
-  PF-31. That was select with every term live; ooe_sched moved the terms
+  PF-38. That was select with every term live; ooe_sched moved the terms
   that need only earlier state into its registers (below), and select now
   reads them.
 

@@ -51,8 +51,7 @@ it.
 | PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | dropped (DA's revised OI-30) |
 | PF-28 | Loads pass older loads | scheduler, MIU | deferred (DA's response OA-13) |
 | PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35; OA-19 (b)) |
-| PF-30 | Loop control on R: a warp-uniform register file and loop-uniformization | ISA, compiler, RCU | deferred (DA's response OA-19 (c)) |
-| PF-31 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
+| PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
 
 ## Entries
 
@@ -454,25 +453,7 @@ it.
   is unmeasured: it needs a model arm with compiler-chosen positions
   before it is built (OA).
 
-### PF-30 Loop control on R: a warp-uniform register file and loop-uniformization
-
-- **Now:** a loop's back-edge compare is a 32-bit lane op (setp), which
-  takes all four lane sections for its cycle. At four warps it holds
-  19.2% of section-cycles at alu8 (21.7% with the section fallback) and
-  15.6% at alu16 (IS-9, `select.lane_ctl_cycles`).
-- **Alternative:** a warp-uniform register file (CP-7), so a uniform
-  compare runs on R and frees those cycles for narrow work.
-- **Cost:** a register namespace and its ISA work, and CP's
-  loop-uniformization transform. Grid-stride loops, the alu kernels'
-  shape, compare a per-lane index, so none of their back-edge compares is
-  uniform without that transform (CP's correction, OA-19).
-- **Ceiling:** 1/(1 - 0.217) = 1.28x on the narrow kernels, so 8 bits
-  reaches at most about 3.1x over alu32 (IS's figure).
-- **Signal:** `select.lane_ctl_cycles` over cycles on the corpus's narrow
-  kernels, once CP's transform exists to say which compares it makes
-  uniform.
-
-### PF-31 The aligned-half fallback pick
+### PF-38 The aligned-half fallback pick
 
 - **Now:** select's fallback is section-only (OA's response IS-9): a lane
   section whose winner does not issue grants its oldest requester naming

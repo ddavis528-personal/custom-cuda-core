@@ -680,8 +680,9 @@ warps. A lone warp's narrow rate is PF-29.
   a cycle outside setps, **2.40x**) and leaves alu16 at 823 (**1.59x**);
   the half pick takes alu16 to 710 (1.90x) but measures 26.8 NGD in
   ooe_select, past its stage (section-only 24.3, none 19.5), so it is
-  PF-31. DA's response OA-19 holds the first build to the measured rate;
-  PF-29 and PF-30 are the levers past it. Rename or issue at 8 wide, or a
+  PF-38. DA's response OA-19 holds the first build to the measured rate;
+  PF-29 and PF-31 (AR's warp-uniform register file, with loop control on
+  R) are the levers past it. Rename or issue at 8 wide, or a
   128-entry RCU RS, makes neither faster. Both columns print.
 - **OA-14's rotation equals its starting rule.** From 0, every warp rotates
   in lockstep and it equals home 0. From the slot index, it equals home =
