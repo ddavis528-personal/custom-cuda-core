@@ -516,6 +516,16 @@ it.
   count: launch-block re-reads are 20 to 27% of the stream on the loop
   rows (compiler F-152; the compiler's `benchmarks.md` §4). GEMM's spills are
   divergent accumulators, which no uniform mechanism reaches (CP-5).
+- **Measured (lane side, OI's IS-9 figures):** a loop's back-edge compare
+  is a 32-bit lane op, which takes all four lane sections for its cycle.
+  At four warps it holds 19.2% of section-cycles at alu8 (21.7% with the
+  section fallback) and 15.6% at alu16 (`select.lane_ctl_cycles`). A
+  uniform compare on the scalar datapath frees them: at most
+  1/(1 - 0.217) = 1.28x on the narrow kernels, so 8 bits reaches at most
+  about 3.1x over alu32. Grid-stride loops compare a per-lane index, so
+  none of those compares is uniform without CP's loop-uniformization
+  transform (CP's correction, OA-19), which this entry's compiler cost
+  then includes.
 - **Signal:** the dynamic fraction of issued ops whose operands are all
   warp-uniform (to add: a ccv-sim counter), and the PRF rows that uniform
   values hold when rename stalls on an empty free list (to add, in the
