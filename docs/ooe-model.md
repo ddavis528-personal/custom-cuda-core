@@ -384,7 +384,7 @@ the next. That is what lets the RTL's queue fit its stage. `ooe-test
 --sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
 and 12 entries for comparison.
 
-`decq_take_late` (off; OA-21's option (a), awaiting DA): rename's take is
+`decq_take_late` (on; OA-21, DA 2026-10-20): rename's take is
 registered in the decode queue and popped an edge late, so the taken
 entries hold their credits one cycle more, as `decq_flush_late` holds a
 flush's. `ooe-test --sweep` measures it under each go (`rename_one_warp`
@@ -393,7 +393,7 @@ under one warp and 3.1 under two. One more decode-queue entry takes back
 all of it under the interleave, 2.3 points under one warp and 1.9 under
 two.
 
-`fits_conservative` (0, exact; OA-21): a go that lets several warps take
+`fits_conservative` (2; OA-21, DA 2026-10-20): a go that lets several warps take
 in a cycle forms each warp's fits alone, so their sum can exceed the
 shared credits (RS room per class, GPR and predicate names). The model
 admits against running credits, which is exact. 1 forms each warp's fits
@@ -402,6 +402,10 @@ shared credit is below the width. With the late take, 48 seeds, against the
 interleave with an on-time take: two warps at decq 13 are +1.1% exact,
 +5.3% under 1 and +1.8% under 2; the interleave at 13 is 0.0%, +6.9% and
 +1.6%. RS room is what stalls under 1; GPR and predicate names never do.
+DA chose the interleave (`rename_one_warp` 0) with 2, the late take and a
+13-entry decode queue (TI's `CCV_P_DECQ`); the exact forms measure 29.1
+and 37.6 NGD in the go and fit no stage (`test/ooe/probes`). No S1 kernel
+moves between the old defaults and these.
 
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")

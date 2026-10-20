@@ -185,17 +185,18 @@ struct Config {
   /// credits one cycle more.
   bool decq_flush_late = true;
   /// Rename's take is registered in the decode queue and popped an edge
-  /// late (OA-21 (a)): the taken entries hold their credits one cycle more.
-  /// Off until DA settles OA-21; the sweep measures it.
-  bool decq_take_late = false;
+  /// late: the taken entries hold their credits one cycle more. On (OA-21,
+  /// DA 2026-10-20), because ooe_decq fits its stage only so.
+  bool decq_take_late = true;
   /// How a go that lets several warps take in a cycle (rename_one_warp 0,
   /// or 2 and up) keeps their sum within the shared credits (RS room per
   /// class, GPR and predicate names), each warp's fits being formed alone
   /// (OA-21). 0: exact, the model's running credits. 1: each warp's fits
   /// against the credits less the rename width. 2: one warp takes while any
   /// shared credit is below the rename width (a registered bit), several
-  /// otherwise. The sweep measures them.
-  unsigned fits_conservative = 0;
+  /// otherwise. 2 (OA-21, DA 2026-10-20: rename's interleaved go forms each
+  /// warp's fits alone, and its exact forms do not fit a stage).
+  unsigned fits_conservative = 2;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
