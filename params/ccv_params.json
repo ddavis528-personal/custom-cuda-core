@@ -203,7 +203,7 @@
       "status": "isa",
       "source": "ISA v1.6 §3, Format E -- 6-bit barrier ID",
       "doc": "Barrier table entries, 4 x 16, epoch-tagged. A §7 formal target.",
-      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "| `[16:11]` | 6 | barrier ID (64 entries — matches the 4×16 table) |", "value": "2 ** r[0]"}
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "64 warps × 64 entries is 512 bytes per SM", "value": "q[1]"}
     },
     {
       "name": "CCV_CORE_ID_BITS",
@@ -1307,9 +1307,10 @@
     {
       "name": "CCV_L_W_BAR_COUNT",
       "value": 5,
-      "status": "arch",
+      "status": "isa",
       "source": "Payload widths pass (2026-09-25); IS-16, ISA v1.9 O-59 (2026-10-20)",
-      "doc": "A CTA's allocated barrier count, 0 to 16, unbiased. A CTA has at most 16 barriers (ISA v1.9 O-59, PTX's named-barrier limit); IDs 16-63 are reserved and raise F-ILLEGAL at decode, and an ID at or above the count raises F-BARRIER at dispatch, in OOE. Was 7 bits for 1..64, which read the per-SM 4x16 table as a per-CTA reach."
+      "doc": "A CTA's allocated barrier count, 0 to 16, unbiased. A CTA has at most 16 barriers (ISA v1.9 O-59, PTX's named-barrier limit); IDs 16-63 are reserved and raise F-ILLEGAL at decode, and an ID at or above the count raises F-BARRIER at dispatch, in OOE. Was 7 bits for 1..64, which read the per-SM 4x16 table as a per-CTA reach.",
+      "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md", "quote": "**O-59 — A CTA has at most 16 barriers; past its allocation is `F-BARRIER` — decided in 1.9.**", "value": "clog2(q[1] + 1)"}
     },
     {
       "name": "CCV_L_PAGE_SHIFT",

@@ -211,7 +211,7 @@ rau → ooe · rate 1 · control
 | `alloc_op` | `2` | 2 | literal |
 | `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
 | `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
-| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (arch) |
+| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
 | **total** | | **51** | |
 
 ### `ccv_ooe_rau_status`
@@ -578,7 +578,7 @@ rau → syu · rate 1 · control
 |---|---|---|---|
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `barrier_base` | `CCV_W_BAR_ENTRY` | 6 | CCV_W_BAR_ENTRY (arch) |
-| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (arch) |
+| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
 | `allocate_or_free` | `1` | 1 | literal |
 | **total** | | **15** | ⚠️ 3 provisional |
 
