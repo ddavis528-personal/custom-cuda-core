@@ -549,6 +549,11 @@ added with the event.
   - kill: ack after the notice and after every completion;
   - a fault at retirement;
   - a barrier and a `chwidth` serialisation;
+  - F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
+    CTA's count, which the launch carries (`barrier_count`) and the core
+    keeps per warp across a park, faults at dispatch with cause 9. It
+    completes as a no-op, holds nothing and never reaches SYU. One below
+    the count waits as before. Control `no-bar-fault` drops the check;
   - the fixed-window predicate mode;
   - sectioned lanes:
     - four 8-bit warps co-issue, two 16-bit, one 32-bit;

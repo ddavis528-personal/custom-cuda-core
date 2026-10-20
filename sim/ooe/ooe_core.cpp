@@ -1047,7 +1047,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   if (r.complete || r.squashed) return;
   bool c;
   if (r.u.shape.exit || r.u.decode_fault) c = true;
-  else if (r.u.attr.serial == kSerBarrier) c = false;   // completed by release
+  else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
   else c = r.rcu_done && r.rcu_dones_owed == 0;
@@ -1349,6 +1349,8 @@ void Core::control() {
       s.warp_in_cta = a.warp_in_cta;
       slot_of_[a.warp % kWarpIds] = int(a.slot);
       if (a.op == kAllocLaunch) {
+        // The barrier count holds for the warp's life, parked or not (IS-16).
+        bar_count_[a.warp % kWarpIds] = a.barrier_count;
         // Every architectural register maps to the zero registers (A-64):
         // no zeroing traffic, and nothing from another context is readable.
         s.st = WarpState::kActive;
@@ -1504,7 +1506,7 @@ void Core::retire() {
       RobEntry &r = s.rob[s.head];
       // A barrier wait leaves OOE only once it is the oldest instruction, so
       // it is never sent from a wrong path; younger uops hold at rename.
-      if (r.u.attr.serial == kSerBarrier && !r.committed) {
+      if (r.u.attr.serial == kSerBarrier && !r.committed && !r.fault) {
         Bar b;
         b.warp = s.warp;
         b.barrier_id = r.u.imm;    // temporary: A-75 names the field
@@ -2139,7 +2141,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     return false;
   }
   const SchedAttr &a = u.attr;
-  const bool nop = u.shape.exit || u.decode_fault;
+  // F-BARRIER (IS-16, ISA v1.9 O-59): a barrier at or above its CTA's
+  // count faults here, as a no-op, so it never reaches SYU.
+  const bool bar_fault = a.serial == kSerBarrier && u.imm >= bar_count_[s.warp % kWarpIds] &&
+                         !cfg_.inject_no_bar_fault;
+  const bool nop = u.shape.exit || u.decode_fault || bar_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -2275,7 +2281,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
-    if (a.serial == kSerBarrier) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
+    if (a.serial == kSerBarrier && !bar_fault) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
     r.rs_main = rsAlloc(mem ? RsCls::kMiu : RsCls::kRcu, si, idx, false);
     rs_[r.rs_main].produces = wgpr || u.pred_we;
@@ -2299,6 +2305,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   if (u.decode_fault) {
     r.fault = true;
     r.fault_cause = 3;      // placeholder: the cause encoding is CRU's
+  }
+  if (bar_fault) {
+    r.fault = true;
+    r.fault_cause = kCauseBarrier;
+    count("fault.barrier");
   }
   s.tail = (s.tail + 1) % cfg_.rob_depth;
   ++s.count;

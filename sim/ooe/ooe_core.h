@@ -248,6 +248,9 @@ struct Config {
   /// The ready register's enable takes no allocation lead (V-73's control):
   /// a row allocated into a quiet machine is never captured as ready.
   bool inject_no_alloc_lead = false;
+  /// No F-BARRIER check at dispatch: a barrier past its CTA's count goes to
+  /// SYU (testBarrierFault's control).
+  bool inject_no_bar_fault = false;
   /// The ready register captures a stop's or a miss's change one edge late
   /// (OI-54's control): a producer re-granted inside the stale window lets
   /// a dependant confirm on a result it read too early.
@@ -330,7 +333,10 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1, kAllocRestoreAlloc = 2,
 struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned warp = 0, slot = 0, op = 0;
   uint32_t ctaid = 0, warp_in_cta = 0;
+  unsigned barrier_count = 0;      ///< launch: the CTA's allocated barriers, 0 to 16 (IS-16)
 };
+/// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
+enum : unsigned { kCauseBarrier = 9 };
 
 // ---- decoded outputs ----------------------------------------------------------------
 
@@ -885,6 +891,7 @@ private:
   uint64_t now_ = 0;
   std::vector<Slot> slot_;
   std::array<int, kWarpIds> slot_of_;
+  std::array<unsigned, kWarpIds> bar_count_{};   ///< each warp's CTA's barrier count, from its launch (IS-16)
   std::array<unsigned, kWarpIds> epoch_{};
 
   // decode queue: shared, in arrival order

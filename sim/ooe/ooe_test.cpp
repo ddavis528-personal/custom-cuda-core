@@ -218,7 +218,7 @@ struct Env {
 
   unsigned rnd(unsigned n) { return n ? unsigned(rng() % n) : 0; }
 
-  void launch(unsigned warp, unsigned slot, std::vector<Op> prog) {
+  void launch(unsigned warp, unsigned slot, std::vector<Op> prog, unsigned barriers = 16) {
     Warp x;
     x.id = warp;
     x.slot = slot;
@@ -229,6 +229,7 @@ struct Env {
     a.slot = slot;
     a.op = kAllocLaunch;
     a.ctaid = 7;
+    a.barrier_count = barriers;
     core.alloc(a);
   }
 
@@ -1001,6 +1002,50 @@ void testBarrier() {
   e.finish();
 }
 
+/// F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
+/// CTA's allocated count faults at dispatch, cause 9, and never reaches
+/// SYU; one below it waits as before. The control drops the check, so the
+/// wait goes out and no fault is taken.
+void testBarrierFault() {
+  for (const bool control : {false, true}) {
+    for (const unsigned count : {3u, 4u}) {
+      g_test = control ? "barrier fault (control)" : "barrier fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_bar_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBarrier; p.push_back(b);     // ID 3
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p, count);
+      unsigned bars = 0, faults = 0, cause = 0;
+      for (unsigned k = 0; k != 40; ++k) {
+        e.step();
+        bars += unsigned(e.log.back().bars.size());
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want_fault = count <= 3 && !control;
+      if (control) {
+        if (count == 3) {
+          const bool caught = faults == 0 && bars == 1;
+          std::printf("  %-24s %s\n", "control no-bar-fault", caught ? "caught" : "MISSED");
+          EXPECT(caught, "dropping the check should send the wait");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want_fault, "count %u: %u faults", count, faults);
+      if (want_fault) {
+        EXPECT(cause == kCauseBarrier, "cause %u, want F-BARRIER (%u)", cause, kCauseBarrier);
+        EXPECT(bars == 0, "a faulting barrier reached SYU");
+      } else {
+        EXPECT(bars == 1, "count %u: %u barrier waits", count, bars);
+      }
+    }
+  }
+}
+
 /// The free list as the RTL builds it (OI-22): allocation from a rotating
 /// pointer, so a freed register comes back only once the pointer wraps, and a
 /// register freed in a cycle is not allocated until the next.
@@ -1677,6 +1722,7 @@ int main(int argc, char **argv) {
   testKill();
   testFault();
   testBarrier();
+  testBarrierFault();
   testChwidth();
   testSections();
   testFreeVec();
