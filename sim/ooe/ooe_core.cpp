@@ -1539,7 +1539,8 @@ bool Core::predHold(unsigned slot, const RobEntry &r) const {
   return false;
 }
 
-std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost) {
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost,
+                                unsigned fallback) {
   std::vector<size_t> win(nres, SIZE_MAX);
   for (size_t e = 0; e != req.size(); ++e)
     for (unsigned k = 0; k != nres; ++k)
@@ -1555,7 +1556,35 @@ std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, 
     grant[e] = all && req[e].res != 0;
     if (lost && !all && some) ++*lost;
   }
-  return grant;
+  if (!fallback || nres < 4) return grant;
+  // The fallback picks, each the oldest of its own requesters: f1[k], those
+  // naming section k alone; u[h], those naming half h exactly or one of its
+  // sections alone.
+  auto oldest = [&](auto names) {
+    size_t best = SIZE_MAX;
+    for (size_t e = 0; e != req.size(); ++e)
+      if (names(req[e].res) && (best == SIZE_MAX || req[e].age < req[best].age)) best = e;
+    return best;
+  };
+  bool free_[4];
+  size_t f1[4];
+  for (unsigned k = 0; k != 4; ++k) {
+    free_[k] = win[k] == SIZE_MAX || !grant[win[k]];
+    f1[k] = oldest([k](unsigned r) { return r == (1u << k); });
+  }
+  std::vector<bool> fb(grant);
+  for (unsigned h = 0; h != 2; ++h) {
+    const unsigned a = 2 * h, b = a + 1, pair = 3u << a;
+    const size_t u = oldest([&](unsigned r) { return r == pair || r == (1u << a) || r == (1u << b); });
+    const bool half = fallback >= 2 && free_[a] && free_[b] && u != SIZE_MAX && req[u].res == pair;
+    if (half) {
+      fb[u] = true;
+      continue;
+    }
+    for (unsigned k : {a, b})
+      if (free_[k] && f1[k] != SIZE_MAX) fb[f1[k]] = true;
+  }
+  return fb;
 }
 
 /// Select over resources (OI-31, OI-33): S0-S3, R and P0-P3, bits 0 to 8.
@@ -1642,7 +1671,7 @@ void Core::selectSectioned() {
   for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
   std::vector<unsigned> grant;
   unsigned lost = 0;
-  const std::vector<bool> won = pickResources(preq, kRes, &lost);
+  const std::vector<bool> won = pickResources(preq, kRes, &lost, cfg_.pick_fallback);
   for (size_t i = 0; i != cand.size(); ++i)
     if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another

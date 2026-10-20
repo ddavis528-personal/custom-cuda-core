@@ -591,6 +591,7 @@ least-built block on its path, and here every neighbour is a stand-in):
 
 **OI-34: sectioned placement and OA-13** (`sim/ooe/run-tests.sh
 --sweep-sections`, 2026-10-09; re-run at the defaults of 2026-10-19 for
+IS-9, with select's section fallback, the default since OA's response
 IS-9). Synthetic 32-iteration loops, each with its
 loop control (an RCU index add, a 32-bit setp, a backward branch). Four
 seeds, 10% of loads missing. Cycles, one warp and four (the full table
@@ -602,19 +603,19 @@ warps. A lone warp's narrow rate is PF-29.
 | kernel | warps | slot | 0 | rotate from 0 | rotate from slot | slot + reg |
 |---|---|---|---|---|---|---|
 | alu8 (shared operand) | 1 | 342 | 342 | 342 | 342 | 339 |
-| alu8 (shared operand) | 4 | **665** | 1232 | 1232 | 665 | 947 |
+| alu8 (shared operand) | 4 | **589** | 1232 | 1232 | 589 | 856 |
 | alu16 (shared operand) | 4 | **823** | 1232 | 1232 | 823 | 1103 |
 | alu32 (reference) | 1 / 4 | 342 / 1232 | | | | |
 | alu8-self | 1 | 340 | 340 | 340 | 340 | **247** |
-| alu8-self | 4 | 639 | 1232 | 1232 | 639 | **563** |
+| alu8-self | 4 | 581 | 1232 | 1232 | 581 | **558** |
 | vadd8 | 4 | 1034 | 1079 | 1061 | 1052 | 1036 (1010 with OA-13) |
 | vadd16 | 4 | 1044 | 1079 | 1057 | 1052 | 1048 (4.0 sections/op) |
 | red8 | 4 | 369 | 369 | 371 | 365 | 369 |
 | cvt8 | 4 | 1246 | 1254 | 1244 | 1246 | 1246 |
-| fp8-self (FP minimum 1) | 4 | 639 | 1232 | 1232 | 639 | 563 |
+| fp8-self (FP minimum 1) | 4 | 581 | 1232 | 1232 | 581 | 558 |
 | fp32-self (reference) | 4 | 1232 | | | | |
 
-- **Four warps, lane-bound:** home = slot index is 1.85x over home 0 at 8
+- **Four warps, lane-bound:** home = slot index is 2.09x over home 0 at 8
   bits and 1.50x at 16. Home 0 is exactly alu32: no narrow gain at all.
 - **The element-work rate (IS-9), counted at select:** lane ops that write
   a register, per cycle, and per cycle outside the cycles a setp (the loop
@@ -624,13 +625,22 @@ warps. A lone warp's narrow rate is PF-29.
   4x and 2x; the loop control is one full-footprint op an iteration, not
   three (the index add and the branch take R). At 8 bits the lane
   section-cycles are 40% narrow, 19% setp and 41% idle, and all four
-  sections carry a narrow op in 8% of cycles. The first cause measured is
+  sections carry a narrow op in 8% of cycles. The first cause measured was
   select's single pass (`lost resource`): a setp oldest in three sections
-  and beaten in the fourth issues nothing, and the narrow ops it beat in
-  the three don't issue either. A second pass over the sections the first
-  left idle (a scratch arm, not the design) gives alu8 589 cycles (2.4x)
-  and alu16 710 (1.90x); a third adds nothing. Rename or issue at 8 wide,
-  or a 128-entry RCU RS, makes neither faster. Both columns print.
+  and beaten in the fourth issued nothing, and the narrow ops it beat in
+  the three didn't issue either. A second pass over the sections the first
+  left idle gave alu8 589 cycles (2.4x) and alu16 710 (1.90x). OA's
+  parallel fallback pick (`pick_fallback`; OA's response IS-9) gets the
+  same without a second pass: a section whose winner does not issue
+  grants its oldest single-section requester (1, the default), and with 2
+  a half whose sections both fall through may grant its oldest
+  half-footprint requester. Section-only gives alu8 589 (2.30 element ops
+  a cycle outside setps, **2.40x**) and leaves alu16 at 823 (**1.59x**);
+  the half pick takes alu16 to 710 (1.90x) but measures 26.8 NGD in
+  ooe_select, past its stage (section-only 24.3, none 19.5), so it is
+  PF-31. DA's response OA-19 holds the first build to the measured rate;
+  PF-29 and PF-30 are the levers past it. Rename or issue at 8 wide, or a
+  128-entry RCU RS, makes neither faster. Both columns print.
 - **OA-14's rotation equals its starting rule.** From 0, every warp rotates
   in lockstep and it equals home 0. From the slot index, it equals home =
   slot. It never moves a loop-carried value, which follows its own
@@ -652,8 +662,8 @@ warps. A lone warp's narrow rate is PF-29.
   footprint is that union widened to `foot_min`. Integer footprint equals
   spread in every run, so any integer width above 1 section is placement's.
   FP at 8 bits (fp8-self, E4M3 per IS-7) at the decided FP minimum of 1
-  has footprint 1 and spread 1, and runs as int8 does: 639 cycles, 1.93x
-  over fp32. At a minimum of 2 (AR's recommendation, overruled by DA's
+  has footprint 1 and spread 1, and runs as int8 does: 581 cycles, 2.12x
+  over fp32 (639 and 1.93x before the section fallback). At a minimum of 2 (AR's recommendation, overruled by DA's
   response IS-7) the footprint was 2 and the 2026-10-09 run took 838,
   1.47x. cvt8's FP ops write 32 bits, so
   their 4 sections come from their operands, under either minimum.

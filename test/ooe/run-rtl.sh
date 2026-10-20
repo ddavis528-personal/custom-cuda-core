@@ -32,14 +32,17 @@ secs=$(sed -n 's/.*localparam int CCV_SECTIONS = \([0-9]*\);.*/\1/p' rtl/generat
 pipes=$(sed -n 's/.*localparam int CCV_MIU_PIPES = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
 fail=0
 say() { printf '  %-52s %s\n' "$1" "$2"; }
-for cfg in "rcu $n_rcu $((secs + 1))" "miu $n_miu $pipes"; do
+# The RCU class with the section fallback ooe_select gives it (FB 1, OA's
+# response IS-9), and with the aligned-half pick too (FB 2, measured but
+# over the stage), so both stay held to the model; the MIU pipes take none.
+for cfg in "rcu $n_rcu $((secs + 1)) 1" "rcuh $n_rcu $((secs + 1)) 2" "miu $n_miu $pipes 0"; do
   set -- $cfg
-  name=$1 n=$2 r=$3
+  name=$1 n=$2 r=$3 fb=$4
   dir=build/ooe-rtl/pick_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL \
-        -GN="$n" -GR="$r" --top-module ooe_pick --Mdir "$dir" -o pick_tb \
-        -CFLAGS "-std=c++17 -O2 -DPICK_N=$n -DPICK_R=$r -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        -GN="$n" -GR="$r" -GFB="$fb" --top-module ooe_pick --Mdir "$dir" -o pick_tb \
+        -CFLAGS "-std=c++17 -O2 -DPICK_N=$n -DPICK_R=$r -DPICK_FB=$fb -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/test/ooe/pick_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
         >"$dir/build.log" 2>&1; then
     say "pick $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
@@ -49,7 +52,10 @@ for cfg in "rcu $n_rcu $((secs + 1))" "miu $n_miu $pipes"; do
   else
     say "pick $name == model" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in youngest-wins any-wins no-mask; do
+  ctls="youngest-wins any-wins no-mask"
+  [ "$fb" -ge 1 ] && ctls="$ctls no-fallback"
+  [ "$fb" -ge 2 ] && ctls="$ctls no-half"
+  for c in $ctls; do
     if PICK_CONTROL=$c "$dir/pick_tb" 20000 2 >/dev/null 2>&1; then
       say "  control $c ($name)" "MISSED"; fail=1
     else
@@ -288,10 +294,13 @@ done
 
 # ooe_select, with its two ooe_picks, driven from the model's sectioned
 # select after every cycle it ran.
+# Its section fallback is the model's (Config::pick_fallback), read from
+# the model so the two cannot drift.
+pick_fb=$(sed -n 's/.*unsigned pick_fallback = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
 dir=build/ooe-rtl/select
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      -GN="$n" -GNR="$n_rcu" -GS="$slots" --top-module ooe_select --Mdir "$dir" -o select_tb \
+      -GN="$n" -GNR="$n_rcu" -GS="$slots" -GFB="$pick_fb" --top-module ooe_select --Mdir "$dir" -o select_tb \
       -CFLAGS "-std=c++17 -O2 -DSEL_N=$n -DSEL_NR=$n_rcu -DSEL_S=$slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/test/ooe/select_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then

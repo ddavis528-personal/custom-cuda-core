@@ -2,7 +2,7 @@
   "_comment": "Timing units for design modules with no flops, which check-cg's units (test/**/cg-units.json) do not cover: one module at one parameterisation each, for tools/check-ngd.py. These are OOE's combinational modules at test/ooe/depth.sh's parameters (the RS classes' sizes, CCV_SECTIONS + 1 resources for the RCU class, CCV_MIU_PIPES for the MIU class, CCV_TIER1_WARPS slots), held here by TI until OI moves them into test/ooe/ngd-units.json.",
   "units": [
     {"name": "ooe_pick_rcu", "module": "ooe_pick", "files": ["rtl/ooe/ooe_pick.sv"],
-     "params": {"N": 30, "R": 5}},
+     "params": {"N": 30, "R": 5, "FB": 1}},
     {"name": "ooe_pick_miu", "module": "ooe_pick", "files": ["rtl/ooe/ooe_pick.sv"],
      "params": {"N": 15, "R": 4}},
     {"name": "ooe_ready", "module": "ooe_ready", "files": ["rtl/ooe/ooe_ready.sv"],

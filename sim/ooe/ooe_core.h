@@ -197,6 +197,11 @@ struct Config {
   /// granted on a stale bit and is returned by the next hop (OA-17).
   /// false: select reads the lines as they stand.
   bool ready_reg = true;
+  /// Select's fallback pick on the lane sections (OA's response IS-9,
+  /// pickResources): 0 none, 1 section-only (the design: section-plus-half
+  /// measured 26.8 NGD in ooe_select, over the stage; section-only 24.3),
+  /// 2 section-plus-half.
+  unsigned pick_fallback = 1;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -321,8 +326,17 @@ struct PickReq {
 /// ooe_pick is checked against: each resource grants its oldest
 /// requester, and a requester issues only if it wins every resource it
 /// names. Returns which requesters issue; *lost counts those that won some
-/// resources but not all.
-std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr);
+/// resources but not all (in that pick, before any fallback).
+///
+/// The fallback (OA's response IS-9), on resources 0-3, the lane sections:
+/// a section whose winner did not issue grants instead its oldest
+/// requester that names that section alone (1); and with 2, an aligned
+/// half (sections 0-1, 2-3) whose sections both fell through grants its
+/// oldest half-footprint requester, when that is the oldest of the half's
+/// pair and single-section requesters. Every pick is a parallel
+/// oldest-of-N over the same ages, so the RTL needs no second pass.
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr,
+                                unsigned fallback = 0);
 
 struct Issue {          ///< ccv_ooe_rcu_issue
   uint64_t tid = 0;

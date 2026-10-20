@@ -47,6 +47,20 @@ Built (`rtl/ooe/`):
   against the estimate's 9.1 of logic. The 15-entry pick's is 8.1 in 6,
   against 7.7. Both are inside the estimate's stated ±15%, so the select
   stage is about 17.9 and 16.1 NGD of 25.
+
+  The section fallback (FB, OA's response IS-9): a lane section whose
+  winner does not issue grants its oldest requester naming that section
+  alone (FB 1), and with FB 2 an aligned half whose sections both fall
+  through grants its oldest half-footprint requester if that is the
+  oldest of the half's pair and single-section requesters. Each is one
+  more oldest-of-N over the same ages, beside the main pick; only "did
+  this section's winner issue" waits for it, a 30-wide reduction after
+  the issue AND, so it costs more than OA's estimated 2 NGD: the
+  30-entry pick is 17.2 NGD at FB 1 and 19.4 at FB 2. A fallback grant
+  (`fb_cq03h`) takes only sections no issued entry holds, so V-60 holds,
+  and the check that an issued entry won each resource it names covers
+  the rest. pick_tb holds FB 1 and FB 2 to `pickResources` (200,000
+  vectors each), with controls no-fallback and no-half beside the three.
 - **`ooe_ready`**, the ready stage over all 45 entries, combinational:
   - each producer drives four wake lines: its fastest bypass point plus
     each of the three bypass penalties, and last the PRF read;
@@ -309,6 +323,14 @@ Built (`rtl/ooe/`):
   request terms (confirmation, memop order, the copy, warp active) come
   first. All of them depend only on state from earlier cycles, so they
   can move into the previous cycle's flops if the margin is needed.
+
+  With the section fallback (FB 1, the design) select is 24.3 NGD, and
+  with the half pick too (FB 2) 26.8, past the stage, so the half pick is
+  PF-31. FB defaults to 0 until ooe_sched instantiates select with 1:
+  alone, select is an inner helper held to 16 (NGD-6), and FB 1 adds
+  paths over that which its ratchet entries do not name (copy→grant,
+  older_m→lost, older_r→grant). select_tb builds it with the model's
+  `pick_fallback`, so the two stay in lockstep.
 
 - **`ooe_rat`**, the register alias tables, the first of rename's two
   modules. Per tier-1 slot: the speculative GPR and predicate maps, the
