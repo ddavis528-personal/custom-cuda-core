@@ -22,8 +22,14 @@
     "flush_cq01h": {
       "arrival": 8.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: squash, flush and whole-event payloads"
+    },
+    "enq_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: channel valids, from the boundary receive flops"
     }
   }
 }

@@ -118,7 +118,7 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   else
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in drop-free extra-alloc; do
+  for c in drop-free extra-alloc no-lead; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
     else
@@ -147,7 +147,7 @@ for cfg in "rcu 0 $n_rcu" "miu 1 $n_miu"; do
   else
     say "age $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in no-valid port-reverse; do
+  for c in no-valid port-reverse no-lead; do
     if AGE_CONTROL=$c "$dir/age_tb" 3 >/dev/null 2>&1; then
       say "  control $c (age $name)" "MISSED"; fail=1
     else
@@ -178,7 +178,7 @@ if out=$("$dir/decq_tb" "$seeds" 2>&1); then
 else
   say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-flush enq-swap; do
+for c in drop-flush enq-swap no-enq-lead; do
   if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decq)" "MISSED"; fail=1
   else
@@ -208,7 +208,7 @@ if out=$("$dir/wake_tb" "$seeds" 2>&1); then
 else
   say "wake == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in late-grant drop-cmpl drop-stop; do
+for c in late-grant drop-cmpl drop-stop no-cmpl-lead no-sq-lead; do
   if WAKE_CONTROL=$c "$dir/wake_tb" 3 >/dev/null 2>&1; then
     say "  control $c (wake)" "MISSED"; fail=1
   else
@@ -246,10 +246,11 @@ done
 # comparison: either fails the run.
 dir=build/ooe-rtl/rs
 mkdir -p "$dir"
+nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" --top-module ooe_rs --Mdir "$dir" -o rs_tb \
+      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" -GNC="$nc" --top-module ooe_rs --Mdir "$dir" -o rs_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-      -CFLAGS "-std=c++17 -O2 -DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      -CFLAGS "-std=c++17 -O2 -DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DRS_NC=$nc -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "rs: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
@@ -259,7 +260,7 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-same-edge drop-group stale-hcol; do
+for c in no-same-edge drop-group stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
   if RS_CONTROL=$c "$dir/rs_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
@@ -315,8 +316,11 @@ if out=$("$dir/select_tb" "$seeds" 2>&1); then
 else
   say "select == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
+# The controls run the bench's seeds: a bulk discard beside a candidate
+# memop (no-busy) is rare, and 3 seeds stopped reaching one when rename's
+# go changed (OA-21); a caught control stops at its first difference.
 for c in no-order no-conf no-busy; do
-  if SELECT_CONTROL=$c "$dir/select_tb" 3 >/dev/null 2>&1; then
+  if SELECT_CONTROL=$c "$dir/select_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (select)" "MISSED"; fail=1
   else
     say "  control $c (select)" "caught"

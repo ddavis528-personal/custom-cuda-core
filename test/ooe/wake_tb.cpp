@@ -2,12 +2,16 @@
 //
 // Runs the model's random unit tests (sim/ooe/ooe_test.cpp, every mode:
 // bypass, L1 speculation with hits and misses, completion delays, replays,
-// squashes, several warps) and, after every core cycle t, clocks ooe_wake
-// once with what reached each RS entry's wake timer (Core::wakeLog): the
-// grants of cycle t - 1, with their kind and class, and the dones,
-// completions and stops of cycle t, which the model takes before its select.
-// After the edge, every valid entry's four lines must be the model's
-// (Core::wakeLine at t, what select read), and every miss pulse the
+// squashes, several warps) and clocks ooe_wake once per core cycle, one
+// cycle behind the model, so that each lead is driven a cycle before its
+// event (OA's response OI-58). The edge for cycle t takes what reached each
+// RS entry's wake timer (Core::wakeLog): the grants of cycle t - 1, with
+// their kind, class and whether they write a register (Core::rsProduces),
+// and the completions (as RS indices) and stops of cycle t, which the model
+// takes before its select; and the leads of cycle t + 1: the completion channel's
+// valid, and a squash's (a stop that is no replay and no confirmation).
+// After the edge, every valid entry's four lines and its issued bit must be
+// the model's (Core::wakeLine and Core::rsIssued at t, what select read), and every miss pulse the
 // model's L1 miss cancel at t. The RTL's fin (the result is final) must be
 // set for every entry the model confirmed on its timer's word at t, and
 // equal Core::rsFinal for every other valid entry not stopped at t.
@@ -17,11 +21,23 @@
 //
 // Negative controls (WAKE_CONTROL=<name>) perturb what the RTL is driven
 // with, and must be caught: late-grant (each grant reaches the RTL a cycle
-// late), drop-cmpl (completions never reach it) and drop-stop (replays and
-// frees never reach it).
+// late), drop-cmpl (completions never reach it), drop-stop (replays and
+// frees never reach it), no-cmpl-lead (the completion channel's valid never
+// does) and no-sq-lead (nor a squash's lead).
+// In a clock-gating run (--cg) the idle ticks between model cycles age the
+// RTL's timers past the model's, so a replay can reach a timer the RTL has
+// let saturate, which real traffic never does (ooe_wake's header), and the
+// RTL's timers no longer match the model's events. There a cycle with a
+// stop for a timer the RTL would not clock (issued, writing a register, not
+// final, its age saturated: read through --public-flat-rw, WAKE_PUBLIC)
+// takes the squash's lead too, clocking every timer for its edge, and the
+// bench compares nothing.
 // Usage: wake_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_wake.h"
+#ifdef WAKE_PUBLIC
+#include "Vooe_wake___024root.h"
+#endif
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -36,6 +52,7 @@ using ccv::ooe::Config;
 using ccv::ooe::Core;
 
 int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
+int ooeTestDirectedHooked(void (*hook)(const Core &));
 
 namespace {
 constexpr unsigned N = WAKE_N, L = Core::kWakeLines;
@@ -45,7 +62,17 @@ std::unique_ptr<Vooe_wake> dut;
 std::string control;
 uint64_t current = 0;          // the serial of the core being followed
 bool following = false;        // its configuration is the RTL's
-Core::WakeLog held, held2;     // the grants of the last cycle (and the one before)
+// A cycle as the model ended it: its log, and what the bench reads of the
+// core then.
+struct Cyc {
+  Core::WakeLog w;
+  std::vector<uint8_t> prod, valid, fin, line, iss, wtl;
+  bool wml = false;              // a miss, or a completion past L1
+  bool sq = false;               // a stop that is no replay and no confirmation
+  unsigned ncmpl = 0;
+};
+Cyc c1, c2, c3;                  // the last cycle, the one before, and the one before that
+bool have1 = false;
 unsigned long long cycles = 0, skipped = 0, cores = 0, compared = 0, raised = 0, grants = 0,
                    cmpls = 0, misses = 0, stops = 0, fins = 0, mismatches = 0;
 
@@ -72,12 +99,37 @@ void tick() {
   cg.dump();
 }
 
+// The leads of a cycle's events, driven a tick before them.
+void driveLeads(const Cyc *n) {
+  dut->cmpl_l_cq00h = 0;
+  dut->sq_l_cq00h = 0;
+  if (!n) return;
+  if (control != "no-cmpl-lead")
+    for (unsigned k = 0; k != n->ncmpl && k != WAKE_NC; ++k) dut->cmpl_l_cq00h |= 1u << k;
+  bool sq = n->sq;
+#ifdef WAKE_PUBLIC
+  // A timer's fields in ooe_wake's state (FISS, FFIN, FPROD, FAGE; AW 5).
+  constexpr unsigned EW = 21, FISS = 0, FFIN = 14, FPROD = 15, FAGE = 16, AWB = 5;
+  const auto &st = dut->rootp->ooe_wake__DOT__st_cq02h;
+  if (cg.on())
+    for (unsigned j = 0; j != N; ++j) {
+      if (!n->w.stop[j]) continue;
+      unsigned age = 0;
+      for (unsigned b = 0; b != AWB; ++b) age |= unsigned(getBit(st, j * EW + FAGE + b)) << b;
+      if (getBit(st, j * EW + FISS) && getBit(st, j * EW + FPROD) && !getBit(st, j * EW + FFIN) &&
+          age + 1 >= (1u << AWB) - 1)
+        sq = true;
+    }
+#endif
+  dut->sq_l_cq00h = sq && control != "no-sq-lead";
+}
+
 // An idle cycle: nothing reaches a timer; a grant's kind and class hold.
-void idleTick() {
+// The last one before a cycle's events carries their leads.
+void idleTick(const Cyc *n = nullptr) {
   dut->grant_cq01h = 0;
-  dut->done_cq01h = 0;
-  dut->cmpl_cq01h = 0;
   dut->stop_cq01h = 0;
+  driveLeads(n);
   tick();
 }
 
@@ -106,13 +158,38 @@ bool sameConfig(const Core &c) {
 
 void clearInputs() {
   dut->grant_cq01h = 0;
-  dut->done_cq01h = 0;
-  dut->cmpl_cq01h = 0;
   dut->stop_cq01h = 0;
+  dut->prod_cq01h = 0;
+  dut->cmpl_l_cq00h = 0;
+  dut->sq_l_cq00h = 0;
   for (unsigned j = 0; j != N; ++j) {
     for (unsigned b = 0; b != 2; ++b) setBit(dut->kind_cq01h, j * 2 + b, false);
     for (unsigned b = 0; b != 3; ++b) setBit(dut->cls_cq01h, j * 3 + b, false);
   }
+}
+
+constexpr unsigned IW = []() { unsigned w = 0; while ((1u << w) < N) ++w; return w; }();
+
+Cyc snapCycle(const Core &c) {
+  Cyc y;
+  y.w = c.wakeLog();
+  y.prod.resize(N); y.valid.resize(N); y.fin.resize(N); y.iss.resize(N); y.line.resize(N * L); y.wtl.resize(N * L);
+  for (unsigned j = 0; j != N; ++j) {
+    y.prod[j] = c.rsProduces(j);
+    y.valid[j] = c.rsValid(j);
+    y.fin[j] = c.rsFinal(j);
+    y.iss[j] = c.rsIssued(j);
+    for (unsigned k = 0; k != L; ++k) {
+      y.line[j * L + k] = c.wakeLine(j, k);
+      y.wtl[j * L + k] = c.wakeLineChanges(j, k);
+    }
+    y.wml = y.wml || (j < y.w.miss.size() && y.w.miss[j]) || (j < y.w.cmpl.size() && y.w.cmpl[j] == 2);
+    const bool rep = y.w.hop_live && j < y.w.replay.size() && y.w.replay[j];
+    const bool conf = j < y.w.conf.size() && y.w.conf[j];
+    if (y.w.stop[j] && !rep && !conf) y.sq = true;
+    y.ncmpl += y.w.cmpl[j] != 0;
+  }
+  return y;
 }
 
 void hook(const Core &c) {
@@ -124,31 +201,53 @@ void hook(const Core &c) {
       std::fprintf(stderr, "wake_tb: the core has %u RS entries, the RTL %u\n", c.rsEntries(), N);
       std::exit(2);
     }
-    held = held2 = Core::WakeLog();
+    have1 = false;
     clearInputs();
     dut->ooe_rst_r00h = 1;
     tick();
     dut->ooe_rst_r00h = 0;
+    tick();
   }
   ++cycles;
   if (!following) { ++skipped; return; }
-  const Core::WakeLog &w = c.wakeLog();
-  // The edge into this cycle: last cycle's grants, this cycle's events.
-  const Core::WakeLog &g = control == "late-grant" ? held2 : held;
+  Cyc now = snapCycle(c);
+  if (!have1) {
+    // A core's first cycle: its events reach the RTL at the next hook,
+    // nothing granted before them.
+    c2 = Cyc();
+    c2.w.grant.assign(N, 0);
+    c3 = c2;
+    c1 = std::move(now);
+    have1 = true;
+    return;
+  }
+  // The edge into cycle t (c1): the grants of t - 1 (c2; late-grant: of
+  // t - 2, c3), t's events, and t + 1's leads (now).
+  const Cyc &g = control == "late-grant" ? c3 : c2;
+  const Core::WakeLog &w = c1.w;
   clearInputs();
   for (unsigned j = 0; j != N; ++j) {
-    const bool gr = j < g.grant.size() && g.grant[j];
+    const bool gr = j < g.w.grant.size() && g.w.grant[j];
     if (gr) {
       setBit(dut->grant_cq01h, j, true);
-      for (unsigned b = 0; b != 2; ++b) setBit(dut->kind_cq01h, j * 2 + b, (g.kind[j] >> b) & 1u);
-      for (unsigned b = 0; b != 3; ++b) setBit(dut->cls_cq01h, j * 3 + b, (g.cls[j] >> b) & 1u);
+      for (unsigned b = 0; b != 2; ++b) setBit(dut->kind_cq01h, j * 2 + b, (g.w.kind[j] >> b) & 1u);
+      for (unsigned b = 0; b != 3; ++b) setBit(dut->cls_cq01h, j * 3 + b, (g.w.cls[j] >> b) & 1u);
+      setBit(dut->prod_cq01h, j, g.prod[j]);
     }
-    if (w.done[j]) setBit(dut->done_cq01h, j, true);
-    if (w.cmpl[j] && control != "drop-cmpl") { setBit(dut->cmpl_cq01h, j, true); ++cmpls; }
     if (w.stop[j] && control != "drop-stop") { setBit(dut->stop_cq01h, j, true); ++stops; }
   }
+  // The completions of t, as RS indices on the channel's lanes.
+  unsigned k = 0;
+  for (unsigned j = 0; j != N; ++j)
+    if (w.cmpl[j] && control != "drop-cmpl") {
+      if (k == WAKE_NC) { fail("more completions than lanes", j, k, false, true); break; }
+      for (unsigned b = 0; b != IW; ++b) setBit(dut->cmpl_idx_cq01h, k * IW + b, (j >> b) & 1u);
+      ++k;
+      ++cmpls;
+    }
+  driveLeads(cg.on() && cg.gaps() ? nullptr : &now);
   tick();
-  // After it: what select read this cycle.
+  // After it: what select read in t.
   for (unsigned j = 0; j != N; ++j) {
     const bool want_miss = w.miss[j], got_miss = getBit(dut->miss_cq02h, j);
     misses += want_miss;
@@ -157,21 +256,40 @@ void hook(const Core &c) {
     if (w.fin[j]) {
       ++fins;
       if (!got_fin) fail("confirmed, but not final", j, 0, got_fin, true);
-    } else if (c.rsValid(j) && !w.stop[j] && got_fin != c.rsFinal(j)) {
-      fail("final differs", j, 0, got_fin, c.rsFinal(j));
+    } else if (c1.valid[j] && !w.stop[j] && got_fin != bool(c1.fin[j])) {
+      fail("final differs", j, 0, got_fin, c1.fin[j]);
     }
-    if (!c.rsValid(j)) continue;
+    // Issued as the timer holds it, on every entry: the model's, less t's
+    // own grants, which reach the timer at the next edge; and clear on a
+    // free entry, which every free's stop leaves so (a stop the timer missed
+    // would leave it issued).
+    const bool got_iss = getBit(dut->iss_cq02h, j),
+               want_iss = c1.valid[j] && c1.iss[j] && !(j < w.grant.size() && w.grant[j]);
+    if (got_iss != want_iss) fail("issued differs", j, 0, got_iss, want_iss);
+    if (!c1.valid[j]) continue;
+    // ooe_sched's timer lead: a change at the next edge, as the model
+    // predicted it a cycle ago (Core::wakeLineChanges at t - 1), less a
+    // timer stopped at t, which the model could not foresee and ooe_sched
+    // takes from its own stop lead.
+    for (unsigned k = 0; k != L && !w.stop[j]; ++k) {
+      const bool want = c2.valid[j] && c2.wtl[j * L + k], got = getBit(dut->wtl_cq02h, j * L + k);
+      if (want != got) fail("timer lead differs", j, k, got, want);
+    }
     for (unsigned k = 0; k != L; ++k) {
       ++compared;
-      const bool want = c.wakeLine(j, k), got = getBit(dut->wake_cq02h, j * L + k);
+      const bool want = c1.line[j * L + k], got = getBit(dut->wake_cq02h, j * L + k);
       raised += want;
       if (want != got) fail("line differs", j, k, got, want);
     }
   }
+  // Its event lead: every miss and every completion past L1 at t, and
+  // whatever other completion arrived (a hit's lines change nothing).
+  if (c1.wml && !dut->wml_cq02h) fail("event lead missed", 0, 0, false, true);
   for (unsigned j = 0; j != N; ++j) grants += w.grant[j];
-  held2 = held;
-  held = w;
-  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
+  for (unsigned gp = 0; gp != cg.gaps(); ++gp) idleTick(gp + 1 == cg.gaps() ? &now : nullptr);
+  c3 = std::move(c2);
+  c2 = std::move(c1);
+  c1 = std::move(now);
 }
 } // namespace
 
@@ -201,7 +319,9 @@ int main(int argc, char **argv) {
     ctx.reset();
     return 0;
   }
-  const int model_fails = ooeTestRandomHooked(seeds, hook);
+  // The directed tests too: long misses across a squash, demotions, kills
+  // and restores, which random traffic seldom keeps a timer saturated for.
+  const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
   dut->final();
   std::printf("wake_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu grants=%llu cmpls=%llu "
               "misses=%llu stops=%llu fins=%llu compared=%llu raised=%llu mismatches=%llu model_failures=%d\n",

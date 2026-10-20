@@ -19,7 +19,9 @@
 // flops (CG-5). Until then those entries, in transit, sit at the head: the
 // grant ports offer the entries behind them (a mux on the registered
 // count), and the count rename sees (avail) leaves them out. A taken
-// entry's free bit still clears at its own edge.
+// entry's free bit clears with them, at the late edge (OA's response
+// OI-58), from the registered count alone: exact, because the entries stay
+// buffered until then, so refill cannot buffer them again.
 //
 // At each clock edge the buffer is refilled. The N entries form K
 // interleaved banks (entry mod K). Each bank finds its first free entry
@@ -30,7 +32,11 @@
 // advances by one every edge, and a bank's pointer moves past the entry it
 // appended.
 //
-// Frees OR into the free bits at the edge. Refill reads the bits as they
+// Frees OR into the free bits at the edge. They come from the retire
+// stage's register and a registered squash (OA's response OI-58), so a
+// free never names an entry granted the same cycle, and the free list
+// flops their lead, the ROB's decision a cycle earlier (free_l), as the
+// free bits' enable (L2). Refill reads the bits as they
 // stood before that edge, so an entry freed in cycle t is visible to
 // refill in t + 1 and to allocation in t + 2: the free list takes the
 // one-cycle hold, because its allocation does not fit a stage without it
@@ -53,11 +59,13 @@
 //
 // State is one register, and its next value a function of it and this
 // cycle's inputs alone (CCV-L23). Local clock gating: the free bits are
-// clocked on an allocation or a free, the buffer side on last cycle's
+// clocked on last cycle's allocation or a free's lead, the buffer side on last cycle's
 // allocation or a refill, and the two-bit bank order and the registered
 // request count every edge. The grant ports read a copy of the buffer and
 // its count (NGD-7: the state's own paths run through the refill, deeper
-// than an output's budget).
+// than an output's budget). The registered count serves both, its outputs
+// required at 20 (OA's response OI-60: rename takes the names as data, its
+// go and credits in ooe_decq).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -79,7 +87,8 @@ module ooe_freelist #(
   input  logic           ooe_core_clk,
   input  logic           ooe_rst_r00h,
   input  logic [A-1:0]   alloc_req_cq01h,    // port k takes its head entry
-  input  logic [N-1:0]   free_mask_cq01h,    // entries freed this cycle
+  input  logic           free_l_cq00h,       // a free reaches free_mask next cycle (the ROB's decision)
+  input  logic [N-1:0]   free_mask_cq01h,    // entries freed this cycle (the retire stage's register)
   output logic [A-1:0]   alloc_v_cq02h,      // head entry k is available to port k
   output logic [A*W-1:0] alloc_idx_cq02h,    // head entry k (meaningful while available)
   output logic [LB-1:0]  avail_cq02h         // entries allocation can take: the buffer, less those in transit
@@ -90,7 +99,7 @@ module ooe_freelist #(
   output logic [B*W-1:0] buf_cq02h,          // the buffer, head first, those in transit included
   output logic [LB-1:0]  cnt_cq02h,          // entries in the buffer
   output logic [LA-1:0]  transit_cq02h,      // last cycle's allocations: in transit at the head
-  output logic [N-1:0]   free_cq02h,         // the free bits
+  output logic [N-1:0]   free_cq02h,         // the free bits, the entries in transit still set
   output logic [K*LM-1:0] bptr_cq02h,        // each bank's pointer, within the bank
   output logic [LK-1:0]  rot_cq02h           // the bank refill starts with
 `endif
@@ -196,11 +205,10 @@ module ooe_freelist #(
   // entry this cycle did not take or the r-th candidate of the banks in
   // rotating order, so no position is computed and then written through.
   // The next state. rq (one-hot, a flop): how many entries last cycle
-  // took, popped from the buffer now; req: this cycle's requests, which
-  // reach only the free bits.
+  // took, popped from the buffer now, their free bits cleared with them.
   function automatic logic [SW-1:0] next_state(input logic [SW-1:0] st, input logic [A:0] rq,
-                                               input logic [A-1:0] req, input logic [N-1:0] freed);
-    logic [N-1:0]      bits, inbuf, taken, popped, added;
+                                               input logic [N-1:0] freed);
+    logic [N-1:0]      bits, inbuf, popped, added;
     logic [M-1:0]      bank;
     logic [LM:0]       fc;
     logic [B*W-1:0]    buf_q, nbuf;
@@ -222,13 +230,8 @@ module ooe_freelist #(
     bptr  = st[OPTR +: K * LM];
     rot   = st[OROT +: LK];
     inbuf = st[OIN +: N];
-    // Taken this cycle: the entries behind the q in transit, port i's at
-    // q + i. Their free bits clear now.
-    taken = '0;
-    for (int q = 0; q <= A; q++)
-      for (int i = 0; i < A; i++)
-        if (i + q < B && req[i] && rq[q] && LB'(i + q) < cnt) taken[buf_q[(i + q) * W +: W]] = 1'b1;
-    // Leaving the buffer now: last cycle's take, its first q entries.
+    // Leaving the buffer now: last cycle's take, its first q entries. Their
+    // free bits clear with them.
     kq = rq;
     popped = '0;
     for (int q = 1; q <= A; q++)
@@ -311,20 +314,21 @@ module ooe_freelist #(
     end
     cnt_nx = (32'(rem) + 32'(nfound) > B) ? LB'(B) : rem + nfound;
     rot = (32'(rot) == K - 1) ? '0 : rot + LK'(1);
-    next_state = {(inbuf & ~popped) | added, rot, bptr, cnt_nx, nbuf, (bits & ~taken) | freed};
+    next_state = {(inbuf & ~popped) | added, rot, bptr, cnt_nx, nbuf, (bits & ~popped) | freed};
   endfunction
 
   // The state; the count of last cycle's allocations, held a cycle; and a
-  // copy of each for the ports alone (NGD-7: the buffer and its count,
-  // rqo_cq02h for the count), which starts no other path. Each pair is
-  // kept, or synthesis merges it back.
+  // copy of the buffer and its count for the ports alone (NGD-7), which
+  // starts no other path. The pair is kept, or synthesis merges it back.
+  // The registered count needs no copy: its paths, 19.4 NGD, are within
+  // its outputs' required 20 (OA's response OI-60).
   (* keep *) logic [SW-1:0]     st_cq02h;
   (* keep *) logic [LB+B*W-1:0] out_cq02h;     // {count, buffer}
-  (* keep *) logic [LA-1:0]     rq_cq02h, rqo_cq02h;
+  logic [LA-1:0]                rq_cq02h;
   logic [A:0]                   rqh_cq02h;     // rq_cq02h, one-hot
   assign rqh_cq02h = onehot(rq_cq02h);
-  always_comb {alloc_v_cq02h, alloc_idx_cq02h} = grants(out_cq02h, onehot(rqo_cq02h));
-  assign avail_cq02h = out_cq02h[B * W +: LB] - LB'(rqo_cq02h);
+  always_comb {alloc_v_cq02h, alloc_idx_cq02h} = grants(out_cq02h, rqh_cq02h);
+  assign avail_cq02h = out_cq02h[B * W +: LB] - LB'(rq_cq02h);
 `ifdef CCV_CHECK
   assign buf_cq02h     = st_cq02h[OBUF +: B * W];
   assign cnt_cq02h     = st_cq02h[OCNT +: LB];
@@ -339,29 +343,38 @@ module ooe_freelist #(
   `CCV_ASSERT(alloc_granted, (alloc_req_cq01h & ~alloc_v_cq02h) == '0)
   // Port k asks only if ports 0 to k-1 do, the order rename allocates in.
   `CCV_ASSERT(req_prefix, (alloc_req_cq01h & (alloc_req_cq01h + A'(1))) == '0)
-  // A free names an entry that is allocated, or one granted this same
-  // cycle (renamed and squashed within one edge): anything else free or
-  // buffered is a double free, a bug upstream.
-  logic [N-1:0] granted_cq02h;
+  // A free names an entry that is allocated: one in transit (granted last
+  // cycle, its free bit still set), or one out of the buffer. Anything else
+  // free or buffered is a double free, a bug upstream. A free never names
+  // an entry granted this cycle (it comes from registers), and its lead
+  // came a cycle before it.
+  logic [N-1:0] granted_cq02h, transit_m_cq02h;
+  logic         free_en_cq01h;     // the lead's flop: a free this cycle
   always_comb begin
-    granted_cq02h = '0;
+    granted_cq02h   = '0;
+    transit_m_cq02h = '0;
     for (int k = 0; k < A; k++)
       if (alloc_req_cq01h[k] && alloc_v_cq02h[k]) granted_cq02h[alloc_idx_cq02h[k*W +: W]] = 1'b1;
+    for (int i = 0; i < A && i < B; i++)
+      if (LA'(i) < rq_cq02h) transit_m_cq02h[st_cq02h[OBUF + i * W +: W]] = 1'b1;
   end
-  `CCV_ASSERT(no_double_free, (free_mask_cq01h & st_cq02h[OBITS +: N] & ~granted_cq02h) == '0)
+  `CCV_ASSERT(no_double_free, (free_mask_cq01h & st_cq02h[OBITS +: N] & ~transit_m_cq02h) == '0)
+  `CCV_ASSERT(no_free_of_grant, (free_mask_cq01h & granted_cq02h) == '0)
+  `CCV_ASSERT(free_led, free_mask_cq01h == '0 || free_en_cq01h)
 
   // Local clock gating (docs/rtl-coding-style.md). The free bits change on
-  // an allocation or a free; the buffer, its count and their copy, the bank
+  // last cycle's allocation (rq_cq02h) or a free (its lead's flop,
+  // free_en); the buffer, its count and their copy, the bank
   // pointers and the buffered set when last cycle allocated, or while the
   // buffer has room (a refill may come; whether one does is a search of the
   // pool, too deep for an enable): from the module's own flops (CG-5). The
-  // bank order and the registered count and its copy are written every
-  // edge, eight flops with no gate.
+  // bank order and the registered count are written every edge, five flops
+  // with no gate, and the lead's flop.
   logic          bits_en_cq01h, buf_en_cq01h;
   logic [SW-1:0] nx_cq01h;
   logic [LA-1:0] rq_cq01h;          // how many this cycle takes: where the request prefix ends
-  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, alloc_req_cq01h, free_mask_cq01h);
-  assign bits_en_cq01h = |alloc_req_cq01h || |free_mask_cq01h;
+  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, free_mask_cq01h);
+  assign bits_en_cq01h = rq_cq02h != '0 || free_en_cq01h;
   assign buf_en_cq01h  = rq_cq02h != '0 || 32'(st_cq02h[OCNT +: LB]) < B;
   always_comb begin
     rq_cq01h = '0;
@@ -390,11 +403,11 @@ module ooe_freelist #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      rq_cq02h  <= '0;
-      rqo_cq02h <= '0;
+      rq_cq02h      <= '0;
+      free_en_cq01h <= 1'b0;
     end else begin
-      rq_cq02h  <= rq_cq01h;
-      rqo_cq02h <= rq_cq01h;
+      rq_cq02h      <= rq_cq01h;
+      free_en_cq01h <= free_l_cq00h;
     end
   end
 

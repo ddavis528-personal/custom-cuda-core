@@ -1,0 +1,23 @@
+{
+  "module": "ooe_age",
+  "ports": {
+    "alloc_l_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: rename's stage valids"
+    },
+    "gnt_v_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: ooe_rs's grant registers into age"
+    },
+    "gnt_idx_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: ooe_rs's grant registers into age"
+    }
+  }
+}

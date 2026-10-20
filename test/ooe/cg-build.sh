@@ -21,13 +21,14 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
 case "$unit" in
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
-    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
+    vl ooe_wake "--public-flat-rw ${g//,/ }" "${d//,/ } -DWAKE_PUBLIC" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
   ooe_age_rcu|ooe_age_miu)
     if [ "$unit" = ooe_age_rcu ]; then cls=0 na=$n_rcu; else cls=1 na=$n_miu; fi
     vl ooe_age "-GN=$na -GA=$width" "-DAGE_N=$na -DAGE_A=$width -DAGE_CLS=$cls" \
       "$PWD/rtl/ooe/ooe_age.sv" "$PWD/test/ooe/age_tb.cpp" ;;
   ooe_rs)
-    vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width" \
+    nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+    vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width -GNC=$nc" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DRS_NC=$nc" \
       "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" ;;
   ooe_decq)
     slots=$(val CCV_TIER1_WARPS) dq=$(val CCV_P_DECQ) dqw=$(val CCV_P_DECQ_WARP_MAX)

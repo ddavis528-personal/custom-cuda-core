@@ -110,10 +110,19 @@ Built (`rtl/ooe/`):
   enable come from the module's own flops (CG-5). Those entries, in
   transit, sit at the head a cycle: the ports offer the entries behind
   them (a mux on the registered count), and `avail_cq02h`, the count
-  rename sees, leaves them out. A taken entry's free bit still clears at
-  its own edge. The ports read a `(* keep *)` copy of the buffer, its count
-  and the registered count, which start no other path (NGD-7: the state's
-  own paths run through the refill). The reset is flopped before use
+  rename sees, leaves them out. A taken entry's free bit clears with them,
+  at the late edge, from the registered count (OA's response OI-58, V-75):
+  exact, since they stay buffered until then and refill cannot take them
+  again. Frees come from the retire stage's register and a registered
+  squash, never naming an entry granted that cycle (an assertion), and the
+  free list flops their lead, the ROB's decision a cycle earlier
+  (`free_l`), as the free bits' enable (L2). The bench runs the RTL an edge
+  behind the model to drive the lead, and a third control, no-lead, must
+  be caught. The ports read a `(* keep *)` copy of the buffer and its
+  count, which start no other path (NGD-7: the state's own paths run
+  through the refill). The registered count needs no copy: its paths, 19.4
+  NGD, are within the ports' required 20 (OA's response OI-60: rename takes
+  the names as data, its go and credits in ooe_decq). The reset is flopped before use
   (RST-1). Depth is 21.6 NGD at 192 entries and 22.2 at 48, the requests
   13.2 and 13.7 to a flop (they reach only the free bits and the
   registered count now), the grant ports 11.5 and 10.4 from flops. In the
@@ -150,12 +159,19 @@ Built (`rtl/ooe/`):
   snapshots the model's RS ages (`Core::rsAge`) before every cycle and
   drives the RTL with the allocations between snapshots, for both classes:
   25 million RCU pairs and 5 million MIU pairs compared, none differ.
-  Controls no-valid and port-reverse must each be caught. Logic depth is
-  10.1 NGD in 9 levels at 30 entries. Local clock gating (TI-14): the
-  matrix is one gate, clocked on an allocation (`older_en`, 2.2 NGD); its
-  column clear is written as an AND, not a held `if`, so synthesis keeps
-  that enable rather than a per-bit one. `check-cg` measures a lowest DCGE
-  of 99% for the MIU class and 100% for the RCU class, medium and high.
+  Controls no-valid and port-reverse must each be caught. The update is
+  one edge after the RS writes the group's rows (OA's response OI-58,
+  V-75): it takes ooe_rs's registered grants and the RS valid bits after
+  that edge, as data, and select cannot see the delay, since a new entry
+  reaches the request register an edge after its allocation at the
+  earliest. The bench runs the RTL a snapshot behind the model for it,
+  and a third control, no-lead, must be caught. Logic depth is 11.3 NGD
+  at 30 entries. Local clock gating: the matrix is one gate, clocked on a
+  group's update; its enable, `older_en`, is age's own flop of rename's
+  Rename 3 valid for the class (CG-5, 0 NGD past the flop), and the reset
+  is flopped (RST-1). Its column clear is written as an AND, not a held
+  `if`, so synthesis keeps that enable rather than a per-bit one.
+  `check-cg` measures a DCGE of 100%, medium and high.
 - **`ooe_decq`**, the decode queue (decision 3): 12 entries shared by the
   four tier-1 slots, six arrivals and up to four dequeues per slot a
   cycle. Each entry holds its payload, a busy bit, its owner and its
@@ -182,7 +198,23 @@ Built (`rtl/ooe/`):
   dequeue or a flush. An idle entry's payload, owner and position are
   cleared rather than held (they are read only through busy), so no field
   is held through an `if` and synthesis keeps that one enable. `check-cg`:
-  5.5 NGD of enable, 98% DCGE in medium and high, idle clocks nothing.
+  5.4 NGD of enable, 97% DCGE in medium and 98% in high, idle clocks
+  nothing.
+
+  Leads (OA's response OI-58, V-75): an arrival is led by decq's own flop
+  of DEC's channel valid (`enq_l`); a squash's flush is registered per slot
+  and applied an edge late (`fl_q`), rename taking nothing from the slot
+  meanwhile (its rule, from its own copy of the registered squash: the
+  outputs still show the old uops, and an assertion holds rename to it),
+  the flushed entries holding their credits that edge longer (the model's
+  `decq_flush_late`, 1.9% fewer cycles in the synthetic sweep). No uop
+  arrives for a slot in its flush's cycle (0 in 2,357 flushes; an RTL
+  assertion and the model's check), so the late flush drops nothing new.
+  The reset is flopped (RST-1); 6 flops are ungated, of 7 allowed. A
+  dequeue is still rename's input, on the ratchet (CG-5): its lead is
+  rename's go (OI-63). The bench runs the RTL a snapshot behind the model;
+  new control no-enq-lead. OI-54's late-event control now finds its race
+  at decq 2 (the flush's timing moved it from decq 4).
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function
@@ -197,34 +229,60 @@ Built (`rtl/ooe/`):
   since and saturates. Line k < 3 rises at the class's fastest bypass
   point plus the k-th penalty. The full-latency line rises at the class's
   latency, at CCV_LAT_LANE for a masked load's copy, at CCV_LAT_L1_WAKE for
-  an L1-contracted load, or, for a timer that waits, on its done (RCU
-  class) or CCV_LAT_L1_MISS_WAKE after its completion. An L1 load with no
-  completion by payload stages + CCV_LAT_L1_CMPL is the miss: the line
-  drops and a miss pulse starts cancel's first hop. A replay or a free
+  an L1-contracted load, or, for a timer that waits, CCV_LAT_L1_MISS_WAKE
+  after its completion (no latency class waits for a done, so the timer
+  takes none: a timed grant with no latency is an assertion). An L1 load
+  with no completion by payload stages + CCV_LAT_L1_CMPL is the miss: the
+  line drops and a miss pulse starts cancel's first hop. A replay or a free
   clears issued, which every line is gated by (the reset line's guard).
-  A fifth output, fin, is the timer's word to confirmation: the
-  full-latency line raised and no miss check pending. Confirmation frees
-  an entry in the cycle its line rises, so a completion's effect is seen
-  only there. The model logs what reached each timer every cycle
-  (`Core::wakeLog`: grants with their kind and class, dones, completions,
-  stops, misses, and confirmations on the timer's word);
-  `test/ooe/wake_tb.cpp` clocks the RTL with them after every model cycle
-  and compares every valid entry's lines with `Core::wakeLine`, every miss,
-  and fin with each confirmation and `Core::rsFinal`. Over 25 seeds: 26,771
-  grants, 3,068 completions, 427 misses, 20,801 confirmations and 2.15
+  Outputs: the lines; fin, the timer's word to confirmation (the
+  full-latency line raised and no miss check pending); the miss pulse;
+  issued, from a copy of its own (NGD-7); and ooe_sched's leads (OI-54),
+  `wtl` (a line the timer changes at the next edge) and `wml` (a miss pulse
+  or a registered completion now), each a register.
+
+  Leads (OA's responses OI-58, OI-62; V-75). Every timer is clocked from
+  this module's own flops but for its grant: issued with its age not
+  saturated; a final flag to clear; issued and final, or issued and writing
+  nothing (a prod bit taken at grant), for a free by confirmation; its
+  registered completion; and the registered squash's lead, every timer for
+  that edge. Completions (L1): the channel's valid leads its payload by a
+  cycle and is flopped; the payload's RS indices are decoded per timer as
+  they arrive and registered, the restart taken an edge later at age 1 so the line rises
+  on the model's cycle; the L1 hit is taken from the payload as it arrives,
+  its timer clocked anyway. A replay needs no lead: it comes within a few
+  cycles of a producer's miss or of a stale-ready issue, below saturation,
+  and an assertion holds every stop to a clocked timer. The grant comes
+  from ooe_sched's third copy of its grant register at 2 NGD, into the
+  enable: a CG-5 waiver (rtl/cg-waivers.json), 6.1 NGD in all as check-cg
+  measures it (the timer's enable cone, 4.1, and the grant's arrival).
+  `wtl`'s next value is the change at the edge after next from the state
+  alone, or from a grant or a registered restart at this edge, and none on
+  a stop; so it leaves from flops and costs no stage.
+
+  The model logs what reached each timer every cycle (`Core::wakeLog`);
+  `test/ooe/wake_tb.cpp` drives the RTL a cycle behind the model, so each
+  lead goes a cycle before its event, and compares every valid entry's
+  lines with `Core::wakeLine`, every entry's issued bit (a free one clear:
+  a stop the timer missed would leave it set), every miss, fin with each
+  confirmation and `Core::rsFinal`, `wtl` with `Core::wakeLineChanges` a
+  cycle before (a timer stopped since excepted) and `wml` with every miss
+  and completion past L1. It runs the directed tests as well as the random
+  ones; `testSquashSaturated` squashes wrong-path loads past their timers'
+  saturation, the case the squash lead is for. Over 25 seeds: 30,397
+  grants, 3,423 completions, 420 misses, 23,425 confirmations and 2.42
   million line comparisons, none differ. Cores whose bypass table has four
-  penalties (the bypass-group seeds, which `ooe_ready`'s bench skips too)
-  or whose completion delay is not the parameter's are skipped and
-  counted, 67% of cycles. Controls late-grant, drop-cmpl and drop-stop must
-  each be caught. Logic depth is 15.3 NGD in 13 levels at 45 timers.
-  Local clock gating (TI-14): each timer is its own 20-flop gate, clocked
-  on its grant or stop, while issued until its age saturates, on a done or
-  completion after that, and one edge more to clear a miss pulse or a
-  final flag a stop left. `tools/check-cg.py --unit ooe_wake` measures
-  4.8 NGD of enable and a lowest DCGE of 99% (medium) and 98% (high); idle
-  clocks nothing. The earlier 13.9 NGD was short: Yosys dropped the age
-  increment of the `(age == AMAX) ? AMAX : age + 1` form, which only the
-  CG replay (the netlist against the bench's trace) showed.
+  penalties or whose completion delay is not the parameter's are skipped
+  and counted, 61% of cycles. Controls late-grant, drop-cmpl, drop-stop,
+  no-cmpl-lead and no-sq-lead must each be caught. Logic depth is 16.9 NGD
+  flop to flop. Local clock gating: each timer, its `wtl` and its issued
+  copy are one 26-flop gate; check-cg measures a lowest DCGE of 87%
+  (medium) and 98% (high), idle clocks nothing. Its CG bench ages timers
+  in the idle ticks between model cycles, past the model's, so there a stop
+  for a timer the RTL would not clock takes the squash's lead too. The
+  earlier 13.9 NGD was short: Yosys dropped the age increment of the
+  `(age == AMAX) ? AMAX : age + 1` form, which only the CG replay (the
+  netlist against the bench's trace) showed.
 - **`ooe_confirm`**, confirmation and transitive cancel, as a level (OA's
   response OI-50). An issued entry returns to Waiting when it depends on a
   producer that is not issued or has missed its L1 slot (`msd`: the miss,
@@ -285,8 +343,35 @@ Built (`rtl/ooe/`):
   clocked by an RCU free it does not wait on. A held row keeps its line
   selects where its bits were set, an AND with the bit's flop rather than a
   held `if`: synthesis would otherwise take each row's grant as its enable,
-  12 NGD and more. `check-cg`: 7.2 NGD of enable, 98% DCGE in medium and
-  high, nothing clocked in idle.
+  12 NGD and more.
+
+  Leads (OA's responses OI-58, OI-61; V-75): those events reach the gates
+  only from this module's own flops. An allocation is led by the flop of
+  rename's Rename 2 valid per port (`req_l`, exact). A free by
+  confirmation is led by a flop per entry (`cf_en`), set when the entry may
+  confirm next cycle: valid, not freed now, its row empty after this edge
+  (every producer left in it freed now: the free input, as data), and then
+  a producer final at the next edge (ooe_wake's line-3 timer lead `wtl3`,
+  final already, or a completion for it: the channel's valid flopped,
+  `cva`, with the payload's RS indices as they arrive, held a cycle more
+  for a restart, `cvb`), or an entry writing nothing (a prod bit taken at
+  allocation) issued then (ooe_wake's issued and ooe_sched's grant). This
+  departs from OI-61's "every producer left about to finish": a producer
+  final while its own row waits (an add on an L1-speculative load, final
+  at 7 and confirmed at 19) held its class's clock for that whole window,
+  and the free input makes the row's test exact. A free by squash is led
+  by the registered squash's lead's flop (`sq_en`), both classes. The
+  grant register is clocked on the request leads and an edge more to
+  clear; the reset is flopped (RST-1). Assertions hold every request and
+  every free to its lead. The bench runs the RTL two cycles behind the
+  model (the completion lead goes two edges before its confirmation's
+  free), runs the directed tests too, and its new controls no-req-lead,
+  no-sq-lead, no-cmpl-lead and no-fin must each be caught;
+  `testFinalBeforeProducer` (an SFU op of 30 cycles bypassed to a lane op
+  final at 16) is the case the final term is for. `check-cg`: 7.8 NGD of
+  enable, a lowest DCGE of 78% (medium) and 82% (high), nothing clocked in
+  idle; its idle ticks between model cycles predict nothing but on the
+  last, where the next cycle's leads go.
 
   Depth decides same-edge reuse (DA's response OI-39). `ooe_rs` is 20.2
   NGD in 19 levels with it and 18.4 without. The path that decides it

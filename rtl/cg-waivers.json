@@ -1,4 +1,17 @@
 {
  "_comment": "Explicit exceptions to the local clock-gating rules (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'), written by the module's owner. One entry per module, rule (CG-1, CG-2, CG-3, CG-4, CG-5 or RST-1) and register: module, rule, target, why, by, date. why says what was measured and why the rule cannot or should not be met. A CG-5 waiver also carries ports, the input ports it lets into the enable, and enable_ngd, the enable's total depth: the latest port's arrival plus the cone, within CCV_NGD_CG_EN (OI-59). A waiver that excuses nothing is refused; one beside a ratchet entry supersedes it.",
- "waivers": []
+ "waivers": [
+  {
+   "module": "ooe_wake",
+   "rule": "CG-5",
+   "target": "st_cq02h",
+   "ports": [
+    "grant_cq01h"
+   ],
+   "enable_ngd": 6.5,
+   "why": "OA's response OI-58: a timer's grant has no lead (the grant register's D is select's pick at 24.3 NGD, and the issue loop cannot pay a cycle). The grant comes from ooe_sched's third (* keep *) copy of its grant register (grant_w_cq04h), for this module alone, at 2 NGD (ooe_wake.ngd.json). check-cg measures each timer's enable cone at 4.1 NGD, 6.1 in all with the grant's arrival, within CG-2's 8; 6.5 is stated for margin. Every other term of the enable is this module's own flops (OA's responses OI-58, OI-62).",
+   "by": "OI",
+   "date": "2026-10-20"
+  }
+ ]
 }

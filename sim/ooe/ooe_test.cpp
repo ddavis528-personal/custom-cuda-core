@@ -934,6 +934,53 @@ void testRestore() {
   EXPECT(refused, "a restore-activate before the map was accepted");
 }
 
+/// A consumer final long before its producer: an SFU op of 30 cycles,
+/// bypassed to a lane op that issues at 9 and is final at 16, then waits on
+/// its row until the SFU op confirms. ooe_rs leads that confirmation from
+/// the lane op's final bit alone (OA's response OI-61): its bench's no-fin
+/// control is caught here.
+void testFinalBeforeProducer() {
+  g_test = "final-before-producer";
+  Config c = groupConfig();
+  c.unit_lat[4] = 30;
+  Env e(c, 13);
+  std::vector<Op> p;
+  Op f; f.k = kSfu; f.dst = 2; f.src[0] = 1; f.nsrc = 1; p.push_back(f);
+  Op l; l.k = kLane; l.dst = 3; l.src[0] = 2; l.nsrc = 1; p.push_back(l);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  EXPECT(e.core.counters["errors"] == 0, "errors");
+  EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
+}
+
+/// A squash that reaches loads whose wake timers have saturated: the
+/// mispredicted branch waits on a chain of SFU ops, nearly fifty cycles,
+/// while the wrong path's loads issue at once and wait longer still for
+/// their completions. ooe_wake clocks such a timer only on the squash's
+/// lead (OA's responses OI-58, OI-62): its bench's no-sq-lead control is
+/// caught here.
+void testSquashSaturated() {
+  g_test = "squash-saturated";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 11);
+  e.miss_extra = 150;              // wrong-path loads outstanding past saturation
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 4; ++i) {
+    Op f; f.k = kSfu; f.dst = 2 + i; f.src[0] = 1 + i; f.nsrc = 1; p.push_back(f);
+  }
+  Op s; s.k = kSetp; s.pdst = 1; s.src[0] = 5; s.nsrc = 1; p.push_back(s);
+  Op b; b.k = kBranch; b.pguard = 1; b.taken = true; b.pred_taken = false; p.push_back(b);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  EXPECT(e.core.counters["errors"] == 0, "errors");
+  EXPECT(e.core.counters["squash.entries"] > 0, "nothing was squashed");
+  EXPECT(e.core.counters["branch.mispredict"] == 1, "mispredicts");
+  EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
+}
+
 void testKill() {
   g_test = "kill";
   Config c = baseConfig();
@@ -1180,16 +1227,21 @@ void testReadyReg() {
   const int saved = g_fail;
   bool seen = false;
   // A shallow decode queue spaces a warp's uops so the race opens (found
-  // at decq 4 in the sweep).
-  for (unsigned run = 0; run != 4 * 12 && !seen; ++run) {
-    const unsigned seed = run % 12 + 1;
+  // at decq 4 in the sweep; at decq 2 since the decode queue's flush is
+  // applied an edge late, OI-58; at decq 4 and a 60% miss rate since the
+  // take is popped late, OA-21; at decq 3 and 20% under the registered
+  // go, OA-22). It is rare, one run in 100 to 700 at any setting, and
+  // every change to rename's traffic moves it, so the hunt is wide and
+  // stops at the first. A directed test would hold it better (OI's task).
+  for (unsigned run = 0; run != 6 * 3 * 60 && !seen; ++run) {
+    const unsigned seed = run % 60 + 1;
     std::mt19937 rng(seed);
     Config c = baseConfig();
     c.rs_warp_cap = c.decq_warp_max = 0;
-    c.decq = (unsigned[]){4, 6, 8, 12}[run / 12];
+    c.decq = (unsigned[]){3, 4, 2, 5, 6, 8}[run / 180];
     c.inject_late_event = true;
     Env e(c, seed);
-    e.miss_pct = 20;
+    e.miss_pct = (unsigned[]){20, 60, 40}[(run / 60) % 3];
     const auto report = e.core.on_error;
     e.core.on_error = [&](const std::string &m) {
       seen = seen || m.find("OA-17") != std::string::npos;
@@ -1616,6 +1668,7 @@ void sweep() {
       {"fl_buf", {0, 4, 8, 16}, &Config::fl_buf},
       {"rename_width", {1, 2, 3, 4}, &Config::rename_width},
       {"retire_per_rob", {1, 2, 4}, &Config::retire_per_rob},
+      {"rename_one_warp", {0, 1, 2}, &Config::rename_one_warp},
   };
   auto run = [](const Config &c, unsigned seeds = 6) {
     uint64_t total = 0;
@@ -1651,6 +1704,49 @@ void sweep() {
     c.decq_late_credit = false;
     const double cy = run(c);
     std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+  }
+  // OA-21 (a): rename's take registered in decq and popped an edge late,
+  // its entries holding their credits a cycle more, under each go: the
+  // interleave (0), one warp and two warps a cycle. 48 seeds against the
+  // default (interleave, the take popped at its own edge).
+  // The reference: the interleave with an on-time take and exact credits.
+  Config ontime = base;
+  ontime.decq_take_late = false;
+  ontime.fits_conservative = 0;
+  {
+    const double r48 = run(ontime, 48);
+    for (unsigned w : {0u, 1u, 2u})
+      for (unsigned late : {0u, 1u, 2u}) {
+        // 2: the take late, the queue an entry larger, against its credit.
+        Config c = ontime;
+        c.rename_one_warp = w;
+        c.decq_take_late = late != 0;
+        c.decq += late == 2;
+        const double cy = run(c, 48);
+        std::printf("| rename_one_warp, decq_take_late (48 seeds, on time %.0f) | %u, %u%s | %.0f | %.3f |\n", r48, w,
+                    unsigned(late != 0), late == 2 ? ", decq +1" : "", cy, cy / r48);
+      }
+  }
+  // OA-21 (2): the go's fits against shared credits, exact (the model's
+  // running credits) or conservative (less the rename width, for a go that
+  // lets several warps take), under each go, the take late, decq 12 and 13.
+  {
+    const double r48 = run(ontime, 48);
+    for (unsigned w : {1u, 2u, 0u})
+      for (unsigned dq : {base.decq, base.decq + 1})
+        for (unsigned cons : {0u, 1u, 2u, 3u}) {
+          if (cons && w == 1) continue;   // one warp's fits are its own
+          Config c = ontime;
+          c.rename_one_warp = w;
+          c.decq_take_late = true;
+          c.decq = dq;
+          c.fits_conservative = cons;
+          const double cy = run(c, 48);
+          std::printf("| go, decq, fits (48 seeds, take late, on time %.0f) | %s, %u, %s | %.0f | %.3f |\n", r48,
+                      w == 0 ? "interleave" : w == 1 ? "one warp" : "two warps", dq,
+                      (const char *[]){"exact", "less the width", "one warp when short", "registered go"}[cons],
+                      cy, cy / r48);
+        }
   }
   // When rename sees this cycle's RS and ROB frees (ren_credit), against
   // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
@@ -1835,6 +1931,8 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testL1WakeAfterCmpl();
   testMaskedLoad();
   testSquash();
+  testSquashSaturated();
+  testFinalBeforeProducer();
   testFloorCeiling();
   testDemote();
   testRestore();
@@ -1878,6 +1976,8 @@ int main(int argc, char **argv) {
   testL1WakeAfterCmpl();
   testMaskedLoad();
   testSquash();
+  testSquashSaturated();
+  testFinalBeforeProducer();
   testFloorCeiling();
   testDemote();
   testRestore();

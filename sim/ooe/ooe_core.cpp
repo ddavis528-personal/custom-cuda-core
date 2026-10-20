@@ -29,14 +29,17 @@ std::string Config::apply(const std::string &spec) {
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
-      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"demote_fallback", &demote_fallback},
+      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
-      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap}};
+      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
+      {"fits_conservative", &fits_conservative}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
-                                     {"decq_late_credit", &decq_late_credit}};
+                                     {"decq_late_credit", &decq_late_credit},
+                                     {"decq_flush_late", &decq_flush_late},
+                                     {"decq_take_late", &decq_take_late}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -250,6 +253,9 @@ void Core::uop(const Uop &u) {
   // ordering; DEC's output refuses any other (TI's a4fa218).
   if (u.ordering && u.mem_op != kMemOpFence)
     err("V-36: uop seq %u carries ordering %u on mem_op %u, not a fence", uint32_t(u.tid), u.ordering, u.mem_op);
+  // ooe_decq applies a flush an edge late, dropping its slot's uops then:
+  // none may arrive in the flush's cycle (OI-58).
+  if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
   decq_.push_back(u);
   decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
@@ -273,8 +279,13 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
+  decq_flush_prev_ = decq_flush_now_;
+  decq_flush_now_ = 0;
+  decq_take_prev_ = decq_take_now_;
+  decq_take_now_ = 0;
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rob_prompt_.assign(slot_.size() * cfg_.rob_depth, 0);
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
@@ -520,6 +531,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
     if (!rowSec_[row]) {
       rowOwner_[row] = 0;
       --slot_[slot].held_gpr;
+      if (gfree_.takenNow(row)) err("OI-58: row %u freed in the cycle it was allocated (ooe_freelist)", row);
       if (!gfree_.free(row)) err("V-01: row %u freed twice", row);
     }
     return;
@@ -531,6 +543,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
   }
   gowner_[p] = 0;
   --slot_[slot].held_gpr;
+  if (gfree_.takenNow(p)) err("OI-58: GPR p%u freed in the cycle it was allocated (ooe_freelist)", p);
   if (!gfree_.free(p)) err("V-01: GPR p%u freed twice", p);
 }
 
@@ -543,6 +556,7 @@ void Core::freePred(unsigned slot, unsigned p) {
   }
   powner_[p] = 0;
   --slot_[slot].held_pred;
+  if (pfree_.takenNow(p)) err("OI-58: predicate pp%u freed in the cycle it was allocated (ooe_freelist)", p);
   if (!pfree_.free(p)) err("V-02: predicate pp%u freed twice", p);
 }
 
@@ -908,6 +922,11 @@ bool Core::cancelHop() {
   {
     for (unsigned i : hop) {
       RsEntry &y = rs_[i];
+      // ooe_wake clocks a timer's replay on its age alone (OI-58: no stop
+      // lead), so a replay must reach it before the age saturates.
+      if (now_ - y.issue_at >= kWakeAgeMax)
+        err("OI-58: a replay reached RS entry %u issued %llu cycles ago, past ooe_wake's age saturation (%u)", i,
+            (unsigned long long)(now_ - y.issue_at), kWakeAgeMax);
       // Issued on a wake that has been withdrawn: back to Waiting.
       RobEntry &r = slot_[y.slot].rob[y.rob];
       if (r.is_mem || y.copy) {
@@ -1106,8 +1125,13 @@ void Core::takeCompletions() {
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && r->rs_main < wlog_.done.size())
       wlog_.done[r->rs_main] = 1;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && rs_[r->rs_main].on_completion &&
-        rs_[r->rs_main].cls == RsCls::kRcu)
+        rs_[r->rs_main].cls == RsCls::kRcu) {
+      // ooe_wake takes no done: no latency class waits for one (OI-58).
+      // One that did would need the RS index as a lead field on
+      // ccv_rcu_ooe_done.
+      err("OI-58: a done woke RS entry %u, and ooe_wake takes no done", r->rs_main);
       wake(r->rs_main);
+    }
     if (r->u.attr.branch) {
       r->resolved = true;
       r->taken = d.branch_taken;
@@ -1146,6 +1170,8 @@ void Core::takeCompletions() {
     r->mlc_miss = c.mlc_miss;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid) {
       RsEntry &x = rs_[r->rs_main];
+      // ooe_wake takes a completion into an issued timer only (OI-58).
+      if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", r->rs_main);
       if (r->rs_main < wlog_.cmpl.size()) wlog_.cmpl[r->rs_main] = 1;
       if (x.spec) {
         // An L1 hit lands at exactly CCV_LAT_L1_CMPL (A-46, V-44).
@@ -1298,6 +1324,7 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
     if (it->warp == s.warp) {
       decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
       ++decq_freed_;
+      ++decq_flush_now_;
       it = decq_.erase(it);
       --s.decq;
       ev("epoch_drop", s.warp);
@@ -2189,12 +2216,31 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const bool merge = !nop && (!full || u.shape.guard);
   const bool wgpr = !nop && a.writes_gpr;
   const bool copy = mem && a.mem_kind == kMemKLoad && wgpr && merge;
+  // OA-21 (fits_conservative): a multi-warp go forms each warp's fits
+  // against the cycle's shared credits less the rename width, so no
+  // combination of warps oversubscribes them. The credits a warp sees are
+  // the running ones plus what other warps took this cycle; its own takes
+  // count against it.
+  const unsigned margin = ren_margin_;
+  auto others = [&](unsigned k) { return ren_tot_[k] - ren_slot_[si][k]; };
+  unsigned need_rcu = 0, need_miu = 0;
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
     for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
-    const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
+    need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0);
+    need_miu = mem ? 1 : 0;
+    if (ren_late_frees_) {   // this cycle's prompt frees, unseen
+      const unsigned cap = cfg_.ren_free_cap;
+      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap));
+      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap));
+    }
+    if (margin && ((need_rcu && free_rcu + others(0) < need_rcu + margin) ||
+                   (need_miu && free_miu + others(1) < need_miu + margin))) {
+      count("stall.fits_conservative.rs");
+      return false;
+    }
     if (free_rcu < need_rcu) {
       count("stall.rs_full.rcu");
       oev(OoeEv::kRsFull, s.warp, 0, free_rcu, u.tid);
@@ -2231,6 +2277,14 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       count("stall.gpr_floor");
       oev(OoeEv::kRenameLimit, s.warp, 0, 0, u.tid);
     }
+    return false;
+  }
+  if (margin && wgpr && gfree_.size() + others(2) < 1 + margin) {
+    count("stall.fits_conservative.gpr");
+    return false;
+  }
+  if (margin && !nop && u.pred_we && cfg_.rename_preds && pfree_.size() + others(3) < 1 + margin) {
+    count("stall.fits_conservative.pred");
     return false;
   }
   if (!nop && u.pred_we && cfg_.rename_preds && !predAllowed(si, 1)) {
@@ -2364,6 +2418,12 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   ++s.count;
   if (nop) complete(si, idx);
   ev("dispatch", s.warp, tagOf(si, idx), 0, u.tid);
+  const unsigned took[4] = {need_rcu, need_miu, wgpr ? 1u : 0u,
+                            !nop && u.pred_we && cfg_.rename_preds ? 1u : 0u};
+  for (unsigned k = 0; k != 4; ++k) {
+    ren_tot_[k] += took[k];
+    ren_slot_[si][k] += took[k];
+  }
   return true;
 }
 
@@ -2430,41 +2490,100 @@ void Core::rename() {
   }
   unsigned budget = cfg_.rename_width;
   std::vector<bool> blocked(slot_.size(), false);
-  for (bool progress = true; progress && budget;) {
-    progress = false;
-    for (unsigned k = 0; k != slot_.size() && budget; ++k) {
-      const unsigned si = (rr_rename_ + k) % slot_.size();
-      if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
-      const unsigned w = slot_[si].warp;
-      auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
-      if (it == decq_.end()) continue;
-      // V-53: no stale-epoch uop is renamed.
-      if (it->fetch_epoch != epoch_[w]) {
-        ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
-        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
-        ++decq_freed_;
-        decq_.erase(it);
-        --slot_[si].decq;
-        progress = true;
-        continue;
+  ren_tot_.fill(0);
+  ren_slot_.assign(slot_.size(), {});
+  ren_margin_ = cfg_.fits_conservative == 1 && cfg_.rename_one_warp != 1 ? cfg_.rename_width : 0;
+  // fits_conservative 2: while any shared credit is short of the width,
+  // one warp takes (its fits, formed alone, are exact for it). 3, OA-22's
+  // registered go: the test without this cycle's RS frees, RS RCU against
+  // twice the width when a candidate head uop is a copy (it takes two);
+  // the short cycle's warp takes without them too.
+  bool short_credit = false;
+  ren_late_frees_ = false;
+  const unsigned fc = cfg_.fits_conservative;
+  if (fc >= 2 && cfg_.rename_one_warp != 1) {
+    unsigned free_rcu = 0, free_miu = 0;
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
+    const unsigned w = cfg_.rename_width;
+    unsigned need_rcu = w;
+    if (fc == 3) {
+      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cfg_.ren_free_cap));
+      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cfg_.ren_free_cap));
+      for (unsigned si = 0; si != slot_.size(); ++si) {
+        if (slot_[si].st == WarpState::kFree) continue;
+        unsigned k = 0;
+        for (const Uop &u : decq_) {
+          if (u.warp != slot_[si].warp) continue;
+          if (k++ == w) break;
+          const SchedAttr &a = u.attr;
+          if (a.rs_miu && a.mem_kind == kMemKLoad && a.writes_gpr && (u.group_mask != kFullMask || u.shape.guard))
+            need_rcu = 2 * w;
+        }
       }
-      const bool branch = it->attr.branch;
-      if (tryRename(si, *it)) {
-        // OI-56: a branch ends its rename group, so its checkpoint is the
-        // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
-        if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
-        if (branch && cfg_.branch_ends_group == 2) budget = 1;   // the decrement below ends the cycle
-        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
-        ++decq_freed_;
-        decq_.erase(it);
-        --slot_[si].decq;
-        --budget;
-        progress = true;
-      } else {
-        blocked[si] = true;
+    }
+    short_credit = free_rcu < need_rcu || free_miu < w || gfree_.size() < w ||
+                   (cfg_.rename_preds && pfree_.size() < w);
+    if (short_credit) count("rename.one_warp_short");
+    ren_late_frees_ = short_credit && fc == 3;
+  }
+  const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
+  // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
+  // refused (0, and the slot is blocked for the cycle).
+  auto takeOne = [&](unsigned si) -> int {
+    const unsigned w = slot_[si].warp;
+    auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+    if (it == decq_.end()) return 0;
+    // V-53: no stale-epoch uop is renamed.
+    if (it->fetch_epoch != epoch_[w]) {
+      ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
+      decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+      ++decq_freed_;
+      ++decq_take_now_;
+      decq_.erase(it);
+      --slot_[si].decq;
+      return 2;
+    }
+    const bool branch = it->attr.branch;
+    if (!tryRename(si, *it)) {
+      blocked[si] = true;
+      return 0;
+    }
+    // OI-56: a branch ends its rename group, so its checkpoint is the
+    // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
+    if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
+    if (branch && cfg_.branch_ends_group == 2) budget = 1;   // the decrement below ends the cycle
+    decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+    ++decq_freed_;
+    ++decq_take_now_;
+    decq_.erase(it);
+    --slot_[si].decq;
+    --budget;
+    return 1;
+  };
+  if (warps) {
+    // OI-63: a prefix of each of up to rename_one_warp warps, in the
+    // rotating order, each warp's before the next's (the RTL's go over
+    // rename's registered per-slot fits).
+    unsigned used = 0;
+    for (unsigned k = 0; k != slot_.size() && budget && used != warps; ++k) {
+      const unsigned si = (rr_rename_ + k) % slot_.size();
+      if (slot_[si].st == WarpState::kFree) continue;
+      bool took = false;
+      for (int r; budget && !blocked[si] && (r = takeOne(si)) != 0;) took = took || r == 1;
+      used += took;
+    }
+  } else {
+    for (bool progress = true; progress && budget;) {
+      progress = false;
+      for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+        const unsigned si = (rr_rename_ + k) % slot_.size();
+        if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
+        if (takeOne(si)) progress = true;
       }
     }
   }
+  ren_late_frees_ = false;
   if (!budget) count("rename.full_width");
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
 }

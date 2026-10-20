@@ -4,11 +4,14 @@
 // just before every core cycle, takes a snapshot of one RS class: which
 // entries are valid and their ages (Core::rsValid, Core::rsAge). Between two
 // snapshots, an entry valid in the second with an age it did not have in the
-// first was allocated; those go to ooe_age's ports in age order, and the
-// entries valid in both with the same age are its valid input. After the
-// edge, for every pair of entries valid in the new snapshot, the RTL's bit
-// must say what the ages say. The RTL's assertions (allocation to an invalid
-// entry, distinct ports, V-13's antisymmetry) run too, under --assert.
+// first was allocated at the edge between them: a group, in age order.
+// ooe_age updates one edge after the RS (OA's response OI-58), so the bench
+// runs it a snapshot behind: each tick drives the newest group's lead
+// (alloc_l), and the group before it as ooe_rs's grant register with the
+// valid bits of its snapshot. After the edge, for every pair of entries
+// valid in that snapshot, the RTL's bit must say what the ages say. The
+// RTL's assertions (a grant to an entry not valid, distinct ports, the lead
+// exact, V-13's antisymmetry) run too, under --assert.
 //
 // AGE_CLS selects the class: 0 RCU (entries 0 to CCV_P_RS_RCU - 1), 1 MIU
 // (the rest). Each new core resets the RTL, whose matrix is payload: only
@@ -16,8 +19,9 @@
 //
 // Negative controls (AGE_CONTROL=<name>) perturb the driving and must be
 // caught: no-valid (the valid input is all clear, so a new entry finds
-// nothing older) and port-reverse (a cycle's allocations reach the ports
-// youngest first).
+// nothing older), port-reverse (a cycle's allocations reach the ports
+// youngest first) and no-lead (the lead is never driven, so the matrix is
+// never clocked).
 // With --cg <scenario> <vcd> it is ooe_age's clock-gating bench
 // (test/ooe/cg_trace.h), and compares nothing.
 // Usage: age_tb [seeds] | age_tb --cg <scenario> <vcd>
@@ -45,6 +49,11 @@ std::string control;
 uint64_t current = 0;    // the serial of the core being followed
 std::vector<bool> was_valid;
 std::vector<uint64_t> was_age;
+// The group the RTL updates at its next edge, and its snapshot.
+std::vector<unsigned> pend;
+uint64_t pend_valid = 0;
+std::vector<bool> pend_was_valid;
+std::vector<uint64_t> pend_was_age;
 unsigned long long cycles = 0, allocs = 0, multi = 0, pairs = 0, cores = 0, mismatches = 0;
 constexpr unsigned W = []() { unsigned w = 0; while ((1u << w) < AGE_N) ++w; return w; }();
 
@@ -71,10 +80,23 @@ void tick() {
   cg.dump();
 }
 
-// An idle cycle: no allocation; the valid input holds.
+// Drive the pending group as ooe_rs's grant register, with its valid bits.
+void drivePend() {
+  dut->valid_cq02h = control == "no-valid" ? 0 : pend_valid;
+  dut->gnt_v_cq02h = 0;
+  dut->gnt_idx_cq02h = 0;
+  for (unsigned k = 0; k != pend.size(); ++k) {
+    dut->gnt_v_cq02h |= 1u << k;
+    dut->gnt_idx_cq02h |= decltype(dut->gnt_idx_cq02h)(pend[k]) << (k * W);
+  }
+}
+
+// An idle cycle: no lead; the pending group, if any, is applied.
 void idleTick() {
-  dut->alloc_v_cq01h = 0;
+  dut->alloc_l_cq01h = 0;
+  drivePend();
   tick();
+  pend.clear();
 }
 
 void fail(const char *what, unsigned e, unsigned j) {
@@ -94,9 +116,15 @@ void hook(const Core &c) {
     ++cores;
     was_valid.assign(n, false);
     was_age.assign(n, 0);
-    dut->valid_cq01h = 0;
-    dut->alloc_v_cq01h = 0;
+    pend.clear();
+    pend_valid = 0;
+    pend_was_valid.assign(n, false);
+    pend_was_age.assign(n, 0);
+    dut->valid_cq02h = 0;
+    dut->alloc_l_cq01h = 0;
+    dut->gnt_v_cq02h = 0;
     dut->ooe_rst_r00h = 1;
+    tick();
     tick();
     dut->ooe_rst_r00h = 0;
   }
@@ -104,41 +132,43 @@ void hook(const Core &c) {
   // The allocations since the last snapshot, oldest first, and the entries
   // that stayed.
   std::vector<std::pair<uint64_t, unsigned>> fresh;
-  uint64_t stay = 0;
+  uint64_t now_valid = 0;
   for (unsigned e = 0; e != n; ++e) {
     const bool v = c.rsValid(base + e);
     const uint64_t a = c.rsAge(base + e);
     if (v && (!was_valid[e] || was_age[e] != a)) fresh.push_back({a, e});
-    else if (v && was_valid[e]) stay |= uint64_t(1) << e;
+    if (v) now_valid |= uint64_t(1) << e;
   }
   std::sort(fresh.begin(), fresh.end());
   if (fresh.size() > AGE_A) { fail("more allocations than ports", unsigned(fresh.size()), AGE_A); return; }
   if (control == "port-reverse") std::reverse(fresh.begin(), fresh.end());
   allocs += fresh.size();
   multi += fresh.size() > 1;
-  dut->valid_cq01h = control == "no-valid" ? 0 : stay;
-  dut->alloc_v_cq01h = 0;
-  dut->alloc_idx_cq01h = 0;
-  for (unsigned k = 0; k != fresh.size(); ++k) {
-    dut->alloc_v_cq01h |= 1u << k;
-    dut->alloc_idx_cq01h |= decltype(dut->alloc_idx_cq01h)(fresh[k].second) << (k * W);
-  }
+  // This tick: the new group's lead, and the pending group applied.
+  dut->alloc_l_cq01h = !fresh.empty() && control != "no-lead";
+  drivePend();
   tick();
+  // The matrix now holds every group up to the pending one: compare the
+  // pairs valid in its snapshot.
+  if (!cg.on())
+    for (unsigned e = 0; e != n; ++e)
+      for (unsigned j = 0; j != n; ++j) {
+        if (e == j || !pend_was_valid[e] || !pend_was_valid[j]) continue;
+        ++pairs;
+        const bool want = pend_was_age[j] < pend_was_age[e];
+        if (getBit(dut->older_cq03h, e * n + j) != want) fail(want ? "older bit clear" : "older bit set", e, j);
+      }
+  pend.clear();
+  for (auto &f : fresh) pend.push_back(f.second);
+  pend_valid = now_valid;
   for (unsigned e = 0; e != n; ++e) {
     was_valid[e] = c.rsValid(base + e);
     was_age[e] = c.rsAge(base + e);
   }
-  if (cg.on()) {
+  pend_was_valid = was_valid;
+  pend_was_age = was_age;
+  if (cg.on())
     for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
-    return;
-  }
-  for (unsigned e = 0; e != n; ++e)
-    for (unsigned j = 0; j != n; ++j) {
-      if (e == j || !was_valid[e] || !was_valid[j]) continue;
-      ++pairs;
-      const bool want = was_age[j] < was_age[e];
-      if (getBit(dut->older_cq02h, e * n + j) != want) fail(want ? "older bit clear" : "older bit set", e, j);
-    }
 }
 } // namespace
 
@@ -153,9 +183,10 @@ int main(int argc, char **argv) {
   dut = std::make_unique<Vooe_age>(ctx.get());
   if (cg.on()) {
     cg.open(*dut, vcd);
-    dut->valid_cq01h = 0;
-    dut->alloc_v_cq01h = 0;
-    dut->alloc_idx_cq01h = 0;
+    dut->valid_cq02h = 0;
+    dut->alloc_l_cq01h = 0;
+    dut->gnt_v_cq02h = 0;
+    dut->gnt_idx_cq02h = 0;
     dut->ooe_rst_r00h = 1;
     for (unsigned k = 0; k != 4; ++k) tick();
     dut->ooe_rst_r00h = 0;

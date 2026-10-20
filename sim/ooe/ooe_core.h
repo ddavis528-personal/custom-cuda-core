@@ -23,6 +23,7 @@
 
 #include "ccv_params.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <deque>
@@ -179,6 +180,30 @@ struct Config {
   /// arrival until the next, so this cycle's arrivals see it still held.
   /// On (DA's response OI-39), because ooe_decq fits its stage only so.
   bool decq_late_credit = true;
+  /// A squash's flush of the decode queue is registered and applied an edge
+  /// late (ooe_decq, OA's response OI-58): the flushed entries hold their
+  /// credits one cycle more.
+  bool decq_flush_late = true;
+  /// Rename's take is registered in the decode queue and popped an edge
+  /// late: the taken entries hold their credits one cycle more. On (OA-21,
+  /// DA 2026-10-20), because ooe_decq fits its stage only so.
+  bool decq_take_late = true;
+  /// How a go that lets several warps take in a cycle (rename_one_warp 0,
+  /// or 2 and up) keeps their sum within the shared credits (RS room per
+  /// class, GPR and predicate names), each warp's fits being formed alone
+  /// (OA-21). 0: exact, the model's running credits. 1: each warp's fits
+  /// against the credits less the rename width. 2: one warp takes while any
+  /// shared credit is below the rename width (a registered bit), several
+  /// otherwise. 3: OA-22's registered go, 2 as the RTL can build it from
+  /// registered state alone: rename sees this cycle's RS frees and ROB
+  /// retirements a cycle late wherever they could matter. Short is tested
+  /// on the credits without them, RS RCU against twice the width when a
+  /// candidate head uop is a copy; a short cycle's warp takes without
+  /// them; and a warp's fits count its ROB retirements a cycle late. 2
+  /// (OA-21, DA 2026-10-20: rename's interleaved go forms each warp's fits
+  /// alone, and its exact forms do not fit a stage). The default is 3
+  /// (OA-22, OA 2026-10-20: the go the RTL builds).
+  unsigned fits_conservative = 3;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -217,6 +242,11 @@ struct Config {
   /// checkpoint is the RAT's state at the next edge. 0 off; 1 the branch's
   /// slot renames nothing more that cycle; 2 nothing renames after it.
   unsigned branch_ends_group = 0;
+  /// KNOB (OA's responses OI-63): rename takes a prefix from each of up to
+  /// this many warps a cycle, in the rotating order, each warp's before the
+  /// next's (the RTL's go over rename's registered per-slot fits: 1, or 2
+  /// with a second pick). 0: uop by uop, warps interleaved round robin.
+  unsigned rename_one_warp = 0;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -539,6 +569,9 @@ public:
   size_t avail() const { return cap_ ? buf_.size() - transit_ - took_ : ready_; }
   bool empty() const { return avail() == 0; }
   bool has(unsigned p) const { return bit_[p] || pend_[p]; }
+  /// Taken since the last clock(): ooe_freelist clears a taken entry's free
+  /// bit at the next edge, so a free of it now would be lost (OI-58).
+  bool takenNow(unsigned p) const { return std::find(allocs_.begin(), allocs_.end(), p) != allocs_.end(); }
   unsigned alloc() {
     const unsigned n = unsigned(bit_.size());
     if (cap_) {
@@ -663,7 +696,8 @@ public:
   /// Decode-queue entries the credit check counts as held: the queue, plus
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {
-    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0);
+    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0) +
+           (cfg_.decq_flush_late ? decq_flush_prev_ : 0) + (cfg_.decq_take_late ? decq_take_prev_ : 0);
   }
   /// The adapter left a uop of this warp in the channel because canAccept
   /// said no: count which limit held it (the decode-queue events).
@@ -962,7 +996,9 @@ public:
   };
   /// The timer's word on an entry: issued, its full-latency wake raised, and
   /// not speculative, so confirmation may take it (confirmPass).
-  bool rsFinal(unsigned e) const { return rs_[e].issued && rs_[e].late && !rs_[e].spec; }
+  /// A free entry is neither (its fields keep their last values): ooe_wake
+  /// stops a freed timer, and ooe_rs asserts it reports no free entry.
+  bool rsFinal(unsigned e) const { return rs_[e].valid && rs_[e].issued && rs_[e].late && !rs_[e].spec; }
   const WakeLog &wakeLog() const { return wlog_; }
   /// What reached the register alias tables this cycle, for ooe_rat
   /// (test/ooe/rat_tb.cpp), in the order the model applied it: checkpoint
@@ -1003,6 +1039,13 @@ private:
   WakeLog wlog_;
   RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
+  unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
+  std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
+  std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
+  unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
+  bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
+  std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
@@ -1010,11 +1053,13 @@ private:
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
   bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
   bool robHeld(unsigned si, unsigned i) const {
-    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i];
+    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i] ||
+           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[size_t(si) * cfg_.rob_depth + i]);
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
   void robFreed(unsigned si, unsigned i, bool retire) {
     if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
+    else rob_prompt_[size_t(si) * cfg_.rob_depth + i] = 1;
   }
 
   // reservation stations and the matrix
@@ -1082,7 +1127,11 @@ public:
   const FreeVec &predFree() const { return pfree_; }
   unsigned rsEntries() const { return n_; }
   bool rsValid(unsigned e) const { return rs_[e].valid; }
-  bool rsIssued(unsigned e) const { return rs_[e].issued; }
+  bool rsIssued(unsigned e) const { return rs_[e].valid && rs_[e].issued; }
+  /// ooe_wake's age saturation (its AW of 5): a replay must come before it.
+  static constexpr unsigned kWakeAgeMax = 31;
+  /// Writes a register some entry may wake on (ooe_wake's prod, taken at grant).
+  bool rsProduces(unsigned e) const { return rs_[e].produces; }
   /// Allocation order (smaller is older): what ooe_age's matrix encodes.
   uint64_t rsAge(unsigned e) const { return rs_[e].age; }
   /// The decode queue in arrival order, for ooe_decq: each uop's tier-1
