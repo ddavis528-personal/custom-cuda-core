@@ -407,6 +407,18 @@ DA chose the interleave (`rename_one_warp` 0) with 2, the late take and a
 and 37.6 NGD in the go and fit no stage (`test/ooe/probes`). No S1 kernel
 moves between the old defaults and these.
 
+3 is OA-22's registered go, 2 as the RTL can build it. Rename's go must
+see the cycle's frees (TI-19), but ooe_rs's free thermometer arrives at
+15.6 NGD (confirm, 8.7, then a tree of capped thermometers; counted, 30),
+and the go compared against it in front measures 25.4. Frees only add
+credit and matter only when a credit is short, so in 3 the go reads
+registered state alone: short is tested on the credits without this
+cycle's RS frees (RS RCU against twice the width when a candidate head
+uop is a copy, which takes two), the short cycle's warp takes without
+them, and a warp's fits count its ROB retirements a cycle late. 48
+seeds, the interleave at decq 13: +2.5% against the on-time exact go,
+where 2 was +1.6% but takes no account of a copy's two RCU entries.
+
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
 is when rename's go decision sees this cycle's frees. 0 is the ideal:

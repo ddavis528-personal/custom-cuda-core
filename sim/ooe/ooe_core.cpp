@@ -285,6 +285,7 @@ void Core::cycle(uint64_t now) {
   decq_take_now_ = 0;
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rob_prompt_.assign(slot_.size() * cfg_.rob_depth, 0);
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
@@ -2230,6 +2231,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
     need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0);
     need_miu = mem ? 1 : 0;
+    if (ren_late_frees_) {   // this cycle's prompt frees, unseen
+      const unsigned cap = cfg_.ren_free_cap;
+      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap));
+      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap));
+    }
     if (margin && ((need_rcu && free_rcu + others(0) < need_rcu + margin) ||
                    (need_miu && free_miu + others(1) < need_miu + margin))) {
       count("stall.fits_conservative.rs");
@@ -2488,15 +2494,38 @@ void Core::rename() {
   ren_slot_.assign(slot_.size(), {});
   ren_margin_ = cfg_.fits_conservative == 1 && cfg_.rename_one_warp != 1 ? cfg_.rename_width : 0;
   // fits_conservative 2: while any shared credit is short of the width,
-  // one warp takes (its fits, formed alone, are exact for it).
+  // one warp takes (its fits, formed alone, are exact for it). 3, OA-22's
+  // registered go: the test without this cycle's RS frees, RS RCU against
+  // twice the width when a candidate head uop is a copy (it takes two);
+  // the short cycle's warp takes without them too.
   bool short_credit = false;
-  if (cfg_.fits_conservative == 2 && cfg_.rename_one_warp != 1) {
+  ren_late_frees_ = false;
+  const unsigned fc = cfg_.fits_conservative;
+  if (fc >= 2 && cfg_.rename_one_warp != 1) {
     unsigned free_rcu = 0, free_miu = 0;
     for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
     const unsigned w = cfg_.rename_width;
-    short_credit = free_rcu < w || free_miu < w || gfree_.size() < w || (cfg_.rename_preds && pfree_.size() < w);
+    unsigned need_rcu = w;
+    if (fc == 3) {
+      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cfg_.ren_free_cap));
+      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cfg_.ren_free_cap));
+      for (unsigned si = 0; si != slot_.size(); ++si) {
+        if (slot_[si].st == WarpState::kFree) continue;
+        unsigned k = 0;
+        for (const Uop &u : decq_) {
+          if (u.warp != slot_[si].warp) continue;
+          if (k++ == w) break;
+          const SchedAttr &a = u.attr;
+          if (a.rs_miu && a.mem_kind == kMemKLoad && a.writes_gpr && (u.group_mask != kFullMask || u.shape.guard))
+            need_rcu = 2 * w;
+        }
+      }
+    }
+    short_credit = free_rcu < need_rcu || free_miu < w || gfree_.size() < w ||
+                   (cfg_.rename_preds && pfree_.size() < w);
     if (short_credit) count("rename.one_warp_short");
+    ren_late_frees_ = short_credit && fc == 3;
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
@@ -2554,6 +2583,7 @@ void Core::rename() {
       }
     }
   }
+  ren_late_frees_ = false;
   if (!budget) count("rename.full_width");
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
 }

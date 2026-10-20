@@ -16,6 +16,15 @@
 #                (WARP 0) and with (WARP 1) the warp compare the interleave needs
 #   ex2_probe    two picks with exact shared credits: take counts
 #   exi_probe    the interleave with exact shared credits: take counts
+#   ild_probe    OA-22: the interleave with this cycle's frees compared in front
+#                (OA's deficit form): take counts (OUT 0), lanes (OUT 1)
+#   ilsr_probe   OA-22: the split go, frees only on the short cycle's one-warp
+#                path (map -r for per-input figures: tools ignore arrivals)
+#   ilfin_probe  OA-22: the split go with the short path from registered
+#                state, the short bit from the frees: per-input, map -r
+#   fth_probe    free_th's arrival: ooe_confirm into a counted thermometer;
+#   fth2_probe   the same through th_sat, a tree of capped thermometers
+#                (th_only.sv), cap 4 and 2; ret_probe, ret_n's arrival
 #
 # decq-take-late.patch is ooe_decq with rename's take registered (tk_q) and
 # popped at the next edge, its heads read at the take's offset into an
@@ -49,4 +58,6 @@ ovr_probe.sv   ovr_probe   -set,WARP,0  override
 ovr_probe.sv   ovr_probe   -set,WARP,1  override-warp
 ex2_probe.sv   ex2_probe   -            exact-two-warps-take
 exi_probe.sv   exi_probe   -            exact-interleave-take
+ild_probe.sv   ild_probe   -set,OUT,0   deficit-front-take
+ild_probe.sv   ild_probe   -set,OUT,1   deficit-front-lanes
 T

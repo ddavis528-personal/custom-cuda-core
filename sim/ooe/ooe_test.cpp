@@ -1732,7 +1732,7 @@ void sweep() {
     const double r48 = run(ontime, 48);
     for (unsigned w : {1u, 2u, 0u})
       for (unsigned dq : {base.decq, base.decq + 1})
-        for (unsigned cons : {0u, 1u, 2u}) {
+        for (unsigned cons : {0u, 1u, 2u, 3u}) {
           if (cons && w == 1) continue;   // one warp's fits are its own
           Config c = ontime;
           c.rename_one_warp = w;
@@ -1742,7 +1742,8 @@ void sweep() {
           const double cy = run(c, 48);
           std::printf("| go, decq, fits (48 seeds, take late, on time %.0f) | %s, %u, %s | %.0f | %.3f |\n", r48,
                       w == 0 ? "interleave" : w == 1 ? "one warp" : "two warps", dq,
-                      cons == 0 ? "exact" : cons == 1 ? "less the width" : "one warp when short", cy, cy / r48);
+                      (const char *[]){"exact", "less the width", "one warp when short", "registered go"}[cons],
+                      cy, cy / r48);
         }
   }
   // When rename sees this cycle's RS and ROB frees (ren_credit), against

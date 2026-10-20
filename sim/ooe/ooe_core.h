@@ -194,8 +194,14 @@ struct Config {
   /// (OA-21). 0: exact, the model's running credits. 1: each warp's fits
   /// against the credits less the rename width. 2: one warp takes while any
   /// shared credit is below the rename width (a registered bit), several
-  /// otherwise. 2 (OA-21, DA 2026-10-20: rename's interleaved go forms each
-  /// warp's fits alone, and its exact forms do not fit a stage).
+  /// otherwise. 3: OA-22's registered go, 2 as the RTL can build it from
+  /// registered state alone: rename sees this cycle's RS frees and ROB
+  /// retirements a cycle late wherever they could matter. Short is tested
+  /// on the credits without them, RS RCU against twice the width when a
+  /// candidate head uop is a copy; a short cycle's warp takes without
+  /// them; and a warp's fits count its ROB retirements a cycle late. 2
+  /// (OA-21, DA 2026-10-20: rename's interleaved go forms each warp's fits
+  /// alone, and its exact forms do not fit a stage).
   unsigned fits_conservative = 2;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
@@ -1037,6 +1043,8 @@ private:
   std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
   std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
+  bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
+  std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
@@ -1044,11 +1052,13 @@ private:
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
   bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
   bool robHeld(unsigned si, unsigned i) const {
-    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i];
+    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i] ||
+           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[size_t(si) * cfg_.rob_depth + i]);
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
   void robFreed(unsigned si, unsigned i, bool retire) {
     if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
+    else rob_prompt_[size_t(si) * cfg_.rob_depth + i] = 1;
   }
 
   // reservation stations and the matrix
