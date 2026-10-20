@@ -266,7 +266,7 @@ void hook(const Core &c) {
     // The confirmation leads' terms as they stand in a.
     setBit(dut->wtl3_cq00h, j, pm.wtl3[j]);
     setBit(dut->fin_cq00h, j, control != "no-fin" && y.fin[j]);
-    setBit(dut->iss_cq00h, j, y.valid[j] && y.iss[j] && !y.grant[j]);
+    setBit(dut->iss_cq00h, j, y.iss[j] && !y.grant[j]);
     setBit(dut->gnt_cq00h, j, y.grant[j]);
   }
   // The completions arriving with this edge's valid flop: a + 1's.
@@ -303,7 +303,7 @@ void hook(const Core &c) {
       for (unsigned j = 0; j != N; ++j) {
         setBit(dut->wtl3_cq00h, j, last && pm.wtl3[j] && !y.rfree[j]);
         setBit(dut->fin_cq00h, j, last && control != "no-fin" && y.fin[j] && !y.rfree[j]);
-        setBit(dut->iss_cq00h, j, last && y.valid[j] && y.iss[j] && !y.rfree[j]);
+        setBit(dut->iss_cq00h, j, last && y.iss[j] && !y.rfree[j]);
         setBit(dut->gnt_cq00h, j, false);
       }
       idleTick(last ? &n1 : nullptr, g + 2 == gaps ? &n1 : nullptr, cover && last);

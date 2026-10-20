@@ -23,6 +23,7 @@
 
 #include "ccv_params.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <deque>
@@ -539,6 +540,9 @@ public:
   size_t avail() const { return cap_ ? buf_.size() - transit_ - took_ : ready_; }
   bool empty() const { return avail() == 0; }
   bool has(unsigned p) const { return bit_[p] || pend_[p]; }
+  /// Taken since the last clock(): ooe_freelist clears a taken entry's free
+  /// bit at the next edge, so a free of it now would be lost (OI-58).
+  bool takenNow(unsigned p) const { return std::find(allocs_.begin(), allocs_.end(), p) != allocs_.end(); }
   unsigned alloc() {
     const unsigned n = unsigned(bit_.size());
     if (cap_) {
@@ -962,7 +966,9 @@ public:
   };
   /// The timer's word on an entry: issued, its full-latency wake raised, and
   /// not speculative, so confirmation may take it (confirmPass).
-  bool rsFinal(unsigned e) const { return rs_[e].issued && rs_[e].late && !rs_[e].spec; }
+  /// A free entry is neither (its fields keep their last values): ooe_wake
+  /// stops a freed timer, and ooe_rs asserts it reports no free entry.
+  bool rsFinal(unsigned e) const { return rs_[e].valid && rs_[e].issued && rs_[e].late && !rs_[e].spec; }
   const WakeLog &wakeLog() const { return wlog_; }
   /// What reached the register alias tables this cycle, for ooe_rat
   /// (test/ooe/rat_tb.cpp), in the order the model applied it: checkpoint
@@ -1082,7 +1088,9 @@ public:
   const FreeVec &predFree() const { return pfree_; }
   unsigned rsEntries() const { return n_; }
   bool rsValid(unsigned e) const { return rs_[e].valid; }
-  bool rsIssued(unsigned e) const { return rs_[e].issued; }
+  bool rsIssued(unsigned e) const { return rs_[e].valid && rs_[e].issued; }
+  /// ooe_wake's age saturation (its AW of 5): a replay must come before it.
+  static constexpr unsigned kWakeAgeMax = 31;
   /// Writes a register some entry may wake on (ooe_wake's prod, taken at grant).
   bool rsProduces(unsigned e) const { return rs_[e].produces; }
   /// Allocation order (smaller is older): what ooe_age's matrix encodes.

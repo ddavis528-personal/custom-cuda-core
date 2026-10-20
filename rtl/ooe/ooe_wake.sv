@@ -322,6 +322,8 @@ module ooe_wake #(
   // clears on its own: its timer is issued and below saturation.
   `CCV_ASSERT(stop_clocked, (stop_cq01h & is_cq02h & ~ent_en) == '0)
   `CCV_ASSERT(miss_clocked, (miss_cq02h & ~ent_en) == '0)
+  // A completion names an issued timer (the model's check too).
+  `CCV_ASSERT(cmpl_issued, (hit & ~is_cq02h) == '0)
 
   // The leads' next values. A grant's timer starts at age 1 (its state
   // with nothing before it); a restart at age 1 raises the full-latency

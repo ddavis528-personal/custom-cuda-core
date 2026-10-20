@@ -227,6 +227,16 @@ module ooe_rs #(
   `CCV_ASSERT(alloc_granted, (req_cq01h & ~gv_cq02h) == '0)
   // A free names a valid entry.
   `CCV_ASSERT(free_valid, (free_cq01h & ~valid_cq02h) == '0)
+  // What ooe_wake and ooe_sched report, and a completion's payload, name
+  // only entries valid here (their benches drive them so; the assembled
+  // block holds them to it).
+  logic [N-1:0] cpv;
+  always_comb begin
+    cpv = '0;
+    for (int k = 0; k < NC; k++)
+      if (cva_cq01h[k]) cpv[cmpl_idx_cq00h[k * W +: W]] = 1'b1;
+  end
+  `CCV_ASSERT(wake_names_valid, ((iss_cq00h | gnt_cq00h | fin_cq00h | wtl3_cq00h | cpv) & ~valid_cq02h) == '0)
   // Every request and every free was led.
   `CCV_ASSERT(req_led, (req_cq01h & ~req_en_cq01h) == '0)
   `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq01h & ~cf_en_cq01h) == '0)

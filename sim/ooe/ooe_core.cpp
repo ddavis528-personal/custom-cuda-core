@@ -520,6 +520,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
     if (!rowSec_[row]) {
       rowOwner_[row] = 0;
       --slot_[slot].held_gpr;
+      if (gfree_.takenNow(row)) err("OI-58: row %u freed in the cycle it was allocated (ooe_freelist)", row);
       if (!gfree_.free(row)) err("V-01: row %u freed twice", row);
     }
     return;
@@ -531,6 +532,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
   }
   gowner_[p] = 0;
   --slot_[slot].held_gpr;
+  if (gfree_.takenNow(p)) err("OI-58: GPR p%u freed in the cycle it was allocated (ooe_freelist)", p);
   if (!gfree_.free(p)) err("V-01: GPR p%u freed twice", p);
 }
 
@@ -543,6 +545,7 @@ void Core::freePred(unsigned slot, unsigned p) {
   }
   powner_[p] = 0;
   --slot_[slot].held_pred;
+  if (pfree_.takenNow(p)) err("OI-58: predicate pp%u freed in the cycle it was allocated (ooe_freelist)", p);
   if (!pfree_.free(p)) err("V-02: predicate pp%u freed twice", p);
 }
 
@@ -908,6 +911,11 @@ bool Core::cancelHop() {
   {
     for (unsigned i : hop) {
       RsEntry &y = rs_[i];
+      // ooe_wake clocks a timer's replay on its age alone (OI-58: no stop
+      // lead), so a replay must reach it before the age saturates.
+      if (now_ - y.issue_at >= kWakeAgeMax)
+        err("OI-58: a replay reached RS entry %u issued %llu cycles ago, past ooe_wake's age saturation (%u)", i,
+            (unsigned long long)(now_ - y.issue_at), kWakeAgeMax);
       // Issued on a wake that has been withdrawn: back to Waiting.
       RobEntry &r = slot_[y.slot].rob[y.rob];
       if (r.is_mem || y.copy) {
@@ -1106,8 +1114,13 @@ void Core::takeCompletions() {
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && r->rs_main < wlog_.done.size())
       wlog_.done[r->rs_main] = 1;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && rs_[r->rs_main].on_completion &&
-        rs_[r->rs_main].cls == RsCls::kRcu)
+        rs_[r->rs_main].cls == RsCls::kRcu) {
+      // ooe_wake takes no done: no latency class waits for one (OI-58).
+      // One that did would need the RS index as a lead field on
+      // ccv_rcu_ooe_done.
+      err("OI-58: a done woke RS entry %u, and ooe_wake takes no done", r->rs_main);
       wake(r->rs_main);
+    }
     if (r->u.attr.branch) {
       r->resolved = true;
       r->taken = d.branch_taken;
@@ -1146,6 +1159,8 @@ void Core::takeCompletions() {
     r->mlc_miss = c.mlc_miss;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid) {
       RsEntry &x = rs_[r->rs_main];
+      // ooe_wake takes a completion into an issued timer only (OI-58).
+      if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", r->rs_main);
       if (r->rs_main < wlog_.cmpl.size()) wlog_.cmpl[r->rs_main] = 1;
       if (x.spec) {
         // An L1 hit lands at exactly CCV_LAT_L1_CMPL (A-46, V-44).
