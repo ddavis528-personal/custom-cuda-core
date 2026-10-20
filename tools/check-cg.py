@@ -36,11 +36,8 @@ the design instantiates is one (rtl/top/rpt-units.json, from gen-top). The bench
 trace is replayed into the unit's netlist, which must reproduce the bench's
 outputs on every cycle, so what is measured is what the bench ran.
 
-Exceptions, in order. The ratchet, rtl/cg-ratchet.json, holds the modules
-written before the rule, and the CG-5 and RST-1 findings that stood when
-those were made; it only shrinks: an entry outside its baseline is refused,
-and so is one with nothing left to excuse. CG-5 and RST-1 are structural:
-no budget takes them. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
+Exceptions, in order: the budgets, then the waivers, then the ratchet.
+CG-5 and RST-1 are structural: no budget takes them. Each module may leave the larger of CCV_CG_BUDGET_PCT of its
 flops and fewer than CCV_CG_MODULE_FLOPS flops outside the rules, smallest
 findings first, findings about flops only; what the modules take counts,
 per instance, against CCV_CG_BUDGET_PCT of each block with RTL. A
@@ -48,10 +45,21 @@ repeater's control pulses (valid, wake, credit and stall at every stage, and
 its flopped reset) are the channel's own, captured every cycle like any
 receiver's: they go straight to the block's budget, its hardening wrapper
 being the partition, and not to the repeater's own allowance, which its
-lead slice still meets (Daniel, 2026-10-19). Last,
-rtl/cg-waivers.json: one entry per (module, rule, register), each with a
-reason; a waiver that excuses nothing, including one for what a budget
-already takes, is refused.
+lead slice still meets (Daniel, 2026-10-19). Then rtl/cg-waivers.json:
+one entry per (module, rule, register), a rule of WAIVER_RULES (CG-1 to CG-5
+and RST-1), each with a reason; a waiver that excuses nothing, including one
+for what a budget already takes, is refused. A CG-5 waiver also names the
+input ports it lets into the enable and states the enable's total depth,
+enable_ngd: the latest port's arrival (its <module>.ngd.json, else
+CCV_NGD_BUDGET - CCV_NGD_PORT) plus the mapped cone. It is refused when an
+unnamed input reaches the enable, when the total is over CCV_NGD_CG_EN, or
+when it states less than measured (OI-58, OI-59): CG-2 times the cone alone,
+which is exact only where no input reaches it. Last, the ratchet,
+rtl/cg-ratchet.json, holds the modules written before the rule, and the
+CG-5 and RST-1 findings that stood when those were made; it only shrinks: an
+entry outside its baseline is refused, and so is one with nothing left to
+excuse. A waiver takes effect with no ratchet edit: a ratchet entry whose
+findings a waiver now takes is reported as superseded, not failed.
 """
 import argparse
 import collections
@@ -136,6 +144,16 @@ def param(name):
 
 
 NGD_MAX = float(param("CCV_NGD_CG_EN"))
+# An input with no architect's budget arrives where check-ngd assumes it
+# does: the stage less the default port side (OI-58).
+NGD_DEFAULT_ARRIVAL = float(param("CCV_NGD_BUDGET")) - float(param("CCV_NGD_PORT"))
+# The rules a waiver may name, and what a CG-5 waiver must also carry
+# (OI-59): the input ports it lets into an enable, and that enable's total
+# depth, the latest port's arrival plus the cone, which must be within
+# CCV_NGD_CG_EN.
+WAIVER_RULES = ("CG-1", "CG-2", "CG-3", "CG-4", "CG-5", "RST-1")
+WAIVER_KEYS = ("module", "rule", "target", "why", "by", "date")
+CG5_WAIVER_KEYS = ("ports", "enable_ngd")
 DCGE_MIN = float(param("CCV_DCGE_MIN_PCT"))
 MIN_FLOPS = int(param("CCV_CG_MIN_FLOPS"))
 BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
@@ -1100,6 +1118,7 @@ class Finding:
         self.rule, self.module, self.regs, self.msg, self.unit = rule, module, set(regs), msg, unit
         self.flops, self.budgetable = flops, budgetable
         self.status = "open"
+        self.inputs, self.cone = set(), None    # CG-5: input ports and cone depth
 
     def __str__(self):
         where = "%s (unit %s)" % (self.module, self.unit) if self.unit else self.module
@@ -1148,16 +1167,19 @@ def source_findings(u):
             continue
         ins = nl.cone_inputs(g.e) | (nl.cone_inputs(g.r) if g.kind == "ER" else set())
         if ins:
-            out.append(Finding("CG-5", u.module, g.best,
-                               "enable of %s comes from input %s, not only from the module's "
-                               "own flops (en: %s)" % (g.name, ", ".join(sorted(ins)),
-                                                       g.en_name), u.name, len(g.q)))
+            f = Finding("CG-5", u.module, g.best,
+                        "enable of %s comes from input %s, not only from the module's "
+                        "own flops (en: %s)" % (g.name, ", ".join(sorted(ins)),
+                                                g.en_name), u.name, len(g.q))
+            f.inputs, f.cone = set(ins), getattr(g, "depth", None)
+            out.append(f)
     for c, en in sorted(nl.icgs):
         ins = nl.cone_inputs(en)
         if ins:
-            out.append(Finding("CG-5", u.module, {c}, "ICG %s's enable comes from input %s, not "
-                               "only from the module's own flops" % (c, ", ".join(sorted(ins))),
-                               u.name))
+            f = Finding("CG-5", u.module, {c}, "ICG %s's enable comes from input %s, not "
+                        "only from the module's own flops" % (c, ", ".join(sorted(ins))), u.name)
+            f.inputs, f.cone = set(ins), getattr(u, "icg_depth", {}).get(c)
+            out.append(f)
     if nl.rbit is not None:
         loads = nl.reset_loads()
         if loads:
@@ -1504,50 +1526,111 @@ def block_budget(findings, parts, known):
     return lines, fails
 
 
+_ARRIVALS = {}
+
+
+def arrival(module, port, arrivals=None):
+    """A port's arrival in NGD: from the architect's <module>.ngd.json beside
+    its RTL, else NGD_DEFAULT_ARRIVAL. `arrivals`, {(module, port): NGD},
+    overrides both (the selftest's)."""
+    if arrivals is not None and (module, port) in arrivals:
+        return arrivals[(module, port)]
+    if module not in _ARRIVALS:
+        ports = {}
+        for f in glob.glob(os.path.join(ROOT, "rtl", "**", module + ".ngd.json"), recursive=True):
+            ports.update(json.load(open(f)).get("ports", {}))
+        _ARRIVALS[module] = {n: float(v["arrival"]) for n, v in ports.items() if "arrival" in v}
+    return _ARRIVALS[module].get(port, NGD_DEFAULT_ARRIVAL)
+
+
+def cg5_waiver_refusal(w, f, arrivals=None):
+    """Why a CG-5 waiver cannot take finding f, or None (OI-59): it must name
+    every input port the enable reads, and state the enable's total depth,
+    the latest named port's arrival plus the cone, which must be within
+    CCV_NGD_CG_EN and no less than measured."""
+    if f.cone is None:
+        return "its enable's cone was not timed (unit %s measures no depth)" % f.unit
+    ports = set(w.get("ports") or [])
+    if f.inputs - ports:
+        return "it does not name input(s) %s, which reach the enable" % ", ".join(
+            sorted(f.inputs - ports))
+    late, at = max(((arrival(f.module, q, arrivals), q) for q in f.inputs))
+    total = f.cone + late
+    if total > NGD_MAX:
+        return ("the enable is %.1f NGD in all (cone %.1f + %s's arrival %.1f), over %g"
+                % (total, f.cone, at, late, NGD_MAX))
+    try:
+        stated = float(w["enable_ngd"])
+    except (KeyError, TypeError, ValueError):
+        return "it states no enable_ngd"
+    if stated + 0.05 < total:
+        return ("it states enable_ngd %.1f, under the measured %.1f (cone %.1f + %s's "
+                "arrival %.1f)" % (stated, total, f.cone, at, late))
+    return None
+
+
 def load(path, key):
     return json.load(open(path))[key] if os.path.exists(path) else ([] if key == "waivers" else {})
 
 
 def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE, parts=(),
-           known=(), fratchet=None, fbaseline=FINDINGS_BASELINE):
-    """Apply each module's budget, then the ratchets, then the waivers, so a
-    waiver for what a budget already takes is refused as excusing nothing;
-    then check that each block's budget holds what its modules' took.
-    Returns the failures and the budgets' lines."""
+           known=(), fratchet=None, fbaseline=FINDINGS_BASELINE, arrivals=None):
+    """Apply each module's budget, then the waivers, then the ratchets: a
+    waiver for what a budget already takes is refused as excusing nothing,
+    and a waiver takes effect with no ratchet edit, the ratchet entry it
+    supersedes reported but not failed (OI-59). Then check that each block's
+    budget holds what its modules' took. Returns the failures and the
+    budgets' lines."""
     fails = []
     fratchet = fratchet or {}
     lines = module_budget(findings, units)
     for f in findings:
+        if f.status != "open":
+            continue
+        for w in waivers:
+            if w.get("module") != f.module or w.get("rule") != f.rule:
+                continue
+            if not any(reg_is(r, w.get("target", "")) for r in f.regs):
+                continue
+            w["_used"] = True
+            why = cg5_waiver_refusal(w, f, arrivals) if f.rule == "CG-5" else None
+            if why:
+                fails.append("waiver %s %s %s refused: %s" % (w["module"], w["rule"],
+                                                              w["target"], why))
+            else:
+                f.status = "waived"
+            break
+    for f in findings:
         if f.status == "open" and f.module in ratchet:
             f.status = "ratchet"
     found = collections.defaultdict(set)
+    waived = collections.defaultdict(set)
     for f in findings:
         if f.rule not in FINDING_RULES:
             continue
         keys = {"%s %s" % (f.rule, r) for r in f.regs}
         found[f.module] |= keys
+        if f.status == "waived":
+            waived[f.module] |= keys
         if f.status == "open" and keys <= set(fratchet.get(f.module, [])):
             f.status = "ratchet"
-    for f in findings:
-        if f.status != "open":
-            continue
-        for w in waivers:
-            if w["module"] != f.module or w["rule"] != f.rule:
-                continue
-            t = w["target"]
-            if any(reg_is(r, t) for r in f.regs):
-                f.status = "waived"
-                w["_used"] = True
-                break
+    for mod, keys in sorted(fratchet.items()):
+        for k in keys:
+            if k in waived.get(mod, set()):
+                lines.append("  ratchet: %s %s is superseded by a waiver; the entry may go"
+                             % (mod, k))
     fails += [str(f) for f in findings if f.status == "open"]
     if parts:
         more, over = block_budget(findings, parts, known)
         lines += more
         fails += over
     for w in waivers:
-        for k in ("module", "rule", "target", "why", "by", "date"):
-            if not w.get(k):
+        for k in WAIVER_KEYS + (CG5_WAIVER_KEYS if w.get("rule") == "CG-5" else ()):
+            if w.get(k) in (None, "", []):
                 fails.append("waiver %s: no %s" % (w, k))
+        if w.get("rule") not in WAIVER_RULES:
+            fails.append("waiver %s: rule %r is not one a waiver may name (%s)"
+                         % (w, w.get("rule"), ", ".join(WAIVER_RULES)))
         if not w.get("_used"):
             fails.append("waiver %s %s %s excuses nothing: remove it"
                          % (w["module"], w["rule"], w["target"]))
@@ -1898,6 +1981,7 @@ def selftest():
               "files": ["test/cg/fixtures/cg_fx_src.sv"], "clock": "clk", "reset": "rst",
               "blackbox": {ICG: "rtl/ctech/sim/%s.sv" % ICG}}, "selftest")
     u.synth()
+    u.measure_depth()
     sf = source_findings(u)
     expect(has("CG-5", "cg_fx_src", "a_q", sf), "CG-5 missed a gate enabled from an input")
     expect(any("rst" in f.msg for f in has("CG-5", "cg_fx_src", "d_q", sf)),
@@ -1930,6 +2014,74 @@ def selftest():
            "a ratcheted finding that passes stayed on the list")
     fails, _ = run_policy(("cg_fx_form",), fratchet={"cg_fx_form": ["CG-5 n_q"]}, fbaseline=fb)
     expect(any("CG-5 n_q was not on the list" in x for x in fails), "the finding ratchet grew")
+    # 19. The waiver path (OI-59). A waiver of each rule clears its finding
+    #     with no ratchet or RTL change, and a waiver on a group clears that
+    #     group only. A CG-5 waiver must name every input reaching the
+    #     enable and state its total depth, the latest input's arrival plus
+    #     the cone, within CCV_NGD_CG_EN: a_q's enable is in_v itself (cone
+    #     0), so it passes at an arrival of 2, and is refused at the default
+    #     13, unnamed, understated or with no total. Beside a ratchet entry
+    #     for the same registers, a waiver passes and the entry is reported
+    #     as superseded; a waiver of a rule outside WAIVER_RULES is refused.
+    def wv(mod, rule, target, **kw):
+        return dict({"module": mod, "rule": rule, "target": target, "why": "control",
+                     "by": "TI", "date": "2026-10-20"}, **kw)
+
+    def cleared(rule, mod, reg, mods_in, w):
+        fails, fs = run_policy(mods_in, [w])
+        hit = has(rule, mod, reg, fs)
+        return (hit and all(f.status == "waived" for f in hit)
+                and not any(rule in x and reg in x for x in fails)
+                and not any("waiver" in x for x in fails))
+    for rule, mod, reg in (("CG-1", "cg_fx_form", "d_q"), ("CG-2", "cg_fx_deep", "d_q"),
+                           ("CG-3", "cg_fx_dcge", "hit_q")):
+        expect(cleared(rule, mod, reg, (mod,), wv(mod, rule, reg)),
+               "a %s waiver did not clear %s %s on its own" % (rule, mod, reg))
+    srcmod = {"cg_fx_src": ("f", "", 1)}
+    a5 = [f for f in has("CG-5", "cg_fx_src", "a_q", sf) if f.regs >= {"a_q", "a2_q"}]
+    d5 = has("CG-5", "cg_fx_src", "d_q", sf)
+    r1 = has("RST-1", "cg_fx_src", None, sf)
+    fast = {("cg_fx_src", "in_v"): 2.0}
+
+    def src_policy(fs, ws, **kw):
+        for f in fs:
+            f.status = "open"
+        return policy(fs, srcmod, [u], [dict(w) for w in ws], {}, arrivals=fast, **kw)
+    w_a = wv("cg_fx_src", "CG-5", "a_q", ports=["in_v"], enable_ngd=2.0)
+    fails, _ = src_policy(a5 + d5, [w_a])
+    expect(a5 and all(f.status == "waived" for f in a5)
+           and all(f.status == "open" for f in d5) and d5
+           and not any("a_q" in x for x in fails) and any("d_q" in x for x in fails),
+           "a CG-5 waiver on a_q's group did not clear the whole group, or cleared another: %s"
+           % fails)
+    expect(a5 and a5[0].cone == 0.0 and a5[0].inputs == {"in_v"},
+           "a_q's enable was not timed as in_v alone: cone %s, inputs %s"
+           % (a5 and a5[0].cone, a5 and a5[0].inputs))
+    fails, _ = src_policy(r1, [wv("cg_fx_src", "RST-1", "rst")])
+    expect(r1 and all(f.status == "waived" for f in r1) and not fails,
+           "an RST-1 waiver did not clear its finding: %s" % fails)
+    for what, w, arr, want in (
+            ("at the default arrival", w_a, {}, "over %g" % NGD_MAX),
+            ("with in_v unnamed", dict(w_a, ports=["in_d"]), fast, "does not name input(s) in_v"),
+            ("understating its total", dict(w_a, enable_ngd=1.0), fast, "under the measured"),
+            ("with no total", {k: v for k, v in w_a.items() if k != "enable_ngd"}, fast,
+             "no enable_ngd")):
+        for f in a5:
+            f.status = "open"
+        fails, _ = policy(a5, srcmod, [u], [dict(w)], {}, arrivals=arr)
+        expect(any(want in x for x in fails) and all(f.status == "open" for f in a5),
+               "a CG-5 waiver %s was accepted: %s" % (what, fails))
+    fb5 = {("cg_fx_src", "CG-5 a_q"), ("cg_fx_src", "CG-5 a2_q")}
+    for f in a5:
+        f.status = "open"
+    fails, lines = policy(a5, srcmod, [u], [dict(w_a)], {}, arrivals=fast,
+                          fratchet={"cg_fx_src": ["CG-5 a_q", "CG-5 a2_q"]}, fbaseline=fb5)
+    expect(not fails and any("superseded by a waiver" in x for x in lines),
+           "a waiver beside a ratchet entry for the same registers failed, or the entry was "
+           "not reported as superseded: %s" % fails)
+    fails, _ = run_policy(("cg_fx_form",), [wv("cg_fx_form", "CG-9", "d_q")])
+    expect(any("not one a waiver may name" in x for x in fails),
+           "a waiver of an unknown rule was accepted")
     # 18. Every repeater instantiation is a unit, checked like any module.
     #     Its control pulses (valid, wake, credit and stall at each stage,
     #     and the flopped reset) count against its wrapper's budget, not its
