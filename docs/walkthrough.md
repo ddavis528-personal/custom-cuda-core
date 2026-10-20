@@ -407,7 +407,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
-    .ch_payload(payload[42322:41111])
+    .ch_payload(payload[42085:40874])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7999:7936])
 `endif
