@@ -12,6 +12,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 - `schema/interfaces.json`: every channel, field, width and contract.
 - `params/ccv_params.json`: every size and latency. Derived values carry
   `derive`/`require`, and `tools/gen-params.py` refuses drift.
+  A parameter whose status is `isa` cites the ISA (`isa`: a verbatim quote
+  and its value over the quote), and `tools/check-isa-params.py` holds it to
+  the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
@@ -113,6 +116,9 @@ https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5. Read its Conventions tab firs
   **OA**; **AR** is the top-level architect; **DA** is Daniel.
 - At session start, search every tab for `TI` in a Needs column (OA-11), and
   answer in the TI tab's responses table.
+- The register skill, `.claude/skills/register/SKILL.md` (OA-18), says how:
+  notify on every write that needs another agent, read only the rows a notice
+  names, and sweep daily from per-tab bookmarks.
 - A per-block session raises an interface change in its own tab with `TI` in
   Needs. The closed A-n register (A-25 to A-75) is pinned in
   `docs/design-snapshots/interface-review.md`; its open items moved to the

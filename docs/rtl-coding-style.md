@@ -310,7 +310,7 @@ and the block list in `params/blocks.json` alone:
 | `<block>_<name>` | a sub-block, inside one block | none: runs on `<block>_core_clk` | `ooe_pick` |
 | `ccv_common_<type>[_<name>]` | a common module, shared across blocks | none | `ccv_common_clk` |
 | `<block>_common_<type>[_<name>]` | a common module within one block | none | — |
-| `ccv_top` | the core top, the one named exception | gates, if it ever holds logic | `ccv_top` |
+| `ccv_top` | the core top, the one named exception | none | `ccv_top` |
 
 Anything else is a finding. A wrapper may carry a tag after `_w`: `_v<N>` for
 a hard-reuse template, `_<NN>` for one instance's own wrapper (one with

@@ -529,7 +529,7 @@ module ccv_ooe_w #(
 
   // ccv_dec_ooe_uop, destination end
   if (RPT_DEC_OOE_UOP > 0) begin : g_rpt_dec_ooe_uop
-    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(211)) u_rpt_dec_ooe_uop (
+    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(210)) u_rpt_dec_ooe_uop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dec_ooe_uop_s5_valid, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_valid, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_valid}), .src_payload({dec_ooe_uop_s5_payload, dec_ooe_uop_s4_payload, dec_ooe_uop_s3_payload, dec_ooe_uop_s2_payload, dec_ooe_uop_s1_payload, dec_ooe_uop_s0_payload}),
       .src_wake(dec_ooe_uop_wake), .src_credit({dec_ooe_uop_s5_credit, dec_ooe_uop_s4_credit, dec_ooe_uop_s3_credit, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_credit, dec_ooe_uop_s0_credit}), .src_stall({dec_ooe_uop_s5_stall, dec_ooe_uop_s4_stall, dec_ooe_uop_s3_stall, dec_ooe_uop_s2_stall, dec_ooe_uop_s1_stall, dec_ooe_uop_s0_stall}),
@@ -595,7 +595,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_miu_memop, source end
   if (RPT_OOE_MIU_MEMOP > 0) begin : g_rpt_ooe_miu_memop
-    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(97)) u_rpt_ooe_miu_memop (
+    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(109)) u_rpt_ooe_miu_memop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_miu_memop_s3_valid, b_ooe_miu_memop_s2_valid, b_ooe_miu_memop_s1_valid, b_ooe_miu_memop_s0_valid}), .src_payload({b_ooe_miu_memop_s3_payload, b_ooe_miu_memop_s2_payload, b_ooe_miu_memop_s1_payload, b_ooe_miu_memop_s0_payload}),
       .src_wake(b_ooe_miu_memop_wake), .src_credit({b_ooe_miu_memop_s3_credit, b_ooe_miu_memop_s2_credit, b_ooe_miu_memop_s1_credit, b_ooe_miu_memop_s0_credit}), .src_stall({b_ooe_miu_memop_s3_stall, b_ooe_miu_memop_s2_stall, b_ooe_miu_memop_s1_stall, b_ooe_miu_memop_s0_stall}),
@@ -617,7 +617,7 @@ module ccv_ooe_w #(
   end
   // ccv_miu_ooe_cmpl, destination end
   if (RPT_MIU_OOE_CMPL > 0) begin : g_rpt_miu_ooe_cmpl
-    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .SLOTS(4), .PAYLOAD_W(110)) u_rpt_miu_ooe_cmpl (
+    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .SLOTS(4), .PAYLOAD_W(111)) u_rpt_miu_ooe_cmpl (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({miu_ooe_cmpl_s3_valid, miu_ooe_cmpl_s2_valid, miu_ooe_cmpl_s1_valid, miu_ooe_cmpl_s0_valid}), .src_payload({miu_ooe_cmpl_s3_payload, miu_ooe_cmpl_s2_payload, miu_ooe_cmpl_s1_payload, miu_ooe_cmpl_s0_payload}),
       .src_wake(miu_ooe_cmpl_wake), .src_credit({miu_ooe_cmpl_s3_credit, miu_ooe_cmpl_s2_credit, miu_ooe_cmpl_s1_credit, miu_ooe_cmpl_s0_credit}), .src_stall({miu_ooe_cmpl_s3_stall, miu_ooe_cmpl_s2_stall, miu_ooe_cmpl_s1_stall, miu_ooe_cmpl_s0_stall}),

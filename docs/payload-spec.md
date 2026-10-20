@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 29 |
-| ⚠️ Some provisional | 19 | 87 |
+| ⚠️ Some provisional | 19 | 88 |
 | ⛔ Some preliminary | 20 | 140 |
-| **Total** | **48** | **256** |
+| **Total** | **48** | **257** |
 
 ## What still has to be decided
 
@@ -70,7 +70,7 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_P_W_SCHED_ATTR` | 16 | med | Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03. |
+| `CCV_P_W_SCHED_ATTR` | 16 | med | Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03. |
 
 ### EXB session -- flattened bundle or separate TL channels
 
@@ -97,7 +97,7 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_L_W_MEM_OP` | 4 | med | Architectural memory operation: load, store, atomic family, prefetch, fence. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it. |
+| `CCV_L_W_MEM_OP` | 4 | med | Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 0xE fence, 0xF OOE's bulk discard; 4-0xD spare. DEC emits load, store and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it. |
 
 ### MLC/EXB session, alongside CCV_L_W_COH_OP
 
@@ -123,18 +123,6 @@ because those are the ones where a skeleton that reads the field
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | ITLB entry: physical page number, permissions, ASID and valid, rounded up. |
-
-### OOE/MIU session
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_W_SPACE` | 3 | low | Memory space: global, shared, const, local, with spare codes. |
-
-### OOE/MIU session -- is scope a separate field?
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_W_ORDERING` | 4 | med | Two bits of order and two of scope. Whether scope is a separate field is the open part. |
 
 ### PCA session, from the parked-array organization
 
@@ -394,7 +382,7 @@ miu → rcu · rate 4 · execution
 
 ### `ccv_miu_ooe_cmpl`
 
-Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46).
+Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion.
 
 miu → ooe · rate 4 · memory
 
@@ -406,7 +394,8 @@ miu → ooe · rate 4 · memory
 | `lane_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `address` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `mlc_miss` | `1` | 1 | literal |
-| **total** | | **110** | ⚠️ 7 provisional |
+| `more` | `1` | 1 | literal |
+| **total** | | **111** | ⚠️ 7 provisional |
 
 ### `ccv_ooe_miu_retire`
 
@@ -604,7 +593,7 @@ ooe → cru · rate 1 · control
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. The three fields A-75 asked for (TI-1, agreed by Daniel 2026-10-08), so OOE never decodes opcode: src_valid[3], bit i set when source i is a real read (bits 0 and 1 the two fields of src_arch, bit 2 src2_arch), so OOE renames and waits on nothing else; pred_use[2], how the predicate is read: 0 none, 1 guard (an enable: switched-off lanes keep their old value, so merge_en is set, and a masked load owes its copy), 2 data (sel's selector: no merge); imm_kind[2], what imm holds: 0 a literal, 1 predicate logic's two sources (qualifiers in imm[5:0], [2:0] and [5:3], each [1:0] the architectural predicate and [2] its negate), which OOE renames and rewrites on ccv_ooe_rcu_issue, 2 srd's warp_base identity, 3 srd's ctaid identity, which OOE substitutes. Exit is sched_attr's serial code 3. A guard or data use is never bypassed, and OA adds that pred_use feeds the A-62 late bit. Layout MSB first: bypass_group[3], rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). lat_class sets a producer's full latency; bypass_group, as producer and as consumer, indexes the bypass table, whose penalties are parameters (OI-16, Daniel's responses OA-4). DEC owns the opcode-to-attribute table. mem_op, space and ordering (A-68) are decoded here too, for memory ops, and OOE copies them to ccv_ooe_miu_memop unexamined, so opcode decoding lives only in DEC and MIU stays off the opcode census. DEC never emits mem_op 0xF, which is OOE's bulk discard (A-41); asserted on DEC's output (V-52). All three are don't-care unless sched_attr's rs_miu is set, as is mem_kind. group_mask and fetch_epoch pass through from FET (A-69, A-70): OOE renames no uop whose fetch_epoch differs from its warp's current epoch, and every issued uop's issue_mask is the group_mask it arrived with. The mask rides per slot. Sharing it once per warp was considered and dropped (A-72): it saves about 10% of ccv_fet_dec_instr's wires and at most 5% of this channel's, and here it would also need the freely bound slots regrouped by warp and a field shared across a slot group.
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. The three fields A-75 asked for (TI-1, agreed by Daniel 2026-10-08), so OOE never decodes opcode: src_valid[3], bit i set when source i is a real read (bits 0 and 1 the two fields of src_arch, bit 2 src2_arch), so OOE renames and waits on nothing else; pred_use[2], how the predicate is read: 0 none, 1 guard (an enable: switched-off lanes keep their old value, so merge_en is set, and a masked load owes its copy), 2 data (sel's selector: no merge); imm_kind[2], what imm holds: 0 a literal, 1 predicate logic's two sources (qualifiers in imm[5:0], [2:0] and [5:3], each [1:0] the architectural predicate and [2] its negate), which OOE renames and rewrites on ccv_ooe_rcu_issue, 2 srd's warp_base identity, 3 srd's ctaid identity, which OOE substitutes. Exit is sched_attr's serial code 3. A guard or data use is never bypassed, and OA adds that pred_use feeds the A-62 late bit. Layout MSB first: bypass_group[3], rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). lat_class sets a producer's full latency; bypass_group, as producer and as consumer, indexes the bypass table, whose penalties are parameters (OI-16, Daniel's responses OA-4). DEC owns the opcode-to-attribute table. mem_op, space and ordering (A-68) are decoded here too, for memory ops, and OOE copies them to ccv_ooe_miu_memop unexamined, so opcode decoding lives only in DEC and MIU stays off the opcode census. DEC never emits mem_op 0xF, which is OOE's bulk discard (A-41); asserted on DEC's output (V-52). mem_op and space are don't-care unless sched_attr's rs_miu is set, as is mem_kind; ordering is reserved zero except on a fence (rs_miu with mem_kind fence), which OOE refuses otherwise (IS-11). group_mask and fetch_epoch pass through from FET (A-69, A-70): OOE renames no uop whose fetch_epoch differs from its warp's current epoch, and every issued uop's issue_mask is the group_mask it arrived with. The mask rides per slot. Sharing it once per warp was considered and dropped (A-72): it saves about 10% of ccv_fet_dec_instr's wires and at most 5% of this channel's, and here it would also need the freely bound slots regrouped by warp and a field shared across a slot group.
 
 dec → ooe · rate 6 · instruction
 
@@ -617,8 +606,8 @@ dec → ooe · rate 6 · instruction
 | `uop_class` | `CCV_L_W_CLASS` | 3 ⛔ | CCV_L_W_CLASS (preliminary, churn low) |
 | `sched_attr` | `CCV_P_W_SCHED_ATTR` | 16 ⛔ | CCV_P_W_SCHED_ATTR (preliminary, churn med) |
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
-| `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
-| `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
+| `space` | `CCV_L_W_SPACE` | 1 | CCV_L_W_SPACE (isa) |
+| `ordering` | `CCV_L_W_ORDERING` | 5 | CCV_L_W_ORDERING (isa) |
 | `opcode` | `CCV_L_W_OPCODE` | 9 ⛔ | CCV_L_W_OPCODE (preliminary, churn **HIGH**) |
 | `src_arch` | `2*CCV_W_ARCH_REG` | 8 | CCV_W_ARCH_REG (isa) |
 | `src2_arch` | `CCV_W_ARCH_REG` | 4 | CCV_W_ARCH_REG (isa) |
@@ -636,7 +625,7 @@ dec → ooe · rate 6 · instruction
 | `pred_taken` | `1` | 1 | literal |
 | `scale_en` | `1` | 1 | literal |
 | `decode_fault` | `1` | 1 | literal |
-| **total** | | **211** | ⛔ 39 preliminary, ⚠️ 37 provisional |
+| **total** | | **210** | ⛔ 32 preliminary, ⚠️ 37 provisional |
 
 ### `ccv_ooe_rcu_issue`
 
@@ -713,11 +702,11 @@ ooe → miu · rate 4 · memory
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
 | `chwidth` | `CCV_W_CHWIDTH` | 2 | CCV_W_CHWIDTH (isa) |
 | `pipes` | `CCV_MIU_PIPES` | 4 | CCV_MIU_PIPES (arch) |
-| `disp` | `CCV_W_DISP` | 16 | CCV_W_DISP (isa) |
+| `disp` | `CCV_W_DISP` | 29 | CCV_W_DISP (isa) |
 | `scale_en` | `1` | 1 | literal |
-| `space` | `CCV_L_W_SPACE` | 3 ⛔ | CCV_L_W_SPACE (preliminary, churn low) |
-| `ordering` | `CCV_L_W_ORDERING` | 4 ⛔ | CCV_L_W_ORDERING (preliminary, churn med) |
-| **total** | | **97** | ⛔ 11 preliminary, ⚠️ 24 provisional |
+| `space` | `CCV_L_W_SPACE` | 1 | CCV_L_W_SPACE (isa) |
+| `ordering` | `CCV_L_W_ORDERING` | 5 | CCV_L_W_ORDERING (isa) |
+| **total** | | **109** | ⛔ 4 preliminary, ⚠️ 24 provisional |
 
 ### `ccv_miu_spm_req`
 
