@@ -12,6 +12,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 - `schema/interfaces.json`: every channel, field, width and contract.
 - `params/ccv_params.json`: every size and latency. Derived values carry
   `derive`/`require`, and `tools/gen-params.py` refuses drift.
+  A parameter whose status is `isa` cites the ISA (`isa`: a verbatim quote
+  and its value over the quote), and `tools/check-isa-params.py` holds it to
+  the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and

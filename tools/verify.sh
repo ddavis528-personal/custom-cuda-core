@@ -90,6 +90,8 @@ run "generate payload spec" python3 tools/gen-payload-spec.py
 run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
 run "derived params refuse drift" python3 tools/gen-params.py --selftest
+run "ISA-sourced params match the pinned ISA" python3 tools/check-isa-params.py
+run "ISA params that should fail do" python3 tools/check-isa-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
 run "rates refuse drift"     python3 tools/gen-interfaces.py --selftest
 # docs/payload-spec.md is generated but TRACKED, unlike the rtl/sim ones --
