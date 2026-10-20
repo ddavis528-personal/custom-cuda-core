@@ -213,6 +213,10 @@ struct Config {
   /// terms (confirmation, order, its copy's issue) stay live. false: every
   /// term live.
   bool req_reg = true;
+  /// KNOB (OI-56, OA's measurement): a branch ends its rename group, so its
+  /// checkpoint is the RAT's state at the next edge. 0 off; 1 the branch's
+  /// slot renames nothing more that cycle; 2 nothing renames after it.
+  unsigned branch_ends_group = 0;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address

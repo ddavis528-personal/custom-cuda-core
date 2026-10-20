@@ -29,7 +29,7 @@ std::string Config::apply(const std::string &spec) {
       {"ren_ceil", &ren_ceil}, {"pred_ren_floor", &pred_ren_floor},
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
-      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
+      {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap}};
   // `sectioned` itself is not a knob until the adapter places operands by
@@ -2399,7 +2399,12 @@ void Core::rename() {
         progress = true;
         continue;
       }
+      const bool branch = it->attr.branch;
       if (tryRename(si, *it)) {
+        // OI-56: a branch ends its rename group, so its checkpoint is the
+        // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
+        if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
+        if (branch && cfg_.branch_ends_group == 2) budget = 1;   // the decrement below ends the cycle
         decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
         ++decq_freed_;
         decq_.erase(it);

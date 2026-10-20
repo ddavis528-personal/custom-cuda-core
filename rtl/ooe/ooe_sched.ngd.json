@@ -39,15 +39,15 @@
     },
     "older_r_cq03h": {
       "arrival": 4.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-20",
-      "why": "Proposed by OI (OI-55), as select's other live inputs straight from RS and age flops; OA to confirm"
+      "why": "OA's response OI-55 (OA tab, 2026-10-20): straight from age and RS flops, in NGD from the launching flop"
     },
     "vel_cq03h": {
       "arrival": 4.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-20",
-      "why": "Proposed by OI (OI-55), as select's other live inputs straight from RS and age flops; OA to confirm"
+      "why": "OA's response OI-55 (OA tab, 2026-10-20): straight from age and RS flops, in NGD from the launching flop"
     },
     "sdep_cq03h": {
       "arrival": 5.0,

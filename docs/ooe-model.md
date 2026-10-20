@@ -459,6 +459,17 @@ cvt8 1246, red8 369; 960). ooe_select's bench logs what select used
 (`sel_rq`, `sel_gnt`, `sel_elig`), and ooe_sched's
 (test/ooe/sched_tb.cpp) compares the request register bit for bit.
 
+`branch_ends_group` (KNOB, off; OI-56, OA's measurement): a branch ends
+its rename group, so its checkpoint would be the RAT's state at the next
+edge, with no capture path and no output copy of the maps. With 1 (the
+branch's slot renames nothing more that cycle), the four-warp kernels
+measure alu8 587, alu16 838 (+1.8%), vadd8 1049 (+1.5%), vadd16 1030
+(−1.3%), red8 371 and cvt8 1257 (+0.9%), and the 48-seed sweep 964
+against 960. The S1 kernels are unchanged: one fetch-bound warp, where
+even rename_width 1 costs loop one cycle. With 2 (nothing renames after a
+branch that cycle) alu16 is 898 (+9.1%). Over 1% on two kernels, so it
+went to DA beside the copy (OA's response OI-56).
+
 ## Events and counters
 
 The model emits the schema's arbitration-sensitive events: `EV_DISPATCH` at
