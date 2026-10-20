@@ -1719,6 +1719,26 @@ void sweep() {
                     unsigned(late != 0), late == 2 ? ", decq +1" : "", cy, cy / r48);
       }
   }
+  // OA-21 (2): the go's fits against shared credits, exact (the model's
+  // running credits) or conservative (less the rename width, for a go that
+  // lets several warps take), under each go, the take late, decq 12 and 13.
+  {
+    const double r48 = run(base, 48);
+    for (unsigned w : {1u, 2u, 0u})
+      for (unsigned dq : {base.decq, base.decq + 1})
+        for (unsigned cons : {0u, 1u, 2u}) {
+          if (cons && w == 1) continue;   // one warp's fits are its own
+          Config c = base;
+          c.rename_one_warp = w;
+          c.decq_take_late = true;
+          c.decq = dq;
+          c.fits_conservative = cons;
+          const double cy = run(c, 48);
+          std::printf("| go, decq, fits (48 seeds, take late, default %.0f) | %s, %u, %s | %.0f | %.3f |\n", r48,
+                      w == 0 ? "interleave" : w == 1 ? "one warp" : "two warps", dq,
+                      cons == 0 ? "exact" : cons == 1 ? "less the width" : "one warp when short", cy, cy / r48);
+        }
+  }
   // When rename sees this cycle's RS and ROB frees (ren_credit), against
   // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
   // late (OA's item 4, not accepted) and the 2-step trim. Their differences

@@ -31,7 +31,8 @@ std::string Config::apply(const std::string &spec) {
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
-      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap}};
+      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
+      {"fits_conservative", &fits_conservative}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -2214,12 +2215,26 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const bool merge = !nop && (!full || u.shape.guard);
   const bool wgpr = !nop && a.writes_gpr;
   const bool copy = mem && a.mem_kind == kMemKLoad && wgpr && merge;
+  // OA-21 (fits_conservative): a multi-warp go forms each warp's fits
+  // against the cycle's shared credits less the rename width, so no
+  // combination of warps oversubscribes them. The credits a warp sees are
+  // the running ones plus what other warps took this cycle; its own takes
+  // count against it.
+  const unsigned margin = ren_margin_;
+  auto others = [&](unsigned k) { return ren_tot_[k] - ren_slot_[si][k]; };
+  unsigned need_rcu = 0, need_miu = 0;
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
     for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
-    const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
+    need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0);
+    need_miu = mem ? 1 : 0;
+    if (margin && ((need_rcu && free_rcu + others(0) < need_rcu + margin) ||
+                   (need_miu && free_miu + others(1) < need_miu + margin))) {
+      count("stall.fits_conservative.rs");
+      return false;
+    }
     if (free_rcu < need_rcu) {
       count("stall.rs_full.rcu");
       oev(OoeEv::kRsFull, s.warp, 0, free_rcu, u.tid);
@@ -2256,6 +2271,14 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       count("stall.gpr_floor");
       oev(OoeEv::kRenameLimit, s.warp, 0, 0, u.tid);
     }
+    return false;
+  }
+  if (margin && wgpr && gfree_.size() + others(2) < 1 + margin) {
+    count("stall.fits_conservative.gpr");
+    return false;
+  }
+  if (margin && !nop && u.pred_we && cfg_.rename_preds && pfree_.size() + others(3) < 1 + margin) {
+    count("stall.fits_conservative.pred");
     return false;
   }
   if (!nop && u.pred_we && cfg_.rename_preds && !predAllowed(si, 1)) {
@@ -2389,6 +2412,12 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   ++s.count;
   if (nop) complete(si, idx);
   ev("dispatch", s.warp, tagOf(si, idx), 0, u.tid);
+  const unsigned took[4] = {need_rcu, need_miu, wgpr ? 1u : 0u,
+                            !nop && u.pred_we && cfg_.rename_preds ? 1u : 0u};
+  for (unsigned k = 0; k != 4; ++k) {
+    ren_tot_[k] += took[k];
+    ren_slot_[si][k] += took[k];
+  }
   return true;
 }
 
@@ -2455,6 +2484,21 @@ void Core::rename() {
   }
   unsigned budget = cfg_.rename_width;
   std::vector<bool> blocked(slot_.size(), false);
+  ren_tot_.fill(0);
+  ren_slot_.assign(slot_.size(), {});
+  ren_margin_ = cfg_.fits_conservative == 1 && cfg_.rename_one_warp != 1 ? cfg_.rename_width : 0;
+  // fits_conservative 2: while any shared credit is short of the width,
+  // one warp takes (its fits, formed alone, are exact for it).
+  bool short_credit = false;
+  if (cfg_.fits_conservative == 2 && cfg_.rename_one_warp != 1) {
+    unsigned free_rcu = 0, free_miu = 0;
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
+    const unsigned w = cfg_.rename_width;
+    short_credit = free_rcu < w || free_miu < w || gfree_.size() < w || (cfg_.rename_preds && pfree_.size() < w);
+    if (short_credit) count("rename.one_warp_short");
+  }
+  const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
   // refused (0, and the slot is blocked for the cycle).
   auto takeOne = [&](unsigned si) -> int {
@@ -2488,12 +2532,12 @@ void Core::rename() {
     --budget;
     return 1;
   };
-  if (cfg_.rename_one_warp) {
+  if (warps) {
     // OI-63: a prefix of each of up to rename_one_warp warps, in the
     // rotating order, each warp's before the next's (the RTL's go over
     // rename's registered per-slot fits).
     unsigned used = 0;
-    for (unsigned k = 0; k != slot_.size() && budget && used != cfg_.rename_one_warp; ++k) {
+    for (unsigned k = 0; k != slot_.size() && budget && used != warps; ++k) {
       const unsigned si = (rr_rename_ + k) % slot_.size();
       if (slot_[si].st == WarpState::kFree) continue;
       bool took = false;

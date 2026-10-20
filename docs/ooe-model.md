@@ -393,6 +393,16 @@ under one warp and 3.1 under two. One more decode-queue entry takes back
 all of it under the interleave, 2.3 points under one warp and 1.9 under
 two.
 
+`fits_conservative` (0, exact; OA-21): a go that lets several warps take
+in a cycle forms each warp's fits alone, so their sum can exceed the
+shared credits (RS room per class, GPR and predicate names). The model
+admits against running credits, which is exact. 1 forms each warp's fits
+against the credits less the rename width; 2 lets one warp take while any
+shared credit is below the width. With the late take, 48 seeds, against the
+interleave with an on-time take: two warps at decq 13 are +1.1% exact,
++5.3% under 1 and +1.8% under 2; the interleave at 13 is 0.0%, +6.9% and
++1.6%. RS room is what stalls under 1; GPR and predicate names never do.
+
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
 is when rename's go decision sees this cycle's frees. 0 is the ideal:

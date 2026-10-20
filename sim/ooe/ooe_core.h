@@ -188,6 +188,14 @@ struct Config {
   /// late (OA-21 (a)): the taken entries hold their credits one cycle more.
   /// Off until DA settles OA-21; the sweep measures it.
   bool decq_take_late = false;
+  /// How a go that lets several warps take in a cycle (rename_one_warp 0,
+  /// or 2 and up) keeps their sum within the shared credits (RS room per
+  /// class, GPR and predicate names), each warp's fits being formed alone
+  /// (OA-21). 0: exact, the model's running credits. 1: each warp's fits
+  /// against the credits less the rename width. 2: one warp takes while any
+  /// shared credit is below the rename width (a registered bit), several
+  /// otherwise. The sweep measures them.
+  unsigned fits_conservative = 0;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -1025,6 +1033,9 @@ private:
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
   unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
   unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
+  std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
+  std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
+  unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
