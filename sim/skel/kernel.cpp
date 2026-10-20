@@ -1837,7 +1837,6 @@ private:
         Bits u = msgOf(c.dec_ooe);
         put(u, c.dec_ooe, "warp_id", get(f, c.fet_dec, "warp_id"));
         put(u, c.dec_ooe, "pc", pc);
-        put(u, c.dec_ooe, "decode_fault", 1);
         put(u, c.dec_ooe, "cause", kFaultIllegal);
         q_.push_back({u, m.tid});
         return;
@@ -1851,7 +1850,6 @@ private:
     put(u, c.dec_ooe, "fetch_epoch", get(f, c.fet_dec, "fetch_epoch"));
     if (!op) {
       k_.fail("dec: %s is not in the skeleton's opcode table", r->op.c_str());
-      put(u, c.dec_ooe, "decode_fault", 1);
       put(u, c.dec_ooe, "cause", kFaultIllegal);
       q_.push_back({u, m.tid});
       return;
@@ -1891,6 +1889,8 @@ private:
     put(u, c.dec_ooe, "src_valid", sv);
     put(u, c.dec_ooe, "pred_use", predUseOf(op));
     put(u, c.dec_ooe, "imm_kind", immKindOf(op));
+    // fmt_rsv and fmt_opnd stay 0: no op in the skeleton's table has an FP
+    // format field, so none can raise F-FORMAT (OI-57).
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to
     // MIU unexamined. 0xF is OOE's bulk discard, never DEC's (V-52).
     if (op->cls == kLoad || op->cls == kStore) {

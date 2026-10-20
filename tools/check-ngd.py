@@ -106,7 +106,7 @@ RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
 # on OI's branch (d8ffd4c: declared inner, no parent yet); NGD-7 on
 # 2026-10-19, at 7ae697c; trimmed to the ratchet as modules pass (last at
-# OI's 3ebc293, 2026-10-20). Never add to this:
+# OI's 68d2738, 2026-10-20). Never add to this:
 # a module written since meets the rules, or has the architect's budgets, or
 # is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
@@ -118,20 +118,6 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
     ],
     "ooe_rs": [
         "NGD-3 free_cq01h",
-    ],
-    "ooe_select": [
-        "NGD-6 active_cq03h>grant_cq03h", "NGD-6 active_cq03h>lost_cq03h",
-        "NGD-6 block_cq03h>grant_cq03h", "NGD-6 block_cq03h>lost_cq03h",
-        "NGD-6 busy_cq03h>grant_cq03h", "NGD-6 busy_cq03h>lost_cq03h",
-        "NGD-6 cidx_cq03h>grant_cq03h", "NGD-6 cidx_cq03h>lost_cq03h",
-        "NGD-6 dep_cq03h>grant_cq03h", "NGD-6 dep_cq03h>lost_cq03h",
-        "NGD-6 elig_cq03h>grant_cq03h", "NGD-6 elig_cq03h>lost_cq03h",
-        "NGD-6 iss_cq03h>grant_cq03h", "NGD-6 iss_cq03h>lost_cq03h",
-        "NGD-6 older_m_cq03h>grant_cq03h", "NGD-6 ready_cq03h>grant_cq03h",
-        "NGD-6 ready_cq03h>lost_cq03h", "NGD-6 res_cq03h>grant_cq03h",
-        "NGD-6 res_cq03h>lost_cq03h", "NGD-6 slot_cq03h>grant_cq03h",
-        "NGD-6 slot_cq03h>lost_cq03h", "NGD-6 valid_cq03h>grant_cq03h",
-        "NGD-6 valid_cq03h>lost_cq03h",
     ],
 }.items() for k in ks}
 EPS = 0.005

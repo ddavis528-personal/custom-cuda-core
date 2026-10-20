@@ -529,7 +529,7 @@ module ccv_ooe_w #(
 
   // ccv_dec_ooe_uop, destination end
   if (RPT_DEC_OOE_UOP > 0) begin : g_rpt_dec_ooe_uop
-    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(214)) u_rpt_dec_ooe_uop (
+    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(219)) u_rpt_dec_ooe_uop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dec_ooe_uop_s5_valid, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_valid, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_valid}), .src_payload({dec_ooe_uop_s5_payload, dec_ooe_uop_s4_payload, dec_ooe_uop_s3_payload, dec_ooe_uop_s2_payload, dec_ooe_uop_s1_payload, dec_ooe_uop_s0_payload}),
       .src_wake(dec_ooe_uop_wake), .src_credit({dec_ooe_uop_s5_credit, dec_ooe_uop_s4_credit, dec_ooe_uop_s3_credit, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_credit, dec_ooe_uop_s0_credit}), .src_stall({dec_ooe_uop_s5_stall, dec_ooe_uop_s4_stall, dec_ooe_uop_s3_stall, dec_ooe_uop_s2_stall, dec_ooe_uop_s1_stall, dec_ooe_uop_s0_stall}),
@@ -573,7 +573,7 @@ module ccv_ooe_w #(
   end
   // ccv_rcu_ooe_done, destination end
   if (RPT_RCU_OOE_DONE > 0) begin : g_rpt_rcu_ooe_done
-    ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(73)) u_rpt_rcu_ooe_done (
+    ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(40)) u_rpt_rcu_ooe_done (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rcu_ooe_done_s6_valid, rcu_ooe_done_s5_valid, rcu_ooe_done_s4_valid, rcu_ooe_done_s3_valid, rcu_ooe_done_s2_valid, rcu_ooe_done_s1_valid, rcu_ooe_done_s0_valid}), .src_payload({rcu_ooe_done_s6_payload, rcu_ooe_done_s5_payload, rcu_ooe_done_s4_payload, rcu_ooe_done_s3_payload, rcu_ooe_done_s2_payload, rcu_ooe_done_s1_payload, rcu_ooe_done_s0_payload}),
       .src_wake(rcu_ooe_done_wake), .src_credit({rcu_ooe_done_s6_credit, rcu_ooe_done_s5_credit, rcu_ooe_done_s4_credit, rcu_ooe_done_s3_credit, rcu_ooe_done_s2_credit, rcu_ooe_done_s1_credit, rcu_ooe_done_s0_credit}), .src_stall({rcu_ooe_done_s6_stall, rcu_ooe_done_s5_stall, rcu_ooe_done_s4_stall, rcu_ooe_done_s3_stall, rcu_ooe_done_s2_stall, rcu_ooe_done_s1_stall, rcu_ooe_done_s0_stall}),
