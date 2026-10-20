@@ -10,7 +10,7 @@ a fact stated in two repositories disagrees with itself. So each carries an
 `isa` citation, and this checks it against the ISA document in the compiler
 snapshot tools/compiler.lock pins (tools/fetch-compiler.sh):
 
-    "isa": {"doc": "isa-v1.8-operation-map-and-encoding.md",
+    "isa": {"doc": "isa-v1.9-operation-map-and-encoding.md",
             "quote": "| D (base+offset) | 13 | **29** | `[31:19]` | `[47:32]` |",
             "value": "q[1]"}
 
@@ -39,7 +39,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PARAMS = os.path.join(ROOT, "params", "ccv_params.json")
-ISA_DOC = "isa-v1.8-operation-map-and-encoding.md"
+ISA_DOC = "isa-v1.9-operation-map-and-encoding.md"
 ISA_STATUSES = ("isa", "isa_provisional")
 
 
