@@ -11,14 +11,6 @@
       "CG-5 crat_cq02h",
       "CG-5 rat_cq02h",
       "RST-1 ooe_rst_r00h"
-    ],
-    "ooe_rs": [
-      "CG-5 code_cq02h",
-      "CG-5 dep2",
-      "CG-5 hm_cq02h",
-      "CG-5 hr_cq02h",
-      "CG-5 valid_cq02h",
-      "RST-1 ooe_rst_r00h"
     ]
   }
 }

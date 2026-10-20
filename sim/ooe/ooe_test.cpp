@@ -934,6 +934,26 @@ void testRestore() {
   EXPECT(refused, "a restore-activate before the map was accepted");
 }
 
+/// A consumer final long before its producer: an SFU op of 30 cycles,
+/// bypassed to a lane op that issues at 9 and is final at 16, then waits on
+/// its row until the SFU op confirms. ooe_rs leads that confirmation from
+/// the lane op's final bit alone (OA's response OI-61): its bench's no-fin
+/// control is caught here.
+void testFinalBeforeProducer() {
+  g_test = "final-before-producer";
+  Config c = groupConfig();
+  c.unit_lat[4] = 30;
+  Env e(c, 13);
+  std::vector<Op> p;
+  Op f; f.k = kSfu; f.dst = 2; f.src[0] = 1; f.nsrc = 1; p.push_back(f);
+  Op l; l.k = kLane; l.dst = 3; l.src[0] = 2; l.nsrc = 1; p.push_back(l);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  EXPECT(e.core.counters["errors"] == 0, "errors");
+  EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
+}
+
 /// A squash that reaches loads whose wake timers have saturated: the
 /// mispredicted branch waits on a chain of SFU ops, nearly fifty cycles,
 /// while the wrong path's loads issue at once and wait longer still for
@@ -1863,6 +1883,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testMaskedLoad();
   testSquash();
   testSquashSaturated();
+  testFinalBeforeProducer();
   testFloorCeiling();
   testDemote();
   testRestore();
@@ -1907,6 +1928,7 @@ int main(int argc, char **argv) {
   testMaskedLoad();
   testSquash();
   testSquashSaturated();
+  testFinalBeforeProducer();
   testFloorCeiling();
   testDemote();
   testRestore();

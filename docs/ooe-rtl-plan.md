@@ -327,8 +327,35 @@ Built (`rtl/ooe/`):
   clocked by an RCU free it does not wait on. A held row keeps its line
   selects where its bits were set, an AND with the bit's flop rather than a
   held `if`: synthesis would otherwise take each row's grant as its enable,
-  12 NGD and more. `check-cg`: 7.2 NGD of enable, 98% DCGE in medium and
-  high, nothing clocked in idle.
+  12 NGD and more.
+
+  Leads (OA's responses OI-58, OI-61; V-75): those events reach the gates
+  only from this module's own flops. An allocation is led by the flop of
+  rename's Rename 2 valid per port (`req_l`, exact). A free by
+  confirmation is led by a flop per entry (`cf_en`), set when the entry may
+  confirm next cycle: valid, not freed now, its row empty after this edge
+  (every producer left in it freed now: the free input, as data), and then
+  a producer final at the next edge (ooe_wake's line-3 timer lead `wtl3`,
+  final already, or a completion for it: the channel's valid flopped,
+  `cva`, with the payload's RS indices as they arrive, held a cycle more
+  for a restart, `cvb`), or an entry writing nothing (a prod bit taken at
+  allocation) issued then (ooe_wake's issued and ooe_sched's grant). This
+  departs from OI-61's "every producer left about to finish": a producer
+  final while its own row waits (an add on an L1-speculative load, final
+  at 7 and confirmed at 19) held its class's clock for that whole window,
+  and the free input makes the row's test exact. A free by squash is led
+  by the registered squash's lead's flop (`sq_en`), both classes. The
+  grant register is clocked on the request leads and an edge more to
+  clear; the reset is flopped (RST-1). Assertions hold every request and
+  every free to its lead. The bench runs the RTL two cycles behind the
+  model (the completion lead goes two edges before its confirmation's
+  free), runs the directed tests too, and its new controls no-req-lead,
+  no-sq-lead, no-cmpl-lead and no-fin must each be caught;
+  `testFinalBeforeProducer` (an SFU op of 30 cycles bypassed to a lane op
+  final at 16) is the case the final term is for. `check-cg`: 7.8 NGD of
+  enable, a lowest DCGE of 78% (medium) and 82% (high), nothing clocked in
+  idle; its idle ticks between model cycles predict nothing but on the
+  last, where the next cycle's leads go.
 
   Depth decides same-edge reuse (DA's response OI-39). `ooe_rs` is 20.2
   NGD in 19 levels with it and 18.4 without. The path that decides it
