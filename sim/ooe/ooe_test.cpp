@@ -86,6 +86,7 @@ struct Op {
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
+  unsigned chw = 2;              ///< kChw: the width code it sets on dst
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -132,7 +133,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kExit: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 0, 0); u.shape.exit = true; break;
   case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
-  case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = 2; break;
+  case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
   u.attr_raw |= pgroupOf(o.k) << 13;
   if (o.k == kLoad || o.k == kStore) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
@@ -1234,6 +1235,44 @@ void testChwidth() {
     if (i.tid == 2) EXPECT(i.chwidth == 2, "the younger op read chwidth %u, not the committed one", i.chwidth);
 }
 
+/// F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): the committed
+/// per-register width table is written when a chwidth retires, and a
+/// memory access whose data register is then at 4 bits faults at dispatch,
+/// cause 3, as a no-op. A load into R4 after chwidth R4, 4-bit faults; one
+/// into R5 does not. The control drops the check.
+void testWidthFault() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "width fault (control)" : "width fault";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.inject_no_width_fault = control;
+    for (const unsigned dst : {4u, 5u}) {
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 3; p.push_back(w);
+      Op ld; ld.k = kLoad; ld.dst = dst; ld.nsrc = 1; ld.src[0] = 6; p.push_back(ld);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0;
+      for (unsigned k = 0; k != 80; ++k) {
+        e.step();
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want = dst == 4 && !control;
+      if (control && dst == 4) {
+        std::printf("  %-24s %s\n", "control no-width-fault", faults == 0 ? "caught" : "MISSED");
+        EXPECT(faults == 0, "dropping the check should let the load through");
+        continue;
+      }
+      if (control) continue;
+      EXPECT(e.core.slotWidth(0, 4) == 3, "the table holds %u for R4 after its chwidth", e.core.slotWidth(0, 4));
+      EXPECT((faults == 1) == want, "R%u: %u faults", dst, faults);
+      if (want) EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+    }
+  }
+}
+
 /// Sectioned lanes (OI-29 to OI-33): narrow registers placed in sections,
 /// footprints widened per unit, and lane ops co-issued on disjoint sections.
 void testSections() {
@@ -1807,6 +1846,7 @@ int main(int argc, char **argv) {
   testBarrierFault();
   testMemFault();
   testChwidth();
+  testWidthFault();
   testSections();
   testFreeVec();
   testReadyReg();

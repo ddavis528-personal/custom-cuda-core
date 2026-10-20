@@ -1050,7 +1050,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause) c = true;
+  if (r.u.shape.exit || r.u.cause || r.fault_cause == kCauseWidth) c = true;   // no-ops: faulted before or at dispatch
   else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
@@ -1364,6 +1364,9 @@ void Core::control() {
       // The CTA's barrier count, at launch and at restore-allocate, since a
       // restored warp may land in another slot (OA's response IS-16).
       s.bar_count = a.barrier_count;
+      // Every register 32 bits wide: at launch, and at restore-allocate
+      // until the map carries the saved widths (A-64, OI-32).
+      s.cw.fill(0);
       if (a.op == kAllocLaunch) {
         // Every architectural register maps to the zero registers (A-64):
         // no zeroing traffic, and nothing from another context is readable.
@@ -1587,6 +1590,7 @@ void Core::retire() {
       }
       if (r.u.attr.serial == kSerChwidth) {
         s.chwidth = r.u.imm & 3u;     // temporary: A-75 names the field
+        s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);   // the committed table (OI-57)
         s.chwidth_hold = false;
       }
       if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
@@ -2163,7 +2167,18 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // count faults here, as a no-op, so it never reaches SYU.
   const bool bar_fault = a.serial == kSerBarrier && u.imm >= s.bar_count &&
                          !cfg_.inject_no_bar_fault;
-  const bool nop = u.shape.exit || u.cause || bar_fault;
+  // F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): a memory access
+  // whose data register is at chwidth 4, from the committed table: a load's
+  // destination, a store's highest read source (as resOf takes it).
+  bool width_fault = false;
+  if (a.rs_miu && (a.mem_kind == kMemKLoad || a.mem_kind == kMemKStore) && !cfg_.inject_no_width_fault) {
+    unsigned rdata = u.dst;
+    if (a.mem_kind == kMemKStore)
+      for (unsigned i = 0; i != 3; ++i)
+        if ((u.shape.gpr_reads >> i) & 1u) rdata = u.src[i];
+    width_fault = s.cw[rdata & 15] == 3;
+  }
+  const bool nop = u.shape.exit || u.cause || bar_fault || width_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -2324,6 +2339,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     // Fetch's or decode's, as DEC sent it (TI's 75b6a19).
     r.fault = true;
     r.fault_cause = u.cause;
+  }
+  if (width_fault) {
+    r.fault = true;
+    r.fault_cause = kCauseWidth;
+    count("fault.width");
   }
   if (bar_fault) {
     r.fault = true;

@@ -572,9 +572,14 @@ added with the event.
     TI's 75b6a19) and is the ROB entry's, RCU's done carries none (its
     exec-fault path is gone), MIU's completion carries its own cause
     (one without is an error, ISA v1.9 section 12.6), and F-BARRIER (9) is
-    OOE's at dispatch. F-WIDTH and F-FORMAT, also OOE's at dispatch, need
-    a per-register width and a format code the model does not hold yet
-    (OI-57);
+    OOE's at dispatch. F-WIDTH (3) is too: each slot holds the committed
+    width of every architectural GPR (OA's response OI-57), written when a
+    chwidth retires and 32 at launch and restore-allocate, and a memop
+    whose data register (a load's destination, a store's highest read
+    source) is at 4 bits faults as a no-op. Control `no-width-fault` drops
+    the check. F-FORMAT waits on DEC's fmt_rsv and fmt_opnd (OI-57, TI).
+    Issue still sends one committed chwidth per slot, the model's older
+    simplification;
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record

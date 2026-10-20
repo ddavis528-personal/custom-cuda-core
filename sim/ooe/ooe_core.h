@@ -255,6 +255,8 @@ struct Config {
   /// No F-BARRIER check at dispatch: a barrier past its CTA's count goes to
   /// SYU (testBarrierFault's control).
   bool inject_no_bar_fault = false;
+  /// No F-WIDTH check at dispatch (testWidthFault's control).
+  bool inject_no_width_fault = false;
   /// The fault-address register takes every faulting completion, not only
   /// an older one (V-74's control).
   bool inject_fa_youngest = false;
@@ -344,7 +346,7 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
-enum : unsigned { kCauseBarrier = 9 };
+enum : unsigned { kCauseWidth = 3, kCauseBarrier = 9 };
 /// mem_op codes OOE reads (OA's six, TI's a4fa218).
 enum : unsigned { kMemOpFence = 0xE };
 
@@ -786,6 +788,10 @@ private:
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
     unsigned bar_count = 0;                   ///< the CTA's barriers, from launch or restore-allocate (IS-16)
+    /// The committed width per architectural GPR (OA's response OI-57): a
+    /// width code (0 32, 1 16, 2 8, 3 4 bits), written when a chwidth
+    /// retires, 32 at launch and at restore-allocate. F-WIDTH reads it.
+    std::array<uint8_t, 16> cw{};
     /// V-74 (OA's response IS-16): the oldest unsquashed faulting memop's
     /// address and ROB index, one register per warp, read at the head.
     bool fa_valid = false;
@@ -1097,6 +1103,8 @@ public:
   bool readyQ(unsigned e) const { return ready_q_[e]; }
   /// A slot's barrier count, as launch or restore-allocate set it (IS-16).
   unsigned slotBarCount(unsigned s) const { return slot_[s].bar_count; }
+  /// A slot's committed width code for architectural GPR a (OI-57).
+  unsigned slotWidth(unsigned s, unsigned a) const { return slot_[s].cw[a & 15]; }
   bool reqQ(unsigned e) const { return req_q_[e]; }
   unsigned nameRow(unsigned n) const { return n / kPos_; }
   unsigned namePos(unsigned n) const { return n % kPos_; }
