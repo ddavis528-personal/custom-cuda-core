@@ -163,7 +163,8 @@ module ooe_decq #(
     for (int b = 0; b < NBANK; b++) begin
       bc[b * LU +: LU] = '0;
       for (int j = 0; j < NB; j++)
-        if (b * NB + j < Q && av[b * NB + j]) bc[b * LU +: LU] = bc[b * LU +: LU] + LU'(1);
+        if (b * NB + j < Q)   // a short last bank: no select past av's end, even unevaluated
+          if (av[b * NB + j]) bc[b * LU +: LU] = bc[b * LU +: LU] + LU'(1);
     end
     for (int b = 0; b < NBANK; b++) begin
       bp[b * LU +: LU] = '0;
@@ -173,7 +174,8 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) begin
       run = '0;
       for (int j = 0; j < NB; j++)
-        if ((e / NB) * NB + j < e && av[(e / NB) * NB + j]) run = run + LU'(1);
+        if ((e / NB) * NB + j < e)   // below e, so inside av
+          if (av[(e / NB) * NB + j]) run = run + LU'(1);
       bl[e * LU +: LU] = bp[(e / NB) * LU +: LU] + run;
     end
     aq = '0;
