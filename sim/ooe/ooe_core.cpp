@@ -160,6 +160,9 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   n_ = cfg_.rs_rcu + cfg_.rs_miu;
   rs_.resize(n_);
   ready_q_.assign(n_, 0);
+  req_q_.assign(n_, 0);
+  req_gnt_q_.assign(n_, 0);
+  req_gnt_now_.assign(n_, 0);
   cell_.assign(size_t(n_) * n_, 0);
   woff_.assign(size_t(n_) * n_, kLateOff);
   cok_.assign(size_t(n_) * n_, 0);
@@ -271,7 +274,7 @@ void Core::cycle(uint64_t now) {
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
-                 &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
+                 &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_elig, &wlog_.sel_iss, &wlog_.sel_rq, &wlog_.sel_gnt,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant})
     v->assign(n_, 0);
@@ -299,9 +302,8 @@ void Core::cycle(uint64_t now) {
   }
   rename();            // the decode queue; uop() refills it after the clock
   sendRedirect();
-  // The ready register (OI-51): each row's lines as they will stand next
-  // cycle, from the state now.
-  for (unsigned e = 0; e != n_; ++e) ready_q_[e] = rs_[e].valid && rowReadyNext(e);
+  readyRegister();
+  requestRegister();
   if (check_invariants) checkInvariants();
 }
 
@@ -685,19 +687,109 @@ bool Core::rowReady(unsigned i) const {
   return true;
 }
 
-bool Core::rowReadyNext(unsigned i) const {
+bool Core::rowReadyAt(unsigned i, uint64_t t) const {
   for (unsigned j = 0; j != n_; ++j) {
     if (!(cell(i, j) & 1)) continue;
     const RsEntry &p = rs_[j];
     const uint8_t w = woff_[size_t(i) * n_ + j];
     if (w == kLateOff) {
-      // The full-latency wake: raised, or its timer fires next cycle.
-      if (!(p.late || (p.issued && !p.on_completion && now_ + skew_ + 1 >= p.late_at))) return false;
-    } else if (!(p.issued && now_ + skew_ + 1 >= p.issue_at + w)) {
+      // The full-latency wake: raised, or its timer fires by t.
+      if (!(p.late || (p.issued && !p.on_completion && t + skew_ >= p.late_at))) return false;
+    } else if (!(p.issued && t + skew_ >= p.issue_at + w)) {
       return false;
     }
   }
   return true;
+}
+
+bool Core::requestNext(unsigned e) const {
+  const RsEntry &x = rs_[e];
+  // Issued as ooe_wake holds it after this edge: this cycle's own grants
+  // reach it from the grant register at the next (the register masks them).
+  const bool issued = x.issued && !req_gnt_now_[e];
+  return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || rowConfirmed(e));
+}
+
+/// The request register (OA's response OI-53), as ooe_sched builds it: an
+/// enable from its own flops only (CG-5). A grant's not-issued fall is
+/// captured at the edge after the grant register holds it (the grant
+/// register masks select until then). Anything else (warp active, a copy's
+/// confirmation, a replay's return, a row written) is captured one edge
+/// late, by the flop of "the register differs from its next value and this
+/// edge does not capture it". A late
+/// rise costs a cycle at most; a late fall is safe: a warp leaves Active
+/// only by a squash of all its entries, and select reads ooe_rs's valid and
+/// past-rename bit live, so a row freed and written again on one edge
+/// never requests on its last occupant's bit.
+void Core::requestRegister() {
+  if (!cfg_.req_reg) return;
+  bool gany = false;
+  for (unsigned e = 0; e != n_; ++e) gany = gany || req_gnt_q_[e];
+  // The stop lead (ooe_sched's flop of OI-50's replay rule, which the
+  // ready register's enable takes too): this cycle's hop on time.
+  bool stop = false;
+  for (unsigned e = 0; e != n_ && e < wlog_.replay.size(); ++e) stop = stop || wlog_.replay[e];
+  const bool en = req_lead_q_ || gany || stop;
+  bool diff = false;
+  for (unsigned e = 0; e != n_; ++e) {
+    const bool d = requestNext(e);
+    diff = diff || (!en && d != bool(req_q_[e]));
+    if (en) req_q_[e] = d;
+  }
+  req_lead_q_ = diff;
+  req_gnt_q_.swap(req_gnt_now_);
+  std::fill(req_gnt_now_.begin(), req_gnt_now_.end(), 0);
+}
+
+bool Core::lineAt(unsigned j, unsigned k, uint64_t t) const {
+  const RsEntry &p = rs_[j];
+  if (k == kLateLine) return p.late || (p.issued && !p.on_completion && t + skew_ >= p.late_at);
+  if (k >= pens_.size() || !p.issued) return false;
+  const unsigned unit = slot_[p.slot].rob[p.rob].u.attr.lat_class;
+  const unsigned f = unit < Config::kUnits ? cfg_.fastOf(unit) : 0;
+  return f && t + skew_ >= p.issue_at + f + pens_[k];
+}
+
+/// The ready register (OA's responses OI-51, OI-53, OI-54; V-73). It
+/// captures each row's lines as they will stand next cycle (rowReadyNext),
+/// at every edge after which any line or row it reads changes, and holds
+/// otherwise. Its enable is ooe_sched's flop of the leads: ooe_wake's
+/// timers (and completions, which raise lines by timer) and its miss
+/// checks, ooe_sched's own OR of the replay rule over its iss, dep and msd
+/// inputs, and the allocation grant. Here a change the timers did not
+/// predict a cycle ago (a stop, a miss) is captured on its own edge, as
+/// those leads give it.
+void Core::readyRegister() {
+  if (!cfg_.ready_reg) return;
+  constexpr unsigned W = kWakeLines;
+  bool timer = false, event = false;
+  for (unsigned j = 0; j != n_ && !timer; ++j)
+    for (unsigned k = 0; k != W && !timer; ++k)
+      if (lineAt(j, k, now_ + 2) != lineAt(j, k, now_ + 1)) timer = true;
+  if (row_pred_.size() != n_) row_pred_.assign(n_, 0);
+  std::vector<uint8_t> pred(n_);
+  for (unsigned e = 0; e != n_; ++e) {
+    if (row_pred_live_ && rs_[e].valid && rowReadyNext(e) != bool(row_pred_[e])) event = true;
+    pred[e] = rowReadyAt(e, now_ + 2);
+    // A row the timers change implies a line that changes, where every
+    // offset has its line (wakeLinesFit); the unit tests' wider bypass
+    // tables have offsets no line carries.
+    if (rs_[e].valid && bool(pred[e]) != rowReadyNext(e)) timer = true;
+  }
+  const bool alloc = !wlog_.ralloc.empty() && !cfg_.inject_no_alloc_lead;
+  const bool late = cfg_.inject_late_event;
+  if (ready_lead_q_ || (event && !late)) {
+    for (unsigned e = 0; e != n_; ++e) ready_q_[e] = rs_[e].valid && rowReadyNext(e);
+  } else if (!late) {
+    // V-73: the register holds only when nothing it reads has changed.
+    for (unsigned e = 0; e != n_; ++e)
+      if (rs_[e].valid && rs_[e].eligible_at <= now_ + 1 && bool(ready_q_[e]) != rowReadyNext(e))
+        err("V-73: entry %u's ready register holds %d with no lead to capture %d", e, int(ready_q_[e]),
+            int(rowReadyNext(e)));
+  }
+  ready_lead_q_ = timer || alloc || (late && event);
+  row_pred_.swap(pred);
+  row_pred_live_ = true;
 }
 
 bool Core::rowConfirmed(unsigned i) const {
@@ -794,7 +886,16 @@ bool Core::cancelHop() {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
     if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
-    if (y.valid && y.issued && !y.confirmed && !rowReady(i)) hop.push_back(i);
+    // OI-50's rule, as the RTL decides it: an issued, unconfirmed entry
+    // returns to Waiting when a producer it depends on is not issued or has
+    // missed its L1 slot. A dependant issued on a producer that was replayed
+    // and re-issued within a hop is caught when that re-issue is replayed.
+    if (!(y.valid && y.issued && !y.confirmed)) continue;
+    for (unsigned j = 0; j != n_; ++j)
+      if ((cell(i, j) & 1) && (!rs_[j].issued || rs_[j].msd)) {
+        hop.push_back(i);
+        break;
+      }
   }
   wlog_.hop_dep.assign(size_t(n_) * n_, 0);
   for (size_t k = 0; k != wlog_.hop_dep.size(); ++k) wlog_.hop_dep[k] = cell_[k] & 1;
@@ -1046,6 +1147,7 @@ void Core::takeCompletions() {
       } else {
         if (r->is_load) count("load.past_l1");
         // Wake once the data is readable at RCU (Config::cmpl_wake_delay).
+        if (r->rs_main < wlog_.cmpl.size()) wlog_.cmpl[r->rs_main] = 2;
         x.on_completion = false;
         x.msd_end = x.msd;   // the hop still sees the miss this cycle (V-68)
         x.late_at = now_ + cfg_.cmpl_wake_delay;
@@ -1594,6 +1696,22 @@ std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, 
 /// pick. The oldest ready entry wins all its resources, so it always
 /// issues. A masked load's copy is a lane op of its own and issues at
 /// least a cycle before its load (V-61).
+bool Core::memopOrderOk(const Slot &s, const RobEntry &r) const {
+  // Program order per warp (OI-15), or OA-13's relaxation: a plain load
+  // passes older loads, never a store, atomic, fence or ordered access.
+  const bool plain_load = r.is_load && r.u.ordering == 0 && r.u.attr.mem_kind == kMemKLoad;
+  for (unsigned k = 0; k != s.count; ++k) {
+    const RobEntry &o = s.rob[(s.head + k) % cfg_.rob_depth];
+    if (&o == &r) break;
+    if (!o.valid || !o.is_mem || o.rs_main == kNoEntry || rs_[o.rs_main].issued) continue;
+    if (cfg_.loads_pass_loads && plain_load && o.is_load && o.u.ordering == 0 &&
+        o.u.attr.mem_kind == kMemKLoad)
+      continue;
+    return false;
+  }
+  return true;
+}
+
 void Core::selectSectioned() {
   constexpr unsigned kRes = 9, kP0 = 5;
   unsigned busy = 0;
@@ -1609,29 +1727,22 @@ void Core::selectSectioned() {
     if (si >= 0) memop_block[si] = true;
     out.memops.push_back(d);
   }
-  auto memopOrderOk = [&](const Slot &s, const RobEntry &r) {
-    // Program order per warp (OI-15), or OA-13's relaxation: a plain load
-    // passes older loads, never a store, atomic, fence or ordered access.
-    const bool plain_load = r.is_load && r.u.ordering == 0 && r.u.attr.mem_kind == kMemKLoad;
-    for (unsigned k = 0; k != s.count; ++k) {
-      const RobEntry &o = s.rob[(s.head + k) % cfg_.rob_depth];
-      if (&o == &r) break;
-      if (!o.valid || !o.is_mem || o.rs_main == kNoEntry || rs_[o.rs_main].issued) continue;
-      if (cfg_.loads_pass_loads && plain_load && o.is_load && o.u.ordering == 0 &&
-          o.u.attr.mem_kind == kMemKLoad)
-        continue;
-      return false;
-    }
-    return true;
-  };
   auto ready = [&](unsigned e, bool order = true) -> bool {
     const RsEntry &x = rs_[e];
-    if (!x.valid || x.issued || x.eligible_at > now_ || (x.res & busy)) return false;
+    if (!x.valid || x.eligible_at > now_ || (x.res & busy)) return false;
+    // The request register (OI-53): past rename, not issued, warp active
+    // and a copy's confirmation, as an earlier cycle ended; the grant
+    // register masks last cycle's grants until it captures them.
+    if (cfg_.req_reg ? !req_q_[e] || req_gnt_q_[e] : x.issued) return false;
     const Slot &s = slot_[x.slot];
-    if (s.st != WarpState::kActive) return false;
     if (!rowReadySel(e)) return false;
     const RobEntry &r = s.rob[x.rob];
     if (predHold(x.slot, r)) return false;
+    if (cfg_.req_reg) {
+      if (x.copy) return true;
+    } else if (s.st != WarpState::kActive) {
+      return false;
+    }
     // The copy's sources are confirmed before it issues, so it cannot be
     // cancelled once its load has gone (V-61).
     if (x.copy) return rowConfirmed(e);
@@ -1655,9 +1766,14 @@ void Core::selectSectioned() {
     if (!x.valid) continue;
     const Slot &s = slot_[x.slot];
     const RobEntry &r = s.rob[x.rob];
+    // What select used: the request term (the request register under
+    // req_reg, else its terms live), the grant register, and the live
+    // issued bit and confirmation a memop reads.
     wlog_.sel_iss[e] = x.issued;
     wlog_.sel_elig[e] = x.eligible_at <= now_;
-    wlog_.sel_active[e] = s.st == WarpState::kActive;
+    wlog_.sel_rq[e] = cfg_.req_reg ? bool(req_q_[e])
+                                   : !x.issued && s.st == WarpState::kActive && (!x.copy || rowConfirmed(e));
+    wlog_.sel_gnt[e] = cfg_.req_reg && req_gnt_q_[e];
     wlog_.sel_ready[e] = rowReadySel(e);
     wlog_.sel_conf[e] = rowConfirmed(e);
     wlog_.sel_slot[e] = uint8_t(x.slot);
@@ -1675,6 +1791,11 @@ void Core::selectSectioned() {
   for (size_t i = 0; i != cand.size(); ++i)
     if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
+  // The request register is never stale where it would grant (OI-53).
+  if (cfg_.req_reg)
+    for (unsigned e : cand)
+      if (rs_[e].issued || slot_[rs_[e].slot].st != WarpState::kActive)
+        err("OI-53: entry %u requests on a stale request register", e);
   // IS-9: lane grants that write a register (element work), and the cycles
   // a lane op writing none (a setp: loop control) holds sections.
   bool ctl_lanes = false;
@@ -1737,6 +1858,7 @@ void Core::selectSectioned() {
     }
     if (x.copy) issueCopy(x.slot, x.rob, port);
     else doIssue(e, port, false, 0);
+    req_gnt_now_[e] = 1;
     ++issued;
   }
   ++histograms["issue_per_cycle"][issued];
@@ -2455,9 +2577,10 @@ void Core::checkInvariants() {
       }
   // V-15: after a cancel settles, nothing issued and unconfirmed is waiting
   // on a withdrawn wake. While one spreads, a hop a cycle (V-59), the
-  // entries it has not reached yet are exactly such entries.
+  // entries it has not reached yet are exactly such entries; and an entry
+  // granted on a stale ready bit (OA-17) waits for the next hop.
   for (unsigned i = 0; i != n_ && !cancel_live_; ++i)
-    if (rs_[i].valid && rs_[i].issued && !rs_[i].confirmed && !rowReady(i))
+    if (rs_[i].valid && rs_[i].issued && !rs_[i].confirmed && !rs_[i].stale && !rowReady(i))
       bad("V-15", "an issued entry's producer is no longer woken");
 }
 

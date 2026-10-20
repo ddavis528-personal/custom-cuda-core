@@ -1,0 +1,107 @@
+{
+  "module": "ooe_sched",
+  "ports": {
+    "sslot_cq03h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live inputs come straight from RS, age, wake and warp-table flops, in NGD from the launching flop"
+    },
+    "res_cq03h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live inputs come straight from RS, age, wake and warp-table flops, in NGD from the launching flop"
+    },
+    "busy_cq03h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live inputs come straight from RS, age, wake and warp-table flops, in NGD from the launching flop"
+    },
+    "older_m_cq03h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live inputs come straight from RS, age, wake and warp-table flops, in NGD from the launching flop"
+    },
+    "cidx_cq03h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live inputs come straight from RS, age, wake and warp-table flops, in NGD from the launching flop"
+    },
+    "block_cq03h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live inputs come straight from RS, age, wake and warp-table flops, in NGD from the launching flop"
+    },
+    "older_r_cq03h": {
+      "arrival": 4.0,
+      "by": "OI",
+      "date": "2026-10-20",
+      "why": "Proposed by OI (OI-55), as select's other live inputs straight from RS and age flops; OA to confirm"
+    },
+    "vel_cq03h": {
+      "arrival": 4.0,
+      "by": "OI",
+      "date": "2026-10-20",
+      "why": "Proposed by OI (OI-55), as select's other live inputs straight from RS and age flops; OA to confirm"
+    },
+    "sdep_cq03h": {
+      "arrival": 5.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live terms the confirmation and order checks read, in NGD from the launching flop"
+    },
+    "siss_cq03h": {
+      "arrival": 5.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live terms the confirmation and order checks read, in NGD from the launching flop"
+    },
+    "iss_cq02h": {
+      "arrival": 5.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live terms the confirmation and order checks read, in NGD from the launching flop"
+    },
+    "dep_cq02h": {
+      "arrival": 5.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-53 (OA tab, 2026-10-20): select's live terms the confirmation and order checks read, in NGD from the launching flop"
+    },
+    "msd_cq02h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-54 (OA tab, 2026-10-20): the leads into ooe_sched's enable flops, in NGD from the launching flop"
+    },
+    "alloc_cq02h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-54 (OA tab, 2026-10-20): the leads into ooe_sched's enable flops, in NGD from the launching flop"
+    },
+    "wtl_cq02h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-54 (OA tab, 2026-10-20): the leads into ooe_sched's enable flops, in NGD from the launching flop"
+    },
+    "wml_cq02h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-54 (OA tab, 2026-10-20): the leads into ooe_sched's enable flops, in NGD from the launching flop"
+    },
+    "active_cq02h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-54 (OA tab, 2026-10-20): the leads into ooe_sched's enable flops, in NGD from the launching flop"
+    }
+  }
+}

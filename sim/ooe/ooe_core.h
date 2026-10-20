@@ -202,6 +202,17 @@ struct Config {
   /// measured 26.8 NGD in ooe_select, over the stage; section-only 24.3),
   /// 2 section-plus-half.
   unsigned pick_fallback = 1;
+  /// Select's request register (OA's response OI-53): one bit per entry,
+  /// written at an earlier cycle's end, of the terms that need only earlier
+  /// state: not issued, warp active, and a copy's sources confirmed. Its
+  /// enable (ooe_sched's, from its own flops, CG-5) is a grant last cycle
+  /// and a flop of "the register differs from its next value and this edge
+  /// does not capture it", so a change
+  /// other than a grant is captured one edge late. Valid and past rename's
+  /// stages (ooe_rs's bit), the matrix's ready (ready_reg) and a memop's
+  /// terms (confirmation, order, its copy's issue) stay live. false: every
+  /// term live.
+  bool req_reg = true;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -234,6 +245,13 @@ struct Config {
   /// held, unchecked (V-60): the kernels' no-resource-cap control, which RCU
   /// must refuse.
   bool inject_double_grant = false;
+  /// The ready register's enable takes no allocation lead (V-73's control):
+  /// a row allocated into a quiet machine is never captured as ready.
+  bool inject_no_alloc_lead = false;
+  /// The ready register captures a stop's or a miss's change one edge late
+  /// (OI-54's control): a producer re-granted inside the stale window lets
+  /// a dependant confirm on a result it read too early.
+  bool inject_late_event = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -799,9 +817,22 @@ private:
   bool rowReady(unsigned i) const;
   /// The row's lines as they will stand next cycle, from the state now:
   /// what the ready register holds then (OI-51).
-  bool rowReadyNext(unsigned i) const;
-  /// What select reads: the lines now, or the registered ready.
-  bool rowReadySel(unsigned i) const { return rowReady(i) || (cfg_.ready_reg && ready_q_[i]); }
+  bool rowReadyNext(unsigned i) const { return rowReadyAt(i, now_ + 1); }
+  /// The row's lines at cycle t by the producers' timers, from the state now.
+  bool rowReadyAt(unsigned i, uint64_t t) const;
+  /// A memop's program order in its warp (OI-15; OA-13 when loads pass loads).
+  bool memopOrderOk(const Slot &s, const RobEntry &r) const;
+  /// What select reads: the ready register (OI-51), or the lines now.
+  bool rowReadySel(unsigned i) const { return cfg_.ready_reg ? bool(ready_q_[i]) : rowReady(i); }
+  /// The request register's next value for entry e (req_reg).
+  bool requestNext(unsigned e) const;
+  void requestRegister();
+  /// Producer j's line k at cycle t by its timers alone, from the state
+  /// now: what ooe_wake's timers say ahead of time.
+  bool lineAt(unsigned j, unsigned k, uint64_t t) const;
+  /// The ready register's enable for the edge ending this cycle and the
+  /// lead it takes for the next (OA's response OI-53, V-73).
+  void readyRegister();
   bool rowConfirmed(unsigned i) const;
   void doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port);
   void setWakes(unsigned e);
@@ -864,8 +895,9 @@ private:
 public:
   /// What reached each RS entry's wake timer this cycle, for ooe_wake
   /// (test/ooe/wake_tb.cpp): its grant with the timer kind and latency
-  /// class, a done or completion for its ROB entry, a stop (a replay
-  /// clearing issued, or the entry freed), the L1 miss its timer found, and
+  /// class, a done or completion for its ROB entry (cmpl 2: one past L1,
+  /// which sets the late line's timer), a stop (a replay clearing issued,
+  /// or the entry freed), the L1 miss its timer found, and
   /// the results confirmed on the timer's word (its full-latency wake, not
   /// speculative). Observation only: nothing in the model reads it.
   enum : uint8_t { kWakeTimed = 0, kWakeCopy = 1, kWakeSpec = 2, kWakeMem = 3 };
@@ -888,7 +920,7 @@ public:
     /// (resOf), whether it is a copy, and a memop's live copy (sel_chas,
     /// sel_cidx); the resources and warps a bulk discard took; then the
     /// candidates and the grants. sel_live: the sectioned select ran.
-    std::vector<uint8_t> sel_valid, sel_iss, sel_elig, sel_active, sel_ready, sel_conf, sel_slot, sel_copy,
+    std::vector<uint8_t> sel_valid, sel_elig, sel_iss, sel_rq, sel_gnt, sel_ready, sel_conf, sel_slot, sel_copy,
         sel_chas, sel_cand, sel_grant;
     std::vector<unsigned> sel_res, sel_cidx;
     unsigned sel_busy = 0, sel_block = 0;
@@ -963,6 +995,13 @@ private:
   static constexpr uint8_t kLateOff = 0xFF;
   uint64_t skew_ = 0;                 ///< inject_early_wake
   std::vector<uint8_t> ready_q_;      ///< the registered ready (OI-51): rowReadyNext at the last cycle's end
+  std::vector<uint8_t> req_q_;        ///< select's request register (req_reg)
+  bool req_lead_q_ = false;           ///< its change lead: the register differed from its next value
+  std::vector<uint8_t> req_gnt_q_;    ///< the grant register: last cycle's grants, which mask select
+  std::vector<uint8_t> req_gnt_now_;  ///< this cycle's grants, for the grant register at its end
+  std::vector<uint8_t> row_pred_;     ///< each row's readiness for next cycle, as the timers said a cycle ago
+  bool row_pred_live_ = false;
+  bool ready_lead_q_ = false;         ///< the ready register's enable at this cycle's edge
   unsigned n_ = 0;
   uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }
@@ -1021,6 +1060,20 @@ public:
   /// The first RCU-class entry index past the last; MIU entries follow.
   unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
   bool rsReady(unsigned e) const { return rowReady(e); }
+  /// ooe_sched's (test/ooe/sched_tb.cpp), at a cycle's end: a producer's
+  /// wake line as it stands next cycle (what the ready register captures),
+  /// each entry's slot, copy flag and past rename next cycle, a slot's warp
+  /// active, and the ready and request registers.
+  bool wakeLineNext(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 1); }
+  /// ooe_wake's timer lead: producer j's line k changes at the edge after
+  /// next.
+  bool wakeLineChanges(unsigned j, unsigned k) const { return lineAt(j, k, now_ + 2) != lineAt(j, k, now_ + 1); }
+  unsigned rsSlot(unsigned e) const { return rs_[e].slot; }
+  bool rsCopy(unsigned e) const { return rs_[e].copy; }
+  bool rsEligibleNext(unsigned e) const { return rs_[e].eligible_at <= now_ + 1; }
+  bool slotActive(unsigned s) const { return s < slot_.size() && slot_[s].st == WarpState::kActive; }
+  bool readyQ(unsigned e) const { return ready_q_[e]; }
+  bool reqQ(unsigned e) const { return req_q_[e]; }
   unsigned nameRow(unsigned n) const { return n / kPos_; }
   unsigned namePos(unsigned n) const { return n % kPos_; }
   bool isZeroName(unsigned n) const { return n / kPos_ == cfg_.phys_zero; }

@@ -63,8 +63,9 @@ field:
 - **Transitive cancel is a level, one hop a cycle** (`cancelHop`), as
   `ooe_confirm` builds it (OA's response OI-50). At the start of every
   cycle, before its misses are found, one hop returns to Waiting every
-  issued, unconfirmed entry whose row is no longer ready: a producer it
-  issued on is not issued, or has missed its L1 slot (`msd`, set at the
+  issued, unconfirmed entry with a producer that is not issued, or has
+  missed its L1 slot: exactly OI-50's rule, as the RTL decides it, not
+  "the row is no longer ready" (`msd`, set at the
   miss and cleared at the load's completion, after that cycle's hop, so
   it clears only once nothing issued depends on it, V-68). The hop is
   decided whole before it is applied. A miss's direct dependants therefore
@@ -416,6 +417,47 @@ check holds that a stale grant never confirms (OA-17). Over 48 seeds that
 is 7.9 stale grants a run, each replayed, at 960 cycles against 963 with
 the register off: noise. ooe_select's bench logs the registered value as
 `sel_ready`, so a bench of ooe_sched can be cycle-exact.
+
+The register has a clock enable (OA's responses OI-53 and OI-54; V-73),
+so select reads it alone. It captures each row's lines for next cycle at
+every edge after which any line or row it reads changes, and holds
+otherwise. Its leads: ooe_wake's timers and its event lead (a miss, or a
+completion past L1, changes lines at the edge after next: each known a
+cycle ahead, a completion by its channel's valid, since cmpl_wake_delay
+is 1), ooe_sched's own OR of the replay rule over its iss, dep and msd
+inputs, and the allocation grant. In the model a change
+the timers did not predict a cycle ago (a stop, a miss) is captured on
+its own edge, as those leads give it, and V-73 checks that a held
+register never differs from the lines. Two controls: `no-alloc-lead`
+(a new row never captured: caught), and `late-event`, which captures a
+stop or miss one edge late, as V-73 first allowed. That lets a replayed
+producer be re-granted inside its dependant's stale window; the
+dependant, granted on its stale bit, is never replayed by OI-50's rule
+and confirms on a result it read too early (OI-54). The control must hit
+that OA-17 check, and does (at decq 4). On time it costs nothing: the
+48-seed sweep, the four-warp kernels and the S1 kernels are as without
+the enable.
+
+`req_reg` (on; OA's response OI-53) is select's request register, one
+bit per entry: valid, not issued, warp active and a copy's sources
+confirmed, as an earlier cycle ended. Its enable is what ooe_sched can
+form from its own flops (CG-5): a grant last cycle (the grant register,
+which masks select until the register drops the entry), the stop lead
+(a replay's return on time), and the flop of "the register differs from
+its next value and this edge does not capture it", so any other change
+is captured one edge late. A late
+rise costs a cycle at most; a late fall is safe, since a warp leaves
+Active only by a squash of all its entries and select reads valid and
+past rename's stages live (ooe_rs's bit). An earlier form held past
+rename in the register, captured from the allocation grant; a row freed
+and written again on one edge then requested on its last occupant's bit
+before it was past rename, which the model's check (OI-53: a candidate
+issued or of an inactive warp) and ooe_sched's bench both caught. A
+memop's terms stay live in the MIU pick. Over the four-warp kernels and
+the 48-seed sweep it costs nothing (alu8 589, alu16 823, vadd8 1034,
+cvt8 1246, red8 369; 960). ooe_select's bench logs what select used
+(`sel_rq`, `sel_gnt`, `sel_elig`), and ooe_sched's
+(test/ooe/sched_tb.cpp) compares the request register bit for bit.
 
 ## Events and counters
 

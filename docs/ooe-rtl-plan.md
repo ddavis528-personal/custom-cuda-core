@@ -326,11 +326,44 @@ Built (`rtl/ooe/`):
 
   With the section fallback (FB 1, the design) select is 24.3 NGD, and
   with the half pick too (FB 2) 26.8, past the stage, so the half pick is
-  PF-31. FB defaults to 0 until ooe_sched instantiates select with 1:
-  alone, select is an inner helper held to 16 (NGD-6), and FB 1 adds
-  paths over that which its ratchet entries do not name (copy→grant,
-  older_m→lost, older_r→grant). select_tb builds it with the model's
-  `pick_fallback`, so the two stay in lockstep.
+  PF-31. That was select with every term live; ooe_sched moved the terms
+  that need only earlier state into its registers (below), and select now
+  reads them.
+
+- **`ooe_sched`** (OA's responses OI-51, OI-53, OI-54), around `ooe_ready`
+  and `ooe_select` (FB 1): three registers, each gated from its own flops
+  (CG-5).
+  - The ready register: ooe_ready over the RS's matrix and ooe_wake's
+    lines as they stand after the edge. Its enable is the flop of the
+    leads: ooe_wake's timer lead per line, of lines some row's cell
+    selects; its event lead (a miss, or a completion past L1, changes
+    lines at the edge after next, each known a cycle ahead); ooe_rs's
+    allocation; and the stop lead, OI-50's replay rule over issued, the
+    matrix and missed as they stand after the edge.
+  - The request register, one bit per entry: valid, not issued, warp
+    active and a copy's sources confirmed. Its enable is the grant
+    register's OR, the stop lead, and the flop of "differs from its next
+    value and not captured at this edge", so a change other than a grant
+    or a replay lands one edge late. That is safe: a late fall needs a
+    warp leaving Active, which squashes all its entries, and select reads
+    valid and past rename live.
+  - The grant register, two `(* keep *)` copies: one leaves and one masks
+    select (NGD-7). Its enable is "something may request, or something is
+    held".
+
+  Select's requests on the lane and RCU side come from its own flops and
+  the live valid-and-past-rename bit; the MIU side adds the memop terms
+  live. A bulk discard takes only MIU pipes, so busy masks MIU entries
+  alone. Flop to flop: 19.9 NGD. With OA's arrivals (4 and 5) the worst
+  input is sdep at 24.5. `older_r` and the new `vel` take 4 as proposed
+  (OI-55). The clock gates' lowest DCGE is 81% (medium and high).
+
+  `test/ooe/sched_tb.cpp` drives it a model cycle behind, so the event
+  lead and the hop's missed bits come from the next cycle, as ooe_wake
+  would know them. It compares the grants, the request register bit for
+  bit, and the ready register on V-73's rows. Over 25 seeds: 18,780
+  cycles followed, 16,666 grants, none differ. The controls no-msd,
+  no-miss-lead, late-leads and no-alloc-lead must each be caught.
 
 - **`ooe_rat`**, the register alias tables, the first of rename's two
   modules. Per tier-1 slot: the speculative GPR and predicate maps, the

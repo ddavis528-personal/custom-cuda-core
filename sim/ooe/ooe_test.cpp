@@ -1041,6 +1041,37 @@ void testReadyReg() {
                    (unsigned long long)stale, (unsigned long long)rstale);
     else EXPECT(!stale && !rstale, "stale grants %llu with no ready register", (unsigned long long)stale);
   }
+  // OI-54's control: a stop or miss captured one edge late lets a replayed
+  // producer be re-granted inside its dependant's stale window; the
+  // dependant, granted on its stale bit, is never replayed and confirms on
+  // a result it read too early. The model's OA-17 check must see it.
+  g_test = "ready register: a late capture confirms a stale grant (OI-54's control)";
+  const int saved = g_fail;
+  bool seen = false;
+  // A shallow decode queue spaces a warp's uops so the race opens (found
+  // at decq 4 in the sweep).
+  for (unsigned run = 0; run != 4 * 12 && !seen; ++run) {
+    const unsigned seed = run % 12 + 1;
+    std::mt19937 rng(seed);
+    Config c = baseConfig();
+    c.rs_warp_cap = c.decq_warp_max = 0;
+    c.decq = (unsigned[]){4, 6, 8, 12}[run / 12];
+    c.inject_late_event = true;
+    Env e(c, seed);
+    e.miss_pct = 20;
+    const auto report = e.core.on_error;
+    e.core.on_error = [&](const std::string &m) {
+      seen = seen || m.find("OA-17") != std::string::npos;
+      report(m);
+    };
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+    g_quiet = true;
+    e.finish(20000);
+    g_quiet = false;
+  }
+  g_fail = saved;
+  EXPECT(seen, "late capture never confirmed a stale grant");
+  std::printf("  %-24s %s\n", "control late-event", seen ? "caught" : "MISSED");
 }
 
 void testFreeVec() {
@@ -1321,6 +1352,7 @@ void testControls() {
       {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.fast[4] = 3; }},
       {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
       {"narrow-footprint", [](Config &c) { c.sectioned = true; c.inject_narrow_footprint = true; }},
+      {"no-alloc-lead", [](Config &c) { c.inject_no_alloc_lead = true; }},   // V-73
   };
   for (const C &x : cs) {
     const int saved = g_fail;

@@ -20,7 +20,7 @@ else
 fi
 
 for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
-         bypass-faster-than-contract complete-before-rs-free narrow-footprint; do
+         bypass-faster-than-contract complete-before-rs-free narrow-footprint no-alloc-lead late-event; do
   if grep -q "^  control $c  *caught$" "$log"; then
     say "control $c" "caught"
   else
@@ -28,7 +28,7 @@ for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
   fi
 done
 n=$(grep -c "^  control " "$log")
-if [ "$n" != 7 ]; then
-  say "control count" "$n, want 7 (add a new one to this list)"; fail=1
+if [ "$n" != 9 ]; then
+  say "control count" "$n, want 9 (add a new one to this list)"; fail=1
 fi
 exit $fail
