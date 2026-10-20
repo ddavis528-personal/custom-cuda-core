@@ -45,5 +45,11 @@ case "$unit" in
     read -r g d < <(python3 test/ooe/rat-params.py)
     vl ooe_rat_read "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
       "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
+  ooe_sched)
+    slots=$(val CCV_TIER1_WARPS)
+    fb=$(sed -n 's/.*unsigned pick_fallback = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+    vl ooe_sched "--public-flat-rw -GN=$n -GNR=$n_rcu -GS=$slots -GFB=$fb" "-DSCH_N=$n -DSCH_NR=$n_rcu -DSCH_S=$slots" \
+      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/test/ooe/sched_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

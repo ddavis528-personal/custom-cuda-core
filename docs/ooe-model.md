@@ -63,8 +63,9 @@ field:
 - **Transitive cancel is a level, one hop a cycle** (`cancelHop`), as
   `ooe_confirm` builds it (OA's response OI-50). At the start of every
   cycle, before its misses are found, one hop returns to Waiting every
-  issued, unconfirmed entry whose row is no longer ready: a producer it
-  issued on is not issued, or has missed its L1 slot (`msd`, set at the
+  issued, unconfirmed entry with a producer that is not issued, or has
+  missed its L1 slot: exactly OI-50's rule, as the RTL decides it, not
+  "the row is no longer ready" (`msd`, set at the
   miss and cleared at the load's completion, after that cycle's hop, so
   it clears only once nothing issued depends on it, V-68). The hop is
   decided whole before it is applied. A miss's direct dependants therefore
@@ -417,6 +418,58 @@ is 7.9 stale grants a run, each replayed, at 960 cycles against 963 with
 the register off: noise. ooe_select's bench logs the registered value as
 `sel_ready`, so a bench of ooe_sched can be cycle-exact.
 
+The register has a clock enable (OA's responses OI-53 and OI-54; V-73),
+so select reads it alone. It captures each row's lines for next cycle at
+every edge after which any line or row it reads changes, and holds
+otherwise. Its leads: ooe_wake's timers and its event lead (a miss, or a
+completion past L1, changes lines at the edge after next: each known a
+cycle ahead, a completion by its channel's valid, since cmpl_wake_delay
+is 1), ooe_sched's own OR of the replay rule over its iss, dep and msd
+inputs, and the allocation grant. In the model a change
+the timers did not predict a cycle ago (a stop, a miss) is captured on
+its own edge, as those leads give it, and V-73 checks that a held
+register never differs from the lines. Two controls: `no-alloc-lead`
+(a new row never captured: caught), and `late-event`, which captures a
+stop or miss one edge late, as V-73 first allowed. That lets a replayed
+producer be re-granted inside its dependant's stale window; the
+dependant, granted on its stale bit, is never replayed by OI-50's rule
+and confirms on a result it read too early (OI-54). The control must hit
+that OA-17 check, and does (at decq 4). On time it costs nothing: the
+48-seed sweep, the four-warp kernels and the S1 kernels are as without
+the enable.
+
+`req_reg` (on; OA's response OI-53) is select's request register, one
+bit per entry: valid, not issued, warp active and a copy's sources
+confirmed, as an earlier cycle ended. Its enable is what ooe_sched can
+form from its own flops (CG-5): a grant last cycle (the grant register,
+which masks select until the register drops the entry), the stop lead
+(a replay's return on time), and the flop of "the register differs from
+its next value and this edge does not capture it", so any other change
+is captured one edge late. A late
+rise costs a cycle at most; a late fall is safe, since a warp leaves
+Active only by a squash of all its entries and select reads valid and
+past rename's stages live (ooe_rs's bit). An earlier form held past
+rename in the register, captured from the allocation grant; a row freed
+and written again on one edge then requested on its last occupant's bit
+before it was past rename, which the model's check (OI-53: a candidate
+issued or of an inactive warp) and ooe_sched's bench both caught. A
+memop's terms stay live in the MIU pick. Over the four-warp kernels and
+the 48-seed sweep it costs nothing (alu8 589, alu16 823, vadd8 1034,
+cvt8 1246, red8 369; 960). ooe_select's bench logs what select used
+(`sel_rq`, `sel_gnt`, `sel_elig`), and ooe_sched's
+(test/ooe/sched_tb.cpp) compares the request register bit for bit.
+
+`branch_ends_group` (KNOB, off; OI-56, OA's measurement): a branch ends
+its rename group, so its checkpoint would be the RAT's state at the next
+edge, with no capture path and no output copy of the maps. With 1 (the
+branch's slot renames nothing more that cycle), the four-warp kernels
+measure alu8 587, alu16 838 (+1.8%), vadd8 1049 (+1.5%), vadd16 1030
+(−1.3%), red8 371 and cvt8 1257 (+0.9%), and the 48-seed sweep 964
+against 960. The S1 kernels are unchanged: one fetch-bound warp, where
+even rename_width 1 costs loop one cycle. With 2 (nothing renames after a
+branch that cycle) alu16 is 898 (+9.1%). Over 1% on two kernels, so it
+went to DA beside the copy (OA's response OI-56).
+
 ## Events and counters
 
 The model emits the schema's arbitration-sensitive events: `EV_DISPATCH` at
@@ -507,6 +560,26 @@ added with the event.
   - kill: ack after the notice and after every completion;
   - a fault at retirement;
   - a barrier and a `chwidth` serialisation;
+  - F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
+    CTA's count, which the launch carries (`barrier_count`) and the core
+    keeps per warp across a park, faults at dispatch with cause 9. It
+    completes as a no-op, holds nothing and never reaches SYU. One below
+    the count waits as before. Control `no-bar-fault` drops the check. The
+    count is the slot's, taken at launch and at restore-allocate, since a
+    restored warp may land in another slot (OA's response IS-16);
+  - fault causes as the ISA fixes them per stage (IS's response IS-16): a
+    decode fault is F-ILLEGAL (2), MIU's completion carries its own cause
+    (one without is an error, ISA v1.9 section 12.6), and F-BARRIER (9) is
+    OOE's at dispatch. F-WIDTH and F-FORMAT, also OOE's at dispatch, need
+    a per-register width and a format code the model does not hold yet
+    (OI-57);
+  - V-74: one fault-address register per warp keeps the oldest faulting
+    memop's address and ROB index, written by a faulting completion only if
+    older, cleared by a squash that takes it, and read for the fault record
+    at the head. Two faulting loads, completing in either order, report the
+    older's address. Control `fa-youngest` lets every completion write it;
+  - V-36 as an input assumption: a uop with an ordering that is not a
+    fence (mem_op 0xE) is an error;
   - the fixed-window predicate mode;
   - sectioned lanes:
     - four 8-bit warps co-issue, two 16-bit, one 32-bit;
@@ -638,8 +711,9 @@ warps. A lone warp's narrow rate is PF-29.
   a cycle outside setps, **2.40x**) and leaves alu16 at 823 (**1.59x**);
   the half pick takes alu16 to 710 (1.90x) but measures 26.8 NGD in
   ooe_select, past its stage (section-only 24.3, none 19.5), so it is
-  PF-31. DA's response OA-19 holds the first build to the measured rate;
-  PF-29 and PF-30 are the levers past it. Rename or issue at 8 wide, or a
+  PF-38. DA's response OA-19 holds the first build to the measured rate;
+  PF-29 and PF-31 (AR's warp-uniform register file, with loop control on
+  R) are the levers past it. Rename or issue at 8 wide, or a
   128-entry RCU RS, makes neither faster. Both columns print.
 - **OA-14's rotation equals its starting rule.** From 0, every warp rotates
   in lockstep and it equals home 0. From the slot index, it equals home =

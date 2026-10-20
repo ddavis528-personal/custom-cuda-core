@@ -218,7 +218,7 @@ struct Env {
 
   unsigned rnd(unsigned n) { return n ? unsigned(rng() % n) : 0; }
 
-  void launch(unsigned warp, unsigned slot, std::vector<Op> prog) {
+  void launch(unsigned warp, unsigned slot, std::vector<Op> prog, unsigned barriers = 16) {
     Warp x;
     x.id = warp;
     x.slot = slot;
@@ -229,6 +229,7 @@ struct Env {
     a.slot = slot;
     a.op = kAllocLaunch;
     a.ctaid = 7;
+    a.barrier_count = barriers;
     core.alloc(a);
   }
 
@@ -888,6 +889,7 @@ void testRestore() {
   for (unsigned k = 0; k != 6; ++k) e.step();
   const uint64_t stalls = e.core.counters["stall.restore"];
   Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
+  ra.barrier_count = 5;
   e.core.alloc(ra);
   unsigned took = 0;
   RatMap map{};
@@ -905,6 +907,9 @@ void testRestore() {
   EXPECT(e.core.counters["stall.restore"] - stalls == took, "rename stalled %llu cycles for a %u-cycle restore",
          (unsigned long long)(e.core.counters["stall.restore"] - stalls), took);
   EXPECT(e.core.heldGprs(0) == kArchGprs, "restore allocated %u", e.core.heldGprs(0));
+  // The CTA's barrier count rides restore-allocate too: the warp may land
+  // in another slot than it launched in (OA's response IS-16).
+  EXPECT(e.core.slotBarCount(0) == 5, "restore-allocate left barrier count %u", e.core.slotBarCount(0));
   const std::set<unsigned> rows(map.gpr.begin(), map.gpr.end());
   EXPECT(rows.size() == kArchGprs && !rows.count(c.phys_zero), "the map names %zu distinct rows", rows.size());
   Alloc act; act.warp = 0; act.slot = 0; act.op = kAllocRestoreActivate;
@@ -1001,6 +1006,126 @@ void testBarrier() {
   e.finish();
 }
 
+/// F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
+/// CTA's allocated count faults at dispatch, cause 9, and never reaches
+/// SYU; one below it waits as before. The control drops the check, so the
+/// wait goes out and no fault is taken.
+void testBarrierFault() {
+  for (const bool control : {false, true}) {
+    for (const unsigned count : {3u, 4u}) {
+      g_test = control ? "barrier fault (control)" : "barrier fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_bar_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBarrier; p.push_back(b);     // ID 3
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p, count);
+      unsigned bars = 0, faults = 0, cause = 0;
+      for (unsigned k = 0; k != 40; ++k) {
+        e.step();
+        bars += unsigned(e.log.back().bars.size());
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want_fault = count <= 3 && !control;
+      if (control) {
+        if (count == 3) {
+          const bool caught = faults == 0 && bars == 1;
+          std::printf("  %-24s %s\n", "control no-bar-fault", caught ? "caught" : "MISSED");
+          EXPECT(caught, "dropping the check should send the wait");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want_fault, "count %u: %u faults", count, faults);
+      if (want_fault) {
+        EXPECT(cause == kCauseBarrier, "cause %u, want F-BARRIER (%u)", cause, kCauseBarrier);
+        EXPECT(bars == 0, "a faulting barrier reached SYU");
+      } else {
+        EXPECT(bars == 1, "count %u: %u barrier waits", count, bars);
+      }
+    }
+  }
+}
+
+/// V-74 (OA's response IS-16): one fault-address register per warp holds
+/// the oldest faulting memop's address, whatever order the completions come
+/// in, and the fault record reads it at the head. Two loads both fault: in
+/// one run the older completes first, in the other the younger. Each must
+/// report the older's address and MIU's cause. The control lets every
+/// faulting completion write the register, so the younger's, landing
+/// second, overwrites the older's, and V-74 must fire.
+void testMemFault() {
+  for (const bool control : {false, true}) {
+    unsigned caught = 0;
+    for (const bool younger_first : {false, true}) {
+      g_test = control ? "mem fault (control)" : "mem fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_fa_youngest = control;
+      Env e(c);
+      e.keep_log = true;
+      // A slow SFU op ahead holds the head, so both completions land before
+      // the fault is taken.
+      std::vector<Op> p;
+      Op sl; sl.k = kSfu; sl.dst = 5; sl.nsrc = 1; p.push_back(sl);
+      for (unsigned i = 0; i != 2; ++i) { Op a; a.k = kLoad; a.dst = 1 + i; a.nsrc = 1; a.src[0] = 6; p.push_back(a); }
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      bool marked[3] = {false, false, false};
+      std::vector<Fault> faults;
+      const int before = g_fail;
+      for (unsigned k = 0; k != 120; ++k) {
+        // Fault both loads' completions, and delay one so the other lands first.
+        std::vector<std::pair<uint64_t, Cmpl>> moved;
+        for (auto it = e.cmpls.begin(); it != e.cmpls.end();) {
+          const unsigned idx = it->second.rob_tag & 31;
+          if (idx >= 1 && idx <= 2 && !marked[idx]) {
+            marked[idx] = true;
+            Cmpl x = it->second;
+            x.status = 1;
+            x.cause = 6;                      // F-ADDR
+            x.address = 0x1000 + idx - 1;
+            // Older first: both land in one cycle, the older's processed
+            // first, before the head can take it. Younger first: two cycles.
+            const uint64_t due = younger_first ? (idx == 1 ? 42 : 40) : 40;
+            moved.push_back({due, x});
+            it = e.cmpls.erase(it);
+          } else {
+            ++it;
+          }
+        }
+        std::sort(moved.begin(), moved.end(),
+                  [](const auto &a, const auto &b) { return (a.second.rob_tag & 31) < (b.second.rob_tag & 31); });
+        for (auto &m : moved) e.cmpls.insert(m);
+        g_quiet = control;
+        e.step();
+        g_quiet = false;
+        for (const Fault &f : e.log.back().faults) faults.push_back(f);
+      }
+      if (control) {
+        caught += g_fail != before || !e.errors.empty();
+        g_fail = before;
+        continue;
+      }
+      for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+      EXPECT(faults.size() == 1, "%zu fault records", faults.size());
+      if (!faults.empty()) {
+        EXPECT(faults[0].address == 0x1000, "address %#llx, want the older load's 0x1000",
+               (unsigned long long)faults[0].address);
+        EXPECT(faults[0].cause == 6, "cause %u, want MIU's 6 (F-ADDR)", faults[0].cause);
+      }
+    }
+    if (control) {
+      g_test = "mem fault (control)";
+      std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a register taking every completion should break V-74");
+    }
+  }
+}
+
 /// The free list as the RTL builds it (OI-22): allocation from a rotating
 /// pointer, so a freed register comes back only once the pointer wraps, and a
 /// register freed in a cycle is not allocated until the next.
@@ -1041,6 +1166,37 @@ void testReadyReg() {
                    (unsigned long long)stale, (unsigned long long)rstale);
     else EXPECT(!stale && !rstale, "stale grants %llu with no ready register", (unsigned long long)stale);
   }
+  // OI-54's control: a stop or miss captured one edge late lets a replayed
+  // producer be re-granted inside its dependant's stale window; the
+  // dependant, granted on its stale bit, is never replayed and confirms on
+  // a result it read too early. The model's OA-17 check must see it.
+  g_test = "ready register: a late capture confirms a stale grant (OI-54's control)";
+  const int saved = g_fail;
+  bool seen = false;
+  // A shallow decode queue spaces a warp's uops so the race opens (found
+  // at decq 4 in the sweep).
+  for (unsigned run = 0; run != 4 * 12 && !seen; ++run) {
+    const unsigned seed = run % 12 + 1;
+    std::mt19937 rng(seed);
+    Config c = baseConfig();
+    c.rs_warp_cap = c.decq_warp_max = 0;
+    c.decq = (unsigned[]){4, 6, 8, 12}[run / 12];
+    c.inject_late_event = true;
+    Env e(c, seed);
+    e.miss_pct = 20;
+    const auto report = e.core.on_error;
+    e.core.on_error = [&](const std::string &m) {
+      seen = seen || m.find("OA-17") != std::string::npos;
+      report(m);
+    };
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+    g_quiet = true;
+    e.finish(20000);
+    g_quiet = false;
+  }
+  g_fail = saved;
+  EXPECT(seen, "late capture never confirmed a stale grant");
+  std::printf("  %-24s %s\n", "control late-event", seen ? "caught" : "MISSED");
 }
 
 void testFreeVec() {
@@ -1321,6 +1477,7 @@ void testControls() {
       {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.fast[4] = 3; }},
       {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
       {"narrow-footprint", [](Config &c) { c.sectioned = true; c.inject_narrow_footprint = true; }},
+      {"no-alloc-lead", [](Config &c) { c.inject_no_alloc_lead = true; }},   // V-73
   };
   for (const C &x : cs) {
     const int saved = g_fail;
@@ -1645,6 +1802,8 @@ int main(int argc, char **argv) {
   testKill();
   testFault();
   testBarrier();
+  testBarrierFault();
+  testMemFault();
   testChwidth();
   testSections();
   testFreeVec();

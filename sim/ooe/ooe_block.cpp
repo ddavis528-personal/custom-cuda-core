@@ -220,6 +220,7 @@ private:
       a.slot = unsigned(get(m.payload, c.rau_ooe, "tier1_id"));
       a.ctaid = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
+      a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
       core_.alloc(a);
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {

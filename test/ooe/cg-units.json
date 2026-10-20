@@ -159,6 +159,29 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_rat"
       }
+    },
+    {
+      "name": "ooe_sched",
+      "module": "ooe_sched",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "rtl/ooe/ooe_pick.sv",
+        "rtl/ooe/ooe_select.sv",
+        "rtl/ooe/ooe_sched.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_sched {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_sched"
+      }
     }
   ]
 }

@@ -6,25 +6,26 @@
 //       position), Memory operations (V-17: a memop issues only on
 //       confirmed sources; OI-15: memops in program order per warp), the
 //       masked load's copy (A-38, V-61: the copy issues in an earlier cycle
-//       than its load, on confirmed sources) and bulk discards (V-23: a
-//       discard takes P0, and no memop of its warp goes with it).
+//       than its load, on confirmed sources), bulk discards (V-23: a
+//       discard takes P0, and no memop of its warp goes with it), and
+//       ooe_sched's registers (OA's responses OI-51, OI-53).
 //
-// The requests, then one ooe_pick per class; the RCU class's with the
-// section fallback (FB; OA's response IS-9), which the MIU pipes do not
-// take. The design is section-only (FB 1): with the aligned-half pick too
-// (FB 2) this module measured 26.8 NGD, past its stage; section-only
-// measures 24.3, against 19.5 with none. FB defaults to 0 until ooe_sched
-// instantiates this module with 1: alone, an inner helper is held to 16
-// (NGD-6), and FB 1 adds paths over that which its ratchet entries do not
-// name. test/ooe/select_tb.cpp builds it with the model's pick_fallback. An entry requests its
-// footprint's resources (S0-S3 and R for the RCU class, bits 0-4; P0-P3
-// for the MIU class, bits 5-8) when it is valid, not issued, past rename's
-// stages, its warp active, its row ready, and none of its resources is
-// taken by a bulk discard. A copy also needs its sources confirmed. A
-// memop also needs its sources confirmed, no bulk discard of its warp
-// this cycle, its copy (if it has one still in the RS) issued in an
-// earlier cycle, and no older unissued memop of its warp: the age matrix
-// gives "older", so the order check is one row-wide OR.
+// Select's logic in ooe_sched, timed there (an inner helper,
+// ooe_select.ngd.json). The requests, then one ooe_pick per class; the RCU
+// class's with the section fallback (FB; OA's response IS-9), which the
+// MIU pipes do not take. The design is FB 1, which ooe_sched sets.
+//
+// An entry requests its footprint's resources (S0-S3 and R for the RCU
+// class, bits 0-4; P0-P3 for the MIU class, bits 5-8) when ooe_sched's
+// request register holds it (not issued, its warp active, and a copy's
+// sources confirmed, as an earlier cycle ended), its ready register holds
+// it, its grant register does not (granted last cycle, not yet captured
+// as issued), and ooe_rs says it is valid and past rename's stages. A
+// memop also needs none of its pipes taken by a bulk discard (a discard
+// takes MIU pipes only, V-23), its sources confirmed, no bulk discard of
+// its warp this cycle, its copy (if it has one still in the RS) issued in
+// an earlier cycle, and no older unissued memop of its warp: the age
+// matrix gives "older", so the order check is one row-wide OR.
 //
 // Sources confirmed is "no dependency bit left": a confirmed entry is freed
 // in the cycle it confirms and its column cleared (ooe_confirm), so a bit
@@ -34,35 +35,31 @@
 // its candidates and its grants as it runs (Core::wakeLog: sel_*);
 // test/ooe/select_tb.cpp drives this module with the inputs and compares
 // both.
-//
-// Combinational: the state it reads is held by ooe_rs (valid, the matrix),
-// ooe_wake (issued), ooe_ready, ooe_age, the payload and the warp table.
 //===----------------------------------------------------------------------===//
 module ooe_select #(
   parameter int N  = 45,     // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
   parameter int NR = 30,     // RCU-class entries, [0, NR)
   parameter int S  = 4,      // tier-1 warp slots (CCV_TIER1_WARPS)
-  parameter int FB = 0,      // the RCU class's section fallback (ooe_pick; OA's response IS-9); ooe_sched sets 1
+  parameter int FB = 1,      // the RCU class's section fallback (ooe_pick; OA's response IS-9)
   localparam int NM = N - NR,
   localparam int LS = $clog2(S),
   localparam int W  = $clog2(N),
   localparam int RR = 5,     // the RCU class's resources: S0-S3, R
   localparam int RM = 4      // the MIU class's: P0-P3
 ) (
-  input  logic [N-1:0]       valid_cq03h,
-  input  logic [N-1:0]       iss_cq03h,     // issued
-  input  logic [N-1:0]       elig_cq03h,    // past rename's stages
-  input  logic [N-1:0]       ready_cq03h,   // ooe_ready
+  input  logic [N-1:0]       rq_cq03h,      // ooe_sched's request register
+  input  logic [N-1:0]       ready_cq03h,   // its ready register
+  input  logic [N-1:0]       gnt_cq03h,     // its grant register: granted last cycle
+  input  logic [N-1:0]       vel_cq03h,     // valid and past rename's stages (ooe_rs)
+  input  logic [N-1:0]       iss_cq03h,     // issued (ooe_wake)
   input  logic [N*N-1:0]     dep_cq03h,     // row i, column j: i waits on j
   input  logic [N*LS-1:0]    slot_cq03h,    // each entry's warp slot
-  input  logic [S-1:0]       active_cq03h,  // each slot's warp is active
   input  logic [N*9-1:0]     res_cq03h,     // each entry's footprint
-  input  logic [N-1:0]       copy_cq03h,    // a masked load's copy-only op
   input  logic [N-1:0]       chas_cq03h,    // a memop whose copy is in the RS
   input  logic [N*W-1:0]     cidx_cq03h,    // and that copy's entry
   input  logic [NR*NR-1:0]   older_r_cq03h, // the RCU class's age matrix
   input  logic [NM*NM-1:0]   older_m_cq03h, // the MIU class's
-  input  logic [8:0]         busy_cq03h,    // resources a bulk discard took
+  input  logic [RM-1:0]      busy_cq03h,    // MIU pipes a bulk discard took (only P0, V-23)
   input  logic [S-1:0]       block_cq03h,   // slots with a bulk discard
   output logic [N-1:0]       cand_cq03h,    // requests this cycle
   output logic [N-1:0]       grant_cq03h,   // issues this cycle
@@ -82,13 +79,13 @@ module ooe_select #(
       order_ok[e] = 1'b1;
       if (e >= NR)
         for (int j = NR; j < N; j++)
-          if (older_m_cq03h[(e - NR) * NM + (j - NR)] && valid_cq03h[j] && !iss_cq03h[j] &&
+          if (older_m_cq03h[(e - NR) * NM + (j - NR)] && vel_cq03h[j] && !iss_cq03h[j] &&
               slot_cq03h[j * LS +: LS] == sl)
             order_ok[e] = 1'b0;
-      req[e] = valid_cq03h[e] && !iss_cq03h[e] && elig_cq03h[e] && active_cq03h[sl] && ready_cq03h[e] &&
-               (res_cq03h[e * 9 +: 9] & busy_cq03h) == '0;
-      if (copy_cq03h[e]) req[e] = req[e] && conf[e];
-      if (e >= NR) req[e] = req[e] && conf[e] && !block_cq03h[sl] && copy_ok[e] && order_ok[e];
+      req[e] = rq_cq03h[e] && ready_cq03h[e] && !gnt_cq03h[e] && vel_cq03h[e];
+      if (e >= NR)
+        req[e] = req[e] && (res_cq03h[e * 9 + RR +: RM] & busy_cq03h) == '0 && conf[e] && !block_cq03h[sl] &&
+                 copy_ok[e] && order_ok[e];
     end
     for (int e = 0; e < NR; e++) req_r[e * RR +: RR] = req[e] ? res_cq03h[e * 9 +: RR] : '0;
     for (int e = 0; e < NM; e++) req_m[e * RM +: RM] = req[NR + e] ? res_cq03h[(NR + e) * 9 + RR +: RM] : '0;

@@ -788,19 +788,22 @@ fi
 log="$B/kernel_ordering-on-load.log"
 n=$(grep -c "^CHECK dec: pc 0x[0-9a-f]* has ordering 1 but is not a fence" "$log")
 m=$(grep -c "^CHECK miu: rob tag [0-9]* has ordering 1 but is not a fence" "$log")
-if [ "$n" = 7 ] && [ "$m" = 7 ] && [ "$(field "$log" check_failures)" = 14 ]; then
-  say "--break ordering-on-load: DEC and MIU refuse" "PASS (7 loads each)"
+# OOE's model holds V-36 as an input assumption too (OI, dbe8acd).
+o=$(grep -c "^CHECK ooe: V-36: uop seq [0-9]* carries ordering 1 on mem_op 0, not a fence" "$log")
+if [ "$n" = 7 ] && [ "$m" = 7 ] && [ "$o" = 7 ] && [ "$(field "$log" check_failures)" = 21 ]; then
+  say "--break ordering-on-load: DEC, OOE and MIU refuse" "PASS (7 loads each)"
 else
-  bad "--break ordering-on-load" "$n DEC and $m MIU refusals (want 7 each): $(grep '^KERNEL' "$log")"
+  bad "--break ordering-on-load" "$n DEC, $o OOE and $m MIU refusals (want 7 each): $(grep '^KERNEL' "$log")"
 fi
 
 "$SKEL" --kernel "$K" --break memop-ordering >"$B/kernel_memop-ordering.log" 2>&1
 log="$B/kernel_memop-ordering.log"
 n=$(grep -c "^CHECK miu: rob tag [0-9]* has ordering 1 but is not a fence" "$log")
-if [ "$n" = 7 ] && [ "$(field "$log" check_failures)" = 7 ]; then
-  say "--break memop-ordering: MIU refuses each" "PASS (7 loads)"
+o=$(grep -c "^CHECK ooe: V-36: uop seq [0-9]* carries ordering 1 on mem_op 0, not a fence" "$log")
+if [ "$n" = 7 ] && [ "$o" = 7 ] && [ "$(field "$log" check_failures)" = 14 ]; then
+  say "--break memop-ordering: OOE and MIU refuse each" "PASS (7 loads)"
 else
-  bad "--break memop-ordering" "$n refusals (want 7): $(grep '^KERNEL' "$log")"
+  bad "--break memop-ordering" "$n MIU and $o OOE refusals (want 7 each): $(grep '^KERNEL' "$log")"
 fi
 
 exit $fail

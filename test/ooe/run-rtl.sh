@@ -19,6 +19,9 @@
 #   live (test/ooe/rs_tb.cpp);
 # - ooe_select against the model's sectioned select, live
 #   (test/ooe/select_tb.cpp);
+# - ooe_sched (ooe_ready, its ready and request registers, ooe_select and
+#   its grant register) against the model's registers and grants, live, a
+#   cycle behind it (test/ooe/sched_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
 #   its directed and random unit tests (test/ooe/rat_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
@@ -317,6 +320,33 @@ for c in no-order no-conf no-busy; do
     say "  control $c (select)" "MISSED"; fail=1
   else
     say "  control $c (select)" "caught"
+  fi
+done
+
+# ooe_sched, with ooe_ready, ooe_select and ooe_pick inside it, driven a
+# model cycle behind so its leads can come from the next cycle. Its
+# registers are read inside it (--public-flat-rw).
+dir=build/ooe-rtl/sched
+mkdir -p "$dir"
+if ! verilator --cc --exe --build --trace -j 0 -O2 --assert --public-flat-rw -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GN="$n" -GNR="$n_rcu" -GS="$slots" -GFB="$pick_fb" --top-module ooe_sched --Mdir "$dir" -o sched_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DSCH_N=$n -DSCH_NR=$n_rcu -DSCH_S=$slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" \
+      "$PWD/rtl/ooe/ooe_sched.sv" "$PWD/test/ooe/sched_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "sched: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/sched_tb" "$seeds" 2>&1); then
+  say "sched (ready, request, grant registers) == model" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "sched == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-msd no-miss-lead late-leads no-alloc-lead; do
+  if SCHED_CONTROL=$c "$dir/sched_tb" 6 >/dev/null 2>&1; then
+    say "  control $c (sched)" "MISSED"; fail=1
+  else
+    say "  control $c (sched)" "caught"
   fi
 done
 exit $fail
