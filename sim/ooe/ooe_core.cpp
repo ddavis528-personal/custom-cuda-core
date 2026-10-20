@@ -2452,41 +2452,56 @@ void Core::rename() {
   }
   unsigned budget = cfg_.rename_width;
   std::vector<bool> blocked(slot_.size(), false);
-  for (bool progress = true; progress && budget;) {
-    progress = false;
-    for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+  // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
+  // refused (0, and the slot is blocked for the cycle).
+  auto takeOne = [&](unsigned si) -> int {
+    const unsigned w = slot_[si].warp;
+    auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+    if (it == decq_.end()) return 0;
+    // V-53: no stale-epoch uop is renamed.
+    if (it->fetch_epoch != epoch_[w]) {
+      ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
+      decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+      ++decq_freed_;
+      decq_.erase(it);
+      --slot_[si].decq;
+      return 2;
+    }
+    const bool branch = it->attr.branch;
+    if (!tryRename(si, *it)) {
+      blocked[si] = true;
+      return 0;
+    }
+    // OI-56: a branch ends its rename group, so its checkpoint is the
+    // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
+    if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
+    if (branch && cfg_.branch_ends_group == 2) budget = 1;   // the decrement below ends the cycle
+    decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
+    ++decq_freed_;
+    decq_.erase(it);
+    --slot_[si].decq;
+    --budget;
+    return 1;
+  };
+  if (cfg_.rename_one_warp) {
+    // OI-63: a prefix of each of up to rename_one_warp warps, in the
+    // rotating order, each warp's before the next's (the RTL's go over
+    // rename's registered per-slot fits).
+    unsigned used = 0;
+    for (unsigned k = 0; k != slot_.size() && budget && used != cfg_.rename_one_warp; ++k) {
       const unsigned si = (rr_rename_ + k) % slot_.size();
-      if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
-      const unsigned w = slot_[si].warp;
-      auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
-      if (it == decq_.end()) continue;
-      // V-53: no stale-epoch uop is renamed.
-      if (it->fetch_epoch != epoch_[w]) {
-        ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
-        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
-        ++decq_freed_;
-        decq_.erase(it);
-        --slot_[si].decq;
-        progress = true;
-        continue;
-      }
-      const bool branch = it->attr.branch;
-      if (tryRename(si, *it)) {
-        // OI-56: a branch ends its rename group, so its checkpoint is the
-        // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
-        if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
-        if (branch && cfg_.branch_ends_group == 2) budget = 1;   // the decrement below ends the cycle
-        // OI-63: one warp a cycle: the others take nothing more.
-        if (cfg_.rename_one_warp)
-          for (unsigned o = 0; o != slot_.size(); ++o) if (o != si) blocked[o] = true;
-        decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
-        ++decq_freed_;
-        decq_.erase(it);
-        --slot_[si].decq;
-        --budget;
-        progress = true;
-      } else {
-        blocked[si] = true;
+      if (slot_[si].st == WarpState::kFree) continue;
+      bool took = false;
+      for (int r; budget && !blocked[si] && (r = takeOne(si)) != 0;) took = took || r == 1;
+      used += took;
+    }
+  } else {
+    for (bool progress = true; progress && budget;) {
+      progress = false;
+      for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+        const unsigned si = (rr_rename_ + k) % slot_.size();
+        if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
+        if (takeOne(si)) progress = true;
       }
     }
   }
