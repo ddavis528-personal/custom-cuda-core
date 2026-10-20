@@ -222,6 +222,11 @@ struct Config {
   /// checkpoint is the RAT's state at the next edge. 0 off; 1 the branch's
   /// slot renames nothing more that cycle; 2 nothing renames after it.
   unsigned branch_ends_group = 0;
+  /// KNOB (OA's response OI-63): rename takes a prefix from one warp a
+  /// cycle, the first in the rotating order whose head passes (the RTL's
+  /// go over rename's registered per-slot fits). Off: uop by uop, warps
+  /// interleaved round robin.
+  unsigned rename_one_warp = 0;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address

@@ -1664,6 +1664,7 @@ void sweep() {
       {"fl_buf", {0, 4, 8, 16}, &Config::fl_buf},
       {"rename_width", {1, 2, 3, 4}, &Config::rename_width},
       {"retire_per_rob", {1, 2, 4}, &Config::retire_per_rob},
+      {"rename_one_warp", {0, 1}, &Config::rename_one_warp},
   };
   auto run = [](const Config &c, unsigned seeds = 6) {
     uint64_t total = 0;
