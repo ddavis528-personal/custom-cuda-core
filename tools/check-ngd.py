@@ -114,7 +114,7 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-7 st_cq02h",
     ],
     "ooe_rat": [
-        "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-7 rat_cq02h",
+        "NGD-7 rat_cq02h",
     ],
     "ooe_rs": [
         "NGD-3 free_cq01h",
@@ -339,16 +339,32 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
              "opt_clean; write_blif %s" % (ug, blif)])
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (work, (r.stdout + r.stderr)[-2000:]))
-    r = run(["yosys-abc", "-c", "read_blif %s; read_library %s; strash; dch; map; print_stats; "
-             "write_blif %s" % (blif, GENLIB, mapped)])
-    m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
-    if r.returncode or not m:
-        raise SystemExit("check-ngd: %s: ABC failed:\n%s" % (work, (r.stdout + r.stderr)[-2000:]))
-    t = Timing(mapped, float(m.group(1)), lib)
+    def mapped_timing(how, out):
+        r = run(["yosys-abc", "-c", "read_blif %s; read_library %s; strash; dch; %s; "
+                 "print_stats; write_blif %s" % (blif, GENLIB, how, out)])
+        m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
+        if r.returncode or not m:
+            raise SystemExit("check-ngd: %s: ABC failed:\n%s"
+                             % (work, (r.stdout + r.stderr)[-2000:]))
+        t = Timing(out, float(m.group(1)), lib)
+        if abs(t.abc_like - t.abc) > EPS:
+            raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
+                             "ABC's, %.2f (%s)" % (work, t.abc_like, t.abc, how))
+        return t
+    t = mapped_timing("map", mapped)
+    # Input to flop (NGD-3), each input from the better of two maps (OI-64):
+    # map's area recovery lets every path with slack grow to the module's
+    # longest, so an input's cone can read the worst path whatever its own
+    # logic, and NGD-3 then adds the port's arrival on top. map -r, without
+    # area recovery, restores it; but it is a different mapping, not a
+    # uniformly shallower one, and some inputs read deeper there. Each is a
+    # legal implementation, and timing-driven synthesis takes the better for
+    # a critical input. ABC drops BLIF input arrivals, so the inputs cannot
+    # be costed in either map.
+    tr = mapped_timing("map -r", os.path.join(work, "map_r.blif"))
+    t.ir_area, t.ir_r = t.ir, tr.ir
+    t.ir = {p: min(v, tr.ir.get(p, v)) for p, v in t.ir.items()}
     t.cut, t.regname = cut, reg_names(d)
-    if abs(t.abc_like - t.abc) > EPS:
-        raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
-                         "ABC's, %.2f" % (work, t.abc_like, t.abc))
     return t
 
 
@@ -896,7 +912,7 @@ def selftest():
 
     fx = {m: fixture("fx_" + m[7:], m) for m in
           ("ngd_fx_ok", "ngd_fx_out", "ngd_fx_in", "ngd_fx_thru", "ngd_fx_stage",
-           "ngd_fx_wire")}
+           "ngd_fx_wire", "ngd_fx_relax")}
     for u in fx.values():
         u.measure()
     none = Budgets()
@@ -913,6 +929,22 @@ def selftest():
         expect(False, "a timing pass with a wrong NAND2 delay agreed with ABC")
     except SystemExit as e:
         expect("is not ABC's" in str(e), "a wrong delay table stopped the run otherwise: %s" % e)
+    # 1b. NGD-3 takes each input from the better of two maps (OI-64): area
+    #     recovery relaxes ngd_fx_relax's 8-bit add toward its multiplier, so
+    #     the area map alone would put input i over the stage at the default
+    #     arrival; map -r keeps it within. And NGD-3 is the shorter of the two,
+    #     for every input of every fixture.
+    rx = fx["ngd_fx_relax"].t
+    expect(rx.ir_area["i"] + (STAGE - PORT) > STAGE + EPS
+           and rx.ir["i"] + (STAGE - PORT) <= STAGE + EPS,
+           "ngd_fx_relax no longer shows area recovery's relaxed input (area %.1f, -r %.1f)"
+           % (rx.ir_area["i"], rx.ir_r.get("i", NEG)))
+    expect("NGD-3 i" not in keys(fx["ngd_fx_relax"]),
+           "NGD-3 took input i from the area-recovered map: %s"
+           % findings(fx["ngd_fx_relax"], none))
+    expect(all(u.t.ir[p] == min(u.t.ir_area[p], u.t.ir_r.get(p, u.t.ir_area[p]))
+               for u in fx.values() for p in u.t.ir),
+           "an input's NGD-3 depth is not the shorter of its two maps")
     # 2. Within every default: nothing. An input wired straight to an
     #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
     ok = fx["ngd_fx_ok"]
