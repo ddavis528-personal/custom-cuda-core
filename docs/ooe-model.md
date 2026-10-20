@@ -384,6 +384,15 @@ the next. That is what lets the RTL's queue fit its stage. `ooe-test
 --sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
 and 12 entries for comparison.
 
+`decq_take_late` (off; OA-21's option (a), awaiting DA): rename's take is
+registered in the decode queue and popped an edge late, so the taken
+entries hold their credits one cycle more, as `decq_flush_late` holds a
+flush's. `ooe-test --sweep` measures it under each go (`rename_one_warp`
+0, 1 and 2), 48 seeds: it costs 1.8 points under the interleave, 3.5
+under one warp and 3.1 under two. One more decode-queue entry takes back
+all of it under the interleave, 2.3 points under one warp and 1.9 under
+two.
+
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
 is when rename's go decision sees this cycle's frees. 0 is the ideal:

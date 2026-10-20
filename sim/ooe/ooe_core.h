@@ -184,6 +184,10 @@ struct Config {
   /// late (ooe_decq, OA's response OI-58): the flushed entries hold their
   /// credits one cycle more.
   bool decq_flush_late = true;
+  /// Rename's take is registered in the decode queue and popped an edge
+  /// late (OA-21 (a)): the taken entries hold their credits one cycle more.
+  /// Off until DA settles OA-21; the sweep measures it.
+  bool decq_take_late = false;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -677,7 +681,7 @@ public:
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {
     return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0) +
-           (cfg_.decq_flush_late ? decq_flush_prev_ : 0);
+           (cfg_.decq_flush_late ? decq_flush_prev_ : 0) + (cfg_.decq_take_late ? decq_take_prev_ : 0);
   }
   /// The adapter left a uop of this warp in the channel because canAccept
   /// said no: count which limit held it (the decode-queue events).
@@ -1020,6 +1024,7 @@ private:
   RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
   unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
+  unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)

@@ -37,7 +37,8 @@ std::string Config::apply(const std::string &spec) {
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
-                                     {"decq_flush_late", &decq_flush_late}};
+                                     {"decq_flush_late", &decq_flush_late},
+                                     {"decq_take_late", &decq_take_late}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -279,6 +280,8 @@ void Core::cycle(uint64_t now) {
   decq_freed_ = 0;
   decq_flush_prev_ = decq_flush_now_;
   decq_flush_now_ = 0;
+  decq_take_prev_ = decq_take_now_;
+  decq_take_now_ = 0;
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   rs_prompt_[0] = rs_prompt_[1] = 0;
@@ -2463,6 +2466,7 @@ void Core::rename() {
       ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
       decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
       ++decq_freed_;
+      ++decq_take_now_;
       decq_.erase(it);
       --slot_[si].decq;
       return 2;
@@ -2478,6 +2482,7 @@ void Core::rename() {
     if (branch && cfg_.branch_ends_group == 2) budget = 1;   // the decrement below ends the cycle
     decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
     ++decq_freed_;
+    ++decq_take_now_;
     decq_.erase(it);
     --slot_[si].decq;
     --budget;

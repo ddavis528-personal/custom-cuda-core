@@ -1701,6 +1701,24 @@ void sweep() {
     const double cy = run(c);
     std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
   }
+  // OA-21 (a): rename's take registered in decq and popped an edge late,
+  // its entries holding their credits a cycle more, under each go: the
+  // interleave (0), one warp and two warps a cycle. 48 seeds against the
+  // default (interleave, the take popped at its own edge).
+  {
+    const double r48 = run(base, 48);
+    for (unsigned w : {0u, 1u, 2u})
+      for (unsigned late : {0u, 1u, 2u}) {
+        // 2: the take late, the queue an entry larger, against its credit.
+        Config c = base;
+        c.rename_one_warp = w;
+        c.decq_take_late = late != 0;
+        c.decq += late == 2;
+        const double cy = run(c, 48);
+        std::printf("| rename_one_warp, decq_take_late (48 seeds, default %.0f) | %u, %u%s | %.0f | %.3f |\n", r48, w,
+                    unsigned(late != 0), late == 2 ? ", decq +1" : "", cy, cy / r48);
+      }
+  }
   // When rename sees this cycle's RS and ROB frees (ren_credit), against
   // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
   // late (OA's item 4, not accepted) and the 2-step trim. Their differences
