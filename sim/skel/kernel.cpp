@@ -1891,6 +1891,8 @@ private:
     put(u, c.dec_ooe, "src_valid", sv);
     put(u, c.dec_ooe, "pred_use", predUseOf(op));
     put(u, c.dec_ooe, "imm_kind", immKindOf(op));
+    // fmt_rsv and fmt_opnd stay 0: no op in the skeleton's table has an FP
+    // format field, so none can raise F-FORMAT (OI-57).
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to
     // MIU unexamined. 0xF is OOE's bulk discard, never DEC's (V-52).
     if (op->cls == kLoad || op->cls == kStore) {
