@@ -179,6 +179,29 @@ struct Config {
   /// arrival until the next, so this cycle's arrivals see it still held.
   /// On (DA's response OI-39), because ooe_decq fits its stage only so.
   bool decq_late_credit = true;
+  /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
+  /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
+  /// every free (OA's stage-boundary item 4, rename's own credits; not
+  /// accepted, DA 2026-10-19). 2: TI-19 as OA answers it: a confirmation's
+  /// RS free and a retirement's ROB free count in their cycle, the RS's up
+  /// to ren_free_cap per class (its thermometer), and the rest, past the cap
+  /// or from a squash, kill or landing, a cycle late. 2 at cap 4 is the
+  /// design (accepted by Daniel, 2026-10-19).
+  unsigned ren_credit = 2;
+  unsigned ren_free_cap = 4;
+  /// Select reads a registered ready (OA's response OI-51), as ooe_sched
+  /// does: a row is ready at select if its lines say so now, or said so at
+  /// the end of the last cycle for this one. Rises are unchanged (every
+  /// wake rises a cycle early into the register); a drop (a producer
+  /// returned to Waiting) reaches select a cycle late, so an entry may be
+  /// granted on a stale bit and is returned by the next hop (OA-17).
+  /// false: select reads the lines as they stand.
+  bool ready_reg = true;
+  /// Select's fallback pick on the lane sections (OA's response IS-9,
+  /// pickResources): 0 none, 1 section-only (the design: section-plus-half
+  /// measured 26.8 NGD in ooe_select, over the stage; section-only 24.3),
+  /// 2 section-plus-half.
+  unsigned pick_fallback = 1;
   /// CCV_FOOT_MIN[bypass_group] in sections, from the generated
   /// CCV_P_FOOT_MIN_* (TI's response IS-7), so a change to a parameter
   /// reaches the model: integer, FP (provisional, IS-7), address
@@ -303,8 +326,17 @@ struct PickReq {
 /// ooe_pick is checked against: each resource grants its oldest
 /// requester, and a requester issues only if it wins every resource it
 /// names. Returns which requesters issue; *lost counts those that won some
-/// resources but not all.
-std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr);
+/// resources but not all (in that pick, before any fallback).
+///
+/// The fallback (OA's response IS-9), on resources 0-3, the lane sections:
+/// a section whose winner did not issue grants instead its oldest
+/// requester that names that section alone (1); and with 2, an aligned
+/// half (sections 0-1, 2-3) whose sections both fell through grants its
+/// oldest half-footprint requester, when that is the oldest of the half's
+/// pair and single-section requesters. Every pick is a parallel
+/// oldest-of-N over the same ages, so the RTL needs no second pass.
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost = nullptr,
+                                unsigned fallback = 0);
 
 struct Issue {          ///< ccv_ooe_rcu_issue
   uint64_t tid = 0;
@@ -431,7 +463,12 @@ enum class OoeEv : unsigned {
 /// room. A free reaches the free bits at the next edge, so it is visible
 /// to refill a cycle after it is freed and to allocation the cycle after
 /// that. Buffered entries stay free in the bits, so the admission floors
-/// (ready()) count them. With cap 0 it is the earlier structure: the first
+/// (ready()) count them. An allocation clears its entry's free bit at the
+/// edge, but leaves the buffer a cycle later (OA's response OI-52): the
+/// free list registers each cycle's take, and pops that many at the next
+/// edge, so its buffer's clock enable comes from its own flops. Meanwhile
+/// those entries, in transit, sit at the buffer's head, and allocation
+/// takes the entries behind them. With cap 0 it is the earlier structure: the first
 /// free entry at or after one rotating pointer, a free allocatable from the
 /// next cycle. ooe_freelist builds the buffered form.
 class FreeVec {
@@ -441,6 +478,7 @@ public:
     pend_.assign(n, 0);
     inbuf_.assign(n, 0);
     buf_.clear();
+    transit_ = took_ = 0;
     ready_ = n;
     npend_ = 0;
     ptr_ = 0;
@@ -454,17 +492,16 @@ public:
   size_t size() const { return ready_ + npend_; }
   /// Free entries the admission floors count: all but this cycle's frees.
   size_t ready() const { return ready_; }
-  /// Entries allocation can take this cycle: the buffer, or the free bits.
-  size_t avail() const { return cap_ ? buf_.size() : ready_; }
+  /// Entries allocation can take this cycle: the buffer behind the entries
+  /// in transit, or the free bits.
+  size_t avail() const { return cap_ ? buf_.size() - transit_ - took_ : ready_; }
   bool empty() const { return avail() == 0; }
   bool has(unsigned p) const { return bit_[p] || pend_[p]; }
   unsigned alloc() {
     const unsigned n = unsigned(bit_.size());
     if (cap_) {
-      if (buf_.empty()) return n;   // caller checked avail()
-      const unsigned p = buf_.front();
-      buf_.pop_front();
-      inbuf_[p] = 0;
+      if (!avail()) return n;   // caller checked avail()
+      const unsigned p = buf_[transit_ + took_++];
       take(p);
       return p;
     }
@@ -494,9 +531,11 @@ public:
   unsigned capacity() const { return unsigned(bit_.size()); }
   unsigned bufferCap() const { return cap_; }
   unsigned banks() const { return banks_; }
-  /// The buffer, head first; each bank's pointer (an index within the
-  /// bank); the bank refill starts with next edge.
+  /// The buffer, head first, the entries in transit included; how many
+  /// those are (last cycle's allocations); each bank's pointer (an index
+  /// within the bank); the bank refill starts with next edge.
   const std::deque<unsigned> &buffer() const { return buf_; }
+  unsigned inTransit() const { return transit_; }
   unsigned bankPointer(unsigned b) const { return bptr_[b]; }
   unsigned rotation() const { return rot_; }
   bool bit(unsigned p) const { return bit_[p]; }
@@ -505,7 +544,17 @@ public:
   void clock() {
     allocs_.clear();
     frees_.clear();
-    if (cap_) refill();
+    if (cap_) {
+      // Last cycle's allocations leave the buffer; this cycle's stay, in
+      // transit, until the next edge.
+      for (unsigned i = 0; i != transit_; ++i) {
+        inbuf_[buf_.front()] = 0;
+        buf_.pop_front();
+      }
+      transit_ = took_;
+      took_ = 0;
+      refill();
+    }
     if (npend_) {
       for (size_t p = 0; p != pend_.size(); ++p)
         if (pend_[p]) { pend_[p] = 0; bit_[p] = 1; }
@@ -516,6 +565,7 @@ public:
     edge_.bits = bit_;
     edge_.bptr = bptr_;
     edge_.rot = rot_;
+    edge_.transit = transit_;
   }
   /// The state just after the last clock edge, before any allocation since:
   /// what ooe_freelist holds after the same edge (its testbench compares).
@@ -524,6 +574,7 @@ public:
     std::vector<uint8_t> bits;
     std::vector<unsigned> bptr;
     unsigned rot = 0;
+    unsigned transit = 0;
   };
   const Edge &lastEdge() const { return edge_; }
 
@@ -554,6 +605,7 @@ private:
   std::vector<unsigned> allocs_, frees_, bptr_;
   size_t ready_ = 0, npend_ = 0;
   unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
+  unsigned transit_ = 0, took_ = 0;   // last cycle's allocations, and this cycle's
   Edge edge_;
 };
 
@@ -665,6 +717,9 @@ private:
     uint64_t late_at = 0;
     bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
     bool confirmed = false;        ///< result can no longer be cancelled
+    bool msd = false;              ///< missed its L1 slot, until its completion (OI-50's msd)
+    bool msd_end = false;          ///< its completion came: msd clears after this cycle's hop
+    bool stale = false;            ///< granted on a stale ready bit (OI-51), until its next replay or issue
     bool ever_issued = false;
     unsigned replays = 0;
     bool ready_seen = false;       ///< for EV_WAKEUP / ready-not-selected
@@ -742,6 +797,11 @@ private:
   void dep(unsigned e, unsigned preg, bool pred, int group);
   bool cellOk(unsigned i, unsigned j) const;
   bool rowReady(unsigned i) const;
+  /// The row's lines as they will stand next cycle, from the state now:
+  /// what the ready register holds then (OI-51).
+  bool rowReadyNext(unsigned i) const;
+  /// What select reads: the lines now, or the registered ready.
+  bool rowReadySel(unsigned i) const { return rowReady(i) || (cfg_.ready_reg && ready_q_[i]); }
   bool rowConfirmed(unsigned i) const;
   void doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port);
   void setWakes(unsigned e);
@@ -816,7 +876,7 @@ public:
     /// the entries it returned to Waiting; confirmation's inputs (issued and
     /// unconfirmed, the result final, a destination, the dependency bits)
     /// and the entries it confirmed. hop_live: a hop ran this cycle.
-    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, cf_iss, cf_fin, cf_prod, cf_dep;
+    std::vector<uint8_t> replay, conf, hop_iss, hop_dep, hop_msd, cf_iss, cf_fin, cf_prod, cf_dep;
     bool hop_live = false;
     /// ooe_rs's (test/ooe/rs_tb.cpp): the RS entries allocated this cycle,
     /// in allocation order, and those freed.
@@ -838,11 +898,58 @@ public:
   /// not speculative, so confirmation may take it (confirmPass).
   bool rsFinal(unsigned e) const { return rs_[e].issued && rs_[e].late && !rs_[e].spec; }
   const WakeLog &wakeLog() const { return wlog_; }
+  /// What reached the register alias tables this cycle, for ooe_rat
+  /// (test/ooe/rat_tb.cpp), in the order the model applied it: checkpoint
+  /// restores (a mispredict), squashes to retirement (a demotion or kill:
+  /// the speculative maps take the committed ones), slot releases, the
+  /// committed maps' writes at retirement, then rename's reads and writes in
+  /// rename order, a restore-allocate's writes among them (rst: both maps).
+  /// Observation only: nothing in the model reads it.
+  struct RatLog {
+    struct Ren {
+      unsigned slot = 0, src[3] = {}, dst = 0, gname = 0, pguard = 0, pdst = 0, pname = 0, pq[2] = {}, ckpt = 0;
+      bool gwe = false, pwe = false, plogic = false, br = false, rst = false;
+      /// What the reads returned: the model's own values.
+      unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0, pqn[2] = {};
+    };
+    struct Ret {
+      unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
+      bool gwe = false, pwe = false;
+    };
+    std::vector<std::pair<unsigned, unsigned>> restore;   ///< {slot, checkpoint}
+    uint32_t squash = 0, release = 0;                       ///< slot masks
+    std::vector<Ret> ret;
+    std::vector<Ren> ren;
+  };
+  const RatLog &ratLog() const { return rlog_; }
+  /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
+  unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
+  unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
+  unsigned cratGpr(unsigned s, unsigned a) const { return slot_[s].crat[a]; }
+  unsigned cratPred(unsigned s, unsigned a) const { return slot_[s].cprat[a]; }
+  bool ckptLive(unsigned s, unsigned c) const { return slot_[s].ckpt[c].live; }
+  unsigned ckptGpr(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].gpr[a]; }
+  unsigned ckptPred(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].pred[a]; }
+  unsigned slots() const { return unsigned(slot_.size()); }
   /// The distinct bypass penalties, sorted: wake line k is penalty k's.
   const std::vector<unsigned> &wakePens() const { return pens_; }
 private:
   WakeLog wlog_;
+  RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
+  std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
+  unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
+  bool free_prompt_ = false;                ///< an RS free now is a confirmation's
+  /// Held for rename this cycle: valid, or freed this cycle and seen late.
+  bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
+  bool robHeld(unsigned si, unsigned i) const {
+    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i];
+  }
+  /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
+  void robFreed(unsigned si, unsigned i, bool retire) {
+    if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
+  }
 
   // reservation stations and the matrix
   std::vector<RsEntry> rs_;           ///< [0, rs_rcu) RCU, then MIU
@@ -855,6 +962,7 @@ private:
   std::vector<uint8_t> cok_;          ///< per cell, satisfied last cycle (EV_WAKEUP)
   static constexpr uint8_t kLateOff = 0xFF;
   uint64_t skew_ = 0;                 ///< inject_early_wake
+  std::vector<uint8_t> ready_q_;      ///< the registered ready (OI-51): rowReadyNext at the last cycle's end
   unsigned n_ = 0;
   uint8_t &cell(unsigned i, unsigned j) { return cell_[i * n_ + j]; }
   uint8_t cell(unsigned i, unsigned j) const { return cell_[i * n_ + j]; }

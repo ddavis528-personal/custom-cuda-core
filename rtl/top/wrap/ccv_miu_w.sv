@@ -511,7 +511,7 @@ module ccv_miu_w #(
   end
   // ccv_ooe_miu_memop, destination end
   if (RPT_OOE_MIU_MEMOP > 0) begin : g_rpt_ooe_miu_memop
-    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(97)) u_rpt_ooe_miu_memop (
+    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(109)) u_rpt_ooe_miu_memop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_miu_memop_s3_valid, ooe_miu_memop_s2_valid, ooe_miu_memop_s1_valid, ooe_miu_memop_s0_valid}), .src_payload({ooe_miu_memop_s3_payload, ooe_miu_memop_s2_payload, ooe_miu_memop_s1_payload, ooe_miu_memop_s0_payload}),
       .src_wake(ooe_miu_memop_wake), .src_credit({ooe_miu_memop_s3_credit, ooe_miu_memop_s2_credit, ooe_miu_memop_s1_credit, ooe_miu_memop_s0_credit}), .src_stall({ooe_miu_memop_s3_stall, ooe_miu_memop_s2_stall, ooe_miu_memop_s1_stall, ooe_miu_memop_s0_stall}),
@@ -533,7 +533,7 @@ module ccv_miu_w #(
   end
   // ccv_miu_ooe_cmpl, source end
   if (RPT_MIU_OOE_CMPL > 0) begin : g_rpt_miu_ooe_cmpl
-    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .SLOTS(4), .PAYLOAD_W(110)) u_rpt_miu_ooe_cmpl (
+    ccv_common_rpt #(.STAGES(RPT_MIU_OOE_CMPL), .SLOTS(4), .PAYLOAD_W(111)) u_rpt_miu_ooe_cmpl (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_miu_ooe_cmpl_s3_valid, b_miu_ooe_cmpl_s2_valid, b_miu_ooe_cmpl_s1_valid, b_miu_ooe_cmpl_s0_valid}), .src_payload({b_miu_ooe_cmpl_s3_payload, b_miu_ooe_cmpl_s2_payload, b_miu_ooe_cmpl_s1_payload, b_miu_ooe_cmpl_s0_payload}),
       .src_wake(b_miu_ooe_cmpl_wake), .src_credit({b_miu_ooe_cmpl_s3_credit, b_miu_ooe_cmpl_s2_credit, b_miu_ooe_cmpl_s1_credit, b_miu_ooe_cmpl_s0_credit}), .src_stall({b_miu_ooe_cmpl_s3_stall, b_miu_ooe_cmpl_s2_stall, b_miu_ooe_cmpl_s1_stall, b_miu_ooe_cmpl_s0_stall}),

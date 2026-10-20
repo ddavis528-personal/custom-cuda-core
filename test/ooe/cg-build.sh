@@ -19,8 +19,6 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
     "$PWD/rtl/ccv_assert_pkg.sv" "$@" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp"
 }
 case "$unit" in
-  ooe_confirm)
-    vl ooe_confirm "-GN=$n" "-DCONFIRM_N=$n" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/confirm_tb.cpp" ;;
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
     vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
@@ -41,7 +39,11 @@ case "$unit" in
     if [ "$unit" = ooe_freelist_gpr ]; then pool=0 nf=$(val CCV_P_PHYS_REGS); else pool=1 nf=$(val CCV_P_PRED_REGS); fi
     fb=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
     fk=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
-    vl ooe_freelist "-GN=$nf -GA=$width -GB=$fb -GK=$fk" "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_POOL=$pool" \
+    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk" "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_POOL=$pool" \
       "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
+  ooe_rat)
+    read -r g d < <(python3 test/ooe/rat-params.py)
+    vl ooe_rat_read "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
+      "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

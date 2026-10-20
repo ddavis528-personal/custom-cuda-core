@@ -1018,6 +1018,31 @@ void testV59() {
   EXPECT(c.check().rfind("V-59", 0) == 0, "a bypass at 2 refused: '%s'", c.check().c_str());
 }
 
+/// OI-51: select reads a registered ready, so a drop reaches it a cycle
+/// late. Under misses a warp's dependants are granted on stale bits, and
+/// the next hop returns each; select on the lines as they stand never is.
+void testReadyReg() {
+  g_test = "ready register: stale grants, each replayed";
+  for (bool on : {true, false}) {
+    uint64_t stale = 0, rstale = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      std::mt19937 rng(seed);
+      Config c = baseConfig();
+      c.ready_reg = on;
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish();
+      EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+      stale += e.core.counters["select.stale_grant"];
+      rstale += e.core.counters["cancel.replay_stale"];
+    }
+    if (on) EXPECT(stale && rstale && rstale <= stale, "stale grants %llu, their replays %llu",
+                   (unsigned long long)stale, (unsigned long long)rstale);
+    else EXPECT(!stale && !rstale, "stale grants %llu with no ready register", (unsigned long long)stale);
+  }
+}
+
 void testFreeVec() {
   g_test = "free-vec";
   FreeVec f;
@@ -1353,9 +1378,9 @@ void sweep() {
       {"rename_width", {1, 2, 3, 4}, &Config::rename_width},
       {"retire_per_rob", {1, 2, 4}, &Config::retire_per_rob},
   };
-  auto run = [](const Config &c) {
+  auto run = [](const Config &c, unsigned seeds = 6) {
     uint64_t total = 0;
-    for (unsigned seed = 1; seed <= 6; ++seed) {
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
       std::mt19937 rng(seed);
       Env e(c, seed);
       e.miss_pct = 20;
@@ -1363,7 +1388,7 @@ void sweep() {
       e.finish();
       total += e.t;
     }
-    return double(total) / 6;
+    return double(total) / seeds;
   };
   Config base = baseConfig();
   // No per-warp limits unless swept: the parameters' "no limit" values
@@ -1387,6 +1412,48 @@ void sweep() {
     c.decq_late_credit = false;
     const double cy = run(c);
     std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+  }
+  // When rename sees this cycle's RS and ROB frees (ren_credit), against
+  // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
+  // late (OA's item 4, not accepted) and the 2-step trim. Their differences
+  // are a few percent, under six seeds' noise, so these run 48 against
+  // their own reference.
+  const double ref48 = run(base, 48);
+  struct RC { unsigned credit, cap; const char *name; };
+  for (const RC &k : {RC{0, 4, "same edge"}, RC{1, 4, "all late"}, RC{2, 2, "TI-19, cap 2"}}) {
+    Config c = base;
+    c.ren_credit = k.credit;
+    c.ren_free_cap = k.cap;
+    const double cy = run(c, 48);
+    std::printf("| ren_credit (48 seeds, TI-19 cap 4 %.0f) | %s | %.0f | %.3f |\n", ref48, k.name, cy, cy / ref48);
+  }
+  // Select on the lines as they stand, against the registered ready
+  // (OA's response OI-51), 48 seeds: the stale grants it adds, and the
+  // replays they cost, apart from the miss replays.
+  {
+    struct R { double cy = 0, stale = 0, rstale = 0, rmiss = 0; };
+    auto runc = [](const Config &c, unsigned seeds) {
+      R r;
+      for (unsigned seed = 1; seed <= seeds; ++seed) {
+        std::mt19937 rng(seed);
+        Env e(c, seed);
+        e.miss_pct = 20;
+        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+        e.finish();
+        r.cy += double(e.t) / seeds;
+        r.stale += double(e.core.counters["select.stale_grant"]) / seeds;
+        r.rstale += double(e.core.counters["cancel.replay_stale"]) / seeds;
+        r.rmiss += double(e.core.counters["cancel.replay"]) / seeds;
+      }
+      return r;
+    };
+    for (bool on : {true, false}) {
+      Config c = base;
+      c.ready_reg = on;
+      const R r = runc(c, 48);
+      std::printf("| ready_reg (48 seeds; stale grants / their replays / miss replays per run) | %d | %.0f | %.3f | %.1f / %.1f / %.1f |\n",
+                  int(on), r.cy, r.cy / ref48, r.stale, r.rstale, r.rmiss);
+    }
   }
 }
 
@@ -1453,8 +1520,8 @@ void sweepSections() {
   // AR-16: under the decided default (place 0, home = slot index) one
   // warp's narrow ops share a section, so its rows are 1.0x by design.
   std::printf("One-warp rows at place=slot are 1.0x by design (AR-16): narrow rates are aggregate across warps.\n\n");
-  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
-              "|---|---|---|---|---|---|---|---|---|---|\n");
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | element ops/cycle | outside setp cycles | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
   for (const Kern &k : ks)
     for (unsigned warps : {1u, 4u}) {
       double ref = 0;
@@ -1466,7 +1533,7 @@ void sweepSections() {
           c.sectioned = true;
           c.place = place;
           c.loads_pass_loads = oa13;
-          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0;
+          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0, narrow = 0, full = 0;
           // [int, FP] x [footprint, spread]: op count and section sum.
           uint64_t n[2][2] = {}, sum[2][2] = {};
           const unsigned seeds = 4;
@@ -1490,14 +1557,17 @@ void sweepSections() {
             }
             for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
             lost += e.core.counters["select.lost_resource"];
+            narrow += e.core.counters["select.lane_elem"];
+            full += e.core.counters["select.lane_ctl_cycles"];
           }
           const double cy = double(cyc) / seeds;
           if (place == 0 && !oa13) ref = cy;
           auto mean = [&](int g, int sp) { return n[g][sp] ? double(sum[g][sp]) / double(n[g][sp]) : 0.0; };
           char fp[32] = "-";
           if (n[1][0]) std::snprintf(fp, sizeof fp, "%.2f / %.2f", mean(1, 0), mean(1, 1));
-          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps, pn[place],
-                      oa13 ? "on" : "off", cy, cy / ref, mean(0, 0), mean(0, 1), fp,
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps,
+                      pn[place], oa13 ? "on" : "off", cy, cy / ref, double(narrow) / double(cyc),
+                      cyc > full ? double(narrow) / double(cyc - full) : 0.0, mean(0, 0), mean(0, 1), fp,
                       cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
         }
     }
@@ -1511,6 +1581,31 @@ void sweepSections() {
 int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = hook;
   testRandom(seeds);
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
+/// The directed tests (every one that drives a core and injects no bug:
+/// demotion, kill, restore, faults, squashes and the rest) with a hook on
+/// every core cycle, for the paths random traffic does not take. Returns
+/// the failure count.
+int ooeTestDirectedHooked(void (*hook)(const Core &)) {
+  g_cycle_hook = hook;
+  testWakeTimes();
+  testBypassGroups();
+  testL1Spec();
+  testL1WakeAfterCmpl();
+  testMaskedLoad();
+  testSquash();
+  testFloorCeiling();
+  testDemote();
+  testRestore();
+  testKill();
+  testFault();
+  testBarrier();
+  testChwidth();
+  testSections();
+  testV59();
+  testFixedWindowPreds();
   g_cycle_hook = nullptr;
   return g_fail;
 }
@@ -1553,6 +1648,7 @@ int main(int argc, char **argv) {
   testChwidth();
   testSections();
   testFreeVec();
+  testReadyReg();
   testV59();
   testFixedWindowPreds();
   testRandom(seeds);

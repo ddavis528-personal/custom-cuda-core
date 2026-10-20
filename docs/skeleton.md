@@ -384,7 +384,8 @@ the schema says how the top connects it):
     a warp parked at `bar.sync`, since it can be demoted.
 - **Both kill sources land at RAU, the single issuer.** A fault comes direct
   from OOE: `fault_taken` with the `warp_id` on `ccv_ooe_rau_status`, and RAU
-  maps warp to grid to mask. CRU records the fault in parallel for the host
+  kills every warp of the context, not just the faulting grid (DA's response
+  IS-2, 2026-10-20). CRU records the fault in parallel for the host
   and is not on the path that stops execution. The host's kill comes as
   `kill_req` plus `kill_grid` on `ccv_cru_rau_cfg`.
 - **Wake is not a fabric.** It is `_wake`, a fifth channel signal from sender
@@ -496,11 +497,15 @@ tools/trace2perfetto.py t.ccvtrace --by=instr -o t.json
 ```
 
 vadd (`c[i] = a[i] + b[i]`, 32 threads, one warp, 17 issue groups) runs to
-completion in **361 cycles** on functional stubs behind the same ports the S0
-exerciser used, with the checker bank judging every slot. It ends with the
+completion in **186 cycles** on functional stubs behind the same ports the S0
+exerciser used, with the checker bank judging every slot: 155 of them from the
+cycle FET sends DEC its first instruction, the KERNEL line's `from_fetch`
+(AR-19). The first 31, the launch and the cold ITLB and ifill misses, are the
+same in every kernel, so comparisons between kernels or stubs run from the
+first fetch. It ends with the
 register file (16 GPRs × 32 lanes, 4 predicates) and memory (every word
 touched) **identical to ccv-sim's**, **0 interface violations**, 0 id-class
-violations, and the bank's 510 `EV_CH_XFER` events matching every launch
+violations, and the bank's 644 `EV_CH_XFER` events matching every launch
 exactly. It carries traffic on 27 of the 48 channels; the 21 idle ones are
 SPM, barriers, migration (both pairs, its command and done, and OOE's RAT map), probes, faults and branch redirect
 (vadd's one branch is never taken, so it frees its checkpoint on `ooe_fet_ckpt_free` instead), none of which vadd reaches.
@@ -580,7 +585,7 @@ ID, rendered in `docs/payload-spec.md`.
    (1024) and `byte_mask` (128), mirroring `ccv_miu_spm_req` (56 → 1208 bits
    at rate 4). A separate store-data channel would duplicate flow control for
    nothing, and byte granularity is enough because a 4-bit access faults.
-2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16,
+2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 29,
    the widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`,
    and the shift is derived from `chwidth`. ALU immediates ride on
    `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register
@@ -614,12 +619,12 @@ ID, rendered in `docs/payload-spec.md`.
 
 Also found and fixed, in the compiler repo:
 
-- **compiler F-141.** Compiler F-50's `mayLoad`/`mayStore` fix had bound its TableGen `let`s one
+- **compiler F-153.** Compiler F-50's `mayLoad`/`mayStore` fix had bound its TableGen `let`s one
   def late. `LD_GLOBAL`, `LD_GLOBAL_P`, the compressed pair and both atomics
   had no memory effect, and three narrow stores were marked as loads. It
   showed up because the oracle reported `"load":0` beside 32 reads. `-oracle`
   now refuses any step whose memory traffic its descriptor doesn't declare.
-- **compiler F-142.** ccv-sim recognized 42 of the 64 `setp` forms as compares when
+- **compiler F-154.** ccv-sim recognized 42 of the 64 `setp` forms as compares when
   excluding Format C's unwritten `rd`. No benchmark output changed.
 
 ### Payload spec response (2026-09-25), as built
@@ -688,7 +693,7 @@ computes `active_mask` (Q-23), and ITLB correlation (Q-24).
   flattened width stands in for a burst sequencer, not just a bus.
 
 **Raised by applying it, and answered in the next round:** branch
-resolution (Q-26), predicate source operands (Q-27), and compiler F-143 (see
+resolution (Q-26), predicate source operands (Q-27), and compiler F-155 (see
 below).
 
 The formal covers for the new outstanding checker caught a vacuous setup on
@@ -745,10 +750,10 @@ the way. See `fail-open-register.md`.
 - **The PC-group owner (Q-29):** FET owns divergent PC state, but
   `ccv_rcu_pca_mig` carried `pcs` from RCU. Built in the next round: a FET↔PCA
   pair.
-- **Compiler F-143 is fixed** (`cas`'s offset is `simm16`, decoded
+- **Compiler F-155 is fixed** (`cas`'s offset is `simm16`, decoded
   sign-extended), and escalated as you said: an offset at or above 0x8000
   would have been emitted as a large positive and executed as negative.
-  **Compiler F-144:** fixing it exposed that 85 predicated instructions had
+  **Compiler F-156:** fixing it exposed that 85 predicated instructions had
   silently left the encode/decode round trip since the predicate operand
   types were added (see `fail-open-register.md`).
 
@@ -875,10 +880,10 @@ The `srd` response: Q-38 closed, and Q-32's rule amended.
   width is declared. The same goes for `CCV_W_CTAID` and
   `CCV_W_WARP_IN_CTA`.
 - **The compiler's obligations are in the compiler repo.**
-  - **The narrow-destination refusal is compiler F-145.** It already held
+  - **The narrow-destination refusal is compiler F-157.** It already held
     structurally, and now a named error refuses any change that breaks it.
     A mutation test proves the refusal fires.
-  - **Rematerialization is compiler F-146, and it did not happen.** `srd`
+  - **Rematerialization is compiler F-158, and it did not happen.** `srd`
     has no pattern, so TableGen inferred side effects and vetoed remat, and
     `sgemm` spills `%ctatid`. Making it real is a trade: `sgemm` 4×4 gains,
     but `igemm` 1×1 picks up a 14-`mov` rotation in its loop. So it's left
@@ -1232,7 +1237,7 @@ decisions.
 | `dec_ooe_uop.pred_guard`, `pred_neg`, `pred_dst`, `pred_we` | the guard's index and negate (from the qualifier; sel's selector too); the predicate destination, valid when `pred_we` |
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its architectural offset, in halfwords from the next instruction, with the length code in `ilen` beside it; OOE computes `pc + bytes(ilen) + 2·imm` (arch open A-8). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
-| `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
+| `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-155) |
 | `fet_dec_instr.group_mask`, `fetch_epoch` → `dec_ooe_uop` | the record's issue mask, which is the PC group with no divergence model; the epoch of FET's last redirect. OOE issues the mask as `issue_mask` and drops a uop of any other epoch (A-69, A-70) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Names from OOE's RAT: a FIFO free list over the 192-register pool, the zero register for anything unwritten (RAU allocates nothing, A-30) |
 | `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) issues on the lane sections with the load's issue fields, at least a cycle ahead of the load in the model (V-61) and beside it in the S1 stub; an unguarded one masked only by its issue mask would name the zero predicate, negated |

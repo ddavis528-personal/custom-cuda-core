@@ -9,7 +9,14 @@
 //       than its load, on confirmed sources) and bulk discards (V-23: a
 //       discard takes P0, and no memop of its warp goes with it).
 //
-// The requests, then one ooe_pick per class. An entry requests its
+// The requests, then one ooe_pick per class; the RCU class's with the
+// section fallback (FB; OA's response IS-9), which the MIU pipes do not
+// take. The design is section-only (FB 1): with the aligned-half pick too
+// (FB 2) this module measured 26.8 NGD, past its stage; section-only
+// measures 24.3, against 19.5 with none. FB defaults to 0 until ooe_sched
+// instantiates this module with 1: alone, an inner helper is held to 16
+// (NGD-6), and FB 1 adds paths over that which its ratchet entries do not
+// name. test/ooe/select_tb.cpp builds it with the model's pick_fallback. An entry requests its
 // footprint's resources (S0-S3 and R for the RCU class, bits 0-4; P0-P3
 // for the MIU class, bits 5-8) when it is valid, not issued, past rename's
 // stages, its warp active, its row ready, and none of its resources is
@@ -35,6 +42,7 @@ module ooe_select #(
   parameter int N  = 45,     // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
   parameter int NR = 30,     // RCU-class entries, [0, NR)
   parameter int S  = 4,      // tier-1 warp slots (CCV_TIER1_WARPS)
+  parameter int FB = 0,      // the RCU class's section fallback (ooe_pick; OA's response IS-9); ooe_sched sets 1
   localparam int NM = N - NR,
   localparam int LS = $clog2(S),
   localparam int W  = $clog2(N),
@@ -89,11 +97,12 @@ module ooe_select #(
 
   logic [NR*RR-1:0] win_r;
   logic [NM*RM-1:0] win_m;
-  ooe_pick #(.N(NR), .R(RR)) pick_r (.req_cq03h(req_r), .older_cq03h(older_r_cq03h),
+  logic [N-1:0]     fb;          // grants by the RCU class's section fallback
+  ooe_pick #(.N(NR), .R(RR), .FB(FB)) pick_r (.req_cq03h(req_r), .older_cq03h(older_r_cq03h),
                                      .issue_cq03h(grant_cq03h[NR-1:0]), .lost_cq03h(lost_cq03h[NR-1:0]),
-                                     .win_cq03h(win_r));
+                                     .win_cq03h(win_r), .fb_cq03h(fb[NR-1:0]));
   ooe_pick #(.N(NM), .R(RM)) pick_m (.req_cq03h(req_m), .older_cq03h(older_m_cq03h),
                                      .issue_cq03h(grant_cq03h[N-1:NR]), .lost_cq03h(lost_cq03h[N-1:NR]),
-                                     .win_cq03h(win_m));
+                                     .win_cq03h(win_m), .fb_cq03h(fb[N-1:NR]));
 
 endmodule

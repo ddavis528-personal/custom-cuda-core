@@ -25,7 +25,7 @@ Four layers, deliberately not one:
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
-| `tools/check-ngd.py` | NGD-1 … NGD-6, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
+| `tools/check-ngd.py` | NGD-1 … NGD-7, logic depth (below) | A measurement of the mapped netlist: the stage, each module port against its budget, and the assembled block. |
 
 **On Verible.** §6 adds it as a fourth tool and says "lint enforces it" is
 load-bearing for the whole X-safety approach. That second part is right and
@@ -310,7 +310,7 @@ and the block list in `params/blocks.json` alone:
 | `<block>_<name>` | a sub-block, inside one block | none: runs on `<block>_core_clk` | `ooe_pick` |
 | `ccv_common_<type>[_<name>]` | a common module, shared across blocks | none | `ccv_common_clk` |
 | `<block>_common_<type>[_<name>]` | a common module within one block | none | — |
-| `ccv_top` | the core top, the one named exception | gates, if it ever holds logic | `ccv_top` |
+| `ccv_top` | the core top, the one named exception | none | `ccv_top` |
 
 Anything else is a finding. A wrapper may carry a tag after `_w`: `_v<N>` for
 a hard-reuse template, `_<NN>` for one instance's own wrapper (one with
@@ -729,12 +729,19 @@ than it is.
 **Every repeater instantiation is checked like any module** (Daniel,
 2026-10-18). `tools/gen-top.py` writes `rtl/top/rpt-units.json`, one unit
 per distinct repeater the design instantiates (stages, slots, payload width,
-lead mask), and both `check-cg.py` and `check-ngd.py` measure each: its
-valid, credit, stall and wake flops, its flopped reset and its first stage's
-lead slice, all written every cycle, within its allowance. That is what
+lead mask), and both `check-cg.py` and `check-ngd.py` measure each. Its
+control pulses, valid, wake, credit and stall at every stage, and its
+flopped reset are the channel's own, captured every cycle as any receiver's
+are; they count against the hardening wrapper's 2%, the block's partition,
+not the repeater's own allowance (Daniel, 2026-10-19), since a repeater is
+little else and would fail on them alone: two stages of one narrow slot are
+9 such flops, and a 4-slot channel 14 at one stage. Its first stage's lead
+slice, written every cycle too, stays within its own allowance. That is what
 limits leads on a repeated link: one 64-bit slot at one stage passes, and
-with a 16-bit lead it does not (the selftest's control). None is repeated
-today. A link with no stages has no repeater: the wrapper connects the end
+with a 16-bit lead it does not (the selftest's controls, with a two-stage
+16-bit slot whose control pulses pass its allowance and count against a
+wrapper: within its 2% beside 514 flops, over it beside 257). None is
+repeated today. A link with no stages has no repeater: the wrapper connects the end
 straight through.
 
 **The ratchet.** RTL written before the rule is listed in
@@ -754,7 +761,7 @@ size in a block's budget is counted by register name, every flop of that
 register in each instance, which over-counts a finding that covers only
 part of a register.
 
-### Logic depth: NGD-1 … NGD-6
+### Logic depth: NGD-1 … NGD-7
 
 **25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
@@ -803,6 +810,28 @@ wire: that is the parent's connection. Three exceptions:
   the floorplan routes it but the distance needs no stage: a repeater of no
   stages, in `rtl/top/` only.
 
+**A register that drives an output serves only the output's budget**
+(Daniel, 2026-10-19). Every path it starts, to the module's own flops as to
+any output, is within that output's required time: 12 by default, or the
+module's budget for the port, the strictest where it drives several. A flop
+on a critical path out of the module and on one inside it is pulled two
+ways at placement, and the compromise is bad for both. The remedy is a copy
+of the register, one for the output and one for the paths inside, each
+declared `(* keep *)`:
+
+```systemverilog
+(* keep *) logic [5:0] a_q;      // drives the output only
+(* keep *) logic [5:0] a_in_q;   // the same value, for the paths inside
+always_ff @(posedge clk) begin
+  a_q    <= d;
+  a_in_q <= d;
+end
+```
+
+Without the mark, synthesis merges the copies back into one register, ours
+as a real flow's, and the rule still refuses it. A path to an output that is
+over that output's own budget is NGD-2's, not counted again here.
+
 **One budget file per module, beside its RTL**, in one format, listing only
 its non-default ports: `ooe_rs.ngd.json` beside `rtl/ooe/ooe_rs.sv`, say, and
 today only `rtl/clk/ccv_common_clk.ngd.json`. An example:
@@ -824,7 +853,7 @@ declares an inner helper. The module is checked against its file, and an
 assembled block is checked from all of them: the budgets must **converge**,
 each driver's required time no later than its receiver's arrival.
 
-Six rules, checked by `tools/check-ngd.py` on every module at its units'
+Seven rules, checked by `tools/check-ngd.py` on every module at its units'
 parameters (`test/**/cg-units.json`; `test/**/ngd-units.json` for a module
 with no flops):
 
@@ -846,6 +875,10 @@ with no flops):
 - **NGD-6, an inner helper alone.** An inner helper that no module
   instantiates yet: every path input to output within `CCV_NGD_INNER`, 16.
   Once a module instantiates it, its parent's rules time it instead.
+- **NGD-7, a register shared by an output.** A register that reaches an
+  output, on every path it starts, to a flop or to any output within its
+  budget: within the strictest required time of the outputs it reaches.
+  Keyed by register, by its RTL name.
 
 **How it is measured.** Yosys synthesises the unit flattened; each clock-gated
 flop becomes a plain flop on its next value (its enable is timed apart, to its
@@ -881,7 +914,9 @@ each awaiting the architect's budgets or a redesign; paths straight through
 or glue (NGD-5, 2026-10-18, keyed `from>to`), each awaiting a redesign that
 groups the logic with one sequential side, or the module's declaration as an
 inner helper; inner helpers over 16 alone (NGD-6, 2026-10-19, keyed
-`from>to`), each awaiting the parent that instantiates it. The list only shrinks: an entry that now meets the rule, or one
+`from>to`), each awaiting the parent that instantiates it; registers shared
+by an output and the module's own paths (NGD-7, 2026-10-19, keyed by
+register), each awaiting a copy. The list only shrinks: an entry that now meets the rule, or one
 that was not there when its rule was made, is refused. A design module no
 unit measures is refused.
 

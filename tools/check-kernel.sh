@@ -54,6 +54,10 @@
 #   a warp access split across two lines      one-line (unal): MIU's loaded
 #     (unal) or spread over 32 (gather)          values and the stored words
 #                                                past the boundary are wrong
+#   a store covering its line is written      skip-read-partial (unal): a
+#     without a read (full_line, AR-19); a       partial store written blind
+#     partial one merges into the line read      loses its lines' other four
+#                                                words
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -80,6 +84,9 @@
 #     (OI-29, TI-9)                              refuse a 32-bit one at 1
 #   a memop's pipes are its width's span      narrow-pipes: MIU refuses one
 #     (OI-33, TI-9)                              pipe for a 32-bit memop
+#   only a fence carries an ordering          ordering-on-load: DEC's output
+#     (IS-11)                                    and MIU refuse each of vadd's 7
+#                                                loads; memop-ordering: MIU alone
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -99,6 +106,10 @@ say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 # Whole-key match: `violations=` must not match `class_violations=`.
 field() { tr ' ' '\n' <"$1" | sed -n "s/^$2=//p" | head -1; }
+# A run's cycles, and those from FET's first instruction to DEC (AR-19): the
+# launch and the cold ITLB and ifill misses before it are the same in every
+# kernel, so comparisons between kernels and stubs run from_fetch.
+cycles() { echo "$(field "$1" cycles) cycles, $(field "$1" from_fetch) from first fetch"; }
 
 if [ ! -x "$SKEL" ]; then
   say "S1 kernel" "SKIP -- no $SKEL (tools/check-skel.sh builds it)"
@@ -119,8 +130,11 @@ for kv in $want; do
   [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || { ok=0; miss="$kv (got $(field "$log" "${kv%%=*}"))"; }
 done
 cyc=$(field "$log" cycles)
+ff=$(field "$log" from_fetch)
+# from_fetch counts from a cycle inside the run: set, and short of the total.
+[ "${ff:-0}" -gt 0 ] && [ "$ff" -lt "$cyc" ] || { ok=0; miss="from_fetch=$ff of $cyc cycles"; }
 if [ $ok = 1 ]; then
-  say "vadd: final state == ccv-sim, 0 violations" "PASS ($cyc cycles, $(field "$log" channels_used) channels)"
+  say "vadd: final state == ccv-sim, 0 violations" "PASS ($(cycles "$log"), $(field "$log" channels_used) channels)"
 else
   bad "vadd: final state == ccv-sim, 0 violations" "$miss"
 fi
@@ -327,7 +341,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_sel.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "sel: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_sel.log" cycles) cycles)"
+  say "sel: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_sel.log"))"
 else
   bad "sel: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_sel.log")"
 fi
@@ -348,7 +362,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_srd.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "srd: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_srd.log" cycles) cycles)"
+  say "srd: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_srd.log"))"
 else
   bad "srd: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_srd.log")"
 fi
@@ -403,7 +417,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_pguard.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "pguard: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_pguard.log" cycles) cycles)"
+  say "pguard: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_pguard.log"))"
 else
   bad "pguard: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_pguard.log")"
 fi
@@ -437,7 +451,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_merge.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "merge: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_merge.log" cycles) cycles)"
+  say "merge: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_merge.log"))"
 else
   bad "merge: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_merge.log")"
 fi
@@ -475,7 +489,7 @@ for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 chec
   [ "$(field "$B/kernel_mload.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
 done
 if [ $ok = 1 ]; then
-  say "mload: final state == ccv-sim, 0 violations" "PASS ($(field "$B/kernel_mload.log" cycles) cycles)"
+  say "mload: final state == ccv-sim, 0 violations" "PASS ($(cycles "$B/kernel_mload.log"))"
 else
   bad "mload: final state == ccv-sim, 0 violations" "$(grep '^KERNEL' "$B/kernel_mload.log")"
 fi
@@ -532,33 +546,48 @@ while read -r k want; do
     esac
   done
   if [ -z "$why" ]; then
-    say "$k: == ccv-sim, reaches its bins" "PASS ($(field "$log" cycles) cycles; $want)"
+    say "$k: == ccv-sim, reaches its bins" "PASS ($(cycles "$log"); $want)"
   else
     bad "$k: == ccv-sim, reaches its bins" "${why# }"
   fi
 done <<'KERNELS'
-unal   line_split=3 lines_peak=2 partial_line=2
-gather lines_peak=32 line_split=2 partial_line=32 dcu_id_wait>0
+unal   line_split=3 lines_peak=2 partial_line=2 full_line=0
+gather lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2
 loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
-vadd   ckpt_free=1 redirect=0 epoch_drop=0
+vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1
 hit    l1_hit=4 l1_late=0
+late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=4
 plog   merge=3
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
+# 19 words: the 17 the lanes past the boundary should have stored in line 1,
+# and two of the words unal pokes beside its store in line 0, which those
+# lanes write over instead (17 before the pokes, AR-19).
 if grep -q "^CHECK miu: seq 4 lane 27 loaded 000003e8, oracle 000004c8" "$B/kernel_one-line.log" &&
-   [ "$(field "$B/kernel_one-line.log" mem_mismatch)" = 17 ]; then
-  say "--break one-line: the lanes past the boundary" "PASS (loads at MIU, 17 stored words)"
+   [ "$(field "$B/kernel_one-line.log" mem_mismatch)" = 19 ]; then
+  say "--break one-line: the lanes past the boundary" "PASS (loads at MIU, 17 stored words and 2 overwritten)"
 else
   bad "--break one-line" "a warp access split across lines went unchecked: $(grep '^KERNEL' "$B/kernel_one-line.log")"
 fi
+# A store that covers its line is written without reading it (full_line:
+# vadd, sel, srd and pguard each store one whole line), and a partial one
+# merges into the line DCU reads (AR-19). Written blind, unal's two partial
+# lines lose the four words it pokes beside the store and never writes.
+"$SKEL" --kernel build/oracle/unal/oracle.jsonl --break skip-read-partial >"$B/kernel_skip-read-partial.log" 2>&1
+if [ "$(field "$B/kernel_skip-read-partial.log" mem_mismatch)" = 4 ] &&
+   [ "$(field "$B/kernel_skip-read-partial.log" check_failures)" = 0 ]; then
+  say "--break skip-read-partial: words lost" "PASS (unal's 4 words beside its store)"
+else
+  bad "--break skip-read-partial" "a partial store written without a read went unnoticed: $(grep '^KERNEL' "$B/kernel_skip-read-partial.log")"
+fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
-if grep -q "^CHECK lane 0: seq 379 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
+if grep -q "^CHECK lane 0: seq 383 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 379, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 383, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
@@ -721,15 +750,17 @@ fi
 # no-resource-cap makes the model grant a second lane op and a second memop
 # onto resources already held (inject_double_grant): a second op claims a
 # group already held, and RCU refuses every slot the two share: the lane
-# sections for one pair, the pipes for two more.
+# sections for one pair, the pipes for three more. (Two more until MIU was
+# pipelined, AR-19: vadd's memops now complete sooner, so a third pair is
+# ready to issue together. 12 slots then, 16 now.)
 "$SKEL" --kernel "$K" --break no-resource-cap >"$B/kernel_no-resource-cap.log" 2>&1
 log="$B/kernel_no-resource-cap.log"
 if grep -q "^CHECK rcu: V-60: seq 3's footprint 1111 overlaps seq 2's at S0" "$log" &&
    grep -q "^CHECK rcu: V-60: seq 6's footprint 1111 overlaps seq 4's at P0" "$log" &&
-   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = 12 ]; then
-  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: 3 pairs, 12 slots, sections and pipes)"
+   [ "$(grep -c "^CHECK rcu: V-60: " "$log")" = 16 ]; then
+  say "--break no-resource-cap: RCU refuses the overlap" "PASS (V-60: 4 pairs, 16 slots, sections and pipes)"
 else
-  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want 12): $(grep '^KERNEL' "$log")"
+  bad "--break no-resource-cap" "$(grep -c "^CHECK rcu: V-60: " "$log") overlaps refused (want 16): $(grep '^KERNEL' "$log")"
 fi
 # A register is a row and a position; a 32-bit one fills its row from 0.
 # OOE naming one at position 1 overruns the row: RCU refuses it, the lanes
@@ -751,6 +782,25 @@ if [ "$n" = 8 ] && [ "$(field "$log" check_failures)" = 8 ]; then
   say "--break narrow-pipes: MIU refuses each memop" "PASS (8 memops)"
 else
   bad "--break narrow-pipes" "$n refusals (want 8): $(grep '^KERNEL' "$log")"
+fi
+
+"$SKEL" --kernel "$K" --break ordering-on-load >"$B/kernel_ordering-on-load.log" 2>&1
+log="$B/kernel_ordering-on-load.log"
+n=$(grep -c "^CHECK dec: pc 0x[0-9a-f]* has ordering 1 but is not a fence" "$log")
+m=$(grep -c "^CHECK miu: rob tag [0-9]* has ordering 1 but is not a fence" "$log")
+if [ "$n" = 7 ] && [ "$m" = 7 ] && [ "$(field "$log" check_failures)" = 14 ]; then
+  say "--break ordering-on-load: DEC and MIU refuse" "PASS (7 loads each)"
+else
+  bad "--break ordering-on-load" "$n DEC and $m MIU refusals (want 7 each): $(grep '^KERNEL' "$log")"
+fi
+
+"$SKEL" --kernel "$K" --break memop-ordering >"$B/kernel_memop-ordering.log" 2>&1
+log="$B/kernel_memop-ordering.log"
+n=$(grep -c "^CHECK miu: rob tag [0-9]* has ordering 1 but is not a fence" "$log")
+if [ "$n" = 7 ] && [ "$(field "$log" check_failures)" = 7 ]; then
+  say "--break memop-ordering: MIU refuses each" "PASS (7 loads)"
+else
+  bad "--break memop-ordering" "$n refusals (want 7): $(grep '^KERNEL' "$log")"
 fi
 
 exit $fail

@@ -47,6 +47,20 @@ Built (`rtl/ooe/`):
   against the estimate's 9.1 of logic. The 15-entry pick's is 8.1 in 6,
   against 7.7. Both are inside the estimate's stated ±15%, so the select
   stage is about 17.9 and 16.1 NGD of 25.
+
+  The section fallback (FB, OA's response IS-9): a lane section whose
+  winner does not issue grants its oldest requester naming that section
+  alone (FB 1), and with FB 2 an aligned half whose sections both fall
+  through grants its oldest half-footprint requester if that is the
+  oldest of the half's pair and single-section requesters. Each is one
+  more oldest-of-N over the same ages, beside the main pick; only "did
+  this section's winner issue" waits for it, a 30-wide reduction after
+  the issue AND, so it costs more than OA's estimated 2 NGD: the
+  30-entry pick is 17.2 NGD at FB 1 and 19.4 at FB 2. A fallback grant
+  (`fb_cq03h`) takes only sections no issued entry holds, so V-60 holds,
+  and the check that an issued entry won each resource it names covers
+  the rest. pick_tb holds FB 1 and FB 2 to `pickResources` (200,000
+  vectors each), with controls no-fallback and no-half beside the three.
 - **`ooe_ready`**, the ready stage over all 45 entries, combinational:
   - each producer drives four wake lines: its fastest bypass point plus
     each of the three bypass penalties, and last the PRF read;
@@ -78,11 +92,35 @@ Built (`rtl/ooe/`):
   (`FreeVec::lastEdge`: free bits, buffer in order, bank pointers, bank
   order), then drives that cycle's allocations and frees. Over 25 seeds and
   200 cores, GPR rows (192) and predicates (48), none differ; controls
-  drop-free and extra-alloc must each be caught. Logic depth is 23.0 NGD at
-  192 entries and 23.4 at 48 (gated-flop flow; 23.5 and 24.7 before): a
-  log-depth find-first per bank, the buffer rebuilt slot by slot as a
-  gather, the buffered mask kept as state, and the taken count encoded from
-  the request prefix rather than counted.
+  drop-free and extra-alloc must each be caught. Logic depth is 21.6 NGD at
+  192 entries and 22.6 at 48, the requests 18.6 and 18.4 to a flop (23.0
+  and 23.4 before): a log-depth find-first per bank, the buffer rebuilt
+  slot by slot as a gather, the buffered mask kept as state, and the taken
+  count one-hot from the request prefix. Every select that depends on how
+  many are taken is formed for each count from the state and picked by
+  that one-hot, so the requests reach the edge through AND-ORs, never a
+  subtract. The free bits, bank pointers and bank order are ports under
+  CCV_CHECK only, read by the bench alone (OA's choice, TI-20). The grant ports carry the head
+  from the flops alone (OA's stage-boundary map, item 5): head entry k is
+  available while the buffer holds more than k, and rename's port k takes
+  it when it asks, so no request reaches an output (NGD-5).
+
+  The request is registered (OA's response OI-52): what a cycle takes
+  leaves the buffer at the next edge, so the buffer's next value and its
+  enable come from the module's own flops (CG-5). Those entries, in
+  transit, sit at the head a cycle: the ports offer the entries behind
+  them (a mux on the registered count), and `avail_cq02h`, the count
+  rename sees, leaves them out. A taken entry's free bit still clears at
+  its own edge. The ports read a `(* keep *)` copy of the buffer, its count
+  and the registered count, which start no other path (NGD-7: the state's
+  own paths run through the refill). The reset is flopped before use
+  (RST-1). Depth is 21.6 NGD at 192 entries and 22.2 at 48, the requests
+  13.2 and 13.7 to a flop (they reach only the free bits and the
+  registered count now), the grant ports 11.5 and 10.4 from flops. In the
+  model the late pop costs nothing at the 8-entry buffer (982 cycles in
+  the sweep, as before) and 4.8% at 4. The bench also compares the
+  entries in transit and the available count. The buffer, its count and
+  the entries in transit are bench ports under CCV_CHECK.
 
   Local clock gating (TI-14): the free bits are one gate, clocked on an
   allocation or a free; the buffer, its count, the bank pointers and the
@@ -91,7 +129,9 @@ Built (`rtl/ooe/`):
   so the gate takes room alone. The buffer's gather and the pointers' moves
   are AND-ORs, not held `if`s, so synthesis keeps those enables rather than
   one per slot or per bank. The two-bit bank order turns every edge,
-  ungated, within the module's allowance. `check-cg`: worst enable 7.8 NGD
+  ungated, as do the registered count and its copy (six flops, within the
+  module's allowance). The free bits' enable is still an allocation or a
+  free, from the inputs, the one CG-5 finding left. `check-cg`: worst enable 7.8 NGD
   (GPR) and 5.6 (predicates), 100% DCGE in every scenario. In its clock-
   gating mode the bench frees through a map from the model's entries to
   the RTL's, since the idle cycles turn the RTL's bank order alone.
@@ -185,32 +225,28 @@ Built (`rtl/ooe/`):
   clocks nothing. The earlier 13.9 NGD was short: Yosys dropped the age
   increment of the `(age == AMAX) ? AMAX : age + 1` form, which only the
   CG replay (the netlist against the bench's trace) showed.
-- **`ooe_confirm`**, confirmation and transitive cancel. Its hop returns
-  to Waiting every issued, unconfirmed entry that depends on an entry
-  that missed this cycle or returned to Waiting last cycle, through a
-  register of last cycle's replays. The miss comes from the timers' next
-  state, so the first hop lands in the miss's own cycle. Confirmation takes
-  an issued entry with no dependency bit left whose result is final
-  (`ooe_wake`'s fin) or that writes nothing. Both are a row-wide OR over
-  the matrix: 9.1 NGD in 7 levels at 45 entries. The model's `confirmPass`
-  chained confirmations oldest first within a cycle, and a miss meeting a
-  live cancel took two hops in a cycle; both now take one level a cycle,
-  as the RTL does. A probe found neither had ever happened in an S1 kernel
-  or a random seed, and no kernel moves by a cycle. The model logs each
-  hop's and pass's inputs and decisions (`Core::wakeLog`);
-  `test/ooe/confirm_tb.cpp` drives the RTL with the inputs and compares
-  both decisions every cycle. Over 25 seeds: 961 replays and 82,148
-  confirmations, none differ. At today's latencies no cancel needs a
-  second hop, so one random seed in seven now runs the controls' long L1
-  shadow, which makes the bench's no-carry control (no hop past the first)
-  catchable. Controls no-miss, no-fin, no-dep, no-carry and no-hcol must
-  each be caught. Local clock gating (TI-14): the replay register is one
-  gate, clocked while a cancel spreads: a hop under way, or a miss of an
-  entry whose column `ooe_rs` flags (`hcol`, below). Clocked on every miss
-  it changed on 65% of its enabled cycles, since a miss nothing waits on
-  writes zero over zero; the exact enable, the hop's own OR, is 13.0 NGD.
-  With the flags it is 7.3 NGD and 79% (medium and high). The bench keeps
-  the flags as `ooe_rs` does, and no-hcol (all clear) starts no hop.
+- **`ooe_confirm`**, confirmation and transitive cancel, as a level (OA's
+  response OI-50). An issued entry returns to Waiting when it depends on a
+  producer that is not issued or has missed its L1 slot (`msd`: the miss,
+  held from the cycle after it until the load's completion), decided every
+  cycle from flops. A replay reaches the next level only through an edge,
+  so it is still one level a cycle; the first hop now comes a cycle after
+  the miss, which the model takes too and which costs nothing measured
+  (963 cycles over 48 seeds, unchanged). Being a level, it also catches an
+  entry granted from a stale ready bit in the cycle it issues (OA-17). There
+  is no replay register, so no enable and no column flags to gate it.
+  Confirmation takes an issued entry with no dependency bit left whose
+  result is final (`ooe_wake`'s fin) or that writes nothing. It is an inner
+  helper with no flops (`ooe_confirm.ngd.json`): `ooe_wake` and `ooe_rs` each
+  compute it from their own state (OI-50), 8.7 NGD in 7 levels at 45
+  entries. The model logs the hop's and the pass's inputs and decisions
+  (`Core::wakeLog`, `hop_msd` among them); `test/ooe/confirm_tb.cpp` drives
+  the RTL with them and compares both decisions every cycle, then runs
+  OA-17's directed case: a missed load's child, issued after the miss,
+  must replay in each cycle it is issued. Over 25 seeds: 1,038 replays and
+  82,128 confirmations, none differ, never both at once (V-16). Controls
+  no-msd, msd-pulse (the pulse hop OA-17 found unsafe), no-fin and no-dep
+  must each be caught.
 - **`ooe_rs`**, the RS valid bits, allocation and the dependency matrix.
   Each class has four ports; port k takes the free entry with exactly k
   free below it in its class, first fit as the model's `rsAlloc`. An entry
@@ -226,6 +262,16 @@ Built (`rtl/ooe/`):
   25 seeds: 100,804 allocations, 36,698 of them into an entry freed that
   cycle, 4,294 in-group references, none differ. Controls no-same-edge,
   drop-group and stale-hcol must each be caught.
+
+  The outputs leave from registers of their own (OA's stage-boundary map,
+  item 3; TI-20, NGD-7): the grant, registered at the edge it is made, and
+  a `(* keep *)` copy of the valid bits (`valid_out`), so the valid bits
+  allocation reads drive no output. These 101 flops change with every
+  grant and free, so they take no clock gate, within the module's
+  allowance (check-cg: 95 auto-waived of 126). The bench compares the
+  registered grants after each edge, every port's. With OA's row_dep
+  arrival (by 10, OI-48), the only depth finding left is the confirmation
+  path's free (NGD-3, OI-43 and OI-50).
 
   Column flags (`hcol`, for `ooe_confirm`): per class, a column is flagged
   from the edge a row of the class naming it is written until the entry is
@@ -278,6 +324,67 @@ Built (`rtl/ooe/`):
   first. All of them depend only on state from earlier cycles, so they
   can move into the previous cycle's flops if the margin is needed.
 
+  With the section fallback (FB 1, the design) select is 24.3 NGD, and
+  with the half pick too (FB 2) 26.8, past the stage, so the half pick is
+  PF-31. FB defaults to 0 until ooe_sched instantiates select with 1:
+  alone, select is an inner helper held to 16 (NGD-6), and FB 1 adds
+  paths over that which its ratchet entries do not name (copy→grant,
+  older_m→lost, older_r→grant). select_tb builds it with the model's
+  `pick_fallback`, so the two stay in lockstep.
+
+- **`ooe_rat`**, the register alias tables, the first of rename's two
+  modules. Per tier-1 slot: the speculative GPR and predicate maps, the
+  committed ones (the demotion map) and four checkpoints of the
+  speculative maps, taken when a branch renames and restored in one cycle.
+  A GPR name is a row and a position. One edge applies, per slot, a
+  checkpoint restore, a squash to retirement or a release, then retire's
+  writes to the committed maps, then rename's four ports in order; a port
+  reads its three sources, old destination, guard, old predicate
+  destination and predicate-logic sources as the lower ports of its slot
+  left them (the in-group override), and a branch's checkpoint is the maps
+  after its own writes. A restore-allocate writes both maps through the
+  same ports (OI-41). Rename never names a slot that a whole-map event
+  names in the same cycle (a mispredict's epoch drops the warp's queued
+  uops; a demoting, killed or freed slot does not rename), so the reads
+  come from the flops, and an assertion holds it. Checkpoint live bits
+  stay with branch resolution. The model logs what reached its maps each
+  cycle (`Core::ratLog`); `test/ooe/rat_tb.cpp` drives the RTL from it,
+  through the directed tests (demotion, kill, restore-allocate, which
+  random traffic never reaches) and the random ones, and compares every
+  read and, after the edge, every map and live checkpoint: 101,484 renames,
+  58,373 in-group reads, 7,643 checkpoints, 2,458 restores, 65,854
+  retirements and 36 restore-allocate writes, none differ. Controls
+  port-reverse, drop-restore, drop-retire and drop-squash must each be
+  caught. Logic depth is 13.8 NGD in 13 levels.
+
+  The read is Rename 1's logic (OA's response OI-46, reopened): it lives in
+  `ooe_ratread`, a combinational inner helper for `ooe_rename`, whose
+  Rename 1 register captures what it returns, and `ooe_rat` drives its maps
+  straight out (`rat_cq02h`, required at 4). So no rename field passes
+  through `ooe_rat`, and its 33 NGD-5 and 2 NGD-2 entries, and 3 of its 5
+  NGD-3, are gone. The bench drives both under `test/ooe/ooe_rat_read.sv`
+  (101,453 renames, 59,615 in-group, none differ; the four controls
+  caught). `ooe_ratread` is 13.3 NGD alone, under the 16 an uninstantiated
+  helper is held to; `ooe_rat` is 11.7 flop to flop and 12.5 input to flop.
+  Three entries stay: `ret_dst` and `ret_gwe` from the default arrival of
+  13 (NGD-3; `ret_gwe` at 25.2, within synthesis noise; an arrival budget
+  for retire's ports clears both), and
+  `rat_cq02h` (NGD-7), whose flops reach the checkpoint capture (the map
+  after a branch port's own writes) 11.7 NGD away against the output's 4,
+  the path OA asked to be named.
+
+  Local clock gating (TI-14): each slot's speculative maps are one gate,
+  clocked on a rename write to the slot or a whole-map event; each
+  committed GPR entry is its own gate, each slot's committed predicates
+  one, and each checkpoint one, written when its branch renames.
+  `check-cg`: 88 gates, worst enable 7.8 NGD, lowest DCGE 94%. Per-entry
+  gates on the speculative maps measured 69%: a mispredict clocks all
+  sixteen entries and most still hold the checkpoint's names. Clocking
+  only the changed entries needs a compare (11.8 to 13.0 NGD as an enable)
+  or "written since checkpoint c" bits (320 flops), so the slot is one
+  gate. Every read and write is a decoder: written through computed
+  indices, Yosys built 420,000 gates and ran out of memory; as decoders it
+  is 52,000.
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The

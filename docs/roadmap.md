@@ -9,9 +9,9 @@ and what is carried.
 ## Part 0 — picking this up again
 
 **State (2026-10-04): Stage 1 complete. Stage 2 closed and encoded, except
-the per-interface NGD budgets. Stage 3's skeleton runs thirteen kernels end to end
+the per-interface NGD budgets. Stage 3's skeleton runs fourteen kernels end to end
 on both hosts (S1 `vadd`, then S2: merge, masked loads, misaligned and
-scattered accesses, mispredicts, L1 hits, the lane-local bypass), each
+scattered accesses, mispredicts, L1 hits on time and late, the lane-local bypass), each
 matching ccv-sim and held to coverage counts. OOE's interfaces are settled (Review A-25 to A-74), and its Stage 4b
 C++ model starts in a session of its own: [`ooe-4b.md`](ooe-4b.md) is its
 handoff. This session stays top-level: schema, parameters, gate, and the
@@ -251,7 +251,7 @@ channel path in 355 cycles. The final register file and memory are identical
 to ccv-sim's, with 0 interface violations, and each clean result is paired
 with a control that must fail it (`tools/check-kernel.sh`). It found six
 payload gaps, including store data missing from `ccv_miu_dcu_req` (added
-provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-141). See
+provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-153). See
 [`skeleton.md`](skeleton.md#s1--vadd-through-the-machine).
 
 - `sim/skel/kernel.cpp`, `oracle.cpp` — the functional stubs and the reader
@@ -288,8 +288,8 @@ from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 
 **SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
 top runs every C++ block over DPI-C, with the generated Verilog carrying
-every connection. All thirteen kernels match the C++-hosted run: summary lines
-identical and event traces the same records cycle by cycle. All 33 kernel
+every connection. All fourteen kernels match the C++-hosted run: summary lines
+identical and event traces the same records cycle by cycle. All 37 kernel
 controls give the same KERNEL line, and so does every kernel with OOE's
 lane-local bypass on. One block one cycle late
 (`+ccv_shim_delay`) must not match, and doesn't
@@ -397,7 +397,8 @@ module beside its RTL (`<module>.ngd.json`) where a port needs more; and,
 between a parent's children, so every path between modules crosses one port
 in two segments, a combinational module allowed as an inner helper timed in
 its parent (alone, before any parent instantiates it, within 16 NGD,
-2026-10-19), and a generated wrapper's feedthrough the one wire allowed (an
+2026-10-19), a register that drives an output held on every path it starts
+to that output's budget (2026-10-19), and a generated wrapper's feedthrough the one wire allowed (an
 end with no stages has no repeater); an
 assembled block checked from those files for convergence to 25, level by
 level, then timed whole, its ports registered on both sides.

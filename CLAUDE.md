@@ -12,6 +12,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 - `schema/interfaces.json`: every channel, field, width and contract.
 - `params/ccv_params.json`: every size and latency. Derived values carry
   `derive`/`require`, and `tools/gen-params.py` refuses drift.
+  A parameter whose status is `isa` cites the ISA (`isa`: a verbatim quote
+  and its value over the quote), and `tools/check-isa-params.py` holds it to
+  the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
@@ -40,7 +43,9 @@ leads a payload by a cycle, and why a lead field is rare.
 (`test/**/cg-units.json`, and every repeater the design instantiates,
 `rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
 flops and fewer than 8 flops outside the rules, and what its modules take
-must stay within 2% of each block's flops, per instance. Past that,
+must stay within 2% of each block's flops, per instance; a repeater's
+control pulses and flopped reset count only there, against its wrapper's 2%
+(2026-10-19), its lead slice against its own allowance. Past that,
 refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
 the last resort.
 RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
@@ -55,7 +60,10 @@ through a module, input to output, not even a wire, nor logic in a parent
 between its children (2026-10-18): connect a wire directly, group logic with
 one sequential side, or declare a combinational module an inner helper in
 its file, timed as its parent's logic (until a parent instantiates it, held
-alone to 16 NGD, floor(2 × 25 / 3); 2026-10-19). The one feedthrough allowed is a
+alone to 16 NGD, floor(2 × 25 / 3); 2026-10-19). A register that drives an
+output is held on every path it starts, inside as out, to that output's
+budget (2026-10-19): copy it, one for the output and one for the rest, each
+`(* keep *)`, or synthesis merges them back. The one feedthrough allowed is a
 channel a generated wrapper carries across itself. An
 assembled block is checked from those files, level by level, for
 convergence to 25, then timed whole, its outputs straight from flops.
@@ -108,6 +116,9 @@ https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5. Read its Conventions tab firs
   **OA**; **AR** is the top-level architect; **DA** is Daniel.
 - At session start, search every tab for `TI` in a Needs column (OA-11), and
   answer in the TI tab's responses table.
+- The register skill, `.claude/skills/register/SKILL.md` (OA-18), says how:
+  notify on every write that needs another agent, read only the rows a notice
+  names, and sweep daily from per-tab bookmarks.
 - A per-block session raises an interface change in its own tab with `TI` in
   Needs. The closed A-n register (A-25 to A-75) is pinned in
   `docs/design-snapshots/interface-review.md`; its open items moved to the

@@ -30,7 +30,8 @@ std::string Config::apply(const std::string &spec) {
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"demote_fallback", &demote_fallback},
-      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}};
+      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
+      {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -158,6 +159,7 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   slot_of_.fill(-1);
   n_ = cfg_.rs_rcu + cfg_.rs_miu;
   rs_.resize(n_);
+  ready_q_.assign(n_, 0);
   cell_.assign(size_t(n_) * n_, 0);
   woff_.assign(size_t(n_) * n_, kLateOff);
   cok_.assign(size_t(n_) * n_, 0);
@@ -264,8 +266,11 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
+  rs_late_.assign(n_, 0);
+  rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
-                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
+                 &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
                  &wlog_.rfree, &wlog_.sel_valid, &wlog_.sel_iss, &wlog_.sel_elig, &wlog_.sel_active,
                  &wlog_.sel_ready, &wlog_.sel_conf, &wlog_.sel_slot, &wlog_.sel_copy, &wlog_.sel_chas,
                  &wlog_.sel_cand, &wlog_.sel_grant})
@@ -278,6 +283,7 @@ void Core::cycle(uint64_t now) {
   wlog_.hop_live = false;
   wlog_.hop_dep.clear();
   wlog_.cf_dep.clear();
+  rlog_ = RatLog();
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -293,6 +299,9 @@ void Core::cycle(uint64_t now) {
   }
   rename();            // the decode queue; uop() refills it after the clock
   sendRedirect();
+  // The ready register (OI-51): each row's lines as they will stand next
+  // cycle, from the state now.
+  for (unsigned e = 0; e != n_; ++e) ready_q_[e] = rs_[e].valid && rowReadyNext(e);
   if (check_invariants) checkInvariants();
 }
 
@@ -536,6 +545,9 @@ void Core::freePred(unsigned slot, unsigned p) {
 unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   const unsigned lo = c == RsCls::kRcu ? 0 : cfg_.rs_rcu;
   const unsigned hi = c == RsCls::kRcu ? cfg_.rs_rcu : n_;
+  // First fit, same-edge reuse included: the RS's own rule (OI-43), which
+  // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
+  // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
     if (!rs_[e].valid) {
       rs_[e] = RsEntry();
@@ -573,6 +585,10 @@ void Core::rsFree(unsigned e) {
   if (r.rs_copy == e) r.rs_copy = kNoEntry;
   --slot_[x.slot].rs_held;
   x.valid = false;
+  const unsigned c = e < cfg_.rs_rcu ? 0 : 1;
+  if (cfg_.ren_credit == 1 ||
+      (cfg_.ren_credit == 2 && (!free_prompt_ || rs_prompt_[c]++ >= cfg_.ren_free_cap)))
+    rs_late_[e] = 1;
   if (e < wlog_.stop.size()) wlog_.stop[e] = 1;
   if (e < wlog_.rfree.size()) wlog_.rfree[e] = 1;
 }
@@ -669,6 +685,21 @@ bool Core::rowReady(unsigned i) const {
   return true;
 }
 
+bool Core::rowReadyNext(unsigned i) const {
+  for (unsigned j = 0; j != n_; ++j) {
+    if (!(cell(i, j) & 1)) continue;
+    const RsEntry &p = rs_[j];
+    const uint8_t w = woff_[size_t(i) * n_ + j];
+    if (w == kLateOff) {
+      // The full-latency wake: raised, or its timer fires next cycle.
+      if (!(p.late || (p.issued && !p.on_completion && now_ + skew_ + 1 >= p.late_at))) return false;
+    } else if (!(p.issued && now_ + skew_ + 1 >= p.issue_at + w)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool Core::rowConfirmed(unsigned i) const {
   for (unsigned j = 0; j != n_; ++j)
     if ((cell(i, j) & 1) && !rs_[j].confirmed) return false;
@@ -741,18 +772,20 @@ void Core::cancel(unsigned e) {
   x.late = false;
   x.spec = false;
   x.on_completion = true;
+  x.msd = true;   // held until its completion: the hop sees it from the next cycle (OI-50)
   count("cancel.miss");
-  // advanceWakes takes the hops, one a cycle from this one, until nothing
-  // changes (OA-1: transitive cancel moves one hop per cycle, held by V-59).
+  // advanceWakes takes the hops, one a cycle from the next, until nothing
+  // changes (OA-1: transitive cancel moves one hop per cycle; OI-50: the
+  // first a cycle after the miss).
   if (!cancel_live_) cancel_depth_ = 0;
   cancel_live_ = true;
   miss_now_ = true;
 }
 
 /// One hop of transitive cancel: every issued, unconfirmed entry whose row
-/// is no longer ready -- a producer it issued on missed this cycle or
-/// returned to Waiting last cycle -- returns to Waiting. False when nothing
-/// changed. One hop a cycle, as ooe_confirm takes it.
+/// is no longer ready -- a producer it issued on has missed (msd) or is not
+/// issued -- returns to Waiting. False when nothing changed. Run at the start
+/// of every cycle, as ooe_confirm's level rule (OI-50).
 bool Core::cancelHop() {
   // Decide the whole hop first, so a return to Waiting in this hop does not
   // reach that entry's own dependants until the next.
@@ -760,6 +793,7 @@ bool Core::cancelHop() {
   for (unsigned i = 0; i != n_; ++i) {
     const RsEntry &y = rs_[i];
     if (i < wlog_.hop_iss.size()) wlog_.hop_iss[i] = y.valid && y.issued && !y.confirmed;
+    if (i < wlog_.hop_msd.size()) wlog_.hop_msd[i] = y.valid && y.msd;
     if (y.valid && y.issued && !y.confirmed && !rowReady(i)) hop.push_back(i);
   }
   wlog_.hop_dep.assign(size_t(n_) * n_, 0);
@@ -788,7 +822,8 @@ bool Core::cancelHop() {
         r.rcu_done = false;
         r.resolved = false;
       }
-      count("cancel.replay");
+      count(y.stale ? "cancel.replay_stale" : "cancel.replay");
+      y.stale = false;
       ev("cancel", slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
       oev(OoeEv::kCancelReplay, slot_[y.slot].warp, i, cancel_depth_ + 1, r.u.tid);
       changed = true;
@@ -827,6 +862,9 @@ void Core::confirmPass() {
     for (unsigned j = 0; j != n_ && sources; ++j)
       if ((cell(e, j) & 1) && !was[j]) sources = false;
     if (!sources) continue;
+    // A grant on a stale ready bit stands on a producer that returned to
+    // Waiting: the next hop must return it too, never confirm it (OA-17).
+    if (x.stale && x.issued) err("OA-17: entry %u, granted on a stale ready bit, confirms", e);
     if (!x.produces) {   // nothing to wake
       x.confirmed = true;
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
@@ -838,16 +876,29 @@ void Core::confirmPass() {
       if (e < wlog_.conf.size()) wlog_.conf[e] = 1;
     }
   }
+  free_prompt_ = true;   // a confirmation's free: from flops in the RTL (TI-19)
   for (unsigned e : order)
     if (rs_[e].valid && rs_[e].confirmed) {
       const unsigned slot = rs_[e].slot, rob = rs_[e].rob;
       rsFree(e);
       complete(slot, rob);
     }
+  free_prompt_ = false;
 }
 
 void Core::advanceWakes() {
+  // Transitive cancel is a level, decided every cycle from the state as it
+  // stands at the cycle's start (OI-50): an issued entry whose row is no
+  // longer ready returns to Waiting. A miss is seen from the cycle after
+  // it (the hardware's FMISS, held as msd), so the first hop comes a cycle
+  // after the miss, and each further hop a cycle after the last (V-59, V-67).
+  const bool after_miss = miss_now_;
   miss_now_ = false;
+  const bool hopped = (!cfg_.inject_shallow_cancel || after_miss) && cancelHop();
+  // A completion clears a held miss at its edge, after this cycle's hop has
+  // read it: the hardware's msd flop.
+  for (RsEntry &x : rs_)
+    if (x.msd_end) x.msd = x.msd_end = false;
   for (unsigned e = 0; e != n_; ++e) {
     RsEntry &x = rs_[e];
     if (!x.valid || !x.issued || x.on_completion) continue;
@@ -859,13 +910,11 @@ void Core::advanceWakes() {
     if (x.valid && x.issued && x.spec && now_ >= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
       cancel(e);
   }
-  // Transitive cancel: one hop a cycle, from this cycle's misses and the
-  // entries the last hop returned to Waiting (OA-1, V-59).
-  if (cancel_live_) {
-    if ((cfg_.inject_shallow_cancel && !miss_now_) || !cancelHop()) {
-      ++histograms["cancel_depth"][cancel_depth_];
-      cancel_live_ = false;
-    }
+  // A cancel has settled once a cycle's hop changes nothing with no new
+  // miss behind it.
+  if (cancel_live_ && !hopped && !miss_now_) {
+    ++histograms["cancel_depth"][cancel_depth_];
+    cancel_live_ = false;
   }
   // Copy-only ops land at their contracted cycle and send no done (A-38).
   for (unsigned s = 0; s != slot_.size(); ++s)
@@ -998,6 +1047,7 @@ void Core::takeCompletions() {
         if (r->is_load) count("load.past_l1");
         // Wake once the data is readable at RCU (Config::cmpl_wake_delay).
         x.on_completion = false;
+        x.msd_end = x.msd;   // the hop still sees the miss this cycle (V-68)
         x.late_at = now_ + cfg_.cmpl_wake_delay;
         if (!cfg_.cmpl_wake_delay) wake(r->rs_main);
       }
@@ -1047,6 +1097,7 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   // Restore OOE's RAT in the same cycle FET restores its groups (Q8).
   s.rat = cp.gpr;
   s.prat = cp.pred;
+  rlog_.restore.push_back({slot, r.u.ckpt});
   advanceEpoch(slot);
   Redirect rd;
   rd.tid = r.u.tid;
@@ -1072,6 +1123,7 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
   if (r.alloc_pred) freePred(slot, r.ppnew);
   if (r.ckpt_live) { slot_[slot].ckpt[r.u.ckpt].live = false; r.ckpt_live = false; }
   r = RobEntry();
+  robFreed(slot, idx, false);
 }
 
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
@@ -1166,6 +1218,7 @@ void Core::releaseSlot(unsigned slot) {
   if (s.held_gpr || (cfg_.rename_preds && s.held_pred))
     err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr, s.held_pred);
   slot_of_[s.warp % kWarpIds] = -1;
+  rlog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
   (void)keep_epoch_warp;    // the epoch is per warp_id and survives (A-74)
   Slot fresh;
@@ -1251,6 +1304,7 @@ void Core::control() {
     squashAfter(unsigned(si), -1, true);
     s.rat = s.crat;
     s.prat = s.cprat;
+    rlog_.squash |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
     advanceEpoch(unsigned(si));
     epochNotice(unsigned(si));
@@ -1270,6 +1324,7 @@ void Core::control() {
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
+      rlog_.squash |= 1u << si;
       advanceEpoch(si);
       epochNotice(si);
       s.st = WarpState::kKilling;
@@ -1385,6 +1440,17 @@ void Core::retire() {
       }
       // Commit the mapping; free the one it replaced: no older instruction
       // can still read it, and every younger one reads the new name.
+      if (r.alloc_gpr || r.u.pred_we) {
+        RatLog::Ret w;
+        w.slot = si;
+        w.gwe = r.alloc_gpr;
+        w.dst = r.u.dst & 15;
+        w.gname = r.pnew;
+        w.pwe = r.u.pred_we;
+        w.pdst = r.u.pred_dst & 3;
+        w.pname = r.ppnew;
+        rlog_.ret.push_back(w);
+      }
       if (r.alloc_gpr) {
         s.crat[r.u.dst & 15] = r.pnew;
         freeGpr(si, cfg_.inject_free_new ? r.pnew : r.pold);
@@ -1419,6 +1485,7 @@ void Core::retire() {
       ev("retire", s.warp, rt.rob_tag, r.u.group_mask, r.u.tid);
       ++s.retired_since_restore;
       r = RobEntry();
+      robFreed(si, s.head, true);
       s.head = (s.head + 1) % cfg_.rob_depth;
       --s.count;
       ++n;
@@ -1472,7 +1539,8 @@ bool Core::predHold(unsigned slot, const RobEntry &r) const {
   return false;
 }
 
-std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost) {
+std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, unsigned *lost,
+                                unsigned fallback) {
   std::vector<size_t> win(nres, SIZE_MAX);
   for (size_t e = 0; e != req.size(); ++e)
     for (unsigned k = 0; k != nres; ++k)
@@ -1488,7 +1556,35 @@ std::vector<bool> pickResources(const std::vector<PickReq> &req, unsigned nres, 
     grant[e] = all && req[e].res != 0;
     if (lost && !all && some) ++*lost;
   }
-  return grant;
+  if (!fallback || nres < 4) return grant;
+  // The fallback picks, each the oldest of its own requesters: f1[k], those
+  // naming section k alone; u[h], those naming half h exactly or one of its
+  // sections alone.
+  auto oldest = [&](auto names) {
+    size_t best = SIZE_MAX;
+    for (size_t e = 0; e != req.size(); ++e)
+      if (names(req[e].res) && (best == SIZE_MAX || req[e].age < req[best].age)) best = e;
+    return best;
+  };
+  bool free_[4];
+  size_t f1[4];
+  for (unsigned k = 0; k != 4; ++k) {
+    free_[k] = win[k] == SIZE_MAX || !grant[win[k]];
+    f1[k] = oldest([k](unsigned r) { return r == (1u << k); });
+  }
+  std::vector<bool> fb(grant);
+  for (unsigned h = 0; h != 2; ++h) {
+    const unsigned a = 2 * h, b = a + 1, pair = 3u << a;
+    const size_t u = oldest([&](unsigned r) { return r == pair || r == (1u << a) || r == (1u << b); });
+    const bool half = fallback >= 2 && free_[a] && free_[b] && u != SIZE_MAX && req[u].res == pair;
+    if (half) {
+      fb[u] = true;
+      continue;
+    }
+    for (unsigned k : {a, b})
+      if (free_[k] && f1[k] != SIZE_MAX) fb[f1[k]] = true;
+  }
+  return fb;
 }
 
 /// Select over resources (OI-31, OI-33): S0-S3, R and P0-P3, bits 0 to 8.
@@ -1533,7 +1629,7 @@ void Core::selectSectioned() {
     if (!x.valid || x.issued || x.eligible_at > now_ || (x.res & busy)) return false;
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive) return false;
-    if (!rowReady(e)) return false;
+    if (!rowReadySel(e)) return false;
     const RobEntry &r = s.rob[x.rob];
     if (predHold(x.slot, r)) return false;
     // The copy's sources are confirmed before it issues, so it cannot be
@@ -1562,7 +1658,7 @@ void Core::selectSectioned() {
     wlog_.sel_iss[e] = x.issued;
     wlog_.sel_elig[e] = x.eligible_at <= now_;
     wlog_.sel_active[e] = s.st == WarpState::kActive;
-    wlog_.sel_ready[e] = rowReady(e);
+    wlog_.sel_ready[e] = rowReadySel(e);
     wlog_.sel_conf[e] = rowConfirmed(e);
     wlog_.sel_slot[e] = uint8_t(x.slot);
     wlog_.sel_res[e] = x.res;
@@ -1575,10 +1671,20 @@ void Core::selectSectioned() {
   for (unsigned e : cand) preq.push_back({rs_[e].res, rs_[e].age});
   std::vector<unsigned> grant;
   unsigned lost = 0;
-  const std::vector<bool> won = pickResources(preq, kRes, &lost);
+  const std::vector<bool> won = pickResources(preq, kRes, &lost, cfg_.pick_fallback);
   for (size_t i = 0; i != cand.size(); ++i)
     if (won[i]) { grant.push_back(cand[i]); wlog_.sel_grant[cand[i]] = 1; }
   if (lost) count("select.lost_resource", lost);   // won a section, lost another
+  // IS-9: lane grants that write a register (element work), and the cycles
+  // a lane op writing none (a setp: loop control) holds sections.
+  bool ctl_lanes = false;
+  for (unsigned e : grant) {
+    const RsEntry &x = rs_[e];
+    if ((x.res & 0x10u) || !(x.res & 0xFu) || x.copy) continue;
+    if (slot_[x.slot].rob[x.rob].alloc_gpr) count("select.lane_elem");
+    else ctl_lanes = true;
+  }
+  if (ctl_lanes) count("select.lane_ctl_cycles");
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
   // inject_double_grant: the oldest lane op, and the oldest memop, left out
   // are granted anyway, onto sections or pipes a granted op holds.
@@ -1664,7 +1770,7 @@ void Core::select() {
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     const Slot &s = slot_[x.slot];
     if (s.st != WarpState::kActive) return false;
-    if (!rowReady(e)) return false;
+    if (!rowReadySel(e)) return false;
     const RobEntry &r = s.rob[x.rob];
     if (predHold(x.slot, r)) return false;
     if (!miu) return true;
@@ -1832,6 +1938,9 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   const Uop &u = r.u;
   x.issued = true;
   x.issue_at = now_;
+  // A grant on the registered ready alone: a stale bit (OI-51, OA-17).
+  x.stale = !rowReady(e);
+  if (x.stale) count("select.stale_grant");
   // Memop hold cycles (Events): from the first cycle its operands were all
   // woken to its issue, the cost of waiting for confirmation.
   if (x.cls == RsCls::kMiu) {
@@ -1902,8 +2011,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     oev(OoeEv::kRobFull, s.warp, s.count, 0, u.tid);
     return false;
   }
-  if (s.rob[s.tail].valid) {
-    count("stall.rob_slot_held");
+  if (robHeld(si, s.tail)) {
+    count(s.rob[s.tail].valid ? "stall.rob_slot_held" : "stall.rob_late_credit");
     oev(OoeEv::kRobSlotHeld, s.warp, tagOf(si, s.tail), 0, u.tid);
     return false;
   }
@@ -1917,8 +2026,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
-    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rs_[e].valid;
-    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rs_[e].valid;
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
     const unsigned need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0), need_miu = mem ? 1 : 0;
     if (free_rcu < need_rcu) {
       count("stall.rs_full.rcu");
@@ -2020,6 +2129,29 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       c.pred = s.prat;
       r.ckpt_live = true;
     }
+    {
+      RatLog::Ren w;
+      w.slot = si;
+      for (unsigned i = 0; i != 3; ++i) { w.src[i] = u.src[i] & 15; w.psrc[i] = r.psrc[i]; }
+      w.dst = u.dst & 15;
+      w.pold = r.pold;
+      w.gwe = wgpr;
+      w.gname = r.pnew;
+      w.pguard = u.pred_guard & 3;
+      w.ppguard = r.ppguard;
+      w.pdst = u.pred_dst & 3;
+      w.ppold = r.ppold;
+      w.pwe = u.pred_we;
+      w.pname = r.ppnew;
+      w.plogic = u.shape.pred_logic;
+      w.pq[0] = u.imm & 3;
+      w.pq[1] = (u.imm >> 3) & 3;
+      w.pqn[0] = r.pq[0];
+      w.pqn[1] = r.pq[1];
+      w.br = a.branch;
+      w.ckpt = u.ckpt;
+      rlog_.ren.push_back(w);
+    }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
     if (a.serial == kSerBarrier) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
@@ -2061,12 +2193,34 @@ void Core::restoreStep() {
   const unsigned si = restore_q_.front();
   Slot &s = slot_[si];
   const unsigned width = cfg_.rename_width;
-  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr)
-    s.crat[kArchGprs - s.restore_gpr] = s.rat[kArchGprs - s.restore_gpr] = allocGpr(si);
+  // The k-th GPR and the k-th predicate share rename port k (RatLog).
+  const size_t base = rlog_.ren.size();
+  auto port = [&](unsigned k) -> RatLog::Ren & {
+    while (rlog_.ren.size() <= base + k) {
+      RatLog::Ren w;
+      w.slot = si;
+      w.rst = true;
+      rlog_.ren.push_back(w);
+    }
+    return rlog_.ren[base + k];
+  };
+  for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr) {
+    const unsigned a = kArchGprs - s.restore_gpr;
+    s.crat[a] = s.rat[a] = allocGpr(si);
+    RatLog::Ren &w = port(k);
+    w.gwe = true;
+    w.dst = a;
+    w.gname = s.rat[a];
+  }
   for (unsigned k = 0; k != width && s.restore_pred && (!cfg_.rename_preds || predAllowed(si, 1));
-       ++k, --s.restore_pred)
-    s.cprat[kArchPreds - s.restore_pred] = s.prat[kArchPreds - s.restore_pred] =
-        allocPred(si, kArchPreds - s.restore_pred);
+       ++k, --s.restore_pred) {
+    const unsigned a = kArchPreds - s.restore_pred;
+    s.cprat[a] = s.prat[a] = allocPred(si, a);
+    RatLog::Ren &w = port(k);
+    w.pwe = true;
+    w.pdst = a;
+    w.pname = s.prat[a];
+  }
   if (s.restore_gpr || s.restore_pred) return;
   const uint64_t took = now_ - s.restore_at + 1;
   const uint64_t bound = (std::max(kArchGprs, kArchPreds) + width - 1) / width + 1;

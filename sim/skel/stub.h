@@ -99,7 +99,8 @@ inline Line getLine(const Bits &b, uint32_t lsb) {
 // Placeholders for encodings the payload spec leaves to the owning block.
 enum : unsigned { kCohRead = 0, kCohWrite = 1 };        // coh_op
 enum : unsigned { kMemLoad = 0, kMemStore = 1,          // ooe_miu_memop.mem_op
-                  kMemBulkDiscard = 0xF };
+                  kMemAtomicRead = 2, kMemAtomicWrite = 3, // OOE's (AR-21, V-72)
+                  kMemFence = 0xE, kMemBulkDiscard = 0xF };
 enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_op
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space

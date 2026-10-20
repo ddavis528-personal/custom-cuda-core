@@ -51,7 +51,7 @@ it.
 | PF-26 | Co-issue lane ops whose lane masks are disjoint | scheduler, RCU | deferred |
 | PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | dropped (DA's revised OI-30) |
 | PF-28 | Loads pass older loads | scheduler, MIU | deferred (DA's response OA-13) |
-| PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35) |
+| PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35; OA-19 (b)) |
 | PF-30 | 4-bit work at 8x: nibble sub-sections | LANE, RCU, rename, scheduler | deferred (DA's response OI-29) |
 | PF-31 | A warp-uniform register file and scalar datapath | ISA, RCU, rename, compiler | deferred (CP-7, compiler F-106) |
 | PF-32 | Branch resolution fed by a lane compare at the bypass point | LANE, RCU, scheduler | deferred (S1 traces) |
@@ -60,6 +60,7 @@ it.
 | PF-35 | A one-instruction warp reduction in RCU | ISA, RCU, compiler | deferred (IS-14) |
 | PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
 | PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
+| PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
 
 ## Entries
 
@@ -467,6 +468,14 @@ it.
 - **Signal:** `foot.*` against `spread.*` and `sections_idle` on one-warp
   narrow kernels. Revisit when a one-warp narrow kernel matters (asked of
   CP).
+- **Four warps too (IS-9, OA-19 (b)):** under home = slot index each warp
+  has one section at 8 bits, so 4x needs every warp to hold a ready narrow
+  op every cycle. With select's section fallback the four-warp element
+  rate is 2.40x at 8 bits and 1.59x at 16 over alu32 (`--sweep-sections`,
+  element ops per cycle outside setp cycles), and DA's response OA-19 holds
+  the first build to it. This is the lever for most of what remains, and
+  is unmeasured: it needs a model arm with compiler-chosen positions
+  before it is built (OA).
 
 ### PF-30 4-bit work at 8x: nibble sub-sections
 
@@ -682,3 +691,22 @@ it.
   and the bus toggle energy in masked lanes, on O-33's own kernels (14% and
   21.5% lane-activation savings, ISA v1.8 §1a.1). To be settled by AR with the
   RCU session.
+
+### PF-38 The aligned-half fallback pick
+
+- **Now:** select's fallback is section-only (OA's response IS-9): a lane
+  section whose winner does not issue grants its oldest requester naming
+  that section alone. 16-bit ops, which name a half, take no fallback.
+- **Alternative:** also an aligned-half pick: a half whose two sections
+  both fall through grants its oldest half-footprint requester, if that is
+  the oldest of the half's pair and single-section requesters
+  (`pick_fallback=2`, `ooe_pick` FB 2, both built and checked).
+- **Measured:** alu16 at four warps 710 cycles (1.90x) against 823 (1.59x)
+  with section-only; alu8 unchanged at 589 (2.40x).
+- **Cost:** depth. ooe_select measures 26.8 NGD with it, past the 25 of
+  its stage, against 24.3 section-only and 19.5 with none. The half's
+  pick is parallel; what it adds is behind "did this section's winner
+  issue", a 30-wide reduction after the main pick.
+- **Signal:** a select stage with room (a request vector registered a
+  stage earlier, or a pick restructured so a section's fall-through is
+  known before the issue AND), or 16-bit code that matters at four warps.

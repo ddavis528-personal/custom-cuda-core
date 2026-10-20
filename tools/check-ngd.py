@@ -30,6 +30,12 @@ Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"):
          checker-only observation port is exempt; and a channel the
          generated hardening wrappers carry across themselves, the one
          feedthrough allowed (rtl/top/, never a unit here).
+  SHARED A register that drives an output is held, on every path it starts,
+         to the flops inside as to any output, within that output's
+         required time (Daniel, 2026-10-19): a flop on a critical path out
+         and on one in is pulled two ways at placement. The remedy is a copy,
+         one for the output and one for the rest, each declared (* keep *)
+         so synthesis keeps both, here as in a real flow.
   BLOCK  Once a block top is RTL, the assembled block is checked twice.
          First from the budget files: each level of its hierarchy is timed
          with its children cut out at their budgets, so every connection,
@@ -59,6 +65,9 @@ The rules, as findings:
          logic on a path that touches none of its own flops
   NGD-6  an inner helper that no module instantiates yet, input to output
          over CCV_NGD_INNER
+  NGD-7  a register that drives an output, on any path it starts, to a flop
+         or to any output, over that output's required time (the strictest
+         of those it drives)
 
 Modules that broke a default when the rule was made sit on
 rtl/ngd-ratchet.json, awaiting budgets from OA or a redesign; the list only
@@ -95,95 +104,22 @@ RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # The findings that stood when each rule was made: NGD-1 to NGD-4 on
 # 2026-10-17, NGD-5 on 2026-10-18 (its through paths had been NGD-2's),
 # ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
-# on OI's branch (d8ffd4c: declared inner, no parent yet). Never add to this:
+# on OI's branch (d8ffd4c: declared inner, no parent yet); NGD-7 on
+# 2026-10-19, at 7ae697c; trimmed to the ratchet as modules pass (last at
+# OI's 3ebc293, 2026-10-20). Never add to this:
 # a module written since meets the rules, or has the architect's budgets, or
 # is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
-    "ooe_confirm": [
-        "NGD-5 dep_cq01h>conf_cq01h", "NGD-5 dep_cq01h>replay_cq02h", "NGD-5 fin_cq01h>conf_cq01h",
-        "NGD-5 iss_cq01h>conf_cq01h", "NGD-5 iss_cq01h>replay_cq02h",
-        "NGD-5 miss_cq01h>replay_cq02h", "NGD-5 prod_cq01h>conf_cq01h",
-    ],
     "ooe_decq": [
-        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-3 deq_n_cq01h", "NGD-3 enq_slot_cq01h",
-        "NGD-3 enq_v_cq01h", "NGD-3 flush_cq01h",
-    ],
-    "ooe_freelist": [
-        "NGD-3 alloc_req_cq01h", "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
-        "NGD-5 alloc_req_cq01h>alloc_v_cq02h",
-    ],
-    "ooe_pick": [
-        "NGD-5 older_cq03h>issue_cq03h", "NGD-5 older_cq03h>lost_cq03h",
-        "NGD-5 older_cq03h>win_cq03h", "NGD-5 req_cq03h>issue_cq03h", "NGD-5 req_cq03h>lost_cq03h",
-        "NGD-5 req_cq03h>win_cq03h",
+        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-7 st_cq02h",
     ],
     "ooe_rat": [
-        "NGD-2 ren_pold_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 ren_dst_cq01h",
-        "NGD-3 ren_gwe_cq01h", "NGD-3 ren_pdst_cq01h", "NGD-3 ren_rst_cq01h",
-        "NGD-3 ren_slot_cq01h", "NGD-3 ren_v_cq01h", "NGD-3 restore_ckpt_cq01h",
-        "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-3 ret_pdst_cq01h",
-        "NGD-3 ret_pwe_cq01h", "NGD-5 ren_dst_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_dst_cq01h>ren_psrc_cq01h", "NGD-5 ren_gname_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_gname_cq01h>ren_psrc_cq01h", "NGD-5 ren_gwe_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_gwe_cq01h>ren_psrc_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pdst_cq01h>ren_ppold_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_pguard_cq01h>ren_ppguard_cq01h", "NGD-5 ren_pname_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pname_cq01h>ren_ppold_cq01h", "NGD-5 ren_pname_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_pq_cq01h>ren_ppq_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pwe_cq01h>ren_ppold_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_pold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_ppold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_psrc_cq01h", "NGD-5 ren_slot_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_slot_cq01h>ren_ppguard_cq01h", "NGD-5 ren_slot_cq01h>ren_ppold_cq01h",
-        "NGD-5 ren_slot_cq01h>ren_ppq_cq01h", "NGD-5 ren_slot_cq01h>ren_psrc_cq01h",
-        "NGD-5 ren_src_cq01h>ren_psrc_cq01h", "NGD-5 ren_v_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_v_cq01h>ren_ppguard_cq01h", "NGD-5 ren_v_cq01h>ren_ppold_cq01h",
-        "NGD-5 ren_v_cq01h>ren_ppq_cq01h", "NGD-5 ren_v_cq01h>ren_psrc_cq01h",
-    ],
-    "ooe_ready": [
-        "NGD-5 code_cq02h>ready_cq02h", "NGD-5 dep_cq02h>ready_cq02h",
-        "NGD-5 wake_cq02h>ready_cq02h",
+        "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-7 rat_cq02h",
     ],
     "ooe_rs": [
-        "NGD-2 gnt_idx_cq02h", "NGD-2 gnt_v_cq02h", "NGD-3 free_cq01h", "NGD-3 grp_code_cq01h",
-        "NGD-3 grp_dep_cq01h", "NGD-3 req_cq01h", "NGD-3 row_code_cq01h",
-        "NGD-5 free_cq01h>gnt_idx_cq02h", "NGD-5 free_cq01h>gnt_v_cq02h",
-        "NGD-5 req_cq01h>gnt_idx_cq02h", "NGD-5 req_cq01h>gnt_v_cq02h",
+        "NGD-3 free_cq01h",
     ],
     "ooe_select": [
-        "NGD-5 active_cq03h>cand_cq03h", "NGD-5 active_cq03h>grant_cq03h",
-        "NGD-5 active_cq03h>lost_cq03h", "NGD-5 active_cq03h>pick_m.req_cq03h",
-        "NGD-5 active_cq03h>pick_r.req_cq03h", "NGD-5 block_cq03h>cand_cq03h",
-        "NGD-5 block_cq03h>grant_cq03h", "NGD-5 block_cq03h>lost_cq03h",
-        "NGD-5 block_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>cand_cq03h",
-        "NGD-5 busy_cq03h>grant_cq03h", "NGD-5 busy_cq03h>lost_cq03h",
-        "NGD-5 busy_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>pick_r.req_cq03h",
-        "NGD-5 chas_cq03h>cand_cq03h", "NGD-5 chas_cq03h>grant_cq03h",
-        "NGD-5 chas_cq03h>lost_cq03h", "NGD-5 chas_cq03h>pick_m.req_cq03h",
-        "NGD-5 cidx_cq03h>cand_cq03h", "NGD-5 cidx_cq03h>grant_cq03h",
-        "NGD-5 cidx_cq03h>lost_cq03h", "NGD-5 cidx_cq03h>pick_m.req_cq03h",
-        "NGD-5 copy_cq03h>cand_cq03h", "NGD-5 copy_cq03h>grant_cq03h",
-        "NGD-5 copy_cq03h>lost_cq03h", "NGD-5 copy_cq03h>pick_r.req_cq03h",
-        "NGD-5 dep_cq03h>cand_cq03h", "NGD-5 dep_cq03h>grant_cq03h", "NGD-5 dep_cq03h>lost_cq03h",
-        "NGD-5 dep_cq03h>pick_m.req_cq03h", "NGD-5 dep_cq03h>pick_r.req_cq03h",
-        "NGD-5 elig_cq03h>cand_cq03h", "NGD-5 elig_cq03h>grant_cq03h",
-        "NGD-5 elig_cq03h>lost_cq03h", "NGD-5 elig_cq03h>pick_m.req_cq03h",
-        "NGD-5 elig_cq03h>pick_r.req_cq03h", "NGD-5 iss_cq03h>cand_cq03h",
-        "NGD-5 iss_cq03h>grant_cq03h", "NGD-5 iss_cq03h>lost_cq03h",
-        "NGD-5 iss_cq03h>pick_m.req_cq03h", "NGD-5 iss_cq03h>pick_r.req_cq03h",
-        "NGD-5 older_m_cq03h>cand_cq03h", "NGD-5 older_m_cq03h>grant_cq03h",
-        "NGD-5 older_m_cq03h>lost_cq03h", "NGD-5 older_m_cq03h>pick_m.req_cq03h",
-        "NGD-5 older_r_cq03h>grant_cq03h", "NGD-5 older_r_cq03h>lost_cq03h",
-        "NGD-5 ready_cq03h>cand_cq03h", "NGD-5 ready_cq03h>grant_cq03h",
-        "NGD-5 ready_cq03h>lost_cq03h", "NGD-5 ready_cq03h>pick_m.req_cq03h",
-        "NGD-5 ready_cq03h>pick_r.req_cq03h", "NGD-5 res_cq03h>cand_cq03h",
-        "NGD-5 res_cq03h>grant_cq03h", "NGD-5 res_cq03h>lost_cq03h",
-        "NGD-5 res_cq03h>pick_m.req_cq03h", "NGD-5 res_cq03h>pick_r.req_cq03h",
-        "NGD-5 slot_cq03h>cand_cq03h", "NGD-5 slot_cq03h>grant_cq03h",
-        "NGD-5 slot_cq03h>lost_cq03h", "NGD-5 slot_cq03h>pick_m.req_cq03h",
-        "NGD-5 slot_cq03h>pick_r.req_cq03h", "NGD-5 valid_cq03h>cand_cq03h",
-        "NGD-5 valid_cq03h>grant_cq03h", "NGD-5 valid_cq03h>lost_cq03h",
-        "NGD-5 valid_cq03h>pick_m.req_cq03h", "NGD-5 valid_cq03h>pick_r.req_cq03h",
         "NGD-6 active_cq03h>grant_cq03h", "NGD-6 active_cq03h>lost_cq03h",
         "NGD-6 block_cq03h>grant_cq03h", "NGD-6 block_cq03h>lost_cq03h",
         "NGD-6 busy_cq03h>grant_cq03h", "NGD-6 busy_cq03h>lost_cq03h",
@@ -196,9 +132,6 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-6 res_cq03h>lost_cq03h", "NGD-6 slot_cq03h>grant_cq03h",
         "NGD-6 slot_cq03h>lost_cq03h", "NGD-6 valid_cq03h>grant_cq03h",
         "NGD-6 valid_cq03h>lost_cq03h",
-    ],
-    "ooe_wake": [
-        "NGD-3 cls_cq01h", "NGD-3 cmpl_cq01h", "NGD-3 grant_cq01h", "NGD-3 kind_cq01h",
     ],
 }.items() for k in ks}
 EPS = 0.005
@@ -359,6 +292,54 @@ class Timing:
                     self.io[(p, q)] = t
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
         self.nflops = len(latches)
+        # Backward from the endpoints (NGD-7): each flop's longest path to
+        # any flop, and to each output port it reaches.
+        qs = {q for _, q in latches}
+
+        def back(ends):
+            dep = dict.fromkeys(ends, 0.0)
+            for n in reversed(order):
+                if n not in dep or driver[n][0] in ("ZERO", "ONE"):
+                    continue
+                g, a = driver[n]
+                w = dep[n] + (0.0 if g == "BUF" else lib[g])
+                for x in a:
+                    if dep.get(x, NEG) < w:
+                        dep[x] = w
+            return dep
+        self.q_flop = {q: v for q, v in back(d_nets).items() if q in qs}
+        self.q_out = collections.defaultdict(dict)
+        for p, bits in ports_out.items():
+            for q, v in back(bits).items():
+                if q in qs:
+                    self.q_out[q][p] = v
+
+
+def reg_names(d):
+    """{a net bit as write_blif spells it: its register's name in the RTL}.
+    A flop's net is often named for the port it drives; another name for
+    the same bit, not a port's, is the register's."""
+    mods = list(d["modules"].values())
+    top = next((m for m in mods if m.get("attributes", {}).get("top")), mods[0])
+    ports = set(top["ports"])
+    names = collections.defaultdict(set)
+    for nn, v in top["netnames"].items():
+        if not v.get("hide_name"):
+            for b in v["bits"]:
+                if isinstance(b, int):
+                    names[b].add(nn)
+    out = {}
+    for nn, v in top["netnames"].items():
+        if v.get("hide_name"):
+            continue
+        w, off = len(v["bits"]), v.get("offset", 0)
+        for i, b in enumerate(v["bits"]):
+            alts = [n for n in names.get(b, ()) if n not in ports] if isinstance(b, int) else []
+            if alts:
+                k = off + (w - 1 - i if v.get("upto") else i)
+                out[nn if w == 1 else "%s[%d]" % (nn, k)] = min(
+                    alts, key=lambda n: (not n.endswith("_q"), len(n), n))
+    return out
 
 
 def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
@@ -378,7 +359,7 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     if r.returncode or not m:
         raise SystemExit("check-ngd: %s: ABC failed:\n%s" % (work, (r.stdout + r.stderr)[-2000:]))
     t = Timing(mapped, float(m.group(1)), lib)
-    t.cut = cut
+    t.cut, t.regname = cut, reg_names(d)
     if abs(t.abc_like - t.abc) > EPS:
         raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
                          "ABC's, %.2f" % (work, t.abc_like, t.abc))
@@ -400,7 +381,9 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inn
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
-    cmds += ["hierarchy -top %s" % top, "chformal -remove"]
+    # A register declared (* keep *) keeps its flops (NGD-7's copies), as
+    # in check-cg's flows (cg.KEEP_FLOPS).
+    cmds += ["hierarchy -top %s" % top, "chformal -remove"] + cg.KEEP_FLOPS
     if not flat and inner:
         cmds += ["setattr -mod -set keep_hierarchy 1 *",
                  "setattr -mod -unset keep_hierarchy %s" % " ".join(
@@ -635,6 +618,7 @@ def findings(u, budgets, parents=frozenset()):
             out.append(("NGD-3 %s" % i, "NGD-3 %s (unit %s): input %s, arriving at %g, reaches "
                         "a flop %.1f later, %.1f in all, over the %g stage"
                         % (mod, u.name, i, arr, t.ir[i], arr + t.ir[i], STAGE)))
+    out += shared_flops(u, budgets)
     for (i, o), d in sorted(t.io.items()):
         if i in t.cut or o in t.cut or is_clock(i) or budgets.observation(mod, o):
             continue
@@ -643,6 +627,36 @@ def findings(u, budgets, parents=frozenset()):
                     "%s to output %s: connect a wire directly, group logic with a "
                     "sequential side" % (mod, u.name, what, i, o)))
     return out
+
+
+def shared_flops(u, budgets):
+    """NGD-7 (Daniel, 2026-10-19): a register that drives an output is held,
+    on every path it starts, to that output's required time: to the module's
+    own flops as to any output. A flop on a critical path out and on one in
+    is pulled two ways at placement. Where a register drives several
+    outputs, the strictest holds; a path to an output over that output's own
+    required time is NGD-2's. The remedy is a copy of the register, one
+    for the output and one for the paths inside, each declared (* keep *).
+    Keyed by register."""
+    t, mod, worst = u.t, u.module, {}
+    for q, outs in t.q_out.items():
+        defs = {p: budgets.required(mod, p) for p in outs
+                if p not in t.cut and not budgets.observation(mod, p)}
+        if not defs:
+            continue
+        port = min(defs, key=lambda p: (defs[p], p))
+        # An output over its own required time is NGD-2's, not counted here.
+        ends = [(t.q_flop.get(q, NEG), "a flop")] + [
+            (d, "output %s" % p) for p, d in outs.items()
+            if p in t.cut or p in defs and d <= defs[p] + EPS]
+        d, what = max(ends)
+        reg = t.regname.get(q, base(q))
+        if d > defs[port] + EPS and d - defs[port] > worst.get(reg, (NEG,))[0]:
+            worst[reg] = (d - defs[port], q, port, defs[port], d, what)
+    return [("NGD-7 %s" % reg, "NGD-7 %s (unit %s): register %s drives output %s, required at "
+             "%g, and reaches %s %.1f NGD away: copy the register, one copy for the output and "
+             "one for the rest, each (* keep *)" % (mod, u.name, reg, port, lim, what, d))
+            for reg, (_, q, port, lim, d, what) in sorted(worst.items())]
 
 
 def report(u, verbose=False):
@@ -853,10 +867,12 @@ def main_check(only=None):
     for mod in sorted(ratchet):
         n5 = sum(k.startswith("NGD-5") for k in ratchet[mod])
         n6 = sum(k.startswith("NGD-6") for k in ratchet[mod])
+        n7 = sum(k.startswith("NGD-7") for k in ratchet[mod])
         print("  ratchet: %-14s %2d port finding(s) awaiting budgets, %2d path(s) straight "
-              "through awaiting a redesign%s" % (mod, len(ratchet[mod]) - n5 - n6, n5,
-                                                 ", %d helper path(s) awaiting a parent" % n6
-                                                 if n6 else ""))
+              "through awaiting a redesign%s%s" % (
+                  mod, len(ratchet[mod]) - n5 - n6 - n7, n5,
+                  ", %d helper path(s) awaiting a parent" % n6 if n6 else "",
+                  ", %d register(s) shared by an output awaiting a copy" % n7 if n7 else ""))
     inner = sorted(m for m in budgets.inner if any(u.module == m for u in units))
     if inner:
         print("  inner helpers: %s" % ", ".join(
@@ -924,6 +940,8 @@ def selftest():
     #    a flop too late (NGD-3), flop to flop over the stage (NGD-1).
     expect("NGD-2 y" in keys(fx["ngd_fx_out"]), "a deep output passed: %.1f"
            % fx["ngd_fx_out"].t.ro.get("y", NEG))
+    expect(not any(k.startswith("NGD-7") for k in keys(fx["ngd_fx_out"])),
+           "a deep output was NGD-7's too: %s" % findings(fx["ngd_fx_out"], none))
     expect("NGD-3 a" in keys(fx["ngd_fx_in"]), "a deep input passed: %.1f"
            % fx["ngd_fx_in"].t.ir.get("a", NEG))
     expect("NGD-1" in keys(fx["ngd_fx_stage"]), "a path over the stage passed: %.1f"
@@ -979,6 +997,38 @@ def selftest():
            "the policy passed an inner helper over CCV_NGD_INNER alone: %s" % f)
     f = policy([hlp, par], hb, {}, hmods, set())
     expect(not f, "the policy held an inner helper inside its parent to CCV_NGD_INNER: %s" % f)
+    #    A register that drives an output is held, on every path it starts,
+    #    to that output's required time (NGD-7, Daniel, 2026-10-19). a_q
+    #    drives y and w and, 15.9 NGD away, the flop p_q: refused, by its RTL
+    #    name; passing with y and w required at 18, not with y alone (w's 12
+    #    holds); passing with both observation ports. Split into two copies
+    #    each (* keep *), it passes; split bare, synthesis merges them and it
+    #    is refused. A flop whose only long path is to an output over its own
+    #    budget is NGD-2's alone (ngd_fx_out, above).
+    sf = ["%s/ngd_fx_shared.sv" % FIX]
+    sh, sp, sb = (fixture("fx_" + m[7:], m, sf) for m in
+                  ("ngd_fx_shared", "ngd_fx_split", "ngd_fx_split_bare"))
+    for x in (sh, sp, sb):
+        x.measure()
+    expect(keys(sh) == {"NGD-7 a_q"}, "a register driving an output and a flop 15.9 NGD away "
+           "passed, or was not named for its register: %s" % findings(sh, none))
+    req = dict(sig, required=18)
+    late = {("ngd_fx_shared", p): dict(req) for p in ("y", "w")}
+    expect("NGD-7 a_q" not in keys(sh, Budgets(extra=late)),
+           "a register was held under its outputs' required times: %s"
+           % findings(sh, Budgets(extra=late)))
+    one = Budgets(extra={("ngd_fx_shared", "y"): dict(req)})
+    expect("NGD-7 a_q" in keys(sh, one),
+           "a register driving two outputs was held to the looser one: %s" % findings(sh, one))
+    obs = Budgets(extra={("ngd_fx_shared", p): dict(sig, observation=True) for p in ("y", "w")})
+    expect("NGD-7 a_q" not in keys(sh, obs),
+           "a register driving only observation ports was held to them: %s" % findings(sh, obs))
+    expect(not keys(sp) and sp.t.nflops > sh.t.nflops,
+           "a register split into two (* keep *) copies was refused, or merged: %s, %d flops"
+           % (findings(sp, none), sp.t.nflops))
+    expect(keys(sb) == {"NGD-7 a_q"} and sb.t.nflops == sh.t.nflops,
+           "copies not marked (* keep *) were not merged back and refused: %s, %d flops"
+           % (findings(sb, none), sb.t.nflops))
     # 5. Budget files refused: one whose module is not its file name's, one
     #    for a module that is not a design module, an entry on a port the
     #    module lacks, an entry naming both an arrival and a required time,
@@ -1097,8 +1147,9 @@ def selftest():
         sys.stderr.write("check-ngd selftest: %s\n" % x)
     if not bad:
         print("  timing pass against ABC, outputs, inputs, the stage, paths straight through, "
-              "inner helpers alone and inside a parent, observation ports, budget files, ratchet, "
-              "coverage, glue, the assembled block from its budgets and whole (%d controls)"
+              "inner helpers alone and inside a parent, registers shared by an output and the "
+              "rest, observation ports, budget files, ratchet, coverage, glue, the assembled "
+              "block from its budgets and whole (%d controls)"
               % checks)
     return 1 if bad else 0
 
