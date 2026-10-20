@@ -474,7 +474,7 @@ unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
     if (!m) m = 0xFu;
     return m << 5;
   }
-  if (!copy_half && (a.exec_rcu || u.shape.exit || u.decode_fault)) return 1u << 4;
+  if (!copy_half && (a.exec_rcu || u.shape.exit || u.cause)) return 1u << 4;
   const unsigned fm = copy_half ? 1 : cfg_.foot_min[a.bypass_group & 7];
   if (!fm) return 1u << 4;
   unsigned m = 0;
@@ -1050,7 +1050,7 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.decode_fault) c = true;
+  if (r.u.shape.exit || r.u.cause) c = true;
   else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
@@ -1100,11 +1100,8 @@ void Core::takeCompletions() {
       }
     }
     r->rcu_done = true;
-    if (d.exec_fault) {
-      r->fault = true;
-      r->fault_cause = 1;
-      r->fault_lanes = d.fault_lane_mask;
-    }
+    // No v1.9 cause originates in RCU or a lane (AR's response IS-16): a
+    // done carries none.
     // A done is a completion for an RS entry that wakes on it.
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid && r->rs_main < wlog_.done.size())
       wlog_.done[r->rs_main] = 1;
@@ -2166,7 +2163,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // count faults here, as a no-op, so it never reaches SYU.
   const bool bar_fault = a.serial == kSerBarrier && u.imm >= s.bar_count &&
                          !cfg_.inject_no_bar_fault;
-  const bool nop = u.shape.exit || u.decode_fault || bar_fault;
+  const bool nop = u.shape.exit || u.cause || bar_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -2323,9 +2320,10 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (wgpr) gprod_[r.pnew] = {r.rs_main, copy ? r.rs_copy : kNoEntry};
     if (u.pred_we) pprod_[r.ppnew] = {r.rs_main, kNoEntry};
   }
-  if (u.decode_fault) {
+  if (u.cause) {
+    // Fetch's or decode's, as DEC sent it (TI's 75b6a19).
     r.fault = true;
-    r.fault_cause = kCauseIllegal;   // the decode stage's one cause (IS's response IS-16)
+    r.fault_cause = u.cause;
   }
   if (bar_fault) {
     r.fault = true;
