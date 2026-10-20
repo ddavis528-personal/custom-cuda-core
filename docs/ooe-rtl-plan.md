@@ -110,10 +110,19 @@ Built (`rtl/ooe/`):
   enable come from the module's own flops (CG-5). Those entries, in
   transit, sit at the head a cycle: the ports offer the entries behind
   them (a mux on the registered count), and `avail_cq02h`, the count
-  rename sees, leaves them out. A taken entry's free bit still clears at
-  its own edge. The ports read a `(* keep *)` copy of the buffer, its count
-  and the registered count, which start no other path (NGD-7: the state's
-  own paths run through the refill). The reset is flopped before use
+  rename sees, leaves them out. A taken entry's free bit clears with them,
+  at the late edge, from the registered count (OA's response OI-58, V-75):
+  exact, since they stay buffered until then and refill cannot take them
+  again. Frees come from the retire stage's register and a registered
+  squash, never naming an entry granted that cycle (an assertion), and the
+  free list flops their lead, the ROB's decision a cycle earlier
+  (`free_l`), as the free bits' enable (L2). The bench runs the RTL an edge
+  behind the model to drive the lead, and a third control, no-lead, must
+  be caught. The ports read a `(* keep *)` copy of the buffer and its
+  count, which start no other path (NGD-7: the state's own paths run
+  through the refill). The registered count needs no copy: its paths, 19.4
+  NGD, are within the ports' required 20 (OA's response OI-60: rename takes
+  the names as data, its go and credits in ooe_decq). The reset is flopped before use
   (RST-1). Depth is 21.6 NGD at 192 entries and 22.2 at 48, the requests
   13.2 and 13.7 to a flop (they reach only the free bits and the
   registered count now), the grant ports 11.5 and 10.4 from flops. In the

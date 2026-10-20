@@ -118,7 +118,7 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   else
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in drop-free extra-alloc; do
+  for c in drop-free extra-alloc no-lead; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
     else
