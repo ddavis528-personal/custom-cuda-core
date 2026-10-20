@@ -477,7 +477,7 @@
       "name": "CCV_W_FAULT_CAUSE",
       "value": 4,
       "status": "arch",
-      "doc": "Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59); 10-15 spare. The ISA names the causes and their priority; the codes are the schema owner's.",
+      "doc": "Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59); 10-15 spare. The ISA names the causes and their priority; the codes are the schema owner's. Where each is known, by v1.9 §12's stages (OI's question on IS-16): A fetch fault rides DEC's uop to the ROB (ccv_fet_dec_instr), so ccv_dec_ooe_uop carries cause: 1 F-FETCH when FET flagged the instruction, else 2 F-ILLEGAL from DEC's check (AR's response IS-16: a field, not flags). F-WIDTH, F-FORMAT and F-BARRIER (3, 4, 9) are dispatch causes that need chwidth state or the barrier count, which only OOE holds, so OOE detects them itself. The execute causes are all memory causes, F-ALIGN, F-ADDR, F-SHARED and F-RO (5 to 8), and MIU's completion carries them: cause the highest-priority cause among its faulting lanes (§12.5), address the lowest faulting lane's effective address (§12.6). No v1.9 cause originates in RCU or a lane, so ccv_rcu_ooe_done's exec_fault and fault_lane_mask go once the OOE model stops reading them, and LANE's sec_fault is gone.",
       "source": "ports spec 2026-09-23; ISA v1.9 §12 and IS-16 (2026-10-20)"
     },
     {

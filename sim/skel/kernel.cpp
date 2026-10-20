@@ -1838,6 +1838,7 @@ private:
         put(u, c.dec_ooe, "warp_id", get(f, c.fet_dec, "warp_id"));
         put(u, c.dec_ooe, "pc", pc);
         put(u, c.dec_ooe, "decode_fault", 1);
+        put(u, c.dec_ooe, "cause", kFaultIllegal);
         q_.push_back({u, m.tid});
         return;
       }
@@ -1851,6 +1852,7 @@ private:
     if (!op) {
       k_.fail("dec: %s is not in the skeleton's opcode table", r->op.c_str());
       put(u, c.dec_ooe, "decode_fault", 1);
+      put(u, c.dec_ooe, "cause", kFaultIllegal);
       q_.push_back({u, m.tid});
       return;
     }
