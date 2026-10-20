@@ -357,6 +357,22 @@ Built (`rtl/ooe/`):
   port-reverse, drop-restore, drop-retire and drop-squash must each be
   caught. Logic depth is 13.8 NGD in 13 levels.
 
+  The read is Rename 1's logic (OA's response OI-46, reopened): it lives in
+  `ooe_ratread`, a combinational inner helper for `ooe_rename`, whose
+  Rename 1 register captures what it returns, and `ooe_rat` drives its maps
+  straight out (`rat_cq02h`, required at 4). So no rename field passes
+  through `ooe_rat`, and its 33 NGD-5 and 2 NGD-2 entries, and 3 of its 5
+  NGD-3, are gone. The bench drives both under `test/ooe/ooe_rat_read.sv`
+  (101,453 renames, 59,615 in-group, none differ; the four controls
+  caught). `ooe_ratread` is 13.3 NGD alone, under the 16 an uninstantiated
+  helper is held to; `ooe_rat` is 11.7 flop to flop and 12.5 input to flop.
+  Three entries stay: `ret_dst` and `ret_gwe` from the default arrival of
+  13 (NGD-3; `ret_gwe` at 25.2, within synthesis noise; an arrival budget
+  for retire's ports clears both), and
+  `rat_cq02h` (NGD-7), whose flops reach the checkpoint capture (the map
+  after a branch port's own writes) 11.7 NGD away against the output's 4,
+  the path OA asked to be named.
+
   Local clock gating (TI-14): each slot's speculative maps are one gate,
   clocked on a rename write to the slot or a whole-map event; each
   committed GPR entry is its own gate, each slot's committed predicates

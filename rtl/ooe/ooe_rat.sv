@@ -7,9 +7,11 @@
 //       checkpoint_id, taken when the branch renames and restored in one
 //       cycle), Retire, squash and recovery (squash to retirement restores
 //       the committed maps), Warp activation (A-64: a launched or freed
-//       slot maps every register to the zero registers) and OA's response
+//       slot maps every register to the zero registers), OA's response
 //       OI-41 (restore-allocate takes its registers through rename's ports,
-//       writing both maps).
+//       writing both maps) and OA's response OI-46 (reopened: the read is
+//       Rename 1's logic in ooe_rename, ooe_ratread; ooe_rat drives its maps
+//       straight out).
 //
 // Per tier-1 slot: the speculative maps (rat, prat), the committed maps
 // (crat, cprat) and C checkpoints of the speculative maps. A GPR name is a
@@ -19,25 +21,24 @@
 // restore (a mispredict), a squash to retirement (a demotion or kill: the
 // speculative maps take the committed ones), a release (every map to the
 // zero registers); then the retire ports' writes to the committed maps;
-// then the rename ports, in port order. A rename port reads its sources,
-// old destinations, guard and predicate-logic sources from the speculative
-// maps as the lower ports of its slot left them (the in-group override),
-// writes its destinations, and a branch's port takes its checkpoint as the
-// maps stand after its own writes. A restore-allocate port (rst) writes
-// both maps and reads nothing.
+// then the rename ports, in port order. A rename port writes its
+// destinations, and a branch's port takes its checkpoint as the maps stand
+// after its own writes. A restore-allocate port (rst) writes both maps.
+// The reads are not here: ooe_ratread reads rat_cq02h, the flops, with the
+// in-group override in front.
 //
 // Rename never names a slot that a restore, squash or release names in the
 // same cycle: a mispredict's epoch drops the warp's queued uops, and a
 // demoting, killed or freed slot does not rename. So the reads come from
-// the flops, with only the in-group override in front of them; an
-// assertion holds the exclusion.
+// the flops; an assertion holds the exclusion.
 //
 // Checkpoint live bits are not kept here: branch resolution owns them.
 //
 // The reference is the model's Slot maps and checkpoints, which log what
 // reached them each cycle (Core::ratLog); test/ooe/rat_tb.cpp drives this
-// module from the log and compares every read, and after the edge every
-// map and every live checkpoint.
+// module and ooe_ratread together (test/ooe/ooe_rat_read.sv) from the log
+// and compares every read, and after the edge every map and every live
+// checkpoint.
 //
 // Reset line (decision 6): the four maps reset to the zero registers, as a
 // freed slot's; the checkpoints are payload, read only through a live
@@ -72,23 +73,14 @@ module ooe_rat #(
   input  logic [A-1:0]      ren_v_cq01h,
   input  logic [A*LS-1:0]   ren_slot_cq01h,
   input  logic [A-1:0]      ren_rst_cq01h,     // a restore-allocate write: both maps, no reads
-  input  logic [A*3*4-1:0]  ren_src_cq01h,     // three GPR sources
   input  logic [A*4-1:0]    ren_dst_cq01h,
   input  logic [A-1:0]      ren_gwe_cq01h,     // writes its GPR destination
   input  logic [A*GW-1:0]   ren_gname_cq01h,   // with this name
-  input  logic [A*2-1:0]    ren_pguard_cq01h,
   input  logic [A*2-1:0]    ren_pdst_cq01h,
   input  logic [A-1:0]      ren_pwe_cq01h,     // writes its predicate destination
   input  logic [A*PW-1:0]   ren_pname_cq01h,
-  input  logic [A*2*2-1:0]  ren_pq_cq01h,      // predicate logic's two sources
   input  logic [A-1:0]      ren_br_cq01h,      // a branch: takes a checkpoint
   input  logic [A*LC-1:0]   ren_ckpt_cq01h,    // FET's checkpoint_id
-  // What the reads return.
-  output logic [A*3*GW-1:0] ren_psrc_cq01h,
-  output logic [A*GW-1:0]   ren_pold_cq01h,
-  output logic [A*PW-1:0]   ren_ppguard_cq01h,
-  output logic [A*PW-1:0]   ren_ppold_cq01h,
-  output logic [A*2*PW-1:0] ren_ppq_cq01h,
   // Retire ports, per slot, in retirement order.
   input  logic [S*R-1:0]    ret_gwe_cq01h,
   input  logic [S*R*4-1:0]  ret_dst_cq01h,
@@ -111,10 +103,10 @@ module ooe_rat #(
   `CCV_ASSERT_KNOWN(ret_known, {ret_gwe_cq01h, ret_pwe_cq01h})
   `CCV_ASSERT_KNOWN(event_known, {restore_cq01h, squash_cq01h, release_cq01h})
 
-  // A slot's speculative maps as rename port k reads them: the flops, with
-  // the writes of the lower ports naming the same slot (incl = 0), or as
-  // they stand after port k's own writes (incl = 1).
-  function automatic logic [MW-1:0] map_at(input logic [S*MW-1:0] q, input int k, input logic incl,
+  // A slot's speculative maps as they stand after rename port k's own
+  // writes and those of the lower ports naming the same slot: what a branch
+  // on port k checkpoints.
+  function automatic logic [MW-1:0] map_after(input logic [S*MW-1:0] q, input int k,
                                            input logic [A-1:0] v, input logic [A*LS-1:0] sl,
                                            input logic [A-1:0] rst, input logic [A*4-1:0] dst,
                                            input logic [A-1:0] gwe, input logic [A*GW-1:0] gname,
@@ -127,44 +119,21 @@ module ooe_rat #(
     for (int t = 0; t < S; t++) if (s == LS'(t)) m = q[t * MW +: MW];
     // Every write as a decoder: no index computed and written through.
     for (int p = 0; p < A; p++)
-      if ((p < k || (incl && p == k)) && v[p] && !rst[p] && sl[p * LS +: LS] == s) begin
+      if (p <= k && v[p] && !rst[p] && sl[p * LS +: LS] == s) begin
         for (int a = 0; a < NG; a++) if (gwe[p] && dst[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = gname[p * GW +: GW];
         for (int a = 0; a < NP; a++)
           if (pwe[p] && pdst[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = pname[p * PW +: PW];
       end
-    map_at = m;
+    map_after = m;
   endfunction
 
-  // A map's entry by architectural index, as an AND-OR over the entries.
-  function automatic logic [GW-1:0] gread(input logic [MW-1:0] m, input logic [3:0] a);
-    logic [GW-1:0] r;
-    r = '0;
-    for (int t = 0; t < NG; t++) r = r | (m[t * GW +: GW] & {GW{a == 4'(t)}});
-    gread = r;
-  endfunction
-  function automatic logic [PW-1:0] pread(input logic [MW-1:0] m, input logic [1:0] a);
-    logic [PW-1:0] r;
-    r = '0;
-    for (int t = 0; t < NP; t++) r = r | (m[NG * GW + t * PW +: PW] & {PW{a == 2'(t)}});
-    pread = r;
-  endfunction
-
-  // The reads, and each branch port's checkpoint.
-  logic [A*MW-1:0] rd_map, ck_map;
+  // Each branch port's checkpoint.
+  logic [A*MW-1:0] ck_map;
   always_comb
-    for (int k = 0; k < A; k++) begin
-      rd_map[k * MW +: MW] = map_at(rat_cq02h, k, 1'b0, ren_v_cq01h, ren_slot_cq01h, ren_rst_cq01h, ren_dst_cq01h,
-                                    ren_gwe_cq01h, ren_gname_cq01h, ren_pdst_cq01h, ren_pwe_cq01h,
-                                    ren_pname_cq01h);
-      ck_map[k * MW +: MW] = map_at(rat_cq02h, k, 1'b1, ren_v_cq01h, ren_slot_cq01h, ren_rst_cq01h, ren_dst_cq01h,
-                                    ren_gwe_cq01h, ren_gname_cq01h, ren_pdst_cq01h, ren_pwe_cq01h,
-                                    ren_pname_cq01h);
-      for (int i = 0; i < 3; i++) ren_psrc_cq01h[(k * 3 + i) * GW +: GW] = gread(rd_map[k * MW +: MW], ren_src_cq01h[(k * 3 + i) * 4 +: 4]);
-      ren_pold_cq01h[k * GW +: GW]    = gread(rd_map[k * MW +: MW], ren_dst_cq01h[k * 4 +: 4]);
-      ren_ppguard_cq01h[k * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pguard_cq01h[k * 2 +: 2]);
-      ren_ppold_cq01h[k * PW +: PW]   = pread(rd_map[k * MW +: MW], ren_pdst_cq01h[k * 2 +: 2]);
-      for (int i = 0; i < 2; i++) ren_ppq_cq01h[(k * 2 + i) * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pq_cq01h[(k * 2 + i) * 2 +: 2]);
-    end
+    for (int k = 0; k < A; k++)
+      ck_map[k * MW +: MW] = map_after(rat_cq02h, k, ren_v_cq01h, ren_slot_cq01h, ren_rst_cq01h, ren_dst_cq01h,
+                                       ren_gwe_cq01h, ren_gname_cq01h, ren_pdst_cq01h, ren_pwe_cq01h,
+                                       ren_pname_cq01h);
 
   // -- the speculative maps --------------------------------------------------
   // A whole-map event's map, per slot: release, else squash, else restore.
@@ -216,7 +185,12 @@ module ooe_rat #(
   logic [S*MW-1:0] rat_nx;
   always_comb
     for (int s = 0; s < S; s++) begin
-      rat_en_cq01h[s] = whole[s] || |g_wr[s * NG +: NG] || |p_wr[s * NP +: NP];
+      // Any port writing the slot, from the ports directly rather than as an
+      // OR over the entry decoders, which costs depth (CG-2).
+      rat_en_cq01h[s] = whole[s];
+      for (int p = 0; p < A; p++)
+        rat_en_cq01h[s] = rat_en_cq01h[s] ||
+            (ren_v_cq01h[p] && 32'(ren_slot_cq01h[p * LS +: LS]) == s && (ren_gwe_cq01h[p] || ren_pwe_cq01h[p]));
       for (int a = 0; a < NG; a++)
         rat_nx[s * MW + a * GW +: GW] =
             ({GW{g_wr[s * NG + a]}} & g_name[(s * NG + a) * GW +: GW]) |

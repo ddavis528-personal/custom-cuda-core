@@ -13,12 +13,6 @@
       "date": "2026-10-18",
       "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
     },
-    "ren_src_cq01h": {
-      "arrival": 2.0,
-      "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
-    },
     "ren_dst_cq01h": {
       "arrival": 2.0,
       "by": "OA",
@@ -43,23 +37,17 @@
       "date": "2026-10-19",
       "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
     },
-    "ren_pguard_cq01h": {
-      "arrival": 2.0,
-      "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
-    },
-    "ren_pq_cq01h": {
-      "arrival": 2.0,
-      "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
-    },
     "ren_rst_cq01h": {
       "arrival": 2.0,
       "by": "OA",
       "date": "2026-10-19",
       "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
+    },
+    "rat_cq02h": {
+      "required": 4.0,
+      "by": "OA",
+      "date": "2026-10-19",
+      "why": "OA's response OI-46 (reopened; OA tab, 2026-10-19): with the read in ooe_rename, ooe_rat's flops drive rat straight out, and 4 covers fanout buffering across its flops"
     }
   }
 }

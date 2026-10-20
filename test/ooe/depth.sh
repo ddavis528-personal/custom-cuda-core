@@ -120,15 +120,17 @@ for cfg in "rs rtl/ooe/ooe_rs.sv ooe_rs" "rs_confirm rtl/ooe/ooe_confirm.sv rtl/
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s ports a class: %5s NGD in %s levels (budget 25)\n' "$name" "$n" "$width" "$d" "$l"
 done
-# ooe_rat: rename's reads, each a slot's map with the lower ports' writes
-# over it, then a 16:1 read, and the maps' and checkpoints' next values.
-# Rename's first stage (the design doc's Scheduler timing estimate) is this
-# and the free-list grant, read from the candidate buffer's head.
+# ooe_rat with Rename 1's read of it (ooe_ratread, OA's response OI-46):
+# rename's reads, each a slot's map with the lower ports' writes over it,
+# then a 16:1 read, and the maps' and checkpoints' next values. Rename's
+# first stage (the design doc's Scheduler timing estimate) is this and the
+# free-list grant, read from the candidate buffer's head.
 read -r rat_g _ < <(python3 test/ooe/rat-params.py)
 rat_set=$(echo "$rat_g" | tr ',' '\n' | sed -n 's/^-G\([A-Z]*\)=\(.*\)$/-set \1 \2/p' | tr '\n' ' ')
-yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_rat.sv;
-             chparam $rat_set ooe_rat;
-             chformal -remove; synth -flatten -top ooe_rat; write_json $out/rat.json"; ungate $out/rat
+rat_src="rtl/ccv_assert_pkg.sv rtl/ooe/ooe_rat.sv rtl/ooe/ooe_ratread.sv test/ooe/ooe_rat_read.sv"
+yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated $rat_src;
+             chparam $rat_set ooe_rat_read; hierarchy -top ooe_rat_read;
+             chformal -remove; synth -flatten -top ooe_rat_read; write_json $out/rat.json"; ungate $out/rat
 line=$(yosys-abc -c "read_blif $out/rat.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')

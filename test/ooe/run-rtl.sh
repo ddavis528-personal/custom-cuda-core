@@ -272,10 +272,11 @@ read -r rat_g rat_d < <(python3 test/ooe/rat-params.py)
 dir=build/ooe-rtl/rat
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace ${rat_g//,/ } --top-module ooe_rat --Mdir "$dir" -o rat_tb \
+      --trace ${rat_g//,/ } --top-module ooe_rat_read --Mdir "$dir" -o rat_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 ${rat_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/rat_tb.cpp" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
+      "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "rat: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi

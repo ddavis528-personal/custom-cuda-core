@@ -1,9 +1,11 @@
-//===-- rat_tb.cpp - ooe_rat against the live model -------------------===//
+//===-- rat_tb.cpp - ooe_rat and its read against the live model -------===//
 //
 // Runs the model's directed unit tests (demotion, kill, restore-allocate,
 // faults, squashes) and its random ones (sim/ooe/ooe_test.cpp, every mode:
 // mispredicts, several warps) and, after every
-// core cycle, drives ooe_rat with what reached the model's register alias
+// core cycle, drives ooe_rat and Rename 1's read of it (ooe_ratread, under
+// test/ooe/ooe_rat_read.sv: OA's response OI-46) with what reached the
+// model's register alias
 // tables in it (Core::ratLog): checkpoint restores, squashes to retirement,
 // slot releases, the committed maps' writes at retirement, and rename's
 // ports in rename order, a restore-allocate's writes among them.
@@ -28,7 +30,7 @@
 // (test/ooe/cg_trace.h), and compares nothing.
 // Usage: rat_tb [seeds] | rat_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
-#include "Vooe_rat.h"
+#include "Vooe_rat_read.h"
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -52,7 +54,7 @@ constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w;
 constexpr unsigned LS = bits(S), LC = bits(C);
 
 std::unique_ptr<VerilatedContext> ctx;
-std::unique_ptr<Vooe_rat> dut;
+std::unique_ptr<Vooe_rat_read> dut;
 std::string control;
 CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
 uint64_t current = 0;
@@ -240,7 +242,7 @@ int main(int argc, char **argv) {
   ctx->commandArgs(argc, argv);
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
-  dut = std::make_unique<Vooe_rat>(ctx.get());
+  dut = std::make_unique<Vooe_rat_read>(ctx.get());
   if (cg.on()) {
     cg.open(*dut, vcd);
     clearInputs();

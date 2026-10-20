@@ -43,6 +43,7 @@ case "$unit" in
       "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
   ooe_rat)
     read -r g d < <(python3 test/ooe/rat-params.py)
-    vl ooe_rat "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
+    vl ooe_rat_read "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
+      "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
