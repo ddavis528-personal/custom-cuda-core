@@ -350,7 +350,7 @@ def selftest(d):
              # OI-13: a slower data path makes a miss's dependant wait.
              ("link_n('miu_rcu_data')", "links", 3, "CCV_LAT_L1_MISS_WAKE"),
              ("CCV_P_RS_WARP_CAP", "value", 46, "CCV_P_RS_WARP_CAP"),
-             ("CCV_P_DECQ_WARP_MAX", "value", 14, "CCV_P_DECQ_WARP_MAX"),
+             ("CCV_P_DECQ_WARP_MAX", "value", 13, "CCV_P_DECQ_WARP_MAX"),
              # OI-16: sched_attr's width follows its two code counts.
              ("CCV_P_LAT_CLASSES", "value", 16, "CCV_P_W_SCHED_ATTR"),
              ("CCV_P_BYP_GROUPS", "value", 9, "CCV_P_W_SCHED_ATTR"),
