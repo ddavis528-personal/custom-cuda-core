@@ -106,7 +106,7 @@ RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
 # on OI's branch (d8ffd4c: declared inner, no parent yet); NGD-7 on
 # 2026-10-19, at 7ae697c; trimmed to the ratchet as modules pass (last at
-# OI's 4f4871b, 2026-10-19). Never add to this:
+# OI's 3ebc293, 2026-10-20). Never add to this:
 # a module written since meets the rules, or has the architect's budgets, or
 # is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
@@ -114,26 +114,7 @@ RATCHET_BASELINE = {(m, k) for m, ks in {
         "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-7 st_cq02h",
     ],
     "ooe_rat": [
-        "NGD-2 ren_pold_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 restore_ckpt_cq01h",
-        "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-3 ret_pdst_cq01h",
-        "NGD-3 ret_pwe_cq01h", "NGD-5 ren_dst_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_dst_cq01h>ren_psrc_cq01h", "NGD-5 ren_gname_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_gname_cq01h>ren_psrc_cq01h", "NGD-5 ren_gwe_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_gwe_cq01h>ren_psrc_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pdst_cq01h>ren_ppold_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_pguard_cq01h>ren_ppguard_cq01h", "NGD-5 ren_pname_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pname_cq01h>ren_ppold_cq01h", "NGD-5 ren_pname_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_pq_cq01h>ren_ppq_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pwe_cq01h>ren_ppold_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_pold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_ppold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_psrc_cq01h", "NGD-5 ren_slot_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_slot_cq01h>ren_ppguard_cq01h", "NGD-5 ren_slot_cq01h>ren_ppold_cq01h",
-        "NGD-5 ren_slot_cq01h>ren_ppq_cq01h", "NGD-5 ren_slot_cq01h>ren_psrc_cq01h",
-        "NGD-5 ren_src_cq01h>ren_psrc_cq01h", "NGD-5 ren_v_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_v_cq01h>ren_ppguard_cq01h", "NGD-5 ren_v_cq01h>ren_ppold_cq01h",
-        "NGD-5 ren_v_cq01h>ren_ppq_cq01h", "NGD-5 ren_v_cq01h>ren_psrc_cq01h",
-        "NGD-7 rat_cq02h",
+        "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-7 rat_cq02h",
     ],
     "ooe_rs": [
         "NGD-3 free_cq01h",
