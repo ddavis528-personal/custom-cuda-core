@@ -150,12 +150,19 @@ Built (`rtl/ooe/`):
   snapshots the model's RS ages (`Core::rsAge`) before every cycle and
   drives the RTL with the allocations between snapshots, for both classes:
   25 million RCU pairs and 5 million MIU pairs compared, none differ.
-  Controls no-valid and port-reverse must each be caught. Logic depth is
-  10.1 NGD in 9 levels at 30 entries. Local clock gating (TI-14): the
-  matrix is one gate, clocked on an allocation (`older_en`, 2.2 NGD); its
-  column clear is written as an AND, not a held `if`, so synthesis keeps
-  that enable rather than a per-bit one. `check-cg` measures a lowest DCGE
-  of 99% for the MIU class and 100% for the RCU class, medium and high.
+  Controls no-valid and port-reverse must each be caught. The update is
+  one edge after the RS writes the group's rows (OA's response OI-58,
+  V-75): it takes ooe_rs's registered grants and the RS valid bits after
+  that edge, as data, and select cannot see the delay, since a new entry
+  reaches the request register an edge after its allocation at the
+  earliest. The bench runs the RTL a snapshot behind the model for it,
+  and a third control, no-lead, must be caught. Logic depth is 11.3 NGD
+  at 30 entries. Local clock gating: the matrix is one gate, clocked on a
+  group's update; its enable, `older_en`, is age's own flop of rename's
+  Rename 3 valid for the class (CG-5, 0 NGD past the flop), and the reset
+  is flopped (RST-1). Its column clear is written as an AND, not a held
+  `if`, so synthesis keeps that enable rather than a per-bit one.
+  `check-cg` measures a DCGE of 100%, medium and high.
 - **`ooe_decq`**, the decode queue (decision 3): 12 entries shared by the
   four tier-1 slots, six arrivals and up to four dequeues per slot a
   cycle. Each entry holds its payload, a busy bit, its owner and its

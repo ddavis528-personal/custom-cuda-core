@@ -147,7 +147,7 @@ for cfg in "rcu 0 $n_rcu" "miu 1 $n_miu"; do
   else
     say "age $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in no-valid port-reverse; do
+  for c in no-valid port-reverse no-lead; do
     if AGE_CONTROL=$c "$dir/age_tb" 3 >/dev/null 2>&1; then
       say "  control $c (age $name)" "MISSED"; fail=1
     else
