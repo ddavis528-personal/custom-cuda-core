@@ -246,6 +246,10 @@ void Core::uop(const Uop &u) {
     ev("epoch_drop", u.warp, u.fetch_epoch, 0, u.tid);
     return;
   }
+  // V-36, an input assumption: only a fence (mem_op 0xE) carries an
+  // ordering; DEC's output refuses any other (TI's a4fa218).
+  if (u.ordering && u.mem_op != kMemOpFence)
+    err("V-36: uop seq %u carries ordering %u on mem_op %u, not a fence", uint32_t(u.tid), u.ordering, u.mem_op);
   decq_.push_back(u);
   decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
@@ -1127,10 +1131,20 @@ void Core::takeCompletions() {
     if (r->squashed) { count("cmpl.after_squash"); continue; }
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (c.status) {
+      // MIU's completion carries the section 12.5 winner and its lowest
+      // faulting lane's address (IS's response IS-16).
+      if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", c.rob_tag);
       r->fault = true;
-      r->fault_cause = c.cause ? c.cause : 2;
+      r->fault_cause = c.cause;
       r->fault_lanes = c.lane_mask;
       r->fault_addr = c.address;
+      // V-74: the warp's register keeps the oldest faulting entry's address.
+      Slot &fs = slot_[s];
+      if (!fs.fa_valid || robAge(fs, idx) < robAge(fs, fs.fa_idx) || cfg_.inject_fa_youngest) {
+        fs.fa_valid = true;
+        fs.fa_idx = idx;
+        fs.fa_addr = c.address;
+      }
     }
     r->mlc_miss = c.mlc_miss;
     if (r->rs_main != kNoEntry && rs_[r->rs_main].valid) {
@@ -1236,6 +1250,8 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
   bool stores_at_miu = false;
   unsigned n = 0, deferred = 0, other = 0;
+  // V-74: a squash takes the fault-address register with its entry.
+  if (s.fa_valid && robAge(s, s.fa_idx) >= first) s.fa_valid = false;
   for (unsigned k = first; k < s.count; ++k) {
     const unsigned idx = (s.head + k) % cfg_.rob_depth;
     RobEntry &r = s.rob[idx];
@@ -1348,9 +1364,10 @@ void Core::control() {
       s.ctaid = a.ctaid;
       s.warp_in_cta = a.warp_in_cta;
       slot_of_[a.warp % kWarpIds] = int(a.slot);
+      // The CTA's barrier count, at launch and at restore-allocate, since a
+      // restored warp may land in another slot (OA's response IS-16).
+      s.bar_count = a.barrier_count;
       if (a.op == kAllocLaunch) {
-        // The barrier count holds for the warp's life, parked or not (IS-16).
-        bar_count_[a.warp % kWarpIds] = a.barrier_count;
         // Every architectural register maps to the zero registers (A-64):
         // no zeroing traffic, and nothing from another context is readable.
         s.st = WarpState::kActive;
@@ -1527,7 +1544,11 @@ void Core::retire() {
         f.cause = r.fault_cause;
         f.pc = r.u.pc;
         f.lane_mask = r.fault_lanes;
-        f.address = r.fault_addr;
+        // The address comes from the warp's register (V-74), which must hold
+        // the head's when the head's fault came from MIU.
+        f.address = s.fa_valid && s.fa_idx == s.head ? s.fa_addr : 0;
+        if (r.at_miu && (!s.fa_valid || s.fa_idx != s.head || s.fa_addr != r.fault_addr))
+          err("V-74: the fault-address register does not hold rob tag %u's address", tagOf(si, s.head));
         out.faults.push_back(f);
         count("fault");
         ev("fault", s.warp, r.fault_cause, r.u.pc, r.u.tid);
@@ -2143,7 +2164,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const SchedAttr &a = u.attr;
   // F-BARRIER (IS-16, ISA v1.9 O-59): a barrier at or above its CTA's
   // count faults here, as a no-op, so it never reaches SYU.
-  const bool bar_fault = a.serial == kSerBarrier && u.imm >= bar_count_[s.warp % kWarpIds] &&
+  const bool bar_fault = a.serial == kSerBarrier && u.imm >= s.bar_count &&
                          !cfg_.inject_no_bar_fault;
   const bool nop = u.shape.exit || u.decode_fault || bar_fault;
   const bool mem = !nop && a.rs_miu;
@@ -2304,7 +2325,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   }
   if (u.decode_fault) {
     r.fault = true;
-    r.fault_cause = 3;      // placeholder: the cause encoding is CRU's
+    r.fault_cause = kCauseIllegal;   // the decode stage's one cause (IS's response IS-16)
   }
   if (bar_fault) {
     r.fault = true;

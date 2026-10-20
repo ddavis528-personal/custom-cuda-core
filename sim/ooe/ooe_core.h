@@ -255,6 +255,9 @@ struct Config {
   /// No F-BARRIER check at dispatch: a barrier past its CTA's count goes to
   /// SYU (testBarrierFault's control).
   bool inject_no_bar_fault = false;
+  /// The fault-address register takes every faulting completion, not only
+  /// an older one (V-74's control).
+  bool inject_fa_youngest = false;
   /// The ready register captures a stop's or a miss's change one edge late
   /// (OI-54's control): a producer re-granted inside the stale window lets
   /// a dependant confirm on a result it read too early.
@@ -337,10 +340,12 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1, kAllocRestoreAlloc = 2,
 struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned warp = 0, slot = 0, op = 0;
   uint32_t ctaid = 0, warp_in_cta = 0;
-  unsigned barrier_count = 0;      ///< launch: the CTA's allocated barriers, 0 to 16 (IS-16)
+  unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
-enum : unsigned { kCauseBarrier = 9 };
+enum : unsigned { kCauseIllegal = 2, kCauseBarrier = 9 };
+/// mem_op codes OOE reads (OA's six, TI's a4fa218).
+enum : unsigned { kMemOpFence = 0xE };
 
 // ---- decoded outputs ----------------------------------------------------------------
 
@@ -779,6 +784,12 @@ private:
     unsigned decq = 0;                        ///< decode-queue entries
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
+    unsigned bar_count = 0;                   ///< the CTA's barriers, from launch or restore-allocate (IS-16)
+    /// V-74 (OA's response IS-16): the oldest unsquashed faulting memop's
+    /// address and ROB index, one register per warp, read at the head.
+    bool fa_valid = false;
+    unsigned fa_idx = 0;
+    uint64_t fa_addr = 0;
     unsigned bar_id = 0;                      ///< the held barrier (events)
     unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
@@ -895,7 +906,6 @@ private:
   uint64_t now_ = 0;
   std::vector<Slot> slot_;
   std::array<int, kWarpIds> slot_of_;
-  std::array<unsigned, kWarpIds> bar_count_{};   ///< each warp's CTA's barrier count, from its launch (IS-16)
   std::array<unsigned, kWarpIds> epoch_{};
 
   // decode queue: shared, in arrival order
@@ -1084,6 +1094,8 @@ public:
   bool rsEligibleNext(unsigned e) const { return rs_[e].eligible_at <= now_ + 1; }
   bool slotActive(unsigned s) const { return s < slot_.size() && slot_[s].st == WarpState::kActive; }
   bool readyQ(unsigned e) const { return ready_q_[e]; }
+  /// A slot's barrier count, as launch or restore-allocate set it (IS-16).
+  unsigned slotBarCount(unsigned s) const { return slot_[s].bar_count; }
   bool reqQ(unsigned e) const { return req_q_[e]; }
   unsigned nameRow(unsigned n) const { return n / kPos_; }
   unsigned namePos(unsigned n) const { return n % kPos_; }

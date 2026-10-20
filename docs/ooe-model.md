@@ -564,7 +564,22 @@ added with the event.
     CTA's count, which the launch carries (`barrier_count`) and the core
     keeps per warp across a park, faults at dispatch with cause 9. It
     completes as a no-op, holds nothing and never reaches SYU. One below
-    the count waits as before. Control `no-bar-fault` drops the check;
+    the count waits as before. Control `no-bar-fault` drops the check. The
+    count is the slot's, taken at launch and at restore-allocate, since a
+    restored warp may land in another slot (OA's response IS-16);
+  - fault causes as the ISA fixes them per stage (IS's response IS-16): a
+    decode fault is F-ILLEGAL (2), MIU's completion carries its own cause
+    (one without is an error, ISA v1.9 section 12.6), and F-BARRIER (9) is
+    OOE's at dispatch. F-WIDTH and F-FORMAT, also OOE's at dispatch, need
+    a per-register width and a format code the model does not hold yet
+    (OI-57);
+  - V-74: one fault-address register per warp keeps the oldest faulting
+    memop's address and ROB index, written by a faulting completion only if
+    older, cleared by a squash that takes it, and read for the fault record
+    at the head. Two faulting loads, completing in either order, report the
+    older's address. Control `fa-youngest` lets every completion write it;
+  - V-36 as an input assumption: a uop with an ordering that is not a
+    fence (mem_op 0xE) is an error;
   - the fixed-window predicate mode;
   - sectioned lanes:
     - four 8-bit warps co-issue, two 16-bit, one 32-bit;
