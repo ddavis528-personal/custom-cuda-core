@@ -314,7 +314,9 @@ struct Uop {
   unsigned ckpt = 0;
   bool pred_taken = false;
   bool scale_en = false;
-  bool decode_fault = false;
+  /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
+  /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
+  unsigned cause = 0;
   /// The destination's element width, from the committed chwidth table:
   /// 0 32-bit, 1 16-bit, 2 8-bit, 3 4-bit (sectioned; a 4-bit register takes
   /// an 8-bit section, OI-29). Sources carry their own in their names.
@@ -325,9 +327,8 @@ struct Uop {
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
-  bool exec_fault = false;
   bool branch_taken = false;
-  uint32_t branch_mask = 0, fault_lane_mask = 0;
+  uint32_t branch_mask = 0;
 };
 struct Cmpl {           ///< ccv_miu_ooe_cmpl
   unsigned rob_tag = 0, status = 0, cause = 0;
@@ -343,7 +344,7 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
-enum : unsigned { kCauseIllegal = 2, kCauseBarrier = 9 };
+enum : unsigned { kCauseBarrier = 9 };
 /// mem_op codes OOE reads (OA's six, TI's a4fa218).
 enum : unsigned { kMemOpFence = 0xE };
 

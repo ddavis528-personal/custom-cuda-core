@@ -568,7 +568,9 @@ added with the event.
     count is the slot's, taken at launch and at restore-allocate, since a
     restored warp may land in another slot (OA's response IS-16);
   - fault causes as the ISA fixes them per stage (IS's response IS-16): a
-    decode fault is F-ILLEGAL (2), MIU's completion carries its own cause
+    fault DEC found arrives as the uop's cause (1 F-FETCH, 2 F-ILLEGAL;
+    TI's 75b6a19) and is the ROB entry's, RCU's done carries none (its
+    exec-fault path is gone), MIU's completion carries its own cause
     (one without is an error, ISA v1.9 section 12.6), and F-BARRIER (9) is
     OOE's at dispatch. F-WIDTH and F-FORMAT, also OOE's at dispatch, need
     a per-register width and a format code the model does not hold yet

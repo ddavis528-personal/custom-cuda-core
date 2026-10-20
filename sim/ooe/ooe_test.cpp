@@ -85,6 +85,7 @@ struct Op {
   uint32_t mask = kFullMask;
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
+  unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -99,6 +100,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.dst = o.dst;
   u.w = o.w;
   u.backward = o.backward;
+  u.cause = o.cause;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
   u.shape.guard = o.guard;
   u.pred_guard = o.pguard;
@@ -964,17 +966,17 @@ void testFault() {
   Env e(c);
   e.keep_log = true;
   std::vector<Op> p;
-  for (unsigned i = 0; i != 3; ++i) { Op a; a.k = kLane; a.dst = i; a.nsrc = 1; p.push_back(a); }
+  // The second op came from DEC with a fault (TI's 75b6a19: the uop's cause).
+  for (unsigned i = 0; i != 3; ++i) { Op a; a.k = kLane; a.dst = i; a.nsrc = 1; a.cause = i == 1 ? 2 : 0; p.push_back(a); }
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
-  // Fault the second op: its done carries exec_fault.
-  bool faulted = false;
-  unsigned faults = 0;
+  unsigned faults = 0, cause = 0;
   for (unsigned k = 0; k != 100; ++k) {
-    for (auto &d : e.dones) if ((d.second.rob_tag & 31) == 1 && !faulted) { d.second.exec_fault = true; faulted = true; }
     e.step();
     for (const Status &s : e.log.back().status) faults += s.fault_taken;
+    for (const Fault &f : e.log.back().faults) cause = f.cause;
   }
+  EXPECT(cause == 2, "cause %u, want DEC's F-ILLEGAL (2)", cause);
   EXPECT(faults == 1, "fault_taken %u times", faults);
   EXPECT(e.w[0].retired.size() == 1, "%zu retired; V-24 stops at the fault", e.w[0].retired.size());
   e.core.kill(1u, 1);
