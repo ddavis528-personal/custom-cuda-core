@@ -477,8 +477,8 @@
       "name": "CCV_W_FAULT_CAUSE",
       "value": 4,
       "status": "arch",
-      "doc": "Fault-model cause set, with headroom.",
-      "source": "ports spec 2026-09-23"
+      "doc": "Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59); 10-15 spare. The ISA names the causes and their priority; the codes are the schema owner's.",
+      "source": "ports spec 2026-09-23; ISA v1.9 §12 and IS-16 (2026-10-20)"
     },
     {
       "name": "CCV_RT_ABUT",
@@ -1306,12 +1306,10 @@
     },
     {
       "name": "CCV_L_W_BAR_COUNT",
-      "value": 7,
-      "status": "preliminary",
-      "churn": "low",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Barrier entries in an allocated range. 7 bits expresses 1..64; 6 would do with a bias. Not stated by the payload pass, so the biasing choice is still open.",
-      "decided_at": "SYU session -- is the count biased?"
+      "value": 5,
+      "status": "arch",
+      "source": "Payload widths pass (2026-09-25); IS-16, ISA v1.9 O-59 (2026-10-20)",
+      "doc": "A CTA's allocated barrier count, 0 to 16, unbiased. A CTA has at most 16 barriers (ISA v1.9 O-59, PTX's named-barrier limit); IDs 16-63 are reserved and raise F-ILLEGAL at decode, and an ID at or above the count raises F-BARRIER at dispatch, in OOE. Was 7 bits for 1..64, which read the per-SM 4x16 table as a per-CTA reach."
     },
     {
       "name": "CCV_L_PAGE_SHIFT",

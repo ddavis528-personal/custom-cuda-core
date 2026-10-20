@@ -2218,6 +2218,7 @@ private:
       // Identity from RAU's warp-to-CTA table: one warp, warp 0 of its CTA.
       put(a, c.rau_ooe, "ctaid", k_.orc.ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
       put(a, c.rau_ooe, "warp_in_cta", 0);
+      put(a, c.rau_ooe, "barrier_count", 0);      // no kernel allocates a barrier yet
       send(c.rau_ooe, 0, a, none);
       alloc_ = true;
     }
