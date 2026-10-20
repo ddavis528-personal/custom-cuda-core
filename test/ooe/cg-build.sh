@@ -21,7 +21,7 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
 case "$unit" in
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
-    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
+    vl ooe_wake "--public-flat-rw ${g//,/ }" "${d//,/ } -DWAKE_PUBLIC" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
   ooe_age_rcu|ooe_age_miu)
     if [ "$unit" = ooe_age_rcu ]; then cls=0 na=$n_rcu; else cls=1 na=$n_miu; fi
     vl ooe_age "-GN=$na -GA=$width" "-DAGE_N=$na -DAGE_A=$width -DAGE_CLS=$cls" \

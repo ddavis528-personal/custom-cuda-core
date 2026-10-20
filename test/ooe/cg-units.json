@@ -8,8 +8,7 @@
         "rtl/ooe/ooe_wake.sv"
       ],
       "params": {
-        "N": 45,
-        "NR": 30
+        "N": 45
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",

@@ -934,6 +934,33 @@ void testRestore() {
   EXPECT(refused, "a restore-activate before the map was accepted");
 }
 
+/// A squash that reaches loads whose wake timers have saturated: the
+/// mispredicted branch waits on a chain of SFU ops, nearly fifty cycles,
+/// while the wrong path's loads issue at once and wait longer still for
+/// their completions. ooe_wake clocks such a timer only on the squash's
+/// lead (OA's responses OI-58, OI-62): its bench's no-sq-lead control is
+/// caught here.
+void testSquashSaturated() {
+  g_test = "squash-saturated";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 11);
+  e.miss_extra = 150;              // wrong-path loads outstanding past saturation
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 4; ++i) {
+    Op f; f.k = kSfu; f.dst = 2 + i; f.src[0] = 1 + i; f.nsrc = 1; p.push_back(f);
+  }
+  Op s; s.k = kSetp; s.pdst = 1; s.src[0] = 5; s.nsrc = 1; p.push_back(s);
+  Op b; b.k = kBranch; b.pguard = 1; b.taken = true; b.pred_taken = false; p.push_back(b);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  EXPECT(e.core.counters["errors"] == 0, "errors");
+  EXPECT(e.core.counters["squash.entries"] > 0, "nothing was squashed");
+  EXPECT(e.core.counters["branch.mispredict"] == 1, "mispredicts");
+  EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
+}
+
 void testKill() {
   g_test = "kill";
   Config c = baseConfig();
@@ -1835,6 +1862,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testL1WakeAfterCmpl();
   testMaskedLoad();
   testSquash();
+  testSquashSaturated();
   testFloorCeiling();
   testDemote();
   testRestore();
@@ -1878,6 +1906,7 @@ int main(int argc, char **argv) {
   testL1WakeAfterCmpl();
   testMaskedLoad();
   testSquash();
+  testSquashSaturated();
   testFloorCeiling();
   testDemote();
   testRestore();

@@ -31,8 +31,11 @@
 //   entries and valid is read live, with past rename (vel_cq03h).
 //
 //   Select: ooe_select (FB 1) over those registers and the live memop
-//   terms, into the grant register. The grant register is two copies, each
-//   (* keep *): one leaves (grant_cq04h), one masks the requests (NGD-7).
+//   terms, into the grant register. The grant register is three copies,
+//   each (* keep *): one leaves (grant_cq04h), one masks the requests
+//   (NGD-7), and one goes to ooe_wake alone (grant_w_cq04h), whose timers
+//   take it straight into their enables (OA's response OI-58: ooe_wake's
+//   CG-5 waiver, the grant at 2 NGD).
 //   Its enable is "something may request or something is held": the
 //   request and ready registers' AND, or the mask copy's OR.
 //
@@ -87,7 +90,8 @@ module ooe_sched #(
   input  logic [NM*NM-1:0]  older_m_cq03h,
   input  logic [3:0]        busy_cq03h,    // MIU pipes a bulk discard took
   input  logic [S-1:0]      block_cq03h,
-  output logic [N-1:0]      grant_cq04h
+  output logic [N-1:0]      grant_cq04h,
+  output logic [N-1:0]      grant_w_cq04h  // the same, for ooe_wake's timers
 );
 
   logic rst_r01h;
@@ -144,8 +148,10 @@ module ooe_sched #(
     .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h), .block_cq03h(block_cq03h),
     .cand_cq03h(cand), .grant_cq03h(grant_cq03h), .lost_cq03h(lost));
   (* keep *) logic [N-1:0] gnt_out_cq04h;  // the grant register's leaving copy
+  (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
   assign gnt_en      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
-  assign grant_cq04h = gnt_out_cq04h;
+  assign grant_cq04h   = gnt_out_cq04h;
+  assign grant_w_cq04h = gnt_w_cq04h;
 
   // -- Registers --------------------------------------------------------------
   always_ff @(posedge ooe_core_clk) begin
@@ -172,9 +178,11 @@ module ooe_sched #(
     if (rst_r01h) begin
       gnt_cq04h     <= '0;
       gnt_out_cq04h <= '0;
+      gnt_w_cq04h   <= '0;
     end else if (gnt_en) begin
       gnt_cq04h     <= grant_cq03h;
       gnt_out_cq04h <= grant_cq03h;
+      gnt_w_cq04h   <= grant_cq03h;
     end
   end
 

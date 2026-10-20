@@ -241,6 +241,7 @@ void check(const Snap &p) {
   const auto *r = dut->rootp;
   for (unsigned e = 0; e != N; ++e) {
     const bool g = getBit(dut->grant_cq04h, e);
+    if (getBit(dut->grant_w_cq04h, e) != g) fail("ooe_wake's grant copy differs", e, getBit(dut->grant_w_cq04h, e), g);
     const bool want = e < p.grant.size() && p.grant[e];
     grants += want;
     if (g != want) fail("grant differs", e, g, want);

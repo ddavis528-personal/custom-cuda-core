@@ -19,11 +19,6 @@
       "CG-5 hr_cq02h",
       "CG-5 valid_cq02h",
       "RST-1 ooe_rst_r00h"
-    ],
-    "ooe_wake": [
-      "CG-5 iss_cq02h",
-      "CG-5 st_cq02h",
-      "RST-1 ooe_rst_r00h"
     ]
   }
 }

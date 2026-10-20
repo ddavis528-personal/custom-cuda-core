@@ -1083,6 +1083,8 @@ public:
   unsigned rsEntries() const { return n_; }
   bool rsValid(unsigned e) const { return rs_[e].valid; }
   bool rsIssued(unsigned e) const { return rs_[e].issued; }
+  /// Writes a register some entry may wake on (ooe_wake's prod, taken at grant).
+  bool rsProduces(unsigned e) const { return rs_[e].produces; }
   /// Allocation order (smaller is older): what ooe_age's matrix encodes.
   uint64_t rsAge(unsigned e) const { return rs_[e].age; }
   /// The decode queue in arrival order, for ooe_decq: each uop's tier-1

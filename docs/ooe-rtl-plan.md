@@ -213,34 +213,60 @@ Built (`rtl/ooe/`):
   since and saturates. Line k < 3 rises at the class's fastest bypass
   point plus the k-th penalty. The full-latency line rises at the class's
   latency, at CCV_LAT_LANE for a masked load's copy, at CCV_LAT_L1_WAKE for
-  an L1-contracted load, or, for a timer that waits, on its done (RCU
-  class) or CCV_LAT_L1_MISS_WAKE after its completion. An L1 load with no
-  completion by payload stages + CCV_LAT_L1_CMPL is the miss: the line
-  drops and a miss pulse starts cancel's first hop. A replay or a free
+  an L1-contracted load, or, for a timer that waits, CCV_LAT_L1_MISS_WAKE
+  after its completion (no latency class waits for a done, so the timer
+  takes none: a timed grant with no latency is an assertion). An L1 load
+  with no completion by payload stages + CCV_LAT_L1_CMPL is the miss: the
+  line drops and a miss pulse starts cancel's first hop. A replay or a free
   clears issued, which every line is gated by (the reset line's guard).
-  A fifth output, fin, is the timer's word to confirmation: the
-  full-latency line raised and no miss check pending. Confirmation frees
-  an entry in the cycle its line rises, so a completion's effect is seen
-  only there. The model logs what reached each timer every cycle
-  (`Core::wakeLog`: grants with their kind and class, dones, completions,
-  stops, misses, and confirmations on the timer's word);
-  `test/ooe/wake_tb.cpp` clocks the RTL with them after every model cycle
-  and compares every valid entry's lines with `Core::wakeLine`, every miss,
-  and fin with each confirmation and `Core::rsFinal`. Over 25 seeds: 26,771
-  grants, 3,068 completions, 427 misses, 20,801 confirmations and 2.15
+  Outputs: the lines; fin, the timer's word to confirmation (the
+  full-latency line raised and no miss check pending); the miss pulse;
+  issued, from a copy of its own (NGD-7); and ooe_sched's leads (OI-54),
+  `wtl` (a line the timer changes at the next edge) and `wml` (a miss pulse
+  or a registered completion now), each a register.
+
+  Leads (OA's responses OI-58, OI-62; V-75). Every timer is clocked from
+  this module's own flops but for its grant: issued with its age not
+  saturated; a final flag to clear; issued and final, or issued and writing
+  nothing (a prod bit taken at grant), for a free by confirmation; its
+  registered completion; and the registered squash's lead, every timer for
+  that edge. Completions (L1): the channel's valid leads its payload by a
+  cycle and is flopped; the payload's RS indices are decoded per timer as
+  they arrive and registered, the restart taken an edge later at age 1 so the line rises
+  on the model's cycle; the L1 hit is taken from the payload as it arrives,
+  its timer clocked anyway. A replay needs no lead: it comes within a few
+  cycles of a producer's miss or of a stale-ready issue, below saturation,
+  and an assertion holds every stop to a clocked timer. The grant comes
+  from ooe_sched's third copy of its grant register at 2 NGD, into the
+  enable: a CG-5 waiver (rtl/cg-waivers.json), 6.1 NGD in all as check-cg
+  measures it (the timer's enable cone, 4.1, and the grant's arrival).
+  `wtl`'s next value is the change at the edge after next from the state
+  alone, or from a grant or a registered restart at this edge, and none on
+  a stop; so it leaves from flops and costs no stage.
+
+  The model logs what reached each timer every cycle (`Core::wakeLog`);
+  `test/ooe/wake_tb.cpp` drives the RTL a cycle behind the model, so each
+  lead goes a cycle before its event, and compares every valid entry's
+  lines with `Core::wakeLine`, every entry's issued bit (a free one clear:
+  a stop the timer missed would leave it set), every miss, fin with each
+  confirmation and `Core::rsFinal`, `wtl` with `Core::wakeLineChanges` a
+  cycle before (a timer stopped since excepted) and `wml` with every miss
+  and completion past L1. It runs the directed tests as well as the random
+  ones; `testSquashSaturated` squashes wrong-path loads past their timers'
+  saturation, the case the squash lead is for. Over 25 seeds: 30,397
+  grants, 3,423 completions, 420 misses, 23,425 confirmations and 2.42
   million line comparisons, none differ. Cores whose bypass table has four
-  penalties (the bypass-group seeds, which `ooe_ready`'s bench skips too)
-  or whose completion delay is not the parameter's are skipped and
-  counted, 67% of cycles. Controls late-grant, drop-cmpl and drop-stop must
-  each be caught. Logic depth is 15.3 NGD in 13 levels at 45 timers.
-  Local clock gating (TI-14): each timer is its own 20-flop gate, clocked
-  on its grant or stop, while issued until its age saturates, on a done or
-  completion after that, and one edge more to clear a miss pulse or a
-  final flag a stop left. `tools/check-cg.py --unit ooe_wake` measures
-  4.8 NGD of enable and a lowest DCGE of 99% (medium) and 98% (high); idle
-  clocks nothing. The earlier 13.9 NGD was short: Yosys dropped the age
-  increment of the `(age == AMAX) ? AMAX : age + 1` form, which only the
-  CG replay (the netlist against the bench's trace) showed.
+  penalties or whose completion delay is not the parameter's are skipped
+  and counted, 61% of cycles. Controls late-grant, drop-cmpl, drop-stop,
+  no-cmpl-lead and no-sq-lead must each be caught. Logic depth is 16.9 NGD
+  flop to flop. Local clock gating: each timer, its `wtl` and its issued
+  copy are one 26-flop gate; check-cg measures a lowest DCGE of 87%
+  (medium) and 98% (high), idle clocks nothing. Its CG bench ages timers
+  in the idle ticks between model cycles, past the model's, so there a stop
+  for a timer the RTL would not clock takes the squash's lead too. The
+  earlier 13.9 NGD was short: Yosys dropped the age increment of the
+  `(age == AMAX) ? AMAX : age + 1` form, which only the CG replay (the
+  netlist against the bench's trace) showed.
 - **`ooe_confirm`**, confirmation and transitive cancel, as a level (OA's
   response OI-50). An issued entry returns to Waiting when it depends on a
   producer that is not issued or has missed its L1 slot (`msd`: the miss,
