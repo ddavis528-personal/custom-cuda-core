@@ -198,7 +198,23 @@ Built (`rtl/ooe/`):
   dequeue or a flush. An idle entry's payload, owner and position are
   cleared rather than held (they are read only through busy), so no field
   is held through an `if` and synthesis keeps that one enable. `check-cg`:
-  5.5 NGD of enable, 98% DCGE in medium and high, idle clocks nothing.
+  5.4 NGD of enable, 97% DCGE in medium and 98% in high, idle clocks
+  nothing.
+
+  Leads (OA's response OI-58, V-75): an arrival is led by decq's own flop
+  of DEC's channel valid (`enq_l`); a squash's flush is registered per slot
+  and applied an edge late (`fl_q`), rename taking nothing from the slot
+  meanwhile (its rule, from its own copy of the registered squash: the
+  outputs still show the old uops, and an assertion holds rename to it),
+  the flushed entries holding their credits that edge longer (the model's
+  `decq_flush_late`, 1.9% fewer cycles in the synthetic sweep). No uop
+  arrives for a slot in its flush's cycle (0 in 2,357 flushes; an RTL
+  assertion and the model's check), so the late flush drops nothing new.
+  The reset is flopped (RST-1); 6 flops are ungated, of 7 allowed. A
+  dequeue is still rename's input, on the ratchet (CG-5): its lead is
+  rename's go (OI-63). The bench runs the RTL a snapshot behind the model;
+  new control no-enq-lead. OI-54's late-event control now finds its race
+  at decq 2 (the flush's timing moved it from decq 4).
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function

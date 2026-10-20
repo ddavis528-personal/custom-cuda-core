@@ -178,7 +178,7 @@ if out=$("$dir/decq_tb" "$seeds" 2>&1); then
 else
   say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-flush enq-swap; do
+for c in drop-flush enq-swap no-enq-lead; do
   if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decq)" "MISSED"; fail=1
   else

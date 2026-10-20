@@ -180,6 +180,10 @@ struct Config {
   /// arrival until the next, so this cycle's arrivals see it still held.
   /// On (DA's response OI-39), because ooe_decq fits its stage only so.
   bool decq_late_credit = true;
+  /// A squash's flush of the decode queue is registered and applied an edge
+  /// late (ooe_decq, OA's response OI-58): the flushed entries hold their
+  /// credits one cycle more.
+  bool decq_flush_late = true;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -667,7 +671,8 @@ public:
   /// Decode-queue entries the credit check counts as held: the queue, plus
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {
-    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0);
+    return unsigned(decq_.size()) + (cfg_.decq_late_credit ? decq_freed_ : 0) +
+           (cfg_.decq_flush_late ? decq_flush_prev_ : 0);
   }
   /// The adapter left a uop of this warp in the channel because canAccept
   /// said no: count which limit held it (the decode-queue events).
@@ -1009,6 +1014,7 @@ private:
   WakeLog wlog_;
   RatLog rlog_;
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
+  unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)

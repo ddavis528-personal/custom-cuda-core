@@ -1227,16 +1227,17 @@ void testReadyReg() {
   const int saved = g_fail;
   bool seen = false;
   // A shallow decode queue spaces a warp's uops so the race opens (found
-  // at decq 4 in the sweep).
-  for (unsigned run = 0; run != 4 * 12 && !seen; ++run) {
-    const unsigned seed = run % 12 + 1;
+  // at decq 4 in the sweep; at decq 2 since the decode queue's flush is
+  // applied an edge late, OI-58).
+  for (unsigned run = 0; run != 6 * 2 * 24 && !seen; ++run) {
+    const unsigned seed = run % 24 + 1;
     std::mt19937 rng(seed);
     Config c = baseConfig();
     c.rs_warp_cap = c.decq_warp_max = 0;
-    c.decq = (unsigned[]){4, 6, 8, 12}[run / 12];
+    c.decq = (unsigned[]){2, 3, 4, 5, 6, 8}[run / 48];
     c.inject_late_event = true;
     Env e(c, seed);
-    e.miss_pct = 20;
+    e.miss_pct = (run / 24) % 2 ? 40 : 20;
     const auto report = e.core.on_error;
     e.core.on_error = [&](const std::string &m) {
       seen = seen || m.find("OA-17") != std::string::npos;

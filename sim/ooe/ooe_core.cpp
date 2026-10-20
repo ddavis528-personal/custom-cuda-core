@@ -36,7 +36,8 @@ std::string Config::apply(const std::string &spec) {
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
-                                     {"decq_late_credit", &decq_late_credit}};
+                                     {"decq_late_credit", &decq_late_credit},
+                                     {"decq_flush_late", &decq_flush_late}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -250,6 +251,9 @@ void Core::uop(const Uop &u) {
   // ordering; DEC's output refuses any other (TI's a4fa218).
   if (u.ordering && u.mem_op != kMemOpFence)
     err("V-36: uop seq %u carries ordering %u on mem_op %u, not a fence", uint32_t(u.tid), u.ordering, u.mem_op);
+  // ooe_decq applies a flush an edge late, dropping its slot's uops then:
+  // none may arrive in the flush's cycle (OI-58).
+  if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
   decq_.push_back(u);
   decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
@@ -273,6 +277,8 @@ void Core::cycle(uint64_t now) {
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
+  decq_flush_prev_ = decq_flush_now_;
+  decq_flush_now_ = 0;
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   rs_prompt_[0] = rs_prompt_[1] = 0;
@@ -1313,6 +1319,7 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
     if (it->warp == s.warp) {
       decq_seq_.erase(decq_seq_.begin() + (it - decq_.begin()));
       ++decq_freed_;
+      ++decq_flush_now_;
       it = decq_.erase(it);
       --s.decq;
       ev("epoch_drop", s.warp);
