@@ -221,7 +221,7 @@ rau → ooe · rate 1 · control
 
 ### `ccv_ooe_rau_status`
 
-Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU maps warp to grid to mask from tables it owns. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
+Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU kills every warp of the context: with one resident context (the ASID field's contract), every valid warp context, resident and parked, with no lookup, and it stops every queued launch (DA's response IS-2, 2026-10-20: a fatal fault terminates the context, not the grid). The host's kill_grid on ccv_cru_rau_cfg stays grid-scoped: it is a request, not a fault. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
 
 ooe → rau · rate 1 · control
 
