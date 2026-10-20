@@ -52,12 +52,12 @@ module ex2_probe #(parameter int S = 4, parameter int R = 4, parameter int K = 4
     // The second warp's prefixes: length l + 1 fits every credit.
     for (int l = 0; l < R; l++) begin
       logic fit;
-      fit = LR'(l + 1) <= f2 && LR'(l + 1) <= room;
+      fit = f2 >= LR'(l + 1) && room >= LR'(l + 1);
       for (int k = 0; k < K; k++) begin
         logic [LN-1:0] n;
         n = '0;
         for (int s = 0; s < S; s++) if (second[s]) n = n | nd[((s * R + l) * K + k) * LN +: LN];
-        fit = fit && LC'(n) <= rem[k * LC +: LC];
+        fit = fit && rem[k * LC +: LC] >= LC'(n);
       end
       ok[l] = fit;
     end

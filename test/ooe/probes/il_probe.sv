@@ -19,7 +19,7 @@ module il_probe #(parameter int S = 4, parameter int R = 4, parameter int W = 16
   logic          ev  [S][R];
   always_comb begin
     for (int s = 0; s < S; s++)
-      for (int r = 1; r <= R; r++) begin
+      for (int r = 1; r < R + 1; r++) begin
         logic [LI-1:0] base, ahd;
         base = '0;
         for (int t = 0; t < S; t++)

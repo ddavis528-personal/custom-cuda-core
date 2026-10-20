@@ -34,7 +34,7 @@ module ilsr_probe #(parameter int S = 4, parameter int R = 4, parameter int W = 
   always_comb begin
     for (int s = 0; s < S; s++)
       for (int l = 0; l < R; l++)
-        th[s][l] = LR'(l + 1) <= base[s * LR +: LR] &&
+        th[s][l] = base[s * LR +: LR] >= LR'(l + 1) &&
                    cov(dfc[((s * R + l) * 3 + 0) * 6 +: 6], fr[0 +: 4]) &&
                    cov(dfc[((s * R + l) * 3 + 1) * 6 +: 6], fr[4 +: 4]) &&
                    cov(dfc[((s * R + l) * 3 + 2) * 6 +: 6], ret[s * 4 +: 4]);

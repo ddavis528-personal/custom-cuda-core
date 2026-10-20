@@ -15,7 +15,7 @@ module exi_probe #(parameter int S = 4, parameter int R = 4, parameter int K = 4
   logic [R-1:0]  keep;
   always_comb begin
     for (int s = 0; s < S; s++)
-      for (int r = 1; r <= R; r++) begin
+      for (int r = 1; r < R + 1; r++) begin
         logic [LI-1:0] base, ahd;
         base = '0;
         for (int t = 0; t < S; t++)
@@ -46,7 +46,7 @@ module exi_probe #(parameter int S = 4, parameter int R = 4, parameter int K = 4
               n = nd[((s * R + r) * K + k) * LN +: LN];
           cum = cum + LC'(n);
         end
-        fit = fit && cum <= cr[k * LC +: LC];
+        fit = fit && cr[k * LC +: LC] >= cum;
       end
       if (j == 0) keep[j] = fit;
       else        keep[j] = fit && keep[j > 0 ? j - 1 : 0];

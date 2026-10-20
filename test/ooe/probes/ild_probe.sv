@@ -33,10 +33,10 @@ module ild_probe #(parameter int S = 4, parameter int R = 4, parameter int W = 1
       f = '0;
       for (int l = 0; l < R; l++) begin
         logic ok;
-        ok = LR'(l + 1) <= base[s * LR +: LR] &&
-             dfc[((s * R + l) * 3 + 0) * 3 +: 3] <= fr[0 +: 3] &&
-             dfc[((s * R + l) * 3 + 1) * 3 +: 3] <= fr[3 +: 3] &&
-             dfc[((s * R + l) * 3 + 2) * 3 +: 3] <= ret[s * 3 +: 3];
+        ok = base[s * LR +: LR] >= LR'(l + 1) &&
+             fr[0 +: 3] >= dfc[((s * R + l) * 3 + 0) * 3 +: 3] &&
+             fr[3 +: 3] >= dfc[((s * R + l) * 3 + 1) * 3 +: 3] &&
+             ret[s * 3 +: 3] >= dfc[((s * R + l) * 3 + 2) * 3 +: 3];
         f = f + LR'(ok);   // deficits grow with l: the count is the prefix
       end
       fits[s * LR +: LR] = f;
@@ -55,7 +55,7 @@ module ild_probe #(parameter int S = 4, parameter int R = 4, parameter int W = 1
       first[s] = nz[s] & !any1;
     end
     for (int s = 0; s < S; s++)
-      for (int r = 1; r <= R; r++) begin
+      for (int r = 1; r < R + 1; r++) begin
         logic [LI-1:0] bs, ahd, i1;
         bs = '0;
         for (int t = 0; t < S; t++)

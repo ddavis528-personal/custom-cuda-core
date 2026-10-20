@@ -316,8 +316,11 @@ if out=$("$dir/select_tb" "$seeds" 2>&1); then
 else
   say "select == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
+# The controls run the bench's seeds: a bulk discard beside a candidate
+# memop (no-busy) is rare, and 3 seeds stopped reaching one when rename's
+# go changed (OA-21); a caught control stops at its first difference.
 for c in no-order no-conf no-busy; do
-  if SELECT_CONTROL=$c "$dir/select_tb" 3 >/dev/null 2>&1; then
+  if SELECT_CONTROL=$c "$dir/select_tb" "$seeds" >/dev/null 2>&1; then
     say "  control $c (select)" "MISSED"; fail=1
   else
     say "  control $c (select)" "caught"

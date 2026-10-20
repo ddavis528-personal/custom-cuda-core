@@ -41,7 +41,7 @@ module steer_probe #(parameter int S = 4, parameter int R = 4, parameter int W =
       b = '0;
       for (int s = 0; s < S; s++) a = a | ({W{first[s]}} & uops[(s * R + j) * W +: W]);
       // The second warp's uop j - f1, f1 = 0..j.
-      for (int k = 0; k <= j; k++)
+      for (int k = 0; k < j + 1; k++)
         for (int s = 0; s < S; s++)
           b = b | ({W{second[s] && f1 == LR'(j - k)}} & uops[(s * R + k) * W +: W]);
       lane[j * W +: W] = LR'(j) < f1 ? a : b;
