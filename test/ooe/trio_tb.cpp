@@ -30,11 +30,21 @@
 //
 // Negative controls (TRIO_CONTROL, ooe_trio's ctl), ooe_sched's: no-msd,
 // no-miss-lead, late-leads, no-alloc-lead.
-// Usage: trio_tb [seeds]
+//
+// With --cg <scenario> <vcd> it is ooe_sched's clock-gating bench
+// (test/ooe/cg_trace.h; the unit's scope is u_sched), and compares
+// nothing: ooe_sched's enables are leads of ooe_wake's lead lines and
+// ooe_rs's rows, which only the assembled modules give it in their own
+// frame. Its medium scenario is the model renaming a uop a cycle with no
+// idle ticks (trioConfigMedium), as ooe_wake's bench: ooe_wake and ooe_rs
+// confirm on their own, so in an idle tick they would run ahead of the
+// model the next cycle drives.
+// Usage: trio_tb [seeds] | trio_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_trio.h"
 #include "Vooe_trio___024root.h"
 #include "verilated.h"
+#include "cg_trace.h"
 #include "ooe_core.h"
 
 #include <algorithm>
@@ -58,6 +68,10 @@ void trioConfig(Config &c) {
   c.req_rows_late = true;
   c.miss_lead = true;
   c.ready_rep_late = true;
+}
+void trioConfigMedium(Config &c) {
+  trioConfig(c);
+  c.rename_width = 1;
 }
 
 namespace {
@@ -163,11 +177,15 @@ std::deque<Snap> H;   // H[k] is model cycle T - 5 + k, T the hook's
 
 bool r_stop() { return dut->rootp->ooe_trio__DOT__u_sched__DOT__stop_cq03h; }
 
+CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
+
 void tick() {
   dut->ooe_core_clk = 0;
   dut->eval();
+  cg.dump();
   dut->ooe_core_clk = 1;
   dut->eval();
+  cg.dump();
 }
 
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
@@ -533,7 +551,25 @@ int main(int argc, char **argv) {
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
+  std::string vcd;
+  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_trio>(ctx.get());
+  if (cg.on()) {
+    cg.open(*dut, vcd);
+    reset();
+    if (cg.idle()) {
+      // Nothing reaches the trio: its outer ports stay as reset left them.
+      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) tick();
+    } else {
+      ooeTestRandomHookedWith(CgRun::kSeeds, hook, cg.gaps() ? trioConfigMedium : trioConfig);
+    }
+    cg.close();
+    dut->final();
+    cg.vcd.reset();
+    dut.reset();
+    ctx.reset();
+    return 0;
+  }
   reset();
   const int model_fails = ooeTestRandomHookedWith(seeds, hook, trioConfig);
   dut->final();

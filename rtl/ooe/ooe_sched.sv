@@ -41,9 +41,11 @@
 //
 // The reference is the model's ready and request registers and its
 // sectioned select (Core::readyRegister, Core::requestRegister,
-// Core::selectSectioned); test/ooe/sched_tb.cpp drives this module from
-// the model and compares the ready register, the request register and the
-// grants.
+// Core::selectSectioned); test/ooe/trio_tb.cpp drives this module with
+// ooe_rs and ooe_wake, assembled, from the model and compares the ready
+// register, the request register and the grants (OA's response OI-45). It
+// is this module's clock-gating bench too: its enables are leads of its
+// neighbours' state, which only they give in their own frame.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -157,8 +159,10 @@ module ooe_sched #(
   logic [N-1:0] ready_cq02h;
   logic [N-1:0] ready_cq03h;
   logic         ready_en_cq03h, stop_cq03h, alc_cq03h;
-  logic         gl_cq05h;                   // a grant left at the last edge (its own stage)
+  logic         gl_cq05h;                   // a grant some row depends on left at the last edge
   logic         ready_en;
+  // A row not valid reads not ready (only a valid row requests): a row
+  // written ready then changes its bit, so the allocation lead clocks a change.
   ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dpm), .code_cq02h(code_cq02h),
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
@@ -183,6 +187,17 @@ module ooe_sched #(
   (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
   assign gnt_en      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
   assign ready_en    = ready_en_cq03h || gl_cq05h;
+  // A grant moves a ready bit at the edge it arrives only through the lead
+  // line (WL - 1) of a producer of latency LEAD + 1, threshold age 1; every
+  // other line's threshold is age 2 or later, which ooe_wake's timer lead
+  // foresees. So the columns some row reads by the lead line.
+  logic [N-1:0] dcol_cq02h;
+  always_comb begin
+    dcol_cq02h = '0;
+    for (int i = 0; i < N; i++)
+      for (int j = 0; j < N; j++)
+        dcol_cq02h[j] = dcol_cq02h[j] | (dep_cq02h[i * N + j] && code_cq02h[(i * N + j) * CW +: CW] == CW'(WL - 1));
+  end
   assign grant_cq04h   = gnt_out_cq04h;
   assign grant_w_cq04h = gnt_w_cq04h;
 
@@ -200,7 +215,7 @@ module ooe_sched #(
       // line may rise there (a latency of LEAD + 1, OA's response OI-45),
       // which no timer lead of ooe_wake's foresees.
       ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h;
-      gl_cq05h       <= gnt_cq04h != '0;
+      gl_cq05h       <= (gnt_cq04h & dcol_cq02h) != '0;
       stop_cq03h     <= stop_cq02h;
       alc_cq03h      <= alloc_cq02h;
       chg_cq04h      <= !rq_en && rq_cq02h != rq_cq03h;
@@ -211,7 +226,7 @@ module ooe_sched #(
       ready_cq03h <= '0;
       rq_cq03h    <= '0;
     end else begin
-      if (ready_en) ready_cq03h <= ready_cq02h;
+      if (ready_en) ready_cq03h <= ready_cq02h & valid_cq02h;
       if (rq_en) rq_cq03h <= rq_cq02h;
     end
   end

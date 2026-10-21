@@ -443,12 +443,18 @@ Built (`rtl/ooe/`):
   input is sdep at 24.5. `older_r` and the new `vel` take 4 as proposed
   (OI-55). The clock gates' lowest DCGE is 81% (medium and high).
 
-  `test/ooe/sched_tb.cpp` drives it a model cycle behind, so the event
-  lead and the hop's missed bits come from the next cycle, as ooe_wake
-  would know them. It compares the grants, the request register bit for
-  bit, and the ready register on V-73's rows. Over 25 seeds: 18,780
-  cycles followed, 16,666 grants, none differ. The controls no-msd,
-  no-miss-lead, late-leads and no-alloc-lead must each be caught.
+  `test/ooe/trio_tb.cpp` drives it assembled with ooe_rs and ooe_wake
+  (OI-45; it replaced `sched_tb`, which emulated the neighbours in the
+  model's frame). It compares the grants, the request register bit for
+  bit, and the ready register on V-73's rows. The controls no-msd,
+  no-miss-lead, late-leads and no-alloc-lead must each be caught. It is
+  the clock-gating bench too: the ready register's enables lead
+  ooe_wake's lead lines and ooe_rs's rows, so only the assembled modules
+  give them in the frame they clock. The ready register reads a row not
+  valid as not ready, so writing a row ready at once is a change its
+  allocation lead clocks; the grant's term is of rows reading the lead
+  line (WL - 1), the one line a grant may raise at its own edge. DCGE 92%
+  medium, 96% high.
 
 - **`ooe_rat`**, the register alias tables, the first of rename's two
   modules. Per tier-1 slot: the speculative GPR and predicate maps, the
