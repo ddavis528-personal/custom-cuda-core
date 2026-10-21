@@ -11,6 +11,7 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
                       parameter int AR = 0,
                       parameter int CAP = 1,   // 0: the warp cap is the whole RS (CCV_P_RS_WARP_CAP 45), no check
                       parameter int RET = 0,   // 1: this cycle's retirements (ret_n, a thermometer by 8) in the ROB term
+                      parameter int SHR = 0,   // 1: each warp's registered shares of RS RCU and MIU (OI-65's shares)
                       localparam int LR = $clog2(R + 1), localparam int H = 2 * R - 1,
                       localparam int LC = $clog2(D + 1), localparam int LS = $clog2(S)) (
   input  logic [S*H-1:0]   hv,       // decq's head valids
@@ -22,6 +23,8 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
   input  logic [S*6-1:0]   rob,
   input  logic [S*2-1:0]   ret,       // per warp: more than 0, more than 1 retired now
   input  logic [S*6-1:0]   cap,
+  input  logic [S*5-1:0]   shr,       // per warp: its RS RCU share
+  input  logic [S*4-1:0]   shm,       // and MIU share
   input  logic [S*7-1:0]   gal,
   input  logic [S*5-1:0]   pal,
   input  logic [S*3-1:0]   ckf,
@@ -59,11 +62,12 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
       for (int m = 1; m < H + 1; m++) begin
         // The first m uops' needs, each a balanced tree over positions.
         logic [4:0] t1 [8], t2 [4], t3 [2];
-        logic [4:0] nk, ng, np, nb;
-        for (int r = 0; r < 4; r++) begin
+        logic [4:0] nk, ng, np, nb, nr, nm;
+        for (int r = 0; r < 6; r++) begin
           for (int i = 0; i < 8; i++)
             if (i < m)
-              t1[i] = r == 0 ? 5'(a[i][0]) + 5'(a[i][1]) + 5'(a[i][2]) : 5'(a[i][r + 2]);
+              t1[i] = r == 0 ? 5'(a[i][0]) + 5'(a[i][1]) + 5'(a[i][2]) : r == 4 ? 5'(a[i][0]) + 5'(a[i][2]) :
+                      r == 5 ? 5'(a[i][1]) : 5'(a[i][r + 2]);
             else
               t1[i] = '0;
           for (int i = 0; i < 4; i++) t2[i] = t1[2 * i] + t1[2 * i + 1];
@@ -72,7 +76,9 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
             0: nk = t3[0] + t3[1];
             1: ng = t3[0] + t3[1];
             2: np = t3[0] + t3[1];
-            default: nb = t3[0] + t3[1];
+            3: nb = t3[0] + t3[1];
+            4: nr = t3[0] + t3[1];
+            default: nm = t3[0] + t3[1];
           endcase
         end
         logic robok;
@@ -82,7 +88,7 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
                   (m >= 2 && rob[s * 6 +: 6] >= 6'(m - 2) && ret[s * 2 + 1]);
         g[m] = v[m - 1] && robok && (CAP == 0 || cap[s * 6 +: 6] >= 6'(nk)) &&
                gal[s * 7 +: 7] >= 7'(ng) && pal[s * 5 +: 5] >= np && ckf[s * 3 +: 3] >= 3'(nb) &&
-               nb < 5'd8;
+               nb < 5'd8 && (SHR == 0 || (shr[s * 5 +: 5] >= nr && 5'(shm[s * 4 +: 4]) >= nm));
       end
       for (int k = 0; k < R + 1; k++) begin
         logic run;

@@ -436,6 +436,13 @@ test on the last cycle's shared credits against twice the width (RCU
 three times with a copy in a head), and a short cycle's warp against the
 shared credits less the width. The interleave +7.0%, of which the margin
 is about 5.5 points: short cycles go from 38% to 63%.
+3 is OA's per-warp shares: as 2, but no short path; each cycle every
+shared credit, as registered, is split equally among the warps with a
+head (the remainder to the first in rotation), and each warp admits
+against its own share. The interleave +0.0%, two warps +0.8%, one warp
++1.3% (13.0% of refills fail). The split measures 16.1 NGD and a share
+reaches the fits 13.5 after it, too deep on the fits' D
+(`test/ooe/probes/share_probe.sv`, `fitsk2_probe.sv` SHR=1).
 
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")

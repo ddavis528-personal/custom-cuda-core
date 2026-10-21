@@ -2244,6 +2244,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap));
       free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap));
     }
+    if (shares_on_ && ((need_rcu && share_[si][0] < ren_slot_[si][0] + need_rcu) ||
+                       (need_miu && share_[si][1] < ren_slot_[si][1] + need_miu))) {
+      count("stall.share.rs");
+      // Fragmentation: the whole credit would have taken it.
+      if (free_rcu >= need_rcu && free_miu >= need_miu) count("stall.share_frag");
+      return false;
+    }
     if (margin && ((need_rcu && free_rcu + others(0) < need_rcu + margin) ||
                    (need_miu && free_miu + others(1) < need_miu + margin))) {
       count("stall.fits_conservative.rs");
@@ -2285,6 +2292,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       count("stall.gpr_floor");
       oev(OoeEv::kRenameLimit, s.warp, 0, 0, u.tid);
     }
+    return false;
+  }
+  if (shares_on_ && ((wgpr && share_[si][2] < ren_slot_[si][2] + 1) ||
+                     (!nop && u.pred_we && cfg_.rename_preds && share_[si][3] < ren_slot_[si][3] + 1))) {
+    count("stall.share.names");
+    if ((!wgpr || !gfree_.empty()) && (!(!nop && u.pred_we && cfg_.rename_preds) || !pfree_.empty()))
+      count("stall.share_frag");
     return false;
   }
   if (margin && wgpr && gfree_.size() + others(2) < 1 + margin) {
@@ -2554,6 +2568,30 @@ void Core::rename() {
     ren_late_frees_ = short_credit && fc == 3;
     // (a2): a short cycle's warp fits the shared credits less the width.
     if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
+  }
+  // fits_stale 3: per-warp shares of each shared credit, no short path.
+  shares_on_ = cfg_.fits_stale == 3 && cfg_.rename_one_warp != 1;
+  if (shares_on_) {
+    short_credit = false;
+    ren_late_frees_ = true;   // the shares are of the registered credits
+    unsigned c[4] = {0, 0, unsigned(gfree_.size()), cfg_.rename_preds ? unsigned(pfree_.size()) : 1000u};
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) c[0] += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) c[1] += !rsHeld(e);
+    const unsigned fcap = cfg_.ren_free_cap;
+    c[0] -= std::min(c[0], std::min(rs_prompt_[0], fcap));
+    c[1] -= std::min(c[1], std::min(rs_prompt_[1], fcap));
+    share_.assign(slot_.size(), {0, 0, 0, 0});
+    std::vector<unsigned> with;
+    for (unsigned k = 0; k != slot_.size(); ++k) {
+      const unsigned si = (rr_rename_ + k) % slot_.size();
+      if (slot_[si].st != WarpState::kFree && slot_[si].decq) with.push_back(si);
+    }
+    if (!with.empty())
+      for (unsigned r = 0; r != 4; ++r) {
+        const unsigned each = c[r] / unsigned(with.size()), rem = c[r] % unsigned(with.size());
+        for (unsigned si : with) share_[si][r] = each;
+        share_[with[0]][r] += rem;
+      }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
