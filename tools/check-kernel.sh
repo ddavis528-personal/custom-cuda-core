@@ -565,6 +565,10 @@ hit    l1_hit=4 l1_late=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=4
 plog   merge=3
+chains lane_byp=9
+missrun l1_hit=0 reexec=2
+ldpar  l1_hit=4 hit_under_miss=4
+mlp    l1_hit=0 reexec=4
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -817,8 +821,15 @@ fi
 # floor, and each kernel written to force reordering its own bounds (OOO_WANT,
 # step 2). The control: the same traces held in program order, as an
 # in-order machine would at best issue them, must fail the floor.
-OOO_FLOOR="ahead=15,depth=4,kernels=6"
-OOO_WANT=()
+# The floor sits below today's suite (ahead 69, depth 9, 12 kernels), so a
+# timing change has room; the bounds below are the kernels' purpose.
+OOO_FLOOR="ahead=50,depth=6,kernels=10"
+OOO_WANT=(
+  "chains:ahead>11 depth>6"    # the pairs behind a chain of eight adds
+  "missrun:ahead>15 depth>3"   # twenty instructions under a miss and its chain
+  "ldpar:ahead>3"              # four hits ahead of a miss's dependant
+  "mlp:ahead>5 depth>4"        # each iteration's load ahead of the last's add
+)
 ooo_traces=""
 for d in test/kernels/*/; do
   k=$(basename "$d")

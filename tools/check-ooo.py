@@ -80,7 +80,12 @@ def measure(path, in_order=False):
 
 
 def name_of(path):
-    return os.path.basename(path).split(".")[0].replace("kernel_", "")
+    """The kernel's name: the trace's file name less any ooo_ or kernel_."""
+    n = os.path.basename(path).split(".")[0]
+    for p in ("ooo_", "kernel_"):
+        if n.startswith(p):
+            n = n[len(p):]
+    return n
 
 
 def bounds_fail(m, bins):
