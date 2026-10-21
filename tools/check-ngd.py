@@ -391,8 +391,8 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inn
                  "setattr -mod -unset keep_hierarchy %s" % " ".join(
                      "%s $paramod\\%s\\*" % (m, m) for m in sorted(inner))]
         flat = True
-    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top), "write_json %s" % jf]
-    r = run(["yosys", "-q", "-p", "; ".join(cmds)])
+    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top)]
+    r = cg.yosys_json(cmds, jf)
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (name, (r.stdout + r.stderr)[-2000:]))
     return work, jf

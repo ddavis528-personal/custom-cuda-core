@@ -20,6 +20,11 @@
 #   tools/verify.sh          the gate
 #   tools/verify.sh --full   also regenerate the Stage 1a matrix from the
 #                            tools themselves (minutes, not seconds)
+#   tools/verify.sh --cached for an intermediate run: keep the Yosys netlists
+#                            earlier runs made (build/synth-cache, keyed by
+#                            everything a run reads). Its result reads
+#                            "CACHED PASS", never "PASS": the gate for a push
+#                            is the default, every netlist built clean.
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
@@ -30,7 +35,14 @@ cd "$(dirname "$0")/.."
 export PATH="$PWD/tools/shim:$PATH"
 
 FULL=0
-[ "${1:-}" = "--full" ] && FULL=1
+CACHED=0
+for a in "$@"; do
+  case "$a" in
+    --full)   FULL=1 ;;
+    --cached) CACHED=1 ;;
+    *) echo "usage: $0 [--full] [--cached]" >&2; exit 2 ;;
+  esac
+done
 
 fail=0
 section() { printf '\n== %s ==\n' "$1"; }
@@ -364,6 +376,10 @@ declare -A after=(
 )
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
+# check-cg and check-ngd share their Yosys netlists through this cache, keyed
+# by everything a run reads. Cleared here unless --cached, so the gate for a
+# push synthesises each one itself (Daniel, 2026-10-21).
+[ "$CACHED" = 1 ] || rm -rf build/synth-cache
 for j in $ORDER; do
   case " $(echo $START) " in *" $j "*) ;; *) echo "verify: job $j is never started"; exit 2 ;; esac
   declare -F "job_$j" >/dev/null || { echo "verify: no job_$j"; exit 2; }
@@ -436,7 +452,9 @@ cat <<'PENDING'
 PENDING
 
 section "result"
-if [ "$fail" = "0" ]; then
+if [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
+  echo "  CACHED PASS -- netlists from build/synth-cache; not the gate for a push"
+elif [ "$fail" = "0" ]; then
   echo "  PASS"
 else
   echo "  FAIL"
