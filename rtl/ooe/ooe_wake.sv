@@ -32,6 +32,22 @@
 // spec timer is the L1 hit, and ends the miss check. A stop (a replay
 // returning the entry to Waiting, or the entry freed) clears issued.
 //
+// Stops (OI-45, V-65): this module runs the cancel's level rule and
+// confirmation itself (ooe_confirm, an inner helper) over its own state, as
+// ooe_rs does over its issued register, so neither takes the other's
+// replays or frees, and the two issued states are equal: both take the
+// grant register's grants and their stops at the same edge. The inputs:
+// this module's issued bits, ooe_rs's matrix (dep, as data), its held
+// misses, final and prod bits. A held miss (msd) is a spec timer that
+// missed and is still waiting for its completion, from its state: issued,
+// kind spec, the miss check over without the line armed, past the miss
+// pulse's cycle (OI-50, V-68: the hop sees a miss from the cycle after it,
+// and in the cycle of its completion, before the restart). A stop is a
+// replay, a confirmation, or the registered squash's free (sqf). A replayed
+// entry granted again at the stop's edge stays issued: the grant wins, as
+// in ooe_rs. msd_cq02h gives the held misses to ooe_rs from a register of
+// their own (msr, in each entry's group).
+//
 // Completions (OA's response OI-58, L1): the channel's valid leads its
 // payload by a cycle, and this module flops it (cv). The payload's RS
 // indices are decoded per entry as they arrive and registered (cm), so a
@@ -44,17 +60,21 @@
 //
 // fin_cq02h is the timer's word to confirmation: issued, the full-latency
 // line raised and the miss check over, so the result can no longer be
-// cancelled (V-16). It is taken before this edge's stop, because
-// confirmation frees the entry in the cycle the line rises.
+// cancelled (V-16). Confirmation (this module's and ooe_rs's) reads it in
+// the cycle the line has risen, and frees the entry at the next edge.
 //
 // The bypass lines follow the class alone: FAST[class] is its fastest
 // bypass point (0: none), so line k rises at FAST[class] + PEN[k] while
 // the timer is issued. A class that waits for a completion has no bypass
 // point, so the restart at a completion never moves a bypass line.
 //
-// Inputs of the edge into cycle t are the previous cycle's grants and the
-// events the model takes in t before its select: completions, replays
-// and frees. The lines after that edge are what select reads in t.
+// Inputs of the edge into cycle t are the previous cycle's grants, the
+// completions the model takes in t before its select, and the stops of the
+// model's previous cycle: its replays and frees, which this module decides
+// in that cycle from the state the edge before left. The lines after the
+// edge are what select reads in t; an entry the model replays in t still
+// shows its lines until the next edge, and ooe_sched runs the replay rule
+// itself for its select.
 // The reference is the model's wakeLine (Core::wakeLine) and its L1 miss
 // cancel; test/ooe/wake_tb.cpp drives this module from the live model and
 // compares every valid entry's lines, and every miss, each cycle.
@@ -73,7 +93,7 @@
 // Local clock gating (OA's response OI-58; V-75): each entry's state is
 // one enable group, clocked on its grant, its registered completion, and
 // while it is in use, from this module's own flops: issued with its age
-// not saturated (a miss pulse's too); a final flag to clear; issued and final,
+// not saturated (a miss pulse's too); issued and final,
 // or issued and writing nothing (prod), for its free by confirmation (OA's
 // response OI-62); and the registered squash's lead (sq_en: every entry,
 // the edge ooe_rs frees on). A replay needs no lead of its own: it comes a
@@ -115,12 +135,14 @@ module ooe_wake #(
   input  logic [N-1:0]   prod_cq01h,    // each grant writes a register some entry may wake on
   input  logic [NC-1:0]  cmpl_l_cq00h,  // the completion channel's valid: a payload next cycle
   input  logic [NC*W-1:0] cmpl_idx_cq01h, // each completion's RS entry
-  input  logic [N-1:0]   stop_cq01h,    // replayed or freed: issued clears
+  input  logic [N*N-1:0] dep_cq01h,     // ooe_rs's matrix: row i, column j, i waits on j
+  input  logic [N-1:0]   sqf_cq01h,     // entries the registered squash frees this cycle
   input  logic           sq_l_cq00h,    // the registered squash frees next cycle
   output logic [4*N-1:0] wake_cq02h,    // entry j's line k at 4j + k
   output logic [N-1:0]   miss_cq02h,    // the L1 miss, found at the last edge
   output logic [N-1:0]   fin_cq02h,     // the result is final: confirmation may take it
-  output logic [N-1:0]   iss_cq02h,     // issued: ooe_sched's, ooe_rs's and the hop's
+  output logic [N-1:0]   iss_cq02h,     // issued: ooe_sched's and the hop's
+  output logic [N-1:0]   msd_cq02h,     // the held misses: ooe_rs's and the hop's
   output logic [4*N-1:0] wtl_cq02h,     // the timer changes the line at the next edge
   output logic           wml_cq02h      // a miss or a completion changes lines at the next edge
 );
@@ -150,7 +172,7 @@ module ooe_wake #(
 
   `CCV_ASSERT_KNOWN(grant_known, grant_cq01h)
   `CCV_ASSERT_KNOWN(cmpl_l_known, cmpl_l_cq00h)
-  `CCV_ASSERT_KNOWN(stop_known, stop_cq01h)
+  `CCV_ASSERT_KNOWN(sqf_known, sqf_cq01h)
   `CCV_ASSERT_KNOWN(sq_l_known, sq_l_cq00h)
 
   // Age reaches a threshold (a constant once the class is decoded).
@@ -234,8 +256,11 @@ module ooe_wake #(
       spec = 1'b0;
       arm  = 1'b0;
     end
+    // A replayed entry granted again at this edge stays issued, as in
+    // ooe_rs's issued register (select's own replay rule and its ready
+    // register keep it from coming up: the model never does it).
+    if (stop && !grant) iss = 1'b0;
     n[FFIN]       = iss && late && !spec;
-    if (stop) iss = 1'b0;
     n[FISS]       = iss;
     n[FARM]       = arm;
     n[FSPEC]      = spec;
@@ -248,6 +273,13 @@ module ooe_wake #(
     n[FPROD]      = pr && iss;          // read only while issued: cleared with it
     n[FAGE +: AW] = age;
     entry_next = n;
+  endfunction
+
+  // A held miss (msd): a spec timer that missed and waits for its
+  // completion, from the cycle after the miss pulse until the restart (the
+  // hop sees a miss from the cycle after it, and in its completion's cycle).
+  function automatic logic held_miss(input logic [EW-1:0] e);
+    held_miss = e[FISS] && e[FKIND +: 2] == KSPEC && !e[FSPEC] && !e[FARM] && !e[FMISS];
   endfunction
 
   // The timer's line changes at the edge after next, from its state alone,
@@ -272,16 +304,23 @@ module ooe_wake #(
   endfunction
 
 
-  (* keep *) logic [SW-1:0] st_cq02h;   // kept: its issued bits have a copy (iso_cq02h)
+  (* keep *) logic [SW-1:0] st_cq02h;   // kept: its issued, miss and final bits have copies
+  logic [N-1:0] fn_cq02h;              // the state's final bits, for this module's own logic
   always_comb
     for (int j = 0; j < N; j++) begin
       wake_cq02h[j * 4 +: 4] = st_cq02h[j * EW + FLINE +: 4];
-      miss_cq02h[j]          = st_cq02h[j * EW + FMISS];
-      fin_cq02h[j]           = st_cq02h[j * EW + FFIN];
+      fn_cq02h[j]            = st_cq02h[j * EW + FFIN];
     end
   // The issued bits leave from a copy of their own (NGD-7: the state's
   // issued bit starts paths deeper than the output's budget).
   (* keep *) logic [N-1:0] iso_cq02h;
+  // So do the miss pulses and the final bits, which confirmation reads
+  // (mio_cq02h, fio_cq02h), and the held misses (msr_cq02h), each a
+  // register in its entry's group.
+  (* keep *) logic [N-1:0] mio_cq02h, fio_cq02h, msr_cq02h;
+  assign miss_cq02h = mio_cq02h;
+  assign fin_cq02h  = fio_cq02h;
+  assign msd_cq02h  = msr_cq02h;
   logic [N-1:0] is_cq02h;              // the state's, for this module's own logic
   always_comb
     for (int j = 0; j < N; j++) is_cq02h[j] = st_cq02h[j * EW + FISS];
@@ -305,6 +344,9 @@ module ooe_wake #(
   // a timer's registered completion is one flop, straight into its enable.
   logic [NC-1:0]   cv_cq01h;
   logic [N-1:0]    hit, cm_cq02h;
+  logic [EW*N-1:0] nx;
+  logic [N-1:0]    ent_en;
+  logic            sq_en_cq01h;
   logic            cm_en;
   assign cm_en = cv_cq01h != '0 || cm_cq02h != '0;
   always_comb begin
@@ -314,10 +356,30 @@ module ooe_wake #(
         if (cv_cq01h[k] && cmpl_idx_cq01h[k * W +: W] == W'(j)) hit[j] = 1'b1;
   end
 
+  // -- Stops (OI-45) ---------------------------------------------------------
+  // The cancel and confirmation over this module's state, as ooe_rs runs
+  // them over its own: issued, the held misses, final and prod. The stops
+  // land at this edge, with the grants of the cycle that reads the same
+  // state, so this module's issued bits are ooe_rs's issued register.
+  logic [N-1:0] msd, prd, rep, conf, stop_cq01h;
+  always_comb
+    for (int j = 0; j < N; j++) begin
+      msd[j] = held_miss(st_cq02h[j * EW +: EW]);
+      prd[j] = st_cq02h[j * EW + FPROD];
+    end
+  ooe_confirm #(.N(N)) u_confirm (
+    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msd), .fin_cq01h(fn_cq02h),
+    .prod_cq01h(prd), .replay_cq01h(rep), .conf_cq01h(conf)
+  );
+  assign stop_cq01h = rep | conf | sqf_cq01h;
+  // The squash frees only what it clocks (sq_en, its lead), never an entry
+  // granted at the same edge (select blocks its slot), and confirms nothing
+  // granted at it (confirmation needs the entry issued).
+  `CCV_ASSERT(squash_led, sqf_cq01h == '0 || sq_en_cq01h)
+  `CCV_ASSERT(squash_not_granted, (sqf_cq01h & grant_cq01h) == '0)
+  `CCV_ASSERT(confirm_not_granted, (conf & grant_cq01h) == '0)
+
   // -- Leads -----------------------------------------------------------------
-  logic [EW*N-1:0] nx;
-  logic [N-1:0]    ent_en;
-  logic            sq_en_cq01h;
   // Every stop lands on a clocked entry: no stop is lost. A miss pulse
   // clears on its own: its timer is issued and below saturation.
   `CCV_ASSERT(stop_clocked, (stop_cq01h & is_cq02h & ~ent_en) == '0)
@@ -336,22 +398,34 @@ module ooe_wake #(
       logic [EW-1:0] g;
       g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0);
       if (grant_cq01h[j])
-        wtl_nx[j * 4 +: 4] = tl2({AW'(0), g[FAGE-1:0]}) & {4{!stop_cq01h[j]}};
+        wtl_nx[j * 4 +: 4] = tl2({AW'(0), g[FAGE-1:0]});
       else
         wtl_nx[j * 4 +: 4] = (tl2(st_cq02h[j * EW +: EW]) |
                               {cm_cq02h[j] && is_cq02h[j] && !st_cq02h[j * EW + FSPEC] && !st_cq02h[j * EW + FARM] &&
                                CMPL_DLY == 2, 3'b0}) & {4{!stop_cq01h[j]}};
-      wml_nx = wml_nx || (ent_en[j] && nx[j * EW + FMISS]);
+      // A miss at the next edge, before this edge's stop (a lead may be a
+      // superset): a timer that misses is issued below saturation, clocked.
+      wml_nx = wml_nx || entry_next(st_cq02h[j * EW +: EW], 1'b0, KTIMED, 3'd0, 1'b0, hit[j], 1'b0, 1'b0)[FMISS];
     end
   end
+
+  // The held misses' next values: a grant sets none, so they are formed
+  // from the next state without one (a grant's kind and class stay off
+  // their path).
+  logic [N-1:0] ms_nx;
+  always_comb
+    for (int j = 0; j < N; j++)
+      ms_nx[j] = !grant_cq01h[j] &&
+                 held_miss(entry_next(st_cq02h[j * EW +: EW], 1'b0, KTIMED, 3'd0, 1'b0, hit[j], cm_cq02h[j],
+                                      stop_cq01h[j]));
 
   // Local clock gating (OA's responses OI-58, OI-62): see the header.
   always_comb
     for (int j = 0; j < N; j++) begin
       nx[j * EW +: EW] = entry_next(st_cq02h[j * EW +: EW], grant_cq01h[j], kind_cq01h[j * 2 +: 2],
                                     cls_cq01h[j * 3 +: 3], prod_cq01h[j], hit[j], cm_cq02h[j], stop_cq01h[j]);
-      ent_en[j] = cm_cq02h[j] || sq_en_cq01h || (fin_cq02h[j] && !is_cq02h[j]) ||
-                  (is_cq02h[j] && (fin_cq02h[j] || !st_cq02h[j * EW + FPROD] ||
+      ent_en[j] = cm_cq02h[j] || sq_en_cq01h ||
+                  (is_cq02h[j] && (fn_cq02h[j] || !st_cq02h[j * EW + FPROD] ||
                                     !(&st_cq02h[j * EW + FAGE +: AW]))) ||
                   grant_cq01h[j];
     end
@@ -382,10 +456,16 @@ module ooe_wake #(
         st_cq02h[j * EW +: EW] <= '0;
         wtl_cq02h[j * 4 +: 4]  <= '0;
         iso_cq02h[j]           <= 1'b0;
+        mio_cq02h[j]           <= 1'b0;
+        fio_cq02h[j]           <= 1'b0;
+        msr_cq02h[j]           <= 1'b0;
       end else if (ent_en[j]) begin
         st_cq02h[j * EW +: EW] <= nx[j * EW +: EW];
         wtl_cq02h[j * 4 +: 4]  <= wtl_nx[j * 4 +: 4];
         iso_cq02h[j]           <= nx[j * EW + FISS];
+        mio_cq02h[j]           <= nx[j * EW + FMISS];
+        fio_cq02h[j]           <= nx[j * EW + FFIN];
+        msr_cq02h[j]           <= ms_nx[j];
       end
     end
   end

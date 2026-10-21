@@ -5,7 +5,8 @@
       "name": "ooe_wake",
       "module": "ooe_wake",
       "files": [
-        "rtl/ooe/ooe_wake.sv"
+        "rtl/ooe/ooe_wake.sv",
+        "rtl/ooe/ooe_confirm.sv"
       ],
       "params": {
         "N": 45

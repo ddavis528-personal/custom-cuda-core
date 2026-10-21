@@ -7,9 +7,13 @@
 // event (OA's response OI-58). The edge for cycle t takes what reached each
 // RS entry's wake timer (Core::wakeLog): the grants of cycle t - 1, with
 // their kind, class and whether they write a register (Core::rsProduces),
-// and the completions (as RS indices) and stops of cycle t, which the model
-// takes before its select; and the leads of cycle t + 1: the completion channel's
-// valid, and a squash's (a stop that is no replay and no confirmation).
+// and the completions (as RS indices) of cycle t, which the model takes
+// before its select, ooe_rs's matrix as t's cancel hop read it (hop_dep)
+// and t's frees that are no confirmation (the registered squash's); and the
+// leads of cycle t + 1: the completion channel's valid, and a squash's.
+// ooe_wake replays and confirms on its own (OI-45): its stops must be the
+// model's, which the issued bits and lines show, and its held misses
+// (msd_cq02h) the hop's (hop_msd).
 // After the edge, every valid entry's four lines and its issued bit must be
 // the model's (Core::wakeLine and Core::rsIssued at t, what select read), and every miss pulse the
 // model's L1 miss cancel at t. The RTL's fin (the result is final) must be
@@ -21,23 +25,19 @@
 //
 // Negative controls (WAKE_CONTROL=<name>) perturb what the RTL is driven
 // with, and must be caught: late-grant (each grant reaches the RTL a cycle
-// late), drop-cmpl (completions never reach it), drop-stop (replays and
-// frees never reach it), no-cmpl-lead (the completion channel's valid never
-// does) and no-sq-lead (nor a squash's lead).
-// In a clock-gating run (--cg) the idle ticks between model cycles age the
-// RTL's timers past the model's, so a replay can reach a timer the RTL has
-// let saturate, which real traffic never does (ooe_wake's header), and the
-// RTL's timers no longer match the model's events. There a cycle with a
-// stop for a timer the RTL would not clock (issued, writing a register, not
-// final, its age saturated: read through --public-flat-rw, WAKE_PUBLIC)
-// takes the squash's lead too, clocking every timer for its edge, and the
-// bench compares nothing.
-// Usage: wake_tb [seeds]
+// late), drop-cmpl (completions never reach it), no-dep (the matrix never
+// does, so no replay and every issued entry confirms on its word),
+// drop-squash-free (a squash's frees never reach it), no-cmpl-lead (the
+// completion channel's valid never does) and no-sq-lead (nor a squash's
+// lead).
+// With --cg <scenario> <vcd> it is ooe_wake's clock-gating bench
+// (test/ooe/cg_trace.h), and compares nothing. Its medium scenario is the
+// model renaming a uop a cycle with no idle ticks (wakeConfigMedium), not
+// cg_trace's two idle ticks a model cycle: ooe_wake confirms on its own, so
+// in an idle tick it would run ahead of the model the next cycle drives.
+// Usage: wake_tb [seeds] | wake_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_wake.h"
-#ifdef WAKE_PUBLIC
-#include "Vooe_wake___024root.h"
-#endif
 #include "verilated.h"
 #include "cg_trace.h"
 #include "ooe_core.h"
@@ -53,6 +53,10 @@ using ccv::ooe::Core;
 
 int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
 int ooeTestDirectedHooked(void (*hook)(const Core &));
+int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
+// A clock-gating run's medium scenario: the model renaming a uop a cycle,
+// every clock a model cycle (ooe_wake confirms on its own, OI-45).
+void wakeConfigMedium(Config &c) { c.rename_width = 1; }
 
 namespace {
 constexpr unsigned N = WAKE_N, L = Core::kWakeLines;
@@ -66,9 +70,9 @@ bool following = false;        // its configuration is the RTL's
 // core then.
 struct Cyc {
   Core::WakeLog w;
-  std::vector<uint8_t> prod, valid, fin, line, iss, wtl;
+  std::vector<uint8_t> prod, valid, fin, line, iss, wtl, sqf;
   bool wml = false;              // a miss, or a completion past L1
-  bool sq = false;               // a stop that is no replay and no confirmation
+  bool sq = false;               // the squash frees an entry (a free that is no confirmation)
   unsigned ncmpl = 0;
 };
 Cyc c1, c2, c3;                  // the last cycle, the one before, and the one before that
@@ -100,36 +104,20 @@ void tick() {
 }
 
 // The leads of a cycle's events, driven a tick before them.
-void driveLeads(const Cyc *n) {
+// The completions' (n: the cycle whose completions the next edge takes) and
+// the squash's (s: the cycle whose squash frees the next edge lands).
+void driveLeads(const Cyc *n, const Cyc *s) {
   dut->cmpl_l_cq00h = 0;
   dut->sq_l_cq00h = 0;
-  if (!n) return;
-  if (control != "no-cmpl-lead")
+  if (n && control != "no-cmpl-lead")
     for (unsigned k = 0; k != n->ncmpl && k != WAKE_NC; ++k) dut->cmpl_l_cq00h |= 1u << k;
-  bool sq = n->sq;
-#ifdef WAKE_PUBLIC
-  // A timer's fields in ooe_wake's state (FISS, FFIN, FPROD, FAGE; AW 5).
-  constexpr unsigned EW = 21, FISS = 0, FFIN = 14, FPROD = 15, FAGE = 16, AWB = 5;
-  const auto &st = dut->rootp->ooe_wake__DOT__st_cq02h;
-  if (cg.on())
-    for (unsigned j = 0; j != N; ++j) {
-      if (!n->w.stop[j]) continue;
-      unsigned age = 0;
-      for (unsigned b = 0; b != AWB; ++b) age |= unsigned(getBit(st, j * EW + FAGE + b)) << b;
-      if (getBit(st, j * EW + FISS) && getBit(st, j * EW + FPROD) && !getBit(st, j * EW + FFIN) &&
-          age + 1 >= (1u << AWB) - 1)
-        sq = true;
-    }
-#endif
-  dut->sq_l_cq00h = sq && control != "no-sq-lead";
+  dut->sq_l_cq00h = s && s->sq && control != "no-sq-lead";
 }
 
 // An idle cycle: nothing reaches a timer; a grant's kind and class hold.
-// The last one before a cycle's events carries their leads.
-void idleTick(const Cyc *n = nullptr) {
+void idleTick() {
   dut->grant_cq01h = 0;
-  dut->stop_cq01h = 0;
-  driveLeads(n);
+  driveLeads(nullptr, nullptr);
   tick();
 }
 
@@ -158,7 +146,8 @@ bool sameConfig(const Core &c) {
 
 void clearInputs() {
   dut->grant_cq01h = 0;
-  dut->stop_cq01h = 0;
+  for (unsigned j = 0; j != N; ++j) setBit(dut->sqf_cq01h, j, false);
+  for (unsigned c = 0; c != N * N; ++c) setBit(dut->dep_cq01h, c, false);
   dut->prod_cq01h = 0;
   dut->cmpl_l_cq00h = 0;
   dut->sq_l_cq00h = 0;
@@ -173,7 +162,7 @@ constexpr unsigned IW = []() { unsigned w = 0; while ((1u << w) < N) ++w; return
 Cyc snapCycle(const Core &c) {
   Cyc y;
   y.w = c.wakeLog();
-  y.prod.resize(N); y.valid.resize(N); y.fin.resize(N); y.iss.resize(N); y.line.resize(N * L); y.wtl.resize(N * L);
+  y.sqf.resize(N); y.prod.resize(N); y.valid.resize(N); y.fin.resize(N); y.iss.resize(N); y.line.resize(N * L); y.wtl.resize(N * L);
   for (unsigned j = 0; j != N; ++j) {
     y.prod[j] = c.rsProduces(j);
     y.valid[j] = c.rsValid(j);
@@ -184,9 +173,10 @@ Cyc snapCycle(const Core &c) {
       y.wtl[j * L + k] = c.wakeLineChanges(j, k);
     }
     y.wml = y.wml || (j < y.w.miss.size() && y.w.miss[j]) || (j < y.w.cmpl.size() && y.w.cmpl[j] == 2);
-    const bool rep = y.w.hop_live && j < y.w.replay.size() && y.w.replay[j];
     const bool conf = j < y.w.conf.size() && y.w.conf[j];
-    if (y.w.stop[j] && !rep && !conf) y.sq = true;
+    // The frees that are no confirmation: the registered squash's.
+    y.sqf[j] = y.w.rfree[j] && !conf;
+    if (y.sqf[j]) y.sq = true;
     y.ncmpl += y.w.cmpl[j] != 0;
   }
   return y;
@@ -216,6 +206,9 @@ void hook(const Core &c) {
     // nothing granted before them.
     c2 = Cyc();
     c2.w.grant.assign(N, 0);
+    c2.valid.assign(N, 0);
+    c2.iss.assign(N, 0);
+    c2.sqf.assign(N, 0);
     c3 = c2;
     c1 = std::move(now);
     have1 = true;
@@ -234,7 +227,13 @@ void hook(const Core &c) {
       for (unsigned b = 0; b != 3; ++b) setBit(dut->cls_cq01h, j * 3 + b, (g.w.cls[j] >> b) & 1u);
       setBit(dut->prod_cq01h, j, g.prod[j]);
     }
-    if (w.stop[j] && control != "drop-stop") { setBit(dut->stop_cq01h, j, true); ++stops; }
+    // The stops of t - 1, which ooe_wake decides in it: the matrix its
+    // hop read, and its squash's frees.
+    stops += w.stop[j];
+    setBit(dut->sqf_cq01h, j, c2.sqf[j] && control != "drop-squash-free");
+    const std::vector<uint8_t> &dep = c2.w.hop_dep;
+    for (unsigned i = 0; i != N && control != "no-dep"; ++i)
+      if (j * N + i < dep.size() && dep[j * N + i]) setBit(dut->dep_cq01h, j * N + i, true);
   }
   // The completions of t, as RS indices on the channel's lanes.
   unsigned k = 0;
@@ -245,13 +244,16 @@ void hook(const Core &c) {
       ++k;
       ++cmpls;
     }
-  driveLeads(cg.on() && cg.gaps() ? nullptr : &now);
+  driveLeads(&now, &c1);
   tick();
   // After it: what select read in t.
   for (unsigned j = 0; j != N; ++j) {
     const bool want_miss = w.miss[j], got_miss = getBit(dut->miss_cq02h, j);
     misses += want_miss;
-    if (want_miss != got_miss) fail("miss differs", j, 0, got_miss, want_miss);
+    // The model squashes before its L1 check; ooe_wake frees a squashed
+    // entry at the edge after (the squash is registered), with all that
+    // is younger in its warp, so a miss pulse there reaches nothing.
+    if (want_miss != got_miss && !c1.sqf[j]) fail("miss differs", j, 0, got_miss, want_miss);
     const bool got_fin = getBit(dut->fin_cq02h, j);
     if (w.fin[j]) {
       ++fins;
@@ -259,13 +261,17 @@ void hook(const Core &c) {
     } else if (c1.valid[j] && !w.stop[j] && got_fin != bool(c1.fin[j])) {
       fail("final differs", j, 0, got_fin, c1.fin[j]);
     }
-    // Issued as the timer holds it, on every entry: the model's, less t's
-    // own grants, which reach the timer at the next edge; and clear on a
-    // free entry, which every free's stop leaves so (a stop the timer missed
-    // would leave it issued).
-    const bool got_iss = getBit(dut->iss_cq02h, j),
-               want_iss = c1.valid[j] && c1.iss[j] && !(j < w.grant.size() && w.grant[j]);
+    // Issued as the timer holds it, on every entry: the model's at the end
+    // of t - 1, with its grants and stops (t's reach the timer at the next
+    // edge); and clear on a free entry, which every free's stop leaves so
+    // (a stop the timer missed would leave it issued).
+    const bool got_iss = getBit(dut->iss_cq02h, j), want_iss = c2.valid[j] && c2.iss[j];
     if (got_iss != want_iss) fail("issued differs", j, 0, got_iss, want_iss);
+    // The held misses, as t's hop reads them, but on an entry the squash
+    // frees at t, which the model's hop reads after the free: whatever
+    // depends on it is younger in its warp, freed with it.
+    const bool got_msd = getBit(dut->msd_cq02h, j), want_msd = j < w.hop_msd.size() && w.hop_msd[j];
+    if (got_msd != want_msd && !c1.sqf[j]) fail("held miss differs", j, 0, got_msd, want_msd);
     if (!c1.valid[j]) continue;
     // ooe_sched's timer lead: a change at the next edge, as the model
     // predicted it a cycle ago (Core::wakeLineChanges at t - 1), less a
@@ -275,7 +281,9 @@ void hook(const Core &c) {
       const bool want = c2.valid[j] && c2.wtl[j * L + k], got = getBit(dut->wtl_cq02h, j * L + k);
       if (want != got) fail("timer lead differs", j, k, got, want);
     }
-    for (unsigned k = 0; k != L; ++k) {
+    // An entry the model replays at t: its lines drop at the next edge,
+    // with the stop.
+    for (unsigned k = 0; k != L && !w.stop[j]; ++k) {
       ++compared;
       const bool want = c1.line[j * L + k], got = getBit(dut->wake_cq02h, j * L + k);
       raised += want;
@@ -286,7 +294,6 @@ void hook(const Core &c) {
   // whatever other completion arrived (a hit's lines change nothing).
   if (c1.wml && !dut->wml_cq02h) fail("event lead missed", 0, 0, false, true);
   for (unsigned j = 0; j != N; ++j) grants += w.grant[j];
-  for (unsigned gp = 0; gp != cg.gaps(); ++gp) idleTick(gp + 1 == cg.gaps() ? &now : nullptr);
   c3 = std::move(c2);
   c2 = std::move(c1);
   c1 = std::move(now);
@@ -310,7 +317,7 @@ int main(int argc, char **argv) {
     if (cg.idle()) {
       for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
     } else {
-      ooeTestRandomHooked(CgRun::kSeeds, hook);
+      ooeTestRandomHookedWith(CgRun::kSeeds, hook, cg.gaps() ? wakeConfigMedium : [](Config &) {});
     }
     cg.close();
     dut->final();

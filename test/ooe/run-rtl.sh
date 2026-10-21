@@ -190,8 +190,10 @@ done
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's
 # payload stages come from its Config. wake_tb skips a core configured
-# otherwise. Its bench and confirm's carry the clock-gating trace (cg_trace.h),
-# so they link Verilator's VCD writer.
+# otherwise. It replays and confirms on its own (OI-45), with ooe_confirm
+# inside, from ooe_rs's matrix as the model's hop read it. Its bench and
+# confirm's carry the clock-gating trace (cg_trace.h), so they link
+# Verilator's VCD writer.
 read -r wake_g wake_d < <(python3 test/ooe/wake-params.py)
 dir=build/ooe-rtl/wake
 mkdir -p "$dir"
@@ -199,7 +201,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno
       --trace ${wake_g//,/ } --top-module ooe_wake --Mdir "$dir" -o wake_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 ${wake_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/wake_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "wake: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
@@ -209,7 +211,7 @@ if out=$("$dir/wake_tb" "$seeds" 2>&1); then
 else
   say "wake == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in late-grant drop-cmpl drop-stop no-cmpl-lead no-sq-lead; do
+for c in late-grant drop-cmpl no-dep drop-squash-free no-cmpl-lead no-sq-lead; do
   if WAKE_CONTROL=$c "$dir/wake_tb" 3 >/dev/null 2>&1; then
     say "  control $c (wake)" "MISSED"; fail=1
   else
