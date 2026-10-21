@@ -1,0 +1,372 @@
+//===-- trio_tb.cpp - ooe_rs, ooe_wake and ooe_sched, assembled ------===//
+//
+// The assembled check (OA's response OI-45): test/ooe/ooe_trio.sv wires the
+// three modules as the design does, and this bench drives only their outer
+// ports from the live model, each module at its own bench's lag behind the
+// model (ooe_rs four cycles, ooe_wake and ooe_sched three; the grant
+// register links them, so the lags differ by its one edge). Every link
+// between them is the RTL's own: the grant register, the matrix, the wake
+// lines and leads, issued, the held misses and miss pulses, and the final
+// bits. After each edge each module is held to the model as its own bench
+// holds it: ooe_sched's grant register to the model's grants; ooe_rs's
+// valid bits and rows; ooe_wake's issued bits and lead lines.
+//
+// ooe_sched's grants feed ooe_rs and ooe_wake, so one grant that differs
+// moves both from then on: the bench reports each core's first divergence,
+// and counts every mismatch by kind. The select's live terms (valid and
+// past rename, select's issued view, the sections, the age matrices) and
+// the RS payload are still the model's (outer ports).
+//
+// Runs the model as the RS is built (rs_same_edge off) under the go the
+// counters serve (fits_stale 6).
+// Usage: trio_tb [seeds]
+//===----------------------------------------------------------------------===//
+#include "Vooe_trio.h"
+#include "Vooe_trio___024root.h"
+#include "verilated.h"
+#include "ooe_core.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <deque>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
+using ccv::ooe::Config;
+using ccv::ooe::Core;
+
+int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
+void trioConfig(Config &c) {
+  c.fits_stale = 6;
+  c.rs_same_edge = false;
+}
+
+namespace {
+constexpr unsigned N = TR_N, NR = TR_NR, NM = N - NR, A = TR_A, P = 2 * A, S = TR_S, L = Core::kWakeLines,
+                   NC = TR_NC;
+constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
+constexpr unsigned W = bits(N), LS = bits(S);
+
+std::unique_ptr<VerilatedContext> ctx;
+std::unique_ptr<Vooe_trio> dut;
+uint64_t current = 0;
+bool following = false;
+unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 0, diverged = 0,
+                   first_sum = 0, compared_cores = 0;
+std::map<std::string, unsigned long long> kinds;
+bool core_diverged = false;
+unsigned long long core_cycle = 0;
+
+template <typename T> void setBit(T &w, unsigned i, bool v) {
+  if constexpr (sizeof(T) <= 8) {
+    if (v) w |= (T(1) << i); else w &= ~(T(1) << i);
+  } else {
+    if (v) w[i / 32] |= (1u << (i % 32)); else w[i / 32] &= ~(1u << (i % 32));
+  }
+}
+template <typename T> bool getBit(const T &w, unsigned i) {
+  if constexpr (sizeof(T) <= 8) return (w >> i) & 1u;
+  else return (w[i / 32] >> (i % 32)) & 1u;
+}
+template <typename T> void setField(T &w, unsigned lsb, unsigned n, unsigned v) {
+  for (unsigned b = 0; b != n; ++b) setBit(w, lsb + b, (v >> b) & 1u);
+}
+template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
+  unsigned v = 0;
+  for (unsigned b = 0; b != n; ++b) v |= unsigned(getBit(w, lsb + b)) << b;
+  return v;
+}
+template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
+
+// One model cycle, all three benches' views of it.
+struct Snap {
+  Core::WakeLog w;
+  std::vector<unsigned> cidx;
+  std::vector<uint8_t> valid, iss, prod, fin, sqf, dep, code, line, wtl, wnext, slot, copy, ready_q, req_q, v73;
+  std::vector<uint64_t> age;
+  unsigned active = 0, ncmpl = 0;
+  bool sq = false, alloc = false, codes = false;
+};
+Snap emptySnap() {
+  Snap y;
+  y.w.grant.assign(N, 0); y.w.kind.assign(N, 0); y.w.cls.assign(N, 0); y.w.rfree.assign(N, 0);
+  y.w.stop.assign(N, 0); y.w.cmpl.assign(N, 0); y.w.miss.assign(N, 0);
+  y.valid.assign(N, 0); y.iss.assign(N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.sqf.assign(N, 0);
+  y.dep.assign(N * N, 0); y.code.assign(N * N, 0); y.line.assign(N * L, 0); y.wtl.assign(N * L, 0);
+  y.wnext.assign(N * L, 0); y.slot.assign(N, 0); y.copy.assign(N, 0);
+  y.ready_q.assign(N, 0); y.req_q.assign(N, 0); y.v73.assign(N, 0); y.age.assign(N, 0);
+  return y;
+}
+Snap snapCycle(const Core &c) {
+  Snap y = emptySnap();
+  y.w = c.wakeLog();
+  y.codes = c.wakeLinesFit();
+  for (unsigned i = 0; i != N; ++i) {
+    y.valid[i] = c.rsValid(i);
+    y.iss[i] = c.rsIssued(i);
+    y.prod[i] = c.rsProduces(i);
+    y.fin[i] = c.rsFinal(i);
+    const bool conf = i < y.w.conf.size() && y.w.conf[i];
+    y.sqf[i] = i < y.w.rfree.size() && y.w.rfree[i] && !conf;
+    y.sq = y.sq || y.sqf[i];
+    if (i < y.w.cmpl.size() && y.w.cmpl[i]) { y.cidx.push_back(i); ++y.ncmpl; }
+    for (unsigned j = 0; j != N; ++j) {
+      y.dep[i * N + j] = c.depBit(i, j);
+      y.code[i * N + j] = uint8_t(c.cellCode(i, j));
+    }
+    for (unsigned k = 0; k != L; ++k) {
+      y.line[i * L + k] = c.wakeLine(i, k);
+      y.wtl[i * L + k] = c.wakeLineChanges(i, k);
+      y.wnext[i * L + k] = c.rsValid(i) && c.wakeLineNext(i, k);
+    }
+    y.slot[i] = uint8_t(c.rsSlot(i));
+    y.copy[i] = c.rsCopy(i);
+    y.ready_q[i] = c.readyQ(i);
+    y.req_q[i] = c.reqQ(i);
+    y.v73[i] = c.rsValid(i) && c.rsEligibleNext(i);
+    y.age[i] = c.rsAge(i);
+  }
+  for (unsigned si = 0; si != S; ++si)
+    if (c.slotActive(si)) y.active |= 1u << si;
+  y.alloc = !y.w.ralloc.empty();
+  return y;
+}
+std::deque<Snap> H;   // H[k] is model cycle T - 5 + k, T the hook's
+
+void tick() {
+  dut->ooe_core_clk = 0;
+  dut->eval();
+  dut->ooe_core_clk = 1;
+  dut->eval();
+}
+
+void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
+  ++mismatches;
+  if (++kinds[what] <= 3)
+    std::fprintf(stderr, "cycle %llu (core cycle %llu): %s (%u, %u: rtl %u, model %u)\n", cycles, core_cycle, what, a,
+                 b, rtl, model);
+  if (!core_diverged) {
+    core_diverged = true;
+    ++diverged;
+    first_sum += core_cycle;
+  }
+}
+
+bool sameConfig(const Core &c) {
+  const Config &g = c.config();
+  return g.sectioned && g.ready_reg && g.req_reg && g.rename_preds && !g.loads_pass_loads && c.wakeLinesFit() &&
+         c.rsRcuEntries() == NR && !g.inject_early_wake && g.cmpl_wake_delay == TR_CMPL_DLY &&
+         g.payload_stages + g.lat_l1_cmpl == TR_LAT_MISS;
+}
+
+// A cycle's allocations on their class's ports, in the model's order.
+bool portsOf(const Snap &y, std::vector<unsigned> &entry_of, std::vector<int> &port_of) {
+  entry_of.assign(P, N);
+  port_of.assign(N, -1);
+  unsigned next[2] = {0, 0};
+  for (unsigned e : y.w.ralloc) {
+    const unsigned cls = e >= NR;
+    if (next[cls] == A) return false;
+    const unsigned p = cls * A + next[cls]++;
+    port_of[e] = int(p);
+    entry_of[p] = e;
+  }
+  return true;
+}
+
+void reset() {
+  dut->ooe_rst_r00h = 1;
+  tick();
+  tick();
+  dut->ooe_rst_r00h = 0;
+}
+
+void hook(const Core &c) {
+  if (c.serial() != current) {
+    current = c.serial();
+    ++cores;
+    following = sameConfig(c);
+    H.clear();
+    core_diverged = false;
+    core_cycle = 0;
+    if (following) ++compared_cores;
+    clearAll(dut->req_cq01h, P);
+    clearAll(dut->req_l_cq00h, P);
+    clearAll(dut->sqf_cq01h, N);
+    dut->sq_l_cq00h = dut->cmpl_l_cq00h = dut->hint_l_cq00h = 0;
+    reset();
+  }
+  ++cycles;
+  ++core_cycle;
+  if (!following) { ++skipped; return; }
+  if (H.empty())
+    for (unsigned k = 0; k != 5; ++k) H.push_back(emptySnap());
+  H.push_back(snapCycle(c));
+  // H: T - 5 .. T. ooe_rs drives a = T - 4; ooe_wake and ooe_sched t = P = T - 3.
+  const Snap &am1 = H[0], &a = H[1], &t = H[2], &tp1 = H[3], &tp2 = H[4], &tp3 = H[5];
+  (void)am1;
+  // -- ooe_rs: cycle a's allocations and rows, as rs_tb drives them.
+  std::vector<unsigned> entry_of;
+  std::vector<int> port_of;
+  if (!portsOf(a, entry_of, port_of)) { fail("more allocations than ports", 0, 0, 0, 0); H.pop_front(); return; }
+  clearAll(dut->req_cq01h, P);
+  clearAll(dut->row_dep_cq01h, P * N);
+  clearAll(dut->row_code_cq01h, 2 * P * N);
+  clearAll(dut->grp_dep_cq01h, P * P);
+  clearAll(dut->grp_code_cq01h, 2 * P * P);
+  clearAll(dut->row_prod_cq01h, P);
+  for (unsigned p = 0; p != P; ++p) {
+    const unsigned e = entry_of[p];
+    if (e == N) continue;
+    setBit(dut->req_cq01h, p, true);
+    setBit(dut->row_prod_cq01h, p, a.prod[e]);
+    for (unsigned j = 0; j != N; ++j) {
+      if (!a.dep[e * N + j]) continue;
+      const unsigned code = a.codes ? a.code[e * N + j] & 3u : 0;
+      if (port_of[j] >= 0) {
+        const unsigned q = unsigned(port_of[j]);
+        setBit(dut->grp_dep_cq01h, p * P + q, true);
+        setField(dut->grp_code_cq01h, (p * P + q) * 2, 2, code);
+      } else {
+        setBit(dut->row_dep_cq01h, p * N + j, true);
+        setField(dut->row_code_cq01h, (p * N + j) * 2, 2, code);
+      }
+    }
+  }
+  std::vector<unsigned> next_of;
+  std::vector<int> nport;
+  portsOf(t, next_of, nport);   // a + 1 = t
+  clearAll(dut->req_l_cq00h, P);
+  for (unsigned p = 0; p != P; ++p) if (next_of[p] != N) setBit(dut->req_l_cq00h, p, true);
+  // -- shared: the registered squash's frees of a (ooe_wake's t - 1), its
+  // lead (t's), the completions of t with their valid a cycle before, and
+  // their hints two cycles ahead.
+  for (unsigned j = 0; j != N; ++j) setBit(dut->sqf_cq01h, j, a.sqf[j]);
+  dut->sq_l_cq00h = t.sq;
+  clearAll(dut->cmpl_idx_cq00h, NC * W);
+  for (unsigned k = 0; k != t.cidx.size() && k != NC; ++k) setField(dut->cmpl_idx_cq00h, k * W, W, t.cidx[k]);
+  dut->cmpl_l_cq00h = 0;
+  for (unsigned k = 0; k != tp1.ncmpl && k != NC; ++k) dut->cmpl_l_cq00h |= 1u << k;
+  clearAll(dut->hint_idx_cq01h, NC * W);
+  for (unsigned k = 0; k != tp2.cidx.size() && k != NC; ++k) setField(dut->hint_idx_cq01h, k * W, W, tp2.cidx[k]);
+  dut->hint_l_cq00h = 0;
+  for (unsigned k = 0; k != tp3.ncmpl && k != NC; ++k) dut->hint_l_cq00h |= 1u << k;
+  // -- ooe_wake's grant payload: the grants of t - 1 = a.
+  for (unsigned j = 0; j != N; ++j) {
+    setField(dut->kind_cq01h, j * 2, 2, a.w.kind[j]);
+    setField(dut->cls_cq01h, j * 3, 3, a.w.cls[j]);
+    setBit(dut->prod_cq01h, j, a.prod[j]);
+  }
+  // -- ooe_sched's outer terms for P = t: the payload, the allocation lead
+  // (a row written at this edge: a's), and select's live terms.
+  for (unsigned e = 0; e != N; ++e) {
+    setField(dut->slot_cq02h, e * LS, LS, t.slot[e]);
+    setBit(dut->copy_cq02h, e, t.copy[e]);
+  }
+  dut->active_cq02h = t.active;
+  dut->alloc_cq02h = a.alloc;
+  const Core::WakeLog &sw = t.w;
+  for (unsigned e = 0; e != N; ++e) {
+    const bool v = e < sw.sel_valid.size() && sw.sel_valid[e];
+    setBit(dut->vel_cq03h, e, v && sw.sel_elig[e]);
+    setBit(dut->siss_cq03h, e, v && sw.sel_iss[e]);
+    for (unsigned j = 0; j != N; ++j) setBit(dut->sdep_cq03h, e * N + j, v && !sw.sel_conf[e] && j == e);
+    setField(dut->sslot_cq03h, e * LS, LS, v ? sw.sel_slot[e] : 0);
+    setField(dut->res_cq03h, e * 9, 9, v ? sw.sel_res[e] : 0);
+    setBit(dut->chas_cq03h, e, v && sw.sel_chas[e]);
+    setField(dut->cidx_cq03h, e * W, W, v ? sw.sel_cidx[e] : 0);
+  }
+  for (unsigned e = 0; e != NR; ++e)
+    for (unsigned j = 0; j != NR; ++j) setBit(dut->older_r_cq03h, e * NR + j, t.age[j] < t.age[e]);
+  for (unsigned e = 0; e != NM; ++e)
+    for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
+  dut->busy_cq03h = sw.sel_busy >> 5;
+  dut->block_cq03h = sw.sel_block;
+  tick();
+  // -- After the edge. ooe_sched: its grant register is the model's grants
+  // of t.
+  for (unsigned e = 0; e != N; ++e) {
+    const bool want = e < sw.sel_grant.size() && sw.sel_grant[e], got = getBit(dut->grant_cq04h, e);
+    grants += want;
+    if (want != got) {
+      fail("grant differs", e, 0, got, want);
+      if (kinds["grant differs"] <= 2 && std::getenv("TRIO_DEBUG")) {
+        const auto *r = dut->rootp;
+        std::fprintf(stderr, "  entry %u: rq %d (model %d), ready %d (model %d, v73 %d), vel %d, siss %d, wake iss %d, "
+                     "msd %d; model valid %d iss %d\n", e, int(getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, e)),
+                     t.req_q[e], int(getBit(r->ooe_trio__DOT__u_sched__DOT__ready_cq03h, e)), t.ready_q[e], t.v73[e],
+                     int(sw.sel_valid[e] && sw.sel_elig[e]), int(sw.sel_iss[e]), int(getBit(dut->iss_cq02h, e)),
+                     int(getBit(dut->msd_cq02h, e)), t.valid[e], t.iss[e]);
+      }
+    }
+  }
+  if (const char *te = std::getenv("TRIO_TRACE")) {
+    const unsigned e = unsigned(std::atoi(te));
+    if (cycles <= 5320 && cycles >= 5296) {
+      const auto *r = dut->rootp;
+      std::fprintf(stderr, "  [%llu] e%u model(t): valid %d iss %d grant %d rq %d alloc-in-a %d | rtl: rq %d iss %d valid %d "
+                   "grant %d\n", core_cycle, e, t.valid[e], t.iss[e], int(sw.sel_grant[e]), t.req_q[e],
+                   int(std::count(a.w.ralloc.begin(), a.w.ralloc.end(), e)),
+                   int(getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, e)), int(getBit(dut->iss_cq02h, e)),
+                   int(getBit(dut->valid_cq02h, e)), int(getBit(dut->grant_cq04h, e)));
+    }
+  }
+  // ooe_sched's registers (read inside it): the request register exactly,
+  // the ready register on V-73's rows.
+  {
+    const auto *r = dut->rootp;
+    for (unsigned e = 0; e != N; ++e) {
+      const bool q = getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, e);
+      if (q != bool(t.req_q[e])) fail("sched request register differs", e, 0, q, t.req_q[e]);
+      if (!t.v73[e]) continue;
+      const bool rd = getBit(r->ooe_trio__DOT__u_sched__DOT__ready_cq03h, e);
+      if (rd != bool(t.ready_q[e])) fail("sched ready register differs", e, 0, rd, t.ready_q[e]);
+    }
+  }
+  // ooe_rs: its valid bits and rows, the model's at the end of a.
+  for (unsigned i = 0; i != N; ++i) {
+    const bool v = getBit(dut->valid_cq02h, i);
+    if (v != bool(a.valid[i])) { fail("rs valid differs", i, 0, v, a.valid[i]); continue; }
+    if (!v) continue;
+    for (unsigned j = 0; j != N; ++j) {
+      const bool d = getBit(dut->dep_cq02h, i * N + j);
+      if (d != bool(a.dep[i * N + j])) fail("rs dependency bit differs", i, j, d, a.dep[i * N + j]);
+    }
+  }
+  // ooe_wake: issued at the end of t - 1 = a, and its lead lines, the
+  // model's at t + 2 on an entry no stop reaches before then.
+  for (unsigned j = 0; j != N; ++j) {
+    const bool got_iss = getBit(dut->iss_cq02h, j), want_iss = a.valid[j] && a.iss[j];
+    if (got_iss != want_iss) fail("wake issued differs", j, 0, got_iss, want_iss);
+    const bool stopped = t.w.stop[j] || tp1.w.stop[j] || tp2.w.stop[j];
+    if (tp2.valid[j] && !stopped)
+      for (unsigned k = 0; k != L; ++k) {
+        const bool want = tp2.line[j * L + k], got = getBit(dut->wake_cq02h, j * L + k);
+        if (want != got) fail("wake lead line differs", j, k, got, want);
+      }
+  }
+  H.pop_front();
+}
+} // namespace
+
+int main(int argc, char **argv) {
+  const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
+  ctx = std::make_unique<VerilatedContext>();
+  ctx->commandArgs(argc, argv);
+  dut = std::make_unique<Vooe_trio>(ctx.get());
+  reset();
+  const int model_fails = ooeTestRandomHookedWith(seeds, hook, trioConfig);
+  dut->final();
+  for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
+  std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu diverged=%llu "
+              "first_divergence_mean=%.0f mismatches=%llu model_failures=%d\n",
+              seeds, cores, compared_cores, cycles, skipped, grants, diverged,
+              diverged ? double(first_sum) / double(diverged) : 0.0, mismatches, model_fails);
+  const int rc = mismatches || model_fails ? 1 : 0;
+  dut.reset();
+  ctx.reset();
+  return rc;
+}

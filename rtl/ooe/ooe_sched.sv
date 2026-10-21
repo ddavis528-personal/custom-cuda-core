@@ -144,7 +144,7 @@ module ooe_sched #(
   // -- Ready register ---------------------------------------------------------
   logic [N-1:0] ready_cq02h;
   logic [N-1:0] ready_cq03h;
-  logic         ready_en_cq03h, stop_cq03h;
+  logic         ready_en_cq03h, stop_cq03h, alc_cq03h;
   ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dep_cq02h), .code_cq02h(code_cq02h),
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
@@ -155,7 +155,7 @@ module ooe_sched #(
     for (int e = 0; e < N; e++)
       rq_cq02h[e] = valid_cq02h[e] && !ise_cq02h[e] && active_cq02h[slot_cq02h[e * LS +: LS]] &&
                     (!copy_cq02h[e] || dep_cq02h[e * N +: N] == '0);
-  assign rq_en  = chg_cq04h || stop_cq03h || gnt_cq04h != '0;
+  assign rq_en  = chg_cq04h || stop_cq03h || gnt_cq04h != '0 || alc_cq03h;
 
   // -- Select -----------------------------------------------------------------
   logic [N-1:0] cand, grant_cq03h, lost;
@@ -176,6 +176,7 @@ module ooe_sched #(
     if (rst_r01h) begin
       ready_en_cq03h <= 1'b0;
       stop_cq03h     <= 1'b0;
+      alc_cq03h      <= 1'b0;
 
       chg_cq04h      <= 1'b0;
     end else begin
@@ -184,6 +185,7 @@ module ooe_sched #(
       // which no timer lead of ooe_wake's foresees.
       ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h || gnt_cq04h != '0;
       stop_cq03h     <= stop_cq02h;
+      alc_cq03h      <= alloc_cq02h;
       chg_cq04h      <= !rq_en && rq_cq02h != rq_cq03h;
     end
   end
