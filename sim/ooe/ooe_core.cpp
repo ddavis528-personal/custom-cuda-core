@@ -39,7 +39,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late}};
+                                     {"decq_take_late", &decq_take_late},
+                                     {"fits_stale", &fits_stale}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -285,6 +286,14 @@ void Core::cycle(uint64_t now) {
   decq_take_now_ = 0;
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  if (cfg_.fits_stale) {
+    rob_prompt_prev_ = rob_prompt_;
+    if (rob_prompt_prev_.size() != slot_.size() * cfg_.rob_depth) rob_prompt_prev_.assign(slot_.size() * cfg_.rob_depth, 0);
+    rs_prompt_prev_[0] = rs_prompt_[0];
+    rs_prompt_prev_[1] = rs_prompt_[1];
+    decq_seq_prev_ = decq_seq_at_;
+    decq_seq_at_ = next_decq_seq_;
+  }
   rob_prompt_.assign(slot_.size() * cfg_.rob_depth, 0);
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
@@ -2383,6 +2392,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     addDeps(r.rs_main, r, false);
     if (copy) addDeps(r.rs_copy, r, true);
+    rlog_.ren.back().main = r.rs_main;
+    rlog_.ren.back().copy = copy ? r.rs_copy : kNoEntry;
+    rlog_.ren.back().mem = mem;
     if (cfg_.sectioned) {
       rs_[r.rs_main].res = resOf(r, false);
       if (copy) rs_[r.rs_copy].res = resOf(r, true);
@@ -2508,8 +2520,10 @@ void Core::rename() {
     const unsigned w = cfg_.rename_width;
     unsigned need_rcu = w;
     if (fc == 3) {
-      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cfg_.ren_free_cap));
-      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cfg_.ren_free_cap));
+      // fits_stale: the last cycle's frees unseen too.
+      const unsigned cap = cfg_.ren_free_cap, st = cfg_.fits_stale;
+      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap) + st * std::min(rs_prompt_prev_[0], cap));
+      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap) + st * std::min(rs_prompt_prev_[1], cap));
       for (unsigned si = 0; si != slot_.size(); ++si) {
         if (slot_[si].st == WarpState::kFree) continue;
         unsigned k = 0;
@@ -2534,6 +2548,12 @@ void Core::rename() {
     const unsigned w = slot_[si].warp;
     auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
     if (it == decq_.end()) return 0;
+    // fits_stale: a uop that arrived after the last cycle's start is not in
+    // the fits yet.
+    if (cfg_.fits_stale && decq_seq_[size_t(it - decq_.begin())] >= decq_seq_prev_) {
+      count("rename.too_young");
+      return 0;
+    }
     // V-53: no stale-epoch uop is renamed.
     if (it->fetch_epoch != epoch_[w]) {
       ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);

@@ -421,6 +421,14 @@ where 2 was +1.6% but takes no account of a copy's two RCU entries.
 OA accepted it as the default (OA-22, 2026-10-20). Under it at decq 13,
 two warps are +3.6% and one warp +3.6%, so the interleave stays ahead.
 
+`fits_stale` (off; OI-65, awaiting OA): rename's per-warp fits registered a
+cycle ahead for every take a warp may make, as OA's option (a) has them.
+A uop is then taken no sooner than the second cycle after it arrives, and
+frees (ROB retirements, the RS frees in the short test) reach the fits
+two cycles late. 48 seeds, against today's default: the interleave +4.4%
+(the late arrivals +3.1% alone, the late frees +1.0% alone), one warp
++5.9%, two warps +3.5%.
+
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
 is when rename's go decision sees this cycle's frees. 0 is the ideal:

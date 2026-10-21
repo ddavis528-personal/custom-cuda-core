@@ -767,7 +767,11 @@ def depths(nl, nets, work):
     if todo:
         script = "read_library %s; " % GENLIB + " ".join(
             "read_blif %s; strash; dch; map; print_stats;" % f for _, f in todo)
-        r = run(["yosys-abc", "-c", script])
+        # From a file: a module with many gates makes a script longer than
+        # the command line takes (ooe_prodmap's 792).
+        sf = os.path.join(work, "cones.abc")
+        open(sf, "w").write(script.replace("; ", "\n") + "\n")
+        r = run(["yosys-abc", "-f", sf])
         vals = re.findall(r"delay\s*=\s*([0-9.]+)", r.stdout)
         if len(vals) != len(todo):
             raise SystemExit("check-cg: ABC returned %d depths for %d cones:\n%s"

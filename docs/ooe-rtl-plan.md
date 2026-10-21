@@ -507,31 +507,39 @@ Built (`rtl/ooe/`):
   Stage boundaries table and OA-21, OA-22), built in slices, each benched
   against the model before the next:
 
-  1. **The producer map**, per GPR name (192 rows by 4 positions, 768) and
-     predicate name: the RS entries that produce it, main and a masked
-     load's copy. Written a cycle after Rename 3 from ooe_rs's registered
-     grant (gnt_idx, gnt_v), as the doc places it. It has to stay exact
-     when an entry frees and is reused: the model clears every name that
-     points at a freed entry (rsFree), and a stale pointer would make a new
-     row wait on the entry's next occupant. Clearing names on a free
-     would take each name's enable from ooe_rs's free vector, an input
-     (CG-5). So the map is written only, and rename keeps, per RS entry,
-     the GPR and predicate names its occupant produces, written from the
-     registered grant. A looked-up producer j counts, at Rename 3, only
-     while ooe_rs's valid_out[j] is set, entry j still names the register,
-     and j was not allocated at the last edge (its names not yet written).
-     The previous group, still in flight at the lookup, is matched by name
-     and resolved from the registered grant; the current group by the
-     in-group override. ooe_rs masks a new row with the frees of its own
-     cycle, as it does the rows it holds (today it takes the row as given:
-     its bench drives the model's rows, which are exact).
-  2. **Rename 2**: the lookups (4 uops, up to 6 sources each: three GPR,
+  1. **The producer map** (`ooe_prodmap`), kept by RS entry, not by name:
+     each entry's occupant's GPR and predicate names (a masked load's copy,
+     the GPR name alone), written a cycle after Rename 3 from ooe_rs's
+     registered grant, each class's names one gate enabled from the
+     module's flop of the group's ports (L2). A source's producers are the
+     entries valid, not allocated at the last edge, whose occupant names
+     it, found by comparing the name with all 45. The doc's 768-entry map
+     indexed by name would have to clear every name holding a freed entry,
+     each name's enable from ooe_rs's free vector (CG-5), and is 11,700
+     flops; the compare is exact by construction (a freed entry is
+     invalid, a reused one names other registers), gives the dependency
+     row's bits directly, and measures 6.4 NGD for 16 GPR lookups and 5.5
+     for predicates against the map's 10.8 and a decode
+     (`test/ooe/probes/cam_probe.sv`; OI-66). The entries allocated at the
+     last edge, whose names are not yet written, are masked, and that
+     group's producers come from the registered grant, as the next group
+     resolves them already. ooe_rs masks a new row with the frees of its
+     own cycle (d4eb78f). `test/ooe/prodmap_tb.cpp` checks, for every name
+     after every edge, that the compare finds exactly the model's
+     producers: 43.3M name checks over 25 seeds and the directed tests,
+     1.59M live producers, none differ; controls no-ename, port-swap and
+     no-lead caught. `check-cg`: 917 flops, 914 in 3 gates, worst enable
+     4.0 NGD, lowest DCGE 85%. Its port budgets wait on OA (OI-66):
+     gnt_idx reaches a flop 19.3 NGD after it arrives.
+  2. **Rename 2 and 3**: the compares for each uop's sources (three GPR,
      the merge source, the guard and the old predicate destination, plus
      predicate logic's two), the in-group override (an older port of the
-     same group that writes the source), and each cell's wake-line code
-     from the bypass table. Out to ooe_rs as row_dep, row_code, grp_dep,
-     grp_code and row_prod, from rename's stage register, under ooe_rs's
-     budgets (req by 6, grp_dep by 9, the rows and codes by 10).
+     same group writing the source), the previous group's producers from
+     the registered grant, and each cell's wake-line code from a per-entry
+     register of its code per consumer group. Out to ooe_rs as row_dep,
+     row_code, grp_dep, grp_code and row_prod from rename's stage register,
+     under ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by
+     10).
   3. **Rename's credits**: RS room per class, each warp's ROB room and the
      free rows, taken from TI-19's free counts (free_th, ld_conf_th,
      ret_n) as registered pulses.

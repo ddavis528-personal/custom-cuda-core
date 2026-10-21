@@ -241,6 +241,33 @@ for c in no-msd msd-pulse no-fin no-dep; do
   fi
 done
 
+# ooe_prodmap, the RS entries' names rename compares a source with, driven
+# from the model's renames after every cycle, two cycles behind.
+dir=build/ooe-rtl/prodmap
+mkdir -p "$dir"
+ng=$(( $(sed -n 's/.*localparam int CCV_P_PHYS_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv) * 4 ))
+np=$(sed -n 's/.*localparam int CCV_P_PRED_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" -GNG="$ng" -GNP="$np" --top-module ooe_prodmap --Mdir "$dir" \
+      -o prodmap_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DPM_N=$n -DPM_NR=$n_rcu -DPM_A=$width -DPM_NG=$ng -DPM_NP=$np -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/test/ooe/prodmap_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "prodmap: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/prodmap_tb" "$seeds" 2>&1); then
+  say "prodmap ($n entries, $ng GPR names) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "prodmap == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-ename port-swap no-lead; do
+  if PM_CONTROL=$c "$dir/prodmap_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (prodmap)" "MISSED"; fail=1
+  else
+    say "  control $c (prodmap)" "caught"
+  fi
+done
+
 # ooe_rs, driven from the model's RS allocations and frees after every
 # cycle. A control may be caught by the RTL's own assertion before the
 # comparison: either fails the run.

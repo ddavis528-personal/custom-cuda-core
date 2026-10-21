@@ -52,5 +52,10 @@ case "$unit" in
     vl ooe_sched "--public-flat-rw -GN=$n -GNR=$n_rcu -GS=$slots -GFB=$fb" "-DSCH_N=$n -DSCH_NR=$n_rcu -DSCH_S=$slots" \
       "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/sched_tb.cpp" ;;
+  ooe_prodmap)
+    ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)
+    vl ooe_prodmap "--trace-max-width 8192 -GN=$n -GNR=$n_rcu -GA=$width -GNG=$ng -GNP=$np" \
+      "-DPM_N=$n -DPM_NR=$n_rcu -DPM_A=$width -DPM_NG=$ng -DPM_NP=$np" \
+      "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/test/ooe/prodmap_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

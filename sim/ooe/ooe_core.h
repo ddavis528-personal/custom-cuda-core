@@ -204,6 +204,13 @@ struct Config {
   /// alone, and its exact forms do not fit a stage). The default is 3
   /// (OA-22, OA 2026-10-20: the go the RTL builds).
   unsigned fits_conservative = 3;
+  /// OA's response OI-65 (a): rename's per-warp fits are registered a cycle
+  /// ahead, for every take the warp may make, so they see the decode
+  /// queue and the credits as the cycle before left them. A uop is taken
+  /// no sooner than the second cycle after it arrives, and frees (ROB
+  /// retirements; RS frees in the short test) reach the fits two cycles
+  /// late. Off until OA settles OI-65; the sweep measures it.
+  bool fits_stale = false;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -959,6 +966,7 @@ private:
   std::deque<Uop> decq_;
   std::deque<uint64_t> decq_seq_;           ///< each queued uop's arrival number
   uint64_t next_decq_seq_ = 0;
+  uint64_t decq_seq_at_ = 0, decq_seq_prev_ = 0;   ///< next_decq_seq_ at this cycle's start, the last's (fits_stale)
   uint32_t decq_flushed_ = 0;               ///< slots a squash flushed this cycle
 public:
   /// What reached each RS entry's wake timer this cycle, for ooe_wake
@@ -1013,6 +1021,10 @@ public:
       bool gwe = false, pwe = false, plogic = false, br = false, rst = false;
       /// What the reads returned: the model's own values.
       unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0, pqn[2] = {};
+      /// Its RS entries: the main one (MIU class when mem), a masked
+      /// load's copy (RCU), else kNoEntry; kNoEntry for a no-op.
+      unsigned main = kNoEntry, copy = kNoEntry;
+      bool mem = false;
     };
     struct Ret {
       unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
@@ -1033,6 +1045,14 @@ public:
   unsigned ckptGpr(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].gpr[a]; }
   unsigned ckptPred(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].pred[a]; }
   unsigned slots() const { return unsigned(slot_.size()); }
+  /// The producer map, for test/ooe/prodmap_tb.cpp: name n's RS entries
+  /// (k 0 the main one, 1 a masked load's copy) or kNoEntry, and the
+  /// GPR names there are (rows by positions).
+  unsigned gprodOf(unsigned n, unsigned k) const { return gprod_[n][k]; }
+  unsigned pprodOf(unsigned n) const { return pprod_[n][0]; }
+  unsigned gprodNames() const { return unsigned(gprod_.size()); }
+  unsigned pprodNames() const { return unsigned(pprod_.size()); }
+  bool rsLive(unsigned e) const { return rs_[e].valid; }
   /// The distinct bypass penalties, sorted: wake line k is penalty k's.
   const std::vector<unsigned> &wakePens() const { return pens_; }
 private:
@@ -1046,6 +1066,8 @@ private:
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
+  std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
+  unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
@@ -1053,8 +1075,10 @@ private:
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
   bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
   bool robHeld(unsigned si, unsigned i) const {
-    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i] ||
-           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[size_t(si) * cfg_.rob_depth + i]);
+    const size_t k = size_t(si) * cfg_.rob_depth + i;
+    return slot_[si].rob[i].valid || rob_late_[k] ||
+           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[k]) ||
+           (cfg_.fits_stale && rob_prompt_prev_[k]);
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
   void robFreed(unsigned si, unsigned i, bool retire) {

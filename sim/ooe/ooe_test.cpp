@@ -1764,6 +1764,21 @@ void sweep() {
                       cy, cy / r48);
         }
   }
+  // OI-65 (a): the per-warp fits registered a cycle ahead (fits_stale):
+  // a uop taken no sooner than the second cycle after it arrives, frees two
+  // cycles late. 48 seeds against the default, under each go.
+  {
+    const double r48 = run(base, 48);
+    for (unsigned w : {0u, 1u, 2u})
+      for (bool st : {false, true}) {
+        Config c = base;
+        c.rename_one_warp = w;
+        c.fits_stale = st;
+        const double cy = run(c, 48);
+        std::printf("| rename_one_warp, fits_stale (48 seeds, default %.0f) | %u, %u | %.0f | %.3f |\n", r48, w,
+                    unsigned(st), cy, cy / r48);
+      }
+  }
   // When rename sees this cycle's RS and ROB frees (ren_credit), against
   // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
   // late (OA's item 4, not accepted) and the 2-step trim. Their differences
