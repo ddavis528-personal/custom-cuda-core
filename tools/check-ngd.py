@@ -857,8 +857,7 @@ def main_check(only=None):
         if not units:
             raise SystemExit("check-ngd: no unit %s" % only)
     budgets = Budgets.load()
-    for u in units:
-        u.measure(budgets=budgets, modules=modules)
+    for u in cg.measured(units, lambda u: u.measure(budgets=budgets, modules=modules)):
         report(u, verbose=bool(only))
     if only:
         for _, msg in findings(units[0], budgets, parents):

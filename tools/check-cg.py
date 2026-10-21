@@ -63,6 +63,7 @@ findings a waiver now takes is reported as superseded, not failed.
 """
 import argparse
 import collections
+import concurrent.futures
 import glob
 import importlib.util
 import json
@@ -163,6 +164,26 @@ MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 def run(cmd, cwd=ROOT, **kw):
     return subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str),
                           capture_output=True, text=True, **kw)
+
+
+def jobs():
+    """CCV_JOBS at a time, as the gate runs its sections; every core if unset."""
+    n = os.environ.get("CCV_JOBS", "")
+    return max(1, int(n)) if n.isdigit() else (os.cpu_count() or 1)
+
+
+def measured(units, measure):
+    """Each unit measured, jobs() at a time (the work is Yosys, Verilator and
+    the benches, each in the unit's own directory), handed back in order as it
+    is done, so the report reads as a serial run's. A unit that raises raises
+    here, in its turn."""
+    pool = concurrent.futures.ThreadPoolExecutor(jobs())
+    try:
+        for u, f in [(u, pool.submit(measure, u)) for u in units]:
+            f.result()
+            yield u
+    finally:
+        pool.shutdown(cancel_futures=True)
 
 
 # == CG-1: the form, from the source ==========================================
@@ -1735,8 +1756,7 @@ def main_check(only=None, verbose=False):
     fratchet = load(RATCHET, "findings")
     waivers = load(WAIVERS, "waivers")
     findings = []
-    for u in units:
-        u.measure()
+    for u in measured(units, lambda u: u.measure()):
         report(u, verbose)
         if u.nl is not None:
             findings += source_findings(u)
