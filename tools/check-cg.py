@@ -172,18 +172,26 @@ def jobs():
     return max(1, int(n)) if n.isdigit() else (os.cpu_count() or 1)
 
 
-def measured(units, measure):
+def measured(units, measure, pool=None, also=None):
     """Each unit measured, jobs() at a time (the work is Yosys, Verilator and
     the benches, each in the unit's own directory), handed back in order as it
     is done, so the report reads as a serial run's. A unit that raises raises
-    here, in its turn."""
-    pool = concurrent.futures.ThreadPoolExecutor(jobs())
+    here, in its turn. `also(pool, u)`, if given, queues more of a unit's work
+    right behind its measurement, on the same pool."""
+    own = pool is None
+    pool = pool or concurrent.futures.ThreadPoolExecutor(jobs())
     try:
-        for u, f in [(u, pool.submit(measure, u)) for u in units]:
+        fs = []
+        for u in units:
+            fs.append((u, pool.submit(measure, u)))
+            if also:
+                also(pool, u)
+        for u, f in fs:
             f.result()
             yield u
     finally:
-        pool.shutdown(cancel_futures=True)
+        if own:
+            pool.shutdown(cancel_futures=True)
 
 
 # == CG-1: the form, from the source ==========================================
@@ -1477,7 +1485,7 @@ def unit_flops(u, f):
     return f.flops if f.unit == u.name else sum(len(u.reg_qs(r)) for r in f.regs)
 
 
-def crosscheck(findings, units, known, skew=()):
+def crosscheck(findings, units, known, skew=(), elaborated=None):
     """The block budget counts flops in a netlist synthesised with its
     hierarchy kept, which nothing replays; a unit's netlist is flattened and
     replayed against the simulated RTL. Yosys can read one RTL differently
@@ -1485,17 +1493,16 @@ def crosscheck(findings, units, known, skew=()):
     block budget's way, at the unit's parameters, and must count what the
     replayed netlist counts: all its flops, and those of every finding its
     module budget took. `skew` adds defines to the elaborated read alone:
-    the selftest's stand-in for such a misread. Returns the units' lines
-    and the disagreements."""
+    the selftest's stand-in for such a misread. `elaborated`, unit name to a
+    future, holds elaborations already queued (main_check's, beside the
+    measurements). Returns the units' lines and the disagreements."""
     took = [f for f in findings if f.status in ("module", "wrapper")]
     lines, fails = [], []
     for u in units:
         if u.errors or u.nl is None:
             continue
-        s = u.spec
-        el = elaborate("unit_" + u.name, u.module, s["files"],
-                       [s["blackbox"][b] for b in sorted(s.get("blackbox", {}))], known,
-                       s.get("params"), list(s.get("defines", [])) + list(skew))
+        el = (elaborated[u.name].result() if elaborated and u.name in elaborated
+              else unit_elaborate(u, known, skew))
         diff = []
         if el["total"] != len(u.nl.flops):
             diff.append("%d flops, the replayed netlist %d" % (el["total"], len(u.nl.flops)))
@@ -1516,6 +1523,14 @@ def crosscheck(findings, units, known, skew=()):
             lines.append("flop count: unit %-12s %5d flops, and %d budgeted finding(s), "
                          "alike kept and replayed" % (u.name, el["total"], n))
     return lines, fails
+
+
+def unit_elaborate(u, known, skew=()):
+    """A unit's module, the block budget's way (crosscheck)."""
+    s = u.spec
+    return elaborate("unit_" + u.name, u.module, s["files"],
+                     [s["blackbox"][b] for b in sorted(s.get("blackbox", {}))], known,
+                     s.get("params"), list(s.get("defines", [])) + list(skew))
 
 
 def block_budget(findings, parts, known):
@@ -1756,7 +1771,16 @@ def main_check(only=None, verbose=False):
     fratchet = load(RATCHET, "findings")
     waivers = load(WAIVERS, "waivers")
     findings = []
-    for u in measured(units, lambda u: u.measure()):
+    # Each unit's crosscheck elaboration needs nothing measured, so it is
+    # queued on the same pool beside the unit's measurement, and waited for
+    # only in crosscheck. A unit whose measurement fails is never asked for.
+    pool = concurrent.futures.ThreadPoolExecutor(jobs())
+    elaborated = {}
+
+    def queue_el(p, u):
+        if not only:
+            elaborated[u.name] = p.submit(unit_elaborate, u, modules)
+    for u in measured(units, lambda u: u.measure(), pool, queue_el):
         report(u, verbose)
         if u.nl is not None:
             findings += source_findings(u)
@@ -1771,7 +1795,7 @@ def main_check(only=None, verbose=False):
     parts = partitions(modules)
     fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
                           known=modules, fratchet=fratchet)
-    more, over = crosscheck(findings, units, modules)
+    more, over = crosscheck(findings, units, modules, elaborated=elaborated)
     lines += more
     fails += over
     for l in lines:
