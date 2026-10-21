@@ -1849,7 +1849,8 @@ void audit() {
                         "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width"};
   auto run = [&](const Config &c) {
     R r;
-    const unsigned seeds = 48;
+    const char *as = std::getenv("AUDIT_SEEDS");   // the audit's runs (48 by default)
+    const unsigned seeds = as ? unsigned(std::atoi(as)) : 48;
     for (unsigned seed = 1; seed <= seeds; ++seed) {
       std::mt19937 rng(seed);
       Env e(c, seed);
@@ -1911,6 +1912,31 @@ void audit() {
     const R z1 = run(c1);
     std::printf("audit: loop: a copy's request a cycle after its sources confirm %.0f (%+.2f%%)\n", z1.cy,
                 100.0 * (z1.cy / r0.cy - 1));
+  }
+  // OI-45's assembled check: the composed RTL's timing, which trio_tb
+  // holds the RTL to, on the sectioned select the RTL builds, against the
+  // same go with the model's own timing. Each knob alone, then all.
+  {
+    Config g = base;
+    g.ret_now = true;
+    g.take_young = false;
+    g.sectioned = true;
+    const R s0 = run(g);
+    std::printf("audit: composed timing, against the sectioned slice-4 go (%.0f):", s0.cy);
+    struct K { const char *name; bool Config::*knob; };
+    const K ks[] = {{"rs_same_edge 0", nullptr}, {"copy_conf_late", &Config::copy_conf_late},
+                    {"req_alloc_lead", &Config::req_alloc_lead}, {"req_rows_late", &Config::req_rows_late},
+                    {"miss_lead", &Config::miss_lead}, {"ready_rep_late", &Config::ready_rep_late}};
+    Config all = g;
+    for (const K &k : ks) {
+      Config c = g;
+      if (k.knob) c.*k.knob = true; else c.rs_same_edge = false;
+      if (k.knob) all.*k.knob = true; else all.rs_same_edge = false;
+      const R x = run(c);
+      std::printf(" %s %.0f (%+.2f%%),", k.name, x.cy, 100.0 * (x.cy / s0.cy - 1));
+    }
+    const R xa = run(all);
+    std::printf(" all %.0f (%+.2f%%)\n", xa.cy, 100.0 * (xa.cy / s0.cy - 1));
   }
 }
 

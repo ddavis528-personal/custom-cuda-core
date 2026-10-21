@@ -19,9 +19,10 @@
 #   live (test/ooe/rs_tb.cpp);
 # - ooe_select against the model's sectioned select, live
 #   (test/ooe/select_tb.cpp);
-# - ooe_sched (ooe_ready, its ready and request registers, ooe_select and
-#   its grant register) against the model's registers and grants, live, a
-#   cycle behind it (test/ooe/sched_tb.cpp);
+# - ooe_rs, ooe_wake and ooe_sched assembled (ooe_sched: ooe_ready, its
+#   ready and request registers, ooe_select and its grant register)
+#   against the model's registers and grants, live, under its composed
+#   timing (test/ooe/trio_tb.cpp, test/ooe/ooe_trio.sv);
 # - ooe_rencred against the model's rename credits, live (test/ooe/rencred_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
 #   its directed and random unit tests (test/ooe/rat_tb.cpp).
@@ -394,30 +395,38 @@ for c in no-order no-conf no-busy; do
   fi
 done
 
-# ooe_sched, with ooe_ready, ooe_select and ooe_pick inside it, driven a
-# model cycle behind so its leads can come from the next cycle. Its
-# registers are read inside it (--public-flat-rw).
-dir=build/ooe-rtl/sched
+# ooe_rs, ooe_wake and ooe_sched assembled (test/ooe/ooe_trio.sv; OA's
+# response OI-45): every link between them as the design wires it, the model
+# only at their outer ports, each module at its own lag. ooe_sched's ready,
+# request and grant registers, ooe_rs's valid bits and rows and ooe_wake's
+# issued bits and lead lines are held to the model under its composed
+# timing (Config::req_rows_late, miss_lead, ready_rep_late). This replaces
+# sched_tb's comparison, which drove ooe_sched from model-emulated
+# neighbours; sched_tb stays as ooe_sched's clock-gating bench.
+dir=build/ooe-rtl/trio
 mkdir -p "$dir"
-if ! verilator --cc --exe --build --trace -j 0 -O2 --assert --public-flat-rw -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      -GN="$n" -GNR="$n_rcu" -GS="$slots" -GFB="$pick_fb" --top-module ooe_sched --Mdir "$dir" -o sched_tb \
-      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-      -CFLAGS "-std=c++17 -O2 -DSCH_N=$n -DSCH_NR=$n_rcu -DSCH_S=$slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" \
-      "$PWD/rtl/ooe/ooe_sched.sv" "$PWD/test/ooe/sched_tb.cpp" \
-      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
-  say "sched: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+cdly=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_CMPL_DLY=//p')
+lmiss=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
+if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -Wno-PINCONNECTEMPTY ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
+      --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" \
+      >"$dir/build.log" 2>&1; then
+  say "trio: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
-if out=$("$dir/sched_tb" "$seeds" 2>&1); then
-  say "sched (ready, request, grant registers) == model" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+if out=$("$dir/trio_tb" "$seeds" 2>&1); then
+  say "rs + wake + sched assembled == model" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
 else
-  say "sched == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+  say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
 for c in no-msd no-miss-lead late-leads no-alloc-lead; do
-  if SCHED_CONTROL=$c "$dir/sched_tb" 6 >/dev/null 2>&1; then
-    say "  control $c (sched)" "MISSED"; fail=1
+  if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
+    say "  control $c (trio)" "MISSED"; fail=1
   else
-    say "  control $c (sched)" "caught"
+    say "  control $c (trio)" "caught"
   fi
 done
 exit $fail

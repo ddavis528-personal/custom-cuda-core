@@ -70,6 +70,11 @@ module ooe_trio #(
   input  logic [NM*NM-1:0]  older_m_cq03h,
   input  logic [3:0]        busy_cq03h,
   input  logic [S-1:0]      block_cq03h,
+  // A negative control (trio_tb's TRIO_CONTROL): 0 none, 1 no-msd (the
+  // held misses never reach ooe_sched), 2 no-miss-lead (no event lead),
+  // 3 late-leads (the miss pulses and held misses a cycle late, as flops of
+  // their own would give them), 4 no-alloc-lead.
+  input  logic [2:0]        ctl,
   // What the bench compares.
   output logic [N-1:0]      grant_cq04h,
   output logic [P-1:0]      gnt_v_cq03h,
@@ -110,11 +115,25 @@ module ooe_trio #(
     .dep_cq01h(dep_cq02h), .sqf_cq01h(sqf_cq01h), .sq_l_cq00h(sq_l_cq00h),
     .wake_cq02h(wake_cq02h), .miss_cq02h(miss_cq02h), .fin_cq02h(fin_cq02h), .iss_cq02h(iss_cq02h),
     .msd_cq02h(msd_cq02h), .wtl_cq02h(wtl), .flt_cq02h(flt), .wml_cq02h(wml));
+  // The control's view of what reaches ooe_sched.
+  logic [N-1:0] msd_q, mis_q, s_msd, s_mis;
+  logic         s_wml, s_alloc;
+  always_ff @(posedge ooe_core_clk) begin
+    msd_q <= msd_cq02h;
+    mis_q <= miss_cq02h;
+  end
+  always_comb begin
+    s_msd   = ctl == 3'd1 ? '0 : ctl == 3'd3 ? msd_q : msd_cq02h;
+    s_mis   = ctl == 3'd3 ? mis_q : miss_cq02h;
+    s_wml   = ctl == 3'd2 ? 1'b0 : wml;
+    s_alloc = ctl == 3'd4 ? 1'b0 : alloc_cq02h;
+  end
   ooe_sched #(.N(N), .NR(NR), .S(S), .FB(FB)) u_sched (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .wake_cq02h(wake_cq02h), .valid_cq02h(valid_cq02h),
     .iss_cq02h(iss_cq02h), .slot_cq02h(slot_cq02h), .active_cq02h(active_cq02h), .copy_cq02h(copy_cq02h),
-    .msd_cq02h(msd_cq02h), .mis_cq02h(miss_cq02h), .fin_cq02h(fin_cq02h), .prod_cq02h(prod_o), .wtl_cq02h(wtl), .wml_cq02h(wml), .alloc_cq02h(alloc_cq02h),
+    .msd_cq02h(s_msd), .mis_cq02h(s_mis), .fin_cq02h(fin_cq02h), .prod_cq02h(prod_o), .wtl_cq02h(wtl), .wml_cq02h(s_wml),
+    .alloc_cq02h(s_alloc),
     .vel_cq03h(vel_cq03h), .siss_cq03h(siss_cq03h), .sdep_cq03h(sdep_cq03h), .sslot_cq03h(sslot_cq03h),
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),

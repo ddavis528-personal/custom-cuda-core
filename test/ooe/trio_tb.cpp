@@ -64,6 +64,7 @@ unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 
 std::map<std::string, unsigned long long> kinds;
 bool core_diverged = false, grant_diverged = false;
 uint64_t errs_seen = 0;   // the model's errors so far in this core
+unsigned control = 0;     // TRIO_CONTROL, as ooe_trio's ctl
 std::map<std::string, unsigned long long> first_kinds;   // each core's first mismatch
 int prev_rq[TR_N], prev_rd[TR_N], t_prev_req[TR_N], t_prev_ready[TR_N];
 unsigned long long grant_cores = 0, grant_first_sum = 0;
@@ -316,6 +317,7 @@ void hook(const Core &c) {
     for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
   dut->busy_cq03h = sw.sel_busy >> 5;
   dut->block_cq03h = sw.sel_block;
+  dut->ctl = control;
   if (const char *tr = std::getenv("TRIO_ROWAT")) {
     // One row of ooe_sched's matrix inputs before this edge: "core,cycle,entry".
     unsigned long long cc = 0, cy = 0;
@@ -477,6 +479,11 @@ void hook(const Core &c) {
 } // namespace
 
 int main(int argc, char **argv) {
+  if (const char *c = std::getenv("TRIO_CONTROL")) {
+    const std::string n = c;
+    control = n == "no-msd" ? 1 : n == "no-miss-lead" ? 2 : n == "late-leads" ? 3 : n == "no-alloc-lead" ? 4 : 0;
+    if (!control) { std::fprintf(stderr, "trio_tb: unknown control %s\n", c); return 2; }
+  }
   const unsigned seeds = argc > 1 ? unsigned(std::atoi(argv[1])) : 25;
   ctx = std::make_unique<VerilatedContext>();
   ctx->commandArgs(argc, argv);
