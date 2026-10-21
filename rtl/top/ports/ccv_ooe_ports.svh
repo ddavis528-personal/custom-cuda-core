@@ -263,7 +263,28 @@
   output ccv_ooe_cru_fault_t ooe_cru_fault_payload,
   input  logic ooe_cru_fault_credit,
   input  logic ooe_cru_fault_stall,
-  output logic ooe_cru_fault_wake
+  output logic ooe_cru_fault_wake,
+  // miu -> ooe, slot 0 of 4
+  input  logic miu_ooe_cmpl_hint_s0_valid,
+  input  ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s0_payload,
+  output logic miu_ooe_cmpl_hint_s0_credit,
+  output logic miu_ooe_cmpl_hint_s0_stall,
+  // miu -> ooe, slot 1 of 4
+  input  logic miu_ooe_cmpl_hint_s1_valid,
+  input  ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s1_payload,
+  output logic miu_ooe_cmpl_hint_s1_credit,
+  output logic miu_ooe_cmpl_hint_s1_stall,
+  // miu -> ooe, slot 2 of 4
+  input  logic miu_ooe_cmpl_hint_s2_valid,
+  input  ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s2_payload,
+  output logic miu_ooe_cmpl_hint_s2_credit,
+  output logic miu_ooe_cmpl_hint_s2_stall,
+  // miu -> ooe, slot 3 of 4
+  input  logic miu_ooe_cmpl_hint_s3_valid,
+  input  ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s3_payload,
+  output logic miu_ooe_cmpl_hint_s3_credit,
+  output logic miu_ooe_cmpl_hint_s3_stall,
+  input  logic miu_ooe_cmpl_hint_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
@@ -312,4 +333,8 @@
   , output logic [63:0] ooe_syu_bar_tid
   , input  logic [63:0] syu_ooe_rel_tid
   , output logic [63:0] ooe_cru_fault_tid
+  , input  logic [63:0] miu_ooe_cmpl_hint_s0_tid
+  , input  logic [63:0] miu_ooe_cmpl_hint_s1_tid
+  , input  logic [63:0] miu_ooe_cmpl_hint_s2_tid
+  , input  logic [63:0] miu_ooe_cmpl_hint_s3_tid
 `endif

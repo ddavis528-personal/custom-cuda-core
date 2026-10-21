@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 48 channels
+# Payload specification — all 50 channels
 
-Every payload field has a width, so **every one of the 48
+Every payload field has a width, so **every one of the 50
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 29 |
-| ⚠️ Some provisional | 20 | 91 |
+| ⚠️ Some provisional | 22 | 94 |
 | ⛔ Some preliminary | 19 | 139 |
-| **Total** | **48** | **259** |
+| **Total** | **50** | **262** |
 
 ## What still has to be decided
 
@@ -595,6 +595,29 @@ ooe → cru · rate 1 · control
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | **total** | | **172** | ⚠️ 3 provisional |
+
+### `ccv_dcu_miu_fill_ntc`
+
+A refill notice (OA-23; AR's response TI-23): DCU promises that the refill answering req_id leaves on the same slot of ccv_dcu_miu_rsp with its valid exactly CCV_LAT_FILL_NOTICE cycles after this notice's payload lands. DCU keeps the promise by reserving that slot and its credit, and a probe never cancels a promised response (DCU spec, Internals). Optional: a refill without a notice is legal and only wakes its dependants late. MIU uses it to send OOE's completion hint in time (ccv_miu_ooe_cmpl_hint). A channel of its own rather than a second valid in the response's slot: a notice is a message with its own valid, and as a channel its payload register is enabled by its own valid flop (CG-5), with no lead slice.
+
+dcu → miu · rate 4 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `req_id` | `CCV_P_W_REQ_MIU_DCU` | 4 ⚠️ | CCV_P_W_REQ_MIU_DCU (provisional) |
+| **total** | | **4** | ⚠️ 4 provisional |
+
+### `ccv_miu_ooe_cmpl_hint`
+
+A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141).
+
+miu → ooe · rate 4 · memory
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `rs_idx` | `CCV_P_W_RS_IDX` | 6 ⚠️ | CCV_P_W_RS_IDX (provisional) |
+| `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
+| **total** | | **13** | ⚠️ 13 provisional |
 
 ## ⛔ Carries a preliminary width
 

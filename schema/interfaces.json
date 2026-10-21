@@ -1241,6 +1241,66 @@
         "txn",
         "none"
       ]
+    },
+    {
+      "name": "ccv_dcu_miu_fill_ntc",
+      "src": "dcu",
+      "dst": "miu",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "req_id"
+      ],
+      "id_classes": [
+        "txn"
+      ],
+      "field_widths": {
+        "req_id": "CCV_P_W_REQ_MIU_DCU"
+      },
+      "doc": "A refill notice (OA-23; AR's response TI-23): DCU promises that the refill answering req_id leaves on the same slot of ccv_dcu_miu_rsp with its valid exactly CCV_LAT_FILL_NOTICE cycles after this notice's payload lands. DCU keeps the promise by reserving that slot and its credit, and a probe never cancels a promised response (DCU spec, Internals). Optional: a refill without a notice is legal and only wakes its dependants late. MIU uses it to send OOE's completion hint in time (ccv_miu_ooe_cmpl_hint). A channel of its own rather than a second valid in the response's slot: a notice is a message with its own valid, and as a channel its payload register is enabled by its own valid flop (CG-5), with no lead slice.",
+      "slot_attrs": {
+        "ordering": "none",
+        "fixed_latency": true
+      },
+      "slot_attrs_why": {
+        "ordering": "each notice names its refill by req_id, and its slot is its refill's",
+        "fixed_latency": "the promise counts cycles from the notice's landing, which means something only if MIU takes every notice the cycle it lands"
+      },
+      "notice_of": {
+        "channel": "ccv_dcu_miu_rsp",
+        "ahead": "CCV_LAT_FILL_NOTICE",
+        "keys": ["req_id"]
+      },
+      "notice_of_why": "OA-23: MIU must know a refill's arrival CCV_LAT_CMPL_HINT + CCV_LAT_MIU_FILL cycles ahead to hint OOE's completion 2 cycles ahead of its valid; AR's response TI-23 chose a notice channel over a second valid in the slot"
+    },
+    {
+      "name": "ccv_miu_ooe_cmpl_hint",
+      "src": "miu",
+      "dst": "ooe",
+      "rate": 4,
+      "group": "memory",
+      "payload_fields": [
+        "rs_idx",
+        "rob_tag"
+      ],
+      "id_classes": [
+        "instr"
+      ],
+      "doc": "A completion hint (OA-23; AR's response TI-23): MIU promises that the completion of rob_tag, waking RS entry rs_idx, leaves on the same slot of ccv_miu_ooe_cmpl with its valid exactly CCV_LAT_CMPL_HINT cycles after this hint's payload lands, so OOE's wake lines can rise two cycles ahead of the completion as its scheduler loop needs (OI-45). MIU keeps it by reserving the completion's slot and credit, and those of the load's data on ccv_miu_rcu_data (MIU spec, Mechanisms). Optional: a completion without a hint wakes a cycle late. rob_tag, not a generation bit, tells a stale hint: OOE acts only if that ROB slot is not squashed-pending (AR's rev 94, OA's rev 141).",
+      "slot_attrs": {
+        "ordering": "none",
+        "fixed_latency": true
+      },
+      "slot_attrs_why": {
+        "ordering": "each hint names its completion by rob_tag, and its slot is its completion's",
+        "fixed_latency": "the promise counts cycles from the hint's landing, which means something only if OOE takes every hint the cycle it lands"
+      },
+      "notice_of": {
+        "channel": "ccv_miu_ooe_cmpl",
+        "ahead": "CCV_LAT_CMPL_HINT",
+        "keys": ["rs_idx", "rob_tag"]
+      },
+      "notice_of_why": "OA-23: OOE's wake for a miss completion must rise two cycles before it, which the completion's own valid, one cycle ahead of its payload, cannot give"
     }
   ],
   "_field_ownership_comment": [

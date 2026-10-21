@@ -959,6 +959,30 @@
       "doc": "After a miss, from the completion's arrival at OOE to the dependant's earliest select (OA's response OI-26). Two parts. The data's crossing, less the completion's and the dependant's own issue crossing, plus one cycle for the read, so the dependant reaches RCU no sooner than the data (OI-13): MIU sends the data to RCU and the completion to OOE over different links. Plus 1: the wake is driven by the completion's arrival rather than a timer, so it cannot be raised a cycle early and reaches the ready stage a cycle after a timed wake would (OA-1). 1 with abutted links. CCV_LAT_L1_WAKE makes the same correction for a hit. PF-11, aligning the two at MIU, would remove it. Replaces the delay the OOE model derives from the wiring."
     },
     {
+      "name": "CCV_LAT_CMPL_HINT",
+      "value": 2,
+      "status": "arch",
+      "source": "OA's response OA-23 (2026-10-21)",
+      "doc": "A completion hint's lead: its payload lands on ccv_miu_ooe_cmpl_hint exactly this many cycles before its completion's valid on the same slot of ccv_miu_ooe_cmpl. Two, the register stages between OOE's grant and select (the ready and grant registers), so a miss completion's wake rises as early as a timed wake does (OI-45)."
+    },
+    {
+      "name": "CCV_LAT_MIU_FILL",
+      "value": 2,
+      "status": "provisional",
+      "source": "AR's response TI-23 (2026-10-21)",
+      "doc": "MIU's pass-through for a refill: from the valid of the refill's last response on ccv_dcu_miu_rsp to its completion's valid on ccv_miu_ooe_cmpl (and its data's on ccv_miu_rcu_data). Two in the stub: the response's payload lands a cycle after its valid, and the completion launches on it. MIU's spec names it (Mechanisms).",
+      "decided_at": "MIU per-block session"
+    },
+    {
+      "name": "CCV_LAT_FILL_NOTICE",
+      "value": 4,
+      "status": "provisional",
+      "derive": "CCV_LAT_CMPL_HINT + CCV_LAT_MIU_FILL",
+      "source": "AR's responses OA-23 and TI-23 (2026-10-21)",
+      "doc": "A refill notice's lead: its payload lands on ccv_dcu_miu_fill_ntc exactly this many cycles before its refill's valid on the same slot of ccv_dcu_miu_rsp. MIU's pass-through plus the hint's lead, so MIU can hint the completion CCV_LAT_CMPL_HINT cycles ahead of it. DCU reserves the slot and its credit for that cycle (DCU spec, Internals).",
+      "decided_at": "with CCV_LAT_MIU_FILL"
+    },
+    {
       "name": "CCV_P_PHYS_REGS",
       "value": 192,
       "status": "provisional",

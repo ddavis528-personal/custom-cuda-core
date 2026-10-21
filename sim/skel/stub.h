@@ -54,7 +54,10 @@ struct Ch {
            fet_miu = chanId("ccv_fet_miu_itlb_req"), mlc_exb = chanId("ccv_mlc_exb_req"),
            exb_mlc = chanId("ccv_exb_mlc_rsp"), exb_ext = chanId("ccv_exb_ext_out"),
            ext_exb = chanId("ccv_ext_exb_in"), rau_fet = chanId("ccv_rau_fet_launch"),
-           rau_ooe = chanId("ccv_rau_ooe_alloc"), rau_miu = chanId("ccv_rau_miu_cta");
+           rau_ooe = chanId("ccv_rau_ooe_alloc"), rau_miu = chanId("ccv_rau_miu_cta"),
+           // Notices (OA-23): each promises its partner's valid on the same
+           // slot a fixed lead after the notice lands.
+           fill_ntc = chanId("ccv_dcu_miu_fill_ntc"), cmpl_hint = chanId("ccv_miu_ooe_cmpl_hint");
 };
 inline const Ch &ch() { static const Ch c; return c; }
 
@@ -337,6 +340,11 @@ protected:
       std::abort();
     }
     pend_[j] = {true, msg, tid};
+  }
+  /// The credits a slot holds now: a sender that promises a message for a
+  /// later cycle (a notice's partner, OA-23) keeps one back for it.
+  unsigned credits(unsigned chan, unsigned slot, unsigned inst = 0) {
+    return outs[outIdx(chan, slot, inst)].tx->credits();
   }
   bool has(unsigned chan, unsigned slot, unsigned inst = 0) {
     return !rx(chan, slot, inst).empty();

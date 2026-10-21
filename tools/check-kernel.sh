@@ -71,6 +71,9 @@
 #     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
+#   a notice's partner follows on its slot  late-refill, notice-wrong-id,
+#     exactly its lead later, same keys        late-cmpl, hint-wrong-tag
+#     (OA-23, TI-23)                           (vadd): the bank's notice check
 #   a completion echoes its memop's RS      rs-echo (vadd): OOE refuses
 #     entry (OA-23)                            every completion
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
@@ -565,7 +568,7 @@ loop   redirect=99 ckpt_free=1 reg_reuse>0
 brs    redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5
 mload  copy=2 zero_read=1
 merge  zero_read=2 merge=4
-vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1
+vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
 byp    copy=1 lane_byp=4
@@ -573,7 +576,7 @@ plog   merge=3
 chains lane_byp=9
 missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
-mlp    l1_hit=0 reexec=4
+mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4
 stall  l1_late>0
@@ -691,6 +694,23 @@ else
   bad "--break rs-echo" "$n refused: $(grep '^KERNEL' "$B/kernel_rs-echo.log")"
 fi
 
+# Notices (OA-23; AR's response TI-23): DCU promises a refill
+# CCV_LAT_FILL_NOTICE cycles after its notice lands, MIU a completion
+# CCV_LAT_CMPL_HINT cycles after its hint, each on the same slot with the
+# same key fields, and the bank's ccv_common_chk_notice holds them to it. The
+# runs above reach both (fill_notice, cmpl_hint); here each promise is broken
+# both ways, and only the checker that guards it fires.
+for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_ntc:same_keys \
+            late-cmpl:miu_ooe_cmpl_hint:on_time hint-wrong-tag:miu_ooe_cmpl_hint:same_keys; do
+  brk=${spec%%:*}; rest=${spec#*:}; chan=${rest%%:*}; prop=${rest#*:}
+  "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break "$brk" >"$B/kernel_$brk.log" 2>&1
+  n=$(grep -c "u_${chan}_notice_s[0-9]*\.g_${prop}_as" "$B/kernel_$brk.log")
+  if [ "$n" -gt 0 ]; then
+    say "--break $brk: $chan $prop" "PASS ($n)"
+  else
+    bad "--break $brk" "no $prop on $chan: $(grep '^KERNEL' "$B/kernel_$brk.log")"
+  fi
+done
 # DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
 # src_valid marks, and nothing else, so a real read DEC hides is read stale.
 # On vaddslow, whose b[i] lands long after a[i]: with DCU's misses in flight

@@ -252,6 +252,11 @@ private:
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
         core_.done(d);
       }
+    // Completion hints (OA-23), taken as they land, as a fixed-latency
+    // channel's must be. The model does not wake on them yet (OI); the bank
+    // holds MIU to each one's promise.
+    for (unsigned s = 0; s != kChans[c.cmpl_hint].rate; ++s)
+      while (has(c.cmpl_hint, s)) take(c.cmpl_hint, s);
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
         Receiver::Msg m = take(c.miu_ooe, s);
