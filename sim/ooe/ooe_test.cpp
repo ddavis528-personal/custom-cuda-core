@@ -1876,6 +1876,35 @@ void audit() {
   rn.take_young = false;
   const R b = run(rn);
   std::printf("audit: both (ret_now 1, take_young 0): %.0f cycles, %+.1f%%\n", b.cy, 100.0 * (b.cy / d.cy - 1));
+  // OA's response OI-45: the RTL's wake-to-select loop as composed. A
+  // completion's wake a cycle later (cmpl_wake_delay + 1), and the matrix
+  // and valid reaching select two cycles later (rename_stages + 2), each
+  // and both, under the go slice 4 builds (ret_now 1, take_young 0).
+  {
+    Config g = base;
+    g.ret_now = true;
+    g.take_young = false;
+    const R r0 = run(g);
+    Config a1 = g;
+    a1.cmpl_wake_delay += 1;
+    const R x1 = run(a1);
+    Config a2 = g;
+    a2.rename_stages += 2;
+    const R x2 = run(a2);
+    Config a3 = a1;
+    a3.rename_stages += 2;
+    const R x3 = run(a3);
+    std::printf("audit: loop, against the slice-4 go (%.0f): completion wake +1 %.0f (%+.1f%%), rename_stages +2 %.0f "
+                "(%+.1f%%), both %.0f (%+.1f%%)\n", r0.cy, x1.cy, 100.0 * (x1.cy / r0.cy - 1), x2.cy,
+                100.0 * (x2.cy / r0.cy - 1), x3.cy, 100.0 * (x3.cy / r0.cy - 1));
+    Config b1 = g;
+    b1.rename_stages += 1;
+    const R y1 = run(b1);
+    b1.cmpl_wake_delay += 1;
+    const R y2 = run(b1);
+    std::printf("audit: loop: rename_stages +1 %.0f (%+.1f%%), with the completion wake +1 %.0f (%+.1f%%)\n", y1.cy,
+                100.0 * (y1.cy / r0.cy - 1), y2.cy, 100.0 * (y2.cy / r0.cy - 1));
+  }
 }
 
 /// OI-34: placement and OA-13 arms on synthetic narrow loops, one warp and
