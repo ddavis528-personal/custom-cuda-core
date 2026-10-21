@@ -22,6 +22,9 @@
 #                path (map -r for per-input figures: tools ignore arrivals)
 #   ilfin_probe  OA-22: the split go with the short path from registered
 #                state, the short bit from the frees: per-input, map -r
+#   fitsgo_probe OI-65: fits formed in the cycle from decq's output register
+#                and rename's counters, then the registered go: take counts
+#                (OUT 0), lanes (OUT 1)
 #   fth_probe    free_th's arrival: ooe_confirm into a counted thermometer;
 #   fth2_probe   the same through th_sat, a tree of capped thermometers
 #                (th_only.sv), cap 4 and 2; ret_probe, ret_n's arrival
@@ -42,7 +45,9 @@ mkdir -p "$out"
 while read -r f m p label; do
   [ -n "$f" ] || continue
   [ "$p" = "-" ] && p=""
-  yosys -q -p "read_verilog -sv test/ooe/probes/$f; ${p:+chparam ${p//,/ } $m;} synth -flatten -top $m;
+  # A probe built on il_probe (ilfin, ilsr, fitsgo) reads it too.
+  extra=""; grep -q "il_probe #" "test/ooe/probes/$f" && extra="test/ooe/probes/il_probe.sv"
+  yosys -q -p "read_verilog -sv $extra test/ooe/probes/$f; ${p:+chparam ${p//,/ } $m;} synth -flatten -top $m;
                abc -g AND,NAND,OR,NOR,XOR,XNOR,MUX; opt_clean; write_blif $out/$label.blif" 2>&1 |
     grep -v "Replacing memory" || true
   line=$(yosys-abc -c "read_blif $out/$label.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
@@ -60,4 +65,8 @@ ex2_probe.sv   ex2_probe   -            exact-two-warps-take
 exi_probe.sv   exi_probe   -            exact-interleave-take
 ild_probe.sv   ild_probe   -set,OUT,0   deficit-front-take
 ild_probe.sv   ild_probe   -set,OUT,1   deficit-front-lanes
+ilfin_probe.sv ilfin_probe -set,OUT,0   registered-go-take
+ilfin_probe.sv ilfin_probe -set,OUT,1   registered-go-lanes
+fitsgo_probe.sv fitsgo_probe -set,OUT,0 fits-in-cycle-take
+fitsgo_probe.sv fitsgo_probe -set,OUT,1 fits-in-cycle-lanes
 T

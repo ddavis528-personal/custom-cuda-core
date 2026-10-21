@@ -503,6 +503,46 @@ Built (`rtl/ooe/`):
   gate. Every read and write is a decoder: written through computed
   indices, Yosys built 420,000 gates and ran out of memory; as decoders it
   is 52,000.
+- **`ooe_rename`**, rename's pipeline (task 18; the doc at rev 238, its
+  Stage boundaries table and OA-21, OA-22), built in slices, each benched
+  against the model before the next:
+
+  1. **The producer map**, per GPR name (192 rows by 4 positions, 768) and
+     predicate name: the RS entries that produce it, main and a masked
+     load's copy. Written a cycle after Rename 3 from ooe_rs's registered
+     grant (gnt_idx, gnt_v), as the doc places it. It has to stay exact
+     when an entry frees and is reused: the model clears every name that
+     points at a freed entry (rsFree), and a stale pointer would make a new
+     row wait on the entry's next occupant. Clearing names on a free
+     would take each name's enable from ooe_rs's free vector, an input
+     (CG-5). So the map is written only, and rename keeps, per RS entry,
+     the GPR and predicate names its occupant produces, written from the
+     registered grant. A looked-up producer j counts, at Rename 3, only
+     while ooe_rs's valid_out[j] is set, entry j still names the register,
+     and j was not allocated at the last edge (its names not yet written).
+     The previous group, still in flight at the lookup, is matched by name
+     and resolved from the registered grant; the current group by the
+     in-group override. ooe_rs masks a new row with the frees of its own
+     cycle, as it does the rows it holds (today it takes the row as given:
+     its bench drives the model's rows, which are exact).
+  2. **Rename 2**: the lookups (4 uops, up to 6 sources each: three GPR,
+     the merge source, the guard and the old predicate destination, plus
+     predicate logic's two), the in-group override (an older port of the
+     same group that writes the source), and each cell's wake-line code
+     from the bypass table. Out to ooe_rs as row_dep, row_code, grp_dep,
+     grp_code and row_prod, from rename's stage register, under ooe_rs's
+     budgets (req by 6, grp_dep by 9, the rows and codes by 10).
+  3. **Rename's credits**: RS room per class, each warp's ROB room and the
+     free rows, taken from TI-19's free counts (free_th, ld_conf_th,
+     ret_n) as registered pulses.
+  4. **The go and decq's registered take** (OA-21, OA-22): open as OI-65.
+     The registered fits_s describe heads that depend on the previous
+     cycle's take; formed in the cycle the go measures 27.1 NGD to the take
+     counts and 30.3 to the lanes (test/ooe/probes/fitsgo_probe.sv).
+  5. **Rename 1**: its register, the one-group skid and the credit channel
+     from decq (OI-49), ooe_ratread, and the free-row take from the
+     candidate buffer's heads.
+
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The

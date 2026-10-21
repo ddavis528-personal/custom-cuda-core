@@ -20,14 +20,19 @@
 // An allocation writes the entry's whole row: its dependency bits and line
 // selects for entries already in the RS, and for entries granted this
 // cycle to another port (an older producer renamed in the same group, in
-// either class), named by port. A free clears the entry's column in every row, so a dependant
-// never waits on, nor confirms behind, the entry's next occupant.
+// either class), named by port. A free clears the entry's column in every
+// row, the rows allocated now included (rename looked their producers up a
+// stage before), so a dependant never waits on, nor confirms behind, the
+// entry's next occupant.
 //
 // The reference is the model's rsAlloc, rsFree and dependency cells, which
 // log each cycle's allocations in order and its frees (Core::wakeLog:
 // ralloc, rfree). test/ooe/rs_tb.cpp drives this module from them and
 // compares, after each edge, the registered grants, the valid bits and
-// every valid row's dependency bits and line selects.
+// every valid row's dependency bits and line selects. Every row it
+// allocates also names every entry freed in its cycle, which the model's
+// rows never do: the mask must clear them (without it, an assertion here
+// stops the run).
 //
 // hcol_cq02h is a flag per column, set from the edge a row naming the entry
 // is written until the entry is freed: a superset of the entries any row
@@ -197,7 +202,8 @@ module ooe_rs #(
   logic [2*P*N-1:0] cd_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h, req_cq01h, free_cq01h);
-    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h, row_code_cq01h, grp_dep_cq01h, grp_code_cq01h);
+    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{~free_cq01h}}, row_code_cq01h, grp_dep_cq01h,
+                                  grp_code_cq01h);
     for (int p = 0; p < P; p++) begin
       gv_cq02h[p]           = |g_cq02h[p * N +: N];
       gi_cq02h[p * W +: W] = '0;

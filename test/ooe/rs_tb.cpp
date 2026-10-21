@@ -108,7 +108,7 @@ Snap snapCycle(const Core &c) {
 }
 std::vector<Snap> hist;           // the snapshots not yet driven, oldest first, and the one before
 unsigned long long cycles = 0, cores = 0, allocs = 0, group = 0, frees = 0, reuse = 0, rows = 0, cells = 0,
-                   mismatches = 0;
+                   stale = 0, mismatches = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -256,6 +256,14 @@ void hook(const Core &c) {
         setBit(dut->row_code_cq01h, (p * N + j) * 2 + 1, (code >> 1) & 1u);
       }
     }
+    // Rename looks a row's producers up a stage before it writes it, so a
+    // row may name an entry freed now; ooe_rs masks it (the model's row
+    // never does). Every allocated row names every entry freed now.
+    for (unsigned j = 0; j != N; ++j)
+      if (y.rfree[j] && !y.dep[e * N + j]) {
+        setBit(dut->row_dep_cq01h, p * N + j, true);
+        ++stale;
+      }
   }
   for (unsigned j = 0; j != N; ++j) {
     bool f = y.rfree[j];
@@ -384,9 +392,9 @@ int main(int argc, char **argv) {
   const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "
-              "same-edge=%llu rows=%llu cells=%llu mismatches=%llu model_failures=%d\n",
+              "same-edge=%llu rows=%llu cells=%llu stale=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, allocs, group, frees, reuse,
-              rows, cells, mismatches, model_fails);
+              rows, cells, stale, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
