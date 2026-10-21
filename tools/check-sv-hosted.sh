@@ -102,6 +102,27 @@ for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   fi
 done
 
+# -- demotion (TI-24), both hosts: RAU, RCU, FET and PCA each move a warp out
+# through their own ports only, so the SV top must agree event for event.
+for k in stall vadd4; do
+  t="${k}_demote"
+  CCV_RAU_DEMOTE=fallback cpp "$k" --trace "$B/svh_cpp_$t.ccvtrace" >"$B/svh_cpp_$t.log"
+  CCV_RAU_DEMOTE=fallback svh "$k" "+ccv_trace=$B/svh_sv_$t.ccvtrace" >"$B/svh_sv_$t.log"
+  why=""
+  grep -q " violations=0$" "$B/svh_sv_$t.log" || why="$why; checker violations"
+  grep -qE '(^| )parked=[1-9]' "$B/svh_sv_$t.log" || why="$why; nothing parked"
+  [ "$(lines "$B/svh_cpp_$t.log")" = "$(lines "$B/svh_sv_$t.log")" ] ||
+    why="$why; summary lines differ"
+  tr=$(python3 tools/compare-traces.py "$B/svh_cpp_$t.ccvtrace" "$B/svh_sv_$t.ccvtrace")
+  echo "$tr" | head -1 | grep -q "equal=yes" || why="$why; $(echo "$tr" | sed -n 2p | xargs)"
+  n=$(echo "$tr" | head -1 | grep -oE 'records=[0-9]+' | cut -d= -f2)
+  if [ -z "$why" ]; then
+    say "$k demoting: SV-hosted == C++-hosted" "PASS ($n events, $(grep -oE 'parked=[0-9]+' "$B/svh_sv_$t.log" | head -1))"
+  else
+    bad "$k demoting: SV-hosted == C++-hosted" "${why#; }"
+  fi
+done
+
 # -- every kernel control, both hosts ----------------------------------------
 # The failure paths too: each control's KERNEL line -- which checks fired,
 # how many, what the final state compare found, the bank's violation count --
