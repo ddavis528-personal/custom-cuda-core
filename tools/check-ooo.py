@@ -11,6 +11,7 @@ instructions that retire (a wrong path's issues say nothing about order):
   depth    the most older instructions of its warp still unissued when one
            issued: how far the window reached
   dual     cycles in which two or more of one warp's instructions issued
+  fin      each warp's last retirement, the cycle it finished (by warp_id)
 
 An instruction's issue is its first EV_ISSUE; a re-execution (an L1
 cancel's replay) is the same instruction issued again, not a new one.
@@ -22,6 +23,9 @@ cancel's replay) is the same instruction issued again, not a new one.
         a reordering at all
   tools/check-ooo.py --want K:BINS TRACE...    a kernel's own bounds, as
         check-kernel's bins: "ahead>3 depth>2" (repeatable)
+  tools/check-ooo.py --stalled K:W:GAP TRACE... in kernel K, warp W is the
+        stalled one, and every other warp must finish at least GAP cycles
+        before it: they filled its hole rather than waiting it out
   --in-order   measure each trace with its issues held in program order (no
                instruction before its warp's previous one): the negative
                control, what an in-order machine would at best have done.
@@ -51,18 +55,20 @@ def measure(path, in_order=False):
     """{warps, instrs, ahead, depth, dual} for one trace."""
     issue_id, retire_id = event_ids()
     _, recs = t2p.read_trace(path)
-    first, retired = {}, set()
+    first, retired, fin = {}, set(), {}
     for cyc, uid, eid, _unit, a, _b, _c in recs:
         key = (a, uid & 0xffffffff)          # (warp_id, the fetch seq)
         if eid == issue_id:
             first.setdefault(key, cyc)
         elif eid == retire_id:
             retired.add(key)
+            fin[a] = max(fin.get(a, 0), cyc)
     warps = collections.defaultdict(list)
     for key, cyc in first.items():
         if key in retired:
             warps[key[0]].append((key[1], cyc))
-    out = {"warps": len(warps), "instrs": 0, "ahead": 0, "depth": 0, "dual": 0}
+    out = {"warps": len(warps), "instrs": 0, "ahead": 0, "depth": 0, "dual": 0,
+           "fin": [fin[w] for w in sorted(fin)]}
     for lst in warps.values():
         lst.sort()                                   # program order
         cycs = [c for _, c in lst]
@@ -108,13 +114,15 @@ def main():
     ap.add_argument("traces", nargs="+")
     ap.add_argument("--floor")
     ap.add_argument("--want", action="append", default=[])
+    ap.add_argument("--stalled", action="append", default=[])
     ap.add_argument("--in-order", action="store_true")
     a = ap.parse_args()
     ms = {}
     for p in a.traces:
         ms[name_of(p)] = m = measure(p, a.in_order)
-        print("OOO %-12s warps=%d instrs=%d ahead=%d depth=%d dual=%d"
-              % (name_of(p), m["warps"], m["instrs"], m["ahead"], m["depth"], m["dual"]))
+        print("OOO %-12s warps=%d instrs=%d ahead=%d depth=%d dual=%d fin=%s"
+              % (name_of(p), m["warps"], m["instrs"], m["ahead"], m["depth"], m["dual"],
+                 ",".join(str(f) for f in m["fin"])))
     fails = []
     for w in a.want:
         k, bins = w.split(":", 1)
@@ -122,6 +130,17 @@ def main():
             fails.append("%s: no trace" % k)
             continue
         fails += ["%s: %s" % (k, x) for x in bounds_fail(ms[k], bins)]
+    for st in a.stalled:
+        k, w, gap = st.split(":")
+        w, gap = int(w), int(gap)
+        fin = ms.get(k, {}).get("fin", [])
+        if w >= len(fin):
+            fails.append("%s: no warp %d retired" % (k, w))
+            continue
+        late = [(o, f) for o, f in enumerate(fin) if o != w and f > fin[w] - gap]
+        for o, f in late:
+            fails.append("%s: warp %d finished at %d, within %d of stalled warp %d's %d"
+                         % (k, o, f, gap, w, fin[w]))
     if a.floor:
         f = dict(kv.split("=") for kv in a.floor.split(","))
         ahead = sum(m["ahead"] for m in ms.values())

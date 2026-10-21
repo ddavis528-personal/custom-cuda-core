@@ -10,11 +10,20 @@
 # used to buy, without the second copy that could drift.
 #
 # kernel.cfg: SOURCE=<path in the compiler snapshot, or core:<path here>>, an
-# optional CTAID=<n> (ccv-sim -ctaid), then one poke per line.
+# optional CTAID=<n> (ccv-sim -ctaid), an optional CTAS=<n>, then one poke per
+# line. ccv-sim runs one warp a CTA, so a kernel of several warps is CTAS
+# CTAs, CTAID upward, each its own run: oracle.jsonl for the first,
+# oracle.<w>.jsonl for warp w, which the skeleton launches side by side
+# (Kernel::loadOracles).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 C=$(tools/fetch-compiler.sh) || exit 1
 rc=0
+# A kernel removed from test/kernels/ leaves no record behind: the checks
+# that run every record (ls build/oracle) would go on running it.
+for d in build/oracle/*/; do
+  [ -d "$d" ] && [ ! -d "test/kernels/$(basename "$d")" ] && rm -rf "$d"
+done
 for k in test/kernels/*/; do
   k=${k%/}; name=$(basename "$k")
   [ -f "$k/kernel.cfg" ] || continue
@@ -26,15 +35,22 @@ for k in test/kernels/*/; do
   args=()
   while read -r p; do args+=(-poke "$p"); done < <(grep -E '^0x' "$k/kernel.cfg")
   ctaid=$(sed -n 's/^CTAID=//p' "$k/kernel.cfg")
-  [ -n "$ctaid" ] && args+=(-ctaid "$ctaid")
+  ctas=$(sed -n 's/^CTAS=//p' "$k/kernel.cfg")
   out=build/oracle/$name
-  mkdir -p "$out"
-  if python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
-       "$out/kernel.bin" >/dev/null &&
-     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" \
-       -oracle "$out/oracle.jsonl" >/dev/null; then
+  rm -rf "$out" && mkdir -p "$out"
+  ok=1
+  python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
+    "$out/kernel.bin" >/dev/null || ok=0
+  for ((w = 0; ok && w < ${ctas:-1}; ++w)); do
+    o="$out/oracle.jsonl"; [ $w = 0 ] || o="$out/oracle.$w.jsonl"
+    cta=()
+    [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
+    "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
+      -oracle "$o" >/dev/null || ok=0
+  done
+  if [ $ok = 1 ]; then
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" \
-      "PASS ($(wc -l < "$out/oracle.jsonl") records)"
+      "PASS ($(cat "$out"/oracle*.jsonl | wc -l) records${ctas:+, $ctas warps})"
   else
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" "FAIL"
     rc=1

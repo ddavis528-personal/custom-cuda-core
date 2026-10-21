@@ -5,7 +5,7 @@
 // writes only its own senders (stub.h); the oracle is never consulted.
 //
 // What lives here rather than in the core:
-//   - the testbench hooks (Kernel): retire bookkeeping, rat0, coverage bins,
+//   - the testbench hooks (Kernel): retire bookkeeping, each warp's maps, coverage bins,
 //     events, and check failures for the core's contract and invariant errors;
 //   - the negative controls that act on a message (corrupt-ckpt, stale-free,
 //     drop-negate, skip-copy, corrupt-disp); free-new acts inside the core;
@@ -18,6 +18,9 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <map>
+#include <set>
+#include <tuple>
 
 namespace ccv {
 namespace skel {
@@ -33,9 +36,15 @@ int optChan(const char *n) {
 class OoeModel : public Stub {
 public:
   OoeModel(int inst, Kernel &k) : Stub(inst, k), core_(config(k)) {
-    k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
-    // A launched warp's predicates map to the zero predicate (A-64).
-    if (core_.config().rename_preds) k.prat0.assign(kArchPreds, ccv::prov::kPredZero);
+    // A launched warp's registers map to the zero registers (A-64), and so do
+    // its predicates while they are renamed: each warp's maps, so made, are
+    // what the final compare reads where the warp never writes.
+    for (unsigned w = 0; w != k.orcs.size(); ++w) {
+      k.ratOf(w);
+      k.pratOf(w, core_.config().rename_preds);
+    }
+    // A full decode queue holds DEC's uops in their slots: its backpressure.
+    holdsBack(ch().dec_ooe);
     core_.on_error = [this](const std::string &m) { k_.fail("ooe: %s", m.c_str()); };
     core_.on_event = [this](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       event(n, w, a, b, tid);
@@ -258,25 +267,48 @@ private:
 
   /// Uops, oldest first by (arrival, slot): ordering is per warp_id, so a
   /// warp whose oldest uop cannot be taken takes none behind it this cycle.
-  /// A uop not taken stays in its slot, its credit unreturned.
+  /// A uop not taken stays in its slot, its credit unreturned. At most one a
+  /// slot a cycle: a slot returns one credit a cycle, so a second take from
+  /// it would lose one (Receiver::pop). With several warps the slots back up
+  /// two deep, and the first multi-warp kernels lost credits here (TI). The
+  /// uop left behind holds its warp for the cycle, so a warp's uops are
+  /// still taken in its order.
   void takeUops() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.dec_ooe].rate;
-    std::set<unsigned> held;
+    std::set<unsigned> held, taken;
     for (;;) {
+      // Each warp's oldest uop buffered anywhere, by (arrival, slot, place):
+      // a slot's head is taken only if it is its warp's oldest, so a younger
+      // uop never passes one of its warp's held behind another warp's.
+      std::map<unsigned, std::tuple<uint64_t, unsigned, size_t>> oldest;
+      for (unsigned s = 0; s != rate; ++s) {
+        const Receiver *r = peek(c.dec_ooe, s);
+        for (size_t i = 0; r && i != r->size(); ++i) {
+          const unsigned w = unsigned(get(r->at(i).payload, c.dec_ooe, "warp_id"));
+          const auto key = std::make_tuple(r->at(i).arrived, s, i);
+          auto o = oldest.find(w);
+          if (o == oldest.end() || key < o->second) oldest[w] = key;
+        }
+      }
       int best = -1;
       uint64_t when = 0;
       for (unsigned s = 0; s != rate; ++s) {
         const Receiver *r = peek(c.dec_ooe, s);
         if (!r || r->empty()) continue;
         const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
-        if (held.count(w)) continue;
+        // A slot already taken from this cycle holds its next uop back, and
+        // with it that uop's warp: nothing younger of the warp may pass it.
+        if (taken.count(s)) { held.insert(w); continue; }
+        if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
+          continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;
       const Receiver *r = peek(c.dec_ooe, unsigned(best));
       const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
       if (!core_.canAccept(w)) { core_.noteRefused(w); held.insert(w); continue; }
+      taken.insert(unsigned(best));
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -460,13 +492,13 @@ private:
     for (const ooe::Retired &r : core_.retired) {
       ++k_.retired;
       k_.retire_order.push_back(uidSeq(r.tid));
-      if (r.exit) k_.exited = true;
-      if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = core_.nameRow(r.pnew);   // the final compare's map (rows)
+      if (r.exit) ++k_.exits;
+      // Each warp's map for the final compare (rows), made at its first use.
+      if (r.writes_gpr) k_.ratOf(r.warp)[r.dst] = core_.nameRow(r.pnew);
       // The predicate map likewise, while predicates are renamed (OI-3);
       // left empty, the final compare reads the fixed physPred windows.
-      if (r.warp == 0 && r.writes_pred) {
-        k_.prat0[r.pdst] = r.ppnew;
-      }
+      if (r.writes_pred && core_.config().rename_preds)
+        k_.pratOf(r.warp, true)[r.pdst] = r.ppnew;
     }
 
   }

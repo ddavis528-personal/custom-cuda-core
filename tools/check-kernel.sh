@@ -71,9 +71,9 @@
 #     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
-#   OOE renames and waits on the sources     drop-src-valid: DEC hides a
-#     DEC marks real (TI-1)                      second source, and seq 14
-#                                                reads R9 stale
+#   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
+#     DEC marks real (TI-1)                      hides a second source, and
+#                                                seq 14 reads R9 stale
 #   predicate logic reads renamed sources     arch-pred-srcs (plog): RCU
 #     from imm, with negates (TI-1)              reads DEC's qualifiers, and
 #                                                P3 comes out wrong
@@ -90,6 +90,9 @@
 #   the suite issues out of order: enough     --in-order: the same traces held
 #     instructions ahead of older ones, deep     in program order fail the
 #     enough (tools/check-ooo.py)                floor
+#   a warp stalled on a long miss holds no    dcu-one-miss (stall): the other
+#     other up: they finish 300 cycles before    warps finish after it
+#     it (stall)
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -569,6 +572,9 @@ chains lane_byp=9
 missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4
+mwmiss l1_hit=0
+stall  l1_late>0
+vaddslow full_line=1
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -672,7 +678,10 @@ done
 
 # DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
 # src_valid marks, and nothing else, so a real read DEC hides is read stale.
-"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break drop-src-valid >"$B/kernel_drop-src-valid.log" 2>&1
+# On vaddslow, whose b[i] lands long after a[i]: with DCU's misses in flight
+# together, vadd's two loads land close enough that a hidden R9 is no longer
+# stale by luck of timing, and the control would prove nothing.
+"$SKEL" --kernel build/oracle/vaddslow/oracle.jsonl --break drop-src-valid >"$B/kernel_drop-src-valid.log" 2>&1
 n=$(grep -c "^CHECK lane [0-9]*: seq 14 operand 1 (R9) " "$B/kernel_drop-src-valid.log")
 if [ "$n" = 32 ] && [ "$(field "$B/kernel_drop-src-valid.log" check_failures)" = 32 ]; then
   say "--break drop-src-valid: seq 14 reads R9 stale" "PASS (32 lanes)"
@@ -824,11 +833,16 @@ fi
 # The floor sits below today's suite (ahead 69, depth 9, 12 kernels), so a
 # timing change has room; the bounds below are the kernels' purpose.
 OOO_FLOOR="ahead=50,depth=6,kernels=10"
+OOO_STALLED=(
+  "stall:0:300"                # warps 1 to 3 finish well before warp 0's slow line
+)
 OOO_WANT=(
   "chains:ahead>11 depth>6"    # the pairs behind a chain of eight adds
   "missrun:ahead>15 depth>3"   # twenty instructions under a miss and its chain
   "ldpar:ahead>3"              # four hits ahead of a miss's dependant
   "mlp:ahead>5 depth>4"        # each iteration's load ahead of the last's add
+  "mwmiss:ahead>30"            # four warps' work past each warp's miss
+  "stall:ahead>50"             # the other warps', and warp 0's own, under its miss
 )
 ooo_traces=""
 for d in test/kernels/*/; do
@@ -838,10 +852,22 @@ for d in test/kernels/*/; do
 done
 want_args=()
 for w in "${OOO_WANT[@]}"; do want_args+=(--want "$w"); done
+for w in "${OOO_STALLED[@]}"; do want_args+=(--stalled "$w"); done
 if out=$(python3 tools/check-ooo.py --floor "$OOO_FLOOR" "${want_args[@]}" $ooo_traces 2>&1); then
   say "kernels issue out of order" "PASS ($(sed -n 's/^OOO suite //p' <<<"$out"))"
 else
   bad "kernels issue out of order" "$(grep -m3 '^OOO FAIL' <<<"$out" | sed 's/^OOO FAIL //' | xargs)"
+fi
+# The stall bound's control: DCU one miss at a time, so the other warps' fast
+# misses wait behind warp 0's slow line, and they finish after it.
+"$SKEL" --kernel build/oracle/stall/oracle.jsonl --break dcu-one-miss \
+  --trace "$B/ooo_stall-blocking.ccvtrace" >"$B/kernel_dcu-one-miss.log" 2>&1
+if out=$(python3 tools/check-ooo.py --stalled stall-blocking:0:300 "$B/ooo_stall-blocking.ccvtrace" 2>&1); then
+  bad "--break dcu-one-miss: the stall bound fails" "passed: $(grep '^OOO stall' <<<"$out")"
+elif [ "$(field "$B/kernel_dcu-one-miss.log" gpr_mismatch)" = 0 ]; then
+  say "--break dcu-one-miss: the stall bound fails" "PASS ($(grep -m1 '^OOO FAIL' <<<"$out" | sed 's/^OOO FAIL stall-blocking: //'))"
+else
+  bad "--break dcu-one-miss" "the run itself went wrong: $(grep '^KERNEL' "$B/kernel_dcu-one-miss.log")"
 fi
 if out=$(python3 tools/check-ooo.py --in-order --floor "$OOO_FLOOR" "${want_args[@]}" $ooo_traces 2>&1); then
   bad "--in-order: the same traces in program order" "passed the floor: $(sed -n 's/^OOO suite //p' <<<"$out")"

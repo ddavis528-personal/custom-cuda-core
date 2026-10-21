@@ -96,9 +96,11 @@ void getBeat(const Bits &b, uint32_t lsb, Line &l, unsigned beat) {
 class Testbench : public Stub {
 public:
   Testbench(int inst, Kernel &k) : Stub(inst, k) {
-    for (size_t i = 0; i != k.orc.code.size(); ++i)
-      k.mem[k.orc.code_base + i] = k.orc.code[i];
-    for (auto &w : k.orc.init_mem)
+    // Every warp runs the same code from the same memory: warp 0's record of
+    // them stands for all (Kernel::loadOracles holds the others to it).
+    for (size_t i = 0; i != k.orcs[0].code.size(); ++i)
+      k.mem[k.orcs[0].code_base + i] = k.orcs[0].code[i];
+    for (auto &w : k.orcs[0].init_mem)
       for (unsigned b = 0; b != 4; ++b)
         k.mem[w.first + b] = uint8_t(w.second >> (8 * b));
   }
@@ -106,8 +108,22 @@ public:
 
 private:
   static constexpr uint64_t kLatency = 10;   // placeholder DRAM
-  struct P { uint64_t due; Bits msg; uint64_t tid; };
-  std::deque<P> q_;                          // D beats, in order
+  /// A slow region, for a warp stalled on a miss as long as DRAM's: a line
+  /// at kSlowBase or above answers kSlowLatency cycles after it is asked
+  /// for (Daniel, 2026-10-21; the stall kernel). No other kernel reaches it.
+  static constexpr uint64_t kSlowBase = 0x80000, kSlowLatency = 400;
+  struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
+  /// D beats, in the order they go: bursts by due cycle, each burst's beats
+  /// together and one a cycle. Responses are matched by source, not order,
+  /// so a fast line may pass a slow one; with one latency it is a FIFO.
+  std::deque<P> q_;
+  void enqueue(std::vector<P> burst) {
+    auto at = q_.begin();
+    if (at != q_.end() && !at->first)      // never split the burst going out
+      while (at != q_.end() && !at->first) ++at;
+    while (at != q_.end() && !(at->first && at->due > burst.front().due)) ++at;
+    q_.insert(at, burst.begin(), burst.end());
+  }
   struct Put { uint64_t addr; Line data{}; std::array<bool, kLine> mask{}; unsigned beats = 0; };
   std::map<unsigned, Put> puts_;             // bursts being received, by source
 
@@ -138,11 +154,14 @@ private:
           auto it = k_.mem.find(addr + k);
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
+        std::vector<P> burst;
+        const uint64_t due = now_ + (addr >= kSlowBase ? kSlowLatency : kLatency);
         for (unsigned beat = 0; beat != kBeats; ++beat) {
           Bits r = dBeat(kTlAckData, src);
           putBeat(r, kDData, l, beat);
-          q_.push_back({now_ + kLatency + beat, r, m.tid});
+          burst.push_back({due + beat, r, m.tid, beat == 0});
         }
+        enqueue(std::move(burst));
       } else if (op == kTlPutFull) {
         // Collect the burst; write and acknowledge once it is whole.
         Put &p = puts_[src];
@@ -153,7 +172,7 @@ private:
         if (++p.beats == kBeats) {
           for (unsigned k = 0; k != kLine; ++k)
             if (p.mask[k]) k_.mem[p.addr + k] = p.data[k];
-          q_.push_back({now_ + kLatency, dBeat(kTlAck, src), m.tid});
+          enqueue({{now_ + kLatency, dBeat(kTlAck, src), m.tid, true}});
           puts_.erase(src);
         }
       } else {
@@ -335,11 +354,16 @@ private:
   }
 };
 
-// ---- DCU: no cache yet; a write is read-modify-write of the line -----------------
+// ---- DCU: a small L1; a write is read-modify-write of the line ------------------
 //
 // dcu_mlc_req carries no byte mask, so a partial store cannot go below DCU
 // as it arrived: DCU reads the line, merges the bytes the mask selects, and
-// writes the whole line. One request at a time.
+// writes the whole line. Non-blocking: up to one request to MLC per req_id
+// in flight (CCV_P_W_REQ_DCU_MLC, "sixteen fills in flight"), each tracked
+// by its id, so a miss does not wait behind another line's (Daniel,
+// 2026-10-21: a warp stalled on a long miss must not hold the others' up).
+// Requests to one line keep their order: a line with a miss in flight takes
+// nothing more until it is answered. One queued request starts a cycle.
 
 class Dcu : public Stub {
 public:
@@ -349,10 +373,13 @@ public:
 private:
   struct Op { unsigned slot; Bits req; uint64_t tid; };
   std::deque<Op> q_;
-  enum { kIdle, kWaitLine, kWaitAck } st_ = kIdle;
-  Op cur_{0, Bits(), 0};
+  /// A request to MLC in flight, by its req_id: a read's fill, the read half
+  /// of a partial store's read-modify-write, or a write awaiting its ack.
+  enum Kind { kFill, kRmwRead, kAck };
+  struct Miss { Op op; Kind kind; uint64_t line; };
+  std::map<unsigned, Miss> miss_;
+  std::set<uint64_t> busy_lines_;    ///< lines with a request to MLC in flight
   IdPool ids_;
-  unsigned mlc_id_ = 0;              ///< the one request to MLC outstanding
   std::deque<Q> to_mlc_, to_miu_;
 
   /// L1 (OI-5): a small direct-mapped array, so a load that revisits a line
@@ -378,7 +405,6 @@ private:
     put(r, ch().dcu_miu, "req_id", get(req, ch().miu_dcu, "req_id"));
     return r;
   }
-  Bits miuRsp() { return rspFor(cur_.req); }
   /// A read that hits: the line, hit set, no MLC miss.
   void hitRsp(const Op &o, const Line &l) {
     Bits r = rspFor(o.req);
@@ -398,15 +424,17 @@ private:
     return true;
   }
 
-  void mlcReq(unsigned coh, uint64_t pa, const Line *data) {
+  void mlcReq(unsigned coh, uint64_t pa, const Line *data, const Op &o, Kind kind) {
     const Ch &c = ch();
     Bits r = msgOf(c.dcu_mlc);
     put(r, c.dcu_mlc, "phys_addr", pa);
     put(r, c.dcu_mlc, "coh_op", coh);
-    mlc_id_ = ids_.take();
-    put(r, c.dcu_mlc, "req_id", mlc_id_);
+    const unsigned id = ids_.take();
+    put(r, c.dcu_mlc, "req_id", id);
     if (data) putLine(r, field(c.dcu_mlc, "writeback_data").lsb, *data);
-    to_mlc_.push_back({0, r, cur_.tid});
+    to_mlc_.push_back({0, r, o.tid});
+    miss_[id] = {o, kind, pa};
+    busy_lines_.insert(pa);
   }
 
   void work() override {
@@ -420,7 +448,7 @@ private:
                             : nullptr;
         if (l) {
           // A hit answered past a miss in flight or waiting (A-46).
-          if (st_ != kIdle || !q_.empty()) k_.hit("hit_under_miss");
+          if (!miss_.empty() || !q_.empty()) k_.hit("hit_under_miss");
           hitRsp(o, *l);
         } else {
           q_.push_back(o);
@@ -428,56 +456,60 @@ private:
       }
     if (has(c.mlc_dcu, 0)) {
       Receiver::Msg m = take(c.mlc_dcu, 0);
-      const bool wr = get(cur_.req, c.miu_dcu, "coh_op") == kCohWrite;
       const unsigned id = unsigned(get(m.payload, c.mlc_dcu, "req_id"));
-      if (st_ == kIdle || id != mlc_id_ || !ids_.release(id))
+      auto it = miss_.find(id);
+      if (it == miss_.end() || !ids_.release(id)) {
         k_.fail("dcu: MLC answered req_id %u, which is not outstanding", id);
-      Bits r = miuRsp();
-      if (st_ == kWaitLine && !wr) {
-        const Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
-        putLine(r, field(c.dcu_miu, "read_data").lsb, l);
-        put(r, c.dcu_miu, "mlc_miss", get(m.payload, c.mlc_dcu, "miss"));
-        install(get(cur_.req, c.miu_dcu, "phys_addr"), l);
-        to_miu_.push_back({cur_.slot, r, cur_.tid});
-        st_ = kIdle;
-      } else if (st_ == kWaitLine) {
-        Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
-        const Line w = getLine(cur_.req, field(c.miu_dcu, "write_data").lsb);
-        const uint32_t mlsb = field(c.miu_dcu, "byte_mask").lsb;
-        for (unsigned k = 0; k != kLine; ++k)
-          if (cur_.req.bit(mlsb + k)) l[k] = w[k];
-        install(get(cur_.req, c.miu_dcu, "phys_addr"), l);
-        mlcReq(kCohWrite, get(cur_.req, c.miu_dcu, "phys_addr"), &l);
-        st_ = kWaitAck;
-      } else if (st_ == kWaitAck) {
-        to_miu_.push_back({cur_.slot, r, cur_.tid});   // the write's ack
-        st_ = kIdle;
       } else {
-        k_.fail("dcu: a line from MLC it did not ask for");
+        const Miss x = it->second;
+        miss_.erase(it);
+        busy_lines_.erase(x.line);
+        Bits r = rspFor(x.op.req);
+        if (x.kind == kFill) {
+          const Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
+          putLine(r, field(c.dcu_miu, "read_data").lsb, l);
+          put(r, c.dcu_miu, "mlc_miss", get(m.payload, c.mlc_dcu, "miss"));
+          install(x.line, l);
+          to_miu_.push_back({x.op.slot, r, x.op.tid});
+        } else if (x.kind == kRmwRead) {
+          Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
+          const Line w = getLine(x.op.req, field(c.miu_dcu, "write_data").lsb);
+          const uint32_t mlsb = field(c.miu_dcu, "byte_mask").lsb;
+          for (unsigned k = 0; k != kLine; ++k)
+            if (x.op.req.bit(mlsb + k)) l[k] = w[k];
+          install(x.line, l);
+          mlcReq(kCohWrite, x.line, &l, x.op, kAck);
+        } else {
+          to_miu_.push_back({x.op.slot, r, x.op.tid});   // the write's ack
+        }
       }
     }
-    if (st_ == kIdle && !q_.empty()) {
-      cur_ = q_.front();
-      q_.pop_front();
-      // A read queued behind the fill that brought its line in hits now
-      // (late for the contract, which is MIU's to judge).
-      const Line *l = get(cur_.req, c.miu_dcu, "coh_op") == kCohRead
-                          ? lookup(get(cur_.req, c.miu_dcu, "phys_addr"))
-                          : nullptr;
-      const uint64_t pa = get(cur_.req, c.miu_dcu, "phys_addr");
+    // The oldest queued request whose line has nothing in flight, nor an
+    // older request waiting, starts: a hit (a read queued behind the fill
+    // that brought its line in hits now, late for the contract, which is
+    // MIU's to judge), a whole-line write, or a read to MLC.
+    std::set<uint64_t> held;
+    for (auto it = q_.begin(); it != q_.end(); ++it) {
+      const uint64_t pa = get(it->req, c.miu_dcu, "phys_addr");
+      if (busy_lines_.count(pa) || held.count(pa)) { held.insert(pa); continue; }
+      const bool rd = get(it->req, c.miu_dcu, "coh_op") == kCohRead;
+      const Line *l = rd ? lookup(pa) : nullptr;
+      if (!l && !ids_.any()) break;          // every req_id in flight: wait, in order
+      if (!l && k_.brk == "dcu-one-miss" && !miss_.empty()) break;   // a blocking DCU
+      const Op o = *it;
+      q_.erase(it);
       if (l) {
-        hitRsp(cur_, *l);
-      } else if (get(cur_.req, c.miu_dcu, "coh_op") == kCohWrite && fullLine(cur_.req)) {
+        hitRsp(o, *l);
+      } else if (!rd && fullLine(o.req)) {
         // The whole line written: straight to MLC, with no read first.
-        const Line w = getLine(cur_.req, field(c.miu_dcu, "write_data").lsb);
+        const Line w = getLine(o.req, field(c.miu_dcu, "write_data").lsb);
         install(pa, w);
-        mlcReq(kCohWrite, pa, &w);
-        st_ = kWaitAck;
+        mlcReq(kCohWrite, pa, &w, o, kAck);
         k_.hit("full_line");
       } else {
-        mlcReq(kCohRead, pa, nullptr);
-        st_ = kWaitLine;
+        mlcReq(kCohRead, pa, nullptr, o, rd ? kFill : kRmwRead);
       }
+      break;
     }
     if (!to_mlc_.empty() && can(c.dcu_mlc, 0)) {
       send(c.dcu_mlc, 0, to_mlc_.front().msg, to_mlc_.front().tid);
@@ -492,7 +524,7 @@ private:
       }
   }
   bool busy() const override {
-    return !q_.empty() || st_ != kIdle || !to_mlc_.empty() || !to_miu_.empty();
+    return !q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty();
   }
 };
 
@@ -1971,8 +2003,6 @@ public:
 
 private:
   static constexpr unsigned kPage = 4096;
-  bool launched_ = false;
-  size_t next_ = 0;
   std::map<uint64_t, uint64_t> page_;       ///< virtual page -> physical page
   std::set<uint64_t> itlb_wait_;
   std::map<uint64_t, Line> line_;           ///< by virtual line address
@@ -1980,13 +2010,21 @@ private:
   std::map<unsigned, uint64_t> ifill_wait_; ///< virtual line, by req_id
   std::deque<Q> fills_, itlbs_;
   static constexpr unsigned kCkpts = ccv::prov::kBrCkpts;
-  // Tier-1 slot 0's checkpoints: which are live, and in what order they were
-  // taken, so a redirect can free the one it restores and every younger one.
-  uint32_t live_ = 0;
-  std::deque<unsigned> taken_order_;
-  std::map<uint64_t, unsigned> ckpt_of_;    ///< checkpoint, by branch seq
-  bool await_redirect_ = false;             ///< fetched a branch it mispredicts
-  unsigned tier1_ = 0;                      ///< the warp's tier-1 slot, from RAU
+  /// A launched warp, by warp_id: its place in its own oracle stream, its
+  /// tier-1 slot (A-65), and its checkpoints, which are live and in what
+  /// order they were taken, so a redirect can free the one it restores and
+  /// every younger one. Warps fetch side by side, each in its slot's binding
+  /// group of ccv_fet_dec_instr; the ITLB and the fills are shared.
+  struct Warp {
+    bool launched = false;
+    size_t next = 0;
+    unsigned tier1 = 0;
+    uint32_t live = 0;
+    std::deque<unsigned> taken_order;
+    std::map<uint64_t, unsigned> ckpt_of;   ///< checkpoint, by branch seq
+    bool await_redirect = false;            ///< fetched a branch it mispredicts
+  };
+  std::map<unsigned, Warp> warps_;
   // Each warp's fetch epoch, by warp_id, as OOE last sent it (A-70, A-74).
   // FET advances nothing itself, and never resets it at launch.
   unsigned epoch_[32] = {};
@@ -1995,15 +2033,21 @@ private:
 
   void work() override {
     const Ch &c = ch();
-    const auto &recs = k_.orc.recs;
     if (has(c.rau_fet, 0)) {
       Receiver::Msg m = take(c.rau_fet, 0);
+      const unsigned w = unsigned(get(m.payload, c.rau_fet, "warp_id"));
       const uint64_t start = get(m.payload, c.rau_fet, "start_pc");
-      if (recs.empty() || start != recs[0].pc)
-        k_.fail("fet: launch at %llx, but ccv-sim began elsewhere",
-                (unsigned long long)start);
-      launched_ = true;
-      tier1_ = unsigned(get(m.payload, c.rau_fet, "tier1_id"));   // A-65
+      if (w >= k_.orcs.size()) {
+        k_.fail("fet: a launch of warp %u, which ccv-sim never ran", w);
+      } else {
+        const auto &recs = k_.orcs[w].recs;
+        if (recs.empty() || start != recs[0].pc)
+          k_.fail("fet: warp %u launches at %llx, but ccv-sim began elsewhere", w,
+                  (unsigned long long)start);
+        Warp &x = warps_[w];
+        x.launched = true;
+        x.tier1 = unsigned(get(m.payload, c.rau_fet, "tier1_id"));   // A-65
+      }
     }
     if (has(c.ooe_fet, 0)) {
       // A redirect. Fetch ORDER is still the oracle's, so what FET can do is
@@ -2018,6 +2062,7 @@ private:
       if (get(m.payload, c.ooe_fet, "epoch_only")) {
         epoch_[rw & 31] = fe;
       } else {
+        Warp &x = warps_[rw];
         const uint64_t tgt = get(m.payload, c.ooe_fet, "target_pc");
         const uint32_t tmask = uint32_t(get(m.payload, c.ooe_fet, "taken_mask"));
         const unsigned ck = unsigned(get(m.payload, c.ooe_fet, "checkpoint_id"));
@@ -2028,21 +2073,21 @@ private:
                     (unsigned long long)r->target, r->taken);
           // The checkpoint is FET's own: the one it took for this branch, back
           // through DEC and OOE. FET rebuilds the groups from it and tmask.
-          auto k = ckpt_of_.find(r->seq);
-          if (k == ckpt_of_.end() || k->second != ck)
+          auto k = x.ckpt_of.find(r->seq);
+          if (k == x.ckpt_of.end() || k->second != ck)
             k_.fail("fet: seq %llu redirect names checkpoint %u, not the one FET took",
                     (unsigned long long)r->seq, ck);
         }
         // Restoring a checkpoint frees it and every younger one: the branches
         // that took them were on the wrong path (A-56). Applied before any free
         // landing this cycle -- the pair is latency-matched (A-58).
-        for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
+        for (auto it = x.taken_order.begin(); it != x.taken_order.end(); ++it)
           if (*it == ck) {
-            for (auto j = it; j != taken_order_.end(); ++j) live_ &= ~(1u << *j);
-            taken_order_.erase(it, taken_order_.end());
+            for (auto j = it; j != x.taken_order.end(); ++j) x.live &= ~(1u << *j);
+            x.taken_order.erase(it, x.taken_order.end());
             break;
           }
-        await_redirect_ = false;
+        x.await_redirect = false;
         epoch_[rw & 31] = fe;
         stale_next_ = k_.brk == "stale-epoch" && !stale_done_;
         stale_done_ = stale_done_ || stale_next_;
@@ -2057,14 +2102,17 @@ private:
       for (unsigned b = 0; b != kChans[c.ooe_free].bits; ++b) {
         if (!(fm >> b & 1)) continue;
         const unsigned slot = b / kCkpts, ck = b % kCkpts;
-        if (slot != tier1_ || !(live_ >> ck & 1)) {
+        Warp *x = nullptr;
+        for (auto &w : warps_)
+          if (w.second.launched && w.second.tier1 == slot) x = &w.second;
+        if (!x || !(x->live >> ck & 1)) {
           k_.fail("fet: a free for tier-1 slot %u checkpoint %u, which is not live", slot, ck);
           continue;
         }
-        live_ &= ~(1u << ck);
+        x->live &= ~(1u << ck);
         k_.hit("ckpt_free");
-        for (auto it = taken_order_.begin(); it != taken_order_.end(); ++it)
-          if (*it == ck) { taken_order_.erase(it); break; }
+        for (auto it = x->taken_order.begin(); it != x->taken_order.end(); ++it)
+          if (*it == ck) { x->taken_order.erase(it); break; }
       }
     }
     if (has(c.miu_fet, 0)) {
@@ -2089,12 +2137,16 @@ private:
         ids_.release(id);
       }
     }
-    // The warp fetches in its tier-1 slot's binding group, the slot RAU
-    // placed it in (A-65): slots tier1_ * bind_group upward, in order.
+    // Each warp fetches in its tier-1 slot's binding group, the slot RAU
+    // placed it in (A-65): slots tier1 * bind_group upward, in order.
     const unsigned bg = kChans[c.fet_dec].bind_group;
-    for (unsigned s = tier1_ * bg; s != tier1_ * bg + bg && launched_ && !await_redirect_ &&
-                                    next_ != recs.size(); ++s) {
-      const Record &r = recs[next_];
+    for (auto &wx : warps_) {
+    const unsigned w = wx.first;
+    Warp &x = wx.second;
+    const auto &recs = k_.orcs[w].recs;
+    for (unsigned s = x.tier1 * bg; s != x.tier1 * bg + bg && x.launched && !x.await_redirect &&
+                                    x.next != recs.size(); ++s) {
+      const Record &r = recs[x.next];
       bool ready = true;
       for (uint64_t a = r.pc / kLine * kLine; a < r.pc + r.size; a += kLine)
         if (!line_.count(a)) { ready = false; want(a); }
@@ -2104,9 +2156,9 @@ private:
         const uint64_t a = r.pc + b;
         word |= uint64_t(line_[a / kLine * kLine][a % kLine]) << (8 * b);
       }
-      if (k_.brk == "corrupt-fetch" && r.seq == 5) word ^= 0x100;
+      if (k_.brk == "corrupt-fetch" && w == 0 && r.seq == 5) word ^= 0x100;
       Bits f = msgOf(c.fet_dec);
-      put(f, c.fet_dec, "warp_id", 0);
+      put(f, c.fet_dec, "warp_id", w);
       put(f, c.fet_dec, "tier1_id", s / kChans[c.fet_dec].bind_group);
       put(f, c.fet_dec, "pc", r.pc);
       put(f, c.fet_dec, "instr", word);
@@ -2117,9 +2169,9 @@ private:
       // lane 31 from one instruction's group; stale-epoch tags the first
       // instruction after a redirect with the epoch before it.
       uint32_t gmask = r.mask;
-      if (k_.brk == "corrupt-group-mask" && r.seq == 5) gmask &= 0x7fffffffu;
+      if (k_.brk == "corrupt-group-mask" && w == 0 && r.seq == 5) gmask &= 0x7fffffffu;
       put(f, c.fet_dec, "group_mask", gmask);
-      const unsigned ep = epoch_[0];            // the stub fetches warp 0 only
+      const unsigned ep = epoch_[w & 31];
       put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
       stale_next_ = false;
       // A branch takes a checkpoint of the PC groups, and FET predicts it.
@@ -2133,20 +2185,21 @@ private:
       bool mispredict = false;
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBranch) {
         unsigned ck = 0;
-        while (ck != kCkpts && (live_ >> ck & 1)) ++ck;
+        while (ck != kCkpts && (x.live >> ck & 1)) ++ck;
         if (ck == kCkpts) { k_.hit("ckpt_full"); break; }   // every checkpoint live
-        live_ |= 1u << ck;
-        taken_order_.push_back(ck);
-        k_.peak("ckpt_peak", taken_order_.size());
-        ckpt_of_[r.seq] = ck;
+        x.live |= 1u << ck;
+        x.taken_order.push_back(ck);
+        k_.peak("ckpt_peak", x.taken_order.size());
+        x.ckpt_of[r.seq] = ck;
         put(f, c.fet_dec, "checkpoint_id", ck);
         put(f, c.fet_dec, "pred_taken", 0);
         mispredict = r.taken != 0;
       }
-      send(c.fet_dec, s, f, instrUid(r.seq));
+      send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
-      ++next_;
-      if (mispredict) { await_redirect_ = true; break; }
+      ++x.next;
+      if (mispredict) { x.await_redirect = true; break; }
+    }
     }
     if (!itlbs_.empty() && can(c.fet_miu, 0)) {
       send(c.fet_miu, 0, itlbs_.front().msg, itlbs_.front().tid);
@@ -2194,58 +2247,68 @@ private:
   }
 
   bool busy() const override {
-    return (launched_ && next_ != k_.orc.recs.size()) || !itlb_wait_.empty() ||
+    bool left = false;
+    for (auto &w : warps_)
+      left = left || (w.second.launched && w.second.next != k_.orcs[w.first].recs.size());
+    return left || !itlb_wait_.empty() ||
            !ifill_wait_.empty() || !fills_.empty() || !itlbs_.empty();
   }
 };
 
-// ---- RAU: launches the one warp -------------------------------------------------------
+// ---- RAU: launches the kernel's warps ----------------------------------------------
 
+/// One warp a CTA (ccv-sim's model), warp w in tier-1 slot w (A-65), so at
+/// most CCV_TIER1_WARPS: each allocated, its CTA configured, then launched
+/// to FET, in warp order, one message a channel a cycle.
 class Rau : public Stub {
 public:
   using Stub::Stub;
   const char *kind() const override { return "rau"; }
 
 private:
-  bool launch_ = false, alloc_ = false, cta_ = false;
+  unsigned alloc_ = 0, cta_ = 0, launch_ = 0;   ///< warps sent each message
 
   void work() override {
     const Ch &c = ch();
     const uint64_t none = makeUid(IdClass::kNone, 0);
-    if (!alloc_ && can(c.rau_ooe, 0)) {
+    const unsigned n = unsigned(k_.orcs.size());
+    if (alloc_ != n && can(c.rau_ooe, 0)) {
+      const unsigned w = alloc_;
       Bits a = msgOf(c.rau_ooe);
-      put(a, c.rau_ooe, "warp_id", 0);
+      put(a, c.rau_ooe, "warp_id", w);
       put(a, c.rau_ooe, "alloc_op", kAllocLaunch);
-      put(a, c.rau_ooe, "tier1_id", 0);           // RAU places it in slot 0 (A-65)
-      // Identity from RAU's warp-to-CTA table: one warp, warp 0 of its CTA.
-      put(a, c.rau_ooe, "ctaid", k_.orc.ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
+      put(a, c.rau_ooe, "tier1_id", w);           // RAU places warp w in slot w (A-65)
+      // Identity from RAU's warp-to-CTA table: each warp warp 0 of its CTA.
+      put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
       put(a, c.rau_ooe, "warp_in_cta", 0);
       put(a, c.rau_ooe, "barrier_count", 0);      // no kernel allocates a barrier yet
       send(c.rau_ooe, 0, a, none);
-      alloc_ = true;
+      ++alloc_;
     }
-    if (!cta_ && can(c.rau_miu, 0)) {
+    if (cta_ != n && can(c.rau_miu, 0)) {
       Bits a = msgOf(c.rau_miu);
-      put(a, c.rau_miu, "cta_slot", 0);
+      put(a, c.rau_miu, "cta_slot", cta_);
       send(c.rau_miu, 0, a, none);
-      cta_ = true;
+      ++cta_;
     }
-    // Launch last, a cycle after the allocation, so the warp's registers
-    // exist before its first instruction can reach them.
-    if (alloc_ && cta_ && !launch_ && can(c.rau_fet, 0)) {
+    // Launch last, once the warp's allocation and its CTA are sent, so its
+    // registers exist before its first instruction can reach them.
+    if (launch_ < alloc_ && launch_ < cta_ && can(c.rau_fet, 0)) {
+      const unsigned w = launch_;
+      const Oracle &o = k_.orcs[w];
       Bits l = msgOf(c.rau_fet);
-      put(l, c.rau_fet, "warp_id", 0);
-      put(l, c.rau_fet, "tier1_id", 0);           // the same slot, to FET
-      put(l, c.rau_fet, "start_pc", k_.orc.code_base);
+      put(l, c.rau_fet, "warp_id", w);
+      put(l, c.rau_fet, "tier1_id", w);           // the same slot, to FET
+      put(l, c.rau_fet, "start_pc", o.code_base);
       // code_bounds: [63:0] base, [103:64] length (placeholder split).
       const FieldDesc &cb = field(c.rau_fet, "code_bounds");
-      l.set(cb.lsb, 64, k_.orc.code_base);
-      l.set(cb.lsb + 64, cb.width - 64, k_.orc.code.size());
+      l.set(cb.lsb, 64, o.code_base);
+      l.set(cb.lsb + 64, cb.width - 64, o.code.size());
       send(c.rau_fet, 0, l, none);
-      launch_ = true;
+      ++launch_;
     }
   }
-  bool busy() const override { return !launch_; }
+  bool busy() const override { return launch_ != k_.orcs.size(); }
 };
 
 /// SPM, SYU, PCA, CRU: nothing on vadd's path.
@@ -2281,25 +2344,50 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
 KernelReport compareFinal(Kernel &k) {
   k.flushHeld();
   KernelReport r;
-  const Oracle &o = k.orc;
-  for (unsigned a = 0; a != kArchGprs; ++a)
-    for (unsigned l = 0; l != kLanes; ++l)
-      if (k.gpr[k.rat0[a]][l] != o.final_gpr[a][l]) {
-        if (r.gpr_mismatch++ < 4)
-          std::fprintf(stderr, "FINAL R%u lane %u: machine %08x, ccv-sim %08x\n",
-                       a, l, k.gpr[k.rat0[a]][l], o.final_gpr[a][l]);
+  // Each warp's registers against its own run of ccv-sim.
+  for (unsigned w = 0; w != k.orcs.size(); ++w) {
+    const Oracle &o = k.orcs[w];
+    const std::vector<unsigned> &rat = k.ratOf(w);
+    const char *who = k.orcs.size() == 1 ? "" : "warp ";
+    const std::string wn = k.orcs.size() == 1 ? "" : std::to_string(w) + " ";
+    for (unsigned a = 0; a != kArchGprs; ++a)
+      for (unsigned l = 0; l != kLanes; ++l)
+        if (k.gpr[rat[a]][l] != o.final_gpr[a][l]) {
+          if (r.gpr_mismatch++ < 4)
+            std::fprintf(stderr, "FINAL %s%sR%u lane %u: machine %08x, ccv-sim %08x\n", who,
+                         wn.c_str(), a, l, k.gpr[rat[a]][l], o.final_gpr[a][l]);
+        }
+    std::vector<unsigned> pmap = w < k.prat.size() ? k.prat[w] : std::vector<unsigned>();
+    if (pmap.empty())
+      for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
+    if (k.brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);
+    for (unsigned p = 0; p != kArchPreds; ++p)
+      if (k.pred[pmap[p]] != o.final_pred[p]) {
+        ++r.pred_mismatch;
+        std::fprintf(stderr, "FINAL %s%sP%u: machine %08x, ccv-sim %08x\n", who, wn.c_str(), p,
+                     k.pred[pmap[p]], o.final_pred[p]);
       }
-  std::vector<unsigned> pmap = k.prat0;
-  if (pmap.empty())
-    for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(0, p));
-  if (k.brk == "swap-prat0") std::swap(pmap[0], pmap[1]);
-  for (unsigned p = 0; p != kArchPreds; ++p)
-    if (k.pred[pmap[p]] != o.final_pred[p]) {
-      ++r.pred_mismatch;
-      std::fprintf(stderr, "FINAL P%u: machine %08x, ccv-sim %08x\n", p,
-                   k.pred[pmap[p]], o.final_pred[p]);
+  }
+  // Memory: what each warp's run left changed from the memory they all began
+  // with, together. Each CTA must write words of its own: two runs leaving
+  // one word differently is a kernel that races, refused as a mismatch.
+  std::map<uint64_t, uint32_t> init, want;
+  for (auto &w : k.orcs[0].init_mem) init[w.first] = w.second;
+  for (const Oracle &o : k.orcs)
+    for (auto &w : o.final_mem) {
+      auto i = init.find(w.first);
+      const bool changed = i == init.end() ? w.second != 0 : i->second != w.second;
+      if (!changed && !want.count(w.first)) { want[w.first] = w.second; continue; }
+      if (!changed) continue;
+      auto o2 = want.find(w.first);
+      const bool other = o2 != want.end() &&
+                         o2->second != (i == init.end() ? 0u : i->second) && o2->second != w.second;
+      if (other && r.mem_mismatch++ < 4)
+        std::fprintf(stderr, "FINAL [%llx]: two warps' runs leave it %08x and %08x\n",
+                     (unsigned long long)w.first, o2->second, w.second);
+      want[w.first] = w.second;
     }
-  for (auto &w : o.final_mem) {
+  for (auto &w : want) {
     uint32_t v = 0;
     for (unsigned b = 0; b != 4; ++b) {
       auto it = k.mem.find(w.first + b);
@@ -2309,14 +2397,53 @@ KernelReport compareFinal(Kernel &k) {
       std::fprintf(stderr, "FINAL [%llx]: machine %08x, ccv-sim %08x\n",
                    (unsigned long long)w.first, v, w.second);
   }
-  r.order_ok = k.retired == o.issue_groups;
-  for (size_t i = 0; i != k.retire_order.size(); ++i)
-    r.order_ok = r.order_ok && k.retire_order[i] == i;
+  // Each warp retires its own instructions in its own order.
+  unsigned groups = 0;
+  for (const Oracle &o : k.orcs) groups += o.issue_groups;
+  r.order_ok = k.retired == groups;
+  std::vector<uint32_t> next(k.orcs.size(), 0);
+  for (uint64_t s : k.retire_order) {
+    const unsigned w = seqWarp(uint32_t(s));
+    r.order_ok = r.order_ok && w < next.size() && seqIndex(uint32_t(s)) == next[w]++;
+  }
   for (unsigned c = 0; c != kNumChans; ++c) {
     if (k.rx_per_chan[c]) ++r.channels_used;
     else r.unused += std::string(r.unused.empty() ? "" : " ") + kChans[c].name;
   }
   return r;
+}
+
+std::vector<unsigned> &Kernel::ratOf(unsigned w) {
+  if (rat.size() <= w) rat.resize(w + 1);
+  if (rat[w].empty()) rat[w].assign(kArchGprs, ccv::prov::kPhysZero);
+  return rat[w];
+}
+
+std::vector<unsigned> &Kernel::pratOf(unsigned w, bool preds) {
+  if (prat.size() <= w) prat.resize(w + 1);
+  if (preds && prat[w].empty()) prat[w].assign(kArchPreds, ccv::prov::kPredZero);
+  return prat[w];
+}
+
+std::string Kernel::loadOracles(const std::string &path) {
+  orcs.assign(1, Oracle());
+  if (std::string e = orcs[0].load(path); !e.empty()) return e;
+  const std::string base =
+      path.size() > 6 && path.compare(path.size() - 6, 6, ".jsonl") == 0
+          ? path.substr(0, path.size() - 6) : path;
+  for (unsigned w = 1;; ++w) {
+    const std::string p = base + "." + std::to_string(w) + ".jsonl";
+    if (FILE *f = std::fopen(p.c_str(), "r")) std::fclose(f);
+    else break;
+    if (w >= ccv::kTier1Warps)
+      return p + ": more warps than CCV_TIER1_WARPS, and RAU launches one a slot";
+    Oracle o;
+    if (std::string e = o.load(p); !e.empty()) return e;
+    if (o.code != orcs[0].code || o.code_base != orcs[0].code_base || o.init_mem != orcs[0].init_mem)
+      return p + ": not the code and memory warp 0 ran";
+    orcs.push_back(std::move(o));
+  }
+  return "";
 }
 
 std::string kernelName(const std::string &path) {
@@ -2330,7 +2457,7 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
   bool in_flight = false;
   for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
     in_flight = m.tx(s).sent() != m.rx(s).received();
-  if (c >= kReset && k.exited && k.busy == 0 && !in_flight) {
+  if (c >= kReset && k.exited() && k.busy == 0 && !in_flight) {
     if (!finished) finish = c;
     finished = true;
     ++quiet;
@@ -2358,7 +2485,7 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
               "overflows=%llu credit_leaks=%llu channels_used=%u/%u violations=%d\n",
               k.name.c_str(), int(e.finished), (unsigned long long)e.finish,
               (unsigned long long)from_fetch, (unsigned long long)k.retired,
-              k.orc.issue_groups,
+              [&] { unsigned n = 0; for (const Oracle &o : k.orcs) n += o.issue_groups; return n; }(),
               r.order_ok ? "ok" : "bad", r.gpr_mismatch, r.pred_mismatch,
               r.mem_mismatch, (unsigned long long)k.failures,
               (unsigned long long)k.class_violations,

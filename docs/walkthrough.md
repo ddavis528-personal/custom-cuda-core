@@ -215,7 +215,7 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=186 from_fetch=155 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
+KERNEL name=vadd finished=1 cycles=165 from_fetch=134 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
 XFER events=713 launched=713 match=yes channels_seen=27
 ```
 
@@ -293,12 +293,12 @@ in the same cycle, and gets 32 results back 4 cycles later:
     105  ccv_rcu_lane_ops               rcu  -> lane   x32
     109  ccv_lane_rcu_res               lane -> rcu    x32
     111  ccv_rcu_ooe_done               rcu  -> ooe       
-    143  EV_ISSUE                       ooe          
-    144  ccv_ooe_rcu_issue              ooe  -> rcu     x4
-    146  ccv_rcu_lane_ops               rcu  -> lane   x32
-    150  ccv_lane_rcu_res               lane -> rcu    x32
-    152  ccv_rcu_ooe_done               rcu  -> ooe       
-    154  EV_RETIRE                      ooe          
+    122  EV_ISSUE                       ooe          
+    123  ccv_ooe_rcu_issue              ooe  -> rcu     x4
+    125  ccv_rcu_lane_ops               rcu  -> lane   x32
+    129  ccv_lane_rcu_res               lane -> rcu    x32
+    131  ccv_rcu_ooe_done               rcu  -> ooe       
+    133  EV_RETIRE                      ooe          
 ```
 
 The trace converts to Perfetto (`tools/trace2perfetto.py`), with a track per
@@ -379,7 +379,7 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=186 from_fetch=155 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
+KERNEL name=vadd finished=1 cycles=165 from_fetch=134 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=27/48 violations=0
 TRACES records=789/789 equal=yes byte_identical=no differing_cycles=0
 ```
 
