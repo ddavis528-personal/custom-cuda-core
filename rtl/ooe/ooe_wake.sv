@@ -240,7 +240,7 @@ module ooe_wake #(
                                                input logic prod, input logic hit, input logic cmpl,
                                                input logic stop, input logic hnt, input logic hm);
     logic [EW-1:0] n;
-    logic          iss, arm, spec, cmpld, late, miss, fire, pr, fll, fla, fhnt, flm;
+    logic          iss, arm, spec, cmpld, late, miss, mchk, fire, pr, fll, fla, fhnt, flm;
     logic [1:0]    k;
     logic [2:0]    cl;
     logic [AW-1:0] age;
@@ -275,12 +275,16 @@ module ooe_wake #(
       fhnt  = 1'b0;
       flm   = 1'b0;
     end
+    // The L1 contract's check, on the age before a hint restarts it.
+    mchk = iss && spec && reached(age, 8'(LAT_MISS));
     // The hints (OA-23): a spec timer's L1 completion is coming (as it
-    // arrives, like a hit); a waiting timer's completion is LEAD edges away,
-    // so its lead line times from the registered hint at age 1, as the
-    // restart below does from the registered completion LEAD edges later.
-    if (iss && hnt && spec) fhnt = 1'b1;
-    if (iss && hm && !spec && !arm && !fla) begin
+    // arrives, like a hit, by its miss's lead); a waiting timer's
+    // completion is LEAD edges away, so its lead line times from the
+    // registered hint at age 1, as the restart below does from the
+    // registered completion LEAD edges later. A spec timer past its miss's
+    // lead (flm) waits already: its hint is the miss's completion.
+    if (iss && hnt && spec && !flm) fhnt = 1'b1;
+    if (iss && hm && (spec ? flm : !arm) && !fla) begin
       fla = 1'b1;
       flm = 1'b0;
       age = AW'(1);
@@ -303,7 +307,7 @@ module ooe_wake #(
     if ((arm && !cmpld && reached(age, late_time(k, cl, 1'b0) - 8'(LEAD))) || (fla && reached(age, 8'(CMPL_DLY))))
       fll = 1'b1;
     if (flm) fll = 1'b0;
-    miss = iss && spec && reached(age, 8'(LAT_MISS));
+    miss = mchk && spec;
     if (miss) begin
       late = 1'b0;
       spec = 1'b0;

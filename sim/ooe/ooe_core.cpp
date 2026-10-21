@@ -271,10 +271,7 @@ void Core::uop(const Uop &u) {
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
-void Core::hint(unsigned rob_tag) {
-  RobEntry *r = byTag(rob_tag, nullptr);
-  if (r && r->rs_main != kNoEntry && rs_[r->rs_main].valid) rs_[r->rs_main].hinted = true;
-}
+void Core::hint(unsigned rob_tag) { hints_.push_back(rob_tag); }
 void Core::alloc(const Alloc &a) { allocs_.push_back(a); }
 void Core::demote(unsigned warp) { demotes_.push_back(warp); }
 void Core::barRelease(uint32_t m) { released_ |= m; }
@@ -288,6 +285,17 @@ void Core::kill(uint32_t mask, unsigned epoch) {
 
 void Core::cycle(uint64_t now) {
   now_ = now;
+  // OA-23's hints, two cycles ahead of their completions: ooe_wake keeps a
+  // spec load's lead line on one that comes by its miss's lead (the
+  // completion at the L1 contract), and drops it otherwise.
+  for (unsigned tag : hints_) {
+    RobEntry *r = byTag(tag, nullptr);
+    if (!r || r->rs_main == kNoEntry) continue;
+    RsEntry &x = rs_[r->rs_main];
+    if (x.valid && x.issued && x.spec && now_ + 2 <= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+      x.hinted = true;
+  }
+  hints_.clear();
   // The settings audit (docs/ooe-model.md): each slot's ROB room as the
   // cycle starts, the registered room the RTL's fits read.
   audit_room_.assign(slot_.size(), 0);
@@ -769,8 +777,10 @@ bool Core::requestNext(unsigned e) const {
   // reach it from the grant register at the next (the register masks them).
   // req_rows_late: and a replay of this cycle at the next (ooe_rs and
   // ooe_wake take it while ooe_sched is a cycle on).
-  const bool issued = (x.issued && !req_gnt_now_[e]) ||
-                      (cfg_.req_rows_late && e < wlog_.replay.size() && wlog_.replay[e]);
+  // req_rows_late: issued as ooe_sched forms it, ooe_wake's bits as they
+  // stood two cycles ago with the grant register, less the replays those
+  // and the held misses give (req_ise_).
+  const bool issued = cfg_.req_rows_late && e < req_ise_.size() ? bool(req_ise_[e]) : x.issued && !req_gnt_now_[e];
   // copy_conf_late: ooe_sched sees a source's confirmation a cycle after
   // the model's select would (OI-45), so a copy requests a cycle later.
   const bool conf = rowConfirmed(e) && (!cfg_.copy_conf_late || (e < row_conf_prev_.size() && row_conf_prev_[e]));
@@ -804,15 +814,54 @@ void Core::requestRegister() {
   // ready register's enable takes too): this cycle's hop on time.
   bool stop = false;
   for (unsigned e = 0; e != n_ && e < wlog_.replay.size(); ++e) stop = stop || wlog_.replay[e];
-  // req_rows_late: the replays ooe_sched sees at this edge are last cycle's.
-  const bool rep_now = stop;
-  if (cfg_.req_rows_late) stop = req_rep_q_;
+  // req_rows_late: ooe_sched's stop lead, registered last cycle.
+  bool stop_pred = false;
+  if (cfg_.req_rows_late) stop = req_stop_q_;
   // req_alloc_lead: a row written at the last edge enters at this one
   // (ooe_sched's registered allocation lead on the request enable, OI-45).
   // req_rows_late: the lead comes a cycle later, with the row.
+  if (cfg_.req_rows_late && req_row_q_[1].size() == n_ && req_dep_q_[1].size() == size_t(n_) * n_) {
+    std::vector<uint8_t> isg(n_);
+    for (unsigned j = 0; j != n_; ++j) isg[j] = (req_row_q_[1][j] & 2) || (j < req_gnt_q_.size() && req_gnt_q_[j]);
+    req_ise_.assign(n_, 0);
+    for (unsigned i = 0; i != n_; ++i) {
+      if (!isg[i]) continue;
+      bool rep = false;
+      for (unsigned j = 0; j != n_ && !rep; ++j)
+        rep = req_dep_q_[1][size_t(i) * n_ + j] && (!isg[j] || (req_row_q_[1][j] & 16));
+      req_ise_[i] = !rep;
+    }
+    // The stop lead ooe_sched registers for the next edge: the replay rule
+    // over issued less these replays, the matrix less this cycle's
+    // confirmations, and the held misses with the miss pulses (ooe_wake's
+    // pulse is a cycle ahead of its held miss: last cycle's).
+    std::vector<uint8_t> cnf(n_);
+    for (unsigned i = 0; i != n_; ++i) {
+      bool empty = true;
+      for (unsigned j = 0; j != n_ && empty; ++j) empty = !req_dep_q_[1][size_t(i) * n_ + j];
+      const uint8_t o = req_row_q_[1][i];
+      cnf[i] = isg[i] && empty && ((o & 64) || !(o & 128));
+    }
+    bool pred = false;
+    for (unsigned i = 0; i != n_ && !pred; ++i) {
+      if (!req_ise_[i]) continue;
+      for (unsigned j = 0; j != n_ && !pred; ++j)
+        pred = req_dep_q_[1][size_t(i) * n_ + j] && !cnf[j] &&
+               (!req_ise_[j] || (req_row_q_[1][j] & 16) || (req_row_q_[0][j] & 32));
+    }
+    stop_pred = pred;
+  }
   const bool alc = cfg_.req_rows_late ? req_alloc_q2_ : req_alloc_q_;
   const bool en = req_lead_q_ || gany || stop || (cfg_.req_alloc_lead && alc);
   bool diff = false;
+  if (const char *dbg = std::getenv("OOE_DEBUG_REQ")) {
+    const unsigned e = unsigned(std::atoi(dbg));
+    if (e < n_ && req_row_q_[1].size() == n_)
+      std::fprintf(stderr, "req %u core %llu now %llu: en %d (lead %d gany %d stop %d alc %d) d %d q %d ise %d old %x/%x issued %d msd %d\n", e,
+                   (unsigned long long)serial_, (unsigned long long)now_, int(en), int(req_lead_q_), int(gany), int(stop), int(alc), int(requestNext(e)),
+                   int(req_q_[e]), e < req_ise_.size() ? int(req_ise_[e]) : -1, req_row_q_[1][e], req_row_q_[0][e],
+                   int(rs_[e].issued), int(rs_[e].msd));
+  }
   for (unsigned e = 0; e != n_; ++e) {
     const bool d = requestNext(e);
     diff = diff || (!en && d != bool(req_q_[e]));
@@ -820,14 +869,20 @@ void Core::requestRegister() {
   }
   req_lead_q_ = diff;
   req_alloc_q2_ = req_alloc_q_;
-  req_rep_q_ = rep_now;
+  req_stop_q_ = stop_pred;
   req_alloc_q_ = !wlog_.ralloc.empty();
   req_row_q_[1].swap(req_row_q_[0]);
   req_row_q_[0].resize(n_);
   for (unsigned e = 0; e != n_; ++e)
     req_row_q_[0][e] = uint8_t(rs_[e].valid | (rs_[e].valid && rs_[e].issued) << 1 |
-                               (rs_[e].valid && rowConfirmed(e)) << 2 | (wlog_.rfree[e] ? 8 : 0));
+                               (rs_[e].valid && rowConfirmed(e)) << 2 | (wlog_.rfree[e] ? 8 : 0) |
+                               (rs_[e].valid && rs_[e].msd) << 4 | (e < wlog_.miss.size() && wlog_.miss[e]) << 5 |
+                               (rs_[e].valid && rs_[e].issued && rs_[e].late && !rs_[e].spec) << 6 |
+                               (rs_[e].valid && rs_[e].produces) << 7);
   for (unsigned e : wlog_.ralloc) req_row_q_[0][e] |= 8;
+  req_dep_q_[1].swap(req_dep_q_[0]);
+  req_dep_q_[0].resize(size_t(n_) * n_);
+  for (size_t k = 0; k != req_dep_q_[0].size(); ++k) req_dep_q_[0][k] = cell_[k] & 1;
   row_conf_prev_.resize(n_);
   for (unsigned e = 0; e != n_; ++e) row_conf_prev_[e] = rs_[e].valid && rowConfirmed(e);
   req_gnt_q_.swap(req_gnt_now_);

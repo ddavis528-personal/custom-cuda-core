@@ -786,6 +786,8 @@ public:
   /// OA-23's completion hint: the completion for rob_tag comes two cycles
   /// from now (read only under Config::miss_lead).
   void hint(unsigned rob_tag);
+  uint64_t now() const { return now_; }   ///< the last cycle run
+  bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
   void alloc(const Alloc &a);
   void demote(unsigned warp);
   void barRelease(uint32_t warp_mask);
@@ -1210,10 +1212,14 @@ private:
   std::vector<uint8_t> row_conf_prev_;    ///< each row confirmed at the last request register update (copy_conf_late)
   bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
   bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
-  bool req_rep_q_ = false;                ///< a replay last cycle (req_rows_late)
+  bool req_stop_q_ = false;               ///< ooe_sched's registered stop lead (req_rows_late)
+  std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
   /// req_rows_late: each row's state one and two updates ago (bit 0
-  /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle).
-  std::vector<uint8_t> req_row_q_[2];
+  /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
+  /// held miss, 5 miss pulse, 6 final, 7 produces), and issued as
+  /// ooe_sched forms it this cycle.
+  std::vector<uint8_t> req_row_q_[2], req_ise_;
+  std::vector<uint8_t> req_dep_q_[2];     ///< the matrix one and two updates ago (req_rows_late)
   std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
   unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
   unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)

@@ -96,6 +96,8 @@ struct Snap {
   std::vector<unsigned> cidx;
   std::vector<uint8_t> valid, iss, prod, fin, sqf, dep, code, line, wtl, wnext, slot, copy, ready_q, req_q, v73;
   std::vector<uint64_t> age;
+  uint64_t now = 0;   // the model's cycle
+  bool stop_q = false;   // the model's stop lead register
   unsigned active = 0, ncmpl = 0;
   bool sq = false, alloc = false, codes = false;
 };
@@ -112,6 +114,8 @@ Snap emptySnap() {
 Snap snapCycle(const Core &c) {
   Snap y = emptySnap();
   y.w = c.wakeLog();
+  y.now = c.now();
+  y.stop_q = c.reqStopQ();
   y.codes = c.wakeLinesFit();
   for (unsigned i = 0; i != N; ++i) {
     y.valid[i] = c.rsValid(i);
@@ -144,6 +148,8 @@ Snap snapCycle(const Core &c) {
   return y;
 }
 std::deque<Snap> H;   // H[k] is model cycle T - 5 + k, T the hook's
+
+bool r_stop() { return dut->rootp->ooe_trio__DOT__u_sched__DOT__stop_cq03h; }
 
 void tick() {
   dut->ooe_core_clk = 0;
@@ -310,6 +316,23 @@ void hook(const Core &c) {
     for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
   dut->busy_cq03h = sw.sel_busy >> 5;
   dut->block_cq03h = sw.sel_block;
+  if (const char *ts = std::getenv("TRIO_STOPAT")) {
+    // ooe_sched's stop lead terms before this edge, at one core cycle.
+    if (core_cycle == std::strtoull(ts, nullptr, 10)) {
+      dut->ooe_core_clk = 0;
+      dut->eval();
+      const auto *r = dut->rootp;
+      const uint64_t ise = r->ooe_trio__DOT__u_sched__DOT__ise_cq02h, gon = r->ooe_trio__DOT__u_sched__DOT__gon;
+      for (unsigned i = 0; i != N; ++i) {
+        if (!((ise >> i) & 1)) continue;
+        for (unsigned j = 0; j != N; ++j)
+          if (getBit(r->ooe_trio__DOT__u_sched__DOT__dpm, i * N + j) && ((gon >> j) & 1))
+            std::fprintf(stderr, "  stop term: entry %u on %u (iss %d msd %d mis %d gnt %d | model t: iss %d/%d valid %d/%d)\n", i, j,
+                         int(getBit(dut->iss_cq02h, j)), int(getBit(dut->msd_cq02h, j)), int(getBit(dut->miss_cq02h, j)),
+                         int((r->ooe_trio__DOT__u_sched__DOT__gnt_cq04h >> j) & 1), t.iss[j], a.iss[j], t.valid[j], a.valid[j]);
+      }
+    }
+  }
   tick();
   // -- After the edge. ooe_sched: its grant register is the model's grants
   // of t.
@@ -353,8 +376,8 @@ void hook(const Core &c) {
     if (tw) std::sscanf(tw, "%llu,%llu", &lo, &hi);
     if (cycles <= hi && cycles >= lo) {
       const auto *r = dut->rootp;
-      std::fprintf(stderr, "  [%llu] e%u model(t): valid %d iss %d grant %d rq %d alloc-in-a %d | rtl: rq %d iss %d valid %d "
-                   "grant %d rd %d/%d v73 %d\n", core_cycle, e, t.valid[e], t.iss[e], int(e < sw.sel_grant.size() && sw.sel_grant[e]), t.req_q[e],
+      std::fprintf(stderr, "  [%llu/core %llu now %llu] e%u model(t): valid %d iss %d grant %d rq %d alloc-in-a %d | rtl: rq %d iss %d valid %d "
+                   "grant %d rd %d/%d v73 %d\n", core_cycle, (unsigned long long)current, (unsigned long long)t.now, e, t.valid[e], t.iss[e], int(e < sw.sel_grant.size() && sw.sel_grant[e]), t.req_q[e],
                    int(std::count(a.w.ralloc.begin(), a.w.ralloc.end(), e)),
                    int(getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, e)), int(getBit(dut->iss_cq02h, e)),
                    int(getBit(dut->valid_cq02h, e)), int(getBit(dut->grant_cq04h, e)),
@@ -375,6 +398,12 @@ void hook(const Core &c) {
                      int(getBit(dut->msd_cq02h, j)), int(t.w.stop[j]), int(tp1.w.stop[j]), int(tp2.w.stop[j]));
       }
     }
+  }
+  if (std::getenv("TRIO_STOP")) {
+    const bool rs = r_stop();
+    if (rs != t.stop_q && !grant_diverged)
+      std::fprintf(stderr, "stop lead differs at core %llu cycle %llu (now %llu): rtl %d model %d\n",
+                   (unsigned long long)current, core_cycle, (unsigned long long)t.now, int(rs), int(t.stop_q));
   }
   // ooe_sched's registers (read inside it): the request register exactly,
   // the ready register on V-73's rows.
