@@ -736,7 +736,9 @@ else
 fi
 # PCA files a warp at the place RAU names (TI-24 (1)): on vadd4, whose two
 # parked warps need two places, RAU naming one twice is refused.
-CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break pca-place \
+# The control needs two warps parked: under the OOE model's current go
+# vadd4 parks one at the fallback's default threshold, four at 30.
+CCV_OOE_CONFIG=demote_fallback=30 CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break pca-place \
   >"$B/kernel_demote_pca-place.log" 2>&1
 if grep -q "^CHECK pca: place 0 is already held, by warp" "$B/kernel_demote_pca-place.log"; then
   say "--break pca-place: PCA refuses a held place" "PASS"

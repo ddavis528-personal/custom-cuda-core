@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=50 chan_insts=112 slots=171 sent=211870 received=211870 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=171 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=51 chan_insts=113 slots=172 sent=213032 received=213032 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=172 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -215,18 +215,18 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=176 from_fetch=145 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/50 violations=0
+KERNEL name=vadd finished=1 cycles=176 from_fetch=145 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/51 violations=0
 XFER events=650 launched=650 match=yes channels_seen=29
 ```
 
 Retired in order, every register, predicate and memory word equal to
 `ccv-sim`'s, and every one of the 650 messages
 launched was seen by the checker bank, which reported nothing. The run
-touches 29/50 channel types. The rest are waiting for
+touches 29/51 channel types. The rest are waiting for
 kernels that need them:
 
 ```
-UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
+UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_ooe_rau_status ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_rau_pca_mig ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
 ```
 
 ## 7. One instruction through the machine
@@ -251,12 +251,12 @@ instruction can be followed across every block it touches. Seq 12,
      98  ccv_dcu_mlc_req                dcu  -> mlc       
     100  ccv_mlc_exb_req                mlc  -> exb       
     102  ccv_exb_ext_out                exb  -> ext       
-    114  ccv_cru_rau_cfg                cru  -> rau       
-    115  ccv_cru_rau_cfg                cru  -> rau       
+    114  ccv_ext_exb_in                 ext  -> exb       
+    115  ccv_ext_exb_in                 ext  -> exb       
     117  ccv_exb_mlc_rsp                exb  -> mlc       
     119  ccv_mlc_dcu_rsp                mlc  -> dcu       
-    121  ccv_ext_exb_in                 ext  -> exb       
-    125  ccv_dcu_miu_fill_ntc           dcu  -> miu       
+    121  ccv_dcu_miu_fill_ntc           dcu  -> miu       
+    125  ccv_miu_ooe_cmpl_hint          miu  -> ooe       
     126  ccv_dcu_miu_rsp                dcu  -> miu       
     128  ccv_miu_ooe_cmpl               miu  -> ooe       
     128  ccv_miu_rcu_data               miu  -> rcu       
@@ -272,7 +272,7 @@ instruction can be followed across every block it touches. Seq 12,
 - **Issue:** OOE sends the operation to RCU, which reads the index register,
   and to MIU, which gets the address from RCU.
 - **Memory:** MIU to DCU to MLC to EXB, and out to the testbench's memory at
-  102. The data comes back at 121, in 1 beats, and returns the
+  102. The data comes back at 114, in 2 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
   the instruction retires at 131, 94 cycles after fetch.
@@ -381,7 +381,7 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=176 from_fetch=145 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/50 violations=0
+KERNEL name=vadd finished=1 cycles=176 from_fetch=145 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=29/51 violations=0
 TRACES records=724/724 equal=yes byte_identical=no differing_cycles=0
 ```
 
@@ -426,12 +426,12 @@ check:
 
 ```
 [20000] %Error: ccv_common_chk_credit.sv:293: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=50 chan_insts=112 slots=171 sent=203459 received=203459 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=157 idle_slots=0 violations=14
+SKEL cycles=2000 blocks=45 chan_types=51 chan_insts=113 slots=172 sent=204546 received=204546 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=158 idle_slots=0 violations=14
 ```
 
 The C++ receivers count the same leak from their side:
 `credit_leaks=42`, and only
-157 of 171 slots have all
+158 of 172 slots have all
 their credits home at the end.
 
 ## 10. Proved, for all time
