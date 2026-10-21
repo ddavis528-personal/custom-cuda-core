@@ -55,7 +55,7 @@ module share_probe #(parameter int S = 4, parameter int LC = 5,
         logic [LC-1:0] f;
         if (TAB == 1) q = '0;
         f = '0;
-        for (int kk = 1; kk <= S; kk++)
+        for (int kk = 1; S >= kk; kk++)
           for (int v = 0; v < 2 ** LC; v++)
             if (k == 3'(kk) && c == LC'(v)) begin
               if (TAB == 1) q = LC'(v / kk);
