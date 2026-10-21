@@ -579,7 +579,7 @@ plog   merge=3
 chains lane_byp=9
 missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
-mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
+mlp    l1_hit=0 reexec=5 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4
 stall  l1_late>0

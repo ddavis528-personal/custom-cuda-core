@@ -157,6 +157,8 @@ module ooe_sched #(
   logic [N-1:0] ready_cq02h;
   logic [N-1:0] ready_cq03h;
   logic         ready_en_cq03h, stop_cq03h, alc_cq03h;
+  logic         gl_cq05h;                   // a grant left at the last edge (its own stage)
+  logic         ready_en;
   ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dpm), .code_cq02h(code_cq02h),
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
@@ -180,6 +182,7 @@ module ooe_sched #(
   (* keep *) logic [N-1:0] gnt_out_cq04h;  // the grant register's leaving copy
   (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
   assign gnt_en      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
+  assign ready_en    = ready_en_cq03h || gl_cq05h;
   assign grant_cq04h   = gnt_out_cq04h;
   assign grant_w_cq04h = gnt_w_cq04h;
 
@@ -187,6 +190,7 @@ module ooe_sched #(
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       ready_en_cq03h <= 1'b0;
+      gl_cq05h       <= 1'b0;
       stop_cq03h     <= 1'b0;
       alc_cq03h      <= 1'b0;
 
@@ -195,7 +199,8 @@ module ooe_sched #(
       // A grant leaving now: ooe_wake takes it at this edge, and its lead
       // line may rise there (a latency of LEAD + 1, OA's response OI-45),
       // which no timer lead of ooe_wake's foresees.
-      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h || gnt_cq04h != '0;
+      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h;
+      gl_cq05h       <= gnt_cq04h != '0;
       stop_cq03h     <= stop_cq02h;
       alc_cq03h      <= alloc_cq02h;
       chg_cq04h      <= !rq_en && rq_cq02h != rq_cq03h;
@@ -206,7 +211,7 @@ module ooe_sched #(
       ready_cq03h <= '0;
       rq_cq03h    <= '0;
     end else begin
-      if (ready_en_cq03h) ready_cq03h <= ready_cq02h;
+      if (ready_en) ready_cq03h <= ready_cq02h;
       if (rq_en) rq_cq03h <= rq_cq02h;
     end
   end
