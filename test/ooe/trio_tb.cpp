@@ -316,6 +316,30 @@ void hook(const Core &c) {
     for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, t.age[NR + j] < t.age[NR + e]);
   dut->busy_cq03h = sw.sel_busy >> 5;
   dut->block_cq03h = sw.sel_block;
+  if (const char *tr = std::getenv("TRIO_ROWAT")) {
+    // One row of ooe_sched's matrix inputs before this edge: "core,cycle,entry".
+    unsigned long long cc = 0, cy = 0;
+    unsigned en = 0;
+    if (std::sscanf(tr, "%llu,%llu,%u", &cc, &cy, &en) == 3 && cc == current && cy == core_cycle) {
+      dut->ooe_core_clk = 0;
+      dut->eval();
+      const auto *r = dut->rootp;
+      std::fprintf(stderr, "  row %u before the edge: valid %d copy %d dep", en, int(getBit(dut->valid_cq02h, en)),
+                   int(getBit(dut->copy_cq02h, en)));
+      for (unsigned j = 0; j != N; ++j)
+        if (getBit(dut->dep_cq02h, en * N + j))
+          std::fprintf(stderr, " %u(dpm %d)", j, int(getBit(r->ooe_trio__DOT__u_sched__DOT__dpm, en * N + j)));
+      std::fprintf(stderr, " | rq_d %d\n", int((r->ooe_trio__DOT__u_sched__DOT__rq_cq02h >> en) & 1));
+      for (unsigned j = 0; j != N; ++j)
+        if (getBit(dut->dep_cq02h, en * N + j)) {
+          bool emp = true;
+          for (unsigned k = 0; k != N; ++k) emp = emp && !getBit(dut->dep_cq02h, j * N + k);
+          std::fprintf(stderr, "    src %u: iss %d gnt %d fin %d prod %d row empty %d valid %d\n", j, int(getBit(dut->iss_cq02h, j)),
+                       int((r->ooe_trio__DOT__u_sched__DOT__gnt_cq04h >> j) & 1), int(getBit(dut->fin_cq02h, j)),
+                       int((r->ooe_trio__DOT__prod_o >> j) & 1), int(emp), int(getBit(dut->valid_cq02h, j)));
+        }
+    }
+  }
   if (const char *ts = std::getenv("TRIO_STOPAT")) {
     // ooe_sched's stop lead terms before this edge, at one core cycle.
     if (core_cycle == std::strtoull(ts, nullptr, 10)) {

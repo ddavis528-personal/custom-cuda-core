@@ -788,9 +788,15 @@ bool Core::requestNext(unsigned e) const {
     const uint8_t old = req_row_q_[1][e];
     const bool touched = (req_row_q_[0][e] & 8) || wlog_.rfree[e] ||
                          std::count(wlog_.ralloc.begin(), wlog_.ralloc.end(), e);
-    if (touched)
-      return (old & 1) && !(old & 2) && !(e < req_gnt_q_.size() && req_gnt_q_[e]) &&
-             slot_[x.slot].st == WarpState::kActive && (!x.copy || (old & 4));
+    if (touched) {
+      // A copy reads the row as ooe_sched holds it: the matrix then, less
+      // this cycle's confirmations.
+      bool empty = true;
+      for (unsigned j = 0; j != n_ && empty && x.copy; ++j)
+        empty = !(req_dep_q_[1].size() == size_t(n_) * n_ && req_dep_q_[1][size_t(e) * n_ + j] && !req_cnf_[j]);
+      return (old & 1) && !(e < req_ise_.size() && req_ise_[e]) && slot_[x.slot].st == WarpState::kActive &&
+             (!x.copy || empty);
+    }
   }
   return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || conf);
 }
@@ -835,12 +841,15 @@ void Core::requestRegister() {
     // over issued less these replays, the matrix less this cycle's
     // confirmations, and the held misses with the miss pulses (ooe_wake's
     // pulse is a cycle ahead of its held miss: last cycle's).
-    std::vector<uint8_t> cnf(n_);
+    std::vector<uint8_t> &cnf = req_cnf_;
+    cnf.assign(n_, 0);
     for (unsigned i = 0; i != n_; ++i) {
       bool empty = true;
       for (unsigned j = 0; j != n_ && empty; ++j) empty = !req_dep_q_[1][size_t(i) * n_ + j];
       const uint8_t o = req_row_q_[1][i];
-      cnf[i] = isg[i] && empty && ((o & 64) || !(o & 128));
+      // ooe_wake's final bits are a cycle nearer than ooe_rs's rows, a
+      // squash's free reaching them a cycle after.
+      cnf[i] = isg[i] && empty && ((req_row_q_[0][i] & 64) || !(o & 128));
     }
     bool pred = false;
     for (unsigned i = 0; i != n_ && !pred; ++i) {
@@ -854,14 +863,6 @@ void Core::requestRegister() {
   const bool alc = cfg_.req_rows_late ? req_alloc_q2_ : req_alloc_q_;
   const bool en = req_lead_q_ || gany || stop || (cfg_.req_alloc_lead && alc);
   bool diff = false;
-  if (const char *dbg = std::getenv("OOE_DEBUG_REQ")) {
-    const unsigned e = unsigned(std::atoi(dbg));
-    if (e < n_ && req_row_q_[1].size() == n_)
-      std::fprintf(stderr, "req %u core %llu now %llu: en %d (lead %d gany %d stop %d alc %d) d %d q %d ise %d old %x/%x issued %d msd %d\n", e,
-                   (unsigned long long)serial_, (unsigned long long)now_, int(en), int(req_lead_q_), int(gany), int(stop), int(alc), int(requestNext(e)),
-                   int(req_q_[e]), e < req_ise_.size() ? int(req_ise_[e]) : -1, req_row_q_[1][e], req_row_q_[0][e],
-                   int(rs_[e].issued), int(rs_[e].msd));
-  }
   for (unsigned e = 0; e != n_; ++e) {
     const bool d = requestNext(e);
     diff = diff || (!en && d != bool(req_q_[e]));
@@ -877,7 +878,7 @@ void Core::requestRegister() {
     req_row_q_[0][e] = uint8_t(rs_[e].valid | (rs_[e].valid && rs_[e].issued) << 1 |
                                (rs_[e].valid && rowConfirmed(e)) << 2 | (wlog_.rfree[e] ? 8 : 0) |
                                (rs_[e].valid && rs_[e].msd) << 4 | (e < wlog_.miss.size() && wlog_.miss[e]) << 5 |
-                               (rs_[e].valid && rs_[e].issued && rs_[e].late && !rs_[e].spec) << 6 |
+                               ((rs_[e].valid || wlog_.rfree[e]) && rs_[e].issued && rs_[e].late && !rs_[e].spec) << 6 |
                                (rs_[e].valid && rs_[e].produces) << 7);
   for (unsigned e : wlog_.ralloc) req_row_q_[0][e] |= 8;
   req_dep_q_[1].swap(req_dep_q_[0]);

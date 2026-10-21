@@ -275,16 +275,19 @@ module ooe_wake #(
       fhnt  = 1'b0;
       flm   = 1'b0;
     end
-    // The L1 contract's check, on the age before a hint restarts it.
-    mchk = iss && spec && reached(age, 8'(LAT_MISS));
+    // The L1 contract's check, on the age before a hint restarts it. It,
+    // and the hints, read the timer as it stood: a grant restarts it, and
+    // a hint names a timer issued long before (the grant's payload stays
+    // off these paths).
+    mchk = !grant && e[FISS] && e[FSPEC] && reached(age, 8'(LAT_MISS));
     // The hints (OA-23): a spec timer's L1 completion is coming (as it
     // arrives, like a hit, by its miss's lead); a waiting timer's
     // completion is LEAD edges away, so its lead line times from the
     // registered hint at age 1, as the restart below does from the
     // registered completion LEAD edges later. A spec timer past its miss's
     // lead (flm) waits already: its hint is the miss's completion.
-    if (iss && hnt && spec && !flm) fhnt = 1'b1;
-    if (iss && hm && (spec ? flm : !arm) && !fla) begin
+    if (!grant && e[FISS] && hnt && e[FSPEC] && !e[FLM]) fhnt = 1'b1;
+    if (!grant && e[FISS] && hm && (e[FSPEC] ? e[FLM] : !e[FARM]) && !e[FLA]) begin
       fla = 1'b1;
       flm = 1'b0;
       age = AW'(1);

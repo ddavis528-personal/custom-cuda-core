@@ -1220,6 +1220,7 @@ private:
   /// ooe_sched forms it this cycle.
   std::vector<uint8_t> req_row_q_[2], req_ise_;
   std::vector<uint8_t> req_dep_q_[2];     ///< the matrix one and two updates ago (req_rows_late)
+  std::vector<uint8_t> req_cnf_;          ///< ooe_sched's confirmations this cycle (req_rows_late)
   std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
   unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
   unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)
