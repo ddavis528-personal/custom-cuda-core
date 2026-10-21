@@ -211,7 +211,7 @@ if out=$("$dir/wake_tb" "$seeds" 2>&1); then
 else
   say "wake == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in late-grant drop-cmpl no-dep drop-squash-free no-cmpl-lead no-sq-lead; do
+for c in late-grant drop-cmpl no-dep drop-squash-free no-cmpl-lead no-sq-lead no-hint; do
   if WAKE_CONTROL=$c "$dir/wake_tb" 3 >/dev/null 2>&1; then
     say "  control $c (wake)" "MISSED"; fail=1
   else
