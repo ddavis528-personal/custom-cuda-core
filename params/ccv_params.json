@@ -1024,6 +1024,15 @@
       "decided_at": "MLC and EXB per-block sessions"
     },
     {
+      "name": "CCV_P_TIMEOUT_BP",
+      "value": 8192,
+      "status": "provisional",
+      "derive": "CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM",
+      "source": "AR's response TI-22 (2026-10-21)",
+      "doc": "Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.",
+      "decided_at": "with CCV_P_TIMEOUT_MEM"
+    },
+    {
       "name": "CCV_W_ASID",
       "value": 8,
       "status": "arch",

@@ -37,8 +37,29 @@
 namespace ccv {
 namespace skel {
 
+/// An instruction's identity carries its warp in the sequence's top bits
+/// and its place in that warp's oracle stream below (kSeqWarpLsb): each
+/// warp's identities rise in fetch order, and warp 0's are the oracle's
+/// own sequence numbers, as before there were several.
+constexpr unsigned kSeqWarpLsb = 24;
+inline uint32_t warpSeq(unsigned warp, uint64_t seq) {
+  return uint32_t(warp) << kSeqWarpLsb | uint32_t(seq & ((1u << kSeqWarpLsb) - 1));
+}
+inline unsigned seqWarp(uint32_t seq) { return seq >> kSeqWarpLsb; }
+inline uint32_t seqIndex(uint32_t seq) { return seq & ((1u << kSeqWarpLsb) - 1); }
+
 struct Kernel {
-  Oracle orc;
+  /// ccv-sim's run of each warp: warp w is one CTA, ctaid orcs[w].ctaid,
+  /// alone in its CTA, since ccv-sim runs one warp a CTA. One unless the
+  /// kernel launches several (kernel.cfg CTAS, tools/gen-oracle.sh).
+  std::vector<Oracle> orcs = std::vector<Oracle>(1);
+  /// Load the oracle at `path` as warp 0 and its siblings, <path less
+  /// .jsonl>.<w>.jsonl for w = 1, 2, ..., as warps 1 upward.
+  std::string loadOracles(const std::string &path);
+  const Record *bySeq(uint32_t seq) const {
+    const unsigned w = seqWarp(seq);
+    return w < orcs.size() ? orcs[w].bySeq(seqIndex(seq)) : nullptr;
+  }
   std::string name;
   /// Negative controls. Each must make the run FAIL, and say where:
   ///   corrupt-fetch  one instruction byte flipped on its way FET -> DEC
@@ -121,18 +142,26 @@ struct Kernel {
   ///                  may carry: DEC's output assertion refuses it (IS-11)
   ///   memop-ordering the same from a DEC without that assertion: MIU
   ///                  refuses each memop it reaches (IS-11, mem_op 0xE)
+  ///   dcu-one-miss   DCU keeps one miss in flight, as it once did: a fast
+  ///                  miss waits behind a slow one, and the stall kernel's
+  ///                  other warps finish after the stalled one
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
-  std::vector<unsigned> rat0;                      ///< OOE's GPR map for warp 0
-  /// OOE's committed predicate map for warp 0, which the final compare reads
+  /// OOE's committed GPR map, by warp, which the final compare reads.
+  std::vector<std::vector<unsigned>> rat;
+  /// OOE's committed predicate map, by warp, which the final compare reads
   /// through (OI-3). An OOE that renames predicates sets it at retirement,
-  /// as it does rat0; left empty, the compare reads the fixed physPred
+  /// as it does rat; left empty, the compare reads the fixed physPred
   /// windows, which is right only while predicates are not renamed.
-  std::vector<unsigned> prat0;
+  std::vector<std::vector<unsigned>> prat;
+  /// A warp's maps, made at its first use: the zero register for every GPR,
+  /// and the zero predicate for every predicate if `preds` (A-64).
+  std::vector<unsigned> &ratOf(unsigned w);
+  std::vector<unsigned> &pratOf(unsigned w, bool preds);
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   /// The cycle FET first sent DEC an instruction. The KERNEL line counts the
@@ -140,7 +169,8 @@ struct Kernel {
   /// not carry the launch and the cold ITLB and ifill misses before it.
   uint64_t first_fetch = 0;
   bool fetched = false;
-  bool exited = false;
+  unsigned exits = 0;                              ///< warps whose exit retired
+  bool exited() const { return exits >= orcs.size(); }
   uint64_t failures = 0;                           ///< check failures
   uint64_t class_violations = 0;
   std::vector<uint64_t> rx_per_chan = std::vector<uint64_t>(kNumChans, 0);
@@ -180,8 +210,8 @@ struct Kernel {
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);
 
 /// Physical predicate of arch P<idx> for a warp. OOE owns the RATs and RAU
-/// allocates nothing (A-30). GPRs are renamed (Kernel::rat0 is warp 0's map
-/// at the end); predicates are not, so each warp keeps a fixed window.
+/// allocates nothing (A-30). GPRs are renamed (Kernel::rat holds each warp's
+/// map at the end); predicates are not, so each warp keeps a fixed window.
 inline unsigned physPred(unsigned warp, unsigned idx) { return warp * 4 + idx; }
 
 struct KernelReport {

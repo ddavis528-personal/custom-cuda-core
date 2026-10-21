@@ -98,7 +98,7 @@ void init() {
   Verilated::threadContextp()->errorLimit(1 << 30);
   const std::string oracle = plusarg("ccv_oracle");
   if (oracle.empty()) die("no +ccv_oracle=<oracle.jsonl>");
-  if (std::string e = g->k.orc.load(oracle); !e.empty()) die("%s", e.c_str());
+  if (std::string e = g->k.loadOracles(oracle); !e.empty()) die("%s", e.c_str());
   g->k.name = kernelName(oracle);
   const std::string brk = plusarg("ccv_break");
   g->k.brk = brk.empty() ? "none" : brk;

@@ -251,6 +251,7 @@
       "src": "dec",
       "dst": "ooe",
       "rate": 6,
+      "backpressure": "held: OA confirmed (TI-22, OA's rev 136) that the decode queue holds DEC's uops for as long as rename stalls, with no bound of its own (OOE doc, Decode queue: DEC sees a full queue as ordinary credit backpressure). A uop sent against credit is outstanding until rename takes it, so response_within_n holds it to CCV_P_TIMEOUT_BP, a watchdog; the measured maximum age is reported every run (AR's response TI-22)",
       "group": "instruction",
       "payload_fields": [
         "warp_id",
@@ -647,6 +648,7 @@
       "src": "miu",
       "dst": "dcu",
       "rate": 4,
+      "backpressure": "pending: a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22). It takes the class, and CCV_P_TIMEOUT_BP, when DCU's owner states the hold; until then CCV_P_TIMEOUT_N, which holds only while memory is a fixed-latency stub",
       "group": "memory",
       "payload_fields": [
         "req_id",
@@ -691,6 +693,7 @@
       "src": "dcu",
       "dst": "mlc",
       "rate": 1,
+      "backpressure": "pending: a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22). It takes the class, and CCV_P_TIMEOUT_BP, when MLC's owner states the hold; until then CCV_P_TIMEOUT_N, which holds only while memory is a fixed-latency stub",
       "group": "memory",
       "payload_fields": [
         "req_id",
@@ -771,6 +774,7 @@
       "src": "fet",
       "dst": "mlc",
       "rate": 1,
+      "backpressure": "pending: a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22). It takes the class, and CCV_P_TIMEOUT_BP, when MLC's owner states the hold; until then CCV_P_TIMEOUT_N, which holds only while memory is a fixed-latency stub",
       "group": "memory",
       "payload_fields": [
         "req_id",
@@ -842,6 +846,7 @@
       "src": "mlc",
       "dst": "exb",
       "rate": 1,
+      "backpressure": "pending: a memory-path request, whose receiver holds it only while its miss buffers are full behind a memory stall, the backpressured class (AR's response TI-22). It takes the class, and CCV_P_TIMEOUT_BP, when EXB's owner states the hold; until then CCV_P_TIMEOUT_N, which holds only while memory is a fixed-latency stub",
       "group": "memory",
       "payload_fields": [
         "req_id",
