@@ -14,10 +14,11 @@
 // registered and applied an edge late: meanwhile the slot still shows its
 // old uops (rename takes none: its rule), and they hold their credits.
 //
-// Before the edge, every slot's R oldest on the RTL's outputs must be the
-// model's, in order; after it, every slot's count and the pool's credit
-// count must be the model's (a slot flushed at that edge still showing its
-// old uops and holding their credits). The RTL's assertions (rename within the count,
+// After each edge, every slot's count and its 2R - 1 oldest past rename's
+// take (payloads for the first R, admission bits for the rest) must be the
+// model's, without that edge's arrivals, and the pool's credit count the
+// model's (a slot flushed at that edge still showing its old uops and
+// holding their credits). The RTL's assertions (rename within the count,
 // arrivals within credit, payload reads through busy entries) run too,
 // under --assert.
 //
@@ -49,7 +50,7 @@ using ccv::ooe::Core;
 int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &));
 
 namespace {
-constexpr unsigned S = DQ_S, E = DQ_E, R = DQ_R, P = 16;
+constexpr unsigned S = DQ_S, E = DQ_E, R = DQ_R, P = 16, PA = 6, H = 2 * R - 1;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned LS = bits(S), LC = bits(DQ_D + 1), LR = bits(R + 1);
 
@@ -108,6 +109,7 @@ void idleTick(bool lead = false) {
   dut->enq_v_cq01h = 0;
   dut->deq_n_cq01h = 0;
   dut->deq_any_cq01h = 0;
+  dut->deq_sel_cq01h = 0;
   dut->flush_cq01h = 0;
   dut->enq_l_cq00h = lead && control != "no-enq-lead";
   tick();
@@ -140,19 +142,6 @@ std::vector<std::pair<uint64_t, unsigned>> freshOf(const Edge &e) {
 
 void drive(const Edge &e, bool lead) {
   ++cycles;
-  // Before the edge: the RTL shows the old queues.
-  dut->ooe_core_clk = 0;
-  dut->eval();
-  for (unsigned s = 0; s != S; ++s)
-    for (unsigned k = 0; k != R; ++k) {
-      const bool v = getField(dut->head_v_cq02h, s * R + k, 1);
-      const auto &q = held_q[s].empty() ? e.was[s] : held_q[s];
-      if (v != (k < q.size())) { fail("head valid differs", s, v, k < q.size()); continue; }
-      if (!v) continue;
-      ++heads;
-      const unsigned got = getField(dut->head_pay_cq02h, (s * R + k) * P, P);
-      if (got != (q[k] & 0xffffu)) fail("head payload differs", s, got, unsigned(q[k] & 0xffffu));
-    }
   // The edge: dequeues, flushes, arrivals.
   uint64_t last = 0;
   for (const auto &q : e.was) for (uint64_t x : q) last = std::max(last, x + 1);
@@ -179,6 +168,10 @@ void drive(const Edge &e, bool lead) {
     }
   }
   dut->deq_any_cq01h = in_transit != 0 && control != "no-take-enable";
+  // rename's "may take" bits: here exactly the slots it took from.
+  dut->deq_sel_cq01h = 0;
+  for (unsigned s = 0; s != S; ++s)
+    if (getField(dut->deq_n_cq01h, s * LR, LR) && control != "no-take-enable") dut->deq_sel_cq01h |= 1u << s;
   auto fresh = freshOf(e);
   if (fresh.size() > E) { fail("more arrivals than ports", 0, unsigned(fresh.size()), E); return; }
   if (control == "enq-swap")
@@ -195,14 +188,32 @@ void drive(const Edge &e, bool lead) {
   arrivals += fresh.size();
   dut->enq_l_cq00h = lead && !cg.gaps() && control != "no-enq-lead";
   tick();
-  // After the edge: the counts and the credits.
+  // After the edge, what rename sees (OA's response OI-65): each slot's
+  // uops past rename's take, not the ones arriving at this edge (they show
+  // from the next: the model's take_young 0); a slot flushed at this edge
+  // still shows its old uops until the flush applies.
   unsigned total = 0;
   held_q.assign(S, {});
   for (unsigned s = 0; s != S; ++s) {
     if (((e.fl >> s) & 1u) && control != "drop-flush") held_q[s] = e.was[s];
-    const unsigned want = unsigned(held_q[s].empty() ? e.now[s].size() : held_q[s].size());
+    std::vector<uint64_t> want;
+    if (!held_q[s].empty()) want = held_q[s];
+    else for (uint64_t x : e.now[s]) if (x < last) want.push_back(x);
     const unsigned got = getField(dut->cnt_cq02h, s * LC, LC);
-    if (got != want) fail("count differs", s, got, want);
+    if (got != want.size()) fail("count differs", s, got, unsigned(want.size()));
+    for (unsigned k = 0; k != H; ++k) {
+      const bool v = getField(dut->head_v_cq02h, s * H + k, 1);
+      if (v != (k < want.size())) { fail("head valid differs", s, v, k < want.size()); continue; }
+      if (!v) continue;
+      ++heads;
+      if (k < R) {
+        const unsigned g = getField(dut->head_pay_cq02h, (s * R + k) * P, P);
+        if (g != (want[k] & 0xffffu)) fail("head payload differs", s, g, unsigned(want[k] & 0xffffu));
+      } else {
+        const unsigned g = getField(dut->head_adm_cq02h, (s * (H - R) + k - R) * PA, PA);
+        if (g != (want[k] & ((1u << PA) - 1))) fail("head admission bits differ", s, g, unsigned(want[k] & ((1u << PA) - 1)));
+      }
+    }
     total += unsigned(e.now[s].size());
   }
   full += total == DQ_Q;
@@ -223,6 +234,7 @@ void hook(const Core &c) {
     dut->enq_v_cq01h = 0;
     dut->deq_n_cq01h = 0;
     dut->deq_any_cq01h = 0;
+    dut->deq_sel_cq01h = 0;
     dut->flush_cq01h = 0;
     dut->enq_l_cq00h = 0;
     dut->ooe_rst_r00h = 1;
