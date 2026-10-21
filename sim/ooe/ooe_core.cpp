@@ -2571,7 +2571,7 @@ void Core::rename() {
     if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
   }
   // fits_stale 3: per-warp shares of each shared credit, no short path.
-  shares_on_ = (cfg_.fits_stale == 3 || cfg_.fits_stale == 4) && cfg_.rename_one_warp != 1;
+  shares_on_ = (cfg_.fits_stale == 3 || cfg_.fits_stale == 4 || cfg_.fits_stale == 5) && cfg_.rename_one_warp != 1;
   if (shares_on_ && cfg_.fits_stale == 4) {
     short_credit = false;
     ren_late_frees_ = true;
@@ -2648,7 +2648,8 @@ void Core::rename() {
       for (unsigned r = 0; r != 4; ++r) {
         const unsigned each = c[r] / unsigned(with.size()), rem = c[r] % unsigned(with.size());
         for (unsigned si : with) share_[si][r] = each;
-        share_[with[0]][r] += rem;
+        // fits_stale 5: equal shares, the remainder given to no warp.
+        if (cfg_.fits_stale == 3) share_[with[0]][r] += rem;
       }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;

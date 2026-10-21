@@ -4,7 +4,9 @@
 // predicate names) and decq's registered head valids; out, each warp's
 // shares, which the per-offset fits compare against.
 module share_probe #(parameter int S = 4, parameter int LC = 5,
-                     parameter int P2 = 0) (   // 1: the count rounded up to 1, 2 or 4: shifts, the first warp the rest
+                     parameter int P2 = 0,     // 1: the count rounded up to 1, 2 or 4: shifts, the first warp the rest
+                     parameter int REM = 1,    // 0: no remainder, every warp the quotient (no rotation pick, no add)
+                     parameter int TAB = 0) (  // 1: q and the first warp's share (q + m) read from c by table, per k; 2: the first's alone
   input  logic [4*LC-1:0]  cred,      // the four shared credits
   input  logic [S-1:0]     head,      // warp s has a head
   input  logic [S-1:0]     prio,      // the rotation, one-hot
@@ -47,8 +49,23 @@ module share_probe #(parameter int S = 4, parameter int LC = 5,
           3'd4: begin q = c >> 2; m = LC'(c[1:0]); end
           default: begin q = '0; m = '0; end
         endcase
+      if (TAB != 0) begin
+        // Both shares a function of c and k alone: no add after the divide.
+        // TAB 2: q from the divide as above, the first warp's alone by table.
+        logic [LC-1:0] f;
+        if (TAB == 1) q = '0;
+        f = '0;
+        for (int kk = 1; kk <= S; kk++)
+          for (int v = 0; v < 2 ** LC; v++)
+            if (k == 3'(kk) && c == LC'(v)) begin
+              if (TAB == 1) q = LC'(v / kk);
+              f = LC'(v - (kk - 1) * (v / kk));
+            end
+        for (int s = 0; s < S; s++)
+          share[(s * 4 + r) * LC +: LC] = head[s] ? (REM != 0 && first[s] ? f : q) : '0;
+      end else
       for (int s = 0; s < S; s++)
-        share[(s * 4 + r) * LC +: LC] = head[s] ? q + (first[s] ? m : '0) : '0;
+        share[(s * 4 + r) * LC +: LC] = head[s] ? (REM != 0 && first[s] ? q + m : q) : '0;
     end
   end
 endmodule

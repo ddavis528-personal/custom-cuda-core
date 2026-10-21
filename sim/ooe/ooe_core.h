@@ -225,7 +225,8 @@ struct Config {
   /// own takes lower it; frees, and the shares of warps four cycles without
   /// a head, form a pool split each cycle equally among the warps with a
   /// head (the remainder to the first in rotation); the shares and the pool
-  /// sum to the credit, as registered (checked).
+  /// sum to the credit, as registered (checked). 5: as 3, the remainder
+  /// given to no warp (the split's add gone; test/ooe/probes/share_probe.sv).
   unsigned fits_stale = 0;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,

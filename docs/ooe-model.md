@@ -440,9 +440,14 @@ is about 5.5 points: short cycles go from 38% to 63%.
 shared credit, as registered, is split equally among the warps with a
 head (the remainder to the first in rotation), and each warp admits
 against its own share. The interleave +0.0%, two warps +0.8%, one warp
-+1.3% (13.0% of refills fail). The split measures 16.1 NGD and a share
-reaches the fits 13.5 after it, too deep on the fits' D
-(`test/ooe/probes/share_probe.sv`, `fitsk2_probe.sv` SHR=1).
++1.3% (13.0% of refills fail). The split and the fits on one D,
+flattened (`test/ooe/probes/sharefits_probe.sv`), measure 25.1 NGD with
+the remainder added after the divide; with the first warp's share read
+from the credit by table, in parallel with the quotient (share_probe
+TAB 2, proved equal), 23.4 from the counters and head valids and 22.3
+from decq's heads (map -r), which arrive at about 2: 24.3. 5 drops the
+remainder instead: 22.5 NGD, but the interleave +0.6%, two warps +0.7%
+(floor shares strand credit: 14,526 fragmentation stalls to 3's 5,310).
 4 is OA's stateful shares: each warp keeps its share, its own takes lower
 it, and frees and the shares of warps four cycles without a take form a
 pool split each cycle among the warps with a head; the shares and pool sum
