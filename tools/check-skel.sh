@@ -114,7 +114,7 @@ ports() {
 }
 if command -v yosys >/dev/null 2>&1; then
   plain=$(ports ""); traced=$(ports "-DCCV_TRACE")
-  if ! echo "$plain" | grep -qw ch_tid && echo "$traced" | grep -qw ch_tid; then
+  if ! grep -qw ch_tid <<<"$plain" && grep -qw ch_tid <<<"$traced"; then
     say "trace id absent from synthesis, present in trace" "PASS"
   else
     bad "trace id gated by CCV_TRACE" "without: {$plain} with: {$traced}"
@@ -124,12 +124,12 @@ fi
 # -- the payload layout agrees across the two languages ------------------
 if out=$("$B/probe/layout-probe" 2>&1); then
   say "C++ field offsets == SV packed structs" \
-      "PASS ($(echo "$out" | grep -o 'rounds=[0-9]*'))"
+      "PASS ($(grep -o 'rounds=[0-9]*' <<<"$out"))"
 else
   bad "C++ field offsets == SV packed structs" "$(echo "$out" | head -2)"
 fi
 if out=$("$B/probe/layout-probe" --mutate 2>&1); then
-  n=$(echo "$out" | grep -o 'caught=[0-9]*' | cut -d= -f2)
+  n=$(grep -o 'caught=[0-9]*' <<<"$out" | cut -d= -f2)
   say "  ...a 1-bit offset shift is caught on every field" "PASS ($n fields)"
 else
   bad "layout probe catches a shifted offset" "$(echo "$out" | head -1)"
