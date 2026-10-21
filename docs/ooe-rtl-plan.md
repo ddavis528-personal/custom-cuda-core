@@ -213,8 +213,8 @@ Built (`rtl/ooe/`):
   The reset is flopped (RST-1); 6 flops are ungated, of 7 allowed. A
   dequeue is still rename's input, on the ratchet (CG-5): its lead is
   rename's go (OI-63). The bench runs the RTL a snapshot behind the model;
-  new control no-enq-lead. OI-54's late-event control now finds its race
-  at decq 2 (the flush's timing moved it from decq 4).
+  new control no-enq-lead. (OI-54's late-event control, whose random hunt
+  this moved, is now directed: docs/ooe-model.md.)
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function

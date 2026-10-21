@@ -471,7 +471,10 @@ stop or miss one edge late, as V-73 first allowed. That lets a replayed
 producer be re-granted inside its dependant's stale window; the
 dependant, granted on its stale bit, is never replayed by OI-50's rule
 and confirms on a result it read too early (OI-54). The control must hit
-that OA-17 check, and does (at decq 4). On time it costs nothing: the
+that OA-17 check, and does: directed, one warp, a load missing by a
+cycle, a producer reading it and the producer's dependant (a random hunt
+found it in one run in 100 to 700, and rename's traffic kept moving it;
+without the injection the directed cases err nowhere). On time it costs nothing: the
 48-seed sweep, the four-warp kernels and the S1 kernels are as without
 the enable.
 

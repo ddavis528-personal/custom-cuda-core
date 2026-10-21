@@ -1223,37 +1223,53 @@ void testReadyReg() {
   // producer be re-granted inside its dependant's stale window; the
   // dependant, granted on its stale bit, is never replayed and confirms on
   // a result it read too early. The model's OA-17 check must see it.
+  // Directed, one warp: a load L that misses by a cycle, a producer P
+  // reading it (replayed, then re-granted as L's data lands) and P's
+  // dependant D, whose ready register holds P's old line an edge too long.
+  // A random hunt found it in one run in 100 to 700, and every change to
+  // rename's traffic moved it; this family hits in about one case in 9 of
+  // its wider search, and without the injection none of it errs.
   g_test = "ready register: a late capture confirms a stale grant (OI-54's control)";
   const int saved = g_fail;
   bool seen = false;
-  // A shallow decode queue spaces a warp's uops so the race opens (found
-  // at decq 4 in the sweep; at decq 2 since the decode queue's flush is
-  // applied an edge late, OI-58; at decq 4 and a 60% miss rate since the
-  // take is popped late, OA-21; at decq 3 and 20% under the registered
-  // go, OA-22). It is rare, one run in 100 to 700 at any setting, and
-  // every change to rename's traffic moves it, so the hunt is wide and
-  // stops at the first. A directed test would hold it better (OI's task).
-  for (unsigned run = 0; run != 6 * 3 * 60 && !seen; ++run) {
-    const unsigned seed = run % 60 + 1;
-    std::mt19937 rng(seed);
+  auto run = [&](Kind pk, Kind dk, unsigned gap, unsigned extra, bool late, bool &hit, bool &other) {
     Config c = baseConfig();
-    c.rs_warp_cap = c.decq_warp_max = 0;
-    c.decq = (unsigned[]){3, 4, 2, 5, 6, 8}[run / 180];
-    c.inject_late_event = true;
-    Env e(c, seed);
-    e.miss_pct = (unsigned[]){20, 60, 40}[(run / 60) % 3];
-    const auto report = e.core.on_error;
+    c.inject_late_event = late;
+    Env e(c, 1);
+    e.miss_pct = 100;
+    e.miss_extra = extra;
+    std::vector<Op> p;
+    Op ld; ld.k = kLoad; ld.dst = 1; ld.src[0] = 9; ld.nsrc = 1; p.push_back(ld);
+    Op pp; pp.k = pk; pp.dst = 2; pp.src[0] = 1; pp.nsrc = 1; p.push_back(pp);
+    for (unsigned i = 0; i != gap; ++i) { Op f; f.k = kLane; f.dst = 12 + i; p.push_back(f); }
+    Op dd; dd.k = dk; dd.dst = 3; dd.src[0] = 2; dd.nsrc = 1; p.push_back(dd);
+    Op st; st.k = kStore; st.src[0] = 3; st.src[1] = 3; st.nsrc = 2; p.push_back(st);
+    Op ex; ex.k = kExit; p.push_back(ex);
     e.core.on_error = [&](const std::string &m) {
-      seen = seen || m.find("OA-17") != std::string::npos;
-      report(m);
+      if (m.find("OA-17") != std::string::npos) hit = true;
+      else other = true;
     };
-    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+    e.launch(0, 0, p);
     g_quiet = true;
-    e.finish(20000);
+    e.finish(5000);
     g_quiet = false;
-  }
+  };
+  bool clean = true;
+  for (Kind pk : {kRcuOp, kLane, kSfu})
+    for (Kind dk : {kLane, kRcuOp})
+      for (unsigned gap = 0; gap != 3 && !seen; ++gap)
+        for (unsigned extra = 1; extra != 4 && !seen; ++extra) {
+          bool hit = false, other = false;
+          run(pk, dk, gap, extra, true, hit, other);
+          if (!hit) continue;
+          seen = true;
+          bool h2 = false, o2 = false;   // the same case, no injection: nothing errs
+          run(pk, dk, gap, extra, false, h2, o2);
+          clean = !h2 && !o2;
+        }
   g_fail = saved;
   EXPECT(seen, "late capture never confirmed a stale grant");
+  EXPECT(clean, "the late-event case errs without the injection");
   std::printf("  %-24s %s\n", "control late-event", seen ? "caught" : "MISSED");
 }
 
