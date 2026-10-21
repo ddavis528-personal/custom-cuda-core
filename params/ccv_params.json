@@ -602,11 +602,11 @@
     },
     {
       "name": "CCV_P_DECQ",
-      "value": 12,
+      "value": 13,
       "status": "provisional",
-      "decided_at": "OOE per-block session",
-      "source": "OOE Stage 4 session (2026-10-02), interface change set",
-      "doc": "Decode queue depth ahead of rename."
+      "decided_at": "OOE per-block session; DA's response OA-21 (2026-10-20)",
+      "source": "OOE Stage 4 session (2026-10-02), interface change set; DA's response OA-21",
+      "doc": "Decode queue depth ahead of rename. 13 since rename interleaves warps uop by uop (option (c), DA's response OA-21): decq registers the take and pops it an edge late, and the extra entry covers the uop in flight; DEC's credit pool follows it. Was 12."
     },
     {
       "name": "CCV_P_RS_WARP_CAP",
@@ -619,7 +619,7 @@
     },
     {
       "name": "CCV_P_DECQ_WARP_MAX",
-      "value": 12,
+      "value": 13,
       "status": "tunable",
       "decided_at": "Stage 4b sweep (register OA-7)",
       "source": "OOE model session, register OI-6 (2026-10-07)",

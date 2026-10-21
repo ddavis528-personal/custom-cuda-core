@@ -53,7 +53,7 @@ stat_of() {
 
 # 1. The enable is inferred at all.
 base=$(stat_of "")
-if echo "$base" | grep -qE '\$_SDFFE_'; then
+if grep -qE '\$_SDFFE_' <<<"$base"; then
   say "enable inferred from the if-enable form" "PASS"
 else
   bad "enable inferred" "no enable flop in the netlist"
@@ -63,8 +63,8 @@ fi
 gated=$(stat_of "techmap -map synth/ccv_clockgate_map.v
     opt_merge -share_all
     opt_clean")
-icg=$(echo "$gated" | grep -oP '\s+ccv_common_ctech_icg\s+\K\d+' || echo 0)
-ff=$(echo "$gated" | grep -oP '\s+\$_DFF_P_\s+\K\d+' || echo 0)
+icg=$(grep -oP '\s+ccv_common_ctech_icg\s+\K\d+' <<<"$gated" || echo 0)
+ff=$(grep -oP '\s+\$_DFF_P_\s+\K\d+' <<<"$gated" || echo 0)
 
 if [ "$ff" -ne 8 ]; then
   bad "8 plain flops after gating" "got ${ff:-0}"

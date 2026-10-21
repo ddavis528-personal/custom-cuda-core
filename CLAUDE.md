@@ -29,8 +29,15 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 
 ```
 ./tools/setup-toolchain.sh   # a fresh container needs this once
-./tools/verify.sh            # ~25 min; must be green before a push
+./tools/verify.sh            # must be green before a push
 ```
+
+After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
+time (default every core; `CCV_JOBS=1` is serial), each section's log in
+`build/verify/<job>.log` with its time. A job that reads another's build
+products names it in `after` in `tools/verify.sh`; no two jobs that may run
+together share a build directory. check-cg and check-ngd measure their units
+`CCV_JOBS` at a time too.
 
 Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
 register behind an `if` on an enable named `<name>_en`; a clock gate is 8
