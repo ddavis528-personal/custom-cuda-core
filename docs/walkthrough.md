@@ -128,7 +128,7 @@ lists every such module.
 
 ## 4. The partition
 
-14 block types, 45 instances, 50 channel types
+14 block types, 45 instances, 51 channel types
 (2 of them to and from the testbench's `EXTERNAL`). Every channel is
 point to point, credited, and declared in `schema/interfaces.json`, which is
 the only place a channel is defined.
@@ -251,12 +251,12 @@ instruction can be followed across every block it touches. Seq 12,
      98  ccv_dcu_mlc_req                dcu  -> mlc       
     100  ccv_mlc_exb_req                mlc  -> exb       
     102  ccv_exb_ext_out                exb  -> ext       
-    114  ccv_ext_exb_in                 ext  -> exb       
-    115  ccv_ext_exb_in                 ext  -> exb       
+    114  ccv_cru_rau_cfg                cru  -> rau       
+    115  ccv_cru_rau_cfg                cru  -> rau       
     117  ccv_exb_mlc_rsp                exb  -> mlc       
     119  ccv_mlc_dcu_rsp                mlc  -> dcu       
-    121  ccv_dcu_miu_fill_ntc           dcu  -> miu       
-    125  ccv_miu_ooe_cmpl_hint          miu  -> ooe       
+    121  ccv_ext_exb_in                 ext  -> exb       
+    125  ccv_dcu_miu_fill_ntc           dcu  -> miu       
     126  ccv_dcu_miu_rsp                dcu  -> miu       
     128  ccv_miu_ooe_cmpl               miu  -> ooe       
     128  ccv_miu_rcu_data               miu  -> rcu       
@@ -272,7 +272,7 @@ instruction can be followed across every block it touches. Seq 12,
 - **Issue:** OOE sends the operation to RCU, which reads the index register,
   and to MIU, which gets the address from RCU.
 - **Memory:** MIU to DCU to MLC to EXB, and out to the testbench's memory at
-  102. The data comes back at 114, in 2 beats, and returns the
+  102. The data comes back at 121, in 1 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
   the instruction retires at 131, 94 cycles after fetch.
@@ -397,8 +397,8 @@ SV top under `CCV_CHECK`.
 
 | Checker | In the bank | Judges |
 |---|---|---|
-| `ccv_common_chk_credit` | 171 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
-| `ccv_common_chk_wake` | 112 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
+| `ccv_common_chk_credit` | 172 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
+| `ccv_common_chk_wake` | 113 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
 | `ccv_common_chk_atomic` | 15 | a channel's slots that must move together |
 | `ccv_common_chk_notice` | 8 | a notice and the message it promises, slot by slot |
 | `ccv_common_chk_lockstep` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
-    .ch_payload(payload[42133:40922])
+    .ch_payload(payload[42134:40923])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7999:7936])
 `endif
@@ -502,7 +502,7 @@ counter-example that must fire, and a paragraph in
 From `docs/open-items.md`, which numbers every open item and never reuses an
 ID:
 
-- **Open:** Q-10, Q-17, Q-18, Q-39, Q-42, Q-45, Q-50, Q-57
+- **Open:** Q-10, Q-17, Q-18, Q-42, Q-45, Q-50, Q-57
 - **Scheduled:** Q-1, Q-4, Q-6, Q-8, Q-12, Q-13, Q-36, Q-37, Q-46, Q-48, Q-53, Q-59
 
 Stage 4 replaces the stubs, block by block, with RTL written against the

@@ -704,7 +704,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_fet_redirect, source end
   if (RPT_OOE_FET_REDIRECT > 0) begin : g_rpt_ooe_fet_redirect
-    ccv_common_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(109)) u_rpt_ooe_fet_redirect (
+    ccv_common_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(110)) u_rpt_ooe_fet_redirect (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_fet_redirect_valid}), .src_payload({b_ooe_fet_redirect_payload}),
       .src_wake(b_ooe_fet_redirect_wake), .src_credit({b_ooe_fet_redirect_credit}), .src_stall({b_ooe_fet_redirect_stall}),
@@ -770,7 +770,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_rau_status, source end
   if (RPT_OOE_RAU_STATUS > 0) begin : g_rpt_ooe_rau_status
-    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_STATUS), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_ooe_rau_status (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_STATUS), .SLOTS(1), .PAYLOAD_W(17)) u_rpt_ooe_rau_status (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_rau_status_valid}), .src_payload({b_ooe_rau_status_payload}),
       .src_wake(b_ooe_rau_status_wake), .src_credit({b_ooe_rau_status_credit}), .src_stall({b_ooe_rau_status_stall}),

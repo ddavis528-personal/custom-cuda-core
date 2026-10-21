@@ -223,9 +223,83 @@
       "name": "CCV_DEMOTION_THRESHOLD_MLC",
       "value": 50,
       "status": "tunable",
+      "require": "CCV_DEMOTION_THRESHOLD_MLC > CCV_LAT_MLC_HIT_MAX",
       "decided_at": "RAU per-block session (register OA-8)",
       "source": "OOE model session, register OI-6 (2026-10-07)",
       "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). Starts at the fallback's value until RAU's session or the Stage 4b sweep sets it; formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
+    },
+    {
+      "name": "CCV_LAT_MLC_PIPE",
+      "value": 12,
+      "status": "provisional",
+      "source": "AR's response TI-24 (5), OA's rev 151 (2026-10-21)",
+      "doc": "MLC's tag and data pipeline for a hit, from a request accepted at its port to the response leaving it. A placeholder until MLC's session; it bounds CCV_LAT_MLC_HIT_MAX, so a deeper MLC breaks the demotion threshold's require rather than the trigger.",
+      "decided_at": "MLC per-block session"
+    },
+    {
+      "name": "CCV_LAT_MLC_HIT_MAX",
+      "value": 39,
+      "status": "provisional",
+      "derive": "2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + (2 ** CCV_P_W_REQ_DCU_MLC - 1) + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP",
+      "source": "AR's response TI-24 (5) (2026-10-21)",
+      "doc": "MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind every other miss DCU can have in flight, the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).",
+      "decided_at": "with CCV_LAT_MLC_PIPE"
+    },
+    {
+      "name": "CCV_W_PCA_PLACE",
+      "value": 5,
+      "status": "arch",
+      "derive": "clog2(CCV_PARKED_WARPS)",
+      "source": "AR's response TI-24 (1) (2026-10-21)",
+      "doc": "A place in PCA's parked array: RAU allocates one from a free list of CCV_PARKED_WARPS on a demotion and names it on ccv_rau_pca_mig both ways, so PCA stores by place, not by warp, and holds no table. It replaces CCV_L_W_PCA_BANK's bank_select, which reached only RCU and FET, neither of which stores anything."
+    },
+    {
+      "name": "CCV_W_PC_WINDOW",
+      "value": 32,
+      "status": "arch",
+      "source": "ISA v1.8 section 3 (Format E, F-FETCH); DA's response IS-17 (2026-10-21)",
+      "doc": "Every PC of a warp lies in one aligned window of 2^CCV_W_PC_WINDOW bytes, so a warp's lanes share the PC's bits above it and FET holds only the bits below per lane (IS-17's per-lane PCs)."
+    },
+    {
+      "name": "CCV_W_LANE_PC",
+      "value": 31,
+      "status": "arch",
+      "derive": "CCV_W_PC_WINDOW - 1",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "One lane's PC in FET's divergence state: its bits within the warp's window, less bit 0, which is always 0 (instructions are 16-bit aligned). FET holds one per lane, so a divergent branch never waits for a free group, and groups are the lanes with equal PCs. Replaces CCV_L_PC_GROUPS."
+    },
+    {
+      "name": "CCV_W_PC_UPPER",
+      "value": 16,
+      "status": "arch",
+      "derive": "CCV_ADDR_BITS - CCV_W_PC_WINDOW",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "The PC bits above the warp's window, shared by all its lanes."
+    },
+    {
+      "name": "CCV_FAIR_N",
+      "value": 16,
+      "status": "provisional",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "FET's fairness rule: every Nth pick of a warp goes to the group holding lane r, the rotating pointer, which then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17). The cost is the override breaking opportunistic reconvergence one pick in N.",
+      "decided_at": "OI's fairness measurement (IS-17)"
+    },
+    {
+      "name": "CCV_W_FAIR_CNT",
+      "value": 4,
+      "status": "provisional",
+      "derive": "clog2(CCV_FAIR_N)",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "FET's pick counter for the fairness rule, which migrates with the warp's PCs so a swap does not reset it.",
+      "decided_at": "with CCV_FAIR_N"
+    },
+    {
+      "name": "CCV_W_FAIR_PTR",
+      "value": 5,
+      "status": "arch",
+      "derive": "clog2(CCV_WARP_LANES)",
+      "source": "DA's response IS-17 (2026-10-21)",
+      "doc": "FET's rotating lane pointer for the fairness rule, which migrates with the warp's PCs."
     },
     {
       "name": "CCV_DEMOTION_THRESHOLD_BARRIER",
@@ -1320,15 +1394,6 @@
       "decided_at": "MMU session, with the page-table format"
     },
     {
-      "name": "CCV_L_W_PCA_BANK",
-      "value": 3,
-      "status": "preliminary",
-      "churn": "med",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "Parked-context bank select: eight banks of four warps, from the proposed PCA organization.",
-      "decided_at": "PCA session, from the parked-array organization"
-    },
-    {
       "name": "CCV_L_OPERANDS_PER_LANE",
       "value": 3,
       "status": "preliminary",
@@ -1336,15 +1401,6 @@
       "source": "Payload widths pass (2026-09-25)",
       "doc": "Operands shipped to a lane per beat. Whether a lane receives one instruction's operands or several, and whether the destination is read back for accumulate, both change this.",
       "decided_at": "RCU/LANE session -- see the src_arch vs operand mismatch"
-    },
-    {
-      "name": "CCV_L_PC_GROUPS",
-      "value": 4,
-      "status": "preliminary",
-      "churn": "high",
-      "source": "Payload widths pass (2026-09-25)",
-      "doc": "PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified.",
-      "decided_at": "divergence model specification"
     },
     {
       "name": "CCV_L_W_BAR_COUNT",

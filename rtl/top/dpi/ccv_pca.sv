@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (3187 bits,
+// At each edge of its clock: sample every channel signal (4531 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (1628 bits). Common-port outputs sit inactive, as in
+// what it drove (2263 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_pca (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_pca(
     input int h, input longint cyc, input bit rst,
-    input bit [3186:0] sample, output bit [1627:0] drive);
+    input bit [4530:0] sample, output bit [2262:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [1627:0] drv, q, q2;
+  bit [2262:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -69,26 +69,27 @@ module ccv_pca (
   // edges through the ctech ICG.
   always @(posedge gclk) begin
     ccv_dpi_cycle_pca(h, cyc, !rst_n, {
-      pca_rau_mig_done_tid, pca_rau_mig_done_stall, pca_rau_mig_done_credit,
-      pca_rau_mig_done_payload, pca_rau_mig_done_valid, pca_fet_mig_tid,
-      pca_fet_mig_stall, pca_fet_mig_credit, pca_fet_mig_payload,
-      pca_fet_mig_valid, fet_pca_mig_tid, fet_pca_mig_stall,
-      fet_pca_mig_credit, fet_pca_mig_payload, fet_pca_mig_valid,
-      pca_rcu_mig_tid, pca_rcu_mig_stall, pca_rcu_mig_credit,
-      pca_rcu_mig_payload, pca_rcu_mig_valid, rcu_pca_mig_tid,
-      rcu_pca_mig_stall, rcu_pca_mig_credit, rcu_pca_mig_payload,
-      rcu_pca_mig_valid
+      rau_pca_mig_tid, rau_pca_mig_stall, rau_pca_mig_credit,
+      rau_pca_mig_payload, rau_pca_mig_valid, pca_rau_mig_done_tid,
+      pca_rau_mig_done_stall, pca_rau_mig_done_credit, pca_rau_mig_done_payload,
+      pca_rau_mig_done_valid, pca_fet_mig_tid, pca_fet_mig_stall,
+      pca_fet_mig_credit, pca_fet_mig_payload, pca_fet_mig_valid,
+      fet_pca_mig_tid, fet_pca_mig_stall, fet_pca_mig_credit,
+      fet_pca_mig_payload, fet_pca_mig_valid, pca_rcu_mig_tid,
+      pca_rcu_mig_stall, pca_rcu_mig_credit, pca_rcu_mig_payload,
+      pca_rcu_mig_valid, rcu_pca_mig_tid, rcu_pca_mig_stall,
+      rcu_pca_mig_credit, rcu_pca_mig_payload, rcu_pca_mig_valid
     }, drv);
     q <= drv;
     q2 <= q;
     cyc <= cyc + 1;
   end
   assign {
-    pca_rau_mig_done_tid, pca_rau_mig_done_payload, pca_rau_mig_done_valid,
-    pca_fet_mig_tid, pca_fet_mig_payload, pca_fet_mig_valid,
-    fet_pca_mig_stall, fet_pca_mig_credit, pca_rcu_mig_tid,
-    pca_rcu_mig_payload, pca_rcu_mig_valid, rcu_pca_mig_stall,
-    rcu_pca_mig_credit
+    rau_pca_mig_stall, rau_pca_mig_credit, pca_rau_mig_done_tid,
+    pca_rau_mig_done_payload, pca_rau_mig_done_valid, pca_fet_mig_tid,
+    pca_fet_mig_payload, pca_fet_mig_valid, fet_pca_mig_stall,
+    fet_pca_mig_credit, pca_rcu_mig_tid, pca_rcu_mig_payload,
+    pca_rcu_mig_valid, rcu_pca_mig_stall, rcu_pca_mig_credit
   } = skew ? q2 : q;
 `endif
   assign kill_ack = '0;
