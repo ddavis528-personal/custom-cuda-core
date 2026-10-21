@@ -248,6 +248,16 @@ struct Config {
   /// cycle, so only which entry is taken changes.
   bool rs_same_edge = true;
   unsigned share_return = 2;   ///< fits_stale 7: cycles without a take before a warp returns its share
+  /// fits_stale 2 to 7: a uop that arrived after the last cycle's start,
+  /// which the registered fits do not hold, is taken (the refill, OA's (a2):
+  /// re-checked in Rename 1 against the state as it stands). false: it
+  /// waits until the fits hold it, as the RTL's fits with no arrival term
+  /// (test/ooe/probes/sharefits_probe.sv, AR 0) do.
+  bool take_young = true;
+  /// A retirement's ROB slot counts in rename's room in its own cycle (the
+  /// fits' ret_n term: test/ooe/probes/fitsk2_probe.sv, RET 1). false:
+  /// under fits_conservative 3 and the shares, a cycle late.
+  bool ret_now = false;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -1163,6 +1173,9 @@ private:
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
+  std::vector<unsigned> audit_room_;      ///< each slot's ROB room as the cycle starts (the settings audit)
+  unsigned auditRobRoom(unsigned si) const;
+  std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
   std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
   unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
   unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)
@@ -1188,7 +1201,7 @@ private:
   bool robHeld(unsigned si, unsigned i) const {
     const size_t k = size_t(si) * cfg_.rob_depth + i;
     return slot_[si].rob[i].valid || rob_late_[k] ||
-           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[k]) ||
+           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[k] && !cfg_.ret_now) ||
            (cfg_.fits_stale == 1 && rob_prompt_prev_[k]);
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.

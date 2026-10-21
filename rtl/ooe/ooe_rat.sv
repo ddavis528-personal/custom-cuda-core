@@ -202,10 +202,18 @@ module ooe_rat #(
     map_after = m;
   endfunction
 
+  // The speculative maps are two copies, each (* keep *) (OA-20 (b), DA
+  // 2026-10-21): rto_cq02h leaves as rat_cq02h, read only by Rename 1's
+  // RAT read at its budget of 4; rin_cq02h is this module's own, driving
+  // the hold and the checkpoints' capture (NGD-7: one register for both
+  // measured 11.7 NGD to the capture against the output's 4).
+  (* keep *) logic [S*MW-1:0] rto_cq02h, rin_cq02h;
+  assign rat_cq02h = rto_cq02h;
+
   // Each branch port's checkpoint.
   logic [A*MW-1:0] ck_map;
   always_comb
-    for (int k = 0; k < A; k++) ck_map[k * MW +: MW] = map_after(rat_cq02h, k);
+    for (int k = 0; k < A; k++) ck_map[k * MW +: MW] = map_after(rin_cq02h, k);
 
   // -- the speculative maps --------------------------------------------------
   // A registered whole-map event's map, per slot: release, else squash,
@@ -263,18 +271,23 @@ module ooe_rat #(
         rat_nx[t * MW + a * GW +: GW] =
             ({GW{g_wr[t * NG + a]}} & g_name[(t * NG + a) * GW +: GW]) |
             ({GW{!g_wr[t * NG + a] && whole[t]}} & base[t * MW + a * GW +: GW]) |
-            ({GW{!g_wr[t * NG + a] && !whole[t]}} & rat_cq02h[t * MW + a * GW +: GW]);
+            ({GW{!g_wr[t * NG + a] && !whole[t]}} & rin_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
         rat_nx[t * MW + NG * GW + a * PW +: PW] =
             ({PW{p_wr[t * NP + a]}} & p_name[(t * NP + a) * PW +: PW]) |
             ({PW{!p_wr[t * NP + a] && whole[t]}} & base[t * MW + NG * GW + a * PW +: PW]) |
-            ({PW{!p_wr[t * NP + a] && !whole[t]}} & rat_cq02h[t * MW + NG * GW + a * PW +: PW]);
+            ({PW{!p_wr[t * NP + a] && !whole[t]}} & rin_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
   for (genvar t = 0; t < S; t++) begin : g_rat
     always_ff @(posedge ooe_core_clk) begin
-      if (rst_r01h)             rat_cq02h[t * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
-      else if (rat_en_cq01h[t]) rat_cq02h[t * MW +: MW] <= rat_nx[t * MW +: MW];
+      if (rst_r01h) begin
+        rto_cq02h[t * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
+        rin_cq02h[t * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
+      end else if (rat_en_cq01h[t]) begin
+        rto_cq02h[t * MW +: MW] <= rat_nx[t * MW +: MW];
+        rin_cq02h[t * MW +: MW] <= rat_nx[t * MW +: MW];
+      end
     end
   end
 

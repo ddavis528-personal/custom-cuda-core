@@ -1826,6 +1826,87 @@ void sweep() {
 }
 
 
+/// The settings audit (OA's rev 122; docs/ooe-model.md, "What the RTL
+/// reads"): the sweep's workload, 48 seeds, under the go DA decided
+/// (OA-21: the interleave with per-cycle shares, fits_stale 6), counting
+/// every admission the RTL's registered fits could not make the same way:
+/// a uop taken in the cycle after it arrives (the refill, which the fits
+/// do not hold), a take past the slot's registered ROB room and this
+/// cycle's retirements, and every refusal on live state behind the
+/// allowances (RS room, the free lists, the floors and ceilings, the warp
+/// cap). Then the go with each such admission removed, in cycles.
+void audit() {
+  struct R { double cy = 0; std::map<std::string, double> n; };
+  const char *keys[] = {"rename.refill", "rename.refill_fail", "rename.too_young", "audit.rob_past_registered", "audit.rob_refused_within_registered", "audit.rob_refused.full", "audit.rob_refused.tail_valid",
+                        "audit.rob_refused.late_credit", "audit.rob_refused.squash_cycle",
+                        "stall.share.rs", "stall.share.names", "stall.share_frag",
+                        "stall.rs_full.rcu", "stall.rs_full.miu", "stall.rs_warp_cap",
+                        "stall.gpr_buffer", "stall.gpr_empty", "stall.gpr_ceiling", "stall.gpr_floor",
+                        "stall.pred_buffer", "stall.pred_empty", "stall.pred_floor_ceiling",
+                        "stall.rob_full", "stall.rob_slot_held", "stall.rob_late_credit",
+                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width"};
+  auto run = [&](const Config &c) {
+    R r;
+    const unsigned seeds = 48;
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish();
+      r.cy += double(e.t) / seeds;
+      for (const char *k : keys) r.n[k] += double(e.core.counters[k]) / seeds;
+    }
+    return r;
+  };
+  Config base = baseConfig();
+  base.fits_stale = 6;
+  const R d = run(base);
+  std::printf("audit: the decided go (fits_stale 6), 48 seeds: %.0f cycles\n", d.cy);
+  for (const char *k : keys) std::printf("audit:   %-28s %10.1f per run\n", k, d.n.at(k));
+  Config ny = base;
+  ny.take_young = false;
+  const R y = run(ny);
+  std::printf("audit: no refill (take_young 0): %.0f cycles, %+.1f%%\n", y.cy, 100.0 * (y.cy / d.cy - 1));
+  Config rn = base;
+  rn.ret_now = true;
+  const R t = run(rn);
+  std::printf("audit: retirements in their cycle (ret_now 1): %.0f cycles, %+.1f%%; refused within registered %.1f\n",
+              t.cy, 100.0 * (t.cy / d.cy - 1), t.n.at("audit.rob_refused_within_registered"));
+  rn.take_young = false;
+  const R b = run(rn);
+  std::printf("audit: both (ret_now 1, take_young 0): %.0f cycles, %+.1f%%\n", b.cy, 100.0 * (b.cy / d.cy - 1));
+  // OA's response OI-45: the RTL's wake-to-select loop as composed. A
+  // completion's wake a cycle later (cmpl_wake_delay + 1), and the matrix
+  // and valid reaching select two cycles later (rename_stages + 2), each
+  // and both, under the go slice 4 builds (ret_now 1, take_young 0).
+  {
+    Config g = base;
+    g.ret_now = true;
+    g.take_young = false;
+    const R r0 = run(g);
+    Config a1 = g;
+    a1.cmpl_wake_delay += 1;
+    const R x1 = run(a1);
+    Config a2 = g;
+    a2.rename_stages += 2;
+    const R x2 = run(a2);
+    Config a3 = a1;
+    a3.rename_stages += 2;
+    const R x3 = run(a3);
+    std::printf("audit: loop, against the slice-4 go (%.0f): completion wake +1 %.0f (%+.1f%%), rename_stages +2 %.0f "
+                "(%+.1f%%), both %.0f (%+.1f%%)\n", r0.cy, x1.cy, 100.0 * (x1.cy / r0.cy - 1), x2.cy,
+                100.0 * (x2.cy / r0.cy - 1), x3.cy, 100.0 * (x3.cy / r0.cy - 1));
+    Config b1 = g;
+    b1.rename_stages += 1;
+    const R y1 = run(b1);
+    b1.cmpl_wake_delay += 1;
+    const R y2 = run(b1);
+    std::printf("audit: loop: rename_stages +1 %.0f (%+.1f%%), with the completion wake +1 %.0f (%+.1f%%)\n", y1.cy,
+                100.0 * (y1.cy / r0.cy - 1), y2.cy, 100.0 * (y2.cy / r0.cy - 1));
+  }
+}
+
 /// OI-34: placement and OA-13 arms on synthetic narrow loops, one warp and
 /// four. Each kernel is a loop body repeated with a backward taken branch:
 ///   vaddN: ld a, ld b (N-bit), add, st;
@@ -2008,6 +2089,10 @@ int main(int argc, char **argv) {
     if (std::string(argv[i]) == "--seeds" && i + 1 < argc) seeds = unsigned(std::atoi(argv[++i]));
   if (argc > 1 && std::string(argv[1]) == "--sweep-sections") {
     sweepSections();
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--audit") {
+    audit();
     return g_fail ? 1 : 0;
   }
   if (argc > 1 && std::string(argv[1]) == "--sweep") {

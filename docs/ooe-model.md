@@ -421,7 +421,8 @@ where 2 was +1.6% but takes no account of a copy's two RCU entries.
 OA accepted it as the default (OA-22, 2026-10-20). Under it at decq 13,
 two warps are +3.6% and one warp +3.6%, so the interleave stays ahead.
 
-`fits_stale` (off; OI-65, awaiting OA): rename's per-warp fits registered a
+`fits_stale` (0 by default; 6 is the go DA decided, OA-21, 2026-10-21, and
+what slice 4 builds; see "What the RTL reads" below): rename's per-warp fits registered a
 cycle ahead for every take a warp may make, as OA's option (a) has them.
 A uop is then taken no sooner than the second cycle after it arrives, and
 frees (ROB retirements, the RS frees in the short test) reach the fits
@@ -571,6 +572,77 @@ against 960. The S1 kernels are unchanged: one fetch-bound warp, where
 even rename_width 1 costs loop one cycle. With 2 (nothing renames after a
 branch that cycle) alu16 is 898 (+9.1%). Over 1% on two kernels, so it
 went to DA beside the copy (OA's response OI-56).
+
+### What the RTL reads: the settings audit (OA's rev 122)
+
+Three times a knob admitted against state the RTL could not have in that
+cycle, and each time a figure moved by one to two points. So each rename
+knob is stated here with the registered value the RTL reads, against the
+probe the go is built from (`test/ooe/probes/sharefits_probe.sv`: the split
+of `share_probe.sv` into `fitsk2_probe.sv`'s per-warp fits, SHR 1, RET 1,
+CAP 0, AR 0). `ooe-test --audit` reproduces it: the sweep's workload, 48
+seeds, under the decided go (`fits_stale` 6), counting every admission the
+registered fits could not make the same way, then the go with each one
+removed. The decided go measures 1,023 cycles there.
+
+The defaults do not run the decided go: `fits_stale` is 0, and a bench that
+models it sets 6 itself (`rencred_tb`). The proposal is that slice 4 makes
+6 the default, with whichever corrections below OA accepts.
+
+| Knob (default) | What the RTL reads | The model under `fits_stale` 6 | Audit |
+|---|---|---|---|
+| `rename_one_warp` (0) | the rotation's priority bit per warp (`prio`) | the interleave, uop by uop in rotation | exact |
+| `fits_stale` (0) | per warp, an allowance of each shared credit split a cycle ahead (`share_probe`), registered with the fits | admits against `share_`, split last cycle | exact: no RS or name stall behind an allowance in 48 runs |
+| `fits_conservative` (3) | nothing under the shares: no short path | the short test is computed, then overridden | no effect, except that 3 holds this cycle's retirements (next row) |
+| `ren_credit` (2), `ren_free_cap` (4) | rename's counters (`ooe_rencred`): this cycle's RS frees unseen, last cycle's past the prompt count added, names freed now unseen | `renCredits` | exact: `rencred_tb` holds the counters to it every cycle |
+| ROB room, its retirements | the fits' ROB term: the slot's room and this cycle's retirements (`rob`, `ret`, RET 1) | `robHeld`: under `fits_conservative` 3 and the shares, this cycle's retirements are held a cycle | **differs** (below) |
+| ROB room, a held tail | the same term, a count of free slots | the tail slot must be free (`robHeld(tail)`) | **differs** (below) |
+| a uop that arrived this edge | nothing: the fits hold only heads registered before it (AR 0) | taken at once if it passes on live state (the refill) | **differs** (below) |
+| `rs_warp_cap` (45) | nothing (CAP 0: the cap is the whole RS) | the cap, which never binds | exact: 0 stalls |
+| GPR and predicate floors and ceilings (`ren_floor` 16, `ren_ceil` 64; 4 and 20) | nothing: an allowance of ready names only | `gprAllowed`, `predAllowed`, on live counts | 0 stalls in this workload, but not held by the RTL (below) |
+| free lists' buffer (`fl_buf` 8) | the name counters count ready names (`gfree_.ready()`), so the allowance is of buffered names | the same | exact: 0 buffer stalls |
+| warp holds: inactive, fault, chwidth, barrier | `hold`, a registered bit per warp | read live, so a chwidth or barrier uop taken ends its warp's take that cycle | the sweep has none; the RTL needs a serial bit (below) |
+| `decq_take_late`, `decq_late_credit`, `decq_flush_late` (on) | ooe_decq as built (OA-21, OI-39, OI-58) | the same | exact (decq_tb) |
+| `branch_ends_group` (0) | — | off | OA-20 to DA: (b), the copy, recommended |
+| `rename_stages` (3) | Rename 1 to 3, the doc's stage table | 3 | exact |
+
+Four corrections follow.
+
+**Retirements.** The probe's ROB term takes this cycle's retirements (ret_n
+reaches the fits in time, RET 1), but `robHeld` holds them a cycle under
+`fits_conservative` 3 and the shares: 136.9 refusals a run that the
+registered room would admit. `ret_now` 1 counts them in their cycle, as the
+probe does: 1,021 cycles, −0.2%. The RTL is right; the model's default is
+the stricter.
+
+**The ROB term counts the wrong thing.** A squashed entry whose op is still
+out keeps its slot valid after the count drops, so the tail can be held
+while slots past it are free. The model refuses there (57.5 a run); a fits
+term built on "slots not valid" admits, and would write over a held slot.
+`ooe_rencred`'s ROB counter is right as a count (rencred_tb holds it), but
+the go must read the free run from the tail, up to 2R − 1 = 7: a register
+per slot formed from the ROB's valid bits at the edge before, with this
+cycle's retirements added only when the run reaches the head. With it, the
+fits and the model agree (`audit.rob_refused_within_registered` counts the
+rest: 63.2 a run under `ret_now` 1, all a held tail).
+
+**The refill.** Under 6 the model takes a uop the cycle after it arrives
+when it passes on live state (617 a run, 229 more failing), as OA's (a2)
+does with a re-check in Rename 1. The probe has no arrival term (AR 0), so
+the RTL as probed cannot. `take_young` 0 waits for the fits instead: 1,027
+cycles, +0.4%. With `ret_now` 1 as well: 1,025, +0.2% against 1,023. Taking
+the refill costs `fitsk2_probe`'s arrival term (AR 1) and Rename 1's
+re-check with a skid; at +0.4% it is a decision for OA.
+
+**Floors, ceilings and serializing uops.** Neither binds in this workload,
+and neither is in the probe. A per-cycle share of the ready names can in
+principle take a warp past what the others' unmet floors leave free (V-04;
+not seen in this workload), and a
+chwidth or barrier uop must end its warp's take for the cycle (the model
+reads its hold live). The second is one admission bit from decq (a
+serializing uop ends the prefix). The first needs either the floor rule in
+the fits, on registered counts, or OA's argument that the shares cannot
+break V-04.
 
 ## Events and counters
 
