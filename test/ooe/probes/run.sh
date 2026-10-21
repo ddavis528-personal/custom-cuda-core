@@ -28,6 +28,8 @@
 #   fth_probe    free_th's arrival: ooe_confirm into a counted thermometer;
 #   fth2_probe   the same through th_sat, a tree of capped thermometers
 #                (th_only.sv), cap 4 and 2; ret_probe, ret_n's arrival
+#   rowbyp_probe OI-45: ooe_sched's ready register's D with Rename 3's rows
+#                bypassed in (each port's row readied, then muxed per entry)
 #
 # decq-take-late.patch is ooe_decq with rename's take registered (tk_q) and
 # popped at the next edge, its heads read at the take's offset into an
@@ -69,4 +71,5 @@ ilfin_probe.sv ilfin_probe -set,OUT,0   registered-go-take
 ilfin_probe.sv ilfin_probe -set,OUT,1   registered-go-lanes
 fitsgo_probe.sv fitsgo_probe -set,OUT,0 fits-in-cycle-take
 fitsgo_probe.sv fitsgo_probe -set,OUT,1 fits-in-cycle-lanes
+rowbyp_probe.sv rowbyp_probe -           row-bypass-ready
 T
