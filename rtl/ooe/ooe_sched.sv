@@ -175,7 +175,10 @@ module ooe_sched #(
       stop_cq03h     <= 1'b0;
       chg_cq04h      <= 1'b0;
     end else begin
-      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h;
+      // A grant leaving now: ooe_wake takes it at this edge, and its lead
+      // line may rise there (a latency of LEAD + 1, OA's response OI-45),
+      // which no timer lead of ooe_wake's foresees.
+      ready_en_cq03h <= tl_cq02h || wml_cq02h || alloc_cq02h || stop_cq02h || gnt_cq04h != '0;
       stop_cq03h     <= stop_cq02h;
       chg_cq04h      <= !rq_en && rq_cq02h != rq_cq03h;
     end
