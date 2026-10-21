@@ -2288,6 +2288,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
+    m.rs_idx = e;
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;
     m.pdst = r.alloc_gpr ? r.pnew : 0;

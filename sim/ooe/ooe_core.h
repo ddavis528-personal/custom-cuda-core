@@ -514,6 +514,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint64_t tid = 0;
   unsigned port = 0;
   unsigned rob_tag = 0, warp = 0;
+  unsigned rs_idx = 0;           ///< its RS entry, which MIU echoes (OA-23); 0 on a discard
   unsigned mem_op = 0;           ///< DEC's (A-68), or 0xF for a bulk discard
   uint32_t issue_mask = 0;
   unsigned pdst = 0, ppred = 0;

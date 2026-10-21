@@ -253,10 +253,19 @@ private:
         core_.done(d);
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
-    // channel's must be. The model does not wake on them yet (OI); the bank
-    // holds MIU to each one's promise.
+    // channel's must be: each names the memop's RS entry, and the model
+    // keeps a spec load's wake on one that comes by its miss's lead
+    // (Config::miss_lead). The bank holds MIU to each one's promise.
     for (unsigned s = 0; s != kChans[c.cmpl_hint].rate; ++s)
-      while (has(c.cmpl_hint, s)) take(c.cmpl_hint, s);
+      while (has(c.cmpl_hint, s)) {
+        Receiver::Msg m = take(c.cmpl_hint, s);
+        const unsigned tag = unsigned(get(m.payload, c.cmpl_hint, "rob_tag"));
+        const unsigned rs = unsigned(get(m.payload, c.cmpl_hint, "rs_idx"));
+        auto e = rs_sent_.find(tag);
+        if (e != rs_sent_.end() && e->second != rs)
+          k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
+        core_.hint(tag);
+      }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
         Receiver::Msg m = take(c.miu_ooe, s);
@@ -391,11 +400,10 @@ private:
         const FieldDesc &d = field(c.ooe_miu, "disp");
         mo.set(d.lsb, ccv::prov::kWRobIdx, x.disp);
       } else {
-        // The RS entry, which MIU echoes on the completion (OA-23). 0 until
-        // the model names its entries (OI), so the echo is checked from the
-        // first run.
-        put(mo, c.ooe_miu, "rs_idx", 0);
-        rs_sent_[x.rob_tag] = 0;
+        // The RS entry, which MIU echoes on the completion and names on its
+        // hint (OA-23).
+        put(mo, c.ooe_miu, "rs_idx", x.rs_idx);
+        rs_sent_[x.rob_tag] = x.rs_idx;
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
         put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
         put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));
