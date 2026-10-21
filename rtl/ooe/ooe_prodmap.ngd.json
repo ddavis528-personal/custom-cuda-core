@@ -1,0 +1,71 @@
+{
+  "module": "ooe_prodmap",
+  "ports": {
+    "gnt_v_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "gnt_idx_cq02h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "v_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "v_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "gwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "gname_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "pwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "pname_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "pm_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "cv_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    },
+    "pc_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-66 (OA tab, 2026-10-21): straight from ooe_rs's grant registers and rename's stage flops, in NGD from the launching flop"
+    }
+  }
+}

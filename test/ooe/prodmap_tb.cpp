@@ -168,6 +168,8 @@ void compare(const Cyc &y) {
     std::sort(want.begin(), want.end());
     std::sort(got.begin(), got.end());
     if (got != want) fail("GPR producers", n, got.empty() ? N : got[0], want.empty() ? N : want[0]);
+    for (unsigned e : got)   // the copy flag marks exactly the model's copy
+      if (getBit(dut->ec_cq03h, e) != (e == y.gc[n])) fail("copy flag", n, e, y.gc[n]);
     live += got.size();
   }
   // Under the S1 fixed-window mode (no predicate renaming, a directed test)

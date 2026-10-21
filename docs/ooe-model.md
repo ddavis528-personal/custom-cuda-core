@@ -428,6 +428,14 @@ frees (ROB retirements, the RS frees in the short test) reach the fits
 two cycles late. 48 seeds, against today's default: the interleave +4.4%
 (the late arrivals +3.1% alone, the late frees +1.0% alone), one warp
 +5.9%, two warps +3.5%.
+2 is OA's (a2): the held heads' fits as 1, but a refill is taken at once
+and re-checked in Rename 1 (a failing tail waits in the skid, which costs
+what not taking it does: 10.6% of 28,875 refills fail in 48 runs); ROB
+retirements a cycle late, as ret_n reaches the fits in time; the short
+test on the last cycle's shared credits against twice the width (RCU
+three times with a copy in a head), and a short cycle's warp against the
+shared credits less the width. The interleave +7.0%, of which the margin
+is about 5.5 points: short cycles go from 38% to 63%.
 
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")

@@ -32,15 +32,14 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}};
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late},
-                                     {"fits_stale", &fits_stale}};
+                                     {"decq_take_late", &decq_take_late}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -2521,7 +2520,7 @@ void Core::rename() {
     unsigned need_rcu = w;
     if (fc == 3) {
       // fits_stale: the last cycle's frees unseen too.
-      const unsigned cap = cfg_.ren_free_cap, st = cfg_.fits_stale;
+      const unsigned cap = cfg_.ren_free_cap, st = cfg_.fits_stale == 1;
       free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap) + st * std::min(rs_prompt_prev_[0], cap));
       free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap) + st * std::min(rs_prompt_prev_[1], cap));
       for (unsigned si = 0; si != slot_.size(); ++si) {
@@ -2538,8 +2537,23 @@ void Core::rename() {
     }
     short_credit = free_rcu < need_rcu || free_miu < w || gfree_.size() < w ||
                    (cfg_.rename_preds && pfree_.size() < w);
+    if (cfg_.fits_stale == 2 && fc == 3) {
+      // (a2): judged on the last cycle's credits, which this cycle's take
+      // (at most the width) can lower: twice the width, three times for RCU
+      // with a copy in a head.
+      const unsigned prev[4] = {shr_prev_[0], shr_prev_[1], shr_prev_[2], shr_prev_[3]};
+      shr_prev_[0] = free_rcu;
+      shr_prev_[1] = free_miu;
+      shr_prev_[2] = unsigned(gfree_.size());
+      shr_prev_[3] = cfg_.rename_preds ? unsigned(pfree_.size()) : ~0u;
+      const bool cp = shr_copy_prev_;
+      shr_copy_prev_ = need_rcu > w;
+      short_credit = prev[0] < (cp ? 3 : 2) * w || prev[1] < 2 * w || prev[2] < 2 * w || prev[3] < 2 * w;
+    }
     if (short_credit) count("rename.one_warp_short");
     ren_late_frees_ = short_credit && fc == 3;
+    // (a2): a short cycle's warp fits the shared credits less the width.
+    if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
@@ -2550,7 +2564,8 @@ void Core::rename() {
     if (it == decq_.end()) return 0;
     // fits_stale: a uop that arrived after the last cycle's start is not in
     // the fits yet.
-    if (cfg_.fits_stale && decq_seq_[size_t(it - decq_.begin())] >= decq_seq_prev_) {
+    const bool young = cfg_.fits_stale && decq_seq_[size_t(it - decq_.begin())] >= decq_seq_prev_;
+    if (young && cfg_.fits_stale == 1) {
       count("rename.too_young");
       return 0;
     }
@@ -2565,7 +2580,9 @@ void Core::rename() {
       return 2;
     }
     const bool branch = it->attr.branch;
+    if (young) count("rename.refill");
     if (!tryRename(si, *it)) {
+      if (young) count("rename.refill_fail");
       blocked[si] = true;
       return 0;
     }

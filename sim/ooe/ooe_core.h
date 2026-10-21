@@ -209,8 +209,15 @@ struct Config {
   /// queue and the credits as the cycle before left them. A uop is taken
   /// no sooner than the second cycle after it arrives, and frees (ROB
   /// retirements; RS frees in the short test) reach the fits two cycles
-  /// late. Off until OA settles OI-65; the sweep measures it.
-  bool fits_stale = false;
+  /// late. Off until OA settles OI-65; the sweep measures it. 2, OA's
+  /// (a2): the held heads' fits as 1, but a refill (uops arriving into a
+  /// slot whose held heads do not fill the window) is taken at once and
+  /// re-checked in Rename 1, a failing tail waiting in the skid, which
+  /// costs what not taking it does; ROB retirements a cycle late (ret_n
+  /// reaches the fits in time); the short test on the last cycle's shared
+  /// credits against twice the width (RCU three times with a copy in a
+  /// head), and a short cycle's warp against the shared credits less it.
+  unsigned fits_stale = 0;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -1068,6 +1075,8 @@ private:
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
   std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
   unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
+  unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)
+  bool shr_copy_prev_ = false;            ///< and a copy among its candidate heads
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
@@ -1078,7 +1087,7 @@ private:
     const size_t k = size_t(si) * cfg_.rob_depth + i;
     return slot_[si].rob[i].valid || rob_late_[k] ||
            ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[k]) ||
-           (cfg_.fits_stale && rob_prompt_prev_[k]);
+           (cfg_.fits_stale == 1 && rob_prompt_prev_[k]);
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
   void robFreed(unsigned si, unsigned i, bool retire) {

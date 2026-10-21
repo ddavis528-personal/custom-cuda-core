@@ -1770,7 +1770,7 @@ void sweep() {
   {
     const double r48 = run(base, 48);
     for (unsigned w : {0u, 1u, 2u})
-      for (bool st : {false, true}) {
+      for (unsigned st : {0u, 1u, 2u}) {
         Config c = base;
         c.rename_one_warp = w;
         c.fits_stale = st;

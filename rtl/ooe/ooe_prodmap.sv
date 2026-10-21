@@ -16,9 +16,10 @@
 // decode of an entry index, and nothing to clear on a free. A freed entry
 // is invalid; a reused one names its new occupant's registers.
 //
-// The doc's estimate (Scheduler timing estimate, "Risk handed to the OI
-// track: rename") reads a 768-entry map indexed by name, 10.8 NGD of
-// lookup mux and a decode. The compare measures 6.4 NGD for 16 GPR
+// A GPR name has at most two producers, a masked load's main entry and its
+// copy (ec marks the copy), and a predicate name one; the lookup asserts it
+// (OA's response OI-66). The doc's first estimate read a 768-entry map
+// indexed by name, 10.8 NGD of lookup mux and a decode. The compare measures 6.4 NGD for 16 GPR
 // lookups and 5.5 for predicates (test/ooe/probes/cam_probe.sv), and the
 // map's 11,700 flops become these 810.
 //
@@ -72,6 +73,7 @@ module ooe_prodmap #(
   input  logic [P*W-1:0]    gnt_idx_cq02h,
   output logic [N-1:0]      eg_cq03h,    // entry e's occupant writes a GPR
   output logic [N*LG-1:0]   egn_cq03h,   // its name
+  output logic [N-1:0]      ec_cq03h,    // entry e is a masked load's copy
   output logic [N-1:0]      ep_cq03h,    // and a predicate
   output logic [N*LQ-1:0]   epn_cq03h    // its name
 );
@@ -143,11 +145,12 @@ module ooe_prodmap #(
   // -- Each RS entry's names, a gate a class ------------------------------------
   // An entry takes the names of the uop granted it: a main entry both, a
   // copy the GPR name alone (a masked load's predicate producer is its main).
-  logic [N-1:0]    eg_nx, ep_nx;
+  logic [N-1:0]    eg_nx, ec_nx, ep_nx;
   logic [N*LG-1:0] egn_nx;
   logic [N*LQ-1:0] epn_nx;
   always_comb begin
     eg_nx  = eg_cq03h;
+    ec_nx  = ec_cq03h;
     ep_nx  = ep_cq03h;
     egn_nx = egn_cq03h;
     epn_nx = epn_cq03h;
@@ -156,12 +159,14 @@ module ooe_prodmap #(
         for (int e = 0; e < N; e++) begin
           if (em_cq02h[u * W +: W] == W'(e)) begin
             eg_nx[e]               = gwe_cq02h[u];
+            ec_nx[e]               = 1'b0;
             egn_nx[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
             ep_nx[e]               = pwe_cq02h[u];
             epn_nx[e * LQ +: LQ]   = pname_cq02h[u * LQ +: LQ];
           end
           if (cv_cq02h[u] && ec_cq02h[u * W +: W] == W'(e)) begin
             eg_nx[e]               = gwe_cq02h[u];
+            ec_nx[e]               = 1'b1;
             egn_nx[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
             ep_nx[e]               = 1'b0;
             epn_nx[e * LQ +: LQ]   = '0;
@@ -184,6 +189,7 @@ module ooe_prodmap #(
   always_ff @(posedge ooe_core_clk) begin
     if (er_en_cq02h) begin
       eg_cq03h[0 +: NR]        <= eg_nx[0 +: NR];
+      ec_cq03h[0 +: NR]        <= ec_nx[0 +: NR];
       ep_cq03h[0 +: NR]        <= ep_nx[0 +: NR];
       egn_cq03h[0 +: NR * LG]  <= egn_nx[0 +: NR * LG];
       epn_cq03h[0 +: NR * LQ]  <= epn_nx[0 +: NR * LQ];
@@ -192,6 +198,7 @@ module ooe_prodmap #(
   always_ff @(posedge ooe_core_clk) begin
     if (em_en_cq02h) begin
       eg_cq03h[NR +: N - NR]        <= eg_nx[NR +: N - NR];
+      ec_cq03h[NR +: N - NR]        <= ec_nx[NR +: N - NR];
       ep_cq03h[NR +: N - NR]        <= ep_nx[NR +: N - NR];
       egn_cq03h[NR * LG +: (N - NR) * LG] <= egn_nx[NR * LG +: (N - NR) * LG];
       epn_cq03h[NR * LQ +: (N - NR) * LQ] <= epn_nx[NR * LQ +: (N - NR) * LQ];

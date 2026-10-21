@@ -10,6 +10,7 @@
 module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E = 6, parameter int D = 13,
                       parameter int AR = 0,
                       parameter int CAP = 1,   // 0: the warp cap is the whole RS (CCV_P_RS_WARP_CAP 45), no check
+                      parameter int RET = 0,   // 1: this cycle's retirements (ret_n, a thermometer by 8) in the ROB term
                       localparam int LR = $clog2(R + 1), localparam int H = 2 * R - 1,
                       localparam int LC = $clog2(D + 1), localparam int LS = $clog2(S)) (
   input  logic [S*H-1:0]   hv,       // decq's head valids
@@ -19,6 +20,7 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
   input  logic [E*LS-1:0]  es,
   input  logic [E*6-1:0]   ea,
   input  logic [S*6-1:0]   rob,
+  input  logic [S*2-1:0]   ret,       // per warp: more than 0, more than 1 retired now
   input  logic [S*6-1:0]   cap,
   input  logic [S*7-1:0]   gal,
   input  logic [S*5-1:0]   pal,
@@ -73,7 +75,12 @@ module fitsk2_probe #(parameter int S = 4, parameter int R = 4, parameter int E 
             default: nb = t3[0] + t3[1];
           endcase
         end
-        g[m] = v[m - 1] && rob[s * 6 +: 6] >= 6'(m) && (CAP == 0 || cap[s * 6 +: 6] >= 6'(nk)) &&
+        logic robok;
+        robok = rob[s * 6 +: 6] >= 6'(m);
+        if (RET != 0)
+          robok = robok || (rob[s * 6 +: 6] >= 6'(m - 1) && ret[s * 2]) ||
+                  (m >= 2 && rob[s * 6 +: 6] >= 6'(m - 2) && ret[s * 2 + 1]);
+        g[m] = v[m - 1] && robok && (CAP == 0 || cap[s * 6 +: 6] >= 6'(nk)) &&
                gal[s * 7 +: 7] >= 7'(ng) && pal[s * 5 +: 5] >= np && ckf[s * 3 +: 3] >= 3'(nb) &&
                nb < 5'd8;
       end
