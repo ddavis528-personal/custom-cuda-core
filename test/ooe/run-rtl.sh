@@ -320,8 +320,13 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-same-edge drop-group stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
-  if RS_CONTROL=$c "$dir/rs_tb" 3 >/dev/null 2>&1; then
+# no-msd runs the bench's seeds: a replay in ooe_rs only clears its issued
+# bit, and a replayed producer is not final until it reissues, so a lost
+# miss shows only where a non-producer would confirm early (3 seeds miss
+# it; a caught control stops at its first difference).
+for c in no-msd drop-squash-free drop-group stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
+  cs=3; [ "$c" = no-msd ] && cs=$seeds
+  if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
     say "  control $c (rs)" "caught"

@@ -240,6 +240,13 @@ struct Config {
   /// take returns its share (decided on its registered takes, the fits at
   /// offset 0 formed without it). The credits are rename's counters.
   unsigned fits_stale = 0;
+  /// Whether RS allocation may take an entry freed in the same cycle
+  /// (same-edge reuse, DA's response OI-39). With confirmation inside
+  /// ooe_rs (OI-45) the free reaches allocation from its own flops at 25.7
+  /// NGD, over the stage, so 0 allocates only entries free at the cycle's
+  /// start. Rename's counters (fits_stale 6) never count a free in its own
+  /// cycle, so only which entry is taken changes.
+  bool rs_same_edge = true;
   unsigned share_return = 2;   ///< fits_stale 7: cycles without a take before a warp returns its share
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,

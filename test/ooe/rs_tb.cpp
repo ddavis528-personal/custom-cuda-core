@@ -22,13 +22,20 @@
 // dependency bits (Core::depBit) and, where the bit is set and the
 // configured penalties fit the lines, its line select (Core::cellCode).
 //
+// ooe_rs confirms and replays on its own (OI-45): its issued register is
+// set from the grants and cleared by its replays and frees, and it reads
+// wake's held misses and final bits as the model's pass read them
+// (Core::wakeLog hop_msd, cf_fin); the squash's frees are driven apart.
+// No entry is allocated in the cycle it is freed (rs_same_edge off, the
+// go's counters never counting a free in its own cycle).
+//
 // Negative controls (RS_CONTROL=<name>) perturb the driving and must be
-// caught: no-same-edge (a free reaches the RTL a cycle late, so an entry
-// freed and reallocated in one cycle is still busy), drop-group (a row's
-// references to entries allocated in the same cycle never reach the RTL),
-// no-req-lead, no-sq-lead, no-cmpl-lead and no-fin (the leads, and the
-// final bits, never reach it). The rows' comparison holds column clearing: a valid row that kept
-// a freed entry's bit differs.
+// caught: no-msd (no held miss reaches the RTL, so its replays are
+// missed), drop-squash-free (a squash's frees never reach it), drop-group
+// (a row's references to entries allocated in the same cycle never reach
+// the RTL), no-req-lead, no-sq-lead, no-cmpl-lead and no-fin (the leads,
+// and the final bits, never reach it). The rows' comparison holds column
+// clearing: a valid row that kept a freed entry's bit differs.
 //
 // The column flags (hcol_cq02h) are compared, every column after every
 // edge, with their definition kept here: set when a row naming the entry is
@@ -37,8 +44,10 @@
 // flags through a free, and must be caught: the comparison holds clearing.
 //
 // With --cg <scenario> <vcd> it is ooe_rs's clock-gating bench
-// (test/ooe/cg_trace.h), and compares nothing; its idle ticks between model
-// cycles break a restart's lead, which a squash's lead covers there.
+// (test/ooe/cg_trace.h), and compares nothing. Its medium scenario is the
+// model renaming a uop a cycle with no idle ticks (rsConfigMedium), not
+// cg_trace's two idle ticks a model cycle: ooe_rs confirms on its own, so
+// in an idle tick it would run ahead of the model the next cycle drives.
 // Usage: rs_tb [seeds] | rs_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rs.h"
@@ -55,8 +64,22 @@
 
 using ccv::ooe::Core;
 
-int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
-int ooeTestDirectedHooked(void (*hook)(const Core &));
+using ccv::ooe::Config;
+int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
+int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &));
+// The RS as built (OI-45): no entry is allocated in the cycle it is freed,
+// under the go whose counters never count a free in its own cycle.
+void rsConfig(Config &c) {
+  c.fits_stale = 6;
+  c.rs_same_edge = false;
+}
+// A clock-gating run's medium scenario: the model renaming a uop a cycle,
+// every clock a model cycle. ooe_rs confirms on its own (OI-45), so idle
+// ticks between model cycles would let it run ahead of the model.
+void rsConfigMedium(Config &c) {
+  rsConfig(c);
+  c.rename_width = 1;
+}
 
 namespace {
 constexpr unsigned N = RS_N, NR = RS_NR, A = RS_A, P = 2 * A;
@@ -67,20 +90,20 @@ std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_rs> dut;
 std::string control;
 uint64_t current = 0;
-std::vector<uint8_t> late_free;   // no-same-edge: last cycle's frees
 std::vector<uint8_t> hcol;        // the column flags' reference
 constexpr unsigned NCL = RS_NC;
 
 // A core cycle as the model ended it.
 struct Snap {
   std::vector<unsigned> ralloc, cidx;   // allocations in order; the entries completing
-  std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3;
+  std::vector<uint8_t> rfree, grant, valid, dep, code, prod, fin, iss, wtl3, msd, cfin, sqf;
   bool sq = false, cmpl = false, codes = false;
 };
 Snap empty() {
   Snap y;
   y.rfree.assign(N, 0); y.grant.assign(N, 0); y.valid.assign(N, 0); y.dep.assign(N * N, 0);
   y.code.assign(N * N, 0); y.prod.assign(N, 0); y.fin.assign(N, 0); y.iss.assign(N, 0); y.wtl3.assign(N, 0);
+  y.msd.assign(N, 0); y.cfin.assign(N, 0); y.sqf.assign(N, 0);
   return y;
 }
 Snap snapCycle(const Core &c) {
@@ -98,6 +121,12 @@ Snap snapCycle(const Core &c) {
     y.iss[i] = c.rsIssued(i);
     y.wtl3[i] = c.rsValid(i) && c.wakeLineChanges(i, 3);
     if (w.rfree[i] && !(i < w.conf.size() && w.conf[i])) y.sq = true;
+    // Confirmation's inputs as the model's pass read them in the cycle
+    // (ooe_rs runs it from its own issued register and matrix, OI-45), and
+    // the frees that are not confirmations: the registered squash's.
+    y.msd[i] = i < w.hop_msd.size() && w.hop_msd[i];
+    y.cfin[i] = i < w.cf_fin.size() && w.cf_fin[i];
+    y.sqf[i] = w.rfree[i] && !(i < w.conf.size() && w.conf[i]);
     if (i < w.cmpl.size() && w.cmpl[i]) { y.cmpl = true; y.cidx.push_back(i); }
     for (unsigned j = 0; j != N; ++j) {
       y.dep[i * N + j] = c.depBit(i, j);
@@ -189,7 +218,7 @@ void driveLeads(const Snap *n, const Snap *c, bool sq = false) {
 // cycle carries its leads.
 void idleTick(const Snap *n = nullptr, const Snap *c = nullptr, bool sq = false) {
   clearAll(dut->req_cq01h, P);
-  clearAll(dut->free_cq01h, N);
+  clearAll(dut->sqf_cq01h, N);
   driveLeads(n, c, sq);
   tick();
 }
@@ -208,10 +237,11 @@ void hook(const Core &c) {
   if (c.serial() != current) {
     current = c.serial();
     ++cores;
-    late_free.assign(N, 0);
     hcol.assign(N, 0);
     clearAll(dut->req_cq01h, P);
-    clearAll(dut->free_cq01h, N);
+    clearAll(dut->sqf_cq01h, N);
+    clearAll(dut->msd_cq01h, N);
+    clearAll(dut->cfin_cq01h, N);
     driveLeads(nullptr, nullptr);
     clearAll(dut->cmpl_idx_cq00h, NCL * W);
     dut->ooe_rst_r00h = 1;
@@ -266,20 +296,19 @@ void hook(const Core &c) {
       }
   }
   for (unsigned j = 0; j != N; ++j) {
-    bool f = y.rfree[j];
-    if (control == "no-same-edge") { f = late_free[j]; late_free[j] = y.rfree[j]; }
-    setBit(dut->free_cq01h, j, f);
+    setBit(dut->sqf_cq01h, j, y.sqf[j] && control != "drop-squash-free");
+    setBit(dut->msd_cq01h, j, y.msd[j] && control != "no-msd");
+    setBit(dut->cfin_cq01h, j, y.cfin[j]);
     frees += y.rfree[j];
     reuse += y.rfree[j] && port_of[j] >= 0;
     // The confirmation leads' terms as they stand in a.
     setBit(dut->wtl3_cq00h, j, pm.wtl3[j]);
     setBit(dut->fin_cq00h, j, control != "no-fin" && y.fin[j]);
-    setBit(dut->iss_cq00h, j, y.iss[j] && !y.grant[j]);
     setBit(dut->gnt_cq00h, j, y.grant[j]);
   }
   // The completions arriving with this edge's valid flop: a + 1's.
   drivePayload(n1);
-  const unsigned gaps = cg.on() ? cg.gaps() : 0;
+  const unsigned gaps = 0;   // see rsConfigMedium: no idle ticks between model cycles
   if (gaps) {
     // A clock-gating run's idle ticks come between this cycle and the
     // next, so the leads' terms predict nothing here: only the last idle
@@ -287,7 +316,6 @@ void hook(const Core &c) {
     for (unsigned j = 0; j != N; ++j) {
       setBit(dut->wtl3_cq00h, j, false);
       setBit(dut->fin_cq00h, j, false);
-      setBit(dut->iss_cq00h, j, false);
       setBit(dut->gnt_cq00h, j, false);
     }
     driveLeads(nullptr, gaps == 1 ? &n1 : nullptr);
@@ -311,7 +339,6 @@ void hook(const Core &c) {
       for (unsigned j = 0; j != N; ++j) {
         setBit(dut->wtl3_cq00h, j, last && pm.wtl3[j] && !y.rfree[j]);
         setBit(dut->fin_cq00h, j, last && control != "no-fin" && y.fin[j] && !y.rfree[j]);
-        setBit(dut->iss_cq00h, j, last && y.iss[j] && !y.rfree[j]);
         setBit(dut->gnt_cq00h, j, false);
       }
       idleTick(last ? &n1 : nullptr, g + 2 == gaps ? &n1 : nullptr, cover && last);
@@ -371,7 +398,9 @@ int main(int argc, char **argv) {
   if (cg.on()) {
     cg.open(*dut, vcd);
     clearAll(dut->req_cq01h, P);
-    clearAll(dut->free_cq01h, N);
+    clearAll(dut->sqf_cq01h, N);
+    clearAll(dut->msd_cq01h, N);
+    clearAll(dut->cfin_cq01h, N);
     driveLeads(nullptr, nullptr);
     clearAll(dut->cmpl_idx_cq00h, NCL * W);
     dut->ooe_rst_r00h = 1;
@@ -380,7 +409,7 @@ int main(int argc, char **argv) {
     if (cg.idle()) {
       for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
     } else {
-      ooeTestRandomHooked(CgRun::kSeeds, hook);
+      ooeTestRandomHookedWith(CgRun::kSeeds, hook, cg.gaps() ? rsConfigMedium : rsConfig);
     }
     cg.close();
     dut->final();
@@ -389,7 +418,7 @@ int main(int argc, char **argv) {
     ctx.reset();
     return 0;
   }
-  const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
+  const int model_fails = ooeTestDirectedHookedWith(hook, rsConfig) + ooeTestRandomHookedWith(seeds, hook, rsConfig);
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "
               "same-edge=%llu rows=%llu cells=%llu stale=%llu mismatches=%llu model_failures=%d\n",
