@@ -37,7 +37,10 @@ time (default every core; `CCV_JOBS=1` is serial), each section's log in
 `build/verify/<job>.log` with its time. A job that reads another's build
 products names it in `after` in `tools/verify.sh`; no two jobs that may run
 together share a build directory. check-cg and check-ngd measure their units
-`CCV_JOBS` at a time too.
+`CCV_JOBS` at a time too, and share one Yosys netlist per unit through
+`build/synth-cache`. The gate clears it first; `tools/verify.sh --cached`
+keeps it for an intermediate run, whose result reads `CACHED PASS`. The gate
+before a push is the clean one (Daniel, 2026-10-21).
 
 Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
 register behind an `if` on an enable named `<name>_en`; a clock gate is 8
