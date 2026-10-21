@@ -376,13 +376,10 @@ module ooe_decq #(
   logic          decq_en_cq01h;
   logic [S-1:0]  out_en_cq01h;            // each slot's count, valids and take
   logic [S-1:0]  pay_en_cq01h;            // and its payloads
-  // A slot's arrivals refresh its heads only where the candidates can see
-  // them: the slot holds fewer than NCAND past this edge's takes.
+  // A slot's arrivals change its count whether or not the candidates can
+  // see them, so every arrival into the slot clocks its output groups.
   logic [S-1:0]  arr_nx_cq01h;
-  always_comb
-    for (int s = 0; s < S; s++)
-      arr_nx_cq01h[s] = enq_s_cq01h[s] &&
-          LC'(cnt_of(st_cq02h, s)) - LC'(tk_cq02h[s * LR +: LR]) - LC'(deq_n_cq01h[s * LR +: LR]) < LC'(NCAND);
+  assign arr_nx_cq01h = enq_s_cq01h;
   logic [SW-1:0] nx_cq01h;
   assign decq_en_cq01h = enq_en_cq01h || |tkv_cq02h || |fl_q_cq02h;
   // A slot's heads change on rename's take from it (its early "may take"
