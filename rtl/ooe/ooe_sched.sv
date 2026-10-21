@@ -242,6 +242,16 @@ module ooe_sched #(
     end
   end
 
+  // -- The input contract ------------------------------------------------------
+  // What ooe_rs and ooe_wake give this module (test/ooe/trio_tb.cpp drives
+  // them assembled): issued and the held misses name valid entries, and
+  // every row written was led by alloc_cq02h the cycle before (the ready
+  // and request registers' enables). A row not valid is don't-care: ooe_rs
+  // leaves a freed row's bits in place.
+  `CCV_ASSERT(iss_valid, (iss_cq02h & ~valid_cq02h) == '0)
+  `CCV_ASSERT(msd_issued, (msd_cq02h & ~iss_cq02h) == '0)
+  `CCV_ASSERT_T(alloc_led, (valid_cq02h & ~`CCV_PAST(valid_cq02h)) == '0 || `CCV_PAST(alloc_cq02h))
+
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

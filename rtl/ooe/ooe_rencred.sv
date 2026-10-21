@@ -26,6 +26,10 @@
 // needs by its take), so each counter's next value is formed for every
 // count the late inputs may give, in parallel (a carry-save step and one
 // prefix add each), and the takes select one.
+//
+// The input contract, which ooe_rename asserts where the clock is (this
+// helper has none): the prompt frees and the takes are thermometers, and no
+// take exceeds the counter it draws on (rencred_tb drives only that).
 //===----------------------------------------------------------------------===//
 module ooe_rencred #(
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)

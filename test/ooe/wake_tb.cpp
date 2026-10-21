@@ -34,11 +34,8 @@
 // drop-squash-free (a squash's frees never reach it), no-cmpl-lead (the
 // completion channel's valid never does) and no-sq-lead (nor a squash's
 // lead) and no-hint (the completion hints never do).
-// With --cg <scenario> <vcd> it is ooe_wake's clock-gating bench
-// (test/ooe/cg_trace.h), and compares nothing. Its medium scenario is the
-// model renaming a uop a cycle with no idle ticks (wakeConfigMedium), not
-// cg_trace's two idle ticks a model cycle: ooe_wake confirms on its own, so
-// in an idle tick it would run ahead of the model the next cycle drives.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: wake_tb [seeds] | wake_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_wake.h"
@@ -56,12 +53,7 @@
 using ccv::ooe::Config;
 using ccv::ooe::Core;
 
-int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
 int ooeTestDirectedHooked(void (*hook)(const Core &));
-int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
-// A clock-gating run's medium scenario: the model renaming a uop a cycle,
-// every clock a model cycle (ooe_wake confirms on its own, OI-45).
-void wakeConfigMedium(Config &c) { c.rename_width = 1; }
 
 namespace {
 constexpr unsigned N = WAKE_N, L = Core::kWakeLines;
@@ -116,13 +108,6 @@ void driveLeads(const Cyc *n, const Cyc *s) {
   if (n && control != "no-cmpl-lead")
     for (unsigned k = 0; k != n->ncmpl && k != WAKE_NC; ++k) dut->cmpl_l_cq00h |= 1u << k;
   dut->sq_l_cq00h = s && s->sq && control != "no-sq-lead";
-}
-
-// An idle cycle: nothing reaches a timer; a grant's kind and class hold.
-void idleTick() {
-  dut->grant_cq01h = 0;
-  driveLeads(nullptr, nullptr);
-  tick();
 }
 
 void fail(const char *what, unsigned e, unsigned k, bool rtl, bool model) {
@@ -335,27 +320,12 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_wake>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    clearInputs();
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) tick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomHookedWith(CgRun::kSeeds, hook, cg.gaps() ? wakeConfigMedium : [](Config &) {});
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
+  if (cg.on()) cg.open(*dut, vcd);
   // The directed tests too: long misses across a squash, demotions, kills
   // and restores, which random traffic seldom keeps a timer saturated for.
-  const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
+  // (The ordinary run; a scenario is the random tests'.)
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHooked(hook)) + cg.run(seeds, nullptr, hook);
+  cg.close();
   dut->final();
   std::printf("wake_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu grants=%llu cmpls=%llu "
               "misses=%llu stops=%llu fins=%llu compared=%llu raised=%llu extra_leads=%llu mismatches=%llu model_failures=%d\n",

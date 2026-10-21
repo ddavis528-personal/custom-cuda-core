@@ -1815,6 +1815,13 @@ def report(u, verbose):
             print("    ICG                %4.1f NGD  %s's enable" % (dep, c))
 
 
+def unmeasured(units):
+    """A unit its bench could not run fails rather than being skipped: every
+    scenario is checked traffic (DA, 2026-10-21), so a bench that fails one
+    has found a difference, and the unit's DCGE was never measured."""
+    return ["%s not measured: %s" % (u.name, u.errors[0].splitlines()[0]) for u in units if u.errors]
+
+
 def main_check(only=None, verbose=False):
     modules = design_modules()
     units = load_units()
@@ -1846,13 +1853,14 @@ def main_check(only=None, verbose=False):
     if only:
         for f in findings:
             print("    " + str(f))
-        return 0
+        return 1 if unmeasured(units) else 0
     parts = partitions(modules)
     fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
                           known=modules, fratchet=fratchet)
     more, over = crosscheck(findings, units, modules, elaborated=elaborated)
     lines += more
     fails += over
+    fails += unmeasured(units)
     for l in lines:
         print("  " + l)
     if not parts:
@@ -1925,6 +1933,13 @@ def selftest():
             sys.stderr.write("check-cg selftest: %s\n" % x)
         return 1
     allu = list(units.values())
+    # Control: a unit whose bench fails a scenario is a failure, not a skip.
+    failing = Unit({"name": "fx_fails", "module": "cg_fx_good", "files": ["test/cg/fixtures/cg_fx_good.sv"],
+                    "clock": "clk", "reset": "rst",
+                    "bench": {"run": "exit 1", "scope": "tb_cg_fixture.u_good"}}, "selftest")
+    failing.measure()
+    if not unmeasured([failing]):
+        bad.append("a unit whose bench fails was not reported")
 
     def findings():
         out = []

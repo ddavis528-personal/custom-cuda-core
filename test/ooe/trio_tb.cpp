@@ -31,14 +31,11 @@
 // Negative controls (TRIO_CONTROL, ooe_trio's ctl), ooe_sched's: no-msd,
 // no-miss-lead, late-leads, no-alloc-lead.
 //
-// With --cg <scenario> <vcd> it is ooe_sched's clock-gating bench
-// (test/ooe/cg_trace.h; the unit's scope is u_sched), and compares
-// nothing: ooe_sched's enables are leads of ooe_wake's lead lines and
-// ooe_rs's rows, which only the assembled modules give it in their own
-// frame. Its medium scenario is the model renaming a uop a cycle with no
-// idle ticks (trioConfigMedium), as ooe_wake's bench: ooe_wake and ooe_rs
-// confirm on their own, so in an idle tick they would run ahead of the
-// model the next cycle drives.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD ooe_sched's clock-gating unit measures (its scope is
+// u_sched), checking as ever: ooe_sched's enables are leads of ooe_wake's
+// lead lines and ooe_rs's rows, which only the assembled modules give it in
+// their own frame.
 // Usage: trio_tb [seeds] | trio_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_trio.h"
@@ -59,7 +56,6 @@
 using ccv::ooe::Config;
 using ccv::ooe::Core;
 
-int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
 void trioConfig(Config &c) {
   c.fits_stale = 6;
   c.rs_same_edge = false;
@@ -68,10 +64,6 @@ void trioConfig(Config &c) {
   c.req_rows_late = true;
   c.miss_lead = true;
   c.ready_rep_late = true;
-}
-void trioConfigMedium(Config &c) {
-  trioConfig(c);
-  c.rename_width = 1;
 }
 
 namespace {
@@ -554,24 +546,9 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_trio>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    reset();
-    if (cg.idle()) {
-      // Nothing reaches the trio: its outer ports stay as reset left them.
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) tick();
-    } else {
-      ooeTestRandomHookedWith(CgRun::kSeeds, hook, cg.gaps() ? trioConfigMedium : trioConfig);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  reset();
-  const int model_fails = ooeTestRandomHookedWith(seeds, hook, trioConfig);
+  if (cg.on()) cg.open(*dut, vcd);
+  const int model_fails = cg.run(seeds, nullptr, hook, trioConfig);
+  cg.close();
   dut->final();
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
   for (const auto &k : first_kinds) std::fprintf(stderr, "  first: %-23s %llu\n", k.first.c_str(), k.second);

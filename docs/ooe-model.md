@@ -423,8 +423,7 @@ where 2 was +1.6% but takes no account of a copy's two RCU entries.
 OA accepted it as the default (OA-22, 2026-10-20). Under it at decq 13,
 two warps are +3.6% and one warp +3.6%, so the interleave stays ahead.
 
-`fits_stale` (0 by default; 6 is the go DA decided, OA-21, 2026-10-21, and
-what slice 4 builds; see "What the RTL reads" below): rename's per-warp fits registered a
+`fits_stale` (6 by default since slice 4, the go DA decided, OA-21, 2026-10-21; see "What the RTL reads" below): rename's per-warp fits registered a
 cycle ahead for every take a warp may make, as OA's option (a) has them.
 A uop is then taken no sooner than the second cycle after it arrives, and
 frees (ROB retirements, the RS frees in the short test) reach the fits
@@ -587,14 +586,22 @@ seeds, under the decided go (`fits_stale` 6), counting every admission the
 registered fits could not make the same way, then the go with each one
 removed. The decided go measures 1,023 cycles there.
 
-The defaults do not run the decided go: `fits_stale` is 0, and a bench that
-models it sets 6 itself (`rencred_tb`). The proposal is that slice 4 makes
-6 the default, with whichever corrections below OA accepts.
+Slice 4 makes the decided go the default, with OA's rulings on the
+corrections below (OA's response to the OI-45 settings audit, rev 138):
+`fits_stale` 6, `ret_now` 1 and `take_young` 0. The names are held as two
+counts: each slot's floor still unspent (`unmetFloor`), and the pool above
+every floor (`floorsOwed`). The shares split only the pool, each warp's
+allowance adds its own unmet floor, and rename's admission drops the live
+floor check (`ren_floors_in_share_`), so V-04 holds by construction and is
+asserted at the counters. The audit measures the go at 1,025 cycles (48
+seeds); the kernels, 6,456 to 6,551 cycles (+1.5%), all of it
+`fits_stale` 6: loop one cycle on each of its 99 redirects, and vadd4 25
+faster.
 
 | Knob (default) | What the RTL reads | The model under `fits_stale` 6 | Audit |
 |---|---|---|---|
 | `rename_one_warp` (0) | the rotation's priority bit per warp (`prio`) | the interleave, uop by uop in rotation | exact |
-| `fits_stale` (0) | per warp, an allowance of each shared credit split a cycle ahead (`share_probe`), registered with the fits | admits against `share_`, split last cycle | exact: no RS or name stall behind an allowance in 48 runs |
+| `fits_stale` (6) | per warp, an allowance of each shared credit split a cycle ahead (`share_probe`), registered with the fits | admits against `share_`, split last cycle | exact: no RS or name stall behind an allowance in 48 runs |
 | `fits_conservative` (3) | nothing under the shares: no short path | the short test is computed, then overridden | no effect, except that 3 holds this cycle's retirements (next row) |
 | `ren_credit` (2), `ren_free_cap` (4) | rename's counters (`ooe_rencred`): this cycle's RS frees unseen, last cycle's past the prompt count added, names freed now unseen | `renCredits` | exact: `rencred_tb` holds the counters to it every cycle |
 | ROB room, its retirements | the fits' ROB term: the slot's room and this cycle's retirements (`rob`, `ret`, RET 1) | `robHeld`: under `fits_conservative` 3 and the shares, this cycle's retirements are held a cycle | **differs** (below) |
