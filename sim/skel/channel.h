@@ -37,6 +37,7 @@
 
 #include "bits.h"
 
+#include <algorithm>
 #include <deque>
 #include <vector>
 
@@ -244,6 +245,7 @@ public:
   /// Call exactly once per cycle, before front()/pop(). Captures a payload
   /// that lands this cycle.
   void cycle(uint64_t now) {
+    now_ = now;
     if (landing_) {
       Bits p = s_.dst().cur.payload;
       // The lead was taken off the wire in the valid cycle; the wire's lead
@@ -280,6 +282,7 @@ public:
   void pop() {
     if (s_.dst().nxt.credit)
       ++leaks_;
+    max_age_ = std::max(max_age_, now_ - buf_.front().arrived);
     buf_.pop_front();
     s_.dst().nxt.credit = true;
     ++received_;
@@ -292,6 +295,9 @@ public:
   uint64_t received() const { return received_; }
   uint64_t overflows() const { return overflows_; }
   uint64_t leaks() const { return leaks_; }
+  /// The longest a message waited here, from landing to being taken: a
+  /// backpressured channel's measured maximum age (AR's response TI-22).
+  uint64_t maxAge() const { return max_age_; }
 
 private:
   Slot &s_;
@@ -300,6 +306,7 @@ private:
   std::deque<Bits> leads_;   ///< lead slices taken in valid cycles, in order
   bool landing_ = false;
   uint64_t received_ = 0, overflows_ = 0, leaks_ = 0;
+  uint64_t now_ = 0, max_age_ = 0;   ///< the cycle, and the longest wait (maxAge)
 };
 
 } // namespace skel

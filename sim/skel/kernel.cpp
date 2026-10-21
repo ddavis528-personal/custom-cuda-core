@@ -2493,6 +2493,17 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
               r.channels_used, kNumChans,
               violations);
   std::printf("UNUSED %s\n", r.unused.c_str());
+  // Each backpressured channel's longest wait from landing to take, over its
+  // slots: the measure CCV_P_TIMEOUT_BP is a watchdog over (AR's response
+  // TI-22). Not part of the KERNEL line the two hosts compare.
+  for (const ChanInst &ci : kChanInsts) {
+    if (!kChans[ci.chan].held) continue;
+    uint64_t age = 0;
+    for (unsigned s = 0; s != kChans[ci.chan].rate; ++s)
+      age = std::max(age, m.rx(ci.slot_base + s).maxAge());
+    std::printf("BPAGE %s max=%llu watchdog=%u\n", kChans[ci.chan].name,
+                (unsigned long long)age, unsigned(ccv::prov::kTimeoutBp));
+  }
   std::printf("COVER");
   for (const char *b : Kernel::kCoverBins)
     std::printf(" %s=%llu", b, (unsigned long long)(k.cover.count(b) ? k.cover.at(b) : 0));

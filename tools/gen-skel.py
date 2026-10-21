@@ -128,6 +128,9 @@ def build(d, pv, blocks):
                           why=c.get("slot_attrs_why", {}),
                           binding_key=c.get("slot_attrs", {}).get("binding_key"),
                           outstanding=c.get("outstanding"),
+                          # A backpressured channel (AR's response TI-22):
+                          # its receiver's owner has stated the hold.
+                          held=c.get("backpressure", "").startswith("held:"),
                           latency_match=c.get("latency_match"),
                           lead=lead, lead_mask=lead_mask))
 
@@ -209,6 +212,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("  int16_t bind_key;    ///< fields[] index of the binding key, or -1:")
     L.append("                       ///< it must equal slot / bind_group")
     L.append("  bool fixed_lat;      ///< receiver never stalls, credits on landing (A-47)")
+    L.append("  bool held;           ///< backpressured: its receiver may hold behind a stall (TI-22)")
     L.append("};")
     L.append("")
     for c in chans:
@@ -234,14 +238,15 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
               if c["attrs"]["slot_binding"] == "bound" else 0)
         bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
               if c["binding_key"] else -1)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s},'
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
                     "true" if c["attrs"]["acceptance"] == "atomic" else "false",
                     bg, ok, of,
                     "true" if c["attrs"]["lockstep"] else "false", cls, bk,
-                    "true" if c["attrs"]["fixed_latency"] else "false"))
+                    "true" if c["attrs"]["fixed_latency"] else "false",
+                    "true" if c["held"] else "false"))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -335,14 +340,19 @@ def gen_sv(chans, cinst, nslots, pbits):
                   if c["lead_mask"] else "")
             if c["attrs"]["fixed_latency"]:
                 lm += ", .FIXED_LAT(1)"   # no stall, credit on landing (A-47)
+            # A backpressured channel's response bound is the watchdog
+            # CCV_P_TIMEOUT_BP, not CCV_P_TIMEOUT_N (AR's response TI-22).
+            tmo = "CCV_P_TIMEOUT_BP" if c["held"] else "CCV_P_TIMEOUT_N"
             if ci["stages"]:
                 # A repeated link (params/links.json): the round trip and the
                 # response bound grow by 2N, and the stall rule counts the
                 # stages between this point and the sender.
                 n = ci["stages"]
                 lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
-                       ".TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + %d), "
-                       ".SRC_STAGES(%d)" % (2 * n, 2 * n, ci["src_stages"]))
+                       ".TIMEOUT_N(ccv_prov_pkg::%s + %d), "
+                       ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
+            elif c["held"]:
+                lm += ", .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)"
             L.append("  ccv_common_chk_credit #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
                      "u_%s_s%d (" % (c["bits"], c["id"], lm, tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "

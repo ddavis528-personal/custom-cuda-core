@@ -573,6 +573,7 @@ missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=4
 mwmiss l1_hit=0
+vadd4  full_line=4
 stall  l1_late>0
 vaddslow full_line=1
 KERNELS
@@ -820,6 +821,19 @@ if [ "$n" = 7 ] && [ "$o" = 7 ] && [ "$(field "$log" check_failures)" = 14 ]; th
   say "--break memop-ordering: OOE and MIU refuse each" "PASS (7 loads)"
 else
   bad "--break memop-ordering" "$n MIU and $o OOE refusals (want 7 each): $(grep '^KERNEL' "$log")"
+fi
+
+# -- backpressured channels (AR's response TI-22) -------------------------------
+# A channel whose receiver may hold behind a stall (schema: backpressure) is
+# held to CCV_P_TIMEOUT_BP, a watchdog; what it measures is reported here, the
+# longest any message waited in one of its slots in any kernel, so a kernel
+# near the watchdog shows as a sizing signal before it is a failure.
+bp=$(cat "$B"/kernel_*.log 2>/dev/null | sed -n 's/^BPAGE \([^ ]*\) max=\([0-9]*\) watchdog=\([0-9]*\)$/\1 \2 \3/p' |
+     sort -k1,1 -k2,2n | awk '{m[$1]=$2; w[$1]=$3} END {for (c in m) printf "%s %d of %d; ", c, m[c], w[c]}')
+if [ -n "$bp" ]; then
+  say "backpressured channels: longest wait" "PASS (${bp%; })"
+else
+  bad "backpressured channels: longest wait" "no BPAGE line in any kernel's log"
 fi
 
 # -- out of order (Daniel, 2026-10-21) -----------------------------------------
