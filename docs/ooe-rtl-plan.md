@@ -522,9 +522,14 @@ Built (`rtl/ooe/`):
   no-pending and no-lead added, all six caught). `check-cg`: 28 gates,
   worst enable 2.2 NGD, lowest DCGE 92%, 61 lead and event flops outside
   any gate, within the 88 allowed; the four CG-5 and RST-1 entries leave
-  the ratchet. `rat_cq02h`'s NGD-7 stands: its flops reach the hold mux
+  the ratchet. `rat_cq02h`'s NGD-7 stood: its flops reached the hold mux
   and the checkpoint capture 12.0 NGD away, against the output's 4 (OA-20,
-  re-measured).
+  re-measured). DA chose (b), the copy (2026-10-21): the speculative maps
+  are two `(* keep *)` registers, `rto_cq02h` leaving as `rat_cq02h` and
+  `rin_cq02h` for the hold and the capture, 736 flops more. NGD-7 is
+  clear and the entry is off the ratchet; `ooe_rat` is 12.5 NGD flop to
+  flop, and `check-cg` reads 5,213 flops in 28 gates, worst enable 2.2,
+  lowest DCGE 92%. rat_tb unchanged: none differ, six controls caught.
 
 - **`ooe_rename`**, rename's pipeline (task 18; the doc at rev 238, its
   Stage boundaries table and OA-21, OA-22), built in slices, each benched
@@ -588,6 +593,26 @@ Built (`rtl/ooe/`):
   5. **Rename 1**: its register, the one-group skid and the credit channel
      from decq (OI-49), ooe_ratread, and the free-row take from the
      candidate buffer's heads.
+
+## NGD-7 copies: the running tally (DA, 2026-10-21)
+
+DA reviews the copies NGD-7 costs after OOE's first pass. Each is a
+`(* keep *)` register duplicated so an output leaves from flops that start
+no deeper path; the flops here are the copy's, beyond the register it
+copies.
+
+| Module | Copy | Flops |
+|---|---|---|
+| `ooe_rat` | the speculative maps, for the output (OA-20 (b)) | 736 |
+| `ooe_freelist` | the candidate buffer and its count, for the ports: GPR 68, predicate 52 | 120 |
+| `ooe_rs` | the valid bits, for the outputs | 45 |
+| `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
+| `ooe_wake` | the issued bits | 45 |
+| **built** | | **991** |
+| `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
+
+Not counted: `ooe_sched`'s third grant copy, for `ooe_wake`'s enables,
+which CG-5 asks for (its waiver), not NGD-7.
 
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
