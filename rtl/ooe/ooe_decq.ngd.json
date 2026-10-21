@@ -31,11 +31,11 @@
    "date": "2026-10-20",
    "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: channel valids, from the boundary receive flops"
   },
-  "deq_any_cq01h": {
-   "arrival": 4.0,
+  "deq_sel_cq01h": {
+   "arrival": 2.0,
    "by": "OA",
    "date": "2026-10-21",
-   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 155): some warp takes, from rename's flop and an OR"
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): rename's per-warp take-enable, from its flops, as wake's grant copy"
   }
  }
 }

@@ -691,6 +691,13 @@ changes when no message does is the commonest way to get this wrong: it
 makes the scenario busier than its traffic, and every DCGE looks better
 than it is.
 
+Every scenario is checked traffic (Daniel, 2026-10-21). A bench drives and
+checks each scenario as it does any run: no stimulus is made only for
+clock gating, so the scenarios are valid input by construction, and
+`check-cg` fails a unit whose bench fails one. The rules a bench keeps on
+its module's inputs are the module's own assertions too, so an input that
+breaks them fails in any bench, not only the one that knew the rule.
+
 **Exceptions.** Three, in this order, and the order matters:
 
 - **By measurement.** A register clocked every cycle (CG-1, CG-4) is

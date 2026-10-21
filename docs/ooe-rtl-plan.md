@@ -210,11 +210,32 @@ Built (`rtl/ooe/`):
   `decq_flush_late`, 1.9% fewer cycles in the synthetic sweep). No uop
   arrives for a slot in its flush's cycle (0 in 2,357 flushes; an RTL
   assertion and the model's check), so the late flush drops nothing new.
-  The reset is flopped (RST-1); 6 flops are ungated, of 7 allowed. A
-  dequeue is still rename's input, on the ratchet (CG-5): its lead is
-  rename's go (OI-63). The bench runs the RTL a snapshot behind the model;
-  new control no-enq-lead. (OI-54's late-event control, whose random hunt
-  this moved, is now directed: docs/ooe-model.md.)
+  The reset is flopped (RST-1). The bench runs the RTL a snapshot behind
+  the model; control no-enq-lead. (OI-54's late-event control, whose
+  random hunt this moved, is now directed: docs/ooe-model.md.)
+
+  The registered take and the output register (OA-21; OA's responses
+  OI-65, revs 155 and 156). Rename's take is registered (`tk`) and popped
+  at the next edge, the queue clocked on its own flops alone, the taken
+  entries holding their credits that edge longer (`decq_take_late`). Each
+  slot has an output register showing its 2R - 1 = 7 heads past rename's
+  latest take: valid bits, R payloads and the rest's admission bits (the
+  payload's low PA = 6). Its D is a 5:1 mux on this edge's `deq_n` over
+  candidates read at positions tk + j (j up to 3R - 2), an AND-OR. Arrivals
+  show from the next edge (take_young 0), a slot whose flush applies now
+  shows empty, and the used count is state, held to the busy bits' count
+  by an assertion. Every output leaves from a flop; flop to flop 19.1 NGD,
+  `deq_n` to a flop 9.4 (23.4 with OA's 14). Each slot's two output groups
+  (take, count and valids, 14 flops; payloads and admission bits, 82) are
+  clocked by rename's per-slot take-enable `deq_sel_cq01h`, a superset of
+  its take from rename's flops (budget 2.0; asserted, `deq_sel_covers`), or
+  by the slot's own transit, arrival and flush flops: CG-5 waived at 4.2
+  NGD in all (rtl/cg-waivers.json, OA's response OI-65). One enable shared
+  by the slots gave 61 to 71% DCGE; per slot, 90% and over in every
+  scenario. Every arrival clocks its slot's groups: an arrival past the
+  candidate window still changes the count, which the checked scenarios
+  found (DA, 2026-10-21: every scenario is checked traffic). With this,
+  ooe_decq leaves both ratchets, and they hold nothing.
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function

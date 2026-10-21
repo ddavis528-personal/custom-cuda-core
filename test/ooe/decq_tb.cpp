@@ -156,7 +156,6 @@ void drive(const Edge &e, bool lead) {
       in_transit += gone;
     }
   }
-  dut->deq_any_cq01h = in_transit != 0 && control != "no-take-enable";
   // rename's "may take" bits: here exactly the slots it took from.
   dut->deq_sel_cq01h = 0;
   for (unsigned s = 0; s != S; ++s)
@@ -221,7 +220,6 @@ void hook(const Core &c) {
     have_pend = false;
     dut->enq_v_cq01h = 0;
     dut->deq_n_cq01h = 0;
-    dut->deq_any_cq01h = 0;
     dut->deq_sel_cq01h = 0;
     dut->flush_cq01h = 0;
     dut->enq_l_cq00h = 0;

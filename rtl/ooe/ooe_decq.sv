@@ -75,6 +75,7 @@ module ooe_decq #(
   localparam int LU = $clog2(Q + 1),
   localparam int LE = $clog2(E + 1),
   localparam int H  = 2 * R - 1,  // heads shown per slot: rename's fits read up to 2R - 1
+  localparam int NA = H - R,      // heads past the payloads: admission bits only
   localparam int NCAND = 3 * R - 1
 ) (
   input  logic             ooe_core_clk,
@@ -84,13 +85,12 @@ module ooe_decq #(
   input  logic [E*LS-1:0]  enq_slot_cq01h,   // its slot
   input  logic [E*P-1:0]   enq_pay_cq01h,    // its payload
   input  logic [S*LR-1:0]  deq_n_cq01h,      // uops rename took from each slot
-  input  logic             deq_any_cq01h,    // rename took from some slot
   input  logic [S-1:0]     deq_sel_cq01h,    // rename may take from slot s (a superset, early: each output group's enable)
   input  logic [S-1:0]     flush_cq01h,      // a squash drops each slot's uops
   output logic [S*LC-1:0]  cnt_cq02h,        // uops each slot offers rename, past its latest take
   output logic [S*H-1:0]   head_v_cq02h,     // slot s's k-th offered uop is there (k < 2R - 1)
   output logic [S*R*P-1:0] head_pay_cq02h,   // the first R's payloads
-  output logic [S*(H-R)*PA-1:0] head_adm_cq02h, // the rest's admission bits
+  output logic [S*NA*PA-1:0] head_adm_cq02h, // the rest's admission bits
   output logic [LU-1:0]    used_cq02h        // entries held: the credits out
 );
 
@@ -115,7 +115,7 @@ module ooe_decq #(
   `CCV_ASSERT_KNOWN(enq_l_known, enq_l_cq00h)
   `CCV_ASSERT_KNOWN_IF(enq_slot_known, |enq_v_cq01h, enq_slot_cq01h)
   `CCV_ASSERT_KNOWN(deq_n_known, deq_n_cq01h)
-  `CCV_ASSERT_KNOWN(deq_any_known, deq_any_cq01h)
+  `CCV_ASSERT_KNOWN(deq_sel_known, deq_sel_cq01h)
   `CCV_ASSERT_KNOWN(flush_known, flush_cq01h)
 
   // Fields of the state.
@@ -259,14 +259,18 @@ module ooe_decq #(
   // take in transit. The same as the busy bits' count (an assertion).
   (* keep *) logic [LU-1:0] used_q_cq02h;   // the count, and its copy out (NGD-7)
   (* keep *) logic [LU-1:0] used_o_cq02h;
-  logic [LU-1:0]   used_nx_cq01h;
-  always_comb begin
-    used_nx_cq01h = used_q_cq02h;
-    for (int k = 0; k < E; k++) used_nx_cq01h = used_nx_cq01h + LU'(enq_v_cq01h[k]);
+  // The count's next value, written as the queue's own (next_state): the
+  // state it reads is this edge's, as the queue's is.
+  function automatic logic [LU-1:0] used_next(input logic [LU-1:0] u, input logic [E-1:0] ev,
+                                              input logic [SW-1:0] st, input logic [S*LR-1:0] tk,
+                                              input logic [S-1:0] fl);
+    used_next = u;
+    for (int k = 0; k < E; k++) used_next = used_next + LU'(ev[k]);
     for (int s = 0; s < S; s++)
-      used_nx_cq01h = used_nx_cq01h - (fl_q_cq02h[s] ? LU'(st_cq02h[OCNT + s * LC +: LC])
-                                                      : LU'(tk_cq02h[s * LR +: LR]));
-  end
+      used_next = used_next - (fl[s] ? LU'(st[OCNT + s * LC +: LC]) : LU'(tk[s * LR +: LR]));
+  endfunction
+  logic [LU-1:0]   used_nx_cq01h;
+  assign used_nx_cq01h = used_next(used_q_cq02h, enq_v_cq01h, st_cq02h, tk_cq02h, fl_q_cq02h);
   assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, tk_cq02h, fl_q_cq02h);
 
   // Every arrival was led; none arrives for a slot whose flush comes now;
@@ -282,9 +286,8 @@ module ooe_decq #(
   `CCV_ASSERT(enq_led, enq_v_cq01h == '0 || enq_en_cq01h)
   `CCV_ASSERT(no_enq_at_flush, (enq_s_cq01h & flush_cq01h) == '0)
   `CCV_ASSERT(no_deq_while_flushing, (deq_s_cq01h & fl_q_cq02h) == '0)
-  // rename's "some warp takes" is exactly its takes' OR.
-  `CCV_ASSERT(deq_any_exact, deq_any_cq01h == (deq_s_cq01h != '0))
-  // rename's "may take" bits cover its takes.
+  // rename's "may take" bits cover its takes (OA's response OI-65: a
+  // superset, from rename's flops).
   `CCV_ASSERT(deq_sel_covers, (deq_s_cq01h & ~deq_sel_cq01h) == '0)
   // Rename takes no more than a slot offers.
   logic deq_over_cq01h;
@@ -330,32 +333,32 @@ module ooe_decq #(
         end
       end
   end
-  logic [S*LC-1:0]      cnt_nx_cq01h;
-  logic [S*H-1:0]       hv_nx_cq01h;
-  logic [S*R*P-1:0]     hp_nx_cq01h;
-  logic [S*(H-R)*PA-1:0] ha_nx_cq01h;
+  logic [S*LC-1:0]      cnt_nx;
+  logic [S*H-1:0]       hv_nx;
+  logic [S*R*P-1:0]     hp_nx;
+  logic [S*NA*PA-1:0]   ha_nx;
   always_comb begin
-    hp_nx_cq01h = '0;
-    ha_nx_cq01h = '0;
-    hv_nx_cq01h = '0;
+    hp_nx = '0;
+    ha_nx = '0;
+    hv_nx = '0;
     for (int s = 0; s < S; s++) begin
       logic [LR-1:0] k;
       k = deq_n_cq01h[s * LR +: LR];
-      cnt_nx_cq01h[s * LC +: LC] = fl_q_cq02h[s] ? '0
+      cnt_nx[s * LC +: LC] = fl_q_cq02h[s] ? '0
           : st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]) - LC'(k);
-      for (int t = 0; t <= R; t++)
+      for (int t = 0; t < R + 1; t++)
         if (32'(k) == t && !fl_q_cq02h[s])
           for (int i = 0; i < H; i++) begin
-            hv_nx_cq01h[s * H + i] = cv_cq02h[s * NCAND + t + i];
-            if (i < R) hp_nx_cq01h[(s * R + i) * P +: P] = cp_cq02h[(s * NCAND + t + i) * P +: P];
-            else       ha_nx_cq01h[(s * (H - R) + i - R) * PA +: PA] = cp_cq02h[(s * NCAND + t + i) * P +: PA];
+            hv_nx[s * H + i] = cv_cq02h[s * NCAND + t + i];
+            if (i < R) hp_nx[(s * R + i) * P +: P] = cp_cq02h[(s * NCAND + t + i) * P +: P];
+            else       ha_nx[(s * NA + i - R) * PA +: PA] = cp_cq02h[(s * NCAND + t + i) * P +: PA];
           end
     end
   end
   logic [S*LC-1:0]       cnt_o_cq02h;
   logic [S*H-1:0]        hv_o_cq02h;
   logic [S*R*P-1:0]      hp_o_cq02h;
-  logic [S*(H-R)*PA-1:0] ha_o_cq02h;
+  logic [S*NA*PA-1:0]    ha_o_cq02h;
   assign cnt_cq02h      = cnt_o_cq02h;
   assign head_v_cq02h   = hv_o_cq02h;
   assign head_pay_cq02h = hp_o_cq02h;
@@ -374,8 +377,8 @@ module ooe_decq #(
   // "some warp takes" bit: the waiver, V-75), a queue changed at the last
   // edge, a flush applied now, or a take in transit to clear.
   logic          decq_en_cq01h;
-  logic [S-1:0]  out_en_cq01h;            // each slot's count, valids and take
-  logic [S-1:0]  pay_en_cq01h;            // and its payloads
+  logic [S-1:0]  out_en;            // each slot's count, valids and take
+  logic [S-1:0]  pay_en;            // and its payloads
   // A slot's arrivals change its count whether or not the candidates can
   // see them, so every arrival into the slot clocks its output groups.
   logic [S-1:0]  arr_nx_cq01h;
@@ -387,10 +390,10 @@ module ooe_decq #(
   // applied now; its take in transit clears an edge after rename's take.
   always_comb
     for (int s = 0; s < S; s++)
-      out_en_cq01h[s] = deq_sel_cq01h[s] || tkv_cq02h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
+      out_en[s] = deq_sel_cq01h[s] || tkv_cq02h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
   always_comb
     for (int s = 0; s < S; s++)
-      pay_en_cq01h[s] = deq_sel_cq01h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
+      pay_en[s] = deq_sel_cq01h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
   assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, tk_cq02h,
                                     fl_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
@@ -413,17 +416,17 @@ module ooe_decq #(
         tk_cq02h[s * LR +: LR]    <= '0;
         cnt_o_cq02h[s * LC +: LC] <= '0;
         hv_o_cq02h[s * H +: H]    <= '0;
-      end else if (out_en_cq01h[s]) begin
+      end else if (out_en[s]) begin
         tk_cq02h[s * LR +: LR]    <= deq_n_cq01h[s * LR +: LR];
-        cnt_o_cq02h[s * LC +: LC] <= cnt_nx_cq01h[s * LC +: LC];
-        hv_o_cq02h[s * H +: H]    <= hv_nx_cq01h[s * H +: H];
+        cnt_o_cq02h[s * LC +: LC] <= cnt_nx[s * LC +: LC];
+        hv_o_cq02h[s * H +: H]    <= hv_nx[s * H +: H];
       end
     end
     // The payloads: read only through their valids, so un-reset.
     always_ff @(posedge ooe_core_clk)
-      if (pay_en_cq01h[s]) begin
-        hp_o_cq02h[s * R * P +: R * P]                <= hp_nx_cq01h[s * R * P +: R * P];
-        ha_o_cq02h[s * (H - R) * PA +: (H - R) * PA] <= ha_nx_cq01h[s * (H - R) * PA +: (H - R) * PA];
+      if (pay_en[s]) begin
+        hp_o_cq02h[s * R * P +: R * P]                <= hp_nx[s * R * P +: R * P];
+        ha_o_cq02h[s * NA * PA +: NA * PA] <= ha_nx[s * NA * PA +: NA * PA];
       end
   end
 

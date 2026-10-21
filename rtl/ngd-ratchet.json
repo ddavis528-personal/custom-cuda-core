@@ -1,10 +1,4 @@
 {
   "_comment": "Findings of tools/check-ngd.py that stood when the logic depth rules were made (Daniel, 2026-10-17 and 2026-10-18; docs/rtl-coding-style.md, 'Logic depth'): a port over the default CCV_NGD_PORT (NGD-2, NGD-3), awaiting the architect's budgets (the module's <module>.ngd.json beside its RTL) or a redesign; or logic on a path straight through a module, or between a module's children touching none of its flops (NGD-5, keyed from>to), awaiting a redesign that groups it with one sequential side, or the module's declaration as an inner helper. Or an inner helper that no module instantiates yet, a path input to output over CCV_NGD_INNER (NGD-6, 2026-10-19, keyed from>to), awaiting its parent. Or a register that drives an output and reaches a flop or another output past that output's required time (NGD-7, 2026-10-19, keyed by register), awaiting a copy for the output and one for the rest. The list only shrinks: check-ngd refuses an entry that now meets the rule, and one that was not here when its rule was made.",
-  "modules": {
-    "ooe_decq": [
-      "NGD-2 head_pay_cq02h",
-      "NGD-2 used_cq02h",
-      "NGD-7 st_cq02h"
-    ]
-  }
+  "modules": {}
 }

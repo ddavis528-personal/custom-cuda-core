@@ -104,13 +104,16 @@ done
 
 # -- demotion (TI-24), both hosts: RAU, RCU, FET and PCA each move a warp out
 # through their own ports only, so the SV top must agree event for event.
+# stall is built to park its warp 0, so it must; vadd4 parks only where its
+# stalls reach the threshold (not with the split's latencies, since slice 4's
+# go), and the hosts must agree on it either way (their summary lines).
 for k in stall vadd4; do
   t="${k}_demote"
   CCV_RAU_DEMOTE=fallback cpp "$k" --trace "$B/svh_cpp_$t.ccvtrace" >"$B/svh_cpp_$t.log"
   CCV_RAU_DEMOTE=fallback svh "$k" "+ccv_trace=$B/svh_sv_$t.ccvtrace" >"$B/svh_sv_$t.log"
   why=""
   grep -q " violations=0$" "$B/svh_sv_$t.log" || why="$why; checker violations"
-  grep -qE '(^| )parked=[1-9]' "$B/svh_sv_$t.log" || why="$why; nothing parked"
+  [ "$k" != stall ] || grep -qE '(^| )parked=[1-9]' "$B/svh_sv_$t.log" || why="$why; nothing parked"
   [ "$(lines "$B/svh_cpp_$t.log")" = "$(lines "$B/svh_sv_$t.log")" ] ||
     why="$why; summary lines differ"
   tr=$(python3 tools/compare-traces.py "$B/svh_cpp_$t.ccvtrace" "$B/svh_sv_$t.ccvtrace")
