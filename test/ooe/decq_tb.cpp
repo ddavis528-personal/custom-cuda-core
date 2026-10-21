@@ -14,18 +14,26 @@
 // registered and applied an edge late: meanwhile the slot still shows its
 // old uops (rename takes none: its rule), and they hold their credits.
 //
-// Before the edge, every slot's R oldest on the RTL's outputs must be the
-// model's, in order; after it, every slot's count and the pool's credit
-// count must be the model's (a slot flushed at that edge still showing its
-// old uops and holding their credits). The RTL's assertions (rename within the count,
+// After each edge, every slot's count and its 2R - 1 oldest past rename's
+// take (payloads for the first R, admission bits for the rest) must be the
+// model's, without that edge's arrivals, and the pool's credit count the
+// model's (a slot flushed at that edge still showing its old uops and
+// holding their credits). The RTL's assertions (rename within the count,
 // arrivals within credit, payload reads through busy entries) run too,
 // under --assert.
 //
 // Negative controls (DECQ_CONTROL=<name>) perturb the driving and must be
 // caught: drop-flush (a squash's flush never reaches the RTL), enq-swap (a
-// slot's two oldest arrivals in a cycle reach the ports youngest first) and
-// no-enq-lead (the arrival lead never reaches it).
-// Usage: decq_tb [seeds]
+// slot's two oldest arrivals in a cycle reach the ports youngest first),
+// no-enq-lead (the arrival lead never reaches it) and no-take-enable
+// (rename's "some warp takes" bit never reaches the take register).
+//
+// Rename's take is registered and popped at the next edge (OA-21): the
+// outputs read past it at once, and its entries hold their credits that
+// edge longer, as the model's decq_take_late holds them.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
+// Usage: decq_tb [seeds] | decq_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_decq.h"
 #include "verilated.h"
@@ -41,10 +49,9 @@
 
 using ccv::ooe::Core;
 
-int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &));
 
 namespace {
-constexpr unsigned S = DQ_S, E = DQ_E, R = DQ_R, P = 16;
+constexpr unsigned S = DQ_S, E = DQ_E, R = DQ_R, P = 16, PA = 6, H = 2 * R - 1;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned LS = bits(S), LC = bits(DQ_D + 1), LR = bits(R + 1);
 
@@ -97,16 +104,6 @@ void tick() {
   cg.dump();
 }
 
-// An idle cycle: nothing arrives, nothing is taken or flushed. The last
-// one before an edge with arrivals carries their lead.
-void idleTick(bool lead = false) {
-  dut->enq_v_cq01h = 0;
-  dut->deq_n_cq01h = 0;
-  dut->flush_cq01h = 0;
-  dut->enq_l_cq00h = lead && control != "no-enq-lead";
-  tick();
-}
-
 void fail(const char *what, unsigned slot, unsigned rtl, unsigned model) {
   if (++mismatches <= 5)
     std::fprintf(stderr, "cycle %llu slot %u: %s (rtl %u, model %u)\n", cycles, slot, what, rtl, model);
@@ -134,25 +131,13 @@ std::vector<std::pair<uint64_t, unsigned>> freshOf(const Edge &e) {
 
 void drive(const Edge &e, bool lead) {
   ++cycles;
-  // Before the edge: the RTL shows the old queues.
-  dut->ooe_core_clk = 0;
-  dut->eval();
-  for (unsigned s = 0; s != S; ++s)
-    for (unsigned k = 0; k != R; ++k) {
-      const bool v = getField(dut->head_v_cq02h, s * R + k, 1);
-      const auto &q = held_q[s].empty() ? e.was[s] : held_q[s];
-      if (v != (k < q.size())) { fail("head valid differs", s, v, k < q.size()); continue; }
-      if (!v) continue;
-      ++heads;
-      const unsigned got = getField(dut->head_pay_cq02h, (s * R + k) * P, P);
-      if (got != (q[k] & 0xffffu)) fail("head payload differs", s, got, unsigned(q[k] & 0xffffu));
-    }
   // The edge: dequeues, flushes, arrivals.
   uint64_t last = 0;
   for (const auto &q : e.was) for (uint64_t x : q) last = std::max(last, x + 1);
   dut->deq_n_cq01h = 0;
   dut->flush_cq01h = 0;
   unsigned held = 0;   // a flushed slot's entries, held until the flush applies
+  unsigned in_transit = 0;   // the take registered at this edge, popped at the next
   for (unsigned s = 0; s != S; ++s) {
     size_t keep = 0;   // old uops still queued: a suffix of the old queue
     for (uint64_t x : e.now[s]) if (x < last) ++keep;
@@ -168,8 +153,13 @@ void drive(const Edge &e, bool lead) {
       if (gone > R) fail("rename took more than its width", s, gone, R);
       setField(dut->deq_n_cq01h, s * LR, LR, gone);
       taken += gone;
+      in_transit += gone;
     }
   }
+  // rename's "may take" bits: here exactly the slots it took from.
+  dut->deq_sel_cq01h = 0;
+  for (unsigned s = 0; s != S; ++s)
+    if (getField(dut->deq_n_cq01h, s * LR, LR) && control != "no-take-enable") dut->deq_sel_cq01h |= 1u << s;
   auto fresh = freshOf(e);
   if (fresh.size() > E) { fail("more arrivals than ports", 0, unsigned(fresh.size()), E); return; }
   if (control == "enq-swap")
@@ -184,21 +174,41 @@ void drive(const Edge &e, bool lead) {
     setField(dut->enq_pay_cq01h, k * P, P, fresh[k].first & 0xffffu);
   }
   arrivals += fresh.size();
-  dut->enq_l_cq00h = lead && !cg.gaps() && control != "no-enq-lead";
+  dut->enq_l_cq00h = lead && control != "no-enq-lead";
   tick();
-  // After the edge: the counts and the credits.
+  // After the edge, what rename sees (OA's response OI-65): each slot's
+  // uops past rename's take, not the ones arriving at this edge (they show
+  // from the next: the model's take_young 0); a slot flushed at this edge
+  // still shows its old uops until the flush applies.
   unsigned total = 0;
   held_q.assign(S, {});
   for (unsigned s = 0; s != S; ++s) {
     if (((e.fl >> s) & 1u) && control != "drop-flush") held_q[s] = e.was[s];
-    const unsigned want = unsigned(held_q[s].empty() ? e.now[s].size() : held_q[s].size());
+    std::vector<uint64_t> want;
+    if (!held_q[s].empty()) want = held_q[s];
+    else for (uint64_t x : e.now[s]) if (x < last) want.push_back(x);
     const unsigned got = getField(dut->cnt_cq02h, s * LC, LC);
-    if (got != want) fail("count differs", s, got, want);
+    if (got != want.size()) fail("count differs", s, got, unsigned(want.size()));
+    for (unsigned k = 0; k != H; ++k) {
+      const bool v = getField(dut->head_v_cq02h, s * H + k, 1);
+      if (v != (k < want.size())) { fail("head valid differs", s, v, k < want.size()); continue; }
+      if (!v) continue;
+      ++heads;
+      if (k < R) {
+        const unsigned g = getField(dut->head_pay_cq02h, (s * R + k) * P, P);
+        if (g != (want[k] & 0xffffu)) fail("head payload differs", s, g, unsigned(want[k] & 0xffffu));
+      } else {
+        const unsigned g = getField(dut->head_adm_cq02h, (s * (H - R) + k - R) * PA, PA);
+        if (g != (want[k] & ((1u << PA) - 1))) fail("head admission bits differ", s, g, unsigned(want[k] & ((1u << PA) - 1)));
+      }
+    }
     total += unsigned(e.now[s].size());
   }
   full += total == DQ_Q;
-  if (unsigned(dut->used_cq02h) != total + held) fail("credits differ", 0, unsigned(dut->used_cq02h), total + held);
-  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick(lead && g + 1 == cg.gaps());
+  // The take registered at this edge holds its entries until the next
+  // (the model's decq_take_late).
+  if (unsigned(dut->used_cq02h) != total + held + in_transit)
+    fail("credits differ", 0, unsigned(dut->used_cq02h), total + held + in_transit);
 }
 
 void hook(const Core &c) {
@@ -210,6 +220,7 @@ void hook(const Core &c) {
     have_pend = false;
     dut->enq_v_cq01h = 0;
     dut->deq_n_cq01h = 0;
+    dut->deq_sel_cq01h = 0;
     dut->flush_cq01h = 0;
     dut->enq_l_cq00h = 0;
     dut->ooe_rst_r00h = 1;
@@ -237,27 +248,9 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_decq>(ctx.get());
-  if (cg.on()) {
-    // Idle cycles change nothing, so the comparisons still hold; the run
-    // passes or fails only on the bench's exit, which this mode ignores.
-    cg.open(*dut, vcd);
-    dut->enq_l_cq00h = 0;
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) idleTick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestRandomPreHooked(seeds, hook);
+  if (cg.on()) cg.open(*dut, vcd);
+  const int model_fails = cg.run(seeds, hook, nullptr);
+  cg.close();
   dut->final();
   std::printf("decq_tb control=%s seeds=%u cores=%llu cycles=%llu arrivals=%llu taken=%llu flushes=%llu "
               "heads=%llu pool-full=%llu mismatches=%llu model_failures=%d\n",

@@ -1,15 +1,5 @@
 {
   "_comment": "Modules written before the local clock-gating rule (Daniel, 2026-10-16), excused from it while their owners convert them, and (findings) the CG-5 and RST-1 findings that stood when those rules were made (2026-10-18), one entry per rule and register or port, so the module is still held to CG-1 to CG-4 (tools/check-cg.py). Both lists only shrink: check-cg refuses an entry that was not on it when its rule was made, and one that now meets the rule.",
   "modules": {},
-  "findings": {
-    "ooe_decq": [
-      "CG-5 st_cq02h"
-    ],
-    "ooe_rat": [
-      "CG-5 ckpt_cq02h",
-      "CG-5 crat_cq02h",
-      "CG-5 rat_cq02h",
-      "RST-1 ooe_rst_r00h"
-    ]
-  }
+  "findings": {}
 }

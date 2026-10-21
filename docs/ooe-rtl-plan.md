@@ -210,11 +210,32 @@ Built (`rtl/ooe/`):
   `decq_flush_late`, 1.9% fewer cycles in the synthetic sweep). No uop
   arrives for a slot in its flush's cycle (0 in 2,357 flushes; an RTL
   assertion and the model's check), so the late flush drops nothing new.
-  The reset is flopped (RST-1); 6 flops are ungated, of 7 allowed. A
-  dequeue is still rename's input, on the ratchet (CG-5): its lead is
-  rename's go (OI-63). The bench runs the RTL a snapshot behind the model;
-  new control no-enq-lead. OI-54's late-event control now finds its race
-  at decq 2 (the flush's timing moved it from decq 4).
+  The reset is flopped (RST-1). The bench runs the RTL a snapshot behind
+  the model; control no-enq-lead. (OI-54's late-event control, whose
+  random hunt this moved, is now directed: docs/ooe-model.md.)
+
+  The registered take and the output register (OA-21; OA's responses
+  OI-65, revs 155 and 156). Rename's take is registered (`tk`) and popped
+  at the next edge, the queue clocked on its own flops alone, the taken
+  entries holding their credits that edge longer (`decq_take_late`). Each
+  slot has an output register showing its 2R - 1 = 7 heads past rename's
+  latest take: valid bits, R payloads and the rest's admission bits (the
+  payload's low PA = 6). Its D is a 5:1 mux on this edge's `deq_n` over
+  candidates read at positions tk + j (j up to 3R - 2), an AND-OR. Arrivals
+  show from the next edge (take_young 0), a slot whose flush applies now
+  shows empty, and the used count is state, held to the busy bits' count
+  by an assertion. Every output leaves from a flop; flop to flop 19.1 NGD,
+  `deq_n` to a flop 9.4 (23.4 with OA's 14). Each slot's two output groups
+  (take, count and valids, 14 flops; payloads and admission bits, 82) are
+  clocked by rename's per-slot take-enable `deq_sel_cq01h`, a superset of
+  its take from rename's flops (budget 2.0; asserted, `deq_sel_covers`), or
+  by the slot's own transit, arrival and flush flops: CG-5 waived at 4.2
+  NGD in all (rtl/cg-waivers.json, OA's response OI-65). One enable shared
+  by the slots gave 61 to 71% DCGE; per slot, 90% and over in every
+  scenario. Every arrival clocks its slot's groups: an arrival past the
+  candidate window still changes the count, which the checked scenarios
+  found (DA, 2026-10-21: every scenario is checked traffic). With this,
+  ooe_decq leaves both ratchets, and they hold nothing.
 
   Verilator 5.020 miscompiled an earlier form of this module: an
   `always_ff` whose reset and update were an if/else of two function
@@ -443,12 +464,18 @@ Built (`rtl/ooe/`):
   input is sdep at 24.5. `older_r` and the new `vel` take 4 as proposed
   (OI-55). The clock gates' lowest DCGE is 81% (medium and high).
 
-  `test/ooe/sched_tb.cpp` drives it a model cycle behind, so the event
-  lead and the hop's missed bits come from the next cycle, as ooe_wake
-  would know them. It compares the grants, the request register bit for
-  bit, and the ready register on V-73's rows. Over 25 seeds: 18,780
-  cycles followed, 16,666 grants, none differ. The controls no-msd,
-  no-miss-lead, late-leads and no-alloc-lead must each be caught.
+  `test/ooe/trio_tb.cpp` drives it assembled with ooe_rs and ooe_wake
+  (OI-45; it replaced `sched_tb`, which emulated the neighbours in the
+  model's frame). It compares the grants, the request register bit for
+  bit, and the ready register on V-73's rows. The controls no-msd,
+  no-miss-lead, late-leads and no-alloc-lead must each be caught. It is
+  the clock-gating bench too: the ready register's enables lead
+  ooe_wake's lead lines and ooe_rs's rows, so only the assembled modules
+  give them in the frame they clock. The ready register reads a row not
+  valid as not ready, so writing a row ready at once is a change its
+  allocation lead clocks; the grant's term is of rows reading the lead
+  line (WL - 1), the one line a grant may raise at its own edge. DCGE 92%
+  medium, 96% high.
 
 - **`ooe_rat`**, the register alias tables, the first of rename's two
   modules. Per tier-1 slot: the speculative GPR and predicate maps, the
@@ -503,6 +530,118 @@ Built (`rtl/ooe/`):
   gate. Every read and write is a decoder: written through computed
   indices, Yosys built 420,000 gates and ran out of memory; as decoders it
   is 52,000.
+  OI-58's redesign (OA's response, V-75) takes every enable from the
+  module's own flops: rename's group writes the speculative maps and
+  checkpoints an edge after its go, from rename's register of the group,
+  enabled by `ooe_rat`'s flop of the go per slot and per (slot,
+  checkpoint) of "a taken branch names it" (formed here from rename's take
+  counts and decq's head branch fields, L2); retirement writes the
+  committed maps from the retire-stage register, each slot's GPRs one gate
+  and its predicates another, enabled by `ooe_rat`'s copy of that
+  register's gwe and pwe (from the ROB's decision, L2); restores, squashes
+  to retirement and releases are registered and applied an edge late
+  (L4); the reset is flopped. `ooe_ratread` reads through the pending
+  group, each read a select of the flops' entry or its last writer among
+  the pending and in-group ports, compared in parallel: 12.1 NGD alone,
+  from 13.3 before the pending group. The bench compares every map an
+  edge behind the model (93,330 cycles, 101,578 renames, 2,459 restores,
+  65,861 retirements, 36 restore-allocate writes; none differ; controls
+  no-pending and no-lead added, all six caught). `check-cg`: 28 gates,
+  worst enable 2.2 NGD, lowest DCGE 92%, 61 lead and event flops outside
+  any gate, within the 88 allowed; the four CG-5 and RST-1 entries leave
+  the ratchet. `rat_cq02h`'s NGD-7 stood: its flops reached the hold mux
+  and the checkpoint capture 12.0 NGD away, against the output's 4 (OA-20,
+  re-measured). DA chose (b), the copy (2026-10-21): the speculative maps
+  are two `(* keep *)` registers, `rto_cq02h` leaving as `rat_cq02h` and
+  `rin_cq02h` for the hold and the capture, 736 flops more. NGD-7 is
+  clear and the entry is off the ratchet; `ooe_rat` is 12.5 NGD flop to
+  flop, and `check-cg` reads 5,213 flops in 28 gates, worst enable 2.2,
+  lowest DCGE 92%. rat_tb unchanged: none differ, six controls caught.
+
+- **`ooe_rename`**, rename's pipeline (task 18; the doc at rev 238, its
+  Stage boundaries table and OA-21, OA-22), built in slices, each benched
+  against the model before the next:
+
+  1. **The producer map** (`ooe_prodmap`), kept by RS entry, not by name:
+     each entry's occupant's GPR and predicate names (a masked load's copy,
+     the GPR name alone), written a cycle after Rename 3 from ooe_rs's
+     registered grant, each class's names one gate enabled from the
+     module's flop of the group's ports (L2). A source's producers are the
+     entries valid, not allocated at the last edge, whose occupant names
+     it, found by comparing the name with all 45. The doc's 768-entry map
+     indexed by name would have to clear every name holding a freed entry,
+     each name's enable from ooe_rs's free vector (CG-5), and is 11,700
+     flops; the compare is exact by construction (a freed entry is
+     invalid, a reused one names other registers), gives the dependency
+     row's bits directly, and measures 6.4 NGD for 16 GPR lookups and 5.5
+     for predicates against the map's 10.8 and a decode
+     (`test/ooe/probes/cam_probe.sv`; OI-66). The entries allocated at the
+     last edge, whose names are not yet written, are masked, and that
+     group's producers come from the registered grant, as the next group
+     resolves them already. ooe_rs masks a new row with the frees of its
+     own cycle (d4eb78f). `test/ooe/prodmap_tb.cpp` checks, for every name
+     after every edge, that the compare finds exactly the model's
+     producers: 43.3M name checks over 25 seeds and the directed tests,
+     1.59M live producers, none differ; controls no-ename, port-swap and
+     no-lead caught. `check-cg`: 917 flops, 914 in 3 gates, worst enable
+     4.0 NGD, lowest DCGE 85%. Its port budgets wait on OA (OI-66):
+     gnt_idx reaches a flop 19.3 NGD after it arrives.
+  2. **Rename 2 and 3**: the compares for each uop's sources (three GPR,
+     the merge source, the guard and the old predicate destination, plus
+     predicate logic's two), the in-group override (an older port of the
+     same group writing the source), the previous group's producers from
+     the registered grant, and each cell's wake-line code from a per-entry
+     register of its code per consumer group. Out to ooe_rs as row_dep,
+     row_code, grp_dep, grp_code and row_prod from rename's stage register,
+     under ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by
+     10).
+  3. **Rename's credits** (`ooe_rencred`, an inner helper: the counters'
+     next value; the flops are ooe_rename's): RS room per class, the free
+     GPR and predicate names, each slot's ROB room. A counter falls by the
+     go's take and any other draw (a restore-allocate's names), and rises
+     by the cycle's frees from the next edge: an RS free within ooe_rs's
+     prompt count (its free thermometer, capped at 4) at this edge, the
+     rest (a squash's, or past the cap) at the next. The go's takes arrive
+     late, so each next value is formed for every count the late inputs
+     may give (a carry-save step and a prefix add each) and the takes
+     select one: 12.8 NGD alone, the takes 7.2 to 11.0 from the output.
+     `test/ooe/rencred_tb.cpp` holds the counters and checks them against
+     the model's credits (`Core::renCredits`, `renEvents`) every cycle,
+     under the go they serve (fits_stale 6), through the random and
+     directed tests: 95,364 cycles, none differ; controls no-late, no-draw
+     and no-rob-free caught. ooe_rs's prompt count and its register of the
+     rest wait on confirmation moving into ooe_rs (OI-45); the ROB's
+     frees, on the ROB. Building it found 3's per-cycle shares unsafe as
+     registered (OI-65; docs/ooe-model.md, fits_stale 6).
+  4. **The go and decq's registered take** (OA-21, OA-22): open as OI-65.
+     The registered fits_s describe heads that depend on the previous
+     cycle's take; formed in the cycle the go measures 27.1 NGD to the take
+     counts and 30.3 to the lanes (test/ooe/probes/fitsgo_probe.sv).
+  5. **Rename 1**: its register, the one-group skid and the credit channel
+     from decq (OI-49), ooe_ratread, and the free-row take from the
+     candidate buffer's heads.
+
+## NGD-7 copies: the running tally (DA, 2026-10-21)
+
+DA reviews the copies NGD-7 costs after OOE's first pass. Each is a
+`(* keep *)` register duplicated so an output leaves from flops that start
+no deeper path; the flops here are the copy's, beyond the register it
+copies.
+
+| Module | Copy | Flops |
+|---|---|---|
+| `ooe_rat` | the speculative maps, for the output (OA-20 (b)) | 736 |
+| `ooe_freelist` | the candidate buffer and its count, for the ports: GPR 68, predicate 52 | 120 |
+| `ooe_rs` | the valid bits, for the outputs | 45 |
+| `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
+| `ooe_wake` | the issued bits | 45 |
+| **built** | | **991** |
+| `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
+| `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
+
+Not counted: `ooe_sched`'s third grant copy, for `ooe_wake`'s enables,
+which CG-5 asks for (its waiver), not NGD-7.
+
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The

@@ -204,6 +204,84 @@ struct Config {
   /// alone, and its exact forms do not fit a stage). The default is 3
   /// (OA-22, OA 2026-10-20: the go the RTL builds).
   unsigned fits_conservative = 3;
+  /// OA's response OI-65 (a): rename's per-warp fits are registered a cycle
+  /// ahead, for every take the warp may make, so they see the decode
+  /// queue and the credits as the cycle before left them. A uop is taken
+  /// no sooner than the second cycle after it arrives, and frees (ROB
+  /// retirements; RS frees in the short test) reach the fits two cycles
+  /// late. Off until OA settles OI-65; the sweep measures it. 2, OA's
+  /// (a2): the held heads' fits as 1, but a refill (uops arriving into a
+  /// slot whose held heads do not fill the window) is taken at once and
+  /// re-checked in Rename 1, a failing tail waiting in the skid, which
+  /// costs what not taking it does; ROB retirements a cycle late (ret_n
+  /// reaches the fits in time); the short test on the last cycle's shared
+  /// credits against twice the width (RCU three times with a copy in a
+  /// head), and a short cycle's warp against the shared credits less it.
+  /// 3, OA's per-warp shares (OI-65): as 2, but no short path: each cycle
+  /// every shared credit (as registered, without this cycle's frees) is
+  /// split equally among the warps with a head, the remainder to the first
+  /// in rotation, and each warp admits against its own share. 4, OA's
+  /// stateful shares: each warp keeps its share of each shared credit, its
+  /// own takes lower it; frees, and the shares of warps four cycles without
+  /// a head, form a pool split each cycle equally among the warps with a
+  /// head (the remainder to the first in rotation); the shares and the pool
+  /// sum to the credit, as registered (checked). 5: as 3, the remainder
+  /// given to no warp (the split's add gone; test/ooe/probes/share_probe.sv).
+  /// 6: as 3, as the RTL registers it: a warp admits against an allowance
+  /// split a cycle ahead, with the fits, from the credit no allowance then
+  /// holds, less at most the width (what a cycle can take of any credit),
+  /// so no take counts twice; under one warp each warp's allowance is that
+  /// whole pool. The credits are rename's counters (renCredits).
+  /// 7: OA's stateful shares as the RTL registers them: each warp keeps
+  /// its share of each credit, its takes lower it; the credit no share
+  /// holds (frees, returns) is split each cycle among the warps with a
+  /// head into a register, and reaches a warp's fits a cycle after that, so
+  /// a split is usable two cycles on; a warp share_return cycles without a
+  /// take returns its share (decided on its registered takes, the fits at
+  /// offset 0 formed without it). The credits are rename's counters.
+  unsigned fits_stale = 6;
+  /// Whether RS allocation may take an entry freed in the same cycle
+  /// (same-edge reuse, DA's response OI-39). With confirmation inside
+  /// ooe_rs (OI-45) the free reaches allocation from its own flops at 25.7
+  /// NGD, over the stage, so 0 allocates only entries free at the cycle's
+  /// start. Rename's counters (fits_stale 6) never count a free in its own
+  /// cycle, so only which entry is taken changes.
+  bool rs_same_edge = false;
+  unsigned share_return = 2;   ///< fits_stale 7: cycles without a take before a warp returns its share
+  /// fits_stale 2 to 7: a uop that arrived after the last cycle's start,
+  /// which the registered fits do not hold, is taken (the refill, OA's (a2):
+  /// re-checked in Rename 1 against the state as it stands). false: it
+  /// waits until the fits hold it, as the RTL's fits with no arrival term
+  /// (test/ooe/probes/sharefits_probe.sv, AR 0) do.
+  bool take_young = false;
+  /// A retirement's ROB slot counts in rename's room in its own cycle (the
+  /// fits' ret_n term: test/ooe/probes/fitsk2_probe.sv, RET 1). false:
+  /// under fits_conservative 3 and the shares, a cycle late.
+  bool ret_now = true;
+  /// A copy's request sees its sources' confirmation a cycle late, as the
+  /// composed RTL does (OI-45: ooe_rs decides a confirmation while
+  /// ooe_sched is a model cycle on).
+  bool copy_conf_late = true;
+  /// The request register's enable also takes the allocation lead: a row
+  /// written at an edge enters at the next (ooe_sched, OI-45 (a)).
+  bool req_alloc_lead = true;
+  /// ooe_sched's request register sees ooe_rs's rows and ooe_wake's
+  /// issued bits two cycles late, as the composed RTL does (OI-45: both
+  /// take the grant register an edge after ooe_sched, and a row written at
+  /// an edge reaches the register at the next): a row freed or written in
+  /// the last two cycles requests on its state before them, and the
+  /// allocation lead comes with the row.
+  bool req_rows_late = true;
+  /// The ready register reads ooe_wake's lead lines, which drop an L1
+  /// load's wake two cycles before its miss when no completion hint has
+  /// come (OA-23): a spec load whose hint has not come is not ready from
+  /// its miss cycle on. The environment sends Core::hint.
+  bool miss_lead = true;
+  /// The ready register sees a source's replay two cycles late, as the
+  /// composed RTL does (OI-45: ooe_wake takes the replay while ooe_sched is
+  /// a cycle on, and its lead lines had risen on the timer it replaced):
+  /// until then it reads that timer.
+  bool ready_rep_late = true;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -436,6 +514,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint64_t tid = 0;
   unsigned port = 0;
   unsigned rob_tag = 0, warp = 0;
+  unsigned rs_idx = 0;           ///< its RS entry, which MIU echoes (OA-23); 0 on a discard
   unsigned mem_op = 0;           ///< DEC's (A-68), or 0xF for a bulk discard
   uint32_t issue_mask = 0;
   unsigned pdst = 0, ppred = 0;
@@ -705,6 +784,11 @@ public:
   void uop(const Uop &u);
   void done(const Done &d);
   void cmpl(const Cmpl &c);
+  /// OA-23's completion hint: the completion for rob_tag comes two cycles
+  /// from now (read only under Config::miss_lead).
+  void hint(unsigned rob_tag);
+  uint64_t now() const { return now_; }   ///< the last cycle run
+  bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
   void alloc(const Alloc &a);
   void demote(unsigned warp);
   void barRelease(uint32_t warp_mask);
@@ -789,6 +873,10 @@ private:
     bool issued = false;
     uint64_t issue_at = 0;
     bool spec = false;             ///< woken speculatively (an L1 load)
+    bool hinted = false;           ///< its completion's hint came (OA-23; miss_lead)
+    /// ready_rep_late: its last replay's cycle and the timer it replaced.
+    uint64_t rep_at = ~uint64_t(0), rep_issue_at = 0, rep_late_at = 0;
+    bool rep_late = false, rep_on_completion = false;
     bool on_completion = false;    ///< wakes on its completion, not a time
     uint64_t late_at = 0;
     bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
@@ -959,6 +1047,7 @@ private:
   std::deque<Uop> decq_;
   std::deque<uint64_t> decq_seq_;           ///< each queued uop's arrival number
   uint64_t next_decq_seq_ = 0;
+  uint64_t decq_seq_at_ = 0, decq_seq_prev_ = 0;   ///< next_decq_seq_ at this cycle's start, the last's (fits_stale)
   uint32_t decq_flushed_ = 0;               ///< slots a squash flushed this cycle
 public:
   /// What reached each RS entry's wake timer this cycle, for ooe_wake
@@ -1013,6 +1102,10 @@ public:
       bool gwe = false, pwe = false, plogic = false, br = false, rst = false;
       /// What the reads returned: the model's own values.
       unsigned psrc[3] = {}, pold = 0, ppguard = 0, ppold = 0, pqn[2] = {};
+      /// Its RS entries: the main one (MIU class when mem), a masked
+      /// load's copy (RCU), else kNoEntry; kNoEntry for a no-op.
+      unsigned main = kNoEntry, copy = kNoEntry;
+      bool mem = false;
     };
     struct Ret {
       unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
@@ -1033,6 +1126,74 @@ public:
   unsigned ckptGpr(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].gpr[a]; }
   unsigned ckptPred(unsigned s, unsigned c, unsigned a) const { return slot_[s].ckpt[c].pred[a]; }
   unsigned slots() const { return unsigned(slot_.size()); }
+  /// The producer map, for test/ooe/prodmap_tb.cpp: name n's RS entries
+  /// (k 0 the main one, 1 a masked load's copy) or kNoEntry, and the
+  /// GPR names there are (rows by positions).
+  unsigned gprodOf(unsigned n, unsigned k) const { return gprod_[n][k]; }
+  unsigned pprodOf(unsigned n) const { return pprod_[n][0]; }
+  unsigned gprodNames() const { return unsigned(gprod_.size()); }
+  unsigned pprodNames() const { return unsigned(pprod_.size()); }
+  bool rsLive(unsigned e) const { return rs_[e].valid; }
+  /// Rename's shared credits as its counters hold them (fits_stale 6; the
+  /// RTL's ooe_rename, slice 3), at rename: RS room per class, without
+  /// this cycle's frees nor last cycle's past ooe_rs's prompt count (a
+  /// squash's, or past the cap); GPR and predicate names, without this
+  /// cycle's frees. The prompt and late parts are what the counters add.
+  struct RenCredits {
+    unsigned c[4] = {};          ///< RS RCU, RS MIU, GPR names, predicate names
+    unsigned prompt[2] = {};     ///< this cycle's RS frees within ooe_rs's prompt count
+    unsigned late[2] = {};       ///< and the rest, which the counters add an edge late
+  };
+  RenCredits renCredits() const {
+    RenCredits r;
+    for (unsigned e = 0; e != n_; ++e) r.c[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
+    for (unsigned k = 0; k != 2; ++k) {
+      r.c[k] -= rs_free_now_[k] + rs_late_prev_[k];
+      r.prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
+      r.late[k] = rs_free_now_[k] - r.prompt[k];
+    }
+    r.c[2] = unsigned(gfree_.ready());
+    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready()) : 1000u;
+    return r;
+  }
+  /// What rename's counters count over the cycle just run, for
+  /// test/ooe/rencred_tb.cpp: the RS entries, names and ROB slots rename
+  /// took, the RS frees within ooe_rs's prompt count and past it, the
+  /// names allocated and freed, and the state the counters must reach at
+  /// the next edge.
+  struct RenEvents {
+    unsigned rs_take[2] = {}, rs_prompt[2] = {}, rs_late[2] = {}, rs_late_prev[2] = {};
+    unsigned rs_free[2] = {};     ///< RS entries not valid now
+    unsigned name_take[2] = {}, name_alloc[2] = {}, name_free[2] = {}, names[2] = {};
+    std::vector<unsigned> uops, rob_freed, rob_room;   ///< per slot
+  };
+  RenEvents renEvents() const {
+    RenEvents v;
+    for (unsigned e : wlog_.ralloc) ++v.rs_take[e < cfg_.rs_rcu ? 0 : 1];
+    for (unsigned e = 0; e != n_; ++e) v.rs_free[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
+    for (unsigned k = 0; k != 2; ++k) {
+      v.rs_prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
+      v.rs_late[k] = rs_free_now_[k] - v.rs_prompt[k];
+      v.rs_late_prev[k] = rs_late_prev_[k];
+    }
+    const FreeVec *fl[2] = {&gfree_, &pfree_};
+    for (unsigned k = 0; k != 2; ++k) {
+      v.name_take[k] = ren_tot_[2 + k];
+      v.name_alloc[k] = unsigned(fl[k]->cycleAllocs().size());
+      v.name_free[k] = unsigned(fl[k]->cycleFrees().size());
+      v.names[k] = unsigned(fl[k]->size());
+    }
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      v.uops.push_back(si < took_.size() ? took_[si] : 0);
+      v.rob_freed.push_back(si < rob_freed_now_.size() ? rob_freed_now_[si] : 0);
+      // Slots not valid: a squashed entry whose op is still out (a deferred
+      // free) leaves the count at once but holds its slot until it lands.
+      unsigned room = 0;
+      for (const RobEntry &r : slot_[si].rob) room += !r.valid;
+      v.rob_room.push_back(room);
+    }
+    return v;
+  }
   /// The distinct bypass penalties, sorted: wake line k is penalty k's.
   const std::vector<unsigned> &wakePens() const { return pens_; }
 private:
@@ -1046,18 +1207,54 @@ private:
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
+  std::vector<unsigned> audit_room_;      ///< each slot's ROB room as the cycle starts (the settings audit)
+  unsigned auditRobRoom(unsigned si) const;
+  std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
+  std::vector<uint8_t> row_conf_prev_;    ///< each row confirmed at the last request register update (copy_conf_late)
+  bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
+  bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
+  bool req_stop_q_ = false;               ///< ooe_sched's registered stop lead (req_rows_late)
+  bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
+  std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
+  /// req_rows_late: each row's state one and two updates ago (bit 0
+  /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
+  /// held miss, 5 miss pulse, 6 final, 7 produces), and issued as
+  /// ooe_sched forms it this cycle.
+  std::vector<uint8_t> req_row_q_[2], req_ise_;
+  std::vector<uint8_t> req_dep_q_[2];     ///< the matrix one and two updates ago (req_rows_late)
+  std::vector<uint8_t> req_cnf_;          ///< ooe_sched's confirmations this cycle (req_rows_late)
+  std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
+  unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
+  unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)
+  bool shr_copy_prev_ = false;            ///< and a copy among its candidate heads
+  bool shares_on_ = false;                ///< fits_stale 3 this cycle
+  std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
+  std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
+  std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use
+  std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
+  std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
+  std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
+  /// fits_stale 6, rename's RS counters as the RTL keeps them: every RS
+  /// free this cycle, per class, and last cycle's past ooe_rs's prompt count
+  /// (a squash's, or past the cap), which reach the counters an edge late.
+  unsigned rs_free_now_[2] = {}, rs_late_prev_[2] = {};
+  std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
   bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
   bool robHeld(unsigned si, unsigned i) const {
-    return slot_[si].rob[i].valid || rob_late_[size_t(si) * cfg_.rob_depth + i] ||
-           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[size_t(si) * cfg_.rob_depth + i]);
+    const size_t k = size_t(si) * cfg_.rob_depth + i;
+    return slot_[si].rob[i].valid || rob_late_[k] ||
+           ((ren_late_frees_ || cfg_.fits_conservative == 3) && rob_prompt_[k] && !cfg_.ret_now) ||
+           (cfg_.fits_stale == 1 && rob_prompt_prev_[k]);
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
   void robFreed(unsigned si, unsigned i, bool retire) {
+    if (rob_freed_now_.size() != slot_.size()) rob_freed_now_.assign(slot_.size(), 0);
+    ++rob_freed_now_[si];
     if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
     else rob_prompt_[size_t(si) * cfg_.rob_depth + i] = 1;
   }
@@ -1143,7 +1340,7 @@ public:
   /// The first RCU-class entry index past the last; MIU entries follow.
   unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
   bool rsReady(unsigned e) const { return rowReady(e); }
-  /// ooe_sched's (test/ooe/sched_tb.cpp), at a cycle's end: a producer's
+  /// The assembled bench's (test/ooe/trio_tb.cpp), at a cycle's end: a producer's
   /// wake line as it stands next cycle (what the ready register captures),
   /// each entry's slot, copy flag and past rename next cycle, a slot's warp
   /// active, and the ready and request registers.
@@ -1203,6 +1400,8 @@ private:
   void restoreStep();
   bool gprReserved(unsigned slot, unsigned n) const;
   bool predReserved(unsigned slot, unsigned n) const;
+  unsigned unmetFloor(unsigned slot, bool pred) const;
+  unsigned floorsOwed(bool pred) const;
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;
   std::vector<Memop> held_memops_;

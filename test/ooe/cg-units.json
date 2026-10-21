@@ -5,7 +5,8 @@
       "name": "ooe_wake",
       "module": "ooe_wake",
       "files": [
-        "rtl/ooe/ooe_wake.sv"
+        "rtl/ooe/ooe_wake.sv",
+        "rtl/ooe/ooe_confirm.sv"
       ],
       "params": {
         "N": 45
@@ -179,7 +180,28 @@
       "bench": {
         "build": "test/ooe/cg-build.sh ooe_sched {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
-        "scope": "ooe_sched"
+        "scope": "ooe_trio.u_sched"
+      }
+    },
+    {
+      "name": "ooe_prodmap",
+      "module": "ooe_prodmap",
+      "files": [
+        "rtl/ooe/ooe_prodmap.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "A": 4,
+        "NG": 768,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_prodmap {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_prodmap"
       }
     }
   ]

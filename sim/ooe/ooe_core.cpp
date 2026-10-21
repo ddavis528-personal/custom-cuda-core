@@ -5,6 +5,7 @@
 // open are in docs/ooe-model.md and cited here by its section names.
 //===----------------------------------------------------------------------===//
 #include "ooe_core.h"
+#include "ccv_interfaces.h"
 
 #include <algorithm>
 #include <cstdarg>
@@ -32,14 +33,19 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}};
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late}};
+                                     {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
+                                     {"take_young", &take_young}, {"ret_now", &ret_now},
+                                     {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
+                                     {"req_rows_late", &req_rows_late},
+                                     {"miss_lead", &miss_lead},
+                                     {"ready_rep_late", &ready_rep_late}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -144,6 +150,13 @@ SchedAttr SchedAttr::decode(uint32_t a) {
 Core::Core(const Config &cfg) : cfg_(cfg) {
   static uint64_t next_serial = 0;
   serial_ = ++next_serial;
+  // The composed RTL's timing (OI-45) is the sectioned select's: the
+  // unsectioned one issues a copy with its load, past the request register,
+  // and has no RTL to mirror.
+  // They are the model's defaults for the sectioned select (OA's response
+  // OI-45, rev 153).
+  if (!cfg_.sectioned)
+    cfg_.copy_conf_late = cfg_.req_alloc_lead = cfg_.req_rows_late = cfg_.miss_lead = cfg_.ready_rep_late = false;
   const std::string e = cfg_.check();
   if (!e.empty()) {
     std::fprintf(stderr, "ooe: %s\n", e.c_str());
@@ -262,6 +275,7 @@ void Core::uop(const Uop &u) {
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
+void Core::hint(unsigned rob_tag) { hints_.push_back(rob_tag); }
 void Core::alloc(const Alloc &a) { allocs_.push_back(a); }
 void Core::demote(unsigned warp) { demotes_.push_back(warp); }
 void Core::barRelease(uint32_t m) { released_ |= m; }
@@ -275,6 +289,33 @@ void Core::kill(uint32_t mask, unsigned epoch) {
 
 void Core::cycle(uint64_t now) {
   now_ = now;
+  // An input assumption: no channel carries more in a cycle than its rate
+  // (schema/interfaces.json), which the RTL's lanes cannot exceed.
+  auto rate = [&](size_t n, ccv::Channel ch) {
+    if (n > ccv::channelInfo(ch).rate)
+      err("contract: %s carries %u messages in a cycle, over its rate %u", ccv::channelInfo(ch).name, unsigned(n),
+          ccv::channelInfo(ch).rate);
+  };
+  rate(dones_.size(), ccv::CH_RCU_OOE_DONE);
+  rate(cmpls_.size(), ccv::CH_MIU_OOE_CMPL);
+  rate(hints_.size(), ccv::CH_MIU_OOE_CMPL_HINT);
+  // OA-23's hints, two cycles ahead of their completions: ooe_wake keeps a
+  // spec load's lead line on one that comes by its miss's lead (the
+  // completion at the L1 contract), and drops it otherwise.
+  for (unsigned tag : hints_) {
+    RobEntry *r = byTag(tag, nullptr);
+    if (!r || r->rs_main == kNoEntry) continue;
+    RsEntry &x = rs_[r->rs_main];
+    if (x.valid && x.issued && x.spec && now_ + 2 <= x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+      x.hinted = true;
+  }
+  hints_.clear();
+  // The settings audit (docs/ooe-model.md): each slot's ROB room as the
+  // cycle starts, the registered room the RTL's fits read.
+  audit_room_.assign(slot_.size(), 0);
+  audit_squash_.assign(slot_.size(), 0);
+  for (unsigned si = 0; si != slot_.size(); ++si)
+    for (const RobEntry &r : slot_[si].rob) audit_room_[si] += !r.valid;
   gfree_.clock();      // last cycle's frees become allocatable
   pfree_.clock();
   decq_flushed_ = 0;
@@ -285,7 +326,20 @@ void Core::cycle(uint64_t now) {
   decq_take_now_ = 0;
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
+  if (cfg_.fits_stale) {
+    rob_prompt_prev_ = rob_prompt_;
+    if (rob_prompt_prev_.size() != slot_.size() * cfg_.rob_depth) rob_prompt_prev_.assign(slot_.size() * cfg_.rob_depth, 0);
+    rs_prompt_prev_[0] = rs_prompt_[0];
+    rs_prompt_prev_[1] = rs_prompt_[1];
+    decq_seq_prev_ = decq_seq_at_;
+    decq_seq_at_ = next_decq_seq_;
+  }
   rob_prompt_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rob_freed_now_.assign(slot_.size(), 0);
+  for (unsigned c = 0; c != 2; ++c) {
+    rs_late_prev_[c] = rs_free_now_[c] - std::min(rs_free_now_[c], std::min(rs_prompt_[c], cfg_.ren_free_cap));
+    rs_free_now_[c] = 0;
+  }
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
@@ -359,6 +413,8 @@ bool Core::gprAllowed(unsigned slot, unsigned n) const {
 bool Core::gprReserved(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
   if (s.held_gpr + n > kArchGprs + cfg_.ren_ceil) return false;
+  // Under fits_stale 6 rename's allowance holds the floors (OA's rev 138).
+  if (ren_floors_in_share_) return gfree_.ready() >= n;
   // Every other tier-1 slot, occupied or not, keeps its architectural 16
   // plus its floor reserved: free registers must still cover them.
   unsigned owed = 0;
@@ -377,6 +433,7 @@ bool Core::predAllowed(unsigned slot, unsigned n) const {
 bool Core::predReserved(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
   if (s.held_pred + n > kArchPreds + cfg_.pred_ren_ceil) return false;
+  if (ren_floors_in_share_) return pfree_.ready() >= n;
   unsigned owed = 0;
   for (unsigned v = 0; v != slot_.size(); ++v)
     if (v != slot) {
@@ -384,6 +441,22 @@ bool Core::predReserved(unsigned slot, unsigned n) const {
       owed += slot_[v].held_pred < want ? want - slot_[v].held_pred : 0;
     }
   return pfree_.ready() >= n + owed;
+}
+
+/// A slot's floor still unspent (A-26, A-34): its architectural registers
+/// plus its floor, less what it holds.
+unsigned Core::unmetFloor(unsigned slot, bool pred) const {
+  const Slot &s = slot_[slot];
+  const unsigned want = pred ? kArchPreds + cfg_.pred_ren_floor : kArchGprs + cfg_.ren_floor;
+  const unsigned held = pred ? s.held_pred : s.held_gpr;
+  return held < want ? want - held : 0;
+}
+
+/// Every tier-1 slot's unspent floor, occupied or not.
+unsigned Core::floorsOwed(bool pred) const {
+  unsigned owed = 0;
+  for (unsigned v = 0; v != slot_.size(); ++v) owed += unmetFloor(v, pred);
+  return owed;
 }
 
 unsigned Core::allocGpr(unsigned slot) {
@@ -569,7 +642,7 @@ unsigned Core::rsAlloc(RsCls c, unsigned slot, unsigned rob, bool copy) {
   // TI-19 leaves alone. Only rename's go counts this cycle's late frees as
   // held, and it has already checked there is room without them.
   for (unsigned e = lo; e != hi; ++e)
-    if (!rs_[e].valid) {
+    if (!rs_[e].valid && (cfg_.rs_same_edge || !wlog_.rfree[e])) {
       rs_[e] = RsEntry();
       rs_[e].valid = true;
       rs_[e].cls = c;
@@ -606,6 +679,7 @@ void Core::rsFree(unsigned e) {
   --slot_[x.slot].rs_held;
   x.valid = false;
   const unsigned c = e < cfg_.rs_rcu ? 0 : 1;
+  ++rs_free_now_[c];
   if (cfg_.ren_credit == 1 ||
       (cfg_.ren_credit == 2 && (!free_prompt_ || rs_prompt_[c]++ >= cfg_.ren_free_cap)))
     rs_late_[e] = 1;
@@ -710,10 +784,20 @@ bool Core::rowReadyAt(unsigned i, uint64_t t) const {
     if (!(cell(i, j) & 1)) continue;
     const RsEntry &p = rs_[j];
     const uint8_t w = woff_[size_t(i) * n_ + j];
+    // miss_lead: the lead line's drop at the miss, known two cycles ahead.
+    if (cfg_.miss_lead && p.issued && p.spec && !p.hinted &&
+        t >= p.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+      return false;
+    // ready_rep_late: a source replayed this cycle or the last still reads
+    // the timer its replay withdrew.
+    const bool old = cfg_.ready_rep_late && !p.issued && p.rep_at != ~uint64_t(0) && p.rep_at + 1 >= now_;
+    const bool issued = p.issued || old, late = old ? p.rep_late : p.late,
+               onc = old ? p.rep_on_completion : p.on_completion;
+    const uint64_t issue_at = old ? p.rep_issue_at : p.issue_at, late_at = old ? p.rep_late_at : p.late_at;
     if (w == kLateOff) {
       // The full-latency wake: raised, or its timer fires by t.
-      if (!(p.late || (p.issued && !p.on_completion && t + skew_ >= p.late_at))) return false;
-    } else if (!(p.issued && t + skew_ >= p.issue_at + w)) {
+      if (!(late || (issued && !onc && t + skew_ >= late_at))) return false;
+    } else if (!(issued && t + skew_ >= issue_at + w)) {
       return false;
     }
   }
@@ -724,8 +808,30 @@ bool Core::requestNext(unsigned e) const {
   const RsEntry &x = rs_[e];
   // Issued as ooe_wake holds it after this edge: this cycle's own grants
   // reach it from the grant register at the next (the register masks them).
-  const bool issued = x.issued && !req_gnt_now_[e];
-  return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || rowConfirmed(e));
+  // req_rows_late: and a replay of this cycle at the next (ooe_rs and
+  // ooe_wake take it while ooe_sched is a cycle on).
+  // req_rows_late: issued as ooe_sched forms it, ooe_wake's bits as they
+  // stood two cycles ago with the grant register, less the replays those
+  // and the held misses give (req_ise_).
+  const bool issued = cfg_.req_rows_late && e < req_ise_.size() ? bool(req_ise_[e]) : x.issued && !req_gnt_now_[e];
+  // copy_conf_late: ooe_sched sees a source's confirmation a cycle after
+  // the model's select would (OI-45), so a copy requests a cycle later.
+  const bool conf = rowConfirmed(e) && (!cfg_.copy_conf_late || (e < row_conf_prev_.size() && row_conf_prev_[e]));
+  if (cfg_.req_rows_late && e < req_row_q_[1].size()) {
+    const uint8_t old = req_row_q_[1][e];
+    const bool touched = (req_row_q_[0][e] & 8) || wlog_.rfree[e] ||
+                         std::count(wlog_.ralloc.begin(), wlog_.ralloc.end(), e);
+    if (touched) {
+      // A copy reads the row as ooe_sched holds it: the matrix then, less
+      // this cycle's confirmations.
+      bool empty = true;
+      for (unsigned j = 0; j != n_ && empty && x.copy; ++j)
+        empty = !(req_dep_q_[1].size() == size_t(n_) * n_ && req_dep_q_[1][size_t(e) * n_ + j] && !req_cnf_[j]);
+      return (old & 1) && !(e < req_ise_.size() && req_ise_[e]) && slot_[x.slot].st == WarpState::kActive &&
+             (!x.copy || empty);
+    }
+  }
+  return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || conf);
 }
 
 /// The request register (OA's response OI-53), as ooe_sched builds it: an
@@ -747,7 +853,48 @@ void Core::requestRegister() {
   // ready register's enable takes too): this cycle's hop on time.
   bool stop = false;
   for (unsigned e = 0; e != n_ && e < wlog_.replay.size(); ++e) stop = stop || wlog_.replay[e];
-  const bool en = req_lead_q_ || gany || stop;
+  // req_rows_late: ooe_sched's stop lead, registered last cycle.
+  bool stop_pred = false;
+  if (cfg_.req_rows_late) stop = req_stop_q_;
+  // req_alloc_lead: a row written at the last edge enters at this one
+  // (ooe_sched's registered allocation lead on the request enable, OI-45).
+  // req_rows_late: the lead comes a cycle later, with the row.
+  if (cfg_.req_rows_late && req_row_q_[1].size() == n_ && req_dep_q_[1].size() == size_t(n_) * n_) {
+    std::vector<uint8_t> isg(n_);
+    for (unsigned j = 0; j != n_; ++j) isg[j] = (req_row_q_[1][j] & 2) || (j < req_gnt_q_.size() && req_gnt_q_[j]);
+    req_ise_.assign(n_, 0);
+    for (unsigned i = 0; i != n_; ++i) {
+      if (!isg[i]) continue;
+      bool rep = false;
+      for (unsigned j = 0; j != n_ && !rep; ++j)
+        rep = req_dep_q_[1][size_t(i) * n_ + j] && (!(req_row_q_[1][j] & 2) || (req_row_q_[1][j] & 16));
+      req_ise_[i] = !rep;
+    }
+    // The stop lead ooe_sched registers for the next edge: the replay rule
+    // over issued less these replays, the matrix less this cycle's
+    // confirmations, and the held misses with the miss pulses (ooe_wake's
+    // pulse is a cycle ahead of its held miss: last cycle's).
+    std::vector<uint8_t> &cnf = req_cnf_;
+    cnf.assign(n_, 0);
+    for (unsigned i = 0; i != n_; ++i) {
+      bool empty = true;
+      for (unsigned j = 0; j != n_ && empty; ++j) empty = !req_dep_q_[1][size_t(i) * n_ + j];
+      const uint8_t o = req_row_q_[1][i];
+      // ooe_wake's final bits are a cycle nearer than ooe_rs's rows, a
+      // squash's free reaching them a cycle after.
+      cnf[i] = isg[i] && empty && ((req_row_q_[0][i] & 64) || !(o & 128));
+    }
+    bool pred = false;
+    for (unsigned i = 0; i != n_ && !pred; ++i) {
+      if (!req_ise_[i]) continue;
+      for (unsigned j = 0; j != n_ && !pred; ++j)
+        pred = req_dep_q_[1][size_t(i) * n_ + j] && !cnf[j] &&
+               (!req_ise_[j] || (req_row_q_[1][j] & 16) || (req_row_q_[0][j] & 32));
+    }
+    stop_pred = pred;
+  }
+  const bool alc = cfg_.req_rows_late ? req_alloc_q2_ : req_alloc_q_;
+  const bool en = req_lead_q_ || gany || stop || (cfg_.req_alloc_lead && alc);
   bool diff = false;
   for (unsigned e = 0; e != n_; ++e) {
     const bool d = requestNext(e);
@@ -755,6 +902,23 @@ void Core::requestRegister() {
     if (en) req_q_[e] = d;
   }
   req_lead_q_ = diff;
+  req_alloc_q2_ = req_alloc_q_;
+  req_stop_q_ = stop_pred;
+  req_alloc_q_ = !wlog_.ralloc.empty();
+  req_row_q_[1].swap(req_row_q_[0]);
+  req_row_q_[0].resize(n_);
+  for (unsigned e = 0; e != n_; ++e)
+    req_row_q_[0][e] = uint8_t(rs_[e].valid | (rs_[e].valid && rs_[e].issued) << 1 |
+                               (rs_[e].valid && rowConfirmed(e)) << 2 | (wlog_.rfree[e] ? 8 : 0) |
+                               (rs_[e].valid && rs_[e].msd) << 4 | (e < wlog_.miss.size() && wlog_.miss[e]) << 5 |
+                               ((rs_[e].valid || wlog_.rfree[e]) && rs_[e].issued && rs_[e].late && !rs_[e].spec) << 6 |
+                               (rs_[e].valid && rs_[e].produces) << 7);
+  for (unsigned e : wlog_.ralloc) req_row_q_[0][e] |= 8;
+  req_dep_q_[1].swap(req_dep_q_[0]);
+  req_dep_q_[0].resize(size_t(n_) * n_);
+  for (size_t k = 0; k != req_dep_q_[0].size(); ++k) req_dep_q_[0][k] = cell_[k] & 1;
+  row_conf_prev_.resize(n_);
+  for (unsigned e = 0; e != n_; ++e) row_conf_prev_[e] = rs_[e].valid && rowConfirmed(e);
   req_gnt_q_.swap(req_gnt_now_);
   std::fill(req_gnt_now_.begin(), req_gnt_now_.end(), 0);
 }
@@ -933,6 +1097,11 @@ bool Core::cancelHop() {
         err("V-17: memop entry %u was issued on an unconfirmed source", i);
         continue;
       }
+      y.rep_at = now_;
+      y.rep_issue_at = y.issue_at;
+      y.rep_late_at = y.late_at;
+      y.rep_late = y.late;
+      y.rep_on_completion = y.on_completion;
       y.issued = false;
       y.late = false;
       ++y.replays;
@@ -1268,6 +1437,7 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
 /// to_retirement, every entry. The caller restores the RAT.
 void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
+  if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   Slot &s = slot_[slot];
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
@@ -1989,6 +2159,7 @@ void Core::select() {
         ports += need;
         if (miu) ++mports;
         doIssue(e, port, r.copy, port + 1);
+        req_gnt_now_[e] = 1;   // the grant register, as the sectioned select's
         progress = true;
       }
     }
@@ -2111,6 +2282,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   const Uop &u = r.u;
   x.issued = true;
   x.issue_at = now_;
+  x.hinted = false;
   // A grant on the registered ready alone: a stale bit (OI-51, OA-17).
   x.stale = !rowReady(e);
   if (x.stale) count("select.stale_grant");
@@ -2149,6 +2321,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
+    m.rs_idx = e;
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;
     m.pdst = r.alloc_gpr ? r.pnew : 0;
@@ -2165,6 +2338,14 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
 
 // ---- rename (Rename) ---------------------------------------------------------------------------
 
+/// The settings audit: slot si's ROB room as the RTL's fits read it, the
+/// room registered as the cycle started and this cycle's retirements.
+unsigned Core::auditRobRoom(unsigned si) const {
+  unsigned room = si < audit_room_.size() ? audit_room_[si] : 0;
+  for (unsigned k = 0; k != cfg_.rob_depth; ++k) room += rob_prompt_[si * cfg_.rob_depth + k];
+  return room;
+}
+
 bool Core::tryRename(unsigned si, const Uop &u) {
   Slot &s = slot_[si];
   if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
@@ -2178,6 +2359,14 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     count("hold.barrier");
     oev(OoeEv::kBarrierHold, s.warp, s.bar_id, 0, u.tid);
     return false;
+  }
+  // The settings audit: a refusal the registered room would have admitted.
+  if ((s.count == cfg_.rob_depth || robHeld(si, s.tail)) && took_[si] + 1 <= auditRobRoom(si)) {
+    count("audit.rob_refused_within_registered");
+    count(s.count == cfg_.rob_depth ? "audit.rob_refused.full"
+          : s.rob[s.tail].valid     ? "audit.rob_refused.tail_valid"
+                                    : "audit.rob_refused.late_credit");
+    if (si < audit_squash_.size() && audit_squash_[si]) count("audit.rob_refused.squash_cycle");
   }
   if (s.count == cfg_.rob_depth) {
     count("stall.rob_full");
@@ -2236,6 +2425,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap));
       free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap));
     }
+    if (shares_on_ && ((need_rcu && share_[si][0] < ren_slot_[si][0] + need_rcu) ||
+                       (need_miu && share_[si][1] < ren_slot_[si][1] + need_miu))) {
+      count("stall.share.rs");
+      // Fragmentation: the whole credit would have taken it.
+      if (free_rcu >= need_rcu && free_miu >= need_miu) count("stall.share_frag");
+      return false;
+    }
     if (margin && ((need_rcu && free_rcu + others(0) < need_rcu + margin) ||
                    (need_miu && free_miu + others(1) < need_miu + margin))) {
       count("stall.fits_conservative.rs");
@@ -2279,6 +2475,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     return false;
   }
+  if (shares_on_ && ((wgpr && share_[si][2] < ren_slot_[si][2] + 1) ||
+                     (!nop && u.pred_we && cfg_.rename_preds && share_[si][3] < ren_slot_[si][3] + 1))) {
+    count("stall.share.names");
+    if ((!wgpr || !gfree_.empty()) && (!(!nop && u.pred_we && cfg_.rename_preds) || !pfree_.empty()))
+      count("stall.share_frag");
+    return false;
+  }
   if (margin && wgpr && gfree_.size() + others(2) < 1 + margin) {
     count("stall.fits_conservative.gpr");
     return false;
@@ -2308,6 +2511,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       return false;
     }
   }
+
+  // The settings audit: what the RTL's registered fits could not have
+  // admitted. A take past the slot's registered ROB room and this cycle's
+  // retirements (the fits' ROB term, ret_n).
+  if (took_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
 
   // -- commit the rename ---------------------------------------------------------------
   const unsigned idx = s.tail;
@@ -2383,6 +2591,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     addDeps(r.rs_main, r, false);
     if (copy) addDeps(r.rs_copy, r, true);
+    rlog_.ren.back().main = r.rs_main;
+    rlog_.ren.back().copy = copy ? r.rs_copy : kNoEntry;
+    rlog_.ren.back().mem = mem;
     if (cfg_.sectioned) {
       rs_[r.rs_main].res = resOf(r, false);
       if (copy) rs_[r.rs_copy].res = resOf(r, true);
@@ -2481,17 +2692,20 @@ void Core::restoreStep() {
 }
 
 void Core::rename() {
+  ren_tot_.fill(0);
+  ren_slot_.assign(slot_.size(), {});
+  took_.assign(slot_.size(), 0);
   // A restore-allocate in progress owns the allocation ports: no warp
   // renames until it is done (OA's response OI-41).
   if (!restore_q_.empty()) {
+    // fits_stale 6: no split is registered while a restore owns the ports.
+    for (auto &x : share_reg_) x = {0, 0, 0, 0};
     restoreStep();
     count("stall.restore");
     return;
   }
   unsigned budget = cfg_.rename_width;
   std::vector<bool> blocked(slot_.size(), false);
-  ren_tot_.fill(0);
-  ren_slot_.assign(slot_.size(), {});
   ren_margin_ = cfg_.fits_conservative == 1 && cfg_.rename_one_warp != 1 ? cfg_.rename_width : 0;
   // fits_conservative 2: while any shared credit is short of the width,
   // one warp takes (its fits, formed alone, are exact for it). 3, OA-22's
@@ -2508,8 +2722,10 @@ void Core::rename() {
     const unsigned w = cfg_.rename_width;
     unsigned need_rcu = w;
     if (fc == 3) {
-      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cfg_.ren_free_cap));
-      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cfg_.ren_free_cap));
+      // fits_stale: the last cycle's frees unseen too.
+      const unsigned cap = cfg_.ren_free_cap, st = cfg_.fits_stale == 1;
+      free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap) + st * std::min(rs_prompt_prev_[0], cap));
+      free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap) + st * std::min(rs_prompt_prev_[1], cap));
       for (unsigned si = 0; si != slot_.size(); ++si) {
         if (slot_[si].st == WarpState::kFree) continue;
         unsigned k = 0;
@@ -2524,8 +2740,194 @@ void Core::rename() {
     }
     short_credit = free_rcu < need_rcu || free_miu < w || gfree_.size() < w ||
                    (cfg_.rename_preds && pfree_.size() < w);
+    if (cfg_.fits_stale == 2 && fc == 3) {
+      // (a2): judged on the last cycle's credits, which this cycle's take
+      // (at most the width) can lower: twice the width, three times for RCU
+      // with a copy in a head.
+      const unsigned prev[4] = {shr_prev_[0], shr_prev_[1], shr_prev_[2], shr_prev_[3]};
+      shr_prev_[0] = free_rcu;
+      shr_prev_[1] = free_miu;
+      shr_prev_[2] = unsigned(gfree_.size());
+      shr_prev_[3] = cfg_.rename_preds ? unsigned(pfree_.size()) : ~0u;
+      const bool cp = shr_copy_prev_;
+      shr_copy_prev_ = need_rcu > w;
+      short_credit = prev[0] < (cp ? 3 : 2) * w || prev[1] < 2 * w || prev[2] < 2 * w || prev[3] < 2 * w;
+    }
     if (short_credit) count("rename.one_warp_short");
     ren_late_frees_ = short_credit && fc == 3;
+    // (a2): a short cycle's warp fits the shared credits less the width.
+    if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
+  }
+  // fits_stale 3: per-warp shares of each shared credit, no short path.
+  shares_on_ = cfg_.fits_stale >= 3 && cfg_.fits_stale <= 7 && (cfg_.rename_one_warp != 1 || cfg_.fits_stale == 6);
+  ren_floors_in_share_ = shares_on_ && cfg_.fits_stale == 6;
+  if (shares_on_ && cfg_.fits_stale == 7) {
+    short_credit = false;
+    ren_late_frees_ = true;
+    const unsigned ns = unsigned(slot_.size());
+    if (share_.size() != ns || pend_a_.size() != ns) {
+      share_.assign(ns, {0, 0, 0, 0});
+      pend_a_.assign(ns, {0, 0, 0, 0});
+      pend_b_.assign(ns, {0, 0, 0, 0});
+      headless_.assign(ns, 0);
+    }
+    // A warp share_return cycles without a take returns its share; then the
+    // split made two cycles ago reaches the shares, and last cycle's moves up.
+    for (unsigned si = 0; si != ns; ++si)
+      for (unsigned r = 0; r != 4; ++r) {
+        if (headless_[si] >= cfg_.share_return) share_[si][r] = 0;   // what it held, not the split arriving
+        share_[si][r] += pend_a_[si][r];
+      }
+    for (unsigned si = 0; si != ns; ++si) ++headless_[si];   // a take clears it
+    std::swap(pend_a_, pend_b_);
+    for (auto &x : pend_b_) x = {0, 0, 0, 0};
+    const RenCredits rc = renCredits();
+    std::vector<unsigned> with;
+    for (unsigned k = 0; k != ns; ++k) {
+      const unsigned si = (rr_rename_ + k) % ns;
+      if (slot_[si].st != WarpState::kFree && slot_[si].decq) with.push_back(si);
+    }
+    for (unsigned r = 0; r != 4; ++r) {
+      // The pool: the credit no share holds nor a split in flight.
+      unsigned held = 0;
+      for (unsigned si = 0; si != ns; ++si) held += share_[si][r] + pend_a_[si][r];
+      // A draw outside rename's takes (a restore-allocate's names, while it
+      // owns the ports and the go is idle) is taken back from the splits in
+      // flight, then the shares, slot by slot.
+      for (unsigned si = 0; si != ns && held > rc.c[r]; ++si)
+        for (unsigned *x : {&pend_a_[si][r], &share_[si][r]}) {
+          const unsigned q = std::min(*x, held - rc.c[r]);
+          *x -= q;
+          held -= q;
+        }
+      const unsigned pool = rc.c[r] - std::min(held, rc.c[r]);
+      if (!with.empty()) {
+        const unsigned each = pool / unsigned(with.size()), rem = pool % unsigned(with.size());
+        for (unsigned si : with) pend_b_[si][r] = each;
+        pend_b_[with[0]][r] += rem;
+      }
+    }
+  } else if (shares_on_ && cfg_.fits_stale == 4) {
+    short_credit = false;
+    ren_late_frees_ = true;
+    unsigned c[4] = {0, 0, unsigned(gfree_.size()), cfg_.rename_preds ? unsigned(pfree_.size()) : 1000u};
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) c[0] += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) c[1] += !rsHeld(e);
+    const unsigned fcap = cfg_.ren_free_cap;
+    c[0] -= std::min(c[0], std::min(rs_prompt_[0], fcap));
+    c[1] -= std::min(c[1], std::min(rs_prompt_[1], fcap));
+    if (share_.size() != slot_.size()) {
+      share_.assign(slot_.size(), {0, 0, 0, 0});
+      pool_ = {0, 0, 0, 0};
+      headless_.assign(slot_.size(), 0);
+    }
+    std::vector<unsigned> with;
+    for (unsigned k = 0; k != slot_.size(); ++k) {
+      const unsigned si = (rr_rename_ + k) % slot_.size();
+      const bool head = slot_[si].st != WarpState::kFree && slot_[si].decq;
+      // Idle: no take in a cycle (headless_ counts them; a take clears it).
+      ++headless_[si];
+      if (head) with.push_back(si);
+    }
+    for (unsigned r = 0; r != 4; ++r) {
+      unsigned held = pool_[r];
+      for (unsigned si = 0; si != slot_.size(); ++si) held += share_[si][r];
+      // Frees since the last cycle join the pool; a credit can also fall
+      // (a restore-allocate or a fault draws outside rename's takes): it
+      // comes from the pool, then from the shares, oldest warp first.
+      if (c[r] >= held) pool_[r] += c[r] - held;
+      else {
+        unsigned owe = held - c[r];
+        const unsigned p = std::min(owe, pool_[r]);
+        pool_[r] -= p;
+        owe -= p;
+        for (unsigned si = 0; si != slot_.size() && owe; ++si) {
+          const unsigned q = std::min(owe, share_[si][r]);
+          share_[si][r] -= q;
+          owe -= q;
+        }
+        count("rename.share_owed");
+      }
+      // A warp four cycles without a take returns its share.
+      for (unsigned si = 0; si != slot_.size(); ++si)
+        if (headless_[si] >= 4 && share_[si][r]) {
+          pool_[r] += share_[si][r];
+          share_[si][r] = 0;
+        }
+      if (!with.empty()) {
+        const unsigned each = pool_[r] / unsigned(with.size()), rem = pool_[r] % unsigned(with.size());
+        for (unsigned si : with) share_[si][r] += each;
+        share_[with[0]][r] += rem;
+        pool_[r] = 0;
+      }
+      unsigned sum = pool_[r];
+      for (unsigned si = 0; si != slot_.size(); ++si) sum += share_[si][r];
+      if (sum != c[r]) err("fits_stale 4: the shares and pool of credit %u sum to %u, the credit %u", r, sum, c[r]);
+    }
+  } else if (shares_on_) {
+    short_credit = false;
+    ren_late_frees_ = true;   // the shares are of the registered credits
+    unsigned c[4] = {0, 0, unsigned(gfree_.size()), cfg_.rename_preds ? unsigned(pfree_.size()) : 1000u};
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) c[0] += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) c[1] += !rsHeld(e);
+    const unsigned fcap = cfg_.ren_free_cap;
+    c[0] -= std::min(c[0], std::min(rs_prompt_[0], fcap));
+    c[1] -= std::min(c[1], std::min(rs_prompt_[1], fcap));
+    if (cfg_.fits_stale == 6) {
+      // Rename's counters (Core::renCredits): this cycle's frees unseen,
+      // and last cycle's past ooe_rs's prompt count; names freed now unseen.
+      const RenCredits rc = renCredits();
+      for (unsigned r = 0; r != 4; ++r) c[r] = rc.c[r];
+    }
+    std::vector<unsigned> with;
+    for (unsigned k = 0; k != slot_.size(); ++k) {
+      const unsigned si = (rr_rename_ + k) % slot_.size();
+      if (slot_[si].st != WarpState::kFree && slot_[si].decq) with.push_back(si);
+    }
+    // fits_stale 6: this cycle admits against the allowances split last
+    // cycle (registered with the fits). The next are split from the credit
+    // no allowance holds now, so no take is counted twice. Under one warp
+    // every warp's allowance is the one whole pool, as only one takes.
+    const bool one = cfg_.rename_one_warp == 1;
+    unsigned pool[4] = {c[0], c[1], c[2], c[3]};
+    if (cfg_.fits_stale == 6) {
+      if (share_reg_.size() != slot_.size()) share_reg_.assign(slot_.size(), {0, 0, 0, 0});
+      for (unsigned r = 0; r != 4; ++r) {
+        unsigned held = 0;
+        for (unsigned si = 0; si != slot_.size(); ++si)
+          held = one ? std::max(held, share_reg_[si][r]) : held + share_reg_[si][r];
+        // This cycle takes at most the width from each credit (a class's
+        // ports; a name per uop), so no more need be held back.
+        held = std::min(held, cfg_.rename_width);
+        if (held > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, held, c[r]);
+        pool[r] = c[r] - std::min(held, c[r]);
+        // The names (OA's rev 138): the credit is held as two counts, each
+        // slot's floor still unspent and the pool above every floor. The
+        // shares split only the pool; each warp's allowance adds its own
+        // floor (below), so the shares cannot break V-04.
+        if (r >= 2) pool[r] -= std::min(pool[r], floorsOwed(r == 3));
+      }
+    }
+    std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
+    if (one)
+      for (unsigned si : with) for (unsigned r = 0; r != 4; ++r) split[si][r] = pool[r];
+    else if (!with.empty())
+      for (unsigned r = 0; r != 4; ++r) {
+        const unsigned each = pool[r] / unsigned(with.size()), rem = pool[r] % unsigned(with.size());
+        for (unsigned si : with) split[si][r] = each;
+        // fits_stale 5: equal shares, the remainder given to no warp.
+        if (cfg_.fits_stale != 5) split[with[0]][r] += rem;
+      }
+    if (cfg_.fits_stale == 6) {
+      for (unsigned si : with) {
+        split[si][2] += unmetFloor(si, false);
+        if (cfg_.rename_preds) split[si][3] += unmetFloor(si, true);
+      }
+      share_ = share_reg_;
+      share_reg_ = split;
+    } else {
+      share_ = split;
+    }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
@@ -2534,6 +2936,13 @@ void Core::rename() {
     const unsigned w = slot_[si].warp;
     auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
     if (it == decq_.end()) return 0;
+    // fits_stale: a uop that arrived after the last cycle's start is not in
+    // the fits yet.
+    const bool young = cfg_.fits_stale && decq_seq_[size_t(it - decq_.begin())] >= decq_seq_prev_;
+    if (young && (cfg_.fits_stale == 1 || !cfg_.take_young)) {
+      count("rename.too_young");
+      return 0;
+    }
     // V-53: no stale-epoch uop is renamed.
     if (it->fetch_epoch != epoch_[w]) {
       ev("epoch_drop", w, it->fetch_epoch, 0, it->tid);
@@ -2545,7 +2954,9 @@ void Core::rename() {
       return 2;
     }
     const bool branch = it->attr.branch;
+    if (young) count("rename.refill");
     if (!tryRename(si, *it)) {
+      if (young) count("rename.refill_fail");
       blocked[si] = true;
       return 0;
     }
@@ -2559,6 +2970,7 @@ void Core::rename() {
     decq_.erase(it);
     --slot_[si].decq;
     --budget;
+    ++took_[si];
     return 1;
   };
   if (warps) {
@@ -2584,6 +2996,12 @@ void Core::rename() {
     }
   }
   ren_late_frees_ = false;
+  ren_floors_in_share_ = false;
+  if (shares_on_ && (cfg_.fits_stale == 4 || cfg_.fits_stale == 7))
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      for (unsigned r = 0; r != 4; ++r) share_[si][r] -= std::min(share_[si][r], ren_slot_[si][r]);
+      if (took_[si]) headless_[si] = 0;
+    }
   if (!budget) count("rename.full_width");
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
 }

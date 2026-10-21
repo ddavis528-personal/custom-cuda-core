@@ -580,7 +580,7 @@ plog   merge=3
 chains lane_byp=9
 missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
-mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
+mlp    l1_hit=0 reexec=5 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4
 stall  l1_late>0
@@ -608,9 +608,9 @@ else
   bad "--break skip-read-partial" "a partial store written without a read went unnoticed: $(grep '^KERNEL' "$B/kernel_skip-read-partial.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
-if grep -q "^CHECK lane 0: seq 383 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
+if grep -q "^CHECK lane 0: seq 207 operand 1 (R4) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 383, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 207, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi

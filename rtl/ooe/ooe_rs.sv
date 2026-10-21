@@ -20,14 +20,19 @@
 // An allocation writes the entry's whole row: its dependency bits and line
 // selects for entries already in the RS, and for entries granted this
 // cycle to another port (an older producer renamed in the same group, in
-// either class), named by port. A free clears the entry's column in every row, so a dependant
-// never waits on, nor confirms behind, the entry's next occupant.
+// either class), named by port. A free clears the entry's column in every
+// row, the rows allocated now included (rename looked their producers up a
+// stage before), so a dependant never waits on, nor confirms behind, the
+// entry's next occupant.
 //
 // The reference is the model's rsAlloc, rsFree and dependency cells, which
 // log each cycle's allocations in order and its frees (Core::wakeLog:
 // ralloc, rfree). test/ooe/rs_tb.cpp drives this module from them and
 // compares, after each edge, the registered grants, the valid bits and
-// every valid row's dependency bits and line selects.
+// every valid row's dependency bits and line selects. Every row it
+// allocates also names every entry freed in its cycle, which the model's
+// rows never do: the mask must clear them (without it, an assertion here
+// stops the run).
 //
 // hcol_cq02h is a flag per column, set from the edge a row naming the entry
 // is written until the entry is freed: a superset of the entries any row
@@ -77,11 +82,12 @@ module ooe_rs #(
   input  logic [2*P*N-1:0] row_code_cq01h, // and each one's line select
   input  logic [P*P-1:0]   grp_dep_cq01h,  // port p's row: port q's entry, granted this cycle
   input  logic [2*P*P-1:0] grp_code_cq01h, // and its line select
-  input  logic [N-1:0]     free_cq01h,   // entries freed this cycle
+  input  logic [N-1:0]     sqf_cq01h,    // entries the registered squash frees this cycle
+  input  logic [N-1:0]     msd_cq01h,    // ooe_wake's held misses (FMISS), as confirmation reads them now
+  input  logic [N-1:0]     cfin_cq01h,   // ooe_wake's final bits, likewise
   // The confirmation leads' terms, as they stand now (ooe_wake's, ooe_sched's).
   input  logic [N-1:0]     wtl3_cq00h,   // the full-latency line rises at the next edge
   input  logic [N-1:0]     fin_cq00h,    // final
-  input  logic [N-1:0]     iss_cq00h,    // issued
   input  logic [N-1:0]     gnt_cq00h,    // granted: issued from the next edge
   input  logic [NC-1:0]    cmpl_l_cq00h, // the completion channel's valid: a payload next cycle
   input  logic [NC*W-1:0]  cmpl_idx_cq00h, // each completion's RS entry (its payload)
@@ -91,6 +97,8 @@ module ooe_rs #(
   output logic [N-1:0]     valid_out_cq02h, // the valid bits (a copy for the outputs)
   output logic [N*N-1:0]   dep_cq02h,    // row i, column j: i waits on j
   output logic [2*N*N-1:0] code_cq02h,   // the cell's wake-line select
+  output logic [N-1:0]     prod_o_cq02h,  // each entry writes a register some entry may wake on (ooe_sched's
+                                         // confirmation, OI-45)
   output logic [N-1:0]     hcol_cq02h    // a row has named the entry since it was allocated
 );
 
@@ -101,7 +109,9 @@ module ooe_rs #(
   end
 
   `CCV_ASSERT_KNOWN(req_known, req_cq01h)
-  `CCV_ASSERT_KNOWN(free_known, free_cq01h)
+  `CCV_ASSERT_KNOWN(sqf_known, sqf_cq01h)
+  `CCV_ASSERT_KNOWN(msd_known, msd_cq01h)
+  `CCV_ASSERT_KNOWN(cfin_known, cfin_cq01h)
   `CCV_ASSERT_KNOWN(req_l_known, req_l_cq00h)
   `CCV_ASSERT_KNOWN(sq_l_known, sq_l_cq00h)
 
@@ -144,13 +154,14 @@ module ooe_rs #(
 
   // Port p's grant, one-hot over the entries: in its class, free, with as
   // many free below it as the port's number within the class.
-  function automatic logic [P*N-1:0] grants(input logic [N-1:0] vl, input logic [P-1:0] req,
-                                            input logic [N-1:0] fr);
+  function automatic logic [P*N-1:0] grants(input logic [N-1:0] vl, input logic [P-1:0] req);
     logic [N-1:0]   av;
     logic [N*A-1:0] bl;
     logic [P*N-1:0] g;
     logic           k_ok;
-    for (int e = 0; e < N; e++) av[e] = !vl[e] || fr[e];
+    // An entry freed this cycle is allocatable from the next (OI-45: the
+    // free comes from confirmation here, 25.7 NGD into the row write).
+    for (int e = 0; e < N; e++) av[e] = !vl[e];
     bl = below(av);
     for (int p = 0; p < P; p++)
       for (int e = 0; e < N; e++) begin
@@ -184,7 +195,11 @@ module ooe_rs #(
   endfunction
 
   (* keep *) logic [N-1:0] valid_cq02h;  // the valid bits, for allocation and the rows
-  logic [N-1:0]     prod_cq02h;           // payload: read only while its entry is valid
+  (* keep *) logic [N-1:0] prod_cq02h;   // payload: read only while its entry is valid
+  // The prod bits' copy for ooe_sched (NGD-7: the register starts paths
+  // inside deeper than the output's budget allows).
+  (* keep *) logic [N-1:0] prod_oc_cq02h;
+  assign prod_o_cq02h = prod_oc_cq02h;
   logic [N-1:0]     cf_en_cq01h;          // the confirmation leads' flops
   logic [NC-1:0]    cva_cq01h;            // the completion channel's valid, flopped: its payload is here
   logic             cvb_cq02h;            // a payload arrived at the last edge
@@ -195,9 +210,36 @@ module ooe_rs #(
   logic [P*W-1:0]   gi_cq02h;
   logic [P*N-1:0]   d_cq02h;
   logic [2*P*N-1:0] cd_cq02h;
+  // -- Confirmation, here (OI-45, OI-50; V-65) --------------------------------
+  // This module's issued register: set at a grant (select's, issued from
+  // the next edge), cleared by its own replays and frees, so it is
+  // ooe_wake's issued flags (FISS) every cycle. The cancel's level rule and
+  // confirmation are ooe_confirm's, run here on this register and the
+  // matrix, with wake's held misses and final bits as data. A row's
+  // emptiness is a register of its own (emp, set from the row's next
+  // value): reducing the 45-bit row in front of confirmation put the
+  // matrix flops 18.3 NGD from the next state, over the 12 the dep output
+  // holds them to (NGD-7). Confirmed entries are freed, and so are the
+  // ones the registered squash frees.
+  logic [N-1:0] iss_cq02h, emp_cq02h, gone, rep, conf, free_cq01h;
   always_comb begin
-    g_cq02h = grants(valid_cq02h, req_cq01h, free_cq01h);
-    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h, row_code_cq01h, grp_dep_cq01h, grp_code_cq01h);
+    gone = ~iss_cq02h | msd_cq01h;
+    for (int i = 0; i < N; i++) begin
+      rep[i]  = iss_cq02h[i] && |(dep_cq02h[i * N +: N] & gone);
+      conf[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
+    end
+  end
+  assign free_cq01h = conf | sqf_cq01h;
+  // Outside any gate, within the module's allowance: a grant has no lead
+  // here (select's grant register is ooe_sched's), nor has a replay.
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) iss_cq02h <= '0;
+    else          iss_cq02h <= (iss_cq02h & ~rep & ~free_cq01h) | gnt_cq00h;
+  end
+  always_comb begin
+    g_cq02h = grants(valid_cq02h, req_cq01h);
+    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{~free_cq01h}}, row_code_cq01h, grp_dep_cq01h,
+                                  grp_code_cq01h);
     for (int p = 0; p < P; p++) begin
       gv_cq02h[p]           = |g_cq02h[p * N +: N];
       gi_cq02h[p * W +: W] = '0;
@@ -209,17 +251,23 @@ module ooe_rs #(
   // item 3; TI-20): the grant, registered at the edge it is made, and a
   // copy of the valid bits, so that the valid bits allocation reads serve
   // no output. The grant register is clocked on the request leads and one
-  // edge more to clear (gnt_en); the valid copy with its class.
+  // edge more to clear; the valid copy with its class.
   (* keep *) logic [N-1:0] valid_o_cq02h;
   logic [P-1:0] req_en_cq01h;            // the request leads' flops
-  logic         gnt_en;
-  assign gnt_en = req_en_cq01h != '0 || gnt_v_cq03h != '0;
+  // The valid bits are clocked when they change: every port that asks is
+  // granted, so they become the request leads' flops (exact, from this
+  // module's own flops); a steady stream of grants on the same ports
+  // clocks nothing. The indices, payload read through them, with any
+  // request.
+  logic         gnt_en, gnt_v_en;
+  assign gnt_en   = req_en_cq01h != '0;
+  assign gnt_v_en = req_en_cq01h != gnt_v_cq03h;
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) gnt_v_cq03h <= '0;
-    else if (gnt_en) begin
-      gnt_v_cq03h   <= gv_cq02h;
-      gnt_idx_cq03h <= gi_cq02h;           // payload, read through gnt_v
-    end
+    if (rst_r01h)      gnt_v_cq03h <= '0;
+    else if (gnt_v_en) gnt_v_cq03h <= gv_cq02h;
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (gnt_en) gnt_idx_cq03h <= gi_cq02h;   // payload, read through gnt_v
   end
   assign valid_out_cq02h = valid_o_cq02h;
 
@@ -236,7 +284,14 @@ module ooe_rs #(
     for (int k = 0; k < NC; k++)
       if (cva_cq01h[k]) cpv[cmpl_idx_cq00h[k * W +: W]] = 1'b1;
   end
-  `CCV_ASSERT(wake_names_valid, ((iss_cq00h | gnt_cq00h | fin_cq00h | wtl3_cq00h | cpv) & ~valid_cq02h) == '0)
+  `CCV_ASSERT(wake_names_valid, ((gnt_cq00h | fin_cq00h | wtl3_cq00h | cpv | msd_cq01h) & ~valid_cq02h) == '0)
+  // A valid row's emptiness register is its row's (payload elsewhere).
+  logic [N-1:0] emp_ok;
+  always_comb
+    for (int i = 0; i < N; i++) emp_ok[i] = !valid_cq02h[i] || emp_cq02h[i] == (dep_cq02h[i * N +: N] == '0);
+  `CCV_ASSERT(row_empty_kept, emp_ok == '1)
+  // A squash frees valid entries, none of them confirming now.
+  `CCV_ASSERT(squash_free_valid, (sqf_cq01h & ~valid_cq02h) == '0)
   // Every request and every free was led.
   `CCV_ASSERT(req_led, (req_cq01h & ~req_en_cq01h) == '0)
   `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq01h & ~cf_en_cq01h) == '0)
@@ -248,7 +303,8 @@ module ooe_rs #(
   // column is flagged from the edge a row of the class naming it is written
   // until the entry is freed, unless a row written at that same edge names
   // its next occupant; a set bit in a class's row is always flagged there.
-  logic [N-1:0]     valid_nx, prod_nx;
+  logic [N-1:0]     valid_nx, prod_nx, emp_nx;
+  logic [P-1:0]     emp_new;
   logic [N*N-1:0]   dep_nx;
   logic [2*N*N-1:0] code_nx;
   logic [N-1:0]     hr_nx, hm_nx, named_r, named_m;
@@ -280,6 +336,18 @@ module ooe_rs #(
         if (p < A) named_r = named_r | d_cq02h[p * N +: N];
         else       named_m = named_m | d_cq02h[p * N +: N];
       end
+    // Emptiness in parallel with the rows: a kept row's from its flops less
+    // the frees; a new one's from its port's inputs, before any grant (a
+    // row naming a port of its group names a granted entry: every port that
+    // asks is granted), then steered with the row.
+    for (int p = 0; p < P; p++)
+      emp_new[p] = (row_dep_cq01h[p * N +: N] & ~free_cq01h) == '0 &&
+                   (grp_dep_cq01h[p * P +: P] & req_cq01h & ~(P'(1) << p)) == '0;
+    for (int i = 0; i < N; i++) begin
+      emp_nx[i] = (dep_cq02h[i * N +: N] & ~free_cq01h) == '0;
+      for (int p = 0; p < P; p++)
+        if (g_cq02h[p * N + i]) emp_nx[i] = emp_new[p];
+    end
     hr_nx = (hr_cq02h & ~free_cq01h) | named_r;
     hm_nx = (hm_cq02h & ~free_cq01h) | named_m;
   end
@@ -303,7 +371,7 @@ module ooe_rs #(
     for (int i = 0; i < N; i++)
       cf_d[i] = valid_cq02h[i] && !free_cq01h[i] && (dep_cq02h[i * N +: N] & ~free_cq01h) == '0 &&
                 (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn[i] || (cf_en_cq01h[i] && cvb_cq02h)
-                               : iss_cq00h[i] || gnt_cq00h[i]);
+                               : iss_cq02h[i] || gnt_cq00h[i]);
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
@@ -358,11 +426,15 @@ module ooe_rs #(
       dep_cq02h[NR*N-1:0]    <= dep_nx[NR*N-1:0];
       code_cq02h[2*NR*N-1:0] <= code_nx[2*NR*N-1:0];
       prod_cq02h[NR-1:0]     <= prod_nx[NR-1:0];
+      prod_oc_cq02h[NR-1:0]  <= prod_nx[NR-1:0];
+      emp_cq02h[NR-1:0]      <= emp_nx[NR-1:0];
     end
     if (miu_en_cq01h) begin
       dep_cq02h[N*N-1:NR*N]    <= dep_nx[N*N-1:NR*N];
       code_cq02h[2*N*N-1:2*NR*N] <= code_nx[2*N*N-1:2*NR*N];
       prod_cq02h[N-1:NR]     <= prod_nx[N-1:NR];
+      prod_oc_cq02h[N-1:NR]  <= prod_nx[N-1:NR];
+      emp_cq02h[N-1:NR]      <= emp_nx[N-1:NR];
     end
   end
 

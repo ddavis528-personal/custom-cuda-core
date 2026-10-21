@@ -23,6 +23,23 @@
         "GW": 10,
         "PW": 6
       }
+    },
+    {
+      "name": "ooe_rencred",
+      "module": "ooe_rencred",
+      "files": [
+        "rtl/ooe/ooe_rencred.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "NR": 30,
+        "NM": 15,
+        "NG": 192,
+        "NP": 48,
+        "RD": 32,
+        "F": 4
+      }
     }
   ]
 }

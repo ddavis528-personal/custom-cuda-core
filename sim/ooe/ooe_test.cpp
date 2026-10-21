@@ -19,6 +19,7 @@
 // Usage: ooe-test [--seeds N]. Exit status 0 iff every test passes.
 //===----------------------------------------------------------------------===//
 #include "ooe_core.h"
+#include "ccv_interfaces.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -38,9 +39,14 @@ bool g_quiet = false;     ///< a negative control's expected failures
 /// Called after every core cycle of every Env: an RTL testbench compiled
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
+void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over every test's
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
+/// DEC delivers up to g_dec_width uops on one cycle in g_dec_every: a
+/// scenario's traffic (ooeTestScenario; docs/rtl-coding-style.md, the
+/// clock-gating scenarios).
+unsigned g_dec_every = 1, g_dec_width = 6;
 std::string g_test;
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
@@ -396,6 +402,13 @@ struct Env {
     }
   }
 
+  /// The first cycle from `when` with a lane free on ccv_miu_ooe_cmpl (its
+  /// hint channel's rate is the same): MIU never sends more than its rate.
+  uint64_t cmplRoom(uint64_t when) const {
+    while (cmpls.count(when) >= ccv::channelInfo(ccv::CH_MIU_OOE_CMPL).rate) ++when;
+    return when;
+  }
+
   void onMemop(const Memop &m) {
     if (m.mem_op == 0xF) return;
     const Op &o = op_of[m.tid];
@@ -406,9 +419,12 @@ struct Env {
     c.rob_tag = m.rob_tag;
     uint64_t when;
     if (o.k == kLoad && cfg.l1_spec) {
-      const bool hit = rnd(100) >= miss_pct;
+      bool hit = rnd(100) >= miss_pct;
+      when = cmplRoom(t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra)));
+      // A hit the channel has no room for at the L1 contract completes
+      // later, which is a miss.
+      hit = hit && when == t + cfg.lat_l1_cmpl;
       hit_of[m.tid] = hit;
-      when = t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra));
       if (m.pdst) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
         const uint64_t rd = hit ? t + cfg.lat_l1_wake : when + data_after_cmpl;
@@ -417,7 +433,7 @@ struct Env {
         landings.insert({rd, {m.pdst, m.tid}});
       }
     } else {
-      when = t + 4 + rnd(miss_extra);
+      when = cmplRoom(t + 4 + rnd(miss_extra));
       if (o.k == kLoad && m.pdst) {
         const uint64_t rd = when + data_after_cmpl;
         gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
@@ -438,6 +454,8 @@ struct Env {
     // inputs due this cycle
     for (auto it = dones.begin(); it != dones.end() && it->first <= t;) { core.done(it->second); it = dones.erase(it); }
     for (auto it = cmpls.begin(); it != cmpls.end() && it->first <= t;) { core.cmpl(it->second); it = cmpls.erase(it); }
+    // OA-23's hint, two cycles ahead of its completion.
+    for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first) core.hint(r.first->second.rob_tag);
     // a result landing in a register a younger producer was issued to write
     for (auto it = landings.begin(); it != landings.end() && it->first <= t;) {
       const unsigned p = it->second.first;
@@ -492,10 +510,12 @@ struct Env {
     }
     for (Warp &x : w) x.launched = true;
     fetch();
-    // DEC: up to six uops a cycle, in fetch order, as credit allows.
+    // DEC: up to six uops a cycle, in fetch order, as credit allows (a
+    // scenario's traffic: up to g_dec_width on one cycle in g_dec_every).
+    const unsigned width = t % g_dec_every ? 0 : g_dec_width;
     unsigned n = 0;
     std::set<unsigned> held;
-    for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != 6;) {
+    for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != width;) {
       if (held.count(it->second.warp)) { ++it; continue; }
       if (!core.canAccept(it->second.warp)) { held.insert(it->second.warp); ++it; continue; }
       core.uop(it->second);
@@ -586,6 +606,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
 Config baseConfig() {
   Config c;
   c.memop_rcu_done = false;
+  if (g_config_hook) g_config_hook(c);
   return c;
 }
 
@@ -1223,37 +1244,53 @@ void testReadyReg() {
   // producer be re-granted inside its dependant's stale window; the
   // dependant, granted on its stale bit, is never replayed and confirms on
   // a result it read too early. The model's OA-17 check must see it.
+  // Directed, one warp: a load L that misses by a cycle, a producer P
+  // reading it (replayed, then re-granted as L's data lands) and P's
+  // dependant D, whose ready register holds P's old line an edge too long.
+  // A random hunt found it in one run in 100 to 700, and every change to
+  // rename's traffic moved it; this family hits in about one case in 9 of
+  // its wider search, and without the injection none of it errs.
   g_test = "ready register: a late capture confirms a stale grant (OI-54's control)";
   const int saved = g_fail;
   bool seen = false;
-  // A shallow decode queue spaces a warp's uops so the race opens (found
-  // at decq 4 in the sweep; at decq 2 since the decode queue's flush is
-  // applied an edge late, OI-58; at decq 4 and a 60% miss rate since the
-  // take is popped late, OA-21; at decq 3 and 20% under the registered
-  // go, OA-22). It is rare, one run in 100 to 700 at any setting, and
-  // every change to rename's traffic moves it, so the hunt is wide and
-  // stops at the first. A directed test would hold it better (OI's task).
-  for (unsigned run = 0; run != 6 * 3 * 60 && !seen; ++run) {
-    const unsigned seed = run % 60 + 1;
-    std::mt19937 rng(seed);
+  auto run = [&](Kind pk, Kind dk, unsigned gap, unsigned extra, bool late, bool &hit, bool &other) {
     Config c = baseConfig();
-    c.rs_warp_cap = c.decq_warp_max = 0;
-    c.decq = (unsigned[]){3, 4, 2, 5, 6, 8}[run / 180];
-    c.inject_late_event = true;
-    Env e(c, seed);
-    e.miss_pct = (unsigned[]){20, 60, 40}[(run / 60) % 3];
-    const auto report = e.core.on_error;
+    c.inject_late_event = late;
+    Env e(c, 1);
+    e.miss_pct = 100;
+    e.miss_extra = extra;
+    std::vector<Op> p;
+    Op ld; ld.k = kLoad; ld.dst = 1; ld.src[0] = 9; ld.nsrc = 1; p.push_back(ld);
+    Op pp; pp.k = pk; pp.dst = 2; pp.src[0] = 1; pp.nsrc = 1; p.push_back(pp);
+    for (unsigned i = 0; i != gap; ++i) { Op f; f.k = kLane; f.dst = 12 + i; p.push_back(f); }
+    Op dd; dd.k = dk; dd.dst = 3; dd.src[0] = 2; dd.nsrc = 1; p.push_back(dd);
+    Op st; st.k = kStore; st.src[0] = 3; st.src[1] = 3; st.nsrc = 2; p.push_back(st);
+    Op ex; ex.k = kExit; p.push_back(ex);
     e.core.on_error = [&](const std::string &m) {
-      seen = seen || m.find("OA-17") != std::string::npos;
-      report(m);
+      if (m.find("OA-17") != std::string::npos) hit = true;
+      else other = true;
     };
-    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+    e.launch(0, 0, p);
     g_quiet = true;
-    e.finish(20000);
+    e.finish(5000);
     g_quiet = false;
-  }
+  };
+  bool clean = true;
+  for (Kind pk : {kRcuOp, kLane, kSfu})
+    for (Kind dk : {kLane, kRcuOp})
+      for (unsigned gap = 0; gap != 3 && !seen; ++gap)
+        for (unsigned extra = 1; extra != 4 && !seen; ++extra) {
+          bool hit = false, other = false;
+          run(pk, dk, gap, extra, true, hit, other);
+          if (!hit) continue;
+          seen = true;
+          bool h2 = false, o2 = false;   // the same case, no injection: nothing errs
+          run(pk, dk, gap, extra, false, h2, o2);
+          clean = !h2 && !o2;
+        }
   g_fail = saved;
   EXPECT(seen, "late capture never confirmed a stale grant");
+  EXPECT(clean, "the late-event case errs without the injection");
   std::printf("  %-24s %s\n", "control late-event", seen ? "caught" : "MISSED");
 }
 
@@ -1536,30 +1573,37 @@ void testSections() {
   }
 }
 
+/// A random test's core configuration, by seed and mode.
+Config randomConfig(unsigned seed, int mode) {
+  // Odd seeds run the bypass-group configuration, SFU ops included.
+  const bool groups = seed % 2 == 1;
+  Config c = groups ? groupConfig() : baseConfig();
+  c.bypass = mode & 1;
+  c.l1_spec = (mode & 2) != 0;
+  // Modes 4-7: sectioned lanes and narrow registers, each placement
+  // rule in turn, with loads passing loads on odd seeds (OA-13).
+  const bool sec = (mode & 4) != 0;
+  c.sectioned = sec;
+  c.place = seed % 5;
+  c.loads_pass_loads = sec && seed % 2 == 1;
+  // Every fifth seed: a floorplan where load data lands after the
+  // completion (the links split does this), and the core told so.
+  if (seed % 5 == 0) c.cmpl_wake_delay = 2;
+  // Every seventh seed from the third: a long L1 shadow, the completion
+  // a lane latency past the wake, so grandchildren issue on a load that
+  // then misses and transitive cancel takes more than one hop.
+  if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
+  return c;
+}
+
 void testRandom(unsigned seeds) {
   for (unsigned seed = 1; seed <= seeds; ++seed) {
     for (int mode = 0; mode != 8; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
-      // Odd seeds run the bypass-group configuration, SFU ops included.
-      const bool groups = seed % 2 == 1;
-      Config c = groups ? groupConfig() : baseConfig();
-      c.bypass = mode & 1;
-      c.l1_spec = (mode & 2) != 0;
-      // Modes 4-7: sectioned lanes and narrow registers, each placement
-      // rule in turn, with loads passing loads on odd seeds (OA-13).
-      const bool sec = (mode & 4) != 0;
-      c.sectioned = sec;
-      c.place = seed % 5;
-      c.loads_pass_loads = sec && seed % 2 == 1;
+      const bool groups = seed % 2 == 1, sec = (mode & 4) != 0;
+      const Config c = randomConfig(seed, mode);
       std::mt19937 rng(seed * 4 + unsigned(mode));
-      // Every fifth seed: a floorplan where load data lands after the
-      // completion (the links split does this), and the core told so.
-      if (seed % 5 == 0) c.cmpl_wake_delay = 2;
-      // Every seventh seed from the third: a long L1 shadow, the completion
-      // a lane latency past the wake, so grandchildren issue on a load that
-      // then misses and transitive cancel takes more than one hop.
-      if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
       Env e(c, seed * 7 + unsigned(mode));
       e.miss_pct = 30;
       e.data_after_cmpl = c.cmpl_wake_delay;
@@ -1748,6 +1792,21 @@ void sweep() {
                       cy, cy / r48);
         }
   }
+  // OI-65 (a): the per-warp fits registered a cycle ahead (fits_stale):
+  // a uop taken no sooner than the second cycle after it arrives, frees two
+  // cycles late. 48 seeds against the default, under each go.
+  {
+    const double r48 = run(base, 48);
+    for (unsigned w : {0u, 1u, 2u})
+      for (unsigned st : {0u, 1u, 2u, 3u, 4u, 5u, 6u, 7u}) {
+        Config c = base;
+        c.rename_one_warp = w;
+        c.fits_stale = st;
+        const double cy = run(c, 48);
+        std::printf("| rename_one_warp, fits_stale (48 seeds, default %.0f) | %u, %u | %.0f | %.3f |\n", r48, w,
+                    unsigned(st), cy, cy / r48);
+      }
+  }
   // When rename sees this cycle's RS and ROB frees (ren_credit), against
   // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
   // late (OA's item 4, not accepted) and the 2-step trim. Their differences
@@ -1792,6 +1851,118 @@ void sweep() {
   }
 }
 
+
+/// The settings audit (OA's rev 122; docs/ooe-model.md, "What the RTL
+/// reads"): the sweep's workload, 48 seeds, under the go DA decided
+/// (OA-21: the interleave with per-cycle shares, fits_stale 6), counting
+/// every admission the RTL's registered fits could not make the same way:
+/// a uop taken in the cycle after it arrives (the refill, which the fits
+/// do not hold), a take past the slot's registered ROB room and this
+/// cycle's retirements, and every refusal on live state behind the
+/// allowances (RS room, the free lists, the floors and ceilings, the warp
+/// cap). Then the go with each such admission removed, in cycles.
+void audit() {
+  struct R { double cy = 0; std::map<std::string, double> n; };
+  const char *keys[] = {"rename.refill", "rename.refill_fail", "rename.too_young", "audit.rob_past_registered", "audit.rob_refused_within_registered", "audit.rob_refused.full", "audit.rob_refused.tail_valid",
+                        "audit.rob_refused.late_credit", "audit.rob_refused.squash_cycle",
+                        "stall.share.rs", "stall.share.names", "stall.share_frag",
+                        "stall.rs_full.rcu", "stall.rs_full.miu", "stall.rs_warp_cap",
+                        "stall.gpr_buffer", "stall.gpr_empty", "stall.gpr_ceiling", "stall.gpr_floor",
+                        "stall.pred_buffer", "stall.pred_empty", "stall.pred_floor_ceiling",
+                        "stall.rob_full", "stall.rob_slot_held", "stall.rob_late_credit",
+                        "hold.chwidth", "hold.barrier", "hold.fault", "hold.inactive", "rename.full_width"};
+  auto run = [&](const Config &c) {
+    R r;
+    const char *as = std::getenv("AUDIT_SEEDS");   // the audit's runs (48 by default)
+    const unsigned seeds = as ? unsigned(std::atoi(as)) : 48;
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish();
+      r.cy += double(e.t) / seeds;
+      for (const char *k : keys) r.n[k] += double(e.core.counters[k]) / seeds;
+    }
+    return r;
+  };
+  Config base = baseConfig();
+  base.fits_stale = 6;
+  const R d = run(base);
+  std::printf("audit: the decided go (fits_stale 6), 48 seeds: %.0f cycles\n", d.cy);
+  for (const char *k : keys) std::printf("audit:   %-28s %10.1f per run\n", k, d.n.at(k));
+  Config ny = base;
+  ny.take_young = false;
+  const R y = run(ny);
+  std::printf("audit: no refill (take_young 0): %.0f cycles, %+.1f%%\n", y.cy, 100.0 * (y.cy / d.cy - 1));
+  Config rn = base;
+  rn.ret_now = true;
+  const R t = run(rn);
+  std::printf("audit: retirements in their cycle (ret_now 1): %.0f cycles, %+.1f%%; refused within registered %.1f\n",
+              t.cy, 100.0 * (t.cy / d.cy - 1), t.n.at("audit.rob_refused_within_registered"));
+  rn.take_young = false;
+  const R b = run(rn);
+  std::printf("audit: both (ret_now 1, take_young 0): %.0f cycles, %+.1f%%\n", b.cy, 100.0 * (b.cy / d.cy - 1));
+  // OA's response OI-45: the RTL's wake-to-select loop as composed. A
+  // completion's wake a cycle later (cmpl_wake_delay + 1), and the matrix
+  // and valid reaching select two cycles later (rename_stages + 2), each
+  // and both, under the go slice 4 builds (ret_now 1, take_young 0).
+  {
+    Config g = base;
+    g.ret_now = true;
+    g.take_young = false;
+    const R r0 = run(g);
+    Config a1 = g;
+    a1.cmpl_wake_delay += 1;
+    const R x1 = run(a1);
+    Config a2 = g;
+    a2.rename_stages += 2;
+    const R x2 = run(a2);
+    Config a3 = a1;
+    a3.rename_stages += 2;
+    const R x3 = run(a3);
+    std::printf("audit: loop, against the slice-4 go (%.0f): completion wake +1 %.0f (%+.1f%%), rename_stages +2 %.0f "
+                "(%+.1f%%), both %.0f (%+.1f%%)\n", r0.cy, x1.cy, 100.0 * (x1.cy / r0.cy - 1), x2.cy,
+                100.0 * (x2.cy / r0.cy - 1), x3.cy, 100.0 * (x3.cy / r0.cy - 1));
+    Config b1 = g;
+    b1.rename_stages += 1;
+    const R y1 = run(b1);
+    b1.cmpl_wake_delay += 1;
+    const R y2 = run(b1);
+    std::printf("audit: loop: rename_stages +1 %.0f (%+.1f%%), with the completion wake +1 %.0f (%+.1f%%)\n", y1.cy,
+                100.0 * (y1.cy / r0.cy - 1), y2.cy, 100.0 * (y2.cy / r0.cy - 1));
+    Config c1 = g;
+    c1.copy_conf_late = true;
+    const R z1 = run(c1);
+    std::printf("audit: loop: a copy's request a cycle after its sources confirm %.0f (%+.2f%%)\n", z1.cy,
+                100.0 * (z1.cy / r0.cy - 1));
+  }
+  // OI-45's assembled check: the composed RTL's timing, which trio_tb
+  // holds the RTL to, on the sectioned select the RTL builds, against the
+  // same go with the model's own timing. Each knob alone, then all.
+  {
+    Config g = base;
+    g.ret_now = true;
+    g.take_young = false;
+    g.sectioned = true;
+    const R s0 = run(g);
+    std::printf("audit: composed timing, against the sectioned slice-4 go (%.0f):", s0.cy);
+    struct K { const char *name; bool Config::*knob; };
+    const K ks[] = {{"rs_same_edge 0", nullptr}, {"copy_conf_late", &Config::copy_conf_late},
+                    {"req_alloc_lead", &Config::req_alloc_lead}, {"req_rows_late", &Config::req_rows_late},
+                    {"miss_lead", &Config::miss_lead}, {"ready_rep_late", &Config::ready_rep_late}};
+    Config all = g;
+    for (const K &k : ks) {
+      Config c = g;
+      if (k.knob) c.*k.knob = true; else c.rs_same_edge = false;
+      if (k.knob) all.*k.knob = true; else all.rs_same_edge = false;
+      const R x = run(c);
+      std::printf(" %s %.0f (%+.2f%%),", k.name, x.cy, 100.0 * (x.cy / s0.cy - 1));
+    }
+    const R xa = run(all);
+    std::printf(" all %.0f (%+.2f%%)\n", xa.cy, 100.0 * (xa.cy / s0.cy - 1));
+  }
+}
 
 /// OI-34: placement and OA-13 arms on synthetic narrow loops, one warp and
 /// four. Each kernel is a loop body repeated with a backward taken branch:
@@ -1919,6 +2090,14 @@ int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = nullptr;
   return g_fail;
 }
+/// The same, every core configured first by cfg (a setting the RTL under
+/// test assumes, set over each test's own).
+int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_config_hook = cfg;
+  const int f = ooeTestRandomHooked(seeds, hook);
+  g_config_hook = nullptr;
+  return f;
+}
 /// The directed tests (every one that drives a core and injects no bug:
 /// demotion, kill, restore, faults, squashes and the rest) with a hook on
 /// every core cycle, for the paths random traffic does not take. Returns
@@ -1946,11 +2125,53 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   g_cycle_hook = nullptr;
   return g_fail;
 }
+/// The directed tests likewise, every core configured first by cfg.
+int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_config_hook = cfg;
+  const int f = ooeTestDirectedHooked(hook);
+  g_config_hook = nullptr;
+  return f;
+}
 /// The same, with the hook just before each core cycle instead.
 int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_pre_cycle_hook = hook;
   testRandom(seeds);
   g_pre_cycle_hook = nullptr;
+  return g_fail;
+}
+/// A bench's run in one of the clock-gating scenarios (docs/rtl-coding-
+/// style.md; test/ooe/cg_trace.h), each the model's own traffic, so a bench
+/// checks every scenario as it checks any run:
+///   idle    a core with nothing launched, for idle_cycles, in each of
+///           the random tests' configurations (seed 2's modes), so a bench
+///           idles in those it follows;
+///   medium  the random tests, DEC delivering one uop on one cycle in
+///           three, so the core works on a fraction of cycles;
+///   high    the random tests as they are.
+/// pre and post are the hooks before and after each core cycle, cfg the
+/// settings the RTL under test assumes (any may be null). Returns the
+/// failure count.
+int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
+                    void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
+  g_pre_cycle_hook = pre;
+  g_cycle_hook = post;
+  g_config_hook = cfg;
+  if (scenario == "idle") {
+    for (int mode = 0; mode != 8; ++mode) {
+      Env e(randomConfig(2, mode));
+      for (unsigned k = 0; k != idle_cycles; ++k) e.step();
+    }
+  } else {
+    const bool medium = scenario == "medium";
+    g_dec_every = medium ? 3 : 1;
+    g_dec_width = medium ? 1 : 6;
+    testRandom(seeds);
+    g_dec_every = 1;
+    g_dec_width = 6;
+  }
+  g_pre_cycle_hook = nullptr;
+  g_cycle_hook = nullptr;
+  g_config_hook = nullptr;
   return g_fail;
 }
 #else
@@ -1960,6 +2181,10 @@ int main(int argc, char **argv) {
     if (std::string(argv[i]) == "--seeds" && i + 1 < argc) seeds = unsigned(std::atoi(argv[++i]));
   if (argc > 1 && std::string(argv[1]) == "--sweep-sections") {
     sweepSections();
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--audit") {
+    audit();
     return g_fail ? 1 : 0;
   }
   if (argc > 1 && std::string(argv[1]) == "--sweep") {

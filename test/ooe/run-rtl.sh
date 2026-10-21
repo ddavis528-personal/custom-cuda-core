@@ -19,9 +19,11 @@
 #   live (test/ooe/rs_tb.cpp);
 # - ooe_select against the model's sectioned select, live
 #   (test/ooe/select_tb.cpp);
-# - ooe_sched (ooe_ready, its ready and request registers, ooe_select and
-#   its grant register) against the model's registers and grants, live, a
-#   cycle behind it (test/ooe/sched_tb.cpp);
+# - ooe_rs, ooe_wake and ooe_sched assembled (ooe_sched: ooe_ready, its
+#   ready and request registers, ooe_select and its grant register)
+#   against the model's registers and grants, live, under its composed
+#   timing (test/ooe/trio_tb.cpp, test/ooe/ooe_trio.sv);
+# - ooe_rencred against the model's rename credits, live (test/ooe/rencred_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
 #   its directed and random unit tests (test/ooe/rat_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
@@ -178,7 +180,7 @@ if out=$("$dir/decq_tb" "$seeds" 2>&1); then
 else
   say "decq == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-flush enq-swap no-enq-lead; do
+for c in drop-flush enq-swap no-enq-lead no-take-enable; do
   if DECQ_CONTROL=$c "$dir/decq_tb" 3 >/dev/null 2>&1; then
     say "  control $c (decq)" "MISSED"; fail=1
   else
@@ -189,8 +191,10 @@ done
 # ooe_wake, driven from the model's wake log after every cycle. Its
 # latencies, bypass points and penalties are the parameters'; the model's
 # payload stages come from its Config. wake_tb skips a core configured
-# otherwise. Its bench and confirm's carry the clock-gating trace (cg_trace.h),
-# so they link Verilator's VCD writer.
+# otherwise. It replays and confirms on its own (OI-45), with ooe_confirm
+# inside, from ooe_rs's matrix as the model's hop read it. Its bench and
+# confirm's carry the clock-gating trace (cg_trace.h), so they link
+# Verilator's VCD writer.
 read -r wake_g wake_d < <(python3 test/ooe/wake-params.py)
 dir=build/ooe-rtl/wake
 mkdir -p "$dir"
@@ -198,7 +202,7 @@ if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno
       --trace ${wake_g//,/ } --top-module ooe_wake --Mdir "$dir" -o wake_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 ${wake_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/wake_tb.cpp" \
       "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "wake: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
@@ -208,7 +212,7 @@ if out=$("$dir/wake_tb" "$seeds" 2>&1); then
 else
   say "wake == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in late-grant drop-cmpl drop-stop no-cmpl-lead no-sq-lead; do
+for c in late-grant drop-cmpl no-dep drop-squash-free no-cmpl-lead no-sq-lead no-hint; do
   if WAKE_CONTROL=$c "$dir/wake_tb" 3 >/dev/null 2>&1; then
     say "  control $c (wake)" "MISSED"; fail=1
   else
@@ -241,6 +245,65 @@ for c in no-msd msd-pulse no-fin no-dep; do
   fi
 done
 
+# ooe_prodmap, the RS entries' names rename compares a source with, driven
+# from the model's renames after every cycle, two cycles behind.
+dir=build/ooe-rtl/prodmap
+mkdir -p "$dir"
+ng=$(( $(sed -n 's/.*localparam int CCV_P_PHYS_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv) * 4 ))
+np=$(sed -n 's/.*localparam int CCV_P_PRED_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" -GNG="$ng" -GNP="$np" --top-module ooe_prodmap --Mdir "$dir" \
+      -o prodmap_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DPM_N=$n -DPM_NR=$n_rcu -DPM_A=$width -DPM_NG=$ng -DPM_NP=$np -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/test/ooe/prodmap_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "prodmap: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/prodmap_tb" "$seeds" 2>&1); then
+  say "prodmap ($n entries, $ng GPR names) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "prodmap == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-ename port-swap no-lead; do
+  if PM_CONTROL=$c "$dir/prodmap_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (prodmap)" "MISSED"; fail=1
+  else
+    say "  control $c (prodmap)" "caught"
+  fi
+done
+
+# ooe_rencred, the next value of rename's credit counters, driven from the
+# model's events after every cycle under the go they serve (fits_stale 6),
+# through the random tests and the directed ones (a restore-allocate draws
+# names). The bench holds the counters.
+dir=build/ooe-rtl/rencred
+mkdir -p "$dir"
+rob=$(sed -n 's/.*localparam int CCV_P_ROB_DEPTH = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+fcap=$(sed -n 's/.*unsigned ren_free_cap = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+rc_ld=$(python3 -c "import math; print(math.ceil(math.log2($rob + 1)))")
+rc_lg=$(python3 -c "import math; print(math.ceil(math.log2($phys + 1)))")
+rc_lp=$(python3 -c "import math; print(math.ceil(math.log2($preds + 1)))")
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GS="$slots" -GA="$width" -GNR="$n_rcu" -GNM="$n_miu" -GNG="$phys" -GNP="$preds" -GRD="$rob" -GF="$fcap" \
+      --top-module ooe_rencred --Mdir "$dir" -o rencred_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DRC_S=$slots -DRC_A=$width -DRC_F=$fcap -DRC_LD=$rc_ld -DRC_LG=$rc_lg -DRC_LP=$rc_lp -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ooe/ooe_rencred.sv" "$PWD/test/ooe/rencred_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rencred: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rencred_tb" "$seeds" 2>&1); then
+  say "rencred (rename's credits) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*cycles=//'))"
+else
+  say "rencred == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-late no-draw no-rob-free; do
+  if RENCRED_CONTROL=$c "$dir/rencred_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (rencred)" "MISSED"; fail=1
+  else
+    say "  control $c (rencred)" "caught"
+  fi
+done
+
 # ooe_rs, driven from the model's RS allocations and frees after every
 # cycle. A control may be caught by the RTL's own assertion before the
 # comparison: either fails the run.
@@ -260,8 +323,13 @@ if out=$("$dir/rs_tb" "$seeds" 2>&1); then
 else
   say "rs == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-same-edge drop-group stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
-  if RS_CONTROL=$c "$dir/rs_tb" 3 >/dev/null 2>&1; then
+# no-msd runs the bench's seeds: a replay in ooe_rs only clears its issued
+# bit, and a replayed producer is not final until it reissues, so a lost
+# miss shows only where a non-producer would confirm early (3 seeds miss
+# it; a caught control stops at its first difference).
+for c in no-msd drop-squash-free drop-group stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
+  cs=3; [ "$c" = no-msd ] && cs=$seeds
+  if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1
   else
     say "  control $c (rs)" "caught"
@@ -289,7 +357,7 @@ if out=$("$dir/rat_tb" "$seeds" 2>&1); then
 else
   say "rat == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in port-reverse drop-restore drop-retire drop-squash; do
+for c in port-reverse drop-restore drop-retire drop-squash no-pending no-lead; do
   if RAT_CONTROL=$c "$dir/rat_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rat)" "MISSED"; fail=1
   else
@@ -327,30 +395,39 @@ for c in no-order no-conf no-busy; do
   fi
 done
 
-# ooe_sched, with ooe_ready, ooe_select and ooe_pick inside it, driven a
-# model cycle behind so its leads can come from the next cycle. Its
-# registers are read inside it (--public-flat-rw).
-dir=build/ooe-rtl/sched
+# ooe_rs, ooe_wake and ooe_sched assembled (test/ooe/ooe_trio.sv; OA's
+# response OI-45): every link between them as the design wires it, the model
+# only at their outer ports, each module at its own lag. ooe_sched's ready,
+# request and grant registers, ooe_rs's valid bits and rows and ooe_wake's
+# issued bits and lead lines are held to the model under its composed
+# timing (Config::req_rows_late, miss_lead, ready_rep_late). This replaces
+# sched_tb's comparison, which drove ooe_sched from model-emulated
+# neighbours; trio_tb is ooe_sched's clock-gating bench too (cg_trace.h), so
+# it links Verilator's VCD writer.
+dir=build/ooe-rtl/trio
 mkdir -p "$dir"
-if ! verilator --cc --exe --build --trace -j 0 -O2 --assert --public-flat-rw -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      -GN="$n" -GNR="$n_rcu" -GS="$slots" -GFB="$pick_fb" --top-module ooe_sched --Mdir "$dir" -o sched_tb \
-      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-      -CFLAGS "-std=c++17 -O2 -DSCH_N=$n -DSCH_NR=$n_rcu -DSCH_S=$slots -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" \
-      "$PWD/rtl/ooe/ooe_sched.sv" "$PWD/test/ooe/sched_tb.cpp" \
-      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
-  say "sched: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+cdly=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_CMPL_DLY=//p')
+lmiss=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
+if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw --trace -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -Wno-PINCONNECTEMPTY ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
+      --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" \
+      >"$dir/build.log" 2>&1; then
+  say "trio: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
-if out=$("$dir/sched_tb" "$seeds" 2>&1); then
-  say "sched (ready, request, grant registers) == model" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+if out=$("$dir/trio_tb" "$seeds" 2>&1); then
+  say "rs + wake + sched assembled == model" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
 else
-  say "sched == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+  say "rs + wake + sched assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
 fi
 for c in no-msd no-miss-lead late-leads no-alloc-lead; do
-  if SCHED_CONTROL=$c "$dir/sched_tb" 6 >/dev/null 2>&1; then
-    say "  control $c (sched)" "MISSED"; fail=1
+  if TRIO_CONTROL=$c "$dir/trio_tb" 6 >/dev/null 2>&1; then
+    say "  control $c (trio)" "MISSED"; fail=1
   else
-    say "  control $c (sched)" "caught"
+    say "  control $c (trio)" "caught"
   fi
 done
 exit $fail
