@@ -17,8 +17,19 @@
 // past rename, select's issued view, the sections, the age matrices) and
 // the RS payload are still the model's (outer ports).
 //
-// Runs the model as the RS is built (rs_same_edge off) under the go the
-// counters serve (fits_stale 6).
+// The model runs the composed RTL's timing, its default for the sectioned
+// select (docs/ooe-model.md, "The composed RTL's timing"), under the go the
+// counters serve (fits_stale 6). ooe_trio asserts V-65 (ooe_sched's issued
+// against ooe_rs's issued register).
+//
+// A known difference, explained and not a grant's (OA's response OI-45,
+// rev 153): the ready register in the cycle after a replayed source
+// re-issues. The RTL's register holds its stale ready until one of its
+// enables comes; the model captures the change on its own edge. 2 bits at
+// 100 seeds, none at the gate's 25.
+//
+// Negative controls (TRIO_CONTROL, ooe_trio's ctl), ooe_sched's: no-msd,
+// no-miss-lead, late-leads, no-alloc-lead.
 // Usage: trio_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_trio.h"
