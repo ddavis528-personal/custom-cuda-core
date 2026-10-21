@@ -39,7 +39,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"rename_preds", &rename_preds}, {"loads_pass_loads", &loads_pass_loads},
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
-                                     {"decq_take_late", &decq_take_late}};
+                                     {"decq_take_late", &decq_take_late},
+                                     {"take_young", &take_young}, {"ret_now", &ret_now}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -275,6 +276,12 @@ void Core::kill(uint32_t mask, unsigned epoch) {
 
 void Core::cycle(uint64_t now) {
   now_ = now;
+  // The settings audit (docs/ooe-model.md): each slot's ROB room as the
+  // cycle starts, the registered room the RTL's fits read.
+  audit_room_.assign(slot_.size(), 0);
+  audit_squash_.assign(slot_.size(), 0);
+  for (unsigned si = 0; si != slot_.size(); ++si)
+    for (const RobEntry &r : slot_[si].rob) audit_room_[si] += !r.valid;
   gfree_.clock();      // last cycle's frees become allocatable
   pfree_.clock();
   decq_flushed_ = 0;
@@ -1282,6 +1289,7 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
 /// to_retirement, every entry. The caller restores the RAT.
 void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
+  if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   Slot &s = slot_[slot];
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
@@ -2179,6 +2187,14 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
 
 // ---- rename (Rename) ---------------------------------------------------------------------------
 
+/// The settings audit: slot si's ROB room as the RTL's fits read it, the
+/// room registered as the cycle started and this cycle's retirements.
+unsigned Core::auditRobRoom(unsigned si) const {
+  unsigned room = si < audit_room_.size() ? audit_room_[si] : 0;
+  for (unsigned k = 0; k != cfg_.rob_depth; ++k) room += rob_prompt_[si * cfg_.rob_depth + k];
+  return room;
+}
+
 bool Core::tryRename(unsigned si, const Uop &u) {
   Slot &s = slot_[si];
   if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
@@ -2192,6 +2208,14 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     count("hold.barrier");
     oev(OoeEv::kBarrierHold, s.warp, s.bar_id, 0, u.tid);
     return false;
+  }
+  // The settings audit: a refusal the registered room would have admitted.
+  if ((s.count == cfg_.rob_depth || robHeld(si, s.tail)) && took_[si] + 1 <= auditRobRoom(si)) {
+    count("audit.rob_refused_within_registered");
+    count(s.count == cfg_.rob_depth ? "audit.rob_refused.full"
+          : s.rob[s.tail].valid     ? "audit.rob_refused.tail_valid"
+                                    : "audit.rob_refused.late_credit");
+    if (si < audit_squash_.size() && audit_squash_[si]) count("audit.rob_refused.squash_cycle");
   }
   if (s.count == cfg_.rob_depth) {
     count("stall.rob_full");
@@ -2336,6 +2360,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       return false;
     }
   }
+
+  // The settings audit: what the RTL's registered fits could not have
+  // admitted. A take past the slot's registered ROB room and this cycle's
+  // retirements (the fits' ROB term, ret_n).
+  if (took_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
 
   // -- commit the rename ---------------------------------------------------------------
   const unsigned idx = s.tail;
@@ -2749,7 +2778,7 @@ void Core::rename() {
     // fits_stale: a uop that arrived after the last cycle's start is not in
     // the fits yet.
     const bool young = cfg_.fits_stale && decq_seq_[size_t(it - decq_.begin())] >= decq_seq_prev_;
-    if (young && cfg_.fits_stale == 1) {
+    if (young && (cfg_.fits_stale == 1 || !cfg_.take_young)) {
       count("rename.too_young");
       return 0;
     }
