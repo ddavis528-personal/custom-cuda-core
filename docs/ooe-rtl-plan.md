@@ -503,6 +503,29 @@ Built (`rtl/ooe/`):
   gate. Every read and write is a decoder: written through computed
   indices, Yosys built 420,000 gates and ran out of memory; as decoders it
   is 52,000.
+  OI-58's redesign (OA's response, V-75) takes every enable from the
+  module's own flops: rename's group writes the speculative maps and
+  checkpoints an edge after its go, from rename's register of the group,
+  enabled by `ooe_rat`'s flop of the go per slot and per (slot,
+  checkpoint) of "a taken branch names it" (formed here from rename's take
+  counts and decq's head branch fields, L2); retirement writes the
+  committed maps from the retire-stage register, each slot's GPRs one gate
+  and its predicates another, enabled by `ooe_rat`'s copy of that
+  register's gwe and pwe (from the ROB's decision, L2); restores, squashes
+  to retirement and releases are registered and applied an edge late
+  (L4); the reset is flopped. `ooe_ratread` reads through the pending
+  group, each read a select of the flops' entry or its last writer among
+  the pending and in-group ports, compared in parallel: 12.1 NGD alone,
+  from 13.3 before the pending group. The bench compares every map an
+  edge behind the model (93,330 cycles, 101,578 renames, 2,459 restores,
+  65,861 retirements, 36 restore-allocate writes; none differ; controls
+  no-pending and no-lead added, all six caught). `check-cg`: 28 gates,
+  worst enable 2.2 NGD, lowest DCGE 92%, 61 lead and event flops outside
+  any gate, within the 88 allowed; the four CG-5 and RST-1 entries leave
+  the ratchet. `rat_cq02h`'s NGD-7 stands: its flops reach the hold mux
+  and the checkpoint capture 12.0 NGD away, against the output's 4 (OA-20,
+  re-measured).
+
 - **`ooe_rename`**, rename's pipeline (task 18; the doc at rev 238, its
   Stage boundaries table and OA-21, OA-22), built in slices, each benched
   against the model before the next:

@@ -4,12 +4,6 @@
   "findings": {
     "ooe_decq": [
       "CG-5 st_cq02h"
-    ],
-    "ooe_rat": [
-      "CG-5 ckpt_cq02h",
-      "CG-5 crat_cq02h",
-      "CG-5 rat_cq02h",
-      "RST-1 ooe_rst_r00h"
     ]
   }
 }

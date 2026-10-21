@@ -17,20 +17,30 @@
 // (crat, cprat) and C checkpoints of the speculative maps. A GPR name is a
 // row and a position (GW bits); a predicate name is PW bits.
 //
-// One edge applies, per slot and in the model's order: a checkpoint
-// restore (a mispredict), a squash to retirement (a demotion or kill: the
-// speculative maps take the committed ones), a release (every map to the
-// zero registers); then the retire ports' writes to the committed maps;
-// then the rename ports, in port order. A rename port writes its
-// destinations, and a branch's port takes its checkpoint as the maps stand
-// after its own writes. A restore-allocate port (rst) writes both maps.
-// The reads are not here: ooe_ratread reads rat_cq02h, the flops, with the
-// in-group override in front.
-//
-// Rename never names a slot that a restore, squash or release names in the
-// same cycle: a mispredict's epoch drops the warp's queued uops, and a
-// demoting, killed or freed slot does not rename. So the reads come from
-// the flops; an assertion holds the exclusion.
+// Every write is applied an edge after the model makes it, from registers,
+// so each gate's enable is this module's own flop (OA's response OI-58,
+// V-75):
+//   - rename's group writes the speculative maps an edge after its go, from
+//     rename's register of the group (pw_*, data). The enable is this
+//     module's flop of the go per slot (a take, or a restore-allocate),
+//     and each checkpoint's its flop of "a taken branch names it", formed
+//     from rename's take counts and decq's head fields (L2). A branch's
+//     checkpoint is the maps as they stand after its own port's writes and
+//     the lower ports' of its slot.
+//   - retirement writes the committed maps from the ROB's retire-stage
+//     register, each slot's GPRs and its predicates one gate, enabled by
+//     this module's copy of that register's gwe and pwe (from the ROB's
+//     decision, a cycle ahead; L2); a restore-allocate's ports write both
+//     maps.
+//   - a checkpoint restore (a mispredict), a squash to retirement (a
+//     demotion or kill: the speculative maps take the committed ones) and a
+//     release (every map to the zero registers) are registered here and
+//     applied at the next edge (L4), in that order of precedence.
+// Rename never names a slot such an event names, in its cycle or the next
+// (a mispredict's epoch drops the warp's queued uops; a demoting, killed
+// or freed slot does not rename): asserted for the edge they share. The
+// reads are not here: ooe_ratread reads rat_cq02h, the flops, with the
+// pending group's writes and the in-group override in front.
 //
 // Checkpoint live bits are not kept here: branch resolution owns them.
 //
@@ -38,20 +48,19 @@
 // reached them each cycle (Core::ratLog); test/ooe/rat_tb.cpp drives this
 // module and ooe_ratread together (test/ooe/ooe_rat_read.sv) from the log
 // and compares every read, and after the edge every map and every live
-// checkpoint.
+// checkpoint with the model's an edge before.
 //
 // Reset line (decision 6): the four maps reset to the zero registers, as a
 // freed slot's; the checkpoints are payload, read only through a live
-// branch. Local clock gating (docs/rtl-coding-style.md): each slot's
-// speculative maps are one gate, written on a rename to the slot or a
-// whole-map event; each committed GPR entry is its own gate, written on a
-// retirement or restore-allocate naming it or a release; each slot's
-// committed predicates are one gate; each checkpoint is one gate, written
-// when its branch renames.
+// branch. The reset is flopped (RST-1). Local clock gating
+// (docs/rtl-coding-style.md): each slot's speculative maps are one gate,
+// each slot's committed GPRs one and its committed predicates one, each
+// checkpoint one. The leads' and the events' flops are outside any gate,
+// within the module's allowance.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
-`define CCV_RST ooe_rst_r00h
+`define CCV_RST rst_r01h
 module ooe_rat #(
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   parameter int A  = 4,                  // rename ports (CCV_ISSUE_WIDTH)
@@ -69,60 +78,126 @@ module ooe_rat #(
 ) (
   input  logic              ooe_core_clk,
   input  logic              ooe_rst_r00h,
-  // Rename ports, in rename order.
-  input  logic [A-1:0]      ren_v_cq01h,
-  input  logic [A*LS-1:0]   ren_slot_cq01h,
-  input  logic [A-1:0]      ren_rst_cq01h,     // a restore-allocate write: both maps, no reads
-  input  logic [A*4-1:0]    ren_dst_cq01h,
-  input  logic [A-1:0]      ren_gwe_cq01h,     // writes its GPR destination
-  input  logic [A*GW-1:0]   ren_gname_cq01h,   // with this name
-  input  logic [A*2-1:0]    ren_pdst_cq01h,
-  input  logic [A-1:0]      ren_pwe_cq01h,     // writes its predicate destination
-  input  logic [A*PW-1:0]   ren_pname_cq01h,
-  input  logic [A-1:0]      ren_br_cq01h,      // a branch: takes a checkpoint
-  input  logic [A*LC-1:0]   ren_ckpt_cq01h,    // FET's checkpoint_id
-  // Retire ports, per slot, in retirement order.
+  // The go's cycle: what rename takes from each slot (a thermometer per
+  // slot, in take order), the branch flags and checkpoints of the slot's
+  // next uops (decq's head fields), and a restore-allocate per slot.
+  input  logic [S*A-1:0]    tk_cq00h,
+  input  logic [S*A-1:0]    hbr_cq00h,
+  input  logic [S*A*LC-1:0] hck_cq00h,
+  input  logic [S-1:0]      rstl_cq00h,
+  // The next cycle: rename's register of that group, in rename order.
+  input  logic [A-1:0]      pw_v_cq01h,
+  input  logic [A*LS-1:0]   pw_slot_cq01h,
+  input  logic [A-1:0]      pw_rst_cq01h,      // a restore-allocate write: both maps
+  input  logic [A*4-1:0]    pw_dst_cq01h,
+  input  logic [A-1:0]      pw_gwe_cq01h,      // writes its GPR destination
+  input  logic [A*GW-1:0]   pw_gname_cq01h,    // with this name
+  input  logic [A*2-1:0]    pw_pdst_cq01h,
+  input  logic [A-1:0]      pw_pwe_cq01h,      // writes its predicate destination
+  input  logic [A*PW-1:0]   pw_pname_cq01h,
+  input  logic [A-1:0]      pw_br_cq01h,       // a branch: takes a checkpoint
+  input  logic [A*LC-1:0]   pw_ckpt_cq01h,     // FET's checkpoint_id
+  // The ROB's retire decision, a cycle ahead of its retire-stage register:
+  // each retire port's gwe and pwe.
+  input  logic [S*R-1:0]    rgl_cq00h,
+  input  logic [S*R-1:0]    rpl_cq00h,
+  // The retire-stage register, per slot, in retirement order.
   input  logic [S*R-1:0]    ret_gwe_cq01h,
   input  logic [S*R*4-1:0]  ret_dst_cq01h,
   input  logic [S*R*GW-1:0] ret_gname_cq01h,
   input  logic [S*R-1:0]    ret_pwe_cq01h,
   input  logic [S*R*2-1:0]  ret_pdst_cq01h,
   input  logic [S*R*PW-1:0] ret_pname_cq01h,
-  // Whole-map events, per slot.
-  input  logic [S-1:0]      restore_cq01h,     // a mispredict: the speculative maps take a checkpoint
-  input  logic [S*LC-1:0]   restore_ckpt_cq01h,
-  input  logic [S-1:0]      squash_cq01h,      // a squash to retirement
-  input  logic [S-1:0]      release_cq01h,     // the slot freed
+  // Whole-map events, per slot, registered here.
+  input  logic [S-1:0]      restore_cq00h,     // a mispredict: the speculative maps take a checkpoint
+  input  logic [S*LC-1:0]   restore_ckpt_cq00h,
+  input  logic [S-1:0]      squash_cq00h,      // a squash to retirement
+  input  logic [S-1:0]      release_cq00h,     // the slot freed
   // The maps after the last edge.
   output logic [S*MW-1:0]   rat_cq02h,         // speculative
   output logic [S*MW-1:0]   crat_cq02h,        // committed (the demotion map)
   output logic [S*C*MW-1:0] ckpt_cq02h
 );
 
-  `CCV_ASSERT_KNOWN(ren_v_known, ren_v_cq01h)
-  `CCV_ASSERT_KNOWN(ret_known, {ret_gwe_cq01h, ret_pwe_cq01h})
-  `CCV_ASSERT_KNOWN(event_known, {restore_cq01h, squash_cq01h, release_cq01h})
+  // The reset, flopped before any use (RST-1).
+  logic rst_r01h;
+  always_ff @(posedge ooe_core_clk) begin
+    rst_r01h <= ooe_rst_r00h;
+  end
 
-  // A slot's speculative maps as they stand after rename port k's own
+  // Each signal on its own: Icarus takes $isunknown of a concatenation of
+  // known ports as unknown (TI's note, 2026-10-21).
+  `CCV_ASSERT_KNOWN(tk_known, tk_cq00h)
+  `CCV_ASSERT_KNOWN(rstl_known, rstl_cq00h)
+  `CCV_ASSERT_KNOWN(pw_v_known, pw_v_cq01h)
+  `CCV_ASSERT_KNOWN(rgl_known, rgl_cq00h)
+  `CCV_ASSERT_KNOWN(rpl_known, rpl_cq00h)
+  `CCV_ASSERT_KNOWN(ret_gwe_known, ret_gwe_cq01h)
+  `CCV_ASSERT_KNOWN(ret_pwe_known, ret_pwe_cq01h)
+  `CCV_ASSERT_KNOWN(restore_known, restore_cq00h)
+  `CCV_ASSERT_KNOWN(squash_known, squash_cq00h)
+  `CCV_ASSERT_KNOWN(release_known, release_cq00h)
+
+  // -- leads and events, this module's flops ----------------------------------
+  // wl: slot s's group writes its maps at the next edge (a take or a
+  // restore-allocate); rw: a restore-allocate, which writes the committed
+  // maps too; ck: a taken branch of slot s names checkpoint c. rg, rp: the
+  // retire-stage register's gwe and pwe, a copy. The events, registered.
+  logic [S-1:0]    wl_cq01h, rw_cq01h;
+  logic [S*C-1:0]  ck_cq01h;
+  logic [S*R-1:0]  rg_cq01h, rp_cq01h;
+  logic [S-1:0]    rs_cq01h, sq_cq01h, rl_cq01h;
+  logic [S*LC-1:0] rsc_cq01h;
+  logic [S*C-1:0]  ck_d;
+  always_comb begin
+    ck_d = '0;
+    for (int t = 0; t < S; t++)
+      for (int j = 0; j < A; j++)
+        for (int c = 0; c < C; c++)
+          if (tk_cq00h[t * A + j] && hbr_cq00h[t * A + j] && hck_cq00h[(t * A + j) * LC +: LC] == LC'(c))
+            ck_d[t * C + c] = 1'b1;
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      wl_cq01h <= '0;
+      rw_cq01h <= '0;
+      ck_cq01h <= '0;
+      rg_cq01h <= '0;
+      rp_cq01h <= '0;
+      rs_cq01h <= '0;
+      sq_cq01h <= '0;
+      rl_cq01h <= '0;
+    end else begin
+      for (int t = 0; t < S; t++) wl_cq01h[t] <= tk_cq00h[t * A] || rstl_cq00h[t];
+      rw_cq01h <= rstl_cq00h;
+      ck_cq01h <= ck_d;
+      rg_cq01h <= rgl_cq00h;
+      rp_cq01h <= rpl_cq00h;
+      rs_cq01h <= restore_cq00h;
+      sq_cq01h <= squash_cq00h;
+      rl_cq01h <= release_cq00h;
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    rsc_cq01h <= restore_ckpt_cq00h;     // payload, read only with rs
+  end
+
+  // A slot's speculative maps as they stand after the group's port k's own
   // writes and those of the lower ports naming the same slot: what a branch
   // on port k checkpoints.
-  function automatic logic [MW-1:0] map_after(input logic [S*MW-1:0] q, input int k,
-                                           input logic [A-1:0] v, input logic [A*LS-1:0] sl,
-                                           input logic [A-1:0] rst, input logic [A*4-1:0] dst,
-                                           input logic [A-1:0] gwe, input logic [A*GW-1:0] gname,
-                                           input logic [A*2-1:0] pdst, input logic [A-1:0] pwe,
-                                           input logic [A*PW-1:0] pname);
+  function automatic logic [MW-1:0] map_after(input logic [S*MW-1:0] q, input int k);
     logic [MW-1:0]  m;
-    logic [LS-1:0]  s;
-    s = sl[k * LS +: LS];
+    logic [LS-1:0]  t;
+    t = pw_slot_cq01h[k * LS +: LS];
     m = '0;
-    for (int t = 0; t < S; t++) if (s == LS'(t)) m = q[t * MW +: MW];
+    for (int u = 0; u < S; u++) if (t == LS'(u)) m = q[u * MW +: MW];
     // Every write as a decoder: no index computed and written through.
     for (int p = 0; p < A; p++)
-      if (p <= k && v[p] && !rst[p] && sl[p * LS +: LS] == s) begin
-        for (int a = 0; a < NG; a++) if (gwe[p] && dst[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = gname[p * GW +: GW];
+      if (p <= k && pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == t) begin
+        for (int a = 0; a < NG; a++)
+          if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
         for (int a = 0; a < NP; a++)
-          if (pwe[p] && pdst[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = pname[p * PW +: PW];
+          if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
       end
     map_after = m;
   endfunction
@@ -130,52 +205,50 @@ module ooe_rat #(
   // Each branch port's checkpoint.
   logic [A*MW-1:0] ck_map;
   always_comb
-    for (int k = 0; k < A; k++)
-      ck_map[k * MW +: MW] = map_after(rat_cq02h, k, ren_v_cq01h, ren_slot_cq01h, ren_rst_cq01h, ren_dst_cq01h,
-                                       ren_gwe_cq01h, ren_gname_cq01h, ren_pdst_cq01h, ren_pwe_cq01h,
-                                       ren_pname_cq01h);
+    for (int k = 0; k < A; k++) ck_map[k * MW +: MW] = map_after(rat_cq02h, k);
 
   // -- the speculative maps --------------------------------------------------
-  // A whole-map event's map, per slot: release, else squash, else restore.
-  // An entry a rename port writes takes the last such port's name over it.
-  logic [S-1:0]      whole;
-  logic [S*MW-1:0]   base;
-  logic [S*NG-1:0]   g_wr;              // a rename port writes GPR entry (s, a)
+  // A registered whole-map event's map, per slot: release, else squash,
+  // else restore. An entry the group writes takes the last such port's name
+  // over it.
+  logic [S-1:0]       whole;
+  logic [S*MW-1:0]    base;
+  logic [S*NG-1:0]    g_wr;              // a port of the group writes GPR entry (s, a)
   logic [S*NG*GW-1:0] g_name;
-  logic [S*NP-1:0]   p_wr;
+  logic [S*NP-1:0]    p_wr;
   logic [S*NP*PW-1:0] p_name;
   always_comb begin
     g_wr   = '0;
     g_name = '0;
     p_wr   = '0;
     p_name = '0;
-    for (int s = 0; s < S; s++) begin
-      whole[s] = release_cq01h[s] || squash_cq01h[s] || restore_cq01h[s];
-      if (release_cq01h[s])     base[s * MW +: MW] = {{NP{PZERO}}, {NG{GZERO}}};
-      else if (squash_cq01h[s]) base[s * MW +: MW] = crat_cq02h[s * MW +: MW];
+    for (int t = 0; t < S; t++) begin
+      whole[t] = rl_cq01h[t] || sq_cq01h[t] || rs_cq01h[t];
+      if (rl_cq01h[t])      base[t * MW +: MW] = {{NP{PZERO}}, {NG{GZERO}}};
+      else if (sq_cq01h[t]) base[t * MW +: MW] = crat_cq02h[t * MW +: MW];
       else begin
-        base[s * MW +: MW] = '0;
+        base[t * MW +: MW] = '0;
         for (int c = 0; c < C; c++)
-          if (restore_ckpt_cq01h[s * LC +: LC] == LC'(c)) base[s * MW +: MW] = ckpt_cq02h[(s * C + c) * MW +: MW];
+          if (rsc_cq01h[t * LC +: LC] == LC'(c)) base[t * MW +: MW] = ckpt_cq02h[(t * C + c) * MW +: MW];
       end
       for (int p = 0; p < A; p++)
-        if (ren_v_cq01h[p] && 32'(ren_slot_cq01h[p * LS +: LS]) == s) begin
+        if (pw_v_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)
-            if (ren_gwe_cq01h[p] && ren_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
-              g_wr[s * NG + a]                   = 1'b1;
-              g_name[(s * NG + a) * GW +: GW] = ren_gname_cq01h[p * GW +: GW];
+            if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
+              g_wr[t * NG + a]                = 1'b1;
+              g_name[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
-            if (ren_pwe_cq01h[p] && ren_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
-              p_wr[s * NP + a]                   = 1'b1;
-              p_name[(s * NP + a) * PW +: PW] = ren_pname_cq01h[p * PW +: PW];
+            if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
+              p_wr[t * NP + a]                = 1'b1;
+              p_name[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
             end
         end
     end
   end
 
-  // A slot's speculative maps are one gate, clocked on a rename write to
-  // the slot or a whole-map event. Per-entry gates leave a mispredict
+  // A slot's speculative maps are one gate, clocked on its group's write or
+  // a registered whole-map event. Per-entry gates leave a mispredict
   // clocking the entries it does not change (most of a map still holds its
   // checkpoint's names), and telling which it changes is a compare, 12 NGD
   // as an enable, or "written since checkpoint c" bits, 320 flops more. An
@@ -184,35 +257,31 @@ module ooe_rat #(
   logic [S-1:0]    rat_en_cq01h;
   logic [S*MW-1:0] rat_nx;
   always_comb
-    for (int s = 0; s < S; s++) begin
-      // Any port writing the slot, from the ports directly rather than as an
-      // OR over the entry decoders, which costs depth (CG-2).
-      rat_en_cq01h[s] = whole[s];
-      for (int p = 0; p < A; p++)
-        rat_en_cq01h[s] = rat_en_cq01h[s] ||
-            (ren_v_cq01h[p] && 32'(ren_slot_cq01h[p * LS +: LS]) == s && (ren_gwe_cq01h[p] || ren_pwe_cq01h[p]));
+    for (int t = 0; t < S; t++) begin
+      rat_en_cq01h[t] = wl_cq01h[t] || whole[t];
       for (int a = 0; a < NG; a++)
-        rat_nx[s * MW + a * GW +: GW] =
-            ({GW{g_wr[s * NG + a]}} & g_name[(s * NG + a) * GW +: GW]) |
-            ({GW{!g_wr[s * NG + a] && whole[s]}} & base[s * MW + a * GW +: GW]) |
-            ({GW{!g_wr[s * NG + a] && !whole[s]}} & rat_cq02h[s * MW + a * GW +: GW]);
+        rat_nx[t * MW + a * GW +: GW] =
+            ({GW{g_wr[t * NG + a]}} & g_name[(t * NG + a) * GW +: GW]) |
+            ({GW{!g_wr[t * NG + a] && whole[t]}} & base[t * MW + a * GW +: GW]) |
+            ({GW{!g_wr[t * NG + a] && !whole[t]}} & rat_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
-        rat_nx[s * MW + NG * GW + a * PW +: PW] =
-            ({PW{p_wr[s * NP + a]}} & p_name[(s * NP + a) * PW +: PW]) |
-            ({PW{!p_wr[s * NP + a] && whole[s]}} & base[s * MW + NG * GW + a * PW +: PW]) |
-            ({PW{!p_wr[s * NP + a] && !whole[s]}} & rat_cq02h[s * MW + NG * GW + a * PW +: PW]);
+        rat_nx[t * MW + NG * GW + a * PW +: PW] =
+            ({PW{p_wr[t * NP + a]}} & p_name[(t * NP + a) * PW +: PW]) |
+            ({PW{!p_wr[t * NP + a] && whole[t]}} & base[t * MW + NG * GW + a * PW +: PW]) |
+            ({PW{!p_wr[t * NP + a] && !whole[t]}} & rat_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
-  for (genvar s = 0; s < S; s++) begin : g_rat
+  for (genvar t = 0; t < S; t++) begin : g_rat
     always_ff @(posedge ooe_core_clk) begin
-      if (ooe_rst_r00h)       rat_cq02h[s * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
-      else if (rat_en_cq01h[s]) rat_cq02h[s * MW +: MW] <= rat_nx[s * MW +: MW];
+      if (rst_r01h)             rat_cq02h[t * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
+      else if (rat_en_cq01h[t]) rat_cq02h[t * MW +: MW] <= rat_nx[t * MW +: MW];
     end
   end
 
   // -- the committed maps ----------------------------------------------------
-  // Retire's writes in port order, then a restore-allocate's, which rename's
-  // ports carry; a release maps the slot to the zero registers.
+  // The retire-stage register's writes in port order, then a
+  // restore-allocate's, which the group's ports carry; a release maps the
+  // slot to the zero registers, under any write.
   logic [S*NG-1:0]    c_wr;
   logic [S*NG*GW-1:0] c_name;
   logic [S*NP-1:0]    cp_wr;
@@ -222,92 +291,119 @@ module ooe_rat #(
     c_name  = '0;
     cp_wr   = '0;
     cp_name = '0;
-    for (int s = 0; s < S; s++) begin
+    for (int t = 0; t < S; t++) begin
       for (int r = 0; r < R; r++) begin
         for (int a = 0; a < NG; a++)
-          if (ret_gwe_cq01h[s * R + r] && ret_dst_cq01h[(s * R + r) * 4 +: 4] == 4'(a)) begin
-            c_wr[s * NG + a]                   = 1'b1;
-            c_name[(s * NG + a) * GW +: GW] = ret_gname_cq01h[(s * R + r) * GW +: GW];
+          if (ret_gwe_cq01h[t * R + r] && ret_dst_cq01h[(t * R + r) * 4 +: 4] == 4'(a)) begin
+            c_wr[t * NG + a]                = 1'b1;
+            c_name[(t * NG + a) * GW +: GW] = ret_gname_cq01h[(t * R + r) * GW +: GW];
           end
         for (int a = 0; a < NP; a++)
-          if (ret_pwe_cq01h[s * R + r] && ret_pdst_cq01h[(s * R + r) * 2 +: 2] == 2'(a)) begin
-            cp_wr[s * NP + a]                   = 1'b1;
-            cp_name[(s * NP + a) * PW +: PW] = ret_pname_cq01h[(s * R + r) * PW +: PW];
+          if (ret_pwe_cq01h[t * R + r] && ret_pdst_cq01h[(t * R + r) * 2 +: 2] == 2'(a)) begin
+            cp_wr[t * NP + a]                = 1'b1;
+            cp_name[(t * NP + a) * PW +: PW] = ret_pname_cq01h[(t * R + r) * PW +: PW];
           end
       end
       for (int p = 0; p < A; p++)
-        if (ren_v_cq01h[p] && ren_rst_cq01h[p] && 32'(ren_slot_cq01h[p * LS +: LS]) == s) begin
+        if (pw_v_cq01h[p] && pw_rst_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)
-            if (ren_gwe_cq01h[p] && ren_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
-              c_wr[s * NG + a]                   = 1'b1;
-              c_name[(s * NG + a) * GW +: GW] = ren_gname_cq01h[p * GW +: GW];
+            if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
+              c_wr[t * NG + a]                = 1'b1;
+              c_name[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
-            if (ren_pwe_cq01h[p] && ren_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
-              cp_wr[s * NP + a]                   = 1'b1;
-              cp_name[(s * NP + a) * PW +: PW] = ren_pname_cq01h[p * PW +: PW];
+            if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
+              cp_wr[t * NP + a]                = 1'b1;
+              cp_name[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
             end
         end
     end
   end
 
-  logic [S*NG-1:0]    crat_g_en_cq01h;
-  logic [S-1:0]       crat_p_en_cq01h;
-  logic [S*NP*PW-1:0] crat_p_nx;
+  // Each slot's committed GPRs one gate, its predicates another: clocked on
+  // a retirement writing them (this module's copy of the retire-stage
+  // register's gwe, pwe), a restore-allocate or a release. An entry not
+  // written holds, as an AND-OR.
+  logic [S-1:0]       cg_en_cq01h, cp_en_cq01h;
+  logic [S*MW-1:0]    crat_nx;
   always_comb
-    for (int s = 0; s < S; s++) begin
-      for (int a = 0; a < NG; a++) crat_g_en_cq01h[s * NG + a] = release_cq01h[s] || c_wr[s * NG + a];
-      crat_p_en_cq01h[s] = release_cq01h[s] || |cp_wr[s * NP +: NP];
+    for (int t = 0; t < S; t++) begin
+      cg_en_cq01h[t] = rl_cq01h[t] || rw_cq01h[t] || rg_cq01h[t * R +: R] != '0;
+      cp_en_cq01h[t] = rl_cq01h[t] || rw_cq01h[t] || rp_cq01h[t * R +: R] != '0;
+      for (int a = 0; a < NG; a++)
+        crat_nx[t * MW + a * GW +: GW] =
+            ({GW{c_wr[t * NG + a]}} & c_name[(t * NG + a) * GW +: GW]) |
+            ({GW{!c_wr[t * NG + a] && rl_cq01h[t]}} & GZERO) |
+            ({GW{!c_wr[t * NG + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
-        crat_p_nx[(s * NP + a) * PW +: PW] =
-            ({PW{cp_wr[s * NP + a]}} & cp_name[(s * NP + a) * PW +: PW]) |
-            ({PW{!cp_wr[s * NP + a] && release_cq01h[s]}} & PZERO) |
-            ({PW{!cp_wr[s * NP + a] && !release_cq01h[s]}} & crat_cq02h[s * MW + NG * GW + a * PW +: PW]);
+        crat_nx[t * MW + NG * GW + a * PW +: PW] =
+            ({PW{cp_wr[t * NP + a]}} & cp_name[(t * NP + a) * PW +: PW]) |
+            ({PW{!cp_wr[t * NP + a] && rl_cq01h[t]}} & PZERO) |
+            ({PW{!cp_wr[t * NP + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
-  for (genvar s = 0; s < S; s++) begin : g_crat
-    for (genvar a = 0; a < NG; a++) begin : g_gpr
-      always_ff @(posedge ooe_core_clk) begin
-        if (ooe_rst_r00h) crat_cq02h[s * MW + a * GW +: GW] <= GZERO;
-        else if (crat_g_en_cq01h[s * NG + a])
-          crat_cq02h[s * MW + a * GW +: GW] <= c_wr[s * NG + a] ? c_name[(s * NG + a) * GW +: GW] : GZERO;
-      end
+  for (genvar t = 0; t < S; t++) begin : g_crat
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h)            crat_cq02h[t * MW +: NG * GW] <= {NG{GZERO}};
+      else if (cg_en_cq01h[t]) crat_cq02h[t * MW +: NG * GW] <= crat_nx[t * MW +: NG * GW];
     end
     always_ff @(posedge ooe_core_clk) begin
-      if (ooe_rst_r00h) crat_cq02h[s * MW + NG * GW +: NP * PW] <= {NP{PZERO}};
-      else if (crat_p_en_cq01h[s]) crat_cq02h[s * MW + NG * GW +: NP * PW] <= crat_p_nx[s * NP * PW +: NP * PW];
+      if (rst_r01h)            crat_cq02h[t * MW + NG * GW +: NP * PW] <= {NP{PZERO}};
+      else if (cp_en_cq01h[t]) crat_cq02h[t * MW + NG * GW +: NP * PW] <= crat_nx[t * MW + NG * GW +: NP * PW];
     end
   end
 
   // -- the checkpoints -------------------------------------------------------
-  // Checkpoint (s, c) is written when a branch port of slot s takes it, with
-  // the maps as they stand after that port's writes.
-  logic [S*C-1:0]  ckpt_en_cq01h;
+  // Checkpoint (s, c) is written when a branch port of the group names it,
+  // with the maps as they stand after that port's writes; its enable is
+  // this module's flop of the same, from the go's cycle.
+  logic [S*C-1:0]    ckpt_wr;
   logic [S*C*MW-1:0] ckpt_nx;
   always_comb begin
-    ckpt_en_cq01h = '0;
-    ckpt_nx       = '0;
+    ckpt_wr = '0;
+    ckpt_nx = '0;
     for (int p = 0; p < A; p++)
       for (int i = 0; i < S * C; i++)
-        if (ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_br_cq01h[p] &&
-            ren_slot_cq01h[p * LS +: LS] == LS'(i / C) && ren_ckpt_cq01h[p * LC +: LC] == LC'(i % C)) begin
-          ckpt_en_cq01h[i]          = 1'b1;
+        if (pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_br_cq01h[p] &&
+            pw_slot_cq01h[p * LS +: LS] == LS'(i / C) && pw_ckpt_cq01h[p * LC +: LC] == LC'(i % C)) begin
+          ckpt_wr[i]            = 1'b1;
           ckpt_nx[i * MW +: MW] = ck_map[p * MW +: MW];
         end
   end
+  logic [S*C-1:0] ckpt_en_cq01h;
+  assign ckpt_en_cq01h = ck_cq01h;
   for (genvar i = 0; i < S * C; i++) begin : g_ckpt
     always_ff @(posedge ooe_core_clk) begin
       if (ckpt_en_cq01h[i]) ckpt_cq02h[i * MW +: MW] <= ckpt_nx[i * MW +: MW];
     end
   end
 
-  // Rename names no slot a whole-map event names this cycle (see above).
+  // The leads are exact: the group writes only the slots its lead named,
+  // each checkpoint exactly when its lead says, and the retire-stage
+  // register carries the decision copied here; a restore-allocate port only
+  // where its lead says.
+  logic [S-1:0] grp_sl, rst_sl;
+  always_comb begin
+    grp_sl = '0;
+    rst_sl = '0;
+    for (int p = 0; p < A; p++)
+      for (int t = 0; t < S; t++)
+        if (pw_v_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(t)) begin
+          grp_sl[t] = 1'b1;
+          if (pw_rst_cq01h[p]) rst_sl[t] = 1'b1;
+        end
+  end
+  `CCV_ASSERT(group_led, (grp_sl & ~wl_cq01h) == '0)
+  `CCV_ASSERT(restore_alloc_led, rst_sl == rw_cq01h)
+  `CCV_ASSERT(ckpt_led, ckpt_wr == ck_cq01h)
+  `CCV_ASSERT(retire_led, ret_gwe_cq01h == rg_cq01h && ret_pwe_cq01h == rp_cq01h)
+  // The group names no slot a registered whole-map event names (see above).
   logic [S-1:0] renamed_cq01h;
   always_comb begin
     renamed_cq01h = '0;
     for (int p = 0; p < A; p++)
-      for (int s = 0; s < S; s++)
-        if (ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_slot_cq01h[p * LS +: LS] == LS'(s)) renamed_cq01h[s] = 1'b1;
+      for (int t = 0; t < S; t++)
+        if (pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(t)) renamed_cq01h[t] = 1'b1;
   end
   `CCV_ASSERT(rename_excludes_events, (renamed_cq01h & whole) == '0)
 
