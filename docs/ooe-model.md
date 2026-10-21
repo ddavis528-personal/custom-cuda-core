@@ -466,6 +466,14 @@ pool, as only one takes). 3's one-warp +1.3% admitted against running
 credits, which a registered go cannot. Rename's counters (`renCredits`)
 exclude this cycle's RS frees and last cycle's past ooe_rs's prompt count,
 and this cycle's name frees, as the RTL's (`ooe_rencred`, slice 3).
+7 is 4, OA's stateful shares, as the RTL can register them: the credit no
+share holds is split each cycle into a register and reaches a warp's
+fits a cycle later, so a split is usable two cycles on; a warp
+`share_return` cycles without a take returns what it held (not a split
+just arriving), decided on its registered takes; a restore-allocate's
+draw is taken back from the splits in flight, then the shares. 48 seeds
+against 983: return after 1 cycle 1,098 (+11.7%), 2 1,105, 3 1,142, 4
+1,164; none deadlock. The worst of the registered forms.
 4 is OA's stateful shares: each warp keeps its share, its own takes lower
 it, and frees and the shares of warps four cycles without a take form a
 pool split each cycle among the warps with a head; the shares and pool sum

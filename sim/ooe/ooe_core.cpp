@@ -32,7 +32,7 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}};
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -2579,8 +2579,54 @@ void Core::rename() {
     if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
   }
   // fits_stale 3: per-warp shares of each shared credit, no short path.
-  shares_on_ = cfg_.fits_stale >= 3 && cfg_.fits_stale <= 6 && (cfg_.rename_one_warp != 1 || cfg_.fits_stale == 6);
-  if (shares_on_ && cfg_.fits_stale == 4) {
+  shares_on_ = cfg_.fits_stale >= 3 && cfg_.fits_stale <= 7 && (cfg_.rename_one_warp != 1 || cfg_.fits_stale == 6);
+  if (shares_on_ && cfg_.fits_stale == 7) {
+    short_credit = false;
+    ren_late_frees_ = true;
+    const unsigned ns = unsigned(slot_.size());
+    if (share_.size() != ns || pend_a_.size() != ns) {
+      share_.assign(ns, {0, 0, 0, 0});
+      pend_a_.assign(ns, {0, 0, 0, 0});
+      pend_b_.assign(ns, {0, 0, 0, 0});
+      headless_.assign(ns, 0);
+    }
+    // A warp share_return cycles without a take returns its share; then the
+    // split made two cycles ago reaches the shares, and last cycle's moves up.
+    for (unsigned si = 0; si != ns; ++si)
+      for (unsigned r = 0; r != 4; ++r) {
+        if (headless_[si] >= cfg_.share_return) share_[si][r] = 0;   // what it held, not the split arriving
+        share_[si][r] += pend_a_[si][r];
+      }
+    for (unsigned si = 0; si != ns; ++si) ++headless_[si];   // a take clears it
+    std::swap(pend_a_, pend_b_);
+    for (auto &x : pend_b_) x = {0, 0, 0, 0};
+    const RenCredits rc = renCredits();
+    std::vector<unsigned> with;
+    for (unsigned k = 0; k != ns; ++k) {
+      const unsigned si = (rr_rename_ + k) % ns;
+      if (slot_[si].st != WarpState::kFree && slot_[si].decq) with.push_back(si);
+    }
+    for (unsigned r = 0; r != 4; ++r) {
+      // The pool: the credit no share holds nor a split in flight.
+      unsigned held = 0;
+      for (unsigned si = 0; si != ns; ++si) held += share_[si][r] + pend_a_[si][r];
+      // A draw outside rename's takes (a restore-allocate's names, while it
+      // owns the ports and the go is idle) is taken back from the splits in
+      // flight, then the shares, slot by slot.
+      for (unsigned si = 0; si != ns && held > rc.c[r]; ++si)
+        for (unsigned *x : {&pend_a_[si][r], &share_[si][r]}) {
+          const unsigned q = std::min(*x, held - rc.c[r]);
+          *x -= q;
+          held -= q;
+        }
+      const unsigned pool = rc.c[r] - std::min(held, rc.c[r]);
+      if (!with.empty()) {
+        const unsigned each = pool / unsigned(with.size()), rem = pool % unsigned(with.size());
+        for (unsigned si : with) pend_b_[si][r] = each;
+        pend_b_[with[0]][r] += rem;
+      }
+    }
+  } else if (shares_on_ && cfg_.fits_stale == 4) {
     short_credit = false;
     ren_late_frees_ = true;
     unsigned c[4] = {0, 0, unsigned(gfree_.size()), cfg_.rename_preds ? unsigned(pfree_.size()) : 1000u};
@@ -2760,7 +2806,7 @@ void Core::rename() {
     }
   }
   ren_late_frees_ = false;
-  if (shares_on_ && cfg_.fits_stale == 4)
+  if (shares_on_ && (cfg_.fits_stale == 4 || cfg_.fits_stale == 7))
     for (unsigned si = 0; si != slot_.size(); ++si) {
       for (unsigned r = 0; r != 4; ++r) share_[si][r] -= std::min(share_[si][r], ren_slot_[si][r]);
       if (took_[si]) headless_[si] = 0;

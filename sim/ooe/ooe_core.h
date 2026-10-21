@@ -232,7 +232,15 @@ struct Config {
   /// holds, less at most the width (what a cycle can take of any credit),
   /// so no take counts twice; under one warp each warp's allowance is that
   /// whole pool. The credits are rename's counters (renCredits).
+  /// 7: OA's stateful shares as the RTL registers them: each warp keeps
+  /// its share of each credit, its takes lower it; the credit no share
+  /// holds (frees, returns) is split each cycle among the warps with a
+  /// head into a register, and reaches a warp's fits a cycle after that, so
+  /// a split is usable two cycles on; a warp share_return cycles without a
+  /// take returns its share (decided on its registered takes, the fits at
+  /// offset 0 formed without it). The credits are rename's counters.
   unsigned fits_stale = 0;
+  unsigned share_return = 2;   ///< fits_stale 7: cycles without a take before a warp returns its share
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -1155,6 +1163,7 @@ private:
   bool shares_on_ = false;                ///< fits_stale 3 this cycle
   std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
   std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
+  std::vector<std::array<unsigned, 4>> pend_a_, pend_b_;  ///< fits_stale 7: splits in flight, two cycles and one from use
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
   std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
