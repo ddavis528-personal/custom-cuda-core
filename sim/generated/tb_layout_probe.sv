@@ -19,7 +19,7 @@ module tb_layout_probe (
   output logic [1:0] c0_f7,
   output logic c0_f8,
   output logic c0_f9,
-  input  logic [210:0] c1,
+  input  logic [218:0] c1,
   output logic [4:0] c1_f0,
   output logic [63:0] c1_f1,
   output logic [31:0] c1_f2,
@@ -27,8 +27,8 @@ module tb_layout_probe (
   output logic [2:0] c1_f4,
   output logic [15:0] c1_f5,
   output logic [3:0] c1_f6,
-  output logic [2:0] c1_f7,
-  output logic [3:0] c1_f8,
+  output logic c1_f7,
+  output logic [4:0] c1_f8,
   output logic [8:0] c1_f9,
   output logic [7:0] c1_f10,
   output logic [3:0] c1_f11,
@@ -45,7 +45,9 @@ module tb_layout_probe (
   output logic [1:0] c1_f22,
   output logic c1_f23,
   output logic c1_f24,
-  output logic c1_f25,
+  output logic [3:0] c1_f25,
+  output logic [3:0] c1_f26,
+  output logic [1:0] c1_f27,
   input  logic [174:0] c2,
   output logic [6:0] c2_f0,
   output logic [4:0] c2_f1,
@@ -85,17 +87,14 @@ module tb_layout_probe (
   output logic [7:0] c3_f9,
   output logic [7:0] c3_f10,
   output logic [79:0] c3_f11,
-  input  logic [43:0] c4,
+  input  logic [39:0] c4,
   output logic [31:0] c4_f0,
   output logic [3:0] c4_f1,
   output logic [3:0] c4_f2,
-  output logic [3:0] c4_f3,
-  input  logic [72:0] c5,
+  input  logic [39:0] c5,
   output logic [6:0] c5_f0,
   output logic c5_f1,
-  output logic c5_f2,
-  output logic [31:0] c5_f3,
-  output logic [31:0] c5_f4,
+  output logic [31:0] c5_f2,
   input  logic [2150:0] c6,
   output logic [6:0] c6_f0,
   output logic [31:0] c6_f1,
@@ -112,7 +111,7 @@ module tb_layout_probe (
   output logic [5:0] c7_f6,
   output logic c7_f7,
   output logic [1023:0] c7_f8,
-  input  logic [96:0] c8,
+  input  logic [108:0] c8,
   output logic [6:0] c8_f0,
   output logic [7:0] c8_f1,
   output logic [1:0] c8_f2,
@@ -123,17 +122,18 @@ module tb_layout_probe (
   output logic [3:0] c8_f7,
   output logic [1:0] c8_f8,
   output logic [3:0] c8_f9,
-  output logic [15:0] c8_f10,
+  output logic [28:0] c8_f10,
   output logic c8_f11,
-  output logic [2:0] c8_f12,
-  output logic [3:0] c8_f13,
-  input  logic [109:0] c9,
+  output logic c8_f12,
+  output logic [4:0] c8_f13,
+  input  logic [110:0] c9,
   output logic [6:0] c9_f0,
   output logic [1:0] c9_f1,
   output logic [3:0] c9_f2,
   output logic [31:0] c9_f3,
   output logic [63:0] c9_f4,
   output logic c9_f5,
+  output logic c9_f6,
   input  logic [7:0] c10,
   output logic [6:0] c10_f0,
   output logic c10_f1,
@@ -225,12 +225,13 @@ module tb_layout_probe (
   output logic [103:0] c28_f3,
   output logic [7:0] c28_f4,
   output logic [2:0] c28_f5,
-  input  logic [45:0] c29,
+  input  logic [50:0] c29,
   output logic [4:0] c29_f0,
   output logic [1:0] c29_f1,
   output logic [1:0] c29_f2,
   output logic [31:0] c29_f3,
   output logic [4:0] c29_f4,
+  output logic [4:0] c29_f5,
   input  logic [15:0] c30,
   output logic [4:0] c30_f0,
   output logic c30_f1,
@@ -292,10 +293,10 @@ module tb_layout_probe (
   input  logic [35:0] c43,
   output logic [31:0] c43_f0,
   output logic [3:0] c43_f1,
-  input  logic [16:0] c44,
+  input  logic [14:0] c44,
   output logic [2:0] c44_f0,
   output logic [5:0] c44_f1,
-  output logic [6:0] c44_f2,
+  output logic [4:0] c44_f2,
   output logic c44_f3,
   input  logic [171:0] c45,
   output logic [3:0] c45_f0,
@@ -352,7 +353,9 @@ module tb_layout_probe (
   assign c1_f22 = s1.checkpoint_id;
   assign c1_f23 = s1.pred_taken;
   assign c1_f24 = s1.scale_en;
-  assign c1_f25 = s1.decode_fault;
+  assign c1_f25 = s1.cause;
+  assign c1_f26 = s1.fmt_rsv;
+  assign c1_f27 = s1.fmt_opnd;
   ccv_ooe_rcu_issue_t s2;
   assign s2 = c2;
   assign c2_f0 = s2.rob_tag;
@@ -399,14 +402,11 @@ module tb_layout_probe (
   assign c4_f0 = s4.result;
   assign c4_f1 = s4.sec_valid;
   assign c4_f2 = s4.sec_pred_out;
-  assign c4_f3 = s4.sec_fault;
   ccv_rcu_ooe_done_t s5;
   assign s5 = c5;
   assign c5_f0 = s5.rob_tag;
-  assign c5_f1 = s5.exec_fault;
-  assign c5_f2 = s5.branch_taken;
-  assign c5_f3 = s5.branch_mask;
-  assign c5_f4 = s5.fault_lane_mask;
+  assign c5_f1 = s5.branch_taken;
+  assign c5_f2 = s5.branch_mask;
   ccv_rcu_miu_addr_t s6;
   assign s6 = c6;
   assign c6_f0 = s6.rob_tag;
@@ -449,6 +449,7 @@ module tb_layout_probe (
   assign c9_f3 = s9.lane_mask;
   assign c9_f4 = s9.address;
   assign c9_f5 = s9.mlc_miss;
+  assign c9_f6 = s9.more;
   ccv_ooe_miu_retire_t s10;
   assign s10 = c10;
   assign c10_f0 = s10.rob_tag;
@@ -566,6 +567,7 @@ module tb_layout_probe (
   assign c29_f2 = s29.alloc_op;
   assign c29_f3 = s29.ctaid;
   assign c29_f4 = s29.warp_in_cta;
+  assign c29_f5 = s29.barrier_count;
   ccv_ooe_rau_status_t s30;
   assign s30 = c30;
   assign c30_f0 = s30.warp_id;

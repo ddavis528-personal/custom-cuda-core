@@ -189,11 +189,13 @@ private:
     u.ckpt = unsigned(get(p, c.dec_ooe, "checkpoint_id"));
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
-    u.decode_fault = get(p, c.dec_ooe, "decode_fault") != 0;
+    u.cause = unsigned(get(p, c.dec_ooe, "cause"));
+    u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
+    u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
     // What DEC decodes so OOE never looks at opcode (A-75, TI-1): which
     // source fields are real reads, how the predicate is read, what imm
     // holds, and exit as sched_attr's serial code 3.
-    if (!u.decode_fault) {
+    if (!u.cause) {
       u.shape.gpr_reads = uint8_t(get(p, c.dec_ooe, "src_valid") & 7u);
       const unsigned pu = unsigned(get(p, c.dec_ooe, "pred_use"));
       const unsigned ik = unsigned(get(p, c.dec_ooe, "imm_kind"));
@@ -204,7 +206,7 @@ private:
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
-        u.decode_fault = true;
+        u.cause = 2;   // F-ILLEGAL: an encoding naming nothing
       }
     }
     return u;
@@ -220,6 +222,7 @@ private:
       a.slot = unsigned(get(m.payload, c.rau_ooe, "tier1_id"));
       a.ctaid = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
+      a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
       core_.alloc(a);
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {
@@ -235,10 +238,8 @@ private:
         Receiver::Msg m = take(c.rcu_ooe, s);
         ooe::Done d;
         d.rob_tag = unsigned(get(m.payload, c.rcu_ooe, "rob_tag"));
-        d.exec_fault = get(m.payload, c.rcu_ooe, "exec_fault") != 0;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
-        d.fault_lane_mask = uint32_t(get(m.payload, c.rcu_ooe, "fault_lane_mask"));
         core_.done(d);
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)

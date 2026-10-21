@@ -100,9 +100,17 @@ One per block, the block's first act. It takes `core_clk` ungated.
 | `gclk` | out | the block's clock: everything sequential in the block runs on it |
 | `gated` | out | 1: the coming edge will not reach the block. The block's `clk_gated` |
 
+**Every input is flopped before use** (CG-5, RST-1; Daniel, 2026-10-18):
+the reset, `quiesced`, `stalled` and `cg_override` each go through a flop on
+the ungated clock first, so each acts a cycle after it arrives. The reset
+contract (synchronous, the same cycle at every receiver, latency balanced
+globally) and the CSR contract (no write-to-use latency) allow it, and the
+hysteresis absorbs it. `wake` was already registered (Q-49).
+
 **Sleep entry, with hysteresis.** The gate closes once `quiesced` has held
-for `hyst_quiesce` consecutive cycles, or `stalled` for `hyst_stall`. The edge
-that ends the last of those cycles is delivered, and the next one is not.
+for `hyst_quiesce` consecutive cycles, or `stalled` for `hyst_stall`, counted
+a cycle late, as the flopped reports arrive. The edge after the last counted
+one is delivered, and the next one is not.
 Both conditions come from the gated domain, so once the gate closes they hold
 still and the block stays asleep until something outside it changes. The two
 are separate because a stall usually ends by itself within a few cycles.
@@ -111,9 +119,17 @@ The thresholds are inputs, because they are CSRs (Q-47). Their reset values
 are `CCV_CG_HYST_QUIESCE` = 8 and `CCV_CG_HYST_STALL` = 16, which are
 placeholders ("tunable"; decided by power analysis). A block ties the inputs
 to those values until it decodes its own CSRs. A threshold of 0 counts as 1:
-0 would put the block's own combinational idle logic on the enable path. The
-counters compare with `>=`, so a threshold lowered mid-count takes effect at
-once.
+0 would put the block's own combinational idle logic on the enable path.
+
+**A threshold is promised from the start of a run it holds through.** CSRs
+are written rarely, during reset and configuration flows, and only while the
+blocks they control are idle; a CSR write may take a long and irregular time
+to land (Daniel, 2026-10-17; Q-59). So the gate promises no
+write-to-use latency. Wherever a threshold has held one value through the
+current run of quiesced or stalled cycles, the gate closes exactly when that
+value says. A value written mid-run takes effect at the counter's next step
+or at the next run. That is what lets each counter's compare be registered,
+a cycle ahead, off every enable path.
 
 **Wake, registered (Q-49).** `wake` is registered inside the gate before it
 reaches anything, so the one path from another block ends at a flop, never
@@ -138,20 +154,25 @@ that half as `wake_keeps_rx`. The register costs one of the 4 cycles
 **Override, reset, test.**
 - `cg_override` forces the gate open. It is a CSR (Q-47).
 - So does reset: resets are synchronous, so a block in reset must be clocked
-  or it never resets, and `!rst_n` opens the gate the cycle it arrives.
+  or it never resets, and the gate's flopped reset opens it the cycle after
+  `rst_n` falls. The block's own flopped reset is clocked by it from then.
 - `te` goes to the cell's own test pin, as scan expects. It is not part of
   the functional enable. It joins the TAP and scan fabrics after Stage 4
   (Q-46).
 
 **Where the gate's state lives.** The gate has two threshold counters of
-`CCV_CG_HYST_W` bits, a hold counter and the wake register: 16 flops at the
-defaults. They run on the ungated clock, because they must see every cycle
-and a gate clocked by its own output is a loop that timing analysis does not
-like.
+`CCV_CG_HYST_W` bits, each with a full flag, a hold counter, the wake
+register and the four input flops: 21 flops at the defaults. They run on the ungated clock, because
+they must see every cycle and a gate clocked by its own output is a loop that
+timing analysis does not like. The counters and flags are one local clock
+gate of 14 flops, clocked only when a counter moves (4.7 NGD, DCGE 100% in
+every scenario; `tools/check-cg.py`); the wake register, the hold counter
+and the input flops, 7, are within the module's allowance of fewer than 8.
 
-**Timing.** Every input of the enable is a flop in the same block: the wake
-register, the counters, the override CSR and the reset pipeline. So the
-enable path is local, as a clock gate's must be. It sets up to the rising
+**Timing.** Every input of the enable is a flop of the gate's own: the wake
+register, the full flags, the hold counter, the flopped override and the
+flopped reset (CG-5). The thresholds reach only the flags' D. So the enable path is
+local, as a clock gate's must be, and shallow: 3.2 NGD. It sets up to the rising
 edge at the root of the block's clock tree, earlier than the flops see it.
 
 **Today.** Every stub and every SV-hosted DPI shim instantiates the gate tied
@@ -171,8 +192,9 @@ ICG, on Yosys's multiclock model. There `clk` is an input and each phase lasts
 one global step or two (F-21), so the latch and the AND are modelled as they
 switch. The cycle model runs with thresholds 3/5 and at the reset values 8/16.
 The clean-clock and Q-33 proofs leave the thresholds free: any value, changing
-at any time. Every proof starts from arbitrary flop contents with the first
-cycle in reset.
+at any time. The episode proof leaves them free as CSRs, moving as flops do,
+and holds the gate to its promise wherever a threshold held through the run.
+Every proof starts from arbitrary flop contents with the first cycle in reset.
 
 | Property | Stimulus | Fails on |
 |---|---|---|
@@ -180,6 +202,7 @@ cycle in reset.
 | `edge_decides`: the edge that ends a cycle reaches the block exactly when `gated` was low | inputs move as flops on clk | |
 | `spec`: `gated` equals a model built from input histories (shift registers, not the gate's counters) | as above | hysteresis one short; the wake back on the enable path, unregistered |
 | `wake_second_edge`, `wake_hold`, `override_opens`, `reset_opens`, `te_opens` | as above | the wake a cycle later still; reset left off the enable |
+| `episode`: wherever each threshold held one value through the current run, `gated` is what that value gives, against a model of run lengths | thresholds free, as CSRs | a threshold sampled only in reset; a count that wraps at the largest threshold |
 | `wake_keeps_rx`: running `CCV_WAKE_LAT` cycles after any wake | `ccv_common_chk_wake`, the sender's half assumed | a wake hold one short |
 | `q33_valid_meets_clock`: no contract-keeping valid arrives on a withheld edge | as above | |
 | witnesses: the gate closes; a valid is captured right after a sleep | | |
@@ -188,5 +211,7 @@ cycle in reset.
 
 - **Q-46** (scheduled after Stage 4): `te` joins the TAP and scan fabrics.
 - **Q-47** (closed): override and thresholds are CSRs; the gate takes them as inputs.
+- **Q-59** (scheduled): the CSR fabric. Written only while blocks are idle,
+  on a divided clock, with no write-to-use latency promised.
 - **Q-48** (scheduled after Stage 4): the process, and so the target library.
 - **Q-49** (closed): the wake is registered inside the gate.

@@ -20,8 +20,14 @@
 #   tools/verify.sh          the gate
 #   tools/verify.sh --full   also regenerate the Stage 1a matrix from the
 #                            tools themselves (minutes, not seconds)
+#   CCV_JOBS=n               sections run n at a time after the generators
+#                            (default: every core; 1 is the serial gate).
+#                            Each section's log is build/verify/<job>.log.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# Every Yosys the gate runs, SymbiYosys's included, is the strict one: the
+# warnings that mean a netlist is not the RTL fail the run (OI-44).
+export PATH="$PWD/tools/shim:$PATH"
 
 FULL=0
 [ "${1:-}" = "--full" ] && FULL=1
@@ -52,6 +58,18 @@ if [ -n "$missing" ]; then
   echo "  (checks needing a missing tool SKIP rather than fail, so a partial"
   echo "   environment still gates what it can)"
 fi
+# Before anything builds: make tracks sources, not the Verilator that
+# compiled them, so a build/ another version made is cleared (OI-40).
+run "build/ made by this Verilator" python3 tools/build-stamp.py
+run "another Verilator's build/ refused" python3 tools/build-stamp.py --selftest
+# OI's 5.020 miscompile (an if/else of two function calls in an always_ff),
+# frozen with its flop in both forms: the pinned Verilator must compile both
+# alike, and a planted difference must be caught (OI-40).
+run "this Verilator compiles OI's 5.020 miscompile right" ./tools/check-vl-reorder.sh
+# Yosys's warnings that mean the netlist is not the RTL (bits set to undef,
+# an implicit net, conflicting drivers, an undriven read, a loop) fail every
+# run: each provoked by a fixture that plain Yosys passes (OI-44).
+run "Yosys, strict, everywhere the gate runs it" ./tools/check-yosys-strict.sh --gate
 
 section "documentation"
 # Docs decay more quietly than code: a drifted count or a dangling reference
@@ -75,6 +93,8 @@ run "generate payload spec" python3 tools/gen-payload-spec.py
 run "event schema stable"   python3 tools/gen-event-schema.py --check
 run "parameters stable"     python3 tools/gen-params.py --check
 run "derived params refuse drift" python3 tools/gen-params.py --selftest
+run "ISA-sourced params match the pinned ISA" python3 tools/check-isa-params.py
+run "ISA params that should fail do" python3 tools/check-isa-params.py --selftest
 run "interfaces stable"     python3 tools/gen-interfaces.py --check
 run "rates refuse drift"     python3 tools/gen-interfaces.py --selftest
 # docs/payload-spec.md is generated but TRACKED, unlike the rtl/sim ones --
@@ -91,152 +111,305 @@ run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
 run "generate SV top"       python3 tools/gen-top.py
 run "SV top stable"         python3 tools/gen-top.py --check
+# A generator that stops writing a file must not leave it behind, or the
+# globs that build from these directories go on compiling it, and only a
+# fresh checkout sees the difference (OI-40). Each generator prunes its own;
+# a file no generator owns is removed here, after all of them have run.
+run "stale generated files removed" python3 tools/genout.py
+run "generated dirs hold only generated files" python3 tools/genout.py --check
+run "stale generated files refused" python3 tools/genout.py --selftest
 
-section "Stage 1a -- tool-support spike"
-# Every Stage 1 conclusion is a measurement of a third-party tool, and some
-# decisions exist BECAUSE of a limitation. Two cheap checks here; the full
-# re-measure is --full, and runs in CI on a schedule.
-run "toolchain versions pinned" ./tools/check-toolchain.sh
-run "1a exit criteria" ./tools/check-1a.sh
-if [ "$FULL" = "1" ]; then
-  run "matrix unchanged since last measured" python3 tools/check-matrix-drift.py
-fi
+# == The sections after the prelude, one job each ==========================
 
-section "Stage 1b -- assertion primitive library"
-run "1b exit criteria" ./tools/check-1b.sh
+job_s1a() {
+  section "Stage 1a -- tool-support spike"
+  # Every Stage 1 conclusion is a measurement of a third-party tool, and some
+  # decisions exist BECAUSE of a limitation. Two cheap checks here; the full
+  # re-measure is --full, and runs in CI on a schedule.
+  run "toolchain versions pinned" ./tools/check-toolchain.sh
+  run "1a exit criteria" ./tools/check-1a.sh
+  if [ "$FULL" = "1" ]; then
+    run "matrix unchanged since last measured" python3 tools/check-matrix-drift.py
+  fi
+}
 
-section "Stage 1c -- event schema mechanism"
-run "1c exit criteria" ./tools/check-1c.sh
-# A test catches a broken emit path; only calibration catches a systematic
-# one-cycle offset, which at correlation reads as a design divergence.
-run "emit-path calibration" ./tools/check-emit-calib.sh
+job_s1b() {
+  section "Stage 1b -- assertion primitive library"
+  run "1b exit criteria" ./tools/check-1b.sh
+}
 
-run "trace identity view" python3 tools/check-trace-ids.py
+job_s1c() {
+  section "Stage 1c -- event schema mechanism"
+  run "1c exit criteria" ./tools/check-1c.sh
+  # A test catches a broken emit path; only calibration catches a systematic
+  # one-cycle offset, which at correlation reads as a design divergence.
+  run "emit-path calibration" ./tools/check-emit-calib.sh
 
-section "Stage 1d -- coding style and lint"
-run "1d exit criteria" ./tools/check-1d.sh
+  run "trace identity view" python3 tools/check-trace-ids.py
+}
 
-section "Interface checker convention"
-run "interface convention" ./tools/check-if.sh
+job_s1d() {
+  section "Stage 1d -- coding style and lint"
+  run "1d exit criteria" ./tools/check-1d.sh
+}
 
-section "X-propagation"
-run "x-prop differential" ./tools/check-xprop.sh
+job_iface() {
+  section "Interface checker convention"
+  run "interface convention" ./tools/check-if.sh
+}
 
-section "Clock gating -- the ctech layer and the block gate"
-# rtl/ctech/: every view the same cells and ports; the gate synthesised with
-# each library view is ONE library ICG and no latch; the simulation view is
-# refused by synthesis, glitch-free on both simulators with the enable moving
-# in either phase, and identical to the sky130 cell's own model; mutants
-# without a proper latch must fail. The gate's behaviour is proved in the
-# formal section.
-run "ctech and clock gate" ./tools/check-ctech.sh
+job_xprop() {
+  section "X-propagation"
+  run "x-prop differential" ./tools/check-xprop.sh
+}
 
-section "Clock gating (exploratory)"
-# Synthesis is deferred (§6), and nothing depends on this. It is in the gate
-# for two seconds of runtime because an artifact outside the gate rots, and
-# what it protects is a design direction rather than a build product.
-run "clock gating" ./tools/check-clockgate.sh
+job_ctech() {
+  section "Clock gating -- the ctech layer and the block gate"
+  # rtl/ctech/: every view the same cells and ports; the gate synthesised with
+  # each library view is ONE library ICG and no latch; the simulation view is
+  # refused by synthesis, glitch-free on both simulators with the enable moving
+  # in either phase, and identical to the sky130 cell's own model; mutants
+  # without a proper latch must fail. The gate's behaviour is proved in the
+  # formal section.
+  run "ctech and clock gate" ./tools/check-ctech.sh
+}
 
-section "Stage 3 -- skeleton (S0: plumbing)"
-# The whole machine wired from the schema, every block an exerciser stub,
-# every slot judged by the Verilated SV checker. S0 proves the machine is
-# connected before any block does anything real; vadd end to end is S1.
-run "skeleton plumbing" ./tools/check-skel.sh
+job_cg() {
+  section "Local clock gating -- CG-1 to CG-5, RST-1"
+  # docs/rtl-coding-style.md, "Local clock gating" (Daniel, 2026-10-16): every
+  # register behind a named enable (CG-1), every enable cone within
+  # CCV_NGD_CG_EN NGD (CG-2) and from the module's own flops only (CG-5,
+  # 2026-10-18), the reset flopped before any use (RST-1), every repeater the
+  # design instantiates a unit of its own, every enable group's DCGE at least
+  # CCV_DCGE_MIN_PCT in the idle, medium and high scenarios (CG-3), measured on
+  # the netlist with each bench's trace replayed into it. Waivers in
+  # rtl/cg-waivers.json, the ratchet in rtl/cg-ratchet.json. The controls run
+  # the same pipeline on test/cg/fixtures/ and must each be caught.
+  run "local clock gating" python3 tools/check-cg.py
+  run "clock gating that should fail does" python3 tools/check-cg.py --selftest
+}
 
-section "Stage 3 -- skeleton (S1: vadd)"
-# vadd on functional stubs over the real channel path, final register file
-# and memory compared with ccv-sim's, each clean result paired with a control
-# that must fail. After S0, which builds the binary.
-run "vadd through the machine" ./tools/check-kernel.sh
+job_ngd() {
+  section "Logic depth -- NGD-1 to NGD-7"
+  # Daniel, 2026-10-17 (docs/rtl-coding-style.md, "Logic depth"): 25 NGD of
+  # logic between flops; each module port 12 a side by default, the
+  # architect's budgets beside a module's RTL (<module>.ngd.json) where a port
+  # needs more; nothing straight through a module, not even a wire, nor logic
+  # in a parent between its children (2026-10-18), inner helpers timed as
+  # their parent's logic, and held alone to 16 until a module instantiates
+  # them (2026-10-19); a register driving an output held on every path it
+  # starts to that output's budget, a copy each (* keep *) the remedy
+  # (2026-10-19); an
+  # assembled block converged from those files level by level, then timed
+  # whole, its ports registered on both sides. Each module at its
+  # units' parameters, mapped by ABC; the timing pass must agree with ABC's
+  # own longest path.
+  run "logic depth" python3 tools/check-ngd.py
+  run "logic depth that should fail does" python3 tools/check-ngd.py --selftest
+}
 
-section "Stage 4b -- OOE model unit tests (sim/ooe/)"
-# The paths no S1 kernel reaches yet: squash, deferred free, L1 cancel and
-# replay, bypass groups, several warps, demotion, kill, faults, barriers.
-# The harness's own controls must each be caught, and are held by name.
-run "OOE unit tests" ./tools/check-ooe-unit.sh
+job_clockgate() {
+  section "Clock gating (exploratory)"
+  # Synthesis is deferred (§6), and nothing depends on this. It is in the gate
+  # for two seconds of runtime because an artifact outside the gate rots, and
+  # what it protects is a design direction rather than a build product.
+  run "clock gating" ./tools/check-clockgate.sh
+}
 
-section "Stage 4c -- OOE RTL (rtl/ooe/)"
-# Each OOE RTL module in lockstep with the model code it implements, at the
-# parameters' sizes, with the harness's controls each caught.
-run "OOE RTL == model" ./test/ooe/run-rtl.sh
+job_skel() {
+  section "Stage 3 -- skeleton (S0: plumbing)"
+  # The whole machine wired from the schema, every block an exerciser stub,
+  # every slot judged by the Verilated SV checker. S0 proves the machine is
+  # connected before any block does anything real; vadd end to end is S1.
+  run "skeleton plumbing" ./tools/check-skel.sh
+}
 
-section "SV top -- rtl/top/ (generated, tracked)"
-# The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
-# instances, with the checker bank under CCV_CHECK. After the skeleton, which
-# builds the binary whose wiring this is compared against.
-run "SV top" ./tools/check-top.sh
+job_kernel() {
+  section "Stage 3 -- skeleton (S1: vadd)"
+  # vadd on functional stubs over the real channel path, final register file
+  # and memory compared with ccv-sim's, each clean result paired with a control
+  # that must fail. After S0, which builds the binary.
+  run "vadd through the machine" ./tools/check-kernel.sh
+}
 
-section "Formal proofs -- one credited link, and the block clock gate"
-# test/formal/fv_link.sv by PDR: data, overflow, one credit per message,
-# conservation and every checker property with no assumption; bounded
-# response under a draining receiver; full bandwidth at the credit-loop depth
-# (Q-43) -- each with a mutant that must be refuted, and witnesses that the
-# traffic the proofs are about happens.
-# Then the block clock gate on the multiclock model: a clean gated clock with
-# the enable free to move at any step, the cycle behaviour against a history
-# model, and both halves of Q-33 -- mutants and witnesses likewise.
-run "formal proofs" ./tools/check-formal.sh
+job_ooe_unit() {
+  section "Stage 4b -- OOE model unit tests (sim/ooe/)"
+  # The paths no S1 kernel reaches yet: squash, deferred free, L1 cancel and
+  # replay, bypass groups, several warps, demotion, kill, faults, barriers.
+  # The harness's own controls must each be caught, and are held by name.
+  run "OOE unit tests" ./tools/check-ooe-unit.sh
+}
 
-section "Physical primitives -- sequential repeater"
-# rtl/phys/ccv_common_rpt.sv through N = 0..4 stages on both simulators, the
-# checker at three points along the link, its enables on the Yosys netlist,
-# and mutants that must each be caught -- one of them only by the netlist.
-run "sequential repeater" ./tools/check-phys.sh
+job_ooe_rtl() {
+  section "Stage 4c -- OOE RTL (rtl/ooe/)"
+  # Each OOE RTL module in lockstep with the model code it implements, at the
+  # parameters' sizes, with the harness's controls each caught.
+  run "OOE RTL == model" ./test/ooe/run-rtl.sh
+}
 
-section "SV-hosted C++ -- the skeleton's blocks inside the SV top"
-# The same top built from rtl/top/dpi/ shims: every block the C++ skeleton's,
-# every connection the generated Verilog's. Every S1 kernel and every kernel
-# control must come out as the C++ host runs them, and one block one cycle
-# late must not. After the skeleton and the kernels, whose runs it compares.
-run "SV-hosted C++" ./tools/check-sv-hosted.sh
+job_top() {
+  section "SV top -- rtl/top/ (generated, tracked)"
+  # The same machine as SystemVerilog: 45 stub blocks wired by the 103 channel
+  # instances, with the checker bank under CCV_CHECK. After the skeleton, which
+  # builds the binary whose wiring this is compared against.
+  run "SV top" ./tools/check-top.sh
+}
 
-section "Hardening wrappers -- params/links.json"
-# The design's own links.json repeats nothing yet. A busy split -- links
-# repeated at both ends, feedthroughs, lockstep lanes, EXTERNAL -- is built in
-# a copy of the tree and must pass the top-level rule, the S0 suite, the
-# wiring trace, every kernel, and SV-hosted == C++-hosted; malformed
-# configurations must each be refused by name.
-run "wrappers and links" ./tools/check-links.sh
+job_formal() {
+  section "Formal proofs -- one credited link, and the block clock gate"
+  # test/formal/fv_link.sv by PDR: data, overflow, one credit per message,
+  # conservation and every checker property with no assumption; bounded
+  # response under a draining receiver; full bandwidth at the credit-loop depth
+  # (Q-43) -- each with a mutant that must be refuted, and witnesses that the
+  # traffic the proofs are about happens.
+  # Then the block clock gate on the multiclock model: a clean gated clock with
+  # the enable free to move at any step, the cycle behaviour against a history
+  # model, and both halves of Q-33 -- mutants and witnesses likewise.
+  run "formal proofs" ./tools/check-formal.sh
+}
 
-section "Walkthrough -- docs/walkthrough.md"
-# One kernel through the whole machine, every listing produced by running the
-# binaries built above (ccv-skel, the SV-hosted build, the oracle records) and
-# the prose's named properties checked against their sources. After every
-# section it reads from.
-if command -v verilator >/dev/null 2>&1; then
-  run "walkthrough current" python3 tools/gen-walkthrough.py --check
-else
-  echo "  SKIP -- verilator not installed (the walkthrough runs its builds)"
-fi
+job_phys() {
+  section "Physical primitives -- sequential repeater"
+  # rtl/phys/ccv_common_rpt.sv through N = 0..4 stages on both simulators, the
+  # checker at three points along the link, its enables on the Yosys netlist,
+  # and mutants that must each be caught -- one of them only by the netlist.
+  run "sequential repeater" ./tools/check-phys.sh
+}
 
-section "Verilator lint"
-# The generic checks the project linter deliberately does not reimplement:
-# width mismatches, inferred latches, unused and undriven signals.
-if command -v verilator >/dev/null 2>&1; then
-  vfail=0
-  # file:define -- the credit checker is linted with and without CCV_TRACE,
-  # because the trace sideband changes its port list and each variant is a
-  # build someone will run.
-  for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_common_chk_credit.sv: \
-              rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
-              rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
-              rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: \
-              rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
-    f=${spec%%:*}; def=${spec#*:}
-    top=$(basename "$f" .sv)
-    [ "$top" = "ccv_assert_smoke" ] && top=dut
-    if ! verilator --lint-only --assert -Wall -Wno-DECLFILENAME \
-         -Wno-TIMESCALEMOD ${def:+-D$def} \
-         -Irtl/include -Irtl/generated --top-module "$top" \
-         rtl/ccv_assert_pkg.sv $(python3 tools/ccv_ctech.py) "$f" >/tmp/vlint.$$ 2>&1; then
-      echo "  $f${def:+ (+$def)}:"; sed 's/^/    /' /tmp/vlint.$$ | head -12; vfail=1
-    fi
-    rm -f /tmp/vlint.$$
+job_svh() {
+  section "SV-hosted C++ -- the skeleton's blocks inside the SV top"
+  # The same top built from rtl/top/dpi/ shims: every block the C++ skeleton's,
+  # every connection the generated Verilog's. Every S1 kernel and every kernel
+  # control must come out as the C++ host runs them, and one block one cycle
+  # late must not. After the skeleton and the kernels, whose runs it compares.
+  run "SV-hosted C++" ./tools/check-sv-hosted.sh
+}
+
+job_links() {
+  section "Hardening wrappers -- params/links.json"
+  # The design's own links.json repeats nothing yet. A busy split -- links
+  # repeated at both ends, feedthroughs, lockstep lanes, EXTERNAL -- is built in
+  # a copy of the tree and must pass the top-level rule, the S0 suite, the
+  # wiring trace, every kernel, and SV-hosted == C++-hosted; malformed
+  # configurations must each be refused by name.
+  run "wrappers and links" ./tools/check-links.sh
+}
+
+job_walkthrough() {
+  section "Walkthrough -- docs/walkthrough.md"
+  # One kernel through the whole machine, every listing produced by running the
+  # binaries built above (ccv-skel, the SV-hosted build, the oracle records) and
+  # the prose's named properties checked against their sources. After every
+  # section it reads from.
+  if command -v verilator >/dev/null 2>&1; then
+    run "walkthrough current" python3 tools/gen-walkthrough.py --check
+  else
+    echo "  SKIP -- verilator not installed (the walkthrough runs its builds)"
+  fi
+}
+
+job_vlint() {
+  section "Verilator lint"
+  # The generic checks the project linter deliberately does not reimplement:
+  # width mismatches, inferred latches, unused and undriven signals.
+  if command -v verilator >/dev/null 2>&1; then
+    vfail=0
+    # file:define -- the credit checker is linted with and without CCV_TRACE,
+    # because the trace sideband changes its port list and each variant is a
+    # build someone will run.
+    for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_common_chk_credit.sv: \
+                rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
+                rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
+                rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: \
+                rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
+      f=${spec%%:*}; def=${spec#*:}
+      top=$(basename "$f" .sv)
+      [ "$top" = "ccv_assert_smoke" ] && top=dut
+      if ! verilator --lint-only --assert -Wall -Wno-DECLFILENAME \
+           -Wno-TIMESCALEMOD ${def:+-D$def} \
+           -Irtl/include -Irtl/generated --top-module "$top" \
+           rtl/ccv_assert_pkg.sv $(python3 tools/ccv_ctech.py) "$f" >/tmp/vlint.$$ 2>&1; then
+        echo "  $f${def:+ (+$def)}:"; sed 's/^/    /' /tmp/vlint.$$ | head -12; vfail=1
+      fi
+      rm -f /tmp/vlint.$$
+    done
+    [ "$vfail" = "0" ] && echo "  clean" || fail=1
+  else
+    echo "  SKIP -- verilator not installed"
+  fi
+}
+
+# == The pool ===================================================================
+# Everything above is the prelude, serial and in order: the toolchain, then
+# the generators every check reads. What follows is one job per section, run
+# CCV_JOBS at a time (default: every core), each into its own log, printed
+# whole in the order written here, with the seconds it took, as soon as it
+# and every job before it are done. A job waits for the jobs it reads from
+# (after:), and none shares a build directory with another that may run
+# beside it. CCV_JOBS=1 is the serial gate.
+JOBS="${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)}"
+case "$JOBS" in ''|*[!0-9]*|0) echo "verify: CCV_JOBS must be a positive count"; exit 2 ;; esac
+# Print order. Each section's own comment says what it reads from.
+ORDER="s1a s1b s1c s1d iface xprop ctech cg ngd clockgate skel kernel ooe_unit ooe_rtl
+       top formal phys svh links walkthrough vlint"
+# Start order: the longest chain first, then the longest jobs, then the rest.
+START="skel ngd cg ooe_rtl formal kernel links svh top ctech phys iface xprop s1c s1b
+       s1d ooe_unit s1a clockgate walkthrough vlint"
+declare -A after=(
+  [kernel]="skel"          # the binary check-skel builds
+  [top]="skel"             # its wiring dump
+  [svh]="skel kernel"      # both, and the oracles check-kernel makes
+  [links]="kernel"         # the oracles, copied into its split tree
+  [walkthrough]="skel kernel svh"
+)
+LOGS=build/verify
+rm -rf "$LOGS" && mkdir -p "$LOGS"
+for j in $ORDER; do
+  case " $(echo $START) " in *" $j "*) ;; *) echo "verify: job $j is never started"; exit 2 ;; esac
+  declare -F "job_$j" >/dev/null || { echo "verify: no job_$j"; exit 2; }
+done
+[ "$(echo $ORDER | wc -w)" = "$(echo $START | wc -w)" ] || { echo "verify: ORDER and START differ"; exit 2; }
+declare -A state=() t0=() job=()
+# On an interrupt, every job and what it started.
+killtree() { local c; for c in $(pgrep -P "$1"); do killtree "$c"; done; kill "$1" 2>/dev/null; }
+trap 'for p in "${!job[@]}"; do killtree "$p"; done' EXIT
+trap 'exit 130' INT TERM
+
+start_job() {
+  local j=$1
+  state[$j]=run; t0[$j]=$SECONDS
+  ( fail=0; "job_$j"; exit $fail ) >"$LOGS/$j.log" 2>&1 </dev/null &
+  job[$!]=$j
+}
+ready() {
+  local d
+  for d in ${after[$1]:-}; do [ "${state[$d]}" = done ] || return 1; done
+}
+next=($ORDER)
+flush() {
+  while [ ${#next[@]} -gt 0 ] && [ "${state[${next[0]}]}" = done ]; do
+    cat "$LOGS/${next[0]}.log"
+    next=("${next[@]:1}")
   done
-  [ "$vfail" = "0" ] && echo "  clean" || fail=1
-else
-  echo "  SKIP -- verilator not installed"
-fi
+}
+for j in $START; do state[$j]=wait; done
+while :; do
+  for j in $START; do
+    [ "${#job[@]}" -lt "$JOBS" ] || break
+    if [ "${state[$j]}" = wait ] && ready "$j"; then start_job "$j"; fi
+  done
+  [ "${#job[@]}" = 0 ] && break
+  pid=""; wait -n -p pid "${!job[@]}"; rc=$?
+  [ -n "$pid" ] || continue
+  j=${job[$pid]}; unset "job[$pid]"
+  state[$j]=done
+  printf '  [%s: %ds]\n' "$j" $((SECONDS - ${t0[$j]})) >>"$LOGS/$j.log"
+  [ "$rc" = 0 ] || fail=1
+  flush
+done
+for j in $ORDER; do
+  [ "${state[$j]}" = done ] || { printf '\n== %s ==\n  -> never ran: waits on %s\n' "$j" "${after[$j]:-}"; fail=1; }
+done
 
 section "pending stages"
 # Listed rather than omitted. A gate that appears to cover the whole flow

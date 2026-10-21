@@ -12,11 +12,16 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 - `schema/interfaces.json`: every channel, field, width and contract.
 - `params/ccv_params.json`: every size and latency. Derived values carry
   `derive`/`require`, and `tools/gen-params.py` refuses drift.
+  A parameter whose status is `isa` cites the ISA (`isa`: a verbatim quote
+  and its value over the quote), and `tools/check-isa-params.py` holds it to
+  the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
   `docs/walkthrough.md`. Regenerate them with `tools/gen-*.py`;
-  `tools/verify.sh` fails if any is stale.
+  `tools/verify.sh` fails if any is stale. Each generated directory's
+  `.generated` says which generator wrote which file, and a file no
+  generator writes any more is removed (`tools/genout.py`).
 - Kernel oracles come from the pinned compiler snapshot (`tools/compiler.lock`,
   `tools/gen-oracle.sh`). Nothing of ccv-sim's output is checked in.
 
@@ -24,8 +29,58 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 
 ```
 ./tools/setup-toolchain.sh   # a fresh container needs this once
-./tools/verify.sh            # ~25 min; must be green before a push
+./tools/verify.sh            # must be green before a push
 ```
+
+After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
+time (default every core; `CCV_JOBS=1` is serial), each section's log in
+`build/verify/<job>.log` with its time. A job that reads another's build
+products names it in `after` in `tools/verify.sh`; no two jobs that may run
+together share a build directory. check-cg and check-ngd measure their units
+`CCV_JOBS` at a time too.
+
+Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
+register behind an `if` on an enable named `<name>_en`; a clock gate is 8
+flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
+idle, medium and high scenarios; anything else must toggle 75% of the time.
+An enable comes only from the module's own flops, never an input (CG-5), and
+the reset is flopped before any use (RST-1; 2026-10-18): that is why valid
+leads a payload by a cycle, and why a lead field is rare.
+`tools/check-cg.py` measures it from each module's unit
+(`test/**/cg-units.json`, and every repeater the design instantiates,
+`rtl/top/rpt-units.json`). Each module may leave the larger of 2% of its
+flops and fewer than 8 flops outside the rules, and what its modules take
+must stay within 2% of each block's flops, per instance; a repeater's
+control pulses and flopped reset count only there, against its wrapper's 2%
+(2026-10-19), its lead slice against its own allowance. Past that,
+refactor; a waiver (`rtl/cg-waivers.json`, written by the module's owner) is
+the last resort.
+RTL older than the rule sits on `rtl/cg-ratchet.json`, which only shrinks:
+its owner removes an entry once the module passes (CG-5 and RST-1 per
+register or port).
+
+Logic depth (Daniel, 2026-10-17; `docs/rtl-coding-style.md`): 25 NGD of
+combinational logic between flops, the flop outside it. Each module port has
+12 NGD a side by default; a port over it needs the architect's budgets, one
+file per module beside its RTL (`<module>.ngd.json`). Nothing straight
+through a module, input to output, not even a wire, nor logic in a parent
+between its children (2026-10-18): connect a wire directly, group logic with
+one sequential side, or declare a combinational module an inner helper in
+its file, timed as its parent's logic (until a parent instantiates it, held
+alone to 16 NGD, floor(2 × 25 / 3); 2026-10-19). A register that drives an
+output is held on every path it starts, inside as out, to that output's
+budget (2026-10-19): copy it, one for the output and one for the rest, each
+`(* keep *)`, or synthesis merges them back. The one feedthrough allowed is a
+channel a generated wrapper carries across itself. An
+assembled block is checked from those files, level by level, for
+convergence to 25, then timed whole, its outputs straight from flops.
+`tools/check-ngd.py` measures every module at its units' parameters; what
+broke the rules when they were made sits on `rtl/ngd-ratchet.json`, which
+only shrinks.
+
+Every Yosys the gate runs, SymbiYosys's included, is `tools/shim/yosys`:
+the warnings that mean a netlist is not the RTL are errors (OI-44). Run a
+Yosys flow alone the same way: `PATH="$PWD/tools/shim:$PATH"`.
 
 Quicker loops: `tools/check-skel.sh` builds `build/skel/ccv-skel`;
 `tools/check-kernel.sh` runs every kernel with its coverage bins and its
@@ -68,6 +123,9 @@ https://claude.ai/artifact/JApHYjaUESeq8tsGMGXMU5. Read its Conventions tab firs
   **OA**; **AR** is the top-level architect; **DA** is Daniel.
 - At session start, search every tab for `TI` in a Needs column (OA-11), and
   answer in the TI tab's responses table.
+- The register skill, `.claude/skills/register/SKILL.md` (OA-18), says how:
+  notify on every write that needs another agent, read only the rows a notice
+  names, and sweep daily from per-tab bookmarks.
 - A per-block session raises an interface change in its own tab with `TI` in
   Needs. The closed A-n register (A-25 to A-75) is pinned in
   `docs/design-snapshots/interface-review.md`; its open items moved to the

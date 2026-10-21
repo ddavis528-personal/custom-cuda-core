@@ -14,7 +14,9 @@
 // whether or not the link is repeated: the hierarchy does not change when a
 // stage count does (params/links.json).
 //
-// THE ENABLES, which are the point of the widget beyond "some flops":
+// THE ENABLES, which are the point of the widget beyond "some flops". A
+// clock enable comes only from this module's own flops (CG-5, Daniel,
+// 2026-10-18), which is why valid leads the payload by a cycle:
 //
 //   - payload (and trace id): enabled by the PREVIOUS cycle's valid. The
 //     payload follows valid by one cycle, so the cycle it is on this stage's
@@ -22,12 +24,21 @@
 //     flop is the enable: the payload register loads once per message and
 //     holds otherwise, a clock-gating candidate with one shared enable per
 //     stage -- no toggling on a link carrying nothing.
-//   - lead slice (schema lead_fields): enabled by the SAME cycle's valid,
-//     because a lead travels WITH valid, a cycle ahead of the rest (Q-40).
-//     Enabled by the previous cycle's valid it would be taken a cycle late:
-//     the late-lead failure the skeleton's --break late-lead demonstrates.
-//     Channels without lead fields have no such register.
+//   - lead slice (schema lead_fields): it travels WITH valid, a cycle ahead
+//     of the rest (Q-40), so it is taken in valid's cycle. At the first
+//     stage that valid is the input, so the lead is written every cycle like
+//     valid itself, with no enable, and counts against the module's ungated
+//     allowance (Daniel, 2026-10-18: that is what limits leads). At a later
+//     stage it is the previous stage's valid flop, a clock enable. Taken a
+//     cycle late it would be the late-lead failure the skeleton's --break
+//     late-lead demonstrates. Channels without lead fields have no such
+//     register.
 //   - valid, wake, credit, stall: pulses, registered every cycle, reset low.
+//   - the reset: flopped once, here, before any use (RST-1).
+//   The pulses and the flopped reset are the channel's own control, captured
+//   every cycle as any receiver's: they count against the hardening
+//   wrapper's ungated budget, not this module's (Daniel, 2026-10-19); the
+//   first stage's lead counts against this module's.
 //
 // What a repeated link changes, which the widget itself cannot: the round
 // trip grows by 2 * STAGES, and credit depth, drain wait and every checker's
@@ -38,7 +49,7 @@
 `include "ccv_assert.svh"
 
 `define CCV_CLK clk
-`define CCV_RST !rst_n
+`define CCV_RST !rst_n_q
 
 module ccv_common_rpt #(
   parameter int STAGES    = 1,
@@ -71,6 +82,15 @@ module ccv_common_rpt #(
   localparam int S = SLOTS;
   localparam bit HAS_LEAD = (LEAD_MASK != '0);
 
+  // The reset, flopped before any use (RST-1): every flop below leaves reset
+  // a cycle after rst_n does. A repeater of no stages has nothing to reset.
+  logic rst_n_q;
+  if (STAGES > 0) begin : g_rst
+    always_ff @(posedge clk) rst_n_q <= rst_n;
+  end else begin : g_norst
+    assign rst_n_q = rst_n;
+  end
+
   // Node k is the link after k stages: node 0 is the sender's side, node
   // STAGES the receiver's. Flat vectors with part-selects (CCV-L26), node
   // major, slot minor; each stage drives its own node by continuous assign.
@@ -98,9 +118,12 @@ module ccv_common_rpt #(
   for (genvar k = 0; k < STAGES; k++) begin : g_stage
     logic [S-1:0] valid_q, credit_q, stall_q;
     logic         wake_q;
+    // The payload's clock enable, named as one (docs/rtl-coding-style.md,
+    // "Local clock gating"): this stage's own valid flop.
+    wire  [S-1:0] pay_en = valid_q;
 
     always_ff @(posedge clk) begin
-      if (!rst_n) begin
+      if (!rst_n_q) begin
         valid_q  <= '0;
         wake_q   <= 1'b0;
         credit_q <= '0;
@@ -119,14 +142,23 @@ module ccv_common_rpt #(
       // The payload register, enabled by the previous cycle's valid -- this
       // stage's own valid flop. No reset: it is data, meaningful only when due.
       always_ff @(posedge clk) begin
-        if (valid_q[j]) pay_q <= p[(k*S+j)*W +: W];
+        if (pay_en[j]) pay_q <= p[(k*S+j)*W +: W];
       end
 
       if (HAS_LEAD) begin : g_lead
-        // The lead slice, enabled by the same cycle's valid: it rides with it.
+        // The lead slice, taken in its valid's cycle: it rides with it.
         logic [W-1:0] lead_q;
-        always_ff @(posedge clk) begin
-          if (v[k*S+j]) lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
+        if (k == 0) begin : g_in
+          // Its valid is this module's input: written every cycle, as valid.
+          always_ff @(posedge clk) begin
+            lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
+          end
+        end else begin : g_flop
+          // Its valid is the previous stage's valid flop: a clock enable.
+          wire lead_en = v[k*S+j];
+          always_ff @(posedge clk) begin
+            if (lead_en) lead_q <= p[(k*S+j)*W +: W] & LEAD_MASK;
+          end
         end
         assign p[((k+1)*S+j)*W +: W] = (pay_q & ~LEAD_MASK) | lead_q;
       end else begin : g_nolead
@@ -137,7 +169,7 @@ module ccv_common_rpt #(
       // The trace id rides beside the payload and lands with it.
       logic [63:0] tid_q;
       always_ff @(posedge clk) begin
-        if (valid_q[j]) tid_q <= t[(k*S+j)*64 +: 64];
+        if (pay_en[j]) tid_q <= t[(k*S+j)*64 +: 64];
       end
       assign t[((k+1)*S+j)*64 +: 64] = tid_q;
 `endif

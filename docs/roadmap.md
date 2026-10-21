@@ -9,9 +9,9 @@ and what is carried.
 ## Part 0 — picking this up again
 
 **State (2026-10-04): Stage 1 complete. Stage 2 closed and encoded, except
-the per-interface NGD budgets. Stage 3's skeleton runs thirteen kernels end to end
+the per-interface NGD budgets. Stage 3's skeleton runs fourteen kernels end to end
 on both hosts (S1 `vadd`, then S2: merge, masked loads, misaligned and
-scattered accesses, mispredicts, L1 hits, the lane-local bypass), each
+scattered accesses, mispredicts, L1 hits on time and late, the lane-local bypass), each
 matching ccv-sim and held to coverage counts. OOE's interfaces are settled (Review A-25 to A-74), and its Stage 4b
 C++ model starts in a session of its own: [`ooe-4b.md`](ooe-4b.md) is its
 handoff. This session stays top-level: schema, parameters, gate, and the
@@ -251,7 +251,7 @@ channel path in 355 cycles. The final register file and memory are identical
 to ccv-sim's, with 0 interface violations, and each clean result is paired
 with a control that must fail it (`tools/check-kernel.sh`). It found six
 payload gaps, including store data missing from `ccv_miu_dcu_req` (added
-provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-141). See
+provisionally), and a `mayLoad`/`mayStore` bug in the compiler (compiler F-153). See
 [`skeleton.md`](skeleton.md#s1--vadd-through-the-machine).
 
 - `sim/skel/kernel.cpp`, `oracle.cpp` — the functional stubs and the reader
@@ -288,8 +288,8 @@ from the elaborated netlist, equals the C++ skeleton's bit for bit. See
 
 **SV-hosted C++ ✅.** Built from `rtl/top/dpi/` shims instead of stubs, the
 top runs every C++ block over DPI-C, with the generated Verilog carrying
-every connection. All thirteen kernels match the C++-hosted run: summary lines
-identical and event traces the same records cycle by cycle. All 33 kernel
+every connection. All fourteen kernels match the C++-hosted run: summary lines
+identical and event traces the same records cycle by cycle. All 37 kernel
 controls give the same KERNEL line, and so does every kernel with OOE's
 lane-local bypass on. One block one cycle late
 (`+ccv_shim_delay`) must not match, and doesn't
@@ -351,6 +351,65 @@ pass would have to do (F-18).
 pass, not the substitution: group flops by enable, clock and reset; pick a
 minimum group width; keep reset on the data path. Recorded in F-18 while the
 reasoning is fresh.
+
+### Local clock gating ✅ (rule and enforcement)
+
+Daniel's rule of 2026-10-16, in `docs/rtl-coding-style.md`: every register
+behind an `if` on an enable named `_en` (CG-1); a clock gate is 8 flops or
+more, with its enable within 8 NGD of logic (CG-2) and at least 75% DCGE in
+idle, medium and high activity scenarios (CG-3); every other flop toggles
+75% of the time (CG-4). `tools/check-cg.py` measures CG-2 to CG-4 on the
+Yosys netlist, replaying each unit's bench trace into it. Each module may
+leave the larger of 2% of its flops and fewer than 8 flops outside the
+rules, so it is settled module by module; what the modules take must stay
+within 2% of each block, per instance, checked once a block top is RTL.
+Waivers (`rtl/cg-waivers.json`) are the last resort, and pre-rule RTL is on
+`rtl/cg-ratchet.json`, which only shrinks. On 2026-10-18 Daniel made it
+strict at the source: a clock enable comes only from the module's own flops
+(CG-5), and the reset is flopped before any use (RST-1, the reset contract:
+synchronous, the same cycle at every receiver, latency balanced globally).
+Valid leads a payload by a cycle so the receiver's flopped valid is the
+enable; a lead field is captured by flops written every cycle, so only
+`rcu_lane_ops`' `section_en` and `sec_pred_bit` still lead. Every repeater
+the design instantiates is a unit of its own, measured like any module. TI's
+two modules meet all of it with no waiver (the clock gate flops its reset,
+reports and override; the repeater its reset, and writes its first stage's
+lead every cycle). Every OOE module is on the ratchet for CG-5 and all but
+`ooe_age` for RST-1, per register (TI-18). The clock gate's
+counters became one 14-flop gate once Daniel set the CSR contract (Q-59,
+2026-10-17): CSRs are written only while their blocks are idle, on a divided
+clock, with no write-to-use latency promised. OI converted its four (TI-14: 7af637e, d3905fc), and the ratchet
+is empty: ten units, every OOE flop in a clock gate. Clock-gated, the RS's
+same-edge reuse path is 25.2 NGD, 0.2 over the stage, which Daniel accepted
+(OI-43, 2026-10-17). Converting them showed Yosys reading `ooe_wake`
+differently from Verilator, silently (OI-44), so every Yosys the gate runs
+now fails on the warnings that mean a netlist is not the RTL
+(`tools/shim/yosys`), and the block budget's hierarchy-kept flop counts are
+held to the replayed units'.
+
+### Logic depth ✅ (rule and enforcement)
+
+Daniel's rule of 2026-10-17, in `docs/rtl-coding-style.md`: 25 NGD of
+combinational logic between flops, the flop outside it; each module port
+12 NGD a side by default, the architect's explicit budgets in one file per
+module beside its RTL (`<module>.ngd.json`) where a port needs more; and,
+2026-10-18, nothing straight through a module, not even a wire, nor logic
+between a parent's children, so every path between modules crosses one port
+in two segments, a combinational module allowed as an inner helper timed in
+its parent (alone, before any parent instantiates it, within 16 NGD,
+2026-10-19), a register that drives an output held on every path it starts
+to that output's budget (2026-10-19), and a generated wrapper's feedthrough the one wire allowed (an
+end with no stages has no repeater); an
+assembled block checked from those files for convergence to 25, level by
+level, then timed whole, its ports registered on both sides.
+`tools/check-ngd.py` measures every module at its units' parameters on
+ABC's mapping, with a timing pass that must agree with ABC's own longest
+path. No module is over the stage flop to flop. What broke the rules when
+they were made, 153 findings in nine OOE modules (`ooe_rat`'s 46 with OI's
+next merge), is on `rtl/ngd-ratchet.json`: ports over the default for OA's
+budgets or a redesign, and paths straight through (and `ooe_select`'s glue
+around its two picks) for a regrouping or an inner declaration. No block
+top is RTL yet, so the whole-block pass runs on fixtures only.
 
 ### CI harness ✅
 

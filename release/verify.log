@@ -7,33 +7,53 @@
   cvc5         present
   python3      present
   g++          present
+  build/ made by Verilator 5.052 2026-09-05 rev v5.052
+  a build/ made by another Verilator is cleared (3 controls)
+  Verilator 5.052: step() and if/else flops agree      PASS (200000 arrivals=697565 flushes=19790 resets=466 differences=0)
+    control: one planted payload                       caught
+  yosys on PATH is tools/shim/yosys                    PASS
+  tools/verify.sh runs every check with the shim       PASS
+  ys_range: 'select out of bounds'                     refused (plain Yosys: a warning)
+  ys_implicit: 'is implicitly declared'                refused (plain Yosys: a warning)
+  ys_multi: 'multiple conflicting drivers'             refused (plain Yosys: a warning)
+  ys_const: 'Drivers conflicting with a constant'      refused (plain Yosys: a warning)
+  ys_undriven: 'is used but has no driver'             refused (plain Yosys: a warning)
+  ys_loop: 'found logic loop'                          refused (plain Yosys: a warning)
+  ys_clean: the shim passes clean RTL                  PASS
+  sby: Yosys inside it is the shim                     PASS
 
 == documentation ==
   findings, rules, paths and counts consistent   PASS
-  open items (docs/open-items.md)                PASS (58 items: 8 open, 0 awaiting confirmation, 11 scheduled, 39 closed)
+  open items (docs/open-items.md)                PASS (59 items: 8 open, 0 awaiting confirmation, 12 scheduled, 39 closed)
 
 == generated artifacts ==
   generated event headers from schema/events.json (hash 727da17b3c4367e2)
-  generated parameter definitions from params/ccv_params.json (157 parameters)
+  generated parameter definitions from params/ccv_params.json (164 parameters)
   generated interface topology from schema/interfaces.json (48 channels, 14 blocks)
-  generated docs/payload-spec.md (9 settled, 19 prov, 20 prelim channels)
+  generated docs/payload-spec.md (9 settled, 20 prov, 19 prelim channels)
   event schema headers up to date (hash 727da17b3c4367e2)
-  parameter definitions up to date (157 parameters)
+  parameter definitions up to date (164 parameters)
   derived parameters: 36 mutation(s), each refused by name
+  20 ISA-sourced parameters against isa-v1.9-operation-map-and-encoding.md
+  6 controls
   interface topology up to date (48 channels, 14 blocks)
   channel rates refuse drift from their parameters (2 tied: ccv_ooe_rcu_issue, ccv_rcu_ooe_done)
-  payload spec up to date (9 settled, 19 prov, 20 prelim)
-  generated docs/trust-report.md (42 files reference an undecided width)
-  trust report up to date (42 files, 20/48 channels tainted)
-  generated skeleton wiring (45 block instances, 110 channel instances, 163 slots, 62899 payload bits)
-  skeleton wiring up to date (45 block instances, 110 channel instances, 163 slots, 62899 payload bits)
-  generated SV top (60 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
-  SV top up to date (60 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
+  payload spec up to date (9 settled, 20 prov, 19 prelim)
+  generated docs/trust-report.md (43 files reference an undecided width)
+  trust report up to date (43 files, 19/48 channels tainted)
+  generated skeleton wiring (45 block instances, 110 channel instances, 163 slots, 62643 payload bits)
+  skeleton wiring up to date (45 block instances, 110 channel instances, 163 slots, 62643 payload bits)
+  generated SV top (61 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
+  SV top up to date (61 files: top, 14 port lists, 14 stubs, 15 DPI shims, 14 wrappers, 2 testbenches)
+  removed 0 stale generated file(s)
+  generated directories hold only generated files
+  stale generated files refused (6 controls)
 
 == Stage 1a -- tool-support spike ==
   toolchain matches the pinned versions          PASS
   matrix covers every case, probes recorded      PASS
   usable subset named in the document            PASS
+  [s1a: 0s]
 
 == Stage 1b -- assertion primitive library ==
   icarus: compiles, fires, silences, quiet       PASS
@@ -45,6 +65,7 @@
   icarus: t_resp fires on a violation            PASS
   verilator: t_resp fires on a violation         PASS
   sby: library elaborates and property bites     PASS (label not in report)
+  [s1b: 3s]
 
 == Stage 1c -- event schema mechanism ==
   schema headers current and versioned           PASS
@@ -53,6 +74,7 @@
   stub stream round-trips into Perfetto JSON     PASS
   emitted cycles match the paper reference       PASS
   trace identity view: nesting, replay, none     PASS
+  [s1c: 2s]
 
 == Stage 1d -- coding style and lint ==
   style guide present                            PASS
@@ -60,11 +82,13 @@
   every lint rule fires on the fixture (28 rules) PASS
   every lint rule is documented in the guide     PASS
   module namespace: 19 refusals, each by name    PASS
-  compliant code is silent (5 fixtures)          PASS
+  assignments behind a comparison are read       PASS
+  compliant code is silent (6 fixtures)          PASS
   yosys reads every form CCV-L26 permits         PASS
   lint clean across rtl/, test/, spike/          PASS
   generated parameter files current              PASS
   C++ and RTL parameter values agree with source PASS
+  [s1d: 4s]
 
 == Interface checker convention ==
   payload structs generated                      48 of 48 channels, 0 field(s) open
@@ -105,6 +129,7 @@
   formal: lockstep checker covers reachable      PASS
   formal: binding checker covers reachable       PASS
   formal: outstanding checker covers reachable   PASS
+  [iface: 10s]
 
 == X-propagation ==
   optimistic if-chain: definite, arbitrary answer PASS (=1101, the last branch)
@@ -113,6 +138,7 @@
   the three constructions disagree on X          PASS
   ternary narrows on a partially-unknown select  PASS (=110x)
   all three agree when the select is known       PASS
+  [xprop: 0s]
 
 == Clock gating -- the ctech layer and the block gate ==
   3 views, 1 cell(s), identical ports            PASS (asap7 sim sky130_fd_sc_hd )
@@ -124,21 +150,123 @@
   icarus: sky130 view through the vendor cell    PASS
   icarus: sim view == sky130 cell, every sample  PASS (40000 samples)
   verilator -Wall: sim view                      PASS
-  verilator: sim view, enable in either phase    PASS (cycles=2000 edges=1090 mid_high_changes=2558 ref_samples=0)
+  verilator: sim view, enable in either phase    PASS (cycles=2000 edges=1039 mid_high_changes=2563 ref_samples=0)
     ...an ICG with no latch: caught              PASS (both simulators)
     ...a latch open on the high phase: caught    PASS (both simulators)
+  [ctech: 6s]
+
+== Local clock gating -- CG-1 to CG-5, RST-1 ==
+  unit rpt            ccv_common_rpt    697 flops,  688 in  2 clock gates (0 groups under 8), worst enable  0.0 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium  2998 cycles, activity 0.149,  2 gates enabled, lowest DCGE 100%
+    high    2998 cycles, activity 0.496,  2 gates enabled, lowest DCGE 100%
+  unit clk            ccv_common_clk     21 flops,   14 in  1 clock gates (1 groups under 8), worst enable  4.7 NGD
+    idle    2998 cycles, activity 0.000,  1 gates enabled, lowest DCGE 100%
+    medium  2998 cycles, activity 0.007,  1 gates enabled, lowest DCGE 100%
+    high    2998 cycles, activity 0.060,  1 gates enabled, lowest DCGE 100%
+  unit ooe_wake       ooe_wake         1222 flops, 1215 in 46 clock gates (0 groups under 8), worst enable  5.6 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium 11183 cycles, activity 0.009, 46 gates enabled, lowest DCGE 82%
+    high    3727 cycles, activity 0.027, 46 gates enabled, lowest DCGE 99%
+  unit ooe_age_rcu    ooe_age           902 flops,  900 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium 20407 cycles, activity 0.045,  1 gates enabled, lowest DCGE 100%
+    high    6791 cycles, activity 0.083,  1 gates enabled, lowest DCGE 100%
+  unit ooe_age_miu    ooe_age           227 flops,  225 in  1 clock gates (0 groups under 8), worst enable  0.0 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium 20407 cycles, activity 0.026,  1 gates enabled, lowest DCGE 100%
+    high    6791 cycles, activity 0.058,  1 gates enabled, lowest DCGE 100%
+  unit ooe_rs         ooe_rs           6410 flops, 6350 in  4 clock gates (0 groups under 8), worst enable  7.8 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium 20423 cycles, activity 0.006,  4 gates enabled, lowest DCGE 79%
+    high    6807 cycles, activity 0.011,  4 gates enabled, lowest DCGE 85%
+  unit ooe_decq       ooe_decq          321 flops,  315 in  2 clock gates (0 groups under 8), worst enable  5.4 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium 20375 cycles, activity 0.022,  2 gates enabled, lowest DCGE 97%
+    high    6791 cycles, activity 0.040,  2 gates enabled, lowest DCGE 98%
+  unit ooe_freelist_gpr ooe_freelist      551 flops,  544 in  3 clock gates (0 groups under 8), worst enable  3.2 NGD
+    idle    2998 cycles, activity 0.000,  2 gates enabled, lowest DCGE 100%
+    medium 20423 cycles, activity 0.007,  3 gates enabled, lowest DCGE 100%
+    high    6807 cycles, activity 0.012,  3 gates enabled, lowest DCGE 100%
+  unit ooe_freelist_pred ooe_freelist      223 flops,  216 in  3 clock gates (0 groups under 8), worst enable  3.2 NGD
+    idle    2998 cycles, activity 0.000,  2 gates enabled, lowest DCGE 100%
+    medium 20423 cycles, activity 0.003,  3 gates enabled, lowest DCGE 100%
+    high    6807 cycles, activity 0.009,  3 gates enabled, lowest DCGE 100%
+  unit ooe_rat        ooe_rat          4416 flops, 4416 in 88 clock gates (0 groups under 8), worst enable  6.8 NGD
+    idle    2999 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium 20423 cycles, activity 0.017, 66 gates enabled, lowest DCGE 94%
+    high    6807 cycles, activity 0.044, 66 gates enabled, lowest DCGE 94%
+  unit ooe_sched      ooe_sched         229 flops,  225 in  3 clock gates (0 groups under 8), worst enable  7.3 NGD
+    idle    2998 cycles, activity 0.000,  0 gates enabled, lowest DCGE -
+    medium  5629 cycles, activity 0.002,  3 gates enabled, lowest DCGE 80%
+    high    1873 cycles, activity 0.007,  3 gates enabled, lowest DCGE 81%
+  module budget: unit rpt            697 flops, 13.9 allowed, 0 auto-waived in 1 finding(s); 9 control flops to its wrapper's budget
+  module budget: unit clk             21 flops,  7.0 allowed, 7 auto-waived in 6 finding(s)
+  module budget: unit ooe_wake      1222 flops, 24.4 allowed, 7 auto-waived in 4 finding(s)
+  module budget: unit ooe_age_rcu    902 flops, 18.0 allowed, 2 auto-waived in 2 finding(s)
+  module budget: unit ooe_age_miu    227 flops,  7.0 allowed, 2 auto-waived in 2 finding(s)
+  module budget: unit ooe_rs        6410 flops, 128.2 allowed, 60 auto-waived in 6 finding(s)
+  module budget: unit ooe_decq       321 flops,  7.0 allowed, 6 auto-waived in 3 finding(s)
+  module budget: unit ooe_freelist_gpr   551 flops, 11.0 allowed, 5 auto-waived in 3 finding(s)
+  module budget: unit ooe_freelist_pred   223 flops,  7.0 allowed, 5 auto-waived in 3 finding(s)
+  module budget: unit ooe_sched      229 flops,  7.0 allowed, 4 auto-waived in 4 finding(s)
+  flop count: unit rpt            697 flops, and 6 budgeted finding(s), alike kept and replayed
+  flop count: unit clk             21 flops, and 6 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_wake      1222 flops, and 4 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_age_rcu    902 flops, and 2 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_age_miu    227 flops, and 2 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_rs        6410 flops, and 6 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_decq       321 flops, and 3 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_freelist_gpr   551 flops, and 3 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_freelist_pred   223 flops, and 3 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_rat       4416 flops, and 0 budgeted finding(s), alike kept and replayed
+  flop count: unit ooe_sched      229 flops, and 4 budgeted finding(s), alike kept and replayed
+  block budget: no block has RTL yet (every block top is a generated stub), so none is checked
+  ratchet: ooe_decq       2 CG-5
+  ratchet: ooe_rat        88 CG-5, 1 RST-1
+  9 module(s), 11 unit(s), 29 finding(s) auto-waived by a module budget, 45 waiver(s) in use, 0 on the ratchet
+  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, ratchet, coverage, module and block budgets, kept and replayed flop counts, enable sources and the reset, repeater instantiations, kept copies (59 controls)
+  [cg: 1176s]
+
+== Logic depth -- NGD-1 to NGD-7 ==
+  unit rpt              ccv_common_rpt flop-flop   1.7  in-flop   1.7  flop-out   0.0  in-out   0.0
+  unit clk              ccv_common_clk flop-flop  10.3  in-flop   8.7  flop-out   4.7  in-out   1.2
+  unit ooe_wake         ooe_wake       flop-flop  15.5  in-flop  15.6  flop-out   0.0  in-out   0.0
+  unit ooe_age_rcu      ooe_age        flop-flop   7.1  in-flop  11.3  flop-out   0.0  in-out   0.0
+  unit ooe_age_miu      ooe_age        flop-flop   9.1  in-flop  11.3  flop-out   0.0  in-out   0.0
+  unit ooe_rs           ooe_rs         flop-flop  20.2  in-flop  20.2  flop-out   1.7  in-out   0.0
+  unit ooe_decq         ooe_decq       flop-flop  21.5  in-flop  18.5  flop-out  21.5  in-out   0.0
+  unit ooe_freelist_gpr ooe_freelist   flop-flop  21.6  in-flop   3.2  flop-out  12.4  in-out   0.0
+  unit ooe_freelist_pred ooe_freelist   flop-flop  22.5  in-flop   3.2  flop-out  11.4  in-out   0.0
+  unit ooe_rat          ooe_rat        flop-flop  11.7  in-flop  12.5  flop-out   0.0  in-out   0.0
+  unit ooe_sched        ooe_sched      flop-flop  19.9  in-flop  19.7  flop-out   0.0  in-out   0.0
+  unit ooe_pick_rcu     ooe_pick       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  17.2
+  unit ooe_pick_miu     ooe_pick       flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   8.1
+  unit ooe_ready        ooe_ready      flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   9.8
+  unit ooe_select       ooe_select     flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  19.8
+  unit ooe_confirm      ooe_confirm    flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out   8.7
+  unit ooe_ratread      ooe_ratread    flop-flop   0.0  in-flop   0.0  flop-out   0.0  in-out  13.3
+  ratchet: ooe_decq        2 port finding(s) awaiting budgets,  0 path(s) straight through awaiting a redesign, 1 register(s) shared by an output awaiting a copy
+  ratchet: ooe_rat         0 port finding(s) awaiting budgets,  0 path(s) straight through awaiting a redesign, 1 register(s) shared by an output awaiting a copy
+  ratchet: ooe_rs          1 port finding(s) awaiting budgets,  0 path(s) straight through awaiting a redesign
+  inner helpers: ooe_confirm alone, within 16 (no module instantiates it yet), ooe_pick inside its parent, ooe_ratread alone, within 16 (no module instantiates it yet), ooe_ready inside its parent, ooe_select inside its parent
+  blocks: none assembled yet (every block top is a generated stub)
+  17 unit(s), 56 port budget(s) in 13 module file(s), stage 25 NGD, ports 12 by default
+  timing pass against ABC, outputs, inputs, the stage, paths straight through, inner helpers alone and inside a parent, registers shared by an output and the rest, observation ports, budget files, ratchet, coverage, glue, the assembled block from its budgets and whole (52 controls)
+  [ngd: 908s]
 
 == Clock gating (exploratory) ==
   enable inferred from the if-enable form        PASS
   one ICG shared across all 8 flops              PASS
   yosys still has no clockgate pass              as expected (F-17)
+  [clockgate: 1s]
 
 == Stage 3 -- skeleton (S0: plumbing) ==
   skeleton builds (checker bank Verilated in)    PASS
   slots re-derived: 48 types, 110 instances      PASS (163 slots, 13 groups)
   trace id absent from synthesis, present in trace PASS
   C++ field offsets == SV packed structs         PASS (rounds=64)
-    ...a 1-bit offset shift is caught on every field PASS (252 fields)
+    ...a 1-bit offset shift is caught on every field PASS (253 fields)
   seed 1: 200945 msgs, 0 violations              PASS
   seed 2: 200268 msgs, 0 violations              PASS
   seed 3: 199724 msgs, 0 violations              PASS
@@ -155,12 +283,14 @@
   --break misgroup: slot carries another stream  PASS (1 binding checker)
   --break wrong-class: every channel's set enforced PASS (48 channels)
   trace -> Perfetto JSON, one track per channel  PASS (48)
+  [skel: 92s]
 
 == Stage 3 -- skeleton (S1: vadd) ==
   oracle brs from the pinned ccv-sim             PASS (14 records)
   oracle byp from the pinned ccv-sim             PASS (16 records)
   oracle gather from the pinned ccv-sim          PASS (18 records)
   oracle hit from the pinned ccv-sim             PASS (19 records)
+  oracle late from the pinned ccv-sim            PASS (18 records)
   oracle loop from the pinned ccv-sim            PASS (409 records)
   oracle merge from the pinned ccv-sim           PASS (11 records)
   oracle mload from the pinned ccv-sim           PASS (13 records)
@@ -170,8 +300,8 @@
   oracle srd from the pinned ccv-sim             PASS (8 records)
   oracle unal from the pinned ccv-sim            PASS (11 records)
   oracle vadd from the pinned ccv-sim            PASS (19 records)
-  vadd: final state == ccv-sim, 0 violations     PASS (222 cycles, 27/48 channels)
-  vadd: bank EV_CH_XFER == every launch          PASS (582 transfers)
+  vadd: final state == ccv-sim, 0 violations     PASS (186 cycles, 155 from first fetch, 27/48 channels)
+  vadd: bank EV_CH_XFER == every launch          PASS (713 transfers)
   vadd: deterministic (trace byte-identical)     PASS
   vadd trace -> Perfetto, 17 retires on 17 instrs PASS
   --break corrupt-fetch: DEC rejects the bytes   PASS
@@ -187,34 +317,36 @@
   --break corrupt-echo: stateless write-back misroutes PASS
   --break movi-in-lane: the lanes refuse it      PASS (V-35 names the late done; 516 failures, as pinned)
   --break srd-selector: DEC's range check        PASS
-  sel: final state == ccv-sim, 0 violations      PASS (117 cycles)
+  sel: final state == ccv-sim, 0 violations      PASS (94 cycles, 63 from first fetch)
   --break drop-pred-data: sel's lanes reject it  PASS
-  srd: final state == ccv-sim, 0 violations      PASS (110 cycles)
+  srd: final state == ccv-sim, 0 violations      PASS (87 cycles, 56 from first fetch)
   --break corrupt-ctaid: srd's lanes reject it   PASS
   --break late-lead: every lane sees a stale mask PASS
   --break ignore-mask: masked-off poison lands   PASS
-  pguard: final state == ccv-sim, 0 violations   PASS (125 cycles)
+  pguard: final state == ccv-sim, 0 violations   PASS (102 cycles, 71 from first fetch)
   --break conflate-pred: guard and P0/P1 wrong   PASS
   --break swap-prat0: compare reads OOE's map    PASS
-  merge: final state == ccv-sim, 0 violations    PASS (66 cycles)
+  merge: final state == ccv-sim, 0 violations    PASS (66 cycles, 35 from first fetch)
   --break dirty-zero: every zero-register path   PASS (64 lane checks, P2, P3)
   --break wrong-merge: the lanes refuse it       PASS
-  mload: final state == ccv-sim, 0 violations    PASS (99 cycles)
+  mload: final state == ccv-sim, 0 violations    PASS (100 cycles, 69 from first fetch)
   --break skip-copy: inactive lanes keep garbage PASS (R5 read, R8 final)
   --break copy-from-new: the lanes refuse it     PASS (32 copied lanes, 16 reads)
   --break late-copy: RCU's contract check fires  PASS (both copies)
-  unal: == ccv-sim, reaches its bins             PASS (222 cycles; line_split=3 lines_peak=2 partial_line=2)
-  gather: == ccv-sim, reaches its bins           PASS (2302 cycles; lines_peak=32 line_split=2 partial_line=32 dcu_id_wait>0)
-  loop: == ccv-sim, reaches its bins             PASS (2736 cycles; redirect=99 ckpt_free=1 reg_reuse>0)
-  brs: == ccv-sim, reaches its bins              PASS (92 cycles; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
-  mload: == ccv-sim, reaches its bins            PASS (99 cycles; copy=2 zero_read=1)
-  merge: == ccv-sim, reaches its bins            PASS (66 cycles; zero_read=2 merge=4)
-  vadd: == ccv-sim, reaches its bins             PASS (222 cycles; ckpt_free=1 redirect=0 epoch_drop=0)
-  hit: == ccv-sim, reaches its bins              PASS (209 cycles; l1_hit=4 l1_late=0)
-  byp: == ccv-sim, reaches its bins              PASS (103 cycles; copy=1 lane_byp=4)
-  plog: == ccv-sim, reaches its bins             PASS (65 cycles; merge=3)
-  --break one-line: the lanes past the boundary  PASS (loads at MIU, 17 stored words)
-  --break free-new: a live register reallocated  PASS (seq 382, once the list wraps)
+  unal: == ccv-sim, reaches its bins             PASS (218 cycles, 187 from first fetch; line_split=3 lines_peak=2 partial_line=2 full_line=0)
+  gather: == ccv-sim, reaches its bins           PASS (2296 cycles, 2265 from first fetch; lines_peak=32 line_split=2 partial_line=32 full_line=0 dcu_id_wait>0 hit_under_miss=2)
+  loop: == ccv-sim, reaches its bins             PASS (2736 cycles, 2705 from first fetch; redirect=99 ckpt_free=1 reg_reuse>0)
+  brs: == ccv-sim, reaches its bins              PASS (92 cycles, 61 from first fetch; redirect=1 ckpt_peak=4 ckpt_full>0 ckpt_free=5)
+  mload: == ccv-sim, reaches its bins            PASS (100 cycles, 69 from first fetch; copy=2 zero_read=1)
+  merge: == ccv-sim, reaches its bins            PASS (66 cycles, 35 from first fetch; zero_read=2 merge=4)
+  vadd: == ccv-sim, reaches its bins             PASS (186 cycles, 155 from first fetch; ckpt_free=1 redirect=0 epoch_drop=0 full_line=1)
+  hit: == ccv-sim, reaches its bins              PASS (209 cycles, 178 from first fetch; l1_hit=4 l1_late=0)
+  late: == ccv-sim, reaches its bins             PASS (156 cycles, 125 from first fetch; l1_late=1 l1_hit=2 hit_under_miss=1)
+  byp: == ccv-sim, reaches its bins              PASS (105 cycles, 74 from first fetch; copy=1 lane_byp=4)
+  plog: == ccv-sim, reaches its bins             PASS (65 cycles, 34 from first fetch; merge=3)
+  --break one-line: the lanes past the boundary  PASS (loads at MIU, 17 stored words and 2 overwritten)
+  --break skip-read-partial: words lost          PASS (unal's 4 words beside its store)
+  --break free-new: a live register reallocated  PASS (seq 383, its source reallocated)
   --break corrupt-group-mask: lane 31 refuses it PASS (A-69)
   --break stale-epoch: OOE drops the uop         PASS (A-70; 406 of 407 retire)
   every kernel with l1_spec alone; hit's 4 on time PASS (its miss's dependant replayed)
@@ -223,13 +355,16 @@
   --break no-rcu-bypass: hits' dependants read stale PASS (4 ops x 32 lanes)
   --break drop-src-valid: seq 14 reads R9 stale  PASS (32 lanes)
   --break arch-pred-srcs: plog's P3 wrong        PASS (RCU's check, 8 lanes' enable, the final P3)
-  every kernel with bypass alone, and both off   PASS (forwarding in 11 kernels; byp's 4; none with both off)
+  every kernel with bypass alone, and both off   PASS (forwarding in 12 kernels; byp's 4; none with both off)
   --break no-lane-bypass: forwards read stale    PASS (4 operands x 32 lanes)
     ...and merge's merge_data                    PASS (its 16 switched-off lanes)
   an OOE bypassing at 3: RCU refuses it          PASS (2 dependants; their 64 lane reads stale)
-  --break no-resource-cap: RCU refuses the overlap PASS (V-60: 3 pairs, 12 slots, sections and pipes)
+  --break no-resource-cap: RCU refuses the overlap PASS (V-60: 4 pairs, 16 slots, sections and pipes)
   --break bad-pos: RCU and the lanes refuse it   PASS (seq 2's destination; 32 lanes)
   --break narrow-pipes: MIU refuses each memop   PASS (8 memops)
+  --break ordering-on-load: DEC, OOE and MIU refuse PASS (7 loads each)
+  --break memop-ordering: OOE and MIU refuse each PASS (7 loads)
+  [kernel: 177s]
 
 == Stage 4b -- OOE model unit tests (sim/ooe/) ==
   OOE unit tests                                       PASS
@@ -240,39 +375,87 @@
   control bypass-faster-than-contract                  caught
   control complete-before-rs-free                      caught
   control narrow-footprint                             caught
+  control no-alloc-lead                                caught
+  control late-event                                   caught
+  control no-bar-fault                                 caught
+  control fa-youngest                                  caught
+  control no-width-fault                               caught
+  control no-format-fault                              caught
+  [ooe_unit: 32s]
 
 == Stage 4c -- OOE RTL (rtl/ooe/) ==
-  pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=225276 lost=128983 multi-issue=43171 fails=0)
+  pick rcu (30 entries, 5 resources) == model          PASS (200000 issued=288854 lost=144063 multi-issue=80523 fails=0)
     control youngest-wins (rcu)                        caught
     control any-wins (rcu)                             caught
     control no-mask (rcu)                              caught
-  pick miu (15 entries, 4 resources) == model          PASS (200000 issued=199577 lost=83521 multi-issue=36536 fails=0)
+    control no-fallback (rcu)                          caught
+  pick rcuh (30 entries, 5 resources) == model         PASS (200000 issued=296235 lost=144063 multi-issue=86933 fails=0)
+    control youngest-wins (rcuh)                       caught
+    control any-wins (rcuh)                            caught
+    control no-mask (rcuh)                             caught
+    control no-fallback (rcuh)                         caught
+    control no-half (rcuh)                             caught
+  pick miu (15 entries, 4 resources) == model          PASS (200000 issued=200986 lost=90984 multi-issue=39758 fails=0)
     control youngest-wins (miu)                        caught
     control any-wins (miu)                             caught
     control no-mask (miu)                              caught
-  ready (45 entries) == model, live                    PASS (25 cycles=82529 skipped=46438 compared=672360 ready=369916 mismatches=0 model_failures=0)
+  ready (45 entries) == model, live                    PASS (25 cycles=85124 skipped=48131 compared=659686 ready=368681 mismatches=0 model_failures=0)
     control code-shift (ready)                         caught
     control no-late (ready)                            caught
-  freelist gpr (192 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=82529 allocs=64627 frees=56977 skipped=0 mismatches=0 model_failures=0)
-./test/ooe/run-rtl.sh: line 98:  6920 Aborted                 FL_CONTROL=$c "$dir/freelist_tb" 3 > /dev/null 2>&1
+  freelist gpr (192 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=84924 allocs=64535 frees=56904 skipped=0 mismatches=0 model_failures=0)
     control drop-free (freelist gpr)                   caught
-./test/ooe/run-rtl.sh: line 98:  6924 Aborted                 FL_CONTROL=$c "$dir/freelist_tb" 3 > /dev/null 2>&1
     control extra-alloc (freelist gpr)                 caught
-  freelist pred (48 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=82529 allocs=9390 frees=7417 skipped=0 mismatches=0 model_failures=0)
-./test/ooe/run-rtl.sh: line 98:  6945 Aborted                 FL_CONTROL=$c "$dir/freelist_tb" 3 > /dev/null 2>&1
+    control no-lead (freelist gpr)                     caught
+  freelist pred (48 entries, 4 ports) == model, live   PASS (25 cores=200 cycles=84924 allocs=9390 frees=7417 skipped=0 mismatches=0 model_failures=0)
     control drop-free (freelist pred)                  caught
-./test/ooe/run-rtl.sh: line 98:  6949 Aborted                 FL_CONTROL=$c "$dir/freelist_tb" 3 > /dev/null 2>&1
     control extra-alloc (freelist pred)                caught
-  age rcu (30 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=82529 allocs=74965 multi-alloc=23980 pairs=24979946 mismatches=0 model_failures=0)
+    control no-lead (freelist pred)                    caught
+  age rcu (30 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=85124 allocs=74797 multi-alloc=23540 pairs=22644434 mismatches=0 model_failures=0)
     control no-valid (age rcu)                         caught
     control port-reverse (age rcu)                     caught
-  age miu (15 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=82529 allocs=26016 multi-alloc=5612 pairs=5039928 mismatches=0 model_failures=0)
+    control no-lead (age rcu)                          caught
+  age miu (15 entries, 4 ports) == model, live         PASS (25 cores=200 cycles=85124 allocs=26083 multi-alloc=5261 pairs=4772304 mismatches=0 model_failures=0)
     control no-valid (age miu)                         caught
     control port-reverse (age miu)                     caught
-  decq (12 entries, 4 slots, 6 in, 4 out) == model, live PASS (25 cores=200 cycles=82529 arrivals=103896 taken=98193 flushes=2357 heads=342136 pool-full=47940 mismatches=0 model_failures=0)
-./test/ooe/run-rtl.sh: line 158:  7021 Aborted                 DECQ_CONTROL=$c "$dir/decq_tb" 3 > /dev/null 2>&1
+    control no-lead (age miu)                          caught
+  decq (13 entries, 4 slots, 6 in, 4 out) == model, live PASS (25 cores=200 cycles=84924 arrivals=103540 taken=98092 flushes=2357 heads=324830 pool-full=14791 mismatches=0 model_failures=0)
     control drop-flush (decq)                          caught
     control enq-swap (decq)                            caught
+    control no-enq-lead (decq)                         caught
+  wake (45 timers, 4 lines) == model, live             PASS (25 cores=251 cycles=93605 skipped=57149 grants=30448 cmpls=3435 misses=416 stops=35419 fins=23414 compared=2368800 raised=64360 mismatches=0 model_failures=0)
+    control late-grant (wake)                          caught
+    control drop-cmpl (wake)                           caught
+    control drop-stop (wake)                           caught
+    control no-cmpl-lead (wake)                        caught
+    control no-sq-lead (wake)                          caught
+  confirm (45 entries) == model, live                  PASS (25 cores=200 cycles=85128 held=17715 replays=1107 confirms=82102 oa17=pass mismatches=0 model_failures=0)
+    control no-msd (confirm)                           caught
+    control msd-pulse (confirm)                        caught
+    control no-fin (confirm)                           caught
+    control no-dep (confirm)                           caught
+  rs (45 entries, 4 ports a class) == model, live      PASS (25 cores=251 cycles=93605 allocs=105114 in-group=5590 frees=105114 same-edge=28631 rows=1806123 cells=431767 mismatches=0 model_failures=0)
+    control no-same-edge (rs)                          caught
+    control drop-group (rs)                            caught
+    control stale-hcol (rs)                            caught
+    control no-req-lead (rs)                           caught
+    control no-sq-lead (rs)                            caught
+    control no-cmpl-lead (rs)                          caught
+    control no-fin (rs)                                caught
+  rat (4 slots, 4 ports) == model, live                PASS (25 cores=251 cycles=93330 skipped=275 renames=101578 in-group=71322 checkpoints=7644 restores=2459 squashes=3 releases=499 retires=65861 restore-writes=36 mismatches=0 model_failures=0)
+    control port-reverse (rat)                         caught
+    control drop-restore (rat)                         caught
+    control drop-retire (rat)                          caught
+    control drop-squash (rat)                          caught
+  select (45 entries, 9 resources) == model, live      PASS (25 cycles=85124 followed=18932 candidates=38275 grants=16730 memops=3488 mismatches=0 model_failures=0)
+    control no-order (select)                          caught
+    control no-conf (select)                           caught
+    control no-busy (select)                           caught
+  sched (ready, request, grant registers) == model     PASS (25 cores=200 cycles=85124 followed=18884 skipped=66192 grants=16730 requests=252347 ready_rows=320416 misses=1381 missed_bits=3289 mismatches=0 model_failures=0)
+    control no-msd (sched)                             caught
+    control no-miss-lead (sched)                       caught
+    control late-leads (sched)                         caught
+    control no-alloc-lead (sched)                      caught
+  [ooe_rtl: 751s]
 
 == SV top -- rtl/top/ (generated, tracked) ==
   verilator -Wall: top (synthesis view)          PASS
@@ -284,9 +467,10 @@
   icarus: top simulates -DCCV_CHECK              PASS
   yosys: 45 blocks; checkers only under CCV_CHECK PASS
   top and wrappers: only instances and nets      PASS (both views)
-    ...and refuses 11 impure copies: top, wrapper, reuse, gate PASS
-  SV top wiring == C++ skeleton wiring           PASS (63498 bits)
+    ...and refuses 12 impure copies: top, wrapper, reuse, gate, units PASS
+  SV top wiring == C++ skeleton wiring           PASS (63242 bits)
     ...and rejects a lane swapped in a copy      PASS
+  [top: 137s]
 
 == Formal proofs -- one credited link, and the block clock gate ==
   safety, N=0: every property, for all time      PASS (proved)
@@ -300,20 +484,24 @@
     ...two consumed, one credit: credit_per_msg fails PASS (cex 10)
     ...two consumed, one credit: conservation fails PASS (cex 9)
     ...repeater enable_now: data_in_order fails  PASS (cex 8)
-    ...repeater lead_late: data_in_order fails   PASS (cex 7)
+    ...repeater lead_late: data_in_order fails   PASS (cex 8)
     ...witness: reach_three                      PASS (10 frames)
-    ...witness: reach_full                       PASS (13 frames)
+    ...witness: reach_full                       PASS (16 frames)
   clock gate (3/5/3): glitch, cycle, Q-33        PASS (proved)
   clock gate (8/16/3): glitch, cycle, Q-33       PASS (proved)
-    ...a wake a cycle later still: wake_second_edge fail PASS (cex 13)
-    ...the wake back on the enable path, unregistered: spec fail PASS (cex 9)
-    ...wake hold one short of CCV_WAKE_LAT: wake_keeps_rx fail PASS (cex 11)
-    ...hysteresis one short: spec fail           PASS (cex 7)
-    ...reset left off the enable: reset_opens fail PASS (cex 9)
+  clock gate: thresholds steady through a run    PASS (proved)
+    ...a wake a cycle later still: wake_second_edge fail PASS (cex 12)
+    ...the wake back on the enable path, unregistered: spec fail PASS (cex 16)
+    ...wake hold one short of CCV_WAKE_LAT: wake_keeps_rx fail PASS (cex 20)
+    ...hysteresis one short: spec fail           PASS (cex 10)
+    ...a count that wraps at the largest threshold: episode fail PASS (cex 184)
+    ...a threshold sampled only in reset: episode fail PASS (cex 8)
+    ...reset left off the enable: reset_opens fail PASS (cex 4)
     ...an ICG with no latch: the clean-clock properties fail PASS (cex 1)
     ...a latch open on the high phase: the clean-clock properties fail PASS (cex 1)
-    ...witness: reach_gated                      PASS (17 frames)
-    ...witness: reach_woken                      PASS (17 frames)
+    ...witness: reach_gated                      PASS (12 frames)
+    ...witness: reach_woken                      PASS (18 frames)
+  [formal: 760s]
 
 == Physical primitives -- sequential repeater ==
   repeater: verilator -Wall, six shapes          PASS
@@ -324,28 +512,33 @@
     ...enable-now, lead-late, credit-short caught PASS
     ...free-run: invisible in sim, refused by netlist PASS
     ...lead-late also refused by the netlist check PASS
+    ...lead-gated: invisible in sim, refused by netlist PASS
+    ...raw-reset: invisible in sim, refused by netlist PASS
+  [phys: 28s]
 
 == SV-hosted C++ -- the skeleton's blocks inside the SV top ==
   verilator -Wall: shims, top, testbench         PASS
     ...and refuse a build without CCV_TRACE      PASS
   SV-hosted build: 45 blocks + EXTERNAL as shims PASS
   brs: SV-hosted == C++-hosted                   PASS (307 events, cycles=92)
-  byp: SV-hosted == C++-hosted                   PASS (748 events, cycles=103)
-  gather: SV-hosted == C++-hosted                PASS (1373 events, cycles=2302)
+  byp: SV-hosted == C++-hosted                   PASS (748 events, cycles=105)
+  gather: SV-hosted == C++-hosted                PASS (1373 events, cycles=2296)
   hit: SV-hosted == C++-hosted                   PASS (752 events, cycles=209)
+  late: SV-hosted == C++-hosted                  PASS (946 events, cycles=156)
   loop: SV-hosted == C++-hosted                  PASS (23329 events, cycles=2736)
   merge: SV-hosted == C++-hosted                 PASS (482 events, cycles=66)
-  mload: SV-hosted == C++-hosted                 PASS (598 events, cycles=99)
-  pguard: SV-hosted == C++-hosted                PASS (460 events, cycles=125)
+  mload: SV-hosted == C++-hosted                 PASS (599 events, cycles=100)
+  pguard: SV-hosted == C++-hosted                PASS (453 events, cycles=102)
   plog: SV-hosted == C++-hosted                  PASS (352 events, cycles=65)
-  sel: SV-hosted == C++-hosted                   PASS (293 events, cycles=117)
-  srd: SV-hosted == C++-hosted                   PASS (277 events, cycles=110)
-  unal: SV-hosted == C++-hosted                  PASS (358 events, cycles=222)
-  vadd: SV-hosted == C++-hosted                  PASS (654 events, cycles=222)
-  every kernel control: the same KERNEL line     PASS (36 controls)
-  with OOE's bypass: the same KERNEL line        PASS (14 runs, no-lane-bypass among them)
-    ...u_dec one cycle late: caught              PASS (differing_cycles=116)
-    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=64)
+  sel: SV-hosted == C++-hosted                   PASS (286 events, cycles=94)
+  srd: SV-hosted == C++-hosted                   PASS (270 events, cycles=87)
+  unal: SV-hosted == C++-hosted                  PASS (358 events, cycles=218)
+  vadd: SV-hosted == C++-hosted                  PASS (789 events, cycles=186)
+  every kernel control: the same KERNEL line     PASS (39 controls)
+  with OOE's bypass: the same KERNEL line        PASS (15 runs, no-lane-bypass among them)
+    ...u_dec one cycle late: caught              PASS (differing_cycles=105)
+    ...u_lane_05 one cycle late: caught          PASS (differing_cycles=51)
+  [svh: 241s]
 
 == Hardening wrappers -- params/links.json ==
   links.json: malformed configurations refused   PASS (12 cases, each by name)
@@ -354,15 +547,18 @@
   split: lanes hard-reused, 3 templates for 32   PASS (ccv_lane_w, _v1, _v2)
   split: S0 suite, every control, every credit home PASS
   split: wiring traced flop by flop == C++       PASS (85 slot(s) repeated, 177 stages)
-  split: every S1 kernel == ccv-sim              PASS (vadd 253 cycles)
+  split: every S1 kernel == ccv-sim              PASS (vadd 218 cycles)
   split: every kernel with OOE's bypass          PASS (CCV_LAT_LANE 11, still forwarded at 4; byp's 5)
-  split: SV repeaters == C++ link model          PASS (13 kernels, 36 controls, skew caught)
+  split: SV repeaters == C++ link model          PASS (14 kernels, 39 controls, skew caught)
+  [links: 348s]
 
 == Walkthrough -- docs/walkthrough.md ==
   walkthrough current
+  [walkthrough: 5s]
 
 == Verilator lint ==
   clean
+  [vlint: 1s]
 
 == pending stages ==
   Stage 2  partition CLOSED (14 blocks, 45 instances, 48 channels); topology,

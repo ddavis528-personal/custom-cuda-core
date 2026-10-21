@@ -92,9 +92,9 @@ for sel in WHILE:t_stable_while FOR:t_stable_for RESP:t_resp; do
     if iverilog -g2012 -gassertions -D"$d" -I "$INC" -o "$TMP/t.out" -s tb \
          "$PKG" "$TSMOKE" "$TB" >"$TMP/t.log" 2>&1; then
       r=$(vvp "$TMP/t.out" 2>&1)
-      if echo "$r" | grep -q "internal error"; then
+      if grep -q "internal error" <<<"$r"; then
         bad "icarus: $prop runs" "vvp crashed"
-      elif [ "$(echo "$r" | grep -c "$prop")" -lt 1 ]; then
+      elif [ "$(grep -c "$prop" <<<"$r")" -lt 1 ]; then
         bad "icarus: $prop fires on a violation" "never fired"
       else
         say "icarus: $prop fires on a violation" "PASS"
@@ -109,7 +109,7 @@ for sel in WHILE:t_stable_while FOR:t_stable_for RESP:t_resp; do
          "$PKG" "$TSMOKE" "$TB" >"$TMP/tv.log" 2>&1 \
        && [ -x "$TMP/tv_$prop/Vtb" ]; then
       r=$("$TMP/tv_$prop/Vtb" 2>&1)
-      if [ "$(echo "$r" | grep -c "$prop")" -lt 1 ]; then
+      if [ "$(grep -c "$prop" <<<"$r")" -lt 1 ]; then
         bad "verilator: $prop fires on a violation" "never fired"
       else
         say "verilator: $prop fires on a violation" "PASS"
@@ -149,17 +149,17 @@ ccv_assert_smoke.sv
 ccv_assert.svh
 SBY
   out=$(cd "$TMP/f" && sby -f s.sby 2>&1)
-  if echo "$out" | grep -q "DONE (FAIL"; then
-    if echo "$out" | grep -q "smoke_fires"; then
+  if grep -q "DONE (FAIL" <<<"$out"; then
+    if grep -q "smoke_fires" <<<"$out"; then
       say "sby: library elaborates, property bites, named" "PASS"
     else
       say "sby: library elaborates and property bites" "PASS (label not in report)"
     fi
-  elif echo "$out" | grep -q "DONE (PASS"; then
+  elif grep -q "DONE (PASS" <<<"$out"; then
     bad "sby: property bites through the enable gate" \
         "BMC passed a property written to be false -- the guard may be disarming formal"
   else
-    bad "sby: library elaborates" "$(echo "$out" | grep -m1 ERROR || echo '?')"
+    bad "sby: library elaborates" "$(grep -m1 ERROR <<<"$out" || echo '?')"
   fi
 else
   say "sby/yosys" "SKIP -- not installed"

@@ -20,6 +20,7 @@ cell), and on ccv_top and on every wrapper module:
   R1  every cell is what that level may hold: at the top, the 45 wrappers,
       one per block instance, named for it; in a wrapper, exactly one block
       (u_blk) of the wrapper's type, and sequential repeaters (u_rpt_*,
+      in a generate block where the wrapper's stages are parameters, and
       u_ft_*). Under CCV_CHECK the top may also hold the one checker bank
   R2  no constant on any cell port, and none on the module's own ports: a
       tie-off is a cell in a netlist, and a decision nobody owns
@@ -56,6 +57,13 @@ must then fail, naming that rule:
 
   gatetie   FET's clk_gated tied instead of the gate's report R7
   gateclk   FET's gate clocked by something other than core_clk R7
+
+  R8  every repeater the synthesis view instantiates with stages is a unit
+      of rtl/top/rpt-units.json, which tools/check-cg.py and check-ngd.py
+      measure like any module (Daniel, 2026-10-18), and every unit there is
+      one of them: read from the elaborated netlist, not the generator
+
+  rptunits  a unit the netlist has no repeater for              R8
 """
 import json
 import os
@@ -229,7 +237,7 @@ def check_all(modules, with_bank):
             if name == "u_blk" and ct == "ccv_%s" % btype:
                 seen_blk.append(name)
                 return None
-            if ct == "ccv_common_rpt" and re.match(r"^u_(rpt|ft\d+)_", name):
+            if ct == "ccv_common_rpt" and re.match(r"^(g_rpt_\w+\.)?u_(rpt|ft\d+)_", name):
                 return None
             return "is not the wrapper's block (u_blk) or a repeater"
 
@@ -315,6 +323,7 @@ def check_reuse(modules, reuse):
 
 
 WRAP_FET = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_fet_w.sv")
+RPT_UNITS = os.path.join(ROOT, "rtl", "top", "rpt-units.json")
 WRAP_LANE = os.path.join(ROOT, "rtl", "top", "wrap", "ccv_lane_w.sv")
 STUB_FET = os.path.join(ROOT, "rtl", "top", "stubs", "ccv_fet.sv")
 MUTATIONS = {
@@ -339,6 +348,10 @@ MUTATIONS = {
         "assign clk_gated = cg_gated;", "assign clk_gated = 1'b0;", 1)),
     "gateclk": ("R7", STUB_FET, lambda t: t.replace(
         ".clk         (core_clk),", ".clk         (rst_n),", 1)),
+    "rptunits": ("R8", RPT_UNITS, lambda t: t.replace(
+        '"units": [', '"units": [{"name": "fx", "params": {"STAGES": 3, "SLOTS": 1, '
+        '"PAYLOAD_W": 8, "LEAD_MASK": "8\'h0"}}' + ("," if '"units": []' not in t else ""),
+        1)),
     # Hard reuse: a lane template duplicated under another name (not minimal),
     # and a lane given a parameter (not one hard macro).
     "dupreuse": ("R6", TOP, lambda t: t.replace(
@@ -356,17 +369,51 @@ def sources(override=None, extra=()):
     """The files Yosys reads: stubs, the repeater, the wrappers, the top --
     with mutated copies replacing or joining them."""
     d = os.path.join(ROOT, "rtl", "top")
-    files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")))
+    files = sorted(os.path.join(d, "stubs", f) for f in os.listdir(os.path.join(d, "stubs")) if f.endswith(".sv"))
     files.append(os.path.join(ROOT, "rtl", "phys", "ccv_common_rpt.sv"))
     # Each block's clock gate and its ctech cell: inside the block, so no
     # rule here applies to them, but the block does not elaborate without.
     files.append(os.path.join(ROOT, "rtl", "clk", "ccv_common_clk.sv"))
     files += ccv_ctech.files()
-    files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")))
+    files += sorted(os.path.join(d, "wrap", f) for f in os.listdir(os.path.join(d, "wrap")) if f.endswith(".sv"))
     files.append(TOP)
     for old, new in (override or {}).items():
         files = [new if f == old else f for f in files]
     return files + list(extra)
+
+
+def pval(v):
+    """A parameter value from Yosys's JSON: a bit string, or a number."""
+    return int(v, 2) if isinstance(v, str) and set(v) <= {"0", "1"} else int(v)
+
+
+def lit(v):
+    """A unit's parameter: a number, or a sized literal (8'h3)."""
+    if isinstance(v, int):
+        return v
+    w, _, x = str(v).partition("'h")
+    return int(x, 16) if x else int(w)
+
+
+def check_rpt_units(mods, path):
+    """R8: the repeaters with stages the netlist instantiates, as (stages,
+    slots, payload width, lead mask), against rtl/top/rpt-units.json's."""
+    have = set()
+    for mod in mods.values():
+        for c in mod["cells"].values():
+            if base(c["type"]) == "ccv_common_rpt" and c["type"] in mods:
+                pv = mods[c["type"]].get("parameter_default_values", {})
+                k = tuple(pval(pv.get(n, "0")) for n in ("STAGES", "SLOTS", "PAYLOAD_W",
+                                                         "LEAD_MASK"))
+                if k[0]:
+                    have.add(k)
+    units = {tuple(lit(u["params"][n]) for n in ("STAGES", "SLOTS", "PAYLOAD_W", "LEAD_MASK"))
+             for u in json.load(open(path))["units"]}
+    bad = [("R8", "a repeater of %d stage(s), %d slot(s), %d bits, lead %#x is no unit of %s"
+            % (k + (os.path.relpath(RPT_UNITS, ROOT),))) for k in sorted(have - units)]
+    bad += [("R8", "unit (%d stage(s), %d slot(s), %d bits, lead %#x) is no repeater the "
+             "netlist has" % k) for k in sorted(units - have)]
+    return bad, len(have)
 
 
 def main():
@@ -402,6 +449,9 @@ def main():
             bad += rb
             gb, ngated = check_gates(mods, bool(defs))
             bad += gb
+            if not defs:
+                ub, nrpt = check_rpt_units(mods, override.get(RPT_UNITS, RPT_UNITS))
+                bad += ub
             if bad:
                 fails.append((label, bad))
             else:
@@ -413,6 +463,9 @@ def main():
                 for t, (nt, ni) in sorted(reused.items()):
                     print("  %s: hard reuse, %d template(s) for %d instances"
                           % (t, nt, ni))
+                if not defs:
+                    print("  %s: %d repeater parameterisation(s), each a unit of %s"
+                          % (label, nrpt, os.path.relpath(RPT_UNITS, ROOT)))
         if not fails:
             print("TOP_PURE ok")
             return 0

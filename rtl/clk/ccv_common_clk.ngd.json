@@ -1,0 +1,11 @@
+{
+  "module": "ccv_common_clk",
+  "ports": {
+    "gated": {
+      "observation": true,
+      "by": "TI",
+      "date": "2026-10-18",
+      "why": "An observation port: a block brings it out as clk_gated only under CCV_CHECK, for the checker bank, which samples it at the edge as a flop would. Its paths from te, cg_override and rst_n (4.7 NGD) are no receiver's logic, so neither the port rules nor NGD-5 hold it."
+    }
+  }
+}

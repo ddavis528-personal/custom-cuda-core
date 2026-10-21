@@ -50,7 +50,7 @@ LOOP=$(sed -n 's/.*localparam int CCV_CREDIT_DEPTH = \([0-9]*\);/\1/p' rtl/gener
 # prove NAME N DEPTH "DEFINES" TARGET [RPT_FILE]
 #   TARGET "all" keeps every assertion, "-PAT" every one but those ending in
 #   PAT, "PAT" only those. Prints "proved", "cex <frame>", or "error".
-prove() {
+prove_now() {
   local name=$1 n=$2 depth=$3 defs=$4 target=$5 rpt=${6:-$R/rtl/phys/ccv_common_rpt.sv}
   local d="$B/$name"
   mkdir -p "$d"
@@ -96,86 +96,7 @@ YS
   else echo error; fi
 }
 
-# -- safety: every property, any traffic, no assumption --------------------------
-# All but response_within_n, which is a promise about the RECEIVER: it holds
-# only for one that drains, and is proved next under that assumption. Proved
-# here with no assumption at all, so the full buffer is among the states.
-for n in 0 1 2; do
-  depth=$((LOOP + 2 * n))
-  r=$(prove "safety_n$n" $n $depth "" -response_within_n)
-  [ "$r" = proved ] && say "safety, N=$n: every property, for all time" "PASS (proved)" ||
-    bad "safety, N=$n" "$r ($B/safety_n$n/abc.log)"
-  # Bounded response at N = 0 and 1: the checker's per-message age counters
-  # make it the costly proof (~40 s and ~3.5 min; N = 2 does not converge in
-  # 15), and N adds only a fixed latency the two cases already cover.
-  if [ $n -lt 2 ]; then
-    r=$(prove "response_n$n" $n $depth "FV_FAIR" response_within_n)
-    [ "$r" = proved ] && say "  ...bounded response, receiver draining" "PASS (proved)" ||
-      bad "bounded response, N=$n" "$r ($B/response_n$n/abc.log)"
-  fi
-done
-
-# -- full bandwidth at the credit-loop depth, and not one short -----------------
-for n in 0 1 2; do
-  depth=$((LOOP + 2 * n))
-  r=$(prove "bw_n$n" $n $depth "FV_GREEDY" full_bandwidth)
-  r2=$(prove "bw_short_n$n" $n $((depth - 1)) "FV_GREEDY" full_bandwidth)
-  if [ "$r" = proved ] && [ "${r2%% *}" = cex ]; then
-    say "full bandwidth, N=$n, depth $depth" "PASS (proved; depth $((depth - 1)): cex)"
-  else
-    bad "full bandwidth, N=$n" "depth $depth: $r; depth $((depth - 1)): $r2"
-  fi
-done
-
-# -- the properties can fail: mutants ---------------------------------------
-for spec in "double_pop:FV_MUT_DOUBLE_POP:credit_per_msg" \
-            "double_pop_cons:FV_MUT_DOUBLE_POP:conservation"; do
-  IFS=: read -r nm def tgt <<<"$spec"
-  r=$(prove "mut_$nm" 1 $((LOOP + 2)) "$def" "$tgt")
-  [ "${r%% *}" = cex ] && say "  ...two consumed, one credit: $tgt fails" "PASS ($r)" ||
-    bad "mutant double-pop vs $tgt" "$r: not refuted"
-done
-mkdir -p "$B/rpt"
-sed 's/        if (valid_q\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /' \
-  rtl/phys/ccv_common_rpt.sv >"$B/rpt/enable_now.sv"
-sed 's/          if (v\[k\*S+j\]) lead_q <= /          if (valid_q[j]) lead_q <= /' \
-  rtl/phys/ccv_common_rpt.sv >"$B/rpt/lead_late.sv"
-for m in enable_now lead_late; do
-  if cmp -s rtl/phys/ccv_common_rpt.sv "$B/rpt/$m.sv"; then bad "repeater mutant $m" "did not apply"; continue; fi
-  r=$(prove "mut_$m" 1 $((LOOP + 2)) "" data_in_order "$B/rpt/$m.sv")
-  [ "${r%% *}" = cex ] && say "  ...repeater $m: data_in_order fails" "PASS ($r)" ||
-    bad "repeater mutant $m" "$r: not refuted"
-done
-
-# -- non-vacuity: the proofs are about traffic that happens ------------------
-for tgt in reach_three reach_full; do
-  r=$(prove "$tgt" 1 $((LOOP + 2)) "FV_REACH" "$tgt")
-  [ "${r%% *}" = cex ] && say "  ...witness: $tgt" "PASS (${r#cex } frames)" ||
-    bad "non-vacuity $tgt" "$r: unreachable -- the assumptions may be too strong"
-done
-
-# == The block clock gate: rtl/clk/ccv_common_clk.sv ============================
-# test/formal/fv_clk_gate.sv, on Yosys's MULTICLOCK model (clk2fflogic):
-# clk is an input toggling at global steps, each phase one step or two, so
-# the ctech ICG's latch and AND are modelled as they switch -- the glitch an
-# AND gate makes is representable, and must be refuted, not assumed away.
-#
-#   proved                                     must fail (counterexample)
-#   the gated clock is clean, every input      the ICG with no latch, or a
-#     free to move at any step                   latch open on the high phase
-#   cycle behaviour against a model built      the wake a cycle later still,
-#     from input histories: the edge is the      or back on the enable path
-#     decision, a wake (registered, Q-49)        unregistered; hysteresis one
-#     opens the edge ending the NEXT cycle       short; reset left off the
-#     and WAKE_HOLD more, override / reset /     enable
-#     te open it
-#   Q-33 with ccv_common_chk_wake: the sender's   a wake hold one short of
-#     half assumed, the receiver's half          CCV_WAKE_LAT: wake_keeps_rx
-#     (wake_keeps_rx) and "no valid meets a
-#     withheld edge" proved
-#   non-vacuity: the gate closes; a valid is
-#     captured right after a sleep
-prove_cg() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
+prove_cg_now() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
   local name=$1 defs=$2 target=$3 hq=$4 hs=$5 hold=$6
   local gate=${7:-$R/rtl/clk/ccv_common_clk.sv} icg=${8:-$R/rtl/ctech/sim/ccv_common_ctech_icg.sv}
   local d="$B/$name"
@@ -222,6 +143,122 @@ YS
   else echo error; fi
 }
 
+# Every proof is independent, in its own directory, so they run CCV_JOBS at a
+# time (default every core). The body below runs twice: first each prove /
+# prove_cg only queues its proof, then the queue runs, the slowest known
+# first; then each reads its verdict back, and the body reports in order.
+PHASE=queue
+Q="$B/queue"
+prove()    { if [ $PHASE = queue ]; then printf '%q ' prove_now "$@" >>"$Q"; echo >>"$Q"; echo queued
+             else cat "$B/$1/verdict"; fi; }
+prove_cg() { if [ $PHASE = queue ]; then printf '%q ' prove_cg_now "$@" >>"$Q"; echo >>"$Q"; echo queued
+             else cat "$B/$1/verdict"; fi; }
+# The slowest proofs (about 3, 2.5, 2, 2, 1.5 and 1 min), started first so
+# none of them starts last.
+SLOW="cg_episode safety_n2 response_n1 cgm_hyst_wrap response_n0 safety_n1"
+run_queue() {
+  local jobs=${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)} line name n=0
+  case "$jobs" in ''|*[!0-9]*|0) jobs=1 ;; esac
+  { for name in $SLOW; do grep -E "^prove(_cg)?_now $name " "$Q"; done
+    grep -vE "^prove(_cg)?_now ($(echo $SLOW | tr ' ' '|')) " "$Q"; } >"$Q.sorted"
+  while IFS= read -r line; do
+    eval "set -- $line"; name=$2
+    mkdir -p "$B/$name"
+    ( "$@" >"$B/$name/verdict" ) &
+    n=$((n + 1))
+    if [ $n -ge "$jobs" ]; then wait -n; n=$((n - 1)); fi
+  done <"$Q.sorted"
+  wait
+}
+
+body() {
+# -- safety: every property, any traffic, no assumption --------------------------
+# All but response_within_n, which is a promise about the RECEIVER: it holds
+# only for one that drains, and is proved next under that assumption. Proved
+# here with no assumption at all, so the full buffer is among the states.
+for n in 0 1 2; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "safety_n$n" $n $depth "" -response_within_n)
+  [ "$r" = proved ] && say "safety, N=$n: every property, for all time" "PASS (proved)" ||
+    bad "safety, N=$n" "$r ($B/safety_n$n/abc.log)"
+  # Bounded response at N = 0 and 1: the checker's per-message age counters
+  # make it the costly proof (~40 s and ~3.5 min; N = 2 does not converge in
+  # 15), and N adds only a fixed latency the two cases already cover.
+  if [ $n -lt 2 ]; then
+    r=$(prove "response_n$n" $n $depth "FV_FAIR" response_within_n)
+    [ "$r" = proved ] && say "  ...bounded response, receiver draining" "PASS (proved)" ||
+      bad "bounded response, N=$n" "$r ($B/response_n$n/abc.log)"
+  fi
+done
+
+# -- full bandwidth at the credit-loop depth, and not one short -----------------
+for n in 0 1 2; do
+  depth=$((LOOP + 2 * n))
+  r=$(prove "bw_n$n" $n $depth "FV_GREEDY" full_bandwidth)
+  r2=$(prove "bw_short_n$n" $n $((depth - 1)) "FV_GREEDY" full_bandwidth)
+  if [ "$r" = proved ] && [ "${r2%% *}" = cex ]; then
+    say "full bandwidth, N=$n, depth $depth" "PASS (proved; depth $((depth - 1)): cex)"
+  else
+    bad "full bandwidth, N=$n" "depth $depth: $r; depth $((depth - 1)): $r2"
+  fi
+done
+
+# -- the properties can fail: mutants ---------------------------------------
+for spec in "double_pop:FV_MUT_DOUBLE_POP:credit_per_msg" \
+            "double_pop_cons:FV_MUT_DOUBLE_POP:conservation"; do
+  IFS=: read -r nm def tgt <<<"$spec"
+  r=$(prove "mut_$nm" 1 $((LOOP + 2)) "$def" "$tgt")
+  [ "${r%% *}" = cex ] && say "  ...two consumed, one credit: $tgt fails" "PASS ($r)" ||
+    bad "mutant double-pop vs $tgt" "$r: not refuted"
+done
+mkdir -p "$B/rpt"
+sed 's/        if (pay_en\[j\]) pay_q <= /        if (v[k*S+j]) pay_q <= /' \
+  rtl/phys/ccv_common_rpt.sv >"$B/rpt/enable_now.sv"
+sed 's/            if (lead_en) lead_q <= /            if (pay_en[j]) lead_q <= /' \
+  rtl/phys/ccv_common_rpt.sv >"$B/rpt/lead_late.sv"
+# lead_late on a link of two stages: the first stage's lead has no enable (its
+# valid is an input), so only a later stage's lead can be taken late.
+for spec in enable_now:1 lead_late:2; do
+  m=${spec%%:*}; n=${spec##*:}
+  if cmp -s rtl/phys/ccv_common_rpt.sv "$B/rpt/$m.sv"; then bad "repeater mutant $m" "did not apply"; continue; fi
+  r=$(prove "mut_$m" $n $((LOOP + 2 * n)) "" data_in_order "$B/rpt/$m.sv")
+  [ "${r%% *}" = cex ] && say "  ...repeater $m: data_in_order fails" "PASS ($r)" ||
+    bad "repeater mutant $m" "$r: not refuted"
+done
+
+# -- non-vacuity: the proofs are about traffic that happens ------------------
+for tgt in reach_three reach_full; do
+  r=$(prove "$tgt" 1 $((LOOP + 2)) "FV_REACH" "$tgt")
+  [ "${r%% *}" = cex ] && say "  ...witness: $tgt" "PASS (${r#cex } frames)" ||
+    bad "non-vacuity $tgt" "$r: unreachable -- the assumptions may be too strong"
+done
+
+# == The block clock gate: rtl/clk/ccv_common_clk.sv ============================
+# test/formal/fv_clk_gate.sv, on Yosys's MULTICLOCK model (clk2fflogic):
+# clk is an input toggling at global steps, each phase one step or two, so
+# the ctech ICG's latch and AND are modelled as they switch -- the glitch an
+# AND gate makes is representable, and must be refuted, not assumed away.
+#
+#   proved                                     must fail (counterexample)
+#   the gated clock is clean, every input      the ICG with no latch, or a
+#     free to move at any step                   latch open on the high phase
+#   cycle behaviour against a model built      the wake a cycle later still,
+#     from input histories: the edge is the      or back on the enable path
+#     decision, a wake (registered, Q-49)        unregistered; hysteresis one
+#     opens the edge ending the NEXT cycle       short; reset left off the
+#     and WAKE_HOLD more, override / reset /     enable
+#     te open it
+#   Q-33 with ccv_common_chk_wake: the sender's   a wake hold one short of
+#     half assumed, the receiver's half          CCV_WAKE_LAT: wake_keeps_rx
+#     (wake_keeps_rx) and "no valid meets a
+#     withheld edge" proved
+#   episode: the thresholds free, as CSRs     a threshold sampled only in
+#     (Q-59); wherever one held its value       reset; a count that wraps at
+#     through the current run, `gated` is       the largest threshold
+#     what that value gives
+#   non-vacuity: the gate closes; a valid is
+#     captured right after a sleep
+
 pkgval() { sed -n "s/.*localparam int $1 = \([0-9]*\);/\1/p" rtl/generated/ccv_params_pkg.sv; }
 LAT=$(pkgval CCV_WAKE_LAT)
 HOLD=$((LAT - 1))       # the gate's default: registered wake, then LAT - 1
@@ -244,16 +281,25 @@ for cfg in "3 5 $HOLD" "$(pkgval CCV_CG_HYST_QUIESCE) $(pkgval CCV_CG_HYST_STALL
     bad "clock gate ($hq/$hs/$hold)" "${what# }"
 done
 
+# The thresholds as CSRs: free, moving as flops do, promised from the start
+# of a run they hold through (Daniel, 2026-10-17; Q-59). Independent of HQ/HS.
+r=$(prove_cg "cg_episode" "FV_EPISODE FV_FREE_HYST" episode 3 5 $HOLD)
+[ "$r" = proved ] &&
+  say "clock gate: thresholds steady through a run" "PASS (proved)" ||
+  bad "clock gate: thresholds steady through a run" "$r ($B/cg_episode/abc.log)"
+
 mkdir -p "$B/cg_mut"
 G=rtl/clk/ccv_common_clk.sv
 I=rtl/ctech/sim/ccv_common_ctech_icg.sv
 sed 's/  logic          wake_q;/  logic          wake_q, wake_d1;/; s/      wake_q <= |wake;/      wake_d1 <= |wake;\n      wake_q <= wake_d1;/' \
   $G >"$B/cg_mut/wake_late.sv"
-sed 's/  wire           en     = !sleep || wake_q || cg_override || !rst_n;/  wire           en     = !sleep || wake_q || (|wake) || cg_override || !rst_n;/' \
+sed 's/= !sleep || wake_q || override_q || !rst_n_q;/= !sleep || wake_q || (|wake) || override_q || !rst_n_q;/' \
   $G >"$B/cg_mut/wake_comb.sv"
-sed "s/      if (wake_q)             hold_q <= HOLD;/      if (wake_q)             hold_q <= HOLD - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
-sed "s/  wire           q_full = (q_run_q >= hq);/  wire           q_full = (q_run_q + 1'b1 >= hq);/" $G >"$B/cg_mut/hyst_early.sv"
-sed 's/ || cg_override || !rst_n;/ || cg_override;/' $G >"$B/cg_mut/no_reset.sv"
+sed "s/      if (hold_en) hold_q <= wake_q ? HOLD : hold_q - 1'b1;/      if (hold_en) hold_q <= wake_q ? HOLD - 1'b1 : hold_q - 1'b1;/" $G >"$B/cg_mut/hold_short.sv"
+sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 2'd2 >= (CW+1)'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_early.sv"
+sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/(q_run_q + 1'b1 >= CW'(hyst_quiesce))/" $G >"$B/cg_mut/hyst_wrap.sv"
+sed "s/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(hyst_quiesce))/((CW+1)'(q_run_q) + 1'b1 >= (CW+1)'(thr_rst))/; s/^  logic          wake_q;\$/  logic          wake_q;\n  logic [CW-1:0] thr_rst;\n  always_ff @(posedge clk) if (!rst_n) thr_rst <= hyst_quiesce;/" $G >"$B/cg_mut/thr_reset.sv"
+sed 's/ || override_q || !rst_n_q;/ || override_q;/' $G >"$B/cg_mut/no_reset.sv"
 awk '/always_latch begin/{print "  assign en_l = en | te;"; skip=2; next} skip>0{skip--; next} {print}' \
   $I >"$B/cg_mut/no_latch.sv"
 sed 's/    if (!clk) en_l = en | te;/    if (clk) en_l = en | te;/' $I >"$B/cg_mut/high_latch.sv"
@@ -261,6 +307,8 @@ for spec in "wake_late:g::wake_second_edge:a wake a cycle later still" \
             "wake_comb:g::spec:the wake back on the enable path, unregistered" \
             "hold_short:g:FV_Q33:wake_keeps_rx:wake hold one short of CCV_WAKE_LAT" \
             "hyst_early:g::spec:hysteresis one short" \
+            "hyst_wrap:g:FV_EPISODE FV_FREE_HYST:episode:a count that wraps at the largest threshold" \
+            "thr_reset:g:FV_EPISODE FV_FREE_HYST:episode:a threshold sampled only in reset" \
             "no_reset:g::reset_opens:reset left off the enable" \
             "no_latch:i:FV_ASYNC:all:an ICG with no latch" \
             "high_latch:i:FV_ASYNC:all:a latch open on the high phase"; do
@@ -279,5 +327,12 @@ for spec in "reach_gated:FV_REACH" "reach_woken:FV_REACH FV_Q33"; do
   [ "${r%% *}" = cex ] && say "  ...witness: $tgt" "PASS (${r#cex } frames)" ||
     bad "clock-gate non-vacuity $tgt" "$r: unreachable"
 done
+}
+
+body >/dev/null
+run_queue
+PHASE=report
+fail=0
+body
 
 exit $fail

@@ -269,7 +269,7 @@ def build():
     need("wake_keeps_rx" in labels_in("rtl/if/ccv_common_chk_wake.sv"), "no wake_keeps_rx")
     need("quiesced_at_end" in rd("rtl", "if", "ccv_common_chk_credit.sv"), "no quiesced_at_end")
 
-    sections = re.findall(r'^section "([^"]+)"', rd("tools", "verify.sh"), re.M)
+    sections = re.findall(r'^ *section "([^"]+)"', rd("tools", "verify.sh"), re.M)
     oi = rd("docs", "open-items.md")
     oi_open = re.search(r"^- \*\*Open:\*\* (.*)$", oi, re.M).group(1)
     oi_sched = re.search(r"^- \*\*Scheduled:\*\* (.*)$", oi, re.M).group(1)

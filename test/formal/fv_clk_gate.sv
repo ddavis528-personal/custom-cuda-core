@@ -29,6 +29,13 @@
 //             wake_keeps_rx (the gate runs LAT cycles after any wake) and
 //             q33_valid_meets_clock (so no valid that keeps the contract
 //             arrives in a cycle whose edge the gate withholds).
+//   FV_EPISODE  the thresholds free, moving as flops would (CSRs, Q-59),
+//             against a model of run LENGTHS: wherever each threshold has
+//             held one value through the current run of quiesced / stalled
+//             cycles, `gated` is what that value gives (episode). A CSR is
+//             written only while its block is idle (Daniel, 2026-10-17), so
+//             this is the whole promise; a value written mid-run takes
+//             effect at the counter's next step or at the next run.
 //   FV_REACH  non-vacuity: the gate does close (reach_gated), and a valid
 //             is captured in a cycle right after a sleep (reach_woken).
 //===----------------------------------------------------------------------===//
@@ -53,7 +60,8 @@ module fv_clk_gate #(
   localparam int HW = ccv_prov_pkg::CCV_CG_HYST_W;
   // The thresholds are CSR inputs. The cycle model needs them fixed, at HQ
   // and HS; the clean-clock and Q-33 proofs hold for ANY values, changing
-  // at any time (FV_FREE_HYST).
+  // at any time (FV_FREE_HYST), and the episode model for any values held
+  // through a run.
 `ifdef FV_FREE_HYST
   wire [HW-1:0] hyst_q = hyst_q_in;
   wire [HW-1:0] hyst_s = hyst_s_in;
@@ -107,6 +115,14 @@ module fv_clk_gate #(
   always @* if (started && !rose)
     assume (rst_n == rst_n_p && quiesced == q_p && stalled == s_p &&
             wake == w_p && cg_override == o_p && te == te_p && valid == v_p);
+`ifdef FV_EPISODE
+  logic [HW-1:0] hq_p, hs_p;
+  always @($global_clock) begin
+    hq_p <= hyst_q;
+    hs_p <= hyst_s;
+  end
+  always @* if (started && !rose) assume (hyst_q == hq_p && hyst_s == hs_p);
+`endif
 `endif
 
   // -- the gated clock is clean, whatever the enable does -------------------
@@ -124,26 +140,35 @@ module fv_clk_gate #(
   always @* if (rose) edge_decides: assert (gclk == !gated_p);
 
   // -- cycle behaviour, sampled at the edge that ends each cycle ------------
-  // History of the last HQ / HS / HOLD cycles, cleared by reset: the model
-  // the gate is held to, deliberately not built the way the gate is.
+  // The gate flops the reset, the block's reports and the override before
+  // any use (CG-5, RST-1), so each acts a cycle late: rd, qd, sd and od are
+  // they, a cycle ago. History of the last HQ / HS / HOLD cycles, cleared by
+  // that reset: the model the gate is held to, deliberately not built the
+  // way the gate is.
+  logic            rd, qd, sd, od;
   logic [HQ-1:0]   qh;
   logic [HS-1:0]   sh;
   logic [HOLD:0]   wh;     // the wake is registered: HOLD + 1 cycles open
   initial begin qh = '0; sh = '0; wh = '0; end
   always @(posedge clk) begin
-    qh <= !rst_n ? '0 : HQ'({qh, quiesced});
-    sh <= !rst_n ? '0 : HS'({sh, stalled});
-    wh <= !rst_n ? '0 : (HOLD+1)'({wh, wake});
+    rd <= rst_n;
+    qd <= quiesced;
+    sd <= stalled;
+    od <= cg_override;
+    qh <= !rd ? '0 : HQ'({qh, qd});
+    sh <= !rd ? '0 : HS'({sh, sd});
+    wh <= !rd ? '0 : (HOLD+1)'({wh, wake});
   end
   // No `wake` term: this cycle's wake reaches the gate a cycle later.
-  wire exp_gated = rst_n && !te && !cg_override && !(|wh) &&
+  wire exp_gated = rd && !te && !od && !(|wh) &&
                    ((&qh) || (&sh));
 
   // Flops power up anything (formalff -ff2anyinit), the gate's counters as
-  // real ones do; the cycle properties hold from the first reset edge on.
+  // real ones do; the cycle properties hold from the first edge of the
+  // gate's own (flopped) reset on.
   logic reset_seen;
   initial reset_seen = 1'b0;
-  always @(posedge clk) if (!rst_n) reset_seen <= 1'b1;
+  always @(posedge clk) if (!rd && started) reset_seen <= 1'b1;
   // ...and the first cycle is one, as the top's is: the checker below has
   // flops of its own that mean nothing before it.
   always @(posedge clk) if (!reset_seen) assume (!rst_n);
@@ -152,29 +177,64 @@ module fv_clk_gate #(
 `ifndef FV_Q33
 `ifndef FV_REACH
     spec:             assert (gated == exp_gated);
-    wake_second_edge: assert (!(rst_n && wh[0] && gated));
-    wake_hold:        assert (!(rst_n && (|wh) && gated));
-    override_opens: assert (!(cg_override && gated));
-    reset_opens:    assert (!(!rst_n && gated));
+    wake_second_edge: assert (!(rd && wh[0] && gated));
+    wake_hold:        assert (!(rd && (|wh) && gated));
+    override_opens: assert (!(od && gated));
+    reset_opens:    assert (!(!rd && gated));
     te_opens:       assert (!(te && gated));
 `endif
 `endif
   end
+
+`ifdef FV_EPISODE
+  // -- the thresholds as CSRs: promised from the start of a steady run -----
+  // Each run's length, counted on (not saturating at the threshold, as the
+  // gate's counters do), the threshold in its last cycle, and whether the
+  // threshold held that value through all of it. A run of n cycles reaches
+  // threshold t when n >= max(t, 1).
+  localparam int RW = HW + 1;
+  logic [RW-1:0] qrun, srun;
+  logic [HW-1:0] qthr, sthr;
+  logic          qok, sok;
+  always @(posedge clk) begin
+    if (!rd) begin
+      qrun <= '0;
+      srun <= '0;
+      qok  <= 1'b1;
+      sok  <= 1'b1;
+    end else begin
+      qrun <= !qd ? '0 : ((&qrun) ? qrun : qrun + 1'b1);
+      srun <= !sd ? '0 : ((&srun) ? srun : srun + 1'b1);
+      qok  <= !qd || qrun == '0 || (qok && hyst_q == qthr);
+      sok  <= !sd || srun == '0 || (sok && hyst_s == sthr);
+    end
+    qthr <= hyst_q;
+    sthr <= hyst_s;
+  end
+  wire ep_q = qrun != '0 && qrun >= RW'(qthr);
+  wire ep_s = srun != '0 && srun >= RW'(sthr);
+  wire exp_gated_ep = rd && !te && !od && !(|wh) && (ep_q || ep_s);
+  always @(posedge clk) if (started && reset_seen && qok && sok)
+    episode: assert (gated == exp_gated_ep);
+`endif
 
 `ifdef FV_Q33
   // -- Q-33, both halves, as ccv_common_chk_wake states them about THIS gate ---
   // The sender's half assumed, the receiver's asserted: the gate keeps
   // wake_keeps_rx (running LAT cycles after any wake), and so any sender
   // keeping its half never lands a valid on a withheld edge.
+  // Reset as the gate sees it: flopped once, as every receiver and sender
+  // flops it, so they leave reset in the same cycle (the reset contract);
+  // and held until that flop has been seen low, since it powers up anything.
   ccv_common_chk_wake #(.MODE(`CCV_MODE_ASSUME), .RX_MODE(`CCV_MODE_ASSERT),
                      .LAT(ccv_params_pkg::CCV_WAKE_LAT)) u_contract (
     .clk       (clk),
-    .rst_n     (rst_n),
+    .rst_n     (rd && reset_seen),
     .rx_gated  (gated),
     .wake_seen (wake),
     .valid_seen(valid)
   );
-  always @(posedge clk) if (started && reset_seen && rst_n)
+  always @(posedge clk) if (started && reset_seen && rd)
     q33_valid_meets_clock: assert (!(valid && gated));
 `endif
 
@@ -183,10 +243,10 @@ module fv_clk_gate #(
   logic slept_q;
   initial slept_q = 1'b0;
   always @(posedge clk)
-    slept_q <= (gated && reset_seen && rst_n) ? 1'b1 : (valid ? 1'b0 : slept_q);
+    slept_q <= (gated && reset_seen && rd) ? 1'b1 : (valid ? 1'b0 : slept_q);
   always @(posedge clk) if (started && reset_seen) begin
     reach_gated: assert (!gated);
-    reach_woken: assert (!(valid && !gated && slept_q && rst_n));
+    reach_woken: assert (!(valid && !gated && slept_q && rd));
   end
 `endif
 `endif

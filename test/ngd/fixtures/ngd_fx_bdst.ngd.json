@@ -1,0 +1,7 @@
+{
+  "module": "ngd_fx_bdst",
+  "ports": {
+    "a": {"arrival": 15, "by": "selftest", "date": "2026-10-17",
+          "why": "the convergence control: arrives at 15, so a driver required at 14 meets it with 1 NGD to spare"}
+  }
+}

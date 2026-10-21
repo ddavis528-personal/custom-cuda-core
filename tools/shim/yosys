@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Yosys, strict (OI-44). tools/verify.sh puts tools/shim first on PATH, so
+# every Yosys the gate runs -- the checks' own and SymbiYosys's -- comes
+# through here. Each pattern below is a warning that means the netlist is
+# not the RTL as Verilator simulates it: bits Yosys made undef, a net it
+# invented, drivers it kept but did not resolve, a loop. yosys -e makes each
+# an error, so the run fails rather than measure, prove or count the wrong
+# design. tools/check-yosys-strict.sh provokes each one (test/yosys/) and
+# shows plain Yosys passes the same file with a warning.
+#
+# Not caught: a misread Yosys makes without a warning, as ooe_wake's was
+# (OI-44). Only replaying the netlist against the simulated RTL shows one;
+# tools/check-cg.py does that for every unit it measures.
+#
+# Run a flow outside the gate the same way: PATH="$PWD/tools/shim:$PATH".
+set -u
+STRICT=(
+  'select out of bounds'           # Range ... select out of bounds: bits set to undef
+  'is implicitly declared'         # an undeclared identifier became a 1-bit wire
+  'multiple conflicting drivers'   # two drivers on one net
+  'Drivers conflicting with a constant'
+  'is used but has no driver'      # read but never written: undef
+  'found logic loop'               # a combinational loop
+)
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+real=""
+IFS=: read -ra dirs <<< "${PATH:-}"
+for d in "${dirs[@]}"; do
+  [ -n "$d" ] && [ -d "$d" ] || continue
+  [ "$(cd "$d" && pwd -P)" = "$here" ] && continue
+  if [ -x "$d/yosys" ]; then real="$d/yosys"; break; fi
+done
+if [ -z "$real" ]; then
+  echo "tools/shim/yosys: no yosys on PATH besides this shim" >&2
+  exit 127
+fi
+args=()
+for p in "${STRICT[@]}"; do args+=(-e "$p"); done
+exec "$real" "${args[@]}" "$@"

@@ -214,7 +214,7 @@ private:
     }
     e.mask = uint32_t(get(u, c.dec_ooe, "group_mask"));
     e.op = opByCode(unsigned(get(u, c.dec_ooe, "opcode")));
-    if (!e.op || get(u, c.dec_ooe, "decode_fault")) {
+    if (!e.op || get(u, c.dec_ooe, "cause") != kFaultNone) {
       k_.fail("ooe: a uop it cannot execute");
       return;
     }
@@ -236,6 +236,11 @@ private:
     e.mem_op = unsigned(get(u, c.dec_ooe, "mem_op"));
     e.space = unsigned(get(u, c.dec_ooe, "space"));
     e.ordering = unsigned(get(u, c.dec_ooe, "ordering"));
+    // Only a fence carries an ordering; on any other uop it is reserved zero
+    // (IS-11, OA's response). sched_attr says which uop is a fence.
+    if (e.ordering != 0 && !(attrMem(e.attr) && attrMemKind(e.attr) == kMemKFence))
+      k_.fail("ooe: pc 0x%llx has ordering %u but is not a fence",
+              (unsigned long long)e.pc, e.ordering);
     // Rename: sources and old destinations read the RAT before this
     // instruction's own writes update it (A-64).
     auto q = [&](unsigned a) { return pw_[e.warp][a & 3] ? physPred(e.warp, a) : ccv::prov::kPredZero; };

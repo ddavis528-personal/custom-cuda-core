@@ -116,9 +116,37 @@ static constexpr uint32_t kWMigRow = 5;
 /// decided at the block-level grill-me (OOE Stage 4 session (2026-10-02), interface change set; arch open A-50)
 static constexpr uint32_t kWPredState = 128;
 
-/// Normalized gate delays in one cycle: NAND equivalents, measured by logical effort. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). Per-INTERFACE-PATH budgets are assigned once contracts are drawn, not per block.
+/// Normalized gate delays of combinational logic between two flops in one cycle: NAND equivalents, measured by logical effort. The flop's own clock-to-Q and setup are outside it (Daniel, 2026-10-17): every depth here is measured with the flops cut out, so the whole 25 is logic. The unit is voltage invariant, so 25 is the budget at every corner, with no separate Vmin derate (Q-7, closed by Daniel 2026-10-08). A path that crosses a module boundary is budgeted per port (CCV_NGD_PORT) and timed whole on the assembled block (tools/check-ngd.py).
 /// physical target, not a structure size (§2 -- ~1.5 GHz at Vmin 0.55 V on an N3E-class process)
 static constexpr uint32_t kNgdBudget = 25;
+
+/// Default logic budget on each side of a module port, floor(CCV_NGD_BUDGET / 2), so a path between two modules' flops fits CCV_NGD_BUDGET without anyone having planned it: an output is reached within CCV_NGD_PORT of its module's flops, and an input, arriving at CCV_NGD_BUDGET - CCV_NGD_PORT, reaches its module's flops within the rest. The halves hold because no module has logic on a path from an input to an output, nor a parent between its children (NGD-5): every path between two modules' flops crosses one port, in two segments. A port over this one needs explicit budgets; those come from the architect, in the module's <module>.ngd.json beside its RTL, and must converge, each driver's required time no later than its receiver's arrival, which the assembled block checks from those files. tools/check-ngd.py measures every module at its units' parameters.  Derived: = CCV_NGD_BUDGET // 2.
+/// physical target, not a structure size (Daniel, 2026-10-17 (module port budgets; floor of half the stage, and nothing straight through a module, 2026-10-18))
+static constexpr uint32_t kNgdPort = 12;
+
+/// Logic depth an inner helper (a combinational module declared inner in its <module>.ngd.json, timed as its parent's logic) is held to, input to output, while no module instantiates it: floor(2 * CCV_NGD_BUDGET / 3). Inside a parent its logic is the parent's and the stage applies; alone, the whole stage would be optimistic, since the parent's own logic will share it. tools/check-ngd.py, NGD-6.  Derived: = 2 * CCV_NGD_BUDGET // 3.
+/// physical target, not a structure size (Daniel, 2026-10-19 (an inner helper no module instantiates yet: floor(2 * 25 / 3), not the full stage))
+static constexpr uint32_t kNgdInner = 16;
+
+/// Logic depth allowed into a local clock gate's enable, in NGD from the flops and inputs that feed it. An ICG's enable sets up to the rising edge at the root of its clock branch, earlier than the flops behind it, so it gets a fraction of the cycle. tools/check-cg.py measures every enable group Yosys infers (CG-2, docs/rtl-coding-style.md).  Requires: CCV_NGD_CG_EN < CCV_NGD_BUDGET.
+/// physical target, not a structure size (Daniel, 2026-10-16 (local clock gating))
+static constexpr uint32_t kNgdCgEn = 8;
+
+/// Minimum dynamic clock-gating efficiency of every enable group, in percent: of the cycles its clock is enabled, the share in which its value changes. Held in each of the idle, medium and high activity scenarios; a scenario with no enabled cycle passes. tools/check-cg.py measures it (CG-3, docs/rtl-coding-style.md).  Requires: CCV_DCGE_MIN_PCT <= 100.
+/// physical target, not a structure size (Daniel, 2026-10-16 (local clock gating))
+static constexpr uint32_t kDcgeMinPct = 75;
+
+/// Fewest flops behind one logically distinct enable for it to be a clock gate. A smaller group gets no ICG, which would cost about the clock load it saves: its flops are clocked every cycle and count as ungated (CG-4, docs/rtl-coding-style.md).  Requires: CCV_CG_MIN_FLOPS >= 1.
+/// physical target, not a structure size (Daniel, 2026-10-16 (local clock gating))
+static constexpr uint32_t kCgMinFlops = 8;
+
+/// Share of flops that may sit outside the clock-gating rules without a waiver: an automatic waiver for small cases that would otherwise need unnatural RTL. Applied to each module, at each unit's parameters, smallest findings first and before any explicit waiver; what the modules take then counts against the same share of each block's flops, per instance over its whole hierarchy. tools/check-cg.py.  Requires: CCV_CG_BUDGET_PCT < 100.
+/// physical target, not a structure size (Daniel, 2026-10-16 (local clock gating))
+static constexpr uint32_t kCgBudgetPct = 2;
+
+/// A module may leave fewer than this many flops outside the clock-gating rules without a waiver, whatever its size: the floor under CCV_CG_BUDGET_PCT, which gives a small module less than a flop. They still count against the block's CCV_CG_BUDGET_PCT. tools/check-cg.py.  Requires: CCV_CG_MODULE_FLOPS >= 1.
+/// physical target, not a structure size (Daniel, 2026-10-17 (local clock gating))
+static constexpr uint32_t kCgModuleFlops = 8;
 
 /// Warp id. 32 total warp contexts.
 /// decided at the block-level grill-me (ports spec 2026-09-23)
@@ -136,9 +164,9 @@ static constexpr uint32_t kWArchReg = 4;
 /// settled by the ISA -- not a knob (Payload spec response (2026-09-25))
 static constexpr uint32_t kWArchPred = 2;
 
-/// Memory displacement, sign-extended at the AGU. The widest memory-format offset is cas's 16-bit signed field (ISA v1.6 §3); Format D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8 all fit. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-143, fixed.)
-/// settled by the ISA -- not a knob (Skeleton review response (2026-09-25))
-static constexpr uint32_t kWDisp = 16;
+/// Memory displacement, sign-extended at the AGU. The widest memory-format offset is the 48-bit Format D's: a 48-bit instruction is its 32-bit sibling plus [47:32] (ISA v1.7 §3), so D's simm13 becomes 29 bits and D-prime's simm10 26. The 32-bit forms all fit: cas's 16-bit signed field, D's simm13, D-prime's simm10, the atomics' simm9 and base+index's simm8. Was 16, cas's field, until IS-11 found the 48-bit siblings truncated. (The compiler had declared cas's offset uimm16, which would have needed 17: compiler F-155, fixed.)
+/// settled by the ISA -- not a knob (Skeleton review response (2026-09-25); IS-11 (2026-10-19))
+static constexpr uint32_t kWDisp = 29;
 
 /// srd #1's %ctaid, the flat CTA index within the grid (ISA v1.6 §5.3). Dispatch state, held by RAU and shadowed in OOE, which substitutes it into srd's immediate at issue. It exactly fills CCV_P_W_IMM, so it sets that parameter's floor.
 /// settled by the ISA -- not a knob (srd response (2026-09-25), Q-38)
@@ -200,8 +228,8 @@ static constexpr uint32_t kWBarEntry = 6;
 /// decided at the block-level grill-me (ports spec 2026-09-23)
 static constexpr uint32_t kWBarId = 4;
 
-/// Fault-model cause set, with headroom.
-/// decided at the block-level grill-me (ports spec 2026-09-23)
+/// Fault cause, the ISA's set (v1.9 §12) in its table's order: 0 none, 1 F-FETCH, 2 F-ILLEGAL, 3 F-WIDTH, 4 F-FORMAT, 5 F-ALIGN, 6 F-ADDR, 7 F-SHARED, 8 F-RO, 9 F-BARRIER (O-59); 10-15 spare. The ISA names the causes and their priority; the codes are the schema owner's. Where each is known, by v1.9 §12's stages (OI's question on IS-16): A fetch fault rides DEC's uop to the ROB (ccv_fet_dec_instr), so ccv_dec_ooe_uop carries cause: 1 F-FETCH when FET flagged the instruction, else 2 F-ILLEGAL from DEC's check (AR's response IS-16: a field, not flags). F-WIDTH, F-FORMAT and F-BARRIER (3, 4, 9) are dispatch causes that need chwidth state or the barrier count, which only OOE holds, so OOE detects them itself. The execute causes are all memory causes, F-ALIGN, F-ADDR, F-SHARED and F-RO (5 to 8), and MIU's completion carries them: cause the highest-priority cause among its faulting lanes (§12.5), address the lowest faulting lane's effective address (§12.6). No v1.9 cause originates in RCU or a lane, so neither ccv_rcu_ooe_done nor ccv_lane_rcu_res carries a fault.
+/// decided at the block-level grill-me (ports spec 2026-09-23; ISA v1.9 §12 and IS-16 (2026-10-20))
 static constexpr uint32_t kWFaultCause = 4;
 
 /// Flop-to-flop round trip, abutting. TWO EVERYWHERE BY CONSTRUCTION -- flops on both sides with no exceptions, plus abutment, gives exactly this. It is not a per-interface choice, and the three values below are not independent numbers but the same number under different names. Only a non-abutting interface would differ, and none is known to be until floorplan.
@@ -255,6 +283,18 @@ static constexpr uint32_t kWRetiredCnt = 8;
 /// CSR-programmed policy value. Thresholds are tuning knobs, so they get the full CSR width rather than a tight fit.
 /// decided at the block-level grill-me (Payload widths pass (2026-09-25))
 static constexpr uint32_t kWCsr = 32;
+
+/// Memory space: 0 global, 1 shared. No instruction produces another: .local and .const are ld.global and st.global under compiler conventions (ISA v1.7 §5), and .const protection is MIU's address window (O-51). Was 3 bits with const and local codes until IS-11.
+/// settled by the ISA -- not a knob (Payload widths pass (2026-09-25); OA's response IS-11 (2026-10-19))
+static constexpr uint32_t kLWSpace = 1;
+
+/// A fence's ordering, in the ISA's layout: [2:0] the scope and [4:3] the ordering, the fence's [10:8] and [12:11] (ISA v1.7 §3, Format E). Meaningful only on a fence and reserved zero otherwise: no load, store or atomic carries an ordering qualifier. Was 4 bits, two of order and two of scope, until IS-11.
+/// settled by the ISA -- not a knob (Payload widths pass (2026-09-25); OA's response IS-11 (2026-10-19))
+static constexpr uint32_t kLWOrdering = 5;
+
+/// A CTA's allocated barrier count, 0 to 16, unbiased. A CTA has at most 16 barriers (ISA v1.9 O-59, PTX's named-barrier limit); IDs 16-63 are reserved and raise F-ILLEGAL at decode, and an ID at or above the count raises F-BARRIER at dispatch, in OOE. Was 7 bits for 1..64, which read the per-SM 4x16 table as a per-CTA reach.
+/// settled by the ISA -- not a knob (Payload widths pass (2026-09-25); IS-16, ISA v1.9 O-59 (2026-10-20))
+static constexpr uint32_t kLWBarCount = 5;
 
 /// PLACEHOLDERS awaiting a per-block session. Code referencing
 /// ccv::prov is KNOWN UNFINISHED; the nested namespace is what
@@ -321,9 +361,9 @@ static constexpr uint32_t kRsRcu = 30;
 /// PROVISIONAL -- decided by: OOE per-block session
 static constexpr uint32_t kRsMiu = 15;
 
-/// Decode queue depth ahead of rename.
-/// PROVISIONAL -- decided by: OOE per-block session
-static constexpr uint32_t kDecq = 12;
+/// Decode queue depth ahead of rename. 13 since rename interleaves warps uop by uop (option (c), DA's response OA-21): decq registers the take and pops it an edge late, and the extra entry covers the uop in flight; DEC's credit pool follows it. Was 12.
+/// PROVISIONAL -- decided by: OOE per-block session; DA's response OA-21 (2026-10-20)
+static constexpr uint32_t kDecq = 13;
 
 /// Reservation-station entries one warp may hold at once, across both classes, so a stalled warp cannot fill the stations. The first-build value is both classes' total, which is no cap; the sweep sets it. Replaces the OOE model's rs_warp_cap knob.  Requires: CCV_P_RS_WARP_CAP <= CCV_P_RS_RCU + CCV_P_RS_MIU.
 /// PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)
@@ -331,7 +371,7 @@ static constexpr uint32_t kRsWarpCap = 45;
 
 /// Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit; the sweep sets it. Replaces the OOE model's decq_warp_max knob.  Requires: CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ.
 /// PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)
-static constexpr uint32_t kDecqWarpMax = 12;
+static constexpr uint32_t kDecqWarpMax = 13;
 
 /// GPR rename registers deliberately left unreachable by any warp's ceiling, as margin.
 /// PROVISIONAL -- decided by: OOE per-block session
@@ -393,7 +433,7 @@ static constexpr uint32_t kWLaneBypSel = 5;
 /// PROVISIONAL -- decided by: LANE per-block session
 static constexpr uint32_t kFootMinInt = 1;
 
-/// CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines it: section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1. Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measured 2.04x over fp32 at 1 against 1.47x at 2 (four warps). The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS).  Requires: CCV_P_FOOT_MIN_FP <= CCV_SECTIONS.
+/// CCV_FOOT_MIN for bypass_group 1, floating point: one section, so 8-bit FP runs four to a lane, at the integer rate (DA's response IS-7). The ISA defines the formats (section 4's FP operations read their format codes against the operand's chwidth, so at 8 bits they are E4M3 and E5M2 and at 4 bits E2M1); the one-section minimum is Daniel's decision (DA's response IS-7), not the ISA's (IS-11). Daniel's decision, a bet that more FP8 is the trend: LANE shares the wide shifters and adders of the 32-bit mantissa path, so the cost is mostly exponent logic. AR's recommendation of 2 was overruled. It binds only below an op's own width: FP16 and BF16 span two sections anyway. OI's fp8-self sweep measures 1.93x over fp32 at 1 (639 cycles, four warps, at the defaults of 2026-10-19; OI's response IS-9). The run of 2026-10-09 gave 2.04x at 1 against 1.47x at 2. The done pool does not grow with it while FP shares the lane's latency class (CCV_DONE_SLOTS).  Requires: CCV_P_FOOT_MIN_FP <= CCV_SECTIONS.
 /// PROVISIONAL -- decided by: Daniel, on IS-7
 static constexpr uint32_t kFootMinFp = 1;
 
@@ -569,7 +609,7 @@ static constexpr uint32_t kPLatClasses = 8;
 /// PRELIMINARY -- churn: MED
 static constexpr uint32_t kPBypGroups = 8;
 
-/// Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. A prefetch is mem_kind load with writes_gpr 0: it wakes nothing, so its latency class does not matter, and whether it may fault is MIU's semantics (A-68, confirmed 2026-10-03). SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03.  Derived: = 10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS).
+/// Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03.  Derived: = 10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS).
 /// PRELIMINARY -- churn: MED
 static constexpr uint32_t kPWSchedAttr = 16;
 
@@ -585,7 +625,7 @@ static constexpr uint32_t kWOpcode = 9;
 /// PRELIMINARY -- churn: LOW
 static constexpr uint32_t kOpPrfCopy = 511;
 
-/// Architectural memory operation: load, store, atomic family, prefetch, fence. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.
+/// Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 0xE fence, 0xF OOE's bulk discard; 4-0xD spare. DEC emits load, store and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.
 /// PRELIMINARY -- churn: MED
 static constexpr uint32_t kWMemOp = 4;
 
@@ -609,14 +649,6 @@ static constexpr uint32_t kWGridSel = 8;
 /// PRELIMINARY -- churn: MED
 static constexpr uint32_t kWOwnership = 3;
 
-/// Memory space: global, shared, const, local, with spare codes.
-/// PRELIMINARY -- churn: LOW
-static constexpr uint32_t kWSpace = 3;
-
-/// Two bits of order and two of scope. Whether scope is a separate field is the open part.
-/// PRELIMINARY -- churn: MED
-static constexpr uint32_t kWOrdering = 4;
-
 /// ITLB entry: physical page number, permissions, ASID and valid, rounded up.
 /// PRELIMINARY -- churn: LOW
 static constexpr uint32_t kWItlbEntry = 64;
@@ -632,10 +664,6 @@ static constexpr uint32_t kOperandsPerLane = 3;
 /// PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified.
 /// PRELIMINARY -- churn: HIGH
 static constexpr uint32_t kPcGroups = 4;
-
-/// Barrier entries in an allocated range. 7 bits expresses 1..64; 6 would do with a bias. Not stated by the payload pass, so the biasing choice is still open.
-/// PRELIMINARY -- churn: LOW
-static constexpr uint32_t kWBarCount = 7;
 
 /// Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.
 /// PRELIMINARY -- churn: LOW

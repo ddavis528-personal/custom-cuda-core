@@ -2,7 +2,8 @@
 //
 // Spec: docs/ooe-rtl-plan.md, decision 3 (DA's response OI-36): per-warp
 //       decode FIFOs on a shared 12-entry credit pool, the same behaviour as
-//       the model's shared queue; decision 6 for the reset line.
+//       the model's shared queue, except that a freed entry is held for that
+//       cycle's arrivals (DA's response OI-39); decision 6 for the reset line.
 //
 // The uops wait here between DEC (ccv_dec_ooe_uop, up to E a cycle) and
 // rename, which takes each warp's oldest in order, up to R a cycle from one
@@ -18,12 +19,14 @@
 // owned by s at position k. Nothing compacts and nothing is searched in
 // series.
 //
-// One clock edge, in the model's order: rename's dequeues and a squash's
-// flushes free their entries, and the cycle's arrivals may take them, in
-// port order (port 0 first). An arrival takes the free entry with as many
-// free entries below it as there are arrivals ahead of its port. A flush
-// drops every uop its slot holds; uops arriving at the same edge carry the
-// new epoch and stay.
+// One clock edge: rename's dequeues and a squash's flushes free their
+// entries, and the cycle's arrivals take entries that were already idle, in
+// port order (port 0 first). An entry freed at an edge takes no arrival
+// until the next (DA's response OI-39, decided by depth: 31.9 NGD with
+// same-edge reuse, 23.1 without), which is the model's decq_late_credit. An
+// arrival takes the idle entry with as many idle entries below it as there
+// are arrivals ahead of its port. A flush drops every uop its slot holds;
+// uops arriving at the same edge carry the new epoch and stay.
 //
 // The reference is the model's decode queue (Core::decodeQueue,
 // Core::decqFlushed); test/ooe/decq_tb.cpp drives this module from the
@@ -36,14 +39,22 @@
 //
 // State is one register, and its next value a function of it and this
 // cycle's inputs alone (CCV-L23, as ooe_freelist); reset rewrites only its
-// reset fields. The flop takes one function, step(), with reset folded in.
-// Written as an if/else of two function calls in the always_ff, an earlier
-// form of this update was miscompiled by Verilator 5.020's statement
-// reordering (-fno-reorder fixed it, and Icarus ran it correctly).
+// reset fields. (Verilator 5.020's statement reordering miscompiled an
+// earlier if/else form of this update; the gate now runs 5.052, OI-40.)
+// Local clock gating (OA's response OI-58, V-75): the register is clocked
+// on an arrival, a dequeue or a flush. An arrival is led by this module's
+// flop of DEC's channel valid (enq_l, L1); a flush is registered per slot
+// and applied an edge late (L4: fl_q), rename taking nothing from the slot
+// meanwhile (rename's rule, from its own copy of the registered squash: the
+// count and heads still show the old uops, and an assertion holds rename to
+// it); its entries' credits return that edge later. No uop arrives for a slot in its flush's cycle (an
+// assertion; the model's check too), so the late flush drops nothing new.
+// A dequeue is still rename's input (OI-63: its lead is rename's go). The
+// reset is flopped (RST-1).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
-`define CCV_RST ooe_rst_r00h
+`define CCV_RST rst_r01h
 module ooe_decq #(
   parameter int S = 4,     // tier-1 slots (CCV_TIER1_WARPS)
   parameter int Q = 12,    // shared entries (CCV_P_DECQ)
@@ -60,6 +71,7 @@ module ooe_decq #(
 ) (
   input  logic             ooe_core_clk,
   input  logic             ooe_rst_r00h,
+  input  logic             enq_l_cq00h,      // DEC's channel valid: uops arrive next cycle
   input  logic [E-1:0]     enq_v_cq01h,      // port k delivers a uop
   input  logic [E*LS-1:0]  enq_slot_cq01h,   // its slot
   input  logic [E*P-1:0]   enq_pay_cq01h,    // its payload
@@ -82,7 +94,14 @@ module ooe_decq #(
   localparam int NB    = 4;
   localparam int NBANK = (Q + NB - 1) / NB;
 
+  // The reset, flopped before any use (RST-1).
+  logic rst_r01h;
+  always_ff @(posedge ooe_core_clk) begin
+    rst_r01h <= ooe_rst_r00h;
+  end
+
   `CCV_ASSERT_KNOWN(enq_v_known, enq_v_cq01h)
+  `CCV_ASSERT_KNOWN(enq_l_known, enq_l_cq00h)
   `CCV_ASSERT_KNOWN_IF(enq_slot_known, |enq_v_cq01h, enq_slot_cq01h)
   `CCV_ASSERT_KNOWN(deq_n_known, deq_n_cq01h)
   `CCV_ASSERT_KNOWN(flush_known, flush_cq01h)
@@ -139,12 +158,13 @@ module ooe_decq #(
       ps    = st[OPOS + e * LD +: LD];
       dq    = dn[32'(ow) * LR +: LR];
       fr[e] = st[OBUSY + e] && (fl[ow] || LC'(ps) < LC'(dq));
-      av[e] = !st[OBUSY + e] || fr[e];
+      av[e] = !st[OBUSY + e];   // not fr[e]: freed entries wait a cycle (OI-39)
     end
     for (int b = 0; b < NBANK; b++) begin
       bc[b * LU +: LU] = '0;
       for (int j = 0; j < NB; j++)
-        if (b * NB + j < Q && av[b * NB + j]) bc[b * LU +: LU] = bc[b * LU +: LU] + LU'(1);
+        if (b * NB + j < Q)   // a short last bank: no select past av's end, even unevaluated
+          if (av[b * NB + j]) bc[b * LU +: LU] = bc[b * LU +: LU] + LU'(1);
     end
     for (int b = 0; b < NBANK; b++) begin
       bp[b * LU +: LU] = '0;
@@ -154,7 +174,8 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) begin
       run = '0;
       for (int j = 0; j < NB; j++)
-        if ((e / NB) * NB + j < e && av[(e / NB) * NB + j]) run = run + LU'(1);
+        if ((e / NB) * NB + j < e)   // below e, so inside av
+          if (av[(e / NB) * NB + j]) run = run + LU'(1);
       bl[e * LU +: LU] = bp[(e / NB) * LU +: LU] + run;
     end
     aq = '0;
@@ -165,8 +186,13 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) begin
       ow = st[OOWN + e * LS +: LS];
       ps = st[OPOS + e * LD +: LD];
-      if (fr[e]) m[OBUSY + e] = 1'b0;
-      else if (st[OBUSY + e]) m[OPOS + e * LD +: LD] = ps - LD'(dn[32'(ow) * LR +: LR]);
+      // A held entry keeps its fields; an idle one's are cleared, being read
+      // only through busy. So no field is held through an if, and the
+      // update's one enable is its clock gate's (local clock gating).
+      m[OBUSY + e]           = st[OBUSY + e] && !fr[e];
+      m[OPAY + e * P +: P]   = st[OPAY + e * P +: P] & {P{st[OBUSY + e]}};
+      m[OOWN + e * LS +: LS] = ow & {LS{st[OBUSY + e]}};
+      m[OPOS + e * LD +: LD] = (ps - LD'(dn[32'(ow) * LR +: LR])) & {LD{m[OBUSY + e]}};
       for (int k = 0; k < E; k++)
         if (ev[k] && av[e] && bl[e * LU +: LU] == LU'(ah[k * LE +: LE])) begin
           sl   = es[k * LS +: LS];
@@ -203,30 +229,31 @@ module ooe_decq #(
       if (n > c) under = 1'b1;
       a = ahead_in(ev, es, E, s);
       if (c - n + a > D) over = 1'b1;
-      room = room + n - a;
+      room = room - a;          // freed entries are no room until the next edge
     end
     if (room < 0) over = 1'b1;
     faults = {under, over};
   endfunction
 
-  // The reset state: busy bits and counts cleared, the rest kept.
-  function automatic logic [SW-1:0] reset_of(input logic [SW-1:0] st);
-    logic [SW-1:0] m;
-    m = st;
-    m[OBUSY +: Q + S * LC] = '0;
-    reset_of = m;
-  endfunction
-
-  // One edge: reset, or the update.
-  function automatic logic [SW-1:0] step(input logic [SW-1:0] st, input logic rst, input logic [E-1:0] ev,
-                                         input logic [E*LS-1:0] es, input logic [E*P-1:0] ep,
-                                         input logic [S*LR-1:0] dn, input logic [S-1:0] fl);
-    step = rst ? reset_of(st) : next_state(st, ev, es, ep, dn, fl);
-  endfunction
-
   logic [SW-1:0] st_cq02h;
   logic [1:0]    fault_cq02h;
-  assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, deq_n_cq01h, flush_cq01h);
+  logic [S-1:0]  fl_q_cq02h;              // a flush registered: applied at the next edge
+  logic          enq_en_cq01h;            // the arrival lead's flop
+  assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, deq_n_cq01h, fl_q_cq02h);
+
+  // Every arrival was led; none arrives for a slot whose flush comes now;
+  // rename takes nothing from a slot whose flush is registered.
+  logic [S-1:0] enq_s_cq01h;
+  always_comb begin
+    enq_s_cq01h = '0;
+    for (int k = 0; k < E; k++) if (enq_v_cq01h[k]) enq_s_cq01h[enq_slot_cq01h[k * LS +: LS]] = 1'b1;
+  end
+  logic [S-1:0] deq_s_cq01h;
+  always_comb
+    for (int s = 0; s < S; s++) deq_s_cq01h[s] = deq_n_cq01h[s * LR +: LR] != '0;
+  `CCV_ASSERT(enq_led, enq_v_cq01h == '0 || enq_en_cq01h)
+  `CCV_ASSERT(no_enq_at_flush, (enq_s_cq01h & flush_cq01h) == '0)
+  `CCV_ASSERT(no_deq_while_flushing, (deq_s_cq01h & fl_q_cq02h) == '0)
 
   // Rename takes no more than a slot holds; DEC sends only against credit.
   `CCV_ASSERT(deq_within_count, !fault_cq02h[1])
@@ -256,9 +283,28 @@ module ooe_decq #(
     for (int e = 0; e < Q; e++) used_cq02h = used_cq02h + LU'(st_cq02h[OBUSY + e]);
   end
 
+  // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
+  // an arrival, a dequeue or a flush, and is clocked on those alone.
+  logic          decq_en_cq01h;
+  logic [SW-1:0] nx_cq01h;
+  assign decq_en_cq01h = enq_en_cq01h || |deq_n_cq01h || |fl_q_cq02h;
+  assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, deq_n_cq01h,
+                                    fl_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
-    st_cq02h <= step(st_cq02h, ooe_rst_r00h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, deq_n_cq01h,
-                     flush_cq01h);
+    if (rst_r01h) begin
+      fl_q_cq02h   <= '0;
+      enq_en_cq01h <= 1'b0;
+    end else begin
+      fl_q_cq02h   <= flush_cq01h;
+      enq_en_cq01h <= enq_l_cq00h;
+    end
+  end
+
+  always_ff @(posedge ooe_core_clk) begin
+    // The reset state: busy bits and counts cleared; the payloads, owners
+    // and positions are payload, guarded by busy.
+    if (rst_r01h)           st_cq02h[OBUSY +: Q + S * LC] <= '0;
+    else if (decq_en_cq01h) st_cq02h <= nx_cq01h;
   end
 
 endmodule

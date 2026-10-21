@@ -42,6 +42,7 @@ import re
 import sys
 from ccv_schema import field_width
 import ccv_links
+import genout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCHEMA = os.path.join(ROOT, "schema", "interfaces.json")
@@ -563,6 +564,8 @@ def main():
                 open(path, "w").write(text)
     msg = ("%d block instances, %d channel instances, %d slots, %d payload bits"
            % (len(binst), len(cinst), nslots, pbits))
+    # A file this generator wrote last run and no longer does (OI-40).
+    stale += genout.sync("gen-skel", [p for p, _ in targets], check)
     if check:
         if stale:
             sys.stderr.write("stale: %s\n  run tools/gen-skel.py\n"

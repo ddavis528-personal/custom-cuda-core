@@ -66,6 +66,7 @@ import ccv_links
 import json
 import os
 import sys
+import genout
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 TOPDIR = os.path.join(ROOT, "rtl", "top")
@@ -354,15 +355,19 @@ def gen_stub(btype, P):
 #
 # Every block instance sits in a hardening wrapper of the same instance name:
 # the physical hierarchy, stable whatever the floorplan decides. A wrapper is
-# the block plus one sequential repeater (rtl/phys/ccv_common_rpt.sv) per
-# channel end the block owns, at STAGES 0 unless params/links.json says
-# otherwise, plus one per FEEDTHROUGH: a channel the floorplan routes across
-# this wrapper, which then has ports for it. A stage count is a wrapper
-# parameter, set by the top, so changing a split changes no structure; a
-# feedthrough changes that one wrapper's ports, and it gets a module of its
-# own (ccv_<type>_w_<NN>, after the instance) instead of its type's shared
-# one (ccv_<type>_w). Every wrapper's name starts ccv_<type>_w, which is what
-# lets the RTL lint read its block from the name (OI-37).
+# the block plus a sequential repeater (rtl/phys/ccv_common_rpt.sv) for each
+# channel end the block owns whose link params/links.json gives stages
+# there; an end with none is connected straight to the wrapper's port, never
+# through a repeater of no stages, which would be a feedthrough module
+# (NGD-5; Daniel, 2026-10-18). A parameterised wrapper takes its ends' stage
+# counts from the top and chooses with a generate-if. A FEEDTHROUGH, a channel
+# the floorplan routes across this wrapper, gives it ports and a repeater, of
+# no stages where the distance does not need one: the one feedthrough
+# allowed, here, in generated wrappers only. A feedthrough changes that one
+# wrapper's ports, and it gets a module of its own (ccv_<type>_w_<NN>, after
+# the instance) instead of its type's shared one (ccv_<type>_w). Every
+# wrapper's name starts ccv_<type>_w, which is what lets the RTL lint read
+# its block from the name (OI-37).
 #
 # A channel instance whose route crosses feedthroughs runs in SEGMENTS
 # between wrappers; segment j leaves hop j. The top names them
@@ -499,6 +504,21 @@ def rpt_inst(L, name, stages, c, src, dst):
     L.append("  );")
 
 
+def wire_inst(L, c, src, dst, ind="  "):
+    """A channel end with no repeater: the block's port straight to the
+    wrapper's, forward signals one way and credit and stall the other."""
+    r = c["rate"]
+    cat = lambda f, sig: "{%s}" % ", ".join(f(sl, sig) for sl in reversed(range(r)))
+    for sig in ("valid", "payload"):
+        L.append("%sassign %s = %s;" % (ind, cat(dst, sig), cat(src, sig)))
+    L.append("%sassign %s = %s;" % (ind, dst(None, "wake"), src(None, "wake")))
+    for sig in ("credit", "stall"):
+        L.append("%sassign %s = %s;" % (ind, cat(src, sig), cat(dst, sig)))
+    L.append("`ifdef CCV_TRACE")
+    L.append("%sassign %s = %s;" % (ind, cat(dst, "tid"), cat(src, "tid")))
+    L.append("`endif")
+
+
 def port_nm(c, cp, slot, sig):
     """A block port's name for one signal of the end (c, cp)."""
     base = c["name"][4:] + copy_sfx(c, cp)
@@ -510,8 +530,8 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
     L.append("// HARDENING WRAPPER %s: ccv_%s and the sequential repeaters of its"
              % (mod, t))
     L.append("// channel ends -- the physical hierarchy (docs/physical.md, \"Wrappers")
-    L.append("// and links\"). Nothing but instances and nets, like the top. Every")
-    L.append("// end has its repeater whether or not the link is repeated.")
+    L.append("// and links\"). Nothing but instances and nets, like the top. An end")
+    L.append("// whose link has no stages here is connected straight through.")
     if baked is not None:
         L.append("//")
         L.append("// A HARD-REUSE TEMPLATE (params/links.json hard_reuse): its stages")
@@ -519,8 +539,8 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         L.append("// module with no parameters -- one hard macro. Used by:")
         L += ["//   " + x for x in textwrap.wrap(", ".join(users), 66)]
     else:
-        L.append("// STAGES is a parameter the top sets from params/links.json, 0 meaning")
-        L.append("// wires, so a new split changes parameters and never this structure.")
+        L.append("// Each end's stages are a parameter the top sets from params/links.json;")
+        L.append("// at 0 the end is wired straight through, with no repeater.")
     if fts:
         L.append("//")
         L.append("// FEEDTHROUGHS: channels routed across this wrapper, by ordinal,")
@@ -550,10 +570,13 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
     L.append(");")
     L.append("")
     if baked is not None:
-        L.append("  // This template's stages, fixed.")
-        for p in params:
-            L.append("  localparam int %s = %d;" % (p, baked[p]))
-        L.append("")
+        # An end at 0 is wired straight through, so its count is no one's.
+        used = [p for p in params if baked[p] or p.startswith("FT")]
+        if used:
+            L.append("  // This template's stages, fixed.")
+            for p in used:
+                L.append("  localparam int %s = %d;" % (p, baked[p]))
+            L.append("")
     L.append("  // Between the block and its repeaters: b_<port>, one net per port.")
     for dr, w, name, tr, _d, typ, m in P:
         if m is None or tr:
@@ -577,9 +600,22 @@ def gen_wrapper(t, mod, P, ends, fts, cinst, ninst, baked=None, users=None):
         c = cinst[x]["chan"]
         blk = lambda sl, sig, c=c, cp=cp: "b_" + port_nm(c, cp, sl, sig)
         out = lambda sl, sig, c=c, cp=cp: port_nm(c, cp, sl, sig)
+        src, dst = (blk, out) if side == "src" else (out, blk)
+        nm = c["name"][4:] + copy_sfx(c, cp)
+        prm = rpt_param(c, cp)
         L.append("  // %s, %s end" % (c["name"], "source" if side == "src" else "destination"))
-        rpt_inst(L, "u_rpt_" + c["name"][4:] + copy_sfx(c, cp), rpt_param(c, cp), c,
-                 blk if side == "src" else out, out if side == "src" else blk)
+        if baked is not None and baked[prm] == 0:
+            wire_inst(L, c, src, dst)
+        elif baked is not None:
+            rpt_inst(L, "u_rpt_" + nm, prm, c, src, dst)
+        else:
+            L.append("  if (%s > 0) begin : g_rpt_%s" % (prm, nm))
+            sub = []
+            rpt_inst(sub, "u_rpt_" + nm, prm, c, src, dst)
+            L += ["  " + x if not x.startswith("`") else x for x in sub]
+            L.append("  end else begin : g_wire_%s" % nm)
+            wire_inst(L, c, src, dst, ind="    ")
+            L.append("  end")
     for o, (x, j) in enumerate(fts):
         ci = cinst[x]
         c = ci["chan"]
@@ -993,9 +1029,13 @@ def gen_shim(btype, P, own_ports=False):
     L.append("")
     L.append("  int h;")
     L.append("  bit skew;              // negative control: one extra register")
-    L.append("  longint cyc = 0;")
+    # The count starts in the initial block, not in its declaration: a
+    # declared value that a process also assigns is PROCASSINIT under
+    # Verilator 5.052 -Wall.
+    L.append("  longint cyc;")
     L.append("  bit [%d:0] drv, q, q2;" % (ow - 1))
     L.append("  initial begin")
+    L.append("    cyc = 0;")
     L.append("    h = ccv_dpi_register($sformatf(\"%m\"));")
     L.append("    skew = ccv_dpi_skew(h);")
     L.append("  end")
@@ -1150,7 +1190,9 @@ def gen_tb_hosted(chans, common):
     L.append("    #1 rst_n = 1'b1;")
     L.append("  end")
     L.append("  // Between edges every block has run the cycle: ask whether it is over.")
-    L.append("  longint c = 0;")
+    # As the shims' cycle count: initialised in a process (PROCASSINIT).
+    L.append("  longint c;")
+    L.append("  initial c = 0;")
     L.append("  always @(negedge core_clk) begin")
     L.append("    if (ccv_dpi_done(c)) begin")
     L.append("      ccv_dpi_report();")
@@ -1160,6 +1202,51 @@ def gen_tb_hosted(chans, common):
     L.append("  end")
     L.append("endmodule")
     return "\n".join(L) + "\n"
+
+
+def rpt_units(binst, cinst, names, ports, ft, plan):
+    """Every repeater the design instantiates, one timing and clock-gating
+    unit per distinct parameterisation, checked like any module (Daniel,
+    2026-10-18: the 2% or fewer-than-8 ungated allowance, and enables only
+    from its own flops), as tools/check-cg.py and check-ngd.py read them. A
+    feedthrough of no stages is wires and has nothing to check."""
+    seen = {}
+    for k, (t, i) in enumerate(binst):
+        _, vals, _ = plan[k]
+        where = [(x, cp, rpt_param(cinst[x]["chan"], cp)) for x, _, cp in
+                 block_ends(t, i, ports[t], cinst)]
+        where += [(x, None, ft_param(cinst[x], o)) for o, (x, _) in enumerate(ft.get(k, []))]
+        for x, cp, prm in where:
+            st = vals[prm]
+            if not st:
+                continue
+            c = cinst[x]["chan"]
+            key = (st, c["rate"], c["bits"], c["lead_mask"])
+            seen.setdefault(key, []).append("%s %s" % (names[k][2:], prm))
+    units = []
+    for (st, r, w, lead), users in sorted(seen.items()):
+        lit = "%d'h%x" % (w, lead)
+        units.append({
+            "name": "rpt_s%d_n%d_w%d_l%x" % (st, r, w, lead),
+            "module": "ccv_common_rpt",
+            "files": ["rtl/phys/ccv_common_rpt.sv"],
+            "params": {"STAGES": st, "SLOTS": r, "PAYLOAD_W": w, "LEAD_MASK": lit},
+            "clock": "clk",
+            "reset": "!rst_n",
+            "instances": users,
+            "bench": {
+                "build": ("verilator --binary --timing --trace -Wno-fatal -Wno-lint -Wno-style "
+                          "-Irtl/include -Irtl/generated --top-module tb_cg_rpt -GSTAGES=%d "
+                          "-GS=%d -GW=%d \"-GLEAD=%s\" --Mdir {dir} -o tb rtl/ccv_assert_pkg.sv "
+                          "rtl/phys/ccv_common_rpt.sv test/cg/tb_cg_rpt.sv" % (st, r, w, lit)),
+                "run": "{dir}/tb +scenario={scenario} +vcd={vcd}",
+                "scope": "tb_cg_rpt.dut"}})
+    return json.dumps({
+        "_comment": "Generated by tools/gen-top.py from params/links.json and the schema: one "
+                    "unit per distinct repeater the design instantiates (stages, slots, payload "
+                    "width, lead mask), each checked like any module by tools/check-cg.py and "
+                    "tools/check-ngd.py. Do not edit.",
+        "units": units}, indent=2) + "\n"
 
 
 def main():
@@ -1194,6 +1281,8 @@ def main():
                         gen_wrapper(t, mod, ports[t], block_ends(t, i, ports[t], cinst),
                                     ft.get(k, []), cinst, ninst,
                                     vals if baked else None, users)))
+    targets.append((os.path.join(TOPDIR, "rpt-units.json"),
+                    rpt_units(binst, cinst, names, ports, ft, plan)))
     eports = ext_ports(chans)
     targets.append((os.path.join(TBDIR, "tb_ext.sv"),
                     gen_shim("ext", eports, own_ports=True)))
@@ -1223,6 +1312,8 @@ def main():
             stale.append(os.path.relpath(os.path.join(wdir, f), ROOT))
             if not check:
                 os.remove(os.path.join(wdir, f))
+    # A file this generator wrote last run and no longer does (OI-40).
+    stale += genout.sync("gen-top", [p for p, _ in targets] + [hdr], check)
     msg = ("%d files: top, %d port lists, %d stubs, %d DPI shims, %d wrappers, "
            "2 testbenches" % (len(targets), len(blocks), len(blocks),
                               len(blocks) + 1, len(want)))

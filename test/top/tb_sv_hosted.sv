@@ -85,7 +85,8 @@ module tb;
     #1 rst_n = 1'b1;
   end
   // Between edges every block has run the cycle: ask whether it is over.
-  longint c = 0;
+  longint c;
+  initial c = 0;
   always @(negedge core_clk) begin
     if (ccv_dpi_done(c)) begin
       ccv_dpi_report();

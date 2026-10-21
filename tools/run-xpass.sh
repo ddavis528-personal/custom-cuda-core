@@ -63,9 +63,9 @@ out=$(vvp "$TMP/x.out" 2>&1)
 # An X reaching control is reported by CCV_ASSERT_KNOWN, which is the point of
 # this pass; any other assertion failure is a functional bug and equally worth
 # stopping on.
-if echo "$out" | grep -qE "ERROR|X reached control"; then
+if grep -qE "ERROR|X reached control" <<<"$out"; then
   echo "  FAIL -- assertions fired:"
-  echo "$out" | grep -E "ERROR|X reached" | sed 's/^/    /' | head -10
+  grep -E "ERROR|X reached" <<<"$out" | sed 's/^/    /' | head -10
   exit 1
 fi
 echo "  clean"

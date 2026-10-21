@@ -1,0 +1,7 @@
+{
+ "gen-top": [
+  "tb_ext.sv",
+  "tb_sv_hosted.sv",
+  "tb_top.sv"
+ ]
+}

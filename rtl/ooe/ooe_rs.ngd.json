@@ -1,0 +1,65 @@
+{
+  "module": "ooe_rs",
+  "ports": {
+    "req_cq01h": {
+      "arrival": 6.0,
+      "by": "OA",
+      "date": "2026-10-18",
+      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+    },
+    "grp_dep_cq01h": {
+      "arrival": 9.0,
+      "by": "OA",
+      "date": "2026-10-18",
+      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+    },
+    "row_code_cq01h": {
+      "arrival": 10.0,
+      "by": "OA",
+      "date": "2026-10-18",
+      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+    },
+    "grp_code_cq01h": {
+      "arrival": 10.0,
+      "by": "OA",
+      "date": "2026-10-18",
+      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+    },
+    "row_dep_cq01h": {
+      "arrival": 10.0,
+      "by": "OA",
+      "date": "2026-10-19",
+      "why": "OA's response OI-48 (OA tab, 2026-10-19): from rename's stage flops, like row_code"
+    },
+    "req_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: rename's stage valids"
+    },
+    "wtl3_cq00h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: wtl and fin into ooe_rs"
+    },
+    "fin_cq00h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: wtl and fin into ooe_rs"
+    },
+    "cmpl_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: channel valids, from the boundary receive flops"
+    },
+    "sq_l_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: squash, flush and whole-event payloads"
+    }
+  }
+}

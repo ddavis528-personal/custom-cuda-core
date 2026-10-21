@@ -1,5 +1,5 @@
-<!-- design-snapshot url=https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU tab=OOE_microarchitecture rev=100 exported=2026-10-04 status=living -->
-> **Snapshot: do not edit.** Exported from *OOE microarchitecture — Stage 4 grill-me*, tab *OOE microarchitecture*, at revision 100 on 2026-10-04 ([live doc](https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
+<!-- design-snapshot url=https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU tab=OOE_microarchitecture rev=197 exported=2026-10-19 status=living -->
+> **Snapshot: do not edit.** Exported from *OOE microarchitecture — Stage 4 grill-me*, tab *OOE microarchitecture*, at revision 197 on 2026-10-19 ([live doc](https://claude.ai/artifact/7tpEyGaCvfdvYYWUQJvJSU)). The live doc is the source; it is a living document, so this copy is refreshed whenever it changes. This copy pins what the repo was built against; see [README.md](README.md).
 
 # OOE microarchitecture — Stage 4 grill-me
 
@@ -79,7 +79,7 @@ Rename takes 4 uops per cycle from the decode queue and maps every GPR and predi
 
 ### Decode queue
 
-12 entries, shared across warps, with a per-warp maximum. Rename picks from it using the same rotating warp priority as select, so a warp stalled at rename does not block the others. DEC sees a full queue as ordinary credit backpressure. The depth absorbs 6-wide decode bursts against 4-wide rename and refills quickly after a downstream stall.
+12 entries (built as per-warp FIFOs on a shared 12-credit pool, DA's response OI-36; an entry freed in a cycle is held for that cycle's arrivals, DA's response OI-39, which amends decision 3's "same behaviour"), shared across warps, with a per-warp maximum. Rename picks from it using the same rotating warp priority as select, so a warp stalled at rename does not block the others. DEC sees a full queue as ordinary credit backpressure. The depth absorbs 6-wide decode bursts against 4-wide rename and refills quickly after a downstream stall.
 
 ### Register alias tables
 
@@ -93,7 +93,7 @@ OOE keeps each warp's `warp_base` and `%ctaid`, 37 bits per warp, delivered on `
 
 ### Free lists
 
-One global GPR pool of 192 and one global predicate pool of 48. There are no per-warp partitions: a warp's architectural registers end up wherever the RAT puts them.
+One global GPR pool of 192 and one global predicate pool of 48. The predicate free list is a bit-vector with rotating-start allocation (OI-17), so a squash can return up to 32 registers in one cycle without a FIFO's write ports. The GPR free list is the same, at section granularity with an owner per row (see Narrow registers and lane sections). There are no per-warp partitions: a warp's architectural registers end up wherever the RAT puts them.
 
 - **Floor.** Each tier-1 slot, occupied or not, reserves 16 rename registers above its 16 architectural registers (A-26, A-34). A floor, not a ceiling, is what prevents starvation. Both pools use one rule: floor = half the fair share of the rename pool, pool / (2 × warps), which is 128 / 8 = 16 for GPRs (A-40). The generator emits the floors from that expression, and an elaboration-time assertion checks ceiling + 3 × floor ≤ pool for both pools. For GPRs that is 112 against 128, 16 spare.
 - **Ceiling.** No warp holds more than 64 rename registers beyond its architectural 16.
@@ -126,6 +126,47 @@ A masked load gets a distinct copy-only op (`CCV_OP_PRF_COPY`, opcode 0x1FF) on 
 
 Both holds are warp-local and each has its own stall event.
 
+### Narrow registers and lane sections
+
+Each lane block has four 32-bit operand ports (three sources and merge), and each port is four 8-bit sections (DA's response OI-28). A full-width lane op takes every section, so one issues a cycle. Narrow ops co-issue only in separate sections: two 16-bit ops in separate halves, or four 8-bit ops in separate quarters. That is how obligation 4 (O-40) gets narrow work retiring at 2× and 4×.
+
+**The PRF is four section banks.** Each bank is 192 rows × 256 bits (8 bits × 32 lanes) with its own row decode on every port, so ops in different sections read different rows. A register's physical name is row (8 bits) + position (2 bits). Its width comes from the committed chwidth table, which rename reads; a chwidth change serialises, so the table is stable at rename. A 32-bit register takes a whole row, a 16-bit one an aligned half (position 0 or 2), and an 8-bit one any quarter. A 4-bit register takes a quarter. Every write to it leaves bits \[7:4\] of its section zero, masked at write-back in the lane from the destination's 2-bit width code, so an overflowing add cannot leave a carry there (IS-6). Widening from 4 then needs no clear. 4-bit work therefore retires at 4×; 8× needs nibble sub-sections and is deferred to the perf register (DA's response OI-29). Predicates are unaffected: 32 bits at every width.
+
+**Row ownership** (DA's response OI-29). While any section of a row is live, the row belongs to one tier-1 slot, so narrow registers share rows only within their warp. Floors, ceilings, restore admission and V-31 stay counted in rows, unchanged. Deadlock freedom holds as before, because a register never spans two rows. The free list keeps, per row, an owner (2 bits) and 4 section bits, and a row returns to the global pool when its last section frees. Free rows reach rename only through a candidate buffer of 8 rows, which is the single source for any allocation needing a fresh row (OI-38). A full-width destination takes from its head, up to 4 a cycle. The buffer is refilled by four interleaved banks of 48 rows (row mod 4). Each bank finds the first free row after its own rotating pointer, over the registered free bits minus rows already buffered (about 8 NGD), and appends at most one row a cycle. An empty bank contributes nothing, so no borrow rule is needed. The predicate free list uses the same structure. Restore-allocate draws through the same buffer (OI-41). While a restore is in progress it is the buffer's only consumer, taking up to 4 rows a cycle through rename's ports, and rename stalls for every warp. A side path would miss the rows sitting in the buffer, and A-49's floor guarantees only that the slot's rows are free in the pool, not that they are unbuffered. A whole-row restore of at most 16 GPR rows takes 4 cycles, with the 4 predicates in parallel from their own buffer. The RAT map is sent when both complete, and V-64 bounds it at ceil(rows / 4) + 1 cycles. A narrow one takes its warp's candidate row for the position it needs: an owned row with that position free, else a free row. A background find-first keeps one candidate per warp and position current, off the rename path. A second allocation in the same rename group that wants the same warp and position waits a cycle. V-62 checks ownership.
+
+**Operands in any section: the footprint rule** (DA's response OI-30, revised 2026-10-08). The lanes route bytes within an op's footprint as part of executing it. The in-lane swizzle that wide-footprint ops need (OA-15) serves every lane op, so rename does not have to align operands.
+
+- An op's lane footprint is the union of the sections of every GPR operand it touches (destination, sources and merge source), widened to its unit's aligned minimum (CCV\_FOOT\_MIN: integer 1 section, FP 1, SFU 4; AR-12). FP's minimum of 1 is DA's response IS-7: E4M3, E5M2 and E2M1 run per section at 4×, and FP16 spans two sections by width. Each operand's section widens to its own aligned group and the footprint is their union, so an FP op with operands in S0 and S2 claims all four. A footprint may be non-contiguous, such as {S0, S2}, which leaves S1 and S3 to co-issuers; select needs no change for this (AR-15). Zero-register sources add nothing. The op computes in its destination's sections, and the swizzle brings each source in.
+- Within its footprint, the op reads each operand from that operand's own section and steers its result to its destination's section. It owns every bank port in its footprint that cycle, so no co-issued op can conflict with it (V-60). The swizzle works within each lane's 32-bit word only. Moving data between lanes still takes an explicit instruction: the warp-collectives (shfl and the rest), which run in RCU (DA, 2026-10-08).
+- Mixed-width ops (cvt across widths, mad.lo narrow to wide, packi, unpacki) and narrow SFU ops run full width, as before.
+- Placement decides only how many sections an op claims, never correctness. No section moves are inserted. V-63 checks that every operand's sections lie inside the op's footprint.
+
+**Condition.** Met (AR's response OI-30 revised). The swizzle is about 2 NGD, lands in the lane's first execution stage, and must sit after the bypass mux, so bypassed operands get the same byte selection. The path to check in synthesis is lane-local bypass at CCV\_LAT\_LANE\_BYP = 4. If it does not fit, the fallback is narrow: swizzle PRF-read operands only, and have rename mark a bypass-eligible pair whose positions differ as late, so it waits for the PRF read through V-48's late cell. Area is about 4,096 bit-level 4:1 muxes for input and about 1,024 for result steering.
+
+**Placement.** A destination takes the position that keeps the footprint smallest. That is the narrow sources' common position, or the old destination's for a merged op; when the sources disagree, it is the first source's. A narrow destination with no narrow source, such as a load or a movi, takes the warp's **home position**. That is the tier-1 slot index for 8-bit, and the index mod 2 for 16-bit (decided, DA 2026-10-09; OI-34 measured 2.0× at 8 bits and 1.5× at 16 on four warps). A lone warp gets no narrow co-issue, which is accepted for the first build because the common case has several warps unstalled. A compiler-declared position per register is the deferred remedy (OI-35). A misaligned narrow op is still correct, but it claims more sections and so co-issues less. The OI-34 sweep measures how often that happens under each placement rule (OA-14). A destination never takes a third position when its sources disagree, since that widens the footprint for nothing (AR-15). If the chosen position has no candidate row, the destination takes another, which costs only co-issue. A compiler position hint is a safe optimisation under this rule: a wrong hint costs co-issue and nothing else (DA's response AR-15). That simplifies allocation: a rename-group conflict on one warp and position takes the next free position instead of waiting.
+
+**chwidth and security at slice granularity.** The rule depends on the direction of the change (IS's response OA-16). A narrowing writes nothing. It renames in place, keeping the same row, the low section or half of the old set, and the new width. The vacated sections free at retire, as an old destination does, so a squash can restore the old mapping. Every widening is a lane op that writes the zero-extended value. If the new width needs more sections, it writes into a newly allocated slice set, with a footprint covering both, and the old set frees at retire. A widening from 4 to 8 stays in its section but still writes, because a narrowing to 4 bits leaves bits \[7:4\] untouched. The widening write is what clears them. So O-38's clear is that op's zero-extension, activation zeroing is the zero register (zero at every position, A-29), and merge-before-read (A-35) works per section. No section-move op exists.
+
+**Owed elsewhere** (OI-28, OI-32, OI-33).
+
+- Save and restore move whole rows, since rows are warp-private. The map carries, per architectural register, its saved-row index, position and width. Restore allocates the same number of rows and OOE rebuilds its RAT by mapping saved-row index to new row (A-64, A-65, TI-9). Repacking at restore is a PF item.
+- The issue channel carries row + position for every register an op names, since operands no longer share one position, plus each operand's width. It has one slot per resource (S0–S3, R and P0–P3, nine in all) in place of four shared slots.
+- Each lane needs the in-lane swizzle on every operand port, after the bypass mux, so a bypassed narrow result reaches any section in the footprint. Its cost sits on the lane's operand stage (see Condition above).
+- RCU needs one read and one write port per bank for its own results. No move ports are needed.
+- Memops need read ports of their own, because an address register is read at 32 bits (O-39). On shared lane ports memory would serialise with ALU work.
+- Each bank needs one write port per fixed-latency pipe that can land in it: lane ALU and FP, SFU, load data and RCU. Without them, SFU and ALU results collide in a section, and select would need a write-reservation check.
+- ccv\_rcu\_ooe\_done carries one done per fixed-latency pipe that can complete in a cycle: four lane sections at the 7-cycle class, SFU, RCU at 3 and warp-collectives at 5, so rate 7. It is generated as a sum over pipes, matching the bank write ports (TI-9). FP shares the 7-cycle lane class, so FP8 at a minimum of 1 adds no term; an FP latency class of its own would add four done slots and four bank write ports.
+- Each operand's width travels as the 2-bit chwidth code (4, 8, 16, 32), from the RAT, so the lane can apply IS-6's 4-bit mask (TI-9).
+
+**The narrow rate for a lone warp (OA-12 to OA-15).** Under the decided defaults, a warp running alone gets little narrow speedup. Its narrow values share one home position, and its memops issue one a cycle. A narrow op in one section also blocks a full-width op that cycle, so unpaired narrow ops cost as much as 32-bit ones.
+
+- **OA-12, move bandwidth — withdrawn.** Under the footprint rule no section moves exist, so moves need no resource, no RCU bank ports and no issue slot. It returns only if AR's timing check sends pure narrow ops back to alignment.
+- **OA-13, loads pass older loads (deferred to the perf register, DA 2026-10-09). IS shows that, with no per-access ordering qualifier, a plain load must honour read-read coherence. So same-address loads stay ordered, which needs a load-load check (a CAM over in-flight loads, plus replay), and the OI-34 sweep measured almost no gain. Memops stay in order per warp. As first proposed:** A ready load is blocked only by an older unissued store, fence, atomic or non-relaxed access in its warp. That is one registered bit per MIU entry, off the select loop. A lone warp's narrow loads in different sections can then fill P0–P3 in one cycle. Stores, atomics and fences stay in program order, and since a load never passes a store, no disambiguation is needed. IS confirms the memory model allows it; DA decides, since it loosens a first-build ordering choice.
+- **OA-14, rotate the home position at each taken backward branch (withdrawn). The OI-34 sweep found rotation equal to whichever rule it starts from, because a loop-carried value follows its own source and never rotates. The default goes to DA as home = slot index, which gives 2.0× at 8 bits and 1.5× at 16 on four warps. Lone-warp rate is OI-35, where OA proposes a compiler-declared position per register, carried in chwidth. As first proposed:** Everything defined within one loop iteration shares a position, so its ops stay in one section. Successive iterations land in different sections and co-issue across iterations. Under the footprint rule a misplacement no longer costs a move, only a wider footprint, so OA-14 is purely a co-issue heuristic. The counter is a hint, not state (AR's response OA-14): a mispredicted branch costs co-issue and nothing else. It is not checkpointed, and squash, demotion and restore may leave it alone or reset it to 0.
+- **OA-15, wide-footprint ops select their narrow operands by position — agreed, and subsumed by the footprint rule** (DA's response OA-15: "We can handle any in-lane move or broadcast as part of the instruction execution").
+
+What these do not change: vadd16 is 14 full-width instructions out of 18, and each takes the whole lane datapath for a cycle. The obligation's own arithmetic, 14 + 4/2 = 16 cycles, is set by that full-width work. The proposals aim only to make a lone warp's four narrow instructions cost two cycles instead of four, as four resident warps already do. The OI-34 sweep decides the defaults: the three placement rules with OA-13 on and off, on vadd16 and AR-14's narrow-to-FP kernel, for one warp and for four, reporting cycles, footprint widening and idle sections.
+
 ## Scheduling
 
 OOE owns all scheduling. Fixed latency in RCU and LANE is a contract, so OOE decides at select when every result lands, and RCU never slips after accepting an issue. Memory is the only variable-latency path, and it cancels.
@@ -139,7 +180,7 @@ OOE owns all scheduling. Fixed latency in RCU and LANE is a contract, so OOE dec
 > - **Issued, speculative**: dependants woken at the producer's latency; entry stays allocated until sources confirm. → *confirmed* →
 > - **Freed**: entry returns.
 > - Cancel loop, Issued → Waiting: *cancel: a source missed its slot.* The cancel spreads to every dependant in the matrix.
-An entry is freed only once every source is confirmed, so a cancelled instruction can reissue from where it sits. The highlighted cancel path is the only way back.
+An entry is freed only once every source is confirmed, so a cancelled instruction can reissue from where it sits. An entry with a destination is also held until its own result confirms, because dependants wake through its matrix column; freeing it earlier would hand the column to a new occupant (OI-12). The cost, about 11% at an MIU class of 8, is part of the RS sweep; freeing a load's entry at issue (PF-3) is the later alternative. The highlighted cancel path is the only way back.
 
 ### Latency contract
 
@@ -148,20 +189,20 @@ An entry is freed only once every source is confirmed, so a cancelled instructio
 
   **Declared on the channels.** `ccv_ooe_rcu_issue`, `ccv_rcu_lane_ops`, `ccv_lane_rcu_res`, `ccv_rcu_ooe_done`, `ccv_miu_ooe_cmpl` and `ccv_miu_rcu_data` carry a fixed-latency attribute: the receiver never stalls and returns credit every cycle, checked per channel (A-47). So do ccv\_ooe\_fet\_redirect and ccv\_ooe\_fet\_ckpt\_free, a latency-matched pair (A-58, A-60). Without it, the ordinary credit convention would let RCU slip, or delay L1-hit data past the cycle its dependants read it.
 - **Checked.** Each completion channel gets a checker asserting that the actual arrival cycle equals the scheduled one.
-- **Working assumptions**, to be verified in the LANE, RCU and MIU sessions: 3 cycles for RCU-only ops; 7 cycles for lane ops, with a 4-cycle minimum bypass; 7 cycles for an L1 hit.
+- **Contracts** (DA's response OA-5, 2026-10-08): 3 cycles for RCU-only ops; 7 cycles for lane ops, with a 4-cycle lane-local bypass; 7 cycles for an L1 hit, from the cycle MIU holds both memop and address.
 - **As applied** (custom-cuda-core `3543276`). The tunable bases are `CCV_LAT_RCU_BASE` = 3, `CCV_LAT_LANE_BASE` = 7 and `CCV_LAT_L1_HIT_BASE` = 7. gen-params derives the contracted values from them and refuses any value that disagrees:
   - `CCV_LAT_RCU` = base, since RCU crosses no link.
   - `CCV_LAT_LANE` = base + the repeater stages on `ccv_rcu_lane_ops` and `ccv_lane_rcu_res`, counted from RCU accepting the issue.
   - `CCV_LAT_L1_HIT` = base + the stages on `ccv_miu_dcu_req` and `ccv_dcu_miu_rsp`, counted from MIU accepting the memop.
   - `CCV_LAT_LANE_BYP` = 4, set directly.
 
-  The reference points are confirmed (A-57). Two additions are still to apply. OOE scheduling uses two derived load times, generated so the scheduler never computes them:
+  The reference points are confirmed (A-57). OOE scheduling uses two derived load times, both generated so the scheduler never computes them:
   - `CCV_LAT_L1_WAKE` = start + `CCV_LAT_L1_HIT` + `ccv_miu_rcu_data` link − `ccv_ooe_rcu_issue` link. This is when hit data is readable by a dependant, and sets its wake.
   - `CCV_LAT_L1_CMPL` = start + `CCV_LAT_L1_HIT` + `ccv_miu_ooe_cmpl` link. This is when OOE learns hit or miss, and sets the cancel shadow.
 
   **Start point (A-61, applied 2026-10-03 in custom-cuda-core 0cf039a).** MIU cannot start a load until both the memop and RCU's address on `ccv_rcu_miu_addr` have arrived, and the address path is normally the later one. Counted from OOE's issue, start = max(memop link, issue link + `CCV_LAT_RCU_ADDR` + `ccv_rcu_miu_addr` link). `CCV_LAT_RCU_ADDR` is RCU's issue-to-address time over a new `CCV_LAT_RCU_ADDR_BASE`, and `CCV_LAT_L1_HIT` is measured from the cycle MIU holds both. The parameter grammar gains `max`, so the generator picks the binding path as the floorplan moves. When the address path binds, the issue link cancels out of WAKE.
 
-  **As generated** (A-63). Every link in these formulas is a whole crossing, `CCV_LAT_HOP` + its repeater stages, where `CCV_LAT_HOP` = 2: the valid crosses in half the round trip, and the payload lands a cycle after its valid. Linear latencies such as `CCV_LAT_LANE` fold the fixed part into their base. A max over one crossing and two cannot, and counting stages alone would wake L1-hit dependants 4 cycles early. With no repeater stages, `CCV_LAT_L1_WAKE` = 13 and `CCV_LAT_L1_CMPL` = 15. `CCV_LAT_RCU_ADDR_BASE` = 2 is the accepted starting point (2026-10-03), tunable for the RCU session.
+  **As generated** (A-63). Every link in these formulas is a whole crossing, `CCV_LAT_HOP` + its repeater stages, where `CCV_LAT_HOP` = 2: the valid crosses in half the round trip, and the payload lands a cycle after its valid. Linear latencies such as `CCV_LAT_LANE` fold the fixed part into their base. A max over one crossing and two cannot, and counting stages alone would wake L1-hit dependants 4 cycles early. With no repeater stages, `CCV_LAT_L1_WAKE` = 16 and `CCV_LAT_L1_CMPL` = 18. `CCV_LAT_RCU_ADDR_BASE` = 5 is a placeholder (DA's response OA-5; applied by TI in 3b6c859), which replaced the starting value of 2 and stays tunable for the RCU session.
 
   `CCV_LAT_LANE_BYP` is lane-local (A-59): the 4-cycle base with no link terms, measured from issue to dependent issue, so the floorplan cannot change it. It applies only to op classes flagged bypassable; dependants of cross-lane ops use the full `CCV_LAT_LANE`. The channel attribute is checked now (V-45). The arrival-cycle checker above needs the issuing block's schedule and is built with it (repo Q-53).
 
@@ -181,31 +222,51 @@ The sweep has a hard ceiling to be checked against: a paper estimate of how many
 
 OOE never decodes `opcode`, whose encoding is preliminary and expected to churn. DEC delivers each uop's scheduling attributes already decoded, in a `sched_attr` field on `ccv_dec_ooe_uop` beside `uop_class` (A-66). About 13 bits, provisional: RS class (1), executes in lane or RCU (1), cross-lane (1), writes GPR (1), writes predicate (1), memory kind load/store/atomic/fence (2), branch (1), serialising none/`chwidth`/barrier/spare (2), and latency class (3). These drive RS class, the early or late column, merge and rename decisions, serialisation and wake timing. DEC owns the opcode-to-attribute table, fed by the LANE and RCU op-class list.
 
-The encoding is confirmed as applied, MSB first: `rs_miu`, `exec_rcu`, `cross_lane`, `writes_gpr`, `writes_pred`, `mem_kind`\[2\], `branch`, `serial`\[2\], `lat_class`\[3\]. `mem_kind` is don't-care unless `rs_miu` is set. `lat_class` codes are 0 RCU, 1 lane, 2 L1-contracted load and 3 on completion. Each further fixed-latency lane unit, such as SFU, takes a spare code from 4 to 7 once the LANE session sets its latency, with its own generated wake parameter.
+The encoding is confirmed as applied, MSB first: `rs_miu`, `exec_rcu`, `cross_lane`, `writes_gpr`, `writes_pred`, `mem_kind`\[2\], `branch`, `serial`\[2\], `lat_class`\[3\]. `mem_kind` is don't-care unless `rs_miu` is set. `lat_class` codes are 0 RCU, 1 lane, 2 L1-contracted load and 3 on completion. Code 4 is SFU (CCV\_LAT\_SFU = 12) and 5 is warp-collective (CCV\_LAT\_COLLECTIVE = 5), both placeholders until a LANE or RCU session confirms them; 6 and 7 are spare. A further field, bypass\_group (3 bits), picks the row and column of the bypass table (OI-16).
 
 The memop's `mem_op`, `space` and `ordering` also come from DEC, on `ccv_dec_ooe_uop` (A-68). OOE copies them to `ccv_ooe_miu_memop` unexamined, so opcode decoding lives only in DEC. The one exception is `mem_op` 0xF, which OOE generates itself for bulk discard; DEC never emits it.
 
 ### Wakeup: dependency matrix
 
-A 45 × 45 matrix of **two-bit cells** (A-62, A-73). Each cell holds a dependency bit and a **late** bit, both set at rename, for up to 6 producers per uop. Every producer broadcasts two wake signals, early and late. A cell is satisfied by its late wake if the late bit is set, otherwise by its early wake. An entry is ready when every cell in its row is satisfied, so wakeup is a 45-input AND with no tag compares.
+A 45 × 45 matrix of three-bit cells (A-62, A-73, OI-16). Each cell holds a dependency bit and a 2-bit **wake select**, both set at rename, for up to 6 producers per uop. Every producer broadcasts four wake signals, and a cell is satisfied by the one its select names. An entry is ready when every cell in its row is satisfied, so wakeup is a 45-input AND with no tag compares.
 
-- **Lane producers** raise the early wake at `CCV_LAT_LANE_BYP` and the late wake at `CCV_LAT_LANE`. Bypass is lane-local (A-59): producer and dependant execute at the same lane index, so the 4-cycle base needs no link terms.
-- **Single-time producers** (RCU-only ops, loads) raise both wakes together.
-- **Setting the late bit.** It is clear only if every use the dependant makes of that producer is bypass-eligible: a lane-executing op reading the value as a lane operand, from a non-cross-lane producer. Late cases are a consumer that executes in RCU (shuffle, vote, ballot, a branch on a lane `setp`); a value RCU sends to MIU as an address or store data; a lane-produced predicate used as guard or `pred_data`; and any dependant of a cross-lane producer.
+- **Lane producers** raise their four wakes at the fastest bypass point, `CCV_LAT_LANE_BYP` (4), plus a penalty of 0, 2 or 3, and at the PRF read, `CCV_LAT_LANE` (7). Penalties are capped at the PRF read, so with today's values 4 + 3 lands on 7 and only three wakes are distinct. The hardware keeps four, since the penalties are tunable.
+- **Single-time producers** (RCU-only ops, warp-collective ops, loads) raise all four together.
+- **SFU producers** raise all four at `CCV_LAT_SFU` until an SFU fastest bypass point is defined (OA's response OI-16 proposes `CCV_LAT_SFU_BYP`).
+- **Choosing the wake.** At rename, the select comes from `byp[producer group][consumer group]` in the table below, using each op's `bypass_group` from `sched_attr`. The late cases of V-48 always take the PRF read: a consumer that executes in RCU; a value RCU sends to MIU as an address or store data; a lane-produced predicate used as guard or `pred_data`; and any dependant of a cross-lane producer. A consumer that uses one producer in two ways takes the later wake.
 
-Bypass eligibility belongs to the pair, not the producer, because one producer often has both kinds of dependant: an `add` feeding another `add` and a store address is ordinary loop address arithmetic. Two columns per producer (a 90-input AND) would have added a logic level to the binding path. A per-consumer hold would have delayed every predicate-guarded op by a fixed 3 cycles. The per-cell choice avoids both: it folds into the gate that already combines dependency and wake (an AOI22 in place of an OR), so the AND stays at 45 inputs. Storage is the same, about 4,000 flops; the cost is broadcasting two wake vectors.
+Penalty in cycles after the producer's fastest bypass point (DA's responses OA-4, 2026-10-08). P is the PRF read; — marks single-time producers, which have one wake time.
+
+| Producer \\ consumer | Integer | FP | SFU | Address calc | Warp-collective | Predicate |
+| --- | --- | --- | --- | --- | --- | --- |
+| Integer | 0 | 2 | 3 | P | P | P |
+| FP | 2 | 0 | 3 | P | P | P |
+| SFU | 3 | 3 | 0 | P | P | P |
+| Address calc (loads) | — | — | — | — | — | — |
+| Warp-collective | — | — | — | — | — | — |
+| Predicate (RCU logic) | — | — | — | — | — | — |
+
+The table is `CCV_P_BYP_GROUPS` (8) square, with two spare groups. `bypass_group` is 3 bits in `sched_attr`. Op-class membership is OI's mapping in DA's responses OA-4.
+
+Bypass eligibility belongs to the pair, not the producer, because one producer often has both kinds of dependant: an `add` feeding another `add` and a store address is ordinary loop address arithmetic. Two columns per producer (a 90-input AND) would have added a logic level to the ready path, and a per-consumer hold would have delayed every predicate-guarded op by a fixed 3 cycles. A per-cell select avoids both: it folds into the gate that already combines dependency and wake, so the AND stays at 45 inputs. The cost is storage, about 6,100 flops at 3 bits a cell, and broadcasting four wake vectors. The timing is in the scheduler timing estimate below (OA-1).
 
 A CAM would have needed 30 entries × 5 tags × 4 broadcasts, about 600 8-bit comparators for the RCU class alone, against a 25-NGD budget. The matrix also makes cancellation cheap: poison travels down the same columns.
 
 ### Select
 
-Oldest first within each class, using age matrices (30 × 30 and 15 × 15). Age across warps has no global meaning, so warps are peers and a per-cycle rotating warp priority breaks ties. This is the arbitration policy for Q-4.
+Oldest first, one pick per resource (DA's response OI-31). Each RS entry carries a footprint. Its lane-section part is the union of its operands' sections, widened to its unit's aligned minimum (see Operands in any section). The unit minimum is CCV\_FOOT\_MIN\[bypass\_group\]: integer 1, FP 1 (DA's response IS-7), SFU 4 (AR-12). The lane-section part is all four sections for a mixed-width op, and none for RCU-only ops and memops. To that it adds R for an RCU-unit op (predicate logic, movi, branches, warp-collectives). A memop's footprint is instead the MIU pipes at its data position: all four at 32 bits, its half at 16, and its quarter at 8 (OI-33). Each resource (S0–S3, R, and the four MIU pipes P0–P3, nine resources in all) has its own one-grant pick over its class's age matrix: 30 × 30 for lane and RCU entries, 15 × 15 for MIU. The pick is the oldest ready entry whose footprint includes that resource. An entry issues only if it wins every resource in its footprint. Each resource has one winner, so co-issued footprints are disjoint by construction (V-60), and the oldest ready entry always issues (V-12). A section whose winner lost elsewhere idles that cycle, which the perf model counts. Age across warps has no global meaning, so warps are peers and a per-cycle rotating warp priority breaks ties. This is the arbitration policy for Q-4. Across classes the order is bulk discard, then the MIU class, then RCU (OI-15). Memops issue in program order per warp, a conservative first-build choice. A memop requests pipes only while it is its warp's oldest unissued memop, so a warp issues at most one memop a cycle, and narrow memory co-issues across warps (OI-33). A masked load depends on its copy-only op and issues at least a cycle after it. The copy's latency + 1 ≤ CCV\_LAT\_L1\_WAKE (V-61), so its write lands first and consumers track only the load.
 
 ### Confirmation and transitive cancel
 
 Every wake is speculative until the producer's result is confirmed. When a result misses its scheduled slot, OOE cancels that producer's dependants and everything woken behind them, transitively through the matrix. Cancelled entries return to Waiting.
 
-**Miss detection (A-46).** The L1 outcome is the contract, and nothing beyond it. An L1 hit completes on `ccv_miu_ooe_cmpl` at exactly the contracted cycle, and its data lands on ccv\_miu\_rcu\_data at the contracted cycle too, since dependants woken at hit latency read it. No completion at that cycle is the miss indication, so a load still has exactly one completion. Past L1 (MLC and beyond) no latency is relied on: after a miss, dependants wake on the actual completion. Scratchpad loads, with variable bank-conflict latency, and atomics never wake speculatively. The mechanism is general, so any future variable-latency source can cancel the same way.
+**One level and one hop a cycle** (OI-42, as built in ooe\_confirm at 8.6 NGD).
+
+- **Cancel.** Each cycle, after that cycle's misses are found, one hop returns to Waiting every issued, unconfirmed entry that depends on an entry that missed this cycle or returned to Waiting last cycle. The hop is decided whole, from a register of last cycle's replays. The miss is taken from the wake timers' next state (ooe\_wake), so the first hop lands in the miss's own cycle. V-59 is what makes one hop a cycle safe. At today's latencies no cancel needs a second hop: the miss is found at issue + 19 (the payload stage plus CCV\_LAT\_L1\_CMPL), before any grandchild can be selected. So the transitive path runs only under a longer shadow, which the random tests exercise on purpose.
+- **Confirm.** An issued entry confirms when it has no dependency bit left and it either writes nothing or its timer's **fin** output says its result is final: issued, the full-latency wake raised, and no L1 check pending. A confirmed entry is freed and its column cleared, so a consumer of an entry confirmed this cycle confirms from the next. Confirmation never chains within a cycle. A cancelled producer never confirms, so its column bit stays set, and no consumer can confirm past it.
+- **Cost.** No S1 kernel moves a cycle in either mode. The old model's chain never went past one level outside the negative controls.
+
+**Miss detection (A-46).** The L1 outcome is the contract, and nothing beyond it. An L1 hit completes on `ccv_miu_ooe_cmpl` at exactly the contracted cycle, and its data lands on ccv\_miu\_rcu\_data at the contracted cycle too, since dependants woken at hit latency read it. No completion at that cycle is the miss indication, so a load still has exactly one completion. Past L1 (MLC and beyond) no latency is relied on: after a miss, dependants wake when the data is readable at RCU: the completion's arrival plus max(0, data crossing − completion crossing − issue crossing + 1), generated beside CCV\_LAT\_L1\_WAKE (OI-13). That wake is driven by the completion's arrival, not a timer, so it reaches the ready stage a cycle later than a timed wake. CCV\_LAT\_L1\_MISS\_WAKE is defined from completion arrival to the dependant's earliest select and includes that cycle, so the scheduler never adds it (OI-26). Scratchpad loads, with variable bank-conflict latency, and atomics never wake speculatively. The mechanism is general, so any future variable-latency source can cancel the same way.
 
 > **Figure, as text** (drawn in the live doc): Load-miss cancel · transitive poison through the dependency matrix
 >
@@ -228,6 +289,41 @@ An early hit/miss indication from MIU is therefore not needed for correctness. I
 A memop issues only once its address sources are confirmed. A poisoned address would start work MIU cannot recall (a TLB walk, an MLC miss, a fault on a garbage address), so there is no cancel path into MIU. The cost is a few cycles on dependent address chains, which GPU code rarely has.
 
 The cost is measured by a counterfactual event: a memop was ready except for an unconfirmed address source, *and* an MIU slot of its class went unused that cycle. At retire, the event records whether those sources confirmed without a cancel. A histogram of hold cycles per memop shows where the cost concentrates.
+
+### Scheduler timing estimate (OA-1)
+
+This is a paper estimate against the 25 NGD stage budget (TI-3). It counts one NGD as one fanout-of-4 gate stage, takes 3 NGD for flop clock-to-Q plus setup, and adds wire as NGD in proportion to the number of rows crossed. It is good to about ±15%. Synthesis by the OI track replaces it. **Revised 2026-10-08 for the sectioned select** (DA's response OI-31). The first version costed 4 full-width lane grants a cycle, which the lanes never take (DA's response OI-28).
+
+The loop is split into three stages: **ready**, **select** and **payload read**. Splitting ready from select costs no IPC, because every wake is scheduled in advance. A producer's timer starts when it is granted and raises its wake one cycle early, so the dependant's ready bit is in a flop when its select cycle begins. The only true one-cycle loop is grant to "don't pick this entry again". That is one AND, with each entry's issued flop masking its ready bit at the select input.
+
+| Stage | Contents (NGD) | Total | Margin |
+| --- | --- | --- | --- |
+| Ready, 45 rows | flop 3.0 · four-wake broadcast 3.0 · cell select and dependency gate 3.5 · 45-input AND 5.6 · row wire 1.0 | 16.1 | 8.9 |
+| Select, one pick per resource, 30 entries (S0–S3, R) | flop 3.0 · request broadcast 3.0 · issued mask 1.0 · age AND 1.0 · OR of the 29 older requests 5.6 · win 1.0 · footprint AND 1.5 · grant out 1.5 | 17.6 | 7.4 |
+| Select, one pick per MIU pipe, 15 entries (P0–P3) | flop 3.0 · request broadcast 2.5 · issued mask 1.0 · age AND 1.0 · OR of the 14 older requests 4.2 · win 1.0 · footprint AND 1.5 · grant out 1.5 | 15.7 | 9.3 |
+| Payload read, 30 entries | flop 3.0 · grant fanout 3.0 · 30:1 mux 6.0 · wire 1.5 | 13.5 | 11.5 |
+| Withdrawn: 30 entries, 4 shared grants | the same, with the count saturating at 4, 5 levels 15.0 | 26.0 | −1.0 |
+
+**Findings**
+
+- **Ready fits easily.** The four wake vectors and the 3-bit cells (A-62, A-73, OA-4) cost about 1 NGD over a single-wake matrix, because the 2-bit select decode runs in parallel with the broadcast. Wake generation is registered timers, off this path.
+- **The per-resource pick fits with 7.4 NGD to spare.** It needs no count of older grants, only an OR of older requests, and the footprint check is one gate. It keeps oldest-first across warps.
+- **Withdrawn: the 4-shared-grant select (26.0 NGD) and the banking that answered it** (DA's response OI-31). The lanes take one full-width op a cycle, or narrow ops in disjoint sections (OI-28), so four shared grants were never needed.
+- **Cancel needs no single-cycle closure.** Transitive cancel moves one hop per cycle, after that cycle's misses, and confirmation moves one level per cycle (OI-42). A dependant issued at cycle t raises its own earliest wake at t + 2 (minimum latency 3, one cycle early), and its cancel lands by then. V-59 holds this as an elaboration check. ooe\_confirm measured 8.6 NGD in 6 levels at 45 entries.
+- **The shortest wake still has its cycle.** With the 3-cycle RCU latency, a producer granted at t loads its timer at the end of t, counts in t + 1, drives its wake in t + 2, and its dependant is selected in t + 3. Any minimum latency of 2 or more works. A 1-cycle producer would need a direct grant-to-ready path, which this design does not build.
+
+**Scaling and the RS ceiling for OA-7**
+
+| Rows (total RS) | Ready (NGD) | Dependency storage (flops) |
+| --- | --- | --- |
+| 45 | 16.1 | 6,100 |
+| 64 | 16.9 | 12,300 |
+| 96 | 19.8 | 27,600 |
+| 128 | 21.2 | 49,200 |
+
+Neither ready nor select limits the size now: the per-resource pick is 18.7 NGD at 64 entries and 21.2 at 96. The RS sweep (OA-7) is to be redone against sectioned lanes, because the 30/15 split was sized for four full-width lane ops a cycle (OI-34). The total should stay at 96 rows or fewer, which keeps ready margin at 5 NGD or more and the matrix under about 28,000 flops. Past that, the next step is a clustered scheduler, which is an architecture change.
+
+**Risk handed to the OI track: rename.** Rename makes 24 producer lookups per cycle (4 uops × up to 6 sources) into the physical-register-to-RS map, which is now indexed by row and position: 768 entries. It then overrides those lookups with dependencies inside the rename group, indexes the bypass table, and writes 45-row cell columns. Estimate: lookup mux 10.8 · fanout 3.0 · in-group override 1.5 · bypass table 2.5 · cell write decode 3.0 · flop 3.0, about 24 NGD. Rename also reads the chwidth table, places operands and computes each op's footprint (see Narrow registers and lane sections). So rename is three stages: RAT read with chwidth lookup and placement, producer lookup, and matrix write. The extra stages add front-end cycles, not wake-loop cycles.
 
 ## Retire, squash and recovery
 
@@ -268,6 +364,8 @@ OOE restores its own RAT from the checkpoint with the same ID in the same cycle,
 
 **Lane mask and fetch epoch arrive with the uop.** OOE learns a uop's PC-group mask from FET, through DEC, on `ccv_dec_ooe_uop` (A-69): it needs the mask at rename for merge elision and at issue for `issue_mask`, and FET knows it at fetch. Each uop also carries a 3-bit `fetch_epoch` (A-70). OOE keeps a current epoch per warp and advances it on every redirect, demotion and kill, then drops any arriving uop whose epoch does not match. That is how wrong-path uops still in the channels, in DEC or in the decode queue are discarded after a redirect. Three bits are needed because up to 4 out-of-order redirects plus a demotion or kill can land within one flight from FET to OOE. OOE owns the epoch (A-74): it tells FET of every change on ccv\_ooe\_fet\_redirect, with an epoch\_only bit for demotion and kill. Both sides keep it per warp\_id and never reset it at launch, and OOE acks a kill, or sends ccv\_ooe\_rau\_drained for a demotion, only once its notice has landed in FET, so neither a relaunch nor a restore can be fetched under the old epoch.
 
+**Replayable faults need no stream tags (IS-4).** Each ROB entry keeps its PC and group mask. Replaying a faulted memory instruction is then a squash to it in ROB order, with each PC group resuming at its oldest unretired entry, the same mechanism as the demotion resume PC. Nothing younger has retired and stores commit only at retire, so re-executing other groups' unretired work is harmless.
+
 **Checkpoint release (A-56, repo Q-52), resolved 2026-10-02.** Found while applying the change set: OOE told FET about resolutions only on a mispredict, so a correctly predicted branch never freed its checkpoint in FET. Branches resolve out of order, so FET cannot infer frees from a count. OOE now sends `ccv_ooe_fet_ckpt_free`, a rate-1, fixed-latency channel carrying a 16-bit bitmap each cycle (`CCV_P_TIER1` × `CCV_P_BR_CKPTS`), with a bit set for every checkpoint freed by a correct resolution that cycle. One message frees any number of checkpoints across all warps, so nothing queues. A checkpoint is freed exactly once: by this channel, or by FET itself when a redirect restores an older checkpoint or a demotion or kill resets the warp. OOE frees its matching RAT checkpoint in the same cycle. A non-redirecting mode on the rate-1 redirect was rejected: every branch would queue there in bursts, delaying frees.
 
 **No stale frees (A-58).** A free that lands after FET has reallocated its checkpoint would release the new owner's checkpoint. Three rules prevent it. OOE never sends a free for a checkpoint the same cycle's redirect squashes, and drops resolutions of squashed branches as it drops late completions. `ccv_ooe_fet_redirect` and `ccv_ooe_fet_ckpt_free` are a latency-matched pair, with equal link stages checked at elaboration, so arrival order equals send order, and FET applies a redirect before frees in the same cycle. An assertion checks that every free bit names a checkpoint live in FET on arrival.
@@ -277,6 +375,10 @@ OOE restores its own RAT from the checkpoint with the same ID in the same cycle,
 ### Deferred free for outstanding memops
 
 A load already at MIU can be squashed by an older mispredict. If its destination were freed at once, the late data on `ccv_miu_rcu_data` would clobber a reallocated register, and its completion could match a reused `rob_tag`. So a squashed entry with a memop outstanding keeps its destination registers and ROB slot until MIU completes it; the completion is then dropped. Squash recovery depends on memory latency only in that case, and every deferred free has an event. Squashed stores are dropped by one bulk discard (mem\_op 0xF) naming the circular range (branch, tail\] of ROB indices, since rob\_tag carries no age (A-41). The branch rides in rob\_tag and the tail in discard\_tail, a named overlay on displacement\[4:0\], which a discard never uses. MIU still completes every store it accepted, so deferred free and the outstanding-tag checker see one completion per tag.
+
+**Deferred free covers every issued op (OI-10).** The same hazard exists for fixed-latency ops: a squashed op still in flight writes its destination at its scheduled cycle. So any squashed entry with an op in flight keeps its destinations and ROB slot until its done or scheduled landing, and rename stalls at a held slot. For fixed-latency ops the hold is bounded by the latency. Killing the write-back in flight (PF-1) is the faster later option.
+
+**A ROB entry outlives its RS entries (OI-11).** A ROB entry completes only after every RS entry of its uop has confirmed and freed. A branch acts on its outcome only then, and a cancel voids a done that already arrived. Otherwise a slot could be reused under a live RS entry, which would then read the new occupant, and under L1 speculation a branch could squash on a cancelled resolution.
 
 ### Faults
 
@@ -310,9 +412,86 @@ Stale data from another context can never become visible. A launched warp reads 
 
 Because isolation rests on the merge path and the zero registers, a bug there is a cross-context leak rather than a wrong answer (A-35). Assertions guard it: every lane of a newly allocated physical register is written before any read; a launched warp's RAT maps entirely to the zero registers; and no write, allocation or free ever names a zero register.
 
+## Stage boundaries and module ports
+
+Three synthesis rules decided on 2026-10-16 to 18 set where OOE's flops go (DA tab; TI-14, TI-16, TI-17):
+
+- **Depth:** 25 NGD of combinational logic between flops, with the flop itself outside the 25. Module ports are budgeted 12 NGD a side by default; anything else is listed in the module's `.ngd.json`.
+- **No feedthrough:** no logic, nor even a wire, on a path from a module's input port to its output port. Combinational inner helpers are timed as part of their parent.
+- **Clock enables:** every clock enable is sourced only from the module's own flops, never an input, and reset is flopped locally before any use.
+
+OA-1's estimate counted 3.0 NGD of flop inside the 25, so every stage there gains 3.0 of slack.
+
+**Consequence: credits inside OOE.** No stage register may take its enable from a neighbour's output. So a consumer that allocates from a provider holds its own credit counter, and the provider returns frees as registered pulses. Rename holds credits for RS space per class, free rows and ROB slots. A resource freed at t therefore adds capacity at t + 1 whatever the provider does internally. Same-edge reuse in the RS still chooses the entry, but no longer adds capacity to rename's go decision; OI measures the cost.
+
+| Stage | Launching flops | Logic, owner | Capturing flops |
+| --- | --- | --- | --- |
+| Decode-queue head | decq's entries | head select (19.6), inside ooe\_decq | decq's per-slot output register, the next rename group, updated on dequeue |
+| Rename 1: RAT read | decq's output register | RAT read (13.8), ooe\_rat | ooe\_rat's output register |
+| Rename 2: producer lookup | ooe\_rat's output register | producer map and in-group override, ooe\_rename | rename's stage register |
+| Rename 3: matrix write and allocation | rename's stage register; free-row buffer heads | RS allocation and row write (18.2 to 20.2), ooe\_rs; free-row take, ooe\_freelist | RS rows and valid bits; registered grant (gnt\_idx, gnt\_v) |
+| Ready | ooe\_wake's timers | ready AND (9.8), ooe\_ready, an inner helper of ooe\_sched | ooe\_sched's ready register |
+| Select | ready register; RS issued and dependency flops | per-resource pick (19.5), ooe\_select and ooe\_pick, inner helpers of ooe\_sched | ooe\_sched's grant register |
+| Payload read | grant register | 30:1 payload mux, ooe\_rs | issue register |
+| Confirm and free (same-edge reuse) | RS matrix and issued flops; wake's miss | confirm (8.6), an inner helper of ooe\_rs, through free, allocation and row write (25.2, accepted, OI-43) | RS rows, valid bits and the replay register, now in ooe\_rs |
+| Wake start | grant register | timer load (15.2), ooe\_wake | wake timers |
+
+**Port budgets for the `.ngd.json` files.** Each arrival is in NGD from the launching flop:
+
+- **ooe\_sched:** `iss` and `dep` arrive by 5.
+- **ooe\_wake:** `grant`, `kind` and `cls` arrive by 9; `cmpl` by 10, from MIU's boundary receive flop.
+- **ooe\_rs:** `req` arrives by 6; `grp_dep` by 9; `row_code` and `grp_code` by 10. All come from rename's stage flops.
+- **ooe\_freelist:** `alloc_req` arrives by 2.
+- **ooe\_decq:** `enq_v` and `enq_slot` arrive by 5, from DEC's boundary receive flops; `deq_n` by 5; `flush` by 8.
+- **ooe\_rat:** `ren_slot` and `ren_v` arrive by 11.
+
+Every module output leaves from a flop. Open for OI: whether ooe\_wake's next-state miss depends combinationally on `cmpl`. If it does, it is a through path, and the first cancel hop moves a cycle, which needs V-59 re-checked.
+
+## Reset line (Stage 4a)
+
+Reset is synchronous and selective (strategy §6). The rule: un-reset state is payload, payload is read only when a valid bit says it was written, and every valid bit is reset. Each un-reset row below names its guard. The RTL carries one CCV\_ASSERT\_READ\_VALID per row (F-8), and the per-block X-pass at 4c is its witness. The list is OI's from OI-36, with OA's additions marked.
+
+**Same-edge reuse is decided per structure, from measured serial depth** (DA's response OI-39). A structure holds a freed resource until the next cycle only when its synthesised depth needs that to fit the 25 NGD stage. The decode queue does (31.9 NGD with same-edge reuse, 23.1 without), and so does the free list, whose candidate buffer makes a freed row allocatable from t + 2 (OI-38). The RS and ROB keep same-edge reuse unless their RTL measures over the stage.
+
+**Reset**
+
+| State | Reset value |
+| --- | --- |
+| RS valid, issued and confirmed flags; copy-pending bits | 0 |
+| ROB valid bits, per-warp heads and tails, deferred-free holds | 0 / empty |
+| Decode queue: per-warp FIFO valid, heads and tails, shared credit pool | empty; 12 credits |
+| RAT checkpoint valid bits | 0 |
+| RAT and committed RAT | every GPR name the zero register, every predicate the zero predicate |
+| Committed width per architectural register (Q21) | 32 bits (OA) |
+| Per-warp chwidth hold, demotion timers, redirect and kill pending (OA) | 0 / idle |
+| Fetch epochs | 0 |
+| Warp-to-slot table valid | 0 |
+| GPR row allocated bits; predicate free bit-vector | all free |
+| Rotating start pointers (free lists) and rotating warp priority (OA) | 0. Any value is legal; reset is for run-to-run determinism only |
+| Free-row candidate buffer valid bits (GPR and predicate); bank refill pointers (OI-38) | empty; pointers at any value |
+
+**Un-reset payload**
+
+| State | Guard |
+| --- | --- |
+| RS payload: uop fields, sched\_attr, operand names, positions and widths, footprint (OI-36 (4): payload lives in the RS) | the entry's RS valid |
+| Dependency-matrix cells (dependency bit and line select) and age-matrix bits. Rename writes an entry's whole row and column at allocation, so a valid row holds no unwritten cell | the row's RS valid |
+| Wake timers | the producer's issued flag |
+| ROB payload: PC, group mask, lane mask, old destinations, fault record (OA) | the entry's ROB valid |
+| RAT checkpoint contents | the checkpoint's valid |
+| Decode-queue entries | the FIFO slot's valid |
+| Row owner and live-section mask | the row's allocated bit |
+| A name's width | its section's live bit |
+| Identity shadow (warp\_base, %ctaid; OA) | the warp slot's valid, written at activation |
+| Free-row candidate buffer entries (OI-38) | the buffer slot's valid |
+
+The PRF's own rows are RCU's line, not OOE's. OOE's guarantee toward them is that activation maps the RAT to the zero register (A-29), so no physical row is read before it is written.
+
 ## Parameters
 
 Every size is provisional for the first build, in `ccv_prov_pkg`, and gets a knee-finding sweep once the timing model is up. Latencies are assumptions until the LANE, RCU and MIU sessions confirm them.
+
+**Values that become CSRs are configuration** (TI-15, Daniel 2026-10-17): the demotion thresholds, the per-slot floors and ceilings, the RS per-warp cap and the decode-queue per-warp maximum. OOE reads them as steady values, they change only while OOE is idle, and no OOE behaviour depends on when a write lands.
 
 | Parameter | Value | How it was set | Sweep |
 | --- | --- | --- | --- |
@@ -325,14 +504,17 @@ Every size is provisional for the first build, in `ccv_prov_pkg`, and gets a kne
 | Per-warp RS cap | to be set by sweep | stops one stalled warp filling the RS | yes |
 | Decode queue | 12, shared, per-warp maximum | 2 cycles of full decode | yes |
 | Branch checkpoints (in FET) | 4 per warp | fills the 2-bit ID | via stall events |
-| Dependency matrix | 45 × 45 cells, 2 bits each (dependency and late) | follows from RS size | — |
-| Age matrices | 30 × 30 and 15 × 15 | follows from RS split | — |
+| Dependency matrix | 45 × 45 cells, 3 bits each (dependency and a 2-bit wake select) | follows from RS size | — |
+| Age matrices | 30 × 30 (lane and RCU class, one pick per resource) and 15 × 15 (MIU) | follows from RS split | — |
 | RCU-only op latency | 3 cycles | assumption, RCU session | — |
 | Lane op latency | 7 cycles, 4-cycle minimum bypass | assumption, LANE session | — |
 | L1 hit latency | 7 cycles | assumption, MIU session | — |
 | Demotion thresholds | CSR, one per trigger | to be set with RAU | yes |
 | RAT checkpoints | 4 per warp, 152 bits each (608 per warp) | matches FET's 4 branch checkpoints, same ID | with branch checkpoints |
 | Predicate rename floor / ceiling | 4 / 20 per warp | ceiling + 3 × floor ≤ 32, exact fit, asserted at elaboration (A-39, A-40) | yes |
+| Bypass table | 8 × 8 groups; penalties 0, 2, 3 or PRF read | DA's responses OA-4 (OI-16) | values tunable |
+| CCV\_LAT\_SFU, CCV\_LAT\_COLLECTIVE | 12 and 5 cycles | Placeholders, lat\_class 4 and 5 | until LANE or RCU confirm |
+| CCV\_LAT\_RCU\_ADDR\_BASE | 5 cycles | Placeholder replacing 2 (DA's response OA-5) | until RCU confirms |
 
 **Names in the repository** (`params/ccv_params.json`, `3543276`):
 
@@ -467,6 +649,17 @@ Every question the session closed, with where the answer lives above. Q-numbers 
 | A-72 — mask variant | Dropped; per-slot masks stand |
 | A-73 — matrix logic level | Two-bit cells (dependency and late) replace two columns; ready AND stays at 45 inputs. Zero-register reads use no PRF port |
 | A-74 — epoch ownership | OOE owns it; epoch\_only notices on the redirect channel; per warp\_id, never reset; kill acked only after the notice lands |
+| OI-10 to OI-15 | Ratified 2026-10-07: deferred free for every issued op; ROB entry outlives its RS entries (V-58); producer RS entry held until its result confirms; post-miss wake when data is readable; V-35 done bound; the model's six policies |
+| OI-16 — bypass groups | k wakes per producer, log2(k + 1)-bit cells; k = 1 is A-73; values wait on OA-4 |
+| OI-17 — free list | Bit-vector with rotating-start allocation; RTL carries no S1 fallback mode as a design path |
+| IS-4 — replayable faults | Contiguous squash to the faulting instruction; per-group resume from oldest unretired entry; ROB keeps PC and group mask |
+| OA-1 — scheduler timing and RCU select banking | 2026-10-08: The paper estimate puts a unified 30-entry, 4-grant RCU select at 26.0 NGD, over the 25 budget. Daniel agreed to two 15-entry RCU banks, each with a 15 × 15 age matrix and 2 grants, at 20.5 NGD. Entries alternate between banks at allocation, and age order holds within a bank only. Ready is 16.1 NGD. The RS sweep cap is 96 rows in total, grown in banks of 15. V-59 was added. OI's synthesis confirms. Superseded the same day by the sectioned select (OI-31). |
+| OI-28 to OI-31 — lane sections, narrow registers and select | 2026-10-08: The lanes have four sectioned operand ports, not sixteen: one full-width op a cycle, or narrow ops in disjoint sections (OI-28). The sectioned select replaces banking (OI-31). Slice allocation uses row ownership, with 4-bit at 4× in the first build (OI-29). Rename forces alignment and inserts section moves; there is no lane byte mux (OI-30). Home position defaults to the slot index, with rotation as a sweep. V-12 and V-13 are restated; V-60 to V-63 added. |
+| OA-15 — wide-footprint ops select their narrow operands | 2026-10-08: Agreed. Mixed-width and unit-minimum ops select narrow operands by position inside their unit and steer narrow results to any position, so conversions pay no moves (AR-14). Pure narrow ops stay aligned by rename (OI-30). V-63 restated. OA-12 to OA-14 remain open for the sweep. |
+| OI-30 revised — the footprint rule replaces forced alignment | 2026-10-08: The in-lane swizzle that OA-15 needs serves every lane op, so an op claims the union of its operands' sections and routes within them. Rename no longer aligns operands, no section moves exist, and placement affects only co-issue. OA-12 is withdrawn and OA-15 subsumed. Conditional on AR confirming the swizzle adds no cycle to CCV\_LAT\_LANE; otherwise pure narrow ops fall back to alignment with moves. Supersedes the alignment entry above. |
+| IS-7 — FP minimum footprint | 2026-10-09: FP's CCV\_FOOT\_MIN is 1, so FP8 and FP4 run per section at 4×, a deliberate bet on FP8 (Daniel). AR's recommendation of 2 is overruled. CCV\_DONE\_SLOTS stays 7 while FP shares the lane latency class. |
+| OA-13, OA-16, OI-35 — deferred; placement default | 2026-10-09: Default placement is home = tier-1 slot index, which is simple and effective when several warps are unstalled. Deferred to the perf register: loads passing older loads (OA-13), renamed chwidth (OA-16; Q21's warp hold stays), and lone-warp narrow rate (OI-35). |
+| OI-38, OI-39, OI-41 — free list, same-edge reuse, restore | 2026-10-15/16: The free list is an 8-row candidate buffer refilled by four interleaved banks; built at 23.5 NGD. Same-edge reuse is decided per structure by measured depth (Daniel): the decode queue and free list hold a freed entry for a cycle, the RS and ROB do not. Restore-allocate draws through the buffer with priority over rename (about 4 cycles, V-64). |
 
 ## Verification
 
@@ -516,16 +709,19 @@ V-08 is now P1. With `ccv_ooe_fet_ckpt_free` (A-56) it is the one place FET and 
 | --- | --- | --- | --- |
 | V-10 | A dependency bit is set only for an older producer in the same warp, never for the entry itself. The matrix is therefore acyclic, which rules out scheduler deadlock | Invariant | P1 |
 | V-11 | An entry is selected only if its matrix row is empty | Invariant | P1 |
-| V-12 | No issue slot is granted twice in a cycle; per-class issue never exceeds 4 | Invariant | P1 |
-| V-13 | Each age matrix is antisymmetric and transitive, so it is a total order, and the oldest ready entry in each class is the one selected | Invariant | P2 |
+| V-12 | An entry is granted only if it won every resource in its footprint, and the oldest ready entry is always granted (OI-31) | Invariant | P1 |
+| V-13 | Each age matrix is antisymmetric and transitive, so it is a total order, and each resource's pick is the oldest ready entry whose footprint includes it | Invariant | P2 |
 | V-14 | The per-warp RS cap holds | Invariant | P1 |
 | V-15 | After a cancel settles, no issued-but-unconfirmed entry has a poisoned producer. Transitive cancel is the easiest place to miss a hop | Invariant | P1 |
-| V-16 | An RS entry is freed only once every source is confirmed | Invariant | P1 |
+| V-16 | An RS entry is freed only once every source is confirmed and, for an entry with a destination, its own result (OI-12) | Invariant | P1 |
 | V-17 | A memop issues only when its address sources are confirmed | Invariant | P1 |
 | V-18 | A ready entry is selected within a bound set by the rotating warp priority | Bounded | P2 |
 | V-38 | An entry's producers include the old predicate destination whenever the op merges a predicate; at most 6 producers per entry (A-43) | Invariant | P1 |
-| V-39 | Past L1, no dependant wakes before the producer's actual completion; scratchpad loads and atomics never wake speculatively (A-46) | Invariant | P1 |
-| V-48 | A cell's late bit is clear only if every use it makes of that producer is bypass-eligible: a lane-executing op reading the value as a lane operand, from a non-cross-lane producer (A-62) | Invariant | P1 |
+| V-39 | Past L1, no dependant wakes before the producer's data is readable at RCU (OI-13); scratchpad loads and atomics never wake speculatively (A-46) | Invariant | P1 |
+| V-48 | A cell selects a wake earlier than the PRF read only if every use the dependant makes of that producer is bypass-eligible (a lane-executing op reading the value as a lane operand, from a non-cross-lane producer), and then exactly `byp[producer group][consumer group]`; every late case selects the PRF read (A-62, OI-16) | Invariant | P1 |
+| V-60 | No resource (lane section S0–S3, R, MIU pipe P0–P3) is granted twice in a cycle, so co-issued footprints are disjoint (OI-31) | Invariant | P1 |
+| V-62 | Every live section of a GPR row belongs to the row's owner slot, and a row with no live section has no owner (OI-29) | Invariant | P1 |
+| V-63 | At issue, every GPR operand's sections lie inside the op's footprint, and the footprint covers its unit's aligned minimum; zero-register sources are exempt (OI-30 revised, AR-12) | Invariant | P1 |
 
 ### ROB, retire and squash
 
@@ -534,7 +730,7 @@ V-08 is now P1. With `ccv_ooe_fet_ckpt_free` (A-56) it is the one place FET and 
 | V-19 | Retire is in order per warp, of completed entries only, at most 2 per warp per cycle | Invariant | P1 |
 | V-20 | A masked load's ROB entry completes only when the load has completed and its copy-pending bit is clear; exactly one copy op exists per masked load (A-38) | Invariant | P1 |
 | V-21 | After a squash, nothing younger than the branch remains in that warp, and no other warp's state changed | Invariant | P1 |
-| V-22 | A squashed entry with a memop outstanding keeps its registers and `rob_tag` until MIU completes it; that tag is never reallocated while outstanding | Invariant | P1 |
+| V-22 | A squashed entry with a memop outstanding keeps its registers and `rob_tag` until MIU completes it, and any squashed entry with a fixed-latency op in flight keeps its destinations and ROB slot until the op's done or scheduled landing (OI-10); a tag is never reallocated while outstanding | Invariant | P1 |
 | V-23 | Commit messages go only for retired stores; bulk discard never covers a retired store; bulk discard is never in the same cycle as a new memop for that warp | Invariant | P1 |
 | V-24 | After `fault_taken`, nothing more retires for that warp until its kill | Invariant | P1 |
 | V-25 | Each resident warp's oldest instruction retires or the warp is demoted within a bound set by the demotion thresholds | Bounded | P2 |
@@ -542,6 +738,7 @@ V-08 is now P1. With `ccv_ooe_fet_ckpt_free` (A-56) it is the one place FET and 
 | V-41 | A redirect is raised exactly when a resolved branch disagrees with its pred\_taken (A-42) | Invariant | P1 |
 | V-53 | No uop whose fetch\_epoch differs from its warp's current epoch is renamed; the epoch advances on every redirect, demotion and kill (A-70) | Invariant | P1 |
 | V-54 | Every issued uop's issue\_mask equals the group mask it arrived with on ccv\_dec\_ooe\_uop (A-69) | Invariant | P1 |
+| V-58 | A ROB entry completes only after every RS entry of its uop has confirmed and freed; a branch acts on its outcome only then; a cancel voids a done that already arrived (OI-11) | Invariant | P1 |
 
 ### Demotion, kill and activation
 
@@ -555,6 +752,7 @@ V-08 is now P1. With `ccv_ooe_fet_ckpt_free` (A-56) it is the one place FET and 
 | V-42 | A migration proceeds only once ccv\_rau\_rcu\_mig and ccv\_ooe\_rcu\_map for the same warp and direction have both arrived; at most one per warp in flight (A-45) | Invariant (RCU) | P1 |
 | V-49 | A warp renames and issues only after a launch, or after a restore-activate that follows its restore-allocate; no map with direction 1 is sent except on restore-allocate (A-64) | Invariant | P1 |
 | V-50 | OOE's warp-to-slot table matches the tier1\_id RAU sent for every resident warp, and FET's matches the same (A-65) | Invariant (cross-block) | P1 |
+| V-64 | A restore-allocate completes, and its RAT map is sent, within ceil(rows / 4) + 1 cycles of acceptance; no rename allocation is granted while it is in progress (OI-41) | Bounded | P1 |
 
 ### Elaboration-time checks
 
@@ -567,12 +765,14 @@ V-08 is now P1. With `ccv_ooe_fet_ckpt_free` (A-56) it is the one place FET and 
 | V-47 | ccv\_ooe\_fet\_redirect and ccv\_ooe\_fet\_ckpt\_free have equal link stages (A-58) | Elaboration | P1 |
 | V-51 | CCV\_P\_PHYS\_ZERO and CCV\_P\_PRED\_ZERO lie outside their pools; each index width is clog2(pool + 1) (A-67) | Elaboration | P1 |
 | V-55 | 2^CCV\_P\_W\_FETCH\_EPOCH exceeds CCV\_P\_BR\_CKPTS + 1, so the epoch cannot wrap within one flight (A-70) | Elaboration | P1 |
+| V-59 | The minimum producer wake offset is at least 2 + the cancel hop time (1 cycle), so a transitive cancel lands before the next hop's ready computation (OA-1) | Elaboration | P1 |
+| V-61 | The copy-only op's latency + 1 ≤ CCV\_LAT\_L1\_WAKE, so a masked load issued after its copy never wakes a consumer before the copy's write lands (OI-31) | Elaboration | P1 |
 
 ### Boundary assumptions
 
 | ID | Property | Kind | Priority |
 | --- | --- | --- | --- |
-| V-35 | Fixed-latency contract: assumed for RCU and LANE results in the OOE proof, asserted by the arrival checker on each completion channel | Assume/guarantee | P1 |
+| V-35 | Fixed-latency contract: assumed for RCU and LANE results in the OOE proof, asserted by the arrival checker on each completion channel. On ccv\_rcu\_ooe\_done the bound is issue + issue crossing + latency − 1 + done crossing, earlier accepted (OI-14) | Assume/guarantee | P1 |
 | V-36 | Every channel checker rule (valid, credit, stall, reserved-zero) is an assumption on OOE's inputs and an assertion on its outputs | Assume/guarantee | P1 |
 | V-37 | MIU completes every memop it accepts, even after OOE squashes it | Assume/guarantee | P1 |
 | V-43 | Every memop MIU accepts gets exactly one completion, including stores later bulk-discarded (A-41) | Assume/guarantee | P1 |
@@ -590,7 +790,7 @@ V-08 is now P1. With `ccv_ooe_fet_ckpt_free` (A-56) it is the one place FET and 
 
 ## Still open and handed off
 
-One OOE item is open: the scheduler's timing ceiling, which must cover the two wake vectors and the per-cell select (A-62, A-73). Checkpoint release (A-56, A-58, A-60) is applied. The L1 wake start point (A-61) is applied, and so is the two-column matrix (A-62), which is OOE-internal and owed by the RTL as V-48. Everything else is a size awaiting a sweep, or sits with another owner.
+No OOE design item is open. OA-1's estimate is done and its select decided (DA's response OI-31); the numbers need the OI track's synthesis. Narrow registers and lane sections are decided (DA's responses OI-29 and OI-30). AR's restatement of the RCU–LANE partition and the interface follow (OI-28, OI-32, OI-33). Checkpoint release (A-56, A-58, A-60) and the L1 wake start point (A-61) are applied. The per-cell wake select (A-62, A-73, OA-4) is OOE-internal and owed by the RTL as V-48. Everything else is a size awaiting a sweep, or sits with another owner.
 
 | Item | Owner | What is needed |
 | --- | --- | --- |
@@ -602,14 +802,18 @@ One OOE item is open: the scheduler's timing ceiling, which must cover the two w
 | Demotion threshold values | RAU session | One CSR per trigger |
 | Deferred barrier relaxation | Later | Let younger non-memory ops pass a barrier wait, if the barrier-hold event shows it is worth it |
 | Interface changes | Arch agent | Applied in custom-cuda-core `3543276` (2026-10-02), and the per-block specs follow it. Deviations are listed at the top of the Changes tab in *Interface spec changes — OOE session* |
-| Scheduler timing ceiling | OOE | Paper estimate of RS entries × up to 6 producers × 4 timed wakes, plus select, in 25 NGD; the hard cap for the RS sweep |
+| Scheduler timing ceiling | OOE | Estimate done (OA-1): ready 16.1 NGD; per-resource select 17.6, decided (DA's response OI-31). The RS sweep is redone for sectioned lanes, at 96 rows or fewer (OA-7). OI's synthesis confirms |
 | Early hit/miss indication | MIU session | Optional: not needed for correctness, but shrinks the cancel shadow |
 | Checkpoint release on a correct prediction (A-56, repo Q-52) | Coding agent, FET session | Applied in custom-cuda-core `7e841d5`: the new `ccv_ooe_fet_ckpt_free` channel, and the redirect made fixed-latency (A-60). FET implements it and owes the joint V-08 harness. |
 | Latency reference points (A-57) | Coding agent; LANE and RCU sessions | Confirmed. `CCV_LAT_LANE_BYP` is applied as lane-local. `CCV_LAT_L1_WAKE` and `CCV_LAT_L1_CMPL` are generated from the A-61 start point in 0cf039a, each link counted as a whole crossing (A-63) |
 | Deferred checkers (repo Q-53) | LANE, RCU, MIU sessions | Arrival-cycle checkers, outstanding-tag checker, A-35 assertions and migration pairing, each built with the block whose internals it needs |
-| L1 wake start point (A-61, repo Q-54) | Coding agent; RCU session | Resolved 2026-10-02: start = max(memop link, issue link + `CCV_LAT_RCU_ADDR` + address link), with `CCV_LAT_RCU_ADDR_BASE` and `max` in the grammar. Applied in 0cf039a; the base starts at 2 (accepted 2026-10-03), and the RCU session confirms or moves it |
+| L1 wake start point (A-61, repo Q-54) | Coding agent; RCU session | Resolved 2026-10-02: start = max(memop link, issue link + `CCV_LAT_RCU_ADDR` + address link), with `CCV_LAT_RCU_ADDR_BASE` and `max` in the grammar. Applied in 0cf039a; the base was 2 (accepted 2026-10-03) and is now 5 as a placeholder (DA), and the RCU session confirms or moves it |
 | Bypass eligibility (A-62, repo Q-55) | Coding agent; LANE and RCU sessions | Resolved 2026-10-02: eligibility decided per pair at rename (V-48), stored as a late bit per cell (A-73). Nothing to apply in the schema or the S1 stub, which wakes on completion. The OOE RTL builds it (V-48), and the LANE and RCU sessions list the op classes |
 | Launch, restore and slot (A-64, A-65) | Coding agent; RAU and PCA sessions | Applied in custom-cuda-core 1077054: the 2-bit op and tier1\_id on ccv\_rau\_ooe\_alloc, tier1\_id on ccv\_rau\_fet\_launch and ccv\_rau\_fet\_mig, and the zero registers (CCV\_P\_PHYS\_ZERO = 255, CCV\_P\_PRED\_ZERO = 63, kept outside the pool by derivation, A-67). PCA's restore command (repo Q-39) completes the sequence |
 | Scheduling attributes (A-66) | DEC session; LANE and RCU sessions | Applied in 1077054: sched\_attr (13 bits) on ccv\_dec\_ooe\_uop, its bit order and codes for confirmation. DEC also delivers the memop's mem\_op, space and ordering, which OOE passes through (A-68, applied in 95eb4f7). DEC owns the opcode-to-attribute table; mem\_op, space and ordering are settled in the same pass |
 | Lane mask and epoch (A-69, A-70) | Coding agent; FET and DEC sessions | Applied in 98c0e63, per slot; the per-message variant was dropped (A-72). Epoch ownership (A-74): applied in 47c27dd (epoch\_only on ccv\_ooe\_fet\_redirect, kill\_ack waits for the notice to land) |
 | Unaligned lane access (A-71) | ISA track | Legal or fault; OOE neutral either way |
+| Narrow home position (OI-30) | Timing model (OI-34) | Sweep home = slot index (default) against a per-warp rotation on vadd16, counting moves and idle sections |
+| RCU–LANE partition and PRF ports (OI-28, OI-32, OI-33) | AR, then TI | Section banks and their read and write ports, the per-resource issue channel, narrow memops and MIU's grant count, and slice-granular restore |
+| Narrow rate (OA-12 to OA-15) | OI, AR, TI, IS, CP; DA decides | Closed for the first build (DA, 2026-10-09). Default placement is home = slot index. OA-13, OA-16 and lone-warp narrow rate (OI-35) are deferred to the perf register, OA-14 and OA-12 are withdrawn, and OA-15 is subsumed. OI adds the perf-register entries. Model and sweep them on vadd16 and AR-14's narrow-to-FP kernel, then pick defaults |
+| Rename chwidth instead of holding the warp (OA-16) | Deferred to the perf register (DA, 2026-10-09); OI adds the entry | Width in the RAT entry and its checkpoints, chwidth renamed as a lane copy, F-WIDTH checked at rename. It would replace Q21's warp hold, which O-38's zext-as-chwidth may make frequent in narrow loops |

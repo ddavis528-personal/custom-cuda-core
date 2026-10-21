@@ -6,10 +6,10 @@
 
 // HARDENING WRAPPER ccv_syu_w: ccv_syu and the sequential repeaters of its
 // channel ends -- the physical hierarchy (docs/physical.md, "Wrappers
-// and links"). Nothing but instances and nets, like the top. Every
-// end has its repeater whether or not the link is repeated.
-// STAGES is a parameter the top sets from params/links.json, 0 meaning
-// wires, so a new split changes parameters and never this structure.
+// and links"). Nothing but instances and nets, like the top. An end
+// whose link has no stages here is connected straight through.
+// Each end's stages are a parameter the top sets from params/links.json;
+// at 0 the end is wired straight through, with no repeater.
 `include "ccv_interfaces.svh"
 
 module ccv_syu_w #(
@@ -79,36 +79,69 @@ module ccv_syu_w #(
   );
 
   // ccv_ooe_syu_bar, destination end
-  ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(13)) u_rpt_ooe_syu_bar (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({ooe_syu_bar_valid}), .src_payload({ooe_syu_bar_payload}),
-    .src_wake(ooe_syu_bar_wake), .src_credit({ooe_syu_bar_credit}), .src_stall({ooe_syu_bar_stall}),
-    .dst_valid({b_ooe_syu_bar_valid}), .dst_payload({b_ooe_syu_bar_payload}),
-    .dst_wake(b_ooe_syu_bar_wake), .dst_credit({b_ooe_syu_bar_credit}), .dst_stall({b_ooe_syu_bar_stall})
+  if (RPT_OOE_SYU_BAR > 0) begin : g_rpt_ooe_syu_bar
+    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(13)) u_rpt_ooe_syu_bar (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({ooe_syu_bar_valid}), .src_payload({ooe_syu_bar_payload}),
+      .src_wake(ooe_syu_bar_wake), .src_credit({ooe_syu_bar_credit}), .src_stall({ooe_syu_bar_stall}),
+      .dst_valid({b_ooe_syu_bar_valid}), .dst_payload({b_ooe_syu_bar_payload}),
+      .dst_wake(b_ooe_syu_bar_wake), .dst_credit({b_ooe_syu_bar_credit}), .dst_stall({b_ooe_syu_bar_stall})
 `ifdef CCV_TRACE
-    , .src_tid({ooe_syu_bar_tid}), .dst_tid({b_ooe_syu_bar_tid})
+      , .src_tid({ooe_syu_bar_tid}), .dst_tid({b_ooe_syu_bar_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_ooe_syu_bar
+    assign {b_ooe_syu_bar_valid} = {ooe_syu_bar_valid};
+    assign {b_ooe_syu_bar_payload} = {ooe_syu_bar_payload};
+    assign b_ooe_syu_bar_wake = ooe_syu_bar_wake;
+    assign {ooe_syu_bar_credit} = {b_ooe_syu_bar_credit};
+    assign {ooe_syu_bar_stall} = {b_ooe_syu_bar_stall};
+`ifdef CCV_TRACE
+    assign {b_ooe_syu_bar_tid} = {ooe_syu_bar_tid};
+`endif
+  end
   // ccv_syu_ooe_rel, source end
-  ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(36)) u_rpt_syu_ooe_rel (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({b_syu_ooe_rel_valid}), .src_payload({b_syu_ooe_rel_payload}),
-    .src_wake(b_syu_ooe_rel_wake), .src_credit({b_syu_ooe_rel_credit}), .src_stall({b_syu_ooe_rel_stall}),
-    .dst_valid({syu_ooe_rel_valid}), .dst_payload({syu_ooe_rel_payload}),
-    .dst_wake(syu_ooe_rel_wake), .dst_credit({syu_ooe_rel_credit}), .dst_stall({syu_ooe_rel_stall})
+  if (RPT_SYU_OOE_REL > 0) begin : g_rpt_syu_ooe_rel
+    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(36)) u_rpt_syu_ooe_rel (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_syu_ooe_rel_valid}), .src_payload({b_syu_ooe_rel_payload}),
+      .src_wake(b_syu_ooe_rel_wake), .src_credit({b_syu_ooe_rel_credit}), .src_stall({b_syu_ooe_rel_stall}),
+      .dst_valid({syu_ooe_rel_valid}), .dst_payload({syu_ooe_rel_payload}),
+      .dst_wake(syu_ooe_rel_wake), .dst_credit({syu_ooe_rel_credit}), .dst_stall({syu_ooe_rel_stall})
 `ifdef CCV_TRACE
-    , .src_tid({b_syu_ooe_rel_tid}), .dst_tid({syu_ooe_rel_tid})
+      , .src_tid({b_syu_ooe_rel_tid}), .dst_tid({syu_ooe_rel_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_syu_ooe_rel
+    assign {syu_ooe_rel_valid} = {b_syu_ooe_rel_valid};
+    assign {syu_ooe_rel_payload} = {b_syu_ooe_rel_payload};
+    assign syu_ooe_rel_wake = b_syu_ooe_rel_wake;
+    assign {b_syu_ooe_rel_credit} = {syu_ooe_rel_credit};
+    assign {b_syu_ooe_rel_stall} = {syu_ooe_rel_stall};
+`ifdef CCV_TRACE
+    assign {syu_ooe_rel_tid} = {b_syu_ooe_rel_tid};
+`endif
+  end
   // ccv_rau_syu_alloc, destination end
-  ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(17)) u_rpt_rau_syu_alloc (
-    .clk(core_clk), .rst_n(rst_n),
-    .src_valid({rau_syu_alloc_valid}), .src_payload({rau_syu_alloc_payload}),
-    .src_wake(rau_syu_alloc_wake), .src_credit({rau_syu_alloc_credit}), .src_stall({rau_syu_alloc_stall}),
-    .dst_valid({b_rau_syu_alloc_valid}), .dst_payload({b_rau_syu_alloc_payload}),
-    .dst_wake(b_rau_syu_alloc_wake), .dst_credit({b_rau_syu_alloc_credit}), .dst_stall({b_rau_syu_alloc_stall})
+  if (RPT_RAU_SYU_ALLOC > 0) begin : g_rpt_rau_syu_alloc
+    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(15)) u_rpt_rau_syu_alloc (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({rau_syu_alloc_valid}), .src_payload({rau_syu_alloc_payload}),
+      .src_wake(rau_syu_alloc_wake), .src_credit({rau_syu_alloc_credit}), .src_stall({rau_syu_alloc_stall}),
+      .dst_valid({b_rau_syu_alloc_valid}), .dst_payload({b_rau_syu_alloc_payload}),
+      .dst_wake(b_rau_syu_alloc_wake), .dst_credit({b_rau_syu_alloc_credit}), .dst_stall({b_rau_syu_alloc_stall})
 `ifdef CCV_TRACE
-    , .src_tid({rau_syu_alloc_tid}), .dst_tid({b_rau_syu_alloc_tid})
+      , .src_tid({rau_syu_alloc_tid}), .dst_tid({b_rau_syu_alloc_tid})
 `endif
-  );
+    );
+  end else begin : g_wire_rau_syu_alloc
+    assign {b_rau_syu_alloc_valid} = {rau_syu_alloc_valid};
+    assign {b_rau_syu_alloc_payload} = {rau_syu_alloc_payload};
+    assign b_rau_syu_alloc_wake = rau_syu_alloc_wake;
+    assign {rau_syu_alloc_credit} = {b_rau_syu_alloc_credit};
+    assign {rau_syu_alloc_stall} = {b_rau_syu_alloc_stall};
+`ifdef CCV_TRACE
+    assign {b_rau_syu_alloc_tid} = {rau_syu_alloc_tid};
+`endif
+  end
 endmodule

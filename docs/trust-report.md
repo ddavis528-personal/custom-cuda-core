@@ -54,6 +54,7 @@ so this is a build artifact rather than something to remember.
 | `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
 | `sim/skel/ooe.cpp` | — | — |
 | `sim/skel/stub.h` | — | — |
+| `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_clk_gate.sv` | — | `CCV_CG_HYST_W` |
 | `test/formal/fv_link.sv` | — | `CCV_P_TIMEOUT_N` |
 | `test/neg/tb_credit_neg.sv` | — | `CCV_P_TIMEOUT_N` |
@@ -64,14 +65,14 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **20 of 48 channels** carry at least one
+appear above. **19 of 48 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |
 |---|---|
 | `ccv_cru_rau_cfg` | `kill_grid` |
 | `ccv_dcu_mlc_req` | `coh_op` |
-| `ccv_dec_ooe_uop` | `uop_class`, `sched_attr`, `mem_op`, `space`, `ordering`, `opcode` |
+| `ccv_dec_ooe_uop` | `uop_class`, `sched_attr`, `mem_op`, `opcode` |
 | `ccv_exb_ext_out` | `tl_out` |
 | `ccv_exb_mlc_rsp` | `probe_type` |
 | `ccv_ext_exb_in` | `tl_in` |
@@ -81,13 +82,12 @@ preliminary field:
 | `ccv_miu_fet_itlb` | `itlb_refill` |
 | `ccv_miu_spm_req` | `spm_op` |
 | `ccv_mlc_exb_req` | `coh_op`, `ownership_class` |
-| `ccv_ooe_miu_memop` | `mem_op`, `space`, `ordering` |
+| `ccv_ooe_miu_memop` | `mem_op` |
 | `ccv_ooe_rcu_issue` | `bypass_group`, `opcode` |
 | `ccv_pca_fet_mig` | `pcs`, `group_masks` |
 | `ccv_rau_fet_launch` | `code_bounds` |
 | `ccv_rau_fet_mig` | `bank_select` |
 | `ccv_rau_rcu_mig` | `bank_select` |
-| `ccv_rau_syu_alloc` | `barrier_count` |
 | `ccv_rcu_lane_ops` | `sec_opcode`, `operand`, `sec_opnd_pos`, `sec_opnd_width`, `operand_byp` |
 
 ## High-churn parameters
@@ -109,7 +109,6 @@ to code that merely carries it, which will not.
 | `CCV_L_W_CSR_ADDR` | 16 | med | CRU session -- the CSR fabric has no topology yet |
 | `CCV_L_W_GRID_SEL` | 8 | med | RAU / CRU sessions |
 | `CCV_L_W_MEM_OP` | 4 | med | MIU block session |
-| `CCV_L_W_ORDERING` | 4 | med | OOE/MIU session -- is scope a separate field? |
 | `CCV_L_W_OWNERSHIP` | 3 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
 | `CCV_L_W_PCA_BANK` | 3 | med | PCA session, from the parked-array organization |
 | `CCV_L_W_PROBE_TYPE` | 2 | med | MLC/EXB session, alongside CCV_L_W_COH_OP |
@@ -118,9 +117,7 @@ to code that merely carries it, which will not.
 | `CCV_P_W_BYP_GROUP` | 3 | med | LANE per-block session (register OA-4) |
 | `CCV_P_W_SCHED_ATTR` | 16 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
-| `CCV_L_W_BAR_COUNT` | 7 | low | SYU session -- is the count biased? |
 | `CCV_L_W_CLASS` | 3 | low | DEC block session -- is class derivable from opcode? |
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | MMU session, with the page-table format |
-| `CCV_L_W_SPACE` | 3 | low | OOE/MIU session |
 | `CCV_L_W_SPM_OP` | 2 | low | SPM block session |
 | `CCV_OP_PRF_COPY` | 511 | low | generated |

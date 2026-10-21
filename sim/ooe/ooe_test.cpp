@@ -85,6 +85,9 @@ struct Op {
   uint32_t mask = kFullMask;
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
+  unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
+  unsigned chw = 2;              ///< kChw: the width code it sets on dst
+  unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -99,6 +102,9 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.dst = o.dst;
   u.w = o.w;
   u.backward = o.backward;
+  u.cause = o.cause;
+  u.fmt_rsv = o.fmt_rsv;
+  u.fmt_opnd = o.fmt_opnd;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
   u.shape.guard = o.guard;
   u.pred_guard = o.pguard;
@@ -130,7 +136,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kExit: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 0, 0); u.shape.exit = true; break;
   case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
-  case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = 2; break;
+  case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
   u.attr_raw |= pgroupOf(o.k) << 13;
   if (o.k == kLoad || o.k == kStore) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
@@ -218,7 +224,7 @@ struct Env {
 
   unsigned rnd(unsigned n) { return n ? unsigned(rng() % n) : 0; }
 
-  void launch(unsigned warp, unsigned slot, std::vector<Op> prog) {
+  void launch(unsigned warp, unsigned slot, std::vector<Op> prog, unsigned barriers = 16) {
     Warp x;
     x.id = warp;
     x.slot = slot;
@@ -229,6 +235,7 @@ struct Env {
     a.slot = slot;
     a.op = kAllocLaunch;
     a.ctaid = 7;
+    a.barrier_count = barriers;
     core.alloc(a);
   }
 
@@ -863,12 +870,115 @@ void testDemote() {
   // Restore into the same slot: allocate, map direction 1, activate.
   Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
   e.core.alloc(ra);
-  e.step();
   bool map1 = false;
-  for (const RatMap &m : e.log.back().maps) map1 = m.direction == 1 && m.gpr[0] != c.phys_zero;
+  for (unsigned k = 0; k != 10 && !map1; ++k) {
+    e.step();
+    for (const RatMap &m : e.log.back().maps) map1 = m.direction == 1 && m.gpr[0] != c.phys_zero;
+  }
   EXPECT(map1, "no restore map");
   EXPECT(e.core.heldGprs(0) == 16, "restore allocated %u", e.core.heldGprs(0));
   for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
+/// Restore-allocate through the candidate buffers (OA's response OI-41):
+/// rename stalls for every warp while it takes its registers, its map
+/// comes within V-64's bound, and a restore-activate before the map is
+/// refused (V-49).
+void testRestore() {
+  g_test = "restore";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c);
+  e.keep_log = true;
+  std::mt19937 rng(3);
+  e.launch(5, 1, randomProgram(rng, 80, false));
+  for (unsigned k = 0; k != 6; ++k) e.step();
+  const uint64_t stalls = e.core.counters["stall.restore"];
+  Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
+  ra.barrier_count = 5;
+  e.core.alloc(ra);
+  unsigned took = 0;
+  RatMap map{};
+  bool got = false;
+  while (!got && took != 20) {
+    e.step();
+    ++took;
+    for (const RatMap &m : e.log.back().maps)
+      if (m.direction == 1) { map = m; got = true; }
+  }
+  const unsigned w = c.rename_width, least = (kArchGprs + w - 1) / w, bound = least + 1;
+  EXPECT(got, "no restore map");
+  EXPECT(took >= least && took <= bound, "the map came %u cycles after acceptance; ports allow %u, V-64 %u",
+         took, least, bound);
+  EXPECT(e.core.counters["stall.restore"] - stalls == took, "rename stalled %llu cycles for a %u-cycle restore",
+         (unsigned long long)(e.core.counters["stall.restore"] - stalls), took);
+  EXPECT(e.core.heldGprs(0) == kArchGprs, "restore allocated %u", e.core.heldGprs(0));
+  // The CTA's barrier count rides restore-allocate too: the warp may land
+  // in another slot than it launched in (OA's response IS-16).
+  EXPECT(e.core.slotBarCount(0) == 5, "restore-allocate left barrier count %u", e.core.slotBarCount(0));
+  const std::set<unsigned> rows(map.gpr.begin(), map.gpr.end());
+  EXPECT(rows.size() == kArchGprs && !rows.count(c.phys_zero), "the map names %zu distinct rows", rows.size());
+  Alloc act; act.warp = 0; act.slot = 0; act.op = kAllocRestoreActivate;
+  e.core.alloc(act);
+  e.finish();   // the other warp, stalled meanwhile, still retires its program
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  // Activating before the map is a protocol error.
+  e.errors.clear();
+  Alloc rb; rb.warp = 10; rb.slot = 2; rb.op = kAllocRestoreAlloc;
+  Alloc ab = rb; ab.op = kAllocRestoreActivate;
+  e.core.alloc(rb);
+  e.core.alloc(ab);
+  e.step();
+  bool refused = false;
+  for (const std::string &x : e.errors) refused = refused || x.find("before its map") != std::string::npos;
+  EXPECT(refused, "a restore-activate before the map was accepted");
+}
+
+/// A consumer final long before its producer: an SFU op of 30 cycles,
+/// bypassed to a lane op that issues at 9 and is final at 16, then waits on
+/// its row until the SFU op confirms. ooe_rs leads that confirmation from
+/// the lane op's final bit alone (OA's response OI-61): its bench's no-fin
+/// control is caught here.
+void testFinalBeforeProducer() {
+  g_test = "final-before-producer";
+  Config c = groupConfig();
+  c.unit_lat[4] = 30;
+  Env e(c, 13);
+  std::vector<Op> p;
+  Op f; f.k = kSfu; f.dst = 2; f.src[0] = 1; f.nsrc = 1; p.push_back(f);
+  Op l; l.k = kLane; l.dst = 3; l.src[0] = 2; l.nsrc = 1; p.push_back(l);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  EXPECT(e.core.counters["errors"] == 0, "errors");
+  EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
+}
+
+/// A squash that reaches loads whose wake timers have saturated: the
+/// mispredicted branch waits on a chain of SFU ops, nearly fifty cycles,
+/// while the wrong path's loads issue at once and wait longer still for
+/// their completions. ooe_wake clocks such a timer only on the squash's
+/// lead (OA's responses OI-58, OI-62): its bench's no-sq-lead control is
+/// caught here.
+void testSquashSaturated() {
+  g_test = "squash-saturated";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 11);
+  e.miss_extra = 150;              // wrong-path loads outstanding past saturation
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 4; ++i) {
+    Op f; f.k = kSfu; f.dst = 2 + i; f.src[0] = 1 + i; f.nsrc = 1; p.push_back(f);
+  }
+  Op s; s.k = kSetp; s.pdst = 1; s.src[0] = 5; s.nsrc = 1; p.push_back(s);
+  Op b; b.k = kBranch; b.pguard = 1; b.taken = true; b.pred_taken = false; p.push_back(b);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  e.finish();
+  EXPECT(e.core.counters["errors"] == 0, "errors");
+  EXPECT(e.core.counters["squash.entries"] > 0, "nothing was squashed");
+  EXPECT(e.core.counters["branch.mispredict"] == 1, "mispredicts");
+  EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
 }
 
 void testKill() {
@@ -907,17 +1017,17 @@ void testFault() {
   Env e(c);
   e.keep_log = true;
   std::vector<Op> p;
-  for (unsigned i = 0; i != 3; ++i) { Op a; a.k = kLane; a.dst = i; a.nsrc = 1; p.push_back(a); }
+  // The second op came from DEC with a fault (TI's 75b6a19: the uop's cause).
+  for (unsigned i = 0; i != 3; ++i) { Op a; a.k = kLane; a.dst = i; a.nsrc = 1; a.cause = i == 1 ? 2 : 0; p.push_back(a); }
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
-  // Fault the second op: its done carries exec_fault.
-  bool faulted = false;
-  unsigned faults = 0;
+  unsigned faults = 0, cause = 0;
   for (unsigned k = 0; k != 100; ++k) {
-    for (auto &d : e.dones) if ((d.second.rob_tag & 31) == 1 && !faulted) { d.second.exec_fault = true; faulted = true; }
     e.step();
     for (const Status &s : e.log.back().status) faults += s.fault_taken;
+    for (const Fault &f : e.log.back().faults) cause = f.cause;
   }
+  EXPECT(cause == 2, "cause %u, want DEC's F-ILLEGAL (2)", cause);
   EXPECT(faults == 1, "fault_taken %u times", faults);
   EXPECT(e.w[0].retired.size() == 1, "%zu retired; V-24 stops at the fault", e.w[0].retired.size());
   e.core.kill(1u, 1);
@@ -949,6 +1059,126 @@ void testBarrier() {
   e.finish();
 }
 
+/// F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
+/// CTA's allocated count faults at dispatch, cause 9, and never reaches
+/// SYU; one below it waits as before. The control drops the check, so the
+/// wait goes out and no fault is taken.
+void testBarrierFault() {
+  for (const bool control : {false, true}) {
+    for (const unsigned count : {3u, 4u}) {
+      g_test = control ? "barrier fault (control)" : "barrier fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_bar_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBarrier; p.push_back(b);     // ID 3
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p, count);
+      unsigned bars = 0, faults = 0, cause = 0;
+      for (unsigned k = 0; k != 40; ++k) {
+        e.step();
+        bars += unsigned(e.log.back().bars.size());
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want_fault = count <= 3 && !control;
+      if (control) {
+        if (count == 3) {
+          const bool caught = faults == 0 && bars == 1;
+          std::printf("  %-24s %s\n", "control no-bar-fault", caught ? "caught" : "MISSED");
+          EXPECT(caught, "dropping the check should send the wait");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want_fault, "count %u: %u faults", count, faults);
+      if (want_fault) {
+        EXPECT(cause == kCauseBarrier, "cause %u, want F-BARRIER (%u)", cause, kCauseBarrier);
+        EXPECT(bars == 0, "a faulting barrier reached SYU");
+      } else {
+        EXPECT(bars == 1, "count %u: %u barrier waits", count, bars);
+      }
+    }
+  }
+}
+
+/// V-74 (OA's response IS-16): one fault-address register per warp holds
+/// the oldest faulting memop's address, whatever order the completions come
+/// in, and the fault record reads it at the head. Two loads both fault: in
+/// one run the older completes first, in the other the younger. Each must
+/// report the older's address and MIU's cause. The control lets every
+/// faulting completion write the register, so the younger's, landing
+/// second, overwrites the older's, and V-74 must fire.
+void testMemFault() {
+  for (const bool control : {false, true}) {
+    unsigned caught = 0;
+    for (const bool younger_first : {false, true}) {
+      g_test = control ? "mem fault (control)" : "mem fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_fa_youngest = control;
+      Env e(c);
+      e.keep_log = true;
+      // A slow SFU op ahead holds the head, so both completions land before
+      // the fault is taken.
+      std::vector<Op> p;
+      Op sl; sl.k = kSfu; sl.dst = 5; sl.nsrc = 1; p.push_back(sl);
+      for (unsigned i = 0; i != 2; ++i) { Op a; a.k = kLoad; a.dst = 1 + i; a.nsrc = 1; a.src[0] = 6; p.push_back(a); }
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      bool marked[3] = {false, false, false};
+      std::vector<Fault> faults;
+      const int before = g_fail;
+      for (unsigned k = 0; k != 120; ++k) {
+        // Fault both loads' completions, and delay one so the other lands first.
+        std::vector<std::pair<uint64_t, Cmpl>> moved;
+        for (auto it = e.cmpls.begin(); it != e.cmpls.end();) {
+          const unsigned idx = it->second.rob_tag & 31;
+          if (idx >= 1 && idx <= 2 && !marked[idx]) {
+            marked[idx] = true;
+            Cmpl x = it->second;
+            x.status = 1;
+            x.cause = 6;                      // F-ADDR
+            x.address = 0x1000 + idx - 1;
+            // Older first: both land in one cycle, the older's processed
+            // first, before the head can take it. Younger first: two cycles.
+            const uint64_t due = younger_first ? (idx == 1 ? 42 : 40) : 40;
+            moved.push_back({due, x});
+            it = e.cmpls.erase(it);
+          } else {
+            ++it;
+          }
+        }
+        std::sort(moved.begin(), moved.end(),
+                  [](const auto &a, const auto &b) { return (a.second.rob_tag & 31) < (b.second.rob_tag & 31); });
+        for (auto &m : moved) e.cmpls.insert(m);
+        g_quiet = control;
+        e.step();
+        g_quiet = false;
+        for (const Fault &f : e.log.back().faults) faults.push_back(f);
+      }
+      if (control) {
+        caught += g_fail != before || !e.errors.empty();
+        g_fail = before;
+        continue;
+      }
+      for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+      EXPECT(faults.size() == 1, "%zu fault records", faults.size());
+      if (!faults.empty()) {
+        EXPECT(faults[0].address == 0x1000, "address %#llx, want the older load's 0x1000",
+               (unsigned long long)faults[0].address);
+        EXPECT(faults[0].cause == 6, "cause %u, want MIU's 6 (F-ADDR)", faults[0].cause);
+      }
+    }
+    if (control) {
+      g_test = "mem fault (control)";
+      std::printf("  %-24s %s\n", "control fa-youngest", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a register taking every completion should break V-74");
+    }
+  }
+}
+
 /// The free list as the RTL builds it (OI-22): allocation from a rotating
 /// pointer, so a freed register comes back only once the pointer wraps, and a
 /// register freed in a cycle is not allocated until the next.
@@ -964,6 +1194,67 @@ void testV59() {
   c.bypass = true;
   c.lat_lane_byp = 2;
   EXPECT(c.check().rfind("V-59", 0) == 0, "a bypass at 2 refused: '%s'", c.check().c_str());
+}
+
+/// OI-51: select reads a registered ready, so a drop reaches it a cycle
+/// late. Under misses a warp's dependants are granted on stale bits, and
+/// the next hop returns each; select on the lines as they stand never is.
+void testReadyReg() {
+  g_test = "ready register: stale grants, each replayed";
+  for (bool on : {true, false}) {
+    uint64_t stale = 0, rstale = 0;
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      std::mt19937 rng(seed);
+      Config c = baseConfig();
+      c.ready_reg = on;
+      Env e(c, seed);
+      e.miss_pct = 20;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      e.finish();
+      EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
+      stale += e.core.counters["select.stale_grant"];
+      rstale += e.core.counters["cancel.replay_stale"];
+    }
+    if (on) EXPECT(stale && rstale && rstale <= stale, "stale grants %llu, their replays %llu",
+                   (unsigned long long)stale, (unsigned long long)rstale);
+    else EXPECT(!stale && !rstale, "stale grants %llu with no ready register", (unsigned long long)stale);
+  }
+  // OI-54's control: a stop or miss captured one edge late lets a replayed
+  // producer be re-granted inside its dependant's stale window; the
+  // dependant, granted on its stale bit, is never replayed and confirms on
+  // a result it read too early. The model's OA-17 check must see it.
+  g_test = "ready register: a late capture confirms a stale grant (OI-54's control)";
+  const int saved = g_fail;
+  bool seen = false;
+  // A shallow decode queue spaces a warp's uops so the race opens (found
+  // at decq 4 in the sweep; at decq 2 since the decode queue's flush is
+  // applied an edge late, OI-58; at decq 4 and a 60% miss rate since the
+  // take is popped late, OA-21; at decq 3 and 20% under the registered
+  // go, OA-22). It is rare, one run in 100 to 700 at any setting, and
+  // every change to rename's traffic moves it, so the hunt is wide and
+  // stops at the first. A directed test would hold it better (OI's task).
+  for (unsigned run = 0; run != 6 * 3 * 60 && !seen; ++run) {
+    const unsigned seed = run % 60 + 1;
+    std::mt19937 rng(seed);
+    Config c = baseConfig();
+    c.rs_warp_cap = c.decq_warp_max = 0;
+    c.decq = (unsigned[]){3, 4, 2, 5, 6, 8}[run / 180];
+    c.inject_late_event = true;
+    Env e(c, seed);
+    e.miss_pct = (unsigned[]){20, 60, 40}[(run / 60) % 3];
+    const auto report = e.core.on_error;
+    e.core.on_error = [&](const std::string &m) {
+      seen = seen || m.find("OA-17") != std::string::npos;
+      report(m);
+    };
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+    g_quiet = true;
+    e.finish(20000);
+    g_quiet = false;
+  }
+  g_fail = saved;
+  EXPECT(seen, "late capture never confirmed a stale grant");
+  std::printf("  %-24s %s\n", "control late-event", seen ? "caught" : "MISSED");
 }
 
 void testFreeVec() {
@@ -997,6 +1288,82 @@ void testChwidth() {
   e.finish();
   for (const Outputs &o : e.log) for (const Issue &i : o.issues)
     if (i.tid == 2) EXPECT(i.chwidth == 2, "the younger op read chwidth %u, not the committed one", i.chwidth);
+}
+
+/// F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): the committed
+/// per-register width table is written when a chwidth retires, and a
+/// memory access whose data register is then at 4 bits faults at dispatch,
+/// cause 3, as a no-op. A load into R4 after chwidth R4, 4-bit faults; one
+/// into R5 does not. The control drops the check.
+void testWidthFault() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "width fault (control)" : "width fault";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.inject_no_width_fault = control;
+    for (const unsigned dst : {4u, 5u}) {
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 3; p.push_back(w);
+      Op ld; ld.k = kLoad; ld.dst = dst; ld.nsrc = 1; ld.src[0] = 6; p.push_back(ld);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0;
+      for (unsigned k = 0; k != 80; ++k) {
+        e.step();
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want = dst == 4 && !control;
+      if (control && dst == 4) {
+        std::printf("  %-24s %s\n", "control no-width-fault", faults == 0 ? "caught" : "MISSED");
+        EXPECT(faults == 0, "dropping the check should let the load through");
+        continue;
+      }
+      if (control) continue;
+      EXPECT(e.core.slotWidth(0, 4) == 3, "the table holds %u for R4 after its chwidth", e.core.slotWidth(0, 4));
+      EXPECT((faults == 1) == want, "R%u: %u faults", dst, faults);
+      if (want) EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+    }
+  }
+}
+
+/// F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): an FP op whose
+/// format code DEC marks reserved at its operand's committed width faults
+/// at dispatch, cause 4. With R4 at 4 bits and src0 = R4, a format reserved
+/// at 4 bits only (fmt_rsv bit 3) faults; one reserved at 32 bits only
+/// (bit 0) does not. The control drops the check.
+void testFormatFault() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "format fault (control)" : "format fault";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.inject_no_format_fault = control;
+    for (const unsigned rsv : {8u, 1u}) {
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 3; p.push_back(w);
+      Op f; f.k = kFp; f.dst = 5; f.nsrc = 1; f.src[0] = 4; f.fmt_rsv = rsv; f.fmt_opnd = 0; p.push_back(f);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0;
+      for (unsigned k = 0; k != 80; ++k) {
+        e.step();
+        for (const Fault &x : e.log.back().faults) { ++faults; cause = x.cause; }
+      }
+      if (control) {
+        if (rsv == 8) {
+          std::printf("  %-24s %s\n", "control no-format-fault", faults == 0 ? "caught" : "MISSED");
+          EXPECT(faults == 0, "dropping the check should let the op through");
+        }
+        continue;
+      }
+      const bool want = rsv == 8;
+      EXPECT((faults == 1) == want, "fmt_rsv %#x: %u faults", rsv, faults);
+      if (want) EXPECT(cause == kCauseFormat, "cause %u, want F-FORMAT (%u)", cause, kCauseFormat);
+    }
+  }
 }
 
 /// Sectioned lanes (OI-29 to OI-33): narrow registers placed in sections,
@@ -1189,6 +1556,10 @@ void testRandom(unsigned seeds) {
       // Every fifth seed: a floorplan where load data lands after the
       // completion (the links split does this), and the core told so.
       if (seed % 5 == 0) c.cmpl_wake_delay = 2;
+      // Every seventh seed from the third: a long L1 shadow, the completion
+      // a lane latency past the wake, so grandchildren issue on a load that
+      // then misses and transitive cancel takes more than one hop.
+      if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
       Env e(c, seed * 7 + unsigned(mode));
       e.miss_pct = 30;
       e.data_after_cmpl = c.cmpl_wake_delay;
@@ -1240,6 +1611,7 @@ void testControls() {
       {"bypass-faster-than-contract", [](Config &c) { c = groupConfig(); c.l1_spec = true; c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane; c.fast[4] = 3; }},
       {"complete-before-rs-free", [](Config &c) { c.inject_complete_early = true; }},
       {"narrow-footprint", [](Config &c) { c.sectioned = true; c.inject_narrow_footprint = true; }},
+      {"no-alloc-lead", [](Config &c) { c.inject_no_alloc_lead = true; }},   // V-73
   };
   for (const C &x : cs) {
     const int saved = g_fail;
@@ -1293,12 +1665,14 @@ void sweep() {
       {"rs_warp_cap", {6, 10, 15, 0}, &Config::rs_warp_cap},
       {"rob_depth", {8, 12, 16, 24, 32}, &Config::rob_depth},
       {"decq", {4, 6, 8, 12, 18}, &Config::decq},
+      {"fl_buf", {0, 4, 8, 16}, &Config::fl_buf},
       {"rename_width", {1, 2, 3, 4}, &Config::rename_width},
       {"retire_per_rob", {1, 2, 4}, &Config::retire_per_rob},
+      {"rename_one_warp", {0, 1, 2}, &Config::rename_one_warp},
   };
-  auto run = [](const Config &c) {
+  auto run = [](const Config &c, unsigned seeds = 6) {
     uint64_t total = 0;
-    for (unsigned seed = 1; seed <= 6; ++seed) {
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
       std::mt19937 rng(seed);
       Env e(c, seed);
       e.miss_pct = 20;
@@ -1306,7 +1680,7 @@ void sweep() {
       e.finish();
       total += e.t;
     }
-    return double(total) / 6;
+    return double(total) / seeds;
   };
   Config base = baseConfig();
   // No per-warp limits unless swept: the parameters' "no limit" values
@@ -1323,14 +1697,98 @@ void sweep() {
       const double cy = run(c);
       std::printf("| %s | %u | %.0f | %.3f |\n", k.name, v, cy, cy / ref);
     }
-  // ooe_decq's timing arm (OI-38's shape): an entry freed in a cycle takes
-  // no arrival until the next.
+  // The decode queue with same-edge reuse, as before DA's response OI-39.
   for (unsigned v : {6u, 8u, 12u}) {
     Config c = base;
     c.decq = v;
-    c.decq_late_credit = true;
+    c.decq_late_credit = false;
     const double cy = run(c);
-    std::printf("| decq, decq_late_credit | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+    std::printf("| decq, decq_late_credit=0 | %u | %.0f | %.3f |\n", v, cy, cy / ref);
+  }
+  // OA-21 (a): rename's take registered in decq and popped an edge late,
+  // its entries holding their credits a cycle more, under each go: the
+  // interleave (0), one warp and two warps a cycle. 48 seeds against the
+  // default (interleave, the take popped at its own edge).
+  // The reference: the interleave with an on-time take and exact credits.
+  Config ontime = base;
+  ontime.decq_take_late = false;
+  ontime.fits_conservative = 0;
+  {
+    const double r48 = run(ontime, 48);
+    for (unsigned w : {0u, 1u, 2u})
+      for (unsigned late : {0u, 1u, 2u}) {
+        // 2: the take late, the queue an entry larger, against its credit.
+        Config c = ontime;
+        c.rename_one_warp = w;
+        c.decq_take_late = late != 0;
+        c.decq += late == 2;
+        const double cy = run(c, 48);
+        std::printf("| rename_one_warp, decq_take_late (48 seeds, on time %.0f) | %u, %u%s | %.0f | %.3f |\n", r48, w,
+                    unsigned(late != 0), late == 2 ? ", decq +1" : "", cy, cy / r48);
+      }
+  }
+  // OA-21 (2): the go's fits against shared credits, exact (the model's
+  // running credits) or conservative (less the rename width, for a go that
+  // lets several warps take), under each go, the take late, decq 12 and 13.
+  {
+    const double r48 = run(ontime, 48);
+    for (unsigned w : {1u, 2u, 0u})
+      for (unsigned dq : {base.decq, base.decq + 1})
+        for (unsigned cons : {0u, 1u, 2u, 3u}) {
+          if (cons && w == 1) continue;   // one warp's fits are its own
+          Config c = ontime;
+          c.rename_one_warp = w;
+          c.decq_take_late = true;
+          c.decq = dq;
+          c.fits_conservative = cons;
+          const double cy = run(c, 48);
+          std::printf("| go, decq, fits (48 seeds, take late, on time %.0f) | %s, %u, %s | %.0f | %.3f |\n", r48,
+                      w == 0 ? "interleave" : w == 1 ? "one warp" : "two warps", dq,
+                      (const char *[]){"exact", "less the width", "one warp when short", "registered go"}[cons],
+                      cy, cy / r48);
+        }
+  }
+  // When rename sees this cycle's RS and ROB frees (ren_credit), against
+  // the design's TI-19 at cap 4: the same-edge ideal, every free a cycle
+  // late (OA's item 4, not accepted) and the 2-step trim. Their differences
+  // are a few percent, under six seeds' noise, so these run 48 against
+  // their own reference.
+  const double ref48 = run(base, 48);
+  struct RC { unsigned credit, cap; const char *name; };
+  for (const RC &k : {RC{0, 4, "same edge"}, RC{1, 4, "all late"}, RC{2, 2, "TI-19, cap 2"}}) {
+    Config c = base;
+    c.ren_credit = k.credit;
+    c.ren_free_cap = k.cap;
+    const double cy = run(c, 48);
+    std::printf("| ren_credit (48 seeds, TI-19 cap 4 %.0f) | %s | %.0f | %.3f |\n", ref48, k.name, cy, cy / ref48);
+  }
+  // Select on the lines as they stand, against the registered ready
+  // (OA's response OI-51), 48 seeds: the stale grants it adds, and the
+  // replays they cost, apart from the miss replays.
+  {
+    struct R { double cy = 0, stale = 0, rstale = 0, rmiss = 0; };
+    auto runc = [](const Config &c, unsigned seeds) {
+      R r;
+      for (unsigned seed = 1; seed <= seeds; ++seed) {
+        std::mt19937 rng(seed);
+        Env e(c, seed);
+        e.miss_pct = 20;
+        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+        e.finish();
+        r.cy += double(e.t) / seeds;
+        r.stale += double(e.core.counters["select.stale_grant"]) / seeds;
+        r.rstale += double(e.core.counters["cancel.replay_stale"]) / seeds;
+        r.rmiss += double(e.core.counters["cancel.replay"]) / seeds;
+      }
+      return r;
+    };
+    for (bool on : {true, false}) {
+      Config c = base;
+      c.ready_reg = on;
+      const R r = runc(c, 48);
+      std::printf("| ready_reg (48 seeds; stale grants / their replays / miss replays per run) | %d | %.0f | %.3f | %.1f / %.1f / %.1f |\n",
+                  int(on), r.cy, r.cy / ref48, r.stale, r.rstale, r.rmiss);
+    }
   }
 }
 
@@ -1397,8 +1855,8 @@ void sweepSections() {
   // AR-16: under the decided default (place 0, home = slot index) one
   // warp's narrow ops share a section, so its rows are 1.0x by design.
   std::printf("One-warp rows at place=slot are 1.0x by design (AR-16): narrow rates are aggregate across warps.\n\n");
-  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
-              "|---|---|---|---|---|---|---|---|---|---|\n");
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | element ops/cycle | outside setp cycles | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
   for (const Kern &k : ks)
     for (unsigned warps : {1u, 4u}) {
       double ref = 0;
@@ -1410,7 +1868,7 @@ void sweepSections() {
           c.sectioned = true;
           c.place = place;
           c.loads_pass_loads = oa13;
-          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0;
+          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0, narrow = 0, full = 0;
           // [int, FP] x [footprint, spread]: op count and section sum.
           uint64_t n[2][2] = {}, sum[2][2] = {};
           const unsigned seeds = 4;
@@ -1434,14 +1892,17 @@ void sweepSections() {
             }
             for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
             lost += e.core.counters["select.lost_resource"];
+            narrow += e.core.counters["select.lane_elem"];
+            full += e.core.counters["select.lane_ctl_cycles"];
           }
           const double cy = double(cyc) / seeds;
           if (place == 0 && !oa13) ref = cy;
           auto mean = [&](int g, int sp) { return n[g][sp] ? double(sum[g][sp]) / double(n[g][sp]) : 0.0; };
           char fp[32] = "-";
           if (n[1][0]) std::snprintf(fp, sizeof fp, "%.2f / %.2f", mean(1, 0), mean(1, 1));
-          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps, pn[place],
-                      oa13 ? "on" : "off", cy, cy / ref, mean(0, 0), mean(0, 1), fp,
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps,
+                      pn[place], oa13 ? "on" : "off", cy, cy / ref, double(narrow) / double(cyc),
+                      cyc > full ? double(narrow) / double(cyc - full) : 0.0, mean(0, 0), mean(0, 1), fp,
                       cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
         }
     }
@@ -1455,6 +1916,33 @@ void sweepSections() {
 int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = hook;
   testRandom(seeds);
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
+/// The directed tests (every one that drives a core and injects no bug:
+/// demotion, kill, restore, faults, squashes and the rest) with a hook on
+/// every core cycle, for the paths random traffic does not take. Returns
+/// the failure count.
+int ooeTestDirectedHooked(void (*hook)(const Core &)) {
+  g_cycle_hook = hook;
+  testWakeTimes();
+  testBypassGroups();
+  testL1Spec();
+  testL1WakeAfterCmpl();
+  testMaskedLoad();
+  testSquash();
+  testSquashSaturated();
+  testFinalBeforeProducer();
+  testFloorCeiling();
+  testDemote();
+  testRestore();
+  testKill();
+  testFault();
+  testBarrier();
+  testChwidth();
+  testSections();
+  testV59();
+  testFixedWindowPreds();
   g_cycle_hook = nullptr;
   return g_fail;
 }
@@ -1488,14 +1976,22 @@ int main(int argc, char **argv) {
   testL1WakeAfterCmpl();
   testMaskedLoad();
   testSquash();
+  testSquashSaturated();
+  testFinalBeforeProducer();
   testFloorCeiling();
   testDemote();
+  testRestore();
   testKill();
   testFault();
   testBarrier();
+  testBarrierFault();
+  testMemFault();
   testChwidth();
+  testWidthFault();
+  testFormatFault();
   testSections();
   testFreeVec();
+  testReadyReg();
   testV59();
   testFixedWindowPreds();
   testRandom(seeds);

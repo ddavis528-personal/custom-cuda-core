@@ -157,8 +157,8 @@ typedef struct packed {
   logic [ccv_prelim_pkg::CCV_L_W_CLASS-1:0]      uop_class;
   logic [ccv_prelim_pkg::CCV_P_W_SCHED_ATTR-1:0] sched_attr;
   logic [ccv_prelim_pkg::CCV_L_W_MEM_OP-1:0]     mem_op;
-  logic [ccv_prelim_pkg::CCV_L_W_SPACE-1:0]      space;
-  logic [ccv_prelim_pkg::CCV_L_W_ORDERING-1:0]   ordering;
+  logic [ccv_params_pkg::CCV_L_W_SPACE-1:0]      space;
+  logic [ccv_params_pkg::CCV_L_W_ORDERING-1:0]   ordering;
   logic [ccv_prelim_pkg::CCV_L_W_OPCODE-1:0]     opcode;
   logic [2*ccv_params_pkg::CCV_W_ARCH_REG-1:0]   src_arch;
   logic [ccv_params_pkg::CCV_W_ARCH_REG-1:0]     src2_arch;
@@ -175,7 +175,9 @@ typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_CKPT_ID-1:0]      checkpoint_id;
   logic                                          pred_taken;
   logic                                          scale_en;
-  logic                                          decode_fault;
+  logic [ccv_params_pkg::CCV_W_FAULT_CAUSE-1:0]  cause;
+  logic [2**ccv_params_pkg::CCV_W_CHWIDTH-1:0]   fmt_rsv;
+  logic [2-1:0]                                  fmt_opnd;
 } ccv_dec_ooe_uop_t;
 
 typedef struct packed {
@@ -213,9 +215,9 @@ typedef struct packed {
   logic [ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE*ccv_params_pkg::CCV_W_LANE_DATA-1:0] operand;
   logic [ccv_params_pkg::CCV_W_LANE_DATA-1:0]    merge_data;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       section_en;  // LEAD
-  logic [ccv_params_pkg::CCV_SECTIONS*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_owner;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_owner;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_bit;  // LEAD
-  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_data;  // LEAD
+  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_data;
   logic [ccv_params_pkg::CCV_SECTIONS*(ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE+1)*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_opnd_pos;
   logic [ccv_params_pkg::CCV_SECTIONS*(ccv_prelim_pkg::CCV_L_OPERANDS_PER_LANE+1)*ccv_params_pkg::CCV_W_CHWIDTH-1:0] sec_opnd_width;
   logic [ccv_params_pkg::CCV_SECTIONS*ccv_params_pkg::CCV_W_PHYS_POS-1:0] sec_dst_pos;
@@ -227,15 +229,12 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_LANE_DATA-1:0]    result;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_valid;
   logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_pred_out;
-  logic [ccv_params_pkg::CCV_SECTIONS-1:0]       sec_fault;
 } ccv_lane_rcu_res_t;
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
-  logic                                          exec_fault;
   logic                                          branch_taken;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    branch_mask;
-  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    fault_lane_mask;
 } ccv_rcu_ooe_done_t;
 
 typedef struct packed {
@@ -271,8 +270,8 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_MIU_PIPES-1:0]      pipes;
   logic [ccv_params_pkg::CCV_W_DISP-1:0]         disp;
   logic                                          scale_en;
-  logic [ccv_prelim_pkg::CCV_L_W_SPACE-1:0]      space;
-  logic [ccv_prelim_pkg::CCV_L_W_ORDERING-1:0]   ordering;
+  logic [ccv_params_pkg::CCV_L_W_SPACE-1:0]      space;
+  logic [ccv_params_pkg::CCV_L_W_ORDERING-1:0]   ordering;
 } ccv_ooe_miu_memop_t;
 // OVERLAY discard_tail: disp[0 +: CCV_P_W_ROB_IDX], valid only when mem_op == 0xF.
 localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_LSB = 0;
@@ -285,6 +284,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    lane_mask;
   logic [ccv_params_pkg::CCV_W_VA-1:0]           address;
   logic                                          mlc_miss;
+  logic                                          more;
 } ccv_miu_ooe_cmpl_t;
 
 typedef struct packed {
@@ -422,6 +422,7 @@ typedef struct packed {
   logic [2-1:0]                                  alloc_op;
   logic [ccv_params_pkg::CCV_W_CTAID-1:0]        ctaid;
   logic [ccv_params_pkg::CCV_W_WARP_IN_CTA-1:0]  warp_in_cta;
+  logic [ccv_params_pkg::CCV_L_W_BAR_COUNT-1:0]  barrier_count;
 } ccv_rau_ooe_alloc_t;
 
 typedef struct packed {
@@ -516,7 +517,7 @@ typedef struct packed {
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_params_pkg::CCV_W_BAR_ENTRY-1:0]    barrier_base;
-  logic [ccv_prelim_pkg::CCV_L_W_BAR_COUNT-1:0]  barrier_count;
+  logic [ccv_params_pkg::CCV_L_W_BAR_COUNT-1:0]  barrier_count;
   logic                                          allocate_or_free;
 } ccv_rau_syu_alloc_t;
 

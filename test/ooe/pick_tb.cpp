@@ -13,7 +13,11 @@
 // Negative controls (PICK_CONTROL=<name>) perturb the REFERENCE, and the
 // comparison must catch each: youngest-wins (age inverted), any-wins (an
 // entry issues if it wins any resource), and no-mask (an invalid entry's
-// garbage row counts). Usage: pick_tb [vectors] [seed].
+// garbage row counts); with the fallback (PICK_FB, OA's response IS-9),
+// no-fallback (the reference has none) and, at 2, no-half (section-only).
+// A fallback grant (fb) need not have won the main pick, so the check that
+// an issued entry won each resource it names holds for the rest.
+// Usage: pick_tb [vectors] [seed].
 //===----------------------------------------------------------------------===//
 #include "Vooe_pick.h"
 #include "verilated.h"
@@ -28,6 +32,9 @@
 
 #ifndef PICK_N
 #error "build with -DPICK_N and -DPICK_R matching -GN and -GR"
+#endif
+#ifndef PICK_FB
+#define PICK_FB 0
 #endif
 constexpr unsigned N = PICK_N, R = PICK_R;
 
@@ -70,9 +77,10 @@ int main(int argc, char **argv) {
     const unsigned ready_pct = unsigned(rng() % 101);
     for (unsigned i = 0; i != N; ++i) {
       if (!valid[i] || rng() % 100 >= ready_pct) continue;
-      const unsigned shape = unsigned(rng() % 4);
+      const unsigned shape = unsigned(rng() % 5);
       if (shape == 0) res[i] = (1u << R) - 1;
       else if (shape == 1) res[i] = 1u << (rng() % R);
+      else if (shape == 4) res[i] = R >= 4 ? 3u << (2 * (rng() % 2)) : 1u;   // an aligned half
       else res[i] = unsigned(rng() & ((1u << R) - 1));
       if (!res[i]) res[i] = 1u << (rng() % R);
     }
@@ -99,7 +107,8 @@ int main(int argc, char **argv) {
       for (unsigned e = 0; e != N; ++e)
         if (!valid[e] && rng() % 2) { req.push_back({1u, 0}); idx.push_back(N); }  // phantom oldest
     unsigned lost_ref = 0;
-    std::vector<bool> won = ccv::ooe::pickResources(req, R, &lost_ref);
+    const unsigned fb = control == "no-fallback" ? 0 : control == "no-half" ? (PICK_FB ? 1 : 0) : PICK_FB;
+    std::vector<bool> won = ccv::ooe::pickResources(req, R, &lost_ref, fb);
     std::vector<bool> want(N, false);
     for (size_t i = 0; i != req.size(); ++i) {
       bool w = won[i];
@@ -130,7 +139,7 @@ int main(int argc, char **argv) {
         ++issued;
         if (used & res[e]) { ++fails; std::fprintf(stderr, "vector %u: V-60, entry %u overlaps\n", v, e); }
         used |= res[e];
-        for (unsigned k = 0; k != R; ++k)
+        for (unsigned k = 0; k != R && !getBit(dut.fb_cq03h, e); ++k)
           if (((res[e] >> k) & 1u) && !getBit(dut.win_cq03h, e * R + k)) {
             ++fails; std::fprintf(stderr, "vector %u: entry %u issued without winning %u\n", v, e, k);
           }

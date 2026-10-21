@@ -38,9 +38,9 @@ selected in t+2. Inside a cycle:
 
 1. Dones and completions: ROB completion, branch outcome, a load's wake when
    it wakes on its completion, and L1-hit confirmation.
-2. Timed wakes. A missed L1 slot cancels transitively. Copy-only ops land.
-   Results confirm oldest first. Confirmed RS entries free. Squashed entries
-   whose op has landed release.
+2. One cancel hop, from the state at the cycle's start (OI-50). Timed
+   wakes. A missed L1 slot withdraws its wake. Copy-only ops land. Results confirm, one level a cycle. Confirmed
+   RS entries free. Squashed entries whose op has landed release.
 3. RAU's alloc and demote, kill, and barrier release.
 4. Retire: up to `CCV_RETIRE_PER_ROB` per warp, with store commits sharing the
    four `ccv_ooe_miu_retire` slots in rotating warp order.
@@ -60,14 +60,35 @@ field:
   from the grant, so producer and dependant move together. Only the
   contracts timed from the channel add the stage: the L1 shadow and V-44,
   V-35's done bound, and a copy-only op's landing.
-- **Transitive cancel moves one hop a cycle** (`cancelHop`). A miss returns
-  its direct dependants to Waiting at once, and each later cycle takes the
-  next hop, deciding the whole hop before applying it, until nothing
-  changes. V-59 makes that safe: every wake offset is at least 3, 2 plus
-  the hop, so the cancel lands before the next hop's ready computation.
-  `Config::check` refuses a shorter offset (unit test `v-59`). V-15 is
-  checked only once a cancel has settled. The wavefront it has not reached
-  is exactly what V-15 forbids at rest.
+- **Transitive cancel is a level, one hop a cycle** (`cancelHop`), as
+  `ooe_confirm` builds it (OA's response OI-50). At the start of every
+  cycle, before its misses are found, one hop returns to Waiting every
+  issued, unconfirmed entry with a producer that is not issued, or has
+  missed its L1 slot: exactly OI-50's rule, as the RTL decides it, not
+  "the row is no longer ready" (`msd`, set at the
+  miss and cleared at the load's completion, after that cycle's hop, so
+  it clears only once nothing issued depends on it, V-68). The hop is
+  decided whole before it is applied. A miss's direct dependants therefore
+  go back in the cycle after the miss, and each further level a cycle
+  later (V-67). That is a cycle later than before; over 48 seeds it costs
+  nothing (963 cycles). V-59 still holds the wake offsets at 3 or more,
+  now as a performance check (unit test `v-59`). V-15 is checked only
+  once a cancel has settled, as before. At today's latencies a second hop
+  never happens: the L1 shadow (CCV_LAT_L1_WAKE 16, the miss found at 19)
+  is shorter than any dependant's own wake. One random seed in seven runs
+  the long shadow the controls use, so the later hops are exercised.
+- **Confirmation takes one level a cycle** (`confirmPass`), as
+  `ooe_confirm` builds it. An issued entry confirms when every source was
+  confirmed before this cycle's pass, which, since a confirmed entry is
+  freed and its column cleared, means no dependency bit is left. It also
+  needs its own result final (its full-latency wake raised, no L1 check
+  pending) or no destination. A consumer of an entry confirmed this cycle
+  confirms from the next. Before this, the pass ran oldest first and
+  chained within a cycle. Measured with a probe, the chain never went past
+  one level in any S1 kernel or random seed, only in the long-shadow
+  controls and once in the `l1-spec` test, and no kernel moves by a cycle
+  in either mode. Nor did the earlier second hop in a cycle ever happen
+  outside the controls.
 
 The post-miss wake's extra cycle (OA's response OI-26) is in
 `CCV_LAT_L1_MISS_WAKE`, now defined from the completion's arrival to the
@@ -147,15 +168,37 @@ example, is PF-1.
 
 Each pool (GPRs, predicates) is a bit-vector with rotating-start
 allocation, as the RTL builds it (`FreeVec`; OA's answer to OI-17, done
-as OI-22). Allocation takes the first free register at or after a pointer,
-which then moves past it, so a freed register comes back only once the
-pointer wraps. A free sets its bit at the clock edge: a register freed in a
-cycle is not allocated in that cycle. Any number of frees a cycle costs
-nothing, so a squash's 32 or a kill's 16 need no drain. Rename's floor and
-ceiling checks count only registers allocatable this cycle; V-01, V-02 and
-V-04 count those freed this cycle too. On the S1 kernels, one warp freeing
-in order, the order is the old FIFO's, so `--break free-new` still fails at
-the same line (seq 382).
+as OI-22), in OA's structure (OA's response OI-38): allocation takes the
+head of an 8-entry candidate buffer, which four interleaved banks refill at
+each edge, each from the first free, unbuffered register after its own
+pointer. A free sets its bit at the clock edge and reaches the buffer at
+the next, so a register freed in cycle t is allocatable from t + 2. An
+allocation leaves the buffer a cycle late (OA's response OI-52): it sits at
+the head in transit for a cycle, and the next allocations take the entries
+behind it, so the buffer offers its count less the last cycle's take. That
+costs nothing at 8 entries (the sweep's 982 cycles stand) and 4.8% at 4. Any
+number of frees a cycle costs nothing, so a squash's 32 or a kill's 16
+need no drain. Rename's allocation checks the buffer; its floor and
+ceiling checks count every free register not freed this cycle; V-01, V-02
+and V-04 count those freed this cycle too. Allocation order is
+bank-interleaved, so `--break free-new` first showed at seq 379 (R4),
+where it showed at seq 382 (R1) under the rotating pointer. With the pop a
+cycle late (OI-52) a reallocation comes a cycle later, and it shows at seq
+383 (R4), behind the model's own V-01 and V-62 checks, which now see the
+wrong free first.
+
+Restore-allocate takes its 16 GPRs and 4 predicates through the same
+buffers and ports (OA's response OI-41). The floor check is made at
+acceptance against every free register, buffered or not (V-30). Then the
+oldest accepted restore owns the allocation ports: up to `rename_width`
+registers a cycle from each buffer, and rename stalls for every warp
+until it is done (`stall.restore`). Its map goes to RCU in the cycle the
+last register is taken, and V-64 holds that to ceil(16 / width) + 1
+cycles from acceptance (`restore_cycles`). A restore-activate before the
+map is refused (V-49). An invariant holds every cycle that neither list
+makes more allocations than it has ports, as `ooe_freelist` builds them.
+`testRestore` covers it: four cycles with a busy second warp, which still
+retires its program.
 
 ## Bypass groups
 
@@ -328,10 +371,141 @@ ones the model's knobs stood for (OI-6, OI-13; `456b3e9`), and each
 no per-warp limits unless it sweeps one, since a "no limit" value equal to
 today's size would limit a larger one.
 
-`decq_late_credit` (off) is a timing arm for the RTL's decode queue
-(OI-39): an entry freed in a cycle counts as held for that cycle's
-arrivals, so it takes one only from the next. `ooe-test --sweep` runs it at
-6, 8 and 12 entries.
+`fl_buf` (8) and `fl_banks` (4) are the free lists' candidate buffer and
+refill banks (OA's response OI-38): allocation takes the buffer's head, and
+each edge refills it from the banks, so a freed row reaches allocation two
+cycles later. `fl_buf=0` is the earlier rotating-pointer list, one cycle;
+no kernel or sweep arm moves between them. Restore-allocate takes its
+registers through the buffer too (OI-41, see Free lists).
+
+`decq_late_credit` (on, DA's response OI-39): a decode-queue entry freed in
+a cycle counts as held for that cycle's arrivals, so it takes one only from
+the next. That is what lets the RTL's queue fit its stage. `ooe-test
+--sweep` runs the old same-edge behaviour (`decq_late_credit=0`) at 6, 8
+and 12 entries for comparison.
+
+`decq_take_late` (on; OA-21, DA 2026-10-20): rename's take is
+registered in the decode queue and popped an edge late, so the taken
+entries hold their credits one cycle more, as `decq_flush_late` holds a
+flush's. `ooe-test --sweep` measures it under each go (`rename_one_warp`
+0, 1 and 2), 48 seeds: it costs 1.8 points under the interleave, 3.5
+under one warp and 3.1 under two. One more decode-queue entry takes back
+all of it under the interleave, 2.3 points under one warp and 1.9 under
+two.
+
+`fits_conservative` (3; OA-21, DA 2026-10-20, and OA-22): a go that lets several warps take
+in a cycle forms each warp's fits alone, so their sum can exceed the
+shared credits (RS room per class, GPR and predicate names). The model
+admits against running credits, which is exact. 1 forms each warp's fits
+against the credits less the rename width; 2 lets one warp take while any
+shared credit is below the width. With the late take, 48 seeds, against the
+interleave with an on-time take: two warps at decq 13 are +1.1% exact,
++5.3% under 1 and +1.8% under 2; the interleave at 13 is 0.0%, +6.9% and
++1.6%. RS room is what stalls under 1; GPR and predicate names never do.
+DA chose the interleave (`rename_one_warp` 0) with 2, the late take and a
+13-entry decode queue (TI's `CCV_P_DECQ`); the exact forms measure 29.1
+and 37.6 NGD in the go and fit no stage (`test/ooe/probes`). No S1 kernel
+moves between the old defaults and these.
+
+3 is OA-22's registered go, 2 as the RTL can build it. Rename's go must
+see the cycle's frees (TI-19), but ooe_rs's free thermometer arrives at
+15.6 NGD (confirm, 8.7, then a tree of capped thermometers; counted, 30),
+and the go compared against it in front measures 25.4. Frees only add
+credit and matter only when a credit is short, so in 3 the go reads
+registered state alone: short is tested on the credits without this
+cycle's RS frees (RS RCU against twice the width when a candidate head
+uop is a copy, which takes two), the short cycle's warp takes without
+them, and a warp's fits count its ROB retirements a cycle late. 48
+seeds, the interleave at decq 13: +2.5% against the on-time exact go,
+where 2 was +1.6% but takes no account of a copy's two RCU entries.
+OA accepted it as the default (OA-22, 2026-10-20). Under it at decq 13,
+two warps are +3.6% and one warp +3.6%, so the interleave stays ahead.
+
+`ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
+2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
+is when rename's go decision sees this cycle's frees. 0 is the ideal:
+rename sees every RS and ROB free in its own cycle. 1 is OA's
+stage-boundary item 4, every free a cycle late, which DA did not accept
+(2026-10-19). 2 is TI-19 as OA answers it: a confirmation's RS free counts
+in its cycle up to `ren_free_cap` per class (ooe_rs's free thermometer,
+4; 2 is the trim), and a retirement's ROB free in its cycle (ret_n); a
+free past the cap, or from a squash, kill or a squashed op landing, counts
+a cycle late. A confirmation reads only flops in the RTL (ooe_confirm's
+iss, dep, fin and prod; never this cycle's miss), so no confirmation free
+has to wait. `stall.rob_late_credit` counts a ROB slot held only for being
+seen late. Allocation itself stays the RS's first fit with same-edge reuse
+(OI-43): only rename's go sees a free late, so the RS bench holds the RTL
+to the model under every setting. `ooe-test --sweep` measures them over 48
+seeds, since six seeds' noise is about the size of the effect. On
+2026-10-19, against TI-19 at cap 4 (963 cycles): same edge 956 (0.993), all
+late 970 (1.007), cap 2 966 (1.004), with about 0.6% of noise between arms.
+(Measured first with allocation also skipping this cycle's late frees,
+which no RTL does, all late read +2.7% over same edge, and six seeds put it
+at +5.7%.) No S1 kernel moves under any of them (`sweep.sh`).
+
+`ready_reg` (on; OA's response OI-51) makes select read a registered
+ready, as ooe_sched does: a row is ready at select if its lines say so
+now, or said so at the end of the last cycle for this one. Every wake
+rises a cycle early into the register, so rises cost nothing, but a drop
+(a producer returned to Waiting) reaches select a cycle late. An entry may
+then be granted on a stale bit (`select.stale_grant`), and the next hop
+returns it (`cancel.replay_stale`, counted apart from `cancel.replay`); a
+check holds that a stale grant never confirms (OA-17). Over 48 seeds that
+is 7.9 stale grants a run, each replayed, at 960 cycles against 963 with
+the register off: noise. ooe_select's bench logs the registered value as
+`sel_ready`, so a bench of ooe_sched can be cycle-exact.
+
+The register has a clock enable (OA's responses OI-53 and OI-54; V-73),
+so select reads it alone. It captures each row's lines for next cycle at
+every edge after which any line or row it reads changes, and holds
+otherwise. Its leads: ooe_wake's timers and its event lead (a miss, or a
+completion past L1, changes lines at the edge after next: each known a
+cycle ahead, a completion by its channel's valid, since cmpl_wake_delay
+is 1), ooe_sched's own OR of the replay rule over its iss, dep and msd
+inputs, and the allocation grant. In the model a change
+the timers did not predict a cycle ago (a stop, a miss) is captured on
+its own edge, as those leads give it, and V-73 checks that a held
+register never differs from the lines. Two controls: `no-alloc-lead`
+(a new row never captured: caught), and `late-event`, which captures a
+stop or miss one edge late, as V-73 first allowed. That lets a replayed
+producer be re-granted inside its dependant's stale window; the
+dependant, granted on its stale bit, is never replayed by OI-50's rule
+and confirms on a result it read too early (OI-54). The control must hit
+that OA-17 check, and does (at decq 4). On time it costs nothing: the
+48-seed sweep, the four-warp kernels and the S1 kernels are as without
+the enable.
+
+`req_reg` (on; OA's response OI-53) is select's request register, one
+bit per entry: valid, not issued, warp active and a copy's sources
+confirmed, as an earlier cycle ended. Its enable is what ooe_sched can
+form from its own flops (CG-5): a grant last cycle (the grant register,
+which masks select until the register drops the entry), the stop lead
+(a replay's return on time), and the flop of "the register differs from
+its next value and this edge does not capture it", so any other change
+is captured one edge late. A late
+rise costs a cycle at most; a late fall is safe, since a warp leaves
+Active only by a squash of all its entries and select reads valid and
+past rename's stages live (ooe_rs's bit). An earlier form held past
+rename in the register, captured from the allocation grant; a row freed
+and written again on one edge then requested on its last occupant's bit
+before it was past rename, which the model's check (OI-53: a candidate
+issued or of an inactive warp) and ooe_sched's bench both caught. A
+memop's terms stay live in the MIU pick. Over the four-warp kernels and
+the 48-seed sweep it costs nothing (alu8 589, alu16 823, vadd8 1034,
+cvt8 1246, red8 369; 960). ooe_select's bench logs what select used
+(`sel_rq`, `sel_gnt`, `sel_elig`), and ooe_sched's
+(test/ooe/sched_tb.cpp) compares the request register bit for bit.
+
+`branch_ends_group` (KNOB, off; OI-56, OA's measurement): a branch ends
+its rename group, so its checkpoint would be the RAT's state at the next
+edge, with no capture path and no output copy of the maps. With 1 (the
+branch's slot renames nothing more that cycle), the four-warp kernels
+measure alu8 587, alu16 838 (+1.8%), vadd8 1049 (+1.5%), vadd16 1030
+(−1.3%), red8 371 and cvt8 1257 (+0.9%), and the 48-seed sweep 964
+against 960. The S1 kernels are unchanged: one fetch-bound warp, where
+even rename_width 1 costs loop one cycle. With 2 (nothing renames after a
+branch that cycle) alu16 is 898 (+9.1%). Over 1% on two kernels, so it
+went to DA beside the copy (OA's response OI-56).
 
 ## Events and counters
 
@@ -423,6 +597,35 @@ added with the event.
   - kill: ack after the notice and after every completion;
   - a fault at retirement;
   - a barrier and a `chwidth` serialisation;
+  - F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
+    CTA's count, which the launch carries (`barrier_count`) and the core
+    keeps per warp across a park, faults at dispatch with cause 9. It
+    completes as a no-op, holds nothing and never reaches SYU. One below
+    the count waits as before. Control `no-bar-fault` drops the check. The
+    count is the slot's, taken at launch and at restore-allocate, since a
+    restored warp may land in another slot (OA's response IS-16);
+  - fault causes as the ISA fixes them per stage (IS's response IS-16): a
+    fault DEC found arrives as the uop's cause (1 F-FETCH, 2 F-ILLEGAL;
+    TI's 75b6a19) and is the ROB entry's, RCU's done carries none (its
+    exec-fault path is gone), MIU's completion carries its own cause
+    (one without is an error, ISA v1.9 section 12.6), and F-BARRIER (9) is
+    OOE's at dispatch. F-WIDTH (3) is too: each slot holds the committed
+    width of every architectural GPR (OA's response OI-57), written when a
+    chwidth retires and 32 at launch and restore-allocate, and a memop
+    whose data register (a load's destination, a store's highest read
+    source) is at 4 bits faults as a no-op. Control `no-width-fault` drops
+    the check. F-FORMAT (4) reads DEC's fmt_rsv and fmt_opnd (TI's
+    57048d7): it faults where fmt_rsv's bit for the committed width of
+    fmt_opnd's register is set. Control `no-format-fault` drops it.
+    Issue still sends one committed chwidth per slot, the model's older
+    simplification;
+  - V-74: one fault-address register per warp keeps the oldest faulting
+    memop's address and ROB index, written by a faulting completion only if
+    older, cleared by a squash that takes it, and read for the fault record
+    at the head. Two faulting loads, completing in either order, report the
+    older's address. Control `fa-youngest` lets every completion write it;
+  - V-36 as an input assumption: a uop with an ordering that is not a
+    fence (mem_op 0xE) is an error;
   - the fixed-window predicate mode;
   - sectioned lanes:
     - four 8-bit warps co-issue, two 16-bit, one 32-bit;
@@ -449,33 +652,43 @@ added with the event.
 
 ## Sweeps
 
-`sim/ooe/sweep.sh`, run 2026-10-04 at this commit's defaults.
+`sim/ooe/sweep.sh`, run 2026-10-19 at this commit's defaults (refreshed
+for AR-19; the 2026-10-04 figures were stale).
 
 **S1 kernels, cycles.** One warp, short, and DRAM-bound, so they show
-latency, not structure size. The model beats the in-order stub wherever there
-is independent work, and no knob down to a quarter of its size moves them,
-except rename width and the latencies themselves.
+latency, not structure size: no RS, ROB, free-list, decode-queue or
+redirect stall occurs in any of them (AR-19). The model beats the in-order
+stub wherever there is independent work. Of the structures, only a
+quarter-size MIU class (rs_miu=2) moves one (vadd, 222 to 237); rename
+width and the latencies move them by a cycle or two, loop by up to 200.
+None of rename's credit settings moves any. brs is the one kernel the
+stub wins (88 against 92), because the window runs out of branch
+checkpoints first (AR-20).
 
 | config | vadd | sel | srd | pguard | merge | mload | unal | gather | loop | brs |
 |---|---|---|---|---|---|---|---|---|---|---|
-| S1 stub (in order) | 361 | 119 | 111 | 128 | 71 | 126 | 274 | 2364 | 2741 | 82 |
-| model, S1 modes | 306 | 117 | 110 | 125 | 67 | 116 | 263 | 2345 | 2636 | 83 |
-| model, rename_width=1 | 307 | 118 | 111 | 126 | 68 | 117 | 265 | 2347 | 2737 | 85 |
-| model, lat_lane=9 | 308 | 123 | 114 | 133 | 74 | 120 | 267 | 2351 | 3036 | 88 |
+| S1 stub (in order) | 291 | 125 | 115 | 136 | 79 | 111 | 236 | 2334 | 3142 | 88 |
+| model, S1 modes | 222 | 117 | 110 | 125 | 66 | 99 | 222 | 2302 | 2736 | 92 |
+| model, rs_miu=2 | 237 | 117 | 110 | 125 | 66 | 99 | 222 | 2311 | 2736 | 92 |
+| model, rename_width=1 | 222 | 118 | 111 | 126 | 67 | 100 | 224 | 2303 | 2737 | 93 |
+| model, lat_lane=9 | 224 | 121 | 112 | 131 | 68 | 101 | 226 | 2306 | 2936 | 94 |
 
 **Synthetic, four warps, the design's own modes** (bypass and L1 speculation
 on, 20% of loads missing by up to 25 cycles past the L1 contract). The core
-alone, six seeds, cycles relative to the defaults:
+alone, six seeds, cycles relative to the defaults; six seeds are noisy at
+1 to 2%, so a figure that close to 1.00 is not a finding:
 
 | knob | values → relative cycles |
 |---|---|
-| `rs_rcu` | 6 → 2.06, 10 → 1.48, 15 → 1.20, 20 → 1.04, **30 → 1.00**, 45 → 0.99 |
-| `rs_miu` | 3 → 1.80, 5 → 1.36, 8 → 1.11, **15 → 1.00**, 24 → 1.00 |
-| `rs_warp_cap` | 6 → 1.86, 10 → 1.25, 15 → 1.04, **none → 1.00** |
-| `rob_depth` | 8 → 2.45, 12 → 1.77, 16 → 1.47, 24 → 1.15, **32 → 1.00** |
-| `decq` | 4 → 1.11, 6 → 1.06, 8 → 1.02, **12 → 1.00**, 18 → 0.95 |
-| `rename_width` | 1 → 1.88, 2 → 1.20, 3 → 1.02, **4 → 1.00** |
-| `retire_per_rob` | 1 → 1.06, **2 → 1.00**, 4 → 0.99 |
+| `rs_rcu` | 6 → 2.10, 10 → 1.50, 15 → 1.18, 20 → 1.08, **30 → 1.00**, 45 → 0.98 |
+| `rs_miu` | 3 → 1.91, 5 → 1.40, 8 → 1.16, **15 → 1.00**, 24 → 0.98 |
+| `rs_warp_cap` | 6 → 2.01, 10 → 1.32, 15 → 1.08, **none → 1.00** |
+| `rob_depth` | 8 → 2.58, 12 → 1.83, 16 → 1.46, 24 → 1.13, **32 → 1.00** |
+| `decq` | 4 → 1.26, 6 → 1.10, 8 → 1.04, **12 → 1.00**, 18 → 0.94 |
+| `rename_width` | 1 → 1.62, 2 → 1.12, 3 → 0.99, **4 → 1.00** |
+| `retire_per_rob` | 1 → 1.00, **2 → 1.00**, 4 → 1.00 |
+| `ren_credit`, 48 seeds | same edge → 0.993, all late → 1.007, **TI-19 at cap 4 → 1.000**, cap 2 → 1.004 |
+| `ready_reg`, 48 seeds | off → 1.003, **on → 1.000** (7.9 stale grants a run, each replayed) |
 
 What it says, provisionally (strategy §8: a metric is only as real as the
 least-built block on its path, and here every neighbour is a stand-in):
@@ -490,10 +703,15 @@ least-built block on its path, and here every neighbour is a stand-in):
 - A per-warp RS cap costs throughput at any value below the class size here,
   because the synthetic warps never stall long. Its value comes from
   demotion-heavy runs, which need RAU.
-- Two retires per ROB is worth about 6% over one. Four buys nothing.
+- The decode queue still gains past 12 (18 → 0.94).
+- One retire per ROB now costs nothing measurable here (2026-10-04 put it at
+  about 6%); the synthetic warps rarely retire two in a cycle. The S1
+  kernels gain a cycle or two from the second.
 
 **OI-34: sectioned placement and OA-13** (`sim/ooe/run-tests.sh
---sweep-sections`, 2026-10-09). Synthetic 32-iteration loops, each with its
+--sweep-sections`, 2026-10-09; re-run at the defaults of 2026-10-19 for
+IS-9, with select's section fallback, the default since OA's response
+IS-9). Synthetic 32-iteration loops, each with its
 loop control (an RCU index add, a 32-bit setp, a backward branch). Four
 seeds, 10% of loads missing. Cycles, one warp and four (the full table
 prints from the command). Under the decided default (home = slot index),
@@ -504,20 +722,45 @@ warps. A lone warp's narrow rate is PF-29.
 | kernel | warps | slot | 0 | rotate from 0 | rotate from slot | slot + reg |
 |---|---|---|---|---|---|---|
 | alu8 (shared operand) | 1 | 342 | 342 | 342 | 342 | 339 |
-| alu8 (shared operand) | 4 | **616** | 1232 | 1232 | 616 | 953 |
-| alu16 (shared operand) | 4 | **813** | 1232 | 1232 | 813 | 1113 |
+| alu8 (shared operand) | 4 | **589** | 1232 | 1232 | 589 | 856 |
+| alu16 (shared operand) | 4 | **823** | 1232 | 1232 | 823 | 1103 |
 | alu32 (reference) | 1 / 4 | 342 / 1232 | | | | |
 | alu8-self | 1 | 340 | 340 | 340 | 340 | **247** |
-| alu8-self | 4 | 605 | 1232 | 1232 | 605 | **570** |
-| vadd8 | 4 | 1064 | 1067 | 1066 | 1053 | 1067 (996 with OA-13) |
-| vadd16 | 4 | 1034 | 1067 | 1059 | 1073 | 1052 (4.0 sections/op) |
-| red8 | 4 | 367 | 377 | 372 | 371 | 367 |
-| cvt8 | 4 | 1246 | 1254 | 1252 | 1246 | 1246 |
-| fp8-self (FP minimum 2) | 4 | 838 | 1232 | 1232 | 838 | 798 |
+| alu8-self | 4 | 581 | 1232 | 1232 | 581 | **558** |
+| vadd8 | 4 | 1034 | 1079 | 1061 | 1052 | 1036 (1010 with OA-13) |
+| vadd16 | 4 | 1044 | 1079 | 1057 | 1052 | 1048 (4.0 sections/op) |
+| red8 | 4 | 369 | 369 | 371 | 365 | 369 |
+| cvt8 | 4 | 1246 | 1254 | 1244 | 1246 | 1246 |
+| fp8-self (FP minimum 1) | 4 | 581 | 1232 | 1232 | 581 | 558 |
 | fp32-self (reference) | 4 | 1232 | | | | |
 
-- **Four warps, lane-bound:** home = slot index is 2.0x over home 0 at 8
-  bits and 1.5x at 16. Home 0 is exactly alu32: no narrow gain at all.
+- **Four warps, lane-bound:** home = slot index is 2.09x over home 0 at 8
+  bits and 1.50x at 16. Home 0 is exactly alu32: no narrow gain at all.
+- **The element-work rate (IS-9), counted at select:** lane ops that write
+  a register, per cycle, and per cycle outside the cycles a setp (the loop
+  control's one lane op, all four sections) holds the lanes. alu32: 0.86
+  and 0.96. alu8: 1.59 and 1.97, **2.05x**. alu16: 1.29 and 1.53,
+  **1.59x**. So the rate, not only the kernel, is short of obligation 4's
+  4x and 2x; the loop control is one full-footprint op an iteration, not
+  three (the index add and the branch take R). At 8 bits the lane
+  section-cycles are 40% narrow, 19% setp and 41% idle, and all four
+  sections carry a narrow op in 8% of cycles. The first cause measured was
+  select's single pass (`lost resource`): a setp oldest in three sections
+  and beaten in the fourth issued nothing, and the narrow ops it beat in
+  the three didn't issue either. A second pass over the sections the first
+  left idle gave alu8 589 cycles (2.4x) and alu16 710 (1.90x). OA's
+  parallel fallback pick (`pick_fallback`; OA's response IS-9) gets the
+  same without a second pass: a section whose winner does not issue
+  grants its oldest single-section requester (1, the default), and with 2
+  a half whose sections both fall through may grant its oldest
+  half-footprint requester. Section-only gives alu8 589 (2.30 element ops
+  a cycle outside setps, **2.40x**) and leaves alu16 at 823 (**1.59x**);
+  the half pick takes alu16 to 710 (1.90x) but measures 26.8 NGD in
+  ooe_select, past its stage (section-only 24.3, none 19.5), so it is
+  PF-38. DA's response OA-19 holds the first build to the measured rate;
+  PF-29 and PF-31 (AR's warp-uniform register file, with loop control on
+  R) are the levers past it. Rename or issue at 8 wide, or a
+  128-entry RCU RS, makes neither faster. Both columns print.
 - **OA-14's rotation equals its starting rule.** From 0, every warp rotates
   in lockstep and it equals home 0. From the slot index, it equals home =
   slot. It never moves a loop-carried value, which follows its own
@@ -538,10 +781,11 @@ warps. A lone warp's narrow rate is PF-29.
   both columns print). Spread is the union of the operands' own sections;
   footprint is that union widened to `foot_min`. Integer footprint equals
   spread in every run, so any integer width above 1 section is placement's.
-  FP at 8 bits (fp8-self, E4M3 per IS-7) has footprint 2 and spread 1:
-  the unit minimum, not placement. Four warps of fp8-self take 838 cycles
-  at an FP minimum of 2 and 605 at a minimum of 1, the same as int8. That
-  is 1.47x over fp32 rather than 2.04x. cvt8's FP ops write 32 bits, so
+  FP at 8 bits (fp8-self, E4M3 per IS-7) at the decided FP minimum of 1
+  has footprint 1 and spread 1, and runs as int8 does: 581 cycles, 2.12x
+  over fp32 (639 and 1.93x before the section fallback). At a minimum of 2 (AR's recommendation, overruled by DA's
+  response IS-7) the footprint was 2 and the 2026-10-09 run took 838,
+  1.47x. cvt8's FP ops write 32 bits, so
   their 4 sections come from their operands, under either minimum.
 - **OA-13** changes nothing except vadd8 under slot + reg (6%). The loads
   of one iteration become ready together. Its case is gathers and pointer

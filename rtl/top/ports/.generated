@@ -1,0 +1,18 @@
+{
+ "gen-top": [
+  "ccv_cru_ports.svh",
+  "ccv_dcu_ports.svh",
+  "ccv_dec_ports.svh",
+  "ccv_exb_ports.svh",
+  "ccv_fet_ports.svh",
+  "ccv_lane_ports.svh",
+  "ccv_miu_ports.svh",
+  "ccv_mlc_ports.svh",
+  "ccv_ooe_ports.svh",
+  "ccv_pca_ports.svh",
+  "ccv_rau_ports.svh",
+  "ccv_rcu_ports.svh",
+  "ccv_spm_ports.svh",
+  "ccv_syu_ports.svh"
+ ]
+}

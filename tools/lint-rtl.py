@@ -217,6 +217,43 @@ def always_blocks(src):
     return out
 
 
+ASSIGN_RE = re.compile(r"([a-z]\w*)\s*(?:\[[^\]]*\])?\s*(<=|=)(?!=)\s*([^;]+);")
+
+
+def assignments(text):
+    """(pos, lhs, op, rhs) for each assignment in text: continuous, blocking
+    or nonblocking. CCV-L20, L23 and L24 read assignments only through here.
+
+    Read as a pattern, `a == b` and `a <= b` look like assignments too, and a
+    match runs to the next semicolon. So a macro call with no semicolon after
+    it, `CCV_ASSERT(n, a == b)`, took everything up to the next one as its
+    right-hand side, the always_ff after it included, and a rule reported that
+    block's clock as read as data by `a` (OI-40). Three things keep a
+    comparison out. An `=` that starts `==` is not an assignment. A candidate
+    inside parentheses (an if-condition, a macro's or a function's arguments)
+    is never an assignment's left-hand side, nor is one after `return`. And a
+    candidate so refused consumes nothing past its own name, so the
+    assignment after it is still read, with its own left-hand side."""
+    depth, d = [], 0
+    for ch in text:
+        depth.append(d)
+        if ch == "(":
+            d += 1
+        elif ch == ")" and d:
+            d -= 1
+    pos = 0
+    while True:
+        m = ASSIGN_RE.search(text, pos)
+        if not m:
+            return
+        if depth[m.start()] or \
+                re.search(r"\breturn\s*$", text[max(0, m.start() - 16):m.start()]):
+            pos = m.end(1)
+            continue
+        yield m.start(), m.group(1), m.group(2), m.group(3)
+        pos = m.end()
+
+
 # --------------------------------------------------------------------------
 # Module names (docs/rtl-coding-style.md, Module names; DA's response OI-37)
 #
@@ -861,15 +898,13 @@ def check_file(path, rel):
         # CLOCK NET -- that last one is the block's gate, which is the whole
         # reason `<block>_core_clk` exists. Anything else is a clock read as
         # data, which is how a clock ends up in a datapath unnoticed.
-        for m in re.finditer(r"(?:assign\s+)?([a-z]\w*)\s*(?:<=|=)\s*([^;]+);",
-                             src):
-            lhs, rhs = m.group(1), m.group(2)
-            if reusable(m.start()):
+        for apos, lhs, _, rhs in assignments(src):
+            if reusable(apos):
                 continue        # a common module's generic formals
             if clk_domain(lhs):
                 continue        # a clock from a clock: CCV-L27's business
             for cm in re.finditer(r"\b([a-z]\w*_clk(?:_b)?)\b", rhs):
-                add("CCV-L20", line_of(src, m.start()),
+                add("CCV-L20", line_of(src, apos),
                     "clock %r is read as data by %r. A clock belongs in "
                     "an edge expression, a port map, or the right-hand "
                     "side of another clock -- nowhere else"
@@ -987,9 +1022,7 @@ def check_file(path, rel):
             if reusable(pos):
                 continue
             seq = (kind == "ff")
-            for am in re.finditer(
-                    r"([a-z]\w*)\s*(?:\[[^\]]*\])?\s*(<=|=)\s*([^;]+);", body):
-                lhs, op, rhs = am.group(1), am.group(2), am.group(3)
+            for apos, lhs, op, rhs in assignments(body):
                 st = stage_of(lhs)
                 if st is None or st[1] == "r":
                     continue
@@ -998,7 +1031,7 @@ def check_file(path, rel):
                     continue
                 want = max(ins) + (1 if seq else 0)
                 if st[2] != want:
-                    aln = ln + body[:am.start()].count("\n")
+                    aln = ln + body[:apos].count("\n")
                     add("CCV-L23", aln,
                         "%s is at stage %02d but %s logic over stage(s) %s "
                         "gives %02d. %s"
@@ -1091,10 +1124,11 @@ def check_file(path, rel):
         # and carries no obligation. `_b` claims to be the complement of a net
         # that exists, which is checkable and worth checking: a `_b` that is
         # not actually inverted is a sign flip nobody sees.
-        for m in re.finditer(r"\b([a-z]\w*)_b\b\s*(?:<=|=)([^;]+);", src):
-            sib = m.group(1)
-            rhs = m.group(2)
-            ln = line_of(src, m.start())
+        for apos, lhs, _, rhs in assignments(src):
+            if not lhs.endswith("_b"):
+                continue
+            sib = lhs[:-2]
+            ln = line_of(src, apos)
             # Only the inversion is required. An earlier version also
             # demanded a same-named sibling net, which is wrong: `_b` is the
             # complement of a VALUE, and that value is frequently an
