@@ -402,15 +402,16 @@ done
 # issued bits and lead lines are held to the model under its composed
 # timing (Config::req_rows_late, miss_lead, ready_rep_late). This replaces
 # sched_tb's comparison, which drove ooe_sched from model-emulated
-# neighbours; sched_tb stays as ooe_sched's clock-gating bench.
+# neighbours; trio_tb is ooe_sched's clock-gating bench too (cg_trace.h), so
+# it links Verilator's VCD writer.
 dir=build/ooe-rtl/trio
 mkdir -p "$dir"
 cdly=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_CMPL_DLY=//p')
 lmiss=$(echo "$wake_d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
-if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+if ! verilator --cc --exe --build -j 0 -O2 --assert --public-flat-rw --trace -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
       -Wno-PINCONNECTEMPTY ${wake_g//,/ } -GNR="$n_rcu" -GA="$width" -GS="$slots" -GFB="$pick_fb" \
       --top-module ooe_trio --Mdir "$dir" -o trio_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-      -CFLAGS "-std=c++17 -O2 -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
       "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
       "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" \

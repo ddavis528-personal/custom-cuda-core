@@ -48,11 +48,19 @@ case "$unit" in
     vl ooe_rat_read "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
       "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
   ooe_sched)
+    # The assembled trio (test/ooe/trio_tb.cpp): ooe_sched's leads are ooe_wake's
+    # and ooe_rs's, in their own frame.
     slots=$(val CCV_TIER1_WARPS)
     fb=$(sed -n 's/.*unsigned pick_fallback = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
-    vl ooe_sched "--public-flat-rw -GN=$n -GNR=$n_rcu -GS=$slots -GFB=$fb" "-DSCH_N=$n -DSCH_NR=$n_rcu -DSCH_S=$slots" \
+    nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+    read -r g d < <(python3 test/ooe/wake-params.py)
+    cdly=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_CMPL_DLY=//p')
+    lmiss=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
+    vl ooe_trio "--public-flat-rw ${g//,/ } -GNR=$n_rcu -GA=$width -GS=$slots -GFB=$fb" \
+      "-DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss" \
+      "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
       "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
-      "$PWD/test/ooe/sched_tb.cpp" ;;
+      "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" ;;
   ooe_prodmap)
     ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)
     vl ooe_prodmap "--trace-max-width 8192 -GN=$n -GNR=$n_rcu -GA=$width -GNG=$ng -GNP=$np" \

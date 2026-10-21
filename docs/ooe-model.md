@@ -561,8 +561,8 @@ issued or of an inactive warp) and ooe_sched's bench both caught. A
 memop's terms stay live in the MIU pick. Over the four-warp kernels and
 the 48-seed sweep it costs nothing (alu8 589, alu16 823, vadd8 1034,
 cvt8 1246, red8 369; 960). ooe_select's bench logs what select used
-(`sel_rq`, `sel_gnt`, `sel_elig`), and ooe_sched's
-(test/ooe/sched_tb.cpp) compares the request register bit for bit.
+(`sel_rq`, `sel_gnt`, `sel_elig`), and the assembled bench
+(test/ooe/trio_tb.cpp) compares ooe_sched's request register bit for bit.
 
 `branch_ends_group` (KNOB, off; OI-56, OA's measurement): a branch ends
 its rename group, so its checkpoint would be the RAT's state at the next

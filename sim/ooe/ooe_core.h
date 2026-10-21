@@ -1340,7 +1340,7 @@ public:
   /// The first RCU-class entry index past the last; MIU entries follow.
   unsigned rsRcuEntries() const { return cfg_.rs_rcu; }
   bool rsReady(unsigned e) const { return rowReady(e); }
-  /// ooe_sched's (test/ooe/sched_tb.cpp), at a cycle's end: a producer's
+  /// The assembled bench's (test/ooe/trio_tb.cpp), at a cycle's end: a producer's
   /// wake line as it stands next cycle (what the ready register captures),
   /// each entry's slot, copy flag and past rename next cycle, a slot's warp
   /// active, and the ready and request registers.

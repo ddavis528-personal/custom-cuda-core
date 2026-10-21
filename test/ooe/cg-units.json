@@ -180,7 +180,7 @@
       "bench": {
         "build": "test/ooe/cg-build.sh ooe_sched {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
-        "scope": "ooe_sched"
+        "scope": "ooe_trio.u_sched"
       }
     },
     {
