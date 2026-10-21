@@ -578,6 +578,26 @@ unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
   return m;
 }
 
+unsigned Core::resEntry(unsigned e, bool widen) const {
+  const RsEntry &x = rs_[e];
+  const RobEntry &r = slot_[x.slot].rob[x.rob];
+  if (!x.atom) return resOf(r, x.copy, widen);
+  // An atomic's steps: A1 and A3 the MIU pipes of their data, T and N; A2
+  // the lane sections of T, N and its operands.
+  auto pipes = [&](unsigned p) { const unsigned m = sectionsOf(p); return (m ? m : 0xFu) << 5; };
+  if (x.atom == 1) return pipes(r.atom_t);
+  if (x.atom == 3) return pipes(r.ptmp_n);
+  unsigned m = sectionsOf(r.atom_t) | sectionsOf(r.ptmp_n);
+  for (unsigned i = 1; i != 3; ++i)
+    if ((r.u.shape.gpr_reads >> i) & 1u) m |= sectionsOf(r.psrc[i]);
+  if (!m) m = 1;
+  const unsigned fm = cfg_.foot_min[Config::kGrpInt];
+  if (!widen || !fm) return m;
+  if (fm >= 4) m = 0xFu;
+  else if (fm == 2) m |= ((m & 0x5u) << 1) | ((m & 0xAu) >> 1);
+  return m;
+}
+
 unsigned Core::allocPred(unsigned slot, unsigned arch) {
   if (!cfg_.rename_preds) return cfg_.pred_window(slot_[slot].warp, arch);
   const unsigned p = pTake();
@@ -676,6 +696,8 @@ void Core::rsFree(unsigned e) {
   RobEntry &r = slot_[x.slot].rob[x.rob];
   if (r.rs_main == e) r.rs_main = kNoEntry;
   if (r.rs_copy == e) r.rs_copy = kNoEntry;
+  if (r.rs_a2 == e) r.rs_a2 = kNoEntry;
+  if (r.rs_a3 == e) r.rs_a3 = kNoEntry;
   --slot_[x.slot].rs_held;
   x.valid = false;
   const unsigned c = e < cfg_.rs_rcu ? 0 : 1;
@@ -827,11 +849,12 @@ bool Core::requestNext(unsigned e) const {
       bool empty = true;
       for (unsigned j = 0; j != n_ && empty && x.copy; ++j)
         empty = !(req_dep_q_[1].size() == size_t(n_) * n_ && req_dep_q_[1][size_t(e) * n_ + j] && !req_cnf_[j]);
-      return (old & 1) && !(e < req_ise_.size() && req_ise_[e]) && slot_[x.slot].st == WarpState::kActive &&
-             (!x.copy || empty);
+      return (old & 1) && !(e < req_ise_.size() && req_ise_[e]) &&
+             (slot_[x.slot].st == WarpState::kActive || atomFinishing(x)) && (!x.copy || empty);
     }
   }
-  return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || conf);
+  return x.valid && !issued && (slot_[x.slot].st == WarpState::kActive || atomFinishing(x)) &&
+         (!x.copy || conf);
 }
 
 /// The request register (OA's response OI-53), as ooe_sched builds it: an
@@ -998,6 +1021,12 @@ void Core::setWakes(unsigned e) {
     if (e < wlog_.kind.size()) wlog_.kind[e] = kWakeCopy;
     return;
   }
+  if (x.atom == 2) {
+    // An atomic's lane op: N at the lane latency, for A3 (AR-21).
+    x.late_at = now_ + cfg_.unitLat(kLatClsLane);
+    if (e < wlog_.cls.size()) wlog_.cls[e] = uint8_t(kLatClsLane);
+    return;
+  }
   if (r.is_mem) {
     // Only an L1-contracted global load wakes before its completion (A-46);
     // scratchpad loads, atomics and everything past L1 wake on completion.
@@ -1093,7 +1122,7 @@ bool Core::cancelHop() {
             (unsigned long long)(now_ - y.issue_at), kWakeAgeMax);
       // Issued on a wake that has been withdrawn: back to Waiting.
       RobEntry &r = slot_[y.slot].rob[y.rob];
-      if (r.is_mem || y.copy) {
+      if (y.cls == RsCls::kMiu || y.copy) {
         err("V-17: memop entry %u was issued on an unconfirmed source", i);
         continue;
       }
@@ -1171,7 +1200,8 @@ void Core::confirmPass() {
   }
   free_prompt_ = true;   // a confirmation's free: from flops in the RTL (TI-19)
   for (unsigned e : order)
-    if (rs_[e].valid && rs_[e].confirmed) {
+    if (rs_[e].valid && rs_[e].confirmed &&
+        !(rs_[e].atom && !slot_[rs_[e].slot].rob[rs_[e].rob].atom_final)) {   // held across passes
       const unsigned slot = rs_[e].slot, rob = rs_[e].rob;
       rsFree(e);
       complete(slot, rob);
@@ -1231,7 +1261,7 @@ void Core::advanceWakes() {
 // ---- completions -------------------------------------------------------------------------
 
 bool Core::outstanding(const RobEntry &r) const {
-  return r.rcu_dones_owed > 0 || (r.at_miu && !r.miu_done) || r.copy_pending;
+  return r.rcu_dones_owed > 0 || (r.at_miu && !r.miu_done) || r.copy_pending || r.atom_pass;
 }
 
 void Core::complete(unsigned slot, unsigned idx) {
@@ -1240,13 +1270,15 @@ void Core::complete(unsigned slot, unsigned idx) {
   bool c;
   if (r.u.shape.exit || r.u.cause || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat) c = true;   // no-ops: faulted before or at dispatch
   else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
+  else if (r.atomic) c = r.atom_final && r.miu_done && !r.copy_pending && r.rcu_dones_owed == 0;   // V-71
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
   else c = r.rcu_done && r.rcu_dones_owed == 0;
   // A ROB entry outlives its RS entries: it completes only once every one
   // is confirmed and freed, so no result it reports can still be cancelled
   // and no RS entry ever names a retired ROB slot.
-  c = c && ((r.rs_main == kNoEntry && r.rs_copy == kNoEntry) || cfg_.inject_complete_early);
+  c = c && ((r.rs_main == kNoEntry && r.rs_copy == kNoEntry && r.rs_a2 == kNoEntry && r.rs_a3 == kNoEntry) ||
+            cfg_.inject_complete_early);
   if (!c) return;
   r.complete = true;
   // A branch acts on its outcome only once confirmed: a resolution read
@@ -1318,8 +1350,10 @@ void Core::takeCompletions() {
       continue;
     }
     r->miu_done = true;
-    if (r->squashed) { count("cmpl.after_squash"); continue; }
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
+    if (r->atomic) { atomCmpl(s, idx, c); continue; }
+    if (c.more) err("V-72: a completion for rob tag %u, not an atomic's write, carries more", c.rob_tag);
+    if (r->squashed) { count("cmpl.after_squash"); continue; }
     if (c.status) {
       // MIU's completion carries the section 12.5 winner and its lowest
       // faulting lane's address (IS's response IS-16).
@@ -1363,6 +1397,123 @@ void Core::takeCompletions() {
     complete(s, idx);
   }
   cmpls_.clear();
+}
+
+// ---- atomics: read, lane op, write (AR-21) -------------------------------------------
+
+bool Core::atomIssueOk(unsigned e) const {
+  const RsEntry &x = rs_[e];
+  if (!x.atom) return true;
+  const Slot &s = slot_[x.slot];
+  const RobEntry &r = s.rob[x.rob];
+  // A2 and A3 only inside a pass, after its read: a return to Waiting
+  // reaches the registered ready a cycle late (OI-51), and the read, a
+  // memop, is never replayed to catch a lane op granted on the old bit.
+  if (x.atom != 1)
+    return r.atom_pass && r.rs_main != kNoEntry && rs_[r.rs_main].issued && rs_[r.rs_main].issue_at < now_;
+  return !r.squashed && !r.atom_pass && !r.atom_final && s.count && s.st == WarpState::kActive &&
+         (s.head == x.rob || cfg_.inject_atom_off_head);
+}
+
+bool Core::atomFinishing(const RsEntry &x) const {
+  if (!x.atom || x.atom == 1) return false;
+  const RobEntry &r = slot_[x.slot].rob[x.rob];
+  return r.squashed && r.atom_pass;
+}
+
+bool Core::atomAtHead(unsigned slot) const {
+  const Slot &s = slot_[slot];
+  if (!s.count) return false;
+  const RobEntry &h = s.rob[s.head];
+  return h.valid && h.atomic && h.atom_started && !h.atom_final;
+}
+
+void Core::atomFree(RobEntry &r) {
+  for (unsigned e : {r.rs_main, r.rs_a2, r.rs_a3})
+    if (e != kNoEntry && rs_[e].atom) rsFree(e);
+}
+
+void Core::atomNextPass(RobEntry &r) {
+  for (unsigned e : {r.rs_main, r.rs_a2, r.rs_a3}) {
+    if (e == kNoEntry) { err("AR-21: an atomic's next pass finds a step freed"); continue; }
+    RsEntry &x = rs_[e];
+    x.issued = x.confirmed = x.late = x.spec = x.on_completion = false;
+    x.msd = x.msd_end = x.stale = x.hinted = x.ready_seen = false;
+    x.rep_at = ~uint64_t(0);
+    if (e < wlog_.stop.size()) wlog_.stop[e] = 1;
+  }
+}
+
+void Core::atomCmpl(unsigned slot, unsigned idx, const Cmpl &c) {
+  RobEntry &r = slot_[slot].rob[idx];
+  const unsigned tag = tagOf(slot, idx);
+  const bool a1 = r.rs_main != kNoEntry && c.rs_idx == r.rs_main;
+  const bool a3 = r.rs_a3 != kNoEntry && c.rs_idx == r.rs_a3;
+  if (!a1 && !a3) {
+    err("AR-21: a completion for rob tag %u names RS entry %u, neither its read nor its write", tag, c.rs_idx);
+    return;
+  }
+  RsEntry &x = rs_[c.rs_idx];
+  if (!x.issued) err("OI-58: a completion for RS entry %u, not issued", c.rs_idx);
+  if (a1) {
+    if (c.more) err("V-72: rob tag %u's atomic read completes with more", tag);
+    if (c.status) {
+      // MIU checked every lane before any hold: the fault leaves memory
+      // untouched, and the entry faults at the head, restartable (V-72).
+      if (!c.cause) err("a faulting completion for rob tag %u carries no cause (ISA v1.9 section 12.6)", tag);
+      r.fault = true;
+      r.fault_cause = c.cause;
+      r.fault_lanes = c.lane_mask;
+      r.fault_addr = c.address;
+      Slot &fs = slot_[slot];
+      if (!fs.fa_valid || robAge(fs, idx) < robAge(fs, fs.fa_idx) || cfg_.inject_fa_youngest) {
+        fs.fa_valid = true;
+        fs.fa_idx = idx;
+        fs.fa_addr = c.address;
+      }
+      if (r.atom_passes) err("V-72: rob tag %u's atomic faults after its first pass", tag);
+      r.atom_pass = false;
+      r.atom_final = true;
+      atomFree(r);
+      count("atomic.fault");
+      if (!r.squashed) complete(slot, idx);
+      return;
+    }
+    r.mlc_miss = c.mlc_miss;
+    // T is readable once the data lands (Config::cmpl_wake_delay): A2 wakes.
+    x.on_completion = false;
+    x.late_at = now_ + cfg_.cmpl_wake_delay;
+    if (!cfg_.cmpl_wake_delay) wake(c.rs_idx);
+    return;
+  }
+  ++histograms["atomic.hold_cycles"][now_ - r.atom_pass_at];
+  r.atom_pass = false;
+  ++r.atom_passes;
+  if (c.more && !r.squashed) {
+    atomNextPass(r);
+    count("atomic.pass");
+    if (cfg_.inject_atom_early_wake && r.atom_passes == 1) {
+      // The control: T's consumers woken by this write, not the last. A3
+      // returns to Waiting with its wake still raised.
+      x.late = true;
+    }
+    return;
+  }
+  if (c.more) count("atomic.kill_stops");   // a kill starts no further pass
+  ++histograms["atomic.passes"][r.atom_passes];
+  r.atom_final = true;
+  if (r.squashed) {
+    atomFree(r);   // released when nothing else is outstanding (V-22)
+    return;
+  }
+  // The last pass: A3 wakes T's consumers once (V-71). A1 and A2 have
+  // confirmed and go now; A3 confirms on this wake.
+  x.on_completion = false;
+  x.late_at = now_ + cfg_.cmpl_wake_delay;
+  if (!cfg_.cmpl_wake_delay) wake(c.rs_idx);
+  if (r.rs_main != kNoEntry) rsFree(r.rs_main);
+  if (r.rs_a2 != kNoEntry) rsFree(r.rs_a2);
+  complete(slot, idx);
 }
 
 // ---- branches and squash (A-41, A-42, A-56, A-58) ------------------------------------
@@ -1429,6 +1580,8 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.alloc_gpr) freeGpr(slot, r.pnew);
   if (r.alloc_pred) freePred(slot, r.ppnew);
+  if (r.ptmp_t != kNoEntry) freeGpr(slot, r.ptmp_t);
+  if (r.ptmp_n != kNoEntry) freeGpr(slot, r.ptmp_n);
   if (r.ckpt_live) { slot_[slot].ckpt[r.u.ckpt].live = false; r.ckpt_live = false; }
   r = RobEntry();
   robFreed(slot, idx, false);
@@ -1450,9 +1603,18 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
     RobEntry &r = s.rob[idx];
     ++n;
     if (!to_retirement && r.u.group_mask != gmask) { count("squash.cross_group"); ++other; }   // A-31
-    if (r.rs_main != kNoEntry) rsFree(r.rs_main);
-    if (r.rs_copy != kNoEntry) rsFree(r.rs_copy);
-    r.rs_main = r.rs_copy = kNoEntry;
+    // An atomic's pass in flight keeps its three steps, so its write goes
+    // and releases the hold; no later pass starts (V-70). Only a kill
+    // reaches one: it is at its warp's head, and a demote waits for it.
+    if (r.atomic && r.atom_pass) {
+      if (r.rs_copy != kNoEntry) rsFree(r.rs_copy);
+      count("atomic.kill_in_flight");
+    } else {
+      if (r.rs_main != kNoEntry) rsFree(r.rs_main);
+      if (r.rs_copy != kNoEntry) rsFree(r.rs_copy);
+      atomFree(r);
+      r.rs_main = r.rs_copy = kNoEntry;
+    }
     if (r.is_store && r.at_miu && !r.committed) stores_at_miu = true;
     if (s.chwidth_hold && s.chwidth_rob == idx) s.chwidth_hold = false;
     if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
@@ -1607,11 +1769,26 @@ void Core::control() {
   }
   allocs_.clear();
 
+  // A demote waits while its warp's head is an atomic in progress, which
+  // runs to its last pass first: a resumed atomic would apply its finished
+  // passes twice (V-70). A kill meanwhile supersedes it.
+  std::vector<unsigned> held_demotes;
+  held_demotes.swap(demotes_held_);
+  for (unsigned w : held_demotes) {
+    const int si = slotOf(w);
+    if (si < 0 || slot_[si].st != WarpState::kActive) { count("demote.held_superseded"); continue; }
+    demotes_.insert(demotes_.begin(), w);
+  }
   for (unsigned w : demotes_) {
     const int si = slotOf(w);
     if (si < 0) { err("demote of warp %u, which is not resident", w); continue; }
     Slot &s = slot_[si];
     if (s.st != WarpState::kActive) { err("demote of warp %u in state %d", w, int(s.st)); continue; }
+    if (atomAtHead(unsigned(si)) && !cfg_.inject_atom_demote_mid) {
+      demotes_held_.push_back(w);
+      count("demote.held_atomic");
+      continue;
+    }
     // Squash to retirement (Demotion): the resume PC is the oldest
     // unretired instruction's, or the next after the last retirement.
     s.resume_pc = s.count ? s.rob[s.head].u.pc : s.next_pc;
@@ -1777,6 +1954,9 @@ void Core::retire() {
         s.crat[r.u.dst & 15] = r.pnew;
         freeGpr(si, cfg_.inject_free_new ? r.pnew : r.pold);
       }
+      // An atomic's temporaries: N, and T for red (AR-21).
+      if (r.ptmp_t != kNoEntry) freeGpr(si, r.ptmp_t);
+      if (r.ptmp_n != kNoEntry) freeGpr(si, r.ptmp_n);
       if (r.u.pred_we) {
         if (cfg_.rename_preds) {
           s.cprat[r.u.pred_dst & 3] = r.ppnew;
@@ -1815,7 +1995,9 @@ void Core::retire() {
     }
     ++histograms["retire_per_cycle"][n];
     // Demotion triggers at the head (Q18): reported to RAU, which decides.
-    if (s.count && !s.fault_stop) {
+    // None while the head is an atomic in progress (V-70).
+    if (s.count && !s.fault_stop && atomAtHead(si)) count("demote_trigger.held_atomic");
+    if (s.count && !s.fault_stop && !atomAtHead(si)) {
       const RobEntry &h = s.rob[s.head];
       const uint64_t stall = now_ - s.head_since;
       if (h.is_load && h.mlc_miss && stall > cfg_.demote_mlc_miss && !s.miss_reported) {
@@ -1924,6 +2106,8 @@ bool Core::memopOrderOk(const Slot &s, const RobEntry &r) const {
   for (unsigned k = 0; k != s.count; ++k) {
     const RobEntry &o = s.rob[(s.head + k) % cfg_.rob_depth];
     if (&o == &r) break;
+    // An older atomic holds younger memops until its last write (AR-21).
+    if (o.valid && o.atomic && !o.atom_final) return false;
     if (!o.valid || !o.is_mem || o.rs_main == kNoEntry || rs_[o.rs_main].issued) continue;
     if (cfg_.loads_pass_loads && plain_load && o.is_load && o.u.ordering == 0 &&
         o.u.attr.mem_kind == kMemKLoad)
@@ -1961,16 +2145,18 @@ void Core::selectSectioned() {
     if (predHold(x.slot, r)) return false;
     if (cfg_.req_reg) {
       if (x.copy) return true;
-    } else if (s.st != WarpState::kActive) {
+    } else if (s.st != WarpState::kActive && !atomFinishing(x)) {
       return false;
     }
     // The copy's sources are confirmed before it issues, so it cannot be
     // cancelled once its load has gone (V-61).
     if (x.copy) return rowConfirmed(e);
+    if (!atomIssueOk(e)) return false;
     if (x.cls != RsCls::kMiu) return true;
     if (memop_block[x.slot] || !rowConfirmed(e)) return false;
     // V-61: the copy went in an earlier cycle (or has confirmed and freed).
-    if (r.copy && r.rs_copy != kNoEntry && (!rs_[r.rs_copy].issued || rs_[r.rs_copy].issue_at >= now_))
+    if (r.copy && e == r.rs_main && r.rs_copy != kNoEntry &&
+        (!rs_[r.rs_copy].issued || rs_[r.rs_copy].issue_at >= now_))
       return false;
     return !order || memopOrderOk(s, r);
   };
@@ -2015,7 +2201,7 @@ void Core::selectSectioned() {
   // The request register is never stale where it would grant (OI-53).
   if (cfg_.req_reg)
     for (unsigned e : cand)
-      if (rs_[e].issued || slot_[rs_[e].slot].st != WarpState::kActive)
+      if (rs_[e].issued || (slot_[rs_[e].slot].st != WarpState::kActive && !atomFinishing(rs_[e])))
         err("OI-53: entry %u requests on a stale request register", e);
   // IS-9: lane grants that write a register (element work), and the cycles
   // a lane op writing none (a setp: loop control) holds sections.
@@ -2070,11 +2256,11 @@ void Core::selectSectioned() {
       const std::string g = x.copy ? "copy" : "g" + std::to_string(r.u.attr.bypass_group & 7);
       const std::string k = g + ".w" + std::to_string(r.u.w);
       ++histograms["foot." + k][secs];
-      ++histograms["spread." + k][unsigned(__builtin_popcount(resOf(r, x.copy, false) & 0xFu))];
+      ++histograms["spread." + k][unsigned(__builtin_popcount(resEntry(e, false) & 0xFu))];
     }
     // V-63: every lane operand inside the footprint.
     if (!(x.res >> 4) && !cfg_.inject_narrow_footprint) {
-      const unsigned want = resOf(r, x.copy) & 0xFu;
+      const unsigned want = resEntry(e) & 0xFu;
       if ((want & ~x.res) != 0) err("V-63: rob tag %u has an operand outside its footprint", tagOf(x.slot, x.rob));
     }
     if (x.copy) issueCopy(x.slot, x.rob, port);
@@ -2093,6 +2279,16 @@ void Core::selectSectioned() {
 }
 
 void Core::select() {
+  // An atomic's read issuable but for the head (AR-21's head wait).
+  for (Slot &s : slot_)
+    for (unsigned k = 0; k != s.count; ++k) {
+      RobEntry &r = s.rob[(s.head + k) % cfg_.rob_depth];
+      if (!r.valid || !r.atomic || r.atom_started || r.atom_waiting || r.rs_main == kNoEntry || k == 0) continue;
+      if (rowReady(r.rs_main) && rowConfirmed(r.rs_main)) {
+        r.atom_waiting = true;
+        r.atom_ready_at = now_;
+      }
+    }
   if (cfg_.sectioned) { selectSectioned(); return; }
   unsigned ports = 0, mports = 0;
   std::vector<bool> memop_block(slot_.size(), false);
@@ -2112,19 +2308,22 @@ void Core::select() {
     const RsEntry &x = rs_[e];
     if (!x.valid || x.issued || x.copy || x.eligible_at > now_) return false;
     const Slot &s = slot_[x.slot];
-    if (s.st != WarpState::kActive) return false;
+    if (s.st != WarpState::kActive && !atomFinishing(x)) return false;
     if (!rowReadySel(e)) return false;
     const RobEntry &r = s.rob[x.rob];
     if (predHold(x.slot, r)) return false;
+    if (!atomIssueOk(e)) return false;
     if (!miu) return true;
     // A memop issues only once its sources are confirmed (V-17), in program
     // order within its warp (MIU orders memory; OOE does not disambiguate).
     if (!rowConfirmed(e)) return false;
-    if (r.copy && (rs_[r.rs_copy].issued || !rowReady(r.rs_copy) || !rowConfirmed(r.rs_copy)))
+    if (r.copy && e == r.rs_main && r.rs_copy != kNoEntry &&
+        (rs_[r.rs_copy].issued || !rowReady(r.rs_copy) || !rowConfirmed(r.rs_copy)))
       return false;
     for (unsigned k = 0; k != s.count; ++k) {
       const RobEntry &o = s.rob[(s.head + k) % cfg_.rob_depth];
       if (&o == &r) break;
+      if (o.valid && o.atomic && !o.atom_final) return false;   // AR-21
       if (o.valid && o.is_mem && o.rs_main != kNoEntry && !rs_[o.rs_main].issued) return false;
     }
     return true;
@@ -2153,12 +2352,14 @@ void Core::select() {
         const unsigned e = oldest(si, miu);
         if (e == kNoEntry) continue;
         const RobEntry &r = slot_[si].rob[rs_[e].rob];
-        const unsigned need = r.copy ? 2 : 1;
+        // A masked load's copy goes with it; an atomic's, with its first read.
+        const bool with_copy = r.copy && e == r.rs_main && r.rs_copy != kNoEntry && !rs_[r.rs_copy].issued;
+        const unsigned need = with_copy ? 2 : 1;
         if (ports + need > cfg_.issue_width) { count("stall.copy_port"); continue; }
         const unsigned port = ports;
         ports += need;
         if (miu) ++mports;
-        doIssue(e, port, r.copy, port + 1);
+        doIssue(e, port, with_copy, port + 1);
         req_gnt_now_[e] = 1;   // the grant register, as the sectioned select's
         progress = true;
       }
@@ -2193,7 +2394,7 @@ void Core::select() {
 }
 
 /// The issue a granted entry sends on ccv_ooe_rcu_issue.
-Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port) const {
+Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step) const {
   const Slot &s = slot_[slot];
   const RobEntry &r = s.rob[idx];
   const Uop &u = r.u;
@@ -2227,6 +2428,30 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port) const {
     is.footprint = uint8_t(is.res == Issue::kMemop ? m >> 5 : is.res == Issue::kRcuOp ? 0 : m & 0xFu);
   }
   is.byp_group = uint8_t((u.attr_raw >> 13) & 7u);
+  if (step) {
+    // An atomic's step (AR-21). A1: the address source, into T, with the
+    // copy's merge when it has one. A2: the lane op, T and the operands
+    // into N, its opcode DEC's for the atomic, unexamined. A3: N, the
+    // store data alone (MIU keeps A1's address and pass mask).
+    is.psrc[0] = step == 1 ? r.psrc[0] : step == 2 ? r.atom_t : r.ptmp_n;
+    is.psrc[1] = step == 2 ? r.psrc[1] : 0;
+    is.psrc[2] = step == 2 ? r.psrc[2] : 0;
+    is.gpr_reads = uint8_t(step == 1 ? u.shape.gpr_reads & 1u : step == 2 ? 1u | (u.shape.gpr_reads & 6u) : 1u);
+    is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : 0;
+    is.merge = step == 1 && r.copy;
+    is.pold = is.merge ? r.pold : 0;
+    is.ppdst = 0;
+    is.pred_we = false;
+    is.ppold = 0;
+    const unsigned m = resEntry(step == 1 ? r.rs_main : step == 2 ? r.rs_a2 : r.rs_a3);
+    is.res = step == 2 ? Issue::kLaneOp : Issue::kMemop;
+    is.footprint = uint8_t(!cfg_.sectioned ? 0xFu : step == 2 ? m & 0xFu : m >> 5);
+    if (step == 2) {
+      is.send_imm = true;
+      is.imm = 0;
+    }
+    return is;
+  }
   if (!r.is_mem) {
     is.send_imm = true;
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
@@ -2300,9 +2525,24 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   if (!r.merge && (u.group_mask != kFullMask || u.shape.guard))
     err("V-05: rob tag %u issues without merge under a partial mask or guard", tagOf(x.slot, x.rob));
 
-  const Issue is = makeIssue(x.slot, x.rob, port);
+  const Issue is = makeIssue(x.slot, x.rob, port, x.atom);
   out.issues.push_back(is);
-  if (!r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;
+  const bool lane_step = x.atom == 2;
+  if (lane_step || !r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;
+  if (x.atom == 1) {
+    // V-69: a read issues only at its warp's head, and each pass's read
+    // follows the last pass's write.
+    if ((r.squashed || !s.count || s.head != x.rob) && !cfg_.inject_atom_off_head)
+      err("V-69: rob tag %u's atomic read issues away from its warp's head", is.rob_tag);
+    if (r.atom_pass) err("V-69: rob tag %u's atomic reads again before its pass's write", is.rob_tag);
+    if (!r.atom_started) {
+      ++histograms["atomic.head_wait"][r.atom_waiting ? now_ - r.atom_ready_at : 0];
+      count("atomic");
+    }
+    r.atom_started = true;
+    r.atom_pass = true;
+    r.atom_pass_at = now_;
+  }
   r.rcu_issue_at = now_;
   ev("issue", s.warp, port, e, u.tid);
   if (first) {
@@ -2315,7 +2555,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   }
 
   if (with_copy) issueCopy(x.slot, x.rob, copy_port);
-  if (r.is_mem) {
+  if (r.is_mem && !lane_step) {
     Memop m;
     m.tid = u.tid;
     m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
@@ -2331,6 +2571,16 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.space = u.space;
     m.ordering = u.ordering;
     m.chwidth = s.chwidth;
+    if (x.atom) {
+      // OOE's own codes (V-72): the read into T, at the address; the write,
+      // its data alone.
+      m.mem_op = x.atom == 1 ? kMemOpAtomicRead : kMemOpAtomicWrite;
+      m.pdst = x.atom == 1 ? r.atom_t : 0;
+      m.ppred = 0;
+      m.disp = x.atom == 1 ? u.imm : 0;
+      m.scale_en = x.atom == 1 && u.scale_en;
+      r.miu_done = false;
+    }
     out.memops.push_back(m);
     r.at_miu = true;
   }
@@ -2404,7 +2654,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
   const bool wgpr = !nop && a.writes_gpr;
-  const bool copy = mem && a.mem_kind == kMemKLoad && wgpr && merge;
+  // An atomic (AR-21) splits here: A1 and A3 take MIU entries, A2 an RCU
+  // one, and it takes two names, T (rd's, or a temporary for red) and N.
+  // A masked or guarded one that writes rd gets the copy for T's inactive
+  // lanes, as a masked load does (A-38).
+  const bool atomic = mem && a.mem_kind == kMemKAtomic;
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atomic) && wgpr && merge;
+  const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // OA-21 (fits_conservative): a multi-warp go forms each warp's fits
   // against the cycle's shared credits less the rename width, so no
   // combination of warps oversubscribes them. The credits a warp sees are
@@ -2418,8 +2674,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     unsigned free_rcu = 0, free_miu = 0;
     for (unsigned e = 0; e != cfg_.rs_rcu; ++e) free_rcu += !rsHeld(e);
     for (unsigned e = cfg_.rs_rcu; e != n_; ++e) free_miu += !rsHeld(e);
-    need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0);
-    need_miu = mem ? 1 : 0;
+    need_rcu = (mem ? 0 : 1) + (copy ? 1 : 0) + (atomic ? 1 : 0);
+    need_miu = mem ? (atomic ? 2 : 1) : 0;
     if (ren_late_frees_) {   // this cycle's prompt frees, unseen
       const unsigned cap = cfg_.ren_free_cap;
       free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap));
@@ -2455,18 +2711,19 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
   }
   unsigned pos = 0, plan = 0;
-  if (wgpr && cfg_.sectioned) {
+  if (wgpr && cfg_.sectioned && !atomic) {
     pos = placePos(si, u, merge);
     plan = planSlice(si, u.w, pos, gprAllowed(si, 1));
   }
-  if (wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
+  // An atomic's names are whole rows when sectioned: 32-bit data.
+  if (atomic ? !gprAllowed(si, 2) : wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
     if (gfree_.empty() && gfree_.ready()) {
       count("stall.gpr_buffer");   // rows free, none buffered yet (OI-38)
       oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
     } else if (gfree_.empty()) {
       count("stall.gpr_empty");
       oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
-    } else if (s.held_gpr + 1 > kArchGprs + cfg_.ren_ceil) {
+    } else if (s.held_gpr + ngpr > kArchGprs + cfg_.ren_ceil) {
       count("stall.gpr_ceiling");
       oev(OoeEv::kRenameLimit, s.warp, 1, 0, u.tid);
     } else {
@@ -2475,14 +2732,14 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     return false;
   }
-  if (shares_on_ && ((wgpr && share_[si][2] < ren_slot_[si][2] + 1) ||
+  if (shares_on_ && ((ngpr && share_[si][2] < ren_slot_[si][2] + ngpr) ||
                      (!nop && u.pred_we && cfg_.rename_preds && share_[si][3] < ren_slot_[si][3] + 1))) {
     count("stall.share.names");
     if ((!wgpr || !gfree_.empty()) && (!(!nop && u.pred_we && cfg_.rename_preds) || !pfree_.empty()))
       count("stall.share_frag");
     return false;
   }
-  if (margin && wgpr && gfree_.size() + others(2) < 1 + margin) {
+  if (margin && ngpr && gfree_.size() + others(2) < ngpr + margin) {
     count("stall.fits_conservative.gpr");
     return false;
   }
@@ -2517,6 +2774,17 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // retirements (the fits' ROB term, ret_n).
   if (took_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
 
+  // A cycle's RS rows per class and GPR names stay within the width:
+  // ooe_rs has that many allocation ports per class and the free list as
+  // many, and fits_stale 6's allowances hold back at most the width. An
+  // atomic takes two MIU rows and two names; it or a masked load with its
+  // copy two RCU rows (AR-21).
+  if (ren_tot_[0] + need_rcu > cfg_.rename_width || ren_tot_[1] + need_miu > cfg_.rename_width ||
+      ren_tot_[2] + ngpr > cfg_.rename_width) {
+    count("stall.rename_ports");
+    return false;
+  }
+
   // -- commit the rename ---------------------------------------------------------------
   const unsigned idx = s.tail;
   RobEntry &r = s.rob[idx];
@@ -2527,6 +2795,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   r.is_mem = mem;
   r.is_store = mem && a.mem_kind == kMemKStore;
   r.is_load = mem && a.mem_kind == kMemKLoad;
+  r.atomic = atomic;
   r.copy = copy;
   r.merge = merge;          // merge_en: as the issue carries it (V-05)
   if (!nop) {
@@ -2540,9 +2809,14 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.pq[1] = s.prat[(u.imm >> 3) & 3];
     }
     if (wgpr) {
-      r.pnew = cfg_.sectioned ? allocSlice(si, u.w, pos) : allocGpr(si);
+      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, u.w, pos) : allocGpr(si);
       r.alloc_gpr = true;
       s.rat[u.dst & 15] = r.pnew;
+    }
+    if (atomic) {
+      if (!wgpr) r.ptmp_t = allocGpr(si);
+      r.ptmp_n = allocGpr(si);
+      r.atom_t = wgpr ? r.pnew : r.ptmp_t;
     }
     if (u.pred_we) {
       r.ppnew = allocPred(si, u.pred_dst & 3);
@@ -2589,20 +2863,47 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.rs_copy = rsAlloc(RsCls::kRcu, si, idx, true);
       rs_[r.rs_copy].produces = true;
     }
-    addDeps(r.rs_main, r, false);
-    if (copy) addDeps(r.rs_copy, r, true);
+    if (atomic) {
+      // A1 reads into T, A2 computes N from T and the operands, A3 writes N.
+      // Every step produces (A3 waits for its completion to confirm, and the
+      // steps are held across passes), and consumers of T name A3, so they
+      // wake once, on the last pass (V-71).
+      r.rs_a2 = rsAlloc(RsCls::kRcu, si, idx, false);
+      r.rs_a3 = rsAlloc(RsCls::kMiu, si, idx, false);
+      rs_[r.rs_main].atom = 1;
+      rs_[r.rs_a2].atom = 2;
+      rs_[r.rs_a3].atom = 3;
+      for (unsigned e : {r.rs_main, r.rs_a2, r.rs_a3}) rs_[e].produces = true;
+      if (u.shape.gpr_reads & 1u) dep(r.rs_main, r.psrc[0], false, int(Config::kGrpAddr));
+      if (u.shape.guard) dep(r.rs_main, r.ppguard, true, -1);
+      if (copy) addDeps(r.rs_copy, r, true);
+      gprod_[r.atom_t] = {r.rs_main, kNoEntry};
+      dep(r.rs_a2, r.atom_t, false, int(Config::kGrpInt));
+      for (unsigned i = 1; i != 3; ++i)
+        if ((u.shape.gpr_reads >> i) & 1u) dep(r.rs_a2, r.psrc[i], false, int(Config::kGrpInt));
+      if (u.shape.guard) dep(r.rs_a2, r.ppguard, true, -1);
+      gprod_[r.ptmp_n] = {r.rs_a2, kNoEntry};
+      dep(r.rs_a3, r.ptmp_n, false, int(Config::kGrpAddr));
+    } else {
+      addDeps(r.rs_main, r, false);
+      if (copy) addDeps(r.rs_copy, r, true);
+    }
     rlog_.ren.back().main = r.rs_main;
     rlog_.ren.back().copy = copy ? r.rs_copy : kNoEntry;
     rlog_.ren.back().mem = mem;
     if (cfg_.sectioned) {
-      rs_[r.rs_main].res = resOf(r, false);
+      rs_[r.rs_main].res = resEntry(r.rs_main);
       if (copy) rs_[r.rs_copy].res = resOf(r, true);
+      if (atomic) {
+        rs_[r.rs_a2].res = resEntry(r.rs_a2);
+        rs_[r.rs_a3].res = resEntry(r.rs_a3);
+      }
     }
     // OA-14: the rotating home advances at each taken backward branch. It is
     // a hint, not state: nothing checkpoints or restores it.
     if (a.branch && u.pred_taken && u.backward) s.home_ctr = (s.home_ctr + 1) & 3u;
     // This uop is now the producer of its destinations.
-    if (wgpr) gprod_[r.pnew] = {r.rs_main, copy ? r.rs_copy : kNoEntry};
+    if (wgpr) gprod_[r.pnew] = {atomic ? r.rs_a3 : r.rs_main, copy ? r.rs_copy : kNoEntry};
     if (u.pred_we) pprod_[r.ppnew] = {r.rs_main, kNoEntry};
   }
   if (u.cause) {
@@ -2629,7 +2930,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   ++s.count;
   if (nop) complete(si, idx);
   ev("dispatch", s.warp, tagOf(si, idx), 0, u.tid);
-  const unsigned took[4] = {need_rcu, need_miu, wgpr ? 1u : 0u,
+  const unsigned took[4] = {need_rcu, need_miu, ngpr,
                             !nop && u.pred_we && cfg_.rename_preds ? 1u : 0u};
   for (unsigned k = 0; k != 4; ++k) {
     ren_tot_[k] += took[k];
@@ -3081,6 +3382,14 @@ void Core::checkInvariants() {
           bad("V-01", buf);
         }
       }
+    // An atomic's temporaries are in flight too (AR-21).
+    for (const RobEntry &r : s.rob)
+      if (r.valid && r.atomic)
+        for (unsigned p : {r.ptmp_t, r.ptmp_n})
+          if (p != kNoEntry && !own.insert(p).second) {
+            std::snprintf(buf, sizeof buf, "slot %u: temporary p%u is also another name", si, p);
+            bad("V-01", buf);
+          }
     if (cfg_.sectioned) {
       // Sectioned (OI-29): the slot's live slices, by row. Every live section
       // of a row belongs to its owner (V-62), the row's section mask is
@@ -3139,8 +3448,12 @@ void Core::checkInvariants() {
     // uop has confirmed and freed.
     for (const RobEntry &r : s.rob)
       if (r.valid && !r.squashed && r.complete &&
-          (r.rs_main != kNoEntry || r.rs_copy != kNoEntry))
+          (r.rs_main != kNoEntry || r.rs_copy != kNoEntry || r.rs_a2 != kNoEntry || r.rs_a3 != kNoEntry))
         bad("V-58", "a complete ROB entry still holds an RS entry");
+    // V-70: no demotion under way while an atomic holds a line.
+    for (const RobEntry &r : s.rob)
+      if (r.valid && r.atom_pass && s.st == WarpState::kDemoting && !cfg_.inject_atom_demote_mid)
+        bad("V-70", "a warp demotes with an atomic pass in flight");
     if (s.rs_held > (cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_)) bad("V-14", "a warp over its RS cap");
   }
   unsigned accounted = 0;

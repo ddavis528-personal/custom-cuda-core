@@ -279,6 +279,8 @@ private:
         // MIU echoes the memop's RS entry (OA-23): any other is a completion
         // that would wake the wrong entry.
         const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
+        x.rs_idx = rs;
+        x.more = get(m.payload, c.miu_ooe, "more") != 0;   // an atomic's write (AR-21)
         auto e = rs_sent_.find(x.rob_tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "

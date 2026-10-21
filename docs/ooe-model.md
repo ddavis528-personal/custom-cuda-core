@@ -327,6 +327,76 @@ the checker names the instruction. `--break movi-in-lane` is its control. The
 RCU session should confirm the bound or name its own; it is the model's
 reading, not a parameter yet.
 
+## Atomics: read, lane op, write (AR-21)
+
+The design doc's section of that name, as the model builds it. An atomic
+(`mem_kind` atomic) splits at rename into three RS entries under its one ROB
+entry and rob_tag:
+
+- **A1**, MIU class: the exclusive read into T, sent as `mem_op` 2
+  (atomic-read), with the address source, its displacement and the guard.
+- **A2**, RCU class: the lane op, T and the operands into N, its opcode
+  DEC's for the atomic, passed through unexamined (A-66). Its wake is the
+  lane latency.
+- **A3**, MIU class: the write of N and the release, `mem_op` 3
+  (atomic-write), with the store data alone.
+
+T is rd's new name for atom, and a temporary for red; N is always a
+temporary. Both are taken at rename (an atomic takes two names, two MIU
+entries and one RCU entry), are whole rows when sectioned (32-bit data), and
+free at retire. A masked or guarded atomic that writes rd gets the copy for
+T's inactive lanes, which goes with or before its first read (A-38, V-61).
+
+- **At the head (V-69).** A1 issues only when its ROB entry is its warp's
+  head and its sources are confirmed. A2 and A3 issue only inside a pass,
+  after its read has issued in an earlier cycle: a return to Waiting
+  reaches the registered ready a cycle late (OI-51), and the read, a memop,
+  is never replayed to catch a lane op granted on the old bit. Younger
+  memops of the warp wait for the atomic's last write; younger lane ops go
+  around it.
+- **Passes (V-72).** A3's completion carries `more` while lanes remain. On
+  it the three steps return to Waiting and issue again. A completion names
+  its step by `rs_idx`. The steps are held across passes: confirmation
+  frees none of them until the last pass, when A1 and A2 go and A3 confirms
+  on its wake.
+- **One wake (V-71).** T's consumers name A3 and wake on its last
+  completion. The ROB entry completes only then, once every step has
+  confirmed and freed (V-58).
+- **Faults.** A fault comes on the first read, with no hold. The steps
+  free and the entry faults at the head as usual.
+- **Demotion and kill (V-70).** While the head is an atomic in progress, no
+  demotion trigger is reported (`demote_trigger.held_atomic` counts the
+  cycles) and a demote from RAU waits (`demote.held_atomic`) until the last
+  pass; a kill meanwhile supersedes it. A kill of a pass in flight keeps the
+  three steps, so the pass writes and releases. The steps may issue though
+  the warp is killing, no later pass starts, and the entry, held as
+  squashed, releases on that write's completion, which the kill's ack waits
+  for.
+- **Rename's ports.** A cycle's RS rows per class and its GPR names stay
+  within the width: ooe_rs has that many allocation ports per class, the
+  free list as many, and fits_stale 6's allowances hold back at most the
+  width. Only an atomic (two MIU rows, two names) or a masked load with its
+  copy (two RCU rows) takes more than one, so with neither nothing changes
+  (`stall.rename_ports` is 0 over the 200 ordinary random runs).
+- **Measured** (`atomic.passes`, `atomic.hold_cycles` from the read's issue
+  to the write's completion, `atomic.head_wait` from the read's first
+  ready to its issue). Over 25 seeds of random programs, about one op in
+  twelve an atomic: 5,005 atomics, 4.27 passes each, 42.1 cycles held a
+  pass, 240.8 cycles waiting for the head. The wait for the head is the
+  cost OA named (an earlier non-speculative point is its remedy); CP's
+  histogram kernel is the measurement that counts.
+
+The environment's MIU holds a pass's lines from its read to its write and
+checks that a read follows every older instruction's retirement, that no
+read comes before the last pass's write, and that no hold outlives its
+atomic. It holds T's consumers to its last pass. `testAtomic` runs three
+passes in five configurations, for atom, red, masked and guarded;
+`testAtomicFault`, `testAtomicKill` and `testAtomicDemote` take the other
+paths, and `testAtomicRandom` mixes atomics into the random programs in
+every select form. They run in `ooe-test` alone, not in the benches'
+random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
+`atom-early-wake` and `atom-demote-mid` must be caught.
+
 ## S1 modes: what the neighbours carry today
 
 The adapter configures the core for what the S1 stubs implement. Each mode is

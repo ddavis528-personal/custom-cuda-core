@@ -67,10 +67,10 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 8 | memk << 6 | uint32_t(br) << 5 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
-unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp ? 1 : k == kSfu ? 4 : 0; }
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : 0; }
 /// Its bypass group as a producer (sched_attr's bypass_group).
 unsigned pgroupOf(Kind k) {
   return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred : Config::kGrpInt;
@@ -78,7 +78,7 @@ unsigned pgroupOf(Kind k) {
 /// Its group as a consumer: a memop consumes as address calculation, and
 /// an op RCU executes takes no bypass (V-48).
 int groupOf(Kind k) {
-  if (k == kLoad || k == kStore) return int(Config::kGrpAddr);
+  if (k == kLoad || k == kStore || k == kAtomic) return int(Config::kGrpAddr);
   if (k == kRcuOp || k == kPlogic || k == kBranch) return -1;
   return int(pgroupOf(k));
 }
@@ -94,6 +94,10 @@ struct Op {
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
+  // kAtomic (AR-21): src[0] the address, src[1] the operand, dst rd (atom)
+  // unless red; MIU runs it in `passes` passes, or faults its first read.
+  unsigned passes = 1;
+  bool red = false, afault = false;
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -133,6 +137,11 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kLoad: u.attr_raw = attr(1, 0, 0, 1, 0, 0, 0, 0, 2); break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
+  case kAtomic:
+    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined.
+    u.attr_raw = attr(1, 0, 0, !o.red, 0, 2, 0, 0, 3);
+    u.opcode = 0x2A;
+    break;
   case kBranch:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 1, 0, 0);
     u.shape.guard = true;      // the condition is the guard (BRA_PRED)
@@ -145,7 +154,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
   u.attr_raw |= pgroupOf(o.k) << 13;
-  if (o.k == kLoad || o.k == kStore) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
+  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -215,6 +224,17 @@ struct Env {
   std::map<unsigned, std::pair<uint64_t, uint64_t>> gwriter;  ///< preg -> (tid, issue cycle)
   std::multimap<uint64_t, std::pair<unsigned, uint64_t>> landings;   ///< cycle -> (preg, tid)
   std::map<uint64_t, bool> hit_of;               ///< load tid -> L1 hit
+  /// MIU's side of an atomic (AR-21, V-72): its passes left, whether a pass
+  /// holds its lines (from its read to its write), and when the pass's old
+  /// values are readable for A2.
+  struct Atom {
+    unsigned left = 0, passes = 0;
+    bool started = false, hold = false, faulted = false, final = false;
+    uint64_t t_ready = 0;
+    unsigned T = 0;
+  };
+  std::map<uint64_t, Atom> atom;
+  unsigned atom_mlc_pct = 0;                     ///< atomic reads that report an MLC miss
   std::vector<Outputs> log;
   bool keep_log = false;
 
@@ -351,6 +371,13 @@ struct Env {
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
     const uint64_t at = readableFor(it->second, pred ? -1 : group);
+    if (t < at && !pred && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
+      // An atomic's consumers wake once, on its last write (V-71): an
+      // earlier read is never a speculation a replay may clean up.
+      errors.push_back("V-71: tid " + std::to_string(tid) + " reads atomic tid " + std::to_string(it->second.tid) +
+                       "'s result at " + std::to_string(t) + ", before its last pass");
+      return;
+    }
     if (t < at) {
       char b[160];
       std::snprintf(b, sizeof b, "(kind %d) reads %s%u at %llu, readable at %llu, written by tid %llu (kind %d)",
@@ -368,6 +395,7 @@ struct Env {
       checkRead(is.tid, is.pold, false, int(Config::kGrpInt));
       return;
     }
+    if (o.k == kAtomic) { atomIssue(is, o); return; }
     last_issue[is.tid] = t;
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/tag" + std::to_string(is.rob_tag) + " ";
     const int group = groupOf(o.k);
@@ -398,8 +426,113 @@ struct Env {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
         d.branch_mask = d.branch_taken ? kFullMask : 0;
       }
-      dones.insert({t + (rcu_fast ? 2 : bound), d});
+      dones.insert({doneRoom(t + (rcu_fast ? 2 : bound)), d});
     }
+  }
+
+  /// An atomic's issue to RCU: A1's address, A3's data (each a memop's
+  /// operand read, never speculative), or A2, the lane op.
+  void atomIssue(const Issue &is, const Op &o) {
+    issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/a" + std::to_string(is.res) + " ";
+    const Atom &a = atom[is.tid];
+    if (is.res == Issue::kMemop) {
+      const size_t before = viol[is.tid].size();
+      if (is.pdst) {
+        if (is.gpr_reads & 1u) checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+      } else {
+        checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+      }
+      if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+      // A memop's read is never speculative (V-17).
+      for (size_t i = before; i != viol[is.tid].size(); ++i)
+        errors.push_back("atomic memop step: " + viol[is.tid][i].what);
+      viol[is.tid].resize(before);
+      return;
+    }
+    last_issue[is.tid] = t;
+    // A2: inside a pass, after the pass's read data lands.
+    if (!a.hold) errors.push_back("AR-21: tid " + std::to_string(is.tid) + "'s lane op issues outside a pass");
+    else if (t < a.t_ready)
+      violation(is.tid, "A2 reads T at " + std::to_string(t) + ", readable at " + std::to_string(a.t_ready));
+    for (unsigned i = 1; i != 3; ++i)
+      if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
+    if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+    const unsigned lat = cfg.unitLat(1);
+    gready[is.pdst] = {t, t + lat, is.tid, 1, Config::kGrpInt, true, false};
+    gwriter[is.pdst] = {is.tid, t};
+    landings.insert({t + lat, {is.pdst, is.tid}});
+    Done d;
+    d.rob_tag = is.rob_tag;
+    dones.insert({doneRoom(t + (rcu_fast ? 2 : cfg.issue_link + lat - 1 + cfg.done_link)), d});
+  }
+
+  /// MIU's half of an atomic: a read holds its pass's lines, the write
+  /// releases them and says whether lanes remain (more).
+  void atomMemop(const Memop &m, const Op &o) {
+    Atom &a = atom[m.tid];
+    Cmpl c;
+    c.rob_tag = m.rob_tag;
+    c.rs_idx = m.rs_idx;
+    const uint64_t when = cmplRoom(t + 4 + rnd(miss_extra));
+    const std::string who = "tid " + std::to_string(m.tid);
+    if (m.mem_op == kMemOpAtomicRead) {
+      if (a.hold) errors.push_back("V-69: " + who + " reads again before its pass's write");
+      if (a.final) errors.push_back("AR-21: " + who + " reads after its last pass");
+      const bool first = !a.started;
+      // V-69: the read issues only once every older instruction of the warp
+      // has retired.
+      const Warp *x = warpOf(m.warp);
+      if (x && idx_of.count(m.tid) && x->retired.size() != idx_of[m.tid])
+        errors.push_back("V-69: " + who + "'s read issues with " +
+                         std::to_string(idx_of[m.tid] - x->retired.size()) + " older instructions unretired");
+      if (first) {
+        a.started = true;
+        a.left = o.passes;
+        a.T = m.pdst;
+      }
+      if (first && o.afault) {
+        // Every lane checked before any hold: the fault comes with none.
+        c.status = 1;
+        c.cause = 6;                     // F-ADDR
+        c.lane_mask = 1;
+        c.address = 0xA70;
+        a.faulted = a.final = true;
+        cmpls.insert({when, c});
+        return;
+      }
+      a.hold = true;
+      a.t_ready = when + data_after_cmpl;
+      c.mlc_miss = rnd(100) < atom_mlc_pct;
+      // T's consumers read it only after the last pass (V-71).
+      gready[m.pdst] = {t, ~uint64_t(0) >> 1, m.tid, 2, Config::kGrpAddr, false, false};
+      gwriter[m.pdst] = {m.tid, t};
+      landings.insert({a.t_ready, {m.pdst, m.tid}});
+    } else {
+      if (!a.hold) errors.push_back("V-69: " + who + " writes with no read in its pass");
+      if (a.faulted) errors.push_back("V-72: " + who + " writes after its read faulted");
+      a.hold = false;
+      ++a.passes;
+      if (a.left) --a.left;
+      c.more = a.left > 0;
+      if (!c.more) {
+        a.final = true;
+        if (gready.count(a.T)) gready[a.T].late = when + data_after_cmpl;
+      }
+    }
+    cmpls.insert({when, c});
+    if (cfg.memop_rcu_done) {
+      Done d;
+      d.rob_tag = m.rob_tag;
+      dones.insert({when + 1, d});
+    }
+  }
+
+  /// The latest cycle at or before `when`, and after the issue at t, with a
+  /// lane free on ccv_rcu_ooe_done: RCU may be early, never late (V-35), and
+  /// never sends more than the channel's rate.
+  uint64_t doneRoom(uint64_t when) const {
+    while (when > t + 1 && dones.count(when) >= ccv::channelInfo(ccv::CH_RCU_OOE_DONE).rate) --when;
+    return when;
   }
 
   /// The first cycle from `when` with a lane free on ccv_miu_ooe_cmpl (its
@@ -412,11 +545,20 @@ struct Env {
   void onMemop(const Memop &m) {
     if (m.mem_op == 0xF) return;
     const Op &o = op_of[m.tid];
+    if (o.k == kAtomic) {
+      if (m.mem_op != kMemOpAtomicRead && m.mem_op != kMemOpAtomicWrite)
+        errors.push_back("V-72: an atomic reaches MIU as mem_op " + std::to_string(m.mem_op));
+      else atomMemop(m, o);
+      return;
+    }
+    if (m.mem_op == kMemOpAtomicRead || m.mem_op == kMemOpAtomicWrite)
+      errors.push_back("V-72: a non-atomic reaches MIU as mem_op " + std::to_string(m.mem_op));
     // V-17: a memop never reads an unconfirmed (here: unreadable) source.
     const size_t before = viol[m.tid].size();
     (void)before;
     Cmpl c;
     c.rob_tag = m.rob_tag;
+    c.rs_idx = m.rs_idx;
     uint64_t when;
     if (o.k == kLoad && cfg.l1_spec) {
       bool hit = rnd(100) >= miss_pct;
@@ -473,6 +615,11 @@ struct Env {
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
+    for (const Retired &r : core.retired) {
+      Warp *x = warpOf(r.warp);
+      x->retired.push_back(r.tid);
+      if (r.exit) x->exited = true;
+    }
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
     // Sectioned lanes (OI-28): the lane ops leaving in one cycle use
@@ -503,11 +650,6 @@ struct Env {
     }
     for (const Redirect &r : o.redirects) redirects.insert({t + cfg.redirect_lat, r});
     if (o.free_mask) frees.insert({t + cfg.redirect_lat, o.free_mask});
-    for (const Retired &r : core.retired) {
-      Warp *x = warpOf(r.warp);
-      x->retired.push_back(r.tid);
-      if (r.exit) x->exited = true;
-    }
     for (Warp &x : w) x.launched = true;
     fetch();
     // DEC: up to six uops a cycle, in fetch order, as credit allows (a
@@ -558,6 +700,8 @@ struct Env {
                (unsigned long long)tid, x.what.c_str());
       }
     }
+    for (const auto &a : atom)
+      EXPECT(!a.second.hold, "tid %llu's atomic still holds its lines (V-70)", (unsigned long long)a.first);
     for (const std::string &e : errors) EXPECT(false, "%s", e.c_str());
     errors.clear();
   }
@@ -1645,6 +1789,301 @@ void testFixedWindowPreds() {
 }
 
 /// The harness's own negative controls: each injected bug must fail it.
+// ---- atomics: read, lane op, write (AR-21) -------------------------------------------
+
+/// Issue cycles of tid's steps, in order: 'r' A1, 'o' A2, 'w' A3, from the
+/// memops (A1, A3) and the lane issues (A2).
+std::string atomSteps(const Env &e, uint64_t tid) {
+  std::string out;
+  for (const Outputs &o : e.log) {
+    for (const Issue &i : o.issues)
+      if (i.tid == tid && !i.copy && i.res == Issue::kLaneOp) out += 'o';
+    for (const Memop &m : o.memops)
+      if (m.tid == tid) out += m.mem_op == kMemOpAtomicRead ? 'r' : m.mem_op == kMemOpAtomicWrite ? 'w' : '?';
+  }
+  return out;
+}
+
+/// An atomic's three steps, pass by pass, at its warp's head (V-69); its
+/// consumers once, after the last pass (V-71); younger memops behind it,
+/// younger lane ops around it; red, a masked atom with its copy, and a
+/// guarded one, in each select form.
+void testAtomic() {
+  struct M { const char *name; void (*set)(Config &); };
+  const M ms[] = {
+      {"base", [](Config &) {}},
+      {"no-bypass", [](Config &c) { c.bypass = false; }},
+      {"l1-spec", [](Config &c) { c.l1_spec = true; }},
+      {"sectioned", [](Config &c) { c.sectioned = true; }},
+      {"cmpl-delay", [](Config &c) { c.cmpl_wake_delay = 2; }},
+  };
+  for (const M &m : ms)
+    for (unsigned variant = 0; variant != 4; ++variant) {
+      g_test = std::string("atomic ") + m.name + " " + std::to_string(variant);
+      Config c = baseConfig();
+      m.set(c);
+      Env e(c, 3 + variant);
+      e.keep_log = true;
+      e.data_after_cmpl = c.cmpl_wake_delay;
+      std::vector<Op> p;
+      for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+      { Op o; o.k = kSetp; o.pdst = 1; o.src[0] = 0; o.src[1] = 1; o.nsrc = 2; p.push_back(o); }
+      // An older load that misses holds the head: the read waits for it.
+      Op ld; ld.k = kLoad; ld.dst = 6; ld.src[0] = 0; ld.nsrc = 1; p.push_back(ld);
+      Op at;
+      at.k = kAtomic;
+      at.dst = 3;
+      at.src[0] = 1;
+      at.src[1] = 2;
+      at.nsrc = 2;
+      at.passes = 3;
+      at.red = variant == 1;
+      if (variant == 2) at.mask = 0x0000ffffu;              // masked: the copy keeps T's other lanes
+      if (variant == 3) { at.guard = true; at.pguard = 1; }   // guarded: the copy too
+      const size_t at_idx = p.size();
+      p.push_back(at);
+      Op yl; yl.k = kLane; yl.dst = 8; yl.src[0] = 2; yl.nsrc = 1; p.push_back(yl);     // around it
+      Op ym; ym.k = kLoad; ym.dst = 9; ym.src[0] = 0; ym.nsrc = 1; p.push_back(ym);     // behind it
+      Op cons; cons.k = kLane; cons.dst = 10; cons.src[0] = at.red ? 2 : 3; cons.nsrc = 1; p.push_back(cons);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      e.finish();
+      uint64_t at_tid = 0, yl_tid = 0, ym_tid = 0, ld_tid = 0;
+      for (const auto &kv : e.idx_of) {
+        if (kv.second == at_idx) at_tid = kv.first;
+        if (kv.second == at_idx + 1) yl_tid = kv.first;
+        if (kv.second == at_idx + 2) ym_tid = kv.first;
+        if (kv.second == at_idx - 1) ld_tid = kv.first;
+      }
+      const std::string st = atomSteps(e, at_tid);
+      EXPECT(st == "rowrowrow", "steps %s, want three passes of read, op, write", st.c_str());
+      // The read waits for the older load to retire; younger lane work does not wait.
+      uint64_t first_read = ~0ull, last_write = 0, ym_at = ~0ull;
+      for (size_t cy = 0; cy != e.log.size(); ++cy)
+        for (const Memop &mo : e.log[cy].memops) {
+          if (mo.tid == at_tid && mo.mem_op == kMemOpAtomicRead) first_read = std::min<uint64_t>(first_read, cy);
+          if (mo.tid == at_tid && mo.mem_op == kMemOpAtomicWrite) last_write = cy;
+          if (mo.tid == ym_tid) ym_at = std::min<uint64_t>(ym_at, cy);
+        }
+      EXPECT(issueCycle(e, ld_tid) < first_read, "the read went before the older load");
+      EXPECT(issueCycle(e, yl_tid) < last_write, "a younger lane op waited for the atomic (%llu, %llu)",
+             (unsigned long long)issueCycle(e, yl_tid), (unsigned long long)last_write);
+      EXPECT(ym_at > last_write, "a younger memop at %llu, before the atomic's last write at %llu",
+             (unsigned long long)ym_at, (unsigned long long)last_write);
+      unsigned copies = 0;
+      for (const Outputs &o : e.log) for (const Issue &i : o.issues) copies += i.tid == at_tid && i.copy;
+      EXPECT(copies == (variant >= 2 ? 1u : 0u), "%u copies", copies);
+      EXPECT(e.core.histograms["atomic.passes"][3] == 1, "the passes histogram");
+      EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "registers lost");
+    }
+}
+
+/// A fault at the first read: no hold, no lane op, no write; the entry
+/// faults at the head with MIU's cause, and a kill cleans up (V-72).
+void testAtomicFault() {
+  g_test = "atomic fault";
+  Config c = baseConfig();
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 4; at.afault = true;
+  p.push_back(at);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  std::vector<Fault> faults;
+  for (unsigned k = 0; k != 150; ++k) {
+    e.step();
+    for (const Fault &f : e.log.back().faults) faults.push_back(f);
+  }
+  uint64_t tid = 0;
+  for (const auto &kv : e.idx_of) if (kv.second == 3) tid = kv.first;
+  EXPECT(atomSteps(e, tid) == "r", "steps %s, want the read alone", atomSteps(e, tid).c_str());
+  EXPECT(faults.size() == 1 && faults[0].cause == 6 && faults[0].address == 0xA70, "%zu fault records", faults.size());
+  e.core.kill(1u, 1);
+  for (unsigned k = 0; k != 40; ++k) e.step();
+  Alloc f; f.warp = 0; f.slot = 0; f.op = kAllocFree;
+  e.core.alloc(f);
+  e.step();
+  EXPECT(e.core.freeGprs() == c.phys_regs, "%zu of %u GPRs free", e.core.freeGprs(), c.phys_regs);
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
+/// A kill mid-atomic: the pass in flight writes and releases, no later pass
+/// starts, and the kill is acknowledged only after that write's completion
+/// (V-70).
+void testAtomicKill() {
+  g_test = "atomic kill";
+  Config c = baseConfig();
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 6;
+  p.push_back(at);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  uint64_t tid = 0;
+  unsigned reads = 0;
+  for (unsigned k = 0; k != 600 && reads < 2; ++k) {
+    e.step();
+    for (const Memop &m : e.log.back().memops) reads += m.mem_op == kMemOpAtomicRead;
+  }
+  for (const auto &kv : e.idx_of) if (kv.second == 3) tid = kv.first;
+  EXPECT(reads == 2, "the second pass never read");
+  e.core.kill(1u, 5);
+  uint64_t ack = 0, last_cmpl = 0;
+  for (unsigned k = 0; k != 300; ++k) {
+    for (const auto &cm : e.cmpls) last_cmpl = std::max(last_cmpl, cm.first);
+    e.step();
+    for (unsigned a : e.log.back().kill_acks) if (a == 5 && !ack) ack = e.t - 1;
+  }
+  EXPECT(atomSteps(e, tid) == "rowrow", "steps %s, want the second pass finished and no third",
+         atomSteps(e, tid).c_str());
+  EXPECT(ack && ack >= last_cmpl, "kill acked at %llu, the write completed at %llu", (unsigned long long)ack,
+         (unsigned long long)last_cmpl);
+  EXPECT(!e.atom[tid].hold, "the kill left the lines held");
+  EXPECT(e.core.freeGprs() == c.phys_regs, "%zu of %u GPRs free", e.core.freeGprs(), c.phys_regs);
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
+/// No demotion mid-atomic (V-70): no trigger while it is at the head in
+/// progress, and a demote that arrives then waits for its last pass, so
+/// none of its passes is applied twice when the warp resumes. With the
+/// control the demote is taken at once.
+void testAtomicDemote() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "atomic demote (control)" : "atomic demote";
+    Config c = baseConfig();
+    c.inject_atom_demote_mid = control;
+    c.demote_mlc_miss = 5;
+    c.demote_fallback = 30;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 40;
+    e.atom_mlc_pct = 100;           // every read misses the MLC: triggers due
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 5;
+    p.push_back(at);
+    for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kLane; o.dst = 4; o.src[0] = 3; o.nsrc = 1; p.push_back(o); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    uint64_t tid = 0;
+    unsigned triggers = 0, reads = 0;
+    bool demoted = false, drained = false;
+    const int before = g_fail;
+    g_quiet = control;
+    for (unsigned k = 0; k != 1500 && !drained; ++k) {
+      e.step();
+      const Outputs &o = e.log.back();
+      for (const Status &st : o.status) triggers += st.stalled;
+      for (const Memop &m : o.memops) reads += m.mem_op == kMemOpAtomicRead;
+      if (reads == 2 && !demoted) {
+        e.core.demote(0);
+        demoted = true;
+      }
+      drained = drained || !o.drained.empty();
+    }
+    for (const auto &kv : e.idx_of) if (kv.second == 3) tid = kv.first;
+    const Env::Atom &a = e.atom[tid];
+    EXPECT(drained, "the warp never drained");
+    // Every pass applied, once: the atomic finished before the warp left.
+    EXPECT(a.final && a.passes == 5 && !a.hold, "the warp left mid-atomic: %u of 5 passes, %s", a.passes,
+           a.hold ? "lines held" : "nothing held");
+    EXPECT(!control || e.core.counters["demote.held_atomic"] == 0, "control: the demote was held");
+    if (!control) {
+      EXPECT(e.core.counters["demote.held_atomic"] > 0, "the demote was not held");
+      EXPECT(e.core.counters["demote_trigger.held_atomic"] > 0, "no trigger was held");
+      for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+    }
+    g_quiet = false;
+    if (control) {
+      const bool caught = g_fail != before || !e.errors.empty();
+      g_fail = before;
+      g_test = "atomic demote (control)";
+      std::printf("  %-24s %s\n", "control atom-demote-mid", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a demote mid-atomic should leave it partly applied (V-70)");
+    }
+  }
+}
+
+/// Random programs with atomics, several warps, every select form: the
+/// environment's dataflow, retirement, hold and head checks on every run.
+/// Not in the benches' random set: no OOE RTL re-issues on more yet.
+void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control = 0) {
+  std::map<std::string, uint64_t> tot;
+  std::map<std::string, std::map<uint64_t, uint64_t>> hist;
+  struct Report {
+    std::map<std::string, uint64_t> &tot;
+    std::map<std::string, std::map<uint64_t, uint64_t>> &hist;
+    bool on;
+    ~Report() {
+      if (!on || !tot["atomic"]) return;
+      auto mean = [&](const char *k) {
+        uint64_t n = 0, sum = 0;
+        for (const auto &b : hist[k]) { n += b.second; sum += b.first * b.second; }
+        return n ? double(sum) / double(n) : 0.0;
+      };
+      std::printf("  atomic random: %llu atomics, %.2f passes each, hold %.1f cycles a pass, head wait %.1f,"
+                  " %llu cycles of held demote triggers, %llu rename port stalls\n",
+                  (unsigned long long)tot["atomic"], mean("atomic.passes"), mean("atomic.hold_cycles"),
+                  mean("atomic.head_wait"), (unsigned long long)tot["demote_trigger.held_atomic"],
+                  (unsigned long long)tot["stall.rename_ports"]);
+    }
+  } report{tot, hist, control == 0};
+  for (unsigned seed = 1; seed <= seeds; ++seed)
+    for (int mode = 0; mode != 8; ++mode) {
+      g_test = "atomic random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
+      Config c = base(seed, mode);
+      c.inject_atom_off_head = control == 1;
+      c.inject_atom_early_wake = control == 2;
+      std::mt19937 rng(seed * 13 + unsigned(mode));
+      Env e(c, seed * 11 + unsigned(mode));
+      e.miss_pct = 30;
+      e.data_after_cmpl = c.cmpl_wake_delay;
+      e.atom_mlc_pct = 20;
+      const unsigned warps = 1 + seed % 4;
+      for (unsigned i = 0; i != warps; ++i) {
+        std::vector<Op> prog = randomProgram(rng, 120, true, seed % 2 == 1, (mode & 4) != 0);
+        // About one op in twelve an atomic, each 1 to 4 passes, now and then 32.
+        for (size_t k = 5; k + 1 < prog.size(); ++k)
+          if (rng() % 12 == 0) {
+            Op a;
+            a.k = kAtomic;
+            a.dst = rng() % 16;
+            a.src[0] = rng() % 16;
+            a.src[1] = rng() % 16;
+            a.nsrc = 2;
+            a.red = rng() % 4 == 0;
+            a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
+            if (rng() % 6 == 0) a.mask = 0x0000ffffu;
+            else if (rng() % 6 == 0) { a.guard = true; a.pguard = rng() % 4; }
+            prog[k] = a;
+          }
+        e.launch(i * 5, i, prog);
+      }
+      const int before = g_fail;
+      if (control) g_quiet = true;
+      e.finish(control ? 30000 : 200000);
+      g_quiet = false;
+      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports"}) tot[k] += e.core.counters[k];
+      for (const char *k : {"atomic.passes", "atomic.hold_cycles", "atomic.head_wait"})
+        for (const auto &b : e.core.histograms[k]) hist[k][b.first] += b.second;
+      if (control) {
+        if (g_fail != before) return;   // caught: the caller reports
+        continue;
+      }
+      for (unsigned i = 0; i != warps; ++i) {
+        Alloc f; f.warp = i * 5; f.slot = i; f.op = kAllocFree;
+        e.core.alloc(f);
+      }
+      e.step();
+      EXPECT(e.core.freeGprs() == c.phys_regs, "%zu of %u GPRs free at the end", e.core.freeGprs(), c.phys_regs);
+      if (g_fail != before) return;
+    }
+}
+
 void testControls() {
   struct C { const char *name; void (*set)(Config &); };
   const C cs[] = {
@@ -2191,6 +2630,15 @@ int main(int argc, char **argv) {
     sweep();
     return g_fail ? 1 : 0;
   }
+  if (std::getenv("OOE_TEST_ATOMIC")) {   // the atomic tests alone, for debugging
+    testAtomic();
+    testAtomicFault();
+    testAtomicKill();
+    testAtomicDemote();
+    testAtomicRandom(seeds, randomConfig);
+    std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
+    return g_fail ? 1 : 0;
+  }
   if (std::getenv("OOE_TEST_ONLY")) {   // one random case, for debugging
     testRandom(seeds);
     return g_fail ? 1 : 0;
@@ -2220,6 +2668,21 @@ int main(int argc, char **argv) {
   testV59();
   testFixedWindowPreds();
   testRandom(seeds);
+  testAtomic();
+  testAtomicFault();
+  testAtomicKill();
+  testAtomicDemote();
+  testAtomicRandom(seeds, randomConfig);
+  for (int k : {1, 2}) {
+    const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
+    const int saved = g_fail;
+    testAtomicRandom(10, randomConfig, k);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
   testControls();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;
