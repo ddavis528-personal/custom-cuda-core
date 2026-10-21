@@ -543,6 +543,7 @@ private:
     bool store = false;
     unsigned tag = 0, memop_slot = 0, addr_slot = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
+    unsigned rs_idx = 0;                    ///< echoed on miu_ooe_cmpl (OA-23)
     unsigned dst_pos = 0, chw = 0;          ///< likewise: the slice a load writes
     uint32_t active = 0;             ///< lanes that may access memory
     uint64_t tid = 0;
@@ -713,6 +714,7 @@ private:
     j.memop_slot = mo.slot;
     j.phys_dst = unsigned(get(mo.msg, c.ooe_miu, "phys_dst"));
     j.phys_pred = unsigned(get(mo.msg, c.ooe_miu, "phys_pred"));
+    j.rs_idx = unsigned(get(mo.msg, c.ooe_miu, "rs_idx"));
     j.dst_pos = unsigned(get(mo.msg, c.ooe_miu, "dst_pos"));
     j.chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
     j.addr_slot = a->second.slot;
@@ -844,6 +846,9 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", j.tag);
+    // The RS entry, echoed from the memop as phys_dst is to RCU, so MIU holds
+    // no table of it and OOE wakes the entry with no lookup (OA-23).
+    put(m, c.miu_ooe, "rs_idx", k_.brk == "rs-echo" ? j.rs_idx ^ 1u : j.rs_idx);
     put(m, c.miu_ooe, "lane_mask", j.active);
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l) & 1u) { put(m, c.miu_ooe, "address", j.addr[l]); break; }

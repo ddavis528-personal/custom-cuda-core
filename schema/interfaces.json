@@ -482,6 +482,7 @@
       "group": "memory",
       "payload_fields": [
         "rob_tag",
+        "rs_idx",
         "phys_dst",
         "dst_pos",
         "phys_pred",
@@ -519,6 +520,7 @@
       "group": "memory",
       "payload_fields": [
         "rob_tag",
+        "rs_idx",
         "status",
         "cause",
         "lane_mask",
@@ -1269,6 +1271,7 @@
     "instead, so the ask to each per-block session is a specific short list."
   ],
   "field_widths": {
+    "rs_idx": "CCV_P_W_RS_IDX",
     "warp_id": "CCV_W_WARP_ID",
     "pc": "CCV_W_VA",
     "instr": "CCV_W_INSTR",

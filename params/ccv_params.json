@@ -568,6 +568,15 @@
       "doc": "ROB entry index within one tier-1 warp's ROB: the low part of rob_tag, and the width of a bulk discard's discard_tail (an overlay on displacement[4:0], A-41)."
     },
     {
+      "name": "CCV_P_W_RS_IDX",
+      "value": 6,
+      "status": "provisional",
+      "derive": "clog2(CCV_P_RS_RCU + CCV_P_RS_MIU)",
+      "source": "OA's response OA-23 (2026-10-21)",
+      "doc": "An RS entry's index, as ccv_ooe_miu_memop carries it and MIU echoes it on ccv_miu_ooe_cmpl, so a completion names the entry it wakes with no lookup on its path (OA-23). Both RS classes' entries in one index space, the wakeup matrix's.",
+      "decided_at": "OOE per-block session, with CCV_P_RS_RCU and CCV_P_RS_MIU"
+    },
+    {
       "name": "CCV_P_BR_CKPTS",
       "value": 4,
       "status": "provisional",

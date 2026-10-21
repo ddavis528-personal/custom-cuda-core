@@ -71,6 +71,8 @@
 #     reads the value its lane forwards          bypass): four stale operands;
 #     (A-59, TI-8)                               an OOE bypassing at 3: RCU
 #                                                refuses it
+#   a completion echoes its memop's RS      rs-echo (vadd): OOE refuses
+#     entry (OA-23)                            every completion
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
 #     DEC marks real (TI-1)                      hides a second source, and
 #                                                seq 14 reads R9 stale
@@ -676,6 +678,18 @@ for brk in late-hit-data no-rcu-bypass; do
     bad "--break $brk" "$n stale reads (want 128): $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
+
+# MIU echoes each memop's RS entry on its completion (OA-23),
+# so OOE wakes the entry the completion names with no lookup. An echo of the
+# wrong entry is a completion waking another uop's dependants: OOE's check
+# names every completion it receives.
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break rs-echo >"$B/kernel_rs-echo.log" 2>&1
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* completed for RS entry 1, but its memop named entry 0" "$B/kernel_rs-echo.log")
+if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_rs-echo.log" check_failures)" = "$n" ]; then
+  say "--break rs-echo: OOE refuses the wrong entry" "PASS ($n completions)"
+else
+  bad "--break rs-echo" "$n refused: $(grep '^KERNEL' "$B/kernel_rs-echo.log")"
+fi
 
 # DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
 # src_valid marks, and nothing else, so a real read DEC hides is read stale.

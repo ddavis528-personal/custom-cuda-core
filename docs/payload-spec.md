@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 9 | 29 |
-| ⚠️ Some provisional | 20 | 90 |
-| ⛔ Some preliminary | 19 | 138 |
-| **Total** | **48** | **257** |
+| ⚠️ Some provisional | 20 | 91 |
+| ⛔ Some preliminary | 19 | 139 |
+| **Total** | **48** | **259** |
 
 ## What still has to be decided
 
@@ -381,13 +381,14 @@ miu → ooe · rate 4 · memory
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
+| `rs_idx` | `CCV_P_W_RS_IDX` | 6 ⚠️ | CCV_P_W_RS_IDX (provisional) |
 | `status` | `CCV_W_STATUS` | 2 | CCV_W_STATUS (arch) |
 | `cause` | `CCV_W_FAULT_CAUSE` | 4 | CCV_W_FAULT_CAUSE (arch) |
 | `lane_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `address` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `mlc_miss` | `1` | 1 | literal |
 | `more` | `1` | 1 | literal |
-| **total** | | **111** | ⚠️ 7 provisional |
+| **total** | | **117** | ⚠️ 13 provisional |
 
 ### `ccv_ooe_miu_retire`
 
@@ -701,6 +702,7 @@ ooe → miu · rate 4 · memory
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
 | `rob_tag` | `CCV_P_W_ROB_TAG` | 7 ⚠️ | CCV_P_W_ROB_TAG (provisional) |
+| `rs_idx` | `CCV_P_W_RS_IDX` | 6 ⚠️ | CCV_P_W_RS_IDX (provisional) |
 | `phys_dst` | `CCV_P_W_PHYS_REG` | 8 ⚠️ | CCV_P_W_PHYS_REG (provisional) |
 | `dst_pos` | `CCV_W_PHYS_POS` | 2 | CCV_W_PHYS_POS (arch) |
 | `phys_pred` | `CCV_P_W_PHYS_PRED` | 6 ⚠️ | CCV_P_W_PHYS_PRED (provisional) |
@@ -714,7 +716,7 @@ ooe → miu · rate 4 · memory
 | `scale_en` | `1` | 1 | literal |
 | `space` | `CCV_L_W_SPACE` | 1 | CCV_L_W_SPACE (isa) |
 | `ordering` | `CCV_L_W_ORDERING` | 5 | CCV_L_W_ORDERING (isa) |
-| **total** | | **109** | ⛔ 4 preliminary, ⚠️ 24 provisional |
+| **total** | | **115** | ⛔ 4 preliminary, ⚠️ 30 provisional |
 
 ### `ccv_miu_spm_req`
 
