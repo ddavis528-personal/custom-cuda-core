@@ -141,7 +141,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
               const std::string &trace, VerilatedContext &ctx,
               Vccv_common_chk_bank &bank) {
   Kernel k;
-  if (std::string e = k.orc.load(path); !e.empty()) {
+  if (std::string e = k.loadOracles(path); !e.empty()) {
     std::fprintf(stderr, "%s\n", e.c_str());
     return 1;
   }
@@ -221,7 +221,8 @@ int main(int argc, char **argv) {
                       brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
-                      brk == "ordering-on-load" || brk == "memop-ordering";
+                      brk == "ordering-on-load" || brk == "memop-ordering" ||
+                      brk == "dcu-one-miss";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

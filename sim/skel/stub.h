@@ -311,9 +311,11 @@ public:
     }
     if (busy()) ++k_.busy;
     // A message left in a receiver is one this stub does not handle. The
-    // bank's response_within_n will report it; say which, once.
+    // bank's response_within_n will report it; say which, once. A channel
+    // the stub holds back on purpose (holdsBack) is its credit backpressure,
+    // bounded by that same check, not a message it cannot handle.
     for (const In &i : ins)
-      if (!i.rx->empty() && unhandled_.insert(i.ci->chan).second)
+      if (!i.rx->empty() && !holds_.count(i.ci->chan) && unhandled_.insert(i.ci->chan).second)
         k_.fail("%s: nothing consumes %s", kind(), kChans[i.ci->chan].name);
   }
 
@@ -353,9 +355,13 @@ protected:
     }
     return m;
   }
+  /// Messages on `chan` may wait in their receiver while this stub cannot
+  /// take them: its credit backpressure, as OOE's decode queue full is
+  /// DEC's (OOE doc, Decode queue).
+  void holdsBack(unsigned chan) { holds_.insert(chan); }
   const Record *rec(uint64_t tid, const char *where) {
     const Record *r = uidClass(tid) == IdClass::kNone
-                          ? nullptr : k_.orc.bySeq(uidSeq(tid));
+                          ? nullptr : k_.bySeq(uidSeq(tid));
     if (!r) k_.fail("%s: no oracle record for identity %016llx", where,
                     (unsigned long long)tid);
     return r;
@@ -397,6 +403,7 @@ private:
   std::map<std::tuple<unsigned, unsigned, unsigned>, int> out_, in_;
   std::vector<Pend> pend_;
   std::set<unsigned> unhandled_;
+  std::set<unsigned> holds_;          ///< channels held back on purpose (holdsBack)
 };
 
 /// A queued outbound message: slot, payload, identity.

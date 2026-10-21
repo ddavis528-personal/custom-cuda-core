@@ -21,7 +21,7 @@ public:
   Ooe(int inst, Kernel &k) : Stub(inst, k) {
     for (auto &w : rat_) w.fill(ccv::prov::kPhysZero);
     for (unsigned p = 0; p != ccv::prov::kPhysRegs; ++p) free_.push_back(p);
-    k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+    k.ratOf(0);
   }
   const char *kind() const override { return "ooe"; }
 
@@ -97,7 +97,7 @@ private:
         for (bool &b : pw_[w]) b = false;
         // The epoch is not reset: a relaunched warp_id could otherwise meet
         // its predecessor's uops still in flight at the same epoch (A-74).
-        if (w == 0) k_.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+        if (w == 0) k_.ratOf(0).assign(kArchGprs, ccv::prov::kPhysZero);
       } else if (op != kAllocFree) {
         k_.fail("ooe: restore (alloc_op %u) is not modelled in S1", op);
       }
@@ -253,7 +253,7 @@ private:
       free_.pop_front();
       if (!used_.insert(e.pnew).second) k_.hit("reg_reuse");   // came back from a retire
       rat_[e.warp][e.dst & 15] = e.pnew;
-      if (e.warp == 0) k_.rat0[e.dst & 15] = e.pnew;   // the final compare's map
+      if (e.warp == 0) k_.ratOf(0)[e.dst & 15] = e.pnew;   // the final compare's map
     }
     if (e.pwe) pw_[e.warp][e.pdst & 3] = true;
     e.tag = next_tag_;
@@ -431,7 +431,7 @@ private:
     emit(now_, e.tid, EV_RETIRE, UNIT_OOE, e.warp, e.tag, 0xffffffffu);
     ++k_.retired;
     k_.retire_order.push_back(uidSeq(e.tid));
-    if (e.op->cls == kExit) k_.exited = true;
+    if (e.op->cls == kExit) ++k_.exits;
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.
     const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;
