@@ -23,8 +23,13 @@
 //
 // Negative controls (DECQ_CONTROL=<name>) perturb the driving and must be
 // caught: drop-flush (a squash's flush never reaches the RTL), enq-swap (a
-// slot's two oldest arrivals in a cycle reach the ports youngest first) and
-// no-enq-lead (the arrival lead never reaches it).
+// slot's two oldest arrivals in a cycle reach the ports youngest first),
+// no-enq-lead (the arrival lead never reaches it) and no-take-enable
+// (rename's "some warp takes" bit never reaches the take register).
+//
+// Rename's take is registered and popped at the next edge (OA-21): the
+// outputs read past it at once, and its entries hold their credits that
+// edge longer, as the model's decq_take_late holds them.
 // Usage: decq_tb [seeds]
 //===----------------------------------------------------------------------===//
 #include "Vooe_decq.h"
@@ -102,6 +107,7 @@ void tick() {
 void idleTick(bool lead = false) {
   dut->enq_v_cq01h = 0;
   dut->deq_n_cq01h = 0;
+  dut->deq_any_cq01h = 0;
   dut->flush_cq01h = 0;
   dut->enq_l_cq00h = lead && control != "no-enq-lead";
   tick();
@@ -153,6 +159,7 @@ void drive(const Edge &e, bool lead) {
   dut->deq_n_cq01h = 0;
   dut->flush_cq01h = 0;
   unsigned held = 0;   // a flushed slot's entries, held until the flush applies
+  unsigned in_transit = 0;   // the take registered at this edge, popped at the next
   for (unsigned s = 0; s != S; ++s) {
     size_t keep = 0;   // old uops still queued: a suffix of the old queue
     for (uint64_t x : e.now[s]) if (x < last) ++keep;
@@ -168,8 +175,10 @@ void drive(const Edge &e, bool lead) {
       if (gone > R) fail("rename took more than its width", s, gone, R);
       setField(dut->deq_n_cq01h, s * LR, LR, gone);
       taken += gone;
+      in_transit += gone;
     }
   }
+  dut->deq_any_cq01h = in_transit != 0 && control != "no-take-enable";
   auto fresh = freshOf(e);
   if (fresh.size() > E) { fail("more arrivals than ports", 0, unsigned(fresh.size()), E); return; }
   if (control == "enq-swap")
@@ -197,7 +206,10 @@ void drive(const Edge &e, bool lead) {
     total += unsigned(e.now[s].size());
   }
   full += total == DQ_Q;
-  if (unsigned(dut->used_cq02h) != total + held) fail("credits differ", 0, unsigned(dut->used_cq02h), total + held);
+  // The take registered at this edge holds its entries until the next
+  // (the model's decq_take_late).
+  if (unsigned(dut->used_cq02h) != total + held + in_transit)
+    fail("credits differ", 0, unsigned(dut->used_cq02h), total + held + in_transit);
   for (unsigned g = 0; g != cg.gaps(); ++g) idleTick(lead && g + 1 == cg.gaps());
 }
 
@@ -210,6 +222,7 @@ void hook(const Core &c) {
     have_pend = false;
     dut->enq_v_cq01h = 0;
     dut->deq_n_cq01h = 0;
+    dut->deq_any_cq01h = 0;
     dut->flush_cq01h = 0;
     dut->enq_l_cq00h = 0;
     dut->ooe_rst_r00h = 1;

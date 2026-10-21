@@ -49,8 +49,13 @@
 // count and heads still show the old uops, and an assertion holds rename to
 // it); its entries' credits return that edge later. No uop arrives for a slot in its flush's cycle (an
 // assertion; the model's check too), so the late flush drops nothing new.
-// A dequeue is still rename's input (OI-63: its lead is rename's go). The
-// reset is flopped (RST-1).
+// Rename's take is registered (tk, OA-21, OA's response OI-58 V-75) and
+// popped at the next edge, so the queue is clocked on its own flops
+// alone; the take register is enabled by rename's "some warp takes" bit,
+// under its CG-5 waiver (about 5 NGD). Meanwhile the taken uops hold their
+// entries and credits (the model's decq_take_late), and rename's outputs
+// read past them: each slot's count less its take in transit, and its
+// heads from that offset. The reset is flopped (RST-1).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -76,8 +81,9 @@ module ooe_decq #(
   input  logic [E*LS-1:0]  enq_slot_cq01h,   // its slot
   input  logic [E*P-1:0]   enq_pay_cq01h,    // its payload
   input  logic [S*LR-1:0]  deq_n_cq01h,      // uops rename took from each slot
+  input  logic             deq_any_cq01h,    // rename took from some slot (the take register's enable)
   input  logic [S-1:0]     flush_cq01h,      // a squash drops each slot's uops
-  output logic [S*LC-1:0]  cnt_cq02h,        // uops each slot holds
+  output logic [S*LC-1:0]  cnt_cq02h,        // uops each slot holds, past its take in transit
   output logic [S*R-1:0]   head_v_cq02h,     // slot s's k-th oldest is there
   output logic [S*R*P-1:0] head_pay_cq02h,   // and its payload
   output logic [LU-1:0]    used_cq02h        // entries held: the credits out
@@ -104,6 +110,7 @@ module ooe_decq #(
   `CCV_ASSERT_KNOWN(enq_l_known, enq_l_cq00h)
   `CCV_ASSERT_KNOWN_IF(enq_slot_known, |enq_v_cq01h, enq_slot_cq01h)
   `CCV_ASSERT_KNOWN(deq_n_known, deq_n_cq01h)
+  `CCV_ASSERT_KNOWN(deq_any_known, deq_any_cq01h)
   `CCV_ASSERT_KNOWN(flush_known, flush_cq01h)
 
   // Fields of the state.
@@ -235,11 +242,29 @@ module ooe_decq #(
     faults = {under, over};
   endfunction
 
-  logic [SW-1:0] st_cq02h;
-  logic [1:0]    fault_cq02h;
-  logic [S-1:0]  fl_q_cq02h;              // a flush registered: applied at the next edge
-  logic          enq_en_cq01h;            // the arrival lead's flop
-  assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, deq_n_cq01h, fl_q_cq02h);
+  logic [SW-1:0]   st_cq02h;
+  logic [1:0]      fault_cq02h;
+  logic [S-1:0]    fl_q_cq02h;            // a flush registered: applied at the next edge
+  logic            enq_en_cq01h;          // the arrival lead's flop
+  (* keep *) logic [S*LR-1:0] tk_cq02h;   // rename's take registered: popped at the next edge
+  (* keep *) logic [S*LR-1:0] tko_cq02h;  // its copy for the count out (NGD-7)
+  logic            tkv_cq02h;             // a take in transit: tk is read only while it is set
+  logic [S*LR-1:0] tkd_cq02h;             // the take in transit (tk while tkv, else none)
+  assign tkd_cq02h = tk_cq02h & {S*LR{tkv_cq02h}};
+  // The entries held, kept as state (the credits out): this edge's
+  // arrivals less its frees, each slot's whole count on a flush, else its
+  // take in transit. The same as the busy bits' count (an assertion).
+  (* keep *) logic [LU-1:0] used_q_cq02h;   // the count, and its copy out (NGD-7)
+  (* keep *) logic [LU-1:0] used_o_cq02h;
+  logic [LU-1:0]   used_nx_cq01h;
+  always_comb begin
+    used_nx_cq01h = used_q_cq02h;
+    for (int k = 0; k < E; k++) used_nx_cq01h = used_nx_cq01h + LU'(enq_v_cq01h[k]);
+    for (int s = 0; s < S; s++)
+      used_nx_cq01h = used_nx_cq01h - (fl_q_cq02h[s] ? LU'(st_cq02h[OCNT + s * LC +: LC])
+                                                      : LU'(tkd_cq02h[s * LR +: LR]));
+  end
+  assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, tkd_cq02h, fl_q_cq02h);
 
   // Every arrival was led; none arrives for a slot whose flush comes now;
   // rename takes nothing from a slot whose flush is registered.
@@ -254,6 +279,18 @@ module ooe_decq #(
   `CCV_ASSERT(enq_led, enq_v_cq01h == '0 || enq_en_cq01h)
   `CCV_ASSERT(no_enq_at_flush, (enq_s_cq01h & flush_cq01h) == '0)
   `CCV_ASSERT(no_deq_while_flushing, (deq_s_cq01h & fl_q_cq02h) == '0)
+  // The take register's enable is rename's: it covers every take.
+  `CCV_ASSERT(deq_any_exact, deq_any_cq01h == (deq_s_cq01h != '0))
+  // Rename takes no more than a slot offers (its count past the take in
+  // transit).
+  logic deq_over_cq01h;
+  always_comb begin
+    deq_over_cq01h = 1'b0;
+    for (int s = 0; s < S; s++)
+      if (LC'(deq_n_cq01h[s * LR +: LR]) + LC'(tkd_cq02h[s * LR +: LR]) > LC'(cnt_of(st_cq02h, s)))
+        deq_over_cq01h = 1'b1;
+  end
+  `CCV_ASSERT(deq_within_offer, !deq_over_cq01h)
 
   // Rename takes no more than a slot holds; DEC sends only against credit.
   `CCV_ASSERT(deq_within_count, !fault_cq02h[1])
@@ -268,43 +305,68 @@ module ooe_decq #(
   always_comb begin
     head_pay_cq02h   = '0;
     head_found_cq02h = '0;
-    used_cq02h       = '0;
     for (int s = 0; s < S; s++) begin
-      cnt_cq02h[s * LC +: LC] = st_cq02h[OCNT + s * LC +: LC];
+      cnt_cq02h[s * LC +: LC] = st_cq02h[OCNT + s * LC +: LC] - (tkv_cq02h ? LC'(tko_cq02h[s * LR +: LR]) : '0);
       for (int k = 0; k < R; k++) begin
-        head_v_cq02h[s * R + k] = k < cnt_of(st_cq02h, s);
+        head_v_cq02h[s * R + k] = k + 32'(tkd_cq02h[s * LR +: LR]) < cnt_of(st_cq02h, s);
         for (int e = 0; e < Q; e++)
-          if (st_cq02h[OBUSY + e] && own_of(st_cq02h, e) == s && pos_of(st_cq02h, e) == k) begin
+          if (st_cq02h[OBUSY + e] && own_of(st_cq02h, e) == s &&
+              pos_of(st_cq02h, e) == k + 32'(tkd_cq02h[s * LR +: LR])) begin
             head_pay_cq02h[(s * R + k) * P +: P] = st_cq02h[OPAY + e * P +: P];
             head_found_cq02h[s * R + k]          = 1'b1;
           end
       end
     end
-    for (int e = 0; e < Q; e++) used_cq02h = used_cq02h + LU'(st_cq02h[OBUSY + e]);
+    used_cq02h = used_o_cq02h;
   end
+  logic [LU-1:0] busy_n_cq02h;
+  always_comb begin
+    busy_n_cq02h = '0;
+    for (int e = 0; e < Q; e++) busy_n_cq02h = busy_n_cq02h + LU'(st_cq02h[OBUSY + e]);
+  end
+  `CCV_ASSERT(used_is_busy, used_q_cq02h == busy_n_cq02h)
 
   // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
   // an arrival, a dequeue or a flush, and is clocked on those alone.
   logic          decq_en_cq01h;
   logic [SW-1:0] nx_cq01h;
-  assign decq_en_cq01h = enq_en_cq01h || |deq_n_cq01h || |fl_q_cq02h;
-  assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, deq_n_cq01h,
+  logic          tk_en_cq01h;
+  assign decq_en_cq01h = enq_en_cq01h || tkv_cq02h || |fl_q_cq02h;
+  assign tk_en_cq01h   = deq_any_cq01h;
+  assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, tkd_cq02h,
                                     fl_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       fl_q_cq02h   <= '0;
       enq_en_cq01h <= 1'b0;
+      tkv_cq02h    <= 1'b0;
     end else begin
       fl_q_cq02h   <= flush_cq01h;
       enq_en_cq01h <= enq_l_cq00h;
+      tkv_cq02h    <= deq_any_cq01h;
+    end
+  end
+
+  always_ff @(posedge ooe_core_clk) begin
+    // The take is payload, read only while tkv says it is in transit.
+    if (tk_en_cq01h) begin
+      tk_cq02h  <= deq_n_cq01h;
+      tko_cq02h <= deq_n_cq01h;
     end
   end
 
   always_ff @(posedge ooe_core_clk) begin
     // The reset state: busy bits and counts cleared; the payloads, owners
     // and positions are payload, guarded by busy.
-    if (rst_r01h)           st_cq02h[OBUSY +: Q + S * LC] <= '0;
-    else if (decq_en_cq01h) st_cq02h <= nx_cq01h;
+    if (rst_r01h) begin
+      st_cq02h[OBUSY +: Q + S * LC] <= '0;
+      used_q_cq02h                  <= '0;
+      used_o_cq02h                  <= '0;
+    end else if (decq_en_cq01h) begin
+      st_cq02h     <= nx_cq01h;
+      used_q_cq02h <= used_nx_cq01h;
+      used_o_cq02h <= used_nx_cq01h;
+    end
   end
 
 endmodule
