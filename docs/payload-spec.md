@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 50 channels
+# Payload specification — all 51 channels
 
-Every payload field has a width, so **every one of the 50
+Every payload field has a width, so **every one of the 51
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 9 | 29 |
-| ⚠️ Some provisional | 22 | 94 |
-| ⛔ Some preliminary | 19 | 139 |
-| **Total** | **50** | **262** |
+| All decided | 12 | 38 |
+| ⚠️ Some provisional | 24 | 105 |
+| ⛔ Some preliminary | 15 | 126 |
+| **Total** | **51** | **269** |
 
 ## What still has to be decided
 
@@ -124,12 +124,6 @@ because those are the ones where a skeleton that reads the field
 |---|---|---|---|
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | ITLB entry: physical page number, permissions, ASID and valid, rounded up. |
 
-### PCA session, from the parked-array organization
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_W_PCA_BANK` | 3 | med | Parked-context bank select: eight banks of four warps, from the proposed PCA organization. |
-
 ### RAU / CRU sessions
 
 | Parameter | Value | Churn | Basis |
@@ -153,12 +147,6 @@ because those are the ones where a skeleton that reads the field
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
 | `CCV_L_W_SPM_OP` | 2 | low | Scratchpad bank access: read, write, and room for a read-modify variant. |
-
-### divergence model specification
-
-| Parameter | Value | Churn | Basis |
-|---|---|---|---|
-| `CCV_L_PC_GROUPS` | 4 | **HIGH** | PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified. |
 
 ### generated
 
@@ -215,7 +203,7 @@ rau → ooe · rate 1 · control
 
 ### `ccv_ooe_rau_status`
 
-Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU kills every warp of the context: with one resident context (the ASID field's contract), every valid warp context, resident and parked, with no lookup, and it stops every queued launch (DA's response IS-2, 2026-10-20: a fatal fault terminates the context, not the grid). The host's kill_grid on ccv_cru_rau_cfg stays grid-scoped: it is a request, not a fault. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution.
+Per-warp stall and progress reporting, feeding demotion policy -- and fault_taken, the fault path to RAU: OOE raises it at retirement with the warp_id, and RAU kills every warp of the context: with one resident context (the ASID field's contract), every valid warp context, resident and parked, with no lookup, and it stops every queued launch (DA's response IS-2, 2026-10-20: a fatal fault terminates the context, not the grid). The host's kill_grid on ccv_cru_rau_cfg stays grid-scoped: it is a request, not a fault. CRU records the fault in parallel (ccv_ooe_cru_fault) for the host, and is not on the path that stops execution. EXITED (AR's response TI-24 (2), OA's rev 149): a level, set once the warp's C_EXIT has retired and the warp holds no ROB entry, deferred-free or squashed-pending slot included, and no memop outstanding at MIU, the kill's quiesce; held until RAU frees the slot (alloc_op 0). RAU then frees the tier-1 slot, and on a CTA's last warp the CTA's scratchpad, barrier entries and CTA slot. A committed store still draining is never matched by rob_tag or warp_id again (MIU spec), so both may be reused.
 
 ooe → rau · rate 1 · control
 
@@ -226,7 +214,8 @@ ooe → rau · rate 1 · control
 | `stalled` | `1` | 1 | literal |
 | `mlc_miss_seen` | `1` | 1 | literal |
 | `retired_since_restore` | `CCV_W_RETIRED_CNT` | 8 | CCV_W_RETIRED_CNT (arch) |
-| **total** | | **16** | |
+| `exited` | `1` | 1 | literal |
+| **total** | | **17** | |
 
 ### `ccv_rau_ooe_demote`
 
@@ -252,6 +241,18 @@ ooe → rau · rate 1 · control
 | `resume_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `arch_state_ready` | `1` | 1 | literal |
 | **total** | | **70** | |
+
+### `ccv_rau_rcu_mig`
+
+Which warp and direction a migration moves. RCU pairs it with ccv_ooe_rcu_map by warp_id and direction and proceeds once both have arrived, in either order; at most one migration per warp is in flight (A-45).
+
+rau → rcu · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `direction` | `1` | 1 | literal |
+| **total** | | **6** | |
 
 ### `ccv_rcu_pca_mig`
 
@@ -279,6 +280,19 @@ pca → rcu · rate 1 · control
 | `row_data` | `CCV_W_DATA` | 1024 | CCV_W_DATA (isa) |
 | **total** | | **1034** | |
 
+### `ccv_rau_fet_mig`
+
+The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command. tier1_id is the warp's tier-1 slot (A-65): on a restore, the slot RAU is placing it in, which FET needs before PCA's PC groups arrive; on a demotion, the slot being vacated.
+
+rau → fet · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `direction` | `1` | 1 | literal |
+| **total** | | **8** | |
+
 ### `ccv_pca_rau_mig_done`
 
 A migration has landed, either way. direction 0: a demotion, PCA holds every row from RCU and the PC groups from FET for warp_id, and RAU may reallocate the warp's slot. direction 1: a restore, every row PCA sent to RCU on ccv_pca_rcu_mig has had its credit back, so RCU has written it, and PCA has sent the PC groups to FET; RAU may activate the warp. PCA sends it only once the last row's credit is back: a row sent but still in RCU's receiver, waiting for the warp's map, is not written, and a warp activated on it could read the row before it lands. Done means written (TI-13). One ack from the block that sees both halves, rather than one from each sender (arch open A-3; the restore COMMAND is Q-39).
@@ -290,6 +304,19 @@ pca → rau · rate 1 · control
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `direction` | `1` | 1 | literal |
 | **total** | | **6** | |
+
+### `ccv_rau_pca_mig`
+
+The migration command to PCA (AR's response TI-24 (1); repo Q-39), the third beside ccv_rau_rcu_mig and ccv_rau_fet_mig: which warp, which direction, and its place in the parked array. RAU allocates the place from a free list of CCV_PARKED_WARPS on a demotion and frees it once the warp is restored, so PCA stores by place and holds no table. direction 0: PCA files the rows from RCU and the PCs from FET at pca_place, and acks on ccv_pca_rau_mig_done once it holds both. direction 1: PCA sends the warp's rows on ccv_pca_rcu_mig and its PCs on ccv_pca_fet_mig, then acks direction 1 once every row's credit is back (done means written, TI-13). It replaces bank_select on the other two commands, which reached only RCU and FET, neither of which stores anything.
+
+rau → pca · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `direction` | `1` | 1 | literal |
+| `pca_place` | `CCV_W_PCA_PLACE` | 5 | CCV_W_PCA_PLACE (arch) |
+| **total** | | **11** | |
 
 ### `ccv_syu_ooe_rel`
 
@@ -404,7 +431,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_ooe_fet_redirect`
 
-A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. EPOCH OWNERSHIP (A-70, A-74): OOE owns every warp's fetch epoch and is the only block that advances it: on each redirect, on ccv_rau_ooe_demote, and on a kill. It tells FET of every change on this channel. A redirect carries the new epoch; a demotion or kill sends an epoch notice, epoch_only = 1, for which FET only takes fetch_epoch for warp_id, and checkpoint_id, taken_mask and target_pc are don't-care (no restore, no PC change, no checkpoint freed). FET advances nothing itself. It tags everything it fetches for the warp afterwards with that epoch on ccv_fet_dec_instr. Both blocks hold the epoch per warp_id, not per tier-1 slot, so it survives demotion and restore. Neither resets it at launch, because a relaunched warp_id could meet its predecessor's uops still in flight. The channel is fixed-latency and in order, so notices and redirects for a warp land in the order sent, and V-56 holds: one channel latency after every change, FET's epoch for a warp equals OOE's.
+A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. EPOCH OWNERSHIP (A-70, A-74): OOE owns every warp's fetch epoch and is the only block that advances it: on each redirect, on ccv_rau_ooe_demote, and on a kill. It tells FET of every change on this channel. A redirect carries the new epoch; a demotion or kill sends an epoch notice, epoch_only = 1, for which FET only takes fetch_epoch for warp_id, and checkpoint_id, taken_mask and target_pc are don't-care (no restore, no PC change, no checkpoint freed). FET advances nothing itself. It tags everything it fetches for the warp afterwards with that epoch on ccv_fet_dec_instr. Both blocks hold the epoch per warp_id, not per tier-1 slot, so it survives demotion and restore. Neither resets it at launch, because a relaunched warp_id could meet its predecessor's uops still in flight. The channel is fixed-latency and in order, so notices and redirects for a warp land in the order sent, and V-56 holds: one channel latency after every change, FET's epoch for a warp equals OOE's. REWIND (AR's and OA's responses TI-24 (3); FET spec, demotion rewind): on a demotion, after the epoch notice and the drain (CCV_DRAIN_WAIT), OOE sends one beat per group it holds, epoch_only = 1 and rewind = 1, naming in taken_mask the lanes whose oldest unretired entry, in the ROB or the decode queue, is at target_pc. FET sets those lanes' PCs to it; a lane in no beat keeps FET's PC, exact because the drain left nothing of it in flight, and min-PC merges what now coincides. checkpoint_id and fetch_epoch are don't-care on a beat. OOE sends ccv_ooe_rau_drained only once its last beat has landed in FET, at its send cycle plus this channel's fixed latency, so FET migrates the rewound PCs. A replayable fault (IS-4) uses the same beats. Here rather than a channel of its own: the beats need nothing the notice does not carry but one bit, and the fixed latency and order that make the notice safe.
 
 ooe → fet · rate 1 · instruction
 
@@ -417,7 +444,8 @@ ooe → fet · rate 1 · instruction
 | `target_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
 | `epoch_only` | `1` | 1 | literal |
-| **total** | | **109** | ⚠️ 5 provisional |
+| `rewind` | `1` | 1 | literal |
+| **total** | | **110** | ⚠️ 5 provisional |
 
 ### `ccv_ooe_fet_ckpt_free`
 
@@ -537,6 +565,36 @@ ooe → rcu · rate 1 · control
 | `gpr_width` | `CCV_GPRS*CCV_W_CHWIDTH` | 32 | CCV_GPRS (isa); CCV_W_CHWIDTH (isa) |
 | `pred_map` | `CCV_PREDS*CCV_P_W_PHYS_PRED` | 24 ⚠️ | CCV_PREDS (isa_provisional); CCV_P_W_PHYS_PRED (provisional) |
 | **total** | | **222** | ⚠️ 152 provisional |
+
+### `ccv_fet_pca_mig`
+
+A demoted warp's divergence state, out to the parked array: each lane's PC within the warp's window (CCV_W_LANE_PC bits, lane 0 at the LSBs), the PC bits above the window that every lane shares, and the fairness rule's lane pointer and pick counter (DA's response IS-17), so a swap does not reset them. Groups are the lanes with equal PCs; nothing else of FET's needs to move. FET owns the PCs, so they migrate from FET directly, not through RCU, which would cross two blocks and hold state it has no other reason to touch. FET sends it once OOE's rewind beats have set the PCs to the retirement boundary (TI-24 (3)). RAU sequences this and the RCU to PCA transfer; PCA acks both halves at once on ccv_pca_rau_mig_done. Checkpoints never migrate: demotion squashes to the retirement boundary, so a demoted warp has no unresolved branch.
+
+fet → pca · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `lane_pcs` | `CCV_WARP_LANES*CCV_W_LANE_PC` | 992 | CCV_WARP_LANES (isa); CCV_W_LANE_PC (arch) |
+| `pc_upper` | `CCV_W_PC_UPPER` | 16 | CCV_W_PC_UPPER (arch) |
+| `fair_ptr` | `CCV_W_FAIR_PTR` | 5 | CCV_W_FAIR_PTR (arch) |
+| `fair_cnt` | `CCV_W_FAIR_CNT` | 4 ⚠️ | CCV_W_FAIR_CNT (provisional) |
+| **total** | | **1022** | ⚠️ 4 provisional |
+
+### `ccv_pca_fet_mig`
+
+A restored warp's divergence state back to FET, in ccv_fet_pca_mig's layout: per-lane PCs, the shared upper bits, and the fairness pointer and counter. FET resumes fetch from them.
+
+pca → fet · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `lane_pcs` | `CCV_WARP_LANES*CCV_W_LANE_PC` | 992 | CCV_WARP_LANES (isa); CCV_W_LANE_PC (arch) |
+| `pc_upper` | `CCV_W_PC_UPPER` | 16 | CCV_W_PC_UPPER (arch) |
+| `fair_ptr` | `CCV_W_FAIR_PTR` | 5 | CCV_W_FAIR_PTR (arch) |
+| `fair_cnt` | `CCV_W_FAIR_CNT` | 4 ⚠️ | CCV_W_FAIR_CNT (provisional) |
+| **total** | | **1022** | ⚠️ 4 provisional |
 
 ### `ccv_rau_miu_cta`
 
@@ -870,59 +928,6 @@ rau → fet · rate 1 · control
 | `asid` | `CCV_W_ASID` | 8 | CCV_W_ASID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | **total** | | **186** | ⛔ 104 preliminary, ⚠️ 3 provisional |
-
-### `ccv_rau_rcu_mig`
-
-Which warp and direction a migration moves, and which parked bank it targets. RCU pairs it with ccv_ooe_rcu_map by warp_id and direction and proceeds once both have arrived, in either order; at most one migration per warp is in flight (A-45).
-
-rau → rcu · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `direction` | `1` | 1 | literal |
-| `bank_select` | `CCV_L_W_PCA_BANK` | 3 ⛔ | CCV_L_W_PCA_BANK (preliminary, churn med) |
-| **total** | | **9** | ⛔ 3 preliminary |
-
-### `ccv_fet_pca_mig`
-
-A demoted warp's PC groups, out to the parked array: each group's PC and its lane mask, which together are the warp's divergence state in FET (the groups FET maintains, and rebuilds from checkpoint_id and taken_mask on a redirect; A-2, A-36). FET owns the PC and its update logic, so the group PCs migrate from FET directly -- not through RCU, which would cross two blocks and hold state it has no other reason to touch. RAU sequences this and the RCU->PCA transfer; PCA acks both halves at once on ccv_pca_rau_mig_done. Checkpoints never migrate: demotion squashes to the retirement boundary, so a demoted warp has no unresolved branch.
-
-fet → pca · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `pcs` | `CCV_L_PC_GROUPS*CCV_W_VA` | 256 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_VA (arch) |
-| `group_masks` | `CCV_L_PC_GROUPS*CCV_W_LANE_MASK` | 128 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_LANE_MASK (isa) |
-| **total** | | **389** | ⛔ 384 preliminary |
-
-### `ccv_pca_fet_mig`
-
-A restored warp's PC groups, PCs and lane masks, back to FET, which resumes fetch from them.
-
-pca → fet · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `pcs` | `CCV_L_PC_GROUPS*CCV_W_VA` | 256 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_VA (arch) |
-| `group_masks` | `CCV_L_PC_GROUPS*CCV_W_LANE_MASK` | 128 ⛔ | CCV_L_PC_GROUPS (preliminary, churn **HIGH**); CCV_W_LANE_MASK (isa) |
-| **total** | | **389** | ⛔ 384 preliminary |
-
-### `ccv_rau_fet_mig`
-
-The migration command to FET, the same command ccv_rau_rcu_mig gives RCU: which warp, which direction, which parked bank. On demotion FET sends the warp's PC groups on ccv_fet_pca_mig. RAU sequences both halves of a migration, so both halves need the command. tier1_id is the warp's tier-1 slot (A-65): on a restore, the slot RAU is placing it in, which FET needs before PCA's PC groups arrive; on a demotion, the slot being vacated.
-
-rau → fet · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
-| `direction` | `1` | 1 | literal |
-| `bank_select` | `CCV_L_W_PCA_BANK` | 3 ⛔ | CCV_L_W_PCA_BANK (preliminary, churn med) |
-| **total** | | **11** | ⛔ 3 preliminary |
 
 ### `ccv_cru_rau_cfg`
 

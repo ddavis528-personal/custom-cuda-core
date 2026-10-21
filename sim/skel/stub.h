@@ -63,7 +63,7 @@ struct Ch {
            ooe_drained = chanId("ccv_ooe_rau_drained"), ooe_map = chanId("ccv_ooe_rcu_map"),
            rau_rcu_mig = chanId("ccv_rau_rcu_mig"), rau_fet_mig = chanId("ccv_rau_fet_mig"),
            rcu_pca = chanId("ccv_rcu_pca_mig"), fet_pca = chanId("ccv_fet_pca_mig"),
-           pca_done = chanId("ccv_pca_rau_mig_done");
+           pca_done = chanId("ccv_pca_rau_mig_done"), rau_pca_mig = chanId("ccv_rau_pca_mig");
 };
 inline const Ch &ch() { static const Ch c; return c; }
 

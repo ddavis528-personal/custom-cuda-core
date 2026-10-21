@@ -78,7 +78,8 @@
 #     entry (OA-23)                            every completion
 #   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
 #     state at its retirement boundary         resume-pc (stall, demoting):
-#     (TI-24)                                  the parked check refuses each
+#     (TI-24), at the place RAU names          the parked check refuses each;
+#                                              pca-place (vadd4): PCA refuses
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
 #     DEC marks real (TI-1)                      hides a second source, and
 #                                                seq 14 reads R9 stale
@@ -732,6 +733,15 @@ if [ -z "$why" ] && [ "$(cover "$log" demote)" = 1 ] && [ "$(cover "$log" parked
   say "stall demoted: warp 0 parked == ccv-sim" "PASS (rows, predicates and resume PC at its boundary)"
 else
   bad "stall demoted" "${why# } demote=$(cover "$log" demote) parked=$(cover "$log" parked)"
+fi
+# PCA files a warp at the place RAU names (TI-24 (1)): on vadd4, whose two
+# parked warps need two places, RAU naming one twice is refused.
+CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break pca-place \
+  >"$B/kernel_demote_pca-place.log" 2>&1
+if grep -q "^CHECK pca: place 0 is already held, by warp" "$B/kernel_demote_pca-place.log"; then
+  say "--break pca-place: PCA refuses a held place" "PASS"
+else
+  bad "--break pca-place" "a place named twice was filed: $(grep '^KERNEL' "$B/kernel_demote_pca-place.log")"
 fi
 for spec in "corrupt-map:PARKED warp 0 R1 lane" "mig-row-order:PARKED warp 0 R0 lane" \
             "resume-pc:PARKED warp 0 resumes at"; do

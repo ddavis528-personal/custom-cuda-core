@@ -180,7 +180,8 @@ struct Kernel {
     uint64_t resume_pc = 0;
     std::vector<unsigned> gpr_rows;                         ///< by arch register
     std::map<unsigned, std::array<uint32_t, kLanes>> rows;  ///< PCA's, by mig_row
-    uint64_t pc = 0;                                        ///< FET's first group
+    std::array<uint64_t, kLanes> lane_pc{};                 ///< PCA's, from FET (IS-17)
+    bool rewound = false;                                   ///< FET had OOE's beats
     bool done = false;                                      ///< PCA acked it
   };
   std::map<unsigned, Parked> parked;

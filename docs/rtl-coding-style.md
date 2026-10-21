@@ -153,7 +153,7 @@ Every `preliminary` parameter carries a churn rating, and it rates the
 The practical rule for the Stage 3 skeleton: *carry* preliminary fields
 freely, *decode* them only where the skeleton would be pointless without it,
 and never build control flow on a high-churn field's contents. `opcode`,
-`operand` (`CCV_L_OPERANDS_PER_LANE`), `pcs` (`CCV_L_PC_GROUPS`),
+`operand` (`CCV_L_OPERANDS_PER_LANE`),
 `pred_state` and the external port's `tl_out`/`tl_in` are the high-churn ones
 today; `docs/trust-report.md` is generated on every gate run and lists them
 with everything that references them.

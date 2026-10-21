@@ -78,6 +78,12 @@
   output logic pca_rau_mig_done_credit,
   output logic pca_rau_mig_done_stall,
   input  logic pca_rau_mig_done_wake,
+  // rau -> pca
+  output logic rau_pca_mig_valid,
+  output ccv_rau_pca_mig_t rau_pca_mig_payload,
+  input  logic rau_pca_mig_credit,
+  input  logic rau_pca_mig_stall,
+  output logic rau_pca_mig_wake,
   // rau -> miu
   output logic rau_miu_cta_valid,
   output ccv_rau_miu_cta_t rau_miu_cta_payload,
@@ -108,6 +114,7 @@
   , output logic [63:0] rau_rcu_mig_tid
   , output logic [63:0] rau_fet_mig_tid
   , input  logic [63:0] pca_rau_mig_done_tid
+  , output logic [63:0] rau_pca_mig_tid
   , output logic [63:0] rau_miu_cta_tid
   , output logic [63:0] rau_syu_alloc_tid
   , input  logic [63:0] cru_rau_cfg_tid

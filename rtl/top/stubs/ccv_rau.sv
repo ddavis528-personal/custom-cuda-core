@@ -86,6 +86,12 @@ module ccv_rau (
 `endif
   assign pca_rau_mig_done_credit = '0;
   assign pca_rau_mig_done_stall = '0;
+  assign rau_pca_mig_valid = '0;
+  assign rau_pca_mig_payload = '0;
+  assign rau_pca_mig_wake = '0;
+`ifdef CCV_TRACE
+  assign rau_pca_mig_tid = '0;
+`endif
   assign rau_miu_cta_valid = '0;
   assign rau_miu_cta_payload = '0;
   assign rau_miu_cta_wake = '0;
