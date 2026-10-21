@@ -40,7 +40,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
-                                     {"take_young", &take_young}, {"ret_now", &ret_now}};
+                                     {"take_young", &take_young}, {"ret_now", &ret_now},
+                                     {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -746,7 +747,10 @@ bool Core::requestNext(unsigned e) const {
   // Issued as ooe_wake holds it after this edge: this cycle's own grants
   // reach it from the grant register at the next (the register masks them).
   const bool issued = x.issued && !req_gnt_now_[e];
-  return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || rowConfirmed(e));
+  // copy_conf_late: ooe_sched sees a source's confirmation a cycle after
+  // the model's select would (OI-45), so a copy requests a cycle later.
+  const bool conf = rowConfirmed(e) && (!cfg_.copy_conf_late || (e < row_conf_prev_.size() && row_conf_prev_[e]));
+  return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || conf);
 }
 
 /// The request register (OA's response OI-53), as ooe_sched builds it: an
@@ -768,7 +772,9 @@ void Core::requestRegister() {
   // ready register's enable takes too): this cycle's hop on time.
   bool stop = false;
   for (unsigned e = 0; e != n_ && e < wlog_.replay.size(); ++e) stop = stop || wlog_.replay[e];
-  const bool en = req_lead_q_ || gany || stop;
+  // req_alloc_lead: a row written at the last edge enters at this one
+  // (ooe_sched's registered allocation lead on the request enable, OI-45).
+  const bool en = req_lead_q_ || gany || stop || (cfg_.req_alloc_lead && req_alloc_q_);
   bool diff = false;
   for (unsigned e = 0; e != n_; ++e) {
     const bool d = requestNext(e);
@@ -776,6 +782,9 @@ void Core::requestRegister() {
     if (en) req_q_[e] = d;
   }
   req_lead_q_ = diff;
+  req_alloc_q_ = !wlog_.ralloc.empty();
+  row_conf_prev_.resize(n_);
+  for (unsigned e = 0; e != n_; ++e) row_conf_prev_[e] = rs_[e].valid && rowConfirmed(e);
   req_gnt_q_.swap(req_gnt_now_);
   std::fill(req_gnt_now_.begin(), req_gnt_now_.end(), 0);
 }

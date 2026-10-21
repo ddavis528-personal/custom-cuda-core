@@ -76,6 +76,8 @@ module ooe_sched #(
   // Leads, into the enable flops.
   input  logic [N-1:0]      msd_cq02h,     // missed: the replay rule's (OI-50)
   input  logic [N-1:0]      mis_cq02h,     // ooe_wake: missed at the last edge, held from the next cycle
+  input  logic [N-1:0]      fin_cq02h,     // ooe_wake: the result is final
+  input  logic [N-1:0]      prod_cq02h,    // ooe_rs: the entry writes a register some entry may wake on
   input  logic [N*WL-1:0]   wtl_cq02h,     // ooe_wake: a producer's line changes by timer at the edge after next
   input  logic              wml_cq02h,     // ooe_wake: a miss or a completion does
   input  logic              alloc_cq02h,   // ooe_rs: a row is written at this edge
@@ -114,7 +116,8 @@ module ooe_sched #(
   // misses only grow by the pulses, so the lead is a superset.
   logic         stop_cq02h;
   (* keep *) logic [N-1:0] gnt_cq04h;      // the grant register's mask copy
-  logic [N-1:0] rep_cq02h, ise_cq02h, gon, isg;
+  logic [N-1:0] rep_cq02h, ise_cq02h, gon, isg, cnf;
+  logic [N*N-1:0] dpm;                      // the matrix less this cycle's confirmations' columns
   always_comb begin
     // Issued counts the grant leaving now (the grant register), which
     // ooe_wake takes at this edge.
@@ -122,10 +125,16 @@ module ooe_sched #(
     for (int i = 0; i < N; i++)
       rep_cq02h[i] = isg[i] && (dep_cq02h[i * N +: N] & (~isg | msd_cq02h)) != '0;
     ise_cq02h  = isg & ~rep_cq02h;
+    // This cycle's confirmations (OA's response OI-45 (1)): ooe_rs and
+    // ooe_wake free them at this edge; their columns clear in the matrix an
+    // edge later, so the ready and request terms read the matrix less them.
+    for (int i = 0; i < N; i++)
+      cnf[i] = isg[i] && dep_cq02h[i * N +: N] == '0 && (fin_cq02h[i] || !prod_cq02h[i]);
+    for (int i = 0; i < N; i++) dpm[i * N +: N] = dep_cq02h[i * N +: N] & ~cnf;
     gon        = ~ise_cq02h | msd_cq02h | mis_cq02h;
     stop_cq02h = 1'b0;
     for (int i = 0; i < N; i++)
-      stop_cq02h = stop_cq02h | (ise_cq02h[i] && (dep_cq02h[i * N +: N] & gon) != '0);
+      stop_cq02h = stop_cq02h | (ise_cq02h[i] && (dpm[i * N +: N] & gon) != '0);
   end
 
   // The timer lead, of lines some row reads: a line no cell selects
@@ -145,7 +154,7 @@ module ooe_sched #(
   logic [N-1:0] ready_cq02h;
   logic [N-1:0] ready_cq03h;
   logic         ready_en_cq03h, stop_cq03h, alc_cq03h;
-  ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dep_cq02h), .code_cq02h(code_cq02h),
+  ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dpm), .code_cq02h(code_cq02h),
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
   // -- Request register -------------------------------------------------------
@@ -154,7 +163,7 @@ module ooe_sched #(
   always_comb
     for (int e = 0; e < N; e++)
       rq_cq02h[e] = valid_cq02h[e] && !ise_cq02h[e] && active_cq02h[slot_cq02h[e * LS +: LS]] &&
-                    (!copy_cq02h[e] || dep_cq02h[e * N +: N] == '0);
+                    (!copy_cq02h[e] || dpm[e * N +: N] == '0);
   assign rq_en  = chg_cq04h || stop_cq03h || gnt_cq04h != '0 || alc_cq03h;
 
   // -- Select -----------------------------------------------------------------

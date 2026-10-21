@@ -1904,6 +1904,11 @@ void audit() {
     const R y2 = run(b1);
     std::printf("audit: loop: rename_stages +1 %.0f (%+.1f%%), with the completion wake +1 %.0f (%+.1f%%)\n", y1.cy,
                 100.0 * (y1.cy / r0.cy - 1), y2.cy, 100.0 * (y2.cy / r0.cy - 1));
+    Config c1 = g;
+    c1.copy_conf_late = true;
+    const R z1 = run(c1);
+    std::printf("audit: loop: a copy's request a cycle after its sources confirm %.0f (%+.2f%%)\n", z1.cy,
+                100.0 * (z1.cy / r0.cy - 1));
   }
 }
 

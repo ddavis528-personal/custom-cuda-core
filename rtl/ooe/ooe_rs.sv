@@ -97,6 +97,8 @@ module ooe_rs #(
   output logic [N-1:0]     valid_out_cq02h, // the valid bits (a copy for the outputs)
   output logic [N*N-1:0]   dep_cq02h,    // row i, column j: i waits on j
   output logic [2*N*N-1:0] code_cq02h,   // the cell's wake-line select
+  output logic [N-1:0]     prod_o_cq02h,  // each entry writes a register some entry may wake on (ooe_sched's
+                                         // confirmation, OI-45)
   output logic [N-1:0]     hcol_cq02h    // a row has named the entry since it was allocated
 );
 
@@ -194,6 +196,7 @@ module ooe_rs #(
 
   (* keep *) logic [N-1:0] valid_cq02h;  // the valid bits, for allocation and the rows
   logic [N-1:0]     prod_cq02h;           // payload: read only while its entry is valid
+  assign prod_o_cq02h = prod_cq02h;
   logic [N-1:0]     cf_en_cq01h;          // the confirmation leads' flops
   logic [NC-1:0]    cva_cq01h;            // the completion channel's valid, flopped: its payload is here
   logic             cvb_cq02h;            // a payload arrived at the last edge

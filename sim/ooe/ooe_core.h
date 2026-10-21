@@ -258,6 +258,13 @@ struct Config {
   /// fits' ret_n term: test/ooe/probes/fitsk2_probe.sv, RET 1). false:
   /// under fits_conservative 3 and the shares, a cycle late.
   bool ret_now = false;
+  /// A copy's request sees its sources' confirmation a cycle late, as the
+  /// composed RTL does (OI-45: ooe_rs decides a confirmation while
+  /// ooe_sched is a model cycle on).
+  bool copy_conf_late = false;
+  /// The request register's enable also takes the allocation lead: a row
+  /// written at an edge enters at the next (ooe_sched, OI-45 (a)).
+  bool req_alloc_lead = false;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -1176,6 +1183,8 @@ private:
   std::vector<unsigned> audit_room_;      ///< each slot's ROB room as the cycle starts (the settings audit)
   unsigned auditRobRoom(unsigned si) const;
   std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
+  std::vector<uint8_t> row_conf_prev_;    ///< each row confirmed at the last request register update (copy_conf_late)
+  bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
   std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
   unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
   unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)

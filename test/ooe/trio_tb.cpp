@@ -42,6 +42,8 @@ int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*c
 void trioConfig(Config &c) {
   c.fits_stale = 6;
   c.rs_same_edge = false;
+  c.copy_conf_late = true;
+  c.req_alloc_lead = true;
 }
 
 namespace {
@@ -57,7 +59,9 @@ bool following = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 0, diverged = 0,
                    first_sum = 0, compared_cores = 0;
 std::map<std::string, unsigned long long> kinds;
-bool core_diverged = false;
+bool core_diverged = false, grant_diverged = false;
+int prev_rq[TR_N], prev_rd[TR_N], t_prev_req[TR_N], t_prev_ready[TR_N];
+unsigned long long grant_cores = 0, grant_first_sum = 0;
 unsigned long long core_cycle = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
@@ -191,6 +195,8 @@ void hook(const Core &c) {
     following = sameConfig(c);
     H.clear();
     core_diverged = false;
+    grant_diverged = false;
+    ctx->assertOn(true);
     core_cycle = 0;
     if (following) ++compared_cores;
     clearAll(dut->req_cq01h, P);
@@ -292,6 +298,24 @@ void hook(const Core &c) {
     const bool want = e < sw.sel_grant.size() && sw.sel_grant[e], got = getBit(dut->grant_cq04h, e);
     grants += want;
     if (want != got) {
+      // From a core's first differing grant on, the model's outer ports no
+      // longer match the RTL's state: its assertions stand down until the
+      // next core.
+      if (!grant_diverged) {
+        grant_diverged = true;
+        ++grant_cores;
+        grant_first_sum += core_cycle;
+        ctx->assertOn(false);
+        if (std::getenv("TRIO_FIRST")) {
+          // Every entry select saw differently (before this edge: the
+          // registers' values the bench read after the last one).
+          std::fprintf(stderr, "first grant divergence, core cycle %llu:", core_cycle);
+          for (unsigned x = 0; x != N; ++x)
+            if (prev_rq[x] != t_prev_req[x] || prev_rd[x] != t_prev_ready[x])
+              std::fprintf(stderr, " e%u(rq %d/%d rd %d/%d)", x, prev_rq[x], t_prev_req[x], prev_rd[x], t_prev_ready[x]);
+          std::fprintf(stderr, "\n");
+        }
+      }
       fail("grant differs", e, 0, got, want);
       if (kinds["grant differs"] <= 2 && std::getenv("TRIO_DEBUG")) {
         const auto *r = dut->rootp;
@@ -348,6 +372,15 @@ void hook(const Core &c) {
         if (want != got) fail("wake lead line differs", j, k, got, want);
       }
   }
+  {
+    const auto *r = dut->rootp;
+    for (unsigned x = 0; x != N; ++x) {
+      prev_rq[x] = getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, x);
+      prev_rd[x] = getBit(r->ooe_trio__DOT__u_sched__DOT__ready_cq03h, x);
+      t_prev_req[x] = t.req_q[x];
+      t_prev_ready[x] = t.ready_q[x];
+    }
+  }
   H.pop_front();
 }
 } // namespace
@@ -361,10 +394,10 @@ int main(int argc, char **argv) {
   const int model_fails = ooeTestRandomHookedWith(seeds, hook, trioConfig);
   dut->final();
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
-  std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu diverged=%llu "
-              "first_divergence_mean=%.0f mismatches=%llu model_failures=%d\n",
-              seeds, cores, compared_cores, cycles, skipped, grants, diverged,
-              diverged ? double(first_sum) / double(diverged) : 0.0, mismatches, model_fails);
+  std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu "
+              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f mismatches=%llu model_failures=%d\n",
+              seeds, cores, compared_cores, cycles, skipped, grants, grant_cores,
+              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();

@@ -88,6 +88,7 @@ module ooe_trio #(
   logic [4*N-1:0]    wtl;
   logic              wml;
   logic [N-1:0]      flt;
+  logic [N-1:0]      prod_o;
   // ooe_wake takes the completion's payload a cycle after ooe_rs's stage
   // name for it; both are the channel's payload at the same edge.
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
@@ -99,7 +100,7 @@ module ooe_trio #(
     .wtl3_cq00h(flt), .fin_cq00h(fin_cq02h), .gnt_cq00h(grant_cq04h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq00h(cmpl_idx_cq00h), .sq_l_cq00h(sq_l_cq00h),
     .gnt_v_cq03h(gnt_v_cq03h), .gnt_idx_cq03h(gnt_idx_cq03h), .valid_out_cq02h(valid_cq02h),
-    .dep_cq02h(dep_cq02h), .code_cq02h(code), .hcol_cq02h(hcol));
+    .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol));
   ooe_wake #(.N(N), .LAT(LAT), .FAST(FAST), .PEN(PEN), .NPEN(NPEN), .LAT_COPY(LAT_COPY),
              .LAT_SPEC(LAT_SPEC), .LAT_MISS(LAT_MISS), .CMPL_DLY(CMPL_DLY), .NC(NC)) u_wake (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
@@ -113,7 +114,7 @@ module ooe_trio #(
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .wake_cq02h(wake_cq02h), .valid_cq02h(valid_cq02h),
     .iss_cq02h(iss_cq02h), .slot_cq02h(slot_cq02h), .active_cq02h(active_cq02h), .copy_cq02h(copy_cq02h),
-    .msd_cq02h(msd_cq02h), .mis_cq02h(miss_cq02h), .wtl_cq02h(wtl), .wml_cq02h(wml), .alloc_cq02h(alloc_cq02h),
+    .msd_cq02h(msd_cq02h), .mis_cq02h(miss_cq02h), .fin_cq02h(fin_cq02h), .prod_cq02h(prod_o), .wtl_cq02h(wtl), .wml_cq02h(wml), .alloc_cq02h(alloc_cq02h),
     .vel_cq03h(vel_cq03h), .siss_cq03h(siss_cq03h), .sdep_cq03h(sdep_cq03h), .sslot_cq03h(sslot_cq03h),
     .res_cq03h(res_cq03h), .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h),
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
