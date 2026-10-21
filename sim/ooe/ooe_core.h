@@ -246,7 +246,7 @@ struct Config {
   /// NGD, over the stage, so 0 allocates only entries free at the cycle's
   /// start. Rename's counters (fits_stale 6) never count a free in its own
   /// cycle, so only which entry is taken changes.
-  bool rs_same_edge = true;
+  bool rs_same_edge = false;
   unsigned share_return = 2;   ///< fits_stale 7: cycles without a take before a warp returns its share
   /// fits_stale 2 to 7: a uop that arrived after the last cycle's start,
   /// which the registered fits do not hold, is taken (the refill, OA's (a2):
@@ -261,27 +261,27 @@ struct Config {
   /// A copy's request sees its sources' confirmation a cycle late, as the
   /// composed RTL does (OI-45: ooe_rs decides a confirmation while
   /// ooe_sched is a model cycle on).
-  bool copy_conf_late = false;
+  bool copy_conf_late = true;
   /// The request register's enable also takes the allocation lead: a row
   /// written at an edge enters at the next (ooe_sched, OI-45 (a)).
-  bool req_alloc_lead = false;
+  bool req_alloc_lead = true;
   /// ooe_sched's request register sees ooe_rs's rows and ooe_wake's
   /// issued bits two cycles late, as the composed RTL does (OI-45: both
   /// take the grant register an edge after ooe_sched, and a row written at
   /// an edge reaches the register at the next): a row freed or written in
   /// the last two cycles requests on its state before them, and the
   /// allocation lead comes with the row.
-  bool req_rows_late = false;
+  bool req_rows_late = true;
   /// The ready register reads ooe_wake's lead lines, which drop an L1
   /// load's wake two cycles before its miss when no completion hint has
   /// come (OA-23): a spec load whose hint has not come is not ready from
   /// its miss cycle on. The environment sends Core::hint.
-  bool miss_lead = false;
+  bool miss_lead = true;
   /// The ready register sees a source's replay two cycles late, as the
   /// composed RTL does (OI-45: ooe_wake takes the replay while ooe_sched is
   /// a cycle on, and its lead lines had risen on the timer it replaced):
   /// until then it reads that timer.
-  bool ready_rep_late = false;
+  bool ready_rep_late = true;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not

@@ -152,7 +152,10 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   // The composed RTL's timing (OI-45) is the sectioned select's: the
   // unsectioned one issues a copy with its load, past the request register,
   // and has no RTL to mirror.
-  if (!cfg_.sectioned) cfg_.req_rows_late = cfg_.miss_lead = cfg_.ready_rep_late = false;
+  // They are the model's defaults for the sectioned select (OA's response
+  // OI-45, rev 153).
+  if (!cfg_.sectioned)
+    cfg_.copy_conf_late = cfg_.req_alloc_lead = cfg_.req_rows_late = cfg_.miss_lead = cfg_.ready_rep_late = false;
   const std::string e = cfg_.check();
   if (!e.empty()) {
     std::fprintf(stderr, "ooe: %s\n", e.c_str());

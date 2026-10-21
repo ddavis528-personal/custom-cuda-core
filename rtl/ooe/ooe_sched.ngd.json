@@ -102,6 +102,12 @@
       "by": "OA",
       "date": "2026-10-20",
       "why": "OA's response OI-54 (OA tab, 2026-10-20): the leads into ooe_sched's enable flops, in NGD from the launching flop"
+    },
+    "mis_cq02h": {
+      "arrival": 4.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21): ooe_wake's miss pulses, from their copy flop"
     }
   }
 }

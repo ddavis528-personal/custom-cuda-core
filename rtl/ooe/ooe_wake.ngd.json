@@ -48,6 +48,18 @@
       "by": "OA",
       "date": "2026-10-21",
       "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 137), in NGD from the launching flop: the registered squash's frees, OI-58 (2)"
+    },
+    "hint_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 153): from the boundary receive flops, as cmpl_l and cmpl_idx, OI-58"
+    },
+    "hint_idx_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 153): from the boundary receive flops, as cmpl_l and cmpl_idx, OI-58"
     }
   }
 }
