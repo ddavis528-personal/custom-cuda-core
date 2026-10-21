@@ -402,6 +402,8 @@ bool Core::gprAllowed(unsigned slot, unsigned n) const {
 bool Core::gprReserved(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
   if (s.held_gpr + n > kArchGprs + cfg_.ren_ceil) return false;
+  // Under fits_stale 6 rename's allowance holds the floors (OA's rev 138).
+  if (ren_floors_in_share_) return gfree_.ready() >= n;
   // Every other tier-1 slot, occupied or not, keeps its architectural 16
   // plus its floor reserved: free registers must still cover them.
   unsigned owed = 0;
@@ -420,6 +422,7 @@ bool Core::predAllowed(unsigned slot, unsigned n) const {
 bool Core::predReserved(unsigned slot, unsigned n) const {
   const Slot &s = slot_[slot];
   if (s.held_pred + n > kArchPreds + cfg_.pred_ren_ceil) return false;
+  if (ren_floors_in_share_) return pfree_.ready() >= n;
   unsigned owed = 0;
   for (unsigned v = 0; v != slot_.size(); ++v)
     if (v != slot) {
@@ -427,6 +430,22 @@ bool Core::predReserved(unsigned slot, unsigned n) const {
       owed += slot_[v].held_pred < want ? want - slot_[v].held_pred : 0;
     }
   return pfree_.ready() >= n + owed;
+}
+
+/// A slot's floor still unspent (A-26, A-34): its architectural registers
+/// plus its floor, less what it holds.
+unsigned Core::unmetFloor(unsigned slot, bool pred) const {
+  const Slot &s = slot_[slot];
+  const unsigned want = pred ? kArchPreds + cfg_.pred_ren_floor : kArchGprs + cfg_.ren_floor;
+  const unsigned held = pred ? s.held_pred : s.held_gpr;
+  return held < want ? want - held : 0;
+}
+
+/// Every tier-1 slot's unspent floor, occupied or not.
+unsigned Core::floorsOwed(bool pred) const {
+  unsigned owed = 0;
+  for (unsigned v = 0; v != slot_.size(); ++v) owed += unmetFloor(v, pred);
+  return owed;
 }
 
 unsigned Core::allocGpr(unsigned slot) {
@@ -2730,6 +2749,7 @@ void Core::rename() {
   }
   // fits_stale 3: per-warp shares of each shared credit, no short path.
   shares_on_ = cfg_.fits_stale >= 3 && cfg_.fits_stale <= 7 && (cfg_.rename_one_warp != 1 || cfg_.fits_stale == 6);
+  ren_floors_in_share_ = shares_on_ && cfg_.fits_stale == 6;
   if (shares_on_ && cfg_.fits_stale == 7) {
     short_credit = false;
     ren_late_frees_ = true;
@@ -2870,6 +2890,11 @@ void Core::rename() {
         held = std::min(held, cfg_.rename_width);
         if (held > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, held, c[r]);
         pool[r] = c[r] - std::min(held, c[r]);
+        // The names (OA's rev 138): the credit is held as two counts, each
+        // slot's floor still unspent and the pool above every floor. The
+        // shares split only the pool; each warp's allowance adds its own
+        // floor (below), so the shares cannot break V-04.
+        if (r >= 2) pool[r] -= std::min(pool[r], floorsOwed(r == 3));
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
@@ -2883,6 +2908,10 @@ void Core::rename() {
         if (cfg_.fits_stale != 5) split[with[0]][r] += rem;
       }
     if (cfg_.fits_stale == 6) {
+      for (unsigned si : with) {
+        split[si][2] += unmetFloor(si, false);
+        if (cfg_.rename_preds) split[si][3] += unmetFloor(si, true);
+      }
       share_ = share_reg_;
       share_reg_ = split;
     } else {
@@ -2956,6 +2985,7 @@ void Core::rename() {
     }
   }
   ren_late_frees_ = false;
+  ren_floors_in_share_ = false;
   if (shares_on_ && (cfg_.fits_stale == 4 || cfg_.fits_stale == 7))
     for (unsigned si = 0; si != slot_.size(); ++si) {
       for (unsigned r = 0; r != 4; ++r) share_[si][r] -= std::min(share_[si][r], ren_slot_[si][r]);

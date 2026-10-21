@@ -239,7 +239,7 @@ struct Config {
   /// a split is usable two cycles on; a warp share_return cycles without a
   /// take returns its share (decided on its registered takes, the fits at
   /// offset 0 formed without it). The credits are rename's counters.
-  unsigned fits_stale = 0;
+  unsigned fits_stale = 6;
   /// Whether RS allocation may take an entry freed in the same cycle
   /// (same-edge reuse, DA's response OI-39). With confirmation inside
   /// ooe_rs (OI-45) the free reaches allocation from its own flops at 25.7
@@ -253,11 +253,11 @@ struct Config {
   /// re-checked in Rename 1 against the state as it stands). false: it
   /// waits until the fits hold it, as the RTL's fits with no arrival term
   /// (test/ooe/probes/sharefits_probe.sv, AR 0) do.
-  bool take_young = true;
+  bool take_young = false;
   /// A retirement's ROB slot counts in rename's room in its own cycle (the
   /// fits' ret_n term: test/ooe/probes/fitsk2_probe.sv, RET 1). false:
   /// under fits_conservative 3 and the shares, a cycle late.
-  bool ret_now = false;
+  bool ret_now = true;
   /// A copy's request sees its sources' confirmation a cycle late, as the
   /// composed RTL does (OI-45: ooe_rs decides a confirmation while
   /// ooe_sched is a model cycle on).
@@ -1214,6 +1214,7 @@ private:
   bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
   bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
   bool req_stop_q_ = false;               ///< ooe_sched's registered stop lead (req_rows_late)
+  bool ren_floors_in_share_ = false;      ///< rename's admission: the allowance holds the floors (fits_stale 6)
   std::vector<unsigned> hints_;           ///< completion hints sent before this cycle (miss_lead)
   /// req_rows_late: each row's state one and two updates ago (bit 0
   /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle, 4
@@ -1399,6 +1400,8 @@ private:
   void restoreStep();
   bool gprReserved(unsigned slot, unsigned n) const;
   bool predReserved(unsigned slot, unsigned n) const;
+  unsigned unmetFloor(unsigned slot, bool pred) const;
+  unsigned floorsOwed(bool pred) const;
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;
   std::vector<Memop> held_memops_;
