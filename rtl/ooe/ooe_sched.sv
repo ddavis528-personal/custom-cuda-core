@@ -113,11 +113,15 @@ module ooe_sched #(
   // pulses. Next cycle's issued and matrix only shrink by then, and its held
   // misses only grow by the pulses, so the lead is a superset.
   logic         stop_cq02h;
-  logic [N-1:0] rep_cq02h, ise_cq02h, gon;
+  (* keep *) logic [N-1:0] gnt_cq04h;      // the grant register's mask copy
+  logic [N-1:0] rep_cq02h, ise_cq02h, gon, isg;
   always_comb begin
+    // Issued counts the grant leaving now (the grant register), which
+    // ooe_wake takes at this edge.
+    isg = iss_cq02h | gnt_cq04h;
     for (int i = 0; i < N; i++)
-      rep_cq02h[i] = iss_cq02h[i] && (dep_cq02h[i * N +: N] & (~iss_cq02h | msd_cq02h)) != '0;
-    ise_cq02h  = iss_cq02h & ~rep_cq02h;
+      rep_cq02h[i] = isg[i] && (dep_cq02h[i * N +: N] & (~isg | msd_cq02h)) != '0;
+    ise_cq02h  = isg & ~rep_cq02h;
     gon        = ~ise_cq02h | msd_cq02h | mis_cq02h;
     stop_cq02h = 1'b0;
     for (int i = 0; i < N; i++)
@@ -145,7 +149,6 @@ module ooe_sched #(
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
   // -- Request register -------------------------------------------------------
-  (* keep *) logic [N-1:0] gnt_cq04h;      // the grant register's mask copy
   logic [N-1:0] rq_cq02h, rq_cq03h;
   logic         chg_cq04h, rq_en, gnt_en;
   always_comb
@@ -173,6 +176,7 @@ module ooe_sched #(
     if (rst_r01h) begin
       ready_en_cq03h <= 1'b0;
       stop_cq03h     <= 1'b0;
+
       chg_cq04h      <= 1'b0;
     end else begin
       // A grant leaving now: ooe_wake takes it at this edge, and its lead

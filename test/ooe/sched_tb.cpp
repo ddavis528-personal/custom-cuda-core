@@ -51,6 +51,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -93,7 +94,7 @@ template <typename T> void setField(T &w, unsigned lsb, unsigned n, unsigned v) 
 struct Snap {
   bool live = false;              // the sectioned select ran, and this core is followed
   // The registers' next values and the leads this cycle formed.
-  std::vector<uint8_t> dep, code, wake, valid, iss, slot, copy, msd, mis, wtl;
+  std::vector<uint8_t> dep, code, wake, valid, iss, slot, copy, msd, mis, wtl, rfree;
   unsigned active = 0;
   bool alloc = false, miss = false;
   // Select's live terms and its grants.
@@ -105,7 +106,16 @@ struct Snap {
   std::vector<uint8_t> ready_q, req_q, v73;
 };
 
-Snap prev, pprev;   // the last model cycle, and the one before
+Snap prev, pprev, ppprev;   // the last model cycles, newest first
+const bool phys = std::getenv("SCHED_PHYS") != nullptr;   // as ooe_rs and ooe_wake hold them (OI-45 frame study)
+const bool phys_rows = phys || std::getenv("SCHED_PHYS_ROWS");   // the matrix, valid, slot and copy only
+// With a bypass of the RS's writes in the cycle (its allocations and frees):
+// the matrix as the end of P - 1 leaves it.
+const bool phys_byp = std::getenv("SCHED_PHYS_BYP") != nullptr;
+// With the RS's frees of the last two cycles masking their columns (a
+// free history in ooe_sched): the stale matrix's column clears.
+const bool phys_frees = std::getenv("SCHED_PHYS_FREES") != nullptr;
+const bool phys_iss = phys || std::getenv("SCHED_PHYS_ISS");     // issued and the held misses only
 bool have_prev = false;
 uint64_t current = 0;
 bool follow = false;
@@ -143,6 +153,8 @@ Snap snap(const Core &c) {
   for (unsigned si = 0; si != S; ++si)
     if (c.slotActive(si)) s.active |= 1u << si;
   s.alloc = !w.ralloc.empty();
+  s.rfree.assign(N, 0);
+  for (unsigned e = 0; e != N && e < w.rfree.size(); ++e) s.rfree[e] = w.rfree[e];
   s.mis.assign(N, 0);
   for (unsigned e = 0; e != N && e < w.miss.size(); ++e) {
     s.miss = s.miss || w.miss[e];
@@ -194,56 +206,67 @@ void reset() {
   dut->ooe_rst_r00h = 0;
 }
 
+std::map<std::string, unsigned long long> kinds;   // mismatches by kind (SCHED_PHYS's study)
 void fail(const char *what, unsigned e, bool rtl, bool model) {
-  if (++mismatches <= 5)
+  ++mismatches;
+  if (++kinds[what] <= 3)
     std::fprintf(stderr, "cycle %llu entry %u: %s (rtl %d, model %d)\n", cycles, e, what, int(rtl), int(model));
 }
 
 // Drive model cycle p, with the next cycle's missed bits and miss (n), and
 // clock the edge at its end.
-void drive(const Snap &p, const Snap &n) {
+void drive(const Snap &p0, const Snap &n) {
   const bool late = control == "late-leads";
-  const Snap &l = late ? p : n;
+  const Snap &l = late ? p0 : n;
+  // SCHED_PHYS: the state terms as ooe_rs and ooe_wake hold them in this
+  // cycle (the end of P - 2; issued likewise; the held misses of P - 1).
+  const Snap &p = phys_byp && !pprev.valid.empty() ? pprev : phys_rows && !ppprev.valid.empty() ? ppprev : p0;
   for (unsigned i = 0; i != N * N; ++i) {
-    setBit(dut->dep_cq02h, i, p.dep[i]);
+    const unsigned j = i % N;
+    const bool cleared = phys_frees && !pprev.rfree.empty() && (pprev.rfree[j] || p0.rfree[j]);
+    setBit(dut->dep_cq02h, i, p.dep[i] && !cleared);
     setBit(dut->code_cq02h, i * 2, p.code[i] & 1u);
     setBit(dut->code_cq02h, i * 2 + 1, (p.code[i] >> 1) & 1u);
   }
-  for (unsigned i = 0; i != N * WL; ++i) setBit(dut->wake_cq02h, i, p.wake[i]);
+  for (unsigned i = 0; i != N * WL; ++i) setBit(dut->wake_cq02h, i, p0.wake[i]);
   for (unsigned e = 0; e != N; ++e) {
     setBit(dut->valid_cq02h, e, p.valid[e]);
     // Issued after this edge as ooe_wake holds it (OI-45): the model's at
     // the end of the cycle before, its grants and stops in; this cycle's
     // stops are ooe_sched's own (rep), its grants the grant register's next.
-    setBit(dut->iss_cq02h, e, e < pprev.iss.size() && pprev.valid[e] && pprev.iss[e]);
+    const Snap &is = phys_iss ? ppprev : pprev;
+    setBit(dut->iss_cq02h, e, e < is.iss.size() && is.valid[e] && is.iss[e]);
     setField(dut->slot_cq02h, e * LS, LS, p.slot[e]);
     setBit(dut->copy_cq02h, e, p.copy[e]);
     // The held misses, as this cycle's hop reads them (ooe_wake's msd_cq02h).
-    const Snap &m = late ? pprev : p;
+    const Snap &m = late || phys_iss ? pprev : p0;
     setBit(dut->msd_cq02h, e, control != "no-msd" && e < m.msd.size() && m.msd[e]);
     setBit(dut->mis_cq02h, e, control != "no-msd" && e < m.mis.size() && m.mis[e]);
   }
-  dut->active_cq02h = p.active;
-  for (unsigned j = 0; j != N * WL; ++j) setBit(dut->wtl_cq02h, j, p.wtl[j]);
+  dut->active_cq02h = p0.active;
+  for (unsigned j = 0; j != N * WL; ++j) setBit(dut->wtl_cq02h, j, p0.wtl[j]);
   dut->wml_cq02h = control != "no-miss-lead" && l.miss;
-  dut->alloc_cq02h = control != "no-alloc-lead" && p.alloc;
+  // A row is written two cycles before ooe_sched sees it in the physical
+  // frame: the allocation lead goes when it does.
+  dut->alloc_cq02h = control != "no-alloc-lead" &&
+                     (phys_byp && !pprev.valid.empty() ? pprev.alloc : phys_rows && !ppprev.valid.empty() ? ppprev.alloc : p0.alloc);
   // Select's live terms.
   for (unsigned e = 0; e != N; ++e) {
-    const bool v = e < p.svalid.size() && p.svalid[e];
-    setBit(dut->vel_cq03h, e, v && p.selig[e]);
-    setBit(dut->siss_cq03h, e, v && p.siss[e]);
-    for (unsigned j = 0; j != N; ++j) setBit(dut->sdep_cq03h, e * N + j, v && !p.sconf[e] && j == e);
-    setField(dut->sslot_cq03h, e * LS, LS, v ? p.sslot[e] : 0);
-    setField(dut->res_cq03h, e * 9, 9, v ? p.res[e] : 0);
-    setBit(dut->chas_cq03h, e, v && p.chas[e]);
-    setField(dut->cidx_cq03h, e * W, W, v ? p.cidx[e] : 0);
+    const bool v = e < p0.svalid.size() && p0.svalid[e];
+    setBit(dut->vel_cq03h, e, v && p0.selig[e]);
+    setBit(dut->siss_cq03h, e, v && p0.siss[e]);
+    for (unsigned j = 0; j != N; ++j) setBit(dut->sdep_cq03h, e * N + j, v && !p0.sconf[e] && j == e);
+    setField(dut->sslot_cq03h, e * LS, LS, v ? p0.sslot[e] : 0);
+    setField(dut->res_cq03h, e * 9, 9, v ? p0.res[e] : 0);
+    setBit(dut->chas_cq03h, e, v && p0.chas[e]);
+    setField(dut->cidx_cq03h, e * W, W, v ? p0.cidx[e] : 0);
   }
   for (unsigned e = 0; e != NR; ++e)
-    for (unsigned j = 0; j != NR; ++j) setBit(dut->older_r_cq03h, e * NR + j, p.age[j] < p.age[e]);
+    for (unsigned j = 0; j != NR; ++j) setBit(dut->older_r_cq03h, e * NR + j, p0.age[j] < p0.age[e]);
   for (unsigned e = 0; e != NM; ++e)
-    for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, p.age[NR + j] < p.age[NR + e]);
-  dut->busy_cq03h = p.busy;
-  dut->block_cq03h = p.block;
+    for (unsigned j = 0; j != NM; ++j) setBit(dut->older_m_cq03h, e * NM + j, p0.age[NR + j] < p0.age[NR + e]);
+  dut->busy_cq03h = p0.busy;
+  dut->block_cq03h = p0.block;
   tick();
 }
 
@@ -305,6 +328,7 @@ void hook(const Core &c) {
       check(prev);
     }
   }
+  ppprev = have_prev ? std::move(pprev) : Snap();
   pprev = have_prev ? std::move(prev) : Snap();
   prev = std::move(s);
   have_prev = true;
@@ -335,6 +359,7 @@ int main(int argc, char **argv) {
     return 0;
   }
   const int model_fails = ooeTestRandomHookedWith(seeds, hook, schedConfig);
+  for (const auto &k : kinds) std::fprintf(stderr, "  %-34s %llu\n", k.first.c_str(), k.second);
   dut->final();
   std::printf("sched_tb control=%s seeds=%u cores=%llu cycles=%llu followed=%llu skipped=%llu grants=%llu "
               "requests=%llu ready_rows=%llu misses=%llu missed_bits=%llu mismatches=%llu model_failures=%d\n",
