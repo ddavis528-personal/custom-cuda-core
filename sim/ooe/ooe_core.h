@@ -227,6 +227,10 @@ struct Config {
   /// head (the remainder to the first in rotation); the shares and the pool
   /// sum to the credit, as registered (checked). 5: as 3, the remainder
   /// given to no warp (the split's add gone; test/ooe/probes/share_probe.sv).
+  /// 6: as 3, as the RTL registers it: the split of the last cycle's
+  /// credits (and its warps with a head) bounds each warp's takes over the
+  /// last cycle and this one, the fits formed a cycle ahead at each offset
+  /// of the warp's own take.
   unsigned fits_stale = 0;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
@@ -1089,6 +1093,7 @@ private:
   bool shr_copy_prev_ = false;            ///< and a copy among its candidate heads
   bool shares_on_ = false;                ///< fits_stale 3 this cycle
   std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
+  std::vector<std::array<unsigned, 4>> share_reg_, ren_prev_;  ///< fits_stale 6: the last cycle's split, and its takes
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
   std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle

@@ -2509,6 +2509,9 @@ void Core::rename() {
   // A restore-allocate in progress owns the allocation ports: no warp
   // renames until it is done (OA's response OI-41).
   if (!restore_q_.empty()) {
+    // fits_stale 6: no split is registered while a restore owns the ports.
+    for (auto &x : share_reg_) x = {0, 0, 0, 0};
+    for (auto &x : ren_prev_) x = {0, 0, 0, 0};
     restoreStep();
     count("stall.restore");
     return;
@@ -2571,7 +2574,7 @@ void Core::rename() {
     if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
   }
   // fits_stale 3: per-warp shares of each shared credit, no short path.
-  shares_on_ = (cfg_.fits_stale == 3 || cfg_.fits_stale == 4 || cfg_.fits_stale == 5) && cfg_.rename_one_warp != 1;
+  shares_on_ = cfg_.fits_stale >= 3 && cfg_.fits_stale <= 6 && (cfg_.rename_one_warp != 1 || cfg_.fits_stale == 6);
   if (shares_on_ && cfg_.fits_stale == 4) {
     short_credit = false;
     ren_late_frees_ = true;
@@ -2644,13 +2647,41 @@ void Core::rename() {
       const unsigned si = (rr_rename_ + k) % slot_.size();
       if (slot_[si].st != WarpState::kFree && slot_[si].decq) with.push_back(si);
     }
-    if (!with.empty())
+    // fits_stale 6 under one warp: no split; each warp's fits against the
+    // whole credits, as registered.
+    const bool one = cfg_.rename_one_warp == 1;
+    if (one)
+      for (unsigned si : with) for (unsigned r = 0; r != 4; ++r) share_[si][r] = c[r];
+    if (!with.empty() && !one)
       for (unsigned r = 0; r != 4; ++r) {
         const unsigned each = c[r] / unsigned(with.size()), rem = c[r] % unsigned(with.size());
         for (unsigned si : with) share_[si][r] = each;
         // fits_stale 5: equal shares, the remainder given to no warp.
-        if (cfg_.fits_stale == 3) share_[with[0]][r] += rem;
+        if (cfg_.fits_stale != 5) share_[with[0]][r] += rem;
       }
+    if (cfg_.fits_stale == 6) {
+      // This cycle's split is registered for the next; this cycle admits
+      // against the last's, less what each warp took then.
+      if (share_reg_.size() != slot_.size()) {
+        share_reg_.assign(slot_.size(), {0, 0, 0, 0});
+        ren_prev_.assign(slot_.size(), {0, 0, 0, 0});
+      }
+      std::swap(share_, share_reg_);
+      // Under one warp a warp's fits know only its own last take: another
+      // warp's (unknown when they were formed) may have drawn up to the
+      // width from each credit.
+      bool other = false;
+      for (unsigned si = 0; si != slot_.size(); ++si)
+        for (unsigned r = 0; r != 4; ++r) other = other || ren_prev_[si][r];
+      for (unsigned si = 0; si != slot_.size(); ++si) {
+        bool own = false;
+        for (unsigned r = 0; r != 4; ++r) own = own || ren_prev_[si][r];
+        for (unsigned r = 0; r != 4; ++r) {
+          const unsigned d = one && other && !own ? cfg_.rename_width : ren_prev_[si][r];
+          share_[si][r] -= std::min(share_[si][r], d);
+        }
+      }
+    }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
@@ -2719,6 +2750,9 @@ void Core::rename() {
     }
   }
   ren_late_frees_ = false;
+  if (shares_on_ && cfg_.fits_stale == 6)
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      for (unsigned r = 0; r != 4; ++r) ren_prev_[si][r] = ren_slot_[si][r];
   if (shares_on_ && cfg_.fits_stale == 4)
     for (unsigned si = 0; si != slot_.size(); ++si) {
       for (unsigned r = 0; r != 4; ++r) share_[si][r] -= std::min(share_[si][r], ren_slot_[si][r]);

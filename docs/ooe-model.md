@@ -448,6 +448,19 @@ TAB 2, proved equal), 23.4 from the counters and head valids and 22.3
 from decq's heads (map -r), which arrive at about 2: 24.3. 5 drops the
 remainder instead: 22.5 NGD, but the interleave +0.6%, two warps +0.7%
 (floor shares strand credit: 14,526 fragmentation stalls to 3's 5,310).
+6 is 3 as the RTL can register it, and corrects 3's figure. The fits
+are formed a cycle ahead, so the split they read is of the last cycle's
+credits and its warps with a head, and it bounds each warp's takes over
+the last cycle and this one (the fits at each offset of the warp's own
+last take). 3 split this cycle's credits, which no registered fits can
+see: the other warps' last takes are not known when the fits are formed.
+The interleave 1,004 (+2.1% against 983), two warps 1,013 (+3.1%): the
+last cycle's frees reach the split a cycle later, and a warp that took
+its share waits a cycle while the others keep theirs. One warp formed the
+same way (each warp's fits against the whole credits, as registered, less
+its own last take, or less the width in each credit when another warp
+took) is 1,047 (+6.5%); 3's one-warp +1.3% admitted against running
+credits, which a registered go cannot.
 4 is OA's stateful shares: each warp keeps its share, its own takes lower
 it, and frees and the shares of warps four cycles without a take form a
 pool split each cycle among the warps with a head; the shares and pool sum
