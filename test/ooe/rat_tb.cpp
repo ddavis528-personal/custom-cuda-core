@@ -33,8 +33,8 @@
 // group never reaches the RTL) and no-lead (rename's takes and
 // restore-allocates are not led).
 //
-// With --cg <scenario> <vcd> it is ooe_rat's clock-gating bench
-// (test/ooe/cg_trace.h), and compares nothing.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rat_tb [seeds] | rat_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rat_read.h"
@@ -51,7 +51,6 @@
 
 using ccv::ooe::Core;
 
-int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
 int ooeTestDirectedHooked(void (*hook)(const Core &));
 
 namespace {
@@ -112,12 +111,6 @@ void clearInputs() {
   clearAll(dut->restore_cq00h, S);
   clearAll(dut->squash_cq00h, S);
   clearAll(dut->release_cq00h, S);
-}
-
-// An idle cycle: nothing reaches the maps; the ports' fields hold.
-void idleTick() {
-  clearInputs();
-  tick();
 }
 
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
@@ -271,7 +264,7 @@ void hook(const Core &c) {
   // Before the edge: every rename port's reads, through the pending group.
   dut->ooe_core_clk = 0;
   dut->eval();
-  for (unsigned k = 0; k != order.size() && !cg.on(); ++k) {
+  for (unsigned k = 0; k != order.size(); ++k) {
     const auto &r = w.ren[order[k]];
     if (r.rst) continue;
     for (unsigned i = 0; i != 3; ++i) {
@@ -292,18 +285,6 @@ void hook(const Core &c) {
   tick();
   prev_ren = ren;
   prev_ret = ret;
-  if (cg.on()) {
-    // A gap after the cycle: its pending writes still land at the next
-    // edge, with nothing new led.
-    for (unsigned g = 0; g != cg.gaps(); ++g) {
-      clearInputs();
-      if (g == 0) drivePending();
-      tick();
-      prev_ren.clear();
-      prev_ret.clear();
-    }
-    return;
-  }
   // After it: every map, and every live checkpoint, as the model's an edge
   // before.
   if (have_snap)
@@ -338,27 +319,12 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_rat_read>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    clearInputs();
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) tick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
+  if (cg.on()) cg.open(*dut, vcd);
   // The directed tests first: demotion, kill and restore-allocate, which
-  // random traffic never reaches.
-  const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
+  // random traffic never reaches (the ordinary run; a scenario is the
+  // random tests').
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHooked(hook)) + cg.run(seeds, nullptr, hook);
+  cg.close();
   dut->final();
   std::printf("rat_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu renames=%llu in-group=%llu "
               "checkpoints=%llu restores=%llu squashes=%llu releases=%llu retires=%llu restore-writes=%llu "

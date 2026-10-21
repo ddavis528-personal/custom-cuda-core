@@ -43,11 +43,8 @@
 // edge names its next occupant. Control stale-hcol keeps the reference's
 // flags through a free, and must be caught: the comparison holds clearing.
 //
-// With --cg <scenario> <vcd> it is ooe_rs's clock-gating bench
-// (test/ooe/cg_trace.h), and compares nothing. Its medium scenario is the
-// model renaming a uop a cycle with no idle ticks (rsConfigMedium), not
-// cg_trace's two idle ticks a model cycle: ooe_rs confirms on its own, so
-// in an idle tick it would run ahead of the model the next cycle drives.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rs_tb [seeds] | rs_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_rs.h"
@@ -65,20 +62,12 @@
 using ccv::ooe::Core;
 
 using ccv::ooe::Config;
-int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
 int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &));
 // The RS as built (OI-45): no entry is allocated in the cycle it is freed,
 // under the go whose counters never count a free in its own cycle.
 void rsConfig(Config &c) {
   c.fits_stale = 6;
   c.rs_same_edge = false;
-}
-// A clock-gating run's medium scenario: the model renaming a uop a cycle,
-// every clock a model cycle. ooe_rs confirms on its own (OI-45), so idle
-// ticks between model cycles would let it run ahead of the model.
-void rsConfigMedium(Config &c) {
-  rsConfig(c);
-  c.rename_width = 1;
 }
 
 namespace {
@@ -198,11 +187,10 @@ void drivePayload(const Snap &c) {
 }
 
 // The leads of a cycle's events (n: the next cycle's allocations and
-// squash; c: the completions whose valid goes now; sq: a squash's lead
-// besides, the clock-gating run's cover below).
-void driveLeads(const Snap *n, const Snap *c, bool sq = false) {
+// squash; c: the completions whose valid goes now).
+void driveLeads(const Snap *n, const Snap *c) {
   clearAll(dut->req_l_cq00h, P);
-  dut->sq_l_cq00h = sq && control != "no-sq-lead";
+  dut->sq_l_cq00h = 0;
   driveCmplLead(c);
   if (!n) return;
   std::vector<unsigned> entry_of;
@@ -210,17 +198,7 @@ void driveLeads(const Snap *n, const Snap *c, bool sq = false) {
   portsOf(*n, entry_of, port_of);
   for (unsigned p = 0; p != P; ++p)
     if (entry_of[p] != N && control != "no-req-lead") setBit(dut->req_l_cq00h, p, true);
-  dut->sq_l_cq00h = (sq || n->sq) && control != "no-sq-lead";
-}
-
-// An idle cycle: no allocation and no free; the rows, the confirmation
-// leads' terms and the completions' payload hold. The last one before a
-// cycle carries its leads.
-void idleTick(const Snap *n = nullptr, const Snap *c = nullptr, bool sq = false) {
-  clearAll(dut->req_cq01h, P);
-  clearAll(dut->sqf_cq01h, N);
-  driveLeads(n, c, sq);
-  tick();
+  dut->sq_l_cq00h = n->sq && control != "no-sq-lead";
 }
 
 void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model) {
@@ -308,44 +286,8 @@ void hook(const Core &c) {
   }
   // The completions arriving with this edge's valid flop: a + 1's.
   drivePayload(n1);
-  const unsigned gaps = 0;   // see rsConfigMedium: no idle ticks between model cycles
-  if (gaps) {
-    // A clock-gating run's idle ticks come between this cycle and the
-    // next, so the leads' terms predict nothing here: only the last idle
-    // tick does (below), and the completion valid goes the tick before it.
-    for (unsigned j = 0; j != N; ++j) {
-      setBit(dut->wtl3_cq00h, j, false);
-      setBit(dut->fin_cq00h, j, false);
-      setBit(dut->gnt_cq00h, j, false);
-    }
-    driveLeads(nullptr, gaps == 1 ? &n1 : nullptr);
-  } else {
-    driveLeads(&n1, &n2);
-  }
+  driveLeads(&n1, &n2);
   tick();
-  if (gaps) {
-    // The last idle tick predicts the next cycle: the terms as ooe_wake
-    // shows them after this edge (an entry freed at it neither final nor
-    // issued), the completions arriving with their valid's flop, and the
-    // next cycle's leads. Idle ticks break the lead's hold for a restart (a
-    // flop a tick), so there a free of an entry that completed in the two
-    // cycles before takes the squash's lead too.
-    bool cover = false;
-    for (unsigned j = 0; j != N; ++j)
-      if (n1.rfree[j] && (std::count(y.cidx.begin(), y.cidx.end(), j) || std::count(pm.cidx.begin(), pm.cidx.end(), j)))
-        cover = true;
-    for (unsigned g = 0; g != gaps; ++g) {
-      const bool last = g + 1 == gaps;
-      for (unsigned j = 0; j != N; ++j) {
-        setBit(dut->wtl3_cq00h, j, last && pm.wtl3[j] && !y.rfree[j]);
-        setBit(dut->fin_cq00h, j, last && control != "no-fin" && y.fin[j] && !y.rfree[j]);
-        setBit(dut->gnt_cq00h, j, false);
-      }
-      idleTick(last ? &n1 : nullptr, g + 2 == gaps ? &n1 : nullptr, cover && last);
-    }
-    hist.erase(hist.begin());
-    return;
-  }
   // After the edge: the grants, registered, every port's.
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
@@ -395,30 +337,10 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_rs>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    clearAll(dut->req_cq01h, P);
-    clearAll(dut->sqf_cq01h, N);
-    clearAll(dut->msd_cq01h, N);
-    clearAll(dut->cfin_cq01h, N);
-    driveLeads(nullptr, nullptr);
-    clearAll(dut->cmpl_idx_cq00h, NCL * W);
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) tick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomHookedWith(CgRun::kSeeds, hook, cg.gaps() ? rsConfigMedium : rsConfig);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestDirectedHookedWith(hook, rsConfig) + ooeTestRandomHookedWith(seeds, hook, rsConfig);
+  if (cg.on()) cg.open(*dut, vcd);
+  // The directed tests in the ordinary run; a scenario is the random tests'.
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, rsConfig)) + cg.run(seeds, nullptr, hook, rsConfig);
+  cg.close();
   dut->final();
   std::printf("rs_tb control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu in-group=%llu frees=%llu "
               "same-edge=%llu rows=%llu cells=%llu stale=%llu mismatches=%llu model_failures=%d\n",

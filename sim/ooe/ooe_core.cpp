@@ -5,6 +5,7 @@
 // open are in docs/ooe-model.md and cited here by its section names.
 //===----------------------------------------------------------------------===//
 #include "ooe_core.h"
+#include "ccv_interfaces.h"
 
 #include <algorithm>
 #include <cstdarg>
@@ -288,6 +289,16 @@ void Core::kill(uint32_t mask, unsigned epoch) {
 
 void Core::cycle(uint64_t now) {
   now_ = now;
+  // An input assumption: no channel carries more in a cycle than its rate
+  // (schema/interfaces.json), which the RTL's lanes cannot exceed.
+  auto rate = [&](size_t n, ccv::Channel ch) {
+    if (n > ccv::channelInfo(ch).rate)
+      err("contract: %s carries %u messages in a cycle, over its rate %u", ccv::channelInfo(ch).name, unsigned(n),
+          ccv::channelInfo(ch).rate);
+  };
+  rate(dones_.size(), ccv::CH_RCU_OOE_DONE);
+  rate(cmpls_.size(), ccv::CH_MIU_OOE_CMPL);
+  rate(hints_.size(), ccv::CH_MIU_OOE_CMPL_HINT);
   // OA-23's hints, two cycles ahead of their completions: ooe_wake keeps a
   // spec load's lead line on one that comes by its miss's lead (the
   // completion at the L1 contract), and drops it otherwise.

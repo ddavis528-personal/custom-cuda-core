@@ -19,6 +19,7 @@
 // Usage: ooe-test [--seeds N]. Exit status 0 iff every test passes.
 //===----------------------------------------------------------------------===//
 #include "ooe_core.h"
+#include "ccv_interfaces.h"
 
 #include <algorithm>
 #include <cstdio>
@@ -42,6 +43,10 @@ void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over ev
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
+/// DEC delivers up to g_dec_width uops on one cycle in g_dec_every: a
+/// scenario's traffic (ooeTestScenario; docs/rtl-coding-style.md, the
+/// clock-gating scenarios).
+unsigned g_dec_every = 1, g_dec_width = 6;
 std::string g_test;
 #define EXPECT(c, ...)                                                      \
   do {                                                                      \
@@ -397,6 +402,13 @@ struct Env {
     }
   }
 
+  /// The first cycle from `when` with a lane free on ccv_miu_ooe_cmpl (its
+  /// hint channel's rate is the same): MIU never sends more than its rate.
+  uint64_t cmplRoom(uint64_t when) const {
+    while (cmpls.count(when) >= ccv::channelInfo(ccv::CH_MIU_OOE_CMPL).rate) ++when;
+    return when;
+  }
+
   void onMemop(const Memop &m) {
     if (m.mem_op == 0xF) return;
     const Op &o = op_of[m.tid];
@@ -407,9 +419,12 @@ struct Env {
     c.rob_tag = m.rob_tag;
     uint64_t when;
     if (o.k == kLoad && cfg.l1_spec) {
-      const bool hit = rnd(100) >= miss_pct;
+      bool hit = rnd(100) >= miss_pct;
+      when = cmplRoom(t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra)));
+      // A hit the channel has no room for at the L1 contract completes
+      // later, which is a miss.
+      hit = hit && when == t + cfg.lat_l1_cmpl;
       hit_of[m.tid] = hit;
-      when = t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra));
       if (m.pdst) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
         const uint64_t rd = hit ? t + cfg.lat_l1_wake : when + data_after_cmpl;
@@ -418,7 +433,7 @@ struct Env {
         landings.insert({rd, {m.pdst, m.tid}});
       }
     } else {
-      when = t + 4 + rnd(miss_extra);
+      when = cmplRoom(t + 4 + rnd(miss_extra));
       if (o.k == kLoad && m.pdst) {
         const uint64_t rd = when + data_after_cmpl;
         gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
@@ -495,10 +510,12 @@ struct Env {
     }
     for (Warp &x : w) x.launched = true;
     fetch();
-    // DEC: up to six uops a cycle, in fetch order, as credit allows.
+    // DEC: up to six uops a cycle, in fetch order, as credit allows (a
+    // scenario's traffic: up to g_dec_width on one cycle in g_dec_every).
+    const unsigned width = t % g_dec_every ? 0 : g_dec_width;
     unsigned n = 0;
     std::set<unsigned> held;
-    for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != 6;) {
+    for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != width;) {
       if (held.count(it->second.warp)) { ++it; continue; }
       if (!core.canAccept(it->second.warp)) { held.insert(it->second.warp); ++it; continue; }
       core.uop(it->second);
@@ -1556,30 +1573,37 @@ void testSections() {
   }
 }
 
+/// A random test's core configuration, by seed and mode.
+Config randomConfig(unsigned seed, int mode) {
+  // Odd seeds run the bypass-group configuration, SFU ops included.
+  const bool groups = seed % 2 == 1;
+  Config c = groups ? groupConfig() : baseConfig();
+  c.bypass = mode & 1;
+  c.l1_spec = (mode & 2) != 0;
+  // Modes 4-7: sectioned lanes and narrow registers, each placement
+  // rule in turn, with loads passing loads on odd seeds (OA-13).
+  const bool sec = (mode & 4) != 0;
+  c.sectioned = sec;
+  c.place = seed % 5;
+  c.loads_pass_loads = sec && seed % 2 == 1;
+  // Every fifth seed: a floorplan where load data lands after the
+  // completion (the links split does this), and the core told so.
+  if (seed % 5 == 0) c.cmpl_wake_delay = 2;
+  // Every seventh seed from the third: a long L1 shadow, the completion
+  // a lane latency past the wake, so grandchildren issue on a load that
+  // then misses and transitive cancel takes more than one hop.
+  if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
+  return c;
+}
+
 void testRandom(unsigned seeds) {
   for (unsigned seed = 1; seed <= seeds; ++seed) {
     for (int mode = 0; mode != 8; ++mode) {
       g_test = "random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
       if (const char *only = std::getenv("OOE_TEST_ONLY")) if (g_test != only) continue;
-      // Odd seeds run the bypass-group configuration, SFU ops included.
-      const bool groups = seed % 2 == 1;
-      Config c = groups ? groupConfig() : baseConfig();
-      c.bypass = mode & 1;
-      c.l1_spec = (mode & 2) != 0;
-      // Modes 4-7: sectioned lanes and narrow registers, each placement
-      // rule in turn, with loads passing loads on odd seeds (OA-13).
-      const bool sec = (mode & 4) != 0;
-      c.sectioned = sec;
-      c.place = seed % 5;
-      c.loads_pass_loads = sec && seed % 2 == 1;
+      const bool groups = seed % 2 == 1, sec = (mode & 4) != 0;
+      const Config c = randomConfig(seed, mode);
       std::mt19937 rng(seed * 4 + unsigned(mode));
-      // Every fifth seed: a floorplan where load data lands after the
-      // completion (the links split does this), and the core told so.
-      if (seed % 5 == 0) c.cmpl_wake_delay = 2;
-      // Every seventh seed from the third: a long L1 shadow, the completion
-      // a lane latency past the wake, so grandchildren issue on a load that
-      // then misses and transitive cancel takes more than one hop.
-      if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
       Env e(c, seed * 7 + unsigned(mode));
       e.miss_pct = 30;
       e.data_after_cmpl = c.cmpl_wake_delay;
@@ -2113,6 +2137,41 @@ int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_pre_cycle_hook = hook;
   testRandom(seeds);
   g_pre_cycle_hook = nullptr;
+  return g_fail;
+}
+/// A bench's run in one of the clock-gating scenarios (docs/rtl-coding-
+/// style.md; test/ooe/cg_trace.h), each the model's own traffic, so a bench
+/// checks every scenario as it checks any run:
+///   idle    a core with nothing launched, for idle_cycles, in each of
+///           the random tests' configurations (seed 2's modes), so a bench
+///           idles in those it follows;
+///   medium  the random tests, DEC delivering one uop on one cycle in
+///           three, so the core works on a fraction of cycles;
+///   high    the random tests as they are.
+/// pre and post are the hooks before and after each core cycle, cfg the
+/// settings the RTL under test assumes (any may be null). Returns the
+/// failure count.
+int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
+                    void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
+  g_pre_cycle_hook = pre;
+  g_cycle_hook = post;
+  g_config_hook = cfg;
+  if (scenario == "idle") {
+    for (int mode = 0; mode != 8; ++mode) {
+      Env e(randomConfig(2, mode));
+      for (unsigned k = 0; k != idle_cycles; ++k) e.step();
+    }
+  } else {
+    const bool medium = scenario == "medium";
+    g_dec_every = medium ? 3 : 1;
+    g_dec_width = medium ? 1 : 6;
+    testRandom(seeds);
+    g_dec_every = 1;
+    g_dec_width = 6;
+  }
+  g_pre_cycle_hook = nullptr;
+  g_cycle_hook = nullptr;
+  g_config_hook = nullptr;
   return g_fail;
 }
 #else

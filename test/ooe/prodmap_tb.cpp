@@ -19,8 +19,8 @@
 // caught: no-ename (the copy port's entry takes no names, so a masked
 // load's copy is never found), port-swap (a group's two RCU ports are
 // exchanged in the grant) and no-lead (the lead is never driven).
-// With --cg <scenario> <vcd> it is ooe_prodmap's clock-gating bench
-// (test/ooe/cg_trace.h), and compares nothing.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: prodmap_tb [seeds] | prodmap_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_prodmap.h"
@@ -38,7 +38,6 @@
 using ccv::ooe::Core;
 using ccv::ooe::kNoEntry;
 
-int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &));
 int ooeTestDirectedHooked(void (*hook)(const Core &));
 
 namespace {
@@ -239,25 +238,6 @@ void hook(const Core &c) {
   y.preds = c.config().rename_preds;
   y.valid.resize(N);
   for (unsigned e = 0; e != N; ++e) y.valid[e] = c.rsLive(e);
-  if (cg.on()) {
-    // Clock-gating mode: a group's lead, names and grant on three ticks in
-    // a row, then the scenario's gaps, so no gap falls inside a group.
-    if (!y.grp.empty()) {
-      dut->v_l_cq00h = 1;
-      driveNames(nullptr);
-      driveGrant(nullptr);
-      tick();
-      dut->v_l_cq00h = 0;
-      driveNames(&y.grp);
-      tick();
-      driveNames(nullptr);
-      driveGrant(&y.grp);
-      tick();
-      driveGrant(nullptr);
-    }
-    for (unsigned g = 0; g != cg.gaps(); ++g) tick();
-    return;
-  }
   hist.push_back(y);
   // hist: ..., [granted], [named], [lead]
   const size_t k = hist.size();
@@ -280,22 +260,10 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_prodmap>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    resetRtl();
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) tick();
-    } else {
-      ooeTestRandomHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestDirectedHooked(hook) + ooeTestRandomHooked(seeds, hook);
+  if (cg.on()) cg.open(*dut, vcd);
+  // The directed tests in the ordinary run; a scenario is the random tests'.
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHooked(hook)) + cg.run(seeds, nullptr, hook);
+  cg.close();
   dut->final();
   std::printf("prodmap_tb control=%s seeds=%u cores=%llu cycles=%llu writes=%llu copies=%llu names=%llu "
               "live=%llu mismatches=%llu model_failures=%d\n",

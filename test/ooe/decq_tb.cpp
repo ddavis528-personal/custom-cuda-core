@@ -25,7 +25,9 @@
 // caught: drop-flush (a squash's flush never reaches the RTL), enq-swap (a
 // slot's two oldest arrivals in a cycle reach the ports youngest first) and
 // no-enq-lead (the arrival lead never reaches it).
-// Usage: decq_tb [seeds]
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
+// Usage: decq_tb [seeds] | decq_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_decq.h"
 #include "verilated.h"
@@ -41,7 +43,6 @@
 
 using ccv::ooe::Core;
 
-int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &));
 
 namespace {
 constexpr unsigned S = DQ_S, E = DQ_E, R = DQ_R, P = 16;
@@ -95,16 +96,6 @@ void tick() {
   dut->ooe_core_clk = 1;
   dut->eval();
   cg.dump();
-}
-
-// An idle cycle: nothing arrives, nothing is taken or flushed. The last
-// one before an edge with arrivals carries their lead.
-void idleTick(bool lead = false) {
-  dut->enq_v_cq01h = 0;
-  dut->deq_n_cq01h = 0;
-  dut->flush_cq01h = 0;
-  dut->enq_l_cq00h = lead && control != "no-enq-lead";
-  tick();
 }
 
 void fail(const char *what, unsigned slot, unsigned rtl, unsigned model) {
@@ -184,7 +175,7 @@ void drive(const Edge &e, bool lead) {
     setField(dut->enq_pay_cq01h, k * P, P, fresh[k].first & 0xffffu);
   }
   arrivals += fresh.size();
-  dut->enq_l_cq00h = lead && !cg.gaps() && control != "no-enq-lead";
+  dut->enq_l_cq00h = lead && control != "no-enq-lead";
   tick();
   // After the edge: the counts and the credits.
   unsigned total = 0;
@@ -198,7 +189,6 @@ void drive(const Edge &e, bool lead) {
   }
   full += total == DQ_Q;
   if (unsigned(dut->used_cq02h) != total + held) fail("credits differ", 0, unsigned(dut->used_cq02h), total + held);
-  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick(lead && g + 1 == cg.gaps());
 }
 
 void hook(const Core &c) {
@@ -237,27 +227,9 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_decq>(ctx.get());
-  if (cg.on()) {
-    // Idle cycles change nothing, so the comparisons still hold; the run
-    // passes or fails only on the bench's exit, which this mode ignores.
-    cg.open(*dut, vcd);
-    dut->enq_l_cq00h = 0;
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) idleTick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestRandomPreHooked(seeds, hook);
+  if (cg.on()) cg.open(*dut, vcd);
+  const int model_fails = cg.run(seeds, hook, nullptr);
+  cg.close();
   dut->final();
   std::printf("decq_tb control=%s seeds=%u cores=%llu cycles=%llu arrivals=%llu taken=%llu flushes=%llu "
               "heads=%llu pool-full=%llu mismatches=%llu model_failures=%d\n",
