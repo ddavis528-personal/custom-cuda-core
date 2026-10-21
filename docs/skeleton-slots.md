@@ -14,14 +14,14 @@ multi-instance endpoint (LANE has 32).
 |---|---|---|---|
 | 33 | 1 | 1 | 33 |
 | 2 | 1 | 32 | 64 |
-| 9 | 4 | 1 | 36 |
+| 11 | 4 | 1 | 44 |
 | 1 | 6 | 1 | 6 |
 | 1 | 7 | 1 | 7 |
 | 1 | 8 | 1 | 8 |
 | 1 | 9 | 1 | 9 |
-| **48** | | | **163** |
+| **50** | | | **171** |
 
-48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **163 slots**, one `ccv_common_chk_credit` each.
+50 channel types; **112 channel instances** (48 types at one instance, plus 2 at 32 each); **171 slots**, one `ccv_common_chk_credit` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 
@@ -79,3 +79,5 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 45 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
 | 46 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 47 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
+| 48 | `ccv_dcu_miu_fill_ntc` | 4 × 1 | 4 | *partial* | *free* | **none** — each notice names its refill by req_id, and its slot is its refill's | — | **true** — the promise counts cycles from the notice's landing, which means something only if MIU takes every notice the cycle it lands | txn |
+| 49 | `ccv_miu_ooe_cmpl_hint` | 4 × 1 | 4 | *partial* | *free* | **none** — each hint names its completion by rob_tag, and its slot is its completion's | — | **true** — the promise counts cycles from the hint's landing, which means something only if OOE takes every hint the cycle it lands | instr |

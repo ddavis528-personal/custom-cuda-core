@@ -85,6 +85,7 @@ public:
 private:
   ooe::Core core_;
   bool bad_pos_done_ = false;   ///< the bad-pos control names one register
+  std::map<unsigned, unsigned> rs_sent_;   ///< rob tag -> its memop's rs_idx (OA-23)
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
@@ -251,6 +252,11 @@ private:
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
         core_.done(d);
       }
+    // Completion hints (OA-23), taken as they land, as a fixed-latency
+    // channel's must be. The model does not wake on them yet (OI); the bank
+    // holds MIU to each one's promise.
+    for (unsigned s = 0; s != kChans[c.cmpl_hint].rate; ++s)
+      while (has(c.cmpl_hint, s)) take(c.cmpl_hint, s);
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
         Receiver::Msg m = take(c.miu_ooe, s);
@@ -261,6 +267,13 @@ private:
         x.lane_mask = uint32_t(get(m.payload, c.miu_ooe, "lane_mask"));
         x.address = get(m.payload, c.miu_ooe, "address");
         x.mlc_miss = get(m.payload, c.miu_ooe, "mlc_miss") != 0;
+        // MIU echoes the memop's RS entry (OA-23): any other is a completion
+        // that would wake the wrong entry.
+        const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
+        auto e = rs_sent_.find(x.rob_tag);
+        if (e != rs_sent_.end() && e->second != rs)
+          k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
+                  "named entry %u", x.rob_tag, rs, e->second);
         core_.cmpl(x);
       }
   }
@@ -378,6 +391,11 @@ private:
         const FieldDesc &d = field(c.ooe_miu, "disp");
         mo.set(d.lsb, ccv::prov::kWRobIdx, x.disp);
       } else {
+        // The RS entry, which MIU echoes on the completion (OA-23). 0 until
+        // the model names its entries (OI), so the echo is checked from the
+        // first run.
+        put(mo, c.ooe_miu, "rs_idx", 0);
+        rs_sent_[x.rob_tag] = 0;
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
         put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
         put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));

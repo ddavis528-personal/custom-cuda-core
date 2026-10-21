@@ -43,7 +43,7 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_common_chk_bank \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
      rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
      rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv \
-     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv \
+     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv \
      rtl/if/ccv_common_chk_wake.sv \
      rtl/generated/ccv_common_chk_bank.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
@@ -83,6 +83,7 @@ bank_ac=$(grep -c "^  ccv_common_chk_atomic #" rtl/generated/ccv_common_chk_bank
 bank_lc=$(grep -c "^  ccv_common_chk_lockstep #" rtl/generated/ccv_common_chk_bank.sv)
 bank_bc=$(grep -c "^  ccv_common_chk_binding #" rtl/generated/ccv_common_chk_bank.sv)
 bank_oc=$(grep -c "^  ccv_common_chk_outstanding #" rtl/generated/ccv_common_chk_bank.sv)
+bank_nc=$(grep -c "^  ccv_common_chk_notice #" rtl/generated/ccv_common_chk_bank.sv)
 bank_fx=$(grep -c "^  ccv_common_chk_credit #.*FIXED_LAT(1)" rtl/generated/ccv_common_chk_bank.sv)
 doc_n=$(grep -oE "\*\*[0-9]+ slots\*\*" docs/skeleton-slots.md | grep -oE "[0-9]+")
 "$SKEL" --cycles 4 >"$B/skel_count.log" 2>&1
@@ -91,13 +92,14 @@ if [ "$bank_cc" = "$X_SLOTS" ] && [ "$bin_n" = "$X_SLOTS" ] &&
    [ "$doc_n" = "$X_SLOTS" ] && [ "$bank_ac" = "$X_MULTI" ] &&
    [ "$bank_lc" = "$X_LOCKSTEP" ] && [ "$bank_bc" = "$X_BINDING" ] &&
    [ "$bank_oc" = "$X_OUTSTANDING" ] && [ "$bank_fx" = "$X_FIXED" ] &&
+   [ "$bank_nc" = "$X_NOTICE" ] &&
    [ "$(field "$B/skel_count.log" chan_insts)" = "$X_INSTS" ] &&
    [ "$(field "$B/skel_count.log" chan_types)" = "$X_TYPES" ]; then
   say "slots re-derived: $X_TYPES types, $X_INSTS instances" \
       "PASS ($X_SLOTS slots, $X_MULTI groups)"
 else
   bad "slot count re-derived from the schema" \
-      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; outstanding $bank_oc/$X_OUTSTANDING; fixed latency $bank_fx/$X_FIXED"
+      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; outstanding $bank_oc/$X_OUTSTANDING; notice $bank_nc/$X_NOTICE; fixed latency $bank_fx/$X_FIXED"
 fi
 
 # -- the trace sideband is invisible to synthesis --------------------------

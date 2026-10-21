@@ -381,6 +381,17 @@ private:
   std::set<uint64_t> busy_lines_;    ///< lines with a request to MLC in flight
   IdPool ids_;
   std::deque<Q> to_mlc_, to_miu_;
+  /// Refills promised by a notice on ccv_dcu_miu_fill_ntc (OA-23): each
+  /// leaves at its cycle on its slot, which keeps a credit back for it
+  /// until then (DCU spec, Internals).
+  struct Promise { uint64_t at; Q q; uint64_t line; };
+  std::deque<Promise> promised_;
+  std::map<unsigned, unsigned> resv_;   ///< slot -> promises not yet sent
+  /// A slot an ordinary response may use: a credit, and one more than its
+  /// promises hold back.
+  bool free(unsigned slot) {
+    return can(ch().dcu_miu, slot) && credits(ch().dcu_miu, slot) > resv_[slot];
+  }
 
   /// L1 (OI-5): a small direct-mapped array, so a load that revisits a line
   /// hits, and MIU can complete it at the L1 contract. A hit answers the
@@ -463,14 +474,20 @@ private:
       } else {
         const Miss x = it->second;
         miss_.erase(it);
-        busy_lines_.erase(x.line);
+        // A promised refill keeps its line busy until it leaves (refill), so
+        // a read queued behind the fill still answers after it.
+        const bool noticed = x.kind == kFill && promise(x);
+        if (!noticed) busy_lines_.erase(x.line);
         Bits r = rspFor(x.op.req);
         if (x.kind == kFill) {
           const Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
           putLine(r, field(c.dcu_miu, "read_data").lsb, l);
           put(r, c.dcu_miu, "mlc_miss", get(m.payload, c.mlc_dcu, "miss"));
           install(x.line, l);
-          to_miu_.push_back({x.op.slot, r, x.op.tid});
+          if (noticed)
+            refill(x.op.slot, r, x.op.tid, unsigned(get(r, c.dcu_miu, "req_id")), x.line);
+          else
+            to_miu_.push_back({x.op.slot, r, x.op.tid});
         } else if (x.kind == kRmwRead) {
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
           const Line w = getLine(x.op.req, field(c.miu_dcu, "write_data").lsb);
@@ -515,16 +532,49 @@ private:
       send(c.dcu_mlc, 0, to_mlc_.front().msg, to_mlc_.front().tid);
       to_mlc_.pop_front();
     }
+    // Promised refills first: each at its cycle, on its reserved credit.
+    for (auto it = promised_.begin(); it != promised_.end();) {
+      if (it->at != now_) { ++it; continue; }
+      if (!can(c.dcu_miu, it->q.slot))
+        k_.fail("dcu: the refill promised on slot %u at cycle %llu has no credit",
+                it->q.slot, (unsigned long long)now_);
+      else
+        send(c.dcu_miu, it->q.slot, it->q.msg, it->q.tid);
+      --resv_[it->q.slot];
+      busy_lines_.erase(it->line);
+      it = promised_.erase(it);
+    }
     for (auto it = to_miu_.begin(); it != to_miu_.end();)
-      if (can(c.dcu_miu, it->slot)) {
+      if (free(it->slot)) {
         send(c.dcu_miu, it->slot, it->msg, it->tid);
         it = to_miu_.erase(it);
       } else {
         ++it;
       }
   }
+  /// A refill is noticed (OA-23) if the notice's slot and a credit beyond
+  /// those already promised are free; else it is sent as it can be.
+  bool promise(const Miss &x) {
+    return can(ch().fill_ntc, x.op.slot) && credits(ch().dcu_miu, x.op.slot) > resv_[x.op.slot];
+  }
+  /// A noticed refill: the notice, naming MIU's req_id, launches now, so its
+  /// payload lands two cycles on; the refill launches the cycle before its
+  /// valid is due, exactly CCV_LAT_FILL_NOTICE cycles after that.
+  void refill(unsigned slot, const Bits &r, uint64_t tid, unsigned id, uint64_t line) {
+    const Ch &c = ch();
+    Bits n = msgOf(c.fill_ntc);
+    put(n, c.fill_ntc, "req_id", k_.brk == "notice-wrong-id" ? id ^ 1u : id);
+    send(c.fill_ntc, slot, n, tid);
+    promised_.push_back({now_ + 1 + ccv::prov::kLatFillNotice +
+                             (k_.brk == "late-refill" ? 1 : 0),
+                         {slot, r, tid}, line});
+    ++resv_[slot];
+    k_.hit("fill_notice");
+  }
+
   bool busy() const override {
-    return !q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty();
+    return !q_.empty() || !miss_.empty() || !to_mlc_.empty() || !to_miu_.empty() ||
+           !promised_.empty();
   }
 };
 
@@ -543,6 +593,7 @@ private:
     bool store = false;
     unsigned tag = 0, memop_slot = 0, addr_slot = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
+    unsigned rs_idx = 0;                    ///< echoed on miu_ooe_cmpl (OA-23)
     unsigned dst_pos = 0, chw = 0;          ///< likewise: the slice a load writes
     uint32_t active = 0;             ///< lanes that may access memory
     uint64_t tid = 0;
@@ -555,6 +606,7 @@ private:
     bool mlc_miss = false;           ///< some line's fill missed MLC
     uint64_t due = 0;                ///< a global load's L1-contract cycle
     uint64_t serial = 0;             ///< names it to the DCU responses
+    uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
   };
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
@@ -578,9 +630,67 @@ private:
   /// The job and line of each request to DCU, by req_id.
   std::map<unsigned, std::pair<uint64_t, uint64_t>> outstanding_;
   std::deque<Q> to_rcu_, to_ooe_, to_dcu_, to_fet_;
+  /// Hints promised to OOE (OA-23), each launched at its cycle; and the
+  /// credits held back for hinted completions and their data, by slot.
+  struct Hint { uint64_t at; Q q; };
+  std::deque<Hint> hints_;
+  std::map<std::pair<unsigned, unsigned>, unsigned> resv_;
+  /// A slot an ordinary message may use: a credit, and one more than the
+  /// hinted completions hold back.
+  bool free(unsigned chan, unsigned slot) {
+    return can(chan, slot) && credits(chan, slot) > resv_[{chan, slot}];
+  }
+  bool spare(unsigned chan, unsigned slot) {
+    return credits(chan, slot) > resv_[{chan, slot}];
+  }
+
+  /// A refill notice (OA-23): its refill's valid lands CCV_LAT_FILL_NOTICE
+  /// cycles from now, its payload a cycle later, and a load waiting on
+  /// nothing else completes as it lands. So the completion launches then
+  /// and its hint CCV_LAT_CMPL_HINT + 1 cycles before, on the completion's
+  /// slot, with that slot's credit, the hint's and the data's held back.
+  void notice(unsigned id) {
+    const Ch &c = ch();
+    auto o = outstanding_.find(id);
+    if (o == outstanding_.end()) return;   // a notice names what DCU owes; nothing here to hint
+    for (Job &j : jobs_) {
+      if (j.serial != o->second.first) continue;
+      if (j.store || j.promised || j.next != j.lines.size() || j.back + 1 != j.lines.size())
+        return;
+      const uint64_t at = now_ + ccv::prov::kLatFillNotice + 1;
+      const uint64_t h = at - ccv::kLatCmplHint - 1;
+      const unsigned ms = j.memop_slot, as = j.addr_slot;
+      if (h < now_ + 1 || !spare(c.cmpl_hint, ms) || !spare(c.miu_ooe, ms) ||
+          !spare(c.miu_rcu, as))
+        return;
+      Bits m = msgOf(c.cmpl_hint);
+      put(m, c.cmpl_hint, "rs_idx", j.rs_idx);
+      put(m, c.cmpl_hint, "rob_tag", k_.brk == "hint-wrong-tag" ? j.tag ^ 1u : j.tag);
+      hints_.push_back({h, {ms, m, j.tid}});
+      ++resv_[{c.cmpl_hint, ms}];
+      ++resv_[{c.miu_ooe, ms}];
+      ++resv_[{c.miu_rcu, as}];
+      j.promised = at;
+      return;
+    }
+  }
 
   void work() override {
     const Ch &c = ch();
+    for (unsigned s = 0; s != kChans[c.fill_ntc].rate; ++s)
+      while (has(c.fill_ntc, s))
+        notice(unsigned(get(take(c.fill_ntc, s).payload, c.fill_ntc, "req_id")));
+    for (auto it = hints_.begin(); it != hints_.end();) {
+      if (it->at != now_) { ++it; continue; }
+      if (!can(c.cmpl_hint, it->q.slot))
+        k_.fail("miu: the hint promised on slot %u at cycle %llu has no credit",
+                it->q.slot, (unsigned long long)now_);
+      else
+        send(c.cmpl_hint, it->q.slot, it->q.msg, it->q.tid);
+      --resv_[{c.cmpl_hint, it->q.slot}];
+      k_.hit("cmpl_hint");
+      it = hints_.erase(it);
+    }
     if (has(c.fet_miu, 0)) {
       // Identity translation: the page table is not modelled yet.
       Receiver::Msg m = take(c.fet_miu, 0);
@@ -665,7 +775,7 @@ private:
         to_rcu_.push_back(t.data);
         continue;
       }
-      if (t.at == now_ && can(c.miu_rcu, t.data.slot) && can(c.miu_ooe, t.cmpl.slot)) {
+      if (t.at == now_ && free(c.miu_rcu, t.data.slot) && free(c.miu_ooe, t.cmpl.slot)) {
         send(c.miu_ooe, t.cmpl.slot, t.cmpl.msg, t.cmpl.tid);
         if (k_.brk == "late-hit-data")
           // The data a cycle behind its completion: dependants woken by the
@@ -683,7 +793,7 @@ private:
 
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
-        if (can(chan, it->slot)) { send(chan, it->slot, it->msg, it->tid); it = q.erase(it); }
+        if (free(chan, it->slot)) { send(chan, it->slot, it->msg, it->tid); it = q.erase(it); }
         else ++it;
     };
     drain(to_fet_, c.miu_fet);
@@ -713,6 +823,7 @@ private:
     j.memop_slot = mo.slot;
     j.phys_dst = unsigned(get(mo.msg, c.ooe_miu, "phys_dst"));
     j.phys_pred = unsigned(get(mo.msg, c.ooe_miu, "phys_pred"));
+    j.rs_idx = unsigned(get(mo.msg, c.ooe_miu, "rs_idx"));
     j.dst_pos = unsigned(get(mo.msg, c.ooe_miu, "dst_pos"));
     j.chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
     j.addr_slot = a->second.slot;
@@ -844,6 +955,9 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", j.tag);
+    // The RS entry, echoed from the memop as phys_dst is to RCU, so MIU holds
+    // no table of it and OOE wakes the entry with no lookup (OA-23).
+    put(m, c.miu_ooe, "rs_idx", k_.brk == "rs-echo" ? j.rs_idx ^ 1u : j.rs_idx);
     put(m, c.miu_ooe, "lane_mask", j.active);
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l) & 1u) { put(m, c.miu_ooe, "address", j.addr[l]); break; }
@@ -924,7 +1038,27 @@ private:
         if (k_.brk == "corrupt-load" && r && r->seq == 13 && l == 5) v ^= 1;
         putLane(d, c.miu_rcu, "load_data", l, v);
       }
-      if (job_.hit && job_.global && now_ <= job_.due) {
+      if (job_.promised) {
+        // Hinted: the completion and its data leave now, on the credits held
+        // back for them, or the promise is broken and the bank says so.
+        --resv_[{c.miu_ooe, job_.memop_slot}];
+        --resv_[{c.miu_rcu, job_.addr_slot}];
+        if (now_ != job_.promised)
+          k_.fail("miu: rob tag %u's hinted completion due at cycle %llu is ready at %llu",
+                  job_.tag, (unsigned long long)job_.promised, (unsigned long long)now_);
+        if (k_.brk == "late-cmpl") {
+          // The hinted completion a cycle after its promise, with its data.
+          timed_.push_back({now_ + 1, {job_.addr_slot, d, job_.tid},
+                            {job_.memop_slot, cmpl(job_), job_.tid}});
+        } else if (now_ == job_.promised && can(c.miu_ooe, job_.memop_slot) &&
+                   can(c.miu_rcu, job_.addr_slot)) {
+          send(c.miu_ooe, job_.memop_slot, cmpl(job_), job_.tid);
+          send(c.miu_rcu, job_.addr_slot, d, job_.tid);
+        } else {
+          to_rcu_.push_back({job_.addr_slot, d, job_.tid});
+          to_ooe_.push_back({job_.memop_slot, cmpl(job_), job_.tid});
+        }
+      } else if (job_.hit && job_.global && now_ <= job_.due) {
         timed_.push_back({job_.due, {job_.addr_slot, d, job_.tid},
                           {job_.memop_slot, cmpl(job_), job_.tid}});
       } else {
@@ -937,6 +1071,7 @@ private:
 
   bool busy() const override {
     return !jobs_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+           !hints_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();
   }

@@ -438,6 +438,34 @@ def main():
                     "stalled receiver reorders them" % (c["name"], lm)); return 1
             if "latency_match_why" not in c:
                 err("latency_match is set with no reason recorded"); return 1
+        # A notice (OA-23, AR's response TI-23): a message promising that its
+        # partner channel's valid follows on the same slot exactly `ahead`
+        # cycles after the notice's payload lands, its key fields equal. Both
+        # run between the same blocks at the same rate, their repeater stages
+        # are held equal (tools/ccv_links.py) so the lead is the same at every
+        # node, and the notice is fixed_latency so the count starts on landing.
+        no = c.get("notice_of")
+        if no is not None:
+            names = {x["name"]: x for x in d["channels"]}
+            other = names.get(no.get("channel"))
+            if set(no) != {"channel", "ahead", "keys"}:
+                err("notice_of needs exactly channel, ahead, keys"); return 1
+            if other is None or other is c or "notice_of" in other:
+                err("notice_of %r is not another, non-notice channel" % no["channel"]); return 1
+            if (other["src"], other["dst"], other["rate"]) != (c["src"], c["dst"], c["rate"]):
+                err("notice_of %s does not run from %s to %s at rate %d as this one does"
+                    % (no["channel"], c["src"], c["dst"], c["rate"])); return 1
+            if not c.get("slot_attrs", {}).get("fixed_latency"):
+                err("notice_of: a notice must be fixed_latency, or its lead "
+                    "counts from a cycle the receiver chose"); return 1
+            if not no["keys"] or any(k not in c["payload_fields"] or
+                                     k not in other["payload_fields"] for k in no["keys"]):
+                err("notice_of keys must be fields of both %s and %s"
+                    % (c["name"], no["channel"])); return 1
+            if not str(no["ahead"]).startswith("CCV_LAT_"):
+                err("notice_of ahead must name a CCV_LAT_ parameter"); return 1
+            if "notice_of_why" not in c:
+                err("notice_of is set with no reason recorded"); return 1
         # Overlays: a named sub-field of one payload field, meaningful only
         # when another field holds one value (A-41's discard_tail on disp).
         # Declared, so a reader of the bits never has to guess which meaning
