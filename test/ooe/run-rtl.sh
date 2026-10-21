@@ -22,6 +22,7 @@
 # - ooe_sched (ooe_ready, its ready and request registers, ooe_select and
 #   its grant register) against the model's registers and grants, live, a
 #   cycle behind it (test/ooe/sched_tb.cpp);
+# - ooe_rencred against the model's rename credits, live (test/ooe/rencred_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
 #   its directed and random unit tests (test/ooe/rat_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
@@ -265,6 +266,38 @@ for c in no-ename port-swap no-lead; do
     say "  control $c (prodmap)" "MISSED"; fail=1
   else
     say "  control $c (prodmap)" "caught"
+  fi
+done
+
+# ooe_rencred, the next value of rename's credit counters, driven from the
+# model's events after every cycle under the go they serve (fits_stale 6),
+# through the random tests and the directed ones (a restore-allocate draws
+# names). The bench holds the counters.
+dir=build/ooe-rtl/rencred
+mkdir -p "$dir"
+rob=$(sed -n 's/.*localparam int CCV_P_ROB_DEPTH = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
+fcap=$(sed -n 's/.*unsigned ren_free_cap = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+rc_ld=$(python3 -c "import math; print(math.ceil(math.log2($rob + 1)))")
+rc_lg=$(python3 -c "import math; print(math.ceil(math.log2($phys + 1)))")
+rc_lp=$(python3 -c "import math; print(math.ceil(math.log2($preds + 1)))")
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      -GS="$slots" -GA="$width" -GNR="$n_rcu" -GNM="$n_miu" -GNG="$phys" -GNP="$preds" -GRD="$rob" -GF="$fcap" \
+      --top-module ooe_rencred --Mdir "$dir" -o rencred_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -DRC_S=$slots -DRC_A=$width -DRC_F=$fcap -DRC_LD=$rc_ld -DRC_LG=$rc_lg -DRC_LP=$rc_lp -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ooe/ooe_rencred.sv" "$PWD/test/ooe/rencred_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rencred: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rencred_tb" "$seeds" 2>&1); then
+  say "rencred (rename's credits) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*cycles=//'))"
+else
+  say "rencred == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-late no-draw no-rob-free; do
+  if RENCRED_CONTROL=$c "$dir/rencred_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (rencred)" "MISSED"; fail=1
+  else
+    say "  control $c (rencred)" "caught"
   fi
 done
 

@@ -449,18 +449,23 @@ from decq's heads (map -r), which arrive at about 2: 24.3. 5 drops the
 remainder instead: 22.5 NGD, but the interleave +0.6%, two warps +0.7%
 (floor shares strand credit: 14,526 fragmentation stalls to 3's 5,310).
 6 is 3 as the RTL can register it, and corrects 3's figure. The fits
-are formed a cycle ahead, so the split they read is of the last cycle's
-credits and its warps with a head, and it bounds each warp's takes over
-the last cycle and this one (the fits at each offset of the warp's own
-last take). 3 split this cycle's credits, which no registered fits can
-see: the other warps' last takes are not known when the fits are formed.
-The interleave 1,004 (+2.1% against 983), two warps 1,013 (+3.1%): the
-last cycle's frees reach the split a cycle later, and a warp that took
-its share waits a cycle while the others keep theirs. One warp formed the
-same way (each warp's fits against the whole credits, as registered, less
-its own last take, or less the width in each credit when another warp
-took) is 1,047 (+6.5%); 3's one-warp +1.3% admitted against running
-credits, which a registered go cannot.
+are formed a cycle ahead, so the allowances they hold a warp to are split
+a cycle ahead too. A split of the cycle's whole credit is not safe: the
+last cycle's takes, unknown to the split, were bounded by the split
+before, so one warp's take is counted against two splits and the RS
+over-allocates (the model's own RS check stalled it: 259 rs_full stalls
+in 48 runs, where the RTL has none). 6 splits the credit no allowance
+holds this cycle, less at most the width (a cycle takes no more from any
+credit: a class's ports, a name per uop), so no take counts twice: each
+allowance holds for one cycle, and its unused part returns to the next
+split. Withholding every allowance, not the width, deadlocks: the credit
+alternates between two cycles' allowances. 48 seeds at decq 13 against
+983: the interleave 1,023 (+4.1%; +6.7% against the ideal 959), two warps
+1,024 (+4.2%), one warp 1,035 (+5.3%, every warp's allowance the whole
+pool, as only one takes). 3's one-warp +1.3% admitted against running
+credits, which a registered go cannot. Rename's counters (`renCredits`)
+exclude this cycle's RS frees and last cycle's past ooe_rs's prompt count,
+and this cycle's name frees, as the RTL's (`ooe_rencred`, slice 3).
 4 is OA's stateful shares: each warp keeps its share, its own takes lower
 it, and frees and the shares of warps four cycles without a take form a
 pool split each cycle among the warps with a head; the shares and pool sum

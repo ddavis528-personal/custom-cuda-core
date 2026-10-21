@@ -294,6 +294,11 @@ void Core::cycle(uint64_t now) {
     decq_seq_at_ = next_decq_seq_;
   }
   rob_prompt_.assign(slot_.size() * cfg_.rob_depth, 0);
+  rob_freed_now_.assign(slot_.size(), 0);
+  for (unsigned c = 0; c != 2; ++c) {
+    rs_late_prev_[c] = rs_free_now_[c] - std::min(rs_free_now_[c], std::min(rs_prompt_[c], cfg_.ren_free_cap));
+    rs_free_now_[c] = 0;
+  }
   rs_prompt_[0] = rs_prompt_[1] = 0;
   for (auto *v : {&wlog_.grant, &wlog_.kind, &wlog_.cls, &wlog_.done, &wlog_.cmpl, &wlog_.stop, &wlog_.miss, &wlog_.fin,
                  &wlog_.replay, &wlog_.conf, &wlog_.hop_iss, &wlog_.hop_msd, &wlog_.cf_iss, &wlog_.cf_fin, &wlog_.cf_prod,
@@ -614,6 +619,7 @@ void Core::rsFree(unsigned e) {
   --slot_[x.slot].rs_held;
   x.valid = false;
   const unsigned c = e < cfg_.rs_rcu ? 0 : 1;
+  ++rs_free_now_[c];
   if (cfg_.ren_credit == 1 ||
       (cfg_.ren_credit == 2 && (!free_prompt_ || rs_prompt_[c]++ >= cfg_.ren_free_cap)))
     rs_late_[e] = 1;
@@ -2506,21 +2512,20 @@ void Core::restoreStep() {
 }
 
 void Core::rename() {
+  ren_tot_.fill(0);
+  ren_slot_.assign(slot_.size(), {});
+  took_.assign(slot_.size(), 0);
   // A restore-allocate in progress owns the allocation ports: no warp
   // renames until it is done (OA's response OI-41).
   if (!restore_q_.empty()) {
     // fits_stale 6: no split is registered while a restore owns the ports.
     for (auto &x : share_reg_) x = {0, 0, 0, 0};
-    for (auto &x : ren_prev_) x = {0, 0, 0, 0};
     restoreStep();
     count("stall.restore");
     return;
   }
   unsigned budget = cfg_.rename_width;
   std::vector<bool> blocked(slot_.size(), false);
-  ren_tot_.fill(0);
-  ren_slot_.assign(slot_.size(), {});
-  took_.assign(slot_.size(), 0);
   ren_margin_ = cfg_.fits_conservative == 1 && cfg_.rename_one_warp != 1 ? cfg_.rename_width : 0;
   // fits_conservative 2: while any shared credit is short of the width,
   // one warp takes (its fits, formed alone, are exact for it). 3, OA-22's
@@ -2641,46 +2646,51 @@ void Core::rename() {
     const unsigned fcap = cfg_.ren_free_cap;
     c[0] -= std::min(c[0], std::min(rs_prompt_[0], fcap));
     c[1] -= std::min(c[1], std::min(rs_prompt_[1], fcap));
-    share_.assign(slot_.size(), {0, 0, 0, 0});
+    if (cfg_.fits_stale == 6) {
+      // Rename's counters (Core::renCredits): this cycle's frees unseen,
+      // and last cycle's past ooe_rs's prompt count; names freed now unseen.
+      const RenCredits rc = renCredits();
+      for (unsigned r = 0; r != 4; ++r) c[r] = rc.c[r];
+    }
     std::vector<unsigned> with;
     for (unsigned k = 0; k != slot_.size(); ++k) {
       const unsigned si = (rr_rename_ + k) % slot_.size();
       if (slot_[si].st != WarpState::kFree && slot_[si].decq) with.push_back(si);
     }
-    // fits_stale 6 under one warp: no split; each warp's fits against the
-    // whole credits, as registered.
+    // fits_stale 6: this cycle admits against the allowances split last
+    // cycle (registered with the fits). The next are split from the credit
+    // no allowance holds now, so no take is counted twice. Under one warp
+    // every warp's allowance is the one whole pool, as only one takes.
     const bool one = cfg_.rename_one_warp == 1;
-    if (one)
-      for (unsigned si : with) for (unsigned r = 0; r != 4; ++r) share_[si][r] = c[r];
-    if (!with.empty() && !one)
+    unsigned pool[4] = {c[0], c[1], c[2], c[3]};
+    if (cfg_.fits_stale == 6) {
+      if (share_reg_.size() != slot_.size()) share_reg_.assign(slot_.size(), {0, 0, 0, 0});
       for (unsigned r = 0; r != 4; ++r) {
-        const unsigned each = c[r] / unsigned(with.size()), rem = c[r] % unsigned(with.size());
-        for (unsigned si : with) share_[si][r] = each;
+        unsigned held = 0;
+        for (unsigned si = 0; si != slot_.size(); ++si)
+          held = one ? std::max(held, share_reg_[si][r]) : held + share_reg_[si][r];
+        // This cycle takes at most the width from each credit (a class's
+        // ports; a name per uop), so no more need be held back.
+        held = std::min(held, cfg_.rename_width);
+        if (held > c[r]) err("fits_stale 6: allowances of credit %u hold %u, the credit %u", r, held, c[r]);
+        pool[r] = c[r] - std::min(held, c[r]);
+      }
+    }
+    std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
+    if (one)
+      for (unsigned si : with) for (unsigned r = 0; r != 4; ++r) split[si][r] = pool[r];
+    else if (!with.empty())
+      for (unsigned r = 0; r != 4; ++r) {
+        const unsigned each = pool[r] / unsigned(with.size()), rem = pool[r] % unsigned(with.size());
+        for (unsigned si : with) split[si][r] = each;
         // fits_stale 5: equal shares, the remainder given to no warp.
-        if (cfg_.fits_stale != 5) share_[with[0]][r] += rem;
+        if (cfg_.fits_stale != 5) split[with[0]][r] += rem;
       }
     if (cfg_.fits_stale == 6) {
-      // This cycle's split is registered for the next; this cycle admits
-      // against the last's, less what each warp took then.
-      if (share_reg_.size() != slot_.size()) {
-        share_reg_.assign(slot_.size(), {0, 0, 0, 0});
-        ren_prev_.assign(slot_.size(), {0, 0, 0, 0});
-      }
-      std::swap(share_, share_reg_);
-      // Under one warp a warp's fits know only its own last take: another
-      // warp's (unknown when they were formed) may have drawn up to the
-      // width from each credit.
-      bool other = false;
-      for (unsigned si = 0; si != slot_.size(); ++si)
-        for (unsigned r = 0; r != 4; ++r) other = other || ren_prev_[si][r];
-      for (unsigned si = 0; si != slot_.size(); ++si) {
-        bool own = false;
-        for (unsigned r = 0; r != 4; ++r) own = own || ren_prev_[si][r];
-        for (unsigned r = 0; r != 4; ++r) {
-          const unsigned d = one && other && !own ? cfg_.rename_width : ren_prev_[si][r];
-          share_[si][r] -= std::min(share_[si][r], d);
-        }
-      }
+      share_ = share_reg_;
+      share_reg_ = split;
+    } else {
+      share_ = split;
     }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
@@ -2750,9 +2760,6 @@ void Core::rename() {
     }
   }
   ren_late_frees_ = false;
-  if (shares_on_ && cfg_.fits_stale == 6)
-    for (unsigned si = 0; si != slot_.size(); ++si)
-      for (unsigned r = 0; r != 4; ++r) ren_prev_[si][r] = ren_slot_[si][r];
   if (shares_on_ && cfg_.fits_stale == 4)
     for (unsigned si = 0; si != slot_.size(); ++si) {
       for (unsigned r = 0; r != 4; ++r) share_[si][r] -= std::min(share_[si][r], ren_slot_[si][r]);

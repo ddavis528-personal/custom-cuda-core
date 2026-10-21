@@ -227,10 +227,11 @@ struct Config {
   /// head (the remainder to the first in rotation); the shares and the pool
   /// sum to the credit, as registered (checked). 5: as 3, the remainder
   /// given to no warp (the split's add gone; test/ooe/probes/share_probe.sv).
-  /// 6: as 3, as the RTL registers it: the split of the last cycle's
-  /// credits (and its warps with a head) bounds each warp's takes over the
-  /// last cycle and this one, the fits formed a cycle ahead at each offset
-  /// of the warp's own take.
+  /// 6: as 3, as the RTL registers it: a warp admits against an allowance
+  /// split a cycle ahead, with the fits, from the credit no allowance then
+  /// holds, less at most the width (what a cycle can take of any credit),
+  /// so no take counts twice; under one warp each warp's allowance is that
+  /// whole pool. The credits are rename's counters (renCredits).
   unsigned fits_stale = 0;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
@@ -1074,6 +1075,66 @@ public:
   unsigned gprodNames() const { return unsigned(gprod_.size()); }
   unsigned pprodNames() const { return unsigned(pprod_.size()); }
   bool rsLive(unsigned e) const { return rs_[e].valid; }
+  /// Rename's shared credits as its counters hold them (fits_stale 6; the
+  /// RTL's ooe_rename, slice 3), at rename: RS room per class, without
+  /// this cycle's frees nor last cycle's past ooe_rs's prompt count (a
+  /// squash's, or past the cap); GPR and predicate names, without this
+  /// cycle's frees. The prompt and late parts are what the counters add.
+  struct RenCredits {
+    unsigned c[4] = {};          ///< RS RCU, RS MIU, GPR names, predicate names
+    unsigned prompt[2] = {};     ///< this cycle's RS frees within ooe_rs's prompt count
+    unsigned late[2] = {};       ///< and the rest, which the counters add an edge late
+  };
+  RenCredits renCredits() const {
+    RenCredits r;
+    for (unsigned e = 0; e != n_; ++e) r.c[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
+    for (unsigned k = 0; k != 2; ++k) {
+      r.c[k] -= rs_free_now_[k] + rs_late_prev_[k];
+      r.prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
+      r.late[k] = rs_free_now_[k] - r.prompt[k];
+    }
+    r.c[2] = unsigned(gfree_.ready());
+    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready()) : 1000u;
+    return r;
+  }
+  /// What rename's counters count over the cycle just run, for
+  /// test/ooe/rencred_tb.cpp: the RS entries, names and ROB slots rename
+  /// took, the RS frees within ooe_rs's prompt count and past it, the
+  /// names allocated and freed, and the state the counters must reach at
+  /// the next edge.
+  struct RenEvents {
+    unsigned rs_take[2] = {}, rs_prompt[2] = {}, rs_late[2] = {}, rs_late_prev[2] = {};
+    unsigned rs_free[2] = {};     ///< RS entries not valid now
+    unsigned name_take[2] = {}, name_alloc[2] = {}, name_free[2] = {}, names[2] = {};
+    std::vector<unsigned> uops, rob_freed, rob_room;   ///< per slot
+  };
+  RenEvents renEvents() const {
+    RenEvents v;
+    for (unsigned e : wlog_.ralloc) ++v.rs_take[e < cfg_.rs_rcu ? 0 : 1];
+    for (unsigned e = 0; e != n_; ++e) v.rs_free[e < cfg_.rs_rcu ? 0 : 1] += !rs_[e].valid;
+    for (unsigned k = 0; k != 2; ++k) {
+      v.rs_prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
+      v.rs_late[k] = rs_free_now_[k] - v.rs_prompt[k];
+      v.rs_late_prev[k] = rs_late_prev_[k];
+    }
+    const FreeVec *fl[2] = {&gfree_, &pfree_};
+    for (unsigned k = 0; k != 2; ++k) {
+      v.name_take[k] = ren_tot_[2 + k];
+      v.name_alloc[k] = unsigned(fl[k]->cycleAllocs().size());
+      v.name_free[k] = unsigned(fl[k]->cycleFrees().size());
+      v.names[k] = unsigned(fl[k]->size());
+    }
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      v.uops.push_back(si < took_.size() ? took_[si] : 0);
+      v.rob_freed.push_back(si < rob_freed_now_.size() ? rob_freed_now_[si] : 0);
+      // Slots not valid: a squashed entry whose op is still out (a deferred
+      // free) leaves the count at once but holds its slot until it lands.
+      unsigned room = 0;
+      for (const RobEntry &r : slot_[si].rob) room += !r.valid;
+      v.rob_room.push_back(room);
+    }
+    return v;
+  }
   /// The distinct bypass penalties, sorted: wake line k is penalty k's.
   const std::vector<unsigned> &wakePens() const { return pens_; }
 private:
@@ -1093,13 +1154,18 @@ private:
   bool shr_copy_prev_ = false;            ///< and a copy among its candidate heads
   bool shares_on_ = false;                ///< fits_stale 3 this cycle
   std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
-  std::vector<std::array<unsigned, 4>> share_reg_, ren_prev_;  ///< fits_stale 6: the last cycle's split, and its takes
+  std::vector<std::array<unsigned, 4>> share_reg_;   ///< fits_stale 6: the allowances split for the next cycle
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
   std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)
+  /// fits_stale 6, rename's RS counters as the RTL keeps them: every RS
+  /// free this cycle, per class, and last cycle's past ooe_rs's prompt count
+  /// (a squash's, or past the cap), which reach the counters an edge late.
+  unsigned rs_free_now_[2] = {}, rs_late_prev_[2] = {};
+  std::vector<unsigned> rob_freed_now_;   ///< ROB slots each slot freed this cycle (RenEvents)
   bool free_prompt_ = false;                ///< an RS free now is a confirmation's
   /// Held for rename this cycle: valid, or freed this cycle and seen late.
   bool rsHeld(unsigned e) const { return rs_[e].valid || rs_late_[e]; }
@@ -1111,6 +1177,8 @@ private:
   }
   /// A ROB slot freed this cycle: prompt for a retirement under ren_credit 2.
   void robFreed(unsigned si, unsigned i, bool retire) {
+    if (rob_freed_now_.size() != slot_.size()) rob_freed_now_.assign(slot_.size(), 0);
+    ++rob_freed_now_[si];
     if (cfg_.ren_credit == 1 || (cfg_.ren_credit == 2 && !retire)) rob_late_[size_t(si) * cfg_.rob_depth + i] = 1;
     else rob_prompt_[size_t(si) * cfg_.rob_depth + i] = 1;
   }

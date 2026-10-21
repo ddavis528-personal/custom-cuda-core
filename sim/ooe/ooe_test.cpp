@@ -38,6 +38,7 @@ bool g_quiet = false;     ///< a negative control's expected failures
 /// Called after every core cycle of every Env: an RTL testbench compiled
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
+void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over every test's
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -586,6 +587,7 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
 Config baseConfig() {
   Config c;
   c.memop_rcu_done = false;
+  if (g_config_hook) g_config_hook(c);
   return c;
 }
 
@@ -1950,6 +1952,14 @@ int ooeTestRandomHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_cycle_hook = nullptr;
   return g_fail;
 }
+/// The same, every core configured first by cfg (a setting the RTL under
+/// test assumes, set over each test's own).
+int ooeTestRandomHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_config_hook = cfg;
+  const int f = ooeTestRandomHooked(seeds, hook);
+  g_config_hook = nullptr;
+  return f;
+}
 /// The directed tests (every one that drives a core and injects no bug:
 /// demotion, kill, restore, faults, squashes and the rest) with a hook on
 /// every core cycle, for the paths random traffic does not take. Returns
@@ -1976,6 +1986,13 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testFixedWindowPreds();
   g_cycle_hook = nullptr;
   return g_fail;
+}
+/// The directed tests likewise, every core configured first by cfg.
+int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_config_hook = cfg;
+  const int f = ooeTestDirectedHooked(hook);
+  g_config_hook = nullptr;
+  return f;
 }
 /// The same, with the hook just before each core cycle instead.
 int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {

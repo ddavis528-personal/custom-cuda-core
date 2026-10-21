@@ -540,9 +540,24 @@ Built (`rtl/ooe/`):
      row_code, grp_dep, grp_code and row_prod from rename's stage register,
      under ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by
      10).
-  3. **Rename's credits**: RS room per class, each warp's ROB room and the
-     free rows, taken from TI-19's free counts (free_th, ld_conf_th,
-     ret_n) as registered pulses.
+  3. **Rename's credits** (`ooe_rencred`, an inner helper: the counters'
+     next value; the flops are ooe_rename's): RS room per class, the free
+     GPR and predicate names, each slot's ROB room. A counter falls by the
+     go's take and any other draw (a restore-allocate's names), and rises
+     by the cycle's frees from the next edge: an RS free within ooe_rs's
+     prompt count (its free thermometer, capped at 4) at this edge, the
+     rest (a squash's, or past the cap) at the next. The go's takes arrive
+     late, so each next value is formed for every count the late inputs
+     may give (a carry-save step and a prefix add each) and the takes
+     select one: 12.8 NGD alone, the takes 7.2 to 11.0 from the output.
+     `test/ooe/rencred_tb.cpp` holds the counters and checks them against
+     the model's credits (`Core::renCredits`, `renEvents`) every cycle,
+     under the go they serve (fits_stale 6), through the random and
+     directed tests: 95,364 cycles, none differ; controls no-late, no-draw
+     and no-rob-free caught. ooe_rs's prompt count and its register of the
+     rest wait on confirmation moving into ooe_rs (OI-45); the ROB's
+     frees, on the ROB. Building it found 3's per-cycle shares unsafe as
+     registered (OI-65; docs/ooe-model.md, fits_stale 6).
   4. **The go and decq's registered take** (OA-21, OA-22): open as OI-65.
      The registered fits_s describe heads that depend on the previous
      cycle's take; formed in the cycle the go measures 27.1 NGD to the take
