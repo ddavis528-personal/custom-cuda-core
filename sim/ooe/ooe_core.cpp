@@ -834,7 +834,7 @@ void Core::requestRegister() {
       if (!isg[i]) continue;
       bool rep = false;
       for (unsigned j = 0; j != n_ && !rep; ++j)
-        rep = req_dep_q_[1][size_t(i) * n_ + j] && (!isg[j] || (req_row_q_[1][j] & 16));
+        rep = req_dep_q_[1][size_t(i) * n_ + j] && (!(req_row_q_[1][j] & 2) || (req_row_q_[1][j] & 16));
       req_ise_[i] = !rep;
     }
     // The stop lead ooe_sched registers for the next edge: the replay rule

@@ -122,8 +122,11 @@ module ooe_sched #(
     // Issued counts the grant leaving now (the grant register), which
     // ooe_wake takes at this edge.
     isg = iss_cq02h | gnt_cq04h;
+    // A producer's issued bit before this edge's grants, as ooe_rs's rule
+    // reads it (V-65): an entry issued on a producer replayed and granted
+    // again at this edge is replayed.
     for (int i = 0; i < N; i++)
-      rep_cq02h[i] = isg[i] && (dep_cq02h[i * N +: N] & (~isg | msd_cq02h)) != '0;
+      rep_cq02h[i] = isg[i] && (dep_cq02h[i * N +: N] & (~iss_cq02h | msd_cq02h)) != '0;
     ise_cq02h  = isg & ~rep_cq02h;
     // This cycle's confirmations (OA's response OI-45 (1)): ooe_rs and
     // ooe_wake free them at this edge; their columns clear in the matrix an

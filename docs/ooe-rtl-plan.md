@@ -610,6 +610,7 @@ copies.
 | `ooe_wake` | the issued bits | 45 |
 | **built** | | **991** |
 | `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
+| `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
 
 Not counted: `ooe_sched`'s third grant copy, for `ooe_wake`'s enables,
 which CG-5 asks for (its waiver), not NGD-7.

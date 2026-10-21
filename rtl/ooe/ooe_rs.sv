@@ -195,8 +195,11 @@ module ooe_rs #(
   endfunction
 
   (* keep *) logic [N-1:0] valid_cq02h;  // the valid bits, for allocation and the rows
-  logic [N-1:0]     prod_cq02h;           // payload: read only while its entry is valid
-  assign prod_o_cq02h = prod_cq02h;
+  (* keep *) logic [N-1:0] prod_cq02h;   // payload: read only while its entry is valid
+  // The prod bits' copy for ooe_sched (NGD-7: the register starts paths
+  // inside deeper than the output's budget allows).
+  (* keep *) logic [N-1:0] prod_oc_cq02h;
+  assign prod_o_cq02h = prod_oc_cq02h;
   logic [N-1:0]     cf_en_cq01h;          // the confirmation leads' flops
   logic [NC-1:0]    cva_cq01h;            // the completion channel's valid, flopped: its payload is here
   logic             cvb_cq02h;            // a payload arrived at the last edge
@@ -423,12 +426,14 @@ module ooe_rs #(
       dep_cq02h[NR*N-1:0]    <= dep_nx[NR*N-1:0];
       code_cq02h[2*NR*N-1:0] <= code_nx[2*NR*N-1:0];
       prod_cq02h[NR-1:0]     <= prod_nx[NR-1:0];
+      prod_oc_cq02h[NR-1:0]  <= prod_nx[NR-1:0];
       emp_cq02h[NR-1:0]      <= emp_nx[NR-1:0];
     end
     if (miu_en_cq01h) begin
       dep_cq02h[N*N-1:NR*N]    <= dep_nx[N*N-1:NR*N];
       code_cq02h[2*N*N-1:2*NR*N] <= code_nx[2*N*N-1:2*NR*N];
       prod_cq02h[N-1:NR]     <= prod_nx[N-1:NR];
+      prod_oc_cq02h[N-1:NR]  <= prod_nx[N-1:NR];
       emp_cq02h[N-1:NR]      <= emp_nx[N-1:NR];
     end
   end

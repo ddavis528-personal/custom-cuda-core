@@ -342,6 +342,29 @@ void hook(const Core &c) {
         }
     }
   }
+  if (const char *tv = std::getenv("TRIO_V65AT")) {
+    // Both modules' replay terms for one entry before this edge: "core,cycle,entry".
+    unsigned long long cc = 0, cy = 0;
+    unsigned en = 0;
+    if (std::sscanf(tv, "%llu,%llu,%u", &cc, &cy, &en) == 3 && cc == current && cy == core_cycle) {
+      dut->ooe_core_clk = 0;
+      dut->eval();
+      const auto *r = dut->rootp;
+      auto b = [](uint64_t x, unsigned i) { return int((x >> i) & 1); };
+      std::fprintf(stderr, "  v65 terms, entry %u: rs iss %d rep %d conf %d free %d | sched isg %d rep %d ise %d | wake iss %d gnt %d msd %d\n",
+                   en, b(r->ooe_trio__DOT__u_rs__DOT__iss_cq02h, en), b(r->ooe_trio__DOT__u_rs__DOT__rep, en),
+                   b(r->ooe_trio__DOT__u_rs__DOT__conf, en), b(r->ooe_trio__DOT__u_rs__DOT__free_cq01h, en),
+                   b(r->ooe_trio__DOT__u_sched__DOT__isg, en), b(r->ooe_trio__DOT__u_sched__DOT__rep_cq02h, en),
+                   b(r->ooe_trio__DOT__u_sched__DOT__ise_cq02h, en), int(getBit(dut->iss_cq02h, en)),
+                   b(r->ooe_trio__DOT__u_sched__DOT__gnt_cq04h, en), int(getBit(dut->msd_cq02h, en)));
+      for (unsigned j = 0; j != N; ++j)
+        if (getBit(r->ooe_trio__DOT__u_rs__DOT__dep_cq02h, en * N + j) || getBit(dut->dep_cq02h, en * N + j))
+          std::fprintf(stderr, "    src %u: rs dep %d out dep %d | rs iss %d free %d | sched isg %d | wake iss %d msd %d\n", j,
+                       int(getBit(r->ooe_trio__DOT__u_rs__DOT__dep_cq02h, en * N + j)), int(getBit(dut->dep_cq02h, en * N + j)),
+                       b(r->ooe_trio__DOT__u_rs__DOT__iss_cq02h, j), b(r->ooe_trio__DOT__u_rs__DOT__free_cq01h, j),
+                       b(r->ooe_trio__DOT__u_sched__DOT__isg, j), int(getBit(dut->iss_cq02h, j)), int(getBit(dut->msd_cq02h, j)));
+    }
+  }
   if (const char *ts = std::getenv("TRIO_STOPAT")) {
     // ooe_sched's stop lead terms before this edge, at one core cycle.
     if (core_cycle == std::strtoull(ts, nullptr, 10)) {
@@ -358,6 +381,18 @@ void hook(const Core &c) {
                          int((r->ooe_trio__DOT__u_sched__DOT__gnt_cq04h >> j) & 1), t.iss[j], a.iss[j], t.valid[j], a.valid[j]);
       }
     }
+  }
+  if (std::getenv("TRIO_V65")) {
+    // The V-65 assertion's terms, as it reads them at this edge.
+    const auto *r = dut->rootp;
+    uint64_t v = 0;
+    for (unsigned j = 0; j != N; ++j) v |= uint64_t(getBit(dut->valid_cq02h, j)) << j;
+    const uint64_t d = (r->ooe_trio__DOT__ise_q ^ r->ooe_trio__DOT__u_rs__DOT__iss_cq02h) & v &
+                       ~r->ooe_trio__DOT__fre_q & ~r->ooe_trio__DOT__gr_q;
+    if (d) std::fprintf(stderr, "v65 at core %llu cycle %llu: bits %llx (ise_q %llx rs iss %llx)\n",
+                        (unsigned long long)current, core_cycle, (unsigned long long)d,
+                        (unsigned long long)r->ooe_trio__DOT__ise_q,
+                        (unsigned long long)r->ooe_trio__DOT__u_rs__DOT__iss_cq02h);
   }
   tick();
   // -- After the edge. ooe_sched: its grant register is the model's grants

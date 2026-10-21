@@ -644,6 +644,37 @@ serializing uop ends the prefix). The first needs either the floor rule in
 the fits, on registered counts, or OA's argument that the shares cannot
 break V-04.
 
+### The composed RTL's timing (OI-45)
+
+ooe_rs and ooe_wake take ooe_sched's grant register an edge after
+ooe_sched forms it, so they decide model cycle P's confirmations,
+replays and frees while ooe_sched is at P + 1 (OA's option (1): ooe_sched
+evaluates this cycle's confirmations and replays itself). The assembled
+check (`test/ooe/ooe_trio.sv`, `trio_tb`) wires the three modules as the
+design does, drives only their outer ports from the model, and holds
+ooe_sched's ready, request and grant registers, ooe_rs's valid bits and
+rows and ooe_wake's issued bits and lead lines to the model. The model
+matches it under three knobs, which apply only to the sectioned select
+(the unsectioned one issues a copy with its load, past the request
+register, so has no RTL to mirror):
+
+| Knob | What ooe_sched sees, as the RTL composes it |
+|---|---|
+| `req_rows_late` | The request term: ooe_rs's valid bits, rows and prod bits two cycles back, ooe_wake's issued, final and held-miss bits a cycle nearer (its miss pulse nearer still), issued with the grant register less the replays it derives from them; a rewritten row requests on its last occupant's state. The enable takes ooe_sched's registered stop lead, formed the same way. |
+| `miss_lead` | The ready register sees an L1 load's miss two cycles ahead: ooe_wake's lead line drops when no completion hint (OA-23, `Core::hint`) has come by the miss's lead. A hint after it is the miss's own completion. |
+| `ready_rep_late` | The ready register sees a source's replay two cycles late, reading the timer the replay withdrew until then. |
+
+With `copy_conf_late`, `req_alloc_lead` and `rs_same_edge` 0, `trio_tb`
+matches exactly at 25 seeds (36 compared cores). At 100 seeds (140 cores)
+grants and the request register are exact, and 2 ready-register bits
+differ, each in the cycle after a replayed source re-issues: the RTL's
+register holds its stale ready until one of its enables comes, where the
+model captures on its own edge. Neither changes a grant.
+
+The cost, `ooe-test --audit` with `AUDIT_SEEDS=192`, on the sectioned
+slice-4 go (1,107 cycles): each knob alone within +0.19%, all together
+−0.04%.
+
 ## Events and counters
 
 The model emits the schema's arbitration-sensitive events: `EV_DISPATCH` at

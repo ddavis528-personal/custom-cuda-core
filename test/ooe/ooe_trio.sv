@@ -13,6 +13,9 @@
 // ooe_rs's confirmation. ooe_rs and ooe_wake share the completion channel,
 // the registered squash's frees and its lead.
 //===----------------------------------------------------------------------===//
+`include "ccv_assert.svh"
+`define CCV_CLK ooe_core_clk
+`define CCV_RST trio_rst
 module ooe_trio #(
   parameter int N  = 45,
   parameter int NR = 30,
@@ -128,6 +131,22 @@ module ooe_trio #(
     s_wml   = ctl == 3'd2 ? 1'b0 : wml;
     s_alloc = ctl == 3'd4 ? 1'b0 : alloc_cq02h;
   end
+  // V-65 (OA's response OI-45 (1)): ooe_sched's issued after an edge,
+  // formed from its own replay rule, is ooe_rs's issued register after
+  // that edge, on every valid entry the edge does not free; except a grant
+  // ooe_sched replays at its own edge (granted on a stale ready bit), which
+  // ooe_rs takes as issued and replays at the next edge.
+  logic         trio_rst;
+  logic [N-1:0] ise_q, fre_q, gr_q, gr_q2;
+  always_ff @(posedge ooe_core_clk) begin
+    trio_rst <= ooe_rst_r00h;
+    ise_q    <= u_sched.ise_cq02h;
+    fre_q    <= u_rs.free_cq01h;
+    gr_q     <= u_sched.gnt_cq04h & u_sched.rep_cq02h;
+    gr_q2    <= gr_q;
+  end
+  `CCV_ASSERT(v65_issued, ctl != 3'd0 || ((ise_q ^ u_rs.iss_cq02h) & valid_cq02h & ~fre_q & ~gr_q) == '0)
+  `CCV_ASSERT(v65_stale_grant, ctl != 3'd0 || (gr_q2 & u_rs.iss_cq02h & ~grant_cq04h) == '0)
   ooe_sched #(.N(N), .NR(NR), .S(S), .FB(FB)) u_sched (
     .ooe_core_clk(ooe_core_clk), .ooe_rst_r00h(ooe_rst_r00h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .wake_cq02h(wake_cq02h), .valid_cq02h(valid_cq02h),
@@ -139,3 +158,5 @@ module ooe_trio #(
     .older_r_cq03h(older_r_cq03h), .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h),
     .block_cq03h(block_cq03h), .grant_cq04h(grant_cq04h), .grant_w_cq04h(grant_w));
 endmodule
+`undef CCV_CLK
+`undef CCV_RST
