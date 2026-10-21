@@ -364,6 +364,20 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     tr = mapped_timing("map -r", os.path.join(work, "map_r.blif"))
     t.ir_area, t.ir_r = t.ir, tr.ir
     t.ir = {p: min(v, tr.ir.get(p, v)) for p, v in t.ir.items()}
+    # NGD-7's paths from each register, to the flops and to each output,
+    # likewise from the better of the two maps (OI-45: ooe_rs's dep reads
+    # 14.96 on map, 11.74 on map -r), but only where map -r's netlist is no
+    # worse flop to flop: then one netlist meets NGD-1 and NGD-7 together,
+    # and only area recovery stretched the register's off-critical paths.
+    t.q_flop_area, t.q_out_area, t.rr_r = t.q_flop, t.q_out, tr.rr
+    t.q_flop_r, t.q_out_r = tr.q_flop, tr.q_out
+    if tr.rr <= t.rr + EPS:
+        t.q_flop = {q: min(v, tr.q_flop.get(q, v)) for q, v in t.q_flop.items()}
+        q_out = collections.defaultdict(dict)
+        for q, outs in t.q_out.items():
+            for p, v in outs.items():
+                q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
+        t.q_out = q_out
     t.cut, t.regname = cut, reg_names(d)
     return t
 
@@ -944,6 +958,18 @@ def selftest():
     expect(all(u.t.ir[p] == min(u.t.ir_area[p], u.t.ir_r.get(p, u.t.ir_area[p]))
                for u in fx.values() for p in u.t.ir),
            "an input's NGD-3 depth is not the shorter of its two maps")
+    #     NGD-7 the same, per register, wherever map -r is no worse flop to
+    #     flop; and the area map's alone wherever it is worse.
+    wrong = []
+    for u in fx.values():
+        t = u.t
+        rbetter = t.rr_r <= t.rr + EPS
+        for q, v in t.q_flop.items():
+            a, r = t.q_flop_area[q], t.q_flop_r.get(q, t.q_flop_area[q])
+            if v != (min(a, r) if rbetter else a):
+                wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
+                    u.name, q, v, a, r, "" if rbetter else ", -r worse flop to flop"))
+    expect(not wrong, "a register's NGD-7 depth is not the rule's: %s" % "; ".join(wrong[:3]))
     # 2. Within every default: nothing. An input wired straight to an
     #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
     ok = fx["ngd_fx_ok"]
