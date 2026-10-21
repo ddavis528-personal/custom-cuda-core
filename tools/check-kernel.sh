@@ -87,6 +87,9 @@
 #   only a fence carries an ordering          ordering-on-load: DEC's output
 #     (IS-11)                                    and MIU refuse each of vadd's 7
 #                                                loads; memop-ordering: MIU alone
+#   the suite issues out of order: enough     --in-order: the same traces held
+#     instructions ahead of older ones, deep     in program order fail the
+#     enough (tools/check-ooo.py)                floor
 #   every kernel reaches the bins it exists   (COVER counts, below; a stub
 #     for (docs/coverage.md)                     change that stops reaching a
 #                                                path fails here)
@@ -804,6 +807,37 @@ if [ "$n" = 7 ] && [ "$o" = 7 ] && [ "$(field "$log" check_failures)" = 14 ]; th
   say "--break memop-ordering: OOE and MIU refuse each" "PASS (7 loads)"
 else
   bad "--break memop-ordering" "$n MIU and $o OOE refusals (want 7 each): $(grep '^KERNEL' "$log")"
+fi
+
+# -- out of order (Daniel, 2026-10-21) -----------------------------------------
+# A suite of hazard-free kernels runs the OOE as an in-order machine and
+# passes whatever its reordering does. So every kernel's trace is measured
+# (tools/check-ooo.py, over retired instructions): how many issued ahead of
+# an older instruction of their warp, and how deep. The suite must reach its
+# floor, and each kernel written to force reordering its own bounds (OOO_WANT,
+# step 2). The control: the same traces held in program order, as an
+# in-order machine would at best issue them, must fail the floor.
+OOO_FLOOR="ahead=15,depth=4,kernels=6"
+OOO_WANT=()
+ooo_traces=""
+for d in test/kernels/*/; do
+  k=$(basename "$d")
+  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --trace "$B/ooo_$k.ccvtrace" >"$B/ooo_$k.log" 2>&1
+  ooo_traces="$ooo_traces $B/ooo_$k.ccvtrace"
+done
+want_args=()
+for w in "${OOO_WANT[@]}"; do want_args+=(--want "$w"); done
+if out=$(python3 tools/check-ooo.py --floor "$OOO_FLOOR" "${want_args[@]}" $ooo_traces 2>&1); then
+  say "kernels issue out of order" "PASS ($(sed -n 's/^OOO suite //p' <<<"$out"))"
+else
+  bad "kernels issue out of order" "$(grep -m3 '^OOO FAIL' <<<"$out" | sed 's/^OOO FAIL //' | xargs)"
+fi
+if out=$(python3 tools/check-ooo.py --in-order --floor "$OOO_FLOOR" "${want_args[@]}" $ooo_traces 2>&1); then
+  bad "--in-order: the same traces in program order" "passed the floor: $(sed -n 's/^OOO suite //p' <<<"$out")"
+elif grep -q '^OOO suite ahead=0 depth=0 kernels=0 ' <<<"$out"; then
+  say "--in-order: the same traces in program order" "PASS (fails the floor: nothing reordered)"
+else
+  bad "--in-order: the same traces in program order" "reordered still: $(sed -n 's/^OOO suite //p' <<<"$out")"
 fi
 
 exit $fail
