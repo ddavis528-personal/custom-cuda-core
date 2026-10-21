@@ -61,6 +61,7 @@ it.
 | PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
 | PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
 | PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
+| PF-39 | An early MLC-miss notice for demotion | MLC, DCU, MIU, OOE, RAU | deferred (TI-24 (5)) |
 
 ## Entries
 
@@ -710,3 +711,25 @@ it.
 - **Signal:** a select stage with room (a request vector registered a
   stage earlier, or a pick restructured so a section's fall-through is
   known before the issue AND), or 16-bit code that matters at four warps.
+
+### PF-39 An early MLC-miss notice for demotion
+
+- **Now:** OOE learns `mlc_miss` only from a load's completion, which comes
+  with the data, when the load stops blocking (TI-24 (5)). So the first
+  build's MLC-miss trigger is time-based: the head is a load that missed L1
+  (no completion at `CCV_LAT_L1_CMPL`) and has blocked longer than
+  `CCV_DEMOTION_THRESHOLD_MLC`, which gen-params requires to exceed
+  `CCV_LAT_MLC_HIT_MAX`, MLC's worst hit latency at DCU's boundary.
+- **Alternative:** MLC reports a miss at its tag lookup, and the notice
+  travels DCU to MIU to OOE, mapped at each hop to the requests it serves.
+  A head load whose notice has arrived demotes at once.
+- **Cost:** three notice hops, each a `notice_of`-style channel or a field
+  on one (TI-23's form). DCU's and MIU's request maps already exist for the
+  refill notice (OA-23).
+- **What it buys:** each DRAM miss demotes `CCV_DEMOTION_THRESHOLD_MLC`
+  minus MLC's hit latency sooner, so the warp holds its RS room and its
+  slot that much less, against a fill of about 1,000 cycles.
+- **Signal:** OI's swap environment sweeps the threshold at 25, 50 and 100
+  (OA's rev 131). If 25 beats 50 by more than 1% on the swap-on sweep, and
+  MLC's hit latency keeps the threshold from going that low, the notice is
+  worth building.
