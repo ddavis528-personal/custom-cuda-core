@@ -149,6 +149,10 @@ SchedAttr SchedAttr::decode(uint32_t a) {
 Core::Core(const Config &cfg) : cfg_(cfg) {
   static uint64_t next_serial = 0;
   serial_ = ++next_serial;
+  // The composed RTL's timing (OI-45) is the sectioned select's: the
+  // unsectioned one issues a copy with its load, past the request register,
+  // and has no RTL to mirror.
+  if (!cfg_.sectioned) cfg_.req_rows_late = cfg_.miss_lead = cfg_.ready_rep_late = false;
   const std::string e = cfg_.check();
   if (!e.empty()) {
     std::fprintf(stderr, "ooe: %s\n", e.c_str());
@@ -2066,6 +2070,7 @@ void Core::select() {
         ports += need;
         if (miu) ++mports;
         doIssue(e, port, r.copy, port + 1);
+        req_gnt_now_[e] = 1;   // the grant register, as the sectioned select's
         progress = true;
       }
     }
