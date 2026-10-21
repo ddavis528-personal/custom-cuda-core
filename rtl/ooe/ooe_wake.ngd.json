@@ -36,6 +36,18 @@
       "by": "OA",
       "date": "2026-10-20",
       "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: squash, flush and whole-event payloads"
+    },
+    "dep_cq01h": {
+      "arrival": 5.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 137), in NGD from the launching flop: dep as ooe_sched takes it"
+    },
+    "sqf_cq01h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 137), in NGD from the launching flop: the registered squash's frees, OI-58 (2)"
     }
   }
 }

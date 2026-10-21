@@ -75,6 +75,7 @@ module ooe_sched #(
   input  logic [N-1:0]      copy_cq02h,
   // Leads, into the enable flops.
   input  logic [N-1:0]      msd_cq02h,     // missed: the replay rule's (OI-50)
+  input  logic [N-1:0]      mis_cq02h,     // ooe_wake: missed at the last edge, held from the next cycle
   input  logic [N*WL-1:0]   wtl_cq02h,     // ooe_wake: a producer's line changes by timer at the edge after next
   input  logic              wml_cq02h,     // ooe_wake: a miss or a completion does
   input  logic              alloc_cq02h,   // ooe_rs: a row is written at this edge
@@ -102,11 +103,25 @@ module ooe_sched #(
   // -- Leads ----------------------------------------------------------------
   // The stop lead: OI-50's replay rule, an issued entry with a producer
   // not issued or missed, over the state after this edge.
-  logic stop_cq02h;
+  // The same rule gives this cycle's replays (rep): ooe_rs and ooe_wake
+  // take them at this edge, so issued after it is iss less rep (OA's
+  // response OI-45: the model's order, a replayed entry requesting at
+  // once; V-65 holds it to ooe_rs's issued register an edge later).
+  // The stop lead is the next cycle's replays, so the request register
+  // captures them on their edge: the rule over issued after this cycle's
+  // stops, the matrix as it stands and the held misses with this cycle's
+  // pulses. Next cycle's issued and matrix only shrink by then, and its held
+  // misses only grow by the pulses, so the lead is a superset.
+  logic         stop_cq02h;
+  logic [N-1:0] rep_cq02h, ise_cq02h, gon;
   always_comb begin
+    for (int i = 0; i < N; i++)
+      rep_cq02h[i] = iss_cq02h[i] && (dep_cq02h[i * N +: N] & (~iss_cq02h | msd_cq02h)) != '0;
+    ise_cq02h  = iss_cq02h & ~rep_cq02h;
+    gon        = ~ise_cq02h | msd_cq02h | mis_cq02h;
     stop_cq02h = 1'b0;
     for (int i = 0; i < N; i++)
-      stop_cq02h = stop_cq02h | (iss_cq02h[i] && (dep_cq02h[i * N +: N] & (~iss_cq02h | msd_cq02h)) != '0);
+      stop_cq02h = stop_cq02h | (ise_cq02h[i] && (dep_cq02h[i * N +: N] & gon) != '0);
   end
 
   // The timer lead, of lines some row reads: a line no cell selects
@@ -135,7 +150,7 @@ module ooe_sched #(
   logic         chg_cq04h, rq_en, gnt_en;
   always_comb
     for (int e = 0; e < N; e++)
-      rq_cq02h[e] = valid_cq02h[e] && !iss_cq02h[e] && active_cq02h[slot_cq02h[e * LS +: LS]] &&
+      rq_cq02h[e] = valid_cq02h[e] && !ise_cq02h[e] && active_cq02h[slot_cq02h[e * LS +: LS]] &&
                     (!copy_cq02h[e] || dep_cq02h[e * N +: N] == '0);
   assign rq_en  = chg_cq04h || stop_cq03h || gnt_cq04h != '0;
 
