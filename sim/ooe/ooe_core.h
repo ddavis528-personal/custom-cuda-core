@@ -265,6 +265,23 @@ struct Config {
   /// The request register's enable also takes the allocation lead: a row
   /// written at an edge enters at the next (ooe_sched, OI-45 (a)).
   bool req_alloc_lead = false;
+  /// ooe_sched's request register sees ooe_rs's rows and ooe_wake's
+  /// issued bits two cycles late, as the composed RTL does (OI-45: both
+  /// take the grant register an edge after ooe_sched, and a row written at
+  /// an edge reaches the register at the next): a row freed or written in
+  /// the last two cycles requests on its state before them, and the
+  /// allocation lead comes with the row.
+  bool req_rows_late = false;
+  /// The ready register reads ooe_wake's lead lines, which drop an L1
+  /// load's wake two cycles before its miss when no completion hint has
+  /// come (OA-23): a spec load whose hint has not come is not ready from
+  /// its miss cycle on. The environment sends Core::hint.
+  bool miss_lead = false;
+  /// The ready register sees a source's replay two cycles late, as the
+  /// composed RTL does (OI-45: ooe_wake takes the replay while ooe_sched is
+  /// a cycle on, and its lead lines had risen on the timer it replaced):
+  /// until then it reads that timer.
+  bool ready_rep_late = false;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
   /// every free (OA's stage-boundary item 4, rename's own credits; not
@@ -766,6 +783,9 @@ public:
   void uop(const Uop &u);
   void done(const Done &d);
   void cmpl(const Cmpl &c);
+  /// OA-23's completion hint: the completion for rob_tag comes two cycles
+  /// from now (read only under Config::miss_lead).
+  void hint(unsigned rob_tag);
   void alloc(const Alloc &a);
   void demote(unsigned warp);
   void barRelease(uint32_t warp_mask);
@@ -850,6 +870,10 @@ private:
     bool issued = false;
     uint64_t issue_at = 0;
     bool spec = false;             ///< woken speculatively (an L1 load)
+    bool hinted = false;           ///< its completion's hint came (OA-23; miss_lead)
+    /// ready_rep_late: its last replay's cycle and the timer it replaced.
+    uint64_t rep_at = ~uint64_t(0), rep_issue_at = 0, rep_late_at = 0;
+    bool rep_late = false, rep_on_completion = false;
     bool on_completion = false;    ///< wakes on its completion, not a time
     uint64_t late_at = 0;
     bool late = false;             ///< the full-latency wake (bypass wakes are per cell)
@@ -1185,6 +1209,11 @@ private:
   std::vector<uint8_t> audit_squash_;     ///< a slot squashed this cycle (the settings audit)
   std::vector<uint8_t> row_conf_prev_;    ///< each row confirmed at the last request register update (copy_conf_late)
   bool req_alloc_q_ = false;              ///< a row was written this cycle (req_alloc_lead's flop)
+  bool req_alloc_q2_ = false;             ///< and a cycle before (req_rows_late)
+  bool req_rep_q_ = false;                ///< a replay last cycle (req_rows_late)
+  /// req_rows_late: each row's state one and two updates ago (bit 0
+  /// valid, 1 issued, 2 confirmed, 3 freed or written in that cycle).
+  std::vector<uint8_t> req_row_q_[2];
   std::vector<uint8_t> rob_prompt_prev_;  ///< the last cycle's (fits_stale: two cycles late)
   unsigned rs_prompt_prev_[2] = {};       ///< the last cycle's prompt RS frees (fits_stale)
   unsigned shr_prev_[4] = {};             ///< the last cycle's shared credits at rename (fits_stale 2)

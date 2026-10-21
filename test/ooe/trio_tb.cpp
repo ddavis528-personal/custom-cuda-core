@@ -44,6 +44,9 @@ void trioConfig(Config &c) {
   c.rs_same_edge = false;
   c.copy_conf_late = true;
   c.req_alloc_lead = true;
+  c.req_rows_late = true;
+  c.miss_lead = true;
+  c.ready_rep_late = true;
 }
 
 namespace {
@@ -60,6 +63,8 @@ unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 
                    first_sum = 0, compared_cores = 0;
 std::map<std::string, unsigned long long> kinds;
 bool core_diverged = false, grant_diverged = false;
+uint64_t errs_seen = 0;   // the model's errors so far in this core
+std::map<std::string, unsigned long long> first_kinds;   // each core's first mismatch
 int prev_rq[TR_N], prev_rd[TR_N], t_prev_req[TR_N], t_prev_ready[TR_N];
 unsigned long long grant_cores = 0, grant_first_sum = 0;
 unsigned long long core_cycle = 0;
@@ -156,6 +161,10 @@ void fail(const char *what, unsigned a, unsigned b, unsigned rtl, unsigned model
     core_diverged = true;
     ++diverged;
     first_sum += core_cycle;
+    ++first_kinds[what];
+    if (std::getenv("TRIO_FIRST"))
+      std::fprintf(stderr, "core first: cycle %llu (core cycle %llu): %s (%u, %u: rtl %u, model %u)\n", cycles,
+                   core_cycle, what, a, b, rtl, model);
   }
 }
 
@@ -196,9 +205,11 @@ void hook(const Core &c) {
     H.clear();
     core_diverged = false;
     grant_diverged = false;
+    errs_seen = 0;
     ctx->assertOn(true);
     core_cycle = 0;
     if (following) ++compared_cores;
+    if (following && std::getenv("TRIO_FIRST")) std::fprintf(stderr, "compared core starts at cycle %llu\n", cycles + 1);
     clearAll(dut->req_cq01h, P);
     clearAll(dut->req_l_cq00h, P);
     clearAll(dut->sqf_cq01h, N);
@@ -208,6 +219,14 @@ void hook(const Core &c) {
   ++cycles;
   ++core_cycle;
   if (!following) { ++skipped; return; }
+  {
+    const auto it = c.counters.find("errors");
+    const uint64_t errs = it == c.counters.end() ? 0 : it->second;
+    if (errs > errs_seen && std::getenv("TRIO_FIRST"))
+      std::fprintf(stderr, "model error in a compared core at core cycle %llu (grants diverged before it: %d)\n",
+                   core_cycle, int(grant_diverged));
+    errs_seen = errs;
+  }
   if (H.empty())
     for (unsigned k = 0; k != 5; ++k) H.push_back(emptySnap());
   H.push_back(snapCycle(c));
@@ -329,13 +348,32 @@ void hook(const Core &c) {
   }
   if (const char *te = std::getenv("TRIO_TRACE")) {
     const unsigned e = unsigned(std::atoi(te));
-    if (cycles <= 5320 && cycles >= 5296) {
+    const char *tw = std::getenv("TRIO_WINDOW");   // "lo,hi" in bench cycles
+    unsigned long long lo = 5296, hi = 5320;
+    if (tw) std::sscanf(tw, "%llu,%llu", &lo, &hi);
+    if (cycles <= hi && cycles >= lo) {
       const auto *r = dut->rootp;
       std::fprintf(stderr, "  [%llu] e%u model(t): valid %d iss %d grant %d rq %d alloc-in-a %d | rtl: rq %d iss %d valid %d "
-                   "grant %d\n", core_cycle, e, t.valid[e], t.iss[e], int(sw.sel_grant[e]), t.req_q[e],
+                   "grant %d rd %d/%d v73 %d\n", core_cycle, e, t.valid[e], t.iss[e], int(e < sw.sel_grant.size() && sw.sel_grant[e]), t.req_q[e],
                    int(std::count(a.w.ralloc.begin(), a.w.ralloc.end(), e)),
                    int(getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, e)), int(getBit(dut->iss_cq02h, e)),
-                   int(getBit(dut->valid_cq02h, e)), int(getBit(dut->grant_cq04h, e)));
+                   int(getBit(dut->valid_cq02h, e)), int(getBit(dut->grant_cq04h, e)),
+                   int(getBit(r->ooe_trio__DOT__u_sched__DOT__ready_cq03h, e)), t.ready_q[e], t.v73[e]);
+      // Its sources: the model's lines at t, t + 1, t + 2 and the RTL's
+      // lead lines (t + 2's frame), issued and held miss.
+      for (unsigned j = 0; j != N; ++j) {
+        if (!t.dep[e * N + j]) continue;
+        std::fprintf(stderr, "       src %u code %u: valid %d iss %d | lines t", j, unsigned(t.code[e * N + j] & 3),
+                     t.valid[j], t.iss[j]);
+        for (const Snap *y : {&t, &tp1, &tp2}) {
+          std::fprintf(stderr, " ");
+          for (unsigned k = 0; k != L; ++k) std::fprintf(stderr, "%d", int(y->line[j * L + k]));
+        }
+        std::fprintf(stderr, " | rtl lead ");
+        for (unsigned k = 0; k != L; ++k) std::fprintf(stderr, "%d", int(getBit(dut->wake_cq02h, j * L + k)));
+        std::fprintf(stderr, " iss %d msd %d stop t/t1/t2 %d%d%d\n", int(getBit(dut->iss_cq02h, j)),
+                     int(getBit(dut->msd_cq02h, j)), int(t.w.stop[j]), int(tp1.w.stop[j]), int(tp2.w.stop[j]));
+      }
     }
   }
   // ooe_sched's registers (read inside it): the request register exactly,
@@ -394,6 +432,7 @@ int main(int argc, char **argv) {
   const int model_fails = ooeTestRandomHookedWith(seeds, hook, trioConfig);
   dut->final();
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
+  for (const auto &k : first_kinds) std::fprintf(stderr, "  first: %-23s %llu\n", k.first.c_str(), k.second);
   std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu "
               "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f mismatches=%llu model_failures=%d\n",
               seeds, cores, compared_cores, cycles, skipped, grants, grant_cores,

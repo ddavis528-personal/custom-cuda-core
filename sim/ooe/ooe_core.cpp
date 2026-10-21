@@ -41,7 +41,10 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
                                      {"take_young", &take_young}, {"ret_now", &ret_now},
-                                     {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead}};
+                                     {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
+                                     {"req_rows_late", &req_rows_late},
+                                     {"miss_lead", &miss_lead},
+                                     {"ready_rep_late", &ready_rep_late}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -264,6 +267,10 @@ void Core::uop(const Uop &u) {
 }
 void Core::done(const Done &d) { dones_.push_back(d); }
 void Core::cmpl(const Cmpl &c) { cmpls_.push_back(c); }
+void Core::hint(unsigned rob_tag) {
+  RobEntry *r = byTag(rob_tag, nullptr);
+  if (r && r->rs_main != kNoEntry && rs_[r->rs_main].valid) rs_[r->rs_main].hinted = true;
+}
 void Core::alloc(const Alloc &a) { allocs_.push_back(a); }
 void Core::demote(unsigned warp) { demotes_.push_back(warp); }
 void Core::barRelease(uint32_t m) { released_ |= m; }
@@ -732,10 +739,20 @@ bool Core::rowReadyAt(unsigned i, uint64_t t) const {
     if (!(cell(i, j) & 1)) continue;
     const RsEntry &p = rs_[j];
     const uint8_t w = woff_[size_t(i) * n_ + j];
+    // miss_lead: the lead line's drop at the miss, known two cycles ahead.
+    if (cfg_.miss_lead && p.issued && p.spec && !p.hinted &&
+        t >= p.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl)
+      return false;
+    // ready_rep_late: a source replayed this cycle or the last still reads
+    // the timer its replay withdrew.
+    const bool old = cfg_.ready_rep_late && !p.issued && p.rep_at != ~uint64_t(0) && p.rep_at + 1 >= now_;
+    const bool issued = p.issued || old, late = old ? p.rep_late : p.late,
+               onc = old ? p.rep_on_completion : p.on_completion;
+    const uint64_t issue_at = old ? p.rep_issue_at : p.issue_at, late_at = old ? p.rep_late_at : p.late_at;
     if (w == kLateOff) {
       // The full-latency wake: raised, or its timer fires by t.
-      if (!(p.late || (p.issued && !p.on_completion && t + skew_ >= p.late_at))) return false;
-    } else if (!(p.issued && t + skew_ >= p.issue_at + w)) {
+      if (!(late || (issued && !onc && t + skew_ >= late_at))) return false;
+    } else if (!(issued && t + skew_ >= issue_at + w)) {
       return false;
     }
   }
@@ -746,10 +763,21 @@ bool Core::requestNext(unsigned e) const {
   const RsEntry &x = rs_[e];
   // Issued as ooe_wake holds it after this edge: this cycle's own grants
   // reach it from the grant register at the next (the register masks them).
-  const bool issued = x.issued && !req_gnt_now_[e];
+  // req_rows_late: and a replay of this cycle at the next (ooe_rs and
+  // ooe_wake take it while ooe_sched is a cycle on).
+  const bool issued = (x.issued && !req_gnt_now_[e]) ||
+                      (cfg_.req_rows_late && e < wlog_.replay.size() && wlog_.replay[e]);
   // copy_conf_late: ooe_sched sees a source's confirmation a cycle after
   // the model's select would (OI-45), so a copy requests a cycle later.
   const bool conf = rowConfirmed(e) && (!cfg_.copy_conf_late || (e < row_conf_prev_.size() && row_conf_prev_[e]));
+  if (cfg_.req_rows_late && e < req_row_q_[1].size()) {
+    const uint8_t old = req_row_q_[1][e];
+    const bool touched = (req_row_q_[0][e] & 8) || wlog_.rfree[e] ||
+                         std::count(wlog_.ralloc.begin(), wlog_.ralloc.end(), e);
+    if (touched)
+      return (old & 1) && !(old & 2) && !(e < req_gnt_q_.size() && req_gnt_q_[e]) &&
+             slot_[x.slot].st == WarpState::kActive && (!x.copy || (old & 4));
+  }
   return x.valid && !issued && slot_[x.slot].st == WarpState::kActive && (!x.copy || conf);
 }
 
@@ -772,9 +800,14 @@ void Core::requestRegister() {
   // ready register's enable takes too): this cycle's hop on time.
   bool stop = false;
   for (unsigned e = 0; e != n_ && e < wlog_.replay.size(); ++e) stop = stop || wlog_.replay[e];
+  // req_rows_late: the replays ooe_sched sees at this edge are last cycle's.
+  const bool rep_now = stop;
+  if (cfg_.req_rows_late) stop = req_rep_q_;
   // req_alloc_lead: a row written at the last edge enters at this one
   // (ooe_sched's registered allocation lead on the request enable, OI-45).
-  const bool en = req_lead_q_ || gany || stop || (cfg_.req_alloc_lead && req_alloc_q_);
+  // req_rows_late: the lead comes a cycle later, with the row.
+  const bool alc = cfg_.req_rows_late ? req_alloc_q2_ : req_alloc_q_;
+  const bool en = req_lead_q_ || gany || stop || (cfg_.req_alloc_lead && alc);
   bool diff = false;
   for (unsigned e = 0; e != n_; ++e) {
     const bool d = requestNext(e);
@@ -782,7 +815,15 @@ void Core::requestRegister() {
     if (en) req_q_[e] = d;
   }
   req_lead_q_ = diff;
+  req_alloc_q2_ = req_alloc_q_;
+  req_rep_q_ = rep_now;
   req_alloc_q_ = !wlog_.ralloc.empty();
+  req_row_q_[1].swap(req_row_q_[0]);
+  req_row_q_[0].resize(n_);
+  for (unsigned e = 0; e != n_; ++e)
+    req_row_q_[0][e] = uint8_t(rs_[e].valid | (rs_[e].valid && rs_[e].issued) << 1 |
+                               (rs_[e].valid && rowConfirmed(e)) << 2 | (wlog_.rfree[e] ? 8 : 0));
+  for (unsigned e : wlog_.ralloc) req_row_q_[0][e] |= 8;
   row_conf_prev_.resize(n_);
   for (unsigned e = 0; e != n_; ++e) row_conf_prev_[e] = rs_[e].valid && rowConfirmed(e);
   req_gnt_q_.swap(req_gnt_now_);
@@ -963,6 +1004,11 @@ bool Core::cancelHop() {
         err("V-17: memop entry %u was issued on an unconfirmed source", i);
         continue;
       }
+      y.rep_at = now_;
+      y.rep_issue_at = y.issue_at;
+      y.rep_late_at = y.late_at;
+      y.rep_late = y.late;
+      y.rep_on_completion = y.on_completion;
       y.issued = false;
       y.late = false;
       ++y.replays;
@@ -2142,6 +2188,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   const Uop &u = r.u;
   x.issued = true;
   x.issue_at = now_;
+  x.hinted = false;
   // A grant on the registered ready alone: a stale bit (OI-51, OA-17).
   x.stale = !rowReady(e);
   if (x.stale) count("select.stale_grant");

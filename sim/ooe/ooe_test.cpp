@@ -439,6 +439,8 @@ struct Env {
     // inputs due this cycle
     for (auto it = dones.begin(); it != dones.end() && it->first <= t;) { core.done(it->second); it = dones.erase(it); }
     for (auto it = cmpls.begin(); it != cmpls.end() && it->first <= t;) { core.cmpl(it->second); it = cmpls.erase(it); }
+    // OA-23's hint, two cycles ahead of its completion.
+    for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first) core.hint(r.first->second.rob_tag);
     // a result landing in a register a younger producer was issued to write
     for (auto it = landings.begin(); it != landings.end() && it->first <= t;) {
       const unsigned p = it->second.first;
