@@ -220,7 +220,12 @@ struct Config {
   /// 3, OA's per-warp shares (OI-65): as 2, but no short path: each cycle
   /// every shared credit (as registered, without this cycle's frees) is
   /// split equally among the warps with a head, the remainder to the first
-  /// in rotation, and each warp admits against its own share.
+  /// in rotation, and each warp admits against its own share. 4, OA's
+  /// stateful shares: each warp keeps its share of each shared credit, its
+  /// own takes lower it; frees, and the shares of warps four cycles without
+  /// a head, form a pool split each cycle equally among the warps with a
+  /// head (the remainder to the first in rotation); the shares and the pool
+  /// sum to the credit, as registered (checked).
   unsigned fits_stale = 0;
   /// When rename sees an RS entry or ROB slot freed this cycle. 0: in the
   /// same cycle, every free (same-edge reuse, the ideal). 1: a cycle late,
@@ -1083,6 +1088,9 @@ private:
   bool shr_copy_prev_ = false;            ///< and a copy among its candidate heads
   bool shares_on_ = false;                ///< fits_stale 3 this cycle
   std::vector<std::array<unsigned, 4>> share_;   ///< each slot's share: RS RCU, RS MIU, GPR, predicate names
+  std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
+  std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
+  std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)

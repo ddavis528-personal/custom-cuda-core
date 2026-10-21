@@ -2517,6 +2517,7 @@ void Core::rename() {
   std::vector<bool> blocked(slot_.size(), false);
   ren_tot_.fill(0);
   ren_slot_.assign(slot_.size(), {});
+  took_.assign(slot_.size(), 0);
   ren_margin_ = cfg_.fits_conservative == 1 && cfg_.rename_one_warp != 1 ? cfg_.rename_width : 0;
   // fits_conservative 2: while any shared credit is short of the width,
   // one warp takes (its fits, formed alone, are exact for it). 3, OA-22's
@@ -2570,8 +2571,65 @@ void Core::rename() {
     if (short_credit && cfg_.fits_stale == 2) ren_margin_ = w;
   }
   // fits_stale 3: per-warp shares of each shared credit, no short path.
-  shares_on_ = cfg_.fits_stale == 3 && cfg_.rename_one_warp != 1;
-  if (shares_on_) {
+  shares_on_ = (cfg_.fits_stale == 3 || cfg_.fits_stale == 4) && cfg_.rename_one_warp != 1;
+  if (shares_on_ && cfg_.fits_stale == 4) {
+    short_credit = false;
+    ren_late_frees_ = true;
+    unsigned c[4] = {0, 0, unsigned(gfree_.size()), cfg_.rename_preds ? unsigned(pfree_.size()) : 1000u};
+    for (unsigned e = 0; e != cfg_.rs_rcu; ++e) c[0] += !rsHeld(e);
+    for (unsigned e = cfg_.rs_rcu; e != n_; ++e) c[1] += !rsHeld(e);
+    const unsigned fcap = cfg_.ren_free_cap;
+    c[0] -= std::min(c[0], std::min(rs_prompt_[0], fcap));
+    c[1] -= std::min(c[1], std::min(rs_prompt_[1], fcap));
+    if (share_.size() != slot_.size()) {
+      share_.assign(slot_.size(), {0, 0, 0, 0});
+      pool_ = {0, 0, 0, 0};
+      headless_.assign(slot_.size(), 0);
+    }
+    std::vector<unsigned> with;
+    for (unsigned k = 0; k != slot_.size(); ++k) {
+      const unsigned si = (rr_rename_ + k) % slot_.size();
+      const bool head = slot_[si].st != WarpState::kFree && slot_[si].decq;
+      // Idle: no take in a cycle (headless_ counts them; a take clears it).
+      ++headless_[si];
+      if (head) with.push_back(si);
+    }
+    for (unsigned r = 0; r != 4; ++r) {
+      unsigned held = pool_[r];
+      for (unsigned si = 0; si != slot_.size(); ++si) held += share_[si][r];
+      // Frees since the last cycle join the pool; a credit can also fall
+      // (a restore-allocate or a fault draws outside rename's takes): it
+      // comes from the pool, then from the shares, oldest warp first.
+      if (c[r] >= held) pool_[r] += c[r] - held;
+      else {
+        unsigned owe = held - c[r];
+        const unsigned p = std::min(owe, pool_[r]);
+        pool_[r] -= p;
+        owe -= p;
+        for (unsigned si = 0; si != slot_.size() && owe; ++si) {
+          const unsigned q = std::min(owe, share_[si][r]);
+          share_[si][r] -= q;
+          owe -= q;
+        }
+        count("rename.share_owed");
+      }
+      // A warp four cycles without a take returns its share.
+      for (unsigned si = 0; si != slot_.size(); ++si)
+        if (headless_[si] >= 4 && share_[si][r]) {
+          pool_[r] += share_[si][r];
+          share_[si][r] = 0;
+        }
+      if (!with.empty()) {
+        const unsigned each = pool_[r] / unsigned(with.size()), rem = pool_[r] % unsigned(with.size());
+        for (unsigned si : with) share_[si][r] += each;
+        share_[with[0]][r] += rem;
+        pool_[r] = 0;
+      }
+      unsigned sum = pool_[r];
+      for (unsigned si = 0; si != slot_.size(); ++si) sum += share_[si][r];
+      if (sum != c[r]) err("fits_stale 4: the shares and pool of credit %u sum to %u, the credit %u", r, sum, c[r]);
+    }
+  } else if (shares_on_) {
     short_credit = false;
     ren_late_frees_ = true;   // the shares are of the registered credits
     unsigned c[4] = {0, 0, unsigned(gfree_.size()), cfg_.rename_preds ? unsigned(pfree_.size()) : 1000u};
@@ -2634,6 +2692,7 @@ void Core::rename() {
     decq_.erase(it);
     --slot_[si].decq;
     --budget;
+    ++took_[si];
     return 1;
   };
   if (warps) {
@@ -2659,6 +2718,11 @@ void Core::rename() {
     }
   }
   ren_late_frees_ = false;
+  if (shares_on_ && cfg_.fits_stale == 4)
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      for (unsigned r = 0; r != 4; ++r) share_[si][r] -= std::min(share_[si][r], ren_slot_[si][r]);
+      if (took_[si]) headless_[si] = 0;
+    }
   if (!budget) count("rename.full_width");
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
 }

@@ -443,6 +443,14 @@ against its own share. The interleave +0.0%, two warps +0.8%, one warp
 +1.3% (13.0% of refills fail). The split measures 16.1 NGD and a share
 reaches the fits 13.5 after it, too deep on the fits' D
 (`test/ooe/probes/share_probe.sv`, `fitsk2_probe.sv` SHR=1).
+4 is OA's stateful shares: each warp keeps its share, its own takes lower
+it, and frees and the shares of warps four cycles without a take form a
+pool split each cycle among the warps with a head; the shares and pool sum
+to the credit (checked). An idle return keyed on "no head" deadlocks: a
+stalled warp with a head keeps its share. The interleave +7.4% at a
+four-cycle return, +2.8% at two (the earliest the hardware can key on a
+registered take), +0.0% at one, which is 3's per-cycle split again. By
+OA's rule (OI-65) OA-21 goes to DA with one warp (+1.3%).
 
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
