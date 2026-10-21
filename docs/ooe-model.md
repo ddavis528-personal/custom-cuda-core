@@ -345,10 +345,12 @@ orders a predicate write itself: behind every older writer of that window,
 until it completes, and behind every older reader, until it has issued in an
 earlier cycle (`hold.pred_window`).
 
-The S1 RAU, CRU and SYU stubs consume nothing OOE sends them, and no S1
-kernel demotes, kills, restores, faults or waits at a barrier. So the
-adapter turns a fault into a check failure, counts and drops status reports
-(`s1.status_dropped`), and fails on anything else it would have to send there.
+Demotion runs end to end out to PCA (TI-24): the adapter sends status
+reports to RAU, a demoting warp's map to RCU and its drained report to RAU,
+and RAU demotes on a report when `CCV_RAU_DEMOTE` asks it to. No restore
+yet. The S1 CRU and SYU stubs consume nothing OOE sends them, and no S1
+kernel kills, faults or waits at a barrier. So the adapter turns a fault into
+a check failure, and fails on a barrier or kill ack.
 The kill ports are not in the C++ machine yet, so kill is reached only by the
 unit tests.
 

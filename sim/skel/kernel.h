@@ -170,7 +170,26 @@ struct Kernel {
   uint64_t first_fetch = 0;
   bool fetched = false;
   unsigned exits = 0;                              ///< warps whose exit retired
-  bool exited() const { return exits >= orcs.size(); }
+  /// A demoted warp, as the blocks that moved it saw it (TI-24). Observed for
+  /// the check at the end, never read by a block: the resume PC RAU got, the
+  /// rows RCU read out (each arch register's row name, in the map OOE sent),
+  /// and the rows and PC groups PCA holds. With no restore yet (TI-24 (1)), a
+  /// parked warp ends its run parked, and its state is checked against
+  /// ccv-sim's at the retirement boundary instead of at the end.
+  struct Parked {
+    uint64_t resume_pc = 0;
+    std::vector<unsigned> gpr_rows;                         ///< by arch register
+    std::map<unsigned, std::array<uint32_t, kLanes>> rows;  ///< PCA's, by mig_row
+    uint64_t pc = 0;                                        ///< FET's first group
+    bool done = false;                                      ///< PCA acked it
+  };
+  std::map<unsigned, Parked> parked;
+  unsigned parked_done() const {
+    unsigned n = 0;
+    for (auto &p : parked) n += p.second.done;
+    return n;
+  }
+  bool exited() const { return exits + parked_done() >= orcs.size(); }
   uint64_t failures = 0;                           ///< check failures
   uint64_t class_violations = 0;
   std::vector<uint64_t> rx_per_chan = std::vector<uint64_t>(kNumChans, 0);
@@ -184,7 +203,7 @@ struct Kernel {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
-      "lane_byp", "fill_notice", "cmpl_hint"};
+      "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }

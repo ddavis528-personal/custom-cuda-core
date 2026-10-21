@@ -76,6 +76,9 @@
 #     (OA-23, TI-23)                           (vadd): the bank's notice check
 #   a completion echoes its memop's RS      rs-echo (vadd): OOE refuses
 #     entry (OA-23)                            every completion
+#   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
+#     state at its retirement boundary         resume-pc (stall, demoting):
+#     (TI-24)                                  the parked check refuses each
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
 #     DEC marks real (TI-1)                      hides a second source, and
 #                                                seq 14 reads R9 stale
@@ -687,7 +690,7 @@ done
 # wrong entry is a completion waking another uop's dependants: OOE's check
 # names every completion it receives.
 "$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break rs-echo >"$B/kernel_rs-echo.log" 2>&1
-n=$(grep -c "^CHECK ooe: rob tag [0-9]* completed for RS entry 1, but its memop named entry 0" "$B/kernel_rs-echo.log")
+n=$(grep -c "^CHECK ooe: rob tag [0-9]* completed for RS entry [0-9]*, but its memop named entry [0-9]*" "$B/kernel_rs-echo.log")
 if [ "$n" -gt 0 ] && [ "$(field "$B/kernel_rs-echo.log" check_failures)" = "$n" ]; then
   say "--break rs-echo: OOE refuses the wrong entry" "PASS ($n completions)"
 else
@@ -711,6 +714,37 @@ for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_nt
     bad "--break $brk" "no $prop on $chan: $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
+# Demotion (TI-24): with RAU demoting on OOE's stall report, every kernel
+# still matches ccv-sim, and a warp that parks is checked where it parked:
+# PCA's rows and predicates against ccv-sim's architectural state after the
+# instructions it retired, and the resume PC against the next one's. No
+# restore yet (TI-24 (1)), so a parked warp ends its run parked. stall parks
+# warp 0 on its slow line; the controls break the map OOE sends RCU, the
+# order RCU sends PCA its rows in, and the resume PC OOE reports.
+dem() { CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/stall/oracle.jsonl "$@"; }
+dem >"$B/kernel_stall_demote.log" 2>&1
+log="$B/kernel_stall_demote.log"
+why=""
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
+  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+done
+if [ -z "$why" ] && [ "$(cover "$log" demote)" = 1 ] && [ "$(cover "$log" parked)" = 1 ]; then
+  say "stall demoted: warp 0 parked == ccv-sim" "PASS (rows, predicates and resume PC at its boundary)"
+else
+  bad "stall demoted" "${why# } demote=$(cover "$log" demote) parked=$(cover "$log" parked)"
+fi
+for spec in "corrupt-map:PARKED warp 0 R1 lane" "mig-row-order:PARKED warp 0 R0 lane" \
+            "resume-pc:PARKED warp 0 resumes at"; do
+  brk=${spec%%:*}; want=${spec#*:}
+  dem --break "$brk" >"$B/kernel_demote_$brk.log" 2>&1
+  n=$(grep -c "^$want" "$B/kernel_demote_$brk.log")
+  if [ "$n" -gt 0 ]; then
+    say "--break $brk: the parked check refuses it" "PASS ($n)"
+  else
+    bad "--break $brk" "PCA's copy was not refused: $(grep '^KERNEL' "$B/kernel_demote_$brk.log")"
+  fi
+done
+
 # DEC's decode fields (A-75, TI-1): OOE renames and waits on the sources
 # src_valid marks, and nothing else, so a real read DEC hides is read stale.
 # On vaddslow, whose b[i] lands long after a[i]: with DCU's misses in flight

@@ -450,17 +450,67 @@ private:
       put(f, c.ooe_free, "free_mask", free_mask);
       sendOn(c.ooe_free, 0, f, makeUid(IdClass::kNone, 0));
     }
-    // RAU, CRU, SYU and RCU's map: in S1 nothing consumes these (the RAU,
-    // CRU and SYU stubs are idle on them), and no S1 kernel demotes, kills,
-    // waits at a barrier or restores. A fault is a check failure here; a
-    // status report is counted and dropped (docs/ooe-model.md, "S1 modes").
+    // Demotion (TI-24): the status reports RAU decides on, and a demoting
+    // warp's map to RCU and drained report to RAU. Each channel is rate 1
+    // and the core may make two in a cycle, so they queue here in order.
+    const uint64_t none = makeUid(IdClass::kNone, 0);
+    for (const ooe::Status &x : o.status) {
+      Bits m = msgOf(unsigned(status_));
+      put(m, unsigned(status_), "warp_id", x.warp);
+      put(m, unsigned(status_), "fault_taken", x.fault_taken);
+      put(m, unsigned(status_), "stalled", x.stalled);
+      put(m, unsigned(status_), "mlc_miss_seen", x.mlc_miss_seen);
+      put(m, unsigned(status_), "retired_since_restore", x.retired_since_restore);
+      held_.push_back({unsigned(status_), m});
+    }
+    for (const ooe::RatMap &x : o.maps) {
+      // Rows, positions and widths (OI-29): every register is 32 bits wide in
+      // S1, so its width is chwidth 0 and its position its name's.
+      const unsigned mc = unsigned(map_);
+      Bits m = msgOf(mc);
+      put(m, mc, "warp_id", x.warp);
+      put(m, mc, "direction", x.direction);
+      const FieldDesc &gm = field(mc, "gpr_map"), &gp = field(mc, "gpr_pos"),
+                      &gw = field(mc, "gpr_width"), &pm = field(mc, "pred_map");
+      for (unsigned a = 0; a != kArchGprs; ++a) {
+        // corrupt-map: R1 named by R2's row, so PCA saves the wrong value.
+        const unsigned g = k_.brk == "corrupt-map" && a == 1 ? x.gpr[2] : x.gpr[a];
+        m.set(gm.lsb + a * (gm.width / kArchGprs), gm.width / kArchGprs, core_.nameRow(g));
+        m.set(gp.lsb + a * (gp.width / kArchGprs), gp.width / kArchGprs, core_.namePos(x.gpr[a]));
+        m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, kChw32);
+      }
+      for (unsigned p = 0; p != kArchPreds; ++p)
+        m.set(pm.lsb + p * (pm.width / kArchPreds), pm.width / kArchPreds, x.pred[p]);
+      held_.push_back({mc, m});
+    }
+    for (const ooe::Drained &x : o.drained) {
+      const unsigned dc = unsigned(drained_);
+      Bits m = msgOf(dc);
+      put(m, dc, "warp_id", x.warp);
+      put(m, dc, "resume_pc", x.resume_pc + (k_.brk == "resume-pc" ? 2u : 0u));
+      put(m, dc, "arch_state_ready", 1);
+      held_.push_back({dc, m});
+    }
+    for (auto it = held_.begin(); it != held_.end();) {
+      bool first = true;   // the oldest held message on its channel only
+      for (auto j = held_.begin(); j != it; ++j) first = first && j->chan != it->chan;
+      if (first && can(it->chan, 0)) {
+        send(it->chan, 0, it->msg, none);
+        it = held_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    // CRU and SYU: no S1 kernel faults, waits at a barrier or is killed. A
+    // fault is a check failure here (docs/ooe-model.md, "S1 modes").
     for (const ooe::Fault &x : o.faults)
       k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
               (unsigned long long)x.pc);
-    if (!o.status.empty()) core_.counters["s1.status_dropped"] += o.status.size();
-    if (!o.maps.empty() || !o.drained.empty() || !o.bars.empty() || !o.kill_acks.empty())
-      k_.fail("ooe: a map, drained, barrier or kill ack with no S1 consumer");
+    if (!o.bars.empty() || !o.kill_acks.empty())
+      k_.fail("ooe: a barrier or kill ack with no S1 consumer");
   }
+  struct Held { unsigned chan; Bits msg; };
+  std::deque<Held> held_;   ///< status, maps and drained reports, in order
 
   /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an
   /// op goes in its footprint's lowest slot, and the rest of its footprint
