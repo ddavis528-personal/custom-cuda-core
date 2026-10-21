@@ -190,7 +190,9 @@ Cyc snapCycle(const Core &c) {
 Cyc emptyCyc() {
   Cyc y;
   y.w.grant.assign(N, 0); y.w.kind.assign(N, 0); y.w.cls.assign(N, 0);
-  y.prod.assign(N, 0); y.valid.assign(N, 0); y.iss.assign(N, 0); y.sqf.assign(N, 0);
+  y.prod.assign(N, 0); y.valid.assign(N, 0); y.iss.assign(N, 0); y.sqf.assign(N, 0); y.fin.assign(N, 0);
+  y.line.assign(N * L, 0); y.wtl.assign(N * L, 0);
+  y.w.stop.assign(N, 0); y.w.cmpl.assign(N, 0); y.w.miss.assign(N, 0);
   return y;
 }
 // The snapshots: H[k] is cycle t - 2 + k, where t is the cycle the next
@@ -297,6 +299,14 @@ void hook(const Core &c) {
         raised += want;
         if (want != got) fail("lead line differs", j, k, got, want);
       }
+    // ooe_rs's confirmation lead: the model-frame full-latency line's
+    // change at the next edge, as the model predicted it a cycle ago
+    // (Core::wakeLineChanges at t - 1), on an entry valid at t and not
+    // stopped at t.
+    if (c0.valid[j] && !w.stop[j]) {
+      const bool want = cm1.valid[j] && cm1.wtl[j * L + 3], got = getBit(dut->flt_cq02h, j);
+      if (want != got) fail("model-frame lead differs", j, 3, got, want);
+    }
     // ooe_sched's timer lead: the lead lines' change at the next edge, the
     // model's at t + 3 against t + 2 (Core::wakeLineChanges at t + 1), on
     // an entry stopped at neither t nor t + 1, nor granted at t: a grant's

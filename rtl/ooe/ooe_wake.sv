@@ -166,6 +166,8 @@ module ooe_wake #(
   output logic [N-1:0]   iss_cq02h,     // issued: ooe_sched's and the hop's
   output logic [N-1:0]   msd_cq02h,     // the held misses: ooe_rs's and the hop's
   output logic [4*N-1:0] wtl_cq02h,     // the timer changes the line at the next edge
+  output logic [N-1:0]   flt_cq02h,     // the model-frame full-latency line rises at the next edge (ooe_rs's
+                                        // confirmation lead: it is the result's, not the lead line's)
   output logic           wml_cq02h      // a miss or a completion changes lines at the next edge
 );
 
@@ -348,6 +350,20 @@ module ooe_wake #(
          (e[FLA] && reached(a, 8'(CMPL_DLY)));
     lead_at = up && !(e[FSPEC] && !e[FHNT] && (e[FLM] || reached(a, 8'(LAT_MISS - LEAD))));
   endfunction
+  // The model-frame full-latency line's change at the edge after next,
+  // from the state alone (the result's timing, for ooe_rs's confirmation
+  // lead): the timer's lead before OI-45's lead.
+  function automatic logic ml2(input logic [EW-1:0] e);
+    logic [AW-1:0] a1, a2;
+    logic [7:0]    lt;
+    logic          late1, late2;
+    a1    = (&e[FAGE +: AW]) ? e[FAGE +: AW] : e[FAGE +: AW] + 1'b1;
+    a2    = (&a1) ? a1 : a1 + 1'b1;
+    lt    = late_time(e[FKIND +: 2], e[FCLS +: 3], e[FCMPL]);
+    late1 = e[FLINE + 3] || (e[FARM] && reached(a1, lt));
+    late2 = late1 || (e[FARM] && reached(a2, lt));
+    ml2   = e[FISS] && !(e[FSPEC] && reached(a1, 8'(LAT_MISS))) && (late2 ^ late1);
+  endfunction
   function automatic logic [3:0] tl2(input logic [EW-1:0] e);
     logic [AW-1:0] a1, a2;
     logic [3:0]    c;
@@ -478,6 +494,7 @@ module ooe_wake #(
   // at the edge after next when CMPL_DLY is 2. The event lead is the
   // hints' valids: a hint is what moves a line no timer foresees.
   logic [4*N-1:0] wtl_nx;
+  logic [N-1:0]   flt_nx;
   logic           wml_nx;
   always_comb begin
     wml_nx = hv_cq01h != '0;
@@ -485,6 +502,12 @@ module ooe_wake #(
       logic [EW-1:0] g;
       g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0,
                      1'b0, 1'b0);
+      if (grant_cq01h[j])
+        flt_nx[j] = ml2({AW'(0), g[FAGE-1:0]});
+      else
+        flt_nx[j] = (ml2(st_cq02h[j * EW +: EW]) ||
+                     (cm_cq02h[j] && is_cq02h[j] && !st_cq02h[j * EW + FSPEC] && !st_cq02h[j * EW + FARM] &&
+                      CMPL_DLY == 2)) && !stop_cq01h[j];
       if (grant_cq01h[j])
         wtl_nx[j * 4 +: 4] = tl2({AW'(0), g[FAGE-1:0]});
       else
@@ -547,6 +570,7 @@ module ooe_wake #(
       if (rst_r01h) begin
         st_cq02h[j * EW +: EW] <= '0;
         wtl_cq02h[j * 4 +: 4]  <= '0;
+        flt_cq02h[j]           <= 1'b0;
         iso_cq02h[j]           <= 1'b0;
         mio_cq02h[j]           <= 1'b0;
         fio_cq02h[j]           <= 1'b0;
@@ -554,6 +578,7 @@ module ooe_wake #(
       end else if (ent_en[j]) begin
         st_cq02h[j * EW +: EW] <= nx[j * EW +: EW];
         wtl_cq02h[j * 4 +: 4]  <= wtl_nx[j * 4 +: 4];
+        flt_cq02h[j]           <= flt_nx[j];
         iso_cq02h[j]           <= nx[j * EW + FISS];
         mio_cq02h[j]           <= nx[j * EW + FMISS];
         fio_cq02h[j]           <= nx[j * EW + FFIN];
