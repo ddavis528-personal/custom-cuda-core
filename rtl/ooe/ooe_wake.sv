@@ -282,6 +282,13 @@ module ooe_wake #(
     held_miss = e[FISS] && e[FKIND +: 2] == KSPEC && !e[FSPEC] && !e[FARM] && !e[FMISS];
   endfunction
 
+  // A miss at the next edge, with no grant and no stop.
+  function automatic logic miss_next(input logic [EW-1:0] e, input logic hit);
+    logic [EW-1:0] n;
+    n = entry_next(e, 1'b0, KTIMED, 3'd0, 1'b0, hit, 1'b0, 1'b0);
+    miss_next = n[FMISS];
+  endfunction
+
   // The timer's line changes at the edge after next, from its state alone,
   // with nothing arriving at either edge: the bypass lines and the
   // full-latency line, between the ages it reaches at the next edge and the
@@ -405,7 +412,7 @@ module ooe_wake #(
                                CMPL_DLY == 2, 3'b0}) & {4{!stop_cq01h[j]}};
       // A miss at the next edge, before this edge's stop (a lead may be a
       // superset): a timer that misses is issued below saturation, clocked.
-      wml_nx = wml_nx || entry_next(st_cq02h[j * EW +: EW], 1'b0, KTIMED, 3'd0, 1'b0, hit[j], 1'b0, 1'b0)[FMISS];
+      wml_nx = wml_nx || miss_next(st_cq02h[j * EW +: EW], hit[j]);
     end
   end
 
