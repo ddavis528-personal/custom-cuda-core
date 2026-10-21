@@ -546,19 +546,17 @@ module ooe_wake #(
                   grant_cq01h[j];
     end
 
-  logic wml_cq01h;
-  assign wml_cq02h = wml_cq01h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       cv_cq01h    <= '0;
       hv_cq01h    <= '0;
       sq_en_cq01h <= 1'b0;
-      wml_cq01h   <= 1'b0;
+      wml_cq02h   <= 1'b0;
     end else begin
       cv_cq01h    <= cmpl_l_cq00h;
       hv_cq01h    <= hint_l_cq00h;
       sq_en_cq01h <= sq_l_cq00h;
-      wml_cq01h   <= wml_nx;
+      wml_cq02h   <= wml_nx;
     end
   end
   always_ff @(posedge ooe_core_clk) begin
