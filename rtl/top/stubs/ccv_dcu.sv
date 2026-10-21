@@ -92,5 +92,26 @@ module ccv_dcu (
 `ifdef CCV_TRACE
   assign dcu_mlc_probe_ack_tid = '0;
 `endif
+  assign dcu_miu_fill_ntc_s0_valid = '0;
+  assign dcu_miu_fill_ntc_s0_payload = '0;
+  assign dcu_miu_fill_ntc_s1_valid = '0;
+  assign dcu_miu_fill_ntc_s1_payload = '0;
+  assign dcu_miu_fill_ntc_s2_valid = '0;
+  assign dcu_miu_fill_ntc_s2_payload = '0;
+  assign dcu_miu_fill_ntc_s3_valid = '0;
+  assign dcu_miu_fill_ntc_s3_payload = '0;
+  assign dcu_miu_fill_ntc_wake = '0;
+`ifdef CCV_TRACE
+  assign dcu_miu_fill_ntc_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign dcu_miu_fill_ntc_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign dcu_miu_fill_ntc_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign dcu_miu_fill_ntc_s3_tid = '0;
+`endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

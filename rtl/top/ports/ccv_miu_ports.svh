@@ -234,7 +234,49 @@
   input  ccv_rau_miu_cta_t rau_miu_cta_payload,
   output logic rau_miu_cta_credit,
   output logic rau_miu_cta_stall,
-  input  logic rau_miu_cta_wake
+  input  logic rau_miu_cta_wake,
+  // dcu -> miu, slot 0 of 4
+  input  logic dcu_miu_fill_ntc_s0_valid,
+  input  ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s0_payload,
+  output logic dcu_miu_fill_ntc_s0_credit,
+  output logic dcu_miu_fill_ntc_s0_stall,
+  // dcu -> miu, slot 1 of 4
+  input  logic dcu_miu_fill_ntc_s1_valid,
+  input  ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s1_payload,
+  output logic dcu_miu_fill_ntc_s1_credit,
+  output logic dcu_miu_fill_ntc_s1_stall,
+  // dcu -> miu, slot 2 of 4
+  input  logic dcu_miu_fill_ntc_s2_valid,
+  input  ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s2_payload,
+  output logic dcu_miu_fill_ntc_s2_credit,
+  output logic dcu_miu_fill_ntc_s2_stall,
+  // dcu -> miu, slot 3 of 4
+  input  logic dcu_miu_fill_ntc_s3_valid,
+  input  ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s3_payload,
+  output logic dcu_miu_fill_ntc_s3_credit,
+  output logic dcu_miu_fill_ntc_s3_stall,
+  input  logic dcu_miu_fill_ntc_wake,
+  // miu -> ooe, slot 0 of 4
+  output logic miu_ooe_cmpl_hint_s0_valid,
+  output ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s0_payload,
+  input  logic miu_ooe_cmpl_hint_s0_credit,
+  input  logic miu_ooe_cmpl_hint_s0_stall,
+  // miu -> ooe, slot 1 of 4
+  output logic miu_ooe_cmpl_hint_s1_valid,
+  output ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s1_payload,
+  input  logic miu_ooe_cmpl_hint_s1_credit,
+  input  logic miu_ooe_cmpl_hint_s1_stall,
+  // miu -> ooe, slot 2 of 4
+  output logic miu_ooe_cmpl_hint_s2_valid,
+  output ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s2_payload,
+  input  logic miu_ooe_cmpl_hint_s2_credit,
+  input  logic miu_ooe_cmpl_hint_s2_stall,
+  // miu -> ooe, slot 3 of 4
+  output logic miu_ooe_cmpl_hint_s3_valid,
+  output ccv_miu_ooe_cmpl_hint_t miu_ooe_cmpl_hint_s3_payload,
+  input  logic miu_ooe_cmpl_hint_s3_credit,
+  input  logic miu_ooe_cmpl_hint_s3_stall,
+  output logic miu_ooe_cmpl_hint_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
@@ -278,4 +320,12 @@
   , output logic [63:0] miu_fet_itlb_tid
   , input  logic [63:0] fet_miu_itlb_req_tid
   , input  logic [63:0] rau_miu_cta_tid
+  , input  logic [63:0] dcu_miu_fill_ntc_s0_tid
+  , input  logic [63:0] dcu_miu_fill_ntc_s1_tid
+  , input  logic [63:0] dcu_miu_fill_ntc_s2_tid
+  , input  logic [63:0] dcu_miu_fill_ntc_s3_tid
+  , output logic [63:0] miu_ooe_cmpl_hint_s0_tid
+  , output logic [63:0] miu_ooe_cmpl_hint_s1_tid
+  , output logic [63:0] miu_ooe_cmpl_hint_s2_tid
+  , output logic [63:0] miu_ooe_cmpl_hint_s3_tid
 `endif

@@ -31,6 +31,8 @@ print("X_FIXED=%d" % sum(c["rate"] * copies(c) for c in d["channels"]
 print("X_BINDING=%d X_OUTSTANDING=%d" % (
     sum(copies(c) for c in d["channels"] if attr(c, "binding_key", None)),
     sum(1 for c in d["channels"] if "outstanding" in c)))
+# One notice checker a slot of every notice channel's copies (OA-23).
+print("X_NOTICE=%d" % sum(c["rate"] * copies(c) for c in d["channels"] if "notice_of" in c))
 print("X_TYPES=%d X_INSTS=%d X_SLOTS=%d X_MULTI=%d X_LOCKSTEP=%d X_ORDERED='%s'" % (
     len(d["channels"]),
     sum(copies(c) for c in d["channels"]),

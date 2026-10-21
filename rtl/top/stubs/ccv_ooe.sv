@@ -219,5 +219,13 @@ module ccv_ooe (
 `ifdef CCV_TRACE
   assign ooe_cru_fault_tid = '0;
 `endif
+  assign miu_ooe_cmpl_hint_s0_credit = '0;
+  assign miu_ooe_cmpl_hint_s0_stall = '0;
+  assign miu_ooe_cmpl_hint_s1_credit = '0;
+  assign miu_ooe_cmpl_hint_s1_stall = '0;
+  assign miu_ooe_cmpl_hint_s2_credit = '0;
+  assign miu_ooe_cmpl_hint_s2_stall = '0;
+  assign miu_ooe_cmpl_hint_s3_credit = '0;
+  assign miu_ooe_cmpl_hint_s3_stall = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

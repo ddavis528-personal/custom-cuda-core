@@ -293,6 +293,7 @@ def build():
         "ccv_common_chk_lockstep": "copies of a channel that must move in lockstep across the 32 lanes",
         "ccv_common_chk_binding": "a slot's group key stays bound",
         "ccv_common_chk_outstanding": "request / response pairs across two channels",
+        "ccv_common_chk_notice": "a notice and the message it promises, slot by slot",
     }
     for k in sorted(chk_counts, key=lambda k: -chk_counts[k]):
         chk_tbl.append("| `%s` | %d | %s |" % (k, chk_counts[k], judges.get(k, "")))
