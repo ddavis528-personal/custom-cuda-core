@@ -364,6 +364,9 @@ declare -A after=(
 )
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
+# check-cg and check-ngd share their Yosys netlists through this cache, keyed
+# by everything a run reads; cleared here, so the gate synthesises each one.
+rm -rf build/synth-cache
 for j in $ORDER; do
   case " $(echo $START) " in *" $j "*) ;; *) echo "verify: job $j is never started"; exit 2 ;; esac
   declare -F "job_$j" >/dev/null || { echo "verify: no job_$j"; exit 2; }

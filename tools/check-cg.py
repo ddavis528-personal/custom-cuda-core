@@ -64,7 +64,9 @@ findings a waiver now takes is reported as superseded, not failed.
 import argparse
 import collections
 import concurrent.futures
+import fcntl
 import glob
+import hashlib
 import importlib.util
 import json
 import os
@@ -164,6 +166,56 @@ MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 def run(cmd, cwd=ROOT, **kw):
     return subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str),
                           capture_output=True, text=True, **kw)
+
+
+# A Yosys netlist, once per gate: check-cg and check-ngd synthesise each
+# shared unit with the same script, and a big one takes minutes. The key is
+# everything the run reads -- the script, whitespace aside, the files it
+# names, every file in its -I directories, the strict shim and the Yosys
+# version -- so a hit is the netlist the run would write. verify.sh clears
+# the cache before its sections, so the gate synthesises everything itself.
+SYNTH_CACHE = os.path.join(ROOT, "build", "synth-cache")
+_YOSYS_VERSION = []
+
+
+def yosys_json(cmds, out):
+    """Yosys `cmds`, then write_json `out`; from the cache if this script on
+    these files has run before. One run per key at a time, so a second
+    caller waits for the first's netlist instead of making its own. Returns
+    the CompletedProcess of the run (returncode 0 for a hit)."""
+    if not _YOSYS_VERSION:
+        _YOSYS_VERSION.append(run(["yosys", "-V"]).stdout.strip())
+    h = hashlib.sha256()
+    h.update(("\n".join(" ".join(c.split()) for c in cmds) + "\n" + _YOSYS_VERSION[0]).encode())
+    paths = set()
+    shim = shutil.which("yosys")
+    if shim:
+        paths.add(shim)
+    for c in cmds:
+        for t in c.split():
+            if t.startswith("-I") and os.path.isdir(os.path.join(ROOT, t[2:])):
+                d = os.path.join(ROOT, t[2:])
+                paths |= {os.path.join(d, f) for f in os.listdir(d)
+                          if os.path.isfile(os.path.join(d, f))}
+            elif os.path.isfile(os.path.join(ROOT, t)):
+                paths.add(os.path.join(ROOT, t))
+    for f in sorted(paths):
+        h.update(f.encode() + b"\0")
+        with open(f, "rb") as fh:
+            h.update(hashlib.sha256(fh.read()).digest())
+    os.makedirs(SYNTH_CACHE, exist_ok=True)
+    hit = os.path.join(SYNTH_CACHE, h.hexdigest() + ".json")
+    with open(hit + ".lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        if not os.path.exists(hit):
+            r = run(["yosys", "-q", "-p", "; ".join(list(cmds) + ["write_json %s" % out])])
+            if r.returncode:
+                return r
+            shutil.copyfile(out, hit + ".tmp")
+            os.replace(hit + ".tmp", hit)
+            return r
+    shutil.copyfile(hit, out)
+    return subprocess.CompletedProcess([], 0, "", "")
 
 
 def jobs():
@@ -875,9 +927,8 @@ class Unit:
             cmds.append("chparam %s %s" % (" ".join(
                 "-set %s %s" % (k, v) for k, v in sorted(s["params"].items())), self.module))
         cmds += ["hierarchy -top %s" % self.module, "chformal -remove"] + KEEP_FLOPS + [
-                 "synth -flatten -top %s" % self.module,
-                 "write_json %s" % os.path.join(self.dir, "net.json")]
-        r = run(["yosys", "-q", "-p", "; ".join(cmds)])
+                 "synth -flatten -top %s" % self.module]
+        r = yosys_json(cmds, os.path.join(self.dir, "net.json"))
         if r.returncode:
             raise SystemExit("check-cg: unit %s: yosys failed:\n%s"
                              % (self.name, (r.stdout + r.stderr)[-2000:]))
@@ -2198,13 +2249,33 @@ def selftest():
     bare = elaborate("fx_bare", "ngd_fx_split_bare", kf)["total"]
     expect(kept == bare + 6, "(* keep *) copies of a 6-bit register were merged, or unmarked "
            "ones were not: %d flops kept, %d bare" % (kept, bare))
+    # 20. The synthesis cache: a header the script reads only through -I
+    # changes, and the cache must miss, not hand back the old netlist.
+    inc = os.path.join(BUILD, "fixture", "cache_inc")
+    os.makedirs(inc, exist_ok=True)
+    top = os.path.join(BUILD, "fixture", "cache_top.sv")
+    with open(top, "w") as fh:
+        fh.write('`include "cache_w.svh"\nmodule cache_top(input logic clk, input logic [W-1:0] d,'
+                 ' output logic [W-1:0] q);\n  always_ff @(posedge clk) q <= d;\nendmodule\n')
+    widths = []
+    for w in (3, 5):
+        with open(os.path.join(inc, "cache_w.svh"), "w") as fh:
+            fh.write("localparam int W = %d;\n" % w)
+        nj = os.path.join(BUILD, "fixture", "cache_%d.json" % w)
+        r = yosys_json(["read_verilog -sv -I%s %s" % (os.path.relpath(inc, ROOT),
+                                                     os.path.relpath(top, ROOT)),
+                        "synth -flatten -top cache_top"], nj)
+        widths.append(sum(1 for c in json.load(open(nj))["modules"]["cache_top"]["cells"].values()
+                          if "DFF" in c["type"].upper()) if not r.returncode else -1)
+    expect(widths == [3, 5], "the synthesis cache handed back a netlist after an -I header "
+           "changed: %s flops, want [3, 5]" % widths)
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
               "ratchet, coverage, module and block budgets, kept and replayed flop counts, "
-              "enable sources and the reset, repeater instantiations, kept copies (%d controls)"
-              % checks)
+              "enable sources and the reset, repeater instantiations, kept copies, the "
+              "synthesis cache (%d controls)" % checks)
     return 1 if bad else 0
 
 
