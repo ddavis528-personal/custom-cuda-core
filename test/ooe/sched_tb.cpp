@@ -115,6 +115,9 @@ const bool phys_byp = std::getenv("SCHED_PHYS_BYP") != nullptr;
 // With the RS's frees of the last two cycles masking their columns (a
 // free history in ooe_sched): the stale matrix's column clears.
 const bool phys_frees = std::getenv("SCHED_PHYS_FREES") != nullptr;
+// ooe_wake holding a confirmed producer's lines two cycles past its stop
+// (the matrix's lag), instead of a free history.
+const bool phys_hold = std::getenv("SCHED_PHYS_HOLD") != nullptr;
 const bool phys_iss = phys || std::getenv("SCHED_PHYS_ISS");     // issued and the held misses only
 bool have_prev = false;
 uint64_t current = 0;
@@ -223,12 +226,21 @@ void drive(const Snap &p0, const Snap &n) {
   const Snap &p = phys_byp && !pprev.valid.empty() ? pprev : phys_rows && !ppprev.valid.empty() ? ppprev : p0;
   for (unsigned i = 0; i != N * N; ++i) {
     const unsigned j = i % N;
-    const bool cleared = phys_frees && !pprev.rfree.empty() && (pprev.rfree[j] || p0.rfree[j]);
+    // SCHED_PHYS_FREES=2: the frees of P - 1 and P (P's are decided a cycle
+    // later in the composed design); =1: P - 1's alone, what exists.
+    const bool f2 = phys_frees && std::string(std::getenv("SCHED_PHYS_FREES")) == "2";
+    const bool cleared = phys_frees && !pprev.rfree.empty() && (pprev.rfree[j] || (f2 && p0.rfree[j]));
     setBit(dut->dep_cq02h, i, p.dep[i] && !cleared);
     setBit(dut->code_cq02h, i * 2, p.code[i] & 1u);
     setBit(dut->code_cq02h, i * 2 + 1, (p.code[i] >> 1) & 1u);
   }
-  for (unsigned i = 0; i != N * WL; ++i) setBit(dut->wake_cq02h, i, p0.wake[i]);
+  for (unsigned i = 0; i != N * WL; ++i) {
+    const unsigned j = i / WL;
+    // A producer freed at P - 1 or P keeps the lines it had while valid.
+    const bool held = phys_hold && !pprev.rfree.empty() && (pprev.rfree[j] || p0.rfree[j]) && !ppprev.wake.empty() &&
+                      ppprev.wake[i];
+    setBit(dut->wake_cq02h, i, p0.wake[i] || held);
+  }
   for (unsigned e = 0; e != N; ++e) {
     setBit(dut->valid_cq02h, e, p.valid[e]);
     // Issued after this edge as ooe_wake holds it (OI-45): the model's at
