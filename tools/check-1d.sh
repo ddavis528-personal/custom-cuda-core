@@ -142,13 +142,26 @@ gfail=0
 # no semicolon, each of which drew a finding before OI-40.
 for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
-         rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv; do
+         rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
+         rtl/lint/reference_feedback.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (6 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (7 fixtures)" "PASS"
+
+# CCV-L23's feedback (OI-65): a register reading state of its own stage, and
+# a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
+# an assign is checked like an always_comb, and a D-side net read anywhere but
+# a flop is held to the plain arithmetic.
+for want in "mis_cy02h is at stage 02 but combinational" "dnx_cy00h is at stage 00 but combinational"; do
+  if grep -q "CCV-L23: $want" "$TMP/bad.log"; then
+    say "CCV-L23 refuses ${want%% is at*}" "PASS"
+  else
+    bad "CCV-L23 refuses ${want%% is at*}" "no finding"
+  fi
+done
 
 # CCV-L26 makes a claim about a TOOL, so the claim is checked against the
 # tool: every form the rule permits must actually be readable by Yosys. A

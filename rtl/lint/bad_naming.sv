@@ -60,6 +60,22 @@ module ccv_reference (
     if (in_data_cy00h <= 4'd7) out_i_cy03h <= in_data_cy00h;
   end
 
+  // CCV-L23 on an assign (OI-65): a continuous assignment is combinational,
+  // so a stage-00 input named at 02 is a mislabel, as in an always_comb.
+  logic [3:0] mis_cy02h;
+  assign mis_cy02h = in_data_cy00h;
+
+  // CCV-L23 on the D side (OI-65): dnx_cy00h reads the stage-01 state it
+  // feeds, which a flop's D-side net may, but peek_cy01h reads it too, so it
+  // is not the D side alone and is held to the plain arithmetic.
+  logic [3:0] dnx_cy00h, st_cy01h, peek_cy01h;
+  assign dnx_cy00h = in_data_cy00h + st_cy01h;
+  always_ff @(posedge core_clk) begin
+    if (bad_rst_r00h) st_cy01h <= '0;
+    else              st_cy01h <= dnx_cy00h;
+  end
+  assign peek_cy01h = dnx_cy00h;
+
   assign BadCamelNet = in_data_cy00h;
 
 endmodule

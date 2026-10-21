@@ -1003,22 +1003,46 @@ def check_file(path, rel):
         #   flop output  = max(input stages) + 1
         #   combinational = max(input stages)
         #
-        # Exempt: the net's own previous value (a hold or a counter is a
-        # self-reference at the SAME stage, not a stage violation), reset nets
-        # (block letter `r` -- the reset tree has its own numbering because it
-        # is pipelined by physical distance, not by datapath depth), and any
-        # right-hand side with no tagged signals at all.
-        def rhs_stages(expr, lhs):
+        # Exempt: a register's own stage in its next value (OI's question,
+        # OI-65, 2026-10-21): a register at stage N that reads state at stage
+        # N -- itself, a hold or a counter, or another register of the same
+        # stage, a queue's next value reading its own count -- is a state
+        # machine's feedback, not a stage skip; everything else it reads
+        # must be at N - 1. Reset nets (block letter `r` -- the reset tree
+        # has its own numbering because it is pipelined by physical distance,
+        # not by datapath depth), and any right-hand side with no tagged
+        # signals at all. Continuous assignments are combinational and held
+        # to the same arithmetic: a tagged net driven by an assign was once
+        # unchecked, which invited untagged nets to carry a stage mix.
+        # The same feedback seen from the D side: a combinational net at
+        # stage N - 1 that is read only by flops (a stage-N register's next
+        # value or enable, built apart from its always_ff) may read the
+        # stage-N state it updates. Read anywhere else, it is held to the
+        # plain arithmetic.
+        def rhs_stages(expr, lhs, own=None):
             out = []
             for w in re.findall(r"[a-z]\w*", expr):
                 if w == lhs:
                     continue
                 st = stage_of(w)
-                if st and st[1] != "r":
+                if st and st[1] != "r" and st[2] != own:
                     out.append(st[2])
             return out
 
-        for kind, clk, body, ln, pos in always_blocks(src):
+        ff_spans = [(pos, pos + len(body)) for kind, clk, body, ln, pos in always_blocks(src)
+                    if kind == "ff"]
+        def d_side(net):
+            """Every read of net is inside an always_ff."""
+            reads = [m.start() for m in re.finditer(r"\b%s\b" % re.escape(net), src)
+                     if not re.match(r"\s*(?:\[[^\]]*\]\s*)?=(?!=)", src[m.end():])]
+            reads = [r for r in reads if not re.search(r"\blogic\b[^;]*$", src[max(0, r - 200):r])]
+            return bool(reads) and all(any(a <= r < b for a, b in ff_spans) for r in reads)
+
+        blocks = [(kind, body, ln, pos) for kind, clk, body, ln, pos in always_blocks(src)]
+        for m in re.finditer(r"\bassign\s+[^;]+;", src):
+            blocks.append(("assign", m.group(0)[len("assign"):], line_of(src, m.start()),
+                           m.start()))
+        for kind, body, ln, pos in blocks:
             if reusable(pos):
                 continue
             seq = (kind == "ff")
@@ -1026,7 +1050,8 @@ def check_file(path, rel):
                 st = stage_of(lhs)
                 if st is None or st[1] == "r":
                     continue
-                ins = rhs_stages(rhs, lhs)
+                ins = rhs_stages(rhs, lhs, st[2] if seq else
+                                 st[2] + 1 if kind in ("assign", "comb") and d_side(lhs) else None)
                 if not ins:
                     continue
                 want = max(ins) + (1 if seq else 0)
