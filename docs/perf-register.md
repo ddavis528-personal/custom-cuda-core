@@ -63,6 +63,7 @@ it.
 | PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
 | PF-39 | An early MLC-miss notice for demotion | MLC, DCU, MIU, OOE, RAU | deferred (TI-24 (5)) |
 | PF-40 | Pack a parked warp's rows: keep sharing, elide zero rows | OOE, RCU, PCA | deferred (TI-25, closed at OA's rev 165) |
+| PF-41 | Restore a parked warp before it is ready, into an idle slot | RAU | deferred (TI-21; OI's rev 155) |
 
 ## Entries
 
@@ -761,3 +762,25 @@ it.
   (AR's response TI-21, OA's rev 160), and the PRF rows a restored warp holds
   when rename stalls on an empty free list. Revisit if migration is material
   there.
+
+### PF-41 Restore a parked warp before it is ready, into an idle slot
+
+- **Now:** RAU restores only a ready parked warp, one whose last abandoned
+  load has been answered (`ccv_miu_rau_ready`, TI-21). A free slot with no
+  ready warp idles.
+- **Alternative:** restore the oldest not-ready warp into the idle slot,
+  marked provisional, with its forward-progress guard starting at its ready
+  report. Its replayed load merges at DCU into the fill in flight (AR's
+  rev 115; built as a knob in the RAU stub, `CCV_RAU_READY=0`, and in OI's
+  environment).
+- **Measured:** TI's swap kernel, where the slot would otherwise idle: 605 to
+  558 cycles (557 with no swap). OI's 48-seed swap sweep, with four parked
+  warps ready from the start: 0.654 against 0.646, about 1% lost. When a
+  ready warp appears, a provisional warp holds the slot until the trigger's
+  threshold and a drain have passed (57 provisional restores, 521 declined
+  demotes against 417).
+- **The variant to try:** pre-empt a provisional warp the moment a ready warp
+  appears, without waiting for the threshold. It is blocked behind the same
+  fill anyway, so only the drain and a migration each way are lost.
+- **Signal:** the pre-empting variant at or above the ready-only figure on
+  the swap sweep, and still ahead on provswap. Then it becomes the default.
