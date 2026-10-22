@@ -1033,6 +1033,35 @@ serializing uop ends the prefix). The first needs either the floor rule in
 the fits, on registered counts, or OA's argument that the shares cannot
 break V-04.
 
+**What the go reads, made exact for slice 4 (`go_static`, on).** Three
+places where the model still admitted on state the fits cannot hold:
+
+- *Needs.* The fits read each head's admission bits from decq, fixed when
+  the uop is decoded (RCU, MIU, copy, GPR write, predicate write, branch,
+  serial). The model charged what rename finally does: a uop that turns
+  into a no-op at rename (a barrier, width or format fault) took no RS
+  entry or name, and a narrow GPR write that shares a row (the sectioned
+  plan) took no name. Under `go_static` the allowances are charged with
+  the decode-time needs; the RS, port and name checks stay exact.
+- *Serializing uops.* A chwidth or barrier uop sets its warp's hold as it
+  is renamed, so the model's later uops of the cycle saw it live; the
+  barrier's only if it does not fault. Under `go_static` either ends the
+  warp's take for the cycle, faulting or not (one serial admission bit).
+  (The floors are already held by construction: OA's rev 138.)
+- *The ROB, and the holds.* The fits for cycle t + 1 are formed in t, from
+  the ROB's valid bits as t starts: the free run from the tail, less t's
+  take, plus t's retirements where the run reaches the head. The model
+  counted t + 1's own retirements and its deferred frees in t + 1's take
+  (`ret_now` 1 and a live tail check), which no registered form can. The
+  holds (inactive, fault stop, chwidth, barrier) are read as the cycle
+  starts, the go's registered bit, so one that rises in the cycle stops
+  the next cycle's take; the serial bit covers a hold the take itself
+  sets. The live checks stay, as errors: none fires.
+
+48 seeds (the audit's workload): 1,018 cycles to 1,030 (+1.2%), all of it
+the ROB term; the needs and the serial bit cost nothing. The S1 kernels:
+provswap one cycle slower (2,332 to 2,333), the other 23 unchanged.
+
 ### The composed RTL's timing (OI-45)
 
 ooe_rs and ooe_wake take ooe_sched's grant register an edge after
