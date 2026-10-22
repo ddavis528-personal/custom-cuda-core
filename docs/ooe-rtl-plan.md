@@ -642,6 +642,16 @@ copies.
 Not counted: `ooe_sched`'s third grant copy, for `ooe_wake`'s enables,
 which CG-5 asks for (its waiver), not NGD-7.
 
+Beside the copies, the storage the architects' rulings add, for the same
+review (TI-25, AR's rev 112, OA's rev 165; the storage form is DA's):
+
+| Module | State | Bits |
+|---|---|---|
+| OOE, the ROB side (not yet a module) | the parked layout: per warp_id, each GPR's position and committed width, 16 × (2 + 2), written at a demotion's map and read at restore-allocate | 64 × 32 = 2,048 |
+
+The model holds it as `Core::parked_` (`sim/ooe/ooe_core.h`); the unit
+tests' parked-layout check and its control (park-layout-lost) are its proof.
+
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The

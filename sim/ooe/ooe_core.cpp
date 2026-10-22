@@ -45,7 +45,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
-                                     {"ready_rep_late", &ready_rep_late}};
+                                     {"ready_rep_late", &ready_rep_late}, {"replay_drain", &replay_drain}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -493,9 +493,10 @@ unsigned Core::planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_ro
   return 2;
 }
 
-unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos) {
+unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row) {
   unsigned want = pos;
-  const unsigned plan = planSlice(slot, w, want, gprAllowed(slot, 1));
+  // own_row: restore-allocate's, a fresh row at the parked position (TI-25).
+  const unsigned plan = own_row ? (gprAllowed(slot, 1) ? 1u : 2u) : planSlice(slot, w, want, gprAllowed(slot, 1));
   if (plan == 2) { err("V-04: no slice for slot %u at width %u", slot, w); return zeroName(); }
   const unsigned m = secMask(w, want);
   unsigned row = cfg_.phys_regs;
@@ -513,7 +514,7 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos) {
   gw_[p] = uint8_t(w);
   if (gever_[p]) ev("reg_reuse", slot_[slot].warp, p);
   gever_[p] = 1;
-  if (want != (w == 1 ? (pos & 2u) : (pos & 3u))) count("place.fallback_position");
+  if (!own_row && want != (w == 1 ? (pos & 2u) : (pos & 3u))) count("place.fallback_position");
   return p;
 }
 
@@ -1353,7 +1354,13 @@ void Core::takeCompletions() {
     const unsigned idx = c.rob_tag & ((1u << ccv::prov::kWRobIdx) - 1);
     if (r->atomic) { atomCmpl(s, idx, c); continue; }
     if (c.more) err("V-72: a completion for rob tag %u, not an atomic's write, carries more", c.rob_tag);
-    if (r->squashed) { count("cmpl.after_squash"); continue; }
+    if (r->squashed) {
+      count(c.status == kCmplReplay ? "cmpl.replay_after_squash" : "cmpl.after_squash");
+      continue;
+    }
+    // MIU replays only a discarded load (PF-23): a live entry's completion
+    // is its result or its fault.
+    if (c.status == kCmplReplay) err("PF-23: a replay completion for rob tag %u, which is not discarded", c.rob_tag);
     if (c.status) {
       // MIU's completion carries the section 12.5 winner and its lowest
       // faulting lane's address (IS's response IS-16).
@@ -1612,12 +1619,12 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
 
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
 /// to_retirement, every entry. The caller restores the RAT.
-void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
+void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool loads) {
   if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   Slot &s = slot_[slot];
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
-  bool stores_at_miu = false;
+  bool stores_at_miu = false, loads_at_miu = false;
   unsigned n = 0, deferred = 0, other = 0;
   // V-74: a squash takes the fault-address register with its entry.
   if (s.fa_valid && robAge(s, s.fa_idx) >= first) s.fa_valid = false;
@@ -1639,6 +1646,7 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
       r.rs_main = r.rs_copy = kNoEntry;
     }
     if (r.is_store && r.at_miu && !r.committed) stores_at_miu = true;
+    if (loads && r.is_load && r.at_miu && !r.miu_done) loads_at_miu = true;
     if (s.chwidth_hold && s.chwidth_rob == idx) s.chwidth_hold = false;
     if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
     if (outstanding(r)) {
@@ -1657,9 +1665,12 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement) {
         s.rob[unsigned(keep_idx)].u.tid);
   count("squash.entries", n);
   count("squash.deferred", deferred);
-  if (stores_at_miu) {
-    // One bulk discard of the circular range (branch, tail] (A-41, A-53).
+  if (stores_at_miu || loads_at_miu) {
+    // One bulk discard of the circular range (branch, tail] (A-41, A-53);
+    // a demotion's takes the loads too (PF-23), so its drain waits for
+    // their replay completions, not their fills.
     Memop d;
+    d.loads = loads;
     d.tid = s.rob[to_retirement ? s.head : unsigned(keep_idx)].u.tid;
     d.warp = s.warp;
     d.mem_op = 0xF;
@@ -1749,6 +1760,10 @@ void Core::control() {
       // Every register 32 bits wide: at launch, and at restore-allocate
       // until the map carries the saved widths (A-64, OI-32).
       s.cw.fill(0);
+      // TI-25: a restore takes the committed widths from the parked layout
+      // (OI-57's table survives the park).
+      if (a.op == kAllocRestoreAlloc && !cfg_.inject_park_layout_lost)
+        for (unsigned r = 0; r != kArchGprs; ++r) s.cw[r] = parked_[a.warp % kWarpIds].w[r];
       if (a.op == kAllocLaunch) {
         // Every architectural register maps to the zero registers (A-64):
         // no zeroing traffic, and nothing from another context is readable.
@@ -1812,6 +1827,17 @@ void Core::control() {
       count("demote.held_atomic");
       continue;
     }
+    // TI-25 (AR's rev 112): every demote gets exactly one drained. Its exit
+    // retired: no squash, no map, no rewind beats; refused, and exited
+    // follows at the quiesce and frees the slot.
+    if (s.exit_retired && !cfg_.inject_no_refuse) {
+      Drained d;
+      d.warp = w;
+      d.refused = true;
+      out.drained.push_back(d);
+      count("demote.refused");
+      continue;
+    }
     // Squash to retirement (Demotion): the resume PC is the oldest
     // unretired instruction's, or the next after the last retirement.
     s.resume_pc = s.count ? s.rob[s.head].u.pc : s.next_pc;
@@ -1847,7 +1873,7 @@ void Core::control() {
     // free resolved this cycle, which would land with it, is not sent
     // (ccv_ooe_fet_ckpt_free: freed exactly once; V-46).
     free_mask_ &= ~(((uint64_t(1) << cfg_.ckpts) - 1) << (unsigned(si) * cfg_.ckpts));
-    squashAfter(unsigned(si), -1, true);
+    squashAfter(unsigned(si), -1, true, cfg_.replay_drain);
     s.rat = s.crat;
     s.prat = s.cprat;
     rlog_.squash |= 1u << si;
@@ -1901,7 +1927,9 @@ void Core::control() {
   for (unsigned si = 0; si != slot_.size(); ++si) {
     Slot &s = slot_[si];
     bool held = false;
-    for (const RobEntry &r : s.rob) held = held || r.valid;
+    for (const RobEntry &r : s.rob)
+      held = held || (r.valid && !(cfg_.inject_drain_early && s.st == WarpState::kDemoting && r.squashed &&
+                                   r.is_load && r.at_miu && !r.miu_done));
     // The notice and every rewind beat have landed in FET (TI-24 (3)).
     const bool landed = s.notice_sent && !s.rewind_pending && now_ >= s.notice_lands;
     // exited (OA's rev 149): the exit retired, nothing held in the ROB, a
@@ -1924,6 +1952,16 @@ void Core::control() {
         std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
         out.maps.push_back(m);
         s.map_sent = true;
+        // TI-25: the parked layout, one row per register (no merging), each
+        // its position and committed width.
+        Parked &pk = parked_[s.warp % kWarpIds];
+        for (unsigned a = 0; a != kArchGprs; ++a) {
+          const unsigned n = s.crat[a];
+          const bool narrow = cfg_.sectioned && !isZeroName(n);
+          pk.pos[a] = uint8_t(narrow ? namePos(n) : 0);
+          pk.w[a] = uint8_t(narrow ? nameWidth(n) : s.cw[a]);
+          if (narrow && nameWidth(n) != s.cw[a]) count("park.name_width_not_committed");
+        }
       } else {
         out.drained.push_back({s.warp, s.resume_pc});
         s.st = WarpState::kDrained;
@@ -3073,7 +3111,11 @@ void Core::restoreStep() {
   };
   for (unsigned k = 0; k != width && s.restore_gpr && gprAllowed(si, 1); ++k, --s.restore_gpr) {
     const unsigned a = kArchGprs - s.restore_gpr;
-    s.crat[a] = s.rat[a] = allocGpr(si);
+    // TI-25: its own row, at its parked position and committed width.
+    const Parked &pk = parked_[s.warp % kWarpIds];
+    const bool lost = cfg_.inject_park_layout_lost;
+    s.crat[a] = s.rat[a] = cfg_.sectioned ? allocSlice(si, lost ? 0 : pk.w[a], lost ? 0 : pk.pos[a], true)
+                                          : allocGpr(si);
     RatLog::Ren &w = port(k);
     w.gwe = true;
     w.dst = a;

@@ -22,7 +22,8 @@ fi
 for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
          bypass-faster-than-contract complete-before-rs-free narrow-footprint no-alloc-lead late-event \
          no-bar-fault fa-youngest no-width-fault no-format-fault \
-         atom-off-head atom-early-wake atom-demote-mid rewind-order; do
+         atom-off-head atom-early-wake atom-demote-mid rewind-order drain-early \
+         no-refuse park-layout-lost; do
   if grep -q "^  control $c  *caught$" "$log"; then
     say "control $c" "caught"
   else
@@ -30,7 +31,7 @@ for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
   fi
 done
 n=$(grep -c "^  control " "$log")
-if [ "$n" != 17 ]; then
-  say "control count" "$n, want 17 (add a new one to this list)"; fail=1
+if [ "$n" != 20 ]; then
+  say "control count" "$n, want 20 (add a new one to this list)"; fail=1
 fi
 exit $fail

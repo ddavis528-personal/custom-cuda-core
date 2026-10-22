@@ -200,6 +200,7 @@ struct Env {
     bool parked = false, restored = false, restoring = false;
     bool demoting = false;                  ///< demoted; FET resets it at the epoch notice
     uint64_t ready_at = 0, fill_at = 0;
+    uint64_t abandon_at = 0;                ///< PF-23: its last abandoned load's own answer
     uint64_t rewind_pc = 0;                 ///< the oldest unretired uop's PC at its demote, or 0
     bool rewind_seen = false;
     uint64_t exit_at = 0;                   ///< its exit's retirement
@@ -212,6 +213,12 @@ struct Env {
   std::multimap<uint64_t, Uop> fetched;          ///< arrival cycle -> uop
   std::multimap<uint64_t, Done> dones;
   std::multimap<uint64_t, Cmpl> cmpls;
+  /// PF-23: each load outstanding at MIU, by rob tag, so a demotion's
+  /// discard can abandon it: its completion, its data beat and its done.
+  struct Pend { uint64_t tid = 0; unsigned warp = 0; uint64_t when = 0, rd = 0; unsigned pdst = 0; };
+  std::map<unsigned, Pend> pend;
+  uint64_t abandoned = 0, abandon_started = 0;
+  unsigned replay_spread = 0;   ///< PF-23: MIU's replays come up to this many cycles after the discard
   std::multimap<uint64_t, Redirect> redirects;   ///< at FET
   std::multimap<uint64_t, uint64_t> frees;       ///< at FET
   uint64_t next_tid = 1;
@@ -281,7 +288,7 @@ struct Env {
   // head to the restored warp's first rename) with its drain D and refetch R.
   struct Gap { unsigned warp = 0, slot = 0; uint64_t head = 0, demote = 0, drained = 0, activate = 0, rename = 0; };
   std::vector<Gap> gaps;
-  unsigned swaps = 0, declined = 0;
+  unsigned swaps = 0, declined = 0, refused = 0;
   std::string swap_errors_note;
 
   void park(unsigned warp, std::vector<Op> prog, uint64_t ready_at = 0) {
@@ -401,6 +408,15 @@ struct Env {
   /// OOE's drained: migrate out; the slot is free when PCA's done reaches RAU.
   void rauDrained(const Drained &d) {
     Warp *x = warpOf(d.warp);
+    if (d.refused) {
+      // TI-25: RAU cancels the demotion; exited frees the slot.
+      ++refused;
+      demote_busy = false;
+      x->demoting = false;
+      for (auto it = gaps.begin(); it != gaps.end(); ++it)
+        if (it->warp == d.warp && !it->drained) { gaps.erase(it); break; }
+      return;
+    }
     for (Gap &g : gaps)
       if (g.warp == d.warp && !g.drained) g.drained = t;
     // The knob's own bench (OA's rev 131): the squash freed exactly the
@@ -433,7 +449,9 @@ struct Env {
         core.alloc(f);
       }});
       Warp *y = warpOf(id);
-      y->ready_at = std::max(t, y->fill_at);
+      // Ready when its fill has landed: under PF-23, when its last
+      // abandoned load has been answered (ccv_miu_rau_ready, AR's rev 107).
+      y->ready_at = std::max({t, y->fill_at, y->abandon_at});
       free_slots.insert(slot);
       demote_busy = false;
       rauRestore(decide);
@@ -721,7 +739,7 @@ struct Env {
       }
       if (first && o.afault) {
         // Every lane checked before any hold: the fault comes with none.
-        c.status = 1;
+        c.status = kCmplFault;
         c.cause = 6;                     // F-ADDR
         c.lane_mask = 1;
         c.address = 0xA70;
@@ -771,8 +789,54 @@ struct Env {
     return when;
   }
 
+  /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard abandons the
+  /// warp's outstanding loads. Each is answered at once with replay; its
+  /// data is never written and its own response is dropped, so nothing
+  /// lands in a register freed to the slot's next occupant. A load whose
+  /// beat or completion is already under way finishes as it is (exactly
+  /// one completion, A-41). The line still fills: served stands.
+  void abandonLoads(const Memop &d) {
+    for (auto &pe : pend) {
+      Pend &q = pe.second;
+      if (q.warp != d.warp || q.when <= t + 1 || (q.rd && q.rd <= t + 1)) {
+        if (q.warp == d.warp) ++abandon_started;
+        continue;
+      }
+      const unsigned tag = pe.first;
+      Cmpl c;
+      bool found = false;
+      for (auto r = cmpls.equal_range(q.when); r.first != r.second; ++r.first)
+        if (r.first->second.rob_tag == tag) { c = r.first->second; cmpls.erase(r.first); found = true; break; }
+      if (!found) { errors.push_back("PF-23: no completion pending for rob tag " + std::to_string(tag)); continue; }
+      for (auto r = landings.equal_range(q.rd); q.rd && r.first != r.second; ++r.first)
+        if (r.first->second.second == q.tid) { landings.erase(r.first); break; }
+      // Nothing will write it: once freed, its next holder (a restore's row,
+      // say) sees no pending write.
+      if (q.pdst && gready.count(q.pdst) && gready[q.pdst].tid == q.tid) gready[q.pdst].late = t + 1;
+      if (Warp *x = warpOf(q.warp)) x->abandon_at = std::max(x->abandon_at, q.when);
+      const uint64_t old = q.when;
+      c.status = kCmplReplay;
+      c.mlc_miss = false;
+      q.when = cmplRoom(t + 1 + (replay_spread ? rnd(replay_spread + 1) : 0));
+      q.rd = 0;
+      cmpls.insert({q.when, c});
+      if (cfg.memop_rcu_done)
+        for (auto r = dones.equal_range(old + 1); r.first != r.second; ++r.first)
+          if (r.first->second.rob_tag == tag) {
+            Done dn = r.first->second;
+            dones.erase(r.first);
+            dones.insert({q.when + 1, dn});
+            break;
+          }
+      ++abandoned;
+    }
+  }
+
   void onMemop(const Memop &m) {
-    if (m.mem_op == 0xF) return;
+    if (m.mem_op == 0xF) {
+      if (m.loads) abandonLoads(m);
+      return;
+    }
     const Op &o = op_of[m.tid];
     if (o.k == kAtomic) {
       if (m.mem_op != kMemOpAtomicRead && m.mem_op != kMemOpAtomicWrite)
@@ -811,6 +875,7 @@ struct Env {
         }
         c.mlc_miss = true;
         cmpls.insert({when, c});
+        pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? when + data_after_cmpl : 0, m.pdst};
         return;
       }
     }
@@ -839,6 +904,7 @@ struct Env {
       c.mlc_miss = true;
     }
     cmpls.insert({when, c});
+    if (o.k == kLoad) pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? gready[m.pdst].late : 0, m.pdst};
     if (cfg.memop_rcu_done) {
       Done d;
       d.rob_tag = m.rob_tag;
@@ -849,9 +915,15 @@ struct Env {
   void step() {
     // inputs due this cycle
     for (auto it = dones.begin(); it != dones.end() && it->first <= t;) { core.done(it->second); it = dones.erase(it); }
-    for (auto it = cmpls.begin(); it != cmpls.end() && it->first <= t;) { core.cmpl(it->second); it = cmpls.erase(it); }
-    // OA-23's hint, two cycles ahead of its completion.
-    for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first) core.hint(r.first->second.rob_tag);
+    for (auto it = cmpls.begin(); it != cmpls.end() && it->first <= t;) {
+      core.cmpl(it->second);
+      pend.erase(it->second.rob_tag);
+      it = cmpls.erase(it);
+    }
+    // OA-23's hint, two cycles ahead of its completion; none for an
+    // abandoned load (PF-23).
+    for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first)
+      if (r.first->second.status != kCmplReplay) core.hint(r.first->second.rob_tag);
     // TI-21: a restore's rows hold a PRF write port (OA's rev 132): count
     // the cycles its landings would have found the ports short.
     if (!write_busy.empty()) {
@@ -900,6 +972,14 @@ struct Env {
       x->retired.push_back(r.tid);
       if (r.exit) { x->exited = true; x->exit_at = t; }
     }
+    // PF-23: drained only once every load of the warp has its completion.
+    for (const Drained &d : o.drained)
+      for (const auto &pe : pend)
+        if (!d.refused && pe.second.warp == d.warp) {
+          errors.push_back("PF-23: warp " + std::to_string(d.warp) + " drained with rob tag " +
+                           std::to_string(pe.first) + " still owed a completion");
+          break;
+        }
     if (swap.rau) {
       for (const Status &st : o.status) rauStatus(st);
       for (const Drained &d : o.drained) rauDrained(d);
@@ -1329,6 +1409,130 @@ void testDemote() {
   for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
 }
 
+/// TI-25 (AR's rev 112) (2): a demote that lands after the warp's exit
+/// retired is refused. Exactly one drained, refused = 1, and nothing
+/// moves: no squash, no map, no epoch notice or rewind beat; exited
+/// follows. The control demotes it anyway. Returns whether the checks held.
+bool demoteRefused(bool control) {
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.inject_no_refuse = control;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 4; ++i) { Op a; a.k = kLane; a.dst = 4 + i; a.nsrc = 1; p.push_back(a); }
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  for (unsigned k = 0; k != 200 && !e.warpOf(0)->exited; ++k) e.step();
+  const size_t from = e.log.size();
+  e.core.demote(0);
+  for (unsigned k = 0; k != 40; ++k) e.step();
+  unsigned drained = 0, refused = 0, maps = 0, notices = 0, exited = 0;
+  for (size_t i = 0; i != e.log.size(); ++i) {
+    const Outputs &o = e.log[i];
+    for (const Status &st : o.status) exited += st.exited;
+    if (i < from) continue;
+    for (const Drained &d : o.drained) { ++drained; refused += d.refused; }
+    maps += unsigned(o.maps.size());
+    for (const Redirect &r : o.redirects) notices += r.epoch_only;
+  }
+  const bool ok = e.warpOf(0)->exited && drained == 1 && refused == 1 && maps == 0 && notices == 0 && exited == 1 &&
+                  e.errors.empty();
+  if (!control) {
+    g_test = "demote refused";
+    EXPECT(e.warpOf(0)->exited, "the exit did not retire");
+    EXPECT(drained == 1 && refused == 1, "%u drained, %u refused", drained, refused);
+    EXPECT(maps == 0 && notices == 0, "a refused demote sent %u maps and %u notices", maps, notices);
+    EXPECT(exited == 1, "exited sent %u times", exited);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testDemoteRefused() {
+  demoteRefused(false);
+  const bool held = demoteRefused(true);
+  std::printf("  %-24s %s\n", "control no-refuse", held ? "MISSED" : "caught");
+  g_test = "demote refused (control)";
+  EXPECT(!held, "demoting an exited warp should break the refused checks");
+}
+
+/// TI-25 (1): the parked layout. A sectioned warp holds narrow registers
+/// at positions other than 0 and a committed width from chwidth; after a
+/// demotion and a restore into another slot, each register has its own
+/// row (16 distinct rows) at its parked position and width, and the
+/// committed width table came back. The control restores at 32 bits,
+/// position 0, and loses the table.
+bool parkedLayout(bool control) {
+  Config c = baseConfig();
+  c.sectioned = true;
+  c.place = 0;
+  c.l1_spec = false;
+  c.inject_park_layout_lost = control;
+  Env e(c);
+  e.keep_log = true;
+  e.miss_extra = 300;
+  std::vector<Op> p;
+  Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);                              // 16-bit, sections 2-3
+  Op b; b.k = kLane; b.dst = 5; b.w = 2; b.src[0] = 4; b.nsrc = 1; p.push_back(b);    // 8-bit, follows R4 to 2
+  Op d; d.k = kLane; d.dst = 6; d.w = 2; p.push_back(d);                              // 8-bit, slot 1's home
+  Op w; w.k = kChw; w.dst = 7; w.chw = 3; p.push_back(w);
+  Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
+  Op u; u.k = kLane; u.dst = 9; u.src[0] = 8; u.nsrc = 1; p.push_back(u);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(5, 1, p);
+  for (unsigned k = 0; k != 200 && e.warpOf(5)->retired.size() < 4; ++k) e.step();
+  e.core.demote(5);
+  bool drained = false;
+  for (unsigned k = 0; k != 600 && !drained; ++k) {
+    e.step();
+    for (const Drained &x : e.log.back().drained) drained = drained || (x.warp == 5 && !x.refused);
+  }
+  const auto before = e.core.committedGprs(1);
+  unsigned moved = 0;
+  for (unsigned r = 0; r != kArchGprs; ++r) moved += e.core.namePos(before[r]) != 0;
+  Alloc f; f.warp = 5; f.slot = 1; f.op = kAllocFree;
+  e.core.alloc(f);
+  e.step();
+  Alloc ra; ra.warp = 5; ra.slot = 3; ra.op = kAllocRestoreAlloc;
+  e.core.alloc(ra);
+  bool map1 = false;
+  for (unsigned k = 0; k != 20 && !map1; ++k) {
+    e.step();
+    for (const RatMap &m : e.log.back().maps) map1 = map1 || m.direction == 1;
+  }
+  const auto after = e.core.committedGprs(3);
+  std::set<unsigned> rows;
+  unsigned same = 0;
+  for (unsigned r = 0; r != kArchGprs; ++r) {
+    rows.insert(e.core.nameRow(after[r]));
+    const bool z = e.core.isZeroName(before[r]);
+    same += z ? e.core.nameWidth(after[r]) == e.core.slotWidth(3, r) && e.core.namePos(after[r]) == 0
+              : e.core.nameWidth(after[r]) == e.core.nameWidth(before[r]) &&
+                    e.core.namePos(after[r]) == e.core.namePos(before[r]);
+  }
+  const bool ok = drained && map1 && moved >= 2 && rows.size() == kArchGprs && same == kArchGprs &&
+                  e.core.slotWidth(3, 7) == 3 && e.errors.empty();
+  if (!control) {
+    g_test = "parked layout";
+    EXPECT(drained && map1, "drained %d, restore map %d", drained, map1);
+    EXPECT(moved >= 2, "only %u registers off position 0: the test shows nothing", moved);
+    EXPECT(rows.size() == kArchGprs, "the restore shares rows: %zu for 16 registers", rows.size());
+    EXPECT(same == kArchGprs, "%u of 16 registers came back at their position and width", same);
+    EXPECT(e.core.slotWidth(3, 7) == 3, "R7's committed width came back %u", e.core.slotWidth(3, 7));
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testParkedLayout() {
+  parkedLayout(false);
+  const bool held = parkedLayout(true);
+  std::printf("  %-24s %s\n", "control park-layout-lost", held ? "MISSED" : "caught");
+  g_test = "parked layout (control)";
+  EXPECT(!held, "a restore without the layout should break the parked-layout checks");
+}
+
 /// Restore-allocate through the candidate buffers (OA's response OI-41):
 /// rename stalls for every warp while it takes its registers, its map
 /// comes within V-64's bound, and a restore-activate before the map is
@@ -1587,7 +1791,7 @@ void testMemFault() {
           if (idx >= 1 && idx <= 2 && !marked[idx]) {
             marked[idx] = true;
             Cmpl x = it->second;
-            x.status = 1;
+            x.status = kCmplFault;
             x.cause = 6;                      // F-ADDR
             x.address = 0x1000 + idx - 1;
             // Older first: both land in one cycle, the older's processed
@@ -2462,7 +2666,9 @@ std::vector<Op> stallProgram(std::mt19937 &rng, bool fetching, unsigned fill) {
 /// One stall_hole run. arm 0: swap off (no demotion), warp 0's fill 400
 /// (OA's rev 129); 1: swap, no parked warp ready (the stress); 2: swap, one
 /// parked warp ready from cycle 0; 3: evict, none ready. Arms 1-3 miss to
-/// DRAM (700 to 1,300). solo: warps 1-3 alone.
+/// DRAM (700 to 1,300); 4: the reference for arm 2, the parked warp's
+/// program live in slot 0 from cycle 0 and no stall, which prices a fourth
+/// live warp. solo: warps 1-3 alone.
 struct HoleRun {
   uint64_t cycles = 0;          ///< until warps 1-3 have all exited
   bool starved = false;         ///< 800 cycles in which warps 1-3 retired nothing
@@ -2477,13 +2683,20 @@ HoleRun runHole(const Config &c, unsigned seed, bool fetching, int arm, bool sol
   Env e(c, seed);
   e.miss_pct = 20;
   std::mt19937 rng(seed), rng0(seed * 977 + 1);
-  if (arm) {
+  if (arm && arm != 4) {
     e.swap.rau = true;
     e.swap.mode = arm == 3 ? 2 : 1;
   }
   std::vector<Op> progs[3];
   for (auto &q : progs) q = randomProgram(rng, 300, true);
-  if (!solo) e.launch(0, 0, stallProgram(rng0, fetching, arm == 0 ? 400 : 0));
+  if (!solo && arm == 4) {
+    // The reference: the program a ready parked warp would run, live in
+    // slot 0 from cycle 0, and no stall.
+    (void)stallProgram(rng0, fetching, 0);
+    e.launch(20, 0, randomProgram(rng0, 300, true));
+  } else if (!solo) {
+    e.launch(0, 0, stallProgram(rng0, fetching, arm == 0 ? 400 : 0));
+  }
   for (unsigned i = 0; i != 3; ++i) e.launch(5 * (i + 1), i + 1, progs[i]);
   if (!solo && arm == 2) e.park(20, randomProgram(rng0, 300, true));   // warp ids are 0-31 (CCV_WARP_CONTEXTS)
   HoleRun h;
@@ -2539,7 +2752,8 @@ HoleRun runHole(const Config &c, unsigned seed, bool fetching, int arm, bool sol
 int stallHole(unsigned seeds, bool print, int only_fix = -1) {
   struct Form { const char *name; unsigned one; };
   const Form forms[] = {{"interleave, shares", 0}, {"one warp", 1}, {"two warps", 2}};
-  const char *arms[] = {"swap off (fill 400)", "swap, none ready", "swap, one ready", "evict, none ready"};
+  const char *arms[] = {"swap off (fill 400)", "swap, none ready", "swap, one ready", "evict, none ready",
+                        "reference: four live warps"};
   int fails = 0;
   if (print)
     std::printf("| fix | go | arm | variant | warps 1-3 vs solo | worst seed | starved | warp 0 RS peak RCU/MIU | mean RCU/MIU |"
@@ -2582,7 +2796,7 @@ int stallHole(unsigned seeds, bool print, int only_fix = -1) {
   }
   for (int fix = 0; fix != kFixes; ++fix)
   for (const Form &f : forms)
-    for (int arm = 0; arm != 4; ++arm)
+    for (int arm = 0; arm != 5; ++arm)
       for (bool fetching : {false, true}) {
         if (only_fix >= 0 && fix != only_fix) continue;
         Config c = baseConfig();
@@ -2614,7 +2828,7 @@ int stallHole(unsigned seeds, bool print, int only_fix = -1) {
         const double lim = fetching ? 1.15 : 1.10;
         // The bounds (OA's revs 129, 131): arms 0, 1 and 2 hold them; evict
         // is reported beside them.
-        const bool bound_arm = arm != 3;
+        const bool bound_arm = arm < 3;
         const bool miss = bound_arm && (mean > lim || starved || (arm == 2 && (gap_over || gaps != seeds)));
         if (miss && f.one == 0 && fix == 0) ++fails;   // the decided go: a bench failure
         if (print)
@@ -2698,6 +2912,7 @@ void swapSweep(unsigned seeds) {
 /// the oldest unretired uop and drained names it, and that no slot runs two
 /// warps; every warp retires its whole program, through swaps.
 void testSwap() {
+  uint64_t abandoned = 0;
   for (unsigned one : {0u, 1u, 2u})
     for (unsigned seed = 1; seed <= 6; ++seed) {
       g_test = "swap go " + std::to_string(one) + " seed " + std::to_string(seed);
@@ -2710,6 +2925,7 @@ void testSwap() {
       e.swap.rau = true;
       e.swap.mode = 1;
       e.swap.dram_pm = 40;
+      e.replay_spread = 60;
       for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
       for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
       e.finish(200000);
@@ -2717,7 +2933,10 @@ void testSwap() {
       unsigned demotes = 0;
       for (const Env::Gap &g : e.gaps) demotes += g.drained != 0;
       EXPECT(demotes > 0, "no demotion");
+      abandoned += e.abandoned;
     }
+  // PF-23: the demotions abandoned loads, each answered with replay.
+  EXPECT(abandoned > 0, "no demotion abandoned a load (PF-23)");
   // The control: beats youngest first, so FET resumes past the oldest
   // unretired uop of the lanes that have two beats.
   unsigned caught = 0;
@@ -2743,6 +2962,31 @@ void testSwap() {
   }
   std::printf("  %-24s %s\n", "control rewind-order", caught ? "caught" : "MISSED");
   EXPECT(caught, "beats youngest first should break the rewind check");
+  // PF-23's control: drained waits for no abandoned load's replay, so it
+  // leaves a completion owed to a slot that is freed.
+  caught = 0;
+  for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
+    g_test = "swap (control drain-early)";
+    Config c = baseConfig();
+    c.decq = 13;
+    c.inject_drain_early = true;
+    std::mt19937 rng(seed);
+    Env e(c, seed);
+    e.miss_pct = 20;
+    e.swap.rau = true;
+    e.swap.mode = 1;
+    e.swap.dram_pm = 40;
+    e.replay_spread = 60;
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+    for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+    g_quiet = true;
+    e.finish(200000);
+    g_quiet = false;
+    caught += g_fail != before;
+    g_fail = before;
+  }
+  std::printf("  %-24s %s\n", "control drain-early", caught ? "caught" : "MISSED");
+  EXPECT(caught, "a drain that waits for no replay should break the PF-23 check");
 }
 
 /// Sizing sweep on synthetic four-warp traces, in the design's own modes
@@ -3225,6 +3469,16 @@ int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_c
 #else
 int main(int argc, char **argv) {
   unsigned seeds = 25;
+  // OOE_TEST_CONFIG="name=value,...": settings over every test's, for the
+  // measurement modes' arms (replay_drain=0, decq_warp_max=6).
+  static std::string spec;
+  if (const char *e = std::getenv("OOE_TEST_CONFIG")) {
+    spec = e;
+    Config probe;
+    const std::string bad = probe.apply(spec);
+    if (!bad.empty()) { std::fprintf(stderr, "OOE_TEST_CONFIG: %s\n", bad.c_str()); return 2; }
+    g_config_hook = [](Config &c) { c.apply(spec); };
+  }
   for (int i = 1; i < argc; ++i)
     if (std::string(argv[i]) == "--seeds" && i + 1 < argc) seeds = unsigned(std::atoi(argv[++i]));
   if (argc > 1 && std::string(argv[1]) == "--sweep-sections") {
@@ -3249,6 +3503,8 @@ int main(int argc, char **argv) {
     return g_fail ? 1 : 0;
   }
   if (std::getenv("OOE_TEST_SWAP")) {     // the swap bench alone, for debugging
+    testDemoteRefused();
+    testParkedLayout();
     testSwap();
     std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
@@ -3297,6 +3553,8 @@ int main(int argc, char **argv) {
   testAtomicDemote();
   testAtomicRandom(seeds, randomConfig);
   testSwap();
+  testDemoteRefused();
+  testParkedLayout();
   for (int k : {1, 2}) {
     const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
     const int saved = g_fail;

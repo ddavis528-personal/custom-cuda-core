@@ -448,7 +448,7 @@ adopted it (revs 131-133), standing in for RAU, PCA and FET:
   youngest first) must be caught.
 
 **stall_hole** (`ooe-test --stall-hole`, 48 seeds, decq 13, the late
-take). The decided go (interleave, shares), warps 1 to 3 against their solo
+take; the old drain, `OOE_TEST_CONFIG=replay_drain=0`). The decided go (interleave, shares), warps 1 to 3 against their solo
 time:
 
 | fix | swap off (fill 400), held / fetching | swap, none ready | swap, one ready | evict, none ready | even-stall sweep |
@@ -482,15 +482,16 @@ warps 1 to 3 retire nothing.
   slot stays held until the fill lands (D is about 700 to 1,100 cycles),
   and the parked warp goes into a slot an exit frees, not warp 0's. A swap
   buys what its squash frees, the RS and decode-queue room, but not slot
-  time. A replay completion for a demoted warp's outstanding load (the
-  status code exists) would let the slot go at once.
+  time. A replay completion for a demoted warp's outstanding load lets
+  the slot go at once: that is PF-23's replay drain, below, and these
+  figures are the old drain's (`replay_drain=0`).
 - The gap is measured from the miss reaching the head to the restored
   warp's first rename. It ends one cycle past T + D + 56 + R, because the
   trigger fires when the stall exceeds T.
 - The other forms (one warp, two warps) follow the same pattern; the full
   table is `--stall-hole`'s output.
 
-**The swap sweep** (`ooe-test --swap-sweep`, 48 seeds). 8 warps, 4
+**The swap sweep** (`ooe-test --swap-sweep`, 48 seeds; the old drain). 8 warps, 4
 resident and 4 parked, each a sweep program, with 2% of loads missing to
 DRAM. Against swap-off, where the parked warps enter only as residents
 exit:
@@ -507,6 +508,103 @@ exit:
 - **The threshold.** At 25 the decided go is 8% slower than at 50, so the
   early MLC-miss notice (PF-39) shows no gain there. Under one warp, 25 is
   3% faster.
+
+## The replay drain (PF-23) and the refused demote and parked layout (TI-25)
+
+**The replay drain** (OA's rev 160, AR's revs 106-107). A demotion's
+squash sends the bulk discard with the warp's outstanding loads in it
+(`Memop::loads`; its encoding on the channel is TI's). `drained` then waits
+only for each discarded load's one completion, status replay
+(`kCmplReplay`; CCV_W_STATUS's order is complete, replay, fault), and not
+for its fill. A squashed load's destination stays deferred-free until that
+completion, and a hint for it was already dropped by the squash. A replay
+for a live entry is an error. `replay_drain=0` gives the old drain.
+
+The environment's MIU follows AR's three conditions: it answers each
+abandoned load once with replay, its data beat and its own response
+dropped, so nothing lands in a register freed to the slot's next occupant.
+A load whose completion or beat is already under way finishes as it is.
+It raises no hint for an orphan. The line still fills, so the replayed load
+hits after the restore. A parked warp is ready when its last abandoned
+load's own answer comes (`ccv_miu_rau_ready`, AR's rev 107). `testSwap`
+spreads the replays over 60 cycles so the drain's wait is visible. It
+checks that every demotion abandons loads and that no `drained` comes with
+a completion still owed. Control `drain-early` (drained waits for no
+replay) must be caught.
+
+**The swap sweep under it** (48 seeds), against the old drain:
+
+| go | policy | old drain | replay drain | gap from the miss at the head, old / replay |
+|---|---|---|---|---|
+| interleave, shares | swap at 25 / 50 / 100 | 0.798 / 0.738 / 0.737 | 0.654 / 0.645 / 0.635 | 1,351 / 240 at 50 |
+| interleave, shares | swap, P 1 / 32 | 0.738 / 0.775 | 0.647 / 0.674 | |
+| interleave, shares | evict | 0.744 | 0.556 | 1,286 / 359 |
+| one warp | swap at 25 / 50 / 100 | 0.824 / 0.855 / 0.853 | 0.663 / 0.723 / 0.671 | |
+| two warps | swap at 25 / 50 / 100 | 0.814 / 0.829 / 0.821 | 0.662 / 0.693 / 0.669 | |
+
+- **The slot now comes back during the fill.** The gap from the miss at
+  the head to the next warp's first rename falls from 1,351 cycles to 240
+  under the decided go, and the swap goes from 0.738 to 0.645 of swap-off.
+- **Evict now beats swap**, 0.556 against 0.645. With the slot returned at
+  once, demoting without a ready parked warp costs only the restore.
+- The PRF ports still cost nothing: no read held back, no write port short.
+
+**stall_hole under it** (48 seeds, the decided go, warps 1 to 3 against
+their solo time; swap, one ready, held / fetching):
+
+| fix | old drain | replay drain | slot gap, old / replay |
+|---|---|---|---|
+| none | 1.057 / 1.118 | 1.223 / 1.451 | 1,350 / 236 |
+| decq per warp 6 | 1.043 / 1.045 | 1.193 / 1.193 | 1,350 / 166 |
+| decq per warp 4 | 1.046 / 1.045 | 1.174 / 1.178 | 1,350 / 144 |
+| decq 6, stall-aware shares | 1.042 / 1.042 | 1.187 / 1.177 | 1,350 / 168 |
+
+The other arms do not change: swap off and swap with none ready demote
+nothing that a parked warp takes up, and evict with none ready stays at
+1.045 under decq 6. The swap arm now misses its 10% bound, because the
+parked warp is back in the slot about 166 cycles after the miss, not
+1,350, and runs beside warps 1 to 3 for most of their time. Solo is warps
+1 to 3 alone, so the bound also charges an ordinary fourth live warp.
+`--stall-hole` now prints a reference arm, "four live warps": the parked
+warp's program in slot 0 from cycle 0, with no stall. It prices that
+fourth warp, and the swap arm is a hole only by what it adds over the
+reference:
+
+| fix | swap, one ready (held / fetching) | four live warps | swap over the reference |
+|---|---|---|---|
+| none | 1.223 / 1.451 | 1.169 / 1.161 | 4.6% / 25%, 3 seeds starved |
+| decq per warp 6 | 1.193 / 1.193 | 1.186 / 1.189 | 0.6% / 0.3% |
+| decq per warp 4 | 1.174 / 1.178 | 1.162 / 1.157 | 1.0% / 1.8% |
+| decq 6, stall-aware shares | 1.187 / 1.177 | 1.198 / 1.183 | under it |
+
+So with the decided limit of 6, a swap costs warps 1 to 3 what any fourth
+live warp costs them, within 0.6%. The hole is closed, and the bound for
+this arm should be read against the reference, not solo (OA's call).
+
+**TI-25 (AR's rev 112, OA's rev 165).**
+
+- **Refused.** Every demote gets exactly one `drained`. If the warp's exit
+  has retired when the demote lands, OOE does no squash, sends no map, no
+  epoch notice and no rewind beat, and sends `drained` with `refused`.
+  `exited` follows at the quiesce, and RAU cancels and frees the slot on
+  it. The directed test checks exactly that, and control `no-refuse`
+  (demote the exited warp anyway) must be caught. The refused bit is TI's
+  to add to `ccv_ooe_rau_drained`. Until it is there, the adapter fails a
+  refused demote rather than send it unmarked.
+- **The parked layout.** The demotion moves one row per architectural
+  register, 16 plus the predicate row, with no merging. OOE keeps, per
+  warp_id, each GPR's position and committed width (`Core::parked_`, 64
+  bits a warp, 2 Kb for 32 contexts; `docs/ooe-rtl-plan.md`'s tally). It is
+  written at the demotion's map. Restore-allocate gives each register its
+  own row at that position and width, and restores the committed width
+  table (OI-57) from it. The directed test parks a sectioned warp with
+  registers at positions 2 and 1 and a chwidth, restores it into another
+  slot, and checks 16 distinct rows, each register at its position and
+  width, and the table. Control `park-layout-lost` (restore at 32 bits,
+  position 0) must be caught. In the model, a name's width is DEC's and
+  the table is chwidth's, which can differ. The entry keeps the name's
+  width for a sectioned register (`park.name_width_not_committed` counts a
+  difference). They are one value when DEC's width is the committed one.
 
 ## S1 modes: what the neighbours carry today
 

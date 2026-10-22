@@ -17,6 +17,7 @@
 #include "ooe_core.h"
 
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <set>
@@ -498,6 +499,12 @@ private:
       put(m, dc, "warp_id", x.warp);
       put(m, dc, "resume_pc", x.resume_pc + (k_.brk == "resume-pc" ? 2u : 0u));
       put(m, dc, "arch_state_ready", 1);
+      // TI-25's refused bit is TI's to add to the channel; until it is
+      // there, a refused demote has no encoding.
+      bool has_refused = false;
+      for (unsigned f = 0; f != kChans[dc].nfields; ++f) has_refused = has_refused || !std::strcmp(kChans[dc].fields[f].name, "refused");
+      if (has_refused) put(m, dc, "refused", x.refused);
+      else if (x.refused) k_.fail("ooe: a refused demote of warp %u, and ccv_ooe_rau_drained has no refused bit (TI-25)", x.warp);
       held_.push_back({dc, m});
     }
     for (auto it = held_.begin(); it != held_.end();) {

@@ -394,6 +394,16 @@ struct Config {
   unsigned rs_warp_cap_rcu = 0, rs_warp_cap_miu = 0;
   bool inject_atom_early_wake = false;
   bool inject_atom_demote_mid = false;
+  /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
+  /// warp's outstanding loads, so drained waits for their replay
+  /// completions, not their fills. Off: the drain waits for the fills.
+  bool replay_drain = true;
+  /// PF-23's control: drained waits for no squashed load at MIU.
+  bool inject_drain_early = false;
+  /// TI-25's controls: a demote of a warp whose exit retired is not
+  /// refused; a restore drops the parked layout (32 bits at position 0).
+  bool inject_no_refuse = false;
+  bool inject_park_layout_lost = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -474,6 +484,8 @@ struct Cmpl {           ///< ccv_miu_ooe_cmpl
   bool mlc_miss = false;
   bool more = false;    ///< an atomic's A3: lanes remain, re-issue the three steps (AR-21)
 };
+/// Completion status (CCV_W_STATUS: complete, replay, fault).
+enum : unsigned { kCmplOk = 0, kCmplReplay = 1, kCmplFault = 2 };
 enum : unsigned { kAllocFree = 0, kAllocLaunch = 1, kAllocRestoreAlloc = 2,
                   kAllocRestoreActivate = 3 };
 struct Alloc {          ///< ccv_rau_ooe_alloc
@@ -544,6 +556,10 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
+  /// A demotion's discard (PF-23, OA's rev 160): it takes the warp's
+  /// outstanding loads too, each answered once with status replay. Its
+  /// encoding on the channel is TI's (a reserved field on 0xF).
+  bool loads = false;
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -578,6 +594,9 @@ struct Fault {          ///< ccv_ooe_cru_fault
 struct Drained {        ///< ccv_ooe_rau_drained
   unsigned warp = 0;
   uint64_t resume_pc = 0;
+  /// TI-25 (AR's rev 112): the warp's exit had retired when the demote
+  /// landed; nothing moved, RAU cancels, exited frees the slot.
+  bool refused = false;
 };
 struct RatMap {         ///< ccv_ooe_rcu_map
   unsigned warp = 0, direction = 0;
@@ -1060,7 +1079,7 @@ private:
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
   void resolveBranch(unsigned slot, unsigned idx);
-  void squashAfter(unsigned slot, int keep_idx, bool to_retirement);
+  void squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool loads = false);
   void releaseEntry(unsigned slot, unsigned idx);
   bool outstanding(const RobEntry &r) const;
   bool gprAllowed(unsigned slot, unsigned n) const;
@@ -1068,7 +1087,7 @@ private:
   unsigned allocGpr(unsigned slot);
   /// Sectioned: allocate a register of width code w for a slot, preferring
   /// position pos (a hint: another position if it must).
-  unsigned allocSlice(unsigned slot, unsigned w, unsigned pos);
+  unsigned allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row = false);
   /// Sectioned: how a width w register at pos would be placed, without
   /// placing it: 0 an owned partial row, 1 a new row, 2 neither (stall).
   unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const;
@@ -1453,6 +1472,12 @@ private:
   std::vector<Alloc> allocs_;
   std::vector<unsigned> demotes_;
   std::vector<unsigned> demotes_held_;   ///< a demote waiting for an atomic at the head (V-70)
+  /// TI-25 (AR's rev 112): the parked layout, per warp_id, each GPR's
+  /// position and committed width (2 + 2 bits, 64 bits a warp, 2 Kb for
+  /// the 32 contexts). Written at the demotion's map, read at
+  /// restore-allocate, which gives each register its own row with them.
+  struct Parked { std::array<uint8_t, 16> pos{}, w{}; };
+  std::array<Parked, kWarpIds> parked_{};
   unsigned mig_reads_ = 0;
   std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
   /// The slot's oldest RS entry waits on a memory miss past the L1 window.
