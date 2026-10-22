@@ -4049,6 +4049,16 @@ std::vector<unsigned> &Kernel::pratOf(unsigned w, bool preds) {
 std::string Kernel::loadOracles(const std::string &path) {
   orcs.assign(1, Oracle());
   if (std::string e = orcs[0].load(path); !e.empty()) return e;
+  // Each run stands for one warp, which RAU gives warp_id w, its hardware
+  // context: srd #2's %lanectx names it (O-64), so the run must have named
+  // the same context (gen-oracle passes ccv-sim -context w; TI-35).
+  auto ctx = [](const Oracle &o, unsigned w, const std::string &p) -> std::string {
+    return o.lane_context != w
+               ? p + ": ccv-sim ran it as context " + std::to_string(o.lane_context) +
+                     ", but RAU gives it warp_id " + std::to_string(w)
+               : "";
+  };
+  if (std::string e = ctx(orcs[0], 0, path); !e.empty()) return e;
   const std::string base =
       path.size() > 6 && path.compare(path.size() - 6, 6, ".jsonl") == 0
           ? path.substr(0, path.size() - 6) : path;
@@ -4064,6 +4074,7 @@ std::string Kernel::loadOracles(const std::string &path) {
     if (std::string e = o.load(p); !e.empty()) return e;
     if (o.code != orcs[0].code || o.code_base != orcs[0].code_base || o.init_mem != orcs[0].init_mem)
       return p + ": not the code and memory warp 0 ran";
+    if (std::string e = ctx(o, w, p); !e.empty()) return e;
     orcs.push_back(std::move(o));
   }
   return "";

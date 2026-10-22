@@ -191,6 +191,7 @@ std::string Oracle::load(const std::string &path) {
         threads = unsigned(i.at("threads").u());
         ctaid = unsigned(i.at("ctaid").u());
         if (i.has("warp_in_cta")) warp_in_cta = unsigned(i.at("warp_in_cta").u());
+        lane_context = i.has("lane_context") ? unsigned(i.at("lane_context").u()) : warp_in_cta;
         code = hexBytes(i.at("code").s());
         init_mem = words(i.at("mem"));
         if (i.has("const")) {

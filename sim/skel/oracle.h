@@ -80,6 +80,10 @@ struct Oracle {
   uint64_t code_base = 0;
   unsigned threads = 0, ctaid = 0;
   unsigned warp_in_cta = 0;   ///< which of its CTA's warps this run is (ccv-sim -warp, TI-29)
+  /// The hardware warp context srd #2 named in this run (ccv-sim -context,
+  /// TI-35; O-64). ccv-sim records it only where it is not the default,
+  /// the -warp index, so a run without it ran as context warp_in_cta.
+  unsigned lane_context = 0;
   std::vector<uint8_t> code;
   std::vector<std::pair<uint64_t, uint32_t>> init_mem;
   /// F-RO's .const range, [const_base, const_limit); empty when equal (TI-26).

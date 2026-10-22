@@ -79,7 +79,9 @@
 #   a memop's base is per lane (TI-32)        scalar-base (slotform): lanes
 #                                                1-31 store into lane 0's window
 #   srd #2, %lanectx, is the warp's context   lanectx-literal (lanectx): no
-#     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse
+#     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse;
+#     -- not its index in its CTA                lanectx-as-ctatid (lanectx2):
+#                                                CTA 1's warp reads 0-31
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
 #     CTA slot, from RAU's alloc (TI-34)         name slot 0, and MIU refuses
 #   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
@@ -648,6 +650,7 @@ roload ro_fault=0 fault=0 kill=0
 rokill ro_fault=1 fault=1 kill=1
 slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
 lanectx redirect=0 split=0
+lanectx2 redirect=0 split=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -780,6 +783,28 @@ if grep -q "^CHECK lane 0: seq 0 srd 2, oracle 32" "$B/kernel_lanectx-literal.lo
   say "--break lanectx-literal: no context substituted" "PASS (lanectx: 48 lanes refuse)"
 else
   bad "--break lanectx-literal" "srd #2's substitution went unchecked: $(grep '^KERNEL' "$B/kernel_lanectx-literal.log")"
+fi
+# srd #2 names the hardware context, not the warp's index in its CTA: over
+# lanectx2's two one-warp CTAs those differ for CTA 1 (ccv-sim -context,
+# TI-35). Taken as srd #0, CTA 1's 32 lanes read 0-31 and refuse.
+"$SKEL" --kernel build/oracle/lanectx2/oracle.jsonl --break lanectx-as-ctatid >"$B/kernel_lanectx-as-ctatid.log" 2>&1
+if grep -q "^CHECK lane 0: seq 0 srd 0, oracle 32" "$B/kernel_lanectx-as-ctatid.log" &&
+   [ "$(grep -c "^CHECK lane [0-9]*: seq 0 srd " "$B/kernel_lanectx-as-ctatid.log")" = 32 ]; then
+  say "--break lanectx-as-ctatid: srd #2 read as #0" "PASS (lanectx2: CTA 1's 32 lanes refuse)"
+else
+  bad "--break lanectx-as-ctatid" "srd #2's context went unchecked: $(grep '^KERNEL' "$B/kernel_lanectx-as-ctatid.log")"
+fi
+# And each oracle run must name the context RAU gives its warp: lanectx2's
+# CTA 1 run again with ccv-sim -context 0, as before TI-35, is refused at
+# load, before a cycle runs.
+mkdir -p "$B/ctx0" && cp build/oracle/lanectx2/oracle.jsonl "$B/ctx0/oracle.jsonl" &&
+"$(tools/fetch-compiler.sh)/release/bin/ccv-sim" build/oracle/lanectx2/kernel.bin -ctaid 1 -context 0 \
+  -oracle "$B/ctx0/oracle.1.jsonl" >/dev/null 2>&1
+"$SKEL" --kernel "$B/ctx0/oracle.jsonl" >"$B/kernel_ctx0.log" 2>&1
+if grep -q "oracle.1.jsonl: ccv-sim ran it as context 0, but RAU gives it warp_id 1" "$B/kernel_ctx0.log"; then
+  say "an oracle run of another context: refused" "PASS (lanectx2's CTA 1 at -context 0)"
+else
+  bad "an oracle run of another context" "loaded: $(tail -1 "$B/kernel_ctx0.log")"
 fi
 # Each memop names its warp's CTA slot (TI-34): RAU sends it on the alloc,
 # and OOE holds it per tier-1 slot and stamps it. Every memop zeroed, as

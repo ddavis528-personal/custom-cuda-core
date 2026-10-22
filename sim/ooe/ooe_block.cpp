@@ -224,7 +224,10 @@ private:
       // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
       // clears the warp's last live lanes.
       u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
-      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : ik == kImmLaneCtx ? 2 : -1;
+      // lanectx-as-ctatid: srd #2 taken as srd #0, the warp's index in its
+      // CTA where O-64 names its hardware context.
+      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
+                  : ik == kImmLaneCtx ? (k_.brk == "lanectx-as-ctatid" ? 0 : 2) : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
         u.cause = 2;   // F-ILLEGAL: an encoding naming nothing
