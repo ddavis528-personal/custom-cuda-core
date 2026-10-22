@@ -584,9 +584,12 @@ ad6ef02; warps 1 to 3 against their solo time, held / fetching):
 | fix | swap, one ready, old drain (18b33e1) | swap, one ready, replay drain | four live warps (reference) | slot gap, old / replay |
 |---|---|---|---|---|
 | none | 1.057 / 1.118 | 1.212 / 1.431, 3 starved | 1.167 / 1.165 | 1,350 / 236 |
-| decq per warp 6 | 1.043 / 1.045 | 1.207 / 1.203 | 1.196 / 1.192 | 1,350 / 188 |
-| decq per warp 4 | 1.046 / 1.045 | 1.173 / 1.178 | 1.171 / 1.169 | 1,350 / 144 |
+| decq per warp 6 | 1.043 / 1.045 | 1.199 / 1.202 | 1.196 / 1.190 | 1,350 / 162 |
+| decq per warp 4 | 1.046 / 1.045 | 1.145 / 1.140 | 1.134 / 1.120 | 1,350 / 134 |
 | decq 6, stall-aware shares | 1.042 / 1.042 | 1.189 / 1.187 | 1.195 / 1.180 | 1,350 / 168 |
+
+(The decq rows are with the per-slot take below; the stall-aware row is
+from before it.)
 
 The other arms barely move: swap off and swap with none ready restore no
 warp, and evict with none ready is 1.035 under decq 6. The swap arm now
@@ -595,11 +598,35 @@ the slot about 188 cycles after the miss, not 1,350, and runs beside warps
 1 to 3 for most of their time. Solo is warps 1 to 3 alone, so the bound
 also charges an ordinary fourth live warp. `--stall-hole` therefore prints
 a reference arm, "four live warps": the parked warp's program in slot 0
-from cycle 0, with no stall. Against it the swap arm adds 0.9% and 0.9%
-under decq 6, and 0.2% and 0.8% under decq 4. The hole is closed with
+from cycle 0, with no stall. Against it the swap arm adds 0.3% and 1.0%
+under decq 6, and 1.0% and 1.8% under decq 4. The hole is closed with
 the per-warp limit; without it, the stalled warp's decode-queue hold still
 costs 4% held and 23% fetching over the reference. The bound for this arm
 should be read against the reference (OA's call).
+
+**The decode queue below its depth** (TI's rev 102). At
+CCV_P_DECQ_WARP_MAX = 6, ooe_decq's live compare tripped its
+`enq_within_credit` assertion. The model freed a slot's room the cycle
+rename took from it, and ooe_decq frees it at the next edge, when its
+count subtracts the registered take. At a limit of 13 the shared pool binds
+first, so the difference never showed. The model now counts a slot's takes
+of the cycle against it under `decq_late_credit`, as the pool does
+(`decq_slot_take_`). With that, ooe_decq's live compare (25 seeds) and its
+four controls pass at 6 and at 4, failing at 6 without it, and check-cg's
+bench passes at both (DCGE at least 90% at 6 and 95% at 4, high scenario)
+once its unit's D matches the parameter.
+
+With it, the even-stall sweep is 0.863 of no fix at 6 and 0.802 at 4, and
+the S1 kernels (one warp each, the swap kernel among them) against no limit:
+
+| limit | kernels slower than at 13 |
+|---|---|
+| 6 | none of 23 |
+| 4 | mlp, 124 against 120 cycles (3.3%) |
+| 2 | 22 of 23, up to 10.8% (mlp 133 against 120) |
+| 1 | all 23, up to 41% (chains 137 against 97) |
+
+So S1 loses at 4, in mlp alone, and not at 6.
 
 **TI-25 (AR's rev 112, OA's rev 165).**
 
