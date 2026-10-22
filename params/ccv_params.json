@@ -221,12 +221,12 @@
     },
     {
       "name": "CCV_DEMOTION_THRESHOLD_MLC",
-      "value": 50,
+      "value": 100,
       "status": "tunable",
       "require": "CCV_DEMOTION_THRESHOLD_MLC > CCV_LAT_MLC_HIT_MAX",
       "decided_at": "RAU per-block session (register OA-8)",
-      "source": "OOE model session, register OI-6 (2026-10-07)",
-      "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). Starts at the fallback's value until RAU's session or the Stage 4b sweep sets it; formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
+      "source": "AR's response TI-21 (rev 118), from OI's evict sweep (rev 156); first build OI-6",
+      "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). 100 (AR's rev 118): under evict with the replay drain, OI's 48-seed sweep gives 0.552 of swap-off at 100 against 0.588 at 50, with far fewer declined demotes (25 against 324). 100 is the top of that sweep; OI sweeps 150 to 300, and AR moves it only for a gain over 1%. Formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
     },
     {
       "name": "CCV_LAT_MLC_PIPE",
