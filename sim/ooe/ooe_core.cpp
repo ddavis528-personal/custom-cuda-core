@@ -372,6 +372,7 @@ void Core::cycle(uint64_t now) {
   wlog_.hop_dep.clear();
   wlog_.cf_dep.clear();
   rlog_ = RatLog();
+  golog_ = GoLog();
   out.clear();
   retired.clear();
   takeCompletions();   // dones, completions: complete, resolve, squash
@@ -2766,6 +2767,31 @@ unsigned Core::auditRobRoom(unsigned si) const {
   return room;
 }
 
+uint8_t Core::admBits(const Uop &u) const {
+  const SchedAttr &a = u.attr;
+  const bool nop = u.shape.exit || u.cause;
+  const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
+  const bool wgpr = !nop && a.writes_gpr;
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && wgpr && (u.group_mask != kFullMask || u.shape.guard);
+  const bool pred = !nop && u.pred_we && cfg_.rename_preds;
+  const bool serial = a.serial == kSerChwidth || a.serial == kSerBarrier;
+  return uint8_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
+                 (serial << 6));
+}
+
+/// go_static: next cycle's ROB room, as the fits register it: this cycle's
+/// free run less its take, and its retirements where the run reaches the
+/// head; none for a slot squashed this cycle (decq shows it empty).
+void Core::goRoomNext() {
+  go_room_.assign(slot_.size(), 0);
+  for (unsigned si = 0; si != slot_.size() && si < go_run_.size(); ++si) {
+    unsigned ret = 0;
+    for (unsigned k = 0; k != cfg_.rob_depth; ++k) ret += rob_prompt_[si * cfg_.rob_depth + k];
+    const unsigned run = go_run_[si] - std::min(go_run_[si], si < took_.size() ? took_[si] : 0u);
+    go_room_[si] = (si < audit_squash_.size() && audit_squash_[si]) ? 0 : run + (go_reach_[si] ? ret : 0);
+  }
+}
+
 bool Core::tryRename(unsigned si, const Uop &u) {
   Slot &s = slot_[si];
   // go_static: the holds as the cycle started (the go's registered bit); a
@@ -2857,7 +2883,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const bool wgpr_d = !nop_d && a.writes_gpr;
   const bool copy_d = mem_d && (a.mem_kind == kMemKLoad || atom_d) && wgpr_d && (!full || u.shape.guard);
   const unsigned chg[4] = {
-      cfg_.go_static ? (mem_d ? 0u : 1u) + (copy_d ? 1u : 0u) + (atom_d ? 1u : 0u) : 0u,
+      cfg_.go_static ? (!nop_d && !mem_d ? 1u : 0u) + (copy_d ? 1u : 0u) + (atom_d ? 1u : 0u) : 0u,
       cfg_.go_static ? (mem_d ? (atom_d ? 2u : 1u) : 0u) : 0u,
       cfg_.go_static ? (atom_d ? 2u : wgpr_d ? 1u : 0u) : 0u,
       cfg_.go_static ? (!nop_d && u.pred_we && cfg_.rename_preds ? 1u : 0u) : 0u};
@@ -3231,6 +3257,35 @@ void Core::rename() {
   ren_slot_.assign(slot_.size(), {});
   ren_serial_.assign(slot_.size(), 0);
   took_.assign(slot_.size(), 0);
+  // The go's inputs as the RTL holds them (GoLog).
+  {
+    GoLog &g = golog_;
+    g.valid = true;
+    g.restore = !restore_q_.empty();
+    g.prio = rr_rename_;
+    const RenCredits rc = renCredits();
+    for (unsigned r = 0; r != 4; ++r) g.cred[r] = rc.c[r];
+    g.owed[0] = floorsOwed(false);
+    g.owed[1] = floorsOwed(true);
+    const unsigned ns = unsigned(slot_.size());
+    g.adm.assign(ns, {});
+    g.run.assign(ns, 0); g.ret.assign(ns, 0); g.unmet_g.assign(ns, 0); g.unmet_p.assign(ns, 0);
+    g.reach.assign(ns, 0); g.hold.assign(ns, 1);
+    for (unsigned si = 0; si != ns; ++si) {
+      if (slot_[si].st != WarpState::kFree)
+        for (const Uop &u : decq_)
+          if (u.warp == slot_[si].warp) g.adm[si].push_back(admBits(u));
+      g.run[si] = si < go_run_.size() ? go_run_[si] : 0;
+      g.reach[si] = si < go_reach_.size() ? go_reach_[si] : 0;
+      for (unsigned k = 0; k != cfg_.rob_depth; ++k) g.ret[si] += rob_prompt_[si * cfg_.rob_depth + k];
+      g.hold[si] = si < go_hold_.size() ? go_hold_[si] : 1;
+      if (slot_[si].st != WarpState::kFree) {
+        g.unmet_g[si] = unmetFloor(si, false);
+        g.unmet_p[si] = unmetFloor(si, true);
+      }
+    }
+    g.took.assign(ns, 0);
+  }
   // A restore-allocate in progress owns the allocation ports: no warp
   // renames until it is done (OA's response OI-41).
   if (!restore_q_.empty()) {
@@ -3238,6 +3293,7 @@ void Core::rename() {
     for (auto &x : share_reg_) x = {0, 0, 0, 0};
     restoreStep();
     count("stall.restore");
+    goRoomNext();
     return;
   }
   unsigned budget = cfg_.rename_width;
@@ -3472,6 +3528,7 @@ void Core::rename() {
       }
       share_ = share_reg_;
       share_reg_ = split;
+      golog_.split = split;
     } else {
       share_ = split;
     }
@@ -3519,6 +3576,7 @@ void Core::rename() {
     --slot_[si].decq;
     ++decq_slot_take_[si];
     --budget;
+    golog_.lanes.push_back({si, took_[si]});
     ++took_[si];
     return 1;
   };
@@ -3553,16 +3611,8 @@ void Core::rename() {
     }
   if (!budget) count("rename.full_width");
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
-  // go_static: next cycle's ROB room, as the fits register it: this cycle's
-  // free run less its take, and its retirements where the run reaches the
-  // head; none for a slot squashed this cycle (decq shows it empty).
-  go_room_.assign(slot_.size(), 0);
-  for (unsigned si = 0; si != slot_.size() && si < go_run_.size(); ++si) {
-    unsigned ret = 0;
-    for (unsigned k = 0; k != cfg_.rob_depth; ++k) ret += rob_prompt_[si * cfg_.rob_depth + k];
-    const unsigned run = go_run_[si] - std::min(go_run_[si], took_[si]);
-    go_room_[si] = (si < audit_squash_.size() && audit_squash_[si]) ? 0 : run + (go_reach_[si] ? ret : 0);
-  }
+  goRoomNext();
+  golog_.took = took_;
 }
 
 void Core::sendRedirect() {

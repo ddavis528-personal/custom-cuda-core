@@ -1231,6 +1231,28 @@ public:
     std::vector<Ren> ren;
   };
   const RatLog &ratLog() const { return rlog_; }
+  /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
+  /// as the RTL holds it: per slot, the decode queue's heads in order and
+  /// each one's decode-time admission bits (bit 0 RCU, 1 MIU, 2 copy, 3 GPR
+  /// write, 4 predicate write, 5 branch, 6 serial: a chwidth or barrier),
+  /// the ROB's free run from the tail as the cycle started and whether it
+  /// reaches the head, this cycle's retirements, the registered hold and
+  /// unmet floors; the credits and floors owed; the rotation's first slot;
+  /// a restore owning the ports; and the takes, in lane order.
+  struct GoLog {
+    bool valid = false, restore = false;
+    unsigned prio = 0;
+    unsigned cred[4] = {}, owed[2] = {};
+    std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
+    std::vector<unsigned> run, ret, unmet_g, unmet_p;
+    std::vector<uint8_t> reach, hold;
+    std::vector<unsigned> took;               ///< per slot
+    std::vector<std::array<unsigned, 4>> split;   ///< the allowances registered for the next cycle
+    std::vector<std::pair<unsigned, unsigned>> lanes;   ///< (slot, head) in take order
+  };
+  const GoLog &goLog() const { return golog_; }
+  /// A uop's admission bits as decq holds them (GoLog).
+  uint8_t admBits(const Uop &u) const;
   /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
   unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
   unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
@@ -1313,6 +1335,8 @@ public:
 private:
   WakeLog wlog_;
   RatLog rlog_;
+  GoLog golog_;
+  void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
   unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
   unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
