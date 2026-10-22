@@ -547,10 +547,21 @@ The rule the whole convention exists to make checkable:
 Catches mislabelled pipelines, accidental combinational paths across a stage
 boundary, and retiming that updated the logic but not the names.
 
+Continuous assignments are combinational and checked as `always_comb` is
+(OI-65): a tagged net driven by an `assign` was once unchecked, which invited
+leaving a stage mix untagged, and then the flop it fed went unchecked too.
+
 Three exemptions, each for a reason:
 
-- **A net's own previous value.** `q_cs04h <= en ? d_cs03h : q_cs04h` is a hold
-  or a counter — a self-reference at the *same* stage, not a violation.
+- **State reading its own stage** (OI-65). `q_cs04h <= en ? d_cs03h : q_cs04h`
+  is a hold or a counter, a self-reference at the *same* stage. So is a
+  register reading another register of its stage, a queue's entries reading
+  its count: in a stage-N register's next value, any stage-N net is the
+  block's own state, and everything else must be at N − 1. The same feedback
+  built apart from the always_ff, on the **D side**: a combinational net at
+  N − 1 that only flops read (a next value or an enable) may read the
+  stage-N state it updates. Read anywhere else, it is held to the plain
+  arithmetic. `rtl/lint/reference_feedback.sv` shows both forms.
 - **Reset nets** (block letter `r`), whose numbering measures distribution
   depth rather than datapath depth.
 - **Right-hand sides with no tagged signal at all** — constants, parameters.

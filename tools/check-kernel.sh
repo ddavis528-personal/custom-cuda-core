@@ -79,7 +79,7 @@
 #   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
 #     state at its retirement boundary         resume-pc (stall, demoting):
 #     (TI-24), at the place RAU names          the parked check refuses each;
-#                                              pca-place (vadd4): PCA refuses
+#                                              pca-place (mwmiss): PCA refuses
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
 #     DEC marks real (TI-1)                      hides a second source, and
 #                                                seq 14 reads R9 stale
@@ -734,16 +734,32 @@ if [ -z "$why" ] && [ "$(cover "$log" demote)" = 1 ] && [ "$(cover "$log" parked
 else
   bad "stall demoted" "${why# } demote=$(cover "$log" demote) parked=$(cover "$log" parked)"
 fi
-# PCA files a warp at the place RAU names (TI-24 (1)): on vadd4, whose two
-# parked warps need two places, RAU naming one twice is refused.
-# The control needs two warps parked: under the OOE model's current go
-# vadd4 parks one at the fallback's default threshold, four at 30.
-CCV_OOE_CONFIG=demote_fallback=30 CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break pca-place \
+# PCA files a warp at the place RAU names (TI-24 (1)): RAU naming one place
+# twice is refused. It needs two warps parked, so OOE's fallback threshold
+# is lowered for this run (demote_fallback, a model setting): mwmiss then
+# parks all four, each matching ccv-sim, instead of how many the default's
+# timing happens to park (vadd4 parked two, until OI-45 moved its timing).
+CCV_OOE_CONFIG=demote_fallback=20 CCV_RAU_DEMOTE=fallback "$SKEL" \
+  --kernel build/oracle/mwmiss/oracle.jsonl --break pca-place \
   >"$B/kernel_demote_pca-place.log" 2>&1
 if grep -q "^CHECK pca: place 0 is already held, by warp" "$B/kernel_demote_pca-place.log"; then
   say "--break pca-place: PCA refuses a held place" "PASS"
 else
   bad "--break pca-place" "a place named twice was filed: $(grep '^KERNEL' "$B/kernel_demote_pca-place.log")"
+fi
+# Every warp parked at once: mwmiss with OOE's fallback threshold lowered,
+# all four warps demoted, each checked at its own boundary, none left resident.
+log="$B/kernel_mwmiss_demote_all.log"
+CCV_OOE_CONFIG=demote_fallback=20 CCV_RAU_DEMOTE=fallback "$SKEL" \
+  --kernel build/oracle/mwmiss/oracle.jsonl >"$log" 2>&1
+why=""
+for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
+  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+done
+if [ -z "$why" ] && [ "$(cover "$log" parked)" = 4 ]; then
+  say "mwmiss, every warp parked == ccv-sim" "PASS (4 places, each warp at its boundary)"
+else
+  bad "mwmiss, every warp parked" "${why# } parked=$(cover "$log" parked)"
 fi
 for spec in "corrupt-map:PARKED warp 0 R1 lane" "mig-row-order:PARKED warp 0 R0 lane" \
             "resume-pc:PARKED warp 0 resumes at"; do
