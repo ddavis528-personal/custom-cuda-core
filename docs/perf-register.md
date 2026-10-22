@@ -741,6 +741,12 @@ it.
   the go the design uses, so the notice stays deferred. Re-measure once the
   drain stops waiting for the demoting load (AR's response TI-21, OI's
   rev 154), since that changes what a demotion returns.
+- **Re-measured (OI's rev 158, AR's response TI-21, 2026-10-22):** under
+  evict with the replay drain, on the 48-seed sweep, 25 gives 0.624 of
+  swap-off against 0.588 at 50, 6.1% slower. The notice stays deferred. The
+  threshold stays at 50: 100 gives 0.603, 2.5% slower, and wins only S1's
+  short MLC misses (gather and vadd4), which an earlier trigger would demote
+  sooner, not later.
 
 ### PF-40 Pack a parked warp's rows: keep sharing, elide zero rows
 
