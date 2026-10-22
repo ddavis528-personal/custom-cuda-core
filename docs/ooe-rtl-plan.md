@@ -683,6 +683,24 @@ Built (`rtl/ooe/`):
      controls drop-prv (the group ahead's producers lost) and stale-live
      (stale bits on entries ooe_rs keeps), both caught, and the trio
      drives them assembled.
+
+     *Assembled (OA's rev 168).* `test/ooe/rnrs_tb.cpp` wires ooe_prodmap,
+     ooe_rendep and ooe_rs as rename and the RS do (`test/ooe/ooe_rnrs.sv`):
+     the stage register is ooe_rs's rows, ooe_rs's registered grant is
+     rename's. The model drives rename's fields and the RS's other inputs
+     only, and ooe_rs's grants, valid bits, column flags and rows are held
+     to the model's: 25 seeds and the directed tests, 251 cores, 1.66M rows,
+     183,212 line selects, none differ (cores with predicate renaming off
+     are driven, not compared). The wrapper asserts what OA asked
+     (`surviving_named`): after each edge, every bit of every row written
+     names an entry of the same group or one whose occupant, in
+     ooe_prodmap, produces one of the row's source names. Controls, each
+     caught by the assertion: stale-live (a bit on a valid entry from two
+     edges ago or more that no source names, joined to a row on its way to
+     ooe_rs, which its mask keeps) and wrong-names (the assertion reads
+     another port's names). The budgets are OA's now (rev 168):
+     `prv_dep` and `prv_code` at 9, every ooe_rendep input at 2.0, each
+     source a register with no NGD-7 finding.
   3. **Rename's credits** (`ooe_rencred`, an inner helper: the counters'
      next value; the flops are ooe_rename's): RS room per class, the free
      GPR and predicate names, each slot's ROB room. A counter falls by the
