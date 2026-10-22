@@ -406,6 +406,9 @@ struct Config {
   /// OA's rev 166's control: a destination takes DEC's width (Uop::w, a
   /// test's hint, on no channel) instead of the committed table's.
   bool inject_width_from_dec = false;
+  /// AR's rev 118's control: the fallback's report claims mlc_miss_seen for
+  /// any outstanding head load, before the MLC trigger's threshold.
+  bool inject_fallback_claims_mlc = false;
   bool inject_park_layout_lost = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".

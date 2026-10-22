@@ -1685,6 +1685,50 @@ void testWidthFromTable() {
   EXPECT(!held, "renaming at DEC's width should break the committed-width assertion");
 }
 
+/// AR's rev 118: the MLC trigger's threshold governs RAU's MLC policy. With
+/// the MLC threshold at 100 and the fallback at 50, a head load that misses
+/// L1 and stays out past both reports the fallback's stall first, without
+/// mlc_miss_seen, and the MLC trigger some 50 cycles later. The control has
+/// the fallback's report claim the miss, so RAU would demote at 50.
+bool mlcTrigger(bool control) {
+  Config c = baseConfig();
+  c.demote_mlc_miss = 100;
+  c.demote_fallback = 50;
+  c.inject_fallback_claims_mlc = control;
+  Env e(c);
+  e.keep_log = true;
+  e.miss_pct = 100;
+  e.miss_extra = 600;
+  std::vector<Op> p;
+  Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
+  Op u; u.k = kLane; u.dst = 9; u.src[0] = 8; u.nsrc = 1; p.push_back(u);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  uint64_t stalled_at = 0, mlc_at = 0;
+  for (unsigned k = 0; k != 600; ++k) {
+    e.step();
+    for (const Status &st : e.log.back().status) {
+      if (st.stalled && !stalled_at) stalled_at = e.t;
+      if (st.stalled && st.mlc_miss_seen && !mlc_at) mlc_at = e.t;
+    }
+  }
+  const bool ok = stalled_at && mlc_at && mlc_at >= stalled_at + 40;
+  if (!control) {
+    g_test = "MLC trigger at its own threshold";
+    EXPECT(ok, "the fallback's stall at cycle %llu, mlc_miss_seen first at %llu: want it about 50 later",
+           (unsigned long long)stalled_at, (unsigned long long)mlc_at);
+  }
+  return ok;
+}
+
+void testMlcTrigger() {
+  mlcTrigger(false);
+  const bool held = mlcTrigger(true);
+  std::printf("  %-24s %s\n", "control fallback-claims-mlc", held ? "MISSED" : "caught");
+  g_test = "MLC trigger at its own threshold (control)";
+  EXPECT(!held, "a fallback report claiming the miss should demote at the fallback's threshold");
+}
+
 void testParkedLayout() {
   parkedLayout(false);
   const bool held = parkedLayout(true);
@@ -3719,6 +3763,7 @@ int main(int argc, char **argv) {
     testDemoteRefused();
     testParkedLayout();
     testWidthFromTable();
+    testMlcTrigger();
     testSwap();
     std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
@@ -3770,6 +3815,7 @@ int main(int argc, char **argv) {
   testDemoteRefused();
   testParkedLayout();
   testWidthFromTable();
+  testMlcTrigger();
   for (int k : {1, 2}) {
     const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
     const int saved = g_fail;

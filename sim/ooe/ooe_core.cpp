@@ -2133,8 +2133,12 @@ void Core::retire() {
         oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
       const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
+      // The fallback's report says mlc_miss_seen only once the MLC trigger
+      // itself has fired: a head load outstanding past the fallback alone
+      // is not an MLC miss, and RAU's MLC policy keys on that bit.
       if (stall > lim && !s.stalled_reported) {
-        out.status.push_back({s.warp, false, true, miss, s.retired_since_restore});
+        out.status.push_back({s.warp, false, true, miss && (s.miss_reported || cfg_.inject_fallback_claims_mlc),
+                                 s.retired_since_restore});
         s.stalled_reported = true;
         count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
         oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
