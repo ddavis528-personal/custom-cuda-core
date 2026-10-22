@@ -237,6 +237,9 @@ std::string Oracle::load(const std::string &path) {
         for (const JV &m : j.at("imms").a()) r.imms.push_back(m.i());
         for (const JV &m : j.at("quals").a()) r.quals.push_back(unsigned(m.u()));
         r.taken = uint32_t(j.at("taken").u());
+        // ccv-sim records taken lanes for a predicated branch only. An
+        // unconditional one (bra, c.bra) is taken by its whole group.
+        if (r.kind == "branch" && !r.taken) r.taken = r.mask;
         r.target = j.at("target").u();
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));

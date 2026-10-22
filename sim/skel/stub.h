@@ -148,6 +148,12 @@ struct OpInfo {
   // OR or pass-through by opcode, so no field carries it past decode.
   int8_t srd_sel = -1;
   bool or_lane = false;
+  /// Moves data between lanes (shfl): RCU executes it beside the register
+  /// file, which every lane's operand is in (Q-32), and sched_attr's
+  /// cross_lane is set.
+  bool cross = false;
+  /// The bypass group, where the class's is not the op's: FP (OI-16).
+  int8_t byp = -1;
 };
 // Where each executes (Q-32, Q-38): the lane executes any opcode with a
 // per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
@@ -159,6 +165,7 @@ struct OpInfo {
 // blocks to save an operand trip on a prologue instruction is a bad trade.
 // Memory ops go to MIU.
 inline bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch || c == kImm; }
+inline bool execRcu(const OpInfo *op) { return inRcu(op->cls) || op->cross; }
 
 // sched_attr on ccv_dec_ooe_uop (A-66): what OOE schedules on, decoded by DEC
 // so OOE need not decode opcode. Layout MSB first, CCV_P_W_SCHED_ATTR bits:
@@ -178,6 +185,8 @@ enum : unsigned { kBypInt = 0, kBypFp = 1, kBypAddr = 2, kBypSfu = 3,
 /// consumes as address calculation. An op that writes no result and reads
 /// no GPR (a branch, exit) takes 0, don't-care.
 inline unsigned bypGroupOf(const OpInfo *op) {
+  if (op->byp >= 0) return unsigned(op->byp);
+  if (op->cross) return kBypCollective;
   switch (op->cls) {
   case kLoad: case kStore: return kBypAddr;
   case kPredLogic: return kBypPred;
@@ -188,10 +197,10 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   const bool mem = op->cls == kLoad || op->cls == kStore;
   const unsigned memk = op->cls == kStore ? kMemKStore : kMemKLoad;
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore ? kLatCompletion
-                     : inRcu(op->cls) || op->cls == kExit ? kLatRcu : kLatLane;
+                     : execRcu(op) || op->cls == kExit ? kLatRcu : kLatLane;
   return uint32_t(bypGroupOf(op)) << 13 |
-         uint32_t(mem) << 12 | uint32_t(inRcu(op->cls) || op->cls == kExit) << 11 |
-         0u << 10 /* no S1 op is cross-lane */ | uint32_t(op->gdst) << 9 |
+         uint32_t(mem) << 12 | uint32_t(execRcu(op) || op->cls == kExit) << 11 |
+         uint32_t(op->cross) << 10 | uint32_t(op->gdst) << 9 |
          uint32_t(op->pwrite) << 8 | (mem ? memk : 0u) << 6 |
          uint32_t(op->cls == kBranch) << 5 | uint32_t(op->cls == kExit ? kSerExit : 0) << 3 |
          lat;
@@ -245,6 +254,35 @@ inline constexpr OpInfo kOps[] = {
   // A guarded load (Format Dp): MIU writes the active lanes, and the inactive
   // ones keep their old value through a copy-only op (A-33, A-38).
   {"LD_GLOBAL_P",   kLoad,      1, true,  true,  false, true,  false,  0, -1, -1,  0, -1, -1, -1},
+  // rope's (CP's release kernel, TI-30). The lanes return ccv-sim's results,
+  // so a row is the operand shape and where the op runs.
+  {"ADD",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"MUL_LO",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_MUL_LO",      kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_MOV",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_ADDI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"C_SHLI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"C_SHRI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  // mad.lo under a guard: as add.p, the guard's off lanes keep the old value.
+  {"MADLO_P",       kAlu,       3, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
+  // Format C" compares (O-32): no qualifier, every issue-mask lane written.
+  {"SETP_EQ_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LE_U_NP",  kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LT_U_NP",  kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LT_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
+  // FP: integer lanes' timing for now, FP's bypass group (OI-16).
+  {"C_FMUL",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FNEG_F0",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FFMA_F0",       kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FFMA_ACC_F0",   kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"ST_GLOBAL",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1},
+  {"C_BRA",         kBranch,    0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // pmov.imm: bit n of the immediate is lane n's predicate bit, for all 32
+  // lanes, ungated by the issue mask (section 3): an immediate RCU writes.
+  {"PMOV_IMM",      kImm,       0, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  0},
+  // shfl.idx: each guarded issue lane takes the source register at one lane,
+  // active or not (Format G): RCU, which holds every lane's register.
+  {"SHFL_IDX",      kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;

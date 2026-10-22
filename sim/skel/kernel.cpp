@@ -1479,8 +1479,8 @@ private:
     const std::string at = "lane " + std::to_string(lane_);
     k_.executing(at, m.tid);
     const OpInfo *op = opByCode(opc);
-    if (op && inRcu(op->cls))
-      k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
+    if (op && execRcu(op))
+      k_.fail("lane %u: %s reached a lane; it executes in RCU", lane_, op->name);
     if (op && !perLaneInput(op, *rc))
       k_.fail("lane %u: %s has no per-lane input; RCU executes it (Q-32)", lane_, op->name);
     if (!op || rc->op != op->name)
@@ -2081,7 +2081,7 @@ private:
     // Each class on its own resources: lane ops (the copy among them) on
     // the sections, memops on the pipes, RCU-only ops on R.
     const bool mem = op && (op->cls == kLoad || op->cls == kStore);
-    const unsigned want = mem ? kSlotP0 : op && inRcu(op->cls) ? kSlotR : kSlotS0;
+    const unsigned want = mem ? kSlotP0 : op && execRcu(op) ? kSlotR : kSlotS0;
     if (groupOf(s) != want)
       k_.fail("rcu: seq %llu, %s, issued on %s; its class issues on %s",
               (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", res(s).c_str(),
@@ -2144,6 +2144,41 @@ private:
     // An immediate move is warp-level: RCU writes the immediate straight into
     // the register file on the issue-mask lanes, with no lane round trip.
     // (--break movi-in-lane sends it to the lanes instead, which must refuse.)
+    // pmov.imm (section 3): the immediate's bit n is lane n's predicate bit,
+    // all 32 lanes, ungated by the issue mask, so no merge.
+    if (op->cls == kImm && op->pwrite) {
+      if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
+      k_.pred[ppd] = imm0;
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (const RegVal *d = r->predDef())
+          if (k_.pred[ppd] != d->p)
+            k_.fail("rcu: seq %llu P%u = %08x, oracle %08x", (unsigned long long)r->seq, d->idx,
+                    k_.pred[ppd], d->p);
+      to_ooe_.push_back({0, done(tag), m.tid});
+      return;
+    }
+    // shfl.idx (Format G): each guarded issue lane takes the source at one
+    // lane, read whether or not that lane is active. The register file is
+    // RCU's, so it moves the value; inactive lanes keep the old destination.
+    // OOE wakes it early behind an L1 load and replays it on a miss, so it is
+    // judged, as a lane's op is, only on its last execution.
+    if (op->cross) {
+      k_.executing("rcu", m.tid);
+      const unsigned from = imm0 & 31;
+      const uint32_t v = k_.gpr[src[0]][from];
+      for (unsigned l = 0; l != kLanes; ++l)
+        k_.gpr[pd][l] = (active >> l) & 1u ? v : k_.gpr[pold][l];
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (const RegVal *d = r->gprDef())
+          for (unsigned l = 0; l != kLanes; ++l)
+            if (((active >> l) & 1u) && k_.gpr[pd][l] != d->v[l]) {
+              k_.failHeld("rcu", m.tid, "rcu: seq %llu R%u lane %u = %08x, oracle %08x",
+                          (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
+              break;
+            }
+      to_ooe_.push_back({0, done(tag), m.tid});
+      return;
+    }
     if (op->cls == kImm && k_.brk != "movi-in-lane") {
       // RCU executes it, so RCU merges it: inactive lanes keep the old
       // destination's values (merge_en is set whenever one can exist).

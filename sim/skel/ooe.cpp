@@ -301,7 +301,7 @@ private:
     // ccv_ooe_rcu_issue's slots are resources (S0-S3, P0-P3, R): a lane op
     // and a memop are full width here, so each takes its whole group, its
     // lead slot first and the rest continuation; an RCU op takes R.
-    const unsigned slot = mem ? kSlotP0 : inRcu(e.op->cls) ? kSlotR : kSlotS0;
+    const unsigned slot = mem ? kSlotP0 : execRcu(e.op) ? kSlotR : kSlotS0;
     const unsigned mslot = e.tag % kChans[c.ooe_miu].rate;
     // Merge (A-33): some lane may keep its old value -- the issue mask is
     // not full, or a guard may switch lanes off -- so the old destination is
