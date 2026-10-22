@@ -3061,7 +3061,7 @@ void swapSweep(unsigned seeds) {
     // Evict, the policy (DA), across the threshold; then AR's revs 115-117
     // under it: a free slot with no ready warp restores a not-ready one,
     // provisionally, and (PF-41) a ready warp pre-empts it.
-    for (unsigned thr : {25u, 50u, 100u}) {
+    for (unsigned thr : {25u, 50u, 100u, 150u, 200u, 300u}) {
       Config t = c;
       t.demote_mlc_miss = thr;
       line("evict", thr, 8, true, run(t, Env::kEvict, 8, true));
