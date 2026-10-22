@@ -25,6 +25,18 @@
       "date": "2026-10-18",
       "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
     },
+    "prv_dep_cq01h": {
+      "arrival": 9.0,
+      "by": "OI",
+      "date": "2026-10-22",
+      "why": "OI's proposal for OA (rename slice 2): ooe_rendep sends prv_dep and prv_code straight from rename's stage flops, as it does grp_dep; 9, so that the 15.1 they reach a flop in meets the stage"
+    },
+    "prv_code_cq01h": {
+      "arrival": 9.0,
+      "by": "OI",
+      "date": "2026-10-22",
+      "why": "OI's proposal for OA (rename slice 2): ooe_rendep sends prv_dep and prv_code straight from rename's stage flops, as it does grp_dep; 9, so that the 15.1 they reach a flop in meets the stage"
+    },
     "row_dep_cq01h": {
       "arrival": 10.0,
       "by": "OA",

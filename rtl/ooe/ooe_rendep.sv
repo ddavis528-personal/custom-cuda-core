@@ -40,9 +40,10 @@
 // bypWake gives none. A producer with no bypass (a memop, a copy, a
 // cross-lane op) is late for every group, and so is a predicate source and
 // a consumer RCU executes (cnone). Each RS entry keeps its occupant's code
-// per consumer group, written with ooe_prodmap's names (a cycle after
-// Rename 3, from the registered grant); G-1's and G-2's ride with their
-// ports. Two sources on one producer take the later line, the larger code
+// per consumer group in ooe_prodmap, with its names (a cycle after Rename
+// 3, from the registered grant: the entry's record, written when it is);
+// G-1's and G-2's ride with their ports, and G-2's reach their entries
+// here through the grant. Two sources on one producer take the later line, the larger code
 // (the model's dep() keeps the later wake). A code is payload, read only
 // through its bit, and leaves unmasked.
 //
@@ -55,8 +56,8 @@
 // and ooe_prodmap from the model's renames (Core::ratLog) and checks each
 // port's row, a cycle later, against the model's.
 //
-// Reset line: the stage register, the per-port producer records and the
-// code register are payload behind their valid bits and the RS valid bits.
+// Reset line: the stage register and the per-port producer records are
+// payload behind their valid bits and the RS valid bits.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -102,11 +103,13 @@ module ooe_rendep #(
   input  logic [A*3-1:0]    unit_cq01h,     // as a producer: its lat_class
   input  logic [A*3-1:0]    pg_cq01h,       //   its bypass group
   input  logic [A-1:0]      nob_cq01h,      //   no bypass (a memop, a cross-lane op)
-  // ooe_prodmap's entries (their names, two edges after allocation or more).
+  // ooe_prodmap's entries (their names and codes, two edges after
+  // allocation or more).
   input  logic [N-1:0]      eg_cq01h,
   input  logic [N*LG-1:0]   egn_cq01h,
   input  logic [N-1:0]      ep_cq01h,
   input  logic [N*LQ-1:0]   epn_cq01h,
+  input  logic [N*CVW-1:0]  ecv_cq01h,
   // ooe_rs's registered grant: the entries G-2's ports took at the last edge.
   input  logic [P-1:0]      gnt_v_cq01h,
   input  logic [P*W-1:0]    gnt_idx_cq01h,
@@ -229,8 +232,6 @@ module ooe_rendep #(
         end
   end
 
-  // The code register: each entry's occupant's code per consumer group.
-  logic [N*CVW-1:0] ecv_cq02h;
 
   // -- Rename 2: each consumer's row, then each port's -----------------------------
   // Consumer c = 2u + k: uop u's main entry (k 0) or its copy (k 1). Every
@@ -367,7 +368,7 @@ module ooe_rendep #(
       for (int j = 0; j < N; j++)
         if (g2e[r * N + j]) g2cv_e[j * CVW +: CVW] = g2cv_e[j * CVW +: CVW] | g2cv_cq03h[r * CVW +: CVW];
     for (int j = 0; j < N; j++)
-      jcv[j * CVW +: CVW] = g2any[j] ? g2cv_e[j * CVW +: CVW] : ecv_cq02h[j * CVW +: CVW];
+      jcv[j * CVW +: CVW] = g2any[j] ? g2cv_e[j * CVW +: CVW] : ecv_cq01h[j * CVW +: CVW];
   end
   logic [C*N*2-1:0] xrc;
   logic [C*P*2-1:0] x1c;
@@ -443,15 +444,6 @@ module ooe_rendep #(
       g2pn_cq03h <= g1pn_cq02h;
       g2cv_cq03h <= g1cv_cq02h;
     end
-  end
-
-  // -- The code register ------------------------------------------------------------
-  // Written with ooe_prodmap's names: G-2's ports' codes into the entries
-  // the grant gives them, when G-2 holds a group (the module's own flop).
-  logic [N*CVW-1:0] ecv_nx;
-  assign ecv_nx = jcv;
-  always_ff @(posedge ooe_core_clk) begin
-    if (g2_v_cq03h) ecv_cq02h <= ecv_nx;
   end
 
 endmodule

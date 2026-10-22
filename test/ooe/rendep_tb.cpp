@@ -188,6 +188,7 @@ void driveMap(const Cyc *y) {
   clearAll(dut->m_gname_cq01h, A * LG);
   clearAll(dut->m_pname_cq01h, A * LQ);
   dut->m_pm_cq01h = dut->m_pc_cq01h = 0;
+  clearAll(dut->m_cvc_cq01h, A * 16);
   if (!y) return;
   for (unsigned u = 0; u != y->grp.size(); ++u) {
     const Uop &x = y->grp[u];
@@ -199,6 +200,12 @@ void driveMap(const Cyc *y) {
     setField(dut->m_pname_cq01h, u * LQ, LQ, x.r.pname);
     setField(dut->m_pm_cq01h, u * LP, LP, x.pm);
     setField(dut->m_pc_cq01h, u * LP, LP, x.pc);
+    // Its codes by consumer group, from the table the RTL is built with, as
+    // ooe_rendep's codes_of gives them: late with no bypass.
+    for (unsigned g = 0; g != Config::kGroups; ++g) {
+      const unsigned code = x.r.nob ? 3u : ct_rtl[(x.r.unit * Config::kGroups + x.r.pgroup) * Config::kGroups + g];
+      setField(dut->m_cvc_cq01h, u * 16 + g * 2, 2, code);
+    }
   }
 }
 

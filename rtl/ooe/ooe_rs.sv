@@ -258,6 +258,7 @@ module ooe_rs #(
   // leaves as an output (NGD-7), and needing no decode. Clocked as the
   // grant is, with any request and the edge after to clear.
   logic [P*N-1:0] lg_cq02h;
+  (* keep *) logic [P-1:0] lgv_cq02h;    // its ports: gnt_v_cq03h's copy for this module (NGD-7)
   logic [N-1:0]   lga_cq02h, ga_cq02h;
   always_comb begin
     ga_cq02h = '0;
@@ -307,9 +308,11 @@ module ooe_rs #(
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       lg_cq02h  <= '0;
+      lgv_cq02h <= '0;
       lga_cq02h <= '0;
     end else if (lg_en) begin
       lg_cq02h  <= g_cq02h;
+      lgv_cq02h <= gv_cq02h;
       lga_cq02h <= ga_cq02h;
     end
   end
@@ -348,6 +351,7 @@ module ooe_rs #(
   // until the entry is freed, unless a row written at that same edge names
   // its next occupant; a set bit in a class's row is always flagged there.
   logic [N-1:0]     valid_nx, prod_nx, emp_nx;
+  logic             emp_g;
   logic [P-1:0]     emp_new;
   logic [N*N-1:0]   dep_nx;
   logic [2*N*N-1:0] code_nx;
@@ -387,11 +391,13 @@ module ooe_rs #(
     for (int p = 0; p < P; p++)
       emp_new[p] = (row_dep_cq01h[p * N +: N] & rmask) == '0 &&
                    (grp_dep_cq01h[p * P +: P] & req_cq01h & ~(P'(1) << p)) == '0 &&
-                   (prv_dep_cq01h[p * P +: P] & gnt_v_cq03h) == '0;
+                   (prv_dep_cq01h[p * P +: P] & lgv_cq02h) == '0;
     for (int i = 0; i < N; i++) begin
-      emp_nx[i] = (dep_cq02h[i * N +: N] & ~free_cq01h) == '0;
-      for (int p = 0; p < P; p++)
-        if (g_cq02h[p * N + i]) emp_nx[i] = emp_new[p];
+      // An entry is granted to one port at most: its new row's flag through
+      // a one-hot select, not an override in port order (NGD-7: dep).
+      emp_g = 1'b0;
+      for (int p = 0; p < P; p++) emp_g = emp_g | (g_cq02h[p * N + i] & emp_new[p]);
+      emp_nx[i] = ga_cq02h[i] ? emp_g : (dep_cq02h[i * N +: N] & ~free_cq01h) == '0;
     end
     hr_nx = (hr_cq02h & ~free_cq01h) | named_r;
     hm_nx = (hm_cq02h & ~free_cq01h) | named_m;
