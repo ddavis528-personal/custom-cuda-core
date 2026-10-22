@@ -1294,6 +1294,10 @@ private:
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
   unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
   unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
+  /// Per slot, the uops rename took this cycle: ooe_decq's slot count
+  /// subtracts its registered take, so they are no room for that slot until
+  /// the next edge, under the per-warp limit too (CCV_P_DECQ_WARP_MAX).
+  std::vector<unsigned> decq_slot_take_;
   std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
   std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle

@@ -238,7 +238,8 @@ bool Core::canAccept(unsigned warp) const {
   if (decqHeld() >= cfg_.decq) return false;
   const int s = slotOf(warp);
   if (s < 0) return true;      // refused, and reported, when it is taken
-  return slot_[s].decq < max;
+  const unsigned late = cfg_.decq_late_credit && size_t(s) < decq_slot_take_.size() ? decq_slot_take_[s] : 0;
+  return slot_[s].decq + late < max;
 }
 
 void Core::noteRefused(unsigned warp) {
@@ -324,6 +325,7 @@ void Core::cycle(uint64_t now) {
   decq_flush_now_ = 0;
   decq_take_prev_ = decq_take_now_;
   decq_take_now_ = 0;
+  decq_slot_take_.assign(slot_.size(), 0);
   rs_late_.assign(n_, 0);
   rob_late_.assign(slot_.size() * cfg_.rob_depth, 0);
   if (cfg_.fits_stale) {
@@ -3420,6 +3422,7 @@ void Core::rename() {
       ++decq_take_now_;
       decq_.erase(it);
       --slot_[si].decq;
+      ++decq_slot_take_[si];
       return 2;
     }
     const bool branch = it->attr.branch;
@@ -3438,6 +3441,7 @@ void Core::rename() {
     ++decq_take_now_;
     decq_.erase(it);
     --slot_[si].decq;
+    ++decq_slot_take_[si];
     --budget;
     ++took_[si];
     return 1;

@@ -3583,7 +3583,8 @@ int main(int argc, char **argv) {
     return g_fail ? 1 : 0;
   }
   if (argc > 1 && std::string(argv[1]) == "--stall-hole") {
-    const int f = stallHole(seeds == 25 ? 48 : seeds, true);
+    const char *only = std::getenv("OOE_TEST_HOLE_FIX");   // one fix's rows, by its index
+    const int f = stallHole(seeds == 25 ? 48 : seeds, true, only ? std::atoi(only) : -1);
     std::printf("stall_hole: %d bound(s) missed by the decided go\n", f);
     return g_fail ? 1 : 0;
   }
