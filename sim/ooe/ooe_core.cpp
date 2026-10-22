@@ -1691,6 +1691,7 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool dis
     Memop d;
     d.tid = discard_tid;
     d.warp = s.warp;
+    d.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
     d.mem_op = 0xF;
     const unsigned branch = to_retirement ? (s.head + cfg_.rob_depth - 1) % cfg_.rob_depth
                                           : unsigned(keep_idx);
@@ -1775,6 +1776,9 @@ void Core::control() {
       // The CTA's barrier count, at launch and at restore-allocate, since a
       // restored warp may land in another slot (OA's response IS-16).
       s.bar_count = a.barrier_count;
+      // The CTA slot, held per tier-1 slot while resident (TI-34): it parks
+      // at RAU, and restore-allocate carries it again.
+      s.cta_slot = a.cta_slot;
       // Every register 32 bits wide: at launch, and at restore-allocate
       // until the map carries the saved widths (A-64, OI-32).
       s.cw.fill(0);
@@ -2036,6 +2040,7 @@ void Core::retire() {
       if (r.u.attr.serial == kSerBarrier && !r.committed && !r.fault) {
         Bar b;
         b.warp = s.warp;
+        b.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
         b.barrier_id = r.u.imm;    // temporary: A-75 names the field
         out.bars.push_back(b);
         r.committed = true;
@@ -2052,6 +2057,7 @@ void Core::retire() {
         Fault f;
         f.tid = r.u.tid;
         f.warp = s.warp;
+        f.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
         f.cause = r.fault_cause;
         f.pc = r.u.pc;
         f.lane_mask = r.fault_lanes;
@@ -2643,8 +2649,13 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   if (!r.is_mem) {
     is.send_imm = true;
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
-    // (the lane ORs its index in), %ctaid for selector 1.
-    is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5 : u.shape.srd == 1 ? s.ctaid : u.imm;
+    // (the lane ORs its index in), %ctaid for selector 1, and for selector
+    // 2 (%lanectx, O-64) the hardware warp context, the core's index above
+    // warp_id, shifted the same way.
+    is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5
+           : u.shape.srd == 1 ? s.ctaid
+           : u.shape.srd == 2 ? uint32_t(((cfg_.core_id << 5) | (s.warp & 31u)) << 5)
+           : u.imm;
     // Predicate logic's two sources, renamed: each physical predicate with
     // its negate above it, where DEC's qualifiers were (TI-1).
     if (u.shape.pred_logic) {
@@ -2749,6 +2760,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.port = cfg_.sectioned ? port - 5 : port;   // sectioned: the pipe, P0-P3
     m.rob_tag = is.rob_tag;
     m.warp = s.warp;
+    m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
     m.rs_idx = e;
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;

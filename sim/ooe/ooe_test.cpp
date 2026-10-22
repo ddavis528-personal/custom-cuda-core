@@ -103,6 +103,7 @@ struct Op {
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
   /// under the control the exit before it).
   bool last = false, final = false;
+  int srd = -1;                  ///< kLane: an srd identity OOE substitutes (A-25, O-64)
   /// A load that misses to DRAM (TI-21's stall_hole): its fill this many
   /// cycles after its issue, or 0 for the environment's DRAM draw.
   bool dram = false;
@@ -122,6 +123,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   u.w = o.w;
   u.backward = o.backward;
   u.cause = o.cause;
+  u.shape.srd = o.srd;
   u.fmt_rsv = o.fmt_rsv;
   u.fmt_opnd = o.fmt_opnd;
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
@@ -217,7 +219,11 @@ struct Env {
     uint64_t rewind_pc = 0;                 ///< the oldest unretired uop's PC at its demote, or 0
     bool rewind_seen = false;
     uint64_t exit_at = 0;                   ///< its exit's retirement
+    unsigned cta_slot = 0;                  ///< its CTA slot at RAU (TI-34), on its allocs
   };
+  /// RAU's CTA slot for a warp (TI-34): any value the field holds, here
+  /// from its warp_id so that a wrong slot's is caught.
+  static unsigned ctaSlotOf(unsigned warp) { return warp % 7 + 1; }   // never 0, the control's
   std::vector<Warp> w;
   std::map<uint64_t, Op> op_of;                  ///< tid -> op
   uint64_t lane_ops = 0, lane_ops_one_section = 0;   ///< sectioned stats
@@ -322,6 +328,7 @@ struct Env {
     x.parked = true;
     x.launched = true;
     x.ready_at = ready_at;
+    x.cta_slot = ctaSlotOf(warp);
     w.push_back(x);
   }
 
@@ -367,6 +374,7 @@ struct Env {
       ra.warp = id;
       ra.slot = slot;
       ra.op = kAllocRestoreAlloc;
+      ra.cta_slot = ctaSlotOf(id);
       ra.ctaid = 7;
       ra.barrier_count = 16;
       core.alloc(ra);
@@ -545,12 +553,14 @@ struct Env {
     x.slot = slot;
     x.prog = std::move(prog);
     markExits(x.prog);
+    x.cta_slot = ctaSlotOf(warp);
     w.push_back(x);
     slot_owner[slot] = warp;
     Alloc a;
     a.warp = warp;
     a.slot = slot;
     a.op = kAllocLaunch;
+    a.cta_slot = ctaSlotOf(warp);
     a.ctaid = 7;
     a.barrier_count = barriers;
     core.alloc(a);
@@ -1105,6 +1115,17 @@ struct Env {
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
+    // TI-34: every memop, barrier and fault carries RAU's CTA slot for its
+    // warp, from OOE's per-slot register.
+    auto ctaCheck = [&](const char *what, unsigned warp, unsigned slot) {
+      const Warp *x = warpOf(warp);
+      if (x && slot != x->cta_slot)
+        errors.push_back(std::string("TI-34: ") + what + " of warp " + std::to_string(warp) + " carries CTA slot " +
+                         std::to_string(slot) + ", RAU's " + std::to_string(x->cta_slot));
+    };
+    for (const Memop &m : o.memops) ctaCheck("a memop", m.warp, m.cta_slot);
+    for (const Bar &b : o.bars) ctaCheck("a barrier", b.warp, b.cta_slot);
+    for (const Fault &f : o.faults) ctaCheck("a fault", f.warp, f.cta_slot);
     for (const Retired &r : core.retired) {
       Warp *x = warpOf(r.warp);
       x->retired.push_back(r.tid);
@@ -1540,7 +1561,7 @@ void testDemote() {
   e.step();
   EXPECT(e.core.freeGprs() == c.phys_regs, "free list %zu after the free", e.core.freeGprs());
   // Restore into the same slot: allocate, map direction 1, activate.
-  Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
+  Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc; ra.cta_slot = Env::ctaSlotOf(0);
   e.core.alloc(ra);
   bool map1 = false;
   for (unsigned k = 0; k != 10 && !map1; ++k) {
@@ -1637,7 +1658,7 @@ bool parkedLayout(bool control) {
   Alloc f; f.warp = 5; f.slot = 1; f.op = kAllocFree;
   e.core.alloc(f);
   e.step();
-  Alloc ra; ra.warp = 5; ra.slot = 3; ra.op = kAllocRestoreAlloc;
+  Alloc ra; ra.warp = 5; ra.slot = 3; ra.op = kAllocRestoreAlloc; ra.cta_slot = Env::ctaSlotOf(5);
   e.core.alloc(ra);
   bool map1 = false;
   for (unsigned k = 0; k != 20 && !map1; ++k) {
@@ -1757,6 +1778,73 @@ void testMlcTrigger() {
   EXPECT(!held, "a fallback report claiming the miss should demote at the fallback's threshold");
 }
 
+/// TI-34 (OA's revs 176-177): every memop, barrier and fault carries the
+/// warp's CTA slot from its tier-1 slot's register, loaded at launch (the
+/// environment's check, every cycle of every test). Here a warp loads,
+/// stores and waits at a barrier; the control stamps slot 0, which the
+/// check must catch.
+bool ctaSlot(bool control) {
+  Config c = baseConfig();
+  c.inject_cta_slot_zero = control;
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
+  Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 4; st.src[1] = 8; p.push_back(st);
+  Op b; b.k = kBarrier; p.push_back(b);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(5, 1, p);
+  unsigned memops = 0, bars = 0;
+  for (unsigned k = 0; k != 300; ++k) {
+    e.step();
+    memops += unsigned(e.log.back().memops.size());
+    bars += unsigned(e.log.back().bars.size());
+  }
+  const bool ok = memops >= 2 && bars >= 1 && e.errors.empty();
+  if (!control) {
+    g_test = "CTA slot on memops and barriers";
+    EXPECT(memops >= 2 && bars >= 1, "%u memops, %u barriers: the test shows nothing", memops, bars);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+/// O-64 (OA's rev 177): srd #2, %lanectx: OOE substitutes the hardware warp
+/// context, the core's index above warp_id, shifted 5 (the lane ORs its
+/// index in), as it does warp_in_cta for selector 0.
+void testLaneCtx() {
+  g_test = "srd #2 (%lanectx)";
+  for (unsigned core : {0u, 3u}) {
+    Config c = baseConfig();
+    c.core_id = core;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 4; a.srd = 2; p.push_back(a);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(13, 1, p);
+    bool seen = false;
+    for (unsigned k = 0; k != 100 && !seen; ++k) {
+      e.step();
+      for (const Issue &is : e.log.back().issues)
+        if (is.warp == 13 && is.send_imm && !is.copy) {
+          seen = true;
+          EXPECT(is.imm == (((core << 5) | 13u) << 5), "core %u: %%lanectx substituted as %08x", core, is.imm);
+        }
+    }
+    EXPECT(seen, "core %u: the srd never issued", core);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+}
+
+void testCtaSlot() {
+  ctaSlot(false);
+  const bool held = ctaSlot(true);
+  std::printf("  %-24s %s\n", "control cta-slot-zero", held ? "MISSED" : "caught");
+  g_test = "CTA slot (control)";
+  EXPECT(!held, "memops with CTA slot 0 should break the TI-34 check");
+}
+
 void testParkedLayout() {
   parkedLayout(false);
   const bool held = parkedLayout(true);
@@ -1844,7 +1932,7 @@ void testRestore() {
   e.launch(5, 1, randomProgram(rng, 80, false));
   for (unsigned k = 0; k != 6; ++k) e.step();
   const uint64_t stalls = e.core.counters["stall.restore"];
-  Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc;
+  Alloc ra; ra.warp = 0; ra.slot = 0; ra.op = kAllocRestoreAlloc; ra.cta_slot = Env::ctaSlotOf(0);
   ra.barrier_count = 5;
   e.core.alloc(ra);
   unsigned took = 0;
@@ -1874,7 +1962,7 @@ void testRestore() {
   for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
   // Activating before the map is a protocol error.
   e.errors.clear();
-  Alloc rb; rb.warp = 10; rb.slot = 2; rb.op = kAllocRestoreAlloc;
+  Alloc rb; rb.warp = 10; rb.slot = 2; rb.op = kAllocRestoreAlloc; rb.cta_slot = Env::ctaSlotOf(10);
   Alloc ab = rb; ab.op = kAllocRestoreActivate;
   e.core.alloc(rb);
   e.core.alloc(ab);
@@ -3913,6 +4001,8 @@ int main(int argc, char **argv) {
   testDemoteRefused();
   testParkedLayout();
   testFinalExit();
+  testCtaSlot();
+  testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
   for (int k : {1, 2}) {
