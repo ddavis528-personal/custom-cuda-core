@@ -130,8 +130,8 @@ module ooe_go #(
   // the take, the outputs' path, one for the rest.
   logic [S*(R+1)*R-1:0] fits_cq02h;      // per slot and take k, a thermometer of the run that fits
   logic [S*(R+1)-1:0]   tko_cq02h;       // each slot's take this cycle, one-hot, none if it is blocked
-  logic [S-1:0]         sel_q_cq02h;     // some take of its own has a head that fits
-  logic [4*R-1:0]       held_cq02h;      // per credit, min(R, the allowances in force), a thermometer
+  logic [S-1:0]         sel_q_cq02h;     // the slot had a head
+  logic [4*(R+1)-1:0]   he_cq02h;        // per credit, min(R, the allowances in force), one-hot
   (* keep *) logic [S-1:0] prio_cq02h;   // the rotation's first slot, one-hot, for the take
   (* keep *) logic [S-1:0] priod_cq02h;  // and for the rest
   logic                 rbusy_cq01h;     // the restore's lead, registered
@@ -157,32 +157,24 @@ module ooe_go #(
         for (int f = 0; f < S; f++)
           if (prio_cq02h[f] && ((q - f + S) % S) < ((s - f + S) % S)) bef[s * S + q] = 1'b1;
       end
-  // Candidate (r, s)'s rank, a thermometer: every warp's takes in the rounds
-  // before r (its run, below r) and round r's takers before s, in two trees.
-  logic [R*R-1:0]   ra;                  // per round, the takes before it
+  // Candidate (r, s)'s rank, a thermometer: each warp's takes before it,
+  // the smaller of its run and r + 1 for a warp before s in rotation, of its
+  // run and r for the rest (s itself among them); each a slice of the warp's
+  // run, summed in one tree.
   logic [R*S*R-1:0] rk;                  // per candidate, its rank
   logic [R*S-1:0]   tk_c;
-  logic [R-1:0]     m0, m1, m2, m3, b0, b1, b2, b3;
+  logic [S*R-1:0]   tq;                  // each warp's term
   always_comb
-    for (int r = 0; r < R; r++) begin
-      m0 = '0; m1 = '0; m2 = '0; m3 = '0;
-      for (int v = 0; v < r; v++) begin
-        m0[v] = run_t[0 * R + v];
-        if (S > 1) m1[v] = run_t[1 * R + v];
-        if (S > 2) m2[v] = run_t[2 * R + v];
-        if (S > 3) m3[v] = run_t[3 * R + v];
-      end
-      ra[r * R +: R] = tadd(tadd(m0, m1), tadd(m2, m3));
+    for (int r = 0; r < R; r++)
       for (int s = 0; s < S; s++) begin
-        b0 = {{(R-1){1'b0}}, run_t[0 * R + r] & bef[s * S + 0]};
-        b1 = '0; b2 = '0; b3 = '0;
-        if (S > 1) b1 = {{(R-1){1'b0}}, run_t[1 * R + r] & bef[s * S + 1]};
-        if (S > 2) b2 = {{(R-1){1'b0}}, run_t[2 * R + r] & bef[s * S + 2]};
-        if (S > 3) b3 = {{(R-1){1'b0}}, run_t[3 * R + r] & bef[s * S + 3]};
-        rk[(r * S + s) * R +: R] = tadd(ra[r * R +: R], tadd(tadd(b0, b1), tadd(b2, b3)));
+        tq = '0;
+        for (int q = 0; q < S; q++)
+          for (int v = 0; v < R; v++)
+            if (v < r)       tq[q * R + v] = run_t[q * R + v];
+            else if (v == r) tq[q * R + v] = run_t[q * R + v] & bef[s * S + q];
+        rk[(r * S + s) * R +: R] = tadd(tadd(tq[0 +: R], tq[R +: R]), tadd(tq[2 * R +: R], tq[3 * R +: R]));
         tk_c[r * S + s] = run_t[s * R + r] & ~rk[(r * S + s) * R + R - 1];
       end
-    end
   // Per slot its take, a thermometer counted; per lane its uop.
   logic [R:0] rq;
   always_comb begin
@@ -190,22 +182,26 @@ module ooe_go #(
     lane_v_cq02h = '0;
     lane_s_cq02h = '0;
     lane_h_cq02h = '0;
+    // A warp's takes are a thermometer: its count is where it ends.
     for (int s = 0; s < S; s++)
       for (int r = 0; r < R; r++)
-        if (tk_c[r * S + s]) take_cq02h[s * LK +: LK] = LK'(r + 1);
+        if (tk_c[r * S + s] && (r == R - 1 || !tk_c[((r + 1) % R) * S + s])) take_cq02h[s * LK +: LK] =
+            take_cq02h[s * LK +: LK] | LK'(r + 1);
+    // Lane l is taken while the runs sum past l; its uop is the candidate
+    // whose rank is l.
+    lane_v_cq02h = tadd(tadd(run_t[0 +: R], run_t[R +: R]), tadd(run_t[2 * R +: R], run_t[3 * R +: R]));
     for (int r = 0; r < R; r++)
       for (int s = 0; s < S; s++) begin
         rq = {rk[(r * S + s) * R +: R], 1'b1};
         for (int l = 0; l < R; l++)
-          if (tk_c[r * S + s] && rq[l] && !rq[l + 1]) begin
-            lane_v_cq02h[l]            = 1'b1;
+          if (run_t[s * R + r] && rq[l] && !rq[l + 1]) begin
             lane_s_cq02h[l * LS +: LS] = lane_s_cq02h[l * LS +: LS] | LS'(s);
             lane_h_cq02h[l * LH +: LH] = lane_h_cq02h[l * LH +: LH] | LH'(r);
           end
       end
   end
-  // decq's take-enable: some take of the warp's own has a head that fits, a
-  // register (a superset of its take: deq_sel_covers).
+  // decq's take-enable: the warp had a head, a register (a superset of its
+  // take: deq_sel_covers).
   assign sel_cq02h = sel_q_cq02h;
 
   // -- The registered half: next cycle's allowances ------------------------------
@@ -231,29 +227,25 @@ module ooe_go #(
       for (int q = 0; q < S; q++) if (befd[s * S + q] && with_w[q]) first_w[s] = 1'b0;
     end
   end
-  // The pool, what no allowance in force holds: pt[c][v], the pool register
-  // covers v beyond them, a thermometer saturated at PM, and one-hot
-  // (pe[c][p], the pool is p; p = PM, PM or more).
-  logic [4*(PM+1)-1:0] pt, pe;
-  logic [4*(R+1)-1:0]  he;               // held, one-hot
+  // The pool, what no allowance in force holds: one-hot, pe[c][p], the
+  // pool register is p beyond the allowances held (p = PM: PM or more); and
+  // pt[c][v], it covers v or more beyond them, to R, for the next holding.
+  logic [4*(PM+1)-1:0] pe;
+  logic [4*(R+1)-1:0]  pt;
   logic [LX-1:0]       px;
   always_comb
     for (int c = 0; c < 4; c++) begin
       px = px_cq01h[c * LX +: LX];
-      for (int h = 0; h < R + 1; h++) begin
-        he[c * (R + 1) + h] = 1'b1;
-        if (h > 0) he[c * (R + 1) + h] = he[c * (R + 1) + h] & held_cq02h[c * R + h - 1];
-        if (h < R) he[c * (R + 1) + h] = he[c * (R + 1) + h] & ~held_cq02h[c * R + h];
-      end
-      pt[c * (PM + 1)] = 1'b1;
-      for (int v = 1; v < PM + 1; v++) begin
-        pt[c * (PM + 1) + v] = 1'b0;
-        for (int h = 0; h < R + 1; h++)
-          pt[c * (PM + 1) + v] = pt[c * (PM + 1) + v] | (he[c * (R + 1) + h] & (px >= LX'(v + h)));
-      end
       for (int p = 0; p < PM + 1; p++) begin
-        pe[c * (PM + 1) + p] = pt[c * (PM + 1) + p];
-        if (p < PM) pe[c * (PM + 1) + p] = pe[c * (PM + 1) + p] & ~pt[c * (PM + 1) + p + 1];
+        pe[c * (PM + 1) + p] = 1'b0;
+        for (int h = 0; h < R + 1; h++)
+          pe[c * (PM + 1) + p] = pe[c * (PM + 1) + p] |
+              (he_cq02h[c * (R + 1) + h] & (p == PM ? px >= LX'(p + h) : px == LX'(p + h)));
+      end
+      for (int v = 0; v < R + 1; v++) begin
+        pt[c * (R + 1) + v] = 1'b0;
+        for (int h = 0; h < R + 1; h++)
+          pt[c * (R + 1) + v] = pt[c * (R + 1) + v] | (he_cq02h[c * (R + 1) + h] & (px >= LX'(v + h)));
       end
     end
   // A warp's share at pool p: floor(p / n), the first's p - (n - 1) floor(p
@@ -314,7 +306,8 @@ module ooe_go #(
   // (the names' plus those warps' unmet floors); none under a restore.
   logic [R:0]     ut;                    // the unmet floors summed, a thermometer (ut[v]: v or more)
   logic [LU+2:0]  us;
-  logic [4*R-1:0] held_nx;
+  logic [4*R-1:0]     held_nx;           // a thermometer
+  logic [4*(R+1)-1:0] he_nx;             // and one-hot
   always_comb
     for (int c = 0; c < 4; c++) begin
       us = '0;
@@ -326,8 +319,13 @@ module ooe_go #(
       for (int v = 1; v < R + 1; v++) begin
         held_nx[c * R + v - 1] = 1'b0;
         for (int j = 0; j < v + 1; j++)
-          held_nx[c * R + v - 1] = held_nx[c * R + v - 1] | (pt[c * (PM + 1) + j] & ut[v - j]);
+          held_nx[c * R + v - 1] = held_nx[c * R + v - 1] | (pt[c * (R + 1) + j] & ut[v - j]);
         held_nx[c * R + v - 1] = held_nx[c * R + v - 1] & (nw != '0) & ~rbusy_cq01h;
+      end
+      for (int h = 0; h < R + 1; h++) begin
+        he_nx[c * (R + 1) + h] = 1'b1;
+        if (h > 0) he_nx[c * (R + 1) + h] = he_nx[c * (R + 1) + h] & held_nx[c * R + h - 1];
+        if (h < R) he_nx[c * (R + 1) + h] = he_nx[c * (R + 1) + h] & ~held_nx[c * R + h];
       end
     end
 
@@ -380,9 +378,10 @@ module ooe_go #(
       sqc_nx[s * 2 +: 2] = sq_l_cq00h[s] ? 2'd3 : sqc_cq01h[s * 2 +: 2] != 2'd0 ? sqc_cq01h[s * 2 +: 2] - 2'd1 : 2'd0;
       blk_nx[s] = hold_l_cq00h[s] | rbusy_l_cq00h | (sqc_nx[s * 2 +: 2] != 2'd0);
       for (int k = 0; k < R + 1; k++)
-        tko_nx[s * (R + 1) + k] = take_cq02h[s * LK +: LK] == LK'(k) && !blk_nx[s];
-      sel_nx[s] = 1'b0;
-      for (int k = 0; k < R + 1; k++) sel_nx[s] = sel_nx[s] | fits_nx[(s * (R + 1) + k) * R];
+        tko_nx[s * (R + 1) + k] = (k == 0 || tk_c[((k + R - 1) % R) * S + s]) &&
+                                  (k == R || !tk_c[(k % R) * S + s]) && !blk_nx[s];
+      // Any take needs the slot's first head now (heads are contiguous).
+      sel_nx[s] = hv_cq01h[s * H];
     end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
@@ -398,14 +397,14 @@ module ooe_go #(
       fits_cq02h  <= '0;
       tko_cq02h   <= '0;
       sel_q_cq02h <= '0;
-      held_cq02h  <= '0;
+      for (int c = 0; c < 4; c++) he_cq02h[c * (R + 1) +: R + 1] <= (R + 1)'(1);
       prio_cq02h  <= S'(1);
       priod_cq02h <= S'(1);
     end else begin
       fits_cq02h  <= fits_nx;
       tko_cq02h   <= tko_nx;
       sel_q_cq02h <= sel_nx;
-      held_cq02h  <= held_nx;
+      he_cq02h    <= he_nx;
       if (!rbusy_cq01h) prio_cq02h <= {prio_cq02h[S-2:0], prio_cq02h[S-1]};
       if (!rbusy_cq01h) priod_cq02h <= {priod_cq02h[S-2:0], priod_cq02h[S-1]};
     end

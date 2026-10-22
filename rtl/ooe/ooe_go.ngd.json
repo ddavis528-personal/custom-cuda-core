@@ -1,0 +1,95 @@
+{
+ "module": "ooe_go",
+ "ports": {
+  "hv_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "ha_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "px_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "unmet_g_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "unmet_p_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "run_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "reach_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "ret_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "Every source a register: decq's output register (heads, admission bits), rename's pool registers and unmet floors, the ROB's free run, reach and registered retire count (OI's proposal with the go's restructure, OA's rev 171; for OA to confirm)"
+  },
+  "hold_l_cq00h": {
+   "arrival": 18.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "A lead (OA's rev 171 (b)): its producer's register D, exported a cycle ahead; ooe_go flops it and folds it into its take register within 7 NGD, so the producer may take to 18 (for OA to confirm)"
+  },
+  "rbusy_l_cq00h": {
+   "arrival": 18.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "A lead (OA's rev 171 (b)): its producer's register D, exported a cycle ahead; ooe_go flops it and folds it into its take register within 7 NGD, so the producer may take to 18 (for OA to confirm)"
+  },
+  "sq_l_cq00h": {
+   "arrival": 18.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "A lead (OA's rev 171 (b)): its producer's register D, exported a cycle ahead; ooe_go flops it and folds it into its take register within 7 NGD, so the producer may take to 18 (for OA to confirm)"
+  },
+  "take_cq02h": {
+   "required": 14.0,
+   "by": "OA",
+   "date": "2026-10-21",
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 155): rename's take counts at the go's 14, decq's deq_n arrival"
+  },
+  "lane_v_cq02h": {
+   "required": 16.7,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
+  },
+  "lane_s_cq02h": {
+   "required": 16.7,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
+  },
+  "lane_h_cq02h": {
+   "required": 16.7,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
+  }
+ }
+}
