@@ -823,3 +823,23 @@ it.
   of which at most 12 are saves and restores, so spills and fills dominate.
   Held cycles come from the skeleton once TI times the kernel (AR-20, after
   the kill).
+
+### PF-43 Carry a per-lane base in a field the memop does not use
+
+- **Now:** `ccv_rcu_miu_addr` carries `base_per_lane`, 32 bits a lane beside
+  `index_per_lane` and `store_data`, so any Format D form may have a per-lane
+  `rbase`, as §3 allows (AR's response TI-32). That is 960 bits more a pipe
+  slot than the old 64-bit scalar, 3,840 wires on the design's widest channel.
+- **Alternative:** drop the field. A load sends no store data, so its base
+  rides `store_data`. A base+disp store has no index, so its base rides
+  `index_per_lane`, and every spill is one of these. Only an indexed store
+  with a register base needs three per-lane values. It takes a second address
+  cycle, with OOE reserving its pipes for two cycles.
+- **What it buys:** the 3,840 wires, about 46% of the channel.
+- **Cost:** a two-cycle pipe reservation in OOE's select for one memop class
+  (OA's), half the address bandwidth for that class, and MIU choosing the
+  base's source by form.
+- **Signal:** CP's dynamic count of register-base indexed stores as a share of
+  memops across the corpus, and the floorplan cost of the RCU-MIU boundary
+  once it is known. Worth it if the class is under 1% of memops, or the
+  boundary does not close.
