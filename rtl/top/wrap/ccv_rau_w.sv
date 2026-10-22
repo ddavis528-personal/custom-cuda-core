@@ -210,7 +210,7 @@ module ccv_rau_w #(
 
   // ccv_rau_fet_launch, source end
   if (RPT_RAU_FET_LAUNCH > 0) begin : g_rpt_rau_fet_launch
-    ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(186)) u_rpt_rau_fet_launch (
+    ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(218)) u_rpt_rau_fet_launch (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_fet_launch_valid}), .src_payload({b_rau_fet_launch_payload}),
       .src_wake(b_rau_fet_launch_wake), .src_credit({b_rau_fet_launch_credit}), .src_stall({b_rau_fet_launch_stall}),

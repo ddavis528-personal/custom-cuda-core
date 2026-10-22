@@ -163,7 +163,7 @@ module ccv_pca_w #(
   end
   // ccv_fet_pca_mig, destination end
   if (RPT_FET_PCA_MIG > 0) begin : g_rpt_fet_pca_mig
-    ccv_common_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1024)) u_rpt_fet_pca_mig (
+    ccv_common_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1056)) u_rpt_fet_pca_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({fet_pca_mig_valid}), .src_payload({fet_pca_mig_payload}),
       .src_wake(fet_pca_mig_wake), .src_credit({fet_pca_mig_credit}), .src_stall({fet_pca_mig_stall}),
@@ -185,7 +185,7 @@ module ccv_pca_w #(
   end
   // ccv_pca_fet_mig, source end
   if (RPT_PCA_FET_MIG > 0) begin : g_rpt_pca_fet_mig
-    ccv_common_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(1024)) u_rpt_pca_fet_mig (
+    ccv_common_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(1056)) u_rpt_pca_fet_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_pca_fet_mig_valid}), .src_payload({b_pca_fet_mig_payload}),
       .src_wake(b_pca_fet_mig_wake), .src_credit({b_pca_fet_mig_credit}), .src_stall({b_pca_fet_mig_stall}),

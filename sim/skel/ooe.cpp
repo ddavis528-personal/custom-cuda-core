@@ -38,6 +38,7 @@ private:
     uint32_t taken_mask = 0;
     unsigned ckpt = 0;                     ///< FET's checkpoint, on a branch
     uint32_t mask = 0;                     ///< the PC group's lanes, from FET (A-69)
+    bool final_exit = false;               ///< FET's mark: the warp's last lanes exit (TI-27)
     uint32_t attr = 0;                     ///< sched_attr, from DEC (A-66)
     unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
     // Physical names, read from the RAT at dispatch: a register no older
@@ -213,6 +214,7 @@ private:
       return;
     }
     e.mask = uint32_t(get(u, c.dec_ooe, "group_mask"));
+    e.final_exit = get(u, c.dec_ooe, "final_exit") != 0;
     e.op = opByCode(unsigned(get(u, c.dec_ooe, "opcode")));
     if (!e.op || get(u, c.dec_ooe, "cause") != kFaultNone) {
       k_.fail("ooe: a uop it cannot execute");
@@ -431,7 +433,7 @@ private:
     emit(now_, e.tid, EV_RETIRE, UNIT_OOE, e.warp, e.tag, 0xffffffffu);
     ++k_.retired;
     k_.retire_order.push_back(uidSeq(e.tid));
-    if (e.op->cls == kExit) ++k_.exits;
+    if (e.op->cls == kExit && e.final_exit) ++k_.exits;
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.
     const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;

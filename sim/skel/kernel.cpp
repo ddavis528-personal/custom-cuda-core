@@ -1077,9 +1077,10 @@ private:
     // It also waits while an OLDER store of its warp to one of its lines
     // has not committed (MIU's disambiguation, MIU spec): this MIU forwards
     // nothing, so the load reads the line once the store's write has
-    // landed. Memops reach MIU in OOE's issue order, not program order, so
-    // a younger store's write is one the load must not see, and is not
-    // waited for (spinwait: lane 0's flag load behind lane 1's store).
+    // landed. Memops issue in program order per warp (OI-15), so every
+    // older store is already here; a younger one's write the load must not
+    // see, and is not waited for (spinwait: lane 0's flag load behind lane
+    // 1's store; AR's response TI-27 (d)).
     // no-st-wait: the load reads past the older store, and sees the flag
     // still clear.
     if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return; }
@@ -2351,6 +2352,7 @@ private:
     put(u, c.dec_ooe, "pc", pc);
     // FET's group mask and epoch pass through (A-69, A-70).
     put(u, c.dec_ooe, "group_mask", get(f, c.fet_dec, "group_mask"));
+    put(u, c.dec_ooe, "final_exit", get(f, c.fet_dec, "final_exit"));
     put(u, c.dec_ooe, "fetch_epoch", get(f, c.fet_dec, "fetch_epoch"));
     if (!op) {
       k_.fail("dec: %s is not in the skeleton's opcode table", r->op.c_str());
@@ -2515,15 +2517,13 @@ private:
     std::array<uint64_t, kLanes> pc{};
     uint32_t lanes = 0;   ///< live lanes: not yet exited
     unsigned fair_ptr = 0, fair_cnt = 0;
-    /// The state before each record's pick, by record: the fairness
-    /// pointer and counter and the live lanes, all of which FET advances at
-    /// fetch, ahead of retirement. A demotion squashes back to its boundary,
-    /// so it sends the fairness state as it stood there, and the warp comes
-    /// back with the lanes live there: an exit FET fetched and the squash
-    /// discarded has not happened (TI-27 (b), (c)).
-    struct At { unsigned ptr, cnt; uint32_t lanes; };
-    std::vector<At> fair_at;
-    uint32_t parked_lanes = 0;   ///< live lanes at the boundary, while parked (TI-27 (b))
+    /// The live lanes before each record's pick, by record (trace-only):
+    /// FET clears a group's lanes when it fetches its exit, ahead of
+    /// retirement, and after a demotion's beats its mask must equal the
+    /// boundary's (AR's response TI-27 (b)), which this checks.
+    std::vector<uint32_t> lanes_at;
+    bool marked = false;     ///< early-mark: one exit already marked final
+    bool restored = false;   ///< restored at least once: its order may leave ccv-sim's (TI-27 (c))
     uint32_t br_mask = 0;   ///< a branch FET mispredicts: its group, until the redirect
     uint64_t br_next = 0;   ///< and the group's fall-through
   };
@@ -2561,6 +2561,27 @@ private:
     }
     for (unsigned l = 0; l != kLanes; ++l)
       if ((x.lanes >> l & 1u) && x.pc[l] == p.pc) p.mask |= 1u << l;
+    return p;
+  }
+  /// The fairness state after issuing a given group, by the same rule: the
+  /// counter restarts if it holds lane r, and otherwise counts, up to N.
+  Pick issued(const Warp &x, uint64_t pc, uint32_t mask) const {
+    Pick p;
+    p.pc = pc;
+    p.mask = mask;
+    p.ptr = x.fair_ptr;
+    p.cnt = x.fair_cnt;
+    if (fair_n_ && x.lanes) {
+      unsigned r = p.ptr;
+      while (!(x.lanes >> r & 1u)) r = (r + 1) % kLanes;
+      if (mask >> r & 1u) {
+        p.cnt = 0;
+        p.ptr = (r + 1) % kLanes;
+        while (!(x.lanes >> p.ptr & 1u)) p.ptr = (p.ptr + 1) % kLanes;
+      } else {
+        p.cnt = std::min(p.cnt + 1, fair_n_);
+      }
+    }
     return p;
   }
   /// The warp's groups: its live lanes' distinct PCs.
@@ -2602,14 +2623,11 @@ private:
         Warp &x = warps_[w];
         x.launched = true;
         take_slot(x, unsigned(get(m.payload, c.rau_fet, "tier1_id")));   // A-65
-        // Every lane starts at the entry, live: the launch names no lanes,
-        // so a warp of fewer than 32 threads cannot launch yet (TI-27 (a)).
+        // Every live lane starts at the entry: the lanes are RAU's, from the
+        // CTA's thread count (AR's response TI-27 (a)).
         x.pc.fill(start);
-        x.lanes = ~0u;
+        x.lanes = uint32_t(get(m.payload, c.rau_fet, "live_mask"));
         x.fair_ptr = x.fair_cnt = 0;
-        if (k_.orcs[w].threads && k_.orcs[w].threads < kLanes)
-          k_.fail("fet: warp %u has %u threads, and ccv_rau_fet_launch names no lanes (TI-27)", w,
-                  k_.orcs[w].threads);
       }
     }
     if (has(c.ooe_fet, 0)) {
@@ -2717,16 +2735,26 @@ private:
           upper = pc >> ccv::kWPcWindow;
         }
         put(g, c.fet_pca, "pc_upper", upper);
-        // The fairness pointer and counter migrate with the PCs, as they
-        // stood at the boundary the warp resumes at (FET spec rev 16).
+        // The live lanes after the beats (AR's response TI-27 (b)): every lane
+        // a beat names is live again, which undoes an exit the squash took
+        // back. Exact by then, so held to the boundary's mask.
+        // beats-dead: FET keeps the lanes its fetched exits cleared.
+        const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
         size_t bi = x.next;
         if (x.boundary_tid)
           for (size_t i = 0; i != recs.size(); ++i)
             if (instrUid(warpSeq(w, recs[i].seq)) == x.boundary_tid) { bi = i; break; }
-        const Warp::At b = bi < x.fair_at.size() ? x.fair_at[bi] : Warp::At{x.fair_ptr, x.fair_cnt, x.lanes};
-        put(g, c.fet_pca, "fair_ptr", b.ptr);
-        put(g, c.fet_pca, "fair_cnt", b.cnt);
-        x.parked_lanes = b.lanes;
+        if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
+          k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
+                  x.lanes_at[bi]);
+        put(g, c.fet_pca, "live_mask", live);
+        // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
+        // keeps its pointer, moved on to a live lane, and saturates the
+        // counter, so lane r's group takes the first pick after the restore.
+        unsigned ptr = x.fair_ptr;
+        for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
+        put(g, c.fet_pca, "fair_ptr", ptr);
+        put(g, c.fet_pca, "fair_cnt", fair_n_);
         k_.parked[w].rewound = x.rewound == ~0u;
         if (k_.parked[w].rewound) k_.hit("rewound");
         // The trace identity of where it resumes rides with the PCs to PCA,
@@ -2764,9 +2792,9 @@ private:
                     (unsigned long long)pc, (unsigned long long)recs[at].pc);
           x.pc[l] = pc;
         }
-        // The fairness state comes back with the PCs. The live lanes do not
-        // migrate (TI-27 (b)): FET kept the parked warp's, as at its boundary.
-        x.lanes = x.parked_lanes;
+        // The live lanes and the fairness state come back with the PCs.
+        x.lanes = uint32_t(get(mm.payload, c.pca_fet, "live_mask"));
+        x.restored = true;
         x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
         x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
         x.br_mask = 0;
@@ -2837,14 +2865,24 @@ private:
                                     !x.await_redirect &&
                                     x.next != recs.size(); ++s) {
       // FET's own pick, checked against the record ccv-sim issued next.
-      const Pick pk = pick(x);
+      // After a restore the saturated counter may pick a group ccv-sim did
+      // not (AR's response TI-27 (c)). Checking that order per lane needs
+      // instructions ccv-sim never issued, which a trace-driven FET cannot
+      // fetch; so a restored warp that departs follows ccv-sim's group,
+      // counted, with its fairness state moved as that group's issue moves
+      // it. Any other departure is a failure.
+      Pick pk = pick(x);
       if (!pk.mask) break;   // no live lane: the warp has exited
       const Record &r = recs[x.next];
+      const bool departs = pk.pc != r.pc || pk.mask != r.mask;
+      if (departs && x.restored) pk = issued(x, r.pc, r.mask);
       bool ready = true;
       for (uint64_t a = pk.pc / kLine * kLine; a < pk.pc + r.size; a += kLine)
         if (!line_.count(a)) { ready = false; want(a); }
       if (!ready || !can(c.fet_dec, s)) break;
-      if (pk.pc != r.pc || pk.mask != r.mask)
+      if (departs && x.restored)
+        k_.hit("order_diff");
+      else if (departs)
         k_.fail("fet: warp %u picks %llx for lanes %08x; ccv-sim issued %llx for %08x (seq %llu)", w,
                 (unsigned long long)pk.pc, pk.mask, (unsigned long long)r.pc, r.mask,
                 (unsigned long long)r.seq);
@@ -2871,6 +2909,14 @@ private:
       uint32_t gmask = r.mask;
       if (k_.brk == "corrupt-group-mask" && w == 0 && r.seq == 5) gmask &= 0x7fffffffu;
       put(f, c.fet_dec, "group_mask", gmask);
+      // The final exit (TI-27): the exit whose fetch clears the warp's last
+      // live lanes. early-mark marks the first exit that leaves some live.
+      if (r.kind == "exit") {
+        const bool last = !(x.lanes & ~r.mask);
+        const bool early = k_.brk == "early-mark" && !last && !x.marked;
+        x.marked = x.marked || early;
+        put(f, c.fet_dec, "final_exit", last || early);
+      }
       const unsigned ep = epoch_[w & 31];
       put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
       stale_next_ = false;
@@ -2900,8 +2946,8 @@ private:
       // The pick is made: record the fairness state it started from, take
       // the new one, and move the group's lanes on. After a mismatch the
       // record's lanes move, so one wrong pick is reported once.
-      if (x.fair_at.size() <= x.next) x.fair_at.resize(x.next + 1);
-      x.fair_at[x.next] = {x.fair_ptr, x.fair_cnt, x.lanes};
+      if (x.lanes_at.size() <= x.next) x.lanes_at.resize(x.next + 1);
+      x.lanes_at[x.next] = x.lanes;
       x.fair_ptr = pk.ptr;
       x.fair_cnt = pk.cnt;
       if (pk.fair) k_.hit("fair_pick");
@@ -3303,6 +3349,11 @@ private:
         put(f, c.rau_fet, "tier1_id", l.slot);
         put(f, c.rau_fet, "cta_slot", l.w);
         put(f, c.rau_fet, "start_pc", o.code_base);
+        // The warp's lanes (AR's response TI-27 (a)): [0, n), n the CTA's
+        // threads past this warp's first, at most 32. One warp a CTA here,
+        // and the thread count is the launch's, which ccv-sim was run with.
+        const unsigned n = o.threads ? std::min(o.threads, kLanes) : kLanes;
+        put(f, c.rau_fet, "live_mask", n == kLanes ? ~0u : (1u << n) - 1);
         // code_bounds: [63:0] base, [103:64] length (placeholder split).
         const FieldDesc &cb = field(c.rau_fet, "code_bounds");
         f.set(cb.lsb, 64, o.code_base);

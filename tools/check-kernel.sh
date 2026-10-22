@@ -68,6 +68,9 @@
 #     (IS-17 (b))                                split goes the wrong way
 #   a load waits for an older store of its    no-st-wait (spinwait): lane 0
 #     warp to commit (MIU's disambiguation)      reads the flag still clear
+#   OOE ends a warp at the exit FET marks     early-mark (div): the warp ends
+#     final (TI-27)                              with lanes live, and the rest
+#                                                of its uops find no slot
 #   spinwait needs the rule                   ccv-sim at -fairness=0 runs to
 #                                                its step limit
 #   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
@@ -616,6 +619,7 @@ stall  l1_late>0
 vaddslow full_line=1
 div    split=32 reconverge=2 groups_peak=2 fair_pick=1
 spinwait fair_pick=4 groups_peak=3 st_ld_wait>0
+divtail split=20 groups_peak=2
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -681,6 +685,26 @@ if grep -q "^CHECK fet: warp 0 picks 1014 for lanes 0000ffff; ccv-sim issued 101
   say "--break split-swap: the halves go the wrong way (div)" "PASS ($(field "$B/kernel_split-swap.log" check_failures) picks refused)"
 else
   bad "--break split-swap" "a split the wrong way went unnoticed: $(grep '^KERNEL' "$B/kernel_split-swap.log")"
+fi
+# The final exit (OA's rev 170, TI-27): OOE ends a warp when the exit FET
+# marked final retires. Marked one exit early, at div's first partial exit,
+# the warp ends with lanes still live, RAU frees its slot, and the rest of
+# its uops find no slot.
+"$SKEL" --kernel build/oracle/div/oracle.jsonl --break early-mark >"$B/kernel_early-mark.log" 2>&1
+if grep -q "^CHECK ooe: uop for warp 0, which holds no tier-1 slot" "$B/kernel_early-mark.log" &&
+   [ "$(field "$B/kernel_early-mark.log" finished)" = 0 ]; then
+  say "--break early-mark: the warp ends with lanes live" "PASS (div, $(field "$B/kernel_early-mark.log" retired) of 144 retire)"
+else
+  bad "--break early-mark" "an early final exit went unnoticed: $(grep '^KERNEL' "$B/kernel_early-mark.log")"
+fi
+# A demotion's live mask is FET's after the beats (AR's response TI-27 (b)):
+# stall's warp 0 has fetched its exit when it demotes, so without the beats'
+# lanes FET would park it with none live; held to the boundary's mask.
+CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl --break beats-dead >"$B/kernel_beats-dead.log" 2>&1
+if grep -q "^CHECK fet: warp 0's live mask after the beats is 00000000; at its boundary, ffffffff" "$B/kernel_beats-dead.log"; then
+  say "--break beats-dead: the parked mask is refused" "PASS (stall, swapped)"
+else
+  bad "--break beats-dead" "a parked mask without the beats' lanes went unnoticed: $(grep '^KERNEL' "$B/kernel_beats-dead.log")"
 fi
 # spinwait: lane 0's flag load waits behind lane 1's older store, which has
 # not committed (MIU's disambiguation). Read past it, the flag is still 0.

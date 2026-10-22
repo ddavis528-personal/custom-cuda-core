@@ -10,11 +10,11 @@
 # used to buy, without the second copy that could drift.
 #
 # kernel.cfg: SOURCE=<path in the compiler snapshot, or core:<path here>>, an
-# optional CTAID=<n> (ccv-sim -ctaid), an optional CTAS=<n>, then one poke per
-# line. ccv-sim runs one warp a CTA, so a kernel of several warps is CTAS
-# CTAs, CTAID upward, each its own run: oracle.jsonl for the first,
-# oracle.<w>.jsonl for warp w, which the skeleton launches side by side
-# (Kernel::loadOracles).
+# optional CTAID=<n> (ccv-sim -ctaid), an optional CTAS=<n>, an optional
+# THREADS=<n> (ccv-sim -threads), then one poke per line. ccv-sim runs one
+# warp a CTA, so a kernel of several warps is CTAS CTAs, CTAID upward, each
+# its own run: oracle.jsonl for the first, oracle.<w>.jsonl for warp w, which
+# the skeleton launches side by side (Kernel::loadOracles).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 C=$(tools/fetch-compiler.sh) || exit 1
@@ -45,6 +45,9 @@ for k in test/kernels/*/; do
   while read -r p; do args+=(-poke "$p"); done < <(grep -E '^0x' "$k/kernel.cfg")
   ctaid=$(sed -n 's/^CTAID=//p' "$k/kernel.cfg")
   ctas=$(sed -n 's/^CTAS=//p' "$k/kernel.cfg")
+  # THREADS=<n>: a CTA of n threads (ccv-sim -threads), so a warp of fewer
+  # than 32 launches with only its low lanes live (TI-27 (a)).
+  threads=$(sed -n 's/^THREADS=//p' "$k/kernel.cfg")
   out=$O/$name
   rm -rf "$out" && mkdir -p "$out"
   ok=1
@@ -55,7 +58,7 @@ for k in test/kernels/*/; do
     cta=()
     [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
-      -fairness="$fair" -oracle "$o" >/dev/null || ok=0
+      ${threads:+-threads "$threads"} -fairness="$fair" -oracle "$o" >/dev/null || ok=0
   done
   if [ $ok = 1 ]; then
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" \
