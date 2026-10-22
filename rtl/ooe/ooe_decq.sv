@@ -91,7 +91,9 @@ module ooe_decq #(
   output logic [S*H-1:0]   head_v_cq02h,     // slot s's k-th offered uop is there (k < 2R - 1)
   output logic [S*R*P-1:0] head_pay_cq02h,   // the first R's payloads
   output logic [S*NA*PA-1:0] head_adm_cq02h, // the rest's admission bits
-  output logic [LU-1:0]    used_cq02h        // entries held: the credits out
+  output logic [LU-1:0]    used_cq02h,       // entries held: the credits out
+  output logic [S-1:0]     arr_cq02h         // a slot took arrivals at the last edge: its heads re-form
+                                             // at the next (rename's change lead, OA's rev 174)
 );
 
   // The state's fields.
@@ -391,6 +393,7 @@ module ooe_decq #(
   assign head_pay_cq02h = hp_o_cq02h;
   assign head_adm_cq02h = ha_o_cq02h;
   assign used_cq02h     = used_o_cq02h;
+  assign arr_cq02h      = arr_q_cq02h;
   logic [LU-1:0] busy_n_cq02h;
   always_comb begin
     busy_n_cq02h = '0;
