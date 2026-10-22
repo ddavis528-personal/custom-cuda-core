@@ -403,6 +403,9 @@ struct Config {
   /// TI-25's controls: a demote of a warp whose exit retired is not
   /// refused; a restore drops the parked layout (32 bits at position 0).
   bool inject_no_refuse = false;
+  /// OA's rev 166's control: a destination takes DEC's width (Uop::w, a
+  /// test's hint, on no channel) instead of the committed table's.
+  bool inject_width_from_dec = false;
   bool inject_park_layout_lost = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
@@ -1453,6 +1456,14 @@ public:
   unsigned slotBarCount(unsigned s) const { return slot_[s].bar_count; }
   /// A slot's committed width code for architectural GPR a (OI-57).
   unsigned slotWidth(unsigned s, unsigned a) const { return slot_[s].cw[a & 15]; }
+  /// A destination's width at rename: its committed width (OI-57; OA's rev
+  /// 166). chwidth holds rename until it retires, so the table is current.
+  unsigned dstWidth(unsigned slot, const Uop &u) const {
+    return cfg_.inject_width_from_dec ? u.w : slot_[slot].cw[u.dst & 15];
+  }
+  /// Tests only: a launched warp's committed widths as though its chwidths
+  /// had retired (launch itself sets every register to 32 bits, A-64).
+  void presetWidths(unsigned slot, const std::array<uint8_t, 16> &cw) { slot_[slot].cw = cw; }
   bool reqQ(unsigned e) const { return req_q_[e]; }
   unsigned nameRow(unsigned n) const { return n / kPos_; }
   unsigned namePos(unsigned n) const { return n % kPos_; }

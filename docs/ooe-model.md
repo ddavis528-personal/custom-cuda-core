@@ -449,7 +449,7 @@ adopted it (revs 131-133), standing in for RAU, PCA and FET:
   its fill lands (DRAM fills drawn from 700 to 1,300 cycles), and its
   replayed load then hits. A restored warp may demote again only after P
   retirements.
-- `mode` is 1 swap (demote only with a ready parked warp) or 2 evict.
+- `mode` is `kEvict` (demote on the trigger always; the policy, DA's decision) or `kSwap` (demote only with a ready parked warp; a knob).
 - The knob's own bench, `testSwap` in the default run: on the 8-warp
   workload, under every go form, a demote's squash leaves exactly the
   warp's committed registers and no RS entry, the first rewind beat is the
@@ -578,6 +578,36 @@ against the old drain at 18b33e1:
   cycles), since a branch's discard now also replays its wrong-path loads.
 - The PRF ports still cost nothing: no read held back, no write port short.
 
+**Evict, the policy (DA; OA's rev 64), and the provisional restore under
+it** (AR's revs 116-117). The environment's RAU now evicts by default
+(`Swap::mode` is `kEvict`); swap is the knob, and the bench (`testSwap`)
+runs both. AR's provisional restore takes the longest-parked warp whose
+fill is still out (the age order, not the soonest fill). PF-41's variant
+pre-empts it the moment a parked warp is ready and no slot is free, with
+no threshold wait. 48 seeds, against swap-off:
+
+| go | evict at 25 / 50 / 100 | evict, provisional | evict, provisional, pre-empting | swap (knob) |
+|---|---|---|---|---|
+| interleave, shares | 0.624 / 0.588 / 0.552 | 0.641 (675 provisional) | 0.627 (28 pre-empted) | 0.646 |
+| one warp | 0.608 / 0.564 / 0.550 | 0.649 | 0.671 | 0.654 |
+| two warps | 0.645 / 0.648 / 0.615 | 0.650 | 0.676 | 0.686 |
+
+- **Neither arm beats evict.** Under evict a slot frees with no ready warp
+  often, so the provisional restore fires (675 times against 57 under
+  swap). The restored warp is still blocked on its fill, though, and evict
+  demotes it again at its next stall: restores double (971 against 470)
+  and so do the declined demotes. Pre-empting it when a ready warp appears
+  recovers 1.4 points but stays behind plain evict. So evict stays the
+  default, and the provisional restore stays a knob, off.
+- **Under evict, threshold 100 beats 50**: 0.552 against 0.588 under the
+  decided go, and 0.550 against 0.564 under one warp. Fewer demotes are
+  declined at 100 (25 against 324), since a load that is merely slow has
+  completed before the trigger. That is CCV_DEMOTION_THRESHOLD_MLC's to
+  weigh (AR's, beside its MLC bound).
+- TI's provswap kernel runs the skeleton's RAU, which has the provisional
+  restore but not the pre-empting variant, so the variant is measured
+  here only.
+
 **stall_hole under it** (48 seeds, the decided go, at the merge with TI's
 ad6ef02; warps 1 to 3 against their solo time, held / fetching):
 
@@ -647,10 +677,19 @@ So S1 loses at 4, in mlp alone, and not at 6.
   registers at positions 2 and 1 and a chwidth, restores it into another
   slot, and checks 16 distinct rows, each register at its position and
   width, and the table. Control `park-layout-lost` (restore at 32 bits,
-  position 0) must be caught. In the model, a name's width is DEC's and
-  the table is chwidth's, which can differ. The entry keeps the name's
-  width for a sectioned register (`park.name_width_not_committed` counts a
-  difference). They are one value when DEC's width is the committed one.
+  position 0) must be caught.
+- **A destination's width is its committed width** (OA's rev 166). No
+  channel carries a width from DEC, so rename takes a destination's width
+  from the committed table (`Core::dstWidth`); chwidth holds rename until it
+  retires, so the table is current there. The park asserts that each
+  committed name has its register's committed width, so the 64-bit entry is
+  the whole state. A test's narrow registers (`Op::w`) become its warp's
+  committed widths, set once its launch lands (`Core::presetWidths`, a
+  test-only stand-in for chwidths retired before the program). The random
+  generator keeps a memory access's data register at 8 bits or wider, since
+  a 4-bit one now faults F-WIDTH as the ISA says. A directed test renames
+  narrow hints against a 32-bit table and checks 32-bit names; control
+  `width-from-dec` (rename at the hint's width) must break the assertion.
 
 ## S1 modes: what the neighbours carry today
 

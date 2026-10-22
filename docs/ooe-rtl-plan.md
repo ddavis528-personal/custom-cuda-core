@@ -652,6 +652,16 @@ review (TI-25, AR's rev 112, OA's rev 165; the storage form is DA's):
 The model holds it as `Core::parked_` (`sim/ooe/ooe_core.h`); the unit
 tests' parked-layout check and its control (park-layout-lost) are its proof.
 
+**Its form (DA, 2026-10-22; OA's rev 66).** A 1R1W-array wrapper, 32
+entries of 64 bits, addressed by warp_id: one write per demotion (the
+entry, at the demotion's map) and one 64-bit read per restore-allocate.
+For now the wrapper is synthesized as flops, 2,048 of them, each entry
+behind its write enable (one clock gate of 64 flops per entry, enabled only
+on its warp's demotion; the read is a 32-to-1 mux of 64 bits). Its ports
+stay those of an array, so it can be swapped for a compiled 1R1W array
+later with no change to its users. It counts in the tally above as 2,048
+flops until then.
+
 ## Blocking decisions (the agenda as written, 2026-10-04)
 
 **1. Q-7 and the stage budget.** Is 25 NGD a Vmin or a nominal number? The
