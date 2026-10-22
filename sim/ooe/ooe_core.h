@@ -1248,6 +1248,7 @@ public:
   struct GoLog {
     bool valid = false, restore = false;
     unsigned prio = 0;
+    uint32_t flush = 0;                       ///< slots a squash flushed this cycle, before the go
     unsigned cred[4] = {}, owed[2] = {};
     std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;

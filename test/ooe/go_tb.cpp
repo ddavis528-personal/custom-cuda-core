@@ -3,16 +3,20 @@
 // Runs the model's directed and random unit tests (sim/ooe/ooe_test.cpp) and,
 // after every core cycle, drives ooe_go with what the model's go read in it
 // (Core::goLog, under go_static: decq's heads and their decode-time
-// admission bits, rename's credits, floors owed and unmet floors, each
-// slot's ROB run, reach and retirements, its registered hold, a restore
-// owning the ports), then compares the go's takes, per slot and lane by
-// lane, with the model's before the edge registers the next cycle's fits.
-// Cores with other than RD_S tier-1 slots are skipped; the decode queue's
-// per-warp limit is 6 (CCV_P_DECQ_WARP_MAX's value once TI's change is
-// merged: a slot then never holds more heads than the go's window).
+// admission bits, rename's credits less their floors owed, and the unmet floors, each
+// slot's ROB run, reach and retirements), then compares the go's takes, per
+// slot and lane by lane, with the model's before the edge registers the next
+// cycle's fits. The leads (a warp's hold, a restore owning the ports, a
+// slot's squash) are the next cycle's, so the RTL runs a model cycle behind,
+// each cycle driven when the next one's log is in; a core's last cycle is
+// not compared. Cores with other than RD_S tier-1 slots are skipped; the
+// decode queue's per-warp limit is 6 (CCV_P_DECQ_WARP_MAX's value once TI's
+// change is merged: a slot then never holds more heads than the go's
+// window).
 //
 // Negative controls (GO_CONTROL=<name>) perturb the driving and must be
-// caught: no-hold (the holds never reach the go), no-ret (this cycle's
+// caught: no-hold (the hold lead never reaches the go), no-rbusy (nor the
+// restore's), no-squash (nor the squash's), no-ret (this cycle's
 // retirements never reach the ROB term) and adm-shift (each head carries
 // the next head's admission bits).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
@@ -38,9 +42,9 @@ int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &))
 void goConfig(Config &c) { c.decq_warp_max = 6; }
 
 namespace {
-constexpr unsigned S = GO_S, R = GO_R, PA = 7, LC = 10, LU = 5, LB = 6, LT = 3, H = 2 * R - 1;
+constexpr unsigned S = GO_S, R = GO_R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 5 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
-constexpr unsigned LS = bits(S), LK = bits(R + 1), LH = bits(R);
+constexpr unsigned LS = bits(S), LK = bits(R + 1), LH = bits(R), LX = bits(XM + 1);
 
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_go> dut;
@@ -86,22 +90,29 @@ void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
     std::fprintf(stderr, "cycle %llu: %s (%u: rtl %u, model %u)\n", cycles, what, a, rtl, model);
 }
 
-void drive(const Core::GoLog *g) {
+void drive(const Core::GoLog *g, const Core::GoLog *nx) {
   clearAll(dut->hv_cq01h, S * H);
   clearAll(dut->ha_cq01h, S * H * PA);
-  clearAll(dut->cred_cq01h, 4 * LC);
-  clearAll(dut->owed_cq01h, 2 * LC);
+  clearAll(dut->px_cq01h, 4 * LX);
   clearAll(dut->unmet_g_cq01h, S * LU);
   clearAll(dut->unmet_p_cq01h, S * LU);
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
-  dut->hold_cq01h = (1u << S) - 1;
-  dut->rbusy_cq01h = 0;
+  dut->hold_l_cq00h = (1u << S) - 1;
+  dut->rbusy_l_cq00h = 0;
+  dut->sq_l_cq00h = 0;
+  if (nx) {
+    for (unsigned s = 0; s != S; ++s) setBit(dut->hold_l_cq00h, s, nx->hold[s] && control != "no-hold");
+    dut->rbusy_l_cq00h = nx->restore && control != "no-rbusy";
+    dut->sq_l_cq00h = control == "no-squash" ? 0 : nx->flush & ((1u << S) - 1);
+  }
   if (!g) return;
-  dut->rbusy_cq01h = g->restore;
-  for (unsigned r = 0; r != 4; ++r) setField(dut->cred_cq01h, r * LC, LC, sat(g->cred[r], LC));
-  for (unsigned r = 0; r != 2; ++r) setField(dut->owed_cq01h, r * LC, LC, sat(g->owed[r], LC));
+  // Rename's pool registers: each credit less its floors owed, saturated.
+  for (unsigned r = 0; r != 4; ++r) {
+    const unsigned owed = r >= 2 ? g->owed[r - 2] : 0;
+    setField(dut->px_cq01h, r * LX, LX, std::min(g->cred[r] - std::min(g->cred[r], owed), XM));
+  }
   for (unsigned s = 0; s != S; ++s) {
     const auto &q = g->adm[s];
     for (unsigned p = 0; p != H && p < q.size(); ++p) {
@@ -114,12 +125,11 @@ void drive(const Core::GoLog *g) {
     setField(dut->run_cq01h, s * LB, LB, sat(g->run[s], LB));
     setBit(dut->reach_cq01h, s, g->reach[s]);
     setField(dut->ret_cq01h, s * LT, LT, control == "no-ret" ? 0 : sat(g->ret[s], LT));
-    setBit(dut->hold_cq01h, s, g->hold[s] && control != "no-hold");
   }
 }
 
 void resetRtl() {
-  drive(nullptr);
+  drive(nullptr, nullptr);
   dut->ooe_rst_r00h = 1;
   tick();
   tick();
@@ -127,18 +137,14 @@ void resetRtl() {
   tick();
 }
 
-void hook(const Core &c) {
-  const Core::GoLog &g = c.goLog();
-  if (c.serial() != current) {
-    current = c.serial();
-    live = g.adm.size() == S;
-    if (live) ++cores;
-    resetRtl();
-  }
-  if (!live || !g.valid || g.adm.size() != S) { ++skipped; return; }
+// The cycle before the latest: driven once the latest's log gives its leads.
+Core::GoLog pend;
+bool pending = false;
+
+void check(const Core::GoLog &g, const Core::GoLog &nx) {
   ++cycles;
   restores += g.restore;
-  drive(&g);
+  drive(&g, &nx);
   dut->eval();
   // This cycle's takes, from last cycle's fits.
   for (unsigned s = 0; s != S; ++s) {
@@ -157,6 +163,22 @@ void hook(const Core &c) {
     if (h != g.lanes[l].second) fail("lane's head differs", l, h, g.lanes[l].second);
   }
   tick();
+}
+
+void hook(const Core &c) {
+  const Core::GoLog &g = c.goLog();
+  if (c.serial() != current) {
+    if (pending) ++skipped;          // the last core's last cycle: no next log for its leads
+    pending = false;
+    current = c.serial();
+    live = g.adm.size() == S;
+    if (live) ++cores;
+    resetRtl();
+  }
+  if (!live || !g.valid || g.adm.size() != S) { ++skipped; return; }
+  if (pending) check(pend, g);
+  pend = g;
+  pending = true;
 }
 } // namespace
 

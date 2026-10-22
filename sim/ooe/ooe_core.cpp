@@ -3278,6 +3278,7 @@ void Core::rename() {
     g.valid = true;
     g.restore = !restore_q_.empty();
     g.prio = rr_rename_;
+    g.flush = decq_flushed_;
     const RenCredits rc = renCredits();
     for (unsigned r = 0; r != 4; ++r) g.cred[r] = rc.c[r];
     g.owed[0] = floorsOwed(false);
