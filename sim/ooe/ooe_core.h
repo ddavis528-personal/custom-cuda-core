@@ -476,6 +476,7 @@ struct Uop {
   unsigned ckpt = 0;
   bool pred_taken = false;
   bool scale_en = false;
+  unsigned slot_form = 0, arg_slot = 0;   ///< the launch-slot form, for MIU (TI-31)
   /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
   /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
   unsigned cause = 0;
@@ -576,6 +577,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
+  unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;

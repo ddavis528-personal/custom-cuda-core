@@ -205,6 +205,8 @@ private:
     u.ckpt = unsigned(get(p, c.dec_ooe, "checkpoint_id"));
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
+    u.slot_form = unsigned(get(p, c.dec_ooe, "slot_form"));
+    u.arg_slot = unsigned(get(p, c.dec_ooe, "arg_slot"));
     u.cause = unsigned(get(p, c.dec_ooe, "cause"));
     u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
     u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
@@ -424,6 +426,8 @@ private:
         put(mo, c.ooe_miu, "scale_en", x.scale_en);
         put(mo, c.ooe_miu, "space", x.space);
         put(mo, c.ooe_miu, "ordering", x.ordering);
+        put(mo, c.ooe_miu, "slot_form", x.slot_form);
+        put(mo, c.ooe_miu, "arg_slot", x.arg_slot);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
         // The memop's pipe footprint at its data position (0 in S1).
         // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.

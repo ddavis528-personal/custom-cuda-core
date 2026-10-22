@@ -73,6 +73,11 @@
 #   a store into .const or the launch window  no-ro (roconst): its 32 stores
 #     faults F-RO, and nothing lands; CRU        land, and the warp never
 #     holds the fault to ccv-sim's (TI-26)       faults
+#   a launch-slot memop's window is the       no-window-fill, window-from-base
+#     word at launch block + 32 + 8k, from       (slotform): every lane's
+#     MIU's table, filled on first use (TI-31)   address is in window 0
+#   a memop's base is per lane (TI-32)        scalar-base (slotform): lanes
+#                                                1-31 store into lane 0's window
 #   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
 #     owner drops the warps and acks at the      (rokill): never killed, or the
 #     kill's epoch (V-24)                        kill never completes
@@ -344,7 +349,7 @@ fi
 # once. Its readers then see the stale register -- the cost of a broken
 # latency contract to a latency-scheduled OOE, not a second fault -- and
 # that shows up downstream as wrong lane operands, wrong addresses and
-# loads at MIU, and a window base that differs across lanes. Those are the
+# loads at MIU. Those are the
 # only other failures allowed, and the total is pinned: a new failure in
 # this kernel still fails the control. (Re-pin MOVI_TOTAL only with the
 # reason in the commit; it moves when OOE's timing does. 356 -> 259 when RCU's
@@ -353,17 +358,19 @@ fi
 # CCV_LAT_LANE rather than early, TI-8: the misplaced movi's round trip now
 # lands two cycles later, so more readers land before the value. 676 -> 516
 # when the lane channel became one message a cycle and OOE one full-width
-# lane op a cycle, TI-9: the readers issue later, so fewer land before it.)
+# lane op a cycle, TI-9: the readers issue later, so fewer land before it.
+# 516 -> 512 when the base became per lane, TI-32: the four reports that
+# the window base differed across lanes went with the scalar base.)
 # One lane message a cycle also means the misplaced movi takes the message
 # OOE scheduled for the lane op issued beside it, seq 3's srd, whose done
 # V-35 then names a cycle late too: the cost of the movi, not a second fault.
-MOVI_TOTAL=516
+MOVI_TOTAL=512
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
 nlate=$(grep -c "^CHECK ooe: V-35: " "$L")
 nother=$(grep "^CHECK" "$L" | grep -v "^CHECK lane [0-9]*: MOVI\(48\)\? \|^CHECK ooe: V-35: " |
-         grep -vc "^CHECK lane [0-9]*: seq [0-9]* operand \|^CHECK miu: seq [0-9]* lane [0-9]* \(address\|loaded\) \|^CHECK rcu: window base differs across lanes")
+         grep -vc "^CHECK lane [0-9]*: seq [0-9]* operand \|^CHECK miu: seq [0-9]* lane [0-9]* \(address\|loaded\) ")
 total=$(field "$L" check_failures)
 if [ "$nmovi" = 64 ] && [ "$nlate" = 2 ] && [ "$nother" = 0 ] && [ "$total" = "$MOVI_TOTAL" ] &&
    grep -q "^CHECK ooe: V-35: seq 1 (rob tag [0-9]*) done" "$L" &&
@@ -635,6 +642,7 @@ rolaunch ro_fault=1 fault=1 kill=1
 rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
 rokill ro_fault=1 fault=1 kill=1
+slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -732,6 +740,29 @@ if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 1
   say "--break no-ro: the stores land, no fault" "PASS (roconst: 32 words)"
 else
   bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
+fi
+# The launch-slot form (TI-31): the window is the word at the CTA's launch
+# block + 32 + 8 x arg_slot, which MIU reads into its table on first use.
+# Taken as zero, or from base_per_lane (don't-care for the form), every lane
+# of slotform's first load reads window 0.
+for b in no-window-fill window-from-base; do
+  "$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK miu: seq 1 lane 0 address 0, oracle 30000" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" mem_mismatch)" = 64 ]; then
+    say "--break $b: the slot's window is lost" "PASS (slotform: window 0, 64 words)"
+  else
+    bad "--break $b" "a launch-slot memop's window went unchecked: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
+# The base is per lane (TI-32): slotform's R6 is a window per lane, as an
+# O-30 frame pointer is. Lane 0's base on every lane puts lanes 1-31's
+# store and load in lane 0's window.
+"$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break scalar-base >"$B/kernel_scalar-base.log" 2>&1
+if grep -q "^CHECK miu: seq 7 lane 1 address 5ffffc, oracle 60fffc" "$B/kernel_scalar-base.log" &&
+   [ "$(field "$B/kernel_scalar-base.log" mem_mismatch)" = 32 ]; then
+  say "--break scalar-base: lanes 1-31 in lane 0's window" "PASS (slotform: 32 words)"
+else
+  bad "--break scalar-base" "a per-lane base went unchecked: $(grep '^KERNEL' "$B/kernel_scalar-base.log")"
 fi
 # The kill (V-24): a fatal fault kills the context. RAU broadcasts the mask
 # of every valid warp context with an epoch, and waits for the eight owners'

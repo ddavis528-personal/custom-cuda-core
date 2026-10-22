@@ -41,6 +41,7 @@ private:
     bool final_exit = false;               ///< FET's mark: the warp's last lanes exit (TI-27)
     uint32_t attr = 0;                     ///< sched_attr, from DEC (A-66)
     unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
+    unsigned slot_form = 0, arg_slot = 0;           ///< likewise (TI-31)
     // Physical names, read from the RAT at dispatch: a register no older
     // instruction of the warp has written is still the zero register (A-64).
     unsigned psrc[3] = {}, pold = 0, pnew = 0, ppguard = 0, ppold = 0;
@@ -238,6 +239,8 @@ private:
     e.mem_op = unsigned(get(u, c.dec_ooe, "mem_op"));
     e.space = unsigned(get(u, c.dec_ooe, "space"));
     e.ordering = unsigned(get(u, c.dec_ooe, "ordering"));
+    e.slot_form = unsigned(get(u, c.dec_ooe, "slot_form"));
+    e.arg_slot = unsigned(get(u, c.dec_ooe, "arg_slot"));
     // Only a fence carries an ordering; on any other uop it is reserved zero
     // (IS-11, OA's response). sched_attr says which uop is a fence.
     if (e.ordering != 0 && !(attrMem(e.attr) && attrMemKind(e.attr) == kMemKFence))
@@ -408,6 +411,8 @@ private:
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
       put(mo, c.ooe_miu, "space", e.space);
       put(mo, c.ooe_miu, "ordering", e.ordering);
+      put(mo, c.ooe_miu, "slot_form", e.slot_form);
+      put(mo, c.ooe_miu, "arg_slot", e.arg_slot);
       put(mo, c.ooe_miu, "pipes", maskOf(kChw32, 0));   // full width: P0-P3
       send(c.ooe_miu, mslot, mo, e.tid);
     }

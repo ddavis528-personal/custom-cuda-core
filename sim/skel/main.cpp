@@ -218,7 +218,8 @@ int main(int argc, char **argv) {
                       brk == "corrupt-group-mask" || brk == "fair-off" ||
                       brk == "fair-late" || brk == "split-swap" ||
                       brk == "no-st-wait" || brk == "early-mark" || brk == "beats-dead" ||
-                      brk == "no-ro" || brk == "whole-cta-mask" ||
+                      brk == "no-ro" || brk == "no-window-fill" || brk == "window-from-base" ||
+                      brk == "scalar-base" || brk == "whole-cta-mask" ||
                       brk == "no-kill" || brk == "withheld-ack" || brk == "stale-ack" ||
                       brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||

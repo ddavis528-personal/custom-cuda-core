@@ -683,6 +683,7 @@ private:
     uint64_t due = 0;                ///< a global load's L1-contract cycle
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
+    bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
   };
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
@@ -710,6 +711,40 @@ private:
       if (launch || cnst) ro |= 1u << l;
     }
     return ro;
+  }
+  /// The launch-slot windows (TI-31, AR's response): by CTA slot, the
+  /// sixteen 32-bit words at launch_block_addr + 32 + 8k and their valid
+  /// bits. Filled a line at a time on first use; cleared on the slot's
+  /// rau_miu_cta and on a kill.
+  /// gen counts the clears: a fill sent before one lands nothing.
+  struct Windows {
+    uint64_t block = 0;
+    std::array<uint32_t, 16> w{};
+    uint16_t valid = 0;
+    unsigned gen = 0;
+    void clear() { valid = 0; ++gen; }
+  };
+  std::map<unsigned, Windows> win_;
+  /// A window fill's request to DCU, by req_id: its CTA slot and line, and
+  /// the table's gen when it was sent.
+  struct Fill { unsigned cta; uint64_t line; unsigned gen; };
+  std::map<unsigned, Fill> fills_;
+  /// Memops that waited on a fill: an L1 miss, whatever DCU says.
+  std::set<unsigned> win_miss_;
+  static uint64_t slotAddr(const Windows &t, unsigned k) { return t.block + 32 + 8 * k; }
+  /// Every slot of `t` in `line`, filled from it.
+  static void fillWindows(Windows &t, uint64_t line, const Line &d) {
+    for (unsigned k = 0; k != 16; ++k) {
+      const uint64_t a = slotAddr(t, k);
+      if (a / kLine * kLine != line) continue;
+      uint32_t v = 0;
+      for (unsigned b = 0; b != 4; ++b) v |= uint32_t(d[a % kLine + b]) << (8 * b);
+      t.w[k] = v;
+      t.valid |= uint16_t(1u << k);
+    }
+  }
+  void onKill(uint32_t, unsigned) override {
+    for (auto &t : win_) t.second.clear();
   }
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
@@ -804,8 +839,12 @@ private:
     if (has(c.rau_miu, 0)) {
       // A CTA's configuration: of it, F-RO's .const range (TI-26).
       const Bits m = take(c.rau_miu, 0).payload;
-      ro_[unsigned(get(m, c.rau_miu, "cta_slot"))] = {get(m, c.rau_miu, "const_base"),
-                                                      get(m, c.rau_miu, "const_limit")};
+      const unsigned cta = unsigned(get(m, c.rau_miu, "cta_slot"));
+      ro_[cta] = {get(m, c.rau_miu, "const_base"), get(m, c.rau_miu, "const_limit")};
+      // And where its launch-slot windows come from; the old launch's go.
+      Windows &t = win_[cta];
+      t.block = get(m, c.rau_miu, "launch_block_addr");
+      t.clear();
     }
     for (unsigned s = 0; s != kChans[c.ooe_miu].rate; ++s)
       while (has(c.ooe_miu, s)) {
@@ -866,6 +905,17 @@ private:
         // Matched by req_id, not by slot or arrival order: DCU may answer
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        auto fl = fills_.find(id);
+        if (fl != fills_.end()) {
+          // A window fill: every slot its line holds (TI-31).
+          Windows &t = win_[fl->second.cta];
+          if (t.gen == fl->second.gen)
+            fillWindows(t, fl->second.line,
+                        getLine(m.payload, field(c.dcu_miu, "read_data").lsb));
+          fills_.erase(fl);
+          ids_.release(id);
+          continue;
+        }
         auto orph = orphan_.find(id);
         if (orph != orphan_.end()) {
           // An orphan's response: dropped, no data, no completion (TI-21).
@@ -1000,6 +1050,7 @@ private:
     k_.hit("replay");
     order_.erase(std::find(order_.begin(), order_.end(), tag));
     memop_.erase(tag);
+    win_miss_.erase(tag);
   }
 
   Bits replayMsg(unsigned tag, unsigned rs_idx) {
@@ -1033,6 +1084,35 @@ private:
     auto a = addr_.find(tag);
     if (a == addr_.end()) return;
     const Memop &mo = memop_[tag];
+    // The launch-slot form (TI-31): its window must be in the table. If not,
+    // the memop waits, and every one behind it, while its line is read: an
+    // L1 miss, never a hit (AR's response). no-window-fill: the table is
+    // taken as filled, its words zero.
+    const bool slot = get(mo.msg, c.ooe_miu, "slot_form") != 0;
+    const unsigned cta = unsigned(get(mo.msg, c.ooe_miu, "cta_slot"));
+    const unsigned k = unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
+    if (slot && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
+      const uint64_t line = slotAddr(win_[cta], k) / kLine * kLine;
+      win_miss_.insert(tag);
+      for (const auto &f : fills_)
+        if (f.second.cta == cta && f.second.line == line && f.second.gen == win_[cta].gen)
+          return;                                               // on its way
+      for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
+        if (!free(c.miu_dcu, s) || !ids_.any()) continue;
+        Bits r = msgOf(c.miu_dcu);
+        const unsigned id = ids_.take();
+        put(r, c.miu_dcu, "req_id", id);
+        put(r, c.miu_dcu, "phys_addr", line);
+        put(r, c.miu_dcu, "size", kSizeLine);
+        put(r, c.miu_dcu, "coh_op", kCohRead);
+        send(c.miu_dcu, s, r, makeUid(IdClass::kTxn, uidSeq(mo.tid), 0, /*owned=*/true));
+        fills_[id] = {cta, line, win_[cta].gen};
+        k_.hit("window_fill");
+        k_.hit("dcu_lookups");
+        break;
+      }
+      return;
+    }
     Job j;
     j.tag = tag;
     j.store = get(mo.msg, c.ooe_miu, "mem_op") == kMemStore;
@@ -1069,12 +1149,19 @@ private:
     const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - chw : 0;
     const bool global = get(mo.msg, c.ooe_miu, "space") == kSpaceGlobal;
     j.global = global;
-    const uint64_t base = get(am, c.rcu_miu, "base") << (global ? 16 : 0);
+    // The base is per lane (TI-32), or a launch slot's window (TI-31).
+    // window-from-base: a slot form's window taken from base_per_lane.
+    if (win_miss_.count(tag)) j.hit = false;
+    const bool from_win = slot && k_.brk != "window-from-base";
+    if (slot) k_.hit("slot_form");
     for (unsigned l = 0; l != kLanes; ++l)
-      if ((j.active >> l) & 1u)
-        j.addr[l] = base +
+      if ((j.active >> l) & 1u) {
+        const uint64_t b = from_win ? uint64_t(win_[cta].w[k])
+                                    : uint64_t(getLane(am, c.rcu_miu, "base_per_lane", l));
+        j.addr[l] = (b << (global ? 16 : 0)) +
                     (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
                     uint64_t(disp);
+      }
     // Lines touched by ACTIVE lanes, in first-touch order; four bytes per
     // lane (32-bit only). An inactive lane's address is never looked at.
     std::map<uint64_t, size_t> at;
@@ -1116,6 +1203,11 @@ private:
               tag, j.active & ~issue);
     check(j, am);
     if (j.lines.size() > 1) k_.hit("line_split");
+    // AR-23's measure: an access whose active lanes lie in more than one
+    // 64 KiB window, as every O-30 frame access does.
+    for (unsigned l = 0; l != kLanes; ++l)
+      if ((j.active >> l & 1u) && j.addr[l] >> 16 != j.addr[__builtin_ctz(j.active)] >> 16)
+        j.frame = true;
     k_.peak("lines_peak", j.lines.size());
     if (j.store)
       for (const LineReq &lr : j.lines)
@@ -1123,6 +1215,7 @@ private:
     const uint32_t ro = roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.pop_front();
     memop_.erase(tag);
+    win_miss_.erase(tag);
     addr_.erase(a);
     if (ro) {
       // F-RO: the store has no effect on any lane, so nothing waits for
@@ -1248,6 +1341,8 @@ private:
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
       outstanding_[id] = {job_.serial, lr.line};
+      k_.hit("dcu_lookups");
+      if (job_.frame) k_.hit("frame_lookups");
     }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size()) { ++it; continue; }
@@ -2253,15 +2348,14 @@ private:
       put(a, c.rcu_miu, "rob_tag", tag);
       put(a, c.rcu_miu, "active_mask", active);
       // Register values only: the AGU is MIU's, and the displacement and
-      // scale reach it on the memop.
-      const auto &b = k_.gpr[src[op->base_src]];
-      for (unsigned l = 1; l != kLanes; ++l)
-        if (((active >> l) & 1u) && b[l] != b[0]) {
-          k_.fail("rcu: window base differs across lanes; rcu_miu_addr.base is scalar");
-          break;
-        }
-      put(a, c.rcu_miu, "base", b[0]);
+      // scale reach it on the memop. The base is per lane (TI-32): an O-30
+      // frame pointer differs on every lane. A launch-slot form has none,
+      // and its base is don't-care (TI-31). scalar-base: lane 0's base on
+      // every lane, the S1 channel's.
       for (unsigned l = 0; l != kLanes; ++l) {
+        if (op->base_src >= 0)
+          putLane(a, c.rcu_miu, "base_per_lane", l,
+                  k_.gpr[src[op->base_src]][k_.brk == "scalar-base" ? 0 : l]);
         if (op->index_src >= 0)
           putLane(a, c.rcu_miu, "index_per_lane", l, k_.gpr[src[op->index_src]][l]);
         if (op->cls == kStore)
@@ -2535,6 +2629,12 @@ private:
     put(u, c.dec_ooe, "ilen", r->size / 2 - 1);
     put(u, c.dec_ooe, "pred_neg", pneg);
     put(u, c.dec_ooe, "scale_en", immOf(op->scale_imm) != 0);
+    // The launch-slot form (O-45; TI-31): its slot, an immediate where the
+    // base register would be, for MIU's window table.
+    if (op->slot_imm >= 0) {
+      put(u, c.dec_ooe, "slot_form", 1);
+      put(u, c.dec_ooe, "arg_slot", uint32_t(immOf(op->slot_imm)) & 15u);
+    }
     put(u, c.dec_ooe, "pred_guard", pguard);
     put(u, c.dec_ooe, "pred_dst", pdst);
     put(u, c.dec_ooe, "pred_we", pd != nullptr);
@@ -3514,6 +3614,8 @@ private:
         // launch's, which ccv-sim was run with, until Q-50's descriptor.
         put(a, c.rau_miu, "const_base", k_.orcs[l.w].const_base);
         put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
+        // Where MIU's window table fills from (TI-31).
+        put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
         send(c.rau_miu, 0, a, none);
         const Oracle &o = k_.orcs[l.w];
         Bits f = msgOf(c.rau_fet);

@@ -154,6 +154,9 @@ struct OpInfo {
   bool cross = false;
   /// The bypass group, where the class's is not the op's: FP (OI-16).
   int8_t byp = -1;
+  /// Format D's launch-slot mode (O-45): the immediate naming the launch
+  /// slot whose window is the base, which no register holds (TI-31).
+  int8_t slot_imm = -1;
 };
 // Where each executes (Q-32, Q-38): the lane executes any opcode with a
 // per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
@@ -283,6 +286,10 @@ inline constexpr OpInfo kOps[] = {
   // shfl.idx: each guarded issue lane takes the source register at one lane,
   // active or not (Format G): RCU, which holds every lane's register.
   {"SHFL_IDX",      kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  // The launch-slot forms (O-45; TI-31): [slot, rindex, scale, disp], the
+  // window from launch slot `slot`, so no base register (base -1).
+  {"LD_GLOBAL_SLOT", kLoad,     1, true,  false, false, false, false, -1,  0, -1,  2,  1, -1, -1, -1, false, false, -1, 0},
+  {"ST_GLOBAL_SLOT", kStore,    2, false, false, false, false, false, -1,  1,  0,  2,  1, -1, -1, -1, false, false, -1, 0},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
