@@ -702,12 +702,12 @@
     },
     {
       "name": "CCV_P_DECQ_WARP_MAX",
-      "value": 6,
+      "value": 13,
       "status": "tunable",
       "decided_at": "Stage 4b sweep (register OA-7)",
-      "source": "OA's response TI-21 (2026-10-22), from OI's stall_hole measurement; first build OI-6",
+      "source": "OOE model session, register OI-6 (2026-10-07); OA's response TI-21 sets 6 once ooe_decq passes at it",
       "require": "CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ",
-      "doc": "Decode-queue entries one warp may hold at once. Six (OA-7's sweep row): with no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six lets the swap arm pass and makes the even-stall sweep 12.5% faster. OA takes 4 if the S1 kernels do not lose at 4 (OI to measure)."
+      "doc": "Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit. With no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six (OA's response TI-21) lets the swap arm pass and makes the even-stall sweep 12.5% faster; it waits on ooe_decq, whose RTL and bench have not run below the queue's depth (at 6 its live compare trips enq_within_credit, and check-cg's bench fails its high scenario). OA takes 4 if the S1 kernels do not lose at 4 (OI to measure)."
     },
     {
       "name": "CCV_P_REN_SLACK",
