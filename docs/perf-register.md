@@ -62,7 +62,7 @@ it.
 | PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
 | PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
 | PF-39 | An early MLC-miss notice for demotion | MLC, DCU, MIU, OOE, RAU | deferred (TI-24 (5)) |
-| PF-40 | Pack a parked warp's rows: keep sharing, elide zero rows | OOE, RCU, PCA | adopted for the first build (TI-25, final at OA's rev 164) |
+| PF-40 | Pack a parked warp's rows: keep sharing, elide zero rows | OOE, RCU, PCA | deferred (TI-25, closed at OA's rev 165) |
 
 ## Entries
 
@@ -757,10 +757,6 @@ it.
   warp whose narrow registers had been packed.
 - **Cost:** 84 more bits a warp context in OOE (about 2.7 Kb), and
   restore-allocate taking a variable count from the slot's reservation.
-- **Status (2026-10-22):** adopted for the first build (TI-25, final at
-  OA's rev 164): OOE keeps the 148-bit entry per warp context, a 32 x 148
-  table whose storage form is DA's. The "Now" form above was the
-  alternative it replaced.
 - **Signal:** the migration cycles in the swap sweep under the replay drain
   (AR's response TI-21, OA's rev 160), and the PRF rows a restored warp holds
   when rename stalls on an empty free list. Revisit if migration is material
