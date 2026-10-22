@@ -2647,7 +2647,12 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.send_imm = true;
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
     // (the lane ORs its index in), %ctaid for selector 1.
-    is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5 : u.shape.srd == 1 ? s.ctaid : u.imm;
+    // %lanectx (O-64): the hardware warp context, the core's index above it
+    // (CCV_P_CORE_ID, 0 on a one-core build); the lane ORs its index.
+    is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5
+           : u.shape.srd == 1 ? s.ctaid
+           : u.shape.srd == 2 ? ((ccv::prov::kCoreId << ccv::kWWarpId) | s.warp) << 5
+                              : u.imm;
     // Predicate logic's two sources, renamed: each physical predicate with
     // its negate above it, where DEC's qualifiers were (TI-1).
     if (u.shape.pred_logic) {

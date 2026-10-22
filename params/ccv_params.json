@@ -1112,9 +1112,25 @@
       "name": "CCV_P_W_IMM",
       "value": 32,
       "status": "provisional",
-      "require": "CCV_P_W_IMM >= 2 * (CCV_P_W_PHYS_PRED + 1)",
-      "doc": "Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that.",
+      "require": "CCV_P_W_IMM >= max(2 * (CCV_P_W_PHYS_PRED + 1), CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5)",
+      "doc": "Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that. It must also hold srd #2's %lanectx above the lane, CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5 bits (O-64; OA's response TI-33).",
       "decided_at": "DEC per-block session"
+    },
+    {
+      "name": "CCV_P_W_DEV_CORE",
+      "value": 2,
+      "status": "provisional",
+      "require": "CCV_P_W_DEV_CORE >= CCV_W_CORE_ID",
+      "doc": "Bits of the core's device-wide index in srd #2's %lanectx (ISA v1.9 O-64): ((core << CCV_W_WARP_ID) | hardware warp context) << 5 | lane, unique across the device, not only the core (IS's response TI-33). At least CCV_W_CORE_ID, one MLC's cores, which is the whole device today. OOE substitutes everything above the lane into the immediate, so the immediate must hold it (OA's response TI-33).",
+      "decided_at": "TI (OA's and IS's responses TI-33)"
+    },
+    {
+      "name": "CCV_P_CORE_ID",
+      "value": 0,
+      "status": "provisional",
+      "require": "CCV_P_CORE_ID < 2 ** CCV_P_W_DEV_CORE",
+      "doc": "This core's index on the device, a per-instance strap OOE composes into srd #2's %lanectx (O-64). The top ties it off; 0 on a one-core build.",
+      "decided_at": "TI (OA's response TI-33)"
     },
     {
       "name": "CCV_P_TIMEOUT_N",

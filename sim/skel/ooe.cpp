@@ -341,7 +341,8 @@ private:
     // (the lane ORs its index in), %ctaid itself for selector 1.
     uint32_t imm = e.imm;
     if (e.op->srd_sel >= 0)
-      imm = e.op->or_lane ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
+      imm = e.op->srd_sel == 2 ? e.warp << 5   // %lanectx: the context, core 0 (O-64)
+            : e.op->or_lane    ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
     // Predicate logic's sources go to RCU as physical predicates (TI-1):
     // this stub renames no predicate, so each is its window.
     if (e.op->cls == kPredLogic) {

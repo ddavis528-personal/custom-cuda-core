@@ -78,6 +78,8 @@
 #     MIU's table, filled on first use (TI-31)   address is in window 0
 #   a memop's base is per lane (TI-32)        scalar-base (slotform): lanes
 #                                                1-31 store into lane 0's window
+#   srd #2, %lanectx, is the warp's context   lanectx-literal (lanectx): no
+#     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
 #     CTA slot, from RAU's alloc (TI-34)         name slot 0, and MIU refuses
 #   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
@@ -386,7 +388,7 @@ fi
 # range check, a separate obligation from the reserved-field zero checks,
 # must name it, and the instruction must not retire.
 run srd-selector
-if grep -q "^CHECK dec: seq 2 srd selector 2 is unallocated" "$B/kernel_srd-selector.log" &&
+if grep -q "^CHECK dec: seq 2 srd selector 3 is unallocated" "$B/kernel_srd-selector.log" &&
    [ "$(field "$B/kernel_srd-selector.log" retired)" != 17 ]; then
   say "--break srd-selector: DEC's range check" "PASS"
 else
@@ -645,6 +647,7 @@ rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
 rokill ro_fault=1 fault=1 kill=1
 slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
+lanectx redirect=0 split=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -765,6 +768,18 @@ if grep -q "^CHECK miu: seq 7 lane 1 address 5ffffc, oracle 60fffc" "$B/kernel_s
   say "--break scalar-base: lanes 1-31 in lane 0's window" "PASS (slotform: 32 words)"
 else
   bad "--break scalar-base" "a per-lane base went unchecked: $(grep '^KERNEL' "$B/kernel_scalar-base.log")"
+fi
+# srd #2 (O-64): %lanectx is (hardware warp context << 5) | lane. OOE
+# substitutes the context, the lane ORs its index; lanectx's warp 1 reads
+# 32-63. With srd #2's imm_kind sent as a literal, OOE substitutes nothing,
+# and 48 of the 64 lanes refuse the value (the 16 whose index already holds
+# bit 1 of the literal 2 compute it by chance in warp 0).
+"$SKEL" --kernel build/oracle/lanectx/oracle.jsonl --break lanectx-literal >"$B/kernel_lanectx-literal.log" 2>&1
+if grep -q "^CHECK lane 0: seq 0 srd 2, oracle 32" "$B/kernel_lanectx-literal.log" &&
+   [ "$(grep -c "^CHECK lane [0-9]*: seq 0 srd " "$B/kernel_lanectx-literal.log")" = 48 ]; then
+  say "--break lanectx-literal: no context substituted" "PASS (lanectx: 48 lanes refuse)"
+else
+  bad "--break lanectx-literal" "srd #2's substitution went unchecked: $(grep '^KERNEL' "$B/kernel_lanectx-literal.log")"
 fi
 # Each memop names its warp's CTA slot (TI-34): RAU sends it on the alloc,
 # and OOE holds it per tier-1 slot and stamps it. Every memop zeroed, as

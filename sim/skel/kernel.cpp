@@ -2517,11 +2517,11 @@ private:
     const OpInfo *op = opByName(r->op);
     // DEC's second illegal-instruction obligation, separate from the
     // reserved-field zero checks: srd's selector is a legal field that may
-    // hold an unallocated value, so this is a range comparison. Allocating
-    // selector 2 later is one line here.
+    // hold an unallocated value, so this is a range comparison. Selector 2,
+    // %lanectx, is allocated (O-64); 3-15 are not.
     if (op && op->srd_sel >= 0) {
       const int64_t sel = (r->imms.empty() ? 0 : r->imms[0]) +
-                          (k_.brk == "srd-selector" ? 2 : 0);
+                          (k_.brk == "srd-selector" ? 3 : 0);
       op = srdBySel(sel);
       if (!op) {
         k_.fail("dec: seq %llu srd selector %lld is unallocated (a legal field, "
@@ -2581,7 +2581,10 @@ private:
     if (k_.brk == "drop-src-valid" && op->nsrc == 2 && op->cls == kAlu) sv &= ~2u;
     put(u, c.dec_ooe, "src_valid", sv);
     put(u, c.dec_ooe, "pred_use", predUseOf(op));
-    put(u, c.dec_ooe, "imm_kind", immKindOf(op));
+    // lanectx-literal: srd #2's imm_kind sent as a literal, so OOE substitutes
+    // no context, and the lanes refuse the value.
+    put(u, c.dec_ooe, "imm_kind",
+        k_.brk == "lanectx-literal" && immKindOf(op) == kImmLaneCtx ? kImmLiteral : immKindOf(op));
     // fmt_rsv and fmt_opnd stay 0: no op in the skeleton's table has an FP
     // format field, so none can raise F-FORMAT (OI-57).
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to

@@ -210,7 +210,7 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
 }
 // The three fields DEC adds so OOE never decodes opcode (A-75, TI-1).
 enum : unsigned { kPredUseNone = 0, kPredUseGuard = 1, kPredUseData = 2 };
-enum : unsigned { kImmLiteral = 0, kImmPredSrcs = 1, kImmWarpBase = 2, kImmCtaid = 3 };
+enum : unsigned { kImmLiteral = 0, kImmPredSrcs = 1, kImmWarpBase = 2, kImmCtaid = 3, kImmLaneCtx = 4 };
 /// Bit i: source i is a real read (src_arch's two fields, then src2_arch).
 inline unsigned srcValidOf(const OpInfo *op) { return (1u << op->nsrc) - 1u; }
 inline unsigned predUseOf(const OpInfo *op) {
@@ -219,7 +219,8 @@ inline unsigned predUseOf(const OpInfo *op) {
 inline unsigned immKindOf(const OpInfo *op) {
   return op->cls == kPredLogic ? kImmPredSrcs
          : op->srd_sel == 0     ? kImmWarpBase
-         : op->srd_sel == 1     ? kImmCtaid : kImmLiteral;
+         : op->srd_sel == 1     ? kImmCtaid
+         : op->srd_sel == 2     ? kImmLaneCtx : kImmLiteral;
 }
 inline bool attrMem(uint32_t a) { return (a >> 12) & 1u; }
 inline unsigned attrMemKind(uint32_t a) { return (a >> 6) & 3u; }
@@ -254,6 +255,9 @@ inline constexpr OpInfo kOps[] = {
   {"SEL",           kAlu,       2, true,  true,  false, false, true,  -1, -1, -1, -1, -1, -1, -1},
   // srd #1 (%ctaid): the immediate is the value; the lane passes it through.
   {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 1, false},
+  // srd #2 (%lanectx, O-64): the immediate is the hardware warp context
+  // << 5, the core's index above it; the lane ORs its index, as for #0.
+  {"SRD",           kAlu,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0, 2, true},
   // A guarded load (Format Dp): MIU writes the active lanes, and the inactive
   // ones keep their old value through a copy-only op (A-33, A-38).
   {"LD_GLOBAL_P",   kLoad,      1, true,  true,  false, true,  false,  0, -1, -1,  0, -1, -1, -1},
@@ -314,7 +318,7 @@ inline const OpInfo *opByName(const std::string &n) {
   for (const OpInfo &o : kOps) if (n == o.name) return &o;
   return nullptr;
 }
-/// srd's opcode for a selector, or null: 2-15 are unallocated.
+/// srd's opcode for a selector, or null: 3-15 are unallocated.
 inline const OpInfo *srdBySel(int64_t sel) {
   for (const OpInfo &o : kOps) if (o.srd_sel >= 0 && o.srd_sel == sel) return &o;
   return nullptr;

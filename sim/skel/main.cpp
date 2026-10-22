@@ -219,7 +219,7 @@ int main(int argc, char **argv) {
                       brk == "fair-late" || brk == "split-swap" ||
                       brk == "no-st-wait" || brk == "early-mark" || brk == "beats-dead" ||
                       brk == "no-ro" || brk == "no-window-fill" || brk == "window-from-base" ||
-                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "whole-cta-mask" ||
+                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "whole-cta-mask" ||
                       brk == "no-kill" || brk == "withheld-ack" || brk == "stale-ack" ||
                       brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
