@@ -353,12 +353,17 @@ module ooe_rendep #(
   // either source reaches takes the larger by that alone. ooe_prodmap's and
   // G-2's entries share the code register's view: G-2's entries take their
   // port's codes, the rest the register's.
+  // An entry is granted to one port at most, so G-2's codes reach it
+  // through a one-hot select, not an override in port order.
   logic [N*CVW-1:0] jcv;                // each entry's codes as this lookup sees them
+  logic [N*CVW-1:0] g2cv_e;             // G-2's codes, by the entry the grant gives
   always_comb begin
-    jcv = ecv_cq02h;
+    g2cv_e = '0;
     for (int r = 0; r < P; r++)
       for (int j = 0; j < N; j++)
-        if (g2e[r * N + j]) jcv[j * CVW +: CVW] = g2cv_cq03h[r * CVW +: CVW];
+        if (g2e[r * N + j]) g2cv_e[j * CVW +: CVW] = g2cv_e[j * CVW +: CVW] | g2cv_cq03h[r * CVW +: CVW];
+    for (int j = 0; j < N; j++)
+      jcv[j * CVW +: CVW] = g2any[j] ? g2cv_e[j * CVW +: CVW] : ecv_cq02h[j * CVW +: CVW];
   end
   logic [C*N*2-1:0] xrc;
   logic [C*P*2-1:0] x1c;
@@ -366,9 +371,9 @@ module ooe_rendep #(
   always_comb
     for (int c = 0; c < C; c++) begin
       for (int j = 0; j < N; j++)
-        xrc[(c * N + j) * 2 +: 2] = xrp[c * N + j] ? LATE : code_for(jcv[j * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]);
+        xrc[(c * N + j) * 2 +: 2] = code_for(jcv[j * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]) | {2{xrp[c * N + j]}};
       for (int r = 0; r < P; r++)
-        x1c[(c * P + r) * 2 +: 2] = x1p[c * P + r] ? LATE : code_for(g1cv_cq02h[r * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]);
+        x1c[(c * P + r) * 2 +: 2] = code_for(g1cv_cq02h[r * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]) | {2{x1p[c * P + r]}};
       for (int d = 0; d < C; d++)
         xgc[(c * C + d) * 2 +: 2] = xgp[c * C + d] || d % 2 == 1 ? LATE
                                     : code_for(pcv_c[(d / 2) * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]);
@@ -396,9 +401,9 @@ module ooe_rendep #(
                 gc[(p * P + q) * 2 +: 2] = gc[(p * P + q) * 2 +: 2] | xgc[(c * C + d) * 2 +: 2];
               end
         end
-    // A code leaves only beside its bit.
-    for (int i = 0; i < P * N; i++) if (!rd[i]) rc[i * 2 +: 2] = '0;
-    for (int i = 0; i < P * P; i++) if (!vd[i]) vc[i * 2 +: 2] = '0;
+    // A code is payload, read only through its bit (ooe_rs's code register
+    // keeps none without one), so it leaves unmasked: the hits stay off the
+    // codes' paths.
   end
 
   // -- Rename's stage register, and G-1's ports ----------------------------------------
@@ -440,12 +445,7 @@ module ooe_rendep #(
   // Written with ooe_prodmap's names: G-2's ports' codes into the entries
   // the grant gives them, when G-2 holds a group (the module's own flop).
   logic [N*CVW-1:0] ecv_nx;
-  always_comb begin
-    ecv_nx = ecv_cq02h;
-    for (int r = 0; r < P; r++)
-      for (int j = 0; j < N; j++)
-        if (g2e[r * N + j]) ecv_nx[j * CVW +: CVW] = g2cv_cq03h[r * CVW +: CVW];
-  end
+  assign ecv_nx = jcv;
   always_ff @(posedge ooe_core_clk) begin
     if (g2_v_cq03h) ecv_cq02h <= ecv_nx;
   end
