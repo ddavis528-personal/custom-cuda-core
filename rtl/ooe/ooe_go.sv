@@ -262,29 +262,53 @@ module ooe_go #(
     share_of = (fst != 0 ? p - (n - 1) * (p / n) : p / n) + u;
   endfunction
   // Each warp's share, a thermometer to R (sg[s][c][v - 1], v 1 to R): which
-  // pools give it v or more is formed from the warps and floors alone, and
-  // the pool, one-hot, picks; none without a head or under a restore.
-  logic [S*4*R-1:0] sg;
-  logic [LU-1:0]    u;
-  logic [R:0]       ue;                  // u, one-hot to R (R: R or more)
-  logic [PM:0]      at;                  // the pools that give v or more
+  // pools give it v or more is formed from the warps and floors alone (the
+  // table's terms chosen at elaboration), and the pool, one-hot, picks;
+  // none without a head or under a restore.
+  logic [S*4*(R+1)-1:0]      ue;         // each slot's floor per credit, one-hot to R (R: R or more)
+  logic [LU-1:0]             u;
   always_comb
     for (int s = 0; s < S; s++)
       for (int c = 0; c < 4; c++) begin
         u = c == 2 ? unmet_g_cq01h[s * LU +: LU] : c == 3 ? unmet_p_cq01h[s * LU +: LU] : '0;
-        for (int w = 0; w < R + 1; w++) ue[w] = w == R ? u >= LU'(R) : u == LU'(w);
-        for (int v = 1; v < R + 1; v++) begin
-          for (int p = 0; p < PM + 1; p++) begin
-            at[p] = 1'b0;
-            for (int n = 1; n < S + 1; n++)
-              for (int f = 0; f < 2; f++)
-                for (int w = 0; w < R + 1; w++)
-                  if (share_of(p, n, f, w) >= v)
-                    at[p] = at[p] | (nwh[n] & ((f != 0) == first_w[s]) & ue[w]);
-          end
-          sg[(s * 4 + c) * R + v - 1] = |(at & pe[c * (PM + 1) +: PM + 1]) & with_w[s] & ~rbusy_cq01h;
-        end
+        for (int w = 0; w < R + 1; w++) ue[(s * 4 + c) * (R + 1) + w] = w == R ? u >= LU'(R) : u == LU'(w);
       end
+  // The table, at elaboration: for each case t (n warps, the first or not,
+  // floor w) and each v, the pools that give a share of v or more.
+  localparam int NT = S * 2 * (R + 1);
+  function automatic logic [NT*R*(PM+1)-1:0] table_of();
+    table_of = '0;
+    for (int n = 1; n < S + 1; n++)
+      for (int f = 0; f < 2; f++)
+        for (int w = 0; w < R + 1; w++)
+          for (int v = 1; v < R + 1; v++)
+            for (int p = 0; p < PM + 1; p++)
+              if (share_of(p, n, f, w) >= v)
+                table_of[((((n - 1) * 2 + f) * (R + 1) + w) * R + v - 1) * (PM + 1) + p] = 1'b1;
+  endfunction
+  localparam logic [NT*R*(PM+1)-1:0] TBL = table_of();
+  logic [S*4*R*(PM+1)-1:0] at;           // per slot, credit and v, the pools that give v or more
+  logic                    ts;
+  always_comb
+    for (int s = 0; s < S; s++)
+      for (int c = 0; c < 4; c++) begin
+        for (int v = 1; v < R + 1; v++) at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] = '0;
+        for (int n = 1; n < S + 1; n++)
+          for (int f = 0; f < 2; f++)
+            for (int w = 0; w < R + 1; w++) begin
+              ts = nwh[n] & (first_w[s] == (f != 0)) & ue[(s * 4 + c) * (R + 1) + w];
+              for (int v = 1; v < R + 1; v++)
+                at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] = at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] |
+                    ({(PM + 1){ts}} & TBL[((((n - 1) * 2 + f) * (R + 1) + w) * R + v - 1) * (PM + 1) +: PM + 1]);
+            end
+      end
+  logic [S*4*R-1:0] sg;
+  always_comb
+    for (int s = 0; s < S; s++)
+      for (int c = 0; c < 4; c++)
+        for (int v = 1; v < R + 1; v++)
+          sg[(s * 4 + c) * R + v - 1] = |(at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] & pe[c * (PM + 1) +: PM + 1]) &
+                                        with_w[s] & ~rbusy_cq01h;
   // The allowances to hold next cycle: min(R, the shares' sum). The shares
   // split the pool whole among the warps with a head, so the sum is the pool
   // (the names' plus those warps' unmet floors); none under a restore.
@@ -316,7 +340,7 @@ module ooe_go #(
   logic [LB+LT:0]       room;
   logic [2*R:0]         rm;              // room >= n
   logic                 ok, ser;
-  logic [3:0]           nd [4];          // each credit's need over the run
+  logic [4*4-1:0]       nd;              // each credit's need over the run
   logic [PA-1:0]        a;
   always_comb
     for (int s = 0; s < S; s++) begin
@@ -324,20 +348,20 @@ module ooe_go #(
              (reach_cq01h[s] ? (LB + LT + 1)'(ret_cq01h[s * LT +: LT]) : '0);
       for (int n = 0; n < 2 * R + 1; n++) rm[n] = room >= (LB + LT + 1)'(n);
       for (int k = 0; k < R + 1; k++) begin
-        for (int c = 0; c < 4; c++) nd[c] = '0;
+        nd = '0;
         ser = 1'b0;
         for (int m = 1; m < R + 1; m++) begin
           ok = 1'b0;
           if (k + m - 1 < H) begin
             a     = ha_cq01h[(s * H + k + m - 1) * PA +: PA];
-            nd[0] = nd[0] + 4'(a[0]) + 4'(a[2]);
-            nd[1] = nd[1] + 4'(a[1]);
-            nd[2] = nd[2] + 4'(a[3]);
-            nd[3] = nd[3] + 4'(a[4]);
-            ok = hv_cq01h[s * H + k + m - 1] && !ser && rm[k + m] && nd[0] < 4'(R + 1);
+            nd[0 +: 4]  = nd[0 +: 4] + 4'(a[0]) + 4'(a[2]);
+            nd[4 +: 4]  = nd[4 +: 4] + 4'(a[1]);
+            nd[8 +: 4]  = nd[8 +: 4] + 4'(a[3]);
+            nd[12 +: 4] = nd[12 +: 4] + 4'(a[4]);
+            ok = hv_cq01h[s * H + k + m - 1] && !ser && rm[k + m] && nd[0 +: 4] < 4'(R + 1);
             for (int c = 0; c < 4; c++)
               for (int v = 1; v < R + 1; v++)
-                if (nd[c] == 4'(v)) ok = ok && sg[(s * 4 + c) * R + v - 1];
+                if (nd[c * 4 +: 4] == 4'(v)) ok = ok && sg[(s * 4 + c) * R + v - 1];
             ser = ser | a[6];
           end
           fits_nx[(s * (R + 1) + k) * R + m - 1] = ok;
