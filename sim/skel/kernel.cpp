@@ -3154,7 +3154,7 @@ private:
     if (op == kAllocLaunch || op == 2) {
       // Identity from RAU's warp-to-CTA table: each warp warp 0 of its CTA.
       put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
-      put(a, c.rau_ooe, "warp_in_cta", 0);
+      put(a, c.rau_ooe, "warp_in_cta", k_.orcs[w].warp_in_cta);
       put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
     }
     return a;
@@ -3394,10 +3394,12 @@ private:
         put(f, c.rau_fet, "tier1_id", l.slot);
         put(f, c.rau_fet, "cta_slot", l.w);
         put(f, c.rau_fet, "start_pc", o.code_base);
-        // The warp's lanes (AR's response TI-27 (a)): [0, n), n the CTA's
-        // threads past this warp's first, at most 32. One warp a CTA here,
-        // and the thread count is the launch's, which ccv-sim was run with.
-        const unsigned n = o.threads ? std::min(o.threads, kLanes) : kLanes;
+        // The warp's lanes (AR's responses TI-27 (a), rev 134): [0, n), n
+        // the CTA's threads past this warp's first, T - 32 x warp_in_cta, at
+        // most 32. T is the launch's, which ccv-sim was run with.
+        // whole-cta-mask: every warp takes the CTA's first warp's lanes.
+        const unsigned first = k_.brk == "whole-cta-mask" ? 0 : 32 * o.warp_in_cta;
+        const unsigned n = !o.threads ? kLanes : o.threads <= first ? 0 : std::min(o.threads - first, kLanes);
         put(f, c.rau_fet, "live_mask", n == kLanes ? ~0u : (1u << n) - 1);
         // code_bounds: [63:0] base, [103:64] length (placeholder split).
         const FieldDesc &cb = field(c.rau_fet, "code_bounds");

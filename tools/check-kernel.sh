@@ -68,6 +68,8 @@
 #     (IS-17 (b))                                split goes the wrong way
 #   a load waits for an older store of its    no-st-wait (spinwait): lane 0
 #     warp to commit (MIU's disambiguation)      reads the flag still clear
+#   RAU's launch mask is per warp, [0,        whole-cta-mask (divtail2): warp
+#     min(32, T - 32 x warp_in_cta))             1 picks lanes 20-31
 #   a store into .const or the launch window  no-ro (roconst): its 32 stores
 #     faults F-RO, and nothing lands; CRU        land, and the warp never
 #     holds the fault to ccv-sim's (TI-26)       faults
@@ -623,6 +625,7 @@ vaddslow full_line=1
 div    split=32 reconverge=2 groups_peak=2 fair_pick=1
 spinwait fair_pick=4 groups_peak=3 st_ld_wait>0
 divtail split=20 groups_peak=2
+divtail2 split=51 groups_peak=2
 roconst ro_fault=1 fault=1
 rolimit ro_fault=1 fault=1
 rolaunch ro_fault=1 fault=1
@@ -704,6 +707,15 @@ if grep -q "^CHECK ooe: uop for warp 0, which holds no tier-1 slot" "$B/kernel_e
   say "--break early-mark: the warp ends with lanes live" "PASS (div, $(field "$B/kernel_early-mark.log" retired) of 144 retire)"
 else
   bad "--break early-mark" "an early final exit went unnoticed: $(grep '^KERNEL' "$B/kernel_early-mark.log")"
+fi
+# RAU's launch mask is per warp (AR's rev 134): divtail2's warp 1 has lanes
+# 0-19. Given the CTA's first warp's lanes, FET picks lanes 20-31 at its
+# first instruction, which ccv-sim never issued.
+"$SKEL" --kernel build/oracle/divtail2/oracle.jsonl --break whole-cta-mask >"$B/kernel_whole-cta-mask.log" 2>&1
+if grep -q "^CHECK fet: warp 1 picks 1000 for lanes ffffffff; ccv-sim issued 1000 for 000fffff (seq 0)" "$B/kernel_whole-cta-mask.log"; then
+  say "--break whole-cta-mask: warp 1 takes 32 lanes" "PASS (divtail2)"
+else
+  bad "--break whole-cta-mask" "a mask not per warp went unnoticed: $(grep '^KERNEL' "$B/kernel_whole-cta-mask.log")"
 fi
 # F-RO (AR's responses TI-26): MIU refuses a store any byte of which lies in
 # the CTA's .const range or the launch window, and the fault reaches CRU,
@@ -857,8 +869,16 @@ for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   [ -z "$w" ] || bad_k="$bad_k $k($w)"
 done
 n_par=$(cat "$B"/kernel_*_swap.log | sed -n 's/.* parked=\([0-9]*\) .*/\1/p' | awk '{n+=$1} END {print n+0}')
+# order_diff (AR's responses TI-27, rev 134): a restored diverged warp whose
+# own pick departs from ccv-sim's follows ccv-sim's group, a named exception
+# to the swap-boundary rule, so each kernel's count is printed.
+od=""
+for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
+  n=$(cover "$B/kernel_${k}_swap.log" order_diff)
+  [ "${n:-0}" = 0 ] || od="$od $k=$n"
+done
 if [ -z "$bad_k" ]; then
-  say "every kernel with the swap on == ccv-sim" "PASS ($n_par parks, each restored)"
+  say "every kernel with the swap on == ccv-sim" "PASS ($n_par parks, each restored; order_diff:${od:- none})"
 else
   bad "every kernel with the swap on" "${bad_k# }"
 fi

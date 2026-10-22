@@ -79,6 +79,7 @@ struct Record {
 struct Oracle {
   uint64_t code_base = 0;
   unsigned threads = 0, ctaid = 0;
+  unsigned warp_in_cta = 0;   ///< which of its CTA's warps this run is (ccv-sim -warp, TI-29)
   std::vector<uint8_t> code;
   std::vector<std::pair<uint64_t, uint32_t>> init_mem;
   /// F-RO's .const range, [const_base, const_limit); empty when equal (TI-26).

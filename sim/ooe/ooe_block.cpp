@@ -42,10 +42,12 @@ public:
     for (unsigned w = 0; w != k.orcs.size(); ++w) {
       k.ratOf(w);
       k.pratOf(w, core_.config().rename_preds);
-      // The final-exit assertion's lanes: the CTA's threads, as RAU's
-      // launch names them (TI-27 (a)); a check, not OOE's state.
-      const unsigned n = k.orcs[w].threads;
-      if (n && n < 32) core_.expectLanes(w, (1u << n) - 1);
+      // The final-exit assertion's lanes: the CTA's threads past this warp's
+      // first, as RAU's launch names them (TI-27 (a)); a check, not OOE's
+      // state.
+      const unsigned t = k.orcs[w].threads, first = 32 * k.orcs[w].warp_in_cta;
+      const unsigned n = t <= first ? 0 : t - first;
+      if (t && n < 32) core_.expectLanes(w, n ? (1u << n) - 1 : 0);
     }
     // A full decode queue holds DEC's uops in their slots: its backpressure.
     holdsBack(ch().dec_ooe);

@@ -11,7 +11,9 @@
 #
 # kernel.cfg: SOURCE=<path in the compiler snapshot, or core:<path here>>, an
 # optional CTAID=<n> (ccv-sim -ctaid), an optional CTAS=<n>, an optional
-# THREADS=<n> (ccv-sim -threads), an optional CONST=<base>:<limit> (F-RO's
+# THREADS=<n> (ccv-sim -threads), an optional WARPS=<n> (the CTA's first n
+# warps, each its own run with ccv-sim -warp: oracle.<w>.jsonl for warp w of
+# the CTA; TI-29), an optional CONST=<base>:<limit> (F-RO's
 # .const range, ccv-sim -const-range), an optional FAULT=<cause> (the run
 # ends in that fault, ccv-sim's exit 3, its record and state at the fault
 # written; TI-26, TI-28), then one poke per line. ccv-sim runs one
@@ -51,6 +53,7 @@ for k in test/kernels/*/; do
   # THREADS=<n>: a CTA of n threads (ccv-sim -threads), so a warp of fewer
   # than 32 launches with only its low lanes live (TI-27 (a)).
   threads=$(sed -n 's/^THREADS=//p' "$k/kernel.cfg")
+  warps=$(sed -n 's/^WARPS=//p' "$k/kernel.cfg")
   crange=$(sed -n 's/^CONST=//p' "$k/kernel.cfg")
   fault=$(sed -n 's/^FAULT=//p' "$k/kernel.cfg")
   out=$O/$name
@@ -58,10 +61,11 @@ for k in test/kernels/*/; do
   ok=1
   python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
     "$out/kernel.bin" >/dev/null || ok=0
-  for ((w = 0; ok && w < ${ctas:-1}; ++w)); do
+  for ((w = 0; ok && w < ${ctas:-${warps:-1}}; ++w)); do
     o="$out/oracle.jsonl"; [ $w = 0 ] || o="$out/oracle.$w.jsonl"
     cta=()
     [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
+    [ -n "$warps" ] && cta=(-ctaid "${ctaid:-0}" -warp "$w")
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
       ${threads:+-threads "$threads"} ${crange:+-const-range "$crange"} \
       -fairness="$fair" -oracle "$o" >/dev/null

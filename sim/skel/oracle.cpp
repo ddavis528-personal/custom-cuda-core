@@ -190,6 +190,7 @@ std::string Oracle::load(const std::string &path) {
         code_base = i.at("code_base").u();
         threads = unsigned(i.at("threads").u());
         ctaid = unsigned(i.at("ctaid").u());
+        if (i.has("warp_in_cta")) warp_in_cta = unsigned(i.at("warp_in_cta").u());
         code = hexBytes(i.at("code").s());
         init_mem = words(i.at("mem"));
         if (i.has("const")) {

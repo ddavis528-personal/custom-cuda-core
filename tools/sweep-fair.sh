@@ -22,7 +22,7 @@ field() { tr ' ' '\n' <"$1" | sed -n "s/^$2=//p" | head -1; }
 cover() { sed -n 's/^COVER //p' "$1" | tr ' ' '\n' | sed -n "s/^$2=//p"; }
 mkdir -p build/sweep
 rc=0
-declare -A cyc fair
+declare -A cyc fair odiff
 for n in "${ns[@]}"; do
   d=build/sweep/n$n
   CCV_FAIR_N=$n CCV_ORACLE_DIR=$d tools/gen-oracle.sh >"$d.gen.log" 2>&1
@@ -39,6 +39,13 @@ for n in "${ns[@]}"; do
     for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
       [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
     done
+    # The same run with the swap on: a restored diverged warp may depart
+    # from ccv-sim's order there (TI-27 (c)), counted as order_diff.
+    CCV_FAIR_N=$n CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "$d/$k/oracle.jsonl" >"$d/$k.swap.log" 2>&1
+    for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
+      [ "$(field "$d/$k.swap.log" "${kv%%=*}")" = "${kv#*=}" ] || ok=0
+    done
+    odiff[$k,$n]=$(cover "$d/$k.swap.log" order_diff)
     if [ $ok = 1 ]; then
       cyc[$k,$n]=$(field "$log" from_fetch)
       fair[$k,$n]=$(cover "$log" fair_pick)
@@ -66,6 +73,13 @@ done
     done
     echo
   done
+  echo
+  printf 'order_diff with the swap on (CCV_RAU_DEMOTE=mlc), picks a restored warp took from ccv-sim'"'"'s order instead of its own (TI-27 (c)):'
+  any=0
+  for n in "${ns[@]}"; do for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
+    o=${odiff[$k,$n]:-0}; [ "$o" = 0 ] || { printf ' %s at N=%s: %s;' "$k" "$n" "$o"; any=1; }
+  done; done
+  [ $any = 1 ] && echo || echo ' none.'
 } >build/sweep/fair.md
 cat build/sweep/fair.md
 exit $rc
