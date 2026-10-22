@@ -1,0 +1,184 @@
+//===-- go_tb.cpp - ooe_go against the live model -------------------------===//
+//
+// Runs the model's directed and random unit tests (sim/ooe/ooe_test.cpp) and,
+// after every core cycle, drives ooe_go with what the model's go read in it
+// (Core::goLog, under go_static: decq's heads and their decode-time
+// admission bits, rename's credits, floors owed and unmet floors, each
+// slot's ROB run, reach and retirements, its registered hold, a restore
+// owning the ports), then compares the go's takes, per slot and lane by
+// lane, with the model's before the edge registers the next cycle's fits.
+// Cores with other than RD_S tier-1 slots are skipped; the decode queue's
+// per-warp limit is 6 (CCV_P_DECQ_WARP_MAX's value once TI's change is
+// merged: a slot then never holds more heads than the go's window).
+//
+// Negative controls (GO_CONTROL=<name>) perturb the driving and must be
+// caught: no-hold (the holds never reach the go), no-ret (this cycle's
+// retirements never reach the ROB term) and adm-shift (each head carries
+// the next head's admission bits).
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
+// Usage: go_tb [seeds] | go_tb --cg <scenario> <vcd>
+//===----------------------------------------------------------------------===//
+#include "Vooe_go.h"
+#include "verilated.h"
+#include "cg_trace.h"
+#include "ooe_core.h"
+
+#include <algorithm>
+#include <cstdio>
+#include <cstdlib>
+#include <memory>
+#include <string>
+#include <vector>
+
+using ccv::ooe::Config;
+using ccv::ooe::Core;
+
+int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &));
+void goConfig(Config &c) { c.decq_warp_max = 6; }
+
+namespace {
+constexpr unsigned S = GO_S, R = GO_R, PA = 7, LC = 10, LU = 5, LB = 6, LT = 3, H = 2 * R - 1;
+constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
+constexpr unsigned LS = bits(S), LK = bits(R + 1), LH = bits(R);
+
+std::unique_ptr<VerilatedContext> ctx;
+std::unique_ptr<Vooe_go> dut;
+std::string control;
+uint64_t current = 0;
+bool live = false;
+unsigned long long cycles = 0, cores = 0, skipped = 0, takes = 0, restores = 0, mismatches = 0;
+
+template <typename T> void setBit(T &w, unsigned i, bool v) {
+  if constexpr (sizeof(T) <= 8) {
+    if (v) w |= (T(1) << i); else w &= ~(T(1) << i);
+  } else {
+    if (v) w[i / 32] |= (1u << (i % 32)); else w[i / 32] &= ~(1u << (i % 32));
+  }
+}
+template <typename T> bool getBit(const T &w, unsigned i) {
+  if constexpr (sizeof(T) <= 8) return (w >> i) & 1u;
+  else return (w[i / 32] >> (i % 32)) & 1u;
+}
+template <typename T> void setField(T &w, unsigned lo, unsigned n, unsigned v) {
+  for (unsigned i = 0; i != n; ++i) setBit(w, lo + i, (v >> i) & 1u);
+}
+template <typename T> unsigned getField(const T &w, unsigned lo, unsigned n) {
+  unsigned v = 0;
+  for (unsigned i = 0; i != n; ++i) v |= unsigned(getBit(w, lo + i)) << i;
+  return v;
+}
+template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
+unsigned sat(unsigned v, unsigned w) { return std::min(v, (1u << w) - 1); }
+
+CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
+
+void tick() {
+  dut->ooe_core_clk = 0;
+  dut->eval();
+  cg.dump();
+  dut->ooe_core_clk = 1;
+  dut->eval();
+  cg.dump();
+}
+void fail(const char *what, unsigned a, unsigned rtl, unsigned model) {
+  if (++mismatches <= 8)
+    std::fprintf(stderr, "cycle %llu: %s (%u: rtl %u, model %u)\n", cycles, what, a, rtl, model);
+}
+
+void drive(const Core::GoLog *g) {
+  clearAll(dut->hv_cq01h, S * H);
+  clearAll(dut->ha_cq01h, S * H * PA);
+  clearAll(dut->cred_cq01h, 4 * LC);
+  clearAll(dut->owed_cq01h, 2 * LC);
+  clearAll(dut->unmet_g_cq01h, S * LU);
+  clearAll(dut->unmet_p_cq01h, S * LU);
+  clearAll(dut->run_cq01h, S * LB);
+  clearAll(dut->ret_cq01h, S * LT);
+  dut->reach_cq01h = 0;
+  dut->hold_cq01h = (1u << S) - 1;
+  dut->rbusy_cq01h = 0;
+  if (!g) return;
+  dut->rbusy_cq01h = g->restore;
+  for (unsigned r = 0; r != 4; ++r) setField(dut->cred_cq01h, r * LC, LC, sat(g->cred[r], LC));
+  for (unsigned r = 0; r != 2; ++r) setField(dut->owed_cq01h, r * LC, LC, sat(g->owed[r], LC));
+  for (unsigned s = 0; s != S; ++s) {
+    const auto &q = g->adm[s];
+    for (unsigned p = 0; p != H && p < q.size(); ++p) {
+      setBit(dut->hv_cq01h, s * H + p, true);
+      const unsigned a = control == "adm-shift" ? (p + 1 < q.size() ? q[p + 1] : 0) : q[p];
+      setField(dut->ha_cq01h, (s * H + p) * PA, PA, a);
+    }
+    setField(dut->unmet_g_cq01h, s * LU, LU, sat(g->unmet_g[s], LU));
+    setField(dut->unmet_p_cq01h, s * LU, LU, sat(g->unmet_p[s], LU));
+    setField(dut->run_cq01h, s * LB, LB, sat(g->run[s], LB));
+    setBit(dut->reach_cq01h, s, g->reach[s]);
+    setField(dut->ret_cq01h, s * LT, LT, control == "no-ret" ? 0 : sat(g->ret[s], LT));
+    setBit(dut->hold_cq01h, s, g->hold[s] && control != "no-hold");
+  }
+}
+
+void resetRtl() {
+  drive(nullptr);
+  dut->ooe_rst_r00h = 1;
+  tick();
+  tick();
+  dut->ooe_rst_r00h = 0;
+  tick();
+}
+
+void hook(const Core &c) {
+  const Core::GoLog &g = c.goLog();
+  if (c.serial() != current) {
+    current = c.serial();
+    live = g.adm.size() == S;
+    if (live) ++cores;
+    resetRtl();
+  }
+  if (!live || !g.valid || g.adm.size() != S) { ++skipped; return; }
+  ++cycles;
+  restores += g.restore;
+  drive(&g);
+  dut->eval();
+  // This cycle's takes, from last cycle's fits.
+  for (unsigned s = 0; s != S; ++s) {
+    const unsigned t = getField(dut->take_cq01h, s * LK, LK);
+    if (t != g.took[s]) fail("take differs", s, t, g.took[s]);
+    if (t && !getBit(dut->sel_cq01h, s)) fail("a take without its take-enable", s, 0, 1);
+  }
+  for (unsigned l = 0; l != R; ++l) {
+    const bool v = getBit(dut->lane_v_cq01h, l);
+    const bool w = l < g.lanes.size();
+    if (v != w) { fail("lane valid differs", l, v, w); continue; }
+    if (!v) continue;
+    ++takes;
+    const unsigned s = getField(dut->lane_s_cq01h, l * LS, LS), h = getField(dut->lane_h_cq01h, l * LH, LH);
+    if (s != g.lanes[l].first) fail("lane's slot differs", l, s, g.lanes[l].first);
+    if (h != g.lanes[l].second) fail("lane's head differs", l, h, g.lanes[l].second);
+  }
+  tick();
+}
+} // namespace
+
+int main(int argc, char **argv) {
+  const unsigned seeds = argc > 1 && argv[1][0] != '-' ? unsigned(std::atoi(argv[1])) : 25;
+  if (const char *c = std::getenv("GO_CONTROL")) control = c;
+  ctx = std::make_unique<VerilatedContext>();
+  ctx->commandArgs(argc, argv);
+  std::string vcd;
+  if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
+  dut = std::make_unique<Vooe_go>(ctx.get());
+  if (cg.on()) cg.open(*dut, vcd);
+  // The directed tests in the ordinary run; a scenario is the random tests'.
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, goConfig)) + cg.run(seeds, nullptr, hook, goConfig);
+  cg.close();
+  dut->final();
+  std::printf("go_tb control=%s seeds=%u cores=%llu cycles=%llu takes=%llu restore_cycles=%llu skipped=%llu "
+              "mismatches=%llu model_failures=%d\n",
+              control.empty() ? "none" : control.c_str(), seeds, cores, cycles, takes, restores, skipped, mismatches,
+              model_fails);
+  const int rc = mismatches || model_fails ? 1 : 0;
+  dut.reset();
+  ctx.reset();
+  return rc;
+}

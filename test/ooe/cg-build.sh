@@ -74,5 +74,9 @@ case "$unit" in
       "-DRD_N=$n -DRD_NR=$n_rcu -DRD_A=$width -DRD_NG=$ng -DRD_NP=$np" \
       "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/test/ooe/ooe_rendep_tb.sv" \
       "$PWD/test/ooe/rendep_tb.cpp" ;;
+  ooe_go)
+    slots=$(val CCV_TIER1_WARPS)
+    vl ooe_go "-GS=$slots -GR=$width" "-DGO_S=$slots -DGO_R=$width" \
+      "$PWD/rtl/ooe/ooe_go.sv" "$PWD/test/ooe/go_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
