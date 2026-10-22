@@ -365,7 +365,7 @@ fi
 # bit, and a replayed producer is not final until it reissues, so a lost
 # miss shows only where a non-producer would confirm early (3 seeds miss
 # it; a caught control stops at its first difference).
-for c in no-msd drop-squash-free drop-group drop-prv no-stale stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
+for c in no-msd drop-squash-free drop-group drop-prv stale-live stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
   cs=3; [ "$c" = no-msd ] && cs=$seeds
   if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1

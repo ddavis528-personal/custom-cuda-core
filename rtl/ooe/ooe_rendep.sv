@@ -181,43 +181,22 @@ module ooe_rendep #(
   always_comb
     for (int u = 0; u < A; u++) pcv_c[u * CVW +: CVW] = codes_of(unit_cq01h[u * 3 +: 3], pg_cq01h[u * 3 +: 3], nob_cq01h[u]);
   int nr, nm;                           // each class's ports taken so far
-  int pq;                               // a port, while it is placed
   always_comb begin
-    pq = 0;
     nr = 0;
     nm = 0;
-    pv = '0; pgv = '0; ppv = '0; pgn = '0; ppn = '0; pcv = '0; pprod = '0;
     pm = '0; pcp = '0;
     for (int u = 0; u < A; u++)
       if (v_cq01h[u]) begin
         if (mem_cq01h[u]) begin
-          pq  = A + nm;
+          pm[u * 3 +: 3] = 3'(A + nm);
           nm = nm + 1;
         end else begin
-          pq  = nr;
+          pm[u * 3 +: 3] = 3'(nr);
           nr = nr + 1;
-        end
-        pm[u * 3 +: 3] = 3'(pq);
-        if (pq < P) begin
-          pv[pq]               = 1'b1;
-          pgv[pq]              = gwe_cq01h[u];
-          pgn[pq * LG +: LG]   = gname_cq01h[u * LG +: LG];
-          ppv[pq]              = pwe_cq01h[u];
-          ppn[pq * LQ +: LQ]   = pname_cq01h[u * LQ +: LQ];
-          pcv[pq * CVW +: CVW] = codes_of(unit_cq01h[u * 3 +: 3], pg_cq01h[u * 3 +: 3], nob_cq01h[u]);
-          pprod[pq]            = gwe_cq01h[u] || pwe_cq01h[u];
         end
         if (cp_cq01h[u]) begin
-          pq  = nr;
+          pcp[u * 3 +: 3] = 3'(nr);
           nr = nr + 1;
-          pcp[u * 3 +: 3] = 3'(pq);
-          if (pq < P) begin
-            pv[pq]               = 1'b1;
-            pgv[pq]              = gwe_cq01h[u];
-            pgn[pq * LG +: LG]   = gname_cq01h[u * LG +: LG];
-            pcv[pq * CVW +: CVW] = {G{LATE}};    // a copy-only op: no bypass
-            pprod[pq]            = 1'b1;
-          end
         end
       end
   end
@@ -275,37 +254,55 @@ module ooe_rendep #(
           coh[(2 * u + k) * P + q]   = cv[2 * u + k] && 32'(k == 0 ? pm[u * 3 +: 3] : pcp[u * 3 +: 3]) == q;
       end
 
-  // Each GPR source's newest producer, by class: an older uop's main (and
-  // copy), G-1's port, G-2's port, or ooe_prodmap's entry; the same for the
-  // predicate sources (no copy produces one). First, which class holds it.
-  logic [C*NS-1:0] gig, gi1, gi2;       // GPR source (c, s) has an in-group, G-1, G-2 producer
-  logic [C*4-1:0]  pig, pi1, pi2;       // predicate source (c, s)
+  // Each port's producer, through the one-hot select: consumer c's uop
+  // on the port it sits on (a copy produces its GPR alone, with no bypass).
   always_comb begin
-    gig = '0; gi1 = '0; gi2 = '0; pig = '0; pi1 = '0; pi2 = '0;
+    pv = '0; pgv = '0; ppv = '0; pgn = '0; ppn = '0; pcv = '0; pprod = '0;
+    for (int q = 0; q < P; q++)
+      for (int c = 0; c < C; c++)
+        if (coh[c * P + q]) begin
+          pv[q]               = 1'b1;
+          pgv[q]              = pgv[q] | gwe_cq01h[c / 2];
+          pgn[q * LG +: LG]   = pgn[q * LG +: LG] | gname_cq01h[(c / 2) * LG +: LG];
+          if (c % 2 == 0) begin
+            ppv[q]               = ppv[q] | pwe_cq01h[c / 2];
+            ppn[q * LQ +: LQ]    = ppn[q * LQ +: LQ] | pname_cq01h[(c / 2) * LQ +: LQ];
+            pcv[q * CVW +: CVW]  = pcv[q * CVW +: CVW] | pcv_c[(c / 2) * CVW +: CVW];
+            pprod[q]             = pprod[q] | gwe_cq01h[c / 2] | pwe_cq01h[c / 2];
+          end else begin
+            pcv[q * CVW +: CVW]  = pcv[q * CVW +: CVW] | {G{LATE}};
+            pprod[q]             = 1'b1;
+          end
+        end
+  end
+
+  // A source's newest producer is, by class: an older uop of this group
+  // (its main, and its copy), G-1's port, G-2's port, or ooe_prodmap's
+  // entry. Names are unique while allocated, so a hit in an older class
+  // beside a newer one is stale, and only the port classes need the order:
+  // an in-group producer hides G-1's. An entry hit (G-2's or
+  // ooe_prodmap's) beside a newer one names an entry no longer the name's
+  // producer: invalid, freed at this edge, or re-occupied at the last, and
+  // ooe_rs's row mask drops each (its valid bits, its frees, its last
+  // grant; G-2's stale names here). Leaving them unordered keeps the
+  // compares off each other's paths. First, the in-group class.
+  logic [C*NS-1:0] gig;                 // GPR source (c, s) has an in-group producer
+  logic [C*4-1:0]  pig;                 // predicate source (c, s)
+  always_comb begin
+    gig = '0; pig = '0;
     for (int c = 0; c < C; c++) begin
-      for (int s = 0; s < NS; s++) begin
+      for (int s = 0; s < NS; s++)
         for (int w = 0; w < A; w++)
           if (w < c / 2 && v_cq01h[w] && gwe_cq01h[w] &&
               gname_cq01h[w * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG]) gig[c * NS + s] = 1'b1;
-        for (int r = 0; r < P; r++)
-          if (g1gv_cq02h[r] && g1gn_cq02h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG]) gi1[c * NS + s] = 1'b1;
-        for (int r = 0; r < P; r++)
-          if (g2gv_cq03h[r] && gnt_v_cq01h[r] && g2gn_cq03h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
-            gi2[c * NS + s] = 1'b1;
-      end
-      for (int s = 0; s < 4; s++) begin
+      for (int s = 0; s < 4; s++)
         for (int w = 0; w < A; w++)
           if (w < c / 2 && v_cq01h[w] && pwe_cq01h[w] &&
               pname_cq01h[w * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ]) pig[c * 4 + s] = 1'b1;
-        for (int r = 0; r < P; r++)
-          if (g1pv_cq02h[r] && g1pn_cq02h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ]) pi1[c * 4 + s] = 1'b1;
-        for (int r = 0; r < P; r++)
-          if (g2pv_cq03h[r] && gnt_v_cq01h[r] && g2pn_cq03h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-            pi2[c * 4 + s] = 1'b1;
-      end
     end
   end
-  // Then the hits, in the newest class alone.
+  // Then the hits: G-1's where no older uop of this group produces it, the
+  // entries' unordered.
   logic [C*N-1:0]   xr, xrp;            // consumer c's ooe_prodmap and G-2 hits: by GPR, by predicate source
   logic [C*P-1:0]   x1, x1p;            // its G-1 hits (port r)
   logic [C*C-1:0]   xg, xgp;            // its in-group hits (consumer d of an older uop)
@@ -324,11 +321,10 @@ module ooe_rendep #(
             if (!gig[c * NS + s] && g1gv_cq02h[r] && g1gn_cq02h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
               x1[c * P + r] = 1'b1;
           for (int r = 0; r < P; r++)
-            if (!gig[c * NS + s] && !gi1[c * NS + s] && g2gv_cq03h[r] &&
-                g2gn_cq03h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
+            if (g2gv_cq03h[r] && g2gn_cq03h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
               xr[c * N +: N] = xr[c * N +: N] | g2e[r * N +: N];
           for (int j = 0; j < N; j++)
-            if (!gig[c * NS + s] && !gi1[c * NS + s] && !gi2[c * NS + s] && eg_cq01h[j] && !g2any[j] &&
+            if (eg_cq01h[j] && !g2any[j] &&
                 egn_cq01h[j * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
               xr[c * N + j] = 1'b1;
         end
@@ -342,11 +338,10 @@ module ooe_rendep #(
             if (!pig[c * 4 + s] && g1pv_cq02h[r] && g1pn_cq02h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
               x1p[c * P + r] = 1'b1;
           for (int r = 0; r < P; r++)
-            if (!pig[c * 4 + s] && !pi1[c * 4 + s] && g2pv_cq03h[r] &&
-                g2pn_cq03h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
+            if (g2pv_cq03h[r] && g2pn_cq03h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
               xrp[c * N +: N] = xrp[c * N +: N] | g2e[r * N +: N];
           for (int j = 0; j < N; j++)
-            if (!pig[c * 4 + s] && !pi1[c * 4 + s] && !pi2[c * 4 + s] && ep_cq01h[j] && !g2any[j] &&
+            if (ep_cq01h[j] && !g2any[j] &&
                 epn_cq01h[j * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
               xrp[c * N + j] = 1'b1;
         end

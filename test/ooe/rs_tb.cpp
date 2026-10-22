@@ -42,6 +42,8 @@
 // written, clear from the edge that frees it unless a row written at that
 // edge names its next occupant. Control stale-hcol keeps the reference's
 // flags through a free, and must be caught: the comparison holds clearing.
+// Control drop-prv loses the group ahead's producers (prv_dep), and
+// stale-live names entries ooe_rs keeps as if stale (below).
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -281,9 +283,11 @@ void hook(const Core &c) {
     // Likewise a stale name: rename's lookup ran on ooe_prodmap's names a
     // stage before, which an entry not valid now, or the group ahead's (its
     // names not yet rewritten), may still hold. ooe_rs masks all three; the
-    // bench names every one of them in every row.
+    // bench names every one of them in every row. Control stale-live names
+    // every other entry too, which ooe_rs keeps, and must be caught: the
+    // stale bits reach the comparison, so only the mask drops them.
     for (unsigned j = 0; j != N; ++j)
-      if ((y.rfree[j] || !pm.valid[j] || port_prev[j] >= 0) && !y.dep[e * N + j] && control != "no-stale") {
+      if ((y.rfree[j] || !pm.valid[j] || port_prev[j] >= 0 || control == "stale-live") && !y.dep[e * N + j]) {
         setBit(dut->row_dep_cq01h, p * N + j, true);
         ++stale;
       }
