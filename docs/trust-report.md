@@ -65,7 +65,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **15 of 51 channels** carry at least one
+appear above. **15 of 52 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |

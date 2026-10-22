@@ -702,12 +702,12 @@
     },
     {
       "name": "CCV_P_DECQ_WARP_MAX",
-      "value": 13,
+      "value": 6,
       "status": "tunable",
       "decided_at": "Stage 4b sweep (register OA-7)",
-      "source": "OOE model session, register OI-6 (2026-10-07)",
+      "source": "OA's response TI-21 (2026-10-22), from OI's stall_hole measurement; first build OI-6",
       "require": "CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ",
-      "doc": "Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit; the sweep sets it. Replaces the OOE model's decq_warp_max knob."
+      "doc": "Decode-queue entries one warp may hold at once. Six (OA-7's sweep row): with no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six lets the swap arm pass and makes the even-stall sweep 12.5% faster. OA takes 4 if the S1 kernels do not lose at 4 (OI to measure)."
     },
     {
       "name": "CCV_P_REN_SLACK",

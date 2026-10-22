@@ -814,7 +814,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_rau_drained, source end
   if (RPT_OOE_RAU_DRAINED > 0) begin : g_rpt_ooe_rau_drained
-    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_DRAINED), .SLOTS(1), .PAYLOAD_W(70)) u_rpt_ooe_rau_drained (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_DRAINED), .SLOTS(1), .PAYLOAD_W(71)) u_rpt_ooe_rau_drained (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_rau_drained_valid}), .src_payload({b_ooe_rau_drained_payload}),
       .src_wake(b_ooe_rau_drained_wake), .src_credit({b_ooe_rau_drained_credit}), .src_stall({b_ooe_rau_drained_stall}),

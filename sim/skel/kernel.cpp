@@ -656,12 +656,14 @@ public:
   const char *kind() const override { return "miu"; }
 
 private:
-  struct Memop { unsigned slot; Bits msg; uint64_t at; };
+  /// discarded: a bulk discard covered it before its address came, so the
+  /// address ends it with a replay completion (TI-21).
+  struct Memop { unsigned slot; Bits msg; uint64_t at; uint64_t tid; bool discarded = false; };
   struct Addr { unsigned slot; Bits msg; uint64_t tid; };
   struct LineReq { uint64_t line; Line data{}; std::array<bool, kLine> mask{}; uint16_t sub; };
   struct Job {
     bool store = false;
-    unsigned tag = 0, memop_slot = 0, addr_slot = 0;
+    unsigned tag = 0, memop_slot = 0, addr_slot = 0, warp = 0;
     unsigned phys_dst = 0, phys_pred = 0;   ///< echoed on miu_rcu_data
     unsigned rs_idx = 0;                    ///< echoed on miu_ooe_cmpl (OA-23)
     unsigned dst_pos = 0, chw = 0;          ///< likewise: the slice a load writes
@@ -705,6 +707,12 @@ private:
   struct Hint { uint64_t at; Q q; };
   std::deque<Hint> hints_;
   std::map<std::pair<unsigned, unsigned>, unsigned> resv_;
+  /// The replay drain (TI-21): requests a bulk discard abandoned at DCU, by
+  /// req_id, and each warp's count of them. Their responses are dropped,
+  /// and a warp is reported ready to RAU when its count returns to zero.
+  std::map<unsigned, unsigned> orphan_;
+  std::map<unsigned, unsigned> orphans_;
+  std::deque<Q> to_rau_;
   /// A slot an ordinary message may use: a credit, and one more than the
   /// hinted completions hold back.
   bool free(unsigned chan, unsigned slot) {
@@ -786,13 +794,26 @@ private:
         const unsigned ord = unsigned(get(m.payload, c.ooe_miu, "ordering"));
         if (ord != 0 && get(m.payload, c.ooe_miu, "mem_op") != kMemFence)
           k_.fail("miu: rob tag %u has ordering %u but is not a fence", tag, ord);
-        memop_[tag] = {s, m.payload, now_};
+        if (get(m.payload, c.ooe_miu, "mem_op") == kMemBulkDiscard) {
+          discard(m.payload);
+          continue;
+        }
+        if (uidClass(m.tid) != IdClass::kInstr)
+          k_.fail("miu: rob tag %u is a memop with id class %u; only a discard may carry none",
+                  tag, unsigned(uidClass(m.tid)));
+        memop_[tag] = {s, m.payload, now_, m.tid};
         order_.push_back(tag);
       }
     for (unsigned s = 0; s != kChans[c.rcu_miu].rate; ++s)
       while (has(c.rcu_miu, s)) {
         Receiver::Msg m = take(c.rcu_miu, s);
-        addr_[unsigned(get(m.payload, c.rcu_miu, "rob_tag"))] = {s, m.payload, m.tid};
+        const unsigned tag = unsigned(get(m.payload, c.rcu_miu, "rob_tag"));
+        auto mo = memop_.find(tag);
+        if (mo != memop_.end() && mo->second.discarded) {
+          replay(tag, mo->second);   // a discarded memop's address: it ends here
+          continue;
+        }
+        addr_[tag] = {s, m.payload, m.tid};
       }
     for (unsigned s = 0; s != kChans[c.ooe_ret].rate; ++s)
       while (has(c.ooe_ret, s)) {
@@ -815,6 +836,15 @@ private:
         // Matched by req_id, not by slot or arrival order: DCU may answer
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        auto orph = orphan_.find(id);
+        if (orph != orphan_.end()) {
+          // An orphan's response: dropped, no data, no completion (TI-21).
+          const unsigned w = orph->second;
+          orphan_.erase(orph);
+          ids_.release(id);
+          if (--orphans_[w] == 0 && k_.brk != "early-ready") ready(w);
+          continue;
+        }
         auto o = outstanding_.find(id);
         if (o == outstanding_.end()) {
           k_.fail("miu: a DCU response for req_id %u, which is not outstanding", id);
@@ -870,6 +900,92 @@ private:
     drain(to_rcu_, c.miu_rcu);
     drain(to_ooe_, c.miu_ooe);
     drain(to_dcu_, c.miu_dcu);
+    drain(to_rau_, c.miu_ready);
+  }
+
+  /// Whether rob_tag lies in a bulk discard's circular range (branch, tail]
+  /// of the same ROB. branch == tail is the whole ROB: a squash to
+  /// retirement of a full ROB, since a discard is never sent for an empty
+  /// range.
+  static bool inRange(unsigned tag, unsigned branch, unsigned tail) {
+    const unsigned w = ccv::prov::kWRobIdx, d = 1u << w, mask = d - 1;
+    if (tag >> w != branch >> w) return false;
+    const unsigned b = branch & mask;
+    const unsigned len = (tail - b) & mask;
+    return ((tag & mask) - b - 1 & mask) < (len ? len : d);
+  }
+
+  /// A bulk discard (A-41; TI-21): the warp's stores in its range are
+  /// dropped, and every memop in it that has not completed is completed now
+  /// with status replay: one not started yet, or a load in flight, whose
+  /// requests to DCU become orphans. A load whose completion is promised by
+  /// a hint, or already on its way, completes as it would have: one
+  /// completion either way.
+  void discard(const Bits &m) {
+    const Ch &c = ch();
+    const unsigned w = unsigned(get(m, c.ooe_miu, "warp_id"));
+    const unsigned branch = unsigned(get(m, c.ooe_miu, "rob_tag"));
+    const unsigned tail =
+        (branch & ~((1u << ccv::prov::kWRobIdx) - 1)) |
+        unsigned(m.get(field(c.ooe_miu, "disp").lsb, ccv::prov::kWRobIdx));
+    k_.hit("bulk_discard");
+    for (auto it = stores_.begin(); it != stores_.end();)
+      if (it->second.warp == w && inRange(it->first, branch, tail)) it = stores_.erase(it);
+      else ++it;
+    std::vector<unsigned> now;
+    for (unsigned tag : order_) {
+      Memop &mo = memop_[tag];
+      if (unsigned(get(mo.msg, c.ooe_miu, "warp_id")) != w || !inRange(tag, branch, tail)) continue;
+      if (addr_.erase(tag)) now.push_back(tag);
+      else mo.discarded = true;   // ended by its address, which is on its way
+    }
+    for (unsigned tag : now) replay(tag, memop_[tag]);
+    for (auto it = jobs_.begin(); it != jobs_.end();) {
+      Job &j = *it;
+      if (j.store || j.warp != w || j.promised || !inRange(j.tag, branch, tail)) { ++it; continue; }
+      for (auto o = outstanding_.begin(); o != outstanding_.end();)
+        if (o->second.first == j.serial) {
+          orphan_[o->first] = w;
+          ++orphans_[w];
+          k_.hit("orphan");
+          o = outstanding_.erase(o);
+        } else {
+          ++o;
+        }
+      if (k_.brk != "drop-replay") to_ooe_.push_back({j.memop_slot, replayMsg(j.tag, j.rs_idx), j.tid});
+      if (k_.brk == "replay-twice") to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
+      k_.hit("replay");
+      it = jobs_.erase(it);
+    }
+    // early-ready: reported at the discard, not when its orphans are home.
+    if (!orphans_[w] || k_.brk == "early-ready") ready(w);
+  }
+
+  /// A memop not started, ended by a discard: its replay completion.
+  void replay(unsigned tag, const Memop &mo) {
+    const Ch &c = ch();
+    if (k_.brk != "drop-replay")
+      to_ooe_.push_back(
+          {mo.slot, replayMsg(tag, unsigned(get(mo.msg, c.ooe_miu, "rs_idx"))), mo.tid});
+    k_.hit("replay");
+    order_.erase(std::find(order_.begin(), order_.end(), tag));
+    memop_.erase(tag);
+  }
+
+  Bits replayMsg(unsigned tag, unsigned rs_idx) {
+    const Ch &c = ch();
+    Bits m = msgOf(c.miu_ooe);
+    put(m, c.miu_ooe, "rob_tag", tag);
+    put(m, c.miu_ooe, "rs_idx", rs_idx);
+    put(m, c.miu_ooe, "status", kStatusReplay);
+    return m;
+  }
+
+  void ready(unsigned w) {
+    if (k_.brk == "no-ready") return;
+    Bits r = msgOf(ch().miu_ready);
+    put(r, ch().miu_ready, "warp_id", w);
+    to_rau_.push_back({0, r, makeUid(IdClass::kNone, 0)});
   }
 
   /// Committed stores first (they are older than anything still issuing),
@@ -891,6 +1007,7 @@ private:
     j.tag = tag;
     j.store = get(mo.msg, c.ooe_miu, "mem_op") == kMemStore;
     j.memop_slot = mo.slot;
+    j.warp = unsigned(get(mo.msg, c.ooe_miu, "warp_id"));
     j.phys_dst = unsigned(get(mo.msg, c.ooe_miu, "phys_dst"));
     j.phys_pred = unsigned(get(mo.msg, c.ooe_miu, "phys_pred"));
     j.rs_idx = unsigned(get(mo.msg, c.ooe_miu, "rs_idx"));
@@ -1141,7 +1258,7 @@ private:
 
   bool busy() const override {
     return !jobs_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
-           !hints_.empty() ||
+           !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();
   }
@@ -2742,6 +2859,8 @@ private:
   /// RAU runs one at a time and declines a report that arrives meanwhile:
   /// a stress knob, for runs that need several warps parked at once.
   const bool concurrent_ = std::string(env("CCV_RAU_CONCURRENT", "0")) == "1";
+  /// CCV_RAU_READY=0 restores a parked warp without MIU's ready report.
+  const bool gate_ready_ = std::string(env("CCV_RAU_READY", "1")) != "0";
 
   std::set<unsigned> free_;                  ///< tier-1 slots
   std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
@@ -2750,6 +2869,8 @@ private:
   std::set<unsigned> restored_;              ///< restored at least once
   std::map<unsigned, unsigned> retired_;     ///< last retired_since_restore reported
   std::set<unsigned> demoting_;              ///< demoted, not yet parked
+  std::set<unsigned> ready_;                 ///< MIU's orphans home since the last demote (TI-21)
+  std::set<unsigned> exited_;                ///< exited while RAU demotes it, awaiting the refusal (TI-25)
   bool restore_busy_ = false;
 
   /// Messages to OOE on ccv_rau_ooe_alloc, in order: a free lands before
@@ -2795,10 +2916,13 @@ private:
       alloc_q_.push_back({allocMsg(w, slot, kAllocLaunch), int(w)});
       launch_q_.push_back({w, slot});
     }
-    if (!free_.empty() && !parked_.empty() && !restore_busy_ && restore_) {
-      const unsigned slot = *free_.begin(), w = parked_.front();
+    // The oldest parked warp MIU has reported ready: its replayed loads hit.
+    auto p = parked_.begin();
+    while (gate_ready_ && p != parked_.end() && !ready_.count(*p)) ++p;
+    if (!free_.empty() && p != parked_.end() && !restore_busy_ && restore_) {
+      const unsigned slot = *free_.begin(), w = *p;
       free_.erase(free_.begin());
-      parked_.pop_front();
+      parked_.erase(p);
       slot_of_[w] = slot;
       restore_busy_ = true;
       alloc_q_.push_back({allocMsg(w, slot, 2), -1});   // restore-allocate (A-64)
@@ -2813,21 +2937,14 @@ private:
     const unsigned w = unsigned(get(m, c.ooe_status, "warp_id"));
     retired_[w] = unsigned(get(m, c.ooe_status, "retired_since_restore"));
     if (get(m, c.ooe_status, "exited")) {
-      // An exit that raced its own demotion is not handled: what a demote
-      // does to a warp whose exit has retired is OA's to say (TI-25).
+      // An exit that raced its own demotion (TI-25): OOE refuses the
+      // demote, and the slot is freed once the refusal is in, so the free
+      // never overtakes the demote at OOE.
       if (demoting_.count(w)) {
-        k_.fail("rau: warp %u exits while RAU demotes it (TI-25)", w);
+        exited_.insert(w);
         return;
       }
-      // The exit's quiesce: free the slot, and with it the CTA's (one warp a
-      // CTA, so every exit is its CTA's last).
-      auto s = slot_of_.find(w);
-      if (s == slot_of_.end()) { k_.fail("rau: warp %u exits, and holds no slot", w); return; }
-      k_.snapshotFinal(w);
-      alloc_q_.push_back({allocMsg(w, s->second, kAllocFree), -1});
-      free_.insert(s->second);
-      slot_of_.erase(s);
-      k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
+      exit(w);
       return;
     }
     const bool want = policy_ == "fallback" ? get(m, c.ooe_status, "stalled") != 0
@@ -2835,6 +2952,18 @@ private:
                                             : false;
     if (want) demote(w);
   }
+  /// The exit's quiesce: free the slot, and with it the CTA's (one warp a
+  /// CTA, so every exit is its CTA's last).
+  void exit(unsigned w) {
+    auto s = slot_of_.find(w);
+    if (s == slot_of_.end()) { k_.fail("rau: warp %u exits, and holds no slot", w); return; }
+    k_.snapshotFinal(w);
+    alloc_q_.push_back({allocMsg(w, s->second, kAllocFree), -1});
+    free_.insert(s->second);
+    slot_of_.erase(s);
+    k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
+  }
+
   void demote(unsigned w) {
     const Ch &c = ch();
     if ((!concurrent_ && !demoting_.empty()) || demoting_.count(w) || !slot_of_.count(w) || k_.parkedNow(w) ||
@@ -2842,6 +2971,7 @@ private:
         (restored_.count(w) && retired_[w] < P_))
       return;
     demoting_.insert(w);
+    ready_.erase(w);   // the demotion's own discard reports it again
     k_.parked[w] = Kernel::Parked();
     Bits d = msgOf(c.rau_demote);
     put(d, c.rau_demote, "warp_id", w);
@@ -2849,6 +2979,35 @@ private:
     demote_q_.push_back(d);
   }
   std::deque<Bits> demote_q_;
+
+  /// OOE's drained report: a demotion's migration starts, or, refused, ends.
+  void drained(const Bits &m) {
+    const Ch &c = ch();
+    const unsigned w = unsigned(get(m, c.ooe_drained, "warp_id"));
+    if (!demoting_.count(w) || !slot_of_.count(w)) k_.fail("rau: warp %u drained, but RAU never demoted it", w);
+    if (get(m, c.ooe_drained, "refused") && k_.brk != "ignore-refused") {
+      // Refused (TI-25): the exit retired first. No migration; the exit
+      // frees the slot, now if its report is in, else when it comes.
+      demoting_.erase(w);
+      k_.parked.erase(w);
+      k_.hit("refused");
+      if (exited_.erase(w)) exit(w);
+      return;
+    }
+    if (exited_.count(w))
+      k_.fail("rau: warp %u drained after its exit retired, where OOE refuses (TI-25)", w);
+    k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
+    if (places_.empty()) {
+      k_.fail("rau: warp %u drained, and PCA has no free place", w);
+    } else {
+      const unsigned pl = *places_.begin();
+      // pca-place: a place handed out and never taken off the free list,
+      // so the next demotion gets it again and PCA must refuse it.
+      if (k_.brk != "pca-place") places_.erase(places_.begin());
+      place_of_[w] = pl;
+      mig_q_.push_back({w, slot_of_[w], pl, 0, 0});
+    }
+  }
 
   void migration() {
     const Ch &c = ch();
@@ -2858,22 +3017,11 @@ private:
       k_.hit("demote");
       demote_q_.pop_front();
     }
-    if (has(c.ooe_drained, 0)) {
-      const Bits m = take(c.ooe_drained, 0).payload;
-      const unsigned w = unsigned(get(m, c.ooe_drained, "warp_id"));
-      if (!demoting_.count(w) || !slot_of_.count(w)) k_.fail("rau: warp %u drained, but RAU never demoted it", w);
-      k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
-      if (places_.empty()) {
-        k_.fail("rau: warp %u drained, and PCA has no free place", w);
-      } else {
-        const unsigned pl = *places_.begin();
-        // pca-place: a place handed out and never taken off the free list,
-        // so the next demotion gets it again and PCA must refuse it.
-        if (k_.brk != "pca-place") places_.erase(places_.begin());
-        place_of_[w] = pl;
-        mig_q_.push_back({w, slot_of_[w], pl, 0, 0});
-      }
+    if (has(c.miu_ready, 0)) {
+      ready_.insert(unsigned(get(take(c.miu_ready, 0).payload, c.miu_ready, "warp_id")));
+      k_.hit("ready");
     }
+    if (has(c.ooe_drained, 0)) drained(take(c.ooe_drained, 0).payload);
     // The three commands, either way: to FET also the slot (vacated or
     // taken), to PCA the place.
     if (!mig_q_.empty()) {
@@ -2970,7 +3118,8 @@ private:
   }
   bool busy() const override {
     return !waiting_.empty() || !launch_q_.empty() || !alloc_q_.empty() || !mig_q_.empty() ||
-           !demote_q_.empty() || !demoting_.empty() || restore_busy_ || (restore_ && !parked_.empty());
+           !demote_q_.empty() || !demoting_.empty() || restore_busy_ || (restore_ && !parked_.empty()) ||
+           !exited_.empty();
   }
 };
 

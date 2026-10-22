@@ -578,6 +578,7 @@ struct Fault {          ///< ccv_ooe_cru_fault
 struct Drained {        ///< ccv_ooe_rau_drained
   unsigned warp = 0;
   uint64_t resume_pc = 0;
+  bool refused = false;  ///< the warp's exit retired before the demote (TI-25)
 };
 struct RatMap {         ///< ccv_ooe_rcu_map
   unsigned warp = 0, direction = 0;
@@ -1060,7 +1061,9 @@ private:
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
   void resolveBranch(unsigned slot, unsigned idx);
-  void squashAfter(unsigned slot, int keep_idx, bool to_retirement);
+  /// discard_all: send the bulk discard whatever reached MIU (a demotion's,
+  /// TI-21), which MIU's replay drain and ready report key on.
+  void squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool discard_all = false);
   void releaseEntry(unsigned slot, unsigned idx);
   bool outstanding(const RobEntry &r) const;
   bool gprAllowed(unsigned slot, unsigned n) const;

@@ -420,6 +420,15 @@ random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
   demotes or kills the warp would go out with the epoch notice, after FET
   has reset that warp's checkpoints at it (V-46). OOE now drops that
   warp's frees from the cycle's mask, since FET frees them itself.
+- **The replay drain and refusal (TI-21, TI-25; TI's edits, OI-18's
+  pattern).** A demote's squash always sends a bulk discard of the whole ROB
+  (`squashAfter`'s `discard_all`; branch == tail), so MIU ends the warp's
+  loads with replay completions and reports it ready to RAU; drained then
+  waits for no fill. A discard of an empty ROB carries id class none. The
+  discard's trace identity is read before the squash loop releases the head
+  (it read a released entry's 0 before). A demote that lands once the
+  warp's exit has retired is refused: drained with `refused` set, no squash,
+  map or rewind (`demote.refused`).
 - **The PRF's read ports** (DA's response OA-6: 16; no parameter yet).
   Select keeps a cycle's operand reads within the ports a migration leaves:
   a demote's 17 reads hold one port for 17 cycles. The limit never binds

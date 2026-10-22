@@ -64,7 +64,9 @@ struct Ch {
            rau_rcu_mig = chanId("ccv_rau_rcu_mig"), rau_fet_mig = chanId("ccv_rau_fet_mig"),
            rcu_pca = chanId("ccv_rcu_pca_mig"), fet_pca = chanId("ccv_fet_pca_mig"),
            pca_done = chanId("ccv_pca_rau_mig_done"), rau_pca_mig = chanId("ccv_rau_pca_mig"),
-           pca_rcu = chanId("ccv_pca_rcu_mig"), pca_fet = chanId("ccv_pca_fet_mig");
+           pca_rcu = chanId("ccv_pca_rcu_mig"), pca_fet = chanId("ccv_pca_fet_mig"),
+           // The replay drain (TI-21): a demoted warp's orphans are home.
+           miu_ready = chanId("ccv_miu_rau_ready");
 };
 inline const Ch &ch() { static const Ch c; return c; }
 
@@ -108,6 +110,7 @@ inline Line getLine(const Bits &b, uint32_t lsb) {
 //
 // Placeholders for encodings the payload spec leaves to the owning block.
 enum : unsigned { kCohRead = 0, kCohWrite = 1 };        // coh_op
+enum : unsigned { kStatusComplete = 0, kStatusFault = 1, kStatusReplay = 2 };   // miu_ooe_cmpl.status
 enum : unsigned { kMemLoad = 0, kMemStore = 1,          // ooe_miu_memop.mem_op
                   kMemAtomicRead = 2, kMemAtomicWrite = 3, // OOE's (AR-21, V-72)
                   kMemFence = 0xE, kMemBulkDiscard = 0xF };

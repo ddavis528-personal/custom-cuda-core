@@ -421,7 +421,9 @@ private:
         put(mo, c.ooe_miu, "pipes",
             k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
       }
-      sendOn(c.ooe_miu, x.port, mo, x.tid);
+      // A demotion's discard of an empty ROB names no instruction (TI-21).
+      sendOn(c.ooe_miu, x.port, mo,
+             x.mem_op == 0xF && !x.tid ? makeUid(IdClass::kNone, 0) : x.tid);
     }
     for (const ooe::Commit &x : o.commits) {
       Bits r = msgOf(c.ooe_ret);
@@ -499,7 +501,8 @@ private:
       Bits m = msgOf(dc);
       put(m, dc, "warp_id", x.warp);
       put(m, dc, "resume_pc", x.resume_pc + (k_.brk == "resume-pc" ? 2u : 0u));
-      put(m, dc, "arch_state_ready", 1);
+      put(m, dc, "arch_state_ready", x.refused ? 0 : 1);
+      put(m, dc, "refused", x.refused);   // TI-25 (2)
       held_.push_back({dc, m});
     }
     for (auto it = held_.begin(); it != held_.end();) {

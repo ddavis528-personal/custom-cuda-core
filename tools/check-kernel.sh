@@ -79,6 +79,15 @@
 #   a parked warp is restored, resumes at     pca-row-order (swap): it ends
 #     its boundary and ends as ccv-sim         wrong; early-restore-done
 #     does (TI-24)                             (swap): RCU refuses the read
+#   a demotion's bulk discard ends its       drop-replay (swap): it never
+#     loads with one replay completion each,   drains; replay-twice (swap):
+#     orphans their DCU requests, and MIU      OOE refuses the second;
+#     reports the warp ready once they are     no-ready (swap): it stays
+#     home, which RAU restores on (TI-21)      parked; early-ready (stall):
+#                                              the replay misses again
+#   a demote that lands after the exit       ignore-refused (brs): RAU
+#     retired is refused, and the exit         migrates it, and refuses
+#     frees the slot (TI-25)                   the drained report
 #   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
 #     state at its retirement boundary         resume-pc (stall, demoting):
 #     (TI-24), at the place RAU names, each    resume-pc, rewind-pc (stall):
@@ -759,6 +768,61 @@ for k in stall swap; do
     bad "$k swapped" "$w"
   fi
 done
+# The replay drain (TI-21): the demotion's squash sends a bulk discard, MIU
+# ends each of the warp's loads in flight with a replay completion and
+# orphans its DCU requests, and reports the warp ready to RAU once they are
+# home, so the restored warp's replayed load hits (stall's one L1 hit; none
+# without the swap). vadd4's discard orphans nothing: it is ready at once.
+w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1)
+w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=0 ready=1 restored=1)
+if [ -z "$w$w2" ]; then
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4 ready at once)"
+else
+  bad "replay drain" "stall: $w; vadd4: $w2"
+fi
+rd() { CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" --break "$2" >"$B/kernel_$1_$2.log" 2>&1; }
+rd swap drop-replay
+if [ "$(field "$B/kernel_swap_drop-replay.log" finished)" != 1 ]; then
+  say "--break drop-replay: the demotion never drains" "PASS"
+else
+  bad "--break drop-replay" "a load with no completion drained anyway"
+fi
+rd swap replay-twice
+if grep -q "^CHECK ooe: completion for rob tag [0-9]*, which is not in the ROB" "$B/kernel_swap_replay-twice.log"; then
+  say "--break replay-twice: OOE refuses the second completion" "PASS"
+else
+  bad "--break replay-twice" "two completions for one load went unnoticed"
+fi
+rd swap no-ready
+if [ "$(field "$B/kernel_swap_no-ready.log" finished)" != 1 ] &&
+   [ "$(cover "$B/kernel_swap_no-ready.log" restored)" = 0 ]; then
+  say "--break no-ready: RAU restores only a ready warp" "PASS"
+else
+  bad "--break no-ready" "a warp MIU never reported ready was restored"
+fi
+rd stall early-ready
+if [ "$(cover "$B/kernel_stall_early-ready.log" l1_hit)" = 0 ]; then
+  say "--break early-ready: the replay misses again" "PASS"
+else
+  bad "--break early-ready" "a restore before the orphans were home still hit"
+fi
+# A refused demote (TI-25): OOE's fallback threshold lowered (a model
+# setting) so brs's warp is demoted after its exit has retired.
+ref() { CCV_OOE_CONFIG=demote_fallback=10 CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/brs/oracle.jsonl "$@"; }
+ref >"$B/kernel_brs_refused.log" 2>&1
+w=$(ok "$B/kernel_brs_refused.log" demote=1 refused=1 parked=0)
+if [ -z "$w" ]; then
+  say "brs: a demote after the exit is refused == ccv-sim" "PASS"
+else
+  bad "brs refused" "$w"
+fi
+ref --break ignore-refused >"$B/kernel_brs_ignore-refused.log" 2>&1
+if grep -q "^CHECK rau: warp 0 drained after its exit retired" "$B/kernel_brs_ignore-refused.log"; then
+  say "--break ignore-refused: RAU refuses the drained report" "PASS"
+else
+  bad "--break ignore-refused" "a refused demote was migrated"
+fi
+
 # A restore's controls: PCA's rows renumbered, so RCU writes each into
 # another register (the final compare refuses it); and PCA's ack and PCs
 # before its rows, so the restored warp reads a register before its row is

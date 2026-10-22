@@ -229,6 +229,12 @@
   output logic fet_miu_itlb_req_credit,
   output logic fet_miu_itlb_req_stall,
   input  logic fet_miu_itlb_req_wake,
+  // miu -> rau
+  output logic miu_rau_ready_valid,
+  output ccv_miu_rau_ready_t miu_rau_ready_payload,
+  input  logic miu_rau_ready_credit,
+  input  logic miu_rau_ready_stall,
+  output logic miu_rau_ready_wake,
   // rau -> miu
   input  logic rau_miu_cta_valid,
   input  ccv_rau_miu_cta_t rau_miu_cta_payload,
@@ -319,6 +325,7 @@
   , input  logic [63:0] dcu_miu_rsp_s3_tid
   , output logic [63:0] miu_fet_itlb_tid
   , input  logic [63:0] fet_miu_itlb_req_tid
+  , output logic [63:0] miu_rau_ready_tid
   , input  logic [63:0] rau_miu_cta_tid
   , input  logic [63:0] dcu_miu_fill_ntc_s0_tid
   , input  logic [63:0] dcu_miu_fill_ntc_s1_tid

@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 51 channels
+# Payload specification — all 52 channels
 
-Every payload field has a width, so **every one of the 51
+Every payload field has a width, so **every one of the 52
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 12 | 38 |
+| All decided | 13 | 40 |
 | ⚠️ Some provisional | 24 | 105 |
 | ⛔ Some preliminary | 15 | 126 |
-| **Total** | **51** | **269** |
+| **Total** | **52** | **271** |
 
 ## What still has to be decided
 
@@ -231,7 +231,7 @@ rau → ooe · rate 1 · control
 
 ### `ccv_ooe_rau_drained`
 
-Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length.
+Confirmation that only architectural state remains, with the resume PC. Migration may begin. OOE sends it only once the epoch notice it sent for the demotion (epoch_only on ccv_ooe_fet_redirect, A-74) has landed in FET, at its send cycle plus that channel's fixed latency, the same rule as its kill_ack. The guarantee that a restored warp is never fetched under an epoch older than OOE's (V-57) is then explicit rather than resting on the migration handshake's length. Every demote gets exactly one drained. REFUSED (OA's response TI-25 (2)): a demote that lands after the warp's exit has retired is refused, with no squash, no map and no rewind beats, and drained carries refused = 1; RAU cancels the demotion (no migration commands), and exited frees the slot as for any finishing warp. A demote that lands before the exit retires is an ordinary demotion, and the squash takes the exit with it.
 
 ooe → rau · rate 1 · control
 
@@ -240,7 +240,8 @@ ooe → rau · rate 1 · control
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `resume_pc` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `arch_state_ready` | `1` | 1 | literal |
-| **total** | | **70** | |
+| `refused` | `1` | 1 | literal |
+| **total** | | **71** | |
 
 ### `ccv_rau_rcu_mig`
 
@@ -317,6 +318,17 @@ rau → pca · rate 1 · control
 | `direction` | `1` | 1 | literal |
 | `pca_place` | `CCV_W_PCA_PLACE` | 5 | CCV_W_PCA_PLACE (arch) |
 | **total** | | **11** | |
+
+### `ccv_miu_rau_ready`
+
+A demoted warp is ready to restore (AR's response TI-21, rev 107; OA's rev 160): MIU sends its warp_id when the warp's count of orphaned loads, the requests a bulk discard abandoned at DCU, returns to zero. Then every line the warp asked for has landed in DCU, so its replayed loads hit after the restore; a restore before then would replay into the same miss and hold the slot again. Only MIU sees the orphan drop, so MIU counts, one counter per warp context (CCV_WARP_CONTEXTS, each up to 2^CCV_P_W_REQ_MIU_DCU). A kill clears a warp's count with no report. RAU restores a parked warp only once it is ready. RAU already sends to MIU (ccv_rau_miu_cta), so the blocks touch.
+
+miu → rau · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| **total** | | **5** | |
 
 ### `ccv_syu_ooe_rel`
 
@@ -401,7 +413,7 @@ miu → rcu · rate 4 · execution
 
 ### `ccv_miu_ooe_cmpl`
 
-Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion. FAULTS (ISA v1.9 §12.5-12.6): on a faulting completion, cause is the highest-priority cause among the faulting lanes (F-ALIGN, F-ADDR, F-SHARED or F-RO, codes 5-8), address the lowest faulting lane's effective address, and lane_mask the faulting lanes; CRU's record takes exactly those.
+Completion, replay, fault and MLC miss. The miss indication is the primary demotion trigger, which is why it rides the completion path rather than its own channel. Every memop MIU accepts gets exactly one completion, including a store later bulk-discarded; the bulk-discard command itself gets none (A-41, A-53). An L1 hit completes at exactly CCV_LAT_L1_HIT; no completion at that cycle is the miss indication. Past L1 nothing is contracted, and scratchpad loads and atomics never wake dependants speculatively (A-46). ATOMIC PASSES (AR-21, OA's response): an atomic is A1 (atomic-read), A2 (the lane op) and A3 (atomic-write) under one rob_tag. MIU runs its lanes in passes, at most one lane per address in ascending lane order, and never waits for a line while holding another (V-72). A3's completion carries more = 1 while lanes remain, and OOE re-issues the three steps; more is 0 on every other completion. FAULTS (ISA v1.9 §12.5-12.6): on a faulting completion, cause is the highest-priority cause among the faulting lanes (F-ALIGN, F-ADDR, F-SHARED or F-RO, codes 5-8), address the lowest faulting lane's effective address, and lane_mask the faulting lanes; CRU's record takes exactly those. STATUS: 0 complete, 1 fault (cause and address carry the detail), 2 replay. REPLAY DRAIN (AR's and OA's responses TI-21, MIU spec rev 18): a load a bulk discard covers is completed at once with status replay, and MIU orphans its requests to DCU: their responses are dropped, with no write on ccv_miu_rcu_data after the completion (a data beat already started finishes first, and its completion may then carry its real status), no hint on ccv_miu_ooe_cmpl_hint, and its fill notice ignored. A discard that races a normal completion in the same cycle still yields exactly one completion (A-41). So a demotion's drain waits for no fill.
 
 miu → ooe · rate 4 · memory
 
@@ -776,7 +788,7 @@ rcu → lane · rate 1 · execution
 
 ### `ccv_ooe_miu_memop`
 
-The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp. mem_op, space and ordering arrive from DEC on ccv_dec_ooe_uop and pass through OOE unexamined (A-68); 0xF alone is OOE's own. SECTIONED (OI-33): pipes is the memop's footprint over MIU's pipes P0-P3, four at 32 bits, two at 16 and one at 8, at its data position; phys_dst is a row and dst_pos its position, echoed for the slice write-back.
+The memory operation itself: space, ordering, element width, CTA slot for bounds checking, and the displacement and scale enable the AGU needs (the shift is derived from chwidth). issue_mask is the issue group's lanes before the guard; the lanes that may access memory or fault are rcu_miu_addr.active_mask, which only RCU can compute. phys_dst and phys_pred are the write-back destinations (phys_pred is the uop's pred_dst, renamed), which MIU echoes on ccv_miu_rcu_data so RCU holds no table of outstanding loads. BULK DISCARD (A-41): mem_op 0xF discards every store of warp_id whose ROB index lies in the circular range (branch, tail]: rob_tag names the mispredicted branch and discard_tail, an overlay on disp, the warp's ROB tail, the youngest allocated entry inclusive. Every other field is reserved and zero. It is a command, not a memop: it gets no completion (A-53), the stores it discards still complete individually, and it is never sent in the same cycle as a memop of the same warp. mem_op, space and ordering arrive from DEC on ccv_dec_ooe_uop and pass through OOE unexamined (A-68); 0xF alone is OOE's own. SECTIONED (OI-33): pipes is the memop's footprint over MIU's pipes P0-P3, four at 32 bits, two at 16 and one at 8, at its data position; phys_dst is a row and dst_pos its position, echoed for the slice write-back. LOADS IN THE BULK DISCARD (AR's and OA's responses TI-21): the discard covers the warp's uncommitted loads in its range as well as its stores, each completed with status replay (ccv_miu_ooe_cmpl). A demotion's squash sends one for warp_id, whatever it holds, and drained waits only for the discarded loads' replay completions. A demotion's range is the whole ROB, branch == tail, which no other discard sends, since a mispredict's range is never empty. A discard of an empty ROB names no instruction and carries id class none; every memop carries instr, which MIU checks.
 
 ooe → miu · rate 4 · memory
 
