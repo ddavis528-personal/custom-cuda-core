@@ -590,8 +590,8 @@ fet → pca · rate 1 · control
 | `lane_pcs` | `CCV_WARP_LANES*CCV_W_LANE_PC` | 992 | CCV_WARP_LANES (isa); CCV_W_LANE_PC (arch) |
 | `pc_upper` | `CCV_W_PC_UPPER` | 16 | CCV_W_PC_UPPER (arch) |
 | `fair_ptr` | `CCV_W_FAIR_PTR` | 5 | CCV_W_FAIR_PTR (arch) |
-| `fair_cnt` | `CCV_W_FAIR_CNT` | 4 ⚠️ | CCV_W_FAIR_CNT (provisional) |
-| **total** | | **1022** | ⚠️ 4 provisional |
+| `fair_cnt` | `CCV_W_FAIR_CNT` | 6 ⚠️ | CCV_W_FAIR_CNT (provisional) |
+| **total** | | **1024** | ⚠️ 6 provisional |
 
 ### `ccv_pca_fet_mig`
 
@@ -605,8 +605,8 @@ pca → fet · rate 1 · control
 | `lane_pcs` | `CCV_WARP_LANES*CCV_W_LANE_PC` | 992 | CCV_WARP_LANES (isa); CCV_W_LANE_PC (arch) |
 | `pc_upper` | `CCV_W_PC_UPPER` | 16 | CCV_W_PC_UPPER (arch) |
 | `fair_ptr` | `CCV_W_FAIR_PTR` | 5 | CCV_W_FAIR_PTR (arch) |
-| `fair_cnt` | `CCV_W_FAIR_CNT` | 4 ⚠️ | CCV_W_FAIR_CNT (provisional) |
-| **total** | | **1022** | ⚠️ 4 provisional |
+| `fair_cnt` | `CCV_W_FAIR_CNT` | 6 ⚠️ | CCV_W_FAIR_CNT (provisional) |
+| **total** | | **1024** | ⚠️ 6 provisional |
 
 ### `ccv_rau_miu_cta`
 

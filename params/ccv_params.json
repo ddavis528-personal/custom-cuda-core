@@ -278,15 +278,15 @@
     },
     {
       "name": "CCV_FAIR_N",
-      "value": 16,
+      "value": 48,
       "status": "provisional",
-      "source": "DA's response IS-17 (2026-10-21)",
-      "doc": "FET's fairness rule: every Nth pick of a warp goes to the group holding lane r, the rotating pointer, which then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17). The cost is the override breaking opportunistic reconvergence one pick in N.",
-      "decided_at": "OI's fairness measurement (IS-17)"
+      "source": "AR's response IS-17 (rev 121), from CP's ccv-sim measurement (CP's revs 64-65); FET spec rev 15",
+      "doc": "FET's fairness rule, refined (AR's rev 121): the warp's picks are min-PC, except that the group holding lane r, the rotating pointer, issues once N picks have gone by without a pick including lane r. The counter restarts whenever a pick includes lane r, by either path, and r then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17, O-60). 48 is the smallest N whose cost on every kernel of CP's corpus is within 1% of the rule off (rope +0.46%), with the spin-wait handing over in 314 issue groups; TI's timed sweep at 32, 48 and 64 confirms it. ccv-sim's -fairness takes it (tools/gen-oracle.sh).",
+      "decided_at": "AR's rev 121; TI's timed sweep (IS-17)"
     },
     {
       "name": "CCV_W_FAIR_CNT",
-      "value": 4,
+      "value": 6,
       "status": "provisional",
       "derive": "clog2(CCV_FAIR_N)",
       "source": "DA's response IS-17 (2026-10-21)",

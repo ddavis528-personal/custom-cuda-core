@@ -24,6 +24,11 @@ rc=0
 for d in build/oracle/*/; do
   [ -d "$d" ] && [ ! -d "test/kernels/$(basename "$d")" ] && rm -rf "$d"
 done
+# The diverged groups' pick is FET's fairness rule at CCV_FAIR_N (IS-17,
+# O-60), ccv-sim's -fairness, so the order the skeleton follows is the one
+# FET would pick.
+fair=$(sed -n 's/.*kFairN = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+[ -n "$fair" ] || { echo "gen-oracle: no CCV_FAIR_N in sim/generated/ccv_params.h" >&2; exit 1; }
 for k in test/kernels/*/; do
   k=${k%/}; name=$(basename "$k")
   [ -f "$k/kernel.cfg" ] || continue
@@ -46,7 +51,7 @@ for k in test/kernels/*/; do
     cta=()
     [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
-      -oracle "$o" >/dev/null || ok=0
+      -fairness="$fair" -oracle "$o" >/dev/null || ok=0
   done
   if [ $ok = 1 ]; then
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" \
