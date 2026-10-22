@@ -52,7 +52,7 @@ struct MemAcc {
   bool shared = false, write = false;
   uint64_t addr = 0;
   unsigned bytes = 0;
-  uint32_t val = 0;
+  uint32_t val = 0;   ///< absent on a faulting record, which writes nothing
 };
 
 struct Record {
@@ -81,6 +81,14 @@ struct Oracle {
   unsigned threads = 0, ctaid = 0;
   std::vector<uint8_t> code;
   std::vector<std::pair<uint64_t, uint32_t>> init_mem;
+  /// F-RO's .const range, [const_base, const_limit); empty when equal (TI-26).
+  uint64_t const_base = 0, const_limit = 0;
+  /// The run's fault, when it ends in one (TI-28): its cause by name, the
+  /// faulting instruction's pc, the faulting lanes and the reported address.
+  /// The faulting instruction is the last record, kind "fault".
+  struct Fault { std::string cause; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
+  bool faults = false;
+  Fault fault;
   std::vector<Record> recs;
   uint32_t final_gpr[kArchGprs][kLanes] = {};
   uint32_t final_pred[kArchPreds] = {};

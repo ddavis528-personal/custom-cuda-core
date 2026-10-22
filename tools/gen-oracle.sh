@@ -11,7 +11,10 @@
 #
 # kernel.cfg: SOURCE=<path in the compiler snapshot, or core:<path here>>, an
 # optional CTAID=<n> (ccv-sim -ctaid), an optional CTAS=<n>, an optional
-# THREADS=<n> (ccv-sim -threads), then one poke per line. ccv-sim runs one
+# THREADS=<n> (ccv-sim -threads), an optional CONST=<base>:<limit> (F-RO's
+# .const range, ccv-sim -const-range), an optional FAULT=<cause> (the run
+# ends in that fault, ccv-sim's exit 3, its record and state at the fault
+# written; TI-26, TI-28), then one poke per line. ccv-sim runs one
 # warp a CTA, so a kernel of several warps is CTAS CTAs, CTAID upward, each
 # its own run: oracle.jsonl for the first, oracle.<w>.jsonl for warp w, which
 # the skeleton launches side by side (Kernel::loadOracles).
@@ -48,6 +51,8 @@ for k in test/kernels/*/; do
   # THREADS=<n>: a CTA of n threads (ccv-sim -threads), so a warp of fewer
   # than 32 launches with only its low lanes live (TI-27 (a)).
   threads=$(sed -n 's/^THREADS=//p' "$k/kernel.cfg")
+  crange=$(sed -n 's/^CONST=//p' "$k/kernel.cfg")
+  fault=$(sed -n 's/^FAULT=//p' "$k/kernel.cfg")
   out=$O/$name
   rm -rf "$out" && mkdir -p "$out"
   ok=1
@@ -58,7 +63,15 @@ for k in test/kernels/*/; do
     cta=()
     [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
-      ${threads:+-threads "$threads"} -fairness="$fair" -oracle "$o" >/dev/null || ok=0
+      ${threads:+-threads "$threads"} ${crange:+-const-range "$crange"} \
+      -fairness="$fair" -oracle "$o" >/dev/null
+    st=$?
+    # A clean run exits 0, a fault 3: either must be the one kernel.cfg names.
+    if [ -n "$fault" ]; then
+      [ $st = 3 ] && grep -q "\"fault\":{\"cause\":\"$fault\"" "$o" || ok=0
+    else
+      [ $st = 0 ] || ok=0
+    fi
   done
   if [ $ok = 1 ]; then
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" \

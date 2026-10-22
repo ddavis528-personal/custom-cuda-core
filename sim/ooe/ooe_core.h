@@ -603,6 +603,7 @@ struct Status {         ///< ccv_ooe_rau_status
   bool exited = false;
 };
 struct Fault {          ///< ccv_ooe_cru_fault
+  uint64_t tid = 0;      ///< the faulting instruction (trace identity; TI-26)
   unsigned warp = 0, cause = 0, cta_slot = 0;
   uint64_t pc = 0, address = 0;
   uint32_t lane_mask = 0;

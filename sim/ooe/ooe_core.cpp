@@ -2050,6 +2050,7 @@ void Core::retire() {
         st.fault_taken = true;
         out.status.push_back(st);
         Fault f;
+        f.tid = r.u.tid;
         f.warp = s.warp;
         f.cause = r.fault_cause;
         f.pc = r.u.pc;

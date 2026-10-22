@@ -118,7 +118,9 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
 enum : unsigned { kFaultNone = 0, kFaultFetch = 1,          // CCV_W_FAULT_CAUSE (ISA §12)
-                  kFaultIllegal = 2 };
+                  kFaultIllegal = 2, kFaultRo = 8 };
+/// A completion's status on ccv_miu_ooe_cmpl: 0 complete, 1 fault, 2 replay.
+enum : unsigned { kCmplDone = 0, kCmplFault = 1, kCmplReplay = 2 };
 enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // ---- the opcode table ---------------------------------------------------------
 //

@@ -68,6 +68,9 @@
 #     (IS-17 (b))                                split goes the wrong way
 #   a load waits for an older store of its    no-st-wait (spinwait): lane 0
 #     warp to commit (MIU's disambiguation)      reads the flag still clear
+#   a store into .const or the launch window  no-ro (roconst): its 32 stores
+#     faults F-RO, and nothing lands; CRU        land, and the warp never
+#     holds the fault to ccv-sim's (TI-26)       faults
 #   OOE ends a warp at the exit FET marks     early-mark (div): the warp ends
 #     final (TI-27)                              with lanes live, and the rest
 #                                                of its uops find no slot
@@ -620,6 +623,11 @@ vaddslow full_line=1
 div    split=32 reconverge=2 groups_peak=2 fair_pick=1
 spinwait fair_pick=4 groups_peak=3 st_ld_wait>0
 divtail split=20 groups_peak=2
+roconst ro_fault=1 fault=1
+rolimit ro_fault=1 fault=1
+rolaunch ro_fault=1 fault=1
+rogated ro_fault=1 fault=1 split=1
+roload ro_fault=0 fault=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -696,6 +704,18 @@ if grep -q "^CHECK ooe: uop for warp 0, which holds no tier-1 slot" "$B/kernel_e
   say "--break early-mark: the warp ends with lanes live" "PASS (div, $(field "$B/kernel_early-mark.log" retired) of 144 retire)"
 else
   bad "--break early-mark" "an early final exit went unnoticed: $(grep '^KERNEL' "$B/kernel_early-mark.log")"
+fi
+# F-RO (AR's responses TI-26): MIU refuses a store any byte of which lies in
+# the CTA's .const range or the launch window, and the fault reaches CRU,
+# held there to ccv-sim's cause, pc, lanes and address; the ro* kernels above
+# pass only so, with nothing written. Without MIU's check, roconst's 32
+# stores land and the warp never faults.
+"$SKEL" --kernel build/oracle/roconst/oracle.jsonl --break no-ro >"$B/kernel_no-ro.log" 2>&1
+if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 100e" "$B/kernel_no-ro.log" &&
+   [ "$(field "$B/kernel_no-ro.log" mem_mismatch)" = 32 ]; then
+  say "--break no-ro: the stores land, no fault" "PASS (roconst: 32 words)"
+else
+  bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
 fi
 # A demotion's live mask is FET's after the beats (AR's response TI-27 (b)):
 # stall's warp 0 has fetched its exit when it demotes, so without the beats'

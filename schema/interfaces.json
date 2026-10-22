@@ -1174,9 +1174,11 @@
         "cta_slot",
         "spm_base",
         "spm_limit",
-        "launch_block_addr"
+        "launch_block_addr",
+        "const_base",
+        "const_limit"
       ],
-      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads.",
+      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.",
       "id_classes": [
         "none"
       ]
@@ -1378,6 +1380,8 @@
     "pc_upper": "CCV_W_PC_UPPER",
     "fair_ptr": "CCV_W_FAIR_PTR",
     "fair_cnt": "CCV_W_FAIR_CNT",
+    "const_base": "CCV_W_VA",
+    "const_limit": "CCV_W_VA",
     "live_mask": "CCV_W_LANE_MASK",
     "final_exit": "1",
     "exited": "1",

@@ -192,7 +192,19 @@ std::string Oracle::load(const std::string &path) {
         ctaid = unsigned(i.at("ctaid").u());
         code = hexBytes(i.at("code").s());
         init_mem = words(i.at("mem"));
+        if (i.has("const")) {
+          const auto &cr = i.at("const").a();
+          const_base = cr.at(0).u();
+          const_limit = cr.at(1).u();
+        }
         have_init = true;
+      } else if (j.has("fault")) {
+        const JV &f = j.at("fault");
+        faults = true;
+        fault.cause = f.at("cause").s();
+        fault.pc = f.at("pc").u();
+        fault.lanes = uint32_t(f.at("lanes").u());
+        fault.addr = f.at("addr").u();
       } else if (j.has("final")) {
         const JV &f = j.at("final");
         const auto &g = f.at("gpr").a();
@@ -234,7 +246,7 @@ std::string Oracle::load(const std::string &path) {
           a.write = m.at("w").u() != 0;
           a.addr = m.at("addr").u();
           a.bytes = unsigned(m.at("bytes").u());
-          a.val = uint32_t(m.at("val").u());
+          if (m.has("val")) a.val = uint32_t(m.at("val").u());
           r.mem.push_back(a);
         }
         recs.push_back(std::move(r));

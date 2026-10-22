@@ -689,6 +689,27 @@ private:
 
   std::map<unsigned, Memop> memop_;
   std::map<unsigned, Addr> addr_;
+  /// F-RO's .const range by CTA slot, [base, limit), from RAU (TI-26).
+  std::map<unsigned, std::pair<uint64_t, uint64_t>> ro_;
+  /// The lanes of a store F-RO refuses (AR's responses TI-26): any lane
+  /// whose four bytes touch the launch window (address bits [47:16] equal
+  /// to 2, the whole window) or the CTA's .const range. Compared on the
+  /// effective address, which this MIU never maps. no-ro drops the check.
+  uint32_t roLanes(const Job &j, unsigned cta) const {
+    if (!j.store || k_.brk == "no-ro") return 0;
+    const auto r = ro_.find(cta);
+    const uint64_t base = r == ro_.end() ? 0 : r->second.first;
+    const uint64_t limit = r == ro_.end() ? 0 : r->second.second;
+    uint32_t ro = 0;
+    for (unsigned l = 0; l != kLanes; ++l) {
+      if (!(j.active >> l & 1u)) continue;
+      const uint64_t a = j.addr[l];
+      const bool launch = (a >> 16) == 2 || ((a + 3) >> 16) == 2;
+      const bool cnst = a < limit && a + 4 > base;
+      if (launch || cnst) ro |= 1u << l;
+    }
+    return ro;
+  }
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
   std::deque<Job> committed_;
@@ -779,7 +800,12 @@ private:
       put(r, c.miu_fet, "itlb_refill", get(m.payload, c.fet_miu, "virtual_page"));
       to_fet_.push_back({0, r, m.tid});
     }
-    if (has(c.rau_miu, 0)) take(c.rau_miu, 0);   // CTA config: nothing reads it yet
+    if (has(c.rau_miu, 0)) {
+      // A CTA's configuration: of it, F-RO's .const range (TI-26).
+      const Bits m = take(c.rau_miu, 0).payload;
+      ro_[unsigned(get(m, c.rau_miu, "cta_slot"))] = {get(m, c.rau_miu, "const_base"),
+                                                      get(m, c.rau_miu, "const_limit")};
+    }
     for (unsigned s = 0; s != kChans[c.ooe_miu].rate; ++s)
       while (has(c.ooe_miu, s)) {
         Receiver::Msg m = take(c.ooe_miu, s);
@@ -1093,9 +1119,23 @@ private:
     if (j.store)
       for (const LineReq &lr : j.lines)
         if (std::count(lr.mask.begin(), lr.mask.end(), true) != int(kLine)) k_.hit("partial_line");
+    const uint32_t ro = roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.pop_front();
     memop_.erase(tag);
     addr_.erase(a);
+    if (ro) {
+      // F-RO: the store has no effect on any lane, so nothing waits for
+      // retirement. The completion is the fault: its lanes, and the lowest
+      // one's address (section 12.6). OOE takes it at retirement.
+      Bits m = cmpl(j);
+      put(m, c.miu_ooe, "status", kCmplFault);
+      put(m, c.miu_ooe, "cause", kFaultRo);
+      put(m, c.miu_ooe, "lane_mask", ro);
+      put(m, c.miu_ooe, "address", j.addr[__builtin_ctz(ro)]);
+      to_ooe_.push_back({j.memop_slot, m, j.tid});
+      k_.hit("ro_fault");
+      return;
+    }
     if (j.store) {
       // Translated and checked; the write waits for retirement.
       stores_[tag] = j;
@@ -1152,7 +1192,7 @@ private:
         k_.fail("miu: seq %llu lane %u address %llx, oracle %llx",
                 (unsigned long long)r->seq, a.lane,
                 (unsigned long long)j.addr[a.lane], (unsigned long long)a.addr);
-      if (j.store && getLane(am, ch().rcu_miu, "store_data", a.lane) != a.val)
+      if (j.store && r->kind != "fault" && getLane(am, ch().rcu_miu, "store_data", a.lane) != a.val)
         k_.fail("miu: seq %llu lane %u store data %08x, oracle %08x",
                 (unsigned long long)r->seq, a.lane,
                 getLane(am, ch().rcu_miu, "store_data", a.lane), a.val);
@@ -2886,7 +2926,8 @@ private:
         k_.fail("fet: warp %u picks %llx for lanes %08x; ccv-sim issued %llx for %08x (seq %llu)", w,
                 (unsigned long long)pk.pc, pk.mask, (unsigned long long)r.pc, r.mask,
                 (unsigned long long)r.seq);
-      if (r.kind != "advance" && r.kind != "branch" && r.kind != "branchpred" && r.kind != "exit")
+      if (r.kind != "advance" && r.kind != "branch" && r.kind != "branchpred" && r.kind != "exit" &&
+          r.kind != "fault")
         k_.fail("fet: warp %u seq %llu is a %s, which this FET does not follow", w,
                 (unsigned long long)r.seq, r.kind.c_str());
       uint64_t word = 0;
@@ -3342,6 +3383,10 @@ private:
       if (can(c.rau_miu, 0) && can(c.rau_fet, 0)) {
         Bits a = msgOf(c.rau_miu);
         put(a, c.rau_miu, "cta_slot", l.w);
+        // F-RO's .const range, the grid's from its module (TI-26): the
+        // launch's, which ccv-sim was run with, until Q-50's descriptor.
+        put(a, c.rau_miu, "const_base", k_.orcs[l.w].const_base);
+        put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
         send(c.rau_miu, 0, a, none);
         const Oracle &o = k_.orcs[l.w];
         Bits f = msgOf(c.rau_fet);
@@ -3538,7 +3583,53 @@ private:
   bool busy() const override { return !done_.empty() || !ctx_.empty() || !out_.empty(); }
 };
 
-/// SPM, SYU, CRU: nothing on vadd's path.
+// ---- CRU: takes a warp's fault --------------------------------------------------
+
+/// A fault OOE took at retirement (ccv_ooe_cru_fault) ends its warp here
+/// (TI-26). CRU's record and the kill it leads to (RAU's kill_req) are the
+/// CRU session's to build; this stub checks the report against the fault
+/// ccv-sim ended the warp's run with: cause, pc, lanes and address.
+class Cru : public Stub {
+public:
+  Cru(int inst, Kernel &k) : Stub(inst, k), chan_(chanId("ccv_ooe_cru_fault")) {}
+  const char *kind() const override { return "cru"; }
+
+private:
+  const unsigned chan_;
+  static unsigned code(const std::string &n) {
+    static const char *const names[] = {"", "F-FETCH", "F-ILLEGAL", "F-WIDTH", "F-FORMAT",
+                                        "F-ALIGN", "F-ADDR", "F-SHARED", "F-RO", "F-BARRIER"};
+    for (unsigned i = 1; i != sizeof names / sizeof *names; ++i)
+      if (n == names[i]) return i;
+    return 0;
+  }
+  void work() override {
+    if (!has(chan_, 0)) return;
+    const Bits m = take(chan_, 0).payload;
+    Kernel::FaultSeen f;
+    const unsigned w = unsigned(get(m, chan_, "warp_id"));
+    f.cause = unsigned(get(m, chan_, "cause"));
+    f.pc = get(m, chan_, "pc");
+    f.lanes = uint32_t(get(m, chan_, "lane_mask"));
+    f.addr = get(m, chan_, "address");
+    if (k_.faults.count(w)) k_.fail("cru: warp %u faults twice", w);
+    k_.faults[w] = f;
+    k_.hit("fault");
+    if (w >= k_.orcs.size() || !k_.orcs[w].faults) {
+      k_.fail("cru: warp %u faults (cause %u at pc %llx), but ccv-sim ran it to its end", w,
+              f.cause, (unsigned long long)f.pc);
+      return;
+    }
+    const Oracle::Fault &o = k_.orcs[w].fault;
+    if (f.cause != code(o.cause) || f.pc != o.pc || f.lanes != o.lanes || f.addr != o.addr)
+      k_.fail("cru: warp %u fault cause %u pc %llx lanes %08x addr %llx; ccv-sim %s pc %llx "
+              "lanes %08x addr %llx", w, f.cause, (unsigned long long)f.pc, f.lanes,
+              (unsigned long long)f.addr, o.cause.c_str(), (unsigned long long)o.pc, o.lanes,
+              (unsigned long long)o.addr);
+  }
+};
+
+/// SPM, SYU: nothing on vadd's path.
 class Idle : public Stub {
 public:
   Idle(int inst, Kernel &k, const char *n) : Stub(inst, k), n_(n) {}
@@ -3564,6 +3655,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::EXB:  return std::make_unique<Exb>(inst, k);
   case Blk::RAU:  return std::make_unique<Rau>(inst, k);
   case Blk::PCA:  return std::make_unique<Pca>(inst, k);
+  case Blk::CRU:  return std::make_unique<Cru>(inst, k);
   default:
     return std::make_unique<Idle>(inst, k, blkName(kBlkInsts[inst].type));
   }
@@ -3581,6 +3673,11 @@ KernelReport compareFinal(Kernel &k) {
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w)) continue;
     const Oracle &o = k.orcs[w];
+    // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
+    // CRU's stub held its fields to ccv-sim's as it took it.
+    if (o.faults && !k.faults.count(w))
+      k.fail("cru: warp %u never faulted; ccv-sim ended it with %s at pc %llx", w,
+             o.fault.cause.c_str(), (unsigned long long)o.fault.pc);
     const std::vector<unsigned> &rat = k.ratOf(w);
     const char *who = k.orcs.size() == 1 ? "" : "warp ";
     const std::string wn = k.orcs.size() == 1 ? "" : std::to_string(w) + " ";
@@ -3641,7 +3738,9 @@ KernelReport compareFinal(Kernel &k) {
   }
   // Each warp retires its own instructions in its own order.
   unsigned groups = 0;
-  for (unsigned w = 0; w != k.orcs.size(); ++w) groups += isParked(w) ? nret[w] : k.orcs[w].issue_groups;
+  // A faulting instruction counts in ccv-sim's issue groups and never retires.
+  for (unsigned w = 0; w != k.orcs.size(); ++w)
+    groups += isParked(w) ? nret[w] : k.orcs[w].issue_groups - (k.orcs[w].faults ? 1 : 0);
   r.order_ok = k.retired == groups;
   std::vector<uint32_t> next(k.orcs.size(), 0);
   for (uint64_t s : k.retire_order) {
@@ -3701,7 +3800,10 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
   bool in_flight = false;
   for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
     in_flight = m.tx(s).sent() != m.rx(s).received();
-  if (c >= kReset && k.exited() && k.busy == 0 && !in_flight) {
+  // A faulted warp ends at its fault: the kill that would clear its state
+  // from the blocks (RAU's broadcast, V-24) is not built, so the blocks
+  // holding it may stay busy once every warp has exited or faulted.
+  if (c >= kReset && k.exited() && (k.busy == 0 || !k.faults.empty()) && !in_flight) {
     if (!finished) finish = c;
     finished = true;
     ++quiet;

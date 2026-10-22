@@ -519,21 +519,35 @@ private:
       bool first = true;   // the oldest held message on its channel only
       for (auto j = held_.begin(); j != it; ++j) first = first && j->chan != it->chan;
       if (first && can(it->chan, 0)) {
-        send(it->chan, 0, it->msg, none);
+        send(it->chan, 0, it->msg, it->tid ? it->tid : none);
         it = held_.erase(it);
       } else {
         ++it;
       }
     }
-    // CRU and SYU: no S1 kernel faults, waits at a barrier or is killed. A
-    // fault is a check failure here (docs/ooe-model.md, "S1 modes").
-    for (const ooe::Fault &x : o.faults)
-      k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
-              (unsigned long long)x.pc);
+    // A fault taken at retirement goes to CRU (TI-26), whose stub holds it
+    // to the fault ccv-sim ended the run with. SYU: no kernel waits at a
+    // barrier or is killed yet.
+    for (const ooe::Fault &x : o.faults) {
+      if (fault_ < 0) {
+        k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
+                (unsigned long long)x.pc);
+        continue;
+      }
+      const unsigned fc = unsigned(fault_);
+      Bits m = msgOf(fc);
+      put(m, fc, "cause", x.cause);
+      put(m, fc, "pc", x.pc);
+      put(m, fc, "lane_mask", x.lane_mask);
+      put(m, fc, "address", x.address);
+      put(m, fc, "cta_slot", x.cta_slot);
+      put(m, fc, "warp_id", x.warp);
+      held_.push_back({fc, m, x.tid});
+    }
     if (!o.bars.empty() || !o.kill_acks.empty())
       k_.fail("ooe: a barrier or kill ack with no S1 consumer");
   }
-  struct Held { unsigned chan; Bits msg; };
+  struct Held { unsigned chan; Bits msg; uint64_t tid = 0; };   ///< tid: the fault's instruction
   std::deque<Held> held_;   ///< status, maps and drained reports, in order
 
   /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an

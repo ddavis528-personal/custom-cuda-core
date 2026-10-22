@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 13 | 40 |
-| ⚠️ Some provisional | 24 | 108 |
+| ⚠️ Some provisional | 24 | 110 |
 | ⛔ Some preliminary | 15 | 128 |
-| **Total** | **52** | **276** |
+| **Total** | **52** | **278** |
 
 ## What still has to be decided
 
@@ -613,7 +613,7 @@ pca → fet · rate 1 · control
 
 ### `ccv_rau_miu_cta`
 
-Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads.
+Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.
 
 rau → miu · rate 1 · control
 
@@ -623,7 +623,9 @@ rau → miu · rate 1 · control
 | `spm_base` | `CCV_W_SPM_ADDR` | 17 | CCV_W_SPM_ADDR (arch) |
 | `spm_limit` | `CCV_W_SPM_ADDR` | 17 | CCV_W_SPM_ADDR (arch) |
 | `launch_block_addr` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| **total** | | **101** | ⚠️ 3 provisional |
+| `const_base` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| `const_limit` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
+| **total** | | **229** | ⚠️ 3 provisional |
 
 ### `ccv_ooe_syu_bar`
 
