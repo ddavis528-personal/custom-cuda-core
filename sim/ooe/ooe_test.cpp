@@ -204,6 +204,7 @@ struct Env {
     /// AR's rev 115: restored before its ready report (provisional); its P
     /// count starts at that report, from the retirements it had then.
     bool provisional = false, prov_based = false;
+    uint64_t parked_at = 0;                 ///< when it last parked (FET's epoch notice), for RAU's age order
     size_t prov_base = 0;
     uint64_t rewind_pc = 0;                 ///< the oldest unretired uop's PC at its demote, or 0
     bool rewind_seen = false;
@@ -273,7 +274,9 @@ struct Env {
   // restore waits for its own demote.
   struct Swap {
     bool rau = false;                 ///< the environment's RAU acts: frees, demotes and restores
-    unsigned mode = 0;                ///< 0 never demote, 1 swap (a ready parked warp), 2 evict (always)
+    /// kNever, kSwap (demote only with a ready parked warp) or kEvict
+    /// (always): evict is the policy (DA, OA's rev 64), swap a knob.
+    unsigned mode = kEvict;
     unsigned P = 8;                   ///< retirements before a restored warp may demote again
     unsigned dram_pm = 0;             ///< loads that miss to DRAM, per mille
     unsigned dram_lo = 700, dram_hi = 1300;
@@ -281,7 +284,11 @@ struct Env {
     /// AR's rev 115: a free slot with no ready parked warp takes the oldest
     /// parked warp that is not ready, provisionally.
     bool provisional = false;
+    /// PF-41 (AR's revs 116-117): with provisional, a provisional warp is
+    /// demoted the moment a ready parked warp appears, no threshold wait.
+    bool preempt = false;
   } swap;
+  enum : unsigned { kNever = 0, kSwap = 1, kEvict = 2 };
   unsigned hop = ccv::kLatHop;
   std::multimap<uint64_t, std::function<void()>> acts;   ///< RAU, PCA and FET's actions, by cycle
   bool demote_busy = false, restore_busy = false;
@@ -295,7 +302,7 @@ struct Env {
   // head to the restored warp's first rename) with its drain D and refetch R.
   struct Gap { unsigned warp = 0, slot = 0; uint64_t head = 0, demote = 0, drained = 0, activate = 0, rename = 0; };
   std::vector<Gap> gaps;
-  unsigned swaps = 0, declined = 0, refused = 0, provisional = 0, merged_fills = 0;
+  unsigned swaps = 0, declined = 0, refused = 0, provisional = 0, merged_fills = 0, preempted = 0;
   std::string swap_errors_note;
 
   void park(unsigned warp, std::vector<Op> prog, uint64_t ready_at = 0) {
@@ -326,11 +333,11 @@ struct Env {
     bool prov = false;
     if (!x && swap.provisional) {
       // AR's rev 115 (a): no ready warp and no launch pending (the
-      // environment launches nothing later), the oldest parked warp whose
-      // drain is done but whose fill is not.
+      // environment launches nothing later), the oldest parked warp (the
+      // longest parked) whose drain is done but whose fill is not.
       for (Warp &y : w)
         if (y.parked && !y.exited && y.ready_at != ~uint64_t(0) && y.ready_at > t &&
-            (!x || y.ready_at < x->ready_at))
+            (!x || y.parked_at < x->parked_at))
           x = &y;
       prov = x != nullptr;
     }
@@ -400,7 +407,7 @@ struct Env {
       }});
       return;
     }
-    if (!st.stalled || !st.mlc_miss_seen || swap.mode == 0) return;
+    if (!st.stalled || !st.mlc_miss_seen || swap.mode == kNever) return;
     // RAU decides a hop after OOE's trigger.
     acts.insert({t + hop, [this, st] {
       Warp *y = warpOf(st.warp);
@@ -413,12 +420,20 @@ struct Env {
         ++declined;
         return;
       }
-      if (swap.mode == 1 && !readyParked()) { ++declined; return; }
+      if (swap.mode == kSwap && !readyParked()) { ++declined; return; }
+      rauDemote(y, t - hop - (cfg.demote_mlc_miss + 1));
+    }});
+  }
+
+  /// RAU demotes y, deciding this cycle (the demote reaches OOE a hop and a
+  /// cycle on); head: the cycle the slot's gap counts from.
+  void rauDemote(Warp *y, uint64_t head) {
+    {
       demote_busy = true;
       Gap g;
       g.warp = y->id;
       g.slot = y->slot;
-      g.head = t - hop - (cfg.demote_mlc_miss + 1);
+      g.head = head;
       gaps.push_back(g);
       acts.insert({t + 1 + hop, [this, id = y->id] {
         core.demote(id);
@@ -430,7 +445,20 @@ struct Env {
         z->rewind_seen = false;
         z->demoting = true;
       }});
-    }});
+    }
+  }
+
+  /// PF-41: a ready parked warp and no free slot pre-empt a provisional
+  /// warp still waiting for its own fill.
+  void rauPreempt() {
+    if (!swap.preempt || demote_busy || !free_slots.empty() || !readyParked()) return;
+    for (Warp &y : w)
+      if (y.provisional && !y.prov_based && !y.parked && !y.restoring && !y.exited && !y.demoting &&
+          t < y.ready_at) {
+        ++preempted;
+        rauDemote(&y, t);
+        return;
+      }
   }
 
   /// OOE's drained: migrate out; the slot is free when PCA's done reaches RAU.
@@ -516,7 +544,23 @@ struct Env {
     a.ctaid = 7;
     a.barrier_count = barriers;
     core.alloc(a);
+    // A test's narrow registers (Op::w) are its warp's committed widths
+    // (OA's rev 166: rename takes the table's), as though their chwidths
+    // had retired before the program; set once the launch has landed.
+    if (cfg.sectioned) {
+      std::array<uint8_t, 16> cw{};
+      std::array<bool, 16> seen{};
+      bool any = false;
+      for (const Op &o : w.back().prog)
+        if ((o.k == kLane || o.k == kRcuOp || o.k == kLoad || o.k == kSfu || o.k == kFp) && !seen[o.dst & 15]) {
+          seen[o.dst & 15] = true;
+          cw[o.dst & 15] = uint8_t(o.w);
+          any = any || o.w;
+        }
+      if (any) preset_cw[slot] = cw;
+    }
   }
+  std::map<unsigned, std::array<uint8_t, 16>> preset_cw;   ///< slot -> widths, applied after its launch lands
 
   Op junkOp() {
     Op o;
@@ -590,6 +634,7 @@ struct Env {
           // (the rewind); what is in flight carries the old epoch.
           x->demoting = false;
           x->parked = true;
+          x->parked_at = t;
           x->ready_at = ~uint64_t(0);
           x->wrong = false;
           x->junk = 0;
@@ -1006,6 +1051,7 @@ struct Env {
       f();
     }
     if (swap.rau) rauRestore(t + 1);
+    if (swap.rau) rauPreempt();
     for (Warp &x : w)
       if (x.provisional && !x.prov_based && !x.parked && t >= x.ready_at) {
         x.prov_based = true;            // its ready report (c): P counts from here
@@ -1024,7 +1070,10 @@ struct Env {
       core.migrationReads(busy);
     }
     if (g_pre_cycle_hook) g_pre_cycle_hook(core);
+    const auto presets = std::move(preset_cw);
+    preset_cw.clear();
     core.cycle(t);
+    for (const auto &pc : presets) core.presetWidths(pc.first, pc.second);
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
@@ -1162,6 +1211,11 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     else { o.k = kLane; o.nsrc = 2; }
     if ((o.k == kLane || o.k == kLoad || o.k == kSetp) && r(5) == 0) { o.guard = true; o.pguard = r(4); }
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
+    // A memory access whose data register is 4 bits wide faults (F-WIDTH,
+    // from the committed table rename now reads): keep the data 8 bits or
+    // wider (a load's destination, a store's last source).
+    if (o.k == kLoad && width[o.dst] == 3) { o.k = kLane; o.nsrc = 1; }
+    if (o.k == kStore && width[o.src[1]] == 3) o.src[1] = r(4);
     o.w = width[o.dst];
     o.backward = o.k == kBranch && r(2) == 0;
     p.push_back(o);
@@ -1584,6 +1638,51 @@ bool parkedLayout(bool control) {
     for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
   }
   return ok;
+}
+
+/// OA's rev 166: a destination's width is its committed width, read from
+/// the table at rename, not DEC's (no channel carries one). A warp whose
+/// table says 32 bits writes R4 and R5 with a test's narrow hint, then
+/// demotes: its names are 32 bits wide, and the park's assertion (each
+/// committed name at its committed width) holds. The control takes the
+/// hint's width, and the assertion must fire.
+bool widthFromTable(bool control) {
+  Config c = baseConfig();
+  c.sectioned = true;
+  c.l1_spec = false;
+  c.inject_width_from_dec = control;
+  Env e(c);
+  e.keep_log = true;
+  e.miss_extra = 300;
+  std::vector<Op> p;
+  Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);
+  Op b; b.k = kLane; b.dst = 5; b.w = 2; p.push_back(b);
+  Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
+  Op u; u.k = kLane; u.dst = 9; u.src[0] = 8; u.nsrc = 1; p.push_back(u);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(5, 1, p);
+  e.preset_cw.clear();                       // the table stays at 32 bits
+  for (unsigned k = 0; k != 200 && e.warpOf(5)->retired.size() < 2; ++k) e.step();
+  e.core.demote(5);
+  for (unsigned k = 0; k != 600; ++k) e.step();
+  const auto names = e.core.committedGprs(1);
+  const bool wide = e.core.nameWidth(names[4]) == 0 && e.core.nameWidth(names[5]) == 0;
+  const bool ok = wide && e.errors.empty();
+  if (!control) {
+    g_test = "width from the committed table";
+    EXPECT(wide, "R4 and R5 renamed at widths %u and %u, the table's 0", e.core.nameWidth(names[4]),
+           e.core.nameWidth(names[5]));
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testWidthFromTable() {
+  widthFromTable(false);
+  const bool held = widthFromTable(true);
+  std::printf("  %-24s %s\n", "control width-from-dec", held ? "MISSED" : "caught");
+  g_test = "width from the committed table (control)";
+  EXPECT(!held, "renaming at DEC's width should break the committed-width assertion");
 }
 
 void testParkedLayout() {
@@ -2911,8 +3010,8 @@ int stallHole(unsigned seeds, bool print, int only_fix = -1) {
 /// warps enter as residents exit), per go form, with the swap count, the
 /// slots' gaps, and the PRF ports' charge; and the threshold and P swept.
 void swapSweep(unsigned seeds) {
-  struct R { double cycles = 0, gap = 0, gap_dr = 0; unsigned swaps = 0, gaps = 0, declined = 0, prov = 0, merged = 0; uint64_t wc = 0, prf = 0; };
-  auto run = [&](Config c, unsigned mode, unsigned P, bool charge, bool prov = false) {
+  struct R { double cycles = 0, gap = 0, gap_dr = 0; unsigned swaps = 0, gaps = 0, declined = 0, prov = 0, merged = 0, pre = 0; uint64_t wc = 0, prf = 0; };
+  auto run = [&](Config c, unsigned mode, unsigned P, bool charge, bool prov = false, bool preempt = false) {
     R r;
     for (unsigned seed = 1; seed <= seeds; ++seed) {
       std::mt19937 rng(seed);
@@ -2924,6 +3023,7 @@ void swapSweep(unsigned seeds) {
       e.swap.dram_pm = 20;
       e.swap.charge_ports = charge;
       e.swap.provisional = prov;
+      e.swap.preempt = preempt;
       for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
       for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 300, true));
       e.finish(200000);
@@ -2932,6 +3032,7 @@ void swapSweep(unsigned seeds) {
       r.declined += e.declined;
       r.prov += e.provisional;
       r.merged += e.merged_fills;
+      r.pre += e.preempted;
       r.wc += e.write_conflicts;
       r.prf += e.core.counters["select.prf_read_ports"];
       for (const Env::Gap &g : e.gaps)
@@ -2957,22 +3058,32 @@ void swapSweep(unsigned seeds) {
                   (unsigned long long)r.prf, (unsigned long long)r.wc);
     };
     line("swap off", c.demote_mlc_miss, 8, true, off);
+    // Evict, the policy (DA), across the threshold; then AR's revs 115-117
+    // under it: a free slot with no ready warp restores a not-ready one,
+    // provisionally, and (PF-41) a ready warp pre-empts it.
     for (unsigned thr : {25u, 50u, 100u}) {
       Config t = c;
       t.demote_mlc_miss = thr;
-      line("swap", thr, 8, true, run(t, 1, 8, true));
+      line("evict", thr, 8, true, run(t, Env::kEvict, 8, true));
     }
-    {
-      // AR's rev 115: a free slot with no ready warp restores a not-ready
-      // one, provisionally (its restores and merged replays in brackets).
-      const R r = run(c, 1, 8, true, true);
-      line(("swap, provisional (" + std::to_string(r.prov) + " provisional, " + std::to_string(r.merged) +
-            " replays merged)").c_str(), c.demote_mlc_miss, 8, true, r);
+    for (const bool pre : {false, true}) {
+      const R r = run(c, Env::kEvict, 8, true, true, pre);
+      line((std::string(pre ? "evict, provisional, pre-empting" : "evict, provisional") + " (" +
+            std::to_string(r.prov) + " provisional, " + std::to_string(r.merged) + " replays merged" +
+            (pre ? ", " + std::to_string(r.pre) + " pre-empted" : std::string()) + ")")
+               .c_str(),
+           c.demote_mlc_miss, 8, true, r);
     }
     if (one == 0) {
-      for (unsigned P : {1u, 32u}) line("swap", c.demote_mlc_miss, P, true, run(c, 1, P, true));
-      line("swap", c.demote_mlc_miss, 8, false, run(c, 1, 8, false));
-      line("evict", c.demote_mlc_miss, 8, true, run(c, 2, 8, true));
+      for (unsigned P : {1u, 32u}) line("evict", c.demote_mlc_miss, P, true, run(c, Env::kEvict, P, true));
+      line("evict", c.demote_mlc_miss, 8, false, run(c, Env::kEvict, 8, false));
+    }
+    // Swap, the knob.
+    line("swap", c.demote_mlc_miss, 8, true, run(c, Env::kSwap, 8, true));
+    if (one == 0) {
+      const R r = run(c, Env::kSwap, 8, true, true);
+      line(("swap, provisional (" + std::to_string(r.prov) + " provisional, " + std::to_string(r.merged) +
+            " replays merged)").c_str(), c.demote_mlc_miss, 8, true, r);
     }
   }
 }
@@ -2983,53 +3094,63 @@ void swapSweep(unsigned seeds) {
 /// the oldest unretired uop and drained names it, and that no slot runs two
 /// warps; every warp retires its whole program, through swaps.
 void testSwap() {
+  // The policy, evict (DA), under every go form; swap, the knob, beside it.
   uint64_t abandoned = 0;
-  for (unsigned one : {0u, 1u, 2u})
+  for (unsigned mode : {Env::kEvict, Env::kSwap})
+    for (unsigned one : {0u, 1u, 2u})
+      for (unsigned seed = 1; seed <= 6; ++seed) {
+        if (mode == Env::kSwap && one != 0) continue;
+        g_test = std::string(mode == Env::kEvict ? "evict" : "swap") + " go " + std::to_string(one) + " seed " +
+                 std::to_string(seed);
+        Config c = baseConfig();
+        c.decq = 13;
+        c.rename_one_warp = one;
+        std::mt19937 rng(seed);
+        Env e(c, seed);
+        e.miss_pct = 20;
+        e.swap.rau = true;
+        e.swap.mode = mode;
+        e.swap.dram_pm = 40;
+        e.replay_spread = 60;
+        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+        for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+        e.finish(200000);
+        EXPECT(e.swaps > 0, "no swap");
+        unsigned demotes = 0;
+        for (const Env::Gap &g : e.gaps) demotes += g.drained != 0;
+        EXPECT(demotes > 0, "no demotion");
+        abandoned += e.abandoned;
+      }
+  // PF-23: the demotions abandoned loads, each answered with replay.
+  EXPECT(abandoned > 0, "no demotion abandoned a load (PF-23)");
+  // AR's revs 115-117, under evict: provisional restores, their replays
+  // merged into the fills still in flight, and (PF-41) a provisional warp
+  // pre-empted when a ready one appears; every warp still retires its
+  // whole program.
+  for (const bool preempt : {false, true}) {
+    unsigned prov = 0, merged = 0, pre = 0;
     for (unsigned seed = 1; seed <= 6; ++seed) {
-      g_test = "swap go " + std::to_string(one) + " seed " + std::to_string(seed);
+      g_test = std::string(preempt ? "evict, pre-empt" : "evict, provisional") + ", seed " + std::to_string(seed);
       Config c = baseConfig();
       c.decq = 13;
-      c.rename_one_warp = one;
       std::mt19937 rng(seed);
       Env e(c, seed);
       e.miss_pct = 20;
       e.swap.rau = true;
-      e.swap.mode = 1;
       e.swap.dram_pm = 40;
+      e.swap.provisional = true;
+      e.swap.preempt = preempt;
       e.replay_spread = 60;
       for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
       for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
       e.finish(200000);
-      EXPECT(e.swaps > 0, "no swap");
-      unsigned demotes = 0;
-      for (const Env::Gap &g : e.gaps) demotes += g.drained != 0;
-      EXPECT(demotes > 0, "no demotion");
-      abandoned += e.abandoned;
+      prov += e.provisional;
+      merged += e.merged_fills;
+      pre += e.preempted;
     }
-  // PF-23: the demotions abandoned loads, each answered with replay.
-  EXPECT(abandoned > 0, "no demotion abandoned a load (PF-23)");
-  // AR's rev 115: provisional restores, their replays merged into the
-  // fills still in flight; every warp still retires its whole program.
-  unsigned prov = 0, merged = 0;
-  for (unsigned seed = 1; seed <= 6; ++seed) {
-    g_test = "swap, provisional, seed " + std::to_string(seed);
-    Config c = baseConfig();
-    c.decq = 13;
-    std::mt19937 rng(seed);
-    Env e(c, seed);
-    e.miss_pct = 20;
-    e.swap.rau = true;
-    e.swap.mode = 1;
-    e.swap.dram_pm = 40;
-    e.swap.provisional = true;
-    e.replay_spread = 60;
-    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
-    for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
-    e.finish(200000);
-    prov += e.provisional;
-    merged += e.merged_fills;
+    EXPECT(prov > 0 && merged > 0, "%u provisional restores, %u replays merged", prov, merged);
+    if (preempt) EXPECT(pre > 0, "no provisional warp pre-empted (PF-41)");
   }
-  EXPECT(prov > 0 && merged > 0, "%u provisional restores, %u replays merged", prov, merged);
   // The control: beats youngest first, so FET resumes past the oldest
   // unretired uop of the lanes that have two beats.
   unsigned caught = 0;
@@ -3043,7 +3164,6 @@ void testSwap() {
     Env e(c, seed);
     e.miss_pct = 20;
     e.swap.rau = true;
-    e.swap.mode = 1;
     e.swap.dram_pm = 40;
     for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
     for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
@@ -3067,7 +3187,6 @@ void testSwap() {
     Env e(c, seed);
     e.miss_pct = 20;
     e.swap.rau = true;
-    e.swap.mode = 1;
     e.swap.dram_pm = 40;
     e.replay_spread = 60;
     for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
@@ -3599,6 +3718,7 @@ int main(int argc, char **argv) {
   if (std::getenv("OOE_TEST_SWAP")) {     // the swap bench alone, for debugging
     testDemoteRefused();
     testParkedLayout();
+    testWidthFromTable();
     testSwap();
     std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
@@ -3649,6 +3769,7 @@ int main(int argc, char **argv) {
   testSwap();
   testDemoteRefused();
   testParkedLayout();
+  testWidthFromTable();
   for (int k : {1, 2}) {
     const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
     const int saved = g_fail;

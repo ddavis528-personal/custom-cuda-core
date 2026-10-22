@@ -525,7 +525,7 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row)
 /// third; else the warp's home position (place: slot index, 0, or the
 /// slot's rotating counter).
 unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
-  const unsigned w = u.w;
+  const unsigned w = dstWidth(slot, u);
   if (!cfg_.sectioned || w == 0) return 0;
   const Slot &s = slot_[slot];
   auto align = [&](unsigned p) { return w == 1 ? (p & 2u) : (p & 3u); };
@@ -1964,7 +1964,10 @@ void Core::control() {
           const bool narrow = cfg_.sectioned && !isZeroName(n);
           pk.pos[a] = uint8_t(narrow ? namePos(n) : 0);
           pk.w[a] = uint8_t(narrow ? nameWidth(n) : s.cw[a]);
-          if (narrow && nameWidth(n) != s.cw[a]) count("park.name_width_not_committed");
+          // A name's width is the committed one, taken at rename (OA's rev
+          // 166), so the entry's width is the table's either way.
+          if (narrow && nameWidth(n) != s.cw[a])
+            err("OI-57: warp %u's R%u parks at width %u, its committed width %u", s.warp, a, nameWidth(n), s.cw[a]);
         }
       } else {
         out.drained.push_back({s.warp, s.resume_pc});
@@ -2388,12 +2391,13 @@ void Core::selectSectioned() {
     if (isExtra(e) && (x.res >> 5)) port = kP0 + 1;
     const unsigned secs = unsigned(__builtin_popcount(x.res & 0xFu));
     if (secs) {
-      ++histograms["sections_per_op.w" + std::to_string(r.u.w)][secs];
+      const unsigned dw = r.alloc_gpr ? nameWidth(r.pnew) : 0;
+      ++histograms["sections_per_op.w" + std::to_string(dw)][secs];
       // AR's split (OI-34): by bypass group (the copy apart), the footprint
       // beside the operands' own spread, so placement and the unit minimum
       // read separately.
       const std::string g = x.copy ? "copy" : "g" + std::to_string(r.u.attr.bypass_group & 7);
-      const std::string k = g + ".w" + std::to_string(r.u.w);
+      const std::string k = g + ".w" + std::to_string(dw);
       ++histograms["foot." + k][secs];
       ++histograms["spread." + k][unsigned(__builtin_popcount(resEntry(e, false) & 0xFu))];
     }
@@ -2868,7 +2872,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   unsigned pos = 0, plan = 0;
   if (wgpr && cfg_.sectioned && !atomic) {
     pos = placePos(si, u, merge);
-    plan = planSlice(si, u.w, pos, gprAllowed(si, 1));
+    plan = planSlice(si, dstWidth(si, u), pos, gprAllowed(si, 1));
   }
   // An atomic's names are whole rows when sectioned: 32-bit data.
   if (atomic ? !gprAllowed(si, 2) : wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
@@ -2964,7 +2968,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.pq[1] = s.prat[(u.imm >> 3) & 3];
     }
     if (wgpr) {
-      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, u.w, pos) : allocGpr(si);
+      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, dstWidth(si, u), pos) : allocGpr(si);
       r.alloc_gpr = true;
       s.rat[u.dst & 15] = r.pnew;
     }
