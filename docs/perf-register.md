@@ -62,6 +62,7 @@ it.
 | PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
 | PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
 | PF-39 | An early MLC-miss notice for demotion | MLC, DCU, MIU, OOE, RAU | deferred (TI-24 (5)) |
+| PF-40 | Pack a parked warp's rows: keep sharing, elide zero rows | OOE, RCU, PCA | deferred (TI-25) |
 
 ## Entries
 
@@ -739,3 +740,24 @@ it.
   the go the design uses, so the notice stays deferred. Re-measure once the
   drain stops waiting for the demoting load (AR's response TI-21, OI's
   rev 154), since that changes what a demotion returns.
+
+### PF-40 Pack a parked warp's rows: keep sharing, elide zero rows
+
+- **Now:** a demotion moves one row per architectural register, 16 plus the
+  predicate row, whatever the warp's rows hold (TI-25). Narrow registers that
+  shared a row each take their own, and a register still mapped to the zero
+  register moves a row of zeros. Restore gives each register its own row,
+  with its position and committed width from OOE's 64-bit entry for the warp.
+- **Alternative:** OOE also keeps each register's distinct-row index and a
+  zero flag (148 bits a warp against 64). The demotion then moves only the
+  distinct non-zero rows, and restore rebuilds the sharing, with zero-flagged
+  registers mapped back to the zero register (A-64's launch state).
+- **What it buys:** fewer migration cycles each way (up to 16 for a warp that
+  never wrote its registers), and fewer PRF rows held after a restore by a
+  warp whose narrow registers had been packed.
+- **Cost:** 84 more bits a warp context in OOE (about 2.7 Kb), and
+  restore-allocate taking a variable count from the slot's reservation.
+- **Signal:** the migration cycles in the swap sweep under the replay drain
+  (AR's response TI-21, OA's rev 160), and the PRF rows a restored warp holds
+  when rename stalls on an empty free list. Revisit if migration is material
+  there.
