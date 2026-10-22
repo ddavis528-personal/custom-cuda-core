@@ -636,8 +636,12 @@ Built (`rtl/ooe/`):
      table lacks); otherwise the index of the pair's penalty among the
      sorted penalties, an elaboration table from the model's settings.
      Each RS entry keeps its occupant's code per consumer group (2 bits by
-     the groups), written with ooe_prodmap's names; G-1's and G-2's ride
-     with their ports. Two sources on one producer take the later line
+     the groups) in ooe_prodmap, the entry's record with its names, written
+     when they are behind its class's gates (each uop's codes come in with
+     its names, `cvc`); G-1's and G-2's ride with their ports. A register
+     of its own here, clocked whenever a group allocated, changed on 39%
+     of its enabled cycles in medium and 60% in high (an occupant's codes
+     often equal the last one's), under CG-3's 75%. Two sources on one producer take the later line
      (the larger code), as the model's dep() keeps the later wake. A code
      is payload, read only through its bit (ooe_rs's code register keeps
      none without one), so it leaves unmasked.
@@ -664,9 +668,18 @@ Built (`rtl/ooe/`):
      masked by its hit. One-hot selects for the first two, the entry
      classes unordered and the codes unmasked give 19.3 flop to flop, every
      input at most 19.3 after its 2.0 arrival (`ooe_rendep.ngd.json`, by
-     OI: every input by 2.0, proposed to OA). ooe_rs takes `prv_dep` and
+     OI: every input by 2.0, proposed to OA). `check-cg`: 1,844 flops,
+     1,840 in 2 gates, worst enable 1.7 NGD; ooe_prodmap with the codes,
+     1,746 flops in 3 gates, 18.8 NGD. ooe_rs takes `prv_dep` and
      `prv_code` (mapped through its registered grant) and masks a row with
-     its valid bits, its frees and its last grant; rs_tb drives both, with
+     its valid bits, its frees and its last grant. The last grant is
+     registered one-hot beside the grant (no decode, and apart from the
+     `gnt_*` outputs, NGD-7), and each new row's cells, codes and empty
+     flag go by one-hot select, an entry being in one port's grant at most:
+     the override in port order the `prv` term doubled had put ooe_rs at
+     26.6 NGD. It is 18.1 flop to flop again, `prv_dep` and `prv_code`
+     reaching a flop 15.1 after an arrival of 9 (proposed to OA: they leave
+     rename's stage flops as `grp_dep` does). rs_tb drives both, with
      controls drop-prv (the group ahead's producers lost) and stale-live
      (stale bits on entries ooe_rs keeps), both caught, and the trio
      drives them assembled.

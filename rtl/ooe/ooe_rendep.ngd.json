@@ -139,6 +139,12 @@
       "date": "2026-10-22",
       "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
     },
+    "ecv_cq01h": {
+      "arrival": 2.0,
+      "by": "OI",
+      "date": "2026-10-22",
+      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+    },
     "gnt_v_cq01h": {
       "arrival": 2.0,
       "by": "OI",
