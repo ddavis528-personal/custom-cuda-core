@@ -68,8 +68,8 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 34 | `ccv_ooe_rcu_map` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 35 | `ccv_rcu_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 36 | `ccv_pca_rcu_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 37 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 38 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 37 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
+| 38 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
 | 39 | `ccv_rau_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 40 | `ccv_pca_rau_mig_done` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 41 | `ccv_rau_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |

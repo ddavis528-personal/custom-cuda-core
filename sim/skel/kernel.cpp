@@ -64,11 +64,71 @@ void Kernel::flushHeld() {
   for (uint64_t s : retire_order) ++nret[seqWarp(uint32_t(s))];
   for (const auto &h : held) {
     const uint32_t seq = uidSeq(h.first.second);
-    auto p = parked.find(seqWarp(seq));
-    if (p != parked.end() && p->second.done && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
+    if (parkedNow(seqWarp(seq)) && seqIndex(seq) >= nret[seqWarp(seq)]) continue;
     for (const std::string &m : h.second) fail("%s", m.c_str());
   }
   held.clear();
+}
+
+void Kernel::snapshotFinal(unsigned w) {
+  Final &f = finals[w];
+  const std::vector<unsigned> &r = ratOf(w);
+  for (unsigned a = 0; a != kArchGprs; ++a) f.gpr[a] = gpr[r[a]];
+  std::vector<unsigned> pmap = w < prat.size() ? prat[w] : std::vector<unsigned>();
+  if (pmap.empty())
+    for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
+  if (brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);   // the control, here too
+  for (unsigned p = 0; p != kArchPreds; ++p) f.pred[p] = pred[pmap[p]];
+}
+
+void Kernel::checkParked(unsigned w) {
+  if (w >= orcs.size()) return;
+  const Parked &pk = parked[w];
+  const Oracle &o = orcs[w];
+  uint32_t n = 0;
+  for (uint64_t s : retire_order) n += seqWarp(uint32_t(s)) == w;
+  std::array<std::array<uint32_t, kLanes>, kArchGprs> want{};
+  std::array<uint32_t, kArchPreds> pwant{};
+  for (uint32_t i = 0; i != n && i < o.recs.size(); ++i)
+    for (const RegVal &d : o.recs[i].defs) {
+      if (d.pred) pwant[d.idx & 3] = d.p;
+      else if (d.idx < kArchGprs) want[d.idx] = d.v;
+    }
+  const uint64_t pc = n < o.recs.size() ? o.recs[n].pc : 0;
+  if (pk.resume_pc != pc)
+    fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
+         (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
+  std::vector<unsigned> seen;
+  unsigned bad = 0;
+  for (unsigned a = 0; a != kArchGprs && a < pk.gpr_rows.size(); ++a) {
+    // Saved index: first appearance, a zero register never merged (RCU's rule).
+    auto f = pk.gpr_rows[a] == ccv::prov::kPhysZero ? seen.end()
+             : std::find(seen.begin(), seen.end(), pk.gpr_rows[a]);
+    const unsigned j = unsigned(f - seen.begin());
+    if (f == seen.end()) seen.push_back(pk.gpr_rows[a]);
+    auto row = pk.rows.find(j);
+    for (unsigned l = 0; l != kLanes; ++l) {
+      const uint32_t got = row == pk.rows.end() ? 0xbad0bad0u : row->second[l];
+      if (got != want[a][l] && bad++ < 4)
+        fail("parked warp %u R%u lane %u: PCA %08x, ccv-sim %08x", w, a, l, got, want[a][l]);
+    }
+  }
+  auto prow = pk.rows.find(kArchGprs);
+  for (unsigned p = 0; p != kArchPreds; ++p) {
+    const uint32_t got = prow == pk.rows.end() ? 0xbad0bad0u : prow->second[p];
+    if (got != pwant[p]) fail("parked warp %u P%u: PCA %08x, ccv-sim %08x", w, p, got, pwant[p]);
+  }
+  // Each lane's PC: the next instruction ccv-sim ran for it, held once
+  // OOE's rewind beats have set them all (TI-24 (3)).
+  if (pk.rewound)
+    for (unsigned l = 0; l != kLanes; ++l) {
+      uint64_t want_pc = o.recs.empty() ? 0 : o.recs.back().pc;
+      for (size_t i = n; i < o.recs.size(); ++i)
+        if (o.recs[i].mask >> l & 1u) { want_pc = o.recs[i].pc; break; }
+      if (pk.lane_pc[l] != want_pc && bad++ < 8)
+        fail("parked warp %u lane %u resumes at %llx; ccv-sim %llx", w, l,
+             (unsigned long long)pk.lane_pc[l], (unsigned long long)want_pc);
+    }
 }
 
 namespace {
@@ -1364,6 +1424,8 @@ public:
     for (unsigned p = 0; p != ccv::prov::kPhysRegs; ++p)
       for (unsigned l = 0; l != kLanes; ++l) k.gpr[p][l] = 0xdead0000u | p << 5 | l;
     k.pred.assign(256, 0);
+    // A restore's rows wait until the warp's map is here (TI-13).
+    holdsBack(ch().pca_rcu);
   }
   const char *kind() const override { return "rcu"; }
 
@@ -1421,50 +1483,68 @@ private:
     return b;
   }
 
-  /// Migration out (TI-24; A-45): ccv_ooe_rcu_map and ccv_rau_rcu_mig,
-  /// paired by warp and direction in either order, then the warp's rows to
-  /// PCA one a cycle. Each distinct row the map names moves once, in order
-  /// of first appearance from R0 (its saved index); the zero register reads
-  /// zero. The predicate row goes last, mig_row CCV_GPRS, its four
-  /// predicates 32 bits each from bit 0, so PCA knows the transfer is whole
-  /// when it lands (TI-24 (4), until AR says otherwise).
-  struct MigReq { bool map = false, cmd = false; std::vector<unsigned> gpr, pred; };
-  std::map<unsigned, MigReq> mig_;
-  std::deque<std::pair<unsigned, Bits>> rows_out_;   ///< warp, row message
+  /// Migration (TI-24; A-45): ccv_ooe_rcu_map and ccv_rau_rcu_mig, paired
+  /// by warp and direction in either order.
+  ///
+  /// Out: the warp's rows to PCA one a cycle. Each distinct row the map
+  /// names moves once, in order of first appearance from R0 (its saved
+  /// index); the zero register reads zero. The predicate row goes last,
+  /// mig_row CCV_GPRS, its four predicates 32 bits each from bit 0, so PCA
+  /// knows the transfer is whole when it lands (TI-24 (4)).
+  ///
+  /// In: PCA's rows, taken only once the warp's restore map and command are
+  /// both here (until then they wait in their slot, credits held), each
+  /// written as it is taken (TI-13): the k-th into the k-th distinct row the
+  /// restore map names, the predicate row into its four predicates.
+  struct MigReq { bool map = false, cmd = false, armed = false; std::vector<unsigned> gpr, pred; };
+  std::map<std::pair<unsigned, unsigned>, MigReq> mig_;   ///< (warp, direction)
+  std::deque<std::pair<unsigned, Bits>> rows_out_;        ///< warp, row message
+  std::set<unsigned> unwritten_, unwritten_p_;            ///< a restore's rows and predicates, until written
 
   void migrate() {
     const Ch &c = ch();
     if (has(c.ooe_map, 0)) {
       const Bits m = take(c.ooe_map, 0).payload;
       const unsigned w = unsigned(get(m, c.ooe_map, "warp_id"));
-      if (get(m, c.ooe_map, "direction") != 0) {
-        k_.fail("rcu: a restore map for warp %u, and restore is not built (TI-24)", w);
-      } else {
-        MigReq &q = mig_[w];
-        const FieldDesc &gm = field(c.ooe_map, "gpr_map"), &pm = field(c.ooe_map, "pred_map");
-        const unsigned gw = gm.width / kArchGprs, pw = pm.width / kArchPreds;
-        q.gpr.clear();
-        q.pred.clear();
-        for (unsigned a = 0; a != kArchGprs; ++a) q.gpr.push_back(unsigned(m.get(gm.lsb + a * gw, gw)));
-        for (unsigned p = 0; p != kArchPreds; ++p) q.pred.push_back(unsigned(m.get(pm.lsb + p * pw, pw)));
-        q.map = true;
-      }
+      const unsigned dir = unsigned(get(m, c.ooe_map, "direction"));
+      MigReq &q = mig_[{w, dir}];
+      const FieldDesc &gm = field(c.ooe_map, "gpr_map"), &pm = field(c.ooe_map, "pred_map");
+      const unsigned gw = gm.width / kArchGprs, pw = pm.width / kArchPreds;
+      q.gpr.clear();
+      q.pred.clear();
+      for (unsigned a = 0; a != kArchGprs; ++a) q.gpr.push_back(unsigned(m.get(gm.lsb + a * gw, gw)));
+      for (unsigned p = 0; p != kArchPreds; ++p) q.pred.push_back(unsigned(m.get(pm.lsb + p * pw, pw)));
+      q.map = true;
+      if (dir == 1)
+        for (unsigned r : q.gpr)
+          if (r == ccv::prov::kPhysZero)
+            k_.fail("rcu: warp %u's restore map names the zero register (A-64)", w);
     }
     if (has(c.rau_rcu_mig, 0)) {
       const Bits m = take(c.rau_rcu_mig, 0).payload;
       const unsigned w = unsigned(get(m, c.rau_rcu_mig, "warp_id"));
-      if (get(m, c.rau_rcu_mig, "direction") != 0)
-        k_.fail("rcu: a restore command for warp %u, and restore is not built (TI-24)", w);
-      else
-        mig_[w].cmd = true;
+      mig_[{w, unsigned(get(m, c.rau_rcu_mig, "direction"))}].cmd = true;
     }
+    // A restore paired: every row and predicate its map names is unwritten
+    // until its row lands.
+    for (auto &[key, q] : mig_)
+      if (key.second == 1 && q.map && q.cmd && !q.armed) {
+        for (unsigned g : q.gpr) unwritten_.insert(g);
+        for (unsigned p : q.pred) unwritten_p_.insert(p);
+        q.armed = true;
+      }
     for (auto it = mig_.begin(); it != mig_.end();) {
-      if (!it->second.map || !it->second.cmd) { ++it; continue; }
-      const unsigned w = it->first;
+      const auto [w, dir] = it->first;
       const MigReq &q = it->second;
+      if (dir != 0 || !q.map || !q.cmd) { ++it; continue; }
+      // A zero register is never merged: each arch register that names it
+      // moves a row of zeros of its own, since restore-allocate gives each a
+      // register of its own and the restore map's pattern must match
+      // (TI-25, for AR and OA to confirm).
       std::vector<unsigned> seen;
       for (unsigned r : q.gpr) {
-        if (std::find(seen.begin(), seen.end(), r) != seen.end()) continue;
+        if (r != ccv::prov::kPhysZero && std::find(seen.begin(), seen.end(), r) != seen.end())
+          continue;
         seen.push_back(r);
         Bits row = msgOf(c.rcu_pca);
         put(row, c.rcu_pca, "warp_id", w);
@@ -1489,6 +1569,41 @@ private:
     if (!rows_out_.empty() && can(c.rcu_pca, 0)) {
       send(c.rcu_pca, 0, rows_out_.front().second, makeUid(IdClass::kNone, 0));
       rows_out_.pop_front();
+    }
+    // In: a row is taken only when its warp's restore map and command are
+    // both here; it waits in its slot until then.
+    if (has(c.pca_rcu, 0)) {
+      const Bits &head = peek(c.pca_rcu, 0).payload;
+      const unsigned w = unsigned(get(head, c.pca_rcu, "warp_id"));
+      auto q = mig_.find({w, 1u});
+      if (q != mig_.end() && q->second.map && q->second.cmd) {
+        const Bits m = take(c.pca_rcu, 0).payload;
+        const unsigned r = unsigned(get(m, c.pca_rcu, "mig_row"));
+        const unsigned dl = field(c.pca_rcu, "row_data").lsb;
+        const MigReq &mq = q->second;
+        if (r >= kArchGprs) {
+          for (unsigned p = 0; p != kArchPreds; ++p) {
+            k_.pred[mq.pred[p]] = uint32_t(m.get(dl + 32 * p, 32));
+            unwritten_p_.erase(mq.pred[p]);
+          }
+          // The predicate row closes the transfer: the warp's maps, for the
+          // final compare, are the restore map's (an observation).
+          for (unsigned a = 0; a != kArchGprs; ++a) k_.ratOf(w)[a] = mq.gpr[a];
+          if (!k_.prat.empty() && w < k_.prat.size() && !k_.prat[w].empty())
+            for (unsigned p = 0; p != kArchPreds; ++p) k_.prat[w][p] = mq.pred[p];
+          mig_.erase(q);
+        } else {
+          std::vector<unsigned> seen;
+          for (unsigned g : mq.gpr)
+            if (std::find(seen.begin(), seen.end(), g) == seen.end()) seen.push_back(g);
+          if (r >= seen.size()) {
+            k_.fail("rcu: warp %u's restore row %u, past the %zu its map names", w, r, seen.size());
+          } else {
+            for (unsigned l = 0; l != kLanes; ++l) k_.gpr[seen[r]][l] = uint32_t(m.get(dl + 32 * l, 32));
+            unwritten_.erase(seen[r]);
+          }
+        }
+      }
     }
   }
 
@@ -1826,6 +1941,15 @@ private:
     const unsigned ppold = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_old_dst"));
     const unsigned src[3] = {(ps >> 8) & 0xff, ps & 0xff,
                              unsigned(get(m.payload, c.ooe_rcu, "phys_src2"))};
+    // A restored warp's registers are read only once their rows are
+    // written (TI-13, OA's check on Q-39): done means written.
+    for (unsigned i = 0; i != op->nsrc; ++i)
+      if (!(op->alu_imm >= 0 && int(i) == op->imm_slot) && unwritten_.count(src[i]))
+        k_.fail("rcu: seq %llu reads row %u before its restore row is written",
+                (unsigned long long)uidSeq(m.tid), src[i]);
+    if (op->guard && unwritten_p_.count(pp))
+      k_.fail("rcu: seq %llu reads predicate %u before its restore row is written",
+              (unsigned long long)uidSeq(m.tid), pp);
     // The zero registers are read, never written (A-64).
     if ((op->gdst && pd == ccv::prov::kPhysZero) || (pwe && ppd == ccv::prov::kPredZero))
       k_.fail("rcu: seq %llu writes a zero register", (unsigned long long)uidSeq(m.tid));
@@ -2242,10 +2366,12 @@ private:
     std::map<uint64_t, unsigned> ckpt_of;   ///< checkpoint, by branch seq
     bool await_redirect = false;            ///< fetched a branch it mispredicts
     bool stopped = false;                   ///< an epoch notice: demoted or killed
+    bool restoring = false;                 ///< RAU's restore command, PCs to come
     /// Lanes OOE's rewind beats set, and to what (TI-24 (3)): the stub's
     /// fetch order is the oracle's, so it keeps per-lane PCs only for this.
     uint32_t rewound = 0;
     std::array<uint64_t, kLanes> lane_pc{};
+    uint64_t boundary_tid = 0;              ///< the oldest beat's uop (trace-only)
   };
   std::map<unsigned, Warp> warps_;
   // Each warp's fetch epoch, by warp_id, as OOE last sent it (A-70, A-74).
@@ -2253,7 +2379,7 @@ private:
   unsigned epoch_[32] = {};
   static constexpr unsigned kEpochs = 1u << ccv::prov::kWFetchEpoch;
   bool stale_next_ = false, stale_done_ = false;   ///< stale-epoch control
-  std::deque<Bits> pca_q_;                          ///< PC groups out to PCA
+  std::deque<std::pair<Bits, uint64_t>> pca_q_;     ///< PCs out to PCA, with where it resumes
 
   void work() override {
     const Ch &c = ch();
@@ -2293,6 +2419,11 @@ private:
         for (unsigned l = 0; l != kLanes; ++l)
           if (lanes >> l & 1u) x.lane_pc[l] = pc;
         x.rewound |= lanes;
+        // The oldest beat's uop, on the trace sideband: where this stub's
+        // oracle-ordered fetch resumes after a restore (trace-only).
+        if (uidClass(m.tid) == IdClass::kInstr &&
+            (!x.boundary_tid || seqIndex(uidSeq(m.tid)) < seqIndex(uidSeq(x.boundary_tid))))
+          x.boundary_tid = m.tid;
       } else if (get(m.payload, c.ooe_fet, "epoch_only")) {
         epoch_[rw & 31] = fe;
         warps_[rw].stopped = true;
@@ -2337,7 +2468,10 @@ private:
       const Bits m = take(c.rau_fet_mig, 0).payload;
       const unsigned w = unsigned(get(m, c.rau_fet_mig, "warp_id"));
       if (get(m, c.rau_fet_mig, "direction") != 0) {
-        k_.fail("fet: a restore of warp %u, and restore is not built (TI-24)", w);
+        // A restore: the slot it lands in, before PCA's PCs arrive (A-65).
+        Warp &x = warps_[w];
+        x.tier1 = unsigned(get(m, c.rau_fet_mig, "tier1_id"));
+        x.restoring = true;
       } else {
         const Warp &x = warps_[w];
         const auto &recs = k_.orcs[w].recs;
@@ -2360,12 +2494,50 @@ private:
         put(g, c.fet_pca, "pc_upper", upper);
         k_.parked[w].rewound = x.rewound == ~0u;
         if (k_.parked[w].rewound) k_.hit("rewound");
-        pca_q_.push_back(g);
+        // The trace identity of where it resumes rides with the PCs to PCA,
+        // and back on a restore (trace-only).
+        const uint64_t at = x.boundary_tid ? x.boundary_tid
+                            : x.next < recs.size() ? instrUid(warpSeq(w, recs[x.next].seq)) : 0;
+        pca_q_.push_back({g, at});
       }
     }
     if (!pca_q_.empty() && can(c.fet_pca, 0)) {
-      send(c.fet_pca, 0, pca_q_.front(), makeUid(IdClass::kNone, 0));
+      send(c.fet_pca, 0, pca_q_.front().first, pca_q_.front().second);
       pca_q_.pop_front();
+    }
+    // A restored warp's PCs (IS-17): FET resumes it. This stub fetches in
+    // the oracle's order, so it resumes at the record the trace identity
+    // names, and holds each lane's PC to that record's.
+    if (has(c.pca_fet, 0)) {
+      const Receiver::Msg mm = take(c.pca_fet, 0);
+      const unsigned w = unsigned(get(mm.payload, c.pca_fet, "warp_id"));
+      Warp &x = warps_[w];
+      const auto &recs = k_.orcs[w].recs;
+      size_t at = recs.size();
+      for (size_t i = 0; i != recs.size(); ++i)
+        if (instrUid(warpSeq(w, recs[i].seq)) == mm.tid) { at = i; break; }
+      if (!x.restoring || at == recs.size()) {
+        k_.fail("fet: PCs for warp %u, which is not being restored to a known place", w);
+      } else {
+        const FieldDesc &lp = field(c.pca_fet, "lane_pcs");
+        const unsigned lw = lp.width / kLanes;
+        const uint64_t up = get(mm.payload, c.pca_fet, "pc_upper");
+        for (unsigned l = 0; l != kLanes; ++l) {
+          const uint64_t pc = up << ccv::kWPcWindow | mm.payload.get(lp.lsb + l * lw, lw) << 1;
+          if ((recs[at].mask >> l & 1u) && pc != recs[at].pc)
+            k_.fail("fet: restored warp %u lane %u at %llx, but it resumes at %llx", w, l,
+                    (unsigned long long)pc, (unsigned long long)recs[at].pc);
+        }
+        x.next = at;
+        x.launched = true;
+        x.stopped = x.restoring = x.await_redirect = false;
+        x.live = 0;
+        x.taken_order.clear();
+        x.ckpt_of.clear();
+        x.rewound = 0;
+        x.boundary_tid = 0;
+        k_.hit("resumed");
+      }
     }
     if (has(c.ooe_free, 0)) {
       // Checkpoints freed by correct resolutions. Every bit must name one
@@ -2531,66 +2703,165 @@ private:
   }
 };
 
-// ---- RAU: launches the kernel's warps ----------------------------------------------
+// ---- RAU: launches the kernel's warps, and swaps them ------------------------------
 
-/// One warp a CTA (ccv-sim's model), warp w in tier-1 slot w (A-65), so at
-/// most CCV_TIER1_WARPS: each allocated, its CTA configured, then launched
-/// to FET, in warp order, one message a channel a cycle.
+/// One warp a CTA (ccv-sim's model). RAU holds CCV_TIER1_WARPS slots and
+/// gives a free one to the oldest ready warp: one waiting to launch, ready
+/// from the start, before one parked in PCA. A launch is the warp's
+/// allocation, its CTA configured, then FET's launch, each a message a
+/// channel a cycle; an exit frees its slot (ccv_ooe_rau_status exited,
+/// TI-24 (2)).
+///
+/// Swaps (TI-24, aligned with OI's swap environment, sim/ooe/ooe_test.cpp):
+/// OOE raises the triggers at the ROB head and reports them on
+/// ccv_ooe_rau_status (Q18); RAU decides. CCV_RAU_DEMOTE=mlc demotes on a
+/// report whose head load is outstanding past the threshold (the trigger),
+/// =fallback on any stall report, and unset demotes nothing. One demotion
+/// and one restore at a time, and a restored warp is not demoted again until
+/// it has retired CCV_RAU_P instructions (8, the environment's P). A
+/// demotion: drained -> the three commands out -> PCA's ack -> free. A
+/// restore: restore-allocate (OOE allocates and sends RCU its map) -> the
+/// three commands in -> PCA's ack, once every row is written ->
+/// restore-activate. CCV_RAU_RESTORE=0 keeps what it parks, which ends its
+/// run parked.
 class Rau : public Stub {
 public:
-  using Stub::Stub;
+  Rau(int inst, Kernel &k) : Stub(inst, k) {
+    k.restores = restore_;
+    for (unsigned s = 0; s != ccv::kTier1Warps; ++s) free_.insert(s);
+    for (unsigned w = 0; w != k.orcs.size(); ++w) waiting_.push_back(w);
+  }
   const char *kind() const override { return "rau"; }
 
 private:
-  unsigned alloc_ = 0, cta_ = 0, launch_ = 0;   ///< warps sent each message
+  static const char *env(const char *n, const char *d) { return getenv(n) ? getenv(n) : d; }
+  const std::string policy_ = env("CCV_RAU_DEMOTE", "");
+  const bool restore_ = std::string(env("CCV_RAU_RESTORE", "1")) != "0";
+  const unsigned P_ = unsigned(std::strtoul(env("CCV_RAU_P", "8"), nullptr, 0));
+  /// CCV_RAU_CONCURRENT=1 lets demotions overlap, where the environment's
+  /// RAU runs one at a time and declines a report that arrives meanwhile:
+  /// a stress knob, for runs that need several warps parked at once.
+  const bool concurrent_ = std::string(env("CCV_RAU_CONCURRENT", "0")) == "1";
 
-  /// Demotion (TI-24). OOE raises the triggers at the ROB head and reports
-  /// them on ccv_ooe_rau_status (Q18); RAU decides. The policy is a knob
-  /// until OI's model environment sets it: CCV_RAU_DEMOTE=fallback demotes
-  /// on any stall report, =mlc on one whose head missed MLC, and unset
-  /// demotes nothing. Each demotion runs drained -> both migration commands
-  /// -> PCA's ack -> free. No restore yet (TI-24 (1)): a demoted warp ends
-  /// its run parked.
-  const std::string policy_ = getenv("CCV_RAU_DEMOTE") ? getenv("CCV_RAU_DEMOTE") : "";
-  std::set<unsigned> demoting_;            ///< warps demoted and not yet freed
-  std::deque<unsigned> demote_q_, free_q_;
+  std::set<unsigned> free_;                  ///< tier-1 slots
+  std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
+  std::deque<unsigned> waiting_;             ///< warps not yet launched, in order
+  std::deque<unsigned> parked_;              ///< in PCA, oldest first
+  std::set<unsigned> restored_;              ///< restored at least once
+  std::map<unsigned, unsigned> retired_;     ///< last retired_since_restore reported
+  std::set<unsigned> demoting_;              ///< demoted, not yet parked
+  bool restore_busy_ = false;
+
+  /// Messages to OOE on ccv_rau_ooe_alloc, in order: a free lands before
+  /// the slot's next allocation.
+  struct AllocMsg { Bits m; int launch = -1; };   ///< launch: the warp it allocates
+  std::deque<AllocMsg> alloc_q_;
+  /// A launch's CTA configuration and FET's launch, after its allocation.
+  struct Launch { unsigned w, slot; bool cta = false; };
+  std::deque<Launch> launch_q_;
   /// A migration's three commands, to RCU, FET and PCA (A-45; TI-24 (1)),
-  /// sent in that order; and the warp's place in PCA, from RAU's free list.
-  struct Mig { unsigned w, place, sent; };
+  /// in that order, either way.
+  struct Mig { unsigned w, slot, place, dir, sent; };
   std::deque<Mig> mig_q_;
   std::set<unsigned> places_ = [] {
     std::set<unsigned> p;
     for (unsigned i = 0; i != ccv::kParkedWarps; ++i) p.insert(i);
     return p;
   }();
-  std::map<unsigned, unsigned> place_of_;   ///< parked warp -> its place
+  std::map<unsigned, unsigned> place_of_;    ///< parked or moving warp -> its place
 
-  void demotion() {
+  Bits allocMsg(unsigned w, unsigned slot, unsigned op) {
+    const Ch &c = ch();
+    Bits a = msgOf(c.rau_ooe);
+    put(a, c.rau_ooe, "warp_id", w);
+    put(a, c.rau_ooe, "alloc_op", op);
+    put(a, c.rau_ooe, "tier1_id", slot);
+    if (op == kAllocLaunch || op == 2) {
+      // Identity from RAU's warp-to-CTA table: each warp warp 0 of its CTA.
+      put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
+      put(a, c.rau_ooe, "warp_in_cta", 0);
+      put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
+    }
+    return a;
+  }
+
+  /// A free slot to the oldest ready warp: a launch, else a parked warp.
+  void place() {
+    while (!free_.empty() && !waiting_.empty()) {
+      const unsigned slot = *free_.begin(), w = waiting_.front();
+      free_.erase(free_.begin());
+      waiting_.pop_front();
+      slot_of_[w] = slot;
+      alloc_q_.push_back({allocMsg(w, slot, kAllocLaunch), int(w)});
+      launch_q_.push_back({w, slot});
+    }
+    if (!free_.empty() && !parked_.empty() && !restore_busy_ && restore_) {
+      const unsigned slot = *free_.begin(), w = parked_.front();
+      free_.erase(free_.begin());
+      parked_.pop_front();
+      slot_of_[w] = slot;
+      restore_busy_ = true;
+      alloc_q_.push_back({allocMsg(w, slot, 2), -1});   // restore-allocate (A-64)
+      mig_q_.push_back({w, slot, place_of_[w], 1, 0});
+    }
+  }
+
+  void status() {
+    const Ch &c = ch();
+    if (!has(c.ooe_status, 0)) return;
+    const Bits m = take(c.ooe_status, 0).payload;
+    const unsigned w = unsigned(get(m, c.ooe_status, "warp_id"));
+    retired_[w] = unsigned(get(m, c.ooe_status, "retired_since_restore"));
+    if (get(m, c.ooe_status, "exited")) {
+      // An exit that raced its own demotion is not handled: what a demote
+      // does to a warp whose exit has retired is OA's to say (TI-25).
+      if (demoting_.count(w)) {
+        k_.fail("rau: warp %u exits while RAU demotes it (TI-25)", w);
+        return;
+      }
+      // The exit's quiesce: free the slot, and with it the CTA's (one warp a
+      // CTA, so every exit is its CTA's last).
+      auto s = slot_of_.find(w);
+      if (s == slot_of_.end()) { k_.fail("rau: warp %u exits, and holds no slot", w); return; }
+      k_.snapshotFinal(w);
+      alloc_q_.push_back({allocMsg(w, s->second, kAllocFree), -1});
+      free_.insert(s->second);
+      slot_of_.erase(s);
+      k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
+      return;
+    }
+    const bool want = policy_ == "fallback" ? get(m, c.ooe_status, "stalled") != 0
+                      : policy_ == "mlc"    ? get(m, c.ooe_status, "mlc_miss_seen") != 0
+                                            : false;
+    if (want) demote(w);
+  }
+  void demote(unsigned w) {
+    const Ch &c = ch();
+    if ((!concurrent_ && !demoting_.empty()) || demoting_.count(w) || !slot_of_.count(w) || k_.parkedNow(w) ||
+        (k_.parked.count(w) && !k_.parked[w].restored) ||
+        (restored_.count(w) && retired_[w] < P_))
+      return;
+    demoting_.insert(w);
+    k_.parked[w] = Kernel::Parked();
+    Bits d = msgOf(c.rau_demote);
+    put(d, c.rau_demote, "warp_id", w);
+    put(d, c.rau_demote, "squash_to_retirement", 1);
+    demote_q_.push_back(d);
+  }
+  std::deque<Bits> demote_q_;
+
+  void migration() {
     const Ch &c = ch();
     const uint64_t none = makeUid(IdClass::kNone, 0);
-    if (has(c.ooe_status, 0)) {
-      const Bits m = take(c.ooe_status, 0).payload;
-      const unsigned w = unsigned(get(m, c.ooe_status, "warp_id"));
-      const bool want = policy_ == "fallback" ? get(m, c.ooe_status, "stalled") != 0
-                        : policy_ == "mlc"    ? get(m, c.ooe_status, "mlc_miss_seen") != 0
-                                              : false;
-      if (want && !demoting_.count(w) && !k_.parked.count(w)) {
-        demoting_.insert(w);
-        demote_q_.push_back(w);
-      }
-    }
     if (!demote_q_.empty() && can(c.rau_demote, 0)) {
-      Bits d = msgOf(c.rau_demote);
-      put(d, c.rau_demote, "warp_id", demote_q_.front());
-      put(d, c.rau_demote, "squash_to_retirement", 1);
-      send(c.rau_demote, 0, d, none);
+      send(c.rau_demote, 0, demote_q_.front(), none);
       k_.hit("demote");
       demote_q_.pop_front();
     }
     if (has(c.ooe_drained, 0)) {
       const Bits m = take(c.ooe_drained, 0).payload;
       const unsigned w = unsigned(get(m, c.ooe_drained, "warp_id"));
-      if (!demoting_.count(w)) k_.fail("rau: warp %u drained, but RAU never demoted it", w);
+      if (!demoting_.count(w) || !slot_of_.count(w)) k_.fail("rau: warp %u drained, but RAU never demoted it", w);
       k_.parked[w].resume_pc = get(m, c.ooe_drained, "resume_pc");
       if (places_.empty()) {
         k_.fail("rau: warp %u drained, and PCA has no free place", w);
@@ -2600,103 +2871,106 @@ private:
         // so the next demotion gets it again and PCA must refuse it.
         if (k_.brk != "pca-place") places_.erase(places_.begin());
         place_of_[w] = pl;
-        mig_q_.push_back({w, pl, 0});
+        mig_q_.push_back({w, slot_of_[w], pl, 0, 0});
       }
     }
-    // The migration out, all three commands (A-45, TI-24 (1)): which warp
-    // and out; to FET also the slot it vacates, to PCA its place.
+    // The three commands, either way: to FET also the slot (vacated or
+    // taken), to PCA the place.
     if (!mig_q_.empty()) {
       Mig &g = mig_q_.front();
-      if (g.sent == 0 && can(c.rau_rcu_mig, 0)) {
+      if (g.dir == 1 && g.sent == 0 && !alloc_q_.empty()) {
+        // the restore-allocate goes first, so OOE's map is on its way
+      } else if (g.sent == 0 && can(c.rau_rcu_mig, 0)) {
         Bits r = msgOf(c.rau_rcu_mig);
         put(r, c.rau_rcu_mig, "warp_id", g.w);
-        put(r, c.rau_rcu_mig, "direction", 0);
+        put(r, c.rau_rcu_mig, "direction", g.dir);
         send(c.rau_rcu_mig, 0, r, none);
         ++g.sent;
       } else if (g.sent == 1 && can(c.rau_fet_mig, 0)) {
         Bits f = msgOf(c.rau_fet_mig);
         put(f, c.rau_fet_mig, "warp_id", g.w);
-        put(f, c.rau_fet_mig, "tier1_id", g.w);      // RAU placed warp w in slot w
-        put(f, c.rau_fet_mig, "direction", 0);
+        put(f, c.rau_fet_mig, "tier1_id", g.slot);
+        put(f, c.rau_fet_mig, "direction", g.dir);
         send(c.rau_fet_mig, 0, f, none);
         ++g.sent;
       } else if (g.sent == 2 && can(c.rau_pca_mig, 0)) {
         Bits q = msgOf(c.rau_pca_mig);
         put(q, c.rau_pca_mig, "warp_id", g.w);
-        put(q, c.rau_pca_mig, "direction", 0);
+        put(q, c.rau_pca_mig, "direction", g.dir);
         put(q, c.rau_pca_mig, "pca_place", g.place);
         send(c.rau_pca_mig, 0, q, none);
         mig_q_.pop_front();
       }
     }
-    // PCA holds both halves: the slot may be reallocated, so OOE frees the
-    // warp's registers now and not before (V-27).
     if (has(c.pca_done, 0)) {
       const Bits m = take(c.pca_done, 0).payload;
       const unsigned w = unsigned(get(m, c.pca_done, "warp_id"));
-      if (get(m, c.pca_done, "direction") != 0 || !demoting_.count(w))
-        k_.fail("rau: PCA acks a migration of warp %u that RAU did not start", w);
-      else
-        free_q_.push_back(w);
+      const unsigned dir = unsigned(get(m, c.pca_done, "direction"));
+      if (dir == 0 && demoting_.count(w) && slot_of_.count(w)) {
+        // PCA holds both halves: OOE frees the warp's registers now and
+        // not before (V-27), and the slot goes to the oldest ready warp.
+        alloc_q_.push_back({allocMsg(w, slot_of_[w], kAllocFree), -1});
+        free_.insert(slot_of_[w]);
+        slot_of_.erase(w);
+        parked_.push_back(w);
+        demoting_.erase(w);
+        k_.parked[w].done = true;
+        k_.checkParked(w);
+        k_.hit("parked");
+      } else if (dir == 1 && restore_busy_ && slot_of_.count(w)) {
+        // Every row written: the warp may issue (A-64).
+        alloc_q_.push_back({allocMsg(w, slot_of_[w], 3), -1});   // restore-activate
+        places_.insert(place_of_[w]);
+        place_of_.erase(w);
+        restore_busy_ = false;
+        restored_.insert(w);
+        k_.parked[w].restored = true;
+        k_.hit("restored");
+      } else {
+        k_.fail("rau: PCA acks a migration of warp %u (direction %u) that RAU did not start", w, dir);
+      }
     }
   }
 
   void work() override {
     const Ch &c = ch();
     const uint64_t none = makeUid(IdClass::kNone, 0);
-    const unsigned n = unsigned(k_.orcs.size());
-    demotion();
-    if (!free_q_.empty() && alloc_ == n && can(c.rau_ooe, 0)) {
-      const unsigned w = free_q_.front();
-      Bits a = msgOf(c.rau_ooe);
-      put(a, c.rau_ooe, "warp_id", w);
-      put(a, c.rau_ooe, "alloc_op", kAllocFree);
-      put(a, c.rau_ooe, "tier1_id", w);
-      send(c.rau_ooe, 0, a, none);
-      demoting_.erase(w);
-      k_.parked[w].done = true;
-      k_.hit("parked");
-      free_q_.pop_front();
+    status();
+    migration();
+    place();
+    if (!alloc_q_.empty() && can(c.rau_ooe, 0)) {
+      send(c.rau_ooe, 0, alloc_q_.front().m, none);
+      // A launch's CTA and FET's launch follow its own allocation.
+      for (Launch &l : launch_q_)
+        if (int(l.w) == alloc_q_.front().launch) l.cta = true;
+      alloc_q_.pop_front();
     }
-    if (alloc_ != n && can(c.rau_ooe, 0)) {
-      const unsigned w = alloc_;
-      Bits a = msgOf(c.rau_ooe);
-      put(a, c.rau_ooe, "warp_id", w);
-      put(a, c.rau_ooe, "alloc_op", kAllocLaunch);
-      put(a, c.rau_ooe, "tier1_id", w);           // RAU places warp w in slot w (A-65)
-      // Identity from RAU's warp-to-CTA table: each warp warp 0 of its CTA.
-      put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
-      put(a, c.rau_ooe, "warp_in_cta", 0);
-      put(a, c.rau_ooe, "barrier_count", 0);      // no kernel allocates a barrier yet
-      send(c.rau_ooe, 0, a, none);
-      ++alloc_;
-    }
-    if (cta_ != n && can(c.rau_miu, 0)) {
-      Bits a = msgOf(c.rau_miu);
-      put(a, c.rau_miu, "cta_slot", cta_);
-      send(c.rau_miu, 0, a, none);
-      ++cta_;
-    }
-    // Launch last, once the warp's allocation and its CTA are sent, so its
-    // registers exist before its first instruction can reach them.
-    if (launch_ < alloc_ && launch_ < cta_ && can(c.rau_fet, 0)) {
-      const unsigned w = launch_;
-      const Oracle &o = k_.orcs[w];
-      Bits l = msgOf(c.rau_fet);
-      put(l, c.rau_fet, "warp_id", w);
-      put(l, c.rau_fet, "tier1_id", w);           // the same slot, to FET
-      put(l, c.rau_fet, "start_pc", o.code_base);
-      // code_bounds: [63:0] base, [103:64] length (placeholder split).
-      const FieldDesc &cb = field(c.rau_fet, "code_bounds");
-      l.set(cb.lsb, 64, o.code_base);
-      l.set(cb.lsb + 64, cb.width - 64, o.code.size());
-      send(c.rau_fet, 0, l, none);
-      ++launch_;
+    // Launch last, once the warp's allocation is sent, so its registers
+    // exist before its first instruction can reach them.
+    if (!launch_q_.empty() && launch_q_.front().cta) {
+      Launch &l = launch_q_.front();
+      if (can(c.rau_miu, 0) && can(c.rau_fet, 0)) {
+        Bits a = msgOf(c.rau_miu);
+        put(a, c.rau_miu, "cta_slot", l.w);
+        send(c.rau_miu, 0, a, none);
+        const Oracle &o = k_.orcs[l.w];
+        Bits f = msgOf(c.rau_fet);
+        put(f, c.rau_fet, "warp_id", l.w);
+        put(f, c.rau_fet, "tier1_id", l.slot);
+        put(f, c.rau_fet, "cta_slot", l.w);
+        put(f, c.rau_fet, "start_pc", o.code_base);
+        // code_bounds: [63:0] base, [103:64] length (placeholder split).
+        const FieldDesc &cb = field(c.rau_fet, "code_bounds");
+        f.set(cb.lsb, 64, o.code_base);
+        f.set(cb.lsb + 64, cb.width - 64, o.code.size());
+        send(c.rau_fet, 0, f, none);
+        launch_q_.pop_front();
+      }
     }
   }
   bool busy() const override {
-    return launch_ != k_.orcs.size() || !demoting_.empty() || !demote_q_.empty() ||
-           !mig_q_.empty() || !free_q_.empty();
+    return !waiting_.empty() || !launch_q_.empty() || !alloc_q_.empty() || !mig_q_.empty() ||
+           !demote_q_.empty() || !demoting_.empty() || restore_busy_ || (restore_ && !parked_.empty());
   }
 };
 
@@ -2718,26 +2992,64 @@ private:
     std::map<unsigned, std::array<uint32_t, kLanes>> rows;
     bool preds = false, pcs = false, cmd = false;
     unsigned place = 0;
+    Bits pc_msg;
+    uint64_t pc_tid = 0;
   };
   std::map<unsigned, Ctx> ctx_;
-  /// The parked array, by place: the rows, then the PCs as they came.
-  struct Place { unsigned warp = 0; std::map<unsigned, std::array<uint32_t, kLanes>> rows; Bits pcs; };
+  /// The parked array, by place: the rows, and the PCs as FET sent them,
+  /// with the trace identity FET's message carried (a trace-driven FET's
+  /// place in the oracle's order, trace-only).
+  struct Place { unsigned warp = 0; std::map<unsigned, std::array<uint32_t, kLanes>> rows; Bits pcs; uint64_t tid = 0; };
   std::map<unsigned, Place> array_;
-  std::deque<unsigned> done_;
+  /// Acks to RAU, warp and direction.
+  std::deque<std::pair<unsigned, unsigned>> done_;
+  /// A restore in progress (TI-24 (1)): its rows to RCU in their saved
+  /// order, the predicate row last, its PCs to FET, then the ack once every
+  /// row's credit is home, which is when RCU has written it (TI-13).
+  struct Out { unsigned w; std::deque<Bits> rows; bool pcs_sent = false; Bits pcs; uint64_t tid; };
+  std::deque<Out> out_;
+  uint64_t hold_until_ = 0;            ///< early-restore-done's delay
 
   void work() override {
     const Ch &c = ch();
+    const uint64_t none = makeUid(IdClass::kNone, 0);
     if (has(c.rau_pca_mig, 0)) {
       const Bits m = take(c.rau_pca_mig, 0).payload;
       const unsigned w = unsigned(get(m, c.rau_pca_mig, "warp_id"));
-      if (get(m, c.rau_pca_mig, "direction") != 0) {
-        k_.fail("pca: a restore of warp %u, and restore is not built (TI-24)", w);
-      } else {
-        const unsigned pl = unsigned(get(m, c.rau_pca_mig, "pca_place"));
+      const unsigned pl = unsigned(get(m, c.rau_pca_mig, "pca_place"));
+      if (get(m, c.rau_pca_mig, "direction") == 0) {
         if (array_.count(pl)) k_.fail("pca: place %u is already held, by warp %u", pl, array_[pl].warp);
+        // or claimed by a demotion still arriving
+        for (auto &[v, x] : ctx_)
+          if (v != w && x.cmd && x.place == pl)
+            k_.fail("pca: place %u is already held, by warp %u", pl, v);
         ctx_[w].cmd = true;
         ctx_[w].place = pl;
         check(w);
+      } else {
+        auto a = array_.find(pl);
+        if (a == array_.end() || a->second.warp != w) {
+          k_.fail("pca: a restore of warp %u from place %u, which does not hold it", w, pl);
+        } else {
+          Out o{w, {}, false, a->second.pcs, a->second.tid};
+          const unsigned dl = field(c.pca_rcu, "row_data").lsb;
+          for (auto &[r, row] : a->second.rows) {      // ascending: GPR rows, then predicates
+            Bits b = msgOf(c.pca_rcu);
+            put(b, c.pca_rcu, "warp_id", w);
+            put(b, c.pca_rcu, "mig_row", r);
+            for (unsigned l = 0; l != kLanes; ++l) b.set(dl + 32 * l, 32, row[l]);
+            o.rows.push_back(b);
+          }
+          // pca-row-order: the GPR rows renumbered last to first, so RCU
+          // writes each into another register's row.
+          if (k_.brk == "pca-row-order" && o.rows.size() > 2) {
+            std::vector<unsigned> rs;
+            for (auto &[r, row] : a->second.rows) if (r < kArchGprs) rs.push_back(r);
+            for (size_t i = 0; i != rs.size(); ++i) put(o.rows[i], c.pca_rcu, "mig_row", rs[rs.size() - 1 - i]);
+          }
+          out_.push_back(o);
+          array_.erase(a);
+        }
       }
     }
     if (has(c.rcu_pca, 0)) {
@@ -2754,7 +3066,8 @@ private:
       check(w);
     }
     if (has(c.fet_pca, 0)) {
-      const Bits m = take(c.fet_pca, 0).payload;
+      const Receiver::Msg mm = take(c.fet_pca, 0);
+      const Bits &m = mm.payload;
       const unsigned w = unsigned(get(m, c.fet_pca, "warp_id"));
       // The PCs, as FET sent them (IS-17): recorded per lane for the check.
       const FieldDesc &lp = field(c.fet_pca, "lane_pcs");
@@ -2762,19 +3075,57 @@ private:
       const unsigned lw = lp.width / kLanes;
       for (unsigned l = 0; l != kLanes; ++l)
         k_.parked[w].lane_pc[l] = up << ccv::kWPcWindow | m.get(lp.lsb + l * lw, lw) << 1;
-      ctx_[w].pcs = true;
-      pcs_[w] = m;
+      Ctx &x = ctx_[w];
+      x.pcs = true;
+      x.pc_msg = m;
+      x.pc_tid = mm.tid;
       check(w);
+    }
+    // A restore: one row a cycle, then the PCs, then the ack.
+    // early-restore-done: the PCs and the ack first, the rows 40 cycles
+    // later, so the restored warp reads registers RCU has not written.
+    if (!out_.empty() && k_.brk == "early-restore-done" && !out_.front().pcs_sent) {
+      Out &o = out_.front();
+      if (can(c.pca_fet, 0)) {
+        Bits b = msgOf(c.pca_fet);
+        for (unsigned k = 0; k != kChans[c.fet_pca].bits; ++k) b.setBit(k, o.pcs.bit(k));
+        send(c.pca_fet, 0, b, o.tid);
+        o.pcs_sent = true;
+        done_.push_back({o.w, 1});
+        hold_until_ = now_ + 40;
+      }
+    } else if (!out_.empty() && now_ < hold_until_) {
+      // held
+    } else if (!out_.empty()) {
+      Out &o = out_.front();
+      if (!o.rows.empty()) {
+        if (can(c.pca_rcu, 0)) {
+          send(c.pca_rcu, 0, o.rows.front(), none);
+          o.rows.pop_front();
+        }
+      } else if (!o.pcs_sent) {
+        if (can(c.pca_fet, 0)) {
+          Bits b = msgOf(c.pca_fet);
+          const unsigned n = kChans[c.fet_pca].bits;
+          for (unsigned k = 0; k != n; ++k) b.setBit(k, o.pcs.bit(k));   // the same layout
+          send(c.pca_fet, 0, b, o.tid);
+          o.pcs_sent = true;
+        }
+      } else if (k_.brk == "early-restore-done") {
+        out_.pop_front();                   // acked already, with the PCs
+      } else if (allHome(c.pca_rcu, 0)) {
+        done_.push_back({o.w, 1});
+        out_.pop_front();
+      }
     }
     if (!done_.empty() && can(c.pca_done, 0)) {
       Bits d = msgOf(c.pca_done);
-      put(d, c.pca_done, "warp_id", done_.front());
-      put(d, c.pca_done, "direction", 0);
-      send(c.pca_done, 0, d, makeUid(IdClass::kNone, 0));
+      put(d, c.pca_done, "warp_id", done_.front().first);
+      put(d, c.pca_done, "direction", done_.front().second);
+      send(c.pca_done, 0, d, none);
       done_.pop_front();
     }
   }
-  std::map<unsigned, Bits> pcs_;
   /// Whole once the rows (the predicate row is last), the PCs and the
   /// command have all come: filed at the place, and acked.
   void check(unsigned w) {
@@ -2783,11 +3134,12 @@ private:
     Place &p = array_[x.place];
     p.warp = w;
     p.rows = x.rows;
-    p.pcs = pcs_[w];
+    p.pcs = x.pc_msg;
+    p.tid = x.pc_tid;
     ctx_.erase(w);
-    done_.push_back(w);
+    done_.push_back({w, 0});
   }
-  bool busy() const override { return !done_.empty() || !ctx_.empty(); }
+  bool busy() const override { return !done_.empty() || !ctx_.empty() || !out_.empty(); }
 };
 
 /// SPM, SYU, CRU: nothing on vadd's path.
@@ -2828,61 +3180,7 @@ KernelReport compareFinal(Kernel &k) {
   std::vector<uint32_t> nret(k.orcs.size(), 0);
   for (uint64_t s : k.retire_order)
     if (seqWarp(uint32_t(s)) < nret.size()) ++nret[seqWarp(uint32_t(s))];
-  auto isParked = [&](unsigned w) { auto p = k.parked.find(w); return p != k.parked.end() && p->second.done; };
-  // A parked warp (TI-24): what PCA holds against ccv-sim's architectural
-  // state at the retirement boundary, which is the run's first nret[w]
-  // instructions, and the resume PC RAU got against the next one's.
-  for (auto &[w, pk] : k.parked) {
-    if (!pk.done || w >= k.orcs.size()) continue;
-    const Oracle &o = k.orcs[w];
-    const uint32_t n = nret[w];
-    std::array<std::array<uint32_t, kLanes>, kArchGprs> want{};
-    std::array<uint32_t, kArchPreds> pwant{};
-    for (uint32_t i = 0; i != n && i < o.recs.size(); ++i)
-      for (const RegVal &d : o.recs[i].defs) {
-        if (d.pred) pwant[d.idx & 3] = d.p;
-        else if (d.idx < kArchGprs) want[d.idx] = d.v;
-      }
-    const uint64_t pc = n < o.recs.size() ? o.recs[n].pc : 0;
-    if (pk.resume_pc != pc) {
-      ++r.gpr_mismatch;
-      std::fprintf(stderr, "PARKED warp %u resumes at %llx; ccv-sim's next after %u retired is %llx\n",
-                   w, (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
-    }
-    std::vector<unsigned> seen;
-    for (unsigned a = 0; a != kArchGprs && a < pk.gpr_rows.size(); ++a) {
-      auto f = std::find(seen.begin(), seen.end(), pk.gpr_rows[a]);
-      const unsigned j = unsigned(f - seen.begin());
-      if (f == seen.end()) seen.push_back(pk.gpr_rows[a]);
-      auto row = pk.rows.find(j);
-      for (unsigned l = 0; l != kLanes; ++l) {
-        const uint32_t got = row == pk.rows.end() ? 0xbad0bad0u : row->second[l];
-        if (got != want[a][l] && r.gpr_mismatch++ < 4)
-          std::fprintf(stderr, "PARKED warp %u R%u lane %u: PCA %08x, ccv-sim %08x\n", w, a, l,
-                       got, want[a][l]);
-      }
-    }
-    // Each lane's PC at the boundary: the next instruction ccv-sim ran for
-    // it. Checked once OOE's rewind beats set them all (TI-24 (3)); FET's own
-    // are where fetch had reached, and are only recorded until then.
-    if (pk.rewound)
-      for (unsigned l = 0; l != kLanes; ++l) {
-        uint64_t want_pc = o.recs.empty() ? 0 : o.recs.back().pc;
-        for (size_t i = n; i < o.recs.size(); ++i)
-          if (o.recs[i].mask >> l & 1u) { want_pc = o.recs[i].pc; break; }
-        if (pk.lane_pc[l] != want_pc && r.gpr_mismatch++ < 4)
-          std::fprintf(stderr, "PARKED warp %u lane %u resumes at %llx; ccv-sim %llx\n", w, l,
-                       (unsigned long long)pk.lane_pc[l], (unsigned long long)want_pc);
-      }
-    auto prow = pk.rows.find(kArchGprs);
-    for (unsigned p = 0; p != kArchPreds; ++p) {
-      const uint32_t got = prow == pk.rows.end() ? 0xbad0bad0u : prow->second[p];
-      if (got != pwant[p]) {
-        ++r.pred_mismatch;
-        std::fprintf(stderr, "PARKED warp %u P%u: PCA %08x, ccv-sim %08x\n", w, p, got, pwant[p]);
-      }
-    }
-  }
+  auto isParked = [&](unsigned w) { return k.parkedNow(w); };
   // Each warp's registers against its own run of ccv-sim.
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
     if (isParked(w)) continue;
@@ -2890,23 +3188,29 @@ KernelReport compareFinal(Kernel &k) {
     const std::vector<unsigned> &rat = k.ratOf(w);
     const char *who = k.orcs.size() == 1 ? "" : "warp ";
     const std::string wn = k.orcs.size() == 1 ? "" : std::to_string(w) + " ";
+    // As it exited, if RAU saw it exit; else the registers as they are now.
+    auto fin = k.finals.find(w);
     for (unsigned a = 0; a != kArchGprs; ++a)
-      for (unsigned l = 0; l != kLanes; ++l)
-        if (k.gpr[rat[a]][l] != o.final_gpr[a][l]) {
+      for (unsigned l = 0; l != kLanes; ++l) {
+        const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gpr[rat[a]][l];
+        if (got != o.final_gpr[a][l]) {
           if (r.gpr_mismatch++ < 4)
             std::fprintf(stderr, "FINAL %s%sR%u lane %u: machine %08x, ccv-sim %08x\n", who,
-                         wn.c_str(), a, l, k.gpr[rat[a]][l], o.final_gpr[a][l]);
+                         wn.c_str(), a, l, got, o.final_gpr[a][l]);
         }
+      }
     std::vector<unsigned> pmap = w < k.prat.size() ? k.prat[w] : std::vector<unsigned>();
     if (pmap.empty())
       for (unsigned p = 0; p != kArchPreds; ++p) pmap.push_back(physPred(w, p));
     if (k.brk == "swap-prat0" && w == 0) std::swap(pmap[0], pmap[1]);
-    for (unsigned p = 0; p != kArchPreds; ++p)
-      if (k.pred[pmap[p]] != o.final_pred[p]) {
+    for (unsigned p = 0; p != kArchPreds; ++p) {
+      const uint32_t got = fin != k.finals.end() ? fin->second.pred[p] : k.pred[pmap[p]];
+      if (got != o.final_pred[p]) {
         ++r.pred_mismatch;
         std::fprintf(stderr, "FINAL %s%sP%u: machine %08x, ccv-sim %08x\n", who, wn.c_str(), p,
-                     k.pred[pmap[p]], o.final_pred[p]);
+                     got, o.final_pred[p]);
       }
+    }
   }
   // Memory: what each warp's run left changed from the memory they all began
   // with, together. Each CTA must write words of its own: two runs leaving
@@ -2977,8 +3281,10 @@ std::string Kernel::loadOracles(const std::string &path) {
     const std::string p = base + "." + std::to_string(w) + ".jsonl";
     if (FILE *f = std::fopen(p.c_str(), "r")) std::fclose(f);
     else break;
-    if (w >= ccv::kTier1Warps)
-      return p + ": more warps than CCV_TIER1_WARPS, and RAU launches one a slot";
+    // RAU queues a launch for a free tier-1 slot, and gives each warp a CTA
+    // slot of its own for the run (one warp a CTA).
+    if (w >= ccv::prov::kMaxCta)
+      return p + ": more warps than CCV_P_MAX_CTA, and RAU gives each a CTA slot";
     Oracle o;
     if (std::string e = o.load(p); !e.empty()) return e;
     if (o.code != orcs[0].code || o.code_base != orcs[0].code_base || o.init_mem != orcs[0].init_mem)

@@ -1821,23 +1821,27 @@ void Core::control() {
     // unretired uop, across the ROB and then the decode queue, lanes that
     // share a PC merged into one beat, oldest first. Lanes with none keep
     // FET's PC. resume_pc is the oldest beat's.
-    std::vector<std::pair<uint64_t, uint32_t>> beats;
+    // Each beat carries, on the trace sideband, the identity of the uop
+    // that opened it (its oldest): trace-only, for a trace-driven FET to
+    // find its place in the oracle's order (TI).
+    struct Beat { uint64_t pc; uint32_t mask; uint64_t tid; };
+    std::vector<Beat> beats;
     {
       uint32_t covered = 0;
-      auto take = [&](uint64_t pc, uint32_t mask) {
+      auto take = [&](uint64_t pc, uint32_t mask, uint64_t tid) {
         const uint32_t m = mask & ~covered;
         if (!m) return;
         covered |= m;
         for (auto &b : beats)
-          if (b.first == pc) { b.second |= m; return; }
-        beats.push_back({pc, m});
+          if (b.pc == pc) { b.mask |= m; return; }
+        beats.push_back({pc, m, tid});
       };
       for (unsigned k = 0; k != s.count; ++k) {
         const RobEntry &r = s.rob[(s.head + k) % cfg_.rob_depth];
-        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask);
+        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask, r.u.tid);
       }
       for (const Uop &u : decq_)
-        if (u.warp == w) take(u.pc, u.group_mask);
+        if (u.warp == w) take(u.pc, u.group_mask, u.tid);
     }
     ++histograms["demote.rewind_beats"][beats.size()];
     if (cfg_.inject_rewind_order) std::reverse(beats.begin(), beats.end());
@@ -1860,8 +1864,9 @@ void Core::control() {
       x.slot = unsigned(si);
       x.epoch = epoch_[s.warp % kWarpIds];
       x.epoch_only = x.rewind = true;
-      x.taken_mask = b.second;
-      x.target_pc = b.first;
+      x.taken_mask = b.mask;
+      x.target_pc = b.pc;
+      x.tid = b.tid;
       redirects_.push_back(x);
       ++s.rewind_pending;
     }

@@ -453,7 +453,7 @@ private:
         // checkpoint the same cycle's redirect restores.
         if (k_.brk == "stale-free") free_mask |= uint64_t(1) << (x.slot * ccv::prov::kBrCkpts + x.ckpt);
       }
-      sendOn(c.ooe_fet, 0, r, x.epoch_only ? makeUid(IdClass::kInstr, 0) : x.tid);
+      sendOn(c.ooe_fet, 0, r, x.epoch_only && !x.rewind ? makeUid(IdClass::kInstr, 0) : x.tid);
     }
     if (free_mask) {
       Bits f = msgOf(c.ooe_free);

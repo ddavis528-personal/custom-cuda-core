@@ -183,14 +183,33 @@ struct Kernel {
     std::array<uint64_t, kLanes> lane_pc{};                 ///< PCA's, from FET (IS-17)
     bool rewound = false;                                   ///< FET had OOE's beats
     bool done = false;                                      ///< PCA acked it
+    bool restored = false;                                  ///< and it came back
   };
   std::map<unsigned, Parked> parked;
+  /// Whether RAU restores what it parks (CCV_RAU_RESTORE, on unless 0): if
+  /// not, a parked warp ends its run parked and counts as finished.
+  bool restores = true;
+  bool parkedNow(unsigned w) const {
+    auto p = parked.find(w);
+    return p != parked.end() && p->second.done && !p->second.restored;
+  }
   unsigned parked_done() const {
     unsigned n = 0;
-    for (auto &p : parked) n += p.second.done;
+    for (auto &p : parked) n += p.second.done && !p.second.restored;
     return n;
   }
-  bool exited() const { return exits + parked_done() >= orcs.size(); }
+  bool exited() const { return exits + (restores ? 0 : parked_done()) >= orcs.size(); }
+  /// A warp's architectural registers and predicates as it exits, read
+  /// through its maps before OOE frees them for another warp: the final
+  /// compare reads these, since a slot reused after an exit reallocates the
+  /// registers (an observation; RAU takes it at the exit's quiesce).
+  struct Final { std::array<std::array<uint32_t, kLanes>, kArchGprs> gpr{}; std::array<uint32_t, kArchPreds> pred{}; };
+  std::map<unsigned, Final> finals;
+  void snapshotFinal(unsigned w);
+  /// The check of a warp PCA has just acked: its rows, predicates and PCs
+  /// against ccv-sim's state after the instructions it has retired, which
+  /// is its boundary, since the demotion squashed the rest (TI-24).
+  void checkParked(unsigned w);
   uint64_t failures = 0;                           ///< check failures
   uint64_t class_violations = 0;
   std::vector<uint64_t> rx_per_chan = std::vector<uint64_t>(kNumChans, 0);
@@ -204,7 +223,7 @@ struct Kernel {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
-      "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound"};
+      "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }

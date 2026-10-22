@@ -1073,9 +1073,9 @@
         "fair_ptr",
         "fair_cnt"
       ],
-      "doc": "A demoted warp's divergence state, out to the parked array: each lane's PC within the warp's window (CCV_W_LANE_PC bits, lane 0 at the LSBs), the PC bits above the window that every lane shares, and the fairness rule's lane pointer and pick counter (DA's response IS-17), so a swap does not reset them. Groups are the lanes with equal PCs; nothing else of FET's needs to move. FET owns the PCs, so they migrate from FET directly, not through RCU, which would cross two blocks and hold state it has no other reason to touch. FET sends it once OOE's rewind beats have set the PCs to the retirement boundary (TI-24 (3)). RAU sequences this and the RCU to PCA transfer; PCA acks both halves at once on ccv_pca_rau_mig_done. Checkpoints never migrate: demotion squashes to the retirement boundary, so a demoted warp has no unresolved branch.",
+      "doc": "A demoted warp's divergence state, out to the parked array: each lane's PC within the warp's window (CCV_W_LANE_PC bits, lane 0 at the LSBs), the PC bits above the window that every lane shares, and the fairness rule's lane pointer and pick counter (DA's response IS-17), so a swap does not reset them. Groups are the lanes with equal PCs; nothing else of FET's needs to move. FET owns the PCs, so they migrate from FET directly, not through RCU, which would cross two blocks and hold state it has no other reason to touch. FET sends it once OOE's rewind beats have set the PCs to the retirement boundary (TI-24 (3)). RAU sequences this and the RCU to PCA transfer; PCA acks both halves at once on ccv_pca_rau_mig_done. Checkpoints never migrate: demotion squashes to the retirement boundary, so a demoted warp has no unresolved branch. Its trace identity, trace-only like every channel's, is the instruction the warp resumes at, its retirement boundary (class instr, not none like the other migration channels): a trace-driven FET resumes there in the oracle's order, and the trace shows where each restored warp picked up (TI).",
       "id_classes": [
-        "none"
+        "instr"
       ]
     },
     {
@@ -1091,9 +1091,9 @@
         "fair_ptr",
         "fair_cnt"
       ],
-      "doc": "A restored warp's divergence state back to FET, in ccv_fet_pca_mig's layout: per-lane PCs, the shared upper bits, and the fairness pointer and counter. FET resumes fetch from them.",
+      "doc": "A restored warp's divergence state back to FET, in ccv_fet_pca_mig's layout: per-lane PCs, the shared upper bits, and the fairness pointer and counter. FET resumes fetch from them. Its trace identity, trace-only like every channel's, is the instruction the warp resumes at, its retirement boundary (class instr, not none like the other migration channels): a trace-driven FET resumes there in the oracle's order, and the trace shows where each restored warp picked up (TI).",
       "id_classes": [
-        "none"
+        "instr"
       ]
     },
     {
