@@ -176,6 +176,12 @@ private:
   /// at kSlowBase or above answers kSlowLatency cycles after it is asked
   /// for (Daniel, 2026-10-21; the stall kernel). No other kernel reaches it.
   static constexpr uint64_t kSlowBase = 0x80000, kSlowLatency = 400;
+  /// Two more regions within the slow one's range, for provswap: a line
+  /// from kMidBase answers after kMidLatency cycles, and one from kDeepBase
+  /// after kDeepLatency, so a warp that misses later than another can be
+  /// ready first.
+  static constexpr uint64_t kMidBase = 0xA0000, kMidLatency = 250;
+  static constexpr uint64_t kDeepBase = 0xC0000, kDeepLatency = 1000;
   struct P { uint64_t due; Bits msg; uint64_t tid; bool first = true; };
   /// D beats, in the order they go: bursts by due cycle, each burst's beats
   /// together and one a cycle. Responses are matched by source, not order,
@@ -219,7 +225,10 @@ private:
           l[k] = it == k_.mem.end() ? 0 : it->second;
         }
         std::vector<P> burst;
-        const uint64_t due = now_ + (addr >= kSlowBase ? kSlowLatency : kLatency);
+        const uint64_t due = now_ + (addr >= kDeepBase  ? kDeepLatency
+                          : addr >= kMidBase ? kMidLatency
+                          : addr >= kSlowBase ? kSlowLatency
+                                              : kLatency);
         for (unsigned beat = 0; beat != kBeats; ++beat) {
           Bits r = dBeat(kTlAckData, src);
           putBeat(r, kDData, l, beat);
@@ -2464,7 +2473,7 @@ private:
   struct Warp {
     bool launched = false;
     size_t next = 0;
-    unsigned tier1 = 0;
+    unsigned tier1 = 0;   ///< kNoSlot once another warp takes it
     uint32_t live = 0;
     std::deque<unsigned> taken_order;
     std::map<uint64_t, unsigned> ckpt_of;   ///< checkpoint, by branch seq
@@ -2478,6 +2487,15 @@ private:
     uint64_t boundary_tid = 0;              ///< the oldest beat's uop (trace-only)
   };
   std::map<unsigned, Warp> warps_;
+  static constexpr unsigned kNoSlot = ~0u;
+  /// A warp takes a tier-1 slot, at launch or restore. Whoever held it,
+  /// exited or parked, holds it no longer, so a checkpoint free for the
+  /// slot reaches the warp in it now.
+  void take_slot(Warp &x, unsigned slot) {
+    for (auto &w : warps_)
+      if (&w.second != &x && w.second.tier1 == slot) w.second.tier1 = kNoSlot;
+    x.tier1 = slot;
+  }
   // Each warp's fetch epoch, by warp_id, as OOE last sent it (A-70, A-74).
   // FET advances nothing itself, and never resets it at launch.
   unsigned epoch_[32] = {};
@@ -2500,7 +2518,7 @@ private:
                   (unsigned long long)start);
         Warp &x = warps_[w];
         x.launched = true;
-        x.tier1 = unsigned(get(m.payload, c.rau_fet, "tier1_id"));   // A-65
+        take_slot(x, unsigned(get(m.payload, c.rau_fet, "tier1_id")));   // A-65
       }
     }
     if (has(c.ooe_fet, 0)) {
@@ -2574,7 +2592,7 @@ private:
       if (get(m, c.rau_fet_mig, "direction") != 0) {
         // A restore: the slot it lands in, before PCA's PCs arrive (A-65).
         Warp &x = warps_[w];
-        x.tier1 = unsigned(get(m, c.rau_fet_mig, "tier1_id"));
+        take_slot(x, unsigned(get(m, c.rau_fet_mig, "tier1_id")));
         x.restoring = true;
       } else {
         const Warp &x = warps_[w];
@@ -2694,6 +2712,7 @@ private:
     const unsigned w = wx.first;
     Warp &x = wx.second;
     const auto &recs = k_.orcs[w].recs;
+    if (x.tier1 == kNoSlot) continue;   // exited or parked, its slot taken
     for (unsigned s = x.tier1 * bg; s != x.tier1 * bg + bg && x.launched && !x.stopped &&
                                     !x.await_redirect &&
                                     x.next != recs.size(); ++s) {
@@ -2846,8 +2865,10 @@ private:
   /// RAU runs one at a time and declines a report that arrives meanwhile:
   /// a stress knob, for runs that need several warps parked at once.
   const bool concurrent_ = std::string(env("CCV_RAU_CONCURRENT", "0")) == "1";
-  /// CCV_RAU_READY=0 restores a parked warp without MIU's ready report.
-  const bool gate_ready_ = std::string(env("CCV_RAU_READY", "1")) != "0";
+  /// Restoring a warp MIU has not reported ready (AR's response TI-21, RAU
+  /// spec rev 24): into a slot that would otherwise idle, provisionally
+  /// (the default). CCV_RAU_READY=wait restores only ready warps.
+  const bool wait_ready_ = std::string(env("CCV_RAU_READY", "")) == "wait";
 
   std::set<unsigned> free_;                  ///< tier-1 slots
   std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
@@ -2857,6 +2878,11 @@ private:
   std::map<unsigned, unsigned> retired_;     ///< last retired_since_restore reported
   std::set<unsigned> demoting_;              ///< demoted, not yet parked
   std::set<unsigned> ready_;                 ///< MIU's orphans home since the last demote (TI-21)
+  /// Restored before its ready report (RAU spec rev 24): it may demote
+  /// whenever a ready warp or a launch wants its slot, and its P count
+  /// starts at the report, from the retirements counted then.
+  std::set<unsigned> provisional_;
+  std::map<unsigned, unsigned> p_base_;
   std::set<unsigned> exited_;                ///< exited while RAU demotes it, awaiting the refusal (TI-25)
   bool restore_busy_ = false;
 
@@ -2904,10 +2930,23 @@ private:
       launch_q_.push_back({w, slot});
     }
     // The oldest parked warp MIU has reported ready: its replayed loads hit.
+    // With none, and no launch pending, the oldest parked warp,
+    // provisionally: the slot would idle, and its replay merges at DCU
+    // into the fill in flight, so the wait saves nothing.
     auto p = parked_.begin();
-    while (gate_ready_ && p != parked_.end() && !ready_.count(*p)) ++p;
+    while (p != parked_.end() && !ready_.count(*p)) ++p;
+    bool prov = false;
+    if (p == parked_.end() && !wait_ready_ && waiting_.empty() && !parked_.empty()) {
+      p = parked_.begin();
+      prov = true;
+    }
     if (!free_.empty() && p != parked_.end() && !restore_busy_ && restore_) {
       const unsigned slot = *free_.begin(), w = *p;
+      if (prov) {
+        provisional_.insert(w);
+        k_.hit("provisional");
+      }
+      p_base_[w] = retired_[w] = 0;   // OOE counts from the restore
       free_.erase(free_.begin());
       parked_.erase(p);
       slot_of_[w] = slot;
@@ -2951,12 +2990,23 @@ private:
     k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
   }
 
+  /// A ready parked warp or a launch waits for a slot.
+  bool wanted() const {
+    if (!waiting_.empty()) return true;
+    for (unsigned w : parked_)
+      if (ready_.count(w)) return true;
+    return false;
+  }
+
   void demote(unsigned w) {
     const Ch &c = ch();
     if ((!concurrent_ && !demoting_.empty()) || demoting_.count(w) || !slot_of_.count(w) || k_.parkedNow(w) ||
         (k_.parked.count(w) && !k_.parked[w].restored) ||
-        (restored_.count(w) && retired_[w] < P_))
+        (restored_.count(w) && (!provisional_.count(w) || k_.brk == "guard-at-restore") &&
+         retired_[w] < p_base_[w] + P_) ||
+        (provisional_.count(w) && !wanted() && k_.brk != "demote-unwanted"))
       return;
+    if (provisional_.erase(w)) k_.hit("prov_demote");
     demoting_.insert(w);
     ready_.erase(w);   // the demotion's own discard reports it again
     k_.parked[w] = Kernel::Parked();
@@ -3005,8 +3055,11 @@ private:
       demote_q_.pop_front();
     }
     if (has(c.miu_ready, 0)) {
-      ready_.insert(unsigned(get(take(c.miu_ready, 0).payload, c.miu_ready, "warp_id")));
+      const unsigned w = unsigned(get(take(c.miu_ready, 0).payload, c.miu_ready, "warp_id"));
+      ready_.insert(w);
       k_.hit("ready");
+      // A provisional warp's report clears the mark and starts its P count.
+      if (provisional_.erase(w)) p_base_[w] = retired_[w];
     }
     if (has(c.ooe_drained, 0)) drained(take(c.ooe_drained, 0).payload);
     // The three commands, either way: to FET also the slot (vacated or
