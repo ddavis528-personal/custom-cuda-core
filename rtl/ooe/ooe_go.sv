@@ -145,7 +145,7 @@ module ooe_go #(
   (* keep *) logic [S-1:0] priod_cq02h;  // and for the rest
   logic                 rbusy_cq01h;     // the restore's lead, registered
   logic [S-1:0]         sq_cq01h;        // per slot, its squash at this edge (its lead, registered)
-  logic                 arr_cq02h;       // decq took arrivals at the last edge
+  logic [S-1:0]         arr_cq02h;       // per slot, decq took arrivals at the last edge
 
   // -- The take ----------------------------------------------------------------
   // Each warp's run, a thermometer: its fits at its own last take (a
@@ -341,7 +341,7 @@ module ooe_go #(
   // there, none before the last is serial, the ROB room covers k + m, the
   // run takes at most R of each credit, and each credit's need, one-hot
   // from the heads alone, picks the share's bit that must be set.
-  logic [S*(R+1)*R-1:0] fits_nx;
+  (* keep *) logic [S*(R+1)*R-1:0] fits_nx;   // kept: the block masks it last
   logic [LB+LT:0]       room;
   logic [2*R:0]         rm;              // room >= n
   logic                 ok, ser;
@@ -397,11 +397,11 @@ module ooe_go #(
     if (rst_r01h) begin
       rbusy_cq01h <= 1'b0;
       sq_cq01h    <= '0;
-      arr_cq02h   <= 1'b0;
+      arr_cq02h   <= '0;
     end else begin
       rbusy_cq01h <= rbusy_l_cq00h;
       sq_cq01h    <= sq_l_cq00h;
-      arr_cq02h   <= |arr_cq01h;
+      arr_cq02h   <= arr_cq01h;
     end
   end
   // Local clock gating, every enable from this module's flops (CG-5): a
@@ -412,8 +412,8 @@ module ooe_go #(
   logic [S-1:0] fits_en;
   logic         he_en, tko_en, prio_en;
   always_comb begin
-    for (int s = 0; s < S; s++) fits_en[s] = sel_q_cq02h[s] | arr_cq02h;
-    he_en  = |sel_q_cq02h | arr_cq02h;
+    for (int s = 0; s < S; s++) fits_en[s] = sel_q_cq02h[s] | arr_cq02h[s];
+    he_en  = |sel_q_cq02h | |arr_cq02h;
     tko_en = 1'b0;
     for (int s = 0; s < S; s++) tko_en = tko_en | run_t[s * R] | ~tko_cq02h[s * (R + 1)];
     prio_en = ~rbusy_cq01h;
