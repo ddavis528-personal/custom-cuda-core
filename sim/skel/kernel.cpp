@@ -98,15 +98,9 @@ void Kernel::checkParked(unsigned w) {
   if (pk.resume_pc != pc)
     fail("parked warp %u resumes at %llx; ccv-sim's next after %u retired is %llx", w,
          (unsigned long long)pk.resume_pc, n, (unsigned long long)pc);
-  std::vector<unsigned> seen;
   unsigned bad = 0;
-  for (unsigned a = 0; a != kArchGprs && a < pk.gpr_rows.size(); ++a) {
-    // Saved index: first appearance, a zero register never merged (RCU's rule).
-    auto f = pk.gpr_rows[a] == ccv::prov::kPhysZero ? seen.end()
-             : std::find(seen.begin(), seen.end(), pk.gpr_rows[a]);
-    const unsigned j = unsigned(f - seen.begin());
-    if (f == seen.end()) seen.push_back(pk.gpr_rows[a]);
-    auto row = pk.rows.find(j);
+  for (unsigned a = 0; a != kArchGprs; ++a) {
+    auto row = pk.rows.find(a);   // one row per register, Ra as row a (TI-25 (1))
     for (unsigned l = 0; l != kLanes; ++l) {
       const uint32_t got = row == pk.rows.end() ? 0xbad0bad0u : row->second[l];
       if (got != want[a][l] && bad++ < 4)
@@ -1603,16 +1597,16 @@ private:
   /// Migration (TI-24; A-45): ccv_ooe_rcu_map and ccv_rau_rcu_mig, paired
   /// by warp and direction in either order.
   ///
-  /// Out: the warp's rows to PCA one a cycle. Each distinct row the map
-  /// names moves once, in order of first appearance from R0 (its saved
-  /// index); the zero register reads zero. The predicate row goes last,
+  /// Out: the warp's rows to PCA one a cycle, one per architectural
+  /// register, Ra as mig_row a, with no merging (TI-25 (1)); the zero
+  /// register reads zero. The predicate row goes last,
   /// mig_row CCV_GPRS, its four predicates 32 bits each from bit 0, so PCA
   /// knows the transfer is whole when it lands (TI-24 (4)).
   ///
   /// In: PCA's rows, taken only once the warp's restore map and command are
   /// both here (until then they wait in their slot, credits held), each
-  /// written as it is taken (TI-13): the k-th into the k-th distinct row the
-  /// restore map names, the predicate row into its four predicates.
+  /// written as it is taken (TI-13): row a into the register the restore map
+  /// names for Ra, the predicate row into its four predicates.
   struct MigReq { bool map = false, cmd = false, armed = false; std::vector<unsigned> gpr, pred; };
   std::map<std::pair<unsigned, unsigned>, MigReq> mig_;   ///< (warp, direction)
   std::deque<std::pair<unsigned, Bits>> rows_out_;        ///< warp, row message
@@ -1633,9 +1627,14 @@ private:
       for (unsigned p = 0; p != kArchPreds; ++p) q.pred.push_back(unsigned(m.get(pm.lsb + p * pw, pw)));
       q.map = true;
       if (dir == 1)
-        for (unsigned r : q.gpr)
-          if (r == ccv::prov::kPhysZero)
+        for (unsigned a = 0; a != kArchGprs; ++a) {
+          if (q.gpr[a] == ccv::prov::kPhysZero)
             k_.fail("rcu: warp %u's restore map names the zero register (A-64)", w);
+          // Restore gives each register a row of its own (TI-25 (1)).
+          for (unsigned b = 0; b != a; ++b)
+            if (q.gpr[b] == q.gpr[a])
+              k_.fail("rcu: warp %u's restore map gives R%u and R%u one row", w, b, a);
+        }
     }
     if (has(c.rau_rcu_mig, 0)) {
       const Bits m = take(c.rau_rcu_mig, 0).payload;
@@ -1654,20 +1653,15 @@ private:
       const auto [w, dir] = it->first;
       const MigReq &q = it->second;
       if (dir != 0 || !q.map || !q.cmd) { ++it; continue; }
-      // A zero register is never merged: each arch register that names it
-      // moves a row of zeros of its own, since restore-allocate gives each a
-      // register of its own and the restore map's pattern must match
-      // (TI-25, for AR and OA to confirm).
-      std::vector<unsigned> seen;
-      for (unsigned r : q.gpr) {
-        if (r != ccv::prov::kPhysZero && std::find(seen.begin(), seen.end(), r) != seen.end())
-          continue;
-        seen.push_back(r);
+      // One row per architectural register, Ra as row a, with no merging of
+      // shared or zero rows (AR's rev 114, TI-25 (1)): a register naming
+      // the zero register moves a row of zeros.
+      for (unsigned a = 0; a != kArchGprs; ++a) {
+        const unsigned r = q.gpr[a];
         Bits row = msgOf(c.rcu_pca);
         put(row, c.rcu_pca, "warp_id", w);
-        // mig-row-order: rows numbered from the end, not in first appearance.
-        const unsigned saved = unsigned(seen.size() - 1);
-        put(row, c.rcu_pca, "mig_row", k_.brk == "mig-row-order" ? kArchGprs - 1 - saved : saved);
+        // mig-row-order: rows numbered from the end.
+        put(row, c.rcu_pca, "mig_row", k_.brk == "mig-row-order" ? kArchGprs - 1 - a : a);
         const unsigned dl = field(c.rcu_pca, "row_data").lsb;
         for (unsigned l = 0; l != kLanes; ++l)
           row.set(dl + 32 * l, 32, r == ccv::prov::kPhysZero ? 0u : k_.gpr[r][l]);
@@ -1680,7 +1674,6 @@ private:
       for (unsigned p = 0; p != kArchPreds; ++p)
         pr.set(dl + 32 * p, 32, q.pred[p] == ccv::prov::kPredZero ? 0u : k_.pred[q.pred[p]]);
       rows_out_.push_back({w, pr});
-      k_.parked[w].gpr_rows = q.gpr;
       it = mig_.erase(it);
     }
     if (!rows_out_.empty() && can(c.rcu_pca, 0)) {
@@ -1710,15 +1703,9 @@ private:
             for (unsigned p = 0; p != kArchPreds; ++p) k_.prat[w][p] = mq.pred[p];
           mig_.erase(q);
         } else {
-          std::vector<unsigned> seen;
-          for (unsigned g : mq.gpr)
-            if (std::find(seen.begin(), seen.end(), g) == seen.end()) seen.push_back(g);
-          if (r >= seen.size()) {
-            k_.fail("rcu: warp %u's restore row %u, past the %zu its map names", w, r, seen.size());
-          } else {
-            for (unsigned l = 0; l != kLanes; ++l) k_.gpr[seen[r]][l] = uint32_t(m.get(dl + 32 * l, 32));
-            unwritten_.erase(seen[r]);
-          }
+          // Row a is Ra's, written into the register the restore map names.
+          for (unsigned l = 0; l != kLanes; ++l) k_.gpr[mq.gpr[r]][l] = uint32_t(m.get(dl + 32 * l, 32));
+          unwritten_.erase(mq.gpr[r]);
         }
       }
     }

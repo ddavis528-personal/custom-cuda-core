@@ -85,6 +85,8 @@
 #     reports the warp ready once they are     no-ready (swap): it stays
 #     home, which RAU restores on (TI-21)      parked; early-ready (stall):
 #                                              the replay misses again
+#   a demotion moves one row per register,   restore-share (swap): RCU
+#     restored each into its own (TI-25)       refuses the shared row
 #   a demote that lands after the exit       ignore-refused (brs): RAU
 #     retired is refused, and the exit         migrates it, and refuses
 #     frees the slot (TI-25)                   the drained report
@@ -805,6 +807,14 @@ if [ "$(cover "$B/kernel_stall_early-ready.log" l1_hit)" = 0 ]; then
   say "--break early-ready: the replay misses again" "PASS"
 else
   bad "--break early-ready" "a restore before the orphans were home still hit"
+fi
+# One row per register (TI-25 (1)): a restore map that gives two registers
+# one row is refused by RCU.
+rd swap restore-share
+if grep -q "^CHECK rcu: warp [0-9]*'s restore map gives R1 and R2 one row" "$B/kernel_swap_restore-share.log"; then
+  say "--break restore-share: RCU refuses a shared row" "PASS"
+else
+  bad "--break restore-share" "a restore map sharing a row was taken"
 fi
 # A refused demote (TI-25): OOE's fallback threshold lowered (a model
 # setting) so brs's warp is demoted after its exit has retired.

@@ -487,7 +487,10 @@ private:
                       &gw = field(mc, "gpr_width"), &pm = field(mc, "pred_map");
       for (unsigned a = 0; a != kArchGprs; ++a) {
         // corrupt-map: R1 named by R2's row, so PCA saves the wrong value.
-        const unsigned g = k_.brk == "corrupt-map" && a == 1 ? x.gpr[2] : x.gpr[a];
+        // restore-share: a restore map naming R2's row for R1 too, so two
+        // registers share one row: RCU refuses it (TI-25 (1)).
+        const unsigned g = (k_.brk == "corrupt-map" || (k_.brk == "restore-share" && x.direction == 1)) && a == 1
+                               ? x.gpr[2] : x.gpr[a];
         m.set(gm.lsb + a * (gm.width / kArchGprs), gm.width / kArchGprs, core_.nameRow(g));
         m.set(gp.lsb + a * (gp.width / kArchGprs), gp.width / kArchGprs, core_.namePos(x.gpr[a]));
         m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, kChw32);
