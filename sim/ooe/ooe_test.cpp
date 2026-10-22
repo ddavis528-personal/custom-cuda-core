@@ -22,6 +22,7 @@
 #include "ccv_interfaces.h"
 
 #include <algorithm>
+#include <functional>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -67,10 +68,10 @@ uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, b
          uint32_t(wp) << 8 | memk << 6 | uint32_t(br) << 5 | ser << 3 | lat;
 }
 
-enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp };
+enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic };
 
 /// A kind's unit (its lat_class) and its consumer group (Config::byp).
-unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp ? 1 : k == kSfu ? 4 : 0; }
+unsigned unitOf(Kind k) { return k == kLane || k == kSetp || k == kFp || k == kAtomic ? 1 : k == kSfu ? 4 : 0; }
 /// Its bypass group as a producer (sched_attr's bypass_group).
 unsigned pgroupOf(Kind k) {
   return k == kSfu ? Config::kGrpSfu : k == kFp ? Config::kGrpFp : k == kPlogic ? Config::kGrpPred : Config::kGrpInt;
@@ -78,7 +79,7 @@ unsigned pgroupOf(Kind k) {
 /// Its group as a consumer: a memop consumes as address calculation, and
 /// an op RCU executes takes no bypass (V-48).
 int groupOf(Kind k) {
-  if (k == kLoad || k == kStore) return int(Config::kGrpAddr);
+  if (k == kLoad || k == kStore || k == kAtomic) return int(Config::kGrpAddr);
   if (k == kRcuOp || k == kPlogic || k == kBranch) return -1;
   return int(pgroupOf(k));
 }
@@ -94,6 +95,14 @@ struct Op {
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
+  // kAtomic (AR-21): src[0] the address, src[1] the operand, dst rd (atom)
+  // unless red; MIU runs it in `passes` passes, or faults its first read.
+  unsigned passes = 1;
+  bool red = false, afault = false;
+  /// A load that misses to DRAM (TI-21's stall_hole): its fill this many
+  /// cycles after its issue, or 0 for the environment's DRAM draw.
+  bool dram = false;
+  unsigned fill = 0;
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -133,6 +142,11 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kLoad: u.attr_raw = attr(1, 0, 0, 1, 0, 0, 0, 0, 2); break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
+  case kAtomic:
+    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined.
+    u.attr_raw = attr(1, 0, 0, !o.red, 0, 2, 0, 0, 3);
+    u.opcode = 0x2A;
+    break;
   case kBranch:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 1, 0, 0);
     u.shape.guard = true;      // the condition is the guard (BRA_PRED)
@@ -145,7 +159,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
   u.attr_raw |= pgroupOf(o.k) << 13;
-  if (o.k == kLoad || o.k == kStore) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
+  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -181,6 +195,14 @@ struct Env {
     unsigned junk = 0;
     std::vector<uint64_t> retired;
     std::map<uint64_t, unsigned> ckpt_of;   ///< branch tid -> checkpoint
+    // TI-21's swap: parked (not in a slot), ready from ready_at, restored at
+    // least once (P applies), and the fill its demoting miss waits for.
+    bool parked = false, restored = false, restoring = false;
+    bool demoting = false;                  ///< demoted; FET resets it at the epoch notice
+    uint64_t ready_at = 0, fill_at = 0;
+    uint64_t rewind_pc = 0;                 ///< the oldest unretired uop's PC at its demote, or 0
+    bool rewind_seen = false;
+    uint64_t exit_at = 0;                   ///< its exit's retirement
   };
   std::vector<Warp> w;
   std::map<uint64_t, Op> op_of;                  ///< tid -> op
@@ -215,17 +237,221 @@ struct Env {
   std::map<unsigned, std::pair<uint64_t, uint64_t>> gwriter;  ///< preg -> (tid, issue cycle)
   std::multimap<uint64_t, std::pair<unsigned, uint64_t>> landings;   ///< cycle -> (preg, tid)
   std::map<uint64_t, bool> hit_of;               ///< load tid -> L1 hit
+  /// MIU's side of an atomic (AR-21, V-72): its passes left, whether a pass
+  /// holds its lines (from its read to its write), and when the pass's old
+  /// values are readable for A2.
+  struct Atom {
+    unsigned left = 0, passes = 0;
+    bool started = false, hold = false, faulted = false, final = false;
+    uint64_t t_ready = 0;
+    unsigned T = 0;
+  };
+  std::map<uint64_t, Atom> atom;
+  unsigned atom_mlc_pct = 0;                     ///< atomic reads that report an MLC miss
   std::vector<Outputs> log;
   bool keep_log = false;
 
+  // ---- TI-21: RAU, PCA and FET's side of a warp swap -----------------------------
+  // AR's rev 86 as OA adopted it (revs 132-133): a crossing is CCV_LAT_HOP
+  // and RAU decides in a cycle, so a demote reaches OOE 2 hops + 1 after
+  // OOE's trigger and a pick a hop + 1 after both its conditions hold. A
+  // demote: drained to RAU, migrate to RCU, 17 rows to PCA (the first a hop
+  // on), done to RAU; the slot is then free. A restore: restore-allocate,
+  // with PCA's command beside it, 17 rows to RCU, done to RAU, activate. One
+  // demote and one restore in flight, across different slots; a slot's
+  // restore waits for its own demote.
+  struct Swap {
+    bool rau = false;                 ///< the environment's RAU acts: frees, demotes and restores
+    unsigned mode = 0;                ///< 0 never demote, 1 swap (a ready parked warp), 2 evict (always)
+    unsigned P = 8;                   ///< retirements before a restored warp may demote again
+    unsigned dram_pm = 0;             ///< loads that miss to DRAM, per mille
+    unsigned dram_lo = 700, dram_hi = 1300;
+    bool charge_ports = true;         ///< a demote's reads hold a PRF read port (OA's rev 132)
+  } swap;
+  unsigned hop = ccv::kLatHop;
+  std::multimap<uint64_t, std::function<void()>> acts;   ///< RAU, PCA and FET's actions, by cycle
+  bool demote_busy = false, restore_busy = false;
+  std::set<unsigned> free_slots;                         ///< slots RAU holds free
+  std::set<std::pair<unsigned, size_t>> served;          ///< (warp, index): its DRAM fill has landed
+  std::vector<std::pair<uint64_t, uint64_t>> read_busy, write_busy;   ///< migration port intervals
+  uint64_t write_conflicts = 0;          ///< cycles a restore's write port would have been short
+  std::map<std::pair<unsigned, size_t>, uint64_t> tid_at;   ///< (warp, index) -> its latest correct-path tid
+  std::map<unsigned, unsigned> slot_owner;                  ///< slot -> its latest occupant (launch, activate)
+  // Measures: swaps, each demoted slot's empty time (from the miss at the
+  // head to the restored warp's first rename) with its drain D and refetch R.
+  struct Gap { unsigned warp = 0, slot = 0; uint64_t head = 0, demote = 0, drained = 0, activate = 0, rename = 0; };
+  std::vector<Gap> gaps;
+  unsigned swaps = 0, declined = 0;
+  std::string swap_errors_note;
+
+  void park(unsigned warp, std::vector<Op> prog, uint64_t ready_at = 0) {
+    swap.rau = true;
+    Warp x;
+    x.id = warp;
+    x.prog = std::move(prog);
+    x.parked = true;
+    x.launched = true;
+    x.ready_at = ready_at;
+    w.push_back(x);
+  }
+
+  /// The oldest ready parked warp (RAU's pick), or null.
+  Warp *readyParked() {
+    Warp *best = nullptr;
+    for (Warp &x : w)
+      if (x.parked && !x.exited && x.ready_at <= t && (!best || x.ready_at < best->ready_at)) best = &x;
+    return best;
+  }
+
+  /// RAU: restore into a free slot when a parked warp is ready.
+  /// decide: RAU's decision cycle (the cycle after both conditions hold, or
+  /// the decision that freed the slot).
+  void rauRestore(uint64_t decide) {
+    if (restore_busy || free_slots.empty()) return;
+    Warp *x = readyParked();
+    if (!x) return;
+    const unsigned slot = *free_slots.begin();
+    free_slots.erase(free_slots.begin());
+    restore_busy = true;
+    x->parked = false;               // reserved for the slot
+    x->restoring = true;
+    x->slot = slot;
+    const unsigned id = x->id;
+    const uint64_t a = decide;
+    acts.insert({a + hop, [this, id, slot] {
+      Alloc ra;
+      ra.warp = id;
+      ra.slot = slot;
+      ra.op = kAllocRestoreAlloc;
+      ra.ctaid = 7;
+      ra.barrier_count = 16;
+      core.alloc(ra);
+    }});
+    // PCA's command beside it: the first row a hop on, 16 more, done to RAU,
+    // RAU's decision, activate.
+    const uint64_t first = a + 2 * hop;
+    write_busy.push_back({first, first + ccv::kMigrationCycles});
+    acts.insert({first + 16 + hop + 1 + hop, [this, id, slot] {
+      Alloc ac;
+      ac.warp = id;
+      ac.slot = slot;
+      ac.op = kAllocRestoreActivate;
+      core.alloc(ac);
+      Warp *y = warpOf(id);
+      y->slot = slot;
+      y->restored = true;
+      y->restoring = false;
+      slot_owner[slot] = id;
+      y->next = y->retired.size();
+      for (Gap &g : gaps)
+        if (g.slot == slot && !g.activate) g.activate = t;
+      restore_busy = false;
+      ++swaps;
+    }});
+  }
+
+  /// RAU on OOE's report: a stalled head with an outstanding load.
+  void rauStatus(const Status &st) {
+    Warp *x = warpOf(st.warp);
+    if (!x || x->parked) return;
+    if (st.exited) {
+      // RAU frees the slot (alloc_op 0), and at the same decision may pick a
+      // parked warp for it: the free lands first.
+      const unsigned slot = x->slot;
+      const uint64_t decide = t + hop + 1;
+      acts.insert({decide, [this, slot, id = x->id, decide] {
+        acts.insert({decide + hop, [this, slot, id] {
+          Alloc f;
+          f.warp = id;
+          f.slot = slot;
+          f.op = kAllocFree;
+          core.alloc(f);
+        }});
+        free_slots.insert(slot);
+        rauRestore(decide);
+      }});
+      return;
+    }
+    if (!st.stalled || !st.mlc_miss_seen || swap.mode == 0) return;
+    // RAU decides a hop after OOE's trigger.
+    acts.insert({t + hop, [this, st] {
+      Warp *y = warpOf(st.warp);
+      if (!y || y->parked || y->exited || demote_busy) { ++declined; return; }
+      if (y->restored && st.retired_since_restore < swap.P) { ++declined; return; }
+      if (swap.mode == 1 && !readyParked()) { ++declined; return; }
+      demote_busy = true;
+      Gap g;
+      g.warp = y->id;
+      g.slot = y->slot;
+      g.head = t - hop - (cfg.demote_mlc_miss + 1);
+      gaps.push_back(g);
+      acts.insert({t + 1 + hop, [this, id = y->id] {
+        core.demote(id);
+        for (Gap &q : gaps)
+          if (q.warp == id && !q.demote) q.demote = t;
+        Warp *z = warpOf(id);
+        const auto ta = tid_at.find({id, z->retired.size()});
+        z->rewind_pc = ta != tid_at.end() ? 0x1000 + 4 * (ta->second & 0xffff) : 0;
+        z->rewind_seen = false;
+        z->demoting = true;
+      }});
+    }});
+  }
+
+  /// OOE's drained: migrate out; the slot is free when PCA's done reaches RAU.
+  void rauDrained(const Drained &d) {
+    Warp *x = warpOf(d.warp);
+    for (Gap &g : gaps)
+      if (g.warp == d.warp && !g.drained) g.drained = t;
+    // The knob's own bench (OA's rev 131): the squash freed exactly the
+    // warp's RS entries, and it holds exactly its committed registers.
+    {
+      const unsigned slot = x->slot;
+      if (core.rsHeldIn(slot, false) || core.rsHeldIn(slot, true))
+        errors.push_back("TI-21: warp " + std::to_string(d.warp) + " drained holding RS entries");
+      std::set<unsigned> names;
+      for (unsigned p : core.committedGprs(slot)) if (!core.isZeroName(p)) names.insert(cfg.sectioned ? p / 4 : p);
+      if (!cfg.sectioned && names.size() != core.heldGprs(slot))
+        errors.push_back("TI-21: warp " + std::to_string(d.warp) + " drained holding " +
+                         std::to_string(core.heldGprs(slot)) + " registers, its map " + std::to_string(names.size()));
+      if (x->rewind_seen && d.resume_pc != x->rewind_pc)
+        errors.push_back("TI-24: drained's resume PC is not the oldest beat's");
+    }
+    const uint64_t migrate = t + hop + 1;            // drained to RAU, its decision
+    const uint64_t first = migrate + 2 * hop;        // migrate to RCU, the first row to PCA
+    if (swap.charge_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
+    const unsigned slot = x->slot, id = x->id;
+    const uint64_t decide = first + 16 + hop + 1;     // done to RAU, its decision
+    acts.insert({decide, [this, slot, id, decide] {
+      // Free the slot (alloc_op 0) and, at the same decision, pick a parked
+      // warp for it; the warp is parked, ready when its fill has landed.
+      acts.insert({decide + hop, [this, slot, id] {
+        Alloc f;
+        f.warp = id;
+        f.slot = slot;
+        f.op = kAllocFree;
+        core.alloc(f);
+      }});
+      Warp *y = warpOf(id);
+      y->ready_at = std::max(t, y->fill_at);
+      free_slots.insert(slot);
+      demote_busy = false;
+      rauRestore(decide);
+    }});
+  }
+
   explicit Env(const Config &c, unsigned seed = 1) : cfg(c), core(c), rng(seed) {
     core.on_error = [this](const std::string &m) { errors.push_back(m); };
-    if (const char *d = std::getenv("OOE_TEST_TRACE"))
-      core.on_event = [this, d](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
-        if (std::to_string(tid) == d || std::string(d) == "all")
-          std::fprintf(stderr, "  t=%llu %s w%u a=%llu b=%llu tid=%llu\n", (unsigned long long)t, n, w,
-                       (unsigned long long)a, (unsigned long long)b, (unsigned long long)tid);
-      };
+    const char *d = std::getenv("OOE_TEST_TRACE");
+    core.on_event = [this, d](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
+      // TI-21: a restored warp's first rename ends its slot's gap.
+      if (!gaps.empty() && n[0] == 'd' && std::string(n) == "dispatch")
+        for (Gap &g : gaps)
+          if (g.activate && !g.rename && warpOf(w) && warpOf(w)->slot == g.slot) g.rename = t;
+      if (d && (std::to_string(tid) == d || std::string(d) == "all"))
+        std::fprintf(stderr, "  t=%llu %s w%u a=%llu b=%llu tid=%llu\n", (unsigned long long)t, n, w,
+                     (unsigned long long)a, (unsigned long long)b, (unsigned long long)tid);
+    };
   }
 
   unsigned rnd(unsigned n) { return n ? unsigned(rng() % n) : 0; }
@@ -236,6 +462,7 @@ struct Env {
     x.slot = slot;
     x.prog = std::move(prog);
     w.push_back(x);
+    slot_owner[slot] = warp;
     Alloc a;
     a.warp = warp;
     a.slot = slot;
@@ -259,7 +486,7 @@ struct Env {
   /// FET: up to two uops per warp per cycle into the DEC path.
   void fetch() {
     for (Warp &x : w) {
-      if (!x.launched || x.exited) continue;
+      if (!x.launched || x.exited || x.parked || x.restoring) continue;
       for (unsigned n = 0; n != 2; ++n) {
         Op o;
         bool corr = true;
@@ -286,6 +513,7 @@ struct Env {
         fetched.insert({t + fetch_delay, u});
         if (o.k == kBranch) x.ckpt_of[tid] = ck;
         if (corr) {
+          tid_at[{x.id, x.next}] = tid;
           idx_of[tid] = x.next++;
           if (o.k == kBranch && o.taken != o.pred_taken) {
             x.wrong = true;                      // fetch the wrong path until redirected
@@ -310,6 +538,26 @@ struct Env {
       Warp *x = warpOf(r.warp);
       if (r.epoch_only) {
         x->epoch = r.epoch;
+        if (x->demoting && !r.rewind) {
+          // FET at a demotion's epoch notice: the warp stops fetching, resets
+          // its checkpoints, and resumes at its oldest unretired instruction
+          // (the rewind); what is in flight carries the old epoch.
+          x->demoting = false;
+          x->parked = true;
+          x->ready_at = ~uint64_t(0);
+          x->wrong = false;
+          x->junk = 0;
+          x->live = 0;
+          x->taken_order.clear();
+          for (auto it = fetched.begin(); it != fetched.end();)
+            it = it->second.warp == x->id ? fetched.erase(it) : std::next(it);
+        }
+        // TI-24 (3): the first beat is the oldest unretired uop's PC.
+        if (r.rewind && !x->rewind_seen) {
+          x->rewind_seen = true;
+          if (x->rewind_pc && r.target_pc != x->rewind_pc)
+            errors.push_back("TI-24: warp " + std::to_string(r.warp) + "'s first rewind beat is not its oldest unretired uop");
+        }
       } else {
         if (!x->wrong || r.tid != x->wrong_branch_tid)
           errors.push_back("redirect for a branch FET did not mispredict");
@@ -330,7 +578,8 @@ struct Env {
       for (unsigned b = 0; b != 64; ++b) {
         if (!(it->second >> b & 1)) continue;
         Warp *x = nullptr;
-        for (Warp &y : w) if (y.slot == b / cfg.ckpts && y.launched) x = &y;
+        const auto own = slot_owner.find(b / cfg.ckpts);
+        if (own != slot_owner.end()) x = warpOf(own->second);
         const unsigned ck = b % cfg.ckpts;
         if (!x || !(x->live >> ck & 1)) { errors.push_back("V-46: a free for a dead checkpoint"); continue; }
         x->live &= ~(1u << ck);
@@ -351,6 +600,13 @@ struct Env {
     auto it = m.find(preg);
     if (it == m.end()) return;    // never written: architectural state
     const uint64_t at = readableFor(it->second, pred ? -1 : group);
+    if (t < at && !pred && op_of[it->second.tid].k == kAtomic && op_of[tid].k != kAtomic) {
+      // An atomic's consumers wake once, on its last write (V-71): an
+      // earlier read is never a speculation a replay may clean up.
+      errors.push_back("V-71: tid " + std::to_string(tid) + " reads atomic tid " + std::to_string(it->second.tid) +
+                       "'s result at " + std::to_string(t) + ", before its last pass");
+      return;
+    }
     if (t < at) {
       char b[160];
       std::snprintf(b, sizeof b, "(kind %d) reads %s%u at %llu, readable at %llu, written by tid %llu (kind %d)",
@@ -368,6 +624,7 @@ struct Env {
       checkRead(is.tid, is.pold, false, int(Config::kGrpInt));
       return;
     }
+    if (o.k == kAtomic) { atomIssue(is, o); return; }
     last_issue[is.tid] = t;
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/tag" + std::to_string(is.rob_tag) + " ";
     const int group = groupOf(o.k);
@@ -398,8 +655,113 @@ struct Env {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
         d.branch_mask = d.branch_taken ? kFullMask : 0;
       }
-      dones.insert({t + (rcu_fast ? 2 : bound), d});
+      dones.insert({doneRoom(t + (rcu_fast ? 2 : bound)), d});
     }
+  }
+
+  /// An atomic's issue to RCU: A1's address, A3's data (each a memop's
+  /// operand read, never speculative), or A2, the lane op.
+  void atomIssue(const Issue &is, const Op &o) {
+    issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/a" + std::to_string(is.res) + " ";
+    const Atom &a = atom[is.tid];
+    if (is.res == Issue::kMemop) {
+      const size_t before = viol[is.tid].size();
+      if (is.pdst) {
+        if (is.gpr_reads & 1u) checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+      } else {
+        checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+      }
+      if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+      // A memop's read is never speculative (V-17).
+      for (size_t i = before; i != viol[is.tid].size(); ++i)
+        errors.push_back("atomic memop step: " + viol[is.tid][i].what);
+      viol[is.tid].resize(before);
+      return;
+    }
+    last_issue[is.tid] = t;
+    // A2: inside a pass, after the pass's read data lands.
+    if (!a.hold) errors.push_back("AR-21: tid " + std::to_string(is.tid) + "'s lane op issues outside a pass");
+    else if (t < a.t_ready)
+      violation(is.tid, "A2 reads T at " + std::to_string(t) + ", readable at " + std::to_string(a.t_ready));
+    for (unsigned i = 1; i != 3; ++i)
+      if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
+    if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
+    const unsigned lat = cfg.unitLat(1);
+    gready[is.pdst] = {t, t + lat, is.tid, 1, Config::kGrpInt, true, false};
+    gwriter[is.pdst] = {is.tid, t};
+    landings.insert({t + lat, {is.pdst, is.tid}});
+    Done d;
+    d.rob_tag = is.rob_tag;
+    dones.insert({doneRoom(t + (rcu_fast ? 2 : cfg.issue_link + lat - 1 + cfg.done_link)), d});
+  }
+
+  /// MIU's half of an atomic: a read holds its pass's lines, the write
+  /// releases them and says whether lanes remain (more).
+  void atomMemop(const Memop &m, const Op &o) {
+    Atom &a = atom[m.tid];
+    Cmpl c;
+    c.rob_tag = m.rob_tag;
+    c.rs_idx = m.rs_idx;
+    const uint64_t when = cmplRoom(t + 4 + rnd(miss_extra));
+    const std::string who = "tid " + std::to_string(m.tid);
+    if (m.mem_op == kMemOpAtomicRead) {
+      if (a.hold) errors.push_back("V-69: " + who + " reads again before its pass's write");
+      if (a.final) errors.push_back("AR-21: " + who + " reads after its last pass");
+      const bool first = !a.started;
+      // V-69: the read issues only once every older instruction of the warp
+      // has retired.
+      const Warp *x = warpOf(m.warp);
+      if (x && idx_of.count(m.tid) && x->retired.size() != idx_of[m.tid])
+        errors.push_back("V-69: " + who + "'s read issues with " +
+                         std::to_string(idx_of[m.tid] - x->retired.size()) + " older instructions unretired");
+      if (first) {
+        a.started = true;
+        a.left = o.passes;
+        a.T = m.pdst;
+      }
+      if (first && o.afault) {
+        // Every lane checked before any hold: the fault comes with none.
+        c.status = 1;
+        c.cause = 6;                     // F-ADDR
+        c.lane_mask = 1;
+        c.address = 0xA70;
+        a.faulted = a.final = true;
+        cmpls.insert({when, c});
+        return;
+      }
+      a.hold = true;
+      a.t_ready = when + data_after_cmpl;
+      c.mlc_miss = rnd(100) < atom_mlc_pct;
+      // T's consumers read it only after the last pass (V-71).
+      gready[m.pdst] = {t, ~uint64_t(0) >> 1, m.tid, 2, Config::kGrpAddr, false, false};
+      gwriter[m.pdst] = {m.tid, t};
+      landings.insert({a.t_ready, {m.pdst, m.tid}});
+    } else {
+      if (!a.hold) errors.push_back("V-69: " + who + " writes with no read in its pass");
+      if (a.faulted) errors.push_back("V-72: " + who + " writes after its read faulted");
+      a.hold = false;
+      ++a.passes;
+      if (a.left) --a.left;
+      c.more = a.left > 0;
+      if (!c.more) {
+        a.final = true;
+        if (gready.count(a.T)) gready[a.T].late = when + data_after_cmpl;
+      }
+    }
+    cmpls.insert({when, c});
+    if (cfg.memop_rcu_done) {
+      Done d;
+      d.rob_tag = m.rob_tag;
+      dones.insert({when + 1, d});
+    }
+  }
+
+  /// The latest cycle at or before `when`, and after the issue at t, with a
+  /// lane free on ccv_rcu_ooe_done: RCU may be early, never late (V-35), and
+  /// never sends more than the channel's rate.
+  uint64_t doneRoom(uint64_t when) const {
+    while (when > t + 1 && dones.count(when) >= ccv::channelInfo(ccv::CH_RCU_OOE_DONE).rate) --when;
+    return when;
   }
 
   /// The first cycle from `when` with a lane free on ccv_miu_ooe_cmpl (its
@@ -412,12 +774,46 @@ struct Env {
   void onMemop(const Memop &m) {
     if (m.mem_op == 0xF) return;
     const Op &o = op_of[m.tid];
+    if (o.k == kAtomic) {
+      if (m.mem_op != kMemOpAtomicRead && m.mem_op != kMemOpAtomicWrite)
+        errors.push_back("V-72: an atomic reaches MIU as mem_op " + std::to_string(m.mem_op));
+      else atomMemop(m, o);
+      return;
+    }
+    if (m.mem_op == kMemOpAtomicRead || m.mem_op == kMemOpAtomicWrite)
+      errors.push_back("V-72: a non-atomic reaches MIU as mem_op " + std::to_string(m.mem_op));
     // V-17: a memop never reads an unconfirmed (here: unreadable) source.
     const size_t before = viol[m.tid].size();
     (void)before;
     Cmpl c;
     c.rob_tag = m.rob_tag;
+    c.rs_idx = m.rs_idx;
     uint64_t when;
+    // TI-21: a load that misses to DRAM, once per program position (its
+    // replay after a restore hits the landed fill).
+    {
+      Warp *x = warpOf(m.warp);
+      const bool corr = correct.count(m.tid) && correct[m.tid];
+      const std::pair<unsigned, size_t> at{m.warp, corr ? idx_of[m.tid] : ~size_t(0)};
+      const bool dram = o.k == kLoad && corr && !served.count(at) &&
+                        (o.dram || (swap.dram_pm && rnd(1000) < swap.dram_pm));
+      if (dram) {
+        served.insert(at);
+        const unsigned fill = o.fill ? o.fill : swap.dram_lo + rnd(swap.dram_hi - swap.dram_lo + 1);
+        when = cmplRoom(t + fill);
+        hit_of[m.tid] = false;
+        if (x) x->fill_at = std::max(x->fill_at, when);
+        if (m.pdst) {
+          const uint64_t rd = when + data_after_cmpl;
+          gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
+          gwriter[m.pdst] = {m.tid, t};
+          landings.insert({rd, {m.pdst, m.tid}});
+        }
+        c.mlc_miss = true;
+        cmpls.insert({when, c});
+        return;
+      }
+    }
     if (o.k == kLoad && cfg.l1_spec) {
       bool hit = rnd(100) >= miss_pct;
       when = cmplRoom(t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra)));
@@ -456,6 +852,14 @@ struct Env {
     for (auto it = cmpls.begin(); it != cmpls.end() && it->first <= t;) { core.cmpl(it->second); it = cmpls.erase(it); }
     // OA-23's hint, two cycles ahead of its completion.
     for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first) core.hint(r.first->second.rob_tag);
+    // TI-21: a restore's rows hold a PRF write port (OA's rev 132): count
+    // the cycles its landings would have found the ports short.
+    if (!write_busy.empty()) {
+      unsigned busy = 0, land = 0;
+      for (const auto &b : write_busy) busy += b.first <= t && t < b.second;
+      for (auto r = landings.equal_range(t); r.first != r.second; ++r.first) ++land;
+      if (busy && land + busy > 8) ++write_conflicts;
+    }
     // a result landing in a register a younger producer was issued to write
     for (auto it = landings.begin(); it != landings.end() && it->first <= t;) {
       const unsigned p = it->second.first;
@@ -468,11 +872,38 @@ struct Env {
       it = landings.erase(it);
     }
     fetApply();
+    for (auto it = acts.begin(); it != acts.end() && it->first <= t;) {
+      auto f = it->second;
+      it = acts.erase(it);
+      f();
+    }
+    if (swap.rau) rauRestore(t + 1);
+    // No slot runs two warps (OA's rev 131).
+    if (swap.rau) {
+      std::map<unsigned, unsigned> in;
+      for (const Warp &x : w)
+        if ((!x.parked || x.restoring) && !x.exited && ++in[x.slot] > 1)
+          errors.push_back("TI-21: slot " + std::to_string(x.slot) + " runs two warps at " + std::to_string(t));
+    }
+    {
+      unsigned busy = 0;
+      for (const auto &b : read_busy) busy += b.first <= t && t < b.second;
+      core.migrationReads(busy);
+    }
     if (g_pre_cycle_hook) g_pre_cycle_hook(core);
     core.cycle(t);
     if (g_cycle_hook) g_cycle_hook(core);
     const Outputs o = core.out;
     if (keep_log) log.push_back(o);
+    for (const Retired &r : core.retired) {
+      Warp *x = warpOf(r.warp);
+      x->retired.push_back(r.tid);
+      if (r.exit) { x->exited = true; x->exit_at = t; }
+    }
+    if (swap.rau) {
+      for (const Status &st : o.status) rauStatus(st);
+      for (const Drained &d : o.drained) rauDrained(d);
+    }
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
     // Sectioned lanes (OI-28): the lane ops leaving in one cycle use
@@ -503,11 +934,6 @@ struct Env {
     }
     for (const Redirect &r : o.redirects) redirects.insert({t + cfg.redirect_lat, r});
     if (o.free_mask) frees.insert({t + cfg.redirect_lat, o.free_mask});
-    for (const Retired &r : core.retired) {
-      Warp *x = warpOf(r.warp);
-      x->retired.push_back(r.tid);
-      if (r.exit) x->exited = true;
-    }
     for (Warp &x : w) x.launched = true;
     fetch();
     // DEC: up to six uops a cycle, in fetch order, as credit allows (a
@@ -558,6 +984,8 @@ struct Env {
                (unsigned long long)tid, x.what.c_str());
       }
     }
+    for (const auto &a : atom)
+      EXPECT(!a.second.hold, "tid %llu's atomic still holds its lines (V-70)", (unsigned long long)a.first);
     for (const std::string &e : errors) EXPECT(false, "%s", e.c_str());
     errors.clear();
   }
@@ -1645,6 +2073,301 @@ void testFixedWindowPreds() {
 }
 
 /// The harness's own negative controls: each injected bug must fail it.
+// ---- atomics: read, lane op, write (AR-21) -------------------------------------------
+
+/// Issue cycles of tid's steps, in order: 'r' A1, 'o' A2, 'w' A3, from the
+/// memops (A1, A3) and the lane issues (A2).
+std::string atomSteps(const Env &e, uint64_t tid) {
+  std::string out;
+  for (const Outputs &o : e.log) {
+    for (const Issue &i : o.issues)
+      if (i.tid == tid && !i.copy && i.res == Issue::kLaneOp) out += 'o';
+    for (const Memop &m : o.memops)
+      if (m.tid == tid) out += m.mem_op == kMemOpAtomicRead ? 'r' : m.mem_op == kMemOpAtomicWrite ? 'w' : '?';
+  }
+  return out;
+}
+
+/// An atomic's three steps, pass by pass, at its warp's head (V-69); its
+/// consumers once, after the last pass (V-71); younger memops behind it,
+/// younger lane ops around it; red, a masked atom with its copy, and a
+/// guarded one, in each select form.
+void testAtomic() {
+  struct M { const char *name; void (*set)(Config &); };
+  const M ms[] = {
+      {"base", [](Config &) {}},
+      {"no-bypass", [](Config &c) { c.bypass = false; }},
+      {"l1-spec", [](Config &c) { c.l1_spec = true; }},
+      {"sectioned", [](Config &c) { c.sectioned = true; }},
+      {"cmpl-delay", [](Config &c) { c.cmpl_wake_delay = 2; }},
+  };
+  for (const M &m : ms)
+    for (unsigned variant = 0; variant != 4; ++variant) {
+      g_test = std::string("atomic ") + m.name + " " + std::to_string(variant);
+      Config c = baseConfig();
+      m.set(c);
+      Env e(c, 3 + variant);
+      e.keep_log = true;
+      e.data_after_cmpl = c.cmpl_wake_delay;
+      std::vector<Op> p;
+      for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+      { Op o; o.k = kSetp; o.pdst = 1; o.src[0] = 0; o.src[1] = 1; o.nsrc = 2; p.push_back(o); }
+      // An older load that misses holds the head: the read waits for it.
+      Op ld; ld.k = kLoad; ld.dst = 6; ld.src[0] = 0; ld.nsrc = 1; p.push_back(ld);
+      Op at;
+      at.k = kAtomic;
+      at.dst = 3;
+      at.src[0] = 1;
+      at.src[1] = 2;
+      at.nsrc = 2;
+      at.passes = 3;
+      at.red = variant == 1;
+      if (variant == 2) at.mask = 0x0000ffffu;              // masked: the copy keeps T's other lanes
+      if (variant == 3) { at.guard = true; at.pguard = 1; }   // guarded: the copy too
+      const size_t at_idx = p.size();
+      p.push_back(at);
+      Op yl; yl.k = kLane; yl.dst = 8; yl.src[0] = 2; yl.nsrc = 1; p.push_back(yl);     // around it
+      Op ym; ym.k = kLoad; ym.dst = 9; ym.src[0] = 0; ym.nsrc = 1; p.push_back(ym);     // behind it
+      Op cons; cons.k = kLane; cons.dst = 10; cons.src[0] = at.red ? 2 : 3; cons.nsrc = 1; p.push_back(cons);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      e.finish();
+      uint64_t at_tid = 0, yl_tid = 0, ym_tid = 0, ld_tid = 0;
+      for (const auto &kv : e.idx_of) {
+        if (kv.second == at_idx) at_tid = kv.first;
+        if (kv.second == at_idx + 1) yl_tid = kv.first;
+        if (kv.second == at_idx + 2) ym_tid = kv.first;
+        if (kv.second == at_idx - 1) ld_tid = kv.first;
+      }
+      const std::string st = atomSteps(e, at_tid);
+      EXPECT(st == "rowrowrow", "steps %s, want three passes of read, op, write", st.c_str());
+      // The read waits for the older load to retire; younger lane work does not wait.
+      uint64_t first_read = ~0ull, last_write = 0, ym_at = ~0ull;
+      for (size_t cy = 0; cy != e.log.size(); ++cy)
+        for (const Memop &mo : e.log[cy].memops) {
+          if (mo.tid == at_tid && mo.mem_op == kMemOpAtomicRead) first_read = std::min<uint64_t>(first_read, cy);
+          if (mo.tid == at_tid && mo.mem_op == kMemOpAtomicWrite) last_write = cy;
+          if (mo.tid == ym_tid) ym_at = std::min<uint64_t>(ym_at, cy);
+        }
+      EXPECT(issueCycle(e, ld_tid) < first_read, "the read went before the older load");
+      EXPECT(issueCycle(e, yl_tid) < last_write, "a younger lane op waited for the atomic (%llu, %llu)",
+             (unsigned long long)issueCycle(e, yl_tid), (unsigned long long)last_write);
+      EXPECT(ym_at > last_write, "a younger memop at %llu, before the atomic's last write at %llu",
+             (unsigned long long)ym_at, (unsigned long long)last_write);
+      unsigned copies = 0;
+      for (const Outputs &o : e.log) for (const Issue &i : o.issues) copies += i.tid == at_tid && i.copy;
+      EXPECT(copies == (variant >= 2 ? 1u : 0u), "%u copies", copies);
+      EXPECT(e.core.histograms["atomic.passes"][3] == 1, "the passes histogram");
+      EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "registers lost");
+    }
+}
+
+/// A fault at the first read: no hold, no lane op, no write; the entry
+/// faults at the head with MIU's cause, and a kill cleans up (V-72).
+void testAtomicFault() {
+  g_test = "atomic fault";
+  Config c = baseConfig();
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 4; at.afault = true;
+  p.push_back(at);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  std::vector<Fault> faults;
+  for (unsigned k = 0; k != 150; ++k) {
+    e.step();
+    for (const Fault &f : e.log.back().faults) faults.push_back(f);
+  }
+  uint64_t tid = 0;
+  for (const auto &kv : e.idx_of) if (kv.second == 3) tid = kv.first;
+  EXPECT(atomSteps(e, tid) == "r", "steps %s, want the read alone", atomSteps(e, tid).c_str());
+  EXPECT(faults.size() == 1 && faults[0].cause == 6 && faults[0].address == 0xA70, "%zu fault records", faults.size());
+  e.core.kill(1u, 1);
+  for (unsigned k = 0; k != 40; ++k) e.step();
+  Alloc f; f.warp = 0; f.slot = 0; f.op = kAllocFree;
+  e.core.alloc(f);
+  e.step();
+  EXPECT(e.core.freeGprs() == c.phys_regs, "%zu of %u GPRs free", e.core.freeGprs(), c.phys_regs);
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
+/// A kill mid-atomic: the pass in flight writes and releases, no later pass
+/// starts, and the kill is acknowledged only after that write's completion
+/// (V-70).
+void testAtomicKill() {
+  g_test = "atomic kill";
+  Config c = baseConfig();
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 6;
+  p.push_back(at);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(0, 0, p);
+  uint64_t tid = 0;
+  unsigned reads = 0;
+  for (unsigned k = 0; k != 600 && reads < 2; ++k) {
+    e.step();
+    for (const Memop &m : e.log.back().memops) reads += m.mem_op == kMemOpAtomicRead;
+  }
+  for (const auto &kv : e.idx_of) if (kv.second == 3) tid = kv.first;
+  EXPECT(reads == 2, "the second pass never read");
+  e.core.kill(1u, 5);
+  uint64_t ack = 0, last_cmpl = 0;
+  for (unsigned k = 0; k != 300; ++k) {
+    for (const auto &cm : e.cmpls) last_cmpl = std::max(last_cmpl, cm.first);
+    e.step();
+    for (unsigned a : e.log.back().kill_acks) if (a == 5 && !ack) ack = e.t - 1;
+  }
+  EXPECT(atomSteps(e, tid) == "rowrow", "steps %s, want the second pass finished and no third",
+         atomSteps(e, tid).c_str());
+  EXPECT(ack && ack >= last_cmpl, "kill acked at %llu, the write completed at %llu", (unsigned long long)ack,
+         (unsigned long long)last_cmpl);
+  EXPECT(!e.atom[tid].hold, "the kill left the lines held");
+  EXPECT(e.core.freeGprs() == c.phys_regs, "%zu of %u GPRs free", e.core.freeGprs(), c.phys_regs);
+  for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+}
+
+/// No demotion mid-atomic (V-70): no trigger while it is at the head in
+/// progress, and a demote that arrives then waits for its last pass, so
+/// none of its passes is applied twice when the warp resumes. With the
+/// control the demote is taken at once.
+void testAtomicDemote() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "atomic demote (control)" : "atomic demote";
+    Config c = baseConfig();
+    c.inject_atom_demote_mid = control;
+    c.demote_mlc_miss = 5;
+    c.demote_fallback = 30;
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 40;
+    e.atom_mlc_pct = 100;           // every read misses the MLC: triggers due
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 5;
+    p.push_back(at);
+    for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kLane; o.dst = 4; o.src[0] = 3; o.nsrc = 1; p.push_back(o); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    uint64_t tid = 0;
+    unsigned triggers = 0, reads = 0;
+    bool demoted = false, drained = false;
+    const int before = g_fail;
+    g_quiet = control;
+    for (unsigned k = 0; k != 1500 && !drained; ++k) {
+      e.step();
+      const Outputs &o = e.log.back();
+      for (const Status &st : o.status) triggers += st.stalled;
+      for (const Memop &m : o.memops) reads += m.mem_op == kMemOpAtomicRead;
+      if (reads == 2 && !demoted) {
+        e.core.demote(0);
+        demoted = true;
+      }
+      drained = drained || !o.drained.empty();
+    }
+    for (const auto &kv : e.idx_of) if (kv.second == 3) tid = kv.first;
+    const Env::Atom &a = e.atom[tid];
+    EXPECT(drained, "the warp never drained");
+    // Every pass applied, once: the atomic finished before the warp left.
+    EXPECT(a.final && a.passes == 5 && !a.hold, "the warp left mid-atomic: %u of 5 passes, %s", a.passes,
+           a.hold ? "lines held" : "nothing held");
+    EXPECT(!control || e.core.counters["demote.held_atomic"] == 0, "control: the demote was held");
+    if (!control) {
+      EXPECT(e.core.counters["demote.held_atomic"] > 0, "the demote was not held");
+      EXPECT(e.core.counters["demote_trigger.held_atomic"] > 0, "no trigger was held");
+      for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+    }
+    g_quiet = false;
+    if (control) {
+      const bool caught = g_fail != before || !e.errors.empty();
+      g_fail = before;
+      g_test = "atomic demote (control)";
+      std::printf("  %-24s %s\n", "control atom-demote-mid", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a demote mid-atomic should leave it partly applied (V-70)");
+    }
+  }
+}
+
+/// Random programs with atomics, several warps, every select form: the
+/// environment's dataflow, retirement, hold and head checks on every run.
+/// Not in the benches' random set: no OOE RTL re-issues on more yet.
+void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control = 0) {
+  std::map<std::string, uint64_t> tot;
+  std::map<std::string, std::map<uint64_t, uint64_t>> hist;
+  struct Report {
+    std::map<std::string, uint64_t> &tot;
+    std::map<std::string, std::map<uint64_t, uint64_t>> &hist;
+    bool on;
+    ~Report() {
+      if (!on || !tot["atomic"]) return;
+      auto mean = [&](const char *k) {
+        uint64_t n = 0, sum = 0;
+        for (const auto &b : hist[k]) { n += b.second; sum += b.first * b.second; }
+        return n ? double(sum) / double(n) : 0.0;
+      };
+      std::printf("  atomic random: %llu atomics, %.2f passes each, hold %.1f cycles a pass, head wait %.1f,"
+                  " %llu cycles of held demote triggers, %llu rename port stalls\n",
+                  (unsigned long long)tot["atomic"], mean("atomic.passes"), mean("atomic.hold_cycles"),
+                  mean("atomic.head_wait"), (unsigned long long)tot["demote_trigger.held_atomic"],
+                  (unsigned long long)tot["stall.rename_ports"]);
+    }
+  } report{tot, hist, control == 0};
+  for (unsigned seed = 1; seed <= seeds; ++seed)
+    for (int mode = 0; mode != 8; ++mode) {
+      g_test = "atomic random seed " + std::to_string(seed) + " mode " + std::to_string(mode);
+      Config c = base(seed, mode);
+      c.inject_atom_off_head = control == 1;
+      c.inject_atom_early_wake = control == 2;
+      std::mt19937 rng(seed * 13 + unsigned(mode));
+      Env e(c, seed * 11 + unsigned(mode));
+      e.miss_pct = 30;
+      e.data_after_cmpl = c.cmpl_wake_delay;
+      e.atom_mlc_pct = 20;
+      const unsigned warps = 1 + seed % 4;
+      for (unsigned i = 0; i != warps; ++i) {
+        std::vector<Op> prog = randomProgram(rng, 120, true, seed % 2 == 1, (mode & 4) != 0);
+        // About one op in twelve an atomic, each 1 to 4 passes, now and then 32.
+        for (size_t k = 5; k + 1 < prog.size(); ++k)
+          if (rng() % 12 == 0) {
+            Op a;
+            a.k = kAtomic;
+            a.dst = rng() % 16;
+            a.src[0] = rng() % 16;
+            a.src[1] = rng() % 16;
+            a.nsrc = 2;
+            a.red = rng() % 4 == 0;
+            a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
+            if (rng() % 6 == 0) a.mask = 0x0000ffffu;
+            else if (rng() % 6 == 0) { a.guard = true; a.pguard = rng() % 4; }
+            prog[k] = a;
+          }
+        e.launch(i * 5, i, prog);
+      }
+      const int before = g_fail;
+      if (control) g_quiet = true;
+      e.finish(control ? 30000 : 200000);
+      g_quiet = false;
+      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports"}) tot[k] += e.core.counters[k];
+      for (const char *k : {"atomic.passes", "atomic.hold_cycles", "atomic.head_wait"})
+        for (const auto &b : e.core.histograms[k]) hist[k][b.first] += b.second;
+      if (control) {
+        if (g_fail != before) return;   // caught: the caller reports
+        continue;
+      }
+      for (unsigned i = 0; i != warps; ++i) {
+        Alloc f; f.warp = i * 5; f.slot = i; f.op = kAllocFree;
+        e.core.alloc(f);
+      }
+      e.step();
+      EXPECT(e.core.freeGprs() == c.phys_regs, "%zu of %u GPRs free at the end", e.core.freeGprs(), c.phys_regs);
+      if (g_fail != before) return;
+    }
+}
+
 void testControls() {
   struct C { const char *name; void (*set)(Config &); };
   const C cs[] = {
@@ -1695,6 +2418,331 @@ void testControls() {
     EXPECT(caught, "the harness missed it");
     std::printf("  %-24s %s\n", name.c_str(), caught ? "caught" : "MISSED");
   }
+}
+
+// ---- TI-21: a stalled warp, the swap, and the hole it leaves ------------------------
+
+/// stall_hole's warp 0 (OA's rev 129): a load that misses to DRAM, then 64
+/// uops each depending on it directly or through the chain, at the usual
+/// mix; fetching (f) keeps going with dependent work, so its heads never
+/// run out; held (h) ends there.
+std::vector<Op> stallProgram(std::mt19937 &rng, bool fetching, unsigned fill) {
+  auto r = [&](unsigned k) { return unsigned(rng() % k); };
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+  Op ld;
+  ld.k = kLoad;
+  ld.dst = 4;
+  ld.src[0] = 0;
+  ld.nsrc = 1;
+  ld.dram = true;
+  ld.fill = fill;
+  p.push_back(ld);
+  unsigned prev = 4;
+  const unsigned n = fetching ? 64 + 600 : 64;
+  for (unsigned i = 0; i != n; ++i) {
+    Op o;
+    const unsigned c = r(100);
+    o.k = c < 55 ? kLane : c < 70 ? kRcuOp : c < 88 ? kLoad : kStore;
+    const unsigned dep = r(3) == 0 ? 4 : prev;
+    o.src[0] = dep;
+    o.src[1] = r(4);
+    o.nsrc = o.k == kLoad ? 1 : 2;
+    if (o.k == kStore) { o.src[0] = r(4); o.src[1] = dep; }
+    o.dst = 5 + i % 10;
+    if (o.k != kStore) prev = o.dst;
+    p.push_back(o);
+  }
+  Op e;
+  e.k = kExit;
+  p.push_back(e);
+  return p;
+}
+
+/// One stall_hole run. arm 0: swap off (no demotion), warp 0's fill 400
+/// (OA's rev 129); 1: swap, no parked warp ready (the stress); 2: swap, one
+/// parked warp ready from cycle 0; 3: evict, none ready. Arms 1-3 miss to
+/// DRAM (700 to 1,300). solo: warps 1-3 alone.
+struct HoleRun {
+  uint64_t cycles = 0;          ///< until warps 1-3 have all exited
+  bool starved = false;         ///< 800 cycles in which warps 1-3 retired nothing
+  unsigned peak[2] = {0, 0};    ///< warp 0's RS entries over its stall, RCU and MIU
+  double mean[2] = {0, 0};
+  bool gap = false;             ///< arm 2: the slot's gap was measured
+  uint64_t empty = 0, T = 0, D = 0, R = 0;
+  unsigned swaps = 0;
+  uint64_t reads_charged = 0;
+};
+HoleRun runHole(const Config &c, unsigned seed, bool fetching, int arm, bool solo) {
+  Env e(c, seed);
+  e.miss_pct = 20;
+  std::mt19937 rng(seed), rng0(seed * 977 + 1);
+  if (arm) {
+    e.swap.rau = true;
+    e.swap.mode = arm == 3 ? 2 : 1;
+  }
+  std::vector<Op> progs[3];
+  for (auto &q : progs) q = randomProgram(rng, 300, true);
+  if (!solo) e.launch(0, 0, stallProgram(rng0, fetching, arm == 0 ? 400 : 0));
+  for (unsigned i = 0; i != 3; ++i) e.launch(5 * (i + 1), i + 1, progs[i]);
+  if (!solo && arm == 2) e.park(20, randomProgram(rng0, 300, true));   // warp ids are 0-31 (CCV_WARP_CONTEXTS)
+  HoleRun h;
+  uint64_t last = 0, samples = 0;
+  size_t before = 0;
+  auto retired13 = [&] {
+    size_t n = 0;
+    for (const auto &x : e.w) if (x.id && x.id <= 15) n += x.retired.size();
+    return n;
+  };
+  auto done13 = [&] {
+    for (const auto &x : e.w) if (x.id && x.id <= 15 && !x.exited) return false;
+    return true;
+  };
+  while (!e.done() && e.t < 60000) {
+    e.step();
+    const size_t n = retired13();
+    if (n != before) { before = n; last = e.t; }
+    if (!done13() && e.t - last > 800) h.starved = true;
+    // Warp 0's RS room while its fill is out and it holds slot 0.
+    const Env::Warp *w0 = solo ? nullptr : e.warpOf(0);
+    if (w0 && !w0->parked && !w0->exited && w0->slot == 0 && w0->fill_at && e.t < w0->fill_at) {
+      for (unsigned k = 0; k != 2; ++k) {
+        const unsigned v = e.core.rsHeldIn(0, k == 1);
+        h.peak[k] = std::max(h.peak[k], v);
+        h.mean[k] += v;
+      }
+      ++samples;
+    }
+    if (done13() && !h.cycles) {
+      for (const auto &x : e.w) if (x.id && x.id <= 15) h.cycles = std::max(h.cycles, x.exit_at);
+    }
+  }
+  for (unsigned k = 0; k != 2; ++k) h.mean[k] = samples ? h.mean[k] / double(samples) : 0;
+  e.finish(60000);
+  for (const Env::Gap &g : e.gaps)
+    if (g.warp == 0 && g.rename) {
+      h.gap = true;
+      h.empty = g.rename - g.head;
+      h.T = c.demote_mlc_miss;
+      h.D = g.drained - g.demote;
+      h.R = g.rename - g.activate;
+      break;
+    }
+  h.swaps = e.swaps;
+  return h;
+}
+
+/// stall_hole (OA's revs 129-133), every arm, under each go form: warps 1-3
+/// against solo, warp 0's RS room over its stall, starvation, and (arm 2)
+/// the slot's gap against T + D + 56 + R. Returns the failures of the
+/// bounds: 10% held, 15% fetching, no starvation, and the gap.
+int stallHole(unsigned seeds, bool print, int only_fix = -1) {
+  struct Form { const char *name; unsigned one; };
+  const Form forms[] = {{"interleave, shares", 0}, {"one warp", 1}, {"two warps", 2}};
+  const char *arms[] = {"swap off (fill 400)", "swap, none ready", "swap, one ready", "evict, none ready"};
+  int fails = 0;
+  if (print)
+    std::printf("| fix | go | arm | variant | warps 1-3 vs solo | worst seed | starved | warp 0 RS peak RCU/MIU | mean RCU/MIU |"
+                " gap: empty, bound (T + D + 56 + R) | swaps |\n|---|---|---|---|---|---|---|---|---|---|---|\n");
+  const char *fixes[] = {"none", "stall-aware shares", "per-class caps 20 / 10", "decq per warp 6", "decq per warp 4",
+                         "decq per warp 6, stall-aware shares"};
+  constexpr int kFixes = 6;
+  auto applyFix = [](Config &c, int fix) {
+    c.share_stall_aware = fix == 1 || fix == 5;
+    if (fix == 2) { c.rs_warp_cap_rcu = 20; c.rs_warp_cap_miu = 10; }
+    if (fix == 3 || fix == 5) c.decq_warp_max = 6;
+    if (fix == 4) c.decq_warp_max = 4;
+  };
+  // Each fix's cost on the even-stall sweep (OA's rev 130): four warps of
+  // the sweep's programs, against no fix, under the decided go.
+  if (print) {
+    auto sweepRun = [&](const Config &c) {
+      uint64_t total = 0;
+      for (unsigned seed = 1; seed <= seeds; ++seed) {
+        std::mt19937 rng(seed);
+        Env e(c, seed);
+        e.miss_pct = 20;
+        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+        e.finish();
+        total += e.t;
+      }
+      return double(total) / seeds;
+    };
+    Config b = baseConfig();
+    b.decq = 13;
+    const double ref = sweepRun(b);
+    std::printf("| fix | even-stall sweep, cycles | vs no fix |\n|---|---|---|\n");
+    for (int fix = 0; fix != kFixes; ++fix) {
+      Config c = b;
+      applyFix(c, fix);
+      const double cy = sweepRun(c);
+      std::printf("| %s | %.0f | %.3f |\n", fixes[fix], cy, cy / ref);
+    }
+    std::printf("\n");
+  }
+  for (int fix = 0; fix != kFixes; ++fix)
+  for (const Form &f : forms)
+    for (int arm = 0; arm != 4; ++arm)
+      for (bool fetching : {false, true}) {
+        if (only_fix >= 0 && fix != only_fix) continue;
+        Config c = baseConfig();
+        c.decq = 13;
+        c.rename_one_warp = f.one;
+        applyFix(c, fix);
+        double sum = 0, worst = 0;
+        unsigned starved = 0, pk[2] = {0, 0}, swaps = 0;
+        double mn[2] = {0, 0};
+        uint64_t worst_gap = 0, gap_bound = 0, gaps = 0, gap_over = 0, Rmax = 0;
+        for (unsigned seed = 1; seed <= seeds; ++seed) {
+          const HoleRun solo = runHole(c, seed, fetching, arm, true);
+          const HoleRun h = runHole(c, seed, fetching, arm, false);
+          const double r = double(h.cycles) / double(solo.cycles);
+          sum += r;
+          worst = std::max(worst, r);
+          starved += h.starved;
+          for (unsigned k = 0; k != 2; ++k) { pk[k] = std::max(pk[k], h.peak[k]); mn[k] += h.mean[k]; }
+          swaps += h.swaps;
+          if (h.gap) {
+            ++gaps;
+            const uint64_t bound = h.T + h.D + 56 + h.R;
+            if (h.empty > bound + 2) ++gap_over;
+            if (h.empty > worst_gap) { worst_gap = h.empty; gap_bound = bound; }
+            Rmax = std::max(Rmax, h.R);
+          }
+        }
+        const double mean = sum / seeds;
+        const double lim = fetching ? 1.15 : 1.10;
+        // The bounds (OA's revs 129, 131): arms 0, 1 and 2 hold them; evict
+        // is reported beside them.
+        const bool bound_arm = arm != 3;
+        const bool miss = bound_arm && (mean > lim || starved || (arm == 2 && (gap_over || gaps != seeds)));
+        if (miss && f.one == 0 && fix == 0) ++fails;   // the decided go: a bench failure
+        if (print)
+          std::printf("| %s | %s | %s | %s | %.3f%s | %.3f | %u | %u / %u | %.1f / %.1f | %s | %u |\n", fixes[fix], f.name,
+                      arms[arm], fetching ? "fetching" : "held", mean, miss ? " (over)" : "", worst, starved, pk[0], pk[1],
+                      mn[0] / seeds, mn[1] / seeds,
+                      arm == 2 ? (std::to_string(worst_gap) + ", " + std::to_string(gap_bound) + " (R " +
+                                  std::to_string(Rmax) + ", " + std::to_string(gaps) + " of " + std::to_string(seeds) +
+                                  " seeds" + (gap_over ? ", " + std::to_string(gap_over) + " over" : "") + ")")
+                                     .c_str()
+                               : "-",
+                      swaps);
+      }
+  return fails;
+}
+
+/// TI-21's workload (1): 8 warps, 4 resident and 4 parked, each a sweep
+/// program, 2% of loads missing to DRAM. Swap against swap-off (the parked
+/// warps enter as residents exit), per go form, with the swap count, the
+/// slots' gaps, and the PRF ports' charge; and the threshold and P swept.
+void swapSweep(unsigned seeds) {
+  struct R { double cycles = 0, gap = 0, gap_dr = 0; unsigned swaps = 0, gaps = 0, declined = 0; uint64_t wc = 0, prf = 0; };
+  auto run = [&](Config c, unsigned mode, unsigned P, bool charge) {
+    R r;
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.mode = mode;
+      e.swap.P = P;
+      e.swap.dram_pm = 20;
+      e.swap.charge_ports = charge;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 300, true));
+      e.finish(200000);
+      r.cycles += double(e.t);
+      r.swaps += e.swaps;
+      r.declined += e.declined;
+      r.wc += e.write_conflicts;
+      r.prf += e.core.counters["select.prf_read_ports"];
+      for (const Env::Gap &g : e.gaps)
+        if (g.rename) { r.gap += double(g.rename - g.head); r.gap_dr += double(g.rename - g.drained); ++r.gaps; }
+    }
+    r.cycles /= seeds;
+    if (r.gaps) { r.gap /= r.gaps; r.gap_dr /= r.gaps; }
+    return r;
+  };
+  Config base = baseConfig();
+  base.decq = 13;
+  std::printf("| go | policy | threshold | P | ports charged | cycles | vs swap off | restores | demotes declined | "
+              "gap from the miss at the head | from drained | reads held back | write-port short cycles |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+  for (unsigned one : {0u, 1u, 2u}) {
+    Config c = base;
+    c.rename_one_warp = one;
+    const char *go = one == 0 ? "interleave, shares" : one == 1 ? "one warp" : "two warps";
+    const R off = run(c, 0, 8, true);
+    auto line = [&](const char *pol, unsigned thr, unsigned P, bool charge, const R &r) {
+      std::printf("| %s | %s | %u | %u | %s | %.0f | %.3f | %u | %u | %.0f | %.0f | %llu | %llu |\n", go, pol, thr, P,
+                  charge ? "yes" : "no", r.cycles, r.cycles / off.cycles, r.swaps, r.declined, r.gap, r.gap_dr,
+                  (unsigned long long)r.prf, (unsigned long long)r.wc);
+    };
+    line("swap off", c.demote_mlc_miss, 8, true, off);
+    for (unsigned thr : {25u, 50u, 100u}) {
+      Config t = c;
+      t.demote_mlc_miss = thr;
+      line("swap", thr, 8, true, run(t, 1, 8, true));
+    }
+    if (one == 0) {
+      for (unsigned P : {1u, 32u}) line("swap", c.demote_mlc_miss, P, true, run(c, 1, P, true));
+      line("swap", c.demote_mlc_miss, 8, false, run(c, 1, 8, false));
+      line("evict", c.demote_mlc_miss, 8, true, run(c, 2, 8, true));
+    }
+  }
+}
+
+/// The swap knob's own bench (OA's rev 131), on the 8-warp workload: the
+/// environment checks that a demote's squash frees exactly the warp's RS
+/// entries and leaves its committed registers, that the first rewind beat is
+/// the oldest unretired uop and drained names it, and that no slot runs two
+/// warps; every warp retires its whole program, through swaps.
+void testSwap() {
+  for (unsigned one : {0u, 1u, 2u})
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      g_test = "swap go " + std::to_string(one) + " seed " + std::to_string(seed);
+      Config c = baseConfig();
+      c.decq = 13;
+      c.rename_one_warp = one;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.mode = 1;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      e.finish(200000);
+      EXPECT(e.swaps > 0, "no swap");
+      unsigned demotes = 0;
+      for (const Env::Gap &g : e.gaps) demotes += g.drained != 0;
+      EXPECT(demotes > 0, "no demotion");
+    }
+  // The control: beats youngest first, so FET resumes past the oldest
+  // unretired uop of the lanes that have two beats.
+  unsigned caught = 0;
+  const int before = g_fail;
+  for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
+    g_test = "swap (control)";
+    Config c = baseConfig();
+    c.decq = 13;
+    c.inject_rewind_order = true;
+    std::mt19937 rng(seed);
+    Env e(c, seed);
+    e.miss_pct = 20;
+    e.swap.rau = true;
+    e.swap.mode = 1;
+    e.swap.dram_pm = 40;
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+    for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+    g_quiet = true;
+    e.finish(200000);
+    g_quiet = false;
+    caught += g_fail != before;
+    g_fail = before;
+  }
+  std::printf("  %-24s %s\n", "control rewind-order", caught ? "caught" : "MISSED");
+  EXPECT(caught, "beats youngest first should break the rewind check");
 }
 
 /// Sizing sweep on synthetic four-warp traces, in the design's own modes
@@ -2187,8 +3235,31 @@ int main(int argc, char **argv) {
     audit();
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--stall-hole") {
+    const int f = stallHole(seeds == 25 ? 48 : seeds, true);
+    std::printf("stall_hole: %d bound(s) missed by the decided go\n", f);
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--swap-sweep") {
+    swapSweep(seeds == 25 ? 48 : seeds);
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--sweep") {
     sweep();
+    return g_fail ? 1 : 0;
+  }
+  if (std::getenv("OOE_TEST_SWAP")) {     // the swap bench alone, for debugging
+    testSwap();
+    std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
+    return g_fail ? 1 : 0;
+  }
+  if (std::getenv("OOE_TEST_ATOMIC")) {   // the atomic tests alone, for debugging
+    testAtomic();
+    testAtomicFault();
+    testAtomicKill();
+    testAtomicDemote();
+    testAtomicRandom(seeds, randomConfig);
+    std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
   }
   if (std::getenv("OOE_TEST_ONLY")) {   // one random case, for debugging
@@ -2220,6 +3291,22 @@ int main(int argc, char **argv) {
   testV59();
   testFixedWindowPreds();
   testRandom(seeds);
+  testAtomic();
+  testAtomicFault();
+  testAtomicKill();
+  testAtomicDemote();
+  testAtomicRandom(seeds, randomConfig);
+  testSwap();
+  for (int k : {1, 2}) {
+    const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
+    const int saved = g_fail;
+    testAtomicRandom(10, randomConfig, k);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
   testControls();
   std::printf("ooe-test: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
   return g_fail ? 1 : 0;

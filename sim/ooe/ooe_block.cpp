@@ -279,6 +279,8 @@ private:
         // MIU echoes the memop's RS entry (OA-23): any other is a completion
         // that would wake the wrong entry.
         const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
+        x.rs_idx = rs;
+        x.more = get(m.payload, c.miu_ooe, "more") != 0;   // an atomic's write (AR-21)
         auto e = rs_sent_.find(x.rob_tag);
         if (e != rs_sent_.end() && e->second != rs)
           k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
@@ -434,6 +436,12 @@ private:
       put(r, c.ooe_fet, "tier1_id", x.slot);
       put(r, c.ooe_fet, "fetch_epoch", x.epoch);
       put(r, c.ooe_fet, "epoch_only", x.epoch_only);
+      // A demotion's rewind beat (TI-24 (3)): the lanes and their PC.
+      put(r, c.ooe_fet, "rewind", x.rewind);
+      if (x.rewind) {
+        put(r, c.ooe_fet, "taken_mask", x.taken_mask);
+        put(r, c.ooe_fet, "target_pc", x.target_pc);
+      }
       if (!x.epoch_only) {
         put(r, c.ooe_fet, "target_pc", x.target_pc);
         put(r, c.ooe_fet, "checkpoint_id",
@@ -461,6 +469,7 @@ private:
       put(m, unsigned(status_), "stalled", x.stalled);
       put(m, unsigned(status_), "mlc_miss_seen", x.mlc_miss_seen);
       put(m, unsigned(status_), "retired_since_restore", x.retired_since_restore);
+      put(m, unsigned(status_), "exited", x.exited);   // OA's rev 149
       held_.push_back({unsigned(status_), m});
     }
     for (const ooe::RatMap &x : o.maps) {

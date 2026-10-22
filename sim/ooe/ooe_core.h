@@ -374,6 +374,26 @@ struct Config {
   /// (OI-54's control): a producer re-granted inside the stale window lets
   /// a dependant confirm on a result it read too early.
   bool inject_late_event = false;
+  /// AR-21's controls: an atomic's read issues away from its warp's head
+  /// (V-69); its consumers wake on its first write, not its last (V-71); a
+  /// demote is taken mid-atomic (V-70).
+  bool inject_atom_off_head = false;
+  /// The PRF's read ports (DA's response OA-6: 16 read, 8 write; no
+  /// parameter yet). Select keeps a cycle's operand reads within the read
+  /// ports a migration leaves (TI-21: a demote's 17 reads hold one for 17
+  /// cycles). 0: no limit.
+  unsigned prf_read_ports = 16;
+  /// TI-21's fixes for a stalled warp's RS room (OA's rev 130), off until
+  /// measured: (1) stall-aware shares, a warp whose oldest RS entry waits
+  /// on a memory miss past the L1 window gets no share of RS room (one
+  /// registered bit per warp); (2) a per-warp cap on each class's entries
+  /// (0: none; rs_warp_cap stays the cap over both).
+  bool share_stall_aware = false;
+  /// TI-24's control: a demotion's rewind beats youngest first.
+  bool inject_rewind_order = false;
+  unsigned rs_warp_cap_rcu = 0, rs_warp_cap_miu = 0;
+  bool inject_atom_early_wake = false;
+  bool inject_atom_demote_mid = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -448,9 +468,11 @@ struct Done {           ///< ccv_rcu_ooe_done
 };
 struct Cmpl {           ///< ccv_miu_ooe_cmpl
   unsigned rob_tag = 0, status = 0, cause = 0;
+  unsigned rs_idx = 0;  ///< the memop's RS entry, echoed (OA-23): an atomic's A1 or A3
   uint32_t lane_mask = 0;
   uint64_t address = 0;
   bool mlc_miss = false;
+  bool more = false;    ///< an atomic's A3: lanes remain, re-issue the three steps (AR-21)
 };
 enum : unsigned { kAllocFree = 0, kAllocLaunch = 1, kAllocRestoreAlloc = 2,
                   kAllocRestoreActivate = 3 };
@@ -461,8 +483,9 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
 enum : unsigned { kCauseWidth = 3, kCauseFormat = 4, kCauseBarrier = 9 };
-/// mem_op codes OOE reads (OA's six, TI's a4fa218).
-enum : unsigned { kMemOpFence = 0xE };
+/// mem_op codes OOE reads or generates (OA's six, TI's a4fa218): an
+/// atomic's read (A1) and write (A3) are OOE's alone, as 0xF is (V-72).
+enum : unsigned { kMemOpAtomicRead = 2, kMemOpAtomicWrite = 3, kMemOpFence = 0xE };
 
 // ---- decoded outputs ----------------------------------------------------------------
 
@@ -533,11 +556,19 @@ struct Redirect {       ///< ccv_ooe_fet_redirect
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
   bool epoch_only = false;
+  /// A demotion's rewind beat (TI-24 (3), OA's revs 150-151; TI's e95a6a8):
+  /// with epoch_only, FET sets the PCs of the lanes in taken_mask to
+  /// target_pc, each the oldest unretired uop of those lanes.
+  bool rewind = false;
 };
 struct Status {         ///< ccv_ooe_rau_status
   unsigned warp = 0;
   bool fault_taken = false, stalled = false, mlc_miss_seen = false;
   uint32_t retired_since_restore = 0;
+  /// A level (OA's rev 149): the warp's exit has retired and it holds no
+  /// ROB entry and no memop at MIU, until RAU frees the slot. Sent once,
+  /// as it rises.
+  bool exited = false;
 };
 struct Fault {          ///< ccv_ooe_cru_fault
   unsigned warp = 0, cause = 0, cta_slot = 0;
@@ -791,6 +822,9 @@ public:
   bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
   void alloc(const Alloc &a);
   void demote(unsigned warp);
+  /// The PRF read ports a migration holds this cycle (RCU's, TI-21): set
+  /// before cycle(), as the other inputs are.
+  void migrationReads(unsigned n) { mig_reads_ = n; }
   void barRelease(uint32_t warp_mask);
   void kill(uint32_t warp_mask, unsigned epoch);
 
@@ -822,6 +856,14 @@ public:
   size_t freeGprs() const { return gfree_.size(); }
   size_t freePreds() const { return pfree_.size(); }
   unsigned heldGprs(unsigned slot) const { return slot_[slot].held_gpr; }
+  /// RS entries slot holds in a class (TI-21's measure).
+  unsigned rsHeldIn(unsigned slot, bool miu) const {
+    unsigned n = 0;
+    for (const RsEntry &x : rs_) n += x.valid && x.slot == slot && (x.cls == RsCls::kMiu) == miu;
+    return n;
+  }
+  /// A slot's committed map (the demotion map's source).
+  std::array<unsigned, kArchGprs> committedGprs(unsigned slot) const { return slot_[slot].crat; }
   /// The warp's speculative and committed predicate maps (rename_preds).
   std::array<unsigned, kArchPreds> committedPredMap(unsigned warp) const;
   /// The warp's current fetch epoch (A-70).
@@ -861,6 +903,21 @@ private:
     uint64_t fault_addr = 0;
     bool mlc_miss = false;
     bool committed = false;        ///< a store's commit has gone to MIU
+    // An atomic (AR-21): A1 is rs_main, an exclusive read into T; A2 the
+    // lane op, T and the operands into N; A3 the write of N and the release.
+    // T is pnew for atom (rd's new name) and a temporary for red; N is
+    // always one. Both free at retire.
+    bool atomic = false;
+    unsigned rs_a2 = kNoEntry, rs_a3 = kNoEntry;
+    unsigned ptmp_t = kNoEntry, ptmp_n = kNoEntry;   ///< temporaries, kNoEntry when none
+    unsigned atom_t = 0;               ///< T: pnew or ptmp_t
+    bool atom_started = false;         ///< its first A1 has issued
+    bool atom_pass = false;            ///< a pass in flight: A1 issued, A3 not complete
+    bool atom_final = false;           ///< the last pass's A3 completed (more = 0), or A1 faulted
+    unsigned atom_passes = 0;
+    uint64_t atom_pass_at = 0;         ///< this pass's A1 issue (hold cycles)
+    uint64_t atom_ready_at = 0;        ///< A1 first issuable but not at the head (head wait)
+    bool atom_waiting = false;
   };
 
   struct RsEntry {
@@ -890,6 +947,7 @@ private:
     uint64_t ready_since = 0;      ///< first cycle a memop's row was ready
     uint64_t eligible_at = 0;      ///< first cycle select may take it (rename's stages)
     unsigned res = 0;              ///< sectioned: the resources it needs (resOf)
+    uint8_t atom = 0;              ///< an atomic's step: 1 A1, 2 A2, 3 A3 (AR-21); 0 none
   };
 
   struct Ckpt {
@@ -937,6 +995,8 @@ private:
     bool map_sent = false;                    ///< demotion: map to RCU
     uint64_t notice_lands = 0;                ///< epoch notice in FET (A-74)
     bool notice_sent = false;
+    unsigned rewind_pending = 0;              ///< a demotion's beats not yet sent (TI-24 (3))
+    bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;
     /// Restore-allocate in progress (OI-41): registers still to take, and
@@ -1016,8 +1076,25 @@ private:
   /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
   /// 4 RCU (R), 5-8 MIU pipes P0-P3.
   unsigned resOf(const RobEntry &r, bool copy_half, bool widen = true) const;
+  /// An RS entry's resources: resOf for its ROB entry, or an atomic step's.
+  unsigned resEntry(unsigned e, bool widen = true) const;
   void selectSectioned();
-  Issue makeIssue(unsigned slot, unsigned idx, unsigned port) const;
+  /// step: an atomic's (RsEntry::atom), 0 for any other entry.
+  Issue makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step = 0) const;
+  // -- atomics (AR-21) -----------------------------------------------------------------
+  /// May entry e issue as an atomic's step? A1 only at its warp's head (V-69).
+  bool atomIssueOk(unsigned e) const;
+  /// An entry of a killed warp's atomic pass in flight still issues, so the
+  /// pass writes and releases its hold (V-70).
+  bool atomFinishing(const RsEntry &x) const;
+  /// The head is an atomic in progress: no demotion trigger, and a demote
+  /// waits (V-70).
+  bool atomAtHead(unsigned slot) const;
+  void atomCmpl(unsigned slot, unsigned idx, const Cmpl &c);
+  /// Return the three steps to Waiting for the next pass.
+  void atomNextPass(RobEntry &r);
+  /// Free whatever RS entries an atomic still holds.
+  void atomFree(RobEntry &r);
   void issueCopy(unsigned slot, unsigned idx, unsigned port);
   unsigned secMask(unsigned w, unsigned pos) const {
     return w == 0 ? 0xFu : w == 1 ? (3u << (pos & 2u)) : (1u << (pos & 3u));
@@ -1375,6 +1452,13 @@ private:
   std::vector<Cmpl> cmpls_;
   std::vector<Alloc> allocs_;
   std::vector<unsigned> demotes_;
+  std::vector<unsigned> demotes_held_;   ///< a demote waiting for an atomic at the head (V-70)
+  unsigned mig_reads_ = 0;
+  std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
+  /// The slot's oldest RS entry waits on a memory miss past the L1 window.
+  bool missStalled(unsigned slot) const;
+  /// GPR operand reads an issue of entry e makes (the PRF read-port charge).
+  unsigned readsOf(unsigned e) const;
   uint32_t released_ = 0;
   bool kill_pending_ = false;
   uint32_t kill_mask_ = 0;
