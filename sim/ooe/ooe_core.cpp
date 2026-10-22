@@ -3011,6 +3011,16 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pqn[1] = r.pq[1];
       w.br = a.branch;
       w.ckpt = u.ckpt;
+      w.greads = uint8_t(u.shape.gpr_reads & 7u);
+      w.gmerge = r.merge && r.alloc_gpr && !copy;
+      w.pguse = u.shape.guard || u.shape.pdata;
+      w.cguard = u.shape.guard;
+      w.pmerge = u.pred_we && r.merge;
+      w.cgroup = uint8_t(r.is_mem ? Config::kGrpAddr : u.attr.exec_rcu ? 7u : (u.attr.bypass_group & 7u));
+      w.unit = uint8_t(u.attr.lat_class & 7u);
+      w.pgroup = uint8_t(u.attr.bypass_group & 7u);
+      w.nob = r.is_mem || u.attr.cross_lane;
+      w.atomic = atomic;
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }

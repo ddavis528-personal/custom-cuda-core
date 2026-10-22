@@ -1201,6 +1201,14 @@ public:
       /// load's copy (RCU), else kNoEntry; kNoEntry for a no-op.
       unsigned main = kNoEntry, copy = kNoEntry;
       bool mem = false;
+      /// What dep() reads, for test/ooe/rendep_tb.cpp (ooe_rename, slice
+      /// 2): the GPR sources read (gpr_reads), the merge source on the main
+      /// entry, the guard (or pdata) and the predicate merge, the consumer's
+      /// bypass group (kGrpAddr for a memop, 7 for none: RCU executes it),
+      /// and the producer's lat_class, bypass group and no-bypass bit (a
+      /// memop or a cross-lane op).
+      uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
+      bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
     };
     struct Ret {
       unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;

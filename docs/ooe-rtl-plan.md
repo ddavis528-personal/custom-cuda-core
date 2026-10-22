@@ -586,15 +586,59 @@ Built (`rtl/ooe/`):
      no-lead caught. `check-cg`: 917 flops, 914 in 3 gates, worst enable
      4.0 NGD, lowest DCGE 85%. Its port budgets wait on OA (OI-66):
      gnt_idx reaches a flop 19.3 NGD after it arrives.
-  2. **Rename 2 and 3**: the compares for each uop's sources (three GPR,
-     the merge source, the guard and the old predicate destination, plus
-     predicate logic's two), the in-group override (an older port of the
-     same group writing the source), the previous group's producers from
-     the registered grant, and each cell's wake-line code from a per-entry
-     register of its code per consumer group. Out to ooe_rs as row_dep,
-     row_code, grp_dep, grp_code and row_prod from rename's stage register,
-     under ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by
-     10).
+  2. **Rename 2 and 3** (`ooe_rendep`; design 2026-10-22, building): the
+     compares for each uop's sources (three GPR, the merge source, the
+     guard and the old predicate destination, plus predicate logic's two),
+     the in-group override, the earlier groups' producers, and each cell's
+     wake-line code. Out to ooe_rs from rename's stage register, under
+     ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by 10).
+
+     *Which groups a source can name.* With G in Rename 2 at cycle t, the
+     group ahead (G-1) is in Rename 3 and allocates at this edge, and G-2
+     allocated at the last one. ooe_prodmap holds entries allocated two
+     edges ago or more (its write is a cycle after Rename 3). So a source's
+     newest producer is, in priority: an older uop of G itself (the
+     in-group override: the RAT read through the pending group gives the
+     younger uop the older one's new name), then G-1's, then G-2's, then
+     ooe_prodmap's. Names are unique while allocated, so at most one of
+     these holds a live producer; the priority only drops a stale hit.
+
+     *Where each resolves.* ooe_prodmap's hits and G-2's resolve in Rename
+     2: G-2's entries are ooe_rs's registered grant at t, and the same grant
+     masks ooe_prodmap's stale names for those entries. G-1's entries are
+     known only from the grant at t + 1, when G is in Rename 3; mapping them
+     in rename would put ooe_rs's grant on a path from rename's input to its
+     output (no feedthrough). So rename sends G-1's matches as port-to-port
+     bits, `prv_dep` and `prv_code` (port p's uop depends on the last
+     group's port q), beside `grp_dep` (this group's port q), and ooe_rs
+     maps them through its own registered grant, as it maps `grp_dep`
+     through this edge's. ooe_rs also masks a row with its own valid bits
+     and last edge's allocations, which drops a hit on an entry freed or
+     re-allocated since Rename 2. Proposed budgets: `prv_dep` by 9 and
+     `prv_code` by 10, as `grp_dep` and `grp_code` (OA to confirm).
+
+     *Ports.* A group's ports are packed per class in allocation order,
+     each uop's main entry then a masked load's copy on the RCU port after
+     it, as ooe_rs and ooe_prodmap number them. The group is fixed when it
+     leaves the decode queue, so Rename 2 knows each uop's ports and the
+     stage register holds the rows by port.
+
+     *Codes.* A cell's code is the producer's wake line for the consumer's
+     bypass group: late (3) for a predicate source, for a consumer RCU
+     executes, and for a producer with no bypass (a memop, a copy, a
+     cross-lane op, a unit with no fastest point, or a pair the bypass
+     table lacks); otherwise the index of the pair's penalty among the
+     sorted penalties, an elaboration table from the model's settings.
+     Each RS entry keeps its occupant's code per consumer group (2 bits by
+     the groups), written with ooe_prodmap's names; G-1's and G-2's ride
+     with their ports. Two sources on one producer take the later line
+     (the larger code), as the model's dep() keeps the later wake.
+
+     *Not in this slice.* Atomics (AR-21: three entries and two temporaries
+     per uop) reach no RTL bench yet (`main()`-only tests), so the module
+     asserts none arrives; they follow with the ROB. A Rename-3 hold (the
+     go's skid) is slice 4's: this slice assumes the stage register's group
+     allocates at the next edge, which the bench drives.
   3. **Rename's credits** (`ooe_rencred`, an inner helper: the counters'
      next value; the flops are ooe_rename's): RS room per class, the free
      GPR and predicate names, each slot's ROB room. A counter falls by the
