@@ -23,6 +23,8 @@
 #   ready and request registers, ooe_select and its grant register)
 #   against the model's registers and grants, live, under its composed
 #   timing (test/ooe/trio_tb.cpp, test/ooe/ooe_trio.sv);
+# - ooe_rendep (with ooe_prodmap) against the model's renames and
+#   dependency cells, live (test/ooe/rendep_tb.cpp);
 # - ooe_rencred against the model's rename credits, live (test/ooe/rencred_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
 #   its directed and random unit tests (test/ooe/rat_tb.cpp).
@@ -272,6 +274,42 @@ for c in no-ename port-swap no-lead; do
   fi
 done
 
+# ooe_rendep, rename's producer lookup and stage register into ooe_rs,
+# beside the ooe_prodmap whose names it reads (test/ooe/ooe_rendep_tb.sv),
+# driven from the model's renames after every cycle. Its bypass table's
+# default is rendep-params.py's, from the parameters, and must stay so: the
+# bench compares codes only on cores that run that table.
+ct_gen=$(python3 test/ooe/rendep-params.py | tr ',' '\n' | sed -n "s/^-GCT=//p")
+ct_rtl=$(sed -n "s/.*parameter logic \[2\*NU\*G\*G-1:0\] CT *= *\([0-9]*'h[0-9a-f]*\).*/\1/p" rtl/ooe/ooe_rendep.sv)
+if [ -n "$ct_gen" ] && [ "$ct_gen" = "$ct_rtl" ]; then
+  say "rendep: CT default == rendep-params.py" "PASS"
+else
+  say "rendep: CT default == rendep-params.py" "FAIL"; fail=1
+fi
+dir=build/ooe-rtl/rendep
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" -GNG="$ng" -GNP="$np" --top-module ooe_rendep_tb --Mdir "$dir" \
+      -o rendep_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O1 -DRD_N=$n -DRD_NR=$n_rcu -DRD_A=$width -DRD_NG=$ng -DRD_NP=$np -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rendep.sv" \
+      "$PWD/test/ooe/ooe_rendep_tb.sv" "$PWD/test/ooe/rendep_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rendep: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rendep_tb" "$seeds" 2>&1); then
+  say "rendep ($n entries, $width uops) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "rendep == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-map late-code no-copy-src; do
+  if RD_CONTROL=$c "$dir/rendep_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (rendep)" "MISSED"; fail=1
+  else
+    say "  control $c (rendep)" "caught"
+  fi
+done
+
 # ooe_rencred, the next value of rename's credit counters, driven from the
 # model's events after every cycle under the go they serve (fits_stale 6),
 # through the random tests and the directed ones (a restore-allocate draws
@@ -327,7 +365,7 @@ fi
 # bit, and a replayed producer is not final until it reissues, so a lost
 # miss shows only where a non-producer would confirm early (3 seeds miss
 # it; a caught control stops at its first difference).
-for c in no-msd drop-squash-free drop-group stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
+for c in no-msd drop-squash-free drop-group drop-prv no-stale stale-hcol no-req-lead no-sq-lead no-cmpl-lead no-fin; do
   cs=3; [ "$c" = no-msd ] && cs=$seeds
   if RS_CONTROL=$c "$dir/rs_tb" $cs >/dev/null 2>&1; then
     say "  control $c (rs)" "MISSED"; fail=1

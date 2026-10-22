@@ -66,5 +66,13 @@ case "$unit" in
     vl ooe_prodmap "--trace-max-width 8192 -GN=$n -GNR=$n_rcu -GA=$width -GNG=$ng -GNP=$np" \
       "-DPM_N=$n -DPM_NR=$n_rcu -DPM_A=$width -DPM_NG=$ng -DPM_NP=$np" \
       "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/test/ooe/prodmap_tb.cpp" ;;
+  ooe_rendep)
+    # Beside the ooe_prodmap it reads (test/ooe/ooe_rendep_tb.sv); the
+    # unit's scope is u_dep.
+    ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)
+    vl ooe_rendep_tb "--trace-max-width 8192 -GN=$n -GNR=$n_rcu -GA=$width -GNG=$ng -GNP=$np" \
+      "-DRD_N=$n -DRD_NR=$n_rcu -DRD_A=$width -DRD_NG=$ng -DRD_NP=$np" \
+      "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/test/ooe/ooe_rendep_tb.sv" \
+      "$PWD/test/ooe/rendep_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac
