@@ -378,6 +378,20 @@ struct Config {
   /// (V-69); its consumers wake on its first write, not its last (V-71); a
   /// demote is taken mid-atomic (V-70).
   bool inject_atom_off_head = false;
+  /// The PRF's read ports (DA's response OA-6: 16 read, 8 write; no
+  /// parameter yet). Select keeps a cycle's operand reads within the read
+  /// ports a migration leaves (TI-21: a demote's 17 reads hold one for 17
+  /// cycles). 0: no limit.
+  unsigned prf_read_ports = 16;
+  /// TI-21's fixes for a stalled warp's RS room (OA's rev 130), off until
+  /// measured: (1) stall-aware shares, a warp whose oldest RS entry waits
+  /// on a memory miss past the L1 window gets no share of RS room (one
+  /// registered bit per warp); (2) a per-warp cap on each class's entries
+  /// (0: none; rs_warp_cap stays the cap over both).
+  bool share_stall_aware = false;
+  /// TI-24's control: a demotion's rewind beats youngest first.
+  bool inject_rewind_order = false;
+  unsigned rs_warp_cap_rcu = 0, rs_warp_cap_miu = 0;
   bool inject_atom_early_wake = false;
   bool inject_atom_demote_mid = false;
 
@@ -542,11 +556,19 @@ struct Redirect {       ///< ccv_ooe_fet_redirect
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
   bool epoch_only = false;
+  /// A demotion's rewind beat (TI-24 (3), OA's revs 150-151; TI's e95a6a8):
+  /// with epoch_only, FET sets the PCs of the lanes in taken_mask to
+  /// target_pc, each the oldest unretired uop of those lanes.
+  bool rewind = false;
 };
 struct Status {         ///< ccv_ooe_rau_status
   unsigned warp = 0;
   bool fault_taken = false, stalled = false, mlc_miss_seen = false;
   uint32_t retired_since_restore = 0;
+  /// A level (OA's rev 149): the warp's exit has retired and it holds no
+  /// ROB entry and no memop at MIU, until RAU frees the slot. Sent once,
+  /// as it rises.
+  bool exited = false;
 };
 struct Fault {          ///< ccv_ooe_cru_fault
   unsigned warp = 0, cause = 0, cta_slot = 0;
@@ -800,6 +822,9 @@ public:
   bool reqStopQ() const { return req_stop_q_; }   ///< req_rows_late's stop lead (benches)
   void alloc(const Alloc &a);
   void demote(unsigned warp);
+  /// The PRF read ports a migration holds this cycle (RCU's, TI-21): set
+  /// before cycle(), as the other inputs are.
+  void migrationReads(unsigned n) { mig_reads_ = n; }
   void barRelease(uint32_t warp_mask);
   void kill(uint32_t warp_mask, unsigned epoch);
 
@@ -831,6 +856,14 @@ public:
   size_t freeGprs() const { return gfree_.size(); }
   size_t freePreds() const { return pfree_.size(); }
   unsigned heldGprs(unsigned slot) const { return slot_[slot].held_gpr; }
+  /// RS entries slot holds in a class (TI-21's measure).
+  unsigned rsHeldIn(unsigned slot, bool miu) const {
+    unsigned n = 0;
+    for (const RsEntry &x : rs_) n += x.valid && x.slot == slot && (x.cls == RsCls::kMiu) == miu;
+    return n;
+  }
+  /// A slot's committed map (the demotion map's source).
+  std::array<unsigned, kArchGprs> committedGprs(unsigned slot) const { return slot_[slot].crat; }
   /// The warp's speculative and committed predicate maps (rename_preds).
   std::array<unsigned, kArchPreds> committedPredMap(unsigned warp) const;
   /// The warp's current fetch epoch (A-70).
@@ -962,6 +995,8 @@ private:
     bool map_sent = false;                    ///< demotion: map to RCU
     uint64_t notice_lands = 0;                ///< epoch notice in FET (A-74)
     bool notice_sent = false;
+    unsigned rewind_pending = 0;              ///< a demotion's beats not yet sent (TI-24 (3))
+    bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;
     /// Restore-allocate in progress (OI-41): registers still to take, and
@@ -1418,6 +1453,12 @@ private:
   std::vector<Alloc> allocs_;
   std::vector<unsigned> demotes_;
   std::vector<unsigned> demotes_held_;   ///< a demote waiting for an atomic at the head (V-70)
+  unsigned mig_reads_ = 0;
+  std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
+  /// The slot's oldest RS entry waits on a memory miss past the L1 window.
+  bool missStalled(unsigned slot) const;
+  /// GPR operand reads an issue of entry e makes (the PRF read-port charge).
+  unsigned readsOf(unsigned e) const;
   uint32_t released_ = 0;
   bool kill_pending_ = false;
   uint32_t kill_mask_ = 0;

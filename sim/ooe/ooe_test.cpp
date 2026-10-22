@@ -22,6 +22,7 @@
 #include "ccv_interfaces.h"
 
 #include <algorithm>
+#include <functional>
 #include <cstdio>
 #include <cstdlib>
 #include <map>
@@ -98,6 +99,10 @@ struct Op {
   // unless red; MIU runs it in `passes` passes, or faults its first read.
   unsigned passes = 1;
   bool red = false, afault = false;
+  /// A load that misses to DRAM (TI-21's stall_hole): its fill this many
+  /// cycles after its issue, or 0 for the environment's DRAM draw.
+  bool dram = false;
+  unsigned fill = 0;
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -190,6 +195,14 @@ struct Env {
     unsigned junk = 0;
     std::vector<uint64_t> retired;
     std::map<uint64_t, unsigned> ckpt_of;   ///< branch tid -> checkpoint
+    // TI-21's swap: parked (not in a slot), ready from ready_at, restored at
+    // least once (P applies), and the fill its demoting miss waits for.
+    bool parked = false, restored = false, restoring = false;
+    bool demoting = false;                  ///< demoted; FET resets it at the epoch notice
+    uint64_t ready_at = 0, fill_at = 0;
+    uint64_t rewind_pc = 0;                 ///< the oldest unretired uop's PC at its demote, or 0
+    bool rewind_seen = false;
+    uint64_t exit_at = 0;                   ///< its exit's retirement
   };
   std::vector<Warp> w;
   std::map<uint64_t, Op> op_of;                  ///< tid -> op
@@ -238,14 +251,207 @@ struct Env {
   std::vector<Outputs> log;
   bool keep_log = false;
 
+  // ---- TI-21: RAU, PCA and FET's side of a warp swap -----------------------------
+  // AR's rev 86 as OA adopted it (revs 132-133): a crossing is CCV_LAT_HOP
+  // and RAU decides in a cycle, so a demote reaches OOE 2 hops + 1 after
+  // OOE's trigger and a pick a hop + 1 after both its conditions hold. A
+  // demote: drained to RAU, migrate to RCU, 17 rows to PCA (the first a hop
+  // on), done to RAU; the slot is then free. A restore: restore-allocate,
+  // with PCA's command beside it, 17 rows to RCU, done to RAU, activate. One
+  // demote and one restore in flight, across different slots; a slot's
+  // restore waits for its own demote.
+  struct Swap {
+    bool rau = false;                 ///< the environment's RAU acts: frees, demotes and restores
+    unsigned mode = 0;                ///< 0 never demote, 1 swap (a ready parked warp), 2 evict (always)
+    unsigned P = 8;                   ///< retirements before a restored warp may demote again
+    unsigned dram_pm = 0;             ///< loads that miss to DRAM, per mille
+    unsigned dram_lo = 700, dram_hi = 1300;
+    bool charge_ports = true;         ///< a demote's reads hold a PRF read port (OA's rev 132)
+  } swap;
+  unsigned hop = ccv::kLatHop;
+  std::multimap<uint64_t, std::function<void()>> acts;   ///< RAU, PCA and FET's actions, by cycle
+  bool demote_busy = false, restore_busy = false;
+  std::set<unsigned> free_slots;                         ///< slots RAU holds free
+  std::set<std::pair<unsigned, size_t>> served;          ///< (warp, index): its DRAM fill has landed
+  std::vector<std::pair<uint64_t, uint64_t>> read_busy, write_busy;   ///< migration port intervals
+  uint64_t write_conflicts = 0;          ///< cycles a restore's write port would have been short
+  std::map<std::pair<unsigned, size_t>, uint64_t> tid_at;   ///< (warp, index) -> its latest correct-path tid
+  std::map<unsigned, unsigned> slot_owner;                  ///< slot -> its latest occupant (launch, activate)
+  // Measures: swaps, each demoted slot's empty time (from the miss at the
+  // head to the restored warp's first rename) with its drain D and refetch R.
+  struct Gap { unsigned warp = 0, slot = 0; uint64_t head = 0, demote = 0, drained = 0, activate = 0, rename = 0; };
+  std::vector<Gap> gaps;
+  unsigned swaps = 0, declined = 0;
+  std::string swap_errors_note;
+
+  void park(unsigned warp, std::vector<Op> prog, uint64_t ready_at = 0) {
+    swap.rau = true;
+    Warp x;
+    x.id = warp;
+    x.prog = std::move(prog);
+    x.parked = true;
+    x.launched = true;
+    x.ready_at = ready_at;
+    w.push_back(x);
+  }
+
+  /// The oldest ready parked warp (RAU's pick), or null.
+  Warp *readyParked() {
+    Warp *best = nullptr;
+    for (Warp &x : w)
+      if (x.parked && !x.exited && x.ready_at <= t && (!best || x.ready_at < best->ready_at)) best = &x;
+    return best;
+  }
+
+  /// RAU: restore into a free slot when a parked warp is ready.
+  /// decide: RAU's decision cycle (the cycle after both conditions hold, or
+  /// the decision that freed the slot).
+  void rauRestore(uint64_t decide) {
+    if (restore_busy || free_slots.empty()) return;
+    Warp *x = readyParked();
+    if (!x) return;
+    const unsigned slot = *free_slots.begin();
+    free_slots.erase(free_slots.begin());
+    restore_busy = true;
+    x->parked = false;               // reserved for the slot
+    x->restoring = true;
+    x->slot = slot;
+    const unsigned id = x->id;
+    const uint64_t a = decide;
+    acts.insert({a + hop, [this, id, slot] {
+      Alloc ra;
+      ra.warp = id;
+      ra.slot = slot;
+      ra.op = kAllocRestoreAlloc;
+      ra.ctaid = 7;
+      ra.barrier_count = 16;
+      core.alloc(ra);
+    }});
+    // PCA's command beside it: the first row a hop on, 16 more, done to RAU,
+    // RAU's decision, activate.
+    const uint64_t first = a + 2 * hop;
+    write_busy.push_back({first, first + ccv::kMigrationCycles});
+    acts.insert({first + 16 + hop + 1 + hop, [this, id, slot] {
+      Alloc ac;
+      ac.warp = id;
+      ac.slot = slot;
+      ac.op = kAllocRestoreActivate;
+      core.alloc(ac);
+      Warp *y = warpOf(id);
+      y->slot = slot;
+      y->restored = true;
+      y->restoring = false;
+      slot_owner[slot] = id;
+      y->next = y->retired.size();
+      for (Gap &g : gaps)
+        if (g.slot == slot && !g.activate) g.activate = t;
+      restore_busy = false;
+      ++swaps;
+    }});
+  }
+
+  /// RAU on OOE's report: a stalled head with an outstanding load.
+  void rauStatus(const Status &st) {
+    Warp *x = warpOf(st.warp);
+    if (!x || x->parked) return;
+    if (st.exited) {
+      // RAU frees the slot (alloc_op 0), and at the same decision may pick a
+      // parked warp for it: the free lands first.
+      const unsigned slot = x->slot;
+      const uint64_t decide = t + hop + 1;
+      acts.insert({decide, [this, slot, id = x->id, decide] {
+        acts.insert({decide + hop, [this, slot, id] {
+          Alloc f;
+          f.warp = id;
+          f.slot = slot;
+          f.op = kAllocFree;
+          core.alloc(f);
+        }});
+        free_slots.insert(slot);
+        rauRestore(decide);
+      }});
+      return;
+    }
+    if (!st.stalled || !st.mlc_miss_seen || swap.mode == 0) return;
+    // RAU decides a hop after OOE's trigger.
+    acts.insert({t + hop, [this, st] {
+      Warp *y = warpOf(st.warp);
+      if (!y || y->parked || y->exited || demote_busy) { ++declined; return; }
+      if (y->restored && st.retired_since_restore < swap.P) { ++declined; return; }
+      if (swap.mode == 1 && !readyParked()) { ++declined; return; }
+      demote_busy = true;
+      Gap g;
+      g.warp = y->id;
+      g.slot = y->slot;
+      g.head = t - hop - (cfg.demote_mlc_miss + 1);
+      gaps.push_back(g);
+      acts.insert({t + 1 + hop, [this, id = y->id] {
+        core.demote(id);
+        for (Gap &q : gaps)
+          if (q.warp == id && !q.demote) q.demote = t;
+        Warp *z = warpOf(id);
+        const auto ta = tid_at.find({id, z->retired.size()});
+        z->rewind_pc = ta != tid_at.end() ? 0x1000 + 4 * (ta->second & 0xffff) : 0;
+        z->rewind_seen = false;
+        z->demoting = true;
+      }});
+    }});
+  }
+
+  /// OOE's drained: migrate out; the slot is free when PCA's done reaches RAU.
+  void rauDrained(const Drained &d) {
+    Warp *x = warpOf(d.warp);
+    for (Gap &g : gaps)
+      if (g.warp == d.warp && !g.drained) g.drained = t;
+    // The knob's own bench (OA's rev 131): the squash freed exactly the
+    // warp's RS entries, and it holds exactly its committed registers.
+    {
+      const unsigned slot = x->slot;
+      if (core.rsHeldIn(slot, false) || core.rsHeldIn(slot, true))
+        errors.push_back("TI-21: warp " + std::to_string(d.warp) + " drained holding RS entries");
+      std::set<unsigned> names;
+      for (unsigned p : core.committedGprs(slot)) if (!core.isZeroName(p)) names.insert(cfg.sectioned ? p / 4 : p);
+      if (!cfg.sectioned && names.size() != core.heldGprs(slot))
+        errors.push_back("TI-21: warp " + std::to_string(d.warp) + " drained holding " +
+                         std::to_string(core.heldGprs(slot)) + " registers, its map " + std::to_string(names.size()));
+      if (x->rewind_seen && d.resume_pc != x->rewind_pc)
+        errors.push_back("TI-24: drained's resume PC is not the oldest beat's");
+    }
+    const uint64_t migrate = t + hop + 1;            // drained to RAU, its decision
+    const uint64_t first = migrate + 2 * hop;        // migrate to RCU, the first row to PCA
+    if (swap.charge_ports) read_busy.push_back({migrate + hop, migrate + hop + ccv::kMigrationCycles});
+    const unsigned slot = x->slot, id = x->id;
+    const uint64_t decide = first + 16 + hop + 1;     // done to RAU, its decision
+    acts.insert({decide, [this, slot, id, decide] {
+      // Free the slot (alloc_op 0) and, at the same decision, pick a parked
+      // warp for it; the warp is parked, ready when its fill has landed.
+      acts.insert({decide + hop, [this, slot, id] {
+        Alloc f;
+        f.warp = id;
+        f.slot = slot;
+        f.op = kAllocFree;
+        core.alloc(f);
+      }});
+      Warp *y = warpOf(id);
+      y->ready_at = std::max(t, y->fill_at);
+      free_slots.insert(slot);
+      demote_busy = false;
+      rauRestore(decide);
+    }});
+  }
+
   explicit Env(const Config &c, unsigned seed = 1) : cfg(c), core(c), rng(seed) {
     core.on_error = [this](const std::string &m) { errors.push_back(m); };
-    if (const char *d = std::getenv("OOE_TEST_TRACE"))
-      core.on_event = [this, d](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
-        if (std::to_string(tid) == d || std::string(d) == "all")
-          std::fprintf(stderr, "  t=%llu %s w%u a=%llu b=%llu tid=%llu\n", (unsigned long long)t, n, w,
-                       (unsigned long long)a, (unsigned long long)b, (unsigned long long)tid);
-      };
+    const char *d = std::getenv("OOE_TEST_TRACE");
+    core.on_event = [this, d](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
+      // TI-21: a restored warp's first rename ends its slot's gap.
+      if (!gaps.empty() && n[0] == 'd' && std::string(n) == "dispatch")
+        for (Gap &g : gaps)
+          if (g.activate && !g.rename && warpOf(w) && warpOf(w)->slot == g.slot) g.rename = t;
+      if (d && (std::to_string(tid) == d || std::string(d) == "all"))
+        std::fprintf(stderr, "  t=%llu %s w%u a=%llu b=%llu tid=%llu\n", (unsigned long long)t, n, w,
+                     (unsigned long long)a, (unsigned long long)b, (unsigned long long)tid);
+    };
   }
 
   unsigned rnd(unsigned n) { return n ? unsigned(rng() % n) : 0; }
@@ -256,6 +462,7 @@ struct Env {
     x.slot = slot;
     x.prog = std::move(prog);
     w.push_back(x);
+    slot_owner[slot] = warp;
     Alloc a;
     a.warp = warp;
     a.slot = slot;
@@ -279,7 +486,7 @@ struct Env {
   /// FET: up to two uops per warp per cycle into the DEC path.
   void fetch() {
     for (Warp &x : w) {
-      if (!x.launched || x.exited) continue;
+      if (!x.launched || x.exited || x.parked || x.restoring) continue;
       for (unsigned n = 0; n != 2; ++n) {
         Op o;
         bool corr = true;
@@ -306,6 +513,7 @@ struct Env {
         fetched.insert({t + fetch_delay, u});
         if (o.k == kBranch) x.ckpt_of[tid] = ck;
         if (corr) {
+          tid_at[{x.id, x.next}] = tid;
           idx_of[tid] = x.next++;
           if (o.k == kBranch && o.taken != o.pred_taken) {
             x.wrong = true;                      // fetch the wrong path until redirected
@@ -330,6 +538,26 @@ struct Env {
       Warp *x = warpOf(r.warp);
       if (r.epoch_only) {
         x->epoch = r.epoch;
+        if (x->demoting && !r.rewind) {
+          // FET at a demotion's epoch notice: the warp stops fetching, resets
+          // its checkpoints, and resumes at its oldest unretired instruction
+          // (the rewind); what is in flight carries the old epoch.
+          x->demoting = false;
+          x->parked = true;
+          x->ready_at = ~uint64_t(0);
+          x->wrong = false;
+          x->junk = 0;
+          x->live = 0;
+          x->taken_order.clear();
+          for (auto it = fetched.begin(); it != fetched.end();)
+            it = it->second.warp == x->id ? fetched.erase(it) : std::next(it);
+        }
+        // TI-24 (3): the first beat is the oldest unretired uop's PC.
+        if (r.rewind && !x->rewind_seen) {
+          x->rewind_seen = true;
+          if (x->rewind_pc && r.target_pc != x->rewind_pc)
+            errors.push_back("TI-24: warp " + std::to_string(r.warp) + "'s first rewind beat is not its oldest unretired uop");
+        }
       } else {
         if (!x->wrong || r.tid != x->wrong_branch_tid)
           errors.push_back("redirect for a branch FET did not mispredict");
@@ -350,7 +578,8 @@ struct Env {
       for (unsigned b = 0; b != 64; ++b) {
         if (!(it->second >> b & 1)) continue;
         Warp *x = nullptr;
-        for (Warp &y : w) if (y.slot == b / cfg.ckpts && y.launched) x = &y;
+        const auto own = slot_owner.find(b / cfg.ckpts);
+        if (own != slot_owner.end()) x = warpOf(own->second);
         const unsigned ck = b % cfg.ckpts;
         if (!x || !(x->live >> ck & 1)) { errors.push_back("V-46: a free for a dead checkpoint"); continue; }
         x->live &= ~(1u << ck);
@@ -560,6 +789,31 @@ struct Env {
     c.rob_tag = m.rob_tag;
     c.rs_idx = m.rs_idx;
     uint64_t when;
+    // TI-21: a load that misses to DRAM, once per program position (its
+    // replay after a restore hits the landed fill).
+    {
+      Warp *x = warpOf(m.warp);
+      const bool corr = correct.count(m.tid) && correct[m.tid];
+      const std::pair<unsigned, size_t> at{m.warp, corr ? idx_of[m.tid] : ~size_t(0)};
+      const bool dram = o.k == kLoad && corr && !served.count(at) &&
+                        (o.dram || (swap.dram_pm && rnd(1000) < swap.dram_pm));
+      if (dram) {
+        served.insert(at);
+        const unsigned fill = o.fill ? o.fill : swap.dram_lo + rnd(swap.dram_hi - swap.dram_lo + 1);
+        when = cmplRoom(t + fill);
+        hit_of[m.tid] = false;
+        if (x) x->fill_at = std::max(x->fill_at, when);
+        if (m.pdst) {
+          const uint64_t rd = when + data_after_cmpl;
+          gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
+          gwriter[m.pdst] = {m.tid, t};
+          landings.insert({rd, {m.pdst, m.tid}});
+        }
+        c.mlc_miss = true;
+        cmpls.insert({when, c});
+        return;
+      }
+    }
     if (o.k == kLoad && cfg.l1_spec) {
       bool hit = rnd(100) >= miss_pct;
       when = cmplRoom(t + cfg.lat_l1_cmpl + (hit ? 0 : 1 + rnd(miss_extra)));
@@ -598,6 +852,14 @@ struct Env {
     for (auto it = cmpls.begin(); it != cmpls.end() && it->first <= t;) { core.cmpl(it->second); it = cmpls.erase(it); }
     // OA-23's hint, two cycles ahead of its completion.
     for (auto r = cmpls.equal_range(t + 2); r.first != r.second; ++r.first) core.hint(r.first->second.rob_tag);
+    // TI-21: a restore's rows hold a PRF write port (OA's rev 132): count
+    // the cycles its landings would have found the ports short.
+    if (!write_busy.empty()) {
+      unsigned busy = 0, land = 0;
+      for (const auto &b : write_busy) busy += b.first <= t && t < b.second;
+      for (auto r = landings.equal_range(t); r.first != r.second; ++r.first) ++land;
+      if (busy && land + busy > 8) ++write_conflicts;
+    }
     // a result landing in a register a younger producer was issued to write
     for (auto it = landings.begin(); it != landings.end() && it->first <= t;) {
       const unsigned p = it->second.first;
@@ -610,6 +872,24 @@ struct Env {
       it = landings.erase(it);
     }
     fetApply();
+    for (auto it = acts.begin(); it != acts.end() && it->first <= t;) {
+      auto f = it->second;
+      it = acts.erase(it);
+      f();
+    }
+    if (swap.rau) rauRestore(t + 1);
+    // No slot runs two warps (OA's rev 131).
+    if (swap.rau) {
+      std::map<unsigned, unsigned> in;
+      for (const Warp &x : w)
+        if ((!x.parked || x.restoring) && !x.exited && ++in[x.slot] > 1)
+          errors.push_back("TI-21: slot " + std::to_string(x.slot) + " runs two warps at " + std::to_string(t));
+    }
+    {
+      unsigned busy = 0;
+      for (const auto &b : read_busy) busy += b.first <= t && t < b.second;
+      core.migrationReads(busy);
+    }
     if (g_pre_cycle_hook) g_pre_cycle_hook(core);
     core.cycle(t);
     if (g_cycle_hook) g_cycle_hook(core);
@@ -618,7 +898,11 @@ struct Env {
     for (const Retired &r : core.retired) {
       Warp *x = warpOf(r.warp);
       x->retired.push_back(r.tid);
-      if (r.exit) x->exited = true;
+      if (r.exit) { x->exited = true; x->exit_at = t; }
+    }
+    if (swap.rau) {
+      for (const Status &st : o.status) rauStatus(st);
+      for (const Drained &d : o.drained) rauDrained(d);
     }
     for (const Issue &is : o.issues) onIssue(is);
     for (const Memop &m : o.memops) onMemop(m);
@@ -2136,6 +2420,331 @@ void testControls() {
   }
 }
 
+// ---- TI-21: a stalled warp, the swap, and the hole it leaves ------------------------
+
+/// stall_hole's warp 0 (OA's rev 129): a load that misses to DRAM, then 64
+/// uops each depending on it directly or through the chain, at the usual
+/// mix; fetching (f) keeps going with dependent work, so its heads never
+/// run out; held (h) ends there.
+std::vector<Op> stallProgram(std::mt19937 &rng, bool fetching, unsigned fill) {
+  auto r = [&](unsigned k) { return unsigned(rng() % k); };
+  std::vector<Op> p;
+  for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
+  Op ld;
+  ld.k = kLoad;
+  ld.dst = 4;
+  ld.src[0] = 0;
+  ld.nsrc = 1;
+  ld.dram = true;
+  ld.fill = fill;
+  p.push_back(ld);
+  unsigned prev = 4;
+  const unsigned n = fetching ? 64 + 600 : 64;
+  for (unsigned i = 0; i != n; ++i) {
+    Op o;
+    const unsigned c = r(100);
+    o.k = c < 55 ? kLane : c < 70 ? kRcuOp : c < 88 ? kLoad : kStore;
+    const unsigned dep = r(3) == 0 ? 4 : prev;
+    o.src[0] = dep;
+    o.src[1] = r(4);
+    o.nsrc = o.k == kLoad ? 1 : 2;
+    if (o.k == kStore) { o.src[0] = r(4); o.src[1] = dep; }
+    o.dst = 5 + i % 10;
+    if (o.k != kStore) prev = o.dst;
+    p.push_back(o);
+  }
+  Op e;
+  e.k = kExit;
+  p.push_back(e);
+  return p;
+}
+
+/// One stall_hole run. arm 0: swap off (no demotion), warp 0's fill 400
+/// (OA's rev 129); 1: swap, no parked warp ready (the stress); 2: swap, one
+/// parked warp ready from cycle 0; 3: evict, none ready. Arms 1-3 miss to
+/// DRAM (700 to 1,300). solo: warps 1-3 alone.
+struct HoleRun {
+  uint64_t cycles = 0;          ///< until warps 1-3 have all exited
+  bool starved = false;         ///< 800 cycles in which warps 1-3 retired nothing
+  unsigned peak[2] = {0, 0};    ///< warp 0's RS entries over its stall, RCU and MIU
+  double mean[2] = {0, 0};
+  bool gap = false;             ///< arm 2: the slot's gap was measured
+  uint64_t empty = 0, T = 0, D = 0, R = 0;
+  unsigned swaps = 0;
+  uint64_t reads_charged = 0;
+};
+HoleRun runHole(const Config &c, unsigned seed, bool fetching, int arm, bool solo) {
+  Env e(c, seed);
+  e.miss_pct = 20;
+  std::mt19937 rng(seed), rng0(seed * 977 + 1);
+  if (arm) {
+    e.swap.rau = true;
+    e.swap.mode = arm == 3 ? 2 : 1;
+  }
+  std::vector<Op> progs[3];
+  for (auto &q : progs) q = randomProgram(rng, 300, true);
+  if (!solo) e.launch(0, 0, stallProgram(rng0, fetching, arm == 0 ? 400 : 0));
+  for (unsigned i = 0; i != 3; ++i) e.launch(5 * (i + 1), i + 1, progs[i]);
+  if (!solo && arm == 2) e.park(20, randomProgram(rng0, 300, true));   // warp ids are 0-31 (CCV_WARP_CONTEXTS)
+  HoleRun h;
+  uint64_t last = 0, samples = 0;
+  size_t before = 0;
+  auto retired13 = [&] {
+    size_t n = 0;
+    for (const auto &x : e.w) if (x.id && x.id <= 15) n += x.retired.size();
+    return n;
+  };
+  auto done13 = [&] {
+    for (const auto &x : e.w) if (x.id && x.id <= 15 && !x.exited) return false;
+    return true;
+  };
+  while (!e.done() && e.t < 60000) {
+    e.step();
+    const size_t n = retired13();
+    if (n != before) { before = n; last = e.t; }
+    if (!done13() && e.t - last > 800) h.starved = true;
+    // Warp 0's RS room while its fill is out and it holds slot 0.
+    const Env::Warp *w0 = solo ? nullptr : e.warpOf(0);
+    if (w0 && !w0->parked && !w0->exited && w0->slot == 0 && w0->fill_at && e.t < w0->fill_at) {
+      for (unsigned k = 0; k != 2; ++k) {
+        const unsigned v = e.core.rsHeldIn(0, k == 1);
+        h.peak[k] = std::max(h.peak[k], v);
+        h.mean[k] += v;
+      }
+      ++samples;
+    }
+    if (done13() && !h.cycles) {
+      for (const auto &x : e.w) if (x.id && x.id <= 15) h.cycles = std::max(h.cycles, x.exit_at);
+    }
+  }
+  for (unsigned k = 0; k != 2; ++k) h.mean[k] = samples ? h.mean[k] / double(samples) : 0;
+  e.finish(60000);
+  for (const Env::Gap &g : e.gaps)
+    if (g.warp == 0 && g.rename) {
+      h.gap = true;
+      h.empty = g.rename - g.head;
+      h.T = c.demote_mlc_miss;
+      h.D = g.drained - g.demote;
+      h.R = g.rename - g.activate;
+      break;
+    }
+  h.swaps = e.swaps;
+  return h;
+}
+
+/// stall_hole (OA's revs 129-133), every arm, under each go form: warps 1-3
+/// against solo, warp 0's RS room over its stall, starvation, and (arm 2)
+/// the slot's gap against T + D + 56 + R. Returns the failures of the
+/// bounds: 10% held, 15% fetching, no starvation, and the gap.
+int stallHole(unsigned seeds, bool print, int only_fix = -1) {
+  struct Form { const char *name; unsigned one; };
+  const Form forms[] = {{"interleave, shares", 0}, {"one warp", 1}, {"two warps", 2}};
+  const char *arms[] = {"swap off (fill 400)", "swap, none ready", "swap, one ready", "evict, none ready"};
+  int fails = 0;
+  if (print)
+    std::printf("| fix | go | arm | variant | warps 1-3 vs solo | worst seed | starved | warp 0 RS peak RCU/MIU | mean RCU/MIU |"
+                " gap: empty, bound (T + D + 56 + R) | swaps |\n|---|---|---|---|---|---|---|---|---|---|---|\n");
+  const char *fixes[] = {"none", "stall-aware shares", "per-class caps 20 / 10", "decq per warp 6", "decq per warp 4",
+                         "decq per warp 6, stall-aware shares"};
+  constexpr int kFixes = 6;
+  auto applyFix = [](Config &c, int fix) {
+    c.share_stall_aware = fix == 1 || fix == 5;
+    if (fix == 2) { c.rs_warp_cap_rcu = 20; c.rs_warp_cap_miu = 10; }
+    if (fix == 3 || fix == 5) c.decq_warp_max = 6;
+    if (fix == 4) c.decq_warp_max = 4;
+  };
+  // Each fix's cost on the even-stall sweep (OA's rev 130): four warps of
+  // the sweep's programs, against no fix, under the decided go.
+  if (print) {
+    auto sweepRun = [&](const Config &c) {
+      uint64_t total = 0;
+      for (unsigned seed = 1; seed <= seeds; ++seed) {
+        std::mt19937 rng(seed);
+        Env e(c, seed);
+        e.miss_pct = 20;
+        for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+        e.finish();
+        total += e.t;
+      }
+      return double(total) / seeds;
+    };
+    Config b = baseConfig();
+    b.decq = 13;
+    const double ref = sweepRun(b);
+    std::printf("| fix | even-stall sweep, cycles | vs no fix |\n|---|---|---|\n");
+    for (int fix = 0; fix != kFixes; ++fix) {
+      Config c = b;
+      applyFix(c, fix);
+      const double cy = sweepRun(c);
+      std::printf("| %s | %.0f | %.3f |\n", fixes[fix], cy, cy / ref);
+    }
+    std::printf("\n");
+  }
+  for (int fix = 0; fix != kFixes; ++fix)
+  for (const Form &f : forms)
+    for (int arm = 0; arm != 4; ++arm)
+      for (bool fetching : {false, true}) {
+        if (only_fix >= 0 && fix != only_fix) continue;
+        Config c = baseConfig();
+        c.decq = 13;
+        c.rename_one_warp = f.one;
+        applyFix(c, fix);
+        double sum = 0, worst = 0;
+        unsigned starved = 0, pk[2] = {0, 0}, swaps = 0;
+        double mn[2] = {0, 0};
+        uint64_t worst_gap = 0, gap_bound = 0, gaps = 0, gap_over = 0, Rmax = 0;
+        for (unsigned seed = 1; seed <= seeds; ++seed) {
+          const HoleRun solo = runHole(c, seed, fetching, arm, true);
+          const HoleRun h = runHole(c, seed, fetching, arm, false);
+          const double r = double(h.cycles) / double(solo.cycles);
+          sum += r;
+          worst = std::max(worst, r);
+          starved += h.starved;
+          for (unsigned k = 0; k != 2; ++k) { pk[k] = std::max(pk[k], h.peak[k]); mn[k] += h.mean[k]; }
+          swaps += h.swaps;
+          if (h.gap) {
+            ++gaps;
+            const uint64_t bound = h.T + h.D + 56 + h.R;
+            if (h.empty > bound + 2) ++gap_over;
+            if (h.empty > worst_gap) { worst_gap = h.empty; gap_bound = bound; }
+            Rmax = std::max(Rmax, h.R);
+          }
+        }
+        const double mean = sum / seeds;
+        const double lim = fetching ? 1.15 : 1.10;
+        // The bounds (OA's revs 129, 131): arms 0, 1 and 2 hold them; evict
+        // is reported beside them.
+        const bool bound_arm = arm != 3;
+        const bool miss = bound_arm && (mean > lim || starved || (arm == 2 && (gap_over || gaps != seeds)));
+        if (miss && f.one == 0 && fix == 0) ++fails;   // the decided go: a bench failure
+        if (print)
+          std::printf("| %s | %s | %s | %s | %.3f%s | %.3f | %u | %u / %u | %.1f / %.1f | %s | %u |\n", fixes[fix], f.name,
+                      arms[arm], fetching ? "fetching" : "held", mean, miss ? " (over)" : "", worst, starved, pk[0], pk[1],
+                      mn[0] / seeds, mn[1] / seeds,
+                      arm == 2 ? (std::to_string(worst_gap) + ", " + std::to_string(gap_bound) + " (R " +
+                                  std::to_string(Rmax) + ", " + std::to_string(gaps) + " of " + std::to_string(seeds) +
+                                  " seeds" + (gap_over ? ", " + std::to_string(gap_over) + " over" : "") + ")")
+                                     .c_str()
+                               : "-",
+                      swaps);
+      }
+  return fails;
+}
+
+/// TI-21's workload (1): 8 warps, 4 resident and 4 parked, each a sweep
+/// program, 2% of loads missing to DRAM. Swap against swap-off (the parked
+/// warps enter as residents exit), per go form, with the swap count, the
+/// slots' gaps, and the PRF ports' charge; and the threshold and P swept.
+void swapSweep(unsigned seeds) {
+  struct R { double cycles = 0, gap = 0, gap_dr = 0; unsigned swaps = 0, gaps = 0, declined = 0; uint64_t wc = 0, prf = 0; };
+  auto run = [&](Config c, unsigned mode, unsigned P, bool charge) {
+    R r;
+    for (unsigned seed = 1; seed <= seeds; ++seed) {
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.mode = mode;
+      e.swap.P = P;
+      e.swap.dram_pm = 20;
+      e.swap.charge_ports = charge;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 300, true));
+      e.finish(200000);
+      r.cycles += double(e.t);
+      r.swaps += e.swaps;
+      r.declined += e.declined;
+      r.wc += e.write_conflicts;
+      r.prf += e.core.counters["select.prf_read_ports"];
+      for (const Env::Gap &g : e.gaps)
+        if (g.rename) { r.gap += double(g.rename - g.head); r.gap_dr += double(g.rename - g.drained); ++r.gaps; }
+    }
+    r.cycles /= seeds;
+    if (r.gaps) { r.gap /= r.gaps; r.gap_dr /= r.gaps; }
+    return r;
+  };
+  Config base = baseConfig();
+  base.decq = 13;
+  std::printf("| go | policy | threshold | P | ports charged | cycles | vs swap off | restores | demotes declined | "
+              "gap from the miss at the head | from drained | reads held back | write-port short cycles |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+  for (unsigned one : {0u, 1u, 2u}) {
+    Config c = base;
+    c.rename_one_warp = one;
+    const char *go = one == 0 ? "interleave, shares" : one == 1 ? "one warp" : "two warps";
+    const R off = run(c, 0, 8, true);
+    auto line = [&](const char *pol, unsigned thr, unsigned P, bool charge, const R &r) {
+      std::printf("| %s | %s | %u | %u | %s | %.0f | %.3f | %u | %u | %.0f | %.0f | %llu | %llu |\n", go, pol, thr, P,
+                  charge ? "yes" : "no", r.cycles, r.cycles / off.cycles, r.swaps, r.declined, r.gap, r.gap_dr,
+                  (unsigned long long)r.prf, (unsigned long long)r.wc);
+    };
+    line("swap off", c.demote_mlc_miss, 8, true, off);
+    for (unsigned thr : {25u, 50u, 100u}) {
+      Config t = c;
+      t.demote_mlc_miss = thr;
+      line("swap", thr, 8, true, run(t, 1, 8, true));
+    }
+    if (one == 0) {
+      for (unsigned P : {1u, 32u}) line("swap", c.demote_mlc_miss, P, true, run(c, 1, P, true));
+      line("swap", c.demote_mlc_miss, 8, false, run(c, 1, 8, false));
+      line("evict", c.demote_mlc_miss, 8, true, run(c, 2, 8, true));
+    }
+  }
+}
+
+/// The swap knob's own bench (OA's rev 131), on the 8-warp workload: the
+/// environment checks that a demote's squash frees exactly the warp's RS
+/// entries and leaves its committed registers, that the first rewind beat is
+/// the oldest unretired uop and drained names it, and that no slot runs two
+/// warps; every warp retires its whole program, through swaps.
+void testSwap() {
+  for (unsigned one : {0u, 1u, 2u})
+    for (unsigned seed = 1; seed <= 6; ++seed) {
+      g_test = "swap go " + std::to_string(one) + " seed " + std::to_string(seed);
+      Config c = baseConfig();
+      c.decq = 13;
+      c.rename_one_warp = one;
+      std::mt19937 rng(seed);
+      Env e(c, seed);
+      e.miss_pct = 20;
+      e.swap.rau = true;
+      e.swap.mode = 1;
+      e.swap.dram_pm = 40;
+      for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+      for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+      e.finish(200000);
+      EXPECT(e.swaps > 0, "no swap");
+      unsigned demotes = 0;
+      for (const Env::Gap &g : e.gaps) demotes += g.drained != 0;
+      EXPECT(demotes > 0, "no demotion");
+    }
+  // The control: beats youngest first, so FET resumes past the oldest
+  // unretired uop of the lanes that have two beats.
+  unsigned caught = 0;
+  const int before = g_fail;
+  for (unsigned seed = 1; seed <= 6 && !caught; ++seed) {
+    g_test = "swap (control)";
+    Config c = baseConfig();
+    c.decq = 13;
+    c.inject_rewind_order = true;
+    std::mt19937 rng(seed);
+    Env e(c, seed);
+    e.miss_pct = 20;
+    e.swap.rau = true;
+    e.swap.mode = 1;
+    e.swap.dram_pm = 40;
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+    for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+    g_quiet = true;
+    e.finish(200000);
+    g_quiet = false;
+    caught += g_fail != before;
+    g_fail = before;
+  }
+  std::printf("  %-24s %s\n", "control rewind-order", caught ? "caught" : "MISSED");
+  EXPECT(caught, "beats youngest first should break the rewind check");
+}
+
 /// Sizing sweep on synthetic four-warp traces, in the design's own modes
 /// (bypass and L1 speculation on): cycles per knob value, the mean over
 /// several seeds, normalised to the default. The S1 kernels are one warp and
@@ -2626,8 +3235,22 @@ int main(int argc, char **argv) {
     audit();
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--stall-hole") {
+    const int f = stallHole(seeds == 25 ? 48 : seeds, true);
+    std::printf("stall_hole: %d bound(s) missed by the decided go\n", f);
+    return g_fail ? 1 : 0;
+  }
+  if (argc > 1 && std::string(argv[1]) == "--swap-sweep") {
+    swapSweep(seeds == 25 ? 48 : seeds);
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--sweep") {
     sweep();
+    return g_fail ? 1 : 0;
+  }
+  if (std::getenv("OOE_TEST_SWAP")) {     // the swap bench alone, for debugging
+    testSwap();
+    std::printf("ooe-test: %s (%d failures)\n", g_fail ? "FAIL" : "PASS", g_fail);
     return g_fail ? 1 : 0;
   }
   if (std::getenv("OOE_TEST_ATOMIC")) {   // the atomic tests alone, for debugging
@@ -2673,6 +3296,7 @@ int main(int argc, char **argv) {
   testAtomicKill();
   testAtomicDemote();
   testAtomicRandom(seeds, randomConfig);
+  testSwap();
   for (int k : {1, 2}) {
     const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
     const int saved = g_fail;

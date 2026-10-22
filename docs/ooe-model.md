@@ -397,6 +397,117 @@ every select form. They run in `ooe-test` alone, not in the benches'
 random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
 `atom-early-wake` and `atom-demote-mid` must be caught.
 
+## Demotion's model side (TI-24) and the swap environment (TI-21)
+
+**What OOE sends now (TI-24's asks, OA's revs 149-151).**
+
+- **The trigger.** The MLC-miss trigger is now "the head is a load still
+  outstanding at MIU, blocked longer than `demote_mlc_miss`"
+  (CCV_DEMOTION_THRESHOLD_MLC, which exceeds CCV_LAT_MLC_HIT_MAX). The
+  completion's `mlc_miss` comes with the data, too late to demote on.
+  `mlc_miss_seen` on the status reports that condition.
+- **exited.** It is raised once the warp's exit has retired and its ROB
+  holds nothing, a deferred free included, so no memop is out at MIU. It
+  is sent once, as it rises; the level holds until RAU frees the slot.
+- **The rewind.** At a demote, before the squash, OOE takes each lane's
+  oldest unretired uop across the ROB and then the decode queue. Lanes that
+  share a PC merge into one beat, oldest first. The beats follow the epoch
+  notice on the redirect channel (`epoch_only` and `rewind`, the lanes in
+  `taken_mask`, the PC in `target_pc`), one a cycle at its rate. `drained`
+  waits for the last beat to land, and `resume_pc` is the oldest beat's.
+  `demote.rewind_beats` counts the beats per demote.
+- **A fix the swap found.** A checkpoint free resolved in the cycle OOE
+  demotes or kills the warp would go out with the epoch notice, after FET
+  has reset that warp's checkpoints at it (V-46). OOE now drops that
+  warp's frees from the cycle's mask, since FET frees them itself.
+- **The PRF's read ports** (DA's response OA-6: 16; no parameter yet).
+  Select keeps a cycle's operand reads within the ports a migration leaves:
+  a demote's 17 reads hold one port for 17 cycles. The limit never binds
+  without a migration (0 over the 200 ordinary random runs).
+
+**The environment** (`Env::Swap`, ooe_test.cpp). It is AR's rev 86 as OA
+adopted it (revs 131-133), standing in for RAU, PCA and FET:
+
+- A crossing is CCV_LAT_HOP and RAU decides in a cycle, so a demote reaches
+  OOE 2 hops + 1 after OOE's trigger.
+- A demote: drained to RAU, migrate to RCU, 17 rows to PCA, done to RAU,
+  and the slot frees. A restore: restore-allocate with PCA's command beside
+  it, 17 rows to RCU, done to RAU, activate. RAU frees a slot and picks its
+  next warp at the same decision.
+- One demote and one restore may be in flight, in different slots.
+- Selection is the oldest ready parked warp. A demoted warp is ready when
+  its fill lands (DRAM fills drawn from 700 to 1,300 cycles), and its
+  replayed load then hits. A restored warp may demote again only after P
+  retirements.
+- `mode` is 1 swap (demote only with a ready parked warp) or 2 evict.
+- The knob's own bench, `testSwap` in the default run: on the 8-warp
+  workload, under every go form, a demote's squash leaves exactly the
+  warp's committed registers and no RS entry, the first rewind beat is the
+  oldest unretired uop and `drained` names it, no slot runs two warps, and
+  every warp retires its whole program. Control `rewind-order` (beats
+  youngest first) must be caught.
+
+**stall_hole** (`ooe-test --stall-hole`, 48 seeds, decq 13, the late
+take). The decided go (interleave, shares), warps 1 to 3 against their solo
+time:
+
+| fix | swap off (fill 400), held / fetching | swap, none ready | swap, one ready | evict, none ready | even-stall sweep |
+|---|---|---|---|---|---|
+| none | 1.543 / 3.206, 44 starved | 2.257 / 3.917 | 1.057 / 1.118, 1 starved | 1.043 / 1.080 | 1.000 |
+| stall-aware shares | 1.505 / 3.117 | 2.203 / 3.813 | 1.065 / 1.158 | 1.043 / 1.107 | 1.033 |
+| per-class caps 20 / 10 | 1.523 / 3.190 | 2.258 / 3.901 | 1.047 / 1.080 | 1.028 / 1.045 | 1.003 |
+| decq per warp 6 | 1.435 / 1.866 | 2.021 / 2.245 | 1.043 / 1.045 | 1.045 / 1.045 | 0.875 |
+| decq per warp 4 | 1.415 / 1.673 | 2.006 / 2.116 | 1.046 / 1.045 | 1.047 / 1.047 | 0.826 |
+| decq 6, stall-aware shares | 1.261 / 1.566 | 1.447 / 1.460 | 1.042 / 1.042 | 1.040 / 1.040 | 0.899 |
+
+The bounds are 10% held, 15% fetching, and no window of 800 cycles in which
+warps 1 to 3 retire nothing.
+
+- **The hole is the decode queue first.** With no per-warp limit
+  (CCV_P_DECQ_WARP_MAX = 13), the stalled warp holds all 13 entries: its
+  ROB is full of the chain, so it cannot rename them. Warps 1 to 3 then
+  rename nothing. RS fixes alone do not touch it. Stall-aware shares cut
+  warp 0's RS peak from 28 RCU and 15 MIU entries to 18 and 10, and warps 1
+  to 3 move by 3%.
+- **No form or fix meets the swap-off bound.** Every swap-off arm misses
+  it; the best, decq 6 with stall-aware shares, gives 1.26 and 1.57. Warp 0
+  keeps what it took before its stall was known.
+- **Swap with a ready warp and evict meet it, with a per-warp decode-queue
+  limit.** At decq per warp 6, the swap arm is 1.043 and 1.045, no
+  starvation, every gap within T + D + 56 + R, and R = 5. Without the
+  limit, one seed in 48 starves after the restore, when warp 0's long
+  dependent tail fills the decode queue again.
+- **The slot is not freed by a swap.** OOE's drain waits for every
+  outstanding memop, and the DRAM load that demoted the warp is one. So the
+  slot stays held until the fill lands (D is about 700 to 1,100 cycles),
+  and the parked warp goes into a slot an exit frees, not warp 0's. A swap
+  buys what its squash frees, the RS and decode-queue room, but not slot
+  time. A replay completion for a demoted warp's outstanding load (the
+  status code exists) would let the slot go at once.
+- The gap is measured from the miss reaching the head to the restored
+  warp's first rename. It ends one cycle past T + D + 56 + R, because the
+  trigger fires when the stall exceeds T.
+- The other forms (one warp, two warps) follow the same pattern; the full
+  table is `--stall-hole`'s output.
+
+**The swap sweep** (`ooe-test --swap-sweep`, 48 seeds). 8 warps, 4
+resident and 4 parked, each a sweep program, with 2% of loads missing to
+DRAM. Against swap-off, where the parked warps enter only as residents
+exit:
+
+| go | swap at 25 / 50 / 100 | P 1 / 32 | evict |
+|---|---|---|---|
+| interleave, shares | 0.798 / 0.738 / 0.737 | 0.738 / 0.775 | 0.744 |
+| one warp | 0.824 / 0.855 / 0.853 | | |
+| two warps | 0.814 / 0.829 / 0.821 | | |
+
+- **The PRF ports cost nothing measurable.** The read-port charge held
+  back no read in any run, and a restore's write port was short in at most
+  one cycle in 48 runs, under OA's 1%.
+- **The threshold.** At 25 the decided go is 8% slower than at 50, so the
+  early MLC-miss notice (PF-39) shows no gain there. Under one warp, 25 is
+  3% faster.
+
 ## S1 modes: what the neighbours carry today
 
 The adapter configures the core for what the S1 stubs implement. Each mode is

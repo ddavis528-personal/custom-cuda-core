@@ -1401,6 +1401,29 @@ void Core::takeCompletions() {
 
 // ---- atomics: read, lane op, write (AR-21) -------------------------------------------
 
+bool Core::missStalled(unsigned slot) const {
+  unsigned old = kNoEntry;
+  for (unsigned e = 0; e != n_; ++e)
+    if (rs_[e].valid && rs_[e].slot == slot && (old == kNoEntry || rs_[e].age < rs_[old].age)) old = e;
+  if (old == kNoEntry) return false;
+  const RsEntry &x = rs_[old];
+  // wake's msd (missed its L1 slot), or a memop issued, its completion not
+  // in, past the L1 contract.
+  return x.msd || (x.cls == RsCls::kMiu && x.issued && x.on_completion && !x.late &&
+                   now_ > x.issue_at + cfg_.payload_stages + cfg_.lat_l1_cmpl);
+}
+
+unsigned Core::readsOf(unsigned e) const {
+  const RsEntry &x = rs_[e];
+  const RobEntry &r = slot_[x.slot].rob[x.rob];
+  const unsigned g = r.u.shape.gpr_reads;
+  if (x.copy) return 1;                                   // the old destination
+  if (x.atom == 1) return g & 1u;
+  if (x.atom == 2) return 1 + unsigned(__builtin_popcount(g & 6u));
+  if (x.atom == 3) return 1;
+  return unsigned(__builtin_popcount(g & 7u)) + (r.merge && r.alloc_gpr && !r.copy ? 1 : 0);
+}
+
 bool Core::atomIssueOk(unsigned e) const {
   const RsEntry &x = rs_[e];
   if (!x.atom) return true;
@@ -1794,8 +1817,36 @@ void Core::control() {
     s.resume_pc = s.count ? s.rob[s.head].u.pc : s.next_pc;
     if (!s.count)
       for (const Uop &u : decq_) if (u.warp == w) { s.resume_pc = u.pc; break; }
+    // The rewind (TI-24 (3), OA's revs 150-151): each lane's oldest
+    // unretired uop, across the ROB and then the decode queue, lanes that
+    // share a PC merged into one beat, oldest first. Lanes with none keep
+    // FET's PC. resume_pc is the oldest beat's.
+    std::vector<std::pair<uint64_t, uint32_t>> beats;
+    {
+      uint32_t covered = 0;
+      auto take = [&](uint64_t pc, uint32_t mask) {
+        const uint32_t m = mask & ~covered;
+        if (!m) return;
+        covered |= m;
+        for (auto &b : beats)
+          if (b.first == pc) { b.second |= m; return; }
+        beats.push_back({pc, m});
+      };
+      for (unsigned k = 0; k != s.count; ++k) {
+        const RobEntry &r = s.rob[(s.head + k) % cfg_.rob_depth];
+        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask);
+      }
+      for (const Uop &u : decq_)
+        if (u.warp == w) take(u.pc, u.group_mask);
+    }
+    ++histograms["demote.rewind_beats"][beats.size()];
+    if (cfg_.inject_rewind_order) std::reverse(beats.begin(), beats.end());
     for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;   // FET resets its own
     for (unsigned k = 0; k != s.count; ++k) s.rob[(s.head + k) % cfg_.rob_depth].ckpt_live = false;
+    // FET frees the warp's checkpoints itself at the epoch notice, so a
+    // free resolved this cycle, which would land with it, is not sent
+    // (ccv_ooe_fet_ckpt_free: freed exactly once; V-46).
+    free_mask_ &= ~(((uint64_t(1) << cfg_.ckpts) - 1) << (unsigned(si) * cfg_.ckpts));
     squashAfter(unsigned(si), -1, true);
     s.rat = s.crat;
     s.prat = s.cprat;
@@ -1803,6 +1854,17 @@ void Core::control() {
     s.chwidth_hold = s.bar_hold = false;
     advanceEpoch(unsigned(si));
     epochNotice(unsigned(si));
+    for (const auto &b : beats) {
+      Redirect x;
+      x.warp = s.warp;
+      x.slot = unsigned(si);
+      x.epoch = epoch_[s.warp % kWarpIds];
+      x.epoch_only = x.rewind = true;
+      x.taken_mask = b.second;
+      x.target_pc = b.first;
+      redirects_.push_back(x);
+      ++s.rewind_pending;
+    }
     s.st = WarpState::kDemoting;
     s.map_sent = false;
     count("demote");
@@ -1816,6 +1878,7 @@ void Core::control() {
       if (s.st == WarpState::kFree || !((kill_mask_ >> (s.warp % 32)) & 1u)) continue;
       for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;
       for (unsigned k = 0; k != s.count; ++k) s.rob[(s.head + k) % cfg_.rob_depth].ckpt_live = false;
+      free_mask_ &= ~(((uint64_t(1) << cfg_.ckpts) - 1) << (si * cfg_.ckpts));   // as a demote's (V-46)
       squashAfter(si, -1, true);
       s.rat = s.crat;
       s.prat = s.cprat;
@@ -1839,7 +1902,19 @@ void Core::control() {
     Slot &s = slot_[si];
     bool held = false;
     for (const RobEntry &r : s.rob) held = held || r.valid;
-    const bool landed = s.notice_sent && now_ >= s.notice_lands;
+    // The notice and every rewind beat have landed in FET (TI-24 (3)).
+    const bool landed = s.notice_sent && !s.rewind_pending && now_ >= s.notice_lands;
+    // exited (OA's rev 149): the exit retired, nothing held in the ROB, a
+    // deferred free included, so no memop is out at MIU either.
+    if (s.st == WarpState::kActive && s.exit_retired && !s.exited_sent && !held) {
+      Status x;
+      x.warp = s.warp;
+      x.retired_since_restore = s.retired_since_restore;
+      x.exited = true;
+      out.status.push_back(x);
+      s.exited_sent = true;
+      count("exited");
+    }
     if (s.st == WarpState::kDemoting && !held && landed) {
       if (!s.map_sent) {
         RatMap m;
@@ -1971,6 +2046,7 @@ void Core::retire() {
         s.chwidth_hold = false;
       }
       if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
+      if (r.u.shape.exit) s.exit_retired = true;
       const uint64_t next = r.u.pc + 2 * (r.u.ilen + 1);
       s.next_pc = r.u.attr.branch && r.taken ? next + uint64_t(2 * int64_t(int32_t(r.u.imm))) : next;
       Retired rt;
@@ -2000,7 +2076,12 @@ void Core::retire() {
     if (s.count && !s.fault_stop && !atomAtHead(si)) {
       const RobEntry &h = s.rob[s.head];
       const uint64_t stall = now_ - s.head_since;
-      if (h.is_load && h.mlc_miss && stall > cfg_.demote_mlc_miss && !s.miss_reported) {
+      // The MLC-miss trigger as OA's rev 151 defines it (AR's rev 101, TI-24
+      // (5)): a load still outstanding at MIU, blocked past the threshold,
+      // which exceeds MLC's worst hit (CCV_LAT_MLC_HIT_MAX). The completion's
+      // mlc_miss comes with the data, too late to demote on.
+      const bool miss = h.is_load && h.at_miu && !h.miu_done;
+      if (miss && stall > cfg_.demote_mlc_miss && !s.miss_reported) {
         out.status.push_back({s.warp, false, true, true, s.retired_since_restore});
         s.miss_reported = true;
         count("demote_trigger.mlc_miss");
@@ -2008,7 +2089,7 @@ void Core::retire() {
       }
       const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
       if (stall > lim && !s.stalled_reported) {
-        out.status.push_back({s.warp, false, true, h.mlc_miss, s.retired_since_restore});
+        out.status.push_back({s.warp, false, true, miss, s.retired_since_restore});
         s.stalled_reported = true;
         count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
         oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
@@ -2214,6 +2295,22 @@ void Core::selectSectioned() {
   }
   if (ctl_lanes) count("select.lane_ctl_cycles");
   std::sort(grant.begin(), grant.end(), [&](unsigned a, unsigned b) { return rs_[a].age < rs_[b].age; });
+  // The PRF's read ports less a migration's (TI-21): oldest first, a grant
+  // whose reads do not fit waits.
+  if (cfg_.prf_read_ports) {
+    const unsigned room = cfg_.prf_read_ports - std::min(cfg_.prf_read_ports, mig_reads_);
+    unsigned used_reads = 0;
+    std::vector<unsigned> kept;
+    for (unsigned e : grant) {
+      const unsigned n = readsOf(e);
+      if (used_reads + n > room) { count("select.prf_read_ports"); continue; }
+      used_reads += n;
+      kept.push_back(e);
+    }
+    for (unsigned e : grant)
+      if (std::find(kept.begin(), kept.end(), e) == kept.end()) wlog_.sel_grant[e] = 0;
+    grant.swap(kept);
+  }
   // inject_double_grant: the oldest lane op, and the oldest memop, left out
   // are granted anyway, onto sections or pipes a granted op holds.
   std::vector<unsigned> extra;
@@ -2279,6 +2376,7 @@ void Core::selectSectioned() {
 }
 
 void Core::select() {
+  unsigned reads = 0;   // this cycle's PRF operand reads (the non-sectioned select's)
   // An atomic's read issuable but for the head (AR-21's head wait).
   for (Slot &s : slot_)
     for (unsigned k = 0; k != s.count; ++k) {
@@ -2356,6 +2454,14 @@ void Core::select() {
         const bool with_copy = r.copy && e == r.rs_main && r.rs_copy != kNoEntry && !rs_[r.rs_copy].issued;
         const unsigned need = with_copy ? 2 : 1;
         if (ports + need > cfg_.issue_width) { count("stall.copy_port"); continue; }
+        // The PRF's read ports less a migration's (TI-21).
+        const unsigned nr = readsOf(e) + (with_copy ? 1 : 0);
+        if (cfg_.prf_read_ports &&
+            reads + nr > cfg_.prf_read_ports - std::min(cfg_.prf_read_ports, mig_reads_)) {
+          count("select.prf_read_ports");
+          continue;
+        }
+        reads += nr;
         const unsigned port = ports;
         ports += need;
         if (miu) ++mports;
@@ -2701,6 +2807,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (free_miu < need_miu) {
       count("stall.rs_full.miu");
       oev(OoeEv::kRsFull, s.warp, 1, free_miu, u.tid);
+      return false;
+    }
+    // TI-21's fix (2): each class's own per-warp cap.
+    if ((cfg_.rs_warp_cap_rcu && need_rcu && rsHeldIn(si, false) + need_rcu > cfg_.rs_warp_cap_rcu) ||
+        (cfg_.rs_warp_cap_miu && need_miu && rsHeldIn(si, true) + need_miu > cfg_.rs_warp_cap_miu)) {
+      count("stall.rs_warp_cap_class");
+      oev(OoeEv::kRsWarpCap, s.warp, s.rs_held, 0, u.tid);
       return false;
     }
     const unsigned cap = cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_;
@@ -3210,14 +3323,25 @@ void Core::rename() {
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
+    // TI-21's fix (1): a warp stalled on a miss gets no share of RS room;
+    // the bit is registered (last cycle's).
+    std::vector<unsigned> with_rs;
+    if (stall_bit_.size() != slot_.size()) stall_bit_.assign(slot_.size(), 0);
+    for (unsigned si : with)
+      if (!(cfg_.share_stall_aware && stall_bit_[si])) with_rs.push_back(si);
+    if (cfg_.share_stall_aware && with_rs.size() != with.size()) count("share.stall_aware");
+    for (unsigned si = 0; si != slot_.size(); ++si) stall_bit_[si] = missStalled(si);
     if (one)
-      for (unsigned si : with) for (unsigned r = 0; r != 4; ++r) split[si][r] = pool[r];
-    else if (!with.empty())
+      for (unsigned r = 0; r != 4; ++r)
+        for (unsigned si : r < 2 ? with_rs : with) split[si][r] = pool[r];
+    else
       for (unsigned r = 0; r != 4; ++r) {
-        const unsigned each = pool[r] / unsigned(with.size()), rem = pool[r] % unsigned(with.size());
-        for (unsigned si : with) split[si][r] = each;
+        const std::vector<unsigned> &to = r < 2 ? with_rs : with;
+        if (to.empty()) continue;
+        const unsigned each = pool[r] / unsigned(to.size()), rem = pool[r] % unsigned(to.size());
+        for (unsigned si : to) split[si][r] = each;
         // fits_stale 5: equal shares, the remainder given to no warp.
-        if (cfg_.fits_stale != 5) split[with[0]][r] += rem;
+        if (cfg_.fits_stale != 5) split[to[0]][r] += rem;
       }
     if (cfg_.fits_stale == 6) {
       for (unsigned si : with) {
@@ -3317,6 +3441,7 @@ void Core::sendRedirect() {
     if (r.epoch_only && si >= 0) {
       slot_[si].notice_sent = true;
       slot_[si].notice_lands = now_ + cfg_.redirect_lat;
+      if (r.rewind && slot_[si].rewind_pending) --slot_[si].rewind_pending;
     }
     if (!redirects_.empty()) {
       count("stall.redirect_busy", redirects_.size());
