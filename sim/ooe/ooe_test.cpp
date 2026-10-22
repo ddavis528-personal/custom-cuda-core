@@ -201,6 +201,10 @@ struct Env {
     bool demoting = false;                  ///< demoted; FET resets it at the epoch notice
     uint64_t ready_at = 0, fill_at = 0;
     uint64_t abandon_at = 0;                ///< PF-23: its last abandoned load's own answer
+    /// AR's rev 115: restored before its ready report (provisional); its P
+    /// count starts at that report, from the retirements it had then.
+    bool provisional = false, prov_based = false;
+    size_t prov_base = 0;
     uint64_t rewind_pc = 0;                 ///< the oldest unretired uop's PC at its demote, or 0
     bool rewind_seen = false;
     uint64_t exit_at = 0;                   ///< its exit's retirement
@@ -274,12 +278,15 @@ struct Env {
     unsigned dram_pm = 0;             ///< loads that miss to DRAM, per mille
     unsigned dram_lo = 700, dram_hi = 1300;
     bool charge_ports = true;         ///< a demote's reads hold a PRF read port (OA's rev 132)
+    /// AR's rev 115: a free slot with no ready parked warp takes the oldest
+    /// parked warp that is not ready, provisionally.
+    bool provisional = false;
   } swap;
   unsigned hop = ccv::kLatHop;
   std::multimap<uint64_t, std::function<void()>> acts;   ///< RAU, PCA and FET's actions, by cycle
   bool demote_busy = false, restore_busy = false;
   std::set<unsigned> free_slots;                         ///< slots RAU holds free
-  std::set<std::pair<unsigned, size_t>> served;          ///< (warp, index): its DRAM fill has landed
+  std::map<std::pair<unsigned, size_t>, uint64_t> served;   ///< (warp, index) -> when its DRAM fill lands
   std::vector<std::pair<uint64_t, uint64_t>> read_busy, write_busy;   ///< migration port intervals
   uint64_t write_conflicts = 0;          ///< cycles a restore's write port would have been short
   std::map<std::pair<unsigned, size_t>, uint64_t> tid_at;   ///< (warp, index) -> its latest correct-path tid
@@ -288,7 +295,7 @@ struct Env {
   // head to the restored warp's first rename) with its drain D and refetch R.
   struct Gap { unsigned warp = 0, slot = 0; uint64_t head = 0, demote = 0, drained = 0, activate = 0, rename = 0; };
   std::vector<Gap> gaps;
-  unsigned swaps = 0, declined = 0, refused = 0;
+  unsigned swaps = 0, declined = 0, refused = 0, provisional = 0, merged_fills = 0;
   std::string swap_errors_note;
 
   void park(unsigned warp, std::vector<Op> prog, uint64_t ready_at = 0) {
@@ -316,7 +323,21 @@ struct Env {
   void rauRestore(uint64_t decide) {
     if (restore_busy || free_slots.empty()) return;
     Warp *x = readyParked();
+    bool prov = false;
+    if (!x && swap.provisional) {
+      // AR's rev 115 (a): no ready warp and no launch pending (the
+      // environment launches nothing later), the oldest parked warp whose
+      // drain is done but whose fill is not.
+      for (Warp &y : w)
+        if (y.parked && !y.exited && y.ready_at != ~uint64_t(0) && y.ready_at > t &&
+            (!x || y.ready_at < x->ready_at))
+          x = &y;
+      prov = x != nullptr;
+    }
     if (!x) return;
+    x->provisional = prov;
+    x->prov_based = false;
+    provisional += prov;
     const unsigned slot = *free_slots.begin();
     free_slots.erase(free_slots.begin());
     restore_busy = true;
@@ -384,7 +405,14 @@ struct Env {
     acts.insert({t + hop, [this, st] {
       Warp *y = warpOf(st.warp);
       if (!y || y->parked || y->exited || demote_busy) { ++declined; return; }
-      if (y->restored && st.retired_since_restore < swap.P) { ++declined; return; }
+      // P (AR's rev 115 (b)): a provisional warp's count starts at its
+      // ready report, and before it the warp may demote on the trigger.
+      if (y->restored && y->provisional) {
+        if (t >= y->ready_at && y->retired.size() - y->prov_base < swap.P) { ++declined; return; }
+      } else if (y->restored && st.retired_since_restore < swap.P) {
+        ++declined;
+        return;
+      }
       if (swap.mode == 1 && !readyParked()) { ++declined; return; }
       demote_busy = true;
       Gap g;
@@ -872,9 +900,9 @@ struct Env {
       const bool dram = o.k == kLoad && corr && !served.count(at) &&
                         (o.dram || (swap.dram_pm && rnd(1000) < swap.dram_pm));
       if (dram) {
-        served.insert(at);
         const unsigned fill = o.fill ? o.fill : swap.dram_lo + rnd(swap.dram_hi - swap.dram_lo + 1);
         when = cmplRoom(t + fill);
+        served[at] = when;
         hit_of[m.tid] = false;
         if (x) x->fill_at = std::max(x->fill_at, when);
         if (m.pdst) {
@@ -886,6 +914,24 @@ struct Env {
         c.mlc_miss = true;
         cmpls.insert({when, c});
         pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? when + data_after_cmpl : 0, m.pdst};
+        return;
+      }
+      // A replay of a load whose line is still filling (a provisional
+      // restore, AR's rev 115) merges into that fill at DCU.
+      const auto sv = served.find(at);
+      if (o.k == kLoad && corr && sv != served.end() && sv->second > t + cfg.lat_l1_cmpl) {
+        when = cmplRoom(sv->second);
+        hit_of[m.tid] = false;
+        if (m.pdst) {
+          const uint64_t rd = when + data_after_cmpl;
+          gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
+          gwriter[m.pdst] = {m.tid, t};
+          landings.insert({rd, {m.pdst, m.tid}});
+        }
+        c.mlc_miss = true;
+        cmpls.insert({when, c});
+        pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? when + data_after_cmpl : 0, m.pdst};
+        ++merged_fills;
         return;
       }
     }
@@ -960,6 +1006,11 @@ struct Env {
       f();
     }
     if (swap.rau) rauRestore(t + 1);
+    for (Warp &x : w)
+      if (x.provisional && !x.prov_based && !x.parked && t >= x.ready_at) {
+        x.prov_based = true;            // its ready report (c): P counts from here
+        x.prov_base = x.retired.size();
+      }
     // No slot runs two warps (OA's rev 131).
     if (swap.rau) {
       std::map<unsigned, unsigned> in;
@@ -2860,8 +2911,8 @@ int stallHole(unsigned seeds, bool print, int only_fix = -1) {
 /// warps enter as residents exit), per go form, with the swap count, the
 /// slots' gaps, and the PRF ports' charge; and the threshold and P swept.
 void swapSweep(unsigned seeds) {
-  struct R { double cycles = 0, gap = 0, gap_dr = 0; unsigned swaps = 0, gaps = 0, declined = 0; uint64_t wc = 0, prf = 0; };
-  auto run = [&](Config c, unsigned mode, unsigned P, bool charge) {
+  struct R { double cycles = 0, gap = 0, gap_dr = 0; unsigned swaps = 0, gaps = 0, declined = 0, prov = 0, merged = 0; uint64_t wc = 0, prf = 0; };
+  auto run = [&](Config c, unsigned mode, unsigned P, bool charge, bool prov = false) {
     R r;
     for (unsigned seed = 1; seed <= seeds; ++seed) {
       std::mt19937 rng(seed);
@@ -2872,12 +2923,15 @@ void swapSweep(unsigned seeds) {
       e.swap.P = P;
       e.swap.dram_pm = 20;
       e.swap.charge_ports = charge;
+      e.swap.provisional = prov;
       for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 300, true));
       for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 300, true));
       e.finish(200000);
       r.cycles += double(e.t);
       r.swaps += e.swaps;
       r.declined += e.declined;
+      r.prov += e.provisional;
+      r.merged += e.merged_fills;
       r.wc += e.write_conflicts;
       r.prf += e.core.counters["select.prf_read_ports"];
       for (const Env::Gap &g : e.gaps)
@@ -2907,6 +2961,13 @@ void swapSweep(unsigned seeds) {
       Config t = c;
       t.demote_mlc_miss = thr;
       line("swap", thr, 8, true, run(t, 1, 8, true));
+    }
+    {
+      // AR's rev 115: a free slot with no ready warp restores a not-ready
+      // one, provisionally (its restores and merged replays in brackets).
+      const R r = run(c, 1, 8, true, true);
+      line(("swap, provisional (" + std::to_string(r.prov) + " provisional, " + std::to_string(r.merged) +
+            " replays merged)").c_str(), c.demote_mlc_miss, 8, true, r);
     }
     if (one == 0) {
       for (unsigned P : {1u, 32u}) line("swap", c.demote_mlc_miss, P, true, run(c, 1, P, true));
@@ -2947,6 +3008,28 @@ void testSwap() {
     }
   // PF-23: the demotions abandoned loads, each answered with replay.
   EXPECT(abandoned > 0, "no demotion abandoned a load (PF-23)");
+  // AR's rev 115: provisional restores, their replays merged into the
+  // fills still in flight; every warp still retires its whole program.
+  unsigned prov = 0, merged = 0;
+  for (unsigned seed = 1; seed <= 6; ++seed) {
+    g_test = "swap, provisional, seed " + std::to_string(seed);
+    Config c = baseConfig();
+    c.decq = 13;
+    std::mt19937 rng(seed);
+    Env e(c, seed);
+    e.miss_pct = 20;
+    e.swap.rau = true;
+    e.swap.mode = 1;
+    e.swap.dram_pm = 40;
+    e.swap.provisional = true;
+    e.replay_spread = 60;
+    for (unsigned i = 0; i != 4; ++i) e.launch(i, i, randomProgram(rng, 200, true));
+    for (unsigned i = 4; i != 8; ++i) e.park(i, randomProgram(rng, 200, true));
+    e.finish(200000);
+    prov += e.provisional;
+    merged += e.merged_fills;
+  }
+  EXPECT(prov > 0 && merged > 0, "%u provisional restores, %u replays merged", prov, merged);
   // The control: beats youngest first, so FET resumes past the oldest
   // unretired uop of the lanes that have two beats.
   unsigned caught = 0;

@@ -560,41 +560,46 @@ against the old drain at 18b33e1:
   under the decided go, and the swap goes from 0.738 to 0.646 of swap-off.
 - **Evict now beats swap**, 0.588 against 0.646. With the slot returned at
   once, demoting without a ready parked warp costs only the restore.
+- **Provisional restore** (AR's rev 115; `Swap::provisional`). A free
+  slot with no ready parked warp takes the oldest parked warp whose fill
+  is still out. Its P count starts at its ready report, and before then it
+  may demote on the trigger. Its replayed load merges at DCU into the fill
+  in flight (`merged_fills`). At threshold 50 it gives 0.654 under the
+  decided go, against 0.646 without it (57 provisional restores and 45
+  merged replays in 48 seeds, and 521 declined demotes against 417). Under
+  one warp it gives 0.658 against 0.654, and under two warps 0.690 against
+  0.686. The gap falls from 242 to 214 cycles, but the workload's four
+  parked warps are ready from the start, so a slot rarely has no ready warp,
+  and a provisional warp holds the slot when one becomes ready. In this
+  workload it costs about 1%. TI's swap kernel, where a slot otherwise
+  idles, gains. `testSwap` runs it on six seeds and checks that
+  provisional restores and merged replays both happen.
 - Swap-off itself moved at the merge (the decided go 6,727 to 6,442
   cycles), since a branch's discard now also replays its wrong-path loads.
 - The PRF ports still cost nothing: no read held back, no write port short.
 
-**stall_hole under it** (48 seeds, the decided go, warps 1 to 3 against
-their solo time; swap, one ready, held / fetching):
+**stall_hole under it** (48 seeds, the decided go, at the merge with TI's
+ad6ef02; warps 1 to 3 against their solo time, held / fetching):
 
-| fix | old drain | replay drain | slot gap, old / replay |
-|---|---|---|---|
-| none | 1.057 / 1.118 | 1.223 / 1.451 | 1,350 / 236 |
-| decq per warp 6 | 1.043 / 1.045 | 1.193 / 1.193 | 1,350 / 166 |
-| decq per warp 4 | 1.046 / 1.045 | 1.174 / 1.178 | 1,350 / 144 |
-| decq 6, stall-aware shares | 1.042 / 1.042 | 1.187 / 1.177 | 1,350 / 168 |
+| fix | swap, one ready, old drain (18b33e1) | swap, one ready, replay drain | four live warps (reference) | slot gap, old / replay |
+|---|---|---|---|---|
+| none | 1.057 / 1.118 | 1.212 / 1.431, 3 starved | 1.167 / 1.165 | 1,350 / 236 |
+| decq per warp 6 | 1.043 / 1.045 | 1.207 / 1.203 | 1.196 / 1.192 | 1,350 / 188 |
+| decq per warp 4 | 1.046 / 1.045 | 1.173 / 1.178 | 1.171 / 1.169 | 1,350 / 144 |
+| decq 6, stall-aware shares | 1.042 / 1.042 | 1.189 / 1.187 | 1.195 / 1.180 | 1,350 / 168 |
 
-The other arms do not change: swap off and swap with none ready demote
-nothing that a parked warp takes up, and evict with none ready stays at
-1.045 under decq 6. The swap arm now misses its 10% bound, because the
-parked warp is back in the slot about 166 cycles after the miss, not
-1,350, and runs beside warps 1 to 3 for most of their time. Solo is warps
-1 to 3 alone, so the bound also charges an ordinary fourth live warp.
-`--stall-hole` now prints a reference arm, "four live warps": the parked
-warp's program in slot 0 from cycle 0, with no stall. It prices that
-fourth warp, and the swap arm is a hole only by what it adds over the
-reference:
-
-| fix | swap, one ready (held / fetching) | four live warps | swap over the reference |
-|---|---|---|---|
-| none | 1.223 / 1.451 | 1.169 / 1.161 | 4.6% / 25%, 3 seeds starved |
-| decq per warp 6 | 1.193 / 1.193 | 1.186 / 1.189 | 0.6% / 0.3% |
-| decq per warp 4 | 1.174 / 1.178 | 1.162 / 1.157 | 1.0% / 1.8% |
-| decq 6, stall-aware shares | 1.187 / 1.177 | 1.198 / 1.183 | under it |
-
-So with the decided limit of 6, a swap costs warps 1 to 3 what any fourth
-live warp costs them, within 0.6%. The hole is closed, and the bound for
-this arm should be read against the reference, not solo (OA's call).
+The other arms barely move: swap off and swap with none ready restore no
+warp, and evict with none ready is 1.035 under decq 6. The swap arm now
+reads over its 10% bound against solo, because the parked warp is back in
+the slot about 188 cycles after the miss, not 1,350, and runs beside warps
+1 to 3 for most of their time. Solo is warps 1 to 3 alone, so the bound
+also charges an ordinary fourth live warp. `--stall-hole` therefore prints
+a reference arm, "four live warps": the parked warp's program in slot 0
+from cycle 0, with no stall. Against it the swap arm adds 0.9% and 0.9%
+under decq 6, and 0.2% and 0.8% under decq 4. The hole is closed with
+the per-warp limit; without it, the stalled warp's decode-queue hold still
+costs 4% held and 23% fetching over the reference. The bound for this arm
+should be read against the reference (OA's call).
 
 **TI-25 (AR's rev 112, OA's rev 165).**
 
