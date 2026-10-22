@@ -817,3 +817,9 @@ it.
   OI's environment, and the spill and fill count from the compiler's
   register-pressure kernels. Worth building if the held cycles are over 2% of
   any kernel's cycles.
+- **Data (CP's AR-20 sweep, 2026-10-22):** the CoreMark-derived workload at
+  six callee-saved registers moves 44,125 frame transfers per thread in 2
+  iterations, 2.9% of its 1,538,673 issue groups. That is about 92 a call,
+  of which at most 12 are saves and restores, so spills and fills dominate.
+  Held cycles come from the skeleton once TI times the kernel (AR-20, after
+  the kill).
