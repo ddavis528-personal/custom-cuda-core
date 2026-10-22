@@ -73,12 +73,12 @@ module ooe_go #(
   input  logic [S-1:0]      hold_cq01h,    // a warp hold, registered (inactive, fault, chwidth, barrier)
   input  logic              rbusy_cq01h,   // a restore-allocate owns the ports
   // The take: per slot, to decq (deq_n) and its take-enable (deq_sel).
-  output logic [S*LK-1:0]   take_cq01h,
-  output logic [S-1:0]      sel_cq01h,
+  output logic [S*LK-1:0]   take_cq02h,
+  output logic [S-1:0]      sel_cq02h,
   // Per lane: a uop, its slot and its head.
-  output logic [R-1:0]      lane_v_cq01h,
-  output logic [R*LS-1:0]   lane_s_cq01h,
-  output logic [R*LH-1:0]   lane_h_cq01h
+  output logic [R-1:0]      lane_v_cq02h,
+  output logic [R*LS-1:0]   lane_s_cq02h,
+  output logic [R*LH-1:0]   lane_h_cq02h
 );
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
@@ -100,7 +100,7 @@ module ooe_go #(
     for (int s = 0; s < S; s++)
       for (int j = 0; j < R; j++) begin
         run_t[s * R + j] = 1'b0;
-        for (int k = 0; k <= R; k++)
+        for (int k = 0; k < R + 1; k++)
           if (tk_cq02h[s * LK +: LK] == LK'(k)) run_t[s * R + j] = fits_cq02h[(s * (R + 1) + k) * R + j];
         run_t[s * R + j] = run_t[s * R + j] & hv_cq01h[s * H + j] & ~hold_cq01h[s] & ~rbusy_cq01h;
       end
@@ -132,20 +132,20 @@ module ooe_go #(
   end
   // Per slot its take; per lane its uop.
   always_comb begin
-    take_cq01h   = '0;
-    lane_v_cq01h = '0;
-    lane_s_cq01h = '0;
-    lane_h_cq01h = '0;
+    take_cq02h   = '0;
+    lane_v_cq02h = '0;
+    lane_s_cq02h = '0;
+    lane_h_cq02h = '0;
     for (int r = 0; r < R; r++)
       for (int o = 0; o < S; o++)
         for (int s = 0; s < S; s++)
           if (tk_c[r * S + o] && at_o[o * S + s]) begin
-            take_cq01h[s * LK +: LK] = LK'(r + 1);
+            take_cq02h[s * LK +: LK] = LK'(r + 1);
             for (int l = 0; l < R; l++)
               if (rank_c[(r * S + o) * 3 +: 3] == 3'(l)) begin
-                lane_v_cq01h[l]             = 1'b1;
-                lane_s_cq01h[l * LS +: LS]  = LS'(s);
-                lane_h_cq01h[l * LH +: LH]  = LH'(r);
+                lane_v_cq02h[l]             = 1'b1;
+                lane_s_cq02h[l * LS +: LS]  = LS'(s);
+                lane_h_cq02h[l * LH +: LH]  = LH'(r);
               end
           end
   end
@@ -153,9 +153,9 @@ module ooe_go #(
   // flops through the mux (a superset of its take: deq_sel_covers).
   always_comb
     for (int s = 0; s < S; s++) begin
-      sel_cq01h[s] = 1'b0;
-      for (int k = 0; k <= R; k++)
-        if (tk_cq02h[s * LK +: LK] == LK'(k)) sel_cq01h[s] = fits_cq02h[(s * (R + 1) + k) * R];
+      sel_cq02h[s] = 1'b0;
+      for (int k = 0; k < R + 1; k++)
+        if (tk_cq02h[s * LK +: LK] == LK'(k)) sel_cq02h[s] = fits_cq02h[(s * (R + 1) + k) * R];
     end
 
   // -- The registered half: next cycle's allowances ------------------------------
@@ -199,8 +199,8 @@ module ooe_go #(
     for (int r = 0; r < 4; r++) begin
       q = '0;
       f = '0;
-      for (int kk = 1; kk <= S; kk++)
-        for (int v = 0; v <= 4 * R; v++)
+      for (int kk = 1; kk < S + 1; kk++)
+        for (int v = 0; v < 4 * R + 1; v++)
           if (nw == 3'(kk) && pool[r * 5 +: 5] == 5'(v)) begin
             q = 5'(v / kk);
             f = 5'(v - (kk - 1) * (v / kk));
@@ -227,10 +227,10 @@ module ooe_go #(
     for (int s = 0; s < S; s++) begin
       room = (LB + LT + 1)'(run_cq01h[s * LB +: LB]) +
              (reach_cq01h[s] ? (LB + LT + 1)'(ret_cq01h[s * LT +: LT]) : '0);
-      for (int k = 0; k <= R; k++) begin
+      for (int k = 0; k < R + 1; k++) begin
         ok = 1'b1;
         nr = '0; nm = '0; ng = '0; np = '0;
-        for (int m = 1; m <= R; m++) begin
+        for (int m = 1; m < R + 1; m++) begin
           if (k + m - 1 < H) begin
             a  = ha_cq01h[(s * H + k + m - 1) * PA +: PA];
             ap = m >= 2 ? ha_cq01h[(s * H + k + m - 2) * PA +: PA] : '0;
@@ -239,9 +239,9 @@ module ooe_go #(
             ng = ng + 3'(a[3]);
             np = np + 3'(a[4]);
             ok = ok && hv_cq01h[s * H + k + m - 1] && !(m >= 2 && ap[6]) &&
-                 (LB + LT + 1)'(k + m) <= room &&
-                 nr <= 3'(split[(s * 4 + 0) * LA +: LA]) && nm <= 3'(split[(s * 4 + 1) * LA +: LA]) &&
-                 ng <= 3'(split[(s * 4 + 2) * LA +: LA]) && np <= 3'(split[(s * 4 + 3) * LA +: LA]);
+                 room >= (LB + LT + 1)'(k + m) &&
+                 3'(split[(s * 4 + 0) * LA +: LA]) >= nr && 3'(split[(s * 4 + 1) * LA +: LA]) >= nm &&
+                 3'(split[(s * 4 + 2) * LA +: LA]) >= ng && 3'(split[(s * 4 + 3) * LA +: LA]) >= np;
           end else begin
             ok = 1'b0;
           end
@@ -259,7 +259,7 @@ module ooe_go #(
       prio_cq02h <= S'(1);
     end else begin
       fits_cq02h <= fits_nx;
-      tk_cq02h   <= take_cq01h;
+      tk_cq02h   <= take_cq02h;
       shr_cq02h  <= split;
       if (!rbusy_cq01h) prio_cq02h <= {prio_cq02h[S-2:0], prio_cq02h[S-1]};
     end
@@ -267,8 +267,8 @@ module ooe_go #(
 
   // decq's take-enable covers every slot that takes (deq_sel_covers).
   logic [S-1:0] tk_any;
-  always_comb for (int s = 0; s < S; s++) tk_any[s] = take_cq01h[s * LK +: LK] != '0;
-  `CCV_ASSERT(sel_covers, (tk_any & ~sel_cq01h) == '0)
+  always_comb for (int s = 0; s < S; s++) tk_any[s] = take_cq02h[s * LK +: LK] != '0;
+  `CCV_ASSERT(sel_covers, (tk_any & ~sel_cq02h) == '0)
 endmodule
 `undef CCV_CLK
 `undef CCV_RST

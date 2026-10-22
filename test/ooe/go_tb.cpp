@@ -142,17 +142,17 @@ void hook(const Core &c) {
   dut->eval();
   // This cycle's takes, from last cycle's fits.
   for (unsigned s = 0; s != S; ++s) {
-    const unsigned t = getField(dut->take_cq01h, s * LK, LK);
+    const unsigned t = getField(dut->take_cq02h, s * LK, LK);
     if (t != g.took[s]) fail("take differs", s, t, g.took[s]);
-    if (t && !getBit(dut->sel_cq01h, s)) fail("a take without its take-enable", s, 0, 1);
+    if (t && !getBit(dut->sel_cq02h, s)) fail("a take without its take-enable", s, 0, 1);
   }
   for (unsigned l = 0; l != R; ++l) {
-    const bool v = getBit(dut->lane_v_cq01h, l);
+    const bool v = getBit(dut->lane_v_cq02h, l);
     const bool w = l < g.lanes.size();
     if (v != w) { fail("lane valid differs", l, v, w); continue; }
     if (!v) continue;
     ++takes;
-    const unsigned s = getField(dut->lane_s_cq01h, l * LS, LS), h = getField(dut->lane_h_cq01h, l * LH, LH);
+    const unsigned s = getField(dut->lane_s_cq02h, l * LS, LS), h = getField(dut->lane_h_cq02h, l * LH, LH);
     if (s != g.lanes[l].first) fail("lane's slot differs", l, s, g.lanes[l].first);
     if (h != g.lanes[l].second) fail("lane's head differs", l, h, g.lanes[l].second);
   }
