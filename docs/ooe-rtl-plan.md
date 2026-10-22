@@ -586,7 +586,7 @@ Built (`rtl/ooe/`):
      no-lead caught. `check-cg`: 917 flops, 914 in 3 gates, worst enable
      4.0 NGD, lowest DCGE 85%. Its port budgets wait on OA (OI-66):
      gnt_idx reaches a flop 19.3 NGD after it arrives.
-  2. **Rename 2 and 3** (`ooe_rendep`; design 2026-10-22, building): the
+  2. **Rename 2 and 3** (`ooe_rendep`; built 2026-10-22): the
      compares for each uop's sources (three GPR, the merge source, the
      guard and the old predicate destination, plus predicate logic's two),
      the in-group override, the earlier groups' producers, and each cell's
@@ -601,7 +601,13 @@ Built (`rtl/ooe/`):
      in-group override: the RAT read through the pending group gives the
      younger uop the older one's new name), then G-1's, then G-2's, then
      ooe_prodmap's. Names are unique while allocated, so at most one of
-     these holds a live producer; the priority only drops a stale hit.
+     these holds a live producer, and a hit in an older class beside a newer
+     one is stale. Only the port classes keep the order (an in-group
+     producer hides G-1's, which `prv_dep` would otherwise carry); an entry
+     hit, G-2's or ooe_prodmap's, beside a newer one names an entry that is
+     invalid, freed at this edge or re-occupied at the last, and ooe_rs's
+     row mask drops each, so the entry classes are left unordered and their
+     compares stay off each other's paths.
 
      *Where each resolves.* ooe_prodmap's hits and G-2's resolve in Rename
      2: G-2's entries are ooe_rs's registered grant at t, and the same grant
@@ -632,13 +638,38 @@ Built (`rtl/ooe/`):
      Each RS entry keeps its occupant's code per consumer group (2 bits by
      the groups), written with ooe_prodmap's names; G-1's and G-2's ride
      with their ports. Two sources on one producer take the later line
-     (the larger code), as the model's dep() keeps the later wake.
+     (the larger code), as the model's dep() keeps the later wake. A code
+     is payload, read only through its bit (ooe_rs's code register keeps
+     none without one), so it leaves unmasked.
 
      *Not in this slice.* Atomics (AR-21: three entries and two temporaries
      per uop) reach no RTL bench yet (`main()`-only tests), so the module
      asserts none arrives; they follow with the ROB. A Rename-3 hold (the
      go's skid) is slice 4's: this slice assumes the stage register's group
      allocates at the next edge, which the bench drives.
+
+     *Result.* `test/ooe/rendep_tb.cpp` drives `ooe_rendep` beside the
+     `ooe_prodmap` it reads (`test/ooe/ooe_rendep_tb.sv`) from the model's
+     renames, each module at its own stage, and checks every port's row in
+     the stage register against the model's dependency matrix: 25 seeds and
+     the directed tests, 251 cores, 100,454 rows, 68,984 cells (4,276 in
+     the group, 10,065 to the group ahead by `prv_dep`), none differ; the
+     20,804 row bits the model lacks all fall where ooe_rs masks them.
+     Controls no-map, late-code and no-copy-src caught; `run-rtl.sh` also
+     holds the bypass table's default to `rendep-params.py`. First built,
+     it was 26.4 NGD flop to flop, its port inputs 28.4 in all: each port's
+     record was written through the computed port (a priority chain behind
+     the prefix count), G-2's codes overrode an entry's in port order, the
+     entry hits waited on the newer classes' compares, and each code was
+     masked by its hit. One-hot selects for the first two, the entry
+     classes unordered and the codes unmasked give 19.3 flop to flop, every
+     input at most 19.3 after its 2.0 arrival (`ooe_rendep.ngd.json`, by
+     OI: every input by 2.0, proposed to OA). ooe_rs takes `prv_dep` and
+     `prv_code` (mapped through its registered grant) and masks a row with
+     its valid bits, its frees and its last grant; rs_tb drives both, with
+     controls drop-prv (the group ahead's producers lost) and stale-live
+     (stale bits on entries ooe_rs keeps), both caught, and the trio
+     drives them assembled.
   3. **Rename's credits** (`ooe_rencred`, an inner helper: the counters'
      next value; the flops are ooe_rename's): RS room per class, the free
      GPR and predicate names, each slot's ROB room. A counter falls by the

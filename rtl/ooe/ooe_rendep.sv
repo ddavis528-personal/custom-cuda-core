@@ -13,8 +13,11 @@
 // name), the group in Rename 3 now (G-1, allocating at this edge), the one
 // allocated at the last edge (G-2, whose entries are ooe_rs's registered
 // grant now), then ooe_prodmap's entries, which hold everything allocated
-// two edges ago or more. Names are unique while allocated, so the priority
-// only drops a stale hit. G-2's hits and ooe_prodmap's resolve here into
+// two edges ago or more. Names are unique while allocated, so an older
+// class's hit beside a newer one is stale: the port classes keep the order
+// (an in-group producer hides G-1's), and an entry hit is left unordered,
+// since ooe_rs's row mask drops every stale one (below), which keeps the
+// compares off each other's paths. G-2's hits and ooe_prodmap's resolve here into
 // row bits; the same grant masks ooe_prodmap's names for G-2's entries,
 // which it has not rewritten yet. G-1's entries are known only from the
 // grant at the next edge, so its hits leave as port-to-port bits (prv_dep,
@@ -40,7 +43,8 @@
 // per consumer group, written with ooe_prodmap's names (a cycle after
 // Rename 3, from the registered grant); G-1's and G-2's ride with their
 // ports. Two sources on one producer take the later line, the larger code
-// (the model's dep() keeps the later wake).
+// (the model's dep() keeps the later wake). A code is payload, read only
+// through its bit, and leaves unmasked.
 //
 // Not here: atomics (AR-21) reach no RTL bench yet and are asserted absent;
 // a Rename-3 hold (the go's skid, slice 4) is assumed away: the stage
