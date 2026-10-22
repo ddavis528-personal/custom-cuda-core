@@ -240,6 +240,14 @@ struct Config {
   /// take returns its share (decided on its registered takes, the fits at
   /// offset 0 formed without it). The credits are rename's counters.
   unsigned fits_stale = 6;
+  /// Rename's go admits on what decq holds (slice 4's fits): each uop's
+  /// needs from its decode-time bits alone, so a uop that turns into a
+  /// no-op at rename (a barrier, width or format fault) still counts its
+  /// RS entries and names against its warp's allowances, a GPR write
+  /// counts a name even where the sectioned plan shares a row, and a
+  /// chwidth or barrier uop ends its warp's take for the cycle, faulting
+  /// or not. The counters and the RS, port and name checks stay exact.
+  bool go_static = true;
   /// Whether RS allocation may take an entry freed in the same cycle
   /// (same-edge reuse, DA's response OI-39). With confirmation inside
   /// ooe_rs (OI-45) the free reaches allocation from its own flops at 25.7
@@ -410,6 +418,9 @@ struct Config {
   /// any outstanding head load, before the MLC trigger's threshold.
   bool inject_fallback_claims_mlc = false;
   bool inject_park_layout_lost = false;
+  /// TI-27's control (OA's rev 170), the environment's: FET marks the final
+  /// exit one exit early.
+  bool inject_final_exit_early = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -441,6 +452,9 @@ struct UopShape {
   bool pdata = false;         ///< the predicate read is data (sel)
   bool pred_logic = false;    ///< two predicate sources, qualifiers in imm
   bool exit = false;
+  /// TI-27 (OA's rev 170): FET's final-exit mark, on the exit whose fetch
+  /// clears the warp's last live lanes. The warp is done when it retires.
+  bool final_exit = false;
   int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid
 };
 
@@ -450,10 +464,6 @@ struct Uop {
   uint64_t pc = 0;
   uint32_t group_mask = 0;
   unsigned fetch_epoch = 0;
-  /// FET's mark on the exit that clears the warp's last live lanes (OA's
-  /// rev 170, TI-27): the warp has exited when it retires. A diverged warp
-  /// exits a group at a time, and OOE holds no live mask.
-  bool final_exit = false;
   SchedAttr attr;
   uint32_t attr_raw = 0;
   unsigned mem_op = 0, space = 0, ordering = 0;
@@ -633,7 +643,7 @@ struct Outputs {
 struct Retired {
   uint64_t tid = 0;
   unsigned warp = 0, rob_tag = 0;
-  bool exit = false;
+  bool exit = false;                ///< the warp's final exit (TI-27): it is done
   bool writes_gpr = false;
   unsigned dst = 0, pnew = 0;
   bool writes_pred = false;         ///< a renamed predicate destination
@@ -835,6 +845,10 @@ public:
   /// The adapter left a uop of this warp in the channel because canAccept
   /// said no: count which limit held it (the decode-queue events).
   void noteRefused(unsigned warp);
+  /// For the final-exit assertion only: the lanes a warp launches with,
+  /// every lane unless set. OOE holds no live mask (OA's rev 170), so the
+  /// environment that launched the warp says which lanes will exit.
+  void expectLanes(unsigned warp, uint32_t lanes) { launch_lanes_[warp % kWarpIds] = lanes; }
   void uop(const Uop &u);
   void done(const Done &d);
   void cmpl(const Cmpl &c);
@@ -1227,6 +1241,28 @@ public:
     std::vector<Ren> ren;
   };
   const RatLog &ratLog() const { return rlog_; }
+  /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
+  /// as the RTL holds it: per slot, the decode queue's heads in order and
+  /// each one's decode-time admission bits (bit 0 RCU, 1 MIU, 2 copy, 3 GPR
+  /// write, 4 predicate write, 5 branch, 6 serial: a chwidth or barrier),
+  /// the ROB's free run from the tail as the cycle started and whether it
+  /// reaches the head, this cycle's retirements, the registered hold and
+  /// unmet floors; the credits and floors owed; the rotation's first slot;
+  /// a restore owning the ports; and the takes, in lane order.
+  struct GoLog {
+    bool valid = false, restore = false;
+    unsigned prio = 0;
+    unsigned cred[4] = {}, owed[2] = {};
+    std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
+    std::vector<unsigned> run, ret, unmet_g, unmet_p;
+    std::vector<uint8_t> reach, hold;
+    std::vector<unsigned> took;               ///< per slot
+    std::vector<std::array<unsigned, 4>> split;   ///< the allowances registered for the next cycle
+    std::vector<std::pair<unsigned, unsigned>> lanes;   ///< (slot, head) in take order
+  };
+  const GoLog &goLog() const { return golog_; }
+  /// A uop's admission bits as decq holds them (GoLog).
+  uint8_t admBits(const Uop &u) const;
   /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
   unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
   unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
@@ -1309,6 +1345,8 @@ public:
 private:
   WakeLog wlog_;
   RatLog rlog_;
+  GoLog golog_;
+  void goRoomNext();
   unsigned decq_freed_ = 0;                 ///< entries freed this cycle (decq_late_credit)
   unsigned decq_flush_now_ = 0, decq_flush_prev_ = 0;   ///< flushed this cycle, the last (decq_flush_late)
   unsigned decq_take_now_ = 0, decq_take_prev_ = 0;     ///< taken by rename this cycle, the last (decq_take_late)
@@ -1318,6 +1356,11 @@ private:
   std::vector<unsigned> decq_slot_take_;
   std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
   std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
+  std::vector<uint8_t> ren_serial_;          ///< go_static: a chwidth or barrier uop taken this cycle, per slot
+  std::vector<unsigned> go_run_;             ///< go_static: each slot's free ROB run from its tail, as the cycle starts
+  std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
+  std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
+  std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
@@ -1504,6 +1547,15 @@ private:
   /// restore-allocate, which gives each register its own row with them.
   struct Parked { std::array<uint8_t, 16> pos{}, w{}; };
   std::array<Parked, kWarpIds> parked_{};
+  /// A check, not the design's state (OA's rev 170: OOE holds no live
+  /// mask): per warp_id, the lanes whose exit has retired since launch,
+  /// across swaps. A final exit's retire asserts they are every lane.
+  std::array<uint32_t, kWarpIds> exit_lanes_{};
+  std::array<uint32_t, kWarpIds> launch_lanes_ = [] {
+    std::array<uint32_t, kWarpIds> a{};
+    a.fill(kFullMask);
+    return a;
+  }();
   unsigned mig_reads_ = 0;
   std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
   /// The slot's oldest RS entry waits on a memory miss past the L1 window.

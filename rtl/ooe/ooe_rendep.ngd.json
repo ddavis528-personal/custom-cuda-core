@@ -3,159 +3,159 @@
   "ports": {
     "v_l_cq00h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "v_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "mem_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "cp_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "atom_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gwe_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gname_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "pwe_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "pname_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gsv_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gsn_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "psv_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "psn_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "cguard_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "cg_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "cnone_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "unit_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "pg_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "nob_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "eg_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "egn_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "ep_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "epn_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "ecv_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gnt_v_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gnt_idx_cq01h": {
       "arrival": 2.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal (2026-10-22), for OA: straight from rename's Rename 2 register (ooe_rat's output register and the uop fields with it), ooe_prodmap's entry flops and ooe_rs's grant registers, in NGD from the launching flop, as OA's response OI-66 gave ooe_prodmap"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     }
   }
 }

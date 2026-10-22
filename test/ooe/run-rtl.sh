@@ -25,6 +25,8 @@
 #   timing (test/ooe/trio_tb.cpp, test/ooe/ooe_trio.sv);
 # - ooe_rendep (with ooe_prodmap) against the model's renames and
 #   dependency cells, live (test/ooe/rendep_tb.cpp);
+# - ooe_prodmap, ooe_rendep and ooe_rs assembled, against the model's RS
+#   rows, with the surviving-bit assertion (test/ooe/rnrs_tb.cpp);
 # - ooe_rencred against the model's rename credits, live (test/ooe/rencred_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
 #   its directed and random unit tests (test/ooe/rat_tb.cpp).
@@ -307,6 +309,38 @@ for c in no-map late-code no-copy-src; do
     say "  control $c (rendep)" "MISSED"; fail=1
   else
     say "  control $c (rendep)" "caught"
+  fi
+done
+
+# ooe_prodmap, ooe_rendep and ooe_rs assembled as rename and the RS wire
+# them (test/ooe/ooe_rnrs.sv; OA's rev 168): rename's stage register is
+# ooe_rs's rows and ooe_rs's registered grant is rename's. The model drives
+# rename's fields and the RS's other inputs, and ooe_rs's rows are held to
+# its own; the wrapper's assertion holds every row bit written to a name of
+# its row's sources (surviving_named). Both controls must fire it.
+dir=build/ooe-rtl/rnrs
+mkdir -p "$dir"
+nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GN="$n" -GNR="$n_rcu" -GA="$width" -GNG="$ng" -GNP="$np" -GNC="$nc" --top-module ooe_rnrs --Mdir "$dir" \
+      -o rnrs_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O1 -DRN_N=$n -DRN_NR=$n_rcu -DRN_A=$width -DRN_NG=$ng -DRN_NP=$np -DRN_NC=$nc -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rendep.sv" \
+      "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/ooe_rnrs.sv" "$PWD/test/ooe/rnrs_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "rnrs: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/rnrs_tb" "$seeds" 2>&1); then
+  say "rename lookup + ooe_rs assembled == model" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "rename lookup + ooe_rs assembled == model" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in stale-live wrong-names; do
+  out=$(RNRS_CONTROL=$c "$dir/rnrs_tb" 3 2>&1)
+  if echo "$out" | grep -q "surviving_named failed"; then
+    say "  control $c (rnrs)" "caught"
+  else
+    say "  control $c (rnrs)" "MISSED (the assertion did not fire)"; fail=1
   fi
 done
 

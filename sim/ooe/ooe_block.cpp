@@ -42,6 +42,10 @@ public:
     for (unsigned w = 0; w != k.orcs.size(); ++w) {
       k.ratOf(w);
       k.pratOf(w, core_.config().rename_preds);
+      // The final-exit assertion's lanes: the CTA's threads, as RAU's
+      // launch names them (TI-27 (a)); a check, not OOE's state.
+      const unsigned n = k.orcs[w].threads;
+      if (n && n < 32) core_.expectLanes(w, (1u << n) - 1);
     }
     // A full decode queue holds DEC's uops in their slots: its backpressure.
     holdsBack(ch().dec_ooe);
@@ -202,7 +206,6 @@ private:
     u.cause = unsigned(get(p, c.dec_ooe, "cause"));
     u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
     u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
-    u.final_exit = get(p, c.dec_ooe, "final_exit") != 0;   // TI-27
     // What DEC decodes so OOE never looks at opcode (A-75, TI-1): which
     // source fields are real reads, how the predicate is read, what imm
     // holds, and exit as sched_attr's serial code 3.
@@ -214,6 +217,9 @@ private:
       u.shape.pdata = pu == kPredUseData;
       u.shape.pred_logic = ik == kImmPredSrcs;
       u.shape.exit = u.attr.serial == kSerExit;
+      // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
+      // clears the warp's last live lanes.
+      u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);

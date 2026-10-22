@@ -99,6 +99,10 @@ struct Op {
   // unless red; MIU runs it in `passes` passes, or faults its first read.
   unsigned passes = 1;
   bool red = false, afault = false;
+  /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
+  /// FET fetches no further; final, the mark FET sends (the last exit's, or
+  /// under the control the exit before it).
+  bool last = false, final = false;
   /// A load that misses to DRAM (TI-21's stall_hole): its fill this many
   /// cycles after its issue, or 0 for the environment's DRAM draw.
   bool dram = false;
@@ -154,7 +158,11 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.pred_taken = o.pred_taken;
     u.imm = 8;
     break;
-  case kExit: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 0, 0); u.shape.exit = true; break;
+  case kExit:
+    u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 0, 0);
+    u.shape.exit = true;
+    u.shape.final_exit = o.final;
+    break;
   case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
@@ -310,6 +318,7 @@ struct Env {
     Warp x;
     x.id = warp;
     x.prog = std::move(prog);
+    markExits(x.prog);
     x.parked = true;
     x.launched = true;
     x.ready_at = ready_at;
@@ -535,6 +544,7 @@ struct Env {
     x.id = warp;
     x.slot = slot;
     x.prog = std::move(prog);
+    markExits(x.prog);
     w.push_back(x);
     slot_owner[slot] = warp;
     Alloc a;
@@ -611,9 +621,27 @@ struct Env {
             x.junk = 0;
             break;
           }
-          if (o.k == kExit) break;
+          if (o.k == kExit && o.last) break;
         }
       }
+    }
+  }
+
+  /// FET's final-exit mark (TI-27, OA's rev 170): the exit whose fetch
+  /// clears the last live lanes, in program order (the correct path's).
+  void markExits(std::vector<Op> &p) const {
+    uint32_t lanes = kFullMask;
+    int prev = -1;
+    for (size_t i = 0; i != p.size(); ++i) {
+      if (p[i].k != kExit) continue;
+      lanes &= ~p[i].mask;
+      if (lanes == 0) {
+        p[i].last = true;
+        if (cfg.inject_final_exit_early && prev >= 0) p[size_t(prev)].final = true;
+        else p[i].final = true;
+        break;
+      }
+      prev = int(i);
     }
   }
 
@@ -1080,7 +1108,7 @@ struct Env {
     for (const Retired &r : core.retired) {
       Warp *x = warpOf(r.warp);
       x->retired.push_back(r.tid);
-      if (r.exit) { x->exited = true; x->exit_at = t; }
+      if (r.exit && op_of[r.tid].last) { x->exited = true; x->exit_at = t; }
     }
     // PF-23: drained only once every load of the warp has its completion.
     for (const Drained &d : o.drained)
@@ -1735,6 +1763,71 @@ void testParkedLayout() {
   std::printf("  %-24s %s\n", "control park-layout-lost", held ? "MISSED" : "caught");
   g_test = "parked layout (control)";
   EXPECT(!held, "a restore without the layout should break the parked-layout checks");
+}
+
+/// TI-27 (OA's rev 170): the final-exit bit. Lanes 0-15 exit (a partial
+/// exit, unmarked), the warp goes on in lanes 16-31 and is demoted on a
+/// miss there: drained, not refused. A second run, undisturbed, ends the
+/// warp at the marked exit of lanes 16-31: exited once, after it, and the
+/// model's assertion (every lane has a retired exit) holds. The control
+/// marks the first exit final, one exit early: the assertion must fire.
+bool finalExit(bool control) {
+  auto prog = [] {
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 4; p.push_back(a);
+    Op x0; x0.k = kExit; x0.mask = 0x0000ffffu; p.push_back(x0);
+    Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; ld.mask = 0xffff0000u; p.push_back(ld);
+    Op u; u.k = kLane; u.dst = 9; u.src[0] = 8; u.nsrc = 1; u.mask = 0xffff0000u; p.push_back(u);
+    Op x1; x1.k = kExit; x1.mask = 0xffff0000u; p.push_back(x1);
+    return p;
+  };
+  Config c = baseConfig();
+  c.l1_spec = false;
+  c.inject_final_exit_early = control;
+  // Demoted after the partial exit: drained, not refused.
+  bool drained = false, refused = false, early = false;
+  {
+    Env e(c);
+    e.keep_log = true;
+    e.miss_extra = 300;
+    e.launch(5, 1, prog());
+    for (unsigned k = 0; k != 200 && e.warpOf(5)->retired.size() < 2; ++k) e.step();
+    e.core.demote(5);
+    for (unsigned k = 0; k != 600 && !drained && !refused; ++k) {
+      e.step();
+      for (const Drained &d : e.log.back().drained)
+        if (d.warp == 5) (d.refused ? refused : drained) = true;
+    }
+    for (const Outputs &o : e.log)
+      for (const Status &st : o.status) early = early || st.exited;
+  }
+  // Undisturbed: exited once, after the marked exit's retire.
+  Env e(c);
+  e.keep_log = true;
+  e.launch(5, 1, prog());
+  for (unsigned k = 0; k != 1000 && !e.warpOf(5)->exited; ++k) e.step();
+  for (unsigned k = 0; k != 20; ++k) e.step();
+  unsigned exited = 0;
+  for (const Outputs &o : e.log)
+    for (const Status &st : o.status) exited += st.exited;
+  const bool ok = drained && !refused && !early && e.warpOf(5)->exited && exited == 1 && e.errors.empty();
+  if (!control) {
+    g_test = "final-exit bit";
+    EXPECT(drained && !refused, "demoted after a partial exit: drained %d, refused %d", drained, refused);
+    EXPECT(!early, "exited sent while lanes 16-31 were live");
+    EXPECT(e.warpOf(5)->exited && exited == 1, "the marked exit retired %d, exited sent %u times",
+           e.warpOf(5)->exited, exited);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testFinalExit() {
+  finalExit(false);
+  const bool held = finalExit(true);
+  std::printf("  %-24s %s\n", "control final-exit-early", held ? "MISSED" : "caught");
+  g_test = "final-exit bit (control)";
+  EXPECT(!held, "a final exit marked one exit early should break the final-exit assertion");
 }
 
 /// Restore-allocate through the candidate buffers (OA's response OI-41):
@@ -3766,6 +3859,7 @@ int main(int argc, char **argv) {
   if (std::getenv("OOE_TEST_SWAP")) {     // the swap bench alone, for debugging
     testDemoteRefused();
     testParkedLayout();
+    testFinalExit();
     testWidthFromTable();
     testMlcTrigger();
     testSwap();
@@ -3818,6 +3912,7 @@ int main(int argc, char **argv) {
   testSwap();
   testDemoteRefused();
   testParkedLayout();
+  testFinalExit();
   testWidthFromTable();
   testMlcTrigger();
   for (int k : {1, 2}) {

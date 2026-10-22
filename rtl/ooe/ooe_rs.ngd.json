@@ -27,15 +27,15 @@
     },
     "prv_dep_cq01h": {
       "arrival": 9.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal for OA (rename slice 2): ooe_rendep sends prv_dep and prv_code straight from rename's stage flops, as it does grp_dep; 9, so that the 15.1 they reach a flop in meets the stage"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 9, as grp_dep; rename's stage flops drive it"
     },
     "prv_code_cq01h": {
       "arrival": 9.0,
-      "by": "OI",
+      "by": "OA",
       "date": "2026-10-22",
-      "why": "OI's proposal for OA (rename slice 2): ooe_rendep sends prv_dep and prv_code straight from rename's stage flops, as it does grp_dep; 9, so that the 15.1 they reach a flop in meets the stage"
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 9, as grp_dep; rename's stage flops drive it"
     },
     "row_dep_cq01h": {
       "arrival": 10.0,
