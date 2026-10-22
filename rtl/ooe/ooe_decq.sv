@@ -84,7 +84,7 @@ module ooe_decq #(
   input  logic [E-1:0]     enq_v_cq01h,      // port k delivers a uop
   input  logic [E*LS-1:0]  enq_slot_cq01h,   // its slot
   input  logic [E*P-1:0]   enq_pay_cq01h,    // its payload
-  input  logic [S*LR-1:0]  deq_n_cq01h,      // uops rename took from each slot
+  input  logic [S*R-1:0]   deq_t_cq01h,      // uops rename took from each slot, a thermometer (bit r: its r-th)
   input  logic [S-1:0]     deq_sel_cq01h,    // rename may take from slot s (a superset, early: each output group's enable)
   input  logic [S-1:0]     flush_cq01h,      // a squash drops each slot's uops
   output logic [S*LC-1:0]  cnt_cq02h,        // uops each slot offers rename, past its latest take
@@ -114,7 +114,7 @@ module ooe_decq #(
   `CCV_ASSERT_KNOWN(enq_v_known, enq_v_cq01h)
   `CCV_ASSERT_KNOWN(enq_l_known, enq_l_cq00h)
   `CCV_ASSERT_KNOWN_IF(enq_slot_known, |enq_v_cq01h, enq_slot_cq01h)
-  `CCV_ASSERT_KNOWN(deq_n_known, deq_n_cq01h)
+  `CCV_ASSERT_KNOWN(deq_t_known, deq_t_cq01h)
   `CCV_ASSERT_KNOWN(deq_sel_known, deq_sel_cq01h)
   `CCV_ASSERT_KNOWN(flush_known, flush_cq01h)
 
@@ -280,9 +280,28 @@ module ooe_decq #(
     enq_s_cq01h = '0;
     for (int k = 0; k < E; k++) if (enq_v_cq01h[k]) enq_s_cq01h[enq_slot_cq01h[k * LS +: LS]] = 1'b1;
   end
-  logic [S-1:0] deq_s_cq01h;
-  always_comb
-    for (int s = 0; s < S; s++) deq_s_cq01h[s] = deq_n_cq01h[s * LR +: LR] != '0;
+  // Rename's take per slot: whether it takes, how many (the thermometer's
+  // length) and that count one-hot (deq_k[s][t]: t uops).
+  logic [S-1:0]       deq_s_cq01h;
+  logic [S*LR-1:0]    deq_n_cq01h;
+  logic [S*(R+1)-1:0] deq_k_cq01h;
+  logic               deq_th_cq01h;      // each take a thermometer
+  always_comb begin
+    deq_th_cq01h = 1'b1;
+    for (int s = 0; s < S; s++) begin
+      deq_s_cq01h[s] = deq_t_cq01h[s * R];
+      deq_n_cq01h[s * LR +: LR] = '0;
+      for (int t = 0; t < R + 1; t++) begin
+        deq_k_cq01h[s * (R + 1) + t] = 1'b1;
+        // (Indices taken mod R: each is read only where the guard holds.)
+        if (t > 0) deq_k_cq01h[s * (R + 1) + t] = deq_k_cq01h[s * (R + 1) + t] & deq_t_cq01h[s * R + (t + R - 1) % R];
+        if (t < R) deq_k_cq01h[s * (R + 1) + t] = deq_k_cq01h[s * (R + 1) + t] & ~deq_t_cq01h[s * R + t % R];
+        if (t > 0 && deq_t_cq01h[s * R + (t + R - 1) % R]) deq_n_cq01h[s * LR +: LR] = LR'(t);
+        if (t > 0 && t < R && deq_t_cq01h[s * R + t % R] && !deq_t_cq01h[s * R + (t + R - 1) % R]) deq_th_cq01h = 1'b0;
+      end
+    end
+  end
+  `CCV_ASSERT(deq_thermometer, deq_th_cq01h)
   `CCV_ASSERT(enq_led, enq_v_cq01h == '0 || enq_en_cq01h)
   `CCV_ASSERT(no_enq_at_flush, (enq_s_cq01h & flush_cq01h) == '0)
   `CCV_ASSERT(no_deq_while_flushing, (deq_s_cq01h & fl_q_cq02h) == '0)
@@ -342,12 +361,15 @@ module ooe_decq #(
     ha_nx = '0;
     hv_nx = '0;
     for (int s = 0; s < S; s++) begin
-      logic [LR-1:0] k;
-      k = deq_n_cq01h[s * LR +: LR];
-      cnt_nx[s * LC +: LC] = fl_q_cq02h[s] ? '0
-          : st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]) - LC'(k);
+      // The count less the take in transit, early; the take arriving now
+      // picks which of its R + 1 values to subtract, one-hot.
+      logic [LC-1:0] base;
+      base = st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]);
+      cnt_nx[s * LC +: LC] = '0;
       for (int t = 0; t < R + 1; t++)
-        if (32'(k) == t && !fl_q_cq02h[s])
+        if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s]) cnt_nx[s * LC +: LC] = cnt_nx[s * LC +: LC] | (base - LC'(t));
+      for (int t = 0; t < R + 1; t++)
+        if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s])
           for (int i = 0; i < H; i++) begin
             hv_nx[s * H + i] = cv_cq02h[s * NCAND + t + i];
             if (i < R) hp_nx[(s * R + i) * P +: P] = cp_cq02h[(s * NCAND + t + i) * P +: P];

@@ -53,7 +53,7 @@ using ccv::ooe::Core;
 namespace {
 constexpr unsigned S = DQ_S, E = DQ_E, R = DQ_R, P = 16, PA = 6, H = 2 * R - 1;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
-constexpr unsigned LS = bits(S), LC = bits(DQ_D + 1), LR = bits(R + 1);
+constexpr unsigned LS = bits(S), LC = bits(DQ_D + 1);
 
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_decq> dut;
@@ -134,7 +134,7 @@ void drive(const Edge &e, bool lead) {
   // The edge: dequeues, flushes, arrivals.
   uint64_t last = 0;
   for (const auto &q : e.was) for (uint64_t x : q) last = std::max(last, x + 1);
-  dut->deq_n_cq01h = 0;
+  dut->deq_t_cq01h = 0;
   dut->flush_cq01h = 0;
   unsigned held = 0;   // a flushed slot's entries, held until the flush applies
   unsigned in_transit = 0;   // the take registered at this edge, popped at the next
@@ -151,7 +151,7 @@ void drive(const Edge &e, bool lead) {
       if (control != "drop-flush") { dut->flush_cq01h |= 1u << s; held += unsigned(e.was[s].size()); }
     } else {
       if (gone > R) fail("rename took more than its width", s, gone, R);
-      setField(dut->deq_n_cq01h, s * LR, LR, gone);
+      setField(dut->deq_t_cq01h, s * R, R, (1u << gone) - 1);   // a thermometer
       taken += gone;
       in_transit += gone;
     }
@@ -159,7 +159,7 @@ void drive(const Edge &e, bool lead) {
   // rename's "may take" bits: here exactly the slots it took from.
   dut->deq_sel_cq01h = 0;
   for (unsigned s = 0; s != S; ++s)
-    if (getField(dut->deq_n_cq01h, s * LR, LR) && control != "no-take-enable") dut->deq_sel_cq01h |= 1u << s;
+    if (getField(dut->deq_t_cq01h, s * R, R) && control != "no-take-enable") dut->deq_sel_cq01h |= 1u << s;
   auto fresh = freshOf(e);
   if (fresh.size() > E) { fail("more arrivals than ports", 0, unsigned(fresh.size()), E); return; }
   if (control == "enq-swap")
@@ -219,7 +219,7 @@ void hook(const Core &c) {
     held_q.assign(S, {});
     have_pend = false;
     dut->enq_v_cq01h = 0;
-    dut->deq_n_cq01h = 0;
+    dut->deq_t_cq01h = 0;
     dut->deq_sel_cq01h = 0;
     dut->flush_cq01h = 0;
     dut->enq_l_cq00h = 0;
