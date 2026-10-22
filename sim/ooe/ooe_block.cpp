@@ -213,6 +213,9 @@ private:
       u.shape.pdata = pu == kPredUseData;
       u.shape.pred_logic = ik == kImmPredSrcs;
       u.shape.exit = u.attr.serial == kSerExit;
+      // TI-27's final-exit bit (OA's rev 170) is not on ccv_dec_ooe_uop
+      // yet: until TI adds it, every exit is final, as it was.
+      u.shape.final_exit = u.shape.exit;
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);

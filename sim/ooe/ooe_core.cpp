@@ -1783,6 +1783,7 @@ void Core::control() {
       if (a.op == kAllocRestoreAlloc && !cfg_.inject_park_layout_lost)
         for (unsigned r = 0; r != kArchGprs; ++r) s.cw[r] = parked_[a.warp % kWarpIds].w[r];
       if (a.op == kAllocLaunch) {
+        exit_lanes_[a.warp % kWarpIds] = 0;
         // Every architectural register maps to the zero registers (A-64):
         // no zeroing traffic, and nothing from another context is readable.
         s.st = WarpState::kActive;
@@ -2106,7 +2107,21 @@ void Core::retire() {
         s.chwidth_hold = false;
       }
       if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
-      if (r.u.shape.exit) s.exit_retired = true;
+      // TI-27 (OA's rev 170): the warp is done at its final exit's retire,
+      // when every lane has a retired exit; a partial exit (div's or
+      // spinwait's shape) leaves it running.
+      if (r.u.shape.exit) {
+        uint32_t &lanes = exit_lanes_[s.warp % kWarpIds];
+        lanes |= r.u.group_mask;
+        if (r.u.shape.final_exit) {
+          if (lanes != kFullMask)
+            err("TI-27: warp %u's final exit retired with lanes %08x yet to exit", s.warp, ~lanes);
+          lanes = 0;     // the warp_id's next warp starts afresh
+          s.exit_retired = true;
+        } else {
+          count("exit.partial");
+        }
+      }
       const uint64_t next = r.u.pc + 2 * (r.u.ilen + 1);
       s.next_pc = r.u.attr.branch && r.taken ? next + uint64_t(2 * int64_t(int32_t(r.u.imm))) : next;
       Retired rt;

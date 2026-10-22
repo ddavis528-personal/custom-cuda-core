@@ -693,6 +693,19 @@ So S1 loses at 4, in mlp alone, and not at 6.
   slot, and checks 16 distinct rows, each register at its position and
   width, and the table. Control `park-layout-lost` (restore at 32 bits,
   position 0) must be caught.
+- **The final-exit bit** (TI-27, OA's rev 170, superseding rev 169's parked
+  live mask). OOE holds no live mask. FET marks the exit whose fetch clears
+  the warp's last live lanes (`UopShape::final_exit`), and the warp is done
+  when that uop retires: exited follows at the quiesce, and a demote is
+  refused after it. A partial exit (div's or spinwait's shape) leaves the
+  warp running. The parked entry stays 64 bits. A check, not design state,
+  keeps per warp_id the lanes whose exit has retired; the final exit's
+  retire asserts they are all 32. The environment marks the exit as FET
+  does, in program order; the adapter marks every exit final until TI puts
+  the bit on `ccv_dec_ooe_uop`. The directed test exits lanes 0-15, demotes
+  the warp on a miss in lanes 16-31 (drained, not refused, no exited), and
+  in a second run ends it at the marked exit of lanes 16-31 (exited once).
+  Control `final-exit-early` (the first exit marked) must be caught.
 - **A destination's width is its committed width** (OA's rev 166). No
   channel carries a width from DEC, so rename takes a destination's width
   from the committed table (`Core::dstWidth`); chwidth holds rename until it

@@ -418,6 +418,9 @@ struct Config {
   /// any outstanding head load, before the MLC trigger's threshold.
   bool inject_fallback_claims_mlc = false;
   bool inject_park_layout_lost = false;
+  /// TI-27's control (OA's rev 170), the environment's: FET marks the final
+  /// exit one exit early.
+  bool inject_final_exit_early = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
   std::string apply(const std::string &spec);
@@ -449,6 +452,9 @@ struct UopShape {
   bool pdata = false;         ///< the predicate read is data (sel)
   bool pred_logic = false;    ///< two predicate sources, qualifiers in imm
   bool exit = false;
+  /// TI-27 (OA's rev 170): FET's final-exit mark, on the exit whose fetch
+  /// clears the warp's last live lanes. The warp is done when it retires.
+  bool final_exit = false;
   int srd = -1;               ///< -1, or the identity: 0 %ctatid, 1 %ctaid
 };
 
@@ -1537,6 +1543,10 @@ private:
   /// restore-allocate, which gives each register its own row with them.
   struct Parked { std::array<uint8_t, 16> pos{}, w{}; };
   std::array<Parked, kWarpIds> parked_{};
+  /// A check, not the design's state (OA's rev 170: OOE holds no live
+  /// mask): per warp_id, the lanes whose exit has retired since launch,
+  /// across swaps. A final exit's retire asserts they are every lane.
+  std::array<uint32_t, kWarpIds> exit_lanes_{};
   unsigned mig_reads_ = 0;
   std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
   /// The slot's oldest RS entry waits on a memory miss past the L1 window.
