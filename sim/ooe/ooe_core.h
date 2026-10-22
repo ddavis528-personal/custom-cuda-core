@@ -481,6 +481,7 @@ struct Uop {
   unsigned ckpt = 0;
   bool pred_taken = false;
   bool scale_en = false;
+  unsigned slot_form = 0, arg_slot = 0;   ///< the launch-slot form, for MIU (TI-31)
   /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
   /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
   unsigned cause = 0;
@@ -583,6 +584,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
+  unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -610,6 +612,7 @@ struct Status {         ///< ccv_ooe_rau_status
   bool exited = false;
 };
 struct Fault {          ///< ccv_ooe_cru_fault
+  uint64_t tid = 0;      ///< the faulting instruction (trace identity; TI-26)
   unsigned warp = 0, cause = 0, cta_slot = 0;
   uint64_t pc = 0, address = 0;
   uint32_t lane_mask = 0;
@@ -852,6 +855,10 @@ public:
   /// The adapter left a uop of this warp in the channel because canAccept
   /// said no: count which limit held it (the decode-queue events).
   void noteRefused(unsigned warp);
+  /// For the final-exit assertion only: the lanes a warp launches with,
+  /// every lane unless set. OOE holds no live mask (OA's rev 170), so the
+  /// environment that launched the warp says which lanes will exit.
+  void expectLanes(unsigned warp, uint32_t lanes) { launch_lanes_[warp % kWarpIds] = lanes; }
   void uop(const Uop &u);
   void done(const Done &d);
   void cmpl(const Cmpl &c);
@@ -1556,6 +1563,11 @@ private:
   /// mask): per warp_id, the lanes whose exit has retired since launch,
   /// across swaps. A final exit's retire asserts they are every lane.
   std::array<uint32_t, kWarpIds> exit_lanes_{};
+  std::array<uint32_t, kWarpIds> launch_lanes_ = [] {
+    std::array<uint32_t, kWarpIds> a{};
+    a.fill(kFullMask);
+    return a;
+  }();
   unsigned mig_reads_ = 0;
   std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot
   /// The slot's oldest RS entry waits on a memory miss past the L1 window.

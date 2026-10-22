@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (35663 bits,
+// At each edge of its clock: sample every channel signal (39541 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (23882 bits). Common-port outputs sit inactive, as in
+// what it drove (27725 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_rcu (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_rcu(
     input int h, input longint cyc, input bit rst,
-    input bit [35662:0] sample, output bit [23881:0] drive);
+    input bit [39540:0] sample, output bit [27724:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [23881:0] drv, q, q2;
+  bit [27724:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -222,7 +222,8 @@ module ccv_rcu (
       ooe_rcu_issue_s2_payload, ooe_rcu_issue_s2_valid, ooe_rcu_issue_s1_stall,
       ooe_rcu_issue_s1_credit, ooe_rcu_issue_s1_payload, ooe_rcu_issue_s1_valid,
       ooe_rcu_issue_s0_stall, ooe_rcu_issue_s0_credit, ooe_rcu_issue_s0_payload,
-      ooe_rcu_issue_s0_valid
+      ooe_rcu_issue_s0_valid, kill_ack_epoch, kill_ack,
+      kill_epoch, kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -304,11 +305,10 @@ module ccv_rcu (
     ooe_rcu_issue_s5_stall, ooe_rcu_issue_s5_credit, ooe_rcu_issue_s4_stall,
     ooe_rcu_issue_s4_credit, ooe_rcu_issue_s3_stall, ooe_rcu_issue_s3_credit,
     ooe_rcu_issue_s2_stall, ooe_rcu_issue_s2_credit, ooe_rcu_issue_s1_stall,
-    ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_stall, ooe_rcu_issue_s0_credit
+    ooe_rcu_issue_s1_credit, ooe_rcu_issue_s0_stall, ooe_rcu_issue_s0_credit,
+    kill_ack_epoch, kill_ack
   } = skew ? q2 : q;
 `endif
-  assign kill_ack = '0;
-  assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign rcu_lane_ops_c00_wake = '0;

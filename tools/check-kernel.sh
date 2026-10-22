@@ -62,6 +62,30 @@
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
 #     carried with the uop (A-69)                refuse a mask missing lane 31
+#   FET picks each group itself, min-PC and   fair-off, fair-late (div): FET
+#     O-60's fairness at CCV_FAIR_N, and         refuses ccv-sim's seq 82;
+#     splits and reconverges groups              split-swap (div): the first
+#     (IS-17 (b))                                split goes the wrong way
+#   a load waits for an older store of its    no-st-wait (spinwait): lane 0
+#     warp to commit (MIU's disambiguation)      reads the flag still clear
+#   RAU's launch mask is per warp, [0,        whole-cta-mask (divtail2): warp
+#     min(32, T - 32 x warp_in_cta))             1 picks lanes 20-31
+#   a store into .const or the launch window  no-ro (roconst): its 32 stores
+#     faults F-RO, and nothing lands; CRU        land, and the warp never
+#     holds the fault to ccv-sim's (TI-26)       faults
+#   a launch-slot memop's window is the       no-window-fill, window-from-base
+#     word at launch block + 32 + 8k, from       (slotform): every lane's
+#     MIU's table, filled on first use (TI-31)   address is in window 0
+#   a memop's base is per lane (TI-32)        scalar-base (slotform): lanes
+#                                                1-31 store into lane 0's window
+#   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
+#     owner drops the warps and acks at the      (rokill): never killed, or the
+#     kill's epoch (V-24)                        kill never completes
+#   OOE ends a warp at the exit FET marks     early-mark (div): the warp ends
+#     final (TI-27)                              with lanes live, and the rest
+#                                                of its uops find no slot
+#   spinwait needs the rule                   ccv-sim at -fairness=0 runs to
+#                                                its step limit
 #   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
 #     before rename (A-70)                       it, and it never retires
 #   an L1 hit completes at the contract with  early-hit, late-hit-data,
@@ -82,14 +106,13 @@
 #   a demotion's bulk discard ends its       drop-replay (swap): it never
 #     loads with one replay completion each,   drains; replay-twice (swap):
 #     orphans their DCU requests, and MIU      OOE refuses the second;
-#     reports the warp ready once they are     no-ready (swap, waiting): it
-#     home, which RAU restores on (TI-21)      stays parked; early-ready
-#                                              (stall, waiting): the replay
-#                                              misses again
-#   with a slot idle, a parked warp is       guard-at-restore (provswap):
-#     restored provisionally, and demotes      it keeps the slot;
-#     again for a ready warp (RAU spec         demote-unwanted (stall): it
-#     rev 24)                                  demotes with nobody waiting
+#     reports the warp ready once they are     no-ready (swap): it stays
+#     home, which RAU restores on (TI-21)      parked; early-ready (stall):
+#                                              the replay misses again
+#   CCV_RAU_READY=0: with a slot idle, a     guard-at-restore (provswap):
+#     parked warp is restored provisionally,   it keeps the slot;
+#     and demotes again for a ready warp       demote-unwanted (stall): it
+#     (RAU spec rev 25)                        demotes with nobody waiting
 #   a demotion moves one row per register,   restore-share (swap): RCU
 #     restored each into its own (TI-25)       refuses the shared row
 #   a demote that lands after the exit       ignore-refused (brs): RAU
@@ -326,7 +349,7 @@ fi
 # once. Its readers then see the stale register -- the cost of a broken
 # latency contract to a latency-scheduled OOE, not a second fault -- and
 # that shows up downstream as wrong lane operands, wrong addresses and
-# loads at MIU, and a window base that differs across lanes. Those are the
+# loads at MIU. Those are the
 # only other failures allowed, and the total is pinned: a new failure in
 # this kernel still fails the control. (Re-pin MOVI_TOTAL only with the
 # reason in the commit; it moves when OOE's timing does. 356 -> 259 when RCU's
@@ -335,17 +358,19 @@ fi
 # CCV_LAT_LANE rather than early, TI-8: the misplaced movi's round trip now
 # lands two cycles later, so more readers land before the value. 676 -> 516
 # when the lane channel became one message a cycle and OOE one full-width
-# lane op a cycle, TI-9: the readers issue later, so fewer land before it.)
+# lane op a cycle, TI-9: the readers issue later, so fewer land before it.
+# 516 -> 512 when the base became per lane, TI-32: the four reports that
+# the window base differed across lanes went with the scalar base.)
 # One lane message a cycle also means the misplaced movi takes the message
 # OOE scheduled for the lane op issued beside it, seq 3's srd, whose done
 # V-35 then names a cycle late too: the cost of the movi, not a second fault.
-MOVI_TOTAL=516
+MOVI_TOTAL=512
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
 nlate=$(grep -c "^CHECK ooe: V-35: " "$L")
 nother=$(grep "^CHECK" "$L" | grep -v "^CHECK lane [0-9]*: MOVI\(48\)\? \|^CHECK ooe: V-35: " |
-         grep -vc "^CHECK lane [0-9]*: seq [0-9]* operand \|^CHECK miu: seq [0-9]* lane [0-9]* \(address\|loaded\) \|^CHECK rcu: window base differs across lanes")
+         grep -vc "^CHECK lane [0-9]*: seq [0-9]* operand \|^CHECK miu: seq [0-9]* lane [0-9]* \(address\|loaded\) ")
 total=$(field "$L" check_failures)
 if [ "$nmovi" = 64 ] && [ "$nlate" = 2 ] && [ "$nother" = 0 ] && [ "$total" = "$MOVI_TOTAL" ] &&
    grep -q "^CHECK ooe: V-35: seq 1 (rob tag [0-9]*) done" "$L" &&
@@ -607,6 +632,17 @@ swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
 vaddslow full_line=1
+div    split=32 reconverge=2 groups_peak=2 fair_pick=1
+spinwait fair_pick=4 groups_peak=3 st_ld_wait>0
+divtail split=20 groups_peak=2
+divtail2 split=51 groups_peak=2
+roconst ro_fault=1 fault=1 kill=1
+rolimit ro_fault=1 fault=1 kill=1
+rolaunch ro_fault=1 fault=1 kill=1
+rogated ro_fault=1 fault=1 split=1 kill=1
+roload ro_fault=0 fault=0 kill=0
+rokill ro_fault=1 fault=1 kill=1
+slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -650,6 +686,130 @@ if [ "$(cover "$B/kernel_stale-epoch.log" epoch_drop)" = 1 ] &&
   say "--break stale-epoch: OOE drops the uop" "PASS (A-70; 406 of 407 retire)"
 else
   bad "--break stale-epoch" "a stale-epoch uop was not dropped: $(grep -E '^(KERNEL|COVER)' "$B/kernel_stale-epoch.log" | xargs)"
+fi
+
+# Divergence (IS-17 (b)): FET picks every group itself, min-PC and O-60's
+# fairness rule at CCV_FAIR_N, and ccv-sim's record checks each pick. div's
+# loop sends its leavers a lane at a time to a waiting group, which the rule
+# picks once at seq 82: FET without the rule, or with N + 1, picks the loop
+# again there. split-swap sends a redirect's taken lanes down the fall-through
+# and the rest to the target, which the first split (seq 6) shows.
+for b in fair-off fair-late; do
+  "$SKEL" --kernel build/oracle/div/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK fet: warp 0 picks 102e for lanes fffe0000; ccv-sim issued 103a for 0001ffff (seq 82)" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" check_failures)" = 1 ]; then
+    say "--break $b: FET skips the fair pick (div)" "PASS (seq 82)"
+  else
+    bad "--break $b" "a pick without O-60's rule went unnoticed: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
+"$SKEL" --kernel build/oracle/div/oracle.jsonl --break split-swap >"$B/kernel_split-swap.log" 2>&1
+if grep -q "^CHECK fet: warp 0 picks 1014 for lanes 0000ffff; ccv-sim issued 1014 for ffff0000 (seq 6)" "$B/kernel_split-swap.log"; then
+  say "--break split-swap: the halves go the wrong way (div)" "PASS ($(field "$B/kernel_split-swap.log" check_failures) picks refused)"
+else
+  bad "--break split-swap" "a split the wrong way went unnoticed: $(grep '^KERNEL' "$B/kernel_split-swap.log")"
+fi
+# The final exit (OA's rev 170, TI-27): OOE ends a warp when the exit FET
+# marked final retires. Marked one exit early, at div's first partial exit,
+# the warp ends with lanes still live, RAU frees its slot, and the rest of
+# its uops find no slot.
+"$SKEL" --kernel build/oracle/div/oracle.jsonl --break early-mark >"$B/kernel_early-mark.log" 2>&1
+if grep -q "^CHECK ooe: uop for warp 0, which holds no tier-1 slot" "$B/kernel_early-mark.log" &&
+   [ "$(field "$B/kernel_early-mark.log" finished)" = 0 ]; then
+  say "--break early-mark: the warp ends with lanes live" "PASS (div, $(field "$B/kernel_early-mark.log" retired) of 144 retire)"
+else
+  bad "--break early-mark" "an early final exit went unnoticed: $(grep '^KERNEL' "$B/kernel_early-mark.log")"
+fi
+# RAU's launch mask is per warp (AR's rev 134): divtail2's warp 1 has lanes
+# 0-19. Given the CTA's first warp's lanes, FET picks lanes 20-31 at its
+# first instruction, which ccv-sim never issued.
+"$SKEL" --kernel build/oracle/divtail2/oracle.jsonl --break whole-cta-mask >"$B/kernel_whole-cta-mask.log" 2>&1
+if grep -q "^CHECK fet: warp 1 picks 1000 for lanes ffffffff; ccv-sim issued 1000 for 000fffff (seq 0)" "$B/kernel_whole-cta-mask.log"; then
+  say "--break whole-cta-mask: warp 1 takes 32 lanes" "PASS (divtail2)"
+else
+  bad "--break whole-cta-mask" "a mask not per warp went unnoticed: $(grep '^KERNEL' "$B/kernel_whole-cta-mask.log")"
+fi
+# F-RO (AR's responses TI-26): MIU refuses a store any byte of which lies in
+# the CTA's .const range or the launch window, and the fault reaches CRU,
+# held there to ccv-sim's cause, pc, lanes and address; the ro* kernels above
+# pass only so, with nothing written. Without MIU's check, roconst's 32
+# stores land and the warp never faults.
+"$SKEL" --kernel build/oracle/roconst/oracle.jsonl --break no-ro >"$B/kernel_no-ro.log" 2>&1
+if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 100e" "$B/kernel_no-ro.log" &&
+   [ "$(field "$B/kernel_no-ro.log" mem_mismatch)" = 32 ]; then
+  say "--break no-ro: the stores land, no fault" "PASS (roconst: 32 words)"
+else
+  bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
+fi
+# The launch-slot form (TI-31): the window is the word at the CTA's launch
+# block + 32 + 8 x arg_slot, which MIU reads into its table on first use.
+# Taken as zero, or from base_per_lane (don't-care for the form), every lane
+# of slotform's first load reads window 0.
+for b in no-window-fill window-from-base; do
+  "$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK miu: seq 1 lane 0 address 0, oracle 30000" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" mem_mismatch)" = 64 ]; then
+    say "--break $b: the slot's window is lost" "PASS (slotform: window 0, 64 words)"
+  else
+    bad "--break $b" "a launch-slot memop's window went unchecked: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
+# The base is per lane (TI-32): slotform's R6 is a window per lane, as an
+# O-30 frame pointer is. Lane 0's base on every lane puts lanes 1-31's
+# store and load in lane 0's window.
+"$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break scalar-base >"$B/kernel_scalar-base.log" 2>&1
+if grep -q "^CHECK miu: seq 7 lane 1 address 5ffffc, oracle 60fffc" "$B/kernel_scalar-base.log" &&
+   [ "$(field "$B/kernel_scalar-base.log" mem_mismatch)" = 32 ]; then
+  say "--break scalar-base: lanes 1-31 in lane 0's window" "PASS (slotform: 32 words)"
+else
+  bad "--break scalar-base" "a per-lane base went unchecked: $(grep '^KERNEL' "$B/kernel_scalar-base.log")"
+fi
+# The kill (V-24): a fatal fault kills the context. RAU broadcasts the mask
+# of every valid warp context with an epoch, and waits for the eight owners'
+# acks at that epoch; rokill's CTAs 1-3, mid-loop, are stopped by it. Without
+# the kill the faulted warp is never killed; with MIU's ack withheld, or
+# FET's at the epoch before, the kill never completes.
+for b in no-kill withheld-ack stale-ack; do
+  "$SKEL" --kernel build/oracle/rokill/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  case $b in
+    no-kill)      want="rau: warp 0 faulted and was never killed" ;;
+    withheld-ack) want="rau: the kill never completed: no ack at its epoch from miu" ;;
+    stale-ack)    want="rau: the kill never completed: no ack at its epoch from fet" ;;
+  esac
+  if grep -q "^CHECK $want" "$B/kernel_$b.log" && [ "$(field "$B/kernel_$b.log" finished)" = 0 ]; then
+    say "--break $b: the run never ends (rokill)" "PASS"
+  else
+    bad "--break $b" "the kill's failure went unnoticed: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
+# A demotion's live mask is FET's after the beats (AR's response TI-27 (b)):
+# stall's warp 0 has fetched its exit when it demotes, so without the beats'
+# lanes FET would park it with none live; held to the boundary's mask.
+CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl --break beats-dead >"$B/kernel_beats-dead.log" 2>&1
+if grep -q "^CHECK fet: warp 0's live mask after the beats is 00000000; at its boundary, ffffffff" "$B/kernel_beats-dead.log"; then
+  say "--break beats-dead: the parked mask is refused" "PASS (stall, swapped)"
+else
+  bad "--break beats-dead" "a parked mask without the beats' lanes went unnoticed: $(grep '^KERNEL' "$B/kernel_beats-dead.log")"
+fi
+# spinwait: lane 0's flag load waits behind lane 1's older store, which has
+# not committed (MIU's disambiguation). Read past it, the flag is still 0.
+"$SKEL" --kernel build/oracle/spinwait/oracle.jsonl --break no-st-wait >"$B/kernel_no-st-wait.log" 2>&1
+if grep -q "^CHECK miu: seq 205 lane 0 loaded 00000000, oracle 00000001" "$B/kernel_no-st-wait.log"; then
+  say "--break no-st-wait: the load reads past the store" "PASS (spinwait seq 205)"
+else
+  bad "--break no-st-wait" "a load past an older store went unnoticed: $(grep '^KERNEL' "$B/kernel_no-st-wait.log")"
+fi
+# And the rule is what lets spinwait finish: ccv-sim with it off (strict
+# min-PC, -fairness=0) runs to its step limit, so no oracle exists to follow.
+C=$(tools/fetch-compiler.sh)
+pokes=(); while read -r p; do pokes+=(-poke "$p"); done < <(grep -E '^0x' test/kernels/spinwait/kernel.cfg)
+# ccv-sim exits non-zero at the limit, so its output is taken whole first
+# (under pipefail its status would fail the pipe however grep matched).
+sw=$("$C/release/bin/ccv-sim" build/oracle/spinwait/kernel.bin "${pokes[@]}" -fairness=0 2>&1)
+if grep -q "step limit reached with lanes still active" <<<"$sw"; then
+  say "spinwait under strict min-PC: hangs" "PASS (ccv-sim at -fairness=0)"
+else
+  bad "spinwait under strict min-PC" "it finished: the kernel no longer needs O-60's rule"
 fi
 
 # The OOE modes. bypass and l1_spec are on by default (OI-5), so the runs
@@ -762,8 +922,16 @@ for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
   [ -z "$w" ] || bad_k="$bad_k $k($w)"
 done
 n_par=$(cat "$B"/kernel_*_swap.log | sed -n 's/.* parked=\([0-9]*\) .*/\1/p' | awk '{n+=$1} END {print n+0}')
+# order_diff (AR's responses TI-27, rev 134): a restored diverged warp whose
+# own pick departs from ccv-sim's follows ccv-sim's group, a named exception
+# to the swap-boundary rule, so each kernel's count is printed.
+od=""
+for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
+  n=$(cover "$B/kernel_${k}_swap.log" order_diff)
+  [ "${n:-0}" = 0 ] || od="$od $k=$n"
+done
 if [ -z "$bad_k" ]; then
-  say "every kernel with the swap on == ccv-sim" "PASS ($n_par parks, each restored)"
+  say "every kernel with the swap on == ccv-sim" "PASS ($n_par parks, each restored; order_diff:${od:- none})"
 else
   bad "every kernel with the swap on" "${bad_k# }"
 fi
@@ -779,12 +947,10 @@ done
 # The replay drain (TI-21): the demotion's squash sends a bulk discard, MIU
 # ends each of the warp's loads in flight with a replay completion and
 # orphans its DCU requests, and reports the warp ready to RAU once they are
-# home. RAU waiting for that report (CCV_RAU_READY=wait), the restored
+# home. RAU restores only a ready warp (RAU spec rev 25), so the restored
 # warp's replayed load hits (stall's one L1 hit; none without the swap).
 # vadd4's discard orphans nothing: it is ready at once.
-CCV_RAU_READY=wait CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl \
-  >"$B/kernel_stall_wait.log" 2>&1
-w=$(ok "$B/kernel_stall_wait.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
+w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
 w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=0 ready=1 restored=1)
 if [ -z "$w$w2" ]; then
   say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4 ready at once)"
@@ -804,29 +970,31 @@ if grep -q "^CHECK ooe: completion for rob tag [0-9]*, which is not in the ROB" 
 else
   bad "--break replay-twice" "two completions for one load went unnoticed"
 fi
-CCV_RAU_READY=wait rd swap no-ready
+rd swap no-ready
 if [ "$(field "$B/kernel_swap_no-ready.log" finished)" != 1 ] &&
    [ "$(cover "$B/kernel_swap_no-ready.log" restored)" = 0 ]; then
-  say "--break no-ready: waiting, RAU restores only a ready warp" "PASS (CCV_RAU_READY=wait)"
+  say "--break no-ready: RAU restores only a ready warp" "PASS"
 else
   bad "--break no-ready" "a warp MIU never reported ready was restored"
 fi
-CCV_RAU_READY=wait rd stall early-ready
+rd stall early-ready
 if [ "$(cover "$B/kernel_stall_early-ready.log" l1_hit)" = 0 ]; then
   say "--break early-ready: the replay misses again" "PASS"
 else
   bad "--break early-ready" "a restore before the orphans were home still hit"
 fi
-# A provisional restore (AR's response TI-21, RAU spec rev 24): with a free
-# slot, no ready parked warp and no launch pending, RAU restores the oldest
-# parked warp before its ready report (stall: 47 cycles sooner than
-# waiting). Until the report it may demote again whenever a ready warp or a
+# A provisional restore (AR's revs 115-116, RAU spec rev 25; a knob,
+# CCV_RAU_READY=0): with a free slot, no ready parked warp and no launch
+# pending, RAU restores the oldest parked warp before its ready report
+# (stall: 47 cycles sooner than waiting). Until the report it may demote again whenever a ready warp or a
 # launch wants its slot, its P count starting at the report: provswap's
 # warp 0, restored on a 1,000-cycle line, demotes again when warp 1's
 # 250-cycle line lands first. OOE's thresholds are raised for provswap (a
 # model setting), so only those two lines trigger, not the cold misses.
-w=$(ok "$B/kernel_stall_swap.log" provisional=1 prov_demote=0)
-pv() { CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
+CCV_RAU_READY=0 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl \
+  >"$B/kernel_stall_prov.log" 2>&1
+w=$(ok "$B/kernel_stall_prov.log" provisional=1 prov_demote=0)
+pv() { CCV_RAU_READY=0 CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
          --kernel build/oracle/provswap/oracle.jsonl "$@"; }
 pv >"$B/kernel_provswap_prov.log" 2>&1
 w2=$(ok "$B/kernel_provswap_prov.log" provisional=2 prov_demote=1 restored=3)
@@ -841,11 +1009,26 @@ if [ "$(cover "$B/kernel_provswap_guard-at-restore.log" prov_demote)" = 0 ]; the
 else
   bad "--break guard-at-restore" "a provisional warp held to P from its restore still demoted"
 fi
-rd stall demote-unwanted
+CCV_RAU_READY=0 rd stall demote-unwanted
 if [ "$(cover "$B/kernel_stall_demote-unwanted.log" prov_demote)" -gt 0 ]; then
   say "--break demote-unwanted: demoted with nobody waiting" "PASS ($(cover "$B/kernel_stall_demote-unwanted.log" prov_demote) times)"
 else
   bad "--break demote-unwanted" "a provisional warp is never demoted"
+fi
+# Evict, the default (DA, 2026-10-22): RAU demotes a warp its trigger names
+# whether or not another wants the slot, as stall shows, four warps in four
+# slots. Swap (CCV_RAU_MODE=swap) demotes only when one does: none in
+# stall, and swap's warp 0 while its warps 4 and 5 wait to launch.
+for k in stall swap; do
+  CCV_RAU_MODE=swap CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" \
+    >"$B/kernel_${k}_swapmode.log" 2>&1
+done
+w=$(ok "$B/kernel_stall_swapmode.log" demote=0)
+w2=$(ok "$B/kernel_swap_swapmode.log" demote=1 restored=1)
+if [ -z "$w$w2" ] && [ "$(cover "$B/kernel_stall_swap.log" demote)" = 1 ]; then
+  say "evict demotes regardless; swap only for a waiter" "PASS (stall: 1 and 0; swap: 1)"
+else
+  bad "evict and swap" "stall evict: $(cover "$B/kernel_stall_swap.log" demote); stall swap: $w; swap swap: $w2"
 fi
 # One row per register (TI-25 (1)): a restore map that gives two registers
 # one row is refused by RCU.

@@ -118,7 +118,9 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
 enum : unsigned { kFaultNone = 0, kFaultFetch = 1,          // CCV_W_FAULT_CAUSE (ISA §12)
-                  kFaultIllegal = 2 };
+                  kFaultIllegal = 2, kFaultRo = 8 };
+/// A completion's status on ccv_miu_ooe_cmpl: 0 complete, 1 fault, 2 replay.
+enum : unsigned { kCmplDone = 0, kCmplFault = 1, kCmplReplay = 2 };
 enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // ---- the opcode table ---------------------------------------------------------
 //
@@ -146,6 +148,15 @@ struct OpInfo {
   // OR or pass-through by opcode, so no field carries it past decode.
   int8_t srd_sel = -1;
   bool or_lane = false;
+  /// Moves data between lanes (shfl): RCU executes it beside the register
+  /// file, which every lane's operand is in (Q-32), and sched_attr's
+  /// cross_lane is set.
+  bool cross = false;
+  /// The bypass group, where the class's is not the op's: FP (OI-16).
+  int8_t byp = -1;
+  /// Format D's launch-slot mode (O-45): the immediate naming the launch
+  /// slot whose window is the base, which no register holds (TI-31).
+  int8_t slot_imm = -1;
 };
 // Where each executes (Q-32, Q-38): the lane executes any opcode with a
 // per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
@@ -157,6 +168,7 @@ struct OpInfo {
 // blocks to save an operand trip on a prologue instruction is a bad trade.
 // Memory ops go to MIU.
 inline bool inRcu(UopClass c) { return c == kPredLogic || c == kBranch || c == kImm; }
+inline bool execRcu(const OpInfo *op) { return inRcu(op->cls) || op->cross; }
 
 // sched_attr on ccv_dec_ooe_uop (A-66): what OOE schedules on, decoded by DEC
 // so OOE need not decode opcode. Layout MSB first, CCV_P_W_SCHED_ATTR bits:
@@ -176,6 +188,8 @@ enum : unsigned { kBypInt = 0, kBypFp = 1, kBypAddr = 2, kBypSfu = 3,
 /// consumes as address calculation. An op that writes no result and reads
 /// no GPR (a branch, exit) takes 0, don't-care.
 inline unsigned bypGroupOf(const OpInfo *op) {
+  if (op->byp >= 0) return unsigned(op->byp);
+  if (op->cross) return kBypCollective;
   switch (op->cls) {
   case kLoad: case kStore: return kBypAddr;
   case kPredLogic: return kBypPred;
@@ -186,10 +200,10 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   const bool mem = op->cls == kLoad || op->cls == kStore;
   const unsigned memk = op->cls == kStore ? kMemKStore : kMemKLoad;
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore ? kLatCompletion
-                     : inRcu(op->cls) || op->cls == kExit ? kLatRcu : kLatLane;
+                     : execRcu(op) || op->cls == kExit ? kLatRcu : kLatLane;
   return uint32_t(bypGroupOf(op)) << 13 |
-         uint32_t(mem) << 12 | uint32_t(inRcu(op->cls) || op->cls == kExit) << 11 |
-         0u << 10 /* no S1 op is cross-lane */ | uint32_t(op->gdst) << 9 |
+         uint32_t(mem) << 12 | uint32_t(execRcu(op) || op->cls == kExit) << 11 |
+         uint32_t(op->cross) << 10 | uint32_t(op->gdst) << 9 |
          uint32_t(op->pwrite) << 8 | (mem ? memk : 0u) << 6 |
          uint32_t(op->cls == kBranch) << 5 | uint32_t(op->cls == kExit ? kSerExit : 0) << 3 |
          lat;
@@ -243,6 +257,39 @@ inline constexpr OpInfo kOps[] = {
   // A guarded load (Format Dp): MIU writes the active lanes, and the inactive
   // ones keep their old value through a copy-only op (A-33, A-38).
   {"LD_GLOBAL_P",   kLoad,      1, true,  true,  false, true,  false,  0, -1, -1,  0, -1, -1, -1},
+  // rope's (CP's release kernel, TI-30). The lanes return ccv-sim's results,
+  // so a row is the operand shape and where the op runs.
+  {"ADD",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"MUL_LO",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_MUL_LO",      kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_MOV",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_ADDI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"C_SHLI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"C_SHRI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  // mad.lo under a guard: as add.p, the guard's off lanes keep the old value.
+  {"MADLO_P",       kAlu,       3, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
+  // Format C" compares (O-32): no qualifier, every issue-mask lane written.
+  {"SETP_EQ_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LE_U_NP",  kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LT_U_NP",  kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_LT_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
+  // FP: integer lanes' timing for now, FP's bypass group (OI-16).
+  {"C_FMUL",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FNEG_F0",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FFMA_F0",       kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FFMA_ACC_F0",   kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"ST_GLOBAL",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1},
+  {"C_BRA",         kBranch,    0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // pmov.imm: bit n of the immediate is lane n's predicate bit, for all 32
+  // lanes, ungated by the issue mask (section 3): an immediate RCU writes.
+  {"PMOV_IMM",      kImm,       0, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  0},
+  // shfl.idx: each guarded issue lane takes the source register at one lane,
+  // active or not (Format G): RCU, which holds every lane's register.
+  {"SHFL_IDX",      kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0, -1, -1, false, true},
+  // The launch-slot forms (O-45; TI-31): [slot, rindex, scale, disp], the
+  // window from launch slot `slot`, so no base register (base -1).
+  {"LD_GLOBAL_SLOT", kLoad,     1, true,  false, false, false, false, -1,  0, -1,  2,  1, -1, -1, -1, false, false, -1, 0},
+  {"ST_GLOBAL_SLOT", kStore,    2, false, false, false, false, false, -1,  1,  0,  2,  1, -1, -1, -1, false, false, -1, 0},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
@@ -314,7 +361,9 @@ public:
     if (!built_) build();
     now_ = now;
     for (const In &i : ins) i.rx->cycle(now);
+    killIn();
     work();
+    killOut();
     // Every sender is clocked exactly once a cycle, launching or not.
     for (size_t j = 0; j != outs.size(); ++j) {
       Pend &p = pend_[j];
@@ -322,7 +371,7 @@ public:
       if (p.go) logLaunch(uint16_t(outs[j].ci->chan), p.msg, p.tid);
       p.go = false;
     }
-    if (busy()) ++k_.busy;
+    if (busy() || kill_pending_) ++k_.busy;
     // A message left in a receiver is one this stub does not handle. The
     // bank's response_within_n will report it; say which, once. A channel
     // the stub holds back on purpose (holdsBack) is its credit backpressure,
@@ -336,6 +385,15 @@ protected:
   virtual void work() = 0;
   virtual bool busy() const { return false; }
   virtual const char *kind() const = 0;
+  /// The kill (V-24; schema kill_valid): a block that owns warp state drops
+  /// the killed warps' when the mask arrives, and acks once quiesced -- it
+  /// holds nothing for them and has nothing in flight on their behalf.
+  /// onKill runs before work() on the mask's cycle; killQuiet is asked
+  /// after work() every cycle until it holds. By default a block is quiet
+  /// when it is not busy, exact for a context-wide kill (a fatal fault
+  /// kills every warp of the context, IS-2), which is the only one yet.
+  virtual void onKill(uint32_t /*mask*/, unsigned /*epoch*/) {}
+  virtual bool killQuiet(uint32_t /*mask*/) const { return !busy(); }
 
   bool can(unsigned chan, unsigned slot, unsigned inst = 0) {
     const int j = outIdx(chan, slot, inst);
@@ -378,6 +436,51 @@ protected:
     }
     return m;
   }
+  /// A fabric (kFabs) as this block reads it, the value as the cycle
+  /// starts: a broadcast's value, or at a gather's end source `from`'s copy
+  /// (its index in the fabric's blks).
+  uint64_t fabIn(const char *name, unsigned from = 0) const {
+    const FabDesc &f = fab(name);
+    const bool end = f.end == myType();
+    if (f.kind == FabKind::BROADCAST ? !member(f) : !end || from >= f.nblks) {
+      std::fprintf(stderr, "%s: reads fabric %s it does not take\n", kind(), name);
+      std::abort();
+    }
+    return fab_cur[f.slot_base + (f.kind == FabKind::GATHER ? from : 0)];
+  }
+  /// Drive a fabric for the next cycle: a broadcast from its end, or this
+  /// block's own copy of a gather. Undriven, it reads 0 next cycle.
+  void fabOut(const char *name, uint64_t v) {
+    const FabDesc &f = fab(name);
+    unsigned at = 0;
+    if (f.kind == FabKind::BROADCAST) {
+      if (f.end != myType()) at = ~0u;
+    } else {
+      at = ~0u;
+      for (unsigned i = 0; i != f.nblks; ++i)
+        if (f.blks[i] == myType()) at = i;
+    }
+    if (at == ~0u) {
+      std::fprintf(stderr, "%s: drives fabric %s it does not\n", kind(), name);
+      std::abort();
+    }
+    fab_nxt[f.slot_base + at] = v & (f.width == 64 ? ~0ull : (1ull << f.width) - 1);
+  }
+  /// Whether this block takes part in a fabric: a broadcast's reader or a
+  /// gather's source.
+  bool member(const FabDesc &f) const {
+    for (unsigned i = 0; i != f.nblks; ++i)
+      if (f.blks[i] == myType()) return true;
+    return false;
+  }
+  static const FabDesc &fab(const char *name) {
+    for (const FabDesc &f : kFabs)
+      if (!std::strcmp(f.name, name)) return f;
+    std::fprintf(stderr, "no fabric %s\n", name);
+    std::abort();
+  }
+  Blk myType() const { return inst() < 0 ? Blk::EXTERNAL : kBlkInsts[inst()].type; }
+
   /// The oldest message on a slot, left in place.
   const Receiver::Msg &peek(unsigned chan, unsigned slot, unsigned inst = 0) {
     return rx(chan, slot, inst).front();
@@ -424,6 +527,37 @@ private:
     pend_.resize(outs.size());
     built_ = true;
   }
+
+  /// The kill broadcast leads its mask by a cycle (schema kill_valid): seen
+  /// valid, the next cycle's mask and epoch are the kill's.
+  void killIn() {
+    if (!member(fab("kill_valid"))) return;
+    if (kill_armed_) {
+      kill_mask_ = uint32_t(fabIn("kill_warp_mask"));
+      kill_epoch_ = unsigned(fabIn("kill_epoch"));
+      kill_pending_ = true;
+      kill_acking_ = false;
+      onKill(kill_mask_, kill_epoch_);
+    }
+    kill_armed_ = fabIn("kill_valid") != 0;
+  }
+  /// The ack, a level with its epoch from quiescence until the next kill.
+  /// withheld-ack: MIU never acks; stale-ack: FET acks the epoch before.
+  void killOut() {
+    if (!member(fab("kill_ack"))) return;
+    if (kill_pending_ && killQuiet(kill_mask_) && !(k_.brk == "withheld-ack" && myType() == Blk::MIU)) {
+      kill_pending_ = false;
+      kill_acking_ = true;
+    }
+    if (kill_acking_) {
+      const unsigned stale = k_.brk == "stale-ack" && myType() == Blk::FET ? 1u : 0u;
+      fabOut("kill_ack", 1);
+      fabOut("kill_ack_epoch", kill_epoch_ - stale);
+    }
+  }
+  bool kill_armed_ = false, kill_pending_ = false, kill_acking_ = false;
+  uint32_t kill_mask_ = 0;
+  unsigned kill_epoch_ = 0;
 
   struct Pend { bool go = false; Bits msg; uint64_t tid = 0; };
   bool built_ = false;

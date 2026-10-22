@@ -190,9 +190,22 @@ std::string Oracle::load(const std::string &path) {
         code_base = i.at("code_base").u();
         threads = unsigned(i.at("threads").u());
         ctaid = unsigned(i.at("ctaid").u());
+        if (i.has("warp_in_cta")) warp_in_cta = unsigned(i.at("warp_in_cta").u());
         code = hexBytes(i.at("code").s());
         init_mem = words(i.at("mem"));
+        if (i.has("const")) {
+          const auto &cr = i.at("const").a();
+          const_base = cr.at(0).u();
+          const_limit = cr.at(1).u();
+        }
         have_init = true;
+      } else if (j.has("fault")) {
+        const JV &f = j.at("fault");
+        faults = true;
+        fault.cause = f.at("cause").s();
+        fault.pc = f.at("pc").u();
+        fault.lanes = uint32_t(f.at("lanes").u());
+        fault.addr = f.at("addr").u();
       } else if (j.has("final")) {
         const JV &f = j.at("final");
         const auto &g = f.at("gpr").a();
@@ -224,6 +237,9 @@ std::string Oracle::load(const std::string &path) {
         for (const JV &m : j.at("imms").a()) r.imms.push_back(m.i());
         for (const JV &m : j.at("quals").a()) r.quals.push_back(unsigned(m.u()));
         r.taken = uint32_t(j.at("taken").u());
+        // ccv-sim records taken lanes for a predicated branch only. An
+        // unconditional one (bra, c.bra) is taken by its whole group.
+        if (r.kind == "branch" && !r.taken) r.taken = r.mask;
         r.target = j.at("target").u();
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));
@@ -234,7 +250,7 @@ std::string Oracle::load(const std::string &path) {
           a.write = m.at("w").u() != 0;
           a.addr = m.at("addr").u();
           a.bytes = unsigned(m.at("bytes").u());
-          a.val = uint32_t(m.at("val").u());
+          if (m.has("val")) a.val = uint32_t(m.at("val").u());
           r.mem.push_back(a);
         }
         recs.push_back(std::move(r));

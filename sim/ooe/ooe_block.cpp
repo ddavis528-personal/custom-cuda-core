@@ -42,6 +42,12 @@ public:
     for (unsigned w = 0; w != k.orcs.size(); ++w) {
       k.ratOf(w);
       k.pratOf(w, core_.config().rename_preds);
+      // The final-exit assertion's lanes: the CTA's threads past this warp's
+      // first, as RAU's launch names them (TI-27 (a)); a check, not OOE's
+      // state.
+      const unsigned t = k.orcs[w].threads, first = 32 * k.orcs[w].warp_in_cta;
+      const unsigned n = t <= first ? 0 : t - first;
+      if (t && n < 32) core_.expectLanes(w, n ? (1u << n) - 1 : 0);
     }
     // A full decode queue holds DEC's uops in their slots: its backpressure.
     holdsBack(ch().dec_ooe);
@@ -199,6 +205,8 @@ private:
     u.ckpt = unsigned(get(p, c.dec_ooe, "checkpoint_id"));
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
+    u.slot_form = unsigned(get(p, c.dec_ooe, "slot_form"));
+    u.arg_slot = unsigned(get(p, c.dec_ooe, "arg_slot"));
     u.cause = unsigned(get(p, c.dec_ooe, "cause"));
     u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
     u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
@@ -213,9 +221,9 @@ private:
       u.shape.pdata = pu == kPredUseData;
       u.shape.pred_logic = ik == kImmPredSrcs;
       u.shape.exit = u.attr.serial == kSerExit;
-      // TI-27's final-exit bit (OA's rev 170) is not on ccv_dec_ooe_uop
-      // yet: until TI adds it, every exit is final, as it was.
-      u.shape.final_exit = u.shape.exit;
+      // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
+      // clears the warp's last live lanes.
+      u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
@@ -418,6 +426,8 @@ private:
         put(mo, c.ooe_miu, "scale_en", x.scale_en);
         put(mo, c.ooe_miu, "space", x.space);
         put(mo, c.ooe_miu, "ordering", x.ordering);
+        put(mo, c.ooe_miu, "slot_form", x.slot_form);
+        put(mo, c.ooe_miu, "arg_slot", x.arg_slot);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
         // The memop's pipe footprint at its data position (0 in S1).
         // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
@@ -515,21 +525,49 @@ private:
       bool first = true;   // the oldest held message on its channel only
       for (auto j = held_.begin(); j != it; ++j) first = first && j->chan != it->chan;
       if (first && can(it->chan, 0)) {
-        send(it->chan, 0, it->msg, none);
+        send(it->chan, 0, it->msg, it->tid ? it->tid : none);
         it = held_.erase(it);
       } else {
         ++it;
       }
     }
-    // CRU and SYU: no S1 kernel faults, waits at a barrier or is killed. A
-    // fault is a check failure here (docs/ooe-model.md, "S1 modes").
-    for (const ooe::Fault &x : o.faults)
-      k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
-              (unsigned long long)x.pc);
-    if (!o.bars.empty() || !o.kill_acks.empty())
-      k_.fail("ooe: a barrier or kill ack with no S1 consumer");
+    // A fault taken at retirement goes to CRU (TI-26), whose stub holds it
+    // to the fault ccv-sim ended the run with. SYU: no kernel waits at a
+    // barrier or is killed yet.
+    for (const ooe::Fault &x : o.faults) {
+      if (fault_ < 0) {
+        k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
+                (unsigned long long)x.pc);
+        continue;
+      }
+      const unsigned fc = unsigned(fault_);
+      Bits m = msgOf(fc);
+      put(m, fc, "cause", x.cause);
+      put(m, fc, "pc", x.pc);
+      put(m, fc, "lane_mask", x.lane_mask);
+      put(m, fc, "address", x.address);
+      put(m, fc, "cta_slot", x.cta_slot);
+      put(m, fc, "warp_id", x.warp);
+      held_.push_back({fc, m, x.tid});
+    }
+    if (!o.bars.empty())
+      k_.fail("ooe: a barrier with no S1 consumer");
+    // The model's kill ack (V-24): it has squashed and released the killed
+    // warps, its epoch notice has landed in FET, and no memop is out at MIU.
+    for (unsigned e : o.kill_acks)
+      if (kill_live_ && e == kill_epoch_) kill_acked_ = true;
   }
-  struct Held { unsigned chan; Bits msg; };
+  /// The kill (V-24): the model takes it, and acks once quiesced.
+  void onKill(uint32_t mask, unsigned epoch) override {
+    core_.kill(mask, epoch);
+    kill_live_ = true;
+    kill_acked_ = false;
+    kill_epoch_ = epoch;
+  }
+  bool killQuiet(uint32_t) const override { return kill_acked_; }
+  bool kill_live_ = false, kill_acked_ = false;
+  unsigned kill_epoch_ = 0;
+  struct Held { unsigned chan; Bits msg; uint64_t tid = 0; };   ///< tid: the fault's instruction
   std::deque<Held> held_;   ///< status, maps and drained reports, in order
 
   /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an

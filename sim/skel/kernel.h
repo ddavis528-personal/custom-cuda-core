@@ -170,6 +170,13 @@ struct Kernel {
   uint64_t first_fetch = 0;
   bool fetched = false;
   unsigned exits = 0;                              ///< warps whose exit retired
+  /// Warps that ended in a fault CRU took (TI-26), by warp: what it reported.
+  struct FaultSeen { unsigned cause = 0; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
+  std::map<unsigned, FaultSeen> faults;
+  std::set<unsigned> killed;                       ///< warps RAU's kill ended (V-24)
+  /// A kill RAU has broadcast and not seen through: the owners whose ack at
+  /// its epoch has not come (kFabs kill_ack order), else 0.
+  uint32_t kill_unacked = 0;
   /// A demoted warp, as the blocks that moved it saw it (TI-24). Observed for
   /// the check at the end, never read by a block: the resume PC RAU got, the
   /// rows RCU read out (each arch register's row name, in the map OOE sent),
@@ -197,7 +204,9 @@ struct Kernel {
     for (auto &p : parked) n += p.second.done && !p.second.restored;
     return n;
   }
-  bool exited() const { return exits + (restores ? 0 : parked_done()) >= orcs.size(); }
+  bool exited() const {
+    return exits + killed.size() + (restores ? 0 : parked_done()) >= orcs.size();
+  }
   /// A warp's architectural registers and predicates as it exits, read
   /// through its maps before OOE frees them for another warp: the final
   /// compare reads these, since a slot reused after an exit reallocates the
@@ -223,7 +232,9 @@ struct Kernel {
       "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
-      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote"};
+      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
+      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
+      "slot_form", "window_fill", "dcu_lookups", "frame_lookups"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }

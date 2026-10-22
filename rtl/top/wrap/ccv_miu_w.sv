@@ -566,7 +566,7 @@ module ccv_miu_w #(
 
   // ccv_rcu_miu_addr, destination end
   if (RPT_RCU_MIU_ADDR > 0) begin : g_rpt_rcu_miu_addr
-    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(2151)) u_rpt_rcu_miu_addr (
+    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(3111)) u_rpt_rcu_miu_addr (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rcu_miu_addr_s3_valid, rcu_miu_addr_s2_valid, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_valid}), .src_payload({rcu_miu_addr_s3_payload, rcu_miu_addr_s2_payload, rcu_miu_addr_s1_payload, rcu_miu_addr_s0_payload}),
       .src_wake(rcu_miu_addr_wake), .src_credit({rcu_miu_addr_s3_credit, rcu_miu_addr_s2_credit, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_credit}), .src_stall({rcu_miu_addr_s3_stall, rcu_miu_addr_s2_stall, rcu_miu_addr_s1_stall, rcu_miu_addr_s0_stall}),
@@ -610,7 +610,7 @@ module ccv_miu_w #(
   end
   // ccv_ooe_miu_memop, destination end
   if (RPT_OOE_MIU_MEMOP > 0) begin : g_rpt_ooe_miu_memop
-    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(115)) u_rpt_ooe_miu_memop (
+    ccv_common_rpt #(.STAGES(RPT_OOE_MIU_MEMOP), .SLOTS(4), .PAYLOAD_W(120)) u_rpt_ooe_miu_memop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_miu_memop_s3_valid, ooe_miu_memop_s2_valid, ooe_miu_memop_s1_valid, ooe_miu_memop_s0_valid}), .src_payload({ooe_miu_memop_s3_payload, ooe_miu_memop_s2_payload, ooe_miu_memop_s1_payload, ooe_miu_memop_s0_payload}),
       .src_wake(ooe_miu_memop_wake), .src_credit({ooe_miu_memop_s3_credit, ooe_miu_memop_s2_credit, ooe_miu_memop_s1_credit, ooe_miu_memop_s0_credit}), .src_stall({ooe_miu_memop_s3_stall, ooe_miu_memop_s2_stall, ooe_miu_memop_s1_stall, ooe_miu_memop_s0_stall}),
@@ -830,7 +830,7 @@ module ccv_miu_w #(
   end
   // ccv_rau_miu_cta, destination end
   if (RPT_RAU_MIU_CTA > 0) begin : g_rpt_rau_miu_cta
-    ccv_common_rpt #(.STAGES(RPT_RAU_MIU_CTA), .SLOTS(1), .PAYLOAD_W(101)) u_rpt_rau_miu_cta (
+    ccv_common_rpt #(.STAGES(RPT_RAU_MIU_CTA), .SLOTS(1), .PAYLOAD_W(229)) u_rpt_rau_miu_cta (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_miu_cta_valid}), .src_payload({rau_miu_cta_payload}),
       .src_wake(rau_miu_cta_wake), .src_credit({rau_miu_cta_credit}), .src_stall({rau_miu_cta_stall}),

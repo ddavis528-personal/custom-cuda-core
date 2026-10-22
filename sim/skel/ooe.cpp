@@ -38,8 +38,10 @@ private:
     uint32_t taken_mask = 0;
     unsigned ckpt = 0;                     ///< FET's checkpoint, on a branch
     uint32_t mask = 0;                     ///< the PC group's lanes, from FET (A-69)
+    bool final_exit = false;               ///< FET's mark: the warp's last lanes exit (TI-27)
     uint32_t attr = 0;                     ///< sched_attr, from DEC (A-66)
     unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
+    unsigned slot_form = 0, arg_slot = 0;           ///< likewise (TI-31)
     // Physical names, read from the RAT at dispatch: a register no older
     // instruction of the warp has written is still the zero register (A-64).
     unsigned psrc[3] = {}, pold = 0, pnew = 0, ppguard = 0, ppold = 0;
@@ -213,6 +215,7 @@ private:
       return;
     }
     e.mask = uint32_t(get(u, c.dec_ooe, "group_mask"));
+    e.final_exit = get(u, c.dec_ooe, "final_exit") != 0;
     e.op = opByCode(unsigned(get(u, c.dec_ooe, "opcode")));
     if (!e.op || get(u, c.dec_ooe, "cause") != kFaultNone) {
       k_.fail("ooe: a uop it cannot execute");
@@ -236,6 +239,8 @@ private:
     e.mem_op = unsigned(get(u, c.dec_ooe, "mem_op"));
     e.space = unsigned(get(u, c.dec_ooe, "space"));
     e.ordering = unsigned(get(u, c.dec_ooe, "ordering"));
+    e.slot_form = unsigned(get(u, c.dec_ooe, "slot_form"));
+    e.arg_slot = unsigned(get(u, c.dec_ooe, "arg_slot"));
     // Only a fence carries an ordering; on any other uop it is reserved zero
     // (IS-11, OA's response). sched_attr says which uop is a fence.
     if (e.ordering != 0 && !(attrMem(e.attr) && attrMemKind(e.attr) == kMemKFence))
@@ -299,7 +304,7 @@ private:
     // ccv_ooe_rcu_issue's slots are resources (S0-S3, P0-P3, R): a lane op
     // and a memop are full width here, so each takes its whole group, its
     // lead slot first and the rest continuation; an RCU op takes R.
-    const unsigned slot = mem ? kSlotP0 : inRcu(e.op->cls) ? kSlotR : kSlotS0;
+    const unsigned slot = mem ? kSlotP0 : execRcu(e.op) ? kSlotR : kSlotS0;
     const unsigned mslot = e.tag % kChans[c.ooe_miu].rate;
     // Merge (A-33): some lane may keep its old value -- the issue mask is
     // not full, or a guard may switch lanes off -- so the old destination is
@@ -406,6 +411,8 @@ private:
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
       put(mo, c.ooe_miu, "space", e.space);
       put(mo, c.ooe_miu, "ordering", e.ordering);
+      put(mo, c.ooe_miu, "slot_form", e.slot_form);
+      put(mo, c.ooe_miu, "arg_slot", e.arg_slot);
       put(mo, c.ooe_miu, "pipes", maskOf(kChw32, 0));   // full width: P0-P3
       send(c.ooe_miu, mslot, mo, e.tid);
     }
@@ -431,7 +438,7 @@ private:
     emit(now_, e.tid, EV_RETIRE, UNIT_OOE, e.warp, e.tag, 0xffffffffu);
     ++k_.retired;
     k_.retire_order.push_back(uidSeq(e.tid));
-    if (e.op->cls == kExit) ++k_.exits;
+    if (e.op->cls == kExit && e.final_exit) ++k_.exits;
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.
     const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;

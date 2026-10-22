@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -682,6 +683,7 @@ private:
     uint64_t due = 0;                ///< a global load's L1-contract cycle
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
+    bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
   };
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
@@ -689,6 +691,61 @@ private:
 
   std::map<unsigned, Memop> memop_;
   std::map<unsigned, Addr> addr_;
+  /// F-RO's .const range by CTA slot, [base, limit), from RAU (TI-26).
+  std::map<unsigned, std::pair<uint64_t, uint64_t>> ro_;
+  /// The lanes of a store F-RO refuses (AR's responses TI-26): any lane
+  /// whose four bytes touch the launch window (address bits [47:16] equal
+  /// to 2, the whole window) or the CTA's .const range. Compared on the
+  /// effective address, which this MIU never maps. no-ro drops the check.
+  uint32_t roLanes(const Job &j, unsigned cta) const {
+    if (!j.store || k_.brk == "no-ro") return 0;
+    const auto r = ro_.find(cta);
+    const uint64_t base = r == ro_.end() ? 0 : r->second.first;
+    const uint64_t limit = r == ro_.end() ? 0 : r->second.second;
+    uint32_t ro = 0;
+    for (unsigned l = 0; l != kLanes; ++l) {
+      if (!(j.active >> l & 1u)) continue;
+      const uint64_t a = j.addr[l];
+      const bool launch = (a >> 16) == 2 || ((a + 3) >> 16) == 2;
+      const bool cnst = a < limit && a + 4 > base;
+      if (launch || cnst) ro |= 1u << l;
+    }
+    return ro;
+  }
+  /// The launch-slot windows (TI-31, AR's response): by CTA slot, the
+  /// sixteen 32-bit words at launch_block_addr + 32 + 8k and their valid
+  /// bits. Filled a line at a time on first use; cleared on the slot's
+  /// rau_miu_cta and on a kill.
+  /// gen counts the clears: a fill sent before one lands nothing.
+  struct Windows {
+    uint64_t block = 0;
+    std::array<uint32_t, 16> w{};
+    uint16_t valid = 0;
+    unsigned gen = 0;
+    void clear() { valid = 0; ++gen; }
+  };
+  std::map<unsigned, Windows> win_;
+  /// A window fill's request to DCU, by req_id: its CTA slot and line, and
+  /// the table's gen when it was sent.
+  struct Fill { unsigned cta; uint64_t line; unsigned gen; };
+  std::map<unsigned, Fill> fills_;
+  /// Memops that waited on a fill: an L1 miss, whatever DCU says.
+  std::set<unsigned> win_miss_;
+  static uint64_t slotAddr(const Windows &t, unsigned k) { return t.block + 32 + 8 * k; }
+  /// Every slot of `t` in `line`, filled from it.
+  static void fillWindows(Windows &t, uint64_t line, const Line &d) {
+    for (unsigned k = 0; k != 16; ++k) {
+      const uint64_t a = slotAddr(t, k);
+      if (a / kLine * kLine != line) continue;
+      uint32_t v = 0;
+      for (unsigned b = 0; b != 4; ++b) v |= uint32_t(d[a % kLine + b]) << (8 * b);
+      t.w[k] = v;
+      t.valid |= uint16_t(1u << k);
+    }
+  }
+  void onKill(uint32_t, unsigned) override {
+    for (auto &t : win_) t.second.clear();
+  }
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
   std::deque<Job> committed_;
@@ -779,7 +836,16 @@ private:
       put(r, c.miu_fet, "itlb_refill", get(m.payload, c.fet_miu, "virtual_page"));
       to_fet_.push_back({0, r, m.tid});
     }
-    if (has(c.rau_miu, 0)) take(c.rau_miu, 0);   // CTA config: nothing reads it yet
+    if (has(c.rau_miu, 0)) {
+      // A CTA's configuration: of it, F-RO's .const range (TI-26).
+      const Bits m = take(c.rau_miu, 0).payload;
+      const unsigned cta = unsigned(get(m, c.rau_miu, "cta_slot"));
+      ro_[cta] = {get(m, c.rau_miu, "const_base"), get(m, c.rau_miu, "const_limit")};
+      // And where its launch-slot windows come from; the old launch's go.
+      Windows &t = win_[cta];
+      t.block = get(m, c.rau_miu, "launch_block_addr");
+      t.clear();
+    }
     for (unsigned s = 0; s != kChans[c.ooe_miu].rate; ++s)
       while (has(c.ooe_miu, s)) {
         Receiver::Msg m = take(c.ooe_miu, s);
@@ -839,6 +905,17 @@ private:
         // Matched by req_id, not by slot or arrival order: DCU may answer
         // four outstanding requests in any order.
         const unsigned id = unsigned(get(m.payload, c.dcu_miu, "req_id"));
+        auto fl = fills_.find(id);
+        if (fl != fills_.end()) {
+          // A window fill: every slot its line holds (TI-31).
+          Windows &t = win_[fl->second.cta];
+          if (t.gen == fl->second.gen)
+            fillWindows(t, fl->second.line,
+                        getLine(m.payload, field(c.dcu_miu, "read_data").lsb));
+          fills_.erase(fl);
+          ids_.release(id);
+          continue;
+        }
         auto orph = orphan_.find(id);
         if (orph != orphan_.end()) {
           // An orphan's response: dropped, no data, no completion (TI-21).
@@ -973,6 +1050,7 @@ private:
     k_.hit("replay");
     order_.erase(std::find(order_.begin(), order_.end(), tag));
     memop_.erase(tag);
+    win_miss_.erase(tag);
   }
 
   Bits replayMsg(unsigned tag, unsigned rs_idx) {
@@ -1006,6 +1084,35 @@ private:
     auto a = addr_.find(tag);
     if (a == addr_.end()) return;
     const Memop &mo = memop_[tag];
+    // The launch-slot form (TI-31): its window must be in the table. If not,
+    // the memop waits, and every one behind it, while its line is read: an
+    // L1 miss, never a hit (AR's response). no-window-fill: the table is
+    // taken as filled, its words zero.
+    const bool slot = get(mo.msg, c.ooe_miu, "slot_form") != 0;
+    const unsigned cta = unsigned(get(mo.msg, c.ooe_miu, "cta_slot"));
+    const unsigned k = unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
+    if (slot && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
+      const uint64_t line = slotAddr(win_[cta], k) / kLine * kLine;
+      win_miss_.insert(tag);
+      for (const auto &f : fills_)
+        if (f.second.cta == cta && f.second.line == line && f.second.gen == win_[cta].gen)
+          return;                                               // on its way
+      for (unsigned s = 0; s != kChans[c.miu_dcu].rate; ++s) {
+        if (!free(c.miu_dcu, s) || !ids_.any()) continue;
+        Bits r = msgOf(c.miu_dcu);
+        const unsigned id = ids_.take();
+        put(r, c.miu_dcu, "req_id", id);
+        put(r, c.miu_dcu, "phys_addr", line);
+        put(r, c.miu_dcu, "size", kSizeLine);
+        put(r, c.miu_dcu, "coh_op", kCohRead);
+        send(c.miu_dcu, s, r, makeUid(IdClass::kTxn, uidSeq(mo.tid), 0, /*owned=*/true));
+        fills_[id] = {cta, line, win_[cta].gen};
+        k_.hit("window_fill");
+        k_.hit("dcu_lookups");
+        break;
+      }
+      return;
+    }
     Job j;
     j.tag = tag;
     j.store = get(mo.msg, c.ooe_miu, "mem_op") == kMemStore;
@@ -1042,12 +1149,19 @@ private:
     const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - chw : 0;
     const bool global = get(mo.msg, c.ooe_miu, "space") == kSpaceGlobal;
     j.global = global;
-    const uint64_t base = get(am, c.rcu_miu, "base") << (global ? 16 : 0);
+    // The base is per lane (TI-32), or a launch slot's window (TI-31).
+    // window-from-base: a slot form's window taken from base_per_lane.
+    if (win_miss_.count(tag)) j.hit = false;
+    const bool from_win = slot && k_.brk != "window-from-base";
+    if (slot) k_.hit("slot_form");
     for (unsigned l = 0; l != kLanes; ++l)
-      if ((j.active >> l) & 1u)
-        j.addr[l] = base +
+      if ((j.active >> l) & 1u) {
+        const uint64_t b = from_win ? uint64_t(win_[cta].w[k])
+                                    : uint64_t(getLane(am, c.rcu_miu, "base_per_lane", l));
+        j.addr[l] = (b << (global ? 16 : 0)) +
                     (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
                     uint64_t(disp);
+      }
     // Lines touched by ACTIVE lanes, in first-touch order; four bytes per
     // lane (32-bit only). An inactive lane's address is never looked at.
     std::map<uint64_t, size_t> at;
@@ -1074,36 +1188,74 @@ private:
     // A load waits, and every memop behind it, while a store's write to one
     // of its lines is in flight: DCU would answer it from the line as it was.
     if (!j.store && inFlight(j, true)) return;
+    // It also waits while an OLDER store of its warp to one of its lines
+    // has not committed (MIU's disambiguation, MIU spec): this MIU forwards
+    // nothing, so the load reads the line once the store's write has
+    // landed. Memops issue in program order per warp (OI-15), so every
+    // older store is already here; a younger one's write the load must not
+    // see, and is not waited for (spinwait: lane 0's flag load behind lane
+    // 1's store; AR's response TI-27 (d)).
+    // no-st-wait: the load reads past the older store, and sees the flag
+    // still clear.
+    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return; }
     if (j.active & ~issue)
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
               tag, j.active & ~issue);
     check(j, am);
     if (j.lines.size() > 1) k_.hit("line_split");
+    // AR-23's measure: an access whose active lanes lie in more than one
+    // 64 KiB window, as every O-30 frame access does.
+    for (unsigned l = 0; l != kLanes; ++l)
+      if ((j.active >> l & 1u) && j.addr[l] >> 16 != j.addr[__builtin_ctz(j.active)] >> 16)
+        j.frame = true;
     k_.peak("lines_peak", j.lines.size());
     if (j.store)
       for (const LineReq &lr : j.lines)
         if (std::count(lr.mask.begin(), lr.mask.end(), true) != int(kLine)) k_.hit("partial_line");
+    const uint32_t ro = roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.pop_front();
     memop_.erase(tag);
+    win_miss_.erase(tag);
     addr_.erase(a);
+    if (ro) {
+      // F-RO: the store has no effect on any lane, so nothing waits for
+      // retirement. The completion is the fault: its lanes, and the lowest
+      // one's address (section 12.6). OOE takes it at retirement.
+      Bits m = cmpl(j);
+      put(m, c.miu_ooe, "status", kCmplFault);
+      put(m, c.miu_ooe, "cause", kFaultRo);
+      put(m, c.miu_ooe, "lane_mask", ro);
+      put(m, c.miu_ooe, "address", j.addr[__builtin_ctz(ro)]);
+      to_ooe_.push_back({j.memop_slot, m, j.tid});
+      k_.hit("ro_fault");
+      return;
+    }
     if (j.store) {
       // Translated and checked; the write waits for retirement.
       stores_[tag] = j;
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return;
     }
-    for (const LineReq &lr : j.lines)
-      for (const auto &s : stores_)
-        for (const LineReq &sl : s.second.lines)
-          if (sl.line == lr.line)
-            k_.fail("miu: load overlaps an uncommitted store -- forwarding is "
-                    "not modelled");
     launch(j);
   }
 
   void launch(Job j) {
     j.serial = ++serial_;
     jobs_.push_back(std::move(j));
+  }
+
+  /// Whether an uncommitted store older than load `j`, of its warp, touches
+  /// one of its lines.
+  bool olderStore(const Job &j) const {
+    const uint32_t ls = uidSeq(j.tid);
+    for (const auto &st : stores_) {
+      const uint32_t ss = uidSeq(st.second.tid);
+      if (seqWarp(ss) != seqWarp(ls) || seqIndex(ss) >= seqIndex(ls)) continue;
+      for (const LineReq &a : st.second.lines)
+        for (const LineReq &b : j.lines)
+          if (a.line == b.line) return true;
+    }
+    return false;
   }
 
   /// Whether a job in flight, any or only a store's write, touches one of
@@ -1134,7 +1286,7 @@ private:
         k_.fail("miu: seq %llu lane %u address %llx, oracle %llx",
                 (unsigned long long)r->seq, a.lane,
                 (unsigned long long)j.addr[a.lane], (unsigned long long)a.addr);
-      if (j.store && getLane(am, ch().rcu_miu, "store_data", a.lane) != a.val)
+      if (j.store && r->kind != "fault" && getLane(am, ch().rcu_miu, "store_data", a.lane) != a.val)
         k_.fail("miu: seq %llu lane %u store data %08x, oracle %08x",
                 (unsigned long long)r->seq, a.lane,
                 getLane(am, ch().rcu_miu, "store_data", a.lane), a.val);
@@ -1189,6 +1341,8 @@ private:
           makeUid(IdClass::kTxn, uidSeq(job_.tid), lr.sub, /*owned=*/true);
       send(c.miu_dcu, s, r, tid);
       outstanding_[id] = {job_.serial, lr.line};
+      k_.hit("dcu_lookups");
+      if (job_.frame) k_.hit("frame_lookups");
     }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size()) { ++it; continue; }
@@ -1420,8 +1574,8 @@ private:
     const std::string at = "lane " + std::to_string(lane_);
     k_.executing(at, m.tid);
     const OpInfo *op = opByCode(opc);
-    if (op && inRcu(op->cls))
-      k_.fail("lane %u: %s reached a lane; its class executes in RCU", lane_, op->name);
+    if (op && execRcu(op))
+      k_.fail("lane %u: %s reached a lane; it executes in RCU", lane_, op->name);
     if (op && !perLaneInput(op, *rc))
       k_.fail("lane %u: %s has no per-lane input; RCU executes it (Q-32)", lane_, op->name);
     if (!op || rc->op != op->name)
@@ -2022,7 +2176,7 @@ private:
     // Each class on its own resources: lane ops (the copy among them) on
     // the sections, memops on the pipes, RCU-only ops on R.
     const bool mem = op && (op->cls == kLoad || op->cls == kStore);
-    const unsigned want = mem ? kSlotP0 : op && inRcu(op->cls) ? kSlotR : kSlotS0;
+    const unsigned want = mem ? kSlotP0 : op && execRcu(op) ? kSlotR : kSlotS0;
     if (groupOf(s) != want)
       k_.fail("rcu: seq %llu, %s, issued on %s; its class issues on %s",
               (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", res(s).c_str(),
@@ -2085,6 +2239,41 @@ private:
     // An immediate move is warp-level: RCU writes the immediate straight into
     // the register file on the issue-mask lanes, with no lane round trip.
     // (--break movi-in-lane sends it to the lanes instead, which must refuse.)
+    // pmov.imm (section 3): the immediate's bit n is lane n's predicate bit,
+    // all 32 lanes, ungated by the issue mask, so no merge.
+    if (op->cls == kImm && op->pwrite) {
+      if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
+      k_.pred[ppd] = imm0;
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (const RegVal *d = r->predDef())
+          if (k_.pred[ppd] != d->p)
+            k_.fail("rcu: seq %llu P%u = %08x, oracle %08x", (unsigned long long)r->seq, d->idx,
+                    k_.pred[ppd], d->p);
+      to_ooe_.push_back({0, done(tag), m.tid});
+      return;
+    }
+    // shfl.idx (Format G): each guarded issue lane takes the source at one
+    // lane, read whether or not that lane is active. The register file is
+    // RCU's, so it moves the value; inactive lanes keep the old destination.
+    // OOE wakes it early behind an L1 load and replays it on a miss, so it is
+    // judged, as a lane's op is, only on its last execution.
+    if (op->cross) {
+      k_.executing("rcu", m.tid);
+      const unsigned from = imm0 & 31;
+      const uint32_t v = k_.gpr[src[0]][from];
+      for (unsigned l = 0; l != kLanes; ++l)
+        k_.gpr[pd][l] = (active >> l) & 1u ? v : k_.gpr[pold][l];
+      if (const Record *r = rec(m.tid, "rcu"))
+        if (const RegVal *d = r->gprDef())
+          for (unsigned l = 0; l != kLanes; ++l)
+            if (((active >> l) & 1u) && k_.gpr[pd][l] != d->v[l]) {
+              k_.failHeld("rcu", m.tid, "rcu: seq %llu R%u lane %u = %08x, oracle %08x",
+                          (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
+              break;
+            }
+      to_ooe_.push_back({0, done(tag), m.tid});
+      return;
+    }
     if (op->cls == kImm && k_.brk != "movi-in-lane") {
       // RCU executes it, so RCU merges it: inactive lanes keep the old
       // destination's values (merge_en is set whenever one can exist).
@@ -2159,15 +2348,14 @@ private:
       put(a, c.rcu_miu, "rob_tag", tag);
       put(a, c.rcu_miu, "active_mask", active);
       // Register values only: the AGU is MIU's, and the displacement and
-      // scale reach it on the memop.
-      const auto &b = k_.gpr[src[op->base_src]];
-      for (unsigned l = 1; l != kLanes; ++l)
-        if (((active >> l) & 1u) && b[l] != b[0]) {
-          k_.fail("rcu: window base differs across lanes; rcu_miu_addr.base is scalar");
-          break;
-        }
-      put(a, c.rcu_miu, "base", b[0]);
+      // scale reach it on the memop. The base is per lane (TI-32): an O-30
+      // frame pointer differs on every lane. A launch-slot form has none,
+      // and its base is don't-care (TI-31). scalar-base: lane 0's base on
+      // every lane, the S1 channel's.
       for (unsigned l = 0; l != kLanes; ++l) {
+        if (op->base_src >= 0)
+          putLane(a, c.rcu_miu, "base_per_lane", l,
+                  k_.gpr[src[op->base_src]][k_.brk == "scalar-base" ? 0 : l]);
         if (op->index_src >= 0)
           putLane(a, c.rcu_miu, "index_per_lane", l, k_.gpr[src[op->index_src]][l]);
         if (op->cls == kStore)
@@ -2273,6 +2461,13 @@ public:
 
 private:
   std::deque<std::pair<Bits, uint64_t>> q_;
+  /// A kill drops the killed warps' uops not yet sent to OOE (V-24).
+  void onKill(uint32_t mask, unsigned) override {
+    for (auto it = q_.begin(); it != q_.end();) {
+      const unsigned w = unsigned(get(it->first, ch().dec_ooe, "warp_id"));
+      it = mask >> (w & 31) & 1u ? q_.erase(it) : std::next(it);
+    }
+  }
 
   void work() override {
     const Ch &c = ch();
@@ -2334,6 +2529,7 @@ private:
     put(u, c.dec_ooe, "pc", pc);
     // FET's group mask and epoch pass through (A-69, A-70).
     put(u, c.dec_ooe, "group_mask", get(f, c.fet_dec, "group_mask"));
+    put(u, c.dec_ooe, "final_exit", get(f, c.fet_dec, "final_exit"));
     put(u, c.dec_ooe, "fetch_epoch", get(f, c.fet_dec, "fetch_epoch"));
     if (!op) {
       k_.fail("dec: %s is not in the skeleton's opcode table", r->op.c_str());
@@ -2433,6 +2629,12 @@ private:
     put(u, c.dec_ooe, "ilen", r->size / 2 - 1);
     put(u, c.dec_ooe, "pred_neg", pneg);
     put(u, c.dec_ooe, "scale_en", immOf(op->scale_imm) != 0);
+    // The launch-slot form (O-45; TI-31): its slot, an immediate where the
+    // base register would be, for MIU's window table.
+    if (op->slot_imm >= 0) {
+      put(u, c.dec_ooe, "slot_form", 1);
+      put(u, c.dec_ooe, "arg_slot", uint32_t(immOf(op->slot_imm)) & 15u);
+    }
     put(u, c.dec_ooe, "pred_guard", pguard);
     put(u, c.dec_ooe, "pred_dst", pdst);
     put(u, c.dec_ooe, "pred_we", pd != nullptr);
@@ -2447,9 +2649,17 @@ private:
 
 // ---- FET: trace-driven fetch -------------------------------------------------------
 //
-// The ORDER of fetch comes from the oracle (no branch unit yet: a taken
-// branch would simply be the next record's pc). The BYTES do not: they are
-// read out of lines fetched through ITLB and the ifill path.
+// FET picks what it fetches (IS-17 (b), FET spec rev 16): it holds each
+// lane's PC, the lanes not yet exited and O-60's fairness pointer and
+// counter, and every fetch issues the group min-PC and the fairness rule
+// choose. Groups are the lanes with equal PCs: a divergent branch splits
+// them at its redirect, and they reconverge when their PCs meet. Each pick
+// is checked against ccv-sim's record, whose order is the same rule at
+// CCV_FAIR_N (gen-oracle passes it), so the oracle checks the pick and
+// never makes it. What the oracle still decides is whether FET will
+// mispredict a branch: FET fetches no wrong path, since it has no record
+// for one (docs/coverage.md, item 1). The BYTES are read out of lines
+// fetched through ITLB and the ifill path.
 
 class Fet : public Stub {
 public:
@@ -2485,8 +2695,94 @@ private:
     uint32_t rewound = 0;
     std::array<uint64_t, kLanes> lane_pc{};
     uint64_t boundary_tid = 0;              ///< the oldest beat's uop (trace-only)
+    /// The divergence state (IS-17 (b)): each lane's PC, the lanes not yet
+    /// exited, and the fairness rule's pointer and counter (O-60).
+    std::array<uint64_t, kLanes> pc{};
+    uint32_t lanes = 0;   ///< live lanes: not yet exited
+    unsigned fair_ptr = 0, fair_cnt = 0;
+    /// The live lanes before each record's pick, by record (trace-only):
+    /// FET clears a group's lanes when it fetches its exit, ahead of
+    /// retirement, and after a demotion's beats its mask must equal the
+    /// boundary's (AR's response TI-27 (b)), which this checks.
+    std::vector<uint32_t> lanes_at;
+    bool marked = false;     ///< early-mark: one exit already marked final
+    bool restored = false;   ///< restored at least once: its order may leave ccv-sim's (TI-27 (c))
+    uint32_t br_mask = 0;   ///< a branch FET mispredicts: its group, until the redirect
+    uint64_t br_next = 0;   ///< and the group's fall-through
   };
   std::map<unsigned, Warp> warps_;
+  /// A kill (V-24): the killed warps fetch no more, and leave their slots.
+  void onKill(uint32_t mask, unsigned) override {
+    for (auto &w : warps_)
+      if (mask >> (w.first & 31) & 1u) {
+        w.second.stopped = true;
+        w.second.await_redirect = false;
+        w.second.tier1 = kNoSlot;
+      }
+  }
+  /// CCV_FAIR_N, which ccv-sim's -fairness must equal (gen-oracle). The N
+  /// sweep sets both through CCV_FAIR_N; 0 is strict min-PC, the rule off.
+  const unsigned fair_n_ = getenv("CCV_FAIR_N") ? unsigned(std::strtoul(getenv("CCV_FAIR_N"), nullptr, 0))
+                                                : ccv::prov::kFairN;
+  /// One pick: the group's PC and lanes, and the fairness state after it.
+  struct Pick { uint64_t pc = 0; uint32_t mask = 0; unsigned ptr = 0, cnt = 0; bool fair = false; };
+  /// FET's pick for a warp, as the FET spec states it: the lowest PC among
+  /// live lanes, except that once lane r's group has gone N picks without
+  /// issuing, the pick is that group. Its issue, either way, restarts the
+  /// count and moves r to the next live lane. No lane waits at a barrier or
+  /// a sleep in these kernels; a barrier's kind fails at fetch.
+  Pick pick(const Warp &x) const {
+    Pick p;
+    p.ptr = x.fair_ptr;
+    p.cnt = x.fair_cnt;
+    if (!x.lanes) return p;
+    p.pc = UINT64_MAX;
+    for (unsigned l = 0; l != kLanes; ++l)
+      if (x.lanes >> l & 1u) p.pc = std::min(p.pc, x.pc[l]);
+    const unsigned n = k_.brk == "fair-off" ? 0 : k_.brk == "fair-late" ? fair_n_ + 1 : fair_n_;
+    if (n) {
+      unsigned r = p.ptr;
+      while (!(x.lanes >> r & 1u)) r = (r + 1) % kLanes;
+      bool served = x.pc[r] == p.pc;
+      if (!served && ++p.cnt == n) { p.pc = x.pc[r]; served = p.fair = true; }
+      if (served) {
+        p.cnt = 0;
+        p.ptr = (r + 1) % kLanes;
+        while (!(x.lanes >> p.ptr & 1u)) p.ptr = (p.ptr + 1) % kLanes;
+      }
+    }
+    for (unsigned l = 0; l != kLanes; ++l)
+      if ((x.lanes >> l & 1u) && x.pc[l] == p.pc) p.mask |= 1u << l;
+    return p;
+  }
+  /// The fairness state after issuing a given group, by the same rule: the
+  /// counter restarts if it holds lane r, and otherwise counts, up to N.
+  Pick issued(const Warp &x, uint64_t pc, uint32_t mask) const {
+    Pick p;
+    p.pc = pc;
+    p.mask = mask;
+    p.ptr = x.fair_ptr;
+    p.cnt = x.fair_cnt;
+    if (fair_n_ && x.lanes) {
+      unsigned r = p.ptr;
+      while (!(x.lanes >> r & 1u)) r = (r + 1) % kLanes;
+      if (mask >> r & 1u) {
+        p.cnt = 0;
+        p.ptr = (r + 1) % kLanes;
+        while (!(x.lanes >> p.ptr & 1u)) p.ptr = (p.ptr + 1) % kLanes;
+      } else {
+        p.cnt = std::min(p.cnt + 1, fair_n_);
+      }
+    }
+    return p;
+  }
+  /// The warp's groups: its live lanes' distinct PCs.
+  static unsigned groups(const Warp &x) {
+    std::set<uint64_t> g;
+    for (unsigned l = 0; l != kLanes; ++l)
+      if (x.lanes >> l & 1u) g.insert(x.pc[l]);
+    return unsigned(g.size());
+  }
   static constexpr unsigned kNoSlot = ~0u;
   /// A warp takes a tier-1 slot, at launch or restore. Whoever held it,
   /// exited or parked, holds it no longer, so a checkpoint free for the
@@ -2519,6 +2815,11 @@ private:
         Warp &x = warps_[w];
         x.launched = true;
         take_slot(x, unsigned(get(m.payload, c.rau_fet, "tier1_id")));   // A-65
+        // Every live lane starts at the entry: the lanes are RAU's, from the
+        // CTA's thread count (AR's response TI-27 (a)).
+        x.pc.fill(start);
+        x.lanes = uint32_t(get(m.payload, c.rau_fet, "live_mask"));
+        x.fair_ptr = x.fair_cnt = 0;
       }
     }
     if (has(c.ooe_fet, 0)) {
@@ -2576,6 +2877,18 @@ private:
             break;
           }
         x.await_redirect = false;
+        // The split (IS-17 (b)): the branch's lanes OOE names as taken go to
+        // the target, the rest of its group falls through. split-swap
+        // sends each half the other's way.
+        const bool swap = k_.brk == "split-swap";
+        const uint32_t to_tgt = swap ? x.br_mask & ~tmask : tmask;
+        const unsigned before = groups(x);
+        for (unsigned l = 0; l != kLanes; ++l)
+          if (x.br_mask >> l & 1u) x.pc[l] = to_tgt >> l & 1u ? tgt : x.br_next;
+        if ((tmask & x.br_mask) && (tmask & x.br_mask) != x.br_mask) k_.hit("split");
+        if (groups(x) < before) k_.hit("reconverge");
+        k_.peak("groups_peak", groups(x));
+        x.br_mask = 0;
         epoch_[rw & 31] = fe;
         stale_next_ = k_.brk == "stale-epoch" && !stale_done_;
         stale_done_ = stale_done_ || stale_next_;
@@ -2595,7 +2908,7 @@ private:
         take_slot(x, unsigned(get(m, c.rau_fet_mig, "tier1_id")));
         x.restoring = true;
       } else {
-        const Warp &x = warps_[w];
+        Warp &x = warps_[w];
         const auto &recs = k_.orcs[w].recs;
         Bits g = msgOf(c.fet_pca);
         put(g, c.fet_pca, "warp_id", w);
@@ -2614,6 +2927,26 @@ private:
           upper = pc >> ccv::kWPcWindow;
         }
         put(g, c.fet_pca, "pc_upper", upper);
+        // The live lanes after the beats (AR's response TI-27 (b)): every lane
+        // a beat names is live again, which undoes an exit the squash took
+        // back. Exact by then, so held to the boundary's mask.
+        // beats-dead: FET keeps the lanes its fetched exits cleared.
+        const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
+        size_t bi = x.next;
+        if (x.boundary_tid)
+          for (size_t i = 0; i != recs.size(); ++i)
+            if (instrUid(warpSeq(w, recs[i].seq)) == x.boundary_tid) { bi = i; break; }
+        if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
+          k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
+                  x.lanes_at[bi]);
+        put(g, c.fet_pca, "live_mask", live);
+        // The fairness state (TI-27 (c)): FET cannot know the boundary's, so it
+        // keeps its pointer, moved on to a live lane, and saturates the
+        // counter, so lane r's group takes the first pick after the restore.
+        unsigned ptr = x.fair_ptr;
+        for (unsigned i = 0; live && !(live >> ptr & 1u) && i != kLanes; ++i) ptr = (ptr + 1) % kLanes;
+        put(g, c.fet_pca, "fair_ptr", ptr);
+        put(g, c.fet_pca, "fair_cnt", fair_n_);
         k_.parked[w].rewound = x.rewound == ~0u;
         if (k_.parked[w].rewound) k_.hit("rewound");
         // The trace identity of where it resumes rides with the PCs to PCA,
@@ -2649,7 +2982,14 @@ private:
           if ((recs[at].mask >> l & 1u) && pc != recs[at].pc)
             k_.fail("fet: restored warp %u lane %u at %llx, but it resumes at %llx", w, l,
                     (unsigned long long)pc, (unsigned long long)recs[at].pc);
+          x.pc[l] = pc;
         }
+        // The live lanes and the fairness state come back with the PCs.
+        x.lanes = uint32_t(get(mm.payload, c.pca_fet, "live_mask"));
+        x.restored = true;
+        x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
+        x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
+        x.br_mask = 0;
         x.next = at;
         x.launched = true;
         x.stopped = x.restoring = x.await_redirect = false;
@@ -2716,11 +3056,32 @@ private:
     for (unsigned s = x.tier1 * bg; s != x.tier1 * bg + bg && x.launched && !x.stopped &&
                                     !x.await_redirect &&
                                     x.next != recs.size(); ++s) {
+      // FET's own pick, checked against the record ccv-sim issued next.
+      // After a restore the saturated counter may pick a group ccv-sim did
+      // not (AR's response TI-27 (c)). Checking that order per lane needs
+      // instructions ccv-sim never issued, which a trace-driven FET cannot
+      // fetch; so a restored warp that departs follows ccv-sim's group,
+      // counted, with its fairness state moved as that group's issue moves
+      // it. Any other departure is a failure.
+      Pick pk = pick(x);
+      if (!pk.mask) break;   // no live lane: the warp has exited
       const Record &r = recs[x.next];
+      const bool departs = pk.pc != r.pc || pk.mask != r.mask;
+      if (departs && x.restored) pk = issued(x, r.pc, r.mask);
       bool ready = true;
-      for (uint64_t a = r.pc / kLine * kLine; a < r.pc + r.size; a += kLine)
+      for (uint64_t a = pk.pc / kLine * kLine; a < pk.pc + r.size; a += kLine)
         if (!line_.count(a)) { ready = false; want(a); }
       if (!ready || !can(c.fet_dec, s)) break;
+      if (departs && x.restored)
+        k_.hit("order_diff");
+      else if (departs)
+        k_.fail("fet: warp %u picks %llx for lanes %08x; ccv-sim issued %llx for %08x (seq %llu)", w,
+                (unsigned long long)pk.pc, pk.mask, (unsigned long long)r.pc, r.mask,
+                (unsigned long long)r.seq);
+      if (r.kind != "advance" && r.kind != "branch" && r.kind != "branchpred" && r.kind != "exit" &&
+          r.kind != "fault")
+        k_.fail("fet: warp %u seq %llu is a %s, which this FET does not follow", w,
+                (unsigned long long)r.seq, r.kind.c_str());
       uint64_t word = 0;
       for (unsigned b = 0; b != r.size; ++b) {
         const uint64_t a = r.pc + b;
@@ -2741,6 +3102,14 @@ private:
       uint32_t gmask = r.mask;
       if (k_.brk == "corrupt-group-mask" && w == 0 && r.seq == 5) gmask &= 0x7fffffffu;
       put(f, c.fet_dec, "group_mask", gmask);
+      // The final exit (TI-27): the exit whose fetch clears the warp's last
+      // live lanes. early-mark marks the first exit that leaves some live.
+      if (r.kind == "exit") {
+        const bool last = !(x.lanes & ~r.mask);
+        const bool early = k_.brk == "early-mark" && !last && !x.marked;
+        x.marked = x.marked || early;
+        put(f, c.fet_dec, "final_exit", last || early);
+      }
       const unsigned ep = epoch_[w & 31];
       put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
       stale_next_ = false;
@@ -2767,6 +3136,25 @@ private:
       }
       send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
+      // The pick is made: record the fairness state it started from, take
+      // the new one, and move the group's lanes on. After a mismatch the
+      // record's lanes move, so one wrong pick is reported once.
+      if (x.lanes_at.size() <= x.next) x.lanes_at.resize(x.next + 1);
+      x.lanes_at[x.next] = x.lanes;
+      x.fair_ptr = pk.ptr;
+      x.fair_cnt = pk.cnt;
+      if (pk.fair) k_.hit("fair_pick");
+      const unsigned before = groups(x);
+      if (r.kind == "exit") {
+        x.lanes &= ~r.mask;
+      } else if (mispredict) {
+        x.br_mask = r.mask;      // split or moved at the redirect
+        x.br_next = r.pc + r.size;
+      } else {
+        for (unsigned l = 0; l != kLanes; ++l)
+          if (r.mask >> l & 1u) x.pc[l] = r.pc + r.size;
+        if (groups(x) < before) k_.hit("reconverge");
+      }
       ++x.next;
       if (mispredict) { x.await_redirect = true; break; }
     }
@@ -2865,10 +3253,15 @@ private:
   /// RAU runs one at a time and declines a report that arrives meanwhile:
   /// a stress knob, for runs that need several warps parked at once.
   const bool concurrent_ = std::string(env("CCV_RAU_CONCURRENT", "0")) == "1";
-  /// Restoring a warp MIU has not reported ready (AR's response TI-21, RAU
-  /// spec rev 24): into a slot that would otherwise idle, provisionally
-  /// (the default). CCV_RAU_READY=wait restores only ready warps.
-  const bool wait_ready_ = std::string(env("CCV_RAU_READY", "")) == "wait";
+  /// RAU restores only warps MIU has reported ready (RAU spec rev 25).
+  /// CCV_RAU_READY=0 also restores one that is not into a slot that would
+  /// otherwise idle, provisionally (AR's rev 115; about 1% lost on OI's
+  /// sweep, so a knob, and provswap keeps it covered).
+  const bool provisional_on_ = std::string(env("CCV_RAU_READY", "1")) == "0";
+  /// Evict (DA, 2026-10-22, TI-21): RAU demotes a warp its trigger names
+  /// whether or not another warp waits for the slot. CCV_RAU_MODE=swap
+  /// demotes only when one does: a ready parked warp or a launch.
+  const bool swap_ = std::string(env("CCV_RAU_MODE", "evict")) == "swap";
 
   std::set<unsigned> free_;                  ///< tier-1 slots
   std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
@@ -2913,7 +3306,7 @@ private:
     if (op == kAllocLaunch || op == 2) {
       // Identity from RAU's warp-to-CTA table: each warp warp 0 of its CTA.
       put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
-      put(a, c.rau_ooe, "warp_in_cta", 0);
+      put(a, c.rau_ooe, "warp_in_cta", k_.orcs[w].warp_in_cta);
       put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
     }
     return a;
@@ -2936,7 +3329,7 @@ private:
     auto p = parked_.begin();
     while (p != parked_.end() && !ready_.count(*p)) ++p;
     bool prov = false;
-    if (p == parked_.end() && !wait_ready_ && waiting_.empty() && !parked_.empty()) {
+    if (p == parked_.end() && provisional_on_ && waiting_.empty() && !parked_.empty()) {
       p = parked_.begin();
       prov = true;
     }
@@ -2962,6 +3355,12 @@ private:
     const Bits m = take(c.ooe_status, 0).payload;
     const unsigned w = unsigned(get(m, c.ooe_status, "warp_id"));
     retired_[w] = unsigned(get(m, c.ooe_status, "retired_since_restore"));
+    // A fatal fault (IS-2): RAU kills the context, every valid warp context
+    // of it, and launches nothing more for it.
+    if (get(m, c.ooe_status, "fault_taken")) {
+      startKill(w);
+      return;
+    }
     if (get(m, c.ooe_status, "exited")) {
       // An exit that raced its own demotion (TI-25): OOE refuses the
       // demote, and the slot is freed once the refusal is in, so the free
@@ -2990,7 +3389,68 @@ private:
     k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
   }
 
-  /// A ready parked warp or a launch waits for a slot.
+  /// The kill (V-24; RAU spec, Kill): the mask of every valid warp context,
+  /// resident, moving or parked, broadcast with an epoch, kill_valid a cycle
+  /// ahead of the mask; then the eight owners' acks, each counted only at
+  /// this epoch (a late ack from an earlier kill cannot satisfy this one);
+  /// then RAU's tables let the killed warps go. no-kill: RAU never kills.
+  enum class Kill { kNone, kValid, kWait } kill_ = Kill::kNone;
+  uint32_t kill_mask_ = 0, kill_acked_ = 0;
+  unsigned kill_epoch_ = 0;
+  void startKill(unsigned faulted) {
+    if (kill_ != Kill::kNone || k_.brk == "no-kill") return;
+    k_.snapshotFinal(faulted);   // its state at the fault, before OOE releases it
+    uint32_t mask = 0;
+    for (const auto &s : slot_of_) mask |= 1u << (s.first & 31);
+    for (unsigned w : parked_) mask |= 1u << (w & 31);
+    for (unsigned w : demoting_) mask |= 1u << (w & 31);
+    for (const auto &p : place_of_) mask |= 1u << (p.first & 31);
+    kill_mask_ = mask;
+    kill_epoch_ = (kill_epoch_ + 1) % (1u << ccv::prov::kWKillEpoch);
+    kill_acked_ = 0;
+    kill_ = Kill::kValid;
+    // Nothing more launches for the context: a warp still waiting is gone.
+    for (unsigned w : waiting_) k_.killed.insert(w);
+    waiting_.clear();
+    k_.hit("kill");
+  }
+  void killStep() {
+    if (kill_ == Kill::kValid) {
+      fabOut("kill_valid", 1);
+      kill_ = Kill::kWait;
+      return;
+    }
+    if (kill_ != Kill::kWait) return;
+    fabOut("kill_warp_mask", kill_mask_);
+    fabOut("kill_epoch", kill_epoch_);
+    const FabDesc &acks = Stub::fab("kill_ack");
+    for (unsigned i = 0; i != acks.nblks; ++i)
+      if (fabIn("kill_ack", i) && fabIn("kill_ack_epoch", i) == kill_epoch_) kill_acked_ |= 1u << i;
+    k_.kill_unacked = ((1u << acks.nblks) - 1) & ~kill_acked_;
+    if (k_.kill_unacked) return;
+    // Every owner has quiesced: the killed warps hold nothing anywhere.
+    for (unsigned w = 0; w != 32; ++w) {
+      if (!(kill_mask_ >> w & 1u)) continue;
+      k_.killed.insert(w);
+      auto s = slot_of_.find(w);
+      if (s != slot_of_.end()) { free_.insert(s->second); slot_of_.erase(s); }
+      auto p = place_of_.find(w);
+      if (p != place_of_.end()) { places_.insert(p->second); place_of_.erase(p); }
+      parked_.erase(std::remove(parked_.begin(), parked_.end(), w), parked_.end());
+      demoting_.erase(w);
+      ready_.erase(w);
+      provisional_.erase(w);
+      exited_.erase(w);
+    }
+    launch_q_.clear();
+    mig_q_.clear();
+    demote_q_.clear();
+    restore_busy_ = false;
+    kill_ = Kill::kNone;
+  }
+
+  /// A ready parked warp or a launch waits for a slot: what lets a
+  /// provisional warp demote, and any warp under swap.
   bool wanted() const {
     if (!waiting_.empty()) return true;
     for (unsigned w : parked_)
@@ -3004,7 +3464,8 @@ private:
         (k_.parked.count(w) && !k_.parked[w].restored) ||
         (restored_.count(w) && (!provisional_.count(w) || k_.brk == "guard-at-restore") &&
          retired_[w] < p_base_[w] + P_) ||
-        (provisional_.count(w) && !wanted() && k_.brk != "demote-unwanted"))
+        (provisional_.count(w) && !wanted() && k_.brk != "demote-unwanted") ||
+        (swap_ && !wanted()))
       return;
     if (provisional_.erase(w)) k_.hit("prov_demote");
     demoting_.insert(w);
@@ -3124,6 +3585,15 @@ private:
     const Ch &c = ch();
     const uint64_t none = makeUid(IdClass::kNone, 0);
     status();
+    killStep();
+    if (kill_ != Kill::kNone) {
+      // Nothing launches or moves meanwhile. Reports about warps being
+      // killed (ready, drained, a migration's ack) are taken and dropped.
+      if (has(c.miu_ready, 0)) take(c.miu_ready, 0);
+      if (has(c.ooe_drained, 0)) take(c.ooe_drained, 0);
+      if (has(c.pca_done, 0)) take(c.pca_done, 0);
+      return;
+    }
     migration();
     place();
     if (!alloc_q_.empty() && can(c.rau_ooe, 0)) {
@@ -3140,6 +3610,12 @@ private:
       if (can(c.rau_miu, 0) && can(c.rau_fet, 0)) {
         Bits a = msgOf(c.rau_miu);
         put(a, c.rau_miu, "cta_slot", l.w);
+        // F-RO's .const range, the grid's from its module (TI-26): the
+        // launch's, which ccv-sim was run with, until Q-50's descriptor.
+        put(a, c.rau_miu, "const_base", k_.orcs[l.w].const_base);
+        put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
+        // Where MIU's window table fills from (TI-31).
+        put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
         send(c.rau_miu, 0, a, none);
         const Oracle &o = k_.orcs[l.w];
         Bits f = msgOf(c.rau_fet);
@@ -3147,6 +3623,13 @@ private:
         put(f, c.rau_fet, "tier1_id", l.slot);
         put(f, c.rau_fet, "cta_slot", l.w);
         put(f, c.rau_fet, "start_pc", o.code_base);
+        // The warp's lanes (AR's responses TI-27 (a), rev 134): [0, n), n
+        // the CTA's threads past this warp's first, T - 32 x warp_in_cta, at
+        // most 32. T is the launch's, which ccv-sim was run with.
+        // whole-cta-mask: every warp takes the CTA's first warp's lanes.
+        const unsigned first = k_.brk == "whole-cta-mask" ? 0 : 32 * o.warp_in_cta;
+        const unsigned n = !o.threads ? kLanes : o.threads <= first ? 0 : std::min(o.threads - first, kLanes);
+        put(f, c.rau_fet, "live_mask", n == kLanes ? ~0u : (1u << n) - 1);
         // code_bounds: [63:0] base, [103:64] length (placeholder split).
         const FieldDesc &cb = field(c.rau_fet, "code_bounds");
         f.set(cb.lsb, 64, o.code_base);
@@ -3159,7 +3642,7 @@ private:
   bool busy() const override {
     return !waiting_.empty() || !launch_q_.empty() || !alloc_q_.empty() || !mig_q_.empty() ||
            !demote_q_.empty() || !demoting_.empty() || restore_busy_ || (restore_ && !parked_.empty()) ||
-           !exited_.empty();
+           !exited_.empty() || kill_ != Kill::kNone;
   }
 };
 
@@ -3198,6 +3681,18 @@ private:
   struct Out { unsigned w; std::deque<Bits> rows; bool pcs_sent = false; Bits pcs; uint64_t tid; };
   std::deque<Out> out_;
   uint64_t hold_until_ = 0;            ///< early-restore-done's delay
+
+  /// A kill drops every killed warp's context, parked or moving (V-24).
+  void onKill(uint32_t mask, unsigned) override {
+    for (auto it = ctx_.begin(); it != ctx_.end();)
+      it = mask >> (it->first & 31) & 1u ? ctx_.erase(it) : std::next(it);
+    for (auto it = array_.begin(); it != array_.end();)
+      it = mask >> (it->second.warp & 31) & 1u ? array_.erase(it) : std::next(it);
+    for (auto it = out_.begin(); it != out_.end();)
+      it = mask >> (it->w & 31) & 1u ? out_.erase(it) : std::next(it);
+    for (auto it = done_.begin(); it != done_.end();)
+      it = mask >> (it->first & 31) & 1u ? done_.erase(it) : std::next(it);
+  }
 
   void work() override {
     const Ch &c = ch();
@@ -3331,7 +3826,53 @@ private:
   bool busy() const override { return !done_.empty() || !ctx_.empty() || !out_.empty(); }
 };
 
-/// SPM, SYU, CRU: nothing on vadd's path.
+// ---- CRU: takes a warp's fault --------------------------------------------------
+
+/// A fault OOE took at retirement (ccv_ooe_cru_fault) ends its warp here
+/// (TI-26). CRU's record and the kill it leads to (RAU's kill_req) are the
+/// CRU session's to build; this stub checks the report against the fault
+/// ccv-sim ended the warp's run with: cause, pc, lanes and address.
+class Cru : public Stub {
+public:
+  Cru(int inst, Kernel &k) : Stub(inst, k), chan_(chanId("ccv_ooe_cru_fault")) {}
+  const char *kind() const override { return "cru"; }
+
+private:
+  const unsigned chan_;
+  static unsigned code(const std::string &n) {
+    static const char *const names[] = {"", "F-FETCH", "F-ILLEGAL", "F-WIDTH", "F-FORMAT",
+                                        "F-ALIGN", "F-ADDR", "F-SHARED", "F-RO", "F-BARRIER"};
+    for (unsigned i = 1; i != sizeof names / sizeof *names; ++i)
+      if (n == names[i]) return i;
+    return 0;
+  }
+  void work() override {
+    if (!has(chan_, 0)) return;
+    const Bits m = take(chan_, 0).payload;
+    Kernel::FaultSeen f;
+    const unsigned w = unsigned(get(m, chan_, "warp_id"));
+    f.cause = unsigned(get(m, chan_, "cause"));
+    f.pc = get(m, chan_, "pc");
+    f.lanes = uint32_t(get(m, chan_, "lane_mask"));
+    f.addr = get(m, chan_, "address");
+    if (k_.faults.count(w)) k_.fail("cru: warp %u faults twice", w);
+    k_.faults[w] = f;
+    k_.hit("fault");
+    if (w >= k_.orcs.size() || !k_.orcs[w].faults) {
+      k_.fail("cru: warp %u faults (cause %u at pc %llx), but ccv-sim ran it to its end", w,
+              f.cause, (unsigned long long)f.pc);
+      return;
+    }
+    const Oracle::Fault &o = k_.orcs[w].fault;
+    if (f.cause != code(o.cause) || f.pc != o.pc || f.lanes != o.lanes || f.addr != o.addr)
+      k_.fail("cru: warp %u fault cause %u pc %llx lanes %08x addr %llx; ccv-sim %s pc %llx "
+              "lanes %08x addr %llx", w, f.cause, (unsigned long long)f.pc, f.lanes,
+              (unsigned long long)f.addr, o.cause.c_str(), (unsigned long long)o.pc, o.lanes,
+              (unsigned long long)o.addr);
+  }
+};
+
+/// SPM, SYU: nothing on vadd's path.
 class Idle : public Stub {
 public:
   Idle(int inst, Kernel &k, const char *n) : Stub(inst, k), n_(n) {}
@@ -3357,6 +3898,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::EXB:  return std::make_unique<Exb>(inst, k);
   case Blk::RAU:  return std::make_unique<Rau>(inst, k);
   case Blk::PCA:  return std::make_unique<Pca>(inst, k);
+  case Blk::CRU:  return std::make_unique<Cru>(inst, k);
   default:
     return std::make_unique<Idle>(inst, k, blkName(kBlkInsts[inst].type));
   }
@@ -3371,9 +3913,30 @@ KernelReport compareFinal(Kernel &k) {
     if (seqWarp(uint32_t(s)) < nret.size()) ++nret[seqWarp(uint32_t(s))];
   auto isParked = [&](unsigned w) { return k.parkedNow(w); };
   // Each warp's registers against its own run of ccv-sim.
+  // A warp the kill ended mid-run (V-24) has no final state to compare: it
+  // is held only to its retire order, a prefix of ccv-sim's, below. A
+  // faulted warp is compared as its fault left it.
+  auto cut = [&](unsigned w) { return k.killed.count(w) && !k.orcs[w].faults; };
+  // The kill (V-24): every owner acked it at its epoch, and every warp that
+  // faulted was killed.
+  if (k.kill_unacked) {
+    std::string who;
+    for (const FabDesc &f : kFabs)
+      if (!std::strcmp(f.name, "kill_ack"))
+        for (unsigned i = 0; i != f.nblks; ++i)
+          if (k.kill_unacked >> i & 1u) who += std::string(who.empty() ? "" : " ") + blkName(f.blks[i]);
+    k.fail("rau: the kill never completed: no ack at its epoch from %s", who.c_str());
+  }
+  for (const auto &f : k.faults)
+    if (!k.killed.count(f.first)) k.fail("rau: warp %u faulted and was never killed", f.first);
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
-    if (isParked(w)) continue;
+    if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
+    // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
+    // CRU's stub held its fields to ccv-sim's as it took it.
+    if (o.faults && !k.faults.count(w))
+      k.fail("cru: warp %u never faulted; ccv-sim ended it with %s at pc %llx", w,
+             o.fault.cause.c_str(), (unsigned long long)o.fault.pc);
     const std::vector<unsigned> &rat = k.ratOf(w);
     const char *who = k.orcs.size() == 1 ? "" : "warp ";
     const std::string wn = k.orcs.size() == 1 ? "" : std::to_string(w) + " ";
@@ -3434,7 +3997,9 @@ KernelReport compareFinal(Kernel &k) {
   }
   // Each warp retires its own instructions in its own order.
   unsigned groups = 0;
-  for (unsigned w = 0; w != k.orcs.size(); ++w) groups += isParked(w) ? nret[w] : k.orcs[w].issue_groups;
+  // A faulting instruction counts in ccv-sim's issue groups and never retires.
+  for (unsigned w = 0; w != k.orcs.size(); ++w)
+    groups += isParked(w) || cut(w) ? nret[w] : k.orcs[w].issue_groups - (k.orcs[w].faults ? 1 : 0);
   r.order_ok = k.retired == groups;
   std::vector<uint32_t> next(k.orcs.size(), 0);
   for (uint64_t s : k.retire_order) {

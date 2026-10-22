@@ -225,8 +225,8 @@
       "status": "tunable",
       "require": "CCV_DEMOTION_THRESHOLD_MLC > CCV_LAT_MLC_HIT_MAX",
       "decided_at": "RAU per-block session (register OA-8)",
-      "source": "OOE model session, register OI-6 (2026-10-07)",
-      "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). Starts at the fallback's value until RAU's session or the Stage 4b sweep sets it; formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
+      "source": "AR's response TI-21 (rev 123), from OI's corrected evict sweep (rev 158); first build OI-6",
+      "doc": "Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). 50 (AR's rev 123, which voids rev 118's 100): OI's corrected 48-seed sweep under evict with the replay drain gives 0.588 of swap-off at 50 against 0.603 at 100. Formal sets all three small. Replaces the OOE model's demote_mlc_miss knob."
     },
     {
       "name": "CCV_LAT_MLC_PIPE",
@@ -278,15 +278,15 @@
     },
     {
       "name": "CCV_FAIR_N",
-      "value": 16,
+      "value": 48,
       "status": "provisional",
-      "source": "DA's response IS-17 (2026-10-21)",
-      "doc": "FET's fairness rule: every Nth pick of a warp goes to the group holding lane r, the rotating pointer, which then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17). The cost is the override breaking opportunistic reconvergence one pick in N.",
-      "decided_at": "OI's fairness measurement (IS-17)"
+      "source": "AR's response IS-17 (rev 121), from CP's ccv-sim measurement (CP's revs 64-65); FET spec rev 15",
+      "doc": "FET's fairness rule, refined (AR's rev 121): the warp's picks are min-PC, except that the group holding lane r, the rotating pointer, issues once N picks have gone by without a pick including lane r. The counter restarts whenever a pick includes lane r, by either path, and r then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17, O-60). 48 is the smallest N whose cost on every kernel of CP's corpus is within 1% of the rule off (rope +0.46%), with the spin-wait handing over in 314 issue groups; TI's timed sweep at 32, 48 and 64 confirms it. ccv-sim's -fairness takes it (tools/gen-oracle.sh).",
+      "decided_at": "AR's rev 121; TI's timed sweep (IS-17)"
     },
     {
       "name": "CCV_W_FAIR_CNT",
-      "value": 4,
+      "value": 6,
       "status": "provisional",
       "derive": "clog2(CCV_FAIR_N)",
       "source": "DA's response IS-17 (2026-10-21)",
@@ -702,12 +702,12 @@
     },
     {
       "name": "CCV_P_DECQ_WARP_MAX",
-      "value": 13,
+      "value": 6,
       "status": "tunable",
       "decided_at": "Stage 4b sweep (register OA-7)",
-      "source": "OOE model session, register OI-6 (2026-10-07); OA's response TI-21 sets 6 once ooe_decq passes at it",
+      "source": "OA's responses TI-21 (revs 160 and 166, final), from OI's stall_hole measurement; OI's revs 155-159: S1 loses at 4, and OI's gate passes at 6 (0dff9b1); first build OI-6",
       "require": "CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ",
-      "doc": "Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit. With no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six (OA's response TI-21) lets the swap arm pass and makes the even-stall sweep 12.5% faster; it waits on ooe_decq, whose RTL and bench have not run below the queue's depth (at 6 its live compare trips enq_within_credit, and check-cg's bench fails its high scenario). OA takes 4 if the S1 kernels do not lose at 4 (OI to measure)."
+      "doc": "Decode-queue entries one warp may hold at once. With no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six (OA's rev 166, final) makes the even-stall sweep 0.863 of no limit; at 4, mlp is 3.3% slower (OI's rev 155). test/ooe/cg-units.json's ooe_decq unit carries the same D, since its bench builds the RTL at this parameter."
     },
     {
       "name": "CCV_P_REN_SLACK",

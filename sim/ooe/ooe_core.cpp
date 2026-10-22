@@ -2055,6 +2055,7 @@ void Core::retire() {
         st.fault_taken = true;
         out.status.push_back(st);
         Fault f;
+        f.tid = r.u.tid;
         f.warp = s.warp;
         f.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
         f.cause = r.fault_cause;
@@ -2120,8 +2121,9 @@ void Core::retire() {
         uint32_t &lanes = exit_lanes_[s.warp % kWarpIds];
         lanes |= r.u.group_mask;
         if (r.u.shape.final_exit) {
-          if (lanes != kFullMask)
-            err("TI-27: warp %u's final exit retired with lanes %08x yet to exit", s.warp, ~lanes);
+          const uint32_t want = launch_lanes_[s.warp % kWarpIds];
+          if ((lanes & want) != want)
+            err("TI-27: warp %u's final exit retired with lanes %08x yet to exit", s.warp, want & ~lanes);
           lanes = 0;     // the warp_id's next warp starts afresh
           s.exit_retired = true;
         } else {
@@ -2768,6 +2770,8 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.scale_en = u.scale_en;
     m.space = u.space;
     m.ordering = u.ordering;
+    m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
+    m.arg_slot = u.arg_slot;
     m.chwidth = s.chwidth;
     if (x.atom) {
       // OOE's own codes (V-72): the read into T, at the address; the write,

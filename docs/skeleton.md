@@ -1249,7 +1249,7 @@ decisions.
 | `rcu_lane_ops` per-section fields | S0 at the LSBs; `sec_opnd_pos`, `sec_opnd_width` and `operand_byp` section-major, entry 4*k* + *i* is section *k*'s port *i* (src0-src2, then merge). The S1 stubs send one full-width op a message: `section_en` 1111, `sec_owner` 0 for every section |
 | `lane_rcu_res.result`, `sec_valid`, `sec_pred_out` | the GPR value; the sections the op held; its predicate result on its lead section |
 | `rcu_lane_ops.sec_pred_data` | a predicate read as data (sel's selector), negate applied, with the operands; `sec_pred_bit` is the enable. `sec_pred_bit` and `section_en` are the lead fields: on the wire with valid, a cycle ahead of `operand` |
-| `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
+| `rcu_miu_addr.base_per_lane`, `index_per_lane` | raw register values, per lane (TI-32: an O-30 frame pointer differs on every lane). MIU's AGU applies the window shift (§5.1), the scale and the displacement. A launch-slot memop (`ooe_miu_memop.slot_form`, `arg_slot`; TI-31) has no base register: MIU takes the window from its table of the CTA's launch-block slots |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |
 | `ooe_miu_memop.mem_op`, `space` | 0 load, 1 store; 0 global, 1 shared |

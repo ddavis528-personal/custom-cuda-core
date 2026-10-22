@@ -52,7 +52,7 @@ struct MemAcc {
   bool shared = false, write = false;
   uint64_t addr = 0;
   unsigned bytes = 0;
-  uint32_t val = 0;
+  uint32_t val = 0;   ///< absent on a faulting record, which writes nothing
 };
 
 struct Record {
@@ -79,8 +79,20 @@ struct Record {
 struct Oracle {
   uint64_t code_base = 0;
   unsigned threads = 0, ctaid = 0;
+  unsigned warp_in_cta = 0;   ///< which of its CTA's warps this run is (ccv-sim -warp, TI-29)
   std::vector<uint8_t> code;
   std::vector<std::pair<uint64_t, uint32_t>> init_mem;
+  /// F-RO's .const range, [const_base, const_limit); empty when equal (TI-26).
+  uint64_t const_base = 0, const_limit = 0;
+  /// The launch block, LAUNCH_BASE: ccv-sim's is 0x20000, window 2 (ISA
+  /// v1.9 section 5.2), and its launch slots are at +32 + 8k (O-45).
+  uint64_t launch_block = 0x20000;
+  /// The run's fault, when it ends in one (TI-28): its cause by name, the
+  /// faulting instruction's pc, the faulting lanes and the reported address.
+  /// The faulting instruction is the last record, kind "fault".
+  struct Fault { std::string cause; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
+  bool faults = false;
+  Fault fault;
   std::vector<Record> recs;
   uint32_t final_gpr[kArchGprs][kLanes] = {};
   uint32_t final_pred[kArchPreds] = {};
