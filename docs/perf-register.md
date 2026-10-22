@@ -733,3 +733,9 @@ it.
   (OA's rev 131). If 25 beats 50 by more than 1% on the swap-on sweep, and
   MLC's hit latency keeps the threshold from going that low, the notice is
   worth building.
+- **Measured (OI, TI-21, 2026-10-22):** on the 8-warp swap sweep, threshold
+  25 is 8% slower than 50 under the decided go (the interleave), and 3%
+  faster only under one warp a cycle. Earlier demotion does not pay under
+  the go the design uses, so the notice stays deferred. Re-measure once the
+  drain stops waiting for the demoting load (AR's response TI-21, OI's
+  rev 154), since that changes what a demotion returns.
