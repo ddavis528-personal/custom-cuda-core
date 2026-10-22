@@ -25,14 +25,13 @@
 // its head is the warp's position past this cycle's earlier takes, which
 // decq's output register shows from 0.
 //
-// The block is this module's own flops, from leads (OA's rev 171 (b)): the
-// warp's hold and a restore owning the ports, each its producer's register
-// D a cycle ahead, and the slot's squash at the next edge (the ROB's). A
-// squash blocks its slot for three cycles: the cycle it applies (the model
-// drops the slot's heads at once), and the two after, while decq's output
-// register still shows them (its flush lands an edge late). The block is
-// folded into the take register, held one-hot: a blocked warp's take
-// selects none of its fits.
+// The block comes from leads (OA's rev 171 (b)): the warp's hold and a
+// restore owning the ports, each its producer's register D a cycle ahead,
+// and the slot's squash at the next edge (the ROB's). A blocked warp's fits
+// are registered empty. A squash blocks its slot for two cycles: the cycle
+// it applies (the model drops the slot's heads at once) and the next, while
+// decq still shows them; from the one after, decq's registered flush masks
+// them.
 //
 // Each credit arrives as rename's pool register (OA's rev 171 (a)): the
 // counter less its floors owed (the names'), saturated at 5R, with the go's
@@ -96,6 +95,9 @@ module ooe_go #(
   input  logic [S-1:0]      hold_l_cq00h,
   input  logic              rbusy_l_cq00h,
   input  logic [S-1:0]      sq_l_cq00h,
+  // decq's arrivals at the last edge, per slot (its own flop): the slot's
+  // heads may show from the next cycle.
+  input  logic [S-1:0]      arr_cq01h,
   // The take: per slot, a thermometer of its uops (bit r: its r-th uop is
   // taken), to decq (deq_t) and rename's counters; and its take-enable
   // (deq_sel).
@@ -136,17 +138,18 @@ module ooe_go #(
   // The registered state. The rotation is kept twice (NGD-7): one copy for
   // the take, the outputs' path, one for the rest.
   logic [S*(R+1)*R-1:0] fits_cq02h;      // per slot and take k, a thermometer of the run that fits
-  logic [S*(R+1)-1:0]   tko_cq02h;       // each slot's take this cycle, one-hot, none if it is blocked
+  logic [S*(R+1)-1:0]   tko_cq02h;       // each slot's take this cycle, one-hot
   logic [S-1:0]         sel_q_cq02h;     // the slot had a head
   logic [4*(R+1)-1:0]   he_cq02h;        // per credit, min(R, the allowances in force), one-hot
   (* keep *) logic [S-1:0] prio_cq02h;   // the rotation's first slot, one-hot, for the take
   (* keep *) logic [S-1:0] priod_cq02h;  // and for the rest
   logic                 rbusy_cq01h;     // the restore's lead, registered
-  logic [S*2-1:0]       sqc_cq01h;       // per slot, the cycles its squash still blocks
+  logic [S-1:0]         sq_cq01h;        // per slot, its squash at this edge (its lead, registered)
+  logic                 arr_cq02h;       // decq took arrivals at the last edge
 
   // -- The take ----------------------------------------------------------------
-  // Each warp's run, a thermometer: its fits at its own last take, none if
-  // it is blocked (the one-hot take register holds no bit then).
+  // Each warp's run, a thermometer: its fits at its own last take (a
+  // blocked warp's are empty).
   logic [S*R-1:0] run_t;
   always_comb
     for (int s = 0; s < S; s++)
@@ -372,45 +375,81 @@ module ooe_go #(
     end
 
   // -- The registers -------------------------------------------------------------
-  // A squash blocks its slot for three cycles, counted down; the take
-  // register holds no bit for a slot blocked next cycle.
-  logic [S*2-1:0]     sqc_nx;
+  // A blocked warp's fits are registered empty: its hold, a restore owning
+  // the ports, or its squash, each at the next edge from its lead, and a
+  // squash at this edge too, whose heads decq still shows now (its registered
+  // flush masks them from the next cycle).
   logic [S-1:0]       blk_nx, sel_nx;
   logic [S*(R+1)-1:0] tko_nx;
   always_comb
     for (int s = 0; s < S; s++) begin
-      sqc_nx[s * 2 +: 2] = sq_l_cq00h[s] ? 2'd3 : sqc_cq01h[s * 2 +: 2] != 2'd0 ? sqc_cq01h[s * 2 +: 2] - 2'd1 : 2'd0;
-      blk_nx[s] = hold_l_cq00h[s] | rbusy_l_cq00h | (sqc_nx[s * 2 +: 2] != 2'd0);
+      blk_nx[s] = hold_l_cq00h[s] | rbusy_l_cq00h | sq_l_cq00h[s] | sq_cq01h[s];
       for (int k = 0; k < R + 1; k++)
         tko_nx[s * (R + 1) + k] = (k == 0 || tk_c[((k + R - 1) % R) * S + s]) &&
-                                  (k == R || !tk_c[(k % R) * S + s]) && !blk_nx[s];
+                                  (k == R || !tk_c[(k % R) * S + s]);
       // Any take needs the slot's first head now (heads are contiguous).
       sel_nx[s] = hv_cq01h[s * H];
     end
+  // The leads, written every cycle (the module's allowance): the restore,
+  // each slot's squash, and decq's arrivals (some slot's heads may show from
+  // the next cycle).
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      rbusy_cq01h  <= 1'b0;
-      sqc_cq01h    <= '0;
+      rbusy_cq01h <= 1'b0;
+      sq_cq01h    <= '0;
+      arr_cq02h   <= 1'b0;
     end else begin
-      rbusy_cq01h  <= rbusy_l_cq00h;
-      sqc_cq01h    <= sqc_nx;
+      rbusy_cq01h <= rbusy_l_cq00h;
+      sq_cq01h    <= sq_l_cq00h;
+      arr_cq02h   <= |arr_cq01h;
+    end
+  end
+  // Local clock gating, every enable from this module's flops (CG-5): a
+  // slot's fits and take-enable change only while it has heads, or had: it
+  // had one, or decq took arrivals for some slot; the allowances held, while
+  // any slot has; the take register, while some warp takes or took; the
+  // rotation, unless a restore owns the ports.
+  logic [S-1:0] fits_en;
+  logic         he_en, tko_en, prio_en;
+  always_comb begin
+    for (int s = 0; s < S; s++) fits_en[s] = sel_q_cq02h[s] | arr_cq02h;
+    he_en  = |sel_q_cq02h | arr_cq02h;
+    tko_en = 1'b0;
+    for (int s = 0; s < S; s++) tko_en = tko_en | run_t[s * R] | ~tko_cq02h[s * (R + 1)];
+    prio_en = ~rbusy_cq01h;
+  end
+  for (genvar gs = 0; gs < S; gs++) begin : g_fits
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) begin
+        fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= '0;
+        sel_q_cq02h[gs]                             <= 1'b0;
+      end else if (fits_en[gs]) begin
+        fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~blk_nx[gs]}};
+        sel_q_cq02h[gs]                             <= sel_nx[gs];
+      end
     end
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      fits_cq02h  <= '0;
-      tko_cq02h   <= '0;
-      sel_q_cq02h <= '0;
       for (int c = 0; c < 4; c++) he_cq02h[c * (R + 1) +: R + 1] <= (R + 1)'(1);
+    end else if (he_en) begin
+      he_cq02h <= he_nx;
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      for (int s = 0; s < S; s++) tko_cq02h[s * (R + 1) +: R + 1] <= (R + 1)'(1);
+    end else if (tko_en) begin
+      tko_cq02h <= tko_nx;
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
       prio_cq02h  <= S'(1);
       priod_cq02h <= S'(1);
-    end else begin
-      fits_cq02h  <= fits_nx;
-      tko_cq02h   <= tko_nx;
-      sel_q_cq02h <= sel_nx;
-      he_cq02h    <= he_nx;
-      if (!rbusy_cq01h) prio_cq02h <= {prio_cq02h[S-2:0], prio_cq02h[S-1]};
-      if (!rbusy_cq01h) priod_cq02h <= {priod_cq02h[S-2:0], priod_cq02h[S-1]};
+    end else if (prio_en) begin
+      prio_cq02h  <= {prio_cq02h[S-2:0], prio_cq02h[S-1]};
+      priod_cq02h <= {priod_cq02h[S-2:0], priod_cq02h[S-1]};
     end
   end
 

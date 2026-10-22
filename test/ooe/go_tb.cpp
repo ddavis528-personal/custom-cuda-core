@@ -16,7 +16,8 @@
 //
 // Negative controls (GO_CONTROL=<name>) perturb the driving and must be
 // caught: no-hold (the hold lead never reaches the go), no-rbusy (nor the
-// restore's), no-squash (nor the squash's), no-ret (this cycle's
+// restore's), no-squash (nor the squash's), no-arrival (decq's arrivals,
+// the fits' clock enable, never reach it), no-ret (this cycle's
 // retirements never reach the ROB term) and adm-shift (each head carries
 // the next head's admission bits).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
@@ -107,6 +108,11 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     dut->rbusy_l_cq00h = nx->restore && control != "no-rbusy";
     dut->sq_l_cq00h = control == "no-squash" ? 0 : nx->flush & ((1u << S) - 1);
   }
+  // decq's arrivals (its flop of them): a slot whose heads show from the
+  // next cycle, none showing now.
+  dut->arr_cq01h = 0;
+  if (g && nx && control != "no-arrival")
+    for (unsigned s = 0; s != S; ++s) setBit(dut->arr_cq01h, s, g->adm[s].empty() && !nx->adm[s].empty());
   if (!g) return;
   // Rename's pool registers: each credit less its floors owed, saturated.
   for (unsigned r = 0; r != 4; ++r) {

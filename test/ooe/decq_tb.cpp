@@ -11,13 +11,14 @@
 //
 // The RTL runs one snapshot behind, so that the arrival lead (DEC's channel
 // valid, OA's response OI-58) goes a tick before its uops. A flush is
-// registered and applied an edge late: meanwhile the slot still shows its
-// old uops (rename takes none: its rule), and they hold their credits.
+// registered and applied an edge late: meanwhile the slot shows none (its
+// outputs masked by the registered flush), and its old uops hold their
+// credits.
 //
 // After each edge, every slot's count and its 2R - 1 oldest past rename's
 // take (payloads for the first R, admission bits for the rest) must be the
 // model's, without that edge's arrivals, and the pool's credit count the
-// model's (a slot flushed at that edge still showing its old uops and
+// model's (a slot flushed at that edge showing none, its old uops still
 // holding their credits). The RTL's assertions (rename within the count,
 // arrivals within credit, payload reads through busy entries) run too,
 // under --assert.
@@ -66,7 +67,6 @@ struct Edge {
   uint32_t fl = 0;
 };
 Edge pend;                                // the edge the RTL takes next
-std::vector<std::vector<uint64_t>> held_q; // each slot's uops a flush at the last edge still shows
 bool have_pend = false;
 unsigned long long cycles = 0, arrivals = 0, taken = 0, flushes = 0, heads = 0, full = 0, cores = 0, mismatches = 0;
 
@@ -179,14 +179,12 @@ void drive(const Edge &e, bool lead) {
   // After the edge, what rename sees (OA's response OI-65): each slot's
   // uops past rename's take, not the ones arriving at this edge (they show
   // from the next: the model's take_young 0); a slot flushed at this edge
-  // still shows its old uops until the flush applies.
+  // shows none, its uops held until the flush applies (its outputs masked by
+  // the registered flush), as the model's are gone.
   unsigned total = 0;
-  held_q.assign(S, {});
   for (unsigned s = 0; s != S; ++s) {
-    if (((e.fl >> s) & 1u) && control != "drop-flush") held_q[s] = e.was[s];
     std::vector<uint64_t> want;
-    if (!held_q[s].empty()) want = held_q[s];
-    else for (uint64_t x : e.now[s]) if (x < last) want.push_back(x);
+    for (uint64_t x : e.now[s]) if (x < last) want.push_back(x);
     const unsigned got = getField(dut->cnt_cq02h, s * LC, LC);
     if (got != want.size()) fail("count differs", s, got, unsigned(want.size()));
     for (unsigned k = 0; k != H; ++k) {
@@ -216,7 +214,6 @@ void hook(const Core &c) {
     current = c.serial();
     ++cores;
     was.assign(S, {});
-    held_q.assign(S, {});
     have_pend = false;
     dut->enq_v_cq01h = 0;
     dut->deq_t_cq01h = 0;

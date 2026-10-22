@@ -381,8 +381,13 @@ module ooe_decq #(
   logic [S*H-1:0]        hv_o_cq02h;
   logic [S*R*P-1:0]      hp_o_cq02h;
   logic [S*NA*PA-1:0]    ha_o_cq02h;
-  assign cnt_cq02h      = cnt_o_cq02h;
-  assign head_v_cq02h   = hv_o_cq02h;
+  // A slot whose flush is registered shows nothing: its uops go at the next
+  // edge, and rename (ooe_go) need not block it a second cycle.
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      cnt_cq02h[s * LC +: LC]  = cnt_o_cq02h[s * LC +: LC] & {LC{~fl_q_cq02h[s]}};
+      head_v_cq02h[s * H +: H] = hv_o_cq02h[s * H +: H] & {H{~fl_q_cq02h[s]}};
+    end
   assign head_pay_cq02h = hp_o_cq02h;
   assign head_adm_cq02h = ha_o_cq02h;
   assign used_cq02h     = used_o_cq02h;
