@@ -16,8 +16,9 @@
 //
 // Negative controls (GO_CONTROL=<name>) perturb the driving and must be
 // caught: no-hold (the hold lead never reaches the go), no-rbusy (nor the
-// restore's), no-squash (nor the squash's), no-arrival (decq's arrivals,
-// the fits' clock enable, never reach it), no-ret (this cycle's
+// restore's), no-squash (nor the squash's), no-dq-ev, no-rob-en and
+// no-pool-en (a change lead for the fits' clock enables never reaches it:
+// decq's heads, the ROB room, rename's credits), no-ret (this cycle's
 // retirements never reach the ROB term) and adm-shift (each head carries
 // the next head's admission bits).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
@@ -108,11 +109,25 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     dut->rbusy_l_cq00h = nx->restore && control != "no-rbusy";
     dut->sq_l_cq00h = control == "no-squash" ? 0 : nx->flush & ((1u << S) - 1);
   }
-  // decq's arrivals (its flop of them): a slot whose heads show from the
-  // next cycle, none showing now.
-  dut->arr_cq01h = 0;
-  if (g && nx && control != "no-arrival")
-    for (unsigned s = 0; s != S; ++s) setBit(dut->arr_cq01h, s, g->adm[s].empty() && !nx->adm[s].empty());
+  // The change leads (OA's rev 174), each its producer's register enable:
+  // decq's heads for a slot re-form at the next edge, a slot's ROB room
+  // changes, rename's pool or floor registers change. Here exact, from the
+  // next cycle's log.
+  dut->dq_ev_cq01h = 0;
+  dut->rob_en_cq01h = 0;
+  dut->pool_en_cq01h = 0;
+  if (g && nx) {
+    bool pool = false;
+    for (unsigned r = 0; r != 4; ++r) pool = pool || g->cred[r] != nx->cred[r];
+    for (unsigned r = 0; r != 2; ++r) pool = pool || g->owed[r] != nx->owed[r];
+    for (unsigned s = 0; s != S; ++s) {
+      pool = pool || g->unmet_g[s] != nx->unmet_g[s] || g->unmet_p[s] != nx->unmet_p[s];
+      if (control != "no-dq-ev") setBit(dut->dq_ev_cq01h, s, g->adm[s] != nx->adm[s]);
+      if (control != "no-rob-en")
+        setBit(dut->rob_en_cq01h, s, g->run[s] != nx->run[s] || g->reach[s] != nx->reach[s] || g->ret[s] != nx->ret[s]);
+    }
+    dut->pool_en_cq01h = pool && control != "no-pool-en";
+  }
   if (!g) return;
   // Rename's pool registers: each credit less its floors owed, saturated.
   for (unsigned r = 0; r != 4; ++r) {
