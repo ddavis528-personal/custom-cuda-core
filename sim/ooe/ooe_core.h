@@ -643,7 +643,7 @@ struct Outputs {
 struct Retired {
   uint64_t tid = 0;
   unsigned warp = 0, rob_tag = 0;
-  bool exit = false;
+  bool exit = false;                ///< the warp's final exit (TI-27): it is done
   bool writes_gpr = false;
   unsigned dst = 0, pnew = 0;
   bool writes_pred = false;         ///< a renamed predicate destination

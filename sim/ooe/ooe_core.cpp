@@ -2128,7 +2128,7 @@ void Core::retire() {
       rt.tid = r.u.tid;
       rt.warp = s.warp;
       rt.rob_tag = tagOf(si, s.head);
-      rt.exit = r.u.shape.exit;
+      rt.exit = r.u.shape.exit && r.u.shape.final_exit;   // the warp's last (TI-27)
       rt.writes_gpr = r.alloc_gpr;
       rt.dst = r.u.dst & 15;
       rt.pnew = r.pnew;
