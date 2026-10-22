@@ -268,16 +268,19 @@ void hook(const Core &c) {
   H.push_back(snapCycle(c));
   // H: T - 5 .. T. ooe_rs drives a = T - 4; ooe_wake and ooe_sched t = P = T - 3.
   const Snap &am1 = H[0], &a = H[1], &t = H[2], &tp1 = H[3], &tp2 = H[4], &tp3 = H[5];
-  (void)am1;
-  // -- ooe_rs: cycle a's allocations and rows, as rs_tb drives them.
-  std::vector<unsigned> entry_of;
-  std::vector<int> port_of;
+  // -- ooe_rs: cycle a's allocations and rows, as rs_tb drives them (am1's
+  // allocations are the last edge's grant, which prv_dep names by port).
+  std::vector<unsigned> entry_of, entry_prev;
+  std::vector<int> port_of, port_prev;
   if (!portsOf(a, entry_of, port_of)) { fail("more allocations than ports", 0, 0, 0, 0); H.pop_front(); return; }
+  portsOf(am1, entry_prev, port_prev);
   clearAll(dut->req_cq01h, P);
   clearAll(dut->row_dep_cq01h, P * N);
   clearAll(dut->row_code_cq01h, 2 * P * N);
   clearAll(dut->grp_dep_cq01h, P * P);
   clearAll(dut->grp_code_cq01h, 2 * P * P);
+  clearAll(dut->prv_dep_cq01h, P * P);
+  clearAll(dut->prv_code_cq01h, 2 * P * P);
   clearAll(dut->row_prod_cq01h, P);
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
@@ -291,6 +294,10 @@ void hook(const Core &c) {
         const unsigned q = unsigned(port_of[j]);
         setBit(dut->grp_dep_cq01h, p * P + q, true);
         setField(dut->grp_code_cq01h, (p * P + q) * 2, 2, code);
+      } else if (port_prev[j] >= 0) {
+        const unsigned q = unsigned(port_prev[j]);
+        setBit(dut->prv_dep_cq01h, p * P + q, true);
+        setField(dut->prv_code_cq01h, (p * P + q) * 2, 2, code);
       } else {
         setBit(dut->row_dep_cq01h, p * N + j, true);
         setField(dut->row_code_cq01h, (p * N + j) * 2, 2, code);

@@ -46,6 +46,8 @@ module ooe_trio #(
   input  logic [2*P*N-1:0]  row_code_cq01h,
   input  logic [P*P-1:0]    grp_dep_cq01h,
   input  logic [2*P*P-1:0]  grp_code_cq01h,
+  input  logic [P*P-1:0]    prv_dep_cq01h,
+  input  logic [2*P*P-1:0]  prv_code_cq01h,
   // The registered squash, the completion channel and its hints.
   input  logic [N-1:0]      sqf_cq01h,
   input  logic              sq_l_cq00h,
@@ -104,6 +106,7 @@ module ooe_trio #(
     .req_l_cq00h(req_l_cq00h), .req_cq01h(req_cq01h), .row_prod_cq01h(row_prod_cq01h),
     .row_dep_cq01h(row_dep_cq01h), .row_code_cq01h(row_code_cq01h),
     .grp_dep_cq01h(grp_dep_cq01h), .grp_code_cq01h(grp_code_cq01h),
+    .prv_dep_cq01h(prv_dep_cq01h), .prv_code_cq01h(prv_code_cq01h),
     .sqf_cq01h(sqf_cq01h), .msd_cq01h(msd_cq02h), .cfin_cq01h(fin_cq02h),
     .wtl3_cq00h(flt), .fin_cq00h(fin_cq02h), .gnt_cq00h(grant_cq04h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq00h(cmpl_idx_cq00h), .sq_l_cq00h(sq_l_cq00h),

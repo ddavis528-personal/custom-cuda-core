@@ -2133,8 +2133,12 @@ void Core::retire() {
         oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
       const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
+      // The fallback's report says mlc_miss_seen only once the MLC trigger
+      // itself has fired: a head load outstanding past the fallback alone
+      // is not an MLC miss, and RAU's MLC policy keys on that bit.
       if (stall > lim && !s.stalled_reported) {
-        out.status.push_back({s.warp, false, true, miss, s.retired_since_restore});
+        out.status.push_back({s.warp, false, true, miss && (s.miss_reported || cfg_.inject_fallback_claims_mlc),
+                                 s.retired_since_restore});
         s.stalled_reported = true;
         count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
         oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
@@ -3011,6 +3015,16 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pqn[1] = r.pq[1];
       w.br = a.branch;
       w.ckpt = u.ckpt;
+      w.greads = uint8_t(u.shape.gpr_reads & 7u);
+      w.gmerge = r.merge && r.alloc_gpr && !copy;
+      w.pguse = u.shape.guard || u.shape.pdata;
+      w.cguard = u.shape.guard;
+      w.pmerge = u.pred_we && r.merge;
+      w.cgroup = uint8_t(r.is_mem ? Config::kGrpAddr : u.attr.exec_rcu ? 7u : (u.attr.bypass_group & 7u));
+      w.unit = uint8_t(u.attr.lat_class & 7u);
+      w.pgroup = uint8_t(u.attr.bypass_group & 7u);
+      w.nob = r.is_mem || u.attr.cross_lane;
+      w.atomic = atomic;
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }

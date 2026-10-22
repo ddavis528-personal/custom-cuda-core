@@ -406,6 +406,9 @@ struct Config {
   /// OA's rev 166's control: a destination takes DEC's width (Uop::w, a
   /// test's hint, on no channel) instead of the committed table's.
   bool inject_width_from_dec = false;
+  /// AR's rev 118's control: the fallback's report claims mlc_miss_seen for
+  /// any outstanding head load, before the MLC trigger's threshold.
+  bool inject_fallback_claims_mlc = false;
   bool inject_park_layout_lost = false;
 
   /// Apply "name=value,..." over these defaults; returns an error or "".
@@ -1201,6 +1204,14 @@ public:
       /// load's copy (RCU), else kNoEntry; kNoEntry for a no-op.
       unsigned main = kNoEntry, copy = kNoEntry;
       bool mem = false;
+      /// What dep() reads, for test/ooe/rendep_tb.cpp (ooe_rename, slice
+      /// 2): the GPR sources read (gpr_reads), the merge source on the main
+      /// entry, the guard (or pdata) and the predicate merge, the consumer's
+      /// bypass group (kGrpAddr for a memop, 7 for none: RCU executes it),
+      /// and the producer's lat_class, bypass group and no-bypass bit (a
+      /// memop or a cross-lane op).
+      uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
+      bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
     };
     struct Ret {
       unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;

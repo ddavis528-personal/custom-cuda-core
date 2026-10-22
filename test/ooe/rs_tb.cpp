@@ -42,6 +42,8 @@
 // written, clear from the edge that frees it unless a row written at that
 // edge names its next occupant. Control stale-hcol keeps the reference's
 // flags through a free, and must be caught: the comparison holds clearing.
+// Control drop-prv loses the group ahead's producers (prv_dep), and
+// stale-live names entries ooe_rs keeps as if stale (below).
 //
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
@@ -125,6 +127,7 @@ Snap snapCycle(const Core &c) {
   return y;
 }
 std::vector<Snap> hist;           // the snapshots not yet driven, oldest first, and the one before
+unsigned long long prev = 0;   // cells on the group granted at the last edge (prv_dep)
 unsigned long long cycles = 0, cores = 0, allocs = 0, group = 0, frees = 0, reuse = 0, rows = 0, cells = 0,
                    stale = 0, mismatches = 0;
 
@@ -234,14 +237,17 @@ void hook(const Core &c) {
   // hist: [a - 1, a, a + 1, a + 2]; drive cycle a.
   const Snap &pm = hist[0], &y = hist[1], &n1 = hist[2], &n2 = hist[3];
   ++cycles;
-  std::vector<unsigned> entry_of;
-  std::vector<int> port_of;
+  std::vector<unsigned> entry_of, entry_prev;
+  std::vector<int> port_of, port_prev;
   if (!portsOf(y, entry_of, port_of)) { fail("more allocations than ports", 0, 0, A + 1, A); hist.erase(hist.begin()); return; }
+  portsOf(pm, entry_prev, port_prev);   // the last edge's allocations, by port (the registered grant)
   clearAll(dut->req_cq01h, P);
   clearAll(dut->row_dep_cq01h, P * N);
   clearAll(dut->row_code_cq01h, 2 * P * N);
   clearAll(dut->grp_dep_cq01h, P * P);
   clearAll(dut->grp_code_cq01h, 2 * P * P);
+  clearAll(dut->prv_dep_cq01h, P * P);
+  clearAll(dut->prv_code_cq01h, 2 * P * P);
   clearAll(dut->row_prod_cq01h, P);
   for (unsigned p = 0; p != P; ++p) {
     const unsigned e = entry_of[p];
@@ -258,6 +264,13 @@ void hook(const Core &c) {
         setBit(dut->grp_code_cq01h, (p * P + q) * 2, code & 1u);
         setBit(dut->grp_code_cq01h, (p * P + q) * 2 + 1, (code >> 1) & 1u);
         ++group;
+      } else if (port_prev[j] >= 0) {
+        // Granted at the last edge: rename knew it by that group's port.
+        const unsigned q = unsigned(port_prev[j]);
+        setBit(dut->prv_dep_cq01h, p * P + q, control != "drop-prv");
+        setBit(dut->prv_code_cq01h, (p * P + q) * 2, code & 1u);
+        setBit(dut->prv_code_cq01h, (p * P + q) * 2 + 1, (code >> 1) & 1u);
+        ++prev;
       } else {
         setBit(dut->row_dep_cq01h, p * N + j, true);
         setBit(dut->row_code_cq01h, (p * N + j) * 2, code & 1u);
@@ -267,8 +280,14 @@ void hook(const Core &c) {
     // Rename looks a row's producers up a stage before it writes it, so a
     // row may name an entry freed now; ooe_rs masks it (the model's row
     // never does). Every allocated row names every entry freed now.
+    // Likewise a stale name: rename's lookup ran on ooe_prodmap's names a
+    // stage before, which an entry not valid now, or the group ahead's (its
+    // names not yet rewritten), may still hold. ooe_rs masks all three; the
+    // bench names every one of them in every row. Control stale-live names
+    // every other entry too, which ooe_rs keeps, and must be caught: the
+    // stale bits reach the comparison, so only the mask drops them.
     for (unsigned j = 0; j != N; ++j)
-      if (y.rfree[j] && !y.dep[e * N + j]) {
+      if ((y.rfree[j] || !pm.valid[j] || port_prev[j] >= 0 || control == "stale-live") && !y.dep[e * N + j]) {
         setBit(dut->row_dep_cq01h, p * N + j, true);
         ++stale;
       }

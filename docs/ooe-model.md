@@ -586,11 +586,11 @@ fill is still out (the age order, not the soonest fill). PF-41's variant
 pre-empts it the moment a parked warp is ready and no slot is free, with
 no threshold wait. 48 seeds, against swap-off:
 
-| go | evict at 25 / 50 / 100 | evict, provisional | evict, provisional, pre-empting | swap (knob) |
+| go | evict at 25 / 50 / 100 / 150 / 200 / 300 | evict, provisional | evict, provisional, pre-empting | swap (knob) |
 |---|---|---|---|---|
-| interleave, shares | 0.624 / 0.588 / 0.552 | 0.641 (675 provisional) | 0.627 (28 pre-empted) | 0.646 |
-| one warp | 0.608 / 0.564 / 0.550 | 0.649 | 0.671 | 0.654 |
-| two warps | 0.645 / 0.648 / 0.615 | 0.650 | 0.676 | 0.686 |
+| interleave, shares | 0.624 / 0.588 / 0.603 / 0.646 / 0.625 / 0.684 | 0.641 (675 provisional) | 0.627 (28 pre-empted) | 0.646 |
+| one warp | 0.608 / 0.564 / 0.592 / 0.613 / 0.639 / 0.664 | 0.649 | 0.671 | 0.654 |
+| two warps | 0.645 / 0.648 / 0.628 / 0.600 / 0.644 / 0.702 | 0.650 | 0.676 | 0.686 |
 
 - **Neither arm beats evict.** Under evict a slot frees with no ready warp
   often, so the provisional restore fires (675 times against 57 under
@@ -599,11 +599,26 @@ no threshold wait. 48 seeds, against swap-off:
   and so do the declined demotes. Pre-empting it when a ready warp appears
   recovers 1.4 points but stays behind plain evict. So evict stays the
   default, and the provisional restore stays a knob, off.
-- **Under evict, threshold 100 beats 50**: 0.552 against 0.588 under the
-  decided go, and 0.550 against 0.564 under one warp. Fewer demotes are
-  declined at 100 (25 against 324), since a load that is merely slow has
-  completed before the trigger. That is CCV_DEMOTION_THRESHOLD_MLC's to
-  weigh (AR's, beside its MLC bound).
+- **The MLC threshold, swept (AR's rev 118).** The first sweep had 100
+  beating 50 (0.552 against 0.588), and it was a model bug: the
+  fallback's report (any head stall past CCV_DEMOTION_THRESHOLD, 50) set
+  mlc_miss_seen whenever the head was an outstanding load, and RAU's MLC
+  policy demotes on that bit, so the MLC threshold never governed above
+  the fallback's. The report now carries the bit only once the MLC
+  trigger itself has fired (a directed test, `testMlcTrigger`, with its
+  control fallback-claims-mlc). Fixed, the decided go reads 0.588 at 50
+  (unchanged: there the two triggers coincide), 0.603 at 100 and 0.646,
+  0.625 and 0.684 at 150, 200 and 300. On this sweep, 50 is best, by 2.5%
+  against 100. The declined demotes fall at 100 and above (21 against
+  324): those were the duplicate reports at 50, not slow loads spared.
+- **S1 under evict (skeleton, CCV_RAU_DEMOTE=mlc), the same fix:** at 50,
+  gather and vadd4 demote on a load that would land soon, and take 388
+  and 319 cycles; at 100 and above neither demotes, and they take 314
+  and 227. stall, swap and vaddslow demote once at every threshold, with
+  the same cycles. provswap (its check-kernel run sets both thresholds to
+  150) takes 1,947 cycles at 50 and 2,110 at 100. The other 17 kernels
+  never demote. So the sweep, whose misses are long, prefers 50, and the
+  S1 kernels, whose misses are short, prefer 100: AR's to weigh.
 - TI's provswap kernel runs the skeleton's RAU, which has the provisional
   restore but not the pre-empting variant, so the variant is measured
   here only.

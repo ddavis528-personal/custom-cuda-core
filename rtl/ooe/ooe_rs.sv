@@ -82,6 +82,8 @@ module ooe_rs #(
   input  logic [2*P*N-1:0] row_code_cq01h, // and each one's line select
   input  logic [P*P-1:0]   grp_dep_cq01h,  // port p's row: port q's entry, granted this cycle
   input  logic [2*P*P-1:0] grp_code_cq01h, // and its line select
+  input  logic [P*P-1:0]   prv_dep_cq01h,  // port p's row: port q's entry, granted at the last edge
+  input  logic [2*P*P-1:0] prv_code_cq01h, // and its line select
   input  logic [N-1:0]     sqf_cq01h,    // entries the registered squash frees this cycle
   input  logic [N-1:0]     msd_cq01h,    // ooe_wake's held misses (FMISS), as confirmation reads them now
   input  logic [N-1:0]     cfin_cq01h,   // ooe_wake's final bits, likewise
@@ -174,23 +176,35 @@ module ooe_rs #(
 
   // Each port's row as it is written: its bits for entries already in the
   // RS, and for each port it names, that port's grant, one-hot over the
-  // entries, with the line select it gave. Computed once per port, then
-  // written into whichever entry the port takes.
+  // entries, with the line select it gave; likewise each port of the group
+  // ahead it names (prv_dep), through the last edge's grant. An entry is in
+  // one port's grant at most, so each cell takes its select through a
+  // one-hot AND-OR, and a row's own code only where kept (keep: valid and
+  // not the group ahead's, so neither grant's entry). Computed once per
+  // port, then written into whichever entry the port takes.
   function automatic logic [3*P*N-1:0] rows_of(input logic [P*N-1:0] g, input logic [P*N-1:0] rd,
                                                input logic [2*P*N-1:0] rc, input logic [P*P-1:0] gd,
-                                               input logic [2*P*P-1:0] gc);
+                                               input logic [2*P*P-1:0] gc, input logic [P*N-1:0] lg,
+                                               input logic [P*P-1:0] vd, input logic [2*P*P-1:0] vc,
+                                               input logic [N-1:0] keep);
     logic [P*N-1:0]   d;
     logic [2*P*N-1:0] cd;
-    d  = rd;
-    cd = rc;
+    d = rd;
+    for (int p = 0; p < P; p++)
+      for (int j = 0; j < N; j++)
+        cd[(p * N + j) * 2 +: 2] = rc[(p * N + j) * 2 +: 2] & {2{keep[j]}};
     for (int p = 0; p < P; p++)
       for (int q = 0; q < P; q++)
-        if (q != p)
-          for (int j = 0; j < N; j++)
-            if (gd[p * P + q] && g[q * N + j]) begin
-              d[p * N + j]             = 1'b1;
-              cd[(p * N + j) * 2 +: 2] = gc[(p * P + q) * 2 +: 2];
-            end
+        for (int j = 0; j < N; j++) begin
+          if (q != p && gd[p * P + q] && g[q * N + j]) begin
+            d[p * N + j]             = 1'b1;
+            cd[(p * N + j) * 2 +: 2] = cd[(p * N + j) * 2 +: 2] | gc[(p * P + q) * 2 +: 2];
+          end
+          if (vd[p * P + q] && lg[q * N + j]) begin
+            d[p * N + j]             = 1'b1;
+            cd[(p * N + j) * 2 +: 2] = cd[(p * N + j) * 2 +: 2] | vc[(p * P + q) * 2 +: 2];
+          end
+        end
     rows_of = {cd, d};
   endfunction
 
@@ -236,10 +250,30 @@ module ooe_rs #(
     if (rst_r01h) iss_cq02h <= '0;
     else          iss_cq02h <= (iss_cq02h & ~rep & ~free_cq01h) | gnt_cq00h;
   end
+  // The last edge's grant, one-hot, registered beside the grant itself
+  // (lg_cq02h and its union lga_cq02h): the group ahead's entries, which
+  // prv_dep names by port (rename knew them only by port), and whose old
+  // occupants' names a row may still hold (ooe_prodmap writes an entry's
+  // names an edge after its grant). Kept apart from gnt_idx_cq03h, which
+  // leaves as an output (NGD-7), and needing no decode. Clocked as the
+  // grant is, with any request and the edge after to clear.
+  logic [P*N-1:0] lg_cq02h;
+  (* keep *) logic [P-1:0] lgv_cq02h;    // its ports: gnt_v_cq03h's copy for this module (NGD-7)
+  logic [N-1:0]   lga_cq02h, ga_cq02h;
+  always_comb begin
+    ga_cq02h = '0;
+    for (int q = 0; q < P; q++) ga_cq02h = ga_cq02h | g_cq02h[q * N +: N];
+  end
+  // A row bit counts only on an entry valid now, not freed now and not the
+  // group ahead's: rename's lookup ran a stage earlier, on names that may
+  // since have left their entries (ooe_rename, slice 2).
+  logic [N-1:0] rmask;
+  assign rmask = valid_cq02h & ~free_cq01h & ~lga_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h, req_cq01h);
-    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{~free_cq01h}}, row_code_cq01h, grp_dep_cq01h,
-                                  grp_code_cq01h);
+    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask}}, row_code_cq01h, grp_dep_cq01h,
+                                  grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
+                                  valid_cq02h & ~lga_cq02h);
     for (int p = 0; p < P; p++) begin
       gv_cq02h[p]           = |g_cq02h[p * N +: N];
       gi_cq02h[p * W +: W] = '0;
@@ -268,6 +302,19 @@ module ooe_rs #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (gnt_en) gnt_idx_cq03h <= gi_cq02h;   // payload, read through gnt_v
+  end
+  logic lg_en;
+  assign lg_en = gnt_en || gnt_v_en;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      lg_cq02h  <= '0;
+      lgv_cq02h <= '0;
+      lga_cq02h <= '0;
+    end else if (lg_en) begin
+      lg_cq02h  <= g_cq02h;
+      lgv_cq02h <= gv_cq02h;
+      lga_cq02h <= ga_cq02h;
+    end
   end
   assign valid_out_cq02h = valid_o_cq02h;
 
@@ -304,6 +351,7 @@ module ooe_rs #(
   // until the entry is freed, unless a row written at that same edge names
   // its next occupant; a set bit in a class's row is always flagged there.
   logic [N-1:0]     valid_nx, prod_nx, emp_nx;
+  logic             emp_g;
   logic [P-1:0]     emp_new;
   logic [N*N-1:0]   dep_nx;
   logic [2*N*N-1:0] code_nx;
@@ -341,12 +389,15 @@ module ooe_rs #(
     // row naming a port of its group names a granted entry: every port that
     // asks is granted), then steered with the row.
     for (int p = 0; p < P; p++)
-      emp_new[p] = (row_dep_cq01h[p * N +: N] & ~free_cq01h) == '0 &&
-                   (grp_dep_cq01h[p * P +: P] & req_cq01h & ~(P'(1) << p)) == '0;
+      emp_new[p] = (row_dep_cq01h[p * N +: N] & rmask) == '0 &&
+                   (grp_dep_cq01h[p * P +: P] & req_cq01h & ~(P'(1) << p)) == '0 &&
+                   (prv_dep_cq01h[p * P +: P] & lgv_cq02h) == '0;
     for (int i = 0; i < N; i++) begin
-      emp_nx[i] = (dep_cq02h[i * N +: N] & ~free_cq01h) == '0;
-      for (int p = 0; p < P; p++)
-        if (g_cq02h[p * N + i]) emp_nx[i] = emp_new[p];
+      // An entry is granted to one port at most: its new row's flag through
+      // a one-hot select, not an override in port order (NGD-7: dep).
+      emp_g = 1'b0;
+      for (int p = 0; p < P; p++) emp_g = emp_g | (g_cq02h[p * N + i] & emp_new[p]);
+      emp_nx[i] = ga_cq02h[i] ? emp_g : (dep_cq02h[i * N +: N] & ~free_cq01h) == '0;
     end
     hr_nx = (hr_cq02h & ~free_cq01h) | named_r;
     hm_nx = (hm_cq02h & ~free_cq01h) | named_m;

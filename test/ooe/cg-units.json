@@ -203,6 +203,26 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_prodmap"
       }
+    },
+    {
+      "name": "ooe_rendep",
+      "module": "ooe_rendep",
+      "files": [
+        "rtl/ooe/ooe_rendep.sv"
+      ],
+      "params": {
+        "N": 45,
+        "A": 4,
+        "NG": 768,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rendep {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_dep"
+      }
     }
   ]
 }

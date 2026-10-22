@@ -39,7 +39,10 @@
 // name after every edge, that the compare finds exactly the model's
 // producers.
 //
-// Reset line: the names are payload behind the RS valid bits.
+// Each entry also keeps its occupant's wake-line codes by consumer group
+// (ooe_rendep's table, given per uop), for ooe_rendep's lookup.
+//
+// Reset line: the names and codes are payload behind the RS valid bits.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -50,6 +53,8 @@ module ooe_prodmap #(
   parameter int A  = 4,                  // allocation ports per class and uops a group (CCV_ISSUE_WIDTH)
   parameter int NG = 768,                // GPR names (CCV_P_PHYS_REGS rows by 4 positions)
   parameter int NP = 48,                 // predicate names (CCV_P_PRED_REGS)
+  parameter int G  = 8,                  // bypass groups (CCV_P_BYP_GROUPS)
+  localparam int CW = 2 * G,             // a producer's codes, 2 bits a consumer group
   localparam int W  = $clog2(N),
   localparam int P  = 2 * A,             // ports: RCU's 0..A-1, then MIU's
   localparam int LP = $clog2(P),
@@ -68,6 +73,7 @@ module ooe_prodmap #(
   input  logic [A*LP-1:0]   pm_cq01h,    // its main entry's port
   input  logic [A-1:0]      cv_cq01h,    // it has a copy (a masked load), on an RCU port
   input  logic [A*LP-1:0]   pc_cq01h,    // the copy's port
+  input  logic [A*CW-1:0]   cvc_cq01h,   // its main entry's codes, by consumer group (a copy's are late)
   // ooe_rs's registered grant: the entries those ports took at the edge.
   input  logic [P-1:0]      gnt_v_cq02h,
   input  logic [P*W-1:0]    gnt_idx_cq02h,
@@ -75,7 +81,8 @@ module ooe_prodmap #(
   output logic [N*LG-1:0]   egn_cq03h,   // its name
   output logic [N-1:0]      ec_cq03h,    // entry e is a masked load's copy
   output logic [N-1:0]      ep_cq03h,    // and a predicate
-  output logic [N*LQ-1:0]   epn_cq03h    // its name
+  output logic [N*LQ-1:0]   epn_cq03h,   // its name
+  output logic [N*CW-1:0]   ecv_cq03h    // its occupant's codes, by consumer group
 );
 
   logic rst_r01h;
@@ -93,6 +100,7 @@ module ooe_prodmap #(
   logic [A*LG-1:0] gname_cq02h;
   logic [A*LQ-1:0] pname_cq02h;
   logic [A*LP-1:0] pm_cq02h, pc_cq02h;
+  logic [A*CW-1:0] cvc_cq02h;
   // Leads: grp_l, rename's Rename 2 valid flopped, is set when a group is
   // in Rename 3 now; grp_q, a cycle later, when its writes are.
   logic grp_l_cq01h, grp_q_cq02h;
@@ -120,6 +128,7 @@ module ooe_prodmap #(
       pname_cq02h <= pname_cq01h;
       pm_cq02h    <= pm_cq01h;
       pc_cq02h    <= pc_cq01h;
+      cvc_cq02h   <= cvc_cq01h;
     end
   end
 
@@ -144,11 +153,16 @@ module ooe_prodmap #(
 
   // -- Each RS entry's names, a gate a class ------------------------------------
   // An entry takes the names of the uop granted it: a main entry both, a
-  // copy the GPR name alone (a masked load's predicate producer is its main).
+  // copy the GPR name alone (a masked load's predicate producer is its
+  // main); and its codes, the uop's for a main entry, the late line for a
+  // copy (a copy has no bypass). The codes are the entry's record with its
+  // names, written when it is, behind its class's gate.
   logic [N-1:0]    eg_nx, ec_nx, ep_nx;
   logic [N*LG-1:0] egn_nx;
   logic [N*LQ-1:0] epn_nx;
+  logic [N*CW-1:0] ecv_nx;
   always_comb begin
+    ecv_nx = ecv_cq03h;
     eg_nx  = eg_cq03h;
     ec_nx  = ec_cq03h;
     ep_nx  = ep_cq03h;
@@ -163,6 +177,7 @@ module ooe_prodmap #(
             egn_nx[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
             ep_nx[e]               = pwe_cq02h[u];
             epn_nx[e * LQ +: LQ]   = pname_cq02h[u * LQ +: LQ];
+            ecv_nx[e * CW +: CW]   = cvc_cq02h[u * CW +: CW];
           end
           if (cv_cq02h[u] && ec_cq02h[u * W +: W] == W'(e)) begin
             eg_nx[e]               = gwe_cq02h[u];
@@ -170,6 +185,7 @@ module ooe_prodmap #(
             egn_nx[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
             ep_nx[e]               = 1'b0;
             epn_nx[e * LQ +: LQ]   = '0;
+            ecv_nx[e * CW +: CW]   = '1;
           end
         end
       end
@@ -193,6 +209,7 @@ module ooe_prodmap #(
       ep_cq03h[0 +: NR]        <= ep_nx[0 +: NR];
       egn_cq03h[0 +: NR * LG]  <= egn_nx[0 +: NR * LG];
       epn_cq03h[0 +: NR * LQ]  <= epn_nx[0 +: NR * LQ];
+      ecv_cq03h[0 +: NR * CW]  <= ecv_nx[0 +: NR * CW];
     end
   end
   always_ff @(posedge ooe_core_clk) begin
@@ -202,6 +219,7 @@ module ooe_prodmap #(
       ep_cq03h[NR +: N - NR]        <= ep_nx[NR +: N - NR];
       egn_cq03h[NR * LG +: (N - NR) * LG] <= egn_nx[NR * LG +: (N - NR) * LG];
       epn_cq03h[NR * LQ +: (N - NR) * LQ] <= epn_nx[NR * LQ +: (N - NR) * LQ];
+      ecv_cq03h[NR * CW +: (N - NR) * CW] <= ecv_nx[NR * CW +: (N - NR) * CW];
     end
   end
 

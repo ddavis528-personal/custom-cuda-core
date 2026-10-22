@@ -586,15 +586,103 @@ Built (`rtl/ooe/`):
      no-lead caught. `check-cg`: 917 flops, 914 in 3 gates, worst enable
      4.0 NGD, lowest DCGE 85%. Its port budgets wait on OA (OI-66):
      gnt_idx reaches a flop 19.3 NGD after it arrives.
-  2. **Rename 2 and 3**: the compares for each uop's sources (three GPR,
-     the merge source, the guard and the old predicate destination, plus
-     predicate logic's two), the in-group override (an older port of the
-     same group writing the source), the previous group's producers from
-     the registered grant, and each cell's wake-line code from a per-entry
-     register of its code per consumer group. Out to ooe_rs as row_dep,
-     row_code, grp_dep, grp_code and row_prod from rename's stage register,
-     under ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by
-     10).
+  2. **Rename 2 and 3** (`ooe_rendep`; built 2026-10-22): the
+     compares for each uop's sources (three GPR, the merge source, the
+     guard and the old predicate destination, plus predicate logic's two),
+     the in-group override, the earlier groups' producers, and each cell's
+     wake-line code. Out to ooe_rs from rename's stage register, under
+     ooe_rs's budgets (req by 6, grp_dep by 9, the rows and codes by 10).
+
+     *Which groups a source can name.* With G in Rename 2 at cycle t, the
+     group ahead (G-1) is in Rename 3 and allocates at this edge, and G-2
+     allocated at the last one. ooe_prodmap holds entries allocated two
+     edges ago or more (its write is a cycle after Rename 3). So a source's
+     newest producer is, in priority: an older uop of G itself (the
+     in-group override: the RAT read through the pending group gives the
+     younger uop the older one's new name), then G-1's, then G-2's, then
+     ooe_prodmap's. Names are unique while allocated, so at most one of
+     these holds a live producer, and a hit in an older class beside a newer
+     one is stale. Only the port classes keep the order (an in-group
+     producer hides G-1's, which `prv_dep` would otherwise carry); an entry
+     hit, G-2's or ooe_prodmap's, beside a newer one names an entry that is
+     invalid, freed at this edge or re-occupied at the last, and ooe_rs's
+     row mask drops each, so the entry classes are left unordered and their
+     compares stay off each other's paths.
+
+     *Where each resolves.* ooe_prodmap's hits and G-2's resolve in Rename
+     2: G-2's entries are ooe_rs's registered grant at t, and the same grant
+     masks ooe_prodmap's stale names for those entries. G-1's entries are
+     known only from the grant at t + 1, when G is in Rename 3; mapping them
+     in rename would put ooe_rs's grant on a path from rename's input to its
+     output (no feedthrough). So rename sends G-1's matches as port-to-port
+     bits, `prv_dep` and `prv_code` (port p's uop depends on the last
+     group's port q), beside `grp_dep` (this group's port q), and ooe_rs
+     maps them through its own registered grant, as it maps `grp_dep`
+     through this edge's. ooe_rs also masks a row with its own valid bits
+     and last edge's allocations, which drops a hit on an entry freed or
+     re-allocated since Rename 2. Proposed budgets: `prv_dep` by 9 and
+     `prv_code` by 10, as `grp_dep` and `grp_code` (OA to confirm).
+
+     *Ports.* A group's ports are packed per class in allocation order,
+     each uop's main entry then a masked load's copy on the RCU port after
+     it, as ooe_rs and ooe_prodmap number them. The group is fixed when it
+     leaves the decode queue, so Rename 2 knows each uop's ports and the
+     stage register holds the rows by port.
+
+     *Codes.* A cell's code is the producer's wake line for the consumer's
+     bypass group: late (3) for a predicate source, for a consumer RCU
+     executes, and for a producer with no bypass (a memop, a copy, a
+     cross-lane op, a unit with no fastest point, or a pair the bypass
+     table lacks); otherwise the index of the pair's penalty among the
+     sorted penalties, an elaboration table from the model's settings.
+     Each RS entry keeps its occupant's code per consumer group (2 bits by
+     the groups) in ooe_prodmap, the entry's record with its names, written
+     when they are behind its class's gates (each uop's codes come in with
+     its names, `cvc`); G-1's and G-2's ride with their ports. A register
+     of its own here, clocked whenever a group allocated, changed on 39%
+     of its enabled cycles in medium and 60% in high (an occupant's codes
+     often equal the last one's), under CG-3's 75%. Two sources on one producer take the later line
+     (the larger code), as the model's dep() keeps the later wake. A code
+     is payload, read only through its bit (ooe_rs's code register keeps
+     none without one), so it leaves unmasked.
+
+     *Not in this slice.* Atomics (AR-21: three entries and two temporaries
+     per uop) reach no RTL bench yet (`main()`-only tests), so the module
+     asserts none arrives; they follow with the ROB. A Rename-3 hold (the
+     go's skid) is slice 4's: this slice assumes the stage register's group
+     allocates at the next edge, which the bench drives.
+
+     *Result.* `test/ooe/rendep_tb.cpp` drives `ooe_rendep` beside the
+     `ooe_prodmap` it reads (`test/ooe/ooe_rendep_tb.sv`) from the model's
+     renames, each module at its own stage, and checks every port's row in
+     the stage register against the model's dependency matrix: 25 seeds and
+     the directed tests, 251 cores, 100,454 rows, 68,984 cells (4,276 in
+     the group, 10,065 to the group ahead by `prv_dep`), none differ; the
+     20,804 row bits the model lacks all fall where ooe_rs masks them.
+     Controls no-map, late-code and no-copy-src caught; `run-rtl.sh` also
+     holds the bypass table's default to `rendep-params.py`. First built,
+     it was 26.4 NGD flop to flop, its port inputs 28.4 in all: each port's
+     record was written through the computed port (a priority chain behind
+     the prefix count), G-2's codes overrode an entry's in port order, the
+     entry hits waited on the newer classes' compares, and each code was
+     masked by its hit. One-hot selects for the first two, the entry
+     classes unordered and the codes unmasked give 19.3 flop to flop, every
+     input at most 19.3 after its 2.0 arrival (`ooe_rendep.ngd.json`, by
+     OI: every input by 2.0, proposed to OA). `check-cg`: 1,844 flops,
+     1,840 in 2 gates, worst enable 1.7 NGD; ooe_prodmap with the codes,
+     1,746 flops in 3 gates, 18.8 NGD. ooe_rs takes `prv_dep` and
+     `prv_code` (mapped through its registered grant) and masks a row with
+     its valid bits, its frees and its last grant. The last grant is
+     registered one-hot beside the grant (no decode, and apart from the
+     `gnt_*` outputs, NGD-7), and each new row's cells, codes and empty
+     flag go by one-hot select, an entry being in one port's grant at most:
+     the override in port order the `prv` term doubled had put ooe_rs at
+     26.6 NGD. It is 18.1 flop to flop again, `prv_dep` and `prv_code`
+     reaching a flop 15.1 after an arrival of 9 (proposed to OA: they leave
+     rename's stage flops as `grp_dep` does). rs_tb drives both, with
+     controls drop-prv (the group ahead's producers lost) and stale-live
+     (stale bits on entries ooe_rs keeps), both caught, and the trio
+     drives them assembled.
   3. **Rename's credits** (`ooe_rencred`, an inner helper: the counters'
      next value; the flops are ooe_rename's): RS room per class, the free
      GPR and predicate names, each slot's ROB room. A counter falls by the
