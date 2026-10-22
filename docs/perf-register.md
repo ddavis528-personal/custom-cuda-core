@@ -795,3 +795,25 @@ it.
   too 0.627 (675 provisional restores, 28 pre-empted). Neither wins: a
   provisional warp is still blocked on its fill, so evict demotes it again.
   Both stay knobs, default off.
+
+### PF-42 Store-to-load forwarding within a warp
+
+- **Now:** MIU holds a load while any older store or atomic of its warp that
+  overlaps one of its lines has not yet written DCU, committed or not, and
+  forwards nothing (AR's response TI-27 (d)). It is exact with no
+  disambiguation, because a warp's memops issue in program order (OI-15).
+- **Alternative:** forward an older store's bytes from the store buffer to a
+  younger load of the same warp that they fully cover. Narrow the hold to
+  byte overlap, so a load that only shares a line with the store does not wait.
+- **What it buys:** a load behind its own warp's store skips the store's
+  retirement and the write into DCU. The common case is a `.local` fill after
+  its spill, which 16 GPRs make frequent, and a spin-wait that reads a flag
+  its own warp just wrote.
+- **Cost:** a byte-mask compare of each load's lanes against the warp's
+  store-buffer entries, a data mux from the store buffer onto the load's
+  return path, and a second source for `ccv_miu_rcu_data`'s fixed-latency
+  slot.
+- **Signal:** cycles loads spend held behind an older store, per kernel, in
+  OI's environment, and the spill and fill count from the compiler's
+  register-pressure kernels. Worth building if the held cycles are over 2% of
+  any kernel's cycles.
