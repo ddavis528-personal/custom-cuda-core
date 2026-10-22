@@ -79,13 +79,7 @@
    "date": "2026-10-20",
    "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
   },
-  "lane_s_cq02h": {
-   "required": 16.7,
-   "by": "OA",
-   "date": "2026-10-20",
-   "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
-  },
-  "lane_h_cq02h": {
+  "lane_c_cq02h": {
    "required": 16.7,
    "by": "OA",
    "date": "2026-10-20",

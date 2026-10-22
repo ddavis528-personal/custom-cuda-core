@@ -71,9 +71,6 @@ module ooe_go #(
   parameter int LB = 6,                  // a ROB run's width
   parameter int LT = 3,                  // a cycle's retirements' width
   localparam int H  = 2 * R - 1,         // decq's heads a slot
-  localparam int LS = $clog2(S),
-  localparam int LK = $clog2(R + 1),     // a take count
-  localparam int LH = $clog2(R),         // a head position within a take
   localparam int PM = 4 * R,             // a pool's thermometer, saturated
   localparam int XM = PM + R,            // a credit less its floors owed, saturated
   localparam int LX = $clog2(XM + 1)
@@ -99,13 +96,15 @@ module ooe_go #(
   input  logic [S-1:0]      hold_l_cq00h,
   input  logic              rbusy_l_cq00h,
   input  logic [S-1:0]      sq_l_cq00h,
-  // The take: per slot, to decq (deq_n) and its take-enable (deq_sel).
-  output logic [S*LK-1:0]   take_cq02h,
+  // The take: per slot, a thermometer of its uops (bit r: its r-th uop is
+  // taken), to decq (deq_t) and rename's counters; and its take-enable
+  // (deq_sel).
+  output logic [S*R-1:0]    take_cq02h,
   output logic [S-1:0]      sel_cq02h,
-  // Per lane: a uop, its slot and its head.
+  // Per lane: a uop, and which candidate it is, one-hot (bit r * S + s:
+  // slot s's head r).
   output logic [R-1:0]      lane_v_cq02h,
-  output logic [R*LS-1:0]   lane_s_cq02h,
-  output logic [R*LH-1:0]   lane_h_cq02h
+  output logic [R*R*S-1:0]  lane_c_cq02h
 );
   // Two thermometers' sum, saturated at R (bit v - 1: the sum is v or more).
   function automatic logic [R-1:0] tadd(input logic [R-1:0] a, input logic [R-1:0] b);
@@ -116,6 +115,14 @@ module ooe_go #(
       tadd[v - 1] = 1'b0;
       for (int j = 0; j < v + 1; j++) tadd[v - 1] = tadd[v - 1] | (x[j] & y[v - j]);
     end
+  endfunction
+  // S thermometers' sum, saturated at R, added pairwise in log2(S) levels.
+  function automatic logic [R-1:0] tsum(input logic [S*R-1:0] x);
+    logic [S*R-1:0] y;
+    y = x;
+    for (int w = 1; w < S; w = w * 2)
+      for (int i = 0; i + w < S; i = i + 2 * w) y[i * R +: R] = tadd(y[i * R +: R], y[(i + w) * R +: R]);
+    tsum = y[0 +: R];
   endfunction
 
   logic rst_r01h;
@@ -164,6 +171,7 @@ module ooe_go #(
   logic [R*S*R-1:0] rk;                  // per candidate, its rank
   logic [R*S-1:0]   tk_c;
   logic [S*R-1:0]   tq;                  // each warp's term
+  logic [R-1:0]     ot;                  // the other warps' terms summed
   always_comb
     for (int r = 0; r < R; r++)
       for (int s = 0; s < S; s++) begin
@@ -172,32 +180,26 @@ module ooe_go #(
           for (int v = 0; v < R; v++)
             if (v < r)       tq[q * R + v] = run_t[q * R + v];
             else if (v == r) tq[q * R + v] = run_t[q * R + v] & bef[s * S + q];
-        rk[(r * S + s) * R +: R] = tadd(tadd(tq[0 +: R], tq[R +: R]), tadd(tq[2 * R +: R], tq[3 * R +: R]));
-        tk_c[r * S + s] = run_t[s * R + r] & ~rk[(r * S + s) * R + R - 1];
+        rk[(r * S + s) * R +: R] = tsum(tq);
+        // Taken: the warp has its r-th uop, so its own term is r, and the
+        // others' sum below R - r (the closed form, for the take's depth).
+        for (int q = 0; q < S; q++) if (q == s) tq[q * R +: R] = '0;
+        ot = tsum(tq);
+        tk_c[r * S + s] = run_t[s * R + r] & (r == 0 || !ot[(R - 1 - r) % R]);
       end
-  // Per slot its take, a thermometer counted; per lane its uop.
+  // Per slot its take; per lane its uop: lane l is taken while the runs sum
+  // past l, and its uop is the candidate whose rank is l.
   logic [R:0] rq;
   always_comb begin
-    take_cq02h   = '0;
-    lane_v_cq02h = '0;
-    lane_s_cq02h = '0;
-    lane_h_cq02h = '0;
-    // A warp's takes are a thermometer: its count is where it ends.
+    lane_c_cq02h = '0;
     for (int s = 0; s < S; s++)
-      for (int r = 0; r < R; r++)
-        if (tk_c[r * S + s] && (r == R - 1 || !tk_c[((r + 1) % R) * S + s])) take_cq02h[s * LK +: LK] =
-            take_cq02h[s * LK +: LK] | LK'(r + 1);
-    // Lane l is taken while the runs sum past l; its uop is the candidate
-    // whose rank is l.
-    lane_v_cq02h = tadd(tadd(run_t[0 +: R], run_t[R +: R]), tadd(run_t[2 * R +: R], run_t[3 * R +: R]));
+      for (int r = 0; r < R; r++) take_cq02h[s * R + r] = tk_c[r * S + s];
+    lane_v_cq02h = tsum(run_t);
     for (int r = 0; r < R; r++)
       for (int s = 0; s < S; s++) begin
         rq = {rk[(r * S + s) * R +: R], 1'b1};
         for (int l = 0; l < R; l++)
-          if (run_t[s * R + r] && rq[l] && !rq[l + 1]) begin
-            lane_s_cq02h[l * LS +: LS] = lane_s_cq02h[l * LS +: LS] | LS'(s);
-            lane_h_cq02h[l * LH +: LH] = lane_h_cq02h[l * LH +: LH] | LH'(r);
-          end
+          lane_c_cq02h[(l * R + r) * S + s] = run_t[s * R + r] & rq[l] & ~rq[l + 1];
       end
   end
   // decq's take-enable: the warp had a head, a register (a superset of its
@@ -279,49 +281,51 @@ module ooe_go #(
                 table_of[((((n - 1) * 2 + f) * (R + 1) + w) * R + v - 1) * (PM + 1) + p] = 1'b1;
   endfunction
   localparam logic [NT*R*(PM+1)-1:0] TBL = table_of();
-  logic [S*4*R*(PM+1)-1:0] at;           // per slot, credit and v, the pools that give v or more
-  logic                    ts;
+  // Per credit, the pool picks first (tp[c][n][f][w][v]: at this pool, case
+  // (n, f, w) gives v or more), then the warps' number, the same for all
+  // (tw[c][f][w][v]); each warp's role and floor pick last.
+  localparam int NF = 2 * (R + 1);       // a warp's cases: role, floor
+  logic [4*S*NF*R-1:0] tp;
+  logic [4*NF*R-1:0]   tw;
   always_comb
-    for (int s = 0; s < S; s++)
-      for (int c = 0; c < 4; c++) begin
-        for (int v = 1; v < R + 1; v++) at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] = '0;
-        for (int n = 1; n < S + 1; n++)
-          for (int f = 0; f < 2; f++)
-            for (int w = 0; w < R + 1; w++) begin
-              ts = nwh[n] & (first_w[s] == (f != 0)) & ue[(s * 4 + c) * (R + 1) + w];
-              for (int v = 1; v < R + 1; v++)
-                at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] = at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] |
-                    ({(PM + 1){ts}} & TBL[((((n - 1) * 2 + f) * (R + 1) + w) * R + v - 1) * (PM + 1) +: PM + 1]);
-            end
-      end
+    for (int c = 0; c < 4; c++) begin
+      for (int t = 0; t < NT; t++)
+        for (int v = 1; v < R + 1; v++)
+          tp[(c * NT + t) * R + v - 1] = |(pe[c * (PM + 1) +: PM + 1] & TBL[(t * R + v - 1) * (PM + 1) +: PM + 1]);
+      for (int t = 0; t < NF; t++)
+        for (int v = 1; v < R + 1; v++) begin
+          tw[(c * NF + t) * R + v - 1] = 1'b0;
+          for (int n = 1; n < S + 1; n++)
+            tw[(c * NF + t) * R + v - 1] = tw[(c * NF + t) * R + v - 1] | (nwh[n] & tp[(c * NT + (n - 1) * NF + t) * R + v - 1]);
+        end
+    end
   logic [S*4*R-1:0] sg;
   always_comb
     for (int s = 0; s < S; s++)
       for (int c = 0; c < 4; c++)
-        for (int v = 1; v < R + 1; v++)
-          sg[(s * 4 + c) * R + v - 1] = |(at[((s * 4 + c) * R + v - 1) * (PM + 1) +: PM + 1] & pe[c * (PM + 1) +: PM + 1]) &
-                                        with_w[s] & ~rbusy_cq01h;
+        for (int v = 1; v < R + 1; v++) begin
+          sg[(s * 4 + c) * R + v - 1] = 1'b0;
+          for (int f = 0; f < 2; f++)
+            for (int w = 0; w < R + 1; w++)
+              sg[(s * 4 + c) * R + v - 1] = sg[(s * 4 + c) * R + v - 1] |
+                  ((first_w[s] == (f != 0)) & ue[(s * 4 + c) * (R + 1) + w] & tw[(c * NF + f * (R + 1) + w) * R + v - 1]);
+          sg[(s * 4 + c) * R + v - 1] = sg[(s * 4 + c) * R + v - 1] & with_w[s] & ~rbusy_cq01h;
+        end
   // The allowances to hold next cycle: min(R, the shares' sum). The shares
   // split the pool whole among the warps with a head, so the sum is the pool
   // (the names' plus those warps' unmet floors); none under a restore.
-  logic [R:0]     ut;                    // the unmet floors summed, a thermometer (ut[v]: v or more)
-  logic [LU+2:0]  us;
+  logic [S*R-1:0]     uw;                // each warp's floor (a warp with a head), a thermometer to R
+  logic [R-1:0]       ut;                // and summed
   logic [4*R-1:0]     held_nx;           // a thermometer
   logic [4*(R+1)-1:0] he_nx;             // and one-hot
   always_comb
     for (int c = 0; c < 4; c++) begin
-      us = '0;
-      for (int s = 0; s < S; s++) begin
-        if (with_w[s] && c == 2) us = us + (LU + 3)'(unmet_g_cq01h[s * LU +: LU]);
-        if (with_w[s] && c == 3) us = us + (LU + 3)'(unmet_p_cq01h[s * LU +: LU]);
-      end
-      for (int v = 0; v < R + 1; v++) ut[v] = us >= (LU + 3)'(v);
-      for (int v = 1; v < R + 1; v++) begin
-        held_nx[c * R + v - 1] = 1'b0;
-        for (int j = 0; j < v + 1; j++)
-          held_nx[c * R + v - 1] = held_nx[c * R + v - 1] | (pt[c * (R + 1) + j] & ut[v - j]);
-        held_nx[c * R + v - 1] = held_nx[c * R + v - 1] & (nw != '0) & ~rbusy_cq01h;
-      end
+      for (int s = 0; s < S; s++)
+        for (int v = 1; v < R + 1; v++)
+          uw[s * R + v - 1] = with_w[s] & (c == 2 ? unmet_g_cq01h[s * LU +: LU] >= LU'(v) :
+                                           c == 3 ? unmet_p_cq01h[s * LU +: LU] >= LU'(v) : 1'b0);
+      ut = tsum(uw);
+      held_nx[c * R +: R] = tadd(pt[c * (R + 1) + 1 +: R], ut) & {R{(nw != '0) & ~rbusy_cq01h}};
       for (int h = 0; h < R + 1; h++) begin
         he_nx[c * (R + 1) + h] = 1'b1;
         if (h > 0) he_nx[c * (R + 1) + h] = he_nx[c * (R + 1) + h] & held_nx[c * R + h - 1];
@@ -412,7 +416,7 @@ module ooe_go #(
 
   // decq's take-enable covers every slot that takes (deq_sel_covers).
   logic [S-1:0] tk_any;
-  always_comb for (int s = 0; s < S; s++) tk_any[s] = take_cq02h[s * LK +: LK] != '0;
+  always_comb for (int s = 0; s < S; s++) tk_any[s] = take_cq02h[s * R];
   `CCV_ASSERT(sel_covers, (tk_any & ~sel_cq02h) == '0)
 endmodule
 `undef CCV_CLK

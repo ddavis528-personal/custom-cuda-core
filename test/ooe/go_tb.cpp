@@ -44,7 +44,7 @@ void goConfig(Config &c) { c.decq_warp_max = 6; }
 namespace {
 constexpr unsigned S = GO_S, R = GO_R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 5 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
-constexpr unsigned LS = bits(S), LK = bits(R + 1), LH = bits(R), LX = bits(XM + 1);
+constexpr unsigned LX = bits(XM + 1);
 
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_go> dut;
@@ -146,9 +146,13 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
   restores += g.restore;
   drive(&g, &nx);
   dut->eval();
-  // This cycle's takes, from last cycle's fits.
+  // This cycle's takes, from last cycle's fits: per slot a thermometer, and
+  // per lane its candidate, one-hot.
   for (unsigned s = 0; s != S; ++s) {
-    const unsigned t = getField(dut->take_cq02h, s * LK, LK);
+    unsigned t = 0;
+    for (unsigned r = 0; r != R; ++r) t += getBit(dut->take_cq02h, s * R + r);
+    for (unsigned r = 0; r != R; ++r)
+      if (getBit(dut->take_cq02h, s * R + r) != (r < t)) fail("take is no thermometer", s, r, t);
     if (t != g.took[s]) fail("take differs", s, t, g.took[s]);
     if (t && !getBit(dut->sel_cq02h, s)) fail("a take without its take-enable", s, 0, 1);
   }
@@ -156,9 +160,13 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
     const bool v = getBit(dut->lane_v_cq02h, l);
     const bool w = l < g.lanes.size();
     if (v != w) { fail("lane valid differs", l, v, w); continue; }
+    unsigned hits = 0, cand = 0;
+    for (unsigned c = 0; c != R * S; ++c)
+      if (getBit(dut->lane_c_cq02h, l * R * S + c)) { ++hits; cand = c; }
+    if (hits != unsigned(v)) { fail("lane's candidate not one-hot", l, hits, v); continue; }
     if (!v) continue;
     ++takes;
-    const unsigned s = getField(dut->lane_s_cq02h, l * LS, LS), h = getField(dut->lane_h_cq02h, l * LH, LH);
+    const unsigned s = cand % S, h = cand / S;
     if (s != g.lanes[l].first) fail("lane's slot differs", l, s, g.lanes[l].first);
     if (h != g.lanes[l].second) fail("lane's head differs", l, h, g.lanes[l].second);
   }
