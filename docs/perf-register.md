@@ -784,3 +784,8 @@ it.
   fill anyway, so only the drain and a migration each way are lost.
 - **Signal:** the pre-empting variant at or above the ready-only figure on
   the swap sweep, and still ahead on provswap. Then it becomes the default.
+- **Measured under evict (OI, 2026-10-22):** evict alone 0.588 against
+  swap-off; with the provisional restore 0.641; with the pre-empting variant
+  too 0.627 (675 provisional restores, 28 pre-empted). Neither wins: a
+  provisional warp is still blocked on its fill, so evict demotes it again.
+  Both stay knobs, default off.
