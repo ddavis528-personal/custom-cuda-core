@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (8117 bits,
+// At each edge of its clock: sample every channel signal (8155 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (4296 bits). Common-port outputs sit inactive, as in
+// what it drove (4299 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_ooe (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_ooe(
     input int h, input longint cyc, input bit rst,
-    input bit [8116:0] sample, output bit [4295:0] drive);
+    input bit [8154:0] sample, output bit [4298:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [4295:0] drv, q, q2;
+  bit [4298:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -148,7 +148,9 @@ module ccv_ooe (
       dec_ooe_uop_s2_stall, dec_ooe_uop_s2_credit, dec_ooe_uop_s2_payload,
       dec_ooe_uop_s2_valid, dec_ooe_uop_s1_stall, dec_ooe_uop_s1_credit,
       dec_ooe_uop_s1_payload, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_stall,
-      dec_ooe_uop_s0_credit, dec_ooe_uop_s0_payload, dec_ooe_uop_s0_valid
+      dec_ooe_uop_s0_credit, dec_ooe_uop_s0_payload, dec_ooe_uop_s0_valid,
+      kill_ack_epoch, kill_ack, kill_epoch,
+      kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -194,11 +196,10 @@ module ccv_ooe (
     dec_ooe_uop_s5_stall, dec_ooe_uop_s5_credit, dec_ooe_uop_s4_stall,
     dec_ooe_uop_s4_credit, dec_ooe_uop_s3_stall, dec_ooe_uop_s3_credit,
     dec_ooe_uop_s2_stall, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_stall,
-    dec_ooe_uop_s1_credit, dec_ooe_uop_s0_stall, dec_ooe_uop_s0_credit
+    dec_ooe_uop_s1_credit, dec_ooe_uop_s0_stall, dec_ooe_uop_s0_credit,
+    kill_ack_epoch, kill_ack
   } = skew ? q2 : q;
 `endif
-  assign kill_ack = '0;
-  assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign ooe_rcu_issue_wake = '0;

@@ -73,6 +73,9 @@
 #   a store into .const or the launch window  no-ro (roconst): its 32 stores
 #     faults F-RO, and nothing lands; CRU        land, and the warp never
 #     holds the fault to ccv-sim's (TI-26)       faults
+#   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
+#     owner drops the warps and acks at the      (rokill): never killed, or the
+#     kill's epoch (V-24)                        kill never completes
 #   OOE ends a warp at the exit FET marks     early-mark (div): the warp ends
 #     final (TI-27)                              with lanes live, and the rest
 #                                                of its uops find no slot
@@ -626,11 +629,12 @@ div    split=32 reconverge=2 groups_peak=2 fair_pick=1
 spinwait fair_pick=4 groups_peak=3 st_ld_wait>0
 divtail split=20 groups_peak=2
 divtail2 split=51 groups_peak=2
-roconst ro_fault=1 fault=1
-rolimit ro_fault=1 fault=1
-rolaunch ro_fault=1 fault=1
-rogated ro_fault=1 fault=1 split=1
-roload ro_fault=0 fault=0
+roconst ro_fault=1 fault=1 kill=1
+rolimit ro_fault=1 fault=1 kill=1
+rolaunch ro_fault=1 fault=1 kill=1
+rogated ro_fault=1 fault=1 split=1 kill=1
+roload ro_fault=0 fault=0 kill=0
+rokill ro_fault=1 fault=1 kill=1
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -729,6 +733,24 @@ if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 1
 else
   bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
 fi
+# The kill (V-24): a fatal fault kills the context. RAU broadcasts the mask
+# of every valid warp context with an epoch, and waits for the eight owners'
+# acks at that epoch; rokill's CTAs 1-3, mid-loop, are stopped by it. Without
+# the kill the faulted warp is never killed; with MIU's ack withheld, or
+# FET's at the epoch before, the kill never completes.
+for b in no-kill withheld-ack stale-ack; do
+  "$SKEL" --kernel build/oracle/rokill/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  case $b in
+    no-kill)      want="rau: warp 0 faulted and was never killed" ;;
+    withheld-ack) want="rau: the kill never completed: no ack at its epoch from miu" ;;
+    stale-ack)    want="rau: the kill never completed: no ack at its epoch from fet" ;;
+  esac
+  if grep -q "^CHECK $want" "$B/kernel_$b.log" && [ "$(field "$B/kernel_$b.log" finished)" = 0 ]; then
+    say "--break $b: the run never ends (rokill)" "PASS"
+  else
+    bad "--break $b" "the kill's failure went unnoticed: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
 # A demotion's live mask is FET's after the beats (AR's response TI-27 (b)):
 # stall's warp 0 has fetched its exit when it demotes, so without the beats'
 # lanes FET would park it with none live; held to the boundary's mask.

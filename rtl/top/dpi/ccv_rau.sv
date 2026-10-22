@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (1588 bits,
+// At each edge of its clock: sample every channel signal (1647 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (1074 bits). Common-port outputs sit inactive, as in
+// what it drove (1109 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_rau (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_rau(
     input int h, input longint cyc, input bit rst,
-    input bit [1587:0] sample, output bit [1073:0] drive);
+    input bit [1646:0] sample, output bit [1108:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [1073:0] drv, q, q2;
+  bit [1108:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -90,7 +90,9 @@ module ccv_rau (
       ooe_rau_status_valid, rau_ooe_alloc_tid, rau_ooe_alloc_stall,
       rau_ooe_alloc_credit, rau_ooe_alloc_payload, rau_ooe_alloc_valid,
       rau_fet_launch_tid, rau_fet_launch_stall, rau_fet_launch_credit,
-      rau_fet_launch_payload, rau_fet_launch_valid
+      rau_fet_launch_payload, rau_fet_launch_valid, kill_ack_epochs,
+      kill_acks, kill_epoch, kill_warp_mask,
+      kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -108,12 +110,10 @@ module ccv_rau (
     rau_ooe_demote_payload, rau_ooe_demote_valid, ooe_rau_status_stall,
     ooe_rau_status_credit, rau_ooe_alloc_tid, rau_ooe_alloc_payload,
     rau_ooe_alloc_valid, rau_fet_launch_tid, rau_fet_launch_payload,
-    rau_fet_launch_valid
+    rau_fet_launch_valid, kill_epoch, kill_warp_mask,
+    kill_valid
   } = skew ? q2 : q;
 `endif
-  assign kill_valid = '0;
-  assign kill_warp_mask = '0;
-  assign kill_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign rau_fet_launch_wake = '0;

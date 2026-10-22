@@ -16,7 +16,8 @@
 # the CTA; TI-29), an optional CONST=<base>:<limit> (F-RO's
 # .const range, ccv-sim -const-range), an optional FAULT=<cause> (the run
 # ends in that fault, ccv-sim's exit 3, its record and state at the fault
-# written; TI-26, TI-28), then one poke per line. ccv-sim runs one
+# written; TI-26, TI-28; with several warps, the first), then one poke per
+# line. ccv-sim runs one
 # warp a CTA, so a kernel of several warps is CTAS CTAs, CTAID upward, each
 # its own run: oracle.jsonl for the first, oracle.<w>.jsonl for warp w, which
 # the skeleton launches side by side (Kernel::loadOracles).
@@ -71,7 +72,9 @@ for k in test/kernels/*/; do
       -fairness="$fair" -oracle "$o" >/dev/null
     st=$?
     # A clean run exits 0, a fault 3: either must be the one kernel.cfg names.
-    if [ -n "$fault" ]; then
+    # A kernel of several warps faults in its first; the rest run clean, as
+    # the runs the context's kill cuts short (V-24).
+    if [ -n "$fault" ] && [ $w = 0 ]; then
       [ $st = 3 ] && grep -q "\"fault\":{\"cause\":\"$fault\"" "$o" || ok=0
     else
       [ $st = 0 ] || ok=0

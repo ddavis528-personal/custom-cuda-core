@@ -175,7 +175,36 @@ def build(d, pv, blocks):
     return binst, chans, cinst, slot, pbit
 
 
-def gen_h(binst, chans, cinst, nslots, pbits, blocks):
+def fabrics(d, pv):
+    """The common ports that run between blocks as a fabric the skeleton
+    carries (schema common_ports): a broadcast, one block driving the rest,
+    and a gather, each listed block driving its own copy to one end. Each
+    gets slots in the hosts' fabric state: one for a broadcast, one per
+    source for a gather, in the schema's order."""
+    F, base = [], 0
+    for cp in d["common_ports"]:
+        fab = cp.get("fabric", {})
+        kind = fab.get("kind")
+        if kind not in ("broadcast", "gather"):
+            continue
+        w = cp["width"]
+        w = w if isinstance(w, int) else resolve(w, pv)
+        if kind == "broadcast":
+            end, blks, port = fab["from"], fab["to"], cp["name"]
+        else:
+            end, blks, port = fab["to"], fab.get("from"), fab["port"]
+            if not blks:
+                raise SystemExit("gen-skel: gather %s names no sources" % cp["name"])
+        if w > 64:
+            raise SystemExit("gen-skel: fabric %s is %d bits, over 64" % (cp["name"], w))
+        n = 1 if kind == "broadcast" else len(blks)
+        F.append(dict(name=cp["name"], port=port, width=w, kind=kind, end=end,
+                      blks=blks, base=base))
+        base += n
+    return F, base
+
+
+def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L = [BANNER_C, "#ifndef CCV_SKEL_WIRING_H", "#define CCV_SKEL_WIRING_H",
          "", "#include <cstdint>", "", "namespace ccv {", "namespace skel {",
          ""]
@@ -294,6 +323,31 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("constexpr unsigned kNumChanInsts = %d;" % len(cinst))
     L.append("constexpr unsigned kNumSlots = %d;" % nslots)
     L.append("constexpr uint64_t kPayloadBits = %d;" % pbits)
+    L.append("")
+    F, nfslots = fabs
+    L.append("/// Fabrics between blocks, outside the credit scheme (schema")
+    L.append("/// common_ports): a broadcast is driven by `end` and read by every")
+    L.append("/// block in `blks`; a gather is driven by each block in `blks`, its")
+    L.append("/// own copy, and read whole by `end` (its port `port`). Registered:")
+    L.append("/// a block reads the value as the cycle starts and drives the next.")
+    L.append("/// slot_base locates it in the hosts' fabric state: one slot for a")
+    L.append("/// broadcast, one per source for a gather, in `blks` order.")
+    L.append("enum class FabKind : uint8_t { BROADCAST, GATHER };")
+    L.append("struct FabDesc {")
+    L.append("  const char *name, *port; uint32_t width; FabKind kind; Blk end;")
+    L.append("  const Blk *blks; uint8_t nblks; uint16_t slot_base;")
+    L.append("};")
+    for f in F:
+        L.append("inline constexpr Blk kFabBlks_%s[] = {%s};" % (
+            f["name"], ", ".join("Blk::%s" % b.upper() for b in f["blks"])))
+    L.append("inline constexpr FabDesc kFabs[] = {")
+    for f in F:
+        L.append('  {"%s", "%s", %d, FabKind::%s, Blk::%s, kFabBlks_%s, %d, %d},' % (
+            f["name"], f["port"], f["width"], f["kind"].upper(), f["end"].upper(),
+            f["name"], len(f["blks"]), f["base"]))
+    L.append("};")
+    L.append("constexpr unsigned kNumFabs = %d;" % len(F))
+    L.append("constexpr unsigned kNumFabSlots = %d;" % nfslots)
     L.append("")
     L.append("} // namespace skel")
     L.append("} // namespace ccv")
@@ -597,7 +651,7 @@ def main():
     check = "--check" in sys.argv
     d, pv, blocks = load()
     binst, chans, cinst, nslots, pbits = build(d, pv, blocks)
-    targets = [(OUT_H, gen_h(binst, chans, cinst, nslots, pbits, blocks)),
+    targets = [(OUT_H, gen_h(binst, chans, cinst, nslots, pbits, blocks, fabrics(d, pv))),
                (OUT_SV, gen_sv(chans, cinst, nslots, pbits)),
                (OUT_PROBE_SV, gen_probe_sv(chans)),
                (OUT_PROBE_INC, gen_probe_inc(chans)),

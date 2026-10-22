@@ -94,6 +94,12 @@ def inst_name(btype, idx, ninst):
 def load():
     d, pv, blocks = gs.load()
     binst, chans, cinst, nslots, pbits = gs.build(d, pv, blocks)
+    # The fabrics the skeleton carries (gen-skel's kFabs), by every port name
+    # a block sees them under: a broadcast's and a gather source's own name,
+    # and a gather's end's vector port.
+    for k, f in enumerate(gs.fabrics(d, pv)[0]):
+        FAB[f["name"]] = k
+        FAB[f["port"]] = k
     ninst = {b["name"]: b["instances"] for b in blocks}
     common = []
     for cp in d["common_ports"]:
@@ -956,11 +962,15 @@ def gen_tb(d, binst, chans, common):
 # drives it low, as a stub does.
 
 SIGS = ("valid", "payload", "credit", "stall", "tid")
+FAB = {}   # fabric port name -> its index in gen-skel's kFabs (load())
 
 
 def dpi_ports(P):
-    """The channel ports a shim samples, in order: every one but wake."""
-    return [p for p in P if p[6] is not None and p[6][3] != "wake"]
+    """The ports a shim samples, in order: every channel port but wake, and
+    the fabric ports (kill's broadcast and gather), which a C++ block drives
+    and reads through the host's fabric state."""
+    return [p for p in P if (p[6] is not None and p[6][3] != "wake") or
+            (p[6] is None and p[2] in FAB)]
 
 
 def ext_ports(chans):
@@ -1065,7 +1075,7 @@ def gen_shim(btype, P, own_ports=False):
     L.append("  } = skew ? q2 : q;")
     L.append("`endif")
     for dr, w, name, tr, _, _t, m in P:
-        if dr != "output" or (m is not None and m[3] != "wake"):
+        if dr != "output" or (m is not None and m[3] != "wake") or (m is None and name in FAB):
             continue
         if name == "clk_gated" and not ext:
             continue            # the gate's own report
@@ -1098,7 +1108,9 @@ def gen_dpi_header(types):
          "namespace ccv {",
          "namespace skel {",
          "",
-         "enum class DpiSig : uint8_t { VALID, PAYLOAD, CREDIT, STALL, TID };",
+         "// FABRIC: `chan` is the fabric's index in kFabs; at a gather's end the",
+         "// port is the whole vector, a source's copy per width, in kFabs order.",
+         "enum class DpiSig : uint8_t { VALID, PAYLOAD, CREDIT, STALL, TID, FABRIC };",
          "struct DpiPort { uint16_t chan; int16_t copy; uint8_t slot; DpiSig sig;",
          "                 uint32_t width; bool out; };",
          "struct DpiType { const char *name; const DpiPort *ports; unsigned nports;",
@@ -1107,7 +1119,12 @@ def gen_dpi_header(types):
     for t, P in types:
         S = dpi_ports(P)
         L.append("inline constexpr DpiPort kDpiPorts_%s[] = {" % t)
-        for dr, w, name, _tr, _d, _ty, (c, cp, sl, sig) in S:
+        for dr, w, name, _tr, _d, _ty, m in S:
+            if m is None:
+                L.append("  {%d, -1, 0, DpiSig::FABRIC, %d, %s},  // %s" % (
+                    FAB[name], w, "true" if dr == "output" else "false", name))
+                continue
+            c, cp, sl, sig = m
             L.append("  {%d, %d, %d, DpiSig::%s, %d, %s},  // %s" % (
                 c["id"], -1 if cp is None else cp, sl, sig.upper(), w,
                 "true" if dr == "output" else "false", name))

@@ -11,6 +11,7 @@
 //===----------------------------------------------------------------------===//
 #include "stub.h"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -2331,6 +2332,13 @@ public:
 
 private:
   std::deque<std::pair<Bits, uint64_t>> q_;
+  /// A kill drops the killed warps' uops not yet sent to OOE (V-24).
+  void onKill(uint32_t mask, unsigned) override {
+    for (auto it = q_.begin(); it != q_.end();) {
+      const unsigned w = unsigned(get(it->first, ch().dec_ooe, "warp_id"));
+      it = mask >> (w & 31) & 1u ? q_.erase(it) : std::next(it);
+    }
+  }
 
   void work() override {
     const Ch &c = ch();
@@ -2568,6 +2576,15 @@ private:
     uint64_t br_next = 0;   ///< and the group's fall-through
   };
   std::map<unsigned, Warp> warps_;
+  /// A kill (V-24): the killed warps fetch no more, and leave their slots.
+  void onKill(uint32_t mask, unsigned) override {
+    for (auto &w : warps_)
+      if (mask >> (w.first & 31) & 1u) {
+        w.second.stopped = true;
+        w.second.await_redirect = false;
+        w.second.tier1 = kNoSlot;
+      }
+  }
   /// CCV_FAIR_N, which ccv-sim's -fairness must equal (gen-oracle). The N
   /// sweep sets both through CCV_FAIR_N; 0 is strict min-PC, the rule off.
   const unsigned fair_n_ = getenv("CCV_FAIR_N") ? unsigned(std::strtoul(getenv("CCV_FAIR_N"), nullptr, 0))
@@ -3203,6 +3220,12 @@ private:
     const Bits m = take(c.ooe_status, 0).payload;
     const unsigned w = unsigned(get(m, c.ooe_status, "warp_id"));
     retired_[w] = unsigned(get(m, c.ooe_status, "retired_since_restore"));
+    // A fatal fault (IS-2): RAU kills the context, every valid warp context
+    // of it, and launches nothing more for it.
+    if (get(m, c.ooe_status, "fault_taken")) {
+      startKill(w);
+      return;
+    }
     if (get(m, c.ooe_status, "exited")) {
       // An exit that raced its own demotion (TI-25): OOE refuses the
       // demote, and the slot is freed once the refusal is in, so the free
@@ -3229,6 +3252,66 @@ private:
     free_.insert(s->second);
     slot_of_.erase(s);
     k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
+  }
+
+  /// The kill (V-24; RAU spec, Kill): the mask of every valid warp context,
+  /// resident, moving or parked, broadcast with an epoch, kill_valid a cycle
+  /// ahead of the mask; then the eight owners' acks, each counted only at
+  /// this epoch (a late ack from an earlier kill cannot satisfy this one);
+  /// then RAU's tables let the killed warps go. no-kill: RAU never kills.
+  enum class Kill { kNone, kValid, kWait } kill_ = Kill::kNone;
+  uint32_t kill_mask_ = 0, kill_acked_ = 0;
+  unsigned kill_epoch_ = 0;
+  void startKill(unsigned faulted) {
+    if (kill_ != Kill::kNone || k_.brk == "no-kill") return;
+    k_.snapshotFinal(faulted);   // its state at the fault, before OOE releases it
+    uint32_t mask = 0;
+    for (const auto &s : slot_of_) mask |= 1u << (s.first & 31);
+    for (unsigned w : parked_) mask |= 1u << (w & 31);
+    for (unsigned w : demoting_) mask |= 1u << (w & 31);
+    for (const auto &p : place_of_) mask |= 1u << (p.first & 31);
+    kill_mask_ = mask;
+    kill_epoch_ = (kill_epoch_ + 1) % (1u << ccv::prov::kWKillEpoch);
+    kill_acked_ = 0;
+    kill_ = Kill::kValid;
+    // Nothing more launches for the context: a warp still waiting is gone.
+    for (unsigned w : waiting_) k_.killed.insert(w);
+    waiting_.clear();
+    k_.hit("kill");
+  }
+  void killStep() {
+    if (kill_ == Kill::kValid) {
+      fabOut("kill_valid", 1);
+      kill_ = Kill::kWait;
+      return;
+    }
+    if (kill_ != Kill::kWait) return;
+    fabOut("kill_warp_mask", kill_mask_);
+    fabOut("kill_epoch", kill_epoch_);
+    const FabDesc &acks = Stub::fab("kill_ack");
+    for (unsigned i = 0; i != acks.nblks; ++i)
+      if (fabIn("kill_ack", i) && fabIn("kill_ack_epoch", i) == kill_epoch_) kill_acked_ |= 1u << i;
+    k_.kill_unacked = ((1u << acks.nblks) - 1) & ~kill_acked_;
+    if (k_.kill_unacked) return;
+    // Every owner has quiesced: the killed warps hold nothing anywhere.
+    for (unsigned w = 0; w != 32; ++w) {
+      if (!(kill_mask_ >> w & 1u)) continue;
+      k_.killed.insert(w);
+      auto s = slot_of_.find(w);
+      if (s != slot_of_.end()) { free_.insert(s->second); slot_of_.erase(s); }
+      auto p = place_of_.find(w);
+      if (p != place_of_.end()) { places_.insert(p->second); place_of_.erase(p); }
+      parked_.erase(std::remove(parked_.begin(), parked_.end(), w), parked_.end());
+      demoting_.erase(w);
+      ready_.erase(w);
+      provisional_.erase(w);
+      exited_.erase(w);
+    }
+    launch_q_.clear();
+    mig_q_.clear();
+    demote_q_.clear();
+    restore_busy_ = false;
+    kill_ = Kill::kNone;
   }
 
   /// A ready parked warp or a launch waits for a slot: what lets a
@@ -3367,6 +3450,15 @@ private:
     const Ch &c = ch();
     const uint64_t none = makeUid(IdClass::kNone, 0);
     status();
+    killStep();
+    if (kill_ != Kill::kNone) {
+      // Nothing launches or moves meanwhile. Reports about warps being
+      // killed (ready, drained, a migration's ack) are taken and dropped.
+      if (has(c.miu_ready, 0)) take(c.miu_ready, 0);
+      if (has(c.ooe_drained, 0)) take(c.ooe_drained, 0);
+      if (has(c.pca_done, 0)) take(c.pca_done, 0);
+      return;
+    }
     migration();
     place();
     if (!alloc_q_.empty() && can(c.rau_ooe, 0)) {
@@ -3413,7 +3505,7 @@ private:
   bool busy() const override {
     return !waiting_.empty() || !launch_q_.empty() || !alloc_q_.empty() || !mig_q_.empty() ||
            !demote_q_.empty() || !demoting_.empty() || restore_busy_ || (restore_ && !parked_.empty()) ||
-           !exited_.empty();
+           !exited_.empty() || kill_ != Kill::kNone;
   }
 };
 
@@ -3452,6 +3544,18 @@ private:
   struct Out { unsigned w; std::deque<Bits> rows; bool pcs_sent = false; Bits pcs; uint64_t tid; };
   std::deque<Out> out_;
   uint64_t hold_until_ = 0;            ///< early-restore-done's delay
+
+  /// A kill drops every killed warp's context, parked or moving (V-24).
+  void onKill(uint32_t mask, unsigned) override {
+    for (auto it = ctx_.begin(); it != ctx_.end();)
+      it = mask >> (it->first & 31) & 1u ? ctx_.erase(it) : std::next(it);
+    for (auto it = array_.begin(); it != array_.end();)
+      it = mask >> (it->second.warp & 31) & 1u ? array_.erase(it) : std::next(it);
+    for (auto it = out_.begin(); it != out_.end();)
+      it = mask >> (it->w & 31) & 1u ? out_.erase(it) : std::next(it);
+    for (auto it = done_.begin(); it != done_.end();)
+      it = mask >> (it->first & 31) & 1u ? done_.erase(it) : std::next(it);
+  }
 
   void work() override {
     const Ch &c = ch();
@@ -3672,8 +3776,24 @@ KernelReport compareFinal(Kernel &k) {
     if (seqWarp(uint32_t(s)) < nret.size()) ++nret[seqWarp(uint32_t(s))];
   auto isParked = [&](unsigned w) { return k.parkedNow(w); };
   // Each warp's registers against its own run of ccv-sim.
+  // A warp the kill ended mid-run (V-24) has no final state to compare: it
+  // is held only to its retire order, a prefix of ccv-sim's, below. A
+  // faulted warp is compared as its fault left it.
+  auto cut = [&](unsigned w) { return k.killed.count(w) && !k.orcs[w].faults; };
+  // The kill (V-24): every owner acked it at its epoch, and every warp that
+  // faulted was killed.
+  if (k.kill_unacked) {
+    std::string who;
+    for (const FabDesc &f : kFabs)
+      if (!std::strcmp(f.name, "kill_ack"))
+        for (unsigned i = 0; i != f.nblks; ++i)
+          if (k.kill_unacked >> i & 1u) who += std::string(who.empty() ? "" : " ") + blkName(f.blks[i]);
+    k.fail("rau: the kill never completed: no ack at its epoch from %s", who.c_str());
+  }
+  for (const auto &f : k.faults)
+    if (!k.killed.count(f.first)) k.fail("rau: warp %u faulted and was never killed", f.first);
   for (unsigned w = 0; w != k.orcs.size(); ++w) {
-    if (isParked(w)) continue;
+    if (isParked(w) || cut(w)) continue;
     const Oracle &o = k.orcs[w];
     // A run ccv-sim ended in a fault must end in CRU's fault too (TI-26);
     // CRU's stub held its fields to ccv-sim's as it took it.
@@ -3742,7 +3862,7 @@ KernelReport compareFinal(Kernel &k) {
   unsigned groups = 0;
   // A faulting instruction counts in ccv-sim's issue groups and never retires.
   for (unsigned w = 0; w != k.orcs.size(); ++w)
-    groups += isParked(w) ? nret[w] : k.orcs[w].issue_groups - (k.orcs[w].faults ? 1 : 0);
+    groups += isParked(w) || cut(w) ? nret[w] : k.orcs[w].issue_groups - (k.orcs[w].faults ? 1 : 0);
   r.order_ok = k.retired == groups;
   std::vector<uint32_t> next(k.orcs.size(), 0);
   for (uint64_t s : k.retire_order) {
@@ -3802,10 +3922,7 @@ bool KernelEnd::after(uint64_t c, Kernel &k, Machine &m) {
   bool in_flight = false;
   for (unsigned s = 0; s != kNumSlots && !in_flight; ++s)
     in_flight = m.tx(s).sent() != m.rx(s).received();
-  // A faulted warp ends at its fault: the kill that would clear its state
-  // from the blocks (RAU's broadcast, V-24) is not built, so the blocks
-  // holding it may stay busy once every warp has exited or faulted.
-  if (c >= kReset && k.exited() && (k.busy == 0 || !k.faults.empty()) && !in_flight) {
+  if (c >= kReset && k.exited() && k.busy == 0 && !in_flight) {
     if (!finished) finish = c;
     finished = true;
     ++quiet;

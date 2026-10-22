@@ -316,7 +316,9 @@ public:
     if (!built_) build();
     now_ = now;
     for (const In &i : ins) i.rx->cycle(now);
+    killIn();
     work();
+    killOut();
     // Every sender is clocked exactly once a cycle, launching or not.
     for (size_t j = 0; j != outs.size(); ++j) {
       Pend &p = pend_[j];
@@ -324,7 +326,7 @@ public:
       if (p.go) logLaunch(uint16_t(outs[j].ci->chan), p.msg, p.tid);
       p.go = false;
     }
-    if (busy()) ++k_.busy;
+    if (busy() || kill_pending_) ++k_.busy;
     // A message left in a receiver is one this stub does not handle. The
     // bank's response_within_n will report it; say which, once. A channel
     // the stub holds back on purpose (holdsBack) is its credit backpressure,
@@ -338,6 +340,15 @@ protected:
   virtual void work() = 0;
   virtual bool busy() const { return false; }
   virtual const char *kind() const = 0;
+  /// The kill (V-24; schema kill_valid): a block that owns warp state drops
+  /// the killed warps' when the mask arrives, and acks once quiesced -- it
+  /// holds nothing for them and has nothing in flight on their behalf.
+  /// onKill runs before work() on the mask's cycle; killQuiet is asked
+  /// after work() every cycle until it holds. By default a block is quiet
+  /// when it is not busy, exact for a context-wide kill (a fatal fault
+  /// kills every warp of the context, IS-2), which is the only one yet.
+  virtual void onKill(uint32_t /*mask*/, unsigned /*epoch*/) {}
+  virtual bool killQuiet(uint32_t /*mask*/) const { return !busy(); }
 
   bool can(unsigned chan, unsigned slot, unsigned inst = 0) {
     const int j = outIdx(chan, slot, inst);
@@ -380,6 +391,51 @@ protected:
     }
     return m;
   }
+  /// A fabric (kFabs) as this block reads it, the value as the cycle
+  /// starts: a broadcast's value, or at a gather's end source `from`'s copy
+  /// (its index in the fabric's blks).
+  uint64_t fabIn(const char *name, unsigned from = 0) const {
+    const FabDesc &f = fab(name);
+    const bool end = f.end == myType();
+    if (f.kind == FabKind::BROADCAST ? !member(f) : !end || from >= f.nblks) {
+      std::fprintf(stderr, "%s: reads fabric %s it does not take\n", kind(), name);
+      std::abort();
+    }
+    return fab_cur[f.slot_base + (f.kind == FabKind::GATHER ? from : 0)];
+  }
+  /// Drive a fabric for the next cycle: a broadcast from its end, or this
+  /// block's own copy of a gather. Undriven, it reads 0 next cycle.
+  void fabOut(const char *name, uint64_t v) {
+    const FabDesc &f = fab(name);
+    unsigned at = 0;
+    if (f.kind == FabKind::BROADCAST) {
+      if (f.end != myType()) at = ~0u;
+    } else {
+      at = ~0u;
+      for (unsigned i = 0; i != f.nblks; ++i)
+        if (f.blks[i] == myType()) at = i;
+    }
+    if (at == ~0u) {
+      std::fprintf(stderr, "%s: drives fabric %s it does not\n", kind(), name);
+      std::abort();
+    }
+    fab_nxt[f.slot_base + at] = v & (f.width == 64 ? ~0ull : (1ull << f.width) - 1);
+  }
+  /// Whether this block takes part in a fabric: a broadcast's reader or a
+  /// gather's source.
+  bool member(const FabDesc &f) const {
+    for (unsigned i = 0; i != f.nblks; ++i)
+      if (f.blks[i] == myType()) return true;
+    return false;
+  }
+  static const FabDesc &fab(const char *name) {
+    for (const FabDesc &f : kFabs)
+      if (!std::strcmp(f.name, name)) return f;
+    std::fprintf(stderr, "no fabric %s\n", name);
+    std::abort();
+  }
+  Blk myType() const { return inst() < 0 ? Blk::EXTERNAL : kBlkInsts[inst()].type; }
+
   /// The oldest message on a slot, left in place.
   const Receiver::Msg &peek(unsigned chan, unsigned slot, unsigned inst = 0) {
     return rx(chan, slot, inst).front();
@@ -426,6 +482,37 @@ private:
     pend_.resize(outs.size());
     built_ = true;
   }
+
+  /// The kill broadcast leads its mask by a cycle (schema kill_valid): seen
+  /// valid, the next cycle's mask and epoch are the kill's.
+  void killIn() {
+    if (!member(fab("kill_valid"))) return;
+    if (kill_armed_) {
+      kill_mask_ = uint32_t(fabIn("kill_warp_mask"));
+      kill_epoch_ = unsigned(fabIn("kill_epoch"));
+      kill_pending_ = true;
+      kill_acking_ = false;
+      onKill(kill_mask_, kill_epoch_);
+    }
+    kill_armed_ = fabIn("kill_valid") != 0;
+  }
+  /// The ack, a level with its epoch from quiescence until the next kill.
+  /// withheld-ack: MIU never acks; stale-ack: FET acks the epoch before.
+  void killOut() {
+    if (!member(fab("kill_ack"))) return;
+    if (kill_pending_ && killQuiet(kill_mask_) && !(k_.brk == "withheld-ack" && myType() == Blk::MIU)) {
+      kill_pending_ = false;
+      kill_acking_ = true;
+    }
+    if (kill_acking_) {
+      const unsigned stale = k_.brk == "stale-ack" && myType() == Blk::FET ? 1u : 0u;
+      fabOut("kill_ack", 1);
+      fabOut("kill_ack_epoch", kill_epoch_ - stale);
+    }
+  }
+  bool kill_armed_ = false, kill_pending_ = false, kill_acking_ = false;
+  uint32_t kill_mask_ = 0;
+  unsigned kill_epoch_ = 0;
 
   struct Pend { bool go = false; Bits msg; uint64_t tid = 0; };
   bool built_ = false;

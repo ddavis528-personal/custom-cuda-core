@@ -546,9 +546,23 @@ private:
       put(m, fc, "warp_id", x.warp);
       held_.push_back({fc, m, x.tid});
     }
-    if (!o.bars.empty() || !o.kill_acks.empty())
-      k_.fail("ooe: a barrier or kill ack with no S1 consumer");
+    if (!o.bars.empty())
+      k_.fail("ooe: a barrier with no S1 consumer");
+    // The model's kill ack (V-24): it has squashed and released the killed
+    // warps, its epoch notice has landed in FET, and no memop is out at MIU.
+    for (unsigned e : o.kill_acks)
+      if (kill_live_ && e == kill_epoch_) kill_acked_ = true;
   }
+  /// The kill (V-24): the model takes it, and acks once quiesced.
+  void onKill(uint32_t mask, unsigned epoch) override {
+    core_.kill(mask, epoch);
+    kill_live_ = true;
+    kill_acked_ = false;
+    kill_epoch_ = epoch;
+  }
+  bool killQuiet(uint32_t) const override { return kill_acked_; }
+  bool kill_live_ = false, kill_acked_ = false;
+  unsigned kill_epoch_ = 0;
   struct Held { unsigned chan; Bits msg; uint64_t tid = 0; };   ///< tid: the fault's instruction
   std::deque<Held> held_;   ///< status, maps and drained reports, in order
 

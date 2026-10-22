@@ -173,6 +173,10 @@ struct Kernel {
   /// Warps that ended in a fault CRU took (TI-26), by warp: what it reported.
   struct FaultSeen { unsigned cause = 0; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
   std::map<unsigned, FaultSeen> faults;
+  std::set<unsigned> killed;                       ///< warps RAU's kill ended (V-24)
+  /// A kill RAU has broadcast and not seen through: the owners whose ack at
+  /// its epoch has not come (kFabs kill_ack order), else 0.
+  uint32_t kill_unacked = 0;
   /// A demoted warp, as the blocks that moved it saw it (TI-24). Observed for
   /// the check at the end, never read by a block: the resume PC RAU got, the
   /// rows RCU read out (each arch register's row name, in the map OOE sent),
@@ -201,7 +205,7 @@ struct Kernel {
     return n;
   }
   bool exited() const {
-    return exits + faults.size() + (restores ? 0 : parked_done()) >= orcs.size();
+    return exits + killed.size() + (restores ? 0 : parked_done()) >= orcs.size();
   }
   /// A warp's architectural registers and predicates as it exits, read
   /// through its maps before OOE frees them for another warp: the final
@@ -229,7 +233,7 @@ struct Kernel {
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
-      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault"};
+      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill"};
   std::map<std::string, uint64_t> cover;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }

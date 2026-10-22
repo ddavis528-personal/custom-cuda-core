@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (36674 bits,
+// At each edge of its clock: sample every channel signal (36712 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (17283 bits). Common-port outputs sit inactive, as in
+// what it drove (17286 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_miu (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_miu(
     input int h, input longint cyc, input bit rst,
-    input bit [36673:0] sample, output bit [17282:0] drive);
+    input bit [36711:0] sample, output bit [17285:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [17282:0] drv, q, q2;
+  bit [17285:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -148,7 +148,9 @@ module ccv_miu (
       rcu_miu_addr_s2_stall, rcu_miu_addr_s2_credit, rcu_miu_addr_s2_payload,
       rcu_miu_addr_s2_valid, rcu_miu_addr_s1_stall, rcu_miu_addr_s1_credit,
       rcu_miu_addr_s1_payload, rcu_miu_addr_s1_valid, rcu_miu_addr_s0_stall,
-      rcu_miu_addr_s0_credit, rcu_miu_addr_s0_payload, rcu_miu_addr_s0_valid
+      rcu_miu_addr_s0_credit, rcu_miu_addr_s0_payload, rcu_miu_addr_s0_valid,
+      kill_ack_epoch, kill_ack, kill_epoch,
+      kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -194,11 +196,9 @@ module ccv_miu (
     miu_rcu_data_s0_payload, miu_rcu_data_s0_valid, rcu_miu_addr_s3_stall,
     rcu_miu_addr_s3_credit, rcu_miu_addr_s2_stall, rcu_miu_addr_s2_credit,
     rcu_miu_addr_s1_stall, rcu_miu_addr_s1_credit, rcu_miu_addr_s0_stall,
-    rcu_miu_addr_s0_credit
+    rcu_miu_addr_s0_credit, kill_ack_epoch, kill_ack
   } = skew ? q2 : q;
 `endif
-  assign kill_ack = '0;
-  assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign miu_rcu_data_wake = '0;
