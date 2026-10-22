@@ -18,16 +18,20 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 C=$(tools/fetch-compiler.sh) || exit 1
+O=${CCV_ORACLE_DIR:-build/oracle}   # the N sweep's records go elsewhere (below)
 rc=0
 # A kernel removed from test/kernels/ leaves no record behind: the checks
 # that run every record (ls build/oracle) would go on running it.
-for d in build/oracle/*/; do
+for d in "$O"/*/; do
   [ -d "$d" ] && [ ! -d "test/kernels/$(basename "$d")" ] && rm -rf "$d"
 done
 # The diverged groups' pick is FET's fairness rule at CCV_FAIR_N (IS-17,
 # O-60), ccv-sim's -fairness, so the order the skeleton follows is the one
 # FET would pick.
-fair=$(sed -n 's/.*kFairN = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+# CCV_FAIR_N in the environment overrides it, for the N sweep
+# (tools/sweep-fair.sh), which runs the skeleton's FET at the same N and
+# writes the records to CCV_ORACLE_DIR rather than build/oracle.
+fair=${CCV_FAIR_N:-$(sed -n 's/.*kFairN = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)}
 [ -n "$fair" ] || { echo "gen-oracle: no CCV_FAIR_N in sim/generated/ccv_params.h" >&2; exit 1; }
 for k in test/kernels/*/; do
   k=${k%/}; name=$(basename "$k")
@@ -41,7 +45,7 @@ for k in test/kernels/*/; do
   while read -r p; do args+=(-poke "$p"); done < <(grep -E '^0x' "$k/kernel.cfg")
   ctaid=$(sed -n 's/^CTAID=//p' "$k/kernel.cfg")
   ctas=$(sed -n 's/^CTAS=//p' "$k/kernel.cfg")
-  out=build/oracle/$name
+  out=$O/$name
   rm -rf "$out" && mkdir -p "$out"
   ok=1
   python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \

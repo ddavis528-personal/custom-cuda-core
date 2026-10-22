@@ -1074,6 +1074,15 @@ private:
     // A load waits, and every memop behind it, while a store's write to one
     // of its lines is in flight: DCU would answer it from the line as it was.
     if (!j.store && inFlight(j, true)) return;
+    // It also waits while an OLDER store of its warp to one of its lines
+    // has not committed (MIU's disambiguation, MIU spec): this MIU forwards
+    // nothing, so the load reads the line once the store's write has
+    // landed. Memops reach MIU in OOE's issue order, not program order, so
+    // a younger store's write is one the load must not see, and is not
+    // waited for (spinwait: lane 0's flag load behind lane 1's store).
+    // no-st-wait: the load reads past the older store, and sees the flag
+    // still clear.
+    if (!j.store && k_.brk != "no-st-wait" && olderStore(j)) { k_.hit("st_ld_wait"); return; }
     if (j.active & ~issue)
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
               tag, j.active & ~issue);
@@ -1092,18 +1101,26 @@ private:
       to_ooe_.push_back({j.memop_slot, cmpl(j), j.tid});
       return;
     }
-    for (const LineReq &lr : j.lines)
-      for (const auto &s : stores_)
-        for (const LineReq &sl : s.second.lines)
-          if (sl.line == lr.line)
-            k_.fail("miu: load overlaps an uncommitted store -- forwarding is "
-                    "not modelled");
     launch(j);
   }
 
   void launch(Job j) {
     j.serial = ++serial_;
     jobs_.push_back(std::move(j));
+  }
+
+  /// Whether an uncommitted store older than load `j`, of its warp, touches
+  /// one of its lines.
+  bool olderStore(const Job &j) const {
+    const uint32_t ls = uidSeq(j.tid);
+    for (const auto &st : stores_) {
+      const uint32_t ss = uidSeq(st.second.tid);
+      if (seqWarp(ss) != seqWarp(ls) || seqIndex(ss) >= seqIndex(ls)) continue;
+      for (const LineReq &a : st.second.lines)
+        for (const LineReq &b : j.lines)
+          if (a.line == b.line) return true;
+    }
+    return false;
   }
 
   /// Whether a job in flight, any or only a store's write, touches one of
@@ -2447,9 +2464,17 @@ private:
 
 // ---- FET: trace-driven fetch -------------------------------------------------------
 //
-// The ORDER of fetch comes from the oracle (no branch unit yet: a taken
-// branch would simply be the next record's pc). The BYTES do not: they are
-// read out of lines fetched through ITLB and the ifill path.
+// FET picks what it fetches (IS-17 (b), FET spec rev 16): it holds each
+// lane's PC, the lanes not yet exited and O-60's fairness pointer and
+// counter, and every fetch issues the group min-PC and the fairness rule
+// choose. Groups are the lanes with equal PCs: a divergent branch splits
+// them at its redirect, and they reconverge when their PCs meet. Each pick
+// is checked against ccv-sim's record, whose order is the same rule at
+// CCV_FAIR_N (gen-oracle passes it), so the oracle checks the pick and
+// never makes it. What the oracle still decides is whether FET will
+// mispredict a branch: FET fetches no wrong path, since it has no record
+// for one (docs/coverage.md, item 1). The BYTES are read out of lines
+// fetched through ITLB and the ifill path.
 
 class Fet : public Stub {
 public:
@@ -2485,8 +2510,66 @@ private:
     uint32_t rewound = 0;
     std::array<uint64_t, kLanes> lane_pc{};
     uint64_t boundary_tid = 0;              ///< the oldest beat's uop (trace-only)
+    /// The divergence state (IS-17 (b)): each lane's PC, the lanes not yet
+    /// exited, and the fairness rule's pointer and counter (O-60).
+    std::array<uint64_t, kLanes> pc{};
+    uint32_t lanes = 0;   ///< live lanes: not yet exited
+    unsigned fair_ptr = 0, fair_cnt = 0;
+    /// The state before each record's pick, by record: the fairness
+    /// pointer and counter and the live lanes, all of which FET advances at
+    /// fetch, ahead of retirement. A demotion squashes back to its boundary,
+    /// so it sends the fairness state as it stood there, and the warp comes
+    /// back with the lanes live there: an exit FET fetched and the squash
+    /// discarded has not happened (TI-27 (b), (c)).
+    struct At { unsigned ptr, cnt; uint32_t lanes; };
+    std::vector<At> fair_at;
+    uint32_t parked_lanes = 0;   ///< live lanes at the boundary, while parked (TI-27 (b))
+    uint32_t br_mask = 0;   ///< a branch FET mispredicts: its group, until the redirect
+    uint64_t br_next = 0;   ///< and the group's fall-through
   };
   std::map<unsigned, Warp> warps_;
+  /// CCV_FAIR_N, which ccv-sim's -fairness must equal (gen-oracle). The N
+  /// sweep sets both through CCV_FAIR_N; 0 is strict min-PC, the rule off.
+  const unsigned fair_n_ = getenv("CCV_FAIR_N") ? unsigned(std::strtoul(getenv("CCV_FAIR_N"), nullptr, 0))
+                                                : ccv::prov::kFairN;
+  /// One pick: the group's PC and lanes, and the fairness state after it.
+  struct Pick { uint64_t pc = 0; uint32_t mask = 0; unsigned ptr = 0, cnt = 0; bool fair = false; };
+  /// FET's pick for a warp, as the FET spec states it: the lowest PC among
+  /// live lanes, except that once lane r's group has gone N picks without
+  /// issuing, the pick is that group. Its issue, either way, restarts the
+  /// count and moves r to the next live lane. No lane waits at a barrier or
+  /// a sleep in these kernels; a barrier's kind fails at fetch.
+  Pick pick(const Warp &x) const {
+    Pick p;
+    p.ptr = x.fair_ptr;
+    p.cnt = x.fair_cnt;
+    if (!x.lanes) return p;
+    p.pc = UINT64_MAX;
+    for (unsigned l = 0; l != kLanes; ++l)
+      if (x.lanes >> l & 1u) p.pc = std::min(p.pc, x.pc[l]);
+    const unsigned n = k_.brk == "fair-off" ? 0 : k_.brk == "fair-late" ? fair_n_ + 1 : fair_n_;
+    if (n) {
+      unsigned r = p.ptr;
+      while (!(x.lanes >> r & 1u)) r = (r + 1) % kLanes;
+      bool served = x.pc[r] == p.pc;
+      if (!served && ++p.cnt == n) { p.pc = x.pc[r]; served = p.fair = true; }
+      if (served) {
+        p.cnt = 0;
+        p.ptr = (r + 1) % kLanes;
+        while (!(x.lanes >> p.ptr & 1u)) p.ptr = (p.ptr + 1) % kLanes;
+      }
+    }
+    for (unsigned l = 0; l != kLanes; ++l)
+      if ((x.lanes >> l & 1u) && x.pc[l] == p.pc) p.mask |= 1u << l;
+    return p;
+  }
+  /// The warp's groups: its live lanes' distinct PCs.
+  static unsigned groups(const Warp &x) {
+    std::set<uint64_t> g;
+    for (unsigned l = 0; l != kLanes; ++l)
+      if (x.lanes >> l & 1u) g.insert(x.pc[l]);
+    return unsigned(g.size());
+  }
   static constexpr unsigned kNoSlot = ~0u;
   /// A warp takes a tier-1 slot, at launch or restore. Whoever held it,
   /// exited or parked, holds it no longer, so a checkpoint free for the
@@ -2519,6 +2602,14 @@ private:
         Warp &x = warps_[w];
         x.launched = true;
         take_slot(x, unsigned(get(m.payload, c.rau_fet, "tier1_id")));   // A-65
+        // Every lane starts at the entry, live: the launch names no lanes,
+        // so a warp of fewer than 32 threads cannot launch yet (TI-27 (a)).
+        x.pc.fill(start);
+        x.lanes = ~0u;
+        x.fair_ptr = x.fair_cnt = 0;
+        if (k_.orcs[w].threads && k_.orcs[w].threads < kLanes)
+          k_.fail("fet: warp %u has %u threads, and ccv_rau_fet_launch names no lanes (TI-27)", w,
+                  k_.orcs[w].threads);
       }
     }
     if (has(c.ooe_fet, 0)) {
@@ -2576,6 +2667,18 @@ private:
             break;
           }
         x.await_redirect = false;
+        // The split (IS-17 (b)): the branch's lanes OOE names as taken go to
+        // the target, the rest of its group falls through. split-swap
+        // sends each half the other's way.
+        const bool swap = k_.brk == "split-swap";
+        const uint32_t to_tgt = swap ? x.br_mask & ~tmask : tmask;
+        const unsigned before = groups(x);
+        for (unsigned l = 0; l != kLanes; ++l)
+          if (x.br_mask >> l & 1u) x.pc[l] = to_tgt >> l & 1u ? tgt : x.br_next;
+        if ((tmask & x.br_mask) && (tmask & x.br_mask) != x.br_mask) k_.hit("split");
+        if (groups(x) < before) k_.hit("reconverge");
+        k_.peak("groups_peak", groups(x));
+        x.br_mask = 0;
         epoch_[rw & 31] = fe;
         stale_next_ = k_.brk == "stale-epoch" && !stale_done_;
         stale_done_ = stale_done_ || stale_next_;
@@ -2595,7 +2698,7 @@ private:
         take_slot(x, unsigned(get(m, c.rau_fet_mig, "tier1_id")));
         x.restoring = true;
       } else {
-        const Warp &x = warps_[w];
+        Warp &x = warps_[w];
         const auto &recs = k_.orcs[w].recs;
         Bits g = msgOf(c.fet_pca);
         put(g, c.fet_pca, "warp_id", w);
@@ -2614,6 +2717,16 @@ private:
           upper = pc >> ccv::kWPcWindow;
         }
         put(g, c.fet_pca, "pc_upper", upper);
+        // The fairness pointer and counter migrate with the PCs, as they
+        // stood at the boundary the warp resumes at (FET spec rev 16).
+        size_t bi = x.next;
+        if (x.boundary_tid)
+          for (size_t i = 0; i != recs.size(); ++i)
+            if (instrUid(warpSeq(w, recs[i].seq)) == x.boundary_tid) { bi = i; break; }
+        const Warp::At b = bi < x.fair_at.size() ? x.fair_at[bi] : Warp::At{x.fair_ptr, x.fair_cnt, x.lanes};
+        put(g, c.fet_pca, "fair_ptr", b.ptr);
+        put(g, c.fet_pca, "fair_cnt", b.cnt);
+        x.parked_lanes = b.lanes;
         k_.parked[w].rewound = x.rewound == ~0u;
         if (k_.parked[w].rewound) k_.hit("rewound");
         // The trace identity of where it resumes rides with the PCs to PCA,
@@ -2649,7 +2762,14 @@ private:
           if ((recs[at].mask >> l & 1u) && pc != recs[at].pc)
             k_.fail("fet: restored warp %u lane %u at %llx, but it resumes at %llx", w, l,
                     (unsigned long long)pc, (unsigned long long)recs[at].pc);
+          x.pc[l] = pc;
         }
+        // The fairness state comes back with the PCs. The live lanes do not
+        // migrate (TI-27 (b)): FET kept the parked warp's, as at its boundary.
+        x.lanes = x.parked_lanes;
+        x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
+        x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
+        x.br_mask = 0;
         x.next = at;
         x.launched = true;
         x.stopped = x.restoring = x.await_redirect = false;
@@ -2716,11 +2836,21 @@ private:
     for (unsigned s = x.tier1 * bg; s != x.tier1 * bg + bg && x.launched && !x.stopped &&
                                     !x.await_redirect &&
                                     x.next != recs.size(); ++s) {
+      // FET's own pick, checked against the record ccv-sim issued next.
+      const Pick pk = pick(x);
+      if (!pk.mask) break;   // no live lane: the warp has exited
       const Record &r = recs[x.next];
       bool ready = true;
-      for (uint64_t a = r.pc / kLine * kLine; a < r.pc + r.size; a += kLine)
+      for (uint64_t a = pk.pc / kLine * kLine; a < pk.pc + r.size; a += kLine)
         if (!line_.count(a)) { ready = false; want(a); }
       if (!ready || !can(c.fet_dec, s)) break;
+      if (pk.pc != r.pc || pk.mask != r.mask)
+        k_.fail("fet: warp %u picks %llx for lanes %08x; ccv-sim issued %llx for %08x (seq %llu)", w,
+                (unsigned long long)pk.pc, pk.mask, (unsigned long long)r.pc, r.mask,
+                (unsigned long long)r.seq);
+      if (r.kind != "advance" && r.kind != "branch" && r.kind != "branchpred" && r.kind != "exit")
+        k_.fail("fet: warp %u seq %llu is a %s, which this FET does not follow", w,
+                (unsigned long long)r.seq, r.kind.c_str());
       uint64_t word = 0;
       for (unsigned b = 0; b != r.size; ++b) {
         const uint64_t a = r.pc + b;
@@ -2767,6 +2897,25 @@ private:
       }
       send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
+      // The pick is made: record the fairness state it started from, take
+      // the new one, and move the group's lanes on. After a mismatch the
+      // record's lanes move, so one wrong pick is reported once.
+      if (x.fair_at.size() <= x.next) x.fair_at.resize(x.next + 1);
+      x.fair_at[x.next] = {x.fair_ptr, x.fair_cnt, x.lanes};
+      x.fair_ptr = pk.ptr;
+      x.fair_cnt = pk.cnt;
+      if (pk.fair) k_.hit("fair_pick");
+      const unsigned before = groups(x);
+      if (r.kind == "exit") {
+        x.lanes &= ~r.mask;
+      } else if (mispredict) {
+        x.br_mask = r.mask;      // split or moved at the redirect
+        x.br_next = r.pc + r.size;
+      } else {
+        for (unsigned l = 0; l != kLanes; ++l)
+          if (r.mask >> l & 1u) x.pc[l] = r.pc + r.size;
+        if (groups(x) < before) k_.hit("reconverge");
+      }
       ++x.next;
       if (mispredict) { x.await_redirect = true; break; }
     }

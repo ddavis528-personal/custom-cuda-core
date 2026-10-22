@@ -62,6 +62,14 @@
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
 #     carried with the uop (A-69)                refuse a mask missing lane 31
+#   FET picks each group itself, min-PC and   fair-off, fair-late (div): FET
+#     O-60's fairness at CCV_FAIR_N, and         refuses ccv-sim's seq 82;
+#     splits and reconverges groups              split-swap (div): the first
+#     (IS-17 (b))                                split goes the wrong way
+#   a load waits for an older store of its    no-st-wait (spinwait): lane 0
+#     warp to commit (MIU's disambiguation)      reads the flag still clear
+#   spinwait needs the rule                   ccv-sim at -fairness=0 runs to
+#                                                its step limit
 #   a uop of a stale fetch epoch is dropped   stale-epoch (loop): OOE drops
 #     before rename (A-70)                       it, and it never retires
 #   an L1 hit completes at the contract with  early-hit, late-hit-data,
@@ -606,6 +614,8 @@ swap   slot_reuse=2
 provswap redirect>0 slot_reuse>0
 stall  l1_late>0
 vaddslow full_line=1
+div    split=32 reconverge=2 groups_peak=2 fair_pick=1
+spinwait fair_pick=4 groups_peak=3 st_ld_wait>0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -649,6 +659,48 @@ if [ "$(cover "$B/kernel_stale-epoch.log" epoch_drop)" = 1 ] &&
   say "--break stale-epoch: OOE drops the uop" "PASS (A-70; 406 of 407 retire)"
 else
   bad "--break stale-epoch" "a stale-epoch uop was not dropped: $(grep -E '^(KERNEL|COVER)' "$B/kernel_stale-epoch.log" | xargs)"
+fi
+
+# Divergence (IS-17 (b)): FET picks every group itself, min-PC and O-60's
+# fairness rule at CCV_FAIR_N, and ccv-sim's record checks each pick. div's
+# loop sends its leavers a lane at a time to a waiting group, which the rule
+# picks once at seq 82: FET without the rule, or with N + 1, picks the loop
+# again there. split-swap sends a redirect's taken lanes down the fall-through
+# and the rest to the target, which the first split (seq 6) shows.
+for b in fair-off fair-late; do
+  "$SKEL" --kernel build/oracle/div/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK fet: warp 0 picks 102e for lanes fffe0000; ccv-sim issued 103a for 0001ffff (seq 82)" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" check_failures)" = 1 ]; then
+    say "--break $b: FET skips the fair pick (div)" "PASS (seq 82)"
+  else
+    bad "--break $b" "a pick without O-60's rule went unnoticed: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
+"$SKEL" --kernel build/oracle/div/oracle.jsonl --break split-swap >"$B/kernel_split-swap.log" 2>&1
+if grep -q "^CHECK fet: warp 0 picks 1014 for lanes 0000ffff; ccv-sim issued 1014 for ffff0000 (seq 6)" "$B/kernel_split-swap.log"; then
+  say "--break split-swap: the halves go the wrong way (div)" "PASS ($(field "$B/kernel_split-swap.log" check_failures) picks refused)"
+else
+  bad "--break split-swap" "a split the wrong way went unnoticed: $(grep '^KERNEL' "$B/kernel_split-swap.log")"
+fi
+# spinwait: lane 0's flag load waits behind lane 1's older store, which has
+# not committed (MIU's disambiguation). Read past it, the flag is still 0.
+"$SKEL" --kernel build/oracle/spinwait/oracle.jsonl --break no-st-wait >"$B/kernel_no-st-wait.log" 2>&1
+if grep -q "^CHECK miu: seq 205 lane 0 loaded 00000000, oracle 00000001" "$B/kernel_no-st-wait.log"; then
+  say "--break no-st-wait: the load reads past the store" "PASS (spinwait seq 205)"
+else
+  bad "--break no-st-wait" "a load past an older store went unnoticed: $(grep '^KERNEL' "$B/kernel_no-st-wait.log")"
+fi
+# And the rule is what lets spinwait finish: ccv-sim with it off (strict
+# min-PC, -fairness=0) runs to its step limit, so no oracle exists to follow.
+C=$(tools/fetch-compiler.sh)
+pokes=(); while read -r p; do pokes+=(-poke "$p"); done < <(grep -E '^0x' test/kernels/spinwait/kernel.cfg)
+# ccv-sim exits non-zero at the limit, so its output is taken whole first
+# (under pipefail its status would fail the pipe however grep matched).
+sw=$("$C/release/bin/ccv-sim" build/oracle/spinwait/kernel.bin "${pokes[@]}" -fairness=0 2>&1)
+if grep -q "step limit reached with lanes still active" <<<"$sw"; then
+  say "spinwait under strict min-PC: hangs" "PASS (ccv-sim at -fairness=0)"
+else
+  bad "spinwait under strict min-PC" "it finished: the kernel no longer needs O-60's rule"
 fi
 
 # The OOE modes. bypass and l1_spec are on by default (OI-5), so the runs

@@ -1016,6 +1016,10 @@ private:
     bool notice_sent = false;
     unsigned rewind_pending = 0;              ///< a demotion's beats not yet sent (TI-24 (3))
     bool exit_retired = false, exited_sent = false;   ///< OA's rev 149
+    /// Lanes that have not exited (IS-17 (b)): an exit retires only its
+    /// group's lanes, and the warp has exited once none is left. All 32 at
+    /// launch, since ccv_rau_ooe_alloc names no lanes (TI-27).
+    uint32_t live = 0;
     unsigned kill_epoch = 0;
     uint64_t resume_pc = 0;
     /// Restore-allocate in progress (OI-41): registers still to take, and
@@ -1498,7 +1502,10 @@ private:
   /// position and committed width (2 + 2 bits, 64 bits a warp, 2 Kb for
   /// the 32 contexts). Written at the demotion's map, read at
   /// restore-allocate, which gives each register its own row with them.
-  struct Parked { std::array<uint8_t, 16> pos{}, w{}; };
+  struct Parked {
+    std::array<uint8_t, 16> pos{}, w{};
+    uint32_t live = ~0u;   ///< lanes not yet exited, kept across the park (IS-17 (b))
+  };
   std::array<Parked, kWarpIds> parked_{};
   unsigned mig_reads_ = 0;
   std::vector<uint8_t> stall_bit_;       ///< share_stall_aware's registered bit per slot

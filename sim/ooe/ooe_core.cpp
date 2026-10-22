@@ -1767,6 +1767,7 @@ void Core::control() {
       // (OI-57's table survives the park).
       if (a.op == kAllocRestoreAlloc && !cfg_.inject_park_layout_lost)
         for (unsigned r = 0; r != kArchGprs; ++r) s.cw[r] = parked_[a.warp % kWarpIds].w[r];
+      s.live = a.op == kAllocLaunch ? ~0u : parked_[a.warp % kWarpIds].live;
       if (a.op == kAllocLaunch) {
         // Every architectural register maps to the zero registers (A-64):
         // no zeroing traffic, and nothing from another context is readable.
@@ -1959,6 +1960,7 @@ void Core::control() {
         // TI-25: the parked layout, one row per register (no merging), each
         // its position and committed width.
         Parked &pk = parked_[s.warp % kWarpIds];
+        pk.live = s.live;
         for (unsigned a = 0; a != kArchGprs; ++a) {
           const unsigned n = s.crat[a];
           const bool narrow = cfg_.sectioned && !isZeroName(n);
@@ -2091,14 +2093,19 @@ void Core::retire() {
         s.chwidth_hold = false;
       }
       if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
-      if (r.u.shape.exit) s.exit_retired = true;
+      // A diverged warp exits a group at a time (IS-17 (b)): the warp has
+      // exited once its last lanes' exit retires.
+      if (r.u.shape.exit) {
+        s.live &= ~r.u.group_mask;
+        if (!s.live) s.exit_retired = true;
+      }
       const uint64_t next = r.u.pc + 2 * (r.u.ilen + 1);
       s.next_pc = r.u.attr.branch && r.taken ? next + uint64_t(2 * int64_t(int32_t(r.u.imm))) : next;
       Retired rt;
       rt.tid = r.u.tid;
       rt.warp = s.warp;
       rt.rob_tag = tagOf(si, s.head);
-      rt.exit = r.u.shape.exit;
+      rt.exit = r.u.shape.exit && !s.live;
       rt.writes_gpr = r.alloc_gpr;
       rt.dst = r.u.dst & 15;
       rt.pnew = r.pnew;
