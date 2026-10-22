@@ -843,3 +843,10 @@ it.
   memops across the corpus, and the floorplan cost of the RCU-MIU boundary
   once it is known. Worth it if the class is under 1% of memops, or the
   boundary does not close.
+- **Measured (CP, release f1fd257, 2026-10-22):** register-base indexed
+  stores are 18,157 of the CoreMark-derived workload's 108,170 memops
+  (16.8%), from list walking through per-lane pointers. The GPU kernels
+  have almost none: 1 of 7 in transpose, 1 of 93 in layernorm, 0 in the
+  other ten. The signal fails on general-purpose code, the code AR-20
+  exists to measure, so the field stays. Reopen only if the RCU-MIU
+  boundary does not close in floorplan.
