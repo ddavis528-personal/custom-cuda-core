@@ -2359,6 +2359,7 @@ private:
         }
         put(g, c.fet_pca, "pc_upper", upper);
         k_.parked[w].rewound = x.rewound == ~0u;
+        if (k_.parked[w].rewound) k_.hit("rewound");
         pca_q_.push_back(g);
       }
     }

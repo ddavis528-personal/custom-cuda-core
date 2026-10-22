@@ -78,7 +78,8 @@
 #     entry (OA-23)                            every completion
 #   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
 #     state at its retirement boundary         resume-pc (stall, demoting):
-#     (TI-24), at the place RAU names          the parked check refuses each;
+#     (TI-24), at the place RAU names, each    resume-pc, rewind-pc (stall):
+#     lane's PC from OOE's rewind beats        the parked check refuses each;
 #                                              pca-place (mwmiss): PCA refuses
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
 #     DEC marks real (TI-1)                      hides a second source, and
@@ -729,10 +730,11 @@ why=""
 for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
   [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
 done
-if [ -z "$why" ] && [ "$(cover "$log" demote)" = 1 ] && [ "$(cover "$log" parked)" = 1 ]; then
-  say "stall demoted: warp 0 parked == ccv-sim" "PASS (rows, predicates and resume PC at its boundary)"
+if [ -z "$why" ] && [ "$(cover "$log" demote)" = 1 ] && [ "$(cover "$log" parked)" = 1 ] &&
+   [ "$(cover "$log" rewound)" = 1 ]; then
+  say "stall demoted: warp 0 parked == ccv-sim" "PASS (rows, predicates, every lane's PC from OOE's rewind beats)"
 else
-  bad "stall demoted" "${why# } demote=$(cover "$log" demote) parked=$(cover "$log" parked)"
+  bad "stall demoted" "${why# } demote=$(cover "$log" demote) parked=$(cover "$log" parked) rewound=$(cover "$log" rewound)"
 fi
 # PCA files a warp at the place RAU names (TI-24 (1)): RAU naming one place
 # twice is refused. It needs two warps parked, so OOE's fallback threshold
@@ -762,7 +764,7 @@ else
   bad "mwmiss, every warp parked" "${why# } parked=$(cover "$log" parked)"
 fi
 for spec in "corrupt-map:PARKED warp 0 R1 lane" "mig-row-order:PARKED warp 0 R0 lane" \
-            "resume-pc:PARKED warp 0 resumes at"; do
+            "resume-pc:PARKED warp 0 resumes at" "rewind-pc:PARKED warp 0 lane 0 resumes at"; do
   brk=${spec%%:*}; want=${spec#*:}
   dem --break "$brk" >"$B/kernel_demote_$brk.log" 2>&1
   n=$(grep -c "^$want" "$B/kernel_demote_$brk.log")

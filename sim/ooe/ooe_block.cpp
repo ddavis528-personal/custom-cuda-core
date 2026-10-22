@@ -440,7 +440,9 @@ private:
       put(r, c.ooe_fet, "rewind", x.rewind);
       if (x.rewind) {
         put(r, c.ooe_fet, "taken_mask", x.taken_mask);
-        put(r, c.ooe_fet, "target_pc", x.target_pc);
+        // rewind-pc: each beat names the next instruction's PC, so the
+        // lanes resume one past their boundary (TI's control).
+        put(r, c.ooe_fet, "target_pc", x.target_pc + (k_.brk == "rewind-pc" ? 2u : 0u));
       }
       if (!x.epoch_only) {
         put(r, c.ooe_fet, "target_pc", x.target_pc);
