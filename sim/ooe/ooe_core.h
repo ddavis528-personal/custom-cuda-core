@@ -513,6 +513,7 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned warp = 0, slot = 0, op = 0;
   uint32_t ctaid = 0, warp_in_cta = 0;
   unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
+  unsigned cta_slot = 0;           ///< launch and restore-allocate: the warp's CTA slot (TI-34)
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
 enum : unsigned { kCauseWidth = 3, kCauseFormat = 4, kCauseBarrier = 9 };
@@ -578,6 +579,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
   unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
+  unsigned cta_slot = 0;                  ///< the warp's, from its tier-1 slot (TI-34)
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -1014,6 +1016,7 @@ private:
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
     unsigned bar_count = 0;                   ///< the CTA's barriers, from launch or restore-allocate (IS-16)
+    unsigned cta_slot = 0;                    ///< its CTA's slot, likewise; stamped on memop, bar, fault (TI-34)
     /// The committed width per architectural GPR (OA's response OI-57): a
     /// width code (0 32, 1 16, 2 8, 3 4 bits), written when a chwidth
     /// retires, 32 at launch and at restore-allocate. F-WIDTH reads it.

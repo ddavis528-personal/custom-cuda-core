@@ -78,6 +78,8 @@
 #     MIU's table, filled on first use (TI-31)   address is in window 0
 #   a memop's base is per lane (TI-32)        scalar-base (slotform): lanes
 #                                                1-31 store into lane 0's window
+#   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
+#     CTA slot, from RAU's alloc (TI-34)         name slot 0, and MIU refuses
 #   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
 #     owner drops the warps and acks at the      (rokill): never killed, or the
 #     kill's epoch (V-24)                        kill never completes
@@ -763,6 +765,16 @@ if grep -q "^CHECK miu: seq 7 lane 1 address 5ffffc, oracle 60fffc" "$B/kernel_s
   say "--break scalar-base: lanes 1-31 in lane 0's window" "PASS (slotform: 32 words)"
 else
   bad "--break scalar-base" "a per-lane base went unchecked: $(grep '^KERNEL' "$B/kernel_scalar-base.log")"
+fi
+# Each memop names its warp's CTA slot (TI-34): RAU sends it on the alloc,
+# and OOE holds it per tier-1 slot and stamps it. Every memop zeroed, as
+# before TI-34, and MIU refuses vadd4's warps 1-3, 8 memops each.
+"$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break zero-cta-slot >"$B/kernel_zero-cta-slot.log" 2>&1
+if [ "$(grep -c "^CHECK miu: rob tag [0-9]* (warp [123]) names CTA slot 0; RAU gave it [123]" "$B/kernel_zero-cta-slot.log")" = 24 ] &&
+   [ "$(field "$B/kernel_zero-cta-slot.log" check_failures)" = 24 ]; then
+  say "--break zero-cta-slot: warps 1-3 name slot 0" "PASS (vadd4: 24 memops refused)"
+else
+  bad "--break zero-cta-slot" "a memop's CTA slot went unchecked: $(grep '^KERNEL' "$B/kernel_zero-cta-slot.log")"
 fi
 # The kill (V-24): a fatal fault kills the context. RAU broadcasts the mask
 # of every valid warp context with an epoch, and waits for the eight owners'

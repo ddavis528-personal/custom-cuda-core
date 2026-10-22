@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 13 | 40 |
-| ⚠️ Some provisional | 24 | 110 |
+| All decided | 12 | 34 |
+| ⚠️ Some provisional | 25 | 117 |
 | ⛔ Some preliminary | 15 | 132 |
-| **Total** | **52** | **282** |
+| **Total** | **52** | **283** |
 
 ## What still has to be decided
 
@@ -184,22 +184,6 @@ lane → rcu · rate 1 · execution
 | `sec_valid` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
 | `sec_pred_out` | `CCV_SECTIONS` | 4 | CCV_SECTIONS (arch) |
 | **total** | | **40** | |
-
-### `ccv_rau_ooe_alloc`
-
-What RAU tells OOE about a warp's residency (A-64, A-65). alloc_op: 0 free, 1 launch, 2 restore-allocate, 3 restore-activate. Launch: OOE maps the warp's 16 architectural GPRs and 4 predicates to the hardwired zero registers (CCV_P_PHYS_ZERO, CCV_P_PRED_ZERO), so no zeroing traffic is sent and the warp may issue at once. Restore-allocate, before the PCA transfer: OOE allocates 16 GPRs and 4 predicates from the slot's reservation, so it never waits, and sends ccv_ooe_rcu_map with direction 1. Restore-activate, after ccv_pca_rau_mig_done: only now may the warp rename and issue. A single activation message would deadlock, since PCA's rows need the map and the map would need the activation. Free: the warp's state is released. tier1_id is the tier-1 slot RAU placed the warp in; OOE keeps its warp-to-slot table from it, which indexes the ROB, rob_tag's slot field, the per-slot reservations and the checkpoint-free bitmap, so ccv_dec_ooe_uop needs no slot field. Identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design. BARRIERS (IS-16, ISA v1.9 O-59): on a launch and on a restore-allocate, barrier_count is the warp's CTA's allocated barrier count, 0 to 16. OOE holds it in the tier-1 slot's state and raises F-BARRIER at dispatch for a barrier instruction whose ID is at or above it, so a faulting reference never reaches SYU. It rides restore-allocate too because a restored warp can land in a different slot, and RAU, which owns the CTA's allocation, is the one holder that survives demotion (OA's response IS-16). Don't-care on free and restore-activate.
-
-rau → ooe · rate 1 · control
-
-| Field | Width expression | Bits | Source |
-|---|---|---|---|
-| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
-| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
-| `alloc_op` | `2` | 2 | literal |
-| `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
-| `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
-| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
-| **total** | | **51** | |
 
 ### `ccv_ooe_rau_status`
 
@@ -562,6 +546,23 @@ mlc → fet · rate 1 · memory
 | `req_id` | `CCV_P_W_REQ_FET_MLC` | 2 ⚠️ | CCV_P_W_REQ_FET_MLC (provisional) |
 | `line_data` | `8*CCV_P_LINE_BYTES` | 1024 ⚠️ | CCV_P_LINE_BYTES (provisional) |
 | **total** | | **1026** | ⚠️ 1026 provisional |
+
+### `ccv_rau_ooe_alloc`
+
+What RAU tells OOE about a warp's residency (A-64, A-65). alloc_op: 0 free, 1 launch, 2 restore-allocate, 3 restore-activate. Launch: OOE maps the warp's 16 architectural GPRs and 4 predicates to the hardwired zero registers (CCV_P_PHYS_ZERO, CCV_P_PRED_ZERO), so no zeroing traffic is sent and the warp may issue at once. Restore-allocate, before the PCA transfer: OOE allocates 16 GPRs and 4 predicates from the slot's reservation, so it never waits, and sends ccv_ooe_rcu_map with direction 1. Restore-activate, after ccv_pca_rau_mig_done: only now may the warp rename and issue. A single activation message would deadlock, since PCA's rows need the map and the map would need the activation. Free: the warp's state is released. tier1_id is the tier-1 slot RAU placed the warp in; OOE keeps its warp-to-slot table from it, which indexes the ROB, rob_tag's slot field, the per-slot reservations and the checkpoint-free bitmap, so ccv_dec_ooe_uop needs no slot field. Identity: ctaid and warp_in_cta, which OOE shadows so it can put srd's value in the immediate at issue (Q-38, A-25). RAU allocates no physical registers: OOE's global free lists do, from a reservation held per tier-1 slot whether occupied or not, so activation never waits and no credit is withheld (A-30, A-49). RAU's table is indexed by warp slot, which does not change while a warp parks, so identity stays out of the parked context by design. BARRIERS (IS-16, ISA v1.9 O-59): on a launch and on a restore-allocate, barrier_count is the warp's CTA's allocated barrier count, 0 to 16. OOE holds it in the tier-1 slot's state and raises F-BARRIER at dispatch for a barrier instruction whose ID is at or above it, so a faulting reference never reaches SYU. It rides restore-allocate too because a restored warp can land in a different slot, and RAU, which owns the CTA's allocation, is the one holder that survives demotion (OA's response IS-16). CTA SLOT (TI-34, AR's and OA's responses): on a launch and on a restore-allocate, cta_slot is the CTA slot RAU gave the warp's CTA. OOE holds it per tier-1 slot, beside barrier_count, and stamps it onto ccv_ooe_miu_memop, ccv_ooe_syu_bar and ccv_ooe_cru_fault, whose per-CTA state (F-SHARED's and F-RO's bounds, the launch-slot windows, SYU's barrier counts) is indexed by it. A parked warp keeps its CTA slot at RAU, so a restore-allocate carries it again and nothing migrates. Don't-care on free and restore-activate.
+
+rau → ooe · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `alloc_op` | `2` | 2 | literal |
+| `ctaid` | `CCV_W_CTAID` | 32 | CCV_W_CTAID (isa) |
+| `warp_in_cta` | `CCV_W_WARP_IN_CTA` | 5 | CCV_W_WARP_IN_CTA (isa) |
+| `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
+| `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
+| **total** | | **54** | ⚠️ 3 provisional |
 
 ### `ccv_ooe_rcu_map`
 

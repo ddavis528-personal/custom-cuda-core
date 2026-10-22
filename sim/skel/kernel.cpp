@@ -870,6 +870,16 @@ private:
         if (uidClass(m.tid) != IdClass::kInstr)
           k_.fail("miu: rob tag %u is a memop with id class %u; only a discard may carry none",
                   tag, unsigned(uidClass(m.tid)));
+        // The CTA slot OOE stamps, RAU's for the warp (TI-34): the window
+        // table, F-RO's range and the launch block are indexed by it.
+        {
+          const unsigned w = unsigned(get(m.payload, c.ooe_miu, "warp_id"));
+          const unsigned cs = unsigned(get(m.payload, c.ooe_miu, "cta_slot"));
+          if (k_.cta_slot_of.count(w) && cs != k_.cta_slot_of[w]) {
+            k_.fail("miu: rob tag %u (warp %u) names CTA slot %u; RAU gave it %u", tag, w, cs,
+                    k_.cta_slot_of[w]);
+          }
+        }
         memop_[tag] = {s, m.payload, now_, m.tid};
         order_.push_back(tag);
       }
@@ -3308,6 +3318,10 @@ private:
       put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
       put(a, c.rau_ooe, "warp_in_cta", k_.orcs[w].warp_in_cta);
       put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
+      // Its CTA's slot (TI-34): the one rau_miu_cta names, a slot per warp
+      // here. Recorded for the checks on what OOE stamps with it.
+      put(a, c.rau_ooe, "cta_slot", w);
+      k_.cta_slot_of[w] = w;
     }
     return a;
   }
@@ -3855,6 +3869,10 @@ private:
     f.pc = get(m, chan_, "pc");
     f.lanes = uint32_t(get(m, chan_, "lane_mask"));
     f.addr = get(m, chan_, "address");
+    // The CTA slot OOE stamps, RAU's for the warp (TI-34).
+    const unsigned cs = unsigned(get(m, chan_, "cta_slot"));
+    if (k_.cta_slot_of.count(w) && cs != k_.cta_slot_of[w])
+      k_.fail("cru: warp %u's fault names CTA slot %u; RAU gave it %u", w, cs, k_.cta_slot_of[w]);
     if (k_.faults.count(w)) k_.fail("cru: warp %u faults twice", w);
     k_.faults[w] = f;
     k_.hit("fault");

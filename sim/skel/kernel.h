@@ -236,6 +236,9 @@ struct Kernel {
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups"};
   std::map<std::string, uint64_t> cover;
+  /// Each warp's CTA slot, as RAU gave it (TI-34): for the checks on the
+  /// cta_slot OOE stamps on memops and faults, never for a decision.
+  std::map<unsigned, unsigned> cta_slot_of;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 

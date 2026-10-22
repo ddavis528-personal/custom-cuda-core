@@ -1775,6 +1775,7 @@ void Core::control() {
       // The CTA's barrier count, at launch and at restore-allocate, since a
       // restored warp may land in another slot (OA's response IS-16).
       s.bar_count = a.barrier_count;
+      s.cta_slot = a.cta_slot;          // likewise (TI-34)
       // Every register 32 bits wide: at launch, and at restore-allocate
       // until the map carries the saved widths (A-64, OI-32).
       s.cw.fill(0);
@@ -2036,6 +2037,7 @@ void Core::retire() {
       if (r.u.attr.serial == kSerBarrier && !r.committed && !r.fault) {
         Bar b;
         b.warp = s.warp;
+        b.cta_slot = s.cta_slot;
         b.barrier_id = r.u.imm;    // temporary: A-75 names the field
         out.bars.push_back(b);
         r.committed = true;
@@ -2052,6 +2054,7 @@ void Core::retire() {
         Fault f;
         f.tid = r.u.tid;
         f.warp = s.warp;
+        f.cta_slot = s.cta_slot;
         f.cause = r.fault_cause;
         f.pc = r.u.pc;
         f.lane_mask = r.fault_lanes;
@@ -2759,6 +2762,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.space = u.space;
     m.ordering = u.ordering;
     m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
+    m.cta_slot = s.cta_slot;             // the slot's register (TI-34)
     m.arg_slot = u.arg_slot;
     m.chwidth = s.chwidth;
     if (x.atom) {
