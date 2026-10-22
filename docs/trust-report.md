@@ -51,7 +51,7 @@ so this is a build artifact rather than something to remember.
 | `sim/ooe/ooe_core.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_BR_CKPTS`, `CCV_P_W_FETCH_EPOCH` |
 | `sim/ooe/ooe_core.h` | — | — |
 | `sim/ooe/ooe_test.cpp` | — | `CCV_P_FOOT_MIN_FP` |
-| `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP` |
+| `sim/skel/kernel.cpp` | — | `CCV_LAT_LANE`, `CCV_LAT_LANE_BYP`, `CCV_P_MAX_CTA` |
 | `sim/skel/ooe.cpp` | — | — |
 | `sim/skel/stub.h` | — | — |
 | `test/cg/tb_cg_clk.sv` | — | `CCV_CG_HYST_W` |
@@ -65,7 +65,7 @@ so this is a build artifact rather than something to remember.
 
 A module that carries one of these payload structs depends on a
 preliminary width without naming the package, so it does not
-appear above. **15 of 51 channels** carry at least one
+appear above. **15 of 52 channels** carry at least one
 preliminary field:
 
 | Channel | Preliminary fields |

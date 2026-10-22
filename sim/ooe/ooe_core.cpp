@@ -1619,13 +1619,16 @@ void Core::releaseEntry(unsigned slot, unsigned idx) {
 
 /// Squash every entry of the slot younger than keep_idx, in ROB order; with
 /// to_retirement, every entry. The caller restores the RAT.
-void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool loads) {
+void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool discard_all) {
   if (slot < audit_squash_.size()) audit_squash_[slot] = 1;
   Slot &s = slot_[slot];
   const unsigned first = to_retirement ? 0 : robAge(s, unsigned(keep_idx)) + 1;
   const uint32_t gmask = to_retirement ? 0 : s.rob[unsigned(keep_idx)].u.group_mask;
-  bool stores_at_miu = false, loads_at_miu = false;
+  bool stores_at_miu = false;
   unsigned n = 0, deferred = 0, other = 0;
+  // The discard's trace identity, read before the loop releases the head.
+  const uint64_t discard_tid =
+      s.count ? s.rob[to_retirement ? s.head : unsigned(keep_idx)].u.tid : 0;
   // V-74: a squash takes the fault-address register with its entry.
   if (s.fa_valid && robAge(s, s.fa_idx) >= first) s.fa_valid = false;
   for (unsigned k = first; k < s.count; ++k) {
@@ -1646,7 +1649,6 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool loa
       r.rs_main = r.rs_copy = kNoEntry;
     }
     if (r.is_store && r.at_miu && !r.committed) stores_at_miu = true;
-    if (loads && r.is_load && r.at_miu && !r.miu_done) loads_at_miu = true;
     if (s.chwidth_hold && s.chwidth_rob == idx) s.chwidth_hold = false;
     if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
     if (outstanding(r)) {
@@ -1665,13 +1667,12 @@ void Core::squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool loa
         s.rob[unsigned(keep_idx)].u.tid);
   count("squash.entries", n);
   count("squash.deferred", deferred);
-  if (stores_at_miu || loads_at_miu) {
-    // One bulk discard of the circular range (branch, tail] (A-41, A-53);
-    // a demotion's takes the loads too (PF-23), so its drain waits for
-    // their replay completions, not their fills.
+  if (stores_at_miu || discard_all) {
+    // One bulk discard of the circular range (branch, tail] (A-41, A-53),
+    // which takes the loads with the stores (TI-21). A demotion's covers the
+    // whole ROB, branch == tail when it is full or empty.
     Memop d;
-    d.loads = loads;
-    d.tid = s.rob[to_retirement ? s.head : unsigned(keep_idx)].u.tid;
+    d.tid = discard_tid;
     d.warp = s.warp;
     d.mem_op = 0xF;
     const unsigned branch = to_retirement ? (s.head + cfg_.rob_depth - 1) % cfg_.rob_depth
@@ -1822,20 +1823,16 @@ void Core::control() {
     if (si < 0) { err("demote of warp %u, which is not resident", w); continue; }
     Slot &s = slot_[si];
     if (s.st != WarpState::kActive) { err("demote of warp %u in state %d", w, int(s.st)); continue; }
+    if (s.exit_retired && !cfg_.inject_no_refuse) {
+      // Refused (OA's response TI-25 (2)): the exit has retired, so the warp
+      // is finishing. No squash, no map, no rewind; exited frees the slot.
+      out.drained.push_back({s.warp, 0, true});
+      count("demote.refused");
+      continue;
+    }
     if (atomAtHead(unsigned(si)) && !cfg_.inject_atom_demote_mid) {
       demotes_held_.push_back(w);
       count("demote.held_atomic");
-      continue;
-    }
-    // TI-25 (AR's rev 112): every demote gets exactly one drained. Its exit
-    // retired: no squash, no map, no rewind beats; refused, and exited
-    // follows at the quiesce and frees the slot.
-    if (s.exit_retired && !cfg_.inject_no_refuse) {
-      Drained d;
-      d.warp = w;
-      d.refused = true;
-      out.drained.push_back(d);
-      count("demote.refused");
       continue;
     }
     // Squash to retirement (Demotion): the resume PC is the oldest
@@ -1847,23 +1844,27 @@ void Core::control() {
     // unretired uop, across the ROB and then the decode queue, lanes that
     // share a PC merged into one beat, oldest first. Lanes with none keep
     // FET's PC. resume_pc is the oldest beat's.
-    std::vector<std::pair<uint64_t, uint32_t>> beats;
+    // Each beat carries, on the trace sideband, the identity of the uop
+    // that opened it (its oldest): trace-only, for a trace-driven FET to
+    // find its place in the oracle's order (TI).
+    struct Beat { uint64_t pc; uint32_t mask; uint64_t tid; };
+    std::vector<Beat> beats;
     {
       uint32_t covered = 0;
-      auto take = [&](uint64_t pc, uint32_t mask) {
+      auto take = [&](uint64_t pc, uint32_t mask, uint64_t tid) {
         const uint32_t m = mask & ~covered;
         if (!m) return;
         covered |= m;
         for (auto &b : beats)
-          if (b.first == pc) { b.second |= m; return; }
-        beats.push_back({pc, m});
+          if (b.pc == pc) { b.mask |= m; return; }
+        beats.push_back({pc, m, tid});
       };
       for (unsigned k = 0; k != s.count; ++k) {
         const RobEntry &r = s.rob[(s.head + k) % cfg_.rob_depth];
-        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask);
+        if (r.valid && !r.squashed) take(r.u.pc, r.u.group_mask, r.u.tid);
       }
       for (const Uop &u : decq_)
-        if (u.warp == w) take(u.pc, u.group_mask);
+        if (u.warp == w) take(u.pc, u.group_mask, u.tid);
     }
     ++histograms["demote.rewind_beats"][beats.size()];
     if (cfg_.inject_rewind_order) std::reverse(beats.begin(), beats.end());
@@ -1886,8 +1887,9 @@ void Core::control() {
       x.slot = unsigned(si);
       x.epoch = epoch_[s.warp % kWarpIds];
       x.epoch_only = x.rewind = true;
-      x.taken_mask = b.second;
-      x.target_pc = b.first;
+      x.taken_mask = b.mask;
+      x.target_pc = b.pc;
+      x.tid = b.tid;
       redirects_.push_back(x);
       ++s.rewind_pending;
     }

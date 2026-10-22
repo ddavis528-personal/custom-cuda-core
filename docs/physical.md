@@ -330,7 +330,7 @@ them: `credit_per_msg` belongs in every receiver.
   - every kernel with OOE's lane-local bypass on: `CCV_LAT_LANE` is 11
     there and the forwarding window 4 to 10, but the bypass stays at 4,
     since producer and dependant cross the same links (TI-8);
-  - SV-hosted equal to C++-hosted: twenty-two kernels and 39 controls, with both
+  - SV-hosted equal to C++-hosted: twenty-three kernels and 39 controls, with both
     skew controls caught.
 
 **What the first split found, beyond itself:** the S0 exerciser was

@@ -17,7 +17,6 @@
 #include "ooe_core.h"
 
 #include <cstdlib>
-#include <cstring>
 #include <fstream>
 #include <map>
 #include <set>
@@ -422,7 +421,9 @@ private:
         put(mo, c.ooe_miu, "pipes",
             k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
       }
-      sendOn(c.ooe_miu, x.port, mo, x.tid);
+      // A demotion's discard of an empty ROB names no instruction (TI-21).
+      sendOn(c.ooe_miu, x.port, mo,
+             x.mem_op == 0xF && !x.tid ? makeUid(IdClass::kNone, 0) : x.tid);
     }
     for (const ooe::Commit &x : o.commits) {
       Bits r = msgOf(c.ooe_ret);
@@ -441,7 +442,9 @@ private:
       put(r, c.ooe_fet, "rewind", x.rewind);
       if (x.rewind) {
         put(r, c.ooe_fet, "taken_mask", x.taken_mask);
-        put(r, c.ooe_fet, "target_pc", x.target_pc);
+        // rewind-pc: each beat names the next instruction's PC, so the
+        // lanes resume one past their boundary (TI's control).
+        put(r, c.ooe_fet, "target_pc", x.target_pc + (k_.brk == "rewind-pc" ? 2u : 0u));
       }
       if (!x.epoch_only) {
         put(r, c.ooe_fet, "target_pc", x.target_pc);
@@ -452,7 +455,7 @@ private:
         // checkpoint the same cycle's redirect restores.
         if (k_.brk == "stale-free") free_mask |= uint64_t(1) << (x.slot * ccv::prov::kBrCkpts + x.ckpt);
       }
-      sendOn(c.ooe_fet, 0, r, x.epoch_only ? makeUid(IdClass::kInstr, 0) : x.tid);
+      sendOn(c.ooe_fet, 0, r, x.epoch_only && !x.rewind ? makeUid(IdClass::kInstr, 0) : x.tid);
     }
     if (free_mask) {
       Bits f = msgOf(c.ooe_free);
@@ -484,7 +487,10 @@ private:
                       &gw = field(mc, "gpr_width"), &pm = field(mc, "pred_map");
       for (unsigned a = 0; a != kArchGprs; ++a) {
         // corrupt-map: R1 named by R2's row, so PCA saves the wrong value.
-        const unsigned g = k_.brk == "corrupt-map" && a == 1 ? x.gpr[2] : x.gpr[a];
+        // restore-share: a restore map naming R2's row for R1 too, so two
+        // registers share one row: RCU refuses it (TI-25 (1)).
+        const unsigned g = (k_.brk == "corrupt-map" || (k_.brk == "restore-share" && x.direction == 1)) && a == 1
+                               ? x.gpr[2] : x.gpr[a];
         m.set(gm.lsb + a * (gm.width / kArchGprs), gm.width / kArchGprs, core_.nameRow(g));
         m.set(gp.lsb + a * (gp.width / kArchGprs), gp.width / kArchGprs, core_.namePos(x.gpr[a]));
         m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, kChw32);
@@ -498,13 +504,8 @@ private:
       Bits m = msgOf(dc);
       put(m, dc, "warp_id", x.warp);
       put(m, dc, "resume_pc", x.resume_pc + (k_.brk == "resume-pc" ? 2u : 0u));
-      put(m, dc, "arch_state_ready", 1);
-      // TI-25's refused bit is TI's to add to the channel; until it is
-      // there, a refused demote has no encoding.
-      bool has_refused = false;
-      for (unsigned f = 0; f != kChans[dc].nfields; ++f) has_refused = has_refused || !std::strcmp(kChans[dc].fields[f].name, "refused");
-      if (has_refused) put(m, dc, "refused", x.refused);
-      else if (x.refused) k_.fail("ooe: a refused demote of warp %u, and ccv_ooe_rau_drained has no refused bit (TI-25)", x.warp);
+      put(m, dc, "arch_state_ready", x.refused ? 0 : 1);
+      put(m, dc, "refused", x.refused);   // TI-25 (2)
       held_.push_back({dc, m});
     }
     for (auto it = held_.begin(); it != held_.end();) {

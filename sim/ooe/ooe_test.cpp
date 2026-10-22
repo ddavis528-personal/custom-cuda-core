@@ -789,17 +789,27 @@ struct Env {
     return when;
   }
 
-  /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard abandons the
-  /// warp's outstanding loads. Each is answered at once with replay; its
-  /// data is never written and its own response is dropped, so nothing
-  /// lands in a register freed to the slot's next occupant. A load whose
+  /// PF-23 (OA's rev 160, AR's rev 106): a bulk discard abandons the
+  /// warp's outstanding loads in its range (every discard takes them,
+  /// TI-21). Each is answered at once with replay; its data is never
+  /// written and its own response is dropped, so nothing lands in a
+  /// register freed to the slot's next occupant. A load whose
   /// beat or completion is already under way finishes as it is (exactly
   /// one completion, A-41). The line still fills: served stands.
   void abandonLoads(const Memop &d) {
+    // The circular range (branch, tail]; branch == tail is the whole ROB
+    // (a demotion's, full or empty).
+    const unsigned D = cfg.rob_depth, mask = (1u << ccv::prov::kWRobIdx) - 1;
+    const unsigned branch = d.rob_tag & mask, tail = d.disp & mask;
+    auto covered = [&](unsigned tag) {
+      const unsigned i = tag & mask;
+      return branch == tail || (i + D - branch - 1) % D < (tail + D - branch) % D;
+    };
     for (auto &pe : pend) {
       Pend &q = pe.second;
-      if (q.warp != d.warp || q.when <= t + 1 || (q.rd && q.rd <= t + 1)) {
-        if (q.warp == d.warp) ++abandon_started;
+      if (q.warp != d.warp || !covered(pe.first)) continue;
+      if (q.when <= t + 1 || (q.rd && q.rd <= t + 1)) {
+        ++abandon_started;
         continue;
       }
       const unsigned tag = pe.first;
@@ -834,7 +844,7 @@ struct Env {
 
   void onMemop(const Memop &m) {
     if (m.mem_op == 0xF) {
-      if (m.loads) abandonLoads(m);
+      abandonLoads(m);
       return;
     }
     const Op &o = op_of[m.tid];

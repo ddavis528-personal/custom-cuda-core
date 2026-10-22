@@ -1190,8 +1190,8 @@ matters for the skeleton:
   `CCV_DONE_SLOTS` = 7 slots: dones stack by latency class, so four narrow
   lane ops, an SFU op, an RCU-only op and a warp-collective issued in
   different cycles can land together (OA's response TI-9). The RAT map
-  carries `gpr_pos` and `gpr_width`, and rows move whole, each distinct row
-  once in order of first appearance from R0. The RCU stub checks V-60 every cycle --
+  carries `gpr_pos` and `gpr_width`, and rows move whole, one per
+  architectural register, Ra as row a, with no merging (TI-25 (1)). The RCU stub checks V-60 every cycle --
   each lead in its footprint's lowest slot, continuation on the rest with
   its tag, no slot in two footprints -- and each class on its own group,
   and refuses a register past its row; MIU refuses a `pipes` that is not

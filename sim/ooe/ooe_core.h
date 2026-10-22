@@ -484,8 +484,8 @@ struct Cmpl {           ///< ccv_miu_ooe_cmpl
   bool mlc_miss = false;
   bool more = false;    ///< an atomic's A3: lanes remain, re-issue the three steps (AR-21)
 };
-/// Completion status (CCV_W_STATUS: complete, replay, fault).
-enum : unsigned { kCmplOk = 0, kCmplReplay = 1, kCmplFault = 2 };
+/// Completion status (ccv_miu_ooe_cmpl's doc: 0 complete, 1 fault, 2 replay).
+enum : unsigned { kCmplOk = 0, kCmplFault = 1, kCmplReplay = 2 };
 enum : unsigned { kAllocFree = 0, kAllocLaunch = 1, kAllocRestoreAlloc = 2,
                   kAllocRestoreActivate = 3 };
 struct Alloc {          ///< ccv_rau_ooe_alloc
@@ -556,10 +556,6 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
-  /// A demotion's discard (PF-23, OA's rev 160): it takes the warp's
-  /// outstanding loads too, each answered once with status replay. Its
-  /// encoding on the channel is TI's (a reserved field on 0xF).
-  bool loads = false;
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -594,9 +590,7 @@ struct Fault {          ///< ccv_ooe_cru_fault
 struct Drained {        ///< ccv_ooe_rau_drained
   unsigned warp = 0;
   uint64_t resume_pc = 0;
-  /// TI-25 (AR's rev 112): the warp's exit had retired when the demote
-  /// landed; nothing moved, RAU cancels, exited frees the slot.
-  bool refused = false;
+  bool refused = false;  ///< the warp's exit retired before the demote (TI-25)
 };
 struct RatMap {         ///< ccv_ooe_rcu_map
   unsigned warp = 0, direction = 0;
@@ -1079,7 +1073,9 @@ private:
   bool predHold(unsigned slot, const RobEntry &r) const;
   void complete(unsigned slot, unsigned idx);
   void resolveBranch(unsigned slot, unsigned idx);
-  void squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool loads = false);
+  /// discard_all: send the bulk discard whatever reached MIU (a demotion's,
+  /// TI-21), which MIU's replay drain and ready report key on.
+  void squashAfter(unsigned slot, int keep_idx, bool to_retirement, bool discard_all = false);
   void releaseEntry(unsigned slot, unsigned idx);
   bool outstanding(const RobEntry &r) const;
   bool gprAllowed(unsigned slot, unsigned n) const;

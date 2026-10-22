@@ -420,6 +420,16 @@ random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
   demotes or kills the warp would go out with the epoch notice, after FET
   has reset that warp's checkpoints at it (V-46). OOE now drops that
   warp's frees from the cycle's mask, since FET frees them itself.
+- **The replay drain and refusal (TI-21, TI-25; TI's edits, OI-18's
+  pattern).** A demote's squash always sends a bulk discard of the whole ROB
+  (`squashAfter`'s `discard_all`; branch == tail), so MIU ends the warp's
+  loads with replay completions and reports it ready to RAU; drained then
+  waits for no fill. A discard of an empty ROB carries id class none. The
+  discard's trace identity is read before the squash loop releases the head
+  (it read a released entry's 0 before). A demote that lands once the
+  warp's exit has retired is refused: drained with `refused` set, no squash,
+  map or rewind (`demote.refused`). Measured and checked in "The replay
+  drain (PF-23) and the refused demote and parked layout (TI-25)", below.
 - **The PRF's read ports** (DA's response OA-6: 16; no parameter yet).
   Select keeps a cycle's operand reads within the ports a migration leaves:
   a demote's 17 reads hold one port for 17 cycles. The limit never binds
@@ -511,17 +521,19 @@ exit:
 
 ## The replay drain (PF-23) and the refused demote and parked layout (TI-25)
 
-**The replay drain** (OA's rev 160, AR's revs 106-107). A demotion's
-squash sends the bulk discard with the warp's outstanding loads in it
-(`Memop::loads`; its encoding on the channel is TI's). `drained` then waits
-only for each discarded load's one completion, status replay
-(`kCmplReplay`; CCV_W_STATUS's order is complete, replay, fault), and not
-for its fill. A squashed load's destination stays deferred-free until that
-completion, and a hint for it was already dropped by the squash. A replay
-for a live entry is an error. `replay_drain=0` gives the old drain.
+**The replay drain** (OA's rev 160, AR's revs 106-107; TI's form, merged
+from ad6ef02). A demotion's squash always sends a bulk discard of the whole
+ROB (`squashAfter`'s `discard_all`), and every bulk discard covers the
+warp's loads in its range as well as its stores. MIU answers each covered
+load once with status replay (2; 1 is a fault), so `drained` waits for
+those completions, not for the fills. A squashed load's destination stays
+deferred-free until its completion, and a hint for it was already dropped
+by the squash. A replay for a live entry is an error. `replay_drain=0`
+sends a demotion's discard only when stores force one, so it is the old
+drain only where no store is at MIU.
 
 The environment's MIU follows AR's three conditions: it answers each
-abandoned load once with replay, its data beat and its own response
+covered load once with replay, its data beat and its own response
 dropped, so nothing lands in a register freed to the slot's next occupant.
 A load whose completion or beat is already under way finishes as it is.
 It raises no hint for an orphan. The line still fills, so the replayed load
@@ -532,21 +544,24 @@ checks that every demotion abandons loads and that no `drained` comes with
 a completion still owed. Control `drain-early` (drained waits for no
 replay) must be caught.
 
-**The swap sweep under it** (48 seeds), against the old drain:
+**The swap sweep under it** (48 seeds, at the merge with TI's ad6ef02),
+against the old drain at 18b33e1:
 
-| go | policy | old drain | replay drain | gap from the miss at the head, old / replay |
+| go | policy | old drain (18b33e1) | replay drain | gap from the miss at the head, old / replay |
 |---|---|---|---|---|
-| interleave, shares | swap at 25 / 50 / 100 | 0.798 / 0.738 / 0.737 | 0.654 / 0.645 / 0.635 | 1,351 / 240 at 50 |
-| interleave, shares | swap, P 1 / 32 | 0.738 / 0.775 | 0.647 / 0.674 | |
-| interleave, shares | evict | 0.744 | 0.556 | 1,286 / 359 |
-| one warp | swap at 25 / 50 / 100 | 0.824 / 0.855 / 0.853 | 0.663 / 0.723 / 0.671 | |
-| two warps | swap at 25 / 50 / 100 | 0.814 / 0.829 / 0.821 | 0.662 / 0.693 / 0.669 | |
+| interleave, shares | swap at 25 / 50 / 100 | 0.798 / 0.738 / 0.737 | 0.684 / 0.646 / 0.649 | 1,351 / 242 at 50 |
+| interleave, shares | swap, P 1 / 32 | 0.738 / 0.775 | 0.646 / 0.644 | |
+| interleave, shares | evict | 0.744 | 0.588 | 1,286 / 378 |
+| one warp | swap at 25 / 50 / 100 | 0.824 / 0.855 / 0.853 | 0.634 / 0.654 / 0.641 | |
+| two warps | swap at 25 / 50 / 100 | 0.814 / 0.829 / 0.821 | 0.680 / 0.686 / 0.671 | |
 
 - **The slot now comes back during the fill.** The gap from the miss at
-  the head to the next warp's first rename falls from 1,351 cycles to 240
-  under the decided go, and the swap goes from 0.738 to 0.645 of swap-off.
-- **Evict now beats swap**, 0.556 against 0.645. With the slot returned at
+  the head to the next warp's first rename falls from 1,351 cycles to 242
+  under the decided go, and the swap goes from 0.738 to 0.646 of swap-off.
+- **Evict now beats swap**, 0.588 against 0.646. With the slot returned at
   once, demoting without a ready parked warp costs only the restore.
+- Swap-off itself moved at the merge (the decided go 6,727 to 6,442
+  cycles), since a branch's discard now also replays its wrong-path loads.
 - The PRF ports still cost nothing: no read held back, no write port short.
 
 **stall_hole under it** (48 seeds, the decided go, warps 1 to 3 against
@@ -588,9 +603,8 @@ this arm should be read against the reference, not solo (OA's call).
   epoch notice and no rewind beat, and sends `drained` with `refused`.
   `exited` follows at the quiesce, and RAU cancels and frees the slot on
   it. The directed test checks exactly that, and control `no-refuse`
-  (demote the exited warp anyway) must be caught. The refused bit is TI's
-  to add to `ccv_ooe_rau_drained`. Until it is there, the adapter fails a
-  refused demote rather than send it unmarked.
+  (demote the exited warp anyway) must be caught. TI's ad6ef02 carries the
+  refused bit on `ccv_ooe_rau_drained`, which the adapter sends.
 - **The parked layout.** The demotion moves one row per architectural
   register, 16 plus the predicate row, with no merging. OOE keeps, per
   warp_id, each GPR's position and committed width (`Core::parked_`, 64
@@ -624,10 +638,11 @@ orders a predicate write itself: behind every older writer of that window,
 until it completes, and behind every older reader, until it has issued in an
 earlier cycle (`hold.pred_window`).
 
-Demotion runs end to end out to PCA (TI-24): the adapter sends status
-reports to RAU, a demoting warp's map to RCU and its drained report to RAU,
-and RAU demotes on a report when `CCV_RAU_DEMOTE` asks it to. No restore
-yet. The S1 CRU and SYU stubs consume nothing OOE sends them, and no S1
+The swap runs end to end (TI-24): the adapter sends status reports (exited
+among them), a demoting warp's map and rewind beats, and its drained report;
+RAU demotes on a report when `CCV_RAU_DEMOTE` asks it to, parks the warp in
+PCA, and restores it into a free slot (restore-allocate, then
+restore-activate once PCA's rows are written). The S1 CRU and SYU stubs consume nothing OOE sends them, and no S1
 kernel kills, faults or waits at a barrier. So the adapter turns a fault into
 a check failure, and fails on a barrier or kill ack.
 The kill ports are not in the C++ machine yet, so kill is reached only by the

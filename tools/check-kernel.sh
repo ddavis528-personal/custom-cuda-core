@@ -76,9 +76,24 @@
 #     (OA-23, TI-23)                           (vadd): the bank's notice check
 #   a completion echoes its memop's RS      rs-echo (vadd): OOE refuses
 #     entry (OA-23)                            every completion
+#   a parked warp is restored, resumes at     pca-row-order (swap): it ends
+#     its boundary and ends as ccv-sim         wrong; early-restore-done
+#     does (TI-24)                             (swap): RCU refuses the read
+#   a demotion's bulk discard ends its       drop-replay (swap): it never
+#     loads with one replay completion each,   drains; replay-twice (swap):
+#     orphans their DCU requests, and MIU      OOE refuses the second;
+#     reports the warp ready once they are     no-ready (swap): it stays
+#     home, which RAU restores on (TI-21)      parked; early-ready (stall):
+#                                              the replay misses again
+#   a demotion moves one row per register,   restore-share (swap): RCU
+#     restored each into its own (TI-25)       refuses the shared row
+#   a demote that lands after the exit       ignore-refused (brs): RAU
+#     retired is refused, and the exit         migrates it, and refuses
+#     frees the slot (TI-25)                   the drained report
 #   a demoted warp parks in PCA with its     corrupt-map, mig-row-order,
 #     state at its retirement boundary         resume-pc (stall, demoting):
-#     (TI-24), at the place RAU names          the parked check refuses each;
+#     (TI-24), at the place RAU names, each    resume-pc, rewind-pc (stall):
+#     lane's PC from OOE's rewind beats        the parked check refuses each;
 #                                              pca-place (mwmiss): PCA refuses
 #   OOE renames and waits on the sources     drop-src-valid (vaddslow): DEC
 #     DEC marks real (TI-1)                      hides a second source, and
@@ -583,6 +598,7 @@ ldpar  l1_hit=4 hit_under_miss=4
 mlp    l1_hit=0 reexec=5 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4
+swap   slot_reuse=2
 stall  l1_late>0
 vaddslow full_line=1
 KERNELS
@@ -715,31 +731,141 @@ for spec in late-refill:dcu_miu_fill_ntc:on_time notice-wrong-id:dcu_miu_fill_nt
     bad "--break $brk" "no $prop on $chan: $(grep '^KERNEL' "$B/kernel_$brk.log")"
   fi
 done
-# Demotion (TI-24): with RAU demoting on OOE's stall report, every kernel
-# still matches ccv-sim, and a warp that parks is checked where it parked:
-# PCA's rows and predicates against ccv-sim's architectural state after the
-# instructions it retired, and the resume PC against the next one's. No
-# restore yet (TI-24 (1)), so a parked warp ends its run parked. stall parks
-# warp 0 on its slow line; the controls break the map OOE sends RCU, the
-# order RCU sends PCA its rows in, and the resume PC OOE reports.
-dem() { CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/stall/oracle.jsonl "$@"; }
-dem >"$B/kernel_stall_demote.log" 2>&1
-log="$B/kernel_stall_demote.log"
-why=""
-for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
-  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+# The swap (TI-24; Daniel, 2026-10-21): RAU demotes a warp whose head load
+# is outstanding past CCV_DEMOTION_THRESHOLD_MLC (CCV_RAU_DEMOTE=mlc, OOE's
+# trigger), parks it in PCA, and restores it into the next free tier-1
+# slot, the oldest ready warp first. A warp that parks is checked where it
+# parked: PCA's rows, predicates and each lane's PC against ccv-sim's state
+# after the instructions it retired. Restored, it resumes at that boundary
+# and must still end where ccv-sim does. Every kernel passes so; stall and
+# swap (six warps, four slots) are held to the whole round trip.
+ok() {   # $1 log, then cover bins name=value; prints why not, or nothing
+  local log=$1 why="" kv; shift
+  for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
+    [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
+  done
+  for kv in "$@"; do
+    [ "$(cover "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(cover "$log" "${kv%%=*}")"
+  done
+  echo "${why# }"
+}
+bad_k=""
+for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
+  CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" >"$B/kernel_${k}_swap.log" 2>&1
+  w=$(ok "$B/kernel_${k}_swap.log")
+  [ -z "$w" ] || bad_k="$bad_k $k($w)"
 done
-if [ -z "$why" ] && [ "$(cover "$log" demote)" = 1 ] && [ "$(cover "$log" parked)" = 1 ]; then
-  say "stall demoted: warp 0 parked == ccv-sim" "PASS (rows, predicates and resume PC at its boundary)"
+n_par=$(cat "$B"/kernel_*_swap.log | sed -n 's/.* parked=\([0-9]*\) .*/\1/p' | awk '{n+=$1} END {print n+0}')
+if [ -z "$bad_k" ]; then
+  say "every kernel with the swap on == ccv-sim" "PASS ($n_par parks, each restored)"
 else
-  bad "stall demoted" "${why# } demote=$(cover "$log" demote) parked=$(cover "$log" parked)"
+  bad "every kernel with the swap on" "${bad_k# }"
 fi
+for k in stall swap; do
+  log="$B/kernel_${k}_swap.log"
+  w=$(ok "$log" demote=1 parked=1 rewound=1 restored=1 resumed=1)
+  if [ -z "$w" ]; then
+    say "$k: warp 0 parked, restored, resumed == ccv-sim" "PASS (rows, predicates and lane PCs at its boundary)"
+  else
+    bad "$k swapped" "$w"
+  fi
+done
+# The replay drain (TI-21): the demotion's squash sends a bulk discard, MIU
+# ends each of the warp's loads in flight with a replay completion and
+# orphans its DCU requests, and reports the warp ready to RAU once they are
+# home, so the restored warp's replayed load hits (stall's one L1 hit; none
+# without the swap). vadd4's discard orphans nothing: it is ready at once.
+w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1)
+w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=0 ready=1 restored=1)
+if [ -z "$w$w2" ]; then
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4 ready at once)"
+else
+  bad "replay drain" "stall: $w; vadd4: $w2"
+fi
+rd() { CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$1/oracle.jsonl" --break "$2" >"$B/kernel_$1_$2.log" 2>&1; }
+rd swap drop-replay
+if [ "$(field "$B/kernel_swap_drop-replay.log" finished)" != 1 ]; then
+  say "--break drop-replay: the demotion never drains" "PASS"
+else
+  bad "--break drop-replay" "a load with no completion drained anyway"
+fi
+rd swap replay-twice
+if grep -q "^CHECK ooe: completion for rob tag [0-9]*, which is not in the ROB" "$B/kernel_swap_replay-twice.log"; then
+  say "--break replay-twice: OOE refuses the second completion" "PASS"
+else
+  bad "--break replay-twice" "two completions for one load went unnoticed"
+fi
+rd swap no-ready
+if [ "$(field "$B/kernel_swap_no-ready.log" finished)" != 1 ] &&
+   [ "$(cover "$B/kernel_swap_no-ready.log" restored)" = 0 ]; then
+  say "--break no-ready: RAU restores only a ready warp" "PASS"
+else
+  bad "--break no-ready" "a warp MIU never reported ready was restored"
+fi
+rd stall early-ready
+if [ "$(cover "$B/kernel_stall_early-ready.log" l1_hit)" = 0 ]; then
+  say "--break early-ready: the replay misses again" "PASS"
+else
+  bad "--break early-ready" "a restore before the orphans were home still hit"
+fi
+# One row per register (TI-25 (1)): a restore map that gives two registers
+# one row is refused by RCU.
+rd swap restore-share
+if grep -q "^CHECK rcu: warp [0-9]*'s restore map gives R1 and R2 one row" "$B/kernel_swap_restore-share.log"; then
+  say "--break restore-share: RCU refuses a shared row" "PASS"
+else
+  bad "--break restore-share" "a restore map sharing a row was taken"
+fi
+# A refused demote (TI-25): OOE's fallback threshold lowered (a model
+# setting) so brs's warp is demoted after its exit has retired.
+ref() { CCV_OOE_CONFIG=demote_fallback=10 CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/brs/oracle.jsonl "$@"; }
+ref >"$B/kernel_brs_refused.log" 2>&1
+w=$(ok "$B/kernel_brs_refused.log" demote=1 refused=1 parked=0)
+if [ -z "$w" ]; then
+  say "brs: a demote after the exit is refused == ccv-sim" "PASS"
+else
+  bad "brs refused" "$w"
+fi
+ref --break ignore-refused >"$B/kernel_brs_ignore-refused.log" 2>&1
+if grep -q "^CHECK rau: warp 0 drained after its exit retired" "$B/kernel_brs_ignore-refused.log"; then
+  say "--break ignore-refused: RAU refuses the drained report" "PASS"
+else
+  bad "--break ignore-refused" "a refused demote was migrated"
+fi
+
+# A restore's controls: PCA's rows renumbered, so RCU writes each into
+# another register (the final compare refuses it); and PCA's ack and PCs
+# before its rows, so the restored warp reads a register before its row is
+# written (RCU refuses the read: done means written, TI-13).
+CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/swap/oracle.jsonl --break pca-row-order \
+  >"$B/kernel_swap_pca-row-order.log" 2>&1
+if [ "$(field "$B/kernel_swap_pca-row-order.log" gpr_mismatch)" -gt 0 ]; then
+  say "--break pca-row-order: the restored warp ends wrong" "PASS ($(field "$B/kernel_swap_pca-row-order.log" gpr_mismatch) lanes)"
+else
+  bad "--break pca-row-order" "rows written to the wrong registers went unnoticed"
+fi
+CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/swap/oracle.jsonl --break early-restore-done \
+  >"$B/kernel_swap_early-restore-done.log" 2>&1
+n=$(grep -c "^CHECK rcu: seq [0-9]* reads row [0-9]* before its restore row is written" "$B/kernel_swap_early-restore-done.log")
+if [ "$n" -gt 0 ]; then
+  say "--break early-restore-done: RCU refuses the read" "PASS ($n reads)"
+else
+  bad "--break early-restore-done" "a restored warp read before its rows were written"
+fi
+
+# Parked state, held without restore (CCV_RAU_RESTORE=0, so a parked warp
+# ends its run parked): the controls break the map OOE sends RCU, the order
+# RCU sends PCA its rows in, the resume PC OOE reports, and the rewind beats'
+# PCs; PCA filing two warps at one place; and every warp parked at once.
+dem() { CCV_RAU_RESTORE=0 CCV_RAU_DEMOTE=fallback "$SKEL" --kernel build/oracle/stall/oracle.jsonl "$@"; }
 # PCA files a warp at the place RAU names (TI-24 (1)): RAU naming one place
 # twice is refused. It needs two warps parked, so OOE's fallback threshold
 # is lowered for this run (demote_fallback, a model setting): mwmiss then
 # parks all four, each matching ccv-sim, instead of how many the default's
-# timing happens to park (vadd4 parked two, until OI-45 moved its timing).
-CCV_OOE_CONFIG=demote_fallback=20 CCV_RAU_DEMOTE=fallback "$SKEL" \
+# timing happens to park (vadd4 parked two, until OI-45 moved its timing),
+# and RAU lets demotions overlap (CCV_RAU_CONCURRENT=1), where the
+# environment's RAU runs one at a time.
+CCV_RAU_RESTORE=0 CCV_RAU_CONCURRENT=1 CCV_OOE_CONFIG=demote_fallback=20 CCV_RAU_DEMOTE=fallback "$SKEL" \
   --kernel build/oracle/mwmiss/oracle.jsonl --break pca-place \
   >"$B/kernel_demote_pca-place.log" 2>&1
 if grep -q "^CHECK pca: place 0 is already held, by warp" "$B/kernel_demote_pca-place.log"; then
@@ -747,22 +873,17 @@ if grep -q "^CHECK pca: place 0 is already held, by warp" "$B/kernel_demote_pca-
 else
   bad "--break pca-place" "a place named twice was filed: $(grep '^KERNEL' "$B/kernel_demote_pca-place.log")"
 fi
-# Every warp parked at once: mwmiss with OOE's fallback threshold lowered,
-# all four warps demoted, each checked at its own boundary, none left resident.
 log="$B/kernel_mwmiss_demote_all.log"
-CCV_OOE_CONFIG=demote_fallback=20 CCV_RAU_DEMOTE=fallback "$SKEL" \
+CCV_RAU_RESTORE=0 CCV_RAU_CONCURRENT=1 CCV_OOE_CONFIG=demote_fallback=20 CCV_RAU_DEMOTE=fallback "$SKEL" \
   --kernel build/oracle/mwmiss/oracle.jsonl >"$log" 2>&1
-why=""
-for kv in finished=1 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 violations=0; do
-  [ "$(field "$log" "${kv%%=*}")" = "${kv#*=}" ] || why="$why ${kv%%=*}=$(field "$log" "${kv%%=*}")"
-done
-if [ -z "$why" ] && [ "$(cover "$log" parked)" = 4 ]; then
+w=$(ok "$log" parked=4)
+if [ -z "$w" ]; then
   say "mwmiss, every warp parked == ccv-sim" "PASS (4 places, each warp at its boundary)"
 else
-  bad "mwmiss, every warp parked" "${why# } parked=$(cover "$log" parked)"
+  bad "mwmiss, every warp parked" "$w"
 fi
-for spec in "corrupt-map:PARKED warp 0 R1 lane" "mig-row-order:PARKED warp 0 R0 lane" \
-            "resume-pc:PARKED warp 0 resumes at"; do
+for spec in "corrupt-map:CHECK parked warp 0 R1 lane" "mig-row-order:CHECK parked warp 0 R0 lane" \
+            "resume-pc:CHECK parked warp 0 resumes at" "rewind-pc:CHECK parked warp 0 lane 0 resumes at"; do
   brk=${spec%%:*}; want=${spec#*:}
   dem --break "$brk" >"$B/kernel_demote_$brk.log" 2>&1
   n=$(grep -c "^$want" "$B/kernel_demote_$brk.log")

@@ -24,6 +24,7 @@ module ccv_miu_w #(
   parameter int RPT_DCU_MIU_RSP = 0,
   parameter int RPT_MIU_FET_ITLB = 0,
   parameter int RPT_FET_MIU_ITLB_REQ = 0,
+  parameter int RPT_MIU_RAU_READY = 0,
   parameter int RPT_RAU_MIU_CTA = 0,
   parameter int RPT_DCU_MIU_FILL_NTC = 0,
   parameter int RPT_MIU_OOE_CMPL_HINT = 0
@@ -195,6 +196,11 @@ module ccv_miu_w #(
   logic b_fet_miu_itlb_req_credit;
   logic b_fet_miu_itlb_req_stall;
   logic b_fet_miu_itlb_req_wake;
+  logic b_miu_rau_ready_valid;
+  ccv_miu_rau_ready_t b_miu_rau_ready_payload;
+  logic b_miu_rau_ready_credit;
+  logic b_miu_rau_ready_stall;
+  logic b_miu_rau_ready_wake;
   logic b_rau_miu_cta_valid;
   ccv_rau_miu_cta_t b_rau_miu_cta_payload;
   logic b_rau_miu_cta_credit;
@@ -273,6 +279,7 @@ module ccv_miu_w #(
   logic [63:0] b_dcu_miu_rsp_s3_tid;
   logic [63:0] b_miu_fet_itlb_tid;
   logic [63:0] b_fet_miu_itlb_req_tid;
+  logic [63:0] b_miu_rau_ready_tid;
   logic [63:0] b_rau_miu_cta_tid;
   logic [63:0] b_dcu_miu_fill_ntc_s0_tid;
   logic [63:0] b_dcu_miu_fill_ntc_s1_tid;
@@ -458,6 +465,11 @@ module ccv_miu_w #(
     .fet_miu_itlb_req_credit(b_fet_miu_itlb_req_credit),
     .fet_miu_itlb_req_stall(b_fet_miu_itlb_req_stall),
     .fet_miu_itlb_req_wake(b_fet_miu_itlb_req_wake),
+    .miu_rau_ready_valid(b_miu_rau_ready_valid),
+    .miu_rau_ready_payload(b_miu_rau_ready_payload),
+    .miu_rau_ready_credit(b_miu_rau_ready_credit),
+    .miu_rau_ready_stall(b_miu_rau_ready_stall),
+    .miu_rau_ready_wake(b_miu_rau_ready_wake),
     .rau_miu_cta_valid(b_rau_miu_cta_valid),
     .rau_miu_cta_payload(b_rau_miu_cta_payload),
     .rau_miu_cta_credit(b_rau_miu_cta_credit),
@@ -539,6 +551,7 @@ module ccv_miu_w #(
     , .dcu_miu_rsp_s3_tid(b_dcu_miu_rsp_s3_tid)
     , .miu_fet_itlb_tid(b_miu_fet_itlb_tid)
     , .fet_miu_itlb_req_tid(b_fet_miu_itlb_req_tid)
+    , .miu_rau_ready_tid(b_miu_rau_ready_tid)
     , .rau_miu_cta_tid(b_rau_miu_cta_tid)
     , .dcu_miu_fill_ntc_s0_tid(b_dcu_miu_fill_ntc_s0_tid)
     , .dcu_miu_fill_ntc_s1_tid(b_dcu_miu_fill_ntc_s1_tid)
@@ -791,6 +804,28 @@ module ccv_miu_w #(
     assign {fet_miu_itlb_req_stall} = {b_fet_miu_itlb_req_stall};
 `ifdef CCV_TRACE
     assign {b_fet_miu_itlb_req_tid} = {fet_miu_itlb_req_tid};
+`endif
+  end
+  // ccv_miu_rau_ready, source end
+  if (RPT_MIU_RAU_READY > 0) begin : g_rpt_miu_rau_ready
+    ccv_common_rpt #(.STAGES(RPT_MIU_RAU_READY), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_miu_rau_ready (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_miu_rau_ready_valid}), .src_payload({b_miu_rau_ready_payload}),
+      .src_wake(b_miu_rau_ready_wake), .src_credit({b_miu_rau_ready_credit}), .src_stall({b_miu_rau_ready_stall}),
+      .dst_valid({miu_rau_ready_valid}), .dst_payload({miu_rau_ready_payload}),
+      .dst_wake(miu_rau_ready_wake), .dst_credit({miu_rau_ready_credit}), .dst_stall({miu_rau_ready_stall})
+`ifdef CCV_TRACE
+      , .src_tid({b_miu_rau_ready_tid}), .dst_tid({miu_rau_ready_tid})
+`endif
+    );
+  end else begin : g_wire_miu_rau_ready
+    assign {miu_rau_ready_valid} = {b_miu_rau_ready_valid};
+    assign {miu_rau_ready_payload} = {b_miu_rau_ready_payload};
+    assign miu_rau_ready_wake = b_miu_rau_ready_wake;
+    assign {b_miu_rau_ready_credit} = {miu_rau_ready_credit};
+    assign {b_miu_rau_ready_stall} = {miu_rau_ready_stall};
+`ifdef CCV_TRACE
+    assign {miu_rau_ready_tid} = {b_miu_rau_ready_tid};
 `endif
   end
   // ccv_rau_miu_cta, destination end
