@@ -3170,10 +3170,13 @@ void testSwap() {
   // AR's revs 115-117, under evict: provisional restores, their replays
   // merged into the fills still in flight, and (PF-41) a provisional warp
   // pre-empted when a ready one appears; every warp still retires its
-  // whole program.
+  // whole program. A pre-emption is rare here, a few in a run at most, and
+  // which seeds reach one moves with the timing (the decode queue's
+  // per-warp limit, TI's rev 106), so the check sums twelve seeds: 3
+  // pre-emptions at a limit of 6, 5 at 13.
   for (const bool preempt : {false, true}) {
     unsigned prov = 0, merged = 0, pre = 0;
-    for (unsigned seed = 1; seed <= 6; ++seed) {
+    for (unsigned seed = 1; seed <= 12; ++seed) {
       g_test = std::string(preempt ? "evict, pre-empt" : "evict, provisional") + ", seed " + std::to_string(seed);
       Config c = baseConfig();
       c.decq = 13;
@@ -3192,6 +3195,7 @@ void testSwap() {
       merged += e.merged_fills;
       pre += e.preempted;
     }
+    g_test = preempt ? "evict, pre-empt, seeds 1 to 12" : "evict, provisional, seeds 1 to 12";
     EXPECT(prov > 0 && merged > 0, "%u provisional restores, %u replays merged", prov, merged);
     if (preempt) EXPECT(pre > 0, "no provisional warp pre-empted (PF-41)");
   }
