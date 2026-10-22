@@ -107,14 +107,16 @@ done
 # event for event. stall and swap are built to park and restore their warp
 # 0, so they must; vadd4 parks only where its stalls reach the threshold,
 # and the hosts must agree on it either way (their summary lines). provswap
-# restores provisionally and demotes the provisional warp again (RAU spec
-# rev 24), at OOE's thresholds as check-kernel runs it.
+# restores provisionally and demotes the provisional warp again
+# (CCV_RAU_READY=0, RAU spec rev 25), at OOE's thresholds as check-kernel
+# runs it.
 for k in stall vadd4 swap provswap; do
   t="${k}_demote"
   cfg=""
-  [ "$k" = provswap ] && cfg=demote_mlc_miss=150,demote_fallback=150
-  CCV_OOE_CONFIG=$cfg CCV_RAU_DEMOTE=mlc cpp "$k" --trace "$B/svh_cpp_$t.ccvtrace" >"$B/svh_cpp_$t.log"
-  CCV_OOE_CONFIG=$cfg CCV_RAU_DEMOTE=mlc svh "$k" "+ccv_trace=$B/svh_sv_$t.ccvtrace" >"$B/svh_sv_$t.log"
+  rdy=1
+  [ "$k" = provswap ] && cfg=demote_mlc_miss=150,demote_fallback=150 rdy=0
+  CCV_RAU_READY=$rdy CCV_OOE_CONFIG=$cfg CCV_RAU_DEMOTE=mlc cpp "$k" --trace "$B/svh_cpp_$t.ccvtrace" >"$B/svh_cpp_$t.log"
+  CCV_RAU_READY=$rdy CCV_OOE_CONFIG=$cfg CCV_RAU_DEMOTE=mlc svh "$k" "+ccv_trace=$B/svh_sv_$t.ccvtrace" >"$B/svh_sv_$t.log"
   why=""
   grep -q " violations=0$" "$B/svh_sv_$t.log" || why="$why; checker violations"
   [ "$k" = vadd4 ] || grep -qE '(^| )restored=[1-9]' "$B/svh_sv_$t.log" || why="$why; nothing restored"

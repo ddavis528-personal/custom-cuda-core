@@ -82,14 +82,13 @@
 #   a demotion's bulk discard ends its       drop-replay (swap): it never
 #     loads with one replay completion each,   drains; replay-twice (swap):
 #     orphans their DCU requests, and MIU      OOE refuses the second;
-#     reports the warp ready once they are     no-ready (swap, waiting): it
-#     home, which RAU restores on (TI-21)      stays parked; early-ready
-#                                              (stall, waiting): the replay
-#                                              misses again
-#   with a slot idle, a parked warp is       guard-at-restore (provswap):
-#     restored provisionally, and demotes      it keeps the slot;
-#     again for a ready warp (RAU spec         demote-unwanted (stall): it
-#     rev 24)                                  demotes with nobody waiting
+#     reports the warp ready once they are     no-ready (swap): it stays
+#     home, which RAU restores on (TI-21)      parked; early-ready (stall):
+#                                              the replay misses again
+#   CCV_RAU_READY=0: with a slot idle, a     guard-at-restore (provswap):
+#     parked warp is restored provisionally,   it keeps the slot;
+#     and demotes again for a ready warp       demote-unwanted (stall): it
+#     (RAU spec rev 25)                        demotes with nobody waiting
 #   a demotion moves one row per register,   restore-share (swap): RCU
 #     restored each into its own (TI-25)       refuses the shared row
 #   a demote that lands after the exit       ignore-refused (brs): RAU
@@ -779,12 +778,10 @@ done
 # The replay drain (TI-21): the demotion's squash sends a bulk discard, MIU
 # ends each of the warp's loads in flight with a replay completion and
 # orphans its DCU requests, and reports the warp ready to RAU once they are
-# home. RAU waiting for that report (CCV_RAU_READY=wait), the restored
+# home. RAU restores only a ready warp (RAU spec rev 25), so the restored
 # warp's replayed load hits (stall's one L1 hit; none without the swap).
 # vadd4's discard orphans nothing: it is ready at once.
-CCV_RAU_READY=wait CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl \
-  >"$B/kernel_stall_wait.log" 2>&1
-w=$(ok "$B/kernel_stall_wait.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
+w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
 w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=0 ready=1 restored=1)
 if [ -z "$w$w2" ]; then
   say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4 ready at once)"
@@ -804,29 +801,31 @@ if grep -q "^CHECK ooe: completion for rob tag [0-9]*, which is not in the ROB" 
 else
   bad "--break replay-twice" "two completions for one load went unnoticed"
 fi
-CCV_RAU_READY=wait rd swap no-ready
+rd swap no-ready
 if [ "$(field "$B/kernel_swap_no-ready.log" finished)" != 1 ] &&
    [ "$(cover "$B/kernel_swap_no-ready.log" restored)" = 0 ]; then
-  say "--break no-ready: waiting, RAU restores only a ready warp" "PASS (CCV_RAU_READY=wait)"
+  say "--break no-ready: RAU restores only a ready warp" "PASS"
 else
   bad "--break no-ready" "a warp MIU never reported ready was restored"
 fi
-CCV_RAU_READY=wait rd stall early-ready
+rd stall early-ready
 if [ "$(cover "$B/kernel_stall_early-ready.log" l1_hit)" = 0 ]; then
   say "--break early-ready: the replay misses again" "PASS"
 else
   bad "--break early-ready" "a restore before the orphans were home still hit"
 fi
-# A provisional restore (AR's response TI-21, RAU spec rev 24): with a free
-# slot, no ready parked warp and no launch pending, RAU restores the oldest
-# parked warp before its ready report (stall: 47 cycles sooner than
-# waiting). Until the report it may demote again whenever a ready warp or a
+# A provisional restore (AR's revs 115-116, RAU spec rev 25; a knob,
+# CCV_RAU_READY=0): with a free slot, no ready parked warp and no launch
+# pending, RAU restores the oldest parked warp before its ready report
+# (stall: 47 cycles sooner than waiting). Until the report it may demote again whenever a ready warp or a
 # launch wants its slot, its P count starting at the report: provswap's
 # warp 0, restored on a 1,000-cycle line, demotes again when warp 1's
 # 250-cycle line lands first. OOE's thresholds are raised for provswap (a
 # model setting), so only those two lines trigger, not the cold misses.
-w=$(ok "$B/kernel_stall_swap.log" provisional=1 prov_demote=0)
-pv() { CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
+CCV_RAU_READY=0 CCV_RAU_DEMOTE=mlc "$SKEL" --kernel build/oracle/stall/oracle.jsonl \
+  >"$B/kernel_stall_prov.log" 2>&1
+w=$(ok "$B/kernel_stall_prov.log" provisional=1 prov_demote=0)
+pv() { CCV_RAU_READY=0 CCV_OOE_CONFIG=demote_mlc_miss=150,demote_fallback=150 CCV_RAU_DEMOTE=mlc "$SKEL" \
          --kernel build/oracle/provswap/oracle.jsonl "$@"; }
 pv >"$B/kernel_provswap_prov.log" 2>&1
 w2=$(ok "$B/kernel_provswap_prov.log" provisional=2 prov_demote=1 restored=3)
@@ -841,11 +840,26 @@ if [ "$(cover "$B/kernel_provswap_guard-at-restore.log" prov_demote)" = 0 ]; the
 else
   bad "--break guard-at-restore" "a provisional warp held to P from its restore still demoted"
 fi
-rd stall demote-unwanted
+CCV_RAU_READY=0 rd stall demote-unwanted
 if [ "$(cover "$B/kernel_stall_demote-unwanted.log" prov_demote)" -gt 0 ]; then
   say "--break demote-unwanted: demoted with nobody waiting" "PASS ($(cover "$B/kernel_stall_demote-unwanted.log" prov_demote) times)"
 else
   bad "--break demote-unwanted" "a provisional warp is never demoted"
+fi
+# Evict, the default (DA, 2026-10-22): RAU demotes a warp its trigger names
+# whether or not another wants the slot, as stall shows, four warps in four
+# slots. Swap (CCV_RAU_MODE=swap) demotes only when one does: none in
+# stall, and swap's warp 0 while its warps 4 and 5 wait to launch.
+for k in stall swap; do
+  CCV_RAU_MODE=swap CCV_RAU_DEMOTE=mlc "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" \
+    >"$B/kernel_${k}_swapmode.log" 2>&1
+done
+w=$(ok "$B/kernel_stall_swapmode.log" demote=0)
+w2=$(ok "$B/kernel_swap_swapmode.log" demote=1 restored=1)
+if [ -z "$w$w2" ] && [ "$(cover "$B/kernel_stall_swap.log" demote)" = 1 ]; then
+  say "evict demotes regardless; swap only for a waiter" "PASS (stall: 1 and 0; swap: 1)"
+else
+  bad "evict and swap" "stall evict: $(cover "$B/kernel_stall_swap.log" demote); stall swap: $w; swap swap: $w2"
 fi
 # One row per register (TI-25 (1)): a restore map that gives two registers
 # one row is refused by RCU.

@@ -2865,10 +2865,15 @@ private:
   /// RAU runs one at a time and declines a report that arrives meanwhile:
   /// a stress knob, for runs that need several warps parked at once.
   const bool concurrent_ = std::string(env("CCV_RAU_CONCURRENT", "0")) == "1";
-  /// Restoring a warp MIU has not reported ready (AR's response TI-21, RAU
-  /// spec rev 24): into a slot that would otherwise idle, provisionally
-  /// (the default). CCV_RAU_READY=wait restores only ready warps.
-  const bool wait_ready_ = std::string(env("CCV_RAU_READY", "")) == "wait";
+  /// RAU restores only warps MIU has reported ready (RAU spec rev 25).
+  /// CCV_RAU_READY=0 also restores one that is not into a slot that would
+  /// otherwise idle, provisionally (AR's rev 115; about 1% lost on OI's
+  /// sweep, so a knob, and provswap keeps it covered).
+  const bool provisional_on_ = std::string(env("CCV_RAU_READY", "1")) == "0";
+  /// Evict (DA, 2026-10-22, TI-21): RAU demotes a warp its trigger names
+  /// whether or not another warp waits for the slot. CCV_RAU_MODE=swap
+  /// demotes only when one does: a ready parked warp or a launch.
+  const bool swap_ = std::string(env("CCV_RAU_MODE", "evict")) == "swap";
 
   std::set<unsigned> free_;                  ///< tier-1 slots
   std::map<unsigned, unsigned> slot_of_;     ///< resident or moving warp -> its slot
@@ -2936,7 +2941,7 @@ private:
     auto p = parked_.begin();
     while (p != parked_.end() && !ready_.count(*p)) ++p;
     bool prov = false;
-    if (p == parked_.end() && !wait_ready_ && waiting_.empty() && !parked_.empty()) {
+    if (p == parked_.end() && provisional_on_ && waiting_.empty() && !parked_.empty()) {
       p = parked_.begin();
       prov = true;
     }
@@ -2990,7 +2995,8 @@ private:
     k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
   }
 
-  /// A ready parked warp or a launch waits for a slot.
+  /// A ready parked warp or a launch waits for a slot: what lets a
+  /// provisional warp demote, and any warp under swap.
   bool wanted() const {
     if (!waiting_.empty()) return true;
     for (unsigned w : parked_)
@@ -3004,7 +3010,8 @@ private:
         (k_.parked.count(w) && !k_.parked[w].restored) ||
         (restored_.count(w) && (!provisional_.count(w) || k_.brk == "guard-at-restore") &&
          retired_[w] < p_base_[w] + P_) ||
-        (provisional_.count(w) && !wanted() && k_.brk != "demote-unwanted"))
+        (provisional_.count(w) && !wanted() && k_.brk != "demote-unwanted") ||
+        (swap_ && !wanted()))
       return;
     if (provisional_.erase(w)) k_.hit("prov_demote");
     demoting_.insert(w);
