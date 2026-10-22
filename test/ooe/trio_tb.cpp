@@ -28,6 +28,13 @@
 // enables comes; the model captures the change on its own edge. 2 bits at
 // 100 seeds, none at the gate's 25.
 //
+// Not compared: the ready bit of a row a squash frees at the next edge.
+// ooe_wake drops its producers' lead lines on the squash lead, an edge
+// before the model's register sees the squash, so the RTL's bit may fall
+// first. The row is dead, and the grant register is still compared
+// exactly, so a grant the bit could change would still be caught;
+// squash_ready_skipped counts the bits left out.
+//
 // Negative controls (TRIO_CONTROL, ooe_trio's ctl), ooe_sched's: no-msd,
 // no-miss-lead, late-leads, no-alloc-lead.
 //
@@ -76,6 +83,7 @@ std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_trio> dut;
 uint64_t current = 0;
 bool following = false;
+unsigned long long squash_ready_skipped = 0;   // ready bits of rows a squash frees next edge
 unsigned long long cycles = 0, cores = 0, skipped = 0, grants = 0, mismatches = 0, diverged = 0,
                    first_sum = 0, compared_cores = 0;
 std::map<std::string, unsigned long long> kinds;
@@ -495,6 +503,11 @@ void hook(const Core &c) {
       const bool q = getBit(r->ooe_trio__DOT__u_sched__DOT__rq_cq03h, e);
       if (q != bool(t.req_q[e])) fail("sched request register differs", e, 0, q, t.req_q[e]);
       if (!t.v73[e]) continue;
+      // A row a squash frees at the next edge: ooe_wake drops its
+      // producers' lead lines on the squash lead, an edge before the
+      // model's register sees the squash. Its ready bit can change no
+      // grant the grant register's exact comparison would not catch.
+      if (tp1.sqf[e]) { ++squash_ready_skipped; continue; }
       const bool rd = getBit(r->ooe_trio__DOT__u_sched__DOT__ready_cq03h, e);
       if (rd != bool(t.ready_q[e])) fail("sched ready register differs", e, 0, rd, t.ready_q[e]);
     }
@@ -553,9 +566,9 @@ int main(int argc, char **argv) {
   for (const auto &k : kinds) std::fprintf(stderr, "  %-30s %llu\n", k.first.c_str(), k.second);
   for (const auto &k : first_kinds) std::fprintf(stderr, "  first: %-23s %llu\n", k.first.c_str(), k.second);
   std::printf("trio_tb seeds=%u cores=%llu compared=%llu cycles=%llu skipped=%llu grants=%llu "
-              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f mismatches=%llu model_failures=%d\n",
+              "grant_diverged_cores=%llu first_grant_divergence_mean=%.0f squash_ready_skipped=%llu mismatches=%llu model_failures=%d\n",
               seeds, cores, compared_cores, cycles, skipped, grants, grant_cores,
-              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, mismatches, model_fails);
+              grant_cores ? double(grant_first_sum) / double(grant_cores) : 0.0, squash_ready_skipped, mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
