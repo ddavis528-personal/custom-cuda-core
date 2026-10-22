@@ -18,6 +18,8 @@
 // (ctl_row, bench-only).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
+`define CCV_CLK ooe_core_clk
+`define CCV_RST ooe_rst_r00h
 module ooe_rnrs #(
   parameter int N  = 45,
   parameter int NR = 30,
@@ -152,5 +154,7 @@ module ooe_rnrs #(
       if (gnt_v_cq03h[p] && (row & ~grp_e & ~(named & valid_out_cq02h)) != '0) chk_bad[p] = 1'b1;
     end
   end
-  `CCV_ASSERT_AT(ooe_core_clk, ooe_rst_r00h, surviving_named, chk_bad == '0)
+  `CCV_ASSERT(surviving_named, chk_bad == '0)
 endmodule
+`undef CCV_CLK
+`undef CCV_RST
