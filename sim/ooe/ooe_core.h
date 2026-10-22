@@ -240,6 +240,14 @@ struct Config {
   /// take returns its share (decided on its registered takes, the fits at
   /// offset 0 formed without it). The credits are rename's counters.
   unsigned fits_stale = 6;
+  /// Rename's go admits on what decq holds (slice 4's fits): each uop's
+  /// needs from its decode-time bits alone, so a uop that turns into a
+  /// no-op at rename (a barrier, width or format fault) still counts its
+  /// RS entries and names against its warp's allowances, a GPR write
+  /// counts a name even where the sectioned plan shares a row, and a
+  /// chwidth or barrier uop ends its warp's take for the cycle, faulting
+  /// or not. The counters and the RS, port and name checks stay exact.
+  bool go_static = true;
   /// Whether RS allocation may take an entry freed in the same cycle
   /// (same-edge reuse, DA's response OI-39). With confirmation inside
   /// ooe_rs (OI-45) the free reaches allocation from its own flops at 25.7
@@ -1314,6 +1322,11 @@ private:
   std::vector<unsigned> decq_slot_take_;
   std::array<unsigned, 4> ren_tot_{};      ///< RS RCU, RS MIU, GPR, predicate names renamed this cycle
   std::vector<std::array<unsigned, 4>> ren_slot_;   ///< the same, per slot
+  std::vector<uint8_t> ren_serial_;          ///< go_static: a chwidth or barrier uop taken this cycle, per slot
+  std::vector<unsigned> go_run_;             ///< go_static: each slot's free ROB run from its tail, as the cycle starts
+  std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
+  std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
+  std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it

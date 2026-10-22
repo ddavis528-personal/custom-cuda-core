@@ -41,7 +41,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
-                                     {"take_young", &take_young}, {"ret_now", &ret_now},
+                                     {"take_young", &take_young}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -317,6 +317,20 @@ void Core::cycle(uint64_t now) {
   audit_squash_.assign(slot_.size(), 0);
   for (unsigned si = 0; si != slot_.size(); ++si)
     for (const RobEntry &r : slot_[si].rob) audit_room_[si] += !r.valid;
+  // go_static: each slot's free run from its tail as the cycle starts (the
+  // ROB's valid bits, registered), and whether it reaches the head.
+  go_run_.assign(slot_.size(), 0);
+  go_reach_.assign(slot_.size(), 0);
+  go_hold_.assign(slot_.size(), 0);
+  for (unsigned si = 0; si != slot_.size(); ++si) {
+    const Slot &x = slot_[si];
+    // And its holds, as the go's registered bit reads them this cycle.
+    go_hold_[si] = x.st != WarpState::kActive || x.fault_stop || x.chwidth_hold || x.bar_hold;
+    unsigned run = 0;
+    while (run != cfg_.rob_depth && !x.rob[(x.tail + run) % cfg_.rob_depth].valid) ++run;
+    go_run_[si] = run;
+    go_reach_[si] = run == cfg_.rob_depth || (x.tail + run) % cfg_.rob_depth == x.head;
+  }
   gfree_.clock();      // last cycle's frees become allocatable
   pfree_.clock();
   decq_flushed_ = 0;
@@ -2754,16 +2768,28 @@ unsigned Core::auditRobRoom(unsigned si) const {
 
 bool Core::tryRename(unsigned si, const Uop &u) {
   Slot &s = slot_[si];
-  if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
-  if (s.fault_stop) { count("hold.fault"); return false; }
-  if (s.chwidth_hold) {
+  // go_static: the holds as the cycle started (the go's registered bit); a
+  // hold that rises in the cycle is the next cycle's.
+  if (cfg_.go_static && si < go_hold_.size()) {
+    if (go_hold_[si]) { count("hold.registered"); return false; }
+    if (s.st != WarpState::kActive) err("go_static: slot %u renames while inactive", si);
+  } else if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
+  if (s.fault_stop && cfg_.go_static) count("go_static.after_fault_stop");
+  else if (s.fault_stop) { count("hold.fault"); return false; }
+  if (s.chwidth_hold && !cfg_.go_static) {
     count("hold.chwidth");
     oev(OoeEv::kChwidthHold, s.warp, tagOf(si, s.chwidth_rob), 0, u.tid);
     return false;
   }
-  if (s.bar_hold) {
+  if (s.bar_hold && !cfg_.go_static) {
     count("hold.barrier");
     oev(OoeEv::kBarrierHold, s.warp, s.bar_id, 0, u.tid);
+    return false;
+  }
+  // go_static: a chwidth or barrier uop taken this cycle ended the warp's
+  // take, faulting or not (its serial admission bit).
+  if (si < ren_serial_.size() && ren_serial_[si]) {
+    count("hold.serial_this_cycle");
     return false;
   }
   // The settings audit: a refusal the registered room would have admitted.
@@ -2774,12 +2800,19 @@ bool Core::tryRename(unsigned si, const Uop &u) {
                                     : "audit.rob_refused.late_credit");
     if (si < audit_squash_.size() && audit_squash_[si]) count("audit.rob_refused.squash_cycle");
   }
+  // go_static: the fits' ROB term, registered a cycle ahead (go_room_).
+  if (cfg_.go_static && took_[si] + 1 > (si < go_room_.size() ? go_room_[si] : 0u)) {
+    count("stall.rob_registered");
+    return false;
+  }
   if (s.count == cfg_.rob_depth) {
+    if (cfg_.go_static) err("go_static: slot %u's registered ROB room admits a take past a full ROB", si);
     count("stall.rob_full");
     oev(OoeEv::kRobFull, s.warp, s.count, 0, u.tid);
     return false;
   }
   if (robHeld(si, s.tail)) {
+    if (cfg_.go_static) err("go_static: slot %u's registered ROB room admits a held tail slot", si);
     count(s.rob[s.tail].valid ? "stall.rob_slot_held" : "stall.rob_late_credit");
     oev(OoeEv::kRobSlotHeld, s.warp, tagOf(si, s.tail), 0, u.tid);
     return false;
@@ -2817,6 +2850,17 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const bool atomic = mem && a.mem_kind == kMemKAtomic;
   const bool copy = mem && (a.mem_kind == kMemKLoad || atomic) && wgpr && merge;
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
+  // go_static: what the go charges against the warp's allowances, from the
+  // uop's decode-time bits (a fault found here, or a shared row, unseen).
+  const bool nop_d = u.shape.exit || u.cause;
+  const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
+  const bool wgpr_d = !nop_d && a.writes_gpr;
+  const bool copy_d = mem_d && (a.mem_kind == kMemKLoad || atom_d) && wgpr_d && (!full || u.shape.guard);
+  const unsigned chg[4] = {
+      cfg_.go_static ? (mem_d ? 0u : 1u) + (copy_d ? 1u : 0u) + (atom_d ? 1u : 0u) : 0u,
+      cfg_.go_static ? (mem_d ? (atom_d ? 2u : 1u) : 0u) : 0u,
+      cfg_.go_static ? (atom_d ? 2u : wgpr_d ? 1u : 0u) : 0u,
+      cfg_.go_static ? (!nop_d && u.pred_we && cfg_.rename_preds ? 1u : 0u) : 0u};
   // OA-21 (fits_conservative): a multi-warp go forms each warp's fits
   // against the cycle's shared credits less the rename width, so no
   // combination of warps oversubscribes them. The credits a warp sees are
@@ -2825,6 +2869,18 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned margin = ren_margin_;
   auto others = [&](unsigned k) { return ren_tot_[k] - ren_slot_[si][k]; };
   unsigned need_rcu = 0, need_miu = 0;
+  // go_static: the allowances charged with the decode-time needs, a
+  // rename-time no-op's included.
+  if (cfg_.go_static && shares_on_) {
+    if ((chg[0] && share_[si][0] < ren_slot_[si][0] + chg[0]) || (chg[1] && share_[si][1] < ren_slot_[si][1] + chg[1])) {
+      count("stall.share.rs");
+      return false;
+    }
+    if ((chg[2] && share_[si][2] < ren_slot_[si][2] + chg[2]) || (chg[3] && share_[si][3] < ren_slot_[si][3] + chg[3])) {
+      count("stall.share.names");
+      return false;
+    }
+  }
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
@@ -2837,7 +2893,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       free_rcu -= std::min(free_rcu, std::min(rs_prompt_[0], cap));
       free_miu -= std::min(free_miu, std::min(rs_prompt_[1], cap));
     }
-    if (shares_on_ && ((need_rcu && share_[si][0] < ren_slot_[si][0] + need_rcu) ||
+    if (shares_on_ && !cfg_.go_static && ((need_rcu && share_[si][0] < ren_slot_[si][0] + need_rcu) ||
                        (need_miu && share_[si][1] < ren_slot_[si][1] + need_miu))) {
       count("stall.share.rs");
       // Fragmentation: the whole credit would have taken it.
@@ -2895,7 +2951,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     }
     return false;
   }
-  if (shares_on_ && ((ngpr && share_[si][2] < ren_slot_[si][2] + ngpr) ||
+  if (shares_on_ && !cfg_.go_static && ((ngpr && share_[si][2] < ren_slot_[si][2] + ngpr) ||
                      (!nop && u.pred_we && cfg_.rename_preds && share_[si][3] < ren_slot_[si][3] + 1))) {
     count("stall.share.names");
     if ((!wgpr || !gfree_.empty()) && (!(!nop && u.pred_we && cfg_.rename_preds) || !pfree_.empty()))
@@ -3107,8 +3163,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
                             !nop && u.pred_we && cfg_.rename_preds ? 1u : 0u};
   for (unsigned k = 0; k != 4; ++k) {
     ren_tot_[k] += took[k];
-    ren_slot_[si][k] += took[k];
+    ren_slot_[si][k] += cfg_.go_static ? chg[k] : took[k];
   }
+  if (cfg_.go_static && (a.serial == kSerChwidth || a.serial == kSerBarrier)) ren_serial_[si] = 1;
   return true;
 }
 
@@ -3172,6 +3229,7 @@ void Core::restoreStep() {
 void Core::rename() {
   ren_tot_.fill(0);
   ren_slot_.assign(slot_.size(), {});
+  ren_serial_.assign(slot_.size(), 0);
   took_.assign(slot_.size(), 0);
   // A restore-allocate in progress owns the allocation ports: no warp
   // renames until it is done (OA's response OI-41).
@@ -3495,6 +3553,16 @@ void Core::rename() {
     }
   if (!budget) count("rename.full_width");
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
+  // go_static: next cycle's ROB room, as the fits register it: this cycle's
+  // free run less its take, and its retirements where the run reaches the
+  // head; none for a slot squashed this cycle (decq shows it empty).
+  go_room_.assign(slot_.size(), 0);
+  for (unsigned si = 0; si != slot_.size() && si < go_run_.size(); ++si) {
+    unsigned ret = 0;
+    for (unsigned k = 0; k != cfg_.rob_depth; ++k) ret += rob_prompt_[si * cfg_.rob_depth + k];
+    const unsigned run = go_run_[si] - std::min(go_run_[si], took_[si]);
+    go_room_[si] = (si < audit_squash_.size() && audit_squash_[si]) ? 0 : run + (go_reach_[si] ? ret : 0);
+  }
 }
 
 void Core::sendRedirect() {
