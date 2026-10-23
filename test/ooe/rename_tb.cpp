@@ -127,6 +127,8 @@ void clearInputs() {
   clearAll(dut->px_cq01h, 4 * LX);
   clearAll(dut->unmet_g_cq01h, S * LU);
   clearAll(dut->unmet_p_cq01h, S * LU);
+  clearAll(dut->room_g_cq01h, S * LU);
+  clearAll(dut->room_p_cq01h, S * LU);
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
@@ -160,7 +162,8 @@ void driveGo(const Core::GoLog &g, const Core::GoLog &nx) {
   for (unsigned r = 0; r != 4; ++r) pool = pool || g.cred[r] != nx.cred[r];
   for (unsigned r = 0; r != 2; ++r) pool = pool || g.owed[r] != nx.owed[r];
   for (unsigned s = 0; s != S; ++s) {
-    pool = pool || g.unmet_g[s] != nx.unmet_g[s] || g.unmet_p[s] != nx.unmet_p[s];
+    pool = pool || g.unmet_g[s] != nx.unmet_g[s] || g.unmet_p[s] != nx.unmet_p[s] || g.room_g[s] != nx.room_g[s] ||
+           g.room_p[s] != nx.room_p[s];
     setBit(dut->dq_ev_cq01h, s, g.adm[s] != nx.adm[s]);
     setBit(dut->rob_en_cq01h, s, g.run[s] != nx.run[s] || g.reach[s] != nx.reach[s] || g.ret[s] != nx.ret[s]);
   }
@@ -179,6 +182,8 @@ void driveGo(const Core::GoLog &g, const Core::GoLog &nx) {
     }
     setField(dut->unmet_g_cq01h, s * LU, LU, sat(g.unmet_g[s], LU));
     setField(dut->unmet_p_cq01h, s * LU, LU, sat(g.unmet_p[s], LU));
+    setField(dut->room_g_cq01h, s * LU, LU, sat(g.room_g[s], LU));
+    setField(dut->room_p_cq01h, s * LU, LU, sat(g.room_p[s], LU));
     setField(dut->run_cq01h, s * LB, LB, sat(g.run[s], LB));
     setBit(dut->reach_cq01h, s, g.reach[s]);
     setField(dut->ret_cq01h, s * LT, LT, sat(g.ret[s], LT));

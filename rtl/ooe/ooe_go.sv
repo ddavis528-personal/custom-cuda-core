@@ -85,6 +85,10 @@ module ooe_go #(
   input  logic [4*LX-1:0]   px_cq01h,
   input  logic [S*LU-1:0]   unmet_g_cq01h,
   input  logic [S*LU-1:0]   unmet_p_cq01h,
+  // And each slot's room to its ceiling, per class (GPR rows, predicates),
+  // saturated: arch + ceiling - held (OI-73 (3), OA's rev 207).
+  input  logic [S*LU-1:0]   room_g_cq01h,
+  input  logic [S*LU-1:0]   room_p_cq01h,
   // Each slot's ROB: the free run from the tail as the cycle started, whether
   // it reaches the head, and this cycle's retirements.
   input  logic [S*LB-1:0]   run_cq01h,
@@ -431,20 +435,26 @@ module ooe_go #(
   // -- The registered half: next cycle's fits ------------------------------------
   // Per slot, take k and length m (head k + m - 1 the last): the heads are
   // there, none before the last is serial, the ROB room covers k + m, the
-  // run takes at most R of each credit, and each credit's need, one-hot
-  // from the heads alone, picks the share's bit that must be set.
+  // run takes at most R of each credit, each credit's need, one-hot from
+  // the heads alone, picks the share's bit that must be set, and the names
+  // of the k heads taken now and the m after fit the warp's room to its
+  // ceiling (as the ROB room covers k + m).
   logic [S*(R+1)*R-1:0] fits_nx_cq01h;
   logic [LB+LT:0]       room_cq01h;
   logic [2*R:0]         rm_cq01h;              // room >= n
   logic                 ok_cq02h, ser_cq01h;
   logic [4*4-1:0]       nd_cq01h;              // each credit's need over the run
   logic [PA-1:0]        a_cq01h;
+  logic [2*4-1:0]       pre_cq01h;             // the names of the k heads taken now, GPR and predicate
   always_comb
     for (int s = 0; s < S; s++) begin
       room_cq01h = (LB + LT + 1)'(run_cq01h[s * LB +: LB]) +
              (reach_cq01h[s] ? (LB + LT + 1)'(ret_cq01h[s * LT +: LT]) : '0);
       for (int n = 0; n < 2 * R + 1; n++) rm_cq01h[n] = room_cq01h >= (LB + LT + 1)'(n);
       for (int k = 0; k < R + 1; k++) begin
+        pre_cq01h = '0;
+        for (int h = 0; h < k; h++)
+          if (h < H) pre_cq01h = pre_cq01h + {4'(ha_cq01h[(s * H + h) * PA + 4]), 4'(ha_cq01h[(s * H + h) * PA + 3])};
         nd_cq01h = '0;
         ser_cq01h = 1'b0;
         for (int m = 1; m < R + 1; m++) begin
@@ -459,7 +469,9 @@ module ooe_go #(
                        sg_fit(sg_cq02h[(s * 4 + 0) * R +: R], nd_cq01h[0 +: 4]) &&
                        sg_fit(sg_cq02h[(s * 4 + 1) * R +: R], nd_cq01h[4 +: 4]) &&
                        sg_fit(sg_cq02h[(s * 4 + 2) * R +: R], nd_cq01h[8 +: 4]) &&
-                       sg_fit(sg_cq02h[(s * 4 + 3) * R +: R], nd_cq01h[12 +: 4]);
+                       sg_fit(sg_cq02h[(s * 4 + 3) * R +: R], nd_cq01h[12 +: 4]) &&
+                       room_g_cq01h[s * LU +: LU] >= LU'(pre_cq01h[0 +: 4]) + LU'(nd_cq01h[8 +: 4]) &&
+                       room_p_cq01h[s * LU +: LU] >= LU'(pre_cq01h[4 +: 4]) + LU'(nd_cq01h[12 +: 4]);
             ser_cq01h = ser_cq01h | a_cq01h[6];
           end
           fits_nx_cq01h[(s * (R + 1) + k) * R + m - 1] = ok_cq02h;

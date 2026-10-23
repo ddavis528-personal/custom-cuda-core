@@ -40,6 +40,8 @@ module ooe_rename_tb #(
   input  logic [4*LX-1:0]   px_cq01h,
   input  logic [S*5-1:0]    unmet_g_cq01h,
   input  logic [S*5-1:0]    unmet_p_cq01h,
+  input  logic [S*5-1:0]    room_g_cq01h,
+  input  logic [S*5-1:0]    room_p_cq01h,
   input  logic [S*6-1:0]    run_cq01h,
   input  logic [S-1:0]      reach_cq01h,
   input  logic [S*3-1:0]    ret_cq01h,
@@ -104,7 +106,7 @@ module ooe_rename_tb #(
     .release_cq00h, .rat_cq02h, .crat_cq02h, .ckpt_cq02h);
   ooe_rename #(.S(S), .R(R), .C(C), .NG(NG), .NP(NP), .GW(GW), .PW(PW)) u_rename (
     .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .c_src_cq01h, .c_dst_cq01h, .c_pguard_cq01h,
-    .c_pdst_cq01h, .c_pq_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .px_cq01h, .unmet_g_cq01h, .unmet_p_cq01h,
+    .c_pdst_cq01h, .c_pq_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .px_cq01h, .unmet_g_cq01h, .unmet_p_cq01h, .room_g_cq01h, .room_p_cq01h,
     .run_cq01h, .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h,
     .rob_en_cq01h, .pool_en_cq01h, .rat_cq02h, .gfree_l_cq00h, .gfree_cq01h, .pfree_l_cq00h, .pfree_cq01h,
     .take_cq02h, .sel_cq02h, .q_v_cq03h, .q_slot_cq03h, .q_dst_cq03h, .q_gwe_cq03h, .q_gname_cq03h,

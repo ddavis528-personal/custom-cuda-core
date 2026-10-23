@@ -1524,26 +1524,65 @@ void testSquash() {
   EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "register leak");
 }
 
+/// The floors and the ceiling, which binds: two slots, a ceiling well under
+/// the ROB. The ceiling is a term of the go (OI-73 (3), OA's rev 207): it
+/// holds each warp at its ceiling, and the check after the go never fires.
+/// The control drops the go's term, so a take passes the ceiling (V-04).
 void testFloorCeiling() {
-  g_test = "floor-ceiling";
-  // A small pool: two slots, a ceiling well under the ROB.
+  for (const bool control : {false, true}) {
+    g_test = control ? "floor-ceiling (control)" : "floor-ceiling";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.slots = 2;
+    c.phys_regs = 64;
+    c.ren_floor = 8;
+    c.ren_ceil = 12;
+    c.pred_regs = 16;
+    c.pred_ren_floor = 2;
+    c.pred_ren_ceil = 4;
+    c.inject_no_ceil_term = control;
+    const int saved = g_fail;
+    const bool quiet = g_quiet;
+    g_quiet = control;
+    Env e(c, 3);
+    std::vector<Op> p;
+    for (unsigned i = 0; i != 60; ++i) { Op a; a.k = kLane; a.dst = i % 16; a.src[0] = (i + 15) % 16; a.nsrc = 1; p.push_back(a); }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.launch(1, 1, p);
+    e.finish();
+    g_quiet = quiet;
+    if (control) {
+      g_fail = saved;
+      const bool caught = e.core.counters["errors"] > 0;
+      std::printf("  %-24s %s\n", "control no-ceil-term", caught ? "caught" : "MISSED");
+      EXPECT(caught, "a take past the ceiling went unnoticed without the go's term");
+      continue;
+    }
+    EXPECT(e.core.counters["stall.ceiling.gpr"] > 0, "the go's ceiling term never held a warp");
+    EXPECT(e.core.counters["stall.gpr_ceiling"] == 0, "the check after the go refused %llu takes",
+           (unsigned long long)e.core.counters["stall.gpr_ceiling"]);
+    EXPECT(e.core.counters["errors"] == 0, "errors");
+  }
+}
+
+/// The ceiling at the RTL's size (four slots, the parameters' pools), so
+/// the go's benches see it bind (OI-73 (3)): one warp alone runs long
+/// enough to reach a small ceiling, which holds it there.
+void testCeilingGo() {
+  g_test = "ceiling-go";
   Config c = baseConfig();
   c.l1_spec = false;
-  c.slots = 2;
-  c.phys_regs = 64;
-  c.ren_floor = 8;
-  c.ren_ceil = 12;
-  c.pred_regs = 16;
-  c.pred_ren_floor = 2;
-  c.pred_ren_ceil = 4;
-  Env e(c, 3);
+  c.ren_floor = 4;
+  c.ren_ceil = 8;
+  Env e(c);
   std::vector<Op> p;
   for (unsigned i = 0; i != 60; ++i) { Op a; a.k = kLane; a.dst = i % 16; a.src[0] = (i + 15) % 16; a.nsrc = 1; p.push_back(a); }
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
-  e.launch(1, 1, p);
   e.finish();
-  EXPECT(e.core.counters["stall.gpr_ceiling"] > 0, "the ceiling never held a warp");
+  EXPECT(e.core.counters["stall.ceiling.gpr"] > 0, "the go's ceiling term never held the warp");
+  EXPECT(e.core.counters["stall.gpr_ceiling"] == 0, "the check after the go refused a take");
   EXPECT(e.core.counters["errors"] == 0, "errors");
 }
 
@@ -4010,6 +4049,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testSquashSaturated();
   testFinalBeforeProducer();
   testFloorCeiling();
+  testCeilingGo();
   testDemote();
   testRestore();
   testKill();
@@ -4149,6 +4189,7 @@ int main(int argc, char **argv) {
   testSquashSaturated();
   testFinalBeforeProducer();
   testFloorCeiling();
+  testCeilingGo();
   testDemote();
   testRestore();
   testKill();

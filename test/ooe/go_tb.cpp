@@ -22,8 +22,8 @@
 // no-pool-en (a change lead for the fits' clock enables never reaches it:
 // decq's heads, the ROB room, rename's credits), no-ret (this cycle's
 // retirements never reach the ROB term), adm-shift (each head carries
-// the next head's admission bits) and no-write-bits (no head writes a GPR
-// or a predicate).
+// the next head's admission bits), no-write-bits (no head writes a GPR
+// or a predicate) and no-room (no slot's room to its ceiling binds).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: go_tb [seeds] | go_tb --cg <scenario> <vcd>
@@ -101,6 +101,8 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
   clearAll(dut->px_cq01h, 4 * LX);
   clearAll(dut->unmet_g_cq01h, S * LU);
   clearAll(dut->unmet_p_cq01h, S * LU);
+  clearAll(dut->room_g_cq01h, S * LU);
+  clearAll(dut->room_p_cq01h, S * LU);
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
@@ -124,7 +126,8 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     for (unsigned r = 0; r != 4; ++r) pool = pool || g->cred[r] != nx->cred[r];
     for (unsigned r = 0; r != 2; ++r) pool = pool || g->owed[r] != nx->owed[r];
     for (unsigned s = 0; s != S; ++s) {
-      pool = pool || g->unmet_g[s] != nx->unmet_g[s] || g->unmet_p[s] != nx->unmet_p[s];
+      pool = pool || g->unmet_g[s] != nx->unmet_g[s] || g->unmet_p[s] != nx->unmet_p[s] ||
+             g->room_g[s] != nx->room_g[s] || g->room_p[s] != nx->room_p[s];
       if (control != "no-dq-ev") setBit(dut->dq_ev_cq01h, s, g->adm[s] != nx->adm[s]);
       if (control != "no-rob-en")
         setBit(dut->rob_en_cq01h, s, g->run[s] != nx->run[s] || g->reach[s] != nx->reach[s] || g->ret[s] != nx->ret[s]);
@@ -147,6 +150,9 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     }
     setField(dut->unmet_g_cq01h, s * LU, LU, sat(g->unmet_g[s], LU));
     setField(dut->unmet_p_cq01h, s * LU, LU, sat(g->unmet_p[s], LU));
+    // Each slot's room to its ceiling (OI-73 (3)); no-room: none binds.
+    setField(dut->room_g_cq01h, s * LU, LU, control == "no-room" ? (1u << LU) - 1 : sat(g->room_g[s], LU));
+    setField(dut->room_p_cq01h, s * LU, LU, control == "no-room" ? (1u << LU) - 1 : sat(g->room_p[s], LU));
     setField(dut->run_cq01h, s * LB, LB, sat(g->run[s], LB));
     setBit(dut->reach_cq01h, s, g->reach[s]);
     setField(dut->ret_cq01h, s * LT, LT, control == "no-ret" ? 0 : sat(g->ret[s], LT));

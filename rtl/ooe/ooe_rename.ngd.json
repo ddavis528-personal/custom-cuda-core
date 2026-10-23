@@ -234,6 +234,18 @@
    "by": "OA",
    "date": "2026-10-23",
    "why": "OA's response OI-70 (OA tab rev 194): by 6, into Rename 2 (ooe_rendep's gsn and psn, 17.9 and 18.4 NGD to its flops), met with the one-hot name index (measured 5.6)"
+  },
+  "room_g_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-73 (OA tab rev 207): each slot's room to its ceiling, from rename's registered held, beside the unmet floors (arrival 2, a register)"
+  },
+  "room_p_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-73 (OA tab rev 207): each slot's room to its ceiling, from rename's registered held, beside the unmet floors (arrival 2, a register)"
   }
  }
 }

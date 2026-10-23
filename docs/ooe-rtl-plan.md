@@ -748,6 +748,12 @@ Built (`rtl/ooe/`):
      179): a streaming warp's fits stay all ones while its heads move, so
      no enable from own flops can reach 75%. The flops written every cycle
      are 14: the allowance takes 6, waivers the squash and change bits.
+     *The ceiling* (OI-73 (3), OA's rev 207): each slot's room to its
+     ceiling per class, rename's register (arrival 2), is a fits term: the
+     names of the k heads taken now and the m after must fit it, as the
+     ROB room covers k + m. 21.4 NGD flop to flop with it. go_tb's control
+     no-room drives no binding room and is caught (the directed test
+     ceiling-go makes it bind at the RTL's size).
      *Result.* `test/ooe/go_tb.cpp` drives ooe_go from the model's GoLog a
      cycle behind (the leads are the next cycle's log) and compares every
      take and lane: 25 seeds and the directed tests, 250 cores, 101,393

@@ -215,7 +215,7 @@ if out=$("$dir/go_tb" "$seeds" 2>&1); then
 else
   say "go == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift no-write-bits; do
+for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift no-write-bits no-room; do
   if GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
     say "  control $c (go)" "MISSED"; fail=1
   else
