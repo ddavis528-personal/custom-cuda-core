@@ -1,0 +1,22 @@
+{
+  "_comment": "CCV-L23's declared feedback for ooe_sched (OA's ruling on TI-38, rev 187): the one-cycle select loop. The request and ready registers (stage 03) and their enables read the grant register (04) and its leads back, the loop V-65's same-cycle confirmation needs; their frames are OI-45's.",
+  "reads": {
+    "isg_cq02h": {
+      "from": [
+        "gnt_cq04h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "issued as ooe_rs's rule reads it: the grant leaving now, whose next value the request register feeds through the select (OA's rev 187)"
+    },
+    "rq_en_cq02h": {
+      "from": [
+        "chg_cq04h",
+        "gnt_cq04h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "the request register's enable: a grant leaving, and its own change bit, each fed back from the register it clocks (OA's rev 187)"
+    }
+  }
+}

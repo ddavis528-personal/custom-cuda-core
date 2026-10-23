@@ -118,28 +118,28 @@ module ooe_sched #(
   // misses only grow by the pulses, so the lead is a superset.
   logic         stop_cq02h;
   (* keep *) logic [N-1:0] gnt_cq04h;      // the grant register's mask copy
-  logic [N-1:0] rep_cq02h, ise_cq02h, gon, isg, cnf;
-  logic [N*N-1:0] dpm;                      // the matrix less this cycle's confirmations' columns
+  logic [N-1:0] rep_cq02h, ise_cq02h, gon_cq02h, isg_cq02h, cnf_cq02h;
+  logic [N*N-1:0] dpm_cq02h;                      // the matrix less this cycle's confirmations' columns
   always_comb begin
     // Issued counts the grant leaving now (the grant register), which
     // ooe_wake takes at this edge.
-    isg = iss_cq02h | gnt_cq04h;
+    isg_cq02h = iss_cq02h | gnt_cq04h;
     // A producer's issued bit before this edge's grants, as ooe_rs's rule
     // reads it (V-65): an entry issued on a producer replayed and granted
     // again at this edge is replayed.
     for (int i = 0; i < N; i++)
-      rep_cq02h[i] = isg[i] && (dep_cq02h[i * N +: N] & (~iss_cq02h | msd_cq02h)) != '0;
-    ise_cq02h  = isg & ~rep_cq02h;
+      rep_cq02h[i] = isg_cq02h[i] && (dep_cq02h[i * N +: N] & (~iss_cq02h | msd_cq02h)) != '0;
+    ise_cq02h  = isg_cq02h & ~rep_cq02h;
     // This cycle's confirmations (OA's response OI-45 (1)): ooe_rs and
     // ooe_wake free them at this edge; their columns clear in the matrix an
     // edge later, so the ready and request terms read the matrix less them.
     for (int i = 0; i < N; i++)
-      cnf[i] = isg[i] && dep_cq02h[i * N +: N] == '0 && (fin_cq02h[i] || !prod_cq02h[i]);
-    for (int i = 0; i < N; i++) dpm[i * N +: N] = dep_cq02h[i * N +: N] & ~cnf;
-    gon        = ~ise_cq02h | msd_cq02h | mis_cq02h;
+      cnf_cq02h[i] = isg_cq02h[i] && dep_cq02h[i * N +: N] == '0 && (fin_cq02h[i] || !prod_cq02h[i]);
+    for (int i = 0; i < N; i++) dpm_cq02h[i * N +: N] = dep_cq02h[i * N +: N] & ~cnf_cq02h;
+    gon_cq02h        = ~ise_cq02h | msd_cq02h | mis_cq02h;
     stop_cq02h = 1'b0;
     for (int i = 0; i < N; i++)
-      stop_cq02h = stop_cq02h | (ise_cq02h[i] && (dpm[i * N +: N] & gon) != '0);
+      stop_cq02h = stop_cq02h | (ise_cq02h[i] && (dpm_cq02h[i * N +: N] & gon_cq02h) != '0);
   end
 
   // The timer lead, of lines some row reads: a line no cell selects
@@ -163,17 +163,17 @@ module ooe_sched #(
   logic         ready_en;
   // A row not valid reads not ready (only a valid row requests): a row
   // written ready then changes its bit, so the allocation lead clocks a change.
-  ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dpm), .code_cq02h(code_cq02h),
+  ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dpm_cq02h), .code_cq02h(code_cq02h),
                                              .wake_cq02h(wake_cq02h), .ready_cq02h(ready_cq02h));
 
   // -- Request register -------------------------------------------------------
   logic [N-1:0] rq_cq02h, rq_cq03h;
-  logic         chg_cq04h, rq_en, gnt_en_cq03h;
+  logic         chg_cq04h, rq_en_cq02h, gnt_en_cq03h;
   always_comb
     for (int e = 0; e < N; e++)
       rq_cq02h[e] = valid_cq02h[e] && !ise_cq02h[e] && active_cq02h[slot_cq02h[e * LS +: LS]] &&
-                    (!copy_cq02h[e] || dpm[e * N +: N] == '0);
-  assign rq_en  = chg_cq04h || stop_cq03h || gnt_cq04h != '0 || alc_cq03h;
+                    (!copy_cq02h[e] || dpm_cq02h[e * N +: N] == '0);
+  assign rq_en_cq02h  = chg_cq04h || stop_cq03h || gnt_cq04h != '0 || alc_cq03h;
 
   // -- Select -----------------------------------------------------------------
   logic [N-1:0] cand_cq03h, grant_cq03h, lost_cq03h;
@@ -218,7 +218,7 @@ module ooe_sched #(
       gl_cq05h       <= (gnt_cq04h & dcol_cq02h) != '0;
       stop_cq03h     <= stop_cq02h;
       alc_cq03h      <= alloc_cq02h;
-      chg_cq04h      <= !rq_en && rq_cq02h != rq_cq03h;
+      chg_cq04h      <= !rq_en_cq02h && rq_cq02h != rq_cq03h;
     end
   end
   always_ff @(posedge ooe_core_clk) begin
@@ -227,7 +227,7 @@ module ooe_sched #(
       rq_cq03h    <= '0;
     end else begin
       if (ready_en) ready_cq03h <= ready_cq02h & valid_cq02h;
-      if (rq_en) rq_cq03h <= rq_cq02h;
+      if (rq_en_cq02h) rq_cq03h <= rq_cq02h;
     end
   end
   always_ff @(posedge ooe_core_clk) begin
