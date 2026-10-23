@@ -894,7 +894,9 @@ it.
   adopted ahead of the measurement, with the wait moving to FET. FET tells
   the converged case apart at fetch: the wait's group is every live lane,
   and no lane is waiting. FET marks that wait hold. SYU routes its answer to
-  OOE on `ccv_syu_ooe_rel`, reduced to `{warp_id}`. OOE keeps the held wait's
-  PC, so a demotion rewinds the warp to the wait. It moves to adopted with
+  OOE on `ccv_syu_ooe_rel`, reduced to `{warp_id}`. A demotion rewinds the
+  warp to the wait. OOE flags its rewind beat held, keeps the wait's length
+  (1 bit a slot), and FET takes the length off the beat's PC (AR's rev
+  164). It moves to adopted with
   the commit that builds it. The measurement above still says whether the
   second path earns its verification.
