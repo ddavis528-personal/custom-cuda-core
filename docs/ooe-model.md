@@ -304,7 +304,10 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   GPR destination, ld.pred's copy among them, names the zero register's
   name as phys_dst on the issue and the memop (and as its old destination),
   never 0: row 0 is a real row. Nothing writes the zero register (A-64).
-  The unit environment's write tracker skips that name.
+  The unit environment's write tracker skips that name, and it checks every
+  issue and memop: an op that writes no GPR names the zero register, one
+  that writes a GPR never does (OA's rev 182). Control `none-row-zero`
+  sends 0 instead.
 - **Loads passing loads** (OA-13, deferred to PF-28 by DA's response of
   2026-10-09; a sweep knob only, off): with `loads_pass_loads`, a
   plain load passes older unissued plain loads of its warp. It never passes

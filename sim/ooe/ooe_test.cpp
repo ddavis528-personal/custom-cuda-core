@@ -759,8 +759,18 @@ struct Env {
     }
   }
 
+  /// TI-37 (OA's rev 182): an op that writes no GPR names the zero register
+  /// as its destination, and one that writes a GPR never does.
+  void noneName(uint64_t tid, const Op &o, unsigned pdst, const char *what) {
+    const bool wg = makeUop(o, 0, tid, 0, 0).attr.writes_gpr;
+    if (wg == core.isZeroName(pdst))
+      errors.push_back(std::string("TI-37: tid ") + std::to_string(tid) + "'s " + what + " names p" +
+                       std::to_string(pdst) + (wg ? ", the zero register, for its GPR" : " for no GPR destination"));
+  }
+
   void onIssue(const Issue &is) {
     const Op &o = op_of[is.tid];
+    if (o.k != kAtomic) noneName(is.tid, o, is.pdst, is.copy ? "copy" : "issue");
     if (is.copy) {
       checkRead(is.tid, is.pold, false, int(Config::kGrpInt));
       return;
@@ -979,6 +989,7 @@ struct Env {
     }
     if (m.mem_op == kMemOpAtomicRead || m.mem_op == kMemOpAtomicWrite)
       errors.push_back("V-72: a non-atomic reaches MIU as mem_op " + std::to_string(m.mem_op));
+    noneName(m.tid, o, m.pdst, "memop");
     // V-17: a memop never reads an unconfirmed (here: unreadable) source.
     const size_t before = viol[m.tid].size();
     (void)before;
@@ -1901,6 +1912,39 @@ void testLdPredCopy() {
   std::printf("  %-24s %s\n", "control pred-copy-lost", held ? "MISSED" : "caught");
   g_test = "ld.pred's copy (control)";
   EXPECT(!held, "a partial-mask ld.pred without its copy should fail the check");
+}
+
+/// TI-37 (OA's rev 182): no GPR destination is the zero register's name on
+/// the issue and the memop: a setp, ld.pred at a partial mask (and its copy)
+/// and a store. The control sends 0, a real row.
+bool noneIsZero(bool control) {
+  Config c = baseConfig();
+  c.inject_none_row_zero = control;
+  Env e(c);
+  std::vector<Op> p;
+  Op sp; sp.k = kSetp; sp.nsrc = 2; sp.pdst = 1; p.push_back(sp);
+  Op ld; ld.k = kLoad; ld.nsrc = 1; ld.pred_only = true; ld.pdst = 1; ld.mask = 0x0000ffffu; p.push_back(ld);
+  Op st; st.k = kStore; st.nsrc = 2; p.push_back(st);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(6, 0, p);
+  for (unsigned k = 0; k != 400 && !e.warpOf(6)->exited; ++k) e.step();
+  if (!control) {
+    g_test = "no GPR destination (TI-37)";
+    EXPECT(e.warpOf(6)->exited, "the warp never finished");
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  // Held unless the TI-37 check itself names it.
+  bool named = false;
+  for (const std::string &x : e.errors) named = named || x.rfind("TI-37:", 0) == 0;
+  return e.warpOf(6)->exited && !named;
+}
+
+void testNoneIsZero() {
+  noneIsZero(false);
+  const bool held = noneIsZero(true);
+  std::printf("  %-24s %s\n", "control none-row-zero", held ? "MISSED" : "caught");
+  g_test = "no GPR destination (control)";
+  EXPECT(!held, "no GPR destination sent as row 0 should fail the check");
 }
 
 void testCtaSlot() {
@@ -4060,6 +4104,7 @@ int main(int argc, char **argv) {
   testRandom(seeds);
   testAtomic();
   testLdPredCopy();
+  testNoneIsZero();
   testAtomicFault();
   testAtomicKill();
   testAtomicDemote();
