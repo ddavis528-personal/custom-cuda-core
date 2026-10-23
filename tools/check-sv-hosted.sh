@@ -75,6 +75,8 @@ if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
 fi
 SVH="$B/svh_vo/ccv-svh"
 say "SV-hosted build: 45 blocks + EXTERNAL as shims" "PASS"
+# --build-only: the binary alone, for tools/regen.sh (the walkthrough runs it).
+[ "${1:-}" = "--build-only" ] && exit $fail
 
 # One run on each host. $1 kernel, $2 tag, then extra args as "cpp|sv" pairs.
 cpp() { "$SKEL" --kernel "$B/oracle/$1/oracle.jsonl" "${@:2}" 2>/dev/null; }

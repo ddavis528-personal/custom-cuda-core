@@ -29,8 +29,16 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 
 ```
 ./tools/setup-toolchain.sh   # a fresh container needs this once
+./tools/regen.sh             # every generated file, walkthrough included (~2 min)
 ./tools/verify.sh            # must be green before a push
 ```
+
+Run `tools/regen.sh` and commit what it changes before every gate (DA,
+2026-10-23). `docs/walkthrough.md` is built from the gate's own runs, so the
+gate can compare it whole only at its end; a stale one used to cost a whole
+gate. Its inputs that move it most (the compiler pin, schema, params, the lint
+rule count, the gate's sections) are fingerprinted into its last line, and the
+gate checks that fingerprint in its first minute.
 
 After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
 time (default every core; `CCV_JOBS=1` is serial), each section's log in
