@@ -256,7 +256,7 @@ module ooe_go #(
   // lengths the term reaches, as the counts rise with the length; the
   // totals, over the taken writers.
   logic [S*2*(R+1)*R-1:0] wcs_cq02h;           // per slot, class, length m (0 to R): its writers, a thermometer
-  logic [S*R-1:0]         wq_cq02h;
+  logic [S*R-1:0]         wq_cq02h, wtq_cq02h;
   always_comb begin
     for (int q = 0; q < S; q++)
       for (int b = 0; b < 2; b++) begin
@@ -280,16 +280,14 @@ module ooe_go #(
           end
           wb_cq02h[((r * S + s) * 2 + b) * R +: R] = tsum(wq_cq02h);
         end
-      // More than j writers taken: a taken writer has j before it.
-      for (int j = 0; j < R; j++) begin
-        wt_cq02h[b * R + j] = 1'b0;
-        for (int r = 0; r < R; r++)
-          for (int s = 0; s < S; s++)
-            wt_cq02h[b * R + j] = wt_cq02h[b * R + j] |
-              (tk_w_cq02h[r * S + s] &
-               (wcs_cq02h[((s * 2 + b) * (R + 1) + r + 1) * R +: R] != wcs_cq02h[((s * 2 + b) * (R + 1) + r) * R +: R]) &
-               (j == 0 || wb_cq02h[((r * S + s) * 2 + b) * R + (j + R - 1) % R]));
+      // The writers taken: each warp's prefix count at its own take, summed.
+      for (int q = 0; q < S; q++) begin
+        wtq_cq02h[q * R +: R] = '0;
+        for (int m = 1; m < R + 1; m++)
+          wtq_cq02h[q * R +: R] = wtq_cq02h[q * R +: R] |
+            ({R{tk_w_cq02h[(m - 1) * S + q]}} & wcs_cq02h[((q * 2 + b) * (R + 1) + m) * R +: R]);
       end
+      wt_cq02h[b * R +: R] = tsum(wtq_cq02h);
     end
   end
 
