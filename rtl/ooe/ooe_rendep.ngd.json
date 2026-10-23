@@ -38,10 +38,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gname_cq01h": {
-      "arrival": 2.0,
+      "arrival": 3.0,
       "by": "OA",
-      "date": "2026-10-22",
-      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 3: each lane's new names, bound from the Rename 1 register by ooe_ren1n (2.5 NGD)."
     },
     "pwe_cq01h": {
       "arrival": 2.0,
@@ -50,10 +50,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "pname_cq01h": {
-      "arrival": 2.0,
+      "arrival": 3.0,
       "by": "OA",
-      "date": "2026-10-22",
-      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 3: each lane's new names, bound from the Rename 1 register by ooe_ren1n (2.5 NGD)."
     },
     "gsv_cq01h": {
       "arrival": 2.0,
@@ -62,10 +62,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gsn_cq01h": {
-      "arrival": 2.0,
+      "arrival": 5.0,
       "by": "OA",
-      "date": "2026-10-22",
-      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 5: a source's name, an in-group writer's bound through its lane's new name by ooe_ren1n (5 NGD); ooe_rendep is 19.3 after its inputs, 24.3 in all."
     },
     "psv_cq01h": {
       "arrival": 2.0,
@@ -74,10 +74,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "psn_cq01h": {
-      "arrival": 2.0,
+      "arrival": 5.0,
       "by": "OA",
-      "date": "2026-10-22",
-      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 5: a source's name, an in-group writer's bound through its lane's new name by ooe_ren1n (5 NGD); ooe_rendep is 19.3 after its inputs, 24.3 in all."
     },
     "cguard_cq01h": {
       "arrival": 2.0,
