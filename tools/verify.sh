@@ -20,6 +20,11 @@
 #   tools/verify.sh          the gate
 #   tools/verify.sh --full   also regenerate the Stage 1a matrix from the
 #                            tools themselves (minutes, not seconds)
+#   tools/verify.sh --cached for an intermediate run: keep the Yosys netlists
+#                            earlier runs made (build/synth-cache, keyed by
+#                            everything a run reads). Its result reads
+#                            "CACHED PASS", never "PASS": the gate for a push
+#                            is the default, every netlist built clean.
 #   CCV_JOBS=n               sections run n at a time after the generators
 #                            (default: every core; 1 is the serial gate).
 #                            Each section's log is build/verify/<job>.log.
@@ -30,7 +35,14 @@ cd "$(dirname "$0")/.."
 export PATH="$PWD/tools/shim:$PATH"
 
 FULL=0
-[ "${1:-}" = "--full" ] && FULL=1
+CACHED=0
+for a in "$@"; do
+  case "$a" in
+    --full)   FULL=1 ;;
+    --cached) CACHED=1 ;;
+    *) echo "usage: $0 [--full] [--cached]" >&2; exit 2 ;;
+  esac
+done
 
 fail=0
 section() { printf '\n== %s ==\n' "$1"; }
@@ -111,6 +123,11 @@ run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
 run "generate SV top"       python3 tools/gen-top.py
 run "SV top stable"         python3 tools/gen-top.py --check
+# The walkthrough can be checked whole only at the end, from the builds the
+# sections make; the inputs that most often move it are fingerprinted into it
+# and checked here, in seconds (DA, 2026-10-23). tools/regen.sh rewrites it.
+run "walkthrough inputs current" python3 tools/gen-walkthrough.py --check-inputs
+run "walkthrough from other inputs refused" python3 tools/gen-walkthrough.py --check-inputs --selftest
 # A generator that stops writing a file must not leave it behind, or the
 # globs that build from these directories go on compiling it, and only a
 # fresh checkout sees the difference (OI-40). Each generator prunes its own;
@@ -320,7 +337,7 @@ job_vlint() {
     for spec in test/smoke/ccv_assert_smoke.sv: rtl/if/ccv_common_chk_credit.sv: \
                 rtl/if/ccv_common_chk_credit.sv:CCV_TRACE rtl/if/ccv_common_chk_atomic.sv: \
                 rtl/if/ccv_common_chk_lockstep.sv: rtl/if/ccv_common_chk_lockstep.sv:CCV_TRACE \
-                rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: \
+                rtl/if/ccv_common_chk_binding.sv: rtl/if/ccv_common_chk_outstanding.sv: rtl/if/ccv_common_chk_notice.sv: \
                 rtl/if/ccv_common_chk_wake.sv: rtl/clk/ccv_common_clk.sv:; do
       f=${spec%%:*}; def=${spec#*:}
       top=$(basename "$f" .sv)
@@ -364,6 +381,10 @@ declare -A after=(
 )
 LOGS=build/verify
 rm -rf "$LOGS" && mkdir -p "$LOGS"
+# check-cg and check-ngd share their Yosys netlists through this cache, keyed
+# by everything a run reads. Cleared here unless --cached, so the gate for a
+# push synthesises each one itself (Daniel, 2026-10-21).
+[ "$CACHED" = 1 ] || rm -rf build/synth-cache
 for j in $ORDER; do
   case " $(echo $START) " in *" $j "*) ;; *) echo "verify: job $j is never started"; exit 2 ;; esac
   declare -F "job_$j" >/dev/null || { echo "verify: no job_$j"; exit 2; }
@@ -436,7 +457,9 @@ cat <<'PENDING'
 PENDING
 
 section "result"
-if [ "$fail" = "0" ]; then
+if [ "$fail" = "0" ] && [ "$CACHED" = 1 ]; then
+  echo "  CACHED PASS -- netlists from build/synth-cache; not the gate for a push"
+elif [ "$fail" = "0" ]; then
   echo "  PASS"
 else
   echo "  FAIL"

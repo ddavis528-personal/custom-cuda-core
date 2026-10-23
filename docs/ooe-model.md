@@ -178,7 +178,10 @@ the head in transit for a cycle, and the next allocations take the entries
 behind it, so the buffer offers its count less the last cycle's take. That
 costs nothing at 8 entries (the sweep's 982 cycles stand) and 4.8% at 4. Any
 number of frees a cycle costs nothing, so a squash's 32 or a kill's 16
-need no drain. Rename's allocation checks the buffer; its floor and
+need no drain. The first edge refills nothing: it is ooe_freelist's last
+reset edge, so the core's first cycle is the one after the reset for the
+free lists as for ooe_go's rotation (test/ooe/rename_tb.cpp drives both
+from one reset). Rename's allocation checks the buffer; its floor and
 ceiling checks count every free register not freed this cycle; V-01, V-02
 and V-04 count those freed this cycle too. Allocation order is
 bank-interleaved, so `--break free-new` first showed at seq 379 (R4),
@@ -291,6 +294,31 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   cycle before its load (V-61). Its sources are confirmed first, so it
   cannot be cancelled after the load has gone. Unsectioned, the copy leaves
   with its load, as before.
+- **Any destination makes the copy** (TI-36 (b), OA's rev 180). A load or
+  atomic at a partial mask, or guarded, makes the copy whether its
+  destination is a GPR or only a predicate (ld.pred). For ld.pred the copy
+  carries the old physical predicate into the new, so the inactive lanes
+  keep their bits, and the load itself then reads no old predicate. Control
+  `pred-copy-lost` makes none for ld.pred. The test runs from `main()` only:
+  no stub carries ld.pred yet, and ooe_rendep's copy reads the old GPR
+  destination. The RTL copy must read the old predicate when ld.pred
+  reaches the stubs.
+- **The local forms** (IS-19, O-69; OA's rev 183). ld.local, st.local and
+  their predicate forms are ordinary memops with no base source: DEC sets
+  no src_valid for rbase, so rename reads none and the memop waits on
+  nothing but its data, and OOE copies local_form to MIU unexamined (TI's
+  pass-through); MIU forms the address and ctx itself. A partial ld.local
+  makes the masked-load copy; the predicate forms take ld.pred's path.
+  Directed test ldLocal, control `local-base` (the load reads a base, so
+  it waits for its producer).
+- **No GPR destination is the zero register** (TI-37). An op without a
+  GPR destination, ld.pred's copy among them, names the zero register's
+  name as phys_dst on the issue and the memop (and as its old destination),
+  never 0: row 0 is a real row. Nothing writes the zero register (A-64).
+  The unit environment's write tracker skips that name, and it checks every
+  issue and memop: an op that writes no GPR names the zero register, one
+  that writes a GPR never does (OA's rev 182). Control `none-row-zero`
+  sends 0 instead.
 - **Loads passing loads** (OA-13, deferred to PF-28 by DA's response of
   2026-10-09; a sweep knob only, off): with `loads_pass_loads`, a
   plain load passes older unissued plain loads of its warp. It never passes
@@ -327,6 +355,412 @@ the checker names the instruction. `--break movi-in-lane` is its control. The
 RCU session should confirm the bound or name its own; it is the model's
 reading, not a parameter yet.
 
+## Atomics: read, lane op, write (AR-21)
+
+The design doc's section of that name, as the model builds it. An atomic
+(`mem_kind` atomic) splits at rename into three RS entries under its one ROB
+entry and rob_tag:
+
+- **A1**, MIU class: the exclusive read into T, sent as `mem_op` 2
+  (atomic-read), with the address source, its displacement and the guard.
+- **A2**, RCU class: the lane op, T and the operands into N, its opcode
+  DEC's for the atomic, passed through unexamined (A-66). Its wake is the
+  lane latency.
+- **A3**, MIU class: the write of N and the release, `mem_op` 3
+  (atomic-write), with the store data alone.
+
+T is rd's new name for atom, and a temporary for red; N is always a
+temporary. Both are taken at rename (an atomic takes two names, two MIU
+entries and one RCU entry), are whole rows when sectioned (32-bit data), and
+free at retire. A masked or guarded atomic that writes rd gets the copy for
+T's inactive lanes, which goes with or before its first read (A-38, V-61).
+
+- **At the head (V-69).** A1 issues only when its ROB entry is its warp's
+  head and its sources are confirmed. A2 and A3 issue only inside a pass,
+  after its read has issued in an earlier cycle: a return to Waiting
+  reaches the registered ready a cycle late (OI-51), and the read, a memop,
+  is never replayed to catch a lane op granted on the old bit. Younger
+  memops of the warp wait for the atomic's last write; younger lane ops go
+  around it.
+- **Passes (V-72).** A3's completion carries `more` while lanes remain. On
+  it the three steps return to Waiting and issue again. A completion names
+  its step by `rs_idx`. The steps are held across passes: confirmation
+  frees none of them until the last pass, when A1 and A2 go and A3 confirms
+  on its wake.
+- **One wake (V-71).** T's consumers name A3 and wake on its last
+  completion. The ROB entry completes only then, once every step has
+  confirmed and freed (V-58).
+- **Faults.** A fault comes on the first read, with no hold. The steps
+  free and the entry faults at the head as usual.
+- **Demotion and kill (V-70).** While the head is an atomic in progress, no
+  demotion trigger is reported (`demote_trigger.held_atomic` counts the
+  cycles) and a demote from RAU waits (`demote.held_atomic`) until the last
+  pass; a kill meanwhile supersedes it. A kill of a pass in flight keeps the
+  three steps, so the pass writes and releases. The steps may issue though
+  the warp is killing, no later pass starts, and the entry, held as
+  squashed, releases on that write's completion, which the kill's ack waits
+  for.
+- **Rename's ports.** A cycle's RS rows per class and its GPR names stay
+  within the width: ooe_rs has that many allocation ports per class, the
+  free list as many, and fits_stale 6's allowances hold back at most the
+  width. Only an atomic (two MIU rows, two names) or a masked load with its
+  copy (two RCU rows) takes more than one, so with neither nothing changes
+  (`stall.rename_ports` is 0 over the 200 ordinary random runs).
+- **Measured** (`atomic.passes`, `atomic.hold_cycles` from the read's issue
+  to the write's completion, `atomic.head_wait` from the read's first
+  ready to its issue). Over 25 seeds of random programs, about one op in
+  twelve an atomic: 5,005 atomics, 4.27 passes each, 42.1 cycles held a
+  pass, 240.8 cycles waiting for the head. The wait for the head is the
+  cost OA named (an earlier non-speculative point is its remedy); CP's
+  histogram kernel is the measurement that counts.
+
+The environment's MIU holds a pass's lines from its read to its write and
+checks that a read follows every older instruction's retirement, that no
+read comes before the last pass's write, and that no hold outlives its
+atomic. It holds T's consumers to its last pass. `testAtomic` runs three
+passes in five configurations, for atom, red, masked and guarded;
+`testAtomicFault`, `testAtomicKill` and `testAtomicDemote` take the other
+paths, and `testAtomicRandom` mixes atomics into the random programs in
+every select form. They run in `ooe-test` alone, not in the benches'
+random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
+`atom-early-wake` and `atom-demote-mid` must be caught.
+
+## Demotion's model side (TI-24) and the swap environment (TI-21)
+
+**What OOE sends now (TI-24's asks, OA's revs 149-151).**
+
+- **The trigger.** The MLC-miss trigger is now "the head is a load still
+  outstanding at MIU, blocked longer than `demote_mlc_miss`"
+  (CCV_DEMOTION_THRESHOLD_MLC, which exceeds CCV_LAT_MLC_HIT_MAX). The
+  completion's `mlc_miss` comes with the data, too late to demote on.
+  `mlc_miss_seen` on the status reports that condition.
+- **exited.** It is raised once the warp's exit has retired and its ROB
+  holds nothing, a deferred free included, so no memop is out at MIU. It
+  is sent once, as it rises; the level holds until RAU frees the slot.
+- **The rewind.** At a demote, before the squash, OOE takes each lane's
+  oldest unretired uop across the ROB and then the decode queue. Lanes that
+  share a PC merge into one beat, oldest first. The beats follow the epoch
+  notice on the redirect channel (`epoch_only` and `rewind`, the lanes in
+  `taken_mask`, the PC in `target_pc`), one a cycle at its rate. `drained`
+  waits for the last beat to land, and `resume_pc` is the oldest beat's.
+  `demote.rewind_beats` counts the beats per demote.
+- **A fix the swap found.** A checkpoint free resolved in the cycle OOE
+  demotes or kills the warp would go out with the epoch notice, after FET
+  has reset that warp's checkpoints at it (V-46). OOE now drops that
+  warp's frees from the cycle's mask, since FET frees them itself.
+- **The replay drain and refusal (TI-21, TI-25; TI's edits, OI-18's
+  pattern).** A demote's squash always sends a bulk discard of the whole ROB
+  (`squashAfter`'s `discard_all`; branch == tail), so MIU ends the warp's
+  loads with replay completions and reports it ready to RAU; drained then
+  waits for no fill. A discard of an empty ROB carries id class none. The
+  discard's trace identity is read before the squash loop releases the head
+  (it read a released entry's 0 before). A demote that lands once the
+  warp's exit has retired is refused: drained with `refused` set, no squash,
+  map or rewind (`demote.refused`). Measured and checked in "The replay
+  drain (PF-23) and the refused demote and parked layout (TI-25)", below.
+- **The PRF's read ports** (DA's response OA-6: 16; no parameter yet).
+  Select keeps a cycle's operand reads within the ports a migration leaves:
+  a demote's 17 reads hold one port for 17 cycles. The limit never binds
+  without a migration (0 over the 200 ordinary random runs).
+
+**The environment** (`Env::Swap`, ooe_test.cpp). It is AR's rev 86 as OA
+adopted it (revs 131-133), standing in for RAU, PCA and FET:
+
+- A crossing is CCV_LAT_HOP and RAU decides in a cycle, so a demote reaches
+  OOE 2 hops + 1 after OOE's trigger.
+- A demote: drained to RAU, migrate to RCU, 17 rows to PCA, done to RAU,
+  and the slot frees. A restore: restore-allocate with PCA's command beside
+  it, 17 rows to RCU, done to RAU, activate. RAU frees a slot and picks its
+  next warp at the same decision.
+- One demote and one restore may be in flight, in different slots.
+- Selection is the oldest ready parked warp. A demoted warp is ready when
+  its fill lands (DRAM fills drawn from 700 to 1,300 cycles), and its
+  replayed load then hits. A restored warp may demote again only after P
+  retirements.
+- `mode` is `kEvict` (demote on the trigger always; the policy, DA's decision) or `kSwap` (demote only with a ready parked warp; a knob).
+- The knob's own bench, `testSwap` in the default run: on the 8-warp
+  workload, under every go form, a demote's squash leaves exactly the
+  warp's committed registers and no RS entry, the first rewind beat is the
+  oldest unretired uop and `drained` names it, no slot runs two warps, and
+  every warp retires its whole program. Control `rewind-order` (beats
+  youngest first) must be caught.
+
+**stall_hole** (`ooe-test --stall-hole`, 48 seeds, decq 13, the late
+take; the old drain, `OOE_TEST_CONFIG=replay_drain=0`). The decided go (interleave, shares), warps 1 to 3 against their solo
+time:
+
+| fix | swap off (fill 400), held / fetching | swap, none ready | swap, one ready | evict, none ready | even-stall sweep |
+|---|---|---|---|---|---|
+| none | 1.543 / 3.206, 44 starved | 2.257 / 3.917 | 1.057 / 1.118, 1 starved | 1.043 / 1.080 | 1.000 |
+| stall-aware shares | 1.505 / 3.117 | 2.203 / 3.813 | 1.065 / 1.158 | 1.043 / 1.107 | 1.033 |
+| per-class caps 20 / 10 | 1.523 / 3.190 | 2.258 / 3.901 | 1.047 / 1.080 | 1.028 / 1.045 | 1.003 |
+| decq per warp 6 | 1.435 / 1.866 | 2.021 / 2.245 | 1.043 / 1.045 | 1.045 / 1.045 | 0.875 |
+| decq per warp 4 | 1.415 / 1.673 | 2.006 / 2.116 | 1.046 / 1.045 | 1.047 / 1.047 | 0.826 |
+| decq 6, stall-aware shares | 1.261 / 1.566 | 1.447 / 1.460 | 1.042 / 1.042 | 1.040 / 1.040 | 0.899 |
+
+The bounds are 10% held, 15% fetching, and no window of 800 cycles in which
+warps 1 to 3 retire nothing.
+
+- **The hole is the decode queue first.** With no per-warp limit
+  (CCV_P_DECQ_WARP_MAX = 13), the stalled warp holds all 13 entries: its
+  ROB is full of the chain, so it cannot rename them. Warps 1 to 3 then
+  rename nothing. RS fixes alone do not touch it. Stall-aware shares cut
+  warp 0's RS peak from 28 RCU and 15 MIU entries to 18 and 10, and warps 1
+  to 3 move by 3%.
+- **No form or fix meets the swap-off bound.** Every swap-off arm misses
+  it; the best, decq 6 with stall-aware shares, gives 1.26 and 1.57. Warp 0
+  keeps what it took before its stall was known.
+- **Swap with a ready warp and evict meet it, with a per-warp decode-queue
+  limit.** At decq per warp 6, the swap arm is 1.043 and 1.045, no
+  starvation, every gap within T + D + 56 + R, and R = 5. Without the
+  limit, one seed in 48 starves after the restore, when warp 0's long
+  dependent tail fills the decode queue again.
+- **The slot is not freed by a swap.** OOE's drain waits for every
+  outstanding memop, and the DRAM load that demoted the warp is one. So the
+  slot stays held until the fill lands (D is about 700 to 1,100 cycles),
+  and the parked warp goes into a slot an exit frees, not warp 0's. A swap
+  buys what its squash frees, the RS and decode-queue room, but not slot
+  time. A replay completion for a demoted warp's outstanding load lets
+  the slot go at once: that is PF-23's replay drain, below, and these
+  figures are the old drain's (`replay_drain=0`).
+- The gap is measured from the miss reaching the head to the restored
+  warp's first rename. It ends one cycle past T + D + 56 + R, because the
+  trigger fires when the stall exceeds T.
+- The other forms (one warp, two warps) follow the same pattern; the full
+  table is `--stall-hole`'s output.
+
+**The swap sweep** (`ooe-test --swap-sweep`, 48 seeds; the old drain). 8 warps, 4
+resident and 4 parked, each a sweep program, with 2% of loads missing to
+DRAM. Against swap-off, where the parked warps enter only as residents
+exit:
+
+| go | swap at 25 / 50 / 100 | P 1 / 32 | evict |
+|---|---|---|---|
+| interleave, shares | 0.798 / 0.738 / 0.737 | 0.738 / 0.775 | 0.744 |
+| one warp | 0.824 / 0.855 / 0.853 | | |
+| two warps | 0.814 / 0.829 / 0.821 | | |
+
+- **The PRF ports cost nothing measurable.** The read-port charge held
+  back no read in any run, and a restore's write port was short in at most
+  one cycle in 48 runs, under OA's 1%.
+- **The threshold.** At 25 the decided go is 8% slower than at 50, so the
+  early MLC-miss notice (PF-39) shows no gain there. Under one warp, 25 is
+  3% faster.
+
+## The replay drain (PF-23) and the refused demote and parked layout (TI-25)
+
+**The replay drain** (OA's rev 160, AR's revs 106-107; TI's form, merged
+from ad6ef02). A demotion's squash always sends a bulk discard of the whole
+ROB (`squashAfter`'s `discard_all`), and every bulk discard covers the
+warp's loads in its range as well as its stores. MIU answers each covered
+load once with status replay (2; 1 is a fault), so `drained` waits for
+those completions, not for the fills. A squashed load's destination stays
+deferred-free until its completion, and a hint for it was already dropped
+by the squash. A replay for a live entry is an error. `replay_drain=0`
+sends a demotion's discard only when stores force one, so it is the old
+drain only where no store is at MIU.
+
+The environment's MIU follows AR's three conditions: it answers each
+covered load once with replay, its data beat and its own response
+dropped, so nothing lands in a register freed to the slot's next occupant.
+A load whose completion or beat is already under way finishes as it is.
+It raises no hint for an orphan. The line still fills, so the replayed load
+hits after the restore. A parked warp is ready when its last abandoned
+load's own answer comes (`ccv_miu_rau_ready`, AR's rev 107). `testSwap`
+spreads the replays over 60 cycles so the drain's wait is visible. It
+checks that every demotion abandons loads and that no `drained` comes with
+a completion still owed. Control `drain-early` (drained waits for no
+replay) must be caught.
+
+**The swap sweep under it** (48 seeds, at the merge with TI's ad6ef02),
+against the old drain at 18b33e1:
+
+| go | policy | old drain (18b33e1) | replay drain | gap from the miss at the head, old / replay |
+|---|---|---|---|---|
+| interleave, shares | swap at 25 / 50 / 100 | 0.798 / 0.738 / 0.737 | 0.684 / 0.646 / 0.649 | 1,351 / 242 at 50 |
+| interleave, shares | swap, P 1 / 32 | 0.738 / 0.775 | 0.646 / 0.644 | |
+| interleave, shares | evict | 0.744 | 0.588 | 1,286 / 378 |
+| one warp | swap at 25 / 50 / 100 | 0.824 / 0.855 / 0.853 | 0.634 / 0.654 / 0.641 | |
+| two warps | swap at 25 / 50 / 100 | 0.814 / 0.829 / 0.821 | 0.680 / 0.686 / 0.671 | |
+
+- **The slot now comes back during the fill.** The gap from the miss at
+  the head to the next warp's first rename falls from 1,351 cycles to 242
+  under the decided go, and the swap goes from 0.738 to 0.646 of swap-off.
+- **Evict now beats swap**, 0.588 against 0.646. With the slot returned at
+  once, demoting without a ready parked warp costs only the restore.
+- **Provisional restore** (AR's rev 115; `Swap::provisional`). A free
+  slot with no ready parked warp takes the oldest parked warp whose fill
+  is still out. Its P count starts at its ready report, and before then it
+  may demote on the trigger. Its replayed load merges at DCU into the fill
+  in flight (`merged_fills`). At threshold 50 it gives 0.654 under the
+  decided go, against 0.646 without it (57 provisional restores and 45
+  merged replays in 48 seeds, and 521 declined demotes against 417). Under
+  one warp it gives 0.658 against 0.654, and under two warps 0.690 against
+  0.686. The gap falls from 242 to 214 cycles, but the workload's four
+  parked warps are ready from the start, so a slot rarely has no ready warp,
+  and a provisional warp holds the slot when one becomes ready. In this
+  workload it costs about 1%. TI's swap kernel, where a slot otherwise
+  idles, gains. `testSwap` runs it on six seeds and checks that
+  provisional restores and merged replays both happen.
+- Swap-off itself moved at the merge (the decided go 6,727 to 6,442
+  cycles), since a branch's discard now also replays its wrong-path loads.
+- The PRF ports still cost nothing: no read held back, no write port short.
+
+**Evict, the policy (DA; OA's rev 64), and the provisional restore under
+it** (AR's revs 116-117). The environment's RAU now evicts by default
+(`Swap::mode` is `kEvict`); swap is the knob, and the bench (`testSwap`)
+runs both. AR's provisional restore takes the longest-parked warp whose
+fill is still out (the age order, not the soonest fill). PF-41's variant
+pre-empts it the moment a parked warp is ready and no slot is free, with
+no threshold wait. 48 seeds, against swap-off:
+
+| go | evict at 25 / 50 / 100 / 150 / 200 / 300 | evict, provisional | evict, provisional, pre-empting | swap (knob) |
+|---|---|---|---|---|
+| interleave, shares | 0.624 / 0.588 / 0.603 / 0.646 / 0.625 / 0.684 | 0.641 (675 provisional) | 0.627 (28 pre-empted) | 0.646 |
+| one warp | 0.608 / 0.564 / 0.592 / 0.613 / 0.639 / 0.664 | 0.649 | 0.671 | 0.654 |
+| two warps | 0.645 / 0.648 / 0.628 / 0.600 / 0.644 / 0.702 | 0.650 | 0.676 | 0.686 |
+
+- **Neither arm beats evict.** Under evict a slot frees with no ready warp
+  often, so the provisional restore fires (675 times against 57 under
+  swap). The restored warp is still blocked on its fill, though, and evict
+  demotes it again at its next stall: restores double (971 against 470)
+  and so do the declined demotes. Pre-empting it when a ready warp appears
+  recovers 1.4 points but stays behind plain evict. So evict stays the
+  default, and the provisional restore stays a knob, off.
+- **The MLC threshold, swept (AR's rev 118).** The first sweep had 100
+  beating 50 (0.552 against 0.588), and it was a model bug: the
+  fallback's report (any head stall past CCV_DEMOTION_THRESHOLD, 50) set
+  mlc_miss_seen whenever the head was an outstanding load, and RAU's MLC
+  policy demotes on that bit, so the MLC threshold never governed above
+  the fallback's. The report now carries the bit only once the MLC
+  trigger itself has fired (a directed test, `testMlcTrigger`, with its
+  control fallback-claims-mlc). Fixed, the decided go reads 0.588 at 50
+  (unchanged: there the two triggers coincide), 0.603 at 100 and 0.646,
+  0.625 and 0.684 at 150, 200 and 300. On this sweep, 50 is best, by 2.5%
+  against 100. The declined demotes fall at 100 and above (21 against
+  324): those were the duplicate reports at 50, not slow loads spared.
+- **S1 under evict (skeleton, CCV_RAU_DEMOTE=mlc), the same fix:** at 50,
+  gather and vadd4 demote on a load that would land soon, and take 388
+  and 319 cycles; at 100 and above neither demotes, and they take 314
+  and 227. stall, swap and vaddslow demote once at every threshold, with
+  the same cycles. provswap (its check-kernel run sets both thresholds to
+  150) takes 1,947 cycles at 50 and 2,110 at 100. The other 17 kernels
+  never demote. So the sweep, whose misses are long, prefers 50, and the
+  S1 kernels, whose misses are short, prefer 100: AR's to weigh.
+- TI's provswap kernel runs the skeleton's RAU, which has the provisional
+  restore but not the pre-empting variant, so the variant is measured
+  here only.
+
+**stall_hole under it** (48 seeds, the decided go, at the merge with TI's
+ad6ef02; warps 1 to 3 against their solo time, held / fetching):
+
+| fix | swap, one ready, old drain (18b33e1) | swap, one ready, replay drain | four live warps (reference) | slot gap, old / replay |
+|---|---|---|---|---|
+| none | 1.057 / 1.118 | 1.212 / 1.431, 3 starved | 1.167 / 1.165 | 1,350 / 236 |
+| decq per warp 6 | 1.043 / 1.045 | 1.199 / 1.202 | 1.196 / 1.190 | 1,350 / 162 |
+| decq per warp 4 | 1.046 / 1.045 | 1.145 / 1.140 | 1.134 / 1.120 | 1,350 / 134 |
+| decq 6, stall-aware shares | 1.042 / 1.042 | 1.189 / 1.187 | 1.195 / 1.180 | 1,350 / 168 |
+
+(The decq rows are with the per-slot take below; the stall-aware row is
+from before it.)
+
+The other arms barely move: swap off and swap with none ready restore no
+warp, and evict with none ready is 1.035 under decq 6. The swap arm now
+reads over its 10% bound against solo, because the parked warp is back in
+the slot about 188 cycles after the miss, not 1,350, and runs beside warps
+1 to 3 for most of their time. Solo is warps 1 to 3 alone, so the bound
+also charges an ordinary fourth live warp. `--stall-hole` therefore prints
+a reference arm, "four live warps": the parked warp's program in slot 0
+from cycle 0, with no stall. Against it the swap arm adds 0.3% and 1.0%
+under decq 6, and 1.0% and 1.8% under decq 4. The hole is closed with
+the per-warp limit; without it, the stalled warp's decode-queue hold still
+costs 4% held and 23% fetching over the reference. The bound for this arm
+should be read against the reference (OA's call).
+
+**The decode queue below its depth** (TI's rev 102). At
+CCV_P_DECQ_WARP_MAX = 6, ooe_decq's live compare tripped its
+`enq_within_credit` assertion. The model freed a slot's room the cycle
+rename took from it, and ooe_decq frees it at the next edge, when its
+count subtracts the registered take. At a limit of 13 the shared pool binds
+first, so the difference never showed. The model now counts a slot's takes
+of the cycle against it under `decq_late_credit`, as the pool does
+(`decq_slot_take_`). With that, ooe_decq's live compare (25 seeds) and its
+four controls pass at 6 and at 4, failing at 6 without it, and check-cg's
+bench passes at both (DCGE at least 90% at 6 and 95% at 4, high scenario)
+once its unit's D matches the parameter.
+
+With it, the even-stall sweep is 0.863 of no fix at 6 and 0.802 at 4, and
+the S1 kernels (one warp each, the swap kernel among them) against no limit:
+
+| limit | kernels slower than at 13 |
+|---|---|
+| 6 | none of 23 |
+| 4 | mlp, 124 against 120 cycles (3.3%) |
+| 2 | 22 of 23, up to 10.8% (mlp 133 against 120) |
+| 1 | all 23, up to 41% (chains 137 against 97) |
+
+So S1 loses at 4, in mlp alone, and not at 6.
+
+**TI-25 (AR's rev 112, OA's rev 165).**
+
+- **Refused.** Every demote gets exactly one `drained`. If the warp's exit
+  has retired when the demote lands, OOE does no squash, sends no map, no
+  epoch notice and no rewind beat, and sends `drained` with `refused`.
+  `exited` follows at the quiesce, and RAU cancels and frees the slot on
+  it. The directed test checks exactly that, and control `no-refuse`
+  (demote the exited warp anyway) must be caught. TI's ad6ef02 carries the
+  refused bit on `ccv_ooe_rau_drained`, which the adapter sends.
+- **The parked layout.** The demotion moves one row per architectural
+  register, 16 plus the predicate row, with no merging. OOE keeps, per
+  warp_id, each GPR's position and committed width (`Core::parked_`, 64
+  bits a warp, 2 Kb for 32 contexts; `docs/ooe-rtl-plan.md`'s tally). It is
+  written at the demotion's map. Restore-allocate gives each register its
+  own row at that position and width, and restores the committed width
+  table (OI-57) from it. The directed test parks a sectioned warp with
+  registers at positions 2 and 1 and a chwidth, restores it into another
+  slot, and checks 16 distinct rows, each register at its position and
+  width, and the table. Control `park-layout-lost` (restore at 32 bits,
+  position 0) must be caught.
+- **The CTA slot** (TI-34, OA's revs 176-177). Each tier-1 slot holds its
+  warp's CTA slot (`Slot::cta_slot`), loaded at launch and at
+  restore-allocate (`Alloc::cta_slot`; a parked warp keeps it at RAU), and
+  stamps it on every memop, discard included, barrier and fault. The
+  environment, as RAU, gives each warp a nonzero slot and checks every
+  memop, barrier and fault against it, every cycle of every test. Control
+  `cta-slot-zero` (slot 0 stamped) must be caught. The field on
+  `ccv_rau_ooe_alloc` is AR's; the adapter passes it when it lands.
+- **%lanectx** (srd #2, O-64, OA's rev 177). `UopShape::srd` 2: OOE
+  substitutes ((core index << 5) | warp_id) << 5, the lane ORs its index in,
+  beside selector 0's warp_in_cta << 5. The core index is
+  `Config::core_id`, 0 on a one-core build (CCV_P_CORE_ID, TI's tie-off);
+  the 32-bit immediate holds clog2(cores) + 10 bits. The directed test
+  issues one at core 0 and core 3. The imm_kind code for it is TI's.
+- **The final-exit bit** (TI-27, OA's rev 170, superseding rev 169's parked
+  live mask). OOE holds no live mask. FET marks the exit whose fetch clears
+  the warp's last live lanes (`UopShape::final_exit`), and the warp is done
+  when that uop retires: exited follows at the quiesce, and a demote is
+  refused after it. A partial exit (div's or spinwait's shape) leaves the
+  warp running. The parked entry stays 64 bits. A check, not design state,
+  keeps per warp_id the lanes whose exit has retired; the final exit's
+  retire asserts they are all 32. The environment marks the exit as FET
+  does, in program order; the adapter marks every exit final until TI puts
+  the bit on `ccv_dec_ooe_uop`. The directed test exits lanes 0-15, demotes
+  the warp on a miss in lanes 16-31 (drained, not refused, no exited), and
+  in a second run ends it at the marked exit of lanes 16-31 (exited once).
+  Control `final-exit-early` (the first exit marked) must be caught.
+- **A destination's width is its committed width** (OA's rev 166). No
+  channel carries a width from DEC, so rename takes a destination's width
+  from the committed table (`Core::dstWidth`); chwidth holds rename until it
+  retires, so the table is current there. The park asserts that each
+  committed name has its register's committed width, so the 64-bit entry is
+  the whole state. A test's narrow registers (`Op::w`) become its warp's
+  committed widths, set once its launch lands (`Core::presetWidths`, a
+  test-only stand-in for chwidths retired before the program). The random
+  generator keeps a memory access's data register at 8 bits or wider, since
+  a 4-bit one now faults F-WIDTH as the ISA says. A directed test renames
+  narrow hints against a 32-bit table and checks 32-bit names; control
+  `width-from-dec` (rename at the hint's width) must break the assertion.
+
 ## S1 modes: what the neighbours carry today
 
 The adapter configures the core for what the S1 stubs implement. Each mode is
@@ -345,10 +779,13 @@ orders a predicate write itself: behind every older writer of that window,
 until it completes, and behind every older reader, until it has issued in an
 earlier cycle (`hold.pred_window`).
 
-The S1 RAU, CRU and SYU stubs consume nothing OOE sends them, and no S1
-kernel demotes, kills, restores, faults or waits at a barrier. So the
-adapter turns a fault into a check failure, counts and drops status reports
-(`s1.status_dropped`), and fails on anything else it would have to send there.
+The swap runs end to end (TI-24): the adapter sends status reports (exited
+among them), a demoting warp's map and rewind beats, and its drained report;
+RAU demotes on a report when `CCV_RAU_DEMOTE` asks it to, parks the warp in
+PCA, and restores it into a free slot (restore-allocate, then
+restore-activate once PCA's rows are written). The S1 CRU and SYU stubs consume nothing OOE sends them, and no S1
+kernel kills, faults or waits at a barrier. So the adapter turns a fault into
+a check failure, and fails on a barrier or kill ack.
 The kill ports are not in the C++ machine yet, so kill is reached only by the
 unit tests.
 
@@ -421,6 +858,68 @@ where 2 was +1.6% but takes no account of a copy's two RCU entries.
 OA accepted it as the default (OA-22, 2026-10-20). Under it at decq 13,
 two warps are +3.6% and one warp +3.6%, so the interleave stays ahead.
 
+`fits_stale` (6 by default since slice 4, the go DA decided, OA-21, 2026-10-21; see "What the RTL reads" below): rename's per-warp fits registered a
+cycle ahead for every take a warp may make, as OA's option (a) has them.
+A uop is then taken no sooner than the second cycle after it arrives, and
+frees (ROB retirements, the RS frees in the short test) reach the fits
+two cycles late. 48 seeds, against today's default: the interleave +4.4%
+(the late arrivals +3.1% alone, the late frees +1.0% alone), one warp
++5.9%, two warps +3.5%.
+2 is OA's (a2): the held heads' fits as 1, but a refill is taken at once
+and re-checked in Rename 1 (a failing tail waits in the skid, which costs
+what not taking it does: 10.6% of 28,875 refills fail in 48 runs); ROB
+retirements a cycle late, as ret_n reaches the fits in time; the short
+test on the last cycle's shared credits against twice the width (RCU
+three times with a copy in a head), and a short cycle's warp against the
+shared credits less the width. The interleave +7.0%, of which the margin
+is about 5.5 points: short cycles go from 38% to 63%.
+3 is OA's per-warp shares: as 2, but no short path; each cycle every
+shared credit, as registered, is split equally among the warps with a
+head (the remainder to the first in rotation), and each warp admits
+against its own share. The interleave +0.0%, two warps +0.8%, one warp
++1.3% (13.0% of refills fail). The split and the fits on one D,
+flattened (`test/ooe/probes/sharefits_probe.sv`), measure 25.1 NGD with
+the remainder added after the divide; with the first warp's share read
+from the credit by table, in parallel with the quotient (share_probe
+TAB 2, proved equal), 23.4 from the counters and head valids and 22.3
+from decq's heads (map -r), which arrive at about 2: 24.3. 5 drops the
+remainder instead: 22.5 NGD, but the interleave +0.6%, two warps +0.7%
+(floor shares strand credit: 14,526 fragmentation stalls to 3's 5,310).
+6 is 3 as the RTL can register it, and corrects 3's figure. The fits
+are formed a cycle ahead, so the allowances they hold a warp to are split
+a cycle ahead too. A split of the cycle's whole credit is not safe: the
+last cycle's takes, unknown to the split, were bounded by the split
+before, so one warp's take is counted against two splits and the RS
+over-allocates (the model's own RS check stalled it: 259 rs_full stalls
+in 48 runs, where the RTL has none). 6 splits the credit no allowance
+holds this cycle, less at most the width (a cycle takes no more from any
+credit: a class's ports, a name per uop), so no take counts twice: each
+allowance holds for one cycle, and its unused part returns to the next
+split. Withholding every allowance, not the width, deadlocks: the credit
+alternates between two cycles' allowances. 48 seeds at decq 13 against
+983: the interleave 1,023 (+4.1%; +6.7% against the ideal 959), two warps
+1,024 (+4.2%), one warp 1,035 (+5.3%, every warp's allowance the whole
+pool, as only one takes). 3's one-warp +1.3% admitted against running
+credits, which a registered go cannot. Rename's counters (`renCredits`)
+exclude this cycle's RS frees and last cycle's past ooe_rs's prompt count,
+and this cycle's name frees, as the RTL's (`ooe_rencred`, slice 3).
+7 is 4, OA's stateful shares, as the RTL can register them: the credit no
+share holds is split each cycle into a register and reaches a warp's
+fits a cycle later, so a split is usable two cycles on; a warp
+`share_return` cycles without a take returns what it held (not a split
+just arriving), decided on its registered takes; a restore-allocate's
+draw is taken back from the splits in flight, then the shares. 48 seeds
+against 983: return after 1 cycle 1,098 (+11.7%), 2 1,105, 3 1,142, 4
+1,164; none deadlock. The worst of the registered forms.
+4 is OA's stateful shares: each warp keeps its share, its own takes lower
+it, and frees and the shares of warps four cycles without a take form a
+pool split each cycle among the warps with a head; the shares and pool sum
+to the credit (checked). An idle return keyed on "no head" deadlocks: a
+stalled warp with a head keeps its share. The interleave +7.4% at a
+four-cycle return, +2.8% at two (the earliest the hardware can key on a
+registered take), +0.0% at one, which is 3's per-cycle split again. By
+OA's rule (OI-65) OA-21 goes to DA with one warp (+1.3%).
+
 `ren_credit` (2 at `ren_free_cap` 4, TI-19's scheme, accepted by Daniel
 2026-10-19: "a 0.6 percent penalty is noise with our limited test list")
 is when rename's go decision sees this cycle's frees. 0 is the ideal:
@@ -471,7 +970,10 @@ stop or miss one edge late, as V-73 first allowed. That lets a replayed
 producer be re-granted inside its dependant's stale window; the
 dependant, granted on its stale bit, is never replayed by OI-50's rule
 and confirms on a result it read too early (OI-54). The control must hit
-that OA-17 check, and does (at decq 4). On time it costs nothing: the
+that OA-17 check, and does: directed, one warp, a load missing by a
+cycle, a producer reading it and the producer's dependant (a random hunt
+found it in one run in 100 to 700, and rename's traffic kept moving it;
+without the injection the directed cases err nowhere). On time it costs nothing: the
 48-seed sweep, the four-warp kernels and the S1 kernels are as without
 the enable.
 
@@ -493,8 +995,8 @@ issued or of an inactive warp) and ooe_sched's bench both caught. A
 memop's terms stay live in the MIU pick. Over the four-warp kernels and
 the 48-seed sweep it costs nothing (alu8 589, alu16 823, vadd8 1034,
 cvt8 1246, red8 369; 960). ooe_select's bench logs what select used
-(`sel_rq`, `sel_gnt`, `sel_elig`), and ooe_sched's
-(test/ooe/sched_tb.cpp) compares the request register bit for bit.
+(`sel_rq`, `sel_gnt`, `sel_elig`), and the assembled bench
+(test/ooe/trio_tb.cpp) compares ooe_sched's request register bit for bit.
 
 `branch_ends_group` (KNOB, off; OI-56, OA's measurement): a branch ends
 its rename group, so its checkpoint would be the RAT's state at the next
@@ -506,6 +1008,145 @@ against 960. The S1 kernels are unchanged: one fetch-bound warp, where
 even rename_width 1 costs loop one cycle. With 2 (nothing renames after a
 branch that cycle) alu16 is 898 (+9.1%). Over 1% on two kernels, so it
 went to DA beside the copy (OA's response OI-56).
+
+### What the RTL reads: the settings audit (OA's rev 122)
+
+Three times a knob admitted against state the RTL could not have in that
+cycle, and each time a figure moved by one to two points. So each rename
+knob is stated here with the registered value the RTL reads, against the
+probe the go is built from (`test/ooe/probes/sharefits_probe.sv`: the split
+of `share_probe.sv` into `fitsk2_probe.sv`'s per-warp fits, SHR 1, RET 1,
+CAP 0, AR 0). `ooe-test --audit` reproduces it: the sweep's workload, 48
+seeds, under the decided go (`fits_stale` 6), counting every admission the
+registered fits could not make the same way, then the go with each one
+removed. The decided go measures 1,023 cycles there.
+
+Slice 4 makes the decided go the default, with OA's rulings on the
+corrections below (OA's response to the OI-45 settings audit, rev 138):
+`fits_stale` 6, `ret_now` 1 and `take_young` 0. The names are held as two
+counts: each slot's floor still unspent (`unmetFloor`), and the pool above
+every floor (`floorsOwed`). The shares split only the pool, each warp's
+allowance adds its own unmet floor, and rename's admission drops the live
+floor check (`ren_floors_in_share_`), so V-04 holds by construction and is
+asserted at the counters. The audit measures the go at 1,025 cycles (48
+seeds); the kernels, 6,456 to 6,551 cycles (+1.5%), all of it
+`fits_stale` 6: loop one cycle on each of its 99 redirects, and vadd4 25
+faster.
+
+| Knob (default) | What the RTL reads | The model under `fits_stale` 6 | Audit |
+|---|---|---|---|
+| `rename_one_warp` (0) | the rotation's priority bit per warp (`prio`) | the interleave, uop by uop in rotation | exact |
+| `fits_stale` (6) | per warp, an allowance of each shared credit split a cycle ahead (`share_probe`), registered with the fits | admits against `share_`, split last cycle | exact: no RS or name stall behind an allowance in 48 runs |
+| `fits_conservative` (3) | nothing under the shares: no short path | the short test is computed, then overridden | no effect, except that 3 holds this cycle's retirements (next row) |
+| `ren_credit` (2), `ren_free_cap` (4) | rename's counters (`ooe_rencred`): this cycle's RS frees unseen, last cycle's past the prompt count added, names freed now unseen | `renCredits` | exact: `rencred_tb` holds the counters to it every cycle |
+| ROB room, its retirements | the fits' ROB term: the slot's room and this cycle's retirements (`rob`, `ret`, RET 1) | `robHeld`: under `fits_conservative` 3 and the shares, this cycle's retirements are held a cycle | **differs** (below) |
+| ROB room, a held tail | the same term, a count of free slots | the tail slot must be free (`robHeld(tail)`) | **differs** (below) |
+| a uop that arrived this edge | nothing: the fits hold only heads registered before it (AR 0) | taken at once if it passes on live state (the refill) | **differs** (below) |
+| `rs_warp_cap` (45) | nothing (CAP 0: the cap is the whole RS) | the cap, which never binds | exact: 0 stalls |
+| GPR and predicate floors and ceilings (`ren_floor` 16, `ren_ceil` 64; 4 and 20) | nothing: an allowance of ready names only | `gprAllowed`, `predAllowed`, on live counts | 0 stalls in this workload, but not held by the RTL (below) |
+| free lists' buffer (`fl_buf` 8) | the name counters count ready names (`gfree_.ready()`), so the allowance is of buffered names | the same | exact: 0 buffer stalls |
+| warp holds: inactive, fault, chwidth, barrier | `hold`, a registered bit per warp | read live, so a chwidth or barrier uop taken ends its warp's take that cycle | the sweep has none; the RTL needs a serial bit (below) |
+| `decq_take_late`, `decq_late_credit`, `decq_flush_late` (on) | ooe_decq as built (OA-21, OI-39, OI-58) | the same | exact (decq_tb) |
+| `branch_ends_group` (0) | — | off | OA-20 to DA: (b), the copy, recommended |
+| `rename_stages` (3) | Rename 1 to 3, the doc's stage table | 3 | exact |
+
+Four corrections follow.
+
+**Retirements.** The probe's ROB term takes this cycle's retirements (ret_n
+reaches the fits in time, RET 1), but `robHeld` holds them a cycle under
+`fits_conservative` 3 and the shares: 136.9 refusals a run that the
+registered room would admit. `ret_now` 1 counts them in their cycle, as the
+probe does: 1,021 cycles, −0.2%. The RTL is right; the model's default is
+the stricter.
+
+**The ROB term counts the wrong thing.** A squashed entry whose op is still
+out keeps its slot valid after the count drops, so the tail can be held
+while slots past it are free. The model refuses there (57.5 a run); a fits
+term built on "slots not valid" admits, and would write over a held slot.
+`ooe_rencred`'s ROB counter is right as a count (rencred_tb holds it), but
+the go must read the free run from the tail, up to 2R − 1 = 7: a register
+per slot formed from the ROB's valid bits at the edge before, with this
+cycle's retirements added only when the run reaches the head. With it, the
+fits and the model agree (`audit.rob_refused_within_registered` counts the
+rest: 63.2 a run under `ret_now` 1, all a held tail).
+
+**The refill.** Under 6 the model takes a uop the cycle after it arrives
+when it passes on live state (617 a run, 229 more failing), as OA's (a2)
+does with a re-check in Rename 1. The probe has no arrival term (AR 0), so
+the RTL as probed cannot. `take_young` 0 waits for the fits instead: 1,027
+cycles, +0.4%. With `ret_now` 1 as well: 1,025, +0.2% against 1,023. Taking
+the refill costs `fitsk2_probe`'s arrival term (AR 1) and Rename 1's
+re-check with a skid; at +0.4% it is a decision for OA.
+
+**Floors, ceilings and serializing uops.** Neither binds in this workload,
+and neither is in the probe. A per-cycle share of the ready names can in
+principle take a warp past what the others' unmet floors leave free (V-04;
+not seen in this workload), and a
+chwidth or barrier uop must end its warp's take for the cycle (the model
+reads its hold live). The second is one admission bit from decq (a
+serializing uop ends the prefix). The first needs either the floor rule in
+the fits, on registered counts, or OA's argument that the shares cannot
+break V-04.
+
+**What the go reads, made exact for slice 4 (`go_static`, on).** Three
+places where the model still admitted on state the fits cannot hold:
+
+- *Needs.* The fits read each head's admission bits from decq, fixed when
+  the uop is decoded (RCU, MIU, copy, GPR write, predicate write, branch,
+  serial). The model charged what rename finally does: a uop that turns
+  into a no-op at rename (a barrier, width or format fault) took no RS
+  entry or name, and a narrow GPR write that shares a row (the sectioned
+  plan) took no name. Under `go_static` the allowances are charged with
+  the decode-time needs; the RS, port and name checks stay exact.
+- *Serializing uops.* A chwidth or barrier uop sets its warp's hold as it
+  is renamed, so the model's later uops of the cycle saw it live; the
+  barrier's only if it does not fault. Under `go_static` either ends the
+  warp's take for the cycle, faulting or not (one serial admission bit).
+  (The floors are already held by construction: OA's rev 138.)
+- *The ROB, and the holds.* The fits for cycle t + 1 are formed in t, from
+  the ROB's valid bits as t starts: the free run from the tail, less t's
+  take, plus t's retirements where the run reaches the head. The model
+  counted t + 1's own retirements and its deferred frees in t + 1's take
+  (`ret_now` 1 and a live tail check), which no registered form can. The
+  holds (inactive, fault stop, chwidth, barrier) are read as the cycle
+  starts, the go's registered bit, so one that rises in the cycle stops
+  the next cycle's take; the serial bit covers a hold the take itself
+  sets. The live checks stay, as errors: none fires.
+
+48 seeds (the audit's workload): 1,018 cycles to 1,030 (+1.2%), all of it
+the ROB term; the needs and the serial bit cost nothing. The S1 kernels:
+provswap one cycle slower (2,332 to 2,333), the other 23 unchanged.
+
+### The composed RTL's timing (OI-45)
+
+ooe_rs and ooe_wake take ooe_sched's grant register an edge after
+ooe_sched forms it, so they decide model cycle P's confirmations,
+replays and frees while ooe_sched is at P + 1 (OA's option (1): ooe_sched
+evaluates this cycle's confirmations and replays itself). The assembled
+check (`test/ooe/ooe_trio.sv`, `trio_tb`) wires the three modules as the
+design does, drives only their outer ports from the model, and holds
+ooe_sched's ready, request and grant registers, ooe_rs's valid bits and
+rows and ooe_wake's issued bits and lead lines to the model. The model
+matches it under three knobs, which apply only to the sectioned select
+(the unsectioned one issues a copy with its load, past the request
+register, so has no RTL to mirror):
+
+| Knob | What ooe_sched sees, as the RTL composes it |
+|---|---|
+| `req_rows_late` | The request term: ooe_rs's valid bits, rows and prod bits two cycles back, ooe_wake's issued, final and held-miss bits a cycle nearer (its miss pulse nearer still), issued with the grant register less the replays it derives from them; a rewritten row requests on its last occupant's state. The enable takes ooe_sched's registered stop lead, formed the same way. |
+| `miss_lead` | The ready register sees an L1 load's miss two cycles ahead: ooe_wake's lead line drops when no completion hint (OA-23, `Core::hint`) has come by the miss's lead. A hint after it is the miss's own completion. |
+| `ready_rep_late` | The ready register sees a source's replay two cycles late, reading the timer the replay withdrew until then. |
+
+With `copy_conf_late`, `req_alloc_lead` and `rs_same_edge` 0, `trio_tb`
+matches exactly at 25 seeds (36 compared cores). At 100 seeds (140 cores)
+grants and the request register are exact, and 2 ready-register bits
+differ, each in the cycle after a replayed source re-issues: the RTL's
+register holds its stale ready until one of its enables comes, where the
+model captures on its own edge. Neither changes a grant.
+
+The cost, `ooe-test --audit` with `AUDIT_SEEDS=192`, on the sectioned
+slice-4 go (1,107 cycles): each knob alone within +0.19%, all together
+−0.04%.
 
 ## Events and counters
 

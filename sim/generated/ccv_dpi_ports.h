@@ -9,43 +9,50 @@
 namespace ccv {
 namespace skel {
 
-enum class DpiSig : uint8_t { VALID, PAYLOAD, CREDIT, STALL, TID };
+// FABRIC: `chan` is the fabric's index in kFabs; at a gather's end the
+// port is the whole vector, a source's copy per width, in kFabs order.
+enum class DpiSig : uint8_t { VALID, PAYLOAD, CREDIT, STALL, TID, FABRIC };
 struct DpiPort { uint16_t chan; int16_t copy; uint8_t slot; DpiSig sig;
                  uint32_t width; bool out; };
 struct DpiType { const char *name; const DpiPort *ports; unsigned nports;
                  uint32_t sample_bits, drive_bits; };
 
 inline constexpr DpiPort kDpiPorts_fet[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {0, -1, 0, DpiSig::VALID, 1, true},  // fet_dec_instr_s0_valid
-  {0, -1, 0, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s0_payload
+  {0, -1, 0, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s0_payload
   {0, -1, 0, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s0_credit
   {0, -1, 0, DpiSig::STALL, 1, false},  // fet_dec_instr_s0_stall
   {0, -1, 1, DpiSig::VALID, 1, true},  // fet_dec_instr_s1_valid
-  {0, -1, 1, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s1_payload
+  {0, -1, 1, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s1_payload
   {0, -1, 1, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s1_credit
   {0, -1, 1, DpiSig::STALL, 1, false},  // fet_dec_instr_s1_stall
   {0, -1, 2, DpiSig::VALID, 1, true},  // fet_dec_instr_s2_valid
-  {0, -1, 2, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s2_payload
+  {0, -1, 2, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s2_payload
   {0, -1, 2, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s2_credit
   {0, -1, 2, DpiSig::STALL, 1, false},  // fet_dec_instr_s2_stall
   {0, -1, 3, DpiSig::VALID, 1, true},  // fet_dec_instr_s3_valid
-  {0, -1, 3, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s3_payload
+  {0, -1, 3, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s3_payload
   {0, -1, 3, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s3_credit
   {0, -1, 3, DpiSig::STALL, 1, false},  // fet_dec_instr_s3_stall
   {0, -1, 4, DpiSig::VALID, 1, true},  // fet_dec_instr_s4_valid
-  {0, -1, 4, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s4_payload
+  {0, -1, 4, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s4_payload
   {0, -1, 4, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s4_credit
   {0, -1, 4, DpiSig::STALL, 1, false},  // fet_dec_instr_s4_stall
   {0, -1, 5, DpiSig::VALID, 1, true},  // fet_dec_instr_s5_valid
-  {0, -1, 5, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s5_payload
+  {0, -1, 5, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s5_payload
   {0, -1, 5, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s5_credit
   {0, -1, 5, DpiSig::STALL, 1, false},  // fet_dec_instr_s5_stall
   {0, -1, 6, DpiSig::VALID, 1, true},  // fet_dec_instr_s6_valid
-  {0, -1, 6, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s6_payload
+  {0, -1, 6, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s6_payload
   {0, -1, 6, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s6_credit
   {0, -1, 6, DpiSig::STALL, 1, false},  // fet_dec_instr_s6_stall
   {0, -1, 7, DpiSig::VALID, 1, true},  // fet_dec_instr_s7_valid
-  {0, -1, 7, DpiSig::PAYLOAD, 160, true},  // fet_dec_instr_s7_payload
+  {0, -1, 7, DpiSig::PAYLOAD, 162, true},  // fet_dec_instr_s7_payload
   {0, -1, 7, DpiSig::CREDIT, 1, false},  // fet_dec_instr_s7_credit
   {0, -1, 7, DpiSig::STALL, 1, false},  // fet_dec_instr_s7_stall
   {0, -1, 0, DpiSig::TID, 64, true},  // fet_dec_instr_s0_tid
@@ -57,7 +64,7 @@ inline constexpr DpiPort kDpiPorts_fet[] = {
   {0, -1, 6, DpiSig::TID, 64, true},  // fet_dec_instr_s6_tid
   {0, -1, 7, DpiSig::TID, 64, true},  // fet_dec_instr_s7_tid
   {11, -1, 0, DpiSig::VALID, 1, false},  // ooe_fet_redirect_valid
-  {11, -1, 0, DpiSig::PAYLOAD, 109, false},  // ooe_fet_redirect_payload
+  {11, -1, 0, DpiSig::PAYLOAD, 112, false},  // ooe_fet_redirect_payload
   {11, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_fet_redirect_credit
   {11, -1, 0, DpiSig::STALL, 1, true},  // ooe_fet_redirect_stall
   {11, -1, 0, DpiSig::TID, 64, false},  // ooe_fet_redirect_tid
@@ -87,57 +94,67 @@ inline constexpr DpiPort kDpiPorts_fet[] = {
   {24, -1, 0, DpiSig::STALL, 1, false},  // fet_miu_itlb_req_stall
   {24, -1, 0, DpiSig::TID, 64, true},  // fet_miu_itlb_req_tid
   {28, -1, 0, DpiSig::VALID, 1, false},  // rau_fet_launch_valid
-  {28, -1, 0, DpiSig::PAYLOAD, 186, false},  // rau_fet_launch_payload
+  {28, -1, 0, DpiSig::PAYLOAD, 218, false},  // rau_fet_launch_payload
   {28, -1, 0, DpiSig::CREDIT, 1, true},  // rau_fet_launch_credit
   {28, -1, 0, DpiSig::STALL, 1, true},  // rau_fet_launch_stall
   {28, -1, 0, DpiSig::TID, 64, false},  // rau_fet_launch_tid
   {37, -1, 0, DpiSig::VALID, 1, true},  // fet_pca_mig_valid
-  {37, -1, 0, DpiSig::PAYLOAD, 389, true},  // fet_pca_mig_payload
+  {37, -1, 0, DpiSig::PAYLOAD, 1056, true},  // fet_pca_mig_payload
   {37, -1, 0, DpiSig::CREDIT, 1, false},  // fet_pca_mig_credit
   {37, -1, 0, DpiSig::STALL, 1, false},  // fet_pca_mig_stall
   {37, -1, 0, DpiSig::TID, 64, true},  // fet_pca_mig_tid
   {38, -1, 0, DpiSig::VALID, 1, false},  // pca_fet_mig_valid
-  {38, -1, 0, DpiSig::PAYLOAD, 389, false},  // pca_fet_mig_payload
+  {38, -1, 0, DpiSig::PAYLOAD, 1056, false},  // pca_fet_mig_payload
   {38, -1, 0, DpiSig::CREDIT, 1, true},  // pca_fet_mig_credit
   {38, -1, 0, DpiSig::STALL, 1, true},  // pca_fet_mig_stall
   {38, -1, 0, DpiSig::TID, 64, false},  // pca_fet_mig_tid
   {39, -1, 0, DpiSig::VALID, 1, false},  // rau_fet_mig_valid
-  {39, -1, 0, DpiSig::PAYLOAD, 11, false},  // rau_fet_mig_payload
+  {39, -1, 0, DpiSig::PAYLOAD, 8, false},  // rau_fet_mig_payload
   {39, -1, 0, DpiSig::CREDIT, 1, true},  // rau_fet_mig_credit
   {39, -1, 0, DpiSig::STALL, 1, true},  // rau_fet_mig_stall
   {39, -1, 0, DpiSig::TID, 64, false},  // rau_fet_mig_tid
+  {46, -1, 0, DpiSig::VALID, 1, false},  // syu_fet_rel_valid
+  {46, -1, 0, DpiSig::PAYLOAD, 37, false},  // syu_fet_rel_payload
+  {46, -1, 0, DpiSig::CREDIT, 1, true},  // syu_fet_rel_credit
+  {46, -1, 0, DpiSig::STALL, 1, true},  // syu_fet_rel_stall
+  {46, -1, 0, DpiSig::TID, 64, false},  // syu_fet_rel_tid
 };
 inline constexpr DpiPort kDpiPorts_dec[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {0, -1, 0, DpiSig::VALID, 1, false},  // fet_dec_instr_s0_valid
-  {0, -1, 0, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s0_payload
+  {0, -1, 0, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s0_payload
   {0, -1, 0, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s0_credit
   {0, -1, 0, DpiSig::STALL, 1, true},  // fet_dec_instr_s0_stall
   {0, -1, 1, DpiSig::VALID, 1, false},  // fet_dec_instr_s1_valid
-  {0, -1, 1, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s1_payload
+  {0, -1, 1, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s1_payload
   {0, -1, 1, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s1_credit
   {0, -1, 1, DpiSig::STALL, 1, true},  // fet_dec_instr_s1_stall
   {0, -1, 2, DpiSig::VALID, 1, false},  // fet_dec_instr_s2_valid
-  {0, -1, 2, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s2_payload
+  {0, -1, 2, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s2_payload
   {0, -1, 2, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s2_credit
   {0, -1, 2, DpiSig::STALL, 1, true},  // fet_dec_instr_s2_stall
   {0, -1, 3, DpiSig::VALID, 1, false},  // fet_dec_instr_s3_valid
-  {0, -1, 3, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s3_payload
+  {0, -1, 3, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s3_payload
   {0, -1, 3, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s3_credit
   {0, -1, 3, DpiSig::STALL, 1, true},  // fet_dec_instr_s3_stall
   {0, -1, 4, DpiSig::VALID, 1, false},  // fet_dec_instr_s4_valid
-  {0, -1, 4, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s4_payload
+  {0, -1, 4, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s4_payload
   {0, -1, 4, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s4_credit
   {0, -1, 4, DpiSig::STALL, 1, true},  // fet_dec_instr_s4_stall
   {0, -1, 5, DpiSig::VALID, 1, false},  // fet_dec_instr_s5_valid
-  {0, -1, 5, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s5_payload
+  {0, -1, 5, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s5_payload
   {0, -1, 5, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s5_credit
   {0, -1, 5, DpiSig::STALL, 1, true},  // fet_dec_instr_s5_stall
   {0, -1, 6, DpiSig::VALID, 1, false},  // fet_dec_instr_s6_valid
-  {0, -1, 6, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s6_payload
+  {0, -1, 6, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s6_payload
   {0, -1, 6, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s6_credit
   {0, -1, 6, DpiSig::STALL, 1, true},  // fet_dec_instr_s6_stall
   {0, -1, 7, DpiSig::VALID, 1, false},  // fet_dec_instr_s7_valid
-  {0, -1, 7, DpiSig::PAYLOAD, 160, false},  // fet_dec_instr_s7_payload
+  {0, -1, 7, DpiSig::PAYLOAD, 162, false},  // fet_dec_instr_s7_payload
   {0, -1, 7, DpiSig::CREDIT, 1, true},  // fet_dec_instr_s7_credit
   {0, -1, 7, DpiSig::STALL, 1, true},  // fet_dec_instr_s7_stall
   {0, -1, 0, DpiSig::TID, 64, false},  // fet_dec_instr_s0_tid
@@ -149,27 +166,27 @@ inline constexpr DpiPort kDpiPorts_dec[] = {
   {0, -1, 6, DpiSig::TID, 64, false},  // fet_dec_instr_s6_tid
   {0, -1, 7, DpiSig::TID, 64, false},  // fet_dec_instr_s7_tid
   {1, -1, 0, DpiSig::VALID, 1, true},  // dec_ooe_uop_s0_valid
-  {1, -1, 0, DpiSig::PAYLOAD, 219, true},  // dec_ooe_uop_s0_payload
+  {1, -1, 0, DpiSig::PAYLOAD, 229, true},  // dec_ooe_uop_s0_payload
   {1, -1, 0, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s0_credit
   {1, -1, 0, DpiSig::STALL, 1, false},  // dec_ooe_uop_s0_stall
   {1, -1, 1, DpiSig::VALID, 1, true},  // dec_ooe_uop_s1_valid
-  {1, -1, 1, DpiSig::PAYLOAD, 219, true},  // dec_ooe_uop_s1_payload
+  {1, -1, 1, DpiSig::PAYLOAD, 229, true},  // dec_ooe_uop_s1_payload
   {1, -1, 1, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s1_credit
   {1, -1, 1, DpiSig::STALL, 1, false},  // dec_ooe_uop_s1_stall
   {1, -1, 2, DpiSig::VALID, 1, true},  // dec_ooe_uop_s2_valid
-  {1, -1, 2, DpiSig::PAYLOAD, 219, true},  // dec_ooe_uop_s2_payload
+  {1, -1, 2, DpiSig::PAYLOAD, 229, true},  // dec_ooe_uop_s2_payload
   {1, -1, 2, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s2_credit
   {1, -1, 2, DpiSig::STALL, 1, false},  // dec_ooe_uop_s2_stall
   {1, -1, 3, DpiSig::VALID, 1, true},  // dec_ooe_uop_s3_valid
-  {1, -1, 3, DpiSig::PAYLOAD, 219, true},  // dec_ooe_uop_s3_payload
+  {1, -1, 3, DpiSig::PAYLOAD, 229, true},  // dec_ooe_uop_s3_payload
   {1, -1, 3, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s3_credit
   {1, -1, 3, DpiSig::STALL, 1, false},  // dec_ooe_uop_s3_stall
   {1, -1, 4, DpiSig::VALID, 1, true},  // dec_ooe_uop_s4_valid
-  {1, -1, 4, DpiSig::PAYLOAD, 219, true},  // dec_ooe_uop_s4_payload
+  {1, -1, 4, DpiSig::PAYLOAD, 229, true},  // dec_ooe_uop_s4_payload
   {1, -1, 4, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s4_credit
   {1, -1, 4, DpiSig::STALL, 1, false},  // dec_ooe_uop_s4_stall
   {1, -1, 5, DpiSig::VALID, 1, true},  // dec_ooe_uop_s5_valid
-  {1, -1, 5, DpiSig::PAYLOAD, 219, true},  // dec_ooe_uop_s5_payload
+  {1, -1, 5, DpiSig::PAYLOAD, 229, true},  // dec_ooe_uop_s5_payload
   {1, -1, 5, DpiSig::CREDIT, 1, false},  // dec_ooe_uop_s5_credit
   {1, -1, 5, DpiSig::STALL, 1, false},  // dec_ooe_uop_s5_stall
   {1, -1, 0, DpiSig::TID, 64, true},  // dec_ooe_uop_s0_tid
@@ -180,28 +197,33 @@ inline constexpr DpiPort kDpiPorts_dec[] = {
   {1, -1, 5, DpiSig::TID, 64, true},  // dec_ooe_uop_s5_tid
 };
 inline constexpr DpiPort kDpiPorts_ooe[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {1, -1, 0, DpiSig::VALID, 1, false},  // dec_ooe_uop_s0_valid
-  {1, -1, 0, DpiSig::PAYLOAD, 219, false},  // dec_ooe_uop_s0_payload
+  {1, -1, 0, DpiSig::PAYLOAD, 229, false},  // dec_ooe_uop_s0_payload
   {1, -1, 0, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s0_credit
   {1, -1, 0, DpiSig::STALL, 1, true},  // dec_ooe_uop_s0_stall
   {1, -1, 1, DpiSig::VALID, 1, false},  // dec_ooe_uop_s1_valid
-  {1, -1, 1, DpiSig::PAYLOAD, 219, false},  // dec_ooe_uop_s1_payload
+  {1, -1, 1, DpiSig::PAYLOAD, 229, false},  // dec_ooe_uop_s1_payload
   {1, -1, 1, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s1_credit
   {1, -1, 1, DpiSig::STALL, 1, true},  // dec_ooe_uop_s1_stall
   {1, -1, 2, DpiSig::VALID, 1, false},  // dec_ooe_uop_s2_valid
-  {1, -1, 2, DpiSig::PAYLOAD, 219, false},  // dec_ooe_uop_s2_payload
+  {1, -1, 2, DpiSig::PAYLOAD, 229, false},  // dec_ooe_uop_s2_payload
   {1, -1, 2, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s2_credit
   {1, -1, 2, DpiSig::STALL, 1, true},  // dec_ooe_uop_s2_stall
   {1, -1, 3, DpiSig::VALID, 1, false},  // dec_ooe_uop_s3_valid
-  {1, -1, 3, DpiSig::PAYLOAD, 219, false},  // dec_ooe_uop_s3_payload
+  {1, -1, 3, DpiSig::PAYLOAD, 229, false},  // dec_ooe_uop_s3_payload
   {1, -1, 3, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s3_credit
   {1, -1, 3, DpiSig::STALL, 1, true},  // dec_ooe_uop_s3_stall
   {1, -1, 4, DpiSig::VALID, 1, false},  // dec_ooe_uop_s4_valid
-  {1, -1, 4, DpiSig::PAYLOAD, 219, false},  // dec_ooe_uop_s4_payload
+  {1, -1, 4, DpiSig::PAYLOAD, 229, false},  // dec_ooe_uop_s4_payload
   {1, -1, 4, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s4_credit
   {1, -1, 4, DpiSig::STALL, 1, true},  // dec_ooe_uop_s4_stall
   {1, -1, 5, DpiSig::VALID, 1, false},  // dec_ooe_uop_s5_valid
-  {1, -1, 5, DpiSig::PAYLOAD, 219, false},  // dec_ooe_uop_s5_payload
+  {1, -1, 5, DpiSig::PAYLOAD, 229, false},  // dec_ooe_uop_s5_payload
   {1, -1, 5, DpiSig::CREDIT, 1, true},  // dec_ooe_uop_s5_credit
   {1, -1, 5, DpiSig::STALL, 1, true},  // dec_ooe_uop_s5_stall
   {1, -1, 0, DpiSig::TID, 64, false},  // dec_ooe_uop_s0_tid
@@ -291,19 +313,19 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {5, -1, 5, DpiSig::TID, 64, false},  // rcu_ooe_done_s5_tid
   {5, -1, 6, DpiSig::TID, 64, false},  // rcu_ooe_done_s6_tid
   {8, -1, 0, DpiSig::VALID, 1, true},  // ooe_miu_memop_s0_valid
-  {8, -1, 0, DpiSig::PAYLOAD, 109, true},  // ooe_miu_memop_s0_payload
+  {8, -1, 0, DpiSig::PAYLOAD, 121, true},  // ooe_miu_memop_s0_payload
   {8, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s0_credit
   {8, -1, 0, DpiSig::STALL, 1, false},  // ooe_miu_memop_s0_stall
   {8, -1, 1, DpiSig::VALID, 1, true},  // ooe_miu_memop_s1_valid
-  {8, -1, 1, DpiSig::PAYLOAD, 109, true},  // ooe_miu_memop_s1_payload
+  {8, -1, 1, DpiSig::PAYLOAD, 121, true},  // ooe_miu_memop_s1_payload
   {8, -1, 1, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s1_credit
   {8, -1, 1, DpiSig::STALL, 1, false},  // ooe_miu_memop_s1_stall
   {8, -1, 2, DpiSig::VALID, 1, true},  // ooe_miu_memop_s2_valid
-  {8, -1, 2, DpiSig::PAYLOAD, 109, true},  // ooe_miu_memop_s2_payload
+  {8, -1, 2, DpiSig::PAYLOAD, 121, true},  // ooe_miu_memop_s2_payload
   {8, -1, 2, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s2_credit
   {8, -1, 2, DpiSig::STALL, 1, false},  // ooe_miu_memop_s2_stall
   {8, -1, 3, DpiSig::VALID, 1, true},  // ooe_miu_memop_s3_valid
-  {8, -1, 3, DpiSig::PAYLOAD, 109, true},  // ooe_miu_memop_s3_payload
+  {8, -1, 3, DpiSig::PAYLOAD, 121, true},  // ooe_miu_memop_s3_payload
   {8, -1, 3, DpiSig::CREDIT, 1, false},  // ooe_miu_memop_s3_credit
   {8, -1, 3, DpiSig::STALL, 1, false},  // ooe_miu_memop_s3_stall
   {8, -1, 0, DpiSig::TID, 64, true},  // ooe_miu_memop_s0_tid
@@ -311,19 +333,19 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {8, -1, 2, DpiSig::TID, 64, true},  // ooe_miu_memop_s2_tid
   {8, -1, 3, DpiSig::TID, 64, true},  // ooe_miu_memop_s3_tid
   {9, -1, 0, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_s0_valid
-  {9, -1, 0, DpiSig::PAYLOAD, 111, false},  // miu_ooe_cmpl_s0_payload
+  {9, -1, 0, DpiSig::PAYLOAD, 117, false},  // miu_ooe_cmpl_s0_payload
   {9, -1, 0, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_s0_credit
   {9, -1, 0, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_s0_stall
   {9, -1, 1, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_s1_valid
-  {9, -1, 1, DpiSig::PAYLOAD, 111, false},  // miu_ooe_cmpl_s1_payload
+  {9, -1, 1, DpiSig::PAYLOAD, 117, false},  // miu_ooe_cmpl_s1_payload
   {9, -1, 1, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_s1_credit
   {9, -1, 1, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_s1_stall
   {9, -1, 2, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_s2_valid
-  {9, -1, 2, DpiSig::PAYLOAD, 111, false},  // miu_ooe_cmpl_s2_payload
+  {9, -1, 2, DpiSig::PAYLOAD, 117, false},  // miu_ooe_cmpl_s2_payload
   {9, -1, 2, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_s2_credit
   {9, -1, 2, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_s2_stall
   {9, -1, 3, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_s3_valid
-  {9, -1, 3, DpiSig::PAYLOAD, 111, false},  // miu_ooe_cmpl_s3_payload
+  {9, -1, 3, DpiSig::PAYLOAD, 117, false},  // miu_ooe_cmpl_s3_payload
   {9, -1, 3, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_s3_credit
   {9, -1, 3, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_s3_stall
   {9, -1, 0, DpiSig::TID, 64, false},  // miu_ooe_cmpl_s0_tid
@@ -351,7 +373,7 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {10, -1, 2, DpiSig::TID, 64, true},  // ooe_miu_retire_s2_tid
   {10, -1, 3, DpiSig::TID, 64, true},  // ooe_miu_retire_s3_tid
   {11, -1, 0, DpiSig::VALID, 1, true},  // ooe_fet_redirect_valid
-  {11, -1, 0, DpiSig::PAYLOAD, 109, true},  // ooe_fet_redirect_payload
+  {11, -1, 0, DpiSig::PAYLOAD, 112, true},  // ooe_fet_redirect_payload
   {11, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_fet_redirect_credit
   {11, -1, 0, DpiSig::STALL, 1, false},  // ooe_fet_redirect_stall
   {11, -1, 0, DpiSig::TID, 64, true},  // ooe_fet_redirect_tid
@@ -361,12 +383,12 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {12, -1, 0, DpiSig::STALL, 1, false},  // ooe_fet_ckpt_free_stall
   {12, -1, 0, DpiSig::TID, 64, true},  // ooe_fet_ckpt_free_tid
   {29, -1, 0, DpiSig::VALID, 1, false},  // rau_ooe_alloc_valid
-  {29, -1, 0, DpiSig::PAYLOAD, 51, false},  // rau_ooe_alloc_payload
+  {29, -1, 0, DpiSig::PAYLOAD, 54, false},  // rau_ooe_alloc_payload
   {29, -1, 0, DpiSig::CREDIT, 1, true},  // rau_ooe_alloc_credit
   {29, -1, 0, DpiSig::STALL, 1, true},  // rau_ooe_alloc_stall
   {29, -1, 0, DpiSig::TID, 64, false},  // rau_ooe_alloc_tid
   {30, -1, 0, DpiSig::VALID, 1, true},  // ooe_rau_status_valid
-  {30, -1, 0, DpiSig::PAYLOAD, 16, true},  // ooe_rau_status_payload
+  {30, -1, 0, DpiSig::PAYLOAD, 17, true},  // ooe_rau_status_payload
   {30, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_rau_status_credit
   {30, -1, 0, DpiSig::STALL, 1, false},  // ooe_rau_status_stall
   {30, -1, 0, DpiSig::TID, 64, true},  // ooe_rau_status_tid
@@ -376,7 +398,7 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {31, -1, 0, DpiSig::STALL, 1, true},  // rau_ooe_demote_stall
   {31, -1, 0, DpiSig::TID, 64, false},  // rau_ooe_demote_tid
   {32, -1, 0, DpiSig::VALID, 1, true},  // ooe_rau_drained_valid
-  {32, -1, 0, DpiSig::PAYLOAD, 70, true},  // ooe_rau_drained_payload
+  {32, -1, 0, DpiSig::PAYLOAD, 71, true},  // ooe_rau_drained_payload
   {32, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_rau_drained_credit
   {32, -1, 0, DpiSig::STALL, 1, false},  // ooe_rau_drained_stall
   {32, -1, 0, DpiSig::TID, 64, true},  // ooe_rau_drained_tid
@@ -385,23 +407,48 @@ inline constexpr DpiPort kDpiPorts_ooe[] = {
   {34, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_rcu_map_credit
   {34, -1, 0, DpiSig::STALL, 1, false},  // ooe_rcu_map_stall
   {34, -1, 0, DpiSig::TID, 64, true},  // ooe_rcu_map_tid
-  {42, -1, 0, DpiSig::VALID, 1, true},  // ooe_syu_bar_valid
-  {42, -1, 0, DpiSig::PAYLOAD, 13, true},  // ooe_syu_bar_payload
-  {42, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_syu_bar_credit
-  {42, -1, 0, DpiSig::STALL, 1, false},  // ooe_syu_bar_stall
-  {42, -1, 0, DpiSig::TID, 64, true},  // ooe_syu_bar_tid
-  {43, -1, 0, DpiSig::VALID, 1, false},  // syu_ooe_rel_valid
-  {43, -1, 0, DpiSig::PAYLOAD, 36, false},  // syu_ooe_rel_payload
-  {43, -1, 0, DpiSig::CREDIT, 1, true},  // syu_ooe_rel_credit
-  {43, -1, 0, DpiSig::STALL, 1, true},  // syu_ooe_rel_stall
-  {43, -1, 0, DpiSig::TID, 64, false},  // syu_ooe_rel_tid
-  {45, -1, 0, DpiSig::VALID, 1, true},  // ooe_cru_fault_valid
-  {45, -1, 0, DpiSig::PAYLOAD, 172, true},  // ooe_cru_fault_payload
-  {45, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_cru_fault_credit
-  {45, -1, 0, DpiSig::STALL, 1, false},  // ooe_cru_fault_stall
-  {45, -1, 0, DpiSig::TID, 64, true},  // ooe_cru_fault_tid
+  {44, -1, 0, DpiSig::VALID, 1, true},  // ooe_syu_bar_valid
+  {44, -1, 0, DpiSig::PAYLOAD, 111, true},  // ooe_syu_bar_payload
+  {44, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_syu_bar_credit
+  {44, -1, 0, DpiSig::STALL, 1, false},  // ooe_syu_bar_stall
+  {44, -1, 0, DpiSig::TID, 64, true},  // ooe_syu_bar_tid
+  {45, -1, 0, DpiSig::VALID, 1, false},  // syu_ooe_rel_valid
+  {45, -1, 0, DpiSig::PAYLOAD, 5, false},  // syu_ooe_rel_payload
+  {45, -1, 0, DpiSig::CREDIT, 1, true},  // syu_ooe_rel_credit
+  {45, -1, 0, DpiSig::STALL, 1, true},  // syu_ooe_rel_stall
+  {45, -1, 0, DpiSig::TID, 64, false},  // syu_ooe_rel_tid
+  {49, -1, 0, DpiSig::VALID, 1, true},  // ooe_cru_fault_valid
+  {49, -1, 0, DpiSig::PAYLOAD, 172, true},  // ooe_cru_fault_payload
+  {49, -1, 0, DpiSig::CREDIT, 1, false},  // ooe_cru_fault_credit
+  {49, -1, 0, DpiSig::STALL, 1, false},  // ooe_cru_fault_stall
+  {49, -1, 0, DpiSig::TID, 64, true},  // ooe_cru_fault_tid
+  {53, -1, 0, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_hint_s0_valid
+  {53, -1, 0, DpiSig::PAYLOAD, 13, false},  // miu_ooe_cmpl_hint_s0_payload
+  {53, -1, 0, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_hint_s0_credit
+  {53, -1, 0, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_hint_s0_stall
+  {53, -1, 1, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_hint_s1_valid
+  {53, -1, 1, DpiSig::PAYLOAD, 13, false},  // miu_ooe_cmpl_hint_s1_payload
+  {53, -1, 1, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_hint_s1_credit
+  {53, -1, 1, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_hint_s1_stall
+  {53, -1, 2, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_hint_s2_valid
+  {53, -1, 2, DpiSig::PAYLOAD, 13, false},  // miu_ooe_cmpl_hint_s2_payload
+  {53, -1, 2, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_hint_s2_credit
+  {53, -1, 2, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_hint_s2_stall
+  {53, -1, 3, DpiSig::VALID, 1, false},  // miu_ooe_cmpl_hint_s3_valid
+  {53, -1, 3, DpiSig::PAYLOAD, 13, false},  // miu_ooe_cmpl_hint_s3_payload
+  {53, -1, 3, DpiSig::CREDIT, 1, true},  // miu_ooe_cmpl_hint_s3_credit
+  {53, -1, 3, DpiSig::STALL, 1, true},  // miu_ooe_cmpl_hint_s3_stall
+  {53, -1, 0, DpiSig::TID, 64, false},  // miu_ooe_cmpl_hint_s0_tid
+  {53, -1, 1, DpiSig::TID, 64, false},  // miu_ooe_cmpl_hint_s1_tid
+  {53, -1, 2, DpiSig::TID, 64, false},  // miu_ooe_cmpl_hint_s2_tid
+  {53, -1, 3, DpiSig::TID, 64, false},  // miu_ooe_cmpl_hint_s3_tid
 };
 inline constexpr DpiPort kDpiPorts_rcu[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {2, -1, 0, DpiSig::VALID, 1, false},  // ooe_rcu_issue_s0_valid
   {2, -1, 0, DpiSig::PAYLOAD, 175, false},  // ooe_rcu_issue_s0_payload
   {2, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_rcu_issue_s0_credit
@@ -803,19 +850,19 @@ inline constexpr DpiPort kDpiPorts_rcu[] = {
   {5, -1, 5, DpiSig::TID, 64, true},  // rcu_ooe_done_s5_tid
   {5, -1, 6, DpiSig::TID, 64, true},  // rcu_ooe_done_s6_tid
   {6, -1, 0, DpiSig::VALID, 1, true},  // rcu_miu_addr_s0_valid
-  {6, -1, 0, DpiSig::PAYLOAD, 2151, true},  // rcu_miu_addr_s0_payload
+  {6, -1, 0, DpiSig::PAYLOAD, 3111, true},  // rcu_miu_addr_s0_payload
   {6, -1, 0, DpiSig::CREDIT, 1, false},  // rcu_miu_addr_s0_credit
   {6, -1, 0, DpiSig::STALL, 1, false},  // rcu_miu_addr_s0_stall
   {6, -1, 1, DpiSig::VALID, 1, true},  // rcu_miu_addr_s1_valid
-  {6, -1, 1, DpiSig::PAYLOAD, 2151, true},  // rcu_miu_addr_s1_payload
+  {6, -1, 1, DpiSig::PAYLOAD, 3111, true},  // rcu_miu_addr_s1_payload
   {6, -1, 1, DpiSig::CREDIT, 1, false},  // rcu_miu_addr_s1_credit
   {6, -1, 1, DpiSig::STALL, 1, false},  // rcu_miu_addr_s1_stall
   {6, -1, 2, DpiSig::VALID, 1, true},  // rcu_miu_addr_s2_valid
-  {6, -1, 2, DpiSig::PAYLOAD, 2151, true},  // rcu_miu_addr_s2_payload
+  {6, -1, 2, DpiSig::PAYLOAD, 3111, true},  // rcu_miu_addr_s2_payload
   {6, -1, 2, DpiSig::CREDIT, 1, false},  // rcu_miu_addr_s2_credit
   {6, -1, 2, DpiSig::STALL, 1, false},  // rcu_miu_addr_s2_stall
   {6, -1, 3, DpiSig::VALID, 1, true},  // rcu_miu_addr_s3_valid
-  {6, -1, 3, DpiSig::PAYLOAD, 2151, true},  // rcu_miu_addr_s3_payload
+  {6, -1, 3, DpiSig::PAYLOAD, 3111, true},  // rcu_miu_addr_s3_payload
   {6, -1, 3, DpiSig::CREDIT, 1, false},  // rcu_miu_addr_s3_credit
   {6, -1, 3, DpiSig::STALL, 1, false},  // rcu_miu_addr_s3_stall
   {6, -1, 0, DpiSig::TID, 64, true},  // rcu_miu_addr_s0_tid
@@ -843,7 +890,7 @@ inline constexpr DpiPort kDpiPorts_rcu[] = {
   {7, -1, 2, DpiSig::TID, 64, false},  // miu_rcu_data_s2_tid
   {7, -1, 3, DpiSig::TID, 64, false},  // miu_rcu_data_s3_tid
   {33, -1, 0, DpiSig::VALID, 1, false},  // rau_rcu_mig_valid
-  {33, -1, 0, DpiSig::PAYLOAD, 9, false},  // rau_rcu_mig_payload
+  {33, -1, 0, DpiSig::PAYLOAD, 6, false},  // rau_rcu_mig_payload
   {33, -1, 0, DpiSig::CREDIT, 1, true},  // rau_rcu_mig_credit
   {33, -1, 0, DpiSig::STALL, 1, true},  // rau_rcu_mig_stall
   {33, -1, 0, DpiSig::TID, 64, false},  // rau_rcu_mig_tid
@@ -876,20 +923,25 @@ inline constexpr DpiPort kDpiPorts_lane[] = {
   {4, -1, 0, DpiSig::TID, 64, true},  // lane_rcu_res_tid
 };
 inline constexpr DpiPort kDpiPorts_miu[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {6, -1, 0, DpiSig::VALID, 1, false},  // rcu_miu_addr_s0_valid
-  {6, -1, 0, DpiSig::PAYLOAD, 2151, false},  // rcu_miu_addr_s0_payload
+  {6, -1, 0, DpiSig::PAYLOAD, 3111, false},  // rcu_miu_addr_s0_payload
   {6, -1, 0, DpiSig::CREDIT, 1, true},  // rcu_miu_addr_s0_credit
   {6, -1, 0, DpiSig::STALL, 1, true},  // rcu_miu_addr_s0_stall
   {6, -1, 1, DpiSig::VALID, 1, false},  // rcu_miu_addr_s1_valid
-  {6, -1, 1, DpiSig::PAYLOAD, 2151, false},  // rcu_miu_addr_s1_payload
+  {6, -1, 1, DpiSig::PAYLOAD, 3111, false},  // rcu_miu_addr_s1_payload
   {6, -1, 1, DpiSig::CREDIT, 1, true},  // rcu_miu_addr_s1_credit
   {6, -1, 1, DpiSig::STALL, 1, true},  // rcu_miu_addr_s1_stall
   {6, -1, 2, DpiSig::VALID, 1, false},  // rcu_miu_addr_s2_valid
-  {6, -1, 2, DpiSig::PAYLOAD, 2151, false},  // rcu_miu_addr_s2_payload
+  {6, -1, 2, DpiSig::PAYLOAD, 3111, false},  // rcu_miu_addr_s2_payload
   {6, -1, 2, DpiSig::CREDIT, 1, true},  // rcu_miu_addr_s2_credit
   {6, -1, 2, DpiSig::STALL, 1, true},  // rcu_miu_addr_s2_stall
   {6, -1, 3, DpiSig::VALID, 1, false},  // rcu_miu_addr_s3_valid
-  {6, -1, 3, DpiSig::PAYLOAD, 2151, false},  // rcu_miu_addr_s3_payload
+  {6, -1, 3, DpiSig::PAYLOAD, 3111, false},  // rcu_miu_addr_s3_payload
   {6, -1, 3, DpiSig::CREDIT, 1, true},  // rcu_miu_addr_s3_credit
   {6, -1, 3, DpiSig::STALL, 1, true},  // rcu_miu_addr_s3_stall
   {6, -1, 0, DpiSig::TID, 64, false},  // rcu_miu_addr_s0_tid
@@ -917,19 +969,19 @@ inline constexpr DpiPort kDpiPorts_miu[] = {
   {7, -1, 2, DpiSig::TID, 64, true},  // miu_rcu_data_s2_tid
   {7, -1, 3, DpiSig::TID, 64, true},  // miu_rcu_data_s3_tid
   {8, -1, 0, DpiSig::VALID, 1, false},  // ooe_miu_memop_s0_valid
-  {8, -1, 0, DpiSig::PAYLOAD, 109, false},  // ooe_miu_memop_s0_payload
+  {8, -1, 0, DpiSig::PAYLOAD, 121, false},  // ooe_miu_memop_s0_payload
   {8, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s0_credit
   {8, -1, 0, DpiSig::STALL, 1, true},  // ooe_miu_memop_s0_stall
   {8, -1, 1, DpiSig::VALID, 1, false},  // ooe_miu_memop_s1_valid
-  {8, -1, 1, DpiSig::PAYLOAD, 109, false},  // ooe_miu_memop_s1_payload
+  {8, -1, 1, DpiSig::PAYLOAD, 121, false},  // ooe_miu_memop_s1_payload
   {8, -1, 1, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s1_credit
   {8, -1, 1, DpiSig::STALL, 1, true},  // ooe_miu_memop_s1_stall
   {8, -1, 2, DpiSig::VALID, 1, false},  // ooe_miu_memop_s2_valid
-  {8, -1, 2, DpiSig::PAYLOAD, 109, false},  // ooe_miu_memop_s2_payload
+  {8, -1, 2, DpiSig::PAYLOAD, 121, false},  // ooe_miu_memop_s2_payload
   {8, -1, 2, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s2_credit
   {8, -1, 2, DpiSig::STALL, 1, true},  // ooe_miu_memop_s2_stall
   {8, -1, 3, DpiSig::VALID, 1, false},  // ooe_miu_memop_s3_valid
-  {8, -1, 3, DpiSig::PAYLOAD, 109, false},  // ooe_miu_memop_s3_payload
+  {8, -1, 3, DpiSig::PAYLOAD, 121, false},  // ooe_miu_memop_s3_payload
   {8, -1, 3, DpiSig::CREDIT, 1, true},  // ooe_miu_memop_s3_credit
   {8, -1, 3, DpiSig::STALL, 1, true},  // ooe_miu_memop_s3_stall
   {8, -1, 0, DpiSig::TID, 64, false},  // ooe_miu_memop_s0_tid
@@ -937,19 +989,19 @@ inline constexpr DpiPort kDpiPorts_miu[] = {
   {8, -1, 2, DpiSig::TID, 64, false},  // ooe_miu_memop_s2_tid
   {8, -1, 3, DpiSig::TID, 64, false},  // ooe_miu_memop_s3_tid
   {9, -1, 0, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_s0_valid
-  {9, -1, 0, DpiSig::PAYLOAD, 111, true},  // miu_ooe_cmpl_s0_payload
+  {9, -1, 0, DpiSig::PAYLOAD, 117, true},  // miu_ooe_cmpl_s0_payload
   {9, -1, 0, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_s0_credit
   {9, -1, 0, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_s0_stall
   {9, -1, 1, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_s1_valid
-  {9, -1, 1, DpiSig::PAYLOAD, 111, true},  // miu_ooe_cmpl_s1_payload
+  {9, -1, 1, DpiSig::PAYLOAD, 117, true},  // miu_ooe_cmpl_s1_payload
   {9, -1, 1, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_s1_credit
   {9, -1, 1, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_s1_stall
   {9, -1, 2, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_s2_valid
-  {9, -1, 2, DpiSig::PAYLOAD, 111, true},  // miu_ooe_cmpl_s2_payload
+  {9, -1, 2, DpiSig::PAYLOAD, 117, true},  // miu_ooe_cmpl_s2_payload
   {9, -1, 2, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_s2_credit
   {9, -1, 2, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_s2_stall
   {9, -1, 3, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_s3_valid
-  {9, -1, 3, DpiSig::PAYLOAD, 111, true},  // miu_ooe_cmpl_s3_payload
+  {9, -1, 3, DpiSig::PAYLOAD, 117, true},  // miu_ooe_cmpl_s3_payload
   {9, -1, 3, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_s3_credit
   {9, -1, 3, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_s3_stall
   {9, -1, 0, DpiSig::TID, 64, true},  // miu_ooe_cmpl_s0_tid
@@ -1066,13 +1118,63 @@ inline constexpr DpiPort kDpiPorts_miu[] = {
   {24, -1, 0, DpiSig::CREDIT, 1, true},  // fet_miu_itlb_req_credit
   {24, -1, 0, DpiSig::STALL, 1, true},  // fet_miu_itlb_req_stall
   {24, -1, 0, DpiSig::TID, 64, false},  // fet_miu_itlb_req_tid
-  {41, -1, 0, DpiSig::VALID, 1, false},  // rau_miu_cta_valid
-  {41, -1, 0, DpiSig::PAYLOAD, 101, false},  // rau_miu_cta_payload
-  {41, -1, 0, DpiSig::CREDIT, 1, true},  // rau_miu_cta_credit
-  {41, -1, 0, DpiSig::STALL, 1, true},  // rau_miu_cta_stall
-  {41, -1, 0, DpiSig::TID, 64, false},  // rau_miu_cta_tid
+  {42, -1, 0, DpiSig::VALID, 1, true},  // miu_rau_ready_valid
+  {42, -1, 0, DpiSig::PAYLOAD, 5, true},  // miu_rau_ready_payload
+  {42, -1, 0, DpiSig::CREDIT, 1, false},  // miu_rau_ready_credit
+  {42, -1, 0, DpiSig::STALL, 1, false},  // miu_rau_ready_stall
+  {42, -1, 0, DpiSig::TID, 64, true},  // miu_rau_ready_tid
+  {43, -1, 0, DpiSig::VALID, 1, false},  // rau_miu_cta_valid
+  {43, -1, 0, DpiSig::PAYLOAD, 229, false},  // rau_miu_cta_payload
+  {43, -1, 0, DpiSig::CREDIT, 1, true},  // rau_miu_cta_credit
+  {43, -1, 0, DpiSig::STALL, 1, true},  // rau_miu_cta_stall
+  {43, -1, 0, DpiSig::TID, 64, false},  // rau_miu_cta_tid
+  {52, -1, 0, DpiSig::VALID, 1, false},  // dcu_miu_fill_ntc_s0_valid
+  {52, -1, 0, DpiSig::PAYLOAD, 4, false},  // dcu_miu_fill_ntc_s0_payload
+  {52, -1, 0, DpiSig::CREDIT, 1, true},  // dcu_miu_fill_ntc_s0_credit
+  {52, -1, 0, DpiSig::STALL, 1, true},  // dcu_miu_fill_ntc_s0_stall
+  {52, -1, 1, DpiSig::VALID, 1, false},  // dcu_miu_fill_ntc_s1_valid
+  {52, -1, 1, DpiSig::PAYLOAD, 4, false},  // dcu_miu_fill_ntc_s1_payload
+  {52, -1, 1, DpiSig::CREDIT, 1, true},  // dcu_miu_fill_ntc_s1_credit
+  {52, -1, 1, DpiSig::STALL, 1, true},  // dcu_miu_fill_ntc_s1_stall
+  {52, -1, 2, DpiSig::VALID, 1, false},  // dcu_miu_fill_ntc_s2_valid
+  {52, -1, 2, DpiSig::PAYLOAD, 4, false},  // dcu_miu_fill_ntc_s2_payload
+  {52, -1, 2, DpiSig::CREDIT, 1, true},  // dcu_miu_fill_ntc_s2_credit
+  {52, -1, 2, DpiSig::STALL, 1, true},  // dcu_miu_fill_ntc_s2_stall
+  {52, -1, 3, DpiSig::VALID, 1, false},  // dcu_miu_fill_ntc_s3_valid
+  {52, -1, 3, DpiSig::PAYLOAD, 4, false},  // dcu_miu_fill_ntc_s3_payload
+  {52, -1, 3, DpiSig::CREDIT, 1, true},  // dcu_miu_fill_ntc_s3_credit
+  {52, -1, 3, DpiSig::STALL, 1, true},  // dcu_miu_fill_ntc_s3_stall
+  {52, -1, 0, DpiSig::TID, 64, false},  // dcu_miu_fill_ntc_s0_tid
+  {52, -1, 1, DpiSig::TID, 64, false},  // dcu_miu_fill_ntc_s1_tid
+  {52, -1, 2, DpiSig::TID, 64, false},  // dcu_miu_fill_ntc_s2_tid
+  {52, -1, 3, DpiSig::TID, 64, false},  // dcu_miu_fill_ntc_s3_tid
+  {53, -1, 0, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_hint_s0_valid
+  {53, -1, 0, DpiSig::PAYLOAD, 13, true},  // miu_ooe_cmpl_hint_s0_payload
+  {53, -1, 0, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_hint_s0_credit
+  {53, -1, 0, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_hint_s0_stall
+  {53, -1, 1, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_hint_s1_valid
+  {53, -1, 1, DpiSig::PAYLOAD, 13, true},  // miu_ooe_cmpl_hint_s1_payload
+  {53, -1, 1, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_hint_s1_credit
+  {53, -1, 1, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_hint_s1_stall
+  {53, -1, 2, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_hint_s2_valid
+  {53, -1, 2, DpiSig::PAYLOAD, 13, true},  // miu_ooe_cmpl_hint_s2_payload
+  {53, -1, 2, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_hint_s2_credit
+  {53, -1, 2, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_hint_s2_stall
+  {53, -1, 3, DpiSig::VALID, 1, true},  // miu_ooe_cmpl_hint_s3_valid
+  {53, -1, 3, DpiSig::PAYLOAD, 13, true},  // miu_ooe_cmpl_hint_s3_payload
+  {53, -1, 3, DpiSig::CREDIT, 1, false},  // miu_ooe_cmpl_hint_s3_credit
+  {53, -1, 3, DpiSig::STALL, 1, false},  // miu_ooe_cmpl_hint_s3_stall
+  {53, -1, 0, DpiSig::TID, 64, true},  // miu_ooe_cmpl_hint_s0_tid
+  {53, -1, 1, DpiSig::TID, 64, true},  // miu_ooe_cmpl_hint_s1_tid
+  {53, -1, 2, DpiSig::TID, 64, true},  // miu_ooe_cmpl_hint_s2_tid
+  {53, -1, 3, DpiSig::TID, 64, true},  // miu_ooe_cmpl_hint_s3_tid
 };
 inline constexpr DpiPort kDpiPorts_spm[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {13, -1, 0, DpiSig::VALID, 1, false},  // miu_spm_req_s0_valid
   {13, -1, 0, DpiSig::PAYLOAD, 1477, false},  // miu_spm_req_s0_payload
   {13, -1, 0, DpiSig::CREDIT, 1, true},  // miu_spm_req_s0_credit
@@ -1175,6 +1277,26 @@ inline constexpr DpiPort kDpiPorts_dcu[] = {
   {20, -1, 0, DpiSig::CREDIT, 1, false},  // dcu_mlc_probe_ack_credit
   {20, -1, 0, DpiSig::STALL, 1, false},  // dcu_mlc_probe_ack_stall
   {20, -1, 0, DpiSig::TID, 64, true},  // dcu_mlc_probe_ack_tid
+  {52, -1, 0, DpiSig::VALID, 1, true},  // dcu_miu_fill_ntc_s0_valid
+  {52, -1, 0, DpiSig::PAYLOAD, 4, true},  // dcu_miu_fill_ntc_s0_payload
+  {52, -1, 0, DpiSig::CREDIT, 1, false},  // dcu_miu_fill_ntc_s0_credit
+  {52, -1, 0, DpiSig::STALL, 1, false},  // dcu_miu_fill_ntc_s0_stall
+  {52, -1, 1, DpiSig::VALID, 1, true},  // dcu_miu_fill_ntc_s1_valid
+  {52, -1, 1, DpiSig::PAYLOAD, 4, true},  // dcu_miu_fill_ntc_s1_payload
+  {52, -1, 1, DpiSig::CREDIT, 1, false},  // dcu_miu_fill_ntc_s1_credit
+  {52, -1, 1, DpiSig::STALL, 1, false},  // dcu_miu_fill_ntc_s1_stall
+  {52, -1, 2, DpiSig::VALID, 1, true},  // dcu_miu_fill_ntc_s2_valid
+  {52, -1, 2, DpiSig::PAYLOAD, 4, true},  // dcu_miu_fill_ntc_s2_payload
+  {52, -1, 2, DpiSig::CREDIT, 1, false},  // dcu_miu_fill_ntc_s2_credit
+  {52, -1, 2, DpiSig::STALL, 1, false},  // dcu_miu_fill_ntc_s2_stall
+  {52, -1, 3, DpiSig::VALID, 1, true},  // dcu_miu_fill_ntc_s3_valid
+  {52, -1, 3, DpiSig::PAYLOAD, 4, true},  // dcu_miu_fill_ntc_s3_payload
+  {52, -1, 3, DpiSig::CREDIT, 1, false},  // dcu_miu_fill_ntc_s3_credit
+  {52, -1, 3, DpiSig::STALL, 1, false},  // dcu_miu_fill_ntc_s3_stall
+  {52, -1, 0, DpiSig::TID, 64, true},  // dcu_miu_fill_ntc_s0_tid
+  {52, -1, 1, DpiSig::TID, 64, true},  // dcu_miu_fill_ntc_s1_tid
+  {52, -1, 2, DpiSig::TID, 64, true},  // dcu_miu_fill_ntc_s2_tid
+  {52, -1, 3, DpiSig::TID, 64, true},  // dcu_miu_fill_ntc_s3_tid
 };
 inline constexpr DpiPort kDpiPorts_mlc[] = {
   {17, -1, 0, DpiSig::VALID, 1, false},  // dcu_mlc_req_valid
@@ -1219,18 +1341,23 @@ inline constexpr DpiPort kDpiPorts_mlc[] = {
   {26, -1, 0, DpiSig::TID, 64, false},  // exb_mlc_rsp_tid
 };
 inline constexpr DpiPort kDpiPorts_rau[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, true},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, true},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, true},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 8, false},  // kill_acks
+  {4, -1, 0, DpiSig::FABRIC, 16, false},  // kill_ack_epochs
   {28, -1, 0, DpiSig::VALID, 1, true},  // rau_fet_launch_valid
-  {28, -1, 0, DpiSig::PAYLOAD, 186, true},  // rau_fet_launch_payload
+  {28, -1, 0, DpiSig::PAYLOAD, 218, true},  // rau_fet_launch_payload
   {28, -1, 0, DpiSig::CREDIT, 1, false},  // rau_fet_launch_credit
   {28, -1, 0, DpiSig::STALL, 1, false},  // rau_fet_launch_stall
   {28, -1, 0, DpiSig::TID, 64, true},  // rau_fet_launch_tid
   {29, -1, 0, DpiSig::VALID, 1, true},  // rau_ooe_alloc_valid
-  {29, -1, 0, DpiSig::PAYLOAD, 51, true},  // rau_ooe_alloc_payload
+  {29, -1, 0, DpiSig::PAYLOAD, 54, true},  // rau_ooe_alloc_payload
   {29, -1, 0, DpiSig::CREDIT, 1, false},  // rau_ooe_alloc_credit
   {29, -1, 0, DpiSig::STALL, 1, false},  // rau_ooe_alloc_stall
   {29, -1, 0, DpiSig::TID, 64, true},  // rau_ooe_alloc_tid
   {30, -1, 0, DpiSig::VALID, 1, false},  // ooe_rau_status_valid
-  {30, -1, 0, DpiSig::PAYLOAD, 16, false},  // ooe_rau_status_payload
+  {30, -1, 0, DpiSig::PAYLOAD, 17, false},  // ooe_rau_status_payload
   {30, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_rau_status_credit
   {30, -1, 0, DpiSig::STALL, 1, true},  // ooe_rau_status_stall
   {30, -1, 0, DpiSig::TID, 64, false},  // ooe_rau_status_tid
@@ -1240,17 +1367,17 @@ inline constexpr DpiPort kDpiPorts_rau[] = {
   {31, -1, 0, DpiSig::STALL, 1, false},  // rau_ooe_demote_stall
   {31, -1, 0, DpiSig::TID, 64, true},  // rau_ooe_demote_tid
   {32, -1, 0, DpiSig::VALID, 1, false},  // ooe_rau_drained_valid
-  {32, -1, 0, DpiSig::PAYLOAD, 70, false},  // ooe_rau_drained_payload
+  {32, -1, 0, DpiSig::PAYLOAD, 71, false},  // ooe_rau_drained_payload
   {32, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_rau_drained_credit
   {32, -1, 0, DpiSig::STALL, 1, true},  // ooe_rau_drained_stall
   {32, -1, 0, DpiSig::TID, 64, false},  // ooe_rau_drained_tid
   {33, -1, 0, DpiSig::VALID, 1, true},  // rau_rcu_mig_valid
-  {33, -1, 0, DpiSig::PAYLOAD, 9, true},  // rau_rcu_mig_payload
+  {33, -1, 0, DpiSig::PAYLOAD, 6, true},  // rau_rcu_mig_payload
   {33, -1, 0, DpiSig::CREDIT, 1, false},  // rau_rcu_mig_credit
   {33, -1, 0, DpiSig::STALL, 1, false},  // rau_rcu_mig_stall
   {33, -1, 0, DpiSig::TID, 64, true},  // rau_rcu_mig_tid
   {39, -1, 0, DpiSig::VALID, 1, true},  // rau_fet_mig_valid
-  {39, -1, 0, DpiSig::PAYLOAD, 11, true},  // rau_fet_mig_payload
+  {39, -1, 0, DpiSig::PAYLOAD, 8, true},  // rau_fet_mig_payload
   {39, -1, 0, DpiSig::CREDIT, 1, false},  // rau_fet_mig_credit
   {39, -1, 0, DpiSig::STALL, 1, false},  // rau_fet_mig_stall
   {39, -1, 0, DpiSig::TID, 64, true},  // rau_fet_mig_tid
@@ -1259,40 +1386,75 @@ inline constexpr DpiPort kDpiPorts_rau[] = {
   {40, -1, 0, DpiSig::CREDIT, 1, true},  // pca_rau_mig_done_credit
   {40, -1, 0, DpiSig::STALL, 1, true},  // pca_rau_mig_done_stall
   {40, -1, 0, DpiSig::TID, 64, false},  // pca_rau_mig_done_tid
-  {41, -1, 0, DpiSig::VALID, 1, true},  // rau_miu_cta_valid
-  {41, -1, 0, DpiSig::PAYLOAD, 101, true},  // rau_miu_cta_payload
-  {41, -1, 0, DpiSig::CREDIT, 1, false},  // rau_miu_cta_credit
-  {41, -1, 0, DpiSig::STALL, 1, false},  // rau_miu_cta_stall
-  {41, -1, 0, DpiSig::TID, 64, true},  // rau_miu_cta_tid
-  {44, -1, 0, DpiSig::VALID, 1, true},  // rau_syu_alloc_valid
-  {44, -1, 0, DpiSig::PAYLOAD, 15, true},  // rau_syu_alloc_payload
-  {44, -1, 0, DpiSig::CREDIT, 1, false},  // rau_syu_alloc_credit
-  {44, -1, 0, DpiSig::STALL, 1, false},  // rau_syu_alloc_stall
-  {44, -1, 0, DpiSig::TID, 64, true},  // rau_syu_alloc_tid
-  {46, -1, 0, DpiSig::VALID, 1, false},  // cru_rau_cfg_valid
-  {46, -1, 0, DpiSig::PAYLOAD, 74, false},  // cru_rau_cfg_payload
-  {46, -1, 0, DpiSig::CREDIT, 1, true},  // cru_rau_cfg_credit
-  {46, -1, 0, DpiSig::STALL, 1, true},  // cru_rau_cfg_stall
-  {46, -1, 0, DpiSig::TID, 64, false},  // cru_rau_cfg_tid
+  {41, -1, 0, DpiSig::VALID, 1, true},  // rau_pca_mig_valid
+  {41, -1, 0, DpiSig::PAYLOAD, 11, true},  // rau_pca_mig_payload
+  {41, -1, 0, DpiSig::CREDIT, 1, false},  // rau_pca_mig_credit
+  {41, -1, 0, DpiSig::STALL, 1, false},  // rau_pca_mig_stall
+  {41, -1, 0, DpiSig::TID, 64, true},  // rau_pca_mig_tid
+  {42, -1, 0, DpiSig::VALID, 1, false},  // miu_rau_ready_valid
+  {42, -1, 0, DpiSig::PAYLOAD, 5, false},  // miu_rau_ready_payload
+  {42, -1, 0, DpiSig::CREDIT, 1, true},  // miu_rau_ready_credit
+  {42, -1, 0, DpiSig::STALL, 1, true},  // miu_rau_ready_stall
+  {42, -1, 0, DpiSig::TID, 64, false},  // miu_rau_ready_tid
+  {43, -1, 0, DpiSig::VALID, 1, true},  // rau_miu_cta_valid
+  {43, -1, 0, DpiSig::PAYLOAD, 229, true},  // rau_miu_cta_payload
+  {43, -1, 0, DpiSig::CREDIT, 1, false},  // rau_miu_cta_credit
+  {43, -1, 0, DpiSig::STALL, 1, false},  // rau_miu_cta_stall
+  {43, -1, 0, DpiSig::TID, 64, true},  // rau_miu_cta_tid
+  {47, -1, 0, DpiSig::VALID, 1, false},  // syu_rau_ready_valid
+  {47, -1, 0, DpiSig::PAYLOAD, 5, false},  // syu_rau_ready_payload
+  {47, -1, 0, DpiSig::CREDIT, 1, true},  // syu_rau_ready_credit
+  {47, -1, 0, DpiSig::STALL, 1, true},  // syu_rau_ready_stall
+  {47, -1, 0, DpiSig::TID, 64, false},  // syu_rau_ready_tid
+  {48, -1, 0, DpiSig::VALID, 1, true},  // rau_syu_alloc_valid
+  {48, -1, 0, DpiSig::PAYLOAD, 58, true},  // rau_syu_alloc_payload
+  {48, -1, 0, DpiSig::CREDIT, 1, false},  // rau_syu_alloc_credit
+  {48, -1, 0, DpiSig::STALL, 1, false},  // rau_syu_alloc_stall
+  {48, -1, 0, DpiSig::TID, 64, true},  // rau_syu_alloc_tid
+  {50, -1, 0, DpiSig::VALID, 1, false},  // cru_rau_cfg_valid
+  {50, -1, 0, DpiSig::PAYLOAD, 74, false},  // cru_rau_cfg_payload
+  {50, -1, 0, DpiSig::CREDIT, 1, true},  // cru_rau_cfg_credit
+  {50, -1, 0, DpiSig::STALL, 1, true},  // cru_rau_cfg_stall
+  {50, -1, 0, DpiSig::TID, 64, false},  // cru_rau_cfg_tid
 };
 inline constexpr DpiPort kDpiPorts_syu[] = {
-  {42, -1, 0, DpiSig::VALID, 1, false},  // ooe_syu_bar_valid
-  {42, -1, 0, DpiSig::PAYLOAD, 13, false},  // ooe_syu_bar_payload
-  {42, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_syu_bar_credit
-  {42, -1, 0, DpiSig::STALL, 1, true},  // ooe_syu_bar_stall
-  {42, -1, 0, DpiSig::TID, 64, false},  // ooe_syu_bar_tid
-  {43, -1, 0, DpiSig::VALID, 1, true},  // syu_ooe_rel_valid
-  {43, -1, 0, DpiSig::PAYLOAD, 36, true},  // syu_ooe_rel_payload
-  {43, -1, 0, DpiSig::CREDIT, 1, false},  // syu_ooe_rel_credit
-  {43, -1, 0, DpiSig::STALL, 1, false},  // syu_ooe_rel_stall
-  {43, -1, 0, DpiSig::TID, 64, true},  // syu_ooe_rel_tid
-  {44, -1, 0, DpiSig::VALID, 1, false},  // rau_syu_alloc_valid
-  {44, -1, 0, DpiSig::PAYLOAD, 15, false},  // rau_syu_alloc_payload
-  {44, -1, 0, DpiSig::CREDIT, 1, true},  // rau_syu_alloc_credit
-  {44, -1, 0, DpiSig::STALL, 1, true},  // rau_syu_alloc_stall
-  {44, -1, 0, DpiSig::TID, 64, false},  // rau_syu_alloc_tid
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
+  {44, -1, 0, DpiSig::VALID, 1, false},  // ooe_syu_bar_valid
+  {44, -1, 0, DpiSig::PAYLOAD, 111, false},  // ooe_syu_bar_payload
+  {44, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_syu_bar_credit
+  {44, -1, 0, DpiSig::STALL, 1, true},  // ooe_syu_bar_stall
+  {44, -1, 0, DpiSig::TID, 64, false},  // ooe_syu_bar_tid
+  {45, -1, 0, DpiSig::VALID, 1, true},  // syu_ooe_rel_valid
+  {45, -1, 0, DpiSig::PAYLOAD, 5, true},  // syu_ooe_rel_payload
+  {45, -1, 0, DpiSig::CREDIT, 1, false},  // syu_ooe_rel_credit
+  {45, -1, 0, DpiSig::STALL, 1, false},  // syu_ooe_rel_stall
+  {45, -1, 0, DpiSig::TID, 64, true},  // syu_ooe_rel_tid
+  {46, -1, 0, DpiSig::VALID, 1, true},  // syu_fet_rel_valid
+  {46, -1, 0, DpiSig::PAYLOAD, 37, true},  // syu_fet_rel_payload
+  {46, -1, 0, DpiSig::CREDIT, 1, false},  // syu_fet_rel_credit
+  {46, -1, 0, DpiSig::STALL, 1, false},  // syu_fet_rel_stall
+  {46, -1, 0, DpiSig::TID, 64, true},  // syu_fet_rel_tid
+  {47, -1, 0, DpiSig::VALID, 1, true},  // syu_rau_ready_valid
+  {47, -1, 0, DpiSig::PAYLOAD, 5, true},  // syu_rau_ready_payload
+  {47, -1, 0, DpiSig::CREDIT, 1, false},  // syu_rau_ready_credit
+  {47, -1, 0, DpiSig::STALL, 1, false},  // syu_rau_ready_stall
+  {47, -1, 0, DpiSig::TID, 64, true},  // syu_rau_ready_tid
+  {48, -1, 0, DpiSig::VALID, 1, false},  // rau_syu_alloc_valid
+  {48, -1, 0, DpiSig::PAYLOAD, 58, false},  // rau_syu_alloc_payload
+  {48, -1, 0, DpiSig::CREDIT, 1, true},  // rau_syu_alloc_credit
+  {48, -1, 0, DpiSig::STALL, 1, true},  // rau_syu_alloc_stall
+  {48, -1, 0, DpiSig::TID, 64, false},  // rau_syu_alloc_tid
 };
 inline constexpr DpiPort kDpiPorts_pca[] = {
+  {0, -1, 0, DpiSig::FABRIC, 1, false},  // kill_valid
+  {1, -1, 0, DpiSig::FABRIC, 32, false},  // kill_warp_mask
+  {2, -1, 0, DpiSig::FABRIC, 2, false},  // kill_epoch
+  {3, -1, 0, DpiSig::FABRIC, 1, true},  // kill_ack
+  {4, -1, 0, DpiSig::FABRIC, 2, true},  // kill_ack_epoch
   {35, -1, 0, DpiSig::VALID, 1, false},  // rcu_pca_mig_valid
   {35, -1, 0, DpiSig::PAYLOAD, 1034, false},  // rcu_pca_mig_payload
   {35, -1, 0, DpiSig::CREDIT, 1, true},  // rcu_pca_mig_credit
@@ -1304,12 +1466,12 @@ inline constexpr DpiPort kDpiPorts_pca[] = {
   {36, -1, 0, DpiSig::STALL, 1, false},  // pca_rcu_mig_stall
   {36, -1, 0, DpiSig::TID, 64, true},  // pca_rcu_mig_tid
   {37, -1, 0, DpiSig::VALID, 1, false},  // fet_pca_mig_valid
-  {37, -1, 0, DpiSig::PAYLOAD, 389, false},  // fet_pca_mig_payload
+  {37, -1, 0, DpiSig::PAYLOAD, 1056, false},  // fet_pca_mig_payload
   {37, -1, 0, DpiSig::CREDIT, 1, true},  // fet_pca_mig_credit
   {37, -1, 0, DpiSig::STALL, 1, true},  // fet_pca_mig_stall
   {37, -1, 0, DpiSig::TID, 64, false},  // fet_pca_mig_tid
   {38, -1, 0, DpiSig::VALID, 1, true},  // pca_fet_mig_valid
-  {38, -1, 0, DpiSig::PAYLOAD, 389, true},  // pca_fet_mig_payload
+  {38, -1, 0, DpiSig::PAYLOAD, 1056, true},  // pca_fet_mig_payload
   {38, -1, 0, DpiSig::CREDIT, 1, false},  // pca_fet_mig_credit
   {38, -1, 0, DpiSig::STALL, 1, false},  // pca_fet_mig_stall
   {38, -1, 0, DpiSig::TID, 64, true},  // pca_fet_mig_tid
@@ -1318,18 +1480,23 @@ inline constexpr DpiPort kDpiPorts_pca[] = {
   {40, -1, 0, DpiSig::CREDIT, 1, false},  // pca_rau_mig_done_credit
   {40, -1, 0, DpiSig::STALL, 1, false},  // pca_rau_mig_done_stall
   {40, -1, 0, DpiSig::TID, 64, true},  // pca_rau_mig_done_tid
+  {41, -1, 0, DpiSig::VALID, 1, false},  // rau_pca_mig_valid
+  {41, -1, 0, DpiSig::PAYLOAD, 11, false},  // rau_pca_mig_payload
+  {41, -1, 0, DpiSig::CREDIT, 1, true},  // rau_pca_mig_credit
+  {41, -1, 0, DpiSig::STALL, 1, true},  // rau_pca_mig_stall
+  {41, -1, 0, DpiSig::TID, 64, false},  // rau_pca_mig_tid
 };
 inline constexpr DpiPort kDpiPorts_cru[] = {
-  {45, -1, 0, DpiSig::VALID, 1, false},  // ooe_cru_fault_valid
-  {45, -1, 0, DpiSig::PAYLOAD, 172, false},  // ooe_cru_fault_payload
-  {45, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_cru_fault_credit
-  {45, -1, 0, DpiSig::STALL, 1, true},  // ooe_cru_fault_stall
-  {45, -1, 0, DpiSig::TID, 64, false},  // ooe_cru_fault_tid
-  {46, -1, 0, DpiSig::VALID, 1, true},  // cru_rau_cfg_valid
-  {46, -1, 0, DpiSig::PAYLOAD, 74, true},  // cru_rau_cfg_payload
-  {46, -1, 0, DpiSig::CREDIT, 1, false},  // cru_rau_cfg_credit
-  {46, -1, 0, DpiSig::STALL, 1, false},  // cru_rau_cfg_stall
-  {46, -1, 0, DpiSig::TID, 64, true},  // cru_rau_cfg_tid
+  {49, -1, 0, DpiSig::VALID, 1, false},  // ooe_cru_fault_valid
+  {49, -1, 0, DpiSig::PAYLOAD, 172, false},  // ooe_cru_fault_payload
+  {49, -1, 0, DpiSig::CREDIT, 1, true},  // ooe_cru_fault_credit
+  {49, -1, 0, DpiSig::STALL, 1, true},  // ooe_cru_fault_stall
+  {49, -1, 0, DpiSig::TID, 64, false},  // ooe_cru_fault_tid
+  {50, -1, 0, DpiSig::VALID, 1, true},  // cru_rau_cfg_valid
+  {50, -1, 0, DpiSig::PAYLOAD, 74, true},  // cru_rau_cfg_payload
+  {50, -1, 0, DpiSig::CREDIT, 1, false},  // cru_rau_cfg_credit
+  {50, -1, 0, DpiSig::STALL, 1, false},  // cru_rau_cfg_stall
+  {50, -1, 0, DpiSig::TID, 64, true},  // cru_rau_cfg_tid
 };
 inline constexpr DpiPort kDpiPorts_exb[] = {
   {25, -1, 0, DpiSig::VALID, 1, false},  // mlc_exb_req_valid
@@ -1347,11 +1514,11 @@ inline constexpr DpiPort kDpiPorts_exb[] = {
   {27, -1, 0, DpiSig::CREDIT, 1, false},  // exb_ext_out_credit
   {27, -1, 0, DpiSig::STALL, 1, false},  // exb_ext_out_stall
   {27, -1, 0, DpiSig::TID, 64, true},  // exb_ext_out_tid
-  {47, -1, 0, DpiSig::VALID, 1, false},  // ext_exb_in_valid
-  {47, -1, 0, DpiSig::PAYLOAD, 1176, false},  // ext_exb_in_payload
-  {47, -1, 0, DpiSig::CREDIT, 1, true},  // ext_exb_in_credit
-  {47, -1, 0, DpiSig::STALL, 1, true},  // ext_exb_in_stall
-  {47, -1, 0, DpiSig::TID, 64, false},  // ext_exb_in_tid
+  {51, -1, 0, DpiSig::VALID, 1, false},  // ext_exb_in_valid
+  {51, -1, 0, DpiSig::PAYLOAD, 1176, false},  // ext_exb_in_payload
+  {51, -1, 0, DpiSig::CREDIT, 1, true},  // ext_exb_in_credit
+  {51, -1, 0, DpiSig::STALL, 1, true},  // ext_exb_in_stall
+  {51, -1, 0, DpiSig::TID, 64, false},  // ext_exb_in_tid
 };
 inline constexpr DpiPort kDpiPorts_ext[] = {
   {27, -1, 0, DpiSig::VALID, 1, false},  // exb_ext_out_valid
@@ -1359,26 +1526,26 @@ inline constexpr DpiPort kDpiPorts_ext[] = {
   {27, -1, 0, DpiSig::CREDIT, 1, true},  // exb_ext_out_credit
   {27, -1, 0, DpiSig::STALL, 1, true},  // exb_ext_out_stall
   {27, -1, 0, DpiSig::TID, 64, false},  // exb_ext_out_tid
-  {47, -1, 0, DpiSig::VALID, 1, true},  // ext_exb_in_valid
-  {47, -1, 0, DpiSig::PAYLOAD, 1176, true},  // ext_exb_in_payload
-  {47, -1, 0, DpiSig::CREDIT, 1, false},  // ext_exb_in_credit
-  {47, -1, 0, DpiSig::STALL, 1, false},  // ext_exb_in_stall
-  {47, -1, 0, DpiSig::TID, 64, true},  // ext_exb_in_tid
+  {51, -1, 0, DpiSig::VALID, 1, true},  // ext_exb_in_valid
+  {51, -1, 0, DpiSig::PAYLOAD, 1176, true},  // ext_exb_in_payload
+  {51, -1, 0, DpiSig::CREDIT, 1, false},  // ext_exb_in_credit
+  {51, -1, 0, DpiSig::STALL, 1, false},  // ext_exb_in_stall
+  {51, -1, 0, DpiSig::TID, 64, true},  // ext_exb_in_tid
 };
 
 inline constexpr DpiType kDpiTypes[] = {
-  {"fet", kDpiPorts_fet, 90, 4786, 2508},
-  {"dec", kDpiPorts_dec, 70, 3532, 1720},
-  {"ooe", kDpiPorts_ooe, 220, 7740, 4261},
-  {"rcu", kDpiPorts_rcu, 460, 35666, 23882},
+  {"fet", kDpiPorts_fet, 100, 6310, 3196},
+  {"dec", kDpiPorts_dec, 75, 3646, 1783},
+  {"ooe", kDpiPorts_ooe, 245, 8305, 4423},
+  {"rcu", kDpiPorts_rcu, 465, 39541, 27725},
   {"lane", kDpiPorts_lane, 10, 518, 107},
-  {"miu", kDpiPorts_miu, 195, 35822, 16869},
-  {"spm", kDpiPorts_spm, 40, 10576, 4400},
-  {"dcu", kDpiPorts_dcu, 60, 12966, 6635},
+  {"miu", kDpiPorts_miu, 245, 40576, 17286},
+  {"spm", kDpiPorts_spm, 45, 10614, 4403},
+  {"dcu", kDpiPorts_dcu, 80, 13250, 6911},
   {"mlc", kDpiPorts_mlc, 40, 6974, 3465},
-  {"rau", kDpiPorts_rau, 55, 1282, 842},
-  {"syu", kDpiPorts_syu, 15, 265, 105},
-  {"pca", kDpiPorts_pca, 25, 3187, 1628},
+  {"rau", kDpiPorts_rau, 75, 1765, 1157},
+  {"syu", kDpiPorts_syu, 30, 589, 249},
+  {"pca", kDpiPorts_pca, 35, 4637, 2300},
   {"cru", kDpiPorts_cru, 10, 380, 141},
   {"exb", kDpiPorts_exb, 20, 4841, 2441},
   {"ext", kDpiPorts_ext, 10, 2535, 1243},

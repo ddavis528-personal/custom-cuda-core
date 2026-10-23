@@ -71,5 +71,7 @@ module ccv_pca (
 `ifdef CCV_TRACE
   assign pca_rau_mig_done_tid = '0;
 `endif
+  assign rau_pca_mig_credit = '0;
+  assign rau_pca_mig_stall = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

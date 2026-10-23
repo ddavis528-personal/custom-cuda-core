@@ -30,7 +30,9 @@
 // caught: drop-free (frees never reach the RTL), extra-alloc (one more
 // request than the model made, in a cycle that has one) and no-lead (a
 // free's lead is never driven, so the free bits are not clocked for it).
-// Usage: freelist_tb [seeds]
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
+// Usage: freelist_tb [seeds] | freelist_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_freelist.h"
 #include "verilated.h"
@@ -47,19 +49,13 @@
 using ccv::ooe::Core;
 using ccv::ooe::FreeVec;
 
-int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &));
-
 namespace {
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_freelist> dut;
 std::string control;
 uint64_t current = 0;   // the serial of the core being followed
 bool desync = false;     // a core whose pool size differs from the RTL's: skipped
-CgRun cg;                // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
-// In a clock-gating run the idle cycles turn the RTL's bank order where the
-// model's does not, so the two refill differently: each model entry maps to
-// the entry the RTL granted in its place, and frees go through the map.
-std::vector<int> rtl_of;
+CgRun cg;                // --cg <scenario> <vcd>: the scenario, and its VCD (cg_trace.h)
 // The model's edge the RTL takes next: its state before, its allocations
 // and frees (none before a core's first hook).
 bool have_prev = false;
@@ -95,55 +91,7 @@ void tick() {
   cg.dump();
 }
 
-// An idle cycle: no allocation, no free, no lead.
-void idleTick() {
-  dut->alloc_req_cq01h = 0;
-  dut->free_l_cq00h = 0;
-  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
-  tick();
-}
-
 bool lead(const std::vector<unsigned> &next_fr) { return !next_fr.empty() && control != "no-lead"; }
-
-// A clock-gating run's edge: the model's allocations, as many as the RTL's
-// buffer holds, and the last edge's frees of entries the RTL granted, one
-// tick late so that their lead goes a tick before them.
-void cgEdge(const FreeVec &fv) {
-  const auto &al = fv.cycleAllocs();
-  const auto &fr = fv.cycleFrees();
-  dut->ooe_core_clk = 0;
-  dut->eval();
-  const unsigned req = std::min<unsigned>({unsigned(al.size()), unsigned(dut->avail_cq02h), FL_A});
-  dut->alloc_req_cq01h = (1u << req) - 1u;
-  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
-  for (unsigned p : prev_fr)
-    if (rtl_of[p] >= 0) {
-      setBit(dut->free_mask_cq01h, unsigned(rtl_of[p]), true);
-      rtl_of[p] = -1;
-    }
-  prev_fr.clear();
-  for (unsigned p : fr)
-    if (rtl_of[p] >= 0) prev_fr.push_back(p);
-  dut->free_l_cq00h = !prev_fr.empty();
-  dut->eval();
-  for (unsigned k = 0; k != req; ++k) rtl_of[al[k]] = int(getField(dut->alloc_idx_cq02h, k * W, W));
-  tick();
-  if (cg.gaps() && !prev_fr.empty()) {
-    // The frees go at the first gap tick, their lead already given.
-    dut->alloc_req_cq01h = 0;
-    dut->free_l_cq00h = 0;
-    for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
-    for (unsigned p : prev_fr) {
-      setBit(dut->free_mask_cq01h, unsigned(rtl_of[p]), true);
-      rtl_of[p] = -1;
-    }
-    prev_fr.clear();
-    tick();
-    for (unsigned g = 1; g < cg.gaps(); ++g) idleTick();
-  } else {
-    for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
-  }
-}
 
 void fail(const char *what, unsigned a, unsigned b) {
   if (++mismatches <= 5) std::fprintf(stderr, "cycle %llu: %s (rtl %u, model %u)\n", cycles, what, a, b);
@@ -160,18 +108,17 @@ void hook(const Core &c) {
     dut->free_l_cq00h = 0;
     for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
     // The reset is flopped before use (RST-1): the state resets at the
-    // edge after the one that captures it.
+    // edge after the one that captures it, and again at the next, the first
+    // driven: the model's first clock, which refills nothing (FreeVec).
     dut->ooe_rst_r00h = 1;
     tick();
-    dut->ooe_rst_r00h = 0;
     tick();
-    rtl_of.assign(FL_N, -1);
+    dut->ooe_rst_r00h = 0;
     have_prev = false;
     prev_al.clear();
     prev_fr.clear();
   }
   if (desync) { ++skipped; return; }
-  if (cg.on()) { cgEdge(fv); return; }
   if (!have_prev) {
     // A core's first hook: nothing to take yet. Its frees would need a lead
     // during reset, but nothing is allocated before them.
@@ -243,25 +190,9 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_freelist>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    dut->free_l_cq00h = 0;
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) idleTick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestRandomPreHooked(seeds, hook);
+  if (cg.on()) cg.open(*dut, vcd);
+  const int model_fails = cg.run(seeds, hook, nullptr);
+  cg.close();
   dut->final();
   std::printf("freelist_tb pool=%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu frees=%llu "
               "skipped=%llu mismatches=%llu model_failures=%d\n",

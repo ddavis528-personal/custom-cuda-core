@@ -1,0 +1,119 @@
+{
+ "module": "ooe_go",
+ "ports": {
+  "hv_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "ha_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "px_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "unmet_g_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "unmet_p_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "run_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "reach_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "ret_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "hold_l_cq00h": {
+   "arrival": 11.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): a lead, its producer's register D by 11"
+  },
+  "rbusy_l_cq00h": {
+   "arrival": 11.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): a lead, its producer's register D by 11"
+  },
+  "sq_l_cq00h": {
+   "arrival": 11.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "OA's response OI-66 (OA tab rev 174): a lead, its producer's register D by 11"
+  },
+  "take_cq02h": {
+   "required": 14.0,
+   "by": "OA",
+   "date": "2026-10-21",
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 155): rename's take counts at the go's 14, decq's deq_n arrival"
+  },
+  "lane_v_cq02h": {
+   "required": 16.7,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
+  },
+  "lane_c_cq02h": {
+   "required": 16.7,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "The design doc's rename-go paragraph (OA-21, OA-22): 'Depth from registered state: take counts 14.0 NGD, lanes into the stage register 16.7'"
+  },
+  "dq_ev_cq01h": {
+   "arrival": 8.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "rob_en_cq01h": {
+   "arrival": 8.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "pool_en_cq01h": {
+   "arrival": 8.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "wb_cq02h": {
+   "required": 17.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-67 (OA tab rev 185): confirmed at 17. Each candidate's writers before it in lane order (16.5 NGD after the flops), lane-selected by Rename 1 as each lane's name index."
+  },
+  "wt_cq02h": {
+   "required": 21.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-67 (OA tab rev 185): required at 21, to match ooe_freelist's alloc_req by 21: the cycle's taken writers per class, the free lists' requests (21.0 NGD after the flops)."
+  }
+ }
+}

@@ -1,0 +1,239 @@
+{
+ "module": "ooe_rename",
+ "ports": {
+  "hv_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "ha_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "px_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "unmet_g_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "unmet_p_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "run_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "reach_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "ret_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+  },
+  "hold_l_cq00h": {
+   "arrival": 11.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): a lead, its producer's register D by 11"
+  },
+  "rbusy_l_cq00h": {
+   "arrival": 11.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): a lead, its producer's register D by 11"
+  },
+  "sq_l_cq00h": {
+   "arrival": 11.0,
+   "by": "OA",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): OA's response OI-66 (OA tab rev 174): a lead, its producer's register D by 11"
+  },
+  "dq_ev_cq01h": {
+   "arrival": 8.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "rob_en_cq01h": {
+   "arrival": 8.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "pool_en_cq01h": {
+   "arrival": 8.0,
+   "by": "OI",
+   "date": "2026-10-22",
+   "why": "ooe_go's (straight to it): A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "c_src_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "c_dst_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "c_pguard_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "c_pdst_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "c_pq_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "c_br_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "c_ckpt_cq01h": {
+   "arrival": 2.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "decq's output register, as hv and ha (OA's response OI-66, rev 174: every source a flop output); the first R heads' rename fields, read by ooe_headrd and ooe_ren1 (for OA to confirm)"
+  },
+  "rat_cq02h": {
+   "arrival": 4.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "ooe_rat's rat_cq02h, required there at 4: OA's response OI-46 (reopened; OA tab, 2026-10-19): with the read in ooe_rename, ooe_rat's flops drive rat straight out, and 4 covers fanout buffering across its flops"
+  },
+  "gfree_l_cq00h": {
+   "arrival": 8.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_freelist's free_l (straight to it): OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: the ROB's retire decision into the lead flops"
+  },
+  "pfree_l_cq00h": {
+   "arrival": 8.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_freelist's free_l (straight to it): OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: the ROB's retire decision into the lead flops"
+  },
+  "gfree_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_freelist's free_mask (straight to it): OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: the retire-stage register"
+  },
+  "pfree_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_freelist's free_mask (straight to it): OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: the retire-stage register"
+  },
+  "take_cq02h": {
+   "required": 14.0,
+   "by": "OA",
+   "date": "2026-10-21",
+   "why": "ooe_go's take (straight from it): OA's response OI-65 (OA tab, 2026-10-21, rev 155): rename's take counts at the go's 14, decq's deq_n arrival"
+  },
+  "q_v_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_v_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_slot_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_slot_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_dst_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_dst_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_gwe_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_gwe_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_pdst_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_pdst_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_pwe_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_pwe_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_br_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_br_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_ckpt_cq03h": {
+   "required": 2.0,
+   "by": "OA",
+   "date": "2026-10-20",
+   "why": "ooe_rat's pw_ckpt_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_gname_cq03h": {
+   "required": 3.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 3, ooe_rat's pw_gname and pw_pname arrival (rev 185), met with the one-hot name index (measured 2.6); ooe_rat's paths from them are 11.3 and 10.1 NGD"
+  },
+  "q_pname_cq03h": {
+   "required": 3.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 3, ooe_rat's pw_gname and pw_pname arrival (rev 185), met with the one-hot name index (measured 2.6); ooe_rat's paths from them are 11.3 and 10.1 NGD"
+  },
+  "q_g_cq03h": {
+   "required": 6.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 6, into Rename 2 (ooe_rendep's gsn and psn, 17.9 and 18.4 NGD to its flops), met with the one-hot name index (measured 5.6)"
+  },
+  "q_p_cq03h": {
+   "required": 6.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 6, into Rename 2 (ooe_rendep's gsn and psn, 17.9 and 18.4 NGD to its flops), met with the one-hot name index (measured 5.6)"
+  }
+ }
+}

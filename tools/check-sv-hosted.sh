@@ -43,7 +43,7 @@ if [ ! -x "$SKEL" ] || [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
   exit 1
 fi
 
-CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
+CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
 GATE="rtl/clk/ccv_common_clk.sv $(python3 tools/ccv_ctech.py | tr '\n' ' ')"
 SV="rtl/ccv_assert_pkg.sv $CHK $GATE rtl/top/dpi/*.sv rtl/phys/ccv_common_rpt.sv rtl/top/wrap/*.sv rtl/top/ccv_top.sv test/top/tb_ext.sv test/top/tb_sv_hosted.sv"
 INC="-Irtl/include -Irtl/generated -Irtl/top/ports"
@@ -75,6 +75,8 @@ if ! verilator --binary -j 0 --assert --timing -Wno-fatal -Wno-TIMESCALEMOD \
 fi
 SVH="$B/svh_vo/ccv-svh"
 say "SV-hosted build: 45 blocks + EXTERNAL as shims" "PASS"
+# --build-only: the binary alone, for tools/regen.sh (the walkthrough runs it).
+[ "${1:-}" = "--build-only" ] && exit $fail
 
 # One run on each host. $1 kernel, $2 tag, then extra args as "cpp|sv" pairs.
 cpp() { "$SKEL" --kernel "$B/oracle/$1/oracle.jsonl" "${@:2}" 2>/dev/null; }
@@ -99,6 +101,36 @@ for k in $(ls -d test/kernels/*/ | xargs -n1 basename); do
     say "$k: SV-hosted == C++-hosted" "PASS ($n events, $(grep -oE 'cycles=[0-9]+' "$B/svh_sv_$k.log"))"
   else
     bad "$k: SV-hosted == C++-hosted" "${why#; }"
+  fi
+done
+
+# -- the swap (TI-24), both hosts: RAU, OOE, RCU, FET and PCA each move a
+# warp out and back through their own ports only, so the SV top must agree
+# event for event. stall and swap are built to park and restore their warp
+# 0, so they must; vadd4 parks only where its stalls reach the threshold,
+# and the hosts must agree on it either way (their summary lines). provswap
+# restores provisionally and demotes the provisional warp again
+# (CCV_RAU_READY=0, RAU spec rev 25), at OOE's thresholds as check-kernel
+# runs it.
+for k in stall vadd4 swap provswap; do
+  t="${k}_demote"
+  cfg=""
+  rdy=1
+  [ "$k" = provswap ] && cfg=demote_mlc_miss=150,demote_fallback=150 rdy=0
+  CCV_RAU_READY=$rdy CCV_OOE_CONFIG=$cfg CCV_RAU_DEMOTE=mlc cpp "$k" --trace "$B/svh_cpp_$t.ccvtrace" >"$B/svh_cpp_$t.log"
+  CCV_RAU_READY=$rdy CCV_OOE_CONFIG=$cfg CCV_RAU_DEMOTE=mlc svh "$k" "+ccv_trace=$B/svh_sv_$t.ccvtrace" >"$B/svh_sv_$t.log"
+  why=""
+  grep -q " violations=0$" "$B/svh_sv_$t.log" || why="$why; checker violations"
+  [ "$k" = vadd4 ] || grep -qE '(^| )restored=[1-9]' "$B/svh_sv_$t.log" || why="$why; nothing restored"
+  [ "$(lines "$B/svh_cpp_$t.log")" = "$(lines "$B/svh_sv_$t.log")" ] ||
+    why="$why; summary lines differ"
+  tr=$(python3 tools/compare-traces.py "$B/svh_cpp_$t.ccvtrace" "$B/svh_sv_$t.ccvtrace")
+  echo "$tr" | head -1 | grep -q "equal=yes" || why="$why; $(echo "$tr" | sed -n 2p | xargs)"
+  n=$(echo "$tr" | head -1 | grep -oE 'records=[0-9]+' | cut -d= -f2)
+  if [ -z "$why" ]; then
+    say "$k swapping: SV-hosted == C++-hosted" "PASS ($n events, $(grep -oE 'restored=[0-9]+' "$B/svh_sv_$t.log" | head -1))"
+  else
+    bad "$k swapping: SV-hosted == C++-hosted" "${why#; }"
   fi
 done
 

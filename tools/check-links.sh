@@ -73,11 +73,20 @@ if [ ! -f "$B/oracle/vadd/oracle.jsonl" ]; then
   exit 1
 fi
 S="$B/links_split"
-rm -rf "$S" && mkdir -p "$S/build"
-for d in rtl sim tools params schema test docs; do cp -r "$d" "$S/"; done
-cp -r "$B/oracle" "$S/build/"
-cp test/phys/links_split.json "$S/params/links.json"
-cd "$S"
+# Everything below runs in the copy, and gen-params --settle rewrites the
+# parameters it finds: a copy or cd that failed would rewrite the real tree's
+# (a full disk once left params/ccv_params.json cut short). So each step must
+# succeed, or nothing more runs.
+split() {
+  rm -rf "$S" && mkdir -p "$S/build" || return 1
+  for d in rtl sim tools params schema test docs; do cp -r "$d" "$S/" || return 1; done
+  cp -r "$B/oracle" "$S/build/" && cp test/phys/links_split.json "$S/params/links.json" &&
+    cd "$S" && [ "$(pwd -P)" != "$(cd "$R" && pwd -P)" ]
+}
+if ! split; then
+  bad "split configuration" "could not make the split tree in $S (disk full?)"
+  exit 1
+fi
 # Parameters first: the contracted latencies derive from the links
 # (CCV_LAT_LANE from the lane channels' stages), and the stubs hold the
 # lanes to them.

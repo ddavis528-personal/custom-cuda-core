@@ -54,7 +54,13 @@ enable_ngd: the latest port's arrival (its <module>.ngd.json, else
 CCV_NGD_BUDGET - CCV_NGD_PORT) plus the mapped cone. It is refused when an
 unnamed input reaches the enable, when the total is over CCV_NGD_CG_EN, or
 when it states less than measured (OI-58, OI-59): CG-2 times the cone alone,
-which is exact only where no input reaches it. Last, the ratchet,
+which is exact only where no input reaches it. A waiver carries its
+threshold and fails again past it (Daniel; OA's response OI-66): a CG-3
+waiver states floor_pct and measured_pct by scenario, the floor no higher
+than the measurement, and clears a gate only while its DCGE holds at the
+floor, and may name one gate of its register by its enable (enable); an allowance waiver, for CG-1's registers written every cycle or
+CG-4's ungated flops, states max_flops and measured_flops, and one flop more
+fails. A waiver without its threshold is refused. Last, the ratchet,
 rtl/cg-ratchet.json, holds the modules written before the rule, and the
 CG-5 and RST-1 findings that stood when those were made; it only shrinks: an
 entry outside its baseline is refused, and so is one with nothing left to
@@ -64,7 +70,9 @@ findings a waiver now takes is reported as superseded, not failed.
 import argparse
 import collections
 import concurrent.futures
+import fcntl
 import glob
+import hashlib
 import importlib.util
 import json
 import os
@@ -155,6 +163,12 @@ NGD_DEFAULT_ARRIVAL = float(param("CCV_NGD_BUDGET")) - float(param("CCV_NGD_PORT
 WAIVER_RULES = ("CG-1", "CG-2", "CG-3", "CG-4", "CG-5", "RST-1")
 WAIVER_KEYS = ("module", "rule", "target", "why", "by", "date")
 CG5_WAIVER_KEYS = ("ports", "enable_ngd")
+# A waiver carries its threshold, failing again past it (Daniel's decision,
+# OA's response OI-66): a CG-3 waiver a DCGE floor per scenario, an
+# allowance waiver -- CG-1's written every cycle, CG-4 -- a flop count. Each
+# states what was measured when it was written, so a gain can tighten it.
+CG3_WAIVER_KEYS = ("floor_pct", "measured_pct")
+FLOPS_WAIVER_KEYS = ("max_flops", "measured_flops")
 DCGE_MIN = float(param("CCV_DCGE_MIN_PCT"))
 MIN_FLOPS = int(param("CCV_CG_MIN_FLOPS"))
 BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
@@ -164,6 +178,56 @@ MODULE_FLOPS = int(param("CCV_CG_MODULE_FLOPS"))
 def run(cmd, cwd=ROOT, **kw):
     return subprocess.run(cmd, cwd=cwd, shell=isinstance(cmd, str),
                           capture_output=True, text=True, **kw)
+
+
+# A Yosys netlist, once per gate: check-cg and check-ngd synthesise each
+# shared unit with the same script, and a big one takes minutes. The key is
+# everything the run reads -- the script, whitespace aside, the files it
+# names, every file in its -I directories, the strict shim and the Yosys
+# version -- so a hit is the netlist the run would write. verify.sh clears
+# the cache before its sections, so the gate synthesises everything itself.
+SYNTH_CACHE = os.path.join(ROOT, "build", "synth-cache")
+_YOSYS_VERSION = []
+
+
+def yosys_json(cmds, out):
+    """Yosys `cmds`, then write_json `out`; from the cache if this script on
+    these files has run before. One run per key at a time, so a second
+    caller waits for the first's netlist instead of making its own. Returns
+    the CompletedProcess of the run (returncode 0 for a hit)."""
+    if not _YOSYS_VERSION:
+        _YOSYS_VERSION.append(run(["yosys", "-V"]).stdout.strip())
+    h = hashlib.sha256()
+    h.update(("\n".join(" ".join(c.split()) for c in cmds) + "\n" + _YOSYS_VERSION[0]).encode())
+    paths = set()
+    shim = shutil.which("yosys")
+    if shim:
+        paths.add(shim)
+    for c in cmds:
+        for t in c.split():
+            if t.startswith("-I") and os.path.isdir(os.path.join(ROOT, t[2:])):
+                d = os.path.join(ROOT, t[2:])
+                paths |= {os.path.join(d, f) for f in os.listdir(d)
+                          if os.path.isfile(os.path.join(d, f))}
+            elif os.path.isfile(os.path.join(ROOT, t)):
+                paths.add(os.path.join(ROOT, t))
+    for f in sorted(paths):
+        h.update(f.encode() + b"\0")
+        with open(f, "rb") as fh:
+            h.update(hashlib.sha256(fh.read()).digest())
+    os.makedirs(SYNTH_CACHE, exist_ok=True)
+    hit = os.path.join(SYNTH_CACHE, h.hexdigest() + ".json")
+    with open(hit + ".lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        if not os.path.exists(hit):
+            r = run(["yosys", "-q", "-p", "; ".join(list(cmds) + ["write_json %s" % out])])
+            if r.returncode:
+                return r
+            shutil.copyfile(out, hit + ".tmp")
+            os.replace(hit + ".tmp", hit)
+            return r
+    shutil.copyfile(hit, out)
+    return subprocess.CompletedProcess([], 0, "", "")
 
 
 def jobs():
@@ -687,9 +751,13 @@ class Netlist:
                 out.add(self._inbit[x])
         return out
 
-    def reset_loads(self):
+    def reset_loads(self, child_resets=None):
         """Where the reset port is used other than on the D pin of a plain
-        flop that captures it, one entry per kind and register, sorted."""
+        flop that captures it, one entry per kind and register, sorted.
+        child_resets: {module: its reset port} for the design modules with a
+        unit of their own: a blackboxed child taking the reset on that port
+        flops it itself, and its unit's RST-1 holds it to that (OI-71)."""
+        child_resets = child_resets or {}
         out = collections.Counter()
         for n, p in self.ports.items():
             if p["direction"] == "output" and self.rbit in p["bits"]:
@@ -707,6 +775,10 @@ class Netlist:
                     reg = re.sub(r"\[\d+\]$", "", self.best(c["connections"]["Q"][0])[0])
                     what = "%s pin of %s" % ({"R": "reset", "E": "enable"}.get(pin, pin), reg)
                 else:
+                    mm = re.match(r"^\\?\$paramod(?:\$[0-9a-f]+)?\\([^\\]+)", c["type"])
+                    mod = mm.group(1) if mm else c["type"].lstrip("\\")
+                    if child_resets.get(mod) == pin:
+                        continue
                     what = "%s pin %s of %s" % (c["type"].lstrip("\\"), pin, cn)
                 out[what] += 1
         return ["%s%s" % (k, " (%d bits)" % v if v > 1 else "") for k, v in sorted(out.items())]
@@ -775,7 +847,11 @@ def depths(nl, nets, work):
     if todo:
         script = "read_library %s; " % GENLIB + " ".join(
             "read_blif %s; strash; dch; map; print_stats;" % f for _, f in todo)
-        r = run(["yosys-abc", "-c", script])
+        # From a file: a module with many gates makes a script longer than
+        # the command line takes (ooe_prodmap's 792).
+        sf = os.path.join(work, "cones.abc")
+        open(sf, "w").write(script.replace("; ", "\n") + "\n")
+        r = run(["yosys-abc", "-f", sf])
         vals = re.findall(r"delay\s*=\s*([0-9.]+)", r.stdout)
         if len(vals) != len(todo):
             raise SystemExit("check-cg: ABC returned %d depths for %d cones:\n%s"
@@ -875,9 +951,8 @@ class Unit:
             cmds.append("chparam %s %s" % (" ".join(
                 "-set %s %s" % (k, v) for k, v in sorted(s["params"].items())), self.module))
         cmds += ["hierarchy -top %s" % self.module, "chformal -remove"] + KEEP_FLOPS + [
-                 "synth -flatten -top %s" % self.module,
-                 "write_json %s" % os.path.join(self.dir, "net.json")]
-        r = run(["yosys", "-q", "-p", "; ".join(cmds)])
+                 "synth -flatten -top %s" % self.module]
+        r = yosys_json(cmds, os.path.join(self.dir, "net.json"))
         if r.returncode:
             raise SystemExit("check-cg: unit %s: yosys failed:\n%s"
                              % (self.name, (r.stdout + r.stderr)[-2000:]))
@@ -1009,7 +1084,8 @@ endmodule
         shutil.rmtree(hd, ignore_errors=True)
         r = run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
                  "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb",
-                 "--Mdir", hd, "-o", "cg_tb", tf, nv]
+                 # A blackboxed design child's assertions name the package (OI-71).
+                 "--Mdir", hd, "-o", "cg_tb", "rtl/ccv_assert_pkg.sv", tf, nv]
                 + [self.spec["blackbox"][k] for k in sorted(self.spec.get("blackbox", {}))])
         if r.returncode:
             raise SystemExit("check-cg: unit %s: harness build failed:\n%s"
@@ -1148,6 +1224,8 @@ class Finding:
         self.flops, self.budgetable = flops, budgetable
         self.status = "open"
         self.inputs, self.cone = set(), None    # CG-5: input ports and cone depth
+        self.scenario, self.pct = None, None    # CG-3 on a gate: where, and its DCGE
+        self.enable = None                      # CG-3 on a gate: its enable's name
 
     def __str__(self):
         where = "%s (unit %s)" % (self.module, self.unit) if self.unit else self.module
@@ -1170,11 +1248,13 @@ def unit_findings(u):
                 continue
             v = dcge(u, key, sc)
             if v is not None and v < DCGE_MIN:
-                out.append(Finding("CG-3", u.module, g.best,
-                                   "%s changes on %.0f%% of its %d enabled cycles in %s, "
-                                   "under %g%% (en: %s)"
-                                   % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
-                                      g.en_name), u.name, len(g.q), True))
+                f = Finding("CG-3", u.module, g.best,
+                            "%s changes on %.0f%% of its %d enabled cycles in %s, "
+                            "under %g%% (en: %s)"
+                            % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
+                               g.en_name), u.name, len(g.q), True)
+                f.scenario, f.pct, f.enable = sc, v, g.en_name
+                out.append(f)
     for c, dep in sorted(u.icg_depth.items()):
         if dep > NGD_MAX:
             out.append(Finding("CG-2", u.module, {c},
@@ -1183,7 +1263,12 @@ def unit_findings(u):
     return out
 
 
-def source_findings(u):
+def child_resets(units):
+    """{module: its reset port} for every unit's module (OI-71)."""
+    return {x.module: x.spec["reset"].lstrip("!") for x in units if x.spec.get("reset")}
+
+
+def source_findings(u, resets=None):
     """CG-5 and RST-1, from the netlist alone (Daniel, 2026-10-18).
     CG-5: every clock gate's enable cone, and every explicit ICG's, starts
     only at the module's own flops. An input there is another module's
@@ -1210,7 +1295,7 @@ def source_findings(u):
             f.inputs, f.cone = set(ins), getattr(u, "icg_depth", {}).get(c)
             out.append(f)
     if nl.rbit is not None:
-        loads = nl.reset_loads()
+        loads = nl.reset_loads(resets)
         if loads:
             name = u.spec["reset"].lstrip("!")
             out.append(Finding("RST-1", u.module, {name}, "reset %s is used before it is "
@@ -1605,6 +1690,50 @@ def cg5_waiver_refusal(w, f, arrivals=None):
     return None
 
 
+def cg3_waiver_refusal(w, f):
+    """Why a CG-3 waiver cannot take gate finding f, or None (OI-66): it
+    states floor_pct and measured_pct by scenario, the floor no higher than
+    the measurement, and clears the gate only while its DCGE in f's scenario
+    holds at the floor or above."""
+    floors, meas = w.get("floor_pct"), w.get("measured_pct")
+    if not isinstance(floors, dict) or not isinstance(meas, dict):
+        return "it states no floor_pct and measured_pct by scenario"
+    sc = f.scenario
+    if sc not in floors or sc not in meas:
+        return "it states no floor_pct or measured_pct for %s" % sc
+    floor, at = float(floors[sc]), float(meas[sc])
+    if floor > at:
+        return "its %s floor %g%% is over the %g%% it was measured at" % (sc, floor, at)
+    if f.pct < floor - 1e-9:
+        return ("the gate changes on %.1f%% of its enabled cycles in %s, under the waiver's "
+                "floor %g%%" % (f.pct, sc, floor))
+    return None
+
+
+def flops_waiver_refusal(w, f):
+    """Why an allowance waiver cannot take finding f, a CG-1 register
+    written every cycle or CG-4's flops outside any gate, or None (OI-66):
+    it states max_flops and measured_flops, and one flop more is refused."""
+    try:
+        most, _ = int(w["max_flops"]), int(w["measured_flops"])
+    except (KeyError, TypeError, ValueError):
+        return "it states no max_flops and measured_flops"
+    if f.flops > most:
+        return "%d flop(s), over its max_flops %d" % (f.flops, most)
+    return None
+
+
+def waiver_refusal(w, f, arrivals=None):
+    """Why waiver w cannot take finding f, by rule, or None."""
+    if f.rule == "CG-5":
+        return cg5_waiver_refusal(w, f, arrivals)
+    if f.rule == "CG-3" and f.scenario is not None:
+        return cg3_waiver_refusal(w, f)
+    if f.rule in ("CG-1", "CG-4") and f.budgetable:
+        return flops_waiver_refusal(w, f)
+    return None
+
+
 def load(path, key):
     return json.load(open(path))[key] if os.path.exists(path) else ([] if key == "waivers" else {})
 
@@ -1628,13 +1757,26 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
                 continue
             if not any(reg_is(r, w.get("target", "")) for r in f.regs):
                 continue
+            # A CG-3 waiver may name one gate of its register by its enable
+            # (OA's response OI-66): one register gated per slot, each slot's
+            # gate held to its own floor.
+            if w.get("enable") is not None and w["enable"] != f.enable:
+                continue
             w["_used"] = True
-            why = cg5_waiver_refusal(w, f, arrivals) if f.rule == "CG-5" else None
+            why = waiver_refusal(w, f, arrivals)
             if why:
                 fails.append("waiver %s %s %s refused: %s" % (w["module"], w["rule"],
                                                               w["target"], why))
             else:
                 f.status = "waived"
+                # A gain since the waiver was written: its floor may tighten.
+                if f.rule == "CG-3" and f.scenario is not None:
+                    at = float(w["measured_pct"][f.scenario])
+                    if f.pct >= at + 1:
+                        lines.append("  waiver: %s %s %s measures %.1f%% in %s, over the "
+                                     "%g%% it records; its floor may tighten"
+                                     % (w["module"], w["rule"], w["target"], f.pct,
+                                        f.scenario, at))
             break
     for f in findings:
         if f.status == "open" and f.module in ratchet:
@@ -1760,9 +1902,17 @@ def report(u, verbose):
             print("    ICG                %4.1f NGD  %s's enable" % (dep, c))
 
 
+def unmeasured(units):
+    """A unit its bench could not run fails rather than being skipped: every
+    scenario is checked traffic (DA, 2026-10-21), so a bench that fails one
+    has found a difference, and the unit's DCGE was never measured."""
+    return ["%s not measured: %s" % (u.name, u.errors[0].splitlines()[0]) for u in units if u.errors]
+
+
 def main_check(only=None, verbose=False):
     modules = design_modules()
     units = load_units()
+    resets = child_resets(units)
     if only:
         units = [u for u in units if u.name == only]
         if not units:
@@ -1783,7 +1933,7 @@ def main_check(only=None, verbose=False):
     for u in measured(units, lambda u: u.measure(), pool, queue_el):
         report(u, verbose)
         if u.nl is not None:
-            findings += source_findings(u)
+            findings += source_findings(u, resets)
         if u.errors:
             continue
         findings += unit_findings(u) + scenario_findings(u)
@@ -1791,13 +1941,14 @@ def main_check(only=None, verbose=False):
     if only:
         for f in findings:
             print("    " + str(f))
-        return 0
+        return 1 if unmeasured(units) else 0
     parts = partitions(modules)
     fails, lines = policy(findings, modules, units, waivers, ratchet, parts=parts,
                           known=modules, fratchet=fratchet)
     more, over = crosscheck(findings, units, modules, elaborated=elaborated)
     lines += more
     fails += over
+    fails += unmeasured(units)
     for l in lines:
         print("  " + l)
     if not parts:
@@ -1870,6 +2021,13 @@ def selftest():
             sys.stderr.write("check-cg selftest: %s\n" % x)
         return 1
     allu = list(units.values())
+    # Control: a unit whose bench fails a scenario is a failure, not a skip.
+    failing = Unit({"name": "fx_fails", "module": "cg_fx_good", "files": ["test/cg/fixtures/cg_fx_good.sv"],
+                    "clock": "clk", "reset": "rst",
+                    "bench": {"run": "exit 1", "scope": "tb_cg_fixture.u_good"}}, "selftest")
+    failing.measure()
+    if not unmeasured([failing]):
+        bad.append("a unit whose bench fails was not reported")
 
     def findings():
         out = []
@@ -1951,9 +2109,16 @@ def selftest():
         return fails, fs
 
     # 10. Waivers: one that excuses a finding clears it; one that excuses
-    #     nothing is refused.
-    w_ok = {"module": "cg_fx_dcge", "rule": "CG-3", "target": "hit_q", "why": "control",
-            "by": "TI", "date": "2026-10-16"}
+    #     nothing is refused. hit_q's DCGE by scenario, and d_q's flops,
+    #     are the thresholds the waivers below state (OI-66).
+    hit_dcge = {f.scenario: f.pct for f in has("CG-3", "cg_fx_dcge", "hit_q")}
+    hit_floor = {"floor_pct": dict(hit_dcge), "measured_pct": dict(hit_dcge)}
+    d_flops = max((f.flops for f in has("CG-1", "cg_fx_form", "d_q")), default=0)
+    d_most = {"max_flops": d_flops, "measured_flops": d_flops}
+    expect(hit_dcge and d_flops, "no CG-3 finding on hit_q or CG-1 on d_q to waive: %s, %s"
+           % (hit_dcge, d_flops))
+    w_ok = dict({"module": "cg_fx_dcge", "rule": "CG-3", "target": "hit_q", "why": "control",
+                 "by": "TI", "date": "2026-10-16"}, **hit_floor)
     fails, _ = run_policy(("cg_fx_good", "cg_fx_dcge"), [w_ok])
     expect(not fails, "a waiver did not clear its finding: %s" % fails)
     w_stale = {"module": "cg_fx_good", "rule": "CG-3", "target": "d_q", "why": "control",
@@ -2038,6 +2203,20 @@ def selftest():
            "RST-1 missed the reset port used before a flop: %s" % [str(f) for f in r1])
     expect(not has("RST-1", "cg_fx_good", None) and not has("CG-5", "cg_fx_good", None),
            "a flopped reset and a flopped valid were refused")
+    #     A blackboxed design child with its own unit flops the reset it takes
+    #     on its own reset port (OI-71): the parent passes it there, and on
+    #     any other pin still refuses it; with no unit for the child, both.
+    pu = Unit({"name": "fx_parent", "module": "cg_fx_parent",
+               "files": ["test/cg/fixtures/cg_fx_parent.sv"], "clock": "clk", "reset": "rst",
+               "blackbox": {"cg_fx_good": "test/cg/fixtures/cg_fx_good.sv"}}, "selftest")
+    pu.synth()
+    pu.measure_depth()
+    pr = has("RST-1", "cg_fx_parent", None, source_findings(pu, {"cg_fx_good": "rst"}))
+    expect(pr and "pin in_v of u_bad" in pr[0].msg and "u_ok" not in pr[0].msg,
+           "RST-1 took a child's data pin, or refused its own reset port: %s" % [str(f) for f in pr])
+    pr = has("RST-1", "cg_fx_parent", None, source_findings(pu))
+    expect(pr and "pin rst of u_ok" in pr[0].msg,
+           "RST-1 passed a reset into a child with no unit of its own: %s" % [str(f) for f in pr])
     # 17. CG-5 and RST-1 are ratcheted per finding: one listed is excused and
     #     the module's others are not, nor a gate only some of whose
     #     registers are listed; one that now passes, or one outside the
@@ -2077,10 +2256,51 @@ def selftest():
         return (hit and all(f.status == "waived" for f in hit)
                 and not any(rule in x and reg in x for x in fails)
                 and not any("waiver" in x for x in fails))
-    for rule, mod, reg in (("CG-1", "cg_fx_form", "d_q"), ("CG-2", "cg_fx_deep", "d_q"),
-                           ("CG-3", "cg_fx_dcge", "hit_q")):
-        expect(cleared(rule, mod, reg, (mod,), wv(mod, rule, reg)),
+    for rule, mod, reg, kw in (("CG-1", "cg_fx_form", "d_q", d_most),
+                               ("CG-2", "cg_fx_deep", "d_q", {}),
+                               ("CG-3", "cg_fx_dcge", "hit_q", hit_floor)):
+        expect(cleared(rule, mod, reg, (mod,), wv(mod, rule, reg, **kw)),
                "a %s waiver did not clear %s %s on its own" % (rule, mod, reg))
+    # 19a. Thresholds (Daniel's decision, OA's response OI-66). A CG-3
+    #      waiver at hit_q's measured DCGE clears it; one a point above in
+    #      any scenario fails, the finding standing and the refusal naming
+    #      the floor; a floor over what it records, or none, is refused. An
+    #      allowance waiver at d_q's flop count clears it; one flop under
+    #      fails; none is refused.
+    sc0 = sorted(hit_dcge)[0] if hit_dcge else "idle"
+    up = {sc: v + (1 if sc == sc0 else 0) for sc, v in hit_dcge.items()}
+    for what, kw, want in (
+            ("a point above the measurement", {"floor_pct": up, "measured_pct": up},
+             "under the waiver's floor"),
+            ("over what it records", {"floor_pct": up, "measured_pct": hit_dcge},
+             "is over the"),
+            ("with no floor", {}, "no floor_pct")):
+        fails, fs = run_policy(("cg_fx_dcge",), [wv("cg_fx_dcge", "CG-3", "hit_q", **kw)])
+        expect(any(want in x for x in fails)
+               and any(f.status == "open" for f in has("CG-3", "cg_fx_dcge", "hit_q", fs)),
+               "a CG-3 waiver %s was accepted: %s" % (what, fails))
+    for what, kw, want in (
+            ("one flop under", {"max_flops": d_flops - 1, "measured_flops": d_flops},
+             "over its max_flops"),
+            ("with no flop count", {}, "no max_flops")):
+        fails, fs = run_policy(("cg_fx_form",), [wv("cg_fx_form", "CG-1", "d_q", **kw)])
+        expect(any(want in x for x in fails)
+               and any(f.status == "open" for f in has("CG-1", "cg_fx_form", "d_q", fs)),
+               "an allowance waiver %s was accepted: %s" % (what, fails))
+    #      A CG-3 waiver may name one gate by its enable (OA's response
+    #      OI-66): naming hit_q's clears it; naming another leaves it open
+    #      and excuses nothing.
+    hit_en = {f.enable for f in has("CG-3", "cg_fx_dcge", "hit_q")}
+    expect(len(hit_en) == 1, "hit_q's CG-3 findings name enables %s, not one" % hit_en)
+    en = next(iter(hit_en), "")
+    fails, fs = run_policy(("cg_fx_dcge",), [wv("cg_fx_dcge", "CG-3", "hit_q", enable=en, **hit_floor)])
+    expect(not fails and all(f.status == "waived" for f in has("CG-3", "cg_fx_dcge", "hit_q", fs)),
+           "a CG-3 waiver naming hit_q's enable %s did not clear it: %s" % (en, fails))
+    fails, fs = run_policy(("cg_fx_dcge",), [wv("cg_fx_dcge", "CG-3", "hit_q", enable=en + "_other",
+                                                **hit_floor)])
+    expect(any("excuses nothing" in x for x in fails)
+           and all(f.status == "open" for f in has("CG-3", "cg_fx_dcge", "hit_q", fs)),
+           "a CG-3 waiver naming another enable cleared hit_q: %s" % fails)
     srcmod = {"cg_fx_src": ("f", "", 1)}
     a5 = [f for f in has("CG-5", "cg_fx_src", "a_q", sf) if f.regs >= {"a_q", "a2_q"}]
     d5 = has("CG-5", "cg_fx_src", "d_q", sf)
@@ -2198,13 +2418,33 @@ def selftest():
     bare = elaborate("fx_bare", "ngd_fx_split_bare", kf)["total"]
     expect(kept == bare + 6, "(* keep *) copies of a 6-bit register were merged, or unmarked "
            "ones were not: %d flops kept, %d bare" % (kept, bare))
+    # 20. The synthesis cache: a header the script reads only through -I
+    # changes, and the cache must miss, not hand back the old netlist.
+    inc = os.path.join(BUILD, "fixture", "cache_inc")
+    os.makedirs(inc, exist_ok=True)
+    top = os.path.join(BUILD, "fixture", "cache_top.sv")
+    with open(top, "w") as fh:
+        fh.write('`include "cache_w.svh"\nmodule cache_top(input logic clk, input logic [W-1:0] d,'
+                 ' output logic [W-1:0] q);\n  always_ff @(posedge clk) q <= d;\nendmodule\n')
+    widths = []
+    for w in (3, 5):
+        with open(os.path.join(inc, "cache_w.svh"), "w") as fh:
+            fh.write("localparam int W = %d;\n" % w)
+        nj = os.path.join(BUILD, "fixture", "cache_%d.json" % w)
+        r = yosys_json(["read_verilog -sv -I%s %s" % (os.path.relpath(inc, ROOT),
+                                                     os.path.relpath(top, ROOT)),
+                        "synth -flatten -top cache_top"], nj)
+        widths.append(sum(1 for c in json.load(open(nj))["modules"]["cache_top"]["cells"].values()
+                          if "DFF" in c["type"].upper()) if not r.returncode else -1)
+    expect(widths == [3, 5], "the synthesis cache handed back a netlist after an -I header "
+           "changed: %s flops, want [3, 5]" % widths)
     for x in bad:
         sys.stderr.write("check-cg selftest: %s\n" % x)
     if not bad:
         print("  form, names, enable depth, DCGE, small groups, replay, scenarios, waivers, "
               "ratchet, coverage, module and block budgets, kept and replayed flop counts, "
-              "enable sources and the reset, repeater instantiations, kept copies (%d controls)"
-              % checks)
+              "enable sources and the reset, repeater instantiations, kept copies, the "
+              "synthesis cache (%d controls)" % checks)
     return 1 if bad else 0
 
 

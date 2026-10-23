@@ -62,4 +62,29 @@ module ccv_reference #(
   // inversion is combinational, so it advances nothing.
   assign out_r_cy01h_b = ~mid_cy01h[0];
 
+  // CCV-L29: every net of a sequential block module is tagged, and what is
+  // not a net needs no tag: a struct's field, a function's local and a
+  // procedural block's local. A generate block's net is a net, tagged.
+  typedef struct packed { logic valid; logic [3:0] data; } ref_pay_t;
+  ref_pay_t   pay_cy01h;
+  logic [3:0] sum_cy01h;
+  function automatic logic [3:0] inc(input logic [3:0] v);
+    logic [3:0] r;
+    r = v + 4'd1;
+    return r;
+  endfunction
+  always_comb begin
+    logic [3:0] acc;
+    acc       = mid_cy01h;
+    sum_cy01h = inc(acc);
+  end
+  always_comb begin
+    pay_cy01h.valid = 1'b1;
+    pay_cy01h.data  = sum_cy01h;
+  end
+  for (genvar g = 0; g < 2; g++) begin : g_par
+    logic par_cy01h;
+    assign par_cy01h = ^mid_cy01h[g * 2 +: 2];
+  end
+
 endmodule

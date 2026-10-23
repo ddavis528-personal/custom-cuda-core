@@ -96,21 +96,33 @@ enum Channel : uint16_t {
   CH_RAU_FET_MIG = 39,
   /// pca -> rau, 1/cycle
   CH_PCA_RAU_MIG_DONE = 40,
+  /// rau -> pca, 1/cycle
+  CH_RAU_PCA_MIG = 41,
+  /// miu -> rau, 1/cycle
+  CH_MIU_RAU_READY = 42,
   /// rau -> miu, 1/cycle
-  CH_RAU_MIU_CTA = 41,
+  CH_RAU_MIU_CTA = 43,
   /// ooe -> syu, 1/cycle
-  CH_OOE_SYU_BAR = 42,
+  CH_OOE_SYU_BAR = 44,
   /// syu -> ooe, 1/cycle
-  CH_SYU_OOE_REL = 43,
+  CH_SYU_OOE_REL = 45,
+  /// syu -> fet, 1/cycle
+  CH_SYU_FET_REL = 46,
+  /// syu -> rau, 1/cycle
+  CH_SYU_RAU_READY = 47,
   /// rau -> syu, 1/cycle
-  CH_RAU_SYU_ALLOC = 44,
+  CH_RAU_SYU_ALLOC = 48,
   /// ooe -> cru, 1/cycle
-  CH_OOE_CRU_FAULT = 45,
+  CH_OOE_CRU_FAULT = 49,
   /// cru -> rau, 1/cycle
-  CH_CRU_RAU_CFG = 46,
+  CH_CRU_RAU_CFG = 50,
   /// EXTERNAL -> exb, 1/cycle
-  CH_EXT_EXB_IN = 47,
-  kChannelCount = 48,
+  CH_EXT_EXB_IN = 51,
+  /// dcu -> miu, 4/cycle
+  CH_DCU_MIU_FILL_NTC = 52,
+  /// miu -> ooe, 4/cycle
+  CH_MIU_OOE_CMPL_HINT = 53,
+  kChannelCount = 54,
 };
 
 struct ChannelInfo {
@@ -163,31 +175,37 @@ inline const ChannelInfo &channelInfo(Channel c) {
       {"ccv_pca_fet_mig", "pca", "fet", 1},
       {"ccv_rau_fet_mig", "rau", "fet", 1},
       {"ccv_pca_rau_mig_done", "pca", "rau", 1},
+      {"ccv_rau_pca_mig", "rau", "pca", 1},
+      {"ccv_miu_rau_ready", "miu", "rau", 1},
       {"ccv_rau_miu_cta", "rau", "miu", 1},
       {"ccv_ooe_syu_bar", "ooe", "syu", 1},
       {"ccv_syu_ooe_rel", "syu", "ooe", 1},
+      {"ccv_syu_fet_rel", "syu", "fet", 1},
+      {"ccv_syu_rau_ready", "syu", "rau", 1},
       {"ccv_rau_syu_alloc", "rau", "syu", 1},
       {"ccv_ooe_cru_fault", "ooe", "cru", 1},
       {"ccv_cru_rau_cfg", "cru", "rau", 1},
       {"ccv_ext_exb_in", "EXTERNAL", "exb", 1},
+      {"ccv_dcu_miu_fill_ntc", "dcu", "miu", 4},
+      {"ccv_miu_ooe_cmpl_hint", "miu", "ooe", 4},
   };
   return kInfo[static_cast<unsigned>(c)];
 }
 
 static constexpr unsigned kPortsCru = 2;  // 1 in, 1 out
-static constexpr unsigned kPortsDcu = 6;  // 3 in, 3 out
+static constexpr unsigned kPortsDcu = 7;  // 3 in, 4 out
 static constexpr unsigned kPortsDec = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsExb = 4;  // 2 in, 2 out
-static constexpr unsigned kPortsFet = 11;  // 7 in, 4 out
+static constexpr unsigned kPortsFet = 12;  // 8 in, 4 out
 static constexpr unsigned kPortsLane = 2;  // 1 in, 1 out
-static constexpr unsigned kPortsMiu = 12;  // 7 in, 5 out
+static constexpr unsigned kPortsMiu = 15;  // 8 in, 7 out
 static constexpr unsigned kPortsMlc = 8;  // 4 in, 4 out
-static constexpr unsigned kPortsOoe = 16;  // 6 in, 10 out
-static constexpr unsigned kPortsPca = 5;  // 2 in, 3 out
-static constexpr unsigned kPortsRau = 11;  // 4 in, 7 out
+static constexpr unsigned kPortsOoe = 17;  // 7 in, 10 out
+static constexpr unsigned kPortsPca = 6;  // 3 in, 3 out
+static constexpr unsigned kPortsRau = 14;  // 6 in, 8 out
 static constexpr unsigned kPortsRcu = 10;  // 6 in, 4 out
 static constexpr unsigned kPortsSpm = 2;  // 1 in, 1 out
-static constexpr unsigned kPortsSyu = 3;  // 2 in, 1 out
+static constexpr unsigned kPortsSyu = 5;  // 2 in, 3 out
 
 } // namespace ccv
 #endif // CCV_INTERFACES_H

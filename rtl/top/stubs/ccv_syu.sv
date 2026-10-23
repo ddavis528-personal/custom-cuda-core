@@ -57,6 +57,18 @@ module ccv_syu (
 `ifdef CCV_TRACE
   assign syu_ooe_rel_tid = '0;
 `endif
+  assign syu_fet_rel_valid = '0;
+  assign syu_fet_rel_payload = '0;
+  assign syu_fet_rel_wake = '0;
+`ifdef CCV_TRACE
+  assign syu_fet_rel_tid = '0;
+`endif
+  assign syu_rau_ready_valid = '0;
+  assign syu_rau_ready_payload = '0;
+  assign syu_rau_ready_wake = '0;
+`ifdef CCV_TRACE
+  assign syu_rau_ready_tid = '0;
+`endif
   assign rau_syu_alloc_credit = '0;
   assign rau_syu_alloc_stall = '0;
 endmodule

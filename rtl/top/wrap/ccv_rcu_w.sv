@@ -2629,7 +2629,7 @@ module ccv_rcu_w #(
   end
   // ccv_rcu_miu_addr, source end
   if (RPT_RCU_MIU_ADDR > 0) begin : g_rpt_rcu_miu_addr
-    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(2151)) u_rpt_rcu_miu_addr (
+    ccv_common_rpt #(.STAGES(RPT_RCU_MIU_ADDR), .SLOTS(4), .PAYLOAD_W(3111)) u_rpt_rcu_miu_addr (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rcu_miu_addr_s3_valid, b_rcu_miu_addr_s2_valid, b_rcu_miu_addr_s1_valid, b_rcu_miu_addr_s0_valid}), .src_payload({b_rcu_miu_addr_s3_payload, b_rcu_miu_addr_s2_payload, b_rcu_miu_addr_s1_payload, b_rcu_miu_addr_s0_payload}),
       .src_wake(b_rcu_miu_addr_wake), .src_credit({b_rcu_miu_addr_s3_credit, b_rcu_miu_addr_s2_credit, b_rcu_miu_addr_s1_credit, b_rcu_miu_addr_s0_credit}), .src_stall({b_rcu_miu_addr_s3_stall, b_rcu_miu_addr_s2_stall, b_rcu_miu_addr_s1_stall, b_rcu_miu_addr_s0_stall}),
@@ -2673,7 +2673,7 @@ module ccv_rcu_w #(
   end
   // ccv_rau_rcu_mig, destination end
   if (RPT_RAU_RCU_MIG > 0) begin : g_rpt_rau_rcu_mig
-    ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_rcu_mig (
+    ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(6)) u_rpt_rau_rcu_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_rcu_mig_valid}), .src_payload({rau_rcu_mig_payload}),
       .src_wake(rau_rcu_mig_wake), .src_credit({rau_rcu_mig_credit}), .src_stall({rau_rcu_mig_stall}),

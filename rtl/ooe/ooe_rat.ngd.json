@@ -1,47 +1,167 @@
 {
   "module": "ooe_rat",
   "ports": {
-    "ren_slot_cq01h": {
-      "arrival": 11.0,
+    "tk_cq00h": {
+      "arrival": 14.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-10-23",
+      "why": "OA's response OI-70 (OA tab rev 194): data only, so at the take's 14 (OI-65): tk reaches only the D of the lead registers wl and ck, whose flops drive the map and checkpoint enables (CG-2's cone starts there); ooe_rat's path from it fits"
     },
-    "ren_v_cq01h": {
-      "arrival": 11.0,
-      "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
-    },
-    "ren_dst_cq01h": {
+    "hbr_cq00h": {
       "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; decq's output register, the heads' branch fields"
     },
-    "ren_gwe_cq01h": {
+    "hck_cq00h": {
       "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; decq's output register, the heads' branch fields"
     },
-    "ren_pdst_cq01h": {
+    "rstl_cq00h": {
       "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage valids (its restore-allocate lead)"
     },
-    "ren_pwe_cq01h": {
+    "pw_v_cq01h": {
       "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
     },
-    "ren_rst_cq01h": {
+    "pw_slot_cq01h": {
       "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-19",
-      "why": "OA's response OI-46 (OA tab, 2026-10-19): from decq's output register, in NGD from that flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_rst_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_dst_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_gwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_gname_cq01h": {
+      "arrival": 3.0,
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 3: the pending group's new names are bound from rename's Rename 1 register by ooe_ren1n (2.5 NGD), the rest of the group's fields straight from its flops."
+    },
+    "pw_pdst_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_pwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_pname_cq01h": {
+      "arrival": 3.0,
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 3: the pending group's new names are bound from rename's Rename 1 register by ooe_ren1n (2.5 NGD), the rest of the group's fields straight from its flops."
+    },
+    "pw_br_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "pw_ckpt_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+    },
+    "rgl_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the ROB's retire decision into the lead flops"
+    },
+    "rpl_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the ROB's retire decision into the lead flops"
+    },
+    "ret_gwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the retire-stage register"
+    },
+    "ret_dst_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the retire-stage register"
+    },
+    "ret_gname_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the retire-stage register"
+    },
+    "ret_pwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the retire-stage register"
+    },
+    "ret_pdst_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the retire-stage register"
+    },
+    "ret_pname_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; the retire-stage register"
+    },
+    "restore_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; whole-event payloads"
+    },
+    "restore_ckpt_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; whole-event payloads"
+    },
+    "squash_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; whole-event payloads"
+    },
+    "release_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; whole-event payloads"
     },
     "rat_cq02h": {
       "required": 4.0,

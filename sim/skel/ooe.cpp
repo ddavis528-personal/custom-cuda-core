@@ -21,7 +21,7 @@ public:
   Ooe(int inst, Kernel &k) : Stub(inst, k) {
     for (auto &w : rat_) w.fill(ccv::prov::kPhysZero);
     for (unsigned p = 0; p != ccv::prov::kPhysRegs; ++p) free_.push_back(p);
-    k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+    k.ratOf(0);
   }
   const char *kind() const override { return "ooe"; }
 
@@ -38,8 +38,11 @@ private:
     uint32_t taken_mask = 0;
     unsigned ckpt = 0;                     ///< FET's checkpoint, on a branch
     uint32_t mask = 0;                     ///< the PC group's lanes, from FET (A-69)
+    bool final_exit = false;               ///< FET's mark: the warp's last lanes exit (TI-27)
     uint32_t attr = 0;                     ///< sched_attr, from DEC (A-66)
     unsigned mem_op = 0, space = 0, ordering = 0;   ///< DEC's, passed to MIU (A-68)
+    unsigned slot_form = 0, arg_slot = 0;           ///< likewise (TI-31)
+    unsigned local_form = 0;                        ///< likewise (IS-19)
     // Physical names, read from the RAT at dispatch: a register no older
     // instruction of the warp has written is still the zero register (A-64).
     unsigned psrc[3] = {}, pold = 0, pnew = 0, ppguard = 0, ppold = 0;
@@ -60,6 +63,7 @@ private:
   // Identity, shadowed from RAU's table on every activation (Q-38), and the
   // tier-1 slot RAU placed each warp in (A-65).
   uint32_t ctaid_[32] = {}, warp_in_cta_[32] = {};
+  unsigned cta_slot_[32] = {};   ///< each warp's CTA slot, from RAU (TI-34)
   unsigned slot_[32] = {};
   // The GPR RAT: every write takes a fresh physical register from the free
   // list, and the one it replaces goes back when the writer retires -- no
@@ -86,6 +90,7 @@ private:
       slot_[w] = unsigned(get(m.payload, c.rau_ooe, "tier1_id"));
       ctaid_[w] = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
       warp_in_cta_[w] = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
+      cta_slot_[w] = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));   // TI-34
       if (op == kAllocLaunch) {
         // Launch (A-64): every architectural register maps to the zero
         // registers until written. No zeroing traffic, and nothing stale
@@ -97,7 +102,7 @@ private:
         for (bool &b : pw_[w]) b = false;
         // The epoch is not reset: a relaunched warp_id could otherwise meet
         // its predecessor's uops still in flight at the same epoch (A-74).
-        if (w == 0) k_.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
+        if (w == 0) k_.ratOf(0).assign(kArchGprs, ccv::prov::kPhysZero);
       } else if (op != kAllocFree) {
         k_.fail("ooe: restore (alloc_op %u) is not modelled in S1", op);
       }
@@ -213,6 +218,7 @@ private:
       return;
     }
     e.mask = uint32_t(get(u, c.dec_ooe, "group_mask"));
+    e.final_exit = get(u, c.dec_ooe, "final_exit") != 0;
     e.op = opByCode(unsigned(get(u, c.dec_ooe, "opcode")));
     if (!e.op || get(u, c.dec_ooe, "cause") != kFaultNone) {
       k_.fail("ooe: a uop it cannot execute");
@@ -236,6 +242,9 @@ private:
     e.mem_op = unsigned(get(u, c.dec_ooe, "mem_op"));
     e.space = unsigned(get(u, c.dec_ooe, "space"));
     e.ordering = unsigned(get(u, c.dec_ooe, "ordering"));
+    e.slot_form = unsigned(get(u, c.dec_ooe, "slot_form"));
+    e.arg_slot = unsigned(get(u, c.dec_ooe, "arg_slot"));
+    e.local_form = unsigned(get(u, c.dec_ooe, "local_form"));
     // Only a fence carries an ordering; on any other uop it is reserved zero
     // (IS-11, OA's response). sched_attr says which uop is a fence.
     if (e.ordering != 0 && !(attrMem(e.attr) && attrMemKind(e.attr) == kMemKFence))
@@ -253,7 +262,7 @@ private:
       free_.pop_front();
       if (!used_.insert(e.pnew).second) k_.hit("reg_reuse");   // came back from a retire
       rat_[e.warp][e.dst & 15] = e.pnew;
-      if (e.warp == 0) k_.rat0[e.dst & 15] = e.pnew;   // the final compare's map
+      if (e.warp == 0) k_.ratOf(0)[e.dst & 15] = e.pnew;   // the final compare's map
     }
     if (e.pwe) pw_[e.warp][e.pdst & 3] = true;
     e.tag = next_tag_;
@@ -299,7 +308,7 @@ private:
     // ccv_ooe_rcu_issue's slots are resources (S0-S3, P0-P3, R): a lane op
     // and a memop are full width here, so each takes its whole group, its
     // lead slot first and the rest continuation; an RCU op takes R.
-    const unsigned slot = mem ? kSlotP0 : inRcu(e.op->cls) ? kSlotR : kSlotS0;
+    const unsigned slot = mem ? kSlotP0 : execRcu(e.op) ? kSlotR : kSlotS0;
     const unsigned mslot = e.tag % kChans[c.ooe_miu].rate;
     // Merge (A-33): some lane may keep its old value -- the issue mask is
     // not full, or a guard may switch lanes off -- so the old destination is
@@ -334,7 +343,8 @@ private:
     // (the lane ORs its index in), %ctaid itself for selector 1.
     uint32_t imm = e.imm;
     if (e.op->srd_sel >= 0)
-      imm = e.op->or_lane ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
+      imm = e.op->srd_sel == 2 ? e.warp << 5   // %lanectx: the context, core 0 (O-64)
+            : e.op->or_lane    ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
     // Predicate logic's sources go to RCU as physical predicates (TI-1):
     // this stub renames no predicate, so each is its window.
     if (e.op->cls == kPredLogic) {
@@ -394,6 +404,7 @@ private:
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", e.tag);
       put(mo, c.ooe_miu, "warp_id", e.warp);
+      put(mo, c.ooe_miu, "cta_slot", cta_slot_[e.warp]);
       put(mo, c.ooe_miu, "mem_op", e.mem_op);             // DEC's, unexamined (A-68)
       // The issue mask, not the active mask: only RCU holds the predicate
       // values, so only RCU computes active = issue AND guard.
@@ -406,6 +417,9 @@ private:
       put(mo, c.ooe_miu, "scale_en", e.scale_en);
       put(mo, c.ooe_miu, "space", e.space);
       put(mo, c.ooe_miu, "ordering", e.ordering);
+      put(mo, c.ooe_miu, "slot_form", e.slot_form);
+      put(mo, c.ooe_miu, "arg_slot", e.arg_slot);
+      put(mo, c.ooe_miu, "local_form", e.local_form);
       put(mo, c.ooe_miu, "pipes", maskOf(kChw32, 0));   // full width: P0-P3
       send(c.ooe_miu, mslot, mo, e.tid);
     }
@@ -429,9 +443,11 @@ private:
     // No active-lane mask reaches OOE: active_mask is RCU's alone (Q-23),
     // so every group retires with all 32 lanes.
     emit(now_, e.tid, EV_RETIRE, UNIT_OOE, e.warp, e.tag, 0xffffffffu);
-    ++k_.retired;
-    k_.retire_order.push_back(uidSeq(e.tid));
-    if (e.op->cls == kExit) k_.exited = true;
+    if (k_.lastUop(e.tid)) {   // an instruction retires with its last uop (TI-36)
+      ++k_.retired;
+      k_.retire_order.push_back(uidSeq(e.tid));
+    }
+    if (e.op->cls == kExit && e.final_exit) ++k_.exits;
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.
     const unsigned freed = k_.brk == "free-new" ? e.pnew : e.pold;

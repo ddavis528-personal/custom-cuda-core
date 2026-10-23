@@ -132,6 +132,19 @@ def load(chans, cinst, binst, ninst, links_path=None):
                         "%s against %s" % (c["name"][4:], lm[4:],
                                            sorted(tot.get(c["name"], ())),
                                            sorted(tot.get(lm, ()))))
+    # A notice and its partner (OA-23): the lead is counted at the bank's
+    # probe, where each leaves its source's wrapper, and promised at the
+    # receiver, so the two links carry the same stages segment by segment.
+    segs = {}
+    for i, x in enumerate(cinst):
+        segs.setdefault(x["chan"]["name"], set()).add(tuple(s for _, s in out[i]))
+    for c in chans:
+        no = c.get("notice_of")
+        if no and segs.get(c["name"]) != segs.get(no["channel"]):
+            errs.append("%s is a notice of %s, but their stages differ: %s against %s"
+                        % (c["name"][4:], no["channel"][4:],
+                           sorted(segs.get(c["name"], ())),
+                           sorted(segs.get(no["channel"], ()))))
     if errs:
         raise SystemExit("%s: %d problem(s)\n  %s"
                          % (os.path.relpath(p, ROOT), len(errs), "\n  ".join(errs)))

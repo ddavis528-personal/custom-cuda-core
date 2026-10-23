@@ -5,7 +5,8 @@
       "name": "ooe_wake",
       "module": "ooe_wake",
       "files": [
-        "rtl/ooe/ooe_wake.sv"
+        "rtl/ooe/ooe_wake.sv",
+        "rtl/ooe/ooe_confirm.sv"
       ],
       "params": {
         "N": 45
@@ -82,7 +83,7 @@
       "params": {
         "S": 4,
         "Q": 13,
-        "D": 13,
+        "D": 6,
         "E": 6,
         "R": 4,
         "P": 16
@@ -179,7 +180,87 @@
       "bench": {
         "build": "test/ooe/cg-build.sh ooe_sched {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
-        "scope": "ooe_sched"
+        "scope": "ooe_trio.u_sched"
+      }
+    },
+    {
+      "name": "ooe_prodmap",
+      "module": "ooe_prodmap",
+      "files": [
+        "rtl/ooe/ooe_prodmap.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "A": 4,
+        "NG": 768,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_prodmap {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_prodmap"
+      }
+    },
+    {
+      "name": "ooe_rendep",
+      "module": "ooe_rendep",
+      "files": [
+        "rtl/ooe/ooe_rendep.sv"
+      ],
+      "params": {
+        "N": 45,
+        "A": 4,
+        "NG": 768,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rendep {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_dep"
+      }
+    },
+    {
+      "name": "ooe_go",
+      "module": "ooe_go",
+      "files": [
+        "rtl/ooe/ooe_go.sv"
+      ],
+      "params": {
+        "S": 4,
+        "R": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_go {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_go"
+      }
+    },
+    {
+      "name": "ooe_rename",
+      "module": "ooe_rename",
+      "files": [
+        "rtl/ooe/ooe_headrd.sv",
+        "rtl/ooe/ooe_ren1.sv",
+        "rtl/ooe/ooe_ren1n.sv",
+        "rtl/ooe/ooe_rename.sv"
+      ],
+      "blackbox": {
+        "ooe_go": "rtl/ooe/ooe_go.sv",
+        "ooe_freelist": "rtl/ooe/ooe_freelist.sv"
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rename {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_rename"
       }
     }
   ]

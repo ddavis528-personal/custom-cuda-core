@@ -34,6 +34,7 @@ python3 tools/lint-rtl.py --schema=rtl/lint/bad_interfaces.json \
   rtl/lint/bad_if_checker.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_feedback.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -142,13 +143,81 @@ gfail=0
 # no semicolon, each of which drew a finding before OI-40.
 for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
-         rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv; do
+         rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
+         rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (6 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (8 fixtures)" "PASS"
+
+# CCV-L23's feedback (OI-65): a register reading state of its own stage, and
+# a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
+# an assign is checked like an always_comb, and a D-side net read anywhere but
+# a flop is held to the plain arithmetic.
+for want in "mis_cy02h is at stage 02 but combinational" "dnx_cy00h is at stage 00 but combinational"; do
+  if grep -q "CCV-L23: $want" "$TMP/bad.log"; then
+    say "CCV-L23 refuses ${want%% is at*}" "PASS"
+  else
+    bad "CCV-L23 refuses ${want%% is at*}" "no finding"
+  fi
+done
+
+# CCV-L23's declared feedback (OA's ruling on TI-38): reference_loop.sv's
+# declared back edge passes (above). bad_feedback.sv's are refused: one with
+# no loop behind it, which leaves its stage skip reported; one not an
+# architect's; one for a read its reader does not make; and the same loop as
+# reference_loop's, undeclared, which the arithmetic refuses. Its declared
+# bypass passes too (DA, 2026-10-23; OI-72 (A)), and its if's condition
+# counts; bad_feedback.sv's bypass of another pipeline's register, its bypass
+# at an offset the tags do not give, and a stage-03 read in an if's condition
+# (OI's rev 188) are refused.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 feedback refused: $what" "PASS"
+  else
+    bad "CCV-L23 feedback refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+no loop behind it|req_cy02h reads stat_cy03h as declared feedback, but no register
+...and its stage skip reported|req_cy02h is at stage 02 but sequential logic over stage(s) 01,03
+not an architect's|own_cy02h's declared feedback reads are not an architect's
+a read not made|x_cy02h is declared to read stat_cy03h as feedback, but does not read it
+the loop undeclared|rqn_cy02h is at stage 02 but sequential logic over stage(s) 01,03
+a listed hop that does not exist|q1_cy02h's declared loop q1_cy02h -> q3_cy04h for its read of q3_cy04h does not hold: no hop from q1_cy02h to q3_cy04h
+a longer loop not listed|p1_cy02h reads p3_cy04h as declared feedback, but no register
+an alignment the tags do not give|m1_cy02h (stage 02) reads m2_cy03h (stage 03), 1 stage(s) ahead, but is declared 2 ahead
+...and its stage skip reported|m1_cy02h is at stage 02 but sequential logic over stage(s) 01,03
+no alignment declared|n1_cy02h's declared feedback reads give no alignment
+a bypass whose source is off the reader's path|offp_cy02h's declared bypass of o2_cy03h does not hold: o2_cy03h is not loaded, 1 register(s) back, from a register at offp_cy02h's stage 02 in its pipeline
+...and its stage skip reported|offp_cy02h is at stage 02 but combinational logic over stage(s) 02,03
+a bypass at an offset the tags do not give|wofs_cy02h (stage 02) reads w2_cy03h (stage 03), 1 stage(s) ahead, but its bypass is declared 2 ahead
+a stage-03 read in an if's condition|cnd_cy02h is at stage 02 but combinational logic over stage(s) 02,03
+WANT
+
+# CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
+# generate block are refused, and ccv_reference.sv's struct field, function
+# local and procedural local, which are not nets, pass (above). Its ratchet
+# excuses what it lists, and refuses an entry that now meets the rule and one
+# that was not in the baseline when the rule was made.
+for want in untag_nx untag_par; do
+  if grep -q "CCV-L29: net $want of module" "$TMP/bad.log"; then
+    say "CCV-L29 refuses $want, untagged" "PASS"
+  else
+    bad "CCV-L29 refuses $want, untagged" "no finding"
+  fi
+done
+python3 tools/lint-rtl.py --stage-ratchet=rtl/lint/bad_stage_ratchet.json \
+  --stage-baseline=rtl/lint/bad_stage_baseline.json rtl/lint/bad_naming.sv >"$TMP/ratchet.log" 2>&1
+if ! grep -q "CCV-L29: net untag_nx" "$TMP/ratchet.log" &&
+   grep -q "CCV-L29: net untag_par" "$TMP/ratchet.log" &&
+   grep -q "CCV-L29: ccv_reference out_d_cy01h now meets the rule" "$TMP/ratchet.log" &&
+   grep -q "CCV-L29: ccv_reference never_listed was not on the list" "$TMP/ratchet.log"; then
+  say "CCV-L29's ratchet excuses, and only shrinks" "PASS (listed excused; tagged and unlisted refused)"
+else
+  bad "CCV-L29's ratchet" "$(grep 'CCV-L29' "$TMP/ratchet.log" | head -3)"
+fi
 
 # CCV-L26 makes a claim about a TOOL, so the claim is checked against the
 # tool: every form the rule permits must actually be readable by Yosys. A

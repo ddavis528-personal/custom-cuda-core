@@ -23,6 +23,66 @@
         "GW": 10,
         "PW": 6
       }
+    },
+    {
+      "name": "ooe_rencred",
+      "module": "ooe_rencred",
+      "files": [
+        "rtl/ooe/ooe_rencred.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "NR": 30,
+        "NM": 15,
+        "NG": 192,
+        "NP": 48,
+        "RD": 32,
+        "F": 4
+      }
+    },
+    {
+      "name": "ooe_headrd",
+      "module": "ooe_headrd",
+      "files": [
+        "rtl/ooe/ooe_headrd.sv"
+      ],
+      "params": {
+        "S": 4,
+        "SL": 1,
+        "R": 4,
+        "A": 4,
+        "GW": 10,
+        "PW": 6
+      }
+    },
+    {
+      "name": "ooe_ren1",
+      "module": "ooe_ren1",
+      "files": [
+        "rtl/ooe/ooe_ren1.sv"
+      ],
+      "params": {
+        "S": 4,
+        "R": 4,
+        "GW": 10,
+        "PW": 6,
+        "LC": 2,
+        "XW": 1
+      }
+    },
+    {
+      "name": "ooe_ren1n",
+      "module": "ooe_ren1n",
+      "files": [
+        "rtl/ooe/ooe_ren1n.sv"
+      ],
+      "params": {
+        "R": 4,
+        "GW": 10,
+        "GR": 8,
+        "PW": 6
+      }
     }
   ]
 }

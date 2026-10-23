@@ -9,52 +9,59 @@
 static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
   unsigned bad = 0;
   {
-    const Bits b = randomBits(160, seed ^ 0u);
+    const Bits b = randomBits(162, seed ^ 0u);
     put(p.c0, b);
     p.eval();
-    bad += check("ccv_fet_dec_instr", "warp_id", p.c0_f0, b, 155, 5);
-    bad += check("ccv_fet_dec_instr", "tier1_id", p.c0_f1, b, 153, 2);
-    bad += check("ccv_fet_dec_instr", "pc", p.c0_f2, b, 89, 64);
-    bad += check("ccv_fet_dec_instr", "group_mask", p.c0_f3, b, 57, 32);
-    bad += check("ccv_fet_dec_instr", "fetch_epoch", p.c0_f4, b, 54, 3);
-    bad += check("ccv_fet_dec_instr", "instr", p.c0_f5, b, 6, 48);
-    bad += check("ccv_fet_dec_instr", "length", p.c0_f6, b, 4, 2);
-    bad += check("ccv_fet_dec_instr", "checkpoint_id", p.c0_f7, b, 2, 2);
-    bad += check("ccv_fet_dec_instr", "pred_taken", p.c0_f8, b, 1, 1);
-    bad += check("ccv_fet_dec_instr", "fetch_fault", p.c0_f9, b, 0, 1);
+    bad += check("ccv_fet_dec_instr", "warp_id", p.c0_f0, b, 157, 5);
+    bad += check("ccv_fet_dec_instr", "tier1_id", p.c0_f1, b, 155, 2);
+    bad += check("ccv_fet_dec_instr", "pc", p.c0_f2, b, 91, 64);
+    bad += check("ccv_fet_dec_instr", "group_mask", p.c0_f3, b, 59, 32);
+    bad += check("ccv_fet_dec_instr", "fetch_epoch", p.c0_f4, b, 56, 3);
+    bad += check("ccv_fet_dec_instr", "instr", p.c0_f5, b, 8, 48);
+    bad += check("ccv_fet_dec_instr", "length", p.c0_f6, b, 6, 2);
+    bad += check("ccv_fet_dec_instr", "checkpoint_id", p.c0_f7, b, 4, 2);
+    bad += check("ccv_fet_dec_instr", "pred_taken", p.c0_f8, b, 3, 1);
+    bad += check("ccv_fet_dec_instr", "fetch_fault", p.c0_f9, b, 2, 1);
+    bad += check("ccv_fet_dec_instr", "final_exit", p.c0_f10, b, 1, 1);
+    bad += check("ccv_fet_dec_instr", "all_waiting", p.c0_f11, b, 0, 1);
   }
   {
-    const Bits b = randomBits(219, seed ^ 7919u);
+    const Bits b = randomBits(229, seed ^ 7919u);
     put(p.c1, b);
     p.eval();
-    bad += check("ccv_dec_ooe_uop", "warp_id", p.c1_f0, b, 214, 5);
-    bad += check("ccv_dec_ooe_uop", "pc", p.c1_f1, b, 150, 64);
-    bad += check("ccv_dec_ooe_uop", "group_mask", p.c1_f2, b, 118, 32);
-    bad += check("ccv_dec_ooe_uop", "fetch_epoch", p.c1_f3, b, 115, 3);
-    bad += check("ccv_dec_ooe_uop", "uop_class", p.c1_f4, b, 112, 3);
-    bad += check("ccv_dec_ooe_uop", "sched_attr", p.c1_f5, b, 96, 16);
-    bad += check("ccv_dec_ooe_uop", "mem_op", p.c1_f6, b, 92, 4);
-    bad += check("ccv_dec_ooe_uop", "space", p.c1_f7, b, 91, 1);
-    bad += check("ccv_dec_ooe_uop", "ordering", p.c1_f8, b, 86, 5);
-    bad += check("ccv_dec_ooe_uop", "opcode", p.c1_f9, b, 77, 9);
-    bad += check("ccv_dec_ooe_uop", "src_arch", p.c1_f10, b, 69, 8);
-    bad += check("ccv_dec_ooe_uop", "src2_arch", p.c1_f11, b, 65, 4);
-    bad += check("ccv_dec_ooe_uop", "dst_arch", p.c1_f12, b, 61, 4);
-    bad += check("ccv_dec_ooe_uop", "pred_guard", p.c1_f13, b, 59, 2);
-    bad += check("ccv_dec_ooe_uop", "pred_neg", p.c1_f14, b, 58, 1);
-    bad += check("ccv_dec_ooe_uop", "pred_dst", p.c1_f15, b, 56, 2);
-    bad += check("ccv_dec_ooe_uop", "pred_we", p.c1_f16, b, 55, 1);
-    bad += check("ccv_dec_ooe_uop", "src_valid", p.c1_f17, b, 52, 3);
-    bad += check("ccv_dec_ooe_uop", "pred_use", p.c1_f18, b, 50, 2);
-    bad += check("ccv_dec_ooe_uop", "imm_kind", p.c1_f19, b, 48, 2);
-    bad += check("ccv_dec_ooe_uop", "imm", p.c1_f20, b, 16, 32);
-    bad += check("ccv_dec_ooe_uop", "ilen", p.c1_f21, b, 14, 2);
-    bad += check("ccv_dec_ooe_uop", "checkpoint_id", p.c1_f22, b, 12, 2);
-    bad += check("ccv_dec_ooe_uop", "pred_taken", p.c1_f23, b, 11, 1);
-    bad += check("ccv_dec_ooe_uop", "scale_en", p.c1_f24, b, 10, 1);
-    bad += check("ccv_dec_ooe_uop", "cause", p.c1_f25, b, 6, 4);
-    bad += check("ccv_dec_ooe_uop", "fmt_rsv", p.c1_f26, b, 2, 4);
-    bad += check("ccv_dec_ooe_uop", "fmt_opnd", p.c1_f27, b, 0, 2);
+    bad += check("ccv_dec_ooe_uop", "warp_id", p.c1_f0, b, 224, 5);
+    bad += check("ccv_dec_ooe_uop", "pc", p.c1_f1, b, 160, 64);
+    bad += check("ccv_dec_ooe_uop", "group_mask", p.c1_f2, b, 128, 32);
+    bad += check("ccv_dec_ooe_uop", "fetch_epoch", p.c1_f3, b, 125, 3);
+    bad += check("ccv_dec_ooe_uop", "uop_class", p.c1_f4, b, 122, 3);
+    bad += check("ccv_dec_ooe_uop", "sched_attr", p.c1_f5, b, 105, 17);
+    bad += check("ccv_dec_ooe_uop", "mem_op", p.c1_f6, b, 101, 4);
+    bad += check("ccv_dec_ooe_uop", "space", p.c1_f7, b, 100, 1);
+    bad += check("ccv_dec_ooe_uop", "ordering", p.c1_f8, b, 95, 5);
+    bad += check("ccv_dec_ooe_uop", "opcode", p.c1_f9, b, 86, 9);
+    bad += check("ccv_dec_ooe_uop", "src_arch", p.c1_f10, b, 78, 8);
+    bad += check("ccv_dec_ooe_uop", "src2_arch", p.c1_f11, b, 74, 4);
+    bad += check("ccv_dec_ooe_uop", "dst_arch", p.c1_f12, b, 70, 4);
+    bad += check("ccv_dec_ooe_uop", "pred_guard", p.c1_f13, b, 68, 2);
+    bad += check("ccv_dec_ooe_uop", "pred_neg", p.c1_f14, b, 67, 1);
+    bad += check("ccv_dec_ooe_uop", "pred_dst", p.c1_f15, b, 65, 2);
+    bad += check("ccv_dec_ooe_uop", "pred_we", p.c1_f16, b, 64, 1);
+    bad += check("ccv_dec_ooe_uop", "src_valid", p.c1_f17, b, 61, 3);
+    bad += check("ccv_dec_ooe_uop", "pred_use", p.c1_f18, b, 59, 2);
+    bad += check("ccv_dec_ooe_uop", "imm_kind", p.c1_f19, b, 56, 3);
+    bad += check("ccv_dec_ooe_uop", "imm", p.c1_f20, b, 24, 32);
+    bad += check("ccv_dec_ooe_uop", "ilen", p.c1_f21, b, 22, 2);
+    bad += check("ccv_dec_ooe_uop", "checkpoint_id", p.c1_f22, b, 20, 2);
+    bad += check("ccv_dec_ooe_uop", "pred_taken", p.c1_f23, b, 19, 1);
+    bad += check("ccv_dec_ooe_uop", "scale_en", p.c1_f24, b, 18, 1);
+    bad += check("ccv_dec_ooe_uop", "cause", p.c1_f25, b, 14, 4);
+    bad += check("ccv_dec_ooe_uop", "fmt_rsv", p.c1_f26, b, 10, 4);
+    bad += check("ccv_dec_ooe_uop", "fmt_opnd", p.c1_f27, b, 8, 2);
+    bad += check("ccv_dec_ooe_uop", "final_exit", p.c1_f28, b, 7, 1);
+    bad += check("ccv_dec_ooe_uop", "all_waiting", p.c1_f29, b, 6, 1);
+    bad += check("ccv_dec_ooe_uop", "slot_form", p.c1_f30, b, 5, 1);
+    bad += check("ccv_dec_ooe_uop", "arg_slot", p.c1_f31, b, 1, 4);
+    bad += check("ccv_dec_ooe_uop", "local_form", p.c1_f32, b, 0, 1);
   }
   {
     const Bits b = randomBits(175, seed ^ 15838u);
@@ -120,12 +127,12 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_rcu_ooe_done", "branch_mask", p.c5_f2, b, 0, 32);
   }
   {
-    const Bits b = randomBits(2151, seed ^ 47514u);
+    const Bits b = randomBits(3111, seed ^ 47514u);
     put(p.c6, b);
     p.eval();
-    bad += check("ccv_rcu_miu_addr", "rob_tag", p.c6_f0, b, 2144, 7);
-    bad += check("ccv_rcu_miu_addr", "active_mask", p.c6_f1, b, 2112, 32);
-    bad += check("ccv_rcu_miu_addr", "base", p.c6_f2, b, 2048, 64);
+    bad += check("ccv_rcu_miu_addr", "rob_tag", p.c6_f0, b, 3104, 7);
+    bad += check("ccv_rcu_miu_addr", "active_mask", p.c6_f1, b, 3072, 32);
+    bad += check("ccv_rcu_miu_addr", "base_per_lane", p.c6_f2, b, 2048, 1024);
     bad += check("ccv_rcu_miu_addr", "index_per_lane", p.c6_f3, b, 1024, 1024);
     bad += check("ccv_rcu_miu_addr", "store_data", p.c6_f4, b, 0, 1024);
   }
@@ -144,35 +151,40 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_miu_rcu_data", "load_data", p.c7_f8, b, 0, 1024);
   }
   {
-    const Bits b = randomBits(109, seed ^ 63352u);
+    const Bits b = randomBits(121, seed ^ 63352u);
     put(p.c8, b);
     p.eval();
-    bad += check("ccv_ooe_miu_memop", "rob_tag", p.c8_f0, b, 102, 7);
-    bad += check("ccv_ooe_miu_memop", "phys_dst", p.c8_f1, b, 94, 8);
-    bad += check("ccv_ooe_miu_memop", "dst_pos", p.c8_f2, b, 92, 2);
-    bad += check("ccv_ooe_miu_memop", "phys_pred", p.c8_f3, b, 86, 6);
-    bad += check("ccv_ooe_miu_memop", "issue_mask", p.c8_f4, b, 54, 32);
-    bad += check("ccv_ooe_miu_memop", "warp_id", p.c8_f5, b, 49, 5);
-    bad += check("ccv_ooe_miu_memop", "cta_slot", p.c8_f6, b, 46, 3);
-    bad += check("ccv_ooe_miu_memop", "mem_op", p.c8_f7, b, 42, 4);
-    bad += check("ccv_ooe_miu_memop", "chwidth", p.c8_f8, b, 40, 2);
-    bad += check("ccv_ooe_miu_memop", "pipes", p.c8_f9, b, 36, 4);
-    bad += check("ccv_ooe_miu_memop", "disp", p.c8_f10, b, 7, 29);
-    bad += check("ccv_ooe_miu_memop", "scale_en", p.c8_f11, b, 6, 1);
-    bad += check("ccv_ooe_miu_memop", "space", p.c8_f12, b, 5, 1);
-    bad += check("ccv_ooe_miu_memop", "ordering", p.c8_f13, b, 0, 5);
+    bad += check("ccv_ooe_miu_memop", "rob_tag", p.c8_f0, b, 114, 7);
+    bad += check("ccv_ooe_miu_memop", "rs_idx", p.c8_f1, b, 108, 6);
+    bad += check("ccv_ooe_miu_memop", "phys_dst", p.c8_f2, b, 100, 8);
+    bad += check("ccv_ooe_miu_memop", "dst_pos", p.c8_f3, b, 98, 2);
+    bad += check("ccv_ooe_miu_memop", "phys_pred", p.c8_f4, b, 92, 6);
+    bad += check("ccv_ooe_miu_memop", "issue_mask", p.c8_f5, b, 60, 32);
+    bad += check("ccv_ooe_miu_memop", "warp_id", p.c8_f6, b, 55, 5);
+    bad += check("ccv_ooe_miu_memop", "cta_slot", p.c8_f7, b, 52, 3);
+    bad += check("ccv_ooe_miu_memop", "mem_op", p.c8_f8, b, 48, 4);
+    bad += check("ccv_ooe_miu_memop", "chwidth", p.c8_f9, b, 46, 2);
+    bad += check("ccv_ooe_miu_memop", "pipes", p.c8_f10, b, 42, 4);
+    bad += check("ccv_ooe_miu_memop", "disp", p.c8_f11, b, 13, 29);
+    bad += check("ccv_ooe_miu_memop", "scale_en", p.c8_f12, b, 12, 1);
+    bad += check("ccv_ooe_miu_memop", "space", p.c8_f13, b, 11, 1);
+    bad += check("ccv_ooe_miu_memop", "ordering", p.c8_f14, b, 6, 5);
+    bad += check("ccv_ooe_miu_memop", "slot_form", p.c8_f15, b, 5, 1);
+    bad += check("ccv_ooe_miu_memop", "arg_slot", p.c8_f16, b, 1, 4);
+    bad += check("ccv_ooe_miu_memop", "local_form", p.c8_f17, b, 0, 1);
   }
   {
-    const Bits b = randomBits(111, seed ^ 71271u);
+    const Bits b = randomBits(117, seed ^ 71271u);
     put(p.c9, b);
     p.eval();
-    bad += check("ccv_miu_ooe_cmpl", "rob_tag", p.c9_f0, b, 104, 7);
-    bad += check("ccv_miu_ooe_cmpl", "status", p.c9_f1, b, 102, 2);
-    bad += check("ccv_miu_ooe_cmpl", "cause", p.c9_f2, b, 98, 4);
-    bad += check("ccv_miu_ooe_cmpl", "lane_mask", p.c9_f3, b, 66, 32);
-    bad += check("ccv_miu_ooe_cmpl", "address", p.c9_f4, b, 2, 64);
-    bad += check("ccv_miu_ooe_cmpl", "mlc_miss", p.c9_f5, b, 1, 1);
-    bad += check("ccv_miu_ooe_cmpl", "more", p.c9_f6, b, 0, 1);
+    bad += check("ccv_miu_ooe_cmpl", "rob_tag", p.c9_f0, b, 110, 7);
+    bad += check("ccv_miu_ooe_cmpl", "rs_idx", p.c9_f1, b, 104, 6);
+    bad += check("ccv_miu_ooe_cmpl", "status", p.c9_f2, b, 102, 2);
+    bad += check("ccv_miu_ooe_cmpl", "cause", p.c9_f3, b, 98, 4);
+    bad += check("ccv_miu_ooe_cmpl", "lane_mask", p.c9_f4, b, 66, 32);
+    bad += check("ccv_miu_ooe_cmpl", "address", p.c9_f5, b, 2, 64);
+    bad += check("ccv_miu_ooe_cmpl", "mlc_miss", p.c9_f6, b, 1, 1);
+    bad += check("ccv_miu_ooe_cmpl", "more", p.c9_f7, b, 0, 1);
   }
   {
     const Bits b = randomBits(8, seed ^ 79190u);
@@ -182,16 +194,19 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_ooe_miu_retire", "commit_or_discard", p.c10_f1, b, 0, 1);
   }
   {
-    const Bits b = randomBits(109, seed ^ 87109u);
+    const Bits b = randomBits(112, seed ^ 87109u);
     put(p.c11, b);
     p.eval();
-    bad += check("ccv_ooe_fet_redirect", "warp_id", p.c11_f0, b, 104, 5);
-    bad += check("ccv_ooe_fet_redirect", "tier1_id", p.c11_f1, b, 102, 2);
-    bad += check("ccv_ooe_fet_redirect", "checkpoint_id", p.c11_f2, b, 100, 2);
-    bad += check("ccv_ooe_fet_redirect", "taken_mask", p.c11_f3, b, 68, 32);
-    bad += check("ccv_ooe_fet_redirect", "target_pc", p.c11_f4, b, 4, 64);
-    bad += check("ccv_ooe_fet_redirect", "fetch_epoch", p.c11_f5, b, 1, 3);
-    bad += check("ccv_ooe_fet_redirect", "epoch_only", p.c11_f6, b, 0, 1);
+    bad += check("ccv_ooe_fet_redirect", "warp_id", p.c11_f0, b, 107, 5);
+    bad += check("ccv_ooe_fet_redirect", "tier1_id", p.c11_f1, b, 105, 2);
+    bad += check("ccv_ooe_fet_redirect", "checkpoint_id", p.c11_f2, b, 103, 2);
+    bad += check("ccv_ooe_fet_redirect", "taken_mask", p.c11_f3, b, 71, 32);
+    bad += check("ccv_ooe_fet_redirect", "target_pc", p.c11_f4, b, 7, 64);
+    bad += check("ccv_ooe_fet_redirect", "fetch_epoch", p.c11_f5, b, 4, 3);
+    bad += check("ccv_ooe_fet_redirect", "epoch_only", p.c11_f6, b, 3, 1);
+    bad += check("ccv_ooe_fet_redirect", "rewind", p.c11_f7, b, 2, 1);
+    bad += check("ccv_ooe_fet_redirect", "rewind_held", p.c11_f8, b, 1, 1);
+    bad += check("ccv_ooe_fet_redirect", "held_long", p.c11_f9, b, 0, 1);
   }
   {
     const Bits b = randomBits(16, seed ^ 95028u);
@@ -331,36 +346,39 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_exb_ext_out", "tl_out", p.c27_f0, b, 0, 1225);
   }
   {
-    const Bits b = randomBits(186, seed ^ 221732u);
+    const Bits b = randomBits(218, seed ^ 221732u);
     put(p.c28, b);
     p.eval();
-    bad += check("ccv_rau_fet_launch", "warp_id", p.c28_f0, b, 181, 5);
-    bad += check("ccv_rau_fet_launch", "tier1_id", p.c28_f1, b, 179, 2);
-    bad += check("ccv_rau_fet_launch", "start_pc", p.c28_f2, b, 115, 64);
-    bad += check("ccv_rau_fet_launch", "code_bounds", p.c28_f3, b, 11, 104);
-    bad += check("ccv_rau_fet_launch", "asid", p.c28_f4, b, 3, 8);
-    bad += check("ccv_rau_fet_launch", "cta_slot", p.c28_f5, b, 0, 3);
+    bad += check("ccv_rau_fet_launch", "warp_id", p.c28_f0, b, 213, 5);
+    bad += check("ccv_rau_fet_launch", "tier1_id", p.c28_f1, b, 211, 2);
+    bad += check("ccv_rau_fet_launch", "start_pc", p.c28_f2, b, 147, 64);
+    bad += check("ccv_rau_fet_launch", "code_bounds", p.c28_f3, b, 43, 104);
+    bad += check("ccv_rau_fet_launch", "asid", p.c28_f4, b, 35, 8);
+    bad += check("ccv_rau_fet_launch", "cta_slot", p.c28_f5, b, 32, 3);
+    bad += check("ccv_rau_fet_launch", "live_mask", p.c28_f6, b, 0, 32);
   }
   {
-    const Bits b = randomBits(51, seed ^ 229651u);
+    const Bits b = randomBits(54, seed ^ 229651u);
     put(p.c29, b);
     p.eval();
-    bad += check("ccv_rau_ooe_alloc", "warp_id", p.c29_f0, b, 46, 5);
-    bad += check("ccv_rau_ooe_alloc", "tier1_id", p.c29_f1, b, 44, 2);
-    bad += check("ccv_rau_ooe_alloc", "alloc_op", p.c29_f2, b, 42, 2);
-    bad += check("ccv_rau_ooe_alloc", "ctaid", p.c29_f3, b, 10, 32);
-    bad += check("ccv_rau_ooe_alloc", "warp_in_cta", p.c29_f4, b, 5, 5);
-    bad += check("ccv_rau_ooe_alloc", "barrier_count", p.c29_f5, b, 0, 5);
+    bad += check("ccv_rau_ooe_alloc", "warp_id", p.c29_f0, b, 49, 5);
+    bad += check("ccv_rau_ooe_alloc", "tier1_id", p.c29_f1, b, 47, 2);
+    bad += check("ccv_rau_ooe_alloc", "alloc_op", p.c29_f2, b, 45, 2);
+    bad += check("ccv_rau_ooe_alloc", "ctaid", p.c29_f3, b, 13, 32);
+    bad += check("ccv_rau_ooe_alloc", "warp_in_cta", p.c29_f4, b, 8, 5);
+    bad += check("ccv_rau_ooe_alloc", "barrier_count", p.c29_f5, b, 3, 5);
+    bad += check("ccv_rau_ooe_alloc", "cta_slot", p.c29_f6, b, 0, 3);
   }
   {
-    const Bits b = randomBits(16, seed ^ 237570u);
+    const Bits b = randomBits(17, seed ^ 237570u);
     put(p.c30, b);
     p.eval();
-    bad += check("ccv_ooe_rau_status", "warp_id", p.c30_f0, b, 11, 5);
-    bad += check("ccv_ooe_rau_status", "fault_taken", p.c30_f1, b, 10, 1);
-    bad += check("ccv_ooe_rau_status", "stalled", p.c30_f2, b, 9, 1);
-    bad += check("ccv_ooe_rau_status", "mlc_miss_seen", p.c30_f3, b, 8, 1);
-    bad += check("ccv_ooe_rau_status", "retired_since_restore", p.c30_f4, b, 0, 8);
+    bad += check("ccv_ooe_rau_status", "warp_id", p.c30_f0, b, 12, 5);
+    bad += check("ccv_ooe_rau_status", "fault_taken", p.c30_f1, b, 11, 1);
+    bad += check("ccv_ooe_rau_status", "stalled", p.c30_f2, b, 10, 1);
+    bad += check("ccv_ooe_rau_status", "mlc_miss_seen", p.c30_f3, b, 9, 1);
+    bad += check("ccv_ooe_rau_status", "retired_since_restore", p.c30_f4, b, 1, 8);
+    bad += check("ccv_ooe_rau_status", "exited", p.c30_f5, b, 0, 1);
   }
   {
     const Bits b = randomBits(6, seed ^ 245489u);
@@ -370,20 +388,20 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_rau_ooe_demote", "squash_to_retirement", p.c31_f1, b, 0, 1);
   }
   {
-    const Bits b = randomBits(70, seed ^ 253408u);
+    const Bits b = randomBits(71, seed ^ 253408u);
     put(p.c32, b);
     p.eval();
-    bad += check("ccv_ooe_rau_drained", "warp_id", p.c32_f0, b, 65, 5);
-    bad += check("ccv_ooe_rau_drained", "resume_pc", p.c32_f1, b, 1, 64);
-    bad += check("ccv_ooe_rau_drained", "arch_state_ready", p.c32_f2, b, 0, 1);
+    bad += check("ccv_ooe_rau_drained", "warp_id", p.c32_f0, b, 66, 5);
+    bad += check("ccv_ooe_rau_drained", "resume_pc", p.c32_f1, b, 2, 64);
+    bad += check("ccv_ooe_rau_drained", "arch_state_ready", p.c32_f2, b, 1, 1);
+    bad += check("ccv_ooe_rau_drained", "refused", p.c32_f3, b, 0, 1);
   }
   {
-    const Bits b = randomBits(9, seed ^ 261327u);
+    const Bits b = randomBits(6, seed ^ 261327u);
     put(p.c33, b);
     p.eval();
-    bad += check("ccv_rau_rcu_mig", "warp_id", p.c33_f0, b, 4, 5);
-    bad += check("ccv_rau_rcu_mig", "direction", p.c33_f1, b, 3, 1);
-    bad += check("ccv_rau_rcu_mig", "bank_select", p.c33_f2, b, 0, 3);
+    bad += check("ccv_rau_rcu_mig", "warp_id", p.c33_f0, b, 1, 5);
+    bad += check("ccv_rau_rcu_mig", "direction", p.c33_f1, b, 0, 1);
   }
   {
     const Bits b = randomBits(222, seed ^ 269246u);
@@ -413,29 +431,34 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_pca_rcu_mig", "row_data", p.c36_f2, b, 0, 1024);
   }
   {
-    const Bits b = randomBits(389, seed ^ 293003u);
+    const Bits b = randomBits(1056, seed ^ 293003u);
     put(p.c37, b);
     p.eval();
-    bad += check("ccv_fet_pca_mig", "warp_id", p.c37_f0, b, 384, 5);
-    bad += check("ccv_fet_pca_mig", "pcs", p.c37_f1, b, 128, 256);
-    bad += check("ccv_fet_pca_mig", "group_masks", p.c37_f2, b, 0, 128);
+    bad += check("ccv_fet_pca_mig", "warp_id", p.c37_f0, b, 1051, 5);
+    bad += check("ccv_fet_pca_mig", "lane_pcs", p.c37_f1, b, 59, 992);
+    bad += check("ccv_fet_pca_mig", "pc_upper", p.c37_f2, b, 43, 16);
+    bad += check("ccv_fet_pca_mig", "fair_ptr", p.c37_f3, b, 38, 5);
+    bad += check("ccv_fet_pca_mig", "fair_cnt", p.c37_f4, b, 32, 6);
+    bad += check("ccv_fet_pca_mig", "live_mask", p.c37_f5, b, 0, 32);
   }
   {
-    const Bits b = randomBits(389, seed ^ 300922u);
+    const Bits b = randomBits(1056, seed ^ 300922u);
     put(p.c38, b);
     p.eval();
-    bad += check("ccv_pca_fet_mig", "warp_id", p.c38_f0, b, 384, 5);
-    bad += check("ccv_pca_fet_mig", "pcs", p.c38_f1, b, 128, 256);
-    bad += check("ccv_pca_fet_mig", "group_masks", p.c38_f2, b, 0, 128);
+    bad += check("ccv_pca_fet_mig", "warp_id", p.c38_f0, b, 1051, 5);
+    bad += check("ccv_pca_fet_mig", "lane_pcs", p.c38_f1, b, 59, 992);
+    bad += check("ccv_pca_fet_mig", "pc_upper", p.c38_f2, b, 43, 16);
+    bad += check("ccv_pca_fet_mig", "fair_ptr", p.c38_f3, b, 38, 5);
+    bad += check("ccv_pca_fet_mig", "fair_cnt", p.c38_f4, b, 32, 6);
+    bad += check("ccv_pca_fet_mig", "live_mask", p.c38_f5, b, 0, 32);
   }
   {
-    const Bits b = randomBits(11, seed ^ 308841u);
+    const Bits b = randomBits(8, seed ^ 308841u);
     put(p.c39, b);
     p.eval();
-    bad += check("ccv_rau_fet_mig", "warp_id", p.c39_f0, b, 6, 5);
-    bad += check("ccv_rau_fet_mig", "tier1_id", p.c39_f1, b, 4, 2);
-    bad += check("ccv_rau_fet_mig", "direction", p.c39_f2, b, 3, 1);
-    bad += check("ccv_rau_fet_mig", "bank_select", p.c39_f3, b, 0, 3);
+    bad += check("ccv_rau_fet_mig", "warp_id", p.c39_f0, b, 3, 5);
+    bad += check("ccv_rau_fet_mig", "tier1_id", p.c39_f1, b, 1, 2);
+    bad += check("ccv_rau_fet_mig", "direction", p.c39_f2, b, 0, 1);
   }
   {
     const Bits b = randomBits(6, seed ^ 316760u);
@@ -445,65 +468,113 @@ static unsigned probeOnce(Vtb_layout_probe &p, uint64_t seed) {
     bad += check("ccv_pca_rau_mig_done", "direction", p.c40_f1, b, 0, 1);
   }
   {
-    const Bits b = randomBits(101, seed ^ 324679u);
+    const Bits b = randomBits(11, seed ^ 324679u);
     put(p.c41, b);
     p.eval();
-    bad += check("ccv_rau_miu_cta", "cta_slot", p.c41_f0, b, 98, 3);
-    bad += check("ccv_rau_miu_cta", "spm_base", p.c41_f1, b, 81, 17);
-    bad += check("ccv_rau_miu_cta", "spm_limit", p.c41_f2, b, 64, 17);
-    bad += check("ccv_rau_miu_cta", "launch_block_addr", p.c41_f3, b, 0, 64);
+    bad += check("ccv_rau_pca_mig", "warp_id", p.c41_f0, b, 6, 5);
+    bad += check("ccv_rau_pca_mig", "direction", p.c41_f1, b, 5, 1);
+    bad += check("ccv_rau_pca_mig", "pca_place", p.c41_f2, b, 0, 5);
   }
   {
-    const Bits b = randomBits(13, seed ^ 332598u);
+    const Bits b = randomBits(5, seed ^ 332598u);
     put(p.c42, b);
     p.eval();
-    bad += check("ccv_ooe_syu_bar", "warp_id", p.c42_f0, b, 8, 5);
-    bad += check("ccv_ooe_syu_bar", "cta_slot", p.c42_f1, b, 5, 3);
-    bad += check("ccv_ooe_syu_bar", "barrier_id", p.c42_f2, b, 1, 4);
-    bad += check("ccv_ooe_syu_bar", "arrive_or_wait", p.c42_f3, b, 0, 1);
+    bad += check("ccv_miu_rau_ready", "warp_id", p.c42_f0, b, 0, 5);
   }
   {
-    const Bits b = randomBits(36, seed ^ 340517u);
+    const Bits b = randomBits(229, seed ^ 340517u);
     put(p.c43, b);
     p.eval();
-    bad += check("ccv_syu_ooe_rel", "warp_mask_released", p.c43_f0, b, 4, 32);
-    bad += check("ccv_syu_ooe_rel", "barrier_id", p.c43_f1, b, 0, 4);
+    bad += check("ccv_rau_miu_cta", "cta_slot", p.c43_f0, b, 226, 3);
+    bad += check("ccv_rau_miu_cta", "spm_base", p.c43_f1, b, 209, 17);
+    bad += check("ccv_rau_miu_cta", "spm_limit", p.c43_f2, b, 192, 17);
+    bad += check("ccv_rau_miu_cta", "launch_block_addr", p.c43_f3, b, 128, 64);
+    bad += check("ccv_rau_miu_cta", "const_base", p.c43_f4, b, 64, 64);
+    bad += check("ccv_rau_miu_cta", "const_limit", p.c43_f5, b, 0, 64);
   }
   {
-    const Bits b = randomBits(15, seed ^ 348436u);
+    const Bits b = randomBits(111, seed ^ 348436u);
     put(p.c44, b);
     p.eval();
-    bad += check("ccv_rau_syu_alloc", "cta_slot", p.c44_f0, b, 12, 3);
-    bad += check("ccv_rau_syu_alloc", "barrier_base", p.c44_f1, b, 6, 6);
-    bad += check("ccv_rau_syu_alloc", "barrier_count", p.c44_f2, b, 1, 5);
-    bad += check("ccv_rau_syu_alloc", "allocate_or_free", p.c44_f3, b, 0, 1);
+    bad += check("ccv_ooe_syu_bar", "warp_id", p.c44_f0, b, 106, 5);
+    bad += check("ccv_ooe_syu_bar", "cta_slot", p.c44_f1, b, 103, 3);
+    bad += check("ccv_ooe_syu_bar", "barrier_id", p.c44_f2, b, 99, 4);
+    bad += check("ccv_ooe_syu_bar", "bar_kind", p.c44_f3, b, 97, 2);
+    bad += check("ccv_ooe_syu_bar", "issue_mask", p.c44_f4, b, 65, 32);
+    bad += check("ccv_ooe_syu_bar", "guard_mask", p.c44_f5, b, 33, 32);
+    bad += check("ccv_ooe_syu_bar", "phase_mask", p.c44_f6, b, 1, 32);
+    bad += check("ccv_ooe_syu_bar", "held", p.c44_f7, b, 0, 1);
   }
   {
-    const Bits b = randomBits(172, seed ^ 356355u);
+    const Bits b = randomBits(5, seed ^ 356355u);
     put(p.c45, b);
     p.eval();
-    bad += check("ccv_ooe_cru_fault", "cause", p.c45_f0, b, 168, 4);
-    bad += check("ccv_ooe_cru_fault", "pc", p.c45_f1, b, 104, 64);
-    bad += check("ccv_ooe_cru_fault", "lane_mask", p.c45_f2, b, 72, 32);
-    bad += check("ccv_ooe_cru_fault", "address", p.c45_f3, b, 8, 64);
-    bad += check("ccv_ooe_cru_fault", "cta_slot", p.c45_f4, b, 5, 3);
-    bad += check("ccv_ooe_cru_fault", "warp_id", p.c45_f5, b, 0, 5);
+    bad += check("ccv_syu_ooe_rel", "warp_id", p.c45_f0, b, 0, 5);
   }
   {
-    const Bits b = randomBits(74, seed ^ 364274u);
+    const Bits b = randomBits(37, seed ^ 364274u);
     put(p.c46, b);
     p.eval();
-    bad += check("ccv_cru_rau_cfg", "demotion_threshold", p.c46_f0, b, 42, 32);
-    bad += check("ccv_cru_rau_cfg", "progress_threshold", p.c46_f1, b, 10, 32);
-    bad += check("ccv_cru_rau_cfg", "launch_enable", p.c46_f2, b, 9, 1);
-    bad += check("ccv_cru_rau_cfg", "kill_req", p.c46_f3, b, 8, 1);
-    bad += check("ccv_cru_rau_cfg", "kill_grid", p.c46_f4, b, 0, 8);
+    bad += check("ccv_syu_fet_rel", "warp_id", p.c46_f0, b, 32, 5);
+    bad += check("ccv_syu_fet_rel", "lane_mask", p.c46_f1, b, 0, 32);
   }
   {
-    const Bits b = randomBits(1176, seed ^ 372193u);
+    const Bits b = randomBits(5, seed ^ 372193u);
     put(p.c47, b);
     p.eval();
-    bad += check("ccv_ext_exb_in", "tl_in", p.c47_f0, b, 0, 1176);
+    bad += check("ccv_syu_rau_ready", "warp_id", p.c47_f0, b, 0, 5);
+  }
+  {
+    const Bits b = randomBits(58, seed ^ 380112u);
+    put(p.c48, b);
+    p.eval();
+    bad += check("ccv_rau_syu_alloc", "cta_slot", p.c48_f0, b, 55, 3);
+    bad += check("ccv_rau_syu_alloc", "barrier_base", p.c48_f1, b, 49, 6);
+    bad += check("ccv_rau_syu_alloc", "barrier_count", p.c48_f2, b, 44, 5);
+    bad += check("ccv_rau_syu_alloc", "syu_alloc_op", p.c48_f3, b, 42, 2);
+    bad += check("ccv_rau_syu_alloc", "warp_mask", p.c48_f4, b, 10, 32);
+    bad += check("ccv_rau_syu_alloc", "warp_id", p.c48_f5, b, 5, 5);
+    bad += check("ccv_rau_syu_alloc", "last_lanes", p.c48_f6, b, 0, 5);
+  }
+  {
+    const Bits b = randomBits(172, seed ^ 388031u);
+    put(p.c49, b);
+    p.eval();
+    bad += check("ccv_ooe_cru_fault", "cause", p.c49_f0, b, 168, 4);
+    bad += check("ccv_ooe_cru_fault", "pc", p.c49_f1, b, 104, 64);
+    bad += check("ccv_ooe_cru_fault", "lane_mask", p.c49_f2, b, 72, 32);
+    bad += check("ccv_ooe_cru_fault", "address", p.c49_f3, b, 8, 64);
+    bad += check("ccv_ooe_cru_fault", "cta_slot", p.c49_f4, b, 5, 3);
+    bad += check("ccv_ooe_cru_fault", "warp_id", p.c49_f5, b, 0, 5);
+  }
+  {
+    const Bits b = randomBits(74, seed ^ 395950u);
+    put(p.c50, b);
+    p.eval();
+    bad += check("ccv_cru_rau_cfg", "demotion_threshold", p.c50_f0, b, 42, 32);
+    bad += check("ccv_cru_rau_cfg", "progress_threshold", p.c50_f1, b, 10, 32);
+    bad += check("ccv_cru_rau_cfg", "launch_enable", p.c50_f2, b, 9, 1);
+    bad += check("ccv_cru_rau_cfg", "kill_req", p.c50_f3, b, 8, 1);
+    bad += check("ccv_cru_rau_cfg", "kill_grid", p.c50_f4, b, 0, 8);
+  }
+  {
+    const Bits b = randomBits(1176, seed ^ 403869u);
+    put(p.c51, b);
+    p.eval();
+    bad += check("ccv_ext_exb_in", "tl_in", p.c51_f0, b, 0, 1176);
+  }
+  {
+    const Bits b = randomBits(4, seed ^ 411788u);
+    put(p.c52, b);
+    p.eval();
+    bad += check("ccv_dcu_miu_fill_ntc", "req_id", p.c52_f0, b, 0, 4);
+  }
+  {
+    const Bits b = randomBits(13, seed ^ 419707u);
+    put(p.c53, b);
+    p.eval();
+    bad += check("ccv_miu_ooe_cmpl_hint", "rs_idx", p.c53_f0, b, 7, 6);
+    bad += check("ccv_miu_ooe_cmpl_hint", "rob_tag", p.c53_f1, b, 0, 7);
   }
   return bad;
 }

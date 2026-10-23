@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (265 bits,
+// At each edge of its clock: sample every channel signal (589 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (105 bits). Common-port outputs sit inactive, as in
+// what it drove (249 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_syu (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_syu(
     input int h, input longint cyc, input bit rst,
-    input bit [264:0] sample, output bit [104:0] drive);
+    input bit [588:0] sample, output bit [248:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [104:0] drv, q, q2;
+  bit [248:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -70,25 +70,32 @@ module ccv_syu (
   always @(posedge gclk) begin
     ccv_dpi_cycle_syu(h, cyc, !rst_n, {
       rau_syu_alloc_tid, rau_syu_alloc_stall, rau_syu_alloc_credit,
-      rau_syu_alloc_payload, rau_syu_alloc_valid, syu_ooe_rel_tid,
-      syu_ooe_rel_stall, syu_ooe_rel_credit, syu_ooe_rel_payload,
-      syu_ooe_rel_valid, ooe_syu_bar_tid, ooe_syu_bar_stall,
-      ooe_syu_bar_credit, ooe_syu_bar_payload, ooe_syu_bar_valid
+      rau_syu_alloc_payload, rau_syu_alloc_valid, syu_rau_ready_tid,
+      syu_rau_ready_stall, syu_rau_ready_credit, syu_rau_ready_payload,
+      syu_rau_ready_valid, syu_fet_rel_tid, syu_fet_rel_stall,
+      syu_fet_rel_credit, syu_fet_rel_payload, syu_fet_rel_valid,
+      syu_ooe_rel_tid, syu_ooe_rel_stall, syu_ooe_rel_credit,
+      syu_ooe_rel_payload, syu_ooe_rel_valid, ooe_syu_bar_tid,
+      ooe_syu_bar_stall, ooe_syu_bar_credit, ooe_syu_bar_payload,
+      ooe_syu_bar_valid, kill_ack_epoch, kill_ack,
+      kill_epoch, kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
     cyc <= cyc + 1;
   end
   assign {
-    rau_syu_alloc_stall, rau_syu_alloc_credit, syu_ooe_rel_tid,
+    rau_syu_alloc_stall, rau_syu_alloc_credit, syu_rau_ready_tid,
+    syu_rau_ready_payload, syu_rau_ready_valid, syu_fet_rel_tid,
+    syu_fet_rel_payload, syu_fet_rel_valid, syu_ooe_rel_tid,
     syu_ooe_rel_payload, syu_ooe_rel_valid, ooe_syu_bar_stall,
-    ooe_syu_bar_credit
+    ooe_syu_bar_credit, kill_ack_epoch, kill_ack
   } = skew ? q2 : q;
 `endif
-  assign kill_ack = '0;
-  assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign syu_ooe_rel_wake = '0;
+  assign syu_fet_rel_wake = '0;
+  assign syu_rau_ready_wake = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

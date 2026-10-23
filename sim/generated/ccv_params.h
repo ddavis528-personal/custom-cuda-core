@@ -40,7 +40,7 @@ static constexpr uint32_t kTier1Warps = 4;
 /// decided at the block-level grill-me (grill-me 2026-09-23)
 static constexpr uint32_t kParkedWarps = 28;
 
-/// Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, warp_mask_released). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12).  Derived: = CCV_TIER1_WARPS + CCV_PARKED_WARPS.
+/// Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, ccv_rau_syu_alloc's warp_mask). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12).  Derived: = CCV_TIER1_WARPS + CCV_PARKED_WARPS.
 /// decided at the block-level grill-me (arch open A-23 (2026-09-27))
 static constexpr uint32_t kWarpContexts = 32;
 
@@ -103,6 +103,30 @@ static constexpr uint32_t kBarrierEntries = 64;
 /// Up to 4 cores per MLC. Present from day one rather than added when a second core appears, because adding a struct field later regenerates every typedef, header, harness and checker at that boundary.
 /// decided at the block-level grill-me (grill-me 2026-09-23)
 static constexpr uint32_t kCoreIdBits = 2;
+
+/// A place in PCA's parked array: RAU allocates one from a free list of CCV_PARKED_WARPS on a demotion and names it on ccv_rau_pca_mig both ways, so PCA stores by place, not by warp, and holds no table. It replaces CCV_L_W_PCA_BANK's bank_select, which reached only RCU and FET, neither of which stores anything.  Derived: = clog2(CCV_PARKED_WARPS).
+/// decided at the block-level grill-me (AR's response TI-24 (1) (2026-10-21))
+static constexpr uint32_t kWPcaPlace = 5;
+
+/// Every PC of a warp lies in one aligned window of 2^CCV_W_PC_WINDOW bytes, so a warp's lanes share the PC's bits above it and FET holds only the bits below per lane (IS-17's per-lane PCs).
+/// decided at the block-level grill-me (ISA v1.8 section 3 (Format E, F-FETCH); DA's response IS-17 (2026-10-21))
+static constexpr uint32_t kWPcWindow = 32;
+
+/// One lane's PC in FET's divergence state: its bits within the warp's window, less bit 0, which is always 0 (instructions are 16-bit aligned). FET holds one per lane, so a divergent branch never waits for a free group, and groups are the lanes with equal PCs. Replaces CCV_L_PC_GROUPS.  Derived: = CCV_W_PC_WINDOW - 1.
+/// decided at the block-level grill-me (DA's response IS-17 (2026-10-21))
+static constexpr uint32_t kWLanePc = 31;
+
+/// The PC bits above the warp's window, shared by all its lanes.  Derived: = CCV_ADDR_BITS - CCV_W_PC_WINDOW.
+/// decided at the block-level grill-me (DA's response IS-17 (2026-10-21))
+static constexpr uint32_t kWPcUpper = 16;
+
+/// FET's rotating lane pointer for the fairness rule, which migrates with the warp's PCs.  Derived: = clog2(CCV_WARP_LANES).
+/// decided at the block-level grill-me (DA's response IS-17 (2026-10-21))
+static constexpr uint32_t kWFairPtr = 5;
+
+/// A lane index, or a lane count less one: ccv_rau_syu_alloc's last_lanes.  Derived: = clog2(CCV_WARP_LANES).
+/// decided at the block-level grill-me (TI-40 (AR's rev 161))
+static constexpr uint32_t kWLaneIdx = 5;
 
 /// Migration transfer, each way, one 1024-bit row per cycle: the 16 GPR rows plus ceil(CCV_W_PRED_STATE / CCV_W_DATA) rows of predicate state, one. Derived, not chosen (arch open A-22): if the predicate state ever grows past a row this follows, refused by tools/gen-params.py until it does. It was 16, counting GPRs only, while the channel carried the predicate state beside every row (A-1). At one swap per ~125 cycles this uses the single migration path at about 27 percent.  Derived: = CCV_GPRS + cdiv(CCV_W_PRED_STATE, CCV_W_DATA).
 /// decided at the block-level grill-me (grill-me 2026-09-23)
@@ -260,6 +284,10 @@ static constexpr uint32_t kWakeLat = 4;
 /// decided at the block-level grill-me (channel protocol (channel.h); made explicit for A-61)
 static constexpr uint32_t kLatHop = 2;
 
+/// A completion hint's lead: its payload lands on ccv_miu_ooe_cmpl_hint exactly this many cycles before its completion's valid on the same slot of ccv_miu_ooe_cmpl. Two, the register stages between OOE's grant and select (the ready and grant registers), so a miss completion's wake rises as early as a timed wake does (OI-45).
+/// decided at the block-level grill-me (OA's response OA-23 (2026-10-21))
+static constexpr uint32_t kLatCmplHint = 2;
+
 /// Address-space id. 256 address spaces before a rollover forces a flush; with one resident context it exists to make switches cheap.
 /// decided at the block-level grill-me (Payload widths pass (2026-09-25))
 static constexpr uint32_t kWAsid = 8;
@@ -313,9 +341,25 @@ static constexpr uint32_t kDcacheLookups = 4;
 /// PROVISIONAL -- decided by: Stage 4b sweep
 static constexpr uint32_t kDemotionThreshold = 50;
 
-/// Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). Starts at the fallback's value until RAU's session or the Stage 4b sweep sets it; formal sets all three small. Replaces the OOE model's demote_mlc_miss knob.
+/// Threshold of the MLC-miss demotion trigger, the primary one: how long an MLC miss may hold the ROB head before the warp demotes. A CSR, one per trigger (Q18). 50 (AR's rev 123, which voids rev 118's 100): OI's corrected 48-seed sweep under evict with the replay drain gives 0.588 of swap-off at 50 against 0.603 at 100. Formal sets all three small. Replaces the OOE model's demote_mlc_miss knob.  Requires: CCV_DEMOTION_THRESHOLD_MLC > CCV_LAT_MLC_HIT_MAX.
 /// PROVISIONAL -- decided by: RAU per-block session (register OA-8)
 static constexpr uint32_t kDemotionThresholdMlc = 50;
+
+/// MLC's tag and data pipeline for a hit, from a request accepted at its port to the response leaving it. A placeholder until MLC's session; it bounds CCV_LAT_MLC_HIT_MAX, so a deeper MLC breaks the demotion threshold's require rather than the trigger.
+/// PROVISIONAL -- decided by: MLC per-block session
+static constexpr uint32_t kLatMlcPipe = 12;
+
+/// MLC's worst hit, counted from the L1 miss to OOE holding the completion: DCU to MLC and back, MLC's pipe, the queue at MLC's rate-1 request port behind every other miss DCU can have in flight, the refill's notice and MIU's pass-through, and the completion's hop. A load that missed L1 and still blocks its warp's ROB head past CCV_DEMOTION_THRESHOLD_MLC, which must exceed this, has missed MLC or is queued as long; either is worth a swap, and nothing shorter is demoted by that trigger (CCV_TIER1_WARPS: true misses only).  Derived: = 2 * CCV_LAT_HOP + CCV_LAT_MLC_PIPE + (2 ** CCV_P_W_REQ_DCU_MLC - 1) + CCV_LAT_FILL_NOTICE + CCV_LAT_MIU_FILL + CCV_LAT_HOP.
+/// PROVISIONAL -- decided by: with CCV_LAT_MLC_PIPE
+static constexpr uint32_t kLatMlcHitMax = 39;
+
+/// FET's fairness rule, refined (AR's rev 121): the warp's picks are min-PC, except that the group holding lane r, the rotating pointer, issues once N picks have gone by without a pick including lane r. The counter restarts whenever a pick includes lane r, by either path, and r then advances to the next live lane not waiting. Every eligible lane's group issues within CCV_WARP_LANES x N of the warp's picks, the forward-progress guarantee (IS-17, O-60). 48 is the smallest N whose cost on every kernel of CP's corpus is within 1% of the rule off (rope +0.46%), with the spin-wait handing over in 314 issue groups; TI's timed sweep at 32, 48 and 64 confirms it. ccv-sim's -fairness takes it (tools/gen-oracle.sh).
+/// PROVISIONAL -- decided by: AR's rev 121; TI's timed sweep (IS-17)
+static constexpr uint32_t kFairN = 48;
+
+/// FET's pick counter for the fairness rule, which migrates with the warp's PCs so a swap does not reset it.  Derived: = clog2(CCV_FAIR_N).
+/// PROVISIONAL -- decided by: with CCV_FAIR_N
+static constexpr uint32_t kWFairCnt = 6;
 
 /// Threshold of the barrier-wait demotion trigger: how long a barrier wait may hold the ROB head before the warp demotes. A CSR (Q18). Starts at the fallback's value. Replaces the OOE model's demote_barrier knob.
 /// PROVISIONAL -- decided by: RAU per-block session (register OA-8)
@@ -345,6 +389,10 @@ static constexpr uint32_t kWRobTag = 7;
 /// PROVISIONAL -- decided by: OOE per-block session, with CCV_P_ROB_DEPTH
 static constexpr uint32_t kWRobIdx = 5;
 
+/// An RS entry's index, as ccv_ooe_miu_memop carries it and MIU echoes it on ccv_miu_ooe_cmpl, so a completion names the entry it wakes with no lookup on its path (OA-23). Both RS classes' entries in one index space, the wakeup matrix's.  Derived: = clog2(CCV_P_RS_RCU + CCV_P_RS_MIU).
+/// PROVISIONAL -- decided by: OOE per-block session, with CCV_P_RS_RCU and CCV_P_RS_MIU
+static constexpr uint32_t kWRsIdx = 6;
+
 /// Branch checkpoints per warp, held in FET: PC-group state saved at each unresolved branch, restored from checkpoint_id plus taken_mask on a mispredict. Fetch stalls a warp when all are in use.
 /// PROVISIONAL -- decided by: FET per-block session
 static constexpr uint32_t kBrCkpts = 4;
@@ -369,9 +417,9 @@ static constexpr uint32_t kDecq = 13;
 /// PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)
 static constexpr uint32_t kRsWarpCap = 45;
 
-/// Decode-queue entries one warp may hold at once. The first-build value is the queue's depth, which is no limit; the sweep sets it. Replaces the OOE model's decq_warp_max knob.  Requires: CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ.
+/// Decode-queue entries one warp may hold at once. With no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six (OA's rev 166, final) makes the even-stall sweep 0.863 of no limit; at 4, mlp is 3.3% slower (OI's rev 155). test/ooe/cg-units.json's ooe_decq unit carries the same D, since its bench builds the RTL at this parameter.  Requires: CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ.
 /// PROVISIONAL -- decided by: Stage 4b sweep (register OA-7)
-static constexpr uint32_t kDecqWarpMax = 13;
+static constexpr uint32_t kDecqWarpMax = 6;
 
 /// GPR rename registers deliberately left unreachable by any warp's ceiling, as margin.
 /// PROVISIONAL -- decided by: OOE per-block session
@@ -501,6 +549,14 @@ static constexpr uint32_t kLatL1Cmpl = 18;
 /// PROVISIONAL -- decided by: generated
 static constexpr uint32_t kLatL1MissWake = 1;
 
+/// MIU's pass-through for a refill: from the valid of the refill's last response on ccv_dcu_miu_rsp to its completion's valid on ccv_miu_ooe_cmpl (and its data's on ccv_miu_rcu_data). Two in the stub: the response's payload lands a cycle after its valid, and the completion launches on it. MIU's spec names it (Mechanisms).
+/// PROVISIONAL -- decided by: MIU per-block session
+static constexpr uint32_t kLatMiuFill = 2;
+
+/// A refill notice's lead: its payload lands on ccv_dcu_miu_fill_ntc exactly this many cycles before its refill's valid on the same slot of ccv_dcu_miu_rsp. MIU's pass-through plus the hint's lead, so MIU can hint the completion CCV_LAT_CMPL_HINT cycles ahead of it. DCU reserves the slot and its credit for that cycle (DCU spec, Internals).  Derived: = CCV_LAT_CMPL_HINT + CCV_LAT_MIU_FILL.
+/// PROVISIONAL -- decided by: with CCV_LAT_MIU_FILL
+static constexpr uint32_t kLatFillNotice = 4;
+
 /// Physical GPRs: one global pool, allocated by OOE's free lists (RAU allocates none; A-30). Each tier-1 slot, occupied or not, reserves its 16 architectural registers plus CCV_P_REN_FLOOR, so 64 of the 192 are architectural and 128 rename.  Requires: CCV_P_PHYS_REGS > CCV_TIER1_WARPS * CCV_GPRS.
 /// PROVISIONAL -- decided by: OOE and RCU per-block sessions
 static constexpr uint32_t kPhysRegs = 192;
@@ -529,9 +585,21 @@ static constexpr uint32_t kWPa = 48;
 /// PROVISIONAL -- decided by: DCU and MLC per-block sessions
 static constexpr uint32_t kLineBytes = 128;
 
-/// Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that.  Requires: CCV_P_W_IMM >= 2 * (CCV_P_W_PHYS_PRED + 1).
+/// Widest immediate after format decode. Floor 32, set by identity rather than inherited: OOE substitutes srd #1's %ctaid (CCV_W_CTAID, 32) into this field at issue (Q-38), so it cannot shrink below that. It must also hold srd #2's %lanectx above the lane, CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5 bits (O-64; OA's response TI-33).  Requires: CCV_P_W_IMM >= max(2 * (CCV_P_W_PHYS_PRED + 1), CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5).
 /// PROVISIONAL -- decided by: DEC per-block session
 static constexpr uint32_t kWImm = 32;
+
+/// Bits of the core's device-wide index in srd #2's %lanectx (ISA v1.9 O-64): ((core << CCV_W_WARP_ID) | hardware warp context) << 5 | lane, unique across the device, not only the core (IS's response TI-33). At least CCV_W_CORE_ID, one MLC's cores, which is the whole device today. OOE substitutes everything above the lane into the immediate, so the immediate must hold it (OA's response TI-33).  Requires: CCV_P_W_DEV_CORE >= CCV_W_CORE_ID.
+/// PROVISIONAL -- decided by: TI (OA's and IS's responses TI-33)
+static constexpr uint32_t kWDevCore = 2;
+
+/// This core's index on the device, a per-instance strap OOE composes into srd #2's %lanectx (O-64). The top ties it off; 0 on a one-core build.  Requires: CCV_P_CORE_ID < 2 ** CCV_P_W_DEV_CORE.
+/// PROVISIONAL -- decided by: TI (OA's response TI-33)
+static constexpr uint32_t kCoreId = 0;
+
+/// The device's lane contexts (ISA v1.9 O-64): every %lanectx is below it, so it is %lanectx's range, 2^(CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5). O-69's interleaved spill space starts at window local_base + CCV_LANE_CONTEXTS, past every lane's O-30 frame: MIU forms a local-form address as ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128*(b/4) + 4l + b%4, with ctx = %lanectx >> 5 = (CCV_P_CORE_ID << CCV_W_WARP_ID) | the warp's hardware context. ccv-sim takes it as -lane-contexts (tools/gen-oracle.sh); its own default, 1024, is one core's.  Derived: = 2 ** (CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5).
+/// PROVISIONAL -- decided by: TI (IS's IS-19, adopted by DA 2026-10-23; OA's response IS-19)
+static constexpr uint32_t kLaneContexts = 4096;
 
 /// Outstanding-request timeout for local interfaces. Provisional BY CONSTRUCTION: N cannot be justified before contention data exists, so revising it is an expected Stage 4b output rather than a spec change.
 /// PROVISIONAL -- decided by: Stage 4b, from contention data
@@ -540,6 +608,10 @@ static constexpr uint32_t kTimeoutN = 32;
 /// Outstanding-request timeout for the memory path. Must exceed worst-case DRAM latency.
 /// PROVISIONAL -- decided by: MLC and EXB per-block sessions
 static constexpr uint32_t kTimeoutMem = 2048;
+
+/// Outstanding-message watchdog for a backpressured channel: one whose receiver's owner states that it may hold a message while something downstream stalls (schema: backpressure). A message waits behind at most CCV_CREDIT_DEPTH - 1 others in its slot, each released by at most one memory-length stall. A watchdog, not the liveness check: that is the kernel finishing, quiesced_at_end and the forward-progress guard. Each gate run reports every backpressured slot's measured maximum age, so a kernel near it is a sizing signal before it is a failure.  Derived: = CCV_CREDIT_DEPTH * CCV_P_TIMEOUT_MEM.
+/// PROVISIONAL -- decided by: with CCV_P_TIMEOUT_MEM
+static constexpr uint32_t kTimeoutBp = 8192;
 
 /// Predicate physical register index, sized by CCV_P_PRED_REGS (it was 8, addressing 256 entries against a 16-deep file). The predicate file is a SEPARATE namespace with its own RAT; sharing CCV_P_W_PHYS_REG would recouple two files that were deliberately split. One index past the pool is reserved for the hardwired zero predicate (A-64, A-67).  Derived: = clog2(CCV_P_PRED_REGS + 1).
 /// PROVISIONAL -- decided by: Stage 4a -- OOE rename session sizes the predicate RAT
@@ -609,9 +681,9 @@ static constexpr uint32_t kPLatClasses = 8;
 /// PRELIMINARY -- churn: MED
 static constexpr uint32_t kPBypGroups = 8;
 
-/// Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03.  Derived: = 10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS).
+/// Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03.  Derived: = 11 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS).
 /// PRELIMINARY -- churn: MED
-static constexpr uint32_t kPWSchedAttr = 16;
+static constexpr uint32_t kPWSchedAttr = 17;
 
 /// Eight uop classes: integer, float, SFU and convert, memory, control, collective, predicate, spare. DEC decides whether class is derivable from opcode at all.
 /// PRELIMINARY -- churn: LOW
@@ -625,7 +697,7 @@ static constexpr uint32_t kWOpcode = 9;
 /// PRELIMINARY -- churn: LOW
 static constexpr uint32_t kOpPrfCopy = 511;
 
-/// Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 0xE fence, 0xF OOE's bulk discard; 4-0xD spare. DEC emits load, store and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.
+/// Memory operation, enumerated (AR's and OA's responses IS-11 and AR-21): 0 load, 1 store, 2 atomic-read (an atomic's A1: read the old values and hold the lines), 3 atomic-write (its A3: write the new values and release), 4 predicate load (ld.pred), 5 predicate store (st.pred), 0xE fence, 0xF OOE's bulk discard; 6-0xD spare. 4 and 5 are DEC's, one uop per predicate of the mask (AR's response TI-36): to OOE a load and a store; to MIU one word at lane 0's address. DEC emits load, store, the predicate transfers and fence from its table; 2, 3 and 0xF are OOE's alone (V-72, V-52). An atomic's operation is not here: it travels as the A2 lane op's opcode. The ISA has no prefetch, so there is no prefetch code (OA's response IS-11, which removes A-68's prefetch row). ordering is non-zero only with 0xE. Decoded by DEC and passed through OOE (A-68). Code 0xF is reserved for OOE's bulk discard (A-41): DEC never emits it.
 /// PRELIMINARY -- churn: MED
 static constexpr uint32_t kWMemOp = 4;
 
@@ -653,17 +725,9 @@ static constexpr uint32_t kWOwnership = 3;
 /// PRELIMINARY -- churn: LOW
 static constexpr uint32_t kWItlbEntry = 64;
 
-/// Parked-context bank select: eight banks of four warps, from the proposed PCA organization.
-/// PRELIMINARY -- churn: MED
-static constexpr uint32_t kWPcaBank = 3;
-
 /// Operands shipped to a lane per beat. Whether a lane receives one instruction's operands or several, and whether the destination is read back for accumulate, both change this.
 /// PRELIMINARY -- churn: HIGH
 static constexpr uint32_t kOperandsPerLane = 3;
-
-/// PCs carried in one migration, one per PC group. The real count depends on the divergence representation, which is unspecified.
-/// PRELIMINARY -- churn: HIGH
-static constexpr uint32_t kPcGroups = 4;
 
 /// Page shift, used to express code bounds at page granularity. 4 KB pages assumed; the MMU session confirms.
 /// PRELIMINARY -- churn: LOW

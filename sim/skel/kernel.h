@@ -37,8 +37,32 @@
 namespace ccv {
 namespace skel {
 
+/// An instruction's identity carries its warp in the sequence's top bits
+/// and its place in that warp's oracle stream below (kSeqWarpLsb): each
+/// warp's identities rise in fetch order, and warp 0's are the oracle's
+/// own sequence numbers, as before there were several.
+constexpr unsigned kSeqWarpLsb = 24;
+inline uint32_t warpSeq(unsigned warp, uint64_t seq) {
+  return uint32_t(warp) << kSeqWarpLsb | uint32_t(seq & ((1u << kSeqWarpLsb) - 1));
+}
+inline unsigned seqWarp(uint32_t seq) { return seq >> kSeqWarpLsb; }
+inline uint32_t seqIndex(uint32_t seq) { return seq & ((1u << kSeqWarpLsb) - 1); }
+
 struct Kernel {
-  Oracle orc;
+  /// ccv-sim's run of each warp: warp w is one CTA, ctaid orcs[w].ctaid,
+  /// alone in its CTA, since ccv-sim runs one warp a CTA. One unless the
+  /// kernel launches several (kernel.cfg CTAS, tools/gen-oracle.sh).
+  std::vector<Oracle> orcs = std::vector<Oracle>(1);
+  /// Load the oracle at `path` as warp 0 and its siblings, <path less
+  /// .jsonl>.<w>.jsonl for w = 1, 2, ..., as warps 1 upward.
+  std::string loadOracles(const std::string &path);
+  const Record *bySeq(uint32_t seq) const {
+    const unsigned w = seqWarp(seq);
+    return w < orcs.size() ? orcs[w].bySeq(seqIndex(seq)) : nullptr;
+  }
+  /// Whether tid is its instruction's last uop: a cracked predicate
+  /// transfer retires, as an instruction, with its last uop (TI-36).
+  bool lastUop(uint64_t tid) const;
   std::string name;
   /// Negative controls. Each must make the run FAIL, and say where:
   ///   corrupt-fetch  one instruction byte flipped on its way FET -> DEC
@@ -121,18 +145,26 @@ struct Kernel {
   ///                  may carry: DEC's output assertion refuses it (IS-11)
   ///   memop-ordering the same from a DEC without that assertion: MIU
   ///                  refuses each memop it reaches (IS-11, mem_op 0xE)
+  ///   dcu-one-miss   DCU keeps one miss in flight, as it once did: a fast
+  ///                  miss waits behind a slow one, and the stall kernel's
+  ///                  other warps finish after the stalled one
   std::string brk = "none";
 
   // -- filled in by the stubs ------------------------------------------------
   std::map<uint64_t, uint8_t> mem;                 ///< testbench memory
   std::vector<std::array<uint32_t, kLanes>> gpr;   ///< RCU physical GPRs
   std::vector<uint32_t> pred;                      ///< RCU physical predicates
-  std::vector<unsigned> rat0;                      ///< OOE's GPR map for warp 0
-  /// OOE's committed predicate map for warp 0, which the final compare reads
+  /// OOE's committed GPR map, by warp, which the final compare reads.
+  std::vector<std::vector<unsigned>> rat;
+  /// OOE's committed predicate map, by warp, which the final compare reads
   /// through (OI-3). An OOE that renames predicates sets it at retirement,
-  /// as it does rat0; left empty, the compare reads the fixed physPred
+  /// as it does rat; left empty, the compare reads the fixed physPred
   /// windows, which is right only while predicates are not renamed.
-  std::vector<unsigned> prat0;
+  std::vector<std::vector<unsigned>> prat;
+  /// A warp's maps, made at its first use: the zero register for every GPR,
+  /// and the zero predicate for every predicate if `preds` (A-64).
+  std::vector<unsigned> &ratOf(unsigned w);
+  std::vector<unsigned> &pratOf(unsigned w, bool preds);
   uint64_t retired = 0;
   std::vector<uint64_t> retire_order;              ///< seq, as retired
   /// The cycle FET first sent DEC an instruction. The KERNEL line counts the
@@ -140,7 +172,55 @@ struct Kernel {
   /// not carry the launch and the cold ITLB and ifill misses before it.
   uint64_t first_fetch = 0;
   bool fetched = false;
-  bool exited = false;
+  unsigned exits = 0;                              ///< warps whose exit retired
+  /// Warps that ended in a fault CRU took (TI-26), by warp: what it reported.
+  struct FaultSeen { unsigned cause = 0; uint64_t pc = 0, addr = 0; uint32_t lanes = 0; };
+  std::map<unsigned, FaultSeen> faults;
+  std::set<unsigned> killed;                       ///< warps RAU's kill ended (V-24)
+  /// A kill RAU has broadcast and not seen through: the owners whose ack at
+  /// its epoch has not come (kFabs kill_ack order), else 0.
+  uint32_t kill_unacked = 0;
+  /// A demoted warp, as the blocks that moved it saw it (TI-24). Observed for
+  /// the check at the end, never read by a block: the resume PC RAU got, the
+  /// rows RCU read out (each arch register's row name, in the map OOE sent),
+  /// and the rows and PC groups PCA holds. With no restore yet (TI-24 (1)), a
+  /// parked warp ends its run parked, and its state is checked against
+  /// ccv-sim's at the retirement boundary instead of at the end.
+  struct Parked {
+    uint64_t resume_pc = 0;
+    std::map<unsigned, std::array<uint32_t, kLanes>> rows;  ///< PCA's, by mig_row
+    std::array<uint64_t, kLanes> lane_pc{};                 ///< PCA's, from FET (IS-17)
+    bool rewound = false;                                   ///< FET had OOE's beats
+    bool done = false;                                      ///< PCA acked it
+    bool restored = false;                                  ///< and it came back
+  };
+  std::map<unsigned, Parked> parked;
+  /// Whether RAU restores what it parks (CCV_RAU_RESTORE, on unless 0): if
+  /// not, a parked warp ends its run parked and counts as finished.
+  bool restores = true;
+  bool parkedNow(unsigned w) const {
+    auto p = parked.find(w);
+    return p != parked.end() && p->second.done && !p->second.restored;
+  }
+  unsigned parked_done() const {
+    unsigned n = 0;
+    for (auto &p : parked) n += p.second.done && !p.second.restored;
+    return n;
+  }
+  bool exited() const {
+    return exits + killed.size() + (restores ? 0 : parked_done()) >= orcs.size();
+  }
+  /// A warp's architectural registers and predicates as it exits, read
+  /// through its maps before OOE frees them for another warp: the final
+  /// compare reads these, since a slot reused after an exit reallocates the
+  /// registers (an observation; RAU takes it at the exit's quiesce).
+  struct Final { std::array<std::array<uint32_t, kLanes>, kArchGprs> gpr{}; std::array<uint32_t, kArchPreds> pred{}; };
+  std::map<unsigned, Final> finals;
+  void snapshotFinal(unsigned w);
+  /// The check of a warp PCA has just acked: its rows, predicates and PCs
+  /// against ccv-sim's state after the instructions it has retired, which
+  /// is its boundary, since the demotion squashed the rest (TI-24).
+  void checkParked(unsigned w);
   uint64_t failures = 0;                           ///< check failures
   uint64_t class_violations = 0;
   std::vector<uint64_t> rx_per_chan = std::vector<uint64_t>(kNumChans, 0);
@@ -152,10 +232,29 @@ struct Kernel {
   /// COVER line's order; every bin prints, reached or not.
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
-      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
+      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line", "store_hit", "dcu_evict",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
-      "lane_byp"};
+      "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
+      "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
+      "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
+      "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
+      "pred_xfer", "pred_merge", "pred_copy", "crack_split",
+      // Fences and barriers (IS-11, TI-40).
+      "fence", "fence_wait", "bar_wait", "bar_arrive", "bar_complete", "bar_release", "bar_ready",
+      "syu_ready", "addr_fault"};
   std::map<std::string, uint64_t> cover;
+  /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
+  /// memory holds that the testbench does not yet. For the final memory
+  /// compare only, never for a decision.
+  std::map<uint64_t, std::vector<uint8_t>> dcu_dirty;
+  /// Each warp's CTA slot, as RAU gave it (TI-34): for the checks on the
+  /// cta_slot OOE stamps on memops and faults, never for a decision.
+  std::map<unsigned, unsigned> cta_slot_of;
+  /// Each warp's CTA, by the order ccv-sim's runs name ctaids: the warps of
+  /// one -cta run share one (CP-30), each CTAS run has its own. RAU gives a
+  /// CTA one slot, and MIU checks a slot names one CTA (oracle, for checks).
+  std::vector<unsigned> cta_of;
+  unsigned ctas = 0;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 
@@ -180,8 +279,8 @@ struct Kernel {
 std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k);
 
 /// Physical predicate of arch P<idx> for a warp. OOE owns the RATs and RAU
-/// allocates nothing (A-30). GPRs are renamed (Kernel::rat0 is warp 0's map
-/// at the end); predicates are not, so each warp keeps a fixed window.
+/// allocates nothing (A-30). GPRs are renamed (Kernel::rat holds each warp's
+/// map at the end); predicates are not, so each warp keeps a fixed window.
 inline unsigned physPred(unsigned warp, unsigned idx) { return warp * 4 + idx; }
 
 struct KernelReport {

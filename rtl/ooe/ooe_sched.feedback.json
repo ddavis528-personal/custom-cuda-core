@@ -1,0 +1,35 @@
+{
+  "_comment": "CCV-L23's declared feedback for ooe_sched (OA's rulings on TI-38, revs 187 and 191; DA's alignment amendment, 2026-10-23): the one-cycle select loop. The request and ready registers (stage 03) and their enables read the grant register (04) and its lead (05) back, the loop V-65's same-cycle confirmation needs; their frames are OI-45's. Each read's offset is the stages its tag lies past its reader's.",
+  "reads": {
+    "isg_cq02h": {
+      "from": {
+        "gnt_cq04h": 2
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "issued as ooe_rs's rule reads it: the grant leaving now, whose next value the request register feeds through the select (OA's rev 187)"
+    },
+    "rq_en_cq02h": {
+      "from": {
+        "chg_cq04h": 2,
+        "gnt_cq04h": 2
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "the request register's enable: a grant leaving, and its own change bit, each fed back from the register it clocks (OA's rev 187)"
+    },
+    "ready_en_cq02h": {
+      "from": {
+        "gl_cq05h": 3
+      },
+      "loop": [
+        "ready_cq03h",
+        "gnt_cq04h",
+        "gl_cq05h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "the ready register's enable: a grant some row depends on left at the last edge, through the select and the grant register (OA's rev 191)"
+    }
+  }
+}

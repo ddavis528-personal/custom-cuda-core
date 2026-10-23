@@ -11,8 +11,10 @@
 // returns. Each rename port reads its three GPR sources, its old GPR
 // destination, its guard, its old predicate destination and predicate
 // logic's two sources from its slot's speculative maps as ooe_rat's flops
-// hold them, with the writes of the lower ports naming the same slot in
-// front (the in-group override). A restore-allocate port (rst) writes and
+// hold them, with the pending group's writes over them (last cycle's
+// group, which ooe_rat writes an edge late: OA's response OI-58), then
+// the writes of the lower ports naming the same slot (the in-group
+// override). A restore-allocate port (rst) writes and
 // reads nothing, so it overrides nothing.
 //
 // The reference is the model's Slot maps, logged each cycle
@@ -42,6 +44,16 @@ module ooe_ratread #(
   input  logic [A-1:0]      ren_pwe_cq01h,
   input  logic [A*PW-1:0]   ren_pname_cq01h,
   input  logic [A*2*2-1:0]  ren_pq_cq01h,
+  // The pending group: last cycle's, in rename's register, whose writes
+  // reach ooe_rat's flops only at this edge (OA's response OI-58).
+  input  logic [A-1:0]      pw_v_cq01h,
+  input  logic [A*LS-1:0]   pw_slot_cq01h,
+  input  logic [A*4-1:0]    pw_dst_cq01h,
+  input  logic [A-1:0]      pw_gwe_cq01h,
+  input  logic [A*GW-1:0]   pw_gname_cq01h,
+  input  logic [A*2-1:0]    pw_pdst_cq01h,
+  input  logic [A-1:0]      pw_pwe_cq01h,
+  input  logic [A*PW-1:0]   pw_pname_cq01h,
   output logic [A*3*GW-1:0] ren_psrc_cq01h,
   output logic [A*GW-1:0]   ren_pold_cq01h,
   output logic [A*PW-1:0]   ren_ppguard_cq01h,
@@ -49,49 +61,68 @@ module ooe_ratread #(
   output logic [A*2*PW-1:0] ren_ppq_cq01h
 );
 
-  // Port k's slot's maps as the lower ports of that slot left them. Every
-  // write as a decoder: no index computed and written through.
-  function automatic logic [MW-1:0] map_before(input int k);
-    logic [MW-1:0] m;
+  // Each read as a select: the flops' entry, or the last writer of it among
+  // the pending group's ports (last cycle's, written at this edge) and then
+  // the lower ports of this group naming the same slot. Every writer's
+  // match is compared in parallel with the flops' read, so the override is
+  // a one-hot AND-OR after both, not a map rebuilt in front of the read.
+  localparam int NW = 2 * A;             // the pending group's ports, then this group's
+  function automatic logic [GW-1:0] gsel(input int k, input logic [3:0] a);
     logic [LS-1:0] s;
+    logic [GW-1:0] f, v;
+    logic [NW-1:0] m, later;
+    logic [NW*GW-1:0] nm;
     s = ren_slot_cq01h[k * LS +: LS];
-    m = '0;
-    for (int t = 0; t < S; t++) if (s == LS'(t)) m = rat_cq02h[t * MW +: MW];
-    for (int p = 0; p < k; p++)
-      if (ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_slot_cq01h[p * LS +: LS] == s) begin
-        for (int a = 0; a < NG; a++)
-          if (ren_gwe_cq01h[p] && ren_dst_cq01h[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = ren_gname_cq01h[p * GW +: GW];
-        for (int a = 0; a < NP; a++)
-          if (ren_pwe_cq01h[p] && ren_pdst_cq01h[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = ren_pname_cq01h[p * PW +: PW];
-      end
-    map_before = m;
+    f = '0;
+    for (int t = 0; t < S; t++)
+      for (int e = 0; e < NG; e++)
+        f = f | (rat_cq02h[t * MW + e * GW +: GW] & {GW{s == LS'(t) && a == 4'(e)}});
+    for (int p = 0; p < A; p++) begin
+      m[p] = pw_v_cq01h[p] && pw_gwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == s && pw_dst_cq01h[p * 4 +: 4] == a;
+      nm[p * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+      m[A + p] = p < k && ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_gwe_cq01h[p] &&
+                 ren_slot_cq01h[p * LS +: LS] == s && ren_dst_cq01h[p * 4 +: 4] == a;
+      nm[(A + p) * GW +: GW] = ren_gname_cq01h[p * GW +: GW];
+    end
+    later[NW-1] = 1'b0;
+    for (int w = NW - 2; w >= 0; w--) later[w] = later[w + 1] || m[w + 1];
+    v = {GW{m == '0}} & f;
+    for (int w = 0; w < NW; w++) v = v | ({GW{m[w] && !later[w]}} & nm[w * GW +: GW]);
+    gsel = v;
+  endfunction
+  function automatic logic [PW-1:0] psel(input int k, input logic [1:0] a);
+    logic [LS-1:0] s;
+    logic [PW-1:0] f, v;
+    logic [NW-1:0] m, later;
+    logic [NW*PW-1:0] nm;
+    s = ren_slot_cq01h[k * LS +: LS];
+    f = '0;
+    for (int t = 0; t < S; t++)
+      for (int e = 0; e < NP; e++)
+        f = f | (rat_cq02h[t * MW + NG * GW + e * PW +: PW] & {PW{s == LS'(t) && a == 2'(e)}});
+    for (int p = 0; p < A; p++) begin
+      m[p] = pw_v_cq01h[p] && pw_pwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == s && pw_pdst_cq01h[p * 2 +: 2] == a;
+      nm[p * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+      m[A + p] = p < k && ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_pwe_cq01h[p] &&
+                 ren_slot_cq01h[p * LS +: LS] == s && ren_pdst_cq01h[p * 2 +: 2] == a;
+      nm[(A + p) * PW +: PW] = ren_pname_cq01h[p * PW +: PW];
+    end
+    later[NW-1] = 1'b0;
+    for (int w = NW - 2; w >= 0; w--) later[w] = later[w + 1] || m[w + 1];
+    v = {PW{m == '0}} & f;
+    for (int w = 0; w < NW; w++) v = v | ({PW{m[w] && !later[w]}} & nm[w * PW +: PW]);
+    psel = v;
   endfunction
 
-  // A map's entry by architectural index, as an AND-OR over the entries.
-  function automatic logic [GW-1:0] gread(input logic [MW-1:0] m, input logic [3:0] a);
-    logic [GW-1:0] r;
-    r = '0;
-    for (int t = 0; t < NG; t++) r = r | (m[t * GW +: GW] & {GW{a == 4'(t)}});
-    gread = r;
-  endfunction
-  function automatic logic [PW-1:0] pread(input logic [MW-1:0] m, input logic [1:0] a);
-    logic [PW-1:0] r;
-    r = '0;
-    for (int t = 0; t < NP; t++) r = r | (m[NG * GW + t * PW +: PW] & {PW{a == 2'(t)}});
-    pread = r;
-  endfunction
-
-  logic [A*MW-1:0] rd_map;
   always_comb
     for (int k = 0; k < A; k++) begin
-      rd_map[k * MW +: MW] = map_before(k);
       for (int i = 0; i < 3; i++)
-        ren_psrc_cq01h[(k * 3 + i) * GW +: GW] = gread(rd_map[k * MW +: MW], ren_src_cq01h[(k * 3 + i) * 4 +: 4]);
-      ren_pold_cq01h[k * GW +: GW]    = gread(rd_map[k * MW +: MW], ren_dst_cq01h[k * 4 +: 4]);
-      ren_ppguard_cq01h[k * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pguard_cq01h[k * 2 +: 2]);
-      ren_ppold_cq01h[k * PW +: PW]   = pread(rd_map[k * MW +: MW], ren_pdst_cq01h[k * 2 +: 2]);
+        ren_psrc_cq01h[(k * 3 + i) * GW +: GW] = gsel(k, ren_src_cq01h[(k * 3 + i) * 4 +: 4]);
+      ren_pold_cq01h[k * GW +: GW]    = gsel(k, ren_dst_cq01h[k * 4 +: 4]);
+      ren_ppguard_cq01h[k * PW +: PW] = psel(k, ren_pguard_cq01h[k * 2 +: 2]);
+      ren_ppold_cq01h[k * PW +: PW]   = psel(k, ren_pdst_cq01h[k * 2 +: 2]);
       for (int i = 0; i < 2; i++)
-        ren_ppq_cq01h[(k * 2 + i) * PW +: PW] = pread(rd_map[k * MW +: MW], ren_pq_cq01h[(k * 2 + i) * 2 +: 2]);
+        ren_ppq_cq01h[(k * 2 + i) * PW +: PW] = psel(k, ren_pq_cq01h[(k * 2 + i) * 2 +: 2]);
     end
 
 endmodule

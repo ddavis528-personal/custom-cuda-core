@@ -33,7 +33,7 @@
 //   csr_credit       out  star      Credit return for the CSR channel.
 //   clk_gated        out  observe   CCV_CHECK only: the block's clock gate is closed this cycle.
 
-localparam int CCV_NUM_CHANNELS = 48;
+localparam int CCV_NUM_CHANNELS = 54;
 
 // fet -> dec, 8/cycle
 localparam int CCV_CH_FET_DEC_INSTR = 0;
@@ -117,20 +117,32 @@ localparam int CCV_CH_PCA_FET_MIG = 38;
 localparam int CCV_CH_RAU_FET_MIG = 39;
 // pca -> rau, 1/cycle
 localparam int CCV_CH_PCA_RAU_MIG_DONE = 40;
+// rau -> pca, 1/cycle
+localparam int CCV_CH_RAU_PCA_MIG = 41;
+// miu -> rau, 1/cycle
+localparam int CCV_CH_MIU_RAU_READY = 42;
 // rau -> miu, 1/cycle
-localparam int CCV_CH_RAU_MIU_CTA = 41;
+localparam int CCV_CH_RAU_MIU_CTA = 43;
 // ooe -> syu, 1/cycle
-localparam int CCV_CH_OOE_SYU_BAR = 42;
+localparam int CCV_CH_OOE_SYU_BAR = 44;
 // syu -> ooe, 1/cycle
-localparam int CCV_CH_SYU_OOE_REL = 43;
+localparam int CCV_CH_SYU_OOE_REL = 45;
+// syu -> fet, 1/cycle
+localparam int CCV_CH_SYU_FET_REL = 46;
+// syu -> rau, 1/cycle
+localparam int CCV_CH_SYU_RAU_READY = 47;
 // rau -> syu, 1/cycle
-localparam int CCV_CH_RAU_SYU_ALLOC = 44;
+localparam int CCV_CH_RAU_SYU_ALLOC = 48;
 // ooe -> cru, 1/cycle
-localparam int CCV_CH_OOE_CRU_FAULT = 45;
+localparam int CCV_CH_OOE_CRU_FAULT = 49;
 // cru -> rau, 1/cycle
-localparam int CCV_CH_CRU_RAU_CFG = 46;
+localparam int CCV_CH_CRU_RAU_CFG = 50;
 // EXTERNAL -> exb, 1/cycle
-localparam int CCV_CH_EXT_EXB_IN = 47;
+localparam int CCV_CH_EXT_EXB_IN = 51;
+// dcu -> miu, 4/cycle
+localparam int CCV_CH_DCU_MIU_FILL_NTC = 52;
+// miu -> ooe, 4/cycle
+localparam int CCV_CH_MIU_OOE_CMPL_HINT = 53;
 
 // Payload structs, for channels whose every field has a
 // decided width. A channel missing one generates no struct --
@@ -147,6 +159,8 @@ typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_CKPT_ID-1:0]      checkpoint_id;
   logic                                          pred_taken;
   logic                                          fetch_fault;
+  logic                                          final_exit;
+  logic                                          all_waiting;
 } ccv_fet_dec_instr_t;
 
 typedef struct packed {
@@ -169,7 +183,7 @@ typedef struct packed {
   logic                                          pred_we;
   logic [3-1:0]                                  src_valid;
   logic [2-1:0]                                  pred_use;
-  logic [2-1:0]                                  imm_kind;
+  logic [3-1:0]                                  imm_kind;
   logic [ccv_prov_pkg::CCV_P_W_IMM-1:0]          imm;
   logic [ccv_params_pkg::CCV_W_ILEN-1:0]         ilen;
   logic [ccv_prov_pkg::CCV_P_W_CKPT_ID-1:0]      checkpoint_id;
@@ -178,6 +192,11 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_FAULT_CAUSE-1:0]  cause;
   logic [2**ccv_params_pkg::CCV_W_CHWIDTH-1:0]   fmt_rsv;
   logic [2-1:0]                                  fmt_opnd;
+  logic                                          final_exit;
+  logic                                          all_waiting;
+  logic                                          slot_form;
+  logic [4-1:0]                                  arg_slot;
+  logic                                          local_form;
 } ccv_dec_ooe_uop_t;
 
 typedef struct packed {
@@ -240,7 +259,7 @@ typedef struct packed {
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    active_mask;
-  logic [ccv_params_pkg::CCV_W_VA-1:0]           base;
+  logic [ccv_params_pkg::CCV_W_DATA-1:0]         base_per_lane;
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         index_per_lane;
   logic [ccv_params_pkg::CCV_W_DATA-1:0]         store_data;
 } ccv_rcu_miu_addr_t;
@@ -259,6 +278,7 @@ typedef struct packed {
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_REG-1:0]     phys_dst;
   logic [ccv_params_pkg::CCV_W_PHYS_POS-1:0]     dst_pos;
   logic [ccv_prov_pkg::CCV_P_W_PHYS_PRED-1:0]    phys_pred;
@@ -272,6 +292,9 @@ typedef struct packed {
   logic                                          scale_en;
   logic [ccv_params_pkg::CCV_L_W_SPACE-1:0]      space;
   logic [ccv_params_pkg::CCV_L_W_ORDERING-1:0]   ordering;
+  logic                                          slot_form;
+  logic [4-1:0]                                  arg_slot;
+  logic                                          local_form;
 } ccv_ooe_miu_memop_t;
 // OVERLAY discard_tail: disp[0 +: CCV_P_W_ROB_IDX], valid only when mem_op == 0xF.
 localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_LSB = 0;
@@ -279,6 +302,7 @@ localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_W = ccv_prov_pkg::CCV_P_W_ROB_IDX;
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+  logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
   logic [ccv_params_pkg::CCV_W_STATUS-1:0]       status;
   logic [ccv_params_pkg::CCV_W_FAULT_CAUSE-1:0]  cause;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    lane_mask;
@@ -300,6 +324,9 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_VA-1:0]           target_pc;
   logic [ccv_prov_pkg::CCV_P_W_FETCH_EPOCH-1:0]  fetch_epoch;
   logic                                          epoch_only;
+  logic                                          rewind;
+  logic                                          rewind_held;
+  logic                                          held_long;
 } ccv_ooe_fet_redirect_t;
 
 typedef struct packed {
@@ -414,6 +441,7 @@ typedef struct packed {
   logic [2*(ccv_params_pkg::CCV_W_VA-ccv_prelim_pkg::CCV_L_PAGE_SHIFT)-1:0] code_bounds;
   logic [ccv_params_pkg::CCV_W_ASID-1:0]         asid;
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    live_mask;
 } ccv_rau_fet_launch_t;
 
 typedef struct packed {
@@ -423,6 +451,7 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_CTAID-1:0]        ctaid;
   logic [ccv_params_pkg::CCV_W_WARP_IN_CTA-1:0]  warp_in_cta;
   logic [ccv_params_pkg::CCV_L_W_BAR_COUNT-1:0]  barrier_count;
+  logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
 } ccv_rau_ooe_alloc_t;
 
 typedef struct packed {
@@ -431,6 +460,7 @@ typedef struct packed {
   logic                                          stalled;
   logic                                          mlc_miss_seen;
   logic [ccv_params_pkg::CCV_W_RETIRED_CNT-1:0]  retired_since_restore;
+  logic                                          exited;
 } ccv_ooe_rau_status_t;
 
 typedef struct packed {
@@ -442,12 +472,12 @@ typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic [ccv_params_pkg::CCV_W_VA-1:0]           resume_pc;
   logic                                          arch_state_ready;
+  logic                                          refused;
 } ccv_ooe_rau_drained_t;
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic                                          direction;
-  logic [ccv_prelim_pkg::CCV_L_W_PCA_BANK-1:0]   bank_select;
 } ccv_rau_rcu_mig_t;
 
 typedef struct packed {
@@ -473,21 +503,26 @@ typedef struct packed {
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
-  logic [ccv_prelim_pkg::CCV_L_PC_GROUPS*ccv_params_pkg::CCV_W_VA-1:0] pcs;
-  logic [ccv_prelim_pkg::CCV_L_PC_GROUPS*ccv_params_pkg::CCV_W_LANE_MASK-1:0] group_masks;
+  logic [ccv_params_pkg::CCV_WARP_LANES*ccv_params_pkg::CCV_W_LANE_PC-1:0] lane_pcs;
+  logic [ccv_params_pkg::CCV_W_PC_UPPER-1:0]     pc_upper;
+  logic [ccv_params_pkg::CCV_W_FAIR_PTR-1:0]     fair_ptr;
+  logic [ccv_prov_pkg::CCV_W_FAIR_CNT-1:0]       fair_cnt;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    live_mask;
 } ccv_fet_pca_mig_t;
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
-  logic [ccv_prelim_pkg::CCV_L_PC_GROUPS*ccv_params_pkg::CCV_W_VA-1:0] pcs;
-  logic [ccv_prelim_pkg::CCV_L_PC_GROUPS*ccv_params_pkg::CCV_W_LANE_MASK-1:0] group_masks;
+  logic [ccv_params_pkg::CCV_WARP_LANES*ccv_params_pkg::CCV_W_LANE_PC-1:0] lane_pcs;
+  logic [ccv_params_pkg::CCV_W_PC_UPPER-1:0]     pc_upper;
+  logic [ccv_params_pkg::CCV_W_FAIR_PTR-1:0]     fair_ptr;
+  logic [ccv_prov_pkg::CCV_W_FAIR_CNT-1:0]       fair_cnt;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    live_mask;
 } ccv_pca_fet_mig_t;
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic [ccv_params_pkg::CCV_W_TIER1_ID-1:0]     tier1_id;
   logic                                          direction;
-  logic [ccv_prelim_pkg::CCV_L_W_PCA_BANK-1:0]   bank_select;
 } ccv_rau_fet_mig_t;
 
 typedef struct packed {
@@ -496,29 +531,56 @@ typedef struct packed {
 } ccv_pca_rau_mig_done_t;
 
 typedef struct packed {
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
+  logic                                          direction;
+  logic [ccv_params_pkg::CCV_W_PCA_PLACE-1:0]    pca_place;
+} ccv_rau_pca_mig_t;
+
+typedef struct packed {
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
+} ccv_miu_rau_ready_t;
+
+typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_params_pkg::CCV_W_SPM_ADDR-1:0]     spm_base;
   logic [ccv_params_pkg::CCV_W_SPM_ADDR-1:0]     spm_limit;
   logic [ccv_params_pkg::CCV_W_VA-1:0]           launch_block_addr;
+  logic [ccv_params_pkg::CCV_W_VA-1:0]           const_base;
+  logic [ccv_params_pkg::CCV_W_VA-1:0]           const_limit;
 } ccv_rau_miu_cta_t;
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_params_pkg::CCV_W_BAR_ID-1:0]       barrier_id;
-  logic                                          arrive_or_wait;
+  logic [2-1:0]                                  bar_kind;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    issue_mask;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    guard_mask;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    phase_mask;
+  logic                                          held;
 } ccv_ooe_syu_bar_t;
 
 typedef struct packed {
-  logic [ccv_params_pkg::CCV_WARP_CONTEXTS-1:0]  warp_mask_released;
-  logic [ccv_params_pkg::CCV_W_BAR_ID-1:0]       barrier_id;
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
 } ccv_syu_ooe_rel_t;
+
+typedef struct packed {
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
+  logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    lane_mask;
+} ccv_syu_fet_rel_t;
+
+typedef struct packed {
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
+} ccv_syu_rau_ready_t;
 
 typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_CTA_SLOT-1:0]     cta_slot;
   logic [ccv_params_pkg::CCV_W_BAR_ENTRY-1:0]    barrier_base;
   logic [ccv_params_pkg::CCV_L_W_BAR_COUNT-1:0]  barrier_count;
-  logic                                          allocate_or_free;
+  logic [2-1:0]                                  syu_alloc_op;
+  logic [ccv_params_pkg::CCV_WARP_CONTEXTS-1:0]  warp_mask;
+  logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
+  logic [ccv_params_pkg::CCV_W_LANE_IDX-1:0]     last_lanes;
 } ccv_rau_syu_alloc_t;
 
 typedef struct packed {
@@ -542,21 +604,30 @@ typedef struct packed {
   logic [ccv_prelim_pkg::CCV_L_W_TL_IN-1:0]      tl_in;
 } ccv_ext_exb_in_t;
 
+typedef struct packed {
+  logic [ccv_prov_pkg::CCV_P_W_REQ_MIU_DCU-1:0]  req_id;
+} ccv_dcu_miu_fill_ntc_t;
+
+typedef struct packed {
+  logic [ccv_prov_pkg::CCV_P_W_RS_IDX-1:0]       rs_idx;
+  logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
+} ccv_miu_ooe_cmpl_hint_t;
+
 // Ports per block, derived from the channel list.
 localparam int CCV_PORTS_CRU = 2;  // 1 in, 1 out
-localparam int CCV_PORTS_DCU = 6;  // 3 in, 3 out
+localparam int CCV_PORTS_DCU = 7;  // 3 in, 4 out
 localparam int CCV_PORTS_DEC = 2;  // 1 in, 1 out
 localparam int CCV_PORTS_EXB = 4;  // 2 in, 2 out
-localparam int CCV_PORTS_FET = 11;  // 7 in, 4 out
+localparam int CCV_PORTS_FET = 12;  // 8 in, 4 out
 localparam int CCV_PORTS_LANE = 2;  // 1 in, 1 out
-localparam int CCV_PORTS_MIU = 12;  // 7 in, 5 out
+localparam int CCV_PORTS_MIU = 15;  // 8 in, 7 out
 localparam int CCV_PORTS_MLC = 8;  // 4 in, 4 out
-localparam int CCV_PORTS_OOE = 16;  // 6 in, 10 out
-localparam int CCV_PORTS_PCA = 5;  // 2 in, 3 out
-localparam int CCV_PORTS_RAU = 11;  // 4 in, 7 out
+localparam int CCV_PORTS_OOE = 17;  // 7 in, 10 out
+localparam int CCV_PORTS_PCA = 6;  // 3 in, 3 out
+localparam int CCV_PORTS_RAU = 14;  // 6 in, 8 out
 localparam int CCV_PORTS_RCU = 10;  // 6 in, 4 out
 localparam int CCV_PORTS_SPM = 2;  // 1 in, 1 out
-localparam int CCV_PORTS_SYU = 3;  // 2 in, 1 out
+localparam int CCV_PORTS_SYU = 5;  // 2 in, 3 out
 
 /* verilator lint_on UNUSEDPARAM */
 

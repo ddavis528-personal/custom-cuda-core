@@ -1,0 +1,7 @@
+{
+  "module": "ooe_headrd",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-23",
+  "why": "Rename 1's RAT read for one slot's heads, combinational: each head's reads through the pending group, and each read's in-group writer as a one-hot over the lower heads (OI-67). ooe_rename instantiates one per slot, in parallel with the go; its Rename 1 register captures what the lanes select."
+}

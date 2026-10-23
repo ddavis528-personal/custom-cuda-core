@@ -304,7 +304,13 @@ it.
   stage.
 - **Signal:** front-end-bound kernels, where the decode queue is often empty
   and `issue_per_cycle` low after redirects. Mispredict recovery pays the
-  two cycles every time.
+  two cycles every time. Measured with slice 4's go (`take_young` 0,
+  `fits_stale` 6; OA's response OI-45, rev 158): loop is 100 cycles longer
+  over its 99 redirects (2,736 to 2,836, +3.7%), one cycle a redirect, while
+  the synthetic sweep moves by about nothing.
+- **Build:** the refill fast path: take a uop that arrives into an empty
+  slot at once, and re-check its fits in Rename 1, a failing tail waiting
+  in the skid (OA's (a2); `fits_stale` 2 models it).
 
 ### PF-21 Dynamic per-warp RS and decode-queue limits
 

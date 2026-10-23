@@ -22,8 +22,8 @@
 // nothing older), port-reverse (a cycle's allocations reach the ports
 // youngest first) and no-lead (the lead is never driven, so the matrix is
 // never clocked).
-// With --cg <scenario> <vcd> it is ooe_age's clock-gating bench
-// (test/ooe/cg_trace.h), and compares nothing.
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD ooe_age's clock-gating unit measures, checking as ever.
 // Usage: age_tb [seeds] | age_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_age.h"
@@ -40,7 +40,6 @@
 
 using ccv::ooe::Core;
 
-int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &));
 
 namespace {
 std::unique_ptr<VerilatedContext> ctx;
@@ -89,14 +88,6 @@ void drivePend() {
     dut->gnt_v_cq02h |= 1u << k;
     dut->gnt_idx_cq02h |= decltype(dut->gnt_idx_cq02h)(pend[k]) << (k * W);
   }
-}
-
-// An idle cycle: no lead; the pending group, if any, is applied.
-void idleTick() {
-  dut->alloc_l_cq01h = 0;
-  drivePend();
-  tick();
-  pend.clear();
 }
 
 void fail(const char *what, unsigned e, unsigned j) {
@@ -150,14 +141,13 @@ void hook(const Core &c) {
   tick();
   // The matrix now holds every group up to the pending one: compare the
   // pairs valid in its snapshot.
-  if (!cg.on())
-    for (unsigned e = 0; e != n; ++e)
-      for (unsigned j = 0; j != n; ++j) {
-        if (e == j || !pend_was_valid[e] || !pend_was_valid[j]) continue;
-        ++pairs;
-        const bool want = pend_was_age[j] < pend_was_age[e];
-        if (getBit(dut->older_cq03h, e * n + j) != want) fail(want ? "older bit clear" : "older bit set", e, j);
-      }
+  for (unsigned e = 0; e != n; ++e)
+    for (unsigned j = 0; j != n; ++j) {
+      if (e == j || !pend_was_valid[e] || !pend_was_valid[j]) continue;
+      ++pairs;
+      const bool want = pend_was_age[j] < pend_was_age[e];
+      if (getBit(dut->older_cq03h, e * n + j) != want) fail(want ? "older bit clear" : "older bit set", e, j);
+    }
   pend.clear();
   for (auto &f : fresh) pend.push_back(f.second);
   pend_valid = now_valid;
@@ -167,8 +157,6 @@ void hook(const Core &c) {
   }
   pend_was_valid = was_valid;
   pend_was_age = was_age;
-  if (cg.on())
-    for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
 }
 } // namespace
 
@@ -181,28 +169,9 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_age>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    dut->valid_cq02h = 0;
-    dut->alloc_l_cq01h = 0;
-    dut->gnt_v_cq02h = 0;
-    dut->gnt_idx_cq02h = 0;
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) tick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestRandomPreHooked(seeds, hook);
+  if (cg.on()) cg.open(*dut, vcd);
+  const int model_fails = cg.run(seeds, hook, nullptr);
+  cg.close();
   dut->final();
   std::printf("age_tb class=%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu multi-alloc=%llu "
               "pairs=%llu mismatches=%llu model_failures=%d\n",

@@ -364,6 +364,25 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     tr = mapped_timing("map -r", os.path.join(work, "map_r.blif"))
     t.ir_area, t.ir_r = t.ir, tr.ir
     t.ir = {p: min(v, tr.ir.get(p, v)) for p, v in t.ir.items()}
+    # NGD-7's paths from each register, to the flops and to each output,
+    # likewise from the better of the two maps (OI-45: ooe_rs's dep reads
+    # 14.96 on map, 11.74 on map -r), but only where map -r's netlist is no
+    # worse flop to flop: then one netlist meets NGD-1 and NGD-7 together,
+    # and only area recovery stretched the register's off-critical paths.
+    t.q_flop_area, t.q_out_area, t.rr_r = t.q_flop, t.q_out, tr.rr
+    t.q_flop_r, t.q_out_r = tr.q_flop, tr.q_out
+    # NGD-2's output ready times the same, on the same condition (OI-68:
+    # ooe_go's wb reads 18.7 on map, 11.2 on map -r, flop to flop 21.6
+    # against 21.1).
+    t.ro_area, t.ro_r = t.ro, tr.ro
+    if tr.rr <= t.rr + EPS:
+        t.ro = {p: min(v, tr.ro.get(p, v)) for p, v in t.ro.items()}
+        t.q_flop = {q: min(v, tr.q_flop.get(q, v)) for q, v in t.q_flop.items()}
+        q_out = collections.defaultdict(dict)
+        for q, outs in t.q_out.items():
+            for p, v in outs.items():
+                q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
+        t.q_out = q_out
     t.cut, t.regname = cut, reg_names(d)
     return t
 
@@ -371,7 +390,8 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
 def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inner=()):
     """A module at its parameters, as a Yosys JSON netlist: flattened, or
     with its hierarchy kept, less the `inner` helpers, which are flattened
-    into their parents (a parameterised copy is $paramod\\<module>\\...)."""
+    into their parents (a parameterised copy is $paramod\\<module>\\..., or
+    $paramod$<sha1>\\<module> when its parameter string is long; OI-69)."""
     work = os.path.join(BUILD, name)
     os.makedirs(work, exist_ok=True)
     jf = os.path.join(work, "net.json")
@@ -389,10 +409,10 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inn
     if not flat and inner:
         cmds += ["setattr -mod -set keep_hierarchy 1 *",
                  "setattr -mod -unset keep_hierarchy %s" % " ".join(
-                     "%s $paramod\\%s\\*" % (m, m) for m in sorted(inner))]
+                     "%s $paramod\\%s\\* $paramod$*\\%s" % (m, m, m) for m in sorted(inner))]
         flat = True
-    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top), "write_json %s" % jf]
-    r = run(["yosys", "-q", "-p", "; ".join(cmds)])
+    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top)]
+    r = cg.yosys_json(cmds, jf)
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (name, (r.stdout + r.stderr)[-2000:]))
     return work, jf
@@ -944,6 +964,29 @@ def selftest():
     expect(all(u.t.ir[p] == min(u.t.ir_area[p], u.t.ir_r.get(p, u.t.ir_area[p]))
                for u in fx.values() for p in u.t.ir),
            "an input's NGD-3 depth is not the shorter of its two maps")
+    #     NGD-7 the same, per register, wherever map -r is no worse flop to
+    #     flop; and the area map's alone wherever it is worse.
+    wrong = []
+    for u in fx.values():
+        t = u.t
+        rbetter = t.rr_r <= t.rr + EPS
+        for q, v in t.q_flop.items():
+            a, r = t.q_flop_area[q], t.q_flop_r.get(q, t.q_flop_area[q])
+            if v != (min(a, r) if rbetter else a):
+                wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
+                    u.name, q, v, a, r, "" if rbetter else ", -r worse flop to flop"))
+    expect(not wrong, "a register's NGD-7 depth is not the rule's: %s" % "; ".join(wrong[:3]))
+    #     NGD-2 the same, per output (OI-68).
+    wrong = []
+    for u in fx.values():
+        t = u.t
+        rbetter = t.rr_r <= t.rr + EPS
+        for o, v in t.ro.items():
+            a, r = t.ro_area[o], t.ro_r.get(o, t.ro_area[o])
+            if v != (min(a, r) if rbetter else a):
+                wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
+                    u.name, o, v, a, r, "" if rbetter else ", -r worse flop to flop"))
+    expect(not wrong, "an output's NGD-2 ready time is not the rule's: %s" % "; ".join(wrong[:3]))
     # 2. Within every default: nothing. An input wired straight to an
     #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
     ok = fx["ngd_fx_ok"]
@@ -1132,6 +1175,11 @@ def selftest():
            "an inner helper between two children passed: %s" % f)
     f = msgs(converge("fx_asm_inner", "ngd_fx_asm_inner", files, [], fi))
     expect(not f, "an inner helper before its parent's flop was refused: %s" % f)
+    # A parameterised helper's copy carries a hashed name, $paramod$<sha1>
+    # \<module>, when its parameter string is long (OI-69): flattened too.
+    fp = Budgets(bfiles + [os.path.join(ROOT, FIX, "ngd_fx_pinner.ngd.json")])
+    f = msgs(converge("fx_asm_pinner", "ngd_fx_asm_pinner", files, [], fp))
+    expect(not f, "a parameterised inner helper was cut out at its ports: %s" % f)
     f = msgs(converge("fx_asm_cut", "ngd_fx_asm_inner", files, [], fb))
     expect(any("do not converge" in x and "u_inn.a" in x for x in f),
            "a helper not declared inner was not cut out at its ports: %s" % f)

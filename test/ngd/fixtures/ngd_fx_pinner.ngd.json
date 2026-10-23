@@ -1,0 +1,7 @@
+{
+  "module": "ngd_fx_pinner",
+  "inner": true,
+  "by": "selftest",
+  "date": "2026-10-23",
+  "why": "the parameterised inner helper control (OI-69): its derived copy's hashed $paramod name must be flattened too"
+}

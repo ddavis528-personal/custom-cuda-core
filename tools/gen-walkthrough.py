@@ -3,6 +3,9 @@
 
     tools/gen-walkthrough.py            write docs/walkthrough.md
     tools/gen-walkthrough.py --check    fail if it differs from a fresh build
+    tools/gen-walkthrough.py --check-inputs [--doc PATH]
+                                        fail if the inputs that most often move
+                                        it have changed since it was written
 
 Every listing in the walkthrough is produced here, from the repository and
 from runs of the binaries the gate builds (build/skel/ccv-skel, the SV-hosted
@@ -293,6 +296,7 @@ def build():
         "ccv_common_chk_lockstep": "copies of a channel that must move in lockstep across the 32 lanes",
         "ccv_common_chk_binding": "a slot's group key stays bound",
         "ccv_common_chk_outstanding": "request / response pairs across two channels",
+        "ccv_common_chk_notice": "a notice and the message it promises, slot by slot",
     }
     for k in sorted(chk_counts, key=lambda k: -chk_counts[k]):
         chk_tbl.append("| `%s` | %d | %s |" % (k, chk_counts[k], judges.get(k, "")))
@@ -621,10 +625,70 @@ ports, the checkers and the clock gate already in place.
     return doc
 
 
+# The inputs that most often move the walkthrough, fingerprinted into its last
+# line so the gate can tell in its first minute, with nothing built, that the
+# full --check at its end would fail (DA, 2026-10-23): the compiler pin, the
+# schema and parameters (channel counts, the listings generated from them),
+# links, the open items, the clock gate and credit checker it quotes, and two
+# facts read from files that change for other reasons, the lint rule count
+# and the gate's section names. A change elsewhere that moves vadd's run is
+# still caught only by --check; tools/regen.sh before the gate catches both.
+FP_FILES = [("tools", "compiler.lock"), ("schema", "interfaces.json"),
+            ("params", "ccv_params.json"), ("params", "links.json"),
+            ("test", "kernels", "vadd", "kernel.cfg"), ("docs", "open-items.md"),
+            ("rtl", "clk", "ccv_common_clk.sv"), ("rtl", "if", "ccv_common_chk_credit.sv")]
+FP_RE = re.compile(r"^<!-- walkthrough inputs: ([0-9a-f]+) .*-->$", re.M)
+
+
+def fingerprint():
+    import hashlib
+    h = hashlib.sha256()
+    for p in FP_FILES:
+        h.update("/".join(p).encode() + b"\0" + rd(*p).encode() + b"\0")
+    nrules = len(set(re.findall(r'(?:add|Finding)\("(CCV-L\d+)"', rd("tools", "lint-rtl.py"))))
+    sections = re.findall(r'^ *section "([^"]+)"', rd("tools", "verify.sh"), re.M)
+    h.update(("rules=%d\0" % nrules + "\0".join(sections)).encode())
+    return h.hexdigest()[:16]
+
+
+def fp_line():
+    return ("<!-- walkthrough inputs: %s (tools/gen-walkthrough.py --check-inputs; "
+            "tools/regen.sh rewrites it) -->\n" % fingerprint())
+
+
 def main():
+    if "--check-inputs" in sys.argv and "--selftest" in sys.argv:
+        # The early check's control: a walkthrough written from other inputs
+        # (its fingerprint one hex digit off) must be refused.
+        cur = open(DOC).read()
+        m = FP_RE.search(cur)
+        if not m:
+            print("gen-walkthrough: docs/walkthrough.md has no inputs line", file=sys.stderr)
+            return 1
+        off = m.group(1)[:-1] + ("0" if m.group(1)[-1] != "0" else "1")
+        with tempfile.NamedTemporaryFile("w", suffix=".md", delete=False) as t:
+            t.write(cur.replace(m.group(1), off))
+        r = subprocess.run([sys.executable, __file__, "--check-inputs", "--doc", t.name],
+                           capture_output=True)
+        os.unlink(t.name)
+        if r.returncode == 0:
+            print("gen-walkthrough: a walkthrough from other inputs passed --check-inputs",
+                  file=sys.stderr)
+            return 1
+        print("  walkthrough from other inputs refused")
+        return 0
+    if "--check-inputs" in sys.argv:
+        path = sys.argv[sys.argv.index("--doc") + 1] if "--doc" in sys.argv else DOC
+        m = FP_RE.search(open(path).read() if os.path.exists(path) else "")
+        if not m or m.group(1) != fingerprint():
+            print("docs/walkthrough.md was written from other inputs (pin, schema, params, "
+                  "lint rules or gate sections): run tools/regen.sh", file=sys.stderr)
+            return 1
+        print("  walkthrough inputs current")
+        return 0
     check = "--check" in sys.argv
     try:
-        doc = build()
+        doc = build() + "\n" + fp_line()
     except Missing as e:
         print("gen-walkthrough: %s" % e, file=sys.stderr)
         return 1

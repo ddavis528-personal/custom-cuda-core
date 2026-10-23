@@ -1,5 +1,5 @@
 {
- "_comment": "Explicit exceptions to the local clock-gating rules (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'), written by the module's owner. One entry per module, rule (CG-1, CG-2, CG-3, CG-4, CG-5 or RST-1) and register: module, rule, target, why, by, date. why says what was measured and why the rule cannot or should not be met. A CG-5 waiver also carries ports, the input ports it lets into the enable, and enable_ngd, the enable's total depth: the latest port's arrival plus the cone, within CCV_NGD_CG_EN (OI-59). A waiver that excuses nothing is refused; one beside a ratchet entry supersedes it.",
+ "_comment": "Explicit exceptions to the local clock-gating rules (tools/check-cg.py, docs/rtl-coding-style.md 'Local clock gating'), written by the module's owner. One entry per module, rule (CG-1, CG-2, CG-3, CG-4, CG-5 or RST-1) and register: module, rule, target, why, by, date. why says what was measured and why the rule cannot or should not be met. A CG-5 waiver also carries ports, the input ports it lets into the enable, and enable_ngd, the enable's total depth: the latest port's arrival plus the cone, within CCV_NGD_CG_EN (OI-59). A waiver carries its threshold and fails again past it (Daniel; OA's response OI-66): a CG-3 waiver states floor_pct and measured_pct, each by scenario (idle, medium, high), the floor 2 points under the measurement and never over it, and optionally enable, the one gate of its register it takes, by its enable's name as check-cg reports it (OI-66); an allowance waiver, for CG-1's registers written every cycle or CG-4's ungated flops, states max_flops and measured_flops. A waiver that excuses nothing is refused; one beside a ratchet entry supersedes it.",
  "waivers": [
   {
    "module": "ooe_wake",
@@ -12,6 +12,117 @@
    "why": "OA's response OI-58: a timer's grant has no lead (the grant register's D is select's pick at 24.3 NGD, and the issue loop cannot pay a cycle). The grant comes from ooe_sched's third (* keep *) copy of its grant register (grant_w_cq04h), for this module alone, at 2 NGD (ooe_wake.ngd.json). check-cg measures each timer's enable cone at 4.1 NGD, 6.1 in all with the grant's arrival, within CG-2's 8; 6.5 is stated for margin. Every other term of the enable is this module's own flops (OA's responses OI-58, OI-62).",
    "by": "OI",
    "date": "2026-10-20"
+  },
+  {
+   "module": "ooe_decq",
+   "rule": "CG-5",
+   "target": "tk_cq02h",
+   "ports": [
+    "deq_sel_cq01h"
+   ],
+   "enable_ngd": 4.2,
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): the group of each slot's take, count and valid bits (14 flops) is clocked by rename's per-slot take-enable, deq_sel_cq01h (a superset of its take, from rename's flops at 2.0 NGD, ooe_decq.ngd.json; the superset is asserted, deq_sel_covers), or the slot's own transit, arrival and flush flops. check-cg measures the cone at 2.0 to 2.2 NGD, 4.2 in all with the arrival, within CG-2's 8. One enable shared by the slots gave 61 to 71% DCGE; per slot, 90% and over. It replaces OI-58's \"some warp takes\" waiver of about 5 (deq_any_cq01h, dropped).",
+   "by": "OI",
+   "date": "2026-10-21"
+  },
+  {
+   "module": "ooe_decq",
+   "rule": "CG-5",
+   "target": "hp_o_cq02h",
+   "ports": [
+    "deq_sel_cq01h"
+   ],
+   "enable_ngd": 4.2,
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): the group of each slot's payloads and admission bits (82 flops) is clocked by rename's per-slot take-enable, deq_sel_cq01h (a superset of its take, from rename's flops at 2.0 NGD, ooe_decq.ngd.json; the superset is asserted, deq_sel_covers), or the slot's own transit, arrival and flush flops. check-cg measures the cone at 2.0 to 2.2 NGD, 4.2 in all with the arrival, within CG-2's 8. One enable shared by the slots gave 61 to 71% DCGE; per slot, 90% and over. It replaces OI-58's \"some warp takes\" waiver of about 5 (deq_any_cq01h, dropped).",
+   "by": "OI",
+   "date": "2026-10-21"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-3",
+   "target": "fits_cq02h",
+   "enable": "fits_en[0]",
+   "floor_pct": {
+    "medium": 62,
+    "high": 59
+   },
+   "measured_pct": {
+    "medium": 64,
+    "high": 73
+   },
+   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. This entry is slot 0's gate (its enable fits_en[0]), held to its own floor, 2 under its measure (OA's rev 181; check-cg's enable key, TI's cd901fd). Slot 3's gate is never enabled in the unit's scenarios and so needs none. With the writer prefix counts in the same gate (OI-67, 2026-10-23), measured 64 / 73% (medium / high); the floors stand.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-3",
+   "target": "fits_cq02h",
+   "enable": "fits_en[1]",
+   "floor_pct": {
+    "medium": 62,
+    "high": 61
+   },
+   "measured_pct": {
+    "medium": 64,
+    "high": 73
+   },
+   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. This entry is slot 1's gate (its enable fits_en[1]), held to its own floor, 2 under its measure (OA's rev 181; check-cg's enable key, TI's cd901fd). Slot 3's gate is never enabled in the unit's scenarios and so needs none. With the writer prefix counts in the same gate (OI-67, 2026-10-23), measured 64 / 73% (medium / high); the floors stand.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-3",
+   "target": "fits_cq02h",
+   "enable": "fits_en[2]",
+   "floor_pct": {
+    "medium": 62,
+    "high": 66
+   },
+   "measured_pct": {
+    "medium": 64,
+    "high": 77
+   },
+   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. This entry is slot 2's gate (its enable fits_en[2]), held to its own floor, 2 under its measure (OA's rev 181; check-cg's enable key, TI's cd901fd). Slot 3's gate is never enabled in the unit's scenarios and so needs none. With the writer prefix counts in the same gate (OI-67, 2026-10-23), measured 64 / 77% (medium / high); the floors stand.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-3",
+   "target": "he_cq02h",
+   "floor_pct": {
+    "medium": 64,
+    "high": 52
+   },
+   "measured_pct": {
+    "medium": 66,
+    "high": 54
+   },
+   "why": "DA's decision (a), OA's response OI-66 (OA tab rev 179): the allowances held (20 flops, one-hot per credit) are recomputed every cycle from rename's pool and floors and the warps with a head; enabled on any slot's change bit, they change on 66% (medium) and 54% (high) of enabled cycles, measured at 8ef3dff; idle enables none. Floors 2 under.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-1",
+   "target": "sq_cq01h",
+   "max_flops": 4,
+   "measured_flops": 4,
+   "why": "Each slot's squash lead, registered (4 flops, written every cycle): it masks the fits as they are registered in the cycle decq still shows a squashed slot's heads, the one after the squash applies (OA's rev 174 accepted the two-cycle block). The module's allowance (fewer than 8 flops written every cycle) takes 6 of its 14: the reset, the restore lead and each slot's block (4); this and its pair, sq_cq01h and chg_cq02h, are the residue, 8 flops (DA's decision (a): max_flops 14 in all, OA's response OI-66). Two bits a slot (its block now, its squash last cycle) and the change bit is the least found (OI's rev 163). Since OI-67 (2026-10-23, 606 flops with the writer prefix counts and the fits' copies) the module's allowance, 2% of its flops, also takes the change bits (chg_cq02h's waiver is gone); this waiver's 4 are the residue.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_decq",
+   "rule": "CG-1",
+   "target": "tkv_cq02h",
+   "max_flops": 4,
+   "measured_flops": 4,
+   "why": "The residue of decq's flops written every cycle (4 flops). Adding the registered flush's copy for the outputs' mask, fl_o_cq02h (4 flops, written every cycle, the flush its D), took decq's count from 14 to 18: decq masks a slot's heads and count while its flush is registered, so rename's go blocks a squash for two cycles, not three (OA's response OI-66, rev 174), and NGD-7 asks a register that drives an output and reaches a flop 18.8 NGD away to be copied. The allowance (14 flops) takes the reset, fl_q, fl_o, enq_en and arr_q; this register, each slot's take in transit (deq_s, an input, its D), is what it leaves: 4 flops (DA's rule for a waiver's threshold, OA's response OI-66).",
+   "by": "OI",
+   "date": "2026-10-23"
   }
  ]
 }

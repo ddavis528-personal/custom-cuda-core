@@ -15,6 +15,8 @@
 module ccv_syu_w #(
   parameter int RPT_OOE_SYU_BAR = 0,
   parameter int RPT_SYU_OOE_REL = 0,
+  parameter int RPT_SYU_FET_REL = 0,
+  parameter int RPT_SYU_RAU_READY = 0,
   parameter int RPT_RAU_SYU_ALLOC = 0
 ) (
   `include "ccv_syu_ports.svh"
@@ -31,6 +33,16 @@ module ccv_syu_w #(
   logic b_syu_ooe_rel_credit;
   logic b_syu_ooe_rel_stall;
   logic b_syu_ooe_rel_wake;
+  logic b_syu_fet_rel_valid;
+  ccv_syu_fet_rel_t b_syu_fet_rel_payload;
+  logic b_syu_fet_rel_credit;
+  logic b_syu_fet_rel_stall;
+  logic b_syu_fet_rel_wake;
+  logic b_syu_rau_ready_valid;
+  ccv_syu_rau_ready_t b_syu_rau_ready_payload;
+  logic b_syu_rau_ready_credit;
+  logic b_syu_rau_ready_stall;
+  logic b_syu_rau_ready_wake;
   logic b_rau_syu_alloc_valid;
   ccv_rau_syu_alloc_t b_rau_syu_alloc_payload;
   logic b_rau_syu_alloc_credit;
@@ -39,6 +51,8 @@ module ccv_syu_w #(
 `ifdef CCV_TRACE
   logic [63:0] b_ooe_syu_bar_tid;
   logic [63:0] b_syu_ooe_rel_tid;
+  logic [63:0] b_syu_fet_rel_tid;
+  logic [63:0] b_syu_rau_ready_tid;
   logic [63:0] b_rau_syu_alloc_tid;
 `endif
 
@@ -63,6 +77,16 @@ module ccv_syu_w #(
     .syu_ooe_rel_credit(b_syu_ooe_rel_credit),
     .syu_ooe_rel_stall(b_syu_ooe_rel_stall),
     .syu_ooe_rel_wake(b_syu_ooe_rel_wake),
+    .syu_fet_rel_valid(b_syu_fet_rel_valid),
+    .syu_fet_rel_payload(b_syu_fet_rel_payload),
+    .syu_fet_rel_credit(b_syu_fet_rel_credit),
+    .syu_fet_rel_stall(b_syu_fet_rel_stall),
+    .syu_fet_rel_wake(b_syu_fet_rel_wake),
+    .syu_rau_ready_valid(b_syu_rau_ready_valid),
+    .syu_rau_ready_payload(b_syu_rau_ready_payload),
+    .syu_rau_ready_credit(b_syu_rau_ready_credit),
+    .syu_rau_ready_stall(b_syu_rau_ready_stall),
+    .syu_rau_ready_wake(b_syu_rau_ready_wake),
     .rau_syu_alloc_valid(b_rau_syu_alloc_valid),
     .rau_syu_alloc_payload(b_rau_syu_alloc_payload),
     .rau_syu_alloc_credit(b_rau_syu_alloc_credit),
@@ -74,13 +98,15 @@ module ccv_syu_w #(
 `ifdef CCV_TRACE
     , .ooe_syu_bar_tid(b_ooe_syu_bar_tid)
     , .syu_ooe_rel_tid(b_syu_ooe_rel_tid)
+    , .syu_fet_rel_tid(b_syu_fet_rel_tid)
+    , .syu_rau_ready_tid(b_syu_rau_ready_tid)
     , .rau_syu_alloc_tid(b_rau_syu_alloc_tid)
 `endif
   );
 
   // ccv_ooe_syu_bar, destination end
   if (RPT_OOE_SYU_BAR > 0) begin : g_rpt_ooe_syu_bar
-    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(13)) u_rpt_ooe_syu_bar (
+    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(111)) u_rpt_ooe_syu_bar (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_syu_bar_valid}), .src_payload({ooe_syu_bar_payload}),
       .src_wake(ooe_syu_bar_wake), .src_credit({ooe_syu_bar_credit}), .src_stall({ooe_syu_bar_stall}),
@@ -102,7 +128,7 @@ module ccv_syu_w #(
   end
   // ccv_syu_ooe_rel, source end
   if (RPT_SYU_OOE_REL > 0) begin : g_rpt_syu_ooe_rel
-    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(36)) u_rpt_syu_ooe_rel (
+    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_ooe_rel (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_syu_ooe_rel_valid}), .src_payload({b_syu_ooe_rel_payload}),
       .src_wake(b_syu_ooe_rel_wake), .src_credit({b_syu_ooe_rel_credit}), .src_stall({b_syu_ooe_rel_stall}),
@@ -122,9 +148,53 @@ module ccv_syu_w #(
     assign {syu_ooe_rel_tid} = {b_syu_ooe_rel_tid};
 `endif
   end
+  // ccv_syu_fet_rel, source end
+  if (RPT_SYU_FET_REL > 0) begin : g_rpt_syu_fet_rel
+    ccv_common_rpt #(.STAGES(RPT_SYU_FET_REL), .SLOTS(1), .PAYLOAD_W(37)) u_rpt_syu_fet_rel (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_syu_fet_rel_valid}), .src_payload({b_syu_fet_rel_payload}),
+      .src_wake(b_syu_fet_rel_wake), .src_credit({b_syu_fet_rel_credit}), .src_stall({b_syu_fet_rel_stall}),
+      .dst_valid({syu_fet_rel_valid}), .dst_payload({syu_fet_rel_payload}),
+      .dst_wake(syu_fet_rel_wake), .dst_credit({syu_fet_rel_credit}), .dst_stall({syu_fet_rel_stall})
+`ifdef CCV_TRACE
+      , .src_tid({b_syu_fet_rel_tid}), .dst_tid({syu_fet_rel_tid})
+`endif
+    );
+  end else begin : g_wire_syu_fet_rel
+    assign {syu_fet_rel_valid} = {b_syu_fet_rel_valid};
+    assign {syu_fet_rel_payload} = {b_syu_fet_rel_payload};
+    assign syu_fet_rel_wake = b_syu_fet_rel_wake;
+    assign {b_syu_fet_rel_credit} = {syu_fet_rel_credit};
+    assign {b_syu_fet_rel_stall} = {syu_fet_rel_stall};
+`ifdef CCV_TRACE
+    assign {syu_fet_rel_tid} = {b_syu_fet_rel_tid};
+`endif
+  end
+  // ccv_syu_rau_ready, source end
+  if (RPT_SYU_RAU_READY > 0) begin : g_rpt_syu_rau_ready
+    ccv_common_rpt #(.STAGES(RPT_SYU_RAU_READY), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_rau_ready (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_syu_rau_ready_valid}), .src_payload({b_syu_rau_ready_payload}),
+      .src_wake(b_syu_rau_ready_wake), .src_credit({b_syu_rau_ready_credit}), .src_stall({b_syu_rau_ready_stall}),
+      .dst_valid({syu_rau_ready_valid}), .dst_payload({syu_rau_ready_payload}),
+      .dst_wake(syu_rau_ready_wake), .dst_credit({syu_rau_ready_credit}), .dst_stall({syu_rau_ready_stall})
+`ifdef CCV_TRACE
+      , .src_tid({b_syu_rau_ready_tid}), .dst_tid({syu_rau_ready_tid})
+`endif
+    );
+  end else begin : g_wire_syu_rau_ready
+    assign {syu_rau_ready_valid} = {b_syu_rau_ready_valid};
+    assign {syu_rau_ready_payload} = {b_syu_rau_ready_payload};
+    assign syu_rau_ready_wake = b_syu_rau_ready_wake;
+    assign {b_syu_rau_ready_credit} = {syu_rau_ready_credit};
+    assign {b_syu_rau_ready_stall} = {syu_rau_ready_stall};
+`ifdef CCV_TRACE
+    assign {syu_rau_ready_tid} = {b_syu_rau_ready_tid};
+`endif
+  end
   // ccv_rau_syu_alloc, destination end
   if (RPT_RAU_SYU_ALLOC > 0) begin : g_rpt_rau_syu_alloc
-    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(15)) u_rpt_rau_syu_alloc (
+    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(58)) u_rpt_rau_syu_alloc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_syu_alloc_valid}), .src_payload({rau_syu_alloc_payload}),
       .src_wake(rau_syu_alloc_wake), .src_credit({rau_syu_alloc_credit}), .src_stall({rau_syu_alloc_stall}),

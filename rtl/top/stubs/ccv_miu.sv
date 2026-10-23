@@ -181,7 +181,42 @@ module ccv_miu (
 `endif
   assign fet_miu_itlb_req_credit = '0;
   assign fet_miu_itlb_req_stall = '0;
+  assign miu_rau_ready_valid = '0;
+  assign miu_rau_ready_payload = '0;
+  assign miu_rau_ready_wake = '0;
+`ifdef CCV_TRACE
+  assign miu_rau_ready_tid = '0;
+`endif
   assign rau_miu_cta_credit = '0;
   assign rau_miu_cta_stall = '0;
+  assign dcu_miu_fill_ntc_s0_credit = '0;
+  assign dcu_miu_fill_ntc_s0_stall = '0;
+  assign dcu_miu_fill_ntc_s1_credit = '0;
+  assign dcu_miu_fill_ntc_s1_stall = '0;
+  assign dcu_miu_fill_ntc_s2_credit = '0;
+  assign dcu_miu_fill_ntc_s2_stall = '0;
+  assign dcu_miu_fill_ntc_s3_credit = '0;
+  assign dcu_miu_fill_ntc_s3_stall = '0;
+  assign miu_ooe_cmpl_hint_s0_valid = '0;
+  assign miu_ooe_cmpl_hint_s0_payload = '0;
+  assign miu_ooe_cmpl_hint_s1_valid = '0;
+  assign miu_ooe_cmpl_hint_s1_payload = '0;
+  assign miu_ooe_cmpl_hint_s2_valid = '0;
+  assign miu_ooe_cmpl_hint_s2_payload = '0;
+  assign miu_ooe_cmpl_hint_s3_valid = '0;
+  assign miu_ooe_cmpl_hint_s3_payload = '0;
+  assign miu_ooe_cmpl_hint_wake = '0;
+`ifdef CCV_TRACE
+  assign miu_ooe_cmpl_hint_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign miu_ooe_cmpl_hint_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign miu_ooe_cmpl_hint_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign miu_ooe_cmpl_hint_s3_tid = '0;
+`endif
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

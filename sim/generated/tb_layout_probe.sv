@@ -8,7 +8,7 @@
 `include "ccv_interfaces.svh"
 
 module tb_layout_probe (
-  input  logic [159:0] c0,
+  input  logic [161:0] c0,
   output logic [4:0] c0_f0,
   output logic [1:0] c0_f1,
   output logic [63:0] c0_f2,
@@ -19,13 +19,15 @@ module tb_layout_probe (
   output logic [1:0] c0_f7,
   output logic c0_f8,
   output logic c0_f9,
-  input  logic [218:0] c1,
+  output logic c0_f10,
+  output logic c0_f11,
+  input  logic [228:0] c1,
   output logic [4:0] c1_f0,
   output logic [63:0] c1_f1,
   output logic [31:0] c1_f2,
   output logic [2:0] c1_f3,
   output logic [2:0] c1_f4,
-  output logic [15:0] c1_f5,
+  output logic [16:0] c1_f5,
   output logic [3:0] c1_f6,
   output logic c1_f7,
   output logic [4:0] c1_f8,
@@ -39,7 +41,7 @@ module tb_layout_probe (
   output logic c1_f16,
   output logic [2:0] c1_f17,
   output logic [1:0] c1_f18,
-  output logic [1:0] c1_f19,
+  output logic [2:0] c1_f19,
   output logic [31:0] c1_f20,
   output logic [1:0] c1_f21,
   output logic [1:0] c1_f22,
@@ -48,6 +50,11 @@ module tb_layout_probe (
   output logic [3:0] c1_f25,
   output logic [3:0] c1_f26,
   output logic [1:0] c1_f27,
+  output logic c1_f28,
+  output logic c1_f29,
+  output logic c1_f30,
+  output logic [3:0] c1_f31,
+  output logic c1_f32,
   input  logic [174:0] c2,
   output logic [6:0] c2_f0,
   output logic [4:0] c2_f1,
@@ -95,10 +102,10 @@ module tb_layout_probe (
   output logic [6:0] c5_f0,
   output logic c5_f1,
   output logic [31:0] c5_f2,
-  input  logic [2150:0] c6,
+  input  logic [3110:0] c6,
   output logic [6:0] c6_f0,
   output logic [31:0] c6_f1,
-  output logic [63:0] c6_f2,
+  output logic [1023:0] c6_f2,
   output logic [1023:0] c6_f3,
   output logic [1023:0] c6_f4,
   input  logic [1113:0] c7,
@@ -111,33 +118,38 @@ module tb_layout_probe (
   output logic [5:0] c7_f6,
   output logic c7_f7,
   output logic [1023:0] c7_f8,
-  input  logic [108:0] c8,
+  input  logic [120:0] c8,
   output logic [6:0] c8_f0,
-  output logic [7:0] c8_f1,
-  output logic [1:0] c8_f2,
-  output logic [5:0] c8_f3,
-  output logic [31:0] c8_f4,
-  output logic [4:0] c8_f5,
-  output logic [2:0] c8_f6,
-  output logic [3:0] c8_f7,
-  output logic [1:0] c8_f8,
-  output logic [3:0] c8_f9,
-  output logic [28:0] c8_f10,
-  output logic c8_f11,
+  output logic [5:0] c8_f1,
+  output logic [7:0] c8_f2,
+  output logic [1:0] c8_f3,
+  output logic [5:0] c8_f4,
+  output logic [31:0] c8_f5,
+  output logic [4:0] c8_f6,
+  output logic [2:0] c8_f7,
+  output logic [3:0] c8_f8,
+  output logic [1:0] c8_f9,
+  output logic [3:0] c8_f10,
+  output logic [28:0] c8_f11,
   output logic c8_f12,
-  output logic [4:0] c8_f13,
-  input  logic [110:0] c9,
+  output logic c8_f13,
+  output logic [4:0] c8_f14,
+  output logic c8_f15,
+  output logic [3:0] c8_f16,
+  output logic c8_f17,
+  input  logic [116:0] c9,
   output logic [6:0] c9_f0,
-  output logic [1:0] c9_f1,
-  output logic [3:0] c9_f2,
-  output logic [31:0] c9_f3,
-  output logic [63:0] c9_f4,
-  output logic c9_f5,
+  output logic [5:0] c9_f1,
+  output logic [1:0] c9_f2,
+  output logic [3:0] c9_f3,
+  output logic [31:0] c9_f4,
+  output logic [63:0] c9_f5,
   output logic c9_f6,
+  output logic c9_f7,
   input  logic [7:0] c10,
   output logic [6:0] c10_f0,
   output logic c10_f1,
-  input  logic [108:0] c11,
+  input  logic [111:0] c11,
   output logic [4:0] c11_f0,
   output logic [1:0] c11_f1,
   output logic [1:0] c11_f2,
@@ -145,6 +157,9 @@ module tb_layout_probe (
   output logic [63:0] c11_f4,
   output logic [2:0] c11_f5,
   output logic c11_f6,
+  output logic c11_f7,
+  output logic c11_f8,
+  output logic c11_f9,
   input  logic [15:0] c12,
   output logic [15:0] c12_f0,
   input  logic [1476:0] c13,
@@ -218,37 +233,40 @@ module tb_layout_probe (
   output logic c26_f5,
   input  logic [1224:0] c27,
   output logic [1224:0] c27_f0,
-  input  logic [185:0] c28,
+  input  logic [217:0] c28,
   output logic [4:0] c28_f0,
   output logic [1:0] c28_f1,
   output logic [63:0] c28_f2,
   output logic [103:0] c28_f3,
   output logic [7:0] c28_f4,
   output logic [2:0] c28_f5,
-  input  logic [50:0] c29,
+  output logic [31:0] c28_f6,
+  input  logic [53:0] c29,
   output logic [4:0] c29_f0,
   output logic [1:0] c29_f1,
   output logic [1:0] c29_f2,
   output logic [31:0] c29_f3,
   output logic [4:0] c29_f4,
   output logic [4:0] c29_f5,
-  input  logic [15:0] c30,
+  output logic [2:0] c29_f6,
+  input  logic [16:0] c30,
   output logic [4:0] c30_f0,
   output logic c30_f1,
   output logic c30_f2,
   output logic c30_f3,
   output logic [7:0] c30_f4,
+  output logic c30_f5,
   input  logic [5:0] c31,
   output logic [4:0] c31_f0,
   output logic c31_f1,
-  input  logic [69:0] c32,
+  input  logic [70:0] c32,
   output logic [4:0] c32_f0,
   output logic [63:0] c32_f1,
   output logic c32_f2,
-  input  logic [8:0] c33,
+  output logic c32_f3,
+  input  logic [5:0] c33,
   output logic [4:0] c33_f0,
   output logic c33_f1,
-  output logic [2:0] c33_f2,
   input  logic [221:0] c34,
   output logic [4:0] c34_f0,
   output logic c34_f1,
@@ -264,55 +282,84 @@ module tb_layout_probe (
   output logic [4:0] c36_f0,
   output logic [4:0] c36_f1,
   output logic [1023:0] c36_f2,
-  input  logic [388:0] c37,
+  input  logic [1055:0] c37,
   output logic [4:0] c37_f0,
-  output logic [255:0] c37_f1,
-  output logic [127:0] c37_f2,
-  input  logic [388:0] c38,
+  output logic [991:0] c37_f1,
+  output logic [15:0] c37_f2,
+  output logic [4:0] c37_f3,
+  output logic [5:0] c37_f4,
+  output logic [31:0] c37_f5,
+  input  logic [1055:0] c38,
   output logic [4:0] c38_f0,
-  output logic [255:0] c38_f1,
-  output logic [127:0] c38_f2,
-  input  logic [10:0] c39,
+  output logic [991:0] c38_f1,
+  output logic [15:0] c38_f2,
+  output logic [4:0] c38_f3,
+  output logic [5:0] c38_f4,
+  output logic [31:0] c38_f5,
+  input  logic [7:0] c39,
   output logic [4:0] c39_f0,
   output logic [1:0] c39_f1,
   output logic c39_f2,
-  output logic [2:0] c39_f3,
   input  logic [5:0] c40,
   output logic [4:0] c40_f0,
   output logic c40_f1,
-  input  logic [100:0] c41,
-  output logic [2:0] c41_f0,
-  output logic [16:0] c41_f1,
-  output logic [16:0] c41_f2,
-  output logic [63:0] c41_f3,
-  input  logic [12:0] c42,
+  input  logic [10:0] c41,
+  output logic [4:0] c41_f0,
+  output logic c41_f1,
+  output logic [4:0] c41_f2,
+  input  logic [4:0] c42,
   output logic [4:0] c42_f0,
-  output logic [2:0] c42_f1,
-  output logic [3:0] c42_f2,
-  output logic c42_f3,
-  input  logic [35:0] c43,
-  output logic [31:0] c43_f0,
-  output logic [3:0] c43_f1,
-  input  logic [14:0] c44,
-  output logic [2:0] c44_f0,
-  output logic [5:0] c44_f1,
-  output logic [4:0] c44_f2,
-  output logic c44_f3,
-  input  logic [171:0] c45,
-  output logic [3:0] c45_f0,
-  output logic [63:0] c45_f1,
-  output logic [31:0] c45_f2,
-  output logic [63:0] c45_f3,
-  output logic [2:0] c45_f4,
-  output logic [4:0] c45_f5,
-  input  logic [73:0] c46,
-  output logic [31:0] c46_f0,
+  input  logic [228:0] c43,
+  output logic [2:0] c43_f0,
+  output logic [16:0] c43_f1,
+  output logic [16:0] c43_f2,
+  output logic [63:0] c43_f3,
+  output logic [63:0] c43_f4,
+  output logic [63:0] c43_f5,
+  input  logic [110:0] c44,
+  output logic [4:0] c44_f0,
+  output logic [2:0] c44_f1,
+  output logic [3:0] c44_f2,
+  output logic [1:0] c44_f3,
+  output logic [31:0] c44_f4,
+  output logic [31:0] c44_f5,
+  output logic [31:0] c44_f6,
+  output logic c44_f7,
+  input  logic [4:0] c45,
+  output logic [4:0] c45_f0,
+  input  logic [36:0] c46,
+  output logic [4:0] c46_f0,
   output logic [31:0] c46_f1,
-  output logic c46_f2,
-  output logic c46_f3,
-  output logic [7:0] c46_f4,
-  input  logic [1175:0] c47,
-  output logic [1175:0] c47_f0
+  input  logic [4:0] c47,
+  output logic [4:0] c47_f0,
+  input  logic [57:0] c48,
+  output logic [2:0] c48_f0,
+  output logic [5:0] c48_f1,
+  output logic [4:0] c48_f2,
+  output logic [1:0] c48_f3,
+  output logic [31:0] c48_f4,
+  output logic [4:0] c48_f5,
+  output logic [4:0] c48_f6,
+  input  logic [171:0] c49,
+  output logic [3:0] c49_f0,
+  output logic [63:0] c49_f1,
+  output logic [31:0] c49_f2,
+  output logic [63:0] c49_f3,
+  output logic [2:0] c49_f4,
+  output logic [4:0] c49_f5,
+  input  logic [73:0] c50,
+  output logic [31:0] c50_f0,
+  output logic [31:0] c50_f1,
+  output logic c50_f2,
+  output logic c50_f3,
+  output logic [7:0] c50_f4,
+  input  logic [1175:0] c51,
+  output logic [1175:0] c51_f0,
+  input  logic [3:0] c52,
+  output logic [3:0] c52_f0,
+  input  logic [12:0] c53,
+  output logic [5:0] c53_f0,
+  output logic [6:0] c53_f1
 );
   ccv_fet_dec_instr_t s0;
   assign s0 = c0;
@@ -326,6 +373,8 @@ module tb_layout_probe (
   assign c0_f7 = s0.checkpoint_id;
   assign c0_f8 = s0.pred_taken;
   assign c0_f9 = s0.fetch_fault;
+  assign c0_f10 = s0.final_exit;
+  assign c0_f11 = s0.all_waiting;
   ccv_dec_ooe_uop_t s1;
   assign s1 = c1;
   assign c1_f0 = s1.warp_id;
@@ -356,6 +405,11 @@ module tb_layout_probe (
   assign c1_f25 = s1.cause;
   assign c1_f26 = s1.fmt_rsv;
   assign c1_f27 = s1.fmt_opnd;
+  assign c1_f28 = s1.final_exit;
+  assign c1_f29 = s1.all_waiting;
+  assign c1_f30 = s1.slot_form;
+  assign c1_f31 = s1.arg_slot;
+  assign c1_f32 = s1.local_form;
   ccv_ooe_rcu_issue_t s2;
   assign s2 = c2;
   assign c2_f0 = s2.rob_tag;
@@ -411,7 +465,7 @@ module tb_layout_probe (
   assign s6 = c6;
   assign c6_f0 = s6.rob_tag;
   assign c6_f1 = s6.active_mask;
-  assign c6_f2 = s6.base;
+  assign c6_f2 = s6.base_per_lane;
   assign c6_f3 = s6.index_per_lane;
   assign c6_f4 = s6.store_data;
   ccv_miu_rcu_data_t s7;
@@ -428,28 +482,33 @@ module tb_layout_probe (
   ccv_ooe_miu_memop_t s8;
   assign s8 = c8;
   assign c8_f0 = s8.rob_tag;
-  assign c8_f1 = s8.phys_dst;
-  assign c8_f2 = s8.dst_pos;
-  assign c8_f3 = s8.phys_pred;
-  assign c8_f4 = s8.issue_mask;
-  assign c8_f5 = s8.warp_id;
-  assign c8_f6 = s8.cta_slot;
-  assign c8_f7 = s8.mem_op;
-  assign c8_f8 = s8.chwidth;
-  assign c8_f9 = s8.pipes;
-  assign c8_f10 = s8.disp;
-  assign c8_f11 = s8.scale_en;
-  assign c8_f12 = s8.space;
-  assign c8_f13 = s8.ordering;
+  assign c8_f1 = s8.rs_idx;
+  assign c8_f2 = s8.phys_dst;
+  assign c8_f3 = s8.dst_pos;
+  assign c8_f4 = s8.phys_pred;
+  assign c8_f5 = s8.issue_mask;
+  assign c8_f6 = s8.warp_id;
+  assign c8_f7 = s8.cta_slot;
+  assign c8_f8 = s8.mem_op;
+  assign c8_f9 = s8.chwidth;
+  assign c8_f10 = s8.pipes;
+  assign c8_f11 = s8.disp;
+  assign c8_f12 = s8.scale_en;
+  assign c8_f13 = s8.space;
+  assign c8_f14 = s8.ordering;
+  assign c8_f15 = s8.slot_form;
+  assign c8_f16 = s8.arg_slot;
+  assign c8_f17 = s8.local_form;
   ccv_miu_ooe_cmpl_t s9;
   assign s9 = c9;
   assign c9_f0 = s9.rob_tag;
-  assign c9_f1 = s9.status;
-  assign c9_f2 = s9.cause;
-  assign c9_f3 = s9.lane_mask;
-  assign c9_f4 = s9.address;
-  assign c9_f5 = s9.mlc_miss;
-  assign c9_f6 = s9.more;
+  assign c9_f1 = s9.rs_idx;
+  assign c9_f2 = s9.status;
+  assign c9_f3 = s9.cause;
+  assign c9_f4 = s9.lane_mask;
+  assign c9_f5 = s9.address;
+  assign c9_f6 = s9.mlc_miss;
+  assign c9_f7 = s9.more;
   ccv_ooe_miu_retire_t s10;
   assign s10 = c10;
   assign c10_f0 = s10.rob_tag;
@@ -463,6 +522,9 @@ module tb_layout_probe (
   assign c11_f4 = s11.target_pc;
   assign c11_f5 = s11.fetch_epoch;
   assign c11_f6 = s11.epoch_only;
+  assign c11_f7 = s11.rewind;
+  assign c11_f8 = s11.rewind_held;
+  assign c11_f9 = s11.held_long;
   ccv_ooe_fet_ckpt_free_t s12;
   assign s12 = c12;
   assign c12_f0 = s12.free_mask;
@@ -560,6 +622,7 @@ module tb_layout_probe (
   assign c28_f3 = s28.code_bounds;
   assign c28_f4 = s28.asid;
   assign c28_f5 = s28.cta_slot;
+  assign c28_f6 = s28.live_mask;
   ccv_rau_ooe_alloc_t s29;
   assign s29 = c29;
   assign c29_f0 = s29.warp_id;
@@ -568,6 +631,7 @@ module tb_layout_probe (
   assign c29_f3 = s29.ctaid;
   assign c29_f4 = s29.warp_in_cta;
   assign c29_f5 = s29.barrier_count;
+  assign c29_f6 = s29.cta_slot;
   ccv_ooe_rau_status_t s30;
   assign s30 = c30;
   assign c30_f0 = s30.warp_id;
@@ -575,6 +639,7 @@ module tb_layout_probe (
   assign c30_f2 = s30.stalled;
   assign c30_f3 = s30.mlc_miss_seen;
   assign c30_f4 = s30.retired_since_restore;
+  assign c30_f5 = s30.exited;
   ccv_rau_ooe_demote_t s31;
   assign s31 = c31;
   assign c31_f0 = s31.warp_id;
@@ -584,11 +649,11 @@ module tb_layout_probe (
   assign c32_f0 = s32.warp_id;
   assign c32_f1 = s32.resume_pc;
   assign c32_f2 = s32.arch_state_ready;
+  assign c32_f3 = s32.refused;
   ccv_rau_rcu_mig_t s33;
   assign s33 = c33;
   assign c33_f0 = s33.warp_id;
   assign c33_f1 = s33.direction;
-  assign c33_f2 = s33.bank_select;
   ccv_ooe_rcu_map_t s34;
   assign s34 = c34;
   assign c34_f0 = s34.warp_id;
@@ -610,61 +675,96 @@ module tb_layout_probe (
   ccv_fet_pca_mig_t s37;
   assign s37 = c37;
   assign c37_f0 = s37.warp_id;
-  assign c37_f1 = s37.pcs;
-  assign c37_f2 = s37.group_masks;
+  assign c37_f1 = s37.lane_pcs;
+  assign c37_f2 = s37.pc_upper;
+  assign c37_f3 = s37.fair_ptr;
+  assign c37_f4 = s37.fair_cnt;
+  assign c37_f5 = s37.live_mask;
   ccv_pca_fet_mig_t s38;
   assign s38 = c38;
   assign c38_f0 = s38.warp_id;
-  assign c38_f1 = s38.pcs;
-  assign c38_f2 = s38.group_masks;
+  assign c38_f1 = s38.lane_pcs;
+  assign c38_f2 = s38.pc_upper;
+  assign c38_f3 = s38.fair_ptr;
+  assign c38_f4 = s38.fair_cnt;
+  assign c38_f5 = s38.live_mask;
   ccv_rau_fet_mig_t s39;
   assign s39 = c39;
   assign c39_f0 = s39.warp_id;
   assign c39_f1 = s39.tier1_id;
   assign c39_f2 = s39.direction;
-  assign c39_f3 = s39.bank_select;
   ccv_pca_rau_mig_done_t s40;
   assign s40 = c40;
   assign c40_f0 = s40.warp_id;
   assign c40_f1 = s40.direction;
-  ccv_rau_miu_cta_t s41;
+  ccv_rau_pca_mig_t s41;
   assign s41 = c41;
-  assign c41_f0 = s41.cta_slot;
-  assign c41_f1 = s41.spm_base;
-  assign c41_f2 = s41.spm_limit;
-  assign c41_f3 = s41.launch_block_addr;
-  ccv_ooe_syu_bar_t s42;
+  assign c41_f0 = s41.warp_id;
+  assign c41_f1 = s41.direction;
+  assign c41_f2 = s41.pca_place;
+  ccv_miu_rau_ready_t s42;
   assign s42 = c42;
   assign c42_f0 = s42.warp_id;
-  assign c42_f1 = s42.cta_slot;
-  assign c42_f2 = s42.barrier_id;
-  assign c42_f3 = s42.arrive_or_wait;
-  ccv_syu_ooe_rel_t s43;
+  ccv_rau_miu_cta_t s43;
   assign s43 = c43;
-  assign c43_f0 = s43.warp_mask_released;
-  assign c43_f1 = s43.barrier_id;
-  ccv_rau_syu_alloc_t s44;
+  assign c43_f0 = s43.cta_slot;
+  assign c43_f1 = s43.spm_base;
+  assign c43_f2 = s43.spm_limit;
+  assign c43_f3 = s43.launch_block_addr;
+  assign c43_f4 = s43.const_base;
+  assign c43_f5 = s43.const_limit;
+  ccv_ooe_syu_bar_t s44;
   assign s44 = c44;
-  assign c44_f0 = s44.cta_slot;
-  assign c44_f1 = s44.barrier_base;
-  assign c44_f2 = s44.barrier_count;
-  assign c44_f3 = s44.allocate_or_free;
-  ccv_ooe_cru_fault_t s45;
+  assign c44_f0 = s44.warp_id;
+  assign c44_f1 = s44.cta_slot;
+  assign c44_f2 = s44.barrier_id;
+  assign c44_f3 = s44.bar_kind;
+  assign c44_f4 = s44.issue_mask;
+  assign c44_f5 = s44.guard_mask;
+  assign c44_f6 = s44.phase_mask;
+  assign c44_f7 = s44.held;
+  ccv_syu_ooe_rel_t s45;
   assign s45 = c45;
-  assign c45_f0 = s45.cause;
-  assign c45_f1 = s45.pc;
-  assign c45_f2 = s45.lane_mask;
-  assign c45_f3 = s45.address;
-  assign c45_f4 = s45.cta_slot;
-  assign c45_f5 = s45.warp_id;
-  ccv_cru_rau_cfg_t s46;
+  assign c45_f0 = s45.warp_id;
+  ccv_syu_fet_rel_t s46;
   assign s46 = c46;
-  assign c46_f0 = s46.demotion_threshold;
-  assign c46_f1 = s46.progress_threshold;
-  assign c46_f2 = s46.launch_enable;
-  assign c46_f3 = s46.kill_req;
-  assign c46_f4 = s46.kill_grid;
-  ccv_ext_exb_in_t s47;
+  assign c46_f0 = s46.warp_id;
+  assign c46_f1 = s46.lane_mask;
+  ccv_syu_rau_ready_t s47;
   assign s47 = c47;
-  assign c47_f0 = s47.tl_in;
+  assign c47_f0 = s47.warp_id;
+  ccv_rau_syu_alloc_t s48;
+  assign s48 = c48;
+  assign c48_f0 = s48.cta_slot;
+  assign c48_f1 = s48.barrier_base;
+  assign c48_f2 = s48.barrier_count;
+  assign c48_f3 = s48.syu_alloc_op;
+  assign c48_f4 = s48.warp_mask;
+  assign c48_f5 = s48.warp_id;
+  assign c48_f6 = s48.last_lanes;
+  ccv_ooe_cru_fault_t s49;
+  assign s49 = c49;
+  assign c49_f0 = s49.cause;
+  assign c49_f1 = s49.pc;
+  assign c49_f2 = s49.lane_mask;
+  assign c49_f3 = s49.address;
+  assign c49_f4 = s49.cta_slot;
+  assign c49_f5 = s49.warp_id;
+  ccv_cru_rau_cfg_t s50;
+  assign s50 = c50;
+  assign c50_f0 = s50.demotion_threshold;
+  assign c50_f1 = s50.progress_threshold;
+  assign c50_f2 = s50.launch_enable;
+  assign c50_f3 = s50.kill_req;
+  assign c50_f4 = s50.kill_grid;
+  ccv_ext_exb_in_t s51;
+  assign s51 = c51;
+  assign c51_f0 = s51.tl_in;
+  ccv_dcu_miu_fill_ntc_t s52;
+  assign s52 = c52;
+  assign c52_f0 = s52.req_id;
+  ccv_miu_ooe_cmpl_hint_t s53;
+  assign s53 = c53;
+  assign c53_f0 = s53.rs_idx;
+  assign c53_f1 = s53.rob_tag;
 endmodule
