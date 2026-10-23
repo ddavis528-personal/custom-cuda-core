@@ -753,9 +753,57 @@ Built (`rtl/ooe/`):
      take and lane: 25 seeds and the directed tests, 250 cores, 101,393
      takes, none differ; controls no-hold, no-rbusy, no-squash, no-dq-ev,
      no-rob-en, no-pool-en, no-ret and adm-shift caught.
-  5. **Rename 1**: its register, the one-group skid and the credit channel
-     from decq (OI-49), ooe_ratread, and the free-row take from the
-     candidate buffer's heads.
+  5. **Rename 1** (built 2026-10-23; OI-67, OI tab). Rename 1 is the go's
+     cycle, as the model has it (rename_stages 3: the go and the RAT read
+     at t, Rename 2 at t + 1, the RS write at t + 2), and it never stalls:
+     take_young is off, so no refill is re-checked and no skid is needed,
+     and decq's registered take (OA-21) replaces the credit channel of
+     OI-49. The go's lanes come at 15.4 NGD, too late for a read behind
+     them, so the read is per candidate: one `ooe_headrd` per slot reads
+     each of its R heads from decq's output register, through the pending
+     group (the Rename 1 register), in parallel with the go (9.5 NGD
+     alone). A warp's take is a prefix of its heads, so head h's in-group
+     writers are its own slot's heads below h, always taken with it: the
+     read returns each writer one-hot over the heads, not a name.
+     *Names.* A uop takes its class's free list head k, k the writers
+     before it in lane order. `ooe_go` counts them for every candidate as
+     it ranks them (`wb`, its rank's sum over each warp's writer prefix
+     counts, registered per own take beside the fits: 16.5 NGD), and the
+     cycle's totals (`wt`, 21.5), the free lists' requests. A name picked
+     from `wb` and lane-selected would land at about 25, so `ooe_ren1`
+     lane-selects each lane's index, its fields, its reads' values and
+     each read's writer as a lane (the lane holding (h', s)), and the
+     Rename 1 register holds them with the free lists' heads beside it;
+     `ooe_ren1n` binds the names from those flops in Rename 2's first
+     gates (2.5 NGD for a lane's names, 5 for an in-group read's), for the
+     pending group (ooe_rat's write ports, ooe_headrd's override) and
+     ooe_rendep. The free lists become ooe_rename's children: their request
+     depends on decq's payload, so it cannot leave rename without a
+     through path.
+     *Depth.* `test/ooe/probes/ren1_probe.sv` (ooe_go, the four reads,
+     ooe_ren1 and the register, flattened) is 21.7 NGD flop to flop.
+     Budgets proposed to OA (OI-67): ooe_freelist's alloc_req by 21 (it
+     reaches only the registered count), ooe_rat's pending names by 3,
+     ooe_rendep's names by 3 and its source names by 5 (it is 19.3 after
+     its inputs). ooe_go's `wb` required at 17 and `wt` at 22, by OI.
+     *Clock gating.* The prefix counts join each slot's fits gate (112
+     flops a slot), whose change rate in high rises to 73-77% (medium
+     unchanged at 64%); the fits waivers' floors stand.
+     *Result.* `test/ooe/ren1_tb.cpp` drives ooe_rat, the four reads,
+     ooe_ren1, the register and ooe_ren1n (`test/ooe/ooe_ren1_tb.sv`) from
+     the model's renames, every other candidate random, and compares each
+     lane in the register with the model's after the edge: 25 seeds and
+     the directed tests, 51,585 lanes (26,610 with an in-group writer),
+     none differ; controls lane-swap, name-reverse and drop-restore
+     caught. go_tb holds `wb` and `wt` to the model (81,534 writers, none
+     differ; control no-write-bits caught).
+     *Not in this slice.* Whole-row names only (sectioned cores are driven
+     and skipped): the narrow allocator (a candidate row per warp and
+     position, a width table for placement, OI-29) is its own slice. A
+     restore-allocate's writes and atomics stop a core's comparison (2
+     cores); a uop the model renames as a no-op (a fault) is driven with
+     the model's write bits, where the RTL would take a name by the
+     decode-time bit.
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 

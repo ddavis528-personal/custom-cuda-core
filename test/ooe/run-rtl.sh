@@ -30,7 +30,9 @@
 #   rows, with the surviving-bit assertion (test/ooe/rnrs_tb.cpp);
 # - ooe_rencred against the model's rename credits, live (test/ooe/rencred_tb.cpp);
 # - ooe_rat against the model's alias tables and checkpoints, live, through
-#   its directed and random unit tests (test/ooe/rat_tb.cpp).
+#   its directed and random unit tests (test/ooe/rat_tb.cpp);
+# - Rename 1 (ooe_headrd, ooe_ren1, its register, ooe_ren1n) against the
+#   model's renames, live (test/ooe/ren1_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -211,7 +213,7 @@ if out=$("$dir/go_tb" "$seeds" 2>&1); then
 else
   say "go == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift; do
+for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift no-write-bits; do
   if GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
     say "  control $c (go)" "MISSED"; fail=1
   else
@@ -461,6 +463,34 @@ for c in port-reverse drop-restore drop-retire drop-squash no-pending no-lead; d
     say "  control $c (rat)" "MISSED"; fail=1
   else
     say "  control $c (rat)" "caught"
+  fi
+done
+
+# Rename 1 (OI-67): ooe_headrd per slot, ooe_ren1, the Rename 1 register and
+# ooe_ren1n beside ooe_rat (test/ooe/ooe_ren1_tb.sv), driven from the
+# model's renames after every cycle, each lane in the register compared.
+read -r ren1_g ren1_d < <(python3 test/ooe/ren1-params.py)
+dir=build/ooe-rtl/ren1
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace ${ren1_g//,/ } --top-module ooe_ren1_tb --Mdir "$dir" -o ren1_tb \
+      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 ${ren1_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_headrd.sv" \
+      "$PWD/rtl/ooe/ooe_ren1.sv" "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/test/ooe/ooe_ren1_tb.sv" \
+      "$PWD/test/ooe/ren1_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "ren1: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/ren1_tb" "$seeds" 2>&1); then
+  say "Rename 1 (lanes, names, reads) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "Rename 1 == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in lane-swap name-reverse drop-restore; do
+  if REN1_CONTROL=$c "$dir/ren1_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (ren1)" "MISSED"; fail=1
+  else
+    say "  control $c (ren1)" "caught"
   fi
 done
 

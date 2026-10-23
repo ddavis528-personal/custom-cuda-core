@@ -30,6 +30,11 @@
 #                (th_only.sv), cap 4 and 2; ret_probe, ret_n's arrival
 #   rowbyp_probe OI-45: ooe_sched's ready register's D with Rename 3's rows
 #                bypassed in (each port's row readied, then muxed per entry)
+#   ren1_probe   OI-67: Rename 1 flop to flop (ooe_go, ooe_headrd per slot,
+#                ooe_ren1, the Rename 1 register); it has flops, so it is
+#                not run here: add it as a unit of test/ooe/ngd-units.json
+#                (files ooe_go, ooe_headrd, ooe_ren1 and the probe) and run
+#                tools/check-ngd.py --unit ren1_probe: 21.7 flop-flop
 #
 # decq-take-late.patch is ooe_decq with rename's take registered (tk_q) and
 # popped at the next edge, its heads read at the take's offset into an

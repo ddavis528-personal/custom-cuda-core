@@ -102,6 +102,18 @@
    "by": "OI",
    "date": "2026-10-22",
    "why": "A change lead (OA's rev 174 (3)): its producer's register enable, from its own flops within CG-2's 8; flopped here, OR-folded per slot (for OA to confirm)"
+  },
+  "wb_cq02h": {
+   "required": 17.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "OI-67 (proposed to OA): each candidate's writers before it in lane order, the rank's sum over each warp's registered writer prefix counts, 16.5 NGD after the flops; rename's Rename 1 lane-selects it as each lane's name index into its Rename 1 register (the probe test/ooe/probes/ren1_probe.sv: 21.7 flop to flop)."
+  },
+  "wt_cq02h": {
+   "required": 22.0,
+   "by": "OI",
+   "date": "2026-10-23",
+   "why": "OI-67 (proposed to OA): the cycle's taken writers per class, 21.5 NGD after the flops (20.7 at the last measure); the free lists' requests, which reach only their registered counts (about 2 NGD), so ooe_freelist's alloc_req is proposed by 21 (OI-67 (4))."
   }
  }
 }

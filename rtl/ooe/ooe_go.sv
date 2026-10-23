@@ -109,7 +109,14 @@ module ooe_go #(
   // Per lane: a uop, and which candidate it is, one-hot (bit r * S + s:
   // slot s's head r).
   output logic [R-1:0]      lane_v_cq02h,
-  output logic [R*R*S-1:0]  lane_c_cq02h
+  output logic [R*R*S-1:0]  lane_c_cq02h,
+  // Per candidate (bit r * S + s, as the lanes), the uops taken before it
+  // in lane order that write a GPR (b 0) or a predicate (b 1), a
+  // thermometer (bit j: more than j); and the cycle's totals. Rename takes
+  // its names in lane order from these, and asks its free lists for the
+  // totals (OI-67).
+  output logic [R*S*2*R-1:0] wb_cq02h,
+  output logic [2*R-1:0]     wt_cq02h
 );
   // Two thermometers' sum, saturated at R (bit v - 1: the sum is v or more).
   function automatic logic [R-1:0] tadd(input logic [R-1:0] a, input logic [R-1:0] b);
@@ -141,6 +148,9 @@ module ooe_go #(
   // The registered state. The rotation is kept twice (NGD-7): one copy for
   // the take, the outputs' path, one for the rest.
   logic [S*(R+1)*R-1:0] fits_cq02h;      // per slot and take k, a thermometer of the run that fits
+  // Per slot, take k, class b (GPR, predicate) and length m (1 to R): the
+  // writers among the m heads past k, a thermometer.
+  logic [S*(R+1)*2*R*R-1:0] wc_cq02h;
   logic [S*(R+1)-1:0]   tko_cq02h;       // each slot's take this cycle, one-hot
   logic [S-1:0]         sel_q_cq02h;     // the slot had a head
   logic [4*(R+1)-1:0]   he_cq02h;        // per credit, min(R, the allowances in force), one-hot
@@ -210,6 +220,49 @@ module ooe_go #(
           lane_c_cq02h[(l * R + r) * S + s] = run_t[s * R + r] & rq[l] & ~rq[l + 1];
       end
   end
+  // The writers before each candidate: its rank's sum, each warp's term the
+  // writers among its candidates before this one: its prefix count (at its
+  // own last take) at the length its rank term takes, the OR over the
+  // lengths the term reaches, as the counts rise with the length; the
+  // totals, over the taken writers.
+  logic [S*2*(R+1)*R-1:0] wcs;           // per slot, class, length m (0 to R): its writers, a thermometer
+  logic [S*R-1:0]         wq;
+  always_comb begin
+    for (int q = 0; q < S; q++)
+      for (int b = 0; b < 2; b++) begin
+        wcs[((q * 2 + b) * (R + 1)) * R +: R] = '0;
+        for (int m = 1; m < R + 1; m++) begin
+          wcs[((q * 2 + b) * (R + 1) + m) * R +: R] = '0;
+          for (int k = 0; k < R + 1; k++)
+            wcs[((q * 2 + b) * (R + 1) + m) * R +: R] = wcs[((q * 2 + b) * (R + 1) + m) * R +: R] |
+              (wc_cq02h[(((q * (R + 1) + k) * 2 + b) * R + m - 1) * R +: R] & {R{tko_cq02h[q * (R + 1) + k]}});
+        end
+      end
+    for (int b = 0; b < 2; b++) begin
+      for (int r = 0; r < R; r++)
+        for (int s = 0; s < S; s++) begin
+          for (int q = 0; q < S; q++) begin
+            wq[q * R +: R] = '0;
+            for (int v = 0; v < R; v++)
+              if (v < r || v == r)
+                wq[q * R +: R] = wq[q * R +: R] |
+                  ({R{run_t[q * R + v] && (v < r || bef[s * S + q])}} & wcs[((q * 2 + b) * (R + 1) + v + 1) * R +: R]);
+          end
+          wb_cq02h[((r * S + s) * 2 + b) * R +: R] = tsum(wq);
+        end
+      // More than j writers taken: a taken writer has j before it.
+      for (int j = 0; j < R; j++) begin
+        wt_cq02h[b * R + j] = 1'b0;
+        for (int r = 0; r < R; r++)
+          for (int s = 0; s < S; s++)
+            wt_cq02h[b * R + j] = wt_cq02h[b * R + j] |
+              (tk_c[r * S + s] &
+               (wcs[((s * 2 + b) * (R + 1) + r + 1) * R +: R] != wcs[((s * 2 + b) * (R + 1) + r) * R +: R]) &
+               (j == 0 || wb_cq02h[((r * S + s) * 2 + b) * R + (j + R - 1) % R]));
+      end
+    end
+  end
+
   // decq's take-enable: the warp had a head, a register (a superset of its
   // take: deq_sel_covers).
   assign sel_cq02h = sel_q_cq02h;
@@ -379,6 +432,21 @@ module ooe_go #(
       end
     end
 
+  // Each warp's writer prefix counts past each take k, registered with the
+  // fits.
+  logic [S*(R+1)*2*R*R-1:0] wc_nx;
+  logic [R-1:0]             wn;
+  always_comb
+    for (int s = 0; s < S; s++)
+      for (int k = 0; k < R + 1; k++)
+        for (int b = 0; b < 2; b++) begin
+          wn = '0;
+          for (int m = 1; m < R + 1; m++) begin
+            if (k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 3 + b]) wn = {wn[R-2:0], 1'b1};
+            wc_nx[(((s * (R + 1) + k) * 2 + b) * R + m - 1) * R +: R] = wn;
+          end
+        end
+
   // -- The registers -------------------------------------------------------------
   // A squash at this edge empties its slot's fits as they are registered:
   // decq still shows its heads now (its registered flush masks them from the
@@ -452,9 +520,11 @@ module ooe_go #(
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h) begin
         fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= '0;
+        wc_cq02h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R] <= '0;
         sel_q_cq02h[gs]                             <= 1'b0;
       end else if (fits_en[gs]) begin
         fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
+        wc_cq02h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R] <= wc_nx[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R];
         sel_q_cq02h[gs]                             <= sel_nx[gs];
       end
     end

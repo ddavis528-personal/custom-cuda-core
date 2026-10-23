@@ -6,7 +6,9 @@
 // admission bits, rename's credits less their floors owed, and the unmet floors, each
 // slot's ROB run, reach and retirements), then compares the go's takes, per
 // slot and lane by lane, with the model's before the edge registers the next
-// cycle's fits. The leads (a warp's hold, a restore owning the ports, a
+// cycle's fits; and each lane's candidate's writers before it, GPR and
+// predicate, and the cycle's totals, by the heads' decode-time write bits
+// (rename's names in lane order, OI-67). The leads (a warp's hold, a restore owning the ports, a
 // slot's squash) are the next cycle's, so the RTL runs a model cycle behind,
 // each cycle driven when the next one's log is in; a core's last cycle is
 // not compared. Cores with other than RD_S tier-1 slots are skipped; the
@@ -19,8 +21,9 @@
 // restore's), no-squash (nor the squash's), no-dq-ev, no-rob-en and
 // no-pool-en (a change lead for the fits' clock enables never reaches it:
 // decq's heads, the ROB room, rename's credits), no-ret (this cycle's
-// retirements never reach the ROB term) and adm-shift (each head carries
-// the next head's admission bits).
+// retirements never reach the ROB term), adm-shift (each head carries
+// the next head's admission bits) and no-write-bits (no head writes a GPR
+// or a predicate).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: go_tb [seeds] | go_tb --cg <scenario> <vcd>
@@ -53,7 +56,7 @@ std::unique_ptr<Vooe_go> dut;
 std::string control;
 uint64_t current = 0;
 bool live = false;
-unsigned long long cycles = 0, cores = 0, skipped = 0, takes = 0, restores = 0, mismatches = 0;
+unsigned long long cycles = 0, cores = 0, skipped = 0, takes = 0, writers = 0, restores = 0, mismatches = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -138,7 +141,8 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     const auto &q = g->adm[s];
     for (unsigned p = 0; p != H && p < q.size(); ++p) {
       setBit(dut->hv_cq01h, s * H + p, true);
-      const unsigned a = control == "adm-shift" ? (p + 1 < q.size() ? q[p + 1] : 0) : q[p];
+      unsigned a = control == "adm-shift" ? (p + 1 < q.size() ? q[p + 1] : 0) : q[p];
+      if (control == "no-write-bits") a &= ~(3u << 3);
       setField(dut->ha_cq01h, (s * H + p) * PA, PA, a);
     }
     setField(dut->unmet_g_cq01h, s * LU, LU, sat(g->unmet_g[s], LU));
@@ -191,6 +195,23 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
     if (s != g.lanes[l].first) fail("lane's slot differs", l, s, g.lanes[l].first);
     if (h != g.lanes[l].second) fail("lane's head differs", l, h, g.lanes[l].second);
   }
+  // Each lane's writers before it, at its candidate, and the totals (OI-67):
+  // rename's names in lane order, by the heads' decode-time write bits.
+  unsigned before[2] = {0, 0};
+  for (unsigned l = 0; l != g.lanes.size() && l != R; ++l) {
+    const unsigned s = g.lanes[l].first, h = g.lanes[l].second, cand = h * S + s;
+    const uint8_t a = h < g.adm[s].size() ? g.adm[s][h] : 0;
+    for (unsigned b = 0; b != 2; ++b) {
+      const unsigned got = getField(dut->wb_cq02h, (cand * 2 + b) * R, R);
+      if (got != (1u << before[b]) - 1u) fail(b ? "predicate writers before differ" : "GPR writers before differ", l, got, (1u << before[b]) - 1u);
+      before[b] += (a >> (3 + b)) & 1u;
+    }
+  }
+  for (unsigned b = 0; b != 2; ++b) {
+    const unsigned got = getField(dut->wt_cq02h, b * R, R);
+    if (got != (1u << before[b]) - 1u) fail(b ? "predicate writers differ" : "GPR writers differ", 0, got, (1u << before[b]) - 1u);
+    writers += before[b];
+  }
   tick();
 }
 
@@ -224,10 +245,10 @@ int main(int argc, char **argv) {
   const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, goConfig)) + cg.run(seeds, nullptr, hook, goConfig);
   cg.close();
   dut->final();
-  std::printf("go_tb control=%s seeds=%u cores=%llu cycles=%llu takes=%llu restore_cycles=%llu skipped=%llu "
-              "mismatches=%llu model_failures=%d\n",
-              control.empty() ? "none" : control.c_str(), seeds, cores, cycles, takes, restores, skipped, mismatches,
-              model_fails);
+  std::printf("go_tb control=%s seeds=%u cores=%llu cycles=%llu takes=%llu writers=%llu restore_cycles=%llu "
+              "skipped=%llu mismatches=%llu model_failures=%d\n",
+              control.empty() ? "none" : control.c_str(), seeds, cores, cycles, takes, writers, restores, skipped,
+              mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();
   ctx.reset();
