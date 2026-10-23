@@ -742,7 +742,10 @@ breaks them fails in any bench, not only the one that knew the rule.
   (Daniel, 2026-10-22; OA's response OI-66). A CG-3 waiver states
   `floor_pct` and `measured_pct` by scenario (idle, medium, high): it clears
   its gate only while the gate's DCGE in each scenario holds at the floor,
-  and the floor may not exceed what was measured. Daniel's rule sets it 2
+  and the floor may not exceed what was measured. A register gated per
+  slot takes one waiver per gate: `enable` names the gate's enable as
+  check-cg reports it (OA's response OI-66), and the waiver takes that
+  gate's findings alone. Daniel's rule sets it 2
   points below the measurement. An allowance waiver, for CG-1's registers
   written every cycle or CG-4's flops outside any gate, states `max_flops`
   and `measured_flops`, and one flop more fails. A waiver without its
