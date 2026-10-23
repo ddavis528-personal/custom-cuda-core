@@ -237,7 +237,7 @@ struct Kernel {
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
-      "slot_form", "window_fill", "dcu_lookups", "frame_lookups",
+      "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
       "pred_xfer", "pred_merge", "pred_copy", "crack_split"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what

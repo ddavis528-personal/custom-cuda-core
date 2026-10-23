@@ -833,10 +833,11 @@ private:
   /// bits. Filled a line at a time on first use; cleared on the slot's
   /// rau_miu_cta and on a kill.
   /// gen counts the clears: a fill sent before one lands nothing.
+  /// Entry kLocalBase is O-69's local_base, the word at byte 24 (IS-19).
   struct Windows {
     uint64_t block = 0;
-    std::array<uint32_t, 16> w{};
-    uint16_t valid = 0;
+    std::array<uint32_t, 17> w{};
+    uint32_t valid = 0;
     unsigned gen = 0;
     void clear() { valid = 0; ++gen; }
   };
@@ -847,16 +848,19 @@ private:
   std::map<unsigned, Fill> fills_;
   /// Memops that waited on a fill: an L1 miss, whatever DCU says.
   std::set<unsigned> win_miss_;
-  static uint64_t slotAddr(const Windows &t, unsigned k) { return t.block + 32 + 8 * k; }
+  static constexpr unsigned kLocalBase = 16;
+  static uint64_t slotAddr(const Windows &t, unsigned k) {
+    return k == kLocalBase ? t.block + 24 : t.block + 32 + 8 * k;
+  }
   /// Every slot of `t` in `line`, filled from it.
   static void fillWindows(Windows &t, uint64_t line, const Line &d) {
-    for (unsigned k = 0; k != 16; ++k) {
+    for (unsigned k = 0; k != 17; ++k) {
       const uint64_t a = slotAddr(t, k);
       if (a / kLine * kLine != line) continue;
       uint32_t v = 0;
       for (unsigned b = 0; b != 4; ++b) v |= uint32_t(d[a % kLine + b]) << (8 * b);
       t.w[k] = v;
-      t.valid |= uint16_t(1u << k);
+      t.valid |= 1u << k;
     }
   }
   void onKill(uint32_t, unsigned) override {
@@ -1220,9 +1224,12 @@ private:
     // L1 miss, never a hit (AR's response). no-window-fill: the table is
     // taken as filled, its words zero.
     const bool slot = get(mo.msg, c.ooe_miu, "slot_form") != 0;
+    // The interleaved local form (IS-19) waits the same way for local_base,
+    // the table's word from the launch block's first line.
+    const bool local = get(mo.msg, c.ooe_miu, "local_form") != 0;
     const unsigned cta = unsigned(get(mo.msg, c.ooe_miu, "cta_slot"));
-    const unsigned k = unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
-    if (slot && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
+    const unsigned k = local ? kLocalBase : unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
+    if ((slot || local) && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
       const uint64_t line = slotAddr(win_[cta], k) / kLine * kLine;
       win_miss_.insert(tag);
       for (const auto &f : fills_)
@@ -1287,6 +1294,19 @@ private:
     if (win_miss_.count(tag)) j.hit = false;
     const bool from_win = slot && k_.brk != "window-from-base";
     if (slot) k_.hit("slot_form");
+    // O-69's address (IS-19): lane l's byte b of the warp's spill frame is
+    // ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128 (b / 4)
+    // + 4l + b % 4, ctx the warp's hardware context, which MIU forms from
+    // the memop's warp_id and its core's index (OA's proposal IS-19).
+    // local-no-ctx: ctx taken as 0, so every warp spills to one frame.
+    // local-base-slot: local_base read from launch slot 0's word.
+    const uint64_t lbase =
+        win_[cta].w[k_.brk == "local-base-slot" ? 0u : unsigned(kLocalBase)];
+    const uint64_t ctx = k_.brk == "local-no-ctx"
+                             ? 0 : (uint64_t(ccv::prov::kCoreId) << ccv::kWWarpId) | j.warp;
+    auto localAddr = [&](uint64_t b, unsigned l) {
+      return ((lbase + ccv::prov::kLaneContexts) << 16) + (ctx << 22) + 128 * (b / 4) + 4 * l + b % 4;
+    };
     // A predicate transfer has one address, lane 0's base whether or not
     // lane 0 is active (O-62), and moves a predicate's word: every active
     // lane names it, so F-RO's lanes and a fault's are the issue mask's.
@@ -1294,14 +1314,19 @@ private:
     // when a group splits.
     if (j.pxfer) {
       const unsigned bl = k_.brk == "xfer-low-lane" && j.active ? __builtin_ctz(j.active) : 0;
-      const uint64_t a = (uint64_t(getLane(am, c.rcu_miu, "base_per_lane", bl)) << (global ? 16 : 0)) +
-                         uint64_t(disp);
+      // In the local form, warp-scoped: the formula's address with l = 0.
+      const uint64_t a =
+          local ? localAddr(uint64_t(disp), 0)
+                : (uint64_t(getLane(am, c.rcu_miu, "base_per_lane", bl)) << (global ? 16 : 0)) +
+                      uint64_t(disp);
       for (unsigned l = 0; l != kLanes; ++l)
         if ((j.active >> l) & 1u) j.addr[l] = a;
       j.pdata = getLane(am, c.rcu_miu, "store_data", 0);
     }
     for (unsigned l = 0; l != kLanes && !j.pxfer; ++l)
-      if ((j.active >> l) & 1u) {
+      if ((j.active >> l) & 1u && local) {
+        j.addr[l] = localAddr(uint64_t(disp), l);
+      } else if ((j.active >> l) & 1u) {
         const uint64_t b = from_win ? uint64_t(win_[cta].w[k])
                                     : uint64_t(getLane(am, c.rcu_miu, "base_per_lane", l));
         j.addr[l] = (b << (global ? 16 : 0)) +
@@ -1349,6 +1374,7 @@ private:
               tag, j.active & ~issue);
     check(j, am);
     if (j.pxfer) k_.hit("pred_xfer");
+    if (local) k_.hit("local_form");
     if (j.lines.size() > 1) k_.hit("line_split");
     // AR-23's measure: an access whose active lanes lie in more than one
     // 64 KiB window, as every O-30 frame access does.
@@ -2895,6 +2921,8 @@ private:
       put(u, c.dec_ooe, "slot_form", 1);
       put(u, c.dec_ooe, "arg_slot", uint32_t(immOf(op->slot_imm)) & 15u);
     }
+    // The interleaved local form (O-69; IS-19): no base, imm the offset b.
+    if (op->local) put(u, c.dec_ooe, "local_form", 1);
     put(u, c.dec_ooe, "pred_guard", pguard);
     put(u, c.dec_ooe, "pred_dst", pdst);
     put(u, c.dec_ooe, "pred_we", pd != nullptr);

@@ -165,6 +165,10 @@ struct OpInfo {
   /// A predicate transfer (O-19; TI-36): mem_op 4 or 5, one uop per
   /// predicate of its mask, its address lane 0's base.
   bool pxfer = false;
+  /// Format D's interleaved local mode (O-69; IS-19): no base register, the
+  /// immediate an unsigned byte offset into the warp's spill frame, which
+  /// MIU forms from the CTA's local_base and the warp's context.
+  bool local = false;
 };
 // Where each executes (Q-32, Q-38): the lane executes any opcode with a
 // per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
@@ -307,6 +311,12 @@ inline constexpr OpInfo kOps[] = {
   // as sel's selector is (pdata), never as a guard.
   {"LD_PRED_G",     kLoad,      1, false, false, true,  false, false,  0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true},
   {"ST_PRED_G",     kStore,     1, false, true,  false, false, true,   0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true},
+  // The interleaved local forms (O-69; IS-19): [rdata, b] and [mask in
+  // quals, b], no base register; the predicate forms crack as ld.pred's.
+  {"LD_LOCAL",      kLoad,      0, true,  false, false, false, false, -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, false, true},
+  {"ST_LOCAL",      kStore,     1, false, false, false, false, false, -1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, true},
+  {"LD_PRED_LOCAL", kLoad,      0, false, false, true,  false, false, -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true,  true},
+  {"ST_PRED_LOCAL", kStore,     0, false, true,  false, false, true,  -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true,  true},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
