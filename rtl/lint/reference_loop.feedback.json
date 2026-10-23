@@ -1,7 +1,26 @@
 {
-  "_comment": "CCV-L23's declared feedback for reference_loop.sv, a compliant fixture: the request register reads the grant register back, the back edge of their loop.",
+  "_comment": "CCV-L23's declared feedback for reference_loop.sv, a compliant fixture: each read with the stages it lies ahead of its reader, which the tags give exactly. req_cy02h reads the grant register one stage ahead (a two-register loop); rdy_cy02h reads lead_cy04h two ahead, through its listed three-register loop.",
   "reads": {
-    "req_cy02h": {"from": ["gnt_cy03h"], "by": "OA", "date": "2026-10-23",
-                  "why": "a one-cycle select loop, as ooe_sched's (OA's ruling on TI-38)"}
+    "req_cy02h": {
+      "from": {
+        "gnt_cy03h": 1
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a one-cycle select loop, as ooe_sched's (OA's ruling on TI-38)"
+    },
+    "rdy_cy02h": {
+      "from": {
+        "lead_cy04h": 2
+      },
+      "loop": [
+        "rdy_cy02h",
+        "grt_cy03h",
+        "lead_cy04h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a three-register loop, as ooe_sched's ready_en (OA's rev 191)"
+    }
   }
 }

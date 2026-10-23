@@ -325,6 +325,26 @@ def feedback_loop(deps, flops, reader, read):
     return any(r in cone(deps, flops, deps.get(g, ()))[1] for g in gs for r in rs)
 
 
+def loop_path(deps, flops, reader, read, loop):
+    """A loop of any length, declared by its registers in order (OA's rev
+    191): reader is loop[0] or feeds its next value, each register's next
+    value depends combinationally on the one before it, and read comes from
+    the last. Returns why it does not hold, or None."""
+    if len(loop) < 2:
+        return "a loop names two registers or more"
+    for q in loop:
+        if q not in flops:
+            return "%s is not a register" % q
+    if reader != loop[0] and reader not in cone(deps, flops, deps.get(loop[0], ()))[0]:
+        return "%s is not %s and does not feed its next value" % (reader, loop[0])
+    for a, b in zip(loop, loop[1:]):
+        if a not in cone(deps, flops, deps.get(b, ()))[1]:
+            return "no hop from %s to %s: %s's next value does not depend on it" % (a, b, b)
+    if loop[-1] not in cone(deps, flops, [read])[1]:
+        return "%s does not come from %s" % (read, loop[-1])
+    return None
+
+
 # The common ports every block declares, generated rather than hand-written.
 # They are deliberately UNIFORM across blocks -- which is the same argument
 # that made the original CCV-L02 want one name everywhere: a swap harness that
@@ -1207,16 +1227,54 @@ def check_file(path, rel):
                         "not one of %s): each is reviewed before it is listed"
                         % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
                     continue
-                for rd in reads:
+                # Each read with the alignment it is declared at (DA, 2026-10-23):
+                # how many stages its tag lies ahead of its reader's. The
+                # declaration does not take the read out of the alignment
+                # check; it states the alignment the loop has, and the tags
+                # must give exactly that.
+                if not isinstance(reads, dict):
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared feedback reads give no alignment: write "
+                        "\"from\": {\"<read>\": <stages ahead>, ...}, which the "
+                        "tags must match" % (fp, reader))
+                    continue
+                for rd, ahead in sorted(reads.items()):
+                    sr, sx = stage_of(reader), stage_of(rd)
                     if rd not in graph[0].get(reader, ()):
                         add("CCV-L23", ln0,
                             "%s: %s is declared to read %s as feedback, but does not "
                             "read it: remove the declaration" % (fp, reader, rd))
+                    elif sr is None or sx is None:
+                        add("CCV-L23", ln0,
+                            "%s: %s's feedback read of %s is checked by their stage "
+                            "tags, and %s carries none" % (fp, reader, rd,
+                                                           reader if sr is None else rd))
+                    elif not isinstance(ahead, int) or ahead < 1:
+                        add("CCV-L23", ln0,
+                            "%s: %s's read of %s is declared %r stages ahead: a "
+                            "feedback read lies one stage or more ahead of its reader, "
+                            "and one that does not needs no declaration"
+                            % (fp, reader, rd, ahead))
+                    elif sx[2] - sr[2] != ahead:
+                        add("CCV-L23", ln0,
+                            "%s: %s (stage %02d) reads %s (stage %02d), %d stage(s) "
+                            "ahead, but is declared %d ahead: the loop's tags do not "
+                            "give the alignment declared" % (fp, reader, sr[2], rd, sx[2],
+                                                             sx[2] - sr[2], ahead))
+                    elif "loop" in d:
+                        why = loop_path(graph[0], graph[1], reader, rd, d["loop"])
+                        if why:
+                            add("CCV-L23", ln0,
+                                "%s: %s's declared loop %s for its read of %s does not "
+                                "hold: %s" % (fp, reader, " -> ".join(d["loop"]), rd, why))
+                        else:
+                            fb_ok.setdefault(reader, set()).add(rd)
                     elif not feedback_loop(graph[0], graph[1], reader, rd):
                         add("CCV-L23", ln0,
                             "%s: %s reads %s as declared feedback, but no register "
                             "%s comes from has a next value that depends on %s's "
-                            "register: there is no loop for the read to close"
+                            "register: there is no loop for the read to close (a "
+                            "longer loop is declared by its registers, \"loop\")"
                             % (fp, reader, rd, rd, reader))
                     else:
                         fb_ok.setdefault(reader, set()).add(rd)

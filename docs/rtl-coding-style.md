@@ -463,34 +463,56 @@ rule and one never in the baseline.
 
 ### CCV-L23's declared feedback — the back edge of a register loop
 
-OA's ruling on TI-38, 2026-10-23. A one-cycle select loop reads backwards
-across stages by design: in `ooe_sched` the request and ready registers
-(stage 03) read the grant register (stage 04), which their own values feed,
-because V-65's same-cycle confirmation needs it. Retagging would describe a
-two-stage wait that does not exist, so the read is declared instead, and
-CCV-L23's arithmetic skips its stage for that reader alone.
+OA's ruling on TI-38 and DA's decision, 2026-10-23. A select loop reads
+backwards across stages by design: in `ooe_sched` the request and ready
+registers (stage 03) read the grant register (stage 04), which their own
+values feed, because V-65's same-cycle confirmation needs it. Retagging
+would describe a wait that does not exist. So the read is declared, with
+the alignment the loop has, and CCV-L23 holds it to that alignment instead
+of to `max(inputs) + 1`.
+
+The declaration is a waiver on the alignment check, not on the naming. Even
+a feedback read keeps its stage tag, and the tags must give exactly the
+alignment declared: the naming shows how many cycles the loop takes, and a
+feedback net tagged a stage off is refused like any other (DA: "Even for
+feedback signals, the stage alignment is important. The naming convention
+helps us to see how many cycles the loop takes. The right place for the
+waiver is on the check that uses the naming to verify alignment - the
+waiver can then be specific to the feedback alignment that we expect").
 
 A declaration lives beside the module's RTL, in `<module>.feedback.json`:
-`{"reads": {"<reader>": {"from": ["<read>", ...], "by": "OA", "date": "…",
-"why": "…"}}}`, one entry per reading net, its reads named. The lint holds
-each one to the loop it claims, and refuses it otherwise, leaving the stage
-skip reported:
+`{"reads": {"<reader>": {"from": {"<read>": <stages ahead>, ...}, "loop":
+["<R0>", ..., "<Rk>"], "by": "OA", "date": "…", "why": "…"}}}`, one entry
+per reading net. The lint refuses it, and the stage skip stays reported,
+unless:
 
 - `by` is an architect (OA, AR or DA): a declaration is reviewed before it
   is listed, and the list shrinks only by review;
 - the reader reads it: a stale declaration is refused;
-- the loop exists: some register the read comes from, through
-  combinational logic, has a next value that depends, through combinational
-  logic, on a register the reader is (or feeds). Read the other way, the
-  read is the back edge of a two-register loop. Conditions count as
+- the reader and the read both carry stage tags, and the read's tag lies
+  exactly `<stages ahead>` stages past the reader's, one or more (a read
+  the plain arithmetic accepts needs no declaration). Only then does the
+  read leave `max(inputs)`, for that reader alone;
+- the loop exists. With no `loop`, some register the read comes from,
+  through combinational logic, has a next value that depends, through
+  combinational logic, on a register the reader is (or feeds): the read is
+  the back edge of a two-register loop. A longer loop (OA's rev 191:
+  `ooe_sched`'s ready, grant and gl) names its registers in order, and the
+  lint traces that exact path: the reader is R0 or feeds its next value,
+  each register's next value depends combinationally on the one before it,
+  and the read comes from Rk. A hop it cannot trace refuses the declaration.
+  Reachability alone would accept almost anything in a scheduler, which is
+  why the path is named and not searched for. Conditions count as
   dependencies, an `if`'s or a `case`'s selector as much as a right-hand
   side.
 
 Timing is not exempt: check-ngd measures the loop whatever the tags say.
-`tools/check-1d.sh` holds it to `rtl/lint/reference_loop.sv` (a declared
-loop, silent) and `rtl/lint/bad_feedback.sv` (a declaration with no loop, one
-not an architect's, one for a read not made, and the loop undeclared: each
-refused).
+`tools/check-1d.sh` holds it to `rtl/lint/reference_loop.sv` (a two-register
+loop one stage ahead, and a listed three-register loop two ahead: silent)
+and `rtl/lint/bad_feedback.sv` (a declaration with no loop, one not an
+architect's, one for a read not made, the loop undeclared, a listed hop that
+does not exist, a three-register loop not listed, a loop declared at an
+alignment its tags do not give, and one with no alignment: each refused).
 
 ### CCV-L22 — a block runs on its own gated clock
 

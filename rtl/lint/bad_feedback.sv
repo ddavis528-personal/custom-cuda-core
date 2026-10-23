@@ -11,6 +11,14 @@
 // It also lists a declaration by OI, not an architect, and one for a read
 // its reader does not make. reference_noloop is reference_loop.sv's loop
 // with no declaration: the arithmetic refuses the back edge's read.
+// reference_badhop has two three-register loops: q's is declared with a hop
+// that does not exist (q1 -> q3, where q3's next value reads q2), and p's
+// without its registers, so only a two-register loop is looked for and none
+// is found. Both are refused.
+// reference_misalign has two real two-register loops: m's is declared two
+// stages ahead where its tags give one (DA, 2026-10-23: the declaration
+// states the alignment, and the tags must match it), and n's gives no
+// alignment at all. Both are refused, and their stage skips reported.
 //===----------------------------------------------------------------------===//
 
 module reference_nofb (
@@ -50,4 +58,36 @@ module reference_noloop (
     else              gnn_cy03h <= rqn_cy02h;
   end
   assign gnt_out_cy03h = gnn_cy03h;
+endmodule
+
+module reference_badhop (
+  input  logic reference_core_clk,
+  input  logic req_in_cy01h,
+  output logic out_cy04h
+);
+  logic q1_cy02h, q2_cy03h, q3_cy04h, p1_cy02h, p2_cy03h, p3_cy04h;
+  always_ff @(posedge reference_core_clk) begin
+    q1_cy02h <= req_in_cy01h & ~q3_cy04h;
+    q2_cy03h <= q1_cy02h;
+    q3_cy04h <= q2_cy03h;
+    p1_cy02h <= req_in_cy01h & ~p3_cy04h;
+    p2_cy03h <= p1_cy02h;
+    p3_cy04h <= p2_cy03h;
+  end
+  assign out_cy04h = q3_cy04h & p3_cy04h;
+endmodule
+
+module reference_misalign (
+  input  logic reference_core_clk,
+  input  logic req_in_cy01h,
+  output logic out_cy03h
+);
+  logic m1_cy02h, m2_cy03h, n1_cy02h, n2_cy03h;
+  always_ff @(posedge reference_core_clk) begin
+    m1_cy02h <= req_in_cy01h & ~m2_cy03h;
+    m2_cy03h <= m1_cy02h;
+    n1_cy02h <= req_in_cy01h & ~n2_cy03h;
+    n2_cy03h <= n1_cy02h;
+  end
+  assign out_cy03h = m2_cy03h & n2_cy03h;
 endmodule
