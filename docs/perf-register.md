@@ -64,6 +64,9 @@ it.
 | PF-39 | An early MLC-miss notice for demotion | MLC, DCU, MIU, OOE, RAU | deferred (TI-24 (5)) |
 | PF-40 | Pack a parked warp's rows: keep sharing, elide zero rows | OOE, RCU, PCA | deferred (TI-25, closed at OA's rev 165) |
 | PF-41 | Restore a parked warp before it is ready, into an idle slot | RAU | deferred (TI-21; OI's rev 155) |
+| PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
+| PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
+| PF-44 | Fetch past a converged barrier wait | FET, OOE | deferred (TI-40) |
 
 ## Entries
 
@@ -859,3 +862,29 @@ it.
   other ten. The signal fails on general-purpose code, the code AR-20
   exists to measure, so the field stays. Reopen only if the RCU-MIU
   boundary does not close in floorplan.
+
+### PF-44 Fetch past a converged barrier wait
+
+- **Now (proposed, TI-40; OA's rev 195 as AR amends it at AR's rev 160):**
+  FET parks a waiting group's lanes at a fetched `bar.wait` or
+  `bar.wait.phase`, and they fetch again when SYU's reply to the retired
+  wait arrives. So the path from the release to the warp's next issue runs
+  through fetch, decode, the decode queue and three rename stages. Under the
+  old rename hold it was rename and payload only, with the younger uops
+  already waiting in the decode queue.
+- **Alternative:** when a wait leaves every live lane of the warp waiting
+  (FET's idle mark), FET fetches past it, up to the warp's decode-queue
+  share, and OOE holds those uops at rename until the release, as before. A
+  diverged warp still parks at fetch, so the deadlock stays fixed.
+- **What it buys:** most of the front end's depth, once per barrier per
+  warp. PF-32's S1 traces measured 15 cycles from a branch's issue to the
+  next issue on a redirect. A release costs most of that, against about 4
+  under the hold, so the saving is about 10 cycles a barrier. That figure is
+  an estimate, not a measurement.
+- **Cost:** two mechanisms for one instruction. The rename hold and V-09 come
+  back into OOE. The uops fetched past the wait are squashed when a demotion
+  takes the warp.
+- **Signal:** cycles from SYU's reply to the warp's next issue, times
+  barriers, in the skeleton once barrier kernels run (TI-40). Worth building
+  if it exceeds 1% of a barrier kernel's cycles, such as layernorm or a CTA
+  reduction.
