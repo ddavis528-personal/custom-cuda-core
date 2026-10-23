@@ -268,8 +268,9 @@ module ooe_rename #(
   // q_ for the new names out (by 3), r_ for Rename 2's reads and names (an
   // in-group writer's name bound through it), p_ for the heads' reads; Rename
   // 2 reads the p_ copy of the pending group's fields too. Each lane's
-  // attributes once (x_, Rename 2's), its valid and class bits again for the
-  // request's lead (o_lv, o_c: an output's).
+  // attributes once (x_, Rename 2's), its valid again and the RS ports it
+  // takes for the request's lead (o_lv, o_c: bit 0 an RCU port, 1 an MIU
+  // port; an output's, decoded so the copy is no other register's twin).
   (* keep *) logic [R*2*R-1:0] q_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  q_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  q_palloc_cq03h;
@@ -283,7 +284,7 @@ module ooe_rename #(
   logic [R*4*R-1:0]  q_gl_cq03h, q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
   (* keep *) logic [R*XL-1:0] x_x_cq03h;
-  (* keep *) logic [R*3-1:0] o_c_cq03h;
+  (* keep *) logic [R*2-1:0] o_c_cq03h;
   (* keep *) logic [R-1:0]   o_lv_cq03h;
   logic              r1_en_cq02h;
   assign r1_en_cq02h = sel_cq02h != '0;
@@ -326,7 +327,9 @@ module ooe_rename #(
       p_galloc_cq03h <= galloc_cq02h;
       p_palloc_cq03h <= palloc_cq02h;
       x_x_cq03h      <= l_x_cq02h;
-      for (int l = 0; l < R; l++) o_c_cq03h[l * 3 +: 3] <= l_x_cq02h[l * XL +: 3];
+      for (int l = 0; l < R; l++)
+        o_c_cq03h[l * 2 +: 2] <= {l_x_cq02h[l * XL] && l_x_cq02h[l * XL + 1],
+                                  l_x_cq02h[l * XL] && (!l_x_cq02h[l * XL + 1] || l_x_cq02h[l * XL + 2])};
     end
   end
 
@@ -458,13 +461,19 @@ module ooe_rename #(
 
   // The request's lead, from its own copies (o_lv, o_c); the request, from
   // Rename 2's.
-  logic [R-1:0] o_rv_cq03h, o_mem_cq03h, o_cp_cq03h;
-  for (genvar l = 0; l < R; l++) begin : g_o
-    assign o_rv_cq03h[l]  = o_lv_cq03h[l] && o_c_cq03h[l * 3];
-    assign o_mem_cq03h[l] = o_c_cq03h[l * 3 + 1];
-    assign o_cp_cq03h[l]  = o_c_cq03h[l * 3 + 2];
+  logic [LP-1:0] o_nr_cq03h, o_nm_cq03h;
+  always_comb begin
+    o_nr_cq03h = '0;
+    o_nm_cq03h = '0;
+    for (int l = 0; l < R; l++) begin
+      if (o_lv_cq03h[l] && o_c_cq03h[l * 2]) o_nr_cq03h = o_nr_cq03h + 1'b1;
+      if (o_lv_cq03h[l] && o_c_cq03h[l * 2 + 1]) o_nm_cq03h = o_nm_cq03h + 1'b1;
+    end
+    for (int k = 0; k < R; k++) begin
+      req_l_cq03h[k]     = LP'(k) < o_nr_cq03h;
+      req_l_cq03h[R + k] = LP'(k) < o_nm_cq03h;
+    end
   end
-  assign req_l_cq03h = req_of(o_rv_cq03h, o_mem_cq03h, o_cp_cq03h);
 
   // -- The Rename 2 register: the group in Rename 3 -----------------------------
   // ooe_prodmap's record of it (its payload while Rename 1 holds a lane) and
