@@ -57,7 +57,7 @@ module ooe_rnrs #(
   input  logic [A*CW-1:0]   m_cvc_cq01h,
   // ooe_rs, all but its rows.
   input  logic [P-1:0]      req_l_cq00h, req_cq01h,
-  input  logic [N-1:0]      sqf_cq01h, msd_cq01h, cfin_cq01h, wtl3_cq00h, fin_cq00h, gnt_cq00h,
+  input  logic [N-1:0]      sqf_cq01h, msd_cq01h, cfin_cq01h, wtl3_cq00h, fin_cq00h, gnt_cq01h,
   input  logic [NC-1:0]     cmpl_l_cq00h,
   input  logic [NC*W-1:0]   cmpl_idx_cq00h,
   input  logic              sq_l_cq00h,
@@ -110,7 +110,7 @@ module ooe_rnrs #(
   ooe_rs #(.N(N), .NR(NR), .A(A), .NC(NC)) u_rs (
     .ooe_core_clk, .ooe_rst_r00h, .req_l_cq00h, .req_cq01h, .row_prod_cq01h(row_prod), .row_dep_cq01h(row_dep | ctl_row_cq01h),
     .row_code_cq01h(row_code), .grp_dep_cq01h(grp_dep), .grp_code_cq01h(grp_code), .prv_dep_cq01h(prv_dep),
-    .prv_code_cq01h(prv_code), .sqf_cq01h, .msd_cq01h, .cfin_cq01h, .wtl3_cq00h, .fin_cq00h, .gnt_cq00h,
+    .prv_code_cq01h(prv_code), .sqf_cq01h, .msd_cq01h, .cfin_cq01h, .wtl3_cq00h, .fin_cq00h, .gnt_cq01h,
     .cmpl_l_cq00h, .cmpl_idx_cq00h, .sq_l_cq00h, .gnt_v_cq03h, .gnt_idx_cq03h, .valid_out_cq02h, .dep_cq02h,
     .code_cq02h, .prod_o_cq02h(prod_o), .hcol_cq02h);
   assign rd_row_dep = row_dep;

@@ -90,7 +90,7 @@ module ooe_rs #(
   // The confirmation leads' terms, as they stand now (ooe_wake's, ooe_sched's).
   input  logic [N-1:0]     wtl3_cq00h,   // the full-latency line rises at the next edge
   input  logic [N-1:0]     fin_cq00h,    // final
-  input  logic [N-1:0]     gnt_cq00h,    // granted: issued from the next edge
+  input  logic [N-1:0]     gnt_cq01h,    // granted: issued from the next edge
   input  logic [NC-1:0]    cmpl_l_cq00h, // the completion channel's valid: a payload next cycle
   input  logic [NC*W-1:0]  cmpl_idx_cq00h, // each completion's RS entry (its payload)
   input  logic             sq_l_cq00h,   // the registered squash frees next cycle
@@ -235,20 +235,20 @@ module ooe_rs #(
   // matrix flops 18.3 NGD from the next state, over the 12 the dep output
   // holds them to (NGD-7). Confirmed entries are freed, and so are the
   // ones the registered squash frees.
-  logic [N-1:0] iss_cq02h, emp_cq02h, gone, rep, conf, free_cq01h;
+  logic [N-1:0] iss_cq02h, emp_cq02h, gone_cq02h, rep_cq02h, conf_cq02h, free_cq02h;
   always_comb begin
-    gone = ~iss_cq02h | msd_cq01h;
+    gone_cq02h = ~iss_cq02h | msd_cq01h;
     for (int i = 0; i < N; i++) begin
-      rep[i]  = iss_cq02h[i] && |(dep_cq02h[i * N +: N] & gone);
-      conf[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
+      rep_cq02h[i]  = iss_cq02h[i] && |(dep_cq02h[i * N +: N] & gone_cq02h);
+      conf_cq02h[i] = iss_cq02h[i] && emp_cq02h[i] && (cfin_cq01h[i] || !prod_cq02h[i]);
     end
   end
-  assign free_cq01h = conf | sqf_cq01h;
+  assign free_cq02h = conf_cq02h | sqf_cq01h;
   // Outside any gate, within the module's allowance: a grant has no lead
   // here (select's grant register is ooe_sched's), nor has a replay.
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) iss_cq02h <= '0;
-    else          iss_cq02h <= (iss_cq02h & ~rep & ~free_cq01h) | gnt_cq00h;
+    else          iss_cq02h <= (iss_cq02h & ~rep_cq02h & ~free_cq02h) | gnt_cq01h;
   end
   // The last edge's grant, one-hot, registered beside the grant itself
   // (lg_cq02h and its union lga_cq02h): the group ahead's entries, which
@@ -267,11 +267,11 @@ module ooe_rs #(
   // A row bit counts only on an entry valid now, not freed now and not the
   // group ahead's: rename's lookup ran a stage earlier, on names that may
   // since have left their entries (ooe_rename, slice 2).
-  logic [N-1:0] rmask;
-  assign rmask = valid_cq02h & ~free_cq01h & ~lga_cq02h;
+  logic [N-1:0] rmask_cq02h;
+  assign rmask_cq02h = valid_cq02h & ~free_cq02h & ~lga_cq02h;
   always_comb begin
     g_cq02h = grants(valid_cq02h, req_cq01h);
-    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask}}, row_code_cq01h, grp_dep_cq01h,
+    {cd_cq02h, d_cq02h} = rows_of(g_cq02h, row_dep_cq01h & {P{rmask_cq02h}}, row_code_cq01h, grp_dep_cq01h,
                                   grp_code_cq01h, lg_cq02h, prv_dep_cq01h, prv_code_cq01h,
                                   valid_cq02h & ~lga_cq02h);
     for (int p = 0; p < P; p++) begin
@@ -293,24 +293,24 @@ module ooe_rs #(
   // module's own flops); a steady stream of grants on the same ports
   // clocks nothing. The indices, payload read through them, with any
   // request.
-  logic         gnt_en, gnt_v_en;
-  assign gnt_en   = req_en_cq01h != '0;
-  assign gnt_v_en = req_en_cq01h != gnt_v_cq03h;
+  logic         gnt_en_cq01h, gnt_v_en_cq03h;
+  assign gnt_en_cq01h   = req_en_cq01h != '0;
+  assign gnt_v_en_cq03h = req_en_cq01h != gnt_v_cq03h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h)      gnt_v_cq03h <= '0;
-    else if (gnt_v_en) gnt_v_cq03h <= gv_cq02h;
+    else if (gnt_v_en_cq03h) gnt_v_cq03h <= gv_cq02h;
   end
   always_ff @(posedge ooe_core_clk) begin
-    if (gnt_en) gnt_idx_cq03h <= gi_cq02h;   // payload, read through gnt_v
+    if (gnt_en_cq01h) gnt_idx_cq03h <= gi_cq02h;   // payload, read through gnt_v
   end
-  logic lg_en;
-  assign lg_en = gnt_en || gnt_v_en;
+  logic lg_en_cq03h;
+  assign lg_en_cq03h = gnt_en_cq01h || gnt_v_en_cq03h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       lg_cq02h  <= '0;
       lgv_cq02h <= '0;
       lga_cq02h <= '0;
-    end else if (lg_en) begin
+    end else if (lg_en_cq03h) begin
       lg_cq02h  <= g_cq02h;
       lgv_cq02h <= gv_cq02h;
       lga_cq02h <= ga_cq02h;
@@ -321,27 +321,27 @@ module ooe_rs #(
   // Rename checks the RS for room first, so every port that asks is granted.
   `CCV_ASSERT(alloc_granted, (req_cq01h & ~gv_cq02h) == '0)
   // A free names a valid entry.
-  `CCV_ASSERT(free_valid, (free_cq01h & ~valid_cq02h) == '0)
+  `CCV_ASSERT(free_valid, (free_cq02h & ~valid_cq02h) == '0)
   // What ooe_wake and ooe_sched report, and a completion's payload, name
   // only entries valid here (their benches drive them so; the assembled
   // block holds them to it).
-  logic [N-1:0] cpv;
+  logic [N-1:0] cpv_cq02h;
   always_comb begin
-    cpv = '0;
+    cpv_cq02h = '0;
     for (int k = 0; k < NC; k++)
-      if (cva_cq01h[k]) cpv[cmpl_idx_cq00h[k * W +: W]] = 1'b1;
+      if (cva_cq01h[k]) cpv_cq02h[cmpl_idx_cq00h[k * W +: W]] = 1'b1;
   end
-  `CCV_ASSERT(wake_names_valid, ((gnt_cq00h | fin_cq00h | wtl3_cq00h | cpv | msd_cq01h) & ~valid_cq02h) == '0)
+  `CCV_ASSERT(wake_names_valid, ((gnt_cq01h | fin_cq00h | wtl3_cq00h | cpv_cq02h | msd_cq01h) & ~valid_cq02h) == '0)
   // A valid row's emptiness register is its row's (payload elsewhere).
-  logic [N-1:0] emp_ok;
+  logic [N-1:0] emp_ok_cq02h;
   always_comb
-    for (int i = 0; i < N; i++) emp_ok[i] = !valid_cq02h[i] || emp_cq02h[i] == (dep_cq02h[i * N +: N] == '0);
-  `CCV_ASSERT(row_empty_kept, emp_ok == '1)
+    for (int i = 0; i < N; i++) emp_ok_cq02h[i] = !valid_cq02h[i] || emp_cq02h[i] == (dep_cq02h[i * N +: N] == '0);
+  `CCV_ASSERT(row_empty_kept, emp_ok_cq02h == '1)
   // A squash frees valid entries, none of them confirming now.
   `CCV_ASSERT(squash_free_valid, (sqf_cq01h & ~valid_cq02h) == '0)
   // Every request and every free was led.
   `CCV_ASSERT(req_led, (req_cq01h & ~req_en_cq01h) == '0)
-  `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq01h & ~cf_en_cq01h) == '0)
+  `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq02h & ~cf_en_cq01h) == '0)
 
   // The next state. An entry a port takes gets the port's row; every other
   // row keeps its bits, less the columns freed this cycle, and its line
@@ -350,57 +350,57 @@ module ooe_rs #(
   // column is flagged from the edge a row of the class naming it is written
   // until the entry is freed, unless a row written at that same edge names
   // its next occupant; a set bit in a class's row is always flagged there.
-  logic [N-1:0]     valid_nx, prod_nx, emp_nx;
-  logic             emp_g;
-  logic [P-1:0]     emp_new;
-  logic [N*N-1:0]   dep_nx;
-  logic [2*N*N-1:0] code_nx;
-  logic [N-1:0]     hr_nx, hm_nx, named_r, named_m;
-  logic [2*N*N-1:0] dep2;    // each cell's bit, twice, as the line selects lie
-  logic             hit;
+  logic [N-1:0]     valid_nx_cq02h, prod_nx_cq01h, emp_nx_cq02h;
+  logic             emp_g_cq02h;
+  logic [P-1:0]     emp_new_cq02h;
+  logic [N*N-1:0]   dep_nx_cq02h;
+  logic [2*N*N-1:0] code_nx_cq02h;
+  logic [N-1:0]     hr_nx_cq02h, hm_nx_cq02h, named_r_cq02h, named_m_cq02h;
+  logic [2*N*N-1:0] dep2_cq02h;    // each cell's bit, twice, as the line selects lie
+  logic             hit_cq02h;
   always_comb begin
-    for (int c = 0; c < N * N; c++) dep2[c * 2 +: 2] = {2{dep_cq02h[c]}};
-    named_r = '0;
-    named_m = '0;
+    for (int c = 0; c < N * N; c++) dep2_cq02h[c * 2 +: 2] = {2{dep_cq02h[c]}};
+    named_r_cq02h = '0;
+    named_m_cq02h = '0;
     for (int i = 0; i < N; i++) begin
-      hit = 1'b0;
-      dep_nx[i * N +: N]           = dep_cq02h[i * N +: N] & ~free_cq01h;
-      code_nx[i * 2 * N +: 2 * N] = code_cq02h[i * 2 * N +: 2 * N] & dep2[i * 2 * N +: 2 * N];
+      hit_cq02h = 1'b0;
+      dep_nx_cq02h[i * N +: N]           = dep_cq02h[i * N +: N] & ~free_cq02h;
+      code_nx_cq02h[i * 2 * N +: 2 * N] = code_cq02h[i * 2 * N +: 2 * N] & dep2_cq02h[i * 2 * N +: 2 * N];
       for (int p = 0; p < P; p++)
         if (g_cq02h[p * N + i]) begin
-          hit                          = 1'b1;
-          dep_nx[i * N +: N]           = d_cq02h[p * N +: N];
-          code_nx[i * 2 * N +: 2 * N] = cd_cq02h[p * 2 * N +: 2 * N];
+          hit_cq02h                          = 1'b1;
+          dep_nx_cq02h[i * N +: N]           = d_cq02h[p * N +: N];
+          code_nx_cq02h[i * 2 * N +: 2 * N] = cd_cq02h[p * 2 * N +: 2 * N];
         end
-      valid_nx[i] = hit || (valid_cq02h[i] && !free_cq01h[i]);
+      valid_nx_cq02h[i] = hit_cq02h || (valid_cq02h[i] && !free_cq02h[i]);
       // Its prod bit, from its port; cleared with its valid bit (read only
       // while valid), so it shares its class's enable.
-      prod_nx[i]  = prod_cq02h[i] && !free_cq01h[i];
+      prod_nx_cq01h[i]  = prod_cq02h[i] && !free_cq02h[i];
       for (int p = 0; p < P; p++)
-        if (g_cq02h[p * N + i]) prod_nx[i] = row_prod_cq01h[p];
+        if (g_cq02h[p * N + i]) prod_nx_cq01h[i] = row_prod_cq01h[p];
     end
     for (int p = 0; p < P; p++)
       if (|g_cq02h[p * N +: N]) begin
-        if (p < A) named_r = named_r | d_cq02h[p * N +: N];
-        else       named_m = named_m | d_cq02h[p * N +: N];
+        if (p < A) named_r_cq02h = named_r_cq02h | d_cq02h[p * N +: N];
+        else       named_m_cq02h = named_m_cq02h | d_cq02h[p * N +: N];
       end
     // Emptiness in parallel with the rows: a kept row's from its flops less
     // the frees; a new one's from its port's inputs, before any grant (a
     // row naming a port of its group names a granted entry: every port that
     // asks is granted), then steered with the row.
     for (int p = 0; p < P; p++)
-      emp_new[p] = (row_dep_cq01h[p * N +: N] & rmask) == '0 &&
+      emp_new_cq02h[p] = (row_dep_cq01h[p * N +: N] & rmask_cq02h) == '0 &&
                    (grp_dep_cq01h[p * P +: P] & req_cq01h & ~(P'(1) << p)) == '0 &&
                    (prv_dep_cq01h[p * P +: P] & lgv_cq02h) == '0;
     for (int i = 0; i < N; i++) begin
       // An entry is granted to one port at most: its new row's flag through
       // a one-hot select, not an override in port order (NGD-7: dep).
-      emp_g = 1'b0;
-      for (int p = 0; p < P; p++) emp_g = emp_g | (g_cq02h[p * N + i] & emp_new[p]);
-      emp_nx[i] = ga_cq02h[i] ? emp_g : (dep_cq02h[i * N +: N] & ~free_cq01h) == '0;
+      emp_g_cq02h = 1'b0;
+      for (int p = 0; p < P; p++) emp_g_cq02h = emp_g_cq02h | (g_cq02h[p * N + i] & emp_new_cq02h[p]);
+      emp_nx_cq02h[i] = ga_cq02h[i] ? emp_g_cq02h : (dep_cq02h[i * N +: N] & ~free_cq02h) == '0;
     end
-    hr_nx = (hr_cq02h & ~free_cq01h) | named_r;
-    hm_nx = (hm_cq02h & ~free_cq01h) | named_m;
+    hr_nx_cq02h = (hr_cq02h & ~free_cq02h) | named_r_cq02h;
+    hm_nx_cq02h = (hm_cq02h & ~free_cq02h) | named_m_cq02h;
   end
   assign hcol_cq02h = hr_cq02h | hm_cq02h;
 
@@ -413,16 +413,16 @@ module ooe_rs #(
   // edge (a restart: the lead it set, held a cycle by cvb); and an entry
   // writing nothing confirms once issued. An entry freed now, or free,
   // needs none.
-  logic [N-1:0] cmn, cf_d;
+  logic [N-1:0] cmn_cq02h, cf_d;
   always_comb begin
-    cmn = '0;
+    cmn_cq02h = '0;
     for (int k = 0; k < NC; k++)
       for (int i = 0; i < N; i++)
-        if (cva_cq01h[k] && cmpl_idx_cq00h[k * W +: W] == W'(i)) cmn[i] = 1'b1;
+        if (cva_cq01h[k] && cmpl_idx_cq00h[k * W +: W] == W'(i)) cmn_cq02h[i] = 1'b1;
     for (int i = 0; i < N; i++)
-      cf_d[i] = valid_cq02h[i] && !free_cq01h[i] && (dep_cq02h[i * N +: N] & ~free_cq01h) == '0 &&
-                (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn[i] || (cf_en_cq01h[i] && cvb_cq02h)
-                               : iss_cq02h[i] || gnt_cq00h[i]);
+      cf_d[i] = valid_cq02h[i] && !free_cq02h[i] && (dep_cq02h[i * N +: N] & ~free_cq02h) == '0 &&
+                (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn_cq02h[i] || (cf_en_cq01h[i] && cvb_cq02h)
+                               : iss_cq02h[i] || gnt_cq01h[i]);
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
@@ -446,10 +446,10 @@ module ooe_rs #(
   // its flags name, and is clocked on those leads alone. An idle RS clocks
   // none of it.
   logic rcu_en_cq01h, miu_en_cq01h;
-  logic [N-1:0] fl;                    // a free may come: led by confirmation, or a squash
-  assign fl = cf_en_cq01h | {N{sq_en_cq01h}};
-  assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl[NR-1:0] || |(fl & hr_cq02h);
-  assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl[N-1:NR] || |(fl & hm_cq02h);
+  logic [N-1:0] fl_cq01h;                    // a free may come: led by confirmation, or a squash
+  assign fl_cq01h = cf_en_cq01h | {N{sq_en_cq01h}};
+  assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl_cq01h[NR-1:0] || |(fl_cq01h & hr_cq02h);
+  assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl_cq01h[N-1:NR] || |(fl_cq01h & hm_cq02h);
 
   always_ff @(posedge ooe_core_clk) begin
     // The reset state: every entry free, no column with a dependant. The
@@ -461,31 +461,31 @@ module ooe_rs #(
       hm_cq02h      <= '0;
     end else begin
       if (rcu_en_cq01h) begin
-        valid_cq02h[NR-1:0]   <= valid_nx[NR-1:0];
-        valid_o_cq02h[NR-1:0] <= valid_nx[NR-1:0];
-        hr_cq02h              <= hr_nx;
+        valid_cq02h[NR-1:0]   <= valid_nx_cq02h[NR-1:0];
+        valid_o_cq02h[NR-1:0] <= valid_nx_cq02h[NR-1:0];
+        hr_cq02h              <= hr_nx_cq02h;
       end
       if (miu_en_cq01h) begin
-        valid_cq02h[N-1:NR]   <= valid_nx[N-1:NR];
-        valid_o_cq02h[N-1:NR] <= valid_nx[N-1:NR];
-        hm_cq02h              <= hm_nx;
+        valid_cq02h[N-1:NR]   <= valid_nx_cq02h[N-1:NR];
+        valid_o_cq02h[N-1:NR] <= valid_nx_cq02h[N-1:NR];
+        hm_cq02h              <= hm_nx_cq02h;
       end
     end
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rcu_en_cq01h) begin
-      dep_cq02h[NR*N-1:0]    <= dep_nx[NR*N-1:0];
-      code_cq02h[2*NR*N-1:0] <= code_nx[2*NR*N-1:0];
-      prod_cq02h[NR-1:0]     <= prod_nx[NR-1:0];
-      prod_oc_cq02h[NR-1:0]  <= prod_nx[NR-1:0];
-      emp_cq02h[NR-1:0]      <= emp_nx[NR-1:0];
+      dep_cq02h[NR*N-1:0]    <= dep_nx_cq02h[NR*N-1:0];
+      code_cq02h[2*NR*N-1:0] <= code_nx_cq02h[2*NR*N-1:0];
+      prod_cq02h[NR-1:0]     <= prod_nx_cq01h[NR-1:0];
+      prod_oc_cq02h[NR-1:0]  <= prod_nx_cq01h[NR-1:0];
+      emp_cq02h[NR-1:0]      <= emp_nx_cq02h[NR-1:0];
     end
     if (miu_en_cq01h) begin
-      dep_cq02h[N*N-1:NR*N]    <= dep_nx[N*N-1:NR*N];
-      code_cq02h[2*N*N-1:2*NR*N] <= code_nx[2*N*N-1:2*NR*N];
-      prod_cq02h[N-1:NR]     <= prod_nx[N-1:NR];
-      prod_oc_cq02h[N-1:NR]  <= prod_nx[N-1:NR];
-      emp_cq02h[N-1:NR]      <= emp_nx[N-1:NR];
+      dep_cq02h[N*N-1:NR*N]    <= dep_nx_cq02h[N*N-1:NR*N];
+      code_cq02h[2*N*N-1:2*NR*N] <= code_nx_cq02h[2*N*N-1:2*NR*N];
+      prod_cq02h[N-1:NR]     <= prod_nx_cq01h[N-1:NR];
+      prod_oc_cq02h[N-1:NR]  <= prod_nx_cq01h[N-1:NR];
+      emp_cq02h[N-1:NR]      <= emp_nx_cq02h[N-1:NR];
     end
   end
 

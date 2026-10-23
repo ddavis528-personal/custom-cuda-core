@@ -157,35 +157,35 @@ module ooe_prodmap #(
   // main); and its codes, the uop's for a main entry, the late line for a
   // copy (a copy has no bypass). The codes are the entry's record with its
   // names, written when it is, behind its class's gate.
-  logic [N-1:0]    eg_nx, ec_nx, ep_nx;
-  logic [N*LG-1:0] egn_nx;
-  logic [N*LQ-1:0] epn_nx;
-  logic [N*CW-1:0] ecv_nx;
+  logic [N-1:0]    eg_nx_cq02h, ec_nx_cq02h, ep_nx_cq02h;
+  logic [N*LG-1:0] egn_nx_cq02h;
+  logic [N*LQ-1:0] epn_nx_cq02h;
+  logic [N*CW-1:0] ecv_nx_cq02h;
   always_comb begin
-    ecv_nx = ecv_cq03h;
-    eg_nx  = eg_cq03h;
-    ec_nx  = ec_cq03h;
-    ep_nx  = ep_cq03h;
-    egn_nx = egn_cq03h;
-    epn_nx = epn_cq03h;
+    ecv_nx_cq02h = ecv_cq03h;
+    eg_nx_cq02h  = eg_cq03h;
+    ec_nx_cq02h  = ec_cq03h;
+    ep_nx_cq02h  = ep_cq03h;
+    egn_nx_cq02h = egn_cq03h;
+    epn_nx_cq02h = epn_cq03h;
     for (int u = 0; u < A; u++)
       if (v_cq02h[u]) begin
         for (int e = 0; e < N; e++) begin
           if (em_cq02h[u * W +: W] == W'(e)) begin
-            eg_nx[e]               = gwe_cq02h[u];
-            ec_nx[e]               = 1'b0;
-            egn_nx[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
-            ep_nx[e]               = pwe_cq02h[u];
-            epn_nx[e * LQ +: LQ]   = pname_cq02h[u * LQ +: LQ];
-            ecv_nx[e * CW +: CW]   = cvc_cq02h[u * CW +: CW];
+            eg_nx_cq02h[e]               = gwe_cq02h[u];
+            ec_nx_cq02h[e]               = 1'b0;
+            egn_nx_cq02h[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
+            ep_nx_cq02h[e]               = pwe_cq02h[u];
+            epn_nx_cq02h[e * LQ +: LQ]   = pname_cq02h[u * LQ +: LQ];
+            ecv_nx_cq02h[e * CW +: CW]   = cvc_cq02h[u * CW +: CW];
           end
           if (cv_cq02h[u] && ec_cq02h[u * W +: W] == W'(e)) begin
-            eg_nx[e]               = gwe_cq02h[u];
-            ec_nx[e]               = 1'b1;
-            egn_nx[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
-            ep_nx[e]               = 1'b0;
-            epn_nx[e * LQ +: LQ]   = '0;
-            ecv_nx[e * CW +: CW]   = '1;
+            eg_nx_cq02h[e]               = gwe_cq02h[u];
+            ec_nx_cq02h[e]               = 1'b1;
+            egn_nx_cq02h[e * LG +: LG]   = gname_cq02h[u * LG +: LG];
+            ep_nx_cq02h[e]               = 1'b0;
+            epn_nx_cq02h[e * LQ +: LQ]   = '0;
+            ecv_nx_cq02h[e * CW +: CW]   = '1;
           end
         end
       end
@@ -204,22 +204,22 @@ module ooe_prodmap #(
   end
   always_ff @(posedge ooe_core_clk) begin
     if (er_en_cq02h) begin
-      eg_cq03h[0 +: NR]        <= eg_nx[0 +: NR];
-      ec_cq03h[0 +: NR]        <= ec_nx[0 +: NR];
-      ep_cq03h[0 +: NR]        <= ep_nx[0 +: NR];
-      egn_cq03h[0 +: NR * LG]  <= egn_nx[0 +: NR * LG];
-      epn_cq03h[0 +: NR * LQ]  <= epn_nx[0 +: NR * LQ];
-      ecv_cq03h[0 +: NR * CW]  <= ecv_nx[0 +: NR * CW];
+      eg_cq03h[0 +: NR]        <= eg_nx_cq02h[0 +: NR];
+      ec_cq03h[0 +: NR]        <= ec_nx_cq02h[0 +: NR];
+      ep_cq03h[0 +: NR]        <= ep_nx_cq02h[0 +: NR];
+      egn_cq03h[0 +: NR * LG]  <= egn_nx_cq02h[0 +: NR * LG];
+      epn_cq03h[0 +: NR * LQ]  <= epn_nx_cq02h[0 +: NR * LQ];
+      ecv_cq03h[0 +: NR * CW]  <= ecv_nx_cq02h[0 +: NR * CW];
     end
   end
   always_ff @(posedge ooe_core_clk) begin
     if (em_en_cq02h) begin
-      eg_cq03h[NR +: N - NR]        <= eg_nx[NR +: N - NR];
-      ec_cq03h[NR +: N - NR]        <= ec_nx[NR +: N - NR];
-      ep_cq03h[NR +: N - NR]        <= ep_nx[NR +: N - NR];
-      egn_cq03h[NR * LG +: (N - NR) * LG] <= egn_nx[NR * LG +: (N - NR) * LG];
-      epn_cq03h[NR * LQ +: (N - NR) * LQ] <= epn_nx[NR * LQ +: (N - NR) * LQ];
-      ecv_cq03h[NR * CW +: (N - NR) * CW] <= ecv_nx[NR * CW +: (N - NR) * CW];
+      eg_cq03h[NR +: N - NR]        <= eg_nx_cq02h[NR +: N - NR];
+      ec_cq03h[NR +: N - NR]        <= ec_nx_cq02h[NR +: N - NR];
+      ep_cq03h[NR +: N - NR]        <= ep_nx_cq02h[NR +: N - NR];
+      egn_cq03h[NR * LG +: (N - NR) * LG] <= egn_nx_cq02h[NR * LG +: (N - NR) * LG];
+      epn_cq03h[NR * LQ +: (N - NR) * LQ] <= epn_nx_cq02h[NR * LQ +: (N - NR) * LQ];
+      ecv_cq03h[NR * CW +: (N - NR) * CW] <= ecv_nx_cq02h[NR * CW +: (N - NR) * CW];
     end
   end
 

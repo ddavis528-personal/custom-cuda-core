@@ -108,7 +108,7 @@ module ooe_trio #(
     .grp_dep_cq01h(grp_dep_cq01h), .grp_code_cq01h(grp_code_cq01h),
     .prv_dep_cq01h(prv_dep_cq01h), .prv_code_cq01h(prv_code_cq01h),
     .sqf_cq01h(sqf_cq01h), .msd_cq01h(msd_cq02h), .cfin_cq01h(fin_cq02h),
-    .wtl3_cq00h(flt), .fin_cq00h(fin_cq02h), .gnt_cq00h(grant_cq04h),
+    .wtl3_cq00h(flt), .fin_cq00h(fin_cq02h), .gnt_cq01h(grant_cq04h),
     .cmpl_l_cq00h(cmpl_l_cq00h), .cmpl_idx_cq00h(cmpl_idx_cq00h), .sq_l_cq00h(sq_l_cq00h),
     .gnt_v_cq03h(gnt_v_cq03h), .gnt_idx_cq03h(gnt_idx_cq03h), .valid_out_cq02h(valid_cq02h),
     .dep_cq02h(dep_cq02h), .code_cq02h(code), .prod_o_cq02h(prod_o), .hcol_cq02h(hcol));
@@ -144,7 +144,7 @@ module ooe_trio #(
   always_ff @(posedge ooe_core_clk) begin
     trio_rst <= ooe_rst_r00h;
     ise_q    <= u_sched.ise_cq02h;
-    fre_q    <= u_rs.free_cq01h;
+    fre_q    <= u_rs.free_cq02h;
     gr_q     <= u_sched.gnt_cq04h & u_sched.rep_cq02h;
     gr_q2    <= gr_q;
   end
