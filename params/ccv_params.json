@@ -1133,6 +1133,14 @@
       "decided_at": "TI (OA's response TI-33)"
     },
     {
+      "name": "CCV_LANE_CONTEXTS",
+      "value": 4096,
+      "status": "provisional",
+      "derive": "2 ** (CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5)",
+      "doc": "The device's lane contexts (ISA v1.9 O-64): every %lanectx is below it, so it is %lanectx's range, 2^(CCV_P_W_DEV_CORE + CCV_W_WARP_ID + 5). O-69's interleaved spill space starts at window local_base + CCV_LANE_CONTEXTS, past every lane's O-30 frame: MIU forms a local-form address as ((local_base + CCV_LANE_CONTEXTS) << 16) + (ctx << 22) + 128*(b/4) + 4l + b%4, with ctx = %lanectx >> 5 = (CCV_P_CORE_ID << CCV_W_WARP_ID) | the warp's hardware context. ccv-sim takes it as -lane-contexts (tools/gen-oracle.sh); its own default, 1024, is one core's.",
+      "decided_at": "TI (IS's IS-19, adopted by DA 2026-10-23; OA's response IS-19)"
+    },
+    {
       "name": "CCV_P_TIMEOUT_N",
       "value": 32,
       "status": "provisional",

@@ -230,7 +230,7 @@ int main(int argc, char **argv) {
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
-                      brk == "deny-ownership";
+                      brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

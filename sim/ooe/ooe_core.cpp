@@ -2777,6 +2777,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.ordering = u.ordering;
     m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
     m.arg_slot = u.arg_slot;
+    m.local_form = u.local_form;         // DEC's, unexamined (IS-19)
     m.chwidth = s.chwidth;
     if (x.atom) {
       // OOE's own codes (V-72): the read into T, at the address; the write,

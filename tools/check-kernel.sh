@@ -66,6 +66,11 @@
 #     (dcu_evict)                                stale and memory differs
 #   ...on MLC's grant (ownership)             deny-ownership (predswap, vadd):
 #                                                DCU's check refuses the line
+#   O-69's interleaved spill space (IS-19):   local-no-ctx (localsp): warp
+#     no base register; MIU forms each           1 spills into context 0's
+#     lane's address from local_base (its        frame; local-base-slot: the
+#     table, launch-block byte 24) and the       window read from slot 0's
+#     warp's context (local_form)                word misses the space
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -674,6 +679,7 @@ predspill pred_xfer=7 pred_merge=6 pred_copy=0
 predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
+localsp local_form=12 window_fill=2 pred_xfer=4 frame_lookups=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -725,6 +731,19 @@ if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id 0) withou
   say "--break deny-ownership: DCU refuses the line" "PASS (predswap's AcquireBlock, vadd's AcquirePerm)"
 else
   bad "--break deny-ownership" "a line taken as owned without MLC's grant: $(grep '^KERNEL' "$B/kernel_deny-ownership.log")"
+fi
+# O-69's spill space (IS-19): localsp's two warps spill in their own
+# frames, 4 MiB apart. MIU forms ctx from the memop's warp_id; taken as 0,
+# warp 1's first st.local lands in context 0's frame. local_base is the
+# launch block's word at byte 24; read from launch slot 0's instead, every
+# local address misses the space.
+"$SKEL" --kernel build/oracle/localsp/oracle.jsonl --break local-no-ctx >"$B/kernel_local-no-ctx.log" 2>&1
+"$SKEL" --kernel build/oracle/localsp/oracle.jsonl --break local-base-slot >"$B/kernel_local-base-slot.log" 2>&1
+if grep -q "^CHECK miu: seq 6 lane 0 address 11000100, oracle 11400100" "$B/kernel_local-no-ctx.log" &&
+   grep -q "^CHECK miu: seq 6 lane 0 address 10000100, oracle 11000100" "$B/kernel_local-base-slot.log"; then
+  say "--break local-no-ctx, local-base-slot" "PASS (warp 1 in context 0's frame; local_base from the wrong word)"
+else
+  bad "--break local-no-ctx, local-base-slot" "a local-form address went unchecked: $(grep '^KERNEL' "$B/kernel_local-no-ctx.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 if grep -q "^CHECK lane 0: seq 207 operand 1 (R4) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&

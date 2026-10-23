@@ -39,6 +39,8 @@ done
 # writes the records to CCV_ORACLE_DIR rather than build/oracle.
 fair=${CCV_FAIR_N:-$(sed -n 's/.*kFairN = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)}
 [ -n "$fair" ] || { echo "gen-oracle: no CCV_FAIR_N in sim/generated/ccv_params.h" >&2; exit 1; }
+lctx=$(sed -n 's/.*kLaneContexts = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
+[ -n "$lctx" ] || { echo "gen-oracle: no CCV_LANE_CONTEXTS in sim/generated/ccv_params.h" >&2; exit 1; }
 for k in test/kernels/*/; do
   k=${k%/}; name=$(basename "$k")
   [ -f "$k/kernel.cfg" ] || continue
@@ -71,6 +73,9 @@ for k in test/kernels/*/; do
     # warp_id w, so ccv-sim's %lanectx must name w too, whichever CTA and
     # warp of it the run is (ccv-sim -context, TI-35).
     cta+=(-context "$w")
+    # O-69's spill space starts past the device's lane contexts, not one
+    # core's (ccv-sim's default): CCV_LANE_CONTEXTS, as MIU forms it (IS-19).
+    cta+=(-lane-contexts "$lctx")
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
       ${threads:+-threads "$threads"} ${crange:+-const-range "$crange"} \
       -fairness="$fair" -oracle "$o" >/dev/null
