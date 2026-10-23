@@ -748,9 +748,12 @@ else
   bad "--break local-no-ctx, local-base-slot" "a local-form address went unchecked: $(grep '^KERNEL' "$B/kernel_local-no-ctx.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
-if grep -q "^CHECK lane 0: seq 207 operand 1 (R4) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&
+# The first wrong read depends on when OOE's free lists refill: seq 207's R4
+# before OI's FreeVec alignment (OI-70, OI-71), seq 204's R3 after it. Until
+# that model is merged here, either is the witness; then seq 204's alone.
+if grep -qE "^CHECK lane 0: seq (207 operand 1 \(R4\) 00000032, oracle 00000001|204 operand 1 \(R3\) 00000032, oracle 00000064)\$" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 207, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS ($(grep -oE '^CHECK lane 0: seq (207|204)' "$B/kernel_free-new.log" | head -1 | grep -oE '[0-9]+$'), its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi

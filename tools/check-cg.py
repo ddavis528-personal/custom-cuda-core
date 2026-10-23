@@ -751,9 +751,13 @@ class Netlist:
                 out.add(self._inbit[x])
         return out
 
-    def reset_loads(self):
+    def reset_loads(self, child_resets=None):
         """Where the reset port is used other than on the D pin of a plain
-        flop that captures it, one entry per kind and register, sorted."""
+        flop that captures it, one entry per kind and register, sorted.
+        child_resets: {module: its reset port} for the design modules with a
+        unit of their own: a blackboxed child taking the reset on that port
+        flops it itself, and its unit's RST-1 holds it to that (OI-71)."""
+        child_resets = child_resets or {}
         out = collections.Counter()
         for n, p in self.ports.items():
             if p["direction"] == "output" and self.rbit in p["bits"]:
@@ -771,6 +775,10 @@ class Netlist:
                     reg = re.sub(r"\[\d+\]$", "", self.best(c["connections"]["Q"][0])[0])
                     what = "%s pin of %s" % ({"R": "reset", "E": "enable"}.get(pin, pin), reg)
                 else:
+                    mm = re.match(r"^\\?\$paramod(?:\$[0-9a-f]+)?\\([^\\]+)", c["type"])
+                    mod = mm.group(1) if mm else c["type"].lstrip("\\")
+                    if child_resets.get(mod) == pin:
+                        continue
                     what = "%s pin %s of %s" % (c["type"].lstrip("\\"), pin, cn)
                 out[what] += 1
         return ["%s%s" % (k, " (%d bits)" % v if v > 1 else "") for k, v in sorted(out.items())]
@@ -1076,7 +1084,8 @@ endmodule
         shutil.rmtree(hd, ignore_errors=True)
         r = run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
                  "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb",
-                 "--Mdir", hd, "-o", "cg_tb", tf, nv]
+                 # A blackboxed design child's assertions name the package (OI-71).
+                 "--Mdir", hd, "-o", "cg_tb", "rtl/ccv_assert_pkg.sv", tf, nv]
                 + [self.spec["blackbox"][k] for k in sorted(self.spec.get("blackbox", {}))])
         if r.returncode:
             raise SystemExit("check-cg: unit %s: harness build failed:\n%s"
@@ -1254,7 +1263,12 @@ def unit_findings(u):
     return out
 
 
-def source_findings(u):
+def child_resets(units):
+    """{module: its reset port} for every unit's module (OI-71)."""
+    return {x.module: x.spec["reset"].lstrip("!") for x in units if x.spec.get("reset")}
+
+
+def source_findings(u, resets=None):
     """CG-5 and RST-1, from the netlist alone (Daniel, 2026-10-18).
     CG-5: every clock gate's enable cone, and every explicit ICG's, starts
     only at the module's own flops. An input there is another module's
@@ -1281,7 +1295,7 @@ def source_findings(u):
             f.inputs, f.cone = set(ins), getattr(u, "icg_depth", {}).get(c)
             out.append(f)
     if nl.rbit is not None:
-        loads = nl.reset_loads()
+        loads = nl.reset_loads(resets)
         if loads:
             name = u.spec["reset"].lstrip("!")
             out.append(Finding("RST-1", u.module, {name}, "reset %s is used before it is "
@@ -1898,6 +1912,7 @@ def unmeasured(units):
 def main_check(only=None, verbose=False):
     modules = design_modules()
     units = load_units()
+    resets = child_resets(units)
     if only:
         units = [u for u in units if u.name == only]
         if not units:
@@ -1918,7 +1933,7 @@ def main_check(only=None, verbose=False):
     for u in measured(units, lambda u: u.measure(), pool, queue_el):
         report(u, verbose)
         if u.nl is not None:
-            findings += source_findings(u)
+            findings += source_findings(u, resets)
         if u.errors:
             continue
         findings += unit_findings(u) + scenario_findings(u)
@@ -2188,6 +2203,20 @@ def selftest():
            "RST-1 missed the reset port used before a flop: %s" % [str(f) for f in r1])
     expect(not has("RST-1", "cg_fx_good", None) and not has("CG-5", "cg_fx_good", None),
            "a flopped reset and a flopped valid were refused")
+    #     A blackboxed design child with its own unit flops the reset it takes
+    #     on its own reset port (OI-71): the parent passes it there, and on
+    #     any other pin still refuses it; with no unit for the child, both.
+    pu = Unit({"name": "fx_parent", "module": "cg_fx_parent",
+               "files": ["test/cg/fixtures/cg_fx_parent.sv"], "clock": "clk", "reset": "rst",
+               "blackbox": {"cg_fx_good": "test/cg/fixtures/cg_fx_good.sv"}}, "selftest")
+    pu.synth()
+    pu.measure_depth()
+    pr = has("RST-1", "cg_fx_parent", None, source_findings(pu, {"cg_fx_good": "rst"}))
+    expect(pr and "pin in_v of u_bad" in pr[0].msg and "u_ok" not in pr[0].msg,
+           "RST-1 took a child's data pin, or refused its own reset port: %s" % [str(f) for f in pr])
+    pr = has("RST-1", "cg_fx_parent", None, source_findings(pu))
+    expect(pr and "pin rst of u_ok" in pr[0].msg,
+           "RST-1 passed a reset into a child with no unit of its own: %s" % [str(f) for f in pr])
     # 17. CG-5 and RST-1 are ratcheted per finding: one listed is excused and
     #     the module's others are not, nor a gate only some of whose
     #     registers are listed; one that now passes, or one outside the
