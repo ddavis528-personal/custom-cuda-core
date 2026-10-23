@@ -144,6 +144,32 @@ module ngd_fx_asm_inner (
   always_ff @(posedge clk) o <= g;
 endmodule
 
+// A parameterised inner helper (OI-69): Yosys names its derived copy
+// $paramod$<sha1>\ngd_fx_pinner, its 64-bit parameter string being long, and
+// check-ngd must flatten that form into its parent as well.
+module ngd_fx_pinner #(
+  parameter logic [63:0] K = 64'h0
+) (
+  input  logic a,
+  input  logic b,
+  output logic y
+);
+  assign y = a ^ b ^ K[0];
+endmodule
+
+module ngd_fx_asm_pinner (
+  input  logic       clk,
+  input  logic [3:0] i,
+  output logic       o
+);
+  logic [3:0] i_q;
+  logic       y, g;
+  always_ff @(posedge clk) i_q <= i;
+  ngd_fx_bsrc  u_src (.clk(clk), .d(i_q), .y(y));
+  ngd_fx_pinner #(.K(64'hdeadbeef_deadbeef)) u_inn (.a(y), .b(i_q[2]), .y(g));
+  always_ff @(posedge clk) o <= g;
+endmodule
+
 module ngd_fx_asm_inner_gap (
   input  logic       clk,
   input  logic [3:0] i,

@@ -390,7 +390,8 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
 def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inner=()):
     """A module at its parameters, as a Yosys JSON netlist: flattened, or
     with its hierarchy kept, less the `inner` helpers, which are flattened
-    into their parents (a parameterised copy is $paramod\\<module>\\...)."""
+    into their parents (a parameterised copy is $paramod\\<module>\\..., or
+    $paramod$<sha1>\\<module> when its parameter string is long; OI-69)."""
     work = os.path.join(BUILD, name)
     os.makedirs(work, exist_ok=True)
     jf = os.path.join(work, "net.json")
@@ -408,7 +409,7 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inn
     if not flat and inner:
         cmds += ["setattr -mod -set keep_hierarchy 1 *",
                  "setattr -mod -unset keep_hierarchy %s" % " ".join(
-                     "%s $paramod\\%s\\*" % (m, m) for m in sorted(inner))]
+                     "%s $paramod\\%s\\* $paramod$*\\%s" % (m, m, m) for m in sorted(inner))]
         flat = True
     cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top)]
     r = cg.yosys_json(cmds, jf)
@@ -1174,6 +1175,11 @@ def selftest():
            "an inner helper between two children passed: %s" % f)
     f = msgs(converge("fx_asm_inner", "ngd_fx_asm_inner", files, [], fi))
     expect(not f, "an inner helper before its parent's flop was refused: %s" % f)
+    # A parameterised helper's copy carries a hashed name, $paramod$<sha1>
+    # \<module>, when its parameter string is long (OI-69): flattened too.
+    fp = Budgets(bfiles + [os.path.join(ROOT, FIX, "ngd_fx_pinner.ngd.json")])
+    f = msgs(converge("fx_asm_pinner", "ngd_fx_asm_pinner", files, [], fp))
+    expect(not f, "a parameterised inner helper was cut out at its ports: %s" % f)
     f = msgs(converge("fx_asm_cut", "ngd_fx_asm_inner", files, [], fb))
     expect(any("do not converge" in x and "u_inn.a" in x for x in f),
            "a helper not declared inner was not cut out at its ports: %s" % f)
