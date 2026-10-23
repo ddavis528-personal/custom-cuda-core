@@ -58,7 +58,7 @@ which is exact only where no input reaches it. A waiver carries its
 threshold and fails again past it (Daniel; OA's response OI-66): a CG-3
 waiver states floor_pct and measured_pct by scenario, the floor no higher
 than the measurement, and clears a gate only while its DCGE holds at the
-floor; an allowance waiver, for CG-1's registers written every cycle or
+floor, and may name one gate of its register by its enable (enable); an allowance waiver, for CG-1's registers written every cycle or
 CG-4's ungated flops, states max_flops and measured_flops, and one flop more
 fails. A waiver without its threshold is refused. Last, the ratchet,
 rtl/cg-ratchet.json, holds the modules written before the rule, and the
@@ -1216,6 +1216,7 @@ class Finding:
         self.status = "open"
         self.inputs, self.cone = set(), None    # CG-5: input ports and cone depth
         self.scenario, self.pct = None, None    # CG-3 on a gate: where, and its DCGE
+        self.enable = None                      # CG-3 on a gate: its enable's name
 
     def __str__(self):
         where = "%s (unit %s)" % (self.module, self.unit) if self.unit else self.module
@@ -1243,7 +1244,7 @@ def unit_findings(u):
                             "under %g%% (en: %s)"
                             % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
                                g.en_name), u.name, len(g.q), True)
-                f.scenario, f.pct = sc, v
+                f.scenario, f.pct, f.enable = sc, v, g.en_name
                 out.append(f)
     for c, dep in sorted(u.icg_depth.items()):
         if dep > NGD_MAX:
@@ -1741,6 +1742,11 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
             if w.get("module") != f.module or w.get("rule") != f.rule:
                 continue
             if not any(reg_is(r, w.get("target", "")) for r in f.regs):
+                continue
+            # A CG-3 waiver may name one gate of its register by its enable
+            # (OA's response OI-66): one register gated per slot, each slot's
+            # gate held to its own floor.
+            if w.get("enable") is not None and w["enable"] != f.enable:
                 continue
             w["_used"] = True
             why = waiver_refusal(w, f, arrivals)
@@ -2252,6 +2258,20 @@ def selftest():
         expect(any(want in x for x in fails)
                and any(f.status == "open" for f in has("CG-1", "cg_fx_form", "d_q", fs)),
                "an allowance waiver %s was accepted: %s" % (what, fails))
+    #      A CG-3 waiver may name one gate by its enable (OA's response
+    #      OI-66): naming hit_q's clears it; naming another leaves it open
+    #      and excuses nothing.
+    hit_en = {f.enable for f in has("CG-3", "cg_fx_dcge", "hit_q")}
+    expect(len(hit_en) == 1, "hit_q's CG-3 findings name enables %s, not one" % hit_en)
+    en = next(iter(hit_en), "")
+    fails, fs = run_policy(("cg_fx_dcge",), [wv("cg_fx_dcge", "CG-3", "hit_q", enable=en, **hit_floor)])
+    expect(not fails and all(f.status == "waived" for f in has("CG-3", "cg_fx_dcge", "hit_q", fs)),
+           "a CG-3 waiver naming hit_q's enable %s did not clear it: %s" % (en, fails))
+    fails, fs = run_policy(("cg_fx_dcge",), [wv("cg_fx_dcge", "CG-3", "hit_q", enable=en + "_other",
+                                                **hit_floor)])
+    expect(any("excuses nothing" in x for x in fails)
+           and all(f.status == "open" for f in has("CG-3", "cg_fx_dcge", "hit_q", fs)),
+           "a CG-3 waiver naming another enable cleared hit_q: %s" % fails)
     srcmod = {"cg_fx_src": ("f", "", 1)}
     a5 = [f for f in has("CG-5", "cg_fx_src", "a_q", sf) if f.regs >= {"a_q", "a2_q"}]
     d5 = has("CG-5", "cg_fx_src", "d_q", sf)

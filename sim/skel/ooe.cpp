@@ -440,8 +440,10 @@ private:
     // No active-lane mask reaches OOE: active_mask is RCU's alone (Q-23),
     // so every group retires with all 32 lanes.
     emit(now_, e.tid, EV_RETIRE, UNIT_OOE, e.warp, e.tag, 0xffffffffu);
-    ++k_.retired;
-    k_.retire_order.push_back(uidSeq(e.tid));
+    if (k_.lastUop(e.tid)) {   // an instruction retires with its last uop (TI-36)
+      ++k_.retired;
+      k_.retire_order.push_back(uidSeq(e.tid));
+    }
     if (e.op->cls == kExit && e.final_exit) ++k_.exits;
     // free-new: retire frees the write's own new register instead of the
     // one it replaced, so a live value is reallocated once the list wraps.

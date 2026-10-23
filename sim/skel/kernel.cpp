@@ -40,6 +40,11 @@ void Kernel::fail(const char *fmt, ...) {
   ++failures;
 }
 
+bool Kernel::lastUop(uint64_t tid) const {
+  const Record *r = bySeq(uidSeq(tid));
+  return !r || uidSub(tid) + 1u >= r->uops();
+}
+
 void Kernel::failHeld(const std::string &where, uint64_t tid, const char *fmt, ...) {
   char buf[512];
   va_list ap;
@@ -684,7 +689,17 @@ private:
     uint64_t serial = 0;             ///< names it to the DCU responses
     uint64_t promised = 0;           ///< a hinted completion's launch cycle, or 0 (OA-23)
     bool frame = false;              ///< its lanes span windows: O-30 frames (AR-23)
+    /// A predicate transfer (TI-36): one word at lane 0's address. A store
+    /// carries its predicate's word, merged into memory's after commit.
+    bool pxfer = false;
+    uint32_t pdata = 0;
+    unsigned rmw = 0;                ///< a predicate store's drain: 1 reading, 2 writing
   };
+  /// A predicate transfer's oracle access: the uop's word, its sub-th of
+  /// the instruction's, ascending (TI-36).
+  static const MemAcc *xferAcc(const Record *r, uint64_t tid) {
+    return r && uidSub(tid) < r->mem.size() ? &r->mem[uidSub(tid)] : nullptr;
+  }
   /// A hit's completion and data, held for the contract cycle.
   struct Timed { uint64_t at; Q data, cmpl; bool data_only = false; };
   std::deque<Timed> timed_;
@@ -1085,7 +1100,12 @@ private:
     const Ch &c = ch();
     if (!committed_.empty()) {
       if (inFlight(committed_.front(), false)) return;
-      launch(committed_.front());
+      Job &cj = committed_.front();
+      // A predicate store drains as a read-merge-write of its word (MIU
+      // spec rev 25, O-63): its line read and held, then the merged word
+      // written. With no lane in its mask, nothing is read or written.
+      if (cj.pxfer) cj.rmw = 1;
+      if (!(cj.pxfer && cj.lines.empty())) launch(cj);
       committed_.pop_front();
       return;
     }
@@ -1125,7 +1145,9 @@ private:
     }
     Job j;
     j.tag = tag;
-    j.store = get(mo.msg, c.ooe_miu, "mem_op") == kMemStore;
+    const unsigned mop = unsigned(get(mo.msg, c.ooe_miu, "mem_op"));
+    j.store = mop == kMemStore || mop == kMemPredStore;
+    j.pxfer = mop == kMemPredLoad || mop == kMemPredStore;
     j.memop_slot = mo.slot;
     j.warp = unsigned(get(mo.msg, c.ooe_miu, "warp_id"));
     j.phys_dst = unsigned(get(mo.msg, c.ooe_miu, "phys_dst"));
@@ -1164,7 +1186,20 @@ private:
     if (win_miss_.count(tag)) j.hit = false;
     const bool from_win = slot && k_.brk != "window-from-base";
     if (slot) k_.hit("slot_form");
-    for (unsigned l = 0; l != kLanes; ++l)
+    // A predicate transfer has one address, lane 0's base whether or not
+    // lane 0 is active (O-62), and moves a predicate's word: every active
+    // lane names it, so F-RO's lanes and a fault's are the issue mask's.
+    // xfer-low-lane: the lowest active lane's base, the slot that moves
+    // when a group splits.
+    if (j.pxfer) {
+      const unsigned bl = k_.brk == "xfer-low-lane" && j.active ? __builtin_ctz(j.active) : 0;
+      const uint64_t a = (uint64_t(getLane(am, c.rcu_miu, "base_per_lane", bl)) << (global ? 16 : 0)) +
+                         uint64_t(disp);
+      for (unsigned l = 0; l != kLanes; ++l)
+        if ((j.active >> l) & 1u) j.addr[l] = a;
+      j.pdata = getLane(am, c.rcu_miu, "store_data", 0);
+    }
+    for (unsigned l = 0; l != kLanes && !j.pxfer; ++l)
       if ((j.active >> l) & 1u) {
         const uint64_t b = from_win ? uint64_t(win_[cta].w[k])
                                     : uint64_t(getLane(am, c.rcu_miu, "base_per_lane", l));
@@ -1185,7 +1220,7 @@ private:
         at[line] = j.lines.size();
         j.lines.push_back({line, {}, {}, uint16_t(j.lines.size())});
       }
-      if (j.store) {
+      if (j.store && !j.pxfer) {   // a predicate store's word lands at its drain's merge
         LineReq &lr = j.lines[at[line]];
         const uint32_t v = getLane(am, c.rcu_miu, "store_data", l);
         for (unsigned b = 0; b != 4; ++b) {
@@ -1212,6 +1247,7 @@ private:
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
               tag, j.active & ~issue);
     check(j, am);
+    if (j.pxfer) k_.hit("pred_xfer");
     if (j.lines.size() > 1) k_.hit("line_split");
     // AR-23's measure: an access whose active lanes lie in more than one
     // 64 KiB window, as every O-30 frame access does.
@@ -1284,6 +1320,29 @@ private:
   void check(const Job &j, const Bits &am) {
     const Record *r = rec(j.tid, "miu");
     if (!r) return;
+    if (j.pxfer) {
+      // One word per uop (TI-36): its address, and a store's data, which is
+      // the predicate's 32 bits. The word it writes, merged, is checked at
+      // the drain; the one a load reads, where it lands.
+      const MemAcc *a = xferAcc(r, j.tid);
+      if (!a || !j.active) {
+        if (!a) k_.fail("miu: seq %llu uop %u has no predicate word in ccv-sim's record",
+                        (unsigned long long)r->seq, unsigned(uidSub(j.tid)));
+        return;
+      }
+      const uint64_t at = j.addr[__builtin_ctz(j.active)];
+      if (a->addr != at || a->bytes != 4)
+        k_.fail("miu: seq %llu uop %u address %llx, oracle %llx", (unsigned long long)r->seq,
+                unsigned(uidSub(j.tid)), (unsigned long long)at, (unsigned long long)a->addr);
+      if (j.store) {
+        const unsigned p = r->xferPred(uidSub(j.tid));
+        for (const RegVal &u : r->uses)
+          if (u.pred && u.idx == p && u.p != j.pdata)
+            k_.fail("miu: seq %llu P%u's word %08x, oracle %08x", (unsigned long long)r->seq, p,
+                    j.pdata, u.p);
+      }
+      return;
+    }
     uint32_t lanes = 0;
     for (const MemAcc &a : r->mem) lanes |= 1u << a.lane;
     if (lanes != j.active || r->store != j.store) {
@@ -1341,8 +1400,9 @@ private:
       put(r, c.miu_dcu, "req_id", id);
       put(r, c.miu_dcu, "phys_addr", lr.line);
       put(r, c.miu_dcu, "size", kSizeLine);
-      put(r, c.miu_dcu, "coh_op", job_.store ? kCohWrite : kCohRead);
-      if (job_.store) {
+      const bool wr = job_.store && job_.rmw != 1;   // a drain's read first
+      put(r, c.miu_dcu, "coh_op", wr ? kCohWrite : kCohRead);
+      if (wr) {
         putLine(r, field(c.miu_dcu, "write_data").lsb, lr.data);
         const uint32_t mlsb = field(c.miu_dcu, "byte_mask").lsb;
         for (unsigned k = 0; k != kLine; ++k) r.setBit(mlsb + k, lr.mask[k]);
@@ -1356,9 +1416,39 @@ private:
     }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
       if (it->back != it->lines.size()) { ++it; continue; }
+      if (it->rmw == 1) { merge(*it); ++it; continue; }
       if (!it->store) complete(*it);
       it = jobs_.erase(it);
     }
+  }
+
+  /// A predicate store's drain, its line read: the word merged under its
+  /// mask, new = (old & ~m) | (d & m), and held to ccv-sim's; then written.
+  /// m is active_mask, the issue mask (st.pred has no guard). The line stays
+  /// in flight from the read to the write, so nothing reaches it between.
+  /// stpred-whole-word: every lane's bit stored, the group's or not.
+  void merge(Job &j) {
+    LineReq &lr = j.lines[0];
+    const uint64_t a = j.addr[__builtin_ctz(j.active)];
+    const unsigned off = unsigned(a % kLine);
+    const Line &old_line = j.got.at(lr.line);
+    uint32_t old = 0;
+    for (unsigned b = 0; b != 4; ++b) old |= uint32_t(old_line[off + b]) << (8 * b);
+    const uint32_t m = k_.brk == "stpred-whole-word" ? ~0u : j.active;
+    const uint32_t v = (old & ~m) | (j.pdata & m);
+    if (const MemAcc *o = xferAcc(rec(j.tid, "miu"), j.tid))
+      if (o->val != v)
+        k_.fail("miu: seq %llu P%u merged %08x into %llx, oracle %08x",
+                (unsigned long long)uidSeq(j.tid),
+                rec(j.tid, "miu")->xferPred(uidSub(j.tid)), v, (unsigned long long)a, o->val);
+    for (unsigned b = 0; b != 4; ++b) {
+      lr.data[off + b] = uint8_t(v >> (8 * b));
+      lr.mask[off + b] = true;
+    }
+    k_.hit("pred_merge");
+    j.rmw = 2;
+    j.next = j.back = 0;
+    j.got.clear();
   }
 
   /// A load with every line back: its data to RCU and its completion to OOE,
@@ -1376,7 +1466,26 @@ private:
       put(d, c.miu_rcu, "phys_pred", job_.phys_pred);
       put(d, c.miu_rcu, "pred_we", 0);          // a load writes no predicate
       const Record *r = rec(job_.tid, "miu");
-      for (unsigned l = 0; l != kLanes; ++l) {
+      if (job_.pxfer && job_.active) {
+        // A predicate load (TI-36): its word is the predicate, lane i's bit
+        // for lane i, written by RCU under active_mask (O-62), the copy op
+        // writing the rest. No GPR: phys_dst is the zero register.
+        // ldpred-whole-word: every lane's bit written, the group's or not.
+        const uint64_t a = job_.addr[__builtin_ctz(job_.active)];
+        const Line &ln = job_.got.at(a / kLine * kLine);
+        uint32_t v = 0;
+        for (unsigned b = 0; b != 4; ++b) v |= uint32_t(ln[a % kLine + b]) << (8 * b);
+        if (const MemAcc *o = xferAcc(r, job_.tid))
+          if (o->val != v)
+            k_.fail("miu: seq %llu P%u loaded %08x from %llx, oracle %08x",
+                    (unsigned long long)uidSeq(job_.tid), r->xferPred(uidSub(job_.tid)), v,
+                    (unsigned long long)a, o->val);
+        put(d, c.miu_rcu, "pred_we", 1);
+        put(d, c.miu_rcu, "pred_result", v);
+        put(d, c.miu_rcu, "phys_dst", ccv::prov::kPhysZero);   // no GPR: RCU writes none
+        if (k_.brk == "ldpred-whole-word") put(d, c.miu_rcu, "active_mask", ~0u);
+      }
+      for (unsigned l = 0; l != kLanes && !job_.pxfer; ++l) {
         if (!((job_.active >> l) & 1u)) continue;
         const Line &ln = job_.got.at(k_.brk == "one-line" ? job_.lines[0].line
                                                           : job_.addr[l] / kLine * kLine);
@@ -1913,14 +2022,18 @@ private:
         // MIU's, on ccv_miu_ooe_cmpl (OI-4).
         const unsigned pd = unsigned(get(m.payload, c.miu_rcu, "phys_dst"));
         const uint32_t active = uint32_t(get(m.payload, c.miu_rcu, "active_mask"));
-        if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a load writes the zero register");
+        // A predicate load (ld.pred, TI-36) writes its predicate alone: its
+        // phys_dst is the zero register, which no write reaches.
+        const bool pred_only = pd == ccv::prov::kPhysZero && get(m.payload, c.miu_rcu, "pred_we");
+        if (pd == ccv::prov::kPhysZero && !pred_only)
+          k_.fail("rcu: a load writes the zero register");
         // The slice it writes: dst_pos and dst_width, a whole row in S1.
         const unsigned dw = unsigned(get(m.payload, c.miu_rcu, "dst_width"));
         const unsigned dp = unsigned(get(m.payload, c.miu_rcu, "dst_pos"));
         if (dw != kChw32 || dp != 0)
           k_.fail("rcu: a %u-bit load at position %u; only full-width loads are modelled in "
                   "the S1 stubs", 32u >> dw, dp);
-        for (unsigned l = 0; l != kLanes; ++l)
+        for (unsigned l = 0; l != kLanes && !pred_only; ++l)
           if ((active >> l) & 1u)   // an inactive lane keeps its old value
             k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l);
         if (get(m.payload, c.miu_rcu, "pred_we")) {
@@ -2192,7 +2305,11 @@ private:
               (unsigned long long)uidSeq(m.tid), op ? op->name : "a copy", res(s).c_str(),
               want == kSlotS0 ? "S0-S3" : want == kSlotP0 ? "P0-P3" : "R");
     const unsigned fp = unsigned(get(m.payload, c.ooe_rcu, "footprint"));
-    if (want != kSlotR && fp != kAllSecs)
+    // A predicate-only load's copy merges in RCU and reaches no lane, so it
+    // has no width of its own to model (TI-36 (b)).
+    const bool pred_copy = !op && get(m.payload, c.ooe_rcu, "pred_we") &&
+                           get(m.payload, c.ooe_rcu, "phys_dst") == ccv::prov::kPhysZero;
+    if (want != kSlotR && fp != kAllSecs && !pred_copy)
       k_.fail("rcu: seq %llu's footprint %s; only full-width ops are modelled in the S1 stubs",
               (unsigned long long)uidSeq(m.tid), bits(fp).c_str());
     // Every register named, at its width and position.
@@ -2224,7 +2341,7 @@ private:
       if (!(op->alu_imm >= 0 && int(i) == op->imm_slot) && unwritten_.count(src[i]))
         k_.fail("rcu: seq %llu reads row %u before its restore row is written",
                 (unsigned long long)uidSeq(m.tid), src[i]);
-    if (op->guard && unwritten_p_.count(pp))
+    if ((op->guard || op->pdata) && unwritten_p_.count(pp))
       k_.fail("rcu: seq %llu reads predicate %u before its restore row is written",
               (unsigned long long)uidSeq(m.tid), pp);
     // The zero registers are read, never written (A-64).
@@ -2237,7 +2354,10 @@ private:
     // a guard and does not narrow it (Q-27).
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
     const uint32_t guard = get(m.payload, c.ooe_rcu, "pred_neg") ? ~k_.pred[pp] : k_.pred[pp];
-    const uint32_t active = issue & (op->guard ? guard : 0xffffffffu);
+    // pdata-guard: a predicate read as data (st.pred's, sel's) taken as a
+    // guard too, narrowing the lanes it acts on (OA's response TI-36 (c)).
+    const bool gated = op->guard || (k_.brk == "pdata-guard" && op->pdata);
+    const uint32_t active = issue & (gated ? guard : 0xffffffffu);
     const uint32_t imm0 = uint32_t(get(m.payload, c.ooe_rcu, "imm"));
 
     // An op RCU executes must have no per-lane input: RCU has the register
@@ -2368,7 +2488,11 @@ private:
                   k_.gpr[src[op->base_src]][k_.brk == "scalar-base" ? 0 : l]);
         if (op->index_src >= 0)
           putLane(a, c.rcu_miu, "index_per_lane", l, k_.gpr[src[op->index_src]][l]);
-        if (op->cls == kStore)
+        // A predicate store's data is its predicate's 32 bits, read here
+        // from the predicate file, in lane 0's slot (TI-36).
+        if (op->cls == kStore && op->pxfer)
+          putLane(a, c.rcu_miu, "store_data", l, l == 0 ? k_.pred[pp] : 0u);
+        else if (op->cls == kStore)
           putLane(a, c.rcu_miu, "store_data", l, k_.gpr[src[op->data_src]][l]);
       }
       // On the slot of the memop's lead pipe.
@@ -2424,12 +2548,26 @@ private:
     const unsigned pp = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_guard"));
     if (!get(m.payload, c.ooe_rcu, "merge_en"))
       k_.fail("rcu: a copy-only op without merge_en has nothing to copy");
-    if (get(m.payload, c.ooe_rcu, "pred_we"))   // cas's predicate: not in S1
-      k_.fail("rcu: a copy-only op with a predicate destination is not modelled");
-    if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a copy-only op writes the zero register");
     const uint32_t issue = uint32_t(get(m.payload, c.ooe_rcu, "issue_mask"));
     const uint32_t guard = get(m.payload, c.ooe_rcu, "pred_neg") ? ~k_.pred[pp] : k_.pred[pp];
     const uint32_t active = issue & guard;
+    // A predicate-only load's copy (ld.pred, O-62; OA's response TI-36 (b)):
+    // the predicate file is RCU's, so RCU merges it here, the new
+    // predicate's inactive lanes from the old one's, with no lane trip. The
+    // load's write-back takes the active lanes, so the order is free.
+    // drop-pred-copy: the copy is dropped, and the inactive lanes keep
+    // whatever the fresh predicate held.
+    if (get(m.payload, c.ooe_rcu, "pred_we") && pd == ccv::prov::kPhysZero) {
+      const unsigned ppd = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_dst"));
+      const unsigned ppold = unsigned(get(m.payload, c.ooe_rcu, "phys_pred_old_dst"));
+      if (k_.brk != "drop-pred-copy")
+        k_.pred[ppd] = (k_.pred[ppd] & active) | (k_.pred[ppold] & ~active);
+      k_.hit("pred_copy");
+      return;
+    }
+    if (get(m.payload, c.ooe_rcu, "pred_we"))   // cas's predicate: not in S1
+      k_.fail("rcu: a copy-only op with a predicate destination is not modelled");
+    if (pd == ccv::prov::kPhysZero) k_.fail("rcu: a copy-only op writes the zero register");
     const Bits ctl = laneMsg(m, kOpCopy);
     std::vector<Bits> lanes;
     for (unsigned l = 0; l != kLanes; ++l) {
@@ -2549,8 +2687,13 @@ private:
     }
     const auto g = r->gprUses();
     const RegVal *gd = r->gprDef(), *pu = r->predUse(), *pd = r->predDef();
-    if (g.size() != op->nsrc || bool(gd) != op->gdst || bool(pu) != op->pread ||
-        bool(pd) != op->pwrite)
+    // A predicate load's record lists the predicates it merges into as
+    // uses (its copy reads them, O-62), and a reload of an unchanged value
+    // as no def: MIU holds its word to the record's access instead.
+    const bool pload = op->pxfer && op->cls == kLoad;
+    const bool pu_ok = bool(pu) == op->pread || pload;
+    const bool pd_ok = bool(pd) == op->pwrite || pload;
+    if (g.size() != op->nsrc || bool(gd) != op->gdst || !pu_ok || !pd_ok)
       k_.fail("dec: seq %llu %s has an operand shape the table does not",
               (unsigned long long)r->seq, op->name);
     const unsigned dst = gd ? gd->idx : 0;
@@ -2590,7 +2733,10 @@ private:
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to
     // MIU unexamined. 0xF is OOE's bulk discard, never DEC's (V-52).
     if (op->cls == kLoad || op->cls == kStore) {
-      const unsigned mop = op->cls == kStore ? kMemStore : kMemLoad;
+      // A predicate transfer's own codes (TI-36): MIU forms its one address
+      // from lane 0 and moves a predicate's word, not lanes' data.
+      const unsigned mop = op->pxfer ? (op->cls == kStore ? kMemPredStore : kMemPredLoad)
+                                     : op->cls == kStore ? kMemStore : kMemLoad;
       if (mop == kMemBulkDiscard || mop == kMemAtomicRead || mop == kMemAtomicWrite)
         k_.fail("dec: mem_op %x is OOE's to generate (V-52, V-72)", mop);
       put(u, c.dec_ooe, "mem_op", mop);
@@ -2654,6 +2800,29 @@ private:
     // FET's checkpoint and prediction pass through on a branch (A-42).
     put(u, c.dec_ooe, "checkpoint_id", get(f, c.fet_dec, "checkpoint_id"));
     put(u, c.dec_ooe, "pred_taken", get(f, c.fet_dec, "pred_taken"));
+    if (op->pxfer) {
+      // A predicate transfer cracks (TI-36): one uop per predicate of its
+      // mask, ascending, uop k moving Pk's word, the frame's word k at
+      // disp + 4k, Pk its destination (ld.pred) or its data (st.pred). The
+      // uops share the instruction's id but for its sub field. The frame is
+      // 16-byte aligned, so a fault any word raises the first raises too,
+      // and the instruction stays precise (AR's response TI-36).
+      const int64_t disp = immOf(op->disp_imm);
+      for (unsigned k = 0; k != r->uops(); ++k) {
+        const unsigned p = r->xferPred(k);
+        Bits v = u;
+        put(v, c.dec_ooe, "imm", uint32_t(disp + 4 * int64_t(p)));
+        if (op->cls == kLoad) {
+          put(v, c.dec_ooe, "pred_dst", p);
+          put(v, c.dec_ooe, "pred_we", 1);
+        } else {
+          put(v, c.dec_ooe, "pred_guard", p);
+          put(v, c.dec_ooe, "pred_neg", 0);
+        }
+        q_.push_back({v, m.tid | uint64_t(k) << kUidSubLsb});
+      }
+      return;
+    }
     q_.push_back({u, m.tid});
   }
 
@@ -2945,10 +3114,12 @@ private:
         // back. Exact by then, so held to the boundary's mask.
         // beats-dead: FET keeps the lanes its fetched exits cleared.
         const uint32_t live = x.lanes | (k_.brk == "beats-dead" ? 0u : x.rewound);
+        // The boundary by instruction: a cracked one's later uop (TI-36)
+        // names its instruction, which a restore runs again whole.
         size_t bi = x.next;
         if (x.boundary_tid)
           for (size_t i = 0; i != recs.size(); ++i)
-            if (instrUid(warpSeq(w, recs[i].seq)) == x.boundary_tid) { bi = i; break; }
+            if (warpSeq(w, recs[i].seq) == uidSeq(x.boundary_tid)) { bi = i; break; }
         if (bi < x.lanes_at.size() && live != x.lanes_at[bi])
           k_.fail("fet: warp %u's live mask after the beats is %08x; at its boundary, %08x", w, live,
                   x.lanes_at[bi]);
@@ -2981,9 +3152,16 @@ private:
       const unsigned w = unsigned(get(mm.payload, c.pca_fet, "warp_id"));
       Warp &x = warps_[w];
       const auto &recs = k_.orcs[w].recs;
+      // It resumes at the instruction the identity names, from its first
+      // uop: a demotion between a cracked instruction's uops runs it again
+      // whole, which both transfers allow (AR's response TI-36).
+      // resume-mid: past an instruction whose first uop retired, losing the
+      // rest of its uops.
       size_t at = recs.size();
       for (size_t i = 0; i != recs.size(); ++i)
-        if (instrUid(warpSeq(w, recs[i].seq)) == mm.tid) { at = i; break; }
+        if (warpSeq(w, recs[i].seq) == uidSeq(mm.tid)) { at = i; break; }
+      if (k_.brk == "resume-mid" && uidSub(mm.tid) && at != recs.size()) ++at;
+      if (uidSub(mm.tid)) k_.hit("crack_split");
       if (!x.restoring || at == recs.size()) {
         k_.fail("fet: PCs for warp %u, which is not being restored to a known place", w);
       } else {
@@ -3610,6 +3788,15 @@ private:
       if (has(c.ooe_drained, 0)) take(c.ooe_drained, 0);
       if (has(c.pca_done, 0)) take(c.pca_done, 0);
       return;
+    }
+    // CCV_RAU_DEMOTE=at:<cycle>: a stimulus, not a policy. Every resident
+    // warp is demoted at that cycle, wherever its retirement stands, so a
+    // sweep of the cycle lands a demotion between a cracked instruction's
+    // uops (AR's response TI-36).
+    if (policy_.compare(0, 3, "at:") == 0 && now_ == std::strtoull(policy_.c_str() + 3, nullptr, 0)) {
+      std::vector<unsigned> res;
+      for (const auto &kv : slot_of_) res.push_back(kv.first);
+      for (unsigned w : res) demote(w);
     }
     migration();
     place();
