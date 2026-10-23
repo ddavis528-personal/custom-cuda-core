@@ -66,9 +66,16 @@ struct Ch {
            pca_done = chanId("ccv_pca_rau_mig_done"), rau_pca_mig = chanId("ccv_rau_pca_mig"),
            pca_rcu = chanId("ccv_pca_rcu_mig"), pca_fet = chanId("ccv_pca_fet_mig"),
            // The replay drain (TI-21): a demoted warp's orphans are home.
-           miu_ready = chanId("ccv_miu_rau_ready");
+           miu_ready = chanId("ccv_miu_rau_ready"),
+           // Barriers (TI-40): SYU's inputs and its three answers.
+           rau_syu = chanId("ccv_rau_syu_alloc"), ooe_syu = chanId("ccv_ooe_syu_bar"),
+           syu_ooe = chanId("ccv_syu_ooe_rel"), syu_fet = chanId("ccv_syu_fet_rel"),
+           syu_rau = chanId("ccv_syu_rau_ready");
 };
 inline const Ch &ch() { static const Ch c; return c; }
+/// ccv_ooe_syu_bar's bar_kind and ccv_rau_syu_alloc's syu_alloc_op (TI-40).
+enum : unsigned { kBarArriveK = 0, kBarWaitK = 1, kBarWaitPhaseK = 2, kBarExitK = 3 };
+enum : unsigned { kSyuFree = 0, kSyuAlloc = 1, kSyuDemote = 2, kSyuRestore = 3 };
 
 inline const FieldDesc &field(unsigned chan, const char *n) {
   const ChanDesc &cd = kChans[chan];
@@ -132,7 +139,11 @@ enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
 // The skeleton's decoder: an opcode per operation vadd uses, and the operand
 // shape rename and register read need. Opcode values are skeleton-local
 // (payload spec: opcode is 9 bits, preliminary) -- 0 is reserved.
-enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm };
+// kFence orders the warp's memory ops at MIU (IS-11); kBarArrive and
+// kBarWait are ISA v1.9's bar.arrive and bar.wait (O-27), reported to SYU
+// at retire (TI-40).
+enum UopClass : uint8_t { kAlu, kLoad, kStore, kBranch, kExit, kPredLogic, kImm,
+                          kFence, kBarArrive, kBarWait };
 struct OpInfo {
   const char *name;
   UopClass cls;
@@ -208,16 +219,21 @@ inline unsigned bypGroupOf(const OpInfo *op) {
   default: return kBypInt;
   }
 }
+/// A barrier uop: like exit, OOE completes it without issue (TI-40).
+inline bool isBarrier(const OpInfo *op) { return op->cls == kBarArrive || op->cls == kBarWait; }
 inline uint32_t schedAttrOf(const OpInfo *op) {
-  const bool mem = op->cls == kLoad || op->cls == kStore;
-  const unsigned memk = op->cls == kStore ? kMemKStore : kMemKLoad;
-  const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore ? kLatCompletion
-                     : execRcu(op) || op->cls == kExit ? kLatRcu : kLatLane;
+  const bool mem = op->cls == kLoad || op->cls == kStore || op->cls == kFence;
+  const unsigned memk = op->cls == kStore ? kMemKStore : op->cls == kFence ? kMemKFence : kMemKLoad;
+  const bool ctl = op->cls == kExit || isBarrier(op);
+  const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
+                     : op->cls == kBarArrive ? kSerArrive : kSerNone;
+  const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore || op->cls == kFence ? kLatCompletion
+                     : execRcu(op) || ctl ? kLatRcu : kLatLane;
   return uint32_t(bypGroupOf(op)) << 14 |
-         uint32_t(mem) << 13 | uint32_t(execRcu(op) || op->cls == kExit) << 12 |
+         uint32_t(mem) << 13 | uint32_t(execRcu(op) || ctl) << 12 |
          uint32_t(op->cross) << 11 | uint32_t(op->gdst) << 10 |
          uint32_t(op->pwrite) << 9 | (mem ? memk : 0u) << 7 |
-         uint32_t(op->cls == kBranch) << 6 | uint32_t(op->cls == kExit ? kSerExit : 0) << 3 |
+         uint32_t(op->cls == kBranch) << 6 | ser << 3 |
          lat;
 }
 // The three fields DEC adds so OOE never decodes opcode (A-75, TI-1).
@@ -317,6 +333,13 @@ inline constexpr OpInfo kOps[] = {
   {"ST_LOCAL",      kStore,     1, false, false, false, false, false, -1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, true},
   {"LD_PRED_LOCAL", kLoad,      0, false, false, true,  false, false, -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true,  true},
   {"ST_PRED_LOCAL", kStore,     0, false, true,  false, false, true,  -1, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, true,  true},
+  // A fence (Format E, IS-11): its immediate is the ordering MIU takes.
+  // The barriers (O-27): bar.arrive #id and bar.wait #id, the id their
+  // immediate. bar.init and bar.wait.phase have no row yet: no kernel the
+  // compiler emits uses them (F-118), and DEC refuses what it cannot decode.
+  {"C_FENCE",       kFence,     0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_BAR_ARRIVE",  kBarArrive, 0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_BAR_WAIT",    kBarWait,   0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;

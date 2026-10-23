@@ -1268,6 +1268,33 @@ private:
       }
       return;
     }
+    // A fence (IS-11): every older store of its warp written to DCU before
+    // it completes, so what follows it, a barrier arrive among them (TI-40),
+    // comes after those writes are visible to every warp. Memops arrive in
+    // program order per warp, so the warp's stores still uncommitted here are
+    // all older; one committed but not yet written waits in committed_ or in
+    // flight. No kernel here can see a fence that does not wait: this MIU
+    // also holds any load while a store to its line is in flight.
+    if (get(mo.msg, c.ooe_miu, "mem_op") == kMemFence) {
+      const unsigned w = unsigned(get(mo.msg, c.ooe_miu, "warp_id"));
+      bool pending = false;
+      for (const auto &st : stores_) pending = pending || st.second.warp == w;
+      for (const Job &cj : committed_) pending = pending || cj.warp == w;
+      for (const Job &f : jobs_) pending = pending || (f.store && f.warp == w);
+      if (pending) { k_.hit("fence_wait"); return; }
+      Job f;
+      f.tag = tag;
+      f.warp = w;
+      f.memop_slot = mo.slot;
+      f.rs_idx = unsigned(get(mo.msg, c.ooe_miu, "rs_idx"));
+      f.tid = a->second.tid;
+      to_ooe_.push_back({f.memop_slot, cmpl(f), f.tid});
+      order_.pop_front();
+      memop_.erase(tag);
+      addr_.erase(a);
+      k_.hit("fence");
+      return;
+    }
     Job j;
     j.tag = tag;
     const unsigned mop = unsigned(get(mo.msg, c.ooe_miu, "mem_op"));
@@ -2442,7 +2469,7 @@ private:
     if (!op && opc != kOpCopy) { k_.fail("rcu: unknown opcode"); return; }
     // Each class on its own resources: lane ops (the copy among them) on
     // the sections, memops on the pipes, RCU-only ops on R.
-    const bool mem = op && (op->cls == kLoad || op->cls == kStore);
+    const bool mem = op && (op->cls == kLoad || op->cls == kStore || op->cls == kFence);
     const unsigned want = mem ? kSlotP0 : op && execRcu(op) ? kSlotR : kSlotS0;
     if (groupOf(s) != want)
       k_.fail("rcu: seq %llu, %s, issued on %s; its class issues on %s",
@@ -2822,6 +2849,7 @@ private:
     // FET's group mask and epoch pass through (A-69, A-70).
     put(u, c.dec_ooe, "group_mask", get(f, c.fet_dec, "group_mask"));
     put(u, c.dec_ooe, "final_exit", get(f, c.fet_dec, "final_exit"));
+    put(u, c.dec_ooe, "all_waiting", get(f, c.fet_dec, "all_waiting"));   // TI-40
     put(u, c.dec_ooe, "fetch_epoch", get(f, c.fet_dec, "fetch_epoch"));
     if (!op) {
       k_.fail("dec: %s is not in the skeleton's opcode table", r->op.c_str());
@@ -2896,6 +2924,12 @@ private:
         k_.fail("dec: pc 0x%llx has ordering %u but is not a fence",
                 (unsigned long long)pc, ord);
       put(u, c.dec_ooe, "ordering", ord);
+    } else if (op->cls == kFence) {
+      // A fence (IS-11): its encoded ordering, scope [2:0] and ordering
+      // [4:3], is the one memop field it carries; it moves no data.
+      put(u, c.dec_ooe, "mem_op", kMemFence);
+      put(u, c.dec_ooe, "space", kSpaceGlobal);
+      put(u, c.dec_ooe, "ordering", r->imms.empty() ? 0u : unsigned(r->imms[0]));
     }
     put(u, c.dec_ooe, "opcode", opcodeOf(op));
     // Three source fields: Format A's rs2 is an independent source (mad.lo's
@@ -2927,6 +2961,9 @@ private:
       if (r->quals.size() < 2) k_.fail("dec: seq %llu predicate logic without two sources",
                                        (unsigned long long)r->seq);
       else imm = (r->quals[0] & 7) | ((r->quals[1] & 7) << 3);
+    } else if (isBarrier(op)) {
+      // bar.arrive and bar.wait: the barrier id, OOE's to report (TI-40).
+      imm = uint32_t(immOf(0));
     }
     put(u, c.dec_ooe, "imm", imm);
     put(u, c.dec_ooe, "ilen", r->size / 2 - 1);
@@ -3338,6 +3375,14 @@ private:
         k_.hit("resumed");
       }
     }
+    if (has(c.syu_fet, 0)) {
+      // SYU's answer to a parked wait (TI-40). This FET parks none: it marks
+      // every wait it follows converged, whose answer goes to OOE, so any
+      // answer here is one for lanes not waiting (no-wait-mark's symptom).
+      const Bits m = take(c.syu_fet, 0).payload;
+      k_.fail("fet: SYU releases warp %u lanes %08x, which are not waiting in FET",
+              unsigned(get(m, c.syu_fet, "warp_id")), uint32_t(get(m, c.syu_fet, "lane_mask")));
+    }
     if (has(c.ooe_free, 0)) {
       // Checkpoints freed by correct resolutions. Every bit must name one
       // live here when it lands (V-46): a free that overtook its redirect, or
@@ -3446,6 +3491,19 @@ private:
         const bool early = k_.brk == "early-mark" && !last && !x.marked;
         x.marked = x.marked || early;
         put(f, c.fet_dec, "final_exit", last || early);
+      }
+      // A barrier wait (TI-40; FET spec rev 22): a wait whose group is every
+      // live lane is converged, marked all_waiting, and not parked: OOE holds
+      // rename behind it until SYU's answer, and FET fetches on. A diverged
+      // wait parks its lanes in FET until SYU answers them on ccv_syu_fet_rel,
+      // which this oracle-ordered FET does not model yet: it refuses one.
+      // no-wait-mark: the converged wait goes unmarked.
+      if (const OpInfo *op = opByName(r.op); op && op->cls == kBarWait) {
+        if (r.mask != x.lanes)
+          k_.fail("fet: warp %u seq %llu waits at a barrier diverged (lanes %08x of %08x); this FET "
+                  "follows converged waits only", w, (unsigned long long)r.seq, r.mask, x.lanes);
+        put(f, c.fet_dec, "all_waiting", k_.brk != "no-wait-mark");
+        k_.hit("bar_wait");
       }
       const unsigned ep = epoch_[w & 31];
       put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
@@ -3641,6 +3699,41 @@ private:
     return k_.brk == "cta-per-warp" ? w : k_.brk == "cta-shared" ? 0 : k_.cta_of[w];
   }
   std::set<unsigned> cta_sent_;              ///< CTA slots whose rau_miu_cta is out
+  static constexpr unsigned kBarriers = 1u << ccv::kWBarId;
+  /// SYU's allocate, demote, restore and free (TI-40), in order.
+  std::deque<Bits> syu_q_;
+  std::set<unsigned> syu_ready_;             ///< SYU's answer since the last demote (TI-40)
+  std::map<unsigned, unsigned> cta_left_;    ///< warps of each CTA slot not yet exited
+  void syuOp(unsigned op, unsigned w) {
+    const Ch &c = ch();
+    Bits m = msgOf(c.rau_syu);
+    put(m, c.rau_syu, "syu_alloc_op", op);
+    put(m, c.rau_syu, "cta_slot", ctaSlot(w));
+    put(m, c.rau_syu, "warp_id", w);
+    if (op == kSyuAlloc || op == kSyuFree) {
+      // The CTA whole (AR's rev 161): its warp contexts, its entries, and
+      // its last warp's live lanes less one; every other warp has 32.
+      uint32_t mask = 0;
+      unsigned last = w;
+      for (unsigned v = 0; v != k_.orcs.size(); ++v)
+        if (ctaSlot(v) == ctaSlot(w)) {
+          mask |= 1u << (v & 31);
+          if (k_.orcs[v].warp_in_cta >= k_.orcs[last].warp_in_cta) last = v;
+        }
+      const Oracle &o = k_.orcs[last];
+      const unsigned first = 32 * o.warp_in_cta;
+      const unsigned n = !o.threads ? kLanes : o.threads <= first ? 1 : std::min(o.threads - first, kLanes);
+      put(m, c.rau_syu, "warp_id", last);
+      put(m, c.rau_syu, "warp_mask", mask);
+      put(m, c.rau_syu, "last_lanes", n - 1);
+      put(m, c.rau_syu, "barrier_base", ctaSlot(w) * kBarriers % (1u << ccv::kWBarEntry));
+      put(m, c.rau_syu, "barrier_count", kBarriers);
+      if (op == kSyuAlloc) cta_left_[ctaSlot(w)] = unsigned(__builtin_popcount(mask));
+    }
+    syu_q_.push_back(m);
+  }
+  /// Restorable: MIU's orphans home, and SYU's answer in (TI-21, TI-40).
+  bool isReady(unsigned w) const { return ready_.count(w) && syu_ready_.count(w); }
 
   Bits allocMsg(unsigned w, unsigned slot, unsigned op) {
     const Ch &c = ch();
@@ -3652,7 +3745,9 @@ private:
       // Identity from RAU's warp-to-CTA table: each warp warp 0 of its CTA.
       put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
       put(a, c.rau_ooe, "warp_in_cta", k_.orcs[w].warp_in_cta);
-      put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
+      // The CTA's barriers, the launch's (AR's rev 159 (3)): ccv-sim runs with
+      // -barriers, 16 by default, until Q-50's descriptor carries them.
+      put(a, c.rau_ooe, "barrier_count", kBarriers);
       // Its CTA's slot (TI-34): the one rau_miu_cta names. Recorded for the
       // checks on what OOE stamps with it.
       put(a, c.rau_ooe, "cta_slot", ctaSlot(w));
@@ -3676,7 +3771,7 @@ private:
     // provisionally: the slot would idle, and its replay merges at DCU
     // into the fill in flight, so the wait saves nothing.
     auto p = parked_.begin();
-    while (p != parked_.end() && !ready_.count(*p)) ++p;
+    while (p != parked_.end() && !isReady(*p)) ++p;
     bool prov = false;
     if (p == parked_.end() && provisional_on_ && waiting_.empty() && !parked_.empty()) {
       p = parked_.begin();
@@ -3735,6 +3830,8 @@ private:
     alloc_q_.push_back({allocMsg(w, s->second, kAllocFree), -1});
     free_.insert(s->second);
     slot_of_.erase(s);
+    // The CTA's last warp: its barrier entries go (TI-40).
+    if (cta_left_.count(ctaSlot(w)) && --cta_left_[ctaSlot(w)] == 0) syuOp(kSyuFree, w);
     k_.hit("slot_reuse", waiting_.empty() && parked_.empty() ? 0 : 1);
   }
 
@@ -3788,6 +3885,7 @@ private:
       parked_.erase(std::remove(parked_.begin(), parked_.end(), w), parked_.end());
       demoting_.erase(w);
       ready_.erase(w);
+      syu_ready_.erase(w);
       provisional_.erase(w);
       exited_.erase(w);
     }
@@ -3803,7 +3901,7 @@ private:
   bool wanted() const {
     if (!waiting_.empty()) return true;
     for (unsigned w : parked_)
-      if (ready_.count(w)) return true;
+      if (isReady(w)) return true;
     return false;
   }
 
@@ -3819,6 +3917,8 @@ private:
     if (provisional_.erase(w)) k_.hit("prov_demote");
     demoting_.insert(w);
     ready_.erase(w);   // the demotion's own discard reports it again
+    syu_ready_.erase(w);
+    syuOp(kSyuDemote, w);   // SYU answers its waits to RAU from now (TI-40)
     k_.parked[w] = Kernel::Parked();
     Bits d = msgOf(c.rau_demote);
     put(d, c.rau_demote, "warp_id", w);
@@ -3837,6 +3937,7 @@ private:
       // frees the slot, now if its report is in, else when it comes.
       demoting_.erase(w);
       k_.parked.erase(w);
+      syuOp(kSyuRestore, w);   // resident after all
       k_.hit("refused");
       if (exited_.erase(w)) exit(w);
       return;
@@ -3870,6 +3971,14 @@ private:
       k_.hit("ready");
       // A provisional warp's report clears the mark and starts its P count.
       if (provisional_.erase(w)) p_base_[w] = retired_[w];
+    }
+    if (has(c.syu_rau, 0)) {
+      syu_ready_.insert(unsigned(get(take(c.syu_rau, 0).payload, c.syu_rau, "warp_id")));
+      k_.hit("syu_ready");
+    }
+    if (!syu_q_.empty() && can(c.rau_syu, 0)) {
+      send(c.rau_syu, 0, syu_q_.front(), none);
+      syu_q_.pop_front();
     }
     if (has(c.ooe_drained, 0)) drained(take(c.ooe_drained, 0).payload);
     // The three commands, either way: to FET also the slot (vacated or
@@ -3918,6 +4027,7 @@ private:
       } else if (dir == 1 && restore_busy_ && slot_of_.count(w)) {
         // Every row written: the warp may issue (A-64).
         alloc_q_.push_back({allocMsg(w, slot_of_[w], 3), -1});   // restore-activate
+        syuOp(kSyuRestore, w);
         places_.insert(place_of_[w]);
         place_of_.erase(w);
         restore_busy_ = false;
@@ -3939,6 +4049,7 @@ private:
       // Nothing launches or moves meanwhile. Reports about warps being
       // killed (ready, drained, a migration's ack) are taken and dropped.
       if (has(c.miu_ready, 0)) take(c.miu_ready, 0);
+      if (has(c.syu_rau, 0)) take(c.syu_rau, 0);
       if (has(c.ooe_drained, 0)) take(c.ooe_drained, 0);
       if (has(c.pca_done, 0)) take(c.pca_done, 0);
       return;
@@ -3980,6 +4091,7 @@ private:
           put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
           send(c.rau_miu, 0, a, none);
           cta_sent_.insert(cs);
+          syuOp(kSyuAlloc, l.w);   // the CTA's barriers, before any warp of it runs
         }
         const Oracle &o = k_.orcs[l.w];
         Bits f = msgOf(c.rau_fet);
@@ -4006,7 +4118,7 @@ private:
   bool busy() const override {
     return !waiting_.empty() || !launch_q_.empty() || !alloc_q_.empty() || !mig_q_.empty() ||
            !demote_q_.empty() || !demoting_.empty() || restore_busy_ || (restore_ && !parked_.empty()) ||
-           !exited_.empty() || kill_ != Kill::kNone;
+           !exited_.empty() || kill_ != Kill::kNone || !syu_q_.empty();
   }
 };
 
@@ -4240,7 +4352,175 @@ private:
   }
 };
 
-/// SPM, SYU: nothing on vadd's path.
+// ---- SYU: the barrier table --------------------------------------------------------
+
+/// The barrier table (TI-40; SYU spec rev 7, AR's rev 162). Per warp context:
+/// its CTA slot, its live lanes (set from RAU's allocate, cleared by OOE's exit
+/// reports), whether it is resident, and per barrier id the lanes arrived in
+/// the phase in progress and whether its last arrival's phase has completed,
+/// ccv-sim's arrival epoch kept per context. A barrier completes when every
+/// context of the CTA has every live lane arrived (or none live): the arrivals
+/// clear, each context that arrived has its phase completed, and the waits
+/// pending at that id are answered. A wait whose last arrival has completed is
+/// answered at once. The answer goes where the wait waits: a held wait (a
+/// converged warp, OOE holding rename) on ccv_syu_ooe_rel, a parked one on
+/// ccv_syu_fet_rel with its lanes, and a context not resident to RAU as its
+/// readiness on ccv_syu_rau_ready, which also answers a demote at once when
+/// the context waits for nothing.
+///   bar-own-warp   a barrier completes on its own warp's lanes alone
+///   bar-no-exit    the exit reports are ignored, so an exited lane is waited for
+///   bar-full-last  the CTA's last warp taken as 32 lanes, not RAU's count
+class Syu : public Stub {
+public:
+  using Stub::Stub;
+  const char *kind() const override { return "syu"; }
+
+private:
+  static constexpr unsigned kIds = 1u << ccv::kWBarId;
+  struct Ctx {
+    bool valid = false, resident = true;
+    unsigned cta = 0;
+    uint32_t live = 0;
+    std::array<uint32_t, kIds> arrived{};
+    std::array<bool, kIds> done{};
+    /// A wait not yet answered: its id, lanes, and whether OOE holds for it.
+    bool waiting = false, held = false;
+    unsigned wait_id = 0;
+    uint32_t wait_lanes = 0;
+  };
+  std::array<Ctx, 32> ctx_{};
+  struct Out { unsigned chan; Bits msg; };
+  std::deque<Out> out_;
+
+  void answerTo(unsigned w, uint32_t lanes, bool held) {
+    const Ch &c = ch();
+    if (!ctx_[w].resident) {
+      Bits r = msgOf(c.syu_rau);
+      put(r, c.syu_rau, "warp_id", w);
+      out_.push_back({c.syu_rau, r});
+      k_.hit("bar_ready");
+    } else if (held) {
+      Bits r = msgOf(c.syu_ooe);
+      put(r, c.syu_ooe, "warp_id", w);
+      out_.push_back({c.syu_ooe, r});
+      k_.hit("bar_release");
+    } else {
+      Bits r = msgOf(c.syu_fet);
+      put(r, c.syu_fet, "warp_id", w);
+      put(r, c.syu_fet, "lane_mask", lanes);
+      out_.push_back({c.syu_fet, r});
+      k_.hit("bar_release");
+    }
+  }
+  /// Every context of w's CTA arrived at id, or with no lane live.
+  bool complete(unsigned w, unsigned id) const {
+    bool any = false;
+    for (unsigned v = 0; v != 32; ++v) {
+      const Ctx &x = ctx_[v];
+      if (!x.valid || x.cta != ctx_[w].cta) continue;
+      if (k_.brk == "bar-own-warp" && v != w) continue;
+      any = any || x.arrived[id];
+      if ((x.arrived[id] | ~x.live) != ~0u) return false;
+    }
+    return any;
+  }
+  void tryComplete(unsigned w, unsigned id) {
+    if (!complete(w, id)) return;
+    k_.hit("bar_complete");
+    for (unsigned v = 0; v != 32; ++v) {
+      Ctx &x = ctx_[v];
+      if (!x.valid || x.cta != ctx_[w].cta || !x.arrived[id]) continue;
+      if (k_.brk == "bar-own-warp" && v != w) continue;
+      x.arrived[id] = 0;
+      x.done[id] = true;
+      if (x.waiting && x.wait_id == id) {
+        x.waiting = false;
+        answerTo(v, x.wait_lanes, x.held);
+      }
+    }
+  }
+
+  void work() override {
+    const Ch &c = ch();
+    if (has(c.rau_syu, 0)) {
+      const Bits m = take(c.rau_syu, 0).payload;
+      const unsigned op = unsigned(get(m, c.rau_syu, "syu_alloc_op"));
+      const unsigned w = unsigned(get(m, c.rau_syu, "warp_id")) & 31;
+      if (op == kSyuAlloc) {
+        // A CTA admitted whole: its contexts, each with 32 live lanes but
+        // the last warp, which has last_lanes + 1.
+        const uint32_t mask = uint32_t(get(m, c.rau_syu, "warp_mask"));
+        const unsigned last = unsigned(get(m, c.rau_syu, "last_lanes")) + 1;
+        for (unsigned v = 0; v != 32; ++v) {
+          if (!(mask >> v & 1u)) continue;
+          ctx_[v] = Ctx();
+          ctx_[v].valid = true;
+          ctx_[v].cta = unsigned(get(m, c.rau_syu, "cta_slot"));
+          ctx_[v].live = v == w && last < 32 && k_.brk != "bar-full-last" ? (1u << last) - 1 : ~0u;
+        }
+      } else if (op == kSyuFree) {
+        const unsigned cta = unsigned(get(m, c.rau_syu, "cta_slot"));
+        for (Ctx &x : ctx_)
+          if (x.valid && x.cta == cta) x = Ctx();
+      } else if (op == kSyuDemote) {
+        // Not resident: a wait it has pending is answered to RAU when its
+        // barrier completes; with none, RAU has it ready at once.
+        Ctx &x = ctx_[w];
+        x.resident = false;
+        x.held = false;   // the rewind took OOE's hold back to the wait
+        if (!x.waiting) answerTo(w, 0, false);
+      } else {
+        ctx_[w].resident = true;
+        ctx_[w].waiting = false;   // the restored warp asks again
+      }
+    }
+    if (has(c.ooe_syu, 0)) {
+      const Receiver::Msg rm = take(c.ooe_syu, 0);
+      const Bits &m = rm.payload;
+      const unsigned w = unsigned(get(m, c.ooe_syu, "warp_id")) & 31;
+      const unsigned kindv = unsigned(get(m, c.ooe_syu, "bar_kind"));
+      const unsigned id = unsigned(get(m, c.ooe_syu, "barrier_id")) % kIds;
+      const uint32_t issue = uint32_t(get(m, c.ooe_syu, "issue_mask"));
+      const uint32_t guard = uint32_t(get(m, c.ooe_syu, "guard_mask"));
+      Ctx &x = ctx_[w];
+      if (!x.valid) {
+        k_.fail("syu: warp %u reports a barrier, and RAU allocated it no CTA", w);
+      } else if (unsigned(get(m, c.ooe_syu, "cta_slot")) != x.cta) {
+        k_.fail("syu: warp %u's report names CTA slot %u; RAU gave it %u", w,
+                unsigned(get(m, c.ooe_syu, "cta_slot")), x.cta);
+      } else if (kindv == kBarArriveK) {
+        x.arrived[id] |= issue & guard;
+        x.done[id] = false;
+        k_.hit("bar_arrive");
+        tryComplete(w, id);
+      } else if (kindv == kBarWaitK) {
+        const bool held = get(m, c.ooe_syu, "held") != 0;
+        if (x.done[id]) {
+          answerTo(w, issue, held);   // its arrival's phase has completed
+        } else {
+          x.waiting = true;
+          x.held = held;
+          x.wait_id = id;
+          x.wait_lanes = issue;
+        }
+      } else if (kindv == kBarExitK) {
+        // Its lanes are waited for no more: any barrier of the CTA may now
+        // be complete.
+        if (k_.brk != "bar-no-exit") x.live &= ~issue;
+        for (unsigned i = 0; i != kIds; ++i) tryComplete(w, i);
+      } else {
+        k_.fail("syu: warp %u's bar.wait.phase, which no kernel here uses yet (IS-22)", w);
+      }
+    }
+    while (!out_.empty() && can(out_.front().chan, 0)) {
+      send(out_.front().chan, 0, out_.front().msg, makeUid(IdClass::kNone, 0));
+      out_.pop_front();
+    }
+  }
+  bool busy() const override { return !out_.empty(); }
+};
+
+/// SPM: nothing on any kernel's path yet.
 class Idle : public Stub {
 public:
   Idle(int inst, Kernel &k, const char *n) : Stub(inst, k), n_(n) {}
@@ -4267,6 +4547,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::RAU:  return std::make_unique<Rau>(inst, k);
   case Blk::PCA:  return std::make_unique<Pca>(inst, k);
   case Blk::CRU:  return std::make_unique<Cru>(inst, k);
+  case Blk::SYU:  return std::make_unique<Syu>(inst, k);
   default:
     return std::make_unique<Idle>(inst, k, blkName(kBlkInsts[inst].type));
   }

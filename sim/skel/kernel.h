@@ -238,7 +238,10 @@ struct Kernel {
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
-      "pred_xfer", "pred_merge", "pred_copy", "crack_split"};
+      "pred_xfer", "pred_merge", "pred_copy", "crack_split",
+      // Fences and barriers (IS-11, TI-40).
+      "fence", "fence_wait", "bar_wait", "bar_arrive", "bar_complete", "bar_release", "bar_ready",
+      "syu_ready"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory

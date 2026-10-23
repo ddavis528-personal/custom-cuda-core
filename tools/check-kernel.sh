@@ -698,6 +698,7 @@ predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=2 pred_xfer=4 frame_lookups=0
 rope local_form=44 frame_lookups=0
+fence fence=1 fence_wait>0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1

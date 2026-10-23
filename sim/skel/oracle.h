@@ -119,6 +119,7 @@ struct Oracle {
   uint32_t final_pred[kArchPreds] = {};
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
+  unsigned stalls = 0;   ///< barrier waits ccv-sim retried, dropped at load (TI-40)
 
   /// Empty string on success, else what was wrong with the file.
   std::string load(const std::string &path);
