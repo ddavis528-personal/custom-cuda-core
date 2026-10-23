@@ -25,8 +25,8 @@ every message.
 ## 1. The kernel, from the compiler
 
 `c[i] = a[i] + b[i]` for 32 threads. The core pins one compiler snapshot,
-`tools/compiler.lock`: the `release` branch at `5426bdf` (source
-`f863b76`). The kernel is that snapshot's own hand-scheduled listing,
+`tools/compiler.lock`: the `release` branch at `f99190e` (source
+`d080beb`). The kernel is that snapshot's own hand-scheduled listing,
 test/elementwise.s in the compiler repository, and `test/kernels/vadd/kernel.cfg`
 gives the launch block and memory it runs against.
 
