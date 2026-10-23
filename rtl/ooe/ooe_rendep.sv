@@ -309,10 +309,12 @@ module ooe_rendep #(
   // Then the hits: G-1's where no older uop of this group produces it, the
   // entries' unordered.
   logic [C*N-1:0]   xr_cq02h, xrp_cq02h;            // consumer c's ooe_prodmap and G-2 hits: by GPR, by predicate source
+  logic [C*N-1:0]   xr2_cq02h, xp2_cq02h;           // its G-2 hits alone (the declared bypass)
+  logic [C*N-1:0]   xrt_cq01h, xpt_cq01h;           // and its ooe_prodmap hits alone
   logic [C*P-1:0]   x1_cq02h, x1p_cq02h;            // its G-1 hits (port r)
   logic [C*C-1:0]   xg_cq01h, xgp_cq01h;            // its in-group hits (consumer d of an older uop)
   always_comb begin
-    xr_cq02h = '0; xrp_cq02h = '0; x1_cq02h = '0; x1p_cq02h = '0; xg_cq01h = '0; xgp_cq01h = '0;
+    xr2_cq02h = '0; xp2_cq02h = '0; xrt_cq01h = '0; xpt_cq01h = '0; x1_cq02h = '0; x1p_cq02h = '0; xg_cq01h = '0; xgp_cq01h = '0;
     for (int c = 0; c < C; c++) begin
       for (int s = 0; s < NS; s++)
         if (cv_cq01h[c] && cgs_cq01h[c * NS + s]) begin
@@ -327,11 +329,11 @@ module ooe_rendep #(
               x1_cq02h[c * P + r] = 1'b1;
           for (int r = 0; r < P; r++)
             if (g2gv_cq03h[r] && g2gn_cq03h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
-              xr_cq02h[c * N +: N] = xr_cq02h[c * N +: N] | g2e_cq01h[r * N +: N];
+              xr2_cq02h[c * N +: N] = xr2_cq02h[c * N +: N] | g2e_cq01h[r * N +: N];
           for (int j = 0; j < N; j++)
             if (eg_cq01h[j] && !g2any_cq01h[j] &&
                 egn_cq01h[j * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
-              xr_cq02h[c * N + j] = 1'b1;
+              xrt_cq01h[c * N + j] = 1'b1;
         end
       for (int s = 0; s < 4; s++)
         if (cv_cq01h[c] && cps_cq01h[c * 4 + s]) begin
@@ -344,14 +346,19 @@ module ooe_rendep #(
               x1p_cq02h[c * P + r] = 1'b1;
           for (int r = 0; r < P; r++)
             if (g2pv_cq03h[r] && g2pn_cq03h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-              xrp_cq02h[c * N +: N] = xrp_cq02h[c * N +: N] | g2e_cq01h[r * N +: N];
+              xp2_cq02h[c * N +: N] = xp2_cq02h[c * N +: N] | g2e_cq01h[r * N +: N];
           for (int j = 0; j < N; j++)
             if (ep_cq01h[j] && !g2any_cq01h[j] &&
                 epn_cq01h[j * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-              xrp_cq02h[c * N + j] = 1'b1;
+              xpt_cq01h[c * N + j] = 1'b1;
         end
     end
   end
+
+  // Each a single expression: G-2's hits read a stage ahead, by the
+  // declared bypass, and ooe_prodmap's this stage.
+  assign xr_cq02h  = xr2_cq02h | xrt_cq01h;
+  assign xrp_cq02h = xp2_cq02h | xpt_cq01h;
 
   // The codes: a GPR source reads its producer's code for the consumer's
   // group; a predicate source the late line, the largest code, so a cell
