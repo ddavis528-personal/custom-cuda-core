@@ -152,13 +152,10 @@
       "valid_nx"
     ],
     "ooe_sched": [
-      "cand",
       "cnf",
       "dpm",
-      "gnt_en",
       "gon",
       "isg",
-      "lost",
       "ready_en",
       "rq_en"
     ],

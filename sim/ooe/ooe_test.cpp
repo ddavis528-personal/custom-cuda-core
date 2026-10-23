@@ -105,6 +105,7 @@ struct Op {
   bool last = false, final = false;
   int srd = -1;                  ///< kLane: an srd identity OOE substitutes (A-25, O-64)
   bool pred_only = false;        ///< kLoad: ld.pred, its only destination predicate pdst (TI-36)
+  bool local = false;            ///< a memop: an interleaved local form, no base (IS-19, O-69)
   /// A load that misses to DRAM (TI-21's stall_hole): its fill this many
   /// cycles after its issue, or 0 for the environment's DRAM draw.
   bool dram = false;
@@ -130,6 +131,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   for (unsigned i = 0; i != o.nsrc; ++i) u.shape.gpr_reads |= uint8_t(1u << i);
   u.shape.guard = o.guard;
   u.pred_guard = o.pguard;
+  u.local_form = o.local ? 1u : 0u;
   switch (o.k) {
   case kLane: u.attr_raw = attr(0, 0, o.cross, 1, 0, 0, 0, 0, 1); break;
   case kFp: u.attr_raw = attr(0, 0, 0, 1, 0, 0, 0, 0, 1); break;     // a lane FP op
@@ -1945,6 +1947,58 @@ void testNoneIsZero() {
   std::printf("  %-24s %s\n", "control none-row-zero", held ? "MISSED" : "caught");
   g_test = "no GPR destination (control)";
   EXPECT(!held, "no GPR destination sent as row 0 should fail the check");
+}
+
+/// IS-19 / O-69 (OA's rev 183): a local form is an ordinary memop with no
+/// base source. ld.local behind a slow producer of the register its base
+/// would name issues on nothing, carries local_form to MIU, and at a
+/// partial mask makes the masked-load copy. The control gives it a base
+/// read, so it waits for the producer.
+bool ldLocal(bool control) {
+  Config c = groupConfig();
+  Env e(c);
+  e.keep_log = true;
+  std::vector<Op> p;
+  Op sf; sf.k = kSfu; sf.dst = 1; p.push_back(sf);
+  Op ld; ld.k = kLoad; ld.local = true; ld.src[0] = 1; ld.nsrc = control ? 1 : 0; ld.dst = 2;
+  ld.mask = 0x0000ffffu; p.push_back(ld);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(6, 0, p);
+  uint64_t sf_at = ~uint64_t(0), ld_at = ~uint64_t(0);
+  unsigned copies = 0, local = 0;
+  for (unsigned k = 0; k != 400 && !e.warpOf(6)->exited; ++k) {
+    e.step();
+    for (const Issue &is : e.log.back().issues) {
+      if (is.warp != 6) continue;
+      if (!is.copy && is.res != Issue::kMemop && sf_at == ~uint64_t(0)) sf_at = k;
+      copies += is.copy;
+    }
+    for (const Memop &m : e.log.back().memops)
+      if (m.warp == 6 && m.mem_op != 0xF) {
+        if (ld_at == ~uint64_t(0)) ld_at = k;
+        local += m.local_form;
+      }
+  }
+  const bool early = sf_at != ~uint64_t(0) && ld_at < sf_at + c.unit_lat[4];
+  const bool ok = e.warpOf(6)->exited && early && local == 1 && copies == 1 && e.errors.empty();
+  if (!control) {
+    g_test = "ld.local (IS-19)";
+    EXPECT(e.warpOf(6)->exited, "the warp never finished");
+    EXPECT(early, "the local load's memop at %llu waits on the producer issued at %llu",
+           (unsigned long long)ld_at, (unsigned long long)sf_at);
+    EXPECT(local == 1, "%u memops carry local_form", local);
+    EXPECT(copies == 1, "%u copies at a partial mask", copies);
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  return ok;
+}
+
+void testLdLocal() {
+  ldLocal(false);
+  const bool held = ldLocal(true);
+  std::printf("  %-24s %s\n", "control local-base", held ? "MISSED" : "caught");
+  g_test = "ld.local (control)";
+  EXPECT(!held, "a local form reading a base should wait for its producer");
 }
 
 void testCtaSlot() {
@@ -4105,6 +4159,7 @@ int main(int argc, char **argv) {
   testAtomic();
   testLdPredCopy();
   testNoneIsZero();
+  testLdLocal();
   testAtomicFault();
   testAtomicKill();
   testAtomicDemote();

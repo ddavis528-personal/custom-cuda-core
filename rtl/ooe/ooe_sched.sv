@@ -168,7 +168,7 @@ module ooe_sched #(
 
   // -- Request register -------------------------------------------------------
   logic [N-1:0] rq_cq02h, rq_cq03h;
-  logic         chg_cq04h, rq_en, gnt_en;
+  logic         chg_cq04h, rq_en, gnt_en_cq03h;
   always_comb
     for (int e = 0; e < N; e++)
       rq_cq02h[e] = valid_cq02h[e] && !ise_cq02h[e] && active_cq02h[slot_cq02h[e * LS +: LS]] &&
@@ -176,16 +176,16 @@ module ooe_sched #(
   assign rq_en  = chg_cq04h || stop_cq03h || gnt_cq04h != '0 || alc_cq03h;
 
   // -- Select -----------------------------------------------------------------
-  logic [N-1:0] cand, grant_cq03h, lost;
+  logic [N-1:0] cand_cq03h, grant_cq03h, lost_cq03h;
   ooe_select #(.N(N), .NR(NR), .S(S), .FB(FB)) u_select (
     .rq_cq03h(rq_cq03h), .ready_cq03h(ready_cq03h), .gnt_cq03h(gnt_cq04h), .vel_cq03h(vel_cq03h),
     .iss_cq03h(siss_cq03h), .dep_cq03h(sdep_cq03h), .slot_cq03h(sslot_cq03h), .res_cq03h(res_cq03h),
     .chas_cq03h(chas_cq03h), .cidx_cq03h(cidx_cq03h), .older_r_cq03h(older_r_cq03h),
     .older_m_cq03h(older_m_cq03h), .busy_cq03h(busy_cq03h), .block_cq03h(block_cq03h),
-    .cand_cq03h(cand), .grant_cq03h(grant_cq03h), .lost_cq03h(lost));
+    .cand_cq03h(cand_cq03h), .grant_cq03h(grant_cq03h), .lost_cq03h(lost_cq03h));
   (* keep *) logic [N-1:0] gnt_out_cq04h;  // the grant register's leaving copy
   (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
-  assign gnt_en      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
+  assign gnt_en_cq03h      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
   assign ready_en    = ready_en_cq03h || gl_cq05h;
   // A grant moves a ready bit at the edge it arrives only through the lead
   // line (WL - 1) of a producer of latency LEAD + 1, threshold age 1; every
@@ -235,7 +235,7 @@ module ooe_sched #(
       gnt_cq04h     <= '0;
       gnt_out_cq04h <= '0;
       gnt_w_cq04h   <= '0;
-    end else if (gnt_en) begin
+    end else if (gnt_en_cq03h) begin
       gnt_cq04h     <= grant_cq03h;
       gnt_out_cq04h <= grant_cq03h;
       gnt_w_cq04h   <= grant_cq03h;

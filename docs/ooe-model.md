@@ -300,6 +300,14 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   no stub carries ld.pred yet, and ooe_rendep's copy reads the old GPR
   destination. The RTL copy must read the old predicate when ld.pred
   reaches the stubs.
+- **The local forms** (IS-19, O-69; OA's rev 183). ld.local, st.local and
+  their predicate forms are ordinary memops with no base source: DEC sets
+  no src_valid for rbase, so rename reads none and the memop waits on
+  nothing but its data, and OOE copies local_form to MIU unexamined (TI's
+  pass-through); MIU forms the address and ctx itself. A partial ld.local
+  makes the masked-load copy; the predicate forms take ld.pred's path.
+  Directed test ldLocal, control `local-base` (the load reads a base, so
+  it waits for its producer).
 - **No GPR destination is the zero register** (TI-37). An op without a
   GPR destination, ld.pred's copy among them, names the zero register's
   name as phys_dst on the issue and the memop (and as its old destination),

@@ -821,8 +821,14 @@ Built (`rtl/ooe/`):
      width per name), the old destination's for a merged op, else the
      warp's home position; a second allocation in a group wanting the same
      warp and position takes the next free one (AR-15). A narrowing
-     renames in place. Until it is built, Rename 1's names are whole rows
-     and its benches skip sectioned cores.
+     renames in place. Beside it, the parked layout's restore (TI-25): a
+     restore-allocate writes each register at its parked position and
+     width (the 64-bit layout per warp_id), through the same ports, so it
+     shares the allocator's row and section state. Until it is built,
+     Rename 1's names are whole rows and its benches skip sectioned cores
+     and restore-allocates. Required before the first pass is called
+     complete (OA's response OI-67, rev 184: sectioned registers are DA's
+     first-build decision, OI-29).
   7. **ooe_rename's top**: ooe_go, the reads and Rename 1, the free lists,
      ooe_rendep and ooe_prodmap, rename's counters (ooe_rencred) and its
      pool and floor registers, assembled and benched against the model.
