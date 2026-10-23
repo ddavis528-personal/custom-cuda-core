@@ -214,7 +214,7 @@ module ooe_rs #(
   // inside deeper than the output's budget allows).
   (* keep *) logic [N-1:0] prod_oc_cq02h;
   assign prod_o_cq02h = prod_oc_cq02h;
-  logic [N-1:0]     cf_en_cq01h;          // the confirmation leads' flops
+  logic [N-1:0]     cf_en_cq03h;          // the confirmation leads' flops
   logic [NC-1:0]    cva_cq01h;            // the completion channel's valid, flopped: its payload is here
   logic             cvb_cq02h;            // a payload arrived at the last edge
   logic             sq_en_cq01h;          // the registered squash's lead's flop
@@ -341,7 +341,7 @@ module ooe_rs #(
   `CCV_ASSERT(squash_free_valid, (sqf_cq01h & ~valid_cq02h) == '0)
   // Every request and every free was led.
   `CCV_ASSERT(req_led, (req_cq01h & ~req_en_cq01h) == '0)
-  `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq02h & ~cf_en_cq01h) == '0)
+  `CCV_ASSERT(free_led, sq_en_cq01h || (free_cq02h & ~cf_en_cq03h) == '0)
 
   // The next state. An entry a port takes gets the port's row; every other
   // row keeps its bits, less the columns freed this cycle, and its line
@@ -413,27 +413,27 @@ module ooe_rs #(
   // edge (a restart: the lead it set, held a cycle by cvb); and an entry
   // writing nothing confirms once issued. An entry freed now, or free,
   // needs none.
-  logic [N-1:0] cmn_cq02h, cf_d;
+  logic [N-1:0] cmn_cq02h, cf_d_cq02h;
   always_comb begin
     cmn_cq02h = '0;
     for (int k = 0; k < NC; k++)
       for (int i = 0; i < N; i++)
         if (cva_cq01h[k] && cmpl_idx_cq00h[k * W +: W] == W'(i)) cmn_cq02h[i] = 1'b1;
     for (int i = 0; i < N; i++)
-      cf_d[i] = valid_cq02h[i] && !free_cq02h[i] && (dep_cq02h[i * N +: N] & ~free_cq02h) == '0 &&
-                (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn_cq02h[i] || (cf_en_cq01h[i] && cvb_cq02h)
+      cf_d_cq02h[i] = valid_cq02h[i] && !free_cq02h[i] && (dep_cq02h[i * N +: N] & ~free_cq02h) == '0 &&
+                (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn_cq02h[i] || (cf_en_cq03h[i] && cvb_cq02h)
                                : iss_cq02h[i] || gnt_cq01h[i]);
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       req_en_cq01h <= '0;
-      cf_en_cq01h  <= '0;
+      cf_en_cq03h  <= '0;
       cva_cq01h    <= '0;
       cvb_cq02h    <= 1'b0;
       sq_en_cq01h  <= 1'b0;
     end else begin
       req_en_cq01h <= req_l_cq00h;
-      cf_en_cq01h  <= cf_d;
+      cf_en_cq03h  <= cf_d_cq02h;
       cva_cq01h    <= cmpl_l_cq00h;
       cvb_cq02h    <= cva_cq01h != '0;
       sq_en_cq01h  <= sq_l_cq00h;
@@ -447,7 +447,7 @@ module ooe_rs #(
   // none of it.
   logic rcu_en_cq01h, miu_en_cq01h;
   logic [N-1:0] fl_cq01h;                    // a free may come: led by confirmation, or a squash
-  assign fl_cq01h = cf_en_cq01h | {N{sq_en_cq01h}};
+  assign fl_cq01h = cf_en_cq03h | {N{sq_en_cq01h}};
   assign rcu_en_cq01h = |req_en_cq01h[A-1:0] || |fl_cq01h[NR-1:0] || |(fl_cq01h & hr_cq02h);
   assign miu_en_cq01h = |req_en_cq01h[P-1:A] || |fl_cq01h[N-1:NR] || |(fl_cq01h & hm_cq02h);
 
