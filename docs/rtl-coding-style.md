@@ -21,7 +21,7 @@ Four layers, deliberately not one:
 
 | Layer | Covers | Why not the others |
 |---|---|---|
-| `tools/lint-rtl.py` | CCV-L01 … CCV-L28 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
+| `tools/lint-rtl.py` | CCV-L01 … CCV-L29 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
@@ -243,7 +243,7 @@ clocks    [<block>_]<domain>_clk[_b]   core_clk           top level
 reset     <block>_rst_r<NN><l|h>       sched_rst_r06h
 
 enables   <name>_en[_<stage>][_n|_b]   ld_en_cs00h        a clock enable:
-                                        pay_en             what an always_ff's
+                                        pay_en_cs02h       what an always_ff's
                                                            `if` gates on
 
 stage     <domain><block><NN><l|h>     c = core domain
@@ -254,6 +254,16 @@ stage     <domain><block><NN><l|h>     c = core domain
 
 All lowercase, underscore-separated. Only parameters and localparams carry
 upper case.
+
+**The stage tag is required, not optional, on every net of a block's
+sequential module (CCV-L29; DA, 2026-10-23).** The brackets above mark the
+names that legitimately have none: a boundary port (*Boundary ports carry
+no stage tag*, above), a common module's nets (*Not on a common module's
+formals*, below), a purely combinational module's nets, which take their
+instance's stage, and the clocks and reset taps, which have shapes of their
+own. Everywhere else an untagged net is a hole in the stage rules, not a
+style lapse: CCV-L21 and CCV-L23 key on the tag, so they never check it, nor
+any flop or net that reads through it.
 
 **`_n` and `_b` are always the outermost suffix**, after the stage tag. Mildly
 ugly, and too entrenched to change.
@@ -417,6 +427,39 @@ generates it:
 - **edge letter** matches `posedge`/`negedge`;
 - **block letter** is registered, and is the block the module's name gives
   (CCV-L28), or `r`.
+
+### CCV-L29 — every net of a block's sequential module carries a stage tag
+
+DA, 2026-10-23. In a block top, wrapper or sub-block (CCV-L28) that holds an
+`always_ff`, every net declared at module level or in a generate block is
+named `<name>_<domain><block><NN><l|h>[_n|_b]`. A combinational net takes
+the stage CCV-L23 gives it: the latest stage it reads, or, read only by the
+stage-N register it feeds, N - 1 (its D side).
+
+Not nets, and so not held to it: a port, a parameter, a struct's field, a
+function's or task's local, and a local declared inside a procedural block.
+Exempt by their own shapes: clocks (CCV-L20) and reset taps
+(`<block>_rst_r<NN><l|h>`, *Reset has its own numbering space*). Exempt as
+modules: a common module (CCV-L28), whose nets live in many blocks, and a
+module with no `always_ff`, an inner helper timed as its parent's logic,
+whose nets sit at whatever stage its instance does, as a struct type's do.
+
+**Why it is a rule and not a convention.** CCV-L21 checks a flop's tag
+against its clock and block, and CCV-L23 checks the stage arithmetic, and
+both skip any name without a tag. One untagged net is enough to hide a
+stage skip: `q_cy02h <= x_nx; assign x_nx = d_cy00h;` advances two stages
+through one flop, and neither rule sees it (`rtl/lint/bad_naming.sv`).
+
+**The ratchet.** The nets that stood when the rule was made are listed in
+`rtl/stage-ratchet.json`, by module. Their owner tags each one at the stage
+the arithmetic gives it, or removes it, and takes its entry off the list.
+The list only shrinks: lint refuses an entry whose net is now tagged or
+gone, and an entry not in `tools/stage-ratchet-baseline.json`, the list as
+made, which only the rule's owner writes. `tools/check-1d.sh` holds the
+rule to its fixtures: two untagged nets refused, one at module level and
+one in a generate block; `ccv_reference.sv`'s field and locals silent; and
+the ratchet excusing a listed net, and refusing an entry that now meets the
+rule and one never in the baseline.
 
 ### CCV-L22 — a block runs on its own gated clock
 

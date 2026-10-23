@@ -78,6 +78,21 @@ module ccv_reference (
 
   assign BadCamelNet = in_data_cy00h;
 
+  // CCV-L29: a net of a sequential block module with no stage tag, at
+  // module level and in a generate block. Neither CCV-L21 nor CCV-L23 can
+  // check them, nor the flop untag_q_cy02h reads through them, which is
+  // really a stage skip, 00 to 02.
+  logic [3:0] untag_nx;
+  assign untag_nx = in_data_cy00h;
+  logic [3:0] untag_q_cy02h;
+  always_ff @(posedge core_clk) begin
+    untag_q_cy02h <= untag_nx;
+  end
+  for (genvar g = 0; g < 2; g++) begin : g_untag
+    logic untag_par;
+    assign untag_par = ^in_data_cy00h[g * 2 +: 2];
+  end
+
 endmodule
 
 // CCV-L20: a clock edge on a net that is not named as a clock, and a clock

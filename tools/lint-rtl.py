@@ -178,6 +178,85 @@ def stage_of(name):
     return m.group(1), m.group(2), int(m.group(3)), m.group(4)
 
 
+# CCV-L29's reading of a module body. Brace-free HDL again, so a small scan
+# of the tokens that open and close a scope: a declaration inside a
+# procedural block (an always, initial or final block's begin or case, a
+# function, a task) is a local variable, and inside a struct's braces a
+# field; anywhere else, at module level or in a generate block, it is a net.
+SCOPE_TOK = re.compile(r"\b(always_ff|always_comb|always_latch|always|initial|final|"
+                       r"function|endfunction|task|endtask|begin|end|case|casez|"
+                       r"casex|endcase)\b|[(){};]")
+NET_DECL = re.compile(r"(?:\b(?:logic|wire|reg)\b|\b[a-z]\w*_t\b)([^;]*);")
+# What carries no stage tag by its own rules: a clock (CCV-L20) and a reset
+# tap, which counts distance in its own space (`<block>_rst_r<NN><l|h>`).
+UNSTAGED_RE = re.compile(r"(?:_clk(?:_b)?|(?:^|_)rst_r\d\d[lh](?:_n)?)$")
+
+
+def module_nets(body, start):
+    """(pos, name) for each net a module body declares from start: at module
+    level or in a generate block, never a procedural local or a struct
+    field, and never a port or a parameter."""
+    stack, pending, paren, brace, marks = [], False, 0, 0, []
+    for m in SCOPE_TOK.finditer(body, start):
+        t = m.group(1) or m.group(0)
+        in_proc = bool(stack) and stack[-1] == "proc"
+        if t == "(":
+            paren += 1
+        elif t == ")":
+            paren -= 1
+        elif t == "{":
+            brace += 1
+        elif t == "}":
+            brace -= 1
+        elif t in ("always_ff", "always_comb", "always_latch", "always", "initial", "final"):
+            pending = True
+        elif t in ("function", "task"):
+            stack.append("proc")
+        elif t in ("begin", "case", "casez", "casex"):
+            stack.append("proc" if pending or in_proc else "gen")
+            pending = False
+        elif t in ("end", "endcase", "endfunction", "endtask"):
+            if stack:
+                stack.pop()
+        elif t == ";" and paren == 0 and not in_proc:
+            pending = False   # a procedural block of one statement ended
+        marks.append((m.start(), "proc" in stack, brace))
+    out, k, ctx = [], 0, (False, 0)
+    for m in NET_DECL.finditer(body, start):
+        while k < len(marks) and marks[k][0] <= m.start():
+            ctx = marks[k][1:]
+            k += 1
+        if ctx[0] or ctx[1]:
+            continue
+        ls = body.rfind("\n", 0, m.start()) + 1
+        if re.search(r"\b(?:parameter|localparam|input|output|inout|typedef|function|"
+                     r"automatic)\b", body[ls:m.start()]):
+            continue
+        decl = re.sub(r"=[^,]*", "", re.sub(r"\[[^\]]*\]", "", m.group(1)))
+        for n in re.findall(r"\b([a-z]\w*)\b", decl):
+            if n not in ("signed", "unsigned", "logic"):
+                out.append((m.start(), n))
+    return out
+
+
+# CCV-L29's ratchet: untagged nets that stood when the rule was made, which
+# their owner tags or removes, and its frozen baseline, which only the
+# rule's owner (TI) writes. Read once a run; the findings excused and the
+# modules seen are kept for the cross-file half (check_stage_ratchet).
+STAGE_RATCHET = os.path.join(ROOT, "rtl", "stage-ratchet.json")
+STAGE_BASELINE = os.path.join(ROOT, "tools", "stage-ratchet-baseline.json")
+_stage_ratchet = {"path": STAGE_RATCHET, "baseline": STAGE_BASELINE, "mods": None,
+                  "found": set(), "seen": set()}
+
+
+def stage_ratchet():
+    if _stage_ratchet["mods"] is None:
+        p = _stage_ratchet["path"]
+        _stage_ratchet["mods"] = (json.load(open(p)).get("modules", {})
+                                  if os.path.exists(p) else {})
+    return _stage_ratchet["mods"]
+
+
 # The common ports every block declares, generated rather than hand-written.
 # They are deliberately UNIFORM across blocks -- which is the same argument
 # that made the original CCV-L02 want one name everywhere: a swap harness that
@@ -998,6 +1077,33 @@ def check_file(path, rel):
                         "only generate signals in its own numbering space"
                         % (lhs, b, blk_name, blk_letter))
 
+        # -- CCV-L29: every net of a sequential block module is tagged ------
+        # The stage rules above key on the tag, so a net without one is a
+        # net they never check: a register on it escapes L21, and anything
+        # that reads it escapes L23 (DA, 2026-10-23). A module with no
+        # register is exempt: an inner helper is timed as its parent's logic
+        # and may sit at any stage, as a struct type may.
+        for s0, e0, n, _ in spans:
+            if cls[n].kind not in ("block", "wrapper", "sub"):
+                continue
+            body = src[s0:e0]
+            hdr = re.search(r"\)\s*;", body)
+            if not hdr or not re.search(r"\balways_ff\b", body):
+                continue
+            _stage_ratchet["seen"].add(n)
+            listed = set(stage_ratchet().get(n, []))
+            for pos, net in module_nets(body, hdr.end()):
+                if UNSTAGED_RE.search(net) or stage_of(net):
+                    continue
+                if net in listed:
+                    _stage_ratchet["found"].add((n, net))
+                    continue
+                add("CCV-L29", line_of(src, s0 + pos),
+                    "net %s of module %s carries no stage tag. Every net of a "
+                    "block's sequential module says when it is valid, "
+                    "<name>_<domain><block><NN><l|h>; untagged, CCV-L21 and "
+                    "CCV-L23 never check it, nor anything it reaches" % (net, n))
+
         # -- CCV-L23: stage arithmetic --------------------------------------
         # The rule the whole convention exists to make checkable:
         #   flop output  = max(input stages) + 1
@@ -1209,6 +1315,27 @@ def check_interface_coverage(schema=None):
     return F
 
 
+def check_stage_ratchet():
+    """CCV-L29's ratchet only shrinks: an entry that was not in the baseline
+    when the rule was made is refused, and so is one whose net is now
+    tagged or gone, in a module this run read."""
+    F = []
+    rel = os.path.relpath(_stage_ratchet["path"], ROOT)
+    p = _stage_ratchet["baseline"]
+    base = json.load(open(p)).get("modules", {}) if os.path.exists(p) else {}
+    for mod, nets in sorted(stage_ratchet().items()):
+        for net in nets:
+            if net not in base.get(mod, []):
+                F.append(Finding("CCV-L29", rel, 1,
+                                 "%s %s was not on the list when the rule was made; "
+                                 "the list only shrinks" % (mod, net)))
+            elif mod in _stage_ratchet["seen"] and (mod, net) not in _stage_ratchet["found"]:
+                F.append(Finding("CCV-L29", rel, 1,
+                                 "%s %s now meets the rule, or is gone: remove it from "
+                                 "%s" % (mod, net, rel)))
+    return F
+
+
 def check_module_names(roots=("rtl/top", "rtl/generated")):
     """CCV-L28 over the generated design, which the per-file walk skips: the
     top, its wrappers, stubs and shims, and the checker bank are modules in
@@ -1301,6 +1428,7 @@ def main():
     # fixture directory, since a cross-file rule cannot be counter-exampled
     # by a .sv file alone.
     schema = blocks = names = None
+    ratchet_given = False
     for a in sys.argv[1:]:
         if a.startswith("--names="):
             names = a.split("=", 1)[1]
@@ -1308,6 +1436,12 @@ def main():
             schema = a.split("=", 1)[1]
         if a.startswith("--blocks="):
             blocks = a.split("=", 1)[1]
+        # CCV-L29's ratchet and baseline, pointed at fixtures by check-1d.
+        if a.startswith("--stage-ratchet="):
+            _stage_ratchet["path"] = os.path.join(ROOT, a.split("=", 1)[1])
+            ratchet_given = True
+        if a.startswith("--stage-baseline="):
+            _stage_ratchet["baseline"] = os.path.join(ROOT, a.split("=", 1)[1])
     targets = args or ["rtl", "test", "spike"]
     findings = []
     n = 0
@@ -1322,6 +1456,8 @@ def main():
         findings.extend(check_blocks(blocks))
     if not args:
         findings.extend(check_module_names())
+    if not args or ratchet_given:
+        findings.extend(check_stage_ratchet())
     if names:
         findings.extend(check_module_names((names,)))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):

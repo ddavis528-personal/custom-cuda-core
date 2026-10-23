@@ -81,6 +81,11 @@ convergence to 25, then timed whole, its outputs straight from flops.
 broke the rules when they were made sits on `rtl/ngd-ratchet.json`, which
 only shrinks.
 
+Stage tags (DA, 2026-10-23; CCV-L29 in `docs/rtl-coding-style.md`): every
+net of a block's sequential module carries one, since CCV-L21 and CCV-L23
+skip a net without. The untagged nets that stood then sit on
+`rtl/stage-ratchet.json`, which only shrinks.
+
 Every Yosys the gate runs, SymbiYosys's included, is `tools/shim/yosys`:
 the warnings that mean a netlist is not the RTL are errors (OI-44). Run a
 Yosys flow alone the same way: `PATH="$PWD/tools/shim:$PATH"`.
