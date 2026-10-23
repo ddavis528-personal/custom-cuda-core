@@ -100,6 +100,8 @@ module ccv_rau (
 `ifdef CCV_TRACE
   assign rau_miu_cta_tid = '0;
 `endif
+  assign syu_rau_ready_credit = '0;
+  assign syu_rau_ready_stall = '0;
   assign rau_syu_alloc_valid = '0;
   assign rau_syu_alloc_payload = '0;
   assign rau_syu_alloc_wake = '0;

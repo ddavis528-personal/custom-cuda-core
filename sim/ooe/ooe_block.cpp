@@ -257,7 +257,8 @@ private:
     }
     if (hasIn(rel_) && has(unsigned(rel_), 0)) {
       Receiver::Msg m = take(unsigned(rel_), 0);
-      core_.barRelease(uint32_t(get(m.payload, unsigned(rel_), "warp_mask_released")));
+      // A held wait's answer names its warp (TI-40); the core takes a mask.
+      core_.barRelease(uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id"));
     }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {

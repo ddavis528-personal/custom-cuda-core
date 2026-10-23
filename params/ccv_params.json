@@ -86,7 +86,7 @@
       "status": "arch",
       "source": "arch open A-23 (2026-09-27)",
       "derive": "CCV_TIER1_WARPS + CCV_PARKED_WARPS",
-      "doc": "Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, warp_mask_released). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12)."
+      "doc": "Warp contexts the core holds, resident and parked: the width of every per-warp mask (kill_warp_mask, ccv_rau_syu_alloc's warp_mask). One name, so a mask sized by it cannot miss a residency tier added later. Equal to CCV_W_LANE_MASK today by coincidence only (A-12)."
     },
     {
       "name": "CCV_FETCH_PER_WARP",
@@ -300,6 +300,14 @@
       "derive": "clog2(CCV_WARP_LANES)",
       "source": "DA's response IS-17 (2026-10-21)",
       "doc": "FET's rotating lane pointer for the fairness rule, which migrates with the warp's PCs."
+    },
+    {
+      "name": "CCV_W_LANE_IDX",
+      "value": 5,
+      "status": "arch",
+      "derive": "clog2(CCV_WARP_LANES)",
+      "source": "TI-40 (AR's rev 161)",
+      "doc": "A lane index, or a lane count less one: ccv_rau_syu_alloc's last_lanes."
     },
     {
       "name": "CCV_DEMOTION_THRESHOLD_BARRIER",
@@ -1236,13 +1244,13 @@
     },
     {
       "name": "CCV_P_W_SCHED_ATTR",
-      "value": 16,
+      "value": 17,
       "status": "preliminary",
       "churn": "med",
-      "derive": "10 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
+      "derive": "11 + clog2(CCV_P_LAT_CLASSES) + clog2(CCV_P_BYP_GROUPS)",
       "decided_at": "DEC per-block session, with the LANE and RCU op-class list (A-62, A-66)",
       "source": "OOE session (2026-10-03), A-66",
-      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
+      "doc": "Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03."
     },
     {
       "name": "CCV_P_W_REQ_MIU_SPM",

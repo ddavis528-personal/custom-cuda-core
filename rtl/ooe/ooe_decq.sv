@@ -312,13 +312,13 @@ module ooe_decq #(
   // superset, from rename's flops).
   `CCV_ASSERT(deq_sel_covers, (deq_s_cq01h & ~deq_sel_cq01h) == '0)
   // Rename takes no more than a slot offers.
-  logic deq_over_cq01h;
+  logic deq_over_cq02h;
   always_comb begin
-    deq_over_cq01h = 1'b0;
+    deq_over_cq02h = 1'b0;
     for (int s = 0; s < S; s++)
-      if (LC'(deq_n_cq01h[s * LR +: LR]) > cnt_cq02h[s * LC +: LC]) deq_over_cq01h = 1'b1;
+      if (LC'(deq_n_cq01h[s * LR +: LR]) > cnt_cq02h[s * LC +: LC]) deq_over_cq02h = 1'b1;
   end
-  `CCV_ASSERT(deq_within_offer, !deq_over_cq01h)
+  `CCV_ASSERT(deq_within_offer, !deq_over_cq02h)
 
   // Rename takes no more than a slot holds; DEC sends only against credit.
   `CCV_ASSERT(deq_within_count, !fault_cq02h[1])

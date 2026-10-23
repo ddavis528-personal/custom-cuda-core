@@ -238,7 +238,10 @@ struct Kernel {
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups", "local_form",
-      "pred_xfer", "pred_merge", "pred_copy", "crack_split"};
+      "pred_xfer", "pred_merge", "pred_copy", "crack_split",
+      // Fences and barriers (IS-11, TI-40).
+      "fence", "fence_wait", "bar_wait", "bar_arrive", "bar_complete", "bar_release", "bar_ready",
+      "syu_ready"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
@@ -247,6 +250,11 @@ struct Kernel {
   /// Each warp's CTA slot, as RAU gave it (TI-34): for the checks on the
   /// cta_slot OOE stamps on memops and faults, never for a decision.
   std::map<unsigned, unsigned> cta_slot_of;
+  /// Each warp's CTA, by the order ccv-sim's runs name ctaids: the warps of
+  /// one -cta run share one (CP-30), each CTAS run has its own. RAU gives a
+  /// CTA one slot, and MIU checks a slot names one CTA (oracle, for checks).
+  std::vector<unsigned> cta_of;
+  unsigned ctas = 0;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 

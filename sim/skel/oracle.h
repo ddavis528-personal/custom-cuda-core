@@ -96,10 +96,10 @@ struct Record {
 struct Oracle {
   uint64_t code_base = 0;
   unsigned threads = 0, ctaid = 0;
-  unsigned warp_in_cta = 0;   ///< which of its CTA's warps this run is (ccv-sim -warp, TI-29)
+  unsigned warp_in_cta = 0;   ///< which of its CTA's warps this file is (ccv-sim -cta, CP-30)
   /// The hardware warp context srd #2 named in this run (ccv-sim -context,
   /// TI-35; O-64). ccv-sim records it only where it is not the default,
-  /// the -warp index, so a run without it ran as context warp_in_cta.
+  /// its warp_in_cta, so a file without it ran as context warp_in_cta.
   unsigned lane_context = 0;
   std::vector<uint8_t> code;
   std::vector<std::pair<uint64_t, uint32_t>> init_mem;
@@ -119,6 +119,7 @@ struct Oracle {
   uint32_t final_pred[kArchPreds] = {};
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
+  unsigned stalls = 0;   ///< barrier waits ccv-sim retried, dropped at load (TI-40)
 
   /// Empty string on success, else what was wrong with the file.
   std::string load(const std::string &path);

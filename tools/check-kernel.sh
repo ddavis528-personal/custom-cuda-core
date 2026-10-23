@@ -33,6 +33,10 @@
 #                                                V-35 names the late done
 #   srd's value from OOE's identity (Q-38)    corrupt-ctaid (srd kernel): the
 #                                                lanes' srd result is wrong
+#   a CTA is one CTA slot, its warps from one cta-per-warp (lanectx): MIU sees
+#     ccv-sim -cta run, and a slot is one     one CTA's warps in two slots;
+#     CTA's (CP-30)                              cta-shared (rope): two CTAs
+#                                                in one slot
 #   an unallocated srd selector faults        srd-selector: DEC's range check
 #                                                names it; nothing retires it
 #   the lane mask is on the wire with valid,  late-lead: every lane takes a
@@ -462,6 +466,19 @@ if grep -q "^CHECK lane [0-9]*: seq 2 srd 8, oracle 7" "$B/kernel_corrupt-ctaid.
 else
   bad "--break corrupt-ctaid" "a wrong CTA index reached a register unnoticed"
 fi
+# One CTA slot per CTA (CP-30): lanectx's two warps are one -cta run.
+"$SKEL" --kernel build/oracle/lanectx/oracle.jsonl --break cta-per-warp >"$B/kernel_cta-per-warp.log" 2>&1
+if grep -q "^CHECK miu: warps 0 and 1 of ctaid 0 name CTA slots 0 and 1" "$B/kernel_cta-per-warp.log"; then
+  say "--break cta-per-warp: one CTA in two slots" "PASS (lanectx)"
+else
+  bad "--break cta-per-warp" "one CTA's warps in two CTA slots went unnoticed"
+fi
+"$SKEL" --kernel build/oracle/rope/oracle.jsonl --break cta-shared >"$B/kernel_cta-shared.log" 2>&1
+if grep -q "^CHECK miu: CTA slot 0 holds warp 0 of ctaid 0 and warp 1 of ctaid 1" "$B/kernel_cta-shared.log"; then
+  say "--break cta-shared: two CTAs in one slot" "PASS (rope)"
+else
+  bad "--break cta-shared" "two CTAs in one CTA slot went unnoticed"
+fi
 
 # -- the lane mask: one cycle ahead, and always gating (Q-40) ---------------
 # section_en, sec_owner, sec_pred_bit and sec_pred_data are rcu_lane_ops' LEAD
@@ -681,6 +698,7 @@ predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=2 pred_xfer=4 frame_lookups=0
 rope local_form=44 frame_lookups=0
+fence fence=1 fence_wait>0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
@@ -748,12 +766,11 @@ else
   bad "--break local-no-ctx, local-base-slot" "a local-form address went unchecked: $(grep '^KERNEL' "$B/kernel_local-no-ctx.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
-# The first wrong read depends on when OOE's free lists refill: seq 207's R4
-# before OI's FreeVec alignment (OI-70, OI-71), seq 204's R3 after it. Until
-# that model is merged here, either is the witness; then seq 204's alone.
-if grep -qE "^CHECK lane 0: seq (207 operand 1 \(R4\) 00000032, oracle 00000001|204 operand 1 \(R3\) 00000032, oracle 00000064)\$" "$B/kernel_free-new.log" &&
+# The first wrong read follows when OOE's free lists refill: since OI's
+# FreeVec alignment (OI-70, OI-71), seq 204's R3.
+if grep -q "^CHECK lane 0: seq 204 operand 1 (R3) 00000032, oracle 00000064" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS ($(grep -oE '^CHECK lane 0: seq (207|204)' "$B/kernel_free-new.log" | head -1 | grep -oE '[0-9]+$'), its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 204, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi

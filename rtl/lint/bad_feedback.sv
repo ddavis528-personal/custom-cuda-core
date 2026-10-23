@@ -91,3 +91,30 @@ module reference_misalign (
   end
   assign out_cy03h = m2_cy03h & n2_cy03h;
 endmodule
+
+// CCV-L23's bypass and condition reads (DA, 2026-10-23; OI's rev 188):
+// offp_cy02h declares a bypass of o2_cy03h, which is loaded from another
+// pipeline (block z), not from its own stage's register; wofs_cy02h's is
+// declared two stages ahead where the tags give one; and cnd_cy02h, which
+// declares nothing, is assigned under an if that reads a stage-03 register.
+module reference_bypass (
+  input  logic reference_core_clk,
+  input  logic req_in_cy01h,
+  input  logic oth_in_cz01h,
+  output logic out_cy02h
+);
+  logic o1_cz02h, o2_cy03h, w1_cy02h, w2_cy03h, offp_cy02h, wofs_cy02h, cnd_cy02h;
+  always_ff @(posedge reference_core_clk) begin
+    o1_cz02h <= oth_in_cz01h;
+    o2_cy03h <= o1_cz02h;
+    w1_cy02h <= req_in_cy01h;
+    w2_cy03h <= w1_cy02h;
+  end
+  always_comb begin
+    offp_cy02h = w1_cy02h | o2_cy03h;
+    wofs_cy02h = w1_cy02h | w2_cy03h;
+    cnd_cy02h  = 1'b0;
+    if (w2_cy03h) cnd_cy02h = w1_cy02h;
+  end
+  assign out_cy02h = offp_cy02h & wofs_cy02h & cnd_cy02h;
+endmodule

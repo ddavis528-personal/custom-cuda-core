@@ -14,7 +14,8 @@ module reference_loop (
   input  logic ref_rst_r00h,
   input  logic req_in_cy01h,
   output logic gnt_out_cy03h,
-  output logic lead_out_cy04h
+  output logic lead_out_cy04h,
+  output logic byp_out_cy02h
 );
   logic req_cy02h, gnt_cy03h;
   always_ff @(posedge reference_core_clk) begin
@@ -44,4 +45,21 @@ module reference_loop (
     else              lead_cy04h <= grt_cy03h;
   end
   assign lead_out_cy04h = lead_cy04h;
+
+  // A bypass (DA, 2026-10-23; OI-72 (A)): hit_cy02h reads g2_cy03h, the
+  // stage-03 copy of g1_cy02h, which its own stage also holds: a bypass mux
+  // around a table written a cycle late, declared with its offset. It is
+  // assigned under an if, whose condition counts as its input too
+  // (OI's rev 188): sel_cy02h, its own stage.
+  logic g1_cy02h, g2_cy03h, sel_cy02h, hit_cy02h;
+  always_ff @(posedge reference_core_clk) begin
+    g1_cy02h  <= req_in_cy01h;
+    sel_cy02h <= req_in_cy01h;
+    g2_cy03h  <= g1_cy02h;
+  end
+  always_comb begin
+    hit_cy02h = 1'b0;
+    if (sel_cy02h) hit_cy02h = g2_cy03h | g1_cy02h;
+  end
+  assign byp_out_cy02h = hit_cy02h;
 endmodule

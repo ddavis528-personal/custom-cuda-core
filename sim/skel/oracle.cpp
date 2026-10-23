@@ -9,6 +9,7 @@
 #include "oracle.h"
 
 #include <cstdio>
+#include <algorithm>
 #include <fstream>
 #include <map>
 
@@ -225,7 +226,17 @@ std::string Oracle::load(const std::string &path) {
       } else {
         Record r;
         r.seq = j.at("seq").u();
-        if (r.seq != recs.size()) throw std::string("records out of sequence");
+        if (r.seq != recs.size() + stalls) throw std::string("records out of sequence");
+        // A barrier wait that blocked (TI-40): ccv-sim re-executes it until
+        // its lanes pass, recording each try. The machine fetches a wait
+        // once, held in OOE or parked in FET, so the tries are dropped and
+        // the records renumbered; the passing wait is the instruction.
+        if (j.at("kind").s() == "stall") {
+          if (j.at("op").s() != "C_BAR_WAIT") throw std::string("a stall that is not a barrier wait");
+          ++stalls;
+          continue;
+        }
+        r.seq = recs.size();
         r.pc = j.at("pc").u();
         r.size = unsigned(j.at("size").u());
         r.bytes = hexBytes(j.at("bytes").s());
@@ -263,6 +274,7 @@ std::string Oracle::load(const std::string &path) {
     return path + ":" + std::to_string(n) + ": " + e.what();
   }
   if (!have_init || !have_final) return path + ": missing init or final record";
+  issue_groups -= std::min(issue_groups, stalls);   // ccv-sim counts each try
   if (issue_groups != recs.size())
     return path + ": final record counts " + std::to_string(issue_groups) +
            " issue groups but the file holds " + std::to_string(recs.size());

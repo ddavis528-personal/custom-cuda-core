@@ -76,6 +76,12 @@
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
 //   srd-selector   DEC sees srd selector 2, which is unallocated
 //   corrupt-ctaid  RAU sends OOE the wrong CTA index
+//   cta-per-warp   RAU gives each warp a CTA slot of its own, one CTA or not
+//   cta-shared     RAU gives every warp CTA slot 0, whichever CTA it is
+//   no-wait-mark   FET leaves a converged barrier wait unmarked (all_waiting)
+//   bar-own-warp   SYU completes a barrier on its own warp's lanes alone
+//   bar-no-exit    SYU ignores exit reports, so an exited lane is waited for
+//   bar-full-last  SYU takes the CTA's last warp as 32 lanes
 //   late-lead      the lane mask goes out with the operands, a cycle late
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
@@ -225,6 +231,8 @@ int main(int argc, char **argv) {
                       brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
+                      brk == "cta-per-warp" || brk == "cta-shared" || brk == "no-wait-mark" || brk == "bar-own-warp" || brk == "bar-no-exit" ||
+                      brk == "bar-full-last" ||
                       brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
                       brk == "ignore-mask" || brk == "skip-read-partial" ||
