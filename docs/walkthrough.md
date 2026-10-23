@@ -128,7 +128,7 @@ lists every such module.
 
 ## 4. The partition
 
-14 block types, 45 instances, 52 channel types
+14 block types, 45 instances, 54 channel types
 (2 of them to and from the testbench's `EXTERNAL`). Every channel is
 point to point, credited, and declared in `schema/interfaces.json`, which is
 the only place a channel is defined.
@@ -148,7 +148,7 @@ every channel for 2000 cycles, through the same wiring and the same checker
 bank:
 
 ```
-SKEL cycles=2000 blocks=45 chan_types=52 chan_insts=114 slots=173 sent=214108 received=214108 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=173 idle_slots=0 violations=0
+SKEL cycles=2000 blocks=45 chan_types=54 chan_insts=116 slots=175 sent=215817 received=215817 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=0 credits_home=175 idle_slots=0 violations=0
 ```
 
 ## 5. One channel, from the schema down
@@ -215,18 +215,18 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/52 violations=0
-XFER events=647 launched=647 match=yes channels_seen=30
+KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/54 violations=0
+XFER events=649 launched=649 match=yes channels_seen=31
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 647 messages
+`ccv-sim`'s, and every one of the 649 messages
 launched was seen by the checker bank, which reported nothing. The run
-touches 30/52 channel types. The rest are waiting for
+touches 31/54 channel types. The rest are waiting for
 kernels that need them:
 
 ```
-UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_rau_pca_mig ccv_miu_rau_ready ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_rau_syu_alloc ccv_ooe_cru_fault ccv_cru_rau_cfg
+UNUSED ccv_ooe_fet_redirect ccv_miu_spm_req ccv_spm_miu_rsp ccv_mlc_dcu_probe ccv_dcu_mlc_probe_ack ccv_rau_ooe_demote ccv_ooe_rau_drained ccv_rau_rcu_mig ccv_ooe_rcu_map ccv_rcu_pca_mig ccv_pca_rcu_mig ccv_fet_pca_mig ccv_pca_fet_mig ccv_rau_fet_mig ccv_pca_rau_mig_done ccv_rau_pca_mig ccv_miu_rau_ready ccv_ooe_syu_bar ccv_syu_ooe_rel ccv_syu_fet_rel ccv_syu_rau_ready ccv_ooe_cru_fault ccv_cru_rau_cfg
 ```
 
 ## 7. One instruction through the machine
@@ -381,8 +381,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/52 violations=0
-TRACES records=721/721 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=31/54 violations=0
+TRACES records=723/723 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -397,8 +397,8 @@ SV top under `CCV_CHECK`.
 
 | Checker | In the bank | Judges |
 |---|---|---|
-| `ccv_common_chk_credit` | 173 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
-| `ccv_common_chk_wake` | 114 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
+| `ccv_common_chk_credit` | 175 | one slot: credit, stall, payload known when due, bounded response, at the end nothing left uncredited, and on a fixed-latency channel no stall and every credit on landing |
+| `ccv_common_chk_wake` | 116 | one channel instance: wake leads valid toward a gated receiver (sender), the receiver runs `CCV_WAKE_LAT` after a wake (receiver) |
 | `ccv_common_chk_atomic` | 15 | a channel's slots that must move together |
 | `ccv_common_chk_notice` | 8 | a notice and the message it promises, slot by slot |
 | `ccv_common_chk_lockstep` | 2 | copies of a channel that must move in lockstep across the 32 lanes |
@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
-    .ch_payload(payload[46054:44843])
+    .ch_payload(payload[46076:44865])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7999:7936])
 `endif
@@ -426,12 +426,12 @@ check:
 
 ```
 [20000] %Error: ccv_common_chk_credit.sv:293: Assertion failed in bank.ccv_common_chk_bank.u_fet_dec_instr_s7: CCV quiesced_at_end failed: 3 message(s) never credited back
-SKEL cycles=2000 blocks=45 chan_types=52 chan_insts=114 slots=173 sent=205557 received=205557 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=159 idle_slots=0 violations=14
+SKEL cycles=2000 blocks=45 chan_types=54 chan_insts=116 slots=175 sent=207286 received=207286 mismatches=0 tid_mismatches=0 class_violations=0 class_violation_channels=0 overflows=0 credit_leaks=42 credits_home=161 idle_slots=0 violations=14
 ```
 
 The C++ receivers count the same leak from their side:
 `credit_leaks=42`, and only
-159 of 173 slots have all
+161 of 175 slots have all
 their credits home at the end.
 
 ## 10. Proved, for all time
