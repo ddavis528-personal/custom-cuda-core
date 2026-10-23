@@ -1,0 +1,11 @@
+{
+  "_comment": "Fixture for bad_feedback.sv: every declaration here must be refused. DO NOT FIX.",
+  "reads": {
+    "req_cy02h": {"from": ["stat_cy03h"], "by": "OA", "date": "2026-10-23",
+                  "why": "no loop: stat_cy03h's next value does not read req_cy02h"},
+    "own_cy02h": {"from": ["req_in_cy01h"], "by": "OI", "date": "2026-10-23",
+                  "why": "not an architect's"},
+    "x_cy02h":   {"from": ["stat_cy03h"], "by": "OA", "date": "2026-10-23",
+                  "why": "x_cy02h does not read stat_cy03h"}
+  }
+}

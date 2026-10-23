@@ -1,0 +1,7 @@
+{
+  "_comment": "CCV-L23's declared feedback for reference_loop.sv, a compliant fixture: the request register reads the grant register back, the back edge of their loop.",
+  "reads": {
+    "req_cy02h": {"from": ["gnt_cy03h"], "by": "OA", "date": "2026-10-23",
+                  "why": "a one-cycle select loop, as ooe_sched's (OA's ruling on TI-38)"}
+  }
+}
