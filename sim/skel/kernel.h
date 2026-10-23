@@ -247,6 +247,11 @@ struct Kernel {
   /// Each warp's CTA slot, as RAU gave it (TI-34): for the checks on the
   /// cta_slot OOE stamps on memops and faults, never for a decision.
   std::map<unsigned, unsigned> cta_slot_of;
+  /// Each warp's CTA, by the order ccv-sim's runs name ctaids: the warps of
+  /// one -cta run share one (CP-30), each CTAS run has its own. RAU gives a
+  /// CTA one slot, and MIU checks a slot names one CTA (oracle, for checks).
+  std::vector<unsigned> cta_of;
+  unsigned ctas = 0;
   void hit(const char *bin, uint64_t n = 1) { cover[bin] += n; }
   void peak(const char *bin, uint64_t v) { cover[bin] = std::max(cover[bin], v); }
 

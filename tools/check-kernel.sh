@@ -33,6 +33,10 @@
 #                                                V-35 names the late done
 #   srd's value from OOE's identity (Q-38)    corrupt-ctaid (srd kernel): the
 #                                                lanes' srd result is wrong
+#   a CTA is one CTA slot, its warps from one cta-per-warp (lanectx): MIU sees
+#     ccv-sim -cta run, and a slot is one     one CTA's warps in two slots;
+#     CTA's (CP-30)                              cta-shared (rope): two CTAs
+#                                                in one slot
 #   an unallocated srd selector faults        srd-selector: DEC's range check
 #                                                names it; nothing retires it
 #   the lane mask is on the wire with valid,  late-lead: every lane takes a
@@ -461,6 +465,19 @@ if grep -q "^CHECK lane [0-9]*: seq 2 srd 8, oracle 7" "$B/kernel_corrupt-ctaid.
   say "--break corrupt-ctaid: srd's lanes reject it" "PASS"
 else
   bad "--break corrupt-ctaid" "a wrong CTA index reached a register unnoticed"
+fi
+# One CTA slot per CTA (CP-30): lanectx's two warps are one -cta run.
+"$SKEL" --kernel build/oracle/lanectx/oracle.jsonl --break cta-per-warp >"$B/kernel_cta-per-warp.log" 2>&1
+if grep -q "^CHECK miu: warps 0 and 1 of ctaid 0 name CTA slots 0 and 1" "$B/kernel_cta-per-warp.log"; then
+  say "--break cta-per-warp: one CTA in two slots" "PASS (lanectx)"
+else
+  bad "--break cta-per-warp" "one CTA's warps in two CTA slots went unnoticed"
+fi
+"$SKEL" --kernel build/oracle/rope/oracle.jsonl --break cta-shared >"$B/kernel_cta-shared.log" 2>&1
+if grep -q "^CHECK miu: CTA slot 0 holds warp 0 of ctaid 0 and warp 1 of ctaid 1" "$B/kernel_cta-shared.log"; then
+  say "--break cta-shared: two CTAs in one slot" "PASS (rope)"
+else
+  bad "--break cta-shared" "two CTAs in one CTA slot went unnoticed"
 fi
 
 # -- the lane mask: one cycle ahead, and always gating (Q-40) ---------------

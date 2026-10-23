@@ -834,6 +834,9 @@ private:
   /// rau_miu_cta and on a kill.
   /// gen counts the clears: a fill sent before one lands nothing.
   /// Entry kLocalBase is O-69's local_base, the word at byte 24 (IS-19).
+  /// For the check that a CTA slot names one CTA: each slot's CTA and each
+  /// CTA's slot, with the warp first seen naming it.
+  std::map<unsigned, std::pair<unsigned, unsigned>> slot_cta_, cta_slot_;
   struct Windows {
     uint64_t block = 0;
     std::array<uint32_t, 17> w{};
@@ -998,6 +1001,19 @@ private:
           if (k_.cta_slot_of.count(w) && cs != k_.cta_slot_of[w]) {
             k_.fail("miu: rob tag %u (warp %u) names CTA slot %u; RAU gave it %u", tag, w, cs,
                     k_.cta_slot_of[w]);
+          }
+          // A slot is one CTA's, and a CTA has one slot (CP-30): the warps
+          // ccv-sim ran as one CTA share its state here, and no other's.
+          if (w < k_.cta_of.size()) {
+            const unsigned cta = k_.cta_of[w];
+            auto a = slot_cta_.emplace(cs, std::make_pair(cta, w)).first;
+            auto b = cta_slot_.emplace(cta, std::make_pair(cs, w)).first;
+            if (a->second.first != cta)
+              k_.fail("miu: CTA slot %u holds warp %u of ctaid %u and warp %u of ctaid %u", cs,
+                      a->second.second, k_.orcs[a->second.second].ctaid, w, k_.orcs[w].ctaid);
+            else if (b->second.first != cs)
+              k_.fail("miu: warps %u and %u of ctaid %u name CTA slots %u and %u", b->second.second,
+                      w, k_.orcs[w].ctaid, b->second.first, cs);
           }
         }
         memop_[tag] = {s, m.payload, now_, m.tid};
@@ -3617,6 +3633,14 @@ private:
   }();
   std::map<unsigned, unsigned> place_of_;    ///< parked or moving warp -> its place
 
+  /// RAU's warp-to-CTA table: a CTA slot per CTA, whose warps all name it
+  /// (CP-30). cta-per-warp gives each warp its own; cta-shared gives every
+  /// warp slot 0.
+  unsigned ctaSlot(unsigned w) const {
+    return k_.brk == "cta-per-warp" ? w : k_.brk == "cta-shared" ? 0 : k_.cta_of[w];
+  }
+  std::set<unsigned> cta_sent_;              ///< CTA slots whose rau_miu_cta is out
+
   Bits allocMsg(unsigned w, unsigned slot, unsigned op) {
     const Ch &c = ch();
     Bits a = msgOf(c.rau_ooe);
@@ -3628,10 +3652,10 @@ private:
       put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
       put(a, c.rau_ooe, "warp_in_cta", k_.orcs[w].warp_in_cta);
       put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
-      // Its CTA's slot (TI-34): the one rau_miu_cta names, a slot per warp
-      // here. Recorded for the checks on what OOE stamps with it.
-      put(a, c.rau_ooe, "cta_slot", w);
-      k_.cta_slot_of[w] = w;
+      // Its CTA's slot (TI-34): the one rau_miu_cta names. Recorded for the
+      // checks on what OOE stamps with it.
+      put(a, c.rau_ooe, "cta_slot", ctaSlot(w));
+      k_.cta_slot_of[w] = ctaSlot(w);
     }
     return a;
   }
@@ -3940,21 +3964,27 @@ private:
     // exist before its first instruction can reach them.
     if (!launch_q_.empty() && launch_q_.front().cta) {
       Launch &l = launch_q_.front();
-      if (can(c.rau_miu, 0) && can(c.rau_fet, 0)) {
-        Bits a = msgOf(c.rau_miu);
-        put(a, c.rau_miu, "cta_slot", l.w);
-        // F-RO's .const range, the grid's from its module (TI-26): the
-        // launch's, which ccv-sim was run with, until Q-50's descriptor.
-        put(a, c.rau_miu, "const_base", k_.orcs[l.w].const_base);
-        put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
-        // Where MIU's window table fills from (TI-31).
-        put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
-        send(c.rau_miu, 0, a, none);
+      // The CTA's configuration goes to MIU once, with its first warp.
+      const unsigned cs = ctaSlot(l.w);
+      const bool first = !cta_sent_.count(cs);
+      if ((!first || can(c.rau_miu, 0)) && can(c.rau_fet, 0)) {
+        if (first) {
+          Bits a = msgOf(c.rau_miu);
+          put(a, c.rau_miu, "cta_slot", cs);
+          // F-RO's .const range, the grid's from its module (TI-26): the
+          // launch's, which ccv-sim was run with, until Q-50's descriptor.
+          put(a, c.rau_miu, "const_base", k_.orcs[l.w].const_base);
+          put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
+          // Where MIU's window table fills from (TI-31).
+          put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
+          send(c.rau_miu, 0, a, none);
+          cta_sent_.insert(cs);
+        }
         const Oracle &o = k_.orcs[l.w];
         Bits f = msgOf(c.rau_fet);
         put(f, c.rau_fet, "warp_id", l.w);
         put(f, c.rau_fet, "tier1_id", l.slot);
-        put(f, c.rau_fet, "cta_slot", l.w);
+        put(f, c.rau_fet, "cta_slot", cs);
         put(f, c.rau_fet, "start_pc", o.code_base);
         // The warp's lanes (AR's responses TI-27 (a), rev 134): [0, n), n
         // the CTA's threads past this warp's first, T - 32 x warp_in_cta, at
@@ -4386,10 +4416,6 @@ std::string Kernel::loadOracles(const std::string &path) {
     const std::string p = base + "." + std::to_string(w) + ".jsonl";
     if (FILE *f = std::fopen(p.c_str(), "r")) std::fclose(f);
     else break;
-    // RAU queues a launch for a free tier-1 slot, and gives each warp a CTA
-    // slot of its own for the run (one warp a CTA).
-    if (w >= ccv::prov::kMaxCta)
-      return p + ": more warps than CCV_P_MAX_CTA, and RAU gives each a CTA slot";
     Oracle o;
     if (std::string e = o.load(p); !e.empty()) return e;
     if (o.code != orcs[0].code || o.code_base != orcs[0].code_base || o.init_mem != orcs[0].init_mem)
@@ -4397,6 +4423,15 @@ std::string Kernel::loadOracles(const std::string &path) {
     if (std::string e = ctx(o, w, p); !e.empty()) return e;
     orcs.push_back(std::move(o));
   }
+  // The runs' CTAs: the warps of one ccv-sim -cta run share its ctaid and
+  // are one CTA (CP-30); each CTAS run is a CTA of its own. RAU gives each
+  // CTA one CTA slot, so there may be no more than CCV_P_MAX_CTA of them.
+  std::map<unsigned, unsigned> slot;
+  cta_of.clear();
+  for (const Oracle &o : orcs) cta_of.push_back(slot.emplace(o.ctaid, unsigned(slot.size())).first->second);
+  ctas = unsigned(slot.size());
+  if (ctas > ccv::prov::kMaxCta)
+    return path + ": more CTAs than CCV_P_MAX_CTA, and RAU gives each a CTA slot";
   return "";
 }
 

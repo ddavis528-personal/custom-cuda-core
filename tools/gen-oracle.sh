@@ -11,16 +11,16 @@
 #
 # kernel.cfg: SOURCE=<path in the compiler snapshot, or core:<path here>>, an
 # optional CTAID=<n> (ccv-sim -ctaid), an optional CTAS=<n>, an optional
-# THREADS=<n> (ccv-sim -threads), an optional WARPS=<n> (the CTA's first n
-# warps, each its own run with ccv-sim -warp: oracle.<w>.jsonl for warp w of
-# the CTA; TI-29), an optional CONST=<base>:<limit> (F-RO's
+# THREADS=<n> (ccv-sim -threads), an optional WARPS=<n> (the CTA's n warps,
+# one ccv-sim -cta run that writes oracle.<w>.jsonl for warp w of the CTA,
+# sharing its memory: CP-30, CP-31), an optional CONST=<base>:<limit> (F-RO's
 # .const range, ccv-sim -const-range), an optional FAULT=<cause> (the run
 # ends in that fault, ccv-sim's exit 3, its record and state at the fault
 # written; TI-26, TI-28; with several warps, the first), then one poke per
-# line. ccv-sim runs one
-# warp a CTA, so a kernel of several warps is CTAS CTAs, CTAID upward, each
-# its own run: oracle.jsonl for the first, oracle.<w>.jsonl for warp w, which
-# the skeleton launches side by side (Kernel::loadOracles).
+# line. A kernel of several CTAS is CTAS CTAs of one warp, CTAID upward, each
+# its own run: oracle.jsonl for the first, oracle.<w>.jsonl for run w. The
+# skeleton launches them side by side, a CTA slot per ctaid
+# (Kernel::loadOracles).
 set -uo pipefail
 cd "$(dirname "$0")/.."
 C=$(tools/fetch-compiler.sh) || exit 1
@@ -64,15 +64,16 @@ for k in test/kernels/*/; do
   ok=1
   python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
     "$out/kernel.bin" >/dev/null || ok=0
-  for ((w = 0; ok && w < ${ctas:-${warps:-1}}; ++w)); do
+  # WARPS: one run of the whole CTA; CTAS: a run per CTA.
+  for ((w = 0; ok && w < ${ctas:-1}; ++w)); do
     o="$out/oracle.jsonl"; [ $w = 0 ] || o="$out/oracle.$w.jsonl"
     cta=()
     [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
-    [ -n "$warps" ] && cta=(-ctaid "${ctaid:-0}" -warp "$w")
     # The hardware warp context srd #2 names (O-64): RAU gives run w's warp
-    # warp_id w, so ccv-sim's %lanectx must name w too, whichever CTA and
-    # warp of it the run is (ccv-sim -context, TI-35).
+    # warp_id w, so ccv-sim's %lanectx must name w too (ccv-sim -context,
+    # TI-35). A -cta run's warp v is context -context + v.
     cta+=(-context "$w")
+    [ -n "$warps" ] && cta+=(-cta)
     # O-69's spill space starts past the device's lane contexts, not one
     # core's (ccv-sim's default): CCV_LANE_CONTEXTS, as MIU forms it (IS-19).
     cta+=(-lane-contexts "$lctx")
@@ -89,9 +90,13 @@ for k in test/kernels/*/; do
       [ $st = 0 ] || ok=0
     fi
   done
+  # A -cta run writes a file per warp of the CTA: WARPS of them.
+  if [ $ok = 1 ] && [ -n "$warps" ]; then
+    [ "$(ls "$out"/oracle*.jsonl | wc -l)" = "$warps" ] || ok=0
+  fi
   if [ $ok = 1 ]; then
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" \
-      "PASS ($(cat "$out"/oracle*.jsonl | wc -l) records${ctas:+, $ctas warps})"
+      "PASS ($(cat "$out"/oracle*.jsonl | wc -l) records${ctas:+, $ctas warps}${warps:+, one CTA of $warps warps})"
   else
     printf '  %-46s %s\n' "oracle $name from the pinned ccv-sim" "FAIL"
     rc=1
