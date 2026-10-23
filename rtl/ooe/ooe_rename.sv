@@ -480,6 +480,7 @@ module ooe_rename #(
   // ooe_rs's request (its lead's twin, from Rename 2's copies: while Rename 1
   // holds a lane or the request is set, to clear it).
   logic [R-1:0]       m_v_cq04h, m_gwe_cq04h, m_pwe_cq04h, m_cv_cq04h;
+  logic [R*GR-1:0]    m_grow_cq04h;       // each GPR name's row: names are whole rows until slice 6
   logic [R*GW-1:0]    m_gname_cq04h;
   logic [R*PW-1:0]    m_pname_cq04h;
   logic [2*R*LP-1:0]  m_pp_cq04h;
@@ -500,12 +501,15 @@ module ooe_rename #(
       m_gwe_cq04h   <= p_gwe_cq03h;
       m_pwe_cq04h   <= p_pwe_cq03h;
       m_cv_cq04h    <= d_cp_cq03h;
-      m_gname_cq04h <= r_gname_cq03h;
+      for (int l = 0; l < R; l++) m_grow_cq04h[l * GR +: GR] <= r_gname_cq03h[l * GW + (GW - GR) +: GR];
       m_pname_cq04h <= r_pname_cq03h;
       m_pp_cq04h    <= ports_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
       for (int l = 0; l < R; l++)
         m_cvc_cq04h[l * CW +: CW] <= codes_of(d_unit_cq03h[l * 3 +: 3], d_pg_cq03h[l * 3 +: 3], d_nob_cq03h[l]);
     end
+  end
+  for (genvar l = 0; l < R; l++) begin : g_mg
+    assign m_gname_cq04h[l * GW +: GW] = {m_grow_cq04h[l * GR +: GR], (GW - GR)'(0)};
   end
   ooe_prodmap #(.N(N), .NR(NR), .A(R), .NG(NN), .NP(NP), .G(G)) u_map (
     .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(|d_v_cq03h), .v_cq01h(m_v_cq04h), .gwe_cq01h(m_gwe_cq04h),
