@@ -880,6 +880,30 @@ Built (`rtl/ooe/`):
      path is 7.3, so Rename 1 still converges (wb at 17, 24.3). ooe_rat's
      tk is data only (the D of its lead registers wl and ck), so its
      arrival is the take's 14 (OA's rev 194).
+     *Rename 2 (7c, built).* ooe_rendep reads the Rename 1 register: the
+     lanes' valid and write bits from its p_ copy, the names and reads
+     bound by u_ren1nr from its r_ copy, and each lane's attributes (x_:
+     the head's decode-time reads and bypass fields, the c_x port, with its
+     class bits from the admission bits; a lane with neither class bit
+     takes no RS entry). Rename 1's reads are no longer an output: only
+     Rename 2 reads them, and rename_tb through CCV_CHECK_RENAME ports.
+     ooe_rendep's lead is the go's registered sel, a superset of a take.
+     The Rename 2 register holds the group for Rename 3: ooe_prodmap's
+     record (names, ports packed per class in lane order, codes from
+     ooe_rendep's table) and ooe_rs's request. The request's lead leaves
+     from its own copies of the lanes' valid and class bits (o_lv, o_c: 16
+     flops), at 7.9 NGD. ooe_rs's registered grant is an input. The bench
+     (rename_tb) drives the grant from the model's allocations three steps
+     back, as rendep_tb does. After each edge it holds the request and every
+     row of ooe_rendep's stage register to the model's, using rendep_tb's
+     compare with ooe_rs's masks allowed. Over 25 seeds and the directed
+     tests, 49,764 rows and 32,779 cells (1,912 in-group, 4,015 to the group
+     ahead) were compared and none differ. Controls no-reads (no head's
+     attributes say it reads) and no-grant (caught by ooe_prodmap's
+     granted) are caught. ooe_rendep and ooe_prodmap are blackboxed in
+     ooe_rename's unit. check-ngd: 14.4 flop to flop. check-cg: 956 flops,
+     931 behind 2 gates. ooe_rendep's gsn and psn budgets move to 6, by
+     OA's rev 194 (Rename 1's reads leave at 5.6).
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
@@ -895,8 +919,8 @@ copies.
 | `ooe_rs` | the valid bits, for the outputs | 45 |
 | `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
 | `ooe_wake` | the issued bits | 45 |
-| `ooe_rename` | the Rename 1 register's pending-group fields (for the heads' reads), name index and free-list heads (twice more: the reads out, the heads' reads) | 220 |
-| **built** | | **1211** |
+| `ooe_rename` | the Rename 1 register's pending-group fields (for the heads' reads), name index and free-list heads (twice more: the reads out, the heads' reads); the lanes' valid and class bits for the RS request's lead | 236 |
+| **built** | | **1227** |
 | `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
 | `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
 

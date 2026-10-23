@@ -33,8 +33,9 @@
 #   its directed and random unit tests (test/ooe/rat_tb.cpp);
 # - Rename 1 (ooe_headrd, ooe_ren1, its register, ooe_ren1n) against the
 #   model's renames, live (test/ooe/ren1_tb.cpp);
-# - ooe_rename (the go, Rename 1 and the free lists) beside ooe_rat
-#   against the model's takes, renames and names, live (test/ooe/rename_tb.cpp).
+# - ooe_rename (the go, Rename 1 and 2, the free lists) beside ooe_rat
+#   against the model's takes, renames, names and RS rows, live
+#   (test/ooe/rename_tb.cpp).
 # Usage: test/ooe/run-rtl.sh [vectors] [seeds]
 set -uo pipefail
 cd "$(dirname "$0")/../.."
@@ -496,29 +497,30 @@ for c in lane-swap name-reverse drop-restore; do
   fi
 done
 
-# ooe_rename (slice 7's first step: the go, Rename 1 and the free lists)
-# beside ooe_rat (test/ooe/ooe_rename_tb.sv), driven from the model's go
-# log, its renames' fields and its frees a model cycle behind; its takes,
-# lanes, names and reads compared. Nothing tells it what was taken.
+# ooe_rename (slice 7's first step and 7c: the go, Rename 1 and 2, the free
+# lists) beside ooe_rat (test/ooe/ooe_rename_tb.sv), driven from the model's
+# go log, its renames' fields, its frees a model cycle behind and ooe_rs's
+# grant; its takes, lanes, names, reads, RS request and rows compared.
+# Nothing tells it what was taken.
 read -r rename_g rename_d < <(python3 test/ooe/rename-params.py)
 dir=build/ooe-rtl/rename
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
+      --trace -DCCV_CHECK_RENAME ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 ${rename_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/rtl/ooe/ooe_freelist.sv" \
-      "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rename.sv" \
-      "$PWD/test/ooe/ooe_rename_tb.sv" "$PWD/test/ooe/rename_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
+      "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" \
+      "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" "$PWD/test/ooe/rename_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
       "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
   say "rename: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
 fi
 if out=$("$dir/rename_tb" "$seeds" 2>&1); then
-  say "rename (go, Rename 1, free lists) == model, live" "PASS ($(echo "$out" | grep '^rename_tb control' | sed 's/.*seeds=//'))"
+  say "rename (go, Rename 1 and 2, free lists) == model, live" "PASS ($(echo "$out" | grep '^rename_tb control' | sed 's/.*seeds=//'))"
 else
   say "rename == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in drop-free no-lead no-write-bits no-hold drop-restore; do
+for c in drop-free no-lead no-write-bits no-hold drop-restore no-reads no-grant; do
   if RENAME_CONTROL=$c "$dir/rename_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rename)" "MISSED"; fail=1
   else

@@ -78,9 +78,9 @@ case "$unit" in
     # Beside the ooe_rat it reads and writes (test/ooe/ooe_rename_tb.sv);
     # the unit's scope is u_rename.
     read -r g d < <(python3 test/ooe/rename-params.py)
-    vl ooe_rename_tb "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
+    vl ooe_rename_tb "-DCCV_CHECK_RENAME ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
       "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
-      "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
+      "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
       "$PWD/test/ooe/rename_tb.cpp" ;;
   ooe_go)
     slots=$(val CCV_TIER1_WARPS)

@@ -253,7 +253,9 @@
       ],
       "blackbox": {
         "ooe_go": "rtl/ooe/ooe_go.sv",
-        "ooe_freelist": "rtl/ooe/ooe_freelist.sv"
+        "ooe_freelist": "rtl/ooe/ooe_freelist.sv",
+        "ooe_rendep": "rtl/ooe/ooe_rendep.sv",
+        "ooe_prodmap": "rtl/ooe/ooe_prodmap.sv"
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",

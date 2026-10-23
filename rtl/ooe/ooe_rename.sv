@@ -1,8 +1,8 @@
-//===-- ooe_rename.sv - OOE rename: the go, Rename 1 and the free lists -----===//
+//===-- ooe_rename.sv - OOE rename: the go, Rename 1 and 2, the free lists ---===//
 //
 // Spec: the design doc's Rename's go decision and Stage boundaries (OA-21,
 //       OA-22; Rename 1, OI-67, OOE doc rev 285); docs/ooe-rtl-plan.md,
-//       ooe_rename, slices 4, 5 and 7 (this is 7's first step).
+//       ooe_rename, slices 4, 5 and 7 (its first step and 7c).
 //
 // Rename's go and its first stage, assembled. ooe_go takes, from decq's
 // output register and rename's registered state, each warp's prefix and the
@@ -17,18 +17,28 @@
 // Rename 1 register for what reads it next: the pending group (ooe_rat's
 // write ports and the heads' reads) and Rename 2.
 //
+// Rename 2 (slice 7c) reads the Rename 1 register: ooe_rendep looks up each
+// uop's producers and registers its RS rows by allocation port, and the
+// Rename 2 register holds the group for Rename 3: ooe_prodmap's record of
+// its names and codes, and ooe_rs's allocation request. Ports are packed per
+// class in lane order, a masked load's copy on the RCU port after its main
+// (as ooe_rendep, ooe_prodmap and ooe_rs number them). A lane with neither
+// class bit (an exit, a decode fault) takes no RS entry. A lane carries its
+// decode-time attributes (c_x: the reads it makes and its bypass fields)
+// from its head, as decq gives them.
+//
 // Not yet here (slice 7's next steps): rename's pool and floor registers
 // and its counters (ooe_rencred), so the go's pool, floors and ROB terms
-// are ports; ooe_rendep and ooe_prodmap, so Rename 2's fields leave as
-// outputs; restore-allocate's writes and atomics (asserted absent); the
+// are ports; restore-allocate's writes and atomics (asserted absent); the
 // narrow allocator (slice 6): names are whole rows.
 //
 // Clock gating: the Rename 1 register's payload is clocked while some slot
-// had a head (ooe_go's registered sel, a superset of a take), its valid bits
-// every cycle. The reference is the model: test/ooe/rename_tb.cpp.
+// had a head (ooe_go's registered sel, a superset of a take), the Rename 2
+// register's while Rename 1 holds a lane; their valid bits every cycle. The
+// reference is the model: test/ooe/rename_tb.cpp.
 //
-// Reset line: the go's and the free lists' own; the Rename 1 register's
-// valid bits clear.
+// Reset line: the go's, the free lists', ooe_rendep's and ooe_prodmap's own;
+// the Rename 1 and 2 registers' valid bits clear.
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
@@ -48,14 +58,27 @@ module ooe_rename #(
   parameter int PW = 6,                  // predicate name (CCV_P_W_PHYS_PRED)
   parameter int FB = 8,                  // a free list's candidate buffer
   parameter int FK = 4,                  // its refill banks
+  parameter int N  = 45,                 // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
+  parameter int NR = 30,                 // RS RCU entries (CCV_P_RS_RCU)
+  parameter int NU = 8,                  // lat_class codes
+  parameter int G  = 8,                  // bypass groups (CCV_P_BYP_GROUPS)
+  // ooe_rendep's code table (its CT; rendep-params.py's at today's parameters).
+  parameter logic [2*NU*G*G-1:0] CT = 1024'hffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff3ffffffff1fff4ffffffffffffffffffffffffffffffff,
   localparam int H  = 2 * R - 1,
   localparam int NC = S * R,
   localparam int GR = $clog2(NG),
+  localparam int NN = NG << (GW - GR),   // GPR names: rows by positions
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LC = (C > 1) ? $clog2(C) : 1,
   localparam int MW = 16 * GW + 4 * PW,
   localparam int XM = 5 * R,
-  localparam int LX = $clog2(XM + 1)
+  localparam int LX = $clog2(XM + 1),
+  localparam int XW = 20,                // a head's Rename 2 attributes (c_x)
+  localparam int XL = XW + 3,            // a lane's: and its class bits (RS, MIU, copy)
+  localparam int P  = 2 * R,             // RS allocation ports: R RCU, then R MIU
+  localparam int LP = $clog2(P),
+  localparam int W  = $clog2(N),
+  localparam int CW = 2 * G
 ) (
   input  logic              ooe_core_clk,
   input  logic              ooe_rst_r00h,
@@ -70,6 +93,12 @@ module ooe_rename #(
   input  logic [NC*2*2-1:0] c_pq_cq01h,
   input  logic [NC-1:0]     c_br_cq01h,
   input  logic [NC*LC-1:0]  c_ckpt_cq01h,
+  // And each head's Rename 2 attributes: bit 0 an atomic, 1 the copy reads
+  // the guard, 2 its consumer group is none (RCU executes it), 3 no bypass
+  // as a producer, 4-7 the GPR reads (src0..2, the merge source), 8 it reads
+  // its guard, 9 the predicate-logic sources, 10 the predicate merge, 11-13
+  // its consumer group, 14-16 its lat_class, 17-19 its bypass group.
+  input  logic [NC*XW-1:0]  c_x_cq01h,
   // The go's other inputs (rename's registers and the ROB's, until slice
   // 7 brings them in), and its leads.
   input  logic [4*LX-1:0]   px_cq01h,
@@ -96,8 +125,11 @@ module ooe_rename #(
   // The take, to decq (deq_t, deq_sel) and ooe_rat (tk).
   output logic [S*R-1:0]    take_cq02h,
   output logic [S-1:0]      sel_cq02h,
-  // The Rename 1 register, as ooe_rat's write ports and Rename 2 read it,
-  // the names bound.
+  // ooe_rs's registered grant: the entries the group in Rename 3 took at
+  // the last edge, by port.
+  input  logic [P-1:0]      gnt_v_cq03h,
+  input  logic [P*W-1:0]    gnt_idx_cq03h,
+  // The Rename 1 register, as ooe_rat's write ports read it, the names bound.
   output logic [R-1:0]      q_v_cq03h,
   output logic [R*LS-1:0]   q_slot_cq03h,
   output logic [R*4-1:0]    q_dst_cq03h,
@@ -108,8 +140,25 @@ module ooe_rename #(
   output logic [R*PW-1:0]   q_pname_cq03h,
   output logic [R-1:0]      q_br_cq03h,
   output logic [R*LC-1:0]   q_ckpt_cq03h,
+  // Rename 3, to ooe_rs: the allocation request by port (its lead, the
+  // request's D) and the rows (ooe_rendep's stage register).
+  output logic [P-1:0]      req_l_cq03h,
+  output logic [P-1:0]      req_cq04h,
+  output logic [P-1:0]      row_prod_cq04h,
+  output logic [P*N-1:0]    row_dep_cq04h,
+  output logic [2*P*N-1:0]  row_code_cq04h,
+  output logic [P*P-1:0]    grp_dep_cq04h,
+  output logic [2*P*P-1:0]  grp_code_cq04h,
+  output logic [P*P-1:0]    prv_dep_cq04h,
+  output logic [2*P*P-1:0]  prv_code_cq04h
+`ifdef CCV_CHECK_RENAME
+  // Read only by test/ooe/rename_tb.cpp (CCV_CHECK_RENAME, its own, as the
+  // free lists keep CCV_CHECK for theirs): Rename 1's reads, which only
+  // Rename 2 reads in the design.
+  ,
   output logic [R*4*GW-1:0] q_g_cq03h,      // src0..2, the old destination
   output logic [R*4*PW-1:0] q_p_cq03h       // guard, old destination, q0, q1
+`endif
 );
 
   logic rst_r01h;
@@ -140,11 +189,17 @@ module ooe_rename #(
   // -- Rename 1: every candidate's reads, then the lanes -----------------------
   // A head's write bits are its admission bits (3 GPR, 4 predicate), as the
   // go counts them.
-  logic [NC-1:0] c_gwe_cq01h, c_pwe_cq01h;
+  // Its class bits, from the same: an RS entry (RCU or MIU), MIU, a copy;
+  // a lane carries them with the head's Rename 2 attributes (c_x).
+  logic [NC-1:0]    c_gwe_cq01h, c_pwe_cq01h;
+  logic [NC*XL-1:0] c_xl_cq01h;
   for (genvar s = 0; s < S; s++) begin : g_cw
     for (genvar h = 0; h < R; h++) begin : g_h
       assign c_gwe_cq01h[h * S + s] = ha_cq01h[(s * H + h) * PA + 3];
       assign c_pwe_cq01h[h * S + s] = ha_cq01h[(s * H + h) * PA + 4];
+      assign c_xl_cq01h[(h * S + s) * XL +: XL] = {c_x_cq01h[(h * S + s) * XW +: XW], ha_cq01h[(s * H + h) * PA + 2],
+                                                   ha_cq01h[(s * H + h) * PA + 1],
+                                                   ha_cq01h[(s * H + h) * PA + 0] | ha_cq01h[(s * H + h) * PA + 1]};
     end
   end
   // The Rename 1 register's copy the heads' reads see as the pending group
@@ -188,7 +243,8 @@ module ooe_rename #(
       .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
       .h_pv_cq01h(c_pv_cq03h[s * R * 4 * PW +: R * 4 * PW]), .h_pw_cq01h(c_pw_cq01h[s * R * 4 * R +: R * 4 * R]));
   end
-  logic [R-1:0]      l_v_cq02h, l_gwe_cq02h, l_pwe_cq02h, l_br_cq02h, l_x_cq02h;
+  logic [R-1:0]      l_v_cq02h, l_gwe_cq02h, l_pwe_cq02h, l_br_cq02h;
+  logic [R*XL-1:0]   l_x_cq02h;
   logic [R*LS-1:0]   l_slot_cq02h;
   logic [R*4-1:0]    l_dst_cq02h;
   logic [R*2-1:0]    l_pdst_cq02h;
@@ -197,8 +253,8 @@ module ooe_rename #(
   logic [R*4*GW-1:0] l_g_cq02h;
   logic [R*4*R-1:0]  l_gl_cq02h, l_pl_cq02h;
   logic [R*4*PW-1:0] l_p_cq02h;
-  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(1)) u_ren1 (
-    .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h('0),
+  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL)) u_ren1 (
+    .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xl_cq01h),
     .c_gv_cq01h(c_gv_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
@@ -209,8 +265,11 @@ module ooe_rename #(
   // superset of a take); its valid bits every cycle. The pending group's
   // fields twice (NGD-7), each copy (* keep *): o_ for the outputs, p_ for
   // the heads' reads; the name index and the free lists' heads three times:
-  // q_ for the new names out (by 3), r_ for the reads out (by 6, an in-group
-  // writer's name bound through it), p_ for the heads' reads.
+  // q_ for the new names out (by 3), r_ for Rename 2's reads and names (an
+  // in-group writer's name bound through it), p_ for the heads' reads; Rename
+  // 2 reads the p_ copy of the pending group's fields too. Each lane's
+  // attributes once (x_, Rename 2's), its valid and class bits again for the
+  // request's lead (o_lv, o_c: an output's).
   (* keep *) logic [R*2*R-1:0] q_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  q_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  q_palloc_cq03h;
@@ -223,15 +282,20 @@ module ooe_rename #(
   logic [R*4*GW-1:0] q_gv_cq03h;
   logic [R*4*R-1:0]  q_gl_cq03h, q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
+  logic [R*XL-1:0]   x_x_cq03h;
+  (* keep *) logic [R*3-1:0] o_c_cq03h;
+  (* keep *) logic [R-1:0]   o_lv_cq03h;
   logic              r1_en_cq02h;
   assign r1_en_cq02h = sel_cq02h != '0;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
-      o_v_cq03h <= '0;
-      p_v_cq03h <= '0;
+      o_v_cq03h  <= '0;
+      o_lv_cq03h <= '0;
+      p_v_cq03h  <= '0;
     end else begin
-      o_v_cq03h <= l_v_cq02h;
-      p_v_cq03h <= l_v_cq02h;
+      o_v_cq03h  <= l_v_cq02h;
+      o_lv_cq03h <= l_v_cq02h;
+      p_v_cq03h  <= l_v_cq02h;
     end
   end
   always_ff @(posedge ooe_core_clk) begin
@@ -261,6 +325,8 @@ module ooe_rename #(
       p_idx_cq03h    <= l_idx_cq02h;
       p_galloc_cq03h <= galloc_cq02h;
       p_palloc_cq03h <= palloc_cq02h;
+      x_x_cq03h      <= l_x_cq02h;
+      for (int l = 0; l < R; l++) o_c_cq03h[l * 3 +: 3] <= l_x_cq02h[l * XL +: 3];
     end
   end
 
@@ -279,13 +345,19 @@ module ooe_rename #(
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
     .q_g_cq01h('0), .q_gl_cq01h('0), .q_p_cq01h('0), .q_pl_cq01h('0),
     .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_gx_cq03h), .n_p(q_px_cq03h));
-  // The reads out, from the r_ copy (its new names used only inside).
-  logic [R*GW-1:0] r_gname_cq03h;
-  logic [R*PW-1:0] r_pname_cq03h;
+  // Rename 2's, from the r_ copy: the new names and the reads.
+  logic [R*GW-1:0]   r_gname_cq03h;
+  logic [R*PW-1:0]   r_pname_cq03h;
+  logic [R*4*GW-1:0] r_g_cq03h;
+  logic [R*4*PW-1:0] r_p_cq03h;
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW)) u_ren1nr (
     .q_idx_cq01h(r_idx_cq03h), .q_galloc_cq01h(r_galloc_cq03h), .q_palloc_cq01h(r_palloc_cq03h),
     .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h(q_pv_cq03h), .q_pl_cq01h(q_pl_cq03h),
-    .n_gname(r_gname_cq03h), .n_pname(r_pname_cq03h), .n_g(q_g_cq03h), .n_p(q_p_cq03h));
+    .n_gname(r_gname_cq03h), .n_pname(r_pname_cq03h), .n_g(r_g_cq03h), .n_p(r_p_cq03h));
+`ifdef CCV_CHECK_RENAME
+  assign q_g_cq03h = r_g_cq03h;
+  assign q_p_cq03h = r_p_cq03h;
+`endif
   // From the copy, the pending group's names alone (its reads unused).
   logic [R*4*GW-1:0] p_g_cq03h;
   logic [R*4*PW-1:0] p_p_cq03h;
@@ -293,6 +365,144 @@ module ooe_rename #(
     .q_idx_cq01h(p_idx_cq03h), .q_galloc_cq01h(p_galloc_cq03h), .q_palloc_cq01h(p_palloc_cq03h),
     .q_g_cq01h('0), .q_gl_cq01h('0), .q_p_cq01h('0), .q_pl_cq01h('0),
     .n_gname(p_gname_cq03h), .n_pname(p_pname_cq03h), .n_g(p_g_cq03h), .n_p(p_p_cq03h));
+
+  // -- Rename 2 ---------------------------------------------------------------
+  // Each lane's fields as ooe_rendep reads them: a uop that takes an RS
+  // entry, its class bits and attributes, its names and reads (the
+  // predicate reads in its order: guard, q0, q1, the old destination).
+  logic [R-1:0]       d_v_cq03h, d_mem_cq03h, d_cp_cq03h, d_atom_cq03h, d_cguard_cq03h, d_cnone_cq03h, d_nob_cq03h;
+  logic [R*4-1:0]     d_gsv_cq03h, d_psv_cq03h;
+  logic [R*4*PW-1:0]  d_psn_cq03h;
+  logic [R*3-1:0]     d_cg_cq03h, d_unit_cq03h, d_pg_cq03h;
+  for (genvar l = 0; l < R; l++) begin : g_d
+    localparam int X = l * XL;
+    assign d_v_cq03h[l]      = p_v_cq03h[l] && x_x_cq03h[X];
+    assign d_mem_cq03h[l]    = x_x_cq03h[X + 1];
+    assign d_cp_cq03h[l]     = x_x_cq03h[X + 2];
+    assign d_atom_cq03h[l]   = x_x_cq03h[X + 3];
+    assign d_cguard_cq03h[l] = x_x_cq03h[X + 4];
+    assign d_cnone_cq03h[l]  = x_x_cq03h[X + 5];
+    assign d_nob_cq03h[l]    = x_x_cq03h[X + 6];
+    assign d_gsv_cq03h[l * 4 +: 4] = x_x_cq03h[X + 7 +: 4];
+    assign d_psv_cq03h[l * 4 +: 4] = {x_x_cq03h[X + 13], x_x_cq03h[X + 12], x_x_cq03h[X + 12], x_x_cq03h[X + 11]};
+    assign d_cg_cq03h[l * 3 +: 3]   = x_x_cq03h[X + 14 +: 3];
+    assign d_unit_cq03h[l * 3 +: 3] = x_x_cq03h[X + 17 +: 3];
+    assign d_pg_cq03h[l * 3 +: 3]   = x_x_cq03h[X + 20 +: 3];
+    assign d_psn_cq03h[l * 4 * PW +: 4 * PW] = {r_p_cq03h[(l * 4 + 1) * PW +: PW], r_p_cq03h[(l * 4 + 3) * PW +: PW],
+                                               r_p_cq03h[(l * 4 + 2) * PW +: PW], r_p_cq03h[(l * 4 + 0) * PW +: PW]};
+  end
+  logic [N-1:0]    eg_cq03h, ec_cq03h, ep_cq03h;
+  logic [N*GW-1:0] egn_cq03h;
+  logic [N*PW-1:0] epn_cq03h;
+  logic [N*CW-1:0] ecv_cq03h;
+  // The lead: a group enters Rename 2 next cycle while some slot has a
+  // head (the go's registered sel, a superset of a take).
+  ooe_rendep #(.N(N), .A(R), .NG(NN), .NP(NP), .NU(NU), .G(G), .CT(CT)) u_dep (
+    .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(|sel_cq02h), .v_cq01h(d_v_cq03h), .mem_cq01h(d_mem_cq03h),
+    .cp_cq01h(d_cp_cq03h), .atom_cq01h(d_atom_cq03h), .gwe_cq01h(p_gwe_cq03h), .gname_cq01h(r_gname_cq03h),
+    .pwe_cq01h(p_pwe_cq03h), .pname_cq01h(r_pname_cq03h), .gsv_cq01h(d_gsv_cq03h), .gsn_cq01h(r_g_cq03h),
+    .psv_cq01h(d_psv_cq03h), .psn_cq01h(d_psn_cq03h), .cguard_cq01h(d_cguard_cq03h), .cg_cq01h(d_cg_cq03h),
+    .cnone_cq01h(d_cnone_cq03h), .unit_cq01h(d_unit_cq03h), .pg_cq01h(d_pg_cq03h), .nob_cq01h(d_nob_cq03h),
+    .eg_cq01h(eg_cq03h), .egn_cq01h(egn_cq03h), .ep_cq01h(ep_cq03h), .epn_cq01h(epn_cq03h), .ecv_cq01h(ecv_cq03h),
+    .gnt_v_cq01h(gnt_v_cq03h), .gnt_idx_cq01h(gnt_idx_cq03h),
+    .row_prod_cq02h(row_prod_cq04h), .row_dep_cq02h(row_dep_cq04h), .row_code_cq02h(row_code_cq04h),
+    .grp_dep_cq02h(grp_dep_cq04h), .grp_code_cq02h(grp_code_cq04h), .prv_dep_cq02h(prv_dep_cq04h),
+    .prv_code_cq02h(prv_code_cq04h));
+
+  // Each lane's ports, packed per class in lane order: a main on its
+  // class's next port, a copy on the RCU port after its main.
+  function automatic logic [2*R*LP-1:0] ports_of(input logic [R-1:0] v, input logic [R-1:0] mem,
+                                                  input logic [R-1:0] cp);
+    logic [LP-1:0] ri, mi;
+    logic [2*R*LP-1:0] pp;
+    ri = '0;
+    mi = '0;
+    pp = '0;
+    for (int l = 0; l < R; l++) begin
+      pp[l * LP +: LP]       = mem[l] ? LP'(R) + mi : ri;
+      pp[(R + l) * LP +: LP] = ri;
+      if (v[l] && mem[l]) mi = mi + 1'b1;
+      if (v[l] && (!mem[l] || cp[l])) ri = ri + 1'b1;
+    end
+    ports_of = pp;
+  endfunction
+  // The ports a group requests: the RCU ports its mains and copies take,
+  // then the MIU ports, each class's from its first.
+  function automatic logic [P-1:0] req_of(input logic [R-1:0] v, input logic [R-1:0] mem, input logic [R-1:0] cp);
+    logic [P-1:0] q;
+    logic [LP-1:0] nr, nm;
+    nr = '0;
+    nm = '0;
+    for (int l = 0; l < R; l++) begin
+      if (v[l] && (!mem[l] || cp[l])) nr = nr + 1'b1;
+      if (v[l] && mem[l]) nm = nm + 1'b1;
+    end
+    for (int k = 0; k < R; k++) begin
+      q[k]     = LP'(k) < nr;
+      q[R + k] = LP'(k) < nm;
+    end
+    req_of = q;
+  endfunction
+  // A producer's codes for each consumer group (ooe_rendep's).
+  function automatic logic [CW-1:0] codes_of(input logic [2:0] unit, input logic [2:0] pg, input logic nob);
+    logic [CW-1:0] c;
+    for (int g = 0; g < G; g++) begin
+      c[g * 2 +: 2] = 2'd3;
+      if (!nob)
+        for (int un = 0; un < NU; un++)
+          for (int pq = 0; pq < G; pq++)
+            if (unit == 3'(un) && pg == 3'(pq)) c[g * 2 +: 2] = CT[((un * G + pq) * G + g) * 2 +: 2];
+    end
+    codes_of = c;
+  endfunction
+
+  // The request's lead, from its own copies (o_lv, o_c); the request, from
+  // Rename 2's.
+  logic [R-1:0] o_rv_cq03h, o_mem_cq03h, o_cp_cq03h;
+  for (genvar l = 0; l < R; l++) begin : g_o
+    assign o_rv_cq03h[l]  = o_lv_cq03h[l] && o_c_cq03h[l * 3];
+    assign o_mem_cq03h[l] = o_c_cq03h[l * 3 + 1];
+    assign o_cp_cq03h[l]  = o_c_cq03h[l * 3 + 2];
+  end
+  assign req_l_cq03h = req_of(o_rv_cq03h, o_mem_cq03h, o_cp_cq03h);
+
+  // -- The Rename 2 register: the group in Rename 3 -----------------------------
+  // ooe_prodmap's record of it (its payload while Rename 1 holds a lane) and
+  // ooe_rs's request (every cycle; its lead's twin, from Rename 2's copies).
+  logic [R-1:0]       m_v_cq04h, m_gwe_cq04h, m_pwe_cq04h, m_cv_cq04h;
+  logic [R*GW-1:0]    m_gname_cq04h;
+  logic [R*PW-1:0]    m_pname_cq04h;
+  logic [2*R*LP-1:0]  m_pp_cq04h;
+  logic [R*CW-1:0]    m_cvc_cq04h;
+  logic               r2_en_cq03h;
+  assign r2_en_cq03h = p_v_cq03h != '0;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      m_v_cq04h <= '0;
+      req_cq04h <= '0;
+    end else begin
+      m_v_cq04h <= d_v_cq03h;
+      req_cq04h <= req_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (r2_en_cq03h) begin
+      m_gwe_cq04h   <= p_gwe_cq03h;
+      m_pwe_cq04h   <= p_pwe_cq03h;
+      m_cv_cq04h    <= d_cp_cq03h;
+      m_gname_cq04h <= r_gname_cq03h;
+      m_pname_cq04h <= r_pname_cq03h;
+      m_pp_cq04h    <= ports_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
+      for (int l = 0; l < R; l++)
+        m_cvc_cq04h[l * CW +: CW] <= codes_of(d_unit_cq03h[l * 3 +: 3], d_pg_cq03h[l * 3 +: 3], d_nob_cq03h[l]);
+    end
+  end
+  ooe_prodmap #(.N(N), .NR(NR), .A(R), .NG(NN), .NP(NP), .G(G)) u_map (
+    .ooe_core_clk, .ooe_rst_r00h, .v_l_cq00h(|d_v_cq03h), .v_cq01h(m_v_cq04h), .gwe_cq01h(m_gwe_cq04h),
+    .gname_cq01h(m_gname_cq04h), .pwe_cq01h(m_pwe_cq04h), .pname_cq01h(m_pname_cq04h),
+    .pm_cq01h(m_pp_cq04h[0 +: R * LP]), .cv_cq01h(m_cv_cq04h), .pc_cq01h(m_pp_cq04h[R * LP +: R * LP]),
+    .cvc_cq01h(m_cvc_cq04h), .gnt_v_cq02h(gnt_v_cq03h), .gnt_idx_cq02h(gnt_idx_cq03h), .eg_cq03h,
+    .egn_cq03h, .ec_cq03h, .ep_cq03h, .epn_cq03h, .ecv_cq03h);
 
   // A lane's names come from what its free list offers: every name a take
   // asks for is there.
