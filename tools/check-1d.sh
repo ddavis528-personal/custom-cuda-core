@@ -181,6 +181,8 @@ no loop behind it|req_cy02h reads stat_cy03h as declared feedback, but no regist
 not an architect's|own_cy02h's declared feedback reads are not an architect's
 a read not made|x_cy02h is declared to read stat_cy03h as feedback, but does not read it
 the loop undeclared|rqn_cy02h is at stage 02 but sequential logic over stage(s) 01,03
+a listed hop that does not exist|q1_cy02h's declared loop q1_cy02h -> q3_cy04h for its read of q3_cy04h does not hold: no hop from q1_cy02h to q3_cy04h
+a longer loop not listed|p1_cy02h reads p3_cy04h as declared feedback, but no register
 WANT
 
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a

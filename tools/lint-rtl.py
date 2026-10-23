@@ -325,6 +325,26 @@ def feedback_loop(deps, flops, reader, read):
     return any(r in cone(deps, flops, deps.get(g, ()))[1] for g in gs for r in rs)
 
 
+def loop_path(deps, flops, reader, read, loop):
+    """A loop of any length, declared by its registers in order (OA's rev
+    191): reader is loop[0] or feeds its next value, each register's next
+    value depends combinationally on the one before it, and read comes from
+    the last. Returns why it does not hold, or None."""
+    if len(loop) < 2:
+        return "a loop names two registers or more"
+    for q in loop:
+        if q not in flops:
+            return "%s is not a register" % q
+    if reader != loop[0] and reader not in cone(deps, flops, deps.get(loop[0], ()))[0]:
+        return "%s is not %s and does not feed its next value" % (reader, loop[0])
+    for a, b in zip(loop, loop[1:]):
+        if a not in cone(deps, flops, deps.get(b, ()))[1]:
+            return "no hop from %s to %s: %s's next value does not depend on it" % (a, b, b)
+    if loop[-1] not in cone(deps, flops, [read])[1]:
+        return "%s does not come from %s" % (read, loop[-1])
+    return None
+
+
 # The common ports every block declares, generated rather than hand-written.
 # They are deliberately UNIFORM across blocks -- which is the same argument
 # that made the original CCV-L02 want one name everywhere: a swap harness that
@@ -1212,11 +1232,20 @@ def check_file(path, rel):
                         add("CCV-L23", ln0,
                             "%s: %s is declared to read %s as feedback, but does not "
                             "read it: remove the declaration" % (fp, reader, rd))
+                    elif "loop" in d:
+                        why = loop_path(graph[0], graph[1], reader, rd, d["loop"])
+                        if why:
+                            add("CCV-L23", ln0,
+                                "%s: %s's declared loop %s for its read of %s does not "
+                                "hold: %s" % (fp, reader, " -> ".join(d["loop"]), rd, why))
+                        else:
+                            fb_ok.setdefault(reader, set()).add(rd)
                     elif not feedback_loop(graph[0], graph[1], reader, rd):
                         add("CCV-L23", ln0,
                             "%s: %s reads %s as declared feedback, but no register "
                             "%s comes from has a next value that depends on %s's "
-                            "register: there is no loop for the read to close"
+                            "register: there is no loop for the read to close (a "
+                            "longer loop is declared by its registers, \"loop\")"
                             % (fp, reader, rd, rd, reader))
                     else:
                         fb_ok.setdefault(reader, set()).add(rd)

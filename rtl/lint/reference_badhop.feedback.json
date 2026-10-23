@@ -1,0 +1,25 @@
+{
+  "_comment": "Fixture for bad_feedback.sv's reference_badhop: both declarations must be refused. DO NOT FIX.",
+  "reads": {
+    "q1_cy02h": {
+      "from": [
+        "q3_cy04h"
+      ],
+      "loop": [
+        "q1_cy02h",
+        "q3_cy04h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a hop that does not exist: q3's next value reads q2"
+    },
+    "p1_cy02h": {
+      "from": [
+        "p3_cy04h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a three-register loop with its registers not listed"
+    }
+  }
+}

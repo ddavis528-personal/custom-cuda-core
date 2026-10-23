@@ -484,13 +484,21 @@ skip reported:
   logic, on a register the reader is (or feeds). Read the other way, the
   read is the back edge of a two-register loop. Conditions count as
   dependencies, an `if`'s or a `case`'s selector as much as a right-hand
-  side.
+  side;
+- a longer loop (OA's rev 191: `ooe_sched`'s ready, grant and gl) names its
+  registers in order, `"loop": ["<R0>", ..., "<Rk>"]`, and the lint traces
+  that exact path: the reader is R0 or feeds its next value, each register's
+  next value depends combinationally on the one before it, and the read
+  comes from Rk. A hop it cannot trace refuses the declaration. Reachability
+  alone would accept almost anything in a scheduler, which is why the path
+  is named and not searched for.
 
 Timing is not exempt: check-ngd measures the loop whatever the tags say.
 `tools/check-1d.sh` holds it to `rtl/lint/reference_loop.sv` (a declared
-loop, silent) and `rtl/lint/bad_feedback.sv` (a declaration with no loop, one
-not an architect's, one for a read not made, and the loop undeclared: each
-refused).
+two-register loop and a listed three-register one, silent) and
+`rtl/lint/bad_feedback.sv` (a declaration with no loop, one not an
+architect's, one for a read not made, the loop undeclared, a listed hop that
+does not exist, and a three-register loop not listed: each refused).
 
 ### CCV-L22 — a block runs on its own gated clock
 
