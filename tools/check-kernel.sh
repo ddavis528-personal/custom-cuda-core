@@ -82,8 +82,10 @@
 #     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse;
 #     -- not its index in its CTA                lanectx-as-ctatid (lanectx2):
 #                                                CTA 1's warp reads 0-31
-#   st.pred (O-19, O-63; TI-36) merges only   stpred-whole-word (predlane):
-#     the issue mask's bits, after commit        lanes 0-15's bits land too
+#   ld.pred and st.pred (O-19, O-62, O-63;    drop-pred-copy, ldpred-whole-word
+#     TI-36) move only the issue mask's bits:    (predmerge): the reload loses
+#     the load's copy keeps the rest, the        lanes 16-31; stpred-whole-word
+#     store merges its word after commit         (predlane): lanes 0-15's land
 #   their address is lane 0's rbase, lane 0   xfer-low-lane (predlane): lanes
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
@@ -661,6 +663,7 @@ slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
 lanectx redirect=0 split=0
 lanectx2 redirect=0 split=0
 predspill pred_xfer=7 pred_merge=6 pred_copy=0
+predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0
 KERNELS
@@ -824,8 +827,19 @@ fi
 # puts them in window 25. The store merges only their bits (O-63): written
 # whole, lanes 0-15's land too. Its last store writes P1, clear in lanes
 # 16-31, over poked ones: as a guard, P1 would keep memory's ones there.
-# (A partial ld.pred, CP's pred-merge, waits for its copy's predicate-only
-# destination to be named on ccv_ooe_rcu_issue: TI-37.)
+# predmerge (CP's): lanes 0-15 reload P1 from a zero word and store it. The
+# reload writes only their bits, and its copy, a predicate-only one that
+# names no GPR (the zero register, TI-37), keeps lanes 16-31's. Without the
+# copy, or with the reload written whole, P1 loses lanes 16-31's ones.
+for b in drop-pred-copy ldpred-whole-word; do
+  "$SKEL" --kernel build/oracle/predmerge/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK miu: seq 6 P1's word 00000000, oracle ffff0000" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" pred_mismatch)" = 1 ]; then
+    say "--break $b: P1 loses lanes 16-31" "PASS (predmerge)"
+  else
+    bad "--break $b" "ld.pred's lane enable went unchecked: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
 "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break stpred-whole-word >"$B/kernel_stpred-whole-word.log" 2>&1
 if grep -q "^CHECK miu: seq 6 P1 merged ffffffff into 90010, oracle ffff0000" "$B/kernel_stpred-whole-word.log"; then
   say "--break stpred-whole-word: lanes 0-15 stored" "PASS (predlane: 0x90010)"

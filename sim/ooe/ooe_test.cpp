@@ -188,6 +188,9 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
 struct Env {
   Config cfg;
   Core core;
+  /// A GPR destination: none is the zero register's name (TI-37), not 0,
+  /// which is a real row.
+  bool gpr(unsigned p) const { return !core.isZeroName(p); }
   uint64_t t = 0;
   std::mt19937 rng;
   std::vector<std::string> errors;
@@ -756,8 +759,18 @@ struct Env {
     }
   }
 
+  /// TI-37 (OA's rev 182): an op that writes no GPR names the zero register
+  /// as its destination, and one that writes a GPR never does.
+  void noneName(uint64_t tid, const Op &o, unsigned pdst, const char *what) {
+    const bool wg = makeUop(o, 0, tid, 0, 0).attr.writes_gpr;
+    if (wg == core.isZeroName(pdst))
+      errors.push_back(std::string("TI-37: tid ") + std::to_string(tid) + "'s " + what + " names p" +
+                       std::to_string(pdst) + (wg ? ", the zero register, for its GPR" : " for no GPR destination"));
+  }
+
   void onIssue(const Issue &is) {
     const Op &o = op_of[is.tid];
+    if (o.k != kAtomic) noneName(is.tid, o, is.pdst, is.copy ? "copy" : "issue");
     if (is.copy) {
       checkRead(is.tid, is.pold, false, int(Config::kGrpInt));
       return;
@@ -767,7 +780,7 @@ struct Env {
     issues_of[is.tid] += std::to_string(t) + "@" + std::to_string(is.port) + "/tag" + std::to_string(is.rob_tag) + " ";
     const int group = groupOf(o.k);
     for (unsigned i = 0; i != o.nsrc; ++i) checkRead(is.tid, is.psrc[i], false, group);
-    if (is.merge && is.pdst && o.k != kLoad) checkRead(is.tid, is.pold, false, group);
+    if (is.merge && gpr(is.pdst) && o.k != kLoad) checkRead(is.tid, is.pold, false, group);
     if (o.guard || o.k == kBranch) checkRead(is.tid, is.ppguard, true, -1);
     if (o.k == kPlogic) {
       // the qualifier sources: the core renamed them; find them by RAT is
@@ -778,7 +791,7 @@ struct Env {
     // Results: when they are readable, and when they land.
     const unsigned unit = unitOf(o.k);
     const unsigned lat = cfg.unitLat(unit);
-    if (is.pdst && o.k != kLoad) {
+    if (gpr(is.pdst) && o.k != kLoad) {
       gready[is.pdst] = {t, t + lat, is.tid, unit, pgroupOf(o.k), true, o.cross};
       gwriter[is.pdst] = {is.tid, t};
       landings.insert({t + lat, {is.pdst, is.tid}});
@@ -804,7 +817,7 @@ struct Env {
     const Atom &a = atom[is.tid];
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
-      if (is.pdst) {
+      if (gpr(is.pdst)) {
         if (is.gpr_reads & 1u) checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
       } else {
         checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
@@ -942,7 +955,7 @@ struct Env {
         if (r.first->second.second == q.tid) { landings.erase(r.first); break; }
       // Nothing will write it: once freed, its next holder (a restore's row,
       // say) sees no pending write.
-      if (q.pdst && gready.count(q.pdst) && gready[q.pdst].tid == q.tid) gready[q.pdst].late = t + 1;
+      if (gpr(q.pdst) && gready.count(q.pdst) && gready[q.pdst].tid == q.tid) gready[q.pdst].late = t + 1;
       if (Warp *x = warpOf(q.warp)) x->abandon_at = std::max(x->abandon_at, q.when);
       const uint64_t old = q.when;
       c.status = kCmplReplay;
@@ -976,6 +989,7 @@ struct Env {
     }
     if (m.mem_op == kMemOpAtomicRead || m.mem_op == kMemOpAtomicWrite)
       errors.push_back("V-72: a non-atomic reaches MIU as mem_op " + std::to_string(m.mem_op));
+    noneName(m.tid, o, m.pdst, "memop");
     // V-17: a memop never reads an unconfirmed (here: unreadable) source.
     const size_t before = viol[m.tid].size();
     (void)before;
@@ -997,7 +1011,7 @@ struct Env {
         served[at] = when;
         hit_of[m.tid] = false;
         if (x) x->fill_at = std::max(x->fill_at, when);
-        if (m.pdst) {
+        if (gpr(m.pdst)) {
           const uint64_t rd = when + data_after_cmpl;
           gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
           gwriter[m.pdst] = {m.tid, t};
@@ -1005,7 +1019,7 @@ struct Env {
         }
         c.mlc_miss = true;
         cmpls.insert({when, c});
-        pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? when + data_after_cmpl : 0, m.pdst};
+        pend[m.rob_tag] = {m.tid, m.warp, when, gpr(m.pdst) ? when + data_after_cmpl : 0, m.pdst};
         return;
       }
       // A replay of a load whose line is still filling (a provisional
@@ -1014,7 +1028,7 @@ struct Env {
       if (o.k == kLoad && corr && sv != served.end() && sv->second > t + cfg.lat_l1_cmpl) {
         when = cmplRoom(sv->second);
         hit_of[m.tid] = false;
-        if (m.pdst) {
+        if (gpr(m.pdst)) {
           const uint64_t rd = when + data_after_cmpl;
           gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
           gwriter[m.pdst] = {m.tid, t};
@@ -1022,7 +1036,7 @@ struct Env {
         }
         c.mlc_miss = true;
         cmpls.insert({when, c});
-        pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? when + data_after_cmpl : 0, m.pdst};
+        pend[m.rob_tag] = {m.tid, m.warp, when, gpr(m.pdst) ? when + data_after_cmpl : 0, m.pdst};
         ++merged_fills;
         return;
       }
@@ -1034,7 +1048,7 @@ struct Env {
       // later, which is a miss.
       hit = hit && when == t + cfg.lat_l1_cmpl;
       hit_of[m.tid] = hit;
-      if (m.pdst) {
+      if (gpr(m.pdst)) {
         // Readable at the L1 wake on a hit; on a miss, after the completion.
         const uint64_t rd = hit ? t + cfg.lat_l1_wake : when + data_after_cmpl;
         gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
@@ -1043,7 +1057,7 @@ struct Env {
       }
     } else {
       when = cmplRoom(t + 4 + rnd(miss_extra));
-      if (o.k == kLoad && m.pdst) {
+      if (o.k == kLoad && gpr(m.pdst)) {
         const uint64_t rd = when + data_after_cmpl;
         gready[m.pdst] = {t, rd, m.tid, 2, Config::kGrpAddr, false, false};
         gwriter[m.pdst] = {m.tid, t};
@@ -1052,7 +1066,7 @@ struct Env {
       c.mlc_miss = true;
     }
     cmpls.insert({when, c});
-    if (o.k == kLoad) pend[m.rob_tag] = {m.tid, m.warp, when, m.pdst ? gready[m.pdst].late : 0, m.pdst};
+    if (o.k == kLoad) pend[m.rob_tag] = {m.tid, m.warp, when, gpr(m.pdst) ? gready[m.pdst].late : 0, m.pdst};
     if (cfg.memop_rcu_done) {
       Done d;
       d.rob_tag = m.rob_tag;
@@ -1865,13 +1879,13 @@ bool ldPredCopy(bool control) {
     Op ld; ld.k = kLoad; ld.nsrc = 1; ld.pred_only = true; ld.pdst = 1; ld.mask = mask; p.push_back(ld);
     Op ex; ex.k = kExit; p.push_back(ex);
     e.launch(6, 0, p);
-    unsigned copies = 0, setp_dst = ~0u, copy_old = ~0u;
+    unsigned copies = 0, setp_dst = ~0u, copy_old = ~0u, copy_dst = 0;
     for (unsigned k = 0; k != 400 && !e.warpOf(6)->exited; ++k) {
       e.step();
       for (const Issue &is : e.log.back().issues) {
         if (is.warp != 6) continue;
         if (!is.copy && setp_dst == ~0u) setp_dst = is.ppdst;   // the setp issues first
-        if (is.copy) { ++copies; copy_old = is.ppold; }
+        if (is.copy) { ++copies; copy_old = is.ppold; copy_dst = is.pdst; }
       }
     }
     const bool want = mask != kFullMask;
@@ -1884,6 +1898,8 @@ bool ldPredCopy(bool control) {
       EXPECT(copies == (want ? 1u : 0u), "mask %08x: %u copies", mask, copies);
       EXPECT(!want || copy_old == setp_dst, "mask %08x: the copy carries old predicate pp%u, the setp's pp%u", mask,
              copy_old, setp_dst);
+      // TI-37: no GPR destination names the zero register, never row 0.
+      EXPECT(!want || e.core.isZeroName(copy_dst), "mask %08x: the copy names GPR p%u", mask, copy_dst);
       for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
     }
   }
@@ -1896,6 +1912,39 @@ void testLdPredCopy() {
   std::printf("  %-24s %s\n", "control pred-copy-lost", held ? "MISSED" : "caught");
   g_test = "ld.pred's copy (control)";
   EXPECT(!held, "a partial-mask ld.pred without its copy should fail the check");
+}
+
+/// TI-37 (OA's rev 182): no GPR destination is the zero register's name on
+/// the issue and the memop: a setp, ld.pred at a partial mask (and its copy)
+/// and a store. The control sends 0, a real row.
+bool noneIsZero(bool control) {
+  Config c = baseConfig();
+  c.inject_none_row_zero = control;
+  Env e(c);
+  std::vector<Op> p;
+  Op sp; sp.k = kSetp; sp.nsrc = 2; sp.pdst = 1; p.push_back(sp);
+  Op ld; ld.k = kLoad; ld.nsrc = 1; ld.pred_only = true; ld.pdst = 1; ld.mask = 0x0000ffffu; p.push_back(ld);
+  Op st; st.k = kStore; st.nsrc = 2; p.push_back(st);
+  Op ex; ex.k = kExit; p.push_back(ex);
+  e.launch(6, 0, p);
+  for (unsigned k = 0; k != 400 && !e.warpOf(6)->exited; ++k) e.step();
+  if (!control) {
+    g_test = "no GPR destination (TI-37)";
+    EXPECT(e.warpOf(6)->exited, "the warp never finished");
+    for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+  }
+  // Held unless the TI-37 check itself names it.
+  bool named = false;
+  for (const std::string &x : e.errors) named = named || x.rfind("TI-37:", 0) == 0;
+  return e.warpOf(6)->exited && !named;
+}
+
+void testNoneIsZero() {
+  noneIsZero(false);
+  const bool held = noneIsZero(true);
+  std::printf("  %-24s %s\n", "control none-row-zero", held ? "MISSED" : "caught");
+  g_test = "no GPR destination (control)";
+  EXPECT(!held, "no GPR destination sent as row 0 should fail the check");
 }
 
 void testCtaSlot() {
@@ -4055,6 +4104,7 @@ int main(int argc, char **argv) {
   testRandom(seeds);
   testAtomic();
   testLdPredCopy();
+  testNoneIsZero();
   testAtomicFault();
   testAtomicKill();
   testAtomicDemote();

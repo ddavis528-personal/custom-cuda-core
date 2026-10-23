@@ -2602,9 +2602,11 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   is.warp = s.warp;
   is.issue_mask = u.group_mask;          // V-54: the mask it arrived with
   for (unsigned i = 0; i != 3; ++i) is.psrc[i] = r.psrc[i];
-  is.pdst = r.alloc_gpr ? r.pnew : 0;
+  // No GPR destination names the zero register (TI-37): row 0 is a real
+  // row, and nothing writes the zero register (A-64).
+  is.pdst = r.alloc_gpr ? r.pnew : noGpr();
   is.merge = r.merge;
-  is.pold = r.merge ? r.pold : 0;
+  is.pold = !r.alloc_gpr ? noGpr() : r.merge ? r.pold : 0;
   is.ppguard = r.ppguard;
   is.pred_neg = u.pred_neg;
   // Fixed-window mode names the window even unwritten, as the S1 stub did.
@@ -2634,7 +2636,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.psrc[1] = step == 2 ? r.psrc[1] : 0;
     is.psrc[2] = step == 2 ? r.psrc[2] : 0;
     is.gpr_reads = uint8_t(step == 1 ? u.shape.gpr_reads & 1u : step == 2 ? 1u | (u.shape.gpr_reads & 6u) : 1u);
-    is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : 0;
+    is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
     is.pold = is.merge ? r.pold : 0;
     is.ppdst = 0;
@@ -2767,7 +2769,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.rs_idx = e;
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;
-    m.pdst = r.alloc_gpr ? r.pnew : 0;
+    m.pdst = r.alloc_gpr ? r.pnew : noGpr();   // TI-37, as the issue
     m.ppred = u.pred_we ? r.ppnew : cfg_.rename_preds ? 0 : cfg_.pred_window(s.warp, u.pred_dst);
     m.disp = u.imm;
     m.scale_en = u.scale_en;
@@ -2780,7 +2782,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
       // OOE's own codes (V-72): the read into T, at the address; the write,
       // its data alone.
       m.mem_op = x.atom == 1 ? kMemOpAtomicRead : kMemOpAtomicWrite;
-      m.pdst = x.atom == 1 ? r.atom_t : 0;
+      m.pdst = x.atom == 1 ? r.atom_t : noGpr();
       m.ppred = 0;
       m.disp = x.atom == 1 ? u.imm : 0;
       m.scale_en = x.atom == 1 && u.scale_en;

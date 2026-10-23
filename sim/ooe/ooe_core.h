@@ -423,6 +423,9 @@ struct Config {
   /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
   /// copy, so its inactive lanes' bits are lost.
   bool inject_pred_copy_lost = false;
+  /// TI-37's control: no GPR destination is sent as 0, a real row, not the
+  /// zero register's name.
+  bool inject_none_row_zero = false;
   /// O-64 (OA's rev 177): this core's index, above warp_id in %lanectx's
   /// substitution: CCV_P_CORE_ID, 0 on a one-core build (TI's tie-off).
   unsigned core_id = ccv::prov::kCoreId;
@@ -1542,6 +1545,8 @@ public:
   unsigned namePos(unsigned n) const { return n % kPos_; }
   bool isZeroName(unsigned n) const { return n / kPos_ == cfg_.phys_zero; }
   unsigned zeroName() const { return cfg_.phys_zero * kPos_; }
+  /// No GPR destination on the issue and the memop (TI-37).
+  unsigned noGpr() const { return cfg_.inject_none_row_zero ? 0 : zeroName(); }
   unsigned nameWidth(unsigned n) const { return n < gw_.size() ? gw_[n] : 0; }
   /// The sections a register occupies; none for the zero register.
   unsigned sectionsOf(unsigned n) const {
