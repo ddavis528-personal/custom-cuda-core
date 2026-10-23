@@ -232,7 +232,7 @@ struct Kernel {
   /// COVER line's order; every bin prints, reached or not.
   static constexpr const char *kCoverBins[] = {
       "redirect", "ckpt_free", "ckpt_full", "ckpt_peak", "merge", "copy",
-      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line",
+      "zero_read", "reg_reuse", "line_split", "lines_peak", "partial_line", "full_line", "store_hit", "dcu_evict",
       "dcu_id_wait", "epoch_drop", "l1_hit", "l1_late", "hit_under_miss", "reexec",
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
@@ -240,6 +240,10 @@ struct Kernel {
       "slot_form", "window_fill", "dcu_lookups", "frame_lookups",
       "pred_xfer", "pred_merge", "pred_copy", "crack_split"};
   std::map<std::string, uint64_t> cover;
+  /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
+  /// memory holds that the testbench does not yet. For the final memory
+  /// compare only, never for a decision.
+  std::map<uint64_t, std::vector<uint8_t>> dcu_dirty;
   /// Each warp's CTA slot, as RAU gave it (TI-34): for the checks on the
   /// cta_slot OOE stamps on memops and faults, never for a decision.
   std::map<unsigned, unsigned> cta_slot_of;

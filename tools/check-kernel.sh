@@ -58,6 +58,12 @@
 #     without a read (full_line, AR-19); a       partial store written blind
 #     partial one merges into the line read      loses its lines' other four
 #                                                words
+#   DCU is write-back, write-allocate with    write-through (predswap): the
+#     ownership (DCU spec rev 8): a store        old policy, each store to MLC,
+#     to an owned line merges there              misses store_hit
+#     (store_hit), and a dirty line leaves    drop-writeback (slotform): the
+#     whole when its set is taken                evicted lines' 32 words reload
+#     (dcu_evict)                                stale and memory differs
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -659,13 +665,13 @@ rolaunch ro_fault=1 fault=1 kill=1
 rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
 rokill ro_fault=1 fault=1 kill=1
-slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
+slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32
 lanectx redirect=0 split=0
 lanectx2 redirect=0 split=0
 predspill pred_xfer=7 pred_merge=6 pred_copy=0
 predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
-predswap pred_xfer=32 pred_merge=16 crack_split=0
+predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -687,6 +693,25 @@ if [ "$(field "$B/kernel_skip-read-partial.log" mem_mismatch)" = 4 ] &&
   say "--break skip-read-partial: words lost" "PASS (unal's 4 words beside its store)"
 else
   bad "--break skip-read-partial" "a partial store written without a read went unnoticed: $(grep '^KERNEL' "$B/kernel_skip-read-partial.log")"
+fi
+# DCU spec rev 8: write-back, write-allocate with ownership. predswap's
+# spills after the first each merge into the line DCU owns (store_hit=15);
+# written through to MLC, as before rev 8, none does. slotform's 32 dirty
+# lines are evicted by the lines its loads bring in (dcu_evict=32); dropped
+# instead of written back, seq 8 reloads them stale and memory differs.
+"$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break write-through >"$B/kernel_write-through.log" 2>&1
+if [ "$(cover "$B/kernel_write-through.log" store_hit)" = 0 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_write-through.log"; then
+  say "--break write-through: no store merges in DCU" "PASS (predswap's store_hit 15 -> 0, $(field "$B/kernel_write-through.log" cycles) cycles)"
+else
+  bad "--break write-through" "store_hit not tied to the write-back policy: $(grep '^KERNEL' "$B/kernel_write-through.log")"
+fi
+"$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break drop-writeback >"$B/kernel_drop-writeback.log" 2>&1
+if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ] &&
+   [ "$(field "$B/kernel_drop-writeback.log" mem_mismatch)" = 32 ]; then
+  say "--break drop-writeback: evicted lines lost" "PASS (seq 8's 32 lanes reload stale; 32 words in memory)"
+else
+  bad "--break drop-writeback" "a dropped writeback went unnoticed: $(grep '^KERNEL' "$B/kernel_drop-writeback.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 if grep -q "^CHECK lane 0: seq 207 operand 1 (R4) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&

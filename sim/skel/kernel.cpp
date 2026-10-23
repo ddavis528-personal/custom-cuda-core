@@ -367,14 +367,25 @@ private:
     const Ch &c = ch();
     if (has(c.dcu_mlc, 0)) {
       Receiver::Msg m = take(c.dcu_mlc, 0);
+      const unsigned coh = unsigned(get(m.payload, c.dcu_mlc, "coh_op"));
+      if (coh == kCohAcquirePerm) {
+        // Ownership without data (DCU spec rev 8): one core, nothing to
+        // probe, so MLC grants it at once; memory sees the line on its
+        // writeback.
+        Bits r = msgOf(c.mlc_dcu);
+        put(r, c.mlc_dcu, "req_id", get(m.payload, c.dcu_mlc, "req_id"));
+        to_dcu_.push_back({0, r, m.tid});
+      } else {
       Bits e = msgOf(c.mlc_exb);
       put(e, c.mlc_exb, "phys_addr", get(m.payload, c.dcu_mlc, "phys_addr"));
       put(e, c.mlc_exb, "size", kSizeLine);
-      put(e, c.mlc_exb, "coh_op", get(m.payload, c.dcu_mlc, "coh_op"));
+      // AcquireData is a line read toward memory: ownership is MLC's to give.
+      put(e, c.mlc_exb, "coh_op", coh == kCohAcquireData ? unsigned(kCohRead) : coh);
       put(e, c.mlc_exb, "core_id", get(m.payload, c.dcu_mlc, "core_id"));
       putLine(e, field(c.mlc_exb, "writeback_data").lsb,
               getLine(m.payload, field(c.dcu_mlc, "writeback_data").lsb));
       to_exb_.push_back({{kDcu, unsigned(get(m.payload, c.dcu_mlc, "req_id"))}, e, m.tid});
+      }
     }
     if (has(c.fet_mlc, 0)) {
       Receiver::Msg m = take(c.fet_mlc, 0);
@@ -454,10 +465,14 @@ private:
   std::deque<Op> q_;
   /// A request to MLC in flight, by its req_id: a read's fill, the read half
   /// of a partial store's read-modify-write, or a write awaiting its ack.
-  enum Kind { kFill, kRmwRead, kAck };
+  /// kAcquire: a store's line fetched with ownership, then merged; kPerm:
+  /// ownership alone, for a store of the whole line; kEvict: a dirty line's
+  /// writeback, which answers no one (DCU spec rev 8).
+  enum Kind { kFill, kRmwRead, kAck, kAcquire, kPerm, kEvict };
   struct Miss { Op op; Kind kind; uint64_t line; };
   std::map<unsigned, Miss> miss_;
   std::set<uint64_t> busy_lines_;    ///< lines with a request to MLC in flight
+  std::deque<std::pair<uint64_t, Line>> evict_;   ///< dirty lines waiting for a req_id
   IdPool ids_;
   std::deque<Q> to_mlc_, to_miu_;
   /// Refills promised by a notice on ccv_dcu_miu_fill_ntc (OA-23): each
@@ -475,19 +490,49 @@ private:
   /// L1 (OI-5): a small direct-mapped array, so a load that revisits a line
   /// hits, and MIU can complete it at the L1 contract. A hit answers the
   /// cycle it arrives, ahead of any miss in flight: the contract is MIU's to
-  /// keep (CCV_LAT_L1_HIT), and an answer early enough lets it. Fills install
-  /// the line; a store's merged line goes to MLC as before and updates the
-  /// copy here, so a later hit reads it. One core and no other writer, so
-  /// nothing else can make a copy stale.
+  /// keep (CCV_LAT_L1_HIT), and an answer early enough lets it.
+  /// Write-back and write-allocate, with ownership (DCU spec rev 8; AR,
+  /// TI-36): a read's fill installs the line shared; a store to a line DCU
+  /// owns merges its bytes there, dirty, and nothing goes to MLC; a store
+  /// to a shared line, or a partial miss, fetches the line with ownership,
+  /// then merges; a store of the whole line that misses takes ownership
+  /// alone. A dirty line leaves only whole, written back when another line
+  /// takes its set. One core and no other writer, so nothing probes.
+  /// write-through: every store goes to MLC as a read-merge-write, the
+  /// policy before rev 8, which the merged values survive but the timing
+  /// does not.
   static constexpr unsigned kSets = 64;
-  struct Way { bool valid = false; uint64_t line = 0; Line data{}; };
+  struct Way { bool valid = false; uint64_t line = 0; Line data{}; bool owned = false, dirty = false; };
   std::array<Way, kSets> l1_{};
   Way &way(uint64_t pa) { return l1_[(pa / kLine) % kSets]; }
   const Line *lookup(uint64_t pa) {
     Way &w = way(pa);
     return w.valid && w.line == pa ? &w.data : nullptr;
   }
-  void install(uint64_t pa, const Line &l) { way(pa) = {true, pa, l}; }
+  /// The harness's view of what memory holds above the testbench.
+  void shadow(const Way &w) {
+    if (w.valid && w.dirty) k_.dcu_dirty[w.line].assign(w.data.begin(), w.data.end());
+  }
+  /// A line into its set: a dirty line there of another address is written
+  /// back first, whole, and stays busy from now until MLC has it. It waits
+  /// for a req_id of its own, ahead of every miss.
+  void install(uint64_t pa, const Line &l, bool owned = false, bool dirty = false) {
+    Way &w = way(pa);
+    if (w.valid && w.dirty && w.line != pa) {
+      evict_.push_back({w.line, w.data});
+      busy_lines_.insert(w.line);
+      k_.hit("dcu_evict");
+    }
+    w = {true, pa, l, owned, dirty};
+    shadow(w);
+  }
+  /// A store's bytes into a line, under its byte mask.
+  void mergeInto(Line &l, const Bits &req) const {
+    const Line wd = getLine(req, field(ch().miu_dcu, "write_data").lsb);
+    const uint32_t mlsb = field(ch().miu_dcu, "byte_mask").lsb;
+    for (unsigned k = 0; k != kLine; ++k)
+      if (req.bit(mlsb + k)) l[k] = wd[k];
+  }
 
   /// A response to MIU answers its request by MIU's own req_id.
   Bits rspFor(const Bits &req) {
@@ -553,6 +598,9 @@ private:
       } else {
         const Miss x = it->second;
         miss_.erase(it);
+        if (x.kind == kEvict) {
+          busy_lines_.erase(x.line);   // a writeback's ack: memory has the line
+        } else {
         // A promised refill keeps its line busy until it leaves (refill), so
         // a read queued behind the fill still answers after it.
         const bool noticed = x.kind == kFill && promise(x);
@@ -567,6 +615,16 @@ private:
             refill(x.op.slot, r, x.op.tid, unsigned(get(r, c.dcu_miu, "req_id")), x.line);
           else
             to_miu_.push_back({x.op.slot, r, x.op.tid});
+        } else if (x.kind == kAcquire) {
+          // The line with ownership: the store's bytes merged, dirty.
+          Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
+          mergeInto(l, x.op.req);
+          install(x.line, l, true, true);
+          to_miu_.push_back({x.op.slot, r, x.op.tid});   // the store's ack
+        } else if (x.kind == kPerm) {
+          // Ownership alone: the store wrote every byte.
+          install(x.line, getLine(x.op.req, field(c.miu_dcu, "write_data").lsb), true, true);
+          to_miu_.push_back({x.op.slot, r, x.op.tid});
         } else if (x.kind == kRmwRead) {
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
           const Line w = getLine(x.op.req, field(c.miu_dcu, "write_data").lsb);
@@ -578,7 +636,17 @@ private:
         } else {
           to_miu_.push_back({x.op.slot, r, x.op.tid});   // the write's ack
         }
+        }
       }
+    }
+    // A writeback leaves first. The harness's view keeps the line until it
+    // is sent; from there on memory has it, in order ahead of any read.
+    while (!evict_.empty() && ids_.any()) {
+      if (k_.brk == "drop-writeback") busy_lines_.erase(evict_.front().first);
+      else mlcReq(kCohWrite, evict_.front().first, &evict_.front().second,
+             Op{0, Bits(), makeUid(IdClass::kTxn, g_unowned_txn++)}, kEvict);
+      k_.dcu_dirty.erase(evict_.front().first);
+      evict_.pop_front();
     }
     // The oldest queued request whose line has nothing in flight, nor an
     // older request waiting, starts: a hit (a read queued behind the fill
@@ -590,20 +658,45 @@ private:
       if (busy_lines_.count(pa) || held.count(pa)) { held.insert(pa); continue; }
       const bool rd = get(it->req, c.miu_dcu, "coh_op") == kCohRead;
       const Line *l = rd ? lookup(pa) : nullptr;
-      if (!l && !ids_.any()) break;          // every req_id in flight: wait, in order
+      // A store to a line DCU owns merges here (DCU spec rev 8).
+      Way &wy = way(pa);
+      const bool owned_hit = !rd && wy.valid && wy.line == pa && wy.owned &&
+                             k_.brk != "write-through";
+      if (owned_hit) {
+        const Op o = *it;
+        q_.erase(it);
+        mergeInto(wy.data, o.req);
+        wy.dirty = true;
+        shadow(wy);
+        to_miu_.push_back({o.slot, rspFor(o.req), o.tid});
+        k_.hit("store_hit");
+        break;
+      }
+      if (!l && (!ids_.any() || !evict_.empty())) break;   // wait, in order
       if (!l && k_.brk == "dcu-one-miss" && !miss_.empty()) break;   // a blocking DCU
       const Op o = *it;
       q_.erase(it);
       if (l) {
         hitRsp(o, *l);
+      } else if (!rd && k_.brk == "write-through") {
+        if (fullLine(o.req)) {
+          const Line w = getLine(o.req, field(c.miu_dcu, "write_data").lsb);
+          install(pa, w);
+          mlcReq(kCohWrite, pa, &w, o, kAck);
+          k_.hit("full_line");
+        } else {
+          mlcReq(kCohRead, pa, nullptr, o, kRmwRead);
+        }
       } else if (!rd && fullLine(o.req)) {
-        // The whole line written: straight to MLC, with no read first.
-        const Line w = getLine(o.req, field(c.miu_dcu, "write_data").lsb);
-        install(pa, w);
-        mlcReq(kCohWrite, pa, &w, o, kAck);
+        // The whole line written: ownership alone, no data (AcquirePerm).
+        mlcReq(kCohAcquirePerm, pa, nullptr, o, kPerm);
         k_.hit("full_line");
+      } else if (!rd) {
+        // A partial store, missing or to a shared line: the line with
+        // ownership, then the merge (AcquireBlock).
+        mlcReq(kCohAcquireData, pa, nullptr, o, kAcquire);
       } else {
-        mlcReq(kCohRead, pa, nullptr, o, rd ? kFill : kRmwRead);
+        mlcReq(kCohRead, pa, nullptr, o, kFill);
       }
       break;
     }
@@ -4196,8 +4289,12 @@ KernelReport compareFinal(Kernel &k) {
   for (auto &w : want) {
     uint32_t v = 0;
     for (unsigned b = 0; b != 4; ++b) {
-      auto it = k.mem.find(w.first + b);
-      v |= uint32_t(it == k.mem.end() ? 0 : it->second) << (8 * b);
+      // Through DCU's dirty lines first: write-back keeps them there.
+      const uint64_t a = w.first + b, line = a / 128 * 128;
+      auto d = k.dcu_dirty.find(line);
+      auto it = k.mem.find(a);
+      v |= uint32_t(d != k.dcu_dirty.end() ? d->second[a - line]
+                    : it == k.mem.end() ? 0 : it->second) << (8 * b);
     }
     if (v != w.second && r.mem_mismatch++ < 4)
       std::fprintf(stderr, "FINAL [%llx]: machine %08x, ccv-sim %08x\n",
