@@ -840,9 +840,10 @@ Built (`rtl/ooe/`):
      the go counts them. NGD-7 copies: the Rename 1 register's pending-group
      fields and the names' index and heads twice (o_/q_ for the outputs,
      p_ for the heads' reads, a second ooe_ren1n binding the pending
-     group's names), 132 flops; in ooe_go the lanes and writer counts read
-     their own rotation and block copies (priol, blkw: 8 flops), so the
-     take's registers drive the take alone. The bench
+     group's names), 132 flops. Its units (`test/ooe/cg-units.json`, which
+     check-ngd reads too) blackbox ooe_go and the free lists, measured in
+     their own units: check-ngd times them by their budgets, check-cg
+     counts ooe_rename's own flops (661, 9 ungated). The bench
      (`test/ooe/rename_tb.cpp`, beside ooe_rat in
      `test/ooe/ooe_rename_tb.sv`) drives the go from the go log, the
      candidates from the renames and the free lists from the model's frees,
@@ -860,11 +861,13 @@ Built (`rtl/ooe/`):
      The model's free lists now refill nothing at their first edge, the
      RTL's last reset edge, so one model cycle is one RTL cycle for the go's
      rotation and the free lists alike (`FreeVec::clock`; freelist_tb's
-     reset follows). `check-ngd`: 22.7 NGD flop to flop, take out at 8.8
-     (14 by OA). Rename 1's names leave at 3.6 NGD (q_gname, q_pname) and
+     reset follows). `check-ngd`: 14.4 NGD flop to flop from the children's
+     budgets; flattened whole, 22.7. Rename 1's names leave at 3.6 NGD (q_gname, q_pname) and
      its reads at 6.6 (q_g, q_p), over ooe_rat's write-port arrival (3) and
      Rename 2's (5): OI-70 to OA; those four outputs keep the default
-     budget until OA rules.
+     budget until OA rules. Measured against the receivers (OA's ask):
+     ooe_rat from pw_gname 11.3 and pw_pname 10.1 to its flops; ooe_rendep
+     from gsn 17.9 and psn 18.4.
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
@@ -881,8 +884,7 @@ copies.
 | `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
 | `ooe_wake` | the issued bits | 45 |
 | `ooe_rename` | the Rename 1 register's pending-group fields, name index and free-list heads, for the heads' reads | 132 |
-| `ooe_go` | the rotation and block, for the lanes and the writer counts (beside fitsw/tkow) | 8 |
-| **built** | | **1131** |
+| **built** | | **1123** |
 | `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
 | `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
 

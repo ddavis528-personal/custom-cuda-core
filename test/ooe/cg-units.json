@@ -246,13 +246,15 @@
       "name": "ooe_rename",
       "module": "ooe_rename",
       "files": [
-        "rtl/ooe/ooe_go.sv",
-        "rtl/ooe/ooe_freelist.sv",
         "rtl/ooe/ooe_headrd.sv",
         "rtl/ooe/ooe_ren1.sv",
         "rtl/ooe/ooe_ren1n.sv",
         "rtl/ooe/ooe_rename.sv"
       ],
+      "blackbox": {
+        "ooe_go": "rtl/ooe/ooe_go.sv",
+        "ooe_freelist": "rtl/ooe/ooe_freelist.sv"
+      },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",
       "bench": {
