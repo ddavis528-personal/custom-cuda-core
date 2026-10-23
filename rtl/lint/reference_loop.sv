@@ -61,5 +61,11 @@ module reference_loop (
     hit_cy02h = 1'b0;
     if (sel_cy02h) hit_cy02h = g2_cy03h | g1_cy02h;
   end
-  assign byp_out_cy02h = hit_cy02h;
+  // And a bypass reader whose other inputs are all a stage earlier: the
+  // bypass read counts at its register's stage less its offset, 02, so the
+  // net is stage 02 (OI's rev 189, OA's rev 212). Were the read dropped,
+  // the arithmetic would give 01.
+  logic hit2_cy02h;
+  assign hit2_cy02h = g2_cy03h & req_in_cy01h;
+  assign byp_out_cy02h = hit_cy02h | hit2_cy02h;
 endmodule
