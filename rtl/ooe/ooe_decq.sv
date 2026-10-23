@@ -251,7 +251,8 @@ module ooe_decq #(
 
   logic [SW-1:0]   st_cq02h;
   logic [1:0]      fault_cq02h;
-  logic [S-1:0]    fl_q_cq02h;            // a flush registered: applied at the next edge
+  (* keep *) logic [S-1:0] fl_q_cq02h;    // a flush registered: applied at the next edge
+  (* keep *) logic [S-1:0] fl_o_cq02h;    // and its copy for the outputs' mask (NGD-7)
   logic            enq_en_cq01h;          // the arrival lead's flop
   logic [S-1:0]    arr_q_cq02h;           // a slot had arrivals at the last edge: its heads re-form
   logic [S-1:0]    tkv_cq02h;             // a slot's take in transit (rename took from it at the last edge)
@@ -387,8 +388,8 @@ module ooe_decq #(
   // edge, and rename (ooe_go) need not block it a second cycle.
   always_comb
     for (int s = 0; s < S; s++) begin
-      cnt_cq02h[s * LC +: LC]  = cnt_o_cq02h[s * LC +: LC] & {LC{~fl_q_cq02h[s]}};
-      head_v_cq02h[s * H +: H] = hv_o_cq02h[s * H +: H] & {H{~fl_q_cq02h[s]}};
+      cnt_cq02h[s * LC +: LC]  = cnt_o_cq02h[s * LC +: LC] & {LC{~fl_o_cq02h[s]}};
+      head_v_cq02h[s * H +: H] = hv_o_cq02h[s * H +: H] & {H{~fl_o_cq02h[s]}};
     end
   assign head_pay_cq02h = hp_o_cq02h;
   assign head_adm_cq02h = ha_o_cq02h;
@@ -429,11 +430,13 @@ module ooe_decq #(
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       fl_q_cq02h   <= '0;
+      fl_o_cq02h   <= '0;
       enq_en_cq01h <= 1'b0;
       arr_q_cq02h  <= '0;
       tkv_cq02h    <= '0;
     end else begin
       fl_q_cq02h   <= flush_cq01h;
+      fl_o_cq02h   <= flush_cq01h;
       enq_en_cq01h <= enq_l_cq00h;
       arr_q_cq02h  <= arr_nx_cq01h;
       tkv_cq02h    <= deq_s_cq01h;
