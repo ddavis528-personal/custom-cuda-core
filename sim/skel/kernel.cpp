@@ -1004,7 +1004,8 @@ private:
           }
           // A slot is one CTA's, and a CTA has one slot (CP-30): the warps
           // ccv-sim ran as one CTA share its state here, and no other's.
-          if (w < k_.cta_of.size()) {
+          // Checked once the slot is RAU's, so a memop is refused once.
+          else if (w < k_.cta_of.size()) {
             const unsigned cta = k_.cta_of[w];
             auto a = slot_cta_.emplace(cs, std::make_pair(cta, w)).first;
             auto b = cta_slot_.emplace(cta, std::make_pair(cs, w)).first;
