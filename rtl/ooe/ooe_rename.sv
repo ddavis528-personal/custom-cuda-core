@@ -282,7 +282,7 @@ module ooe_rename #(
   logic [R*4*GW-1:0] q_gv_cq03h;
   logic [R*4*R-1:0]  q_gl_cq03h, q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
-  logic [R*XL-1:0]   x_x_cq03h;
+  (* keep *) logic [R*XL-1:0] x_x_cq03h;
   (* keep *) logic [R*3-1:0] o_c_cq03h;
   (* keep *) logic [R-1:0]   o_lv_cq03h;
   logic              r1_en_cq02h;
@@ -468,22 +468,23 @@ module ooe_rename #(
 
   // -- The Rename 2 register: the group in Rename 3 -----------------------------
   // ooe_prodmap's record of it (its payload while Rename 1 holds a lane) and
-  // ooe_rs's request (every cycle; its lead's twin, from Rename 2's copies).
+  // ooe_rs's request (its lead's twin, from Rename 2's copies: while Rename 1
+  // holds a lane or the request is set, to clear it).
   logic [R-1:0]       m_v_cq04h, m_gwe_cq04h, m_pwe_cq04h, m_cv_cq04h;
   logic [R*GW-1:0]    m_gname_cq04h;
   logic [R*PW-1:0]    m_pname_cq04h;
   logic [2*R*LP-1:0]  m_pp_cq04h;
   logic [R*CW-1:0]    m_cvc_cq04h;
-  logic               r2_en_cq03h;
+  logic               r2_en_cq03h, rq_en_cq03h;
   assign r2_en_cq03h = p_v_cq03h != '0;
+  assign rq_en_cq03h = r2_en_cq03h || req_cq04h != '0;
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h) begin
-      m_v_cq04h <= '0;
-      req_cq04h <= '0;
-    end else begin
-      m_v_cq04h <= d_v_cq03h;
-      req_cq04h <= req_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
-    end
+    if (rst_r01h) m_v_cq04h <= '0;
+    else          m_v_cq04h <= d_v_cq03h;
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)         req_cq04h <= '0;
+    else if (rq_en_cq03h) req_cq04h <= req_of(d_v_cq03h, d_mem_cq03h, d_cp_cq03h);
   end
   always_ff @(posedge ooe_core_clk) begin
     if (r2_en_cq03h) begin
