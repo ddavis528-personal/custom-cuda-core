@@ -11,6 +11,7 @@
 # - ooe_age against the model's RS ages, live, for both RS classes
 #   (test/ooe/age_tb.cpp);
 # - ooe_decq against the model's decode queue, live (test/ooe/decq_tb.cpp);
+# - ooe_go, rename's go, against the model's go log, live (test/ooe/go_tb.cpp);
 # - ooe_wake against the model's wake lines and L1 miss cancels, live
 #   (test/ooe/wake_tb.cpp);
 # - ooe_confirm against the model's cancel hops and confirmations, live
@@ -189,6 +190,32 @@ for c in drop-flush enq-swap no-enq-lead no-take-enable; do
     say "  control $c (decq)" "MISSED"; fail=1
   else
     say "  control $c (decq)" "caught"
+  fi
+done
+
+# ooe_go, rename's go, driven from the model's go log (Core::goLog) every
+# cycle a model cycle behind (its leads are the next cycle's log), its takes
+# and lanes compared exactly. Cores with other than its slots are skipped.
+dir=build/ooe-rtl/go
+mkdir -p "$dir"
+if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+      --trace -GS="$slots" -GR="$width" --top-module ooe_go \
+      --Mdir "$dir" -o go_tb -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+      -CFLAGS "-std=c++17 -O2 -I$PWD/test/ooe -DGO_S=$slots -DGO_R=$width -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/test/ooe/go_tb.cpp" \
+      "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+  say "go: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+fi
+if out=$("$dir/go_tb" "$seeds" 2>&1); then
+  say "go ($slots slots, $width a cycle) == model, live" "PASS ($(echo "$out" | tail -1 | sed 's/.*seeds=//'))"
+else
+  say "go == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+fi
+for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift; do
+  if GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
+    say "  control $c (go)" "MISSED"; fail=1
+  else
+    say "  control $c (go)" "caught"
   fi
 done
 

@@ -719,10 +719,40 @@ Built (`rtl/ooe/`):
      rest wait on confirmation moving into ooe_rs (OI-45); the ROB's
      frees, on the ROB. Building it found 3's per-cycle shares unsafe as
      registered (OI-65; docs/ooe-model.md, fits_stale 6).
-  4. **The go and decq's registered take** (OA-21, OA-22): open as OI-65.
-     The registered fits_s describe heads that depend on the previous
-     cycle's take; formed in the cycle the go measures 27.1 NGD to the take
-     counts and 30.3 to the lanes (test/ooe/probes/fitsgo_probe.sv).
+  4. **The go** (`ooe_go`; built 2026-10-23; OA-21, OA-22, OA's revs 171,
+     174, 179). Rename's per-cycle shares split from registered state
+     (OA's rev 242: the first warp in rotation takes the remainder), the
+     fits registered per warp and per own take k, selected next cycle by
+     the warp's registered take and interleaved round by round, R uops.
+     The model's go_static (docs/ooe-model.md) is its reference.
+     *Form.* The pool arrives as rename's pool register (each credit less
+     its floors owed, saturated at 5R); ooe_go subtracts its own one-hot
+     register of the allowances in force. The share table is a constant
+     picked by the pool (one-hot), then the warps' number, then each warp's
+     role and floor. The take is a thermometer per slot (a candidate is
+     taken while the other warps' terms sum below R - r); the lanes are
+     one-hot over the 16 candidates. A warp's block (its hold, a restore
+     owning the ports, its squash) is registered from its producers'
+     leads (arrival 11) and clips the take; a squash's second cycle masks
+     the fits as registered. decq takes the thermometer (`deq_t`), masks a
+     slot whose flush is registered, and exports its arrivals.
+     *Depth.* 21.6 flop to flop (64.7 in the first build), takes 12.0
+     against decq's 14, lanes 15.4 against 16.7, every register-fed input
+     by 23.6 at its arrival of 2 (`ooe_go.ngd.json`, OA's).
+     *Clock gating.* Each slot's fits and its take-enable are clocked by
+     its change bit, which folds its producers' register enables (decq's
+     arrivals, the ROB room, rename's pool and floors) with its own takes,
+     squash, restore edges, held allowances and rotation. The take and the
+     rotation pass CG-3. The fits (64 / 61-68% medium / high) and the held
+     allowances (66 / 54%) take DA's waiver at 2 points under (OA's rev
+     179): a streaming warp's fits stay all ones while its heads move, so
+     no enable from own flops can reach 75%. The flops written every cycle
+     are 14: the allowance takes 6, waivers the squash and change bits.
+     *Result.* `test/ooe/go_tb.cpp` drives ooe_go from the model's GoLog a
+     cycle behind (the leads are the next cycle's log) and compares every
+     take and lane: 25 seeds and the directed tests, 250 cores, 101,393
+     takes, none differ; controls no-hold, no-rbusy, no-squash, no-dq-ev,
+     no-rob-en, no-pool-en, no-ret and adm-shift caught.
   5. **Rename 1**: its register, the one-group skid and the credit channel
      from decq (OI-49), ooe_ratread, and the free-row take from the
      candidate buffer's heads.
