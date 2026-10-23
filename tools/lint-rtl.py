@@ -1227,11 +1227,40 @@ def check_file(path, rel):
                         "not one of %s): each is reviewed before it is listed"
                         % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
                     continue
-                for rd in reads:
+                # Each read with the alignment it is declared at (DA, 2026-10-23):
+                # how many stages its tag lies ahead of its reader's. The
+                # declaration does not take the read out of the alignment
+                # check; it states the alignment the loop has, and the tags
+                # must give exactly that.
+                if not isinstance(reads, dict):
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared feedback reads give no alignment: write "
+                        "\"from\": {\"<read>\": <stages ahead>, ...}, which the "
+                        "tags must match" % (fp, reader))
+                    continue
+                for rd, ahead in sorted(reads.items()):
+                    sr, sx = stage_of(reader), stage_of(rd)
                     if rd not in graph[0].get(reader, ()):
                         add("CCV-L23", ln0,
                             "%s: %s is declared to read %s as feedback, but does not "
                             "read it: remove the declaration" % (fp, reader, rd))
+                    elif sr is None or sx is None:
+                        add("CCV-L23", ln0,
+                            "%s: %s's feedback read of %s is checked by their stage "
+                            "tags, and %s carries none" % (fp, reader, rd,
+                                                           reader if sr is None else rd))
+                    elif not isinstance(ahead, int) or ahead < 1:
+                        add("CCV-L23", ln0,
+                            "%s: %s's read of %s is declared %r stages ahead: a "
+                            "feedback read lies one stage or more ahead of its reader, "
+                            "and one that does not needs no declaration"
+                            % (fp, reader, rd, ahead))
+                    elif sx[2] - sr[2] != ahead:
+                        add("CCV-L23", ln0,
+                            "%s: %s (stage %02d) reads %s (stage %02d), %d stage(s) "
+                            "ahead, but is declared %d ahead: the loop's tags do not "
+                            "give the alignment declared" % (fp, reader, sr[2], rd, sx[2],
+                                                             sx[2] - sr[2], ahead))
                     elif "loop" in d:
                         why = loop_path(graph[0], graph[1], reader, rd, d["loop"])
                         if why:

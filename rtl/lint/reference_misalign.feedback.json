@@ -1,0 +1,21 @@
+{
+  "_comment": "Fixture for bad_feedback.sv's reference_misalign: every declaration here must be refused. DO NOT FIX.",
+  "reads": {
+    "m1_cy02h": {
+      "from": {
+        "m2_cy03h": 2
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a real two-register loop, declared two stages ahead where its tags give one"
+    },
+    "n1_cy02h": {
+      "from": [
+        "n2_cy03h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "the old list form, with no alignment"
+    }
+  }
+}
