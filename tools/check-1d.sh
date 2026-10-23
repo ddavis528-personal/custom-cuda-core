@@ -34,6 +34,7 @@ python3 tools/lint-rtl.py --schema=rtl/lint/bad_interfaces.json \
   rtl/lint/bad_if_checker.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_xprop.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_naming.sv >>"$TMP/bad.log" 2>&1
+python3 tools/lint-rtl.py rtl/lint/bad_feedback.sv >>"$TMP/bad.log" 2>&1
 python3 tools/lint-rtl.py rtl/lint/bad_module_names.sv >"$TMP/names.log" 2>&1
 python3 tools/lint-rtl.py --blocks=rtl/lint/bad_blocks.json \
   rtl/lint/ccv_reference.sv >>"$TMP/names.log" 2>&1
@@ -143,13 +144,13 @@ gfail=0
 for g in rtl/lint/reference_common_xprop.sv rtl/lint/ccv_reference.sv \
          rtl/lint/ccv_reference_w.sv rtl/lint/reference_gated_enable.sv \
          rtl/lint/reference_common_yosys.sv rtl/lint/reference_compare.sv \
-         rtl/lint/reference_feedback.sv; do
+         rtl/lint/reference_feedback.sv rtl/lint/reference_loop.sv; do
   if ! python3 tools/lint-rtl.py "$g" >"$TMP/good.log" 2>&1; then
     bad "compliant code is silent ($g)" "$(grep -m1 'CCV-L' "$TMP/good.log")"
     gfail=1
   fi
 done
-[ "$gfail" = "0" ] && say "compliant code is silent (7 fixtures)" "PASS"
+[ "$gfail" = "0" ] && say "compliant code is silent (8 fixtures)" "PASS"
 
 # CCV-L23's feedback (OI-65): a register reading state of its own stage, and
 # a D-side net reading the state it feeds, pass (reference_feedback.sv, above);
@@ -162,6 +163,25 @@ for want in "mis_cy02h is at stage 02 but combinational" "dnx_cy00h is at stage 
     bad "CCV-L23 refuses ${want%% is at*}" "no finding"
   fi
 done
+
+# CCV-L23's declared feedback (OA's ruling on TI-38): reference_loop.sv's
+# declared back edge passes (above). bad_feedback.sv's are refused: one with
+# no loop behind it, which leaves its stage skip reported; one not an
+# architect's; one for a read its reader does not make; and the same loop as
+# reference_loop's, undeclared, which the arithmetic refuses.
+while IFS='|' read -r what want; do
+  if grep -qF "$want" "$TMP/bad.log"; then
+    say "CCV-L23 feedback refused: $what" "PASS"
+  else
+    bad "CCV-L23 feedback refused: $what" "no finding: $want"
+  fi
+done <<'WANT'
+no loop behind it|req_cy02h reads stat_cy03h as declared feedback, but no register
+...and its stage skip reported|req_cy02h is at stage 02 but sequential logic over stage(s) 01,03
+not an architect's|own_cy02h's declared feedback reads are not an architect's
+a read not made|x_cy02h is declared to read stat_cy03h as feedback, but does not read it
+the loop undeclared|rqn_cy02h is at stage 02 but sequential logic over stage(s) 01,03
+WANT
 
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
 # generate block are refused, and ccv_reference.sv's struct field, function

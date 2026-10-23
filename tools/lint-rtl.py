@@ -257,6 +257,74 @@ def stage_ratchet():
     return _stage_ratchet["mods"]
 
 
+# CCV-L23's declared feedback (OA's ruling on TI-38, 2026-10-23): a read
+# whose stage the arithmetic skips, because it is the back edge of a real
+# register loop -- a select loop whose request register reads the grant
+# register its own next value feeds. Declared per module, beside the RTL, in
+# <module>.feedback.json: {"reads": {reader: {"from": [read, ...], "by": an
+# architect, "date", "why"}}}. The lint finds the loop itself and refuses a
+# declaration it cannot find, so the exemption is no wider than the loop.
+FEEDBACK_BY = ("OA", "AR", "DA")
+IDENT_RE = re.compile(r"\b[a-z]\w*\b")
+
+
+def feedback_decls(dirpath, module):
+    p = os.path.join(dirpath, module + ".feedback.json")
+    if not os.path.exists(p):
+        return None, {}
+    return os.path.relpath(p, ROOT), json.load(open(p)).get("reads", {})
+
+
+def dep_graph(src):
+    """(deps, flops) over a comment-stripped file: deps[net] is every name its
+    assignments read, conditions included (an if's or a case's selector
+    steers the value as much as its right-hand side does); flops are the
+    names an always_ff assigns."""
+    deps, flops = {}, set()
+    def conds(body):
+        out = set()
+        for m in re.finditer(r"\b(?:if|case|casez|casex)\s*\(", body):
+            out |= set(IDENT_RE.findall(balanced(body, m.end() - 1)[0]))
+        return out
+    for kind, clk, body, ln, pos in always_blocks(src):
+        c = conds(body)
+        for _, lhs, _, rhs in assignments(body):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs), c)
+            if kind == "ff":
+                flops.add(lhs)
+    for m in re.finditer(r"\bassign\s+[^;]+;", src):
+        for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+    return deps, flops
+
+
+def cone(deps, flops, roots):
+    """The nets and the registers reached from roots through combinational
+    logic: (nets, regs). A register stops the walk."""
+    nets, regs, todo = set(), set(), list(roots)
+    while todo:
+        n = todo.pop()
+        if n in nets or n in regs:
+            continue
+        if n in flops:
+            regs.add(n)
+            continue
+        nets.add(n)
+        todo.extend(deps.get(n, ()))
+    return nets, regs
+
+
+def feedback_loop(deps, flops, reader, read):
+    """Whether reader's read of read closes a two-register loop: a register G
+    that read comes from, combinationally, whose next value depends,
+    combinationally, on a register R that reader is part of (R itself, or R's
+    next value reads reader)."""
+    _, gs = cone(deps, flops, [read])
+    rs = {reader} if reader in flops else \
+         {f for f in flops if reader in cone(deps, flops, deps.get(f, ()))[0]}
+    return any(r in cone(deps, flops, deps.get(g, ()))[1] for g in gs for r in rs)
+
+
 # The common ports every block declares, generated rather than hand-written.
 # They are deliberately UNIFORM across blocks -- which is the same argument
 # that made the original CCV-L02 want one name everywhere: a swap harness that
@@ -1125,10 +1193,38 @@ def check_file(path, rel):
         # value or enable, built apart from its always_ff) may read the
         # stage-N state it updates. Read anywhere else, it is held to the
         # plain arithmetic.
+        # Declared feedback (OA's ruling on TI-38): verified here, each against
+        # the loop it claims; only a verified read leaves the arithmetic.
+        graph = dep_graph(src)
+        fb_ok = {}
+        for s0, e0, n, ln0 in spans:
+            fp, decl = feedback_decls(os.path.dirname(path), n)
+            for reader, d in sorted(decl.items()):
+                reads = d.get("from", [])
+                if d.get("by") not in FEEDBACK_BY:
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared feedback reads are not an architect's (by %r, "
+                        "not one of %s): each is reviewed before it is listed"
+                        % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
+                    continue
+                for rd in reads:
+                    if rd not in graph[0].get(reader, ()):
+                        add("CCV-L23", ln0,
+                            "%s: %s is declared to read %s as feedback, but does not "
+                            "read it: remove the declaration" % (fp, reader, rd))
+                    elif not feedback_loop(graph[0], graph[1], reader, rd):
+                        add("CCV-L23", ln0,
+                            "%s: %s reads %s as declared feedback, but no register "
+                            "%s comes from has a next value that depends on %s's "
+                            "register: there is no loop for the read to close"
+                            % (fp, reader, rd, rd, reader))
+                    else:
+                        fb_ok.setdefault(reader, set()).add(rd)
+
         def rhs_stages(expr, lhs, own=None):
             out = []
             for w in re.findall(r"[a-z]\w*", expr):
-                if w == lhs:
+                if w == lhs or w in fb_ok.get(lhs, ()):
                     continue
                 st = stage_of(w)
                 if st and st[1] != "r" and st[2] != own:

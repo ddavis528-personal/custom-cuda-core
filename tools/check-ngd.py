@@ -371,7 +371,12 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
     # and only area recovery stretched the register's off-critical paths.
     t.q_flop_area, t.q_out_area, t.rr_r = t.q_flop, t.q_out, tr.rr
     t.q_flop_r, t.q_out_r = tr.q_flop, tr.q_out
+    # NGD-2's output ready times the same, on the same condition (OI-68:
+    # ooe_go's wb reads 18.7 on map, 11.2 on map -r, flop to flop 21.6
+    # against 21.1).
+    t.ro_area, t.ro_r = t.ro, tr.ro
     if tr.rr <= t.rr + EPS:
+        t.ro = {p: min(v, tr.ro.get(p, v)) for p, v in t.ro.items()}
         t.q_flop = {q: min(v, tr.q_flop.get(q, v)) for q, v in t.q_flop.items()}
         q_out = collections.defaultdict(dict)
         for q, outs in t.q_out.items():
@@ -970,6 +975,17 @@ def selftest():
                 wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
                     u.name, q, v, a, r, "" if rbetter else ", -r worse flop to flop"))
     expect(not wrong, "a register's NGD-7 depth is not the rule's: %s" % "; ".join(wrong[:3]))
+    #     NGD-2 the same, per output (OI-68).
+    wrong = []
+    for u in fx.values():
+        t = u.t
+        rbetter = t.rr_r <= t.rr + EPS
+        for o, v in t.ro.items():
+            a, r = t.ro_area[o], t.ro_r.get(o, t.ro_area[o])
+            if v != (min(a, r) if rbetter else a):
+                wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
+                    u.name, o, v, a, r, "" if rbetter else ", -r worse flop to flop"))
+    expect(not wrong, "an output's NGD-2 ready time is not the rule's: %s" % "; ".join(wrong[:3]))
     # 2. Within every default: nothing. An input wired straight to an
     #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
     ok = fx["ngd_fx_ok"]

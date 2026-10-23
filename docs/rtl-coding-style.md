@@ -461,6 +461,37 @@ one in a generate block; `ccv_reference.sv`'s field and locals silent; and
 the ratchet excusing a listed net, and refusing an entry that now meets the
 rule and one never in the baseline.
 
+### CCV-L23's declared feedback — the back edge of a register loop
+
+OA's ruling on TI-38, 2026-10-23. A one-cycle select loop reads backwards
+across stages by design: in `ooe_sched` the request and ready registers
+(stage 03) read the grant register (stage 04), which their own values feed,
+because V-65's same-cycle confirmation needs it. Retagging would describe a
+two-stage wait that does not exist, so the read is declared instead, and
+CCV-L23's arithmetic skips its stage for that reader alone.
+
+A declaration lives beside the module's RTL, in `<module>.feedback.json`:
+`{"reads": {"<reader>": {"from": ["<read>", ...], "by": "OA", "date": "…",
+"why": "…"}}}`, one entry per reading net, its reads named. The lint holds
+each one to the loop it claims, and refuses it otherwise, leaving the stage
+skip reported:
+
+- `by` is an architect (OA, AR or DA): a declaration is reviewed before it
+  is listed, and the list shrinks only by review;
+- the reader reads it: a stale declaration is refused;
+- the loop exists: some register the read comes from, through
+  combinational logic, has a next value that depends, through combinational
+  logic, on a register the reader is (or feeds). Read the other way, the
+  read is the back edge of a two-register loop. Conditions count as
+  dependencies, an `if`'s or a `case`'s selector as much as a right-hand
+  side.
+
+Timing is not exempt: check-ngd measures the loop whatever the tags say.
+`tools/check-1d.sh` holds it to `rtl/lint/reference_loop.sv` (a declared
+loop, silent) and `rtl/lint/bad_feedback.sv` (a declaration with no loop, one
+not an architect's, one for a read not made, and the loop undeclared: each
+refused).
+
 ### CCV-L22 — a block runs on its own gated clock
 
 No `always_ff @(posedge core_clk)` inside a block, except the wake detector.
