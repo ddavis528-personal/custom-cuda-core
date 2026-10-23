@@ -291,6 +291,15 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   cycle before its load (V-61). Its sources are confirmed first, so it
   cannot be cancelled after the load has gone. Unsectioned, the copy leaves
   with its load, as before.
+- **Any destination makes the copy** (TI-36 (b), OA's rev 180). A load or
+  atomic at a partial mask, or guarded, makes the copy whether its
+  destination is a GPR or only a predicate (ld.pred). For ld.pred the copy
+  carries the old physical predicate into the new, so the inactive lanes
+  keep their bits, and the load itself then reads no old predicate. Control
+  `pred-copy-lost` makes none for ld.pred. The test runs from `main()` only:
+  no stub carries ld.pred yet, and ooe_rendep's copy reads the old GPR
+  destination. The RTL copy must read the old predicate when ld.pred
+  reaches the stubs.
 - **Loads passing loads** (OA-13, deferred to PF-28 by DA's response of
   2026-10-09; a sweep knob only, off): with `loads_pass_loads`, a
   plain load passes older unissued plain loads of its warp. It never passes

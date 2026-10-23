@@ -104,6 +104,7 @@ struct Op {
   /// under the control the exit before it).
   bool last = false, final = false;
   int srd = -1;                  ///< kLane: an srd identity OOE substitutes (A-25, O-64)
+  bool pred_only = false;        ///< kLoad: ld.pred, its only destination predicate pdst (TI-36)
   /// A load that misses to DRAM (TI-21's stall_hole): its fill this many
   /// cycles after its issue, or 0 for the environment's DRAM draw.
   bool dram = false;
@@ -146,7 +147,15 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.shape.pred_logic = true;
     u.imm = o.pq[0] | o.pq[1] << 3;
     break;
-  case kLoad: u.attr_raw = attr(1, 0, 0, 1, 0, 0, 0, 0, 2); break;
+  case kLoad:
+    if (o.pred_only) {          // ld.pred (TI-36): a predicate destination only
+      u.attr_raw = attr(1, 0, 0, 0, 1, 0, 0, 0, 2);
+      u.pred_we = true;
+      u.pred_dst = o.pdst;
+    } else {
+      u.attr_raw = attr(1, 0, 0, 1, 0, 0, 0, 0, 2);
+    }
+    break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
   case kAtomic:
     // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined.
@@ -1835,6 +1844,58 @@ void testLaneCtx() {
     EXPECT(seen, "core %u: the srd never issued", core);
     for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
   }
+}
+
+/// TI-36 (b) (OA's rev 180): a load whose only destination is a predicate
+/// (ld.pred) at a partial mask makes the masked-load copy, as a GPR load
+/// does: the copy-only op carries the old predicate to the new, so the
+/// inactive lanes keep their bits; the load itself then reads no old
+/// predicate. At a full, unguarded mask it is elided. The control makes
+/// none. Model-only (main()): no stub carries ld.pred, and ooe_rendep's copy
+/// reads the old GPR destination until it does.
+bool ldPredCopy(bool control) {
+  bool ok = true;
+  for (uint32_t mask : {0x0000ffffu, kFullMask}) {
+    Config c = baseConfig();
+    c.inject_pred_copy_lost = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op sp; sp.k = kSetp; sp.nsrc = 2; sp.pdst = 1; p.push_back(sp);
+    Op ld; ld.k = kLoad; ld.nsrc = 1; ld.pred_only = true; ld.pdst = 1; ld.mask = mask; p.push_back(ld);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(6, 0, p);
+    unsigned copies = 0, setp_dst = ~0u, copy_old = ~0u;
+    for (unsigned k = 0; k != 400 && !e.warpOf(6)->exited; ++k) {
+      e.step();
+      for (const Issue &is : e.log.back().issues) {
+        if (is.warp != 6) continue;
+        if (!is.copy && setp_dst == ~0u) setp_dst = is.ppdst;   // the setp issues first
+        if (is.copy) { ++copies; copy_old = is.ppold; }
+      }
+    }
+    const bool want = mask != kFullMask;
+    const bool good = e.warpOf(6)->exited && copies == (want ? 1u : 0u) && (!want || copy_old == setp_dst) &&
+                      e.errors.empty();
+    ok = ok && good;
+    if (!control) {
+      g_test = "ld.pred's copy (TI-36)";
+      EXPECT(e.warpOf(6)->exited, "mask %08x: the warp never finished", mask);
+      EXPECT(copies == (want ? 1u : 0u), "mask %08x: %u copies", mask, copies);
+      EXPECT(!want || copy_old == setp_dst, "mask %08x: the copy carries old predicate pp%u, the setp's pp%u", mask,
+             copy_old, setp_dst);
+      for (const std::string &x : e.errors) EXPECT(false, "%s", x.c_str());
+    }
+  }
+  return ok;
+}
+
+void testLdPredCopy() {
+  ldPredCopy(false);
+  const bool held = ldPredCopy(true);
+  std::printf("  %-24s %s\n", "control pred-copy-lost", held ? "MISSED" : "caught");
+  g_test = "ld.pred's copy (control)";
+  EXPECT(!held, "a partial-mask ld.pred without its copy should fail the check");
 }
 
 void testCtaSlot() {
@@ -3993,6 +4054,7 @@ int main(int argc, char **argv) {
   testFixedWindowPreds();
   testRandom(seeds);
   testAtomic();
+  testLdPredCopy();
   testAtomicFault();
   testAtomicKill();
   testAtomicDemote();

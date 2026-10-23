@@ -764,8 +764,10 @@ void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   const int group = r.is_mem ? int(Config::kGrpAddr) : u.attr.exec_rcu ? -1 : int(u.attr.bypass_group);
   if (copy_half) {
     // The copy-only op: the old destination through a lane as merge_data,
-    // under the load's guard (A-38).
-    dep(e, r.pold, false, int(Config::kGrpInt));
+    // under the load's guard (A-38); a predicate destination's old
+    // predicate likewise (ld.pred, OA's rev 180).
+    if (r.alloc_gpr) dep(e, r.pold, false, int(Config::kGrpInt));
+    if (u.pred_we && r.alloc_pred) dep(e, r.ppold, true, -1);
     if (u.shape.guard) dep(e, r.ppguard, true, -1);
     return;
   }
@@ -780,7 +782,8 @@ void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
     dep(e, r.pq[1], true, -1);
   }
   // The old predicate destination when the predicate write merges (A-43).
-  if (u.pred_we && r.merge) dep(e, r.ppold, true, -1);
+  // A masked load's copy reads it instead (ld.pred).
+  if (u.pred_we && r.merge && !(r.copy && r.is_mem)) dep(e, r.ppold, true, -1);
 }
 
 bool Core::cellOk(unsigned i, unsigned j) const {
@@ -2803,8 +2806,11 @@ uint8_t Core::admBits(const Uop &u) const {
   const bool nop = u.shape.exit || u.cause;
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
-  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && wgpr && (u.group_mask != kFullMask || u.shape.guard);
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
+  // The copy is keyed on any destination (OA's rev 180, TI-36 (b)): a
+  // predicate's (ld.pred) as a GPR's.
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && (wgpr || pred) &&
+                    (u.group_mask != kFullMask || u.shape.guard);
   const bool serial = a.serial == kSerChwidth || a.serial == kSerBarrier;
   return uint8_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
                  (serial << 6));
@@ -2905,14 +2911,19 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // A masked or guarded one that writes rd gets the copy for T's inactive
   // lanes, as a masked load does (A-38).
   const bool atomic = mem && a.mem_kind == kMemKAtomic;
-  const bool copy = mem && (a.mem_kind == kMemKLoad || atomic) && wgpr && merge;
+  // The copy is keyed on any destination (OA's rev 180, TI-36 (b)): a load
+  // whose only destination is a predicate (ld.pred) merges its inactive
+  // lanes' bits through it as a GPR load does its lanes.
+  const bool wpred = !nop && u.pred_we && cfg_.rename_preds;
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atomic) && (wgpr || (wpred && !cfg_.inject_pred_copy_lost)) && merge;
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
   const bool nop_d = u.shape.exit || u.cause;
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
-  const bool copy_d = mem_d && (a.mem_kind == kMemKLoad || atom_d) && wgpr_d && (!full || u.shape.guard);
+  const bool wpred_d = !nop_d && u.pred_we && cfg_.rename_preds;
+  const bool copy_d = mem_d && (a.mem_kind == kMemKLoad || atom_d) && (wgpr_d || wpred_d) && (!full || u.shape.guard);
   const unsigned chg[4] = {
       cfg_.go_static ? (!nop_d && !mem_d ? 1u : 0u) + (copy_d ? 1u : 0u) + (atom_d ? 1u : 0u) : 0u,
       cfg_.go_static ? (mem_d ? (atom_d ? 2u : 1u) : 0u) : 0u,
@@ -3357,7 +3368,8 @@ void Core::rename() {
           if (u.warp != slot_[si].warp) continue;
           if (k++ == w) break;
           const SchedAttr &a = u.attr;
-          if (a.rs_miu && a.mem_kind == kMemKLoad && a.writes_gpr && (u.group_mask != kFullMask || u.shape.guard))
+          if (a.rs_miu && a.mem_kind == kMemKLoad && (a.writes_gpr || (u.pred_we && cfg_.rename_preds)) &&
+              (u.group_mask != kFullMask || u.shape.guard))
             need_rcu = 2 * w;
         }
       }
