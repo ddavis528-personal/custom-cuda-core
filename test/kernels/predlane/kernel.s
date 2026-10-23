@@ -9,8 +9,8 @@
         POR          P1, 5, 1           # P1 = all ones
         BRA_PRED     0, join            # lanes 0-15 skip the store
         ST_PRED_G    2, R3, 12          # P1 to lane 0's window 9, +16: lanes 16-31's bits
-        LD_PRED_G    2, R3, 28          # and back from +32, zero: lanes 16-31 clear
-join:   ST_PRED_G    2, R3, 44          # all lanes: P1, lanes 16-31 now clear, over
-                                        # +48's poked ones: every bit written, the
-                                        # clear ones too, since P1 is data, not a guard
+        POR          P1, 0, 0           # P1 = P0, in lanes 16-31 alone: they clear
+join:   ST_PRED_G    2, R3, 44          # all lanes: P1 over +48's poked ones, every
+                                        # bit written, the clear ones too, since P1 is
+                                        # data, not a guard
         C_EXIT       0

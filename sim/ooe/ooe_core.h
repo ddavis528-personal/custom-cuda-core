@@ -420,6 +420,9 @@ struct Config {
   bool inject_park_layout_lost = false;
   /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
   bool inject_cta_slot_zero = false;
+  /// TI-36 (b)'s control: a predicate-only masked load (ld.pred) makes no
+  /// copy, so its inactive lanes' bits are lost.
+  bool inject_pred_copy_lost = false;
   /// O-64 (OA's rev 177): this core's index, above warp_id in %lanectx's
   /// substitution: CCV_P_CORE_ID, 0 on a one-core build (TI's tie-off).
   unsigned core_id = ccv::prov::kCoreId;
