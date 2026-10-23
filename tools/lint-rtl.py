@@ -1307,6 +1307,7 @@ def check_file(path, rel):
         graph = dep_graph(src)
         fb_ok = {}
         ddeps = data_graph(src)
+        byp_ok = {}
         for s0, e0, n, ln0 in spans:
             fp, decl, byp = feedback_decls(os.path.dirname(path), n)
             # A declared bypass (DA, 2026-10-23; OI-72 (A)): a reader at stage
@@ -1353,7 +1354,10 @@ def check_file(path, rel):
                             add("CCV-L23", ln0, "%s: %s's declared bypass of %s does not hold: %s"
                                 % (fp, reader, rd, why))
                         else:
-                            fb_ok.setdefault(reader, set()).add(rd)
+                            # Counted at the stage it stands for, the register's
+                            # less its offset: the reader's own (OI's rev 189,
+                            # OA's rev 212), so its other inputs stay checked.
+                            byp_ok.setdefault(reader, {})[rd] = ahead
             for reader, d in sorted(decl.items()):
                 reads = d.get("from", [])
                 if d.get("by") not in FEEDBACK_BY:
@@ -1421,7 +1425,7 @@ def check_file(path, rel):
                     continue
                 st = stage_of(w)
                 if st and st[1] != "r" and st[2] != own:
-                    out.append(st[2])
+                    out.append(st[2] - byp_ok.get(lhs, {}).get(w, 0))
             return out
 
         ff_spans = [(pos, pos + len(body)) for kind, clk, body, ln, pos in always_blocks(src)

@@ -529,7 +529,11 @@ declared, and the register is that many stages on from a register at the
 reader's stage in the reader's own pipeline (its block letter), each hop
 traced through the data a register is loaded with, never its enable. A
 register loaded from another pipeline is off the reader's path. Each
-declaration is reviewed one by one, never accepted as a class.
+declaration is reviewed one by one, never accepted as a class. The read it
+declares counts at the stage it stands for, its register's less the offset,
+the reader's own (OI's rev 189, OA's rev 212): the reader's other inputs stay
+held to the arithmetic, and a reader whose other inputs are all a stage
+earlier is still its own stage (`reference_loop.sv`'s `hit2_cy02h`).
 `rtl/lint/reference_loop.sv`'s `hit_cy02h` passes; `bad_feedback.sv`'s bypass
 of another pipeline's register, and one declared two stages ahead where the
 tags give one, are refused.
