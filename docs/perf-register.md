@@ -823,6 +823,15 @@ it.
   of which at most 12 are saves and restores, so spills and fills dominate.
   Held cycles come from the skeleton once TI times the kernel (AR-20, after
   the kill).
+- **The predicate case (TI-36, 2026-10-23):** an ld.pred behind an older
+  st.pred to the same word can take the store's word d without waiting for
+  the merge, whenever the load's active_mask is a subset of the store's m.
+  ld.pred writes only its active lanes (O-62), and those bits are d's. That
+  covers a reload by the same group, or by a part of it after a split. It
+  costs a word compare, a mask-subset test and a 32-bit path from the store
+  buffer to pred_result. Not built: CoreMark-derived reloads a predicate 4
+  times in a run. The skeleton's figure, about 960 cycles a reload in
+  predswap, is a cold-memory bound with no L1 hit, not a typical cost.
 
 ### PF-43 Carry a per-lane base in a field the memop does not use
 
