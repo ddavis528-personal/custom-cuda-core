@@ -3824,8 +3824,23 @@ void audit() {
   };
   Config base = baseConfig();
   base.fits_stale = 6;
+  if (const char *ac = std::getenv("AUDIT_CFG")) {   // a setting the audit runs under, as CCV_OOE_CONFIG (e.g. scarce names)
+    const std::string e = base.apply(ac);
+    if (!e.empty()) { std::fprintf(stderr, "%s\n", e.c_str()); return; }
+  }
   const R d = run(base);
   std::printf("audit: the decided go (fits_stale 6), 48 seeds: %.0f cycles\n", d.cy);
+  {
+    // OI-74 (iii) and OI-75 (b), OA's rev 216: rename's held and name counts
+    // see frees two edges late and the pool's floors are owed from held
+    // before last cycle's takes. Against frees seen at once and exact floors.
+    Config c = base;
+    c.held_late = 0;
+    c.owed_lag = false;
+    const R x = run(c);
+    std::printf("audit: frees seen at once, floors owed exact (held_late 0, owed_lag 0): %.1f cycles (%+.2f%%)\n", x.cy,
+                100.0 * (x.cy / d.cy - 1));
+  }
   for (const char *k : keys) std::printf("audit:   %-28s %10.1f per run\n", k, d.n.at(k));
   Config ny = base;
   ny.take_young = false;

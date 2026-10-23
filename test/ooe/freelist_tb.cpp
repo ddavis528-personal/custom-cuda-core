@@ -17,6 +17,12 @@
 //      allocation requests as the model made, which the RTL must grant with
 //      exactly the model's entries in order, and the frees as a mask; and
 //      the lead of the next edge's frees. Then it ticks.
+// Each allocation's owner is the model's, given with the allocation
+// (own_slot, as rename gives it; a port nothing takes gets a random slot,
+// which the entry's next allocation overwrites); after each edge the
+// frees counted by owner and group (fs) must be the bench's count of the
+// frees driven, by the owners it gave, and each slot's total the model's
+// (Core::slotFrees).
 // The RTL's own assertions (every request granted, no double free, no free
 // of an entry granted the same cycle, every free led) run too, under
 // --assert.
@@ -28,8 +34,9 @@
 //
 // Negative controls (FL_CONTROL=<name>) perturb the driving and must be
 // caught: drop-free (frees never reach the RTL), extra-alloc (one more
-// request than the model made, in a cycle that has one) and no-lead (a
-// free's lead is never driven, so the free bits are not clocked for it).
+// request than the model made, in a cycle that has one), no-lead (a
+// free's lead is never driven, so the free bits are not clocked for it)
+// and wrong-owner (each entry is given the next slot as its owner).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: freelist_tb [seeds] | freelist_tb --cg <scenario> <vcd>
@@ -43,6 +50,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -61,9 +69,14 @@ CgRun cg;                // --cg <scenario> <vcd>: the scenario, and its VCD (cg
 bool have_prev = false;
 FreeVec::Edge prev_edge;
 std::vector<unsigned> prev_al, prev_fr;
+std::vector<int> prev_own;              // the owners of prev_al
+std::mt19937 owner_rng(5);              // a port nothing takes: its slot
+std::vector<int> owner_of;              // each entry's owner, as the bench gave it
+std::vector<unsigned> prev_sf;          // each slot's frees in prev_fr, the model's
 unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, mismatches = 0;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
-constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K);
+constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K), LS = FL_S > 1 ? bits(FL_S) : 1,
+                   FG = FL_N % 12 == 0 ? 12 : FL_N % 8 == 0 ? 8 : FL_N, NF = FL_N / FG, LF = bits(FG + 1);
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -91,7 +104,21 @@ void tick() {
   cg.dump();
 }
 
+template <typename T> void setField(T &w, unsigned lsb, unsigned n, unsigned v) {
+  for (unsigned b = 0; b != n; ++b) setBit(w, lsb + b, (v >> b) & 1u);
+}
+
 bool lead(const std::vector<unsigned> &next_fr) { return !next_fr.empty() && control != "no-lead"; }
+
+// The cycle's allocations' owners and each slot's frees, as the model has them now.
+void record(const Core &c, const FreeVec &fv) {
+  prev_al = fv.cycleAllocs();
+  prev_fr = fv.cycleFrees();
+  prev_own.clear();
+  for (unsigned p : prev_al) prev_own.push_back(FL_POOL ? c.predOwner(p) : c.gprRowOwner(p));
+  prev_sf.assign(FL_S, 0);
+  for (unsigned s = 0; s != FL_S && s != c.slots(); ++s) prev_sf[s] = c.slotFrees(s, FL_POOL);
+}
 
 void fail(const char *what, unsigned a, unsigned b) {
   if (++mismatches <= 5) std::fprintf(stderr, "cycle %llu: %s (rtl %u, model %u)\n", cycles, what, a, b);
@@ -103,9 +130,11 @@ void hook(const Core &c) {
     // A new core: reset the RTL to all free, the buffer empty.
     current = c.serial();
     ++cores;
-    desync = fv.capacity() != FL_N || fv.bufferCap() != FL_B || fv.banks() != FL_K;
+    desync = fv.capacity() != FL_N || fv.bufferCap() != FL_B || fv.banks() != FL_K || c.slots() > FL_S;
     dut->alloc_req_cq01h = 0;
     dut->free_l_cq00h = 0;
+    for (unsigned k = 0; k != FL_A * LS; ++k) setBit(dut->own_slot_cq01h, k, false);
+    owner_of.assign(FL_N, -1);
     for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
     // The reset is flopped before use (RST-1): the state resets at the
     // edge after the one that captures it, and again at the next, the first
@@ -125,8 +154,7 @@ void hook(const Core &c) {
     if (!fv.cycleFrees().empty()) fail("a free in a core's first cycle", unsigned(fv.cycleFrees().size()), 0);
     have_prev = true;
     prev_edge = fv.lastEdge();
-    prev_al = fv.cycleAllocs();
-    prev_fr = fv.cycleFrees();
+    record(c, fv);
     return;
   }
   ++cycles;
@@ -166,6 +194,13 @@ void hook(const Core &c) {
   for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
   if (control != "drop-free")
     for (unsigned p : fr) setBit(dut->free_mask_cq01h, p, true);
+  // Each port's owner: its allocation's, a random slot where none.
+  for (unsigned k = 0; k != FL_A; ++k) {
+    int o = k < prev_own.size() ? prev_own[k] : int(owner_rng() % FL_S);
+    if (o < 0) { fail("an allocation the model owns to no slot", k, 0); o = 0; }
+    if (control == "wrong-owner" && k < prev_own.size()) o = (o + 1) % FL_S;
+    setField(dut->own_slot_cq01h, k * LS, LS, unsigned(o));
+  }
   dut->eval();
   for (unsigned k = 0; k != al.size(); ++k) {
     const bool v = (dut->alloc_v_cq02h >> k) & 1u;
@@ -176,9 +211,32 @@ void hook(const Core &c) {
   allocs += al.size();
   frees += fr.size();
   tick();
+  // The frees just driven, by owner and group, and each slot's total.
+  if (control != "drop-free") {
+    std::vector<unsigned> want(FL_S * NF, 0), tot(FL_S, 0);
+    for (unsigned p : fr)
+      if (p < owner_of.size() && owner_of[p] >= 0) ++want[unsigned(owner_of[p]) * NF + p / FG];
+      else fail("a free of an entry the bench gave no owner", p, 0);
+    for (unsigned s = 0; s != FL_S; ++s)
+      for (unsigned b = 0; b != NF; ++b) {
+        const unsigned got = getField(dut->fs_cq02h, (s * NF + b) * LF, LF);
+        if (got != want[s * NF + b]) {
+          fail("frees by owner and group differ", got, want[s * NF + b]);
+          if (std::getenv("FL_VERBOSE") && mismatches <= 3) {
+            std::fprintf(stderr, "  slot %u group %u; frees:", s, b);
+            for (unsigned p : fr) std::fprintf(stderr, " %u(o%d)", p, owner_of[p]);
+            std::fprintf(stderr, " sectioned=%d\n", int(c.config().sectioned));
+          }
+        }
+        tot[s] += got;
+      }
+    for (unsigned s = 0; s != FL_S; ++s)
+      if (tot[s] != prev_sf[s]) fail("a slot's frees differ from the model's", tot[s], prev_sf[s]);
+  }
+  for (unsigned p : fr) owner_of[p] = -1;
+  for (unsigned k = 0; k != al.size(); ++k) owner_of[al[k]] = prev_own[k];
   prev_edge = fv.lastEdge();
-  prev_al = fv.cycleAllocs();
-  prev_fr = fv.cycleFrees();
+  record(c, fv);
 }
 } // namespace
 

@@ -112,15 +112,16 @@ width=$(sed -n 's/.*localparam int CCV_ISSUE_WIDTH = \([0-9]*\);.*/\1/p' rtl/gen
 # OI-38), read from its Config so the two cannot drift.
 fl_buf=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
 fl_banks=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+fl_slots=$(sed -n 's/.*localparam int CCV_TIER1_WARPS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
 for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   set -- $cfg
   name=$1 pool=$2 n=$3
   dir=build/ooe-rtl/freelist_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
         "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
     say "freelist $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
@@ -130,7 +131,7 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   else
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in drop-free extra-alloc no-lead; do
+  for c in drop-free extra-alloc no-lead wrong-owner; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
     else

@@ -240,6 +240,8 @@ struct Config {
   /// take returns its share (decided on its registered takes, the fits at
   /// offset 0 formed without it). The credits are rename's counters.
   unsigned fits_stale = 6;
+  unsigned held_late = 2;   ///< OI-75 (b): cycles of frees rename's held and name counts have not seen
+  bool owed_lag = true;     ///< OI-74 (iii): the pool's floors owed from held before last cycle's takes
   /// Rename's go admits on what decq holds (slice 4's fits): each uop's
   /// needs from its decode-time bits alone, so a uop that turns into a
   /// no-op at rename (a barrier, width or format fault) still counts its
@@ -782,6 +784,7 @@ public:
   /// then this cycle's frees join the bits.
   void clock() {
     allocs_.clear();
+    prev_frees_ = frees_.size();
     frees_.clear();
     // The first edge is ooe_freelist's last reset edge, which refills
     // nothing: the core's first cycle is the one after the reset, for every
@@ -847,7 +850,10 @@ private:
   std::vector<uint8_t> bit_, pend_, inbuf_;
   std::deque<unsigned> buf_;
   std::vector<unsigned> allocs_, frees_, bptr_;
-  size_t ready_ = 0, npend_ = 0;
+  size_t ready_ = 0, npend_ = 0, prev_frees_ = 0;
+public:
+  size_t prevFrees() const { return prev_frees_; }
+private:
   unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
   unsigned transit_ = 0, took_ = 0;   // last cycle's allocations, and this cycle's
   bool fresh_ = false;                 // no edge since reset()
@@ -920,6 +926,15 @@ public:
   size_t freeGprs() const { return gfree_.size(); }
   size_t freePreds() const { return pfree_.size(); }
   unsigned heldGprs(unsigned slot) const { return slot_[slot].held_gpr; }
+  /// A GPR row's or a predicate's owner, a slot, or -1 while free (for
+  /// test/ooe/freelist_tb.cpp, whose RTL keeps each entry's owner).
+  int gprRowOwner(unsigned row) const {
+    const auto &o = cfg_.sectioned ? rowOwner_ : gowner_;
+    return row < o.size() ? int(o[row]) - 1 : -1;
+  }
+  int predOwner(unsigned p) const { return p < powner_.size() ? int(powner_[p]) - 1 : -1; }
+  /// The GPR rows or predicates a slot freed since the last cycle started.
+  unsigned slotFrees(unsigned s, bool pred) const { return s < fr_now_.size() ? fr_now_[s][pred] : 0; }
   /// RS entries slot holds in a class (TI-21's measure).
   unsigned rsHeldIn(unsigned slot, bool miu) const {
     unsigned n = 0;
@@ -1331,8 +1346,8 @@ public:
       r.prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
       r.late[k] = rs_free_now_[k] - r.prompt[k];
     }
-    r.c[2] = unsigned(gfree_.ready());
-    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready()) : 1000u;
+    r.c[2] = unsigned(gfree_.ready() - (cfg_.held_late >= 2 ? gfree_.prevFrees() : 0));
+    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready() - (cfg_.held_late >= 2 ? pfree_.prevFrees() : 0)) : 1000u;
     return r;
   }
   /// What rename's counters count over the cycle just run, for
@@ -1628,6 +1643,9 @@ private:
   bool gprReserved(unsigned slot, unsigned n) const;
   bool predReserved(unsigned slot, unsigned n) const;
   unsigned unmetFloor(unsigned slot, bool pred) const;
+  unsigned heldSeen(unsigned slot, bool pred) const;
+  unsigned floorsOwedLag(bool pred) const;
+  std::vector<std::array<unsigned, 2>> fr_now_, fr_prev_;   ///< each slot's frees this cycle and last (heldSeen)
   unsigned floorsOwed(bool pred) const;
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;

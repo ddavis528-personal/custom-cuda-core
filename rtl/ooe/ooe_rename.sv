@@ -71,14 +71,21 @@ module ooe_rename #(
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LC = (C > 1) ? $clog2(C) : 1,
   localparam int MW = 16 * GW + 4 * PW,
-  localparam int XM = 5 * R,
+  localparam int XM = 6 * R,
   localparam int LX = $clog2(XM + 1),
   localparam int XW = 20,                // a head's Rename 2 attributes (c_x)
   localparam int XL = XW + 3,            // a lane's: and its class bits (RS, MIU, copy)
   localparam int P  = 2 * R,             // RS allocation ports: R RCU, then R MIU
   localparam int LP = $clog2(P),
   localparam int W  = $clog2(N),
-  localparam int CW = 2 * G
+  localparam int CW = 2 * G,
+  // The free lists' counts by owner: groups of FG entries (ooe_freelist's).
+  localparam int GFG = (NG % 12 == 0) ? 12 : ((NG % 8 == 0) ? 8 : NG),
+  localparam int GNF = NG / GFG,
+  localparam int GLF = $clog2(GFG + 1),
+  localparam int PFG = (NP % 12 == 0) ? 12 : ((NP % 8 == 0) ? 8 : NP),
+  localparam int PNF = NP / PFG,
+  localparam int PLF = $clog2(PFG + 1)
 ) (
   input  logic              ooe_core_clk,
   input  logic              ooe_rst_r00h,
@@ -170,7 +177,7 @@ module ooe_rename #(
   logic [NC*2*R-1:0] wb_cq02h;
   logic [2*R-1:0]    wt_cq02h;
   ooe_go #(.S(S), .R(R), .PA(PA), .LU(LU), .LB(LB), .LT(LT)) u_go (
-    .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h, .unmet_g_cq01h, .unmet_p_cq01h, .room_g_cq01h, .room_p_cq01h, .run_cq01h,
+    .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h, .pl_cq01h({4{(R+1)'(1)}}), .unmet_g_cq01h, .unmet_p_cq01h, .room_g_cq01h, .room_p_cq01h, .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
     .pool_en_cq01h, .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
 
@@ -179,12 +186,19 @@ module ooe_rename #(
   logic [R*GR-1:0] galloc_cq02h;
   logic [R*PW-1:0] palloc_cq02h;
   logic [$clog2(FB+1)-1:0] gavail_cq02h, pavail_cq02h;   // the counts rename sees: the go's pool, from slice 7's counters
-  ooe_freelist #(.N(NG), .A(R), .B(FB), .K(FK)) u_gfree (
+  // Each port's owner, the slot of the lane its entry goes to (Rename 1's
+  // lanes, below), and the frees the free lists count by owner.
+  logic [R*LS-1:0] gown_cq02h, pown_cq02h;
+  logic [S*GNF*GLF-1:0] gfs_cq02h;
+  logic [S*PNF*PLF-1:0] pfs_cq02h;
+  ooe_freelist #(.N(NG), .A(R), .B(FB), .K(FK), .S(S)) u_gfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[0 +: R]), .free_l_cq00h(gfree_l_cq00h),
-    .free_mask_cq01h(gfree_cq01h), .alloc_v_cq02h(galv_cq02h), .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h));
-  ooe_freelist #(.N(NP), .A(R), .B(FB), .K(FK)) u_pfree (
+    .free_mask_cq01h(gfree_cq01h), .own_slot_cq01h(gown_cq02h), .alloc_v_cq02h(galv_cq02h),
+    .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h), .fs_cq02h(gfs_cq02h));
+  ooe_freelist #(.N(NP), .A(R), .B(FB), .K(FK), .S(S)) u_pfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[R +: R]), .free_l_cq00h(pfree_l_cq00h),
-    .free_mask_cq01h(pfree_cq01h), .alloc_v_cq02h(palv_cq02h), .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h));
+    .free_mask_cq01h(pfree_cq01h), .own_slot_cq01h(pown_cq02h), .alloc_v_cq02h(palv_cq02h),
+    .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h), .fs_cq02h(pfs_cq02h));
 
   // -- Rename 1: every candidate's reads, then the lanes -----------------------
   // A head's write bits are its admission bits (3 GPR, 4 predicate), as the
@@ -259,6 +273,18 @@ module ooe_rename #(
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
     .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_x_cq02h));
+
+  // Port k's owner: the slot of the lane whose name index is k (each
+  // lane's names, one-hot by port: GPR, then predicate).
+  always_comb begin
+    gown_cq02h = '0;
+    pown_cq02h = '0;
+    for (int k = 0; k < R; k++)
+      for (int l = 0; l < R; l++) begin
+        if (l_idx_cq02h[(l * 2 + 0) * R + k]) gown_cq02h[k * LS +: LS] = gown_cq02h[k * LS +: LS] | l_slot_cq02h[l * LS +: LS];
+        if (l_idx_cq02h[(l * 2 + 1) * R + k]) pown_cq02h[k * LS +: LS] = pown_cq02h[k * LS +: LS] | l_slot_cq02h[l * LS +: LS];
+      end
+  end
 
   // -- The Rename 1 register ---------------------------------------------------
   // Its payload while some slot had a head (the go's registered sel, a
