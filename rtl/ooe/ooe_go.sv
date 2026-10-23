@@ -225,28 +225,28 @@ module ooe_go #(
       end
   end
   // The writer counts' run and take, from the copies: as the take's.
-  logic [S*R-1:0] run_w;
-  logic [R*S-1:0] tk_w;
-  logic [S*R-1:0] tqw;
-  logic [R-1:0]   otw;
+  logic [S*R-1:0] run_w_cq02h;
+  logic [R*S-1:0] tk_w_cq02h;
+  logic [S*R-1:0] tqw_cq02h;
+  logic [R-1:0]   otw_cq02h;
   always_comb begin
     for (int s = 0; s < S; s++)
       for (int j = 0; j < R; j++) begin
-        run_w[s * R + j] = 1'b0;
+        run_w_cq02h[s * R + j] = 1'b0;
         for (int k = 0; k < R + 1; k++)
-          run_w[s * R + j] = run_w[s * R + j] | (fitsw_cq02h[(s * (R + 1) + k) * R + j] & tkow_cq02h[s * (R + 1) + k]);
-        run_w[s * R + j] = run_w[s * R + j] & ~blk_cq01h[s];
+          run_w_cq02h[s * R + j] = run_w_cq02h[s * R + j] |
+                                   (fitsw_cq02h[(s * (R + 1) + k) * R + j] & tkow_cq02h[s * (R + 1) + k] & ~blk_cq01h[s]);
       end
     for (int r = 0; r < R; r++)
       for (int s = 0; s < S; s++) begin
-        tqw = '0;
+        tqw_cq02h = '0;
         for (int q = 0; q < S; q++)
           for (int v = 0; v < R; v++)
-            if (v < r)       tqw[q * R + v] = run_w[q * R + v];
-            else if (v == r) tqw[q * R + v] = run_w[q * R + v] & bef[s * S + q];
-        for (int q = 0; q < S; q++) if (q == s) tqw[q * R +: R] = '0;
-        otw = tsum(tqw);
-        tk_w[r * S + s] = run_w[s * R + r] & (r == 0 || !otw[(R - 1 - r) % R]);
+            if (v < r)       tqw_cq02h[q * R + v] = run_w_cq02h[q * R + v];
+            else if (v == r) tqw_cq02h[q * R + v] = run_w_cq02h[q * R + v] & bef[s * S + q];
+        for (int q = 0; q < S; q++) if (q == s) tqw_cq02h[q * R +: R] = '0;
+        otw_cq02h = tsum(tqw_cq02h);
+        tk_w_cq02h[r * S + s] = run_w_cq02h[s * R + r] & (r == 0 || !otw_cq02h[(R - 1 - r) % R]);
       end
   end
 
@@ -255,16 +255,16 @@ module ooe_go #(
   // own last take) at the length its rank term takes, the OR over the
   // lengths the term reaches, as the counts rise with the length; the
   // totals, over the taken writers.
-  logic [S*2*(R+1)*R-1:0] wcs;           // per slot, class, length m (0 to R): its writers, a thermometer
-  logic [S*R-1:0]         wq;
+  logic [S*2*(R+1)*R-1:0] wcs_cq02h;           // per slot, class, length m (0 to R): its writers, a thermometer
+  logic [S*R-1:0]         wq_cq02h;
   always_comb begin
     for (int q = 0; q < S; q++)
       for (int b = 0; b < 2; b++) begin
-        wcs[((q * 2 + b) * (R + 1)) * R +: R] = '0;
+        wcs_cq02h[((q * 2 + b) * (R + 1)) * R +: R] = '0;
         for (int m = 1; m < R + 1; m++) begin
-          wcs[((q * 2 + b) * (R + 1) + m) * R +: R] = '0;
+          wcs_cq02h[((q * 2 + b) * (R + 1) + m) * R +: R] = '0;
           for (int k = 0; k < R + 1; k++)
-            wcs[((q * 2 + b) * (R + 1) + m) * R +: R] = wcs[((q * 2 + b) * (R + 1) + m) * R +: R] |
+            wcs_cq02h[((q * 2 + b) * (R + 1) + m) * R +: R] = wcs_cq02h[((q * 2 + b) * (R + 1) + m) * R +: R] |
               (wc_cq02h[(((q * (R + 1) + k) * 2 + b) * R + m - 1) * R +: R] & {R{tkow_cq02h[q * (R + 1) + k]}});
         end
       end
@@ -272,13 +272,13 @@ module ooe_go #(
       for (int r = 0; r < R; r++)
         for (int s = 0; s < S; s++) begin
           for (int q = 0; q < S; q++) begin
-            wq[q * R +: R] = '0;
+            wq_cq02h[q * R +: R] = '0;
             for (int v = 0; v < R; v++)
               if (v < r || v == r)
-                wq[q * R +: R] = wq[q * R +: R] |
-                  ({R{run_w[q * R + v] && (v < r || bef[s * S + q])}} & wcs[((q * 2 + b) * (R + 1) + v + 1) * R +: R]);
+                wq_cq02h[q * R +: R] = wq_cq02h[q * R +: R] |
+                  ({R{run_w_cq02h[q * R + v] && (v < r || bef[s * S + q])}} & wcs_cq02h[((q * 2 + b) * (R + 1) + v + 1) * R +: R]);
           end
-          wb_cq02h[((r * S + s) * 2 + b) * R +: R] = tsum(wq);
+          wb_cq02h[((r * S + s) * 2 + b) * R +: R] = tsum(wq_cq02h);
         end
       // More than j writers taken: a taken writer has j before it.
       for (int j = 0; j < R; j++) begin
@@ -286,8 +286,8 @@ module ooe_go #(
         for (int r = 0; r < R; r++)
           for (int s = 0; s < S; s++)
             wt_cq02h[b * R + j] = wt_cq02h[b * R + j] |
-              (tk_w[r * S + s] &
-               (wcs[((s * 2 + b) * (R + 1) + r + 1) * R +: R] != wcs[((s * 2 + b) * (R + 1) + r) * R +: R]) &
+              (tk_w_cq02h[r * S + s] &
+               (wcs_cq02h[((s * 2 + b) * (R + 1) + r + 1) * R +: R] != wcs_cq02h[((s * 2 + b) * (R + 1) + r) * R +: R]) &
                (j == 0 || wb_cq02h[((r * S + s) * 2 + b) * R + (j + R - 1) % R]));
       end
     end
@@ -464,16 +464,16 @@ module ooe_go #(
 
   // Each warp's writer prefix counts past each take k, registered with the
   // fits.
-  logic [S*(R+1)*2*R*R-1:0] wc_nx;
-  logic [R-1:0]             wn;
+  logic [S*(R+1)*2*R*R-1:0] wc_cq01h;
+  logic [R-1:0]             wn_cq01h;
   always_comb
     for (int s = 0; s < S; s++)
       for (int k = 0; k < R + 1; k++)
         for (int b = 0; b < 2; b++) begin
-          wn = '0;
+          wn_cq01h = '0;
           for (int m = 1; m < R + 1; m++) begin
-            if (k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 3 + b]) wn = {wn[R-2:0], 1'b1};
-            wc_nx[(((s * (R + 1) + k) * 2 + b) * R + m - 1) * R +: R] = wn;
+            if (k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 3 + b]) wn_cq01h = {wn_cq01h[R-2:0], 1'b1};
+            wc_cq01h[(((s * (R + 1) + k) * 2 + b) * R + m - 1) * R +: R] = wn_cq01h;
           end
         end
 
@@ -556,7 +556,7 @@ module ooe_go #(
       end else if (fits_en[gs]) begin
         fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
         fitsw_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
-        wc_cq02h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R] <= wc_nx[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R];
+        wc_cq02h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R] <= wc_cq01h[gs * (R + 1) * 2 * R * R +: (R + 1) * 2 * R * R];
         sel_q_cq02h[gs]                             <= sel_nx[gs];
       end
     end
