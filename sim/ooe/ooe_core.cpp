@@ -764,8 +764,10 @@ void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
   const int group = r.is_mem ? int(Config::kGrpAddr) : u.attr.exec_rcu ? -1 : int(u.attr.bypass_group);
   if (copy_half) {
     // The copy-only op: the old destination through a lane as merge_data,
-    // under the load's guard (A-38).
-    dep(e, r.pold, false, int(Config::kGrpInt));
+    // under the load's guard (A-38); a predicate-only load's copy merges its
+    // old predicate instead (TI-36 (b)).
+    if (r.alloc_gpr) dep(e, r.pold, false, int(Config::kGrpInt));
+    else if (u.pred_we) dep(e, r.ppold, true, -1);
     if (u.shape.guard) dep(e, r.ppguard, true, -1);
     return;
   }
@@ -780,7 +782,8 @@ void Core::addDeps(unsigned e, const RobEntry &r, bool copy_half) {
     dep(e, r.pq[1], true, -1);
   }
   // The old predicate destination when the predicate write merges (A-43).
-  if (u.pred_we && r.merge) dep(e, r.ppold, true, -1);
+  // A masked load's copy reads it instead (TI-36 (b)).
+  if (u.pred_we && r.merge && !(r.copy && r.is_load)) dep(e, r.ppold, true, -1);
 }
 
 bool Core::cellOk(unsigned i, unsigned j) const {
@@ -2596,7 +2599,9 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   is.warp = s.warp;
   is.issue_mask = u.group_mask;          // V-54: the mask it arrived with
   for (unsigned i = 0; i != 3; ++i) is.psrc[i] = r.psrc[i];
-  is.pdst = r.alloc_gpr ? r.pnew : 0;
+  // No GPR destination names the zero register, which nothing writes: a
+  // copy-only op for a predicate-only load (TI-36) has only its predicate.
+  is.pdst = r.alloc_gpr ? r.pnew : zeroName();
   is.merge = r.merge;
   is.pold = r.merge ? r.pold : 0;
   is.ppguard = r.ppguard;
@@ -2760,7 +2765,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.rs_idx = e;
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;
-    m.pdst = r.alloc_gpr ? r.pnew : 0;
+    m.pdst = r.alloc_gpr ? r.pnew : zeroName();   // none: the zero register (TI-36)
     m.ppred = u.pred_we ? r.ppnew : cfg_.rename_preds ? 0 : cfg_.pred_window(s.warp, u.pred_dst);
     m.disp = u.imm;
     m.scale_en = u.scale_en;
@@ -2800,7 +2805,10 @@ uint8_t Core::admBits(const Uop &u) const {
   const bool nop = u.shape.exit || u.cause;
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
-  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && wgpr && (u.group_mask != kFullMask || u.shape.guard);
+  // A masked load with any destination owes its copy, a predicate-only one
+  // (ld.pred) included (OA's response TI-36 (b)).
+  const bool wdst = wgpr || (mem && a.mem_kind == kMemKLoad && u.pred_we);
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && wdst && (u.group_mask != kFullMask || u.shape.guard);
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
   const bool serial = a.serial == kSerChwidth || a.serial == kSerBarrier;
   return uint8_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
@@ -2902,14 +2910,17 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // A masked or guarded one that writes rd gets the copy for T's inactive
   // lanes, as a masked load does (A-38).
   const bool atomic = mem && a.mem_kind == kMemKAtomic;
-  const bool copy = mem && (a.mem_kind == kMemKLoad || atomic) && wgpr && merge;
+  // Any destination: a predicate-only load's copy merges its predicate (TI-36 (b)).
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atomic) &&
+                    (wgpr || (a.mem_kind == kMemKLoad && u.pred_we)) && merge;
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
   const bool nop_d = u.shape.exit || u.cause;
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
-  const bool copy_d = mem_d && (a.mem_kind == kMemKLoad || atom_d) && wgpr_d && (!full || u.shape.guard);
+  const bool copy_d = mem_d && (a.mem_kind == kMemKLoad || atom_d) &&
+                      (wgpr_d || (a.mem_kind == kMemKLoad && u.pred_we)) && (!full || u.shape.guard);
   const unsigned chg[4] = {
       cfg_.go_static ? (!nop_d && !mem_d ? 1u : 0u) + (copy_d ? 1u : 0u) + (atom_d ? 1u : 0u) : 0u,
       cfg_.go_static ? (mem_d ? (atom_d ? 2u : 1u) : 0u) : 0u,

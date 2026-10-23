@@ -71,6 +71,21 @@ struct Record {
   std::vector<MemAcc> mem;           ///< ascending lane
 
   std::vector<const RegVal *> gprUses() const;
+  /// A predicate transfer, ld.pred or st.pred (O-19), and its mask,
+  /// quals[0]: one bit per P0-P3, word i of the frame for Pi.
+  bool predXfer() const { return op == "LD_PRED_G" || op == "ST_PRED_G"; }
+  unsigned predMask() const { return quals.empty() ? 0u : quals[0] & 15u; }
+  /// The uops DEC issues for it: one per predicate of a transfer's mask,
+  /// ascending (TI-36), else one.
+  unsigned uops() const {
+    return predXfer() && predMask() ? unsigned(__builtin_popcount(predMask())) : 1u;
+  }
+  /// Uop k's predicate: the mask's k-th set bit, ascending.
+  unsigned xferPred(unsigned k) const {
+    for (unsigned p = 0, n = 0; p != 4; ++p)
+      if (predMask() >> p & 1u && n++ == k) return p;
+    return 0;
+  }
   const RegVal *predUse() const;
   const RegVal *gprDef() const;
   const RegVal *predDef() const;

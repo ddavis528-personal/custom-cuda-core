@@ -60,6 +60,9 @@ struct Kernel {
     const unsigned w = seqWarp(seq);
     return w < orcs.size() ? orcs[w].bySeq(seqIndex(seq)) : nullptr;
   }
+  /// Whether tid is its instruction's last uop: a cracked predicate
+  /// transfer retires, as an instruction, with its last uop (TI-36).
+  bool lastUop(uint64_t tid) const;
   std::string name;
   /// Negative controls. Each must make the run FAIL, and say where:
   ///   corrupt-fetch  one instruction byte flipped on its way FET -> DEC
@@ -234,7 +237,8 @@ struct Kernel {
       "lane_byp", "fill_notice", "cmpl_hint", "demote", "parked", "rewound", "restored", "resumed", "slot_reuse",
       "bulk_discard", "replay", "orphan", "ready", "refused", "provisional", "prov_demote",
       "split", "reconverge", "groups_peak", "fair_pick", "st_ld_wait", "order_diff", "ro_fault", "fault", "kill",
-      "slot_form", "window_fill", "dcu_lookups", "frame_lookups"};
+      "slot_form", "window_fill", "dcu_lookups", "frame_lookups",
+      "pred_xfer", "pred_merge", "pred_copy", "crack_split"};
   std::map<std::string, uint64_t> cover;
   /// Each warp's CTA slot, as RAU gave it (TI-34): for the checks on the
   /// cta_slot OOE stamps on memops and faults, never for a decision.

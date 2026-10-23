@@ -631,8 +631,11 @@ private:
     takeUops();
     sendOutputs();
     for (const ooe::Retired &r : core_.retired) {
-      ++k_.retired;
-      k_.retire_order.push_back(uidSeq(r.tid));
+      // An instruction retires with its last uop (TI-36's cracked ones).
+      if (k_.lastUop(r.tid)) {
+        ++k_.retired;
+        k_.retire_order.push_back(uidSeq(r.tid));
+      }
       if (r.exit) ++k_.exits;
       // Each warp's map for the final compare (rows), made at its first use.
       if (r.writes_gpr) k_.ratOf(r.warp)[r.dst] = core_.nameRow(r.pnew);
