@@ -64,6 +64,8 @@
 #     (store_hit), and a dirty line leaves    drop-writeback (slotform): the
 #     whole when its set is taken                evicted lines' 32 words reload
 #     (dcu_evict)                                stale and memory differs
+#   ...on MLC's grant (ownership)             deny-ownership (predswap, vadd):
+#                                                DCU's check refuses the line
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -712,6 +714,17 @@ if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ]
   say "--break drop-writeback: evicted lines lost" "PASS (seq 8's 32 lanes reload stale; 32 words in memory)"
 else
   bad "--break drop-writeback" "a dropped writeback went unnoticed: $(grep '^KERNEL' "$B/kernel_drop-writeback.log")"
+fi
+# DCU marks a line owned only on MLC's grant (ccv_mlc_dcu_rsp.ownership):
+# refused it, predswap's first spill (AcquireBlock) and vadd's whole-line
+# store (AcquirePerm) each stop at DCU's check.
+"$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership.log" 2>&1
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership_vadd.log" 2>&1
+if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id 0) without ownership" "$B/kernel_deny-ownership.log" &&
+   grep -q "^CHECK dcu: MLC answered the acquire of line .* without ownership" "$B/kernel_deny-ownership_vadd.log"; then
+  say "--break deny-ownership: DCU refuses the line" "PASS (predswap's AcquireBlock, vadd's AcquirePerm)"
+else
+  bad "--break deny-ownership" "a line taken as owned without MLC's grant: $(grep '^KERNEL' "$B/kernel_deny-ownership.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 if grep -q "^CHECK lane 0: seq 207 operand 1 (R4) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&

@@ -356,7 +356,7 @@ private:
   enum Who { kDcu, kFet };
   /// What an EXB-side req_id stands for: who asked, and under which of
   /// THEIR ids -- each hop has its own id space.
-  struct Owner { Who who; unsigned their_id; };
+  struct Owner { Who who; unsigned their_id; bool own = false; };
   struct R { Owner o; Bits msg; uint64_t tid; };
   std::deque<R> to_exb_;
   IdPool ids_;
@@ -374,6 +374,7 @@ private:
         // writeback.
         Bits r = msgOf(c.mlc_dcu);
         put(r, c.mlc_dcu, "req_id", get(m.payload, c.dcu_mlc, "req_id"));
+        put(r, c.mlc_dcu, "ownership", k_.brk != "deny-ownership");
         to_dcu_.push_back({0, r, m.tid});
       } else {
       Bits e = msgOf(c.mlc_exb);
@@ -384,7 +385,8 @@ private:
       put(e, c.mlc_exb, "core_id", get(m.payload, c.dcu_mlc, "core_id"));
       putLine(e, field(c.mlc_exb, "writeback_data").lsb,
               getLine(m.payload, field(c.dcu_mlc, "writeback_data").lsb));
-      to_exb_.push_back({{kDcu, unsigned(get(m.payload, c.dcu_mlc, "req_id"))}, e, m.tid});
+      to_exb_.push_back({{kDcu, unsigned(get(m.payload, c.dcu_mlc, "req_id")),
+                          coh == kCohAcquireData}, e, m.tid});
       }
     }
     if (has(c.fet_mlc, 0)) {
@@ -418,6 +420,8 @@ private:
           put(r, c.mlc_dcu, "req_id", it->second.their_id);
           putLine(r, field(c.mlc_dcu, "line_data").lsb, l);
           put(r, c.mlc_dcu, "miss", 1);
+          // One core, nothing to probe: an acquire is granted with its line.
+          put(r, c.mlc_dcu, "ownership", it->second.own && k_.brk != "deny-ownership");
           to_dcu_.push_back({0, r, m.tid});
         } else {
           Bits r = msgOf(c.mlc_fet);
@@ -615,6 +619,10 @@ private:
             refill(x.op.slot, r, x.op.tid, unsigned(get(r, c.dcu_miu, "req_id")), x.line);
           else
             to_miu_.push_back({x.op.slot, r, x.op.tid});
+        } else if ((x.kind == kAcquire || x.kind == kPerm) &&
+                   !get(m.payload, c.mlc_dcu, "ownership")) {
+          k_.fail("dcu: MLC answered the acquire of line %llx (req_id %u) without ownership",
+                  (unsigned long long)x.line, id);
         } else if (x.kind == kAcquire) {
           // The line with ownership: the store's bytes merged, dirty.
           Line l = getLine(m.payload, field(c.mlc_dcu, "line_data").lsb);
