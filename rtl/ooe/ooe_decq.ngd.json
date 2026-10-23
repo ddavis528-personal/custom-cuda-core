@@ -13,12 +13,6 @@
    "date": "2026-10-18",
    "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
   },
-  "deq_n_cq01h": {
-   "arrival": 14.0,
-   "by": "OA",
-   "date": "2026-10-21",
-   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 155): rename's take counts at the go's 14"
-  },
   "flush_cq01h": {
    "arrival": 8.0,
    "by": "OA",
@@ -36,6 +30,12 @@
    "by": "OA",
    "date": "2026-10-21",
    "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): rename's per-warp take-enable, from its flops, as wake's grant copy"
+  },
+  "deq_t_cq01h": {
+   "arrival": 14.0,
+   "by": "OA",
+   "date": "2026-10-21",
+   "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 155): rename's take counts at the go's 14; a per-slot thermometer since OI's restructure of the go (OA's rev 171 (c)), deq_t"
   }
  }
 }

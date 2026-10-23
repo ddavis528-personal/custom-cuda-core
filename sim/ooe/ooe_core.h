@@ -418,6 +418,11 @@ struct Config {
   /// any outstanding head load, before the MLC trigger's threshold.
   bool inject_fallback_claims_mlc = false;
   bool inject_park_layout_lost = false;
+  /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
+  bool inject_cta_slot_zero = false;
+  /// O-64 (OA's rev 177): this core's index, above warp_id in %lanectx's
+  /// substitution: CCV_P_CORE_ID, 0 on a one-core build (TI's tie-off).
+  unsigned core_id = ccv::prov::kCoreId;
   /// TI-27's control (OA's rev 170), the environment's: FET marks the final
   /// exit one exit early.
   bool inject_final_exit_early = false;
@@ -513,7 +518,7 @@ struct Alloc {          ///< ccv_rau_ooe_alloc
   unsigned warp = 0, slot = 0, op = 0;
   uint32_t ctaid = 0, warp_in_cta = 0;
   unsigned barrier_count = 0;      ///< launch and restore-allocate: the CTA's barriers, 0 to 16 (IS-16)
-  unsigned cta_slot = 0;           ///< launch and restore-allocate: the warp's CTA slot (TI-34)
+  unsigned cta_slot = 0;           ///< launch and restore-allocate: the warp's CTA slot at RAU (TI-34)
 };
 /// Fault causes (CCV_W_FAULT_CAUSE; ISA v1.9 section 12's table order).
 enum : unsigned { kCauseWidth = 3, kCauseFormat = 4, kCauseBarrier = 9 };
@@ -569,6 +574,7 @@ struct Issue {          ///< ccv_ooe_rcu_issue
 };
 struct Memop {          ///< ccv_ooe_miu_memop
   uint64_t tid = 0;
+  unsigned cta_slot = 0;         ///< the warp's CTA slot, from its tier-1 slot's register (TI-34)
   unsigned port = 0;
   unsigned rob_tag = 0, warp = 0;
   unsigned rs_idx = 0;           ///< its RS entry, which MIU echoes (OA-23); 0 on a discard
@@ -579,7 +585,6 @@ struct Memop {          ///< ccv_ooe_miu_memop
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
   unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
-  unsigned cta_slot = 0;                  ///< the warp's, from its tier-1 slot (TI-34)
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -1016,7 +1021,7 @@ private:
     unsigned chwidth = 0;                     ///< committed (serialisation)
     bool chwidth_hold = false, bar_hold = false;
     unsigned bar_count = 0;                   ///< the CTA's barriers, from launch or restore-allocate (IS-16)
-    unsigned cta_slot = 0;                    ///< its CTA's slot, likewise; stamped on memop, bar, fault (TI-34)
+    unsigned cta_slot = 0;                    ///< the warp's CTA slot, from launch or restore-allocate (TI-34)
     /// The committed width per architectural GPR (OA's response OI-57): a
     /// width code (0 32, 1 16, 2 8, 3 4 bits), written when a chwidth
     /// retires, 32 at launch and at restore-allocate. F-WIDTH reads it.
@@ -1258,6 +1263,7 @@ public:
   struct GoLog {
     bool valid = false, restore = false;
     unsigned prio = 0;
+    uint32_t flush = 0;                       ///< slots a squash flushed this cycle, before the go
     unsigned cred[4] = {}, owed[2] = {};
     std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;

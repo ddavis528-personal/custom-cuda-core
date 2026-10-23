@@ -693,6 +693,20 @@ So S1 loses at 4, in mlp alone, and not at 6.
   slot, and checks 16 distinct rows, each register at its position and
   width, and the table. Control `park-layout-lost` (restore at 32 bits,
   position 0) must be caught.
+- **The CTA slot** (TI-34, OA's revs 176-177). Each tier-1 slot holds its
+  warp's CTA slot (`Slot::cta_slot`), loaded at launch and at
+  restore-allocate (`Alloc::cta_slot`; a parked warp keeps it at RAU), and
+  stamps it on every memop, discard included, barrier and fault. The
+  environment, as RAU, gives each warp a nonzero slot and checks every
+  memop, barrier and fault against it, every cycle of every test. Control
+  `cta-slot-zero` (slot 0 stamped) must be caught. The field on
+  `ccv_rau_ooe_alloc` is AR's; the adapter passes it when it lands.
+- **%lanectx** (srd #2, O-64, OA's rev 177). `UopShape::srd` 2: OOE
+  substitutes ((core index << 5) | warp_id) << 5, the lane ORs its index in,
+  beside selector 0's warp_in_cta << 5. The core index is
+  `Config::core_id`, 0 on a one-core build (CCV_P_CORE_ID, TI's tie-off);
+  the 32-bit immediate holds clog2(cores) + 10 bits. The directed test
+  issues one at core 0 and core 3. The imm_kind code for it is TI's.
 - **The final-exit bit** (TI-27, OA's rev 170, superseding rev 169's parked
   live mask). OOE holds no live mask. FET marks the exit whose fetch clears
   the warp's last live lanes (`UopShape::final_exit`), and the warp is done

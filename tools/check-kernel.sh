@@ -82,6 +82,17 @@
 #     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse;
 #     -- not its index in its CTA                lanectx-as-ctatid (lanectx2):
 #                                                CTA 1's warp reads 0-31
+#   ld.pred and st.pred (O-19, O-62, O-63;    drop-pred-copy, ldpred-whole-word
+#     TI-36) move only the issue mask's bits:    (predmerge): the reload loses
+#     the load's copy keeps the rest, the        lanes 16-31; stpred-whole-word
+#     store merges its word after commit         (predmerge): they land in memory
+#   their address is lane 0's rbase, lane 0   xfer-low-lane (predlane): lanes
+#     active or not                              16-31 use their own window
+#   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
+#                                                bits keep memory's ones
+#   a demotion between a cracked              resume-mid (predswap, at:57):
+#     instruction's uops resumes at its          the warp resumes past it
+#     first uop (AR's response TI-36)
 #   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
 #     CTA slot, from RAU's alloc (TI-34)         name slot 0, and MIU refuses
 #   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
@@ -651,6 +662,10 @@ rokill ro_fault=1 fault=1 kill=1
 slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
 lanectx redirect=0 split=0
 lanectx2 redirect=0 split=0
+predspill pred_xfer=7 pred_merge=6 pred_copy=0
+predmerge pred_xfer=3 pred_merge=2 pred_copy=1
+predlane pred_xfer=3 pred_merge=2 pred_copy=1
+predswap pred_xfer=32 pred_merge=16 crack_split=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -805,6 +820,63 @@ if grep -q "oracle.1.jsonl: ccv-sim ran it as context 0, but RAU gives it warp_i
   say "an oracle run of another context: refused" "PASS (lanectx2's CTA 1 at -context 0)"
 else
   bad "an oracle run of another context" "loaded: $(tail -1 "$B/kernel_ctx0.log")"
+fi
+# Predicate transfers (TI-36; ISA O-19, O-62, O-63). predmerge (CP's):
+# lanes 0-15 reload P1 from a zero word and store it. The reload writes
+# only their bits, its copy keeping lanes 16-31's; the store merges only
+# theirs into memory. Without the predicate copy, or with the reload
+# written whole, P1 loses lanes 16-31's ones; with the store whole, they
+# land at 0x90050.
+for b in drop-pred-copy ldpred-whole-word; do
+  "$SKEL" --kernel build/oracle/predmerge/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK miu: seq 6 P1's word 00000000, oracle ffff0000" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" pred_mismatch)" = 1 ]; then
+    say "--break $b: P1 loses lanes 16-31" "PASS (predmerge)"
+  else
+    bad "--break $b" "ld.pred's lane enable went unchecked: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
+"$SKEL" --kernel build/oracle/predmerge/oracle.jsonl --break stpred-whole-word >"$B/kernel_stpred-whole-word.log" 2>&1
+if grep -q "^CHECK miu: seq 6 P1 merged ffff0000 into 90050, oracle 00000000" "$B/kernel_stpred-whole-word.log"; then
+  say "--break stpred-whole-word: lanes 16-31 stored" "PASS (predmerge: 0x90050)"
+else
+  bad "--break stpred-whole-word" "st.pred's merge went unchecked: $(grep '^KERNEL' "$B/kernel_stpred-whole-word.log")"
+fi
+# predlane: lanes 16-31 transfer with rbase 9 + lane, non-uniform, and the
+# address is lane 0's, window 9, though lane 0 is inactive (O-62). The
+# lowest active lane's base puts them in window 25. Its last store writes
+# P1, clear in lanes 16-31, over poked ones: as a guard, P1 would keep
+# memory's ones there.
+"$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break xfer-low-lane >"$B/kernel_xfer-low-lane.log" 2>&1
+if grep -q "^CHECK miu: seq 6 uop 0 address 190010, oracle 90010" "$B/kernel_xfer-low-lane.log"; then
+  say "--break xfer-low-lane: the lowest active lane's base" "PASS (predlane: window 25)"
+else
+  bad "--break xfer-low-lane" "a predicate transfer's lane 0 address went unchecked: $(grep '^KERNEL' "$B/kernel_xfer-low-lane.log")"
+fi
+"$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break pdata-guard >"$B/kernel_pdata-guard.log" 2>&1
+if grep -q "^CHECK miu: seq 8 P1 merged ffffffff into 90030, oracle 0000ffff" "$B/kernel_pdata-guard.log"; then
+  say "--break pdata-guard: st.pred's predicate as a guard" "PASS (predlane)"
+else
+  bad "--break pdata-guard" "st.pred's data predicate was taken as a guard unnoticed: $(grep '^KERNEL' "$B/kernel_pdata-guard.log")"
+fi
+# A demotion between a cracked instruction's uops (AR's response TI-36):
+# at cycle 57 predswap's first st.pred has retired its first uop and not
+# its second, and the warp resumes at the instruction, running its first
+# uop again, which both transfers allow. Resumed past it, the second uop is
+# lost. The cycle comes from a sweep of CCV_RAU_DEMOTE=at:<cycle>: if timing
+# moves it, crack_split falls to 0 here and the cycle is swept again.
+CCV_RAU_DEMOTE=at:57 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl >"$B/kernel_predswap_at57.log" 2>&1
+if [ "$(cover "$B/kernel_predswap_at57.log" crack_split)" = 1 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_predswap_at57.log"; then
+  say "predswap demoted between a st.pred's uops" "PASS (at:57, it resumes at the instruction)"
+else
+  bad "predswap demoted between a st.pred's uops" "$(grep '^KERNEL' "$B/kernel_predswap_at57.log"); crack_split=$(cover "$B/kernel_predswap_at57.log" crack_split)"
+fi
+CCV_RAU_DEMOTE=at:57 "$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break resume-mid >"$B/kernel_resume-mid.log" 2>&1
+if grep -q "^CHECK fet: restored warp 0 lane 0 at 1014, but it resumes at 1018" "$B/kernel_resume-mid.log"; then
+  say "--break resume-mid: past the split instruction" "PASS (predswap at:57)"
+else
+  bad "--break resume-mid" "a mid-instruction resume went unchecked: $(grep '^KERNEL' "$B/kernel_resume-mid.log")"
 fi
 # Each memop names its warp's CTA slot (TI-34): RAU sends it on the alloc,
 # and OOE holds it per tier-1 slot and stamps it. Every memop zeroed, as

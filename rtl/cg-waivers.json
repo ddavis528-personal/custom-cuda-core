@@ -36,6 +36,68 @@
    "why": "OA's response OI-65 (OA tab, 2026-10-21, rev 156): the group of each slot's payloads and admission bits (82 flops) is clocked by rename's per-slot take-enable, deq_sel_cq01h (a superset of its take, from rename's flops at 2.0 NGD, ooe_decq.ngd.json; the superset is asserted, deq_sel_covers), or the slot's own transit, arrival and flush flops. check-cg measures the cone at 2.0 to 2.2 NGD, 4.2 in all with the arrival, within CG-2's 8. One enable shared by the slots gave 61 to 71% DCGE; per slot, 90% and over. It replaces OI-58's \"some warp takes\" waiver of about 5 (deq_any_cq01h, dropped).",
    "by": "OI",
    "date": "2026-10-21"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-3",
+   "target": "fits_cq02h",
+   "floor_pct": {
+    "medium": 62,
+    "high": 59
+   },
+   "measured_pct": {
+    "medium": 64,
+    "high": 61
+   },
+   "why": "DA's decision (a), OA's response OI-66 (OA tab revs 174-179): the fits, per slot 20 flops with its take-enable, are recomputed every cycle from decq's heads, rename's pool and floors, the ROB room and the allowances held. Each gate's enable is the slot's change bit, the OR of its producers' register enables (OA's rev 174: decq's arrivals, the ROB room, the pool and floors) and of its own takes, squash, restore edge, held allowances and rotation, each lead exact in the model's bench (no-dq-ev, no-rob-en, no-pool-en controls). Even with exact leads the fits change on only 61-68% of enabled cycles: a warp streaming with credits and room to spare keeps fits of all ones while its heads move (OI's rev 163, a bench-held attribution: 130,007 enabled slot-cycles, 80,859 changing). Measured at 8ef3dff: slot 0 64/61%, slot 1 64/63%, slot 2 64/68% (medium/high), slot 3 never enabled; idle enables none. One waiver takes the four slot groups (one register), its floor the lowest slot's less 2.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-3",
+   "target": "he_cq02h",
+   "floor_pct": {
+    "medium": 64,
+    "high": 52
+   },
+   "measured_pct": {
+    "medium": 66,
+    "high": 54
+   },
+   "why": "DA's decision (a), OA's response OI-66 (OA tab rev 179): the allowances held (20 flops, one-hot per credit) are recomputed every cycle from rename's pool and floors and the warps with a head; enabled on any slot's change bit, they change on 66% (medium) and 54% (high) of enabled cycles, measured at 8ef3dff; idle enables none. Floors 2 under.",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-1",
+   "target": "sq_cq01h",
+   "max_flops": 4,
+   "measured_flops": 4,
+   "why": "Each slot's squash lead, registered (4 flops, written every cycle): it masks the fits as they are registered in the cycle decq still shows a squashed slot's heads, the one after the squash applies (OA's rev 174 accepted the two-cycle block). The module's allowance (fewer than 8 flops written every cycle) takes 6 of its 14: the reset, the restore lead and each slot's block (4); this and its pair, sq_cq01h and chg_cq02h, are the residue, 8 flops (DA's decision (a): max_flops 14 in all, OA's response OI-66). Two bits a slot (its block now, its squash last cycle) and the change bit is the least found (OI's rev 163).",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_go",
+   "rule": "CG-1",
+   "target": "chg_cq02h",
+   "max_flops": 4,
+   "measured_flops": 4,
+   "why": "Each slot's change bit (4 flops, written every cycle): OA's rev 174 (3) folds the producers' register enables (decq's arrivals, the ROB room, rename's pool and floors) per slot onto one flop's D, which is the fits' clock enable; it must be written every cycle to capture them. The module's allowance (fewer than 8 flops written every cycle) takes 6 of its 14: the reset, the restore lead and each slot's block (4); this and its pair, sq_cq01h and chg_cq02h, are the residue, 8 flops (DA's decision (a): max_flops 14 in all, OA's response OI-66). Two bits a slot (its block now, its squash last cycle) and the change bit is the least found (OI's rev 163).",
+   "by": "OI",
+   "date": "2026-10-23"
+  },
+  {
+   "module": "ooe_decq",
+   "rule": "CG-1",
+   "target": "tkv_cq02h",
+   "max_flops": 4,
+   "measured_flops": 4,
+   "why": "The residue of decq's flops written every cycle (4 flops). Adding the registered flush's copy for the outputs' mask, fl_o_cq02h (4 flops, written every cycle, the flush its D), took decq's count from 14 to 18: decq masks a slot's heads and count while its flush is registered, so rename's go blocks a squash for two cycles, not three (OA's response OI-66, rev 174), and NGD-7 asks a register that drives an output and reaches a flop 18.8 NGD away to be copied. The allowance (14 flops) takes the reset, fl_q, fl_o, enq_en and arr_q; this register, each slot's take in transit (deq_s, an input, its D), is what it leaves: 4 flops (DA's rule for a waiver's threshold, OA's response OI-66).",
+   "by": "OI",
+   "date": "2026-10-23"
   }
  ]
 }
