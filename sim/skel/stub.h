@@ -130,7 +130,7 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
 enum : unsigned { kFaultNone = 0, kFaultFetch = 1,          // CCV_W_FAULT_CAUSE (ISA §12)
-                  kFaultIllegal = 2, kFaultRo = 8 };
+                  kFaultIllegal = 2, kFaultAddr = 6, kFaultRo = 8 };
 /// A completion's status on ccv_miu_ooe_cmpl: 0 complete, 1 fault, 2 replay.
 enum : unsigned { kCmplDone = 0, kCmplFault = 1, kCmplReplay = 2 };
 enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
@@ -297,6 +297,10 @@ inline constexpr OpInfo kOps[] = {
   {"C_MOV",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"C_ADDI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   {"C_SHLI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  // The 32-bit forms with a separate destination (Format A's immediate
+  // forms): rd = rs op imm, the immediate in operand slot 1.
+  {"SHLI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"ADDI48",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   {"C_SHRI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   // mad.lo under a guard: as add.p, the guard's off lanes keep the old value.
   {"MADLO_P",       kAlu,       3, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},

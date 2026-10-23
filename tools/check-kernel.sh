@@ -90,6 +90,10 @@
 #   a store into .const or the launch window  no-ro (roconst): its 32 stores
 #     faults F-RO, and nothing lands; CRU        land, and the warp never
 #     holds the fault to ccv-sim's (TI-26)       faults
+#   a .global address outside [0, 2^48)       addr-wrap (addrhigh, addrneg):
+#     faults F-ADDR, never wrapped (O-75)        the sum taken modulo 2^48,
+#                                                so the stores land and
+#                                                neither warp faults
 #   a launch-slot memop's window is the       no-window-fill, window-from-base
 #     word at launch block + 32 + 8k, from       (slotform): every lane's
 #     MIU's table, filled on first use (TI-31)   address is in window 0
@@ -699,6 +703,9 @@ predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=2 pred_xfer=4 frame_lookups=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
+addrhigh addr_fault=1 fault=1 kill=1
+addrneg addr_fault=1 fault=1 kill=1
+addrlimit addr_fault=0 fault=0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
@@ -842,6 +849,18 @@ if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-RO at pc 1
   say "--break no-ro: the stores land, no fault" "PASS (roconst: 32 words)"
 else
   bad "--break no-ro" "a store into .const went unrefused: $(grep '^KERNEL' "$B/kernel_no-ro.log")"
+fi
+# F-ADDR (O-75; CP-34's kernels): a .global address is the exact sum, and
+# one outside [0, 2^48) faults. Taken modulo 2^48, addrhigh's lanes 16-31
+# store at the bottom of memory and lanes 0-15 land too, and addrneg's load
+# reads 2^48 - 4: neither warp faults.
+"$SKEL" --kernel build/oracle/addrhigh/oracle.jsonl --break addr-wrap >"$B/kernel_addr-wrap.log" 2>&1
+"$SKEL" --kernel build/oracle/addrneg/oracle.jsonl --break addr-wrap >"$B/kernel_addr-wrap2.log" 2>&1
+if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-ADDR at pc 1016" "$B/kernel_addr-wrap.log" &&
+   grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-ADDR at pc 1004" "$B/kernel_addr-wrap2.log"; then
+  say "--break addr-wrap: a wrapped .global address" "PASS (addrhigh, addrneg)"
+else
+  bad "--break addr-wrap" "a .global address past 2^48 went unrefused"
 fi
 # The launch-slot form (TI-31): the window is the word at the CTA's launch
 # block + 32 + 8 x arg_slot, which MIU reads into its table on first use.
