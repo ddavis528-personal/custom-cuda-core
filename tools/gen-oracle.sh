@@ -67,6 +67,10 @@ for k in test/kernels/*/; do
     cta=()
     [ -n "$ctaid$ctas" ] && cta=(-ctaid $(( ${ctaid:-0} + w )))
     [ -n "$warps" ] && cta=(-ctaid "${ctaid:-0}" -warp "$w")
+    # The hardware warp context srd #2 names (O-64): RAU gives run w's warp
+    # warp_id w, so ccv-sim's %lanectx must name w too, whichever CTA and
+    # warp of it the run is (ccv-sim -context, TI-35).
+    cta+=(-context "$w")
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
       ${threads:+-threads "$threads"} ${crange:+-const-range "$crange"} \
       -fairness="$fair" -oracle "$o" >/dev/null

@@ -2654,7 +2654,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     // warp_id, shifted the same way.
     is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5
            : u.shape.srd == 1 ? s.ctaid
-           : u.shape.srd == 2 ? uint32_t(((cfg_.core_id << 5) | (s.warp & 31u)) << 5)
+           : u.shape.srd == 2 ? uint32_t(((cfg_.core_id << ccv::kWWarpId) | s.warp) << 5)
            : u.imm;
     // Predicate logic's two sources, renamed: each physical predicate with
     // its negate above it, where DEC's qualifiers were (TI-1).

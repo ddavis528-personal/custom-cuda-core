@@ -738,7 +738,17 @@ breaks them fails in any bench, not only the one that knew the rule.
   where a rule would be met by refactoring, refactor (the age matrix's 900
   one-flop enables are a refactor, not a waiver). A waiver that excuses
   nothing is refused, and that includes one for a finding a module's budget
-  already takes. Today there are none. The repeater had two, for its valid
+  already takes. A waiver carries its threshold and fails again past it
+  (Daniel, 2026-10-22; OA's response OI-66). A CG-3 waiver states
+  `floor_pct` and `measured_pct` by scenario (idle, medium, high): it clears
+  its gate only while the gate's DCGE in each scenario holds at the floor,
+  and the floor may not exceed what was measured. Daniel's rule sets it 2
+  points below the measurement. An allowance waiver, for CG-1's registers
+  written every cycle or CG-4's flops outside any gate, states `max_flops`
+  and `measured_flops`, and one flop more fails. A waiver without its
+  threshold is refused. check-cg reports a waived gate that now measures a
+  point or more above what its waiver records, so its floor can tighten.
+  Today there are none. The repeater had two, for its valid
   and stall flops, until every instantiation was measured on its own (below):
   its allowance takes them. The clock gate's hysteresis counters had two
   until its threshold compare was registered, which Daniel's CSR contract

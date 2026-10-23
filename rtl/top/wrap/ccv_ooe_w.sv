@@ -572,7 +572,7 @@ module ccv_ooe_w #(
 
   // ccv_dec_ooe_uop, destination end
   if (RPT_DEC_OOE_UOP > 0) begin : g_rpt_dec_ooe_uop
-    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(225)) u_rpt_dec_ooe_uop (
+    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(226)) u_rpt_dec_ooe_uop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dec_ooe_uop_s5_valid, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_valid, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_valid}), .src_payload({dec_ooe_uop_s5_payload, dec_ooe_uop_s4_payload, dec_ooe_uop_s3_payload, dec_ooe_uop_s2_payload, dec_ooe_uop_s1_payload, dec_ooe_uop_s0_payload}),
       .src_wake(dec_ooe_uop_wake), .src_credit({dec_ooe_uop_s5_credit, dec_ooe_uop_s4_credit, dec_ooe_uop_s3_credit, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_credit, dec_ooe_uop_s0_credit}), .src_stall({dec_ooe_uop_s5_stall, dec_ooe_uop_s4_stall, dec_ooe_uop_s3_stall, dec_ooe_uop_s2_stall, dec_ooe_uop_s1_stall, dec_ooe_uop_s0_stall}),
@@ -748,7 +748,7 @@ module ccv_ooe_w #(
   end
   // ccv_rau_ooe_alloc, destination end
   if (RPT_RAU_OOE_ALLOC > 0) begin : g_rpt_rau_ooe_alloc
-    ccv_common_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(51)) u_rpt_rau_ooe_alloc (
+    ccv_common_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(54)) u_rpt_rau_ooe_alloc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({rau_ooe_alloc_valid}), .src_payload({rau_ooe_alloc_payload}),
       .src_wake(rau_ooe_alloc_wake), .src_credit({rau_ooe_alloc_credit}), .src_stall({rau_ooe_alloc_stall}),

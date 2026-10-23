@@ -78,6 +78,12 @@
 #     MIU's table, filled on first use (TI-31)   address is in window 0
 #   a memop's base is per lane (TI-32)        scalar-base (slotform): lanes
 #                                                1-31 store into lane 0's window
+#   srd #2, %lanectx, is the warp's context   lanectx-literal (lanectx): no
+#     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse;
+#     -- not its index in its CTA                lanectx-as-ctatid (lanectx2):
+#                                                CTA 1's warp reads 0-31
+#   OOE stamps each memop with its warp's     zero-cta-slot (vadd4): warps 1-3
+#     CTA slot, from RAU's alloc (TI-34)         name slot 0, and MIU refuses
 #   a fatal fault kills the context: every   no-kill, withheld-ack, stale-ack
 #     owner drops the warps and acks at the      (rokill): never killed, or the
 #     kill's epoch (V-24)                        kill never completes
@@ -384,7 +390,7 @@ fi
 # range check, a separate obligation from the reserved-field zero checks,
 # must name it, and the instruction must not retire.
 run srd-selector
-if grep -q "^CHECK dec: seq 2 srd selector 2 is unallocated" "$B/kernel_srd-selector.log" &&
+if grep -q "^CHECK dec: seq 2 srd selector 3 is unallocated" "$B/kernel_srd-selector.log" &&
    [ "$(field "$B/kernel_srd-selector.log" retired)" != 17 ]; then
   say "--break srd-selector: DEC's range check" "PASS"
 else
@@ -643,6 +649,8 @@ rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
 rokill ro_fault=1 fault=1 kill=1
 slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
+lanectx redirect=0 split=0
+lanectx2 redirect=0 split=0
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -763,6 +771,50 @@ if grep -q "^CHECK miu: seq 7 lane 1 address 5ffffc, oracle 60fffc" "$B/kernel_s
   say "--break scalar-base: lanes 1-31 in lane 0's window" "PASS (slotform: 32 words)"
 else
   bad "--break scalar-base" "a per-lane base went unchecked: $(grep '^KERNEL' "$B/kernel_scalar-base.log")"
+fi
+# srd #2 (O-64): %lanectx is (hardware warp context << 5) | lane. OOE
+# substitutes the context, the lane ORs its index; lanectx's warp 1 reads
+# 32-63. With srd #2's imm_kind sent as a literal, OOE substitutes nothing,
+# and 48 of the 64 lanes refuse the value (the 16 whose index already holds
+# bit 1 of the literal 2 compute it by chance in warp 0).
+"$SKEL" --kernel build/oracle/lanectx/oracle.jsonl --break lanectx-literal >"$B/kernel_lanectx-literal.log" 2>&1
+if grep -q "^CHECK lane 0: seq 0 srd 2, oracle 32" "$B/kernel_lanectx-literal.log" &&
+   [ "$(grep -c "^CHECK lane [0-9]*: seq 0 srd " "$B/kernel_lanectx-literal.log")" = 48 ]; then
+  say "--break lanectx-literal: no context substituted" "PASS (lanectx: 48 lanes refuse)"
+else
+  bad "--break lanectx-literal" "srd #2's substitution went unchecked: $(grep '^KERNEL' "$B/kernel_lanectx-literal.log")"
+fi
+# srd #2 names the hardware context, not the warp's index in its CTA: over
+# lanectx2's two one-warp CTAs those differ for CTA 1 (ccv-sim -context,
+# TI-35). Taken as srd #0, CTA 1's 32 lanes read 0-31 and refuse.
+"$SKEL" --kernel build/oracle/lanectx2/oracle.jsonl --break lanectx-as-ctatid >"$B/kernel_lanectx-as-ctatid.log" 2>&1
+if grep -q "^CHECK lane 0: seq 0 srd 0, oracle 32" "$B/kernel_lanectx-as-ctatid.log" &&
+   [ "$(grep -c "^CHECK lane [0-9]*: seq 0 srd " "$B/kernel_lanectx-as-ctatid.log")" = 32 ]; then
+  say "--break lanectx-as-ctatid: srd #2 read as #0" "PASS (lanectx2: CTA 1's 32 lanes refuse)"
+else
+  bad "--break lanectx-as-ctatid" "srd #2's context went unchecked: $(grep '^KERNEL' "$B/kernel_lanectx-as-ctatid.log")"
+fi
+# And each oracle run must name the context RAU gives its warp: lanectx2's
+# CTA 1 run again with ccv-sim -context 0, as before TI-35, is refused at
+# load, before a cycle runs.
+mkdir -p "$B/ctx0" && cp build/oracle/lanectx2/oracle.jsonl "$B/ctx0/oracle.jsonl" &&
+"$(tools/fetch-compiler.sh)/release/bin/ccv-sim" build/oracle/lanectx2/kernel.bin -ctaid 1 -context 0 \
+  -oracle "$B/ctx0/oracle.1.jsonl" >/dev/null 2>&1
+"$SKEL" --kernel "$B/ctx0/oracle.jsonl" >"$B/kernel_ctx0.log" 2>&1
+if grep -q "oracle.1.jsonl: ccv-sim ran it as context 0, but RAU gives it warp_id 1" "$B/kernel_ctx0.log"; then
+  say "an oracle run of another context: refused" "PASS (lanectx2's CTA 1 at -context 0)"
+else
+  bad "an oracle run of another context" "loaded: $(tail -1 "$B/kernel_ctx0.log")"
+fi
+# Each memop names its warp's CTA slot (TI-34): RAU sends it on the alloc,
+# and OOE holds it per tier-1 slot and stamps it. Every memop zeroed, as
+# before TI-34, and MIU refuses vadd4's warps 1-3, 8 memops each.
+"$SKEL" --kernel build/oracle/vadd4/oracle.jsonl --break zero-cta-slot >"$B/kernel_zero-cta-slot.log" 2>&1
+if [ "$(grep -c "^CHECK miu: rob tag [0-9]* (warp [123]) names CTA slot 0; RAU gave it [123]" "$B/kernel_zero-cta-slot.log")" = 24 ] &&
+   [ "$(field "$B/kernel_zero-cta-slot.log" check_failures)" = 24 ]; then
+  say "--break zero-cta-slot: warps 1-3 name slot 0" "PASS (vadd4: 24 memops refused)"
+else
+  bad "--break zero-cta-slot" "a memop's CTA slot went unchecked: $(grep '^KERNEL' "$B/kernel_zero-cta-slot.log")"
 fi
 # The kill (V-24): a fatal fault kills the context. RAU broadcasts the mask
 # of every valid warp context with an epoch, and waits for the eight owners'

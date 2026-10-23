@@ -54,7 +54,13 @@ enable_ngd: the latest port's arrival (its <module>.ngd.json, else
 CCV_NGD_BUDGET - CCV_NGD_PORT) plus the mapped cone. It is refused when an
 unnamed input reaches the enable, when the total is over CCV_NGD_CG_EN, or
 when it states less than measured (OI-58, OI-59): CG-2 times the cone alone,
-which is exact only where no input reaches it. Last, the ratchet,
+which is exact only where no input reaches it. A waiver carries its
+threshold and fails again past it (Daniel; OA's response OI-66): a CG-3
+waiver states floor_pct and measured_pct by scenario, the floor no higher
+than the measurement, and clears a gate only while its DCGE holds at the
+floor; an allowance waiver, for CG-1's registers written every cycle or
+CG-4's ungated flops, states max_flops and measured_flops, and one flop more
+fails. A waiver without its threshold is refused. Last, the ratchet,
 rtl/cg-ratchet.json, holds the modules written before the rule, and the
 CG-5 and RST-1 findings that stood when those were made; it only shrinks: an
 entry outside its baseline is refused, and so is one with nothing left to
@@ -157,6 +163,12 @@ NGD_DEFAULT_ARRIVAL = float(param("CCV_NGD_BUDGET")) - float(param("CCV_NGD_PORT
 WAIVER_RULES = ("CG-1", "CG-2", "CG-3", "CG-4", "CG-5", "RST-1")
 WAIVER_KEYS = ("module", "rule", "target", "why", "by", "date")
 CG5_WAIVER_KEYS = ("ports", "enable_ngd")
+# A waiver carries its threshold, failing again past it (Daniel's decision,
+# OA's response OI-66): a CG-3 waiver a DCGE floor per scenario, an
+# allowance waiver -- CG-1's written every cycle, CG-4 -- a flop count. Each
+# states what was measured when it was written, so a gain can tighten it.
+CG3_WAIVER_KEYS = ("floor_pct", "measured_pct")
+FLOPS_WAIVER_KEYS = ("max_flops", "measured_flops")
 DCGE_MIN = float(param("CCV_DCGE_MIN_PCT"))
 MIN_FLOPS = int(param("CCV_CG_MIN_FLOPS"))
 BUDGET_PCT = float(param("CCV_CG_BUDGET_PCT"))
@@ -1203,6 +1215,7 @@ class Finding:
         self.flops, self.budgetable = flops, budgetable
         self.status = "open"
         self.inputs, self.cone = set(), None    # CG-5: input ports and cone depth
+        self.scenario, self.pct = None, None    # CG-3 on a gate: where, and its DCGE
 
     def __str__(self):
         where = "%s (unit %s)" % (self.module, self.unit) if self.unit else self.module
@@ -1225,11 +1238,13 @@ def unit_findings(u):
                 continue
             v = dcge(u, key, sc)
             if v is not None and v < DCGE_MIN:
-                out.append(Finding("CG-3", u.module, g.best,
-                                   "%s changes on %.0f%% of its %d enabled cycles in %s, "
-                                   "under %g%% (en: %s)"
-                                   % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
-                                      g.en_name), u.name, len(g.q), True))
+                f = Finding("CG-3", u.module, g.best,
+                            "%s changes on %.0f%% of its %d enabled cycles in %s, "
+                            "under %g%% (en: %s)"
+                            % (g.name, v, u.data[sc]["en"][key], sc, DCGE_MIN,
+                               g.en_name), u.name, len(g.q), True)
+                f.scenario, f.pct = sc, v
+                out.append(f)
     for c, dep in sorted(u.icg_depth.items()):
         if dep > NGD_MAX:
             out.append(Finding("CG-2", u.module, {c},
@@ -1660,6 +1675,50 @@ def cg5_waiver_refusal(w, f, arrivals=None):
     return None
 
 
+def cg3_waiver_refusal(w, f):
+    """Why a CG-3 waiver cannot take gate finding f, or None (OI-66): it
+    states floor_pct and measured_pct by scenario, the floor no higher than
+    the measurement, and clears the gate only while its DCGE in f's scenario
+    holds at the floor or above."""
+    floors, meas = w.get("floor_pct"), w.get("measured_pct")
+    if not isinstance(floors, dict) or not isinstance(meas, dict):
+        return "it states no floor_pct and measured_pct by scenario"
+    sc = f.scenario
+    if sc not in floors or sc not in meas:
+        return "it states no floor_pct or measured_pct for %s" % sc
+    floor, at = float(floors[sc]), float(meas[sc])
+    if floor > at:
+        return "its %s floor %g%% is over the %g%% it was measured at" % (sc, floor, at)
+    if f.pct < floor - 1e-9:
+        return ("the gate changes on %.1f%% of its enabled cycles in %s, under the waiver's "
+                "floor %g%%" % (f.pct, sc, floor))
+    return None
+
+
+def flops_waiver_refusal(w, f):
+    """Why an allowance waiver cannot take finding f, a CG-1 register
+    written every cycle or CG-4's flops outside any gate, or None (OI-66):
+    it states max_flops and measured_flops, and one flop more is refused."""
+    try:
+        most, _ = int(w["max_flops"]), int(w["measured_flops"])
+    except (KeyError, TypeError, ValueError):
+        return "it states no max_flops and measured_flops"
+    if f.flops > most:
+        return "%d flop(s), over its max_flops %d" % (f.flops, most)
+    return None
+
+
+def waiver_refusal(w, f, arrivals=None):
+    """Why waiver w cannot take finding f, by rule, or None."""
+    if f.rule == "CG-5":
+        return cg5_waiver_refusal(w, f, arrivals)
+    if f.rule == "CG-3" and f.scenario is not None:
+        return cg3_waiver_refusal(w, f)
+    if f.rule in ("CG-1", "CG-4") and f.budgetable:
+        return flops_waiver_refusal(w, f)
+    return None
+
+
 def load(path, key):
     return json.load(open(path))[key] if os.path.exists(path) else ([] if key == "waivers" else {})
 
@@ -1684,12 +1743,20 @@ def policy(findings, modules, units, waivers, ratchet, baseline=RATCHET_BASELINE
             if not any(reg_is(r, w.get("target", "")) for r in f.regs):
                 continue
             w["_used"] = True
-            why = cg5_waiver_refusal(w, f, arrivals) if f.rule == "CG-5" else None
+            why = waiver_refusal(w, f, arrivals)
             if why:
                 fails.append("waiver %s %s %s refused: %s" % (w["module"], w["rule"],
                                                               w["target"], why))
             else:
                 f.status = "waived"
+                # A gain since the waiver was written: its floor may tighten.
+                if f.rule == "CG-3" and f.scenario is not None:
+                    at = float(w["measured_pct"][f.scenario])
+                    if f.pct >= at + 1:
+                        lines.append("  waiver: %s %s %s measures %.1f%% in %s, over the "
+                                     "%g%% it records; its floor may tighten"
+                                     % (w["module"], w["rule"], w["target"], f.pct,
+                                        f.scenario, at))
             break
     for f in findings:
         if f.status == "open" and f.module in ratchet:
@@ -2021,9 +2088,16 @@ def selftest():
         return fails, fs
 
     # 10. Waivers: one that excuses a finding clears it; one that excuses
-    #     nothing is refused.
-    w_ok = {"module": "cg_fx_dcge", "rule": "CG-3", "target": "hit_q", "why": "control",
-            "by": "TI", "date": "2026-10-16"}
+    #     nothing is refused. hit_q's DCGE by scenario, and d_q's flops,
+    #     are the thresholds the waivers below state (OI-66).
+    hit_dcge = {f.scenario: f.pct for f in has("CG-3", "cg_fx_dcge", "hit_q")}
+    hit_floor = {"floor_pct": dict(hit_dcge), "measured_pct": dict(hit_dcge)}
+    d_flops = max((f.flops for f in has("CG-1", "cg_fx_form", "d_q")), default=0)
+    d_most = {"max_flops": d_flops, "measured_flops": d_flops}
+    expect(hit_dcge and d_flops, "no CG-3 finding on hit_q or CG-1 on d_q to waive: %s, %s"
+           % (hit_dcge, d_flops))
+    w_ok = dict({"module": "cg_fx_dcge", "rule": "CG-3", "target": "hit_q", "why": "control",
+                 "by": "TI", "date": "2026-10-16"}, **hit_floor)
     fails, _ = run_policy(("cg_fx_good", "cg_fx_dcge"), [w_ok])
     expect(not fails, "a waiver did not clear its finding: %s" % fails)
     w_stale = {"module": "cg_fx_good", "rule": "CG-3", "target": "d_q", "why": "control",
@@ -2147,10 +2221,37 @@ def selftest():
         return (hit and all(f.status == "waived" for f in hit)
                 and not any(rule in x and reg in x for x in fails)
                 and not any("waiver" in x for x in fails))
-    for rule, mod, reg in (("CG-1", "cg_fx_form", "d_q"), ("CG-2", "cg_fx_deep", "d_q"),
-                           ("CG-3", "cg_fx_dcge", "hit_q")):
-        expect(cleared(rule, mod, reg, (mod,), wv(mod, rule, reg)),
+    for rule, mod, reg, kw in (("CG-1", "cg_fx_form", "d_q", d_most),
+                               ("CG-2", "cg_fx_deep", "d_q", {}),
+                               ("CG-3", "cg_fx_dcge", "hit_q", hit_floor)):
+        expect(cleared(rule, mod, reg, (mod,), wv(mod, rule, reg, **kw)),
                "a %s waiver did not clear %s %s on its own" % (rule, mod, reg))
+    # 19a. Thresholds (Daniel's decision, OA's response OI-66). A CG-3
+    #      waiver at hit_q's measured DCGE clears it; one a point above in
+    #      any scenario fails, the finding standing and the refusal naming
+    #      the floor; a floor over what it records, or none, is refused. An
+    #      allowance waiver at d_q's flop count clears it; one flop under
+    #      fails; none is refused.
+    sc0 = sorted(hit_dcge)[0] if hit_dcge else "idle"
+    up = {sc: v + (1 if sc == sc0 else 0) for sc, v in hit_dcge.items()}
+    for what, kw, want in (
+            ("a point above the measurement", {"floor_pct": up, "measured_pct": up},
+             "under the waiver's floor"),
+            ("over what it records", {"floor_pct": up, "measured_pct": hit_dcge},
+             "is over the"),
+            ("with no floor", {}, "no floor_pct")):
+        fails, fs = run_policy(("cg_fx_dcge",), [wv("cg_fx_dcge", "CG-3", "hit_q", **kw)])
+        expect(any(want in x for x in fails)
+               and any(f.status == "open" for f in has("CG-3", "cg_fx_dcge", "hit_q", fs)),
+               "a CG-3 waiver %s was accepted: %s" % (what, fails))
+    for what, kw, want in (
+            ("one flop under", {"max_flops": d_flops - 1, "measured_flops": d_flops},
+             "over its max_flops"),
+            ("with no flop count", {}, "no max_flops")):
+        fails, fs = run_policy(("cg_fx_form",), [wv("cg_fx_form", "CG-1", "d_q", **kw)])
+        expect(any(want in x for x in fails)
+               and any(f.status == "open" for f in has("CG-1", "cg_fx_form", "d_q", fs)),
+               "an allowance waiver %s was accepted: %s" % (what, fails))
     srcmod = {"cg_fx_src": ("f", "", 1)}
     a5 = [f for f in has("CG-5", "cg_fx_src", "a_q", sf) if f.regs >= {"a_q", "a2_q"}]
     d5 = has("CG-5", "cg_fx_src", "d_q", sf)

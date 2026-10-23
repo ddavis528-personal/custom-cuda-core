@@ -421,8 +421,8 @@ struct Config {
   /// TI-34's control: the memops, barriers and faults carry CTA slot 0.
   bool inject_cta_slot_zero = false;
   /// O-64 (OA's rev 177): this core's index, above warp_id in %lanectx's
-  /// substitution; 0 on a one-core build (CCV_P_CORE_ID, a tie-off).
-  unsigned core_id = 0;
+  /// substitution: CCV_P_CORE_ID, 0 on a one-core build (TI's tie-off).
+  unsigned core_id = ccv::prov::kCoreId;
   /// TI-27's control (OA's rev 170), the environment's: FET marks the final
   /// exit one exit early.
   bool inject_final_exit_early = false;

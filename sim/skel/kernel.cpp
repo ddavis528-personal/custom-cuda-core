@@ -870,6 +870,16 @@ private:
         if (uidClass(m.tid) != IdClass::kInstr)
           k_.fail("miu: rob tag %u is a memop with id class %u; only a discard may carry none",
                   tag, unsigned(uidClass(m.tid)));
+        // The CTA slot OOE stamps, RAU's for the warp (TI-34): the window
+        // table, F-RO's range and the launch block are indexed by it.
+        {
+          const unsigned w = unsigned(get(m.payload, c.ooe_miu, "warp_id"));
+          const unsigned cs = unsigned(get(m.payload, c.ooe_miu, "cta_slot"));
+          if (k_.cta_slot_of.count(w) && cs != k_.cta_slot_of[w]) {
+            k_.fail("miu: rob tag %u (warp %u) names CTA slot %u; RAU gave it %u", tag, w, cs,
+                    k_.cta_slot_of[w]);
+          }
+        }
         memop_[tag] = {s, m.payload, now_, m.tid};
         order_.push_back(tag);
       }
@@ -2507,11 +2517,11 @@ private:
     const OpInfo *op = opByName(r->op);
     // DEC's second illegal-instruction obligation, separate from the
     // reserved-field zero checks: srd's selector is a legal field that may
-    // hold an unallocated value, so this is a range comparison. Allocating
-    // selector 2 later is one line here.
+    // hold an unallocated value, so this is a range comparison. Selector 2,
+    // %lanectx, is allocated (O-64); 3-15 are not.
     if (op && op->srd_sel >= 0) {
       const int64_t sel = (r->imms.empty() ? 0 : r->imms[0]) +
-                          (k_.brk == "srd-selector" ? 2 : 0);
+                          (k_.brk == "srd-selector" ? 3 : 0);
       op = srdBySel(sel);
       if (!op) {
         k_.fail("dec: seq %llu srd selector %lld is unallocated (a legal field, "
@@ -2571,7 +2581,10 @@ private:
     if (k_.brk == "drop-src-valid" && op->nsrc == 2 && op->cls == kAlu) sv &= ~2u;
     put(u, c.dec_ooe, "src_valid", sv);
     put(u, c.dec_ooe, "pred_use", predUseOf(op));
-    put(u, c.dec_ooe, "imm_kind", immKindOf(op));
+    // lanectx-literal: srd #2's imm_kind sent as a literal, so OOE substitutes
+    // no context, and the lanes refuse the value.
+    put(u, c.dec_ooe, "imm_kind",
+        k_.brk == "lanectx-literal" && immKindOf(op) == kImmLaneCtx ? kImmLiteral : immKindOf(op));
     // fmt_rsv and fmt_opnd stay 0: no op in the skeleton's table has an FP
     // format field, so none can raise F-FORMAT (OI-57).
     // The memop's fields are DEC's to decode too (A-68); OOE copies them to
@@ -3308,6 +3321,10 @@ private:
       put(a, c.rau_ooe, "ctaid", k_.orcs[w].ctaid + (k_.brk == "corrupt-ctaid" ? 1u : 0u));
       put(a, c.rau_ooe, "warp_in_cta", k_.orcs[w].warp_in_cta);
       put(a, c.rau_ooe, "barrier_count", 0);   // no kernel allocates a barrier yet
+      // Its CTA's slot (TI-34): the one rau_miu_cta names, a slot per warp
+      // here. Recorded for the checks on what OOE stamps with it.
+      put(a, c.rau_ooe, "cta_slot", w);
+      k_.cta_slot_of[w] = w;
     }
     return a;
   }
@@ -3855,6 +3872,10 @@ private:
     f.pc = get(m, chan_, "pc");
     f.lanes = uint32_t(get(m, chan_, "lane_mask"));
     f.addr = get(m, chan_, "address");
+    // The CTA slot OOE stamps, RAU's for the warp (TI-34).
+    const unsigned cs = unsigned(get(m, chan_, "cta_slot"));
+    if (k_.cta_slot_of.count(w) && cs != k_.cta_slot_of[w])
+      k_.fail("cru: warp %u's fault names CTA slot %u; RAU gave it %u", w, cs, k_.cta_slot_of[w]);
     if (k_.faults.count(w)) k_.fail("cru: warp %u faults twice", w);
     k_.faults[w] = f;
     k_.hit("fault");
@@ -4028,6 +4049,16 @@ std::vector<unsigned> &Kernel::pratOf(unsigned w, bool preds) {
 std::string Kernel::loadOracles(const std::string &path) {
   orcs.assign(1, Oracle());
   if (std::string e = orcs[0].load(path); !e.empty()) return e;
+  // Each run stands for one warp, which RAU gives warp_id w, its hardware
+  // context: srd #2's %lanectx names it (O-64), so the run must have named
+  // the same context (gen-oracle passes ccv-sim -context w; TI-35).
+  auto ctx = [](const Oracle &o, unsigned w, const std::string &p) -> std::string {
+    return o.lane_context != w
+               ? p + ": ccv-sim ran it as context " + std::to_string(o.lane_context) +
+                     ", but RAU gives it warp_id " + std::to_string(w)
+               : "";
+  };
+  if (std::string e = ctx(orcs[0], 0, path); !e.empty()) return e;
   const std::string base =
       path.size() > 6 && path.compare(path.size() - 6, 6, ".jsonl") == 0
           ? path.substr(0, path.size() - 6) : path;
@@ -4043,6 +4074,7 @@ std::string Kernel::loadOracles(const std::string &path) {
     if (std::string e = o.load(p); !e.empty()) return e;
     if (o.code != orcs[0].code || o.code_base != orcs[0].code_base || o.init_mem != orcs[0].init_mem)
       return p + ": not the code and memory warp 0 ran";
+    if (std::string e = ctx(o, w, p); !e.empty()) return e;
     orcs.push_back(std::move(o));
   }
   return "";

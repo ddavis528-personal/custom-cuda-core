@@ -62,6 +62,7 @@ private:
   // Identity, shadowed from RAU's table on every activation (Q-38), and the
   // tier-1 slot RAU placed each warp in (A-65).
   uint32_t ctaid_[32] = {}, warp_in_cta_[32] = {};
+  unsigned cta_slot_[32] = {};   ///< each warp's CTA slot, from RAU (TI-34)
   unsigned slot_[32] = {};
   // The GPR RAT: every write takes a fresh physical register from the free
   // list, and the one it replaces goes back when the writer retires -- no
@@ -88,6 +89,7 @@ private:
       slot_[w] = unsigned(get(m.payload, c.rau_ooe, "tier1_id"));
       ctaid_[w] = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
       warp_in_cta_[w] = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
+      cta_slot_[w] = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));   // TI-34
       if (op == kAllocLaunch) {
         // Launch (A-64): every architectural register maps to the zero
         // registers until written. No zeroing traffic, and nothing stale
@@ -339,7 +341,8 @@ private:
     // (the lane ORs its index in), %ctaid itself for selector 1.
     uint32_t imm = e.imm;
     if (e.op->srd_sel >= 0)
-      imm = e.op->or_lane ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
+      imm = e.op->srd_sel == 2 ? e.warp << 5   // %lanectx: the context, core 0 (O-64)
+            : e.op->or_lane    ? warp_in_cta_[e.warp] << 5 : ctaid_[e.warp];
     // Predicate logic's sources go to RCU as physical predicates (TI-1):
     // this stub renames no predicate, so each is its window.
     if (e.op->cls == kPredLogic) {
@@ -399,6 +402,7 @@ private:
       Bits mo = msgOf(c.ooe_miu);
       put(mo, c.ooe_miu, "rob_tag", e.tag);
       put(mo, c.ooe_miu, "warp_id", e.warp);
+      put(mo, c.ooe_miu, "cta_slot", cta_slot_[e.warp]);
       put(mo, c.ooe_miu, "mem_op", e.mem_op);             // DEC's, unexamined (A-68)
       // The issue mask, not the active mask: only RCU holds the predicate
       // values, so only RCU computes active = issue AND guard.

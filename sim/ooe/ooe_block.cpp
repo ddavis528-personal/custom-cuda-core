@@ -224,7 +224,10 @@ private:
       // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
       // clears the warp's last live lanes.
       u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
-      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
+      // lanectx-as-ctatid: srd #2 taken as srd #0, the warp's index in its
+      // CTA where O-64 names its hardware context.
+      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
+                  : ik == kImmLaneCtx ? (k_.brk == "lanectx-as-ctatid" ? 0 : 2) : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
         u.cause = 2;   // F-ILLEGAL: an encoding naming nothing
@@ -244,6 +247,7 @@ private:
       a.ctaid = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
       a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
+      a.cta_slot = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));
       core_.alloc(a);
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {
@@ -428,6 +432,9 @@ private:
         put(mo, c.ooe_miu, "ordering", x.ordering);
         put(mo, c.ooe_miu, "slot_form", x.slot_form);
         put(mo, c.ooe_miu, "arg_slot", x.arg_slot);
+        // zero-cta-slot: every memop and fault named CTA slot 0, as before
+        // TI-34; MIU's and CRU's checks refuse a warp of any other slot.
+        put(mo, c.ooe_miu, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
         // The memop's pipe footprint at its data position (0 in S1).
         // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
@@ -546,7 +553,7 @@ private:
       put(m, fc, "pc", x.pc);
       put(m, fc, "lane_mask", x.lane_mask);
       put(m, fc, "address", x.address);
-      put(m, fc, "cta_slot", x.cta_slot);
+      put(m, fc, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
       put(m, fc, "warp_id", x.warp);
       held_.push_back({fc, m, x.tid});
     }
