@@ -132,16 +132,16 @@ std::string Config::check() const {
 
 SchedAttr SchedAttr::decode(uint32_t a) {
   SchedAttr s;
-  s.rs_miu = (a >> 12) & 1u;
-  s.exec_rcu = (a >> 11) & 1u;
-  s.cross_lane = (a >> 10) & 1u;
-  s.writes_gpr = (a >> 9) & 1u;
-  s.writes_pred = (a >> 8) & 1u;
-  s.mem_kind = (a >> 6) & 3u;
-  s.branch = (a >> 5) & 1u;
-  s.serial = (a >> 3) & 3u;
+  s.rs_miu = (a >> 13) & 1u;
+  s.exec_rcu = (a >> 12) & 1u;
+  s.cross_lane = (a >> 11) & 1u;
+  s.writes_gpr = (a >> 10) & 1u;
+  s.writes_pred = (a >> 9) & 1u;
+  s.mem_kind = (a >> 7) & 3u;
+  s.branch = (a >> 6) & 1u;
+  s.serial = (a >> 3) & 7u;
   s.lat_class = a & 7u;
-  s.bypass_group = (a >> 13) & 7u;
+  s.bypass_group = (a >> 14) & 7u;
   return s;
 }
 
@@ -2626,7 +2626,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.res = m >> 5 ? Issue::kMemop : m >> 4 ? Issue::kRcuOp : Issue::kLaneOp;
     is.footprint = uint8_t(is.res == Issue::kMemop ? m >> 5 : is.res == Issue::kRcuOp ? 0 : m & 0xFu);
   }
-  is.byp_group = uint8_t((u.attr_raw >> 13) & 7u);
+  is.byp_group = uint8_t((u.attr_raw >> 14) & 7u);
   if (step) {
     // An atomic's step (AR-21). A1: the address source, into T, with the
     // copy's merge when it has one. A2: the lane op, T and the operands

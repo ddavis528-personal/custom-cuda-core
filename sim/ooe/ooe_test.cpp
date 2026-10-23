@@ -64,8 +64,8 @@ std::string g_test;
 
 uint32_t attr(bool miu, bool rcu, bool cross, bool wg, bool wp, unsigned memk, bool br,
               unsigned ser, unsigned lat) {
-  return uint32_t(miu) << 12 | uint32_t(rcu) << 11 | uint32_t(cross) << 10 | uint32_t(wg) << 9 |
-         uint32_t(wp) << 8 | memk << 6 | uint32_t(br) << 5 | ser << 3 | lat;
+  return uint32_t(miu) << 13 | uint32_t(rcu) << 12 | uint32_t(cross) << 11 | uint32_t(wg) << 10 |
+         uint32_t(wp) << 9 | memk << 7 | uint32_t(br) << 6 | ser << 3 | lat;
 }
 
 enum Kind { kLane, kRcuOp, kSetp, kPlogic, kLoad, kStore, kBranch, kExit, kBarrier, kChw, kSfu, kFp, kAtomic };
@@ -179,8 +179,8 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
-  u.attr_raw |= pgroupOf(o.k) << 13;
-  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x1fffu) | Config::kGrpAddr << 13;
+  u.attr_raw |= pgroupOf(o.k) << 14;
+  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x3fffu) | Config::kGrpAddr << 14;
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }

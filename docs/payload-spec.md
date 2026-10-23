@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 52 channels
+# Payload specification — all 54 channels
 
-Every payload field has a width, so **every one of the 52
+Every payload field has a width, so **every one of the 54
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -43,10 +43,10 @@ since a struct is only as settled as its least-decided field.
 
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
-| All decided | 12 | 34 |
-| ⚠️ Some provisional | 25 | 117 |
-| ⛔ Some preliminary | 15 | 134 |
-| **Total** | **52** | **285** |
+| All decided | 14 | 36 |
+| ⚠️ Some provisional | 25 | 127 |
+| ⛔ Some preliminary | 15 | 135 |
+| **Total** | **54** | **298** |
 
 ## What still has to be decided
 
@@ -70,7 +70,7 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_P_W_SCHED_ATTR` | 16 | med | Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (2: none, chwidth, barrier, exit; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03. |
+| `CCV_P_W_SCHED_ATTR` | 17 | med | Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03. |
 
 ### EXB session -- flattened bundle or separate TL channels
 
@@ -316,21 +316,43 @@ miu → rau · rate 1 · control
 
 ### `ccv_syu_ooe_rel`
 
-The set of warps a barrier released: one bit per warp context, tier-1 and parked (CCV_WARP_CONTEXTS), sized like kill_warp_mask and not by the lane count, which is 32 by coincidence (arch open A-12).
+SYU's answer to a held wait (TI-40, DA's PF-44 variant): the converged warp's barrier has completed, and OOE lifts the rename hold behind its retired wait. One answer per held wait, after it retires; a wait FET parked (not held) is answered on ccv_syu_fet_rel instead, never here, so no answer reaches a later wait (AR's rev 164). If it lands while OOE holds nothing for the warp (a squash or a demotion took the wait), OOE drops it. It is in a demotion's drain.
 
 syu → ooe · rate 1 · control
 
 | Field | Width expression | Bits | Source |
 |---|---|---|---|
-| `warp_mask_released` | `CCV_WARP_CONTEXTS` | 32 | CCV_WARP_CONTEXTS (arch) |
-| `barrier_id` | `CCV_W_BAR_ID` | 4 | CCV_W_BAR_ID (arch) |
-| **total** | | **36** | |
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| **total** | | **5** | |
+
+### `ccv_syu_fet_rel`
+
+SYU's answer to a retired wait FET parked (TI-40, AR's rev 161): lane_mask is the lanes released, those of the wait whose barrier has completed, or was already met when the wait retired (a guard false, its own arrival complete, the phase reached). FET clears their waiting bits in the current state and every live checkpoint of the warp's slot, so a later mispredict cannot park them again. Exactly one answer per lane of each retired wait, so no answer reaches a later wait. For a context that is not resident SYU sends ccv_syu_rau_ready instead. In a demotion's drain, so an answer in flight lands before FET migrates.
+
+syu → fet · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `lane_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| **total** | | **37** | |
+
+### `ccv_syu_rau_ready`
+
+A parked warp's barrier answer (TI-40, AR's rev 161): SYU answers a wait of a context that is not resident by telling RAU the warp is ready, and answers a demote op at once with it when the context has no waiting lanes. RAU restores it; FET rewound its waiting lanes to their waits at the demotion, so they fetch the wait again and ask again, which is exact since a wait has no side effect.
+
+syu → rau · rate 1 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| **total** | | **5** | |
 
 ## ⚠️ Carries a provisional width
 
 ### `ccv_fet_dec_instr`
 
-Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path. On a branch, checkpoint_id names the PC-group checkpoint FET took for it and pred_taken FET's predicted direction (uniform-only first; A-42); both are don't-care on other instructions. A predicted mask replaces pred_taken when divergent prediction lands. GROUP MASK AND EPOCH (A-69, A-70): group_mask is the lanes of the PC group the instruction was fetched for, set by FET, which owns the groups, and carried through DEC to OOE, which needs it at rename (merge elision: is the mask full?) and sends it as issue_mask. fetch_epoch is the warp's epoch when it was fetched: FET takes a new one from every redirect, and DEC and OOE drop any uop whose epoch is not the warp's current one, which is how wrong-path uops still in this channel, in DEC or in the decode queue are discarded after a redirect. FINAL EXIT (AR's and OA's responses TI-27): final_exit marks the exit whose fetch clears the warp's last live lanes. Exit is never predicated, so fetching one exits exactly its group's lanes. A squash that discards an earlier exit discards the mark with it, and the refetched final exit is marked again once FET's mask is restored.
+Fetched, length-decoded, aligned instruction words, two per warp across all four tier-1 warps. Fetch faults ride here rather than a separate path. On a branch, checkpoint_id names the PC-group checkpoint FET took for it and pred_taken FET's predicted direction (uniform-only first; A-42); both are don't-care on other instructions. A predicted mask replaces pred_taken when divergent prediction lands. GROUP MASK AND EPOCH (A-69, A-70): group_mask is the lanes of the PC group the instruction was fetched for, set by FET, which owns the groups, and carried through DEC to OOE, which needs it at rename (merge elision: is the mask full?) and sends it as issue_mask. fetch_epoch is the warp's epoch when it was fetched: FET takes a new one from every redirect, and DEC and OOE drop any uop whose epoch is not the warp's current one, which is how wrong-path uops still in this channel, in DEC or in the decode queue are discarded after a redirect. FINAL EXIT (AR's and OA's responses TI-27): final_exit marks the exit whose fetch clears the warp's last live lanes. Exit is never predicated, so fetching one exits exactly its group's lanes. A squash that discards an earlier exit discards the mark with it, and the refetched final exit is marked again once FET's mask is restored. ALL_WAITING (TI-40, AR's revs 161-164): FET sets it on the instruction whose fetch leaves every live lane of the warp waiting at a barrier: a wait whose group is every live lane (a converged wait, which FET does not park and marks no waiting bits for; OOE holds rename behind it), or an exit by the last group not waiting. OOE starts CCV_DEMOTION_THRESHOLD_BARRIER's timer when the marked uop retires with nothing younger in its warp. DEC passes it through.
 
 fet → dec · rate 8 · instruction
 
@@ -347,7 +369,8 @@ fet → dec · rate 8 · instruction
 | `pred_taken` | `1` | 1 | literal |
 | `fetch_fault` | `1` | 1 | literal |
 | `final_exit` | `1` | 1 | literal |
-| **total** | | **161** | ⚠️ 5 provisional |
+| `all_waiting` | `1` | 1 | literal |
+| **total** | | **162** | ⚠️ 5 provisional |
 
 ### `ccv_rcu_ooe_done`
 
@@ -428,7 +451,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_ooe_fet_redirect`
 
-A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. EPOCH OWNERSHIP (A-70, A-74): OOE owns every warp's fetch epoch and is the only block that advances it: on each redirect, on ccv_rau_ooe_demote, and on a kill. It tells FET of every change on this channel. A redirect carries the new epoch; a demotion or kill sends an epoch notice, epoch_only = 1, for which FET only takes fetch_epoch for warp_id, and checkpoint_id, taken_mask and target_pc are don't-care (no restore, no PC change, no checkpoint freed). FET advances nothing itself. It tags everything it fetches for the warp afterwards with that epoch on ccv_fet_dec_instr. Both blocks hold the epoch per warp_id, not per tier-1 slot, so it survives demotion and restore. Neither resets it at launch, because a relaunched warp_id could meet its predecessor's uops still in flight. The channel is fixed-latency and in order, so notices and redirects for a warp land in the order sent, and V-56 holds: one channel latency after every change, FET's epoch for a warp equals OOE's. REWIND (AR's and OA's responses TI-24 (3); FET spec, demotion rewind): on a demotion, after the epoch notice and the drain (CCV_DRAIN_WAIT), OOE sends one beat per group it holds, epoch_only = 1 and rewind = 1, naming in taken_mask the lanes whose oldest unretired entry, in the ROB or the decode queue, is at target_pc. FET sets those lanes' PCs to it; a lane in no beat keeps FET's PC, exact because the drain left nothing of it in flight, and min-PC merges what now coincides. checkpoint_id and fetch_epoch are don't-care on a beat. OOE sends ccv_ooe_rau_drained only once its last beat has landed in FET, at its send cycle plus this channel's fixed latency, so FET migrates the rewound PCs. A replayable fault (IS-4) uses the same beats. Here rather than a channel of its own: the beats need nothing the notice does not carry but one bit, and the fixed latency and order that make the notice safe.
+A mispredicted branch: the warp, its tier-1 stream, the branch's checkpoint, the lanes that took it, the target PC, and a fetch epoch so FET can discard in-flight fetches from the wrong path. RCU resolves (the condition is a predicate) and OOE compares the outcome with the prediction (pred_taken, A-42); OOE redirects only on a mispredict, at rate 1, serialising them deliberately (A-6). FET owns the PC-group state: it holds a checkpoint of it per unresolved branch (CCV_P_BR_CKPTS) and rebuilds the groups itself from checkpoint_id plus taken_mask, so OOE no longer resends group masks it does not own. Fixed latency (A-58): FET applies a redirect the cycle it lands and never stalls it, because ccv_ooe_fet_ckpt_free is latency-matched to this channel and the pair's arrival order must be its send order; FET applies a redirect before any free landing the same cycle. EPOCH OWNERSHIP (A-70, A-74): OOE owns every warp's fetch epoch and is the only block that advances it: on each redirect, on ccv_rau_ooe_demote, and on a kill. It tells FET of every change on this channel. A redirect carries the new epoch; a demotion or kill sends an epoch notice, epoch_only = 1, for which FET only takes fetch_epoch for warp_id, and checkpoint_id, taken_mask and target_pc are don't-care (no restore, no PC change, no checkpoint freed). FET advances nothing itself. It tags everything it fetches for the warp afterwards with that epoch on ccv_fet_dec_instr. Both blocks hold the epoch per warp_id, not per tier-1 slot, so it survives demotion and restore. Neither resets it at launch, because a relaunched warp_id could meet its predecessor's uops still in flight. The channel is fixed-latency and in order, so notices and redirects for a warp land in the order sent, and V-56 holds: one channel latency after every change, FET's epoch for a warp equals OOE's. REWIND (AR's and OA's responses TI-24 (3); FET spec, demotion rewind): on a demotion, after the epoch notice and the drain (CCV_DRAIN_WAIT), OOE sends one beat per group it holds, epoch_only = 1 and rewind = 1, naming in taken_mask the lanes whose oldest unretired entry, in the ROB or the decode queue, is at target_pc. FET sets those lanes' PCs to it; a lane in no beat keeps FET's PC, exact because the drain left nothing of it in flight, and min-PC merges what now coincides. checkpoint_id and fetch_epoch are don't-care on a beat. OOE sends ccv_ooe_rau_drained only once its last beat has landed in FET, at its send cycle plus this channel's fixed latency, so FET migrates the rewound PCs. A replayable fault (IS-4) uses the same beats. Here rather than a channel of its own: the beats need nothing the notice does not carry but one bit, and the fixed latency and order that make the notice safe. REWIND AND WAITS (TI-40, AR's rev 164, FET spec rev 22): a demotion's rewind beat of a warp OOE holds behind a converged wait sets rewind_held, and held_long gives that wait's length (0 16 bits, 1 32), so FET sets the beat's lanes to its PC less that length, back to the wait, which retired. FET rewinds its waiting lanes too: one named in no beat goes back by its own long bit; one named in a plain beat takes the beat's PC.
 
 ooe → fet · rate 1 · instruction
 
@@ -442,7 +465,9 @@ ooe → fet · rate 1 · instruction
 | `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
 | `epoch_only` | `1` | 1 | literal |
 | `rewind` | `1` | 1 | literal |
-| **total** | | **110** | ⚠️ 5 provisional |
+| `rewind_held` | `1` | 1 | literal |
+| `held_long` | `1` | 1 | literal |
+| **total** | | **112** | ⚠️ 5 provisional |
 
 ### `ccv_ooe_fet_ckpt_free`
 
@@ -630,7 +655,7 @@ rau → miu · rate 1 · control
 
 ### `ccv_ooe_syu_bar`
 
-Barrier arrive and wait. A warp may be demoted while waiting, so the barrier table tracks non-resident warps.
+Barrier reports at retire (TI-40: AR's revs 161-164, OA's revs 200-204, DA 2026-10-23). OOE sends one for every retired bar.arrive, bar.wait and bar.wait.phase, and for every retired exit, partial or final; nothing leaves OOE before it retires, so no report is recalled. bar_kind: 0 arrive, 1 wait, 2 wait.phase, 3 exit. issue_mask is the uop's issue group; guard_mask its guard's lanes (all ones for an unguarded uop): an arrive's arriving lanes are issue_mask & guard_mask, an exit's exiting lanes issue_mask. A wait's lanes ask SYU for its answer; wait.phase's phase_mask is each lane's expected phase, its predicate source read at issue (O-27). held (DA's PF-44 variant, AR's rev 163/164): the wait carried FET's all_waiting mark, so its warp is converged and OOE holds rename behind it; SYU answers a held wait on ccv_syu_ooe_rel and every other wait per lane on ccv_syu_fet_rel. barrier_id is don't-care on an exit. SYU keeps the arrived lanes per (warp context, barrier id) and the live lanes per context, from the launch and the exits (SYU spec rev 7). A warp may be demoted while waiting, so the table tracks non-resident warps.
 
 ooe → syu · rate 1 · control
 
@@ -639,12 +664,16 @@ ooe → syu · rate 1 · control
 | `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `barrier_id` | `CCV_W_BAR_ID` | 4 | CCV_W_BAR_ID (arch) |
-| `arrive_or_wait` | `1` | 1 | literal |
-| **total** | | **13** | ⚠️ 3 provisional |
+| `bar_kind` | `2` | 2 | literal |
+| `issue_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `guard_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `phase_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
+| `held` | `1` | 1 | literal |
+| **total** | | **111** | ⚠️ 3 provisional |
 
 ### `ccv_rau_syu_alloc`
 
-Barrier entries allocated to or freed from a CTA slot.
+Barrier entries and residency at SYU (TI-40, AR's revs 159 and 161). syu_alloc_op: 0 free (the CTA's last warp gone: its entries and slot), 1 allocate (a CTA admitted whole: barrier_base and barrier_count, the launch's, 0 to 16; warp_mask the CTA's warp contexts; warp_id its last warp and last_lanes that warp's live lanes less one, every other warp's 32, so SYU's live lanes start from the launch), 2 demote (warp_id leaves residency: SYU answers its waits on ccv_syu_rau_ready, at once if it has no waiting lanes), 3 restore (warp_id is resident again). Exits clear live lanes through OOE's exit reports on ccv_ooe_syu_bar, the final exit's included, so there is no exit op.
 
 rau → syu · rate 1 · control
 
@@ -653,8 +682,11 @@ rau → syu · rate 1 · control
 | `cta_slot` | `CCV_P_W_CTA_SLOT` | 3 ⚠️ | CCV_P_W_CTA_SLOT (provisional) |
 | `barrier_base` | `CCV_W_BAR_ENTRY` | 6 | CCV_W_BAR_ENTRY (arch) |
 | `barrier_count` | `CCV_L_W_BAR_COUNT` | 5 | CCV_L_W_BAR_COUNT (isa) |
-| `allocate_or_free` | `1` | 1 | literal |
-| **total** | | **15** | ⚠️ 3 provisional |
+| `syu_alloc_op` | `2` | 2 | literal |
+| `warp_mask` | `CCV_WARP_CONTEXTS` | 32 | CCV_WARP_CONTEXTS (arch) |
+| `warp_id` | `CCV_W_WARP_ID` | 5 | CCV_W_WARP_ID (arch) |
+| `last_lanes` | `CCV_W_LANE_IDX` | 5 | CCV_W_LANE_IDX (arch) |
+| **total** | | **58** | ⚠️ 3 provisional |
 
 ### `ccv_ooe_cru_fault`
 
@@ -699,7 +731,7 @@ miu → ooe · rate 4 · memory
 
 ### `ccv_dec_ooe_uop`
 
-Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. The three fields A-75 asked for (TI-1, agreed by Daniel 2026-10-08), so OOE never decodes opcode: src_valid[3], bit i set when source i is a real read (bits 0 and 1 the two fields of src_arch, bit 2 src2_arch), so OOE renames and waits on nothing else; pred_use[2], how the predicate is read: 0 none, 1 guard (an enable: switched-off lanes keep their old value, so merge_en is set, and a masked load owes its copy), 2 data (sel's selector: no merge); imm_kind[3], what imm holds: 0 a literal, 1 predicate logic's two sources (qualifiers in imm[5:0], [2:0] and [5:3], each [1:0] the architectural predicate and [2] its negate), which OOE renames and rewrites on ccv_ooe_rcu_issue, 2 srd's warp_base identity, 3 srd's ctaid identity, 4 srd #2's %lanectx (ISA v1.9 O-64; OA's response TI-33): ((CCV_P_CORE_ID << CCV_W_WARP_ID) | hardware warp context) << 5, the context being warp_id, which a warp keeps while parked, so its .local frame never moves. OOE substitutes each; the lane ORs its index into 2 and 4. Exit is sched_attr's serial code 3. A guard or data use is never bypassed, and OA adds that pred_use feeds the A-62 late bit. Layout MSB first: bypass_group[3], rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). lat_class sets a producer's full latency; bypass_group, as producer and as consumer, indexes the bypass table, whose penalties are parameters (OI-16, Daniel's responses OA-4). DEC owns the opcode-to-attribute table. mem_op, space and ordering (A-68) are decoded here too, for memory ops, and OOE copies them to ccv_ooe_miu_memop unexamined, so opcode decoding lives only in DEC and MIU stays off the opcode census. DEC never emits mem_op 0xF, which is OOE's bulk discard (A-41); asserted on DEC's output (V-52). mem_op and space are don't-care unless sched_attr's rs_miu is set, as is mem_kind; ordering is reserved zero except on a fence (rs_miu with mem_kind fence), which OOE refuses otherwise (IS-11). group_mask and fetch_epoch pass through from FET (A-69, A-70): OOE renames no uop whose fetch_epoch differs from its warp's current epoch, and every issued uop's issue_mask is the group_mask it arrived with. The mask rides per slot. Sharing it once per warp was considered and dropped (A-72): it saves about 10% of ccv_fet_dec_instr's wires and at most 5% of this channel's, and here it would also need the freely bound slots regrouped by warp and a field shared across a slot group. FAULTS (ISA v1.9 §12; AR's and IS's responses IS-16): cause is the uop's fault cause, CCV_W_FAULT_CAUSE's code: 1 F-FETCH when FET's fetch_fault came with the instruction, else 2 F-ILLEGAL from DEC's own check, else 0. Fetch beats decode, settled here where both are known, and the ROB keeps one cause per entry, the lower code winning (§12.5). F-FORMAT (OI-57, OA's response): OOE stays opcode-blind (A-66), so DEC's table sends the format decoded, not the format code. fmt_rsv has one bit per chwidth code, bit i for code i (0 = 32, 1 = 16, 2 = 8, 3 = 4 bits), set where this op's format code is reserved at that width: codes 10 and 11 at every width, 01 at 32 and 4 bits (ISA v1.9 §4). It is 0 for an op with no format field. fmt_opnd names the operand whose committed width selects the bit: 0 src0, 1 src1, 2 src2, 3 the destination. OOE raises F-FORMAT (cause 4) at rename when fmt_rsv[width(fmt_opnd)] is set, from its committed per-register width table. F-WIDTH needs no field: a memory access's rdata is the destination for a load and the data source for a store (mem_kind). final_exit passes through from FET (TI-27): the warp has exited when the uop carrying it retires, so OOE holds no live mask. slot_form and arg_slot (TI-31, AR's response): a memory op in Format D's launch-slot mode (O-45) sets slot_form, and arg_slot is its 4-bit launch slot, an immediate where the base register would be; decoded here and copied by OOE to ccv_ooe_miu_memop unexamined, as mem_op and space are. Zero for every other op. PREDICATE TRANSFERS (TI-36, AR's and OA's responses): DEC cracks ld.pred and st.pred into one uop per predicate of the mask, ascending, uop k moving Pk's word at disp + 4k of the 16-byte frame, mem_op 4 (load) or 5 (store). ld.pred's uop names Pk in pred_dst with pred_we; st.pred's names it in pred_guard with pred_use data (2), never a guard. Each uop is idempotent, so a squash or demotion after a partial retirement re-runs the instruction from its first uop. local_form (IS-19, adopted by DA 2026-10-23; ISA v1.9 O-69; OA's response IS-19): a memory op in Format D's interleaved local mode, ld.local, st.local, ld.pred.local or st.pred.local, sets local_form. It names no base register, so src_valid marks none and OOE renames no base: ld.local's only GPR is its destination, st.local's its data. imm is the unsigned 17-bit byte offset b, and space is global. The predicate forms crack as ld.pred and st.pred do, uop k at b + 4k, mem_op 4 or 5. OOE copies local_form to ccv_ooe_miu_memop unexamined, as slot_form. Zero for every other op.
+Format-decoded operations with architectural register names (src_arch holds two sources and src2_arch the third -- Format A's rs2, an independent source such as mad.lo's and dp4's accumulator input; dst_arch is the destination, always), the predicate guard and the predicate destination as separate fields (pred_guard with pred_neg, pred_dst with pred_we: ISA Format C carries them in separate fields, so @P0 setp P1 is one instruction), the immediate and scale enable, six per cycle into the queue ahead of rename. imm is always the architectural immediate: a branch's is its encoded halfword offset from the next instruction, and ilen (the instruction length code, as on ccv_fet_dec_instr) rides beside it, so OOE computes the target as pc + bytes(ilen) + 2 * imm rather than DEC folding the length in (arch open A-8). checkpoint_id and pred_taken pass through from FET on a branch: OOE compares RCU's resolved outcome with pred_taken to detect a mispredict, then names the checkpoint on ccv_ooe_fet_redirect (A-42). sched_attr (A-66): the scheduling attributes, decoded by DEC so OOE never decodes opcode, whose encoding is preliminary and expected to churn. The three fields A-75 asked for (TI-1, agreed by Daniel 2026-10-08), so OOE never decodes opcode: src_valid[3], bit i set when source i is a real read (bits 0 and 1 the two fields of src_arch, bit 2 src2_arch), so OOE renames and waits on nothing else; pred_use[2], how the predicate is read: 0 none, 1 guard (an enable: switched-off lanes keep their old value, so merge_en is set, and a masked load owes its copy), 2 data (sel's selector: no merge); imm_kind[3], what imm holds: 0 a literal, 1 predicate logic's two sources (qualifiers in imm[5:0], [2:0] and [5:3], each [1:0] the architectural predicate and [2] its negate), which OOE renames and rewrites on ccv_ooe_rcu_issue, 2 srd's warp_base identity, 3 srd's ctaid identity, 4 srd #2's %lanectx (ISA v1.9 O-64; OA's response TI-33): ((CCV_P_CORE_ID << CCV_W_WARP_ID) | hardware warp context) << 5, the context being warp_id, which a warp keeps while parked, so its .local frame never moves. OOE substitutes each; the lane ORs its index into 2 and 4. Exit is sched_attr's serial code 3. A guard or data use is never bypassed, and OA adds that pred_use feeds the A-62 late bit. Layout MSB first: bypass_group[3], rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred, mem_kind[2], branch, serial[3], lat_class[3] (CCV_P_W_SCHED_ATTR has the codes). lat_class sets a producer's full latency; bypass_group, as producer and as consumer, indexes the bypass table, whose penalties are parameters (OI-16, Daniel's responses OA-4). DEC owns the opcode-to-attribute table. mem_op, space and ordering (A-68) are decoded here too, for memory ops, and OOE copies them to ccv_ooe_miu_memop unexamined, so opcode decoding lives only in DEC and MIU stays off the opcode census. DEC never emits mem_op 0xF, which is OOE's bulk discard (A-41); asserted on DEC's output (V-52). mem_op and space are don't-care unless sched_attr's rs_miu is set, as is mem_kind; ordering is reserved zero except on a fence (rs_miu with mem_kind fence), which OOE refuses otherwise (IS-11). group_mask and fetch_epoch pass through from FET (A-69, A-70): OOE renames no uop whose fetch_epoch differs from its warp's current epoch, and every issued uop's issue_mask is the group_mask it arrived with. The mask rides per slot. Sharing it once per warp was considered and dropped (A-72): it saves about 10% of ccv_fet_dec_instr's wires and at most 5% of this channel's, and here it would also need the freely bound slots regrouped by warp and a field shared across a slot group. FAULTS (ISA v1.9 §12; AR's and IS's responses IS-16): cause is the uop's fault cause, CCV_W_FAULT_CAUSE's code: 1 F-FETCH when FET's fetch_fault came with the instruction, else 2 F-ILLEGAL from DEC's own check, else 0. Fetch beats decode, settled here where both are known, and the ROB keeps one cause per entry, the lower code winning (§12.5). F-FORMAT (OI-57, OA's response): OOE stays opcode-blind (A-66), so DEC's table sends the format decoded, not the format code. fmt_rsv has one bit per chwidth code, bit i for code i (0 = 32, 1 = 16, 2 = 8, 3 = 4 bits), set where this op's format code is reserved at that width: codes 10 and 11 at every width, 01 at 32 and 4 bits (ISA v1.9 §4). It is 0 for an op with no format field. fmt_opnd names the operand whose committed width selects the bit: 0 src0, 1 src1, 2 src2, 3 the destination. OOE raises F-FORMAT (cause 4) at rename when fmt_rsv[width(fmt_opnd)] is set, from its committed per-register width table. F-WIDTH needs no field: a memory access's rdata is the destination for a load and the data source for a store (mem_kind). final_exit passes through from FET (TI-27): the warp has exited when the uop carrying it retires, so OOE holds no live mask. slot_form and arg_slot (TI-31, AR's response): a memory op in Format D's launch-slot mode (O-45) sets slot_form, and arg_slot is its 4-bit launch slot, an immediate where the base register would be; decoded here and copied by OOE to ccv_ooe_miu_memop unexamined, as mem_op and space are. Zero for every other op. PREDICATE TRANSFERS (TI-36, AR's and OA's responses): DEC cracks ld.pred and st.pred into one uop per predicate of the mask, ascending, uop k moving Pk's word at disp + 4k of the 16-byte frame, mem_op 4 (load) or 5 (store). ld.pred's uop names Pk in pred_dst with pred_we; st.pred's names it in pred_guard with pred_use data (2), never a guard. Each uop is idempotent, so a squash or demotion after a partial retirement re-runs the instruction from its first uop. local_form (IS-19, adopted by DA 2026-10-23; ISA v1.9 O-69; OA's response IS-19): a memory op in Format D's interleaved local mode, ld.local, st.local, ld.pred.local or st.pred.local, sets local_form. It names no base register, so src_valid marks none and OOE renames no base: ld.local's only GPR is its destination, st.local's its data. imm is the unsigned 17-bit byte offset b, and space is global. The predicate forms crack as ld.pred and st.pred do, uop k at b + 4k, mem_op 4 or 5. OOE copies local_form to ccv_ooe_miu_memop unexamined, as slot_form. Zero for every other op. all_waiting passes through from FET (TI-40): on a wait (serial 2) it marks a converged wait, which OOE holds rename behind and reports with held set; on any marked uop it starts the barrier demotion timer at retire. SERIAL is 3 bits (TI-41, OA's rev 198): 0 none, 1 chwidth, 2 barrier wait (bar.wait, bar.wait.phase), 3 exit, 4 barrier arrive (bar.arrive: no rename hold, reported at retire), 5-7 spare.
 
 dec → ooe · rate 6 · instruction
 
@@ -710,7 +742,7 @@ dec → ooe · rate 6 · instruction
 | `group_mask` | `CCV_W_LANE_MASK` | 32 | CCV_W_LANE_MASK (isa) |
 | `fetch_epoch` | `CCV_P_W_FETCH_EPOCH` | 3 ⚠️ | CCV_P_W_FETCH_EPOCH (provisional) |
 | `uop_class` | `CCV_L_W_CLASS` | 3 ⛔ | CCV_L_W_CLASS (preliminary, churn low) |
-| `sched_attr` | `CCV_P_W_SCHED_ATTR` | 16 ⛔ | CCV_P_W_SCHED_ATTR (preliminary, churn med) |
+| `sched_attr` | `CCV_P_W_SCHED_ATTR` | 17 ⛔ | CCV_P_W_SCHED_ATTR (preliminary, churn med) |
 | `mem_op` | `CCV_L_W_MEM_OP` | 4 ⛔ | CCV_L_W_MEM_OP (preliminary, churn med) |
 | `space` | `CCV_L_W_SPACE` | 1 | CCV_L_W_SPACE (isa) |
 | `ordering` | `CCV_L_W_ORDERING` | 5 | CCV_L_W_ORDERING (isa) |
@@ -734,10 +766,11 @@ dec → ooe · rate 6 · instruction
 | `fmt_rsv` | `2**CCV_W_CHWIDTH` | 4 | CCV_W_CHWIDTH (isa) |
 | `fmt_opnd` | `2` | 2 | literal |
 | `final_exit` | `1` | 1 | literal |
+| `all_waiting` | `1` | 1 | literal |
 | `slot_form` | `1` | 1 | literal |
 | `arg_slot` | `4` | 4 | literal |
 | `local_form` | `1` | 1 | literal |
-| **total** | | **227** | ⛔ 32 preliminary, ⚠️ 37 provisional |
+| **total** | | **229** | ⛔ 33 preliminary, ⚠️ 37 provisional |
 
 ### `ccv_ooe_rcu_issue`
 

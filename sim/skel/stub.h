@@ -185,12 +185,12 @@ inline bool execRcu(const OpInfo *op) { return inRcu(op->cls) || op->cross; }
 // sched_attr on ccv_dec_ooe_uop (A-66): what OOE schedules on, decoded by DEC
 // so OOE need not decode opcode. Layout MSB first, CCV_P_W_SCHED_ATTR bits:
 // bypass_group[3], rs_miu, exec_rcu, cross_lane, writes_gpr, writes_pred,
-// mem_kind[2], branch, serial[2], lat_class[3]. Preliminary codes (the schema
-// owner's).
+// mem_kind[2], branch, serial[3], lat_class[3]. Preliminary codes (the schema
+// owner's). serial 4, barrier arrive, and the 3-bit field: TI-41, OA's rev 198.
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
                   kLatSfu = 4, kLatCollective = 5 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
 // bypass_group (OI-16; Daniel's responses OA-4): which bypass penalties an
 // op takes, as producer and as consumer, the codes of CCV_P_BYP_GROUPS.
 enum : unsigned { kBypInt = 0, kBypFp = 1, kBypAddr = 2, kBypSfu = 3,
@@ -213,11 +213,11 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   const unsigned memk = op->cls == kStore ? kMemKStore : kMemKLoad;
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore ? kLatCompletion
                      : execRcu(op) || op->cls == kExit ? kLatRcu : kLatLane;
-  return uint32_t(bypGroupOf(op)) << 13 |
-         uint32_t(mem) << 12 | uint32_t(execRcu(op) || op->cls == kExit) << 11 |
-         uint32_t(op->cross) << 10 | uint32_t(op->gdst) << 9 |
-         uint32_t(op->pwrite) << 8 | (mem ? memk : 0u) << 6 |
-         uint32_t(op->cls == kBranch) << 5 | uint32_t(op->cls == kExit ? kSerExit : 0) << 3 |
+  return uint32_t(bypGroupOf(op)) << 14 |
+         uint32_t(mem) << 13 | uint32_t(execRcu(op) || op->cls == kExit) << 12 |
+         uint32_t(op->cross) << 11 | uint32_t(op->gdst) << 10 |
+         uint32_t(op->pwrite) << 9 | (mem ? memk : 0u) << 7 |
+         uint32_t(op->cls == kBranch) << 6 | uint32_t(op->cls == kExit ? kSerExit : 0) << 3 |
          lat;
 }
 // The three fields DEC adds so OOE never decodes opcode (A-75, TI-1).
@@ -234,10 +234,10 @@ inline unsigned immKindOf(const OpInfo *op) {
          : op->srd_sel == 1     ? kImmCtaid
          : op->srd_sel == 2     ? kImmLaneCtx : kImmLiteral;
 }
-inline bool attrMem(uint32_t a) { return (a >> 12) & 1u; }
-inline unsigned attrMemKind(uint32_t a) { return (a >> 6) & 3u; }
-inline bool attrBranch(uint32_t a) { return (a >> 5) & 1u; }
-inline unsigned attrBypGroup(uint32_t a) { return (a >> 13) & 7u; }
+inline bool attrMem(uint32_t a) { return (a >> 13) & 1u; }
+inline unsigned attrMemKind(uint32_t a) { return (a >> 7) & 3u; }
+inline bool attrBranch(uint32_t a) { return (a >> 6) & 1u; }
+inline unsigned attrBypGroup(uint32_t a) { return (a >> 14) & 7u; }
 /// A per-lane input: a GPR source, or the lane's own index.
 inline bool perLaneInput(const OpInfo *op, const Record &r) {
   return !r.gprUses().empty() || op->srd_sel >= 0;

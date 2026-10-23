@@ -442,17 +442,18 @@ struct Config {
 // ---- decoded inputs -----------------------------------------------------------------
 
 /// sched_attr, decoded (A-66). MSB first: rs_miu, exec_rcu, cross_lane,
-/// writes_gpr, writes_pred, mem_kind[2], branch, serial[2], lat_class[3].
+/// writes_gpr, writes_pred, mem_kind[2], branch, serial[3], lat_class[3]
+/// (serial 3 bits, code 4 barrier arrive: TI-41, OA's rev 198).
 struct SchedAttr {
   bool rs_miu = false, exec_rcu = false, cross_lane = false;
   bool writes_gpr = false, writes_pred = false, branch = false;
   unsigned mem_kind = 0, serial = 0, lat_class = 0;
-  unsigned bypass_group = 0;    ///< OI-16: [15:13]
+  unsigned bypass_group = 0;    ///< OI-16: [16:14]
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3 };
-enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3 };
+enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
 /// derives these from the skeleton's opcode table -- the one place OOE still

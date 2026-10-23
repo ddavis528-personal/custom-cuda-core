@@ -2859,7 +2859,7 @@ private:
     // attr-store-as-load: DEC tells OOE a store is a load (A-66's control).
     uint32_t attr = schedAttrOf(op);
     if (k_.brk == "attr-store-as-load" && op->cls == kStore)
-      attr &= ~(3u << 6);
+      attr &= ~(3u << 7);
     put(u, c.dec_ooe, "sched_attr", attr);
     // What OOE schedules and renames on instead of opcode (A-75, TI-1).
     // drop-src-valid: DEC calls a two-source op's second source unread, so

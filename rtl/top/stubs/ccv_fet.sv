@@ -122,5 +122,7 @@ module ccv_fet (
   assign pca_fet_mig_stall = '0;
   assign rau_fet_mig_credit = '0;
   assign rau_fet_mig_stall = '0;
+  assign syu_fet_rel_credit = '0;
+  assign syu_fet_rel_stall = '0;
 endmodule
 /* verilator lint_on UNUSEDSIGNAL */

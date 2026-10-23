@@ -572,7 +572,7 @@ module ccv_ooe_w #(
 
   // ccv_dec_ooe_uop, destination end
   if (RPT_DEC_OOE_UOP > 0) begin : g_rpt_dec_ooe_uop
-    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(227)) u_rpt_dec_ooe_uop (
+    ccv_common_rpt #(.STAGES(RPT_DEC_OOE_UOP), .SLOTS(6), .PAYLOAD_W(229)) u_rpt_dec_ooe_uop (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({dec_ooe_uop_s5_valid, dec_ooe_uop_s4_valid, dec_ooe_uop_s3_valid, dec_ooe_uop_s2_valid, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_valid}), .src_payload({dec_ooe_uop_s5_payload, dec_ooe_uop_s4_payload, dec_ooe_uop_s3_payload, dec_ooe_uop_s2_payload, dec_ooe_uop_s1_payload, dec_ooe_uop_s0_payload}),
       .src_wake(dec_ooe_uop_wake), .src_credit({dec_ooe_uop_s5_credit, dec_ooe_uop_s4_credit, dec_ooe_uop_s3_credit, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_credit, dec_ooe_uop_s0_credit}), .src_stall({dec_ooe_uop_s5_stall, dec_ooe_uop_s4_stall, dec_ooe_uop_s3_stall, dec_ooe_uop_s2_stall, dec_ooe_uop_s1_stall, dec_ooe_uop_s0_stall}),
@@ -704,7 +704,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_fet_redirect, source end
   if (RPT_OOE_FET_REDIRECT > 0) begin : g_rpt_ooe_fet_redirect
-    ccv_common_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(110)) u_rpt_ooe_fet_redirect (
+    ccv_common_rpt #(.STAGES(RPT_OOE_FET_REDIRECT), .SLOTS(1), .PAYLOAD_W(112)) u_rpt_ooe_fet_redirect (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_fet_redirect_valid}), .src_payload({b_ooe_fet_redirect_payload}),
       .src_wake(b_ooe_fet_redirect_wake), .src_credit({b_ooe_fet_redirect_credit}), .src_stall({b_ooe_fet_redirect_stall}),
@@ -858,7 +858,7 @@ module ccv_ooe_w #(
   end
   // ccv_ooe_syu_bar, source end
   if (RPT_OOE_SYU_BAR > 0) begin : g_rpt_ooe_syu_bar
-    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(13)) u_rpt_ooe_syu_bar (
+    ccv_common_rpt #(.STAGES(RPT_OOE_SYU_BAR), .SLOTS(1), .PAYLOAD_W(111)) u_rpt_ooe_syu_bar (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_ooe_syu_bar_valid}), .src_payload({b_ooe_syu_bar_payload}),
       .src_wake(b_ooe_syu_bar_wake), .src_credit({b_ooe_syu_bar_credit}), .src_stall({b_ooe_syu_bar_stall}),
@@ -880,7 +880,7 @@ module ccv_ooe_w #(
   end
   // ccv_syu_ooe_rel, destination end
   if (RPT_SYU_OOE_REL > 0) begin : g_rpt_syu_ooe_rel
-    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(36)) u_rpt_syu_ooe_rel (
+    ccv_common_rpt #(.STAGES(RPT_SYU_OOE_REL), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_ooe_rel (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({syu_ooe_rel_valid}), .src_payload({syu_ooe_rel_payload}),
       .src_wake(syu_ooe_rel_wake), .src_credit({syu_ooe_rel_credit}), .src_stall({syu_ooe_rel_stall}),

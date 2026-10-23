@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (1650 bits,
+// At each edge of its clock: sample every channel signal (1765 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (1112 bits). Common-port outputs sit inactive, as in
+// what it drove (1157 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_rau (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_rau(
     input int h, input longint cyc, input bit rst,
-    input bit [1649:0] sample, output bit [1111:0] drive);
+    input bit [1764:0] sample, output bit [1156:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [1111:0] drv, q, q2;
+  bit [1156:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -72,27 +72,28 @@ module ccv_rau (
       cru_rau_cfg_tid, cru_rau_cfg_stall, cru_rau_cfg_credit,
       cru_rau_cfg_payload, cru_rau_cfg_valid, rau_syu_alloc_tid,
       rau_syu_alloc_stall, rau_syu_alloc_credit, rau_syu_alloc_payload,
-      rau_syu_alloc_valid, rau_miu_cta_tid, rau_miu_cta_stall,
-      rau_miu_cta_credit, rau_miu_cta_payload, rau_miu_cta_valid,
-      miu_rau_ready_tid, miu_rau_ready_stall, miu_rau_ready_credit,
-      miu_rau_ready_payload, miu_rau_ready_valid, rau_pca_mig_tid,
-      rau_pca_mig_stall, rau_pca_mig_credit, rau_pca_mig_payload,
-      rau_pca_mig_valid, pca_rau_mig_done_tid, pca_rau_mig_done_stall,
-      pca_rau_mig_done_credit, pca_rau_mig_done_payload, pca_rau_mig_done_valid,
-      rau_fet_mig_tid, rau_fet_mig_stall, rau_fet_mig_credit,
-      rau_fet_mig_payload, rau_fet_mig_valid, rau_rcu_mig_tid,
-      rau_rcu_mig_stall, rau_rcu_mig_credit, rau_rcu_mig_payload,
-      rau_rcu_mig_valid, ooe_rau_drained_tid, ooe_rau_drained_stall,
-      ooe_rau_drained_credit, ooe_rau_drained_payload, ooe_rau_drained_valid,
-      rau_ooe_demote_tid, rau_ooe_demote_stall, rau_ooe_demote_credit,
-      rau_ooe_demote_payload, rau_ooe_demote_valid, ooe_rau_status_tid,
-      ooe_rau_status_stall, ooe_rau_status_credit, ooe_rau_status_payload,
-      ooe_rau_status_valid, rau_ooe_alloc_tid, rau_ooe_alloc_stall,
-      rau_ooe_alloc_credit, rau_ooe_alloc_payload, rau_ooe_alloc_valid,
-      rau_fet_launch_tid, rau_fet_launch_stall, rau_fet_launch_credit,
-      rau_fet_launch_payload, rau_fet_launch_valid, kill_ack_epochs,
-      kill_acks, kill_epoch, kill_warp_mask,
-      kill_valid
+      rau_syu_alloc_valid, syu_rau_ready_tid, syu_rau_ready_stall,
+      syu_rau_ready_credit, syu_rau_ready_payload, syu_rau_ready_valid,
+      rau_miu_cta_tid, rau_miu_cta_stall, rau_miu_cta_credit,
+      rau_miu_cta_payload, rau_miu_cta_valid, miu_rau_ready_tid,
+      miu_rau_ready_stall, miu_rau_ready_credit, miu_rau_ready_payload,
+      miu_rau_ready_valid, rau_pca_mig_tid, rau_pca_mig_stall,
+      rau_pca_mig_credit, rau_pca_mig_payload, rau_pca_mig_valid,
+      pca_rau_mig_done_tid, pca_rau_mig_done_stall, pca_rau_mig_done_credit,
+      pca_rau_mig_done_payload, pca_rau_mig_done_valid, rau_fet_mig_tid,
+      rau_fet_mig_stall, rau_fet_mig_credit, rau_fet_mig_payload,
+      rau_fet_mig_valid, rau_rcu_mig_tid, rau_rcu_mig_stall,
+      rau_rcu_mig_credit, rau_rcu_mig_payload, rau_rcu_mig_valid,
+      ooe_rau_drained_tid, ooe_rau_drained_stall, ooe_rau_drained_credit,
+      ooe_rau_drained_payload, ooe_rau_drained_valid, rau_ooe_demote_tid,
+      rau_ooe_demote_stall, rau_ooe_demote_credit, rau_ooe_demote_payload,
+      rau_ooe_demote_valid, ooe_rau_status_tid, ooe_rau_status_stall,
+      ooe_rau_status_credit, ooe_rau_status_payload, ooe_rau_status_valid,
+      rau_ooe_alloc_tid, rau_ooe_alloc_stall, rau_ooe_alloc_credit,
+      rau_ooe_alloc_payload, rau_ooe_alloc_valid, rau_fet_launch_tid,
+      rau_fet_launch_stall, rau_fet_launch_credit, rau_fet_launch_payload,
+      rau_fet_launch_valid, kill_ack_epochs, kill_acks,
+      kill_epoch, kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -100,18 +101,18 @@ module ccv_rau (
   end
   assign {
     cru_rau_cfg_stall, cru_rau_cfg_credit, rau_syu_alloc_tid,
-    rau_syu_alloc_payload, rau_syu_alloc_valid, rau_miu_cta_tid,
-    rau_miu_cta_payload, rau_miu_cta_valid, miu_rau_ready_stall,
-    miu_rau_ready_credit, rau_pca_mig_tid, rau_pca_mig_payload,
-    rau_pca_mig_valid, pca_rau_mig_done_stall, pca_rau_mig_done_credit,
-    rau_fet_mig_tid, rau_fet_mig_payload, rau_fet_mig_valid,
-    rau_rcu_mig_tid, rau_rcu_mig_payload, rau_rcu_mig_valid,
-    ooe_rau_drained_stall, ooe_rau_drained_credit, rau_ooe_demote_tid,
-    rau_ooe_demote_payload, rau_ooe_demote_valid, ooe_rau_status_stall,
-    ooe_rau_status_credit, rau_ooe_alloc_tid, rau_ooe_alloc_payload,
-    rau_ooe_alloc_valid, rau_fet_launch_tid, rau_fet_launch_payload,
-    rau_fet_launch_valid, kill_epoch, kill_warp_mask,
-    kill_valid
+    rau_syu_alloc_payload, rau_syu_alloc_valid, syu_rau_ready_stall,
+    syu_rau_ready_credit, rau_miu_cta_tid, rau_miu_cta_payload,
+    rau_miu_cta_valid, miu_rau_ready_stall, miu_rau_ready_credit,
+    rau_pca_mig_tid, rau_pca_mig_payload, rau_pca_mig_valid,
+    pca_rau_mig_done_stall, pca_rau_mig_done_credit, rau_fet_mig_tid,
+    rau_fet_mig_payload, rau_fet_mig_valid, rau_rcu_mig_tid,
+    rau_rcu_mig_payload, rau_rcu_mig_valid, ooe_rau_drained_stall,
+    ooe_rau_drained_credit, rau_ooe_demote_tid, rau_ooe_demote_payload,
+    rau_ooe_demote_valid, ooe_rau_status_stall, ooe_rau_status_credit,
+    rau_ooe_alloc_tid, rau_ooe_alloc_payload, rau_ooe_alloc_valid,
+    rau_fet_launch_tid, rau_fet_launch_payload, rau_fet_launch_valid,
+    kill_epoch, kill_warp_mask, kill_valid
   } = skew ? q2 : q;
 `endif
   assign csr_rsp = '0;
