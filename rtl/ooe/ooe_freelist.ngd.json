@@ -2,10 +2,10 @@
   "module": "ooe_freelist",
   "ports": {
     "alloc_req_cq01h": {
-      "arrival": 2.0,
+      "arrival": 21.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 184): accepted by 21. Rename's request is ooe_go's taken-writer totals (wt), formed in the go's cycle; inside this module it reaches only the registered count (rq_cq01h, the request prefix's end)."
     },
     "free_l_cq00h": {
       "arrival": 8.0,

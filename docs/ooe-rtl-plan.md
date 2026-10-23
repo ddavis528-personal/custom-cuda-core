@@ -786,9 +786,16 @@ Built (`rtl/ooe/`):
      reaches only the registered count), ooe_rat's pending names by 3,
      ooe_rendep's names by 3 and its source names by 5 (it is 19.3 after
      its inputs). ooe_go's `wb` required at 17 and `wt` at 22, by OI.
-     *Clock gating.* The prefix counts join each slot's fits gate (112
-     flops a slot), whose change rate in high rises to 73-77% (medium
-     unchanged at 64%); the fits waivers' floors stand.
+     The fits and the take register drive the take (required at 14) and,
+     through the counts, `wt` 14.6 away, so each is copied, `(* keep *)`,
+     one for the take and one for the counts (NGD-7; ooe_go 20.9 flop to
+     flop). OA's response OI-67 (rev 184) confirmed the form and took
+     alloc_req by 21.
+     *Clock gating.* The prefix counts and the fits' copy join each slot's
+     fits gate, whose change rate in high rises to 73-77% (medium
+     unchanged at 64%); the fits waivers' floors stand. 606 flops: the
+     module's allowance now takes the change bits too (their waiver is
+     gone).
      *Result.* `test/ooe/ren1_tb.cpp` drives ooe_rat, the four reads,
      ooe_ren1, the register and ooe_ren1n (`test/ooe/ooe_ren1_tb.sv`) from
      the model's renames, every other candidate random, and compares each
@@ -804,6 +811,21 @@ Built (`rtl/ooe/`):
      cores); a uop the model renames as a no-op (a fault) is driven with
      the model's write bits, where the RTL would take a name by the
      decode-time bit.
+  6. **The narrow allocator** (DA's response OI-29; OA's response OI-67,
+     rev 184: a numbered slice). A narrow destination takes its warp's
+     candidate row for the position it needs, an owned row with that
+     position free, else a fresh row from the free list; a background
+     find-first keeps one candidate per warp and position current, off the
+     rename path, from the free list's per-row owner (2 bits) and live
+     sections (4). Placement reads the sources' widths and positions (a
+     width per name), the old destination's for a merged op, else the
+     warp's home position; a second allocation in a group wanting the same
+     warp and position takes the next free one (AR-15). A narrowing
+     renames in place. Until it is built, Rename 1's names are whole rows
+     and its benches skip sectioned cores.
+  7. **ooe_rename's top**: ooe_go, the reads and Rename 1, the free lists,
+     ooe_rendep and ooe_prodmap, rename's counters (ooe_rencred) and its
+     pool and floor registers, assembled and benched against the model.
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
