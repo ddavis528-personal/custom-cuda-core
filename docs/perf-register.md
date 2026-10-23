@@ -36,7 +36,7 @@ it.
 | PF-11 | Completion sent in time with the data, not before it | MIU | deferred |
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
-| PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc) |
+| PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
 | PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16) |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
 | PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
@@ -66,7 +66,7 @@ it.
 | PF-41 | Restore a parked warp before it is ready, into an idle slot | RAU | deferred (TI-21; OI's rev 155) |
 | PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
-| PF-44 | Fetch past a converged barrier wait | FET, OOE | deferred (TI-40) |
+| PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
 
 ## Entries
 
@@ -243,6 +243,8 @@ it.
 - **Alternative:** younger non-memory ops rename and execute past the wait.
 - **Cost:** memops must still hold, and demotion while waiting gets harder.
 - **Signal:** `hold.barrier` on short waits. A long wait demotes anyway.
+- **Since TI-40 (2026-10-23):** only a converged warp's wait holds rename.
+  A diverged warp parks at fetch, per lane.
 
 ### PF-15 `chwidth` without serialising rename
 
@@ -888,3 +890,11 @@ it.
   barriers, in the skeleton once barrier kernels run (TI-40). Worth building
   if it exceeds 1% of a barrier kernel's cycles, such as layernorm or a CTA
   reduction.
+- **Decided (Daniel, 2026-10-23; DA's response TI-40, AR's rev 163):**
+  adopted ahead of the measurement, with the wait moving to FET. FET tells
+  the converged case apart at fetch: the wait's group is every live lane,
+  and no lane is waiting. FET marks that wait hold. SYU routes its answer to
+  OOE on `ccv_syu_ooe_rel`, reduced to `{warp_id}`. OOE keeps the held wait's
+  PC, so a demotion rewinds the warp to the wait. It moves to adopted with
+  the commit that builds it. The measurement above still says whether the
+  second path earns its verification.
