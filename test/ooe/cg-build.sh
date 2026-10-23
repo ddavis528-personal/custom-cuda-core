@@ -74,6 +74,14 @@ case "$unit" in
       "-DRD_N=$n -DRD_NR=$n_rcu -DRD_A=$width -DRD_NG=$ng -DRD_NP=$np" \
       "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/test/ooe/ooe_rendep_tb.sv" \
       "$PWD/test/ooe/rendep_tb.cpp" ;;
+  ooe_rename)
+    # Beside the ooe_rat it reads and writes (test/ooe/ooe_rename_tb.sv);
+    # the unit's scope is u_rename.
+    read -r g d < <(python3 test/ooe/rename-params.py)
+    vl ooe_rename_tb "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
+      "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
+      "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
+      "$PWD/test/ooe/rename_tb.cpp" ;;
   ooe_go)
     slots=$(val CCV_TIER1_WARPS)
     vl ooe_go "-GS=$slots -GR=$width" "-DGO_S=$slots -DGO_R=$width" \

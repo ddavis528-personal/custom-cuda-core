@@ -719,6 +719,7 @@ public:
     banks_ = cap ? banks : 1;
     bptr_.assign(banks_, 0);
     rot_ = 0;
+    fresh_ = true;
     edge_ = Edge{buf_, bit_, bptr_, rot_};
   }
   /// Free entries, including those freed this cycle.
@@ -780,7 +781,12 @@ public:
   void clock() {
     allocs_.clear();
     frees_.clear();
-    if (cap_) {
+    // The first edge is ooe_freelist's last reset edge, which refills
+    // nothing: the core's first cycle is the one after the reset, for every
+    // block alike (ooe_go's rotation starts there too; rename_tb).
+    const bool fresh = fresh_;
+    fresh_ = false;
+    if (cap_ && !fresh) {
       // Last cycle's allocations leave the buffer; this cycle's stay, in
       // transit, until the next edge.
       for (unsigned i = 0; i != transit_; ++i) {
@@ -842,6 +848,7 @@ private:
   size_t ready_ = 0, npend_ = 0;
   unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
   unsigned transit_ = 0, took_ = 0;   // last cycle's allocations, and this cycle's
+  bool fresh_ = false;                 // no edge since reset()
   Edge edge_;
 };
 

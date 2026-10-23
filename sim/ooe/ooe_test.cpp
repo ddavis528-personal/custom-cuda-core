@@ -4036,6 +4036,15 @@ int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &)) {
   g_pre_cycle_hook = nullptr;
   return g_fail;
 }
+/// The directed tests with both hooks, before and after each core cycle,
+/// every core configured first by cfg (test/ooe/rename_tb.cpp: the free
+/// lists' whole interval between two edges, and the cycle's logs).
+int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
+  g_pre_cycle_hook = pre;
+  const int f = ooeTestDirectedHookedWith(post, cfg);
+  g_pre_cycle_hook = nullptr;
+  return f;
+}
 /// A bench's run in one of the clock-gating scenarios (docs/rtl-coding-
 /// style.md; test/ooe/cg_trace.h), each the model's own traffic, so a bench
 /// checks every scenario as it checks any run:

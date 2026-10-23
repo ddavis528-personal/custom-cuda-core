@@ -241,6 +241,25 @@
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_go"
       }
+    },
+    {
+      "name": "ooe_rename",
+      "module": "ooe_rename",
+      "files": [
+        "rtl/ooe/ooe_go.sv",
+        "rtl/ooe/ooe_freelist.sv",
+        "rtl/ooe/ooe_headrd.sv",
+        "rtl/ooe/ooe_ren1.sv",
+        "rtl/ooe/ooe_ren1n.sv",
+        "rtl/ooe/ooe_rename.sv"
+      ],
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rename {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_rename"
+      }
     }
   ]
 }

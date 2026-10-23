@@ -108,11 +108,12 @@ void hook(const Core &c) {
     dut->free_l_cq00h = 0;
     for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
     // The reset is flopped before use (RST-1): the state resets at the
-    // edge after the one that captures it.
+    // edge after the one that captures it, and again at the next, the first
+    // driven: the model's first clock, which refills nothing (FreeVec).
     dut->ooe_rst_r00h = 1;
     tick();
-    dut->ooe_rst_r00h = 0;
     tick();
+    dut->ooe_rst_r00h = 0;
     have_prev = false;
     prev_al.clear();
     prev_fr.clear();

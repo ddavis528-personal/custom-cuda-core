@@ -832,6 +832,39 @@ Built (`rtl/ooe/`):
   7. **ooe_rename's top**: ooe_go, the reads and Rename 1, the free lists,
      ooe_rendep and ooe_prodmap, rename's counters (ooe_rencred) and its
      pool and floor registers, assembled and benched against the model.
+     *First step (built).* `rtl/ooe/ooe_rename.sv`: ooe_go, one ooe_headrd
+     per slot, ooe_ren1, the Rename 1 register and ooe_ren1n, and the two
+     free lists, whose requests are the go's taken-writer totals (wt). The
+     go's pool, floor and ROB terms and Rename 2's fields are still ports.
+     A head's write bits are its admission bits (3 GPR, 4 predicate), as
+     the go counts them. NGD-7 copies: the Rename 1 register's pending-group
+     fields and the names' index and heads twice (o_/q_ for the outputs,
+     p_ for the heads' reads, a second ooe_ren1n binding the pending
+     group's names), 132 flops; in ooe_go the lanes and writer counts read
+     their own rotation and block copies (priol, blkw: 8 flops), so the
+     take's registers drive the take alone. The bench
+     (`test/ooe/rename_tb.cpp`, beside ooe_rat in
+     `test/ooe/ooe_rename_tb.sv`) drives the go from the go log, the
+     candidates from the renames and the free lists from the model's frees,
+     a model cycle behind; nothing tells the RTL what was taken or which
+     names. Before the edge the takes, after it every lane of the Rename 1
+     register (slot, destinations, the new names, branch, checkpoint, every
+     read) must be the model's: 25 seeds and the directed tests, 48,063
+     lanes and 265 no-op lanes (an exit or a decode fault takes a lane and
+     renames nothing), none differ; controls drop-free, no-lead,
+     no-write-bits, no-hold and drop-restore caught. Skipped: cores the RTL
+     is not built for (sectioned, predicates not renamed, other sizes);
+     stopped: a restore-allocate or an atomic (2 cores), or a fault found
+     at rename (barrier, width, format), where the RTL takes the
+     decode-time write bit's name and the model none (none in these runs).
+     The model's free lists now refill nothing at their first edge, the
+     RTL's last reset edge, so one model cycle is one RTL cycle for the go's
+     rotation and the free lists alike (`FreeVec::clock`; freelist_tb's
+     reset follows). `check-ngd`: 22.7 NGD flop to flop, take out at 8.8
+     (14 by OA). Rename 1's names leave at 3.6 NGD (q_gname, q_pname) and
+     its reads at 6.6 (q_g, q_p), over ooe_rat's write-port arrival (3) and
+     Rename 2's (5): OI-70 to OA; those four outputs keep the default
+     budget until OA rules.
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
@@ -847,7 +880,9 @@ copies.
 | `ooe_rs` | the valid bits, for the outputs | 45 |
 | `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
 | `ooe_wake` | the issued bits | 45 |
-| **built** | | **991** |
+| `ooe_rename` | the Rename 1 register's pending-group fields, name index and free-list heads, for the heads' reads | 132 |
+| `ooe_go` | the rotation and block, for the lanes and the writer counts (beside fitsw/tkow) | 8 |
+| **built** | | **1131** |
 | `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
 | `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
 

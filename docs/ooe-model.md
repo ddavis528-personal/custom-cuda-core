@@ -178,7 +178,10 @@ the head in transit for a cycle, and the next allocations take the entries
 behind it, so the buffer offers its count less the last cycle's take. That
 costs nothing at 8 entries (the sweep's 982 cycles stand) and 4.8% at 4. Any
 number of frees a cycle costs nothing, so a squash's 32 or a kill's 16
-need no drain. Rename's allocation checks the buffer; its floor and
+need no drain. The first edge refills nothing: it is ooe_freelist's last
+reset edge, so the core's first cycle is the one after the reset for the
+free lists as for ooe_go's rotation (test/ooe/rename_tb.cpp drives both
+from one reset). Rename's allocation checks the buffer; its floor and
 ceiling checks count every free register not freed this cycle; V-01, V-02
 and V-04 count those freed this cycle too. Allocation order is
 bank-interleaved, so `--break free-new` first showed at seq 379 (R4),
