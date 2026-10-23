@@ -303,20 +303,24 @@ module ooe_rs #(
   always_ff @(posedge ooe_core_clk) begin
     if (gnt_en_cq01h) gnt_idx_cq03h <= gi_cq02h;   // payload, read through gnt_v
   end
-  logic lg_en_cq03h;
-  assign lg_en_cq03h = gnt_en_cq01h || gnt_v_en_cq03h;
+  // Its enable as gnt_v's, from its own copy lgv (equal to gnt_v: the same
+  // data and enable), so it reads no stage past its own.
+  logic lg_en_cq02h;
+  assign lg_en_cq02h = gnt_en_cq01h || req_en_cq01h != lgv_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       lg_cq02h  <= '0;
       lgv_cq02h <= '0;
       lga_cq02h <= '0;
-    end else if (lg_en_cq03h) begin
+    end else if (lg_en_cq02h) begin
       lg_cq02h  <= g_cq02h;
       lgv_cq02h <= gv_cq02h;
       lga_cq02h <= ga_cq02h;
     end
   end
   assign valid_out_cq02h = valid_o_cq02h;
+  // lgv is gnt_v's copy: lg's enable reads it in gnt_v's place.
+  `CCV_ASSERT(lgv_copy, lgv_cq02h == gnt_v_cq03h)
 
   // Rename checks the RS for room first, so every port that asks is granted.
   `CCV_ASSERT(alloc_granted, (req_cq01h & ~gv_cq02h) == '0)
@@ -413,15 +417,15 @@ module ooe_rs #(
   // edge (a restart: the lead it set, held a cycle by cvb); and an entry
   // writing nothing confirms once issued. An entry freed now, or free,
   // needs none.
-  logic [N-1:0] cmn_cq02h, cf_d_cq02h;
+  logic [N-1:0] cmn_cq01h, cf_d_cq02h;
   always_comb begin
-    cmn_cq02h = '0;
+    cmn_cq01h = '0;
     for (int k = 0; k < NC; k++)
       for (int i = 0; i < N; i++)
-        if (cva_cq01h[k] && cmpl_idx_cq00h[k * W +: W] == W'(i)) cmn_cq02h[i] = 1'b1;
+        if (cva_cq01h[k] && cmpl_idx_cq00h[k * W +: W] == W'(i)) cmn_cq01h[i] = 1'b1;
     for (int i = 0; i < N; i++)
       cf_d_cq02h[i] = valid_cq02h[i] && !free_cq02h[i] && (dep_cq02h[i * N +: N] & ~free_cq02h) == '0 &&
-                (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn_cq02h[i] || (cf_en_cq03h[i] && cvb_cq02h)
+                (prod_cq02h[i] ? wtl3_cq00h[i] || fin_cq00h[i] || cmn_cq01h[i] || (cf_en_cq03h[i] && cvb_cq02h)
                                : iss_cq02h[i] || gnt_cq01h[i]);
   end
   always_ff @(posedge ooe_core_clk) begin

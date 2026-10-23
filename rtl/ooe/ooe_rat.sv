@@ -148,14 +148,14 @@ module ooe_rat #(
   logic [S*R-1:0]  rg_cq01h, rp_cq01h;
   logic [S-1:0]    rs_cq01h, sq_cq01h, rl_cq01h;
   logic [S*LC-1:0] rsc_cq01h;
-  logic [S*C-1:0]  ck_d_cq01h;
+  logic [S*C-1:0]  ck_d_cq00h;
   always_comb begin
-    ck_d_cq01h = '0;
+    ck_d_cq00h = '0;
     for (int t = 0; t < S; t++)
       for (int j = 0; j < A; j++)
         for (int c = 0; c < C; c++)
           if (tk_cq00h[t * A + j] && hbr_cq00h[t * A + j] && hck_cq00h[(t * A + j) * LC +: LC] == LC'(c))
-            ck_d_cq01h[t * C + c] = 1'b1;
+            ck_d_cq00h[t * C + c] = 1'b1;
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
@@ -170,7 +170,7 @@ module ooe_rat #(
     end else begin
       for (int t = 0; t < S; t++) wl_cq01h[t] <= tk_cq00h[t * A] || rstl_cq00h[t];
       rw_cq01h <= rstl_cq00h;
-      ck_cq01h <= ck_d_cq01h;
+      ck_cq01h <= ck_d_cq00h;
       rg_cq01h <= rgl_cq00h;
       rp_cq01h <= rpl_cq00h;
       rs_cq01h <= restore_cq00h;
@@ -225,6 +225,11 @@ module ooe_rat #(
   logic [S*NG*GW-1:0] g_name_cq01h;
   logic [S*NP-1:0]    p_wr_cq01h;
   logic [S*NP*PW-1:0] p_name_cq01h;
+  // A slot's checkpoint c, by its registered restore's index.
+  function automatic logic [MW-1:0] ck_pick(input logic [C*MW-1:0] ck, input logic [LC-1:0] c);
+    ck_pick = '0;
+    for (int k = 0; k < C; k++) if (c == LC'(k)) ck_pick = ck[k * MW +: MW];
+  endfunction
   always_comb begin
     g_wr_cq01h   = '0;
     g_name_cq01h = '0;
@@ -232,13 +237,9 @@ module ooe_rat #(
     p_name_cq01h = '0;
     for (int t = 0; t < S; t++) begin
       whole_cq01h[t] = rl_cq01h[t] || sq_cq01h[t] || rs_cq01h[t];
-      if (rl_cq01h[t])      base_cq02h[t * MW +: MW] = {{NP{PZERO}}, {NG{GZERO}}};
-      else if (sq_cq01h[t]) base_cq02h[t * MW +: MW] = crat_cq02h[t * MW +: MW];
-      else begin
-        base_cq02h[t * MW +: MW] = '0;
-        for (int c = 0; c < C; c++)
-          if (rsc_cq01h[t * LC +: LC] == LC'(c)) base_cq02h[t * MW +: MW] = ckpt_cq02h[(t * C + c) * MW +: MW];
-      end
+      base_cq02h[t * MW +: MW] = rl_cq01h[t] ? {{NP{PZERO}}, {NG{GZERO}}} :
+                                 sq_cq01h[t] ? crat_cq02h[t * MW +: MW] :
+                                 ck_pick(ckpt_cq02h[t * C * MW +: C * MW], rsc_cq01h[t * LC +: LC]);
       for (int p = 0; p < A; p++)
         if (pw_v_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)

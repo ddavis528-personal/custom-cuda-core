@@ -303,7 +303,7 @@ module ooe_go #(
   // The warps with a head; the first in rotation; how many, one-hot (nwh[n],
   // n warps).
   logic [S*S-1:0] befd_cq02h;
-  logic [S-1:0]   with_w_cq01h, first_w_cq01h;
+  logic [S-1:0]   with_w_cq01h, first_w_cq02h;
   logic [S:0]     nwh_cq01h;
   logic [2:0]     nw_cq01h;
   always_comb begin
@@ -317,10 +317,8 @@ module ooe_go #(
     nw_cq01h = '0;
     for (int s = 0; s < S; s++) nw_cq01h = nw_cq01h + 3'(with_w_cq01h[s]);
     for (int n = 0; n < S + 1; n++) nwh_cq01h[n] = nw_cq01h == 3'(n);
-    for (int s = 0; s < S; s++) begin
-      first_w_cq01h[s] = with_w_cq01h[s];
-      for (int q = 0; q < S; q++) if (befd_cq02h[s * S + q] && with_w_cq01h[q]) first_w_cq01h[s] = 1'b0;
-    end
+    // The first warp with a head in rotation: none before it has one.
+    for (int s = 0; s < S; s++) first_w_cq02h[s] = with_w_cq01h[s] && (befd_cq02h[s * S +: S] & with_w_cq01h) == '0;
   end
   // The pool, what no allowance in force holds: one-hot, pe[c][p], the
   // pool register is p beyond the allowances held (p = PM: PM or more); and
@@ -407,7 +405,7 @@ module ooe_go #(
           for (int f = 0; f < 2; f++)
             for (int w = 0; w < R + 1; w++)
               sg_cq02h[(s * 4 + c) * R + v - 1] = sg_cq02h[(s * 4 + c) * R + v - 1] |
-                  ((first_w_cq01h[s] == (f != 0)) & ue_cq01h[(s * 4 + c) * (R + 1) + w] & tw_cq02h[(c * NF + f * (R + 1) + w) * R + v - 1] &
+                  ((first_w_cq02h[s] == (f != 0)) & ue_cq01h[(s * 4 + c) * (R + 1) + w] & tw_cq02h[(c * NF + f * (R + 1) + w) * R + v - 1] &
                    with_w_cq01h[s] & ~rbusy_cq01h);
         end
   // The allowances to hold next cycle: min(R, the shares' sum). The shares

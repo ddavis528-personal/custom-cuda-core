@@ -355,7 +355,7 @@ module ooe_decq #(
         end
       end
   end
-  logic [S*LC-1:0]      cnt_nx_cq01h;
+  logic [S*LC-1:0]      cnt_nx_cq02h;
   logic [S*H-1:0]       hv_nx_cq01h;
   logic [S*R*P-1:0]     hp_nx_cq01h;
   logic [S*NA*PA-1:0]   ha_nx_cq01h;
@@ -368,9 +368,9 @@ module ooe_decq #(
       // picks which of its R + 1 values to subtract, one-hot.
       logic [LC-1:0] base;
       base = st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]);
-      cnt_nx_cq01h[s * LC +: LC] = '0;
+      cnt_nx_cq02h[s * LC +: LC] = '0;
       for (int t = 0; t < R + 1; t++)
-        if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s]) cnt_nx_cq01h[s * LC +: LC] = cnt_nx_cq01h[s * LC +: LC] | (base - LC'(t));
+        if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s]) cnt_nx_cq02h[s * LC +: LC] = cnt_nx_cq02h[s * LC +: LC] | (base - LC'(t));
       for (int t = 0; t < R + 1; t++)
         if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s])
           for (int i = 0; i < H; i++) begin
@@ -451,7 +451,7 @@ module ooe_decq #(
         hv_o_cq02h[s * H +: H]    <= '0;
       end else if (out_en_cq01h[s]) begin
         tk_cq02h[s * LR +: LR]    <= deq_n_cq01h[s * LR +: LR];
-        cnt_o_cq02h[s * LC +: LC] <= cnt_nx_cq01h[s * LC +: LC];
+        cnt_o_cq02h[s * LC +: LC] <= cnt_nx_cq02h[s * LC +: LC];
         hv_o_cq02h[s * H +: H]    <= hv_nx_cq01h[s * H +: H];
       end
     end

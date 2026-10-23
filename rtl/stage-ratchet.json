@@ -1,11 +1,4 @@
 {
   "_comment": "Nets of tools/lint-rtl.py's CCV-L29 that stood when the rule was made (DA, 2026-10-23; docs/rtl-coding-style.md, 'CCV-L29'): a net of a block's sequential module with no stage tag, which CCV-L21 and CCV-L23 cannot check. Its owner tags each one (<name>_<domain><block><NN><l|h>, at the stage the arithmetic gives it) or removes it, and removes its entry. The list only shrinks: lint refuses an entry that now meets the rule or is gone, and one not in tools/stage-ratchet-baseline.json, the list as made.",
-  "modules": {
-    "ooe_rendep": [
-      "g2cv_e",
-      "jcv",
-      "rc",
-      "xrc"
-    ]
-  }
+  "modules": {}
 }
