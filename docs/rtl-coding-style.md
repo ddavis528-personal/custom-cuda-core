@@ -514,6 +514,26 @@ architect's, one for a read not made, the loop undeclared, a listed hop that
 does not exist, a three-register loop not listed, a loop declared at an
 alignment its tags do not give, and one with no alignment: each refused).
 
+**A declared bypass** (DA, 2026-10-23, OI-72 (A): "We should scrutinize all
+cases like this, so it's good that the lint mechanism is forcing a waiver.
+But based on the code I do agree that this is a standard bypass mux around
+the main array structure and that we can waive"). A reader at stage N that
+reads a later pipeline copy of its own stage's register, because the table
+it otherwise reads is written a cycle late (`ooe_rendep`'s G-2 hits: G-2's
+registers hold G-1's names a cycle on, and `ooe_prodmap` records them a cycle
+later), is declared in the same file: `{"bypass": {"<reader>": {"from":
+{"<register>": <stages ahead>}, "by", "date", "why"}}}`. The lint refuses it,
+and the stage skip stays reported, unless `by` is an architect, the reader
+reads the register, both carry tags whose difference is exactly the offset
+declared, and the register is that many stages on from a register at the
+reader's stage in the reader's own pipeline (its block letter), each hop
+traced through the data a register is loaded with, never its enable. A
+register loaded from another pipeline is off the reader's path. Each
+declaration is reviewed one by one, never accepted as a class.
+`rtl/lint/reference_loop.sv`'s `hit_cy02h` passes; `bad_feedback.sv`'s bypass
+of another pipeline's register, and one declared two stages ahead where the
+tags give one, are refused.
+
 ### CCV-L22 — a block runs on its own gated clock
 
 No `always_ff @(posedge core_clk)` inside a block, except the wake detector.
@@ -646,6 +666,13 @@ boundary, and retiming that updated the logic but not the names.
 Continuous assignments are combinational and checked as `always_comb` is
 (OI-65): a tagged net driven by an `assign` was once unchecked, which invited
 leaving a stage mix untagged, and then the flop it fed went unchecked too.
+
+An assignment's inputs include every `if` and `case` condition it is made
+under (OI's rev 188, OA's rev 210), an `if`'s `else` arm included: a value
+steered by a stage-03 condition is a stage-03 value. A net assigned under an
+`if` that read G-2's stage-03 registers once passed as stage 02, its
+right-hand sides being stage 02. `bad_feedback.sv`'s `cnd_cy02h` is refused
+for it.
 
 Three exemptions, each for a reason:
 

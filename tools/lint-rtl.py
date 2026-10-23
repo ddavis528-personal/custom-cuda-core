@@ -269,10 +269,46 @@ IDENT_RE = re.compile(r"\b[a-z]\w*\b")
 
 
 def feedback_decls(dirpath, module):
+    """(path, reads, bypass) from <module>.feedback.json."""
     p = os.path.join(dirpath, module + ".feedback.json")
     if not os.path.exists(p):
-        return None, {}
-    return os.path.relpath(p, ROOT), json.load(open(p)).get("reads", {})
+        return None, {}, {}
+    d = json.load(open(p))
+    return os.path.relpath(p, ROOT), d.get("reads", {}), d.get("bypass", {})
+
+
+def data_graph(src):
+    """deps[net]: the names its assignments' right-hand sides read, and no
+    condition: the data a register is loaded with, apart from its enable."""
+    deps = {}
+    for kind, clk, body, ln, pos in always_blocks(src):
+        for _, lhs, _, rhs in assignments(body):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+    for m in re.finditer(r"\bassign\s+[^;]+;", src):
+        for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+    return deps
+
+
+def bypass_path(ddeps, flops, reader, read, ahead):
+    """A declared bypass (DA, 2026-10-23, OI-72 (A)): read is a register
+    `ahead` pipeline stages on from a register at reader's stage, in reader's
+    pipeline (its block letter), each hop through the data a register is
+    loaded with. Returns why it does not hold, or None."""
+    if read not in flops:
+        return "%s is not a register" % read
+    sr = stage_of(reader)
+    frontier = {read}
+    for _ in range(ahead):
+        nxt = set()
+        for f in frontier:
+            nxt |= cone(ddeps, flops, ddeps.get(f, ()))[1]
+        frontier = nxt
+    on = [r for r in frontier if stage_of(r) and stage_of(r)[1] == sr[1] and stage_of(r)[2] == sr[2]]
+    if not on:
+        return ("%s is not loaded, %d register(s) back, from a register at %s's stage %02d "
+                "in its pipeline: the source is off the reader's path" % (read, ahead, reader, sr[2]))
+    return None
 
 
 def dep_graph(src):
@@ -381,6 +417,59 @@ def always_blocks(src):
                         rest)
         body = rest[:nxt.start()] if nxt else rest
         out.append((kind, clk, body, line_of(src, m.start()), m.start()))
+    return out
+
+
+def _stmt_end(t, i):
+    """Index just past the statement starting at or after i in an always body:
+    a begin-end block, an if with its else, a case to its endcase, or a
+    simple statement to its semicolon."""
+    m = re.match(r"\s*(?:(?:unique0?|priority)\s+)?(begin|if|case[zx]?)\b", t[i:])
+    if not m:
+        j = t.find(";", i)
+        return len(t) if j < 0 else j + 1
+    kw, k = m.group(1), i + m.end()
+    if kw == "begin":
+        depth = 1
+        for w in re.finditer(r"\b(begin|end)\b", t[k:]):
+            depth += 1 if w.group(1) == "begin" else -1
+            if depth == 0:
+                e = k + w.end()
+                lbl = re.match(r"\s*:\s*\w+", t[e:])
+                return e + (lbl.end() if lbl else 0)
+        return len(t)
+    p = t.find("(", k)
+    if p < 0:
+        return len(t)
+    _, j = balanced(t, p)
+    if kw == "if":
+        e = _stmt_end(t, j)
+        el = re.match(r"\s*else\b", t[e:])
+        return _stmt_end(t, e + el.end()) if el else e
+    depth = 1
+    for w in re.finditer(r"\b(case[zx]?|endcase)\b", t[j:]):
+        depth += -1 if w.group(1) == "endcase" else 1
+        if depth == 0:
+            return j + w.end()
+    return len(t)
+
+
+def cond_regions(body):
+    """(start, end, condition) for each if and case in an always body: the
+    text its condition or selector steers, an if's else arm included. An
+    assignment inside one reads its condition as surely as its right-hand side
+    (OI's rev 188: a cq02h net assigned under an if that read cq03h registers
+    passed CCV-L23 unseen)."""
+    out = []
+    for m in re.finditer(r"\b(if|case[zx]?)\s*\(", body):
+        cond, j = balanced(body, m.end() - 1)
+        if m.group(1) == "if":
+            e = _stmt_end(body, j)
+            el = re.match(r"\s*else\b", body[e:])
+            e = _stmt_end(body, e + el.end()) if el else e
+        else:
+            e = _stmt_end(body, m.start())
+        out.append((j, e, cond))
     return out
 
 
@@ -1217,8 +1306,54 @@ def check_file(path, rel):
         # the loop it claims; only a verified read leaves the arithmetic.
         graph = dep_graph(src)
         fb_ok = {}
+        ddeps = data_graph(src)
         for s0, e0, n, ln0 in spans:
-            fp, decl = feedback_decls(os.path.dirname(path), n)
+            fp, decl, byp = feedback_decls(os.path.dirname(path), n)
+            # A declared bypass (DA, 2026-10-23; OI-72 (A)): a reader at stage
+            # N that reads a later pipeline copy of its own stage's register,
+            # a bypass mux around a table written late. Each is reviewed, and
+            # the lint holds it to the copy it claims: the tags give exactly
+            # the declared offset, and the register read is that many stages
+            # on from a register at the reader's stage in its pipeline.
+            for reader, d in sorted(byp.items()):
+                reads = d.get("from", {})
+                if d.get("by") not in FEEDBACK_BY:
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared bypass is not an architect's (by %r, not one of "
+                        "%s): each is reviewed before it is listed"
+                        % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
+                    continue
+                if not isinstance(reads, dict) or not reads:
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared bypass names no read: write \"from\": "
+                        "{\"<register>\": <stages ahead>, ...}" % (fp, reader))
+                    continue
+                for rd, ahead in sorted(reads.items()):
+                    sr, sx = stage_of(reader), stage_of(rd)
+                    if rd not in graph[0].get(reader, ()):
+                        add("CCV-L23", ln0,
+                            "%s: %s is declared to read %s as a bypass, but does not "
+                            "read it: remove the declaration" % (fp, reader, rd))
+                    elif sr is None or sx is None:
+                        add("CCV-L23", ln0,
+                            "%s: %s's bypass read of %s is checked by their stage tags, "
+                            "and %s carries none" % (fp, reader, rd, reader if sr is None else rd))
+                    elif not isinstance(ahead, int) or ahead < 1:
+                        add("CCV-L23", ln0,
+                            "%s: %s's bypass read of %s is declared %r stages ahead: a "
+                            "bypass reads a later stage's copy" % (fp, reader, rd, ahead))
+                    elif sx[2] - sr[2] != ahead:
+                        add("CCV-L23", ln0,
+                            "%s: %s (stage %02d) reads %s (stage %02d), %d stage(s) ahead, "
+                            "but its bypass is declared %d ahead" % (fp, reader, sr[2], rd, sx[2],
+                                                                   sx[2] - sr[2], ahead))
+                    else:
+                        why = bypass_path(ddeps, graph[1], reader, rd, ahead)
+                        if why:
+                            add("CCV-L23", ln0, "%s: %s's declared bypass of %s does not hold: %s"
+                                % (fp, reader, rd, why))
+                        else:
+                            fb_ok.setdefault(reader, set()).add(rd)
             for reader, d in sorted(decl.items()):
                 reads = d.get("from", [])
                 if d.get("by") not in FEEDBACK_BY:
@@ -1306,10 +1441,13 @@ def check_file(path, rel):
             if reusable(pos):
                 continue
             seq = (kind == "ff")
+            regions = cond_regions(body) if kind != "assign" else []
             for apos, lhs, op, rhs in assignments(body):
                 st = stage_of(lhs)
                 if st is None or st[1] == "r":
                     continue
+                # The conditions it is assigned under count as its inputs.
+                rhs = " ".join([rhs] + [c for a0, a1, c in regions if a0 <= apos < a1])
                 ins = rhs_stages(rhs, lhs, st[2] if seq else
                                  st[2] + 1 if kind in ("assign", "comb") and d_side(lhs) else None)
                 if not ins:

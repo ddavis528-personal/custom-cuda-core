@@ -168,7 +168,11 @@ done
 # declared back edge passes (above). bad_feedback.sv's are refused: one with
 # no loop behind it, which leaves its stage skip reported; one not an
 # architect's; one for a read its reader does not make; and the same loop as
-# reference_loop's, undeclared, which the arithmetic refuses.
+# reference_loop's, undeclared, which the arithmetic refuses. Its declared
+# bypass passes too (DA, 2026-10-23; OI-72 (A)), and its if's condition
+# counts; bad_feedback.sv's bypass of another pipeline's register, its bypass
+# at an offset the tags do not give, and a stage-03 read in an if's condition
+# (OI's rev 188) are refused.
 while IFS='|' read -r what want; do
   if grep -qF "$want" "$TMP/bad.log"; then
     say "CCV-L23 feedback refused: $what" "PASS"
@@ -186,6 +190,10 @@ a longer loop not listed|p1_cy02h reads p3_cy04h as declared feedback, but no re
 an alignment the tags do not give|m1_cy02h (stage 02) reads m2_cy03h (stage 03), 1 stage(s) ahead, but is declared 2 ahead
 ...and its stage skip reported|m1_cy02h is at stage 02 but sequential logic over stage(s) 01,03
 no alignment declared|n1_cy02h's declared feedback reads give no alignment
+a bypass whose source is off the reader's path|offp_cy02h's declared bypass of o2_cy03h does not hold: o2_cy03h is not loaded, 1 register(s) back, from a register at offp_cy02h's stage 02 in its pipeline
+...and its stage skip reported|offp_cy02h is at stage 02 but combinational logic over stage(s) 02,03
+a bypass at an offset the tags do not give|wofs_cy02h (stage 02) reads w2_cy03h (stage 03), 1 stage(s) ahead, but its bypass is declared 2 ahead
+a stage-03 read in an if's condition|cnd_cy02h is at stage 02 but combinational logic over stage(s) 02,03
 WANT
 
 # CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
