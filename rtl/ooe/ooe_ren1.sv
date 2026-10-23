@@ -67,7 +67,7 @@ module ooe_ren1 #(
   output logic [R-1:0]       l_gwe,
   output logic [R*2-1:0]     l_pdst,
   output logic [R-1:0]       l_pwe,
-  output logic [R*2*R-1:0]   l_idx,         // its writers before it, per class, a thermometer
+  output logic [R*2*R-1:0]   l_idx,         // its name index per class, one-hot: its writers before it
   output logic [R-1:0]       l_br,
   output logic [R*LC-1:0]    l_ckpt,
   output logic [R*4*GW-1:0]  l_g,           // src0..2, the old destination: a value
@@ -147,11 +147,20 @@ module ooe_ren1 #(
       v = v | ({2{lane_c_cq02h[l * NC + c]}} & {c_pwe_cq01h[c], c_gwe_cq01h[c]});
     fwe = v & {2{lane_v_cq02h[l]}};
   endfunction
+  // Lane l's name index per class, one-hot (OA's response OI-70, rev 194):
+  // its writers before it, lane-selected as a thermometer, then k where the
+  // thermometer ends, so ooe_rename's names leave the register a decode
+  // sooner.
   function automatic logic [2*R-1:0] fidx(input int l);
-    logic [2*R-1:0] v;
+    logic [2*R-1:0] v, o;
+    logic [R:0]     t;
     v = '0;
     for (int c = 0; c < NC; c++) v = v | ({2*R{lane_c_cq02h[l * NC + c]}} & wb_cq02h[c * 2 * R +: 2 * R]);
-    fidx = v;
+    for (int b = 0; b < 2; b++) begin
+      t = {v[b * R +: R], 1'b1};
+      for (int k = 0; k < R; k++) o[b * R + k] = t[k] & ~t[k + 1];
+    end
+    fidx = o;
   endfunction
   function automatic logic [GW-1:0] fg(input int l, input int i);
     logic [GW-1:0] v;

@@ -837,13 +837,16 @@ Built (`rtl/ooe/`):
      free lists, whose requests are the go's taken-writer totals (wt). The
      go's pool, floor and ROB terms and Rename 2's fields are still ports.
      A head's write bits are its admission bits (3 GPR, 4 predicate), as
-     the go counts them. NGD-7 copies: the Rename 1 register's pending-group
-     fields and the names' index and heads twice (o_/q_ for the outputs,
-     p_ for the heads' reads, a second ooe_ren1n binding the pending
-     group's names), 132 flops. Its units (`test/ooe/cg-units.json`, which
+     the go counts them. Each lane's name index is registered one-hot
+     (ooe_ren1 decodes the lane-selected thermometer; OA's response OI-70,
+     rev 194), so the names leave a decode sooner. NGD-7 copies: the Rename
+     1 register's pending-group fields twice (o_ for the outputs, p_ for
+     the heads' reads), and the name index and free-list heads three times
+     (q_ for the new names out, r_ for the reads out, p_ for the heads'
+     reads), each behind its own ooe_ren1n: 220 flops. Its units (`test/ooe/cg-units.json`, which
      check-ngd reads too) blackbox ooe_go and the free lists, measured in
      their own units: check-ngd times them by their budgets, check-cg
-     counts ooe_rename's own flops (661, 9 ungated). The bench
+     counts ooe_rename's own flops (749, 9 ungated). The bench
      (`test/ooe/rename_tb.cpp`, beside ooe_rat in
      `test/ooe/ooe_rename_tb.sv`) drives the go from the go log, the
      candidates from the renames and the free lists from the model's frees,
@@ -862,12 +865,15 @@ Built (`rtl/ooe/`):
      RTL's last reset edge, so one model cycle is one RTL cycle for the go's
      rotation and the free lists alike (`FreeVec::clock`; freelist_tb's
      reset follows). `check-ngd`: 14.4 NGD flop to flop from the children's
-     budgets; flattened whole, 22.7. Rename 1's names leave at 3.6 NGD (q_gname, q_pname) and
-     its reads at 6.6 (q_g, q_p), over ooe_rat's write-port arrival (3) and
-     Rename 2's (5): OI-70 to OA; those four outputs keep the default
-     budget until OA rules. Measured against the receivers (OA's ask):
-     ooe_rat from pw_gname 11.3 and pw_pname 10.1 to its flops; ooe_rendep
-     from gsn 17.9 and psn 18.4.
+     budgets; flattened whole (before the one-hot index), 22.7. Rename 1's
+     names leave at 2.6 NGD (q_gname, q_pname; by 3, ooe_rat's write-port
+     arrival) and its reads at 5.6 (q_g, q_p; by 6, into Rename 2): OA's
+     rev 194, from the receivers' paths, ooe_rat's 11.3 and 10.1 from
+     pw_gname and pw_pname and ooe_rendep's 17.9 and 18.4 from gsn and psn.
+     With a thermometer index they left at 3.6 and 6.6. ooe_ren1's index
+     path is 7.3, so Rename 1 still converges (wb at 17, 24.3). ooe_rat's
+     tk is data only (the D of its lead registers wl and ck), so its
+     arrival is the take's 14 (OA's rev 194).
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
@@ -883,8 +889,8 @@ copies.
 | `ooe_rs` | the valid bits, for the outputs | 45 |
 | `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
 | `ooe_wake` | the issued bits | 45 |
-| `ooe_rename` | the Rename 1 register's pending-group fields, name index and free-list heads, for the heads' reads | 132 |
-| **built** | | **1123** |
+| `ooe_rename` | the Rename 1 register's pending-group fields (for the heads' reads), name index and free-list heads (twice more: the reads out, the heads' reads) | 220 |
+| **built** | | **1211** |
 | `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
 | `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
 

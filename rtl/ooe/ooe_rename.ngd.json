@@ -210,6 +210,30 @@
    "by": "OA",
    "date": "2026-10-20",
    "why": "ooe_rat's pw_ckpt_cq01h arrival: OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; rename's stage register"
+  },
+  "q_gname_cq03h": {
+   "required": 3.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 3, ooe_rat's pw_gname and pw_pname arrival (rev 185), met with the one-hot name index (measured 2.6); ooe_rat's paths from them are 11.3 and 10.1 NGD"
+  },
+  "q_pname_cq03h": {
+   "required": 3.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 3, ooe_rat's pw_gname and pw_pname arrival (rev 185), met with the one-hot name index (measured 2.6); ooe_rat's paths from them are 11.3 and 10.1 NGD"
+  },
+  "q_g_cq03h": {
+   "required": 6.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 6, into Rename 2 (ooe_rendep's gsn and psn, 17.9 and 18.4 NGD to its flops), met with the one-hot name index (measured 5.6)"
+  },
+  "q_p_cq03h": {
+   "required": 6.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's response OI-70 (OA tab rev 194): by 6, into Rename 2 (ooe_rendep's gsn and psn, 17.9 and 18.4 NGD to its flops), met with the one-hot name index (measured 5.6)"
   }
  }
 }

@@ -205,11 +205,16 @@ module ooe_rename #(
   // -- The Rename 1 register ---------------------------------------------------
   // Its payload while some slot had a head (the go's registered sel, a
   // superset of a take); its valid bits every cycle. The pending group's
-  // fields twice (NGD-7), each copy (* keep *): o_ (and the names' q_) for
-  // the outputs, p_ for the heads' reads.
+  // fields twice (NGD-7), each copy (* keep *): o_ for the outputs, p_ for
+  // the heads' reads; the name index and the free lists' heads three times:
+  // q_ for the new names out (by 3), r_ for the reads out (by 6, an in-group
+  // writer's name bound through it), p_ for the heads' reads.
   (* keep *) logic [R*2*R-1:0] q_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  q_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  q_palloc_cq03h;
+  (* keep *) logic [R*2*R-1:0] r_idx_cq03h;
+  (* keep *) logic [R*GR-1:0]  r_galloc_cq03h;
+  (* keep *) logic [R*PW-1:0]  r_palloc_cq03h;
   (* keep *) logic [R*2*R-1:0] p_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  p_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  p_palloc_cq03h;
@@ -248,6 +253,9 @@ module ooe_rename #(
       p_gwe_cq03h    <= l_gwe_cq02h;
       p_pdst_cq03h   <= l_pdst_cq02h;
       p_pwe_cq03h    <= l_pwe_cq02h;
+      r_idx_cq03h    <= l_idx_cq02h;
+      r_galloc_cq03h <= galloc_cq02h;
+      r_palloc_cq03h <= palloc_cq02h;
       p_idx_cq03h    <= l_idx_cq02h;
       p_galloc_cq03h <= galloc_cq02h;
       p_palloc_cq03h <= palloc_cq02h;
@@ -262,10 +270,20 @@ module ooe_rename #(
   assign q_pwe_cq03h  = o_pwe_cq03h;
 
   // -- The names bound ---------------------------------------------------------
+  // The new names out, from the q_ copy (its reads unused).
+  logic [R*4*GW-1:0] q_gx_cq03h;
+  logic [R*4*PW-1:0] q_px_cq03h;
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW)) u_ren1n (
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
+    .q_g_cq01h('0), .q_gl_cq01h('0), .q_p_cq01h('0), .q_pl_cq01h('0),
+    .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_gx_cq03h), .n_p(q_px_cq03h));
+  // The reads out, from the r_ copy (its new names used only inside).
+  logic [R*GW-1:0] r_gname_cq03h;
+  logic [R*PW-1:0] r_pname_cq03h;
+  ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW)) u_ren1nr (
+    .q_idx_cq01h(r_idx_cq03h), .q_galloc_cq01h(r_galloc_cq03h), .q_palloc_cq01h(r_palloc_cq03h),
     .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h(q_pv_cq03h), .q_pl_cq01h(q_pl_cq03h),
-    .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_g_cq03h), .n_p(q_p_cq03h));
+    .n_gname(r_gname_cq03h), .n_pname(r_pname_cq03h), .n_g(q_g_cq03h), .n_p(q_p_cq03h));
   // From the copy, the pending group's names alone (its reads unused).
   logic [R*4*GW-1:0] p_g_cq03h;
   logic [R*4*PW-1:0] p_p_cq03h;

@@ -2,10 +2,10 @@
   "module": "ooe_rat",
   "ports": {
     "tk_cq00h": {
-      "arrival": 6.0,
+      "arrival": 14.0,
       "by": "OA",
-      "date": "2026-10-20",
-      "why": "OA's response OI-58 (OA tab, 2026-10-20), its budgets (2): in NGD from the launching flop; decq's go into rat (rename's take counts)"
+      "date": "2026-10-23",
+      "why": "OA's response OI-70 (OA tab rev 194): data only, so at the take's 14 (OI-65): tk reaches only the D of the lead registers wl and ck, whose flops drive the map and checkpoint enables (CG-2's cone starts there); ooe_rat's path from it fits"
     },
     "hbr_cq00h": {
       "arrival": 2.0,

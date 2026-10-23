@@ -24,7 +24,7 @@ module ooe_ren1n #(
   localparam int GP = GW - GR            // a name's position bits
 ) (
   // The Rename 1 register.
-  input  logic [R*2*R-1:0]  q_idx_cq01h,    // per lane and class, its writers before it, a thermometer
+  input  logic [R*2*R-1:0]  q_idx_cq01h,    // per lane and class, its name index, one-hot (its writers before it)
   input  logic [R*GR-1:0]   q_galloc_cq01h, // the GPR free list's heads
   input  logic [R*PW-1:0]   q_palloc_cq01h, // the predicate free list's
   input  logic [R*4*GW-1:0] q_g_cq01h,      // per lane, src0..2, the old destination: a value
@@ -38,21 +38,19 @@ module ooe_ren1n #(
   output logic [R*4*PW-1:0] n_p
 );
 
-  // Lane l's name: head k of its class, k one-hot from the thermometer.
+  // Lane l's name: head k of its class, k one-hot in the register (OA's
+  // response OI-70, rev 194).
   function automatic logic [GW-1:0] gname(input int l);
     logic [GW-1:0] v;
-    logic [R:0] t;
-    t = {q_idx_cq01h[(l * 2 + 0) * R +: R], 1'b1};
     v = '0;
-    for (int k = 0; k < R; k++) v = v | ({GW{t[k] & ~t[k + 1]}} & {q_galloc_cq01h[k * GR +: GR], GP'(0)});
+    for (int k = 0; k < R; k++)
+      v = v | ({GW{q_idx_cq01h[(l * 2 + 0) * R + k]}} & {q_galloc_cq01h[k * GR +: GR], GP'(0)});
     gname = v;
   endfunction
   function automatic logic [PW-1:0] pname(input int l);
     logic [PW-1:0] v;
-    logic [R:0] t;
-    t = {q_idx_cq01h[(l * 2 + 1) * R +: R], 1'b1};
     v = '0;
-    for (int k = 0; k < R; k++) v = v | ({PW{t[k] & ~t[k + 1]}} & q_palloc_cq01h[k * PW +: PW]);
+    for (int k = 0; k < R; k++) v = v | ({PW{q_idx_cq01h[(l * 2 + 1) * R + k]}} & q_palloc_cq01h[k * PW +: PW]);
     pname = v;
   endfunction
   always_comb
