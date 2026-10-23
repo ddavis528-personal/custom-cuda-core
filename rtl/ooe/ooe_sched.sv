@@ -160,7 +160,7 @@ module ooe_sched #(
   logic [N-1:0] ready_cq03h;
   logic         ready_en_cq03h, stop_cq03h, alc_cq03h;
   logic         gl_cq05h;                   // a grant some row depends on left at the last edge
-  logic         ready_en;
+  logic         ready_en_cq02h;
   // A row not valid reads not ready (only a valid row requests): a row
   // written ready then changes its bit, so the allocation lead clocks a change.
   ooe_ready #(.N(N), .W(WL), .CW(CW)) u_ready (.dep_cq02h(dpm_cq02h), .code_cq02h(code_cq02h),
@@ -186,7 +186,7 @@ module ooe_sched #(
   (* keep *) logic [N-1:0] gnt_out_cq04h;  // the grant register's leaving copy
   (* keep *) logic [N-1:0] gnt_w_cq04h;    // and ooe_wake's
   assign gnt_en_cq03h      = (rq_cq03h & ready_cq03h) != '0 || gnt_cq04h != '0;
-  assign ready_en    = ready_en_cq03h || gl_cq05h;
+  assign ready_en_cq02h    = ready_en_cq03h || gl_cq05h;
   // A grant moves a ready bit at the edge it arrives only through the lead
   // line (WL - 1) of a producer of latency LEAD + 1, threshold age 1; every
   // other line's threshold is age 2 or later, which ooe_wake's timer lead
@@ -226,7 +226,7 @@ module ooe_sched #(
       ready_cq03h <= '0;
       rq_cq03h    <= '0;
     end else begin
-      if (ready_en) ready_cq03h <= ready_cq02h & valid_cq02h;
+      if (ready_en_cq02h) ready_cq03h <= ready_cq02h & valid_cq02h;
       if (rq_en_cq02h) rq_cq03h <= rq_cq02h;
     end
   end
