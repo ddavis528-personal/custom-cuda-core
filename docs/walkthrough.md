@@ -215,12 +215,12 @@ behavioural C++ blocks, one per block type, that move real values over the
 real channels. It then compares the final state with the oracle's.
 
 ```
-KERNEL name=vadd finished=1 cycles=176 from_fetch=145 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/52 violations=0
-XFER events=652 launched=652 match=yes channels_seen=30
+KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/52 violations=0
+XFER events=647 launched=647 match=yes channels_seen=30
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 652 messages
+`ccv-sim`'s, and every one of the 647 messages
 launched was seen by the checker bank, which reported nothing. The run
 touches 30/52 channel types. The rest are waiting for
 kernels that need them:
@@ -381,8 +381,8 @@ skeleton's:
 
 ```
 SVHOST shims=46/46 skewed=none
-KERNEL name=vadd finished=1 cycles=176 from_fetch=145 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/52 violations=0
-TRACES records=726/726 equal=yes byte_identical=no differing_cycles=0
+KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=30/52 violations=0
+TRACES records=721/721 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -493,7 +493,7 @@ a script is one. Its sections:
 - Walkthrough -- docs/walkthrough.md
 - Verilator lint
 
-It includes 28 lint rules (`tools/lint-rtl.py`). Each has a
+It includes 29 lint rules (`tools/lint-rtl.py`). Each has a
 counter-example that must fire, and a paragraph in
 `docs/rtl-coding-style.md`.
 

@@ -58,6 +58,14 @@
 #     without a read (full_line, AR-19); a       partial store written blind
 #     partial one merges into the line read      loses its lines' other four
 #                                                words
+#   DCU is write-back, write-allocate with    write-through (predswap): the
+#     ownership (DCU spec rev 8): a store        old policy, each store to MLC,
+#     to an owned line merges there              misses store_hit
+#     (store_hit), and a dirty line leaves    drop-writeback (slotform): the
+#     whole when its set is taken                evicted lines' 32 words reload
+#     (dcu_evict)                                stale and memory differs
+#   ...on MLC's grant (ownership)             deny-ownership (predswap, vadd):
+#                                                DCU's check refuses the line
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -82,8 +90,10 @@
 #     << 5 OOE substitutes, lane ORed (O-64)     substitution; the lanes refuse;
 #     -- not its index in its CTA                lanectx-as-ctatid (lanectx2):
 #                                                CTA 1's warp reads 0-31
-#   st.pred (O-19, O-63; TI-36) merges only   stpred-whole-word (predlane):
-#     the issue mask's bits, after commit        lanes 0-15's bits land too
+#   ld.pred and st.pred (O-19, O-62, O-63;    drop-pred-copy, ldpred-whole-word
+#     TI-36) move only the issue mask's bits:    (predmerge): the reload loses
+#     the load's copy keeps the rest, the        lanes 16-31; stpred-whole-word
+#     store merges its word after commit         (predlane): lanes 0-15's land
 #   their address is lane 0's rbase, lane 0   xfer-low-lane (predlane): lanes
 #     active or not                              16-31 use their own window
 #   st.pred's predicate is data, not a guard  pdata-guard (predlane): its clear
@@ -657,12 +667,13 @@ rolaunch ro_fault=1 fault=1 kill=1
 rogated ro_fault=1 fault=1 split=1 kill=1
 roload ro_fault=0 fault=0 kill=0
 rokill ro_fault=1 fault=1 kill=1
-slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0
+slotform slot_form=4 window_fill=2 frame_lookups=64 l1_hit=0 dcu_evict=32
 lanectx redirect=0 split=0
 lanectx2 redirect=0 split=0
 predspill pred_xfer=7 pred_merge=6 pred_copy=0
+predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
-predswap pred_xfer=32 pred_merge=16 crack_split=0
+predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 KERNELS
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
@@ -684,6 +695,36 @@ if [ "$(field "$B/kernel_skip-read-partial.log" mem_mismatch)" = 4 ] &&
   say "--break skip-read-partial: words lost" "PASS (unal's 4 words beside its store)"
 else
   bad "--break skip-read-partial" "a partial store written without a read went unnoticed: $(grep '^KERNEL' "$B/kernel_skip-read-partial.log")"
+fi
+# DCU spec rev 8: write-back, write-allocate with ownership. predswap's
+# spills after the first each merge into the line DCU owns (store_hit=15);
+# written through to MLC, as before rev 8, none does. slotform's 32 dirty
+# lines are evicted by the lines its loads bring in (dcu_evict=32); dropped
+# instead of written back, seq 8 reloads them stale and memory differs.
+"$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break write-through >"$B/kernel_write-through.log" 2>&1
+if [ "$(cover "$B/kernel_write-through.log" store_hit)" = 0 ] &&
+   grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_write-through.log"; then
+  say "--break write-through: no store merges in DCU" "PASS (predswap's store_hit 15 -> 0, $(field "$B/kernel_write-through.log" cycles) cycles)"
+else
+  bad "--break write-through" "store_hit not tied to the write-back policy: $(grep '^KERNEL' "$B/kernel_write-through.log")"
+fi
+"$SKEL" --kernel build/oracle/slotform/oracle.jsonl --break drop-writeback >"$B/kernel_drop-writeback.log" 2>&1
+if [ "$(grep -c '^CHECK miu: seq 8 lane' "$B/kernel_drop-writeback.log")" = 32 ] &&
+   [ "$(field "$B/kernel_drop-writeback.log" mem_mismatch)" = 32 ]; then
+  say "--break drop-writeback: evicted lines lost" "PASS (seq 8's 32 lanes reload stale; 32 words in memory)"
+else
+  bad "--break drop-writeback" "a dropped writeback went unnoticed: $(grep '^KERNEL' "$B/kernel_drop-writeback.log")"
+fi
+# DCU marks a line owned only on MLC's grant (ccv_mlc_dcu_rsp.ownership):
+# refused it, predswap's first spill (AcquireBlock) and vadd's whole-line
+# store (AcquirePerm) each stop at DCU's check.
+"$SKEL" --kernel build/oracle/predswap/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership.log" 2>&1
+"$SKEL" --kernel build/oracle/vadd/oracle.jsonl --break deny-ownership >"$B/kernel_deny-ownership_vadd.log" 2>&1
+if grep -q "^CHECK dcu: MLC answered the acquire of line 90000 (req_id 0) without ownership" "$B/kernel_deny-ownership.log" &&
+   grep -q "^CHECK dcu: MLC answered the acquire of line .* without ownership" "$B/kernel_deny-ownership_vadd.log"; then
+  say "--break deny-ownership: DCU refuses the line" "PASS (predswap's AcquireBlock, vadd's AcquirePerm)"
+else
+  bad "--break deny-ownership" "a line taken as owned without MLC's grant: $(grep '^KERNEL' "$B/kernel_deny-ownership.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 if grep -q "^CHECK lane 0: seq 207 operand 1 (R4) 00000032, oracle 00000001" "$B/kernel_free-new.log" &&
@@ -824,8 +865,19 @@ fi
 # puts them in window 25. The store merges only their bits (O-63): written
 # whole, lanes 0-15's land too. Its last store writes P1, clear in lanes
 # 16-31, over poked ones: as a guard, P1 would keep memory's ones there.
-# (A partial ld.pred, CP's pred-merge, waits for its copy's predicate-only
-# destination to be named on ccv_ooe_rcu_issue: TI-37.)
+# predmerge (CP's): lanes 0-15 reload P1 from a zero word and store it. The
+# reload writes only their bits, and its copy, a predicate-only one that
+# names no GPR (the zero register, TI-37), keeps lanes 16-31's. Without the
+# copy, or with the reload written whole, P1 loses lanes 16-31's ones.
+for b in drop-pred-copy ldpred-whole-word; do
+  "$SKEL" --kernel build/oracle/predmerge/oracle.jsonl --break $b >"$B/kernel_$b.log" 2>&1
+  if grep -q "^CHECK miu: seq 6 P1's word 00000000, oracle ffff0000" "$B/kernel_$b.log" &&
+     [ "$(field "$B/kernel_$b.log" pred_mismatch)" = 1 ]; then
+    say "--break $b: P1 loses lanes 16-31" "PASS (predmerge)"
+  else
+    bad "--break $b" "ld.pred's lane enable went unchecked: $(grep '^KERNEL' "$B/kernel_$b.log")"
+  fi
+done
 "$SKEL" --kernel build/oracle/predlane/oracle.jsonl --break stpred-whole-word >"$B/kernel_stpred-whole-word.log" 2>&1
 if grep -q "^CHECK miu: seq 6 P1 merged ffffffff into 90010, oracle ffff0000" "$B/kernel_stpred-whole-word.log"; then
   say "--break stpred-whole-word: lanes 0-15 stored" "PASS (predlane: 0x90010)"

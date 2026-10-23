@@ -1,0 +1,6 @@
+{
+  "_comment": "CCV-L29's ratchet as a fixture (tools/check-1d.sh), against bad_naming.sv and bad_stage_baseline.json: untag_nx is excused, out_d_cy01h is tagged and so must leave the list, never_listed was not in the baseline. DO NOT FIX.",
+  "modules": {
+    "ccv_reference": ["untag_nx", "out_d_cy01h", "never_listed"]
+  }
+}

@@ -561,7 +561,7 @@ used for:
 | Decode: which registers an instruction reads and writes | Operands: out of RCU's register file, to the lanes |
 | ALU **results**: a lane returns ccv-sim's value | Load data: memory → EXB → MLC → DCU → MIU → RCU |
 | Immediates (the record's `imms`), at decode | Displacement and scale enable: DEC → OOE → MIU's AGU; ALU immediate: DEC → OOE → RCU, substituted into an operand |
-| | Store data: RCU's register file → MIU → DCU (RMW) → MLC → EXB → memory |
+| | Store data: RCU's register file → MIU → DCU (merged into an owned line; DCU spec rev 8) → MLC on writeback → EXB → memory |
 
 The trace identity (uid seq = record seq) is how a checker finds the record.
 It's trace-only, so no stub uses it to decide what to do. (The one exception,

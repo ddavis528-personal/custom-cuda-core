@@ -109,7 +109,12 @@ inline Line getLine(const Bits &b, uint32_t lsb) {
 // ---- S1 wire conventions (docs/skeleton.md lists them) ------------------------
 //
 // Placeholders for encodings the payload spec leaves to the owning block.
-enum : unsigned { kCohRead = 0, kCohWrite = 1 };        // coh_op
+// coh_op. Read and write (a writeback) as before; the acquires DCU's write
+// policy needs (DCU spec rev 8): a line with ownership, or ownership alone
+// for a store that writes the whole line (TL-C's AcquireBlock and
+// AcquirePerm). The stub's codes until CCV_L_W_COH_OP's TL-C subset is
+// enumerated.
+enum : unsigned { kCohRead = 0, kCohWrite = 1, kCohAcquireData = 2, kCohAcquirePerm = 3 };
 enum : unsigned { kStatusComplete = 0, kStatusFault = 1, kStatusReplay = 2 };   // miu_ooe_cmpl.status
 enum : unsigned { kMemLoad = 0, kMemStore = 1, kMemPredLoad = 4, kMemPredStore = 5,   // ooe_miu_memop.mem_op
                   kMemAtomicRead = 2, kMemAtomicWrite = 3, // OOE's (AR-21, V-72)

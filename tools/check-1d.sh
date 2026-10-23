@@ -163,6 +163,29 @@ for want in "mis_cy02h is at stage 02 but combinational" "dnx_cy00h is at stage 
   fi
 done
 
+# CCV-L29 (DA, 2026-10-23): an untagged net at module level and one in a
+# generate block are refused, and ccv_reference.sv's struct field, function
+# local and procedural local, which are not nets, pass (above). Its ratchet
+# excuses what it lists, and refuses an entry that now meets the rule and one
+# that was not in the baseline when the rule was made.
+for want in untag_nx untag_par; do
+  if grep -q "CCV-L29: net $want of module" "$TMP/bad.log"; then
+    say "CCV-L29 refuses $want, untagged" "PASS"
+  else
+    bad "CCV-L29 refuses $want, untagged" "no finding"
+  fi
+done
+python3 tools/lint-rtl.py --stage-ratchet=rtl/lint/bad_stage_ratchet.json \
+  --stage-baseline=rtl/lint/bad_stage_baseline.json rtl/lint/bad_naming.sv >"$TMP/ratchet.log" 2>&1
+if ! grep -q "CCV-L29: net untag_nx" "$TMP/ratchet.log" &&
+   grep -q "CCV-L29: net untag_par" "$TMP/ratchet.log" &&
+   grep -q "CCV-L29: ccv_reference out_d_cy01h now meets the rule" "$TMP/ratchet.log" &&
+   grep -q "CCV-L29: ccv_reference never_listed was not on the list" "$TMP/ratchet.log"; then
+  say "CCV-L29's ratchet excuses, and only shrinks" "PASS (listed excused; tagged and unlisted refused)"
+else
+  bad "CCV-L29's ratchet" "$(grep 'CCV-L29' "$TMP/ratchet.log" | head -3)"
+fi
+
 # CCV-L26 makes a claim about a TOOL, so the claim is checked against the
 # tool: every form the rule permits must actually be readable by Yosys. A
 # permitted form Yosys rejects would be the worst outcome available -- both
