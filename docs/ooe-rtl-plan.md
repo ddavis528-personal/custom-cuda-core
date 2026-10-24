@@ -925,8 +925,8 @@ Built (`rtl/ooe/`):
      sum (each slot's held past its floor and the pool less every floor
      less that take, a select of constants), and the go corrects for the
      newer as for the RS credits. OA's rev 219 put both takes in the go's
-     correction (hk to 3R, XM to PM + 3R): measured, that is 23.1 from px
-     and pl to flops, 25.1 with their arrivals of 2, so the older take
+     correction (hk to 3R, XM to PM + 3R): measured (the earlier library), that
+     is 23.1 from px and pl to flops, 25.1 with their arrivals of 2, so the older take
      moved into the register and the go keeps its one-cycle correction
      (22.5). `ccv_common_csa` (rtl/common/, an inner helper; TI's response
      OI-76): 3:2 rows built by generate, then one add (sum) or none
@@ -942,9 +942,13 @@ Built (`rtl/ooe/`):
      design's parameters every lateness costs 0.00%; with scarce names the
      decided form (held_late 3, owed_lag, names_pool_lag) is 888 cycles
      against 883.4 with everything exact (+0.53%), against 882.8 with
-     frees two edges late. check-ngd: ooe_rename 23.3 flop to flop (29.6
-     with each slot's sixteen groups summed in rename), ooe_freelist 21.6
-     (GPR) and 22.6 (predicates), ooe_go 22.5.
+     frees two edges late. check-ngd, with tools/ngd.genlib's XOR cells
+     (TI's 985037a): ooe_rename 22.0 flop to flop, ooe_freelist 21.5 (GPR)
+     and 22.2 (predicates), ooe_go 22.4; before them, 23.4, 21.6, 22.2 and
+     22.5 (29.6 for rename with each slot's sixteen groups summed there).
+     check-cg: ooe_rename 1193 flops, 1174 in 6 gates; the names' pools'
+     gate (10 flops) changes on 12% / 24% of its enabled cycles (medium /
+     high), waived (CG-3, rtl/cg-waivers.json).
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
