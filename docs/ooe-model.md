@@ -480,8 +480,9 @@ them, and TI's schema (4c3bb98) carries them:
   rev 24): FET rewinds from its own PC, which is the one past the wait, so
   the RTL stores no PC. The model sets target_pc past the wait as well
   (`demote.held_wait`). The adapter sends `own_pc` once the schema has it.
-- *The timer.* A held wait's retire, or a marked uop's (`all_waiting` on
-  any other) that leaves the ROB empty, starts it; it fires the barrier
+- *The timer.* A held wait's retire, or a marked wait's or exit's that
+  leaves the ROB empty, starts it (FET spec; AR's rev 186): no other uop's
+  mark does, a converged chwidth's (O-81) among them; it fires the barrier
   trigger once the ROB has stayed empty past `demote_barrier`. A uop that
   arrives with no hold up stops it. The head-stall trigger is the fallback
   alone now: a held wait has retired, so it is never the stalled head.
@@ -1257,6 +1258,7 @@ condition holds, so their count is a duration.
 | Decode queue full | DEC is held: a uop stays in the channel with the queue full; per cycle | warp_id of the oldest held uop | queue occupancy | 0 | `stall.decq_full` |
 | Decode queue per-warp max | a uop stays in the channel with its warp at its maximum; per cycle | warp_id | that warp's entries | maximum | `stall.decq_warp_max` |
 | `chwidth` serialisation | rename held behind an in-flight `chwidth` change; per cycle | warp_id | holding rob_tag | 0 | `hold.chwidth` |
+| Registered hold, by cause | under `go_static`, a warp's take refused by its registered hold bit; per refusal | warp_id | 0 | 0 | `hold.registered`, split `hold.registered.{inactive,chwidth,barrier,other}` (TI's rev 188; other is a fault stop) |
 | Barrier hold | rename held behind a converged wait; per cycle | warp_id | barrier_id | 0 | `hold.barrier` |
 | Redirect busy | a mispredict or epoch notice waits for the rate-1 redirect; per cycle | warp_id waiting | redirects queued | 0 | `stall.redirect_busy` |
 | Memop held, would have issued | a memop is ready but for an unconfirmed source while an MIU slot goes unused; per cycle | warp_id | RS entry | 0 | `memop.held_unconfirmed` |
@@ -1360,7 +1362,15 @@ added with the event.
     it sets (TI's rev 185). A ret (sched_attr bit 19; AR-24 (b), OA's rev
     223) redirects the lanes RCU's done names to {PC[47:32], aux} with
     `stay`, so its other lanes stay at the ret and re-issue it with their
-    own targets (`branch.ret_redirect`; testRet);
+    own targets (`branch.ret_redirect`; testRet). O-80 (sized loads and
+    stores, DA tab rev 90): DEC's xfer_size and xfer_signed pass to MIU on
+    the memop, and a sized transfer wider than the data register's
+    committed width faults with F-WIDTH (`fault.width.sized`). O-81
+    (converged-only chwidth, DA tab rev 91): a chwidth or sibling whose
+    all_waiting, FET's converged mark, is clear faults with F-WIDTH, a
+    no-op that sets no width and holds nothing
+    (`fault.width.diverged_chwidth`). testSizedAndConverged covers both;
+    controls `no-sized-fault` and `no-converged-fault`;
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record

@@ -382,6 +382,10 @@ struct Config {
   bool inject_no_bar_fault = false;
   /// No F-WIDTH check at dispatch (testWidthFault's control).
   bool inject_no_width_fault = false;
+  /// O-80's and O-81's controls: a sized transfer wider than rdata, and a
+  /// chwidth outside a converged warp, raise no F-WIDTH.
+  bool inject_no_sized_fault = false;
+  bool inject_no_converged_fault = false;
   /// No F-FORMAT check at dispatch (testFormatFault's control).
   bool inject_no_format_fault = false;
   /// The fault-address register takes every faulting completion, not only
@@ -521,7 +525,10 @@ struct Uop {
   bool scale_en = false;
   unsigned slot_form = 0, arg_slot = 0;   ///< the launch-slot form, for MIU (TI-31)
   unsigned local_form = 0;                ///< the interleaved local form, for MIU (IS-19)
-  unsigned xfer_size = 0, xfer_signed = 0;  // O-80: DEC's, unexamined, for MIU (TI, the OI-18 pattern)
+  /// O-80 (DA tab rev 90): a sized transfer, 0 rdata's width, 1 a byte, 2 a
+  /// halfword, and whether MIU sign-fills a sized load; for MIU.
+  unsigned xfer_size = 0;
+  bool xfer_signed = false;
   /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
   /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
   unsigned cause = 0;
@@ -650,7 +657,8 @@ struct Memop {          ///< ccv_ooe_miu_memop
   unsigned data_pos = 0;   ///< the data register's position (its pipes start there; AR-24 (d))
   unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
   unsigned local_form = 0;                ///< DEC's, unexamined (IS-19)
-  unsigned xfer_size = 0, xfer_signed = 0;  // O-80: DEC's, unexamined, for MIU (TI, the OI-18 pattern)
+  unsigned xfer_size = 0;                 ///< DEC's (O-80): 0 chwidth's, 1 a byte, 2 a halfword
+  bool xfer_signed = false;
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -1504,6 +1512,9 @@ private:
   std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
   std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
   std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
+  /// Which hold it is, for the split counter (TI's rev 188): the first of
+  /// not active, chwidth, barrier, other (a fault stop).
+  std::vector<const char *> go_hold_why_;
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it

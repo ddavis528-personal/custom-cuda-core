@@ -217,7 +217,10 @@ private:
     u.slot_form = unsigned(get(p, c.dec_ooe, "slot_form"));
     u.arg_slot = unsigned(get(p, c.dec_ooe, "arg_slot"));
     u.local_form = unsigned(get(p, c.dec_ooe, "local_form"));
-    u.xfer_size = unsigned(get(p, c.dec_ooe, "xfer_size")); u.xfer_signed = unsigned(get(p, c.dec_ooe, "xfer_signed"));
+    if (hasField(c.dec_ooe, "xfer_size")) {   // O-80
+      u.xfer_size = unsigned(get(p, c.dec_ooe, "xfer_size"));
+      u.xfer_signed = get(p, c.dec_ooe, "xfer_signed") != 0;
+    }
     u.cause = unsigned(get(p, c.dec_ooe, "cause"));
     u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
     u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
@@ -450,7 +453,10 @@ private:
         put(mo, c.ooe_miu, "slot_form", x.slot_form);
         put(mo, c.ooe_miu, "arg_slot", x.arg_slot);
         put(mo, c.ooe_miu, "local_form", x.local_form);
-        put(mo, c.ooe_miu, "xfer_size", x.xfer_size); put(mo, c.ooe_miu, "xfer_signed", x.xfer_signed);
+        if (hasField(c.ooe_miu, "xfer_size")) {
+          put(mo, c.ooe_miu, "xfer_size", x.xfer_size);
+          put(mo, c.ooe_miu, "xfer_signed", x.xfer_signed);
+        }
         // zero-cta-slot: every memop and fault named CTA slot 0, as before
         // TI-34; MIU's and CRU's checks refuse a warp of any other slot.
         put(mo, c.ooe_miu, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
