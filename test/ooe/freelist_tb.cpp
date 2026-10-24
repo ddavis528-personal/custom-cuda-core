@@ -73,10 +73,11 @@ std::vector<int> prev_own;              // the owners of prev_al
 std::mt19937 owner_rng(5);              // a port nothing takes: its slot
 std::vector<int> owner_of;              // each entry's owner, as the bench gave it
 std::vector<unsigned> prev_sf;          // each slot's frees in prev_fr, the model's
+std::vector<unsigned> pend_tot;         // each slot's frees a step ago, due at fsp_cq03h
 unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, mismatches = 0;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K), LS = FL_S > 1 ? bits(FL_S) : 1,
-                   FG = FL_N % 12 == 0 ? 12 : FL_N % 8 == 0 ? 8 : FL_N, NF = FL_N / FG, LF = bits(FG + 1);
+                   LT = bits(FL_N + 1);
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -211,27 +212,22 @@ void hook(const Core &c) {
   allocs += al.size();
   frees += fr.size();
   tick();
-  // The frees just driven, by owner and group, and each slot's total.
+  // Last step's frees, a cycle on through the second stage: each slot's
+  // pair, which must sum to them exactly (no carry dropped).
+  for (unsigned s = 0; s != pend_tot.size(); ++s) {
+    const unsigned lo = getField(dut->fsp_cq03h, (2 * s) * LT, LT), hi = getField(dut->fsp_cq03h, (2 * s + 1) * LT, LT);
+    if (lo + hi != pend_tot[s]) fail("a slot's frees pair differs", lo + hi, pend_tot[s]);
+  }
+  pend_tot.clear();
+  // The frees just driven, by owner, and each slot's total.
   if (control != "drop-free") {
-    std::vector<unsigned> want(FL_S * NF, 0), tot(FL_S, 0);
+    std::vector<unsigned> tot(FL_S, 0);
     for (unsigned p : fr)
-      if (p < owner_of.size() && owner_of[p] >= 0) ++want[unsigned(owner_of[p]) * NF + p / FG];
+      if (p < owner_of.size() && owner_of[p] >= 0) ++tot[unsigned(owner_of[p])];
       else fail("a free of an entry the bench gave no owner", p, 0);
     for (unsigned s = 0; s != FL_S; ++s)
-      for (unsigned b = 0; b != NF; ++b) {
-        const unsigned got = getField(dut->fs_cq02h, (s * NF + b) * LF, LF);
-        if (got != want[s * NF + b]) {
-          fail("frees by owner and group differ", got, want[s * NF + b]);
-          if (std::getenv("FL_VERBOSE") && mismatches <= 3) {
-            std::fprintf(stderr, "  slot %u group %u; frees:", s, b);
-            for (unsigned p : fr) std::fprintf(stderr, " %u(o%d)", p, owner_of[p]);
-            std::fprintf(stderr, " sectioned=%d\n", int(c.config().sectioned));
-          }
-        }
-        tot[s] += got;
-      }
-    for (unsigned s = 0; s != FL_S; ++s)
       if (tot[s] != prev_sf[s]) fail("a slot's frees differ from the model's", tot[s], prev_sf[s]);
+    pend_tot = tot;
   }
   for (unsigned p : fr) owner_of[p] = -1;
   for (unsigned k = 0; k != al.size(); ++k) owner_of[al[k]] = prev_own[k];

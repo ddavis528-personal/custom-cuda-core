@@ -15,10 +15,23 @@ pw = p('CCV_P_W_PHYS_PRED')
 g = dict(S=p('CCV_TIER1_WARPS'), R=p('CCV_ISSUE_WIDTH'), RP=p('CCV_RETIRE_PER_ROB'), C=p('CCV_P_BR_CKPTS'),
          NG=p('CCV_P_PHYS_REGS'), NP=p('CCV_P_PRED_REGS'), GW=gw, PW=pw)
 g.update(N=p('CCV_P_RS_RCU') + p('CCV_P_RS_MIU'), NR=p('CCV_P_RS_RCU'))
+g.update(AG=p('CCV_GPRS'), AP=p('CCV_PREDS'), FLG=p('CCV_P_REN_FLOOR'), CLG=p('CCV_P_REN_CEIL'),
+         FLP=p('CCV_P_PRED_REN_FLOOR'), CLP=p('CCV_P_PRED_REN_CEIL'))
+# RENAME_FLOORS=<GPR floor>,<GPR ceiling>: a build at a directed test's
+# (run-rtl.sh's ceiling build).
+import os
+if os.environ.get('RENAME_FLOORS'):
+    g['FLG'], g['CLG'] = (int(x) for x in os.environ['RENAME_FLOORS'].split(','))
+# RENAME_NAMES=<GPR rows>,<GPR ceiling>: scarce names (run-rtl.sh's scarce
+# build), where the names' pool binds and its correction shows; the bench
+# sets the model's alike (RENAME_SCARCE).
+scarce = bool(os.environ.get('RENAME_NAMES'))
+if scarce:
+    g['NG'], g['CLG'] = (int(x) for x in os.environ['RENAME_NAMES'].split(','))
 gs = ['-G%s=%d' % kv for kv in g.items()]
 gs += ["-GGZERO=%d'd%d" % (gw, p('CCV_P_PHYS_ZERO') << p('CCV_W_PHYS_POS')),
        "-GPZERO=%d'd%d" % (pw, p('CCV_P_PRED_ZERO'))]
 # ooe_rendep's code table, which ooe_rename passes it (rendep-params.py).
 gs += subprocess.run([sys.executable, 'test/ooe/rendep-params.py'], check=True, capture_output=True,
                      text=True).stdout.strip().split(',')
-print(','.join(gs) + ' ' + ','.join('-DRENAME_%s=%d' % kv for kv in g.items()))
+print(','.join(gs) + ' ' + ','.join(['-DRENAME_%s=%d' % kv for kv in g.items()] + ['-DRENAME_SCARCE=%d' % scarce]))

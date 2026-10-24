@@ -906,6 +906,45 @@ Built (`rtl/ooe/`):
      ooe_rename's unit. check-ngd: 14.4 flop to flop. check-cg: 964 flops,
      947 behind 3 gates. ooe_rendep's gsn and psn budgets move to 6, by
      OA's rev 194 (Rename 1's reads leave at 5.6).
+     *Counters (7b, built).* Rename's counters replace the go's pool,
+     floor and room ports (OI-73 to OI-76, OA's revs 215, 216 and 219):
+     RS room per class (up by ooe_rs's frees, a lead a cycle ahead), and
+     each slot's floor and ceiling remainders per class (arch + floor or
+     ceiling less held), signed. No free-names counter: every allocated
+     name is a slot's, so the names' pool is the pool less every floor
+     less, per slot, its held past its floor. Each counter lacks last
+     cycle's take; the take is registered one-hot (tq, in Rename 1) and
+     each reader takes it off. The free lists count each slot's frees by
+     group (owners written at allocation) and compress the groups to a
+     carry-save pair a cycle on (fsp, `ccv_common_csa`), so held sees a
+     free three edges late (held_late 3). Each remainder's next value is
+     one 4-operand carry-save sum: it, its take's negation and its frees'
+     pair. The names' pool register is formed from last cycle's
+     remainders, so it lacks two cycles' takes (names_pool_lag): the
+     older, registered when it is formed, is taken in the same carry-save
+     sum (each slot's held past its floor and the pool less every floor
+     less that take, a select of constants), and the go corrects for the
+     newer as for the RS credits. OA's rev 219 put both takes in the go's
+     correction (hk to 3R, XM to PM + 3R): measured, that is 23.1 from px
+     and pl to flops, 25.1 with their arrivals of 2, so the older take
+     moved into the register and the go keeps its one-cycle correction
+     (22.5). `ccv_common_csa` (rtl/common/, an inner helper; TI's response
+     OI-76): 3:2 rows built by generate, then one add (sum) or none
+     (pair); a pair of counts summing under 2^W sums to them exactly.
+     Benches: csa_tb against arithmetic at eight sizes; freelist_tb holds
+     each slot's pair to its frees exactly; rename_tb holds each credit,
+     unmet floor and room as the go reads them to the model's, in three
+     builds: the design's parameters, the ceiling test's floor and ceiling
+     (4, 8), and scarce names (144 rows, ceiling 24), where the names bind.
+     Controls: no-take-q (the go's correction dropped) and no-take-q2 (the
+     names' pool register's older take dropped), both caught in the
+     scarce build; go_tb's no-corr. Audit, 48 seeds (fits_stale 6): at the
+     design's parameters every lateness costs 0.00%; with scarce names the
+     decided form (held_late 3, owed_lag, names_pool_lag) is 888 cycles
+     against 883.4 with everything exact (+0.53%), against 882.8 with
+     frees two edges late. check-ngd: ooe_rename 23.3 flop to flop (29.6
+     with each slot's sixteen groups summed in rename), ooe_freelist 21.6
+     (GPR) and 22.6 (predicates), ooe_go 22.5.
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 

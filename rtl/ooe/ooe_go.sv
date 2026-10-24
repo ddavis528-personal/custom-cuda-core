@@ -326,17 +326,20 @@ module ooe_go #(
     for (int s = 0; s < S; s++) first_w_cq02h[s] = with_w_cq01h[s] && (befd_cq02h[s * S +: S] & with_w_cq01h) == '0;
   end
   // The pool, what no allowance in force holds: one-hot, pe[c][p], the
-  // pool register is p beyond the allowances held (p = PM: PM or more); and
+  // pool register is p beyond the allowances held (p = PM: PM or more; p =
+  // 0: none beyond them, the register at or below them, as the model's
+  // max(0, credit - held)); and
   // pt[c][v], it covers v or more beyond them, to R, for the next holding.
   logic [4*(PM+1)-1:0] pe_cq02h;
   logic [4*(R+1)-1:0]  pt_cq02h;
   logic [LX-1:0]       pxc_cq01h;   // this credit's pool register
   logic [2*R:0]        hk_cq02h;    // the allowances held and the correction, one-hot to 2R
-  // Each correction is one-hot.
+  // Each correction is one-hot (or none, as its register stands before the
+  // first reset edge, which this assertion sees).
   logic [3:0] pl_ok_cq01h;
   always_comb
     for (int c = 0; c < 4; c++) begin
-      pl_ok_cq01h[c] = 1'b0;
+      pl_ok_cq01h[c] = pl_cq01h[c * (R + 1) +: R + 1] == '0;
       for (int k = 0; k < R + 1; k++)
         if (pl_cq01h[c * (R + 1) +: R + 1] == (R + 1)'(1) << k) pl_ok_cq01h[c] = 1'b1;
     end
@@ -352,7 +355,7 @@ module ooe_go #(
         pe_cq02h[c * (PM + 1) + p] = 1'b0;
         for (int h = 0; h < 2 * R + 1; h++)
           pe_cq02h[c * (PM + 1) + p] = pe_cq02h[c * (PM + 1) + p] |
-              (hk_cq02h[h] & (p == PM ? pxc_cq01h >= LX'(p + h) : pxc_cq01h == LX'(p + h)));
+              (hk_cq02h[h] & (p == PM ? pxc_cq01h >= LX'(p + h) : p == 0 ? pxc_cq01h <= LX'(h) : pxc_cq01h == LX'(p + h)));
       end
       for (int v = 0; v < R + 1; v++) begin
         pt_cq02h[c * (R + 1) + v] = 1'b0;

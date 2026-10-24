@@ -240,8 +240,9 @@ struct Config {
   /// take returns its share (decided on its registered takes, the fits at
   /// offset 0 formed without it). The credits are rename's counters.
   unsigned fits_stale = 6;
-  unsigned held_late = 2;   ///< OI-75 (b): cycles of frees rename's held and name counts have not seen
+  unsigned held_late = 3;   ///< OI-75 (b): cycles of frees rename's held and name counts have not seen
   bool owed_lag = true;     ///< OI-74 (iii): the pool's floors owed from held before last cycle's takes
+  bool names_pool_lag = true;   ///< OI-76: the names' pool from last cycle's held, less two cycles' takes
   /// Rename's go admits on what decq holds (slice 4's fits): each uop's
   /// needs from its decode-time bits alone, so a uop that turns into a
   /// no-op at rename (a barrier, width or format fault) still counts its
@@ -784,6 +785,7 @@ public:
   /// then this cycle's frees join the bits.
   void clock() {
     allocs_.clear();
+    prev2_frees_ = prev_frees_;
     prev_frees_ = frees_.size();
     frees_.clear();
     // The first edge is ooe_freelist's last reset edge, which refills
@@ -850,9 +852,10 @@ private:
   std::vector<uint8_t> bit_, pend_, inbuf_;
   std::deque<unsigned> buf_;
   std::vector<unsigned> allocs_, frees_, bptr_;
-  size_t ready_ = 0, npend_ = 0, prev_frees_ = 0;
+  size_t ready_ = 0, npend_ = 0, prev_frees_ = 0, prev2_frees_ = 0;
 public:
   size_t prevFrees() const { return prev_frees_; }
+  size_t prev2Frees() const { return prev2_frees_; }
 private:
   unsigned ptr_ = 0, cap_ = 0, banks_ = 1, rot_ = 0;
   unsigned transit_ = 0, took_ = 0;   // last cycle's allocations, and this cycle's
@@ -1300,6 +1303,7 @@ public:
     std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;
     std::vector<uint8_t> reach, hold;
+    std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
     std::vector<unsigned> took;               ///< per slot
     /// Each slot's room to its ceiling, per class (GPR rows, predicates), as
     /// rename registers it at this cycle's start for the fits the go forms
@@ -1346,8 +1350,9 @@ public:
       r.prompt[k] = std::min(rs_free_now_[k], std::min(rs_prompt_[k], cfg_.ren_free_cap));
       r.late[k] = rs_free_now_[k] - r.prompt[k];
     }
-    r.c[2] = unsigned(gfree_.ready() - (cfg_.held_late >= 2 ? gfree_.prevFrees() : 0));
-    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready() - (cfg_.held_late >= 2 ? pfree_.prevFrees() : 0)) : 1000u;
+    r.c[2] = unsigned(gfree_.ready() - (cfg_.held_late >= 2 ? gfree_.prevFrees() : 0) - (cfg_.held_late >= 3 ? gfree_.prev2Frees() : 0));
+    r.c[3] = cfg_.rename_preds ? unsigned(pfree_.ready() - (cfg_.held_late >= 2 ? pfree_.prevFrees() : 0) -
+                                          (cfg_.held_late >= 3 ? pfree_.prev2Frees() : 0)) : 1000u;
     return r;
   }
   /// What rename's counters count over the cycle just run, for
@@ -1645,7 +1650,11 @@ private:
   unsigned unmetFloor(unsigned slot, bool pred) const;
   unsigned heldSeen(unsigned slot, bool pred) const;
   unsigned floorsOwedLag(bool pred) const;
-  std::vector<std::array<unsigned, 2>> fr_now_, fr_prev_;   ///< each slot's frees this cycle and last (heldSeen)
+  std::vector<std::array<unsigned, 2>> fr_now_, fr_prev_, fr_prev2_;   ///< each slot's frees this cycle and last (heldSeen)
+  /// names_pool_lag: each slot's held as seen less the takes before it, this
+  /// cycle's and last cycle's, and the names taken one and two cycles ago.
+  std::vector<std::array<unsigned, 2>> pool_hl_, pool_hl_prev_;
+  std::array<unsigned, 2> pool_tk1_{}, pool_tk2_{};
   unsigned floorsOwed(bool pred) const;
   unsigned cancel_depth_ = 0;
   std::vector<Issue> held_issues_;

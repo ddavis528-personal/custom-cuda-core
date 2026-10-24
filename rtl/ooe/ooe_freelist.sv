@@ -56,9 +56,11 @@
 // the edge, asked for or not. An entry no port took is free, its owner
 // unread, and written again when one takes it, so no request reaches the
 // owners and no free sees an owner not yet written. Each cycle's frees are counted
-// by owner and group, exactly, and registered (fs): rename sums the groups
-// into each slot's held count at the next edge, so held sees a free two
-// edges after the retire stage's register (the model's held_late 2).
+// by owner and group, exactly, and registered (fs); a second stage
+// compresses each slot's groups to a carry-save pair (ccv_common_csa), registered
+// (fsp), and rename adds the pair into each slot's held count at the next
+// edge, so held sees a free three edges after the retire stage's register
+// (the model's held_late 3; OI-76, OA's rev 219).
 // The counts are per group of FG consecutive entries, which keeps each
 // count shallow; rename sums the groups.
 //
@@ -100,7 +102,8 @@ module ooe_freelist #(
   localparam int FG = (N % 12 == 0) ? 12 : ((N % 8 == 0) ? 8 : N),   // entries a free count covers
   localparam int NF = N / FG,
   localparam int LF = $clog2(FG + 1),            // a group's frees in a cycle
-  localparam int FP = 1 << $clog2(FG)            // a group, padded to a power of 2
+  localparam int FP = 1 << $clog2(FG),           // a group, padded to a power of 2
+  localparam int LT = $clog2(N + 1)              // a slot's frees in a cycle
 ) (
   input  logic           ooe_core_clk,
   input  logic           ooe_rst_r00h,
@@ -111,7 +114,7 @@ module ooe_freelist #(
   output logic [A-1:0]   alloc_v_cq02h,      // head entry k is available to port k
   output logic [A*W-1:0] alloc_idx_cq02h,    // head entry k (meaningful while available)
   output logic [LB-1:0]  avail_cq02h,        // entries allocation can take: the buffer, less those in transit
-  output logic [S*NF*LF-1:0] fs_cq02h        // last cycle's frees by owner and group (slot s, group g: (s * NF + g) * LF)
+  output logic [S*2*LT-1:0] fsp_cq03h        // the frees of two cycles ago by owner, each slot's a carry-save pair (s * 2 * LT)
 `ifdef CCV_CHECK
   // Read only by test/ooe/freelist_tb.cpp, which compares the whole state
   // (OA's choice for TI-20): no design port, so synthesis sees none.
@@ -469,11 +472,43 @@ module ooe_freelist #(
           v[i] = free_mask_cq01h[g * FG + i] && own_cq02h[(g * FG + i) * LS +: LS] == LS'(s);
         fs_nx_cq01h[(s * NF + g) * LF +: LF] = count_of(v);
       end
-  logic fs_en_cq01h;
-  assign fs_en_cq01h = free_en_cq01h || fs_cq02h != '0;
+  // The counts hold a free's while they were loaded with one (fsv: the
+  // lead's flop, a cycle on), so they clear at the next edge.
+  logic [S*NF*LF-1:0] fs_cq02h;
+  logic fs_en_cq01h, fsv_cq02h;
+  assign fs_en_cq01h = free_en_cq01h || fsv_cq02h;
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h)         fs_cq02h <= '0;
-    else if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
+    if (rst_r01h) begin
+      fs_cq02h  <= '0;
+      fsv_cq02h <= 1'b0;
+    end else begin
+      fsv_cq02h <= free_en_cq01h;
+      if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
+    end
+  end
+
+  // The second stage: each slot's groups to a carry-save pair, registered
+  // while the counts hold a free's (fsv) or the pair is set (fpv), so it
+  // clears at the next edge.
+  logic [S*2*LT-1:0] fsp_nx_cq02h;
+  for (genvar s = 0; s < S; s++) begin : g_sp
+    logic [NF*LT-1:0] gop_cq02h;
+    for (genvar g = 0; g < NF; g++) begin : g_g
+      assign gop_cq02h[g * LT +: LT] = LT'(fs_cq02h[(s * NF + g) * LF +: LF]);
+    end
+    logic [LT-1:0] sum_cq02h;
+    ccv_common_csa #(.N(NF), .W(LT)) u_csa (.op(gop_cq02h), .sum(sum_cq02h), .pair(fsp_nx_cq02h[s * 2 * LT +: 2 * LT]));
+  end
+  logic fsp_en_cq02h, fpv_cq03h;
+  assign fsp_en_cq02h = fsv_cq02h || fpv_cq03h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      fsp_cq03h <= '0;
+      fpv_cq03h <= 1'b0;
+    end else begin
+      fpv_cq03h <= fsv_cq02h;
+      if (fsp_en_cq02h) fsp_cq03h <= fsp_nx_cq02h;
+    end
   end
 
 endmodule

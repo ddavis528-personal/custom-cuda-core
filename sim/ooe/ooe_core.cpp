@@ -47,7 +47,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
                                      {"ready_rep_late", &ready_rep_late}, {"replay_drain", &replay_drain},
-                                     {"owed_lag", &owed_lag}};
+                                     {"owed_lag", &owed_lag},
+                                     {"names_pool_lag", &names_pool_lag}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -333,6 +334,8 @@ void Core::cycle(uint64_t now) {
     go_run_[si] = run;
     go_reach_[si] = run == cfg_.rob_depth || (x.tail + run) % cfg_.rob_depth == x.head;
   }
+  fr_prev2_ = fr_prev_;
+  if (fr_prev2_.size() != slot_.size()) fr_prev2_.assign(slot_.size(), {0, 0});
   fr_prev_ = fr_now_;
   fr_now_.assign(slot_.size(), {0, 0});
   if (fr_prev_.size() != slot_.size()) fr_prev_.assign(slot_.size(), {0, 0});
@@ -482,6 +485,7 @@ unsigned Core::heldSeen(unsigned slot, bool pred) const {
   if (slot < fr_now_.size()) {
     if (cfg_.held_late >= 1) h += fr_now_[slot][pred];
     if (cfg_.held_late >= 2) h += fr_prev_[slot][pred];
+    if (cfg_.held_late >= 3 && slot < fr_prev2_.size()) h += fr_prev2_[slot][pred];
   }
   return h;
 }
@@ -3357,6 +3361,18 @@ void Core::rename() {
     ceil_names_prev_.assign(ns, {0, 0});
     for (unsigned si = 0; si != ns && si < ren_slot_.size(); ++si)
       ceil_names_prev_[si] = {ren_slot_[si][2], ren_slot_[si][3]};
+    // names_pool_lag (OI-76): last cycle's held as seen less the take
+    // before it, and the takes of the last two cycles.
+    pool_hl_prev_ = pool_hl_.size() == ns ? pool_hl_ : std::vector<std::array<unsigned, 2>>(ns, {0, 0});
+    pool_hl_.assign(ns, {0, 0});
+    pool_tk2_ = pool_tk1_;
+    pool_tk1_ = {0, 0};
+    for (unsigned si = 0; si != ns; ++si)
+      for (unsigned k = 0; k != 2; ++k) {
+        const unsigned h = heldSeen(si, k == 1);
+        pool_hl_[si][k] = h - std::min(h, ceil_names_prev_[si][k]);
+        pool_tk1_[k] += ceil_names_prev_[si][k];
+      }
     ceil_room_reg_.assign(ns, {0, 0});
     for (unsigned si = 0; si != ns; ++si) {
       const unsigned cg = kArchGprs + cfg_.ren_ceil, cp = kArchPreds + cfg_.pred_ren_ceil;
@@ -3382,6 +3398,8 @@ void Core::rename() {
     g.adm.assign(ns, {});
     g.run.assign(ns, 0); g.ret.assign(ns, 0); g.unmet_g.assign(ns, 0); g.unmet_p.assign(ns, 0);
     g.reach.assign(ns, 0); g.hold.assign(ns, 1);
+    g.occ.assign(ns, 0);
+    for (unsigned si = 0; si != ns; ++si) g.occ[si] = slot_[si].st != WarpState::kFree;
     g.room_g.assign(ns, 0); g.room_p.assign(ns, 0);
     for (unsigned si = 0; si != ns; ++si) {
       g.room_g[si] = ceil_room_reg_[si][0];
@@ -3614,7 +3632,22 @@ void Core::rename() {
         // slot's floor still unspent and the pool above every floor. The
         // shares split only the pool; each warp's allowance adds its own
         // floor (below), so the shares cannot break V-04.
-        if (r >= 2) pool[r] -= std::min(pool[r], cfg_.owed_lag ? floorsOwedLag(r == 3) : floorsOwed(r == 3));
+        if (r >= 2 && cfg_.names_pool_lag) {
+          // OI-76: the names above every floor as last cycle's held left
+          // them, less the names taken since (the go's correction): the
+          // pool of names no slot holds less the floors still owed, never
+          // more than the exact one.
+          const bool pr = r == 3;
+          const unsigned want = pr ? kArchPreds + cfg_.pred_ren_floor : kArchGprs + cfg_.ren_floor;
+          long base = long(pr ? cfg_.pred_regs : cfg_.phys_regs) - long(slot_.size()) * long(want);
+          for (unsigned si = 0; si != slot_.size(); ++si)
+            base -= pool_hl_prev_[si][pr] > want ? long(pool_hl_prev_[si][pr] - want) : 0;
+          base -= long(pool_tk1_[pr]) + long(pool_tk2_[pr]);
+          base -= long(std::min(held, c[r]));
+          pool[r] = base > 0 ? unsigned(base) : 0;
+        } else if (r >= 2) {
+          pool[r] -= std::min(pool[r], cfg_.owed_lag ? floorsOwedLag(r == 3) : floorsOwed(r == 3));
+        }
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});

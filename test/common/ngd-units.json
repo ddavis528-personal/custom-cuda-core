@@ -1,0 +1,16 @@
+{
+  "_comment": "Timing units for the common combinational modules (rtl/common/), for tools/check-ngd.py: one module at one parameterisation each. ccv_common_csa is an inner helper, timed in its parents; held alone, NGD-6's 16 caps it, so its unit is 6 operands (3 compressor levels and the add, TI's response OI-76); ooe_freelist's instance times the 16-group form.",
+  "units": [
+    {
+      "name": "ccv_common_csa",
+      "module": "ccv_common_csa",
+      "files": [
+        "rtl/common/ccv_common_csa.sv"
+      ],
+      "params": {
+        "N": 6,
+        "W": 8
+      }
+    }
+  ]
+}

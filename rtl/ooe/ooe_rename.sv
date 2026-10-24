@@ -58,6 +58,13 @@ module ooe_rename #(
   parameter int PW = 6,                  // predicate name (CCV_P_W_PHYS_PRED)
   parameter int FB = 8,                  // a free list's candidate buffer
   parameter int FK = 4,                  // its refill banks
+  parameter int AG = 16,                 // architectural GPRs a slot (CCV_GPRS)
+  parameter int AP = 4,                  // and predicates (CCV_PREDS)
+  parameter int FLG = 16,                // a slot's GPR rename floor (CCV_P_REN_FLOOR)
+  parameter int CLG = 64,                // and ceiling (CCV_P_REN_CEIL)
+  parameter int FLP = 4,                 // predicates' (CCV_P_PRED_REN_FLOOR)
+  parameter int CLP = 20,                // (CCV_P_PRED_REN_CEIL)
+  parameter int F  = 4,                  // ooe_rs's prompt free count, per class (TI-19's cap)
   parameter int N  = 45,                 // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
   parameter int NR = 30,                 // RS RCU entries (CCV_P_RS_RCU)
   parameter int NU = 8,                  // lat_class codes
@@ -79,13 +86,21 @@ module ooe_rename #(
   localparam int LP = $clog2(P),
   localparam int W  = $clog2(N),
   localparam int CW = 2 * G,
-  // The free lists' counts by owner: groups of FG entries (ooe_freelist's).
-  localparam int GFG = (NG % 12 == 0) ? 12 : ((NG % 8 == 0) ? 8 : NG),
-  localparam int GNF = NG / GFG,
-  localparam int GLF = $clog2(GFG + 1),
-  localparam int PFG = (NP % 12 == 0) ? 12 : ((NP % 8 == 0) ? 8 : NP),
-  localparam int PNF = NP / PFG,
-  localparam int PLF = $clog2(PFG + 1)
+  // The free lists' frees by owner: each slot's a carry-save pair of
+  // counts (ooe_freelist's LT).
+  localparam int GLT = $clog2(NG + 1),
+  localparam int PLT = $clog2(NP + 1),
+  // The counters' widths: RS room per class and free names, each with a
+  // lagged take on it (R more), and each slot's floor and ceiling
+  // remainders, signed.
+  localparam int NM = N - NR,
+  localparam int CR = $clog2(NR + R + 1),
+  localparam int CM = $clog2(NM + R + 1),
+  localparam int CG = $clog2(NG + R + 1),
+  localparam int HW = $clog2(AG + CLG + 1) + 2,
+  localparam int LRF = $clog2(NR + 1),
+  localparam int LMF = $clog2(NM + 1),
+  localparam int RP2 = 1 << $clog2(R)    // R, padded to a power of 2
 ) (
   input  logic              ooe_core_clk,
   input  logic              ooe_rst_r00h,
@@ -106,13 +121,8 @@ module ooe_rename #(
   // its guard, 9 the predicate-logic sources, 10 the predicate merge, 11-13
   // its consumer group, 14-16 its lat_class, 17-19 its bypass group.
   input  logic [NC*XW-1:0]  c_x_cq01h,
-  // The go's other inputs (rename's registers and the ROB's, until slice
-  // 7 brings them in), and its leads.
-  input  logic [4*LX-1:0]   px_cq01h,
-  input  logic [S*LU-1:0]   unmet_g_cq01h,
-  input  logic [S*LU-1:0]   unmet_p_cq01h,
-  input  logic [S*LU-1:0]   room_g_cq01h,   // each slot's room to its ceiling (OI-73 (3))
-  input  logic [S*LU-1:0]   room_p_cq01h,
+  // The go's other inputs (the ROB's registers, until it is built), and
+  // its leads.
   input  logic [S*LB-1:0]   run_cq01h,
   input  logic [S-1:0]      reach_cq01h,
   input  logic [S*LT-1:0]   ret_cq01h,
@@ -121,7 +131,16 @@ module ooe_rename #(
   input  logic [S-1:0]      sq_l_cq00h,
   input  logic [S-1:0]      dq_ev_cq01h,
   input  logic [S-1:0]      rob_en_cq01h,
-  input  logic              pool_en_cq01h,
+  // Each slot occupied (its warp resident, the slot state's register), and
+  // ooe_rs's frees per class: within its prompt count this cycle, a
+  // thermometer, and last cycle's past it (TI-19).
+  input  logic [S-1:0]      occ_cq01h,
+  input  logic [S-1:0]      occ_l_cq00h,    // its lead, the next cycle's
+  input  logic              rsf_l_cq00h,    // some RS free next cycle (below): the counters' lead
+  input  logic [F-1:0]      fpr_cq01h,
+  input  logic [F-1:0]      fpm_cq01h,
+  input  logic [LRF-1:0]    flr_cq01h,
+  input  logic [LMF-1:0]    flm_cq01h,
   // ooe_rat's speculative maps.
   input  logic [S*MW-1:0]   rat_cq02h,
   // The free lists' frees (the retire stage's register) and their leads.
@@ -164,7 +183,19 @@ module ooe_rename #(
   // Rename 2 reads in the design.
   ,
   output logic [R*4*GW-1:0] q_g_cq03h,      // src0..2, the old destination
-  output logic [R*4*PW-1:0] q_p_cq03h       // guard, old destination, q0, q1
+  output logic [R*4*PW-1:0] q_p_cq03h,      // guard, old destination, q0, q1
+  // The counters' on-time values, which the model's go reads (each lagged
+  // counter less its lagged take), and what the go reads of them.
+  output logic [4*8-1:0]    chk_cred_cq04h, // RS RCU, RS MIU, GPR names, predicate names
+  output logic [S*LU-1:0]   chk_unmet_g_cq04h,
+  output logic [S*LU-1:0]   chk_unmet_p_cq04h,
+  output logic [S*LU-1:0]   chk_room_g_cq04h,
+  output logic [S*LU-1:0]   chk_room_p_cq04h,
+  // Controls: the pool's correction dropped (no lagged take subtracted),
+  // or the names' older take, which their pool register takes (OA's rev
+  // 219).
+  input  logic              ctl_notq,
+  input  logic              ctl_notq2
 `endif
 );
 
@@ -172,14 +203,22 @@ module ooe_rename #(
   always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
 
   // -- The go ---------------------------------------------------------------
+  // Its pool registers and their corrections, the floors and rooms, from
+  // rename's counters (below).
+  logic [4*LX-1:0]    px_cq04h;
+  logic [4*(R+1)-1:0] pl_cq03h;
+  logic [S*LU-1:0]    unmet_g_cq04h, unmet_p_cq04h, room_g_cq04h, room_p_cq04h;
+  logic               pool_en_cq04h;
   logic [R-1:0]      lane_v_cq02h;
   logic [R*NC-1:0]   lane_c_cq02h;
   logic [NC*2*R-1:0] wb_cq02h;
   logic [2*R-1:0]    wt_cq02h;
   ooe_go #(.S(S), .R(R), .PA(PA), .LU(LU), .LB(LB), .LT(LT)) u_go (
-    .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h, .pl_cq01h({4{(R+1)'(1)}}), .unmet_g_cq01h, .unmet_p_cq01h, .room_g_cq01h, .room_p_cq01h, .run_cq01h,
+    .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .px_cq01h(px_cq04h), .pl_cq01h(pl_cq03h),
+    .unmet_g_cq01h(unmet_g_cq04h), .unmet_p_cq01h(unmet_p_cq04h), .room_g_cq01h(room_g_cq04h),
+    .room_p_cq01h(room_p_cq04h), .run_cq01h,
     .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h, .rob_en_cq01h,
-    .pool_en_cq01h, .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
+    .pool_en_cq01h(pool_en_cq04h), .take_cq02h, .sel_cq02h, .lane_v_cq02h, .lane_c_cq02h, .wb_cq02h, .wt_cq02h);
 
   // -- The free lists ---------------------------------------------------------
   logic [R-1:0]    galv_cq02h, palv_cq02h;
@@ -189,16 +228,16 @@ module ooe_rename #(
   // Each port's owner, the slot of the lane its entry goes to (Rename 1's
   // lanes, below), and the frees the free lists count by owner.
   logic [R*LS-1:0] gown_cq02h, pown_cq02h;
-  logic [S*GNF*GLF-1:0] gfs_cq02h;
-  logic [S*PNF*PLF-1:0] pfs_cq02h;
+  logic [S*2*GLT-1:0] gfsp_cq03h;
+  logic [S*2*PLT-1:0] pfsp_cq03h;
   ooe_freelist #(.N(NG), .A(R), .B(FB), .K(FK), .S(S)) u_gfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[0 +: R]), .free_l_cq00h(gfree_l_cq00h),
     .free_mask_cq01h(gfree_cq01h), .own_slot_cq01h(gown_cq02h), .alloc_v_cq02h(galv_cq02h),
-    .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h), .fs_cq02h(gfs_cq02h));
+    .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h), .fsp_cq03h(gfsp_cq03h));
   ooe_freelist #(.N(NP), .A(R), .B(FB), .K(FK), .S(S)) u_pfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[R +: R]), .free_l_cq00h(pfree_l_cq00h),
     .free_mask_cq01h(pfree_cq01h), .own_slot_cq01h(pown_cq02h), .alloc_v_cq02h(palv_cq02h),
-    .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h), .fs_cq02h(pfs_cq02h));
+    .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h), .fsp_cq03h(pfsp_cq03h));
 
   // -- Rename 1: every candidate's reads, then the lanes -----------------------
   // A head's write bits are its admission bits (3 GPR, 4 predicate), as the
@@ -275,14 +314,16 @@ module ooe_rename #(
     .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_x_cq02h));
 
   // Port k's owner: the slot of the lane whose name index is k (each
-  // lane's names, one-hot by port: GPR, then predicate).
+  // writing lane's names, one-hot by port: GPR, then predicate).
   always_comb begin
     gown_cq02h = '0;
     pown_cq02h = '0;
     for (int k = 0; k < R; k++)
       for (int l = 0; l < R; l++) begin
-        if (l_idx_cq02h[(l * 2 + 0) * R + k]) gown_cq02h[k * LS +: LS] = gown_cq02h[k * LS +: LS] | l_slot_cq02h[l * LS +: LS];
-        if (l_idx_cq02h[(l * 2 + 1) * R + k]) pown_cq02h[k * LS +: LS] = pown_cq02h[k * LS +: LS] | l_slot_cq02h[l * LS +: LS];
+        if (l_v_cq02h[l] && l_gwe_cq02h[l] && l_idx_cq02h[(l * 2 + 0) * R + k])
+          gown_cq02h[k * LS +: LS] = gown_cq02h[k * LS +: LS] | l_slot_cq02h[l * LS +: LS];
+        if (l_v_cq02h[l] && l_pwe_cq02h[l] && l_idx_cq02h[(l * 2 + 1) * R + k])
+          pown_cq02h[k * LS +: LS] = pown_cq02h[k * LS +: LS] | l_slot_cq02h[l * LS +: LS];
       end
   end
 
@@ -394,6 +435,287 @@ module ooe_rename #(
     .q_idx_cq01h(p_idx_cq03h), .q_galloc_cq01h(p_galloc_cq03h), .q_palloc_cq01h(p_palloc_cq03h),
     .q_g_cq01h('0), .q_gl_cq01h('0), .q_p_cq01h('0), .q_pl_cq01h('0),
     .n_gname(p_gname_cq03h), .n_pname(p_pname_cq03h), .n_g(p_g_cq03h), .n_p(p_p_cq03h));
+
+  // -- Rename's counters (slice 7b; OI-73, OI-74, OI-75; OA's revs 207, 208, 213-216)
+  // The takes reach the counters a cycle late, from the Rename 1 register:
+  // each class's take and each slot's names, one-hot. Each counter is
+  // lagged (it lacks last cycle's take), and every reader subtracts that
+  // take, so each sees the on-time value: the go's pool registers through
+  // their correction (pl), the floors and rooms in logic.
+  // How many of R bits are set, one-hot: a thermometer formed pairwise
+  // (bit j - 1: j or more), then its edge.
+  function automatic logic [R:0] oh_count(input logic [R-1:0] v);
+    logic [RP2*(R+1)-1:0] t;   // RP2 thermometers of R + 1 bits, bit 0 always set
+    logic [R:0] a, b, y;
+    t = '0;
+    for (int i = 0; i < RP2; i++) t[i * (R + 1)] = 1'b1;
+    for (int i = 0; i < R; i++) t[i * (R + 1) + 1] = v[i];
+    for (int l = 1; l < RP2; l = l * 2)
+      for (int i = 0; i + l < RP2; i = i + 2 * l) begin
+        a = t[i * (R + 1) +: R + 1];
+        b = t[(i + l) * (R + 1) +: R + 1];
+        for (int j = 0; j <= R; j++) begin
+          y[j] = 1'b0;
+          for (int k = 0; k <= j; k++) y[j] = y[j] | (a[k] & b[j - k]);
+        end
+        t[i * (R + 1) +: R + 1] = y;
+      end
+    for (int j = 0; j <= R; j++) oh_count[j] = t[j] && (j == R || !t[j == R ? 0 : j + 1]);
+  endfunction
+  function automatic logic [$clog2(R+1)-1:0] oh_val(input logic [R:0] oh);
+    logic [$clog2(R+1)-1:0] n;
+    n = '0;
+    for (int i = 0; i <= R; i++) if (oh[i]) n = n | $clog2(R+1)'(i);
+    oh_val = n;
+  endfunction
+  logic [R-1:0] tk_r_cq02h, tk_m_cq02h, tk_g_cq02h, tk_p_cq02h;
+  logic [S*R-1:0] tk_gs_cq02h, tk_ps_cq02h;
+  always_comb
+    for (int l = 0; l < R; l++) begin
+      tk_r_cq02h[l] = l_v_cq02h[l] && l_x_cq02h[l * XL] && (!l_x_cq02h[l * XL + 1] || l_x_cq02h[l * XL + 2]);
+      tk_m_cq02h[l] = l_v_cq02h[l] && l_x_cq02h[l * XL] && l_x_cq02h[l * XL + 1];
+      tk_g_cq02h[l] = l_v_cq02h[l] && l_gwe_cq02h[l];
+      tk_p_cq02h[l] = l_v_cq02h[l] && l_pwe_cq02h[l];
+      for (int s = 0; s < S; s++) begin
+        tk_gs_cq02h[s * R + l] = tk_g_cq02h[l] && l_slot_cq02h[l * LS +: LS] == LS'(s);
+        tk_ps_cq02h[s * R + l] = tk_p_cq02h[l] && l_slot_cq02h[l * LS +: LS] == LS'(s);
+      end
+    end
+  logic [R:0]       tq_r_cq03h, tq_m_cq03h, tq_g_cq03h, tq_p_cq03h;
+  logic [S*(R+1)-1:0] tq_gs_cq03h, tq_ps_cq03h;
+  logic             tq_nz_cq03h, tq_en_cq02h;
+  assign tq_nz_cq03h = !tq_r_cq03h[0] || !tq_m_cq03h[0] || !tq_g_cq03h[0] || !tq_p_cq03h[0];
+  assign tq_en_cq02h = r1_en_cq02h || tq_nz_cq03h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      tq_r_cq03h  <= (R + 1)'(1);
+      tq_m_cq03h  <= (R + 1)'(1);
+      tq_g_cq03h  <= (R + 1)'(1);
+      tq_p_cq03h  <= (R + 1)'(1);
+      tq_gs_cq03h <= {S{(R + 1)'(1)}};
+      tq_ps_cq03h <= {S{(R + 1)'(1)}};
+    end else if (tq_en_cq02h) begin
+      tq_r_cq03h <= oh_count(tk_r_cq02h);
+      tq_m_cq03h <= oh_count(tk_m_cq02h);
+      tq_g_cq03h <= oh_count(tk_g_cq02h);
+      tq_p_cq03h <= oh_count(tk_p_cq02h);
+      for (int s = 0; s < S; s++) begin
+        tq_gs_cq03h[s * (R + 1) +: R + 1] <= oh_count(tk_gs_cq02h[s * R +: R]);
+        tq_ps_cq03h[s * (R + 1) +: R + 1] <= oh_count(tk_ps_cq02h[s * R +: R]);
+      end
+    end
+  end
+  // The counters: RS room per class (up by ooe_rs's frees), free names (up
+  // by the free lists' counts, two edges after the free: OI-75 (b)), and
+  // each slot's floor and ceiling remainders (arch + floor or ceiling, less
+  // held; down by its names, up by its frees). Each takes its lagged take.
+  // Clocked while a take is registered, a free list counts a free, or
+  // ooe_rs's free lead came (its flop); the pool registers likewise.
+  function automatic logic [$clog2(F+1)-1:0] th_count(input logic [F-1:0] t);
+    logic [$clog2(F+1)-1:0] n;
+    n = '0;
+    for (int i = 0; i < F; i++) n = n + $clog2(F+1)'(t[i]);
+    th_count = n;
+  endfunction
+  // Saturated at XM for a pool register.
+  function automatic logic [LX-1:0] sat_x(input logic [CG:0] v);
+    sat_x = $signed(v) < 0 ? '0 : (v > (CG+1)'(XM) ? LX'(XM) : LX'(v));
+  endfunction
+  // A remainder less a take, at 0 and saturated at LU bits.
+  function automatic logic [LU-1:0] rem_of(input logic [HW-1:0] u, input logic [R:0] oh);
+    logic [HW-1:0] d;
+    d = u - HW'(oh_val(oh));
+    rem_of = $signed(d) <= 0 ? '0 : ($signed(d) >= $signed(HW'((1 << LU) - 1)) ? '1 : LU'(d));
+  endfunction
+
+  logic [CR-1:0]   rcl_cq04h, rcl_nx_cq03h;
+  logic [CM-1:0]   mcl_cq04h, mcl_nx_cq03h;
+  logic [S*HW-1:0] ufg_cq04h, ucg_cq04h, ufp_cq04h, ucp_cq04h;            // floor and ceiling remainders, GPR and predicate
+  logic [S*HW-1:0] ufg_nx_cq03h, ucg_nx_cq03h, ufp_nx_cq03h, ucp_nx_cq03h;
+  logic [4*LX-1:0] bx_nx_cq03h;
+  // Each slot's remainders at the next edge: down by its lagged names, up
+  // by its frees.
+  // Each counter's next value.
+  function automatic logic [CR-1:0] rc_nx(input logic [CR-1:0] c, input logic [F-1:0] fp, input logic [LRF-1:0] fl,
+                                          input logic [R:0] tq);
+    rc_nx = c + CR'(th_count(fp)) + CR'(fl) - CR'(oh_val(tq));
+  endfunction
+  function automatic logic [CM-1:0] mc_nx(input logic [CM-1:0] c, input logic [F-1:0] fp, input logic [LMF-1:0] fl,
+                                          input logic [R:0] tq);
+    mc_nx = c + CM'(th_count(fp)) + CM'(fl) - CM'(oh_val(tq));
+  endfunction
+  // The names above every floor: the names no slot holds less its floor
+  // still unspent. Every allocated name is a slot's, so the free names,
+  // lagged, are the pool less every slot's lagged held, and the two terms
+  // sum to the pool less, per slot, its floor or its held past it, the
+  // larger: K - the held past each floor, K the pool less every floor.
+  // Registered from the remainders, which lack last cycle's take, the
+  // pool register lacks two cycles' (OI-76): the older, registered now,
+  // is taken here, and the go corrects for the newer. One carry-save tree
+  // (ccv_common_csa): each slot's remainder where it is negative (held past its
+  // floor), and K less the older take, a select of constants.
+  function automatic logic [CG:0] past_floor(input logic [HW-1:0] u);
+    past_floor = u[HW-1] ? (CG+1)'($signed(u)) : '0;
+  endfunction
+  function automatic logic [CG:0] k_less(input logic [R:0] oh, input int k);
+    logic [CG:0] x;
+    x = '0;
+    for (int j = 0; j <= R; j++) x = x | ({(CG + 1){oh[j]}} & (CG+1)'(k - j));
+    k_less = x;
+  endfunction
+  function automatic logic [(S+1)*(CG+1)-1:0] pool_ops(input logic [S*HW-1:0] u, input logic [CG:0] kt);
+    logic [(S+1)*(CG+1)-1:0] x;
+    for (int s = 0; s < S; s++) x[s * (CG + 1) +: CG + 1] = past_floor(u[s * HW +: HW]);
+    x[S * (CG + 1) +: CG + 1] = kt;
+    pool_ops = x;
+  endfunction
+  logic [R:0] tqo_g_cq03h, tqo_p_cq03h;   // the older takes, as a control leaves them
+`ifdef CCV_CHECK_RENAME
+  assign tqo_g_cq03h = ctl_notq2 ? (R + 1)'(1) : tq_g_cq03h;
+  assign tqo_p_cq03h = ctl_notq2 ? (R + 1)'(1) : tq_p_cq03h;
+`else
+  assign tqo_g_cq03h = tq_g_cq03h;
+  assign tqo_p_cq03h = tq_p_cq03h;
+`endif
+  for (genvar c = 0; c < 2; c++) begin : g_pool
+    logic [(S+1)*(CG+1)-1:0] op_cq04h;
+    logic [CG:0]             sum_cq04h;
+    logic [2*(CG+1)-1:0]     pr_cq04h;    // the tree's pair, unread
+    assign op_cq04h = c == 0 ? pool_ops(ufg_cq04h, k_less(tqo_g_cq03h, NG - S * (AG + FLG)))
+                             : pool_ops(ufp_cq04h, k_less(tqo_p_cq03h, NP - S * (AP + FLP)));
+    ccv_common_csa #(.N(S + 1), .W(CG + 1)) u_pool (.op(op_cq04h), .sum(sum_cq04h), .pair(pr_cq04h));
+  end
+  always_comb begin
+    rcl_nx_cq03h = rc_nx(rcl_cq04h, fpr_cq01h, flr_cq01h, tq_r_cq03h);
+    mcl_nx_cq03h = mc_nx(mcl_cq04h, fpm_cq01h, flm_cq01h, tq_m_cq03h);
+    // The pool registers: RS room; names less every slot's floor owed,
+    // from held before last cycle's takes (OI-74 (iii)), and less the older
+    // take (OI-76). Each from the
+    // counters' next values, formed again here (synthesis shares them).
+    bx_nx_cq03h[0 * LX +: LX] = sat_x((CG+1)'(rc_nx(rcl_cq04h, fpr_cq01h, flr_cq01h, tq_r_cq03h)));
+    bx_nx_cq03h[1 * LX +: LX] = sat_x((CG+1)'(mc_nx(mcl_cq04h, fpm_cq01h, flm_cq01h, tq_m_cq03h)));
+    bx_nx_cq03h[2 * LX +: LX] = sat_x(g_pool[0].sum_cq04h);
+    bx_nx_cq03h[3 * LX +: LX] = sat_x(g_pool[1].sum_cq04h);
+  end
+  // Each slot's remainders at the next edge: the remainder, its lagged
+  // take's negation and its frees' pair, one carry-save tree each (ccv_common_csa).
+  // A one-hot take's negation, a remainder wide: a select of constants.
+  function automatic logic [HW-1:0] oh_neg(input logic [R:0] oh);
+    logic [HW-1:0] x;
+    x = '0;
+    for (int k = 0; k <= R; k++) x = x | ({HW{oh[k]}} & (HW'(0) - HW'(k)));
+    oh_neg = x;
+  endfunction
+  // A slot's frees, its pair's two counts each widened to a remainder's
+  // width. Every operand of the free list's tree is a count and their sum
+  // is under 2^LT, so no compressor drops a carry: the two sum to the
+  // frees exactly.
+  function automatic logic [2*HW-1:0] g_pair(input logic [S*2*GLT-1:0] f, input int s);
+    g_pair = {HW'(f[(2 * s + 1) * GLT +: GLT]), HW'(f[2 * s * GLT +: GLT])};
+  endfunction
+  function automatic logic [2*HW-1:0] p_pair(input logic [S*2*PLT-1:0] f, input int s);
+    p_pair = {HW'(f[(2 * s + 1) * PLT +: PLT]), HW'(f[2 * s * PLT +: PLT])};
+  endfunction
+  for (genvar s = 0; s < S; s++) begin : g_rem
+    logic [HW-1:0] ntg_cq03h, ntp_cq03h;     // the lagged takes, negated
+    logic [4*HW-1:0] gop_cq04h, cgop_cq04h;
+    logic [4*HW-1:0] pop_cq04h, cpop_cq04h;
+    logic [2*HW-1:0] fgp_cq03h, cgp_cq03h, fpp_cq03h, cpp_cq03h;   // the trees' pairs, unread
+    assign ntg_cq03h = oh_neg(tq_gs_cq03h[s * (R + 1) +: R + 1]);
+    assign ntp_cq03h = oh_neg(tq_ps_cq03h[s * (R + 1) +: R + 1]);
+    assign gop_cq04h  = {g_pair(gfsp_cq03h, s), ntg_cq03h, ufg_cq04h[s * HW +: HW]};
+    assign cgop_cq04h = {g_pair(gfsp_cq03h, s), ntg_cq03h, ucg_cq04h[s * HW +: HW]};
+    assign pop_cq04h  = {p_pair(pfsp_cq03h, s), ntp_cq03h, ufp_cq04h[s * HW +: HW]};
+    assign cpop_cq04h = {p_pair(pfsp_cq03h, s), ntp_cq03h, ucp_cq04h[s * HW +: HW]};
+    ccv_common_csa #(.N(4), .W(HW)) u_fg (.op(gop_cq04h), .sum(ufg_nx_cq03h[s * HW +: HW]), .pair(fgp_cq03h));
+    ccv_common_csa #(.N(4), .W(HW)) u_cg (.op(cgop_cq04h), .sum(ucg_nx_cq03h[s * HW +: HW]), .pair(cgp_cq03h));
+    ccv_common_csa #(.N(4), .W(HW)) u_fp (.op(pop_cq04h), .sum(ufp_nx_cq03h[s * HW +: HW]), .pair(fpp_cq03h));
+    ccv_common_csa #(.N(4), .W(HW)) u_cp (.op(cpop_cq04h), .sum(ucp_nx_cq03h[s * HW +: HW]), .pair(cpp_cq03h));
+  end
+  logic rsf_en_cq01h, cnt_en_cq03h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) rsf_en_cq01h <= 1'b0;
+    else          rsf_en_cq01h <= rsf_l_cq00h;
+  end
+  assign cnt_en_cq03h = tq_nz_cq03h || rsf_en_cq01h || gfsp_cq03h != '0 || pfsp_cq03h != '0;
+  // The RS pool registers are formed from the counters' next values, so
+  // they are clocked with them. The names' are formed from the remainders
+  // as they stand, less the older take: clocked while a names' take is
+  // registered, and an edge after the remainders move (nv). They change
+  // on few of those cycles, the GPR pool mostly at XM and the predicates'
+  // mostly at its floors' (CG-3, waived: rtl/cg-waivers.json); with the
+  // counters, under their enable and nv, that gate fell to 68% in medium.
+  logic nv_cq04h, nv_nx_cq03h, pxn_en_cq03h;
+  logic [2*LX-1:0] pxr_cq04h, pxn_cq04h;   // RS RCU, MIU; GPR, predicate names
+  assign px_cq04h = {pxn_cq04h, pxr_cq04h};
+  assign nv_nx_cq03h  = !tq_g_cq03h[0] || !tq_p_cq03h[0] || gfsp_cq03h != '0 || pfsp_cq03h != '0;
+  assign pxn_en_cq03h = nv_cq04h || !tq_g_cq03h[0] || !tq_p_cq03h[0];
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      rcl_cq04h <= CR'(NR);
+      mcl_cq04h <= CM'(NM);
+      ufg_cq04h <= {S{HW'(AG + FLG)}};
+      ucg_cq04h <= {S{HW'(AG + CLG)}};
+      ufp_cq04h <= {S{HW'(AP + FLP)}};
+      ucp_cq04h <= {S{HW'(AP + CLP)}};
+      pxr_cq04h <= {sat_x((CG+1)'(NM)), sat_x((CG+1)'(NR))};
+    end else if (cnt_en_cq03h) begin
+      rcl_cq04h <= rcl_nx_cq03h;
+      mcl_cq04h <= mcl_nx_cq03h;
+      ufg_cq04h <= ufg_nx_cq03h;
+      ucg_cq04h <= ucg_nx_cq03h;
+      ufp_cq04h <= ufp_nx_cq03h;
+      ucp_cq04h <= ucp_nx_cq03h;
+      pxr_cq04h <= bx_nx_cq03h[0 +: 2 * LX];
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      nv_cq04h <= 1'b0;
+      pxn_cq04h <= {sat_x((CG+1)'(NP) - (CG+1)'(S * (AP + FLP))),
+                                     sat_x((CG+1)'(NG) - (CG+1)'(S * (AG + FLG)))};
+    end else begin
+      nv_cq04h <= nv_nx_cq03h;
+      if (pxn_en_cq03h) pxn_cq04h <= bx_nx_cq03h[2 * LX +: 2 * LX];
+    end
+  end
+  // The readers: the corrections, each class's lagged take; a slot's floor
+  // unmet (an occupied slot's) and its room to its ceiling, each its
+  // remainder less its lagged take.
+`ifdef CCV_CHECK_RENAME
+  assign pl_cq03h = ctl_notq ? {4{(R + 1)'(1)}} : {tq_p_cq03h, tq_g_cq03h, tq_m_cq03h, tq_r_cq03h};
+`else
+  assign pl_cq03h = {tq_p_cq03h, tq_g_cq03h, tq_m_cq03h, tq_r_cq03h};
+`endif
+  always_comb
+    for (int s = 0; s < S; s++) begin
+      unmet_g_cq04h[s * LU +: LU] = occ_cq01h[s] ? rem_of(ufg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]) : '0;
+      unmet_p_cq04h[s * LU +: LU] = occ_cq01h[s] ? rem_of(ufp_cq04h[s * HW +: HW], tq_ps_cq03h[s * (R + 1) +: R + 1]) : '0;
+      room_g_cq04h[s * LU +: LU]  = rem_of(ucg_cq04h[s * HW +: HW], tq_gs_cq03h[s * (R + 1) +: R + 1]);
+      room_p_cq04h[s * LU +: LU]  = rem_of(ucp_cq04h[s * HW +: HW], tq_ps_cq03h[s * (R + 1) +: R + 1]);
+    end
+  // The go's change lead for its fits' clocks: a superset, from the
+  // registered sel (a take may come), a registered take, the counters'
+  // or pool registers' enable, a slot's occupancy changing.
+  assign pool_en_cq04h = sel_cq02h != '0 || cnt_en_cq03h || nv_cq04h || occ_l_cq00h != occ_cq01h;
+`ifdef CCV_CHECK_RENAME
+  // Free names on time: the pool less every slot's held, on time.
+  function automatic logic [7:0] names_on(input logic [S*HW-1:0] u, input logic [R:0] tq, input int n, input int w);
+    logic [7:0] x;
+    x = 8'(n) - 8'(oh_val(tq));
+    for (int s = 0; s < S; s++) x = x - 8'(w) + 8'($signed(u[s * HW +: HW]));   // a remainder is signed
+    names_on = x;
+  endfunction
+  logic [7:0] chk_gn_cq04h, chk_pn_cq04h;
+  assign chk_gn_cq04h = names_on(ufg_cq04h, tq_g_cq03h, NG, AG + FLG);
+  assign chk_pn_cq04h = names_on(ufp_cq04h, tq_p_cq03h, NP, AP + FLP);
+  assign chk_cred_cq04h = {chk_pn_cq04h, chk_gn_cq04h, 8'(mcl_cq04h - CM'(oh_val(tq_m_cq03h))),
+                           8'(rcl_cq04h - CR'(oh_val(tq_r_cq03h)))};
+  assign chk_unmet_g_cq04h = unmet_g_cq04h;
+  assign chk_unmet_p_cq04h = unmet_p_cq04h;
+  assign chk_room_g_cq04h  = room_g_cq04h;
+  assign chk_room_p_cq04h  = room_p_cq04h;
+`endif
 
   // -- Rename 2 ---------------------------------------------------------------
   // Each lane's fields as ooe_rendep reads them: a uop that takes an RS

@@ -73,7 +73,7 @@ fl_buf=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
 fl_banks=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
 for cfg in "freelist_g $phys" "freelist_p $preds"; do
   set -- $cfg
-  yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_freelist.sv;
+  yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/common/ccv_common_csa.sv rtl/ooe/ooe_freelist.sv;
                chparam -set N $2 -set A $width -set B $fl_buf -set K $fl_banks ooe_freelist;
                chformal -remove; synth -flatten -top ooe_freelist; write_json $out/$1.json"; ungate $out/$1
   line=$(yosys-abc -c "read_blif $out/$1.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)

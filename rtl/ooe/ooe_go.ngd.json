@@ -19,17 +19,23 @@
    "date": "2026-10-22",
    "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
   },
-  "unmet_g_cq01h": {
+  "pl_cq01h": {
    "arrival": 2.0,
    "by": "OA",
-   "date": "2026-10-22",
-   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+   "date": "2026-10-23",
+   "why": "OA's revs 215 and 216 (OI-74 (i')): each credit's correction, last cycle's take of it, one-hot, a register in Rename 1 (22.4 flop to flop with it, measured)"
+  },
+  "unmet_g_cq01h": {
+   "arrival": 6.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's revs 215 and 216 (OI-74 (i)): each slot's unmet floor formed in logic from rename's registers, its floor remainder less its lagged take, by 6"
   },
   "unmet_p_cq01h": {
-   "arrival": 2.0,
+   "arrival": 6.0,
    "by": "OA",
-   "date": "2026-10-22",
-   "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
+   "date": "2026-10-23",
+   "why": "OA's revs 215 and 216 (OI-74 (i)): each slot's unmet floor formed in logic from rename's registers, its floor remainder less its lagged take, by 6"
   },
   "run_cq01h": {
    "arrival": 2.0,
@@ -116,16 +122,16 @@
    "why": "OA's response OI-67 (OA tab rev 185): required at 21, to match ooe_freelist's alloc_req by 21: the cycle's taken writers per class, the free lists' requests (21.0 NGD after the flops)."
   },
   "room_g_cq01h": {
-   "arrival": 2.0,
+   "arrival": 6.0,
    "by": "OA",
    "date": "2026-10-23",
-   "why": "OA's response OI-73 (OA tab rev 207): each slot's room to its ceiling, from rename's registered held, beside the unmet floors (arrival 2, a register)"
+   "why": "OA's revs 215 and 216 (OI-74 (i)): each slot's room to its ceiling formed in logic from rename's registers, its ceiling remainder less its lagged take, by 6"
   },
   "room_p_cq01h": {
-   "arrival": 2.0,
+   "arrival": 6.0,
    "by": "OA",
    "date": "2026-10-23",
-   "why": "OA's response OI-73 (OA tab rev 207): each slot's room to its ceiling, from rename's registered held, beside the unmet floors (arrival 2, a register)"
+   "why": "OA's revs 215 and 216 (OI-74 (i)): each slot's room to its ceiling formed in logic from rename's registers, its ceiling remainder less its lagged take, by 6"
   }
  }
 }

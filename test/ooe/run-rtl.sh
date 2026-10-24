@@ -6,6 +6,7 @@
 #   and R) and the MIU class (CCV_P_RS_MIU entries, P0-P3);
 # - ooe_ready against the live model through its random unit tests
 #   (test/ooe/ready_tb.cpp);
+# - ccv_common_csa against arithmetic (test/common/csa_tb.cpp);
 # - ooe_freelist against the model's own free lists, live, for the GPR rows
 #   and the predicates, in its buffered form (test/ooe/freelist_tb.cpp);
 # - ooe_age against the model's RS ages, live, for both RS classes
@@ -103,6 +104,31 @@ for c in code-shift no-late; do
   fi
 done
 
+# ccv_common_csa (rtl/common/; test/common/csa_tb.cpp), the carry-save
+# adder OOE's counters use, against arithmetic at the sizes they and the
+# free lists use and the corners: one operand, two, a single level, 16
+# groups and 18.
+for nw in 1,8 2,8 3,5 4,9 5,9 6,8 16,8 18,9; do
+  cn=${nw%,*} cw=${nw#*,}
+  dir=build/ooe-rtl/csa_${cn}_$cw
+  mkdir -p "$dir"
+  if ! verilator --cc --exe --build -j 0 -O2 -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME -GN="$cn" -GW="$cw" \
+        --top-module ccv_common_csa --Mdir "$dir" -o csa_tb -CFLAGS "-std=c++17 -O2 -DCSA_N=$cn -DCSA_W=$cw" \
+        "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/test/common/csa_tb.cpp" >"$dir/build.log" 2>&1; then
+    say "csa $cn x $cw: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
+  fi
+  if out=$("$dir/csa_tb" 2>&1); then
+    say "csa ($cn operands of $cw bits) == arithmetic" "PASS ($(echo "$out" | tail -1 | sed 's/.*tests=//'))"
+  else
+    say "csa $cn x $cw == arithmetic" "FAIL"; echo "$out" | tail -4; fail=1
+  fi
+  if CSA_CONTROL=drop-op "$dir/csa_tb" 1000 >/dev/null 2>&1; then
+    say "  control drop-op (csa $cn x $cw)" "MISSED"; fail=1
+  else
+    say "  control drop-op (csa $cn x $cw)" "caught"
+  fi
+done
+
 # ooe_freelist, driven from the model's own free lists after every cycle:
 # the GPR rows and the predicates.
 phys=$(sed -n 's/.*localparam int CCV_P_PHYS_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
@@ -122,7 +148,7 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
         --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
         -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
-        "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
+        "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
         "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
     say "freelist $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
   fi
@@ -217,7 +243,7 @@ if out=$("$dir/go_tb" "$seeds" 2>&1); then
 else
   say "go == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift no-write-bits no-room; do
+for c in no-hold no-rbusy no-squash no-dq-ev no-rob-en no-pool-en no-ret adm-shift no-write-bits no-room no-corr; do
   if GO_CONTROL=$c "$dir/go_tb" 3 >/dev/null 2>&1; then
     say "  control $c (go)" "MISSED"; fail=1
   else
@@ -498,35 +524,51 @@ for c in lane-swap name-reverse drop-restore; do
   fi
 done
 
-# ooe_rename (slice 7's first step and 7c: the go, Rename 1 and 2, the free
-# lists) beside ooe_rat (test/ooe/ooe_rename_tb.sv), driven from the model's
-# go log, its renames' fields, its frees a model cycle behind and ooe_rs's
-# grant; its takes, lanes, names, reads, RS request and rows compared.
-# Nothing tells it what was taken.
-read -r rename_g rename_d < <(python3 test/ooe/rename-params.py)
-dir=build/ooe-rtl/rename
-mkdir -p "$dir"
-if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace -DCCV_CHECK_RENAME ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
-      -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-      -CFLAGS "-std=c++17 -O2 ${rename_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
-      "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/rtl/ooe/ooe_freelist.sv" \
-      "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" \
-      "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" "$PWD/test/ooe/rename_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
-      "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
-  say "rename: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
-fi
-if out=$("$dir/rename_tb" "$seeds" 2>&1); then
-  say "rename (go, Rename 1 and 2, free lists) == model, live" "PASS ($(echo "$out" | grep '^rename_tb control' | sed 's/.*seeds=//'))"
-else
-  say "rename == model, live" "FAIL"; echo "$out" | tail -8; fail=1
-fi
-for c in drop-free no-lead no-write-bits no-hold drop-restore no-reads no-grant; do
-  if RENAME_CONTROL=$c "$dir/rename_tb" 3 >/dev/null 2>&1; then
-    say "  control $c (rename)" "MISSED"; fail=1
+# ooe_rename (slice 7's first step, 7c and 7b: the go, Rename 1 and 2, the
+# free lists, rename's counters) beside ooe_rat (test/ooe/ooe_rename_tb.sv),
+# driven from the model's go log, its renames' fields, its frees a model
+# cycle behind and ooe_rs's grant and frees; its takes, lanes, names, reads,
+# RS request and rows, and its counters as the go reads them, compared.
+# Nothing tells it what was taken. Three builds: the design's parameters;
+# the ceiling test's floor and ceiling (its directed core alone); and
+# scarce names, 144 rows and a ceiling of 24, where the names' pool binds
+# (its correction's controls, OA's revs 208 and 219).
+for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant" \
+           "rename_ceil RENAME_FLOORS=4,8 0 -" \
+           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2"; do
+  set -- $cfg
+  name=$1 env=$2 nseeds=$3 ctls=$4
+  [ "$nseeds" = 25 ] && nseeds=$seeds
+  if [ "$env" = - ]; then
+    read -r rename_g rename_d < <(python3 test/ooe/rename-params.py)
   else
-    say "  control $c (rename)" "caught"
+    read -r rename_g rename_d < <(env "$env" python3 test/ooe/rename-params.py)
   fi
+  dir=build/ooe-rtl/$name
+  mkdir -p "$dir"
+  if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
+        --trace -DCCV_CHECK_RENAME ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
+        -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
+        -CFLAGS "-std=c++17 -O2 ${rename_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
+        "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" \
+        "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" \
+        "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" "$PWD/test/ooe/rename_tb.cpp" "$PWD/sim/ooe/ooe_core.cpp" \
+        "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
+    say "$name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; exit 1
+  fi
+  if out=$("$dir/rename_tb" "$nseeds" 2>&1); then
+    say "$name (go, Rename 1 and 2, free lists) == model, live" "PASS ($(echo "$out" | grep '^rename_tb control' | sed 's/.*seeds=//'))"
+  else
+    say "$name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
+  fi
+  [ "$ctls" = - ] && continue
+  for c in ${ctls//,/ }; do
+    if RENAME_CONTROL=$c "$dir/rename_tb" 3 >/dev/null 2>&1; then
+      say "  control $c ($name)" "MISSED"; fail=1
+    else
+      say "  control $c ($name)" "caught"
+    fi
+  done
 done
 
 # ooe_select, with its two ooe_picks, driven from the model's sectioned
