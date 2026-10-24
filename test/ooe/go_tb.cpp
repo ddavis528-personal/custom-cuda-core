@@ -23,7 +23,8 @@
 // decq's heads, the ROB room, rename's credits), no-ret (this cycle's
 // retirements never reach the ROB term), adm-shift (each head carries
 // the next head's admission bits), no-write-bits (no head writes a GPR
-// or a predicate) and no-room (no slot's room to its ceiling binds).
+// or a predicate), no-room (no slot's room to its ceiling binds) and no-corr
+// (the pool register's correction never reaches the go).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: go_tb [seeds] | go_tb --cg <scenario> <vcd>
@@ -37,6 +38,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -47,13 +49,14 @@ int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &))
 void goConfig(Config &c) { c.decq_warp_max = 6; }
 
 namespace {
-constexpr unsigned S = GO_S, R = GO_R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 5 * R;
+constexpr unsigned S = GO_S, R = GO_R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned LX = bits(XM + 1);
 
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_go> dut;
 std::string control;
+std::mt19937 split_rng(7);   // the pool registers' split (drive)
 uint64_t current = 0;
 bool live = false;
 unsigned long long cycles = 0, cores = 0, skipped = 0, takes = 0, writers = 0, restores = 0, mismatches = 0;
@@ -99,6 +102,8 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
   clearAll(dut->hv_cq01h, S * H);
   clearAll(dut->ha_cq01h, S * H * PA);
   clearAll(dut->px_cq01h, 4 * LX);
+  clearAll(dut->pl_cq01h, 4 * (R + 1));
+  for (unsigned r = 0; r != 4; ++r) setBit(dut->pl_cq01h, r * (R + 1), true);   // no correction: the model's credit is on time
   clearAll(dut->unmet_g_cq01h, S * LU);
   clearAll(dut->unmet_p_cq01h, S * LU);
   clearAll(dut->room_g_cq01h, S * LU);
@@ -135,10 +140,16 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     dut->pool_en_cq01h = pool && control != "no-pool-en";
   }
   if (!g) return;
-  // Rename's pool registers: each credit less its floors owed, saturated.
+  // Rename's pool registers: each credit less its floors owed, saturated,
+  // split at random into the register and its correction (a lagged take k,
+  // one-hot), as rename's lagged counters give them (OI-74).
   for (unsigned r = 0; r != 4; ++r) {
     const unsigned owed = r >= 2 ? g->owed[r - 2] : 0;
-    setField(dut->px_cq01h, r * LX, LX, std::min(g->cred[r] - std::min(g->cred[r], owed), XM));
+    const unsigned v = g->cred[r] - std::min(g->cred[r], owed);
+    unsigned k = unsigned(split_rng() % (R + 1));
+    if (v + k > XM) k = 0;
+    setField(dut->px_cq01h, r * LX, LX, std::min(v + k, XM));
+    for (unsigned j = 0; j != R + 1; ++j) setBit(dut->pl_cq01h, r * (R + 1) + j, j == (control == "no-corr" ? 0 : k));
   }
   for (unsigned s = 0; s != S; ++s) {
     const auto &q = g->adm[s];

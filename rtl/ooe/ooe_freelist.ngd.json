@@ -36,6 +36,12 @@
       "by": "OA",
       "date": "2026-10-20",
       "why": "OA's response OI-60: rename takes the free list's names as data; go and credits are in ooe_decq (OI-58) (alloc_v with alloc_idx: OI's response to OA's OI-60, the same port pair)"
+    },
+    "fsp_cq03h": {
+      "required": 2.0,
+      "by": "OI",
+      "date": "2026-10-24",
+      "why": "OA's rev 219 (OI-76): each slot's frees as a carry-save pair, registered (the free list's second stage, 21.6 flop to flop), so it leaves from flops; ooe_rename takes it into each remainder's 4-operand carry-save sum."
     }
   }
 }

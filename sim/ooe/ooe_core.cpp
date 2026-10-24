@@ -33,7 +33,8 @@ std::string Config::apply(const std::string &spec) {
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
       {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
-      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return}};
+      {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return},
+      {"held_late", &held_late}};
   // `sectioned` itself is not a knob until the adapter places operands by
   // position (OI-32); place, loads_pass_loads and foot act only under it.
   std::map<std::string, bool *> b = {{"bypass", &bypass}, {"l1_spec", &l1_spec},
@@ -45,7 +46,9 @@ std::string Config::apply(const std::string &spec) {
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
-                                     {"ready_rep_late", &ready_rep_late}, {"replay_drain", &replay_drain}};
+                                     {"ready_rep_late", &ready_rep_late}, {"replay_drain", &replay_drain},
+                                     {"owed_lag", &owed_lag},
+                                     {"names_pool_lag", &names_pool_lag}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -331,6 +334,11 @@ void Core::cycle(uint64_t now) {
     go_run_[si] = run;
     go_reach_[si] = run == cfg_.rob_depth || (x.tail + run) % cfg_.rob_depth == x.head;
   }
+  fr_prev2_ = fr_prev_;
+  if (fr_prev2_.size() != slot_.size()) fr_prev2_.assign(slot_.size(), {0, 0});
+  fr_prev_ = fr_now_;
+  fr_now_.assign(slot_.size(), {0, 0});
+  if (fr_prev_.size() != slot_.size()) fr_prev_.assign(slot_.size(), {0, 0});
   gfree_.clock();      // last cycle's frees become allocatable
   pfree_.clock();
   decq_flushed_ = 0;
@@ -463,10 +471,38 @@ bool Core::predReserved(unsigned slot, unsigned n) const {
 /// A slot's floor still unspent (A-26, A-34): its architectural registers
 /// plus its floor, less what it holds.
 unsigned Core::unmetFloor(unsigned slot, bool pred) const {
-  const Slot &s = slot_[slot];
   const unsigned want = pred ? kArchPreds + cfg_.pred_ren_floor : kArchGprs + cfg_.ren_floor;
-  const unsigned held = pred ? s.held_pred : s.held_gpr;
+  const unsigned held = heldSeen(slot, pred);
   return held < want ? want - held : 0;
+}
+
+/// Held as rename's register sees it (OI-75 (b), OA's rev 216): held_late
+/// cycles of frees behind, the free list's registered count by owner and
+/// held's own register.
+unsigned Core::heldSeen(unsigned slot, bool pred) const {
+  const Slot &s = slot_[slot];
+  unsigned h = pred ? s.held_pred : s.held_gpr;
+  if (slot < fr_now_.size()) {
+    if (cfg_.held_late >= 1) h += fr_now_[slot][pred];
+    if (cfg_.held_late >= 2) h += fr_prev_[slot][pred];
+    if (cfg_.held_late >= 3 && slot < fr_prev2_.size()) h += fr_prev2_[slot][pred];
+  }
+  return h;
+}
+
+/// The floors owed as rename's pool register forms them (OI-74 (iii), OA's
+/// rev 216): from held before last cycle's takes, which reach the counters a
+/// cycle late. Never fewer than floorsOwed's, so the pool only shrinks.
+unsigned Core::floorsOwedLag(bool pred) const {
+  unsigned owed = 0;
+  for (unsigned v = 0; v != slot_.size(); ++v) {
+    const unsigned want = pred ? kArchPreds + cfg_.pred_ren_floor : kArchGprs + cfg_.ren_floor;
+    unsigned h = heldSeen(v, pred);
+    const unsigned took = v < ceil_names_prev_.size() ? ceil_names_prev_[v][pred ? 1 : 0] : 0;
+    h -= std::min(h, took);
+    owed += h < want ? want - h : 0;
+  }
+  return owed;
 }
 
 /// Every tier-1 slot's unspent floor, occupied or not.
@@ -642,6 +678,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
     if (!rowSec_[row]) {
       rowOwner_[row] = 0;
       --slot_[slot].held_gpr;
+      if (slot < fr_now_.size()) ++fr_now_[slot][0];
       if (gfree_.takenNow(row)) err("OI-58: row %u freed in the cycle it was allocated (ooe_freelist)", row);
       if (!gfree_.free(row)) err("V-01: row %u freed twice", row);
     }
@@ -654,6 +691,7 @@ void Core::freeGpr(unsigned slot, unsigned p) {
   }
   gowner_[p] = 0;
   --slot_[slot].held_gpr;
+  if (slot < fr_now_.size()) ++fr_now_[slot][0];
   if (gfree_.takenNow(p)) err("OI-58: GPR p%u freed in the cycle it was allocated (ooe_freelist)", p);
   if (!gfree_.free(p)) err("V-01: GPR p%u freed twice", p);
 }
@@ -667,6 +705,7 @@ void Core::freePred(unsigned slot, unsigned p) {
   }
   powner_[p] = 0;
   --slot_[slot].held_pred;
+  if (slot < fr_now_.size()) ++fr_now_[slot][1];
   if (pfree_.takenNow(p)) err("OI-58: predicate pp%u freed in the cycle it was allocated (ooe_freelist)", p);
   if (!pfree_.free(p)) err("V-02: predicate pp%u freed twice", p);
 }
@@ -3322,10 +3361,22 @@ void Core::rename() {
     ceil_names_prev_.assign(ns, {0, 0});
     for (unsigned si = 0; si != ns && si < ren_slot_.size(); ++si)
       ceil_names_prev_[si] = {ren_slot_[si][2], ren_slot_[si][3]};
+    // names_pool_lag (OI-76): last cycle's held as seen less the take
+    // before it, and the takes of the last two cycles.
+    pool_hl_prev_ = pool_hl_.size() == ns ? pool_hl_ : std::vector<std::array<unsigned, 2>>(ns, {0, 0});
+    pool_hl_.assign(ns, {0, 0});
+    pool_tk2_ = pool_tk1_;
+    pool_tk1_ = {0, 0};
+    for (unsigned si = 0; si != ns; ++si)
+      for (unsigned k = 0; k != 2; ++k) {
+        const unsigned h = heldSeen(si, k == 1);
+        pool_hl_[si][k] = h - std::min(h, ceil_names_prev_[si][k]);
+        pool_tk1_[k] += ceil_names_prev_[si][k];
+      }
     ceil_room_reg_.assign(ns, {0, 0});
     for (unsigned si = 0; si != ns; ++si) {
       const unsigned cg = kArchGprs + cfg_.ren_ceil, cp = kArchPreds + cfg_.pred_ren_ceil;
-      ceil_room_reg_[si] = {cg - std::min(cg, slot_[si].held_gpr), cp - std::min(cp, slot_[si].held_pred)};
+      ceil_room_reg_[si] = {cg - std::min(cg, heldSeen(si, false)), cp - std::min(cp, heldSeen(si, true))};
     }
   }
   ren_tot_.fill(0);
@@ -3347,6 +3398,8 @@ void Core::rename() {
     g.adm.assign(ns, {});
     g.run.assign(ns, 0); g.ret.assign(ns, 0); g.unmet_g.assign(ns, 0); g.unmet_p.assign(ns, 0);
     g.reach.assign(ns, 0); g.hold.assign(ns, 1);
+    g.occ.assign(ns, 0);
+    for (unsigned si = 0; si != ns; ++si) g.occ[si] = slot_[si].st != WarpState::kFree;
     g.room_g.assign(ns, 0); g.room_p.assign(ns, 0);
     for (unsigned si = 0; si != ns; ++si) {
       g.room_g[si] = ceil_room_reg_[si][0];
@@ -3579,7 +3632,22 @@ void Core::rename() {
         // slot's floor still unspent and the pool above every floor. The
         // shares split only the pool; each warp's allowance adds its own
         // floor (below), so the shares cannot break V-04.
-        if (r >= 2) pool[r] -= std::min(pool[r], floorsOwed(r == 3));
+        if (r >= 2 && cfg_.names_pool_lag) {
+          // OI-76: the names above every floor as last cycle's held left
+          // them, less the names taken since (the go's correction): the
+          // pool of names no slot holds less the floors still owed, never
+          // more than the exact one.
+          const bool pr = r == 3;
+          const unsigned want = pr ? kArchPreds + cfg_.pred_ren_floor : kArchGprs + cfg_.ren_floor;
+          long base = long(pr ? cfg_.pred_regs : cfg_.phys_regs) - long(slot_.size()) * long(want);
+          for (unsigned si = 0; si != slot_.size(); ++si)
+            base -= pool_hl_prev_[si][pr] > want ? long(pool_hl_prev_[si][pr] - want) : 0;
+          base -= long(pool_tk1_[pr]) + long(pool_tk2_[pr]);
+          base -= long(std::min(held, c[r]));
+          pool[r] = base > 0 ? unsigned(base) : 0;
+        } else if (r >= 2) {
+          pool[r] -= std::min(pool[r], cfg_.owed_lag ? floorsOwedLag(r == 3) : floorsOwed(r == 3));
+        }
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});

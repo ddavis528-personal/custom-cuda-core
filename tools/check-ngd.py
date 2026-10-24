@@ -51,9 +51,10 @@ Each module is measured at the parameters of its units (test/**/cg-units.json,
 and test/**/ngd-units.json for modules with no flops): Yosys synthesises it
 flattened, every clock-gated flop becomes a plain flop on its next value (its
 enable is timed apart, to its ICG, by check-cg's CG-2), and ABC maps it onto
-test/ooe/ngd.genlib, as test/ooe/depth.sh does. A timing pass over the mapped
+tools/ngd.genlib, as test/ooe/depth.sh does. A timing pass over the mapped
 netlist then splits the depth by where a path starts and ends: input or flop,
-output or flop. Its longest path must equal ABC's own, or the run stops.
+output or flop, each gate at the delay of the pin the path enters by (the XOR
+family's pins differ). Its longest path must equal ABC's own, or the run stops.
 
 The rules, as findings:
   NGD-1  flop to flop over the stage
@@ -131,18 +132,32 @@ def run(cmd):
 # == The mapped netlist ========================================================
 
 def genlib(path=GENLIB):
-    """{gate: delay}: each gate's slowest pin, as ABC's mapper costs it."""
-    out = {}
+    """{gate: {pin: delay}}, as ABC's mapper costs each pin: the slower of its
+    rise and fall. A gate whose pins share one line (PIN *) has the key "*".
+    A gate's PIN lines may follow it on lines of their own."""
+    out, gate = {}, None
     for line in open(path):
-        m = re.match(r"GATE\s+(\S+)\s+\S+\s+[^;]*;\s*(.*)", line)
+        m = re.match(r"GATE\s+(\S+)\s+\S+\s+[^;]*;(.*)", line)
         if m:
-            pins = re.findall(r"PIN\s+\S+\s+\S+\s+\S+\s+\S+\s+([\d.]+)\s+\S+\s+([\d.]+)",
-                              m.group(2))
-            out[m.group(1)] = max([max(float(a), float(b)) for a, b in pins] or [0.0])
+            gate, rest = m.group(1), m.group(2)
+            out[gate] = {}
+        elif gate and line.strip().startswith("PIN"):
+            rest = line
+        else:
+            continue
+        for pin, a, b in re.findall(r"PIN\s+(\S+)\s+\S+\s+\S+\s+\S+\s+([\d.]+)\s+\S+\s+([\d.]+)",
+                                    rest):
+            out[gate][pin] = max(float(a), float(b))
     return out
 
 
-LIB = dict(genlib(), WIRE=0.0)
+def delay(lib, gate, pin):
+    """A gate's delay from one of its input pins."""
+    d = lib[gate]
+    return d[pin] if pin in d else d["*"]
+
+
+LIB = dict(genlib(), WIRE={"*": 0.0}, ZERO={"*": 0.0})
 
 # Every flop kind synthesis can leave, to the plain flop that stands for it:
 # an enable is dropped (the flop is clocked through an ICG and takes its next
@@ -202,10 +217,10 @@ def parse_blif(path):
             latches.append((t[1], t[2]))
         elif t[0] == ".gate":
             pins = dict(x.split("=", 1) for x in t[2:])
-            gates.append((t[1], [v for k2, v in pins.items() if k2 != "Y"], pins["Y"]))
+            gates.append((t[1], [(k2, v) for k2, v in pins.items() if k2 != "Y"], pins["Y"]))
         elif t[0] == ".names" and len(t) == 3 and k + 1 < len(lines) and lines[k + 1] == ["1", "1"]:
             # A net wired straight to another, a port to a port: no delay.
-            gates.append(("WIRE", [t[1]], t[2]))
+            gates.append(("WIRE", [("A", t[1])], t[2]))
         elif t[0] == ".names" and len(t) == 2:
             gates.append(("ZERO", [], t[1]))        # a constant: no path through it
         elif t[0] in (".names", ".subckt"):
@@ -245,15 +260,18 @@ class Timing:
                     continue
                 seen.add(x)
                 stack.append((x, True))
-                stack.extend((a, False) for a in driver[x][1] if a not in seen)
+                stack.extend((a, False) for _, a in driver[x][1] if a not in seen)
 
         def prop(start, buf=0.0):
             arr = dict.fromkeys(start, 0.0)
             for n in order:
                 g, a = driver[n]
-                t = max((arr[x] for x in a if x in arr), default=NEG)
-                if t > NEG and g not in ("ZERO", "ONE"):
-                    arr[n] = t + (buf if g == "BUF" else lib[g])
+                if g in ("ZERO", "ONE"):
+                    continue
+                t = max((arr[x] + (buf if g == "BUF" else delay(lib, g, pin))
+                         for pin, x in a if x in arr), default=NEG)
+                if t > NEG:
+                    arr[n] = t
             return arr
 
         ports_in = collections.defaultdict(list)
@@ -263,7 +281,7 @@ class Timing:
         for o in outs:
             ports_out[base(o)].append(o)
         d_nets = [d for d, _ in latches]
-        every = prop(list(ins) + [q for _, q in latches], buf=lib["BUF"])
+        every = prop(list(ins) + [q for _, q in latches], buf=delay(lib, "BUF", "A"))
         self.abc_like = max([every.get(n, NEG) for n in d_nets + list(outs)] + [0.0])
         r = prop([q for _, q in latches])
         self.rr = max((r.get(d, NEG) for d in d_nets), default=NEG)
@@ -277,6 +295,7 @@ class Timing:
                 if t > NEG:
                     self.io[(p, q)] = t
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
+        self.gates = collections.Counter(g for g, _, _ in gates)
         self.nflops = len(latches)
         # Backward from the endpoints (NGD-7): each flop's longest path to
         # any flop, and to each output port it reaches.
@@ -288,8 +307,8 @@ class Timing:
                 if n not in dep or driver[n][0] in ("ZERO", "ONE"):
                     continue
                 g, a = driver[n]
-                w = dep[n] + (0.0 if g == "BUF" else lib[g])
-                for x in a:
+                for pin, x in a:
+                    w = dep[n] + (0.0 if g == "BUF" else delay(lib, g, pin))
                     if dep.get(x, NEG) < w:
                         dep[x] = w
             return dep
@@ -941,13 +960,26 @@ def selftest():
 
     # 1. The timing pass agrees with ABC on every fixture (map_and_time
     #    stops otherwise), and a wrong delay table is caught.
-    wrong = dict(LIB, NAND2=LIB["NAND2"] * 2)
+    wrong = dict(LIB, NAND2={p: d * 2 for p, d in LIB["NAND2"].items()})
     try:
         u = fixture("fx_wrong", "ngd_fx_stage")
         u.measure(lib=wrong)
         expect(False, "a timing pass with a wrong NAND2 delay agreed with ABC")
     except SystemExit as e:
         expect("is not ABC's" in str(e), "a wrong delay table stopped the run otherwise: %s" % e)
+    # 1c. The timing pass is per pin: ngd_fx_xor3's tree maps onto XOR3, whose
+    #     last select C is fast, and agrees with ABC; timed again with every
+    #     gate at its slowest pin, it must not.
+    x3 = fixture("fx_xor3", "ngd_fx_xor3")
+    x3.measure()
+    expect(x3.t.gates.get("XOR3", 0) + x3.t.gates.get("XNOR3", 0) > 0,
+           "ngd_fx_xor3 maps onto no XOR3 or XNOR3, so 1c tests nothing: %s" % dict(x3.t.gates))
+    slow = {g: {"*": max(d.values())} if d else d for g, d in LIB.items()}
+    try:
+        fixture("fx_xor3_slow", "ngd_fx_xor3").measure(lib=slow)
+        expect(False, "ngd_fx_xor3 timed at each gate's slowest pin agreed with ABC")
+    except SystemExit as e:
+        expect("is not ABC's" in str(e), "the slowest-pin table stopped the run otherwise: %s" % e)
     # 1b. NGD-3 takes each input from the better of two maps (OI-64): area
     #     recovery relaxes ngd_fx_relax's 8-bit add toward its multiplier, so
     #     the area map alone would put input i over the stage at the default

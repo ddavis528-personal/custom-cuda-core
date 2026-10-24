@@ -88,7 +88,7 @@ BUILD = os.path.join(ROOT, "build", "cg")
 SHIM = os.path.join(ROOT, "tools", "shim")
 if SHIM not in os.environ.get("PATH", "").split(os.pathsep):
     os.environ["PATH"] = SHIM + os.pathsep + os.environ.get("PATH", "")
-GENLIB = os.path.join(ROOT, "test", "ooe", "ngd.genlib")
+GENLIB = os.path.join(ROOT, "tools", "ngd.genlib")
 SCENARIOS = ("idle", "medium", "high")
 # A scenario shorter than this says little about an enable's quality.
 MIN_CYCLES = 1000
@@ -1083,9 +1083,14 @@ endmodule
         hd = os.path.join(self.dir, "harness")
         shutil.rmtree(hd, ignore_errors=True)
         r = run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
-                 "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb",
-                 # A blackboxed design child's assertions name the package (OI-71).
-                 "--Mdir", hd, "-o", "cg_tb", "rtl/ccv_assert_pkg.sv", tf, nv]
+                 "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb"]
+                # A blackboxed child may instantiate a shared cell (OI-77: ooe_freelist's
+                # ccv_common_csa). A library directory resolves only modules still
+                # missing, so the netlist's flattened copy never clashes.
+                + [x for d in ("rtl/common",) if os.path.isdir(os.path.join(ROOT, d))
+                   for x in ("-y", d)]
+                # A blackboxed design child's assertions name the package (OI-71).
+                + ["--Mdir", hd, "-o", "cg_tb", "rtl/ccv_assert_pkg.sv", tf, nv]
                 + [self.spec["blackbox"][k] for k in sorted(self.spec.get("blackbox", {}))])
         if r.returncode:
             raise SystemExit("check-cg: unit %s: harness build failed:\n%s"
@@ -1409,10 +1414,29 @@ def coverage_check(modules, units):
 
 # == The budget ================================================================
 
-def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=()):
+_INNER = None
+
+
+def inner_helpers():
+    """The modules declared inner helpers: a <module>.ngd.json beside the RTL
+    with "inner": true (check-ngd's NGD-4), timed as their parents' logic."""
+    global _INNER
+    if _INNER is None:
+        _INNER = set()
+        for f in glob.glob(os.path.join(ROOT, "rtl", "**", "*.ngd.json"), recursive=True):
+            d = json.load(open(f))
+            if d.get("inner"):
+                _INNER.add(d["module"])
+    return _INNER
+
+
+def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=(), inner=None):
     """A partition's flops, instance by instance: synthesised with its
     hierarchy kept, each module's flops counted once and multiplied by how
-    many times the partition instantiates it. Returns the total and, per
+    many times the partition instantiates it. An inner helper (`inner`,
+    default inner_helpers()) is flattened into its parent first, as
+    check-ngd's synth does: it is its parent's logic, so a constant it makes
+    reaches its parent's flops as it does in the replayed netlist (OI-78). Returns the total and, per
     instantiated module (by its source name), its multiplicity and its flop
     count per register name. Nothing replays this netlist, so crosscheck()
     holds it to the replayed one wherever a unit measures the same module."""
@@ -1427,8 +1451,13 @@ def elaborate(name, top, files, blackbox=(), known=(), params=None, defines=()):
     if params:
         cmds.append("chparam %s %s" % (" ".join(
             "-set %s %s" % (k, v) for k, v in sorted(params.items())), top))
-    cmds += ["hierarchy -top %s" % top, "chformal -remove"] + KEEP_FLOPS + [
-        "synth -top %s" % top, "write_json %s" % jf]
+    inner = inner_helpers() if inner is None else inner
+    cmds += ["hierarchy -top %s" % top, "chformal -remove"] + KEEP_FLOPS
+    if inner:
+        cmds += ["setattr -mod -set keep_hierarchy 1 *",
+                 "setattr -mod -unset keep_hierarchy %s" % " ".join(
+                     "%s $paramod\\%s\\* $paramod$*\\%s" % (m, m, m) for m in sorted(inner))]
+    cmds += ["synth %s-top %s" % ("-flatten " if inner else "", top), "write_json %s" % jf]
     r = run(["yosys", "-q", "-p", "; ".join(cmds)])
     if r.returncode:
         raise SystemExit("check-cg: partition %s: yosys failed:\n%s"
@@ -2418,6 +2447,15 @@ def selftest():
     bare = elaborate("fx_bare", "ngd_fx_split_bare", kf)["total"]
     expect(kept == bare + 6, "(* keep *) copies of a 6-bit register were merged, or unmarked "
            "ones were not: %d flops kept, %d bare" % (kept, bare))
+    # 19b. An inner helper is flattened into its parent before the count
+    #      (OI-78): cg_fx_inner_h ties a bit to zero, so its parent's flop on
+    #      it is constant and dropped, as in the replayed netlist. With the
+    #      helper's boundary kept, the flop would stay.
+    inf = ["test/cg/fixtures/cg_fx_inner.sv"]
+    flat = elaborate("fx_inner", "cg_fx_inner", inf, inner={"cg_fx_inner_h"})["total"]
+    kept_b = elaborate("fx_inner_kept", "cg_fx_inner", inf, inner=())["total"]
+    expect(flat == 3 and kept_b == 4, "an inner helper's constant bit: %d flops flattened "
+           "(want 3), %d with its boundary kept (want 4)" % (flat, kept_b))
     # 20. The synthesis cache: a header the script reads only through -I
     # changes, and the cache must miss, not hand back the old netlist.
     inc = os.path.join(BUILD, "fixture", "cache_inc")

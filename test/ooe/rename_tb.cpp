@@ -25,7 +25,8 @@
 // and each port's row must be the model's, as rendep_tb holds them.
 //
 // A core is skipped when the RTL is not built for it (other slots, widths,
-// checkpoints, pool sizes or free-list buffer, or sectioned names: the
+// checkpoints, pool sizes, floors and ceilings (run-rtl.sh builds the
+// ceiling test's too) or free-list buffer, or sectioned names: the
 // narrow allocator is slice 6). It is stopped, from that cycle on not driven
 // at all, at a restore-allocate or an atomic (slice 7's later steps), or
 // where the go's inputs and rename's log disagree on what the RTL cannot
@@ -37,8 +38,12 @@
 // leads), no-write-bits (no head's admission bits say it writes, so the go
 // asks for no names), no-hold (the go's hold lead never reaches it),
 // drop-restore (no checkpoint restore reaches ooe_rat), no-reads (no head's
-// attributes say it reads a source) and no-grant (ooe_rs's grant never
-// reaches rename).
+// attributes say it reads a source), no-grant (ooe_rs's grant never
+// reaches rename), no-take-q (the go's pool correction drops the lagged
+// take, a check-build input: OA's rev 208) and no-take-q2 (the names' pool
+// register drops the older take: OA's rev 219). The last two need names
+// that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
+// GPR ceiling of 24, the model's set alike.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rename_tb [seeds] | rename_tb --cg <scenario> <vcd>
@@ -61,13 +66,21 @@ using ccv::ooe::Core;
 using ccv::ooe::kNoEntry;
 
 int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &));
-void renameConfig(Config &c) { c.decq_warp_max = 6; }   // go_tb's: a slot never holds more heads than the window
+// go_tb's: a slot never holds more heads than the window. The scarce build's
+// names (RENAME_SCARCE): the RTL's rows and GPR ceiling.
+void renameConfig(Config &c) {
+  c.decq_warp_max = 6;
+  if (RENAME_SCARCE) {
+    c.phys_regs = RENAME_NG;
+    c.ren_ceil = RENAME_CLG;
+  }
+}
 
 namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
                    NG = RENAME_NG, NP = RENAME_NP;
-constexpr unsigned N = RENAME_N, NR = RENAME_NR;
-constexpr unsigned NC = S * R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 5 * R, FB = 8, FK = 4, XW = 20,
+constexpr unsigned N = RENAME_N, NR = RENAME_NR, FLG = RENAME_FLG, CLG = RENAME_CLG, FLP = RENAME_FLP, CLP = RENAME_CLP;
+constexpr unsigned NC = S * R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R, FB = 8, FK = 4, XW = 20,
                    P = 2 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w ? w : 1; }
 constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
@@ -80,8 +93,9 @@ uint64_t current = 0;
 bool skip = false;      // a core this RTL is not built for
 bool stopped = false;   // a core past a cycle this slice does not cover: no longer driven
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, takes = 0, lanes = 0, nops = 0, names = 0, pnames = 0,
-                   frees = 0, rows = 0, cells = 0, grp_cells = 0, prv_cells = 0, extra = 0, mismatches = 0;
-std::vector<uint8_t> ct_rtl;   // the code table the RTL was built with (default settings)
+                   frees = 0, counted = 0, rows = 0, cells = 0, grp_cells = 0, prv_cells = 0, extra = 0, mismatches = 0;
+std::vector<uint8_t> ct_rtl;
+unsigned long long core_steps = 0;   // the code table the RTL was built with (default settings)
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -139,6 +153,7 @@ struct Grp {
 struct Cycle {
   Core::GoLog g;
   Core::RatLog w;
+  Core::RenEvents ev;
   Grp y;
   std::vector<unsigned> gal, gfr, pal, pfr;
 };
@@ -282,11 +297,13 @@ void compareRows(const Grp &y, const Grp *a) {
 void clearInputs() {
   clearAll(dut->hv_cq01h, S * H);
   clearAll(dut->ha_cq01h, S * H * PA);
-  clearAll(dut->px_cq01h, 4 * LX);
-  clearAll(dut->unmet_g_cq01h, S * LU);
-  clearAll(dut->unmet_p_cq01h, S * LU);
-  clearAll(dut->room_g_cq01h, S * LU);
-  clearAll(dut->room_p_cq01h, S * LU);
+  dut->occ_cq01h = 0;
+  dut->occ_l_cq00h = 0;
+  dut->rsf_l_cq00h = 0;
+  dut->fpr_cq01h = dut->fpm_cq01h = 0;
+  dut->flr_cq01h = dut->flm_cq01h = 0;
+  dut->ctl_notq = control == "no-take-q";
+  dut->ctl_notq2 = control == "no-take-q2";
   clearAll(dut->run_cq01h, S * LB);
   clearAll(dut->ret_cq01h, S * LT);
   dut->reach_cq01h = 0;
@@ -295,7 +312,6 @@ void clearInputs() {
   dut->sq_l_cq00h = 0;
   dut->dq_ev_cq01h = 0;
   dut->rob_en_cq01h = 0;
-  dut->pool_en_cq01h = 0;
   dut->gfree_l_cq00h = 0;
   dut->pfree_l_cq00h = 0;
   clearAll(dut->gfree_cq01h, NG);
@@ -318,19 +334,11 @@ void driveGo(const Core::GoLog &g, const Core::GoLog &nx) {
   for (unsigned s = 0; s != S; ++s) setBit(dut->hold_l_cq00h, s, nx.hold[s] && control != "no-hold");
   dut->rbusy_l_cq00h = nx.restore;
   dut->sq_l_cq00h = nx.flush & ((1u << S) - 1);
-  bool pool = false;
-  for (unsigned r = 0; r != 4; ++r) pool = pool || g.cred[r] != nx.cred[r];
-  for (unsigned r = 0; r != 2; ++r) pool = pool || g.owed[r] != nx.owed[r];
   for (unsigned s = 0; s != S; ++s) {
-    pool = pool || g.unmet_g[s] != nx.unmet_g[s] || g.unmet_p[s] != nx.unmet_p[s] || g.room_g[s] != nx.room_g[s] ||
-           g.room_p[s] != nx.room_p[s];
     setBit(dut->dq_ev_cq01h, s, g.adm[s] != nx.adm[s]);
     setBit(dut->rob_en_cq01h, s, g.run[s] != nx.run[s] || g.reach[s] != nx.reach[s] || g.ret[s] != nx.ret[s]);
-  }
-  dut->pool_en_cq01h = pool;
-  for (unsigned r = 0; r != 4; ++r) {
-    const unsigned owed = r >= 2 ? g.owed[r - 2] : 0;
-    setField(dut->px_cq01h, r * LX, LX, std::min(g.cred[r] - std::min(g.cred[r], owed), XM));
+    setBit(dut->occ_cq01h, s, g.occ[s]);
+    setBit(dut->occ_l_cq00h, s, nx.occ[s]);
   }
   for (unsigned s = 0; s != S; ++s) {
     const auto &q = g.adm[s];
@@ -340,10 +348,6 @@ void driveGo(const Core::GoLog &g, const Core::GoLog &nx) {
       if (control == "no-write-bits") a &= ~(3u << 3);
       setField(dut->ha_cq01h, (s * H + p) * PA, PA, a);
     }
-    setField(dut->unmet_g_cq01h, s * LU, LU, sat(g.unmet_g[s], LU));
-    setField(dut->unmet_p_cq01h, s * LU, LU, sat(g.unmet_p[s], LU));
-    setField(dut->room_g_cq01h, s * LU, LU, sat(g.room_g[s], LU));
-    setField(dut->room_p_cq01h, s * LU, LU, sat(g.room_p[s], LU));
     setField(dut->run_cq01h, s * LB, LB, sat(g.run[s], LB));
     setBit(dut->reach_cq01h, s, g.reach[s]);
     setField(dut->ret_cq01h, s * LT, LT, sat(g.ret[s], LT));
@@ -452,8 +456,17 @@ void step(const Cycle &P, const Cycle &N) {
     }
 
   ++cycles;
+  ++core_steps;
   clearInputs();
   driveGo(g, N.g);
+  // ooe_rs's frees, as rencred_tb drives them: this cycle's within its
+  // prompt count, a thermometer, and last cycle's past it; and their lead.
+  auto thermo = [](unsigned n, unsigned w) { return unsigned(n >= w ? (1u << w) - 1u : (1u << n) - 1u); };
+  dut->fpr_cq01h = thermo(P.ev.rs_prompt[0], 4);
+  dut->fpm_cq01h = thermo(P.ev.rs_prompt[1], 4);
+  dut->flr_cq01h = P.ev.rs_late_prev[0];
+  dut->flm_cq01h = P.ev.rs_late_prev[1];
+  dut->rsf_l_cq00h = N.ev.rs_prompt[0] || N.ev.rs_prompt[1] || N.ev.rs_late_prev[0] || N.ev.rs_late_prev[1];
   randomCandidates();
   for (unsigned k = 0; k != g.lanes.size(); ++k) {
     const unsigned x = g.lanes[k].second * S + g.lanes[k].first;
@@ -509,6 +522,30 @@ void step(const Cycle &P, const Cycle &N) {
     if (t != g.took[s]) fail("take differs", s, 0, t, g.took[s]);
     takes += t;
   }
+  // Rename's counters as the go reads them: each credit on time (the
+  // lagged counter less its lagged take), each slot's unmet floor and room.
+  for (unsigned r = 0; r != 4; ++r) {
+    if (r == 3 && g.cred[3] >= 1000) continue;   // predicates not renamed
+    const unsigned got = getField(dut->chk_cred_cq04h, r * 8, 8);
+    if (got != g.cred[r]) fail("credit differs", r, 0, got, g.cred[r]);
+  }
+  for (unsigned s = 0; s != S; ++s) {
+    auto chk = [&](const char *what, const auto &port, unsigned want) {
+      const unsigned got = getField(port, s * LU, LU);
+      if (got != sat(want, LU)) fail(what, s, 0, got, sat(want, LU));
+    };
+    if (std::getenv("RENAME_VERBOSE") && mismatches < 3 &&
+        (getField(dut->chk_unmet_g_cq04h, s * LU, LU) != sat(g.unmet_g[s], LU) ||
+         getField(dut->chk_room_g_cq04h, s * LU, LU) != sat(g.room_g[s], LU)))
+      std::fprintf(stderr, "  step %llu of core %llu: slot %u occ %d unmet_g %u room_g %u, rtl %u %u\n", core_steps, cores, s,
+                   int(g.occ[s]), g.unmet_g[s], g.room_g[s], getField(dut->chk_unmet_g_cq04h, s * LU, LU),
+                   getField(dut->chk_room_g_cq04h, s * LU, LU));
+    chk("unmet GPR floor differs", dut->chk_unmet_g_cq04h, g.unmet_g[s]);
+    chk("unmet predicate floor differs", dut->chk_unmet_p_cq04h, g.unmet_p[s]);
+    chk("GPR room differs", dut->chk_room_g_cq04h, g.room_g[s]);
+    chk("predicate room differs", dut->chk_room_p_cq04h, g.room_p[s]);
+  }
+  ++counted;
   tick();
   prev_ret = w.ret;
 
@@ -559,7 +596,8 @@ void newCore(const Core &c) {
   skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > R || cfg.retire_per_rob > RP ||
          cfg.pred_zero != (1u << PW) - 1 || cfg.sectioned || !cfg.rename_preds || gf.capacity() != NG || pf.capacity() != NP ||
          gf.bufferCap() != FB || gf.banks() != FK || pf.bufferCap() != FB || pf.banks() != FK || c.rsEntries() != N ||
-         c.rsRcuEntries() != NR;
+         c.rsRcuEntries() != NR || cfg.ren_floor != FLG || cfg.ren_ceil != CLG || cfg.pred_ren_floor != FLP ||
+         cfg.pred_ren_ceil != CLP;
   skipped += skip;
   stopped = false;
   have_prev = have_cur = false;
@@ -570,6 +608,7 @@ void newCore(const Core &c) {
   tick();
   prev_ret.clear();
   past.clear();
+  core_steps = 0;
   // The flopped reset (RST-1), as go_tb's: its last edge is the model's
   // first clock, so the rotation starts where the model's does. The free
   // lists refill an edge later than the model's, at the end of the first
@@ -604,6 +643,7 @@ void post(const Core &c) {
   cur.g = c.goLog();
   cur.w = c.ratLog();
   cur.y = snapGroup(c);
+  cur.ev = c.renEvents();
   have_cur = true;
 }
 } // namespace
@@ -622,6 +662,13 @@ int main(int argc, char **argv) {
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_rename_tb>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
+  // A reset before anything: a core's first tick (its retirements' leads)
+  // comes before its own reset, and the registers start unknown.
+  clearInputs();
+  dut->ooe_rst_r00h = 1;
+  tick();
+  tick();
+  dut->ooe_rst_r00h = 0;
   // The directed tests in the ordinary run; a scenario is the random tests'.
   const int model_fails =
       (cg.on() ? 0 : ooeTestDirectedPrePostWith(pre, post, renameConfig)) + cg.run(seeds, pre, post, renameConfig);

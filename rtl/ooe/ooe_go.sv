@@ -33,10 +33,14 @@
 // decq still shows them; from the one after, decq's registered flush masks
 // them.
 //
-// Each credit arrives as rename's pool register (OA's rev 171 (a)): the
-// counter less its floors owed (the names'), saturated at 5R, with the go's
-// take on its D. This module subtracts the allowances in force, from its
-// own register of them.
+// Each credit arrives as rename's pool register (OA's rev 171 (a)) and a
+// correction (OI-74, OA's revs 215, 216): rename's counters take the go's
+// take a cycle late, so the register is the lagged counter less its floors
+// owed (the names', from held before last cycle's takes), saturated at 6R,
+// and the correction is last cycle's take of that credit, one-hot to R,
+// registered too. This module subtracts both with the allowances in force,
+// from its own register of them: the correction joins that one-hot, so it
+// takes the same compares.
 //
 // The take is parallel (rev 171 (c)): candidate (r, s), warp s's r-th uop,
 // is taken while its rank, the candidates before it (every warp's rounds
@@ -71,7 +75,7 @@ module ooe_go #(
   parameter int LT = 3,                  // a cycle's retirements' width
   localparam int H  = 2 * R - 1,         // decq's heads a slot
   localparam int PM = 4 * R,             // a pool's thermometer, saturated
-  localparam int XM = PM + R,            // a credit less its floors owed, saturated
+  localparam int XM = PM + 2 * R,        // a credit less its floors owed, saturated (with the correction, below)
   localparam int LX = $clog2(XM + 1)
 ) (
   input  logic              ooe_core_clk,
@@ -83,6 +87,7 @@ module ooe_go #(
   // predicate names): the counter less its floors owed, saturated at XM;
   // and each slot's unmet floors.
   input  logic [4*LX-1:0]   px_cq01h,
+  input  logic [4*(R+1)-1:0] pl_cq01h,    // each credit's correction: last cycle's take of it, one-hot 0 to R
   input  logic [S*LU-1:0]   unmet_g_cq01h,
   input  logic [S*LU-1:0]   unmet_p_cq01h,
   // And each slot's room to its ceiling, per class (GPR rows, predicates),
@@ -321,24 +326,41 @@ module ooe_go #(
     for (int s = 0; s < S; s++) first_w_cq02h[s] = with_w_cq01h[s] && (befd_cq02h[s * S +: S] & with_w_cq01h) == '0;
   end
   // The pool, what no allowance in force holds: one-hot, pe[c][p], the
-  // pool register is p beyond the allowances held (p = PM: PM or more); and
+  // pool register is p beyond the allowances held (p = PM: PM or more; p =
+  // 0: none beyond them, the register at or below them, as the model's
+  // max(0, credit - held)); and
   // pt[c][v], it covers v or more beyond them, to R, for the next holding.
   logic [4*(PM+1)-1:0] pe_cq02h;
   logic [4*(R+1)-1:0]  pt_cq02h;
   logic [LX-1:0]       pxc_cq01h;   // this credit's pool register
+  logic [2*R:0]        hk_cq02h;    // the allowances held and the correction, one-hot to 2R
+  // Each correction is one-hot (or none, as its register stands before the
+  // first reset edge, which this assertion sees).
+  logic [3:0] pl_ok_cq01h;
+  always_comb
+    for (int c = 0; c < 4; c++) begin
+      pl_ok_cq01h[c] = pl_cq01h[c * (R + 1) +: R + 1] == '0;
+      for (int k = 0; k < R + 1; k++)
+        if (pl_cq01h[c * (R + 1) +: R + 1] == (R + 1)'(1) << k) pl_ok_cq01h[c] = 1'b1;
+    end
+  `CCV_ASSERT(pl_one_hot, pl_ok_cq01h == '1)
   always_comb
     for (int c = 0; c < 4; c++) begin
       pxc_cq01h = px_cq01h[c * LX +: LX];
+      hk_cq02h = '0;
+      for (int h = 0; h < R + 1; h++)
+        for (int k = 0; k < R + 1; k++)
+          if (he_cq02h[c * (R + 1) + h] && pl_cq01h[c * (R + 1) + k]) hk_cq02h[h + k] = 1'b1;
       for (int p = 0; p < PM + 1; p++) begin
         pe_cq02h[c * (PM + 1) + p] = 1'b0;
-        for (int h = 0; h < R + 1; h++)
+        for (int h = 0; h < 2 * R + 1; h++)
           pe_cq02h[c * (PM + 1) + p] = pe_cq02h[c * (PM + 1) + p] |
-              (he_cq02h[c * (R + 1) + h] & (p == PM ? pxc_cq01h >= LX'(p + h) : pxc_cq01h == LX'(p + h)));
+              (hk_cq02h[h] & (p == PM ? pxc_cq01h >= LX'(p + h) : p == 0 ? pxc_cq01h <= LX'(h) : pxc_cq01h == LX'(p + h)));
       end
       for (int v = 0; v < R + 1; v++) begin
         pt_cq02h[c * (R + 1) + v] = 1'b0;
-        for (int h = 0; h < R + 1; h++)
-          pt_cq02h[c * (R + 1) + v] = pt_cq02h[c * (R + 1) + v] | (he_cq02h[c * (R + 1) + h] & (pxc_cq01h >= LX'(v + h)));
+        for (int h = 0; h < 2 * R + 1; h++)
+          pt_cq02h[c * (R + 1) + v] = pt_cq02h[c * (R + 1) + v] | (hk_cq02h[h] & (pxc_cq01h >= LX'(v + h)));
       end
     end
   // A warp's share at pool p: floor(p / n), the first's p - (n - 1) floor(p

@@ -1,0 +1,51 @@
+# Daniel's library, kept by TI beside the checks that read it (check-ngd,
+# check-cg). It began in test/ooe/ with OOE's first RTL (2026-10-09) and moved
+# here on 2026-10-24, since every block is timed against it.
+# Gates for a depth estimate in NGD (DA's response TI-3: a normalized gate
+# is a NAND equivalent by logical effort). Each gate's delay is its
+# fanout-of-4 delay, d = g*4 + p in units of tau, divided by a NAND2's
+# (4/3*4 + 2 = 7.33 tau), so a NAND2 at fanout 4 is 1.00 NGD. Delays are
+# load-independent: fanout beyond 4 (broadcast) and wire are costed outside
+# the logic, as OA's estimate does. Area is transistor count.
+GATE ZERO   0  Y=CONST0;
+GATE ONE    0  Y=CONST1;
+GATE BUF    4  Y=A;          PIN * NONINV 1 999 1.36 0 1.36 0
+GATE INV    2  Y=!A;         PIN * INV    1 999 0.68 0 0.68 0
+GATE NAND2  4  Y=!(A*B);     PIN * INV    1 999 1.00 0 1.00 0
+GATE NOR2   4  Y=!(A+B);     PIN * INV    1 999 1.18 0 1.18 0
+GATE NAND3  6  Y=!(A*B*C);   PIN * INV    1 999 1.32 0 1.32 0
+GATE NOR3   6  Y=!(A+B+C);   PIN * INV    1 999 1.68 0 1.68 0
+GATE NAND4  8  Y=!(A*B*C*D); PIN * INV    1 999 1.64 0 1.64 0
+GATE AOI21  6  Y=!(A*B+C);   PIN * INV    1 999 1.50 0 1.50 0
+GATE OAI21  6  Y=!((A+B)*C); PIN * INV    1 999 1.50 0 1.50 0
+GATE AOI22  8  Y=!(A*B+C*D); PIN * INV    1 999 1.64 0 1.64 0
+GATE OAI22  8  Y=!((A+B)*(C+D)); PIN * INV 1 999 1.64 0 1.64 0
+# The XOR family (Daniel, 2026-10-24; OI-76, DA tab rev 82): from sky130hd's
+# typical corner (sky130_fd_sc_hd__tt_025C_1v80.lib), each pin's delay over
+# NAND2_1's, both at fanout 4 (four times the cell's mean input capacitance)
+# and at the input slew a NAND2_1 makes at fanout 4 (0.102 ns, a fixed point);
+# tools/genlib-xor.py derives them from the .lib. Logical effort costs the
+# static gates above, and a static XOR is an AOI22 on both rails, already
+# here: these cells are taken from a library because two of them are not
+# static. Daniel's rule is that a cell may hold pass gates only where none of
+# their diffusions reaches an input pin or the output, and the PDK's netlists
+# meet it: in xor2_1 and xnor2_1 a NOR2 or NAND2 feeds an AOI21- or OAI21-type
+# stage, all static; in xor3_1 and xnor3_1 two levels of transmission gates
+# lie between static stages (A inverted twice, so both its rails are driven;
+# B and C on gates only, B selecting first, C last; the output an inverter).
+# So C, the last select, is the fast pin, and a carry-save tree puts each
+# level's late operand there. Area is transistor count, as above.
+GATE XOR2   10 Y=A*!B+!A*B;
+  PIN A UNKNOWN 1 999 2.86 0 2.86 0
+  PIN B UNKNOWN 1 999 2.71 0 2.71 0
+GATE XNOR2  10 Y=A*B+!A*!B;
+  PIN A UNKNOWN 1 999 3.13 0 3.13 0
+  PIN B UNKNOWN 1 999 2.98 0 2.98 0
+GATE XOR3   22 Y=A*!B*!C+!A*B*!C+!A*!B*C+A*B*C;
+  PIN A UNKNOWN 1 999 3.84 0 3.84 0
+  PIN B UNKNOWN 1 999 3.47 0 3.47 0
+  PIN C UNKNOWN 1 999 2.37 0 2.37 0
+GATE XNOR3  22 Y=!(A*!B*!C+!A*B*!C+!A*!B*C+A*B*C);
+  PIN A UNKNOWN 1 999 3.72 0 3.72 0
+  PIN B UNKNOWN 1 999 3.33 0 3.33 0
+  PIN C UNKNOWN 1 999 2.42 0 2.42 0

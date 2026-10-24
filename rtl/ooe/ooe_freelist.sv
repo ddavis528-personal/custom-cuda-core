@@ -50,6 +50,20 @@
 // bank order after every edge (through ports under CCV_CHECK, which
 // synthesis does not see).
 //
+// Each entry's owner, a slot (OI-73 (1), OA's revs 207 and 216): rename
+// gives the slot of the lane each port's entry goes to (own_slot, from its
+// Rename 1 lanes), and every head a port offers takes its port's slot at
+// the edge, asked for or not. An entry no port took is free, its owner
+// unread, and written again when one takes it, so no request reaches the
+// owners and no free sees an owner not yet written. Each cycle's frees are counted
+// by owner and group, exactly, and registered (fs); a second stage
+// compresses each slot's groups to a carry-save pair (ccv_common_csa), registered
+// (fsp), and rename adds the pair into each slot's held count at the next
+// edge, so held sees a free three edges after the retire stage's register
+// (the model's held_late 3; OI-76, OA's rev 219).
+// The counts are per group of FG consecutive entries, which keeps each
+// count shallow; rename sums the groups.
+//
 // Reset line (decision 6): the free bits reset to all free, the buffer to
 // empty, the bank pointers and bank order to 0, all reset state. The reset
 // input is flopped before any use (RST-1), so the state resets a cycle
@@ -75,6 +89,7 @@ module ooe_freelist #(
   parameter int A = 4,     // allocation ports (CCV_ISSUE_WIDTH)
   parameter int B = 8,     // candidate buffer entries (OI-38)
   parameter int K = 4,     // refill banks (OI-38); divides N
+  parameter int S = 4,     // owners: tier-1 slots (CCV_TIER1_WARPS)
   localparam int W  = $clog2(N),
   localparam int M  = N / K,
   localparam int LM = $clog2(M),
@@ -82,16 +97,24 @@ module ooe_freelist #(
   localparam int LK = (K > 1) ? $clog2(K) : 1,
   localparam int LA = $clog2(A + 1),
   localparam int LP = (M > 1) ? $clog2(M) : 1,   // tree levels over a bank
-  localparam int P  = 1 << LP                    // a bank, padded to a power of 2
+  localparam int P  = 1 << LP,                   // a bank, padded to a power of 2
+  localparam int LS = (S > 1) ? $clog2(S) : 1,
+  localparam int FG = (N % 12 == 0) ? 12 : ((N % 8 == 0) ? 8 : N),   // entries a free count covers
+  localparam int NF = N / FG,
+  localparam int LF = $clog2(FG + 1),            // a group's frees in a cycle
+  localparam int FP = 1 << $clog2(FG),           // a group, padded to a power of 2
+  localparam int LT = $clog2(N + 1)              // a slot's frees in a cycle
 ) (
   input  logic           ooe_core_clk,
   input  logic           ooe_rst_r00h,
   input  logic [A-1:0]   alloc_req_cq01h,    // port k takes its head entry
   input  logic           free_l_cq00h,       // a free reaches free_mask next cycle (the ROB's decision)
   input  logic [N-1:0]   free_mask_cq01h,    // entries freed this cycle (the retire stage's register)
+  input  logic [A*LS-1:0] own_slot_cq01h,    // the slot of the lane port k's entry goes to this cycle
   output logic [A-1:0]   alloc_v_cq02h,      // head entry k is available to port k
   output logic [A*W-1:0] alloc_idx_cq02h,    // head entry k (meaningful while available)
-  output logic [LB-1:0]  avail_cq02h         // entries allocation can take: the buffer, less those in transit
+  output logic [LB-1:0]  avail_cq02h,        // entries allocation can take: the buffer, less those in transit
+  output logic [S*2*LT-1:0] fsp_cq03h        // the frees of two cycles ago by owner, each slot's a carry-save pair (s * 2 * LT)
 `ifdef CCV_CHECK
   // Read only by test/ooe/freelist_tb.cpp, which compares the whole state
   // (OA's choice for TI-20): no design port, so synthesis sees none.
@@ -408,6 +431,83 @@ module ooe_freelist #(
     end else begin
       rq_cq02h      <= rq_cq01h;
       free_en_cq01h <= free_l_cq00h;
+    end
+  end
+
+  // -- Owners and the frees they count ------------------------------------------
+  // Each head a port offers takes its port's slot, from the grant ports'
+  // registers (the buffer's output copy, out_cq02h, and the registered take).
+  logic [N*LS-1:0] own_cq02h;
+  logic            own_en_cq02h;
+  assign own_en_cq02h = alloc_v_cq02h != '0;
+  function automatic logic [N*LS-1:0] owners_nx(input logic [N*LS-1:0] o, input logic [A-1:0] v,
+                                                input logic [A*W-1:0] idx, input logic [A*LS-1:0] sl);
+    logic [N*LS-1:0] x;
+    x = o;
+    for (int e = 0; e < N; e++)
+      for (int k = 0; k < A; k++)
+        if (v[k] && idx[k * W +: W] == W'(e)) x[e * LS +: LS] = sl[k * LS +: LS];
+    owners_nx = x;
+  endfunction
+  always_ff @(posedge ooe_core_clk) begin
+    if (own_en_cq02h) own_cq02h <= owners_nx(own_cq02h, alloc_v_cq02h, alloc_idx_cq02h, own_slot_cq01h);
+  end
+  // This cycle's frees by owner and group (FG consecutive entries), exact:
+  // a balanced count of each group's freed entries a slot owns. Clocked
+  // while a free comes (its lead's flop) or a count is set.
+  function automatic logic [LF-1:0] count_of(input logic [FG-1:0] v);
+    logic [FP*LF-1:0] t;
+    t = '0;
+    for (int i = 0; i < FG; i++) t[i * LF +: LF] = LF'(v[i]);
+    for (int l = 1; l < FP; l = l * 2)
+      for (int i = 0; i + l < FP; i = i + 2 * l) t[i * LF +: LF] = t[i * LF +: LF] + t[(i + l) * LF +: LF];
+    count_of = t[LF-1:0];
+  endfunction
+  logic [S*NF*LF-1:0] fs_nx_cq01h;
+  always_comb
+    for (int s = 0; s < S; s++)
+      for (int g = 0; g < NF; g++) begin
+        logic [FG-1:0] v;
+        for (int i = 0; i < FG; i++)
+          v[i] = free_mask_cq01h[g * FG + i] && own_cq02h[(g * FG + i) * LS +: LS] == LS'(s);
+        fs_nx_cq01h[(s * NF + g) * LF +: LF] = count_of(v);
+      end
+  // The counts hold a free's while they were loaded with one (fsv: the
+  // lead's flop, a cycle on), so they clear at the next edge.
+  logic [S*NF*LF-1:0] fs_cq02h;
+  logic fs_en_cq01h, fsv_cq02h;
+  assign fs_en_cq01h = free_en_cq01h || fsv_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      fs_cq02h  <= '0;
+      fsv_cq02h <= 1'b0;
+    end else begin
+      fsv_cq02h <= free_en_cq01h;
+      if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
+    end
+  end
+
+  // The second stage: each slot's groups to a carry-save pair, registered
+  // while the counts hold a free's (fsv) or the pair is set (fpv), so it
+  // clears at the next edge.
+  logic [S*2*LT-1:0] fsp_nx_cq02h;
+  for (genvar s = 0; s < S; s++) begin : g_sp
+    logic [NF*LT-1:0] gop_cq02h;
+    for (genvar g = 0; g < NF; g++) begin : g_g
+      assign gop_cq02h[g * LT +: LT] = LT'(fs_cq02h[(s * NF + g) * LF +: LF]);
+    end
+    logic [LT-1:0] sum_cq02h;
+    ccv_common_csa #(.N(NF), .W(LT)) u_csa (.op(gop_cq02h), .sum(sum_cq02h), .pair(fsp_nx_cq02h[s * 2 * LT +: 2 * LT]));
+  end
+  logic fsp_en_cq02h, fpv_cq03h;
+  assign fsp_en_cq02h = fsv_cq02h || fpv_cq03h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      fsp_cq03h <= '0;
+      fpv_cq03h <= 1'b0;
+    end else begin
+      fpv_cq03h <= fsv_cq02h;
+      if (fsp_en_cq02h) fsp_cq03h <= fsp_nx_cq02h;
     end
   end
 

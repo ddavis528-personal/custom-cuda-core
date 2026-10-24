@@ -3824,8 +3824,41 @@ void audit() {
   };
   Config base = baseConfig();
   base.fits_stale = 6;
+  if (const char *ac = std::getenv("AUDIT_CFG")) {   // a setting the audit runs under, as CCV_OOE_CONFIG (e.g. scarce names)
+    const std::string e = base.apply(ac);
+    if (!e.empty()) { std::fprintf(stderr, "%s\n", e.c_str()); return; }
+  }
   const R d = run(base);
   std::printf("audit: the decided go (fits_stale 6), 48 seeds: %.0f cycles\n", d.cy);
+  {
+    // OI-74 (iii), OI-75 (b) and OI-76, OA's revs 216 and 219: rename's held
+    // and name counts see frees three edges late, the pool's floors are owed
+    // from held before last cycle's takes, and the names' pool is formed
+    // from last cycle's held. Against all of it exact.
+    Config c = base;
+    c.held_late = 0;
+    c.owed_lag = false;
+    c.names_pool_lag = false;
+    const R x = run(c);
+    std::printf("audit: frees seen at once, the pool exact (held_late 0, owed_lag 0, names_pool_lag 0): %.1f cycles (%+.2f%%)\n",
+                x.cy, 100.0 * (x.cy / d.cy - 1));
+  }
+  {
+    // OI-76: the names' pool from last cycle's held (names_pool_lag), against
+    // OA's rev 216's form.
+    Config c = base;
+    c.names_pool_lag = false;
+    const R x = run(c);
+    std::printf("audit: the names' pool from this cycle's held (names_pool_lag 0): %.1f cycles (%+.2f%%)\n", x.cy,
+                100.0 * (x.cy / d.cy - 1));
+  }
+  {
+    // OA's rev 216's lateness, before the free list's second stage.
+    Config c = base;
+    c.held_late = 2;
+    const R x = run(c);
+    std::printf("audit: frees two edges late (held_late 2): %.1f cycles (%+.2f%%)\n", x.cy, 100.0 * (x.cy / d.cy - 1));
+  }
   for (const char *k : keys) std::printf("audit:   %-28s %10.1f per run\n", k, d.n.at(k));
   Config ny = base;
   ny.take_young = false;
