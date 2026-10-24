@@ -37,7 +37,7 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
-| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16); measured: 85% of CoreMark-derived's cycles (AR-24) |
+| PF-15 | `chwidth` without serialising rename | rename | adopted by decision (DA, OA-16, 2026-10-24), not yet built |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
 | PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: no gain at 8 or 16 while PF-15's hold stands) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
@@ -295,6 +295,17 @@ it.
   core so far. O-80's sized forms and compiler F-196 remove up to about 74% of the
   `chwidth` first (TI's rev 180), so OA-16 goes to DA priced on what remains
   on CP's next export.
+- **Decided (Daniel, 2026-10-24; DA's response OA-16, DA tab rev 92):**
+  adopted, on OA's estimate of the residual after O-80 and compiler F-196
+  (about 1.5M cycles held against about 1.0M without), ahead of the
+  measured figure. The form is the design of record above. Each register's
+  width lives in the RAT and its checkpoints. A narrowing renames in place,
+  and a widening writes a new name on every lane (O-78), except 4 to 8.
+  F-WIDTH and F-FORMAT move to rename. A `chwidth` ends its warp's rename
+  group. `chwidth.multi`'s siblings lose the hold. Estimated cost: 640 to
+  770 flops and about 20% more RAT read mux. OA reopens it with DA if TI's
+  measured residual on CP's next export is under a quarter of the run. It
+  moves to adopted with the commit that builds it.
 
 ### PF-16 More than one redirect a cycle
 
