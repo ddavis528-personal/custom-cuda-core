@@ -125,6 +125,11 @@ struct Op {
   bool arrive = false, phase = false, aw = true, mark = false;
   /// kChw: a chwidth.multi sibling (AR-24 (c)): serial 0 and commit_width.
   bool sibling = false;
+  bool chw_writes = false;   ///< kChw: writes its register (DEC's gdst), so it renames a destination
+  /// kBranch: a ret (AR-24 (b)), its target offset in the code window on
+  /// its done's aux.
+  bool ret = false;
+  uint32_t ret_to = 0;
   uint32_t lanes = 0;
 };
 
@@ -188,6 +193,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.ckpt = ckpt;
     u.pred_taken = o.pred_taken;
     u.imm = 8;
+    if (o.ret) u.attr_raw |= 1u << 19;
     break;
   case kExit:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 0, 0);
@@ -200,7 +206,7 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.shape.pdata = o.phase;
     break;
   case kChw:
-    u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, o.sibling ? 0 : 1, 0) | (o.sibling ? 1u << 20 : 0u);
+    u.attr_raw = attr(0, 1, 0, o.chw_writes, 0, 0, 0, o.sibling ? 0 : 1, 0) | (o.sibling ? 1u << 20 : 0u);
     u.imm = o.chw;
     break;
   }
@@ -852,6 +858,7 @@ struct Env {
       if (o.k == kBranch) {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
         d.branch_mask = d.branch_taken ? kFullMask : 0;
+        if (o.ret) d.aux = o.ret_to;
       }
       // A guarded barrier's guard lanes on branch_mask, wait.phase's
       // phases on aux (TI-40, OA's rev 226).
@@ -2792,6 +2799,40 @@ void testChwidth() {
              i.src_w[0], i.dst_w);
 }
 
+/// AR-24 (b) (OA's rev 223): a ret resolves at RCU, whose done names the
+/// lowest active lane's target offset on aux and the lanes sharing it on
+/// branch_mask. Mispredicted (FET predicts no ret target), it redirects
+/// those lanes to {PC[47:32], aux} with stay, so the rest re-issue the ret.
+/// A conditional branch's redirect never sets stay.
+void testRet() {
+  for (const bool ret : {true, false}) {
+    g_test = ret ? "ret redirect" : "branch redirect, no stay";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c, 7);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 3; a.nsrc = 1; p.push_back(a);
+    Op b; b.k = kBranch; b.taken = true; b.pred_taken = false; b.ret = ret; b.ret_to = 0x2468; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 4; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    unsigned n = 0;
+    for (const Outputs &o : e.log)
+      for (const Redirect &r : o.redirects)
+        if (!r.epoch_only) {
+          ++n;
+          EXPECT(r.stay == ret, "stay %u", unsigned(r.stay));
+          if (ret) EXPECT(r.target_pc == 0x2468, "ret target %llx, want {PC[47:32], aux} = 0x2468",
+                          (unsigned long long)r.target_pc);
+        }
+    EXPECT(n == 1, "%u redirects", n);
+    EXPECT(e.core.counters["branch.ret_redirect"] == (ret ? 1u : 0u), "ret redirects %llu",
+           (unsigned long long)e.core.counters["branch.ret_redirect"]);
+  }
+}
+
 /// AR-24 (c) (OA's rev 222): chwidth.multi cracks into a uop per register,
 /// each but the last a commit_width sibling (serial 0) that commits its
 /// register's width at retire with no hold; the last holds as a chwidth.
@@ -2825,6 +2866,25 @@ void testChwidthMulti() {
       continue;
     }
     EXPECT(seen && ok, "the lane op read R4-R6 at other than 8 bits");
+    // A chwidth that writes its register names it at the new width (TI's
+    // rev 185): its destination's code is the width it sets.
+    {
+      Env f(c);
+      f.keep_log = true;
+      std::vector<Op> q;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 2; w.chw_writes = true; w.src[0] = 4; w.nsrc = 1; q.push_back(w);
+      Op ex2; ex2.k = kExit; q.push_back(ex2);
+      f.launch(0, 0, q);
+      f.finish();
+      bool got = false;
+      for (const Outputs &o : f.log)
+        for (const Issue &i : o.issues)
+          if (i.tid == 1) {
+            got = true;
+            EXPECT(i.dst_w == 2 && i.src_w[0] == 0, "chwidth's widths dst %u src %u, want 2 and 0", i.dst_w, i.src_w[0]);
+          }
+      EXPECT(got, "the chwidth never issued");
+    }
     EXPECT(e.core.counters["chwidth.sibling"] == 2, "%llu siblings committed",
            (unsigned long long)e.core.counters["chwidth.sibling"]);
   }
@@ -4595,6 +4655,7 @@ int main(int argc, char **argv) {
   testMemFault();
   testChwidth();
   testChwidthMulti();
+  testRet();
   testWidthCodes();
   testWidthFault();
   testFormatFault();

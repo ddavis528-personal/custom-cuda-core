@@ -661,6 +661,9 @@ struct Redirect {       ///< ccv_ooe_fet_redirect
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
   bool epoch_only = false;
+  /// A ret's redirect (AR-24 (b), OA's rev 223): the branch's active lanes
+  /// not in taken_mask stay at the ret, to re-issue with their own targets.
+  bool stay = false;
   /// A demotion's rewind beat (TI-24 (3), OA's revs 150-151; TI's e95a6a8):
   /// with epoch_only, FET sets the PCs of the lanes in taken_mask to
   /// target_pc, each the oldest unretired uop of those lanes.
@@ -1043,6 +1046,7 @@ private:
     // branch
     bool resolved = false, taken = false;
     uint32_t taken_mask = 0;
+    uint32_t ret_aux = 0;              ///< a ret's target offset, its done's aux (AR-24 (b))
     uint32_t bar_guard = ~0u;          ///< a guarded barrier's guard lanes, from its done (TI-40)
     uint32_t bar_phase = 0;            ///< wait.phase's expected phases, from its done's aux
     /// Width codes at rename (AR-24 (d)): each source's, a CAS's two, the
@@ -1659,6 +1663,9 @@ public:
   /// A destination's width at rename: its committed width (OI-57; OA's rev
   /// 166). chwidth holds rename until it retires, so the table is current.
   unsigned dstWidth(unsigned slot, const Uop &u) const {
+    // A chwidth's destination is its register at the new width (TI's rev
+    // 185): the width it commits at retire, a sibling's too.
+    if (u.attr.serial == kSerChwidth || u.attr.commit_width) return u.imm & 3u;
     return cfg_.inject_width_from_dec ? u.w : slot_[slot].cw[u.dst & 15];
   }
   /// The width a destination is allocated at: a full row under full_rows.

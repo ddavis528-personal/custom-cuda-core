@@ -1355,7 +1355,12 @@ added with the event.
     sibling (sched_attr bit 20, serial 0) that writes its register's
     committed width at its retire with no hold (`chwidth.sibling`), the
     last a chwidth that holds. testChwidthMulti covers it; control
-    `sibling-uncommitted` drops the siblings' commits;
+    `sibling-uncommitted` drops the siblings' commits. A chwidth that writes
+    its register names it at the new width, so its dst_width is the code
+    it sets (TI's rev 185). A ret (sched_attr bit 19; AR-24 (b), OA's rev
+    223) redirects the lanes RCU's done names to {PC[47:32], aux} with
+    `stay`, so its other lanes stay at the ret and re-issue it with their
+    own targets (`branch.ret_redirect`; testRet);
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record
