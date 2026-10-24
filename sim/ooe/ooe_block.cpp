@@ -405,13 +405,12 @@ private:
                                      k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
       put(is, c.ooe_rcu, "opcode", x.copy ? kOpCopy : x.opcode);
       put(is, c.ooe_rcu, "bypass_group", x.byp_group);
-      // Every S1 register is full width (at position 0); each operand
-      // carries the warp's width code. bad-pos names the
-      // first lane op's 32-bit destination at position 1, which overruns its
-      // row: RCU must refuse it.
+      // Each operand carries its register's width code (AR-24 (d)). bad-pos
+      // names the first lane op's 32-bit destination at position 1, which
+      // overruns its row: RCU must refuse it.
       for (unsigned i = 0; i != 3; ++i)
-        is.set(field(c.ooe_rcu, "src_width").lsb + ccv::kWChwidth * i, ccv::kWChwidth, x.chwidth);
-      put(is, c.ooe_rcu, "dst_width", x.chwidth);
+        is.set(field(c.ooe_rcu, "src_width").lsb + ccv::kWChwidth * i, ccv::kWChwidth, x.src_w[i]);
+      put(is, c.ooe_rcu, "dst_width", x.dst_w);
       const OpInfo *gop = x.copy ? nullptr : opByCode(x.opcode);
       if (k_.brk == "bad-pos" && x.res == ooe::Issue::kLaneOp && gop && gop->gdst &&
           !bad_pos_done_) {
@@ -454,10 +453,11 @@ private:
         // TI-34; MIU's and CRU's checks refuse a warp of any other slot.
         put(mo, c.ooe_miu, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
-        // The memop's pipe footprint at its data position (0 in S1).
-        // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
+        // The memop's pipe footprint at its data register's position, at
+        // that register's width (AR-24 (d)). narrow-pipes names one pipe for
+        // a 32-bit memop: MIU refuses it.
         put(mo, c.ooe_miu, "pipes",
-            k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
+            k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, x.data_pos));
       }
       // A demotion's discard of an empty ROB names no instruction (TI-21).
       sendOn(c.ooe_miu, x.port, mo,

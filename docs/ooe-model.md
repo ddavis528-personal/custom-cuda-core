@@ -1337,8 +1337,20 @@ added with the event.
     the check. F-FORMAT (4) reads DEC's fmt_rsv and fmt_opnd (TI's
     57048d7): it faults where fmt_rsv's bit for the committed width of
     fmt_opnd's register is set. Control `no-format-fault` drops it.
-    Issue still sends one committed chwidth per slot, the model's older
-    simplification;
+    The issue and the memop carry per-register widths (AR-24 (d)): each
+    source's and the destination's width code is its register's committed
+    width at rename, held in the ROB entry (a register never written is
+    the zero name, so the table, not the name, has its width). The op's
+    chwidth is its destination's, else its first source's, and a memop's
+    chwidth and pipes are its data register's. An atomic's temporaries T
+    and N are 32-bit. `full_rows` (AR-24's interim, DA tab rev 87; OA's rev
+    225, AR's rev 174) allocates every register as a full row at position
+    0, charged four sections, while the width codes stay the registers'
+    own, which the stubs mask the write by. A park under it records
+    position 0 and the committed width, and the restore takes full rows
+    again. `CCV_OOE_CONFIG=full_rows=1` turns it on, and testWidthCodes
+    covers both settings. The demotion map still names every register 32
+    bits, as it did;
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record

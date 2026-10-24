@@ -48,7 +48,8 @@ std::string Config::apply(const std::string &spec) {
                                      {"miss_lead", &miss_lead},
                                      {"ready_rep_late", &ready_rep_late}, {"replay_drain", &replay_drain},
                                      {"owed_lag", &owed_lag},
-                                     {"names_pool_lag", &names_pool_lag}};
+                                     {"names_pool_lag", &names_pool_lag},
+                                     {"full_rows", &full_rows}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -603,6 +604,25 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   return w == 1 ? (home % 2) * 2 : home % 4;
 }
 
+/// A memop's data register: a load's destination; a store's highest read
+/// source.
+unsigned Core::dataName(const RobEntry &r) const {
+  unsigned data = r.alloc_gpr ? r.pnew : zeroName();
+  if (!r.alloc_gpr)
+    for (unsigned i = 0; i != 3; ++i)
+      if ((r.u.shape.gpr_reads >> i) & 1u) data = r.psrc[i];
+  return data;
+}
+
+/// Its width code (AR-24 (d)), at rename.
+unsigned Core::dataWidth(const RobEntry &r) const {
+  unsigned w = r.alloc_gpr ? r.wdst : 0;
+  if (!r.alloc_gpr)
+    for (unsigned i = 0; i != 3; ++i)
+      if ((r.u.shape.gpr_reads >> i) & 1u) w = r.wsrc[i];
+  return w;
+}
+
 /// An entry's resources (OI-31, OI-33, AR-12). A memop takes the MIU pipes
 /// of its data register's sections; an op RCU executes, or a
 /// warp-collective or predicate op, takes R; a lane op takes the union of
@@ -611,12 +631,7 @@ unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
   const Uop &u = r.u;
   const SchedAttr &a = u.attr;
   if (r.is_mem && !copy_half) {
-    // The data register: a load's destination; a store's highest read source.
-    unsigned data = r.alloc_gpr ? r.pnew : zeroName();
-    if (!r.alloc_gpr)
-      for (unsigned i = 0; i != 3; ++i)
-        if ((u.shape.gpr_reads >> i) & 1u) data = r.psrc[i];
-    unsigned m = sectionsOf(data);
+    unsigned m = sectionsOf(dataName(r));
     if (!m) m = 0xFu;
     return m << 5;
   }
@@ -2057,7 +2072,7 @@ void Core::control() {
         Parked &pk = parked_[s.warp % kWarpIds];
         for (unsigned a = 0; a != kArchGprs; ++a) {
           const unsigned n = s.crat[a];
-          const bool narrow = cfg_.sectioned && !isZeroName(n);
+          const bool narrow = cfg_.sectioned && !cfg_.full_rows && !isZeroName(n);
           pk.pos[a] = uint8_t(narrow ? namePos(n) : 0);
           pk.w[a] = uint8_t(narrow ? nameWidth(n) : s.cw[a]);
           // A name's width is the committed one, taken at rename (OA's rev
@@ -2728,7 +2743,9 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   is.pred_we = u.pred_we;
   is.ppold = r.merge ? r.ppold : 0;
   is.opcode = u.opcode;
-  is.chwidth = s.chwidth;
+  // Each operand's own width (AR-24 (d)), not the warp's last chwidth.
+  for (unsigned i = 0; i != 3; ++i) is.src_w[i] = r.wsrc[i];
+  is.dst_w = r.alloc_gpr ? r.wdst : 0;
   is.guarded = u.shape.guard;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
@@ -2753,6 +2770,12 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     is.psrc[0] = step == 1 ? r.psrc[0] : step == 2 ? r.atom_t : r.ptmp_n;
     is.psrc[1] = step == 1 ? r.psrc[1] : step == 2 ? (u.cas ? r.pcas[0] : r.psrc[2]) : 0;
     is.psrc[2] = step == 2 && u.cas ? r.pcas[1] : 0;
+    // Widths: A1's address sources and its destination, the atomic's rd;
+    // T and N are 32-bit temporaries; A2's operands their registers'.
+    is.src_w[0] = step == 1 ? r.wsrc[0] : 0;
+    is.src_w[1] = step == 1 ? r.wsrc[1] : step == 2 ? (u.cas ? r.wcas[0] : r.wsrc[2]) : 0;
+    is.src_w[2] = step == 2 && u.cas ? r.wcas[1] : 0;
+    is.dst_w = step == 1 && r.alloc_gpr ? r.wdst : 0;
     is.gpr_reads = uint8_t(step == 1 ? a1_reads : step == 2 ? 1u | (a2_ops << 1) : 1u);
     is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
@@ -2847,7 +2870,9 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   if (!r.merge && (u.group_mask != kFullMask || u.shape.guard))
     err("V-05: rob tag %u issues without merge under a partial mask or guard", tagOf(x.slot, x.rob));
 
-  const Issue is = makeIssue(x.slot, x.rob, port, x.atom);
+  Issue is = makeIssue(x.slot, x.rob, port, x.atom);
+  // The op's width: its destination's, else its first source's (AR-24 (d)).
+  is.chwidth = !isZeroName(is.pdst) && is.pdst != noGpr() ? is.dst_w : is.src_w[0];
   out.issues.push_back(is);
   const bool lane_step = x.atom == 2;
   if (lane_step || !r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;
@@ -2896,7 +2921,10 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
     m.arg_slot = u.arg_slot;
     m.local_form = u.local_form;         // DEC's, unexamined (IS-19)
-    m.chwidth = s.chwidth;
+    // The data register's width (AR-24 (d)): a load's destination, a
+    // store's highest read source, as resOf takes its pipes.
+    m.chwidth = dataWidth(r);
+    m.data_pos = cfg_.sectioned ? namePos(dataName(r)) : 0;
     if (x.atom) {
       // OOE's own codes (V-72): the read into T, at the address; the write,
       // its data alone.
@@ -3133,7 +3161,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   unsigned pos = 0, plan = 0;
   if (wgpr && cfg_.sectioned && !atomic) {
     pos = placePos(si, u, merge);
-    plan = planSlice(si, dstWidth(si, u), pos, gprAllowed(si, 1));
+    plan = planSlice(si, allocWidth(si, u), pos, gprAllowed(si, 1));
   }
   // An atomic's names are whole rows when sectioned: 32-bit data.
   if (atomic ? !gprAllowed(si, 2) : wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
@@ -3227,6 +3255,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     for (unsigned i = 0; i != 3; ++i) r.psrc[i] = s.rat[u.src[i] & 15];
     if (u.cas)
       for (unsigned i = 0; i != 2; ++i) r.pcas[i] = s.rat[u.cas_src[i] & 15];
+    for (unsigned i = 0; i != 3; ++i) r.wsrc[i] = s.cw[u.src[i] & 15];
+    for (unsigned i = 0; i != 2; ++i) r.wcas[i] = u.cas ? s.cw[u.cas_src[i] & 15] : 0;
+    r.wdst = uint8_t(dstWidth(si, u));
     r.pold = s.rat[u.dst & 15];
     r.ppguard = s.prat[u.pred_guard & 3];
     r.ppold = s.prat[u.pred_dst & 3];
@@ -3235,7 +3266,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.pq[1] = s.prat[(u.imm >> 3) & 3];
     }
     if (wgpr) {
-      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, dstWidth(si, u), pos) : allocGpr(si);
+      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, allocWidth(si, u), pos) : allocGpr(si);
       r.alloc_gpr = true;
       s.rat[u.dst & 15] = r.pnew;
     }
@@ -3414,7 +3445,7 @@ void Core::restoreStep() {
     // TI-25: its own row, at its parked position and committed width.
     const Parked &pk = parked_[s.warp % kWarpIds];
     const bool lost = cfg_.inject_park_layout_lost;
-    s.crat[a] = s.rat[a] = cfg_.sectioned ? allocSlice(si, lost ? 0 : pk.w[a], lost ? 0 : pk.pos[a], true)
+    s.crat[a] = s.rat[a] = cfg_.sectioned ? allocSlice(si, lost || cfg_.full_rows ? 0 : pk.w[a], lost ? 0 : pk.pos[a], true)
                                           : allocGpr(si);
     RatLog::Ren &w = port(k);
     w.gwe = true;

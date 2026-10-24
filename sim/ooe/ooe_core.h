@@ -166,6 +166,11 @@ struct Config {
   /// its unit's minimum, and select grants nine resources (S0-S3, R, P0-P3).
   /// Off in S1 until OI-32's schema carries positions: names are then rows.
   bool sectioned = false;
+  /// AR-24's interim (DA tab rev 87; OA's rev 225, AR's rev 174): every
+  /// register a full row at position 0, charged four sections, while each
+  /// operand's width code on the issue and memop stays the register's own
+  /// (the stubs mask the write). Off, a narrow register takes its slice.
+  bool full_rows = false;
   /// Placement of a narrow destination with no narrow source (OA-14):
   /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
   /// every warp; 2 the home position, advanced at each taken backward branch
@@ -608,6 +613,10 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   bool copy = false;    ///< the copy-only op (A-38): opcode CCV_OP_PRF_COPY
   bool send_imm = false;
   uint32_t imm = 0;
+  /// Width codes (AR-24 (d)): each source's, the destination's (which the
+  /// merge source shares), from the registers' committed widths at rename;
+  /// chwidth the op's, its destination's, else its first source's.
+  unsigned src_w[3] = {}, dst_w = 0;
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
   uint8_t gpr_reads = 0;         ///< likewise
@@ -630,6 +639,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
+  unsigned data_pos = 0;   ///< the data register's position (its pipes start there; AR-24 (d))
   unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
   unsigned local_form = 0;                ///< DEC's, unexamined (IS-19)
 };
@@ -1026,6 +1036,10 @@ private:
     uint32_t taken_mask = 0;
     uint32_t bar_guard = ~0u;          ///< a guarded barrier's guard lanes, from its done (TI-40)
     uint32_t bar_phase = 0;            ///< wait.phase's expected phases, from its done's aux
+    /// Width codes at rename (AR-24 (d)): each source's, a CAS's two, the
+    /// destination's, from the committed table. A register read before any
+    /// write is the zero name, so the table, not the name, holds its width.
+    uint8_t wsrc[3] = {}, wcas[2] = {}, wdst = 0;
     bool ckpt_live = false;
     // fault
     bool fault = false;
@@ -1220,6 +1234,8 @@ private:
   /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
   /// 4 RCU (R), 5-8 MIU pipes P0-P3.
   unsigned resOf(const RobEntry &r, bool copy_half, bool widen = true) const;
+  unsigned dataName(const RobEntry &r) const;
+  unsigned dataWidth(const RobEntry &r) const;
   /// An RS entry's resources: resOf for its ROB entry, or an atomic step's.
   unsigned resEntry(unsigned e, bool widen = true) const;
   void selectSectioned();
@@ -1636,6 +1652,8 @@ public:
   unsigned dstWidth(unsigned slot, const Uop &u) const {
     return cfg_.inject_width_from_dec ? u.w : slot_[slot].cw[u.dst & 15];
   }
+  /// The width a destination is allocated at: a full row under full_rows.
+  unsigned allocWidth(unsigned slot, const Uop &u) const { return cfg_.full_rows ? 0 : dstWidth(slot, u); }
   /// Tests only: a launched warp's committed widths as though its chwidths
   /// had retired (launch itself sets every register to 32 bits, A-64).
   void presetWidths(unsigned slot, const std::array<uint8_t, 16> &cw) { slot_[slot].cw = cw; }
@@ -1647,6 +1665,7 @@ public:
   /// No GPR destination on the issue and the memop (TI-37).
   unsigned noGpr() const { return cfg_.inject_none_row_zero ? 0 : zeroName(); }
   unsigned nameWidth(unsigned n) const { return n < gw_.size() ? gw_[n] : 0; }
+
   /// The sections a register occupies; none for the zero register.
   unsigned sectionsOf(unsigned n) const {
     if (isZeroName(n)) return 0;

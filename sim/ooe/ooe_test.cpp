@@ -2782,7 +2782,50 @@ void testChwidth() {
   e.launch(0, 0, p);
   e.finish();
   for (const Outputs &o : e.log) for (const Issue &i : o.issues)
-    if (i.tid == 2) EXPECT(i.chwidth == 2, "the younger op read chwidth %u, not the committed one", i.chwidth);
+    if (i.tid == 2)   // AR-24 (d): each operand its own register's width
+      EXPECT(i.src_w[0] == 2 && i.dst_w == 0, "the younger op read widths %u (R0) and %u (R2), not the committed 2 and 0",
+             i.src_w[0], i.dst_w);
+}
+
+/// AR-24 (d): each operand carries its own register's width, from the
+/// committed table at rename, and a memop its data register's. Under the
+/// interim full_rows (DA tab rev 87; OA's rev 225, AR's rev 174) the 8-bit
+/// R2 takes a full row at position 0, yet its width code on the issue and
+/// the store stays 8-bit; off, it takes an 8-bit slice.
+void testWidthCodes() {
+  for (const bool full : {false, true}) {
+    g_test = full ? "width codes (full rows)" : "width codes";
+    Config c = baseConfig();
+    c.sectioned = true;
+    c.full_rows = full;
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op w; w.k = kChw; w.dst = 2; w.chw = 2; p.push_back(w);
+    Op a; a.k = kLane; a.dst = 2; a.w = 2; a.src[0] = 1; a.nsrc = 1; p.push_back(a);
+    Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 4; st.src[1] = 2; p.push_back(st);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    bool lane = false, store = false;
+    for (const Outputs &o : e.log) {
+      for (const Issue &i : o.issues)
+        if (i.tid == 2) {
+          lane = true;
+          EXPECT(i.dst_w == 2 && i.src_w[0] == 0 && i.chwidth == 2, "lane op widths dst %u src %u op %u, want 2, 0, 2",
+                 i.dst_w, i.src_w[0], i.chwidth);
+          EXPECT(e.core.nameWidth(i.pdst) == (full ? 0u : 2u), "R2 allocated at width %u", e.core.nameWidth(i.pdst));
+          if (full) EXPECT(e.core.namePos(i.pdst) == 0, "R2 at position %u under full rows", e.core.namePos(i.pdst));
+        }
+      for (const Memop &m : o.memops)
+        if (m.tid == 3) {
+          store = true;
+          EXPECT(m.chwidth == 2, "the store's chwidth %u, want its data register's 2", m.chwidth);
+        }
+    }
+    EXPECT(lane && store, "the lane op or the store never issued");
+  }
 }
 
 /// F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): the committed
@@ -4357,6 +4400,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testFault();
   testBarrier();
   testChwidth();
+  testWidthCodes();
   testSections();
   testV59();
   testFixedWindowPreds();
@@ -4507,6 +4551,7 @@ int main(int argc, char **argv) {
   testBarrierFault();
   testMemFault();
   testChwidth();
+  testWidthCodes();
   testWidthFault();
   testFormatFault();
   testSections();
