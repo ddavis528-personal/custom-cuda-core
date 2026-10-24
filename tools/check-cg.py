@@ -1083,9 +1083,14 @@ endmodule
         hd = os.path.join(self.dir, "harness")
         shutil.rmtree(hd, ignore_errors=True)
         r = run(["verilator", "--binary", "--timing", "-Wno-fatal", "-Wno-lint",
-                 "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb",
-                 # A blackboxed design child's assertions name the package (OI-71).
-                 "--Mdir", hd, "-o", "cg_tb", "rtl/ccv_assert_pkg.sv", tf, nv]
+                 "-Wno-style", "-Irtl/include", "-Irtl/generated", "--top-module", "cg_tb"]
+                # A blackboxed child may instantiate a shared cell (OI-77: ooe_freelist's
+                # ccv_common_csa). A library directory resolves only modules still
+                # missing, so the netlist's flattened copy never clashes.
+                + [x for d in ("rtl/common",) if os.path.isdir(os.path.join(ROOT, d))
+                   for x in ("-y", d)]
+                # A blackboxed design child's assertions name the package (OI-71).
+                + ["--Mdir", hd, "-o", "cg_tb", "rtl/ccv_assert_pkg.sv", tf, nv]
                 + [self.spec["blackbox"][k] for k in sorted(self.spec.get("blackbox", {}))])
         if r.returncode:
             raise SystemExit("check-cg: unit %s: harness build failed:\n%s"
