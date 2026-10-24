@@ -106,7 +106,19 @@ as AR 3, OA 7, TI 11, OI 15, CP 19, IS 23. Use this prompt:
 
 > Daily register sweep: run the register skill's section 4 (read every tab
 > since your bookmarks, answer rows with your prefix in Needs, notify per
-> section 2), then report in a few lines.
+> section 2). Then bring your branch current: git fetch origin, and merge
+> (merge commits, never rebase or force-push) every remote branch with
+> commits yours lacks, except release. Resolve a conflict in a file you own.
+> In another agent's file, take their side when only they changed the
+> substance, otherwise abort that merge and raise a row naming the owner.
+> Push only after a clean gate on the merge (tools/regen.sh, then
+> tools/verify.sh; CP its own repository's gate). Report in a few lines: the
+> register, and what was merged, by branch and commit count.
+
+The merge is Daniel's (DA tab rev 78, TI-43, 2026-10-24): branches had gone
+stale, and a release snapshot cut from one of them lacked two others' work.
+The sweeps land minutes apart by prefix, so the night's merges carry each
+agent's work to every other.
 
 ## Cost and latency
 
