@@ -109,7 +109,7 @@ to code that merely carries it, which will not.
 | `CCV_P_BYP_GROUPS` | 8 | med | LANE per-block session (register OA-4) |
 | `CCV_P_LAT_CLASSES` | 8 | med | LANE per-block session (register OA-4) |
 | `CCV_P_W_BYP_GROUP` | 3 | med | LANE per-block session (register OA-4) |
-| `CCV_P_W_SCHED_ATTR` | 17 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
+| `CCV_P_W_SCHED_ATTR` | 21 | med | DEC per-block session, with the LANE and RCU op-class list (A-62, A-66) |
 | `CCV_L_PAGE_SHIFT` | 12 | low | MMU session |
 | `CCV_L_W_CLASS` | 3 | low | DEC block session -- is class derivable from opcode? |
 | `CCV_L_W_ITLB_ENTRY` | 64 | low | MMU session, with the page-table format |

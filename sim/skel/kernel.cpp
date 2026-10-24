@@ -1868,12 +1868,11 @@ private:
     for (unsigned k = 1; k != kSecs; ++k)
       uniform = uniform &&
                 getSec(m.payload, c.rcu_lane, "sec_opcode", k, ccv::prelim::kWOpcode) == opc;
+    // A narrow operand or destination is a full row at position 0 (AR-24's
+    // interim): its width code is semantics, and the result ccv-sim's.
     for (unsigned i = 0; i != kBypOperands; ++i)
-      uniform = uniform &&
-                getSec(m.payload, c.rcu_lane, "sec_opnd_width", i, ccv::kWChwidth) == kChw32 &&
-                getSec(m.payload, c.rcu_lane, "sec_opnd_pos", i, ccv::kWPhysPos) == 0;
-    uniform = uniform && getSec(m.payload, c.rcu_lane, "sec_dst_width", 0, ccv::kWChwidth) == kChw32 &&
-              getSec(m.payload, c.rcu_lane, "sec_dst_pos", 0, ccv::kWPhysPos) == 0;
+      uniform = uniform && getSec(m.payload, c.rcu_lane, "sec_opnd_pos", i, ccv::kWPhysPos) == 0;
+    uniform = uniform && getSec(m.payload, c.rcu_lane, "sec_dst_pos", 0, ccv::kWPhysPos) == 0;
     if (!uniform) {
       k_.fail("lane %u: a full-width op whose sections, operands or destination disagree",
               lane_);
@@ -2248,12 +2247,15 @@ private:
         // The slice it writes: dst_pos and dst_width, a whole row in S1.
         const unsigned dw = unsigned(get(m.payload, c.miu_rcu, "dst_width"));
         const unsigned dp = unsigned(get(m.payload, c.miu_rcu, "dst_pos"));
-        if (dw != kChw32 || dp != 0)
-          k_.fail("rcu: a %u-bit load at position %u; only full-width loads are modelled in "
+        if (dp != 0)
+          k_.fail("rcu: a %u-bit load at position %u; only full-row loads are modelled in "
                   "the S1 stubs", 32u >> dw, dp);
+        // A narrow load writes its row zero-extended from its width (AR-24's
+        // interim; OA's rev 225).
+        const uint32_t wmask = dw == kChw32 ? ~0u : (1u << (32u >> dw)) - 1;
         for (unsigned l = 0; l != kLanes && !pred_only; ++l)
           if ((active >> l) & 1u)   // an inactive lane keeps its old value
-            k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l);
+            k_.gpr[pd][l] = getLane(m.payload, c.miu_rcu, "load_data", l) & wmask;
         if (get(m.payload, c.miu_rcu, "pred_we")) {
           const unsigned pp = unsigned(get(m.payload, c.miu_rcu, "phys_pred"));
           const uint32_t pr = uint32_t(get(m.payload, c.miu_rcu, "pred_result"));
@@ -2397,16 +2399,19 @@ private:
       if (got[s] && !cont(s)) issue(s, m[s]);
   }
 
-  /// A register a lane op reads or writes, by its position and width code:
-  /// a full 32-bit register at position 0 in S1, and never past its row.
+  /// A register a lane op reads or writes, by its position and width code,
+  /// never past its row. A narrow register sits in a full row at position 0
+  /// (AR-24's interim, DA tab rev 87; OA's rev 225): its width code is its
+  /// semantics, not its placement. A packed one, at another position, waits
+  /// for the full narrow-register build.
   void slice(const Receiver::Msg &m, const char *what, unsigned w, unsigned pos) {
     const unsigned long long seq = uidSeq(m.tid);
     if (maskOf(w, pos) & ~kAllSecs)
       k_.fail("rcu: seq %llu's %s, a %u-bit register at position %u, overruns its row", seq,
               what, 32u >> w, pos);
-    else if (w != kChw32)
-      k_.fail("rcu: seq %llu's %s is a %u-bit register; only 32-bit registers are modelled "
-              "in the S1 stubs", seq, what, 32u >> w);
+    else if (w != kChw32 && pos != 0)
+      k_.fail("rcu: seq %llu's %s is a %u-bit register at position %u; only full-row "
+              "registers are modelled in the S1 stubs", seq, what, 32u >> w, pos);
   }
 
   /// At the lane op's send: name each operand read before its producer's
@@ -2685,7 +2690,9 @@ private:
       put(d, c.rcu_ooe, "branch_taken", active != 0);
       put(d, c.rcu_ooe, "branch_mask", active);
       const Record *r = rec(m.tid, "rcu");
-      if (r && r->taken != active)
+      // A ret's lanes are judged by target below: ccv-sim's record takes every
+      // lane at once, the skeleton's ret a target group a pass.
+      if (r && r->taken != active && !op->ret)
         k_.fail("rcu: seq %llu branch taken by %08x, oracle %08x",
                 (unsigned long long)r->seq, active, r->taken);
       // call writes its link register on the active lanes, as movi does:
@@ -2696,18 +2703,27 @@ private:
         for (unsigned l = 0; l != kLanes; ++l)
           k_.gpr[pd][l] = (active >> l) & 1u && ld ? ld->v[l] : k_.gpr[pold][l];
       }
-      // ret: each active lane goes to {PC[47:32], its link register}. The
-      // skeleton's redirect names one target, so a ret whose lanes differ
-      // is refused until its divergent form is settled (AR-24 (b)).
-      if (op->ret && r)
+      // ret (AR-24 (b), OA's revs 222, 223): branch_aux is the lowest active
+      // lane's rs, the target's offset in the ret's code window, and
+      // branch_mask the active lanes whose rs equals it. OOE redirects those
+      // to {PC[47:32], branch_aux} with stay, and the ret re-issues for the
+      // rest, a pass per distinct target.
+      if (op->ret) {
+        uint32_t tgt = 0, same = 0;
+        bool first = true;
         for (unsigned l = 0; l != kLanes; ++l)
-          if ((active >> l) & 1u &&
-              k_.gpr[src[0]][l] != uint32_t(r->target)) {
-            k_.fail("rcu: seq %llu ret lane %u to %08x, oracle %08llx (or lanes differ)",
-                    (unsigned long long)r->seq, l, k_.gpr[src[0]][l],
-                    (unsigned long long)r->target);
-            break;
+          if ((active >> l) & 1u) {
+            const uint32_t v = k_.gpr[src[0]][l];
+            if (first) { tgt = v; first = false; }
+            if (v == tgt) same |= 1u << l;
           }
+        put(d, c.rcu_ooe, "branch_mask", same);
+        put(d, c.rcu_ooe, "branch_taken", same != 0);
+        put(d, c.rcu_ooe, "branch_aux", tgt);
+        if (r && same && tgt != uint32_t(r->target))
+          k_.fail("rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq, tgt,
+                  (unsigned long long)r->target);
+      }
       to_ooe_.push_back({0, d, m.tid});
       return;
     }
@@ -3065,11 +3081,18 @@ private:
       // chwidth.multi cracks (AR-24 (c), until OA rules on one masked uop):
       // a chwidth per register of its mask, ascending, each its register's
       // source and destination, sharing the instruction's id but for sub.
+      // The hold sits on the last sibling only, one drain as O-6 intends; the
+      // earlier ones commit their widths at retire without it (OA's rev 222).
       for (unsigned k = 0; k != r->uops(); ++k) {
         const unsigned reg = r->chwReg(k);
         Bits v = u;
         put(v, c.dec_ooe, "src_arch", reg << 4);
         put(v, c.dec_ooe, "dst_arch", reg);
+        if (k + 1 != r->uops()) {
+          const uint32_t sa = schedAttrOf(op);
+          put(v, c.dec_ooe, "sched_attr",
+              (sa & ~(7u << 3)) | (kSerNone << 3) | 1u << kAttrCommitWidthBit);
+        }
         q_.push_back({v, m.tid | uint64_t(k) << kUidSubLsb});
       }
       return;
@@ -3164,6 +3187,7 @@ private:
     bool marked = false;     ///< early-mark: one exit already marked final
     bool restored = false;   ///< restored at least once: its order may leave ccv-sim's (TI-27 (c))
     uint32_t br_mask = 0;   ///< a branch FET mispredicts: its group, until the redirect
+    unsigned br_len = 0;    ///< its length: a ret's staying lanes go back by it
     uint64_t br_next = 0;   ///< and the group's fall-through
   };
   std::map<unsigned, Warp> warps_;
@@ -3347,9 +3371,17 @@ private:
         // sends each half the other's way.
         const bool swap = k_.brk == "split-swap";
         const uint32_t to_tgt = swap ? x.br_mask & ~tmask : tmask;
+        // stay (AR-24 (b)): a ret's other lanes stay at the ret, to re-issue
+        // with their own targets, rather than fall through. A trace-driven
+        // FET has no record for the re-issue, so a peel it must follow fails.
+        const bool stay = get(m.payload, c.ooe_fet, "stay") != 0;
+        if (stay && (x.br_mask & ~to_tgt))
+          k_.fail("fet: a ret peels lanes %08x off to re-issue; ccv-sim's record has them return "
+                  "at once", x.br_mask & ~to_tgt);
         const unsigned before = groups(x);
         for (unsigned l = 0; l != kLanes; ++l)
-          if (x.br_mask >> l & 1u) x.pc[l] = to_tgt >> l & 1u ? tgt : x.br_next;
+          if (x.br_mask >> l & 1u)
+            x.pc[l] = to_tgt >> l & 1u ? tgt : stay ? x.br_next - x.br_len : x.br_next;
         if ((tmask & x.br_mask) && (tmask & x.br_mask) != x.br_mask) k_.hit("split");
         if (groups(x) < before) k_.hit("reconverge");
         k_.peak("groups_peak", groups(x));
@@ -3652,6 +3684,7 @@ private:
       } else if (mispredict) {
         x.br_mask = r.mask;      // split or moved at the redirect
         x.br_next = r.pc + r.size;
+        x.br_len = r.size;
       } else if (pred_taken) {
         for (unsigned l = 0; l != kLanes; ++l)
           if (r.mask >> l & 1u) x.pc[l] = r.target;

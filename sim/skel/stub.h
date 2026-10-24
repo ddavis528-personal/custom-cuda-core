@@ -217,6 +217,14 @@ enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3
 enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
                   kLatSfu = 4, kLatCollective = 5 };
 enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+// Above bypass_group (CCV_P_W_SCHED_ATTR 21): the CAS pair's first and second
+// slots (17, 18; TI-39, OA's rev 189), ret (19: OOE takes its target from
+// ccv_rcu_ooe_done.branch_aux and sets stay; AR-24 (b)), and commit_width
+// (20: a chwidth.multi sibling commits its width without the hold, which
+// sits on the last sibling; AR-24 (c), OA's rev 222).
+enum : unsigned { kAttrPairFirstBit = 17, kAttrPairSecondBit = 18, kAttrRetBit = 19,
+                  kAttrCommitWidthBit = 20 };
+static_assert(kAttrCommitWidthBit < ccv::prelim::kPWSchedAttr, "sched_attr is too narrow for its bits");
 // bypass_group (OI-16; Daniel's responses OA-4): which bypass penalties an
 // op takes, as producer and as consumer, the codes of CCV_P_BYP_GROUPS.
 enum : unsigned { kBypInt = 0, kBypFp = 1, kBypAddr = 2, kBypSfu = 3,
@@ -244,7 +252,8 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
                      : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore || op->cls == kFence ? kLatCompletion
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
-  return uint32_t(bypGroupOf(op)) << 14 |
+  return uint32_t(op->ret) << kAttrRetBit |
+         uint32_t(bypGroupOf(op)) << 14 |
          uint32_t(mem) << 13 | uint32_t(execRcu(op) || ctl) << 12 |
          uint32_t(op->cross) << 11 | uint32_t(op->gdst) << 10 |
          uint32_t(op->pwrite) << 9 | (mem ? memk : 0u) << 7 |

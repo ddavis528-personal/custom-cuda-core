@@ -2607,7 +2607,7 @@ module ccv_rcu_w #(
   end
   // ccv_rcu_ooe_done, source end
   if (RPT_RCU_OOE_DONE > 0) begin : g_rpt_rcu_ooe_done
-    ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(40)) u_rpt_rcu_ooe_done (
+    ccv_common_rpt #(.STAGES(RPT_RCU_OOE_DONE), .SLOTS(7), .PAYLOAD_W(72)) u_rpt_rcu_ooe_done (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rcu_ooe_done_s6_valid, b_rcu_ooe_done_s5_valid, b_rcu_ooe_done_s4_valid, b_rcu_ooe_done_s3_valid, b_rcu_ooe_done_s2_valid, b_rcu_ooe_done_s1_valid, b_rcu_ooe_done_s0_valid}), .src_payload({b_rcu_ooe_done_s6_payload, b_rcu_ooe_done_s5_payload, b_rcu_ooe_done_s4_payload, b_rcu_ooe_done_s3_payload, b_rcu_ooe_done_s2_payload, b_rcu_ooe_done_s1_payload, b_rcu_ooe_done_s0_payload}),
       .src_wake(b_rcu_ooe_done_wake), .src_credit({b_rcu_ooe_done_s6_credit, b_rcu_ooe_done_s5_credit, b_rcu_ooe_done_s4_credit, b_rcu_ooe_done_s3_credit, b_rcu_ooe_done_s2_credit, b_rcu_ooe_done_s1_credit, b_rcu_ooe_done_s0_credit}), .src_stall({b_rcu_ooe_done_s6_stall, b_rcu_ooe_done_s5_stall, b_rcu_ooe_done_s4_stall, b_rcu_ooe_done_s3_stall, b_rcu_ooe_done_s2_stall, b_rcu_ooe_done_s1_stall, b_rcu_ooe_done_s0_stall}),
