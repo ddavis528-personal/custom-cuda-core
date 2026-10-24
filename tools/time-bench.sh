@@ -15,6 +15,7 @@
 # with every checkpoint live; redirects and the warp-cycles fetch waited on
 # them; rets and calls; DCU lookups and those for frames (AR-23); and the
 # warp-cycles loads waited behind an older store of their warp (PF-42).
+# Before the runs, every chwidth is held to a converged warp (F-197).
 # The MLC stub sends every L1 miss to EXB, so memory latency is a cold bound.
 set -uo pipefail
 cd "$(dirname "$0")/.."
@@ -23,6 +24,13 @@ SKEL=build/skel/ccv-skel
 if [ $# -gt 0 ]; then benches=("$@"); else benches=(test/bench/*/); fi
 benches=("${benches[@]%/}")
 CCV_ORACLE_DIR=build/bench-oracle tools/gen-oracle.sh "${benches[@]}" || exit 1
+# Every chwidth in a converged warp (F-197), and its control: one with a lane
+# cleared must be caught. The gate's kernels execute none yet.
+for b in "${benches[@]}"; do
+  o=(build/bench-oracle/"$(basename "$b")"/oracle*.jsonl)
+  tools/check-chwidth-converged.py "${o[@]}" || exit 1
+  tools/check-chwidth-converged.py --selftest "${o[@]}" || exit 1
+done
 mkdir -p build/bench
 fets=(stub perfect)
 [ -n "${CCV_BENCH_FET:-}" ] && fets=("$CCV_BENCH_FET")

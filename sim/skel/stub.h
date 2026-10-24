@@ -219,7 +219,7 @@ enum : unsigned { kLatRcu = 0, kLatLane = 1, kLatL1 = 2, kLatCompletion = 3,
 enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
 // Above bypass_group (CCV_P_W_SCHED_ATTR 21): the CAS pair's first and second
 // slots (17, 18; TI-39, OA's rev 189), ret (19: OOE takes its target from
-// ccv_rcu_ooe_done.branch_aux and sets stay; AR-24 (b)), and commit_width
+// ccv_rcu_ooe_done.aux and sets stay; AR-24 (b)), and commit_width
 // (20: a chwidth.multi sibling commits its width without the hold, which
 // sits on the last sibling; AR-24 (c), OA's rev 222).
 enum : unsigned { kAttrPairFirstBit = 17, kAttrPairSecondBit = 18, kAttrRetBit = 19,

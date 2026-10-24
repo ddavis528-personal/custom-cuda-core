@@ -5,12 +5,14 @@ instruction classed by its worst setting.
 
 A lifetime is a register's stretch at one narrow width, from the setting
 that starts it to the next setting that changes the width (a no-op setting
-neither ends nor starts one). It is "mem" if the register is used only as
-the data of narrow loads and stores (or unused), "bitwise" if only that and
-bitwise ops, else "needs". A changed setting ends the lifetime before it and
-starts the one after (either may be 32 bits, which constrains nothing); its
-class is the worse of the two. An instruction's class is its worst
-setting's, so it goes only when every setting it makes goes.
+neither ends nor starts one). Its uses class it: "unused"; "mem", only as
+the data of narrow loads and stores; "bw", only bitwise ops, with no narrow
+access (the compiler's F-196 keeps these at 32 bits); "bwmem", bitwise ops
+and narrow accesses; else "needs". A changed setting ends the lifetime
+before it and starts the one after (a 32-bit side constrains nothing) and
+carries both their classes; a no-op setting carries none. A chwidth
+instruction goes under a remedy only when every setting it makes does, so a
+chwidth.multi is counted once, by instruction (AR's rev 175).
 
 Usage: tools/chwidth-classes.py <one-lane oracle.jsonl>. Not part of the
 gate; re-run on CP's export after step 0 (AR's rev 175, IS-23)."""
@@ -19,18 +21,20 @@ W = {0: 32, 1: 16, 2: 8, 3: 4}
 BITWISE = {"AND", "OR", "XOR", "C_AND", "C_OR", "C_XOR", "ANDI", "C_ANDI", "ANDN", "C_ANDN"}
 width = [32] * 16
 life = {}                 # reg -> {"kinds": set, "waiters": [settings that touch it]}
-settings = []             # each: {"cls": rank so far, "instr": index}
-instrs = []               # per chwidth instruction: list of setting indices
+settings = []             # per setting: the set of its lifetimes' classes
+instrs = []               # per chwidth instruction: its setting indices
 total = 0
 def lclass(k):
-    if k <= {"mem"}: return 1
-    if k <= BITWISE | {"mem"}: return 2
-    return 3
+    if not k: return "unused"
+    if k <= {"mem"}: return "mem"
+    if k <= BITWISE: return "bw"
+    if k <= BITWISE | {"mem"}: return "bwmem"
+    return "needs"
 def close(r):
     L = life.pop(r, None)
     if L is None: return
     c = lclass(L["kinds"])
-    for s in L["waiters"]: settings[s] = max(settings[s], c)
+    for s in L["waiters"]: settings[s].add(c)
 for line in open(sys.argv[1]):
     j = json.loads(line)
     if "op" not in j: continue
@@ -44,8 +48,8 @@ for line in open(sys.argv[1]):
         mine = []
         for r in regs:
             s = len(settings); mine.append(s)
-            if width[r] == w: settings.append(0); continue
-            settings.append(1)                       # a change costs at least "mem"
+            settings.append(set())
+            if width[r] == w: continue
             if r in life: life[r]["waiters"].append(s); close(r)
             width[r] = w
             if w < 32: life[r] = {"kinds": set(), "waiters": [s]}
@@ -61,15 +65,28 @@ for line in open(sys.argv[1]):
         r = int(u["reg"][1:])
         if r in life: life[r]["kinds"].add("mem" if u["reg"] == data else op)
 for r in list(life): close(r)
-names = ["noop", "mem", "bitwise", "needs"]
-sc = collections.Counter(settings)
-ic = collections.Counter(max((settings[s] for s in m), default=0) for m in instrs)
+ORDER = ["noop", "unused", "mem", "bw", "bwmem", "needs"]
+def shown(cs):          # one class per setting, for the table: the remedy it needs most
+    if not cs: return "noop"
+    if "needs" in cs: return "needs"
+    if "bwmem" in cs or {"mem", "bw"} <= cs: return "bwmem"
+    for c in ("bw", "mem", "unused"):
+        if c in cs: return c
 multi = sum(len(m) > 1 for m in instrs)
 print("instructions %d, chwidth instructions %d (multi %d), settings %d" % (total, len(instrs), multi, len(settings)))
-print("%-8s %9s %7s %9s %7s %7s" % ("class", "settings", "%set", "instrs", "%chw", "%kern"))
-cs = ci = 0
-for k in range(4):
-    cs += sc[k]; ci += ic[k]
-    print("%-8s %9d %6.1f%% %9d %6.1f%% %6.2f%%   cumulative: %d settings %.1f%%, %d instrs %.1f%% of chw, %.2f%% of kernel" % (
-        names[k], sc[k], 100*sc[k]/len(settings), ic[k], 100*ic[k]/len(instrs), 100*ic[k]/total,
-        cs, 100*cs/len(settings), ci, 100*ci/len(instrs), 100*ci/total))
+sc = collections.Counter(shown(c) for c in settings)
+ic = collections.Counter(shown(set().union(*(settings[s] for s in m))) for m in instrs)
+print("%-7s %9s %7s %9s %7s %7s" % ("class", "settings", "%set", "instrs", "%chw", "%kern"))
+for k in ORDER:
+    print("%-7s %9d %6.1f%% %9d %6.1f%% %6.2f%%" % (k, sc[k], 100*sc[k]/len(settings), ic[k],
+          100*ic[k]/len(instrs), 100*ic[k]/total))
+REMEDIES = [("no-op widths dropped (step 0)", set()),
+            ("+ unused narrowings", {"unused"}),
+            ("+ F-196, bitwise at 32 bits", {"unused", "bw"}),
+            ("+ option A, sized loads and stores", {"unused", "mem"}),
+            ("+ F-196 and option A", {"unused", "bw", "mem"}),
+            ("+ F-196 and option A, bitwise ending in an access", {"unused", "bw", "mem", "bwmem"})]
+print("removed, by instruction:")
+for name, ok in REMEDIES:
+    n = sum(all(settings[s] <= ok for s in m) for m in instrs)
+    print("  %-52s %7d  %5.1f%% of chw  %5.2f%% of kernel" % (name, n, 100*n/len(instrs), 100*n/total))

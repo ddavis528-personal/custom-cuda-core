@@ -7,5 +7,5 @@
 # gate without a change here. Bump with `tools/fetch-compiler.sh --bump`, as
 # its own commit, and review what the kernels do under the new snapshot.
 repo=https://github.com/ddavis528-personal/custom-cuda-complier
-commit=f99190e002dde43344354c6a5a16a6c8f6b56fad
-source=d080beb2085d41d009b3d62d1b6cd43824fd4acf
+commit=541a476342249e83a2946c76f7e868ffc32128d9
+source=f6912caebe056c1eed9f44e8262df3da0c02a0e6
