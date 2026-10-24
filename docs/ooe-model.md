@@ -1112,6 +1112,18 @@ places where the model still admitted on state the fits cannot hold:
   starts, the go's registered bit, so one that rises in the cycle stops
   the next cycle's take; the serial bit covers a hold the take itself
   sets. The live checks stay, as errors: none fires.
+- *The ceiling* (OI-73 (3), OA's rev 207). A warp's ceiling was checked
+  on its live held count as each uop renamed, after the go. It is now a
+  term of the go: each slot's room to its ceiling per class (arch +
+  ceiling - held, rename's register as the cycle starts) is registered
+  for the fits formed in t, and t + 1's take admits while the names the
+  warp took in t and takes in t + 1 fit it, as the ROB term counts k + m.
+  Frees since only add room. The check on the live count stays, as an
+  error. At the parameters a warp cannot reach its ceiling (16 + 64 rows
+  against 16 + 32 in a 32-deep ROB), so two directed tests make it bind:
+  floor-ceiling (two slots, ceiling 12) and ceiling-go (the RTL's four
+  slots, ceiling 8), which go_tb and rename_tb follow. Control
+  no-ceil-term drops the go's term, and the live check catches it.
 
 48 seeds (the audit's workload): 1,018 cycles to 1,030 (+1.2%), all of it
 the ROB term; the needs and the serial bit cost nothing. The S1 kernels:

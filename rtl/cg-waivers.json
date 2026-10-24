@@ -41,7 +41,7 @@
    "module": "ooe_go",
    "rule": "CG-3",
    "target": "fits_cq02h",
-   "enable": "fits_en[0]",
+   "enable": "chg_cq02h[0]",
    "floor_pct": {
     "medium": 62,
     "high": 59
@@ -58,7 +58,7 @@
    "module": "ooe_go",
    "rule": "CG-3",
    "target": "fits_cq02h",
-   "enable": "fits_en[1]",
+   "enable": "chg_cq02h[1]",
    "floor_pct": {
     "medium": 62,
     "high": 61
@@ -75,7 +75,7 @@
    "module": "ooe_go",
    "rule": "CG-3",
    "target": "fits_cq02h",
-   "enable": "fits_en[2]",
+   "enable": "chg_cq02h[2]",
    "floor_pct": {
     "medium": 62,
     "high": 66

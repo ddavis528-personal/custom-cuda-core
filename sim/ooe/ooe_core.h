@@ -357,6 +357,7 @@ struct Config {
 
   // -- fault injection: the negative controls the core itself must carry ------
   bool inject_free_new = false;   ///< retire frees the new mapping (free-new)
+  bool inject_no_ceil_term = false;  ///< the go admits past a warp's ceiling (OI-73 (3))
   bool inject_shallow_cancel = false;  ///< cancel stops after one hop (V-15)
   bool inject_early_wake = false;      ///< fixed-latency wakes a cycle early
   bool inject_complete_early = false;  ///< complete before RS entries free (V-58)
@@ -1285,6 +1286,10 @@ public:
     std::vector<unsigned> run, ret, unmet_g, unmet_p;
     std::vector<uint8_t> reach, hold;
     std::vector<unsigned> took;               ///< per slot
+    /// Each slot's room to its ceiling, per class (GPR rows, predicates), as
+    /// rename registers it at this cycle's start for the fits the go forms
+    /// now: arch + ceiling - held, saturated at 0 (OI-73 (3)).
+    std::vector<unsigned> room_g, room_p;
     std::vector<std::array<unsigned, 4>> split;   ///< the allowances registered for the next cycle
     std::vector<std::pair<unsigned, unsigned>> lanes;   ///< (slot, head) in take order
   };
@@ -1419,6 +1424,11 @@ private:
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
   std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
+  /// The go's ceiling term (OI-73 (3), OA's rev 207): each slot's room to
+  /// its ceiling per class as registered at the last cycle's start, and the
+  /// names the slot was charged last cycle. A take is admitted while the
+  /// names charged last cycle and this one stay within that room.
+  std::vector<std::array<unsigned, 2>> ceil_room_reg_, ceil_room_use_, ceil_names_prev_;
   std::vector<uint8_t> rs_late_;            ///< RS entries freed this cycle that rename sees late (ren_credit)
   std::vector<uint8_t> rob_late_;           ///< ROB slots likewise, per slot
   unsigned rs_prompt_[2] = {};              ///< this cycle's prompt RS frees per class (ren_credit 2)

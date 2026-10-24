@@ -178,31 +178,31 @@ module ooe_rendep #(
   // -- This group's ports --------------------------------------------------------
   // Port of uop u's main entry and of its copy, and per port the producer it
   // holds: its names and its code per consumer group.
-  logic [A*3-1:0]   pm, pcp;            // port within its class (0..A-1)
-  logic [P-1:0]     pv, pgv, ppv;       // the port is taken; it produces a GPR, a predicate
-  logic [P*LG-1:0]  pgn;
-  logic [P*LQ-1:0]  ppn;
-  logic [P*CVW-1:0] pcv;
-  logic [P-1:0]     pprod;
-  logic [A*CVW-1:0] pcv_c;              // each uop's main entry's codes, by uop
+  logic [A*3-1:0]   pm_cq01h, pcp_cq01h;            // port within its class (0..A-1)
+  logic [P-1:0]     pv_cq01h, pgv_cq01h, ppv_cq01h;       // the port is taken; it produces a GPR, a predicate
+  logic [P*LG-1:0]  pgn_cq01h;
+  logic [P*LQ-1:0]  ppn_cq01h;
+  logic [P*CVW-1:0] pcv_cq01h;
+  logic [P-1:0]     pprod_cq01h;
+  logic [A*CVW-1:0] pcv_c_cq01h;              // each uop's main entry's codes, by uop
   always_comb
-    for (int u = 0; u < A; u++) pcv_c[u * CVW +: CVW] = codes_of(unit_cq01h[u * 3 +: 3], pg_cq01h[u * 3 +: 3], nob_cq01h[u]);
+    for (int u = 0; u < A; u++) pcv_c_cq01h[u * CVW +: CVW] = codes_of(unit_cq01h[u * 3 +: 3], pg_cq01h[u * 3 +: 3], nob_cq01h[u]);
   int nr, nm;                           // each class's ports taken so far
   always_comb begin
     nr = 0;
     nm = 0;
-    pm = '0; pcp = '0;
+    pm_cq01h = '0; pcp_cq01h = '0;
     for (int u = 0; u < A; u++)
       if (v_cq01h[u]) begin
         if (mem_cq01h[u]) begin
-          pm[u * 3 +: 3] = 3'(A + nm);
+          pm_cq01h[u * 3 +: 3] = 3'(A + nm);
           nm = nm + 1;
         end else begin
-          pm[u * 3 +: 3] = 3'(nr);
+          pm_cq01h[u * 3 +: 3] = 3'(nr);
           nr = nr + 1;
         end
         if (cp_cq01h[u]) begin
-          pcp[u * 3 +: 3] = 3'(nr);
+          pcp_cq01h[u * 3 +: 3] = 3'(nr);
           nr = nr + 1;
         end
       end
@@ -219,16 +219,16 @@ module ooe_rendep #(
   logic [P*CVW-1:0] g1cv_cq02h, g2cv_cq03h;
 
   // The grant, decoded: G-2's entry by port, and every entry it took.
-  logic [P*N-1:0] g2e;
-  logic [N-1:0]   g2any;
+  logic [P*N-1:0] g2e_cq01h;
+  logic [N-1:0]   g2any_cq01h;
   always_comb begin
-    g2e   = '0;
-    g2any = '0;
+    g2e_cq01h   = '0;
+    g2any_cq01h = '0;
     for (int r = 0; r < P; r++)
       for (int j = 0; j < N; j++)
         if (gnt_v_cq01h[r] && gnt_idx_cq01h[r * W +: W] == W'(j)) begin
-          g2e[r * N + j] = 1'b1;
-          g2any[j]       = 1'b1;
+          g2e_cq01h[r * N + j] = 1'b1;
+          g2any_cq01h[j]       = 1'b1;
         end
   end
 
@@ -239,44 +239,44 @@ module ooe_rendep #(
   // ports take theirs through one-hot selects, so no write goes through a
   // computed index.
   localparam int C = 2 * A;
-  logic [C-1:0]      cv;                // consumer c exists
-  logic [C*P-1:0]    coh;               // consumer c sits on port p
-  logic [C*3-1:0]    ccg;               // its consumer group
-  logic [C-1:0]      ccn;               //   none (late)
-  logic [C*NS-1:0]   cgs;               // it reads GPR source s
-  logic [C*4-1:0]    cps;               // it reads predicate source s
+  logic [C-1:0]      cv_cq01h;                // consumer c exists
+  logic [C*P-1:0]    coh_cq01h;               // consumer c sits on port p
+  logic [C*3-1:0]    ccg_cq01h;               // its consumer group
+  logic [C-1:0]      ccn_cq01h;               //   none (late)
+  logic [C*NS-1:0]   cgs_cq01h;               // it reads GPR source s
+  logic [C*4-1:0]    cps_cq01h;               // it reads predicate source s
   always_comb
     for (int u = 0; u < A; u++)
       for (int k = 0; k < 2; k++) begin
-        cv[2 * u + k]                = v_cq01h[u] && (k == 0 || cp_cq01h[u]);
-        ccg[(2 * u + k) * 3 +: 3]    = k == 0 ? cg_cq01h[u * 3 +: 3] : 3'd0;   // the copy reads as kGrpInt
-        ccn[2 * u + k]               = k == 0 && cnone_cq01h[u];
+        cv_cq01h[2 * u + k]                = v_cq01h[u] && (k == 0 || cp_cq01h[u]);
+        ccg_cq01h[(2 * u + k) * 3 +: 3]    = k == 0 ? cg_cq01h[u * 3 +: 3] : 3'd0;   // the copy reads as kGrpInt
+        ccn_cq01h[2 * u + k]               = k == 0 && cnone_cq01h[u];
         for (int s = 0; s < NS; s++)
-          cgs[(2 * u + k) * NS + s]  = k == 0 ? gsv_cq01h[u * NS + s] : (s == 3);
+          cgs_cq01h[(2 * u + k) * NS + s]  = k == 0 ? gsv_cq01h[u * NS + s] : (s == 3);
         for (int s = 0; s < 4; s++)
-          cps[(2 * u + k) * 4 + s]   = k == 0 ? psv_cq01h[u * 4 + s] : (s == 0 && cguard_cq01h[u]);
+          cps_cq01h[(2 * u + k) * 4 + s]   = k == 0 ? psv_cq01h[u * 4 + s] : (s == 0 && cguard_cq01h[u]);
         for (int q = 0; q < P; q++)
-          coh[(2 * u + k) * P + q]   = cv[2 * u + k] && 32'(k == 0 ? pm[u * 3 +: 3] : pcp[u * 3 +: 3]) == q;
+          coh_cq01h[(2 * u + k) * P + q]   = cv_cq01h[2 * u + k] && 32'(k == 0 ? pm_cq01h[u * 3 +: 3] : pcp_cq01h[u * 3 +: 3]) == q;
       end
 
   // Each port's producer, through the one-hot select: consumer c's uop
   // on the port it sits on (a copy produces its GPR alone, with no bypass).
   always_comb begin
-    pv = '0; pgv = '0; ppv = '0; pgn = '0; ppn = '0; pcv = '0; pprod = '0;
+    pv_cq01h = '0; pgv_cq01h = '0; ppv_cq01h = '0; pgn_cq01h = '0; ppn_cq01h = '0; pcv_cq01h = '0; pprod_cq01h = '0;
     for (int q = 0; q < P; q++)
       for (int c = 0; c < C; c++)
-        if (coh[c * P + q]) begin
-          pv[q]               = 1'b1;
-          pgv[q]              = pgv[q] | gwe_cq01h[c / 2];
-          pgn[q * LG +: LG]   = pgn[q * LG +: LG] | gname_cq01h[(c / 2) * LG +: LG];
+        if (coh_cq01h[c * P + q]) begin
+          pv_cq01h[q]               = 1'b1;
+          pgv_cq01h[q]              = pgv_cq01h[q] | gwe_cq01h[c / 2];
+          pgn_cq01h[q * LG +: LG]   = pgn_cq01h[q * LG +: LG] | gname_cq01h[(c / 2) * LG +: LG];
           if (c % 2 == 0) begin
-            ppv[q]               = ppv[q] | pwe_cq01h[c / 2];
-            ppn[q * LQ +: LQ]    = ppn[q * LQ +: LQ] | pname_cq01h[(c / 2) * LQ +: LQ];
-            pcv[q * CVW +: CVW]  = pcv[q * CVW +: CVW] | pcv_c[(c / 2) * CVW +: CVW];
-            pprod[q]             = pprod[q] | gwe_cq01h[c / 2] | pwe_cq01h[c / 2];
+            ppv_cq01h[q]               = ppv_cq01h[q] | pwe_cq01h[c / 2];
+            ppn_cq01h[q * LQ +: LQ]    = ppn_cq01h[q * LQ +: LQ] | pname_cq01h[(c / 2) * LQ +: LQ];
+            pcv_cq01h[q * CVW +: CVW]  = pcv_cq01h[q * CVW +: CVW] | pcv_c_cq01h[(c / 2) * CVW +: CVW];
+            pprod_cq01h[q]             = pprod_cq01h[q] | gwe_cq01h[c / 2] | pwe_cq01h[c / 2];
           end else begin
-            pcv[q * CVW +: CVW]  = pcv[q * CVW +: CVW] | {G{LATE}};
-            pprod[q]             = 1'b1;
+            pcv_cq01h[q * CVW +: CVW]  = pcv_cq01h[q * CVW +: CVW] | {G{LATE}};
+            pprod_cq01h[q]             = 1'b1;
           end
         end
   end
@@ -291,67 +291,74 @@ module ooe_rendep #(
   // ooe_rs's row mask drops each (its valid bits, its frees, its last
   // grant; G-2's stale names here). Leaving them unordered keeps the
   // compares off each other's paths. First, the in-group class.
-  logic [C*NS-1:0] gig;                 // GPR source (c, s) has an in-group producer
-  logic [C*4-1:0]  pig;                 // predicate source (c, s)
+  logic [C*NS-1:0] gig_cq01h;                 // GPR source (c, s) has an in-group producer
+  logic [C*4-1:0]  pig_cq01h;                 // predicate source (c, s)
   always_comb begin
-    gig = '0; pig = '0;
+    gig_cq01h = '0; pig_cq01h = '0;
     for (int c = 0; c < C; c++) begin
       for (int s = 0; s < NS; s++)
         for (int w = 0; w < A; w++)
           if (w < c / 2 && v_cq01h[w] && gwe_cq01h[w] &&
-              gname_cq01h[w * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG]) gig[c * NS + s] = 1'b1;
+              gname_cq01h[w * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG]) gig_cq01h[c * NS + s] = 1'b1;
       for (int s = 0; s < 4; s++)
         for (int w = 0; w < A; w++)
           if (w < c / 2 && v_cq01h[w] && pwe_cq01h[w] &&
-              pname_cq01h[w * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ]) pig[c * 4 + s] = 1'b1;
+              pname_cq01h[w * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ]) pig_cq01h[c * 4 + s] = 1'b1;
     end
   end
   // Then the hits: G-1's where no older uop of this group produces it, the
   // entries' unordered.
-  logic [C*N-1:0]   xr, xrp;            // consumer c's ooe_prodmap and G-2 hits: by GPR, by predicate source
-  logic [C*P-1:0]   x1, x1p;            // its G-1 hits (port r)
-  logic [C*C-1:0]   xg, xgp;            // its in-group hits (consumer d of an older uop)
+  logic [C*N-1:0]   xr_cq02h, xrp_cq02h;            // consumer c's ooe_prodmap and G-2 hits: by GPR, by predicate source
+  logic [C*N-1:0]   xr2_cq02h, xp2_cq02h;           // its G-2 hits alone (the declared bypass)
+  logic [C*N-1:0]   xrt_cq01h, xpt_cq01h;           // and its ooe_prodmap hits alone
+  logic [C*P-1:0]   x1_cq02h, x1p_cq02h;            // its G-1 hits (port r)
+  logic [C*C-1:0]   xg_cq01h, xgp_cq01h;            // its in-group hits (consumer d of an older uop)
   always_comb begin
-    xr = '0; xrp = '0; x1 = '0; x1p = '0; xg = '0; xgp = '0;
+    xr2_cq02h = '0; xp2_cq02h = '0; xrt_cq01h = '0; xpt_cq01h = '0; x1_cq02h = '0; x1p_cq02h = '0; xg_cq01h = '0; xgp_cq01h = '0;
     for (int c = 0; c < C; c++) begin
       for (int s = 0; s < NS; s++)
-        if (cv[c] && cgs[c * NS + s]) begin
+        if (cv_cq01h[c] && cgs_cq01h[c * NS + s]) begin
           for (int w = 0; w < A; w++)
             if (w < c / 2 && v_cq01h[w] && gwe_cq01h[w] &&
                 gname_cq01h[w * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG]) begin
-              xg[c * C + 2 * w] = 1'b1;
-              if (cp_cq01h[w]) xg[c * C + 2 * w + 1] = 1'b1;
+              xg_cq01h[c * C + 2 * w] = 1'b1;
+              if (cp_cq01h[w]) xg_cq01h[c * C + 2 * w + 1] = 1'b1;
             end
           for (int r = 0; r < P; r++)
-            if (!gig[c * NS + s] && g1gv_cq02h[r] && g1gn_cq02h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
-              x1[c * P + r] = 1'b1;
+            if (!gig_cq01h[c * NS + s] && g1gv_cq02h[r] && g1gn_cq02h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
+              x1_cq02h[c * P + r] = 1'b1;
           for (int r = 0; r < P; r++)
             if (g2gv_cq03h[r] && g2gn_cq03h[r * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
-              xr[c * N +: N] = xr[c * N +: N] | g2e[r * N +: N];
+              xr2_cq02h[c * N +: N] = xr2_cq02h[c * N +: N] | g2e_cq01h[r * N +: N];
           for (int j = 0; j < N; j++)
-            if (eg_cq01h[j] && !g2any[j] &&
+            if (eg_cq01h[j] && !g2any_cq01h[j] &&
                 egn_cq01h[j * LG +: LG] == gsn_cq01h[((c / 2) * NS + s) * LG +: LG])
-              xr[c * N + j] = 1'b1;
+              xrt_cq01h[c * N + j] = 1'b1;
         end
       for (int s = 0; s < 4; s++)
-        if (cv[c] && cps[c * 4 + s]) begin
+        if (cv_cq01h[c] && cps_cq01h[c * 4 + s]) begin
           for (int w = 0; w < A; w++)
             if (w < c / 2 && v_cq01h[w] && pwe_cq01h[w] &&
                 pname_cq01h[w * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-              xgp[c * C + 2 * w] = 1'b1;
+              xgp_cq01h[c * C + 2 * w] = 1'b1;
           for (int r = 0; r < P; r++)
-            if (!pig[c * 4 + s] && g1pv_cq02h[r] && g1pn_cq02h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-              x1p[c * P + r] = 1'b1;
+            if (!pig_cq01h[c * 4 + s] && g1pv_cq02h[r] && g1pn_cq02h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
+              x1p_cq02h[c * P + r] = 1'b1;
           for (int r = 0; r < P; r++)
             if (g2pv_cq03h[r] && g2pn_cq03h[r * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-              xrp[c * N +: N] = xrp[c * N +: N] | g2e[r * N +: N];
+              xp2_cq02h[c * N +: N] = xp2_cq02h[c * N +: N] | g2e_cq01h[r * N +: N];
           for (int j = 0; j < N; j++)
-            if (ep_cq01h[j] && !g2any[j] &&
+            if (ep_cq01h[j] && !g2any_cq01h[j] &&
                 epn_cq01h[j * LQ +: LQ] == psn_cq01h[((c / 2) * 4 + s) * LQ +: LQ])
-              xrp[c * N + j] = 1'b1;
+              xpt_cq01h[c * N + j] = 1'b1;
         end
     end
   end
+
+  // Each a single expression: G-2's hits read a stage ahead, by the
+  // declared bypass, and ooe_prodmap's this stage.
+  assign xr_cq02h  = xr2_cq02h | xrt_cq01h;
+  assign xrp_cq02h = xp2_cq02h | xpt_cq01h;
 
   // The codes: a GPR source reads its producer's code for the consumer's
   // group; a predicate source the late line, the largest code, so a cell
@@ -360,50 +367,50 @@ module ooe_rendep #(
   // port's codes, the rest the register's.
   // An entry is granted to one port at most, so G-2's codes reach it
   // through a one-hot select, not an override in port order.
-  logic [N*CVW-1:0] jcv;                // each entry's codes as this lookup sees them
-  logic [N*CVW-1:0] g2cv_e;             // G-2's codes, by the entry the grant gives
+  logic [N*CVW-1:0] jcv_cq02h;                // each entry's codes as this lookup sees them
+  logic [N*CVW-1:0] g2cv_e_cq02h;             // G-2's codes, by the entry the grant gives
   always_comb begin
-    g2cv_e = '0;
+    g2cv_e_cq02h = '0;
     for (int r = 0; r < P; r++)
       for (int j = 0; j < N; j++)
-        if (g2e[r * N + j]) g2cv_e[j * CVW +: CVW] = g2cv_e[j * CVW +: CVW] | g2cv_cq03h[r * CVW +: CVW];
+        if (g2e_cq01h[r * N + j]) g2cv_e_cq02h[j * CVW +: CVW] = g2cv_e_cq02h[j * CVW +: CVW] | g2cv_cq03h[r * CVW +: CVW];
     for (int j = 0; j < N; j++)
-      jcv[j * CVW +: CVW] = g2any[j] ? g2cv_e[j * CVW +: CVW] : ecv_cq01h[j * CVW +: CVW];
+      jcv_cq02h[j * CVW +: CVW] = g2any_cq01h[j] ? g2cv_e_cq02h[j * CVW +: CVW] : ecv_cq01h[j * CVW +: CVW];
   end
-  logic [C*N*2-1:0] xrc;
-  logic [C*P*2-1:0] x1c;
-  logic [C*C*2-1:0] xgc;
+  logic [C*N*2-1:0] xrc_cq02h;
+  logic [C*P*2-1:0] x1c_cq02h;
+  logic [C*C*2-1:0] xgc_cq01h;
   always_comb
     for (int c = 0; c < C; c++) begin
       for (int j = 0; j < N; j++)
-        xrc[(c * N + j) * 2 +: 2] = code_for(jcv[j * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]) | {2{xrp[c * N + j]}};
+        xrc_cq02h[(c * N + j) * 2 +: 2] = code_for(jcv_cq02h[j * CVW +: CVW], ccg_cq01h[c * 3 +: 3], ccn_cq01h[c]) | {2{xrp_cq02h[c * N + j]}};
       for (int r = 0; r < P; r++)
-        x1c[(c * P + r) * 2 +: 2] = code_for(g1cv_cq02h[r * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]) | {2{x1p[c * P + r]}};
+        x1c_cq02h[(c * P + r) * 2 +: 2] = code_for(g1cv_cq02h[r * CVW +: CVW], ccg_cq01h[c * 3 +: 3], ccn_cq01h[c]) | {2{x1p_cq02h[c * P + r]}};
       for (int d = 0; d < C; d++)
-        xgc[(c * C + d) * 2 +: 2] = xgp[c * C + d] || d % 2 == 1 ? LATE
-                                    : code_for(pcv_c[(d / 2) * CVW +: CVW], ccg[c * 3 +: 3], ccn[c]);
+        xgc_cq01h[(c * C + d) * 2 +: 2] = xgp_cq01h[c * C + d] || d % 2 == 1 ? LATE
+                                    : code_for(pcv_c_cq01h[(d / 2) * CVW +: CVW], ccg_cq01h[c * 3 +: 3], ccn_cq01h[c]);
     end
 
   // Each port's row: its consumer's, through the one-hot select; an
   // in-group producer d is the port its consumer sits on.
-  logic [P*N-1:0]   rd;
-  logic [2*P*N-1:0] rc;
-  logic [P*P-1:0]   gd, vd;
-  logic [2*P*P-1:0] gc, vc;
+  logic [P*N-1:0]   rd_cq02h;
+  logic [2*P*N-1:0] rc_cq02h;
+  logic [P*P-1:0]   gd_cq01h, vd_cq02h;
+  logic [2*P*P-1:0] gc_cq01h, vc_cq02h;
   always_comb begin
-    rd = '0; rc = '0; gd = '0; gc = '0; vd = '0; vc = '0;
+    rd_cq02h = '0; rc_cq02h = '0; gd_cq01h = '0; gc_cq01h = '0; vd_cq02h = '0; vc_cq02h = '0;
     for (int p = 0; p < P; p++)
       for (int c = 0; c < C; c++)
-        if (coh[c * P + p]) begin
-          rd[p * N +: N]           = rd[p * N +: N] | xr[c * N +: N] | xrp[c * N +: N];
-          rc[p * N * 2 +: N * 2]   = rc[p * N * 2 +: N * 2] | xrc[c * N * 2 +: N * 2];
-          vd[p * P +: P]           = vd[p * P +: P] | x1[c * P +: P] | x1p[c * P +: P];
-          vc[p * P * 2 +: P * 2]   = vc[p * P * 2 +: P * 2] | x1c[c * P * 2 +: P * 2];
+        if (coh_cq01h[c * P + p]) begin
+          rd_cq02h[p * N +: N]           = rd_cq02h[p * N +: N] | xr_cq02h[c * N +: N] | xrp_cq02h[c * N +: N];
+          rc_cq02h[p * N * 2 +: N * 2]   = rc_cq02h[p * N * 2 +: N * 2] | xrc_cq02h[c * N * 2 +: N * 2];
+          vd_cq02h[p * P +: P]           = vd_cq02h[p * P +: P] | x1_cq02h[c * P +: P] | x1p_cq02h[c * P +: P];
+          vc_cq02h[p * P * 2 +: P * 2]   = vc_cq02h[p * P * 2 +: P * 2] | x1c_cq02h[c * P * 2 +: P * 2];
           for (int d = 0; d < C; d++)
             for (int q = 0; q < P; q++)
-              if ((xg[c * C + d] || xgp[c * C + d]) && coh[d * P + q]) begin
-                gd[p * P + q]           = 1'b1;
-                gc[(p * P + q) * 2 +: 2] = gc[(p * P + q) * 2 +: 2] | xgc[(c * C + d) * 2 +: 2];
+              if ((xg_cq01h[c * C + d] || xgp_cq01h[c * C + d]) && coh_cq01h[d * P + q]) begin
+                gd_cq01h[p * P + q]           = 1'b1;
+                gc_cq01h[(p * P + q) * 2 +: 2] = gc_cq01h[(p * P + q) * 2 +: 2] | xgc_cq01h[(c * C + d) * 2 +: 2];
               end
         end
     // A code is payload, read only through its bit (ooe_rs's code register
@@ -414,30 +421,30 @@ module ooe_rendep #(
   // -- Rename's stage register, and G-1's ports ----------------------------------------
   // Clocked when a group is in Rename 2 now, and the cycle after, to clear
   // (grp_l from Rename 1's valid: the module's own flop).
-  logic st_en;
-  assign st_en = grp_l_cq01h || st_v_cq02h;
+  logic st_en_cq02h;
+  assign st_en_cq02h = grp_l_cq01h || st_v_cq02h;
   always_ff @(posedge ooe_core_clk) begin
-    if (st_en) begin
-      row_prod_cq02h <= pprod & pv;
-      row_dep_cq02h  <= rd;
-      row_code_cq02h <= rc;
-      grp_dep_cq02h  <= gd;
-      grp_code_cq02h <= gc;
-      prv_dep_cq02h  <= vd;
-      prv_code_cq02h <= vc;
-      g1gv_cq02h     <= pgv & pv;
-      g1pv_cq02h     <= ppv & pv;
-      g1gn_cq02h     <= pgn;
-      g1pn_cq02h     <= ppn;
-      g1cv_cq02h     <= pcv;
+    if (st_en_cq02h) begin
+      row_prod_cq02h <= pprod_cq01h & pv_cq01h;
+      row_dep_cq02h  <= rd_cq02h;
+      row_code_cq02h <= rc_cq02h;
+      grp_dep_cq02h  <= gd_cq01h;
+      grp_code_cq02h <= gc_cq01h;
+      prv_dep_cq02h  <= vd_cq02h;
+      prv_code_cq02h <= vc_cq02h;
+      g1gv_cq02h     <= pgv_cq01h & pv_cq01h;
+      g1pv_cq02h     <= ppv_cq01h & pv_cq01h;
+      g1gn_cq02h     <= pgn_cq01h;
+      g1pn_cq02h     <= ppn_cq01h;
+      g1cv_cq02h     <= pcv_cq01h;
     end
   end
   // G-2: G-1's ports a cycle on, when the stage register held a group, and
   // the cycle after, to clear.
-  logic g2_en;
-  assign g2_en = st_v_cq02h || g2_v_cq03h;
+  logic g2_en_cq02h;
+  assign g2_en_cq02h = st_v_cq02h || g2_v_cq03h;
   always_ff @(posedge ooe_core_clk) begin
-    if (g2_en) begin
+    if (g2_en_cq02h) begin
       g2gv_cq03h <= g1gv_cq02h & {P{st_v_cq02h}};
       g2pv_cq03h <= g1pv_cq02h & {P{st_v_cq02h}};
       g2gn_cq03h <= g1gn_cq02h;

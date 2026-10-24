@@ -301,7 +301,7 @@ void hook(const Core &c) {
     // The confirmation leads' terms as they stand in a.
     setBit(dut->wtl3_cq00h, j, pm.wtl3[j]);
     setBit(dut->fin_cq00h, j, control != "no-fin" && y.fin[j]);
-    setBit(dut->gnt_cq00h, j, y.grant[j]);
+    setBit(dut->gnt_cq01h, j, y.grant[j]);
   }
   // The completions arriving with this edge's valid flop: a + 1's.
   drivePayload(n1);

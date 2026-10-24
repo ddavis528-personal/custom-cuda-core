@@ -748,6 +748,12 @@ Built (`rtl/ooe/`):
      179): a streaming warp's fits stay all ones while its heads move, so
      no enable from own flops can reach 75%. The flops written every cycle
      are 14: the allowance takes 6, waivers the squash and change bits.
+     *The ceiling* (OI-73 (3), OA's rev 207): each slot's room to its
+     ceiling per class, rename's register (arrival 2), is a fits term: the
+     names of the k heads taken now and the m after must fit it, as the
+     ROB room covers k + m. 21.4 NGD flop to flop with it. go_tb's control
+     no-room drives no binding room and is caught (the directed test
+     ceiling-go makes it bind at the RTL's size).
      *Result.* `test/ooe/go_tb.cpp` drives ooe_go from the model's GoLog a
      cycle behind (the leads are the next cycle's log) and compares every
      take and lane: 25 seeds and the directed tests, 250 cores, 101,393
@@ -874,6 +880,32 @@ Built (`rtl/ooe/`):
      path is 7.3, so Rename 1 still converges (wb at 17, 24.3). ooe_rat's
      tk is data only (the D of its lead registers wl and ck), so its
      arrival is the take's 14 (OA's rev 194).
+     *Rename 2 (7c, built).* ooe_rendep reads the Rename 1 register: the
+     lanes' valid and write bits from its p_ copy, the names and reads
+     bound by u_ren1nr from its r_ copy, and each lane's attributes (x_:
+     the head's decode-time reads and bypass fields, the c_x port, with its
+     class bits from the admission bits; a lane with neither class bit
+     takes no RS entry). Rename 1's reads are no longer an output: only
+     Rename 2 reads them, and rename_tb through CCV_CHECK_RENAME ports.
+     ooe_rendep's lead is the go's registered sel, a superset of a take.
+     The Rename 2 register holds the group for Rename 3: ooe_prodmap's
+     record (names, ports packed per class in lane order, codes from
+     ooe_rendep's table) and ooe_rs's request (clocked while Rename 1 holds a lane or it is set).
+     The request's lead leaves from its own copies of the lanes' valid bits
+     and the RS ports each takes (o_lv, o_c: 12 flops, decoded so the copy
+     is no other register's twin, which the replay would merge), at 7.9
+     NGD. GPR names are registered as rows (whole rows until slice 6). ooe_rs's registered grant is an input. The bench
+     (rename_tb) drives the grant from the model's allocations three steps
+     back, as rendep_tb does. After each edge it holds the request and every
+     row of ooe_rendep's stage register to the model's, using rendep_tb's
+     compare with ooe_rs's masks allowed. Over 25 seeds and the directed
+     tests, 49,764 rows and 32,779 cells (1,912 in-group, 4,015 to the group
+     ahead) were compared and none differ. Controls no-reads (no head's
+     attributes say it reads) and no-grant (caught by ooe_prodmap's
+     granted) are caught. ooe_rendep and ooe_prodmap are blackboxed in
+     ooe_rename's unit. check-ngd: 14.4 flop to flop. check-cg: 964 flops,
+     947 behind 3 gates. ooe_rendep's gsn and psn budgets move to 6, by
+     OA's rev 194 (Rename 1's reads leave at 5.6).
 
 ## NGD-7 copies: the running tally (DA, 2026-10-21)
 
@@ -889,8 +921,8 @@ copies.
 | `ooe_rs` | the valid bits, for the outputs | 45 |
 | `ooe_sched` | the grant register's leaving copy, beside its mask copy | 45 |
 | `ooe_wake` | the issued bits | 45 |
-| `ooe_rename` | the Rename 1 register's pending-group fields (for the heads' reads), name index and free-list heads (twice more: the reads out, the heads' reads) | 220 |
-| **built** | | **1211** |
+| `ooe_rename` | the Rename 1 register's pending-group fields (for the heads' reads), name index and free-list heads (twice more: the reads out, the heads' reads); the lanes' valid bits and RS ports for the RS request's lead | 232 |
+| **built** | | **1223** |
 | `ooe_wake`, OI-45 (on its branch) | the miss pulses and the final bits | 90 |
 | `ooe_rs`, OI-45 (on its branch) | the prod bits, for ooe_sched's confirmation | 45 |
 
