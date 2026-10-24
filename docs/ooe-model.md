@@ -1332,7 +1332,7 @@ added with the event.
     OOE's at dispatch. F-WIDTH (3) is too: each slot holds the committed
     width of every architectural GPR (OA's response OI-57), written when a
     chwidth retires and 32 at launch and restore-allocate, and a memop
-    whose data register (a load's destination, a store's highest read
+    whose data register (a load's destination, a store's first
     source) is at 4 bits faults as a no-op. Control `no-width-fault` drops
     the check. F-FORMAT (4) reads DEC's fmt_rsv and fmt_opnd (TI's
     57048d7): it faults where fmt_rsv's bit for the committed width of

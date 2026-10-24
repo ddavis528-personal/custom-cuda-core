@@ -148,6 +148,7 @@ SchedAttr SchedAttr::decode(uint32_t a) {
   s.bypass_group = (a >> 14) & 7u;
   s.pair_first = (a >> 17) & 1u;
   s.pair_second = (a >> 18) & 1u;
+  s.commit_width = (a >> 20) & 1u;
   return s;
 }
 
@@ -604,23 +605,18 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   return w == 1 ? (home % 2) * 2 : home % 4;
 }
 
-/// A memop's data register: a load's destination; a store's highest read
-/// source.
+/// A memop's data register: a load's destination; a store's first source,
+/// src_arch[0], which is its data, the base and index following it
+/// (ccv_dec_ooe_uop; TI, AR-24 (d)).
 unsigned Core::dataName(const RobEntry &r) const {
-  unsigned data = r.alloc_gpr ? r.pnew : zeroName();
-  if (!r.alloc_gpr)
-    for (unsigned i = 0; i != 3; ++i)
-      if ((r.u.shape.gpr_reads >> i) & 1u) data = r.psrc[i];
-  return data;
+  if (r.alloc_gpr) return r.pnew;
+  return (r.u.shape.gpr_reads & 1u) ? r.psrc[0] : zeroName();
 }
 
 /// Its width code (AR-24 (d)), at rename.
 unsigned Core::dataWidth(const RobEntry &r) const {
-  unsigned w = r.alloc_gpr ? r.wdst : 0;
-  if (!r.alloc_gpr)
-    for (unsigned i = 0; i != 3; ++i)
-      if ((r.u.shape.gpr_reads >> i) & 1u) w = r.wsrc[i];
-  return w;
+  if (r.alloc_gpr) return r.wdst;
+  return (r.u.shape.gpr_reads & 1u) ? r.wsrc[0] : 0;
 }
 
 /// An entry's resources (OI-31, OI-33, AR-12). A memop takes the MIU pipes
@@ -2199,6 +2195,10 @@ void Core::retire() {
         s.chwidth = r.u.imm & 3u;     // temporary: A-75 names the field
         s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);   // the committed table (OI-57)
         s.chwidth_hold = false;
+      } else if (r.u.attr.commit_width) {
+        // An earlier chwidth.multi sibling: its width commits, no hold to
+        // release (AR-24 (c)); the last sibling's retire releases it.
+        s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);
       }
       // TI-27 (OA's rev 170): the warp is done at its final exit's retire,
       // when every lane has a retired exit; a partial exit (div's or
@@ -2922,7 +2922,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.arg_slot = u.arg_slot;
     m.local_form = u.local_form;         // DEC's, unexamined (IS-19)
     // The data register's width (AR-24 (d)): a load's destination, a
-    // store's highest read source, as resOf takes its pipes.
+    // store's first source, as resOf takes its pipes.
     m.chwidth = dataWidth(r);
     m.data_pos = cfg_.sectioned ? namePos(dataName(r)) : 0;
     if (x.atom) {
@@ -3036,13 +3036,10 @@ bool Core::tryRename(unsigned si, const Uop &u) {
                          !cfg_.inject_no_bar_fault;
   // F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): a memory access
   // whose data register is at chwidth 4, from the committed table: a load's
-  // destination, a store's highest read source (as resOf takes it).
+  // destination, a store's first source (as resOf takes it).
   bool width_fault = false;
   if (a.rs_miu && (a.mem_kind == kMemKLoad || a.mem_kind == kMemKStore) && !cfg_.inject_no_width_fault) {
-    unsigned rdata = u.dst;
-    if (a.mem_kind == kMemKStore)
-      for (unsigned i = 0; i != 3; ++i)
-        if ((u.shape.gpr_reads >> i) & 1u) rdata = u.src[i];
+    const unsigned rdata = a.mem_kind == kMemKStore ? u.src[0] : u.dst;
     width_fault = s.cw[rdata & 15] == 3;
   }
   // F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): the op's format

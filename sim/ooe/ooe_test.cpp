@@ -1361,9 +1361,9 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
     // A memory access whose data register is 4 bits wide faults (F-WIDTH,
     // from the committed table rename now reads): keep the data 8 bits or
-    // wider (a load's destination, a store's last source).
+    // wider (a load's destination, a store's first source, src_arch[0]).
     if (o.k == kLoad && width[o.dst] == 3) { o.k = kLane; o.nsrc = 1; }
-    if (o.k == kStore && width[o.src[1]] == 3) o.src[1] = r(4);
+    if (o.k == kStore && width[o.src[0]] == 3) o.src[0] = r(4);
     o.w = width[o.dst];
     o.backward = o.k == kBranch && r(2) == 0;
     p.push_back(o);
@@ -1928,7 +1928,7 @@ bool ctaSlot(bool control) {
   e.keep_log = true;
   std::vector<Op> p;
   Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
-  Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 4; st.src[1] = 8; p.push_back(st);
+  Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 8; st.src[1] = 4; p.push_back(st);
   Op b; b.k = kBarrier; p.push_back(b);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(5, 1, p);
@@ -2804,7 +2804,7 @@ void testWidthCodes() {
     std::vector<Op> p;
     Op w; w.k = kChw; w.dst = 2; w.chw = 2; p.push_back(w);
     Op a; a.k = kLane; a.dst = 2; a.w = 2; a.src[0] = 1; a.nsrc = 1; p.push_back(a);
-    Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 4; st.src[1] = 2; p.push_back(st);
+    Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 2; st.src[1] = 4; p.push_back(st);
     Op ex; ex.k = kExit; p.push_back(ex);
     e.launch(0, 0, p);
     e.finish();
@@ -3551,7 +3551,7 @@ std::vector<Op> stallProgram(std::mt19937 &rng, bool fetching, unsigned fill) {
     o.src[0] = dep;
     o.src[1] = r(4);
     o.nsrc = o.k == kLoad ? 1 : 2;
-    if (o.k == kStore) { o.src[0] = r(4); o.src[1] = dep; }
+    if (o.k == kStore) { o.src[0] = dep; o.src[1] = r(4); }
     o.dst = 5 + i % 10;
     if (o.k != kStore) prev = o.dst;
     p.push_back(o);
@@ -4277,21 +4277,21 @@ void sweepSections() {
       } else if (kk == kVadd) {
         Op y; y.k = kLoad; y.dst = 5; y.w = w; y.src[0] = 0; y.nsrc = 1; p.push_back(y);
         Op a; a.k = kLane; a.dst = 6; a.w = w; a.src[0] = 4; a.src[1] = 5; a.nsrc = 2; p.push_back(a);
-        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 6; s.nsrc = 2; p.push_back(s);
+        Op s; s.k = kStore; s.src[0] = 6; s.src[1] = 0; s.nsrc = 2; p.push_back(s);
       } else if (kk == kRed) {
         Op a; a.k = kLane; a.dst = 7; a.w = w; a.src[0] = 7; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
       } else {
         Op a; a.k = kLane; a.dst = 5; a.w = w; a.src[0] = 4; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
         Op c; c.k = kFp; c.dst = 8; c.src[0] = 5; c.nsrc = 1; p.push_back(c);            // cvt to FP32
         Op f; f.k = kFp; f.dst = 9; f.src[0] = 8; f.src[1] = 8; f.nsrc = 2; p.push_back(f);
-        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 9; s.nsrc = 2; p.push_back(s);
+        Op s; s.k = kStore; s.src[0] = 9; s.src[1] = 0; s.nsrc = 2; p.push_back(s);
       }
       Op r; r.k = kRcuOp; r.dst = 0; r.src[0] = 0; r.nsrc = 1; p.push_back(r);           // index += stride
       Op t; t.k = kSetp; t.pdst = 1; t.src[0] = 0; t.src[1] = 1; t.nsrc = 2; p.push_back(t);
       const bool more = it + 1 != iters;
       Op b; b.k = kBranch; b.pguard = 1; b.taken = b.pred_taken = more; b.backward = true; p.push_back(b);
     }
-    if (kk == kRed) { Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 7; s.nsrc = 2; p.push_back(s); }
+    if (kk == kRed) { Op s; s.k = kStore; s.src[0] = 7; s.src[1] = 0; s.nsrc = 2; p.push_back(s); }
     Op e; e.k = kExit; p.push_back(e);
     return p;
   };

@@ -472,6 +472,10 @@ struct SchedAttr {
   /// first (rbase, rindex and the displacement: A1), [18] the second
   /// (rs_cmp, rs_swap and the destination: A2), one instruction.
   bool pair_first = false, pair_second = false;
+  /// [20] commit_width (AR-24 (c), OA's rev 222): a chwidth.multi sibling
+  /// but the last, serial none, which commits its register's width at
+  /// retire with no hold; the last sibling holds the warp as a chwidth does.
+  bool commit_width = false;
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
