@@ -431,12 +431,25 @@ static_assert(kSlotR + 1 == ccv::kIssueResources, "S0-S3, P0-P3, R");
 /// chwidth's codes, and the sections (or pipes) a register of each spans.
 enum : unsigned { kChw32 = 0, kChw16 = 1, kChw8 = 2, kChw4 = 3 };
 inline unsigned spanOf(unsigned chw) { return chw == kChw32 ? 4u : chw == kChw16 ? 2u : 1u; }
+/// A width code's element bits: what a register of that width holds. A
+/// narrow write zero-extends to the row (O-38), and a value is compared
+/// with ccv-sim's only within it, since ccv-sim keeps the slice's old bits.
+inline uint32_t elemMask(unsigned chw) { return chw == kChw32 ? ~0u : (1u << (32u >> chw)) - 1u; }
 /// The footprint mask of a register at a position: its span from there.
 inline unsigned maskOf(unsigned chw, unsigned pos) { return ((1u << spanOf(chw)) - 1u) << pos; }
 
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
 inline unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
+/// An add (+1) or subtract (-1) the lane stub computes itself when its
+/// destination is narrow, to wrap it at the width (AR-24); 0 otherwise.
+inline int arithSign(const OpInfo *op) {
+  for (const char *n : {"ADD", "C_ADD", "ADDI", "C_ADDI"})
+    if (!std::strcmp(op->name, n)) return 1;
+  for (const char *n : {"SUB", "C_SUB"})
+    if (!std::strcmp(op->name, n)) return -1;
+  return 0;
+}
 inline const OpInfo *opByName(const std::string &n) {
   for (const OpInfo &o : kOps) if (n == o.name) return &o;
   return nullptr;

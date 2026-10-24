@@ -707,7 +707,37 @@ addrhigh addr_fault=1 fault=1 kill=1
 addrneg addr_fault=1 fault=1 kill=1
 addrlimit addr_fault=0 fault=0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
+narrowadd narrow_arith>0 partial_line>0
 KERNELS
+# Narrow registers on full rows (AR-24's interim; AR's rev 178, OA's rev 230):
+# every narrow write zero-extends at its width code, so a widening finds the
+# row clear above the old element (O-38), and MIU moves the data register's
+# width. Each mechanism has its control:
+#   narrow-carry: the lane leaves its 16-bit add's carry in bit 16
+#   lane-unmasked: the lane drives ccv-sim's value, the slice's old bits kept
+#   wide-xfer: MIU moves four bytes for every access
+NA=build/oracle/narrowadd/oracle.jsonl
+for b in narrow-carry lane-unmasked wide-xfer; do
+  "$SKEL" --kernel "$NA" --break "$b" >"$B/kernel_$b.log" 2>&1
+done
+if grep -q "^CHECK lane 0: seq 8 chwidth R2 to width code 0 reads 00010113, oracle 00000113" "$B/kernel_narrow-carry.log" &&
+   [ "$(field "$B/kernel_narrow-carry.log" gpr_mismatch)" != 0 ]; then
+  say "--break narrow-carry: the widening finds the carry" "PASS ($(field "$B/kernel_narrow-carry.log" check_failures) checks)"
+else
+  bad "--break narrow-carry" "a carry above a narrow element went unnoticed: $(grep '^KERNEL' "$B/kernel_narrow-carry.log")"
+fi
+if grep -q "^CHECK lane 0: seq 8 chwidth R2 to width code 0 reads efcd0113, oracle 00000113" "$B/kernel_lane-unmasked.log" &&
+   [ "$(field "$B/kernel_lane-unmasked.log" gpr_mismatch)" != 0 ]; then
+  say "--break lane-unmasked: the widening finds old bits" "PASS ($(field "$B/kernel_lane-unmasked.log" check_failures) checks)"
+else
+  bad "--break lane-unmasked" "a narrow result's old bits went unnoticed: $(grep '^KERNEL' "$B/kernel_lane-unmasked.log")"
+fi
+if grep -q "^CHECK miu: seq 4 lane 0 moves 4 bytes, oracle 2" "$B/kernel_wide-xfer.log" &&
+   [ "$(field "$B/kernel_wide-xfer.log" mem_mismatch)" != 0 ]; then
+  say "--break wide-xfer: MIU's transfer size refused" "PASS (mem_mismatch=$(field "$B/kernel_wide-xfer.log" mem_mismatch))"
+else
+  bad "--break wide-xfer" "a 4-byte transfer for a narrow register went unnoticed: $(grep '^KERNEL' "$B/kernel_wide-xfer.log")"
+fi
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
 # and two of the words unal pokes beside its store in line 0, which those

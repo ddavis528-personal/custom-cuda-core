@@ -17,6 +17,8 @@
 # .const range, ccv-sim -const-range), an optional ENTRY=<pc> (ccv-sim
 # -entry, a release kernel's launch.txt entry), an optional MAXSTEPS=<n>
 # (ccv-sim -max-steps, for a kernel past its default limit), an optional
+# OOE_CONFIG=<name=value,...> (the OOE model's settings the kernel runs under,
+# written beside its records for both hosts: narrowadd's full_rows), an optional
 # FAULT=<cause> (the run
 # ends in that fault, ccv-sim's exit 3, its record and state at the fault
 # written; TI-26, TI-28; with several warps, the first), then one poke per
@@ -71,10 +73,12 @@ for k in "${kdirs[@]}"; do
   fault=$(sed -n 's/^FAULT=//p' "$k/kernel.cfg")
   entry=$(sed -n 's/^ENTRY=//p' "$k/kernel.cfg")
   maxsteps=$(sed -n 's/^MAXSTEPS=//p' "$k/kernel.cfg")
+  ooecfg=$(sed -n 's/^OOE_CONFIG=//p' "$k/kernel.cfg")
   out=$O/$name
   rm -rf "$out" && mkdir -p "$out"
   # The launch entry, for the skeleton's RAU (Kernel::loadOracles).
   [ -n "$entry" ] && echo "$entry" > "$out/entry"
+  [ -n "$ooecfg" ] && echo "$ooecfg" > "$out/ooe_config"
   ok=1
   python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
     "$out/kernel.bin" >/dev/null || ok=0

@@ -794,6 +794,7 @@ private:
     /// A predicate transfer (TI-36): one word at lane 0's address. A store
     /// carries its predicate's word, merged into memory's after commit.
     bool pxfer = false;
+    unsigned bytes = 4;              ///< per lane: the data register's width
     uint32_t pdata = 0;
     unsigned rmw = 0;                ///< a predicate store's drain: 1 reading, 2 writing
   };
@@ -1336,7 +1337,7 @@ private:
     const uint64_t draw = get(mo.msg, c.ooe_miu, "disp");
     const int64_t disp = int64_t(draw << (64 - df.width)) >> (64 - df.width);
     const unsigned chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
-    const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - chw : 0;
+    const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - std::min(chw, 2u) : 0;
     const bool global = get(mo.msg, c.ooe_miu, "space") == kSpaceGlobal;
     j.global = global;
     // The base is per lane (TI-32), or a launch slot's window (TI-31).
@@ -1383,8 +1384,12 @@ private:
                     (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
                     uint64_t(disp);
       }
-    // Lines touched by ACTIVE lanes, in first-touch order; four bytes per
-    // lane (32-bit only). An inactive lane's address is never looked at.
+    // Lines touched by ACTIVE lanes, in first-touch order; each lane moves
+    // its data register's width (AR-24 (d): 4, 2 or 1 bytes from chwidth).
+    // An inactive lane's address is never looked at. wide-xfer: every
+    // access moves four bytes, as the 32-bit-only stubs did.
+    const unsigned nb = k_.brk == "wide-xfer" ? 4u : spanOf(chw);
+    j.bytes = nb;
     std::map<uint64_t, size_t> at;
     for (unsigned l = 0; l != kLanes; ++l) {
       if (!((j.active >> l) & 1u)) continue;
@@ -1399,7 +1404,7 @@ private:
       if (j.store && !j.pxfer) {   // a predicate store's word lands at its drain's merge
         LineReq &lr = j.lines[at[line]];
         const uint32_t v = getLane(am, c.rcu_miu, "store_data", l);
-        for (unsigned b = 0; b != 4; ++b) {
+        for (unsigned b = 0; b != nb; ++b) {
           const unsigned off = unsigned(j.addr[l] % kLine) + b;
           lr.data[off] = uint8_t(v >> (8 * b));
           lr.mask[off] = true;
@@ -1552,14 +1557,20 @@ private:
       return;
     }
     for (const MemAcc &a : r->mem) {
-      if (a.addr != j.addr[a.lane] || a.bytes != 4 || a.shared)
+      if (a.addr != j.addr[a.lane] || a.shared)
         k_.fail("miu: seq %llu lane %u address %llx, oracle %llx",
                 (unsigned long long)r->seq, a.lane,
                 (unsigned long long)j.addr[a.lane], (unsigned long long)a.addr);
-      if (j.store && r->kind != "fault" && getLane(am, ch().rcu_miu, "store_data", a.lane) != a.val)
+      else if (a.bytes != j.bytes)
+        k_.fail("miu: seq %llu lane %u moves %u bytes, oracle %u", (unsigned long long)r->seq,
+                a.lane, j.bytes, a.bytes);
+      // A narrow store sends its register's row; only its element is data.
+      const uint32_t bm = j.bytes == 4 ? ~0u : (1u << (8 * j.bytes)) - 1;
+      if (j.store && r->kind != "fault" &&
+          (getLane(am, ch().rcu_miu, "store_data", a.lane) & bm) != (a.val & bm))
         k_.fail("miu: seq %llu lane %u store data %08x, oracle %08x",
                 (unsigned long long)r->seq, a.lane,
-                getLane(am, ch().rcu_miu, "store_data", a.lane), a.val);
+                getLane(am, ch().rcu_miu, "store_data", a.lane) & bm, a.val & bm);
     }
   }
 
@@ -1692,7 +1703,7 @@ private:
                                                           : job_.addr[l] / kLine * kLine);
         const unsigned off = unsigned(job_.addr[l] % kLine);
         uint32_t v = 0;
-        for (unsigned b = 0; b != 4; ++b) v |= uint32_t(ln[off + b]) << (8 * b);
+        for (unsigned b = 0; b != job_.bytes; ++b) v |= uint32_t(ln[off + b]) << (8 * b);
         // What came back from memory, against what ccv-sim loaded.
         if (r)
           for (const MemAcc &a : r->mem)
@@ -1911,13 +1922,22 @@ private:
       for (const RegVal *u : rc->gprUses()) if (u->idx == idx) return u;
       return nullptr;
     };
+    // Each is compared within its register's width, the record's, and its
+    // width code is held to it (AR-24 (d)): ccv-sim keeps the bits above a
+    // narrow element as the slice last held them, and the row holds zeros.
     for (size_t i = 0; on && i != g.size() && i < 3; ++i) {
       const RegVal *u = useOf(g[i]);
       if (!u) continue;
+      const unsigned w = rc->widthOf(u->idx);
+      const unsigned ow = getSec(m.payload, c.rcu_lane, "sec_opnd_width", unsigned(i), ccv::kWChwidth);
+      if (ow != w)
+        k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) at width code %u, the record's %u",
+                    lane_, (unsigned long long)rc->seq, i, u->idx, ow, w);
+      const uint32_t em = elemMask(w);
       const uint32_t got = operand(m, unsigned(i), rc->seq);
-      if (got != u->v[lane_])
+      if ((got & em) != (u->v[lane_] & em))
         k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x", lane_,
-                    (unsigned long long)rc->seq, i, u->idx, got, u->v[lane_]);
+                    (unsigned long long)rc->seq, i, u->idx, got & em, u->v[lane_] & em);
     }
     // A chwidth's destination is its register (uop k of chwidth.multi: the
     // mask's k-th), and its def is that register's, if the value changed.
@@ -1953,18 +1973,54 @@ private:
       // lane IS its old value, so the merge is checked here.
       const uint32_t md = operand(m, kBypMerge, rc->seq);
       put(r, c.lane_rcu, "result", md);
-      if (const RegVal *d = gdef)
-        if (md != d->v[lane_])
+      if (const RegVal *d = gdef) {
+        const uint32_t em = elemMask(rc->widthOf(d->idx));
+        if ((md & em) != (d->v[lane_] & em))
           k_.failHeld(at, m.tid, "lane %u: seq %llu merge_data %08x, but R%u keeps %08x", lane_,
-                      (unsigned long long)rc->seq, md, d->idx, d->v[lane_]);
+                      (unsigned long long)rc->seq, md & em, d->idx, d->v[lane_] & em);
+      }
       // sec_pred_out is don't-care here (RCU merges predicates): poison.
       if (const RegVal *d = rc->predDef())
         put(r, c.lane_rcu, "sec_pred_out", ((d->p >> lane_) & 1u) ^ 1u);
-    } else if (op && op->chw && !gdef) {
-      // A chwidth that changed no bit: the register's value, as read.
-      put(r, c.lane_rcu, "result", operand(m, 0, rc->seq));
+    } else if (op && op->chw) {
+      // A chwidth: the register's row as read, kept within its new width.
+      // A widening must find the row already zero above the old element,
+      // since every narrow write zero-extends (O-38): ccv-sim's widened
+      // value is zero there, so a bit left behind fails here.
+      // The new width is the instruction's (its immediate, as the record
+      // has it), not OOE's dst_width, which names the old one (OI, AR-24).
+      const size_t wi = op->chw == 2 ? 1 : 0;
+      const unsigned nw = wi < rc->imms.size() ? unsigned(rc->imms[wi]) & 3u : kChw32;
+      const uint32_t v = operand(m, 0, rc->seq) & elemMask(nw);
+      if (const RegVal *d = gdef)
+        if (v != (d->v[lane_] & elemMask(nw)))
+          k_.failHeld(at, m.tid, "lane %u: seq %llu chwidth R%u to width code %u reads %08x, oracle %08x",
+                      lane_, (unsigned long long)rc->seq, d->idx, nw, v, d->v[lane_] & elemMask(nw));
+      put(r, c.lane_rcu, "result", v);
     } else if (const RegVal *d = gdef) {
-      uint32_t v = d->v[lane_];
+      // A narrow destination is written zero-extended at its width code
+      // (AR-24's interim on a full row), held to the record's width.
+      const unsigned dw = unsigned(get(m.payload, c.rcu_lane, "sec_dst_width"));
+      if (dw != rc->widthOf(d->idx))
+        k_.failHeld(at, m.tid, "lane %u: seq %llu R%u written at width code %u, the record's %u", lane_,
+                    (unsigned long long)rc->seq, d->idx, dw, rc->widthOf(d->idx));
+      // lane-unmasked: ccv-sim's value as recorded, the slice's old bits
+      // above the element and all, for the widening to find.
+      const uint32_t dm = k_.brk == "lane-unmasked" ? ~0u : elemMask(dw);
+      uint32_t v = d->v[lane_] & dm;
+      // The lane wraps a narrow add or subtract itself, at its width (the
+      // operands as they came, an immediate in its slot): the result is the
+      // lane's, held to ccv-sim's. narrow-carry: the sum not wrapped, its
+      // carry left above the element, for the widening to find.
+      if (dm != ~0u && op && arithSign(op)) {
+        const uint32_t a0 = operand(m, 0, rc->seq), a1 = operand(m, 1, rc->seq);
+        const uint32_t full = arithSign(op) > 0 ? a0 + a1 : a0 - a1;
+        if ((full & dm) != v)
+          k_.failHeld(at, m.tid, "lane %u: seq %llu %s at width code %u gives %08x, oracle %08x", lane_,
+                      (unsigned long long)rc->seq, op->name, dw, full & dm, v);
+        v = k_.brk == "narrow-carry" ? full : full & dm;
+        k_.hit("narrow_arith");
+      }
       if (op && op->srd_sel >= 0) {
         const uint32_t o0 = operand(m, 0, rc->seq);
         v = op->or_lane ? (o0 | lane_) : o0;
@@ -2613,13 +2669,15 @@ private:
     if (op->cross) {
       k_.executing("rcu", m.tid);
       const unsigned from = imm0 & 31;
-      const uint32_t v = k_.gpr[src[0]][from];
+      // A narrow destination zero-extends at its width code (AR-24).
+      const uint32_t em = elemMask(unsigned(get(m.payload, c.ooe_rcu, "dst_width")));
+      const uint32_t v = k_.gpr[src[0]][from] & em;
       for (unsigned l = 0; l != kLanes; ++l)
         k_.gpr[pd][l] = (active >> l) & 1u ? v : k_.gpr[pold][l];
       if (const Record *r = rec(m.tid, "rcu"))
         if (const RegVal *d = r->gprDef())
           for (unsigned l = 0; l != kLanes; ++l)
-            if (((active >> l) & 1u) && k_.gpr[pd][l] != d->v[l]) {
+            if (((active >> l) & 1u) && k_.gpr[pd][l] != (d->v[l] & em)) {
               k_.failHeld("rcu", m.tid, "rcu: seq %llu R%u lane %u = %08x, oracle %08x",
                           (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
               break;
@@ -2630,12 +2688,14 @@ private:
     if (op->cls == kImm && k_.brk != "movi-in-lane") {
       // RCU executes it, so RCU merges it: inactive lanes keep the old
       // destination's values (merge_en is set whenever one can exist).
+      // A narrow destination zero-extends at its width code (AR-24).
+      const uint32_t em = elemMask(unsigned(get(m.payload, c.ooe_rcu, "dst_width")));
       for (unsigned l = 0; l != kLanes; ++l)
-        k_.gpr[pd][l] = (active >> l) & 1u ? imm0 : k_.gpr[pold][l];
+        k_.gpr[pd][l] = (active >> l) & 1u ? imm0 & em : k_.gpr[pold][l];
       if (const Record *r = rec(m.tid, "rcu"))
         if (const RegVal *d = r->gprDef())
           for (unsigned l = 0; l != kLanes; ++l)
-            if (((active >> l) & 1u) && k_.gpr[pd][l] != d->v[l]) {
+            if (((active >> l) & 1u) && k_.gpr[pd][l] != (d->v[l] & em)) {
               k_.fail("rcu: seq %llu R%u lane %u = %08x, oracle %08x",
                       (unsigned long long)r->seq, d->idx, l, k_.gpr[pd][l], d->v[l]);
               break;
@@ -3595,7 +3655,7 @@ private:
                 (unsigned long long)pk.pc, pk.mask, (unsigned long long)r.pc, r.mask,
                 (unsigned long long)r.seq);
       if (r.kind != "advance" && r.kind != "branch" && r.kind != "branchpred" && r.kind != "exit" &&
-          r.kind != "fault")
+          r.kind != "fault" && r.kind != "return")
         k_.fail("fet: warp %u seq %llu is a %s, which this FET does not follow", w,
                 (unsigned long long)r.seq, r.kind.c_str());
       uint64_t word = 0;
@@ -4737,11 +4797,14 @@ KernelReport compareFinal(Kernel &k) {
     auto fin = k.finals.find(w);
     for (unsigned a = 0; a != kArchGprs; ++a)
       for (unsigned l = 0; l != kLanes; ++l) {
+        // Within the register's final width: ccv-sim keeps the bits above
+        // a narrow element as the slice last held them (AR-24).
+        const uint32_t em = elemMask(o.final_widths >> 2 * a & 3u);
         const uint32_t got = fin != k.finals.end() ? fin->second.gpr[a][l] : k.gpr[rat[a]][l];
-        if (got != o.final_gpr[a][l]) {
+        if ((got & em) != (o.final_gpr[a][l] & em)) {
           if (r.gpr_mismatch++ < 4)
             std::fprintf(stderr, "FINAL %s%sR%u lane %u: machine %08x, ccv-sim %08x\n", who,
-                         wn.c_str(), a, l, got, o.final_gpr[a][l]);
+                         wn.c_str(), a, l, got & em, o.final_gpr[a][l] & em);
         }
       }
     std::vector<unsigned> pmap = w < k.prat.size() ? k.prat[w] : std::vector<unsigned>();
@@ -4832,6 +4895,20 @@ std::string Kernel::loadOracles(const std::string &path) {
     std::ifstream ef((sl == std::string::npos ? std::string(".") : path.substr(0, sl)) + "/entry");
     std::string t;
     if (ef >> t) orcs[0].entry = std::strtoull(t.c_str(), nullptr, 0);
+  }
+  // The OOE model's settings a kernel runs under (kernel.cfg's OOE_CONFIG,
+  // which gen-oracle writes beside the records: narrowadd's full_rows, AR-24's
+  // interim). An explicit CCV_OOE_CONFIG follows it and so wins. Read here,
+  // before either host builds its blocks.
+  {
+    const size_t sl = path.rfind('/');
+    std::ifstream cf((sl == std::string::npos ? std::string(".") : path.substr(0, sl)) + "/ooe_config");
+    std::string t;
+    if (cf >> t) {
+      const char *cur = std::getenv("CCV_OOE_CONFIG");
+      const std::string v = cur && *cur ? t + "," + cur : t;
+      setenv("CCV_OOE_CONFIG", v.c_str(), 1);
+    }
   }
   // Each run stands for one warp, which RAU gives warp_id w, its hardware
   // context: srd #2's %lanectx names it (O-64), so the run must have named

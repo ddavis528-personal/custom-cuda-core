@@ -69,6 +69,11 @@ struct Record {
   uint64_t target = 0;               ///< branch: where they go
   std::vector<RegVal> uses, defs;    ///< operand order; uses before, defs after
   std::vector<MemAcc> mem;           ///< ascending lane
+  /// Every GPR's width code as the record executes, 2 bits per register
+  /// (R0 lowest): ccv-sim keeps the bits above a narrow element as the
+  /// slice last held them, so a value is compared only within its width.
+  uint32_t widths = 0;
+  unsigned widthOf(unsigned g) const { return widths >> (2 * (g & 15)) & 3u; }
 
   std::vector<const RegVal *> gprUses() const;
   /// A predicate transfer, ld.pred or st.pred (O-19), and its mask,
@@ -136,6 +141,7 @@ struct Oracle {
   Fault fault;
   std::vector<Record> recs;
   uint32_t final_gpr[kArchGprs][kLanes] = {};
+  uint32_t final_widths = 0;   ///< as Record::widths, after the last record
   uint32_t final_pred[kArchPreds] = {};
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
