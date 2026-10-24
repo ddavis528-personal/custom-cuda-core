@@ -2838,6 +2838,11 @@ private:
       // to {PC[47:32], aux} with stay, and the ret re-issues for the
       // rest, a pass per distinct target.
       if (op->ret) {
+        // Held, as a lane's checks are: OOE may issue a ret on a load's
+        // speculated L1 hit and replay it when the hit does not come, so
+        // only a pass's last execution is judged. A pass is its lanes.
+        const std::string at = "rcu ret " + std::to_string(active);
+        k_.executing(at, m.tid);
         uint32_t tgt = 0, same = 0;
         bool first = true;
         for (unsigned l = 0; l != kLanes; ++l)
@@ -2850,8 +2855,8 @@ private:
         put(d, c.rcu_ooe, "branch_taken", same != 0);
         put(d, c.rcu_ooe, "aux", tgt);
         if (r && same && tgt != uint32_t(r->target))
-          k_.fail("rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq, tgt,
-                  (unsigned long long)r->target);
+          k_.failHeld(at, m.tid, "rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq,
+                      tgt, (unsigned long long)r->target);
       }
       to_ooe_.push_back({0, d, m.tid});
       return;
