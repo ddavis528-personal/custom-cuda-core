@@ -697,6 +697,8 @@ struct Drained {        ///< ccv_ooe_rau_drained
 struct RatMap {         ///< ccv_ooe_rcu_map
   unsigned warp = 0, direction = 0;
   std::array<unsigned, kArchGprs> gpr{};
+  /// Each register's committed width code (gpr_width; TI's rev 184).
+  std::array<unsigned, kArchGprs> w{};
   std::array<unsigned, kArchPreds> pred{};
 };
 struct Bar {            ///< ccv_ooe_syu_bar (TI-40): a report at retire

@@ -2066,6 +2066,7 @@ void Core::control() {
         m.warp = s.warp;
         m.direction = 0;
         std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+        std::copy(s.cw.begin(), s.cw.end(), m.w.begin());
         std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
         out.maps.push_back(m);
         s.map_sent = true;
@@ -3479,6 +3480,7 @@ void Core::restoreStep() {
   m.warp = s.warp;
   m.direction = 1;
   std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+  std::copy(s.cw.begin(), s.cw.end(), m.w.begin());
   std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
   out.maps.push_back(m);
   s.restoring = false;
