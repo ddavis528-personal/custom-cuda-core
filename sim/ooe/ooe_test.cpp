@@ -126,6 +126,8 @@ struct Op {
   /// kChw: a chwidth.multi sibling (AR-24 (c)): serial 0 and commit_width.
   bool sibling = false;
   bool chw_writes = false;   ///< kChw: writes its register (DEC's gdst), so it renames a destination
+  bool diverged = false;     ///< kChw: FET's converged mark clear (O-81), so it faults
+  unsigned xfer = 0;         ///< a memop's sized transfer (O-80): 0 rdata's width, 1 a byte, 2 a halfword
   /// kBranch: a ret (AR-24 (b)), its target offset in the code window on
   /// its done's aux.
   bool ret = false;
@@ -210,7 +212,9 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.imm = o.chw;
     break;
   }
-  u.all_waiting = o.k == kBarrier ? o.aw && !o.arrive : o.mark;
+  // A chwidth carries FET's converged mark (O-81) unless the test diverges it.
+  u.all_waiting = o.k == kBarrier ? o.aw && !o.arrive : o.k == kChw ? !o.diverged : o.mark;
+  u.xfer_size = o.xfer;
   u.attr_raw |= pgroupOf(o.k) << 14;
   if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & ~(7u << 14)) | Config::kGrpAddr << 14;
   u.attr = SchedAttr::decode(u.attr_raw);
@@ -2980,6 +2984,79 @@ void testWidthFault() {
   }
 }
 
+/// O-80 (DA tab rev 90): a sized load passes xfer_size to MIU, and one
+/// wider than its data register's width faults at dispatch with F-WIDTH:
+/// with R4 at 8 bits, a halfword load into R4 faults and a byte load does
+/// not. O-81 (DA tab rev 91): a chwidth without FET's converged mark faults
+/// with F-WIDTH, a no-op that sets no width. Controls no-sized-fault and
+/// no-converged-fault drop the two checks.
+void testSizedAndConverged() {
+  for (const bool control : {false, true}) {
+    for (const unsigned xfer : {2u, 1u}) {
+      g_test = control ? "sized fault (control)" : "sized fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_sized_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 2; p.push_back(w);
+      Op ld; ld.k = kLoad; ld.dst = 4; ld.nsrc = 1; ld.src[0] = 6; ld.xfer = xfer; p.push_back(ld);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0, sized = 0;
+      for (unsigned k = 0; k != 80; ++k) {
+        e.step();
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+        for (const Memop &m : e.log.back().memops) if (m.tid == 2) sized = m.xfer_size;
+      }
+      const bool want = xfer == 2 && !control;
+      if (control) {
+        if (xfer == 2) {
+          std::printf("  %-24s %s\n", "control no-sized-fault", faults == 0 ? "caught" : "MISSED");
+          EXPECT(faults == 0, "dropping the check should let the halfword load through");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want, "xfer %u into an 8-bit R4: %u faults", xfer, faults);
+      if (want) EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+      else EXPECT(sized == xfer, "the memop carried xfer_size %u, want %u", sized, xfer);
+    }
+  }
+  for (const bool control : {false, true}) {
+    for (const bool diverged : {true, false}) {
+      g_test = control ? "diverged chwidth (control)" : "diverged chwidth";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_converged_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 2; w.diverged = diverged; p.push_back(w);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0;
+      for (unsigned k = 0; k != 60; ++k) {
+        e.step();
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want = diverged && !control;
+      if (control) {
+        if (diverged) {
+          std::printf("  %-24s %s\n", "control no-converged-fault", faults == 0 ? "caught" : "MISSED");
+          EXPECT(faults == 0, "dropping the check should let the diverged chwidth through");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want, "%s chwidth: %u faults", diverged ? "a diverged" : "a converged", faults);
+      if (want) {
+        EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+        EXPECT(e.core.slotWidth(0, 4) == 0, "a faulting chwidth set R4's width to %u", e.core.slotWidth(0, 4));
+      }
+    }
+  }
+}
+
 /// F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): an FP op whose
 /// format code DEC marks reserved at its operand's committed width faults
 /// at dispatch, cause 4. With R4 at 4 bits and src0 = R4, a format reserved
@@ -4669,6 +4746,7 @@ int main(int argc, char **argv) {
   testRet();
   testWidthCodes();
   testWidthFault();
+  testSizedAndConverged();
   testFormatFault();
   testSections();
   testFreeVec();

@@ -1362,7 +1362,15 @@ added with the event.
     it sets (TI's rev 185). A ret (sched_attr bit 19; AR-24 (b), OA's rev
     223) redirects the lanes RCU's done names to {PC[47:32], aux} with
     `stay`, so its other lanes stay at the ret and re-issue it with their
-    own targets (`branch.ret_redirect`; testRet);
+    own targets (`branch.ret_redirect`; testRet). O-80 (sized loads and
+    stores, DA tab rev 90): DEC's xfer_size and xfer_signed pass to MIU on
+    the memop, and a sized transfer wider than the data register's
+    committed width faults with F-WIDTH (`fault.width.sized`). O-81
+    (converged-only chwidth, DA tab rev 91): a chwidth or sibling whose
+    all_waiting, FET's converged mark, is clear faults with F-WIDTH, a
+    no-op that sets no width and holds nothing
+    (`fault.width.diverged_chwidth`). testSizedAndConverged covers both;
+    controls `no-sized-fault` and `no-converged-fault`;
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record

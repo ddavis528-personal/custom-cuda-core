@@ -2940,6 +2940,8 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
     m.arg_slot = u.arg_slot;
     m.local_form = u.local_form;         // DEC's, unexamined (IS-19)
+    m.xfer_size = u.xfer_size;           // O-80: DEC's, passed through
+    m.xfer_signed = u.xfer_signed;
     // The data register's width (AR-24 (d)): a load's destination, a
     // store's first source, as resOf takes its pipes.
     m.chwidth = dataWidth(r);
@@ -3064,6 +3066,19 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   if (a.rs_miu && (a.mem_kind == kMemKLoad || a.mem_kind == kMemKStore) && !cfg_.inject_no_width_fault) {
     const unsigned rdata = a.mem_kind == kMemKStore ? u.src[0] : u.dst;
     width_fault = s.cw[rdata & 15] == 3;
+    // O-80: a sized transfer (8 or 16 bits) wider than rdata's width.
+    const unsigned xbits = u.xfer_size == 1 ? 8 : u.xfer_size == 2 ? 16 : 0;
+    if (xbits > (32u >> s.cw[rdata & 15]) && !cfg_.inject_no_sized_fault) {
+      width_fault = true;
+      count("fault.width.sized");
+    }
+  }
+  // O-81 (DA tab rev 91): a chwidth, or a chwidth.multi sibling, outside a
+  // converged warp (FET's all_waiting mark on it is clear) faults, a no-op
+  // that sets no width and holds nothing.
+  if ((a.serial == kSerChwidth || a.commit_width) && !u.all_waiting && !cfg_.inject_no_converged_fault) {
+    width_fault = true;
+    count("fault.width.diverged_chwidth");
   }
   // F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): the op's format
   // code reserved at its operand's committed width, as DEC decoded it.
