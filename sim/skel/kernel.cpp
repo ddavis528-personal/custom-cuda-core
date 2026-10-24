@@ -3762,6 +3762,15 @@ private:
         put(f, c.fet_dec, "all_waiting", k_.brk != "no-wait-mark");
         k_.hit("bar_wait");
       }
+      // A chwidth's mark is its convergence (O-81; FET spec): set when its
+      // group is every live lane, the wait's test. OOE faults an unmarked one
+      // (F-WIDTH), and DEC copies the mark to each chwidth.multi sibling.
+      // no-chw-mark: a converged chwidth goes unmarked.
+      if (const OpInfo *op = opByName(r.op); op && op->chw) {
+        const bool conv = r.mask == x.lanes;
+        put(f, c.fet_dec, "all_waiting", conv && k_.brk != "no-chw-mark");
+        k_.hit(conv ? "chw_converged" : "chw_diverged");
+      }
       const unsigned ep = epoch_[w & 31];
       put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
       stale_next_ = false;
