@@ -6,5 +6,5 @@ COVER redirect=0 ckpt_free=0 ckpt_full=0 ckpt_peak=0 merge=0 copy=0 zero_read=2 
 XFER events=1116 launched=1116 match=yes channels_seen=29
 - test/top/tb_sv_hosted.sv:93: Verilog $finish
 - S i m u l a t i o n   R e p o r t: Verilator 5.052 2026-09-05
-- Verilator: $finish at 3us; walltime 0.495 s; speed 5.519 us/s
-- Verilator: cpu 0.247 s on 1 threads; allocated 7 MB
+- Verilator: $finish at 3us; walltime 0.462 s; speed 5.915 us/s
+- Verilator: cpu 0.248 s on 1 threads; allocated 7 MB

@@ -78,11 +78,18 @@ done
 
 # -- 1. the gate, on exactly this commit -----------------------------------
 echo "make-release: running the gate on $SRCBRANCH@$SHA7"
-mkdir -p build
-if ! ./tools/verify.sh >build/release-verify.log 2>&1; then
-  tail -5 build/release-verify.log >&2
+# The log lives outside build/: verify.sh clears build/ when another
+# Verilator made it, which unlinked a log written there, and the snapshot
+# then shipped no verify.log and an empty Gate line (7a22ed3).
+LOGDIR=$(mktemp -d)
+VLOG="$LOGDIR/release-verify.log"
+if ! ./tools/verify.sh >"$VLOG" 2>&1; then
+  tail -5 "$VLOG" >&2
+  cp "$VLOG" build/release-verify.log 2>/dev/null || true
   die "tools/verify.sh failed; no snapshot of a red tree (log: build/release-verify.log)"
 fi
+GATE=$(grep -A1 '== result ==' "$VLOG" | tail -1 | xargs)
+[ "$GATE" = PASS ] || die "the gate's log has no PASS result (read: '$GATE'); no snapshot without its record"
 
 # -- 2. the artifacts that are not already built by the gate ---------------
 # Every S1 kernel's trace and both Perfetto views, not only vadd's.
@@ -102,7 +109,7 @@ done
 # -- 3. stage the tree -------------------------------------------------------
 STAGE=$(mktemp -d)
 WT=$(mktemp -d)
-trap 'rm -rf "$STAGE"; git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WT"' EXIT
+trap 'rm -rf "$STAGE" "$LOGDIR"; git worktree remove --force "$WT" >/dev/null 2>&1; rm -rf "$WT"' EXIT
 git archive "$SHA" | tar -x -C "$STAGE"
 for d in rtl/generated sim/generated; do
   mkdir -p "$STAGE/$d"
@@ -110,7 +117,7 @@ for d in rtl/generated sim/generated; do
 done
 A="$STAGE/release"
 mkdir -p "$A/kernels"
-cp build/release-verify.log "$A/verify.log"
+cp "$VLOG" "$A/verify.log" || die "cannot copy the gate's log"
 cp build/rel_wiring.txt "$A/wiring.txt"
 # A Perfetto view over 1 MB ships gzipped (ui.perfetto.dev opens .json.gz
 # as it is): a long kernel's views run to megabytes of repetitive JSON and
@@ -166,7 +173,7 @@ ver() { "$@" 2>&1 | head -1; }
   echo "|---|---|"
   echo "| Source | \`$SRCBRANCH\` @ \`$SHA\` |"
   echo "| Built | $DATE (UTC) |"
-  echo "| Gate | \`tools/verify.sh\`: $(grep -A1 '== result ==' build/release-verify.log | tail -1 | xargs) |"
+  echo "| Gate | \`tools/verify.sh\`: $GATE |"
   echo "| Compiler snapshot | custom-cuda-complier \`release\` @ \`$(sed -n 's/^commit=//p' tools/compiler.lock)\` (source \`$(sed -n 's/^source=//p' tools/compiler.lock)\`) |"
   echo "| Verilator | $(ver verilator --version) |"
   echo "| Icarus | $(ver iverilog -V) |"
