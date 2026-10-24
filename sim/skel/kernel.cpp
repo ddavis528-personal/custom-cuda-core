@@ -872,6 +872,8 @@ private:
   std::deque<unsigned> order_;               ///< memops, as OOE issued them
   std::map<unsigned, Job> stores_;           ///< awaiting commit, by rob tag
   std::deque<Job> committed_;
+  /// A load's fault, held to its L1 contract cycle (V-44).
+  std::vector<std::pair<uint64_t, Q>> late_faults_;
   /// Jobs in flight, oldest first, up to CCV_MIU_PIPES (AR-19): each sends
   /// its line requests and completes on its own, so DCU holds requests from
   /// more than one memop and a hit is not held behind an older miss. One
@@ -1118,6 +1120,9 @@ private:
       }
     }
 
+    for (auto it = late_faults_.begin(); it != late_faults_.end();)
+      if (it->first <= now_) { to_ooe_.push_back(it->second); it = late_faults_.erase(it); }
+      else ++it;
     auto drain = [&](std::deque<Q> &q, unsigned chan) {
       for (auto it = q.begin(); it != q.end();)
         if (free(chan, it->slot)) { send(chan, it->slot, it->msg, it->tid); it = q.erase(it); }
@@ -1429,11 +1434,35 @@ private:
     if (j.store)
       for (const LineReq &lr : j.lines)
         if (std::count(lr.mask.begin(), lr.mask.end(), true) != int(kLine)) k_.hit("partial_line");
-    const uint32_t ro = roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
+    // F-ADDR (O-75): a .global address is the exact sum, never wrapped, and
+    // one outside [0, 2^48) maps nothing; per lane, after F-ALIGN and before
+    // F-RO, so where any lane has it, it is the instruction's cause (section
+    // 12.5). addr-wrap: the sum taken modulo 2^48, so nothing faults.
+    uint32_t bad = 0;
+    for (unsigned l = 0; l != kLanes; ++l)
+      if ((j.active >> l & 1u) && j.global && j.addr[l] >> ccv::kAddrBits && k_.brk != "addr-wrap")
+        bad |= 1u << l;
+    const uint32_t ro = bad ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.pop_front();
     memop_.erase(tag);
     win_miss_.erase(tag);
     addr_.erase(a);
+    if (bad) {
+      // As F-RO's: no lane has any effect, and the completion is the fault,
+      // with the lowest faulting lane's address in full (section 12.6).
+      Bits m = cmpl(j);
+      put(m, c.miu_ooe, "status", kCmplFault);
+      put(m, c.miu_ooe, "cause", kFaultAddr);
+      put(m, c.miu_ooe, "lane_mask", bad);
+      put(m, c.miu_ooe, "address", j.addr[__builtin_ctz(bad)]);
+      // A load's completion never comes before the L1 contract's cycle (A-46,
+      // V-44), a fault's included: OOE would have woken nothing on it, and
+      // takes an early one for a broken contract.
+      if (!j.store && j.due > now_) late_faults_.push_back({j.due, {j.memop_slot, m, j.tid}});
+      else to_ooe_.push_back({j.memop_slot, m, j.tid});
+      k_.hit("addr_fault");
+      return;
+    }
     if (ro) {
       // F-RO: the store has no effect on any lane, so nothing waits for
       // retirement. The completion is the fault: its lanes, and the lowest
@@ -1704,7 +1733,7 @@ private:
   }
 
   bool busy() const override {
-    return !jobs_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
+    return !jobs_.empty() || !late_faults_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();
@@ -2865,7 +2894,10 @@ private:
     const bool pload = op->pxfer && op->cls == kLoad;
     const bool pu_ok = bool(pu) == op->pread || pload;
     const bool pd_ok = bool(pd) == op->pwrite || pload;
-    if (g.size() != op->nsrc || bool(gd) != op->gdst || !pu_ok || !pd_ok)
+    // A faulting instruction (ccv-sim's fault record) wrote nothing, so its
+    // record names no destination; it never retires, so none is needed.
+    const bool gd_ok = bool(gd) == op->gdst || (r->kind == "fault" && !gd);
+    if (g.size() != op->nsrc || !gd_ok || !pu_ok || !pd_ok)
       k_.fail("dec: seq %llu %s has an operand shape the table does not",
               (unsigned long long)r->seq, op->name);
     const unsigned dst = gd ? gd->idx : 0;

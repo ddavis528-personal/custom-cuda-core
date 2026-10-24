@@ -123,6 +123,11 @@ run "generate skel wiring"  python3 tools/gen-skel.py
 run "skel wiring stable"    python3 tools/gen-skel.py --check
 run "generate SV top"       python3 tools/gen-top.py
 run "SV top stable"         python3 tools/gen-top.py --check
+# The walkthrough can be checked whole only at the end, from the builds the
+# sections make; the inputs that most often move it are fingerprinted into it
+# and checked here, in seconds (DA, 2026-10-23). tools/regen.sh rewrites it.
+run "walkthrough inputs current" python3 tools/gen-walkthrough.py --check-inputs
+run "walkthrough from other inputs refused" python3 tools/gen-walkthrough.py --check-inputs --selftest
 # A generator that stops writing a file must not leave it behind, or the
 # globs that build from these directories go on compiling it, and only a
 # fresh checkout sees the difference (OI-40). Each generator prunes its own;

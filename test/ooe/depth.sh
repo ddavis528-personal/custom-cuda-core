@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Logic depth of OOE RTL in NGD, against OA's paper estimate (OA-1, the
 # OOE microarchitecture doc's "Scheduler timing estimate"). Yosys
-# synthesises, ABC maps to test/ooe/ngd.genlib (each gate at its
+# synthesises, ABC maps to tools/ngd.genlib (each gate at its
 # fanout-of-4 delay over a NAND2's, so 1.00 is one NAND-equivalent stage)
 # and reports the critical path. Flops, broadcast fanout and wire are not
 # in it: compare against the estimate's logic terms only.
@@ -30,7 +30,7 @@ for cfg in "pick_rcu $n_rcu $((secs + 1)) 9.1" "pick_miu $n_miu $pipes 7.7"; do
   set -- $cfg
   yosys -q -p "read_verilog -sv rtl/ooe/ooe_pick.sv; chparam -set N $2 -set R $3 ooe_pick;
                synth -flatten -top ooe_pick; write_blif $out/$1.blif"
-  line=$(yosys-abc -c "read_blif $out/$1.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+  line=$(yosys-abc -c "read_blif $out/$1.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
   d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s resources: %5s NGD in %s levels (estimate %s)\n' "$1" "$2" "$3" "$d" "$l" "$4"
@@ -40,7 +40,7 @@ done
 n=$((n_rcu + n_miu))
 yosys -q -p "read_verilog -sv rtl/ooe/ooe_ready.sv; chparam -set N $n ooe_ready;
              synth -flatten -top ooe_ready; write_blif $out/ready.blif"
-line=$(yosys-abc -c "read_blif $out/ready.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/ready.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries, 4 wake lines: %5s NGD in %s levels (estimate 9.1)\n' ready "$n" "$d" "$l"
@@ -49,7 +49,7 @@ printf '  %-10s %3s entries, 4 wake lines: %5s NGD in %s levels (estimate 9.1)\n
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_age.sv;
              chparam -set N $n_rcu ooe_age; chformal -remove; synth -flatten -top ooe_age;
              write_json $out/age.json"; ungate $out/age
-line=$(yosys-abc -c "read_blif $out/age.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/age.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries, 4 ports:     %5s NGD in %s levels (no estimate; one stage)\n' age "$n_rcu" "$d" "$l"
@@ -62,7 +62,7 @@ uops=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('sc
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_decq.sv;
              chparam -set S $slots -set Q $decq -set D $decq_warp -set E $uops -set R $width -set P 16 ooe_decq;
              chformal -remove; synth -flatten -top ooe_decq; write_json $out/decq.json"; ungate $out/decq
-line=$(yosys-abc -c "read_blif $out/decq.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/decq.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries, %s in:       %5s NGD in %s levels (budget 25)\n' decq "$decq" "$uops" "$d" "$l"
@@ -76,7 +76,7 @@ for cfg in "freelist_g $phys" "freelist_p $preds"; do
   yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/common/ccv_common_csa.sv rtl/ooe/ooe_freelist.sv;
                chparam -set N $2 -set A $width -set B $fl_buf -set K $fl_banks ooe_freelist;
                chformal -remove; synth -flatten -top ooe_freelist; write_json $out/$1.json"; ungate $out/$1
-  line=$(yosys-abc -c "read_blif $out/$1.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+  line=$(yosys-abc -c "read_blif $out/$1.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
   d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s-entry buffer: %5s NGD in %s levels (budget 25)\n' "$1" "$2" "$fl_buf" "$d" "$l"
@@ -88,7 +88,7 @@ done
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_confirm.sv rtl/ooe/ooe_wake.sv;
              chparam -set N $n ooe_wake;
              chformal -remove; synth -flatten -top ooe_wake; write_json $out/wake.json"; ungate $out/wake
-line=$(yosys-abc -c "read_blif $out/wake.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/wake.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s timers, 4 lines:     %5s NGD in %s levels (budget 25)\n' wake "$n" "$d" "$l"
@@ -98,7 +98,7 @@ printf '  %-10s %3s timers, 4 lines:     %5s NGD in %s levels (budget 25)\n' wak
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv rtl/ooe/ooe_confirm.sv;
              chparam -set N $n ooe_confirm;
              chformal -remove; synth -flatten -top ooe_confirm; write_json $out/confirm.json"; ungate $out/confirm
-line=$(yosys-abc -c "read_blif $out/confirm.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/confirm.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries:              %5s NGD in %s levels (budget 25)\n' confirm "$n" "$d" "$l"
@@ -115,7 +115,7 @@ for cfg in "rs rtl/ooe/ooe_rs.sv ooe_rs" "rs_confirm rtl/ooe/ooe_confirm.sv rtl/
   yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated rtl/ccv_assert_pkg.sv $files;
                chparam -set N $n -set NR $n_rcu -set A $width $top; hierarchy -top $top; flatten; chformal -remove;
                synth -flatten -top $top; attrmap -remove init; write_json $out/$name.json"; ungate $out/$name
-  line=$(yosys-abc -c "read_blif $out/$name.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+  line=$(yosys-abc -c "read_blif $out/$name.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
   d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
   l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
   printf '  %-10s %3s entries, %s ports a class: %5s NGD in %s levels (budget 25)\n' "$name" "$n" "$width" "$d" "$l"
@@ -131,7 +131,7 @@ rat_src="rtl/ccv_assert_pkg.sv rtl/ooe/ooe_rat.sv rtl/ooe/ooe_ratread.sv test/oo
 yosys -q -p "read_verilog -sv -formal -Irtl/include -Irtl/generated $rat_src;
              chparam $rat_set ooe_rat_read; hierarchy -top ooe_rat_read;
              chformal -remove; synth -flatten -top ooe_rat_read; write_json $out/rat.json"; ungate $out/rat
-line=$(yosys-abc -c "read_blif $out/rat.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/rat.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s slots, %s ports:       %5s NGD in %s levels (budget 25)\n' rat 4 4 "$d" "$l"
@@ -142,7 +142,7 @@ printf '  %-10s %3s slots, %s ports:       %5s NGD in %s levels (budget 25)\n' r
 yosys -q -p "read_verilog -sv rtl/ooe/ooe_pick.sv rtl/ooe/ooe_select.sv;
              chparam -set N $n -set NR $n_rcu -set S $slots ooe_select; synth -flatten -top ooe_select;
              write_blif $out/select.blif"
-line=$(yosys-abc -c "read_blif $out/select.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+line=$(yosys-abc -c "read_blif $out/select.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
 d=$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')
 l=$(echo "$line" | sed -n 's/.*lev = *\([0-9]*\).*/\1/p')
 printf '  %-10s %3s entries, 9 resources:  %5s NGD in %s levels (estimate 14.6 of logic)\n' select "$n" "$d" "$l"
