@@ -480,8 +480,9 @@ them, and TI's schema (4c3bb98) carries them:
   rev 24): FET rewinds from its own PC, which is the one past the wait, so
   the RTL stores no PC. The model sets target_pc past the wait as well
   (`demote.held_wait`). The adapter sends `own_pc` once the schema has it.
-- *The timer.* A held wait's retire, or a marked uop's (`all_waiting` on
-  any other) that leaves the ROB empty, starts it; it fires the barrier
+- *The timer.* A held wait's retire, or a marked wait's or exit's that
+  leaves the ROB empty, starts it (FET spec; AR's rev 186): no other uop's
+  mark does, a converged chwidth's (O-81) among them; it fires the barrier
   trigger once the ROB has stayed empty past `demote_barrier`. A uop that
   arrives with no hold up stops it. The head-stall trigger is the fallback
   alone now: a held wait has retired, so it is never the stalled head.

@@ -2248,8 +2248,11 @@ void Core::retire() {
         }
       }
       // The barrier demotion timer starts at a held wait's retire, or a
-      // marked uop's that leaves nothing younger in the ROB.
-      if ((r.u.attr.serial == kSerBarrier && s.bar_hold && s.bar_retired) || (r.u.all_waiting && s.count == 1)) {
+      // marked wait's or exit's that leaves nothing younger in the ROB (FET
+      // spec; AR's rev 186): no other uop's mark starts it, a converged
+      // chwidth's (O-81) among them.
+      const bool marked = r.u.all_waiting && (r.u.attr.serial == kSerBarrier || r.u.shape.exit);
+      if ((r.u.attr.serial == kSerBarrier && s.bar_hold && s.bar_retired) || (marked && s.count == 1)) {
         s.bar_idle = true;
         s.bar_idle_reported = false;
         s.bar_idle_since = now_;

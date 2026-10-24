@@ -2529,7 +2529,9 @@ void testBarrierDemote() {
 /// marked uop's that leaves the ROB empty, the trigger fires once the ROB
 /// has stayed empty past demote_barrier; a younger uop's arrival stops it.
 void testBarrierTimer() {
-  for (const unsigned mode : {0u, 1u, 2u}) {   // held wait, marked lane, marked lane then more
+  // Held wait; a marked lane op (no start: AR's rev 186); a marked partial
+  // exit; a marked partial exit with more behind it.
+  for (const unsigned mode : {0u, 1u, 2u, 3u}) {
     g_test = "barrier timer";
     Config c = baseConfig();
     c.l1_spec = false;
@@ -2538,15 +2540,16 @@ void testBarrierTimer() {
     std::vector<Op> p;
     Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
     if (mode == 0) { Op b; b.k = kBarrier; p.push_back(b); }
-    else { Op m; m.k = kLane; m.dst = 2; m.nsrc = 1; m.mark = true; p.push_back(m); }
-    if (mode == 2) {
+    else if (mode == 1) { Op m; m.k = kLane; m.dst = 2; m.nsrc = 1; m.mark = true; p.push_back(m); }
+    else { Op m; m.k = kExit; m.mark = true; p.push_back(m); }
+    if (mode == 3) {
       Op d; d.k = kLane; d.dst = 3; d.nsrc = 1; p.push_back(d);
-      Op ex; ex.k = kExit; p.push_back(ex);
+      Op ex; ex.k = kExit; ex.last = ex.final = true; p.push_back(ex);
     }
     e.launch(0, 0, p);
     for (unsigned k = 0; k != 120; ++k) e.step();
     const unsigned long long fired = e.core.counters["demote_trigger.barrier"];
-    EXPECT(fired == (mode == 2 ? 0u : 1u), "mode %u: %llu barrier triggers", mode, fired);
+    EXPECT(fired == (mode == 0 || mode == 2 ? 1u : 0u), "mode %u: %llu barrier triggers", mode, fired);
   }
 }
 
