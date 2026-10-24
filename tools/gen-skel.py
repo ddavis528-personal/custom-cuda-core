@@ -66,6 +66,9 @@ BANNER_C = """// GENERATED FILE -- DO NOT EDIT.
 IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 
 
+PKG = {}   # parameter -> the SV package its tier puts it in (load())
+
+
 def resolve(expr, pv):
     names = set(IDENT.findall(str(expr)))
     unknown = sorted(n for n in names if n not in pv)
@@ -77,7 +80,15 @@ def resolve(expr, pv):
 
 def load():
     d = json.load(open(SCHEMA))
-    pv = {x["name"]: x["value"] for x in json.load(open(PARAMS))["params"]}
+    pl = json.load(open(PARAMS))["params"]
+    pv = {x["name"]: x["value"] for x in pl}
+    # The package each parameter lands in, by its tier (tools/gen-params.py).
+    gp = __import__("importlib.util").util
+    spec = gp.spec_from_file_location("gen_params", os.path.join(os.path.dirname(__file__), "gen-params.py"))
+    gpm = gp.module_from_spec(spec); spec.loader.exec_module(gpm)
+    global PKG
+    PKG = {x["name"]: {"settled": "ccv_params_pkg", "prov": "ccv_prov_pkg",
+                       "prelim": "ccv_prelim_pkg"}[gpm.tier(x)] for x in pl}
     b = json.load(open(BLOCKS))
     blocks = [x for x in b["blocks"] if x.get("instances", 0) > 0]
     return d, pv, blocks
@@ -128,6 +139,10 @@ def build(d, pv, blocks):
                           why=c.get("slot_attrs_why", {}),
                           binding_key=c.get("slot_attrs", {}).get("binding_key"),
                           outstanding=c.get("outstanding"),
+                          notice_of=c.get("notice_of"),
+                          # A backpressured channel (AR's response TI-22):
+                          # its receiver's owner has stated the hold.
+                          held=c.get("backpressure", "").startswith("held:"),
                           latency_match=c.get("latency_match"),
                           lead=lead, lead_mask=lead_mask))
 
@@ -160,7 +175,36 @@ def build(d, pv, blocks):
     return binst, chans, cinst, slot, pbit
 
 
-def gen_h(binst, chans, cinst, nslots, pbits, blocks):
+def fabrics(d, pv):
+    """The common ports that run between blocks as a fabric the skeleton
+    carries (schema common_ports): a broadcast, one block driving the rest,
+    and a gather, each listed block driving its own copy to one end. Each
+    gets slots in the hosts' fabric state: one for a broadcast, one per
+    source for a gather, in the schema's order."""
+    F, base = [], 0
+    for cp in d["common_ports"]:
+        fab = cp.get("fabric", {})
+        kind = fab.get("kind")
+        if kind not in ("broadcast", "gather"):
+            continue
+        w = cp["width"]
+        w = w if isinstance(w, int) else resolve(w, pv)
+        if kind == "broadcast":
+            end, blks, port = fab["from"], fab["to"], cp["name"]
+        else:
+            end, blks, port = fab["to"], fab.get("from"), fab["port"]
+            if not blks:
+                raise SystemExit("gen-skel: gather %s names no sources" % cp["name"])
+        if w > 64:
+            raise SystemExit("gen-skel: fabric %s is %d bits, over 64" % (cp["name"], w))
+        n = 1 if kind == "broadcast" else len(blks)
+        F.append(dict(name=cp["name"], port=port, width=w, kind=kind, end=end,
+                      blks=blks, base=base))
+        base += n
+    return F, base
+
+
+def gen_h(binst, chans, cinst, nslots, pbits, blocks, fabs=([], 0)):
     L = [BANNER_C, "#ifndef CCV_SKEL_WIRING_H", "#define CCV_SKEL_WIRING_H",
          "", "#include <cstdint>", "", "namespace ccv {", "namespace skel {",
          ""]
@@ -209,6 +253,7 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("  int16_t bind_key;    ///< fields[] index of the binding key, or -1:")
     L.append("                       ///< it must equal slot / bind_group")
     L.append("  bool fixed_lat;      ///< receiver never stalls, credits on landing (A-47)")
+    L.append("  bool held;           ///< backpressured: its receiver may hold behind a stall (TI-22)")
     L.append("};")
     L.append("")
     for c in chans:
@@ -234,14 +279,15 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
               if c["attrs"]["slot_binding"] == "bound" else 0)
         bk = ([f for f, _, _ in c["fields"]].index(c["binding_key"])
               if c["binding_key"] else -1)
-        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s},'
+        L.append('  {%d, "%s", Blk::%s, Blk::%s, %d, %d, %d, kF_%s, %d, %s, %d, %s, %d, %s, %d, %d, %s, %s},'
                  % (c["id"], c["name"], c["src"].upper(), c["dst"].upper(),
                     c["rate"], c["bits"], len(c["fields"]), c["name"],
                     c["ninst"],
                     "true" if c["attrs"]["acceptance"] == "atomic" else "false",
                     bg, ok, of,
                     "true" if c["attrs"]["lockstep"] else "false", cls, bk,
-                    "true" if c["attrs"]["fixed_latency"] else "false"))
+                    "true" if c["attrs"]["fixed_latency"] else "false",
+                    "true" if c["held"] else "false"))
     L.append("};")
     L.append("constexpr unsigned kNumChans = %d;" % len(chans))
     L.append("")
@@ -277,6 +323,31 @@ def gen_h(binst, chans, cinst, nslots, pbits, blocks):
     L.append("constexpr unsigned kNumChanInsts = %d;" % len(cinst))
     L.append("constexpr unsigned kNumSlots = %d;" % nslots)
     L.append("constexpr uint64_t kPayloadBits = %d;" % pbits)
+    L.append("")
+    F, nfslots = fabs
+    L.append("/// Fabrics between blocks, outside the credit scheme (schema")
+    L.append("/// common_ports): a broadcast is driven by `end` and read by every")
+    L.append("/// block in `blks`; a gather is driven by each block in `blks`, its")
+    L.append("/// own copy, and read whole by `end` (its port `port`). Registered:")
+    L.append("/// a block reads the value as the cycle starts and drives the next.")
+    L.append("/// slot_base locates it in the hosts' fabric state: one slot for a")
+    L.append("/// broadcast, one per source for a gather, in `blks` order.")
+    L.append("enum class FabKind : uint8_t { BROADCAST, GATHER };")
+    L.append("struct FabDesc {")
+    L.append("  const char *name, *port; uint32_t width; FabKind kind; Blk end;")
+    L.append("  const Blk *blks; uint8_t nblks; uint16_t slot_base;")
+    L.append("};")
+    for f in F:
+        L.append("inline constexpr Blk kFabBlks_%s[] = {%s};" % (
+            f["name"], ", ".join("Blk::%s" % b.upper() for b in f["blks"])))
+    L.append("inline constexpr FabDesc kFabs[] = {")
+    for f in F:
+        L.append('  {"%s", "%s", %d, FabKind::%s, Blk::%s, kFabBlks_%s, %d, %d},' % (
+            f["name"], f["port"], f["width"], f["kind"].upper(), f["end"].upper(),
+            f["name"], len(f["blks"]), f["base"]))
+    L.append("};")
+    L.append("constexpr unsigned kNumFabs = %d;" % len(F))
+    L.append("constexpr unsigned kNumFabSlots = %d;" % nfslots)
     L.append("")
     L.append("} // namespace skel")
     L.append("} // namespace ccv")
@@ -335,14 +406,19 @@ def gen_sv(chans, cinst, nslots, pbits):
                   if c["lead_mask"] else "")
             if c["attrs"]["fixed_latency"]:
                 lm += ", .FIXED_LAT(1)"   # no stall, credit on landing (A-47)
+            # A backpressured channel's response bound is the watchdog
+            # CCV_P_TIMEOUT_BP, not CCV_P_TIMEOUT_N (AR's response TI-22).
+            tmo = "CCV_P_TIMEOUT_BP" if c["held"] else "CCV_P_TIMEOUT_N"
             if ci["stages"]:
                 # A repeated link (params/links.json): the round trip and the
                 # response bound grow by 2N, and the stall rule counts the
                 # stages between this point and the sender.
                 n = ci["stages"]
                 lm += (", .ROUND_TRIP(ccv_params_pkg::CCV_RT_ABUT + %d), "
-                       ".TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_N + %d), "
-                       ".SRC_STAGES(%d)" % (2 * n, 2 * n, ci["src_stages"]))
+                       ".TIMEOUT_N(ccv_prov_pkg::%s + %d), "
+                       ".SRC_STAGES(%d)" % (2 * n, tmo, 2 * n, ci["src_stages"]))
+            elif c["held"]:
+                lm += ", .TIMEOUT_N(ccv_prov_pkg::CCV_P_TIMEOUT_BP)"
             L.append("  ccv_common_chk_credit #(.PAYLOAD_W(%d), .CHANNEL(%d)%s) "
                      "u_%s_s%d (" % (c["bits"], c["id"], lm, tag, s))
             L.append("    .clk(clk), .rst_n(rst_n), .ch_valid(valid[%d]), "
@@ -401,6 +477,32 @@ def gen_sv(chans, cinst, nslots, pbits):
         L.append("    .clk(clk), .rst_n(rst_n), .enable(pair_enable),")
         L.append("    .req_valid(valid[%d]), .rsp_valid(valid[%d]));  // %s"
                  % (rq, rs, rsp["name"]))
+    # A notice and its partner, slot by slot (OA-23, AR's response TI-23):
+    # the partner's valid exactly `ahead` cycles after the notice's payload,
+    # its key fields equal. Instance by instance, the two run between the
+    # same blocks.
+    def keys(c, ci, s, names):
+        at = {f: (lsb, w) for f, lsb, w in c["fields"]}
+        off = ci["payload_base"] + s * c["bits"]
+        return "{%s}" % ", ".join("payload[%d:%d]" % (off + at[f][0] + at[f][1] - 1,
+                                                       off + at[f][0]) for f in names)
+    for c in chans:
+        no = c["notice_of"]
+        if not no:
+            continue
+        m = byname[no["channel"]]
+        kw = sum(w for f, _, w in c["fields"] if f in no["keys"])
+        for ci in (x for x in cinst if x["chan"] is c):
+            mi = next(x for x in cinst if x["chan"] is m and x["inst"] == ci["inst"])
+            for s in range(c["rate"]):
+                L.append("  ccv_common_chk_notice #(.AHEAD(%s::%s), .KW(%d)) "
+                         "u_%s_notice_s%d (" % (PKG[no["ahead"]], no["ahead"], kw,
+                                                c["name"][4:], s))
+                L.append("    .clk(clk), .rst_n(rst_n), .enable(pair_enable),")
+                L.append("    .ntc_valid(valid[%d]), .ntc_keys(%s),"
+                         % (ci["slot_base"] + s, keys(c, ci, s, no["keys"])))
+                L.append("    .msg_valid(valid[%d]), .msg_keys(%s));  // %s"
+                         % (mi["slot_base"] + s, keys(m, mi, s, no["keys"]), m["name"]))
     for c in chans:
         if not c["attrs"]["lockstep"]:
             continue
@@ -549,7 +651,7 @@ def main():
     check = "--check" in sys.argv
     d, pv, blocks = load()
     binst, chans, cinst, nslots, pbits = build(d, pv, blocks)
-    targets = [(OUT_H, gen_h(binst, chans, cinst, nslots, pbits, blocks)),
+    targets = [(OUT_H, gen_h(binst, chans, cinst, nslots, pbits, blocks, fabrics(d, pv))),
                (OUT_SV, gen_sv(chans, cinst, nslots, pbits)),
                (OUT_PROBE_SV, gen_probe_sv(chans)),
                (OUT_PROBE_INC, gen_probe_inc(chans)),

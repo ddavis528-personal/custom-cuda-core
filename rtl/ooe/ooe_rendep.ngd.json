@@ -1,0 +1,161 @@
+{
+  "module": "ooe_rendep",
+  "ports": {
+    "v_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "v_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "mem_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "cp_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "atom_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "gwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "gname_cq01h": {
+      "arrival": 3.0,
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 3: each lane's new names, bound from the Rename 1 register by ooe_ren1n (2.5 NGD)."
+    },
+    "pwe_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "pname_cq01h": {
+      "arrival": 3.0,
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "OA's response OI-67 (OA tab rev 185): by 3: each lane's new names, bound from the Rename 1 register by ooe_ren1n (2.5 NGD)."
+    },
+    "gsv_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "gsn_cq01h": {
+      "arrival": 6.0,
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "OA's rev 194 (OA tab), on OI-70: Rename 1's reads leave at 5.6 NGD with the one-hot name index (q_g, q_p), by 6 into Rename 2; ooe_rendep is 18.4 after them."
+    },
+    "psv_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "psn_cq01h": {
+      "arrival": 6.0,
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "OA's rev 194 (OA tab), on OI-70: Rename 1's reads leave at 5.6 NGD with the one-hot name index (q_g, q_p), by 6 into Rename 2; ooe_rendep is 18.4 after them."
+    },
+    "cguard_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "cg_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "cnone_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "unit_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "pg_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "nob_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "eg_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "egn_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "ep_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "epn_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "ecv_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "gnt_v_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    },
+    "gnt_idx_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-22",
+      "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
+    }
+  }
+}

@@ -2,7 +2,7 @@
 # A static snapshot of the repository, browsable on GitHub, WITH everything the
 # build generates.
 #
-#   tools/make-release.sh [--branch=release] [--push]
+#   tools/make-release.sh [--branch=release] [--push] [--allow-unmerged=<b>,...]
 #
 # The development branch keeps generated files out of git on purpose: each has
 # one source of truth in the repo, and a stale checked-in copy is a second
@@ -34,11 +34,13 @@ cd "$(dirname "$0")/.."
 R=$(pwd)
 BRANCH=release
 PUSH=0
+ALLOW=""
 for a in "$@"; do
   case "$a" in
     --branch=*) BRANCH=${a#--branch=} ;;
     --push)     PUSH=1 ;;
-    *) echo "usage: $0 [--branch=<name>] [--push]" >&2; exit 2 ;;
+    --allow-unmerged=*) ALLOW=${a#--allow-unmerged=} ;;
+    *) echo "usage: $0 [--branch=<name>] [--push] [--allow-unmerged=<b>,...]" >&2; exit 2 ;;
   esac
 done
 MAXFILE=$((5 * 1024 * 1024))       # no single artifact above 5 MB
@@ -55,6 +57,24 @@ DATE=$(date -u +%Y-%m-%d)
 TAG="snapshot-$DATE-$SHA7"
 git rev-parse -q --verify "refs/tags/$TAG" >/dev/null &&
   die "$TAG exists: this commit has been snapshotted today already"
+
+# -- 0. every branch's work is in it --------------------------------------
+# A snapshot is what readers take for the project's state, so it must carry
+# every session's pushed work, not one branch's (DA, 2026-10-24: OI's renames
+# were on its own branch, and the snapshot showed the nets it had fixed). Any
+# remote branch with a commit this one lacks refuses it, by name and count;
+# merge them first. --allow-unmerged=<branch>,... names one left out on purpose.
+git fetch -q origin 2>/dev/null || die "cannot fetch origin to check its branches"
+UNMERGED=""
+for rb in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin); do
+  b=${rb#origin/}
+  case "$b" in HEAD|origin|"$BRANCH") continue ;; esac
+  case ",$ALLOW," in *",$b,"*) continue ;; esac
+  n=$(git rev-list --count "HEAD..$rb")
+  [ "$n" -gt 0 ] && UNMERGED="$UNMERGED $b($n)"
+done
+[ -z "$UNMERGED" ] ||
+  die "branches with commits this one lacks:$UNMERGED -- merge them (or --allow-unmerged=<branch>,...)"
 
 # -- 1. the gate, on exactly this commit -----------------------------------
 echo "make-release: running the gate on $SRCBRANCH@$SHA7"

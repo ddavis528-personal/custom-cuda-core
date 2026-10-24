@@ -1,20 +1,19 @@
-//===-- cg_trace.h - clock-gating scenarios for the OOE live benches --===//
+//===-- cg_trace.h - the OOE live benches' scenarios ---------------===//
 //
 // tools/check-cg.py measures a module from a bench that runs three
 // scenarios and dumps the DUT's ports to a VCD (docs/rtl-coding-style.md,
-// "Local clock gating"). The OOE benches already drive their module from
-// the live model; with --cg <scenario> <vcd> they do so as a unit's bench:
+// "Local clock gating"). Every scenario is the model's own traffic
+// (ooeTestScenario), so a bench drives and checks each exactly as it does
+// any run: there is no stimulus a bench makes only for clock gating, and a
+// difference fails the run, which check-cg refuses.
 //
-//   idle    the module held in reset a few cycles, then given no work: its
-//           control inputs quiet, its data inputs still;
-//   medium  the model's traffic, each model cycle followed by two idle
-//           cycles, so about a third of the cycles carry work;
-//   high    the model's traffic, one model cycle a clock.
+//   idle    a core with nothing launched;
+//   medium  the random tests, DEC delivering one uop on one cycle in three;
+//   high    the random tests as they are, the bench's ordinary run.
 //
-// In this mode a bench compares nothing: its idle cycles are not model
-// cycles. What it must do is keep its inputs legal (an idle cycle is one
-// in which nothing arrives), and change a data input only with the message
-// it belongs to.
+// --cg <scenario> <vcd> picks the scenario and dumps the VCD; nothing else
+// changes. What a bench drives must be legal in every run, and the module's
+// own assertions hold it to that (the input contract, in the RTL).
 //===----------------------------------------------------------------------===//
 #pragma once
 #include "verilated.h"
@@ -27,15 +26,22 @@
 #include <memory>
 #include <string>
 
+namespace ccv {
+namespace ooe {
+class Core;
+struct Config;
+} // namespace ooe
+} // namespace ccv
+int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
+                    void (*pre)(const ccv::ooe::Core &), void (*post)(const ccv::ooe::Core &),
+                    void (*cfg)(ccv::ooe::Config &));
+
 struct CgRun {
-  std::string scenario;               // empty: not a clock-gating run
+  std::string scenario;               // empty: not a clock-gating run (high, the bench's seeds)
   std::unique_ptr<VerilatedVcdC> vcd;
   uint64_t t = 0;
   bool on() const { return !scenario.empty(); }
-  bool idle() const { return scenario == "idle"; }
-  /// Idle cycles a bench inserts after each model cycle.
-  unsigned gaps() const { return scenario == "medium" ? 2 : 0; }
-  /// Cycles the idle scenario runs, after its reset.
+  /// Cycles the idle scenario runs.
   static constexpr unsigned kIdleCycles = 3000;
   /// The random tests' seeds a medium or high scenario runs: two, since
   /// odd seeds run the bypass-group configuration, which some benches do
@@ -68,7 +74,16 @@ struct CgRun {
     if (vcd) vcd->dump(t);
     t += 5;
   }
+  /// Before the DUT goes: the writer holds the DUT's trace.
   void close() {
     if (vcd) vcd->close();
+    vcd.reset();
+  }
+  /// The run: this scenario (high when not a clock-gating run, at the
+  /// bench's seeds), with the bench's hooks and settings. Returns the
+  /// model's failure count.
+  int run(unsigned seeds, void (*pre)(const ccv::ooe::Core &), void (*post)(const ccv::ooe::Core &),
+          void (*cfg)(ccv::ooe::Config &) = nullptr) const {
+    return ooeTestScenario(on() ? scenario : "high", on() ? kSeeds : seeds, kIdleCycles, pre, post, cfg);
   }
 };

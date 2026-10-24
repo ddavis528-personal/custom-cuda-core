@@ -1,0 +1,88 @@
+{
+  "_comment": "Timing units for OOE design modules with no flops, which check-cg's units (test/ooe/cg-units.json) do not cover, for tools/check-ngd.py: one module at one parameterisation each. The rest of OOE's combinational units are still in test/ngd/ngd-units.json, held there by TI until they move here.",
+  "units": [
+    {
+      "name": "ooe_confirm",
+      "module": "ooe_confirm",
+      "files": [
+        "rtl/ooe/ooe_confirm.sv"
+      ],
+      "params": {
+        "N": 45
+      }
+    },
+    {
+      "name": "ooe_ratread",
+      "module": "ooe_ratread",
+      "files": [
+        "rtl/ooe/ooe_ratread.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "GW": 10,
+        "PW": 6
+      }
+    },
+    {
+      "name": "ooe_rencred",
+      "module": "ooe_rencred",
+      "files": [
+        "rtl/ooe/ooe_rencred.sv"
+      ],
+      "params": {
+        "S": 4,
+        "A": 4,
+        "NR": 30,
+        "NM": 15,
+        "NG": 192,
+        "NP": 48,
+        "RD": 32,
+        "F": 4
+      }
+    },
+    {
+      "name": "ooe_headrd",
+      "module": "ooe_headrd",
+      "files": [
+        "rtl/ooe/ooe_headrd.sv"
+      ],
+      "params": {
+        "S": 4,
+        "SL": 1,
+        "R": 4,
+        "A": 4,
+        "GW": 10,
+        "PW": 6
+      }
+    },
+    {
+      "name": "ooe_ren1",
+      "module": "ooe_ren1",
+      "files": [
+        "rtl/ooe/ooe_ren1.sv"
+      ],
+      "params": {
+        "S": 4,
+        "R": 4,
+        "GW": 10,
+        "PW": 6,
+        "LC": 2,
+        "XW": 1
+      }
+    },
+    {
+      "name": "ooe_ren1n",
+      "module": "ooe_ren1n",
+      "files": [
+        "rtl/ooe/ooe_ren1n.sv"
+      ],
+      "params": {
+        "R": 4,
+        "GW": 10,
+        "GR": 8,
+        "PW": 6
+      }
+    }
+  ]
+}

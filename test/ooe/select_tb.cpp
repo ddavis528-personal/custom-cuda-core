@@ -3,12 +3,13 @@
 // Runs the model's random unit tests (sim/ooe/ooe_test.cpp) and, after
 // every core cycle in which the sectioned select ran, drives ooe_select
 // with the inputs that select logged as it saw them (Core::wakeLog:
-// sel_*): each entry's valid, issued, eligible, warp-active, ready and
-// sources-confirmed bits, slot, footprint, copy flags, and the bulk
-// discard's resources and warps. The age matrices come from the entries'
-// allocation order (Core::rsAge). The dependency rows come from the
-// sources-confirmed bits: an entry with unconfirmed sources gets one bit,
-// on itself, which is all ooe_select reads of a row (any bit set).
+// sel_*): each entry's request term (ooe_sched's request register), ready
+// and grant registers, valid and past rename, issued and sources-confirmed
+// bits, slot, footprint, and a memop's copy, and the bulk discard's pipes
+// and warps. The age matrices come from the entries' allocation order
+// (Core::rsAge). The dependency rows come from the sources-confirmed bits:
+// an entry with unconfirmed sources gets one bit, on itself, which is all
+// ooe_select reads of a row (any bit set).
 //
 // Its candidates must be the select's, and its grants the select's.
 //
@@ -78,25 +79,24 @@ void hook(const Core &c) {
   }
   ++followed;
   for (unsigned e = 0; e != N; ++e) {
-    setBit(dut->valid_cq03h, e, w.sel_valid[e]);
-    setBit(dut->iss_cq03h, e, w.sel_iss[e]);
-    setBit(dut->elig_cq03h, e, w.sel_elig[e]);
-    setBit(dut->ready_cq03h, e, w.sel_ready[e]);
+    setBit(dut->rq_cq03h, e, w.sel_valid[e] && w.sel_rq[e]);
+    setBit(dut->ready_cq03h, e, w.sel_valid[e] && w.sel_ready[e]);
+    setBit(dut->gnt_cq03h, e, w.sel_valid[e] && w.sel_gnt[e]);
+    setBit(dut->vel_cq03h, e, w.sel_valid[e] && w.sel_elig[e]);
+    setBit(dut->iss_cq03h, e, w.sel_valid[e] && w.sel_iss[e]);
     setField(dut->slot_cq03h, e * LS, LS, w.sel_slot[e]);
     setField(dut->res_cq03h, e * 9, 9, w.sel_res[e]);
-    setBit(dut->copy_cq03h, e, w.sel_copy[e]);
     setBit(dut->chas_cq03h, e, w.sel_chas[e]);
     setField(dut->cidx_cq03h, e * W, W, w.sel_cidx[e]);
     const bool conf = w.sel_conf[e] || control == "no-conf";
     for (unsigned j = 0; j != N; ++j) setBit(dut->dep_cq03h, e * N + j, !conf && j == e);
   }
-  // A slot is active when any of its valid entries says so; a slot with no
-  // valid entry requests nothing either way.
-  unsigned active = 0;
-  for (unsigned e = 0; e != N; ++e)
-    if (w.sel_valid[e] && w.sel_active[e]) active |= 1u << w.sel_slot[e];
-  dut->active_cq03h = active;
-  dut->busy_cq03h = control == "no-busy" ? 0 : w.sel_busy;
+  // A bulk discard takes MIU pipes only (V-23).
+  if (w.sel_busy & 0x1Fu) {
+    std::fprintf(stderr, "select_tb: a bulk discard took a lane resource (busy %#x)\n", w.sel_busy);
+    std::exit(2);
+  }
+  dut->busy_cq03h = control == "no-busy" ? 0 : w.sel_busy >> 5;
   dut->block_cq03h = control == "no-busy" ? 0 : w.sel_block;
   for (unsigned e = 0; e != NR; ++e)
     for (unsigned j = 0; j != NR; ++j)

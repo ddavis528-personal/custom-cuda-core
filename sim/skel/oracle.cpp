@@ -9,6 +9,7 @@
 #include "oracle.h"
 
 #include <cstdio>
+#include <algorithm>
 #include <fstream>
 #include <map>
 
@@ -190,9 +191,23 @@ std::string Oracle::load(const std::string &path) {
         code_base = i.at("code_base").u();
         threads = unsigned(i.at("threads").u());
         ctaid = unsigned(i.at("ctaid").u());
+        if (i.has("warp_in_cta")) warp_in_cta = unsigned(i.at("warp_in_cta").u());
+        lane_context = i.has("lane_context") ? unsigned(i.at("lane_context").u()) : warp_in_cta;
         code = hexBytes(i.at("code").s());
         init_mem = words(i.at("mem"));
+        if (i.has("const")) {
+          const auto &cr = i.at("const").a();
+          const_base = cr.at(0).u();
+          const_limit = cr.at(1).u();
+        }
         have_init = true;
+      } else if (j.has("fault")) {
+        const JV &f = j.at("fault");
+        faults = true;
+        fault.cause = f.at("cause").s();
+        fault.pc = f.at("pc").u();
+        fault.lanes = uint32_t(f.at("lanes").u());
+        fault.addr = f.at("addr").u();
       } else if (j.has("final")) {
         const JV &f = j.at("final");
         const auto &g = f.at("gpr").a();
@@ -211,7 +226,17 @@ std::string Oracle::load(const std::string &path) {
       } else {
         Record r;
         r.seq = j.at("seq").u();
-        if (r.seq != recs.size()) throw std::string("records out of sequence");
+        if (r.seq != recs.size() + stalls) throw std::string("records out of sequence");
+        // A barrier wait that blocked (TI-40): ccv-sim re-executes it until
+        // its lanes pass, recording each try. The machine fetches a wait
+        // once, held in OOE or parked in FET, so the tries are dropped and
+        // the records renumbered; the passing wait is the instruction.
+        if (j.at("kind").s() == "stall") {
+          if (j.at("op").s() != "C_BAR_WAIT") throw std::string("a stall that is not a barrier wait");
+          ++stalls;
+          continue;
+        }
+        r.seq = recs.size();
         r.pc = j.at("pc").u();
         r.size = unsigned(j.at("size").u());
         r.bytes = hexBytes(j.at("bytes").s());
@@ -224,6 +249,9 @@ std::string Oracle::load(const std::string &path) {
         for (const JV &m : j.at("imms").a()) r.imms.push_back(m.i());
         for (const JV &m : j.at("quals").a()) r.quals.push_back(unsigned(m.u()));
         r.taken = uint32_t(j.at("taken").u());
+        // ccv-sim records taken lanes for a predicated branch only. An
+        // unconditional one (bra, c.bra) is taken by its whole group.
+        if (r.kind == "branch" && !r.taken) r.taken = r.mask;
         r.target = j.at("target").u();
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));
@@ -234,7 +262,7 @@ std::string Oracle::load(const std::string &path) {
           a.write = m.at("w").u() != 0;
           a.addr = m.at("addr").u();
           a.bytes = unsigned(m.at("bytes").u());
-          a.val = uint32_t(m.at("val").u());
+          if (m.has("val")) a.val = uint32_t(m.at("val").u());
           r.mem.push_back(a);
         }
         recs.push_back(std::move(r));
@@ -246,6 +274,7 @@ std::string Oracle::load(const std::string &path) {
     return path + ":" + std::to_string(n) + ": " + e.what();
   }
   if (!have_init || !have_final) return path + ": missing init or final record";
+  issue_groups -= std::min(issue_groups, stalls);   // ccv-sim counts each try
   if (issue_groups != recs.size())
     return path + ": final record counts " + std::to_string(issue_groups) +
            " issue groups but the file holds " + std::to_string(recs.size());

@@ -1,0 +1,7 @@
+{
+  "module": "ccv_common_csa",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-24",
+  "why": "A multi-operand adder, combinational: a carry-save tree of 3:2 compressors, then one carry-propagate add (or the pair before it). Its parents capture what it returns: ooe_freelist each slot's frees as a pair, ooe_rename each slot's remainders and the names' pools; its logic is timed there (TI's response OI-76)."
+}

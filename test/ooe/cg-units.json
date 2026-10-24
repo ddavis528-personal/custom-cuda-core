@@ -2,31 +2,14 @@
   "_comment": "Clock-gating units for OI's OOE RTL (tools/check-cg.py; docs/rtl-coding-style.md, 'Local clock gating'). Each bench is the module's live-model bench (test/ooe/*_tb.cpp) in its --cg mode (test/ooe/cg_trace.h), built by test/ooe/cg-build.sh at the parameters test/ooe/run-rtl.sh uses: idle is reset and then no work, medium the model's traffic with two idle cycles after each model cycle, high the model's traffic every cycle. The RS sizes here are rtl/generated/ccv_params_pkg.sv's (45 entries, 30 RCU); ooe_wake's latencies are its defaults, which are the parameters' values. {dir} is the unit's bench build directory, {scenario} and {vcd} the run's.",
   "units": [
     {
-      "name": "ooe_confirm",
-      "module": "ooe_confirm",
+      "name": "ooe_wake",
+      "module": "ooe_wake",
       "files": [
+        "rtl/ooe/ooe_wake.sv",
         "rtl/ooe/ooe_confirm.sv"
       ],
       "params": {
         "N": 45
-      },
-      "clock": "ooe_core_clk",
-      "reset": "ooe_rst_r00h",
-      "bench": {
-        "build": "test/ooe/cg-build.sh ooe_confirm {dir}",
-        "run": "{dir}/tb --cg {scenario} {vcd}",
-        "scope": "ooe_confirm"
-      }
-    },
-    {
-      "name": "ooe_wake",
-      "module": "ooe_wake",
-      "files": [
-        "rtl/ooe/ooe_wake.sv"
-      ],
-      "params": {
-        "N": 45,
-        "NR": 30
       },
       "clock": "ooe_core_clk",
       "reset": "ooe_rst_r00h",
@@ -99,8 +82,8 @@
       ],
       "params": {
         "S": 4,
-        "Q": 12,
-        "D": 12,
+        "Q": 13,
+        "D": 6,
         "E": 6,
         "R": 4,
         "P": 16
@@ -117,6 +100,7 @@
       "name": "ooe_freelist_gpr",
       "module": "ooe_freelist",
       "files": [
+        "rtl/common/ccv_common_csa.sv",
         "rtl/ooe/ooe_freelist.sv"
       ],
       "params": {
@@ -137,6 +121,7 @@
       "name": "ooe_freelist_pred",
       "module": "ooe_freelist",
       "files": [
+        "rtl/common/ccv_common_csa.sv",
         "rtl/ooe/ooe_freelist.sv"
       ],
       "params": {
@@ -175,6 +160,112 @@
         "build": "test/ooe/cg-build.sh ooe_rat {dir}",
         "run": "{dir}/tb --cg {scenario} {vcd}",
         "scope": "ooe_rat"
+      }
+    },
+    {
+      "name": "ooe_sched",
+      "module": "ooe_sched",
+      "files": [
+        "rtl/ooe/ooe_ready.sv",
+        "rtl/ooe/ooe_pick.sv",
+        "rtl/ooe/ooe_select.sv",
+        "rtl/ooe/ooe_sched.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "S": 4,
+        "FB": 1
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_sched {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_trio.u_sched"
+      }
+    },
+    {
+      "name": "ooe_prodmap",
+      "module": "ooe_prodmap",
+      "files": [
+        "rtl/ooe/ooe_prodmap.sv"
+      ],
+      "params": {
+        "N": 45,
+        "NR": 30,
+        "A": 4,
+        "NG": 768,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_prodmap {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_prodmap"
+      }
+    },
+    {
+      "name": "ooe_rendep",
+      "module": "ooe_rendep",
+      "files": [
+        "rtl/ooe/ooe_rendep.sv"
+      ],
+      "params": {
+        "N": 45,
+        "A": 4,
+        "NG": 768,
+        "NP": 48
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rendep {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_dep"
+      }
+    },
+    {
+      "name": "ooe_go",
+      "module": "ooe_go",
+      "files": [
+        "rtl/ooe/ooe_go.sv"
+      ],
+      "params": {
+        "S": 4,
+        "R": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_go {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_go"
+      }
+    },
+    {
+      "name": "ooe_rename",
+      "module": "ooe_rename",
+      "files": [
+        "rtl/ooe/ooe_headrd.sv",
+        "rtl/ooe/ooe_ren1.sv",
+        "rtl/ooe/ooe_ren1n.sv",
+        "rtl/common/ccv_common_csa.sv",
+        "rtl/ooe/ooe_rename.sv"
+      ],
+      "blackbox": {
+        "ooe_go": "rtl/ooe/ooe_go.sv",
+        "ooe_freelist": "rtl/ooe/ooe_freelist.sv",
+        "ooe_rendep": "rtl/ooe/ooe_rendep.sv",
+        "ooe_prodmap": "rtl/ooe/ooe_prodmap.sv"
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_rename {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "u_rename"
       }
     }
   ]

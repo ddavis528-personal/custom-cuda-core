@@ -40,6 +40,18 @@
   input  logic syu_ooe_rel_credit,
   input  logic syu_ooe_rel_stall,
   output logic syu_ooe_rel_wake,
+  // syu -> fet
+  output logic syu_fet_rel_valid,
+  output ccv_syu_fet_rel_t syu_fet_rel_payload,
+  input  logic syu_fet_rel_credit,
+  input  logic syu_fet_rel_stall,
+  output logic syu_fet_rel_wake,
+  // syu -> rau
+  output logic syu_rau_ready_valid,
+  output ccv_syu_rau_ready_t syu_rau_ready_payload,
+  input  logic syu_rau_ready_credit,
+  input  logic syu_rau_ready_stall,
+  output logic syu_rau_ready_wake,
   // rau -> syu
   input  logic rau_syu_alloc_valid,
   input  ccv_rau_syu_alloc_t rau_syu_alloc_payload,
@@ -52,5 +64,7 @@
 `ifdef CCV_TRACE
   , input  logic [63:0] ooe_syu_bar_tid
   , output logic [63:0] syu_ooe_rel_tid
+  , output logic [63:0] syu_fet_rel_tid
+  , output logic [63:0] syu_rau_ready_tid
   , input  logic [63:0] rau_syu_alloc_tid
 `endif

@@ -76,6 +76,13 @@
 //   movi-in-lane   RCU sends movi/movi48 to the lanes, which must refuse them
 //   srd-selector   DEC sees srd selector 2, which is unallocated
 //   corrupt-ctaid  RAU sends OOE the wrong CTA index
+//   cta-per-warp   RAU gives each warp a CTA slot of its own, one CTA or not
+//   cta-shared     RAU gives every warp CTA slot 0, whichever CTA it is
+//   no-wait-mark   FET leaves a converged barrier wait unmarked (all_waiting)
+//   bar-own-warp   SYU completes a barrier on its own warp's lanes alone
+//   bar-no-exit    SYU ignores exit reports, so an exited lane is waited for
+//   bar-full-last  SYU takes the CTA's last warp as 32 lanes
+//   addr-wrap      MIU takes a .global address modulo 2^48, so F-ADDR never fires
 //   late-lead      the lane mask goes out with the operands, a cycle late
 //   ignore-mask    RCU's predicate merge drops the active mask (A-43)
 //   conflate-pred  DEC names the guard as the predicate destination (pguard)
@@ -141,7 +148,7 @@ int runKernel(const std::string &path, const std::string &brk, uint64_t cap,
               const std::string &trace, VerilatedContext &ctx,
               Vccv_common_chk_bank &bank) {
   Kernel k;
-  if (std::string e = k.orc.load(path); !e.empty()) {
+  if (std::string e = k.loadOracles(path); !e.empty()) {
     std::fprintf(stderr, "%s\n", e.c_str());
     return 1;
   }
@@ -215,12 +222,24 @@ int main(int argc, char **argv) {
                       brk == "wrong-merge" || brk == "skip-copy" ||
                       brk == "late-copy" || brk == "copy-from-new" ||
                       brk == "free-new" || brk == "one-line" ||
-                      brk == "corrupt-group-mask" || brk == "stale-epoch" ||
+                      brk == "corrupt-group-mask" || brk == "fair-off" ||
+                      brk == "fair-late" || brk == "split-swap" ||
+                      brk == "no-st-wait" || brk == "early-mark" || brk == "beats-dead" ||
+                      brk == "no-ro" || brk == "no-window-fill" || brk == "window-from-base" ||
+                      brk == "scalar-base" || brk == "zero-cta-slot" || brk == "lanectx-literal" || brk == "lanectx-as-ctatid" || brk == "drop-pred-copy" || brk == "pdata-guard" || brk == "ldpred-whole-word" || brk == "stpred-whole-word" ||
+                      brk == "xfer-low-lane" || brk == "resume-mid" || brk == "whole-cta-mask" ||
+                      brk == "no-kill" || brk == "withheld-ack" || brk == "stale-ack" ||
+                      brk == "stale-epoch" ||
                       brk == "corrupt-echo" || brk == "movi-in-lane" ||
                       brk == "srd-selector" || brk == "corrupt-ctaid" ||
-                      brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
+                      brk == "cta-per-warp" || brk == "cta-shared" || brk == "no-wait-mark" || brk == "bar-own-warp" || brk == "bar-no-exit" ||
+                      brk == "bar-full-last" || brk == "addr-wrap" ||
+                      brk == "conflate-pred" || brk == "late-lead" || brk == "swap-prat0" || brk == "early-hit" || brk == "late-hit-data" || brk == "rs-echo" || brk == "corrupt-map" || brk == "mig-row-order" || brk == "resume-pc" || brk == "pca-place" || brk == "rewind-pc" || brk == "early-restore-done" || brk == "pca-row-order" || brk == "drop-replay" || brk == "replay-twice" || brk == "no-ready" || brk == "early-ready" || brk == "restore-share" || brk == "guard-at-restore" || brk == "demote-unwanted" || brk == "ignore-refused" || brk == "notice-wrong-id" || brk == "late-refill" || brk == "hint-wrong-tag" || brk == "late-cmpl" || brk == "no-rcu-bypass" || brk == "no-lane-bypass" || brk == "drop-src-valid" || brk == "arch-pred-srcs" ||
                       brk == "no-resource-cap" || brk == "bad-pos" || brk == "narrow-pipes" ||
-                      brk == "ignore-mask" || brk == "skip-read-partial";
+                      brk == "ignore-mask" || brk == "skip-read-partial" ||
+                      brk == "ordering-on-load" || brk == "memop-ordering" ||
+                      brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
+                      brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

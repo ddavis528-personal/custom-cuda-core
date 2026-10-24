@@ -38,6 +38,10 @@ public:
   int inst() const { return inst_; }
   std::vector<Out> outs;
   std::vector<In> ins;
+  /// The fabrics (kFabs): every block reads `fab_cur`, the value as the
+  /// cycle starts, and drives its own slots of `fab_nxt`. The host owns both.
+  const uint64_t *fab_cur = nullptr;
+  uint64_t *fab_nxt = nullptr;
 
 private:
   int inst_;
@@ -66,12 +70,18 @@ public:
   /// kChanInsts entry that owns a slot, and the slot's index within it.
   const ChanInst &chanInstOf(unsigned slot) const { return *owner_[slot]; }
 
+  /// The fabrics' state (kFabs, kNumFabSlots words): what blocks read this
+  /// cycle and what they drive for the next. Undriven, a fabric reads 0.
+  std::vector<uint64_t> &fabCur() { return fab_cur_; }
+  std::vector<uint64_t> &fabNxt() { return fab_nxt_; }
+
 private:
   std::vector<Slot> slots_;
   std::vector<std::unique_ptr<Sender>> tx_;
   std::vector<std::unique_ptr<Receiver>> rx_;
   std::vector<const ChanInst *> owner_;
   std::vector<std::unique_ptr<Block>> blocks_;   ///< kNumBlkInsts, then TB end
+  std::vector<uint64_t> fab_cur_, fab_nxt_;
   uint64_t now_ = 0;
 };
 

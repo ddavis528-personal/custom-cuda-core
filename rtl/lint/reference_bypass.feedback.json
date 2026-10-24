@@ -1,0 +1,21 @@
+{
+  "_comment": "CCV-L23's refused bypasses, for bad_feedback.sv's reference_bypass: an off-path source and a wrong offset.",
+  "bypass": {
+    "offp_cy02h": {
+      "from": {
+        "o2_cy03h": 1
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "off-path control"
+    },
+    "wofs_cy02h": {
+      "from": {
+        "w2_cy03h": 2
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "wrong-offset control"
+    }
+  }
+}

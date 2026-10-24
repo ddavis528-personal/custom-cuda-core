@@ -1,0 +1,6 @@
+{
+  "_comment": "CCV-L29's frozen baseline as a fixture (tools/check-1d.sh): never_listed is missing on purpose.",
+  "modules": {
+    "ccv_reference": ["untag_nx", "out_d_cy01h"]
+  }
+}

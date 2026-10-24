@@ -21,7 +21,7 @@ Four layers, deliberately not one:
 
 | Layer | Covers | Why not the others |
 |---|---|---|
-| `tools/lint-rtl.py` | CCV-L01 … CCV-L28 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
+| `tools/lint-rtl.py` | CCV-L01 … CCV-L29 below | Project rules. The central one (CCV-L08) is a *relationship* between a case selector and an assertion elsewhere in the file, which no stock rule set expresses. |
 | `verilator --lint-only` | width mismatches, inferred latches, unused and undriven signals, unsupported constructs | Already excellent at these. Reimplementing them would be strictly worse. |
 | The three tools themselves | anything that fails to parse | The tool-support intersection is narrow (Stage 1a), so "it compiles everywhere" is a real check, not a formality. |
 | `tools/check-cg.py` | CG-1 … CG-3, local clock gating (below) | Two of the three are measurements, not syntax: an enable's depth in a synthesised netlist and its efficiency in simulation. Lint sees neither. |
@@ -153,7 +153,7 @@ Every `preliminary` parameter carries a churn rating, and it rates the
 The practical rule for the Stage 3 skeleton: *carry* preliminary fields
 freely, *decode* them only where the skeleton would be pointless without it,
 and never build control flow on a high-churn field's contents. `opcode`,
-`operand` (`CCV_L_OPERANDS_PER_LANE`), `pcs` (`CCV_L_PC_GROUPS`),
+`operand` (`CCV_L_OPERANDS_PER_LANE`),
 `pred_state` and the external port's `tl_out`/`tl_in` are the high-churn ones
 today; `docs/trust-report.md` is generated on every gate run and lists them
 with everything that references them.
@@ -243,7 +243,7 @@ clocks    [<block>_]<domain>_clk[_b]   core_clk           top level
 reset     <block>_rst_r<NN><l|h>       sched_rst_r06h
 
 enables   <name>_en[_<stage>][_n|_b]   ld_en_cs00h        a clock enable:
-                                        pay_en             what an always_ff's
+                                        pay_en_cs02h       what an always_ff's
                                                            `if` gates on
 
 stage     <domain><block><NN><l|h>     c = core domain
@@ -254,6 +254,16 @@ stage     <domain><block><NN><l|h>     c = core domain
 
 All lowercase, underscore-separated. Only parameters and localparams carry
 upper case.
+
+**The stage tag is required, not optional, on every net of a block's
+sequential module (CCV-L29; DA, 2026-10-23).** The brackets above mark the
+names that legitimately have none: a boundary port (*Boundary ports carry
+no stage tag*, above), a common module's nets (*Not on a common module's
+formals*, below), a purely combinational module's nets, which take their
+instance's stage, and the clocks and reset taps, which have shapes of their
+own. Everywhere else an untagged net is a hole in the stage rules, not a
+style lapse: CCV-L21 and CCV-L23 key on the tag, so they never check it, nor
+any flop or net that reads through it.
 
 **`_n` and `_b` are always the outermost suffix**, after the stage tag. Mildly
 ugly, and too entrenched to change.
@@ -310,7 +320,7 @@ and the block list in `params/blocks.json` alone:
 | `<block>_<name>` | a sub-block, inside one block | none: runs on `<block>_core_clk` | `ooe_pick` |
 | `ccv_common_<type>[_<name>]` | a common module, shared across blocks | none | `ccv_common_clk` |
 | `<block>_common_<type>[_<name>]` | a common module within one block | none | — |
-| `ccv_top` | the core top, the one named exception | gates, if it ever holds logic | `ccv_top` |
+| `ccv_top` | the core top, the one named exception | none | `ccv_top` |
 
 Anything else is a finding. A wrapper may carry a tag after `_w`: `_v<N>` for
 a hard-reuse template, `_<NN>` for one instance's own wrapper (one with
@@ -417,6 +427,116 @@ generates it:
 - **edge letter** matches `posedge`/`negedge`;
 - **block letter** is registered, and is the block the module's name gives
   (CCV-L28), or `r`.
+
+### CCV-L29 — every net of a block's sequential module carries a stage tag
+
+DA, 2026-10-23. In a block top, wrapper or sub-block (CCV-L28) that holds an
+`always_ff`, every net declared at module level or in a generate block is
+named `<name>_<domain><block><NN><l|h>[_n|_b]`. A combinational net takes
+the stage CCV-L23 gives it: the latest stage it reads, or, read only by the
+stage-N register it feeds, N - 1 (its D side).
+
+Not nets, and so not held to it: a port, a parameter, a struct's field, a
+function's or task's local, and a local declared inside a procedural block.
+Exempt by their own shapes: clocks (CCV-L20) and reset taps
+(`<block>_rst_r<NN><l|h>`, *Reset has its own numbering space*). Exempt as
+modules: a common module (CCV-L28), whose nets live in many blocks, and a
+module with no `always_ff`, an inner helper timed as its parent's logic,
+whose nets sit at whatever stage its instance does, as a struct type's do.
+
+**Why it is a rule and not a convention.** CCV-L21 checks a flop's tag
+against its clock and block, and CCV-L23 checks the stage arithmetic, and
+both skip any name without a tag. One untagged net is enough to hide a
+stage skip: `q_cy02h <= x_nx; assign x_nx = d_cy00h;` advances two stages
+through one flop, and neither rule sees it (`rtl/lint/bad_naming.sv`).
+
+**The ratchet.** The nets that stood when the rule was made are listed in
+`rtl/stage-ratchet.json`, by module. Their owner tags each one at the stage
+the arithmetic gives it, or removes it, and takes its entry off the list.
+The list only shrinks: lint refuses an entry whose net is now tagged or
+gone, and an entry not in `tools/stage-ratchet-baseline.json`, the list as
+made, which only the rule's owner writes. `tools/check-1d.sh` holds the
+rule to its fixtures: two untagged nets refused, one at module level and
+one in a generate block; `ccv_reference.sv`'s field and locals silent; and
+the ratchet excusing a listed net, and refusing an entry that now meets the
+rule and one never in the baseline.
+
+### CCV-L23's declared feedback — the back edge of a register loop
+
+OA's ruling on TI-38 and DA's decision, 2026-10-23. A select loop reads
+backwards across stages by design: in `ooe_sched` the request and ready
+registers (stage 03) read the grant register (stage 04), which their own
+values feed, because V-65's same-cycle confirmation needs it. Retagging
+would describe a wait that does not exist. So the read is declared, with
+the alignment the loop has, and CCV-L23 holds it to that alignment instead
+of to `max(inputs) + 1`.
+
+The declaration is a waiver on the alignment check, not on the naming. Even
+a feedback read keeps its stage tag, and the tags must give exactly the
+alignment declared: the naming shows how many cycles the loop takes, and a
+feedback net tagged a stage off is refused like any other (DA: "Even for
+feedback signals, the stage alignment is important. The naming convention
+helps us to see how many cycles the loop takes. The right place for the
+waiver is on the check that uses the naming to verify alignment - the
+waiver can then be specific to the feedback alignment that we expect").
+
+A declaration lives beside the module's RTL, in `<module>.feedback.json`:
+`{"reads": {"<reader>": {"from": {"<read>": <stages ahead>, ...}, "loop":
+["<R0>", ..., "<Rk>"], "by": "OA", "date": "…", "why": "…"}}}`, one entry
+per reading net. The lint refuses it, and the stage skip stays reported,
+unless:
+
+- `by` is an architect (OA, AR or DA): a declaration is reviewed before it
+  is listed, and the list shrinks only by review;
+- the reader reads it: a stale declaration is refused;
+- the reader and the read both carry stage tags, and the read's tag lies
+  exactly `<stages ahead>` stages past the reader's, one or more (a read
+  the plain arithmetic accepts needs no declaration). Only then does the
+  read leave `max(inputs)`, for that reader alone;
+- the loop exists. With no `loop`, some register the read comes from,
+  through combinational logic, has a next value that depends, through
+  combinational logic, on a register the reader is (or feeds): the read is
+  the back edge of a two-register loop. A longer loop (OA's rev 191:
+  `ooe_sched`'s ready, grant and gl) names its registers in order, and the
+  lint traces that exact path: the reader is R0 or feeds its next value,
+  each register's next value depends combinationally on the one before it,
+  and the read comes from Rk. A hop it cannot trace refuses the declaration.
+  Reachability alone would accept almost anything in a scheduler, which is
+  why the path is named and not searched for. Conditions count as
+  dependencies, an `if`'s or a `case`'s selector as much as a right-hand
+  side.
+
+Timing is not exempt: check-ngd measures the loop whatever the tags say.
+`tools/check-1d.sh` holds it to `rtl/lint/reference_loop.sv` (a two-register
+loop one stage ahead, and a listed three-register loop two ahead: silent)
+and `rtl/lint/bad_feedback.sv` (a declaration with no loop, one not an
+architect's, one for a read not made, the loop undeclared, a listed hop that
+does not exist, a three-register loop not listed, a loop declared at an
+alignment its tags do not give, and one with no alignment: each refused).
+
+**A declared bypass** (DA, 2026-10-23, OI-72 (A): "We should scrutinize all
+cases like this, so it's good that the lint mechanism is forcing a waiver.
+But based on the code I do agree that this is a standard bypass mux around
+the main array structure and that we can waive"). A reader at stage N that
+reads a later pipeline copy of its own stage's register, because the table
+it otherwise reads is written a cycle late (`ooe_rendep`'s G-2 hits: G-2's
+registers hold G-1's names a cycle on, and `ooe_prodmap` records them a cycle
+later), is declared in the same file: `{"bypass": {"<reader>": {"from":
+{"<register>": <stages ahead>}, "by", "date", "why"}}}`. The lint refuses it,
+and the stage skip stays reported, unless `by` is an architect, the reader
+reads the register, both carry tags whose difference is exactly the offset
+declared, and the register is that many stages on from a register at the
+reader's stage in the reader's own pipeline (its block letter), each hop
+traced through the data a register is loaded with, never its enable. A
+register loaded from another pipeline is off the reader's path. Each
+declaration is reviewed one by one, never accepted as a class. The read it
+declares counts at the stage it stands for, its register's less the offset,
+the reader's own (OI's rev 189, OA's rev 212): the reader's other inputs stay
+held to the arithmetic, and a reader whose other inputs are all a stage
+earlier is still its own stage (`reference_loop.sv`'s `hit2_cy02h`).
+`rtl/lint/reference_loop.sv`'s `hit_cy02h` passes; `bad_feedback.sv`'s bypass
+of another pipeline's register, and one declared two stages ahead where the
+tags give one, are refused.
 
 ### CCV-L22 — a block runs on its own gated clock
 
@@ -547,10 +667,28 @@ The rule the whole convention exists to make checkable:
 Catches mislabelled pipelines, accidental combinational paths across a stage
 boundary, and retiming that updated the logic but not the names.
 
+Continuous assignments are combinational and checked as `always_comb` is
+(OI-65): a tagged net driven by an `assign` was once unchecked, which invited
+leaving a stage mix untagged, and then the flop it fed went unchecked too.
+
+An assignment's inputs include every `if` and `case` condition it is made
+under (OI's rev 188, OA's rev 210), an `if`'s `else` arm included: a value
+steered by a stage-03 condition is a stage-03 value. A net assigned under an
+`if` that read G-2's stage-03 registers once passed as stage 02, its
+right-hand sides being stage 02. `bad_feedback.sv`'s `cnd_cy02h` is refused
+for it.
+
 Three exemptions, each for a reason:
 
-- **A net's own previous value.** `q_cs04h <= en ? d_cs03h : q_cs04h` is a hold
-  or a counter — a self-reference at the *same* stage, not a violation.
+- **State reading its own stage** (OI-65). `q_cs04h <= en ? d_cs03h : q_cs04h`
+  is a hold or a counter, a self-reference at the *same* stage. So is a
+  register reading another register of its stage, a queue's entries reading
+  its count: in a stage-N register's next value, any stage-N net is the
+  block's own state, and everything else must be at N − 1. The same feedback
+  built apart from the always_ff, on the **D side**: a combinational net at
+  N − 1 that only flops read (a next value or an enable) may read the
+  stage-N state it updates. Read anywhere else, it is held to the plain
+  arithmetic. `rtl/lint/reference_feedback.sv` shows both forms.
 - **Reset nets** (block letter `r`), whose numbering measures distribution
   depth rather than datapath depth.
 - **Right-hand sides with no tagged signal at all** — constants, parameters.
@@ -670,7 +808,7 @@ line selects, which fails CG-2. Two forms keep the coarse enable:
 a bench that runs the three scenarios and dumps a VCD (`test/**/cg-units.json`;
 TI's are in `test/cg/`). `check-cg.py` synthesises the unit with Yosys,
 groups its flops by enable, and maps each enable's cone with ABC onto
-`test/ooe/ngd.genlib`, the same recipe as `test/ooe/depth.sh`. Then it
+`tools/ngd.genlib`, the same recipe as `test/ooe/depth.sh`. Then it
 replays each scenario's port trace into the netlist, brings every group's
 enable and value out on a port, and counts. The replay must reproduce the
 bench's outputs on every cycle, so what is measured is what the bench ran;
@@ -690,6 +828,13 @@ medium to high, or the scenarios are refused as mislabelled. Data that
 changes when no message does is the commonest way to get this wrong: it
 makes the scenario busier than its traffic, and every DCGE looks better
 than it is.
+
+Every scenario is checked traffic (Daniel, 2026-10-21). A bench drives and
+checks each scenario as it does any run: no stimulus is made only for
+clock gating, so the scenarios are valid input by construction, and
+`check-cg` fails a unit whose bench fails one. The rules a bench keeps on
+its module's inputs are the module's own assertions too, so an input that
+breaks them fails in any bench, not only the one that knew the rule.
 
 **Exceptions.** Three, in this order, and the order matters:
 
@@ -720,7 +865,20 @@ than it is.
   where a rule would be met by refactoring, refactor (the age matrix's 900
   one-flop enables are a refactor, not a waiver). A waiver that excuses
   nothing is refused, and that includes one for a finding a module's budget
-  already takes. Today there are none. The repeater had two, for its valid
+  already takes. A waiver carries its threshold and fails again past it
+  (Daniel, 2026-10-22; OA's response OI-66). A CG-3 waiver states
+  `floor_pct` and `measured_pct` by scenario (idle, medium, high): it clears
+  its gate only while the gate's DCGE in each scenario holds at the floor,
+  and the floor may not exceed what was measured. A register gated per
+  slot takes one waiver per gate: `enable` names the gate's enable as
+  check-cg reports it (OA's response OI-66), and the waiver takes that
+  gate's findings alone. Daniel's rule sets it 2
+  points below the measurement. An allowance waiver, for CG-1's registers
+  written every cycle or CG-4's flops outside any gate, states `max_flops`
+  and `measured_flops`, and one flop more fails. A waiver without its
+  threshold is refused. check-cg reports a waived gate that now measures a
+  point or more above what its waiver records, so its floor can tighten.
+  Today there are none. The repeater had two, for its valid
   and stall flops, until every instantiation was measured on its own (below):
   its allowance takes them. The clock gate's hysteresis counters had two
   until its threshold compare was registered, which Daniel's CSR contract
@@ -766,8 +924,14 @@ part of a register.
 **25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
 every depth here is measured with the flops cut out, so the whole 25 is
-logic. An NGD is a NAND2 at fanout 4; `test/ooe/ngd.genlib` holds the gates
-at their fanout-of-4 delays, and broadcast fanout and wire are not in it.
+logic. An NGD is a NAND2 at fanout 4; `tools/ngd.genlib` holds the gates
+at their fanout-of-4 delays, and broadcast fanout and wire are not in it. The
+static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
+XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
+its NAND2 (`tools/genlib-xor.py`), and a path is timed at the delay of the pin
+it enters by, so a carry-save tree's late operand on XOR3's C costs 2.37
+where its A costs 3.84. A library cell may hold pass gates only where none of
+their diffusions reaches an input pin or the output.
 
 **A module is measured alone, so a path that leaves it is budgeted at the
 port.** Each side of a port has a budget, by default `CCV_NGD_PORT` =

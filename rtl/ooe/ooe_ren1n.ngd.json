@@ -1,0 +1,7 @@
+{
+  "module": "ooe_ren1n",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-23",
+  "why": "Rename 2's first gates, combinational: each lane's new names bound from the Rename 1 register (its index, the free lists' heads beside it) and each read's in-group writer's name (OI-67). ooe_rename's Rename 1 register drives it; the pending group and ooe_rendep read it."
+}

@@ -34,6 +34,12 @@ Machine::Machine(unsigned depth, const Factory &make) {
   for (unsigned b = 0; b != kNumBlkInsts; ++b)
     blocks_.push_back(make(int(b)));
   blocks_.push_back(make(-1));            // the testbench end of EXTERNAL
+  fab_cur_.assign(kNumFabSlots + 1, 0);   // + 1: never empty
+  fab_nxt_.assign(kNumFabSlots + 1, 0);
+  for (auto &b : blocks_) {
+    b->fab_cur = fab_cur_.data();
+    b->fab_nxt = fab_nxt_.data();
+  }
 
   auto blockAt = [&](int16_t idx) -> Block & {
     return idx < 0 ? *blocks_.back() : *blocks_[idx];
@@ -51,6 +57,7 @@ Machine::Machine(unsigned depth, const Factory &make) {
 void Machine::step(bool in_reset, const std::function<void()> &inject) {
   for (Slot &s : slots_)
     s.begin();
+  std::fill(fab_nxt_.begin(), fab_nxt_.end(), 0);   // a fabric is driven every cycle
   if (!in_reset)
     for (auto &b : blocks_)
       b->cycle(now_);
@@ -58,6 +65,7 @@ void Machine::step(bool in_reset, const std::function<void()> &inject) {
     inject();
   for (Slot &s : slots_)
     s.commit();
+  fab_cur_ = fab_nxt_;
   ++now_;
 }
 

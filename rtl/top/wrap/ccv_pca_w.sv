@@ -17,7 +17,8 @@ module ccv_pca_w #(
   parameter int RPT_PCA_RCU_MIG = 0,
   parameter int RPT_FET_PCA_MIG = 0,
   parameter int RPT_PCA_FET_MIG = 0,
-  parameter int RPT_PCA_RAU_MIG_DONE = 0
+  parameter int RPT_PCA_RAU_MIG_DONE = 0,
+  parameter int RPT_RAU_PCA_MIG = 0
 ) (
   `include "ccv_pca_ports.svh"
 );
@@ -48,12 +49,18 @@ module ccv_pca_w #(
   logic b_pca_rau_mig_done_credit;
   logic b_pca_rau_mig_done_stall;
   logic b_pca_rau_mig_done_wake;
+  logic b_rau_pca_mig_valid;
+  ccv_rau_pca_mig_t b_rau_pca_mig_payload;
+  logic b_rau_pca_mig_credit;
+  logic b_rau_pca_mig_stall;
+  logic b_rau_pca_mig_wake;
 `ifdef CCV_TRACE
   logic [63:0] b_rcu_pca_mig_tid;
   logic [63:0] b_pca_rcu_mig_tid;
   logic [63:0] b_fet_pca_mig_tid;
   logic [63:0] b_pca_fet_mig_tid;
   logic [63:0] b_pca_rau_mig_done_tid;
+  logic [63:0] b_rau_pca_mig_tid;
 `endif
 
   ccv_pca u_blk (
@@ -91,7 +98,12 @@ module ccv_pca_w #(
     .pca_rau_mig_done_payload(b_pca_rau_mig_done_payload),
     .pca_rau_mig_done_credit(b_pca_rau_mig_done_credit),
     .pca_rau_mig_done_stall(b_pca_rau_mig_done_stall),
-    .pca_rau_mig_done_wake(b_pca_rau_mig_done_wake)
+    .pca_rau_mig_done_wake(b_pca_rau_mig_done_wake),
+    .rau_pca_mig_valid(b_rau_pca_mig_valid),
+    .rau_pca_mig_payload(b_rau_pca_mig_payload),
+    .rau_pca_mig_credit(b_rau_pca_mig_credit),
+    .rau_pca_mig_stall(b_rau_pca_mig_stall),
+    .rau_pca_mig_wake(b_rau_pca_mig_wake)
 `ifdef CCV_CHECK
     , .clk_gated(clk_gated)
 `endif
@@ -101,6 +113,7 @@ module ccv_pca_w #(
     , .fet_pca_mig_tid(b_fet_pca_mig_tid)
     , .pca_fet_mig_tid(b_pca_fet_mig_tid)
     , .pca_rau_mig_done_tid(b_pca_rau_mig_done_tid)
+    , .rau_pca_mig_tid(b_rau_pca_mig_tid)
 `endif
   );
 
@@ -150,7 +163,7 @@ module ccv_pca_w #(
   end
   // ccv_fet_pca_mig, destination end
   if (RPT_FET_PCA_MIG > 0) begin : g_rpt_fet_pca_mig
-    ccv_common_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_fet_pca_mig (
+    ccv_common_rpt #(.STAGES(RPT_FET_PCA_MIG), .SLOTS(1), .PAYLOAD_W(1056)) u_rpt_fet_pca_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({fet_pca_mig_valid}), .src_payload({fet_pca_mig_payload}),
       .src_wake(fet_pca_mig_wake), .src_credit({fet_pca_mig_credit}), .src_stall({fet_pca_mig_stall}),
@@ -172,7 +185,7 @@ module ccv_pca_w #(
   end
   // ccv_pca_fet_mig, source end
   if (RPT_PCA_FET_MIG > 0) begin : g_rpt_pca_fet_mig
-    ccv_common_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(389)) u_rpt_pca_fet_mig (
+    ccv_common_rpt #(.STAGES(RPT_PCA_FET_MIG), .SLOTS(1), .PAYLOAD_W(1056)) u_rpt_pca_fet_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_pca_fet_mig_valid}), .src_payload({b_pca_fet_mig_payload}),
       .src_wake(b_pca_fet_mig_wake), .src_credit({b_pca_fet_mig_credit}), .src_stall({b_pca_fet_mig_stall}),
@@ -212,6 +225,28 @@ module ccv_pca_w #(
     assign {b_pca_rau_mig_done_stall} = {pca_rau_mig_done_stall};
 `ifdef CCV_TRACE
     assign {pca_rau_mig_done_tid} = {b_pca_rau_mig_done_tid};
+`endif
+  end
+  // ccv_rau_pca_mig, destination end
+  if (RPT_RAU_PCA_MIG > 0) begin : g_rpt_rau_pca_mig
+    ccv_common_rpt #(.STAGES(RPT_RAU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(11)) u_rpt_rau_pca_mig (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({rau_pca_mig_valid}), .src_payload({rau_pca_mig_payload}),
+      .src_wake(rau_pca_mig_wake), .src_credit({rau_pca_mig_credit}), .src_stall({rau_pca_mig_stall}),
+      .dst_valid({b_rau_pca_mig_valid}), .dst_payload({b_rau_pca_mig_payload}),
+      .dst_wake(b_rau_pca_mig_wake), .dst_credit({b_rau_pca_mig_credit}), .dst_stall({b_rau_pca_mig_stall})
+`ifdef CCV_TRACE
+      , .src_tid({rau_pca_mig_tid}), .dst_tid({b_rau_pca_mig_tid})
+`endif
+    );
+  end else begin : g_wire_rau_pca_mig
+    assign {b_rau_pca_mig_valid} = {rau_pca_mig_valid};
+    assign {b_rau_pca_mig_payload} = {rau_pca_mig_payload};
+    assign b_rau_pca_mig_wake = rau_pca_mig_wake;
+    assign {rau_pca_mig_credit} = {b_rau_pca_mig_credit};
+    assign {rau_pca_mig_stall} = {b_rau_pca_mig_stall};
+`ifdef CCV_TRACE
+    assign {b_rau_pca_mig_tid} = {rau_pca_mig_tid};
 `endif
   end
 endmodule

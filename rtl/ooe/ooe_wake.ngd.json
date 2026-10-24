@@ -2,10 +2,10 @@
   "module": "ooe_wake",
   "ports": {
     "grant_cq01h": {
-      "arrival": 9.0,
+      "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: wake's grant copy (ooe_sched's third grant register)"
     },
     "kind_cq01h": {
       "arrival": 9.0,
@@ -19,11 +19,47 @@
       "date": "2026-10-18",
       "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
     },
-    "cmpl_cq01h": {
-      "arrival": 10.0,
+    "cmpl_l_cq00h": {
+      "arrival": 2.0,
       "by": "OA",
-      "date": "2026-10-18",
-      "why": "OA's port budgets, OOE microarchitecture doc rev 197, 'Stage boundaries and module ports' (OA tab, response to TI-16/TI-17), in NGD from the launching flop"
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: channel valids and the RS index, from the boundary receive flops"
+    },
+    "cmpl_idx_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: channel valids and the RS index, from the boundary receive flops"
+    },
+    "sq_l_cq00h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-20",
+      "why": "OA's response OI-58 (OA tab, 2026-10-20), V-75 budgets, in NGD from the launching flop: squash, flush and whole-event payloads"
+    },
+    "dep_cq01h": {
+      "arrival": 5.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 137), in NGD from the launching flop: dep as ooe_sched takes it"
+    },
+    "sqf_cq01h": {
+      "arrival": 8.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 137), in NGD from the launching flop: the registered squash's frees, OI-58 (2)"
+    },
+    "hint_l_cq00h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 153): from the boundary receive flops, as cmpl_l and cmpl_idx, OI-58"
+    },
+    "hint_idx_cq01h": {
+      "arrival": 2.0,
+      "by": "OA",
+      "date": "2026-10-21",
+      "why": "OA's response OI-45 (OA tab, 2026-10-21, rev 153): from the boundary receive flops, as cmpl_l and cmpl_idx, OI-58"
     }
   }
 }

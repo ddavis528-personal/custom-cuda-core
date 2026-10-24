@@ -384,7 +384,8 @@ the schema says how the top connects it):
     a warp parked at `bar.sync`, since it can be demoted.
 - **Both kill sources land at RAU, the single issuer.** A fault comes direct
   from OOE: `fault_taken` with the `warp_id` on `ccv_ooe_rau_status`, and RAU
-  maps warp to grid to mask. CRU records the fault in parallel for the host
+  kills every warp of the context, not just the faulting grid (DA's response
+  IS-2, 2026-10-20). CRU records the fault in parallel for the host
   and is not on the path that stops execution. The host's kill comes as
   `kill_req` plus `kill_grid` on `ccv_cru_rau_cfg`.
 - **Wake is not a fabric.** It is `_wake`, a fifth channel signal from sender
@@ -560,7 +561,7 @@ used for:
 | Decode: which registers an instruction reads and writes | Operands: out of RCU's register file, to the lanes |
 | ALU **results**: a lane returns ccv-sim's value | Load data: memory → EXB → MLC → DCU → MIU → RCU |
 | Immediates (the record's `imms`), at decode | Displacement and scale enable: DEC → OOE → MIU's AGU; ALU immediate: DEC → OOE → RCU, substituted into an operand |
-| | Store data: RCU's register file → MIU → DCU (RMW) → MLC → EXB → memory |
+| | Store data: RCU's register file → MIU → DCU (merged into an owned line; DCU spec rev 8) → MLC on writeback → EXB → memory |
 
 The trace identity (uid seq = record seq) is how a checker finds the record.
 It's trace-only, so no stub uses it to decide what to do. (The one exception,
@@ -584,7 +585,7 @@ ID, rendered in `docs/payload-spec.md`.
    (1024) and `byte_mask` (128), mirroring `ccv_miu_spm_req` (56 → 1208 bits
    at rate 4). A separate store-data channel would duplicate flow control for
    nothing, and byte granularity is enough because a 4-bit access faults.
-2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16,
+2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 29,
    the widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`,
    and the shift is derived from `chwidth`. ALU immediates ride on
    `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register
@@ -618,12 +619,12 @@ ID, rendered in `docs/payload-spec.md`.
 
 Also found and fixed, in the compiler repo:
 
-- **compiler F-141.** Compiler F-50's `mayLoad`/`mayStore` fix had bound its TableGen `let`s one
+- **compiler F-153.** Compiler F-50's `mayLoad`/`mayStore` fix had bound its TableGen `let`s one
   def late. `LD_GLOBAL`, `LD_GLOBAL_P`, the compressed pair and both atomics
   had no memory effect, and three narrow stores were marked as loads. It
   showed up because the oracle reported `"load":0` beside 32 reads. `-oracle`
   now refuses any step whose memory traffic its descriptor doesn't declare.
-- **compiler F-142.** ccv-sim recognized 42 of the 64 `setp` forms as compares when
+- **compiler F-154.** ccv-sim recognized 42 of the 64 `setp` forms as compares when
   excluding Format C's unwritten `rd`. No benchmark output changed.
 
 ### Payload spec response (2026-09-25), as built
@@ -692,7 +693,7 @@ computes `active_mask` (Q-23), and ITLB correlation (Q-24).
   flattened width stands in for a burst sequencer, not just a bus.
 
 **Raised by applying it, and answered in the next round:** branch
-resolution (Q-26), predicate source operands (Q-27), and compiler F-143 (see
+resolution (Q-26), predicate source operands (Q-27), and compiler F-155 (see
 below).
 
 The formal covers for the new outstanding checker caught a vacuous setup on
@@ -749,10 +750,10 @@ the way. See `fail-open-register.md`.
 - **The PC-group owner (Q-29):** FET owns divergent PC state, but
   `ccv_rcu_pca_mig` carried `pcs` from RCU. Built in the next round: a FET↔PCA
   pair.
-- **Compiler F-143 is fixed** (`cas`'s offset is `simm16`, decoded
+- **Compiler F-155 is fixed** (`cas`'s offset is `simm16`, decoded
   sign-extended), and escalated as you said: an offset at or above 0x8000
   would have been emitted as a large positive and executed as negative.
-  **Compiler F-144:** fixing it exposed that 85 predicated instructions had
+  **Compiler F-156:** fixing it exposed that 85 predicated instructions had
   silently left the encode/decode round trip since the predicate operand
   types were added (see `fail-open-register.md`).
 
@@ -879,10 +880,10 @@ The `srd` response: Q-38 closed, and Q-32's rule amended.
   width is declared. The same goes for `CCV_W_CTAID` and
   `CCV_W_WARP_IN_CTA`.
 - **The compiler's obligations are in the compiler repo.**
-  - **The narrow-destination refusal is compiler F-145.** It already held
+  - **The narrow-destination refusal is compiler F-157.** It already held
     structurally, and now a named error refuses any change that breaks it.
     A mutation test proves the refusal fires.
-  - **Rematerialization is compiler F-146, and it did not happen.** `srd`
+  - **Rematerialization is compiler F-158, and it did not happen.** `srd`
     has no pattern, so TableGen inferred side effects and vetoed remat, and
     `sgemm` spills `%ctatid`. Making it real is a trade: `sgemm` 4×4 gains,
     but `igemm` 1×1 picks up a 14-`mov` rotation in its loop. So it's left
@@ -1189,8 +1190,8 @@ matters for the skeleton:
   `CCV_DONE_SLOTS` = 7 slots: dones stack by latency class, so four narrow
   lane ops, an SFU op, an RCU-only op and a warp-collective issued in
   different cycles can land together (OA's response TI-9). The RAT map
-  carries `gpr_pos` and `gpr_width`, and rows move whole, each distinct row
-  once in order of first appearance from R0. The RCU stub checks V-60 every cycle --
+  carries `gpr_pos` and `gpr_width`, and rows move whole, one per
+  architectural register, Ra as row a, with no merging (TI-25 (1)). The RCU stub checks V-60 every cycle --
   each lead in its footprint's lowest slot, continuation on the rest with
   its tag, no slot in two footprints -- and each class on its own group,
   and refuses a register past its row; MIU refuses a `pipes` that is not
@@ -1236,7 +1237,7 @@ decisions.
 | `dec_ooe_uop.pred_guard`, `pred_neg`, `pred_dst`, `pred_we` | the guard's index and negate (from the qualifier; sel's selector too); the predicate destination, valid when `pred_we` |
 | `dec_ooe_uop.imm` | the displacement for a memory op, else the ALU immediate; `scale_en` beside it. A branch: its architectural offset, in halfwords from the next instruction, with the length code in `ilen` beside it; OOE computes `pc + bytes(ilen) + 2·imm` (arch open A-8). Predicate logic: its source qualifiers, `[2:0]` ps0, `[5:3]` ps1 |
 | `srd`'s immediate at issue | identity from OOE: `warp_in_cta << 5` for selector 0 (the lane ORs its index in), `ctaid` for selector 1 (the lane passes it through) |
-| `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-143) |
+| `ooe_miu_memop.disp` | **sign-extended** from `CCV_W_DISP` at the AGU, as the ISA's signed offsets require (compiler F-155) |
 | `fet_dec_instr.group_mask`, `fetch_epoch` → `dec_ooe_uop` | the record's issue mask, which is the PC group with no divergence model; the epoch of FET's last redirect. OOE issues the mask as `issue_mask` and drops a uop of any other epoch (A-69, A-70) |
 | `ooe_rcu_issue.phys_src`, `phys_src2` | `[15:8]` src0, `[7:0]` src1; the third in `phys_src2`. Names from OOE's RAT: a FIFO free list over the 192-register pool, the zero register for anything unwritten (RAU allocates nothing, A-30) |
 | `ooe_rcu_issue.merge_en`, `phys_old_dst`, `phys_pred_old_dst` | `merge_en` when the issue mask is not full or the op is guarded; `phys_old_dst` is the RAT's mapping before this write. A masked load's copy-only op (`CCV_OP_PRF_COPY`) issues on the lane sections with the load's issue fields, at least a cycle ahead of the load in the model (V-61) and beside it in the S1 stub; an unguarded one masked only by its issue mask would name the zero predicate, negated |
@@ -1248,7 +1249,7 @@ decisions.
 | `rcu_lane_ops` per-section fields | S0 at the LSBs; `sec_opnd_pos`, `sec_opnd_width` and `operand_byp` section-major, entry 4*k* + *i* is section *k*'s port *i* (src0-src2, then merge). The S1 stubs send one full-width op a message: `section_en` 1111, `sec_owner` 0 for every section |
 | `lane_rcu_res.result`, `sec_valid`, `sec_pred_out` | the GPR value; the sections the op held; its predicate result on its lead section |
 | `rcu_lane_ops.sec_pred_data` | a predicate read as data (sel's selector), negate applied, with the operands; `sec_pred_bit` is the enable. `sec_pred_bit` and `section_en` are the lead fields: on the wire with valid, a cycle ahead of `operand` |
-| `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
+| `rcu_miu_addr.base_per_lane`, `index_per_lane` | raw register values, per lane (TI-32: an O-30 frame pointer differs on every lane). MIU's AGU applies the window shift (§5.1), the scale and the displacement. A launch-slot memop (`ooe_miu_memop.slot_form`, `arg_slot`; TI-31) has no base register: MIU takes the window from its table of the CTA's launch-block slots |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |
 | `ooe_miu_memop.mem_op`, `space` | 0 load, 1 store; 0 global, 1 shared |

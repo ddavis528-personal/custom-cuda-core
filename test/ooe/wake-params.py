@@ -2,7 +2,7 @@
 """ooe_wake's latencies, bypass points and penalties, from the parameters:
 one line, the -G list then the -D list, comma-separated. Used by
 test/ooe/run-rtl.sh and test/ooe/cg-build.sh, so the two cannot drift."""
-import re
+import json, re
 pkg = open('rtl/generated/ccv_params_pkg.sv').read()
 def p(n): return int(re.search(r'localparam int %s = (\d+);' % n, pkg).group(1))
 core = open('sim/ooe/ooe_core.h').read()
@@ -14,8 +14,10 @@ pens3 = (pens + [0, 0, 0])[:3]
 pack = lambda v, w: sum(x << (w * i) for i, x in enumerate(v))
 g = dict(NR=p('CCV_P_RS_RCU'), N=p('CCV_P_RS_RCU') + p('CCV_P_RS_MIU'), NPEN=len(pens),
          LAT_COPY=p('CCV_LAT_LANE'), LAT_SPEC=p('CCV_LAT_L1_WAKE'),
-         LAT_MISS=stages + p('CCV_LAT_L1_CMPL'), CMPL_DLY=p('CCV_LAT_L1_MISS_WAKE'))
-gs = ' '.join('-G%s=%d' % kv for kv in g.items())
+         LAT_MISS=stages + p('CCV_LAT_L1_CMPL'), CMPL_DLY=p('CCV_LAT_L1_MISS_WAKE'),
+         NC=next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels']
+                 if c['name'] == 'ccv_miu_ooe_cmpl'))
+gs = ' '.join('-G%s=%d' % kv for kv in g.items() if kv[0] != 'NR')
 gs += " -GLAT=64'h%x -GFAST=64'h%x -GPEN=24'h%x" % (pack(lat, 8), pack(fast, 8), pack(pens3, 8))
 d = {'WAKE_' + k: v for k, v in g.items()}
 for i in range(8): d['WAKE_LAT%d' % i] = lat[i]; d['WAKE_FAST%d' % i] = fast[i]

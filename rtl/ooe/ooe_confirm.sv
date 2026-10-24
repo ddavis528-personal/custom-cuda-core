@@ -2,97 +2,56 @@
 //
 // Spec: the design doc's Confirmation and transitive cancel section (A-46:
 //       a miss poisons everything woken from the load, transitively, and
-//       poisoned entries return to Waiting), its scheduler timing findings
-//       (OA-1: "transitive cancel moves one hop per cycle", held by V-59),
-//       OI-12 (an entry with a destination is held until its own result
-//       confirms) and V-16.
+//       poisoned entries return to Waiting), OA's response OI-50 (the
+//       cancel is a level, decided every cycle from flops; V-67, V-68),
+//       OA-17 (why a pulse is not enough), OI-12 (an entry with a
+//       destination is held until its own result confirms) and V-16.
 //
-// Cancel. An issued, unconfirmed entry returns to Waiting when it depends
-// on an entry that missed its L1 slot this cycle or returned to Waiting
-// last cycle: one hop through the dependency matrix a cycle. The hop is
-// decided whole, so an entry replayed now reaches its own dependants only
-// at the next hop, through the register of this cycle's replays. A miss
-// starts a hop in its own cycle: the timers report it from the edge's next
-// state (ooe_wake's miss, taken a cycle early here), so its direct
-// dependants never issue again on the withdrawn wake.
+// An inner helper (ooe_confirm.ngd.json): combinational, no flops, timed in
+// its parents. ooe_wake and ooe_rs each compute it from their own state
+// (OI-50), so the replay reaches only the parent's own flops.
+//
+// Cancel. An issued entry returns to Waiting when it depends on a producer
+// that is not issued (returned to Waiting, or never issued) or has missed
+// its L1 slot (msd: the miss, held from the cycle after it until the load's
+// completion). It is a level, decided every cycle, so an entry issued on a
+// stale ready bit is caught in the cycle it issues (OA-17). A replay
+// reaches the next level only through the parent's edge: one level a cycle.
 //
 // Confirm. An issued entry confirms when no dependency bit is left in its
-// row and either it writes nothing or its timer calls its result final
-// (ooe_wake's fin: the full-latency wake raised, no miss check pending). A
-// confirmed producer is freed and its column cleared, so a consumer of one
-// confirmed now confirms from the next cycle: one level a cycle, as the
-// model's confirmPass now takes it. An entry replayed now is never
-// confirmed now: it depends on a poisoned producer, whose bit is still set.
+// row and either it writes nothing or its result is final (ooe_wake's fin:
+// the full-latency wake raised, no miss check pending). A confirmed
+// producer is freed and its column cleared, so a consumer of one confirmed
+// now confirms from the next cycle: one level a cycle. An entry replayed
+// now is never confirmed now: its row names the producer that sends it
+// back, so its row is not empty (V-16; confirm_tb checks it).
 //
 // The reference is the model's cancelHop and confirmPass, which log their
-// inputs and decisions every cycle (Core::wakeLog: hop_iss, hop_dep, miss,
-// replay; cf_iss, cf_fin, cf_prod, cf_dep, conf). test/ooe/confirm_tb.cpp
-// drives this module with the inputs and compares both decisions, cycle by
-// cycle, the hop register included.
-//
-// Reset line (decision 6): the replay register resets to empty. Local clock
-// gating (docs/rtl-coding-style.md): it is written only while a cancel
-// spreads (rep_en): a miss whose column ooe_rs flags as possibly named
-// (hcol), or a hop under way. An idle core clocks none of it, and a miss
-// nothing waits on clocks none of it either.
+// inputs and decisions every cycle (Core::wakeLog: hop_iss, hop_dep,
+// hop_msd, replay; cf_fin, cf_prod, conf). test/ooe/confirm_tb.cpp drives
+// this module with them and compares both decisions, cycle by cycle, and
+// runs OA-17's directed case.
 //===----------------------------------------------------------------------===//
-`include "ccv_assert.svh"
-`define CCV_CLK ooe_core_clk
-`define CCV_RST ooe_rst_r00h
 module ooe_confirm #(
   parameter int N = 45     // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
 ) (
-  input  logic           ooe_core_clk,
-  input  logic           ooe_rst_r00h,
   input  logic [N-1:0]   iss_cq01h,      // issued and unconfirmed
   input  logic [N*N-1:0] dep_cq01h,      // row i, column j: i waits on j
-  input  logic [N-1:0]   miss_cq01h,     // missed its L1 slot this cycle
-  input  logic [N-1:0]   hcol_cq01h,     // a row may name it (ooe_rs's column flags)
+  input  logic [N-1:0]   msd_cq01h,      // missed its L1 slot, until its completion
   input  logic [N-1:0]   fin_cq01h,      // its timer calls its result final
   input  logic [N-1:0]   prod_cq01h,     // writes a register some entry may wake on
-  output logic [N-1:0]   replay_cq02h,   // returns to Waiting this cycle
+  output logic [N-1:0]   replay_cq01h,   // returns to Waiting this cycle
   output logic [N-1:0]   conf_cq01h      // confirmed this cycle: free it
 );
 
-  `CCV_ASSERT_KNOWN(iss_known, iss_cq01h)
-  `CCV_ASSERT_KNOWN(miss_known, miss_cq01h)
+  // A producer an issued entry may no longer stand on.
+  logic [N-1:0] gone;
+  assign gone = ~iss_cq01h | msd_cq01h;
 
-  // The hop: an issued entry with a dependency on a poisoned producer.
-  function automatic logic [N-1:0] hop(input logic [N-1:0] iss, input logic [N*N-1:0] dep,
-                                       input logic [N-1:0] poison);
-    logic [N-1:0] r;
-    for (int i = 0; i < N; i++) r[i] = iss[i] && |(dep[i * N +: N] & poison);
-    hop = r;
-  endfunction
-
-  // Confirmation: no dependency left, and the result final or none.
-  function automatic logic [N-1:0] confirm(input logic [N-1:0] iss, input logic [N*N-1:0] dep,
-                                           input logic [N-1:0] fin, input logic [N-1:0] prod);
-    logic [N-1:0] c;
-    for (int i = 0; i < N; i++) c[i] = iss[i] && dep[i * N +: N] == '0 && (fin[i] || !prod[i]);
-    confirm = c;
-  endfunction
-
-  logic [N-1:0] rep_cq02h;   // the entries the last hop returned to Waiting
-  // The register changes only while a cancel spreads: a miss of an entry
-  // some row may wait on, or a hop still under way. Otherwise the hop is
-  // empty and the register holds empty. The flags are a superset of the
-  // columns with a set bit, so a miss they leave out starts no hop.
-  logic         rep_en_cq02h;
-  assign rep_en_cq02h = |(miss_cq01h & hcol_cq01h) || |rep_cq02h;
-  always_comb begin
-    replay_cq02h = hop(iss_cq01h, dep_cq01h, miss_cq01h | rep_cq02h);
-    conf_cq01h   = confirm(iss_cq01h, dep_cq01h, fin_cq01h, prod_cq01h);
-  end
-
-  // V-16, as this block sees it: nothing is both replayed and confirmed.
-  `CCV_ASSERT(replay_or_confirm, (replay_cq02h & conf_cq01h) == '0)
-
-  always_ff @(posedge ooe_core_clk) begin
-    if (ooe_rst_r00h)      rep_cq02h <= '0;
-    else if (rep_en_cq02h) rep_cq02h <= hop(iss_cq01h, dep_cq01h, miss_cq01h | rep_cq02h);
-  end
+  always_comb
+    for (int i = 0; i < N; i++) begin
+      replay_cq01h[i] = iss_cq01h[i] && |(dep_cq01h[i * N +: N] & gone);
+      conf_cq01h[i]   = iss_cq01h[i] && dep_cq01h[i * N +: N] == '0 && (fin_cq01h[i] || !prod_cq01h[i]);
+    end
 
 endmodule
-`undef CCV_CLK
-`undef CCV_RST

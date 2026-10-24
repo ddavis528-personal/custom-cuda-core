@@ -19,17 +19,17 @@ vl() {   # top, -G params, -D defines, RTL files..., bench
     "$PWD/rtl/ccv_assert_pkg.sv" "$@" "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp"
 }
 case "$unit" in
-  ooe_confirm)
-    vl ooe_confirm "-GN=$n" "-DCONFIRM_N=$n" "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/test/ooe/confirm_tb.cpp" ;;
   ooe_wake)
     read -r g d < <(python3 test/ooe/wake-params.py)
-    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/test/ooe/wake_tb.cpp" ;;
+    vl ooe_wake "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_wake.sv" "$PWD/rtl/ooe/ooe_confirm.sv" \
+      "$PWD/test/ooe/wake_tb.cpp" ;;
   ooe_age_rcu|ooe_age_miu)
     if [ "$unit" = ooe_age_rcu ]; then cls=0 na=$n_rcu; else cls=1 na=$n_miu; fi
     vl ooe_age "-GN=$na -GA=$width" "-DAGE_N=$na -DAGE_A=$width -DAGE_CLS=$cls" \
       "$PWD/rtl/ooe/ooe_age.sv" "$PWD/test/ooe/age_tb.cpp" ;;
   ooe_rs)
-    vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width" \
+    nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+    vl ooe_rs "-GN=$n -GNR=$n_rcu -GA=$width -GNC=$nc" "-DRS_N=$n -DRS_NR=$n_rcu -DRS_A=$width -DRS_NC=$nc" \
       "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/test/ooe/rs_tb.cpp" ;;
   ooe_decq)
     slots=$(val CCV_TIER1_WARPS) dq=$(val CCV_P_DECQ) dqw=$(val CCV_P_DECQ_WARP_MAX)
@@ -41,10 +41,52 @@ case "$unit" in
     if [ "$unit" = ooe_freelist_gpr ]; then pool=0 nf=$(val CCV_P_PHYS_REGS); else pool=1 nf=$(val CCV_P_PRED_REGS); fi
     fb=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
     fk=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
-    vl ooe_freelist "-GN=$nf -GA=$width -GB=$fb -GK=$fk" "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_POOL=$pool" \
-      "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
+    slots=$(val CCV_TIER1_WARPS)
+    vl ooe_freelist "-DCCV_CHECK -GN=$nf -GA=$width -GB=$fb -GK=$fk -GS=$slots" \
+      "-DFL_N=$nf -DFL_A=$width -DFL_B=$fb -DFL_K=$fk -DFL_S=$slots -DFL_POOL=$pool" \
+      "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" ;;
   ooe_rat)
     read -r g d < <(python3 test/ooe/rat-params.py)
-    vl ooe_rat "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
+    vl ooe_rat_read "${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
+      "$PWD/test/ooe/ooe_rat_read.sv" "$PWD/test/ooe/rat_tb.cpp" ;;
+  ooe_sched)
+    # The assembled trio (test/ooe/trio_tb.cpp): ooe_sched's leads are ooe_wake's
+    # and ooe_rs's, in their own frame.
+    slots=$(val CCV_TIER1_WARPS)
+    fb=$(sed -n 's/.*unsigned pick_fallback = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
+    nc=$(python3 -c "import json; print(next(c['rate'] for c in json.load(open('schema/interfaces.json'))['channels'] if c['name'] == 'ccv_miu_ooe_cmpl'))")
+    read -r g d < <(python3 test/ooe/wake-params.py)
+    cdly=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_CMPL_DLY=//p')
+    lmiss=$(echo "$d" | tr ',' '\n' | sed -n 's/-DWAKE_LAT_MISS=//p')
+    vl ooe_trio "--public-flat-rw ${g//,/ } -GNR=$n_rcu -GA=$width -GS=$slots -GFB=$fb" \
+      "-DTR_N=$n -DTR_NR=$n_rcu -DTR_A=$width -DTR_S=$slots -DTR_NC=$nc -DTR_CMPL_DLY=$cdly -DTR_LAT_MISS=$lmiss" \
+      "$PWD/rtl/ooe/ooe_confirm.sv" "$PWD/rtl/ooe/ooe_rs.sv" "$PWD/rtl/ooe/ooe_wake.sv" \
+      "$PWD/rtl/ooe/ooe_ready.sv" "$PWD/rtl/ooe/ooe_pick.sv" "$PWD/rtl/ooe/ooe_select.sv" "$PWD/rtl/ooe/ooe_sched.sv" \
+      "$PWD/test/ooe/ooe_trio.sv" "$PWD/test/ooe/trio_tb.cpp" ;;
+  ooe_prodmap)
+    ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)
+    vl ooe_prodmap "--trace-max-width 8192 -GN=$n -GNR=$n_rcu -GA=$width -GNG=$ng -GNP=$np" \
+      "-DPM_N=$n -DPM_NR=$n_rcu -DPM_A=$width -DPM_NG=$ng -DPM_NP=$np" \
+      "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/test/ooe/prodmap_tb.cpp" ;;
+  ooe_rendep)
+    # Beside the ooe_prodmap it reads (test/ooe/ooe_rendep_tb.sv); the
+    # unit's scope is u_dep.
+    ng=$(( $(val CCV_P_PHYS_REGS) * 4 )) np=$(val CCV_P_PRED_REGS)
+    vl ooe_rendep_tb "--trace-max-width 8192 -GN=$n -GNR=$n_rcu -GA=$width -GNG=$ng -GNP=$np" \
+      "-DRD_N=$n -DRD_NR=$n_rcu -DRD_A=$width -DRD_NG=$ng -DRD_NP=$np" \
+      "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/test/ooe/ooe_rendep_tb.sv" \
+      "$PWD/test/ooe/rendep_tb.cpp" ;;
+  ooe_rename)
+    # Beside the ooe_rat it reads and writes (test/ooe/ooe_rename_tb.sv);
+    # the unit's scope is u_rename.
+    read -r g d < <(python3 test/ooe/rename-params.py)
+    vl ooe_rename_tb "-DCCV_CHECK_RENAME ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
+      "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
+      "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
+      "$PWD/test/ooe/rename_tb.cpp" ;;
+  ooe_go)
+    slots=$(val CCV_TIER1_WARPS)
+    vl ooe_go "-GS=$slots -GR=$width" "-DGO_S=$slots -DGO_R=$width" \
+      "$PWD/rtl/ooe/ooe_go.sv" "$PWD/test/ooe/go_tb.cpp" ;;
   *) echo "cg-build: no unit $unit" >&2; exit 2 ;;
 esac

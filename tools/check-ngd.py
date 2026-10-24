@@ -51,9 +51,10 @@ Each module is measured at the parameters of its units (test/**/cg-units.json,
 and test/**/ngd-units.json for modules with no flops): Yosys synthesises it
 flattened, every clock-gated flop becomes a plain flop on its next value (its
 enable is timed apart, to its ICG, by check-cg's CG-2), and ABC maps it onto
-test/ooe/ngd.genlib, as test/ooe/depth.sh does. A timing pass over the mapped
+tools/ngd.genlib, as test/ooe/depth.sh does. A timing pass over the mapped
 netlist then splits the depth by where a path starts and ends: input or flop,
-output or flop. Its longest path must equal ABC's own, or the run stops.
+output or flop, each gate at the delay of the pin the path enters by (the XOR
+family's pins differ). Its longest path must equal ABC's own, or the run stops.
 
 The rules, as findings:
   NGD-1  flop to flop over the stage
@@ -105,114 +106,19 @@ RATCHET = os.path.join(ROOT, "rtl", "ngd-ratchet.json")
 # 2026-10-17, NGD-5 on 2026-10-18 (its through paths had been NGD-2's),
 # ooe_rat's then on OI's branch (b9c3a44); NGD-6 on 2026-10-19, ooe_select's
 # on OI's branch (d8ffd4c: declared inner, no parent yet); NGD-7 on
-# 2026-10-19, at 7ae697c. Never add to this:
+# 2026-10-19, at 7ae697c; trimmed to the ratchet as modules pass (last at
+# OI's 68d2738, 2026-10-20). Never add to this:
 # a module written since meets the rules, or has the architect's budgets, or
 # is redesigned.
 RATCHET_BASELINE = {(m, k) for m, ks in {
-    "ooe_confirm": [
-        "NGD-5 dep_cq01h>conf_cq01h", "NGD-5 dep_cq01h>replay_cq02h", "NGD-5 fin_cq01h>conf_cq01h",
-        "NGD-5 iss_cq01h>conf_cq01h", "NGD-5 iss_cq01h>replay_cq02h",
-        "NGD-5 miss_cq01h>replay_cq02h", "NGD-5 prod_cq01h>conf_cq01h",
-    ],
     "ooe_decq": [
-        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-3 deq_n_cq01h", "NGD-3 enq_slot_cq01h",
-        "NGD-3 enq_v_cq01h", "NGD-3 flush_cq01h",
-        "NGD-7 st_cq02h",
-    ],
-    "ooe_freelist": [
-        "NGD-3 alloc_req_cq01h", "NGD-5 alloc_req_cq01h>alloc_idx_cq02h",
-        "NGD-5 alloc_req_cq01h>alloc_v_cq02h",
-        "NGD-7 st_cq02h",
-    ],
-    "ooe_pick": [
-        "NGD-5 older_cq03h>issue_cq03h", "NGD-5 older_cq03h>lost_cq03h",
-        "NGD-5 older_cq03h>win_cq03h", "NGD-5 req_cq03h>issue_cq03h", "NGD-5 req_cq03h>lost_cq03h",
-        "NGD-5 req_cq03h>win_cq03h",
+        "NGD-2 head_pay_cq02h", "NGD-2 used_cq02h", "NGD-7 st_cq02h",
     ],
     "ooe_rat": [
-        "NGD-2 ren_pold_cq01h", "NGD-2 ren_psrc_cq01h", "NGD-3 ren_dst_cq01h",
-        "NGD-3 ren_gwe_cq01h", "NGD-3 ren_pdst_cq01h", "NGD-3 ren_rst_cq01h",
-        "NGD-3 ren_slot_cq01h", "NGD-3 ren_v_cq01h", "NGD-3 restore_ckpt_cq01h",
-        "NGD-3 ret_dst_cq01h", "NGD-3 ret_gwe_cq01h", "NGD-3 ret_pdst_cq01h",
-        "NGD-3 ret_pwe_cq01h", "NGD-5 ren_dst_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_dst_cq01h>ren_psrc_cq01h", "NGD-5 ren_gname_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_gname_cq01h>ren_psrc_cq01h", "NGD-5 ren_gwe_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_gwe_cq01h>ren_psrc_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pdst_cq01h>ren_ppold_cq01h", "NGD-5 ren_pdst_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_pguard_cq01h>ren_ppguard_cq01h", "NGD-5 ren_pname_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pname_cq01h>ren_ppold_cq01h", "NGD-5 ren_pname_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_pq_cq01h>ren_ppq_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_pwe_cq01h>ren_ppold_cq01h", "NGD-5 ren_pwe_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_pold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppguard_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_ppold_cq01h", "NGD-5 ren_rst_cq01h>ren_ppq_cq01h",
-        "NGD-5 ren_rst_cq01h>ren_psrc_cq01h", "NGD-5 ren_slot_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_slot_cq01h>ren_ppguard_cq01h", "NGD-5 ren_slot_cq01h>ren_ppold_cq01h",
-        "NGD-5 ren_slot_cq01h>ren_ppq_cq01h", "NGD-5 ren_slot_cq01h>ren_psrc_cq01h",
-        "NGD-5 ren_src_cq01h>ren_psrc_cq01h", "NGD-5 ren_v_cq01h>ren_pold_cq01h",
-        "NGD-5 ren_v_cq01h>ren_ppguard_cq01h", "NGD-5 ren_v_cq01h>ren_ppold_cq01h",
-        "NGD-5 ren_v_cq01h>ren_ppq_cq01h", "NGD-5 ren_v_cq01h>ren_psrc_cq01h",
         "NGD-7 rat_cq02h",
     ],
-    "ooe_ready": [
-        "NGD-5 code_cq02h>ready_cq02h", "NGD-5 dep_cq02h>ready_cq02h",
-        "NGD-5 wake_cq02h>ready_cq02h",
-    ],
     "ooe_rs": [
-        "NGD-2 gnt_idx_cq02h", "NGD-2 gnt_v_cq02h", "NGD-3 free_cq01h", "NGD-3 grp_code_cq01h",
-        "NGD-3 grp_dep_cq01h", "NGD-3 req_cq01h", "NGD-3 row_code_cq01h",
-        "NGD-5 free_cq01h>gnt_idx_cq02h", "NGD-5 free_cq01h>gnt_v_cq02h",
-        "NGD-5 req_cq01h>gnt_idx_cq02h", "NGD-5 req_cq01h>gnt_v_cq02h",
-        "NGD-7 valid_cq02h",
-    ],
-    "ooe_select": [
-        "NGD-5 active_cq03h>cand_cq03h", "NGD-5 active_cq03h>grant_cq03h",
-        "NGD-5 active_cq03h>lost_cq03h", "NGD-5 active_cq03h>pick_m.req_cq03h",
-        "NGD-5 active_cq03h>pick_r.req_cq03h", "NGD-5 block_cq03h>cand_cq03h",
-        "NGD-5 block_cq03h>grant_cq03h", "NGD-5 block_cq03h>lost_cq03h",
-        "NGD-5 block_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>cand_cq03h",
-        "NGD-5 busy_cq03h>grant_cq03h", "NGD-5 busy_cq03h>lost_cq03h",
-        "NGD-5 busy_cq03h>pick_m.req_cq03h", "NGD-5 busy_cq03h>pick_r.req_cq03h",
-        "NGD-5 chas_cq03h>cand_cq03h", "NGD-5 chas_cq03h>grant_cq03h",
-        "NGD-5 chas_cq03h>lost_cq03h", "NGD-5 chas_cq03h>pick_m.req_cq03h",
-        "NGD-5 cidx_cq03h>cand_cq03h", "NGD-5 cidx_cq03h>grant_cq03h",
-        "NGD-5 cidx_cq03h>lost_cq03h", "NGD-5 cidx_cq03h>pick_m.req_cq03h",
-        "NGD-5 copy_cq03h>cand_cq03h", "NGD-5 copy_cq03h>grant_cq03h",
-        "NGD-5 copy_cq03h>lost_cq03h", "NGD-5 copy_cq03h>pick_r.req_cq03h",
-        "NGD-5 dep_cq03h>cand_cq03h", "NGD-5 dep_cq03h>grant_cq03h", "NGD-5 dep_cq03h>lost_cq03h",
-        "NGD-5 dep_cq03h>pick_m.req_cq03h", "NGD-5 dep_cq03h>pick_r.req_cq03h",
-        "NGD-5 elig_cq03h>cand_cq03h", "NGD-5 elig_cq03h>grant_cq03h",
-        "NGD-5 elig_cq03h>lost_cq03h", "NGD-5 elig_cq03h>pick_m.req_cq03h",
-        "NGD-5 elig_cq03h>pick_r.req_cq03h", "NGD-5 iss_cq03h>cand_cq03h",
-        "NGD-5 iss_cq03h>grant_cq03h", "NGD-5 iss_cq03h>lost_cq03h",
-        "NGD-5 iss_cq03h>pick_m.req_cq03h", "NGD-5 iss_cq03h>pick_r.req_cq03h",
-        "NGD-5 older_m_cq03h>cand_cq03h", "NGD-5 older_m_cq03h>grant_cq03h",
-        "NGD-5 older_m_cq03h>lost_cq03h", "NGD-5 older_m_cq03h>pick_m.req_cq03h",
-        "NGD-5 older_r_cq03h>grant_cq03h", "NGD-5 older_r_cq03h>lost_cq03h",
-        "NGD-5 ready_cq03h>cand_cq03h", "NGD-5 ready_cq03h>grant_cq03h",
-        "NGD-5 ready_cq03h>lost_cq03h", "NGD-5 ready_cq03h>pick_m.req_cq03h",
-        "NGD-5 ready_cq03h>pick_r.req_cq03h", "NGD-5 res_cq03h>cand_cq03h",
-        "NGD-5 res_cq03h>grant_cq03h", "NGD-5 res_cq03h>lost_cq03h",
-        "NGD-5 res_cq03h>pick_m.req_cq03h", "NGD-5 res_cq03h>pick_r.req_cq03h",
-        "NGD-5 slot_cq03h>cand_cq03h", "NGD-5 slot_cq03h>grant_cq03h",
-        "NGD-5 slot_cq03h>lost_cq03h", "NGD-5 slot_cq03h>pick_m.req_cq03h",
-        "NGD-5 slot_cq03h>pick_r.req_cq03h", "NGD-5 valid_cq03h>cand_cq03h",
-        "NGD-5 valid_cq03h>grant_cq03h", "NGD-5 valid_cq03h>lost_cq03h",
-        "NGD-5 valid_cq03h>pick_m.req_cq03h", "NGD-5 valid_cq03h>pick_r.req_cq03h",
-        "NGD-6 active_cq03h>grant_cq03h", "NGD-6 active_cq03h>lost_cq03h",
-        "NGD-6 block_cq03h>grant_cq03h", "NGD-6 block_cq03h>lost_cq03h",
-        "NGD-6 busy_cq03h>grant_cq03h", "NGD-6 busy_cq03h>lost_cq03h",
-        "NGD-6 cidx_cq03h>grant_cq03h", "NGD-6 cidx_cq03h>lost_cq03h",
-        "NGD-6 dep_cq03h>grant_cq03h", "NGD-6 dep_cq03h>lost_cq03h",
-        "NGD-6 elig_cq03h>grant_cq03h", "NGD-6 elig_cq03h>lost_cq03h",
-        "NGD-6 iss_cq03h>grant_cq03h", "NGD-6 iss_cq03h>lost_cq03h",
-        "NGD-6 older_m_cq03h>grant_cq03h", "NGD-6 ready_cq03h>grant_cq03h",
-        "NGD-6 ready_cq03h>lost_cq03h", "NGD-6 res_cq03h>grant_cq03h",
-        "NGD-6 res_cq03h>lost_cq03h", "NGD-6 slot_cq03h>grant_cq03h",
-        "NGD-6 slot_cq03h>lost_cq03h", "NGD-6 valid_cq03h>grant_cq03h",
-        "NGD-6 valid_cq03h>lost_cq03h",
-    ],
-    "ooe_wake": [
-        "NGD-3 cls_cq01h", "NGD-3 cmpl_cq01h", "NGD-3 grant_cq01h", "NGD-3 kind_cq01h",
+        "NGD-3 free_cq01h",
     ],
 }.items() for k in ks}
 EPS = 0.005
@@ -226,18 +132,32 @@ def run(cmd):
 # == The mapped netlist ========================================================
 
 def genlib(path=GENLIB):
-    """{gate: delay}: each gate's slowest pin, as ABC's mapper costs it."""
-    out = {}
+    """{gate: {pin: delay}}, as ABC's mapper costs each pin: the slower of its
+    rise and fall. A gate whose pins share one line (PIN *) has the key "*".
+    A gate's PIN lines may follow it on lines of their own."""
+    out, gate = {}, None
     for line in open(path):
-        m = re.match(r"GATE\s+(\S+)\s+\S+\s+[^;]*;\s*(.*)", line)
+        m = re.match(r"GATE\s+(\S+)\s+\S+\s+[^;]*;(.*)", line)
         if m:
-            pins = re.findall(r"PIN\s+\S+\s+\S+\s+\S+\s+\S+\s+([\d.]+)\s+\S+\s+([\d.]+)",
-                              m.group(2))
-            out[m.group(1)] = max([max(float(a), float(b)) for a, b in pins] or [0.0])
+            gate, rest = m.group(1), m.group(2)
+            out[gate] = {}
+        elif gate and line.strip().startswith("PIN"):
+            rest = line
+        else:
+            continue
+        for pin, a, b in re.findall(r"PIN\s+(\S+)\s+\S+\s+\S+\s+\S+\s+([\d.]+)\s+\S+\s+([\d.]+)",
+                                    rest):
+            out[gate][pin] = max(float(a), float(b))
     return out
 
 
-LIB = dict(genlib(), WIRE=0.0)
+def delay(lib, gate, pin):
+    """A gate's delay from one of its input pins."""
+    d = lib[gate]
+    return d[pin] if pin in d else d["*"]
+
+
+LIB = dict(genlib(), WIRE={"*": 0.0}, ZERO={"*": 0.0})
 
 # Every flop kind synthesis can leave, to the plain flop that stands for it:
 # an enable is dropped (the flop is clocked through an ICG and takes its next
@@ -297,10 +217,10 @@ def parse_blif(path):
             latches.append((t[1], t[2]))
         elif t[0] == ".gate":
             pins = dict(x.split("=", 1) for x in t[2:])
-            gates.append((t[1], [v for k2, v in pins.items() if k2 != "Y"], pins["Y"]))
+            gates.append((t[1], [(k2, v) for k2, v in pins.items() if k2 != "Y"], pins["Y"]))
         elif t[0] == ".names" and len(t) == 3 and k + 1 < len(lines) and lines[k + 1] == ["1", "1"]:
             # A net wired straight to another, a port to a port: no delay.
-            gates.append(("WIRE", [t[1]], t[2]))
+            gates.append(("WIRE", [("A", t[1])], t[2]))
         elif t[0] == ".names" and len(t) == 2:
             gates.append(("ZERO", [], t[1]))        # a constant: no path through it
         elif t[0] in (".names", ".subckt"):
@@ -340,15 +260,18 @@ class Timing:
                     continue
                 seen.add(x)
                 stack.append((x, True))
-                stack.extend((a, False) for a in driver[x][1] if a not in seen)
+                stack.extend((a, False) for _, a in driver[x][1] if a not in seen)
 
         def prop(start, buf=0.0):
             arr = dict.fromkeys(start, 0.0)
             for n in order:
                 g, a = driver[n]
-                t = max((arr[x] for x in a if x in arr), default=NEG)
-                if t > NEG and g not in ("ZERO", "ONE"):
-                    arr[n] = t + (buf if g == "BUF" else lib[g])
+                if g in ("ZERO", "ONE"):
+                    continue
+                t = max((arr[x] + (buf if g == "BUF" else delay(lib, g, pin))
+                         for pin, x in a if x in arr), default=NEG)
+                if t > NEG:
+                    arr[n] = t
             return arr
 
         ports_in = collections.defaultdict(list)
@@ -358,7 +281,7 @@ class Timing:
         for o in outs:
             ports_out[base(o)].append(o)
         d_nets = [d for d, _ in latches]
-        every = prop(list(ins) + [q for _, q in latches], buf=lib["BUF"])
+        every = prop(list(ins) + [q for _, q in latches], buf=delay(lib, "BUF", "A"))
         self.abc_like = max([every.get(n, NEG) for n in d_nets + list(outs)] + [0.0])
         r = prop([q for _, q in latches])
         self.rr = max((r.get(d, NEG) for d in d_nets), default=NEG)
@@ -372,6 +295,7 @@ class Timing:
                 if t > NEG:
                     self.io[(p, q)] = t
         self.ins, self.outs = sorted(ports_in), sorted(ports_out)
+        self.gates = collections.Counter(g for g, _, _ in gates)
         self.nflops = len(latches)
         # Backward from the endpoints (NGD-7): each flop's longest path to
         # any flop, and to each output port it reaches.
@@ -383,8 +307,8 @@ class Timing:
                 if n not in dep or driver[n][0] in ("ZERO", "ONE"):
                     continue
                 g, a = driver[n]
-                w = dep[n] + (0.0 if g == "BUF" else lib[g])
-                for x in a:
+                for pin, x in a:
+                    w = dep[n] + (0.0 if g == "BUF" else delay(lib, g, pin))
                     if dep.get(x, NEG) < w:
                         dep[x] = w
             return dep
@@ -434,23 +358,59 @@ def map_and_time(work, jsonfile, blackbox=(), lib=LIB):
              "opt_clean; write_blif %s" % (ug, blif)])
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (work, (r.stdout + r.stderr)[-2000:]))
-    r = run(["yosys-abc", "-c", "read_blif %s; read_library %s; strash; dch; map; print_stats; "
-             "write_blif %s" % (blif, GENLIB, mapped)])
-    m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
-    if r.returncode or not m:
-        raise SystemExit("check-ngd: %s: ABC failed:\n%s" % (work, (r.stdout + r.stderr)[-2000:]))
-    t = Timing(mapped, float(m.group(1)), lib)
+    def mapped_timing(how, out):
+        r = run(["yosys-abc", "-c", "read_blif %s; read_library %s; strash; dch; %s; "
+                 "print_stats; write_blif %s" % (blif, GENLIB, how, out)])
+        m = re.search(r"delay\s*=\s*([\d.]+)", r.stdout)
+        if r.returncode or not m:
+            raise SystemExit("check-ngd: %s: ABC failed:\n%s"
+                             % (work, (r.stdout + r.stderr)[-2000:]))
+        t = Timing(out, float(m.group(1)), lib)
+        if abs(t.abc_like - t.abc) > EPS:
+            raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
+                             "ABC's, %.2f (%s)" % (work, t.abc_like, t.abc, how))
+        return t
+    t = mapped_timing("map", mapped)
+    # Input to flop (NGD-3), each input from the better of two maps (OI-64):
+    # map's area recovery lets every path with slack grow to the module's
+    # longest, so an input's cone can read the worst path whatever its own
+    # logic, and NGD-3 then adds the port's arrival on top. map -r, without
+    # area recovery, restores it; but it is a different mapping, not a
+    # uniformly shallower one, and some inputs read deeper there. Each is a
+    # legal implementation, and timing-driven synthesis takes the better for
+    # a critical input. ABC drops BLIF input arrivals, so the inputs cannot
+    # be costed in either map.
+    tr = mapped_timing("map -r", os.path.join(work, "map_r.blif"))
+    t.ir_area, t.ir_r = t.ir, tr.ir
+    t.ir = {p: min(v, tr.ir.get(p, v)) for p, v in t.ir.items()}
+    # NGD-7's paths from each register, to the flops and to each output,
+    # likewise from the better of the two maps (OI-45: ooe_rs's dep reads
+    # 14.96 on map, 11.74 on map -r), but only where map -r's netlist is no
+    # worse flop to flop: then one netlist meets NGD-1 and NGD-7 together,
+    # and only area recovery stretched the register's off-critical paths.
+    t.q_flop_area, t.q_out_area, t.rr_r = t.q_flop, t.q_out, tr.rr
+    t.q_flop_r, t.q_out_r = tr.q_flop, tr.q_out
+    # NGD-2's output ready times the same, on the same condition (OI-68:
+    # ooe_go's wb reads 18.7 on map, 11.2 on map -r, flop to flop 21.6
+    # against 21.1).
+    t.ro_area, t.ro_r = t.ro, tr.ro
+    if tr.rr <= t.rr + EPS:
+        t.ro = {p: min(v, tr.ro.get(p, v)) for p, v in t.ro.items()}
+        t.q_flop = {q: min(v, tr.q_flop.get(q, v)) for q, v in t.q_flop.items()}
+        q_out = collections.defaultdict(dict)
+        for q, outs in t.q_out.items():
+            for p, v in outs.items():
+                q_out[q][p] = min(v, tr.q_out.get(q, {}).get(p, v))
+        t.q_out = q_out
     t.cut, t.regname = cut, reg_names(d)
-    if abs(t.abc_like - t.abc) > EPS:
-        raise SystemExit("check-ngd: %s: the timing pass's longest path, %.2f NGD, is not "
-                         "ABC's, %.2f" % (work, t.abc_like, t.abc))
     return t
 
 
 def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inner=()):
     """A module at its parameters, as a Yosys JSON netlist: flattened, or
     with its hierarchy kept, less the `inner` helpers, which are flattened
-    into their parents (a parameterised copy is $paramod\\<module>\\...)."""
+    into their parents (a parameterised copy is $paramod\\<module>\\..., or
+    $paramod$<sha1>\\<module> when its parameter string is long; OI-69)."""
     work = os.path.join(BUILD, name)
     os.makedirs(work, exist_ok=True)
     jf = os.path.join(work, "net.json")
@@ -468,10 +428,10 @@ def synth(name, top, files, blackbox=(), params=None, defines=(), flat=True, inn
     if not flat and inner:
         cmds += ["setattr -mod -set keep_hierarchy 1 *",
                  "setattr -mod -unset keep_hierarchy %s" % " ".join(
-                     "%s $paramod\\%s\\*" % (m, m) for m in sorted(inner))]
+                     "%s $paramod\\%s\\* $paramod$*\\%s" % (m, m, m) for m in sorted(inner))]
         flat = True
-    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top), "write_json %s" % jf]
-    r = run(["yosys", "-q", "-p", "; ".join(cmds)])
+    cmds += ["synth %s-top %s" % ("-flatten " if flat else "", top)]
+    r = cg.yosys_json(cmds, jf)
     if r.returncode:
         raise SystemExit("check-ngd: %s: yosys failed:\n%s" % (name, (r.stdout + r.stderr)[-2000:]))
     return work, jf
@@ -936,8 +896,7 @@ def main_check(only=None):
         if not units:
             raise SystemExit("check-ngd: no unit %s" % only)
     budgets = Budgets.load()
-    for u in units:
-        u.measure(budgets=budgets, modules=modules)
+    for u in cg.measured(units, lambda u: u.measure(budgets=budgets, modules=modules)):
         report(u, verbose=bool(only))
     if only:
         for _, msg in findings(units[0], budgets, parents):
@@ -991,7 +950,7 @@ def selftest():
 
     fx = {m: fixture("fx_" + m[7:], m) for m in
           ("ngd_fx_ok", "ngd_fx_out", "ngd_fx_in", "ngd_fx_thru", "ngd_fx_stage",
-           "ngd_fx_wire")}
+           "ngd_fx_wire", "ngd_fx_relax")}
     for u in fx.values():
         u.measure()
     none = Budgets()
@@ -1001,13 +960,65 @@ def selftest():
 
     # 1. The timing pass agrees with ABC on every fixture (map_and_time
     #    stops otherwise), and a wrong delay table is caught.
-    wrong = dict(LIB, NAND2=LIB["NAND2"] * 2)
+    wrong = dict(LIB, NAND2={p: d * 2 for p, d in LIB["NAND2"].items()})
     try:
         u = fixture("fx_wrong", "ngd_fx_stage")
         u.measure(lib=wrong)
         expect(False, "a timing pass with a wrong NAND2 delay agreed with ABC")
     except SystemExit as e:
         expect("is not ABC's" in str(e), "a wrong delay table stopped the run otherwise: %s" % e)
+    # 1c. The timing pass is per pin: ngd_fx_xor3's tree maps onto XOR3, whose
+    #     last select C is fast, and agrees with ABC; timed again with every
+    #     gate at its slowest pin, it must not.
+    x3 = fixture("fx_xor3", "ngd_fx_xor3")
+    x3.measure()
+    expect(x3.t.gates.get("XOR3", 0) + x3.t.gates.get("XNOR3", 0) > 0,
+           "ngd_fx_xor3 maps onto no XOR3 or XNOR3, so 1c tests nothing: %s" % dict(x3.t.gates))
+    slow = {g: {"*": max(d.values())} if d else d for g, d in LIB.items()}
+    try:
+        fixture("fx_xor3_slow", "ngd_fx_xor3").measure(lib=slow)
+        expect(False, "ngd_fx_xor3 timed at each gate's slowest pin agreed with ABC")
+    except SystemExit as e:
+        expect("is not ABC's" in str(e), "the slowest-pin table stopped the run otherwise: %s" % e)
+    # 1b. NGD-3 takes each input from the better of two maps (OI-64): area
+    #     recovery relaxes ngd_fx_relax's 8-bit add toward its multiplier, so
+    #     the area map alone would put input i over the stage at the default
+    #     arrival; map -r keeps it within. And NGD-3 is the shorter of the two,
+    #     for every input of every fixture.
+    rx = fx["ngd_fx_relax"].t
+    expect(rx.ir_area["i"] + (STAGE - PORT) > STAGE + EPS
+           and rx.ir["i"] + (STAGE - PORT) <= STAGE + EPS,
+           "ngd_fx_relax no longer shows area recovery's relaxed input (area %.1f, -r %.1f)"
+           % (rx.ir_area["i"], rx.ir_r.get("i", NEG)))
+    expect("NGD-3 i" not in keys(fx["ngd_fx_relax"]),
+           "NGD-3 took input i from the area-recovered map: %s"
+           % findings(fx["ngd_fx_relax"], none))
+    expect(all(u.t.ir[p] == min(u.t.ir_area[p], u.t.ir_r.get(p, u.t.ir_area[p]))
+               for u in fx.values() for p in u.t.ir),
+           "an input's NGD-3 depth is not the shorter of its two maps")
+    #     NGD-7 the same, per register, wherever map -r is no worse flop to
+    #     flop; and the area map's alone wherever it is worse.
+    wrong = []
+    for u in fx.values():
+        t = u.t
+        rbetter = t.rr_r <= t.rr + EPS
+        for q, v in t.q_flop.items():
+            a, r = t.q_flop_area[q], t.q_flop_r.get(q, t.q_flop_area[q])
+            if v != (min(a, r) if rbetter else a):
+                wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
+                    u.name, q, v, a, r, "" if rbetter else ", -r worse flop to flop"))
+    expect(not wrong, "a register's NGD-7 depth is not the rule's: %s" % "; ".join(wrong[:3]))
+    #     NGD-2 the same, per output (OI-68).
+    wrong = []
+    for u in fx.values():
+        t = u.t
+        rbetter = t.rr_r <= t.rr + EPS
+        for o, v in t.ro.items():
+            a, r = t.ro_area[o], t.ro_r.get(o, t.ro_area[o])
+            if v != (min(a, r) if rbetter else a):
+                wrong.append("%s %s: %.2f (area %.2f, -r %.2f%s)" % (
+                    u.name, o, v, a, r, "" if rbetter else ", -r worse flop to flop"))
+    expect(not wrong, "an output's NGD-2 ready time is not the rule's: %s" % "; ".join(wrong[:3]))
     # 2. Within every default: nothing. An input wired straight to an
     #    output, timed as a wire, is still NGD-5 (Daniel, 2026-10-18).
     ok = fx["ngd_fx_ok"]
@@ -1196,6 +1207,11 @@ def selftest():
            "an inner helper between two children passed: %s" % f)
     f = msgs(converge("fx_asm_inner", "ngd_fx_asm_inner", files, [], fi))
     expect(not f, "an inner helper before its parent's flop was refused: %s" % f)
+    # A parameterised helper's copy carries a hashed name, $paramod$<sha1>
+    # \<module>, when its parameter string is long (OI-69): flattened too.
+    fp = Budgets(bfiles + [os.path.join(ROOT, FIX, "ngd_fx_pinner.ngd.json")])
+    f = msgs(converge("fx_asm_pinner", "ngd_fx_asm_pinner", files, [], fp))
+    expect(not f, "a parameterised inner helper was cut out at its ports: %s" % f)
     f = msgs(converge("fx_asm_cut", "ngd_fx_asm_inner", files, [], fb))
     expect(any("do not converge" in x and "u_inn.a" in x for x in f),
            "a helper not declared inner was not cut out at its ports: %s" % f)

@@ -1,0 +1,7 @@
+{
+  "module": "ooe_rencred",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-21",
+  "why": "The next value of rename's credit counters, combinational: RS room per class, free GPR and predicate names, each slot's ROB room. ooe_rename's counters capture what it returns; its logic is timed there, with the go's takes, which arrive late, subtracted last."
+}

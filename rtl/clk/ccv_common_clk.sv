@@ -101,7 +101,10 @@ module ccv_common_clk #(
   `CCV_ASSERT_KNOWN(stalled_known,  stalled)
   `CCV_ASSERT_KNOWN(wake_known,     wake)
   `CCV_ASSERT_KNOWN(override_known, cg_override)
-  `CCV_ASSERT_KNOWN(hyst_known,     {hyst_quiesce, hyst_stall})
+  // One each: Icarus 12 evaluates $isunknown of a concatenation of these
+  // ports as unknown with both inputs known, so the pair fired every cycle.
+  `CCV_ASSERT_KNOWN(hyst_q_known,   hyst_quiesce)
+  `CCV_ASSERT_KNOWN(hyst_s_known,   hyst_stall)
 
   // Consecutive quiesced / stalled cycles, saturating at the threshold, and
   // whether each has reached it; the registered wake; edges still owed to

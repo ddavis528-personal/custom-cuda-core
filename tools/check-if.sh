@@ -53,10 +53,10 @@ if command -v verilator >/dev/null 2>&1; then
        $RTL $TB "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
        >"$TMP/v.log" 2>&1 && [ -x "$TMP/vo/Vtb" ]; then
     out=$(cd "$TMP" && ./vo/Vtb 2>&1)
-    fired=$(echo "$out" | grep -c "CCV .* failed")
+    fired=$(grep -c "CCV .* failed" <<<"$out")
     if [ "$fired" -ne 0 ]; then
       bad "verilator: protocol-correct producer stays quiet" \
-          "$(echo "$out" | grep -m1 'CCV .* failed')"
+          "$(grep -m1 'CCV .* failed' <<<"$out")"
     else
       say "verilator: checker builds, nothing fires" "PASS"
     fi
@@ -342,9 +342,9 @@ if command -v iverilog >/dev/null 2>&1; then
   if iverilog -g2012 -gassertions -Irtl/include -Irtl/generated \
        -o "$TMP/iv.out" -s tb $RTL $TB >"$TMP/i.log" 2>&1; then
     out=$(vvp "$TMP/iv.out" 2>&1)
-    if echo "$out" | grep -q "CCV .* failed"; then
+    if grep -q "CCV .* failed" <<<"$out"; then
       bad "icarus: protocol-correct producer stays quiet" \
-          "$(echo "$out" | grep -m1 'CCV')"
+          "$(grep -m1 'CCV' <<<"$out")"
     else
       say "icarus: same checker compiles without DPI, quiet" "PASS"
     fi
@@ -391,14 +391,14 @@ ccv_event_ids.svh
 ccv_params_pkg.sv
 SBY
   out=$(cd "$TMP/f" && sby -f c.sby 2>&1)
-  if echo "$out" | grep -q "DONE (PASS"; then
+  if grep -q "DONE (PASS" <<<"$out"; then
     say "formal: satisfiability covers all reachable" "PASS"
-  elif echo "$out" | grep -qE "Unreached cover|DONE \(FAIL"; then
+  elif grep -qE "Unreached cover|DONE \(FAIL" <<<"$out"; then
     bad "formal: satisfiability covers reachable" \
         "a cover is UNREACHABLE -- the assumption set may be contradictory, which would make every proof over it vacuously true"
   else
     bad "formal: checker elaborates under sby" \
-        "$(echo "$out" | grep -m1 ERROR || echo '?')"
+        "$(grep -m1 ERROR <<<"$out" || echo '?')"
   fi
 
   # The atomic checker's covers, likewise run rather than trusted. Free
@@ -435,11 +435,11 @@ ccv_event_ids.svh
 ccv_params_pkg.sv
 SBY
   out=$(cd "$TMP/fa" && sby -f a.sby 2>&1)
-  if echo "$out" | grep -q "DONE (PASS"; then
+  if grep -q "DONE (PASS" <<<"$out"; then
     say "formal: atomic checker covers reachable" "PASS"
   else
     bad "formal: atomic checker covers reachable" \
-        "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
+        "$(grep -m1 -E "ERROR|Unreached|FAIL" <<<"$out" || echo '?')"
   fi
 
   # The lockstep checker's covers, likewise. Free
@@ -476,11 +476,11 @@ ccv_event_ids.svh
 ccv_params_pkg.sv
 SBY
   out=$(cd "$TMP/fl" && sby -f l.sby 2>&1)
-  if echo "$out" | grep -q "DONE (PASS"; then
+  if grep -q "DONE (PASS" <<<"$out"; then
     say "formal: lockstep checker covers reachable" "PASS"
   else
     bad "formal: lockstep checker covers reachable" \
-        "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
+        "$(grep -m1 -E "ERROR|Unreached|FAIL" <<<"$out" || echo '?')"
   fi
 
   # The binding and outstanding checkers' covers, run the same way. Legal
@@ -518,11 +518,11 @@ ccv_event_ids.svh
 ccv_params_pkg.sv
 SBY
     out=$(cd "$dir" && sby -f c.sby 2>&1)
-    if echo "$out" | grep -q "DONE (PASS"; then
+    if grep -q "DONE (PASS" <<<"$out"; then
       say "formal: $chk checker covers reachable" "PASS"
     else
       bad "formal: $chk checker covers reachable" \
-          "$(echo "$out" | grep -m1 -E "ERROR|Unreached|FAIL" || echo '?')"
+          "$(grep -m1 -E "ERROR|Unreached|FAIL" <<<"$out" || echo '?')"
     fi
   done
 else

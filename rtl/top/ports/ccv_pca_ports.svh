@@ -57,7 +57,13 @@
   output ccv_pca_rau_mig_done_t pca_rau_mig_done_payload,
   input  logic pca_rau_mig_done_credit,
   input  logic pca_rau_mig_done_stall,
-  output logic pca_rau_mig_done_wake
+  output logic pca_rau_mig_done_wake,
+  // rau -> pca
+  input  logic rau_pca_mig_valid,
+  input  ccv_rau_pca_mig_t rau_pca_mig_payload,
+  output logic rau_pca_mig_credit,
+  output logic rau_pca_mig_stall,
+  input  logic rau_pca_mig_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
@@ -67,4 +73,5 @@
   , input  logic [63:0] fet_pca_mig_tid
   , output logic [63:0] pca_fet_mig_tid
   , output logic [63:0] pca_rau_mig_done_tid
+  , input  logic [63:0] rau_pca_mig_tid
 `endif

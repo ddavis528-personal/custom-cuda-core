@@ -178,6 +178,209 @@ def stage_of(name):
     return m.group(1), m.group(2), int(m.group(3)), m.group(4)
 
 
+# CCV-L29's reading of a module body. Brace-free HDL again, so a small scan
+# of the tokens that open and close a scope: a declaration inside a
+# procedural block (an always, initial or final block's begin or case, a
+# function, a task) is a local variable, and inside a struct's braces a
+# field; anywhere else, at module level or in a generate block, it is a net.
+SCOPE_TOK = re.compile(r"\b(always_ff|always_comb|always_latch|always|initial|final|"
+                       r"function|endfunction|task|endtask|begin|end|case|casez|"
+                       r"casex|endcase)\b|[(){};]")
+NET_DECL = re.compile(r"(?:\b(?:logic|wire|reg)\b|\b[a-z]\w*_t\b)([^;]*);")
+# What carries no stage tag by its own rules: a clock (CCV-L20) and a reset
+# tap, which counts distance in its own space (`<block>_rst_r<NN><l|h>`).
+UNSTAGED_RE = re.compile(r"(?:_clk(?:_b)?|(?:^|_)rst_r\d\d[lh](?:_n)?)$")
+
+
+def module_nets(body, start):
+    """(pos, name) for each net a module body declares from start: at module
+    level or in a generate block, never a procedural local or a struct
+    field, and never a port or a parameter."""
+    stack, pending, paren, brace, marks = [], False, 0, 0, []
+    for m in SCOPE_TOK.finditer(body, start):
+        t = m.group(1) or m.group(0)
+        in_proc = bool(stack) and stack[-1] == "proc"
+        if t == "(":
+            paren += 1
+        elif t == ")":
+            paren -= 1
+        elif t == "{":
+            brace += 1
+        elif t == "}":
+            brace -= 1
+        elif t in ("always_ff", "always_comb", "always_latch", "always", "initial", "final"):
+            pending = True
+        elif t in ("function", "task"):
+            stack.append("proc")
+        elif t in ("begin", "case", "casez", "casex"):
+            stack.append("proc" if pending or in_proc else "gen")
+            pending = False
+        elif t in ("end", "endcase", "endfunction", "endtask"):
+            if stack:
+                stack.pop()
+        elif t == ";" and paren == 0 and not in_proc:
+            pending = False   # a procedural block of one statement ended
+        marks.append((m.start(), "proc" in stack, brace))
+    out, k, ctx = [], 0, (False, 0)
+    for m in NET_DECL.finditer(body, start):
+        while k < len(marks) and marks[k][0] <= m.start():
+            ctx = marks[k][1:]
+            k += 1
+        if ctx[0] or ctx[1]:
+            continue
+        ls = body.rfind("\n", 0, m.start()) + 1
+        if re.search(r"\b(?:parameter|localparam|input|output|inout|typedef|function|"
+                     r"automatic)\b", body[ls:m.start()]):
+            continue
+        decl = re.sub(r"=[^,]*", "", re.sub(r"\[[^\]]*\]", "", m.group(1)))
+        for n in re.findall(r"\b([a-z]\w*)\b", decl):
+            if n not in ("signed", "unsigned", "logic"):
+                out.append((m.start(), n))
+    return out
+
+
+# CCV-L29's ratchet: untagged nets that stood when the rule was made, which
+# their owner tags or removes, and its frozen baseline, which only the
+# rule's owner (TI) writes. Read once a run; the findings excused and the
+# modules seen are kept for the cross-file half (check_stage_ratchet).
+STAGE_RATCHET = os.path.join(ROOT, "rtl", "stage-ratchet.json")
+STAGE_BASELINE = os.path.join(ROOT, "tools", "stage-ratchet-baseline.json")
+_stage_ratchet = {"path": STAGE_RATCHET, "baseline": STAGE_BASELINE, "mods": None,
+                  "found": set(), "seen": set()}
+
+
+def stage_ratchet():
+    if _stage_ratchet["mods"] is None:
+        p = _stage_ratchet["path"]
+        _stage_ratchet["mods"] = (json.load(open(p)).get("modules", {})
+                                  if os.path.exists(p) else {})
+    return _stage_ratchet["mods"]
+
+
+# CCV-L23's declared feedback (OA's ruling on TI-38, 2026-10-23): a read
+# whose stage the arithmetic skips, because it is the back edge of a real
+# register loop -- a select loop whose request register reads the grant
+# register its own next value feeds. Declared per module, beside the RTL, in
+# <module>.feedback.json: {"reads": {reader: {"from": [read, ...], "by": an
+# architect, "date", "why"}}}. The lint finds the loop itself and refuses a
+# declaration it cannot find, so the exemption is no wider than the loop.
+FEEDBACK_BY = ("OA", "AR", "DA")
+IDENT_RE = re.compile(r"\b[a-z]\w*\b")
+
+
+def feedback_decls(dirpath, module):
+    """(path, reads, bypass) from <module>.feedback.json."""
+    p = os.path.join(dirpath, module + ".feedback.json")
+    if not os.path.exists(p):
+        return None, {}, {}
+    d = json.load(open(p))
+    return os.path.relpath(p, ROOT), d.get("reads", {}), d.get("bypass", {})
+
+
+def data_graph(src):
+    """deps[net]: the names its assignments' right-hand sides read, and no
+    condition: the data a register is loaded with, apart from its enable."""
+    deps = {}
+    for kind, clk, body, ln, pos in always_blocks(src):
+        for _, lhs, _, rhs in assignments(body):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+    for m in re.finditer(r"\bassign\s+[^;]+;", src):
+        for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+    return deps
+
+
+def bypass_path(ddeps, flops, reader, read, ahead):
+    """A declared bypass (DA, 2026-10-23, OI-72 (A)): read is a register
+    `ahead` pipeline stages on from a register at reader's stage, in reader's
+    pipeline (its block letter), each hop through the data a register is
+    loaded with. Returns why it does not hold, or None."""
+    if read not in flops:
+        return "%s is not a register" % read
+    sr = stage_of(reader)
+    frontier = {read}
+    for _ in range(ahead):
+        nxt = set()
+        for f in frontier:
+            nxt |= cone(ddeps, flops, ddeps.get(f, ()))[1]
+        frontier = nxt
+    on = [r for r in frontier if stage_of(r) and stage_of(r)[1] == sr[1] and stage_of(r)[2] == sr[2]]
+    if not on:
+        return ("%s is not loaded, %d register(s) back, from a register at %s's stage %02d "
+                "in its pipeline: the source is off the reader's path" % (read, ahead, reader, sr[2]))
+    return None
+
+
+def dep_graph(src):
+    """(deps, flops) over a comment-stripped file: deps[net] is every name its
+    assignments read, conditions included (an if's or a case's selector
+    steers the value as much as its right-hand side does); flops are the
+    names an always_ff assigns."""
+    deps, flops = {}, set()
+    def conds(body):
+        out = set()
+        for m in re.finditer(r"\b(?:if|case|casez|casex)\s*\(", body):
+            out |= set(IDENT_RE.findall(balanced(body, m.end() - 1)[0]))
+        return out
+    for kind, clk, body, ln, pos in always_blocks(src):
+        c = conds(body)
+        for _, lhs, _, rhs in assignments(body):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs), c)
+            if kind == "ff":
+                flops.add(lhs)
+    for m in re.finditer(r"\bassign\s+[^;]+;", src):
+        for _, lhs, _, rhs in assignments(m.group(0)[len("assign"):]):
+            deps.setdefault(lhs, set()).update(IDENT_RE.findall(rhs))
+    return deps, flops
+
+
+def cone(deps, flops, roots):
+    """The nets and the registers reached from roots through combinational
+    logic: (nets, regs). A register stops the walk."""
+    nets, regs, todo = set(), set(), list(roots)
+    while todo:
+        n = todo.pop()
+        if n in nets or n in regs:
+            continue
+        if n in flops:
+            regs.add(n)
+            continue
+        nets.add(n)
+        todo.extend(deps.get(n, ()))
+    return nets, regs
+
+
+def feedback_loop(deps, flops, reader, read):
+    """Whether reader's read of read closes a two-register loop: a register G
+    that read comes from, combinationally, whose next value depends,
+    combinationally, on a register R that reader is part of (R itself, or R's
+    next value reads reader)."""
+    _, gs = cone(deps, flops, [read])
+    rs = {reader} if reader in flops else \
+         {f for f in flops if reader in cone(deps, flops, deps.get(f, ()))[0]}
+    return any(r in cone(deps, flops, deps.get(g, ()))[1] for g in gs for r in rs)
+
+
+def loop_path(deps, flops, reader, read, loop):
+    """A loop of any length, declared by its registers in order (OA's rev
+    191): reader is loop[0] or feeds its next value, each register's next
+    value depends combinationally on the one before it, and read comes from
+    the last. Returns why it does not hold, or None."""
+    if len(loop) < 2:
+        return "a loop names two registers or more"
+    for q in loop:
+        if q not in flops:
+            return "%s is not a register" % q
+    if reader != loop[0] and reader not in cone(deps, flops, deps.get(loop[0], ()))[0]:
+        return "%s is not %s and does not feed its next value" % (reader, loop[0])
+    for a, b in zip(loop, loop[1:]):
+        if a not in cone(deps, flops, deps.get(b, ()))[1]:
+            return "no hop from %s to %s: %s's next value does not depend on it" % (a, b, b)
+    if loop[-1] not in cone(deps, flops, [read])[1]:
+        return "%s does not come from %s" % (read, loop[-1])
+    return None
+
+
 # The common ports every block declares, generated rather than hand-written.
 # They are deliberately UNIFORM across blocks -- which is the same argument
 # that made the original CCV-L02 want one name everywhere: a swap harness that
@@ -214,6 +417,59 @@ def always_blocks(src):
                         rest)
         body = rest[:nxt.start()] if nxt else rest
         out.append((kind, clk, body, line_of(src, m.start()), m.start()))
+    return out
+
+
+def _stmt_end(t, i):
+    """Index just past the statement starting at or after i in an always body:
+    a begin-end block, an if with its else, a case to its endcase, or a
+    simple statement to its semicolon."""
+    m = re.match(r"\s*(?:(?:unique0?|priority)\s+)?(begin|if|case[zx]?)\b", t[i:])
+    if not m:
+        j = t.find(";", i)
+        return len(t) if j < 0 else j + 1
+    kw, k = m.group(1), i + m.end()
+    if kw == "begin":
+        depth = 1
+        for w in re.finditer(r"\b(begin|end)\b", t[k:]):
+            depth += 1 if w.group(1) == "begin" else -1
+            if depth == 0:
+                e = k + w.end()
+                lbl = re.match(r"\s*:\s*\w+", t[e:])
+                return e + (lbl.end() if lbl else 0)
+        return len(t)
+    p = t.find("(", k)
+    if p < 0:
+        return len(t)
+    _, j = balanced(t, p)
+    if kw == "if":
+        e = _stmt_end(t, j)
+        el = re.match(r"\s*else\b", t[e:])
+        return _stmt_end(t, e + el.end()) if el else e
+    depth = 1
+    for w in re.finditer(r"\b(case[zx]?|endcase)\b", t[j:]):
+        depth += -1 if w.group(1) == "endcase" else 1
+        if depth == 0:
+            return j + w.end()
+    return len(t)
+
+
+def cond_regions(body):
+    """(start, end, condition) for each if and case in an always body: the
+    text its condition or selector steers, an if's else arm included. An
+    assignment inside one reads its condition as surely as its right-hand side
+    (OI's rev 188: a cq02h net assigned under an if that read cq03h registers
+    passed CCV-L23 unseen)."""
+    out = []
+    for m in re.finditer(r"\b(if|case[zx]?)\s*\(", body):
+        cond, j = balanced(body, m.end() - 1)
+        if m.group(1) == "if":
+            e = _stmt_end(body, j)
+            el = re.match(r"\s*else\b", body[e:])
+            e = _stmt_end(body, e + el.end()) if el else e
+        else:
+            e = _stmt_end(body, m.start())
+        out.append((j, e, cond))
     return out
 
 
@@ -998,35 +1254,206 @@ def check_file(path, rel):
                         "only generate signals in its own numbering space"
                         % (lhs, b, blk_name, blk_letter))
 
+        # -- CCV-L29: every net of a sequential block module is tagged ------
+        # The stage rules above key on the tag, so a net without one is a
+        # net they never check: a register on it escapes L21, and anything
+        # that reads it escapes L23 (DA, 2026-10-23). A module with no
+        # register is exempt: an inner helper is timed as its parent's logic
+        # and may sit at any stage, as a struct type may.
+        for s0, e0, n, _ in spans:
+            if cls[n].kind not in ("block", "wrapper", "sub"):
+                continue
+            body = src[s0:e0]
+            hdr = re.search(r"\)\s*;", body)
+            if not hdr or not re.search(r"\balways_ff\b", body):
+                continue
+            _stage_ratchet["seen"].add(n)
+            listed = set(stage_ratchet().get(n, []))
+            for pos, net in module_nets(body, hdr.end()):
+                if UNSTAGED_RE.search(net) or stage_of(net):
+                    continue
+                if net in listed:
+                    _stage_ratchet["found"].add((n, net))
+                    continue
+                add("CCV-L29", line_of(src, s0 + pos),
+                    "net %s of module %s carries no stage tag. Every net of a "
+                    "block's sequential module says when it is valid, "
+                    "<name>_<domain><block><NN><l|h>; untagged, CCV-L21 and "
+                    "CCV-L23 never check it, nor anything it reaches" % (net, n))
+
         # -- CCV-L23: stage arithmetic --------------------------------------
         # The rule the whole convention exists to make checkable:
         #   flop output  = max(input stages) + 1
         #   combinational = max(input stages)
         #
-        # Exempt: the net's own previous value (a hold or a counter is a
-        # self-reference at the SAME stage, not a stage violation), reset nets
-        # (block letter `r` -- the reset tree has its own numbering because it
-        # is pipelined by physical distance, not by datapath depth), and any
-        # right-hand side with no tagged signals at all.
-        def rhs_stages(expr, lhs):
+        # Exempt: a register's own stage in its next value (OI's question,
+        # OI-65, 2026-10-21): a register at stage N that reads state at stage
+        # N -- itself, a hold or a counter, or another register of the same
+        # stage, a queue's next value reading its own count -- is a state
+        # machine's feedback, not a stage skip; everything else it reads
+        # must be at N - 1. Reset nets (block letter `r` -- the reset tree
+        # has its own numbering because it is pipelined by physical distance,
+        # not by datapath depth), and any right-hand side with no tagged
+        # signals at all. Continuous assignments are combinational and held
+        # to the same arithmetic: a tagged net driven by an assign was once
+        # unchecked, which invited untagged nets to carry a stage mix.
+        # The same feedback seen from the D side: a combinational net at
+        # stage N - 1 that is read only by flops (a stage-N register's next
+        # value or enable, built apart from its always_ff) may read the
+        # stage-N state it updates. Read anywhere else, it is held to the
+        # plain arithmetic.
+        # Declared feedback (OA's ruling on TI-38): verified here, each against
+        # the loop it claims; only a verified read leaves the arithmetic.
+        graph = dep_graph(src)
+        fb_ok = {}
+        ddeps = data_graph(src)
+        byp_ok = {}
+        for s0, e0, n, ln0 in spans:
+            fp, decl, byp = feedback_decls(os.path.dirname(path), n)
+            # A declared bypass (DA, 2026-10-23; OI-72 (A)): a reader at stage
+            # N that reads a later pipeline copy of its own stage's register,
+            # a bypass mux around a table written late. Each is reviewed, and
+            # the lint holds it to the copy it claims: the tags give exactly
+            # the declared offset, and the register read is that many stages
+            # on from a register at the reader's stage in its pipeline.
+            for reader, d in sorted(byp.items()):
+                reads = d.get("from", {})
+                if d.get("by") not in FEEDBACK_BY:
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared bypass is not an architect's (by %r, not one of "
+                        "%s): each is reviewed before it is listed"
+                        % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
+                    continue
+                if not isinstance(reads, dict) or not reads:
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared bypass names no read: write \"from\": "
+                        "{\"<register>\": <stages ahead>, ...}" % (fp, reader))
+                    continue
+                for rd, ahead in sorted(reads.items()):
+                    sr, sx = stage_of(reader), stage_of(rd)
+                    if rd not in graph[0].get(reader, ()):
+                        add("CCV-L23", ln0,
+                            "%s: %s is declared to read %s as a bypass, but does not "
+                            "read it: remove the declaration" % (fp, reader, rd))
+                    elif sr is None or sx is None:
+                        add("CCV-L23", ln0,
+                            "%s: %s's bypass read of %s is checked by their stage tags, "
+                            "and %s carries none" % (fp, reader, rd, reader if sr is None else rd))
+                    elif not isinstance(ahead, int) or ahead < 1:
+                        add("CCV-L23", ln0,
+                            "%s: %s's bypass read of %s is declared %r stages ahead: a "
+                            "bypass reads a later stage's copy" % (fp, reader, rd, ahead))
+                    elif sx[2] - sr[2] != ahead:
+                        add("CCV-L23", ln0,
+                            "%s: %s (stage %02d) reads %s (stage %02d), %d stage(s) ahead, "
+                            "but its bypass is declared %d ahead" % (fp, reader, sr[2], rd, sx[2],
+                                                                   sx[2] - sr[2], ahead))
+                    else:
+                        why = bypass_path(ddeps, graph[1], reader, rd, ahead)
+                        if why:
+                            add("CCV-L23", ln0, "%s: %s's declared bypass of %s does not hold: %s"
+                                % (fp, reader, rd, why))
+                        else:
+                            # Counted at the stage it stands for, the register's
+                            # less its offset: the reader's own (OI's rev 189,
+                            # OA's rev 212), so its other inputs stay checked.
+                            byp_ok.setdefault(reader, {})[rd] = ahead
+            for reader, d in sorted(decl.items()):
+                reads = d.get("from", [])
+                if d.get("by") not in FEEDBACK_BY:
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared feedback reads are not an architect's (by %r, "
+                        "not one of %s): each is reviewed before it is listed"
+                        % (fp, reader, d.get("by"), ", ".join(FEEDBACK_BY)))
+                    continue
+                # Each read with the alignment it is declared at (DA, 2026-10-23):
+                # how many stages its tag lies ahead of its reader's. The
+                # declaration does not take the read out of the alignment
+                # check; it states the alignment the loop has, and the tags
+                # must give exactly that.
+                if not isinstance(reads, dict):
+                    add("CCV-L23", ln0,
+                        "%s: %s's declared feedback reads give no alignment: write "
+                        "\"from\": {\"<read>\": <stages ahead>, ...}, which the "
+                        "tags must match" % (fp, reader))
+                    continue
+                for rd, ahead in sorted(reads.items()):
+                    sr, sx = stage_of(reader), stage_of(rd)
+                    if rd not in graph[0].get(reader, ()):
+                        add("CCV-L23", ln0,
+                            "%s: %s is declared to read %s as feedback, but does not "
+                            "read it: remove the declaration" % (fp, reader, rd))
+                    elif sr is None or sx is None:
+                        add("CCV-L23", ln0,
+                            "%s: %s's feedback read of %s is checked by their stage "
+                            "tags, and %s carries none" % (fp, reader, rd,
+                                                           reader if sr is None else rd))
+                    elif not isinstance(ahead, int) or ahead < 1:
+                        add("CCV-L23", ln0,
+                            "%s: %s's read of %s is declared %r stages ahead: a "
+                            "feedback read lies one stage or more ahead of its reader, "
+                            "and one that does not needs no declaration"
+                            % (fp, reader, rd, ahead))
+                    elif sx[2] - sr[2] != ahead:
+                        add("CCV-L23", ln0,
+                            "%s: %s (stage %02d) reads %s (stage %02d), %d stage(s) "
+                            "ahead, but is declared %d ahead: the loop's tags do not "
+                            "give the alignment declared" % (fp, reader, sr[2], rd, sx[2],
+                                                             sx[2] - sr[2], ahead))
+                    elif "loop" in d:
+                        why = loop_path(graph[0], graph[1], reader, rd, d["loop"])
+                        if why:
+                            add("CCV-L23", ln0,
+                                "%s: %s's declared loop %s for its read of %s does not "
+                                "hold: %s" % (fp, reader, " -> ".join(d["loop"]), rd, why))
+                        else:
+                            fb_ok.setdefault(reader, set()).add(rd)
+                    elif not feedback_loop(graph[0], graph[1], reader, rd):
+                        add("CCV-L23", ln0,
+                            "%s: %s reads %s as declared feedback, but no register "
+                            "%s comes from has a next value that depends on %s's "
+                            "register: there is no loop for the read to close (a "
+                            "longer loop is declared by its registers, \"loop\")"
+                            % (fp, reader, rd, rd, reader))
+                    else:
+                        fb_ok.setdefault(reader, set()).add(rd)
+
+        def rhs_stages(expr, lhs, own=None):
             out = []
             for w in re.findall(r"[a-z]\w*", expr):
-                if w == lhs:
+                if w == lhs or w in fb_ok.get(lhs, ()):
                     continue
                 st = stage_of(w)
-                if st and st[1] != "r":
-                    out.append(st[2])
+                if st and st[1] != "r" and st[2] != own:
+                    out.append(st[2] - byp_ok.get(lhs, {}).get(w, 0))
             return out
 
-        for kind, clk, body, ln, pos in always_blocks(src):
+        ff_spans = [(pos, pos + len(body)) for kind, clk, body, ln, pos in always_blocks(src)
+                    if kind == "ff"]
+        def d_side(net):
+            """Every read of net is inside an always_ff."""
+            reads = [m.start() for m in re.finditer(r"\b%s\b" % re.escape(net), src)
+                     if not re.match(r"\s*(?:\[[^\]]*\]\s*)?=(?!=)", src[m.end():])]
+            reads = [r for r in reads if not re.search(r"\blogic\b[^;]*$", src[max(0, r - 200):r])]
+            return bool(reads) and all(any(a <= r < b for a, b in ff_spans) for r in reads)
+
+        blocks = [(kind, body, ln, pos) for kind, clk, body, ln, pos in always_blocks(src)]
+        for m in re.finditer(r"\bassign\s+[^;]+;", src):
+            blocks.append(("assign", m.group(0)[len("assign"):], line_of(src, m.start()),
+                           m.start()))
+        for kind, body, ln, pos in blocks:
             if reusable(pos):
                 continue
             seq = (kind == "ff")
+            regions = cond_regions(body) if kind != "assign" else []
             for apos, lhs, op, rhs in assignments(body):
                 st = stage_of(lhs)
                 if st is None or st[1] == "r":
                     continue
-                ins = rhs_stages(rhs, lhs)
+                # The conditions it is assigned under count as its inputs.
+                rhs = " ".join([rhs] + [c for a0, a1, c in regions if a0 <= apos < a1])
+                ins = rhs_stages(rhs, lhs, st[2] if seq else
+                                 st[2] + 1 if kind in ("assign", "comb") and d_side(lhs) else None)
                 if not ins:
                     continue
                 want = max(ins) + (1 if seq else 0)
@@ -1184,6 +1611,27 @@ def check_interface_coverage(schema=None):
     return F
 
 
+def check_stage_ratchet():
+    """CCV-L29's ratchet only shrinks: an entry that was not in the baseline
+    when the rule was made is refused, and so is one whose net is now
+    tagged or gone, in a module this run read."""
+    F = []
+    rel = os.path.relpath(_stage_ratchet["path"], ROOT)
+    p = _stage_ratchet["baseline"]
+    base = json.load(open(p)).get("modules", {}) if os.path.exists(p) else {}
+    for mod, nets in sorted(stage_ratchet().items()):
+        for net in nets:
+            if net not in base.get(mod, []):
+                F.append(Finding("CCV-L29", rel, 1,
+                                 "%s %s was not on the list when the rule was made; "
+                                 "the list only shrinks" % (mod, net)))
+            elif mod in _stage_ratchet["seen"] and (mod, net) not in _stage_ratchet["found"]:
+                F.append(Finding("CCV-L29", rel, 1,
+                                 "%s %s now meets the rule, or is gone: remove it from "
+                                 "%s" % (mod, net, rel)))
+    return F
+
+
 def check_module_names(roots=("rtl/top", "rtl/generated")):
     """CCV-L28 over the generated design, which the per-file walk skips: the
     top, its wrappers, stubs and shims, and the checker bank are modules in
@@ -1276,6 +1724,7 @@ def main():
     # fixture directory, since a cross-file rule cannot be counter-exampled
     # by a .sv file alone.
     schema = blocks = names = None
+    ratchet_given = False
     for a in sys.argv[1:]:
         if a.startswith("--names="):
             names = a.split("=", 1)[1]
@@ -1283,6 +1732,12 @@ def main():
             schema = a.split("=", 1)[1]
         if a.startswith("--blocks="):
             blocks = a.split("=", 1)[1]
+        # CCV-L29's ratchet and baseline, pointed at fixtures by check-1d.
+        if a.startswith("--stage-ratchet="):
+            _stage_ratchet["path"] = os.path.join(ROOT, a.split("=", 1)[1])
+            ratchet_given = True
+        if a.startswith("--stage-baseline="):
+            _stage_ratchet["baseline"] = os.path.join(ROOT, a.split("=", 1)[1])
     targets = args or ["rtl", "test", "spike"]
     findings = []
     n = 0
@@ -1297,6 +1752,8 @@ def main():
         findings.extend(check_blocks(blocks))
     if not args:
         findings.extend(check_module_names())
+    if not args or ratchet_given:
+        findings.extend(check_stage_ratchet())
     if names:
         findings.extend(check_module_names((names,)))
     for f in sorted(findings, key=lambda f: (f.path, f.line)):
