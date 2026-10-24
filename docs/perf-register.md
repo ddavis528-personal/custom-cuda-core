@@ -37,7 +37,7 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
-| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16) |
+| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16); trigger met, AR-24 measures |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
 | PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
@@ -275,6 +275,16 @@ it.
   and none inside a loop. So the hold costs one drain per narrow kernel
   (OI's response OA-16).
 - **Trigger:** a corpus kernel that widens inside a loop (asked of CP).
+- **Trigger met (TI's rev 171 and OA's rev 222 on AR-24, 2026-10-24):** the
+  CoreMark-derived workload at the core's pin (f99190e) issues 102,678
+  `chwidth` and 5,508 `chwidth.multi` a warp at one iteration. Together
+  they are 108,186 of 782,648 issue groups, 13.8%, from byte and halfword
+  code inside its loops: 28% of its accesses are 1 or 2 bytes. Each one
+  holds its warp's rename until it retires. Since OA's rev 222,
+  `chwidth.multi` is cracked per register and holds once, after the last.
+  The count makes the case; the cost does not yet. AR-24's timed run
+  reports cycles held behind `chwidth` (`hold.chwidth`), and with that
+  figure OA takes OA-16 back to DA.
 
 ### PF-16 More than one redirect a cycle
 
