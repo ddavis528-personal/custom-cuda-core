@@ -906,6 +906,25 @@ Built (`rtl/ooe/`):
      ooe_rename's unit. check-ngd: 14.4 flop to flop. check-cg: 964 flops,
      947 behind 3 gates. ooe_rendep's gsn and psn budgets move to 6, by
      OA's rev 194 (Rename 1's reads leave at 5.6).
+     *Width codes (AR-24 (d), built).* Each slot's committed width
+     table (16 registers, 2 bits each) is a register in ooe_rename,
+     written a cycle after its lead, the ROB's until it is built (a
+     chwidth's or sibling's retire, a launch, a restore-allocate); reset
+     is a launch's, every register 32 bits. A width changes only behind
+     a chwidth's hold, and a sibling changes no register a younger uop of
+     its group reads, so each candidate reads the table directly beside
+     ooe_headrd's map reads, with no in-group override. A chwidth's own
+     destination takes the width it sets (c_wset, c_wnew; TI's rev 185).
+     The four codes ride ooe_ren1's lanes beside the attributes into the
+     Rename 1 register (w), out on q_w for the RS payload when it is
+     built. Rows stay whole until slice 6, which is full_rows's
+     allocation already. rename_tb holds every lane's codes to the
+     model's (Core::RatLog's wsrc, wdst; testWidthTraffic gives 84
+     narrow lanes in 5 seeds), and control no-cw-write (the table never
+     written) is caught. check-ngd: 22.0 flop to flop, unchanged; the
+     new inputs reach flops at 8.0 at most. check-cg: 1357 flops, the
+     tables four gates of 32, the lead's 4 flops ungated within the
+     allowance.
      *Counters (7b, built).* Rename's counters replace the go's pool,
      floor and room ports (OI-73 to OI-76, OA's revs 215, 216 and 219):
      RS room per class (up by ooe_rs's frees, a lead a cycle ahead), and

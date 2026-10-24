@@ -410,6 +410,14 @@ void Core::cycle(uint64_t now) {
     std::swap(out.memops, held_memops_);
   }
   rename();            // the decode queue; uop() refills it after the clock
+  // The committed width tables after the cycle, for rename_tb (AR-24 (d)).
+  rlog_.cw.resize(slot_.size());
+  for (unsigned si = 0; si != slot_.size(); ++si) {
+    if (cw_prev_.size() != slot_.size()) cw_prev_.assign(slot_.size(), {});
+    for (unsigned a = 0; a != kArchGprs; ++a) rlog_.cw[si][a] = slot_[si].cw[a];
+    if (rlog_.cw[si] != cw_prev_[si]) rlog_.cw_changed |= 1u << si;
+    cw_prev_[si] = rlog_.cw[si];
+  }
   sendRedirect();
   readyRegister();
   requestRegister();
@@ -3354,6 +3362,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pgroup = uint8_t(u.attr.bypass_group & 7u);
       w.nob = r.is_mem || u.attr.cross_lane;
       w.atomic = atomic;
+      for (unsigned i = 0; i != 3; ++i) w.wsrc[i] = r.wsrc[i];
+      w.wdst = r.wdst;
+      w.wset = a.serial == kSerChwidth || a.commit_width;
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }

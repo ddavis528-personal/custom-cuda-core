@@ -1374,6 +1374,9 @@ public:
       /// memop or a cross-lane op).
       uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
       bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
+      /// Width codes at rename (AR-24 (d)): src0..2's and the destination's.
+      uint8_t wsrc[3] = {}, wdst = 0;
+      bool wset = false;   ///< a chwidth or sibling: wdst is the width it sets
     };
     struct Ret {
       unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
@@ -1383,6 +1386,11 @@ public:
     uint32_t squash = 0, release = 0;                       ///< slot masks
     std::vector<Ret> ret;
     std::vector<Ren> ren;
+    /// Each slot's committed width table after the cycle (AR-24 (d)), and
+    /// whether the cycle changed it: a chwidth's or sibling's retire, a
+    /// launch, a restore-allocate.
+    std::vector<std::array<uint8_t, kArchGprs>> cw;
+    uint32_t cw_changed = 0;
   };
   const RatLog &ratLog() const { return rlog_; }
   /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
@@ -1512,6 +1520,7 @@ private:
   std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
   std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
   std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
+  std::vector<std::array<uint8_t, kArchGprs>> cw_prev_;   ///< each slot's width table after the last cycle (RatLog::cw)
   /// Which hold it is, for the split counter (TI's rev 188): the first of
   /// not active, chwidth, barrier, other (a fault stop).
   std::vector<const char *> go_hold_why_;

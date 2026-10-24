@@ -2905,6 +2905,38 @@ void testChwidthMulti() {
   }
 }
 
+/// AR-24 (d)'s traffic for the rename bench (non-sectioned, so
+/// test/ooe/rename_tb.cpp runs it): two warps narrow registers by chwidth
+/// and by chwidth.multi's siblings, then many ops read and write them at
+/// their widths, and one widens a register back.
+void testWidthTraffic() {
+  g_test = "width traffic";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 11);
+  auto prog = [](unsigned seed) {
+    std::vector<Op> p;
+    std::mt19937 r(seed);
+    for (unsigned reg : {4u, 5u, 6u}) {   // a chwidth.multi: two siblings and the last
+      Op w; w.k = kChw; w.dst = reg; w.chw = reg == 4 ? 1 : 2; w.sibling = reg != 6; p.push_back(w);
+    }
+    Op w7; w7.k = kChw; w7.dst = 7; w7.chw = 3; p.push_back(w7);
+    for (unsigned i = 0; i != 40; ++i) {
+      Op a; a.k = kLane; a.dst = 4 + r() % 6; a.nsrc = 1 + r() % 3;
+      for (unsigned j = 0; j != a.nsrc; ++j) a.src[j] = 3 + r() % 6;
+      p.push_back(a);
+      if (i == 20) { Op b; b.k = kChw; b.dst = 5; b.chw = 0; b.chw_writes = true; b.src[0] = 5; b.nsrc = 1; p.push_back(b); }
+    }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    return p;
+  };
+  e.launch(0, 0, prog(1));
+  e.launch(1, 1, prog(2));
+  e.finish();
+  EXPECT(e.core.slotWidth(0, 4) == 1 && e.core.slotWidth(0, 6) == 2 && e.core.slotWidth(0, 5) == 0,
+         "widths R4 %u R5 %u R6 %u", e.core.slotWidth(0, 4), e.core.slotWidth(0, 5), e.core.slotWidth(0, 6));
+}
+
 /// AR-24 (d): each operand carries its own register's width, from the
 /// committed table at rename, and a memop its data register's. Under the
 /// interim full_rows (DA tab rev 87; OA's rev 225, AR's rev 174) the 8-bit
@@ -4592,6 +4624,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testBarrier();
   testChwidth();
   testWidthCodes();
+  testWidthTraffic();
   testSections();
   testV59();
   testFixedWindowPreds();
@@ -4744,6 +4777,7 @@ int main(int argc, char **argv) {
   testChwidth();
   testChwidthMulti();
   testRet();
+  testWidthTraffic();
   testWidthCodes();
   testWidthFault();
   testSizedAndConverged();
