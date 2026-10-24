@@ -23,7 +23,7 @@ fail=0
 say() { printf '  %-46s %s\n' "$1" "$2"; }
 bad() { say "$1" "FAIL -- $2"; fail=1; }
 
-CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
+CHK="rtl/if/ccv_common_chk_credit.sv rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv rtl/if/ccv_common_chk_wake.sv rtl/generated/ccv_common_chk_bank.sv"
 STUBS=$(ls rtl/top/stubs/*.sv | tr '\n' ' ')
 # The assertion package first: the checkers import it, and every tool wants a
 # package declared before its first use.
@@ -55,16 +55,16 @@ if command -v verilator >/dev/null 2>&1; then
        "$R/sim/src/event.cpp" "$R/sim/dpi/ccv_event_dpi.cpp" \
        >"$B/top_vb.log" 2>&1; then
     out=$({ "$B/top_vo/Vtb" 2>&1 || true; } 2>/dev/null)
-    if echo "$out" | grep -q TOP_OK && ! echo "$out" | grep -q "CCV .* failed"; then
+    if grep -q TOP_OK <<<"$out" && ! grep -q "CCV .* failed" <<<"$out"; then
       say "verilator: top + checker bank simulates quiet" "PASS"
     else
-      bad "verilator: top simulates" "$(echo "$out" | grep -m1 -E 'failed|Error')"
+      bad "verilator: top simulates" "$(grep -m1 -E 'failed|Error' <<<"$out")"
     fi
     # The partner: a phantom credit on the outbound external port must be
     # reported by THAT channel's checker, by name -- so the bank in the SV top
     # is live and wired to the top's own ports.
     out=$({ "$B/top_vo/Vtb" +phantom 2>&1 || true; } 2>/dev/null)
-    if echo "$out" | grep -q "u_exb_ext_out_s0.*no_phantom_credit"; then
+    if grep -q "u_exb_ext_out_s0.*no_phantom_credit" <<<"$out"; then
       say "  ...+phantom: the bank in the top fires" "PASS"
     else
       bad "checker bank live in the SV top" "+phantom was not reported"
@@ -80,10 +80,10 @@ if command -v iverilog >/dev/null 2>&1; then
     if iverilog -g2012 -gassertions $D $INC -o "$B/top.vvp" -s tb \
          $PKG $CHK $TOP test/top/tb_top.sv >"$B/top_iv.log" 2>&1; then
       out=$(vvp "$B/top.vvp" 2>&1)
-      if echo "$out" | grep -q TOP_OK && ! echo "$out" | grep -q "CCV .* failed"; then
+      if grep -q TOP_OK <<<"$out" && ! grep -q "CCV .* failed" <<<"$out"; then
         say "icarus: top simulates ${D:-(no checkers)}" "PASS"
       else
-        bad "icarus: top simulates ${D:-}" "$(echo "$out" | grep -m1 -E 'failed|ERROR')"
+        bad "icarus: top simulates ${D:-}" "$(grep -m1 -E 'failed|ERROR' <<<"$out")"
       fi
     else
       bad "icarus: top compiles ${D:-}" "$(head -1 "$B/top_iv.log")"
@@ -118,7 +118,7 @@ if command -v yosys >/dev/null 2>&1; then
   if out=$(python3 tools/check-top-pure.py 2>&1); then
     say "top and wrappers: only instances and nets" "PASS (both views)"
   else
-    bad "top: only block instances and nets" "$(echo "$out" | grep -m1 -E '^  R[0-9]')"
+    bad "top: only block instances and nets" "$(grep -m1 -E '^  R[0-9]' <<<"$out")"
   fi
   refused=""
   for m in gate tie flop float unloaded wrapgate wraptie dupreuse paramreuse gatetie gateclk rptunits; do
@@ -135,7 +135,7 @@ fi
 if [ -x "$B/skel/ccv-skel" ] && "$B/skel/ccv-skel" --dump-wiring "$B/wiring.txt"; then
   if out=$(python3 tools/check-top-wiring.py --wiring="$B/wiring.txt" 2>&1); then
     say "SV top wiring == C++ skeleton wiring" \
-        "PASS ($(echo "$out" | grep -oE '[0-9]+ bits'))"
+        "PASS ($(grep -oE '[0-9]+ bits' <<<"$out"))"
   else
     bad "SV top wiring == C++ skeleton wiring" "$(echo "$out" | sed -n 2p)"
   fi

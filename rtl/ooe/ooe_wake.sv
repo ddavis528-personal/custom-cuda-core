@@ -18,8 +18,8 @@
 // A grant starts the timer at age 1, the edge after the select cycle; age
 // counts cycles since the grant and saturates. What the timer waits for is
 // the grant's kind, decided at rename and held in the RS payload:
-//   timed  a fixed-latency unit: the full-latency line at LAT[class]; a
-//          class with no latency (0) waits for its done instead;
+//   timed  a fixed-latency unit: the full-latency line at LAT[class] (every
+//          class a grant names has one);
 //   copy   the copy-only half of a masked load: a lane op, at LAT_COPY;
 //   spec   an L1-contracted global load: the full-latency line at
 //          LAT_SPEC (CCV_LAT_L1_WAKE). No completion by LAT_MISS
@@ -27,44 +27,111 @@
 //          miss_cq02h pulses for cancel's first hop, and the timer waits
 //          for the completion;
 //   mem    any other memop: waits for its completion.
-// A completion for a timer that waits restarts it at age 0 and raises the
+// A completion for a timer that waits restarts it and raises the
 // full-latency line at CMPL_DLY (CCV_LAT_L1_MISS_WAKE); a completion for a
-// spec timer is the L1 hit, and ends the miss check. A done raises the
-// line of an RCU-class timer (entry < NR) that waits. A stop (a replay
+// spec timer is the L1 hit, and ends the miss check. A stop (a replay
 // returning the entry to Waiting, or the entry freed) clears issued.
+//
+// The lead (OA's response OI-45). The lines leave LEAD = 2 cycles ahead of
+// the model's wake: the ready register and the grant register stand
+// between a line and the grant it allows, so a line the model raises at t
+// is raised here for the select that reads it. Each timed threshold is the
+// model's latency less LEAD, at age 1 at the earliest (an assertion holds
+// every latency over LEAD). A completion moves a line no timer foresees, so
+// it comes with a hint exactly LEAD edges ahead on ccv_miu_ooe_cmpl (OA-23,
+// valid and RS index, its valid a cycle before, as the completion's): a
+// waiting timer's lead line times from its registered hint as a restart
+// times from its registered completion, and a spec timer with no hint by
+// its miss check, less LEAD, will miss, so its lead line drops then. The
+// model-frame state (the full-latency line, fin, the miss check and the
+// held misses) is kept as it was: confirmation and the hop read it. A stop
+// cannot be foreseen, so a replayed producer's lead line drops with the
+// stop, up to LEAD cycles after the model's line; ooe_sched's own replay
+// rule covers those cycles. The timer lead (wtl) is of the lead lines; a
+// grant's lead line may rise at the edge the grant arrives, which ooe_sched
+// leads from its own grant register; the event lead (wml) is the hints'.
+//
+// Stops (OI-45, V-65): this module runs the cancel's level rule and
+// confirmation itself (ooe_confirm, an inner helper) over its own state, as
+// ooe_rs does over its issued register, so neither takes the other's
+// replays or frees, and the two issued states are equal: both take the
+// grant register's grants and their stops at the same edge. The inputs:
+// this module's issued bits, ooe_rs's matrix (dep, as data), its held
+// misses, final and prod bits. A held miss (msd) is a spec timer that
+// missed and is still waiting for its completion, from its state: issued,
+// kind spec, the miss check over without the line armed, past the miss
+// pulse's cycle (OI-50, V-68: the hop sees a miss from the cycle after it,
+// and in the cycle of its completion, before the restart). A stop is a
+// replay, a confirmation, or the registered squash's free (sqf). A replayed
+// entry granted again at the stop's edge stays issued: the grant wins, as
+// in ooe_rs. msd_cq02h gives the held misses to ooe_rs from a register of
+// their own (msr, in each entry's group).
+//
+// Completions (OA's response OI-58, L1): the channel's valid leads its
+// payload by a cycle, and this module flops it (cv). The payload's RS
+// indices are decoded per entry as they arrive and registered (cm), so a
+// restart is taken an edge later from this module's own flop, at age 1, so the
+// line rises on the model's cycle (CMPL_DLY of 1 or more). The L1 hit is
+// taken from the payload as it arrives, gated by cv: a spec timer is
+// clocked anyway until its miss check ends, below its age's saturation.
+// No latency class waits for a done (the latency table has none), so this
+// module takes no done; a timed grant with no latency is an assertion.
 //
 // fin_cq02h is the timer's word to confirmation: issued, the full-latency
 // line raised and the miss check over, so the result can no longer be
-// cancelled (V-16). It is taken before this edge's stop, because
-// confirmation frees the entry in the cycle the line rises.
+// cancelled (V-16). Confirmation (this module's and ooe_rs's) reads it in
+// the cycle the line has risen, and frees the entry at the next edge.
 //
 // The bypass lines follow the class alone: FAST[class] is its fastest
 // bypass point (0: none), so line k rises at FAST[class] + PEN[k] while
 // the timer is issued. A class that waits for a completion has no bypass
 // point, so the restart at a completion never moves a bypass line.
 //
-// Inputs of the edge into cycle t are the previous cycle's grants and the
-// events the model takes in t before its select: dones, completions,
-// replays and frees. The lines after that edge are what select reads in t.
+// Inputs of the edge into cycle t are the previous cycle's grants, the
+// completions the model takes in t before its select, and the stops of the
+// model's previous cycle: its replays and frees, which this module decides
+// in that cycle from the state the edge before left. The lines after the
+// edge are what select reads in t; an entry the model replays in t still
+// shows its lines until the next edge, and ooe_sched runs the replay rule
+// itself for its select.
 // The reference is the model's wakeLine (Core::wakeLine) and its L1 miss
 // cancel; test/ooe/wake_tb.cpp drives this module from the live model and
 // compares every valid entry's lines, and every miss, each cycle.
 //
+// Leads for ooe_sched (OI-54): wtl_cq02h, per line, a change the timer
+// makes at the next edge, and wml_cq02h, a miss pulse or a registered
+// completion now. Both are registers (NGD-7: the outputs leave from flops
+// of their own), wtl in each timer's enable group: its next value is the
+// change at the edge after next, from the state alone (tl2), or from a
+// grant or a registered restart taken at this edge, and none on a stop.
+//
 // Reset line (decision 6): issued resets to 0; the age, kind, class, the
 // timer flags and the lines are payload, read only through issued (a line
-// is never raised without it). Local clock gating: each entry's state is
-// one enable group, clocked only while the entry is in use.
+// is never raised without it). The reset is flopped before use (RST-1).
+//
+// Local clock gating (OA's response OI-58; V-75): each entry's state is
+// one enable group, clocked on its grant, its registered completion, and
+// while it is in use, from this module's own flops: issued with its age
+// not saturated (a miss pulse's too); issued and final,
+// or issued and writing nothing (prod), for its free by confirmation (OA's
+// response OI-62); and the registered squash's lead (sq_en: every entry,
+// the edge ooe_rs frees on). A replay needs no lead of its own: it comes a
+// few cycles after a producer's miss or an issue on a stale ready bit,
+// never past the age's saturation (LAT_MISS - LAT_SPEC, and a cycle a
+// hop, below 2**AW - 1), so the age term clocks it. An assertion holds
+// every stop to a clocked entry. The grant is the one input in the enable:
+// ooe_sched's third copy of its grant register, at 2 NGD: 6.1 NGD in all
+// as check-cg measures it (rtl/cg-waivers.json).
 //===----------------------------------------------------------------------===//
 `include "ccv_assert.svh"
 `define CCV_CLK ooe_core_clk
-`define CCV_RST ooe_rst_r00h
+`define CCV_RST rst_r01h
 module ooe_wake #(
   parameter int N  = 45,               // RS entries (CCV_P_RS_RCU + CCV_P_RS_MIU)
-  parameter int NR = 30,               // RCU-class entries, [0, NR): a done wakes these
   parameter int AW = 5,                // age bits; every threshold is below 2**AW
   // Per latency class (8 classes, 8 bits each, class 0 lowest): the full
   // latency (CCV_LAT_RCU, CCV_LAT_LANE, -, -, CCV_LAT_SFU,
-  // CCV_LAT_COLLECTIVE; 0 waits for the done), and the fastest bypass point
+  // CCV_LAT_COLLECTIVE; 0 for a class no grant names), and the fastest bypass point
   // (CCV_LAT_LANE_BYP for the lane; 0 for none).
   parameter logic [63:0] LAT  = 64'h0000_050c_0000_0703,
   parameter logic [63:0] FAST = 64'h0000_0000_0000_0400,
@@ -75,19 +142,33 @@ module ooe_wake #(
   parameter int LAT_COPY = 7,          // CCV_LAT_LANE
   parameter int LAT_SPEC = 16,         // CCV_LAT_L1_WAKE
   parameter int LAT_MISS = 19,         // payload stages + CCV_LAT_L1_CMPL
-  parameter int CMPL_DLY = 1           // CCV_LAT_L1_MISS_WAKE
+  parameter int CMPL_DLY = 1,          // CCV_LAT_L1_MISS_WAKE
+  parameter int NC       = 4,          // completions a cycle (ccv_miu_ooe_cmpl's rate)
+  parameter int LEAD     = 2,          // cycles the lines lead the model's wake (OA's response OI-45)
+  localparam int W       = $clog2(N)
 ) (
   input  logic           ooe_core_clk,
   input  logic           ooe_rst_r00h,
-  input  logic [N-1:0]   grant_cq01h,   // granted last cycle
+  input  logic [N-1:0]   grant_cq01h,   // granted last cycle (ooe_sched's copy for this module)
   input  logic [2*N-1:0] kind_cq01h,    // each grant's timer kind
   input  logic [3*N-1:0] cls_cq01h,     // each grant's latency class
-  input  logic [N-1:0]   done_cq01h,    // a done for the entry's ROB entry
-  input  logic [N-1:0]   cmpl_cq01h,    // a completion for the entry's ROB entry
-  input  logic [N-1:0]   stop_cq01h,    // replayed or freed: issued clears
+  input  logic [N-1:0]   prod_cq01h,    // each grant writes a register some entry may wake on
+  input  logic [NC-1:0]  cmpl_l_cq00h,  // the completion channel's valid: a payload next cycle
+  input  logic [NC*W-1:0] cmpl_idx_cq01h, // each completion's RS entry
+  input  logic [NC-1:0]  hint_l_cq00h,  // the completion hint's valid (OA-23): a hint payload next cycle
+  input  logic [NC*W-1:0] hint_idx_cq01h, // each hint's RS entry: its completion comes exactly LEAD edges later
+  input  logic [N*N-1:0] dep_cq01h,     // ooe_rs's matrix: row i, column j, i waits on j
+  input  logic [N-1:0]   sqf_cq01h,     // entries the registered squash frees this cycle
+  input  logic           sq_l_cq00h,    // the registered squash frees next cycle
   output logic [4*N-1:0] wake_cq02h,    // entry j's line k at 4j + k
   output logic [N-1:0]   miss_cq02h,    // the L1 miss, found at the last edge
-  output logic [N-1:0]   fin_cq02h      // the result is final: confirmation may take it
+  output logic [N-1:0]   fin_cq02h,     // the result is final: confirmation may take it
+  output logic [N-1:0]   iss_cq02h,     // issued: ooe_sched's and the hop's
+  output logic [N-1:0]   msd_cq02h,     // the held misses: ooe_rs's and the hop's
+  output logic [4*N-1:0] wtl_cq02h,     // the timer changes the line at the next edge
+  output logic [N-1:0]   flt_cq02h,     // the model-frame full-latency line rises at the next edge (ooe_rs's
+                                        // confirmation lead: it is the result's, not the lead line's)
+  output logic           wml_cq02h      // a miss or a completion changes lines at the next edge
 );
 
   localparam logic [1:0] KTIMED = 2'd0, KCOPY = 2'd1, KSPEC = 2'd2, KMEM = 2'd3;
@@ -102,14 +183,25 @@ module ooe_wake #(
   localparam int FKIND = FLINE + 4;     // 2
   localparam int FCLS  = FKIND + 2;     // 3
   localparam int FFIN  = FCLS + 3;      // the result is final
-  localparam int FAGE  = FFIN + 1;      // AW
+  localparam int FPROD = FFIN + 1;      // writes a register some entry may wake on
+  localparam int FLL   = FPROD + 1;     // the full-latency line as it leads (the output's line 3)
+  localparam int FLA   = FLL + 1;       // a waiting timer was hinted: its lead line times from it
+  localparam int FHNT  = FLA + 1;       // a spec timer was hinted: its L1 completion is coming
+  localparam int FLM   = FHNT + 1;      // a spec timer's miss foreseen: its lead line is down
+  localparam int FAGE  = FLM + 1;       // AW
   localparam int EW    = FAGE + AW;
   localparam int SW    = N * EW;
 
+  // The reset, flopped before any use (RST-1).
+  logic rst_r01h;
+  always_ff @(posedge ooe_core_clk) begin
+    rst_r01h <= ooe_rst_r00h;
+  end
+
   `CCV_ASSERT_KNOWN(grant_known, grant_cq01h)
-  `CCV_ASSERT_KNOWN(done_known, done_cq01h)
-  `CCV_ASSERT_KNOWN(cmpl_known, cmpl_cq01h)
-  `CCV_ASSERT_KNOWN(stop_known, stop_cq01h)
+  `CCV_ASSERT_KNOWN(cmpl_l_known, cmpl_l_cq00h)
+  `CCV_ASSERT_KNOWN(sqf_known, sqf_cq01h)
+  `CCV_ASSERT_KNOWN(sq_l_known, sq_l_cq00h)
 
   // Age reaches a threshold (a constant once the class is decoded).
   function automatic logic reached(input logic [AW-1:0] age, input logic [7:0] thr);
@@ -130,23 +222,25 @@ module ooe_wake #(
     late_time = t;
   endfunction
 
-  // Bypass line k: the class's fastest point plus penalty k.
+  // Bypass line k: the class's fastest point plus penalty k, as it leads.
   function automatic logic byp_line(input logic [AW-1:0] age, input logic [2:0] cls, input int k);
     logic l;
     l = 1'b0;
     for (int c = 0; c < 8; c++)
       if (cls == 3'(c) && FAST[c * 8 +: 8] != 8'd0 && k < NPEN)
-        l = reached(age, FAST[c * 8 +: 8] + PEN[k * 8 +: 8]);
+        l = reached(age, FAST[c * 8 +: 8] + PEN[k * 8 +: 8] - 8'(LEAD));
     byp_line = l;
   endfunction
 
   // One entry's next state.
+  // hit: a completion arriving now (the L1 hit, for a spec timer); cmpl:
+  // one registered at the last edge (a restart, for a timer that waits).
   function automatic logic [EW-1:0] entry_next(input logic [EW-1:0] e, input logic grant,
                                                input logic [1:0] kind, input logic [2:0] cls,
-                                               input logic done_ok, input logic cmpl,
-                                               input logic stop);
+                                               input logic prod, input logic hit, input logic cmpl,
+                                               input logic stop, input logic hnt, input logic hm);
     logic [EW-1:0] n;
-    logic          iss, arm, spec, cmpld, late, miss, fire;
+    logic          iss, arm, spec, cmpld, late, miss, mchk, fire, pr, fll, fla, fhnt, flm;
     logic [1:0]    k;
     logic [2:0]    cl;
     logic [AW-1:0] age;
@@ -158,6 +252,11 @@ module ooe_wake #(
     late  = e[FLINE + 3];
     k     = e[FKIND +: 2];
     cl    = e[FCLS +: 3];
+    pr    = e[FPROD];
+    fll   = e[FLL];
+    fla   = e[FLA];
+    fhnt  = e[FHNT];
+    flm   = e[FLM];
     age   = e[FAGE +: AW];
     if (!(&age)) age = age + 1'b1;   // saturating
     // The grant, at the edge after its select.
@@ -165,32 +264,63 @@ module ooe_wake #(
       iss   = 1'b1;
       k     = kind;
       cl    = cls;
+      pr    = prod;
       cmpld = 1'b0;
       late  = 1'b0;
       spec  = kind == KSPEC;
       arm   = kind != KMEM && late_time(kind, cls, 1'b0) != 8'd0;
       age   = AW'(1);
+      fll   = 1'b0;
+      fla   = 1'b0;
+      fhnt  = 1'b0;
+      flm   = 1'b0;
     end
-    // This cycle's completions, then the timer, then the L1 contract.
-    if (iss && done_ok && !arm) late = 1'b1;
-    if (iss && cmpl) begin
-      if (spec) spec = 1'b0;            // the L1 hit: the speculative wake stands
-      else begin
-        arm   = 1'b1;
-        cmpld = 1'b1;
-        age   = '0;
-      end
+    // The L1 contract's check, on the age before a hint restarts it. It,
+    // and the hints, read the timer as it stood: a grant restarts it, and
+    // a hint names a timer issued long before (the grant's payload stays
+    // off these paths).
+    mchk = !grant && e[FISS] && e[FSPEC] && reached(age, 8'(LAT_MISS));
+    // The hints (OA-23): a spec timer's L1 completion is coming (as it
+    // arrives, like a hit, by its miss's lead); a waiting timer's
+    // completion is LEAD edges away, so its lead line times from the
+    // registered hint at age 1, as the restart below does from the
+    // registered completion LEAD edges later. A spec timer past its miss's
+    // lead (flm) waits already: its hint is the miss's completion.
+    if (!grant && e[FISS] && hnt && e[FSPEC] && !e[FLM]) fhnt = 1'b1;
+    if (!grant && e[FISS] && hm && (e[FSPEC] ? e[FLM] : !e[FARM]) && !e[FLA]) begin
+      fla = 1'b1;
+      flm = 1'b0;
+      age = AW'(1);
+    end
+    // This cycle's completions, then the timer, then the L1 contract. A
+    // restart is taken an edge after its completion, at age 1: the age it
+    // would have reached.
+    if (iss && hit && spec) spec = 1'b0;   // the L1 hit: the speculative wake stands
+    else if (iss && cmpl && !spec && !arm) begin
+      arm   = 1'b1;
+      cmpld = 1'b1;
+      age   = AW'(1);
     end
     fire = arm && reached(age, late_time(k, cl, cmpld));
     if (fire) late = 1'b1;
-    miss = iss && spec && reached(age, 8'(LAT_MISS));
+    // The lead line: the timer's latency less LEAD, or a hinted wait's
+    // CMPL_DLY from the hint; a spec timer with no hint by its miss check,
+    // less LEAD, will miss, so its lead line drops then.
+    if (iss && spec && !fhnt && !hnt && reached(age, 8'(LAT_MISS - LEAD))) flm = 1'b1;
+    if ((arm && !cmpld && reached(age, late_time(k, cl, 1'b0) - 8'(LEAD))) || (fla && reached(age, 8'(CMPL_DLY))))
+      fll = 1'b1;
+    if (flm) fll = 1'b0;
+    miss = mchk && spec;
     if (miss) begin
       late = 1'b0;
       spec = 1'b0;
       arm  = 1'b0;
     end
+    // A replayed entry granted again at this edge stays issued, as in
+    // ooe_rs's issued register (select's own replay rule and its ready
+    // register keep it from coming up: the model never does it).
+    if (stop && !grant) iss = 1'b0;
     n[FFIN]       = iss && late && !spec;
-    if (stop) iss = 1'b0;
     n[FISS]       = iss;
     n[FARM]       = arm;
     n[FSPEC]      = spec;
@@ -200,44 +330,264 @@ module ooe_wake #(
     n[FLINE + 3]  = iss && late;
     n[FKIND +: 2] = k;
     n[FCLS +: 3]  = cl;
+    n[FPROD]      = pr && iss;          // read only while issued: cleared with it
+    n[FLL]        = fll && iss;
+    n[FLA]        = fla;
+    n[FHNT]       = fhnt;
+    n[FLM]        = flm;
     n[FAGE +: AW] = age;
     entry_next = n;
   endfunction
 
+  // A held miss (msd): a spec timer that missed and waits for its
+  // completion, from the cycle after the miss pulse until the restart (the
+  // hop sees a miss from the cycle after it, and in its completion's cycle).
+  function automatic logic held_miss(input logic [EW-1:0] e);
+    held_miss = e[FISS] && e[FKIND +: 2] == KSPEC && !e[FSPEC] && !e[FARM] && !e[FMISS];
+  endfunction
 
-  logic [SW-1:0] st_cq02h;
-  logic [N-1:0]  iss_cq02h;
+  // The lead lines' changes at the edge after next, from the state alone,
+  // with nothing arriving at either edge: the bypass lines and the
+  // full-latency line as they lead, between the ages the timer reaches at
+  // the next edge and the one after. A foreseen miss drops the lead line
+  // (unless a hint comes first: the lead is a superset).
+  function automatic logic lead_at(input logic [EW-1:0] e, input logic [AW-1:0] a);
+    logic up;
+    up = e[FLL] || (e[FARM] && !e[FCMPL] && reached(a, late_time(e[FKIND +: 2], e[FCLS +: 3], 1'b0) - 8'(LEAD))) ||
+         (e[FLA] && reached(a, 8'(CMPL_DLY)));
+    lead_at = up && !(e[FSPEC] && !e[FHNT] && (e[FLM] || reached(a, 8'(LAT_MISS - LEAD))));
+  endfunction
+  // The model-frame full-latency line's change at the edge after next,
+  // from the state alone (the result's timing, for ooe_rs's confirmation
+  // lead): the timer's lead before OI-45's lead.
+  function automatic logic ml2(input logic [EW-1:0] e);
+    logic [AW-1:0] a1, a2;
+    logic [7:0]    lt;
+    logic          late1, late2;
+    a1    = (&e[FAGE +: AW]) ? e[FAGE +: AW] : e[FAGE +: AW] + 1'b1;
+    a2    = (&a1) ? a1 : a1 + 1'b1;
+    lt    = late_time(e[FKIND +: 2], e[FCLS +: 3], e[FCMPL]);
+    late1 = e[FLINE + 3] || (e[FARM] && reached(a1, lt));
+    late2 = late1 || (e[FARM] && reached(a2, lt));
+    ml2   = e[FISS] && !(e[FSPEC] && reached(a1, 8'(LAT_MISS))) && (late2 ^ late1);
+  endfunction
+  function automatic logic [3:0] tl2(input logic [EW-1:0] e);
+    logic [AW-1:0] a1, a2;
+    logic [3:0]    c;
+    a1   = (&e[FAGE +: AW]) ? e[FAGE +: AW] : e[FAGE +: AW] + 1'b1;
+    a2   = (&a1) ? a1 : a1 + 1'b1;
+    for (int l = 0; l < 3; l++) c[l] = byp_line(a2, e[FCLS +: 3], l) ^ byp_line(a1, e[FCLS +: 3], l);
+    c[3] = lead_at(e, a2) ^ lead_at(e, a1);
+    tl2  = e[FISS] ? c : 4'b0;
+  endfunction
+
+
+  (* keep *) logic [SW-1:0] st_cq02h;   // kept: its issued, miss and final bits have copies
+  logic [N-1:0] fn_cq02h;              // the state's final bits, for this module's own logic
   always_comb
     for (int j = 0; j < N; j++) begin
-      wake_cq02h[j * 4 +: 4] = st_cq02h[j * EW + FLINE +: 4];
-      miss_cq02h[j]          = st_cq02h[j * EW + FMISS];
-      fin_cq02h[j]           = st_cq02h[j * EW + FFIN];
-      iss_cq02h[j]           = st_cq02h[j * EW + FISS];
+      // The lines as they lead: the bypass lines and the lead full-latency
+      // line (the state's own full-latency line is the model's, for fin).
+      wake_cq02h[j * 4 +: 4] = {st_cq02h[j * EW + FLL], st_cq02h[j * EW + FLINE +: 3]};
+      fn_cq02h[j]            = st_cq02h[j * EW + FFIN];
     end
+  // The issued bits leave from a copy of their own (NGD-7: the state's
+  // issued bit starts paths deeper than the output's budget).
+  (* keep *) logic [N-1:0] iso_cq02h;
+  // So do the miss pulses and the final bits, which confirmation reads
+  // (mio_cq02h, fio_cq02h), and the held misses (msr_cq02h), each a
+  // register in its entry's group.
+  (* keep *) logic [N-1:0] mio_cq02h, fio_cq02h, msr_cq02h;
+  assign miss_cq02h = mio_cq02h;
+  assign fin_cq02h  = fio_cq02h;
+  assign msd_cq02h  = msr_cq02h;
+  logic [N-1:0] is_cq02h;              // the state's, for this module's own logic
+  always_comb
+    for (int j = 0; j < N; j++) is_cq02h[j] = st_cq02h[j * EW + FISS];
+  assign iss_cq02h = iso_cq02h;
 
   // Select never grants an issued entry: its issued flag masks its ready.
-  `CCV_ASSERT(grant_not_issued, (grant_cq01h & iss_cq02h) == '0)
+  `CCV_ASSERT(grant_not_issued, (grant_cq01h & is_cq02h) == '0)
+  // No class waits for a done: a timed grant has a latency.
+  logic undone_cq01h;
+  always_comb begin
+    undone_cq01h = 1'b0;
+    for (int j = 0; j < N; j++)
+      if (grant_cq01h[j] && kind_cq01h[j * 2 +: 2] == KTIMED && late_time(KTIMED, cls_cq01h[j * 3 +: 3], 1'b0) == 8'd0)
+        undone_cq01h = 1'b1;
+  end
+  `CCV_ASSERT(no_done_wait, !undone_cq01h)
 
-  // Local clock gating: an entry's timer is clocked on the edge that grants
-  // or stops it, and while it is issued until its age saturates; past that
-  // only a done or a completion changes it. A miss pulse, and a final flag
-  // left by a stop, take one more edge to clear. A free entry holds still.
-  logic [N-1:0] ent_en_cq02h;
+  // -- Completions -----------------------------------------------------------
+  // The channel's valid, flopped (cv); the payload decoded per timer as
+  // it arrives (hit), and registered so (cm_cq02h), cleared the edge after:
+  // a timer's registered completion is one flop, straight into its enable.
+  logic [NC-1:0]   cv_cq01h;
+  logic [N-1:0]    hit_cq01h, cm_cq02h;
+  logic [EW*N-1:0] nx_cq02h;
+  logic [N-1:0]    ent_en_cq02h;
+  logic            sq_en_cq01h;
+  logic            cm_en_cq02h;
+  assign cm_en_cq02h = cv_cq01h != '0 || cm_cq02h != '0;
+  always_comb begin
+    hit_cq01h = '0;
+    for (int k = 0; k < NC; k++)
+      for (int j = 0; j < N; j++)
+        if (cv_cq01h[k] && cmpl_idx_cq01h[k * W +: W] == W'(j)) hit_cq01h[j] = 1'b1;
+  end
+  // The completion hints (OA-23), as the completions: the valid flopped
+  // (hv), the payload decoded as it arrives (hnt) and registered (hm). A
+  // hint names a live timer: a stale one (its ROB entry squashed-pending)
+  // is dropped before it reaches this module.
+  logic [NC-1:0] hv_cq01h;
+  logic [N-1:0]  hnt_cq01h, hm_cq02h;
+  logic          hm_en_cq02h;
+  assign hm_en_cq02h = hv_cq01h != '0 || hm_cq02h != '0;
+  always_comb begin
+    hnt_cq01h = '0;
+    for (int k = 0; k < NC; k++)
+      for (int j = 0; j < N; j++)
+        if (hv_cq01h[k] && hint_idx_cq01h[k * W +: W] == W'(j)) hnt_cq01h[j] = 1'b1;
+  end
+
+  // -- Stops (OI-45) ---------------------------------------------------------
+  // The cancel and confirmation over this module's state, as ooe_rs runs
+  // them over its own: issued, the held misses, final and prod. The stops
+  // land at this edge, with the grants of the cycle that reads the same
+  // state, so this module's issued bits are ooe_rs's issued register.
+  logic [N-1:0] msh_cq02h, prd_cq02h, rep_cq02h, conf_cq02h, stop_cq02h;
+  always_comb
+    for (int j = 0; j < N; j++) begin
+      msh_cq02h[j] = held_miss(st_cq02h[j * EW +: EW]);
+      prd_cq02h[j] = st_cq02h[j * EW + FPROD];
+    end
+  ooe_confirm #(.N(N)) u_confirm (
+    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msh_cq02h), .fin_cq01h(fn_cq02h),
+    .prod_cq01h(prd_cq02h), .replay_cq01h(rep_cq02h), .conf_cq01h(conf_cq02h)
+  );
+  assign stop_cq02h = rep_cq02h | conf_cq02h | sqf_cq01h;
+  // The squash frees only what it clocks (sq_en, its lead), never an entry
+  // granted at the same edge (select blocks its slot), and confirms nothing
+  // granted at it (confirmation needs the entry issued).
+  `CCV_ASSERT(squash_led, sqf_cq01h == '0 || sq_en_cq01h)
+  `CCV_ASSERT(squash_not_granted, (sqf_cq01h & grant_cq01h) == '0)
+  `CCV_ASSERT(confirm_not_granted, (conf_cq02h & grant_cq01h) == '0)
+
+  // -- Leads -----------------------------------------------------------------
+  // Every stop lands on a clocked entry: no stop is lost. A miss pulse
+  // clears on its own: its timer is issued and below saturation.
+  `CCV_ASSERT(stop_clocked, (stop_cq02h & is_cq02h & ~ent_en_cq02h) == '0)
+  `CCV_ASSERT(miss_clocked, (miss_cq02h & ~ent_en_cq02h) == '0)
+  // A completion names an issued timer (the model's check too).
+  `CCV_ASSERT(cmpl_issued, (hit_cq01h & ~is_cq02h) == '0)
+  `CCV_ASSERT(hint_issued, (hnt_cq01h & ~is_cq02h) == '0)
+  // Every lead threshold is at age 1 at the earliest (OA's response OI-45):
+  // each latency at least LEAD + 1.
+  function automatic logic lead_ok();
+    logic ok;
+    ok = 32'(LAT_COPY) > LEAD && 32'(LAT_SPEC) > LEAD && 32'(LAT_MISS) > LEAD;
+    for (int c = 0; c < 8; c++) begin
+      if (LAT[c * 8 +: 8] != 8'd0 && 32'(LAT[c * 8 +: 8]) <= LEAD) ok = 1'b0;
+      if (FAST[c * 8 +: 8] != 8'd0)
+        for (int k = 0; k < NPEN; k++) if (32'(FAST[c * 8 +: 8]) + 32'(PEN[k * 8 +: 8]) <= LEAD) ok = 1'b0;
+    end
+    lead_ok = ok;
+  endfunction
+  localparam logic LEAD_OK = lead_ok();
+  `CCV_ASSERT(lead_latencies, LEAD_OK)
+
+  // The leads' next values. A grant's timer starts at age 1 (its state
+  // with nothing before it); a hinted wait at age 1 raises its lead line
+  // at the edge after next when CMPL_DLY is 2. The event lead is the
+  // hints' valids: a hint is what moves a line no timer foresees.
+  logic [4*N-1:0] wtl_nx_cq01h;
+  logic [N-1:0]   flt_nx_cq01h;
+  logic           wml_nx_cq01h;
+  always_comb begin
+    wml_nx_cq01h = hv_cq01h != '0;
+    for (int j = 0; j < N; j++) begin
+      logic [EW-1:0] g;
+      g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0,
+                     1'b0, 1'b0);
+      if (grant_cq01h[j])
+        flt_nx_cq01h[j] = ml2({AW'(0), g[FAGE-1:0]});
+      else
+        flt_nx_cq01h[j] = (ml2(st_cq02h[j * EW +: EW]) ||
+                     (cm_cq02h[j] && is_cq02h[j] && !st_cq02h[j * EW + FSPEC] && !st_cq02h[j * EW + FARM] &&
+                      CMPL_DLY == 2)) && !stop_cq02h[j];
+      if (grant_cq01h[j])
+        wtl_nx_cq01h[j * 4 +: 4] = tl2({AW'(0), g[FAGE-1:0]});
+      else
+        wtl_nx_cq01h[j * 4 +: 4] = (tl2(st_cq02h[j * EW +: EW]) |
+                              {hm_cq02h[j] && is_cq02h[j] && !st_cq02h[j * EW + FSPEC] && !st_cq02h[j * EW + FARM] &&
+                               !st_cq02h[j * EW + FLA] && CMPL_DLY == 2, 3'b0}) & {4{!stop_cq02h[j]}};
+    end
+  end
+
+  // The held misses' next values: a grant sets none, so they are formed
+  // from the next state without one (a grant's kind and class stay off
+  // their path).
+  logic [N-1:0] ms_nx_cq02h;
   always_comb
     for (int j = 0; j < N; j++)
-      ent_en_cq02h[j] = grant_cq01h[j] || stop_cq01h[j] || miss_cq02h[j] || (fin_cq02h[j] && !iss_cq02h[j]) ||
-                        (iss_cq02h[j] && (!(&st_cq02h[j * EW + FAGE +: AW]) || cmpl_cq01h[j] ||
-                                          (done_cq01h[j] && j < NR)));
+      ms_nx_cq02h[j] = !grant_cq01h[j] &&
+                 held_miss(entry_next(st_cq02h[j * EW +: EW], 1'b0, KTIMED, 3'd0, 1'b0, hit_cq01h[j], cm_cq02h[j],
+                                      stop_cq02h[j], hnt_cq01h[j], hm_cq02h[j]));
+
+  // Local clock gating (OA's responses OI-58, OI-62): see the header.
+  always_comb
+    for (int j = 0; j < N; j++) begin
+      nx_cq02h[j * EW +: EW] = entry_next(st_cq02h[j * EW +: EW], grant_cq01h[j], kind_cq01h[j * 2 +: 2],
+                                    cls_cq01h[j * 3 +: 3], prod_cq01h[j], hit_cq01h[j], cm_cq02h[j], stop_cq02h[j],
+                                    hnt_cq01h[j], hm_cq02h[j]);
+      ent_en_cq02h[j] = cm_cq02h[j] || hm_cq02h[j] || sq_en_cq01h ||
+                  (is_cq02h[j] && (fn_cq02h[j] || !st_cq02h[j * EW + FPROD] ||
+                                    !(&st_cq02h[j * EW + FAGE +: AW]))) ||
+                  grant_cq01h[j];
+    end
+
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      cv_cq01h    <= '0;
+      hv_cq01h    <= '0;
+      sq_en_cq01h <= 1'b0;
+      wml_cq02h   <= 1'b0;
+    end else begin
+      cv_cq01h    <= cmpl_l_cq00h;
+      hv_cq01h    <= hint_l_cq00h;
+      sq_en_cq01h <= sq_l_cq00h;
+      wml_cq02h   <= wml_nx_cq01h;
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)   cm_cq02h <= '0;
+    else if (cm_en_cq02h) cm_cq02h <= hit_cq01h;
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h)   hm_cq02h <= '0;
+    else if (hm_en_cq02h) hm_cq02h <= hnt_cq01h;
+  end
 
   for (genvar j = 0; j < N; j++) begin : g_ent
     always_ff @(posedge ooe_core_clk) begin
       // The reset state: nothing issued, no line raised, no miss. The whole
       // entry resets, its payload too, so the entry is one enable group.
-      if (ooe_rst_r00h) st_cq02h[j * EW +: EW] <= '0;
-      else if (ent_en_cq02h[j]) begin
-        st_cq02h[j * EW +: EW] <= entry_next(st_cq02h[j * EW +: EW], grant_cq01h[j], kind_cq01h[j * 2 +: 2],
-                                             cls_cq01h[j * 3 +: 3], done_cq01h[j] && j < NR, cmpl_cq01h[j],
-                                             stop_cq01h[j]);
+      if (rst_r01h) begin
+        st_cq02h[j * EW +: EW] <= '0;
+        wtl_cq02h[j * 4 +: 4]  <= '0;
+        flt_cq02h[j]           <= 1'b0;
+        iso_cq02h[j]           <= 1'b0;
+        mio_cq02h[j]           <= 1'b0;
+        fio_cq02h[j]           <= 1'b0;
+        msr_cq02h[j]           <= 1'b0;
+      end else if (ent_en_cq02h[j]) begin
+        st_cq02h[j * EW +: EW] <= nx_cq02h[j * EW +: EW];
+        wtl_cq02h[j * 4 +: 4]  <= wtl_nx_cq01h[j * 4 +: 4];
+        flt_cq02h[j]           <= flt_nx_cq01h[j];
+        iso_cq02h[j]           <= nx_cq02h[j * EW + FISS];
+        mio_cq02h[j]           <= nx_cq02h[j * EW + FMISS];
+        fio_cq02h[j]           <= nx_cq02h[j * EW + FFIN];
+        msr_cq02h[j]           <= ms_nx_cq02h[j];
       end
     end
   end

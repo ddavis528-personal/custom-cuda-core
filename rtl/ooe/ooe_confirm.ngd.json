@@ -1,0 +1,7 @@
+{
+  "module": "ooe_confirm",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-19",
+  "why": "OA's response OI-50: the cancel and confirmation rule, combinational, computed in ooe_wake and in ooe_rs from each one's own state, so the replay reaches only the parent's flops; timed as their logic."
+}

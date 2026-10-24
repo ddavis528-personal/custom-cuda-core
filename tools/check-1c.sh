@@ -90,8 +90,8 @@ if command -v verilator >/dev/null 2>&1; then
        "$R/sim/dpi/ccv_event_dpi.cpp" \
        >"$TMP/dpi.log" 2>&1 && [ -x "$TMP/eobj/Vevent_smoke" ]; then
     out=$(cd "$TMP" && ./eobj/Vevent_smoke 2>&1)
-    if echo "$out" | grep -q "CCV_EVENT_SMOKE: OK" && \
-       echo "$out" | grep -q "emitted 16 events"; then
+    if grep -q "CCV_EVENT_SMOKE: OK" <<<"$out" && \
+       grep -q "emitted 16 events" <<<"$out"; then
       say "DPI-C emit from SystemVerilog" "PASS"
       TRACE="$TMP/event_smoke.ccvtrace"
     else

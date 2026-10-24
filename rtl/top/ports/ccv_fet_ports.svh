@@ -128,7 +128,13 @@
   input  ccv_rau_fet_mig_t rau_fet_mig_payload,
   output logic rau_fet_mig_credit,
   output logic rau_fet_mig_stall,
-  input  logic rau_fet_mig_wake
+  input  logic rau_fet_mig_wake,
+  // syu -> fet
+  input  logic syu_fet_rel_valid,
+  input  ccv_syu_fet_rel_t syu_fet_rel_payload,
+  output logic syu_fet_rel_credit,
+  output logic syu_fet_rel_stall,
+  input  logic syu_fet_rel_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
@@ -151,4 +157,5 @@
   , output logic [63:0] fet_pca_mig_tid
   , input  logic [63:0] pca_fet_mig_tid
   , input  logic [63:0] rau_fet_mig_tid
+  , input  logic [63:0] syu_fet_rel_tid
 `endif

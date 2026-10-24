@@ -18,7 +18,8 @@ module ccv_dcu_w #(
   parameter int RPT_DCU_MLC_REQ = 0,
   parameter int RPT_MLC_DCU_RSP = 0,
   parameter int RPT_MLC_DCU_PROBE = 0,
-  parameter int RPT_DCU_MLC_PROBE_ACK = 0
+  parameter int RPT_DCU_MLC_PROBE_ACK = 0,
+  parameter int RPT_DCU_MIU_FILL_NTC = 0
 ) (
   `include "ccv_dcu_ports.svh"
 );
@@ -78,6 +79,23 @@ module ccv_dcu_w #(
   logic b_dcu_mlc_probe_ack_credit;
   logic b_dcu_mlc_probe_ack_stall;
   logic b_dcu_mlc_probe_ack_wake;
+  logic b_dcu_miu_fill_ntc_s0_valid;
+  ccv_dcu_miu_fill_ntc_t b_dcu_miu_fill_ntc_s0_payload;
+  logic b_dcu_miu_fill_ntc_s0_credit;
+  logic b_dcu_miu_fill_ntc_s0_stall;
+  logic b_dcu_miu_fill_ntc_s1_valid;
+  ccv_dcu_miu_fill_ntc_t b_dcu_miu_fill_ntc_s1_payload;
+  logic b_dcu_miu_fill_ntc_s1_credit;
+  logic b_dcu_miu_fill_ntc_s1_stall;
+  logic b_dcu_miu_fill_ntc_s2_valid;
+  ccv_dcu_miu_fill_ntc_t b_dcu_miu_fill_ntc_s2_payload;
+  logic b_dcu_miu_fill_ntc_s2_credit;
+  logic b_dcu_miu_fill_ntc_s2_stall;
+  logic b_dcu_miu_fill_ntc_s3_valid;
+  ccv_dcu_miu_fill_ntc_t b_dcu_miu_fill_ntc_s3_payload;
+  logic b_dcu_miu_fill_ntc_s3_credit;
+  logic b_dcu_miu_fill_ntc_s3_stall;
+  logic b_dcu_miu_fill_ntc_wake;
 `ifdef CCV_TRACE
   logic [63:0] b_miu_dcu_req_s0_tid;
   logic [63:0] b_miu_dcu_req_s1_tid;
@@ -91,6 +109,10 @@ module ccv_dcu_w #(
   logic [63:0] b_mlc_dcu_rsp_tid;
   logic [63:0] b_mlc_dcu_probe_tid;
   logic [63:0] b_dcu_mlc_probe_ack_tid;
+  logic [63:0] b_dcu_miu_fill_ntc_s0_tid;
+  logic [63:0] b_dcu_miu_fill_ntc_s1_tid;
+  logic [63:0] b_dcu_miu_fill_ntc_s2_tid;
+  logic [63:0] b_dcu_miu_fill_ntc_s3_tid;
 `endif
 
   ccv_dcu u_blk (
@@ -152,7 +174,24 @@ module ccv_dcu_w #(
     .dcu_mlc_probe_ack_payload(b_dcu_mlc_probe_ack_payload),
     .dcu_mlc_probe_ack_credit(b_dcu_mlc_probe_ack_credit),
     .dcu_mlc_probe_ack_stall(b_dcu_mlc_probe_ack_stall),
-    .dcu_mlc_probe_ack_wake(b_dcu_mlc_probe_ack_wake)
+    .dcu_mlc_probe_ack_wake(b_dcu_mlc_probe_ack_wake),
+    .dcu_miu_fill_ntc_s0_valid(b_dcu_miu_fill_ntc_s0_valid),
+    .dcu_miu_fill_ntc_s0_payload(b_dcu_miu_fill_ntc_s0_payload),
+    .dcu_miu_fill_ntc_s0_credit(b_dcu_miu_fill_ntc_s0_credit),
+    .dcu_miu_fill_ntc_s0_stall(b_dcu_miu_fill_ntc_s0_stall),
+    .dcu_miu_fill_ntc_s1_valid(b_dcu_miu_fill_ntc_s1_valid),
+    .dcu_miu_fill_ntc_s1_payload(b_dcu_miu_fill_ntc_s1_payload),
+    .dcu_miu_fill_ntc_s1_credit(b_dcu_miu_fill_ntc_s1_credit),
+    .dcu_miu_fill_ntc_s1_stall(b_dcu_miu_fill_ntc_s1_stall),
+    .dcu_miu_fill_ntc_s2_valid(b_dcu_miu_fill_ntc_s2_valid),
+    .dcu_miu_fill_ntc_s2_payload(b_dcu_miu_fill_ntc_s2_payload),
+    .dcu_miu_fill_ntc_s2_credit(b_dcu_miu_fill_ntc_s2_credit),
+    .dcu_miu_fill_ntc_s2_stall(b_dcu_miu_fill_ntc_s2_stall),
+    .dcu_miu_fill_ntc_s3_valid(b_dcu_miu_fill_ntc_s3_valid),
+    .dcu_miu_fill_ntc_s3_payload(b_dcu_miu_fill_ntc_s3_payload),
+    .dcu_miu_fill_ntc_s3_credit(b_dcu_miu_fill_ntc_s3_credit),
+    .dcu_miu_fill_ntc_s3_stall(b_dcu_miu_fill_ntc_s3_stall),
+    .dcu_miu_fill_ntc_wake(b_dcu_miu_fill_ntc_wake)
 `ifdef CCV_CHECK
     , .clk_gated(clk_gated)
 `endif
@@ -169,6 +208,10 @@ module ccv_dcu_w #(
     , .mlc_dcu_rsp_tid(b_mlc_dcu_rsp_tid)
     , .mlc_dcu_probe_tid(b_mlc_dcu_probe_tid)
     , .dcu_mlc_probe_ack_tid(b_dcu_mlc_probe_ack_tid)
+    , .dcu_miu_fill_ntc_s0_tid(b_dcu_miu_fill_ntc_s0_tid)
+    , .dcu_miu_fill_ntc_s1_tid(b_dcu_miu_fill_ntc_s1_tid)
+    , .dcu_miu_fill_ntc_s2_tid(b_dcu_miu_fill_ntc_s2_tid)
+    , .dcu_miu_fill_ntc_s3_tid(b_dcu_miu_fill_ntc_s3_tid)
 `endif
   );
 
@@ -302,6 +345,28 @@ module ccv_dcu_w #(
     assign {b_dcu_mlc_probe_ack_stall} = {dcu_mlc_probe_ack_stall};
 `ifdef CCV_TRACE
     assign {dcu_mlc_probe_ack_tid} = {b_dcu_mlc_probe_ack_tid};
+`endif
+  end
+  // ccv_dcu_miu_fill_ntc, source end
+  if (RPT_DCU_MIU_FILL_NTC > 0) begin : g_rpt_dcu_miu_fill_ntc
+    ccv_common_rpt #(.STAGES(RPT_DCU_MIU_FILL_NTC), .SLOTS(4), .PAYLOAD_W(4)) u_rpt_dcu_miu_fill_ntc (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_dcu_miu_fill_ntc_s3_valid, b_dcu_miu_fill_ntc_s2_valid, b_dcu_miu_fill_ntc_s1_valid, b_dcu_miu_fill_ntc_s0_valid}), .src_payload({b_dcu_miu_fill_ntc_s3_payload, b_dcu_miu_fill_ntc_s2_payload, b_dcu_miu_fill_ntc_s1_payload, b_dcu_miu_fill_ntc_s0_payload}),
+      .src_wake(b_dcu_miu_fill_ntc_wake), .src_credit({b_dcu_miu_fill_ntc_s3_credit, b_dcu_miu_fill_ntc_s2_credit, b_dcu_miu_fill_ntc_s1_credit, b_dcu_miu_fill_ntc_s0_credit}), .src_stall({b_dcu_miu_fill_ntc_s3_stall, b_dcu_miu_fill_ntc_s2_stall, b_dcu_miu_fill_ntc_s1_stall, b_dcu_miu_fill_ntc_s0_stall}),
+      .dst_valid({dcu_miu_fill_ntc_s3_valid, dcu_miu_fill_ntc_s2_valid, dcu_miu_fill_ntc_s1_valid, dcu_miu_fill_ntc_s0_valid}), .dst_payload({dcu_miu_fill_ntc_s3_payload, dcu_miu_fill_ntc_s2_payload, dcu_miu_fill_ntc_s1_payload, dcu_miu_fill_ntc_s0_payload}),
+      .dst_wake(dcu_miu_fill_ntc_wake), .dst_credit({dcu_miu_fill_ntc_s3_credit, dcu_miu_fill_ntc_s2_credit, dcu_miu_fill_ntc_s1_credit, dcu_miu_fill_ntc_s0_credit}), .dst_stall({dcu_miu_fill_ntc_s3_stall, dcu_miu_fill_ntc_s2_stall, dcu_miu_fill_ntc_s1_stall, dcu_miu_fill_ntc_s0_stall})
+`ifdef CCV_TRACE
+      , .src_tid({b_dcu_miu_fill_ntc_s3_tid, b_dcu_miu_fill_ntc_s2_tid, b_dcu_miu_fill_ntc_s1_tid, b_dcu_miu_fill_ntc_s0_tid}), .dst_tid({dcu_miu_fill_ntc_s3_tid, dcu_miu_fill_ntc_s2_tid, dcu_miu_fill_ntc_s1_tid, dcu_miu_fill_ntc_s0_tid})
+`endif
+    );
+  end else begin : g_wire_dcu_miu_fill_ntc
+    assign {dcu_miu_fill_ntc_s3_valid, dcu_miu_fill_ntc_s2_valid, dcu_miu_fill_ntc_s1_valid, dcu_miu_fill_ntc_s0_valid} = {b_dcu_miu_fill_ntc_s3_valid, b_dcu_miu_fill_ntc_s2_valid, b_dcu_miu_fill_ntc_s1_valid, b_dcu_miu_fill_ntc_s0_valid};
+    assign {dcu_miu_fill_ntc_s3_payload, dcu_miu_fill_ntc_s2_payload, dcu_miu_fill_ntc_s1_payload, dcu_miu_fill_ntc_s0_payload} = {b_dcu_miu_fill_ntc_s3_payload, b_dcu_miu_fill_ntc_s2_payload, b_dcu_miu_fill_ntc_s1_payload, b_dcu_miu_fill_ntc_s0_payload};
+    assign dcu_miu_fill_ntc_wake = b_dcu_miu_fill_ntc_wake;
+    assign {b_dcu_miu_fill_ntc_s3_credit, b_dcu_miu_fill_ntc_s2_credit, b_dcu_miu_fill_ntc_s1_credit, b_dcu_miu_fill_ntc_s0_credit} = {dcu_miu_fill_ntc_s3_credit, dcu_miu_fill_ntc_s2_credit, dcu_miu_fill_ntc_s1_credit, dcu_miu_fill_ntc_s0_credit};
+    assign {b_dcu_miu_fill_ntc_s3_stall, b_dcu_miu_fill_ntc_s2_stall, b_dcu_miu_fill_ntc_s1_stall, b_dcu_miu_fill_ntc_s0_stall} = {dcu_miu_fill_ntc_s3_stall, dcu_miu_fill_ntc_s2_stall, dcu_miu_fill_ntc_s1_stall, dcu_miu_fill_ntc_s0_stall};
+`ifdef CCV_TRACE
+    assign {dcu_miu_fill_ntc_s3_tid, dcu_miu_fill_ntc_s2_tid, dcu_miu_fill_ntc_s1_tid, dcu_miu_fill_ntc_s0_tid} = {b_dcu_miu_fill_ntc_s3_tid, b_dcu_miu_fill_ntc_s2_tid, b_dcu_miu_fill_ntc_s1_tid, b_dcu_miu_fill_ntc_s0_tid};
 `endif
   end
 endmodule

@@ -384,7 +384,8 @@ the schema says how the top connects it):
     a warp parked at `bar.sync`, since it can be demoted.
 - **Both kill sources land at RAU, the single issuer.** A fault comes direct
   from OOE: `fault_taken` with the `warp_id` on `ccv_ooe_rau_status`, and RAU
-  maps warp to grid to mask. CRU records the fault in parallel for the host
+  kills every warp of the context, not just the faulting grid (DA's response
+  IS-2, 2026-10-20). CRU records the fault in parallel for the host
   and is not on the path that stops execution. The host's kill comes as
   `kill_req` plus `kill_grid` on `ccv_cru_rau_cfg`.
 - **Wake is not a fabric.** It is `_wake`, a fifth channel signal from sender
@@ -560,7 +561,7 @@ used for:
 | Decode: which registers an instruction reads and writes | Operands: out of RCU's register file, to the lanes |
 | ALU **results**: a lane returns ccv-sim's value | Load data: memory → EXB → MLC → DCU → MIU → RCU |
 | Immediates (the record's `imms`), at decode | Displacement and scale enable: DEC → OOE → MIU's AGU; ALU immediate: DEC → OOE → RCU, substituted into an operand |
-| | Store data: RCU's register file → MIU → DCU (RMW) → MLC → EXB → memory |
+| | Store data: RCU's register file → MIU → DCU (merged into an owned line; DCU spec rev 8) → MLC on writeback → EXB → memory |
 
 The trace identity (uid seq = record seq) is how a checker finds the record.
 It's trace-only, so no stub uses it to decide what to do. (The one exception,
@@ -584,7 +585,7 @@ ID, rendered in `docs/payload-spec.md`.
    (1024) and `byte_mask` (128), mirroring `ccv_miu_spm_req` (56 → 1208 bits
    at rate 4). A separate store-data channel would duplicate flow control for
    nothing, and byte granularity is enough because a 4-bit access faults.
-2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 16,
+2. **Immediates: decided (Q-22).** The AGU is MIU's: `disp` (`CCV_W_DISP`, 29,
    the widest memory-format offset) and `scale_en` ride on `ooe_miu_memop`,
    and the shift is derived from `chwidth`. ALU immediates ride on
    `ooe_rcu_issue`, and RCU substitutes them into an operand slot at register
@@ -1189,8 +1190,8 @@ matters for the skeleton:
   `CCV_DONE_SLOTS` = 7 slots: dones stack by latency class, so four narrow
   lane ops, an SFU op, an RCU-only op and a warp-collective issued in
   different cycles can land together (OA's response TI-9). The RAT map
-  carries `gpr_pos` and `gpr_width`, and rows move whole, each distinct row
-  once in order of first appearance from R0. The RCU stub checks V-60 every cycle --
+  carries `gpr_pos` and `gpr_width`, and rows move whole, one per
+  architectural register, Ra as row a, with no merging (TI-25 (1)). The RCU stub checks V-60 every cycle --
   each lead in its footprint's lowest slot, continuation on the rest with
   its tag, no slot in two footprints -- and each class on its own group,
   and refuses a register past its row; MIU refuses a `pipes` that is not
@@ -1248,7 +1249,7 @@ decisions.
 | `rcu_lane_ops` per-section fields | S0 at the LSBs; `sec_opnd_pos`, `sec_opnd_width` and `operand_byp` section-major, entry 4*k* + *i* is section *k*'s port *i* (src0-src2, then merge). The S1 stubs send one full-width op a message: `section_en` 1111, `sec_owner` 0 for every section |
 | `lane_rcu_res.result`, `sec_valid`, `sec_pred_out` | the GPR value; the sections the op held; its predicate result on its lead section |
 | `rcu_lane_ops.sec_pred_data` | a predicate read as data (sel's selector), negate applied, with the operands; `sec_pred_bit` is the enable. `sec_pred_bit` and `section_en` are the lead fields: on the wire with valid, a cycle ahead of `operand` |
-| `rcu_miu_addr.base`, `index_per_lane` | raw register values; the base checked uniform across active lanes. MIU's AGU applies the window shift (§5.1), the scale and the displacement |
+| `rcu_miu_addr.base_per_lane`, `index_per_lane` | raw register values, per lane (TI-32: an O-30 frame pointer differs on every lane). MIU's AGU applies the window shift (§5.1), the scale and the displacement. A launch-slot memop (`ooe_miu_memop.slot_form`, `arg_slot`; TI-31) has no base register: MIU takes the window from its table of the CTA's launch-block slots |
 | per-lane wide fields | lane *L* at `[32L+31:32L]`; line byte *k* at `[8k+7:8k]` |
 | `coh_op` | 0 read, 1 write |
 | `ooe_miu_memop.mem_op`, `space` | 0 load, 1 store; 0 global, 1 shared |

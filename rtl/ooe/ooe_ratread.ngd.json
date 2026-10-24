@@ -1,0 +1,7 @@
+{
+  "module": "ooe_ratread",
+  "inner": true,
+  "by": "OI",
+  "date": "2026-10-20",
+  "why": "Rename 1's RAT read with the in-group override, combinational. OA's response OI-46 (reopened) moves it from ooe_rat into ooe_rename, whose Rename 1 register captures what it returns; its logic is timed there."
+}

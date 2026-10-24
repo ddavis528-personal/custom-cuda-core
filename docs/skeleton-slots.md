@@ -12,16 +12,16 @@ multi-instance endpoint (LANE has 32).
 
 | Channel types | Rate | Instances each | Slots |
 |---|---|---|---|
-| 33 | 1 | 1 | 33 |
+| 37 | 1 | 1 | 37 |
 | 2 | 1 | 32 | 64 |
-| 9 | 4 | 1 | 36 |
+| 11 | 4 | 1 | 44 |
 | 1 | 6 | 1 | 6 |
 | 1 | 7 | 1 | 7 |
 | 1 | 8 | 1 | 8 |
 | 1 | 9 | 1 | 9 |
-| **48** | | | **163** |
+| **54** | | | **175** |
 
-48 channel types; **110 channel instances** (46 types at one instance, plus 2 at 32 each); **163 slots**, one `ccv_common_chk_credit` each.
+54 channel types; **116 channel instances** (52 types at one instance, plus 2 at 32 each); **175 slots**, one `ccv_common_chk_credit` each.
 
 The terms that matter most are the ones multiplied by 32: a rate wrong by one on either lane channel moves the total by 32 and every run stays clean.
 
@@ -39,7 +39,7 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 5 | `ccv_rcu_ooe_done` | 7 × 1 | 7 | *partial* | *free* | *none* | — | **true** — completion at the contracted cycle is what OOE retires against; no late or cancel bit exists (A-47) | instr |
 | 6 | `ccv_rcu_miu_addr` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |
 | 7 | `ccv_miu_rcu_data` | 4 × 1 | 4 | *partial* | *free* | *none* | — | **true** — L1-hit data must be in the PRF at the contracted cycle, since dependants woken at hit latency read it (A-47) | instr |
-| 8 | `ccv_ooe_miu_memop` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |
+| 8 | `ccv_ooe_miu_memop` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr, none |
 | 9 | `ccv_miu_ooe_cmpl` | 4 × 1 | 4 | *partial* | *free* | **none** — genuinely out of order across four pipes | — | **true** — an L1 hit completes at exactly the contracted cycle and no completion then is the miss indication (A-46), which only means something if OOE never delays taking a completion (A-47) | instr |
 | 10 | `ccv_ooe_miu_retire` | 4 × 1 | 4 | *partial* | *free* | *none* | — | *false* | instr |
 | 11 | `ccv_ooe_fet_redirect` | 1 × 1 | 1 | — | — | — | — | **true** — A-58: latency-matched with ccv_ooe_fet_ckpt_free; if FET could stall a redirect, a free sent after it could be applied before it and release a checkpoint the redirect is restoring. | instr |
@@ -68,14 +68,20 @@ Slot attributes apply to rate > 1 only; lockstep to channels replicated across a
 | 34 | `ccv_ooe_rcu_map` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 35 | `ccv_rcu_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 36 | `ccv_pca_rcu_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 37 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 38 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 37 | `ccv_fet_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
+| 38 | `ccv_pca_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
 | 39 | `ccv_rau_fet_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
 | 40 | `ccv_pca_rau_mig_done` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 41 | `ccv_rau_miu_cta` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 42 | `ccv_ooe_syu_bar` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
-| 43 | `ccv_syu_ooe_rel` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 44 | `ccv_rau_syu_alloc` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 45 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
-| 46 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | *false* | none |
-| 47 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
+| 41 | `ccv_rau_pca_mig` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 42 | `ccv_miu_rau_ready` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 43 | `ccv_rau_miu_cta` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 44 | `ccv_ooe_syu_bar` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
+| 45 | `ccv_syu_ooe_rel` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 46 | `ccv_syu_fet_rel` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 47 | `ccv_syu_rau_ready` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 48 | `ccv_rau_syu_alloc` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 49 | `ccv_ooe_cru_fault` | 1 × 1 | 1 | — | — | — | — | *false* | instr |
+| 50 | `ccv_cru_rau_cfg` | 1 × 1 | 1 | — | — | — | — | *false* | none |
+| 51 | `ccv_ext_exb_in` | 1 × 1 | 1 | — | — | — | — | *false* | txn, none |
+| 52 | `ccv_dcu_miu_fill_ntc` | 4 × 1 | 4 | *partial* | *free* | **none** — each notice names its refill by req_id, and its slot is its refill's | — | **true** — the promise counts cycles from the notice's landing, which means something only if MIU takes every notice the cycle it lands | txn |
+| 53 | `ccv_miu_ooe_cmpl_hint` | 4 × 1 | 4 | *partial* | *free* | **none** — each hint names its completion by rob_tag, and its slot is its completion's | — | **true** — the promise counts cycles from the hint's landing, which means something only if OOE takes every hint the cycle it lands | instr |

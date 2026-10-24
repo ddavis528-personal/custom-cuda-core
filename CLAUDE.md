@@ -12,6 +12,9 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 - `schema/interfaces.json`: every channel, field, width and contract.
 - `params/ccv_params.json`: every size and latency. Derived values carry
   `derive`/`require`, and `tools/gen-params.py` refuses drift.
+  A parameter whose status is `isa` cites the ISA (`isa`: a verbatim quote
+  and its value over the quote), and `tools/check-isa-params.py` holds it to
+  the ISA document in the pinned compiler snapshot (IS-11).
 - `params/links.json`: repeater stages per channel.
 - Generated, never hand-edited: `sim/generated/`, `rtl/generated/`,
   `rtl/top/`, `docs/payload-spec.md`, `docs/trust-report.md` and
@@ -26,8 +29,26 @@ The RTL and verification flow for the CCV GPU core. The process contract is
 
 ```
 ./tools/setup-toolchain.sh   # a fresh container needs this once
-./tools/verify.sh            # ~25 min; must be green before a push
+./tools/regen.sh             # every generated file, walkthrough included (~2 min)
+./tools/verify.sh            # must be green before a push
 ```
+
+Run `tools/regen.sh` and commit what it changes before every gate (DA,
+2026-10-23). `docs/walkthrough.md` is built from the gate's own runs, so the
+gate can compare it whole only at its end; a stale one used to cost a whole
+gate. Its inputs that move it most (the compiler pin, schema, params, the lint
+rule count, the gate's sections) are fingerprinted into its last line, and the
+gate checks that fingerprint in its first minute.
+
+After the generators, the sections run as parallel jobs, `CCV_JOBS` at a
+time (default every core; `CCV_JOBS=1` is serial), each section's log in
+`build/verify/<job>.log` with its time. A job that reads another's build
+products names it in `after` in `tools/verify.sh`; no two jobs that may run
+together share a build directory. check-cg and check-ngd measure their units
+`CCV_JOBS` at a time too, and share one Yosys netlist per unit through
+`build/synth-cache`. The gate clears it first; `tools/verify.sh --cached`
+keeps it for an intermediate run, whose result reads `CACHED PASS`. The gate
+before a push is the clean one (Daniel, 2026-10-21).
 
 Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
 register behind an `if` on an enable named `<name>_en`; a clock gate is 8
@@ -67,6 +88,11 @@ convergence to 25, then timed whole, its outputs straight from flops.
 `tools/check-ngd.py` measures every module at its units' parameters; what
 broke the rules when they were made sits on `rtl/ngd-ratchet.json`, which
 only shrinks.
+
+Stage tags (DA, 2026-10-23; CCV-L29 in `docs/rtl-coding-style.md`): every
+net of a block's sequential module carries one, since CCV-L21 and CCV-L23
+skip a net without. The untagged nets that stood then sit on
+`rtl/stage-ratchet.json`, which only shrinks.
 
 Every Yosys the gate runs, SymbiYosys's included, is `tools/shim/yosys`:
 the warnings that mean a netlist is not the RTL are errors (OI-44). Run a

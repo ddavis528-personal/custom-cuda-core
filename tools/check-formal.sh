@@ -50,7 +50,7 @@ LOOP=$(sed -n 's/.*localparam int CCV_CREDIT_DEPTH = \([0-9]*\);/\1/p' rtl/gener
 # prove NAME N DEPTH "DEFINES" TARGET [RPT_FILE]
 #   TARGET "all" keeps every assertion, "-PAT" every one but those ending in
 #   PAT, "PAT" only those. Prints "proved", "cex <frame>", or "error".
-prove() {
+prove_now() {
   local name=$1 n=$2 depth=$3 defs=$4 target=$5 rpt=${6:-$R/rtl/phys/ccv_common_rpt.sv}
   local d="$B/$name"
   mkdir -p "$d"
@@ -96,6 +96,82 @@ YS
   else echo error; fi
 }
 
+prove_cg_now() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
+  local name=$1 defs=$2 target=$3 hq=$4 hs=$5 hold=$6
+  local gate=${7:-$R/rtl/clk/ccv_common_clk.sv} icg=${8:-$R/rtl/ctech/sim/ccv_common_ctech_icg.sv}
+  local d="$B/$name"
+  mkdir -p "$d"
+  local keep=""
+  case "$target" in
+    all) ;;
+    -*)  keep="chformal -assert -remove t:\$assert c:*${target#-} %i" ;;
+    *)   keep="chformal -assert -remove t:\$assert c:*$target %d" ;;
+  esac
+  local dflags=""
+  for x in $defs; do dflags="$dflags -D$x"; done
+  local rv="read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated"
+  cat >"$d/m.ys" <<YS
+$rv $R/rtl/ccv_assert_pkg.sv
+$rv $R/rtl/if/ccv_common_chk_wake.sv
+$rv $icg
+$rv $gate
+$rv $R/test/formal/fv_clk_gate.sv
+chparam -set HQ $hq -set HS $hs -set HOLD $hold fv_clk_gate
+prep -top fv_clk_gate
+flatten
+$keep
+chformal -cover -remove
+clk2fflogic
+setundef -undriven -anyseq
+setattr -unset keep
+opt -full
+techmap
+opt -fast
+memory_map -formal
+formalff -clk2ff -ff2anyinit
+simplemap
+dffunmap
+aigmap
+opt_clean
+select -assert-min 1 t:\$_AND_ t:\$_NOT_
+write_aiger -I -B -zinit -no-startoffset $d/m.aig
+YS
+  if ! yosys -q "$d/m.ys" >"$d/yosys.log" 2>&1; then echo error; return; fi
+  timeout 900 yosys-abc -c "read_aiger $d/m.aig; fold; strash; pdr" >"$d/abc.log" 2>&1
+  if grep -q "Property proved" "$d/abc.log"; then echo proved
+  elif f=$(grep -oE "asserted in frame [0-9]+" "$d/abc.log"); then echo "cex ${f##* }"
+  else echo error; fi
+}
+
+# Every proof is independent, in its own directory, so they run CCV_JOBS at a
+# time (default every core). The body below runs twice: first each prove /
+# prove_cg only queues its proof, then the queue runs, the slowest known
+# first; then each reads its verdict back, and the body reports in order.
+PHASE=queue
+Q="$B/queue"
+prove()    { if [ $PHASE = queue ]; then printf '%q ' prove_now "$@" >>"$Q"; echo >>"$Q"; echo queued
+             else cat "$B/$1/verdict"; fi; }
+prove_cg() { if [ $PHASE = queue ]; then printf '%q ' prove_cg_now "$@" >>"$Q"; echo >>"$Q"; echo queued
+             else cat "$B/$1/verdict"; fi; }
+# The slowest proofs (about 3, 2.5, 2, 2, 1.5 and 1 min), started first so
+# none of them starts last.
+SLOW="cg_episode safety_n2 response_n1 cgm_hyst_wrap response_n0 safety_n1"
+run_queue() {
+  local jobs=${CCV_JOBS:-$(nproc 2>/dev/null || echo 1)} line name n=0
+  case "$jobs" in ''|*[!0-9]*|0) jobs=1 ;; esac
+  { for name in $SLOW; do grep -E "^prove(_cg)?_now $name " "$Q"; done
+    grep -vE "^prove(_cg)?_now ($(echo $SLOW | tr ' ' '|')) " "$Q"; } >"$Q.sorted"
+  while IFS= read -r line; do
+    eval "set -- $line"; name=$2
+    mkdir -p "$B/$name"
+    ( "$@" >"$B/$name/verdict" ) &
+    n=$((n + 1))
+    if [ $n -ge "$jobs" ]; then wait -n; n=$((n - 1)); fi
+  done <"$Q.sorted"
+  wait
+}
+
+body() {
 # -- safety: every property, any traffic, no assumption --------------------------
 # All but response_within_n, which is a promise about the RECEIVER: it holds
 # only for one that drains, and is proved next under that assumption. Proved
@@ -182,52 +258,6 @@ done
 #     what that value gives
 #   non-vacuity: the gate closes; a valid is
 #     captured right after a sleep
-prove_cg() {  # NAME "DEFINES" TARGET HQ HS HOLD [GATE_FILE] [ICG_FILE]
-  local name=$1 defs=$2 target=$3 hq=$4 hs=$5 hold=$6
-  local gate=${7:-$R/rtl/clk/ccv_common_clk.sv} icg=${8:-$R/rtl/ctech/sim/ccv_common_ctech_icg.sv}
-  local d="$B/$name"
-  mkdir -p "$d"
-  local keep=""
-  case "$target" in
-    all) ;;
-    -*)  keep="chformal -assert -remove t:\$assert c:*${target#-} %i" ;;
-    *)   keep="chformal -assert -remove t:\$assert c:*$target %d" ;;
-  esac
-  local dflags=""
-  for x in $defs; do dflags="$dflags -D$x"; done
-  local rv="read_verilog -sv -formal $dflags -I$R/rtl/include -I$R/rtl/generated"
-  cat >"$d/m.ys" <<YS
-$rv $R/rtl/ccv_assert_pkg.sv
-$rv $R/rtl/if/ccv_common_chk_wake.sv
-$rv $icg
-$rv $gate
-$rv $R/test/formal/fv_clk_gate.sv
-chparam -set HQ $hq -set HS $hs -set HOLD $hold fv_clk_gate
-prep -top fv_clk_gate
-flatten
-$keep
-chformal -cover -remove
-clk2fflogic
-setundef -undriven -anyseq
-setattr -unset keep
-opt -full
-techmap
-opt -fast
-memory_map -formal
-formalff -clk2ff -ff2anyinit
-simplemap
-dffunmap
-aigmap
-opt_clean
-select -assert-min 1 t:\$_AND_ t:\$_NOT_
-write_aiger -I -B -zinit -no-startoffset $d/m.aig
-YS
-  if ! yosys -q "$d/m.ys" >"$d/yosys.log" 2>&1; then echo error; return; fi
-  timeout 900 yosys-abc -c "read_aiger $d/m.aig; fold; strash; pdr" >"$d/abc.log" 2>&1
-  if grep -q "Property proved" "$d/abc.log"; then echo proved
-  elif f=$(grep -oE "asserted in frame [0-9]+" "$d/abc.log"); then echo "cex ${f##* }"
-  else echo error; fi
-}
 
 pkgval() { sed -n "s/.*localparam int $1 = \([0-9]*\);/\1/p" rtl/generated/ccv_params_pkg.sv; }
 LAT=$(pkgval CCV_WAKE_LAT)
@@ -297,5 +327,12 @@ for spec in "reach_gated:FV_REACH" "reach_woken:FV_REACH FV_Q33"; do
   [ "${r%% *}" = cex ] && say "  ...witness: $tgt" "PASS (${r#cex } frames)" ||
     bad "clock-gate non-vacuity $tgt" "$r: unreachable"
 done
+}
+
+body >/dev/null
+run_queue
+PHASE=report
+fail=0
+body
 
 exit $fail

@@ -2,17 +2,30 @@
 //
 // Runs the model's random unit tests (sim/ooe/ooe_test.cpp, every mode) and,
 // just before every core cycle, does two things with one pool of the
-// model's (FreeVec, buffered form, OA's response OI-38):
-//   1. compares the RTL's state, which has seen one more edge than the
-//      model has allocated against, with the model's state just after that
-//      edge (FreeVec::lastEdge): free bits, the buffer in order, each bank's
-//      pointer and the bank order;
-//   2. drives one edge's activity (FreeVec::cycleAllocs, cycleFrees: the
-//      last cycle's, plus those its inputs made since): as many allocation
-//      requests as the model made, which the RTL must grant with exactly
-//      the model's entries in order, and the frees as a mask. Then it ticks.
-// The RTL's own assertions (every request granted, no double free) run too,
-// under --assert.
+// model's (FreeVec, buffered form, OA's response OI-38). The RTL runs one
+// edge behind the model, so that a free's lead (free_l, OA's response
+// OI-58) is driven a cycle before the free:
+//   1. compares the RTL's state with the model's state just after the
+//      edge before last (FreeVec::lastEdge, kept a hook): free bits (the
+//      entries in transit still set in the RTL's, which clears them at the
+//      late edge), the buffer in order, the entries in transit at its head
+//      (last cycle's allocations, which leave it at the next edge: OA's
+//      response OI-52) and the count rename sees, each bank's pointer and
+//      the bank order;
+//   2. drives that edge's activity (FreeVec::cycleAllocs, cycleFrees: the
+//      cycle's, plus those its inputs made since, kept a hook): as many
+//      allocation requests as the model made, which the RTL must grant with
+//      exactly the model's entries in order, and the frees as a mask; and
+//      the lead of the next edge's frees. Then it ticks.
+// Each allocation's owner is the model's, given with the allocation
+// (own_slot, as rename gives it; a port nothing takes gets a random slot,
+// which the entry's next allocation overwrites); after each edge the
+// frees counted by owner and group (fs) must be the bench's count of the
+// frees driven, by the owners it gave, and each slot's total the model's
+// (Core::slotFrees).
+// The RTL's own assertions (every request granted, no double free, no free
+// of an entry granted the same cycle, every free led) run too, under
+// --assert.
 //
 // FL_POOL selects the pool: 0 the GPR rows (CCV_P_PHYS_REGS), 1 the
 // predicates (CCV_P_PRED_REGS). Each new core resets the RTL. Every
@@ -20,9 +33,13 @@
 // (OA's response OI-41), so a cycle with more allocations than ports fails.
 //
 // Negative controls (FL_CONTROL=<name>) perturb the driving and must be
-// caught: drop-free (frees never reach the RTL) and extra-alloc (one more
-// request than the model made, in a cycle that has one).
-// Usage: freelist_tb [seeds]
+// caught: drop-free (frees never reach the RTL), extra-alloc (one more
+// request than the model made, in a cycle that has one), no-lead (a
+// free's lead is never driven, so the free bits are not clocked for it)
+// and wrong-owner (each entry is given the next slot as its owner).
+// With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
+// and dumps the VCD its clock-gating unit measures, checking as ever.
+// Usage: freelist_tb [seeds] | freelist_tb --cg <scenario> <vcd>
 //===----------------------------------------------------------------------===//
 #include "Vooe_freelist.h"
 #include "verilated.h"
@@ -33,13 +50,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
 using ccv::ooe::Core;
 using ccv::ooe::FreeVec;
-
-int ooeTestRandomPreHooked(unsigned seeds, void (*hook)(const Core &));
 
 namespace {
 std::unique_ptr<VerilatedContext> ctx;
@@ -47,14 +63,21 @@ std::unique_ptr<Vooe_freelist> dut;
 std::string control;
 uint64_t current = 0;   // the serial of the core being followed
 bool desync = false;     // a core whose pool size differs from the RTL's: skipped
-CgRun cg;                // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
-// In a clock-gating run the idle cycles turn the RTL's bank order where the
-// model's does not, so the two refill differently: each model entry maps to
-// the entry the RTL granted in its place, and frees go through the map.
-std::vector<int> rtl_of;
+CgRun cg;                // --cg <scenario> <vcd>: the scenario, and its VCD (cg_trace.h)
+// The model's edge the RTL takes next: its state before, its allocations
+// and frees (none before a core's first hook).
+bool have_prev = false;
+FreeVec::Edge prev_edge;
+std::vector<unsigned> prev_al, prev_fr;
+std::vector<int> prev_own;              // the owners of prev_al
+std::mt19937 owner_rng(5);              // a port nothing takes: its slot
+std::vector<int> owner_of;              // each entry's owner, as the bench gave it
+std::vector<unsigned> prev_sf;          // each slot's frees in prev_fr, the model's
+std::vector<unsigned> pend_tot;         // each slot's frees a step ago, due at fsp_cq03h
 unsigned long long cycles = 0, allocs = 0, frees = 0, cores = 0, skipped = 0, mismatches = 0;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
-constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K);
+constexpr unsigned W = bits(FL_N), LM = bits(FL_N / FL_K), LS = FL_S > 1 ? bits(FL_S) : 1,
+                   LT = bits(FL_N + 1);
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -82,32 +105,20 @@ void tick() {
   cg.dump();
 }
 
-// An idle cycle: no allocation, no free.
-void idleTick() {
-  dut->alloc_req_cq01h = 0;
-  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
-  tick();
+template <typename T> void setField(T &w, unsigned lsb, unsigned n, unsigned v) {
+  for (unsigned b = 0; b != n; ++b) setBit(w, lsb + b, (v >> b) & 1u);
 }
 
-// A clock-gating run's edge: the model's allocations, as many as the RTL's
-// buffer holds, and its frees of entries the RTL granted.
-void cgEdge(const FreeVec &fv) {
-  const auto &al = fv.cycleAllocs();
-  const auto &fr = fv.cycleFrees();
-  dut->ooe_core_clk = 0;
-  dut->eval();
-  const unsigned req = std::min<unsigned>({unsigned(al.size()), unsigned(dut->cnt_cq02h), FL_A});
-  dut->alloc_req_cq01h = (1u << req) - 1u;
-  for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
-  for (unsigned p : fr)
-    if (rtl_of[p] >= 0) {
-      setBit(dut->free_mask_cq01h, unsigned(rtl_of[p]), true);
-      rtl_of[p] = -1;
-    }
-  dut->eval();
-  for (unsigned k = 0; k != req; ++k) rtl_of[al[k]] = int(getField(dut->alloc_idx_cq02h, k * W, W));
-  tick();
-  for (unsigned g = 0; g != cg.gaps(); ++g) idleTick();
+bool lead(const std::vector<unsigned> &next_fr) { return !next_fr.empty() && control != "no-lead"; }
+
+// The cycle's allocations' owners and each slot's frees, as the model has them now.
+void record(const Core &c, const FreeVec &fv) {
+  prev_al = fv.cycleAllocs();
+  prev_fr = fv.cycleFrees();
+  prev_own.clear();
+  for (unsigned p : prev_al) prev_own.push_back(FL_POOL ? c.predOwner(p) : c.gprRowOwner(p));
+  prev_sf.assign(FL_S, 0);
+  for (unsigned s = 0; s != FL_S && s != c.slots(); ++s) prev_sf[s] = c.slotFrees(s, FL_POOL);
 }
 
 void fail(const char *what, unsigned a, unsigned b) {
@@ -120,23 +131,45 @@ void hook(const Core &c) {
     // A new core: reset the RTL to all free, the buffer empty.
     current = c.serial();
     ++cores;
-    desync = fv.capacity() != FL_N || fv.bufferCap() != FL_B || fv.banks() != FL_K;
+    desync = fv.capacity() != FL_N || fv.bufferCap() != FL_B || fv.banks() != FL_K || c.slots() > FL_S;
     dut->alloc_req_cq01h = 0;
+    dut->free_l_cq00h = 0;
+    for (unsigned k = 0; k != FL_A * LS; ++k) setBit(dut->own_slot_cq01h, k, false);
+    owner_of.assign(FL_N, -1);
     for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
+    // The reset is flopped before use (RST-1): the state resets at the
+    // edge after the one that captures it, and again at the next, the first
+    // driven: the model's first clock, which refills nothing (FreeVec).
     dut->ooe_rst_r00h = 1;
     tick();
+    tick();
     dut->ooe_rst_r00h = 0;
-    rtl_of.assign(FL_N, -1);
+    have_prev = false;
+    prev_al.clear();
+    prev_fr.clear();
   }
   if (desync) { ++skipped; return; }
-  if (cg.on()) { cgEdge(fv); return; }
+  if (!have_prev) {
+    // A core's first hook: nothing to take yet. Its frees would need a lead
+    // during reset, but nothing is allocated before them.
+    if (!fv.cycleFrees().empty()) fail("a free in a core's first cycle", unsigned(fv.cycleFrees().size()), 0);
+    have_prev = true;
+    prev_edge = fv.lastEdge();
+    record(c, fv);
+    return;
+  }
   ++cycles;
-  // 1. The state after the last edge.
+  // 1. The state after the edge before last.
   dut->ooe_core_clk = 0;
   dut->eval();
-  const FreeVec::Edge &e = fv.lastEdge();
+  const FreeVec::Edge &e = prev_edge;
+  std::vector<bool> transit(FL_N, false);
+  for (unsigned i = 0; i != e.transit && i != e.buf.size(); ++i) transit[e.buf[i]] = true;
   for (unsigned p = 0; p != FL_N; ++p)
-    if (getBit(dut->free_cq02h, p) != bool(e.bits[p])) { fail("free bit differs", getBit(dut->free_cq02h, p), e.bits[p]); break; }
+    if (getBit(dut->free_cq02h, p) != (e.bits[p] || transit[p])) {
+      fail("free bit differs", getBit(dut->free_cq02h, p), e.bits[p]);
+      break;
+    }
   const unsigned cnt = unsigned(dut->cnt_cq02h);
   if (cnt != e.buf.size()) fail("buffer count differs", cnt, unsigned(e.buf.size()));
   for (unsigned i = 0; i != cnt && i != e.buf.size(); ++i) {
@@ -148,16 +181,27 @@ void hook(const Core &c) {
     if (got != e.bptr[b]) fail("bank pointer differs", got, e.bptr[b]);
   }
   if (unsigned(dut->rot_cq02h) != e.rot) fail("bank order differs", unsigned(dut->rot_cq02h), e.rot);
-  // 2. This edge's allocations and frees.
-  const auto &al = fv.cycleAllocs();
+  if (unsigned(dut->transit_cq02h) != e.transit) fail("entries in transit differ", unsigned(dut->transit_cq02h), e.transit);
+  if (unsigned(dut->avail_cq02h) != e.buf.size() - e.transit)
+    fail("available count differs", unsigned(dut->avail_cq02h), unsigned(e.buf.size() - e.transit));
+  // 2. That edge's allocations and frees, and the next one's lead.
+  const auto &al = prev_al;
   if (al.size() > FL_A) { fail("more allocations than ports", unsigned(al.size()), FL_A); desync = true; return; }
-  const auto &fr = fv.cycleFrees();
+  const auto &fr = prev_fr;
+  dut->free_l_cq00h = lead(fv.cycleFrees());
   unsigned req = unsigned(al.size());
   if (control == "extra-alloc" && req && req < FL_A) ++req;
   dut->alloc_req_cq01h = (1u << req) - 1u;
   for (unsigned p = 0; p != FL_N; ++p) setBit(dut->free_mask_cq01h, p, false);
   if (control != "drop-free")
     for (unsigned p : fr) setBit(dut->free_mask_cq01h, p, true);
+  // Each port's owner: its allocation's, a random slot where none.
+  for (unsigned k = 0; k != FL_A; ++k) {
+    int o = k < prev_own.size() ? prev_own[k] : int(owner_rng() % FL_S);
+    if (o < 0) { fail("an allocation the model owns to no slot", k, 0); o = 0; }
+    if (control == "wrong-owner" && k < prev_own.size()) o = (o + 1) % FL_S;
+    setField(dut->own_slot_cq01h, k * LS, LS, unsigned(o));
+  }
   dut->eval();
   for (unsigned k = 0; k != al.size(); ++k) {
     const bool v = (dut->alloc_v_cq02h >> k) & 1u;
@@ -168,6 +212,27 @@ void hook(const Core &c) {
   allocs += al.size();
   frees += fr.size();
   tick();
+  // Last step's frees, a cycle on through the second stage: each slot's
+  // pair, which must sum to them exactly (no carry dropped).
+  for (unsigned s = 0; s != pend_tot.size(); ++s) {
+    const unsigned lo = getField(dut->fsp_cq03h, (2 * s) * LT, LT), hi = getField(dut->fsp_cq03h, (2 * s + 1) * LT, LT);
+    if (lo + hi != pend_tot[s]) fail("a slot's frees pair differs", lo + hi, pend_tot[s]);
+  }
+  pend_tot.clear();
+  // The frees just driven, by owner, and each slot's total.
+  if (control != "drop-free") {
+    std::vector<unsigned> tot(FL_S, 0);
+    for (unsigned p : fr)
+      if (p < owner_of.size() && owner_of[p] >= 0) ++tot[unsigned(owner_of[p])];
+      else fail("a free of an entry the bench gave no owner", p, 0);
+    for (unsigned s = 0; s != FL_S; ++s)
+      if (tot[s] != prev_sf[s]) fail("a slot's frees differ from the model's", tot[s], prev_sf[s]);
+    pend_tot = tot;
+  }
+  for (unsigned p : fr) owner_of[p] = -1;
+  for (unsigned k = 0; k != al.size(); ++k) owner_of[al[k]] = prev_own[k];
+  prev_edge = fv.lastEdge();
+  record(c, fv);
 }
 } // namespace
 
@@ -179,24 +244,9 @@ int main(int argc, char **argv) {
   std::string vcd;
   if (cg.parse(argc, argv, vcd)) CgRun::prepare(*ctx);
   dut = std::make_unique<Vooe_freelist>(ctx.get());
-  if (cg.on()) {
-    cg.open(*dut, vcd);
-    dut->ooe_rst_r00h = 1;
-    for (unsigned k = 0; k != 4; ++k) idleTick();
-    dut->ooe_rst_r00h = 0;
-    if (cg.idle()) {
-      for (unsigned k = 0; k != CgRun::kIdleCycles; ++k) idleTick();
-    } else {
-      ooeTestRandomPreHooked(CgRun::kSeeds, hook);
-    }
-    cg.close();
-    dut->final();
-    cg.vcd.reset();
-    dut.reset();
-    ctx.reset();
-    return 0;
-  }
-  const int model_fails = ooeTestRandomPreHooked(seeds, hook);
+  if (cg.on()) cg.open(*dut, vcd);
+  const int model_fails = cg.run(seeds, hook, nullptr);
+  cg.close();
   dut->final();
   std::printf("freelist_tb pool=%s control=%s seeds=%u cores=%llu cycles=%llu allocs=%llu frees=%llu "
               "skipped=%llu mismatches=%llu model_failures=%d\n",

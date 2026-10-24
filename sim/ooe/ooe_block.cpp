@@ -5,7 +5,7 @@
 // writes only its own senders (stub.h); the oracle is never consulted.
 //
 // What lives here rather than in the core:
-//   - the testbench hooks (Kernel): retire bookkeeping, rat0, coverage bins,
+//   - the testbench hooks (Kernel): retire bookkeeping, each warp's maps, coverage bins,
 //     events, and check failures for the core's contract and invariant errors;
 //   - the negative controls that act on a message (corrupt-ckpt, stale-free,
 //     drop-negate, skip-copy, corrupt-disp); free-new acts inside the core;
@@ -18,6 +18,9 @@
 
 #include <cstdlib>
 #include <fstream>
+#include <map>
+#include <set>
+#include <tuple>
 
 namespace ccv {
 namespace skel {
@@ -33,9 +36,21 @@ int optChan(const char *n) {
 class OoeModel : public Stub {
 public:
   OoeModel(int inst, Kernel &k) : Stub(inst, k), core_(config(k)) {
-    k.rat0.assign(kArchGprs, ccv::prov::kPhysZero);
-    // A launched warp's predicates map to the zero predicate (A-64).
-    if (core_.config().rename_preds) k.prat0.assign(kArchPreds, ccv::prov::kPredZero);
+    // A launched warp's registers map to the zero registers (A-64), and so do
+    // its predicates while they are renamed: each warp's maps, so made, are
+    // what the final compare reads where the warp never writes.
+    for (unsigned w = 0; w != k.orcs.size(); ++w) {
+      k.ratOf(w);
+      k.pratOf(w, core_.config().rename_preds);
+      // The final-exit assertion's lanes: the CTA's threads past this warp's
+      // first, as RAU's launch names them (TI-27 (a)); a check, not OOE's
+      // state.
+      const unsigned t = k.orcs[w].threads, first = 32 * k.orcs[w].warp_in_cta;
+      const unsigned n = t <= first ? 0 : t - first;
+      if (t && n < 32) core_.expectLanes(w, n ? (1u << n) - 1 : 0);
+    }
+    // A full decode queue holds DEC's uops in their slots: its backpressure.
+    holdsBack(ch().dec_ooe);
     core_.on_error = [this](const std::string &m) { k_.fail("ooe: %s", m.c_str()); };
     core_.on_event = [this](const char *n, unsigned w, uint64_t a, uint64_t b, uint64_t tid) {
       event(n, w, a, b, tid);
@@ -76,6 +91,7 @@ public:
 private:
   ooe::Core core_;
   bool bad_pos_done_ = false;   ///< the bad-pos control names one register
+  std::map<unsigned, unsigned> rs_sent_;   ///< rob tag -> its memop's rs_idx (OA-23)
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
@@ -189,11 +205,16 @@ private:
     u.ckpt = unsigned(get(p, c.dec_ooe, "checkpoint_id"));
     u.pred_taken = get(p, c.dec_ooe, "pred_taken") != 0;
     u.scale_en = get(p, c.dec_ooe, "scale_en") != 0;
-    u.decode_fault = get(p, c.dec_ooe, "decode_fault") != 0;
+    u.slot_form = unsigned(get(p, c.dec_ooe, "slot_form"));
+    u.arg_slot = unsigned(get(p, c.dec_ooe, "arg_slot"));
+    u.local_form = unsigned(get(p, c.dec_ooe, "local_form"));
+    u.cause = unsigned(get(p, c.dec_ooe, "cause"));
+    u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
+    u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
     // What DEC decodes so OOE never looks at opcode (A-75, TI-1): which
     // source fields are real reads, how the predicate is read, what imm
     // holds, and exit as sched_attr's serial code 3.
-    if (!u.decode_fault) {
+    if (!u.cause) {
       u.shape.gpr_reads = uint8_t(get(p, c.dec_ooe, "src_valid") & 7u);
       const unsigned pu = unsigned(get(p, c.dec_ooe, "pred_use"));
       const unsigned ik = unsigned(get(p, c.dec_ooe, "imm_kind"));
@@ -201,10 +222,16 @@ private:
       u.shape.pdata = pu == kPredUseData;
       u.shape.pred_logic = ik == kImmPredSrcs;
       u.shape.exit = u.attr.serial == kSerExit;
-      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1 : -1;
+      // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
+      // clears the warp's last live lanes.
+      u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
+      // lanectx-as-ctatid: srd #2 taken as srd #0, the warp's index in its
+      // CTA where O-64 names its hardware context.
+      u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
+                  : ik == kImmLaneCtx ? (k_.brk == "lanectx-as-ctatid" ? 0 : 2) : -1;
       if (pu > kPredUseData) {
         k_.fail("ooe: pred_use %u is not a code", pu);
-        u.decode_fault = true;
+        u.cause = 2;   // F-ILLEGAL: an encoding naming nothing
       }
     }
     return u;
@@ -220,6 +247,8 @@ private:
       a.slot = unsigned(get(m.payload, c.rau_ooe, "tier1_id"));
       a.ctaid = uint32_t(get(m.payload, c.rau_ooe, "ctaid"));
       a.warp_in_cta = uint32_t(get(m.payload, c.rau_ooe, "warp_in_cta"));
+      a.barrier_count = unsigned(get(m.payload, c.rau_ooe, "barrier_count"));
+      a.cta_slot = unsigned(get(m.payload, c.rau_ooe, "cta_slot"));
       core_.alloc(a);
     }
     if (hasIn(demote_) && has(unsigned(demote_), 0)) {
@@ -228,18 +257,31 @@ private:
     }
     if (hasIn(rel_) && has(unsigned(rel_), 0)) {
       Receiver::Msg m = take(unsigned(rel_), 0);
-      core_.barRelease(uint32_t(get(m.payload, unsigned(rel_), "warp_mask_released")));
+      // A held wait's answer names its warp (TI-40); the core takes a mask.
+      core_.barRelease(uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id"));
     }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {
         Receiver::Msg m = take(c.rcu_ooe, s);
         ooe::Done d;
         d.rob_tag = unsigned(get(m.payload, c.rcu_ooe, "rob_tag"));
-        d.exec_fault = get(m.payload, c.rcu_ooe, "exec_fault") != 0;
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
-        d.fault_lane_mask = uint32_t(get(m.payload, c.rcu_ooe, "fault_lane_mask"));
         core_.done(d);
+      }
+    // Completion hints (OA-23), taken as they land, as a fixed-latency
+    // channel's must be: each names the memop's RS entry, and the model
+    // keeps a spec load's wake on one that comes by its miss's lead
+    // (Config::miss_lead). The bank holds MIU to each one's promise.
+    for (unsigned s = 0; s != kChans[c.cmpl_hint].rate; ++s)
+      while (has(c.cmpl_hint, s)) {
+        Receiver::Msg m = take(c.cmpl_hint, s);
+        const unsigned tag = unsigned(get(m.payload, c.cmpl_hint, "rob_tag"));
+        const unsigned rs = unsigned(get(m.payload, c.cmpl_hint, "rs_idx"));
+        auto e = rs_sent_.find(tag);
+        if (e != rs_sent_.end() && e->second != rs)
+          k_.fail("ooe: rob tag %u hinted for RS entry %u, but its memop named entry %u", tag, rs, e->second);
+        core_.hint(tag);
       }
     for (unsigned s = 0; s != kChans[c.miu_ooe].rate; ++s)
       while (has(c.miu_ooe, s)) {
@@ -251,31 +293,63 @@ private:
         x.lane_mask = uint32_t(get(m.payload, c.miu_ooe, "lane_mask"));
         x.address = get(m.payload, c.miu_ooe, "address");
         x.mlc_miss = get(m.payload, c.miu_ooe, "mlc_miss") != 0;
+        // MIU echoes the memop's RS entry (OA-23): any other is a completion
+        // that would wake the wrong entry.
+        const unsigned rs = unsigned(get(m.payload, c.miu_ooe, "rs_idx"));
+        x.rs_idx = rs;
+        x.more = get(m.payload, c.miu_ooe, "more") != 0;   // an atomic's write (AR-21)
+        auto e = rs_sent_.find(x.rob_tag);
+        if (e != rs_sent_.end() && e->second != rs)
+          k_.fail("ooe: rob tag %u completed for RS entry %u, but its memop "
+                  "named entry %u", x.rob_tag, rs, e->second);
         core_.cmpl(x);
       }
   }
 
   /// Uops, oldest first by (arrival, slot): ordering is per warp_id, so a
   /// warp whose oldest uop cannot be taken takes none behind it this cycle.
-  /// A uop not taken stays in its slot, its credit unreturned.
+  /// A uop not taken stays in its slot, its credit unreturned. At most one a
+  /// slot a cycle: a slot returns one credit a cycle, so a second take from
+  /// it would lose one (Receiver::pop). With several warps the slots back up
+  /// two deep, and the first multi-warp kernels lost credits here (TI). The
+  /// uop left behind holds its warp for the cycle, so a warp's uops are
+  /// still taken in its order.
   void takeUops() {
     const Ch &c = ch();
     const unsigned rate = kChans[c.dec_ooe].rate;
-    std::set<unsigned> held;
+    std::set<unsigned> held, taken;
     for (;;) {
+      // Each warp's oldest uop buffered anywhere, by (arrival, slot, place):
+      // a slot's head is taken only if it is its warp's oldest, so a younger
+      // uop never passes one of its warp's held behind another warp's.
+      std::map<unsigned, std::tuple<uint64_t, unsigned, size_t>> oldest;
+      for (unsigned s = 0; s != rate; ++s) {
+        const Receiver *r = peek(c.dec_ooe, s);
+        for (size_t i = 0; r && i != r->size(); ++i) {
+          const unsigned w = unsigned(get(r->at(i).payload, c.dec_ooe, "warp_id"));
+          const auto key = std::make_tuple(r->at(i).arrived, s, i);
+          auto o = oldest.find(w);
+          if (o == oldest.end() || key < o->second) oldest[w] = key;
+        }
+      }
       int best = -1;
       uint64_t when = 0;
       for (unsigned s = 0; s != rate; ++s) {
         const Receiver *r = peek(c.dec_ooe, s);
         if (!r || r->empty()) continue;
         const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
-        if (held.count(w)) continue;
+        // A slot already taken from this cycle holds its next uop back, and
+        // with it that uop's warp: nothing younger of the warp may pass it.
+        if (taken.count(s)) { held.insert(w); continue; }
+        if (held.count(w) || oldest[w] != std::make_tuple(r->front().arrived, s, size_t(0)))
+          continue;
         if (best < 0 || r->front().arrived < when) { best = int(s); when = r->front().arrived; }
       }
       if (best < 0) return;
       const Receiver *r = peek(c.dec_ooe, unsigned(best));
       const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
       if (!core_.canAccept(w)) { core_.noteRefused(w); held.insert(w); continue; }
+      taken.insert(unsigned(best));
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -345,6 +419,10 @@ private:
         const FieldDesc &d = field(c.ooe_miu, "disp");
         mo.set(d.lsb, ccv::prov::kWRobIdx, x.disp);
       } else {
+        // The RS entry, which MIU echoes on the completion and names on its
+        // hint (OA-23).
+        put(mo, c.ooe_miu, "rs_idx", x.rs_idx);
+        rs_sent_[x.rob_tag] = x.rs_idx;
         put(mo, c.ooe_miu, "issue_mask", x.issue_mask);
         put(mo, c.ooe_miu, "phys_dst", core_.nameRow(x.pdst));
         put(mo, c.ooe_miu, "dst_pos", core_.namePos(x.pdst));
@@ -354,13 +432,21 @@ private:
         put(mo, c.ooe_miu, "scale_en", x.scale_en);
         put(mo, c.ooe_miu, "space", x.space);
         put(mo, c.ooe_miu, "ordering", x.ordering);
+        put(mo, c.ooe_miu, "slot_form", x.slot_form);
+        put(mo, c.ooe_miu, "arg_slot", x.arg_slot);
+        put(mo, c.ooe_miu, "local_form", x.local_form);
+        // zero-cta-slot: every memop and fault named CTA slot 0, as before
+        // TI-34; MIU's and CRU's checks refuse a warp of any other slot.
+        put(mo, c.ooe_miu, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
         // The memop's pipe footprint at its data position (0 in S1).
         // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
         put(mo, c.ooe_miu, "pipes",
             k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
       }
-      sendOn(c.ooe_miu, x.port, mo, x.tid);
+      // A demotion's discard of an empty ROB names no instruction (TI-21).
+      sendOn(c.ooe_miu, x.port, mo,
+             x.mem_op == 0xF && !x.tid ? makeUid(IdClass::kNone, 0) : x.tid);
     }
     for (const ooe::Commit &x : o.commits) {
       Bits r = msgOf(c.ooe_ret);
@@ -375,6 +461,14 @@ private:
       put(r, c.ooe_fet, "tier1_id", x.slot);
       put(r, c.ooe_fet, "fetch_epoch", x.epoch);
       put(r, c.ooe_fet, "epoch_only", x.epoch_only);
+      // A demotion's rewind beat (TI-24 (3)): the lanes and their PC.
+      put(r, c.ooe_fet, "rewind", x.rewind);
+      if (x.rewind) {
+        put(r, c.ooe_fet, "taken_mask", x.taken_mask);
+        // rewind-pc: each beat names the next instruction's PC, so the
+        // lanes resume one past their boundary (TI's control).
+        put(r, c.ooe_fet, "target_pc", x.target_pc + (k_.brk == "rewind-pc" ? 2u : 0u));
+      }
       if (!x.epoch_only) {
         put(r, c.ooe_fet, "target_pc", x.target_pc);
         put(r, c.ooe_fet, "checkpoint_id",
@@ -384,24 +478,107 @@ private:
         // checkpoint the same cycle's redirect restores.
         if (k_.brk == "stale-free") free_mask |= uint64_t(1) << (x.slot * ccv::prov::kBrCkpts + x.ckpt);
       }
-      sendOn(c.ooe_fet, 0, r, x.epoch_only ? makeUid(IdClass::kInstr, 0) : x.tid);
+      sendOn(c.ooe_fet, 0, r, x.epoch_only && !x.rewind ? makeUid(IdClass::kInstr, 0) : x.tid);
     }
     if (free_mask) {
       Bits f = msgOf(c.ooe_free);
       put(f, c.ooe_free, "free_mask", free_mask);
       sendOn(c.ooe_free, 0, f, makeUid(IdClass::kNone, 0));
     }
-    // RAU, CRU, SYU and RCU's map: in S1 nothing consumes these (the RAU,
-    // CRU and SYU stubs are idle on them), and no S1 kernel demotes, kills,
-    // waits at a barrier or restores. A fault is a check failure here; a
-    // status report is counted and dropped (docs/ooe-model.md, "S1 modes").
-    for (const ooe::Fault &x : o.faults)
-      k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
-              (unsigned long long)x.pc);
-    if (!o.status.empty()) core_.counters["s1.status_dropped"] += o.status.size();
-    if (!o.maps.empty() || !o.drained.empty() || !o.bars.empty() || !o.kill_acks.empty())
-      k_.fail("ooe: a map, drained, barrier or kill ack with no S1 consumer");
+    // Demotion (TI-24): the status reports RAU decides on, and a demoting
+    // warp's map to RCU and drained report to RAU. Each channel is rate 1
+    // and the core may make two in a cycle, so they queue here in order.
+    const uint64_t none = makeUid(IdClass::kNone, 0);
+    for (const ooe::Status &x : o.status) {
+      Bits m = msgOf(unsigned(status_));
+      put(m, unsigned(status_), "warp_id", x.warp);
+      put(m, unsigned(status_), "fault_taken", x.fault_taken);
+      put(m, unsigned(status_), "stalled", x.stalled);
+      put(m, unsigned(status_), "mlc_miss_seen", x.mlc_miss_seen);
+      put(m, unsigned(status_), "retired_since_restore", x.retired_since_restore);
+      put(m, unsigned(status_), "exited", x.exited);   // OA's rev 149
+      held_.push_back({unsigned(status_), m});
+    }
+    for (const ooe::RatMap &x : o.maps) {
+      // Rows, positions and widths (OI-29): every register is 32 bits wide in
+      // S1, so its width is chwidth 0 and its position its name's.
+      const unsigned mc = unsigned(map_);
+      Bits m = msgOf(mc);
+      put(m, mc, "warp_id", x.warp);
+      put(m, mc, "direction", x.direction);
+      const FieldDesc &gm = field(mc, "gpr_map"), &gp = field(mc, "gpr_pos"),
+                      &gw = field(mc, "gpr_width"), &pm = field(mc, "pred_map");
+      for (unsigned a = 0; a != kArchGprs; ++a) {
+        // corrupt-map: R1 named by R2's row, so PCA saves the wrong value.
+        // restore-share: a restore map naming R2's row for R1 too, so two
+        // registers share one row: RCU refuses it (TI-25 (1)).
+        const unsigned g = (k_.brk == "corrupt-map" || (k_.brk == "restore-share" && x.direction == 1)) && a == 1
+                               ? x.gpr[2] : x.gpr[a];
+        m.set(gm.lsb + a * (gm.width / kArchGprs), gm.width / kArchGprs, core_.nameRow(g));
+        m.set(gp.lsb + a * (gp.width / kArchGprs), gp.width / kArchGprs, core_.namePos(x.gpr[a]));
+        m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, kChw32);
+      }
+      for (unsigned p = 0; p != kArchPreds; ++p)
+        m.set(pm.lsb + p * (pm.width / kArchPreds), pm.width / kArchPreds, x.pred[p]);
+      held_.push_back({mc, m});
+    }
+    for (const ooe::Drained &x : o.drained) {
+      const unsigned dc = unsigned(drained_);
+      Bits m = msgOf(dc);
+      put(m, dc, "warp_id", x.warp);
+      put(m, dc, "resume_pc", x.resume_pc + (k_.brk == "resume-pc" ? 2u : 0u));
+      put(m, dc, "arch_state_ready", x.refused ? 0 : 1);
+      put(m, dc, "refused", x.refused);   // TI-25 (2)
+      held_.push_back({dc, m});
+    }
+    for (auto it = held_.begin(); it != held_.end();) {
+      bool first = true;   // the oldest held message on its channel only
+      for (auto j = held_.begin(); j != it; ++j) first = first && j->chan != it->chan;
+      if (first && can(it->chan, 0)) {
+        send(it->chan, 0, it->msg, it->tid ? it->tid : none);
+        it = held_.erase(it);
+      } else {
+        ++it;
+      }
+    }
+    // A fault taken at retirement goes to CRU (TI-26), whose stub holds it
+    // to the fault ccv-sim ended the run with. SYU: no kernel waits at a
+    // barrier or is killed yet.
+    for (const ooe::Fault &x : o.faults) {
+      if (fault_ < 0) {
+        k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
+                (unsigned long long)x.pc);
+        continue;
+      }
+      const unsigned fc = unsigned(fault_);
+      Bits m = msgOf(fc);
+      put(m, fc, "cause", x.cause);
+      put(m, fc, "pc", x.pc);
+      put(m, fc, "lane_mask", x.lane_mask);
+      put(m, fc, "address", x.address);
+      put(m, fc, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
+      put(m, fc, "warp_id", x.warp);
+      held_.push_back({fc, m, x.tid});
+    }
+    if (!o.bars.empty())
+      k_.fail("ooe: a barrier with no S1 consumer");
+    // The model's kill ack (V-24): it has squashed and released the killed
+    // warps, its epoch notice has landed in FET, and no memop is out at MIU.
+    for (unsigned e : o.kill_acks)
+      if (kill_live_ && e == kill_epoch_) kill_acked_ = true;
   }
+  /// The kill (V-24): the model takes it, and acks once quiesced.
+  void onKill(uint32_t mask, unsigned epoch) override {
+    core_.kill(mask, epoch);
+    kill_live_ = true;
+    kill_acked_ = false;
+    kill_epoch_ = epoch;
+  }
+  bool killQuiet(uint32_t) const override { return kill_acked_; }
+  bool kill_live_ = false, kill_acked_ = false;
+  unsigned kill_epoch_ = 0;
+  struct Held { unsigned chan; Bits msg; uint64_t tid = 0; };   ///< tid: the fault's instruction
+  std::deque<Held> held_;   ///< status, maps and drained reports, in order
 
   /// ccv_ooe_rcu_issue is one slot per select resource (S0-S3, P0-P3, R): an
   /// op goes in its footprint's lowest slot, and the rest of its footprint
@@ -457,15 +634,18 @@ private:
     takeUops();
     sendOutputs();
     for (const ooe::Retired &r : core_.retired) {
-      ++k_.retired;
-      k_.retire_order.push_back(uidSeq(r.tid));
-      if (r.exit) k_.exited = true;
-      if (r.warp == 0 && r.writes_gpr) k_.rat0[r.dst] = core_.nameRow(r.pnew);   // the final compare's map (rows)
+      // An instruction retires with its last uop (TI-36's cracked ones).
+      if (k_.lastUop(r.tid)) {
+        ++k_.retired;
+        k_.retire_order.push_back(uidSeq(r.tid));
+      }
+      if (r.exit) ++k_.exits;
+      // Each warp's map for the final compare (rows), made at its first use.
+      if (r.writes_gpr) k_.ratOf(r.warp)[r.dst] = core_.nameRow(r.pnew);
       // The predicate map likewise, while predicates are renamed (OI-3);
       // left empty, the final compare reads the fixed physPred windows.
-      if (r.warp == 0 && r.writes_pred) {
-        k_.prat0[r.pdst] = r.ppnew;
-      }
+      if (r.writes_pred && core_.config().rename_preds)
+        k_.pratOf(r.warp, true)[r.pdst] = r.ppnew;
     }
 
   }

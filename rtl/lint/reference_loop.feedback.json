@@ -1,0 +1,44 @@
+{
+  "_comment": "CCV-L23's declared feedback for reference_loop.sv, a compliant fixture: each read with the stages it lies ahead of its reader, which the tags give exactly. req_cy02h reads the grant register one stage ahead (a two-register loop); rdy_cy02h reads lead_cy04h two ahead, through its listed three-register loop. hit_cy02h reads g2_cy03h, g1_cy02h's next pipeline copy, as a declared bypass one stage ahead.",
+  "reads": {
+    "req_cy02h": {
+      "from": {
+        "gnt_cy03h": 1
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a one-cycle select loop, as ooe_sched's (OA's ruling on TI-38)"
+    },
+    "rdy_cy02h": {
+      "from": {
+        "lead_cy04h": 2
+      },
+      "loop": [
+        "rdy_cy02h",
+        "grt_cy03h",
+        "lead_cy04h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a three-register loop, as ooe_sched's ready_en (OA's rev 191)"
+    }
+  },
+  "bypass": {
+    "hit_cy02h": {
+      "from": {
+        "g2_cy03h": 1
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a bypass mux around a table written a cycle late, as ooe_rendep's G-2 (DA, OI-72 (A))"
+    },
+    "hit2_cy02h": {
+      "from": {
+        "g2_cy03h": 1
+      },
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "a bypass read counted at its register's stage less its offset (OI's rev 189, OA's rev 212)"
+    }
+  }
+}

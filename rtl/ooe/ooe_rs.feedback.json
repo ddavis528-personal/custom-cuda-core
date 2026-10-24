@@ -1,0 +1,17 @@
+{
+  "_comment": "CCV-L23's declared feedback for ooe_rs (OA's ruling on OI-72, rev 205): the confirmation lead's loop. cf_en, the confirmation leads (OI-58, OI-61), is registered from the stage-02 state, so it is stage 03; the state registers' clock enable reads it back with that state in the next cycle. Each read's offset is the stages its tag lies past its reader's.",
+  "reads": {
+    "fl_cq01h": {
+      "from": {
+        "cf_en_cq03h": 2
+      },
+      "loop": [
+        "valid_cq02h",
+        "cf_en_cq03h"
+      ],
+      "by": "OA",
+      "date": "2026-10-23",
+      "why": "the state registers' clock enable: an entry confirming at this edge, its lead registered from the state at the last (OA's response OI-72, rev 205)"
+    }
+  }
+}

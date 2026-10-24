@@ -88,7 +88,28 @@
   output ccv_dcu_mlc_probe_ack_t dcu_mlc_probe_ack_payload,
   input  logic dcu_mlc_probe_ack_credit,
   input  logic dcu_mlc_probe_ack_stall,
-  output logic dcu_mlc_probe_ack_wake
+  output logic dcu_mlc_probe_ack_wake,
+  // dcu -> miu, slot 0 of 4
+  output logic dcu_miu_fill_ntc_s0_valid,
+  output ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s0_payload,
+  input  logic dcu_miu_fill_ntc_s0_credit,
+  input  logic dcu_miu_fill_ntc_s0_stall,
+  // dcu -> miu, slot 1 of 4
+  output logic dcu_miu_fill_ntc_s1_valid,
+  output ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s1_payload,
+  input  logic dcu_miu_fill_ntc_s1_credit,
+  input  logic dcu_miu_fill_ntc_s1_stall,
+  // dcu -> miu, slot 2 of 4
+  output logic dcu_miu_fill_ntc_s2_valid,
+  output ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s2_payload,
+  input  logic dcu_miu_fill_ntc_s2_credit,
+  input  logic dcu_miu_fill_ntc_s2_stall,
+  // dcu -> miu, slot 3 of 4
+  output logic dcu_miu_fill_ntc_s3_valid,
+  output ccv_dcu_miu_fill_ntc_t dcu_miu_fill_ntc_s3_payload,
+  input  logic dcu_miu_fill_ntc_s3_credit,
+  input  logic dcu_miu_fill_ntc_s3_stall,
+  output logic dcu_miu_fill_ntc_wake
 `ifdef CCV_CHECK
   , output logic clk_gated
 `endif
@@ -105,4 +126,8 @@
   , input  logic [63:0] mlc_dcu_rsp_tid
   , input  logic [63:0] mlc_dcu_probe_tid
   , output logic [63:0] dcu_mlc_probe_ack_tid
+  , output logic [63:0] dcu_miu_fill_ntc_s0_tid
+  , output logic [63:0] dcu_miu_fill_ntc_s1_tid
+  , output logic [63:0] dcu_miu_fill_ntc_s2_tid
+  , output logic [63:0] dcu_miu_fill_ntc_s3_tid
 `endif

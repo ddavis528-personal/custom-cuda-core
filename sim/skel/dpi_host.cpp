@@ -98,7 +98,7 @@ void init() {
   Verilated::threadContextp()->errorLimit(1 << 30);
   const std::string oracle = plusarg("ccv_oracle");
   if (oracle.empty()) die("no +ccv_oracle=<oracle.jsonl>");
-  if (std::string e = g->k.orc.load(oracle); !e.empty()) die("%s", e.c_str());
+  if (std::string e = g->k.loadOracles(oracle); !e.empty()) die("%s", e.c_str());
   g->k.name = kernelName(oracle);
   const std::string brk = plusarg("ccv_break");
   g->k.brk = brk.empty() ? "none" : brk;
@@ -137,6 +137,16 @@ void resolve(Shim &s) {
   const DpiType &t = kDpiTypes[s.type];
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
+    if (p.sig == DpiSig::FABRIC) {
+      // A fabric port: a broadcast's value, a gather source's own copy, or a
+      // gather's whole vector at its end (kFabs). Its slot is the fabric.
+      const FabDesc &f = kFabs[p.chan];
+      const bool whole = f.kind == FabKind::GATHER && !p.out;
+      if (p.width != (whole ? f.nblks * f.width : f.width))
+        die("%s: a fabric port's width disagrees with the schema", (s.name + " " + f.name).c_str());
+      s.slot.push_back(p.chan);
+      continue;
+    }
     unsigned copy = p.copy >= 0 ? unsigned(p.copy)
                     : (kChans[p.chan].ninst > 1 ? kBlkInsts[s.inst].index : 0);
     const ChanInst *ci = nullptr;
@@ -155,6 +165,18 @@ void resolve(Shim &s) {
     if (w != p.width) die("%s: a port's width disagrees with the schema", s.name.c_str());
     s.slot.push_back(ci->slot_base + p.slot);
   }
+}
+
+/// A fabric port's slot in the host's fabric state: a broadcast's one, a
+/// gather source's own (this instance's type in the fabric's blks), or, for
+/// a gather's whole vector, the first of its sources'.
+unsigned fabSlot(const Shim &s, const DpiPort &p) {
+  const FabDesc &f = kFabs[p.chan];
+  if (f.kind == FabKind::BROADCAST || !p.out) return f.slot_base;
+  const Blk me = s.inst < 0 ? Blk::EXTERNAL : kBlkInsts[s.inst].type;
+  for (unsigned i = 0; i != f.nblks; ++i)
+    if (f.blks[i] == me) return f.slot_base + i;
+  die("%s: drives a fabric it is no source of", (s.name + " " + f.name).c_str());
 }
 
 uint64_t getv(const svBitVecVal *v, uint32_t off, uint32_t w) {   // w <= 64
@@ -198,8 +220,21 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
 
   // 1. sample -> cur
   uint32_t off = 0;
+  auto &fcur = g->m->fabCur();
+  auto &fnxt = g->m->fabNxt();
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
+    if (p.sig == DpiSig::FABRIC) {
+      // An input fabric port is what this block reads; an output is what it
+      // drove last cycle, which only the block's own slot holds.
+      const FabDesc &f = kFabs[p.chan];
+      const unsigned n = f.kind == FabKind::GATHER && !p.out ? f.nblks : 1;
+      if (!p.out)
+        for (unsigned i = 0; i != n; ++i)
+          fcur[fabSlot(s, p) + i] = getv(sample, off + i * f.width, f.width);
+      off += p.width;
+      continue;
+    }
     SlotSignals &c = endOf(slots[s.slot[j]], p).cur;
     switch (p.sig) {
     case DpiSig::VALID:  c.valid = getv(sample, off, 1); break;
@@ -212,6 +247,8 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
         c.payload.set(b, n, getv(sample, off + b, n));
       }
       break;
+    case DpiSig::FABRIC:
+      break;
     }
     off += p.width;
   }
@@ -219,6 +256,7 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
     if (!p.out) continue;
+    if (p.sig == DpiSig::FABRIC) { fnxt[fabSlot(s, p)] = 0; continue; }   // driven every cycle
     SlotEnd &e = endOf(slots[s.slot[j]], p);
     switch (p.sig) {
     case DpiSig::VALID:   e.nxt.valid = false; break;
@@ -226,6 +264,7 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
     case DpiSig::STALL:   e.nxt.stall = false; break;
     case DpiSig::TID:     e.nxt.tid = e.cur.tid; break;
     case DpiSig::PAYLOAD: e.nxt.payload = e.cur.payload; break;
+    case DpiSig::FABRIC:  break;
     }
   }
   // 3. the block's cycle
@@ -237,6 +276,11 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
   for (unsigned j = 0; j != t.nports; ++j) {
     const DpiPort &p = t.ports[j];
     if (!p.out) continue;
+    if (p.sig == DpiSig::FABRIC) {
+      putv(drive, off, p.width, fnxt[fabSlot(s, p)]);
+      off += p.width;
+      continue;
+    }
     const SlotSignals &n = endOf(slots[s.slot[j]], p).nxt;
     switch (p.sig) {
     case DpiSig::VALID:  putv(drive, off, 1, n.valid); break;
@@ -248,6 +292,8 @@ void cycle(unsigned type, int h, long long cyc, bool rst,
         const uint32_t n64 = std::min<uint32_t>(64, p.width - b);
         putv(drive, off + b, n64, n.payload.get(b, n64));
       }
+      break;
+    case DpiSig::FABRIC:
       break;
     }
     off += p.width;

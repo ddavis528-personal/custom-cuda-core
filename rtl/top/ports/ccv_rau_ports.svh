@@ -78,12 +78,30 @@
   output logic pca_rau_mig_done_credit,
   output logic pca_rau_mig_done_stall,
   input  logic pca_rau_mig_done_wake,
+  // rau -> pca
+  output logic rau_pca_mig_valid,
+  output ccv_rau_pca_mig_t rau_pca_mig_payload,
+  input  logic rau_pca_mig_credit,
+  input  logic rau_pca_mig_stall,
+  output logic rau_pca_mig_wake,
+  // miu -> rau
+  input  logic miu_rau_ready_valid,
+  input  ccv_miu_rau_ready_t miu_rau_ready_payload,
+  output logic miu_rau_ready_credit,
+  output logic miu_rau_ready_stall,
+  input  logic miu_rau_ready_wake,
   // rau -> miu
   output logic rau_miu_cta_valid,
   output ccv_rau_miu_cta_t rau_miu_cta_payload,
   input  logic rau_miu_cta_credit,
   input  logic rau_miu_cta_stall,
   output logic rau_miu_cta_wake,
+  // syu -> rau
+  input  logic syu_rau_ready_valid,
+  input  ccv_syu_rau_ready_t syu_rau_ready_payload,
+  output logic syu_rau_ready_credit,
+  output logic syu_rau_ready_stall,
+  input  logic syu_rau_ready_wake,
   // rau -> syu
   output logic rau_syu_alloc_valid,
   output ccv_rau_syu_alloc_t rau_syu_alloc_payload,
@@ -108,7 +126,10 @@
   , output logic [63:0] rau_rcu_mig_tid
   , output logic [63:0] rau_fet_mig_tid
   , input  logic [63:0] pca_rau_mig_done_tid
+  , output logic [63:0] rau_pca_mig_tid
+  , input  logic [63:0] miu_rau_ready_tid
   , output logic [63:0] rau_miu_cta_tid
+  , input  logic [63:0] syu_rau_ready_tid
   , output logic [63:0] rau_syu_alloc_tid
   , input  logic [63:0] cru_rau_cfg_tid
 `endif

@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (10576 bits,
+// At each edge of its clock: sample every channel signal (10614 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (4400 bits). Common-port outputs sit inactive, as in
+// what it drove (4403 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_spm (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_spm(
     input int h, input longint cyc, input bit rst,
-    input bit [10575:0] sample, output bit [4399:0] drive);
+    input bit [10613:0] sample, output bit [4402:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [4399:0] drv, q, q2;
+  bit [4402:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -82,7 +82,8 @@ module ccv_spm (
       miu_spm_req_s2_payload, miu_spm_req_s2_valid, miu_spm_req_s1_stall,
       miu_spm_req_s1_credit, miu_spm_req_s1_payload, miu_spm_req_s1_valid,
       miu_spm_req_s0_stall, miu_spm_req_s0_credit, miu_spm_req_s0_payload,
-      miu_spm_req_s0_valid
+      miu_spm_req_s0_valid, kill_ack_epoch, kill_ack,
+      kill_epoch, kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -95,11 +96,10 @@ module ccv_spm (
     spm_miu_rsp_s1_valid, spm_miu_rsp_s0_payload, spm_miu_rsp_s0_valid,
     miu_spm_req_s3_stall, miu_spm_req_s3_credit, miu_spm_req_s2_stall,
     miu_spm_req_s2_credit, miu_spm_req_s1_stall, miu_spm_req_s1_credit,
-    miu_spm_req_s0_stall, miu_spm_req_s0_credit
+    miu_spm_req_s0_stall, miu_spm_req_s0_credit, kill_ack_epoch,
+    kill_ack
   } = skew ? q2 : q;
 `endif
-  assign kill_ack = '0;
-  assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
   assign spm_miu_rsp_wake = '0;

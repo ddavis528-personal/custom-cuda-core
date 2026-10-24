@@ -21,7 +21,10 @@ module ccv_rau_w #(
   parameter int RPT_RAU_RCU_MIG = 0,
   parameter int RPT_RAU_FET_MIG = 0,
   parameter int RPT_PCA_RAU_MIG_DONE = 0,
+  parameter int RPT_RAU_PCA_MIG = 0,
+  parameter int RPT_MIU_RAU_READY = 0,
   parameter int RPT_RAU_MIU_CTA = 0,
+  parameter int RPT_SYU_RAU_READY = 0,
   parameter int RPT_RAU_SYU_ALLOC = 0,
   parameter int RPT_CRU_RAU_CFG = 0
 ) (
@@ -69,11 +72,26 @@ module ccv_rau_w #(
   logic b_pca_rau_mig_done_credit;
   logic b_pca_rau_mig_done_stall;
   logic b_pca_rau_mig_done_wake;
+  logic b_rau_pca_mig_valid;
+  ccv_rau_pca_mig_t b_rau_pca_mig_payload;
+  logic b_rau_pca_mig_credit;
+  logic b_rau_pca_mig_stall;
+  logic b_rau_pca_mig_wake;
+  logic b_miu_rau_ready_valid;
+  ccv_miu_rau_ready_t b_miu_rau_ready_payload;
+  logic b_miu_rau_ready_credit;
+  logic b_miu_rau_ready_stall;
+  logic b_miu_rau_ready_wake;
   logic b_rau_miu_cta_valid;
   ccv_rau_miu_cta_t b_rau_miu_cta_payload;
   logic b_rau_miu_cta_credit;
   logic b_rau_miu_cta_stall;
   logic b_rau_miu_cta_wake;
+  logic b_syu_rau_ready_valid;
+  ccv_syu_rau_ready_t b_syu_rau_ready_payload;
+  logic b_syu_rau_ready_credit;
+  logic b_syu_rau_ready_stall;
+  logic b_syu_rau_ready_wake;
   logic b_rau_syu_alloc_valid;
   ccv_rau_syu_alloc_t b_rau_syu_alloc_payload;
   logic b_rau_syu_alloc_credit;
@@ -93,7 +111,10 @@ module ccv_rau_w #(
   logic [63:0] b_rau_rcu_mig_tid;
   logic [63:0] b_rau_fet_mig_tid;
   logic [63:0] b_pca_rau_mig_done_tid;
+  logic [63:0] b_rau_pca_mig_tid;
+  logic [63:0] b_miu_rau_ready_tid;
   logic [63:0] b_rau_miu_cta_tid;
+  logic [63:0] b_syu_rau_ready_tid;
   logic [63:0] b_rau_syu_alloc_tid;
   logic [63:0] b_cru_rau_cfg_tid;
 `endif
@@ -149,11 +170,26 @@ module ccv_rau_w #(
     .pca_rau_mig_done_credit(b_pca_rau_mig_done_credit),
     .pca_rau_mig_done_stall(b_pca_rau_mig_done_stall),
     .pca_rau_mig_done_wake(b_pca_rau_mig_done_wake),
+    .rau_pca_mig_valid(b_rau_pca_mig_valid),
+    .rau_pca_mig_payload(b_rau_pca_mig_payload),
+    .rau_pca_mig_credit(b_rau_pca_mig_credit),
+    .rau_pca_mig_stall(b_rau_pca_mig_stall),
+    .rau_pca_mig_wake(b_rau_pca_mig_wake),
+    .miu_rau_ready_valid(b_miu_rau_ready_valid),
+    .miu_rau_ready_payload(b_miu_rau_ready_payload),
+    .miu_rau_ready_credit(b_miu_rau_ready_credit),
+    .miu_rau_ready_stall(b_miu_rau_ready_stall),
+    .miu_rau_ready_wake(b_miu_rau_ready_wake),
     .rau_miu_cta_valid(b_rau_miu_cta_valid),
     .rau_miu_cta_payload(b_rau_miu_cta_payload),
     .rau_miu_cta_credit(b_rau_miu_cta_credit),
     .rau_miu_cta_stall(b_rau_miu_cta_stall),
     .rau_miu_cta_wake(b_rau_miu_cta_wake),
+    .syu_rau_ready_valid(b_syu_rau_ready_valid),
+    .syu_rau_ready_payload(b_syu_rau_ready_payload),
+    .syu_rau_ready_credit(b_syu_rau_ready_credit),
+    .syu_rau_ready_stall(b_syu_rau_ready_stall),
+    .syu_rau_ready_wake(b_syu_rau_ready_wake),
     .rau_syu_alloc_valid(b_rau_syu_alloc_valid),
     .rau_syu_alloc_payload(b_rau_syu_alloc_payload),
     .rau_syu_alloc_credit(b_rau_syu_alloc_credit),
@@ -176,7 +212,10 @@ module ccv_rau_w #(
     , .rau_rcu_mig_tid(b_rau_rcu_mig_tid)
     , .rau_fet_mig_tid(b_rau_fet_mig_tid)
     , .pca_rau_mig_done_tid(b_pca_rau_mig_done_tid)
+    , .rau_pca_mig_tid(b_rau_pca_mig_tid)
+    , .miu_rau_ready_tid(b_miu_rau_ready_tid)
     , .rau_miu_cta_tid(b_rau_miu_cta_tid)
+    , .syu_rau_ready_tid(b_syu_rau_ready_tid)
     , .rau_syu_alloc_tid(b_rau_syu_alloc_tid)
     , .cru_rau_cfg_tid(b_cru_rau_cfg_tid)
 `endif
@@ -184,7 +223,7 @@ module ccv_rau_w #(
 
   // ccv_rau_fet_launch, source end
   if (RPT_RAU_FET_LAUNCH > 0) begin : g_rpt_rau_fet_launch
-    ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(186)) u_rpt_rau_fet_launch (
+    ccv_common_rpt #(.STAGES(RPT_RAU_FET_LAUNCH), .SLOTS(1), .PAYLOAD_W(218)) u_rpt_rau_fet_launch (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_fet_launch_valid}), .src_payload({b_rau_fet_launch_payload}),
       .src_wake(b_rau_fet_launch_wake), .src_credit({b_rau_fet_launch_credit}), .src_stall({b_rau_fet_launch_stall}),
@@ -206,7 +245,7 @@ module ccv_rau_w #(
   end
   // ccv_rau_ooe_alloc, source end
   if (RPT_RAU_OOE_ALLOC > 0) begin : g_rpt_rau_ooe_alloc
-    ccv_common_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(46)) u_rpt_rau_ooe_alloc (
+    ccv_common_rpt #(.STAGES(RPT_RAU_OOE_ALLOC), .SLOTS(1), .PAYLOAD_W(54)) u_rpt_rau_ooe_alloc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_ooe_alloc_valid}), .src_payload({b_rau_ooe_alloc_payload}),
       .src_wake(b_rau_ooe_alloc_wake), .src_credit({b_rau_ooe_alloc_credit}), .src_stall({b_rau_ooe_alloc_stall}),
@@ -228,7 +267,7 @@ module ccv_rau_w #(
   end
   // ccv_ooe_rau_status, destination end
   if (RPT_OOE_RAU_STATUS > 0) begin : g_rpt_ooe_rau_status
-    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_STATUS), .SLOTS(1), .PAYLOAD_W(16)) u_rpt_ooe_rau_status (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_STATUS), .SLOTS(1), .PAYLOAD_W(17)) u_rpt_ooe_rau_status (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_rau_status_valid}), .src_payload({ooe_rau_status_payload}),
       .src_wake(ooe_rau_status_wake), .src_credit({ooe_rau_status_credit}), .src_stall({ooe_rau_status_stall}),
@@ -272,7 +311,7 @@ module ccv_rau_w #(
   end
   // ccv_ooe_rau_drained, destination end
   if (RPT_OOE_RAU_DRAINED > 0) begin : g_rpt_ooe_rau_drained
-    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_DRAINED), .SLOTS(1), .PAYLOAD_W(70)) u_rpt_ooe_rau_drained (
+    ccv_common_rpt #(.STAGES(RPT_OOE_RAU_DRAINED), .SLOTS(1), .PAYLOAD_W(71)) u_rpt_ooe_rau_drained (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({ooe_rau_drained_valid}), .src_payload({ooe_rau_drained_payload}),
       .src_wake(ooe_rau_drained_wake), .src_credit({ooe_rau_drained_credit}), .src_stall({ooe_rau_drained_stall}),
@@ -294,7 +333,7 @@ module ccv_rau_w #(
   end
   // ccv_rau_rcu_mig, source end
   if (RPT_RAU_RCU_MIG > 0) begin : g_rpt_rau_rcu_mig
-    ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(9)) u_rpt_rau_rcu_mig (
+    ccv_common_rpt #(.STAGES(RPT_RAU_RCU_MIG), .SLOTS(1), .PAYLOAD_W(6)) u_rpt_rau_rcu_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_rcu_mig_valid}), .src_payload({b_rau_rcu_mig_payload}),
       .src_wake(b_rau_rcu_mig_wake), .src_credit({b_rau_rcu_mig_credit}), .src_stall({b_rau_rcu_mig_stall}),
@@ -316,7 +355,7 @@ module ccv_rau_w #(
   end
   // ccv_rau_fet_mig, source end
   if (RPT_RAU_FET_MIG > 0) begin : g_rpt_rau_fet_mig
-    ccv_common_rpt #(.STAGES(RPT_RAU_FET_MIG), .SLOTS(1), .PAYLOAD_W(11)) u_rpt_rau_fet_mig (
+    ccv_common_rpt #(.STAGES(RPT_RAU_FET_MIG), .SLOTS(1), .PAYLOAD_W(8)) u_rpt_rau_fet_mig (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_fet_mig_valid}), .src_payload({b_rau_fet_mig_payload}),
       .src_wake(b_rau_fet_mig_wake), .src_credit({b_rau_fet_mig_credit}), .src_stall({b_rau_fet_mig_stall}),
@@ -358,9 +397,53 @@ module ccv_rau_w #(
     assign {b_pca_rau_mig_done_tid} = {pca_rau_mig_done_tid};
 `endif
   end
+  // ccv_rau_pca_mig, source end
+  if (RPT_RAU_PCA_MIG > 0) begin : g_rpt_rau_pca_mig
+    ccv_common_rpt #(.STAGES(RPT_RAU_PCA_MIG), .SLOTS(1), .PAYLOAD_W(11)) u_rpt_rau_pca_mig (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({b_rau_pca_mig_valid}), .src_payload({b_rau_pca_mig_payload}),
+      .src_wake(b_rau_pca_mig_wake), .src_credit({b_rau_pca_mig_credit}), .src_stall({b_rau_pca_mig_stall}),
+      .dst_valid({rau_pca_mig_valid}), .dst_payload({rau_pca_mig_payload}),
+      .dst_wake(rau_pca_mig_wake), .dst_credit({rau_pca_mig_credit}), .dst_stall({rau_pca_mig_stall})
+`ifdef CCV_TRACE
+      , .src_tid({b_rau_pca_mig_tid}), .dst_tid({rau_pca_mig_tid})
+`endif
+    );
+  end else begin : g_wire_rau_pca_mig
+    assign {rau_pca_mig_valid} = {b_rau_pca_mig_valid};
+    assign {rau_pca_mig_payload} = {b_rau_pca_mig_payload};
+    assign rau_pca_mig_wake = b_rau_pca_mig_wake;
+    assign {b_rau_pca_mig_credit} = {rau_pca_mig_credit};
+    assign {b_rau_pca_mig_stall} = {rau_pca_mig_stall};
+`ifdef CCV_TRACE
+    assign {rau_pca_mig_tid} = {b_rau_pca_mig_tid};
+`endif
+  end
+  // ccv_miu_rau_ready, destination end
+  if (RPT_MIU_RAU_READY > 0) begin : g_rpt_miu_rau_ready
+    ccv_common_rpt #(.STAGES(RPT_MIU_RAU_READY), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_miu_rau_ready (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({miu_rau_ready_valid}), .src_payload({miu_rau_ready_payload}),
+      .src_wake(miu_rau_ready_wake), .src_credit({miu_rau_ready_credit}), .src_stall({miu_rau_ready_stall}),
+      .dst_valid({b_miu_rau_ready_valid}), .dst_payload({b_miu_rau_ready_payload}),
+      .dst_wake(b_miu_rau_ready_wake), .dst_credit({b_miu_rau_ready_credit}), .dst_stall({b_miu_rau_ready_stall})
+`ifdef CCV_TRACE
+      , .src_tid({miu_rau_ready_tid}), .dst_tid({b_miu_rau_ready_tid})
+`endif
+    );
+  end else begin : g_wire_miu_rau_ready
+    assign {b_miu_rau_ready_valid} = {miu_rau_ready_valid};
+    assign {b_miu_rau_ready_payload} = {miu_rau_ready_payload};
+    assign b_miu_rau_ready_wake = miu_rau_ready_wake;
+    assign {miu_rau_ready_credit} = {b_miu_rau_ready_credit};
+    assign {miu_rau_ready_stall} = {b_miu_rau_ready_stall};
+`ifdef CCV_TRACE
+    assign {b_miu_rau_ready_tid} = {miu_rau_ready_tid};
+`endif
+  end
   // ccv_rau_miu_cta, source end
   if (RPT_RAU_MIU_CTA > 0) begin : g_rpt_rau_miu_cta
-    ccv_common_rpt #(.STAGES(RPT_RAU_MIU_CTA), .SLOTS(1), .PAYLOAD_W(101)) u_rpt_rau_miu_cta (
+    ccv_common_rpt #(.STAGES(RPT_RAU_MIU_CTA), .SLOTS(1), .PAYLOAD_W(229)) u_rpt_rau_miu_cta (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_miu_cta_valid}), .src_payload({b_rau_miu_cta_payload}),
       .src_wake(b_rau_miu_cta_wake), .src_credit({b_rau_miu_cta_credit}), .src_stall({b_rau_miu_cta_stall}),
@@ -380,9 +463,31 @@ module ccv_rau_w #(
     assign {rau_miu_cta_tid} = {b_rau_miu_cta_tid};
 `endif
   end
+  // ccv_syu_rau_ready, destination end
+  if (RPT_SYU_RAU_READY > 0) begin : g_rpt_syu_rau_ready
+    ccv_common_rpt #(.STAGES(RPT_SYU_RAU_READY), .SLOTS(1), .PAYLOAD_W(5)) u_rpt_syu_rau_ready (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({syu_rau_ready_valid}), .src_payload({syu_rau_ready_payload}),
+      .src_wake(syu_rau_ready_wake), .src_credit({syu_rau_ready_credit}), .src_stall({syu_rau_ready_stall}),
+      .dst_valid({b_syu_rau_ready_valid}), .dst_payload({b_syu_rau_ready_payload}),
+      .dst_wake(b_syu_rau_ready_wake), .dst_credit({b_syu_rau_ready_credit}), .dst_stall({b_syu_rau_ready_stall})
+`ifdef CCV_TRACE
+      , .src_tid({syu_rau_ready_tid}), .dst_tid({b_syu_rau_ready_tid})
+`endif
+    );
+  end else begin : g_wire_syu_rau_ready
+    assign {b_syu_rau_ready_valid} = {syu_rau_ready_valid};
+    assign {b_syu_rau_ready_payload} = {syu_rau_ready_payload};
+    assign b_syu_rau_ready_wake = syu_rau_ready_wake;
+    assign {syu_rau_ready_credit} = {b_syu_rau_ready_credit};
+    assign {syu_rau_ready_stall} = {b_syu_rau_ready_stall};
+`ifdef CCV_TRACE
+    assign {b_syu_rau_ready_tid} = {syu_rau_ready_tid};
+`endif
+  end
   // ccv_rau_syu_alloc, source end
   if (RPT_RAU_SYU_ALLOC > 0) begin : g_rpt_rau_syu_alloc
-    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(17)) u_rpt_rau_syu_alloc (
+    ccv_common_rpt #(.STAGES(RPT_RAU_SYU_ALLOC), .SLOTS(1), .PAYLOAD_W(58)) u_rpt_rau_syu_alloc (
       .clk(core_clk), .rst_n(rst_n),
       .src_valid({b_rau_syu_alloc_valid}), .src_payload({b_rau_syu_alloc_payload}),
       .src_wake(b_rau_syu_alloc_wake), .src_credit({b_rau_syu_alloc_credit}), .src_stall({b_rau_syu_alloc_stall}),

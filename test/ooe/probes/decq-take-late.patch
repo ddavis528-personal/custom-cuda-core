@@ -1,0 +1,87 @@
+--- a/rtl/ooe/ooe_decq.sv
++++ b/rtl/ooe/ooe_decq.sv
+@@ -234,10 +234,17 @@
+   endfunction
+ 
+   logic [SW-1:0] st_cq02h;
++  (* keep *) logic [SW-1:0] st_o_cq02h;   // probe: the output register cone's copy
++  (* keep *) logic [S*LR-1:0] tk_o_cq02h;
++  logic [S*LC-1:0]  cnt_d;
++  logic [S*R-1:0]   head_v_d;
++  logic [S*R*P-1:0] head_pay_d;
++  logic [LU-1:0]    used_d;
+   logic [1:0]    fault_cq02h;
+   logic [S-1:0]  fl_q_cq02h;              // a flush registered: applied at the next edge
+   logic          enq_en_cq01h;            // the arrival lead's flop
+-  assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, deq_n_cq01h, fl_q_cq02h);
++  logic [S*LR-1:0] tk_q_cq02h;            // probe: rename's take, registered, popped at the next edge
++  assign fault_cq02h = faults(st_cq02h, enq_v_cq01h, enq_slot_cq01h, tk_q_cq02h, fl_q_cq02h);
+ 
+   // Every arrival was led; none arrives for a slot whose flush comes now;
+   // rename takes nothing from a slot whose flush is registered.
+@@ -264,29 +271,33 @@
+   // a slot's count says it holds is one.
+   `CCV_ASSERT_READ_VALID(head_reads_busy, |head_v_cq02h, head_v_cq02h == head_found_cq02h)
+   always_comb begin
+-    head_pay_cq02h   = '0;
++    head_pay_d       = '0;
+     head_found_cq02h = '0;
+-    used_cq02h       = '0;
++    used_d           = '0;
+     for (int s = 0; s < S; s++) begin
+-      cnt_cq02h[s * LC +: LC] = st_cq02h[OCNT + s * LC +: LC];
++      cnt_d[s * LC +: LC] = st_o_cq02h[OCNT + s * LC +: LC] - LC'(tk_o_cq02h[s * LR +: LR]);
+       for (int k = 0; k < R; k++) begin
+-        head_v_cq02h[s * R + k] = k < cnt_of(st_cq02h, s);
++        head_v_d[s * R + k] = k + 32'(tk_o_cq02h[s * LR +: LR]) < cnt_of(st_o_cq02h, s);
+         for (int e = 0; e < Q; e++)
+-          if (st_cq02h[OBUSY + e] && own_of(st_cq02h, e) == s && pos_of(st_cq02h, e) == k) begin
+-            head_pay_cq02h[(s * R + k) * P +: P] = st_cq02h[OPAY + e * P +: P];
++          if (st_o_cq02h[OBUSY + e] && own_of(st_o_cq02h, e) == s &&
++              pos_of(st_o_cq02h, e) == k + 32'(tk_o_cq02h[s * LR +: LR])) begin
++            head_pay_d[(s * R + k) * P +: P] = st_o_cq02h[OPAY + e * P +: P];
+             head_found_cq02h[s * R + k]          = 1'b1;
+           end
+       end
+     end
+-    for (int e = 0; e < Q; e++) used_cq02h = used_cq02h + LU'(st_cq02h[OBUSY + e]);
++    for (int e = 0; e < Q; e++) used_d = used_d + LU'(st_o_cq02h[OBUSY + e]);
++  end
++  always_ff @(posedge ooe_core_clk) begin
++    cnt_cq02h <= cnt_d; head_v_cq02h <= head_v_d; head_pay_cq02h <= head_pay_d; used_cq02h <= used_d;
+   end
+ 
+   // Local clock gating (docs/rtl-coding-style.md): the queue changes only on
+   // an arrival, a dequeue or a flush, and is clocked on those alone.
+   logic          decq_en_cq01h;
+   logic [SW-1:0] nx_cq01h;
+-  assign decq_en_cq01h = enq_en_cq01h || |deq_n_cq01h || |fl_q_cq02h;
+-  assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, deq_n_cq01h,
++  assign decq_en_cq01h = enq_en_cq01h || |tk_q_cq02h || |fl_q_cq02h;
++  assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, tk_q_cq02h,
+                                     fl_q_cq02h);
+   always_ff @(posedge ooe_core_clk) begin
+     if (rst_r01h) begin
+@@ -297,6 +308,12 @@
+       enq_en_cq01h <= enq_l_cq00h;
+     end
+   end
++  always_ff @(posedge ooe_core_clk)
++    if (rst_r01h) tk_q_cq02h <= '0;
++    else if (|deq_n_cq01h || |tk_q_cq02h) tk_q_cq02h <= deq_n_cq01h;
++  always_ff @(posedge ooe_core_clk)
++    if (rst_r01h) tk_o_cq02h <= '0;
++    else if (|deq_n_cq01h || |tk_o_cq02h) tk_o_cq02h <= deq_n_cq01h;
+ 
+   always_ff @(posedge ooe_core_clk) begin
+     // The reset state: busy bits and counts cleared; the payloads, owners
+@@ -304,6 +321,9 @@
+     if (rst_r01h)           st_cq02h[OBUSY +: Q + S * LC] <= '0;
+     else if (decq_en_cq01h) st_cq02h <= nx_cq01h;
+   end
++  always_ff @(posedge ooe_core_clk)
++    if (rst_r01h)           st_o_cq02h[OBUSY +: Q + S * LC] <= '0;
++    else if (decq_en_cq01h) st_o_cq02h <= nx_cq01h;
+ 
+ endmodule
+ `undef CCV_CLK
