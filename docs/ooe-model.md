@@ -362,12 +362,31 @@ The design doc's section of that name, as the model builds it. An atomic
 entry and rob_tag:
 
 - **A1**, MIU class: the exclusive read into T, sent as `mem_op` 2
-  (atomic-read), with the address source, its displacement and the guard.
+  (atomic-read), with its address sources, the displacement, scale_en and
+  the guard. The address is Format D's base+index (O-72, TI-39): rbase
+  (src0) and rindex (src1), formed on MIU's indexed AGU path, which keeps
+  it to A3.
 - **A2**, RCU class: the lane op, T and the operands into N, its opcode
-  DEC's for the atomic, passed through unexamined (A-66). Its wake is the
-  lane latency.
+  DEC's for the atomic, passed through unexamined (A-66): an RMW's rs
+  (src2), a CAS's rs_cmp and rs_swap. Its wake is the lane latency.
 - **A3**, MIU class: the write of N and the release, `mem_op` 3
   (atomic-write), with the store data alone.
+
+**A CAS is two decode slots, one instruction** (AR's rev 156, OA's rev
+189, TI-39). DEC marks them in sched_attr, pair_first at bit 17 and
+pair_second at bit 18. The first slot carries rbase, rindex and the
+displacement and becomes A1. The second carries rs_cmp, rs_swap and the
+destination and becomes A2's operands. The second allocates no ROB entry
+and no checkpoint, and its steps share the first's rob_tag. Rename joins
+them: the pair is one admission unit, two lanes and one ROB entry, and a
+take stops before it or after it, never between. A pair with a single lane
+left in the cycle waits (`rename.pair_width`). DEC sends the two slots in
+one cycle, on decode-queue credit for both (an input assumption the core
+checks). A first slot alone could otherwise sit at its warp's head waiting
+for a second that no credit lets in, and with every warp's head such a
+slot, nothing would move. A second slot reaching rename alone, or a first
+without its second behind it, is an error. Each RS entry keeps at most
+three sources.
 
 T is rd's new name for atom, and a temporary for red; N is always a
 temporary. Both are taken at rename (an atomic takes two names, two MIU
@@ -422,8 +441,12 @@ passes in five configurations, for atom, red, masked and guarded;
 `testAtomicFault`, `testAtomicKill` and `testAtomicDemote` take the other
 paths, and `testAtomicRandom` mixes atomics into the random programs in
 every select form. They run in `ooe-test` alone, not in the benches'
-random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
-`atom-early-wake` and `atom-demote-mid` must be caught.
+random set: no OOE RTL re-issues on `more` yet. `testAtomic` adds a CAS
+with its second slot in time and one a cycle late. The environment holds
+A1 to rbase and rindex, and A2 to T and the operands the op names. Controls
+`atom-off-head`, `atom-early-wake`, `atom-demote-mid`, `a1-base-only` (A1
+takes rbase alone) and `cas-split` (rename takes a CAS's first slot without
+its second) must be caught.
 
 ## Demotion's model side (TI-24) and the swap environment (TI-21)
 

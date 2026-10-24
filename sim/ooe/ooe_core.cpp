@@ -145,6 +145,8 @@ SchedAttr SchedAttr::decode(uint32_t a) {
   s.serial = (a >> 3) & 7u;
   s.lat_class = a & 7u;
   s.bypass_group = (a >> 14) & 7u;
+  s.pair_first = (a >> 17) & 1u;
+  s.pair_second = (a >> 18) & 1u;
   return s;
 }
 
@@ -236,13 +238,13 @@ std::vector<Core::DecqView> Core::decodeQueue() const {
   return v;
 }
 
-bool Core::canAccept(unsigned warp) const {
+bool Core::canAccept(unsigned warp, unsigned n) const {
   const unsigned max = cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq;
-  if (decqHeld() >= cfg_.decq) return false;
+  if (decqHeld() + n > cfg_.decq) return false;
   const int s = slotOf(warp);
   if (s < 0) return true;      // refused, and reported, when it is taken
   const unsigned late = cfg_.decq_late_credit && size_t(s) < decq_slot_take_.size() ? decq_slot_take_[s] : 0;
-  return slot_[s].decq + late < max;
+  return slot_[s].decq + late + n <= max;
 }
 
 void Core::noteRefused(unsigned warp) {
@@ -270,6 +272,10 @@ void Core::uop(const Uop &u) {
   // ordering; DEC's output refuses any other (TI's a4fa218).
   if (u.ordering && u.mem_op != kMemOpFence)
     err("V-36: uop seq %u carries ordering %u on mem_op %u, not a fence", uint32_t(u.tid), u.ordering, u.mem_op);
+  // TI-39, an input assumption: a CAS's first slot comes with credit for
+  // its second, which follows it at once.
+  if (u.attr.pair_first && !canAccept(u.warp, 2))
+    err("TI-39: warp %u's CAS first slot (seq %u) arrives without credit for its second", u.warp, uint32_t(u.tid));
   // ooe_decq applies a flush an edge late, dropping its slot's uops then:
   // none may arrive in the flush's cycle (OI-58).
   if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
@@ -2671,10 +2677,14 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     // copy's merge when it has one. A2: the lane op, T and the operands
     // into N, its opcode DEC's for the atomic, unexamined. A3: N, the
     // store data alone (MIU keeps A1's address and pass mask).
+    // A1 the address, rbase and rindex (O-72); A2 T and the operands, rs or
+    // a CAS's rs_cmp and rs_swap (TI-39).
+    const uint8_t a1_reads = uint8_t(u.shape.gpr_reads & (cfg_.inject_a1_base_only ? 1u : 3u));
+    const uint8_t a2_ops = uint8_t(u.cas ? u.cas_reads & 3u : (u.shape.gpr_reads >> 2) & 1u);
     is.psrc[0] = step == 1 ? r.psrc[0] : step == 2 ? r.atom_t : r.ptmp_n;
-    is.psrc[1] = step == 2 ? r.psrc[1] : 0;
-    is.psrc[2] = step == 2 ? r.psrc[2] : 0;
-    is.gpr_reads = uint8_t(step == 1 ? u.shape.gpr_reads & 1u : step == 2 ? 1u | (u.shape.gpr_reads & 6u) : 1u);
+    is.psrc[1] = step == 1 ? r.psrc[1] : step == 2 ? (u.cas ? r.pcas[0] : r.psrc[2]) : 0;
+    is.psrc[2] = step == 2 && u.cas ? r.pcas[1] : 0;
+    is.gpr_reads = uint8_t(step == 1 ? a1_reads : step == 2 ? 1u | (a2_ops << 1) : 1u);
     is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
     is.pold = is.merge ? r.pold : 0;
@@ -3146,6 +3156,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   if (!nop) {
     // Sources and old destinations read the RAT before this uop's writes.
     for (unsigned i = 0; i != 3; ++i) r.psrc[i] = s.rat[u.src[i] & 15];
+    if (u.cas)
+      for (unsigned i = 0; i != 2; ++i) r.pcas[i] = s.rat[u.cas_src[i] & 15];
     r.pold = s.rat[u.dst & 15];
     r.ppguard = s.prat[u.pred_guard & 3];
     r.ppold = s.prat[u.pred_dst & 3];
@@ -3229,13 +3241,21 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       rs_[r.rs_a2].atom = 2;
       rs_[r.rs_a3].atom = 3;
       for (unsigned e : {r.rs_main, r.rs_a2, r.rs_a3}) rs_[e].produces = true;
-      if (u.shape.gpr_reads & 1u) dep(r.rs_main, r.psrc[0], false, int(Config::kGrpAddr));
+      // O-72 (TI-39): A1's address is Format D's base+index, rbase (src0)
+      // and rindex (src1); A2 takes T and the operands: rs (src2) for an
+      // RMW, a CAS's rs_cmp and rs_swap from its second slot.
+      for (unsigned i = 0; i != (cfg_.inject_a1_base_only ? 1u : 2u); ++i)
+        if ((u.shape.gpr_reads >> i) & 1u) dep(r.rs_main, r.psrc[i], false, int(Config::kGrpAddr));
       if (u.shape.guard) dep(r.rs_main, r.ppguard, true, -1);
       if (copy) addDeps(r.rs_copy, r, true);
       gprod_[r.atom_t] = {r.rs_main, kNoEntry};
       dep(r.rs_a2, r.atom_t, false, int(Config::kGrpInt));
-      for (unsigned i = 1; i != 3; ++i)
-        if ((u.shape.gpr_reads >> i) & 1u) dep(r.rs_a2, r.psrc[i], false, int(Config::kGrpInt));
+      if (u.cas) {
+        for (unsigned i = 0; i != 2; ++i)
+          if ((u.cas_reads >> i) & 1u) dep(r.rs_a2, r.pcas[i], false, int(Config::kGrpInt));
+      } else if ((u.shape.gpr_reads >> 2) & 1u) {
+        dep(r.rs_a2, r.psrc[2], false, int(Config::kGrpInt));
+      }
       if (u.shape.guard) dep(r.rs_a2, r.ppguard, true, -1);
       gprod_[r.ptmp_n] = {r.rs_a2, kNoEntry};
       dep(r.rs_a3, r.ptmp_n, false, int(Config::kGrpAddr));
@@ -3709,11 +3729,59 @@ void Core::rename() {
       return 2;
     }
     const bool branch = it->attr.branch;
+    if (it->attr.pair_second && !cfg_.inject_cas_split) {
+      err("TI-39: warp %u's CAS second slot (tid %llu) reaches rename without its first", w,
+          (unsigned long long)it->tid);
+      blocked[si] = true;
+      return 0;
+    }
+    // A CAS pair (TI-39, OA's rev 189): one admission unit, two lanes and
+    // one ROB entry. A take stops before it or after it, never between; a
+    // pair with one lane left in the cycle waits. Its slots arrive together
+    // (uop()), so the second is always behind the first.
+    auto it2 = decq_.end();
+    Uop cu;
+    const bool pair = it->attr.pair_first && !cfg_.inject_cas_split;
+    if (pair) {
+      it2 = std::find_if(std::next(it), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+      if (it2 == decq_.end() || !it2->attr.pair_second || it2->tid != it->tid) {
+        err("TI-39: warp %u's CAS first slot (tid %llu) is not followed by its second", w,
+            (unsigned long long)it->tid);
+        blocked[si] = true;
+        return 0;
+      }
+      if (budget < 2) {
+        count("rename.pair_width");
+        blocked[si] = true;
+        return 0;
+      }
+      cu = *it;
+      cu.cas = true;
+      cu.dst = it2->dst;
+      cu.w = it2->w;
+      cu.attr.writes_gpr = it2->attr.writes_gpr;
+      cu.attr_raw = (cu.attr_raw & ~(1u << 10)) | (it2->attr_raw & (1u << 10));
+      for (unsigned i = 0; i != 2; ++i) cu.cas_src[i] = it2->src[i];
+      cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
+    }
     if (young) count("rename.refill");
-    if (!tryRename(si, *it)) {
+    if (!tryRename(si, pair ? cu : *it)) {
       if (young) count("rename.refill_fail");
       blocked[si] = true;
       return 0;
+    }
+    if (pair) {
+      // The second slot leaves with the first: its lane, no ROB entry.
+      decq_seq_.erase(decq_seq_.begin() + (it2 - decq_.begin()));
+      ++decq_freed_;
+      ++decq_take_now_;
+      decq_.erase(it2);
+      it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+      --slot_[si].decq;
+      ++decq_slot_take_[si];
+      --budget;
+      golog_.lanes.push_back({si, took_[si]});
+      count("rename.cas_pair");
     }
     // OI-56: a branch ends its rename group, so its checkpoint is the
     // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.

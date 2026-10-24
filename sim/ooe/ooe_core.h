@@ -406,6 +406,11 @@ struct Config {
   unsigned rs_warp_cap_rcu = 0, rs_warp_cap_miu = 0;
   bool inject_atom_early_wake = false;
   bool inject_atom_demote_mid = false;
+  /// TI-39's controls: A1 takes rbase alone, not rindex (O-72's base+index);
+  /// rename takes a CAS's first slot without its second (the pair is one
+  /// admission unit, OA's rev 189).
+  bool inject_a1_base_only = false;
+  bool inject_cas_split = false;
   /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
   /// warp's outstanding loads, so drained waits for their replay
   /// completions, not their fills. Off: the drain waits for the fills.
@@ -453,6 +458,10 @@ struct SchedAttr {
   bool writes_gpr = false, writes_pred = false, branch = false;
   unsigned mem_kind = 0, serial = 0, lat_class = 0;
   unsigned bypass_group = 0;    ///< OI-16: [16:14]
+  /// A CAS's two decode slots (AR's rev 156, OA's rev 189, TI-39): [17] the
+  /// first (rbase, rindex and the displacement: A1), [18] the second
+  /// (rs_cmp, rs_swap and the destination: A2), one instruction.
+  bool pair_first = false, pair_second = false;
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
@@ -507,6 +516,12 @@ struct Uop {
   unsigned w = 0;
   bool backward = false;             ///< a branch whose target is behind it (OA-14)
   UopShape shape;
+  /// A CAS pair as rename joins it (TI-39): the first slot's uop, with the
+  /// second's destination, its write bit and its two operands (rs_cmp,
+  /// rs_swap) and their reads. Set by rename alone, never by DEC.
+  bool cas = false;
+  unsigned cas_src[2] = {};
+  uint8_t cas_reads = 0;
 };
 
 struct Done {           ///< ccv_rcu_ooe_done
@@ -869,9 +884,10 @@ public:
 
   // -- inputs. Completions and RAU's messages before cycle(), and they take
   // effect in it; uops after it (the decode queue is written behind rename).
-  /// Can the decode queue take a uop of this warp? (Credit: the adapter
-  /// leaves a uop in the channel while this is false.)
-  bool canAccept(unsigned warp) const;
+  /// Can the decode queue take n uops of this warp? (Credit: the adapter
+  /// leaves a uop in the channel while this is false.) A CAS's two slots
+  /// arrive together, on credit for both (TI-39).
+  bool canAccept(unsigned warp, unsigned n = 1) const;
   /// Decode-queue entries the credit check counts as held: the queue, plus
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {
@@ -993,6 +1009,7 @@ private:
     unsigned rs_a2 = kNoEntry, rs_a3 = kNoEntry;
     unsigned ptmp_t = kNoEntry, ptmp_n = kNoEntry;   ///< temporaries, kNoEntry when none
     unsigned atom_t = 0;               ///< T: pnew or ptmp_t
+    unsigned pcas[2] = {};             ///< a CAS's A2 operands, rs_cmp and rs_swap (TI-39)
     bool atom_started = false;         ///< its first A1 has issued
     bool atom_pass = false;            ///< a pass in flight: A1 issued, A3 not complete
     bool atom_final = false;           ///< the last pass's A3 completed (more = 0), or A1 faulted

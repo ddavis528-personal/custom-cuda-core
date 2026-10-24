@@ -95,10 +95,16 @@ struct Op {
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
-  // kAtomic (AR-21): src[0] the address, src[1] the operand, dst rd (atom)
+  // kAtomic (AR-21; O-72, TI-39): src[0] rbase, src[1] rindex (A1's
+  // base+index address), src[2] rs (an RMW's operand), dst rd (atom)
   // unless red; MIU runs it in `passes` passes, or faults its first read.
+  // cas: a CAS, two decode slots, the second with rs_cmp and rs_swap
+  // (csrc, ncsrc of them read) and the destination; late2, the second
+  // reaches DEC a cycle after the first.
   unsigned passes = 1;
   bool red = false, afault = false;
+  bool cas = false, late2 = false;
+  unsigned csrc[2] = {}, ncsrc = 0;
   /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
   /// under the control the exit before it).
@@ -160,9 +166,11 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
   case kAtomic:
-    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined.
-    u.attr_raw = attr(1, 0, 0, !o.red, 0, 2, 0, 0, 3);
-    u.opcode = 0x2A;
+    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined. A
+    // CAS's first slot names no destination; its second does (casSecond).
+    u.attr_raw = attr(1, 0, 0, !o.red && !o.cas, 0, 2, 0, 0, 3);
+    u.opcode = o.cas ? 0x2B : 0x2A;
+    if (o.cas) u.attr_raw |= 1u << 17;
     break;
   case kBranch:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 1, 0, 0);
@@ -180,7 +188,21 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
   u.attr_raw |= pgroupOf(o.k) << 14;
-  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x3fffu) | Config::kGrpAddr << 14;
+  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & ~(7u << 14)) | Config::kGrpAddr << 14;
+  u.attr = SchedAttr::decode(u.attr_raw);
+  return u;
+}
+
+/// A CAS's second decode slot (TI-39, AR's rev 156): rs_cmp and rs_swap,
+/// the destination, the first slot's instruction, marked second.
+Uop casSecond(const Op &o, const Uop &first) {
+  Uop u = first;
+  u.src[0] = o.csrc[0];
+  u.src[1] = o.csrc[1];
+  u.src[2] = 0;
+  u.shape.gpr_reads = uint8_t((1u << o.ncsrc) - 1u);
+  u.dst = o.dst;
+  u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | 1u << 10;   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -635,6 +657,10 @@ struct Env {
         correct[tid] = corr;
         Uop u = makeUop(o, x.id, tid, x.epoch, ck);
         fetched.insert({t + fetch_delay, u});
+        // A CAS is two slots of one instruction; nothing of the warp is
+        // fetched between them (a late second ends the cycle's fetch).
+        const bool cas = o.k == kAtomic && o.cas;
+        if (cas) fetched.insert({t + fetch_delay + (o.late2 ? 1 : 0), casSecond(o, u)});
         if (o.k == kBranch) x.ckpt_of[tid] = ck;
         if (corr) {
           tid_at[{x.id, x.next}] = tid;
@@ -647,6 +673,7 @@ struct Env {
           }
           if (o.k == kExit && o.last) break;
         }
+        if (cas) break;
       }
     }
   }
@@ -820,7 +847,14 @@ struct Env {
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
       if (gpr(is.pdst)) {
-        if (is.gpr_reads & 1u) checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+        // A1: the address is rbase and rindex, as many as the op reads
+        // (O-72's base+index; TI-39).
+        const unsigned want = (1u << std::min(o.nsrc, 2u)) - 1u;
+        if ((is.gpr_reads & 3u) != want)
+          errors.push_back("TI-39: tid " + std::to_string(is.tid) + "'s A1 reads address sources " +
+                           std::to_string(is.gpr_reads & 3u) + ", want " + std::to_string(want));
+        for (unsigned i = 0; i != 2; ++i)
+          if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpAddr));
       } else {
         checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
       }
@@ -836,6 +870,11 @@ struct Env {
     if (!a.hold) errors.push_back("AR-21: tid " + std::to_string(is.tid) + "'s lane op issues outside a pass");
     else if (t < a.t_ready)
       violation(is.tid, "A2 reads T at " + std::to_string(t) + ", readable at " + std::to_string(a.t_ready));
+    // A2's operands after T: an RMW's rs, a CAS's rs_cmp and rs_swap.
+    const unsigned want = o.cas ? (1u << o.ncsrc) - 1u : o.nsrc >= 3 ? 1u : 0u;
+    if (((is.gpr_reads >> 1) & 3u) != want || !(is.gpr_reads & 1u))
+      errors.push_back("TI-39: tid " + std::to_string(is.tid) + "'s A2 reads " + std::to_string(is.gpr_reads) +
+                       ", want T and operands " + std::to_string(want));
     for (unsigned i = 1; i != 3; ++i)
       if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
     if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
@@ -1207,6 +1246,24 @@ struct Env {
     std::set<unsigned> held;
     for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != width;) {
       if (held.count(it->second.warp)) { ++it; continue; }
+      // A CAS's two slots go together, on credit for both (TI-39): its first
+      // alone could wait at the queue's head for a second that no credit
+      // lets in.
+      if (it->second.attr.pair_first) {
+        auto it2 = std::next(it);
+        while (it2 != fetched.end() && it2->second.warp != it->second.warp) ++it2;
+        if (it2 == fetched.end() || it2->first > t || n + 2 > width || !core.canAccept(it->second.warp, 2)) {
+          held.insert(it->second.warp);
+          ++it;
+          continue;
+        }
+        core.uop(it->second);
+        core.uop(it2->second);
+        fetched.erase(it2);
+        it = fetched.erase(it);
+        n += 2;
+        continue;
+      }
       if (!core.canAccept(it->second.warp)) { held.insert(it->second.warp); ++it; continue; }
       core.uop(it->second);
       it = fetched.erase(it);
@@ -2894,7 +2951,7 @@ void testAtomic() {
       {"cmpl-delay", [](Config &c) { c.cmpl_wake_delay = 2; }},
   };
   for (const M &m : ms)
-    for (unsigned variant = 0; variant != 4; ++variant) {
+    for (unsigned variant = 0; variant != 6; ++variant) {
       g_test = std::string("atomic ") + m.name + " " + std::to_string(variant);
       Config c = baseConfig();
       m.set(c);
@@ -2909,13 +2966,24 @@ void testAtomic() {
       Op at;
       at.k = kAtomic;
       at.dst = 3;
-      at.src[0] = 1;
-      at.src[1] = 2;
-      at.nsrc = 2;
+      at.src[0] = 1;                                           // rbase
+      at.src[1] = 2;                                           // rindex
+      at.src[2] = 0;                                           // rs
+      at.nsrc = 3;
       at.passes = 3;
       at.red = variant == 1;
       if (variant == 2) at.mask = 0x0000ffffu;              // masked: the copy keeps T's other lanes
       if (variant == 3) { at.guard = true; at.pguard = 1; }   // guarded: the copy too
+      if (variant >= 4) {
+        // A CAS (TI-39): rbase and rindex in the first slot; rs_cmp and
+        // rs_swap in the second, which reaches DEC a cycle late in 5.
+        at.cas = true;
+        at.nsrc = 2;
+        at.csrc[0] = 0;
+        at.csrc[1] = 2;
+        at.ncsrc = 2;
+        at.late2 = variant == 5;
+      }
       const size_t at_idx = p.size();
       p.push_back(at);
       Op yl; yl.k = kLane; yl.dst = 8; yl.src[0] = 2; yl.nsrc = 1; p.push_back(yl);     // around it
@@ -2948,8 +3016,10 @@ void testAtomic() {
              (unsigned long long)ym_at, (unsigned long long)last_write);
       unsigned copies = 0;
       for (const Outputs &o : e.log) for (const Issue &i : o.issues) copies += i.tid == at_tid && i.copy;
-      EXPECT(copies == (variant >= 2 ? 1u : 0u), "%u copies", copies);
+      EXPECT(copies == (variant == 2 || variant == 3 ? 1u : 0u), "%u copies", copies);
       EXPECT(e.core.histograms["atomic.passes"][3] == 1, "the passes histogram");
+      EXPECT(e.core.counters["rename.cas_pair"] == (variant >= 4 ? 1u : 0u), "%llu CAS pairs renamed",
+             (unsigned long long)e.core.counters["rename.cas_pair"]);
       EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "registers lost");
     }
 }
@@ -2963,7 +3033,7 @@ void testAtomicFault() {
   e.keep_log = true;
   std::vector<Op> p;
   for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 4; at.afault = true;
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 4; at.afault = true;
   p.push_back(at);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
@@ -2995,7 +3065,7 @@ void testAtomicKill() {
   e.keep_log = true;
   std::vector<Op> p;
   for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 6;
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 6;
   p.push_back(at);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
@@ -3040,7 +3110,7 @@ void testAtomicDemote() {
     e.atom_mlc_pct = 100;           // every read misses the MLC: triggers due
     std::vector<Op> p;
     for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 5;
+    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 5;
     p.push_back(at);
     for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kLane; o.dst = 4; o.src[0] = 3; o.nsrc = 1; p.push_back(o); }
     Op ex; ex.k = kExit; p.push_back(ex);
@@ -3102,10 +3172,12 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
         return n ? double(sum) / double(n) : 0.0;
       };
       std::printf("  atomic random: %llu atomics, %.2f passes each, hold %.1f cycles a pass, head wait %.1f,"
-                  " %llu cycles of held demote triggers, %llu rename port stalls\n",
+                  " %llu cycles of held demote triggers, %llu rename port stalls; %llu CAS pairs, %llu"
+                  " waits for two lanes\n",
                   (unsigned long long)tot["atomic"], mean("atomic.passes"), mean("atomic.hold_cycles"),
                   mean("atomic.head_wait"), (unsigned long long)tot["demote_trigger.held_atomic"],
-                  (unsigned long long)tot["stall.rename_ports"]);
+                  (unsigned long long)tot["stall.rename_ports"], (unsigned long long)tot["rename.cas_pair"],
+                  (unsigned long long)tot["rename.pair_width"]);
     }
   } report{tot, hist, control == 0};
   for (unsigned seed = 1; seed <= seeds; ++seed)
@@ -3114,6 +3186,8 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       Config c = base(seed, mode);
       c.inject_atom_off_head = control == 1;
       c.inject_atom_early_wake = control == 2;
+      c.inject_a1_base_only = control == 3;
+      c.inject_cas_split = control == 4;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
       e.miss_pct = 30;
@@ -3130,8 +3204,19 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
             a.dst = rng() % 16;
             a.src[0] = rng() % 16;
             a.src[1] = rng() % 16;
-            a.nsrc = 2;
+            a.src[2] = rng() % 16;
+            a.nsrc = 1 + rng() % 3;
             a.red = rng() % 4 == 0;
+            // One in four a CAS (TI-39): two slots, the second now and then late.
+            if (rng() % 4 == 0) {
+              a.cas = true;
+              a.red = false;
+              a.nsrc = 1 + rng() % 2;
+              a.csrc[0] = rng() % 16;
+              a.csrc[1] = rng() % 16;
+              a.ncsrc = 2;
+              a.late2 = rng() % 3 == 0;
+            }
             a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
             if (rng() % 6 == 0) a.mask = 0x0000ffffu;
             else if (rng() % 6 == 0) { a.guard = true; a.pguard = rng() % 4; }
@@ -3143,7 +3228,9 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       if (control) g_quiet = true;
       e.finish(control ? 30000 : 200000);
       g_quiet = false;
-      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports"}) tot[k] += e.core.counters[k];
+      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports", "rename.cas_pair",
+                            "rename.pair_width"})
+        tot[k] += e.core.counters[k];
       for (const char *k : {"atomic.passes", "atomic.hold_cycles", "atomic.head_wait"})
         for (const auto &b : e.core.histograms[k]) hist[k][b.first] += b.second;
       if (control) {
@@ -4172,6 +4259,12 @@ int main(int argc, char **argv) {
     sweepSections();
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--atomic") {   // the atomics' tests alone
+    testAtomic();
+    testAtomicRandom(2, randomConfig);
+    std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--audit") {
     audit();
     return g_fail ? 1 : 0;
@@ -4255,8 +4348,9 @@ int main(int argc, char **argv) {
   testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
-  for (int k : {1, 2}) {
-    const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
+  for (int k : {1, 2, 3, 4}) {
+    const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
+                     : k == 3 ? "control a1-base-only" : "control cas-split";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;
