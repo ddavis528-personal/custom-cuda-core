@@ -849,7 +849,9 @@ private:
     /// A predicate transfer (TI-36): one word at lane 0's address. A store
     /// carries its predicate's word, merged into memory's after commit.
     bool pxfer = false;
-    unsigned bytes = 4;              ///< per lane: the data register's width
+    unsigned bytes = 4;              ///< per lane: the transfer
+    unsigned xsize = 0;              ///< O-80's xfer_size, from the memop
+    bool xsigned = false;            ///< and xfer_signed
     uint32_t pdata = 0;
     unsigned rmw = 0;                ///< a predicate store's drain: 1 reading, 2 writing
   };
@@ -1369,6 +1371,8 @@ private:
     j.rs_idx = unsigned(get(mo.msg, c.ooe_miu, "rs_idx"));
     j.dst_pos = unsigned(get(mo.msg, c.ooe_miu, "dst_pos"));
     j.chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
+    j.xsize = unsigned(get(mo.msg, c.ooe_miu, "xfer_size"));
+    j.xsigned = get(mo.msg, c.ooe_miu, "xfer_signed") != 0;
     j.addr_slot = a->second.slot;
     j.tid = a->second.tid;
     // The L1 contract (A-46, A-61): a hit's completion reaches OOE at its
@@ -1392,7 +1396,13 @@ private:
     const uint64_t draw = get(mo.msg, c.ooe_miu, "disp");
     const int64_t disp = int64_t(draw << (64 - df.width)) >> (64 - df.width);
     const unsigned chw = unsigned(get(mo.msg, c.ooe_miu, "chwidth"));
-    const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? 2 - std::min(chw, 2u) : 0;
+    // O-80: a sized form's transfer is its opcode's, else rdata's width;
+    // the scale, alignment and bytes moved all follow the transfer.
+    // xfer-ignored: the transfer taken from rdata's width alone.
+    const unsigned xs = k_.brk == "xfer-ignored" ? 0u : j.xsize;
+    const unsigned nb = k_.brk == "wide-xfer" ? 4u : xs == 1 ? 1u : xs == 2 ? 2u : spanOf(chw);
+    j.bytes = nb;
+    const unsigned sh = get(mo.msg, c.ooe_miu, "scale_en") ? (nb == 4 ? 2u : nb == 2 ? 1u : 0u) : 0;
     const bool global = get(mo.msg, c.ooe_miu, "space") == kSpaceGlobal;
     j.global = global;
     // The base is per lane (TI-32), or a launch slot's window (TI-31).
@@ -1440,11 +1450,10 @@ private:
                     uint64_t(disp);
       }
     // Lines touched by ACTIVE lanes, in first-touch order; each lane moves
-    // its data register's width (AR-24 (d): 4, 2 or 1 bytes from chwidth).
-    // An inactive lane's address is never looked at. wide-xfer: every
-    // access moves four bytes, as the 32-bit-only stubs did.
-    const unsigned nb = k_.brk == "wide-xfer" ? 4u : spanOf(chw);
-    j.bytes = nb;
+    // the transfer above (AR-24 (d): its data register's width, 4, 2 or 1
+    // bytes, or O-80's sized form's). An inactive lane's address is never
+    // looked at. wide-xfer: every access moves four bytes, as the
+    // 32-bit-only stubs did.
     std::map<uint64_t, size_t> at;
     for (unsigned l = 0; l != kLanes; ++l) {
       if (!((j.active >> l) & 1u)) continue;
@@ -1765,6 +1774,11 @@ private:
             if (a.lane == l && a.val != v)
               k_.fail("miu: seq %llu lane %u loaded %08x, oracle %08x",
                       (unsigned long long)r->seq, l, v, a.val);
+        // A sized load is zero- or sign-filled to rdata's width (O-80; MIU
+        // spec rev 38), which RCU writes at dst_width as ever.
+        if (job_.bytes != 4 && job_.xsigned && (v >> (8 * job_.bytes - 1) & 1u))
+          v |= ~0u << (8 * job_.bytes);
+        v &= elemMask(job_.chw);
         if (k_.brk == "corrupt-load" && r && r->seq == 13 && l == 5) v ^= 1;
         putLane(d, c.miu_rcu, "load_data", l, v);
       }
@@ -3186,6 +3200,10 @@ private:
     }
     // The interleaved local form (O-69; IS-19): no base, imm the offset b.
     if (op->local) put(u, c.dec_ooe, "local_form", 1);
+    // O-80: a sized form's transfer and sign, from the table (OOE never
+    // decodes the opcode, A-66). xfer-unsigned: every sized load zero-fills.
+    put(u, c.dec_ooe, "xfer_size", xferOf(op));
+    put(u, c.dec_ooe, "xfer_signed", xferSigned(op) && k_.brk != "xfer-unsigned");
     put(u, c.dec_ooe, "pred_guard", pguard);
     put(u, c.dec_ooe, "pred_dst", pdst);
     put(u, c.dec_ooe, "pred_we", pd != nullptr);

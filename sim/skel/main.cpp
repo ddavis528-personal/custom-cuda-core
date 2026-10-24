@@ -250,7 +250,8 @@ int main(int argc, char **argv) {
                       brk == "ordering-on-load" || brk == "memop-ordering" ||
                       brk == "dcu-one-miss" || brk == "write-through" || brk == "drop-writeback" ||
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
-                      brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark";
+                      brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
+                      brk == "xfer-unsigned" || brk == "xfer-ignored";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

@@ -2935,6 +2935,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
     m.arg_slot = u.arg_slot;
     m.local_form = u.local_form;         // DEC's, unexamined (IS-19)
+    m.xfer_size = u.xfer_size; m.xfer_signed = u.xfer_signed;
     // The data register's width (AR-24 (d)): a load's destination, a
     // store's first source, as resOf takes its pipes.
     m.chwidth = dataWidth(r);

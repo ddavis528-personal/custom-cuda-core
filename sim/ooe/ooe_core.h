@@ -521,6 +521,7 @@ struct Uop {
   bool scale_en = false;
   unsigned slot_form = 0, arg_slot = 0;   ///< the launch-slot form, for MIU (TI-31)
   unsigned local_form = 0;                ///< the interleaved local form, for MIU (IS-19)
+  unsigned xfer_size = 0, xfer_signed = 0;  // O-80: DEC's, unexamined, for MIU (TI, the OI-18 pattern)
   /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
   /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
   unsigned cause = 0;
@@ -649,6 +650,7 @@ struct Memop {          ///< ccv_ooe_miu_memop
   unsigned data_pos = 0;   ///< the data register's position (its pipes start there; AR-24 (d))
   unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
   unsigned local_form = 0;                ///< DEC's, unexamined (IS-19)
+  unsigned xfer_size = 0, xfer_signed = 0;  // O-80: DEC's, unexamined, for MIU (TI, the OI-18 pattern)
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
