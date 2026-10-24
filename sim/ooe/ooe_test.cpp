@@ -95,10 +95,16 @@ struct Op {
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
-  // kAtomic (AR-21): src[0] the address, src[1] the operand, dst rd (atom)
+  // kAtomic (AR-21; O-72, TI-39): src[0] rbase, src[1] rindex (A1's
+  // base+index address), src[2] rs (an RMW's operand), dst rd (atom)
   // unless red; MIU runs it in `passes` passes, or faults its first read.
+  // cas: a CAS, two decode slots, the second with rs_cmp and rs_swap
+  // (csrc, ncsrc of them read) and the destination; late2, the second
+  // reaches DEC a cycle after the first.
   unsigned passes = 1;
   bool red = false, afault = false;
+  bool cas = false, late2 = false;
+  unsigned csrc[2] = {}, ncsrc = 0;
   /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
   /// under the control the exit before it).
@@ -110,6 +116,14 @@ struct Op {
   /// cycles after its issue, or 0 for the environment's DRAM draw.
   bool dram = false;
   unsigned fill = 0;
+  /// kBarrier (TI-40, TI-41): arrive, bar.arrive (serial 4) rather than a
+  /// wait; phase, wait.phase, its expected phases a predicate data source;
+  /// aw, FET's all_waiting mark (a converged wait, held at rename). lanes:
+  /// a guarded one's guard lanes, or wait.phase's phases, on its done. An
+  /// unguarded arrive or wait completes without issue.
+  /// mark: all_waiting on any other kind (the barrier timer's start).
+  bool arrive = false, phase = false, aw = true, mark = false;
+  uint32_t lanes = 0;
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -160,9 +174,11 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
   case kAtomic:
-    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined.
-    u.attr_raw = attr(1, 0, 0, !o.red, 0, 2, 0, 0, 3);
-    u.opcode = 0x2A;
+    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined. A
+    // CAS's first slot names no destination; its second does (casSecond).
+    u.attr_raw = attr(1, 0, 0, !o.red && !o.cas, 0, 2, 0, 0, 3);
+    u.opcode = o.cas ? 0x2B : 0x2A;
+    if (o.cas) u.attr_raw |= 1u << 17;
     break;
   case kBranch:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 1, 0, 0);
@@ -176,11 +192,30 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.shape.exit = true;
     u.shape.final_exit = o.final;
     break;
-  case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
+  case kBarrier:
+    u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, o.arrive ? kSerArrive : kSerBarrier, 0);
+    u.imm = 3;
+    u.shape.pdata = o.phase;
+    break;
   case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
   }
+  u.all_waiting = o.k == kBarrier ? o.aw && !o.arrive : o.mark;
   u.attr_raw |= pgroupOf(o.k) << 14;
-  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x3fffu) | Config::kGrpAddr << 14;
+  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & ~(7u << 14)) | Config::kGrpAddr << 14;
+  u.attr = SchedAttr::decode(u.attr_raw);
+  return u;
+}
+
+/// A CAS's second decode slot (TI-39, AR's rev 156): rs_cmp and rs_swap,
+/// the destination, the first slot's instruction, marked second.
+Uop casSecond(const Op &o, const Uop &first) {
+  Uop u = first;
+  u.src[0] = o.csrc[0];
+  u.src[1] = o.csrc[1];
+  u.src[2] = 0;
+  u.shape.gpr_reads = uint8_t((1u << o.ncsrc) - 1u);
+  u.dst = o.dst;
+  u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | 1u << 10;   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -635,6 +670,10 @@ struct Env {
         correct[tid] = corr;
         Uop u = makeUop(o, x.id, tid, x.epoch, ck);
         fetched.insert({t + fetch_delay, u});
+        // A CAS is two slots of one instruction; nothing of the warp is
+        // fetched between them (a late second ends the cycle's fetch).
+        const bool cas = o.k == kAtomic && o.cas;
+        if (cas) fetched.insert({t + fetch_delay + (o.late2 ? 1 : 0), casSecond(o, u)});
         if (o.k == kBranch) x.ckpt_of[tid] = ck;
         if (corr) {
           tid_at[{x.id, x.next}] = tid;
@@ -647,6 +686,7 @@ struct Env {
           }
           if (o.k == kExit && o.last) break;
         }
+        if (cas) break;
       }
     }
   }
@@ -808,6 +848,10 @@ struct Env {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
         d.branch_mask = d.branch_taken ? kFullMask : 0;
       }
+      // A guarded barrier's guard lanes on branch_mask, wait.phase's
+      // phases on aux (TI-40, OA's rev 226).
+      if (o.k == kBarrier && o.guard) d.branch_mask = o.lanes;
+      if (o.k == kBarrier && o.phase) d.aux = o.lanes;
       dones.insert({doneRoom(t + (rcu_fast ? 2 : bound)), d});
     }
   }
@@ -820,7 +864,14 @@ struct Env {
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
       if (gpr(is.pdst)) {
-        if (is.gpr_reads & 1u) checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+        // A1: the address is rbase and rindex, as many as the op reads
+        // (O-72's base+index; TI-39).
+        const unsigned want = (1u << std::min(o.nsrc, 2u)) - 1u;
+        if ((is.gpr_reads & 3u) != want)
+          errors.push_back("TI-39: tid " + std::to_string(is.tid) + "'s A1 reads address sources " +
+                           std::to_string(is.gpr_reads & 3u) + ", want " + std::to_string(want));
+        for (unsigned i = 0; i != 2; ++i)
+          if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpAddr));
       } else {
         checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
       }
@@ -836,6 +887,11 @@ struct Env {
     if (!a.hold) errors.push_back("AR-21: tid " + std::to_string(is.tid) + "'s lane op issues outside a pass");
     else if (t < a.t_ready)
       violation(is.tid, "A2 reads T at " + std::to_string(t) + ", readable at " + std::to_string(a.t_ready));
+    // A2's operands after T: an RMW's rs, a CAS's rs_cmp and rs_swap.
+    const unsigned want = o.cas ? (1u << o.ncsrc) - 1u : o.nsrc >= 3 ? 1u : 0u;
+    if (((is.gpr_reads >> 1) & 3u) != want || !(is.gpr_reads & 1u))
+      errors.push_back("TI-39: tid " + std::to_string(is.tid) + "'s A2 reads " + std::to_string(is.gpr_reads) +
+                       ", want T and operands " + std::to_string(want));
     for (unsigned i = 1; i != 3; ++i)
       if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
     if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
@@ -1207,6 +1263,24 @@ struct Env {
     std::set<unsigned> held;
     for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != width;) {
       if (held.count(it->second.warp)) { ++it; continue; }
+      // A CAS's two slots go together, on credit for both (TI-39): its first
+      // alone could wait at the queue's head for a second that no credit
+      // lets in.
+      if (it->second.attr.pair_first) {
+        auto it2 = std::next(it);
+        while (it2 != fetched.end() && it2->second.warp != it->second.warp) ++it2;
+        if (it2 == fetched.end() || it2->first > t || n + 2 > width || !core.canAccept(it->second.warp, 2)) {
+          held.insert(it->second.warp);
+          ++it;
+          continue;
+        }
+        core.uop(it->second);
+        core.uop(it2->second);
+        fetched.erase(it2);
+        it = fetched.erase(it);
+        n += 2;
+        continue;
+      }
       if (!core.canAccept(it->second.warp)) { held.insert(it->second.warp); ++it; continue; }
       core.uop(it->second);
       it = fetched.erase(it);
@@ -2276,28 +2350,192 @@ void testFault() {
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
 }
 
+/// Every barrier report a run sent, in order.
+std::vector<Bar> barsOf(const Env &e) {
+  std::vector<Bar> v;
+  for (const Outputs &o : e.log) v.insert(v.end(), o.bars.begin(), o.bars.end());
+  return v;
+}
+
+/// Barriers (TI-40, TI-41; AR's revs 161-164, OA's revs 200-204): every
+/// arrive, wait and exit is reported at its retire. A converged wait (FET's
+/// all_waiting) is reported held and holds rename behind it until SYU's
+/// ccv_syu_ooe_rel; a diverged one holds nothing (FET parks its lanes), nor
+/// does an arrive, whose guard lanes come back on its done. The control
+/// bar-no-hold drops the hold, so a younger uop issues before the release.
 void testBarrier() {
-  g_test = "barrier";
-  Config c = baseConfig();
-  c.l1_spec = false;
-  Env e(c);
-  e.keep_log = true;
-  std::vector<Op> p;
-  Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
-  Op b; b.k = kBarrier; p.push_back(b);
-  Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
-  Op ex; ex.k = kExit; p.push_back(ex);
-  e.launch(0, 0, p);
-  uint64_t bar_at = 0;
-  for (unsigned k = 0; k != 40; ++k) {
-    e.step();
-    for (const Bar &x : e.log.back().bars) { bar_at = e.t - 1; EXPECT(x.barrier_id == 3, "barrier id"); }
+  for (const bool control : {false, true}) {
+    g_test = control ? "barrier held (control)" : "barrier held";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.inject_bar_no_hold = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op b; b.k = kBarrier; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 40; ++k) e.step();
+    std::vector<Bar> v = barsOf(e);
+    const bool held = v.size() == 1 && v[0].kind == kBarWait && v[0].held;
+    const bool younger = issueCount(e, 3) != 0;
+    if (control) {
+      const bool caught = younger || !held;
+      std::printf("  %-24s %s\n", "control bar-no-hold", caught ? "caught" : "MISSED");
+      EXPECT(caught, "dropping the hold should let a younger uop issue");
+      continue;
+    }
+    EXPECT(held, "%zu reports, want one held wait", v.size());
+    if (!v.empty()) {
+      EXPECT(v[0].barrier_id == 3, "barrier id %u", v[0].barrier_id);
+      EXPECT(v[0].issue_mask == kFullMask && v[0].guard_mask == ~0u, "masks %08x %08x", v[0].issue_mask, v[0].guard_mask);
+    }
+    EXPECT(!younger, "a uop younger than the held wait issued before release (V-09)");
+    EXPECT(issueCount(e, 2) == 0, "an unguarded wait issued: it completes without issue, as exit");
+    EXPECT(e.w[0].retired.size() == 2, "retired %zu before release: the wait retires", e.w[0].retired.size());
+    e.core.barRelease(1u);
+    e.finish();
+    v = barsOf(e);
+    EXPECT(v.size() == 2 && v[1].kind == kBarExit && v[1].issue_mask == kFullMask, "%zu reports, want the exit's", v.size());
+    EXPECT(e.core.counters["bar.release"] == 1, "releases %llu", (unsigned long long)e.core.counters["bar.release"]);
   }
-  EXPECT(bar_at, "no barrier wait sent");
-  EXPECT(issueCount(e, 3) == 0, "a uop younger than the barrier issued before release (V-09)");
-  EXPECT(e.w[0].retired.size() == 1, "retired %zu before release", e.w[0].retired.size());
-  e.core.barRelease(1u);
-  e.finish();
+  {
+    // A diverged wait: reported, not held; a release before it is stale.
+    g_test = "barrier diverged";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBarrier; b.aw = false; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.core.barRelease(1u);
+    e.finish();
+    const std::vector<Bar> v = barsOf(e);
+    EXPECT(v.size() == 2 && v[0].kind == kBarWait && !v[0].held,
+           "%zu reports, want an unheld wait", v.size());
+    EXPECT(e.core.counters["hold.barrier"] == 0, "a diverged wait held rename");
+    EXPECT(e.core.counters["bar.release_dropped"] == 1, "the stale release was not dropped");
+  }
+  for (const bool guarded : {false, true}) {
+    // bar.arrive: no hold; a guarded one's guard lanes from its done.
+    g_test = "barrier arrive";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBarrier; b.arrive = true; b.guard = guarded; b.lanes = 0x00ff00ff; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const std::vector<Bar> v = barsOf(e);
+    EXPECT(v.size() == 2 && v[0].kind == kBarArrive && !v[0].held, "%zu reports, want an arrive", v.size());
+    if (!v.empty())
+      EXPECT(v[0].guard_mask == (guarded ? 0x00ff00ffu : ~0u), "guard lanes %08x", v[0].guard_mask);
+    EXPECT(e.core.counters["hold.barrier"] == 0, "an arrive held rename");
+    EXPECT(issueCount(e, 1) == (guarded ? 1u : 0u), "the arrive issued %u times: only a guarded one goes to RCU",
+           issueCount(e, 1));
+  }
+  {
+    // wait.phase: its expected phases from its done; held as a wait.
+    g_test = "barrier wait.phase";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBarrier; b.phase = true; b.lanes = 0x5555aaaa; p.push_back(b);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 40; ++k) e.step();
+    const std::vector<Bar> v = barsOf(e);
+    EXPECT(v.size() == 1 && v[0].kind == kBarWaitPhase && v[0].held && v[0].phase_mask == 0x5555aaaa,
+           "%zu reports, want a held wait.phase", v.size());
+    e.core.barRelease(1u);
+    e.finish();
+  }
+}
+
+/// A demotion of a warp held behind a retired converged wait (TI-40, AR's
+/// rev 164): its rewind beat sets rewind_held, and held_long for a 32-bit
+/// wait, at the PC past the wait, whether a younger uop waits in the
+/// decode queue or nothing does. The control beat-unheld drops the flag.
+void testBarrierDemote() {
+  for (const bool control : {false, true}) {
+    for (const bool tail : {true, false}) {
+      g_test = control ? "barrier demote (control)" : "barrier demote";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_beat_unheld = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBarrier; p.push_back(b);
+      if (tail) { Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d); }
+      e.launch(0, 0, p);
+      for (unsigned k = 0; k != 40; ++k) e.step();
+      uint64_t wait_pc = 0;
+      for (const Outputs &o : e.log)
+        for (const Bar &x : o.bars) wait_pc = 0x1000 + 4 * (x.tid & 0xffff);
+      e.core.demote(0);
+      std::vector<Redirect> beats;
+      for (unsigned k = 0; k != 40; ++k) {
+        e.step();
+        for (const Redirect &r : e.log.back().redirects) if (r.rewind) beats.push_back(r);
+      }
+      const bool flagged = beats.size() == 1 && beats[0].rewind_held && beats[0].held_long &&
+                           beats[0].own_pc == !tail;
+      if (control) {
+        if (tail) {
+          std::printf("  %-24s %s\n", "control beat-unheld", !flagged ? "caught" : "MISSED");
+          EXPECT(!flagged, "dropping the flag should leave the beat unheld");
+        }
+        continue;
+      }
+      EXPECT(wait_pc, "no wait report");
+      EXPECT(flagged, "%zu beats, want one with rewind_held, held_long, and own_pc iff nothing follows",
+             beats.size());
+      if (!beats.empty()) {
+        EXPECT(beats[0].target_pc == wait_pc + 4, "beat at %llx, the wait at %llx",
+               (unsigned long long)beats[0].target_pc, (unsigned long long)wait_pc);
+        EXPECT(beats[0].taken_mask == kFullMask, "beat lanes %08x", beats[0].taken_mask);
+      }
+      EXPECT(e.core.counters["demote.held_wait"] == 1, "the demotion did not see the held wait");
+      EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+  }
+}
+
+/// The barrier demotion timer (TI-40): from a held wait's retire, or a
+/// marked uop's that leaves the ROB empty, the trigger fires once the ROB
+/// has stayed empty past demote_barrier; a younger uop's arrival stops it.
+void testBarrierTimer() {
+  for (const unsigned mode : {0u, 1u, 2u}) {   // held wait, marked lane, marked lane then more
+    g_test = "barrier timer";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.demote_barrier = 30;
+    Env e(c);
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    if (mode == 0) { Op b; b.k = kBarrier; p.push_back(b); }
+    else { Op m; m.k = kLane; m.dst = 2; m.nsrc = 1; m.mark = true; p.push_back(m); }
+    if (mode == 2) {
+      Op d; d.k = kLane; d.dst = 3; d.nsrc = 1; p.push_back(d);
+      Op ex; ex.k = kExit; p.push_back(ex);
+    }
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 120; ++k) e.step();
+    const unsigned long long fired = e.core.counters["demote_trigger.barrier"];
+    EXPECT(fired == (mode == 2 ? 0u : 1u), "mode %u: %llu barrier triggers", mode, fired);
+  }
 }
 
 /// F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
@@ -2321,7 +2559,7 @@ void testBarrierFault() {
       unsigned bars = 0, faults = 0, cause = 0;
       for (unsigned k = 0; k != 40; ++k) {
         e.step();
-        bars += unsigned(e.log.back().bars.size());
+        for (const Bar &x : e.log.back().bars) bars += x.kind != kBarExit;
         for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
       }
       const bool want_fault = count <= 3 && !control;
@@ -2894,7 +3132,7 @@ void testAtomic() {
       {"cmpl-delay", [](Config &c) { c.cmpl_wake_delay = 2; }},
   };
   for (const M &m : ms)
-    for (unsigned variant = 0; variant != 4; ++variant) {
+    for (unsigned variant = 0; variant != 6; ++variant) {
       g_test = std::string("atomic ") + m.name + " " + std::to_string(variant);
       Config c = baseConfig();
       m.set(c);
@@ -2909,13 +3147,24 @@ void testAtomic() {
       Op at;
       at.k = kAtomic;
       at.dst = 3;
-      at.src[0] = 1;
-      at.src[1] = 2;
-      at.nsrc = 2;
+      at.src[0] = 1;                                           // rbase
+      at.src[1] = 2;                                           // rindex
+      at.src[2] = 0;                                           // rs
+      at.nsrc = 3;
       at.passes = 3;
       at.red = variant == 1;
       if (variant == 2) at.mask = 0x0000ffffu;              // masked: the copy keeps T's other lanes
       if (variant == 3) { at.guard = true; at.pguard = 1; }   // guarded: the copy too
+      if (variant >= 4) {
+        // A CAS (TI-39): rbase and rindex in the first slot; rs_cmp and
+        // rs_swap in the second, which reaches DEC a cycle late in 5.
+        at.cas = true;
+        at.nsrc = 2;
+        at.csrc[0] = 0;
+        at.csrc[1] = 2;
+        at.ncsrc = 2;
+        at.late2 = variant == 5;
+      }
       const size_t at_idx = p.size();
       p.push_back(at);
       Op yl; yl.k = kLane; yl.dst = 8; yl.src[0] = 2; yl.nsrc = 1; p.push_back(yl);     // around it
@@ -2948,8 +3197,10 @@ void testAtomic() {
              (unsigned long long)ym_at, (unsigned long long)last_write);
       unsigned copies = 0;
       for (const Outputs &o : e.log) for (const Issue &i : o.issues) copies += i.tid == at_tid && i.copy;
-      EXPECT(copies == (variant >= 2 ? 1u : 0u), "%u copies", copies);
+      EXPECT(copies == (variant == 2 || variant == 3 ? 1u : 0u), "%u copies", copies);
       EXPECT(e.core.histograms["atomic.passes"][3] == 1, "the passes histogram");
+      EXPECT(e.core.counters["rename.cas_pair"] == (variant >= 4 ? 1u : 0u), "%llu CAS pairs renamed",
+             (unsigned long long)e.core.counters["rename.cas_pair"]);
       EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "registers lost");
     }
 }
@@ -2963,7 +3214,7 @@ void testAtomicFault() {
   e.keep_log = true;
   std::vector<Op> p;
   for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 4; at.afault = true;
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 4; at.afault = true;
   p.push_back(at);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
@@ -2995,7 +3246,7 @@ void testAtomicKill() {
   e.keep_log = true;
   std::vector<Op> p;
   for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 6;
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 6;
   p.push_back(at);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
@@ -3040,7 +3291,7 @@ void testAtomicDemote() {
     e.atom_mlc_pct = 100;           // every read misses the MLC: triggers due
     std::vector<Op> p;
     for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 5;
+    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 5;
     p.push_back(at);
     for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kLane; o.dst = 4; o.src[0] = 3; o.nsrc = 1; p.push_back(o); }
     Op ex; ex.k = kExit; p.push_back(ex);
@@ -3102,10 +3353,12 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
         return n ? double(sum) / double(n) : 0.0;
       };
       std::printf("  atomic random: %llu atomics, %.2f passes each, hold %.1f cycles a pass, head wait %.1f,"
-                  " %llu cycles of held demote triggers, %llu rename port stalls\n",
+                  " %llu cycles of held demote triggers, %llu rename port stalls; %llu CAS pairs, %llu"
+                  " waits for two lanes\n",
                   (unsigned long long)tot["atomic"], mean("atomic.passes"), mean("atomic.hold_cycles"),
                   mean("atomic.head_wait"), (unsigned long long)tot["demote_trigger.held_atomic"],
-                  (unsigned long long)tot["stall.rename_ports"]);
+                  (unsigned long long)tot["stall.rename_ports"], (unsigned long long)tot["rename.cas_pair"],
+                  (unsigned long long)tot["rename.pair_width"]);
     }
   } report{tot, hist, control == 0};
   for (unsigned seed = 1; seed <= seeds; ++seed)
@@ -3114,6 +3367,8 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       Config c = base(seed, mode);
       c.inject_atom_off_head = control == 1;
       c.inject_atom_early_wake = control == 2;
+      c.inject_a1_base_only = control == 3;
+      c.inject_cas_split = control == 4;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
       e.miss_pct = 30;
@@ -3130,8 +3385,19 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
             a.dst = rng() % 16;
             a.src[0] = rng() % 16;
             a.src[1] = rng() % 16;
-            a.nsrc = 2;
+            a.src[2] = rng() % 16;
+            a.nsrc = 1 + rng() % 3;
             a.red = rng() % 4 == 0;
+            // One in four a CAS (TI-39): two slots, the second now and then late.
+            if (rng() % 4 == 0) {
+              a.cas = true;
+              a.red = false;
+              a.nsrc = 1 + rng() % 2;
+              a.csrc[0] = rng() % 16;
+              a.csrc[1] = rng() % 16;
+              a.ncsrc = 2;
+              a.late2 = rng() % 3 == 0;
+            }
             a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
             if (rng() % 6 == 0) a.mask = 0x0000ffffu;
             else if (rng() % 6 == 0) { a.guard = true; a.pguard = rng() % 4; }
@@ -3143,7 +3409,9 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       if (control) g_quiet = true;
       e.finish(control ? 30000 : 200000);
       g_quiet = false;
-      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports"}) tot[k] += e.core.counters[k];
+      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports", "rename.cas_pair",
+                            "rename.pair_width"})
+        tot[k] += e.core.counters[k];
       for (const char *k : {"atomic.passes", "atomic.hold_cycles", "atomic.head_wait"})
         for (const auto &b : e.core.histograms[k]) hist[k][b.first] += b.second;
       if (control) {
@@ -4172,6 +4440,12 @@ int main(int argc, char **argv) {
     sweepSections();
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--atomic") {   // the atomics' tests alone
+    testAtomic();
+    testAtomicRandom(2, randomConfig);
+    std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--audit") {
     audit();
     return g_fail ? 1 : 0;
@@ -4228,6 +4502,8 @@ int main(int argc, char **argv) {
   testKill();
   testFault();
   testBarrier();
+  testBarrierDemote();
+  testBarrierTimer();
   testBarrierFault();
   testMemFault();
   testChwidth();
@@ -4255,8 +4531,9 @@ int main(int argc, char **argv) {
   testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
-  for (int k : {1, 2}) {
-    const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
+  for (int k : {1, 2, 3, 4}) {
+    const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
+                     : k == 3 ? "control a1-base-only" : "control cas-split";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;
