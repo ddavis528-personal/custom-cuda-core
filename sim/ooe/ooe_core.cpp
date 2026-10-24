@@ -336,10 +336,14 @@ void Core::cycle(uint64_t now) {
   go_run_.assign(slot_.size(), 0);
   go_reach_.assign(slot_.size(), 0);
   go_hold_.assign(slot_.size(), 0);
+  go_hold_why_.assign(slot_.size(), "");
   for (unsigned si = 0; si != slot_.size(); ++si) {
     const Slot &x = slot_[si];
     // And its holds, as the go's registered bit reads them this cycle.
     go_hold_[si] = x.st != WarpState::kActive || x.fault_stop || x.chwidth_hold || x.bar_hold;
+    go_hold_why_[si] = x.st != WarpState::kActive ? "hold.registered.inactive"
+                     : x.chwidth_hold ? "hold.registered.chwidth"
+                     : x.bar_hold ? "hold.registered.barrier" : "hold.registered.other";
     unsigned run = 0;
     while (run != cfg_.rob_depth && !x.rob[(x.tail + run) % cfg_.rob_depth].valid) ++run;
     go_run_[si] = run;
@@ -2995,7 +2999,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // go_static: the holds as the cycle started (the go's registered bit); a
   // hold that rises in the cycle is the next cycle's.
   if (cfg_.go_static && si < go_hold_.size()) {
-    if (go_hold_[si]) { count("hold.registered"); return false; }
+    if (go_hold_[si]) {
+      count("hold.registered");
+      count(go_hold_why_[si]);   // the split (TI's rev 188), one per refusal as the total
+      return false;
+    }
     if (s.st != WarpState::kActive) err("go_static: slot %u renames while inactive", si);
   } else if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
   if (s.fault_stop && cfg_.go_static) count("go_static.after_fault_stop");

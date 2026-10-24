@@ -2797,6 +2797,14 @@ void testChwidth() {
     if (i.tid == 2)   // AR-24 (d): each operand its own register's width
       EXPECT(i.src_w[0] == 2 && i.dst_w == 0, "the younger op read widths %u (R0) and %u (R2), not the committed 2 and 0",
              i.src_w[0], i.dst_w);
+  // The registered hold's split (TI's rev 188): each refusal counted once
+  // under its cause, the chwidth's here, summing to the total.
+  auto &k = e.core.counters;
+  const unsigned long long tot = k["hold.registered"],
+      sum = k["hold.registered.inactive"] + k["hold.registered.chwidth"] + k["hold.registered.barrier"] +
+            k["hold.registered.other"];
+  EXPECT(tot == sum, "hold.registered %llu, its split sums to %llu", tot, sum);
+  EXPECT(k["hold.registered.chwidth"] > 0, "no registered hold behind the chwidth (%llu in all)", tot);
 }
 
 /// AR-24 (b) (OA's rev 223): a ret resolves at RCU, whose done names the

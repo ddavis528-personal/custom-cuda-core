@@ -1502,6 +1502,9 @@ private:
   std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
   std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
   std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
+  /// Which hold it is, for the split counter (TI's rev 188): the first of
+  /// not active, chwidth, barrier, other (a fault stop).
+  std::vector<const char *> go_hold_why_;
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
