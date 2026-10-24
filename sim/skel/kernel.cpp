@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <fstream>
 #include <list>
 #include <set>
 #include <tuple>
@@ -1900,14 +1901,28 @@ private:
     if (!op || rc->op != op->name)
       k_.fail("lane %u: seq %llu opcode is not %s", lane_, (unsigned long long)rc->seq,
               rc->op.c_str());
-    // Operands: what RCU read out of its register file.
-    const auto g = rc->gprUses();
+    // Operands: what RCU read out of its register file, each against the
+    // record's value of the register it names (srcRegs: folded repeats,
+    // listed-but-unread fields; AR-24). A register the record lists no use
+    // of (chwidth.multi's) is not checked.
+    bool g_ok = true;
+    const unsigned sub = uidSub(m.tid);
+    const std::vector<unsigned> g = op ? srcRegs(op, *rc, sub, g_ok) : std::vector<unsigned>{};
+    auto useOf = [&](unsigned idx) -> const RegVal * {
+      for (const RegVal *u : rc->gprUses()) if (u->idx == idx) return u;
+      return nullptr;
+    };
     for (size_t i = 0; on && i != g.size() && i < 3; ++i) {
+      const RegVal *u = useOf(g[i]);
+      if (!u) continue;
       const uint32_t got = operand(m, unsigned(i), rc->seq);
-      if (got != g[i]->v[lane_])
+      if (got != u->v[lane_])
         k_.failHeld(at, m.tid, "lane %u: seq %llu operand %zu (R%u) %08x, oracle %08x", lane_,
-                    (unsigned long long)rc->seq, i, g[i]->idx, got, g[i]->v[lane_]);
+                    (unsigned long long)rc->seq, i, u->idx, got, u->v[lane_]);
     }
+    // A chwidth's destination is its register (uop k of chwidth.multi: the
+    // mask's k-th), and its def is that register's, if the value changed.
+    const RegVal *gdef = op && op->chw ? rc->gprDefOf(g.empty() ? 0u : g[0]) : rc->gprDef();
     // An immediate RCU substituted into its operand slot. srd's is
     // identity from OOE rather than the encoded selector, and its
     // check is the lane's own result check below.
@@ -1939,14 +1954,17 @@ private:
       // lane IS its old value, so the merge is checked here.
       const uint32_t md = operand(m, kBypMerge, rc->seq);
       put(r, c.lane_rcu, "result", md);
-      if (const RegVal *d = rc->gprDef())
+      if (const RegVal *d = gdef)
         if (md != d->v[lane_])
           k_.failHeld(at, m.tid, "lane %u: seq %llu merge_data %08x, but R%u keeps %08x", lane_,
                       (unsigned long long)rc->seq, md, d->idx, d->v[lane_]);
       // sec_pred_out is don't-care here (RCU merges predicates): poison.
       if (const RegVal *d = rc->predDef())
         put(r, c.lane_rcu, "sec_pred_out", ((d->p >> lane_) & 1u) ^ 1u);
-    } else if (const RegVal *d = rc->gprDef()) {
+    } else if (op && op->chw && !gdef) {
+      // A chwidth that changed no bit: the register's value, as read.
+      put(r, c.lane_rcu, "result", operand(m, 0, rc->seq));
+    } else if (const RegVal *d = gdef) {
       uint32_t v = d->v[lane_];
       if (op && op->srd_sel >= 0) {
         const uint32_t o0 = operand(m, 0, rc->seq);
@@ -2648,6 +2666,7 @@ private:
       }
       uint32_t v = 0;
       if (!std::strcmp(op->name, "POR")) v = a | b;
+      else if (!std::strcmp(op->name, "PAND")) v = a & b;
       else k_.fail("rcu: predicate op %s has no semantics here", op->name);
       if (!pwe) k_.fail("rcu: %s without pred_we", op->name);
       k_.pred[ppd] = ((merge ? k_.pred[ppold] : 0u) & ~issue) | (v & issue);
@@ -2665,10 +2684,30 @@ private:
       Bits d = done(tag);
       put(d, c.rcu_ooe, "branch_taken", active != 0);
       put(d, c.rcu_ooe, "branch_mask", active);
-      if (const Record *r = rec(m.tid, "rcu"))
-        if (r->taken != active)
-          k_.fail("rcu: seq %llu branch taken by %08x, oracle %08x",
-                  (unsigned long long)r->seq, active, r->taken);
+      const Record *r = rec(m.tid, "rcu");
+      if (r && r->taken != active)
+        k_.fail("rcu: seq %llu branch taken by %08x, oracle %08x",
+                (unsigned long long)r->seq, active, r->taken);
+      // call writes its link register on the active lanes, as movi does:
+      // the next instruction's address, ccv-sim's value (CP-9, AR-22).
+      if (op->gdst) {
+        const RegVal *ld = r ? r->gprDef() : nullptr;
+        if (r && !ld) k_.fail("rcu: seq %llu call without its link", (unsigned long long)r->seq);
+        for (unsigned l = 0; l != kLanes; ++l)
+          k_.gpr[pd][l] = (active >> l) & 1u && ld ? ld->v[l] : k_.gpr[pold][l];
+      }
+      // ret: each active lane goes to {PC[47:32], its link register}. The
+      // skeleton's redirect names one target, so a ret whose lanes differ
+      // is refused until its divergent form is settled (AR-24 (b)).
+      if (op->ret && r)
+        for (unsigned l = 0; l != kLanes; ++l)
+          if ((active >> l) & 1u &&
+              k_.gpr[src[0]][l] != uint32_t(r->target)) {
+            k_.fail("rcu: seq %llu ret lane %u to %08x, oracle %08llx (or lanes differ)",
+                    (unsigned long long)r->seq, l, k_.gpr[src[0]][l],
+                    (unsigned long long)r->target);
+            break;
+          }
       to_ooe_.push_back({0, d, m.tid});
       return;
     }
@@ -2886,7 +2925,8 @@ private:
       q_.push_back({u, m.tid});
       return;
     }
-    const auto g = r->gprUses();
+    bool g_ok = true;
+    const std::vector<unsigned> g = srcRegs(op, *r, 0, g_ok);
     const RegVal *gd = r->gprDef(), *pu = r->predUse(), *pd = r->predDef();
     // A predicate load's record lists the predicates it merges into as
     // uses (its copy reads them, O-62), and a reload of an unchanged value
@@ -2896,11 +2936,13 @@ private:
     const bool pd_ok = bool(pd) == op->pwrite || pload;
     // A faulting instruction (ccv-sim's fault record) wrote nothing, so its
     // record names no destination; it never retires, so none is needed.
-    const bool gd_ok = bool(gd) == op->gdst || (r->kind == "fault" && !gd);
-    if (g.size() != op->nsrc || !gd_ok || !pu_ok || !pd_ok)
+    // A chwidth writes its register whether or not the value changes: the
+    // record has a def only when a widening cleared set bits (AR-24 (c)).
+    const bool gd_ok = bool(gd) == op->gdst || (r->kind == "fault" && !gd) || op->chw;
+    if (!g_ok || !gd_ok || !pu_ok || !pd_ok)
       k_.fail("dec: seq %llu %s has an operand shape the table does not",
               (unsigned long long)r->seq, op->name);
-    const unsigned dst = gd ? gd->idx : 0;
+    const unsigned dst = op->chw ? g[0] : gd ? gd->idx : 0;
     // The guard and the predicate destination are separate fields, as they
     // are in the encoding (Format C: qualifier [29:27], destination [31:30]),
     // so @P0 setp P1 is one uop (Q-21).
@@ -2967,8 +3009,8 @@ private:
     // Three source fields: Format A's rs2 is an independent source (mad.lo's
     // and dp4's accumulator input), with rd independent of it.
     put(u, c.dec_ooe, "src_arch",
-        ((g.size() > 0 ? g[0]->idx : 0u) << 4) | (g.size() > 1 ? g[1]->idx : 0u));
-    put(u, c.dec_ooe, "src2_arch", g.size() > 2 ? g[2]->idx : 0u);
+        ((g.size() > 0 ? g[0] : 0u) << 4) | (g.size() > 1 ? g[1] : 0u));
+    put(u, c.dec_ooe, "src2_arch", g.size() > 2 ? g[2] : 0u);
     put(u, c.dec_ooe, "dst_arch", dst);
     // The uop's one immediate: the displacement for a memory op, else the ALU
     // immediate. The scale enable rides beside it.
@@ -2996,6 +3038,10 @@ private:
     } else if (isBarrier(op)) {
       // bar.arrive and bar.wait: the barrier id, OOE's to report (TI-40).
       imm = uint32_t(immOf(0));
+    } else if (op->chw) {
+      // chwidth: the width code, which rename commits for its register when
+      // the uop retires (OOE's committed table, OI-57).
+      imm = uint32_t(immOf(op->chw == 2 ? 1 : 0)) & 3u;
     }
     put(u, c.dec_ooe, "imm", imm);
     put(u, c.dec_ooe, "ilen", r->size / 2 - 1);
@@ -3015,6 +3061,19 @@ private:
     // FET's checkpoint and prediction pass through on a branch (A-42).
     put(u, c.dec_ooe, "checkpoint_id", get(f, c.fet_dec, "checkpoint_id"));
     put(u, c.dec_ooe, "pred_taken", get(f, c.fet_dec, "pred_taken"));
+    if (op->chw == 2) {
+      // chwidth.multi cracks (AR-24 (c), until OA rules on one masked uop):
+      // a chwidth per register of its mask, ascending, each its register's
+      // source and destination, sharing the instruction's id but for sub.
+      for (unsigned k = 0; k != r->uops(); ++k) {
+        const unsigned reg = r->chwReg(k);
+        Bits v = u;
+        put(v, c.dec_ooe, "src_arch", reg << 4);
+        put(v, c.dec_ooe, "dst_arch", reg);
+        q_.push_back({v, m.tid | uint64_t(k) << kUidSubLsb});
+      }
+      return;
+    }
     if (op->pxfer) {
       // A predicate transfer cracks (TI-36): one uop per predicate of its
       // mask, ascending, uop k moving Pk's word, the frame's word k at
@@ -3119,6 +3178,15 @@ private:
   }
   /// CCV_FAIR_N, which ccv-sim's -fairness must equal (gen-oracle). The N
   /// sweep sets both through CCV_FAIR_N; 0 is strict min-PC, the rule off.
+  /// CCV_FET_PERFECT=1 (AR-24): perfect fetch. A branch every lane it
+  /// issues on takes is predicted taken, and FET moves its lanes to the
+  /// target itself, so OOE sees the prediction right and raises no redirect
+  /// (V-41): the run's front end costs nothing but checkpoints. A branch
+  /// that splits its group still mispredicts. The gap to today's run is what
+  /// prediction, return-address prediction (PF-36) and the checkpoints
+  /// (PF-17) are worth. The oracle decides the direction here: a knob for a
+  /// bound, never the default.
+  const bool perfect_ = getenv("CCV_FET_PERFECT") && std::string(getenv("CCV_FET_PERFECT")) == "1";
   const unsigned fair_n_ = getenv("CCV_FAIR_N") ? unsigned(std::strtoul(getenv("CCV_FAIR_N"), nullptr, 0))
                                                 : ccv::prov::kFairN;
   /// One pick: the group's PC and lanes, and the fairness state after it.
@@ -3467,6 +3535,8 @@ private:
     Warp &x = wx.second;
     const auto &recs = k_.orcs[w].recs;
     if (x.tier1 == kNoSlot) continue;   // exited or parked, its slot taken
+    // AR-24's front-end cost: cycles a warp's fetch waits on a redirect.
+    if (x.launched && !x.stopped && x.await_redirect) k_.hit("redirect_wait");
     for (unsigned s = x.tier1 * bg; s != x.tier1 * bg + bg && x.launched && !x.stopped &&
                                     !x.await_redirect &&
                                     x.next != recs.size(); ++s) {
@@ -3548,7 +3618,7 @@ private:
       // mispredict it fetches nothing until the redirect: the redirect then
       // frees only the branch's own checkpoint, and no free is ever owed for
       // a squashed branch.
-      bool mispredict = false;
+      bool mispredict = false, pred_taken = false;
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBranch) {
         unsigned ck = 0;
         while (ck != kCkpts && (x.live >> ck & 1)) ++ck;
@@ -3558,11 +3628,16 @@ private:
         k_.peak("ckpt_peak", x.taken_order.size());
         x.ckpt_of[r.seq] = ck;
         put(f, c.fet_dec, "checkpoint_id", ck);
-        put(f, c.fet_dec, "pred_taken", 0);
-        mispredict = r.taken != 0;
+        pred_taken = perfect_ && r.taken != 0 && r.taken == r.mask;
+        put(f, c.fet_dec, "pred_taken", pred_taken);
+        mispredict = r.taken != 0 && !pred_taken;
+        if (pred_taken) k_.hit("fet_perfect_taken");
+        if (perfect_ && mispredict) k_.hit("fet_perfect_split");
       }
       send(c.fet_dec, s, f, instrUid(warpSeq(w, r.seq)));
       if (!k_.fetched) { k_.fetched = true; k_.first_fetch = now_; }
+      if (r.kind == "return") k_.hit("ret");
+      else if (r.op == "CALL") k_.hit("call");
       // The pick is made: record the fairness state it started from, take
       // the new one, and move the group's lanes on. After a mismatch the
       // record's lanes move, so one wrong pick is reported once.
@@ -3577,6 +3652,10 @@ private:
       } else if (mispredict) {
         x.br_mask = r.mask;      // split or moved at the redirect
         x.br_next = r.pc + r.size;
+      } else if (pred_taken) {
+        for (unsigned l = 0; l != kLanes; ++l)
+          if (r.mask >> l & 1u) x.pc[l] = r.target;
+        if (groups(x) < before) k_.hit("reconverge");
       } else {
         for (unsigned l = 0; l != kLanes; ++l)
           if (r.mask >> l & 1u) x.pc[l] = r.pc + r.size;
@@ -4130,7 +4209,7 @@ private:
         put(f, c.rau_fet, "warp_id", l.w);
         put(f, c.rau_fet, "tier1_id", l.slot);
         put(f, c.rau_fet, "cta_slot", cs);
-        put(f, c.rau_fet, "start_pc", o.code_base);
+        put(f, c.rau_fet, "start_pc", o.code_base + k_.orcs[0].entry);
         // The warp's lanes (AR's responses TI-27 (a), rev 134): [0, n), n
         // the CTA's threads past this warp's first, T - 32 x warp_in_cta, at
         // most 32. T is the launch's, which ccv-sim was run with.
@@ -4713,6 +4792,14 @@ std::vector<unsigned> &Kernel::pratOf(unsigned w, bool preds) {
 std::string Kernel::loadOracles(const std::string &path) {
   orcs.assign(1, Oracle());
   if (std::string e = orcs[0].load(path); !e.empty()) return e;
+  // The launch entry, from the file gen-oracle writes beside the records:
+  // every warp of the kernel starts there.
+  {
+    const size_t sl = path.rfind('/');
+    std::ifstream ef((sl == std::string::npos ? std::string(".") : path.substr(0, sl)) + "/entry");
+    std::string t;
+    if (ef >> t) orcs[0].entry = std::strtoull(t.c_str(), nullptr, 0);
+  }
   // Each run stands for one warp, which RAU gives warp_id w, its hardware
   // context: srd #2's %lanectx names it (O-64), so the run must have named
   // the same context (gen-oracle passes ccv-sim -context w; TI-35).
@@ -4809,6 +4896,16 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
   }
   std::printf("COVER");
   for (const char *b : Kernel::kCoverBins)
+    std::printf(" %s=%llu", b, (unsigned long long)(k.cover.count(b) ? k.cover.at(b) : 0));
+  std::printf("\n");
+  // AR-24's per-run measures, not coverage bins (no kernel need reach them):
+  // redirects and the warp-cycles fetch waited on them, warp-cycles fetch
+  // stalled with every checkpoint live, rets and calls fetched, DCU lookups
+  // and those for frames (AR-23), warp-cycles a load waited behind an older
+  // store of its warp (PF-42), and perfect fetch's taken and split branches.
+  std::printf("PERF");
+  for (const char *b : {"redirect", "redirect_wait", "ckpt_full", "ret", "call", "dcu_lookups",
+                        "frame_lookups", "st_ld_wait", "fet_perfect_taken", "fet_perfect_split"})
     std::printf(" %s=%llu", b, (unsigned long long)(k.cover.count(b) ? k.cover.at(b) : 0));
   std::printf("\n");
 }

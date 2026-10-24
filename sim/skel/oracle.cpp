@@ -252,6 +252,9 @@ std::string Oracle::load(const std::string &path) {
         // ccv-sim records taken lanes for a predicated branch only. An
         // unconditional one (bra, c.bra) is taken by its whole group.
         if (r.kind == "branch" && !r.taken) r.taken = r.mask;
+        // A ret (ccv-sim's kind "return") is taken by every lane it issues
+        // on, each to its own link register's offset (AR-24).
+        if (r.kind == "return" && !r.taken) r.taken = r.mask;
         r.target = j.at("target").u();
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));

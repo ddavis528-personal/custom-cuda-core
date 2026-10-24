@@ -180,6 +180,21 @@ struct OpInfo {
   /// immediate an unsigned byte offset into the warp's spill frame, which
   /// MIU forms from the CTA's local_base and the warp's context.
   bool local = false;
+  /// ccv-sim lists a guarded move's old destination first among its uses
+  /// (mov.p); it is the merge (A-33), which rename supplies, not a source.
+  bool old_dst_use = false;
+  /// ccv-sim lists every register field the encoding names, read or not
+  /// (cvt.sext's Format A form names rs1 and rs2): the first nsrc are the
+  /// op's sources.
+  bool unread_fields = false;
+  /// chwidth (O-6): 1 the single form, `chwidth rd, width`, 2 the multi
+  /// form, `chwidth.multi #regmask, width`, which DEC cracks into one
+  /// chwidth uop per register of its mask (AR-24; OA's to settle as one
+  /// uop). Each holds rename until it retires (serial = chwidth).
+  uint8_t chw = 0;
+  /// ret: its source is the link register, which ccv-sim's record does not
+  /// list; the compressed form names it in imm[7:4] (Format K, opcode 53).
+  bool ret = false;
 };
 // Where each executes (Q-32, Q-38): the lane executes any opcode with a
 // per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
@@ -226,7 +241,7 @@ inline uint32_t schedAttrOf(const OpInfo *op) {
   const unsigned memk = op->cls == kStore ? kMemKStore : op->cls == kFence ? kMemKFence : kMemKLoad;
   const bool ctl = op->cls == kExit || isBarrier(op);
   const unsigned ser = op->cls == kExit ? kSerExit : op->cls == kBarWait ? kSerBarrier
-                     : op->cls == kBarArrive ? kSerArrive : kSerNone;
+                     : op->cls == kBarArrive ? kSerArrive : op->chw ? kSerChwidth : kSerNone;
   const unsigned lat = op->cls == kLoad ? kLatL1 : op->cls == kStore || op->cls == kFence ? kLatCompletion
                      : execRcu(op) || ctl ? kLatRcu : kLatLane;
   return uint32_t(bypGroupOf(op)) << 14 |
@@ -256,7 +271,7 @@ inline bool attrBranch(uint32_t a) { return (a >> 6) & 1u; }
 inline unsigned attrBypGroup(uint32_t a) { return (a >> 14) & 7u; }
 /// A per-lane input: a GPR source, or the lane's own index.
 inline bool perLaneInput(const OpInfo *op, const Record &r) {
-  return !r.gprUses().empty() || op->srd_sel >= 0;
+  return !r.gprUses().empty() || op->srd_sel >= 0 || op->chw;
 }
 inline constexpr OpInfo kOps[] = {
   //                            nsrc gdst  pread  pwrite guard  pdata  base idx data disp scl alu slot
@@ -344,6 +359,55 @@ inline constexpr OpInfo kOps[] = {
   {"C_FENCE",       kFence,     0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"C_BAR_ARRIVE",  kBarArrive, 0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"C_BAR_WAIT",    kBarWait,   0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // CoreMark-derived's (AR-20, AR-24): the integer ALU forms, register and
+  // immediate, 32-bit and compressed, as their siblings above.
+  {"ADDI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"ANDI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"MULI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"SHRI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"SRAI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"C_ANDI",        kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"AND",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"ANDN",          kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"OR",            kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"XOR",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SUB",           kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"MUL_HI_U",      kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_AND",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_ANDN",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_OR",          kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_XOR",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_SUB",         kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_NEG",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_NOT",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // mad.acc: rd = rs0 * rs1 + rd, the accumulator its third source.
+  {"MAD_ACC",       kAlu,       3, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  // cvt.sext reads rs0 only; the 32-bit form's other register fields are
+  // listed by ccv-sim but unread.
+  {"CVT_SEXT",      kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, true},
+  // Guarded forms (Format Ap): off lanes keep the old destination (A-33).
+  {"ADDI_P",        kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1,  0,  1},
+  {"MOV_P",         kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, true},
+  // The compares not yet here: Format C" (no qualifier), register and
+  // immediate.
+  {"SETP_LT_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_NE_NP",    kAlu,       2, false, false, true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"SETP_EQ_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"SETP_NE_NPI",   kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"SETP_LT_U_NPI", kAlu,       1, false, false, true,  false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"PAND",          kPredLogic, 0, false, true,  true,  false, false, -1, -1, -1, -1, -1, -1, -1},
+  // Control flow. bra is c.bra's 32-bit form. call writes its link register
+  // (rd, or R14 for call.short) with the next instruction's address, low
+  // 32 bits (CP-9, AR-22); RCU writes it, as it does movi. ret jumps each
+  // lane to {PC[47:32], rs}: the link register is its source (AR-24 (b)).
+  {"BRA",           kBranch,    0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"CALL",          kBranch,    0, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
+  {"C_RET",         kBranch,    1, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, true},
+  // chwidth (O-6): a register's element width, held by rename until it
+  // retires. The uop reads the register and writes it: a widening clears
+  // the bits it exposes, so the value may change (AR-24 (c)).
+  {"C_CHWIDTH",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 1},
+  {"CHWIDTH_MULTI", kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 2},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;
@@ -367,6 +431,40 @@ inline unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
 inline const OpInfo *opByName(const std::string &n) {
   for (const OpInfo &o : kOps) if (n == o.name) return &o;
   return nullptr;
+}
+/// The registers an instruction's sources name, in src_arch order, from
+/// its record's GPR uses (AR-24): ccv-sim folds a repeated source into one
+/// use (mul.lo R9, R9), lists a guarded move's old destination, and lists
+/// register fields an op does not read. chwidth's source is the register
+/// it sets (uop k of chwidth.multi: the mask's k-th register), and ret's
+/// the link register its immediate names. Empty with ok = false when the
+/// record cannot be made to fit the row.
+inline std::vector<unsigned> srcRegs(const OpInfo *op, const Record &r, unsigned sub, bool &ok) {
+  std::vector<unsigned> g;
+  for (const RegVal *u : r.gprUses()) g.push_back(u->idx);
+  ok = true;
+  if (op->chw == 1) {
+    const RegVal *d = r.gprDef();
+    g.assign(1, d ? d->idx : g.empty() ? 0u : g[0]);
+    ok = d || r.gprUses().size() == 1;
+    return g;
+  }
+  if (op->chw == 2) {
+    g.assign(1, r.chwReg(sub));
+    return g;
+  }
+  if (op->ret) {
+    g.assign(1, r.imms.empty() ? 14u : unsigned(r.imms[0] >> 4) & 15u);
+    return g;
+  }
+  const RegVal *d = r.gprDef();
+  if (op->old_dst_use && d && g.size() > op->nsrc && g[0] == d->idx) g.erase(g.begin());
+  if (op->unread_fields && g.size() > op->nsrc) g.resize(op->nsrc);
+  // A folded repeat: the record names fewer registers than the op reads.
+  if (op->cls == kAlu && !g.empty())
+    while (g.size() < op->nsrc) g.push_back(g.back());
+  ok = g.size() == op->nsrc;
+  return g;
 }
 /// srd's opcode for a selector, or null: 3-15 are unallocated.
 inline const OpInfo *srdBySel(int64_t sel) {
