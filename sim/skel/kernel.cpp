@@ -2703,10 +2703,10 @@ private:
         for (unsigned l = 0; l != kLanes; ++l)
           k_.gpr[pd][l] = (active >> l) & 1u && ld ? ld->v[l] : k_.gpr[pold][l];
       }
-      // ret (AR-24 (b), OA's revs 222, 223): branch_aux is the lowest active
+      // ret (AR-24 (b), OA's revs 222, 223): aux is the lowest active
       // lane's rs, the target's offset in the ret's code window, and
       // branch_mask the active lanes whose rs equals it. OOE redirects those
-      // to {PC[47:32], branch_aux} with stay, and the ret re-issues for the
+      // to {PC[47:32], aux} with stay, and the ret re-issues for the
       // rest, a pass per distinct target.
       if (op->ret) {
         uint32_t tgt = 0, same = 0;
@@ -2719,7 +2719,7 @@ private:
           }
         put(d, c.rcu_ooe, "branch_mask", same);
         put(d, c.rcu_ooe, "branch_taken", same != 0);
-        put(d, c.rcu_ooe, "branch_aux", tgt);
+        put(d, c.rcu_ooe, "aux", tgt);
         if (r && same && tgt != uint32_t(r->target))
           k_.fail("rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq, tgt,
                   (unsigned long long)r->target);
