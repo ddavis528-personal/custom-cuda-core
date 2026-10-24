@@ -1350,7 +1350,12 @@ added with the event.
     position 0 and the committed width, and the restore takes full rows
     again. `CCV_OOE_CONFIG=full_rows=1` turns it on, and testWidthCodes
     covers both settings. The demotion map still names every register 32
-    bits, as it did;
+    bits, as it did. chwidth.multi (AR-24 (c), OA's rev 222) arrives as
+    DEC's uop per register, ascending: each but the last a commit_width
+    sibling (sched_attr bit 20, serial 0) that writes its register's
+    committed width at its retire with no hold (`chwidth.sibling`), the
+    last a chwidth that holds. testChwidthMulti covers it; control
+    `sibling-uncommitted` drops the siblings' commits;
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record

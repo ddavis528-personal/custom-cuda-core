@@ -520,8 +520,8 @@ private:
       held_.push_back({unsigned(status_), m});
     }
     for (const ooe::RatMap &x : o.maps) {
-      // Rows, positions and widths (OI-29): every register is 32 bits wide in
-      // S1, so its width is chwidth 0 and its position its name's.
+      // Rows, positions and widths (OI-29): each register's position its
+      // name's, its width its committed code (TI's rev 184).
       const unsigned mc = unsigned(map_);
       Bits m = msgOf(mc);
       put(m, mc, "warp_id", x.warp);
@@ -536,7 +536,7 @@ private:
                                ? x.gpr[2] : x.gpr[a];
         m.set(gm.lsb + a * (gm.width / kArchGprs), gm.width / kArchGprs, core_.nameRow(g));
         m.set(gp.lsb + a * (gp.width / kArchGprs), gp.width / kArchGprs, core_.namePos(x.gpr[a]));
-        m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, kChw32);
+        m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, x.w[a]);
       }
       for (unsigned p = 0; p != kArchPreds; ++p)
         m.set(pm.lsb + p * (pm.width / kArchPreds), pm.width / kArchPreds, x.pred[p]);

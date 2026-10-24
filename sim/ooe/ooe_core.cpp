@@ -148,6 +148,7 @@ SchedAttr SchedAttr::decode(uint32_t a) {
   s.bypass_group = (a >> 14) & 7u;
   s.pair_first = (a >> 17) & 1u;
   s.pair_second = (a >> 18) & 1u;
+  s.ret = (a >> 19) & 1u;
   s.commit_width = (a >> 20) & 1u;
   return s;
 }
@@ -2060,6 +2061,7 @@ void Core::control() {
         m.warp = s.warp;
         m.direction = 0;
         std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+        std::copy(s.cw.begin(), s.cw.end(), m.w.begin());
         std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
         out.maps.push_back(m);
         s.map_sent = true;
@@ -2195,10 +2197,11 @@ void Core::retire() {
         s.chwidth = r.u.imm & 3u;     // temporary: A-75 names the field
         s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);   // the committed table (OI-57)
         s.chwidth_hold = false;
-      } else if (r.u.attr.commit_width) {
-        // An earlier chwidth.multi sibling: its width commits, no hold to
-        // release (AR-24 (c)); the last sibling's retire releases it.
+      } else if (r.u.attr.commit_width && !cfg_.inject_sibling_uncommitted) {
+        // A chwidth.multi sibling (AR-24 (c)): its register's width commits
+        // at its retire, before the last sibling's, which lifts the hold.
         s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);
+        count("chwidth.sibling");
       }
       // TI-27 (OA's rev 170): the warp is done at its final exit's retire,
       // when every lane has a retired exit; a partial exit (div's or
@@ -3469,6 +3472,7 @@ void Core::restoreStep() {
   m.warp = s.warp;
   m.direction = 1;
   std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+  std::copy(s.cw.begin(), s.cw.end(), m.w.begin());
   std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
   out.maps.push_back(m);
   s.restoring = false;
