@@ -37,7 +37,7 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
-| PF-15 | `chwidth` without serialising rename | rename | adopted by decision (DA, OA-16, 2026-10-24), not yet built |
+| PF-15 | `chwidth` without serialising rename | rename | deferred again (DA tab rev 93): the drain stays; trigger 5% `hold.chwidth` on converged narrow code |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
 | PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: no gain at 8 or 16 while PF-15's hold stands) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
@@ -306,6 +306,18 @@ it.
   770 flops and about 20% more RAT read mux. OA reopens it with DA if TI's
   measured residual on CP's next export is under a quarter of the run. It
   moves to adopted with the commit that builds it.
+- **Back on hold (Daniel, 2026-10-24; DA tab rev 93):** the drain stays,
+  and the design of record above is kept. Compiler release 33849dd made
+  `i16` illegal and every narrow access sized (O-80), so scalar code issues
+  no `chwidth`. The per-lane-seed CoreMark-derived run issues 21 a warp,
+  about 1,000 cycles of hold, far under the quarter-of-the-run reopen line.
+  So the 1.5M-cycle residual the adoption rested on no longer exists (OA's
+  rev 238, AR's rev 187). What still changes width is converged narrow
+  code: 16-bit integer registers fixed at kernel entry (compiler F-200), and
+  narrow FP.
+- **Trigger, from now:** `hold.chwidth` reaching 5% of a run's cycles on
+  converged narrow code, such as vadd16 at four warps on compiler F-200's export or
+  a narrow-FP kernel. OA then brings the design back to DA with that figure.
 
 ### PF-16 More than one redirect a cycle
 
