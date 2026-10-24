@@ -416,6 +416,9 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
+  /// register keeps its old width (the model before this).
+  bool inject_sibling_uncommitted = false;
   /// TI-40's controls: rename holds behind no wait, the converged's too;
   /// a held warp's rewind beat goes unflagged, so FET resumes past the
   /// wait.
@@ -472,6 +475,10 @@ struct SchedAttr {
   /// first (rbase, rindex and the displacement: A1), [18] the second
   /// (rs_cmp, rs_swap and the destination: A2), one instruction.
   bool pair_first = false, pair_second = false;
+  /// [19] ret (AR-24 (b)); [20] commit_width (AR-24 (c), OA's rev 222): a
+  /// chwidth.multi sibling, serial 0, that commits its register's width at
+  /// retire without the hold, which the last sibling's serial 1 carries.
+  bool ret = false, commit_width = false;
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };

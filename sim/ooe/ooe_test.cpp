@@ -123,6 +123,8 @@ struct Op {
   /// unguarded arrive or wait completes without issue.
   /// mark: all_waiting on any other kind (the barrier timer's start).
   bool arrive = false, phase = false, aw = true, mark = false;
+  /// kChw: a chwidth.multi sibling (AR-24 (c)): serial 0 and commit_width.
+  bool sibling = false;
   uint32_t lanes = 0;
 };
 
@@ -197,7 +199,10 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.imm = 3;
     u.shape.pdata = o.phase;
     break;
-  case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
+  case kChw:
+    u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, o.sibling ? 0 : 1, 0) | (o.sibling ? 1u << 20 : 0u);
+    u.imm = o.chw;
+    break;
   }
   u.all_waiting = o.k == kBarrier ? o.aw && !o.arrive : o.mark;
   u.attr_raw |= pgroupOf(o.k) << 14;
@@ -2787,6 +2792,44 @@ void testChwidth() {
              i.src_w[0], i.dst_w);
 }
 
+/// AR-24 (c) (OA's rev 222): chwidth.multi cracks into a uop per register,
+/// each but the last a commit_width sibling (serial 0) that commits its
+/// register's width at retire with no hold; the last holds as a chwidth.
+/// After the three, a lane op reads R4, R5 and R6 at 8 bits. The control
+/// sibling-uncommitted drops the siblings' commits, so R4 and R5 stay 32.
+void testChwidthMulti() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "chwidth.multi (control)" : "chwidth.multi";
+    Config c = baseConfig();
+    c.inject_sibling_uncommitted = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    for (unsigned r : {4u, 5u, 6u}) {
+      Op w; w.k = kChw; w.dst = r; w.chw = 2; w.sibling = r != 6; p.push_back(w);
+    }
+    Op a; a.k = kLane; a.dst = 7; a.src[0] = 4; a.src[1] = 5; a.src[2] = 6; a.nsrc = 3; p.push_back(a);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    bool seen = false, ok = false;
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.tid == 4) {
+          seen = true;
+          ok = i.src_w[0] == 2 && i.src_w[1] == 2 && i.src_w[2] == 2;
+        }
+    if (control) {
+      std::printf("  %-24s %s\n", "control sibling-uncommitted", seen && !ok ? "caught" : "MISSED");
+      EXPECT(seen && !ok, "dropping the siblings' commits should leave R4 and R5 at 32 bits");
+      continue;
+    }
+    EXPECT(seen && ok, "the lane op read R4-R6 at other than 8 bits");
+    EXPECT(e.core.counters["chwidth.sibling"] == 2, "%llu siblings committed",
+           (unsigned long long)e.core.counters["chwidth.sibling"]);
+  }
+}
+
 /// AR-24 (d): each operand carries its own register's width, from the
 /// committed table at rename, and a memop its data register's. Under the
 /// interim full_rows (DA tab rev 87; OA's rev 225, AR's rev 174) the 8-bit
@@ -4551,6 +4594,7 @@ int main(int argc, char **argv) {
   testBarrierFault();
   testMemFault();
   testChwidth();
+  testChwidthMulti();
   testWidthCodes();
   testWidthFault();
   testFormatFault();
