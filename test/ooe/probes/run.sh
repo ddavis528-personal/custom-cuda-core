@@ -57,7 +57,7 @@ while read -r f m p label; do
   yosys -q -p "read_verilog -sv $extra test/ooe/probes/$f; ${p:+chparam ${p//,/ } $m;} synth -flatten -top $m;
                abc -g AND,NAND,OR,NOR,XOR,XNOR,MUX; opt_clean; write_blif $out/$label.blif" 2>&1 |
     grep -v "Replacing memory" || true
-  line=$(yosys-abc -c "read_blif $out/$label.blif; read_library test/ooe/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
+  line=$(yosys-abc -c "read_blif $out/$label.blif; read_library tools/ngd.genlib; strash; dch; map; print_stats" 2>&1 | tail -1)
   printf '  %-24s %5s NGD\n' "$label" "$(echo "$line" | sed -n 's/.*delay = *\([0-9.]*\).*/\1/p')"
 done <<'T'
 go_probe.sv    go_probe    -set,TWO,0   go-one-warp

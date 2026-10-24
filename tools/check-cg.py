@@ -88,7 +88,7 @@ BUILD = os.path.join(ROOT, "build", "cg")
 SHIM = os.path.join(ROOT, "tools", "shim")
 if SHIM not in os.environ.get("PATH", "").split(os.pathsep):
     os.environ["PATH"] = SHIM + os.pathsep + os.environ.get("PATH", "")
-GENLIB = os.path.join(ROOT, "test", "ooe", "ngd.genlib")
+GENLIB = os.path.join(ROOT, "tools", "ngd.genlib")
 SCENARIOS = ("idle", "medium", "high")
 # A scenario shorter than this says little about an enable's quality.
 MIN_CYCLES = 1000

@@ -808,7 +808,7 @@ line selects, which fails CG-2. Two forms keep the coarse enable:
 a bench that runs the three scenarios and dumps a VCD (`test/**/cg-units.json`;
 TI's are in `test/cg/`). `check-cg.py` synthesises the unit with Yosys,
 groups its flops by enable, and maps each enable's cone with ABC onto
-`test/ooe/ngd.genlib`, the same recipe as `test/ooe/depth.sh`. Then it
+`tools/ngd.genlib`, the same recipe as `test/ooe/depth.sh`. Then it
 replays each scenario's port trace into the netlist, brings every group's
 enable and value out on a port, and counts. The replay must reproduce the
 bench's outputs on every cycle, so what is measured is what the bench ran;
@@ -924,8 +924,14 @@ part of a register.
 **25 NGD of combinational logic between two flops** (`CCV_NGD_BUDGET`;
 Daniel, 2026-10-17). The flop's own clock-to-Q and setup are outside it:
 every depth here is measured with the flops cut out, so the whole 25 is
-logic. An NGD is a NAND2 at fanout 4; `test/ooe/ngd.genlib` holds the gates
-at their fanout-of-4 delays, and broadcast fanout and wire are not in it.
+logic. An NGD is a NAND2 at fanout 4; `tools/ngd.genlib` holds the gates
+at their fanout-of-4 delays, and broadcast fanout and wire are not in it. The
+static gates are costed by logical effort. The XOR family (XOR2, XNOR2, XOR3,
+XNOR3; Daniel, 2026-10-24) is taken from sky130hd's Liberty, pin by pin, over
+its NAND2 (`tools/genlib-xor.py`), and a path is timed at the delay of the pin
+it enters by, so a carry-save tree's late operand on XOR3's C costs 2.37
+where its A costs 3.84. A library cell may hold pass gates only where none of
+their diffusions reaches an input pin or the output.
 
 **A module is measured alone, so a path that leaves it is budgeted at the
 port.** Each side of a port has a budget, by default `CCV_NGD_PORT` =
