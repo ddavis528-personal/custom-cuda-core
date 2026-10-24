@@ -292,7 +292,7 @@ it.
   the hold the run is about 1.0M cycles, at most 0.77 issue groups a cycle
   against 0.11. Warm memory gives 3,728,507 cycles (0.21), because a drain
   waits for older loads too. This is the largest single loss measured on the
-  core so far. O-80's sized forms and F-196 remove up to about 74% of the
+  core so far. O-80's sized forms and compiler F-196 remove up to about 74% of the
   `chwidth` first (TI's rev 180), so OA-16 goes to DA priced on what remains
   on CP's next export.
 
