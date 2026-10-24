@@ -21,6 +21,7 @@
 #include <list>
 #include <set>
 #include <tuple>
+#include <unordered_map>
 
 namespace ccv {
 namespace skel {
@@ -350,10 +351,35 @@ private:
 
 class Mlc : public Stub {
 public:
-  Mlc(int inst, Kernel &k) : Stub(inst, k), ids_(ch().mlc_exb) {}
+  Mlc(int inst, Kernel &k) : Stub(inst, k), ids_(ch().mlc_exb) {
+    // CCV_MLC_WARM=1 (AR-24, AR's rev 182): a warm MLC, every line a hit.
+    // It holds its own image of memory, loaded as the testbench's is, keeps
+    // it with every write it passes on, and answers every read from it at
+    // CCV_LAT_MLC_PIPE, never asking EXB. A timing knob, not the gate's.
+    const char *w = std::getenv("CCV_MLC_WARM");
+    warm_ = w && *w && *w != '0';
+    if (warm_) {
+      for (size_t i = 0; i != k.orcs[0].code.size(); ++i)
+        img_[k.orcs[0].code_base + i] = k.orcs[0].code[i];
+      for (auto &x : k.orcs[0].init_mem)
+        for (unsigned b = 0; b != 4; ++b) img_[x.first + b] = uint8_t(x.second >> (8 * b));
+    }
+  }
   const char *kind() const override { return "mlc"; }
 
 private:
+  bool warm_ = false;
+  std::unordered_map<uint64_t, uint8_t> img_;
+  struct Due { uint64_t at; bool fet; Q q; };
+  std::deque<Due> warm_q_;
+  Line imgLine(uint64_t a) const {
+    Line l{};
+    for (unsigned b = 0; b != kLine; ++b) {
+      auto it = img_.find(a + b);
+      l[b] = it == img_.end() ? 0 : it->second;
+    }
+    return l;
+  }
   enum Who { kDcu, kFet };
   /// What an EXB-side req_id stands for: who asked, and under which of
   /// THEIR ids -- each hop has its own id space.
@@ -377,7 +403,22 @@ private:
         put(r, c.mlc_dcu, "req_id", get(m.payload, c.dcu_mlc, "req_id"));
         put(r, c.mlc_dcu, "ownership", k_.brk != "deny-ownership");
         to_dcu_.push_back({0, r, m.tid});
+      } else if (warm_ && coh != kCohWrite) {
+        // Warm: a hit, from MLC's own image, with ownership as on a fill.
+        Bits r = msgOf(c.mlc_dcu);
+        put(r, c.mlc_dcu, "req_id", get(m.payload, c.dcu_mlc, "req_id"));
+        putLine(r, field(c.mlc_dcu, "line_data").lsb, imgLine(get(m.payload, c.dcu_mlc, "phys_addr")));
+        put(r, c.mlc_dcu, "miss", 0);
+        put(r, c.mlc_dcu, "ownership", coh == kCohAcquireData && k_.brk != "deny-ownership");
+        warm_q_.push_back({now_ + ccv::prov::kLatMlcPipe, false, {0, r, m.tid}});
+        k_.hit("mlc_warm_hit");
       } else {
+      if (warm_) {
+        // A write keeps the image current, and goes on to memory as ever.
+        const uint64_t a = get(m.payload, c.dcu_mlc, "phys_addr");
+        const Line l = getLine(m.payload, field(c.dcu_mlc, "writeback_data").lsb);
+        for (unsigned b = 0; b != kLine; ++b) img_[a + b] = l[b];
+      }
       Bits e = msgOf(c.mlc_exb);
       put(e, c.mlc_exb, "phys_addr", get(m.payload, c.dcu_mlc, "phys_addr"));
       put(e, c.mlc_exb, "size", kSizeLine);
@@ -389,6 +430,18 @@ private:
       to_exb_.push_back({{kDcu, unsigned(get(m.payload, c.dcu_mlc, "req_id")),
                           coh == kCohAcquireData}, e, m.tid});
       }
+    }
+    if (has(c.fet_mlc, 0) && warm_) {
+      Receiver::Msg m = take(c.fet_mlc, 0);
+      Bits r = msgOf(c.mlc_fet);
+      put(r, c.mlc_fet, "req_id", get(m.payload, c.fet_mlc, "req_id"));
+      putLine(r, field(c.mlc_fet, "line_data").lsb, imgLine(get(m.payload, c.fet_mlc, "phys_addr")));
+      warm_q_.push_back({now_ + ccv::prov::kLatMlcPipe, true, {0, r, m.tid}});
+      k_.hit("mlc_warm_hit");
+    }
+    for (auto it = warm_q_.begin(); it != warm_q_.end() && it->at <= now_;) {
+      (it->fet ? to_fet_ : to_dcu_).push_back(it->q);
+      it = warm_q_.erase(it);
     }
     if (has(c.fet_mlc, 0)) {
       Receiver::Msg m = take(c.fet_mlc, 0);
@@ -445,7 +498,7 @@ private:
   }
   bool busy() const override {
     return !to_exb_.empty() || !owner_.empty() || !to_dcu_.empty() ||
-           !to_fet_.empty();
+           !to_fet_.empty() || !warm_q_.empty();
   }
 };
 
@@ -704,8 +757,10 @@ private:
         // A partial store, missing or to a shared line: the line with
         // ownership, then the merge (AcquireBlock).
         mlcReq(kCohAcquireData, pa, nullptr, o, kAcquire);
+        k_.hit("l1_miss");
       } else {
         mlcReq(kCohRead, pa, nullptr, o, kFill);
+        k_.hit("l1_miss");
       }
       break;
     }
@@ -3214,6 +3269,7 @@ private:
   std::map<unsigned, uint64_t> ifill_wait_; ///< virtual line, by req_id
   std::deque<Q> fills_, itlbs_;
   static constexpr unsigned kCkpts = ccv::prov::kBrCkpts;
+  static_assert(kCkpts <= 64, "FET's checkpoint timestamps hold 64");
   /// A launched warp, by warp_id: its place in its own oracle stream, its
   /// tier-1 slot (A-65), and its checkpoints, which are live and in what
   /// order they were taken, so a redirect can free the one it restores and
@@ -3226,6 +3282,7 @@ private:
     uint32_t live = 0;
     std::deque<unsigned> taken_order;
     std::map<uint64_t, unsigned> ckpt_of;   ///< checkpoint, by branch seq
+    uint64_t ckpt_at[64] = {};              ///< cycle each checkpoint was taken (AR-24)
     bool await_redirect = false;            ///< fetched a branch it mispredicts
     bool stopped = false;                   ///< an epoch notice: demoted or killed
     bool restoring = false;                 ///< RAU's restore command, PCs to come
@@ -3421,6 +3478,10 @@ private:
         // landing this cycle -- the pair is latency-matched (A-58).
         for (auto it = x.taken_order.begin(); it != x.taken_order.end(); ++it)
           if (*it == ck) {
+            // The restored branch resolved here (AR-24's fetch-to-resolve);
+            // the younger ones never will.
+            k_.hit("br_resolved");
+            k_.hit("br_resolve_cycles", now_ - x.ckpt_at[ck]);
             for (auto j = it; j != x.taken_order.end(); ++j) x.live &= ~(1u << *j);
             x.taken_order.erase(it, x.taken_order.end());
             break;
@@ -3593,6 +3654,8 @@ private:
         }
         x->live &= ~(1u << ck);
         k_.hit("ckpt_free");
+        k_.hit("br_resolved");
+        k_.hit("br_resolve_cycles", now_ - x->ckpt_at[ck]);
         for (auto it = x->taken_order.begin(); it != x->taken_order.end(); ++it)
           if (*it == ck) { x->taken_order.erase(it); break; }
       }
@@ -3699,6 +3762,15 @@ private:
         put(f, c.fet_dec, "all_waiting", k_.brk != "no-wait-mark");
         k_.hit("bar_wait");
       }
+      // A chwidth's mark is its convergence (O-81; FET spec): set when its
+      // group is every live lane, the wait's test. OOE faults an unmarked one
+      // (F-WIDTH), and DEC copies the mark to each chwidth.multi sibling.
+      // no-chw-mark: a converged chwidth goes unmarked.
+      if (const OpInfo *op = opByName(r.op); op && op->chw) {
+        const bool conv = r.mask == x.lanes;
+        put(f, c.fet_dec, "all_waiting", conv && k_.brk != "no-chw-mark");
+        k_.hit(conv ? "chw_converged" : "chw_diverged");
+      }
       const unsigned ep = epoch_[w & 31];
       put(f, c.fet_dec, "fetch_epoch", stale_next_ ? (ep + kEpochs - 1) % kEpochs : ep);
       stale_next_ = false;
@@ -3716,6 +3788,8 @@ private:
         while (ck != kCkpts && (x.live >> ck & 1)) ++ck;
         if (ck == kCkpts) { k_.hit("ckpt_full"); break; }   // every checkpoint live
         x.live |= 1u << ck;
+        x.ckpt_at[ck] = now_;
+        k_.hit("branches");
         x.taken_order.push_back(ck);
         k_.peak("ckpt_peak", x.taken_order.size());
         x.ckpt_of[r.seq] = ck;
@@ -5014,7 +5088,8 @@ void printKernelReport(Kernel &k, Machine &m, const KernelEnd &e,
   // and those for frames (AR-23), warp-cycles a load waited behind an older
   // store of its warp (PF-42), and perfect fetch's taken and split branches.
   std::printf("PERF");
-  for (const char *b : {"redirect", "redirect_wait", "ckpt_full", "ret", "call", "dcu_lookups",
+  for (const char *b : {"redirect", "redirect_wait", "ckpt_full", "branches", "br_resolved",
+                        "br_resolve_cycles", "l1_miss", "mlc_warm_hit", "ret", "call", "dcu_lookups",
                         "frame_lookups", "st_ld_wait", "fet_perfect_taken", "fet_perfect_split"})
     std::printf(" %s=%llu", b, (unsigned long long)(k.cover.count(b) ? k.cover.at(b) : 0));
   std::printf("\n");

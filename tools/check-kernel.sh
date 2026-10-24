@@ -707,7 +707,7 @@ addrhigh addr_fault=1 fault=1 kill=1
 addrneg addr_fault=1 fault=1 kill=1
 addrlimit addr_fault=0 fault=0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
-narrowadd narrow_arith>0 partial_line>0
+narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 KERNELS
 # Narrow registers on full rows (AR-24's interim; AR's rev 178, OA's rev 230):
 # every narrow write zero-extends at its width code, so a widening finds the
