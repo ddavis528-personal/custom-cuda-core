@@ -26,8 +26,8 @@ namespace ccv {
 namespace skel {
 namespace {
 
-/// Whether a channel carries a field yet: aux and own_pc come with TI's
-/// AR-24 (b) and TI-40 schema rows, and are skipped until then.
+/// Whether a channel carries a field: aux (AR-24 (b)) under either of its
+/// names, and own_pc (TI-40), each read or sent only where the schema has it.
 bool hasField(unsigned chan, const char *n) {
   const ChanDesc &cd = kChans[chan];
   for (unsigned f = 0; f != cd.nfields; ++f)
@@ -279,7 +279,9 @@ private:
         d.rob_tag = unsigned(get(m.payload, c.rcu_ooe, "rob_tag"));
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
-        if (hasField(c.rcu_ooe, "aux")) d.aux = uint32_t(get(m.payload, c.rcu_ooe, "aux"));
+        // TI's d347d2c names the field branch_aux, renamed aux after it.
+        for (const char *f : {"aux", "branch_aux"})
+          if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
         core_.done(d);
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
