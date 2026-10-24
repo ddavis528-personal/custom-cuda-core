@@ -112,6 +112,18 @@ template <typename W> void setBit(W &w, uint64_t i, bool v) {
   const uint32_t m = 1u << (i % 32);
   w[i / 32] = v ? (w[i / 32] | m) : (w[i / 32] & ~m);
 }
+/// n bits of src from bit off, into the bank's wide signal at bit pos, a
+/// destination word at a time (the bank is 32-bit words; a bit at a time
+/// was half the skeleton's run time, AR-24).
+template <typename W> void setRange(W &w, uint64_t pos, const Bits &src, uint32_t off, uint32_t n) {
+  while (n) {
+    const unsigned sh = unsigned(pos % 32), k = std::min<uint32_t>(32 - sh, n);
+    const uint32_t m = k == 32 ? ~0u : ((1u << k) - 1) << sh;
+    const uint32_t v = uint32_t(src.get(off, k)) << sh;
+    w[pos / 32] = (w[pos / 32] & ~m) | (v & m);
+    pos += k; off += k; n -= k;
+  }
+}
 
 /// Present this cycle's signals to the checker bank, where the bank watches
 /// each link: as it leaves the source's wrapper, src_stages repeater stages
@@ -128,11 +140,9 @@ void drive(Vccv_common_chk_bank &bank, Machine &m) {
       setBit(bank.stall, k, o.stall);
       // Trace sideband: 64 bits per slot, present because the skeleton is
       // always built with CCV_TRACE.
-      for (unsigned b = 0; b != 64; ++b)
-        setBit(bank.tid, uint64_t(k) * 64 + b, (o.tid >> b) & 1u);
-      const uint64_t base = ci.payload_base + uint64_t(s) * cd.bits;
-      for (uint32_t b = 0; b != cd.bits; ++b)
-        setBit(bank.payload, base + b, o.payload.bit(b));
+      bank.tid[k * 2] = uint32_t(o.tid);
+      bank.tid[k * 2 + 1] = uint32_t(o.tid >> 32);
+      setRange(bank.payload, ci.payload_base + uint64_t(s) * cd.bits, o.payload, 0, cd.bits);
     }
   }
   // No stub sleeps and none wakes (Q-33): the wake checkers see a receiver

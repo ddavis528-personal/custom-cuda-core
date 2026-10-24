@@ -410,7 +410,7 @@ One of them: slot 0 of the channel from section 5.
 ```systemverilog
   ccv_common_chk_credit #(.PAYLOAD_W(1212), .CHANNEL(15)) u_miu_dcu_req_s0 (
     .clk(clk), .rst_n(rst_n), .ch_valid(valid[124]), .ch_credit(credit[124]), .ch_stall(stall[124]),
-    .ch_payload(payload[46076:44865])
+    .ch_payload(payload[46326:45115])
 `ifdef CCV_TRACE
     , .ch_tid(tid[7999:7936])
 `endif
@@ -508,4 +508,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: c3015cad7d57f428 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 9f79a6a95fbdc74d (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
