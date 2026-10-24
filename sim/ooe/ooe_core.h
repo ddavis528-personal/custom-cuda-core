@@ -411,6 +411,11 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// TI-40's controls: rename holds behind no wait, the converged's too;
+  /// a held warp's rewind beat goes unflagged, so FET resumes past the
+  /// wait.
+  bool inject_bar_no_hold = false;
+  bool inject_beat_unheld = false;
   /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
   /// warp's outstanding loads, so drained waits for their replay
   /// completions, not their fills. Off: the drain waits for the fills.
@@ -467,6 +472,7 @@ struct SchedAttr {
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3 };
 enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
 /// derives these from the skeleton's opcode table -- the one place OOE still
@@ -522,12 +528,25 @@ struct Uop {
   bool cas = false;
   unsigned cas_src[2] = {};
   uint8_t cas_reads = 0;
+  /// FET's all_waiting mark (TI-40, AR's revs 163-164): on a wait, the warp
+  /// is converged and rename holds behind it; on any marked uop, the
+  /// barrier demotion timer starts at its retire.
+  bool all_waiting = false;
 };
+/// A barrier OOE completes without issue, as exit (TI-40, TI's rev 176):
+/// one with no predicate read. A guarded arrive or wait, and wait.phase,
+/// issue to RCU, whose done brings their lanes.
+inline bool barNop(const Uop &u) {
+  return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
+}
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
   bool branch_taken = false;
-  uint32_t branch_mask = 0;
+  uint32_t branch_mask = 0;   ///< a branch's, a guarded barrier's: issue mask AND guard
+  /// The 32-bit field AR-24 (b) adds (TI names it aux): wait.phase's ps, each
+  /// lane's expected phase (OA's rev 226); a ret's branch_target otherwise.
+  uint32_t aux = 0;
 };
 struct Cmpl {           ///< ccv_miu_ooe_cmpl
   unsigned rob_tag = 0, status = 0, cause = 0;
@@ -629,6 +648,14 @@ struct Redirect {       ///< ccv_ooe_fet_redirect
   /// with epoch_only, FET sets the PCs of the lanes in taken_mask to
   /// target_pc, each the oldest unretired uop of those lanes.
   bool rewind = false;
+  /// TI-40 (AR's rev 164): a beat of a warp held behind a converged wait,
+  /// which retired; FET sets the lanes to target_pc less the wait's length,
+  /// held_long (0 16 bits, 1 32).
+  bool rewind_held = false, held_long = false;
+  /// own_pc (AR's rev 176, FET spec rev 24): the held warp has no unretired
+  /// uop, so FET rewinds from its own PC less the wait's length and ignores
+  /// target_pc, which the model still sets past the wait.
+  bool own_pc = false;
 };
 struct Status {         ///< ccv_ooe_rau_status
   unsigned warp = 0;
@@ -655,10 +682,14 @@ struct RatMap {         ///< ccv_ooe_rcu_map
   std::array<unsigned, kArchGprs> gpr{};
   std::array<unsigned, kArchPreds> pred{};
 };
-struct Bar {            ///< ccv_ooe_syu_bar
+struct Bar {            ///< ccv_ooe_syu_bar (TI-40): a report at retire
   unsigned warp = 0, cta_slot = 0, barrier_id = 0;
-  bool wait = true;
+  unsigned kind = 1;             ///< bar_kind: 0 arrive, 1 wait, 2 wait.phase, 3 exit
+  uint32_t issue_mask = 0, guard_mask = ~0u, phase_mask = 0;
+  bool held = false;             ///< a converged wait OOE holds rename behind
+  uint64_t tid = 0;
 };
+enum : unsigned { kBarArrive = 0, kBarWait = 1, kBarWaitPhase = 2, kBarExit = 3 };
 
 /// Everything the core sends in one cycle. The adapter drains it.
 struct Outputs {
@@ -993,6 +1024,8 @@ private:
     // branch
     bool resolved = false, taken = false;
     uint32_t taken_mask = 0;
+    uint32_t bar_guard = ~0u;          ///< a guarded barrier's guard lanes, from its done (TI-40)
+    uint32_t bar_phase = 0;            ///< wait.phase's expected phases, from its done's aux
     bool ckpt_live = false;
     // fault
     bool fault = false;
@@ -1084,6 +1117,15 @@ private:
     unsigned fa_idx = 0;
     uint64_t fa_addr = 0;
     unsigned bar_id = 0;                      ///< the held barrier (events)
+    /// TI-40 (AR's revs 163-164): the held wait has retired, its length (a
+    /// 32-bit instruction) and its lanes, for a demotion's beat.
+    bool bar_retired = false, bar_long = false;
+    uint32_t bar_mask = 0;
+    /// The barrier demotion timer (OA's rev 200 (3)): from a held wait's
+    /// retire, or a marked uop's that leaves nothing younger in the ROB,
+    /// until the hold lifts or (unheld) the warp's next uop arrives.
+    bool bar_idle = false, bar_idle_reported = false;
+    uint64_t bar_idle_since = 0;
     unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
     bool fault_stop = false;                  ///< V-24

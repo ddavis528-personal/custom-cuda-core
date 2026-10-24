@@ -26,6 +26,15 @@ namespace ccv {
 namespace skel {
 namespace {
 
+/// Whether a channel carries a field yet: aux and own_pc come with TI's
+/// AR-24 (b) and TI-40 schema rows, and are skipped until then.
+bool hasField(unsigned chan, const char *n) {
+  const ChanDesc &cd = kChans[chan];
+  for (unsigned f = 0; f != cd.nfields; ++f)
+    if (!std::strcmp(cd.fields[f].name, n)) return true;
+  return false;
+}
+
 /// A channel OOE has, by name, or -1 if the wiring gives it none.
 int optChan(const char *n) {
   for (const ChanDesc &cd : kChans)
@@ -225,6 +234,9 @@ private:
       // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
       // clears the warp's last live lanes.
       u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
+      // TI-40: FET's all_waiting mark, a converged wait's and the barrier
+      // timer's.
+      u.all_waiting = get(p, c.dec_ooe, "all_waiting") != 0;
       // lanectx-as-ctatid: srd #2 taken as srd #0, the warp's index in its
       // CTA where O-64 names its hardware context.
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
@@ -267,6 +279,7 @@ private:
         d.rob_tag = unsigned(get(m.payload, c.rcu_ooe, "rob_tag"));
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
+        if (hasField(c.rcu_ooe, "aux")) d.aux = uint32_t(get(m.payload, c.rcu_ooe, "aux"));
         core_.done(d);
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
@@ -468,6 +481,11 @@ private:
         // rewind-pc: each beat names the next instruction's PC, so the
         // lanes resume one past their boundary (TI's control).
         put(r, c.ooe_fet, "target_pc", x.target_pc + (k_.brk == "rewind-pc" ? 2u : 0u));
+        // A beat of a warp held behind a retired wait (TI-40): FET steps
+        // its lanes back over the wait.
+        put(r, c.ooe_fet, "rewind_held", x.rewind_held);
+        put(r, c.ooe_fet, "held_long", x.held_long);
+        if (hasField(c.ooe_fet, "own_pc")) put(r, c.ooe_fet, "own_pc", x.own_pc);
       }
       if (!x.epoch_only) {
         put(r, c.ooe_fet, "target_pc", x.target_pc);
@@ -542,8 +560,8 @@ private:
       }
     }
     // A fault taken at retirement goes to CRU (TI-26), whose stub holds it
-    // to the fault ccv-sim ended the run with. SYU: no kernel waits at a
-    // barrier or is killed yet.
+    // to the fault ccv-sim ended the run with. No kernel is
+    // killed yet.
     for (const ooe::Fault &x : o.faults) {
       if (fault_ < 0) {
         k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
@@ -560,8 +578,24 @@ private:
       put(m, fc, "warp_id", x.warp);
       held_.push_back({fc, m, x.tid});
     }
-    if (!o.bars.empty())
-      k_.fail("ooe: a barrier with no S1 consumer");
+    // Barrier reports at retire (TI-40), to SYU.
+    for (const ooe::Bar &x : o.bars) {
+      if (bar_ < 0) {
+        k_.fail("ooe: warp %u's barrier report with no ccv_ooe_syu_bar", x.warp);
+        continue;
+      }
+      const unsigned bc = unsigned(bar_);
+      Bits m = msgOf(bc);
+      put(m, bc, "warp_id", x.warp);
+      put(m, bc, "cta_slot", x.cta_slot);
+      put(m, bc, "barrier_id", x.barrier_id);
+      put(m, bc, "bar_kind", x.kind);
+      put(m, bc, "issue_mask", x.issue_mask);
+      put(m, bc, "guard_mask", x.guard_mask);
+      put(m, bc, "phase_mask", x.phase_mask);
+      put(m, bc, "held", x.held);
+      held_.push_back({bc, m, x.tid});
+    }
     // The model's kill ack (V-24): it has squashed and released the killed
     // warps, its epoch notice has landed in FET, and no memop is out at MIU.
     for (unsigned e : o.kill_acks)

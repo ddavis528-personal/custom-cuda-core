@@ -279,6 +279,8 @@ void Core::uop(const Uop &u) {
   // ooe_decq applies a flush an edge late, dropping its slot's uops then:
   // none may arrive in the flush's cycle (OI-58).
   if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
+  // A uop behind no hold stops the barrier timer: the warp is moving.
+  if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
   decq_.push_back(u);
   decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
@@ -1334,8 +1336,8 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat) c = true;   // no-ops: faulted before or at dispatch
-  else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
+  if (r.u.shape.exit || r.u.cause || barNop(r.u) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
+      r.fault_cause == kCauseBarrier) c = true;   // no-ops: faulted before or at dispatch
   else if (r.atomic) c = r.atom_final && r.miu_done && !r.copy_pending && r.rcu_dones_owed == 0;   // V-71
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
@@ -1403,6 +1405,14 @@ void Core::takeCompletions() {
       r->resolved = true;
       r->taken = d.branch_taken;
       r->taken_mask = d.branch_mask;
+    }
+    // A guarded barrier's guard lanes come back on its done's branch_mask
+    // (issue mask AND guard), and wait.phase's expected phases (its
+    // predicate data source, O-27) on aux (TI-40, OA's rev 226): only RCU
+    // reads predicates.
+    if (isBarrierSer(r->u.attr.serial)) {
+      if (r->u.shape.guard) r->bar_guard = d.branch_mask;
+      if (r->u.shape.pdata) r->bar_phase = d.aux;
     }
     complete(s, idx);
   }
@@ -1935,7 +1945,21 @@ void Core::control() {
       }
       for (const Uop &u : decq_)
         if (u.warp == w) take(u.pc, u.group_mask, u.tid);
+      // A warp held behind a retired converged wait (TI-40) with nothing
+      // younger still names the lanes past the wait: one beat at the next
+      // PC with the wait's lanes, so FET can step them back to it.
+      if (s.bar_hold && s.bar_retired && beats.empty()) take(s.next_pc, s.bar_mask, 0);
     }
+    // own_pc (AR's rev 176): with nothing unretired, FET's own PC is the
+    // one past the wait, so the RTL stores no PC for this beat.
+    bool own_pc = false;
+    if (s.bar_hold && s.bar_retired && !s.count) {
+      own_pc = true;
+      for (const Uop &u : decq_) own_pc = own_pc && u.warp != w;
+    }
+    const bool held = s.bar_hold && s.bar_retired;
+    const bool held_long = s.bar_long;
+    if (held) count("demote.held_wait");
     ++histograms["demote.rewind_beats"][beats.size()];
     if (cfg_.inject_rewind_order) std::reverse(beats.begin(), beats.end());
     for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;   // FET resets its own
@@ -1949,6 +1973,7 @@ void Core::control() {
     s.prat = s.cprat;
     rlog_.squash |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
+    s.bar_retired = s.bar_long = s.bar_idle = false;
     advanceEpoch(unsigned(si));
     epochNotice(unsigned(si));
     for (const auto &b : beats) {
@@ -1960,6 +1985,9 @@ void Core::control() {
       x.taken_mask = b.mask;
       x.target_pc = b.pc;
       x.tid = b.tid;
+      x.rewind_held = held && !cfg_.inject_beat_unheld;
+      x.held_long = x.rewind_held && held_long;
+      x.own_pc = x.rewind_held && own_pc;
       redirects_.push_back(x);
       ++s.rewind_pending;
     }
@@ -2056,11 +2084,17 @@ void Core::control() {
   if (released_) {
     for (unsigned si = 0; si != slot_.size(); ++si) {
       Slot &s = slot_[si];
-      if (s.st == WarpState::kFree || !s.bar_hold || !((released_ >> (s.warp % 32)) & 1u)) continue;
-      for (unsigned k = 0; k != s.count; ++k) {
-        const unsigned idx = (s.head + k) % cfg_.rob_depth;
-        RobEntry &r = s.rob[idx];
-        if (r.u.attr.serial == kSerBarrier && !r.complete) { r.complete = true; break; }
+      if (s.st == WarpState::kFree || !((released_ >> (s.warp % 32)) & 1u)) continue;
+      // ccv_syu_ooe_rel answers a held wait that has reported (TI-40); any
+      // other is stale (a demotion took the hold first) and is dropped.
+      if (s.bar_hold && s.bar_retired) {
+        s.bar_hold = false;
+        s.bar_retired = false;
+        s.bar_long = false;
+        s.bar_idle = false;
+        count("bar.release");
+      } else {
+        count("bar.release_dropped");
       }
     }
     released_ = 0;
@@ -2083,16 +2117,6 @@ void Core::retire() {
     unsigned n = 0;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
-      // A barrier wait leaves OOE only once it is the oldest instruction, so
-      // it is never sent from a wrong path; younger uops hold at rename.
-      if (r.u.attr.serial == kSerBarrier && !r.committed && !r.fault) {
-        Bar b;
-        b.warp = s.warp;
-        b.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
-        b.barrier_id = r.u.imm;    // temporary: A-75 names the field
-        out.bars.push_back(b);
-        r.committed = true;
-      }
       if (!r.complete) break;
       if (r.fault) {
         // Faults are taken at retirement: stop, report, let RAU's kill clean
@@ -2161,10 +2185,44 @@ void Core::retire() {
         s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);   // the committed table (OI-57)
         s.chwidth_hold = false;
       }
-      if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
       // TI-27 (OA's rev 170): the warp is done at its final exit's retire,
       // when every lane has a retired exit; a partial exit (div's or
       // spinwait's shape) leaves it running.
+      // Barrier reports at retire (TI-40, AR's revs 161-164): every arrive,
+      // wait and exit, one a cycle (ccv_ooe_syu_bar is rate 1). Nothing
+      // leaves before it retires, so no report is recalled.
+      const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
+                           !r.fault && !r.u.cause;
+      if (bar_rep && !out.bars.empty()) { count("stall.bar_port"); break; }
+      if (bar_rep) {
+        Bar b;
+        b.tid = r.u.tid;
+        b.warp = s.warp;
+        b.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
+        b.kind = r.u.shape.exit ? kBarExit : r.u.attr.serial == kSerArrive ? kBarArrive
+                 : r.u.shape.pdata ? kBarWaitPhase : kBarWait;
+        b.barrier_id = r.u.shape.exit ? 0 : r.u.imm;    // temporary: A-75 names the field
+        b.issue_mask = r.u.group_mask;
+        b.guard_mask = !r.u.shape.exit && r.u.shape.guard ? r.bar_guard : ~0u;
+        b.phase_mask = b.kind == kBarWaitPhase ? r.bar_phase : 0;
+        b.held = (b.kind == kBarWait || b.kind == kBarWaitPhase) && s.bar_hold && !s.bar_retired && r.u.all_waiting;
+        out.bars.push_back(b);
+        count(b.kind == kBarExit ? "bar.report.exit" : b.kind == kBarArrive ? "bar.report.arrive"
+              : b.kind == kBarWaitPhase ? (b.held ? "bar.report.phase_held" : "bar.report.phase") : b.held ? "bar.report.wait_held" : "bar.report.wait");
+        if (b.held) {
+          // The hold stays until SYU's answer (ccv_syu_ooe_rel).
+          s.bar_retired = true;
+          s.bar_long = r.u.ilen == 1;
+          s.bar_mask = r.u.group_mask;
+        }
+      }
+      // The barrier demotion timer starts at a held wait's retire, or a
+      // marked uop's that leaves nothing younger in the ROB.
+      if ((r.u.attr.serial == kSerBarrier && s.bar_hold && s.bar_retired) || (r.u.all_waiting && s.count == 1)) {
+        s.bar_idle = true;
+        s.bar_idle_reported = false;
+        s.bar_idle_since = now_;
+      }
       if (r.u.shape.exit) {
         uint32_t &lanes = exit_lanes_[s.warp % kWarpIds];
         lanes |= r.u.group_mask;
@@ -2218,7 +2276,9 @@ void Core::retire() {
         count("demote_trigger.mlc_miss");
         oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
-      const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
+      // A held wait's own trigger is the barrier timer below: the wait
+      // retires, so it is never the stalled head.
+      const unsigned lim = cfg_.demote_fallback;
       // The fallback's report says mlc_miss_seen only once the MLC trigger
       // itself has fired: a head load outstanding past the fallback alone
       // is not an MLC miss, and RAU's MLC policy keys on that bit.
@@ -2226,9 +2286,18 @@ void Core::retire() {
         out.status.push_back({s.warp, false, true, miss && (s.miss_reported || cfg_.inject_fallback_claims_mlc),
                                  s.retired_since_restore});
         s.stalled_reported = true;
-        count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
-        oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
+        count("demote_trigger.fallback");
+        oev(OoeEv::kDemoteTrigger, s.warp, 2, stall, h.u.tid);
       }
+    }
+    // The barrier demotion timer (TI-40): started at a held wait's retire,
+    // or a marked uop's that left the ROB empty; it fires once the ROB has
+    // stayed empty past demote_barrier.
+    if (!s.count && s.bar_idle && !s.bar_idle_reported && now_ - s.bar_idle_since > cfg_.demote_barrier) {
+      out.status.push_back({s.warp, false, true, false, s.retired_since_restore});
+      s.bar_idle_reported = true;
+      count("demote_trigger.barrier");
+      oev(OoeEv::kDemoteTrigger, s.warp, 1, now_ - s.bar_idle_since, 0);
     }
   }
 }
@@ -2855,7 +2924,7 @@ unsigned Core::auditRobRoom(unsigned si) const {
 
 uint8_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
-  const bool nop = u.shape.exit || u.cause;
+  const bool nop = u.shape.exit || u.cause || barNop(u);
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
@@ -2863,7 +2932,7 @@ uint8_t Core::admBits(const Uop &u) const {
   // predicate's (ld.pred) as a GPR's.
   const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && (wgpr || pred) &&
                     (u.group_mask != kFullMask || u.shape.guard);
-  const bool serial = a.serial == kSerChwidth || a.serial == kSerBarrier;
+  const bool serial = a.serial == kSerChwidth || (a.serial == kSerBarrier && u.all_waiting);
   return uint8_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
                  (serial << 6));
 }
@@ -2935,7 +3004,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const SchedAttr &a = u.attr;
   // F-BARRIER (IS-16, ISA v1.9 O-59): a barrier at or above its CTA's
   // count faults here, as a no-op, so it never reaches SYU.
-  const bool bar_fault = a.serial == kSerBarrier && u.imm >= s.bar_count &&
+  const bool bar_fault = (a.serial == kSerBarrier || a.serial == kSerArrive) && u.imm >= s.bar_count &&
                          !cfg_.inject_no_bar_fault;
   // F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): a memory access
   // whose data register is at chwidth 4, from the committed table: a load's
@@ -2953,7 +3022,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned fmt_reg = u.fmt_opnd == 3 ? u.dst : u.src[u.fmt_opnd % 3];
   const bool format_fault = !width_fault && ((u.fmt_rsv >> s.cw[fmt_reg & 15]) & 1u) &&
                             !cfg_.inject_no_format_fault;
-  const bool nop = u.shape.exit || u.cause || bar_fault || width_fault || format_fault;
+  const bool nop = u.shape.exit || u.cause || barNop(u) || bar_fault || width_fault || format_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -2971,7 +3040,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
-  const bool nop_d = u.shape.exit || u.cause;
+  const bool nop_d = u.shape.exit || u.cause || barNop(u);
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
   const bool wpred_d = !nop_d && u.pred_we && cfg_.rename_preds;
@@ -3222,7 +3291,6 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
-    if (a.serial == kSerBarrier && !bar_fault) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
     r.rs_main = rsAlloc(mem ? RsCls::kMiu : RsCls::kRcu, si, idx, false);
     rs_[r.rs_main].produces = wgpr || u.pred_we;
@@ -3296,6 +3364,13 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     r.fault_cause = kCauseFormat;
     count("fault.format");
   }
+  // A converged wait (FET's all_waiting) holds rename behind it (TI-40),
+  // issued or not; a diverged wait or an arrive holds nothing.
+  if (a.serial == kSerBarrier && !bar_fault && u.all_waiting && !cfg_.inject_bar_no_hold) {
+    s.bar_hold = true;
+    s.bar_retired = false;
+    s.bar_id = u.imm;   // A-75 names the field
+  }
   if (bar_fault) {
     r.fault = true;
     r.fault_cause = kCauseBarrier;
@@ -3311,7 +3386,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     ren_tot_[k] += took[k];
     ren_slot_[si][k] += cfg_.go_static ? chg[k] : took[k];
   }
-  if (cfg_.go_static && (a.serial == kSerChwidth || a.serial == kSerBarrier)) ren_serial_[si] = 1;
+  if (cfg_.go_static && (a.serial == kSerChwidth || (a.serial == kSerBarrier && u.all_waiting))) ren_serial_[si] = 1;
   return true;
 }
 
