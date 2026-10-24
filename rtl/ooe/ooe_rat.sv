@@ -148,14 +148,14 @@ module ooe_rat #(
   logic [S*R-1:0]  rg_cq01h, rp_cq01h;
   logic [S-1:0]    rs_cq01h, sq_cq01h, rl_cq01h;
   logic [S*LC-1:0] rsc_cq01h;
-  logic [S*C-1:0]  ck_d;
+  logic [S*C-1:0]  ck_d_cq00h;
   always_comb begin
-    ck_d = '0;
+    ck_d_cq00h = '0;
     for (int t = 0; t < S; t++)
       for (int j = 0; j < A; j++)
         for (int c = 0; c < C; c++)
           if (tk_cq00h[t * A + j] && hbr_cq00h[t * A + j] && hck_cq00h[(t * A + j) * LC +: LC] == LC'(c))
-            ck_d[t * C + c] = 1'b1;
+            ck_d_cq00h[t * C + c] = 1'b1;
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
@@ -170,7 +170,7 @@ module ooe_rat #(
     end else begin
       for (int t = 0; t < S; t++) wl_cq01h[t] <= tk_cq00h[t * A] || rstl_cq00h[t];
       rw_cq01h <= rstl_cq00h;
-      ck_cq01h <= ck_d;
+      ck_cq01h <= ck_d_cq00h;
       rg_cq01h <= rgl_cq00h;
       rp_cq01h <= rpl_cq00h;
       rs_cq01h <= restore_cq00h;
@@ -211,45 +211,46 @@ module ooe_rat #(
   assign rat_cq02h = rto_cq02h;
 
   // Each branch port's checkpoint.
-  logic [A*MW-1:0] ck_map;
+  logic [A*MW-1:0] ck_map_cq02h;
   always_comb
-    for (int k = 0; k < A; k++) ck_map[k * MW +: MW] = map_after(rin_cq02h, k);
+    for (int k = 0; k < A; k++) ck_map_cq02h[k * MW +: MW] = map_after(rin_cq02h, k);
 
   // -- the speculative maps --------------------------------------------------
   // A registered whole-map event's map, per slot: release, else squash,
   // else restore. An entry the group writes takes the last such port's name
   // over it.
-  logic [S-1:0]       whole;
-  logic [S*MW-1:0]    base;
-  logic [S*NG-1:0]    g_wr;              // a port of the group writes GPR entry (s, a)
-  logic [S*NG*GW-1:0] g_name;
-  logic [S*NP-1:0]    p_wr;
-  logic [S*NP*PW-1:0] p_name;
+  logic [S-1:0]       whole_cq01h;
+  logic [S*MW-1:0]    base_cq02h;
+  logic [S*NG-1:0]    g_wr_cq01h;              // a port of the group writes GPR entry (s, a)
+  logic [S*NG*GW-1:0] g_name_cq01h;
+  logic [S*NP-1:0]    p_wr_cq01h;
+  logic [S*NP*PW-1:0] p_name_cq01h;
+  // A slot's checkpoint c, by its registered restore's index.
+  function automatic logic [MW-1:0] ck_pick(input logic [C*MW-1:0] ck, input logic [LC-1:0] c);
+    ck_pick = '0;
+    for (int k = 0; k < C; k++) if (c == LC'(k)) ck_pick = ck[k * MW +: MW];
+  endfunction
   always_comb begin
-    g_wr   = '0;
-    g_name = '0;
-    p_wr   = '0;
-    p_name = '0;
+    g_wr_cq01h   = '0;
+    g_name_cq01h = '0;
+    p_wr_cq01h   = '0;
+    p_name_cq01h = '0;
     for (int t = 0; t < S; t++) begin
-      whole[t] = rl_cq01h[t] || sq_cq01h[t] || rs_cq01h[t];
-      if (rl_cq01h[t])      base[t * MW +: MW] = {{NP{PZERO}}, {NG{GZERO}}};
-      else if (sq_cq01h[t]) base[t * MW +: MW] = crat_cq02h[t * MW +: MW];
-      else begin
-        base[t * MW +: MW] = '0;
-        for (int c = 0; c < C; c++)
-          if (rsc_cq01h[t * LC +: LC] == LC'(c)) base[t * MW +: MW] = ckpt_cq02h[(t * C + c) * MW +: MW];
-      end
+      whole_cq01h[t] = rl_cq01h[t] || sq_cq01h[t] || rs_cq01h[t];
+      base_cq02h[t * MW +: MW] = rl_cq01h[t] ? {{NP{PZERO}}, {NG{GZERO}}} :
+                                 sq_cq01h[t] ? crat_cq02h[t * MW +: MW] :
+                                 ck_pick(ckpt_cq02h[t * C * MW +: C * MW], rsc_cq01h[t * LC +: LC]);
       for (int p = 0; p < A; p++)
         if (pw_v_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)
             if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
-              g_wr[t * NG + a]                = 1'b1;
-              g_name[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+              g_wr_cq01h[t * NG + a]                = 1'b1;
+              g_name_cq01h[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
             if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
-              p_wr[t * NP + a]                = 1'b1;
-              p_name[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+              p_wr_cq01h[t * NP + a]                = 1'b1;
+              p_name_cq01h[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
             end
         end
     end
@@ -263,20 +264,20 @@ module ooe_rat #(
   // entry neither written nor in a whole-map event keeps its value, as an
   // AND-OR rather than a held if, so synthesis keeps the slot's enable.
   logic [S-1:0]    rat_en_cq01h;
-  logic [S*MW-1:0] rat_nx;
+  logic [S*MW-1:0] rat_nx_cq01h;
   always_comb
     for (int t = 0; t < S; t++) begin
-      rat_en_cq01h[t] = wl_cq01h[t] || whole[t];
+      rat_en_cq01h[t] = wl_cq01h[t] || whole_cq01h[t];
       for (int a = 0; a < NG; a++)
-        rat_nx[t * MW + a * GW +: GW] =
-            ({GW{g_wr[t * NG + a]}} & g_name[(t * NG + a) * GW +: GW]) |
-            ({GW{!g_wr[t * NG + a] && whole[t]}} & base[t * MW + a * GW +: GW]) |
-            ({GW{!g_wr[t * NG + a] && !whole[t]}} & rin_cq02h[t * MW + a * GW +: GW]);
+        rat_nx_cq01h[t * MW + a * GW +: GW] =
+            ({GW{g_wr_cq01h[t * NG + a]}} & g_name_cq01h[(t * NG + a) * GW +: GW]) |
+            ({GW{!g_wr_cq01h[t * NG + a] && whole_cq01h[t]}} & base_cq02h[t * MW + a * GW +: GW]) |
+            ({GW{!g_wr_cq01h[t * NG + a] && !whole_cq01h[t]}} & rin_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
-        rat_nx[t * MW + NG * GW + a * PW +: PW] =
-            ({PW{p_wr[t * NP + a]}} & p_name[(t * NP + a) * PW +: PW]) |
-            ({PW{!p_wr[t * NP + a] && whole[t]}} & base[t * MW + NG * GW + a * PW +: PW]) |
-            ({PW{!p_wr[t * NP + a] && !whole[t]}} & rin_cq02h[t * MW + NG * GW + a * PW +: PW]);
+        rat_nx_cq01h[t * MW + NG * GW + a * PW +: PW] =
+            ({PW{p_wr_cq01h[t * NP + a]}} & p_name_cq01h[(t * NP + a) * PW +: PW]) |
+            ({PW{!p_wr_cq01h[t * NP + a] && whole_cq01h[t]}} & base_cq02h[t * MW + NG * GW + a * PW +: PW]) |
+            ({PW{!p_wr_cq01h[t * NP + a] && !whole_cq01h[t]}} & rin_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
   for (genvar t = 0; t < S; t++) begin : g_rat
@@ -285,8 +286,8 @@ module ooe_rat #(
         rto_cq02h[t * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
         rin_cq02h[t * MW +: MW] <= {{NP{PZERO}}, {NG{GZERO}}};
       end else if (rat_en_cq01h[t]) begin
-        rto_cq02h[t * MW +: MW] <= rat_nx[t * MW +: MW];
-        rin_cq02h[t * MW +: MW] <= rat_nx[t * MW +: MW];
+        rto_cq02h[t * MW +: MW] <= rat_nx_cq01h[t * MW +: MW];
+        rin_cq02h[t * MW +: MW] <= rat_nx_cq01h[t * MW +: MW];
       end
     end
   end
@@ -295,39 +296,39 @@ module ooe_rat #(
   // The retire-stage register's writes in port order, then a
   // restore-allocate's, which the group's ports carry; a release maps the
   // slot to the zero registers, under any write.
-  logic [S*NG-1:0]    c_wr;
-  logic [S*NG*GW-1:0] c_name;
-  logic [S*NP-1:0]    cp_wr;
-  logic [S*NP*PW-1:0] cp_name;
+  logic [S*NG-1:0]    c_wr_cq01h;
+  logic [S*NG*GW-1:0] c_name_cq01h;
+  logic [S*NP-1:0]    cp_wr_cq01h;
+  logic [S*NP*PW-1:0] cp_name_cq01h;
   always_comb begin
-    c_wr    = '0;
-    c_name  = '0;
-    cp_wr   = '0;
-    cp_name = '0;
+    c_wr_cq01h    = '0;
+    c_name_cq01h  = '0;
+    cp_wr_cq01h   = '0;
+    cp_name_cq01h = '0;
     for (int t = 0; t < S; t++) begin
       for (int r = 0; r < R; r++) begin
         for (int a = 0; a < NG; a++)
           if (ret_gwe_cq01h[t * R + r] && ret_dst_cq01h[(t * R + r) * 4 +: 4] == 4'(a)) begin
-            c_wr[t * NG + a]                = 1'b1;
-            c_name[(t * NG + a) * GW +: GW] = ret_gname_cq01h[(t * R + r) * GW +: GW];
+            c_wr_cq01h[t * NG + a]                = 1'b1;
+            c_name_cq01h[(t * NG + a) * GW +: GW] = ret_gname_cq01h[(t * R + r) * GW +: GW];
           end
         for (int a = 0; a < NP; a++)
           if (ret_pwe_cq01h[t * R + r] && ret_pdst_cq01h[(t * R + r) * 2 +: 2] == 2'(a)) begin
-            cp_wr[t * NP + a]                = 1'b1;
-            cp_name[(t * NP + a) * PW +: PW] = ret_pname_cq01h[(t * R + r) * PW +: PW];
+            cp_wr_cq01h[t * NP + a]                = 1'b1;
+            cp_name_cq01h[(t * NP + a) * PW +: PW] = ret_pname_cq01h[(t * R + r) * PW +: PW];
           end
       end
       for (int p = 0; p < A; p++)
         if (pw_v_cq01h[p] && pw_rst_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)
             if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
-              c_wr[t * NG + a]                = 1'b1;
-              c_name[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+              c_wr_cq01h[t * NG + a]                = 1'b1;
+              c_name_cq01h[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
             if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
-              cp_wr[t * NP + a]                = 1'b1;
-              cp_name[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+              cp_wr_cq01h[t * NP + a]                = 1'b1;
+              cp_name_cq01h[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
             end
         end
     end
@@ -338,31 +339,31 @@ module ooe_rat #(
   // register's gwe, pwe), a restore-allocate or a release. An entry not
   // written holds, as an AND-OR.
   logic [S-1:0]       cg_en_cq01h, cp_en_cq01h;
-  logic [S*MW-1:0]    crat_nx;
+  logic [S*MW-1:0]    crat_nx_cq01h;
   always_comb
     for (int t = 0; t < S; t++) begin
       cg_en_cq01h[t] = rl_cq01h[t] || rw_cq01h[t] || rg_cq01h[t * R +: R] != '0;
       cp_en_cq01h[t] = rl_cq01h[t] || rw_cq01h[t] || rp_cq01h[t * R +: R] != '0;
       for (int a = 0; a < NG; a++)
-        crat_nx[t * MW + a * GW +: GW] =
-            ({GW{c_wr[t * NG + a]}} & c_name[(t * NG + a) * GW +: GW]) |
-            ({GW{!c_wr[t * NG + a] && rl_cq01h[t]}} & GZERO) |
-            ({GW{!c_wr[t * NG + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + a * GW +: GW]);
+        crat_nx_cq01h[t * MW + a * GW +: GW] =
+            ({GW{c_wr_cq01h[t * NG + a]}} & c_name_cq01h[(t * NG + a) * GW +: GW]) |
+            ({GW{!c_wr_cq01h[t * NG + a] && rl_cq01h[t]}} & GZERO) |
+            ({GW{!c_wr_cq01h[t * NG + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
-        crat_nx[t * MW + NG * GW + a * PW +: PW] =
-            ({PW{cp_wr[t * NP + a]}} & cp_name[(t * NP + a) * PW +: PW]) |
-            ({PW{!cp_wr[t * NP + a] && rl_cq01h[t]}} & PZERO) |
-            ({PW{!cp_wr[t * NP + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + NG * GW + a * PW +: PW]);
+        crat_nx_cq01h[t * MW + NG * GW + a * PW +: PW] =
+            ({PW{cp_wr_cq01h[t * NP + a]}} & cp_name_cq01h[(t * NP + a) * PW +: PW]) |
+            ({PW{!cp_wr_cq01h[t * NP + a] && rl_cq01h[t]}} & PZERO) |
+            ({PW{!cp_wr_cq01h[t * NP + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
   for (genvar t = 0; t < S; t++) begin : g_crat
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h)            crat_cq02h[t * MW +: NG * GW] <= {NG{GZERO}};
-      else if (cg_en_cq01h[t]) crat_cq02h[t * MW +: NG * GW] <= crat_nx[t * MW +: NG * GW];
+      else if (cg_en_cq01h[t]) crat_cq02h[t * MW +: NG * GW] <= crat_nx_cq01h[t * MW +: NG * GW];
     end
     always_ff @(posedge ooe_core_clk) begin
       if (rst_r01h)            crat_cq02h[t * MW + NG * GW +: NP * PW] <= {NP{PZERO}};
-      else if (cp_en_cq01h[t]) crat_cq02h[t * MW + NG * GW +: NP * PW] <= crat_nx[t * MW + NG * GW +: NP * PW];
+      else if (cp_en_cq01h[t]) crat_cq02h[t * MW + NG * GW +: NP * PW] <= crat_nx_cq01h[t * MW + NG * GW +: NP * PW];
     end
   end
 
@@ -370,24 +371,24 @@ module ooe_rat #(
   // Checkpoint (s, c) is written when a branch port of the group names it,
   // with the maps as they stand after that port's writes; its enable is
   // this module's flop of the same, from the go's cycle.
-  logic [S*C-1:0]    ckpt_wr;
-  logic [S*C*MW-1:0] ckpt_nx;
+  logic [S*C-1:0]    ckpt_wr_cq01h;
+  logic [S*C*MW-1:0] ckpt_nx_cq01h;
   always_comb begin
-    ckpt_wr = '0;
-    ckpt_nx = '0;
+    ckpt_wr_cq01h = '0;
+    ckpt_nx_cq01h = '0;
     for (int p = 0; p < A; p++)
       for (int i = 0; i < S * C; i++)
         if (pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_br_cq01h[p] &&
             pw_slot_cq01h[p * LS +: LS] == LS'(i / C) && pw_ckpt_cq01h[p * LC +: LC] == LC'(i % C)) begin
-          ckpt_wr[i]            = 1'b1;
-          ckpt_nx[i * MW +: MW] = ck_map[p * MW +: MW];
+          ckpt_wr_cq01h[i]            = 1'b1;
+          ckpt_nx_cq01h[i * MW +: MW] = ck_map_cq02h[p * MW +: MW];
         end
   end
   logic [S*C-1:0] ckpt_en_cq01h;
   assign ckpt_en_cq01h = ck_cq01h;
   for (genvar i = 0; i < S * C; i++) begin : g_ckpt
     always_ff @(posedge ooe_core_clk) begin
-      if (ckpt_en_cq01h[i]) ckpt_cq02h[i * MW +: MW] <= ckpt_nx[i * MW +: MW];
+      if (ckpt_en_cq01h[i]) ckpt_cq02h[i * MW +: MW] <= ckpt_nx_cq01h[i * MW +: MW];
     end
   end
 
@@ -395,20 +396,20 @@ module ooe_rat #(
   // each checkpoint exactly when its lead says, and the retire-stage
   // register carries the decision copied here; a restore-allocate port only
   // where its lead says.
-  logic [S-1:0] grp_sl, rst_sl;
+  logic [S-1:0] grp_sl_cq01h, rst_sl_cq01h;
   always_comb begin
-    grp_sl = '0;
-    rst_sl = '0;
+    grp_sl_cq01h = '0;
+    rst_sl_cq01h = '0;
     for (int p = 0; p < A; p++)
       for (int t = 0; t < S; t++)
         if (pw_v_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(t)) begin
-          grp_sl[t] = 1'b1;
-          if (pw_rst_cq01h[p]) rst_sl[t] = 1'b1;
+          grp_sl_cq01h[t] = 1'b1;
+          if (pw_rst_cq01h[p]) rst_sl_cq01h[t] = 1'b1;
         end
   end
-  `CCV_ASSERT(group_led, (grp_sl & ~wl_cq01h) == '0)
-  `CCV_ASSERT(restore_alloc_led, rst_sl == rw_cq01h)
-  `CCV_ASSERT(ckpt_led, ckpt_wr == ck_cq01h)
+  `CCV_ASSERT(group_led, (grp_sl_cq01h & ~wl_cq01h) == '0)
+  `CCV_ASSERT(restore_alloc_led, rst_sl_cq01h == rw_cq01h)
+  `CCV_ASSERT(ckpt_led, ckpt_wr_cq01h == ck_cq01h)
   `CCV_ASSERT(retire_led, ret_gwe_cq01h == rg_cq01h && ret_pwe_cq01h == rp_cq01h)
   // The group names no slot a registered whole-map event names (see above).
   logic [S-1:0] renamed_cq01h;
@@ -418,7 +419,7 @@ module ooe_rat #(
       for (int t = 0; t < S; t++)
         if (pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(t)) renamed_cq01h[t] = 1'b1;
   end
-  `CCV_ASSERT(rename_excludes_events, (renamed_cq01h & whole) == '0)
+  `CCV_ASSERT(rename_excludes_events, (renamed_cq01h & whole_cq01h) == '0)
 
 endmodule
 `undef CCV_CLK

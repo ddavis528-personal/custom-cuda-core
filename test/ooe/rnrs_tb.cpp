@@ -380,7 +380,7 @@ void hook(const Core &c) {
     setBit(dut->cfin_cq01h, j, y.cfin[j]);
     setBit(dut->wtl3_cq00h, j, hist[0].wtl3[j]);
     setBit(dut->fin_cq00h, j, y.fin[j]);
-    setBit(dut->gnt_cq00h, j, y.grant[j]);
+    setBit(dut->gnt_cq01h, j, y.grant[j]);
   }
   drivePayload(n1);
   driveLeads(&n1, &n2);

@@ -2952,6 +2952,18 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       return false;
     }
   }
+  // go_static: the ceiling, a term of the go (OI-73 (3), OA's rev 207). The
+  // fits for this cycle were formed last cycle, from the room registered at
+  // its start, with the names the warp took then: this cycle's names must
+  // fit what is left. Frees since only add room, so held never passes it.
+  if (cfg_.go_static && !cfg_.inject_no_ceil_term && si < ceil_room_use_.size()) {
+    const auto &room = ceil_room_use_[si], &prev = ceil_names_prev_[si];
+    for (unsigned c = 0; c != 2; ++c)
+      if (chg[2 + c] && prev[c] + ren_slot_[si][2 + c] + chg[2 + c] > room[c]) {
+        count(c ? "stall.ceiling.pred" : "stall.ceiling.gpr");
+        return false;
+      }
+  }
   // Reservation stations: class space and the per-warp cap (V-14).
   if (!nop) {
     unsigned free_rcu = 0, free_miu = 0;
@@ -3014,6 +3026,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       count("stall.gpr_empty");
       oev(OoeEv::kGprEmpty, s.warp, s.held_gpr, gfree_.size(), u.tid);
     } else if (s.held_gpr + ngpr > kArchGprs + cfg_.ren_ceil) {
+      // go_static: the go's ceiling term refuses first (OI-73 (3)).
+      if (cfg_.go_static) err("V-04: slot %u's take passes its GPR ceiling, which the go's room admitted", si);
       count("stall.gpr_ceiling");
       oev(OoeEv::kRenameLimit, s.warp, 1, 0, u.tid);
     } else {
@@ -3045,6 +3059,8 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       count("stall.pred_empty");
       oev(OoeEv::kPredEmpty, s.warp, s.held_pred, 0, u.tid);
     } else {
+      if (cfg_.go_static && s.held_pred + 1 > kArchPreds + cfg_.pred_ren_ceil)
+        err("V-04: slot %u's take passes its predicate ceiling, which the go's room admitted", si);
       count("stall.pred_floor_ceiling");
       oev(OoeEv::kRenameLimit, s.warp, s.held_pred + 1 > kArchPreds + cfg_.pred_ren_ceil ? 1 : 0,
           1, u.tid);
@@ -3298,6 +3314,20 @@ void Core::restoreStep() {
 }
 
 void Core::rename() {
+  // The go's ceiling term (OI-73 (3)): last cycle's registered room and
+  // names charged, and this cycle's room, registered now from held.
+  {
+    const unsigned ns = unsigned(slot_.size());
+    ceil_room_use_ = ceil_room_reg_.size() == ns ? ceil_room_reg_ : std::vector<std::array<unsigned, 2>>();
+    ceil_names_prev_.assign(ns, {0, 0});
+    for (unsigned si = 0; si != ns && si < ren_slot_.size(); ++si)
+      ceil_names_prev_[si] = {ren_slot_[si][2], ren_slot_[si][3]};
+    ceil_room_reg_.assign(ns, {0, 0});
+    for (unsigned si = 0; si != ns; ++si) {
+      const unsigned cg = kArchGprs + cfg_.ren_ceil, cp = kArchPreds + cfg_.pred_ren_ceil;
+      ceil_room_reg_[si] = {cg - std::min(cg, slot_[si].held_gpr), cp - std::min(cp, slot_[si].held_pred)};
+    }
+  }
   ren_tot_.fill(0);
   ren_slot_.assign(slot_.size(), {});
   ren_serial_.assign(slot_.size(), 0);
@@ -3317,6 +3347,11 @@ void Core::rename() {
     g.adm.assign(ns, {});
     g.run.assign(ns, 0); g.ret.assign(ns, 0); g.unmet_g.assign(ns, 0); g.unmet_p.assign(ns, 0);
     g.reach.assign(ns, 0); g.hold.assign(ns, 1);
+    g.room_g.assign(ns, 0); g.room_p.assign(ns, 0);
+    for (unsigned si = 0; si != ns; ++si) {
+      g.room_g[si] = ceil_room_reg_[si][0];
+      g.room_p[si] = ceil_room_reg_[si][1];
+    }
     for (unsigned si = 0; si != ns; ++si) {
       if (slot_[si].st != WarpState::kFree)
         for (const Uop &u : decq_)

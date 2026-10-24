@@ -12,9 +12,10 @@ deleted. Any block may add entries. Each counter named below is one the
 block's model already reports (for OOE, `CCV_OOE_STATS`; see
 [`ooe-model.md`](ooe-model.md)), or the entry says it is still to be added.
 
-Every entry today is OOE's, from a scan of the Stage 4 decisions, the
+PF-1 to PF-29 are OOE's, from a scan of the Stage 4 decisions, the
 model's decisions 1 to 11 ([`ooe-model.md`](ooe-model.md)) and the
-interface review rows. Each entry gives the current choice, the
+interface review rows. From PF-30 the top-level architect (AR) adds
+entries from the cross-agent register and the compiler's measurements. Each entry gives the current choice, the
 alternative, what the alternative costs, and the signal that would justify
 it.
 
@@ -35,7 +36,7 @@ it.
 | PF-11 | Completion sent in time with the data, not before it | MIU | deferred |
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
-| PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc) |
+| PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
 | PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16) |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
 | PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
@@ -51,7 +52,21 @@ it.
 | PF-27 | Fold section alignment into the producing op | rename, RCU, bypass | dropped (DA's revised OI-30) |
 | PF-28 | Loads pass older loads | scheduler, MIU | deferred (DA's response OA-13) |
 | PF-29 | Narrow co-issue within one warp | rename, compiler | deferred (DA's response OI-35; OA-19 (b)) |
+| PF-30 | 4-bit work at 8x: nibble sub-sections | LANE, RCU, rename, scheduler | deferred (DA's response OI-29) |
+| PF-31 | A warp-uniform register file and scalar datapath | ISA, RCU, rename, compiler | deferred (CP-7, compiler F-106) |
+| PF-32 | Branch resolution fed by a lane compare at the bypass point | LANE, RCU, scheduler | deferred (S1 traces) |
+| PF-33 | Fewer block crossings on the L1-hit path | MIU, DCU, RCU, partitioning | deferred (S1 traces; Q-18) |
+| PF-34 | Same-address combining for atomics, built from lane adds | LANE, RCU, MIU, ISA | deferred (IS-14; DA's response AR-21) |
+| PF-35 | A one-instruction warp reduction in RCU | ISA, RCU, compiler | deferred (IS-14) |
+| PF-36 | Return-address prediction for `ret` | FET | deferred (CP-9; AR-20) |
+| PF-37 | Merge masked lanes at write-back in RCU | RCU, LANE, interfaces | deferred (OA's response IS-10) |
 | PF-38 | The aligned-half fallback pick | scheduler | deferred (over the select stage) |
+| PF-39 | An early MLC-miss notice for demotion | MLC, DCU, MIU, OOE, RAU | deferred (TI-24 (5)) |
+| PF-40 | Pack a parked warp's rows: keep sharing, elide zero rows | OOE, RCU, PCA | deferred (TI-25, closed at OA's rev 165) |
+| PF-41 | Restore a parked warp before it is ready, into an idle slot | RAU | deferred (TI-21; OI's rev 155) |
+| PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
+| PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
+| PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
 
 ## Entries
 
@@ -191,13 +206,21 @@ it.
 
 ### PF-12 More bypass paths between groups
 
-- **Now:** only lane ALU to lane ALU bypasses (A-59). Every other pair waits
-  its producer's full latency (see "Bypass groups" in
-  [`ooe-model.md`](ooe-model.md)).
+- **Now:** lane integer and FP results bypass inside the lane at
+  `CCV_LAT_LANE_BYP` (A-59), with penalties set by bypass group: 0 within
+  a group, 2 between integer and FP (DA's responses OA-4). SFU has no
+  bypass point until a `CCV_LAT_SFU_BYP` exists (OA's response OI-16), so
+  its dependants wait the full `CCV_LAT_SFU`. RCU-only, warp-collective,
+  predicate and memop-address consumers take no bypass (V-48). See
+  "Bypass groups" in [`ooe-model.md`](ooe-model.md). (Updated 2026-10-19
+  by AR: this line said only ALU to ALU bypassed, which predates OA-4.)
 - **Alternative:** bypass networks between more pairs: RCU-only results to
   the lanes, SFU to SFU, results to RCU's address path for memops.
 - **Cost:** wires and muxes per pair, and one more wake vector per distinct
-  offset in the scheduler.
+  offset in the scheduler. An SFU bypass point also widens the lane's
+  bypass select: `CCV_P_W_LANE_BYP_AGE` is derived from the lane window
+  alone, and must then take the widest window over producer groups, or
+  RCU cannot name an SFU producer (AR's response TI-8).
 - **Signal:** per pair, the dependants that waited a full latency where a
   bypass would have woken them earlier (to add: a counter per producer unit
   and consumer group).
@@ -220,6 +243,8 @@ it.
 - **Alternative:** younger non-memory ops rename and execute past the wait.
 - **Cost:** memops must still hold, and demotion while waiting gets harder.
 - **Signal:** `hold.barrier` on short waits. A long wait demotes anyway.
+- **Since TI-40 (2026-10-23):** only a converged warp's wait holds rename.
+  A diverged warp parks at fetch, per lane.
 
 ### PF-15 `chwidth` without serialising rename
 
@@ -295,9 +320,16 @@ it.
 
 ### PF-20 Rename in the cycle a uop arrives
 
-- **Now:** a uop is written into the decode queue the cycle it lands,
-  renamed the next and selectable the one after. That is two cycles before a
-  ready uop can issue.
+- **Now:** a uop is written into the decode queue the cycle it lands, then
+  takes three rename stages and a payload stage before it is selectable
+  (`rename_stages` = 3 in the model; [`ooe-model.md`](ooe-model.md)).
+  (Updated 2026-10-19 by AR: this line said two cycles, which predates the
+  three-stage rename.)
+- **Measured (S1 traces, 2026-10-19):** on `loop`, every iteration ends in a
+  redirect, and the refill from branch issue to the next issue is 15
+  cycles. `rename_stages` = 1 takes the kernel from 2,736 to 2,536 cycles
+  (7%). FET is a stub that predicts not-taken, so the mispredict rate is
+  pessimistic, but the per-redirect cost is the model's.
 - **Alternative:** bypass an empty decode queue straight into rename, and
   select an entry with no producers the cycle it renames.
 - **Cost:** a longer rename path, and a select input from the rename
@@ -459,6 +491,221 @@ it.
   is unmeasured: it needs a model arm with compiler-chosen positions
   before it is built (OA).
 
+### PF-30 4-bit work at 8x: nibble sub-sections
+
+- **Now:** a `chwidth` = 4 register takes a whole 8-bit section, and every
+  write leaves bits [7:4] zero, masked at write-back in the lane (IS-6).
+  4-bit work therefore retires at 4x, the 8-bit rate (DA's response OI-29;
+  the OOE microarchitecture's "Narrow registers and lane sections").
+- **Alternative:** split each section into two independently controlled
+  4-bit halves, so eight 4-bit ops co-issue per lane. A register's
+  position grows from 2 bits to 3, and the footprint mask from 4 bits to
+  8. E2M1 FP then needs eight FP4 units per lane, beside the four FP8
+  units DA's response IS-7 already builds.
+- **Cost:** every per-section field on `ccv_rcu_lane_ops` doubles. Its
+  warp-uniform control is 208 bits a lane today (AR-18), so about 400. The
+  lane sections in select go from 4 to 8 (`CCV_ISSUE_RESOURCES` 9 to 13),
+  each RAT entry gains a position bit, and IS-6's mask becomes a nibble
+  write enable. Memory does not keep up: 4-bit data lives packed two to a
+  byte and is reached through `unpacki`, so four MIU pipes supply 256
+  elements a cycle (IS's response OI-33). That is level with an 8x ALU,
+  with no headroom, and `unpacki` takes lane slots from the arithmetic it
+  feeds.
+- **Signal:** no kernel exercises it yet, because the compiler has no
+  8-bit or 4-bit register class (CP-6). Revisit when an INT4 or FP4
+  kernel runs. Measure the rate at which a 4-bit op is ready while all
+  four lane sections are held (to add: a split of the section-busy hold by
+  width), and `sections_idle` on that kernel. An upper bound comes cheaply
+  from an OI-34 sweep arm with eight nibble resources.
+
+### PF-31 A warp-uniform register file and scalar datapath
+
+- **Now:** a warp-uniform value takes a full 1,024-bit GPR row, or the
+  compiler re-reads it from the launch block through the slot form (O-45;
+  CP-4's 8-byte stride reaches sixteen pointer arguments). Uniform
+  arithmetic runs in all 32 lanes. The ISA has 16 GPRs (O-25), and no
+  uniform namespace.
+- **Alternative:** a small per-warp uniform register file with a scalar
+  ALU in RCU, and a uniform-operand selector on vector instructions
+  (the compiler's `proposals/warp-uniform.md`, option C; compiler F-106).
+- **Cost:** ISA encoding space, with no free format tag left (compiler F-54); a
+  second rename table and free list; a scalar datapath and its bypass in
+  RCU; uniformity analysis in the compiler, which exists only as lane-0
+  masking (O-33, whose reach CP-2 cut). On the hardware side it also pays
+  back: every uniform value held in a GPR occupies a whole 192-entry PRF
+  row, 31/32 of it redundant.
+- **Measured (compiler side):** since CP-4 no shape in the fused corpus
+  spills for uniform pressure (CP-7). The cost has moved into instruction
+  count: launch-block re-reads are 20 to 27% of the stream on the loop
+  rows (compiler F-152; the compiler's `benchmarks.md` §4). GEMM's spills are
+  divergent accumulators, which no uniform mechanism reaches (CP-5).
+- **Measured (lane side, OI's IS-9 figures):** a loop's back-edge compare
+  is a 32-bit lane op, which takes all four lane sections for its cycle.
+  At four warps it holds 19.2% of section-cycles at alu8 (21.7% with the
+  section fallback) and 15.6% at alu16 (`select.lane_ctl_cycles`). A
+  uniform compare on the scalar datapath frees them: at most
+  1/(1 - 0.217) = 1.28x on the narrow kernels, so 8 bits reaches at most
+  about 3.1x over alu32. Grid-stride loops compare a per-lane index, so
+  none of those compares is uniform without CP's loop-uniformization
+  transform (CP's correction, OA-19), which this entry's compiler cost
+  then includes.
+- **Signal:** the dynamic fraction of issued ops whose operands are all
+  warp-uniform (to add: a ccv-sim counter), and the PRF rows that uniform
+  values hold when rename stalls on an empty free list (to add, in the
+  OOE model). Revisit when either is material on a real kernel. The ISA
+  half is IS's (CP-7).
+
+### PF-32 Branch resolution fed by a lane compare at the bypass point
+
+- **Now:** `setp` executes in the lane and its predicate returns to RCU in
+  `ccv_lane_rcu_res`'s `sec_pred_out`. The branch resolves in RCU, and
+  predicate results take no bypass (DA's responses OA-4; V-48), so a
+  branch waits the full `CCV_LAT_LANE` = 7 after its compare issues.
+- **Measured (S1 traces, 2026-10-19):** on `loop`, compare to branch is 7 of
+  each iteration's 27 cycles: fetch to first issue 8, add to compare 4,
+  compare to branch 7, branch issue to redirect 5, redirect to FET 2, and
+  a section conflict 1.
+- **Why it matters beyond a stub:** IS-4 makes prediction uniform-only in
+  the first build, so every divergent branch waits for resolution, as does
+  every mispredict. Compare-to-branch latency is on the critical path of
+  both.
+- **Alternative:** deliver a lane compare's predicate to RCU's branch
+  resolution at the lane's bypass point, `CCV_LAT_LANE_BYP` = 4, rather than
+  at write-back. Branches that consume a lane compare get a wake offset of
+  their own.
+- **Cost:** the predicate already travels from lane to RCU; it would have to
+  leave the lane earlier than the result, as an early field or a narrow
+  lockstep channel of its own (32 bits a lane array, one per section).
+  RCU's branch unit gains one bypass input, and the scheduler gains one
+  offset.
+- **Signal:** cycles from a compare's issue to its dependent branch's issue
+  (to add), weighted by branches that resolved a divergence or a
+  mispredict. Revisit when FET predicts and the corpus has divergent
+  kernels, both on roadmap Part 0's next list.
+
+### PF-33 Fewer block crossings on the L1-hit path
+
+- **Now:** an L1-hit load's dependant wakes `CCV_LAT_L1_WAKE` = 16 cycles
+  after the load issues. Of those, 5 are RCU's address read
+  (`CCV_LAT_RCU_ADDR`, a placeholder) and 7 are the L1 hit
+  (`CCV_LAT_L1_HIT`), which itself includes the MIU-to-DCU round trip. The
+  rest are crossings at `CCV_LAT_HOP` = 2: issue to RCU, address to MIU, and
+  data back to RCU, less the issue crossing the dependant pays too. So
+  issue to data in RCU is 2 + 5 + 2 + 7 + 2 = 18 cycles, about 10 of them
+  crossings once the MIU-DCU pair is counted. A load whose address comes
+  from a load also waits for confirmation (PF-4) and for completion at
+  `CCV_LAT_L1_CMPL` = 18.
+- **Measured (S1 traces, 2026-10-19):** on `hit`, an L1-hit pointer chase is
+  19 cycles from load to load. A miss is 34 cycles from issue to completion
+  with a 10-cycle DRAM placeholder; about 20 of the 34 are ten crossings.
+  The stubs run at contract latency, so these are the parameters' numbers,
+  not the stubs'.
+- **Alternative:** return L1-hit data from DCU straight to RCU, one crossing
+  instead of two through MIU. Or fold DCU's lookup into MIU, which removes
+  the MIU-DCU round trip. Either is a partitioning change. Co-locating the
+  AGUs with RCU (Q-18) shrinks the widest interface but removes no crossing
+  by itself.
+- **Cost:** a block boundary moves, and a block boundary is a swap boundary.
+  DCU would need a second data port, to RCU, and MIU would lose sight of
+  hit data it now forwards, which matters for store-to-load forwarding
+  (PF-7).
+- **Signal:** load-to-load interval on address chains, and the share of
+  `CCV_LAT_L1_WAKE` that is crossings, which follows from the parameters.
+  Revisit with Q-18, before floorplan, and once the corpus has pointer
+  chasing or indexed gathers whose index is loaded.
+
+### PF-34 Same-address combining for atomics, built from lane adds
+
+- **Now:** every atomic's operation executes in the lanes, integer and FP,
+  global and shared, because no FP arithmetic is built outside the LANE
+  blocks (DA's response AR-21, 2026-10-19). MIU holds the line exclusive
+  (SPM the bank entry) from the atomic's read to its write. Same-address
+  lanes of one instruction go in passes of at most one lane per address,
+  in ascending lane order, each pass a round trip (AR-21). So 32 lanes to
+  one address cost 32 passes, with the line held throughout. Today
+  `atomicAdd(float*)` is still a CAS loop, and `cas.global` is not yet
+  selectable (IS-14). The FP32 adder IS-14 asked about costs nothing, since
+  the lanes have it.
+- **Alternative:** combine same-address lanes before the memory update, for
+  the no-return `red` form only, since `atom`'s per-lane old values must
+  form a serialisation, which a tree cannot produce in FP (AR's response to
+  TI on IS-14). Under DA's ruling the tree must be built from cross-lane
+  moves through RCU plus lane adds: five levels for 32 lanes, segmented by
+  address. Rejected in its first form, an adder tree at DCU and SPM, by
+  DA's response AR-21.
+- **Cost:** five RCU-and-lane round trips per combined instruction, a
+  segmented-reduction control (lanes grouped by address), and the order IS
+  fixes for `red`. Verification is TI's chain check, extended to `red`'s
+  tree (TI's response IS-14).
+- **Signal:** passes per warp atomic and cycles a line is held exclusive, on
+  CP's histogram and scatter-add kernels at low and high contention (IS-14),
+  to add once `cas.global` and the atomics are lowered.
+
+### PF-35 A one-instruction warp reduction in RCU
+
+- **Now:** a warp reduction goes through shared memory, because `shfl.down`
+  and `shfl.bfly` are specified but not built. A shuffle tree would be five
+  `shfl` and five operations, each a warp-collective round trip through RCU
+  at `CCV_LAT_COLLECTIVE` (IS-14).
+- **Alternative:** `redux` (integer add, min, max, and, or, xor) as a Format G
+  point, executed in RCU, which already sees all 32 lanes for every
+  collective. PTX has `redux.sync`, so the compatibility target names it.
+- **Cost:** a 32-input reduction tree in RCU's collective path, about five
+  adder levels for add, so a pipelined unit with its own latency class. Its
+  result is warp-uniform, so it also feeds PF-31's case if that returns.
+- **Signal:** the shuffle and shared-memory share of the reduction kernels'
+  issued instructions, once the shuffles are built (asked of CP in IS-14).
+
+### PF-36 Return-address prediction for `ret`
+
+- **Now:** `ret rs` sets each lane's PC from a register (compiler proposal
+  `calling-convention.md`, CP-9). FET predicts uniform branches only (IS-4)
+  and nothing names an indirect-target predictor, so every return waits
+  for RCU to read `rs` and redirect FET. That costs about the 15-cycle
+  refill the S1 traces measured from branch issue to the next issue
+  (PF-32's measurement).
+- **Alternative:** a per-warp return-address stack in FET, pushed when a
+  call writes its link register and popped at `ret`. The prediction is
+  checked at resolution like any branch. The convention makes it easy:
+  `call` writes a fixed, ABI-named link register (R14 for `call.short`), and
+  frames are static with no recursion (CP-9), so the stack's depth bounds
+  the call depth that predicts correctly. Compiled code always calls on R14
+  and returns with `ret r14`, while an indirect call's stub jumps with
+  `ret rF` for some other register, so FET can tell a return from a jump by
+  the register alone, and the stack is exact for everything the compiler
+  emits (CP's response to AR on CP-9). A direct call's target is PC-relative
+  and known at decode.
+- **Cost:** a few entries of 32-bit code addresses per tier-1 warp. It must
+  be checkpointed with the branch state, so a mispredict or a demotion
+  restores it. A divergent return, where lanes' `rs` differ, splits PC
+  groups and cannot be predicted by one stack entry; it falls back to
+  resolution.
+- **Signal:** returns per thousand instructions and cycles each waits for
+  resolution, on CoreMark (AR-20), to add when FET models a predictor.
+
+### PF-37 Merge masked lanes at write-back in RCU
+
+- **Now:** a guarded or masked lane op carries the old destination's value
+  to the lane as `merge_data`, the fourth operand port on `ccv_rcu_lane_ops`,
+  and an inactive lane returns it as its result on `ccv_lane_rcu_res` (A-33,
+  A-44, A-51). So the merge value crosses the lane both ways. ISA v1.8 §1a.1
+  forbids only toggling the inactive lane's ALU and its operand registers;
+  the buses still carry the value (IS-10).
+- **Alternative:** RCU merges at write-back. It re-reads the old destination
+  from the PRF, as A-43 already does for predicates, and writes only the
+  active lanes' results over it. The old destination's producer has always
+  written by then (OA's response IS-10). The lanes then never see the merge
+  value.
+- **Cost:** one 1,024-bit PRF read per GPR write port, eight more reads
+  beside the 16 at issue, which is half as many again on a 192-row flop
+  array. Against that: `merge_data` leaves `ccv_rcu_lane_ops`, 32 of its 344
+  bits a lane and 1,024 of its 11,008 wires (AR-18), and masked-lane toggling
+  stops on both lane buses.
+- **Signal:** the share of lane ops issued with a partial mask or a guard,
+  and the bus toggle energy in masked lanes, on O-33's own kernels (14% and
+  21.5% lane-activation savings, ISA v1.8 §1a.1). To be settled by AR with the
+  RCU session.
+
 ### PF-38 The aligned-half fallback pick
 
 - **Now:** select's fallback is section-only (OA's response IS-9): a lane
@@ -477,3 +724,185 @@ it.
 - **Signal:** a select stage with room (a request vector registered a
   stage earlier, or a pick restructured so a section's fall-through is
   known before the issue AND), or 16-bit code that matters at four warps.
+
+### PF-39 An early MLC-miss notice for demotion
+
+- **Now:** OOE learns `mlc_miss` only from a load's completion, which comes
+  with the data, when the load stops blocking (TI-24 (5)). So the first
+  build's MLC-miss trigger is time-based: the head is a load that missed L1
+  (no completion at `CCV_LAT_L1_CMPL`) and has blocked longer than
+  `CCV_DEMOTION_THRESHOLD_MLC`, which gen-params requires to exceed
+  `CCV_LAT_MLC_HIT_MAX`, MLC's worst hit latency at DCU's boundary.
+- **Alternative:** MLC reports a miss at its tag lookup, and the notice
+  travels DCU to MIU to OOE, mapped at each hop to the requests it serves.
+  A head load whose notice has arrived demotes at once.
+- **Cost:** three notice hops, each a `notice_of`-style channel or a field
+  on one (TI-23's form). DCU's and MIU's request maps already exist for the
+  refill notice (OA-23).
+- **What it buys:** each DRAM miss demotes `CCV_DEMOTION_THRESHOLD_MLC`
+  minus MLC's hit latency sooner, so the warp holds its RS room and its
+  slot that much less, against a fill of about 1,000 cycles.
+- **Signal:** OI's swap environment sweeps the threshold at 25, 50 and 100
+  (OA's rev 131). If 25 beats 50 by more than 1% on the swap-on sweep, and
+  MLC's hit latency keeps the threshold from going that low, the notice is
+  worth building.
+- **Measured (OI, TI-21, 2026-10-22):** on the 8-warp swap sweep, threshold
+  25 is 8% slower than 50 under the decided go (the interleave), and 3%
+  faster only under one warp a cycle. Earlier demotion does not pay under
+  the go the design uses, so the notice stays deferred. Re-measure once the
+  drain stops waiting for the demoting load (AR's response TI-21, OI's
+  rev 154), since that changes what a demotion returns.
+- **Re-measured (OI's rev 158, AR's response TI-21, 2026-10-22):** under
+  evict with the replay drain, on the 48-seed sweep, 25 gives 0.624 of
+  swap-off against 0.588 at 50, 6.1% slower. The notice stays deferred. The
+  threshold stays at 50: 100 gives 0.603, 2.5% slower, and wins only S1's
+  short MLC misses (gather and vadd4), which an earlier trigger would demote
+  sooner, not later.
+
+### PF-40 Pack a parked warp's rows: keep sharing, elide zero rows
+
+- **Now:** a demotion moves one row per architectural register, 16 plus the
+  predicate row, whatever the warp's rows hold (TI-25). Narrow registers that
+  shared a row each take their own, and a register still mapped to the zero
+  register moves a row of zeros. Restore gives each register its own row,
+  with its position and committed width from OOE's 64-bit entry for the warp.
+- **Alternative:** OOE also keeps each register's distinct-row index and a
+  zero flag (148 bits a warp against 64). The demotion then moves only the
+  distinct non-zero rows, and restore rebuilds the sharing, with zero-flagged
+  registers mapped back to the zero register (A-64's launch state).
+- **What it buys:** fewer migration cycles each way (up to 16 for a warp that
+  never wrote its registers), and fewer PRF rows held after a restore by a
+  warp whose narrow registers had been packed.
+- **Cost:** 84 more bits a warp context in OOE (about 2.7 Kb), and
+  restore-allocate taking a variable count from the slot's reservation.
+- **Signal:** the migration cycles in the swap sweep under the replay drain
+  (AR's response TI-21, OA's rev 160), and the PRF rows a restored warp holds
+  when rename stalls on an empty free list. Revisit if migration is material
+  there.
+
+### PF-41 Restore a parked warp before it is ready, into an idle slot
+
+- **Now:** RAU restores only a ready parked warp, one whose last abandoned
+  load has been answered (`ccv_miu_rau_ready`, TI-21). A free slot with no
+  ready warp idles.
+- **Alternative:** restore the oldest not-ready warp into the idle slot,
+  marked provisional, with its forward-progress guard starting at its ready
+  report. Its replayed load merges at DCU into the fill in flight (AR's
+  rev 115; built as a knob in the RAU stub, `CCV_RAU_READY=0`, and in OI's
+  environment).
+- **Measured:** TI's swap kernel, where the slot would otherwise idle: 605 to
+  558 cycles (557 with no swap). OI's 48-seed swap sweep, with four parked
+  warps ready from the start: 0.654 against 0.646, about 1% lost. When a
+  ready warp appears, a provisional warp holds the slot until the trigger's
+  threshold and a drain have passed (57 provisional restores, 521 declined
+  demotes against 417).
+- **The variant to try:** pre-empt a provisional warp the moment a ready warp
+  appears, without waiting for the threshold. It is blocked behind the same
+  fill anyway, so only the drain and a migration each way are lost.
+- **Signal:** the pre-empting variant at or above the ready-only figure on
+  the swap sweep, and still ahead on provswap. Then it becomes the default.
+- **Measured under evict (OI, 2026-10-22):** evict alone 0.588 against
+  swap-off; with the provisional restore 0.641; with the pre-empting variant
+  too 0.627 (675 provisional restores, 28 pre-empted). Neither wins: a
+  provisional warp is still blocked on its fill, so evict demotes it again.
+  Both stay knobs, default off.
+
+### PF-42 Store-to-load forwarding within a warp
+
+- **Now:** MIU holds a load while any older store or atomic of its warp that
+  overlaps one of its lines has not yet written DCU, committed or not, and
+  forwards nothing (AR's response TI-27 (d)). It is exact with no
+  disambiguation, because a warp's memops issue in program order (OI-15).
+- **Alternative:** forward an older store's bytes from the store buffer to a
+  younger load of the same warp that they fully cover. Narrow the hold to
+  byte overlap, so a load that only shares a line with the store does not wait.
+- **What it buys:** a load behind its own warp's store skips the store's
+  retirement and the write into DCU. The common case is a `.local` fill after
+  its spill, which 16 GPRs make frequent, and a spin-wait that reads a flag
+  its own warp just wrote.
+- **Cost:** a byte-mask compare of each load's lanes against the warp's
+  store-buffer entries, a data mux from the store buffer onto the load's
+  return path, and a second source for `ccv_miu_rcu_data`'s fixed-latency
+  slot.
+- **Signal:** cycles loads spend held behind an older store, per kernel, in
+  OI's environment, and the spill and fill count from the compiler's
+  register-pressure kernels. Worth building if the held cycles are over 2% of
+  any kernel's cycles.
+- **Data (CP's AR-20 sweep, 2026-10-22):** the CoreMark-derived workload at
+  six callee-saved registers moves 44,125 frame transfers per thread in 2
+  iterations, 2.9% of its 1,538,673 issue groups. That is about 92 a call,
+  of which at most 12 are saves and restores, so spills and fills dominate.
+  Held cycles come from the skeleton once TI times the kernel (AR-20, after
+  the kill).
+- **The predicate case (TI-36, 2026-10-23):** an ld.pred behind an older
+  st.pred to the same word can take the store's word d without waiting for
+  the merge, whenever the load's active_mask is a subset of the store's m.
+  ld.pred writes only its active lanes (O-62), and those bits are d's. That
+  covers a reload by the same group, or by a part of it after a split. It
+  costs a word compare, a mask-subset test and a 32-bit path from the store
+  buffer to pred_result. Not built: CoreMark-derived reloads a predicate 4
+  times in a run. The skeleton's figure, about 960 cycles a reload in
+  predswap, is a cold-memory bound with no L1 hit, not a typical cost.
+
+### PF-43 Carry a per-lane base in a field the memop does not use
+
+- **Now:** `ccv_rcu_miu_addr` carries `base_per_lane`, 32 bits a lane beside
+  `index_per_lane` and `store_data`, so any Format D form may have a per-lane
+  `rbase`, as §3 allows (AR's response TI-32). That is 960 bits more a pipe
+  slot than the old 64-bit scalar, 3,840 wires on the design's widest channel.
+- **Alternative:** drop the field. A load sends no store data, so its base
+  rides `store_data`. A base+disp store has no index, so its base rides
+  `index_per_lane`, and every spill is one of these. Only an indexed store
+  with a register base needs three per-lane values. It takes a second address
+  cycle, with OOE reserving its pipes for two cycles.
+- **What it buys:** the 3,840 wires, about 46% of the channel.
+- **Cost:** a two-cycle pipe reservation in OOE's select for one memop class
+  (OA's), half the address bandwidth for that class, and MIU choosing the
+  base's source by form.
+- **Signal:** CP's dynamic count of register-base indexed stores as a share of
+  memops across the corpus, and the floorplan cost of the RCU-MIU boundary
+  once it is known. Worth it if the class is under 1% of memops, or the
+  boundary does not close.
+- **Measured (CP, release f1fd257, 2026-10-22):** register-base indexed
+  stores are 18,157 of the CoreMark-derived workload's 108,170 memops
+  (16.8%), from list walking through per-lane pointers. The GPU kernels
+  have almost none: 1 of 7 in transpose, 1 of 93 in layernorm, 0 in the
+  other ten. The signal fails on general-purpose code, the code AR-20
+  exists to measure, so the field stays. Reopen only if the RCU-MIU
+  boundary does not close in floorplan.
+
+### PF-44 Fetch past a converged barrier wait
+
+- **Now (proposed, TI-40; OA's rev 195 as AR amends it at AR's rev 160):**
+  FET parks a waiting group's lanes at a fetched `bar.wait` or
+  `bar.wait.phase`, and they fetch again when SYU's reply to the retired
+  wait arrives. So the path from the release to the warp's next issue runs
+  through fetch, decode, the decode queue and three rename stages. Under the
+  old rename hold it was rename and payload only, with the younger uops
+  already waiting in the decode queue.
+- **Alternative:** when a wait leaves every live lane of the warp waiting
+  (FET's idle mark), FET fetches past it, up to the warp's decode-queue
+  share, and OOE holds those uops at rename until the release, as before. A
+  diverged warp still parks at fetch, so the deadlock stays fixed.
+- **What it buys:** most of the front end's depth, once per barrier per
+  warp. PF-32's S1 traces measured 15 cycles from a branch's issue to the
+  next issue on a redirect. A release costs most of that, against about 4
+  under the hold, so the saving is about 10 cycles a barrier. That figure is
+  an estimate, not a measurement.
+- **Cost:** two mechanisms for one instruction. The rename hold and V-09 come
+  back into OOE. The uops fetched past the wait are squashed when a demotion
+  takes the warp.
+- **Signal:** cycles from SYU's reply to the warp's next issue, times
+  barriers, in the skeleton once barrier kernels run (TI-40). Worth building
+  if it exceeds 1% of a barrier kernel's cycles, such as layernorm or a CTA
+  reduction.
+- **Decided (Daniel, 2026-10-23; DA's response TI-40, AR's rev 163):**
+  adopted ahead of the measurement, with the wait moving to FET. FET tells
+  the converged case apart at fetch: the wait's group is every live lane,
+  and no lane is waiting. FET marks that wait hold. SYU routes its answer to
+  OOE on `ccv_syu_ooe_rel`, reduced to `{warp_id}`. A demotion rewinds the
+  warp to the wait. OOE flags its rewind beat held, keeps the wait's length
+  (1 bit a slot), and FET takes the length off the beat's PC (AR's rev
+  164). It moves to adopted with
+  the commit that builds it. The measurement above still says whether the
+  second path earns its verification.

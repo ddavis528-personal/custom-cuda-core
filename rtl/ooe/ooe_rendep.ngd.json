@@ -62,10 +62,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "gsn_cq01h": {
-      "arrival": 5.0,
+      "arrival": 6.0,
       "by": "OA",
       "date": "2026-10-23",
-      "why": "OA's response OI-67 (OA tab rev 185): by 5: a source's name, an in-group writer's bound through its lane's new name by ooe_ren1n (5 NGD); ooe_rendep is 19.3 after its inputs, 24.3 in all."
+      "why": "OA's rev 194 (OA tab), on OI-70: Rename 1's reads leave at 5.6 NGD with the one-hot name index (q_g, q_p), by 6 into Rename 2; ooe_rendep is 18.4 after them."
     },
     "psv_cq01h": {
       "arrival": 2.0,
@@ -74,10 +74,10 @@
       "why": "OA's response OI-66 (OA tab rev 168): confirmed at 2.0, every source a register (rename's Rename 2 register, ooe_prodmap's entry flops, ooe_rs's grant)"
     },
     "psn_cq01h": {
-      "arrival": 5.0,
+      "arrival": 6.0,
       "by": "OA",
       "date": "2026-10-23",
-      "why": "OA's response OI-67 (OA tab rev 185): by 5: a source's name, an in-group writer's bound through its lane's new name by ooe_ren1n (5 NGD); ooe_rendep is 19.3 after its inputs, 24.3 in all."
+      "why": "OA's rev 194 (OA tab), on OI-70: Rename 1's reads leave at 5.6 NGD with the one-hot name index (q_g, q_p), by 6 into Rename 2; ooe_rendep is 18.4 after them."
     },
     "cguard_cq01h": {
       "arrival": 2.0,

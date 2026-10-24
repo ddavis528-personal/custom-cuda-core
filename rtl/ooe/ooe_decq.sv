@@ -355,28 +355,28 @@ module ooe_decq #(
         end
       end
   end
-  logic [S*LC-1:0]      cnt_nx;
-  logic [S*H-1:0]       hv_nx;
-  logic [S*R*P-1:0]     hp_nx;
-  logic [S*NA*PA-1:0]   ha_nx;
+  logic [S*LC-1:0]      cnt_nx_cq02h;
+  logic [S*H-1:0]       hv_nx_cq01h;
+  logic [S*R*P-1:0]     hp_nx_cq01h;
+  logic [S*NA*PA-1:0]   ha_nx_cq01h;
   always_comb begin
-    hp_nx = '0;
-    ha_nx = '0;
-    hv_nx = '0;
+    hp_nx_cq01h = '0;
+    ha_nx_cq01h = '0;
+    hv_nx_cq01h = '0;
     for (int s = 0; s < S; s++) begin
       // The count less the take in transit, early; the take arriving now
       // picks which of its R + 1 values to subtract, one-hot.
       logic [LC-1:0] base;
       base = st_cq02h[OCNT + s * LC +: LC] - LC'(tk_cq02h[s * LR +: LR]);
-      cnt_nx[s * LC +: LC] = '0;
+      cnt_nx_cq02h[s * LC +: LC] = '0;
       for (int t = 0; t < R + 1; t++)
-        if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s]) cnt_nx[s * LC +: LC] = cnt_nx[s * LC +: LC] | (base - LC'(t));
+        if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s]) cnt_nx_cq02h[s * LC +: LC] = cnt_nx_cq02h[s * LC +: LC] | (base - LC'(t));
       for (int t = 0; t < R + 1; t++)
         if (deq_k_cq01h[s * (R + 1) + t] && !fl_q_cq02h[s])
           for (int i = 0; i < H; i++) begin
-            hv_nx[s * H + i] = cv_cq02h[s * NCAND + t + i];
-            if (i < R) hp_nx[(s * R + i) * P +: P] = cp_cq02h[(s * NCAND + t + i) * P +: P];
-            else       ha_nx[(s * NA + i - R) * PA +: PA] = cp_cq02h[(s * NCAND + t + i) * P +: PA];
+            hv_nx_cq01h[s * H + i] = cv_cq02h[s * NCAND + t + i];
+            if (i < R) hp_nx_cq01h[(s * R + i) * P +: P] = cp_cq02h[(s * NCAND + t + i) * P +: P];
+            else       ha_nx_cq01h[(s * NA + i - R) * PA +: PA] = cp_cq02h[(s * NCAND + t + i) * P +: PA];
           end
     end
   end
@@ -408,8 +408,8 @@ module ooe_decq #(
   // "some warp takes" bit: the waiver, V-75), a queue changed at the last
   // edge, a flush applied now, or a take in transit to clear.
   logic          decq_en_cq01h;
-  logic [S-1:0]  out_en;            // each slot's count, valids and take
-  logic [S-1:0]  pay_en;            // and its payloads
+  logic [S-1:0]  out_en_cq01h;            // each slot's count, valids and take
+  logic [S-1:0]  pay_en_cq01h;            // and its payloads
   // A slot's arrivals change its count whether or not the candidates can
   // see them, so every arrival into the slot clocks its output groups.
   logic [S-1:0]  arr_nx_cq01h;
@@ -421,10 +421,10 @@ module ooe_decq #(
   // applied now; its take in transit clears an edge after rename's take.
   always_comb
     for (int s = 0; s < S; s++)
-      out_en[s] = deq_sel_cq01h[s] || tkv_cq02h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
+      out_en_cq01h[s] = deq_sel_cq01h[s] || tkv_cq02h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
   always_comb
     for (int s = 0; s < S; s++)
-      pay_en[s] = deq_sel_cq01h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
+      pay_en_cq01h[s] = deq_sel_cq01h[s] || arr_q_cq02h[s] || fl_q_cq02h[s];
   assign nx_cq01h      = next_state(st_cq02h, enq_v_cq01h, enq_slot_cq01h, enq_pay_cq01h, tk_cq02h,
                                     fl_q_cq02h);
   always_ff @(posedge ooe_core_clk) begin
@@ -449,17 +449,17 @@ module ooe_decq #(
         tk_cq02h[s * LR +: LR]    <= '0;
         cnt_o_cq02h[s * LC +: LC] <= '0;
         hv_o_cq02h[s * H +: H]    <= '0;
-      end else if (out_en[s]) begin
+      end else if (out_en_cq01h[s]) begin
         tk_cq02h[s * LR +: LR]    <= deq_n_cq01h[s * LR +: LR];
-        cnt_o_cq02h[s * LC +: LC] <= cnt_nx[s * LC +: LC];
-        hv_o_cq02h[s * H +: H]    <= hv_nx[s * H +: H];
+        cnt_o_cq02h[s * LC +: LC] <= cnt_nx_cq02h[s * LC +: LC];
+        hv_o_cq02h[s * H +: H]    <= hv_nx_cq01h[s * H +: H];
       end
     end
     // The payloads: read only through their valids, so un-reset.
     always_ff @(posedge ooe_core_clk)
-      if (pay_en[s]) begin
-        hp_o_cq02h[s * R * P +: R * P]                <= hp_nx[s * R * P +: R * P];
-        ha_o_cq02h[s * NA * PA +: NA * PA] <= ha_nx[s * NA * PA +: NA * PA];
+      if (pay_en_cq01h[s]) begin
+        hp_o_cq02h[s * R * P +: R * P]                <= hp_nx_cq01h[s * R * P +: R * P];
+        ha_o_cq02h[s * NA * PA +: NA * PA] <= ha_nx_cq01h[s * NA * PA +: NA * PA];
       end
   end
 

@@ -423,31 +423,31 @@ module ooe_wake #(
   // it arrives (hit), and registered so (cm_cq02h), cleared the edge after:
   // a timer's registered completion is one flop, straight into its enable.
   logic [NC-1:0]   cv_cq01h;
-  logic [N-1:0]    hit, cm_cq02h;
-  logic [EW*N-1:0] nx;
-  logic [N-1:0]    ent_en;
+  logic [N-1:0]    hit_cq01h, cm_cq02h;
+  logic [EW*N-1:0] nx_cq02h;
+  logic [N-1:0]    ent_en_cq02h;
   logic            sq_en_cq01h;
-  logic            cm_en;
-  assign cm_en = cv_cq01h != '0 || cm_cq02h != '0;
+  logic            cm_en_cq02h;
+  assign cm_en_cq02h = cv_cq01h != '0 || cm_cq02h != '0;
   always_comb begin
-    hit = '0;
+    hit_cq01h = '0;
     for (int k = 0; k < NC; k++)
       for (int j = 0; j < N; j++)
-        if (cv_cq01h[k] && cmpl_idx_cq01h[k * W +: W] == W'(j)) hit[j] = 1'b1;
+        if (cv_cq01h[k] && cmpl_idx_cq01h[k * W +: W] == W'(j)) hit_cq01h[j] = 1'b1;
   end
   // The completion hints (OA-23), as the completions: the valid flopped
   // (hv), the payload decoded as it arrives (hnt) and registered (hm). A
   // hint names a live timer: a stale one (its ROB entry squashed-pending)
   // is dropped before it reaches this module.
   logic [NC-1:0] hv_cq01h;
-  logic [N-1:0]  hnt, hm_cq02h;
-  logic          hm_en;
-  assign hm_en = hv_cq01h != '0 || hm_cq02h != '0;
+  logic [N-1:0]  hnt_cq01h, hm_cq02h;
+  logic          hm_en_cq02h;
+  assign hm_en_cq02h = hv_cq01h != '0 || hm_cq02h != '0;
   always_comb begin
-    hnt = '0;
+    hnt_cq01h = '0;
     for (int k = 0; k < NC; k++)
       for (int j = 0; j < N; j++)
-        if (hv_cq01h[k] && hint_idx_cq01h[k * W +: W] == W'(j)) hnt[j] = 1'b1;
+        if (hv_cq01h[k] && hint_idx_cq01h[k * W +: W] == W'(j)) hnt_cq01h[j] = 1'b1;
   end
 
   // -- Stops (OI-45) ---------------------------------------------------------
@@ -455,32 +455,32 @@ module ooe_wake #(
   // them over its own: issued, the held misses, final and prod. The stops
   // land at this edge, with the grants of the cycle that reads the same
   // state, so this module's issued bits are ooe_rs's issued register.
-  logic [N-1:0] msd, prd, rep, conf, stop_cq01h;
+  logic [N-1:0] msh_cq02h, prd_cq02h, rep_cq02h, conf_cq02h, stop_cq02h;
   always_comb
     for (int j = 0; j < N; j++) begin
-      msd[j] = held_miss(st_cq02h[j * EW +: EW]);
-      prd[j] = st_cq02h[j * EW + FPROD];
+      msh_cq02h[j] = held_miss(st_cq02h[j * EW +: EW]);
+      prd_cq02h[j] = st_cq02h[j * EW + FPROD];
     end
   ooe_confirm #(.N(N)) u_confirm (
-    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msd), .fin_cq01h(fn_cq02h),
-    .prod_cq01h(prd), .replay_cq01h(rep), .conf_cq01h(conf)
+    .iss_cq01h(is_cq02h), .dep_cq01h(dep_cq01h), .msd_cq01h(msh_cq02h), .fin_cq01h(fn_cq02h),
+    .prod_cq01h(prd_cq02h), .replay_cq01h(rep_cq02h), .conf_cq01h(conf_cq02h)
   );
-  assign stop_cq01h = rep | conf | sqf_cq01h;
+  assign stop_cq02h = rep_cq02h | conf_cq02h | sqf_cq01h;
   // The squash frees only what it clocks (sq_en, its lead), never an entry
   // granted at the same edge (select blocks its slot), and confirms nothing
   // granted at it (confirmation needs the entry issued).
   `CCV_ASSERT(squash_led, sqf_cq01h == '0 || sq_en_cq01h)
   `CCV_ASSERT(squash_not_granted, (sqf_cq01h & grant_cq01h) == '0)
-  `CCV_ASSERT(confirm_not_granted, (conf & grant_cq01h) == '0)
+  `CCV_ASSERT(confirm_not_granted, (conf_cq02h & grant_cq01h) == '0)
 
   // -- Leads -----------------------------------------------------------------
   // Every stop lands on a clocked entry: no stop is lost. A miss pulse
   // clears on its own: its timer is issued and below saturation.
-  `CCV_ASSERT(stop_clocked, (stop_cq01h & is_cq02h & ~ent_en) == '0)
-  `CCV_ASSERT(miss_clocked, (miss_cq02h & ~ent_en) == '0)
+  `CCV_ASSERT(stop_clocked, (stop_cq02h & is_cq02h & ~ent_en_cq02h) == '0)
+  `CCV_ASSERT(miss_clocked, (miss_cq02h & ~ent_en_cq02h) == '0)
   // A completion names an issued timer (the model's check too).
-  `CCV_ASSERT(cmpl_issued, (hit & ~is_cq02h) == '0)
-  `CCV_ASSERT(hint_issued, (hnt & ~is_cq02h) == '0)
+  `CCV_ASSERT(cmpl_issued, (hit_cq01h & ~is_cq02h) == '0)
+  `CCV_ASSERT(hint_issued, (hnt_cq01h & ~is_cq02h) == '0)
   // Every lead threshold is at age 1 at the earliest (OA's response OI-45):
   // each latency at least LEAD + 1.
   function automatic logic lead_ok();
@@ -500,47 +500,47 @@ module ooe_wake #(
   // with nothing before it); a hinted wait at age 1 raises its lead line
   // at the edge after next when CMPL_DLY is 2. The event lead is the
   // hints' valids: a hint is what moves a line no timer foresees.
-  logic [4*N-1:0] wtl_nx;
-  logic [N-1:0]   flt_nx;
-  logic           wml_nx;
+  logic [4*N-1:0] wtl_nx_cq01h;
+  logic [N-1:0]   flt_nx_cq01h;
+  logic           wml_nx_cq01h;
   always_comb begin
-    wml_nx = hv_cq01h != '0;
+    wml_nx_cq01h = hv_cq01h != '0;
     for (int j = 0; j < N; j++) begin
       logic [EW-1:0] g;
       g = entry_next('0, 1'b1, kind_cq01h[j * 2 +: 2], cls_cq01h[j * 3 +: 3], prod_cq01h[j], 1'b0, 1'b0, 1'b0,
                      1'b0, 1'b0);
       if (grant_cq01h[j])
-        flt_nx[j] = ml2({AW'(0), g[FAGE-1:0]});
+        flt_nx_cq01h[j] = ml2({AW'(0), g[FAGE-1:0]});
       else
-        flt_nx[j] = (ml2(st_cq02h[j * EW +: EW]) ||
+        flt_nx_cq01h[j] = (ml2(st_cq02h[j * EW +: EW]) ||
                      (cm_cq02h[j] && is_cq02h[j] && !st_cq02h[j * EW + FSPEC] && !st_cq02h[j * EW + FARM] &&
-                      CMPL_DLY == 2)) && !stop_cq01h[j];
+                      CMPL_DLY == 2)) && !stop_cq02h[j];
       if (grant_cq01h[j])
-        wtl_nx[j * 4 +: 4] = tl2({AW'(0), g[FAGE-1:0]});
+        wtl_nx_cq01h[j * 4 +: 4] = tl2({AW'(0), g[FAGE-1:0]});
       else
-        wtl_nx[j * 4 +: 4] = (tl2(st_cq02h[j * EW +: EW]) |
+        wtl_nx_cq01h[j * 4 +: 4] = (tl2(st_cq02h[j * EW +: EW]) |
                               {hm_cq02h[j] && is_cq02h[j] && !st_cq02h[j * EW + FSPEC] && !st_cq02h[j * EW + FARM] &&
-                               !st_cq02h[j * EW + FLA] && CMPL_DLY == 2, 3'b0}) & {4{!stop_cq01h[j]}};
+                               !st_cq02h[j * EW + FLA] && CMPL_DLY == 2, 3'b0}) & {4{!stop_cq02h[j]}};
     end
   end
 
   // The held misses' next values: a grant sets none, so they are formed
   // from the next state without one (a grant's kind and class stay off
   // their path).
-  logic [N-1:0] ms_nx;
+  logic [N-1:0] ms_nx_cq02h;
   always_comb
     for (int j = 0; j < N; j++)
-      ms_nx[j] = !grant_cq01h[j] &&
-                 held_miss(entry_next(st_cq02h[j * EW +: EW], 1'b0, KTIMED, 3'd0, 1'b0, hit[j], cm_cq02h[j],
-                                      stop_cq01h[j], hnt[j], hm_cq02h[j]));
+      ms_nx_cq02h[j] = !grant_cq01h[j] &&
+                 held_miss(entry_next(st_cq02h[j * EW +: EW], 1'b0, KTIMED, 3'd0, 1'b0, hit_cq01h[j], cm_cq02h[j],
+                                      stop_cq02h[j], hnt_cq01h[j], hm_cq02h[j]));
 
   // Local clock gating (OA's responses OI-58, OI-62): see the header.
   always_comb
     for (int j = 0; j < N; j++) begin
-      nx[j * EW +: EW] = entry_next(st_cq02h[j * EW +: EW], grant_cq01h[j], kind_cq01h[j * 2 +: 2],
-                                    cls_cq01h[j * 3 +: 3], prod_cq01h[j], hit[j], cm_cq02h[j], stop_cq01h[j],
-                                    hnt[j], hm_cq02h[j]);
-      ent_en[j] = cm_cq02h[j] || hm_cq02h[j] || sq_en_cq01h ||
+      nx_cq02h[j * EW +: EW] = entry_next(st_cq02h[j * EW +: EW], grant_cq01h[j], kind_cq01h[j * 2 +: 2],
+                                    cls_cq01h[j * 3 +: 3], prod_cq01h[j], hit_cq01h[j], cm_cq02h[j], stop_cq02h[j],
+                                    hnt_cq01h[j], hm_cq02h[j]);
+      ent_en_cq02h[j] = cm_cq02h[j] || hm_cq02h[j] || sq_en_cq01h ||
                   (is_cq02h[j] && (fn_cq02h[j] || !st_cq02h[j * EW + FPROD] ||
                                     !(&st_cq02h[j * EW + FAGE +: AW]))) ||
                   grant_cq01h[j];
@@ -556,16 +556,16 @@ module ooe_wake #(
       cv_cq01h    <= cmpl_l_cq00h;
       hv_cq01h    <= hint_l_cq00h;
       sq_en_cq01h <= sq_l_cq00h;
-      wml_cq02h   <= wml_nx;
+      wml_cq02h   <= wml_nx_cq01h;
     end
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h)   cm_cq02h <= '0;
-    else if (cm_en) cm_cq02h <= hit;
+    else if (cm_en_cq02h) cm_cq02h <= hit_cq01h;
   end
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h)   hm_cq02h <= '0;
-    else if (hm_en) hm_cq02h <= hnt;
+    else if (hm_en_cq02h) hm_cq02h <= hnt_cq01h;
   end
 
   for (genvar j = 0; j < N; j++) begin : g_ent
@@ -580,14 +580,14 @@ module ooe_wake #(
         mio_cq02h[j]           <= 1'b0;
         fio_cq02h[j]           <= 1'b0;
         msr_cq02h[j]           <= 1'b0;
-      end else if (ent_en[j]) begin
-        st_cq02h[j * EW +: EW] <= nx[j * EW +: EW];
-        wtl_cq02h[j * 4 +: 4]  <= wtl_nx[j * 4 +: 4];
-        flt_cq02h[j]           <= flt_nx[j];
-        iso_cq02h[j]           <= nx[j * EW + FISS];
-        mio_cq02h[j]           <= nx[j * EW + FMISS];
-        fio_cq02h[j]           <= nx[j * EW + FFIN];
-        msr_cq02h[j]           <= ms_nx[j];
+      end else if (ent_en_cq02h[j]) begin
+        st_cq02h[j * EW +: EW] <= nx_cq02h[j * EW +: EW];
+        wtl_cq02h[j * 4 +: 4]  <= wtl_nx_cq01h[j * 4 +: 4];
+        flt_cq02h[j]           <= flt_nx_cq01h[j];
+        iso_cq02h[j]           <= nx_cq02h[j * EW + FISS];
+        mio_cq02h[j]           <= nx_cq02h[j * EW + FMISS];
+        fio_cq02h[j]           <= nx_cq02h[j * EW + FFIN];
+        msr_cq02h[j]           <= ms_nx_cq02h[j];
       end
     end
   end

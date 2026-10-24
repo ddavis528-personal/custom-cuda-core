@@ -1,6 +1,6 @@
 ---
 name: register
-description: Notify, receive and sweep the CCV cross-agent register. Use before ending any turn in which you wrote a register row that names another agent in Needs or answers another agent's row; when a message starting "REGISTER-NOTICE v1" arrives; at session start; and for the daily full read. Replaces the four-hourly register timers.
+description: Notify, receive and sweep the CCV cross-agent register. Use before ending any turn in which you wrote a register row that names another agent in Needs or answers another agent's row; when a message starting "REGISTER-NOTICE v1", "REGISTER-PING v1" or "REGISTER-PONG v1" arrives; at session start; and for the daily full read. Replaces the four-hourly register timers.
 ---
 
 # The register's doorbell
@@ -59,8 +59,8 @@ in progress. `--rev` is your tab's rev from the write's ack.
 - **A receiver with no session** (exit 1): say so in your report. Its daily
   sweep picks the row up.
 - **A refused send:** say so in your report. Never retry in a loop.
-- **No other channel.** Never send anything but a notice this way. The
-  register stays the only record.
+- **No other channel.** Never send anything but a notice, or section 6's
+  ping and pong, this way. The register stays the only record.
 
 ## 3. When a notice arrives (receive)
 
@@ -106,7 +106,66 @@ as AR 3, OA 7, TI 11, OI 15, CP 19, IS 23. Use this prompt:
 
 > Daily register sweep: run the register skill's section 4 (read every tab
 > since your bookmarks, answer rows with your prefix in Needs, notify per
-> section 2), then report in a few lines.
+> section 2). Then bring your branch current: git fetch origin, and merge
+> (merge commits, never rebase or force-push) every remote branch with
+> commits yours lacks, except release. Resolve a conflict in a file you own.
+> In another agent's file, take their side when only they changed the
+> substance, otherwise abort that merge and raise a row naming the owner.
+> Push only after a clean gate on the merge (tools/regen.sh, then
+> tools/verify.sh; CP its own repository's gate). Then, from the merged
+> roster, run the register skill's section 6: check the pongs to your last
+> pings, and ping every other agent. Report in a few lines: the register,
+> what was merged, by branch and commit count, and who answered.
+
+The merge is Daniel's (DA tab rev 78, TI-43, 2026-10-24): branches had gone
+stale, and a release snapshot cut from one of them lacked two others' work.
+The sweeps land minutes apart by prefix, so the night's merges carry each
+agent's work to every other.
+
+## 6. The daily ping (reachability)
+
+A notice sent to a session that no longer holds the role is lost without a
+word: after a migration, agents went on ringing replaced sessions for days.
+So each daily sweep, after its merge, pings every other agent through the
+roster, and each answer says whether the right agent answered (Daniel,
+2026-10-24).
+
+**Send.** For each other prefix with a session (`notice.py roster`; DA has
+none), compose and send with `priority: "later"`:
+
+```
+python3 .claude/skills/register/notice.py ping --from TI --to OI
+```
+
+Keep in your bookmarks the date and the session each ping went to.
+
+**Answer a ping, once.** Get your own session id (`get_session`, no argument)
+and pass the ping's text on stdin, with the from-session of the message it
+came in:
+
+```
+python3 .claude/skills/register/notice.py pong --me OI --session <yours> --from-session <the ping's>
+```
+
+Send that text to the ping's from-session, `priority: "later"`. The pong says
+`addressed=no` when the ping was meant for another prefix, `me=stale` when
+your roster names another session for your prefix (you have been replaced:
+say so in your report and stop acting for that prefix), and `sender=stale`
+when your roster names another session for the sender's prefix. A pong is
+never answered, and a ping is never answered with anything but a pong.
+
+**Check a pong.** Pass its text on stdin with its from-session:
+
+```
+python3 .claude/skills/register/notice.py check --from-session <the pong's>
+```
+
+Exit 0 means the roster's session for that prefix answered, as that prefix,
+and both rosters agree. At the next sweep, before sending new pings, every
+prefix whose last ping has no pong, or whose pong failed `check`, goes in
+your report to Daniel, with what `check` said. If your own roster is the
+stale one, merge again; if theirs is, the agent whose line it is fixes it at
+its session start (section 1).
 
 ## Cost and latency
 
