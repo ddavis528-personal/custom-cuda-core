@@ -1417,6 +1417,7 @@ void Core::takeCompletions() {
       r->resolved = true;
       r->taken = d.branch_taken;
       r->taken_mask = d.branch_mask;
+      r->ret_aux = d.aux;
     }
     // A guarded barrier's guard lanes come back on its done's branch_mask
     // (issue mask AND guard), and wait.phase's expected phases (its
@@ -1685,6 +1686,14 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   // (arch open A-8); the length rides in ilen.
   const uint64_t next = r.u.pc + 2 * (r.u.ilen + 1);
   rd.target_pc = r.taken ? next + uint64_t(2 * int64_t(int32_t(r.u.imm))) : next;
+  // A ret (AR-24 (b)): its target is {PC[47:32], aux}, the lowest active
+  // lane's rs within the ret's 4 GiB code window, for the lanes whose rs
+  // equals it; the others stay at the ret, which re-issues for them.
+  if (r.u.attr.ret) {
+    rd.target_pc = (r.u.pc & ~uint64_t(0xffffffffu)) | r.ret_aux;
+    rd.stay = true;
+    count("branch.ret_redirect");
+  }
   rd.epoch = epoch_[s.warp];
   // A queued redirect of this warp is for a branch this squash removed.
   for (auto it = redirects_.begin(); it != redirects_.end();)

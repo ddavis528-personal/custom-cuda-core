@@ -494,6 +494,7 @@ private:
         put(r, c.ooe_fet, "checkpoint_id",
             k_.brk == "corrupt-ckpt" ? (x.ckpt + 1) % ccv::prov::kBrCkpts : x.ckpt);
         put(r, c.ooe_fet, "taken_mask", x.taken_mask);
+        if (hasField(c.ooe_fet, "stay")) put(r, c.ooe_fet, "stay", x.stay);   // a ret's (AR-24 (b))
         // stale-free breaks A-58's first rule on purpose: it frees the
         // checkpoint the same cycle's redirect restores.
         if (k_.brk == "stale-free") free_mask |= uint64_t(1) << (x.slot * ccv::prov::kBrCkpts + x.ckpt);
