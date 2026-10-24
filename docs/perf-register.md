@@ -37,9 +37,9 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
-| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16); trigger met, AR-24 measures |
+| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16); measured: 85% of CoreMark-derived's cycles (AR-24) |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
-| PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
+| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: no gain at 8 or 16 while PF-15's hold stands) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
 | PF-19 | Criticality-aware select | scheduler | deferred |
 | PF-20 | Rename in the cycle a uop arrives | front end | deferred |
@@ -285,6 +285,16 @@ it.
   The count makes the case; the cost does not yet. AR-24's timed run
   reports cycles held behind `chwidth` (`hold.chwidth`), and with that
   figure OA takes OA-16 back to DA.
+- **Measured (AR-24, TI's rev 188, 2026-10-24):** on the same kernel at
+  541a476 (767,049 issue groups, 106,359 `chwidth`), 1 lane, perfect fetch,
+  cold memory, 8 checkpoints: rename is held behind a `chwidth` drain in
+  5,805,773 of 6,808,297 cycles, 85.3%, about 55 cycles a `chwidth`. Without
+  the hold the run is about 1.0M cycles, at most 0.77 issue groups a cycle
+  against 0.11. Warm memory gives 3,728,507 cycles (0.21), because a drain
+  waits for older loads too. This is the largest single loss measured on the
+  core so far. O-80's sized forms and F-196 remove up to about 74% of the
+  `chwidth` first (TI's rev 180), so OA-16 goes to DA priced on what remains
+  on CP's next export.
 
 ### PF-16 More than one redirect a cycle
 
@@ -304,6 +314,14 @@ it.
   checkpoint, and the 2-bit `checkpoint_id` grows.
 - **Signal:** FET's `ckpt_full` cycles on grid-stride loops (the doc's
   sweep item).
+- **Measured (AR-24, TI's rev 188, 2026-10-24):** CoreMark-derived at
+  541a476, 1 lane, perfect fetch, cold memory: 6,832,792 cycles at 4
+  checkpoints, 6,808,290 at 8 and 6,808,305 at 16. Fetch waits with every
+  checkpoint live in about 94% of cycles at every size, and fetch-to-resolve
+  per branch doubles with the count (358, 713, 1,425 cycles). The
+  checkpoints are full because nothing behind them moves: rename is held
+  behind `chwidth` (PF-15). No gain while that hold stands; re-measure after
+  it goes.
 
 ### PF-18 A masked load merged without a copy-only op
 
