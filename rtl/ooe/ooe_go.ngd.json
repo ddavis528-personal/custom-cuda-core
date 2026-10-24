@@ -19,6 +19,12 @@
    "date": "2026-10-22",
    "why": "OA's response OI-66 (OA tab rev 174): confirmed at 2, every source a flop output (decq's output register, rename's pool and floor registers, the ROB's run, reach and registered retire count)"
   },
+  "pl_cq01h": {
+   "arrival": 2.0,
+   "by": "OA",
+   "date": "2026-10-23",
+   "why": "OA's revs 215 and 216 (OI-74 (i')): each credit's correction, last cycle's take of it, one-hot, a register in Rename 1 (22.4 flop to flop with it, measured)"
+  },
   "unmet_g_cq01h": {
    "arrival": 2.0,
    "by": "OA",

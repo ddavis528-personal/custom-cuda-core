@@ -469,11 +469,18 @@ module ooe_freelist #(
           v[i] = free_mask_cq01h[g * FG + i] && own_cq02h[(g * FG + i) * LS +: LS] == LS'(s);
         fs_nx_cq01h[(s * NF + g) * LF +: LF] = count_of(v);
       end
-  logic fs_en_cq01h;
-  assign fs_en_cq01h = free_en_cq01h || fs_cq02h != '0;
+  // The counts hold a free's while they were loaded with one (fsv: the
+  // lead's flop, a cycle on), so they clear at the next edge.
+  logic fs_en_cq01h, fsv_cq02h;
+  assign fs_en_cq01h = free_en_cq01h || fsv_cq02h;
   always_ff @(posedge ooe_core_clk) begin
-    if (rst_r01h)         fs_cq02h <= '0;
-    else if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
+    if (rst_r01h) begin
+      fs_cq02h  <= '0;
+      fsv_cq02h <= 1'b0;
+    end else begin
+      fsv_cq02h <= free_en_cq01h;
+      if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
+    end
   end
 
 endmodule
