@@ -559,10 +559,33 @@ private:
   /// write-through: every store goes to MLC as a read-merge-write, the
   /// policy before rev 8, which the merged values survive but the timing
   /// does not.
+  /// 64 sets of CCV_DCU_WAYS ways (default 1, direct-mapped), least recently
+  /// used replaced. Capacity and associativity are unset in the DCU spec,
+  /// which sizes the ways by a sweep of 1, 2, 4 and 8 (AR-24's 4-warp shape).
   static constexpr unsigned kSets = 64;
-  struct Way { bool valid = false; uint64_t line = 0; Line data{}; bool owned = false, dirty = false; };
-  std::array<Way, kSets> l1_{};
-  Way &way(uint64_t pa) { return l1_[(pa / kLine) % kSets]; }
+  struct Way {
+    bool valid = false; uint64_t line = 0; Line data{}; bool owned = false, dirty = false;
+    uint64_t used = 0;
+  };
+  static unsigned waysOf() {
+    const char *v = std::getenv("CCV_DCU_WAYS");
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 1;
+    return n >= 1 && n <= 16 ? n : 1;
+  }
+  const unsigned ways_ = waysOf();
+  std::vector<Way> l1_ = std::vector<Way>(size_t(kSets) * ways_);
+  uint64_t lru_tick_ = 0;
+  /// The way holding pa, else the one an install of pa would take: an
+  /// invalid way, else the least recently used.
+  Way &way(uint64_t pa) {
+    Way *set = &l1_[size_t((pa / kLine) % kSets) * ways_];
+    Way *victim = &set[0];
+    for (unsigned i = 0; i != ways_; ++i) {
+      if (set[i].valid && set[i].line == pa) { set[i].used = ++lru_tick_; return set[i]; }
+      if (victim->valid && (!set[i].valid || set[i].used < victim->used)) victim = &set[i];
+    }
+    return *victim;
+  }
   const Line *lookup(uint64_t pa) {
     Way &w = way(pa);
     return w.valid && w.line == pa ? &w.data : nullptr;
@@ -581,7 +604,7 @@ private:
       busy_lines_.insert(w.line);
       k_.hit("dcu_evict");
     }
-    w = {true, pa, l, owned, dirty};
+    w = {true, pa, l, owned, dirty, ++lru_tick_};
     shadow(w);
   }
   /// A store's bytes into a line, under its byte mask.
