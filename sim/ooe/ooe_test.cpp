@@ -2812,6 +2812,12 @@ void testChwidth() {
             k["hold.registered.other"];
   EXPECT(tot == sum, "hold.registered %llu, its split sums to %llu", tot, sum);
   EXPECT(k["hold.registered.chwidth"] > 0, "no registered hold behind the chwidth (%llu in all)", tot);
+  // The head-wait split (TI's rev 193) sums to its total.
+  unsigned long long hw = 0;
+  for (const char *c : {"rob_full", "load_at_miu", "load_unissued", "store", "mem_other", "branch", "rcu", "lane"})
+    hw += k[std::string("retire.head_wait.") + c];
+  EXPECT(hw == k["retire.head_wait"] && hw > 0, "retire.head_wait %llu, its split %llu",
+         (unsigned long long)k["retire.head_wait"], hw);
 }
 
 /// AR-24 (b) (OA's rev 223): a ret resolves at RCU, whose done names the

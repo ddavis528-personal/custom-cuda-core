@@ -1258,6 +1258,7 @@ condition holds, so their count is a duration.
 | Decode queue full | DEC is held: a uop stays in the channel with the queue full; per cycle | warp_id of the oldest held uop | queue occupancy | 0 | `stall.decq_full` |
 | Decode queue per-warp max | a uop stays in the channel with its warp at its maximum; per cycle | warp_id | that warp's entries | maximum | `stall.decq_warp_max` |
 | `chwidth` serialisation | rename held behind an in-flight `chwidth` change; per cycle | warp_id | holding rob_tag | 0 | `hold.chwidth` |
+| Head wait, by cause | a warp retires nothing with an incomplete head; per cycle | warp_id | 0 | 0 | `retire.head_wait`, split `.{rob_full,load_at_miu,load_unissued,store,mem_other,branch,rcu,lane}` (TI's rev 193; rob_full first) |
 | Registered hold, by cause | under `go_static`, a warp's take refused by its registered hold bit; per refusal | warp_id | 0 | 0 | `hold.registered`, split `hold.registered.{inactive,chwidth,barrier,other}` (TI's rev 188; other is a fault stop) |
 | Barrier hold | rename held behind a converged wait; per cycle | warp_id | barrier_id | 0 | `hold.barrier` |
 | Redirect busy | a mispredict or epoch notice waits for the rate-1 redirect; per cycle | warp_id waiting | redirects queued | 0 | `stall.redirect_busy` |

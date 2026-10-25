@@ -2301,6 +2301,19 @@ void Core::retire() {
       ++n;
     }
     ++histograms["retire_per_cycle"][n];
+    // Why the head waits (TI's rev 193): a cycle that retires nothing with
+    // an incomplete head, counted once under its first cause: the ROB full,
+    // else the head's kind and state.
+    if (!n && s.count && !s.fault_stop && !s.rob[s.head].complete) {
+      const RobEntry &h = s.rob[s.head];
+      count("retire.head_wait");
+      count(s.count == cfg_.rob_depth ? "retire.head_wait.rob_full"
+            : h.is_load ? (h.at_miu ? "retire.head_wait.load_at_miu" : "retire.head_wait.load_unissued")
+            : h.is_store ? "retire.head_wait.store"
+            : h.is_mem ? "retire.head_wait.mem_other"
+            : h.u.attr.branch ? "retire.head_wait.branch"
+            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : "retire.head_wait.lane");
+    }
     // Demotion triggers at the head (Q18): reported to RAU, which decides.
     // None while the head is an atomic in progress (V-70).
     if (s.count && !s.fault_stop && atomAtHead(si)) count("demote_trigger.held_atomic");
