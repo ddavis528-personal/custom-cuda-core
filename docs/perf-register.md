@@ -742,9 +742,14 @@ it.
   and known at decode.
 - **Cost:** a few entries of 32-bit code addresses per tier-1 warp. It must
   be checkpointed with the branch state, so a mispredict or a demotion
-  restores it. A divergent return, where lanes' `rs` differ, splits PC
-  groups and cannot be predicted by one stack entry; it falls back to
-  resolution.
+  restores it. The predicted target must reach OOE: 32 bits a slot on
+  `ccv_fet_dec_instr` and `ccv_dec_ooe_uop`, which V-41 compares with
+  RCU's `aux`. TI adds that field with the predictor, and a kernel whose
+  prediction misses, not before (TI's rev 201). A divergent return, where
+  lanes' `rs` differ, cannot be predicted by one stack entry: a ret
+  predicted taken is correct only if every active lane returns to the
+  predicted target (FET spec rev 28), so it is a mispredict and peels one
+  target a pass (AR-24 (b)).
 - **Signal:** returns per thousand instructions and cycles each waits for
   resolution, on CoreMark (AR-20), to add when FET models a predictor.
 
