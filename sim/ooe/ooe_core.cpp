@@ -3442,6 +3442,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     r.fault_cause = kCauseBarrier;
     count("fault.barrier");
   }
+  // A fault found here names the lanes that issued the uop, as ccv-sim does
+  // (TI, O-81's divchw): only MIU's faults name a subset, from completion.
+  if (r.fault) r.fault_lanes = u.group_mask;
   s.tail = (s.tail + 1) % cfg_.rob_depth;
   ++s.count;
   if (nop) complete(si, idx);
