@@ -3008,6 +3008,11 @@ unsigned Core::auditRobRoom(unsigned si) const {
   return room;
 }
 
+std::array<unsigned, 4> Core::headNeed(uint16_t a) {
+  const unsigned at = (a >> 8) & 1u;
+  return {(a & 1u) + ((a >> 2) & 1u) + at, ((a >> 1) & 1u) + at, at ? 2u : (a >> 3) & 1u, (a >> 4) & 1u};
+}
+
 uint16_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
   // A CAS pair's second slot needs nothing of its own: rename takes the
@@ -3171,10 +3176,12 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   if (cfg_.go_static && shares_on_) {
     if ((chg[0] && share_[si][0] < ren_slot_[si][0] + chg[0]) || (chg[1] && share_[si][1] < ren_slot_[si][1] + chg[1])) {
       count("stall.share.rs");
+      if (si < share_refused_.size()) share_refused_[si] = 1;
       return false;
     }
     if ((chg[2] && share_[si][2] < ren_slot_[si][2] + chg[2]) || (chg[3] && share_[si][3] < ren_slot_[si][3] + chg[3])) {
       count("stall.share.names");
+      if (si < share_refused_.size()) share_refused_[si] = 1;
       return false;
     }
   }
@@ -3597,6 +3604,8 @@ void Core::rename() {
   ren_serial_.assign(slot_.size(), 0);
   took_.assign(slot_.size(), 0);
   took2_.assign(slot_.size(), 0);
+  share_refused_.assign(slot_.size(), 0);
+  if (share_wait_.size() != slot_.size()) share_wait_.assign(slot_.size(), 0);
   // The go's inputs as the RTL holds them (GoLog).
   {
     GoLog &g = golog_;
@@ -3867,6 +3876,7 @@ void Core::rename() {
         // allowances held (GoLog::pin).
         golog_.pin[r] = pool[r] + std::min(held, c[r]);
         golog_.pin_set = true;
+        split_pool_[r] = pool[r];
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
@@ -3885,10 +3895,20 @@ void Core::rename() {
       for (unsigned r = 0; r != 4; ++r) {
         const std::vector<unsigned> &to = r < 2 ? with_rs : with;
         if (to.empty()) continue;
-        const unsigned each = pool[r] / unsigned(to.size()), rem = pool[r] % unsigned(to.size());
+        // OI-80's liveness rule (OA's rev 244): the warp first in rotation
+        // takes min(its head's need, the pool) before the even split, so a
+        // head the credit covers is admitted within a rotation. Only the
+        // rotation's own slot, when it has a head, and its need as the
+        // rotation's last step saw its head (registered with the rotation):
+        // a head left waiting is the same head.
+        unsigned resv = 0;
+        if (cfg_.fits_stale == 6 && !cfg_.inject_no_first_need && to[0] == rr_rename_)
+          resv = first_need_[r] >= 2 ? std::min(2u, pool[r]) : 0;   // a need of one, the first's share covers
+        const unsigned rest = pool[r] - resv;
+        const unsigned each = rest / unsigned(to.size()), rem = rest % unsigned(to.size());
         for (unsigned si : to) split[si][r] = each;
         // fits_stale 5: equal shares, the remainder given to no warp.
-        if (cfg_.fits_stale != 5) split[to[0]][r] += rem;
+        if (cfg_.fits_stale != 5) split[to[0]][r] += rem + resv;
       }
     if (cfg_.fits_stale == 6) {
       for (unsigned si : with) {
@@ -4072,7 +4092,34 @@ void Core::rename() {
       if (took_[si]) headless_[si] = 0;
     }
   if (!budget) count("rename.full_width");
+  // OI-80's liveness rule, checked: a head refused on its share while the
+  // pool the split divides (the credit less the floors owed and the
+  // allowances held) covers its need is admitted within a rotation and the
+  // split's register (OA's rev 244).
+  if (cfg_.go_static && shares_on_ && cfg_.fits_stale == 6) {
+    for (unsigned si = 0; si != slot_.size(); ++si) {
+      bool covered = false;
+      if (share_refused_[si] && !took_[si])
+        for (const Uop &u : decq_)
+          if (u.warp == slot_[si].warp) {
+            const std::array<unsigned, 4> nd = headNeed(admBits(u));
+            covered = true;
+            for (unsigned r = 0; r != 4; ++r) covered = covered && split_pool_[r] >= nd[r];
+            break;
+          }
+      share_wait_[si] = covered ? share_wait_[si] + 1 : 0;
+      if (share_wait_[si]) ++histograms["share.head_wait"][share_wait_[si]];
+      if (share_wait_[si] > slot_.size() + 1)
+        err("OI-80: slot %u's head waited %u cycles on its share while the pool covered its need", si,
+            share_wait_[si]);
+    }
+  }
   rr_rename_ = (rr_rename_ + 1) % slot_.size();
+  // The need the new rotation's slot reserves next cycle: its head's as this
+  // cycle's go saw it (OI-80).
+  first_need_ = {0, 0, 0, 0};
+  if (rr_rename_ < golog_.adm.size() && !golog_.adm[rr_rename_].empty())
+    first_need_ = headNeed(golog_.adm[rr_rename_][0]);
   goRoomNext();
   golog_.took = took_;
 }
