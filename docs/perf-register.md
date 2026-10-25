@@ -39,7 +39,7 @@ it.
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
 | PF-15 | `chwidth` without serialising rename | rename | deferred again (DA tab rev 93): the drain stays; trigger 5% `hold.chwidth` on converged narrow code |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
-| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: -4.2% at 8, one warp; held for the 4-warp shape) |
+| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: none at four warps; -4.2% at one warp, a single-thread trade for AR-20) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
 | PF-19 | Criticality-aware select | scheduler | deferred |
 | PF-20 | Rename in the cycle a uop arrives | front end | deferred |
@@ -354,6 +354,11 @@ it.
   three latency levers with it (L1 wake 13, lane bypass 3) add up: -15.4%
   together. Held for the 4-warp shape, since a checkpoint is FET's per-lane
   group state as well as the RAT's (OA's rev 243).
+- **Four warps (AR-24, TI's rev 222, 2026-10-25):** coremark128 at 512 KiB,
+  8 checkpoints take 9,133,639 cycles against 9,070,811 at 4 (+0.7%), with
+  `ckpt_full` unchanged (35.0M and 35.2M warp-cycles): fetch waits behind
+  the loads whatever the count. Closed at 4 for the design point (OA's rev
+  258). One warp's -4.2% goes to AR-20's single-thread table.
 
 ### PF-18 A masked load merged without a copy-only op
 
