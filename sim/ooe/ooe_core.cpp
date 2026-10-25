@@ -48,7 +48,9 @@ std::string Config::apply(const std::string &spec) {
                                      {"miss_lead", &miss_lead},
                                      {"ready_rep_late", &ready_rep_late}, {"replay_drain", &replay_drain},
                                      {"owed_lag", &owed_lag},
-                                     {"names_pool_lag", &names_pool_lag}};
+                                     {"names_pool_lag", &names_pool_lag},
+                                     {"full_rows", &full_rows},
+                                     {"inject_partial_taken_ok", &inject_partial_taken_ok}};
   std::stringstream ss(spec);
   // byp.P.C=N (a penalty, 255 for none), fast.U=N and lat.U=N: the bypass
   // table by group, the units' fastest points and the latencies 4-7.
@@ -145,6 +147,10 @@ SchedAttr SchedAttr::decode(uint32_t a) {
   s.serial = (a >> 3) & 7u;
   s.lat_class = a & 7u;
   s.bypass_group = (a >> 14) & 7u;
+  s.pair_first = (a >> 17) & 1u;
+  s.pair_second = (a >> 18) & 1u;
+  s.ret = (a >> 19) & 1u;
+  s.commit_width = (a >> 20) & 1u;
   return s;
 }
 
@@ -236,13 +242,13 @@ std::vector<Core::DecqView> Core::decodeQueue() const {
   return v;
 }
 
-bool Core::canAccept(unsigned warp) const {
+bool Core::canAccept(unsigned warp, unsigned n) const {
   const unsigned max = cfg_.decq_warp_max ? cfg_.decq_warp_max : cfg_.decq;
-  if (decqHeld() >= cfg_.decq) return false;
+  if (decqHeld() + n > cfg_.decq) return false;
   const int s = slotOf(warp);
   if (s < 0) return true;      // refused, and reported, when it is taken
   const unsigned late = cfg_.decq_late_credit && size_t(s) < decq_slot_take_.size() ? decq_slot_take_[s] : 0;
-  return slot_[s].decq + late < max;
+  return slot_[s].decq + late + n <= max;
 }
 
 void Core::noteRefused(unsigned warp) {
@@ -270,9 +276,15 @@ void Core::uop(const Uop &u) {
   // ordering; DEC's output refuses any other (TI's a4fa218).
   if (u.ordering && u.mem_op != kMemOpFence)
     err("V-36: uop seq %u carries ordering %u on mem_op %u, not a fence", uint32_t(u.tid), u.ordering, u.mem_op);
+  // TI-39, an input assumption: a CAS's first slot comes with credit for
+  // its second, which follows it at once.
+  if (u.attr.pair_first && !canAccept(u.warp, 2))
+    err("TI-39: warp %u's CAS first slot (seq %u) arrives without credit for its second", u.warp, uint32_t(u.tid));
   // ooe_decq applies a flush an edge late, dropping its slot's uops then:
   // none may arrive in the flush's cycle (OI-58).
   if ((decq_flushed_ >> si) & 1u) err("OI-58: uop seq %u arrived for slot %d in its decode-queue flush's cycle", uint32_t(u.tid), si);
+  // A uop behind no hold stops the barrier timer: the warp is moving.
+  if (!slot_[si].bar_hold) slot_[si].bar_idle = false;
   decq_.push_back(u);
   decq_seq_.push_back(next_decq_seq_++);
   ++slot_[si].decq;
@@ -325,10 +337,14 @@ void Core::cycle(uint64_t now) {
   go_run_.assign(slot_.size(), 0);
   go_reach_.assign(slot_.size(), 0);
   go_hold_.assign(slot_.size(), 0);
+  go_hold_why_.assign(slot_.size(), "");
   for (unsigned si = 0; si != slot_.size(); ++si) {
     const Slot &x = slot_[si];
     // And its holds, as the go's registered bit reads them this cycle.
     go_hold_[si] = x.st != WarpState::kActive || x.fault_stop || x.chwidth_hold || x.bar_hold;
+    go_hold_why_[si] = x.st != WarpState::kActive ? "hold.registered.inactive"
+                     : x.chwidth_hold ? "hold.registered.chwidth"
+                     : x.bar_hold ? "hold.registered.barrier" : "hold.registered.other";
     unsigned run = 0;
     while (run != cfg_.rob_depth && !x.rob[(x.tail + run) % cfg_.rob_depth].valid) ++run;
     go_run_[si] = run;
@@ -395,6 +411,14 @@ void Core::cycle(uint64_t now) {
     std::swap(out.memops, held_memops_);
   }
   rename();            // the decode queue; uop() refills it after the clock
+  // The committed width tables after the cycle, for rename_tb (AR-24 (d)).
+  rlog_.cw.resize(slot_.size());
+  for (unsigned si = 0; si != slot_.size(); ++si) {
+    if (cw_prev_.size() != slot_.size()) cw_prev_.assign(slot_.size(), {});
+    for (unsigned a = 0; a != kArchGprs; ++a) rlog_.cw[si][a] = slot_[si].cw[a];
+    if (rlog_.cw[si] != cw_prev_[si]) rlog_.cw_changed |= 1u << si;
+    cw_prev_[si] = rlog_.cw[si];
+  }
   sendRedirect();
   readyRegister();
   requestRegister();
@@ -595,6 +619,20 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   return w == 1 ? (home % 2) * 2 : home % 4;
 }
 
+/// A memop's data register: a load's destination; a store's first source,
+/// src_arch[0], which is its data, the base and index following it
+/// (ccv_dec_ooe_uop; TI, AR-24 (d)).
+unsigned Core::dataName(const RobEntry &r) const {
+  if (r.alloc_gpr) return r.pnew;
+  return (r.u.shape.gpr_reads & 1u) ? r.psrc[0] : zeroName();
+}
+
+/// Its width code (AR-24 (d)), at rename.
+unsigned Core::dataWidth(const RobEntry &r) const {
+  if (r.alloc_gpr) return r.wdst;
+  return (r.u.shape.gpr_reads & 1u) ? r.wsrc[0] : 0;
+}
+
 /// An entry's resources (OI-31, OI-33, AR-12). A memop takes the MIU pipes
 /// of its data register's sections; an op RCU executes, or a
 /// warp-collective or predicate op, takes R; a lane op takes the union of
@@ -603,12 +641,7 @@ unsigned Core::resOf(const RobEntry &r, bool copy_half, bool widen) const {
   const Uop &u = r.u;
   const SchedAttr &a = u.attr;
   if (r.is_mem && !copy_half) {
-    // The data register: a load's destination; a store's highest read source.
-    unsigned data = r.alloc_gpr ? r.pnew : zeroName();
-    if (!r.alloc_gpr)
-      for (unsigned i = 0; i != 3; ++i)
-        if ((u.shape.gpr_reads >> i) & 1u) data = r.psrc[i];
-    unsigned m = sectionsOf(data);
+    unsigned m = sectionsOf(dataName(r));
     if (!m) m = 0xFu;
     return m << 5;
   }
@@ -1328,8 +1361,8 @@ void Core::complete(unsigned slot, unsigned idx) {
   RobEntry &r = slot_[slot].rob[idx];
   if (r.complete || r.squashed) return;
   bool c;
-  if (r.u.shape.exit || r.u.cause || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat) c = true;   // no-ops: faulted before or at dispatch
-  else if (r.u.attr.serial == kSerBarrier) c = r.fault;   // completed by release, or faulted (F-BARRIER)
+  if (r.u.shape.exit || r.u.cause || barNop(r.u) || r.fault_cause == kCauseWidth || r.fault_cause == kCauseFormat ||
+      r.fault_cause == kCauseBarrier) c = true;   // no-ops: faulted before or at dispatch
   else if (r.atomic) c = r.atom_final && r.miu_done && !r.copy_pending && r.rcu_dones_owed == 0;   // V-71
   else if (r.is_mem) c = r.miu_done && (!cfg_.memop_rcu_done || r.rcu_done) &&
                          !r.copy_pending && r.rcu_dones_owed == 0;
@@ -1397,6 +1430,15 @@ void Core::takeCompletions() {
       r->resolved = true;
       r->taken = d.branch_taken;
       r->taken_mask = d.branch_mask;
+      r->ret_aux = d.aux;
+    }
+    // A guarded barrier's guard lanes come back on its done's branch_mask
+    // (issue mask AND guard), and wait.phase's expected phases (its
+    // predicate data source, O-27) on aux (TI-40, OA's rev 226): only RCU
+    // reads predicates.
+    if (isBarrierSer(r->u.attr.serial)) {
+      if (r->u.shape.guard) r->bar_guard = d.branch_mask;
+      if (r->u.shape.pdata) r->bar_phase = d.aux;
     }
     complete(s, idx);
   }
@@ -1629,8 +1671,14 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     err("V-07: branch at rob tag %u resolved without a live checkpoint", tagOf(slot, idx));
     return;
   }
-  // V-41: a redirect exactly when the outcome disagrees with pred_taken.
-  if (r.taken == r.u.pred_taken) {
+  // V-41: a redirect exactly when the outcome disagrees with pred_taken. A
+  // taken prediction is right only if every active lane took it (FET spec
+  // rev 28, TI's rev 199): a branch or ret that splits its group is a
+  // mispredict, redirected for the lanes that took it. (A ret's target
+  // against FET's predicted one waits on a field that carries it.)
+  const bool right = r.u.pred_taken ? r.taken && (r.taken_mask == r.u.group_mask || cfg_.inject_partial_taken_ok)
+                                    : !r.taken;
+  if (right) {
     free_mask_ |= uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt);
     s.ckpt[r.u.ckpt].live = false;
     r.ckpt_live = false;
@@ -1657,6 +1705,14 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
   // (arch open A-8); the length rides in ilen.
   const uint64_t next = r.u.pc + 2 * (r.u.ilen + 1);
   rd.target_pc = r.taken ? next + uint64_t(2 * int64_t(int32_t(r.u.imm))) : next;
+  // A ret (AR-24 (b)): its target is {PC[47:32], aux}, the lowest active
+  // lane's rs within the ret's 4 GiB code window, for the lanes whose rs
+  // equals it; the others stay at the ret, which re-issues for them.
+  if (r.u.attr.ret) {
+    rd.target_pc = (r.u.pc & ~uint64_t(0xffffffffu)) | r.ret_aux;
+    rd.stay = true;
+    count("branch.ret_redirect");
+  }
   rd.epoch = epoch_[s.warp];
   // A queued redirect of this warp is for a branch this squash removed.
   for (auto it = redirects_.begin(); it != redirects_.end();)
@@ -1929,7 +1985,21 @@ void Core::control() {
       }
       for (const Uop &u : decq_)
         if (u.warp == w) take(u.pc, u.group_mask, u.tid);
+      // A warp held behind a retired converged wait (TI-40) with nothing
+      // younger still names the lanes past the wait: one beat at the next
+      // PC with the wait's lanes, so FET can step them back to it.
+      if (s.bar_hold && s.bar_retired && beats.empty()) take(s.next_pc, s.bar_mask, 0);
     }
+    // own_pc (AR's rev 176): with nothing unretired, FET's own PC is the
+    // one past the wait, so the RTL stores no PC for this beat.
+    bool own_pc = false;
+    if (s.bar_hold && s.bar_retired && !s.count) {
+      own_pc = true;
+      for (const Uop &u : decq_) own_pc = own_pc && u.warp != w;
+    }
+    const bool held = s.bar_hold && s.bar_retired;
+    const bool held_long = s.bar_long;
+    if (held) count("demote.held_wait");
     ++histograms["demote.rewind_beats"][beats.size()];
     if (cfg_.inject_rewind_order) std::reverse(beats.begin(), beats.end());
     for (unsigned c = 0; c != cfg_.ckpts; ++c) s.ckpt[c].live = false;   // FET resets its own
@@ -1943,6 +2013,7 @@ void Core::control() {
     s.prat = s.cprat;
     rlog_.squash |= 1u << si;
     s.chwidth_hold = s.bar_hold = false;
+    s.bar_retired = s.bar_long = s.bar_idle = false;
     advanceEpoch(unsigned(si));
     epochNotice(unsigned(si));
     for (const auto &b : beats) {
@@ -1954,6 +2025,9 @@ void Core::control() {
       x.taken_mask = b.mask;
       x.target_pc = b.pc;
       x.tid = b.tid;
+      x.rewind_held = held && !cfg_.inject_beat_unheld;
+      x.held_long = x.rewind_held && held_long;
+      x.own_pc = x.rewind_held && own_pc;
       redirects_.push_back(x);
       ++s.rewind_pending;
     }
@@ -2015,6 +2089,7 @@ void Core::control() {
         m.warp = s.warp;
         m.direction = 0;
         std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+        std::copy(s.cw.begin(), s.cw.end(), m.w.begin());
         std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
         out.maps.push_back(m);
         s.map_sent = true;
@@ -2023,7 +2098,7 @@ void Core::control() {
         Parked &pk = parked_[s.warp % kWarpIds];
         for (unsigned a = 0; a != kArchGprs; ++a) {
           const unsigned n = s.crat[a];
-          const bool narrow = cfg_.sectioned && !isZeroName(n);
+          const bool narrow = cfg_.sectioned && !cfg_.full_rows && !isZeroName(n);
           pk.pos[a] = uint8_t(narrow ? namePos(n) : 0);
           pk.w[a] = uint8_t(narrow ? nameWidth(n) : s.cw[a]);
           // A name's width is the committed one, taken at rename (OA's rev
@@ -2050,11 +2125,17 @@ void Core::control() {
   if (released_) {
     for (unsigned si = 0; si != slot_.size(); ++si) {
       Slot &s = slot_[si];
-      if (s.st == WarpState::kFree || !s.bar_hold || !((released_ >> (s.warp % 32)) & 1u)) continue;
-      for (unsigned k = 0; k != s.count; ++k) {
-        const unsigned idx = (s.head + k) % cfg_.rob_depth;
-        RobEntry &r = s.rob[idx];
-        if (r.u.attr.serial == kSerBarrier && !r.complete) { r.complete = true; break; }
+      if (s.st == WarpState::kFree || !((released_ >> (s.warp % 32)) & 1u)) continue;
+      // ccv_syu_ooe_rel answers a held wait that has reported (TI-40); any
+      // other is stale (a demotion took the hold first) and is dropped.
+      if (s.bar_hold && s.bar_retired) {
+        s.bar_hold = false;
+        s.bar_retired = false;
+        s.bar_long = false;
+        s.bar_idle = false;
+        count("bar.release");
+      } else {
+        count("bar.release_dropped");
       }
     }
     released_ = 0;
@@ -2077,16 +2158,6 @@ void Core::retire() {
     unsigned n = 0;
     while (n != cfg_.retire_per_rob && s.count && !s.fault_stop) {
       RobEntry &r = s.rob[s.head];
-      // A barrier wait leaves OOE only once it is the oldest instruction, so
-      // it is never sent from a wrong path; younger uops hold at rename.
-      if (r.u.attr.serial == kSerBarrier && !r.committed && !r.fault) {
-        Bar b;
-        b.warp = s.warp;
-        b.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
-        b.barrier_id = r.u.imm;    // temporary: A-75 names the field
-        out.bars.push_back(b);
-        r.committed = true;
-      }
       if (!r.complete) break;
       if (r.fault) {
         // Faults are taken at retirement: stop, report, let RAU's kill clean
@@ -2154,11 +2225,53 @@ void Core::retire() {
         s.chwidth = r.u.imm & 3u;     // temporary: A-75 names the field
         s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);   // the committed table (OI-57)
         s.chwidth_hold = false;
+      } else if (r.u.attr.commit_width && !cfg_.inject_sibling_uncommitted) {
+        // A chwidth.multi sibling (AR-24 (c)): its register's width commits
+        // at its retire, before the last sibling's, which lifts the hold.
+        s.cw[r.u.dst & 15] = uint8_t(r.u.imm & 3u);
+        count("chwidth.sibling");
       }
-      if (r.u.attr.serial == kSerBarrier) s.bar_hold = false;
       // TI-27 (OA's rev 170): the warp is done at its final exit's retire,
       // when every lane has a retired exit; a partial exit (div's or
       // spinwait's shape) leaves it running.
+      // Barrier reports at retire (TI-40, AR's revs 161-164): every arrive,
+      // wait and exit, one a cycle (ccv_ooe_syu_bar is rate 1). Nothing
+      // leaves before it retires, so no report is recalled.
+      const bool bar_rep = (r.u.attr.serial == kSerBarrier || r.u.attr.serial == kSerArrive || r.u.shape.exit) &&
+                           !r.fault && !r.u.cause;
+      if (bar_rep && !out.bars.empty()) { count("stall.bar_port"); break; }
+      if (bar_rep) {
+        Bar b;
+        b.tid = r.u.tid;
+        b.warp = s.warp;
+        b.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
+        b.kind = r.u.shape.exit ? kBarExit : r.u.attr.serial == kSerArrive ? kBarArrive
+                 : r.u.shape.pdata ? kBarWaitPhase : kBarWait;
+        b.barrier_id = r.u.shape.exit ? 0 : r.u.imm;    // temporary: A-75 names the field
+        b.issue_mask = r.u.group_mask;
+        b.guard_mask = !r.u.shape.exit && r.u.shape.guard ? r.bar_guard : ~0u;
+        b.phase_mask = b.kind == kBarWaitPhase ? r.bar_phase : 0;
+        b.held = (b.kind == kBarWait || b.kind == kBarWaitPhase) && s.bar_hold && !s.bar_retired && r.u.all_waiting;
+        out.bars.push_back(b);
+        count(b.kind == kBarExit ? "bar.report.exit" : b.kind == kBarArrive ? "bar.report.arrive"
+              : b.kind == kBarWaitPhase ? (b.held ? "bar.report.phase_held" : "bar.report.phase") : b.held ? "bar.report.wait_held" : "bar.report.wait");
+        if (b.held) {
+          // The hold stays until SYU's answer (ccv_syu_ooe_rel).
+          s.bar_retired = true;
+          s.bar_long = r.u.ilen == 1;
+          s.bar_mask = r.u.group_mask;
+        }
+      }
+      // The barrier demotion timer starts at a held wait's retire, or a
+      // marked wait's or exit's that leaves nothing younger in the ROB (FET
+      // spec; AR's rev 186): no other uop's mark starts it, a converged
+      // chwidth's (O-81) among them.
+      const bool marked = r.u.all_waiting && (r.u.attr.serial == kSerBarrier || r.u.shape.exit);
+      if ((r.u.attr.serial == kSerBarrier && s.bar_hold && s.bar_retired) || (marked && s.count == 1)) {
+        s.bar_idle = true;
+        s.bar_idle_reported = false;
+        s.bar_idle_since = now_;
+      }
       if (r.u.shape.exit) {
         uint32_t &lanes = exit_lanes_[s.warp % kWarpIds];
         lanes |= r.u.group_mask;
@@ -2195,6 +2308,28 @@ void Core::retire() {
       ++n;
     }
     ++histograms["retire_per_cycle"][n];
+    // Why the head waits (TI's rev 193): a cycle that retires nothing with
+    // an incomplete head, counted once under its first cause: the ROB full,
+    // else the head's kind and state. A lane op by its RS entry (TI's rev
+    // 198): unissued, issued and unconfirmed, or confirmed (or its entry
+    // freed) awaiting RCU's done.
+    if (!n && s.count && !s.fault_stop && !s.rob[s.head].complete) {
+      const RobEntry &h = s.rob[s.head];
+      const char *lane = "retire.head_wait.lane_confirmed";
+      if (!h.is_mem && !h.u.attr.branch && !h.u.attr.exec_rcu)
+        for (const RsEntry &e : rs_)
+          if (e.valid && e.slot == si && e.rob == s.head && e.cls == RsCls::kRcu && !e.confirmed) {
+            lane = e.issued ? "retire.head_wait.lane_unconfirmed" : "retire.head_wait.lane_unissued";
+            break;
+          }
+      count("retire.head_wait");
+      count(s.count == cfg_.rob_depth ? "retire.head_wait.rob_full"
+            : h.is_load ? (h.at_miu ? "retire.head_wait.load_at_miu" : "retire.head_wait.load_unissued")
+            : h.is_store ? "retire.head_wait.store"
+            : h.is_mem ? "retire.head_wait.mem_other"
+            : h.u.attr.branch ? "retire.head_wait.branch"
+            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : lane);
+    }
     // Demotion triggers at the head (Q18): reported to RAU, which decides.
     // None while the head is an atomic in progress (V-70).
     if (s.count && !s.fault_stop && atomAtHead(si)) count("demote_trigger.held_atomic");
@@ -2212,7 +2347,9 @@ void Core::retire() {
         count("demote_trigger.mlc_miss");
         oev(OoeEv::kDemoteTrigger, s.warp, 0, stall, h.u.tid);
       }
-      const unsigned lim = s.bar_hold ? cfg_.demote_barrier : cfg_.demote_fallback;
+      // A held wait's own trigger is the barrier timer below: the wait
+      // retires, so it is never the stalled head.
+      const unsigned lim = cfg_.demote_fallback;
       // The fallback's report says mlc_miss_seen only once the MLC trigger
       // itself has fired: a head load outstanding past the fallback alone
       // is not an MLC miss, and RAU's MLC policy keys on that bit.
@@ -2220,9 +2357,18 @@ void Core::retire() {
         out.status.push_back({s.warp, false, true, miss && (s.miss_reported || cfg_.inject_fallback_claims_mlc),
                                  s.retired_since_restore});
         s.stalled_reported = true;
-        count(s.bar_hold ? "demote_trigger.barrier" : "demote_trigger.fallback");
-        oev(OoeEv::kDemoteTrigger, s.warp, s.bar_hold ? 1 : 2, stall, h.u.tid);
+        count("demote_trigger.fallback");
+        oev(OoeEv::kDemoteTrigger, s.warp, 2, stall, h.u.tid);
       }
+    }
+    // The barrier demotion timer (TI-40): started at a held wait's retire,
+    // or a marked uop's that left the ROB empty; it fires once the ROB has
+    // stayed empty past demote_barrier.
+    if (!s.count && s.bar_idle && !s.bar_idle_reported && now_ - s.bar_idle_since > cfg_.demote_barrier) {
+      out.status.push_back({s.warp, false, true, false, s.retired_since_restore});
+      s.bar_idle_reported = true;
+      count("demote_trigger.barrier");
+      oev(OoeEv::kDemoteTrigger, s.warp, 1, now_ - s.bar_idle_since, 0);
     }
   }
 }
@@ -2653,7 +2799,9 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   is.pred_we = u.pred_we;
   is.ppold = r.merge ? r.ppold : 0;
   is.opcode = u.opcode;
-  is.chwidth = s.chwidth;
+  // Each operand's own width (AR-24 (d)), not the warp's last chwidth.
+  for (unsigned i = 0; i != 3; ++i) is.src_w[i] = r.wsrc[i];
+  is.dst_w = r.alloc_gpr ? r.wdst : 0;
   is.guarded = u.shape.guard;
   is.gpr_reads = u.shape.gpr_reads;
   // The resource group and footprint. Sectioned: the entry's own resources
@@ -2671,10 +2819,20 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     // copy's merge when it has one. A2: the lane op, T and the operands
     // into N, its opcode DEC's for the atomic, unexamined. A3: N, the
     // store data alone (MIU keeps A1's address and pass mask).
+    // A1 the address, rbase and rindex (O-72); A2 T and the operands, rs or
+    // a CAS's rs_cmp and rs_swap (TI-39).
+    const uint8_t a1_reads = uint8_t(u.shape.gpr_reads & (cfg_.inject_a1_base_only ? 1u : 3u));
+    const uint8_t a2_ops = uint8_t(u.cas ? u.cas_reads & 3u : (u.shape.gpr_reads >> 2) & 1u);
     is.psrc[0] = step == 1 ? r.psrc[0] : step == 2 ? r.atom_t : r.ptmp_n;
-    is.psrc[1] = step == 2 ? r.psrc[1] : 0;
-    is.psrc[2] = step == 2 ? r.psrc[2] : 0;
-    is.gpr_reads = uint8_t(step == 1 ? u.shape.gpr_reads & 1u : step == 2 ? 1u | (u.shape.gpr_reads & 6u) : 1u);
+    is.psrc[1] = step == 1 ? r.psrc[1] : step == 2 ? (u.cas ? r.pcas[0] : r.psrc[2]) : 0;
+    is.psrc[2] = step == 2 && u.cas ? r.pcas[1] : 0;
+    // Widths: A1's address sources and its destination, the atomic's rd;
+    // T and N are 32-bit temporaries; A2's operands their registers'.
+    is.src_w[0] = step == 1 ? r.wsrc[0] : 0;
+    is.src_w[1] = step == 1 ? r.wsrc[1] : step == 2 ? (u.cas ? r.wcas[0] : r.wsrc[2]) : 0;
+    is.src_w[2] = step == 2 && u.cas ? r.wcas[1] : 0;
+    is.dst_w = step == 1 && r.alloc_gpr ? r.wdst : 0;
+    is.gpr_reads = uint8_t(step == 1 ? a1_reads : step == 2 ? 1u | (a2_ops << 1) : 1u);
     is.pdst = step == 1 ? r.atom_t : step == 2 ? r.ptmp_n : noGpr();
     is.merge = step == 1 && r.copy;
     is.pold = is.merge ? r.pold : 0;
@@ -2768,7 +2926,9 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
   if (!r.merge && (u.group_mask != kFullMask || u.shape.guard))
     err("V-05: rob tag %u issues without merge under a partial mask or guard", tagOf(x.slot, x.rob));
 
-  const Issue is = makeIssue(x.slot, x.rob, port, x.atom);
+  Issue is = makeIssue(x.slot, x.rob, port, x.atom);
+  // The op's width: its destination's, else its first source's (AR-24 (d)).
+  is.chwidth = !isZeroName(is.pdst) && is.pdst != noGpr() ? is.dst_w : is.src_w[0];
   out.issues.push_back(is);
   const bool lane_step = x.atom == 2;
   if (lane_step || !r.is_mem || cfg_.memop_rcu_done) ++r.rcu_dones_owed;
@@ -2817,7 +2977,12 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.slot_form = u.slot_form;           // DEC's, unexamined (TI-31)
     m.arg_slot = u.arg_slot;
     m.local_form = u.local_form;         // DEC's, unexamined (IS-19)
-    m.chwidth = s.chwidth;
+    m.xfer_size = u.xfer_size;           // O-80: DEC's, passed through
+    m.xfer_signed = u.xfer_signed;
+    // The data register's width (AR-24 (d)): a load's destination, a
+    // store's first source, as resOf takes its pipes.
+    m.chwidth = dataWidth(r);
+    m.data_pos = cfg_.sectioned ? namePos(dataName(r)) : 0;
     if (x.atom) {
       // OOE's own codes (V-72): the read into T, at the address; the write,
       // its data alone.
@@ -2843,19 +3008,25 @@ unsigned Core::auditRobRoom(unsigned si) const {
   return room;
 }
 
-uint8_t Core::admBits(const Uop &u) const {
+uint16_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
-  const bool nop = u.shape.exit || u.cause;
+  // A CAS pair's second slot needs nothing of its own: rename takes the
+  // pair's needs with its first (OI-79 (b), OA's rev 239).
+  if (a.pair_second && !cfg_.inject_cas_split) return 0;
+  const bool nop = u.shape.exit || u.cause || barNop(u);
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
   // The copy is keyed on any destination (OA's rev 180, TI-36 (b)): a
   // predicate's (ld.pred) as a GPR's.
-  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && (wgpr || pred) &&
+  // A CAS's first slot carries the pair's: its destination is the second's.
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && (wgpr || pred || a.pair_first) &&
                     (u.group_mask != kFullMask || u.shape.guard);
-  const bool serial = a.serial == kSerChwidth || a.serial == kSerBarrier;
-  return uint8_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
-                 (serial << 6));
+  const bool serial = a.serial == kSerChwidth || (a.serial == kSerBarrier && u.all_waiting);
+  // 7: a CAS pair's first slot (OI-79); 8: an atomic, whose needs are A2's
+  // RCU entry and A3's MIU entry beside A1's, and two GPR names (AR-21).
+  return uint16_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
+                  (serial << 6) | ((!nop && a.pair_first) << 7) | (atom << 8));
 }
 
 /// go_static: next cycle's ROB room, as the fits register it: this cycle's
@@ -2866,7 +3037,9 @@ void Core::goRoomNext() {
   for (unsigned si = 0; si != slot_.size() && si < go_run_.size(); ++si) {
     unsigned ret = 0;
     for (unsigned k = 0; k != cfg_.rob_depth; ++k) ret += rob_prompt_[si * cfg_.rob_depth + k];
-    const unsigned run = go_run_[si] - std::min(go_run_[si], si < took_.size() ? took_[si] : 0u);
+    // Its ROB entries: a CAS pair's second slot takes none (OI-79).
+    const unsigned ent = si < took_.size() ? took_[si] - took2_[si] : 0u;
+    const unsigned run = go_run_[si] - std::min(go_run_[si], ent);
     go_room_[si] = (si < audit_squash_.size() && audit_squash_[si]) ? 0 : run + (go_reach_[si] ? ret : 0);
   }
 }
@@ -2876,7 +3049,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // go_static: the holds as the cycle started (the go's registered bit); a
   // hold that rises in the cycle is the next cycle's.
   if (cfg_.go_static && si < go_hold_.size()) {
-    if (go_hold_[si]) { count("hold.registered"); return false; }
+    if (go_hold_[si]) {
+      count("hold.registered");
+      count(go_hold_why_[si]);   // the split (TI's rev 188), one per refusal as the total
+      return false;
+    }
     if (s.st != WarpState::kActive) err("go_static: slot %u renames while inactive", si);
   } else if (s.st != WarpState::kActive) { count("hold.inactive"); return false; }
   if (s.fault_stop && cfg_.go_static) count("go_static.after_fault_stop");
@@ -2906,7 +3083,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (si < audit_squash_.size() && audit_squash_[si]) count("audit.rob_refused.squash_cycle");
   }
   // go_static: the fits' ROB term, registered a cycle ahead (go_room_).
-  if (cfg_.go_static && took_[si] + 1 > (si < go_room_.size() ? go_room_[si] : 0u)) {
+  if (cfg_.go_static && took_[si] - took2_[si] + 1 > (si < go_room_.size() ? go_room_[si] : 0u)) {
     count("stall.rob_registered");
     return false;
   }
@@ -2925,25 +3102,35 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const SchedAttr &a = u.attr;
   // F-BARRIER (IS-16, ISA v1.9 O-59): a barrier at or above its CTA's
   // count faults here, as a no-op, so it never reaches SYU.
-  const bool bar_fault = a.serial == kSerBarrier && u.imm >= s.bar_count &&
+  const bool bar_fault = (a.serial == kSerBarrier || a.serial == kSerArrive) && u.imm >= s.bar_count &&
                          !cfg_.inject_no_bar_fault;
   // F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): a memory access
   // whose data register is at chwidth 4, from the committed table: a load's
-  // destination, a store's highest read source (as resOf takes it).
+  // destination, a store's first source (as resOf takes it).
   bool width_fault = false;
   if (a.rs_miu && (a.mem_kind == kMemKLoad || a.mem_kind == kMemKStore) && !cfg_.inject_no_width_fault) {
-    unsigned rdata = u.dst;
-    if (a.mem_kind == kMemKStore)
-      for (unsigned i = 0; i != 3; ++i)
-        if ((u.shape.gpr_reads >> i) & 1u) rdata = u.src[i];
+    const unsigned rdata = a.mem_kind == kMemKStore ? u.src[0] : u.dst;
     width_fault = s.cw[rdata & 15] == 3;
+    // O-80: a sized transfer (8 or 16 bits) wider than rdata's width.
+    const unsigned xbits = u.xfer_size == 1 ? 8 : u.xfer_size == 2 ? 16 : 0;
+    if (xbits > (32u >> s.cw[rdata & 15]) && !cfg_.inject_no_sized_fault) {
+      width_fault = true;
+      count("fault.width.sized");
+    }
+  }
+  // O-81 (DA tab rev 91): a chwidth, or a chwidth.multi sibling, outside a
+  // converged warp (FET's all_waiting mark on it is clear) faults, a no-op
+  // that sets no width and holds nothing.
+  if ((a.serial == kSerChwidth || a.commit_width) && !u.all_waiting && !cfg_.inject_no_converged_fault) {
+    width_fault = true;
+    count("fault.width.diverged_chwidth");
   }
   // F-FORMAT (ISA v1.9 section 12.3; OA's response OI-57): the op's format
   // code reserved at its operand's committed width, as DEC decoded it.
   const unsigned fmt_reg = u.fmt_opnd == 3 ? u.dst : u.src[u.fmt_opnd % 3];
   const bool format_fault = !width_fault && ((u.fmt_rsv >> s.cw[fmt_reg & 15]) & 1u) &&
                             !cfg_.inject_no_format_fault;
-  const bool nop = u.shape.exit || u.cause || bar_fault || width_fault || format_fault;
+  const bool nop = u.shape.exit || u.cause || barNop(u) || bar_fault || width_fault || format_fault;
   const bool mem = !nop && a.rs_miu;
   const bool full = u.group_mask == kFullMask;
   const bool merge = !nop && (!full || u.shape.guard);
@@ -2961,7 +3148,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   const unsigned ngpr = atomic ? 2 : wgpr ? 1 : 0;
   // go_static: what the go charges against the warp's allowances, from the
   // uop's decode-time bits (a fault found here, or a shared row, unseen).
-  const bool nop_d = u.shape.exit || u.cause;
+  const bool nop_d = u.shape.exit || u.cause || barNop(u);
   const bool mem_d = !nop_d && a.rs_miu, atom_d = mem_d && a.mem_kind == kMemKAtomic;
   const bool wgpr_d = !nop_d && a.writes_gpr;
   const bool wpred_d = !nop_d && u.pred_we && cfg_.rename_preds;
@@ -3054,7 +3241,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   unsigned pos = 0, plan = 0;
   if (wgpr && cfg_.sectioned && !atomic) {
     pos = placePos(si, u, merge);
-    plan = planSlice(si, dstWidth(si, u), pos, gprAllowed(si, 1));
+    plan = planSlice(si, allocWidth(si, u), pos, gprAllowed(si, 1));
   }
   // An atomic's names are whole rows when sectioned: 32-bit data.
   if (atomic ? !gprAllowed(si, 2) : wgpr && (cfg_.sectioned ? plan == 2 : !gprAllowed(si, 1))) {
@@ -3117,7 +3304,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // The settings audit: what the RTL's registered fits could not have
   // admitted. A take past the slot's registered ROB room and this cycle's
   // retirements (the fits' ROB term, ret_n).
-  if (took_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
+  if (took_[si] - took2_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
 
   // A cycle's RS rows per class and GPR names stay within the width:
   // ooe_rs has that many allocation ports per class and the free list as
@@ -3146,6 +3333,11 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   if (!nop) {
     // Sources and old destinations read the RAT before this uop's writes.
     for (unsigned i = 0; i != 3; ++i) r.psrc[i] = s.rat[u.src[i] & 15];
+    if (u.cas)
+      for (unsigned i = 0; i != 2; ++i) r.pcas[i] = s.rat[u.cas_src[i] & 15];
+    for (unsigned i = 0; i != 3; ++i) r.wsrc[i] = s.cw[u.src[i] & 15];
+    for (unsigned i = 0; i != 2; ++i) r.wcas[i] = u.cas ? s.cw[u.cas_src[i] & 15] : 0;
+    r.wdst = uint8_t(dstWidth(si, u));
     r.pold = s.rat[u.dst & 15];
     r.ppguard = s.prat[u.pred_guard & 3];
     r.ppold = s.prat[u.pred_dst & 3];
@@ -3154,7 +3346,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.pq[1] = s.prat[(u.imm >> 3) & 3];
     }
     if (wgpr) {
-      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, dstWidth(si, u), pos) : allocGpr(si);
+      r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, allocWidth(si, u), pos) : allocGpr(si);
       r.alloc_gpr = true;
       s.rat[u.dst & 15] = r.pnew;
     }
@@ -3207,10 +3399,12 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pgroup = uint8_t(u.attr.bypass_group & 7u);
       w.nob = r.is_mem || u.attr.cross_lane;
       w.atomic = atomic;
+      for (unsigned i = 0; i != 3; ++i) w.wsrc[i] = r.wsrc[i];
+      w.wdst = r.wdst;
+      w.wset = a.serial == kSerChwidth || a.commit_width;
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }
-    if (a.serial == kSerBarrier && !bar_fault) { s.bar_hold = true; s.bar_id = u.imm; }   // A-75 names the field
     // Reservation stations: the main entry, and a masked load's copy (A-38).
     r.rs_main = rsAlloc(mem ? RsCls::kMiu : RsCls::kRcu, si, idx, false);
     rs_[r.rs_main].produces = wgpr || u.pred_we;
@@ -3229,13 +3423,21 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       rs_[r.rs_a2].atom = 2;
       rs_[r.rs_a3].atom = 3;
       for (unsigned e : {r.rs_main, r.rs_a2, r.rs_a3}) rs_[e].produces = true;
-      if (u.shape.gpr_reads & 1u) dep(r.rs_main, r.psrc[0], false, int(Config::kGrpAddr));
+      // O-72 (TI-39): A1's address is Format D's base+index, rbase (src0)
+      // and rindex (src1); A2 takes T and the operands: rs (src2) for an
+      // RMW, a CAS's rs_cmp and rs_swap from its second slot.
+      for (unsigned i = 0; i != (cfg_.inject_a1_base_only ? 1u : 2u); ++i)
+        if ((u.shape.gpr_reads >> i) & 1u) dep(r.rs_main, r.psrc[i], false, int(Config::kGrpAddr));
       if (u.shape.guard) dep(r.rs_main, r.ppguard, true, -1);
       if (copy) addDeps(r.rs_copy, r, true);
       gprod_[r.atom_t] = {r.rs_main, kNoEntry};
       dep(r.rs_a2, r.atom_t, false, int(Config::kGrpInt));
-      for (unsigned i = 1; i != 3; ++i)
-        if ((u.shape.gpr_reads >> i) & 1u) dep(r.rs_a2, r.psrc[i], false, int(Config::kGrpInt));
+      if (u.cas) {
+        for (unsigned i = 0; i != 2; ++i)
+          if ((u.cas_reads >> i) & 1u) dep(r.rs_a2, r.pcas[i], false, int(Config::kGrpInt));
+      } else if ((u.shape.gpr_reads >> 2) & 1u) {
+        dep(r.rs_a2, r.psrc[2], false, int(Config::kGrpInt));
+      }
       if (u.shape.guard) dep(r.rs_a2, r.ppguard, true, -1);
       gprod_[r.ptmp_n] = {r.rs_a2, kNoEntry};
       dep(r.rs_a3, r.ptmp_n, false, int(Config::kGrpAddr));
@@ -3276,11 +3478,21 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     r.fault_cause = kCauseFormat;
     count("fault.format");
   }
+  // A converged wait (FET's all_waiting) holds rename behind it (TI-40),
+  // issued or not; a diverged wait or an arrive holds nothing.
+  if (a.serial == kSerBarrier && !bar_fault && u.all_waiting && !cfg_.inject_bar_no_hold) {
+    s.bar_hold = true;
+    s.bar_retired = false;
+    s.bar_id = u.imm;   // A-75 names the field
+  }
   if (bar_fault) {
     r.fault = true;
     r.fault_cause = kCauseBarrier;
     count("fault.barrier");
   }
+  // A fault found here names the lanes that issued the uop, as ccv-sim does
+  // (TI, O-81's divchw): only MIU's faults name a subset, from completion.
+  if (r.fault) r.fault_lanes = u.group_mask;
   s.tail = (s.tail + 1) % cfg_.rob_depth;
   ++s.count;
   if (nop) complete(si, idx);
@@ -3291,7 +3503,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     ren_tot_[k] += took[k];
     ren_slot_[si][k] += cfg_.go_static ? chg[k] : took[k];
   }
-  if (cfg_.go_static && (a.serial == kSerChwidth || a.serial == kSerBarrier)) ren_serial_[si] = 1;
+  if (cfg_.go_static && (a.serial == kSerChwidth || (a.serial == kSerBarrier && u.all_waiting))) ren_serial_[si] = 1;
   return true;
 }
 
@@ -3319,7 +3531,7 @@ void Core::restoreStep() {
     // TI-25: its own row, at its parked position and committed width.
     const Parked &pk = parked_[s.warp % kWarpIds];
     const bool lost = cfg_.inject_park_layout_lost;
-    s.crat[a] = s.rat[a] = cfg_.sectioned ? allocSlice(si, lost ? 0 : pk.w[a], lost ? 0 : pk.pos[a], true)
+    s.crat[a] = s.rat[a] = cfg_.sectioned ? allocSlice(si, lost || cfg_.full_rows ? 0 : pk.w[a], lost ? 0 : pk.pos[a], true)
                                           : allocGpr(si);
     RatLog::Ren &w = port(k);
     w.gwe = true;
@@ -3346,6 +3558,7 @@ void Core::restoreStep() {
   m.warp = s.warp;
   m.direction = 1;
   std::copy(s.crat.begin(), s.crat.end(), m.gpr.begin());
+  std::copy(s.cw.begin(), s.cw.end(), m.w.begin());
   std::copy(s.cprat.begin(), s.cprat.end(), m.pred.begin());
   out.maps.push_back(m);
   s.restoring = false;
@@ -3383,6 +3596,7 @@ void Core::rename() {
   ren_slot_.assign(slot_.size(), {});
   ren_serial_.assign(slot_.size(), 0);
   took_.assign(slot_.size(), 0);
+  took2_.assign(slot_.size(), 0);
   // The go's inputs as the RTL holds them (GoLog).
   {
     GoLog &g = golog_;
@@ -3394,6 +3608,7 @@ void Core::rename() {
     for (unsigned r = 0; r != 4; ++r) g.cred[r] = rc.c[r];
     g.owed[0] = floorsOwed(false);
     g.owed[1] = floorsOwed(true);
+    g.pin_set = false;
     const unsigned ns = unsigned(slot_.size());
     g.adm.assign(ns, {});
     g.run.assign(ns, 0); g.ret.assign(ns, 0); g.unmet_g.assign(ns, 0); g.unmet_p.assign(ns, 0);
@@ -3648,6 +3863,10 @@ void Core::rename() {
         } else if (r >= 2) {
           pool[r] -= std::min(pool[r], cfg_.owed_lag ? floorsOwedLag(r == 3) : floorsOwed(r == 3));
         }
+        // The go's pool register as rename gives it: the pool before the
+        // allowances held (GoLog::pin).
+        golog_.pin[r] = pool[r] + std::min(held, c[r]);
+        golog_.pin_set = true;
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
@@ -3684,10 +3903,36 @@ void Core::rename() {
     }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
+  // A CAS pair's first slot taken, its second's lane owed at the warp's
+  // next turn (OI-79 (b), OA's rev 239), per slot.
+  std::vector<uint8_t> pend2(slot_.size(), 0);
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
   // refused (0, and the slot is blocked for the cycle).
   auto takeOne = [&](unsigned si) -> int {
     const unsigned w = slot_[si].warp;
+    if (pend2[si]) {
+      // The pair's second slot (OI-79 (b)): its own turn and lane, in the
+      // warp's next round; renamed with its first, it takes no entry.
+      auto it2 = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+      if (it2 == decq_.end() || !it2->attr.pair_second) {
+        err("TI-39: warp %u's CAS second slot is not at its head after its first", w);
+        blocked[si] = true;
+        return 0;
+      }
+      decq_seq_.erase(decq_seq_.begin() + (it2 - decq_.begin()));
+      ++decq_freed_;
+      ++decq_take_now_;
+      decq_.erase(it2);
+      --slot_[si].decq;
+      ++decq_slot_take_[si];
+      --budget;
+      golog_.lanes.push_back({si, took_[si]});
+      ++took_[si];
+      ++took2_[si];
+      pend2[si] = 0;
+      count("rename.cas_pair");
+      return 1;
+    }
     auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
     if (it == decq_.end()) return 0;
     // fits_stale: a uop that arrived after the last cycle's start is not in
@@ -3709,12 +3954,50 @@ void Core::rename() {
       return 2;
     }
     const bool branch = it->attr.branch;
+    if (it->attr.pair_second && !cfg_.inject_cas_split) {
+      err("TI-39: warp %u's CAS second slot (tid %llu) reaches rename without its first", w,
+          (unsigned long long)it->tid);
+      blocked[si] = true;
+      return 0;
+    }
+    // A CAS pair (TI-39, OA's rev 189): one admission unit, two lanes and
+    // one ROB entry. A take stops before it or after it, never between; a
+    // pair with one lane left in the cycle waits. Its slots arrive together
+    // (uop()), so the second is always behind the first.
+    auto it2 = decq_.end();
+    Uop cu;
+    const bool pair = it->attr.pair_first && !cfg_.inject_cas_split;
+    if (pair) {
+      it2 = std::find_if(std::next(it), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+      if (it2 == decq_.end() || !it2->attr.pair_second || it2->tid != it->tid) {
+        err("TI-39: warp %u's CAS first slot (tid %llu) is not followed by its second", w,
+            (unsigned long long)it->tid);
+        blocked[si] = true;
+        return 0;
+      }
+      // The fits never end on a first slot (OI-79 (b)): a pair whose second
+      // falls past the warp's R heads this cycle waits.
+      if (took_[si] + 2 > cfg_.rename_width) {
+        count("rename.pair_window");
+        blocked[si] = true;
+        return 0;
+      }
+      cu = *it;
+      cu.cas = true;
+      cu.dst = it2->dst;
+      cu.w = it2->w;
+      cu.attr.writes_gpr = it2->attr.writes_gpr;
+      cu.attr_raw = (cu.attr_raw & ~(1u << 10)) | (it2->attr_raw & (1u << 10));
+      for (unsigned i = 0; i != 2; ++i) cu.cas_src[i] = it2->src[i];
+      cu.cas_reads = uint8_t(it2->shape.gpr_reads & 3u);
+    }
     if (young) count("rename.refill");
-    if (!tryRename(si, *it)) {
+    if (!tryRename(si, pair ? cu : *it)) {
       if (young) count("rename.refill_fail");
       blocked[si] = true;
       return 0;
     }
+    if (pair) pend2[si] = 1;   // the second's lane at the warp's next turn
     // OI-56: a branch ends its rename group, so its checkpoint is the
     // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
     if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
@@ -3730,26 +4013,55 @@ void Core::rename() {
     ++took_[si];
     return 1;
   };
-  if (warps) {
-    // OI-63: a prefix of each of up to rename_one_warp warps, in the
-    // rotating order, each warp's before the next's (the RTL's go over
-    // rename's registered per-slot fits).
-    unsigned used = 0;
-    for (unsigned k = 0; k != slot_.size() && budget && used != warps; ++k) {
-      const unsigned si = (rr_rename_ + k) % slot_.size();
-      if (slot_[si].st == WarpState::kFree) continue;
-      bool took = false;
-      for (int r; budget && !blocked[si] && (r = takeOne(si)) != 0;) took = took || r == 1;
-      used += took;
-    }
-  } else {
-    for (bool progress = true; progress && budget;) {
-      progress = false;
-      for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+  auto takeAll = [&]() {
+    if (warps) {
+      // OI-63: a prefix of each of up to rename_one_warp warps, in the
+      // rotating order, each warp's before the next's (the RTL's go over
+      // rename's registered per-slot fits).
+      unsigned used = 0;
+      for (unsigned k = 0; k != slot_.size() && budget && used != warps; ++k) {
         const unsigned si = (rr_rename_ + k) % slot_.size();
-        if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
-        if (takeOne(si)) progress = true;
+        if (slot_[si].st == WarpState::kFree) continue;
+        bool took = false;
+        for (int r; budget && !blocked[si] && (r = takeOne(si)) != 0;) took = took || r == 1;
+        used += took;
       }
+    } else {
+      for (bool progress = true; progress && budget;) {
+        progress = false;
+        for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+          const unsigned si = (rr_rename_ + k) % slot_.size();
+          if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
+          if (takeOne(si)) progress = true;
+        }
+      }
+    }
+  };
+  // OI-79 (b): the take stops before the first pair the width would split.
+  // A cycle with a pair at a head takes from a snapshot; if the width cut a
+  // pair (its first slot's lane taken, its second's not), the snapshot is
+  // restored and the take capped at that first slot's lane.
+  bool pairs = false;
+  for (const Uop &u : decq_) pairs = pairs || (u.attr.pair_first && !cfg_.inject_cas_split);
+  if (!pairs) {
+    takeAll();
+  } else {
+    const Core snap = *this;
+    const unsigned budget0 = budget;
+    const std::vector<bool> blocked0 = blocked;
+    takeAll();
+    unsigned cut = ~0u;
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      if (pend2[si] && !cfg_.inject_pair_split)
+        for (unsigned l = 0; l != golog_.lanes.size(); ++l)
+          if (golog_.lanes[l].first == si && golog_.lanes[l].second + 1 == took_[si]) cut = std::min(cut, l);
+    if (cut != ~0u) {
+      *this = snap;
+      budget = std::min(budget0, cut);
+      blocked = blocked0;
+      std::fill(pend2.begin(), pend2.end(), 0);
+      takeAll();
+      count("rename.pair_cut");
     }
   }
   ren_late_frees_ = false;

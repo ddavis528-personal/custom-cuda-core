@@ -47,7 +47,7 @@
 module ooe_rename #(
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   parameter int R  = 4,                  // rename width (CCV_ISSUE_WIDTH)
-  parameter int PA = 7,                  // admission bits a head
+  parameter int PA = 9,                  // admission bits a head
   parameter int LU = 5,                  // an unmet floor's width
   parameter int LB = 6,                  // a ROB run's width
   parameter int LT = 3,                  // a cycle's retirements' width
@@ -121,6 +121,15 @@ module ooe_rename #(
   // its guard, 9 the predicate-logic sources, 10 the predicate merge, 11-13
   // its consumer group, 14-16 its lat_class, 17-19 its bypass group.
   input  logic [NC*XW-1:0]  c_x_cq01h,
+  // A chwidth or chwidth.multi sibling: its destination's width is the one
+  // it sets (AR-24 (d), TI's rev 185), from decq's payload.
+  input  logic [NC-1:0]     c_wset_cq01h,
+  input  logic [NC*2-1:0]   c_wnew_cq01h,
+  // Each slot's committed width table (OI-57, AR-24 (d)): its next value,
+  // a cycle after its lead (a chwidth's or sibling's retire, a launch or a
+  // restore-allocate; the ROB's, until it is built).
+  input  logic [S-1:0]      cwl_cq00h,
+  input  logic [S*32-1:0]   cwd_cq01h,
   // The go's other inputs (the ROB's registers, until it is built), and
   // its leads.
   input  logic [S*LB-1:0]   run_cq01h,
@@ -166,6 +175,9 @@ module ooe_rename #(
   output logic [R*PW-1:0]   q_pname_cq03h,
   output logic [R-1:0]      q_br_cq03h,
   output logic [R*LC-1:0]   q_ckpt_cq03h,
+  // Each lane's width codes (AR-24 (d)): src0..2's and the destination's,
+  // 2 bits each, from the committed table at rename.
+  output logic [R*8-1:0]    q_w_cq03h,
   // Rename 3, to ooe_rs: the allocation request by port (its lead, the
   // request's D) and the rows (ooe_rendep's stage register).
   output logic [P-1:0]      req_l_cq03h,
@@ -255,6 +267,41 @@ module ooe_rename #(
                                                    ha_cq01h[(s * H + h) * PA + 0] | ha_cq01h[(s * H + h) * PA + 1]};
     end
   end
+  // The committed width tables (AR-24 (d)): written a cycle after their
+  // lead. A width changes only at a chwidth's retire, behind its hold (a
+  // sibling changes no register a younger uop of its group reads), so each
+  // candidate reads the table with no in-group override; a chwidth's own
+  // destination takes the width it sets.
+  logic [S-1:0]    cwe_cq01h;
+  logic [S*32-1:0] cwt_cq02h;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) cwe_cq01h <= '0;
+    else          cwe_cq01h <= cwl_cq00h;
+  end
+  // Reset is a launch's table: every register 32 bits (A-64).
+  for (genvar s = 0; s < S; s++) begin : g_cwt
+    logic cwt_en_cq01h;
+    assign cwt_en_cq01h = cwe_cq01h[s] | rst_r01h;
+    always_ff @(posedge ooe_core_clk)
+      if (cwt_en_cq01h) cwt_cq02h[s * 32 +: 32] <= rst_r01h ? '0 : cwd_cq01h[s * 32 +: 32];
+  end
+  logic [NC*8-1:0] c_w_cq02h;
+  for (genvar s = 0; s < S; s++) begin : g_cwr
+    for (genvar h = 0; h < R; h++) begin : g_h
+      for (genvar i = 0; i < 3; i++) begin : g_i
+        assign c_w_cq02h[(h * S + s) * 8 + i * 2 +: 2] =
+          cwt_cq02h[s * 32 + 2 * c_src_cq01h[((h * S + s) * 3 + i) * 4 +: 4] +: 2];
+      end
+      assign c_w_cq02h[(h * S + s) * 8 + 6 +: 2] =
+        c_wset_cq01h[h * S + s] ? c_wnew_cq01h[(h * S + s) * 2 +: 2]
+                                : cwt_cq02h[s * 32 + 2 * c_dst_cq01h[(h * S + s) * 4 +: 4] +: 2];
+    end
+  end
+  logic [NC*(XL+8)-1:0] c_xw_cq02h;
+  for (genvar c = 0; c < NC; c++) begin : g_cxw
+    assign c_xw_cq02h[c * (XL + 8) +: XL + 8] = {c_w_cq02h[c * 8 +: 8], c_xl_cq01h[c * XL +: XL]};
+  end
+
   // The Rename 1 register's copy the heads' reads see as the pending group
   // (NGD-7: the register drives the outputs; its copy, the reads, which go
   // on to the register again), and the names bound from it.
@@ -298,6 +345,12 @@ module ooe_rename #(
   end
   logic [R-1:0]      l_v_cq02h, l_gwe_cq02h, l_pwe_cq02h, l_br_cq02h;
   logic [R*XL-1:0]   l_x_cq02h;
+  logic [R*(XL+8)-1:0] l_xw_cq02h;
+  logic [R*8-1:0]      l_w_cq02h;
+  for (genvar l = 0; l < R; l++) begin : g_lxw
+    assign l_x_cq02h[l * XL +: XL] = l_xw_cq02h[l * (XL + 8) +: XL];
+    assign l_w_cq02h[l * 8 +: 8]   = l_xw_cq02h[l * (XL + 8) + XL +: 8];
+  end
   logic [R*LS-1:0]   l_slot_cq02h;
   logic [R*4-1:0]    l_dst_cq02h;
   logic [R*2-1:0]    l_pdst_cq02h;
@@ -306,12 +359,12 @@ module ooe_rename #(
   logic [R*4*GW-1:0] l_g_cq02h;
   logic [R*4*R-1:0]  l_gl_cq02h, l_pl_cq02h;
   logic [R*4*PW-1:0] l_p_cq02h;
-  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL)) u_ren1 (
-    .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xl_cq01h),
+  ooe_ren1 #(.S(S), .R(R), .GW(GW), .PW(PW), .LC(LC), .XW(XL + 8)) u_ren1 (
+    .c_dst_cq01h, .c_gwe_cq01h, .c_pdst_cq01h, .c_pwe_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h(c_xw_cq02h),
     .c_gv_cq01h(c_gv_cq03h), .c_gw_cq01h, .c_pv_cq01h(c_pv_cq03h), .c_pw_cq01h, .lane_v_cq02h, .lane_c_cq02h,
     .wb_cq02h, .l_v(l_v_cq02h), .l_slot(l_slot_cq02h), .l_dst(l_dst_cq02h), .l_gwe(l_gwe_cq02h),
     .l_pdst(l_pdst_cq02h), .l_pwe(l_pwe_cq02h), .l_idx(l_idx_cq02h), .l_br(l_br_cq02h), .l_ckpt(l_ckpt_cq02h),
-    .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_x_cq02h));
+    .l_g(l_g_cq02h), .l_gl(l_gl_cq02h), .l_p(l_p_cq02h), .l_pl(l_pl_cq02h), .l_x(l_xw_cq02h));
 
   // Port k's owner: the slot of the lane whose name index is k (each
   // writing lane's names, one-hot by port: GPR, then predicate).
@@ -351,6 +404,7 @@ module ooe_rename #(
   logic [R*4*R-1:0]  q_gl_cq03h, q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
   (* keep *) logic [R*XL-1:0] x_x_cq03h;
+  logic [R*8-1:0] w_cq03h;                     // each lane's width codes, to the output alone
   (* keep *) logic [R*2-1:0] o_c_cq03h;
   (* keep *) logic [R-1:0]   o_lv_cq03h;
   logic              r1_en_cq02h;
@@ -394,6 +448,7 @@ module ooe_rename #(
       p_galloc_cq03h <= galloc_cq02h;
       p_palloc_cq03h <= palloc_cq02h;
       x_x_cq03h      <= l_x_cq02h;
+      w_cq03h        <= l_w_cq02h;
       for (int l = 0; l < R; l++)
         o_c_cq03h[l * 2 +: 2] <= {l_x_cq02h[l * XL] && l_x_cq02h[l * XL + 1],
                                   l_x_cq02h[l * XL] && (!l_x_cq02h[l * XL + 1] || l_x_cq02h[l * XL + 2])};
@@ -406,6 +461,7 @@ module ooe_rename #(
   assign q_gwe_cq03h  = o_gwe_cq03h;
   assign q_pdst_cq03h = o_pdst_cq03h;
   assign q_pwe_cq03h  = o_pwe_cq03h;
+  assign q_w_cq03h    = w_cq03h;
 
   // -- The names bound ---------------------------------------------------------
   // The new names out, from the q_ copy (its reads unused).

@@ -4,7 +4,7 @@
 // register, which is the pending group. Measured with tools/check-ngd.py as
 // a temporary unit (its flop-flop figure is Rename 1's path).
 module ren1_probe #(
-  parameter int S = 4, parameter int R = 4, parameter int PA = 7, parameter int GW = 10, parameter int PW = 6,
+  parameter int S = 4, parameter int R = 4, parameter int PA = 9, parameter int GW = 10, parameter int PW = 6,
   localparam int H = 2 * R - 1, localparam int NC = S * R, localparam int LS = 2, localparam int LC = 2,
   localparam int MW = 16 * GW + 4 * PW, localparam int LX = $clog2(5 * R + 1)
 ) (

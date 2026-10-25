@@ -36,20 +36,29 @@ public:
     w_[i / 64] = v ? (w_[i / 64] | m) : (w_[i / 64] & ~m);
   }
 
-  /// A field of at most 64 bits.
+  /// A field of at most 64 bits, read a word at a time (it straddles at
+  /// most two).
   uint64_t get(uint32_t lsb, uint32_t width) const {
     assert(width <= 64 && lsb + width <= n_);
-    uint64_t v = 0;
-    for (uint32_t k = 0; k != width; ++k)
-      v |= uint64_t(bit(lsb + k)) << k;
-    return v;
+    if (!width) return 0;
+    const uint32_t i = lsb / 64, sh = lsb % 64;
+    uint64_t v = w_[i] >> sh;
+    if (sh && sh + width > 64) v |= w_[i + 1] << (64 - sh);
+    return width == 64 ? v : v & ((uint64_t(1) << width) - 1);
   }
   /// Bits of `v` above `width` are dropped, so a caller cannot widen a field
   /// by accident -- an out-of-range value is the value RTL would truncate to.
   void set(uint32_t lsb, uint32_t width, uint64_t v) {
     assert(width <= 64 && lsb + width <= n_);
-    for (uint32_t k = 0; k != width; ++k)
-      setBit(lsb + k, (v >> k) & 1u);
+    if (!width) return;
+    const uint64_t m = width == 64 ? ~uint64_t(0) : (uint64_t(1) << width) - 1;
+    v &= m;
+    const uint32_t i = lsb / 64, sh = lsb % 64;
+    w_[i] = (w_[i] & ~(m << sh)) | (v << sh);
+    if (sh && sh + width > 64) {
+      const uint32_t lo = 64 - sh;
+      w_[i + 1] = (w_[i + 1] & ~(m >> lo)) | (v >> lo);
+    }
   }
 
   /// Take `src`'s bits where `mask` is set, keep this one's elsewhere.
