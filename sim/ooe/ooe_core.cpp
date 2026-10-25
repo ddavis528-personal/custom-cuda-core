@@ -31,7 +31,7 @@ std::string Config::apply(const std::string &spec) {
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
-      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place},
+      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return},
       {"held_late", &held_late}};
@@ -42,7 +42,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
-                                     {"take_young", &take_young}, {"ret_now", &ret_now}, {"go_static", &go_static},
+                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -208,6 +208,10 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   gw_.assign(names, 0);
   rowOwner_.assign(cfg_.phys_regs, 0);
   rowSec_.assign(cfg_.phys_regs, 0);
+  cand_.assign(cfg_.slots, {});
+  for (auto &c : cand_) c.fill(kNoRow);
+  row_claim_.assign(cfg_.phys_regs, 0);
+  row_alloc_.assign(cfg_.phys_regs, 0);
 }
 
 void Core::ev(const char *name, unsigned warp, uint64_t a, uint64_t b, uint64_t tid) {
@@ -551,10 +555,43 @@ unsigned Core::allocGpr(unsigned slot) {
 /// narrow one takes its sections at the wanted position in a row its slot
 /// already owns, else a free row; failing both, another position in an
 /// owned row (its footprint then widens, but it does not wait).
-unsigned Core::planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const {
+unsigned Core::planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) {
+  cand_row_ = kNoRow;
   if (w == 0) { pos = 0; return allow_row && gAvail() ? 1 : 2; }
   const unsigned step = w == 1 ? 2 : 1;
   pos = w == 1 ? (pos & 2u) : (pos & 3u);
+  if (cfg_.cand) {
+    // The candidates as the group started, less the rows it took one of.
+    auto ok = [&](unsigned p) {
+      const unsigned r = cand_[slot][candKind(w, p)];
+      return r != kNoRow && !row_claim_[r];
+    };
+    auto take = [&](unsigned p) {
+      const unsigned r = cand_[slot][candKind(w, p)];
+      if (rowOwner_[r] != slot + 1 || (rowSec_[r] & secMask(w, p)))
+        err("OI-29: slot %u's candidate row %u at position %u is not free", slot, r, p);
+      cand_row_ = r;
+      pos = p;
+      return 0u;
+    };
+    auto other = [&]() {
+      for (unsigned k = step; k < 4; k += step)
+        if (ok((pos + k) & 3u)) return true;
+      return false;
+    };
+    auto otherTake = [&]() {
+      for (unsigned k = step; k < 4; k += step)
+        if (ok((pos + k) & 3u)) return take((pos + k) & 3u);
+      return 2u;
+    };
+    if (ok(pos)) return take(pos);
+    // A conflict in the group takes the next position (AR-15); no
+    // candidate at all, a fresh row.
+    const bool conflict = !cfg_.cand_indep && cand_[slot][candKind(w, pos)] != kNoRow;
+    if (conflict && other()) return otherTake();
+    if (allow_row && gAvail()) return 1;
+    return otherTake();
+  }
   auto partial = [&](unsigned p) {
     const unsigned m = secMask(w, p);
     for (unsigned row = 0; row != cfg_.phys_regs; ++row)
@@ -577,7 +614,15 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row)
   if (plan == 2) { err("V-04: no slice for slot %u at width %u", slot, w); return zeroName(); }
   const unsigned m = secMask(w, want);
   unsigned row = cfg_.phys_regs;
-  if (plan == 0) {
+  if (plan == 0 && cfg_.cand) {
+    row = cand_row_;
+    row_claim_[row] = 1;
+    // cand_return: the row the go's count took, given back.
+    if (cfg_.cand_return && gAvail()) {
+      cand_ret_.push_back(gTake());
+      count("place.row_returned");
+    }
+  } else if (plan == 0) {
     for (unsigned r = 0; r != cfg_.phys_regs && row == cfg_.phys_regs; ++r)
       if (rowOwner_[r] == slot + 1 && !(rowSec_[r] & m)) row = r;
   } else {
@@ -587,12 +632,45 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row)
     ++slot_[slot].held_gpr;
   }
   rowSec_[row] = uint8_t(rowSec_[row] | m);
+  row_alloc_[row] = uint8_t(row_alloc_[row] | m);
   const unsigned p = row * kPos_ + want;
   gw_[p] = uint8_t(w);
   if (gever_[p]) ev("reg_reuse", slot_[slot].warp, p);
   gever_[p] = 1;
   if (!own_row && want != (w == 1 ? (pos & 2u) : (pos & 3u))) count("place.fallback_position");
   return p;
+}
+
+/// A slot's candidate of a kind: the lowest row it owns with the kind's
+/// sections free, over the live sections sec (the RTL's find-first, over
+/// the free list's owner and section bits).
+unsigned Core::candFind(unsigned slot, unsigned kind, const std::vector<uint8_t> &sec) const {
+  const unsigned m = kind >= 4 ? 3u << (2 * (kind - 4)) : 1u << kind;
+  for (unsigned r = 0; r != cfg_.phys_regs; ++r)
+    if (sec[r] && rowOwner_[r] == slot + 1 && !(sec[r] & m)) return r;
+  return kNoRow;
+}
+
+/// The candidates a rename group starts from. cand 1: found on the state
+/// now. cand 2: ooe_freelist's registered find, over every free so far but
+/// without last cycle's allocations (Rename 2's, which reach the section
+/// bits a cycle on), and void in a row last cycle allocated in.
+void Core::candStart() {
+  if (!cfg_.cand || !cfg_.sectioned) return;
+  for (unsigned r : cand_ret_)
+    if (!gfree_.free(r)) err("V-01: returned row %u freed twice", r);
+  cand_ret_.clear();
+  std::fill(row_claim_.begin(), row_claim_.end(), 0);
+  grp_written_.assign(slot_.size(), 0);
+  std::vector<uint8_t> sec = rowSec_;
+  if (cfg_.cand == 2)
+    for (unsigned r = 0; r != cfg_.phys_regs; ++r) sec[r] = uint8_t(sec[r] & ~row_alloc_[r]);
+  for (unsigned si = 0; si != slot_.size(); ++si)
+    for (unsigned k = 0; k != 6; ++k) {
+      const unsigned r = candFind(si, k, sec);
+      cand_[si][k] = cfg_.cand == 2 && r != kNoRow && row_alloc_[r] ? kNoRow : r;
+    }
+  std::fill(row_alloc_.begin(), row_alloc_.end(), 0);
 }
 
 /// Where a narrow destination goes (AR-15, OA-14): a merged op's old
@@ -604,10 +682,14 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   if (!cfg_.sectioned || w == 0) return 0;
   const Slot &s = slot_[slot];
   auto align = [&](unsigned p) { return w == 1 ? (p & 2u) : (p & 3u); };
+  // cand_indep: a register written earlier in the group is not seen.
+  auto unseen = [&](unsigned a) {
+    return cfg_.cand && cfg_.cand_indep && slot < grp_written_.size() && ((grp_written_[slot] >> (a & 15)) & 1u);
+  };
   const unsigned old = s.rat[u.dst & 15];
-  if (merge && !isZeroName(old) && nameWidth(old) == w) return align(namePos(old));
+  if (merge && !unseen(u.dst) && !isZeroName(old) && nameWidth(old) == w) return align(namePos(old));
   for (unsigned i = 0; i != 3; ++i) {
-    if (!((u.shape.gpr_reads >> i) & 1u)) continue;
+    if (!((u.shape.gpr_reads >> i) & 1u) || unseen(u.src[i])) continue;
     const unsigned n = s.rat[u.src[i] & 15];
     if (!isZeroName(n) && nameWidth(n) != 0) return align(namePos(n));
   }
@@ -3356,6 +3438,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       r.pnew = cfg_.sectioned && !atomic ? allocSlice(si, allocWidth(si, u), pos) : allocGpr(si);
       r.alloc_gpr = true;
       s.rat[u.dst & 15] = r.pnew;
+      if (si < grp_written_.size()) grp_written_[si] = uint16_t(grp_written_[si] | (1u << (u.dst & 15)));
     }
     if (atomic) {
       if (!wgpr) r.ptmp_t = allocGpr(si);
@@ -3599,6 +3682,7 @@ void Core::rename() {
       ceil_room_reg_[si] = {cg - std::min(cg, heldSeen(si, false)), cp - std::min(cp, heldSeen(si, true))};
     }
   }
+  candStart();
   ren_tot_.fill(0);
   ren_slot_.assign(slot_.size(), {});
   ren_serial_.assign(slot_.size(), 0);
@@ -4274,6 +4358,7 @@ void Core::checkInvariants() {
         bad("V-70", "a warp demotes with an atomic pass in flight");
     if (s.rs_held > (cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_)) bad("V-14", "a warp over its RS cap");
   }
+  for (unsigned r : cand_ret_) where[r] = 0;   // cand_return: a row on its way back
   unsigned accounted = 0;
   for (int w : where) accounted += w != -1;
   if (accounted != cfg_.phys_regs) {

@@ -171,6 +171,25 @@ struct Config {
   /// operand's width code on the issue and memop stays the register's own
   /// (the stubs mask the write). Off, a narrow register takes its slice.
   bool full_rows = false;
+  /// The narrow allocator's form (OI-29, slice 6): 0 searches every row
+  /// the warp owns at each allocation; 1 and 2 are the RTL's candidates,
+  /// one per warp and kind (positions 0-3 for one section, 0 and 2 for
+  /// two), the lowest owned row with those sections free. Each group sees
+  /// them as it starts: a second allocation wanting a candidate the group
+  /// already took tries the next position's, then a fresh row (AR-15); a
+  /// position without one takes a fresh row, then another position's. 1
+  /// finds them on the group's starting state. 2 is ooe_freelist's
+  /// registered find: every free so far, but not last cycle's
+  /// allocations, and a candidate in a row last cycle allocated in is void.
+  unsigned cand = 0;
+  /// With cand: every GPR writer takes a row from the free list, as the
+  /// go counts it; a narrow one that takes a candidate instead returns its
+  /// row, a free the next cycle (Rename 2's).
+  bool cand_return = false;
+  /// With cand, OI-81 (ii): the lanes independent. A source or merged old
+  /// destination written earlier in the group counts as no narrow
+  /// operand (the home position), and a conflict takes a fresh row.
+  bool cand_indep = false;
   /// Placement of a narrow destination with no narrow source (OA-14):
   /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
   /// every warp; 2 the home position, advanced at each taken backward branch
@@ -1261,7 +1280,7 @@ private:
   unsigned allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row = false);
   /// Sectioned: how a width w register at pos would be placed, without
   /// placing it: 0 an owned partial row, 1 a new row, 2 neither (stall).
-  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const;
+  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row);
   unsigned placePos(unsigned slot, const Uop &u, bool merge) const;
   /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
   /// 4 RCU (R), 5-8 MIU pipes P0-P3.
@@ -1650,6 +1669,18 @@ private:
   unsigned kPos_ = 1;
   std::vector<uint8_t> gw_;                   ///< name -> width code
   std::vector<uint8_t> rowOwner_, rowSec_;    ///< row -> slot + 1; live sections
+  // cand: each slot's candidate rows by kind (kNoRow none), as this group
+  // sees them; the rows the group took a candidate of; and the sections
+  // allocated since the group started, by row (cand 2).
+  static constexpr unsigned kNoRow = ~0u;
+  std::vector<std::array<unsigned, 6>> cand_;
+  std::vector<uint8_t> row_claim_, row_alloc_;
+  std::vector<unsigned> cand_ret_;           ///< cand_return: rows to return next cycle
+  std::vector<uint16_t> grp_written_;        ///< cand_indep: each slot's GPRs written this group
+  unsigned cand_row_ = kNoRow;               ///< planSlice's candidate, for allocSlice
+  static unsigned candKind(unsigned w, unsigned pos) { return w == 1 ? 4 + ((pos >> 1) & 1u) : pos & 3u; }
+  unsigned candFind(unsigned slot, unsigned kind, const std::vector<uint8_t> &sec) const;
+  void candStart();
   // The ready path as the RTL builds it (OA-1; A-62, A-73, OA-4): each
   // producer drives kWakeLines wake lines, its fastest bypass point plus
   // each bypass penalty, and the PRF read; each matrix cell selects one.
