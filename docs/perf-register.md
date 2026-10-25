@@ -37,9 +37,9 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
-| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16) |
+| PF-15 | `chwidth` without serialising rename | rename | deferred again (DA tab rev 93): the drain stays; trigger 5% `hold.chwidth` on converged narrow code |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
-| PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
+| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: -4.2% at 8, one warp; held for the 4-warp shape) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
 | PF-19 | Criticality-aware select | scheduler | deferred |
 | PF-20 | Rename in the cycle a uop arrives | front end | deferred |
@@ -67,6 +67,7 @@ it.
 | PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
+| PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 
 ## Entries
 
@@ -275,6 +276,49 @@ it.
   and none inside a loop. So the hold costs one drain per narrow kernel
   (OI's response OA-16).
 - **Trigger:** a corpus kernel that widens inside a loop (asked of CP).
+- **Trigger met (TI's rev 171 and OA's rev 222 on AR-24, 2026-10-24):** the
+  CoreMark-derived workload at the core's pin (f99190e) issues 102,678
+  `chwidth` and 5,508 `chwidth.multi` a warp at one iteration. Together
+  they are 108,186 of 782,648 issue groups, 13.8%, from byte and halfword
+  code inside its loops: 28% of its accesses are 1 or 2 bytes. Each one
+  holds its warp's rename until it retires. Since OA's rev 222,
+  `chwidth.multi` is cracked per register and holds once, after the last.
+  The count makes the case; the cost does not yet. AR-24's timed run
+  reports cycles held behind `chwidth` (`hold.chwidth`), and with that
+  figure OA takes OA-16 back to DA.
+- **Measured (AR-24, TI's rev 188, 2026-10-24):** on the same kernel at
+  541a476 (767,049 issue groups, 106,359 `chwidth`), 1 lane, perfect fetch,
+  cold memory, 8 checkpoints: rename is held behind a `chwidth` drain in
+  5,805,773 of 6,808,297 cycles, 85.3%, about 55 cycles a `chwidth`. Without
+  the hold the run is about 1.0M cycles, at most 0.77 issue groups a cycle
+  against 0.11. Warm memory gives 3,728,507 cycles (0.21), because a drain
+  waits for older loads too. This is the largest single loss measured on the
+  core so far. O-80's sized forms and compiler F-196 remove up to about 74% of the
+  `chwidth` first (TI's rev 180), so OA-16 goes to DA priced on what remains
+  on CP's next export.
+- **Decided (Daniel, 2026-10-24; DA's response OA-16, DA tab rev 92):**
+  adopted, on OA's estimate of the residual after O-80 and compiler F-196
+  (about 1.5M cycles held against about 1.0M without), ahead of the
+  measured figure. The form is the design of record above. Each register's
+  width lives in the RAT and its checkpoints. A narrowing renames in place,
+  and a widening writes a new name on every lane (O-78), except 4 to 8.
+  F-WIDTH and F-FORMAT move to rename. A `chwidth` ends its warp's rename
+  group. `chwidth.multi`'s siblings lose the hold. Estimated cost: 640 to
+  770 flops and about 20% more RAT read mux. OA reopens it with DA if TI's
+  measured residual on CP's next export is under a quarter of the run. It
+  moves to adopted with the commit that builds it.
+- **Back on hold (Daniel, 2026-10-24; DA tab rev 93):** the drain stays,
+  and the design of record above is kept. Compiler release 33849dd made
+  `i16` illegal and every narrow access sized (O-80), so scalar code issues
+  no `chwidth`. The per-lane-seed CoreMark-derived run issues 21 a warp,
+  about 1,000 cycles of hold, far under the quarter-of-the-run reopen line.
+  So the 1.5M-cycle residual the adoption rested on no longer exists (OA's
+  rev 238, AR's rev 187). What still changes width is converged narrow
+  code: 16-bit integer registers fixed at kernel entry (compiler F-200), and
+  narrow FP.
+- **Trigger, from now:** `hold.chwidth` reaching 5% of a run's cycles on
+  converged narrow code, such as vadd16 at four warps on compiler F-200's export or
+  a narrow-FP kernel. OA then brings the design back to DA with that figure.
 
 ### PF-16 More than one redirect a cycle
 
@@ -294,6 +338,21 @@ it.
   checkpoint, and the 2-bit `checkpoint_id` grows.
 - **Signal:** FET's `ckpt_full` cycles on grid-stride loops (the doc's
   sweep item).
+- **Measured (AR-24, TI's rev 188, 2026-10-24):** CoreMark-derived at
+  541a476, 1 lane, perfect fetch, cold memory: 6,832,792 cycles at 4
+  checkpoints, 6,808,290 at 8 and 6,808,305 at 16. Fetch waits with every
+  checkpoint live in about 94% of cycles at every size, and fetch-to-resolve
+  per branch doubles with the count (358, 713, 1,425 cycles). The
+  checkpoints are full because nothing behind them moves: rename is held
+  behind `chwidth` (PF-15). No gain while that hold stands; re-measure after
+  it goes.
+- **Re-measured (AR-24, TI's rev 196, 2026-10-25):** at pin 7ef9292, where
+  `hold.chwidth` is 0, CoreMark-derived, 1 lane, perfect fetch, warm
+  memory, ROB 32: 8 checkpoints save 4.2% (1,856,696 against 1,938,449
+  cycles), and 4.4% at ROB 48 or 64, while depth alone saves 0.2%. The
+  three latency levers with it (L1 wake 13, lane bypass 3) add up: -15.4%
+  together. Held for the 4-warp shape, since a checkpoint is FET's per-lane
+  group state as well as the RAT's (OA's rev 243).
 
 ### PF-18 A masked load merged without a copy-only op
 
@@ -614,6 +673,12 @@ it.
   Revisit with Q-18, before floorplan, and once the corpus has pointer
   chasing or indexed gathers whose index is loaded.
 
+- **Measured (AR-24, TI's rev 196, 2026-10-25):** on CoreMark-derived
+  (pin 7ef9292, 1 lane, perfect fetch, warm, ROB 32), each cycle off
+  `CCV_LAT_L1_WAKE` saves 2.0% of cycles, linear from 16 to 10 (-5.9% at
+  13, -9.9% at 11). 13 is `CCV_LAT_RCU_ADDR_BASE` back to 2, Daniel's
+  placeholder (OA-5); 11 adds one crossing fewer, this entry.
+
 ### PF-34 Same-address combining for atomics, built from lane adds
 
 - **Now:** every atomic's operation executes in the lanes, integer and FP,
@@ -677,9 +742,14 @@ it.
   and known at decode.
 - **Cost:** a few entries of 32-bit code addresses per tier-1 warp. It must
   be checkpointed with the branch state, so a mispredict or a demotion
-  restores it. A divergent return, where lanes' `rs` differ, splits PC
-  groups and cannot be predicted by one stack entry; it falls back to
-  resolution.
+  restores it. The predicted target must reach OOE: 32 bits a slot on
+  `ccv_fet_dec_instr` and `ccv_dec_ooe_uop`, which V-41 compares with
+  RCU's `aux`. TI adds that field with the predictor, and a kernel whose
+  prediction misses, not before (TI's rev 201). A divergent return, where
+  lanes' `rs` differ, cannot be predicted by one stack entry: a ret
+  predicted taken is correct only if every active lane returns to the
+  predicted target (FET spec rev 28), so it is a mispredict and peels one
+  target a pass (AR-24 (b)).
 - **Signal:** returns per thousand instructions and cycles each waits for
   resolution, on CoreMark (AR-20), to add when FET models a predictor.
 
@@ -906,3 +976,27 @@ it.
   164). It moves to adopted with
   the commit that builds it. The measurement above still says whether the
   second path earns its verification.
+
+### PF-45 Self-timed completion for done-free lane ops
+
+- **Now:** every lane op completes on RCU's done on `ccv_rcu_ooe_done`,
+  which lands 3 cycles after OOE confirms the op at its wake: issue link +
+  `CCV_LAT_LANE` - 1 + done link, at `CCV_LAT_HOP` 2 each (V-35).
+- **Alternative:** a confirmed, fixed-latency, non-branch lane op, which
+  cannot fault (IS-16) and whose done tells OOE nothing, completes on OOE's
+  own clock at the cycle its write lands in RCU's PRF. That is 2 of the 3
+  cycles. Branches and RCU-executed ops keep the done (OA's rev 245).
+- **Cost:** a restated V-35, two completion paths in OOE, and a per-warp
+  count of retired-but-unlanded writes that every quiesce (demotion, kill,
+  park) waits on. RCU adds nothing; it would only lose those dones, freeing
+  `CCV_DONE_SLOTS`.
+- **Measured (AR-24, TI's rev 200, 2026-10-25):** CoreMark-derived, pin
+  7ef9292, 1 lane, perfect fetch, warm, ROB 32: 1,919,915 cycles against
+  1,938,449, -0.96%. 276,238 completions were self-timed, each checked
+  against its done, and a control a cycle early fails. The head state it
+  removes, a confirmed lane op awaiting its done, was 34.8% of cycles, but
+  the wait moved to the write's landing, to branches and to a full ROB.
+  Not adopted (OA's rev 246): 1% does not pay for the cost.
+- **Signal:** stages on the done link (`params/links.json`), which add to
+  every lane op's completion, or the 4-warp shape showing done slots short.
+  Re-run the bound then.

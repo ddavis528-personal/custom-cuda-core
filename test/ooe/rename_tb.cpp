@@ -80,7 +80,7 @@ namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
                    NG = RENAME_NG, NP = RENAME_NP;
 constexpr unsigned N = RENAME_N, NR = RENAME_NR, FLG = RENAME_FLG, CLG = RENAME_CLG, FLP = RENAME_FLP, CLP = RENAME_CLP;
-constexpr unsigned NC = S * R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R, FB = 8, FK = 4, XW = 20,
+constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2, FB = 8, FK = 4, XW = 20,
                    P = 2 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w ? w : 1; }
 constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
@@ -93,7 +93,8 @@ uint64_t current = 0;
 bool skip = false;      // a core this RTL is not built for
 bool stopped = false;   // a core past a cycle this slice does not cover: no longer driven
 unsigned long long cycles = 0, cores = 0, skipped = 0, stops = 0, takes = 0, lanes = 0, nops = 0, names = 0, pnames = 0,
-                   frees = 0, counted = 0, rows = 0, cells = 0, grp_cells = 0, prv_cells = 0, extra = 0, mismatches = 0;
+                   frees = 0, counted = 0, rows = 0, cells = 0, grp_cells = 0, prv_cells = 0, extra = 0, mismatches = 0,
+                   wlanes = 0;   // lanes with a narrow width code (AR-24 (d))
 std::vector<uint8_t> ct_rtl;
 unsigned long long core_steps = 0;   // the code table the RTL was built with (default settings)
 
@@ -326,6 +327,10 @@ void clearInputs() {
   clearAll(dut->release_cq00h, S);
   clearAll(dut->gnt_v_cq03h, P);
   clearAll(dut->gnt_idx_cq03h, P * W);
+  clearAll(dut->c_wset_cq01h, NC);
+  clearAll(dut->c_wnew_cq01h, NC * 2);
+  clearAll(dut->cwl_cq00h, S);
+  clearAll(dut->cwd_cq01h, S * 32);
 }
 
 // The go's inputs, as go_tb drives them: decq's heads and rename's and the
@@ -420,6 +425,11 @@ void step(const Cycle &P, const Cycle &N) {
   if (!g.valid || g.adm.size() != S || !N.g.valid || N.g.adm.size() != S) { stop(kNoLog); return; }
   for (const auto &r : w.ren)
     if (r.rst || r.atomic) { stop(kRstAtomic); return; }
+  // An atomic at a head already moves the shares (OI-80's reserve), so the
+  // core stops at its arrival there, not its rename.
+  for (const auto &q : g.adm)
+    for (const uint16_t a : q)
+      if ((a >> 7) & 3u) { stop(kRstAtomic); return; }
   if (g.lanes.size() > R) { fail("more lanes than the width", 0, 0, unsigned(g.lanes.size()), R); stop(kOrder); return; }
   // The go's lanes, each with its rename: rename order is lane order. A
   // head with neither class bit (an exit, a decode fault) takes its lane
@@ -431,7 +441,7 @@ void step(const Cycle &P, const Cycle &N) {
   for (unsigned k = 0; k != g.lanes.size(); ++k) {
     const unsigned s = g.lanes[k].first, h = g.lanes[k].second;
     if (s >= S || h != head[s]++ || h >= g.adm[s].size()) { stop(kOrder); return; }
-    const uint8_t a = g.adm[s][h];
+    const uint16_t a = g.adm[s][h];
     if ((a & 3u) == 0) { ++nops; continue; }
     if (j == w.ren.size() || w.ren[j].slot != s) { stop(kOrder); return; }
     const auto &r = w.ren[j++];
@@ -482,6 +492,15 @@ void step(const Cycle &P, const Cycle &N) {
     setBit(dut->c_br_cq01h, x, r.br);
     setField(dut->c_ckpt_cq01h, x * LC, LC, r.ckpt);
     setField(dut->c_x_cq01h, x * XW, XW, attrOf(r));
+    // AR-24 (d): a chwidth's destination width is the one it sets.
+    setBit(dut->c_wset_cq01h, x, r.wset);
+    setField(dut->c_wnew_cq01h, x * 2, 2, r.wset ? r.wdst : rng() & 3);
+  }
+  // The committed width tables: this cycle's, written at its edge, on the
+  // lead of the cycle it changes in (the next's). no-cw-write drops them.
+  for (unsigned s = 0; s != S; ++s) {
+    setBit(dut->cwl_cq00h, s, ((N.w.cw_changed >> s) & 1u) && control != "no-cw-write");
+    for (unsigned a = 0; a != 16 && s < P.w.cw.size(); ++a) setField(dut->cwd_cq01h, s * 32 + a * 2, 2, P.w.cw[s][a]);
   }
   // ooe_rs's grant, for the group three steps back.
   driveGrant(past.size() >= 3 ? &past[past.size() - 3] : nullptr);
@@ -585,6 +604,12 @@ void step(const Cycle &P, const Cycle &N) {
     eq("old predicate destination", 0, getField(dut->q_p_cq03h, (k * 4 + 1) * PW, PW), r.ppold);
     for (unsigned i = 0; i != 2 && r.plogic; ++i)
       eq("predicate-logic source", i, getField(dut->q_p_cq03h, (k * 4 + 2 + i) * PW, PW), r.pqn[i]);
+    // AR-24 (d): the width codes, each source's and the destination's.
+    for (unsigned i = 0; i != 3; ++i) eq("source width", i, getField(dut->q_w_cq03h, k * 8 + i * 2, 2), r.wsrc[i]);
+    eq("destination width", 0, getField(dut->q_w_cq03h, k * 8 + 6, 2), r.wdst);
+    unsigned narrow = r.wdst != 0;
+    for (unsigned i = 0; i != 3; ++i) narrow |= r.wsrc[i] != 0;
+    wlanes += narrow;
   }
 }
 
@@ -676,13 +701,14 @@ int main(int argc, char **argv) {
   dut->final();
   std::printf("rename_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu stopped=%llu takes=%llu "
               "lanes=%llu nops=%llu gpr-names=%llu pred-names=%llu frees=%llu rows=%llu cells=%llu grp=%llu prv=%llu "
-              "masked=%llu mismatches=%llu model_failures=%d\n",
+              "masked=%llu narrow-lanes=%llu mismatches=%llu model_failures=%d\n",
               control.empty() ? "none" : control.c_str(), seeds, cores, cycles, skipped, stops, takes, lanes, nops, names,
-              pnames, frees, rows, cells, grp_cells, prv_cells, extra, mismatches, model_fails);
+              pnames, frees, rows, cells, grp_cells, prv_cells, extra, wlanes, mismatches, model_fails);
   std::printf("rename_tb stops:");
   for (unsigned k = 0; k != kWhys; ++k) std::printf(" %s=%llu", kWhyName[k], why[k]);
   std::printf("\n");
-  const int rc = mismatches || model_fails || (!cg.on() && (!lanes || !rows)) ? 1 : 0;   // idle has no lanes
+  // idle has no lanes; a run with no narrow width shows the widths nothing
+  const int rc = mismatches || model_fails || (!cg.on() && (!lanes || !rows || (seeds && !wlanes))) ? 1 : 0;
   dut.reset();
   ctx.reset();
   return rc;

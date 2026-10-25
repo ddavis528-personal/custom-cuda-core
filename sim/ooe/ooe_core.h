@@ -166,6 +166,11 @@ struct Config {
   /// its unit's minimum, and select grants nine resources (S0-S3, R, P0-P3).
   /// Off in S1 until OI-32's schema carries positions: names are then rows.
   bool sectioned = false;
+  /// AR-24's interim (DA tab rev 87; OA's rev 225, AR's rev 174): every
+  /// register a full row at position 0, charged four sections, while each
+  /// operand's width code on the issue and memop stays the register's own
+  /// (the stubs mask the write). Off, a narrow register takes its slice.
+  bool full_rows = false;
   /// Placement of a narrow destination with no narrow source (OA-14):
   /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
   /// every warp; 2 the home position, advanced at each taken backward branch
@@ -377,6 +382,10 @@ struct Config {
   bool inject_no_bar_fault = false;
   /// No F-WIDTH check at dispatch (testWidthFault's control).
   bool inject_no_width_fault = false;
+  /// O-80's and O-81's controls: a sized transfer wider than rdata, and a
+  /// chwidth outside a converged warp, raise no F-WIDTH.
+  bool inject_no_sized_fault = false;
+  bool inject_no_converged_fault = false;
   /// No F-FORMAT check at dispatch (testFormatFault's control).
   bool inject_no_format_fault = false;
   /// The fault-address register takes every faulting completion, not only
@@ -406,6 +415,28 @@ struct Config {
   unsigned rs_warp_cap_rcu = 0, rs_warp_cap_miu = 0;
   bool inject_atom_early_wake = false;
   bool inject_atom_demote_mid = false;
+  /// TI-39's controls: A1 takes rbase alone, not rindex (O-72's base+index);
+  /// rename takes a CAS's first slot without its second (the pair is one
+  /// admission unit, OA's rev 189).
+  bool inject_a1_base_only = false;
+  bool inject_cas_split = false;
+  /// OI-79 (b)'s control: the take keeps a pair the width splits (its
+  /// first slot taken, its second left for the next cycle).
+  bool inject_pair_split = false;
+  /// OI-80's liveness rule's control (OA's rev 244): the split gives the
+  /// warp first in rotation no part of the pool for its head's need first.
+  bool inject_no_first_need = false;
+  /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
+  /// register keeps its old width (the model before this).
+  bool inject_sibling_uncommitted = false;
+  /// V-41's control (FET spec rev 28, TI's rev 199): a taken prediction
+  /// counts as right when any lane took the branch, as before.
+  bool inject_partial_taken_ok = false;
+  /// TI-40's controls: rename holds behind no wait, the converged's too;
+  /// a held warp's rewind beat goes unflagged, so FET resumes past the
+  /// wait.
+  bool inject_bar_no_hold = false;
+  bool inject_beat_unheld = false;
   /// PF-23 (OA's rev 160, AR's rev 106): a demotion's discard takes its
   /// warp's outstanding loads, so drained waits for their replay
   /// completions, not their fills. Off: the drain waits for the fills.
@@ -453,11 +484,20 @@ struct SchedAttr {
   bool writes_gpr = false, writes_pred = false, branch = false;
   unsigned mem_kind = 0, serial = 0, lat_class = 0;
   unsigned bypass_group = 0;    ///< OI-16: [16:14]
+  /// A CAS's two decode slots (AR's rev 156, OA's rev 189, TI-39): [17] the
+  /// first (rbase, rindex and the displacement: A1), [18] the second
+  /// (rs_cmp, rs_swap and the destination: A2), one instruction.
+  bool pair_first = false, pair_second = false;
+  /// [19] ret (AR-24 (b)); [20] commit_width (AR-24 (c), OA's rev 222): a
+  /// chwidth.multi sibling, serial 0, that commits its register's width at
+  /// retire without the hold, which the last sibling's serial 1 carries.
+  bool ret = false, commit_width = false;
   static SchedAttr decode(uint32_t a);
 };
 enum : unsigned { kMemKLoad = 0, kMemKStore = 1, kMemKAtomic = 2, kMemKFence = 3 };
 enum : unsigned { kLatClsRcu = 0, kLatClsLane = 1, kLatClsL1 = 2, kLatClsCompletion = 3 };
 enum : unsigned { kSerNone = 0, kSerChwidth = 1, kSerBarrier = 2, kSerExit = 3, kSerArrive = 4 };
+inline bool isBarrierSer(unsigned s) { return s == kSerBarrier || s == kSerArrive; }
 
 /// What A-75 has yet to put on ccv_dec_ooe_uop. Until it does, the adapter
 /// derives these from the skeleton's opcode table -- the one place OOE still
@@ -494,6 +534,10 @@ struct Uop {
   bool scale_en = false;
   unsigned slot_form = 0, arg_slot = 0;   ///< the launch-slot form, for MIU (TI-31)
   unsigned local_form = 0;                ///< the interleaved local form, for MIU (IS-19)
+  /// O-80 (DA tab rev 90): a sized transfer, 0 rdata's width, 1 a byte, 2 a
+  /// halfword, and whether MIU sign-fills a sized load; for MIU.
+  unsigned xfer_size = 0;
+  bool xfer_signed = false;
   /// A fault found before OOE, from ccv_dec_ooe_uop's cause: 1 F-FETCH or
   /// 2 F-ILLEGAL, else 0 (IS-16). The uop is a no-op that faults at its head.
   unsigned cause = 0;
@@ -507,12 +551,31 @@ struct Uop {
   unsigned w = 0;
   bool backward = false;             ///< a branch whose target is behind it (OA-14)
   UopShape shape;
+  /// A CAS pair as rename joins it (TI-39): the first slot's uop, with the
+  /// second's destination, its write bit and its two operands (rs_cmp,
+  /// rs_swap) and their reads. Set by rename alone, never by DEC.
+  bool cas = false;
+  unsigned cas_src[2] = {};
+  uint8_t cas_reads = 0;
+  /// FET's all_waiting mark (TI-40, AR's revs 163-164): on a wait, the warp
+  /// is converged and rename holds behind it; on any marked uop, the
+  /// barrier demotion timer starts at its retire.
+  bool all_waiting = false;
 };
+/// A barrier OOE completes without issue, as exit (TI-40, TI's rev 176):
+/// one with no predicate read. A guarded arrive or wait, and wait.phase,
+/// issue to RCU, whose done brings their lanes.
+inline bool barNop(const Uop &u) {
+  return isBarrierSer(u.attr.serial) && !u.shape.guard && !u.shape.pdata;
+}
 
 struct Done {           ///< ccv_rcu_ooe_done
   unsigned rob_tag = 0;
   bool branch_taken = false;
-  uint32_t branch_mask = 0;
+  uint32_t branch_mask = 0;   ///< a branch's, a guarded barrier's: issue mask AND guard
+  /// The 32-bit field AR-24 (b) adds (TI names it aux): wait.phase's ps, each
+  /// lane's expected phase (OA's rev 226); a ret's branch_target otherwise.
+  uint32_t aux = 0;
 };
 struct Cmpl {           ///< ccv_miu_ooe_cmpl
   unsigned rob_tag = 0, status = 0, cause = 0;
@@ -574,6 +637,10 @@ struct Issue {          ///< ccv_ooe_rcu_issue
   bool copy = false;    ///< the copy-only op (A-38): opcode CCV_OP_PRF_COPY
   bool send_imm = false;
   uint32_t imm = 0;
+  /// Width codes (AR-24 (d)): each source's, the destination's (which the
+  /// merge source shares), from the registers' committed widths at rename;
+  /// chwidth the op's, its destination's, else its first source's.
+  unsigned src_w[3] = {}, dst_w = 0;
   unsigned chwidth = 0;
   bool guarded = false;          ///< for the adapter's coverage only
   uint8_t gpr_reads = 0;         ///< likewise
@@ -596,8 +663,11 @@ struct Memop {          ///< ccv_ooe_miu_memop
   uint32_t disp = 0;             ///< the uop's imm; the discard tail on 0xF
   bool scale_en = false;
   unsigned space = 0, ordering = 0, chwidth = 0;
+  unsigned data_pos = 0;   ///< the data register's position (its pipes start there; AR-24 (d))
   unsigned slot_form = 0, arg_slot = 0;   ///< DEC's, unexamined (TI-31)
   unsigned local_form = 0;                ///< DEC's, unexamined (IS-19)
+  unsigned xfer_size = 0;                 ///< DEC's (O-80): 0 chwidth's, 1 a byte, 2 a halfword
+  bool xfer_signed = false;
 };
 struct Commit {         ///< ccv_ooe_miu_retire
   uint64_t tid = 0;
@@ -610,10 +680,21 @@ struct Redirect {       ///< ccv_ooe_fet_redirect
   uint32_t taken_mask = 0;
   uint64_t target_pc = 0;
   bool epoch_only = false;
+  /// A ret's redirect (AR-24 (b), OA's rev 223): the branch's active lanes
+  /// not in taken_mask stay at the ret, to re-issue with their own targets.
+  bool stay = false;
   /// A demotion's rewind beat (TI-24 (3), OA's revs 150-151; TI's e95a6a8):
   /// with epoch_only, FET sets the PCs of the lanes in taken_mask to
   /// target_pc, each the oldest unretired uop of those lanes.
   bool rewind = false;
+  /// TI-40 (AR's rev 164): a beat of a warp held behind a converged wait,
+  /// which retired; FET sets the lanes to target_pc less the wait's length,
+  /// held_long (0 16 bits, 1 32).
+  bool rewind_held = false, held_long = false;
+  /// own_pc (AR's rev 176, FET spec rev 24): the held warp has no unretired
+  /// uop, so FET rewinds from its own PC less the wait's length and ignores
+  /// target_pc, which the model still sets past the wait.
+  bool own_pc = false;
 };
 struct Status {         ///< ccv_ooe_rau_status
   unsigned warp = 0;
@@ -638,12 +719,18 @@ struct Drained {        ///< ccv_ooe_rau_drained
 struct RatMap {         ///< ccv_ooe_rcu_map
   unsigned warp = 0, direction = 0;
   std::array<unsigned, kArchGprs> gpr{};
+  /// Each register's committed width code (gpr_width; TI's rev 184).
+  std::array<unsigned, kArchGprs> w{};
   std::array<unsigned, kArchPreds> pred{};
 };
-struct Bar {            ///< ccv_ooe_syu_bar
+struct Bar {            ///< ccv_ooe_syu_bar (TI-40): a report at retire
   unsigned warp = 0, cta_slot = 0, barrier_id = 0;
-  bool wait = true;
+  unsigned kind = 1;             ///< bar_kind: 0 arrive, 1 wait, 2 wait.phase, 3 exit
+  uint32_t issue_mask = 0, guard_mask = ~0u, phase_mask = 0;
+  bool held = false;             ///< a converged wait OOE holds rename behind
+  uint64_t tid = 0;
 };
+enum : unsigned { kBarArrive = 0, kBarWait = 1, kBarWaitPhase = 2, kBarExit = 3 };
 
 /// Everything the core sends in one cycle. The adapter drains it.
 struct Outputs {
@@ -869,9 +956,10 @@ public:
 
   // -- inputs. Completions and RAU's messages before cycle(), and they take
   // effect in it; uops after it (the decode queue is written behind rename).
-  /// Can the decode queue take a uop of this warp? (Credit: the adapter
-  /// leaves a uop in the channel while this is false.)
-  bool canAccept(unsigned warp) const;
+  /// Can the decode queue take n uops of this warp? (Credit: the adapter
+  /// leaves a uop in the channel while this is false.) A CAS's two slots
+  /// arrive together, on credit for both (TI-39).
+  bool canAccept(unsigned warp, unsigned n = 1) const;
   /// Decode-queue entries the credit check counts as held: the queue, plus
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {
@@ -977,6 +1065,13 @@ private:
     // branch
     bool resolved = false, taken = false;
     uint32_t taken_mask = 0;
+    uint32_t ret_aux = 0;              ///< a ret's target offset, its done's aux (AR-24 (b))
+    uint32_t bar_guard = ~0u;          ///< a guarded barrier's guard lanes, from its done (TI-40)
+    uint32_t bar_phase = 0;            ///< wait.phase's expected phases, from its done's aux
+    /// Width codes at rename (AR-24 (d)): each source's, a CAS's two, the
+    /// destination's, from the committed table. A register read before any
+    /// write is the zero name, so the table, not the name, holds its width.
+    uint8_t wsrc[3] = {}, wcas[2] = {}, wdst = 0;
     bool ckpt_live = false;
     // fault
     bool fault = false;
@@ -993,6 +1088,7 @@ private:
     unsigned rs_a2 = kNoEntry, rs_a3 = kNoEntry;
     unsigned ptmp_t = kNoEntry, ptmp_n = kNoEntry;   ///< temporaries, kNoEntry when none
     unsigned atom_t = 0;               ///< T: pnew or ptmp_t
+    unsigned pcas[2] = {};             ///< a CAS's A2 operands, rs_cmp and rs_swap (TI-39)
     bool atom_started = false;         ///< its first A1 has issued
     bool atom_pass = false;            ///< a pass in flight: A1 issued, A3 not complete
     bool atom_final = false;           ///< the last pass's A3 completed (more = 0), or A1 faulted
@@ -1067,6 +1163,15 @@ private:
     unsigned fa_idx = 0;
     uint64_t fa_addr = 0;
     unsigned bar_id = 0;                      ///< the held barrier (events)
+    /// TI-40 (AR's revs 163-164): the held wait has retired, its length (a
+    /// 32-bit instruction) and its lanes, for a demotion's beat.
+    bool bar_retired = false, bar_long = false;
+    uint32_t bar_mask = 0;
+    /// The barrier demotion timer (OA's rev 200 (3)): from a held wait's
+    /// retire, or a marked uop's that leaves nothing younger in the ROB,
+    /// until the hold lifts or (unheld) the warp's next uop arrives.
+    bool bar_idle = false, bar_idle_reported = false;
+    uint64_t bar_idle_since = 0;
     unsigned home_ctr = 0;                    ///< OA-14's rotating home position
     unsigned chwidth_rob = 0;                 ///< the holding instruction
     bool fault_stop = false;                  ///< V-24
@@ -1161,6 +1266,8 @@ private:
   /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
   /// 4 RCU (R), 5-8 MIU pipes P0-P3.
   unsigned resOf(const RobEntry &r, bool copy_half, bool widen = true) const;
+  unsigned dataName(const RobEntry &r) const;
+  unsigned dataWidth(const RobEntry &r) const;
   /// An RS entry's resources: resOf for its ROB entry, or an atomic step's.
   unsigned resEntry(unsigned e, bool widen = true) const;
   void selectSectioned();
@@ -1276,6 +1383,9 @@ public:
       /// memop or a cross-lane op).
       uint8_t greads = 0, cgroup = 0, unit = 0, pgroup = 0;
       bool gmerge = false, pguse = false, cguard = false, pmerge = false, nob = false, atomic = false;
+      /// Width codes at rename (AR-24 (d)): src0..2's and the destination's.
+      uint8_t wsrc[3] = {}, wdst = 0;
+      bool wset = false;   ///< a chwidth or sibling: wdst is the width it sets
     };
     struct Ret {
       unsigned slot = 0, dst = 0, gname = 0, pdst = 0, pname = 0;
@@ -1285,6 +1395,11 @@ public:
     uint32_t squash = 0, release = 0;                       ///< slot masks
     std::vector<Ret> ret;
     std::vector<Ren> ren;
+    /// Each slot's committed width table after the cycle (AR-24 (d)), and
+    /// whether the cycle changed it: a chwidth's or sibling's retire, a
+    /// launch, a restore-allocate.
+    std::vector<std::array<uint8_t, kArchGprs>> cw;
+    uint32_t cw_changed = 0;
   };
   const RatLog &ratLog() const { return rlog_; }
   /// What rename's go read and did this cycle (slice 4, test/ooe/go_tb.cpp),
@@ -1300,7 +1415,12 @@ public:
     unsigned prio = 0;
     uint32_t flush = 0;                       ///< slots a squash flushed this cycle, before the go
     unsigned cred[4] = {}, owed[2] = {};
-    std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
+    /// Each credit's pool as the go's split reads it, before the allowances
+    /// held (fits_stale 6): for the names, OI-76's lagged pool, which trails
+    /// cred - owed by a cycle when a slot above its floor frees.
+    unsigned pin[4] = {};
+    bool pin_set = false;
+    std::vector<std::vector<uint16_t>> adm;  ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;
     std::vector<uint8_t> reach, hold;
     std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
@@ -1314,7 +1434,7 @@ public:
   };
   const GoLog &goLog() const { return golog_; }
   /// A uop's admission bits as decq holds them (GoLog).
-  uint8_t admBits(const Uop &u) const;
+  uint16_t admBits(const Uop &u) const;
   /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
   unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
   unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
@@ -1414,6 +1534,10 @@ private:
   std::vector<uint8_t> go_reach_;            ///< and whether it reaches the head
   std::vector<unsigned> go_room_;            ///< the ROB room this cycle's take may use, registered last cycle
   std::vector<uint8_t> go_hold_;             ///< each slot's holds as the cycle starts (inactive, fault, chwidth, barrier)
+  std::vector<std::array<uint8_t, kArchGprs>> cw_prev_;   ///< each slot's width table after the last cycle (RatLog::cw)
+  /// Which hold it is, for the split counter (TI's rev 188): the first of
+  /// not active, chwidth, barrier, other (a fault stop).
+  std::vector<const char *> go_hold_why_;
   unsigned ren_margin_ = 0;               ///< fits_conservative's margin this cycle
   bool ren_late_frees_ = false;           ///< fits_conservative 3, a short cycle: this cycle's RS frees unseen
   std::vector<uint8_t> rob_prompt_;       ///< ROB slots freed this cycle that rename sees in it
@@ -1444,6 +1568,19 @@ private:
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
   std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
+  std::vector<unsigned> took2_;                  ///< of them, CAS pairs' second slots, which take no ROB entry (OI-79)
+  /// OI-80's liveness rule: per slot, its head refused on its share this
+  /// cycle, and the cycles running its head has so waited while the credit
+  /// covered its need.
+  std::vector<uint8_t> share_refused_;
+  std::vector<unsigned> share_wait_;
+  unsigned split_pool_[4] = {0, 0, 0, 0};       ///< the pool the last split divided (fits_stale 6)
+  /// The need the rotation's slot reserves (OI-80): its head's as the last
+  /// rotation step saw it, registered with the rotation.
+  std::array<unsigned, 4> first_need_{};
+  /// A head's needs per credit (RCU rows, MIU rows, names, predicates),
+  /// from its admission bits.
+  static std::array<unsigned, 4> headNeed(uint16_t a);
   /// The go's ceiling term (OI-73 (3), OA's rev 207): each slot's room to
   /// its ceiling per class as registered at the last cycle's start, and the
   /// names the slot was charged last cycle. A take is admitted while the
@@ -1575,8 +1712,13 @@ public:
   /// A destination's width at rename: its committed width (OI-57; OA's rev
   /// 166). chwidth holds rename until it retires, so the table is current.
   unsigned dstWidth(unsigned slot, const Uop &u) const {
+    // A chwidth's destination is its register at the new width (TI's rev
+    // 185): the width it commits at retire, a sibling's too.
+    if (u.attr.serial == kSerChwidth || u.attr.commit_width) return u.imm & 3u;
     return cfg_.inject_width_from_dec ? u.w : slot_[slot].cw[u.dst & 15];
   }
+  /// The width a destination is allocated at: a full row under full_rows.
+  unsigned allocWidth(unsigned slot, const Uop &u) const { return cfg_.full_rows ? 0 : dstWidth(slot, u); }
   /// Tests only: a launched warp's committed widths as though its chwidths
   /// had retired (launch itself sets every register to 32 bits, A-64).
   void presetWidths(unsigned slot, const std::array<uint8_t, 16> &cw) { slot_[slot].cw = cw; }
@@ -1588,6 +1730,7 @@ public:
   /// No GPR destination on the issue and the memop (TI-37).
   unsigned noGpr() const { return cfg_.inject_none_row_zero ? 0 : zeroName(); }
   unsigned nameWidth(unsigned n) const { return n < gw_.size() ? gw_[n] : 0; }
+
   /// The sections a register occupies; none for the zero register.
   unsigned sectionsOf(unsigned n) const {
     if (isZeroName(n)) return 0;

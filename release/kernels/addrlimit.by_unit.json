@@ -193,6 +193,15 @@
    "name": "thread_name",
    "ph": "M",
    "pid": 3,
+   "tid": 44,
+   "args": {
+    "name": "ccv_ooe_syu_bar"
+   }
+  },
+  {
+   "name": "thread_name",
+   "ph": "M",
+   "pid": 3,
    "tid": 30,
    "args": {
     "name": "ccv_ooe_rau_status"
@@ -561,8 +570,8 @@
     "instr_uid": 4611686018427387905,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 4236247040,
-    "payload_hi": 255
+    "payload_lo": 3825205248,
+    "payload_hi": 2047
    }
   },
   {
@@ -577,8 +586,8 @@
     "instr_uid": 4611686018427387904,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 4286578688,
-    "payload_hi": 16777215
+    "payload_lo": 4227858432,
+    "payload_hi": 134217727
    }
   },
   {
@@ -593,8 +602,8 @@
     "instr_uid": 4611686018427387907,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 4194304,
-    "payload_hi": 3758096384
+    "payload_lo": 33554432,
+    "payload_hi": 0
    }
   },
   {
@@ -609,8 +618,8 @@
     "instr_uid": 4611686018427387906,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 1296039936,
-    "payload_hi": 0
+    "payload_lo": 1778384896,
+    "payload_hi": 2
    }
   },
   {
@@ -625,7 +634,7 @@
     "instr_uid": 4611686018427387908,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 128,
+    "payload_lo": 1024,
     "payload_hi": 0
    }
   },
@@ -834,7 +843,7 @@
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 2,
     "payload_lo": 616,
-    "payload_hi": 104
+    "payload_hi": 152
    }
   },
   {
@@ -914,7 +923,7 @@
     "unit": "ccv_rcu_ooe_done",
     "channel_id": 5,
     "payload_lo": 0,
-    "payload_hi": 2
+    "payload_hi": 0
    }
   },
   {
@@ -946,7 +955,7 @@
     "unit": "ccv_rcu_ooe_done",
     "channel_id": 5,
     "payload_lo": 0,
-    "payload_hi": 4
+    "payload_hi": 0
    }
   },
   {
@@ -1042,7 +1051,7 @@
     "unit": "ccv_ooe_miu_memop",
     "channel_id": 8,
     "payload_lo": 0,
-    "payload_hi": 4026612736
+    "payload_hi": 2148130816
    }
   },
   {
@@ -1123,6 +1132,22 @@
     "channel_id": 10,
     "payload_lo": 7,
     "payload_hi": 0
+   }
+  },
+  {
+   "name": "EV_CH_XFER",
+   "cat": "load_bearing",
+   "ph": "i",
+   "s": "t",
+   "ts": 53,
+   "pid": 3,
+   "tid": 44,
+   "args": {
+    "instr_uid": 4611686018427387908,
+    "unit": "ccv_ooe_syu_bar",
+    "channel_id": 44,
+    "payload_lo": 0,
+    "payload_hi": 4294967294
    }
   },
   {
@@ -1322,6 +1347,6 @@
  "ccv": {
   "schema_version": 2,
   "schema_hash": "727da17b3c4367e2",
-  "events": 66
+  "events": 67
  }
 }

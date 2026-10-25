@@ -543,7 +543,7 @@
     "instr_uid": 4611686018427387905,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 41943040,
+    "payload_lo": 335544320,
     "payload_hi": 0
    }
   },
@@ -559,8 +559,8 @@
     "instr_uid": 4611686018427387904,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 67108864,
-    "payload_hi": 16777216
+    "payload_lo": 536870912,
+    "payload_hi": 134217728
    }
   },
   {
@@ -575,8 +575,8 @@
     "instr_uid": 4611686018427387907,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 1296039936,
-    "payload_hi": 0
+    "payload_lo": 1778384896,
+    "payload_hi": 2
    }
   },
   {
@@ -591,7 +591,7 @@
     "instr_uid": 4611686018427387906,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 4194304,
+    "payload_lo": 33554432,
     "payload_hi": 0
    }
   },
@@ -607,8 +607,8 @@
     "instr_uid": 4611686018427387908,
     "unit": "ccv_dec_ooe_uop",
     "channel_id": 1,
-    "payload_lo": 1078198272,
-    "payload_hi": 3758096384
+    "payload_lo": 35651584,
+    "payload_hi": 2
    }
   },
   {
@@ -864,7 +864,7 @@
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 2,
     "payload_lo": 0,
-    "payload_hi": 104
+    "payload_hi": 152
    }
   },
   {
@@ -912,7 +912,7 @@
     "unit": "ccv_ooe_rcu_issue",
     "channel_id": 2,
     "payload_lo": 616,
-    "payload_hi": 104
+    "payload_hi": 152
    }
   },
   {
@@ -928,7 +928,7 @@
     "unit": "ccv_rcu_ooe_done",
     "channel_id": 5,
     "payload_lo": 0,
-    "payload_hi": 2
+    "payload_hi": 0
    }
   },
   {
@@ -992,7 +992,7 @@
     "unit": "ccv_rcu_ooe_done",
     "channel_id": 5,
     "payload_lo": 0,
-    "payload_hi": 4
+    "payload_hi": 0
    }
   },
   {
@@ -1024,7 +1024,7 @@
     "unit": "ccv_rcu_ooe_done",
     "channel_id": 5,
     "payload_lo": 0,
-    "payload_hi": 6
+    "payload_hi": 0
    }
   },
   {
@@ -1119,8 +1119,8 @@
     "instr_uid": 4611686018427387908,
     "unit": "ccv_ooe_miu_memop",
     "channel_id": 8,
-    "payload_lo": 528384,
-    "payload_hi": 4026612736
+    "payload_lo": 4227072,
+    "payload_hi": 2148130816
    }
   },
   {
@@ -1199,7 +1199,7 @@
     "instr_uid": 4611686018427387904,
     "unit": "ccv_ooe_fet_redirect",
     "channel_id": 11,
-    "payload_lo": 24,
+    "payload_lo": 96,
     "payload_hi": 0
    }
   },
@@ -1215,8 +1215,8 @@
     "instr_uid": 4611686018427387908,
     "unit": "ccv_ooe_miu_memop",
     "channel_id": 8,
-    "payload_lo": 32768,
-    "payload_hi": 983040
+    "payload_lo": 262144,
+    "payload_hi": 7864320
    }
   },
   {

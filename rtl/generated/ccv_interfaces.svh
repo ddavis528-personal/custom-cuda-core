@@ -197,6 +197,8 @@ typedef struct packed {
   logic                                          slot_form;
   logic [4-1:0]                                  arg_slot;
   logic                                          local_form;
+  logic [2-1:0]                                  xfer_size;
+  logic                                          xfer_signed;
 } ccv_dec_ooe_uop_t;
 
 typedef struct packed {
@@ -254,6 +256,7 @@ typedef struct packed {
   logic [ccv_prov_pkg::CCV_P_W_ROB_TAG-1:0]      rob_tag;
   logic                                          branch_taken;
   logic [ccv_params_pkg::CCV_W_LANE_MASK-1:0]    branch_mask;
+  logic [32-1:0]                                 aux;
 } ccv_rcu_ooe_done_t;
 
 typedef struct packed {
@@ -295,6 +298,8 @@ typedef struct packed {
   logic                                          slot_form;
   logic [4-1:0]                                  arg_slot;
   logic                                          local_form;
+  logic [2-1:0]                                  xfer_size;
+  logic                                          xfer_signed;
 } ccv_ooe_miu_memop_t;
 // OVERLAY discard_tail: disp[0 +: CCV_P_W_ROB_IDX], valid only when mem_op == 0xF.
 localparam int CCV_OOE_MIU_MEMOP_DISCARD_TAIL_LSB = 0;
@@ -327,6 +332,8 @@ typedef struct packed {
   logic                                          rewind;
   logic                                          rewind_held;
   logic                                          held_long;
+  logic                                          own_pc;
+  logic                                          stay;
 } ccv_ooe_fet_redirect_t;
 
 typedef struct packed {

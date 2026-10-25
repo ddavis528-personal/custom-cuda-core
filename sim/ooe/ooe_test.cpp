@@ -90,15 +90,22 @@ struct Op {
   unsigned dst = 0, src[3] = {}, nsrc = 0, pdst = 0, pguard = 0, pq[2] = {};
   bool guard = false, cross = false, taken = false, pred_taken = false;
   uint32_t mask = kFullMask;
+  uint32_t tmask = kFullMask;    ///< kBranch: the lanes that take it, when taken
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
   unsigned chw = 2;              ///< kChw: the width code it sets on dst
   unsigned fmt_rsv = 0, fmt_opnd = 0;   ///< F-FORMAT's decoded inputs
-  // kAtomic (AR-21): src[0] the address, src[1] the operand, dst rd (atom)
+  // kAtomic (AR-21; O-72, TI-39): src[0] rbase, src[1] rindex (A1's
+  // base+index address), src[2] rs (an RMW's operand), dst rd (atom)
   // unless red; MIU runs it in `passes` passes, or faults its first read.
+  // cas: a CAS, two decode slots, the second with rs_cmp and rs_swap
+  // (csrc, ncsrc of them read) and the destination; late2, the second
+  // reaches DEC a cycle after the first.
   unsigned passes = 1;
   bool red = false, afault = false;
+  bool cas = false, late2 = false;
+  unsigned csrc[2] = {}, ncsrc = 0;
   /// kExit (TI-27): last, its fetch clears the warp's last live lanes, so
   /// FET fetches no further; final, the mark FET sends (the last exit's, or
   /// under the control the exit before it).
@@ -110,6 +117,23 @@ struct Op {
   /// cycles after its issue, or 0 for the environment's DRAM draw.
   bool dram = false;
   unsigned fill = 0;
+  /// kBarrier (TI-40, TI-41): arrive, bar.arrive (serial 4) rather than a
+  /// wait; phase, wait.phase, its expected phases a predicate data source;
+  /// aw, FET's all_waiting mark (a converged wait, held at rename). lanes:
+  /// a guarded one's guard lanes, or wait.phase's phases, on its done. An
+  /// unguarded arrive or wait completes without issue.
+  /// mark: all_waiting on any other kind (the barrier timer's start).
+  bool arrive = false, phase = false, aw = true, mark = false;
+  /// kChw: a chwidth.multi sibling (AR-24 (c)): serial 0 and commit_width.
+  bool sibling = false;
+  bool chw_writes = false;   ///< kChw: writes its register (DEC's gdst), so it renames a destination
+  bool diverged = false;     ///< kChw: FET's converged mark clear (O-81), so it faults
+  unsigned xfer = 0;         ///< a memop's sized transfer (O-80): 0 rdata's width, 1 a byte, 2 a halfword
+  /// kBranch: a ret (AR-24 (b)), its target offset in the code window on
+  /// its done's aux.
+  bool ret = false;
+  uint32_t ret_to = 0;
+  uint32_t lanes = 0;
 };
 
 Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned ckpt) {
@@ -160,9 +184,11 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     break;
   case kStore: u.attr_raw = attr(1, 0, 0, 0, 0, 1, 0, 0, 3); break;
   case kAtomic:
-    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined.
-    u.attr_raw = attr(1, 0, 0, !o.red, 0, 2, 0, 0, 3);
-    u.opcode = 0x2A;
+    // mem_kind atomic: OOE splits it; the opcode is A2's, unexamined. A
+    // CAS's first slot names no destination; its second does (casSecond).
+    u.attr_raw = attr(1, 0, 0, !o.red && !o.cas, 0, 2, 0, 0, 3);
+    u.opcode = o.cas ? 0x2B : 0x2A;
+    if (o.cas) u.attr_raw |= 1u << 17;
     break;
   case kBranch:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 1, 0, 0);
@@ -170,17 +196,42 @@ Uop makeUop(const Op &o, unsigned warp, uint64_t tid, unsigned epoch, unsigned c
     u.ckpt = ckpt;
     u.pred_taken = o.pred_taken;
     u.imm = 8;
+    if (o.ret) u.attr_raw |= 1u << 19;
     break;
   case kExit:
     u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 0, 0);
     u.shape.exit = true;
     u.shape.final_exit = o.final;
     break;
-  case kBarrier: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 2, 0); u.imm = 3; break;
-  case kChw: u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, 1, 0); u.imm = o.chw; break;
+  case kBarrier:
+    u.attr_raw = attr(0, 1, 0, 0, 0, 0, 0, o.arrive ? kSerArrive : kSerBarrier, 0);
+    u.imm = 3;
+    u.shape.pdata = o.phase;
+    break;
+  case kChw:
+    u.attr_raw = attr(0, 1, 0, o.chw_writes, 0, 0, 0, o.sibling ? 0 : 1, 0) | (o.sibling ? 1u << 20 : 0u);
+    u.imm = o.chw;
+    break;
   }
+  // A chwidth carries FET's converged mark (O-81) unless the test diverges it.
+  u.all_waiting = o.k == kBarrier ? o.aw && !o.arrive : o.k == kChw ? !o.diverged : o.mark;
+  u.xfer_size = o.xfer;
   u.attr_raw |= pgroupOf(o.k) << 14;
-  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & 0x3fffu) | Config::kGrpAddr << 14;
+  if (o.k == kLoad || o.k == kStore || o.k == kAtomic) u.attr_raw = (u.attr_raw & ~(7u << 14)) | Config::kGrpAddr << 14;
+  u.attr = SchedAttr::decode(u.attr_raw);
+  return u;
+}
+
+/// A CAS's second decode slot (TI-39, AR's rev 156): rs_cmp and rs_swap,
+/// the destination, the first slot's instruction, marked second.
+Uop casSecond(const Op &o, const Uop &first) {
+  Uop u = first;
+  u.src[0] = o.csrc[0];
+  u.src[1] = o.csrc[1];
+  u.src[2] = 0;
+  u.shape.gpr_reads = uint8_t((1u << o.ncsrc) - 1u);
+  u.dst = o.dst;
+  u.attr_raw = (first.attr_raw & ~(1u << 17)) | 1u << 18 | 1u << 10;   // writes_gpr: rd
   u.attr = SchedAttr::decode(u.attr_raw);
   return u;
 }
@@ -635,11 +686,15 @@ struct Env {
         correct[tid] = corr;
         Uop u = makeUop(o, x.id, tid, x.epoch, ck);
         fetched.insert({t + fetch_delay, u});
+        // A CAS is two slots of one instruction; nothing of the warp is
+        // fetched between them (a late second ends the cycle's fetch).
+        const bool cas = o.k == kAtomic && o.cas;
+        if (cas) fetched.insert({t + fetch_delay + (o.late2 ? 1 : 0), casSecond(o, u)});
         if (o.k == kBranch) x.ckpt_of[tid] = ck;
         if (corr) {
           tid_at[{x.id, x.next}] = tid;
           idx_of[tid] = x.next++;
-          if (o.k == kBranch && o.taken != o.pred_taken) {
+          if (o.k == kBranch && (o.taken != o.pred_taken || (o.pred_taken && o.taken && o.tmask != kFullMask))) {
             x.wrong = true;                      // fetch the wrong path until redirected
             x.wrong_branch_tid = tid;
             x.junk = 0;
@@ -647,6 +702,7 @@ struct Env {
           }
           if (o.k == kExit && o.last) break;
         }
+        if (cas) break;
       }
     }
   }
@@ -806,8 +862,13 @@ struct Env {
       d.rob_tag = is.rob_tag;
       if (o.k == kBranch) {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
-        d.branch_mask = d.branch_taken ? kFullMask : 0;
+        d.branch_mask = d.branch_taken ? (correct[is.tid] ? o.tmask : kFullMask) : 0;
+        if (o.ret) d.aux = o.ret_to;
       }
+      // A guarded barrier's guard lanes on branch_mask, wait.phase's
+      // phases on aux (TI-40, OA's rev 226).
+      if (o.k == kBarrier && o.guard) d.branch_mask = o.lanes;
+      if (o.k == kBarrier && o.phase) d.aux = o.lanes;
       dones.insert({doneRoom(t + (rcu_fast ? 2 : bound)), d});
     }
   }
@@ -820,7 +881,14 @@ struct Env {
     if (is.res == Issue::kMemop) {
       const size_t before = viol[is.tid].size();
       if (gpr(is.pdst)) {
-        if (is.gpr_reads & 1u) checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
+        // A1: the address is rbase and rindex, as many as the op reads
+        // (O-72's base+index; TI-39).
+        const unsigned want = (1u << std::min(o.nsrc, 2u)) - 1u;
+        if ((is.gpr_reads & 3u) != want)
+          errors.push_back("TI-39: tid " + std::to_string(is.tid) + "'s A1 reads address sources " +
+                           std::to_string(is.gpr_reads & 3u) + ", want " + std::to_string(want));
+        for (unsigned i = 0; i != 2; ++i)
+          if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpAddr));
       } else {
         checkRead(is.tid, is.psrc[0], false, int(Config::kGrpAddr));
       }
@@ -836,6 +904,11 @@ struct Env {
     if (!a.hold) errors.push_back("AR-21: tid " + std::to_string(is.tid) + "'s lane op issues outside a pass");
     else if (t < a.t_ready)
       violation(is.tid, "A2 reads T at " + std::to_string(t) + ", readable at " + std::to_string(a.t_ready));
+    // A2's operands after T: an RMW's rs, a CAS's rs_cmp and rs_swap.
+    const unsigned want = o.cas ? (1u << o.ncsrc) - 1u : o.nsrc >= 3 ? 1u : 0u;
+    if (((is.gpr_reads >> 1) & 3u) != want || !(is.gpr_reads & 1u))
+      errors.push_back("TI-39: tid " + std::to_string(is.tid) + "'s A2 reads " + std::to_string(is.gpr_reads) +
+                       ", want T and operands " + std::to_string(want));
     for (unsigned i = 1; i != 3; ++i)
       if ((is.gpr_reads >> i) & 1u) checkRead(is.tid, is.psrc[i], false, int(Config::kGrpInt));
     if (o.guard) checkRead(is.tid, is.ppguard, true, -1);
@@ -1207,6 +1280,24 @@ struct Env {
     std::set<unsigned> held;
     for (auto it = fetched.begin(); it != fetched.end() && it->first <= t && n != width;) {
       if (held.count(it->second.warp)) { ++it; continue; }
+      // A CAS's two slots go together, on credit for both (TI-39): its first
+      // alone could wait at the queue's head for a second that no credit
+      // lets in.
+      if (it->second.attr.pair_first) {
+        auto it2 = std::next(it);
+        while (it2 != fetched.end() && it2->second.warp != it->second.warp) ++it2;
+        if (it2 == fetched.end() || it2->first > t || n + 2 > width || !core.canAccept(it->second.warp, 2)) {
+          held.insert(it->second.warp);
+          ++it;
+          continue;
+        }
+        core.uop(it->second);
+        core.uop(it2->second);
+        fetched.erase(it2);
+        it = fetched.erase(it);
+        n += 2;
+        continue;
+      }
       if (!core.canAccept(it->second.warp)) { held.insert(it->second.warp); ++it; continue; }
       core.uop(it->second);
       it = fetched.erase(it);
@@ -1287,9 +1378,9 @@ std::vector<Op> randomProgram(std::mt19937 &rng, unsigned n, bool preds_renamed,
     if ((o.k == kLane || o.k == kSfu || o.k == kLoad) && r(6) == 0) o.mask = 0x0000ffffu;
     // A memory access whose data register is 4 bits wide faults (F-WIDTH,
     // from the committed table rename now reads): keep the data 8 bits or
-    // wider (a load's destination, a store's last source).
+    // wider (a load's destination, a store's first source, src_arch[0]).
     if (o.k == kLoad && width[o.dst] == 3) { o.k = kLane; o.nsrc = 1; }
-    if (o.k == kStore && width[o.src[1]] == 3) o.src[1] = r(4);
+    if (o.k == kStore && width[o.src[0]] == 3) o.src[0] = r(4);
     o.w = width[o.dst];
     o.backward = o.k == kBranch && r(2) == 0;
     p.push_back(o);
@@ -1854,7 +1945,7 @@ bool ctaSlot(bool control) {
   e.keep_log = true;
   std::vector<Op> p;
   Op ld; ld.k = kLoad; ld.dst = 8; ld.nsrc = 1; p.push_back(ld);
-  Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 4; st.src[1] = 8; p.push_back(st);
+  Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 8; st.src[1] = 4; p.push_back(st);
   Op b; b.k = kBarrier; p.push_back(b);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(5, 1, p);
@@ -2276,28 +2367,228 @@ void testFault() {
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
 }
 
-void testBarrier() {
-  g_test = "barrier";
+/// OI-79 (b)'s cut: two warps, one of predicate writes, one of a lane op
+/// and a CAS again and again, so a CAS's first slot often takes the cycle's
+/// last lane and its second would be the next's; the take stops before the
+/// first. Neither warp writes enough GPRs or MIU rows for the cycle's ports
+/// to bind (OI-80), so go_tb holds the RTL's cut to the model's.
+// control: OI-80's liveness rule dropped (inject_no_first_need), which the
+// core's check must catch: the CAS warp's MIU share sits at one.
+void testPairCut(bool control = false) {
+  g_test = "CAS pair cut";
   Config c = baseConfig();
   c.l1_spec = false;
-  Env e(c);
-  e.keep_log = true;
-  std::vector<Op> p;
-  Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
-  Op b; b.k = kBarrier; p.push_back(b);
-  Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
-  Op ex; ex.k = kExit; p.push_back(ex);
-  e.launch(0, 0, p);
-  uint64_t bar_at = 0;
-  for (unsigned k = 0; k != 40; ++k) {
-    e.step();
-    for (const Bar &x : e.log.back().bars) { bar_at = e.t - 1; EXPECT(x.barrier_id == 3, "barrier id"); }
+  c.inject_no_first_need = control;
+  Env e(c, 5);
+  std::vector<Op> a, b;
+  for (unsigned i = 0; i != 60; ++i) { Op s; s.k = kSetp; s.pdst = 1 + i % 3; s.nsrc = 2; a.push_back(s); }
+  for (unsigned i = 0; i != 12; ++i) {
+    Op l; l.k = kLane; l.dst = 3; l.nsrc = 1; b.push_back(l);
+    Op x; x.k = kAtomic; x.cas = true; x.dst = 4; x.src[0] = 5; x.src[1] = 6; x.nsrc = 2;
+    x.csrc[0] = 7; x.csrc[1] = 8; x.ncsrc = 2; b.push_back(x);
   }
-  EXPECT(bar_at, "no barrier wait sent");
-  EXPECT(issueCount(e, 3) == 0, "a uop younger than the barrier issued before release (V-09)");
-  EXPECT(e.w[0].retired.size() == 1, "retired %zu before release", e.w[0].retired.size());
-  e.core.barRelease(1u);
+  Op ex; ex.k = kExit;
+  a.push_back(ex);
+  b.push_back(ex);
+  e.launch(0, 0, a);
+  e.launch(1, 1, b);
   e.finish();
+  if (control) return;
+  EXPECT(e.core.counters["rename.pair_cut"] > 0, "no take was cut before a pair (%llu pairs)",
+         (unsigned long long)e.core.counters["rename.cas_pair"]);
+  EXPECT(e.core.counters["stall.rename_ports"] == 0, "the cycle's ports bound %llu times",
+         (unsigned long long)e.core.counters["stall.rename_ports"]);
+}
+
+/// Every barrier report a run sent, in order.
+std::vector<Bar> barsOf(const Env &e) {
+  std::vector<Bar> v;
+  for (const Outputs &o : e.log) v.insert(v.end(), o.bars.begin(), o.bars.end());
+  return v;
+}
+
+/// Barriers (TI-40, TI-41; AR's revs 161-164, OA's revs 200-204): every
+/// arrive, wait and exit is reported at its retire. A converged wait (FET's
+/// all_waiting) is reported held and holds rename behind it until SYU's
+/// ccv_syu_ooe_rel; a diverged one holds nothing (FET parks its lanes), nor
+/// does an arrive, whose guard lanes come back on its done. The control
+/// bar-no-hold drops the hold, so a younger uop issues before the release.
+void testBarrier() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "barrier held (control)" : "barrier held";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.inject_bar_no_hold = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    Op b; b.k = kBarrier; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 40; ++k) e.step();
+    std::vector<Bar> v = barsOf(e);
+    const bool held = v.size() == 1 && v[0].kind == kBarWait && v[0].held;
+    const bool younger = issueCount(e, 3) != 0;
+    if (control) {
+      const bool caught = younger || !held;
+      std::printf("  %-24s %s\n", "control bar-no-hold", caught ? "caught" : "MISSED");
+      EXPECT(caught, "dropping the hold should let a younger uop issue");
+      continue;
+    }
+    EXPECT(held, "%zu reports, want one held wait", v.size());
+    if (!v.empty()) {
+      EXPECT(v[0].barrier_id == 3, "barrier id %u", v[0].barrier_id);
+      EXPECT(v[0].issue_mask == kFullMask && v[0].guard_mask == ~0u, "masks %08x %08x", v[0].issue_mask, v[0].guard_mask);
+    }
+    EXPECT(!younger, "a uop younger than the held wait issued before release (V-09)");
+    EXPECT(issueCount(e, 2) == 0, "an unguarded wait issued: it completes without issue, as exit");
+    EXPECT(e.w[0].retired.size() == 2, "retired %zu before release: the wait retires", e.w[0].retired.size());
+    e.core.barRelease(1u);
+    e.finish();
+    v = barsOf(e);
+    EXPECT(v.size() == 2 && v[1].kind == kBarExit && v[1].issue_mask == kFullMask, "%zu reports, want the exit's", v.size());
+    EXPECT(e.core.counters["bar.release"] == 1, "releases %llu", (unsigned long long)e.core.counters["bar.release"]);
+  }
+  {
+    // A diverged wait: reported, not held; a release before it is stale.
+    g_test = "barrier diverged";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBarrier; b.aw = false; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.core.barRelease(1u);
+    e.finish();
+    const std::vector<Bar> v = barsOf(e);
+    EXPECT(v.size() == 2 && v[0].kind == kBarWait && !v[0].held,
+           "%zu reports, want an unheld wait", v.size());
+    EXPECT(e.core.counters["hold.barrier"] == 0, "a diverged wait held rename");
+    EXPECT(e.core.counters["bar.release_dropped"] == 1, "the stale release was not dropped");
+  }
+  for (const bool guarded : {false, true}) {
+    // bar.arrive: no hold; a guarded one's guard lanes from its done.
+    g_test = "barrier arrive";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBarrier; b.arrive = true; b.guard = guarded; b.lanes = 0x00ff00ff; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    const std::vector<Bar> v = barsOf(e);
+    EXPECT(v.size() == 2 && v[0].kind == kBarArrive && !v[0].held, "%zu reports, want an arrive", v.size());
+    if (!v.empty())
+      EXPECT(v[0].guard_mask == (guarded ? 0x00ff00ffu : ~0u), "guard lanes %08x", v[0].guard_mask);
+    EXPECT(e.core.counters["hold.barrier"] == 0, "an arrive held rename");
+    EXPECT(issueCount(e, 1) == (guarded ? 1u : 0u), "the arrive issued %u times: only a guarded one goes to RCU",
+           issueCount(e, 1));
+  }
+  {
+    // wait.phase: its expected phases from its done; held as a wait.
+    g_test = "barrier wait.phase";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op b; b.k = kBarrier; b.phase = true; b.lanes = 0x5555aaaa; p.push_back(b);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 40; ++k) e.step();
+    const std::vector<Bar> v = barsOf(e);
+    EXPECT(v.size() == 1 && v[0].kind == kBarWaitPhase && v[0].held && v[0].phase_mask == 0x5555aaaa,
+           "%zu reports, want a held wait.phase", v.size());
+    e.core.barRelease(1u);
+    e.finish();
+  }
+}
+
+/// A demotion of a warp held behind a retired converged wait (TI-40, AR's
+/// rev 164): its rewind beat sets rewind_held, and held_long for a 32-bit
+/// wait, at the PC past the wait, whether a younger uop waits in the
+/// decode queue or nothing does. The control beat-unheld drops the flag.
+void testBarrierDemote() {
+  for (const bool control : {false, true}) {
+    for (const bool tail : {true, false}) {
+      g_test = control ? "barrier demote (control)" : "barrier demote";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_beat_unheld = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBarrier; p.push_back(b);
+      if (tail) { Op d; d.k = kLane; d.dst = 2; d.nsrc = 1; p.push_back(d); }
+      e.launch(0, 0, p);
+      for (unsigned k = 0; k != 40; ++k) e.step();
+      uint64_t wait_pc = 0;
+      for (const Outputs &o : e.log)
+        for (const Bar &x : o.bars) wait_pc = 0x1000 + 4 * (x.tid & 0xffff);
+      e.core.demote(0);
+      std::vector<Redirect> beats;
+      for (unsigned k = 0; k != 40; ++k) {
+        e.step();
+        for (const Redirect &r : e.log.back().redirects) if (r.rewind) beats.push_back(r);
+      }
+      const bool flagged = beats.size() == 1 && beats[0].rewind_held && beats[0].held_long &&
+                           beats[0].own_pc == !tail;
+      if (control) {
+        if (tail) {
+          std::printf("  %-24s %s\n", "control beat-unheld", !flagged ? "caught" : "MISSED");
+          EXPECT(!flagged, "dropping the flag should leave the beat unheld");
+        }
+        continue;
+      }
+      EXPECT(wait_pc, "no wait report");
+      EXPECT(flagged, "%zu beats, want one with rewind_held, held_long, and own_pc iff nothing follows",
+             beats.size());
+      if (!beats.empty()) {
+        EXPECT(beats[0].target_pc == wait_pc + 4, "beat at %llx, the wait at %llx",
+               (unsigned long long)beats[0].target_pc, (unsigned long long)wait_pc);
+        EXPECT(beats[0].taken_mask == kFullMask, "beat lanes %08x", beats[0].taken_mask);
+      }
+      EXPECT(e.core.counters["demote.held_wait"] == 1, "the demotion did not see the held wait");
+      EXPECT(e.core.counters["errors"] == 0, "errors");
+    }
+  }
+}
+
+/// The barrier demotion timer (TI-40): from a held wait's retire, or a
+/// marked uop's that leaves the ROB empty, the trigger fires once the ROB
+/// has stayed empty past demote_barrier; a younger uop's arrival stops it.
+void testBarrierTimer() {
+  // Held wait; a marked lane op (no start: AR's rev 186); a marked partial
+  // exit; a marked partial exit with more behind it.
+  for (const unsigned mode : {0u, 1u, 2u, 3u}) {
+    g_test = "barrier timer";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    c.demote_barrier = 30;
+    Env e(c);
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 1; a.nsrc = 1; p.push_back(a);
+    if (mode == 0) { Op b; b.k = kBarrier; p.push_back(b); }
+    else if (mode == 1) { Op m; m.k = kLane; m.dst = 2; m.nsrc = 1; m.mark = true; p.push_back(m); }
+    else { Op m; m.k = kExit; m.mark = true; p.push_back(m); }
+    if (mode == 3) {
+      Op d; d.k = kLane; d.dst = 3; d.nsrc = 1; p.push_back(d);
+      Op ex; ex.k = kExit; ex.last = ex.final = true; p.push_back(ex);
+    }
+    e.launch(0, 0, p);
+    for (unsigned k = 0; k != 120; ++k) e.step();
+    const unsigned long long fired = e.core.counters["demote_trigger.barrier"];
+    EXPECT(fired == (mode == 0 || mode == 2 ? 1u : 0u), "mode %u: %llu barrier triggers", mode, fired);
+  }
 }
 
 /// F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
@@ -2321,7 +2612,7 @@ void testBarrierFault() {
       unsigned bars = 0, faults = 0, cause = 0;
       for (unsigned k = 0; k != 40; ++k) {
         e.step();
-        bars += unsigned(e.log.back().bars.size());
+        for (const Bar &x : e.log.back().bars) bars += x.kind != kBarExit;
         for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
       }
       const bool want_fault = count <= 3 && !control;
@@ -2544,7 +2835,222 @@ void testChwidth() {
   e.launch(0, 0, p);
   e.finish();
   for (const Outputs &o : e.log) for (const Issue &i : o.issues)
-    if (i.tid == 2) EXPECT(i.chwidth == 2, "the younger op read chwidth %u, not the committed one", i.chwidth);
+    if (i.tid == 2)   // AR-24 (d): each operand its own register's width
+      EXPECT(i.src_w[0] == 2 && i.dst_w == 0, "the younger op read widths %u (R0) and %u (R2), not the committed 2 and 0",
+             i.src_w[0], i.dst_w);
+  // The registered hold's split (TI's rev 188): each refusal counted once
+  // under its cause, the chwidth's here, summing to the total.
+  auto &k = e.core.counters;
+  const unsigned long long tot = k["hold.registered"],
+      sum = k["hold.registered.inactive"] + k["hold.registered.chwidth"] + k["hold.registered.barrier"] +
+            k["hold.registered.other"];
+  EXPECT(tot == sum, "hold.registered %llu, its split sums to %llu", tot, sum);
+  EXPECT(k["hold.registered.chwidth"] > 0, "no registered hold behind the chwidth (%llu in all)", tot);
+  // The head-wait split (TI's rev 193) sums to its total.
+  unsigned long long hw = 0;
+  for (const char *c : {"rob_full", "load_at_miu", "load_unissued", "store", "mem_other", "branch", "rcu",
+                        "lane_unissued", "lane_unconfirmed", "lane_confirmed"})
+    hw += k[std::string("retire.head_wait.") + c];
+  EXPECT(hw == k["retire.head_wait"] && hw > 0, "retire.head_wait %llu, its split %llu",
+         (unsigned long long)k["retire.head_wait"], hw);
+}
+
+/// V-41 (FET spec rev 28, TI's rev 199): a branch or ret FET predicts taken
+/// is right only if every active lane took it. Taken by half its group, it
+/// is a mispredict: one redirect, for the lanes that took it (a ret with
+/// stay). The control partial-taken counts it right, so nothing redirects.
+void testPartialTaken(bool control = false) {
+  for (const bool ret : {false, true}) {
+      g_test = ret ? "partial taken ret" : "partial taken branch";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_partial_taken_ok = control;
+      Env e(c, 7);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 3; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBranch; b.taken = b.pred_taken = true; b.tmask = 0x0000ffffu; b.ret = ret; b.ret_to = 0x2468;
+      p.push_back(b);
+      Op d; d.k = kLane; d.dst = 4; d.nsrc = 1; p.push_back(d);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      e.finish();
+      unsigned n = 0;
+      for (const Outputs &o : e.log)
+        for (const Redirect &r : o.redirects)
+          if (!r.epoch_only) {
+            ++n;
+            EXPECT(r.taken_mask == 0x0000ffffu, "redirect lanes %08x", r.taken_mask);
+            EXPECT(r.stay == ret, "stay %u", unsigned(r.stay));
+          }
+      EXPECT(n == 1, "%u redirects", n);
+      EXPECT(e.core.counters["branch.mispredict"] == 1, "mispredicts %llu",
+             (unsigned long long)e.core.counters["branch.mispredict"]);
+    }
+}
+
+/// AR-24 (b) (OA's rev 223): a ret resolves at RCU, whose done names the
+/// lowest active lane's target offset on aux and the lanes sharing it on
+/// branch_mask. Mispredicted (FET predicts no ret target), it redirects
+/// those lanes to {PC[47:32], aux} with stay, so the rest re-issue the ret.
+/// A conditional branch's redirect never sets stay.
+void testRet() {
+  for (const bool ret : {true, false}) {
+    g_test = ret ? "ret redirect" : "branch redirect, no stay";
+    Config c = baseConfig();
+    c.l1_spec = false;
+    Env e(c, 7);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 3; a.nsrc = 1; p.push_back(a);
+    Op b; b.k = kBranch; b.taken = true; b.pred_taken = false; b.ret = ret; b.ret_to = 0x2468; p.push_back(b);
+    Op d; d.k = kLane; d.dst = 4; d.nsrc = 1; p.push_back(d);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    unsigned n = 0;
+    for (const Outputs &o : e.log)
+      for (const Redirect &r : o.redirects)
+        if (!r.epoch_only) {
+          ++n;
+          EXPECT(r.stay == ret, "stay %u", unsigned(r.stay));
+          if (ret) EXPECT(r.target_pc == 0x2468, "ret target %llx, want {PC[47:32], aux} = 0x2468",
+                          (unsigned long long)r.target_pc);
+        }
+    EXPECT(n == 1, "%u redirects", n);
+    EXPECT(e.core.counters["branch.ret_redirect"] == (ret ? 1u : 0u), "ret redirects %llu",
+           (unsigned long long)e.core.counters["branch.ret_redirect"]);
+  }
+}
+
+/// AR-24 (c) (OA's rev 222): chwidth.multi cracks into a uop per register,
+/// each but the last a commit_width sibling (serial 0) that commits its
+/// register's width at retire with no hold; the last holds as a chwidth.
+/// After the three, a lane op reads R4, R5 and R6 at 8 bits. The control
+/// sibling-uncommitted drops the siblings' commits, so R4 and R5 stay 32.
+void testChwidthMulti() {
+  for (const bool control : {false, true}) {
+    g_test = control ? "chwidth.multi (control)" : "chwidth.multi";
+    Config c = baseConfig();
+    c.inject_sibling_uncommitted = control;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    for (unsigned r : {4u, 5u, 6u}) {
+      Op w; w.k = kChw; w.dst = r; w.chw = 2; w.sibling = r != 6; p.push_back(w);
+    }
+    Op a; a.k = kLane; a.dst = 7; a.src[0] = 4; a.src[1] = 5; a.src[2] = 6; a.nsrc = 3; p.push_back(a);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    bool seen = false, ok = false;
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.tid == 4) {
+          seen = true;
+          ok = i.src_w[0] == 2 && i.src_w[1] == 2 && i.src_w[2] == 2;
+        }
+    if (control) {
+      std::printf("  %-24s %s\n", "control sibling-uncommitted", seen && !ok ? "caught" : "MISSED");
+      EXPECT(seen && !ok, "dropping the siblings' commits should leave R4 and R5 at 32 bits");
+      continue;
+    }
+    EXPECT(seen && ok, "the lane op read R4-R6 at other than 8 bits");
+    // A chwidth that writes its register names it at the new width (TI's
+    // rev 185): its destination's code is the width it sets.
+    {
+      Env f(c);
+      f.keep_log = true;
+      std::vector<Op> q;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 2; w.chw_writes = true; w.src[0] = 4; w.nsrc = 1; q.push_back(w);
+      Op ex2; ex2.k = kExit; q.push_back(ex2);
+      f.launch(0, 0, q);
+      f.finish();
+      bool got = false;
+      for (const Outputs &o : f.log)
+        for (const Issue &i : o.issues)
+          if (i.tid == 1) {
+            got = true;
+            EXPECT(i.dst_w == 2 && i.src_w[0] == 0, "chwidth's widths dst %u src %u, want 2 and 0", i.dst_w, i.src_w[0]);
+          }
+      EXPECT(got, "the chwidth never issued");
+    }
+    EXPECT(e.core.counters["chwidth.sibling"] == 2, "%llu siblings committed",
+           (unsigned long long)e.core.counters["chwidth.sibling"]);
+  }
+}
+
+/// AR-24 (d)'s traffic for the rename bench (non-sectioned, so
+/// test/ooe/rename_tb.cpp runs it): two warps narrow registers by chwidth
+/// and by chwidth.multi's siblings, then many ops read and write them at
+/// their widths, and one widens a register back.
+void testWidthTraffic() {
+  g_test = "width traffic";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 11);
+  auto prog = [](unsigned seed) {
+    std::vector<Op> p;
+    std::mt19937 r(seed);
+    for (unsigned reg : {4u, 5u, 6u}) {   // a chwidth.multi: two siblings and the last
+      Op w; w.k = kChw; w.dst = reg; w.chw = reg == 4 ? 1 : 2; w.sibling = reg != 6; p.push_back(w);
+    }
+    Op w7; w7.k = kChw; w7.dst = 7; w7.chw = 3; p.push_back(w7);
+    for (unsigned i = 0; i != 40; ++i) {
+      Op a; a.k = kLane; a.dst = 4 + r() % 6; a.nsrc = 1 + r() % 3;
+      for (unsigned j = 0; j != a.nsrc; ++j) a.src[j] = 3 + r() % 6;
+      p.push_back(a);
+      if (i == 20) { Op b; b.k = kChw; b.dst = 5; b.chw = 0; b.chw_writes = true; b.src[0] = 5; b.nsrc = 1; p.push_back(b); }
+    }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    return p;
+  };
+  e.launch(0, 0, prog(1));
+  e.launch(1, 1, prog(2));
+  e.finish();
+  EXPECT(e.core.slotWidth(0, 4) == 1 && e.core.slotWidth(0, 6) == 2 && e.core.slotWidth(0, 5) == 0,
+         "widths R4 %u R5 %u R6 %u", e.core.slotWidth(0, 4), e.core.slotWidth(0, 5), e.core.slotWidth(0, 6));
+}
+
+/// AR-24 (d): each operand carries its own register's width, from the
+/// committed table at rename, and a memop its data register's. Under the
+/// interim full_rows (DA tab rev 87; OA's rev 225, AR's rev 174) the 8-bit
+/// R2 takes a full row at position 0, yet its width code on the issue and
+/// the store stays 8-bit; off, it takes an 8-bit slice.
+void testWidthCodes() {
+  for (const bool full : {false, true}) {
+    g_test = full ? "width codes (full rows)" : "width codes";
+    Config c = baseConfig();
+    c.sectioned = true;
+    c.full_rows = full;
+    c.l1_spec = false;
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op w; w.k = kChw; w.dst = 2; w.chw = 2; p.push_back(w);
+    Op a; a.k = kLane; a.dst = 2; a.w = 2; a.src[0] = 1; a.nsrc = 1; p.push_back(a);
+    Op st; st.k = kStore; st.nsrc = 2; st.src[0] = 2; st.src[1] = 4; p.push_back(st);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(0, 0, p);
+    e.finish();
+    bool lane = false, store = false;
+    for (const Outputs &o : e.log) {
+      for (const Issue &i : o.issues)
+        if (i.tid == 2) {
+          lane = true;
+          EXPECT(i.dst_w == 2 && i.src_w[0] == 0 && i.chwidth == 2, "lane op widths dst %u src %u op %u, want 2, 0, 2",
+                 i.dst_w, i.src_w[0], i.chwidth);
+          EXPECT(e.core.nameWidth(i.pdst) == (full ? 0u : 2u), "R2 allocated at width %u", e.core.nameWidth(i.pdst));
+          if (full) EXPECT(e.core.namePos(i.pdst) == 0, "R2 at position %u under full rows", e.core.namePos(i.pdst));
+        }
+      for (const Memop &m : o.memops)
+        if (m.tid == 3) {
+          store = true;
+          EXPECT(m.chwidth == 2, "the store's chwidth %u, want its data register's 2", m.chwidth);
+        }
+    }
+    EXPECT(lane && store, "the lane op or the store never issued");
+  }
 }
 
 /// F-WIDTH (ISA v1.9 section 12.3; OA's response OI-57): the committed
@@ -2581,6 +3087,79 @@ void testWidthFault() {
       EXPECT(e.core.slotWidth(0, 4) == 3, "the table holds %u for R4 after its chwidth", e.core.slotWidth(0, 4));
       EXPECT((faults == 1) == want, "R%u: %u faults", dst, faults);
       if (want) EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+    }
+  }
+}
+
+/// O-80 (DA tab rev 90): a sized load passes xfer_size to MIU, and one
+/// wider than its data register's width faults at dispatch with F-WIDTH:
+/// with R4 at 8 bits, a halfword load into R4 faults and a byte load does
+/// not. O-81 (DA tab rev 91): a chwidth without FET's converged mark faults
+/// with F-WIDTH, a no-op that sets no width. Controls no-sized-fault and
+/// no-converged-fault drop the two checks.
+void testSizedAndConverged() {
+  for (const bool control : {false, true}) {
+    for (const unsigned xfer : {2u, 1u}) {
+      g_test = control ? "sized fault (control)" : "sized fault";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_sized_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 2; p.push_back(w);
+      Op ld; ld.k = kLoad; ld.dst = 4; ld.nsrc = 1; ld.src[0] = 6; ld.xfer = xfer; p.push_back(ld);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0, sized = 0;
+      for (unsigned k = 0; k != 80; ++k) {
+        e.step();
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+        for (const Memop &m : e.log.back().memops) if (m.tid == 2) sized = m.xfer_size;
+      }
+      const bool want = xfer == 2 && !control;
+      if (control) {
+        if (xfer == 2) {
+          std::printf("  %-24s %s\n", "control no-sized-fault", faults == 0 ? "caught" : "MISSED");
+          EXPECT(faults == 0, "dropping the check should let the halfword load through");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want, "xfer %u into an 8-bit R4: %u faults", xfer, faults);
+      if (want) EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+      else EXPECT(sized == xfer, "the memop carried xfer_size %u, want %u", sized, xfer);
+    }
+  }
+  for (const bool control : {false, true}) {
+    for (const bool diverged : {true, false}) {
+      g_test = control ? "diverged chwidth (control)" : "diverged chwidth";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_no_converged_fault = control;
+      Env e(c);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op w; w.k = kChw; w.dst = 4; w.chw = 2; w.diverged = diverged; p.push_back(w);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      unsigned faults = 0, cause = 0;
+      for (unsigned k = 0; k != 60; ++k) {
+        e.step();
+        for (const Fault &f : e.log.back().faults) { ++faults; cause = f.cause; }
+      }
+      const bool want = diverged && !control;
+      if (control) {
+        if (diverged) {
+          std::printf("  %-24s %s\n", "control no-converged-fault", faults == 0 ? "caught" : "MISSED");
+          EXPECT(faults == 0, "dropping the check should let the diverged chwidth through");
+        }
+        continue;
+      }
+      EXPECT((faults == 1) == want, "%s chwidth: %u faults", diverged ? "a diverged" : "a converged", faults);
+      if (want) {
+        EXPECT(cause == kCauseWidth, "cause %u, want F-WIDTH (%u)", cause, kCauseWidth);
+        EXPECT(e.core.slotWidth(0, 4) == 0, "a faulting chwidth set R4's width to %u", e.core.slotWidth(0, 4));
+      }
     }
   }
 }
@@ -2894,7 +3473,7 @@ void testAtomic() {
       {"cmpl-delay", [](Config &c) { c.cmpl_wake_delay = 2; }},
   };
   for (const M &m : ms)
-    for (unsigned variant = 0; variant != 4; ++variant) {
+    for (unsigned variant = 0; variant != 6; ++variant) {
       g_test = std::string("atomic ") + m.name + " " + std::to_string(variant);
       Config c = baseConfig();
       m.set(c);
@@ -2909,13 +3488,24 @@ void testAtomic() {
       Op at;
       at.k = kAtomic;
       at.dst = 3;
-      at.src[0] = 1;
-      at.src[1] = 2;
-      at.nsrc = 2;
+      at.src[0] = 1;                                           // rbase
+      at.src[1] = 2;                                           // rindex
+      at.src[2] = 0;                                           // rs
+      at.nsrc = 3;
       at.passes = 3;
       at.red = variant == 1;
       if (variant == 2) at.mask = 0x0000ffffu;              // masked: the copy keeps T's other lanes
       if (variant == 3) { at.guard = true; at.pguard = 1; }   // guarded: the copy too
+      if (variant >= 4) {
+        // A CAS (TI-39): rbase and rindex in the first slot; rs_cmp and
+        // rs_swap in the second, which reaches DEC a cycle late in 5.
+        at.cas = true;
+        at.nsrc = 2;
+        at.csrc[0] = 0;
+        at.csrc[1] = 2;
+        at.ncsrc = 2;
+        at.late2 = variant == 5;
+      }
       const size_t at_idx = p.size();
       p.push_back(at);
       Op yl; yl.k = kLane; yl.dst = 8; yl.src[0] = 2; yl.nsrc = 1; p.push_back(yl);     // around it
@@ -2948,8 +3538,10 @@ void testAtomic() {
              (unsigned long long)ym_at, (unsigned long long)last_write);
       unsigned copies = 0;
       for (const Outputs &o : e.log) for (const Issue &i : o.issues) copies += i.tid == at_tid && i.copy;
-      EXPECT(copies == (variant >= 2 ? 1u : 0u), "%u copies", copies);
+      EXPECT(copies == (variant == 2 || variant == 3 ? 1u : 0u), "%u copies", copies);
       EXPECT(e.core.histograms["atomic.passes"][3] == 1, "the passes histogram");
+      EXPECT(e.core.counters["rename.cas_pair"] == (variant >= 4 ? 1u : 0u), "%llu CAS pairs renamed",
+             (unsigned long long)e.core.counters["rename.cas_pair"]);
       EXPECT(e.core.freeGprs() + e.core.heldGprs(0) == c.phys_regs, "registers lost");
     }
 }
@@ -2963,7 +3555,7 @@ void testAtomicFault() {
   e.keep_log = true;
   std::vector<Op> p;
   for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 4; at.afault = true;
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 4; at.afault = true;
   p.push_back(at);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
@@ -2995,7 +3587,7 @@ void testAtomicKill() {
   e.keep_log = true;
   std::vector<Op> p;
   for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 6;
+  Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 6;
   p.push_back(at);
   Op ex; ex.k = kExit; p.push_back(ex);
   e.launch(0, 0, p);
@@ -3040,7 +3632,7 @@ void testAtomicDemote() {
     e.atom_mlc_pct = 100;           // every read misses the MLC: triggers due
     std::vector<Op> p;
     for (unsigned i = 0; i != 3; ++i) { Op o; o.k = kRcuOp; o.dst = i; p.push_back(o); }
-    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.nsrc = 2; at.passes = 5;
+    Op at; at.k = kAtomic; at.dst = 3; at.src[0] = 1; at.src[1] = 2; at.src[2] = 0; at.nsrc = 3; at.passes = 5;
     p.push_back(at);
     for (unsigned i = 0; i != 4; ++i) { Op o; o.k = kLane; o.dst = 4; o.src[0] = 3; o.nsrc = 1; p.push_back(o); }
     Op ex; ex.k = kExit; p.push_back(ex);
@@ -3087,7 +3679,7 @@ void testAtomicDemote() {
 /// Random programs with atomics, several warps, every select form: the
 /// environment's dataflow, retirement, hold and head checks on every run.
 /// Not in the benches' random set: no OOE RTL re-issues on more yet.
-void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control = 0) {
+void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control = 0, bool one_warp = false) {
   std::map<std::string, uint64_t> tot;
   std::map<std::string, std::map<uint64_t, uint64_t>> hist;
   struct Report {
@@ -3102,10 +3694,13 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
         return n ? double(sum) / double(n) : 0.0;
       };
       std::printf("  atomic random: %llu atomics, %.2f passes each, hold %.1f cycles a pass, head wait %.1f,"
-                  " %llu cycles of held demote triggers, %llu rename port stalls\n",
+                  " %llu cycles of held demote triggers, %llu rename port stalls; %llu CAS pairs, %llu"
+                  " takes cut before a pair the width would split, %llu waits past the warp's heads; %llu cycles\n",
                   (unsigned long long)tot["atomic"], mean("atomic.passes"), mean("atomic.hold_cycles"),
                   mean("atomic.head_wait"), (unsigned long long)tot["demote_trigger.held_atomic"],
-                  (unsigned long long)tot["stall.rename_ports"]);
+                  (unsigned long long)tot["stall.rename_ports"], (unsigned long long)tot["rename.cas_pair"],
+                  (unsigned long long)tot["rename.pair_cut"], (unsigned long long)tot["rename.pair_window"],
+                  (unsigned long long)tot["cycles"]);
     }
   } report{tot, hist, control == 0};
   for (unsigned seed = 1; seed <= seeds; ++seed)
@@ -3114,12 +3709,15 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       Config c = base(seed, mode);
       c.inject_atom_off_head = control == 1;
       c.inject_atom_early_wake = control == 2;
+      c.inject_a1_base_only = control == 3;
+      c.inject_cas_split = control == 4;
+      c.inject_pair_split = control == 5;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
       e.miss_pct = 30;
       e.data_after_cmpl = c.cmpl_wake_delay;
       e.atom_mlc_pct = 20;
-      const unsigned warps = 1 + seed % 4;
+      const unsigned warps = one_warp ? 1 : 1 + seed % 4;
       for (unsigned i = 0; i != warps; ++i) {
         std::vector<Op> prog = randomProgram(rng, 120, true, seed % 2 == 1, (mode & 4) != 0);
         // About one op in twelve an atomic, each 1 to 4 passes, now and then 32.
@@ -3130,8 +3728,21 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
             a.dst = rng() % 16;
             a.src[0] = rng() % 16;
             a.src[1] = rng() % 16;
-            a.nsrc = 2;
+            a.src[2] = rng() % 16;
+            a.nsrc = 1 + rng() % 3;
             a.red = rng() % 4 == 0;
+            // One in four a CAS (TI-39): two slots, the second now and then late.
+            // CCV_TEST_CAS_ALL (a measurement's): every atomic a CAS.
+            static const bool cas_all = std::getenv("CCV_TEST_CAS_ALL") != nullptr;
+            if (rng() % 4 == 0 || cas_all) {
+              a.cas = true;
+              a.red = false;
+              a.nsrc = 1 + rng() % 2;
+              a.csrc[0] = rng() % 16;
+              a.csrc[1] = rng() % 16;
+              a.ncsrc = 2;
+              a.late2 = rng() % 3 == 0;
+            }
             a.passes = rng() % 16 == 0 ? 32 : 1 + rng() % 4;
             if (rng() % 6 == 0) a.mask = 0x0000ffffu;
             else if (rng() % 6 == 0) { a.guard = true; a.pguard = rng() % 4; }
@@ -3143,7 +3754,10 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       if (control) g_quiet = true;
       e.finish(control ? 30000 : 200000);
       g_quiet = false;
-      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports"}) tot[k] += e.core.counters[k];
+      tot["cycles"] += e.t;
+      for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports", "rename.cas_pair",
+                            "rename.pair_cut", "rename.pair_window"})
+        tot[k] += e.core.counters[k];
       for (const char *k : {"atomic.passes", "atomic.hold_cycles", "atomic.head_wait"})
         for (const auto &b : e.core.histograms[k]) hist[k][b.first] += b.second;
       if (control) {
@@ -3240,7 +3854,7 @@ std::vector<Op> stallProgram(std::mt19937 &rng, bool fetching, unsigned fill) {
     o.src[0] = dep;
     o.src[1] = r(4);
     o.nsrc = o.k == kLoad ? 1 : 2;
-    if (o.k == kStore) { o.src[0] = r(4); o.src[1] = dep; }
+    if (o.k == kStore) { o.src[0] = dep; o.src[1] = r(4); }
     o.dst = 5 + i % 10;
     if (o.k != kStore) prev = o.dst;
     p.push_back(o);
@@ -3966,21 +4580,21 @@ void sweepSections() {
       } else if (kk == kVadd) {
         Op y; y.k = kLoad; y.dst = 5; y.w = w; y.src[0] = 0; y.nsrc = 1; p.push_back(y);
         Op a; a.k = kLane; a.dst = 6; a.w = w; a.src[0] = 4; a.src[1] = 5; a.nsrc = 2; p.push_back(a);
-        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 6; s.nsrc = 2; p.push_back(s);
+        Op s; s.k = kStore; s.src[0] = 6; s.src[1] = 0; s.nsrc = 2; p.push_back(s);
       } else if (kk == kRed) {
         Op a; a.k = kLane; a.dst = 7; a.w = w; a.src[0] = 7; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
       } else {
         Op a; a.k = kLane; a.dst = 5; a.w = w; a.src[0] = 4; a.src[1] = 4; a.nsrc = 2; p.push_back(a);
         Op c; c.k = kFp; c.dst = 8; c.src[0] = 5; c.nsrc = 1; p.push_back(c);            // cvt to FP32
         Op f; f.k = kFp; f.dst = 9; f.src[0] = 8; f.src[1] = 8; f.nsrc = 2; p.push_back(f);
-        Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 9; s.nsrc = 2; p.push_back(s);
+        Op s; s.k = kStore; s.src[0] = 9; s.src[1] = 0; s.nsrc = 2; p.push_back(s);
       }
       Op r; r.k = kRcuOp; r.dst = 0; r.src[0] = 0; r.nsrc = 1; p.push_back(r);           // index += stride
       Op t; t.k = kSetp; t.pdst = 1; t.src[0] = 0; t.src[1] = 1; t.nsrc = 2; p.push_back(t);
       const bool more = it + 1 != iters;
       Op b; b.k = kBranch; b.pguard = 1; b.taken = b.pred_taken = more; b.backward = true; p.push_back(b);
     }
-    if (kk == kRed) { Op s; s.k = kStore; s.src[0] = 0; s.src[1] = 7; s.nsrc = 2; p.push_back(s); }
+    if (kk == kRed) { Op s; s.k = kStore; s.src[0] = 7; s.src[1] = 0; s.nsrc = 2; p.push_back(s); }
     Op e; e.k = kExit; p.push_back(e);
     return p;
   };
@@ -4089,6 +4703,8 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testFault();
   testBarrier();
   testChwidth();
+  testWidthCodes();
+  testWidthTraffic();
   testSections();
   testV59();
   testFixedWindowPreds();
@@ -4096,6 +4712,22 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   return g_fail;
 }
 /// The directed tests likewise, every core configured first by cfg.
+/// The random atomics (CAS pairs among them), one warp a core, with a hook
+/// on every core cycle, configured by cfg: test/ooe/go_tb.cpp's pairs
+/// (OI-79). One warp: the go's per-warp fits are then the cycle's, so the
+/// cycle's rename ports, which an atomic's two rows can overrun across
+/// warps, never bind beyond them (OI-80). First the directed pair-cut, two
+/// warps whose ports never bind; not among the directed tests above, whose
+/// other benches build no atomics yet.
+int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_cycle_hook = hook;
+  g_config_hook = cfg;
+  testPairCut();
+  testAtomicRandom(seeds, randomConfig, 0, true);
+  g_config_hook = nullptr;
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
 int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &)) {
   g_config_hook = cfg;
   const int f = ooeTestDirectedHooked(hook);
@@ -4172,6 +4804,12 @@ int main(int argc, char **argv) {
     sweepSections();
     return g_fail ? 1 : 0;
   }
+  if (argc > 1 && std::string(argv[1]) == "--atomic") {   // the atomics' tests alone
+    testAtomic();
+    testAtomicRandom(2, randomConfig);
+    std::printf("ooe-test --atomic: %s (%d failure%s)\n", g_fail ? "FAIL" : "PASS", g_fail, g_fail == 1 ? "" : "s");
+    return g_fail ? 1 : 0;
+  }
   if (argc > 1 && std::string(argv[1]) == "--audit") {
     audit();
     return g_fail ? 1 : 0;
@@ -4228,10 +4866,18 @@ int main(int argc, char **argv) {
   testKill();
   testFault();
   testBarrier();
+  testBarrierDemote();
+  testBarrierTimer();
   testBarrierFault();
   testMemFault();
   testChwidth();
+  testChwidthMulti();
+  testRet();
+  testPartialTaken();
+  testWidthTraffic();
+  testWidthCodes();
   testWidthFault();
+  testSizedAndConverged();
   testFormatFault();
   testSections();
   testFreeVec();
@@ -4247,6 +4893,7 @@ int main(int argc, char **argv) {
   testAtomicKill();
   testAtomicDemote();
   testAtomicRandom(seeds, randomConfig);
+  testPairCut();
   testSwap();
   testDemoteRefused();
   testParkedLayout();
@@ -4255,10 +4902,31 @@ int main(int argc, char **argv) {
   testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
-  for (int k : {1, 2}) {
-    const char *name = k == 1 ? "control atom-off-head" : "control atom-early-wake";
+  for (int k : {1, 2, 3, 4, 5}) {
+    const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
+                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
+  {
+    const char *name = "control partial-taken";
+    const int saved = g_fail;
+    testPartialTaken(true);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
+  {
+    const char *name = "control no-first-need";
+    const int saved = g_fail;
+    testPairCut(true);
     const bool caught = g_fail != saved;
     g_fail = saved;
     g_test = name;

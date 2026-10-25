@@ -269,8 +269,8 @@
     "instr_uid": 4611686018427387905,
     "unit": "instr",
     "channel_id": 1,
-    "payload_lo": 4232052736,
-    "payload_hi": 553648127
+    "payload_lo": 3791650816,
+    "payload_hi": 134217727
    }
   },
   {
@@ -285,7 +285,7 @@
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 1,
-    "payload_lo": 4194304,
+    "payload_lo": 33554432,
     "payload_hi": 0
    }
   },
@@ -350,7 +350,7 @@
     "unit": "instr",
     "channel_id": 2,
     "payload_lo": 0,
-    "payload_hi": 104
+    "payload_hi": 152
    }
   },
   {
@@ -493,8 +493,8 @@
     "instr_uid": 4611686018427387905,
     "unit": "instr",
     "channel_id": 8,
-    "payload_lo": 4294934528,
-    "payload_hi": 4026548223
+    "payload_lo": 4294705152,
+    "payload_hi": 2147614719
    }
   },
   {
@@ -557,7 +557,7 @@
     "instr_uid": 4611686018427387904,
     "unit": "instr",
     "channel_id": 11,
-    "payload_lo": 24,
+    "payload_lo": 96,
     "payload_hi": 0
    }
   }

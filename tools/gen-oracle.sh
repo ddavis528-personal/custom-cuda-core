@@ -14,7 +14,12 @@
 # THREADS=<n> (ccv-sim -threads), an optional WARPS=<n> (the CTA's n warps,
 # one ccv-sim -cta run that writes oracle.<w>.jsonl for warp w of the CTA,
 # sharing its memory: CP-30, CP-31), an optional CONST=<base>:<limit> (F-RO's
-# .const range, ccv-sim -const-range), an optional FAULT=<cause> (the run
+# .const range, ccv-sim -const-range), an optional ENTRY=<pc> (ccv-sim
+# -entry, a release kernel's launch.txt entry), an optional MAXSTEPS=<n>
+# (ccv-sim -max-steps, for a kernel past its default limit), an optional
+# OOE_CONFIG=<name=value,...> (the OOE model's settings the kernel runs under,
+# written beside its records for both hosts: narrowadd's full_rows), an optional
+# FAULT=<cause> (the run
 # ends in that fault, ccv-sim's exit 3, its record and state at the fault
 # written; TI-26, TI-28; with several warps, the first), then one poke per
 # line. A kernel of several CTAS is CTAS CTAs of one warp, CTAID upward, each
@@ -26,11 +31,18 @@ cd "$(dirname "$0")/.."
 C=$(tools/fetch-compiler.sh) || exit 1
 O=${CCV_ORACLE_DIR:-build/oracle}   # the N sweep's records go elsewhere (below)
 rc=0
-# A kernel removed from test/kernels/ leaves no record behind: the checks
-# that run every record (ls build/oracle) would go on running it.
-for d in "$O"/*/; do
-  [ -d "$d" ] && [ ! -d "test/kernels/$(basename "$d")" ] && rm -rf "$d"
-done
+# Kernel directories as arguments (test/bench/'s, for tools/time-bench.sh)
+# are generated alone, into CCV_ORACLE_DIR; with none, every test/kernels/
+# kernel, and a kernel removed from test/kernels/ leaves no record behind:
+# the checks that run every record (ls build/oracle) would go on running it.
+if [ $# -gt 0 ]; then
+  kdirs=("$@")
+else
+  kdirs=(test/kernels/*/)
+  for d in "$O"/*/; do
+    [ -d "$d" ] && [ ! -d "test/kernels/$(basename "$d")" ] && rm -rf "$d"
+  done
+fi
 # The diverged groups' pick is FET's fairness rule at CCV_FAIR_N (IS-17,
 # O-60), ccv-sim's -fairness, so the order the skeleton follows is the one
 # FET would pick.
@@ -41,7 +53,7 @@ fair=${CCV_FAIR_N:-$(sed -n 's/.*kFairN = \([0-9]*\);.*/\1/p' sim/generated/ccv_
 [ -n "$fair" ] || { echo "gen-oracle: no CCV_FAIR_N in sim/generated/ccv_params.h" >&2; exit 1; }
 lctx=$(sed -n 's/.*kLaneContexts = \([0-9]*\);.*/\1/p' sim/generated/ccv_params.h)
 [ -n "$lctx" ] || { echo "gen-oracle: no CCV_LANE_CONTEXTS in sim/generated/ccv_params.h" >&2; exit 1; }
-for k in test/kernels/*/; do
+for k in "${kdirs[@]}"; do
   k=${k%/}; name=$(basename "$k")
   [ -f "$k/kernel.cfg" ] || continue
   src=$(sed -n 's/^SOURCE=//p' "$k/kernel.cfg")
@@ -59,8 +71,14 @@ for k in test/kernels/*/; do
   warps=$(sed -n 's/^WARPS=//p' "$k/kernel.cfg")
   crange=$(sed -n 's/^CONST=//p' "$k/kernel.cfg")
   fault=$(sed -n 's/^FAULT=//p' "$k/kernel.cfg")
+  entry=$(sed -n 's/^ENTRY=//p' "$k/kernel.cfg")
+  maxsteps=$(sed -n 's/^MAXSTEPS=//p' "$k/kernel.cfg")
+  ooecfg=$(sed -n 's/^OOE_CONFIG=//p' "$k/kernel.cfg")
   out=$O/$name
   rm -rf "$out" && mkdir -p "$out"
+  # The launch entry, for the skeleton's RAU (Kernel::loadOracles).
+  [ -n "$entry" ] && echo "$entry" > "$out/entry"
+  [ -n "$ooecfg" ] && echo "$ooecfg" > "$out/ooe_config"
   ok=1
   python3 "$C/tools/ccv-as.py" "$C/build/generated/CCV.json" "$srcpath" \
     "$out/kernel.bin" >/dev/null || ok=0
@@ -79,6 +97,7 @@ for k in test/kernels/*/; do
     cta+=(-lane-contexts "$lctx")
     "$C/release/bin/ccv-sim" "$out/kernel.bin" "${args[@]}" "${cta[@]}" \
       ${threads:+-threads "$threads"} ${crange:+-const-range "$crange"} \
+      ${entry:+-entry "$entry"} ${maxsteps:+-max-steps "$maxsteps"} \
       -fairness="$fair" -oracle "$o" >/dev/null
     st=$?
     # A clean run exits 0, a fault 3: either must be the one kernel.cfg names.

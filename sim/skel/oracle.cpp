@@ -252,6 +252,9 @@ std::string Oracle::load(const std::string &path) {
         // ccv-sim records taken lanes for a predicated branch only. An
         // unconditional one (bra, c.bra) is taken by its whole group.
         if (r.kind == "branch" && !r.taken) r.taken = r.mask;
+        // A ret (ccv-sim's kind "return") is taken by every lane it issues
+        // on, each to its own link register's offset (AR-24).
+        if (r.kind == "return" && !r.taken) r.taken = r.mask;
         r.target = j.at("target").u();
         for (const JV &u : j.at("uses").a()) r.uses.push_back(regVal(u));
         for (const JV &d : j.at("defs").a()) r.defs.push_back(regVal(d));
@@ -274,6 +277,22 @@ std::string Oracle::load(const std::string &path) {
     return path + ":" + std::to_string(n) + ": " + e.what();
   }
   if (!have_init || !have_final) return path + ": missing init or final record";
+  // The widths each record executes at: 32 at launch, then each chwidth's,
+  // a chwidth.multi's to every register of its mask (AR-24).
+  uint32_t w = 0;
+  for (Record &r : recs) {
+    r.widths = w;
+    if (r.kind == "fault" || r.imms.empty()) continue;
+    auto set = [&](unsigned g, unsigned code) { w = (w & ~(3u << 2 * g)) | (code & 3u) << 2 * g; };
+    if (r.op == "C_CHWIDTH") {
+      const RegVal *g = r.gprDef();
+      if (!g) for (const RegVal &u : r.uses) if (!u.pred) { g = &u; break; }
+      if (g) set(g->idx, unsigned(r.imms[0]));
+    } else if (r.chwMulti() && r.imms.size() > 1) {
+      for (unsigned k = 0; k != r.uops(); ++k) set(r.chwReg(k), unsigned(r.imms[1]));
+    }
+  }
+  final_widths = w;
   issue_groups -= std::min(issue_groups, stalls);   // ccv-sim counts each try
   if (issue_groups != recs.size())
     return path + ": final record counts " + std::to_string(issue_groups) +
