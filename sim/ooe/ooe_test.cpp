@@ -2372,10 +2372,13 @@ void testFault() {
 /// last lane and its second would be the next's; the take stops before the
 /// first. Neither warp writes enough GPRs or MIU rows for the cycle's ports
 /// to bind (OI-80), so go_tb holds the RTL's cut to the model's.
-void testPairCut() {
+// control: OI-80's liveness rule dropped (inject_no_first_need), which the
+// core's check must catch: the CAS warp's MIU share sits at one.
+void testPairCut(bool control = false) {
   g_test = "CAS pair cut";
   Config c = baseConfig();
   c.l1_spec = false;
+  c.inject_no_first_need = control;
   Env e(c, 5);
   std::vector<Op> a, b;
   for (unsigned i = 0; i != 60; ++i) { Op s; s.k = kSetp; s.pdst = 1 + i % 3; s.nsrc = 2; a.push_back(s); }
@@ -2390,6 +2393,7 @@ void testPairCut() {
   e.launch(0, 0, a);
   e.launch(1, 1, b);
   e.finish();
+  if (control) return;
   EXPECT(e.core.counters["rename.pair_cut"] > 0, "no take was cut before a pair (%llu pairs)",
          (unsigned long long)e.core.counters["rename.cas_pair"]);
   EXPECT(e.core.counters["stall.rename_ports"] == 0, "the cycle's ports bound %llu times",
@@ -4913,6 +4917,16 @@ int main(int argc, char **argv) {
     const char *name = "control partial-taken";
     const int saved = g_fail;
     testPartialTaken(true);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
+  {
+    const char *name = "control no-first-need";
+    const int saved = g_fail;
+    testPairCut(true);
     const bool caught = g_fail != saved;
     g_fail = saved;
     g_test = name;

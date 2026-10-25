@@ -80,7 +80,7 @@ namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
                    NG = RENAME_NG, NP = RENAME_NP;
 constexpr unsigned N = RENAME_N, NR = RENAME_NR, FLG = RENAME_FLG, CLG = RENAME_CLG, FLP = RENAME_FLP, CLP = RENAME_CLP;
-constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R, FB = 8, FK = 4, XW = 20,
+constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2, FB = 8, FK = 4, XW = 20,
                    P = 2 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w ? w : 1; }
 constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
@@ -425,6 +425,11 @@ void step(const Cycle &P, const Cycle &N) {
   if (!g.valid || g.adm.size() != S || !N.g.valid || N.g.adm.size() != S) { stop(kNoLog); return; }
   for (const auto &r : w.ren)
     if (r.rst || r.atomic) { stop(kRstAtomic); return; }
+  // An atomic at a head already moves the shares (OI-80's reserve), so the
+  // core stops at its arrival there, not its rename.
+  for (const auto &q : g.adm)
+    for (const uint16_t a : q)
+      if ((a >> 7) & 3u) { stop(kRstAtomic); return; }
   if (g.lanes.size() > R) { fail("more lanes than the width", 0, 0, unsigned(g.lanes.size()), R); stop(kOrder); return; }
   // The go's lanes, each with its rename: rename order is lane order. A
   // head with neither class bit (an exit, a decode fault) takes its lane
