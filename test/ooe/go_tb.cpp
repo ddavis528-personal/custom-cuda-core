@@ -50,10 +50,18 @@ using ccv::ooe::Core;
 
 int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &));
 int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
-void goConfig(Config &c) { c.decq_warp_max = 6; }
+// GO_NAMES=rows,ceiling: the model with scarce names, as rename_tb's scarce
+// build (the go's pool binds).
+void goConfig(Config &c) {
+  c.decq_warp_max = 6;
+  if (const char *n = std::getenv("GO_NAMES")) {
+    unsigned rows = 0, ceil = 0;
+    if (std::sscanf(n, "%u,%u", &rows, &ceil) == 2) { c.phys_regs = rows; c.ren_ceil = ceil; }
+  }
+}
 
 namespace {
-constexpr unsigned S = GO_S, R = GO_R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R;
+constexpr unsigned S = GO_S, R = GO_R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R + 2;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned LX = bits(XM + 1);
 
