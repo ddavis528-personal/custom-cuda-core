@@ -559,10 +559,16 @@ private:
   /// write-through: every store goes to MLC as a read-merge-write, the
   /// policy before rev 8, which the merged values survive but the timing
   /// does not.
-  /// 64 sets of CCV_DCU_WAYS ways (default 1, direct-mapped), least recently
-  /// used replaced. Capacity and associativity are unset in the DCU spec,
-  /// which sizes the ways by a sweep of 1, 2, 4 and 8 (AR-24's 4-warp shape).
-  static constexpr unsigned kSets = 64;
+  /// CCV_DCU_SETS sets (default 64, a power of two) of CCV_DCU_WAYS ways
+  /// (default 1, direct-mapped), least recently used replaced. Capacity and
+  /// associativity are unset in the DCU spec, which sizes the ways by a sweep
+  /// of 1, 2, 4 and 8 (AR-24's 4-warp shape, and AR's 512 KiB fit bound).
+  static unsigned setsOf() {
+    const char *v = std::getenv("CCV_DCU_SETS");
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 64;
+    return n >= 1 && n <= 65536 && !(n & (n - 1)) ? n : 64;
+  }
+  const unsigned sets_ = setsOf();
   struct Way {
     bool valid = false; uint64_t line = 0; Line data{}; bool owned = false, dirty = false;
     uint64_t used = 0;
@@ -573,12 +579,12 @@ private:
     return n >= 1 && n <= 16 ? n : 1;
   }
   const unsigned ways_ = waysOf();
-  std::vector<Way> l1_ = std::vector<Way>(size_t(kSets) * ways_);
+  std::vector<Way> l1_ = std::vector<Way>(size_t(sets_) * ways_);
   uint64_t lru_tick_ = 0;
   /// The way holding pa, else the one an install of pa would take: an
   /// invalid way, else the least recently used.
   Way &way(uint64_t pa) {
-    Way *set = &l1_[size_t((pa / kLine) % kSets) * ways_];
+    Way *set = &l1_[size_t((pa / kLine) % sets_) * ways_];
     Way *victim = &set[0];
     for (unsigned i = 0; i != ways_; ++i) {
       if (set[i].valid && set[i].line == pa) { set[i].used = ++lru_tick_; return set[i]; }
