@@ -399,7 +399,18 @@ if the width cut a pair, takes again capped at the first slot's lane
 with every atomic a CAS 665,693 to 666,001 (+0.05%). Control pair-split
 (`inject_pair_split`) lets the width split a pair, and the core's checks
 catch it; directed test pair-cut makes the cut bind across two warps,
-which go_tb follows. DEC sends the two slots in
+which go_tb follows. The shares' liveness (OI-80, OA's revs 244 and 247):
+with two warps a pair's MIU share could sit at one while the pool's
+parity locked to the rotation (pair-cut waited 54 cycles). The rotation's
+own slot, when it has a head, now takes min(2, pool) of a credit before
+the even split where its head needs two of it (a need of one, the first
+warp's share always covers). The need is the one its head had at the
+rotation's last step, registered with the rotation: a head left waiting
+is the same head. The core checks that a head refused on its share while
+the split's pool covers its need is admitted within S + 1 cycles; control
+no-first-need drops the rule and pair-cut fails it. Atomic random 652,299
+to 642,991 cycles (-1.4%); the audit 877 to 881 (+0.46%, OA's rev 247).
+DEC sends the two slots in
 one cycle, on decode-queue credit for both (an input assumption the core
 checks). A first slot alone could otherwise sit at its warp's head waiting
 for a second that no credit lets in, and with every warp's head such a
