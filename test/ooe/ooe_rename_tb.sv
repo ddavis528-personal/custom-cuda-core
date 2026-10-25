@@ -30,7 +30,7 @@ module ooe_rename_tb #(
   parameter int CLG = 64,
   parameter int FLP = 4,
   parameter int CLP = 20,
-  localparam int PA = 7,
+  localparam int PA = 9,
   localparam int H  = 2 * R - 1,
   localparam int NC = S * R,
   localparam int LS = (S > 1) ? $clog2(S) : 1,

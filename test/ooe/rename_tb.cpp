@@ -80,7 +80,7 @@ namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
                    NG = RENAME_NG, NP = RENAME_NP;
 constexpr unsigned N = RENAME_N, NR = RENAME_NR, FLG = RENAME_FLG, CLG = RENAME_CLG, FLP = RENAME_FLP, CLP = RENAME_CLP;
-constexpr unsigned NC = S * R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R, FB = 8, FK = 4, XW = 20,
+constexpr unsigned NC = S * R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R, FB = 8, FK = 4, XW = 20,
                    P = 2 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w ? w : 1; }
 constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
@@ -436,7 +436,7 @@ void step(const Cycle &P, const Cycle &N) {
   for (unsigned k = 0; k != g.lanes.size(); ++k) {
     const unsigned s = g.lanes[k].first, h = g.lanes[k].second;
     if (s >= S || h != head[s]++ || h >= g.adm[s].size()) { stop(kOrder); return; }
-    const uint8_t a = g.adm[s][h];
+    const uint16_t a = g.adm[s][h];
     if ((a & 3u) == 0) { ++nops; continue; }
     if (j == w.ren.size() || w.ren[j].slot != s) { stop(kOrder); return; }
     const auto &r = w.ren[j++];

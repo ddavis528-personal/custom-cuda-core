@@ -380,8 +380,20 @@ displacement and becomes A1. The second carries rs_cmp, rs_swap and the
 destination and becomes A2's operands. The second allocates no ROB entry
 and no checkpoint, and its steps share the first's rob_tag. Rename joins
 them: the pair is one admission unit, two lanes and one ROB entry, and a
-take stops before it or after it, never between. A pair with a single lane
-left in the cycle waits (`rename.pair_width`). DEC sends the two slots in
+take stops before it or after it, never between (OI-79 (b), OA's rev 239).
+Under `go_static` the go counts the pair's needs together on its first
+slot (admission bit 8, atomic: one more RCU row, one more MIU row and two
+names), and the second slot carries none. A warp's fits never end on a
+first slot, so a pair whose second falls past the warp's R heads waits
+(`rename.pair_window`). Across warps the cycle's take stops before the
+first pair the width would split: the model takes from a snapshot and,
+if the width cut a pair, takes again capped at the first slot's lane
+(`rename.pair_cut`). The full random atomic set, against the earlier rule
+(a pair with one lane left waits): 653,713 cycles to 652,299 (-0.22%), and
+with every atomic a CAS 665,693 to 666,001 (+0.05%). Control pair-split
+(`inject_pair_split`) lets the width split a pair, and the core's checks
+catch it; directed test pair-cut makes the cut bind across two warps,
+which go_tb follows. DEC sends the two slots in
 one cycle, on decode-queue credit for both (an input assumption the core
 checks). A first slot alone could otherwise sit at its warp's head waiting
 for a second that no credit lets in, and with every warp's head such a

@@ -2366,6 +2366,35 @@ void testFault() {
   EXPECT(e.core.freeGprs() == c.phys_regs, "kill after a fault left %zu free", e.core.freeGprs());
 }
 
+/// OI-79 (b)'s cut: two warps, one of predicate writes, one of a lane op
+/// and a CAS again and again, so a CAS's first slot often takes the cycle's
+/// last lane and its second would be the next's; the take stops before the
+/// first. Neither warp writes enough GPRs or MIU rows for the cycle's ports
+/// to bind (OI-80), so go_tb holds the RTL's cut to the model's.
+void testPairCut() {
+  g_test = "CAS pair cut";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 5);
+  std::vector<Op> a, b;
+  for (unsigned i = 0; i != 60; ++i) { Op s; s.k = kSetp; s.pdst = 1 + i % 3; s.nsrc = 2; a.push_back(s); }
+  for (unsigned i = 0; i != 12; ++i) {
+    Op l; l.k = kLane; l.dst = 3; l.nsrc = 1; b.push_back(l);
+    Op x; x.k = kAtomic; x.cas = true; x.dst = 4; x.src[0] = 5; x.src[1] = 6; x.nsrc = 2;
+    x.csrc[0] = 7; x.csrc[1] = 8; x.ncsrc = 2; b.push_back(x);
+  }
+  Op ex; ex.k = kExit;
+  a.push_back(ex);
+  b.push_back(ex);
+  e.launch(0, 0, a);
+  e.launch(1, 1, b);
+  e.finish();
+  EXPECT(e.core.counters["rename.pair_cut"] > 0, "no take was cut before a pair (%llu pairs)",
+         (unsigned long long)e.core.counters["rename.cas_pair"]);
+  EXPECT(e.core.counters["stall.rename_ports"] == 0, "the cycle's ports bound %llu times",
+         (unsigned long long)e.core.counters["stall.rename_ports"]);
+}
+
 /// Every barrier report a run sent, in order.
 std::vector<Bar> barsOf(const Env &e) {
   std::vector<Bar> v;
@@ -3610,7 +3639,7 @@ void testAtomicDemote() {
 /// Random programs with atomics, several warps, every select form: the
 /// environment's dataflow, retirement, hold and head checks on every run.
 /// Not in the benches' random set: no OOE RTL re-issues on more yet.
-void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control = 0) {
+void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control = 0, bool one_warp = false) {
   std::map<std::string, uint64_t> tot;
   std::map<std::string, std::map<uint64_t, uint64_t>> hist;
   struct Report {
@@ -3626,11 +3655,12 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       };
       std::printf("  atomic random: %llu atomics, %.2f passes each, hold %.1f cycles a pass, head wait %.1f,"
                   " %llu cycles of held demote triggers, %llu rename port stalls; %llu CAS pairs, %llu"
-                  " waits for two lanes\n",
+                  " takes cut before a pair the width would split, %llu waits past the warp's heads; %llu cycles\n",
                   (unsigned long long)tot["atomic"], mean("atomic.passes"), mean("atomic.hold_cycles"),
                   mean("atomic.head_wait"), (unsigned long long)tot["demote_trigger.held_atomic"],
                   (unsigned long long)tot["stall.rename_ports"], (unsigned long long)tot["rename.cas_pair"],
-                  (unsigned long long)tot["rename.pair_width"]);
+                  (unsigned long long)tot["rename.pair_cut"], (unsigned long long)tot["rename.pair_window"],
+                  (unsigned long long)tot["cycles"]);
     }
   } report{tot, hist, control == 0};
   for (unsigned seed = 1; seed <= seeds; ++seed)
@@ -3641,12 +3671,13 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       c.inject_atom_early_wake = control == 2;
       c.inject_a1_base_only = control == 3;
       c.inject_cas_split = control == 4;
+      c.inject_pair_split = control == 5;
       std::mt19937 rng(seed * 13 + unsigned(mode));
       Env e(c, seed * 11 + unsigned(mode));
       e.miss_pct = 30;
       e.data_after_cmpl = c.cmpl_wake_delay;
       e.atom_mlc_pct = 20;
-      const unsigned warps = 1 + seed % 4;
+      const unsigned warps = one_warp ? 1 : 1 + seed % 4;
       for (unsigned i = 0; i != warps; ++i) {
         std::vector<Op> prog = randomProgram(rng, 120, true, seed % 2 == 1, (mode & 4) != 0);
         // About one op in twelve an atomic, each 1 to 4 passes, now and then 32.
@@ -3661,7 +3692,9 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
             a.nsrc = 1 + rng() % 3;
             a.red = rng() % 4 == 0;
             // One in four a CAS (TI-39): two slots, the second now and then late.
-            if (rng() % 4 == 0) {
+            // CCV_TEST_CAS_ALL (a measurement's): every atomic a CAS.
+            static const bool cas_all = std::getenv("CCV_TEST_CAS_ALL") != nullptr;
+            if (rng() % 4 == 0 || cas_all) {
               a.cas = true;
               a.red = false;
               a.nsrc = 1 + rng() % 2;
@@ -3681,8 +3714,9 @@ void testAtomicRandom(unsigned seeds, Config (*base)(unsigned, int), int control
       if (control) g_quiet = true;
       e.finish(control ? 30000 : 200000);
       g_quiet = false;
+      tot["cycles"] += e.t;
       for (const char *k : {"atomic", "demote_trigger.held_atomic", "stall.rename_ports", "rename.cas_pair",
-                            "rename.pair_width"})
+                            "rename.pair_cut", "rename.pair_window"})
         tot[k] += e.core.counters[k];
       for (const char *k : {"atomic.passes", "atomic.hold_cycles", "atomic.head_wait"})
         for (const auto &b : e.core.histograms[k]) hist[k][b.first] += b.second;
@@ -4638,6 +4672,22 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   return g_fail;
 }
 /// The directed tests likewise, every core configured first by cfg.
+/// The random atomics (CAS pairs among them), one warp a core, with a hook
+/// on every core cycle, configured by cfg: test/ooe/go_tb.cpp's pairs
+/// (OI-79). One warp: the go's per-warp fits are then the cycle's, so the
+/// cycle's rename ports, which an atomic's two rows can overrun across
+/// warps, never bind beyond them (OI-80). First the directed pair-cut, two
+/// warps whose ports never bind; not among the directed tests above, whose
+/// other benches build no atomics yet.
+int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &)) {
+  g_cycle_hook = hook;
+  g_config_hook = cfg;
+  testPairCut();
+  testAtomicRandom(seeds, randomConfig, 0, true);
+  g_config_hook = nullptr;
+  g_cycle_hook = nullptr;
+  return g_fail;
+}
 int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &)) {
   g_config_hook = cfg;
   const int f = ooeTestDirectedHooked(hook);
@@ -4802,6 +4852,7 @@ int main(int argc, char **argv) {
   testAtomicKill();
   testAtomicDemote();
   testAtomicRandom(seeds, randomConfig);
+  testPairCut();
   testSwap();
   testDemoteRefused();
   testParkedLayout();
@@ -4810,9 +4861,9 @@ int main(int argc, char **argv) {
   testLaneCtx();
   testWidthFromTable();
   testMlcTrigger();
-  for (int k : {1, 2, 3, 4}) {
+  for (int k : {1, 2, 3, 4, 5}) {
     const char *name = k == 1 ? "control atom-off-head" : k == 2 ? "control atom-early-wake"
-                     : k == 3 ? "control a1-base-only" : "control cas-split";
+                     : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;
