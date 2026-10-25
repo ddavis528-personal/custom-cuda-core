@@ -160,7 +160,9 @@ module ooe_go #(
   endfunction
 
   logic rst_r01h;
-  always_ff @(posedge ooe_core_clk) rst_r01h <= ooe_rst_r00h;
+  always_ff @(posedge ooe_core_clk) begin
+    rst_r01h <= ooe_rst_r00h;
+  end
 
 
   `CCV_ASSERT_KNOWN(rbusy_known, rbusy_l_cq00h)
