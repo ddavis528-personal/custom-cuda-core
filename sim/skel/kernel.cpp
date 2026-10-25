@@ -3790,7 +3790,8 @@ private:
       // (F-WIDTH), and DEC copies the mark to each chwidth.multi sibling.
       // no-chw-mark: a converged chwidth goes unmarked.
       if (const OpInfo *op = opByName(r.op); op && op->chw) {
-        const bool conv = r.mask == x.lanes;
+        // chw-mark-always: a diverged chwidth marked converged too.
+        const bool conv = r.mask == x.lanes || k_.brk == "chw-mark-always";
         put(f, c.fet_dec, "all_waiting", conv && k_.brk != "no-chw-mark");
         k_.hit(conv ? "chw_converged" : "chw_diverged");
       }
