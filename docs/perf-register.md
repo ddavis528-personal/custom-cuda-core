@@ -68,6 +68,7 @@ it.
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
+| PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | deferred: to DA (AR-24, IS-24; AR, IS and CP recommend option W) |
 
 ## Entries
 
@@ -1000,3 +1001,66 @@ it.
 - **Signal:** stages on the done link (`params/links.json`), which add to
   every lane op's completion, or the 4-warp shape showing done slots short.
   Re-run the bound then.
+
+### PF-46 Interleaved per-thread memory: a window MIU swizzles
+
+- **Now:** per-thread data that a pointer reaches lies in `.global` in
+  contiguous blocks, one per thread. O-69 interleaves only the spill space,
+  which no pointer reaches. So 32 lanes reading the same field read 32
+  lines: CoreMark-derived's per-thread state is all pointer-reached (CP-55),
+  and its load memops touch 27.9 lines each on coremark32 (TI's rev 208).
+  More L1 lookups do not help: 4x the lookup rate saves 2.7% (TI's rev 214).
+- **Alternative (IS-24 option W, ISA draft in the register):** a window of
+  `.global` that MIU interleaves as O-69 does, chosen by address. An access
+  is interleaved when the `rbase` of the lowest lane in its issue mask lies
+  in `[W, W + L/64 KiB)`, an aligned run of 2^k windows (CP-59). Its logical
+  offset `b = ((rbase - W) << 16) + (rindex << scale) + disp` faults F-ADDR
+  outside `[0, L)`. Lane l's byte goes to `R(ctx) + 128*floor(b/4) + 4l +
+  (b mod 4)`, with `R(ctx)` the warp context's own region, `32*L` apart. The
+  kernel forms `W` once as launch-block word 24 plus `srd #3` (`%privoff`,
+  3 x `CCV_LANE_CONTEXTS`). A pointer into the window names the same bytes
+  only in the lane that uses it, as a CUDA local pointer does. A plain
+  access into `R(ctx)` is an ordinary `.global` access (IS's rev 167). Every
+  `.global` form works this way; no opcode is added. Option M, the same
+  swizzle as two Format D opcodes, is kept for comparison.
+- **What it buys (TI's exact bound, revs 210 and 220):** a scratch knob
+  applies the layout below MIU with every oracle check unchanged. Pin
+  13b4cfd, 64 KiB 8-way L1, warm MLC, perfect fetch, ROB 32, 4 checkpoints;
+  every run exact.
+
+  | Shape | Plain | Interleaved | Change |
+  |---|---|---|---|
+  | coremark32, one warp, uniform seed | 2,433,583 | 1,311,956 | -46.1% (-42.0% unaligned) |
+  | coremark128, four warps, uniform seed | 10,164,145 | 2,838,912 | -72.1% |
+  | coremarkpl32, one warp, a seed per lane | 8,566,857 | 7,961,653 | -7.1% |
+
+  Uniform, 98.5% of memops become one line. Four warps then take 2.16x one
+  warp's time for 4x the work, where plain they took 4.18x and hid nothing:
+  the four-warp memory bound was the layout, not L1's size. Per thread,
+  four interleaved warps take 22,179 cycles against one thread's 1,938,449.
+  With a seed per lane only 55.5% of memops coalesce, since diverged lanes
+  walk different nodes, so the gain falls to 7.1%.
+- **Cost (W):** MIU compares each lane's `rbase` high bits with the window
+  and takes the lowest issuing lane's result: about 1,000 to 1,500 gates,
+  beside the address add. The swizzle is the base + index add with rewired
+  operands and one more carry-save level per lane, about 2 NGD. That is
+  AR's estimate; no MIU session has confirmed it fits without a cycle. MIU
+  forms the window value once a CTA, about 32 flops a CTA slot. OOE
+  substitutes `srd #3` as `imm_kind` 5, one constant on the existing mux
+  (OA's rev 255). The compiler forms the base in three instructions a
+  kernel (CP-61), and the source places per-thread state at the window,
+  one line in CoreMark-derived. The ISA gains a lane-relative pointer,
+  which is new to it though not to CUDA. No opcode points are spent.
+- **Cost (M, for comparison):** Format D's last two points and a 3-bit size
+  field, about one mux level in MIU, and a whole-module points-to analysis
+  in the compiler, whose errors are silent corruption, not faults (CP-58).
+  The compiler-only form, with no ISA change, adds 21% to 34% issue groups
+  (CP-57), most of the gain.
+- **Who gains:** code with pointer-reached per-thread state, CPU-style code
+  such as CoreMark. The GPU kernels already coalesce and gain nothing.
+  Divergent per-thread work gains much less.
+- **Signal:** a decision, not a counter: DA weighs the bound against the
+  new ISA concept. If adopted, the ROB question reopens: interleaved
+  coremark32 still has the ROB full 35.2% of cycles, so ROB 48 and 64 are
+  re-run on the interleaved shapes (AR's rev 222). Measured follow-ups
+  queued: L1 at 512 KiB and the DCU req_id pool, for L1's size.
