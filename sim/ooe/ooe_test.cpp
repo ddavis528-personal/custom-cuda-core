@@ -2843,7 +2843,8 @@ void testChwidth() {
   EXPECT(k["hold.registered.chwidth"] > 0, "no registered hold behind the chwidth (%llu in all)", tot);
   // The head-wait split (TI's rev 193) sums to its total.
   unsigned long long hw = 0;
-  for (const char *c : {"rob_full", "load_at_miu", "load_unissued", "store", "mem_other", "branch", "rcu", "lane"})
+  for (const char *c : {"rob_full", "load_at_miu", "load_unissued", "store", "mem_other", "branch", "rcu",
+                        "lane_unissued", "lane_unconfirmed", "lane_confirmed"})
     hw += k[std::string("retire.head_wait.") + c];
   EXPECT(hw == k["retire.head_wait"] && hw > 0, "retire.head_wait %llu, its split %llu",
          (unsigned long long)k["retire.head_wait"], hw);

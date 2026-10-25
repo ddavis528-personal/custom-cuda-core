@@ -2303,16 +2303,25 @@ void Core::retire() {
     ++histograms["retire_per_cycle"][n];
     // Why the head waits (TI's rev 193): a cycle that retires nothing with
     // an incomplete head, counted once under its first cause: the ROB full,
-    // else the head's kind and state.
+    // else the head's kind and state. A lane op by its RS entry (TI's rev
+    // 198): unissued, issued and unconfirmed, or confirmed (or its entry
+    // freed) awaiting RCU's done.
     if (!n && s.count && !s.fault_stop && !s.rob[s.head].complete) {
       const RobEntry &h = s.rob[s.head];
+      const char *lane = "retire.head_wait.lane_confirmed";
+      if (!h.is_mem && !h.u.attr.branch && !h.u.attr.exec_rcu)
+        for (const RsEntry &e : rs_)
+          if (e.valid && e.slot == si && e.rob == s.head && e.cls == RsCls::kRcu && !e.confirmed) {
+            lane = e.issued ? "retire.head_wait.lane_unconfirmed" : "retire.head_wait.lane_unissued";
+            break;
+          }
       count("retire.head_wait");
       count(s.count == cfg_.rob_depth ? "retire.head_wait.rob_full"
             : h.is_load ? (h.at_miu ? "retire.head_wait.load_at_miu" : "retire.head_wait.load_unissued")
             : h.is_store ? "retire.head_wait.store"
             : h.is_mem ? "retire.head_wait.mem_other"
             : h.u.attr.branch ? "retire.head_wait.branch"
-            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : "retire.head_wait.lane");
+            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : lane);
     }
     // Demotion triggers at the head (Q18): reported to RAU, which decides.
     // None while the head is an atomic in progress (V-70).
