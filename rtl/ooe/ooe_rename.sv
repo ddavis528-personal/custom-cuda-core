@@ -74,6 +74,7 @@ module ooe_rename #(
   localparam int H  = 2 * R - 1,
   localparam int NC = S * R,
   localparam int GR = $clog2(NG),
+  localparam int PR = $clog2(NP),   // a predicate free list entry's index (its candidates' rows)
   localparam int NN = NG << (GW - GR),   // GPR names: rows by positions
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LC = (C > 1) ? $clog2(C) : 1,
@@ -242,14 +243,24 @@ module ooe_rename #(
   logic [R*LS-1:0] gown_cq02h, pown_cq02h;
   logic [S*2*GLT-1:0] gfsp_cq03h;
   logic [S*2*PLT-1:0] pfsp_cq03h;
+  // The free lists' candidates: unread until Rename 2's narrow lanes (OI-81).
+  logic [S-1:0]               gcv_cq02h, pcv_cq02h;
+  logic [S*GR-1:0]            gcr_cq02h;
+  logic [S*PR-1:0]            pcr_cq02h;
   ooe_freelist #(.N(NG), .A(R), .B(FB), .K(FK), .S(S)) u_gfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[0 +: R]), .free_l_cq00h(gfree_l_cq00h),
     .free_mask_cq01h(gfree_cq01h), .own_slot_cq01h(gown_cq02h), .alloc_v_cq02h(galv_cq02h),
-    .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h), .fsp_cq03h(gfsp_cq03h));
+    .alloc_idx_cq02h(galloc_cq02h), .avail_cq02h(gavail_cq02h), .fsp_cq03h(gfsp_cq03h),
+    // Sections: none yet (whole rows until Rename 2's narrow lanes, OI-81).
+    .free_sec_cq01h('0), .sa_l_cq00h('0), .rt_l_cq00h('0), .sa_v_cq01h('0), .sa_row_cq01h('0), .sa_sec_cq01h('0),
+    .rt_v_cq01h('0), .rt_row_cq01h('0), .cand_v_cq02h(gcv_cq02h), .cand_row_cq02h(gcr_cq02h));
   ooe_freelist #(.N(NP), .A(R), .B(FB), .K(FK), .S(S)) u_pfree (
     .ooe_core_clk, .ooe_rst_r00h, .alloc_req_cq01h(wt_cq02h[R +: R]), .free_l_cq00h(pfree_l_cq00h),
     .free_mask_cq01h(pfree_cq01h), .own_slot_cq01h(pown_cq02h), .alloc_v_cq02h(palv_cq02h),
-    .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h), .fsp_cq03h(pfsp_cq03h));
+    .alloc_idx_cq02h(palloc_cq02h), .avail_cq02h(pavail_cq02h), .fsp_cq03h(pfsp_cq03h),
+    // Sections: none yet (whole rows until Rename 2's narrow lanes, OI-81).
+    .free_sec_cq01h('0), .sa_l_cq00h('0), .rt_l_cq00h('0), .sa_v_cq01h('0), .sa_row_cq01h('0), .sa_sec_cq01h('0),
+    .rt_v_cq01h('0), .rt_row_cq01h('0), .cand_v_cq02h(pcv_cq02h), .cand_row_cq02h(pcr_cq02h));
 
   // -- Rename 1: every candidate's reads, then the lanes -----------------------
   // A head's write bits are its admission bits (3 GPR, 4 predicate), as the

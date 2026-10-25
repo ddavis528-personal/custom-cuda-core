@@ -64,6 +64,29 @@
 // The counts are per group of FG consecutive entries, which keeps each
 // count shallow; rename sums the groups.
 //
+// Sections (NS > 0, the GPR rows; OI-29 and OI-81, OA's rev 184): each row
+// also holds NS live-section bits, written by Rename 2's allocations
+// (sa: a row and its sections, a cycle after the port granted it) and
+// cleared by the retire stage's section frees (free_sec, in place of
+// free_mask). Rename 2's allocations and its returns (rt: a granted row a
+// narrow destination did not use, taking a candidate instead; OI-81 (b))
+// come late in its cycle, so they are registered first and act a cycle
+// on. A row returns to the pool the cycle after its last section frees,
+// unless Rename 2 allocates in it as it empties (it took it as a
+// candidate); a returned row as its register holds it. Both are that cycle's
+// frees to the free bits and the owners' counts. The owner of a live row
+// is its port's slot, as above.
+// Each slot keeps two candidates (OI-81 (a); OI-82, OA's rev 254: its home
+// position only): the lowest row it owns, live, with its home section free
+// (section s mod NS, for one section) and with its home pair free
+// (sections 2(s mod 2) and up, for two). A destination wanting another
+// position takes a fresh row. A find-first over every row, registered, from
+// the section bits after this cycle's frees: it has not seen the last two
+// cycles' allocations, so a candidate in a row they wrote is void (the
+// registered allocations and their older copy, compared). The model's
+// Core with cand 2, cand_lag 2 and ret_late is the reference
+// (candidate()).
+//
 // Reset line (decision 6): the free bits reset to all free, the buffer to
 // empty, the bank pointers and bank order to 0, all reset state. The reset
 // input is flopped before any use (RST-1), so the state resets a cycle
@@ -90,7 +113,10 @@ module ooe_freelist #(
   parameter int B = 8,     // candidate buffer entries (OI-38)
   parameter int K = 4,     // refill banks (OI-38); divides N
   parameter int S = 4,     // owners: tier-1 slots (CCV_TIER1_WARPS)
+  parameter int NS = 0,    // sections a row (4: the GPR rows, CCV_W_PHYS_POS; 0: none)
   localparam int W  = $clog2(N),
+  localparam int NSB = (NS > 0) ? NS : 1,        // port widths when NS is 0
+  localparam int NK = (NS > 0) ? 2 : 1,           // candidates a slot: its home position, one section and two
   localparam int M  = N / K,
   localparam int LM = $clog2(M),
   localparam int LB = $clog2(B + 1),
@@ -111,10 +137,21 @@ module ooe_freelist #(
   input  logic           free_l_cq00h,       // a free reaches free_mask next cycle (the ROB's decision)
   input  logic [N-1:0]   free_mask_cq01h,    // entries freed this cycle (the retire stage's register)
   input  logic [A*LS-1:0] own_slot_cq01h,    // the slot of the lane port k's entry goes to this cycle
+  // Sections (NS > 0; tie off when 0).
+  input  logic [N*NSB-1:0] free_sec_cq01h,   // sections freed this cycle, row r's at r * NS (the retire stage's register)
+  input  logic [A-1:0]   sa_l_cq00h,         // Rename 2's lane k allocates or returns next cycle (its register is loading)
+  input  logic [A-1:0]   sa_v_cq01h,         // Rename 2's lane k allocates sections
+  input  logic [A*W-1:0] sa_row_cq01h,       //   in this row
+  input  logic [A*NSB-1:0] sa_sec_cq01h,     //   these
+  input  logic [A-1:0]   rt_l_cq00h,         // Rename 2's lane k returns a row next cycle
+  input  logic [A-1:0]   rt_v_cq01h,         // Rename 2's lane k returns its granted row, unused
+  input  logic [A*W-1:0] rt_row_cq01h,
   output logic [A-1:0]   alloc_v_cq02h,      // head entry k is available to port k
   output logic [A*W-1:0] alloc_idx_cq02h,    // head entry k (meaningful while available)
   output logic [LB-1:0]  avail_cq02h,        // entries allocation can take: the buffer, less those in transit
-  output logic [S*2*LT-1:0] fsp_cq03h        // the frees of two cycles ago by owner, each slot's a carry-save pair (s * 2 * LT)
+  output logic [S*2*LT-1:0] fsp_cq03h,       // the frees of two cycles ago by owner, each slot's a carry-save pair (s * 2 * LT)
+  output logic [S*NK-1:0]   cand_v_cq02h,    // slot s's home candidate, k 0 one section, 1 two, at s * NK + k, is valid
+  output logic [S*NK*W-1:0] cand_row_cq02h   //   and its row
 `ifdef CCV_CHECK
   // Read only by test/ooe/freelist_tb.cpp, which compares the whole state
   // (OA's choice for TI-20): no design port, so synthesis sees none.
@@ -124,7 +161,8 @@ module ooe_freelist #(
   output logic [LA-1:0]  transit_cq02h,      // last cycle's allocations: in transit at the head
   output logic [N-1:0]   free_cq02h,         // the free bits, the entries in transit still set
   output logic [K*LM-1:0] bptr_cq02h,        // each bank's pointer, within the bank
-  output logic [LK-1:0]  rot_cq02h           // the bank refill starts with
+  output logic [LK-1:0]  rot_cq02h,          // the bank refill starts with
+  output logic [N*NSB-1:0] sec_cq02h         // each row's live sections
 `endif
 );
 
@@ -143,8 +181,19 @@ module ooe_freelist #(
     rst_r01h <= ooe_rst_r00h;
   end
 
+  // Declared here, used before their logic: this cycle's frees (rows), the
+  // allocation lead's flop, and each entry's owner.
+  logic [N-1:0]    pend_cq02h;     // NS > 0: the rows returning this cycle (a register)
+  logic [A-1:0]    sa_en_cq01h;   // Rename 2's lane k allocates this cycle
+  logic [A-1:0]    rt_en_cq01h;   // Rename 2's lane k returns a row this cycle
+  logic            fr_en_cq02h;   // NS > 0: a row returns this cycle (pending, or Rename 2's)
+  logic [N*LS-1:0] own_cq02h;
+
   `CCV_ASSERT_KNOWN(alloc_req_known, alloc_req_cq01h)
   `CCV_ASSERT_KNOWN(free_mask_known, free_mask_cq01h)
+  `CCV_ASSERT_KNOWN(free_sec_known, free_sec_cq01h)
+  `CCV_ASSERT_KNOWN(sa_v_known, sa_v_cq01h)
+  `CCV_ASSERT_KNOWN(rt_v_known, rt_v_cq01h)
 
   // The registered count, one-hot.
   function automatic logic [A:0] onehot(input logic [LA-1:0] n);
@@ -381,9 +430,12 @@ module ooe_freelist #(
     for (int i = 0; i < A && i < B; i++)
       if (LA'(i) < rq_cq02h) transit_m_cq02h[st_cq02h[OBUF + i * W +: W]] = 1'b1;
   end
-  `CCV_ASSERT(no_double_free, (free_mask_cq01h & st_cq02h[OBITS +: N] & ~transit_m_cq02h) == '0)
-  `CCV_ASSERT(no_free_of_grant, (free_mask_cq01h & granted_cq02h) == '0)
+  `CCV_ASSERT(no_double_free, (((NS == 0) ? free_mask_cq01h : pend_cq02h) & st_cq02h[OBITS +: N] & ~transit_m_cq02h) == '0)
+  `CCV_ASSERT(no_free_of_grant, (((NS == 0) ? free_mask_cq01h : pend_cq02h) & granted_cq02h) == '0)
   `CCV_ASSERT(free_led, free_mask_cq01h == '0 || free_en_cq01h)
+  `CCV_ASSERT(free_sec_led, free_sec_cq01h == '0 || free_en_cq01h)
+  `CCV_ASSERT(sa_led, (sa_v_cq01h & ~sa_en_cq01h) == '0)
+  `CCV_ASSERT(rt_led, (rt_v_cq01h & ~rt_en_cq01h) == '0)
 
   // Local clock gating (docs/rtl-coding-style.md). The free bits change on
   // last cycle's allocation (rq_cq02h) or a free (its lead's flop,
@@ -396,8 +448,11 @@ module ooe_freelist #(
   logic          bits_en_cq01h, buf_en_cq01h;
   logic [SW-1:0] nx_cq01h;
   logic [LA-1:0] rq_cq01h;          // how many this cycle takes: where the request prefix ends
-  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, free_mask_cq01h);
-  assign bits_en_cq01h = rq_cq02h != '0 || free_en_cq01h;
+  // This cycle's frees: the retire stage's mask, or with sections the
+  // rows returning (pend).
+  assign nx_cq01h      = next_state(st_cq02h, rqh_cq02h, (NS == 0) ? free_mask_cq01h : pend_cq02h);
+  // With sections a row frees only as it returns (fr_en), whatever the lead.
+  assign bits_en_cq01h = rq_cq02h != '0 || (NS == 0 && free_en_cq01h) || fr_en_cq02h;
   assign buf_en_cq01h  = rq_cq02h != '0 || 32'(st_cq02h[OCNT +: LB]) < B;
   always_comb begin
     rq_cq01h = '0;
@@ -434,10 +489,193 @@ module ooe_freelist #(
     end
   end
 
+  // -- Sections, returns and candidates (NS > 0) --------------------------------
+  // This cycle's frees: the rows whose last section frees, and the rows
+  // Rename 2 returns (NS > 0); else the retire stage's mask.
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      sa_en_cq01h <= '0;
+      rt_en_cq01h <= '0;
+    end else begin
+      sa_en_cq01h <= sa_l_cq00h;
+      rt_en_cq01h <= rt_l_cq00h;
+    end
+  end
+  if (NS == 0) begin : g_nosec
+    assign pend_cq02h     = '0;
+    assign fr_en_cq02h    = 1'b0;
+    assign cand_v_cq02h   = '0;
+    assign cand_row_cq02h = '0;
+`ifdef CCV_CHECK
+    assign sec_cq02h = '0;
+`endif
+  end else begin : g_sec
+    // Rename 2's allocations, registered (they come late in its cycle), a
+    // lane each: the data clocked when its lane sends one (the lead's
+    // flop), the valid bits, every lane's together, while a lane sends or
+    // holds one, so they clear. A second copy, a cycle older, serves the
+    // candidates' voids. Its returns go straight into the pending register.
+    logic [A-1:0]   av_cq02h, av2_cq03h;
+    logic [A*W-1:0] ar_cq02h, ar2_cq03h;
+    logic [A*NS-1:0] as_cq02h;
+    logic           iv_en_cq01h, i2_en_cq02h;
+    assign iv_en_cq01h = sa_en_cq01h != '0 || av_cq02h != '0;
+    assign i2_en_cq02h = av_cq02h != '0 || av2_cq03h != '0;
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) av_cq02h <= '0;
+      else if (iv_en_cq01h) av_cq02h <= sa_v_cq01h & sa_en_cq01h;
+    end
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) av2_cq03h <= '0;
+      else if (i2_en_cq02h) av2_cq03h <= av_cq02h;
+    end
+    for (genvar k = 0; k < A; k++) begin : g_in
+      logic in_en_cq01h, in2_en_cq02h;
+      assign in_en_cq01h  = sa_en_cq01h[k];
+      assign in2_en_cq02h = av_cq02h[k];
+      always_ff @(posedge ooe_core_clk) begin
+        if (in_en_cq01h) begin
+          ar_cq02h[k * W +: W]   <= sa_row_cq01h[k * W +: W];
+          as_cq02h[k * NS +: NS] <= sa_sec_cq01h[k * NS +: NS];
+        end
+        if (in2_en_cq02h) ar2_cq03h[k * W +: W] <= ar_cq02h[k * W +: W];
+      end
+    end
+    // The sections the registered allocations set, by row.
+    function automatic logic [N*NS-1:0] sec_set(input logic [A-1:0] v, input logic [A*W-1:0] row,
+                                                input logic [A*NS-1:0] sec);
+      sec_set = '0;
+      for (int k = 0; k < A; k++)
+        for (int r = 0; r < N; r++)
+          if (v[k] && row[k * W +: W] == W'(r)) sec_set[r * NS +: NS] = sec_set[r * NS +: NS] | sec[k * NS +: NS];
+    endfunction
+    // The rows lanes name (v, row): Rename 2's allocations this cycle, or
+    // its returns.
+    function automatic logic [N-1:0] rows_of(input logic [A-1:0] v, input logic [A*W-1:0] row);
+      rows_of = '0;
+      for (int k = 0; k < A; k++)
+        for (int r = 0; r < N; r++)
+          if (v[k] && row[k * W +: W] == W'(r)) rows_of[r] = 1'b1;
+    endfunction
+    // Each row's sections next: with the registered allocations, less this
+    // cycle's frees.
+    function automatic logic [N*NS-1:0] sec_next(input logic [N*NS-1:0] q, input logic [A-1:0] v,
+                                                 input logic [A*W-1:0] row, input logic [A*NS-1:0] sec,
+                                                 input logic [N*NS-1:0] fr);
+      sec_next = (q | sec_set(v, row, sec)) & ~fr;
+    endfunction
+    // A row whose last section frees returns the next cycle, unless Rename
+    // 2 allocates in it this cycle (it took it as a candidate as it
+    // emptied: its sections arrive with the registered allocations); a
+    // row Rename 2 returns, the next cycle too. Both reach the free bits
+    // and the owners' counts from this register.
+    function automatic logic [N-1:0] pend_next(input logic [N*NS-1:0] q, input logic [A-1:0] v,
+                                               input logic [A*W-1:0] row, input logic [A*NS-1:0] sec,
+                                               input logic [N*NS-1:0] fr, input logic [N-1:0] wr,
+                                               input logic [N-1:0] rt);
+      logic [N*NS-1:0] was, nx;
+      was = q | sec_set(v, row, sec);
+      nx  = was & ~fr;
+      for (int r = 0; r < N; r++)
+        pend_next[r] = (was[r * NS +: NS] != '0 && nx[r * NS +: NS] == '0 && !wr[r]) || rt[r];
+    endfunction
+    logic [N*NS-1:0] sec_q_cq02h, sfree_cq02h;
+    logic [N-1:0]    pend_nx_cq01h;
+    assign sfree_cq02h   = sec_q_cq02h & ~free_sec_cq01h;
+    assign pend_nx_cq01h = pend_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h,
+                                     free_sec_cq01h & {N * NS{free_en_cq01h}},
+                                     rows_of(sa_v_cq01h, sa_row_cq01h), rows_of(rt_v_cq01h & rt_en_cq01h, rt_row_cq01h));
+    assign fr_en_cq02h = pend_cq02h != '0;
+    // A free names live sections only, and Rename 2 allocates free ones.
+    `CCV_ASSERT(sec_free_live, (free_sec_cq01h & ~(sec_q_cq02h | sec_set(av_cq02h, ar_cq02h, as_cq02h))) == '0)
+    `CCV_ASSERT(sec_alloc_free, (sec_set(av_cq02h, ar_cq02h, as_cq02h) & sec_q_cq02h) == '0)
+    logic sec_en_cq01h, pv_cq02h, pend_en_cq01h, pv_nx_cq01h;
+    assign pv_nx_cq01h   = free_en_cq01h || rt_en_cq01h != '0;
+    assign pend_en_cq01h = pv_nx_cq01h || pv_cq02h;
+    assign sec_en_cq01h  = free_en_cq01h || av_cq02h != '0;
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) begin
+        sec_q_cq02h <= '0;
+        pend_cq02h  <= '0;
+        pv_cq02h    <= 1'b0;
+      end else begin
+        if (sec_en_cq01h) sec_q_cq02h <= sec_next(sec_q_cq02h, av_cq02h, ar_cq02h, as_cq02h, free_sec_cq01h);
+        pv_cq02h <= pv_nx_cq01h;
+        if (pend_en_cq01h) pend_cq02h <= pend_nx_cq01h;
+      end
+    end
+`ifdef CCV_CHECK
+    assign sec_cq02h = sec_q_cq02h;
+`endif
+
+    // The candidates: slot s, kind k's lowest live row it owns with the
+    // kind's sections free, after this cycle's frees, one-hot by a prefix
+    // OR and then encoded. Registered while the section bits or this
+    // cycle's frees changed what they read.
+    // Slot sl's home sections: k 0 one, k 1 the pair.
+    function automatic logic [NS-1:0] kmask(input int sl, input int k);
+      kmask = (k == 0) ? NS'(1) << (sl % NS) : NS'(3) << (2 * (sl % 2));
+    endfunction
+    function automatic logic [W:0] lowest(input logic [N-1:0] v);
+      logic [N-1:0] below, t, oh;
+      logic [W-1:0] x;
+      below = v << 1;
+      for (int d = 1; d < N; d = d * 2) begin
+        t     = below << d;
+        below = below | t;
+      end
+      oh = v & ~below;
+      x  = '0;
+      for (int r = 0; r < N; r++) if (oh[r]) x = x | W'(r);
+      lowest = {|v, x};
+    endfunction
+    logic [S*NK-1:0]   cv_nx_cq01h, cv_cq02h;
+    logic [S*NK*W-1:0] cr_nx_cq01h, cr_cq02h;
+    always_comb
+      for (int sl = 0; sl < S; sl++)
+        for (int k = 0; k < NK; k++) begin
+          logic [N-1:0] el;
+          logic [W:0]   f;
+          for (int r = 0; r < N; r++)
+            el[r] = own_cq02h[r * LS +: LS] == LS'(sl) && sfree_cq02h[r * NS +: NS] != '0 &&
+                    (sfree_cq02h[r * NS +: NS] & kmask(sl, k)) == '0;
+          f = lowest(el);
+          cv_nx_cq01h[sl * NK + k]           = f[W];
+          cr_nx_cq01h[(sl * NK + k) * W +: W] = f[W-1:0];
+        end
+    // Clocked a cycle after the section bits changed, or while a free comes.
+    // The valids and the rows share the one gate (DA's waiver, OI-82: the
+    // valids come under the rows' floor), so the reset is part of its
+    // enable and clears the valids as data.
+    logic cand_en_cq01h, sch_cq02h;
+    assign cand_en_cq01h = sch_cq02h || free_en_cq01h || rst_r01h;
+    always_ff @(posedge ooe_core_clk) begin
+      if (rst_r01h) sch_cq02h <= 1'b0;
+      else          sch_cq02h <= sec_en_cq01h;
+    end
+    always_ff @(posedge ooe_core_clk) begin
+      if (cand_en_cq01h) begin
+        cv_cq02h <= cv_nx_cq01h & {S * NK{!rst_r01h}};
+        cr_cq02h <= cr_nx_cq01h;
+      end
+    end
+    // A candidate is void in a row the last two cycles' allocations wrote:
+    // the find had not seen them.
+    always_comb
+      for (int c = 0; c < S * NK; c++) begin
+        logic hit;
+        hit = 1'b0;
+        for (int k = 0; k < A; k++)
+          hit = hit | (av_cq02h[k] && ar_cq02h[k * W +: W] == cr_cq02h[c * W +: W]) |
+                      (av2_cq03h[k] && ar2_cq03h[k * W +: W] == cr_cq02h[c * W +: W]);
+        cand_v_cq02h[c] = cv_cq02h[c] && !hit;
+      end
+    assign cand_row_cq02h = cr_cq02h;
+  end
+
   // -- Owners and the frees they count ------------------------------------------
   // Each head a port offers takes its port's slot, from the grant ports'
   // registers (the buffer's output copy, out_cq02h, and the registered take).
-  logic [N*LS-1:0] own_cq02h;
   logic            own_en_cq02h;
   assign own_en_cq02h = alloc_v_cq02h != '0;
   function automatic logic [N*LS-1:0] owners_nx(input logic [N*LS-1:0] o, input logic [A-1:0] v,
@@ -469,20 +707,22 @@ module ooe_freelist #(
       for (int g = 0; g < NF; g++) begin
         logic [FG-1:0] v;
         for (int i = 0; i < FG; i++)
-          v[i] = free_mask_cq01h[g * FG + i] && own_cq02h[(g * FG + i) * LS +: LS] == LS'(s);
+          v[i] = ((NS == 0) ? free_mask_cq01h[g * FG + i] : pend_cq02h[g * FG + i]) &&
+                 own_cq02h[(g * FG + i) * LS +: LS] == LS'(s);
         fs_nx_cq01h[(s * NF + g) * LF +: LF] = count_of(v);
       end
   // The counts hold a free's while they were loaded with one (fsv: the
-  // lead's flop, a cycle on), so they clear at the next edge.
+  // leads' flops, a cycle on), so they clear at the next edge. With
+  // sections a row frees only as it returns (fr_en), whatever the lead.
   logic [S*NF*LF-1:0] fs_cq02h;
   logic fs_en_cq01h, fsv_cq02h;
-  assign fs_en_cq01h = free_en_cq01h || fsv_cq02h;
+  assign fs_en_cq01h = (NS == 0 && free_en_cq01h) || fr_en_cq02h || fsv_cq02h;
   always_ff @(posedge ooe_core_clk) begin
     if (rst_r01h) begin
       fs_cq02h  <= '0;
       fsv_cq02h <= 1'b0;
     end else begin
-      fsv_cq02h <= free_en_cq01h;
+      fsv_cq02h <= (NS == 0 && free_en_cq01h) || fr_en_cq02h;
       if (fs_en_cq01h) fs_cq02h <= fs_nx_cq01h;
     end
   end

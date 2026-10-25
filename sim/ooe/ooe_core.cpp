@@ -31,7 +31,7 @@ std::string Config::apply(const std::string &spec) {
       {"pred_ren_ceil", &pred_ren_ceil}, {"lat_rcu", &lat_rcu}, {"lat_lane", &lat_lane},
       {"lat_lane_byp", &lat_lane_byp}, {"lat_l1_wake", &lat_l1_wake},
       {"lat_l1_cmpl", &lat_l1_cmpl}, {"cmpl_wake_delay", &cmpl_wake_delay}, {"payload_stages", &payload_stages}, {"rename_stages", &rename_stages}, {"branch_ends_group", &branch_ends_group}, {"rename_one_warp", &rename_one_warp}, {"demote_fallback", &demote_fallback},
-      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand},
+      {"demote_mlc_miss", &demote_mlc_miss}, {"demote_barrier", &demote_barrier}, {"place", &place}, {"cand", &cand}, {"cand_lag", &cand_lag},
       {"ren_credit", &ren_credit}, {"ren_free_cap", &ren_free_cap},
       {"fits_conservative", &fits_conservative}, {"fits_stale", &fits_stale}, {"share_return", &share_return},
       {"held_late", &held_late}};
@@ -42,7 +42,7 @@ std::string Config::apply(const std::string &spec) {
                                      {"decq_late_credit", &decq_late_credit},
                                      {"decq_flush_late", &decq_flush_late},
                                      {"decq_take_late", &decq_take_late}, {"rs_same_edge", &rs_same_edge},
-                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"ret_now", &ret_now}, {"go_static", &go_static},
+                                     {"take_young", &take_young}, {"cand_return", &cand_return}, {"cand_indep", &cand_indep}, {"cand_home", &cand_home}, {"ret_late", &ret_late}, {"ret_now", &ret_now}, {"go_static", &go_static},
                                      {"copy_conf_late", &copy_conf_late}, {"req_alloc_lead", &req_alloc_lead},
                                      {"req_rows_late", &req_rows_late},
                                      {"miss_lead", &miss_lead},
@@ -212,6 +212,11 @@ Core::Core(const Config &cfg) : cfg_(cfg) {
   for (auto &c : cand_) c.fill(kNoRow);
   row_claim_.assign(cfg_.phys_regs, 0);
   row_alloc_.assign(cfg_.phys_regs, 0);
+  ret_owner_.assign(cfg_.phys_regs, 0);
+  row_alloc_prev_.assign(cfg_.phys_regs, 0);
+  cand_ret_.clear();
+  ret_pend_.clear();
+  free_defer_.clear();
 }
 
 void Core::ev(const char *name, unsigned warp, uint64_t a, uint64_t b, uint64_t tid) {
@@ -360,6 +365,10 @@ void Core::cycle(uint64_t now) {
   fr_now_.assign(slot_.size(), {0, 0});
   if (fr_prev_.size() != slot_.size()) fr_prev_.assign(slot_.size(), {0, 0});
   gfree_.clock();      // last cycle's frees become allocatable
+  cyc_sa_.clear();
+  cyc_sf_.clear();
+  cyc_rt_.clear();
+  retPending();
   pfree_.clock();
   decq_flushed_ = 0;
   decq_freed_ = 0;
@@ -619,7 +628,10 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row)
     row_claim_[row] = 1;
     // cand_return: the row the go's count took, given back.
     if (cfg_.cand_return && gAvail()) {
-      cand_ret_.push_back(gTake());
+      const unsigned rr = gTake();
+      cand_ret_.push_back(rr);
+      ret_owner_[rr] = uint8_t(slot + 1);
+      ++slot_[slot].held_gpr;
       count("place.row_returned");
     }
   } else if (plan == 0) {
@@ -633,12 +645,32 @@ unsigned Core::allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row)
   }
   rowSec_[row] = uint8_t(rowSec_[row] | m);
   row_alloc_[row] = uint8_t(row_alloc_[row] | m);
+  cyc_sa_.push_back({row, m, slot});
   const unsigned p = row * kPos_ + want;
   gw_[p] = uint8_t(w);
   if (gever_[p]) ev("reg_reuse", slot_[slot].warp, p);
   gever_[p] = 1;
   if (!own_row && want != (w == 1 ? (pos & 2u) : (pos & 3u))) count("place.fallback_position");
   return p;
+}
+
+/// ret_late: last cycle's emptied and returned rows join the pool now,
+/// leaving their slots' held counts.
+void Core::retPending() {
+  // Last cycle's deferred frees first, as the retire stage's: their rows,
+  // emptied, return next cycle.
+  const auto defer = std::move(free_defer_);
+  free_defer_.clear();
+  const auto pend = std::move(ret_pend_);
+  ret_pend_.clear();
+  for (const auto &d : defer) freeGpr(d.first, d.second);
+  for (unsigned r : pend) {
+    const unsigned si = ret_owner_[r] - 1u;
+    ret_owner_[r] = 0;
+    if (si < slot_.size()) --slot_[si].held_gpr;
+    if (si < fr_now_.size()) ++fr_now_[si][0];
+    if (!gfree_.free(r)) err("V-01: row %u freed twice", r);
+  }
 }
 
 /// A slot's candidate of a kind: the lowest row it owns with the kind's
@@ -657,19 +689,35 @@ unsigned Core::candFind(unsigned slot, unsigned kind, const std::vector<uint8_t>
 /// bits a cycle on), and void in a row last cycle allocated in.
 void Core::candStart() {
   if (!cfg_.cand || !cfg_.sectioned) return;
-  for (unsigned r : cand_ret_)
+  for (unsigned r : cand_ret_) {
+    cyc_rt_.push_back(r);
+    if (cfg_.ret_late) { ret_pend_.push_back(r); continue; }   // returned next cycle
+    const unsigned si = ret_owner_[r] - 1u;
+    ret_owner_[r] = 0;
+    --slot_[si].held_gpr;
+    if (si < fr_now_.size()) ++fr_now_[si][0];
     if (!gfree_.free(r)) err("V-01: returned row %u freed twice", r);
+  }
   cand_ret_.clear();
   std::fill(row_claim_.begin(), row_claim_.end(), 0);
   grp_written_.assign(slot_.size(), 0);
-  std::vector<uint8_t> sec = rowSec_;
+  // cand 2: the find without the last cand_lag groups' allocations, and
+  // void in their rows.
+  std::vector<uint8_t> recent(cfg_.phys_regs, 0);
   if (cfg_.cand == 2)
-    for (unsigned r = 0; r != cfg_.phys_regs; ++r) sec[r] = uint8_t(sec[r] & ~row_alloc_[r]);
+    for (unsigned r = 0; r != cfg_.phys_regs; ++r)
+      recent[r] = uint8_t(row_alloc_[r] | (cfg_.cand_lag >= 2 ? row_alloc_prev_[r] : 0));
+  std::vector<uint8_t> sec = rowSec_;
+  for (unsigned r = 0; r != cfg_.phys_regs; ++r) sec[r] = uint8_t(sec[r] & ~recent[r]);
+  cand_sec_ = sec;
   for (unsigned si = 0; si != slot_.size(); ++si)
     for (unsigned k = 0; k != 6; ++k) {
       const unsigned r = candFind(si, k, sec);
-      cand_[si][k] = cfg_.cand == 2 && r != kNoRow && row_alloc_[r] ? kNoRow : r;
+      cand_[si][k] = r != kNoRow && recent[r] ? kNoRow : r;
+      // cand_home: only the home position's two kinds are kept.
+      if (cfg_.cand_home && k != (si & 3u) && k != 4 + (si & 1u)) cand_[si][k] = kNoRow;
     }
+  row_alloc_prev_ = row_alloc_;
   std::fill(row_alloc_.begin(), row_alloc_.end(), 0);
 }
 
@@ -789,8 +837,21 @@ void Core::freeGpr(unsigned slot, unsigned p) {
     }
     const unsigned m = sectionsOf(p);
     if ((rowSec_[row] & m) != m) { err("V-01: GPR p%u freed twice", p); return; }
+    if (cfg_.ret_late && (row_alloc_[row] & m)) {
+      // Allocated by the last group: freed next cycle (retPending).
+      for (const auto &d : free_defer_)
+        if (d.second == p) { err("V-01: GPR p%u freed twice", p); return; }
+      free_defer_.push_back({slot, p});
+      return;
+    }
     rowSec_[row] = uint8_t(rowSec_[row] & ~m);
-    if (!rowSec_[row]) {
+    cyc_sf_.push_back({row, m, slot});
+    if (!rowSec_[row] && cfg_.ret_late) {
+      // Returned next cycle (retPending), its slot holding it until then.
+      rowOwner_[row] = 0;
+      ret_owner_[row] = uint8_t(slot + 1);
+      ret_pend_.push_back(row);
+    } else if (!rowSec_[row]) {
       rowOwner_[row] = 0;
       --slot_[slot].held_gpr;
       if (slot < fr_now_.size()) ++fr_now_[slot][0];
@@ -1922,8 +1983,12 @@ void Core::releaseSlot(unsigned slot) {
     if (s.rob[i].valid) err("V-28: slot %u released with rob entry %u", slot, i);
   for (unsigned a = 0; a != kArchGprs; ++a) freeGpr(slot, s.crat[a]);
   for (unsigned a = 0; a != kArchPreds; ++a) freePred(slot, s.cprat[a]);
-  if (s.held_gpr || (cfg_.rename_preds && s.held_pred))
-    err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr, s.held_pred);
+  // ret_late: rows on their way back stay counted until they join the pool.
+  unsigned pend = 0;
+  for (unsigned r : ret_pend_) pend += ret_owner_[r] == slot + 1;
+  for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
+  if (s.held_gpr != pend || (cfg_.rename_preds && s.held_pred))
+    err("V-01: slot %u released holding %u GPRs, %u predicates", slot, s.held_gpr - pend, s.held_pred);
   slot_of_[s.warp % kWarpIds] = -1;
   rlog_.release |= 1u << slot;
   const unsigned keep_epoch_warp = s.warp;
@@ -1935,6 +2000,7 @@ void Core::releaseSlot(unsigned slot) {
   fresh.crat.fill(zeroName());
   fresh.prat.fill(cfg_.pred_zero);
   fresh.cprat.fill(cfg_.pred_zero);
+  fresh.held_gpr = pend;   // ret_late: its rows on their way back, until they join the pool
   s = fresh;
 }
 
@@ -2725,6 +2791,9 @@ void Core::selectSectioned() {
   }
   ++histograms["issue_per_cycle"][issued];
   ++histograms["sections_idle"][4 - unsigned(__builtin_popcount(used & 0xFu))];
+  // OI-81's figure: GPR rows not in the pool (held, buffered or not, and on
+  // their way back), each cycle.
+  ++histograms["rows_in_use"][cfg_.phys_regs - unsigned(gfree_.size())];
   for (unsigned e : cand)
     if (!rs_[e].issued) {
       count("ready_not_selected");
@@ -4292,6 +4361,8 @@ void Core::checkInvariants() {
             std::snprintf(buf, sizeof buf, "slot %u: temporary p%u is also another name", si, p);
             bad("V-01", buf);
           }
+    for (const auto &d : free_defer_)
+      if (d.first == si) own.insert(d.second);   // ret_late: freed next cycle, live until then
     if (cfg_.sectioned) {
       // Sectioned (OI-29): the slot's live slices, by row. Every live section
       // of a row belongs to its owner (V-62), the row's section mask is
@@ -4316,6 +4387,10 @@ void Core::checkInvariants() {
       }
       own.clear();
       for (const auto &rm : rowsec) own.insert(rm.first);
+      for (unsigned r : cand_ret_)
+        if (ret_owner_[r] == si + 1) own.insert(r);   // cand_return: held until returned
+      for (unsigned r : ret_pend_)
+        if (ret_owner_[r] == si + 1) own.insert(r);   // ret_late: held until it joins the pool
     }
     if (own.size() != s.held_gpr) {
       std::snprintf(buf, sizeof buf, "slot %u owns %zu registers but counts %u", si, own.size(), s.held_gpr);
@@ -4358,7 +4433,8 @@ void Core::checkInvariants() {
         bad("V-70", "a warp demotes with an atomic pass in flight");
     if (s.rs_held > (cfg_.rs_warp_cap ? cfg_.rs_warp_cap : n_)) bad("V-14", "a warp over its RS cap");
   }
-  for (unsigned r : cand_ret_) where[r] = 0;   // cand_return: a row on its way back
+  for (unsigned r : cand_ret_) where[r] = int(ret_owner_[r]) - 1;   // cand_return: a row its slot gives back
+  for (unsigned r : ret_pend_) where[r] = int(ret_owner_[r]) - 1;   // ret_late: on its way back
   unsigned accounted = 0;
   for (int w : where) accounted += w != -1;
   if (accounted != cfg_.phys_regs) {

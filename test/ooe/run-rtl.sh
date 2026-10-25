@@ -7,7 +7,8 @@
 # - ooe_ready against the live model through its random unit tests
 #   (test/ooe/ready_tb.cpp);
 # - ccv_common_csa against arithmetic (test/common/csa_tb.cpp);
-# - ooe_freelist against the model's own free lists, live, for the GPR rows
+# - ooe_freelist against the model's own free lists, live, for the GPR rows,
+#   the GPR rows with their sections and home candidates (OI-81, OI-82),
 #   and the predicates, in its buffered form (test/ooe/freelist_tb.cpp);
 # - ooe_age against the model's RS ages, live, for both RS classes
 #   (test/ooe/age_tb.cpp);
@@ -130,7 +131,7 @@ for nw in 1,8 2,8 3,5 4,9 5,9 6,8 16,8 18,9; do
 done
 
 # ooe_freelist, driven from the model's own free lists after every cycle:
-# the GPR rows and the predicates.
+# the GPR rows, the GPR rows with their sections, and the predicates.
 phys=$(sed -n 's/.*localparam int CCV_P_PHYS_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
 preds=$(sed -n 's/.*localparam int CCV_P_PRED_REGS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
 width=$(sed -n 's/.*localparam int CCV_ISSUE_WIDTH = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
@@ -139,15 +140,18 @@ width=$(sed -n 's/.*localparam int CCV_ISSUE_WIDTH = \([0-9]*\);.*/\1/p' rtl/gen
 fl_buf=$(sed -n 's/.*unsigned fl_buf = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
 fl_banks=$(sed -n 's/.*unsigned fl_banks = \([0-9]*\);.*/\1/p' sim/ooe/ooe_core.h)
 fl_slots=$(sed -n 's/.*localparam int CCV_TIER1_WARPS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)
-for cfg in "gpr 0 $phys" "pred 1 $preds"; do
+# gsec: the GPR rows with their sections and candidates (NS 4, OI-81/82), a
+# section per position (CCV_W_PHYS_POS bits).
+ns=$((1 << $(sed -n 's/.*localparam int CCV_W_PHYS_POS = \([0-9]*\);.*/\1/p' rtl/generated/ccv_params_pkg.sv)))
+for cfg in "gpr 0 $phys 0" "gsec 0 $phys $ns" "pred 1 $preds 0"; do
   set -- $cfg
-  name=$1 pool=$2 n=$3
+  name=$1 pool=$2 n=$3 sec=$4
   dir=build/ooe-rtl/freelist_$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
+        --trace -DCCV_CHECK -GN="$n" -GA="$width" -GB="$fl_buf" -GK="$fl_banks" -GS="$fl_slots" -GNS="$sec" --top-module ooe_freelist --Mdir "$dir" -o freelist_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
-        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_POOL=$pool -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
+        -CFLAGS "-std=c++17 -O2 -DFL_N=$n -DFL_A=$width -DFL_B=$fl_buf -DFL_K=$fl_banks -DFL_S=$fl_slots -DFL_POOL=$pool -DFL_NS=$sec -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/test/ooe/freelist_tb.cpp" \
         "$PWD/sim/ooe/ooe_core.cpp" "$PWD/sim/ooe/ooe_test.cpp" >"$dir/build.log" 2>&1; then
     say "freelist $name: builds" "FAIL (see $dir/build.log)"; tail -5 "$dir/build.log"; fail=1; continue
@@ -157,7 +161,9 @@ for cfg in "gpr 0 $phys" "pred 1 $preds"; do
   else
     say "freelist $name == model, live" "FAIL"; echo "$out" | tail -8; fail=1
   fi
-  for c in drop-free extra-alloc no-lead wrong-owner; do
+  ctl="drop-free extra-alloc no-lead wrong-owner"
+  [ "$sec" != 0 ] && ctl="drop-sec-free sa-early no-lead"
+  for c in $ctl; do
     if FL_CONTROL=$c "$dir/freelist_tb" 3 >/dev/null 2>&1; then
       say "  control $c (freelist $name)" "MISSED"; fail=1
     else

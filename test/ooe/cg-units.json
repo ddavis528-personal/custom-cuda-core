@@ -118,6 +118,28 @@
       }
     },
     {
+      "name": "ooe_freelist_gsec",
+      "module": "ooe_freelist",
+      "files": [
+        "rtl/common/ccv_common_csa.sv",
+        "rtl/ooe/ooe_freelist.sv"
+      ],
+      "params": {
+        "N": 192,
+        "A": 4,
+        "B": 8,
+        "K": 4,
+        "NS": 4
+      },
+      "clock": "ooe_core_clk",
+      "reset": "ooe_rst_r00h",
+      "bench": {
+        "build": "test/ooe/cg-build.sh ooe_freelist_gsec {dir}",
+        "run": "{dir}/tb --cg {scenario} {vcd}",
+        "scope": "ooe_freelist"
+      }
+    },
+    {
       "name": "ooe_freelist_pred",
       "module": "ooe_freelist",
       "files": [
