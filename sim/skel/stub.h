@@ -298,6 +298,14 @@ inline constexpr OpInfo kOps[] = {
   // keep the destination's old value, carried as merge_data (A-33, A-44).
   {"ADD_P",         kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
   {"ST_GLOBAL_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
+  // O-80's sized forms (DA tab rev 90): the base + index layout, rdata's
+  // width untouched; the transfer is the opcode's (xferOf).
+  {"SZ_GLOBAL_LD_U8",  kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
+  {"SZ_GLOBAL_LD_S8",  kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
+  {"SZ_GLOBAL_LD_U16", kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
+  {"SZ_GLOBAL_LD_S16", kLoad,   2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1},
+  {"SZ_GLOBAL_ST_8",   kStore,  3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
+  {"SZ_GLOBAL_ST_16",  kStore,  3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1},
   {"C_EXIT",        kExit,      0, false, false, false, false, false, -1, -1, -1, -1, -1, -1, -1},
   {"MOVI",          kImm,       0, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  0},
   // sel's qualifier is DATA: every issue-mask lane writes rd, choosing rs0 or
@@ -372,6 +380,7 @@ inline constexpr OpInfo kOps[] = {
   // immediate, 32-bit and compressed, as their siblings above.
   {"ADDI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   {"ANDI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  {"ORI",           kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   {"MULI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   {"SHRI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   {"SRAI",          kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
@@ -441,6 +450,18 @@ inline unsigned maskOf(unsigned chw, unsigned pos) { return ((1u << spanOf(chw))
 constexpr unsigned kNumOps = sizeof kOps / sizeof kOps[0];
 static_assert(kOpCopy > kNumOps, "the copy-only op's code collides with the table");
 inline unsigned opcodeOf(const OpInfo *o) { return unsigned(o - kOps) + 1; }
+/// O-80: a sized form's transfer, as xfer_size codes it (1 a byte, 2 a
+/// halfword), and whether its load sign-extends; 0 and false otherwise.
+inline unsigned xferOf(const OpInfo *op) {
+  const std::string n = op->name;
+  if (n.rfind("SZ_", 0) != 0) return 0;
+  return n.find("16") != std::string::npos ? 2u : 1u;
+}
+inline bool xferSigned(const OpInfo *op) {
+  const std::string n = op->name;
+  return n.rfind("SZ_", 0) == 0 && n.find("_LD_S") != std::string::npos;
+}
+
 /// An add (+1) or subtract (-1) the lane stub computes itself when its
 /// destination is narrow, to wrap it at the width (AR-24); 0 otherwise.
 inline int arithSign(const OpInfo *op) {

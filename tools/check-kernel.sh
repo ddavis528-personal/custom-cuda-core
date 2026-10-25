@@ -708,7 +708,28 @@ addrneg addr_fault=1 fault=1 kill=1
 addrlimit addr_fault=0 fault=0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
 narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
+sized partial_line>0
 KERNELS
+# O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
+# xfer_size, never rdata's width, and a signed load sign-filled to rdata.
+#   xfer-ignored: MIU takes the transfer from rdata's width
+#   xfer-unsigned: DEC marks no sized load signed
+SZ=build/oracle/sized/oracle.jsonl
+for b in xfer-ignored xfer-unsigned; do
+  "$SKEL" --kernel "$SZ" --break "$b" >"$B/kernel_$b.log" 2>&1
+done
+if grep -q "^CHECK miu: seq 4 lane 0 moves 4 bytes, oracle 1" "$B/kernel_xfer-ignored.log" &&
+   [ "$(field "$B/kernel_xfer-ignored.log" mem_mismatch)" != 0 ]; then
+  say "--break xfer-ignored: MIU refuses rdata's width" "PASS (mem_mismatch=$(field "$B/kernel_xfer-ignored.log" mem_mismatch))"
+else
+  bad "--break xfer-ignored" "a sized transfer taken at rdata's width went unnoticed: $(grep '^KERNEL' "$B/kernel_xfer-ignored.log")"
+fi
+if grep -q "^CHECK miu: seq 7 lane 0 store data 000000ff, oracle ffffffff" "$B/kernel_xfer-unsigned.log" &&
+   [ "$(field "$B/kernel_xfer-unsigned.log" gpr_mismatch)" != 0 ]; then
+  say "--break xfer-unsigned: ld.s8 zero-filled is caught" "PASS (gpr_mismatch=$(field "$B/kernel_xfer-unsigned.log" gpr_mismatch))"
+else
+  bad "--break xfer-unsigned" "a signed sized load zero-filled went unnoticed: $(grep '^KERNEL' "$B/kernel_xfer-unsigned.log")"
+fi
 # Narrow registers on full rows (AR-24's interim; AR's rev 178, OA's rev 230):
 # every narrow write zero-extends at its width code, so a widening finds the
 # row clear above the old element (O-38), and MIU moves the data register's
