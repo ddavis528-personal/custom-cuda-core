@@ -559,10 +559,39 @@ private:
   /// write-through: every store goes to MLC as a read-merge-write, the
   /// policy before rev 8, which the merged values survive but the timing
   /// does not.
-  static constexpr unsigned kSets = 64;
-  struct Way { bool valid = false; uint64_t line = 0; Line data{}; bool owned = false, dirty = false; };
-  std::array<Way, kSets> l1_{};
-  Way &way(uint64_t pa) { return l1_[(pa / kLine) % kSets]; }
+  /// CCV_DCU_SETS sets (default 64, a power of two) of CCV_DCU_WAYS ways
+  /// (default 1, direct-mapped), least recently used replaced. Capacity and
+  /// associativity are unset in the DCU spec, which sizes the ways by a sweep
+  /// of 1, 2, 4 and 8 (AR-24's 4-warp shape, and AR's 512 KiB fit bound).
+  static unsigned setsOf() {
+    const char *v = std::getenv("CCV_DCU_SETS");
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 64;
+    return n >= 1 && n <= 65536 && !(n & (n - 1)) ? n : 64;
+  }
+  const unsigned sets_ = setsOf();
+  struct Way {
+    bool valid = false; uint64_t line = 0; Line data{}; bool owned = false, dirty = false;
+    uint64_t used = 0;
+  };
+  static unsigned waysOf() {
+    const char *v = std::getenv("CCV_DCU_WAYS");
+    const unsigned n = v && *v ? unsigned(std::strtoul(v, nullptr, 10)) : 1;
+    return n >= 1 && n <= 16 ? n : 1;
+  }
+  const unsigned ways_ = waysOf();
+  std::vector<Way> l1_ = std::vector<Way>(size_t(sets_) * ways_);
+  uint64_t lru_tick_ = 0;
+  /// The way holding pa, else the one an install of pa would take: an
+  /// invalid way, else the least recently used.
+  Way &way(uint64_t pa) {
+    Way *set = &l1_[size_t((pa / kLine) % sets_) * ways_];
+    Way *victim = &set[0];
+    for (unsigned i = 0; i != ways_; ++i) {
+      if (set[i].valid && set[i].line == pa) { set[i].used = ++lru_tick_; return set[i]; }
+      if (victim->valid && (!set[i].valid || set[i].used < victim->used)) victim = &set[i];
+    }
+    return *victim;
+  }
   const Line *lookup(uint64_t pa) {
     Way &w = way(pa);
     return w.valid && w.line == pa ? &w.data : nullptr;
@@ -581,7 +610,7 @@ private:
       busy_lines_.insert(w.line);
       k_.hit("dcu_evict");
     }
-    w = {true, pa, l, owned, dirty};
+    w = {true, pa, l, owned, dirty, ++lru_tick_};
     shadow(w);
   }
   /// A store's bytes into a line, under its byte mask.
@@ -2857,6 +2886,10 @@ private:
         if (r && same && tgt != uint32_t(r->target))
           k_.failHeld(at, m.tid, "rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq,
                       tgt, (unsigned long long)r->target);
+        // A pass returns the lanes ccv-sim's record names as taken (CP-54).
+        if (r && same != r->taken)
+          k_.failHeld(at, m.tid, "rcu: seq %llu ret pass returns lanes %08x, oracle %08x",
+                      (unsigned long long)r->seq, same, r->taken);
       }
       to_ooe_.push_back({0, d, m.tid});
       return;
@@ -3516,12 +3549,12 @@ private:
         const bool swap = k_.brk == "split-swap";
         const uint32_t to_tgt = swap ? x.br_mask & ~tmask : tmask;
         // stay (AR-24 (b)): a ret's other lanes stay at the ret, to re-issue
-        // with their own targets, rather than fall through. A trace-driven
-        // FET has no record for the re-issue, so a peel it must follow fails.
-        const bool stay = get(m.payload, c.ooe_fet, "stay") != 0;
-        if (stay && (x.br_mask & ~to_tgt))
-          k_.fail("fet: a ret peels lanes %08x off to re-issue; ccv-sim's record has them return "
-                  "at once", x.br_mask & ~to_tgt);
+        // with their own targets, rather than fall through. ccv-sim records a
+        // ret a pass per distinct target (CP-54, snapshot 13b4cfd), so the
+        // re-issue is the next record for them, and the picks check it.
+        // ret-no-stay: they fall through instead.
+        const bool stay = get(m.payload, c.ooe_fet, "stay") != 0 && k_.brk != "ret-no-stay";
+        if (stay && (x.br_mask & ~to_tgt)) k_.hit("ret_pass");
         const unsigned before = groups(x);
         for (unsigned l = 0; l != kLanes; ++l)
           if (x.br_mask >> l & 1u)
@@ -3818,9 +3851,16 @@ private:
         k_.peak("ckpt_peak", x.taken_order.size());
         x.ckpt_of[r.seq] = ck;
         put(f, c.fet_dec, "checkpoint_id", ck);
-        pred_taken = perfect_ && r.taken != 0 && r.taken == r.mask;
+        // pred-taken-any (OI's rev 210): predict taken when any lane takes
+        // it, so V-41 must find the partial outcome a mispredict and redirect
+        // the lanes that took it. FET fetches no wrong path, so it awaits
+        // that redirect as for any mispredict.
+        const bool any = k_.brk == "pred-taken-any";
+        pred_taken = perfect_ && r.taken != 0 && (r.taken == r.mask || any);
         put(f, c.fet_dec, "pred_taken", pred_taken);
-        mispredict = r.taken != 0 && !pred_taken;
+        const bool partial = pred_taken && r.taken != r.mask;
+        if (partial) k_.hit("fet_pred_partial");
+        mispredict = (r.taken != 0 && !pred_taken) || partial;
         if (pred_taken) k_.hit("fet_perfect_taken");
         if (perfect_ && mispredict) k_.hit("fet_perfect_split");
       }

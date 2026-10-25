@@ -710,6 +710,7 @@ ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
 narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 sized partial_line>0
 divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
+callret ret_pass=1 groups_peak=2
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -759,6 +760,38 @@ if grep -q "^CHECK miu: seq 4 lane 0 moves 4 bytes, oracle 2" "$B/kernel_wide-xf
   say "--break wide-xfer: MIU's transfer size refused" "PASS (mem_mismatch=$(field "$B/kernel_wide-xfer.log" mem_mismatch))"
 else
   bad "--break wide-xfer" "a 4-byte transfer for a narrow register went unnoticed: $(grep '^KERNEL' "$B/kernel_wide-xfer.log")"
+fi
+# A ret to two targets runs in two passes (AR-24 (b), CP-54): RCU's done
+# names lane 0's target's lanes, OOE redirects them with stay, and the ret
+# issues again for the rest, as ccv-sim records it.
+#   ret-no-stay: FET sends the staying lanes past the ret instead
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break ret-no-stay >"$B/kernel_ret-no-stay.log" 2>&1
+if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 1052 for aaaaaaaa" "$B/kernel_ret-no-stay.log"; then
+  say "--break ret-no-stay: a ret's second pass is followed" "PASS ($(field "$B/kernel_ret-no-stay.log" check_failures) checks)"
+else
+  bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
+fi
+# V-41's partial outcome (OI's 8994b78, rev 210): a branch FET predicts
+# taken that only some of its lanes take is a mispredict, and OOE redirects
+# the lanes that took it. pred-taken-any (perfect fetch) predicts div's 32
+# divergent branches taken; each must redirect and the run match ccv-sim.
+#   inject_partial_taken_ok: OOE counts the partial outcome right, the old
+#   rule, so no redirect comes and the warp never finishes
+DV=build/oracle/div/oracle.jsonl
+CCV_FET_PERFECT=1 "$SKEL" --kernel "$DV" --break pred-taken-any >"$B/kernel_pred-taken-any.log" 2>&1
+CCV_FET_PERFECT=1 CCV_OOE_CONFIG=inject_partial_taken_ok=1 "$SKEL" --kernel "$DV" --break pred-taken-any \
+  --cycles 200000 >"$B/kernel_partial-taken-ok.log" 2>&1
+if grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_pred-taken-any.log" &&
+   [ "$(cover "$B/kernel_pred-taken-any.log" fet_pred_partial)" = 32 ] &&
+   [ "$(cover "$B/kernel_pred-taken-any.log" redirect)" = 32 ]; then
+  say "div, FET predicting taken on any lane: V-41 redirects" "PASS (fet_pred_partial=32 redirect=32)"
+else
+  bad "div under pred-taken-any" "a partially taken prediction was not recovered: $(grep '^KERNEL' "$B/kernel_pred-taken-any.log")"
+fi
+if grep -q "finished=0" "$B/kernel_partial-taken-ok.log" && [ "$(cover "$B/kernel_partial-taken-ok.log" redirect)" = 0 ]; then
+  say "inject_partial_taken_ok: a partial outcome counted right" "PASS (no redirect; never finishes)"
+else
+  bad "inject_partial_taken_ok" "a partial outcome counted right went unnoticed: $(grep '^KERNEL' "$B/kernel_partial-taken-ok.log")"
 fi
 # O-81, converged-only chwidth (DA tab rev 91): FET marks a chwidth
 # all_waiting only when its group holds every live lane, and OOE faults an
