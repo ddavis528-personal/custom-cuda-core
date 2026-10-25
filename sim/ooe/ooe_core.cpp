@@ -1670,8 +1670,14 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     err("V-07: branch at rob tag %u resolved without a live checkpoint", tagOf(slot, idx));
     return;
   }
-  // V-41: a redirect exactly when the outcome disagrees with pred_taken.
-  if (r.taken == r.u.pred_taken) {
+  // V-41: a redirect exactly when the outcome disagrees with pred_taken. A
+  // taken prediction is right only if every active lane took it (FET spec
+  // rev 28, TI's rev 199): a branch or ret that splits its group is a
+  // mispredict, redirected for the lanes that took it. (A ret's target
+  // against FET's predicted one waits on a field that carries it.)
+  const bool right = r.u.pred_taken ? r.taken && (r.taken_mask == r.u.group_mask || cfg_.inject_partial_taken_ok)
+                                    : !r.taken;
+  if (right) {
     free_mask_ |= uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt);
     s.ckpt[r.u.ckpt].live = false;
     r.ckpt_live = false;

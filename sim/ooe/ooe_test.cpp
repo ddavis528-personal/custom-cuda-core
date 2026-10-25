@@ -90,6 +90,7 @@ struct Op {
   unsigned dst = 0, src[3] = {}, nsrc = 0, pdst = 0, pguard = 0, pq[2] = {};
   bool guard = false, cross = false, taken = false, pred_taken = false;
   uint32_t mask = kFullMask;
+  uint32_t tmask = kFullMask;    ///< kBranch: the lanes that take it, when taken
   unsigned w = 0;                ///< sectioned: the destination's width code
   bool backward = false;         ///< a backward branch (OA-14's rotation)
   unsigned cause = 0;            ///< a fault DEC found (1 F-FETCH, 2 F-ILLEGAL)
@@ -693,7 +694,7 @@ struct Env {
         if (corr) {
           tid_at[{x.id, x.next}] = tid;
           idx_of[tid] = x.next++;
-          if (o.k == kBranch && o.taken != o.pred_taken) {
+          if (o.k == kBranch && (o.taken != o.pred_taken || (o.pred_taken && o.taken && o.tmask != kFullMask))) {
             x.wrong = true;                      // fetch the wrong path until redirected
             x.wrong_branch_tid = tid;
             x.junk = 0;
@@ -861,7 +862,7 @@ struct Env {
       d.rob_tag = is.rob_tag;
       if (o.k == kBranch) {
         d.branch_taken = correct[is.tid] ? o.taken : rnd(2);
-        d.branch_mask = d.branch_taken ? kFullMask : 0;
+        d.branch_mask = d.branch_taken ? (correct[is.tid] ? o.tmask : kFullMask) : 0;
         if (o.ret) d.aux = o.ret_to;
       }
       // A guarded barrier's guard lanes on branch_mask, wait.phase's
@@ -2850,6 +2851,40 @@ void testChwidth() {
          (unsigned long long)k["retire.head_wait"], hw);
 }
 
+/// V-41 (FET spec rev 28, TI's rev 199): a branch or ret FET predicts taken
+/// is right only if every active lane took it. Taken by half its group, it
+/// is a mispredict: one redirect, for the lanes that took it (a ret with
+/// stay). The control partial-taken counts it right, so nothing redirects.
+void testPartialTaken(bool control = false) {
+  for (const bool ret : {false, true}) {
+      g_test = ret ? "partial taken ret" : "partial taken branch";
+      Config c = baseConfig();
+      c.l1_spec = false;
+      c.inject_partial_taken_ok = control;
+      Env e(c, 7);
+      e.keep_log = true;
+      std::vector<Op> p;
+      Op a; a.k = kLane; a.dst = 3; a.nsrc = 1; p.push_back(a);
+      Op b; b.k = kBranch; b.taken = b.pred_taken = true; b.tmask = 0x0000ffffu; b.ret = ret; b.ret_to = 0x2468;
+      p.push_back(b);
+      Op d; d.k = kLane; d.dst = 4; d.nsrc = 1; p.push_back(d);
+      Op ex; ex.k = kExit; p.push_back(ex);
+      e.launch(0, 0, p);
+      e.finish();
+      unsigned n = 0;
+      for (const Outputs &o : e.log)
+        for (const Redirect &r : o.redirects)
+          if (!r.epoch_only) {
+            ++n;
+            EXPECT(r.taken_mask == 0x0000ffffu, "redirect lanes %08x", r.taken_mask);
+            EXPECT(r.stay == ret, "stay %u", unsigned(r.stay));
+          }
+      EXPECT(n == 1, "%u redirects", n);
+      EXPECT(e.core.counters["branch.mispredict"] == 1, "mispredicts %llu",
+             (unsigned long long)e.core.counters["branch.mispredict"]);
+    }
+}
+
 /// AR-24 (b) (OA's rev 223): a ret resolves at RCU, whose done names the
 /// lowest active lane's target offset on aux and the lanes sharing it on
 /// branch_mask. Mispredicted (FET predicts no ret target), it redirects
@@ -4834,6 +4869,7 @@ int main(int argc, char **argv) {
   testChwidth();
   testChwidthMulti();
   testRet();
+  testPartialTaken();
   testWidthTraffic();
   testWidthCodes();
   testWidthFault();
@@ -4867,6 +4903,16 @@ int main(int argc, char **argv) {
                      : k == 3 ? "control a1-base-only" : k == 4 ? "control cas-split" : "control pair-split";
     const int saved = g_fail;
     testAtomicRandom(10, randomConfig, k);
+    const bool caught = g_fail != saved;
+    g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
+  {
+    const char *name = "control partial-taken";
+    const int saved = g_fail;
+    testPartialTaken(true);
     const bool caught = g_fail != saved;
     g_fail = saved;
     g_test = name;

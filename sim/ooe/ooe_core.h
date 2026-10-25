@@ -426,6 +426,9 @@ struct Config {
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
+  /// V-41's control (FET spec rev 28, TI's rev 199): a taken prediction
+  /// counts as right when any lane took the branch, as before.
+  bool inject_partial_taken_ok = false;
   /// TI-40's controls: rename holds behind no wait, the converged's too;
   /// a held warp's rewind beat goes unflagged, so FET resumes past the
   /// wait.

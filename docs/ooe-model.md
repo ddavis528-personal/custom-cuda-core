@@ -154,6 +154,12 @@ example, is PF-1.
 9. **The demotion resume PC** is the oldest unretired instruction's, or the
    oldest queued uop's, or the PC after the last retirement.
 10. **V-35's bound** (below).
+11. **A taken prediction is right only if every active lane took it** (V-41;
+   FET spec rev 28, TI's rev 199). A branch or ret FET predicts taken whose
+   branch_mask is a strict subset of its group is a mispredict, redirected
+   for the lanes that took it (a ret with stay). Directed test partial
+   taken; control partial-taken (any lane counts). A ret's target against
+   FET's predicted one waits on a field that carries the prediction.
 11. **Past L1, a dependant wakes when the data is readable, not when the
     completion lands.** MIU sends the data to RCU and the completion to OOE
     together, over different links. A dependant woken by the completion
