@@ -710,6 +710,7 @@ ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
 narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 sized partial_line>0
 divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
+callret ret_pass=1 groups_peak=2
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -759,6 +760,16 @@ if grep -q "^CHECK miu: seq 4 lane 0 moves 4 bytes, oracle 2" "$B/kernel_wide-xf
   say "--break wide-xfer: MIU's transfer size refused" "PASS (mem_mismatch=$(field "$B/kernel_wide-xfer.log" mem_mismatch))"
 else
   bad "--break wide-xfer" "a 4-byte transfer for a narrow register went unnoticed: $(grep '^KERNEL' "$B/kernel_wide-xfer.log")"
+fi
+# A ret to two targets runs in two passes (AR-24 (b), CP-54): RCU's done
+# names lane 0's target's lanes, OOE redirects them with stay, and the ret
+# issues again for the rest, as ccv-sim records it.
+#   ret-no-stay: FET sends the staying lanes past the ret instead
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break ret-no-stay >"$B/kernel_ret-no-stay.log" 2>&1
+if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 1052 for aaaaaaaa" "$B/kernel_ret-no-stay.log"; then
+  say "--break ret-no-stay: a ret's second pass is followed" "PASS ($(field "$B/kernel_ret-no-stay.log" check_failures) checks)"
+else
+  bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
 fi
 # O-81, converged-only chwidth (DA tab rev 91): FET marks a chwidth
 # all_waiting only when its group holds every live lane, and OOE faults an

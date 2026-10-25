@@ -2857,6 +2857,10 @@ private:
         if (r && same && tgt != uint32_t(r->target))
           k_.failHeld(at, m.tid, "rcu: seq %llu ret to %08x, oracle %08llx", (unsigned long long)r->seq,
                       tgt, (unsigned long long)r->target);
+        // A pass returns the lanes ccv-sim's record names as taken (CP-54).
+        if (r && same != r->taken)
+          k_.failHeld(at, m.tid, "rcu: seq %llu ret pass returns lanes %08x, oracle %08x",
+                      (unsigned long long)r->seq, same, r->taken);
       }
       to_ooe_.push_back({0, d, m.tid});
       return;
@@ -3516,12 +3520,12 @@ private:
         const bool swap = k_.brk == "split-swap";
         const uint32_t to_tgt = swap ? x.br_mask & ~tmask : tmask;
         // stay (AR-24 (b)): a ret's other lanes stay at the ret, to re-issue
-        // with their own targets, rather than fall through. A trace-driven
-        // FET has no record for the re-issue, so a peel it must follow fails.
-        const bool stay = get(m.payload, c.ooe_fet, "stay") != 0;
-        if (stay && (x.br_mask & ~to_tgt))
-          k_.fail("fet: a ret peels lanes %08x off to re-issue; ccv-sim's record has them return "
-                  "at once", x.br_mask & ~to_tgt);
+        // with their own targets, rather than fall through. ccv-sim records a
+        // ret a pass per distinct target (CP-54, snapshot 13b4cfd), so the
+        // re-issue is the next record for them, and the picks check it.
+        // ret-no-stay: they fall through instead.
+        const bool stay = get(m.payload, c.ooe_fet, "stay") != 0 && k_.brk != "ret-no-stay";
+        if (stay && (x.br_mask & ~to_tgt)) k_.hit("ret_pass");
         const unsigned before = groups(x);
         for (unsigned l = 0; l != kLanes; ++l)
           if (x.br_mask >> l & 1u)
