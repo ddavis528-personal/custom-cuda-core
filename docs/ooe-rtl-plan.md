@@ -925,6 +925,39 @@ Built (`rtl/ooe/`):
      new inputs reach flops at 8.0 at most. check-cg: 1357 flops, the
      tables four gates of 32, the lead's 4 flops ungated within the
      allowance.
+     *CAS pairs (OI-79 (b), built).* A pair is two head-unit candidates
+     in consecutive rounds of its warp, taken both or neither (OA's rev
+     239). Admission bit 7 marks a first slot and bit 8 an atomic (PA 9):
+     the fits count the pair's needs on the first slot (one more RCU row,
+     one more MIU row, two names; the second carries none) and its one ROB
+     entry (k + m less the first slots before the last head), and refuse a
+     need past R. A run never ends on a first slot: where head m is one,
+     m + 1 fits exactly when m does and the second is a head within the
+     width, so the cut-back reads decq's bits alone beside the fit's own
+     terms. Across warps the take stops before the first pair the width
+     would split: which head is a first slot is registered with the fits
+     (pf, per slot and take k; OA's fallback, the split stop in the
+     registered half), and only the compare against the width is on the
+     take path: a first slot taken and its second not removes every later
+     round and its own round in the warps not before it. With the stop on
+     the take path, reading decq's heads live, the take was at 18.3
+     against 14 and the totals at 37.8 against 21. The take is now formed
+     three times, each from its own copies of the registers it reads
+     (NGD-7): the take (13.6, by 14), the lanes and the writers before each
+     (14.1 and 11.2, by 16.7 and 17), and the totals and the take register
+     (20.3, by 21; the take register follows the take after the cut).
+     check-ngd: 22.6 flop to flop (22.4 before). check-cg: 946 flops, 924
+     behind 7 gates; the fits' gates at 64 / 72% (medium / high), their
+     waivers' measures; 18 flops written every cycle against the 2%
+     allowance's 18.9 (the block's two copies take 8). go_tb runs the
+     directed pair-cut (two warps, every cut binding) and the random
+     atomics, one warp a core (OI-80): 5,617 pair heads, none differ;
+     control no-pair-bit (no head marks a first slot) caught. The other
+     benches run no atomics yet (ooe_rendep's no_atomic assertion), so
+     pair-cut is not among the shared directed tests. go_tb now drives the
+     names' pool as the model's split reads it (GoLog::pin, OI-76's lag),
+     which trails cred - owed by a cycle when a slot above its floor frees;
+     pair-cut's predicate pressure was the first to show it.
      *Counters (7b, built).* Rename's counters replace the go's pool,
      floor and room ports (OI-73 to OI-76, OA's revs 215, 216 and 219):
      RS room per class (up by ooe_rs's frees, a lead a cycle ahead), and

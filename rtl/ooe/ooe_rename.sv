@@ -47,7 +47,7 @@
 module ooe_rename #(
   parameter int S  = 4,                  // tier-1 slots (CCV_TIER1_WARPS)
   parameter int R  = 4,                  // rename width (CCV_ISSUE_WIDTH)
-  parameter int PA = 7,                  // admission bits a head
+  parameter int PA = 9,                  // admission bits a head
   parameter int LU = 5,                  // an unmet floor's width
   parameter int LB = 6,                  // a ROB run's width
   parameter int LT = 3,                  // a cycle's retirements' width

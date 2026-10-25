@@ -420,6 +420,9 @@ struct Config {
   /// admission unit, OA's rev 189).
   bool inject_a1_base_only = false;
   bool inject_cas_split = false;
+  /// OI-79 (b)'s control: the take keeps a pair the width splits (its
+  /// first slot taken, its second left for the next cycle).
+  bool inject_pair_split = false;
   /// AR-24 (c)'s control: a commit_width sibling commits nothing, so its
   /// register keeps its old width (the model before this).
   bool inject_sibling_uncommitted = false;
@@ -1406,7 +1409,12 @@ public:
     unsigned prio = 0;
     uint32_t flush = 0;                       ///< slots a squash flushed this cycle, before the go
     unsigned cred[4] = {}, owed[2] = {};
-    std::vector<std::vector<uint8_t>> adm;   ///< per slot, its heads' admission bits, oldest first
+    /// Each credit's pool as the go's split reads it, before the allowances
+    /// held (fits_stale 6): for the names, OI-76's lagged pool, which trails
+    /// cred - owed by a cycle when a slot above its floor frees.
+    unsigned pin[4] = {};
+    bool pin_set = false;
+    std::vector<std::vector<uint16_t>> adm;  ///< per slot, its heads' admission bits, oldest first
     std::vector<unsigned> run, ret, unmet_g, unmet_p;
     std::vector<uint8_t> reach, hold;
     std::vector<uint8_t> occ;                 ///< per slot, occupied (not free)
@@ -1420,7 +1428,7 @@ public:
   };
   const GoLog &goLog() const { return golog_; }
   /// A uop's admission bits as decq holds them (GoLog).
-  uint8_t admBits(const Uop &u) const;
+  uint16_t admBits(const Uop &u) const;
   /// A tier-1 slot's maps and checkpoints, for test/ooe/rat_tb.cpp.
   unsigned ratGpr(unsigned s, unsigned a) const { return slot_[s].rat[a]; }
   unsigned ratPred(unsigned s, unsigned a) const { return slot_[s].prat[a]; }
@@ -1554,6 +1562,7 @@ private:
   std::array<unsigned, 4> pool_{};               ///< fits_stale 4: the credit no warp holds
   std::vector<unsigned> headless_;               ///< fits_stale 4: cycles each slot has gone without a take
   std::vector<unsigned> took_;                   ///< uops each slot renamed this cycle
+  std::vector<unsigned> took2_;                  ///< of them, CAS pairs' second slots, which take no ROB entry (OI-79)
   /// The go's ceiling term (OI-73 (3), OA's rev 207): each slot's room to
   /// its ceiling per class as registered at the last cycle's start, and the
   /// names the slot was charged last cycle. A take is admitted while the

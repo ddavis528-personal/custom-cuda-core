@@ -2992,19 +2992,25 @@ unsigned Core::auditRobRoom(unsigned si) const {
   return room;
 }
 
-uint8_t Core::admBits(const Uop &u) const {
+uint16_t Core::admBits(const Uop &u) const {
   const SchedAttr &a = u.attr;
+  // A CAS pair's second slot needs nothing of its own: rename takes the
+  // pair's needs with its first (OI-79 (b), OA's rev 239).
+  if (a.pair_second && !cfg_.inject_cas_split) return 0;
   const bool nop = u.shape.exit || u.cause || barNop(u);
   const bool mem = !nop && a.rs_miu, atom = mem && a.mem_kind == kMemKAtomic;
   const bool wgpr = !nop && a.writes_gpr;
   const bool pred = !nop && u.pred_we && cfg_.rename_preds;
   // The copy is keyed on any destination (OA's rev 180, TI-36 (b)): a
   // predicate's (ld.pred) as a GPR's.
-  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && (wgpr || pred) &&
+  // A CAS's first slot carries the pair's: its destination is the second's.
+  const bool copy = mem && (a.mem_kind == kMemKLoad || atom) && (wgpr || pred || a.pair_first) &&
                     (u.group_mask != kFullMask || u.shape.guard);
   const bool serial = a.serial == kSerChwidth || (a.serial == kSerBarrier && u.all_waiting);
-  return uint8_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
-                 (serial << 6));
+  // 7: a CAS pair's first slot (OI-79); 8: an atomic, whose needs are A2's
+  // RCU entry and A3's MIU entry beside A1's, and two GPR names (AR-21).
+  return uint16_t((!nop && !mem) | (mem << 1) | (copy << 2) | (wgpr << 3) | (pred << 4) | ((!nop && a.branch) << 5) |
+                  (serial << 6) | ((!nop && a.pair_first) << 7) | (atom << 8));
 }
 
 /// go_static: next cycle's ROB room, as the fits register it: this cycle's
@@ -3015,7 +3021,9 @@ void Core::goRoomNext() {
   for (unsigned si = 0; si != slot_.size() && si < go_run_.size(); ++si) {
     unsigned ret = 0;
     for (unsigned k = 0; k != cfg_.rob_depth; ++k) ret += rob_prompt_[si * cfg_.rob_depth + k];
-    const unsigned run = go_run_[si] - std::min(go_run_[si], si < took_.size() ? took_[si] : 0u);
+    // Its ROB entries: a CAS pair's second slot takes none (OI-79).
+    const unsigned ent = si < took_.size() ? took_[si] - took2_[si] : 0u;
+    const unsigned run = go_run_[si] - std::min(go_run_[si], ent);
     go_room_[si] = (si < audit_squash_.size() && audit_squash_[si]) ? 0 : run + (go_reach_[si] ? ret : 0);
   }
 }
@@ -3059,7 +3067,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
     if (si < audit_squash_.size() && audit_squash_[si]) count("audit.rob_refused.squash_cycle");
   }
   // go_static: the fits' ROB term, registered a cycle ahead (go_room_).
-  if (cfg_.go_static && took_[si] + 1 > (si < go_room_.size() ? go_room_[si] : 0u)) {
+  if (cfg_.go_static && took_[si] - took2_[si] + 1 > (si < go_room_.size() ? go_room_[si] : 0u)) {
     count("stall.rob_registered");
     return false;
   }
@@ -3280,7 +3288,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   // The settings audit: what the RTL's registered fits could not have
   // admitted. A take past the slot's registered ROB room and this cycle's
   // retirements (the fits' ROB term, ret_n).
-  if (took_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
+  if (took_[si] - took2_[si] + 1 > auditRobRoom(si)) count("audit.rob_past_registered");
 
   // A cycle's RS rows per class and GPR names stay within the width:
   // ooe_rs has that many allocation ports per class and the free list as
@@ -3569,6 +3577,7 @@ void Core::rename() {
   ren_slot_.assign(slot_.size(), {});
   ren_serial_.assign(slot_.size(), 0);
   took_.assign(slot_.size(), 0);
+  took2_.assign(slot_.size(), 0);
   // The go's inputs as the RTL holds them (GoLog).
   {
     GoLog &g = golog_;
@@ -3580,6 +3589,7 @@ void Core::rename() {
     for (unsigned r = 0; r != 4; ++r) g.cred[r] = rc.c[r];
     g.owed[0] = floorsOwed(false);
     g.owed[1] = floorsOwed(true);
+    g.pin_set = false;
     const unsigned ns = unsigned(slot_.size());
     g.adm.assign(ns, {});
     g.run.assign(ns, 0); g.ret.assign(ns, 0); g.unmet_g.assign(ns, 0); g.unmet_p.assign(ns, 0);
@@ -3834,6 +3844,10 @@ void Core::rename() {
         } else if (r >= 2) {
           pool[r] -= std::min(pool[r], cfg_.owed_lag ? floorsOwedLag(r == 3) : floorsOwed(r == 3));
         }
+        // The go's pool register as rename gives it: the pool before the
+        // allowances held (GoLog::pin).
+        golog_.pin[r] = pool[r] + std::min(held, c[r]);
+        golog_.pin_set = true;
       }
     }
     std::vector<std::array<unsigned, 4>> split(slot_.size(), {0, 0, 0, 0});
@@ -3870,10 +3884,36 @@ void Core::rename() {
     }
   }
   const unsigned warps = short_credit ? 1 : cfg_.rename_one_warp;
+  // A CAS pair's first slot taken, its second's lane owed at the warp's
+  // next turn (OI-79 (b), OA's rev 239), per slot.
+  std::vector<uint8_t> pend2(slot_.size(), 0);
   // Slot si's oldest uop: renamed (1), dropped as stale (2), or none or
   // refused (0, and the slot is blocked for the cycle).
   auto takeOne = [&](unsigned si) -> int {
     const unsigned w = slot_[si].warp;
+    if (pend2[si]) {
+      // The pair's second slot (OI-79 (b)): its own turn and lane, in the
+      // warp's next round; renamed with its first, it takes no entry.
+      auto it2 = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
+      if (it2 == decq_.end() || !it2->attr.pair_second) {
+        err("TI-39: warp %u's CAS second slot is not at its head after its first", w);
+        blocked[si] = true;
+        return 0;
+      }
+      decq_seq_.erase(decq_seq_.begin() + (it2 - decq_.begin()));
+      ++decq_freed_;
+      ++decq_take_now_;
+      decq_.erase(it2);
+      --slot_[si].decq;
+      ++decq_slot_take_[si];
+      --budget;
+      golog_.lanes.push_back({si, took_[si]});
+      ++took_[si];
+      ++took2_[si];
+      pend2[si] = 0;
+      count("rename.cas_pair");
+      return 1;
+    }
     auto it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
     if (it == decq_.end()) return 0;
     // fits_stale: a uop that arrived after the last cycle's start is not in
@@ -3916,8 +3956,10 @@ void Core::rename() {
         blocked[si] = true;
         return 0;
       }
-      if (budget < 2) {
-        count("rename.pair_width");
+      // The fits never end on a first slot (OI-79 (b)): a pair whose second
+      // falls past the warp's R heads this cycle waits.
+      if (took_[si] + 2 > cfg_.rename_width) {
+        count("rename.pair_window");
         blocked[si] = true;
         return 0;
       }
@@ -3936,19 +3978,7 @@ void Core::rename() {
       blocked[si] = true;
       return 0;
     }
-    if (pair) {
-      // The second slot leaves with the first: its lane, no ROB entry.
-      decq_seq_.erase(decq_seq_.begin() + (it2 - decq_.begin()));
-      ++decq_freed_;
-      ++decq_take_now_;
-      decq_.erase(it2);
-      it = std::find_if(decq_.begin(), decq_.end(), [&](const Uop &u) { return u.warp == w; });
-      --slot_[si].decq;
-      ++decq_slot_take_[si];
-      --budget;
-      golog_.lanes.push_back({si, took_[si]});
-      count("rename.cas_pair");
-    }
+    if (pair) pend2[si] = 1;   // the second's lane at the warp's next turn
     // OI-56: a branch ends its rename group, so its checkpoint is the
     // RAT's state at the next edge. 1: the slot's group; 2: the cycle's.
     if (branch && cfg_.branch_ends_group == 1) blocked[si] = true;
@@ -3964,26 +3994,55 @@ void Core::rename() {
     ++took_[si];
     return 1;
   };
-  if (warps) {
-    // OI-63: a prefix of each of up to rename_one_warp warps, in the
-    // rotating order, each warp's before the next's (the RTL's go over
-    // rename's registered per-slot fits).
-    unsigned used = 0;
-    for (unsigned k = 0; k != slot_.size() && budget && used != warps; ++k) {
-      const unsigned si = (rr_rename_ + k) % slot_.size();
-      if (slot_[si].st == WarpState::kFree) continue;
-      bool took = false;
-      for (int r; budget && !blocked[si] && (r = takeOne(si)) != 0;) took = took || r == 1;
-      used += took;
-    }
-  } else {
-    for (bool progress = true; progress && budget;) {
-      progress = false;
-      for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+  auto takeAll = [&]() {
+    if (warps) {
+      // OI-63: a prefix of each of up to rename_one_warp warps, in the
+      // rotating order, each warp's before the next's (the RTL's go over
+      // rename's registered per-slot fits).
+      unsigned used = 0;
+      for (unsigned k = 0; k != slot_.size() && budget && used != warps; ++k) {
         const unsigned si = (rr_rename_ + k) % slot_.size();
-        if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
-        if (takeOne(si)) progress = true;
+        if (slot_[si].st == WarpState::kFree) continue;
+        bool took = false;
+        for (int r; budget && !blocked[si] && (r = takeOne(si)) != 0;) took = took || r == 1;
+        used += took;
       }
+    } else {
+      for (bool progress = true; progress && budget;) {
+        progress = false;
+        for (unsigned k = 0; k != slot_.size() && budget; ++k) {
+          const unsigned si = (rr_rename_ + k) % slot_.size();
+          if (blocked[si] || slot_[si].st == WarpState::kFree) continue;
+          if (takeOne(si)) progress = true;
+        }
+      }
+    }
+  };
+  // OI-79 (b): the take stops before the first pair the width would split.
+  // A cycle with a pair at a head takes from a snapshot; if the width cut a
+  // pair (its first slot's lane taken, its second's not), the snapshot is
+  // restored and the take capped at that first slot's lane.
+  bool pairs = false;
+  for (const Uop &u : decq_) pairs = pairs || (u.attr.pair_first && !cfg_.inject_cas_split);
+  if (!pairs) {
+    takeAll();
+  } else {
+    const Core snap = *this;
+    const unsigned budget0 = budget;
+    const std::vector<bool> blocked0 = blocked;
+    takeAll();
+    unsigned cut = ~0u;
+    for (unsigned si = 0; si != slot_.size(); ++si)
+      if (pend2[si] && !cfg_.inject_pair_split)
+        for (unsigned l = 0; l != golog_.lanes.size(); ++l)
+          if (golog_.lanes[l].first == si && golog_.lanes[l].second + 1 == took_[si]) cut = std::min(cut, l);
+    if (cut != ~0u) {
+      *this = snap;
+      budget = std::min(budget0, cut);
+      blocked = blocked0;
+      std::fill(pend2.begin(), pend2.end(), 0);
+      takeAll();
+      count("rename.pair_cut");
     }
   }
   ren_late_frees_ = false;
