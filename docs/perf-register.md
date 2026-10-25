@@ -39,7 +39,7 @@ it.
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
 | PF-15 | `chwidth` without serialising rename | rename | deferred again (DA tab rev 93): the drain stays; trigger 5% `hold.chwidth` on converged narrow code |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
-| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: no gain at 8 or 16 while PF-15's hold stands) |
+| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: -4.2% at 8, one warp; held for the 4-warp shape) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
 | PF-19 | Criticality-aware select | scheduler | deferred |
 | PF-20 | Rename in the cycle a uop arrives | front end | deferred |
@@ -67,6 +67,7 @@ it.
 | PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
+| PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 
 ## Entries
 
@@ -345,6 +346,13 @@ it.
   checkpoints are full because nothing behind them moves: rename is held
   behind `chwidth` (PF-15). No gain while that hold stands; re-measure after
   it goes.
+- **Re-measured (AR-24, TI's rev 196, 2026-10-25):** at pin 7ef9292, where
+  `hold.chwidth` is 0, CoreMark-derived, 1 lane, perfect fetch, warm
+  memory, ROB 32: 8 checkpoints save 4.2% (1,856,696 against 1,938,449
+  cycles), and 4.4% at ROB 48 or 64, while depth alone saves 0.2%. The
+  three latency levers with it (L1 wake 13, lane bypass 3) add up: -15.4%
+  together. Held for the 4-warp shape, since a checkpoint is FET's per-lane
+  group state as well as the RAT's (OA's rev 243).
 
 ### PF-18 A masked load merged without a copy-only op
 
@@ -665,6 +673,12 @@ it.
   Revisit with Q-18, before floorplan, and once the corpus has pointer
   chasing or indexed gathers whose index is loaded.
 
+- **Measured (AR-24, TI's rev 196, 2026-10-25):** on CoreMark-derived
+  (pin 7ef9292, 1 lane, perfect fetch, warm, ROB 32), each cycle off
+  `CCV_LAT_L1_WAKE` saves 2.0% of cycles, linear from 16 to 10 (-5.9% at
+  13, -9.9% at 11). 13 is `CCV_LAT_RCU_ADDR_BASE` back to 2, Daniel's
+  placeholder (OA-5); 11 adds one crossing fewer, this entry.
+
 ### PF-34 Same-address combining for atomics, built from lane adds
 
 - **Now:** every atomic's operation executes in the lanes, integer and FP,
@@ -957,3 +971,27 @@ it.
   164). It moves to adopted with
   the commit that builds it. The measurement above still says whether the
   second path earns its verification.
+
+### PF-45 Self-timed completion for done-free lane ops
+
+- **Now:** every lane op completes on RCU's done on `ccv_rcu_ooe_done`,
+  which lands 3 cycles after OOE confirms the op at its wake: issue link +
+  `CCV_LAT_LANE` - 1 + done link, at `CCV_LAT_HOP` 2 each (V-35).
+- **Alternative:** a confirmed, fixed-latency, non-branch lane op, which
+  cannot fault (IS-16) and whose done tells OOE nothing, completes on OOE's
+  own clock at the cycle its write lands in RCU's PRF. That is 2 of the 3
+  cycles. Branches and RCU-executed ops keep the done (OA's rev 245).
+- **Cost:** a restated V-35, two completion paths in OOE, and a per-warp
+  count of retired-but-unlanded writes that every quiesce (demotion, kill,
+  park) waits on. RCU adds nothing; it would only lose those dones, freeing
+  `CCV_DONE_SLOTS`.
+- **Measured (AR-24, TI's rev 200, 2026-10-25):** CoreMark-derived, pin
+  7ef9292, 1 lane, perfect fetch, warm, ROB 32: 1,919,915 cycles against
+  1,938,449, -0.96%. 276,238 completions were self-timed, each checked
+  against its done, and a control a cycle early fails. The head state it
+  removes, a confirmed lane op awaiting its done, was 34.8% of cycles, but
+  the wait moved to the write's landing, to branches and to a full ROB.
+  Not adopted (OA's rev 246): 1% does not pay for the cost.
+- **Signal:** stages on the done link (`params/links.json`), which add to
+  every lane op's completion, or the 4-warp shape showing done slots short.
+  Re-run the bound then.
