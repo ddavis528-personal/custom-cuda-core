@@ -410,6 +410,14 @@ void Core::cycle(uint64_t now) {
     std::swap(out.memops, held_memops_);
   }
   rename();            // the decode queue; uop() refills it after the clock
+  // The committed width tables after the cycle, for rename_tb (AR-24 (d)).
+  rlog_.cw.resize(slot_.size());
+  for (unsigned si = 0; si != slot_.size(); ++si) {
+    if (cw_prev_.size() != slot_.size()) cw_prev_.assign(slot_.size(), {});
+    for (unsigned a = 0; a != kArchGprs; ++a) rlog_.cw[si][a] = slot_[si].cw[a];
+    if (rlog_.cw[si] != cw_prev_[si]) rlog_.cw_changed |= 1u << si;
+    cw_prev_[si] = rlog_.cw[si];
+  }
   sendRedirect();
   readyRegister();
   requestRegister();
@@ -2293,6 +2301,19 @@ void Core::retire() {
       ++n;
     }
     ++histograms["retire_per_cycle"][n];
+    // Why the head waits (TI's rev 193): a cycle that retires nothing with
+    // an incomplete head, counted once under its first cause: the ROB full,
+    // else the head's kind and state.
+    if (!n && s.count && !s.fault_stop && !s.rob[s.head].complete) {
+      const RobEntry &h = s.rob[s.head];
+      count("retire.head_wait");
+      count(s.count == cfg_.rob_depth ? "retire.head_wait.rob_full"
+            : h.is_load ? (h.at_miu ? "retire.head_wait.load_at_miu" : "retire.head_wait.load_unissued")
+            : h.is_store ? "retire.head_wait.store"
+            : h.is_mem ? "retire.head_wait.mem_other"
+            : h.u.attr.branch ? "retire.head_wait.branch"
+            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : "retire.head_wait.lane");
+    }
     // Demotion triggers at the head (Q18): reported to RAU, which decides.
     // None while the head is an atomic in progress (V-70).
     if (s.count && !s.fault_stop && atomAtHead(si)) count("demote_trigger.held_atomic");
@@ -3354,6 +3375,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
       w.pgroup = uint8_t(u.attr.bypass_group & 7u);
       w.nob = r.is_mem || u.attr.cross_lane;
       w.atomic = atomic;
+      for (unsigned i = 0; i != 3; ++i) w.wsrc[i] = r.wsrc[i];
+      w.wdst = r.wdst;
+      w.wset = a.serial == kSerChwidth || a.commit_width;
       rlog_.ren.push_back(w);
     }
     if (a.serial == kSerChwidth) { s.chwidth_hold = true; s.chwidth_rob = idx; }

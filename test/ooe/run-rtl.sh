@@ -533,7 +533,7 @@ done
 # the ceiling test's floor and ceiling (its directed core alone); and
 # scarce names, 144 rows and a ceiling of 24, where the names' pool binds
 # (its correction's controls, OA's revs 208 and 219).
-for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant" \
+for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
            "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2"; do
   set -- $cfg

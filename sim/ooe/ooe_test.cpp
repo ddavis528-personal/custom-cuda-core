@@ -2812,6 +2812,12 @@ void testChwidth() {
             k["hold.registered.other"];
   EXPECT(tot == sum, "hold.registered %llu, its split sums to %llu", tot, sum);
   EXPECT(k["hold.registered.chwidth"] > 0, "no registered hold behind the chwidth (%llu in all)", tot);
+  // The head-wait split (TI's rev 193) sums to its total.
+  unsigned long long hw = 0;
+  for (const char *c : {"rob_full", "load_at_miu", "load_unissued", "store", "mem_other", "branch", "rcu", "lane"})
+    hw += k[std::string("retire.head_wait.") + c];
+  EXPECT(hw == k["retire.head_wait"] && hw > 0, "retire.head_wait %llu, its split %llu",
+         (unsigned long long)k["retire.head_wait"], hw);
 }
 
 /// AR-24 (b) (OA's rev 223): a ret resolves at RCU, whose done names the
@@ -2903,6 +2909,38 @@ void testChwidthMulti() {
     EXPECT(e.core.counters["chwidth.sibling"] == 2, "%llu siblings committed",
            (unsigned long long)e.core.counters["chwidth.sibling"]);
   }
+}
+
+/// AR-24 (d)'s traffic for the rename bench (non-sectioned, so
+/// test/ooe/rename_tb.cpp runs it): two warps narrow registers by chwidth
+/// and by chwidth.multi's siblings, then many ops read and write them at
+/// their widths, and one widens a register back.
+void testWidthTraffic() {
+  g_test = "width traffic";
+  Config c = baseConfig();
+  c.l1_spec = false;
+  Env e(c, 11);
+  auto prog = [](unsigned seed) {
+    std::vector<Op> p;
+    std::mt19937 r(seed);
+    for (unsigned reg : {4u, 5u, 6u}) {   // a chwidth.multi: two siblings and the last
+      Op w; w.k = kChw; w.dst = reg; w.chw = reg == 4 ? 1 : 2; w.sibling = reg != 6; p.push_back(w);
+    }
+    Op w7; w7.k = kChw; w7.dst = 7; w7.chw = 3; p.push_back(w7);
+    for (unsigned i = 0; i != 40; ++i) {
+      Op a; a.k = kLane; a.dst = 4 + r() % 6; a.nsrc = 1 + r() % 3;
+      for (unsigned j = 0; j != a.nsrc; ++j) a.src[j] = 3 + r() % 6;
+      p.push_back(a);
+      if (i == 20) { Op b; b.k = kChw; b.dst = 5; b.chw = 0; b.chw_writes = true; b.src[0] = 5; b.nsrc = 1; p.push_back(b); }
+    }
+    Op ex; ex.k = kExit; p.push_back(ex);
+    return p;
+  };
+  e.launch(0, 0, prog(1));
+  e.launch(1, 1, prog(2));
+  e.finish();
+  EXPECT(e.core.slotWidth(0, 4) == 1 && e.core.slotWidth(0, 6) == 2 && e.core.slotWidth(0, 5) == 0,
+         "widths R4 %u R5 %u R6 %u", e.core.slotWidth(0, 4), e.core.slotWidth(0, 5), e.core.slotWidth(0, 6));
 }
 
 /// AR-24 (d): each operand carries its own register's width, from the
@@ -4592,6 +4630,7 @@ int ooeTestDirectedHooked(void (*hook)(const Core &)) {
   testBarrier();
   testChwidth();
   testWidthCodes();
+  testWidthTraffic();
   testSections();
   testV59();
   testFixedWindowPreds();
@@ -4744,6 +4783,7 @@ int main(int argc, char **argv) {
   testChwidth();
   testChwidthMulti();
   testRet();
+  testWidthTraffic();
   testWidthCodes();
   testWidthFault();
   testSizedAndConverged();
