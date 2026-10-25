@@ -707,7 +707,109 @@ addrhigh addr_fault=1 fault=1 kill=1
 addrneg addr_fault=1 fault=1 kill=1
 addrlimit addr_fault=0 fault=0
 ropediv local_form=30 frame_lookups=0 split=2 groups_peak=2
+narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
+sized partial_line>0
+divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
+callret ret_pass=1 groups_peak=2
 KERNELS
+# O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
+# xfer_size, never rdata's width, and a signed load sign-filled to rdata.
+#   xfer-ignored: MIU takes the transfer from rdata's width
+#   xfer-unsigned: DEC marks no sized load signed
+SZ=build/oracle/sized/oracle.jsonl
+for b in xfer-ignored xfer-unsigned; do
+  "$SKEL" --kernel "$SZ" --break "$b" >"$B/kernel_$b.log" 2>&1
+done
+if grep -q "^CHECK miu: seq 4 lane 0 moves 4 bytes, oracle 1" "$B/kernel_xfer-ignored.log" &&
+   [ "$(field "$B/kernel_xfer-ignored.log" mem_mismatch)" != 0 ]; then
+  say "--break xfer-ignored: MIU refuses rdata's width" "PASS (mem_mismatch=$(field "$B/kernel_xfer-ignored.log" mem_mismatch))"
+else
+  bad "--break xfer-ignored" "a sized transfer taken at rdata's width went unnoticed: $(grep '^KERNEL' "$B/kernel_xfer-ignored.log")"
+fi
+if grep -q "^CHECK miu: seq 7 lane 0 store data 000000ff, oracle ffffffff" "$B/kernel_xfer-unsigned.log" &&
+   [ "$(field "$B/kernel_xfer-unsigned.log" gpr_mismatch)" != 0 ]; then
+  say "--break xfer-unsigned: ld.s8 zero-filled is caught" "PASS (gpr_mismatch=$(field "$B/kernel_xfer-unsigned.log" gpr_mismatch))"
+else
+  bad "--break xfer-unsigned" "a signed sized load zero-filled went unnoticed: $(grep '^KERNEL' "$B/kernel_xfer-unsigned.log")"
+fi
+# Narrow registers on full rows (AR-24's interim; AR's rev 178, OA's rev 230):
+# every narrow write zero-extends at its width code, so a widening finds the
+# row clear above the old element (O-38), and MIU moves the data register's
+# width. Each mechanism has its control:
+#   narrow-carry: the lane leaves its 16-bit add's carry in bit 16
+#   lane-unmasked: the lane drives ccv-sim's value, the slice's old bits kept
+#   wide-xfer: MIU moves four bytes for every access
+NA=build/oracle/narrowadd/oracle.jsonl
+for b in narrow-carry lane-unmasked wide-xfer; do
+  "$SKEL" --kernel "$NA" --break "$b" >"$B/kernel_$b.log" 2>&1
+done
+if grep -q "^CHECK lane 0: seq 8 chwidth R2 to width code 0 reads 00010113, oracle 00000113" "$B/kernel_narrow-carry.log" &&
+   [ "$(field "$B/kernel_narrow-carry.log" gpr_mismatch)" != 0 ]; then
+  say "--break narrow-carry: the widening finds the carry" "PASS ($(field "$B/kernel_narrow-carry.log" check_failures) checks)"
+else
+  bad "--break narrow-carry" "a carry above a narrow element went unnoticed: $(grep '^KERNEL' "$B/kernel_narrow-carry.log")"
+fi
+if grep -q "^CHECK lane 0: seq 8 chwidth R2 to width code 0 reads efcd0113, oracle 00000113" "$B/kernel_lane-unmasked.log" &&
+   [ "$(field "$B/kernel_lane-unmasked.log" gpr_mismatch)" != 0 ]; then
+  say "--break lane-unmasked: the widening finds old bits" "PASS ($(field "$B/kernel_lane-unmasked.log" check_failures) checks)"
+else
+  bad "--break lane-unmasked" "a narrow result's old bits went unnoticed: $(grep '^KERNEL' "$B/kernel_lane-unmasked.log")"
+fi
+if grep -q "^CHECK miu: seq 4 lane 0 moves 4 bytes, oracle 2" "$B/kernel_wide-xfer.log" &&
+   [ "$(field "$B/kernel_wide-xfer.log" mem_mismatch)" != 0 ]; then
+  say "--break wide-xfer: MIU's transfer size refused" "PASS (mem_mismatch=$(field "$B/kernel_wide-xfer.log" mem_mismatch))"
+else
+  bad "--break wide-xfer" "a 4-byte transfer for a narrow register went unnoticed: $(grep '^KERNEL' "$B/kernel_wide-xfer.log")"
+fi
+# A ret to two targets runs in two passes (AR-24 (b), CP-54): RCU's done
+# names lane 0's target's lanes, OOE redirects them with stay, and the ret
+# issues again for the rest, as ccv-sim records it.
+#   ret-no-stay: FET sends the staying lanes past the ret instead
+"$SKEL" --kernel build/oracle/callret/oracle.jsonl --break ret-no-stay >"$B/kernel_ret-no-stay.log" 2>&1
+if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 1052 for aaaaaaaa" "$B/kernel_ret-no-stay.log"; then
+  say "--break ret-no-stay: a ret's second pass is followed" "PASS ($(field "$B/kernel_ret-no-stay.log" check_failures) checks)"
+else
+  bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
+fi
+# V-41's partial outcome (OI's 8994b78, rev 210): a branch FET predicts
+# taken that only some of its lanes take is a mispredict, and OOE redirects
+# the lanes that took it. pred-taken-any (perfect fetch) predicts div's 32
+# divergent branches taken; each must redirect and the run match ccv-sim.
+#   inject_partial_taken_ok: OOE counts the partial outcome right, the old
+#   rule, so no redirect comes and the warp never finishes
+DV=build/oracle/div/oracle.jsonl
+CCV_FET_PERFECT=1 "$SKEL" --kernel "$DV" --break pred-taken-any >"$B/kernel_pred-taken-any.log" 2>&1
+CCV_FET_PERFECT=1 CCV_OOE_CONFIG=inject_partial_taken_ok=1 "$SKEL" --kernel "$DV" --break pred-taken-any \
+  --cycles 200000 >"$B/kernel_partial-taken-ok.log" 2>&1
+if grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$B/kernel_pred-taken-any.log" &&
+   [ "$(cover "$B/kernel_pred-taken-any.log" fet_pred_partial)" = 32 ] &&
+   [ "$(cover "$B/kernel_pred-taken-any.log" redirect)" = 32 ]; then
+  say "div, FET predicting taken on any lane: V-41 redirects" "PASS (fet_pred_partial=32 redirect=32)"
+else
+  bad "div under pred-taken-any" "a partially taken prediction was not recovered: $(grep '^KERNEL' "$B/kernel_pred-taken-any.log")"
+fi
+if grep -q "finished=0" "$B/kernel_partial-taken-ok.log" && [ "$(cover "$B/kernel_partial-taken-ok.log" redirect)" = 0 ]; then
+  say "inject_partial_taken_ok: a partial outcome counted right" "PASS (no redirect; never finishes)"
+else
+  bad "inject_partial_taken_ok" "a partial outcome counted right went unnoticed: $(grep '^KERNEL' "$B/kernel_partial-taken-ok.log")"
+fi
+# O-81, converged-only chwidth (DA tab rev 91): FET marks a chwidth
+# all_waiting only when its group holds every live lane, and OOE faults an
+# unmarked one F-WIDTH with the lanes that issued it (divchw: lanes 0-15).
+#   chw-mark-always: FET marks divchw's diverged chwidth converged
+#   no-chw-mark: FET marks none, so narrowadd's converged ones fault
+"$SKEL" --kernel build/oracle/divchw/oracle.jsonl --break chw-mark-always >"$B/kernel_chw-mark-always.log" 2>&1
+"$SKEL" --kernel "$NA" --break no-chw-mark >"$B/kernel_no-chw-mark.log" 2>&1
+if grep -q "^CHECK cru: warp 0 never faulted; ccv-sim ended it with F-WIDTH at pc 100e" "$B/kernel_chw-mark-always.log"; then
+  say "--break chw-mark-always: a diverged chwidth must fault" "PASS ($(field "$B/kernel_chw-mark-always.log" check_failures) checks)"
+else
+  bad "--break chw-mark-always" "a diverged chwidth marked converged went unnoticed: $(grep '^KERNEL' "$B/kernel_chw-mark-always.log")"
+fi
+if grep -q "^CHECK cru: warp 0 faults (cause 3 at pc 100c), but ccv-sim ran it to its end" "$B/kernel_no-chw-mark.log"; then
+  say "--break no-chw-mark: a converged chwidth must not fault" "PASS ($(field "$B/kernel_no-chw-mark.log" check_failures) checks)"
+else
+  bad "--break no-chw-mark" "an unmarked converged chwidth went unnoticed: $(grep '^KERNEL' "$B/kernel_no-chw-mark.log")"
+fi
 "$SKEL" --kernel build/oracle/unal/oracle.jsonl --break one-line >"$B/kernel_one-line.log" 2>&1
 # 19 words: the 17 the lanes past the boundary should have stored in line 1,
 # and two of the words unal pokes beside its store in line 0, which those

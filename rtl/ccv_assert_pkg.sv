@@ -26,12 +26,29 @@
 //===----------------------------------------------------------------------===//
 package ccv_assert_pkg;
 
+  // Under Verilator each knob is read once and kept: the plusargs are fixed
+  // before the first evaluation, and reading them on every check was a third
+  // of the skeleton's run time (AR-24). Icarus keeps the function form, for
+  // the reason above; the answer is the same either way.
+`ifdef VERILATOR
+  bit en_known = 1'b0, en_val, tr_known = 1'b0, tr_val, eq_known = 1'b0, eq_val;
+`endif
+
   // Result-assignment style rather than `return`: Yosys's native front end
   // rejects `return` in a function body (Stage 1a).
   function automatic bit enabled();
 `ifdef FORMAL
     // Constant, never a free variable. See the note above.
     enabled = 1'b1;
+`elsif VERILATOR
+    int off;
+    if (!en_known) begin
+      en_val = 1'b1;
+      if ($value$plusargs("ccv_assert_off=%d", off))
+        en_val = (off == 0);
+      en_known = 1'b1;
+    end
+    enabled = en_val;
 `else
     int off;
     enabled = 1'b1;
@@ -53,6 +70,15 @@ package ccv_assert_pkg;
   function automatic bit trace_enabled();
 `ifdef FORMAL
     trace_enabled = 1'b0;
+`elsif VERILATOR
+    int off;
+    if (!tr_known) begin
+      tr_val = 1'b1;
+      if ($value$plusargs("ccv_trace_off=%d", off))
+        tr_val = (off == 0);
+      tr_known = 1'b1;
+    end
+    trace_enabled = tr_val;
 `else
     int off;
     trace_enabled = 1'b1;
@@ -72,6 +98,12 @@ package ccv_assert_pkg;
   function automatic bit eot_quiesce();
 `ifdef FORMAL
     eot_quiesce = 1'b0;
+`elsif VERILATOR
+    if (!eq_known) begin
+      eq_val = $test$plusargs("ccv_eot_quiesce");
+      eq_known = 1'b1;
+    end
+    eot_quiesce = eq_val;
 `else
     eot_quiesce = $test$plusargs("ccv_eot_quiesce");
 `endif

@@ -69,6 +69,11 @@ struct Record {
   uint64_t target = 0;               ///< branch: where they go
   std::vector<RegVal> uses, defs;    ///< operand order; uses before, defs after
   std::vector<MemAcc> mem;           ///< ascending lane
+  /// Every GPR's width code as the record executes, 2 bits per register
+  /// (R0 lowest): ccv-sim keeps the bits above a narrow element as the
+  /// slice last held them, so a value is compared only within its width.
+  uint32_t widths = 0;
+  unsigned widthOf(unsigned g) const { return widths >> (2 * (g & 15)) & 3u; }
 
   std::vector<const RegVal *> gprUses() const;
   /// A predicate transfer, ld.pred or st.pred (O-19), and its mask,
@@ -80,7 +85,23 @@ struct Record {
   /// The uops DEC issues for it: one per predicate of a transfer's mask,
   /// ascending (TI-36), else one.
   unsigned uops() const {
+    if (chwMulti()) return chwMask() ? unsigned(__builtin_popcount(chwMask())) : 1u;
     return predXfer() && predMask() ? unsigned(__builtin_popcount(predMask())) : 1u;
+  }
+  /// chwidth.multi #regmask, width (O-6): its mask, imms[0], and width
+  /// code, imms[1]. DEC cracks it into one chwidth uop per register of the
+  /// mask, ascending (AR-24 (c)).
+  bool chwMulti() const { return op == "CHWIDTH_MULTI"; }
+  uint32_t chwMask() const { return imms.empty() ? 0u : uint32_t(imms[0]) & 0xffffu; }
+  unsigned chwReg(unsigned k) const {
+    for (unsigned g = 0, n = 0; g != 16; ++g)
+      if (chwMask() >> g & 1u && n++ == k) return g;
+    return 0;
+  }
+  /// The def of GPR g, if the record has one.
+  const RegVal *gprDefOf(unsigned g) const {
+    for (const RegVal &d : defs) if (!d.pred && d.idx == g) return &d;
+    return nullptr;
   }
   /// Uop k's predicate: the mask's k-th set bit, ascending.
   unsigned xferPred(unsigned k) const {
@@ -95,6 +116,10 @@ struct Record {
 
 struct Oracle {
   uint64_t code_base = 0;
+  /// The launch's entry, an offset from code_base: the kernel.cfg's ENTRY,
+  /// which gen-oracle writes beside the records (a release kernel's
+  /// launch.txt entry; AR-24). 0 for a kernel that starts at its base.
+  uint64_t entry = 0;
   unsigned threads = 0, ctaid = 0;
   unsigned warp_in_cta = 0;   ///< which of its CTA's warps this file is (ccv-sim -cta, CP-30)
   /// The hardware warp context srd #2 named in this run (ccv-sim -context,
@@ -116,6 +141,7 @@ struct Oracle {
   Fault fault;
   std::vector<Record> recs;
   uint32_t final_gpr[kArchGprs][kLanes] = {};
+  uint32_t final_widths = 0;   ///< as Record::widths, after the last record
   uint32_t final_pred[kArchPreds] = {};
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
