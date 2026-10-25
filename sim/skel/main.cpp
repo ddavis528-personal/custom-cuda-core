@@ -252,7 +252,7 @@ int main(int argc, char **argv) {
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
-                      brk == "ret-no-stay";
+                      brk == "ret-no-stay" || brk == "pred-taken-any";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

@@ -3822,9 +3822,16 @@ private:
         k_.peak("ckpt_peak", x.taken_order.size());
         x.ckpt_of[r.seq] = ck;
         put(f, c.fet_dec, "checkpoint_id", ck);
-        pred_taken = perfect_ && r.taken != 0 && r.taken == r.mask;
+        // pred-taken-any (OI's rev 210): predict taken when any lane takes
+        // it, so V-41 must find the partial outcome a mispredict and redirect
+        // the lanes that took it. FET fetches no wrong path, so it awaits
+        // that redirect as for any mispredict.
+        const bool any = k_.brk == "pred-taken-any";
+        pred_taken = perfect_ && r.taken != 0 && (r.taken == r.mask || any);
         put(f, c.fet_dec, "pred_taken", pred_taken);
-        mispredict = r.taken != 0 && !pred_taken;
+        const bool partial = pred_taken && r.taken != r.mask;
+        if (partial) k_.hit("fet_pred_partial");
+        mispredict = (r.taken != 0 && !pred_taken) || partial;
         if (pred_taken) k_.hit("fet_perfect_taken");
         if (perfect_ && mispredict) k_.hit("fet_perfect_split");
       }
