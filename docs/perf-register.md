@@ -1060,7 +1060,9 @@ it.
   such as CoreMark. The GPU kernels already coalesce and gain nothing.
   Divergent per-thread work gains much less.
 - **Signal:** a decision, not a counter: DA weighs the bound against the
-  new ISA concept. If adopted, the ROB question reopens: interleaved
-  coremark32 still has the ROB full 35.2% of cycles, so ROB 48 and 64 are
-  re-run on the interleaved shapes (AR's rev 222). Measured follow-ups
+  new ISA concept. If adopted, ROB depth is a single-thread question only:
+  interleaved coremark32 has the ROB full 35.2% of cycles, but four
+  interleaved warps only 2.3%, so ROB 32 holds at the design point (OA's
+  rev 257). ROB 48 and 64 on interleaved coremark32 are queued for that
+  trade. Measured follow-ups
   queued: L1 at 512 KiB and the DCU req_id pool, for L1's size.
