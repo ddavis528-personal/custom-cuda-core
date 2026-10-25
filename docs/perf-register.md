@@ -37,9 +37,9 @@ it.
 | PF-12 | More bypass paths between groups | LANE, RCU, scheduler | deferred |
 | PF-13 | Non-contiguous squash (stream tags) | recovery | deferred (doc: rejected for now) |
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
-| PF-15 | `chwidth` without serialising rename | rename | deferred (DA's response OA-16); trigger met, AR-24 measures |
+| PF-15 | `chwidth` without serialising rename | rename | deferred again (DA tab rev 93): the drain stays; trigger 5% `hold.chwidth` on converged narrow code |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
-| PF-17 | More branch checkpoints per warp | recovery, FET | deferred |
+| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: no gain at 8 or 16 while PF-15's hold stands) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
 | PF-19 | Criticality-aware select | scheduler | deferred |
 | PF-20 | Rename in the cycle a uop arrives | front end | deferred |
@@ -285,6 +285,39 @@ it.
   The count makes the case; the cost does not yet. AR-24's timed run
   reports cycles held behind `chwidth` (`hold.chwidth`), and with that
   figure OA takes OA-16 back to DA.
+- **Measured (AR-24, TI's rev 188, 2026-10-24):** on the same kernel at
+  541a476 (767,049 issue groups, 106,359 `chwidth`), 1 lane, perfect fetch,
+  cold memory, 8 checkpoints: rename is held behind a `chwidth` drain in
+  5,805,773 of 6,808,297 cycles, 85.3%, about 55 cycles a `chwidth`. Without
+  the hold the run is about 1.0M cycles, at most 0.77 issue groups a cycle
+  against 0.11. Warm memory gives 3,728,507 cycles (0.21), because a drain
+  waits for older loads too. This is the largest single loss measured on the
+  core so far. O-80's sized forms and compiler F-196 remove up to about 74% of the
+  `chwidth` first (TI's rev 180), so OA-16 goes to DA priced on what remains
+  on CP's next export.
+- **Decided (Daniel, 2026-10-24; DA's response OA-16, DA tab rev 92):**
+  adopted, on OA's estimate of the residual after O-80 and compiler F-196
+  (about 1.5M cycles held against about 1.0M without), ahead of the
+  measured figure. The form is the design of record above. Each register's
+  width lives in the RAT and its checkpoints. A narrowing renames in place,
+  and a widening writes a new name on every lane (O-78), except 4 to 8.
+  F-WIDTH and F-FORMAT move to rename. A `chwidth` ends its warp's rename
+  group. `chwidth.multi`'s siblings lose the hold. Estimated cost: 640 to
+  770 flops and about 20% more RAT read mux. OA reopens it with DA if TI's
+  measured residual on CP's next export is under a quarter of the run. It
+  moves to adopted with the commit that builds it.
+- **Back on hold (Daniel, 2026-10-24; DA tab rev 93):** the drain stays,
+  and the design of record above is kept. Compiler release 33849dd made
+  `i16` illegal and every narrow access sized (O-80), so scalar code issues
+  no `chwidth`. The per-lane-seed CoreMark-derived run issues 21 a warp,
+  about 1,000 cycles of hold, far under the quarter-of-the-run reopen line.
+  So the 1.5M-cycle residual the adoption rested on no longer exists (OA's
+  rev 238, AR's rev 187). What still changes width is converged narrow
+  code: 16-bit integer registers fixed at kernel entry (compiler F-200), and
+  narrow FP.
+- **Trigger, from now:** `hold.chwidth` reaching 5% of a run's cycles on
+  converged narrow code, such as vadd16 at four warps on compiler F-200's export or
+  a narrow-FP kernel. OA then brings the design back to DA with that figure.
 
 ### PF-16 More than one redirect a cycle
 
@@ -304,6 +337,14 @@ it.
   checkpoint, and the 2-bit `checkpoint_id` grows.
 - **Signal:** FET's `ckpt_full` cycles on grid-stride loops (the doc's
   sweep item).
+- **Measured (AR-24, TI's rev 188, 2026-10-24):** CoreMark-derived at
+  541a476, 1 lane, perfect fetch, cold memory: 6,832,792 cycles at 4
+  checkpoints, 6,808,290 at 8 and 6,808,305 at 16. Fetch waits with every
+  checkpoint live in about 94% of cycles at every size, and fetch-to-resolve
+  per branch doubles with the count (358, 713, 1,425 cycles). The
+  checkpoints are full because nothing behind them moves: rename is held
+  behind `chwidth` (PF-15). No gain while that hold stands; re-measure after
+  it goes.
 
 ### PF-18 A masked load merged without a copy-only op
 
