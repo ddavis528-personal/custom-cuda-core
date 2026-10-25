@@ -36,7 +36,7 @@
 // Each credit arrives as rename's pool register (OA's rev 171 (a)) and a
 // correction (OI-74, OA's revs 215, 216): rename's counters take the go's
 // take a cycle late, so the register is the lagged counter less its floors
-// owed (the names', from held before last cycle's takes), saturated at 6R,
+// owed (the names', from held before last cycle's takes), saturated at 6R + 2,
 // and the correction is last cycle's take of that credit, one-hot to R,
 // registered too. This module subtracts both with the allowances in force,
 // from its own register of them: the correction joins that one-hot, so it
@@ -87,7 +87,7 @@ module ooe_go #(
   parameter int LB = 6,                  // a ROB run's width
   parameter int LT = 3,                  // a cycle's retirements' width
   localparam int H  = 2 * R - 1,         // decq's heads a slot
-  localparam int PM = 4 * R,             // a pool's thermometer, saturated
+  localparam int PM = 4 * R + 2,         // a pool's thermometer, saturated (exact through the first warp's reserve of 2)
   localparam int XM = PM + 2 * R,        // a credit less its floors owed, saturated (with the correction, below)
   localparam int LX = $clog2(XM + 1)
 ) (
@@ -411,6 +411,7 @@ module ooe_go #(
   // max(0, credit - held)); and
   // pt[c][v], it covers v or more beyond them, to R, for the next holding.
   logic [4*(PM+1)-1:0] pe_cq02h;
+  logic [4*(PM+1)-1:0] pth_cq02h;   // the pool is p or more: a thermometer (pth[c][0] is always set)
   logic [4*(R+1)-1:0]  pt_cq02h;
   logic [LX-1:0]       pxc_cq01h;   // this credit's pool register
   logic [2*R:0]        hk_cq02h;    // the allowances held and the correction, one-hot to 2R
@@ -431,6 +432,13 @@ module ooe_go #(
       for (int h = 0; h < R + 1; h++)
         for (int k = 0; k < R + 1; k++)
           if (he_cq02h[c * (R + 1) + h] && pl_cq01h[c * (R + 1) + k]) hk_cq02h[h + k] = 1'b1;
+      // The pool saturates at 0 below the allowances held: 0 or more always.
+      pth_cq02h[c * (PM + 1)] = |hk_cq02h;
+      for (int p = 1; p < PM + 1; p++) begin
+        pth_cq02h[c * (PM + 1) + p] = 1'b0;
+        for (int h = 0; h < 2 * R + 1; h++)
+          pth_cq02h[c * (PM + 1) + p] = pth_cq02h[c * (PM + 1) + p] | (hk_cq02h[h] & (pxc_cq01h >= LX'(p + h)));
+      end
       for (int p = 0; p < PM + 1; p++) begin
         pe_cq02h[c * (PM + 1) + p] = 1'b0;
         for (int h = 0; h < 2 * R + 1; h++)
@@ -443,10 +451,15 @@ module ooe_go #(
           pt_cq02h[c * (R + 1) + v] = pt_cq02h[c * (R + 1) + v] | (hk_cq02h[h] & (pxc_cq01h >= LX'(v + h)));
       end
     end
-  // A warp's share at pool p: floor(p / n), the first's p - (n - 1) floor(p
-  // / n), the names' plus its unmet floor u.
-  function automatic int share_of(input int p, input int n, input int fst, input int u);
-    share_of = (fst != 0 ? p - (n - 1) * (p / n) : p / n) + u;
+  // A warp's share at pool p: the warp first in rotation takes h = min(d,
+  // p) first, d its head's need (OI-80's liveness rule, OA's rev 244); of
+  // the rest q, each floor(q / n), the first q - (n - 1) floor(q / n) and h;
+  // the names' plus its unmet floor u.
+  function automatic int share_of(input int p, input int n, input int fst, input int u, input int d);
+    int h, q;
+    h = d < p ? d : p;
+    q = p - h;
+    share_of = (fst != 0 ? h + q - (n - 1) * (q / n) : q / n) + u;
   endfunction
   // A class's share covers its n heads' needs: its thermometer at n (none
   // needed when n is 0).
@@ -468,36 +481,87 @@ module ooe_go #(
         u_cq01h = c == 2 ? unmet_g_cq01h[s * LU +: LU] : c == 3 ? unmet_p_cq01h[s * LU +: LU] : '0;
         for (int w = 0; w < R + 1; w++) ue_cq01h[(s * 4 + c) * (R + 1) + w] = w == R ? u_cq01h >= LU'(R) : u_cq01h == LU'(w);
       end
+  // The first warp's reserve per credit, one-hot: none, or two where its
+  // head needs two (an atomic's two MIU rows and names, a copy's second RCU
+  // row; a need of one the first warp's share always covers while the pool
+  // has any), from its admission bits; reserved only when the rotation's
+  // own slot has a head (it is then the first). It is registered with the
+  // rotation, from the next rotation slot's head now: a head left waiting is
+  // the same head.
+  localparam int ND = 2;
+  logic [4*ND-1:0] dr_cq02h;                   // registered, one-hot per credit
+  logic [4*ND-1:0] dr_nx_cq02h, dd_cq02h;
+  logic [PA-1:0]   a0_cq02h;
+  logic [1:0]      dn_cq02h;
+  logic [S-1:0]    pn_cq02h;                   // the rotation's next slot
+  logic            ph_cq02h;                   // the rotation's slot has a head
+  always_comb begin
+    pn_cq02h = {priod_cq02h[S-2:0], priod_cq02h[S-1]};
+    a0_cq02h = '0;
+    for (int s = 0; s < S; s++) if (pn_cq02h[s] && hv_cq01h[s * H]) a0_cq02h = ha_cq01h[(s * H) * PA +: PA];
+    for (int c = 0; c < 4; c++) begin
+      dn_cq02h = c == 0 ? 2'(a0_cq02h[0]) + 2'(a0_cq02h[2]) + 2'(a0_cq02h[8]) :
+                 c == 1 ? 2'(a0_cq02h[1]) + 2'(a0_cq02h[8]) :
+                 c == 2 ? (a0_cq02h[8] ? 2'd2 : 2'(a0_cq02h[3])) : 2'(a0_cq02h[4]);
+      dr_nx_cq02h[c * ND +: ND] = dn_cq02h == 2'd2 ? 2'b10 : 2'b01;
+    end
+    ph_cq02h = |(priod_cq02h & with_w_cq01h);
+    for (int c = 0; c < 4; c++)
+      for (int d = 0; d < ND; d++) dd_cq02h[c * ND + d] = ph_cq02h ? dr_cq02h[c * ND + d] : d == 0;
+  end
   // The table, at elaboration: for each case t (n warps, the first or not,
-  // floor w) and each v, the pools that give a share of v or more.
-  localparam int NT = S * 2 * (R + 1);
+  // floor w, the first's need d) and each v, the pools that give a share of
+  // v or more.
+  localparam int NT = S * 2 * (R + 1) * ND;
   function automatic logic [NT*R*(PM+1)-1:0] table_of();
     table_of = '0;
     for (int n = 1; n < S + 1; n++)
       for (int f = 0; f < 2; f++)
         for (int w = 0; w < R + 1; w++)
-          for (int v = 1; v < R + 1; v++)
-            for (int p = 0; p < PM + 1; p++)
-              if (share_of(p, n, f, w) >= v)
-                table_of[((((n - 1) * 2 + f) * (R + 1) + w) * R + v - 1) * (PM + 1) + p] = 1'b1;
+          for (int d = 0; d < ND; d++)
+            for (int v = 1; v < R + 1; v++)
+              for (int p = 0; p < PM + 1; p++)
+                if (share_of(p, n, f, w, 2 * d) >= v)
+                  table_of[(((((n - 1) * 2 + f) * (R + 1) + w) * ND + d) * R + v - 1) * (PM + 1) + p] = 1'b1;
   endfunction
   localparam logic [NT*R*(PM+1)-1:0] TBL = table_of();
-  // Per credit, the pool picks first (tp[c][n][f][w][v]: at this pool, case
-  // (n, f, w) gives v or more), then the warps' number, the same for all
-  // (tw[c][f][w][v]); each warp's role and floor pick last.
+  // A case's pools, as runs of the pool's thermometer (a run from a to b:
+  // the pool is a or more and not b or more), so the late pool reaches the
+  // share through a compare and one AND-OR, not its one-hot.
+  function automatic logic in_of(input logic [PM:0] th, input int row);
+    int e;
+    in_of = 1'b0;
+    for (int a = 0; a < PM + 1; a++)
+      if (TBL[row * (PM + 1) + a] && (a == 0 || !TBL[row * (PM + 1) + a - 1])) begin
+        e = PM + 1;
+        for (int b = PM; b > a; b--) if (!TBL[row * (PM + 1) + b]) e = b;
+        in_of = in_of | (th[a] & (e > PM || !th[e % (PM + 1)]));
+      end
+  endfunction
+  // Per credit, the pool picks first (tp[c][n][f][w][d][v]: at this pool,
+  // case (n, f, w, d) gives v or more), then the warps' number and the first
+  // warp's need, both early, the same for all (tw[c][f][w][v]); each warp's
+  // role and floor pick last.
   localparam int NF = 2 * (R + 1);       // a warp's cases: role, floor
-  logic [4*S*NF*R-1:0] tp_cq02h;
+  logic [4*NT*R-1:0]   tp_cq02h;
   logic [4*NF*R-1:0]   tw_cq02h;
+  logic [S*ND-1:0]     nd_sel_cq02h;     // the warps' number and the first's need, one-hot
   always_comb
     for (int c = 0; c < 4; c++) begin
+      // One warp takes the whole pool, its reserve moot: its case reads no need.
+      for (int n = 1; n < S + 1; n++)
+        for (int d = 0; d < ND; d++)
+          nd_sel_cq02h[(n - 1) * ND + d] = n == 1 ? nwh_cq01h[n] & d == 0 : nwh_cq01h[n] & dd_cq02h[c * ND + d];
       for (int t = 0; t < NT; t++)
         for (int v = 1; v < R + 1; v++)
-          tp_cq02h[(c * NT + t) * R + v - 1] = |(pe_cq02h[c * (PM + 1) +: PM + 1] & TBL[(t * R + v - 1) * (PM + 1) +: PM + 1]);
+          tp_cq02h[(c * NT + t) * R + v - 1] = in_of(pth_cq02h[c * (PM + 1) +: PM + 1], t * R + v - 1);
       for (int t = 0; t < NF; t++)
         for (int v = 1; v < R + 1; v++) begin
           tw_cq02h[(c * NF + t) * R + v - 1] = 1'b0;
           for (int n = 1; n < S + 1; n++)
-            tw_cq02h[(c * NF + t) * R + v - 1] = tw_cq02h[(c * NF + t) * R + v - 1] | (nwh_cq01h[n] & tp_cq02h[(c * NT + (n - 1) * NF + t) * R + v - 1]);
+            for (int d = 0; d < ND; d++)
+              tw_cq02h[(c * NF + t) * R + v - 1] = tw_cq02h[(c * NF + t) * R + v - 1] |
+                  (nd_sel_cq02h[(n - 1) * ND + d] & tp_cq02h[(c * NT + ((n - 1) * NF + t) * ND + d) * R + v - 1]);
         end
     end
   logic [S*4*R-1:0] sg_cq02h;
@@ -660,6 +724,9 @@ module ooe_go #(
       for (int n = 2; n < S + 1; n++)
         for (int p = 0; p < PM + 1; p++)
           if (p % n != 0 && p / n < R) rem_cq02h = rem_cq02h | (nwh_cq01h[n] & pe_cq02h[c * (PM + 1) + p] & prio_en_cq01h);
+    // The first warp's need reserved moves with the rotation too (OI-80).
+    for (int c = 0; c < 4; c++)
+      rem_cq02h = rem_cq02h | (~nwh_cq01h[0] & ~nwh_cq01h[1] & ~dd_cq02h[c * ND] & ~pe_cq02h[c * (PM + 1)] & prio_en_cq01h);
   end
   logic [S-1:0] chg_nx_cq02h;
   always_comb
@@ -746,11 +813,13 @@ module ooe_go #(
       priow_cq02h <= S'(1);
       priox_cq02h <= S'(1);
       priod_cq02h <= S'(1);
+      for (int c = 0; c < 4; c++) dr_cq02h[c * ND +: ND] <= ND'(1);
     end else if (prio_en_cq01h) begin
       prio_cq02h  <= {prio_cq02h[S-2:0], prio_cq02h[S-1]};
       priow_cq02h <= {priow_cq02h[S-2:0], priow_cq02h[S-1]};
       priox_cq02h <= {priox_cq02h[S-2:0], priox_cq02h[S-1]};
       priod_cq02h <= {priod_cq02h[S-2:0], priod_cq02h[S-1]};
+      dr_cq02h    <= dr_nx_cq02h;
     end
   end
 

@@ -78,7 +78,7 @@ module ooe_rename #(
   localparam int LS = (S > 1) ? $clog2(S) : 1,
   localparam int LC = (C > 1) ? $clog2(C) : 1,
   localparam int MW = 16 * GW + 4 * PW,
-  localparam int XM = 6 * R,
+  localparam int XM = 6 * R + 2,
   localparam int LX = $clog2(XM + 1),
   localparam int XW = 20,                // a head's Rename 2 attributes (c_x)
   localparam int XL = XW + 3,            // a lane's: and its class bits (RS, MIU, copy)

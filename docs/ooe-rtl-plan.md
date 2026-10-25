@@ -958,6 +958,22 @@ Built (`rtl/ooe/`):
      names' pool as the model's split reads it (GoLog::pin, OI-76's lag),
      which trails cred - owed by a cycle when a slot above its floor frees;
      pair-cut's predicate pressure was the first to show it.
+     *The shares' liveness (OI-80, built).* The rotation's own slot, when it
+     has a head, reserves two of a credit its head needs two of before the
+     even split. The need is registered with the rotation (dr, from the
+     next rotation slot's head: 8 flops beside the rotation), so it reaches
+     the table early. The table gains the reserve as an index, and the
+     pool's saturation rises to 4R + 2 (rename's register to 6R + 2), exact
+     through the reserve. The pool is now a thermometer (pth: the pool is p
+     or more), and each case's pools are read as runs of it (a or more, not
+     b or more), not through its one-hot: the late pool meets the share
+     after one compare and an AND-OR. Forms tried, in-flop with inputs at 2:
+     the first warp's need live, 26.6; registered with the pool's one-hot,
+     25.3; with the thermometer, 23.5. check-ngd: 21.5 flop to flop (22.6
+     before). check-cg: 952 flops. The thermometer's 0 entry is set
+     whenever an allowance is held, as the pool saturates at 0 below them:
+     rename_scarce's lagged counters drive a credit below the held, which
+     go_tb's exact pool never does.
      *Counters (7b, built).* Rename's counters replace the go's pool,
      floor and room ports (OI-73 to OI-76, OA's revs 215, 216 and 219):
      RS room per class (up by ooe_rs's frees, a lead a cycle ahead), and
