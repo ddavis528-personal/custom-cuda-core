@@ -25,7 +25,7 @@ for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
          atom-off-head atom-early-wake atom-demote-mid rewind-order drain-early \
          no-refuse park-layout-lost final-exit-early cta-slot-zero pred-copy-lost none-row-zero local-base width-from-dec fallback-claims-mlc no-ceil-term \
          a1-base-only cas-split bar-no-hold beat-unheld sibling-uncommitted \
-         no-sized-fault no-converged-fault pair-split; do
+         no-sized-fault no-converged-fault pair-split partial-taken; do
   if grep -q "^  control $c  *caught$" "$log"; then
     say "control $c" "caught"
   else
@@ -33,7 +33,7 @@ for c in free-new shallow-cancel early-wake cmpl-wake-delay-ignored \
   fi
 done
 n=$(grep -c "^  control " "$log")
-if [ "$n" != 36 ]; then
-  say "control count" "$n, want 36 (add a new one to this list)"; fail=1
+if [ "$n" != 37 ]; then
+  say "control count" "$n, want 37 (add a new one to this list)"; fail=1
 fi
 exit $fail

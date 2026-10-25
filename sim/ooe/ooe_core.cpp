@@ -1670,8 +1670,14 @@ void Core::resolveBranch(unsigned slot, unsigned idx) {
     err("V-07: branch at rob tag %u resolved without a live checkpoint", tagOf(slot, idx));
     return;
   }
-  // V-41: a redirect exactly when the outcome disagrees with pred_taken.
-  if (r.taken == r.u.pred_taken) {
+  // V-41: a redirect exactly when the outcome disagrees with pred_taken. A
+  // taken prediction is right only if every active lane took it (FET spec
+  // rev 28, TI's rev 199): a branch or ret that splits its group is a
+  // mispredict, redirected for the lanes that took it. (A ret's target
+  // against FET's predicted one waits on a field that carries it.)
+  const bool right = r.u.pred_taken ? r.taken && (r.taken_mask == r.u.group_mask || cfg_.inject_partial_taken_ok)
+                                    : !r.taken;
+  if (right) {
     free_mask_ |= uint64_t(1) << (slot * cfg_.ckpts + r.u.ckpt);
     s.ckpt[r.u.ckpt].live = false;
     r.ckpt_live = false;
@@ -2303,16 +2309,25 @@ void Core::retire() {
     ++histograms["retire_per_cycle"][n];
     // Why the head waits (TI's rev 193): a cycle that retires nothing with
     // an incomplete head, counted once under its first cause: the ROB full,
-    // else the head's kind and state.
+    // else the head's kind and state. A lane op by its RS entry (TI's rev
+    // 198): unissued, issued and unconfirmed, or confirmed (or its entry
+    // freed) awaiting RCU's done.
     if (!n && s.count && !s.fault_stop && !s.rob[s.head].complete) {
       const RobEntry &h = s.rob[s.head];
+      const char *lane = "retire.head_wait.lane_confirmed";
+      if (!h.is_mem && !h.u.attr.branch && !h.u.attr.exec_rcu)
+        for (const RsEntry &e : rs_)
+          if (e.valid && e.slot == si && e.rob == s.head && e.cls == RsCls::kRcu && !e.confirmed) {
+            lane = e.issued ? "retire.head_wait.lane_unconfirmed" : "retire.head_wait.lane_unissued";
+            break;
+          }
       count("retire.head_wait");
       count(s.count == cfg_.rob_depth ? "retire.head_wait.rob_full"
             : h.is_load ? (h.at_miu ? "retire.head_wait.load_at_miu" : "retire.head_wait.load_unissued")
             : h.is_store ? "retire.head_wait.store"
             : h.is_mem ? "retire.head_wait.mem_other"
             : h.u.attr.branch ? "retire.head_wait.branch"
-            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : "retire.head_wait.lane");
+            : h.u.attr.exec_rcu ? "retire.head_wait.rcu" : lane);
     }
     // Demotion triggers at the head (Q18): reported to RAU, which decides.
     // None while the head is an atomic in progress (V-70).
