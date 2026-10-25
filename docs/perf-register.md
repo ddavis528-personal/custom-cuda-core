@@ -1041,7 +1041,10 @@ it.
 
   Uniform, 98.5% of memops become one line. Four warps then take 2.16x one
   warp's time for 4x the work, where plain they took 4.18x and hid nothing:
-  the four-warp memory bound was the layout, not L1's size. Per thread,
+  the four-warp memory bound was the layout, not L1's size. Interleaved,
+  even an 8 KiB direct-mapped L1 runs coremark128 in 3,340,054 cycles,
+  3.0x faster than the plain layout at 64 KiB 8-way, and 8 KiB to 64 KiB
+  buys only 15% more (TI's rev 225). Per thread,
   four interleaved warps take 22,179 cycles against one thread's 1,938,449.
   With a seed per lane only 55.5% of memops coalesce, since diverged lanes
   walk different nodes, so the gain falls to 7.1%.
