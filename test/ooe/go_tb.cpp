@@ -24,7 +24,9 @@
 // retirements never reach the ROB term), adm-shift (each head carries
 // the next head's admission bits), no-write-bits (no head writes a GPR
 // or a predicate), no-room (no slot's room to its ceiling binds) and no-corr
-// (the pool register's correction never reaches the go).
+// (the pool register's correction never reaches the go) and no-pair-bit (no
+// head marks a CAS pair's first slot). GO_DEBUG=1 dumps the first
+// mismatching cycles: the heads, splits and the model's counter changes.
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: go_tb [seeds] | go_tb --cg <scenario> <vcd>
@@ -37,6 +39,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <memory>
 #include <random>
 #include <string>
@@ -46,10 +49,11 @@ using ccv::ooe::Config;
 using ccv::ooe::Core;
 
 int ooeTestDirectedHookedWith(void (*hook)(const Core &), void (*cfg)(Config &));
+int ooeTestAtomicHookedWith(unsigned seeds, void (*hook)(const Core &), void (*cfg)(Config &));
 void goConfig(Config &c) { c.decq_warp_max = 6; }
 
 namespace {
-constexpr unsigned S = GO_S, R = GO_R, PA = 7, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R;
+constexpr unsigned S = GO_S, R = GO_R, PA = 9, LU = 5, LB = 6, LT = 3, H = 2 * R - 1, XM = 6 * R;
 constexpr unsigned bits(unsigned n) { unsigned w = 0; while ((1u << w) < n) ++w; return w; }
 constexpr unsigned LX = bits(XM + 1);
 
@@ -59,7 +63,7 @@ std::string control;
 std::mt19937 split_rng(7);   // the pool registers' split (drive)
 uint64_t current = 0;
 bool live = false;
-unsigned long long cycles = 0, cores = 0, skipped = 0, takes = 0, writers = 0, restores = 0, mismatches = 0;
+unsigned long long cycles = 0, cores = 0, skipped = 0, takes = 0, writers = 0, restores = 0, mismatches = 0, pairs = 0;
 
 template <typename T> void setBit(T &w, unsigned i, bool v) {
   if constexpr (sizeof(T) <= 8) {
@@ -128,7 +132,7 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
   dut->pool_en_cq01h = 0;
   if (g && nx) {
     bool pool = false;
-    for (unsigned r = 0; r != 4; ++r) pool = pool || g->cred[r] != nx->cred[r];
+    for (unsigned r = 0; r != 4; ++r) pool = pool || g->cred[r] != nx->cred[r] || g->pin[r] != nx->pin[r];
     for (unsigned r = 0; r != 2; ++r) pool = pool || g->owed[r] != nx->owed[r];
     for (unsigned s = 0; s != S; ++s) {
       pool = pool || g->unmet_g[s] != nx->unmet_g[s] || g->unmet_p[s] != nx->unmet_p[s] ||
@@ -140,12 +144,13 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
     dut->pool_en_cq01h = pool && control != "no-pool-en";
   }
   if (!g) return;
-  // Rename's pool registers: each credit less its floors owed, saturated,
-  // split at random into the register and its correction (a lagged take k,
-  // one-hot), as rename's lagged counters give them (OI-74).
+  // Rename's pool registers: each credit less its floors owed, saturated
+  // (the names' as OI-76's lag gives them, the split's own), split at random
+  // into the register and its correction (a lagged take k, one-hot), as
+  // rename's lagged counters give them (OI-74).
   for (unsigned r = 0; r != 4; ++r) {
     const unsigned owed = r >= 2 ? g->owed[r - 2] : 0;
-    const unsigned v = g->cred[r] - std::min(g->cred[r], owed);
+    const unsigned v = g->pin_set ? g->pin[r] : g->cred[r] - std::min(g->cred[r], owed);
     unsigned k = unsigned(split_rng() % (R + 1));
     if (v + k > XM) k = 0;
     setField(dut->px_cq01h, r * LX, LX, std::min(v + k, XM));
@@ -157,6 +162,10 @@ void drive(const Core::GoLog *g, const Core::GoLog *nx) {
       setBit(dut->hv_cq01h, s * H + p, true);
       unsigned a = control == "adm-shift" ? (p + 1 < q.size() ? q[p + 1] : 0) : q[p];
       if (control == "no-write-bits") a &= ~(3u << 3);
+      // no-pair-bit: no head marks a CAS pair's first slot, so the go may
+      // end a fit on one, or let the width split a pair (OI-79 (b)).
+      if (control == "no-pair-bit") a &= ~(1u << 7);
+      if ((a >> 7) & 1u) ++pairs;
       setField(dut->ha_cq01h, (s * H + p) * PA, PA, a);
     }
     setField(dut->unmet_g_cq01h, s * LU, LU, sat(g->unmet_g[s], LU));
@@ -195,7 +204,20 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
     for (unsigned r = 0; r != R; ++r) t += getBit(dut->take_cq02h, s * R + r);
     for (unsigned r = 0; r != R; ++r)
       if (getBit(dut->take_cq02h, s * R + r) != (r < t)) fail("take is no thermometer", s, r, t);
-    if (t != g.took[s]) fail("take differs", s, t, g.took[s]);
+    if (t != g.took[s]) {
+      fail("take differs", s, t, g.took[s]);
+      if (std::getenv("GO_DEBUG") && mismatches < 3) {
+        std::fprintf(stderr, "  slot %u heads:", s);
+        for (unsigned p = 0; p != g.adm[s].size(); ++p) std::fprintf(stderr, " %03x", g.adm[s][p]);
+        std::fprintf(stderr, "  run %u reach %u ret %u hold %u took", g.run[s], unsigned(g.reach[s]), g.ret[s],
+                     unsigned(g.hold[s]));
+        for (unsigned q = 0; q != S; ++q) std::fprintf(stderr, " %u", g.took[q]);
+        std::fprintf(stderr, " lanes %zu room_g %u room_p %u unmet_g %u cred %u %u %u %u", g.lanes.size(), g.room_g[s],
+                     g.room_p[s], g.unmet_g[s], g.cred[0], g.cred[1], g.cred[2], g.cred[3]);
+        if (s < g.split.size()) std::fprintf(stderr, " split %u %u %u %u", g.split[s][0], g.split[s][1], g.split[s][2], g.split[s][3]);
+        std::fprintf(stderr, "\n");
+      }
+    }
     if (t && !getBit(dut->sel_cq02h, s)) fail("a take without its take-enable", s, 0, 1);
   }
   for (unsigned l = 0; l != R; ++l) {
@@ -217,7 +239,7 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
   unsigned before[2] = {0, 0};
   for (unsigned l = 0; l != g.lanes.size() && l != R; ++l) {
     const unsigned s = g.lanes[l].first, h = g.lanes[l].second, cand = h * S + s;
-    const uint8_t a = h < g.adm[s].size() ? g.adm[s][h] : 0;
+    const uint16_t a = h < g.adm[s].size() ? g.adm[s][h] : 0;
     for (unsigned b = 0; b != 2; ++b) {
       const unsigned got = getField(dut->wb_cq02h, (cand * 2 + b) * R, R);
       if (got != (1u << before[b]) - 1u) fail(b ? "predicate writers before differ" : "GPR writers before differ", l, got, (1u << before[b]) - 1u);
@@ -232,6 +254,7 @@ void check(const Core::GoLog &g, const Core::GoLog &nx) {
   tick();
 }
 
+std::map<std::string, uint64_t> c_last;   // GO_DEBUG: the checked cycle's counter changes
 void hook(const Core &c) {
   const Core::GoLog &g = c.goLog();
   if (c.serial() != current) {
@@ -243,7 +266,34 @@ void hook(const Core &c) {
     resetRtl();
   }
   if (!live || !g.valid || g.adm.size() != S) { ++skipped; return; }
+  // GO_DEBUG: the model's counter changes over the cycle checked (pend's).
+  static std::map<std::string, uint64_t> c_prev, c_pend;
+  if (std::getenv("GO_DEBUG")) {
+    c_pend.clear();
+    for (const auto &kv : c.counters) {
+      const uint64_t was = c_prev.count(kv.first) ? c_prev[kv.first] : 0;
+      if (kv.second != was && (kv.first.rfind("rename", 0) == 0 || kv.first.rfind("stall", 0) == 0 ||
+                               kv.first.rfind("hold", 0) == 0))
+        c_pend[kv.first] = kv.second - was;
+    }
+    c_prev = c.counters;
+  }
+  const unsigned long long m0 = mismatches;
   if (pending) check(pend, g);
+  if (std::getenv("GO_DEBUG") && pend.took.size() == S && mismatches != m0 && m0 < 3) {
+    std::fprintf(stderr, "  [cycle %llu]\n", cycles);
+    for (const auto &kv : c_last) std::fprintf(stderr, "    model %s +%llu\n", kv.first.c_str(), (unsigned long long)kv.second);
+    for (unsigned s = 0; s != S; ++s) {
+      std::fprintf(stderr, "    slot %u took %u heads:", s, pend.took[s]);
+      for (unsigned p = 0; p != pend.adm[s].size(); ++p) std::fprintf(stderr, " %03x", pend.adm[s][p]);
+      if (s < pend.split.size()) std::fprintf(stderr, "  split %u %u %u %u", pend.split[s][0], pend.split[s][1], pend.split[s][2], pend.split[s][3]);
+      std::fprintf(stderr, "\n");
+    }
+    std::fprintf(stderr, "    cred %u %u %u %u owed %u %u prio %u lanes:", pend.cred[0], pend.cred[1], pend.cred[2], pend.cred[3], pend.owed[0], pend.owed[1], pend.prio);
+    for (const auto &l : pend.lanes) std::fprintf(stderr, " %u.%u", l.first, l.second);
+    std::fprintf(stderr, "\n");
+  }
+  c_last = c_pend;
   pend = g;
   pending = true;
 }
@@ -259,12 +309,15 @@ int main(int argc, char **argv) {
   dut = std::make_unique<Vooe_go>(ctx.get());
   if (cg.on()) cg.open(*dut, vcd);
   // The directed tests in the ordinary run; a scenario is the random tests'.
-  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, goConfig)) + cg.run(seeds, nullptr, hook, goConfig);
+  // And the random atomics, whose CAS pairs the go takes whole (OI-79 (b)).
+  const int model_fails = (cg.on() ? 0 : ooeTestDirectedHookedWith(hook, goConfig) +
+                                         ooeTestAtomicHookedWith(seeds ? 4 : 0, hook, goConfig)) +
+                          cg.run(seeds, nullptr, hook, goConfig);
   cg.close();
   dut->final();
   std::printf("go_tb control=%s seeds=%u cores=%llu cycles=%llu takes=%llu writers=%llu restore_cycles=%llu "
-              "skipped=%llu mismatches=%llu model_failures=%d\n",
-              control.empty() ? "none" : control.c_str(), seeds, cores, cycles, takes, writers, restores, skipped,
+              "pair-heads=%llu skipped=%llu mismatches=%llu model_failures=%d\n",
+              control.empty() ? "none" : control.c_str(), seeds, cores, cycles, takes, writers, restores, pairs, skipped,
               mismatches, model_fails);
   const int rc = mismatches || model_fails ? 1 : 0;
   dut.reset();

@@ -26,6 +26,15 @@ namespace ccv {
 namespace skel {
 namespace {
 
+/// Whether a channel carries a field: aux (AR-24 (b)) under either of its
+/// names, and own_pc (TI-40), each read or sent only where the schema has it.
+bool hasField(unsigned chan, const char *n) {
+  const ChanDesc &cd = kChans[chan];
+  for (unsigned f = 0; f != cd.nfields; ++f)
+    if (!std::strcmp(cd.fields[f].name, n)) return true;
+  return false;
+}
+
 /// A channel OOE has, by name, or -1 if the wiring gives it none.
 int optChan(const char *n) {
   for (const ChanDesc &cd : kChans)
@@ -208,6 +217,10 @@ private:
     u.slot_form = unsigned(get(p, c.dec_ooe, "slot_form"));
     u.arg_slot = unsigned(get(p, c.dec_ooe, "arg_slot"));
     u.local_form = unsigned(get(p, c.dec_ooe, "local_form"));
+    if (hasField(c.dec_ooe, "xfer_size")) {   // O-80
+      u.xfer_size = unsigned(get(p, c.dec_ooe, "xfer_size"));
+      u.xfer_signed = get(p, c.dec_ooe, "xfer_signed") != 0;
+    }
     u.cause = unsigned(get(p, c.dec_ooe, "cause"));
     u.fmt_rsv = unsigned(get(p, c.dec_ooe, "fmt_rsv"));
     u.fmt_opnd = unsigned(get(p, c.dec_ooe, "fmt_opnd"));
@@ -225,6 +238,9 @@ private:
       // TI-27's final-exit bit (OA's rev 170): FET marks the exit that
       // clears the warp's last live lanes.
       u.shape.final_exit = u.shape.exit && get(p, c.dec_ooe, "final_exit") != 0;
+      // TI-40: FET's all_waiting mark, a converged wait's and the barrier
+      // timer's.
+      u.all_waiting = get(p, c.dec_ooe, "all_waiting") != 0;
       // lanectx-as-ctatid: srd #2 taken as srd #0, the warp's index in its
       // CTA where O-64 names its hardware context.
       u.shape.srd = ik == kImmWarpBase ? 0 : ik == kImmCtaid ? 1
@@ -267,6 +283,9 @@ private:
         d.rob_tag = unsigned(get(m.payload, c.rcu_ooe, "rob_tag"));
         d.branch_taken = get(m.payload, c.rcu_ooe, "branch_taken") != 0;
         d.branch_mask = uint32_t(get(m.payload, c.rcu_ooe, "branch_mask"));
+        // TI's d347d2c names the field branch_aux, renamed aux after it.
+        for (const char *f : {"aux", "branch_aux"})
+          if (hasField(c.rcu_ooe, f)) d.aux = uint32_t(get(m.payload, c.rcu_ooe, f));
         core_.done(d);
       }
     // Completion hints (OA-23), taken as they land, as a fixed-latency
@@ -390,13 +409,12 @@ private:
                                      k_.brk != "corrupt-ckpt" && k_.brk != "stale-free");
       put(is, c.ooe_rcu, "opcode", x.copy ? kOpCopy : x.opcode);
       put(is, c.ooe_rcu, "bypass_group", x.byp_group);
-      // Every S1 register is full width (at position 0); each operand
-      // carries the warp's width code. bad-pos names the
-      // first lane op's 32-bit destination at position 1, which overruns its
-      // row: RCU must refuse it.
+      // Each operand carries its register's width code (AR-24 (d)). bad-pos
+      // names the first lane op's 32-bit destination at position 1, which
+      // overruns its row: RCU must refuse it.
       for (unsigned i = 0; i != 3; ++i)
-        is.set(field(c.ooe_rcu, "src_width").lsb + ccv::kWChwidth * i, ccv::kWChwidth, x.chwidth);
-      put(is, c.ooe_rcu, "dst_width", x.chwidth);
+        is.set(field(c.ooe_rcu, "src_width").lsb + ccv::kWChwidth * i, ccv::kWChwidth, x.src_w[i]);
+      put(is, c.ooe_rcu, "dst_width", x.dst_w);
       const OpInfo *gop = x.copy ? nullptr : opByCode(x.opcode);
       if (k_.brk == "bad-pos" && x.res == ooe::Issue::kLaneOp && gop && gop->gdst &&
           !bad_pos_done_) {
@@ -435,14 +453,19 @@ private:
         put(mo, c.ooe_miu, "slot_form", x.slot_form);
         put(mo, c.ooe_miu, "arg_slot", x.arg_slot);
         put(mo, c.ooe_miu, "local_form", x.local_form);
+        if (hasField(c.ooe_miu, "xfer_size")) {
+          put(mo, c.ooe_miu, "xfer_size", x.xfer_size);
+          put(mo, c.ooe_miu, "xfer_signed", x.xfer_signed);
+        }
         // zero-cta-slot: every memop and fault named CTA slot 0, as before
         // TI-34; MIU's and CRU's checks refuse a warp of any other slot.
         put(mo, c.ooe_miu, "cta_slot", k_.brk == "zero-cta-slot" ? 0u : x.cta_slot);
         put(mo, c.ooe_miu, "chwidth", x.chwidth);
-        // The memop's pipe footprint at its data position (0 in S1).
-        // narrow-pipes names one pipe for a 32-bit memop: MIU refuses it.
+        // The memop's pipe footprint at its data register's position, at
+        // that register's width (AR-24 (d)). narrow-pipes names one pipe for
+        // a 32-bit memop: MIU refuses it.
         put(mo, c.ooe_miu, "pipes",
-            k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, core_.namePos(x.pdst)));
+            k_.brk == "narrow-pipes" ? 1u : maskOf(x.chwidth, x.data_pos));
       }
       // A demotion's discard of an empty ROB names no instruction (TI-21).
       sendOn(c.ooe_miu, x.port, mo,
@@ -468,12 +491,18 @@ private:
         // rewind-pc: each beat names the next instruction's PC, so the
         // lanes resume one past their boundary (TI's control).
         put(r, c.ooe_fet, "target_pc", x.target_pc + (k_.brk == "rewind-pc" ? 2u : 0u));
+        // A beat of a warp held behind a retired wait (TI-40): FET steps
+        // its lanes back over the wait.
+        put(r, c.ooe_fet, "rewind_held", x.rewind_held);
+        put(r, c.ooe_fet, "held_long", x.held_long);
+        if (hasField(c.ooe_fet, "own_pc")) put(r, c.ooe_fet, "own_pc", x.own_pc);
       }
       if (!x.epoch_only) {
         put(r, c.ooe_fet, "target_pc", x.target_pc);
         put(r, c.ooe_fet, "checkpoint_id",
             k_.brk == "corrupt-ckpt" ? (x.ckpt + 1) % ccv::prov::kBrCkpts : x.ckpt);
         put(r, c.ooe_fet, "taken_mask", x.taken_mask);
+        if (hasField(c.ooe_fet, "stay")) put(r, c.ooe_fet, "stay", x.stay);   // a ret's (AR-24 (b))
         // stale-free breaks A-58's first rule on purpose: it frees the
         // checkpoint the same cycle's redirect restores.
         if (k_.brk == "stale-free") free_mask |= uint64_t(1) << (x.slot * ccv::prov::kBrCkpts + x.ckpt);
@@ -500,8 +529,8 @@ private:
       held_.push_back({unsigned(status_), m});
     }
     for (const ooe::RatMap &x : o.maps) {
-      // Rows, positions and widths (OI-29): every register is 32 bits wide in
-      // S1, so its width is chwidth 0 and its position its name's.
+      // Rows, positions and widths (OI-29): each register's position its
+      // name's, its width its committed code (TI's rev 184).
       const unsigned mc = unsigned(map_);
       Bits m = msgOf(mc);
       put(m, mc, "warp_id", x.warp);
@@ -516,7 +545,7 @@ private:
                                ? x.gpr[2] : x.gpr[a];
         m.set(gm.lsb + a * (gm.width / kArchGprs), gm.width / kArchGprs, core_.nameRow(g));
         m.set(gp.lsb + a * (gp.width / kArchGprs), gp.width / kArchGprs, core_.namePos(x.gpr[a]));
-        m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, kChw32);
+        m.set(gw.lsb + a * (gw.width / kArchGprs), gw.width / kArchGprs, x.w[a]);
       }
       for (unsigned p = 0; p != kArchPreds; ++p)
         m.set(pm.lsb + p * (pm.width / kArchPreds), pm.width / kArchPreds, x.pred[p]);
@@ -542,8 +571,8 @@ private:
       }
     }
     // A fault taken at retirement goes to CRU (TI-26), whose stub holds it
-    // to the fault ccv-sim ended the run with. SYU: no kernel waits at a
-    // barrier or is killed yet.
+    // to the fault ccv-sim ended the run with. No kernel is
+    // killed yet.
     for (const ooe::Fault &x : o.faults) {
       if (fault_ < 0) {
         k_.fail("ooe: warp %u faults at retirement (cause %u) at pc %llx", x.warp, x.cause,
@@ -560,8 +589,24 @@ private:
       put(m, fc, "warp_id", x.warp);
       held_.push_back({fc, m, x.tid});
     }
-    if (!o.bars.empty())
-      k_.fail("ooe: a barrier with no S1 consumer");
+    // Barrier reports at retire (TI-40), to SYU.
+    for (const ooe::Bar &x : o.bars) {
+      if (bar_ < 0) {
+        k_.fail("ooe: warp %u's barrier report with no ccv_ooe_syu_bar", x.warp);
+        continue;
+      }
+      const unsigned bc = unsigned(bar_);
+      Bits m = msgOf(bc);
+      put(m, bc, "warp_id", x.warp);
+      put(m, bc, "cta_slot", x.cta_slot);
+      put(m, bc, "barrier_id", x.barrier_id);
+      put(m, bc, "bar_kind", x.kind);
+      put(m, bc, "issue_mask", x.issue_mask);
+      put(m, bc, "guard_mask", x.guard_mask);
+      put(m, bc, "phase_mask", x.phase_mask);
+      put(m, bc, "held", x.held);
+      held_.push_back({bc, m, x.tid});
+    }
     // The model's kill ack (V-24): it has squashed and released the killed
     // warps, its epoch notice has landed in FET, and no memop is out at MIU.
     for (unsigned e : o.kill_acks)

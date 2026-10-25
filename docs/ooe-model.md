@@ -143,9 +143,10 @@ example, is PF-1.
    Otherwise a fixed-latency write scheduled before the squash lands in a
    register already reallocated, and its done matches a reused `rob_tag`.
    Rename stalls at a held slot (`stall.rob_slot_held`).
-7. **A barrier wait is sent at the ROB head**, never from a wrong path,
+7. **A barrier is reported at its retire** (TI-40), never from a wrong path,
    since nothing leaves OOE that cannot be recalled. Younger uops of the warp
-   hold at rename from the moment the barrier renames (V-09).
+   hold at rename behind a converged wait from the moment it renames (V-09),
+   until SYU's release; see *Barriers* below.
 8. **A squash drops the warp's uops from the decode queue** at once, since
    their epoch is stale. A queued redirect not yet sent, for a branch a later
    older mispredict has squashed, is dropped. FET's restore of the older
@@ -153,6 +154,12 @@ example, is PF-1.
 9. **The demotion resume PC** is the oldest unretired instruction's, or the
    oldest queued uop's, or the PC after the last retirement.
 10. **V-35's bound** (below).
+11. **A taken prediction is right only if every active lane took it** (V-41;
+   FET spec rev 28, TI's rev 199). A branch or ret FET predicts taken whose
+   branch_mask is a strict subset of its group is a mispredict, redirected
+   for the lanes that took it (a ret with stay). Directed test partial
+   taken; control partial-taken (any lane counts). A ret's target against
+   FET's predicted one waits on a field that carries the prediction.
 11. **Past L1, a dependant wakes when the data is readable, not when the
     completion lands.** MIU sends the data to RCU and the completion to OOE
     together, over different links. A dependant woken by the completion
@@ -362,12 +369,43 @@ The design doc's section of that name, as the model builds it. An atomic
 entry and rob_tag:
 
 - **A1**, MIU class: the exclusive read into T, sent as `mem_op` 2
-  (atomic-read), with the address source, its displacement and the guard.
+  (atomic-read), with its address sources, the displacement, scale_en and
+  the guard. The address is Format D's base+index (O-72, TI-39): rbase
+  (src0) and rindex (src1), formed on MIU's indexed AGU path, which keeps
+  it to A3.
 - **A2**, RCU class: the lane op, T and the operands into N, its opcode
-  DEC's for the atomic, passed through unexamined (A-66). Its wake is the
-  lane latency.
+  DEC's for the atomic, passed through unexamined (A-66): an RMW's rs
+  (src2), a CAS's rs_cmp and rs_swap. Its wake is the lane latency.
 - **A3**, MIU class: the write of N and the release, `mem_op` 3
   (atomic-write), with the store data alone.
+
+**A CAS is two decode slots, one instruction** (AR's rev 156, OA's rev
+189, TI-39). DEC marks them in sched_attr, pair_first at bit 17 and
+pair_second at bit 18. The first slot carries rbase, rindex and the
+displacement and becomes A1. The second carries rs_cmp, rs_swap and the
+destination and becomes A2's operands. The second allocates no ROB entry
+and no checkpoint, and its steps share the first's rob_tag. Rename joins
+them: the pair is one admission unit, two lanes and one ROB entry, and a
+take stops before it or after it, never between (OI-79 (b), OA's rev 239).
+Under `go_static` the go counts the pair's needs together on its first
+slot (admission bit 8, atomic: one more RCU row, one more MIU row and two
+names), and the second slot carries none. A warp's fits never end on a
+first slot, so a pair whose second falls past the warp's R heads waits
+(`rename.pair_window`). Across warps the cycle's take stops before the
+first pair the width would split: the model takes from a snapshot and,
+if the width cut a pair, takes again capped at the first slot's lane
+(`rename.pair_cut`). The full random atomic set, against the earlier rule
+(a pair with one lane left waits): 653,713 cycles to 652,299 (-0.22%), and
+with every atomic a CAS 665,693 to 666,001 (+0.05%). Control pair-split
+(`inject_pair_split`) lets the width split a pair, and the core's checks
+catch it; directed test pair-cut makes the cut bind across two warps,
+which go_tb follows. DEC sends the two slots in
+one cycle, on decode-queue credit for both (an input assumption the core
+checks). A first slot alone could otherwise sit at its warp's head waiting
+for a second that no credit lets in, and with every warp's head such a
+slot, nothing would move. A second slot reaching rename alone, or a first
+without its second behind it, is an error. Each RS entry keeps at most
+three sources.
 
 T is rd's new name for atom, and a temporary for red; N is always a
 temporary. Both are taken at rename (an atomic takes two names, two MIU
@@ -422,8 +460,50 @@ passes in five configurations, for atom, red, masked and guarded;
 `testAtomicFault`, `testAtomicKill` and `testAtomicDemote` take the other
 paths, and `testAtomicRandom` mixes atomics into the random programs in
 every select form. They run in `ooe-test` alone, not in the benches'
-random set: no OOE RTL re-issues on `more` yet. Controls `atom-off-head`,
-`atom-early-wake` and `atom-demote-mid` must be caught.
+random set: no OOE RTL re-issues on `more` yet. `testAtomic` adds a CAS
+with its second slot in time and one a cycle late. The environment holds
+A1 to rbase and rindex, and A2 to T and the operands the op names. Controls
+`atom-off-head`, `atom-early-wake`, `atom-demote-mid`, `a1-base-only` (A1
+takes rbase alone) and `cas-split` (rename takes a CAS's first slot without
+its second) must be caught.
+
+## Barriers (TI-40, TI-41)
+
+As AR's revs 161-164, OA's revs 200-204 and DA's call of 2026-10-23 settle
+them, and TI's schema (4c3bb98) carries them:
+
+- *Reports at retire.* Every retired arrive (serial 4), wait (serial 2) and
+  exit, partial or final, is one report on `ccv_ooe_syu_bar`, one a cycle
+  (rate 1; a second waits, `stall.bar_port`). bar_kind is 0 arrive, 1
+  wait, 2 wait.phase (a wait whose predicate read is data), 3 exit;
+  issue_mask is the uop's group mask. An unguarded arrive or wait completes
+  without issue, as exit does (TI's rev 176). A guarded one, and wait.phase,
+  issue to RCU, the only reader of predicates: the guard lanes come back on
+  the done's `branch_mask` (issue mask AND guard), and wait.phase's expected
+  phases on its `aux` (OA's rev 226; the 32-bit field AR-24 (b) adds, read
+  by the adapter once the schema has it). An unguarded uop's guard_mask is
+  all ones.
+- *The hold.* A wait FET marks `all_waiting` (converged) holds rename behind
+  it as it renames; it retires, reported `held`, and the hold lasts until
+  SYU's `ccv_syu_ooe_rel` names the warp (`bar.release`). A release with no
+  retired held wait is stale, a demotion having taken the hold first, and
+  is dropped (`bar.release_dropped`). A diverged wait and an arrive hold
+  nothing: FET parks a diverged wait's lanes itself. Under `go_static` a
+  converged wait ends its warp's take for the cycle (the serial admission
+  bit), and F-BARRIER now covers arrives too.
+- *Demotion while held.* The warp's rewind beats carry `rewind_held`, and
+  `held_long` for a 32-bit wait, so FET steps their lanes back over the
+  retired wait. With nothing younger in the decode queue the core still
+  sends one beat, with the wait's lanes and `own_pc` (AR's rev 176, FET spec
+  rev 24): FET rewinds from its own PC, which is the one past the wait, so
+  the RTL stores no PC. The model sets target_pc past the wait as well
+  (`demote.held_wait`). The adapter sends `own_pc` once the schema has it.
+- *The timer.* A held wait's retire, or a marked wait's or exit's that
+  leaves the ROB empty, starts it (FET spec; AR's rev 186): no other uop's
+  mark does, a converged chwidth's (O-81) among them; it fires the barrier
+  trigger once the ROB has stayed empty past `demote_barrier`. A uop that
+  arrives with no hold up stops it. The head-stall trigger is the fallback
+  alone now: a held wait has retired, so it is never the stalled head.
 
 ## Demotion's model side (TI-24) and the swap environment (TI-21)
 
@@ -783,9 +863,10 @@ The swap runs end to end (TI-24): the adapter sends status reports (exited
 among them), a demoting warp's map and rewind beats, and its drained report;
 RAU demotes on a report when `CCV_RAU_DEMOTE` asks it to, parks the warp in
 PCA, and restores it into a free slot (restore-allocate, then
-restore-activate once PCA's rows are written). The S1 CRU and SYU stubs consume nothing OOE sends them, and no S1
-kernel kills, faults or waits at a barrier. So the adapter turns a fault into
-a check failure, and fails on a barrier or kill ack.
+restore-activate once PCA's rows are written). The adapter sends the barrier
+reports on `ccv_ooe_syu_bar`, which TI's SYU stub consumes, and takes its
+`ccv_syu_ooe_rel`. No S1 kernel kills or faults, so the adapter turns a fault
+into a check failure, and fails on a kill ack.
 The kill ports are not in the C++ machine yet, so kill is reached only by the
 unit tests.
 
@@ -1098,9 +1179,9 @@ places where the model still admitted on state the fits cannot hold:
   entry or name, and a narrow GPR write that shares a row (the sectioned
   plan) took no name. Under `go_static` the allowances are charged with
   the decode-time needs; the RS, port and name checks stay exact.
-- *Serializing uops.* A chwidth or barrier uop sets its warp's hold as it
-  is renamed, so the model's later uops of the cycle saw it live; the
-  barrier's only if it does not fault. Under `go_static` either ends the
+- *Serializing uops.* A chwidth uop or a converged wait sets its warp's
+  hold as it is renamed, so the model's later uops of the cycle saw it live;
+  the wait's only if it does not fault. Under `go_static` either ends the
   warp's take for the cycle, faulting or not (one serial admission bit).
   (The floors are already held by construction: OA's rev 138.)
 - *The ROB, and the holds.* The fits for cycle t + 1 are formed in t, from
@@ -1195,14 +1276,16 @@ condition holds, so their count is a duration.
 | Decode queue full | DEC is held: a uop stays in the channel with the queue full; per cycle | warp_id of the oldest held uop | queue occupancy | 0 | `stall.decq_full` |
 | Decode queue per-warp max | a uop stays in the channel with its warp at its maximum; per cycle | warp_id | that warp's entries | maximum | `stall.decq_warp_max` |
 | `chwidth` serialisation | rename held behind an in-flight `chwidth` change; per cycle | warp_id | holding rob_tag | 0 | `hold.chwidth` |
-| Barrier hold | rename held on a barrier wait; per cycle | warp_id | barrier_id | 0 | `hold.barrier` |
+| Head wait, by cause | a warp retires nothing with an incomplete head; per cycle | warp_id | 0 | 0 | `retire.head_wait`, split `.{rob_full,load_at_miu,load_unissued,store,mem_other,branch,rcu,lane_unissued,lane_unconfirmed,lane_confirmed}` (TI's revs 193, 198; rob_full first; a lane op by its RS entry, confirmed or freed awaiting RCU's done) |
+| Registered hold, by cause | under `go_static`, a warp's take refused by its registered hold bit; per refusal | warp_id | 0 | 0 | `hold.registered`, split `hold.registered.{inactive,chwidth,barrier,other}` (TI's rev 188; other is a fault stop) |
+| Barrier hold | rename held behind a converged wait; per cycle | warp_id | barrier_id | 0 | `hold.barrier` |
 | Redirect busy | a mispredict or epoch notice waits for the rate-1 redirect; per cycle | warp_id waiting | redirects queued | 0 | `stall.redirect_busy` |
 | Memop held, would have issued | a memop is ready but for an unconfirmed source while an MIU slot goes unused; per cycle | warp_id | RS entry | 0 | `memop.held_unconfirmed` |
 | Memop hold cycles | a memop issues; once per issue | warp_id | rob_tag | cycles from all operands woken to issue | histogram `memop_hold_cycles` |
 | Deferred free | a squash leaves an entry holding its registers for an op in flight | warp_id | rob_tag | 0 | hook `deferred_free`, `squash.deferred` |
 | Ready but not selected | an entry is ready and not issued; per cycle, per entry | warp_id | RS entry | 0 | `ready_not_selected` |
 | Cancel and replay | a withdrawn wake returns an issued entry to Waiting | warp_id | RS entry | depth from the missed load | hook `cancel`, `cancel.replay`, histogram `cancel_depth` |
-| Demotion trigger | a trigger crosses its threshold at the ROB head; once per head | warp_id | 0 MLC miss, 1 barrier, 2 fallback | cycles the head has stalled | `demote_trigger.*` |
+| Demotion trigger | a trigger crosses its threshold at the ROB head, or the barrier timer with the ROB empty; once per head or per start | warp_id | 0 MLC miss, 1 barrier, 2 fallback | cycles the head has stalled, or since the timer started | `demote_trigger.*` |
 | Cross-group squash | a mispredict squashes entries of other PC groups; once per squash | warp_id | entries of other groups | branch rob_tag | `squash.cross_group` |
 | Masked-load copy op | a masked load issues its copy-only op | warp_id | rob_tag | issue slot | hook `copy` |
 
@@ -1249,7 +1332,12 @@ added with the event.
   - demotion: notice, map, drained, free and restore;
   - kill: ack after the notice and after every completion;
   - a fault at retirement;
-  - a barrier and a `chwidth` serialisation;
+  - barriers (TI-40, TI-41; *Barriers* below): a held wait, a diverged
+    wait, arrives guarded and not, wait.phase, a stale release, the held
+    demotion beat with nothing and with a uop behind it, and the timer;
+    controls `bar-no-hold` (no hold) and `beat-unheld` (no flag on the
+    beat);
+  - a `chwidth` serialisation;
   - F-BARRIER (IS-16, ISA v1.9 O-59): a barrier whose ID is at or above its
     CTA's count, which the launch carries (`barrier_count`) and the core
     keeps per warp across a park, faults at dispatch with cause 9. It
@@ -1265,13 +1353,43 @@ added with the event.
     OOE's at dispatch. F-WIDTH (3) is too: each slot holds the committed
     width of every architectural GPR (OA's response OI-57), written when a
     chwidth retires and 32 at launch and restore-allocate, and a memop
-    whose data register (a load's destination, a store's highest read
+    whose data register (a load's destination, a store's first
     source) is at 4 bits faults as a no-op. Control `no-width-fault` drops
     the check. F-FORMAT (4) reads DEC's fmt_rsv and fmt_opnd (TI's
     57048d7): it faults where fmt_rsv's bit for the committed width of
     fmt_opnd's register is set. Control `no-format-fault` drops it.
-    Issue still sends one committed chwidth per slot, the model's older
-    simplification;
+    The issue and the memop carry per-register widths (AR-24 (d)): each
+    source's and the destination's width code is its register's committed
+    width at rename, held in the ROB entry (a register never written is
+    the zero name, so the table, not the name, has its width). The op's
+    chwidth is its destination's, else its first source's, and a memop's
+    chwidth and pipes are its data register's. An atomic's temporaries T
+    and N are 32-bit. `full_rows` (AR-24's interim, DA tab rev 87; OA's rev
+    225, AR's rev 174) allocates every register as a full row at position
+    0, charged four sections, while the width codes stay the registers'
+    own, which the stubs mask the write by. A park under it records
+    position 0 and the committed width, and the restore takes full rows
+    again. `CCV_OOE_CONFIG=full_rows=1` turns it on, and testWidthCodes
+    covers both settings. The demotion map still names every register 32
+    bits, as it did. chwidth.multi (AR-24 (c), OA's rev 222) arrives as
+    DEC's uop per register, ascending: each but the last a commit_width
+    sibling (sched_attr bit 20, serial 0) that writes its register's
+    committed width at its retire with no hold (`chwidth.sibling`), the
+    last a chwidth that holds. testChwidthMulti covers it; control
+    `sibling-uncommitted` drops the siblings' commits. A chwidth that writes
+    its register names it at the new width, so its dst_width is the code
+    it sets (TI's rev 185). A ret (sched_attr bit 19; AR-24 (b), OA's rev
+    223) redirects the lanes RCU's done names to {PC[47:32], aux} with
+    `stay`, so its other lanes stay at the ret and re-issue it with their
+    own targets (`branch.ret_redirect`; testRet). O-80 (sized loads and
+    stores, DA tab rev 90): DEC's xfer_size and xfer_signed pass to MIU on
+    the memop, and a sized transfer wider than the data register's
+    committed width faults with F-WIDTH (`fault.width.sized`). O-81
+    (converged-only chwidth, DA tab rev 91): a chwidth or sibling whose
+    all_waiting, FET's converged mark, is clear faults with F-WIDTH, a
+    no-op that sets no width and holds nothing
+    (`fault.width.diverged_chwidth`). testSizedAndConverged covers both;
+    controls `no-sized-fault` and `no-converged-fault`;
   - V-74: one fault-address register per warp keeps the oldest faulting
     memop's address and ROB index, written by a faulting completion only if
     older, cleared by a squash that takes it, and read for the fault record

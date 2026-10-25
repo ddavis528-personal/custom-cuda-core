@@ -73,7 +73,9 @@ is not the record.
    ref is the tab's node id), then `view` with `parentId` on its row.
    Don't read whole tabs here.
 3. Act on the rows as the register's conventions say. Answer in your own tab
-   only, and run section 2 for what you wrote.
+   only, and run section 2 for what you wrote. If the rows say the sender
+   pushed work that bears on yours, merge its branch now rather than at the
+   daily sweep (section 5, "the floor, not the only merge").
 4. **Loop guard.** Never answer a notice with a notice, and never answer a
    response just to acknowledge it. Ring someone only for a row you wrote that
    needs them. A response to your open needs no notice back unless you now
@@ -121,6 +123,16 @@ The merge is Daniel's (DA tab rev 78, TI-43, 2026-10-24): branches had gone
 stale, and a release snapshot cut from one of them lacked two others' work.
 The sweeps land minutes apart by prefix, so the night's merges carry each
 agent's work to every other.
+
+The daily merge is the floor, not the only merge (DA, 2026-10-24). Merge a
+peer's branch as soon as its pushed work bears on yours: a notice or row
+that says it pushed something your work builds on, verifies with or must
+match (a model your kernels run on, a field your schema names, a fix your
+gate needs), or before you start work that depends on it. Merge the same
+way as the sweep, and gate the merge before you push. Waiting for the night
+leaves you testing against a block that no longer exists, and lets a
+mismatch between the two sides (a renamed field, a changed contract) sit
+unseen for a day.
 
 ## 6. The daily ping (reachability)
 
