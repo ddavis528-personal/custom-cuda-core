@@ -866,7 +866,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_miu_spm_req`
 
-Scratchpad access with a per-bank address set: one pass, at most one word in each bank, which bank_addr names, with write_data and byte_mask laid out by bank (bank b at bytes 4b to 4b + 3). MIU splits a warp's access into passes, one for each distinct word a bank holds for it, its lanes in ascending order, so a store's highest lane wins a word that lanes share, as ccv-sim's does. Bank conflicts between passes in flight resolve inside SPM, which reports them as conflict_serialization (TI's rev 230). spm_op 0 reads and 1 writes, under byte_mask. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).
+Scratchpad access with a per-bank address set: one pass, at most one word in each bank, which bank_addr names, with write_data and byte_mask laid out by bank (bank b at bytes 4b to 4b + 3). MIU splits a warp's access into passes, one for each distinct word a bank holds for it, its lanes in ascending order, so a store's highest lane wins a word that lanes share, as ccv-sim's does. SPM's resolver issues one pass a cycle, and reports the cycles a pass waited for it as conflict_serialization (SPM spec rev 2; TI's rev 230). spm_op 0 reads and 1 writes, under byte_mask. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).
 
 miu → spm · rate 4 · memory
 
