@@ -1021,6 +1021,41 @@ Built (`rtl/ooe/`):
      names' pool as the model's split reads it (GoLog::pin, OI-76's lag),
      which trails cred - owed by a cycle when a slot above its floor frees;
      pair-cut's predicate pressure was the first to show it.
+     *Adjacent pairs (OI-80 (d), OI-84 (a), built).* Every atomic is two
+     slots (DA's rev 94), each with its own needs: bit 8 marks an
+     atomic's slot, which takes one GPR name; a first slot (bit 7) adds
+     A2's RCU row, and the copy's is the second's (bit 2). The rounds of
+     OI-79 (b) could split an earlier pair when the width cut a later one,
+     and with as many warps at heads as lanes they deadlocked warps whose
+     heads were all pairs (OI-84). OA's rev 264 adopts (a): a pair is one
+     unit of weight two in adjacent lanes, and the interleave runs over
+     units. A candidate is still a head (j, s); its rank is each other
+     warp's heads in its units before the candidate's unit u (and in u,
+     for a warp before s in rotation), then its own j heads. It is taken
+     while its unit's last lane is below R: the others' sum below R - j,
+     or R - j - 1 for a first slot. Per slot and take k, each head's unit
+     is registered beside the first-slot bits (ut, the R(R - 1)/2 bits "head
+     v's unit is u or below"), so the others' terms keep the form of the
+     rounds' (a unit's prefix, and the next unit's under the rotation's
+     order), one tree per unit, and the candidate picks its unit's sum in
+     an AND-OR beside its kind. The cut is gone: no unit splits a pair.
+     A run never ends on a first slot: where head m is one, length m fits
+     as m + 1 does, so the fits stay a thermometer with the second's needs
+     counted. The first warp's reserve reads the pair's need (its head
+     and, for a first slot, the next). check-ngd: take 11.3 (13.6 with the
+     cut; by 14), lanes 15.8 and 12.9 (by 16.7), writers before 16.1 (by
+     17), totals 20.3 to 18.8 (by 21), 22.8 flop to flop (21.5). No
+     register was needed, so the model's (a) figures stand: random atomics
+     at four warps 82,020 cycles (+0.7% on single-slot RMWs), the full
+     set 645,269 (+0.5%). check-cg: 1314 flops (ut's three copies, 360),
+     the fits' gates at 64 / 72%, over their waivers' floors. go_tb runs
+     four warps of pairs at their heads (the case that deadlocked) and
+     the random atomics at one warp and at four: 25 seeds, 204,025
+     cycles, 115,968 pair heads, none differ. Control pair-rounds (the
+     model takes the rounds' form) is caught with no-pair-bit. Rename's
+     own atomic lanes (T's name for the first slot) are not built yet:
+     ooe_rendep's no_atomic assertion stands, and the writers before are
+     still the heads' write bits.
      *The shares' liveness (OI-80, built).* The rotation's own slot, when it
      has a head, reserves two of a credit its head needs two of before the
      even split. The need is registered with the rotation (dr, from the

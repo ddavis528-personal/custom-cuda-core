@@ -42,32 +42,33 @@
 // from its own register of them: the correction joins that one-hot, so it
 // takes the same compares.
 //
-// The take is parallel (rev 171 (c)): candidate (r, s), warp s's r-th uop,
-// is taken while its rank, the candidates before it (every warp's rounds
-// before r, and round r's warps before s in rotation), is below R; a
-// warp's take is its taken candidates, a thermometer. Ranks are sums of
-// thermometers saturated at R, added in trees. The fits are balanced
-// (rev 171 (d)): each credit's pool is a thermometer, each warp's share one
-// too, and fits_s[k] at length m is one AND over thermometer compares of
-// the run's needs, each formed from the heads alone.
+// The take is parallel (rev 171 (c)): candidate (j, s), warp s's head j,
+// is taken while its rank, the uops before it in lane order, leaves its
+// unit's last lane below R; a warp's take is its taken candidates, a
+// thermometer. Ranks are sums of thermometers saturated at R, added in
+// trees. The fits are balanced (rev 171 (d)): each credit's pool is a
+// thermometer, each warp's share one too, and fits_s[k] at length m is one
+// AND over thermometer compares of the run's needs, each formed from the
+// heads alone.
 //
 // Each head's admission bits are decq's (the payload's low PA): bit 0 RCU, 1
 // MIU, 2 copy (a second RCU entry), 3 GPR write, 4 predicate write, 5 branch,
-// 6 serial, 7 a CAS pair's first slot (TI-39), 8 an atomic (AR-21: A2's RCU
-// entry and A3's MIU entry beside A1's, and two GPR names, its destination's
-// or a temporary's and N's). A pair's second slot needs nothing: its needs
-// are its first's.
+// 6 serial, 7 a pair's first slot, 8 an atomic's slot (OI-80 (d), DA's rev
+// 94: every atomic is two slots, one row a class and one name each; the
+// first carries A2's RCU row, the second the copy's).
 //
-// The CAS pair (OI-79 (b), OA's rev 239): its two slots are a warp's heads r
-// and r + 1, taken in consecutive rounds, both or neither. A fit never ends
-// on a first slot (the registered half cuts the run back before it), so a
-// pair's needs are counted together; and the take stops before the first
-// pair the width would split, its first slot's lane taken and its second's
-// not: that lane and every later one are dropped. Which head is a first
-// slot is registered with the fits (OA's fallback: the split stop in the
-// registered half), so only the compare against the width is on the take
-// path. A credit's take in a cycle is at most R: a class's allocation
-// ports, a name per uop.
+// The pair (OI-84 (a), OA's rev 264): its two slots are a warp's heads j
+// and j + 1, one unit of weight two, in adjacent lanes. The interleave is
+// over units: round u takes each warp's u-th unit, the warps from the
+// rotation's first, so a pair's second takes the lane after its first. A
+// candidate's rank is each other warp's heads in its units before u (and
+// in unit u, for a warp before it in rotation), and its own heads before
+// it. A fit never ends on a first slot, so a unit is whole in a run, and a
+// pair is taken while its second's lane is below R: no pair is split, and
+// the rotation's first warp always takes its first unit, so a warp whose
+// heads are all pairs is never starved. Which head is a first slot and
+// each head's unit are registered with the fits, per take. A credit's take
+// in a cycle is at most R: a class's allocation ports, a name per uop.
 //
 // The reference is the model's go under go_static (Core::goLog: the inputs
 // as this module holds them, and the takes in lane order); test/ooe/go_tb.cpp
@@ -159,6 +160,13 @@ module ooe_go #(
     tsum = y[0 +: R];
   endfunction
 
+  // A head's unit past a take (OI-84 (a)): bit ui(v, u), u < v, head v's
+  // unit is u or below (a pair is one unit: its second's is its first's).
+  localparam int NU = R * (R - 1) / 2;
+  function automatic int ui(input int v, input int u);
+    ui = v * (v - 1) / 2 + u;
+  endfunction
+
   logic rst_r01h;
   always_ff @(posedge ooe_core_clk) begin
     rst_r01h <= ooe_rst_r00h;
@@ -182,12 +190,16 @@ module ooe_go #(
   (* keep *) logic [S*(R+1)-1:0] tko_cq02h;     // each slot's take this cycle, one-hot
   (* keep *) logic [S*(R+1)-1:0] tkow_cq02h;    // its copies
   (* keep *) logic [S*(R+1)-1:0] tkox_cq02h;
-  // Per slot and take k, which of the R heads past k is a CAS pair's first
-  // slot (OI-79 (b), OA's rev 239: the split stop in the registered half),
-  // registered with the fits, and its copies.
+  // Per slot and take k, which of the R heads past k is a pair's first slot
+  // (OI-84 (a)), registered with the fits, and its copies.
   (* keep *) logic [S*(R+1)*R-1:0] pf_cq02h;
   (* keep *) logic [S*(R+1)*R-1:0] pfw_cq02h;
   (* keep *) logic [S*(R+1)*R-1:0] pfx_cq02h;
+  // Per slot and take k, each head's unit (ui), registered with the fits,
+  // and its copies.
+  (* keep *) logic [S*(R+1)*NU-1:0] ut_cq02h;
+  (* keep *) logic [S*(R+1)*NU-1:0] utw_cq02h;
+  (* keep *) logic [S*(R+1)*NU-1:0] utx_cq02h;
   logic [S-1:0]         sel_q_cq02h;     // the slot had a head
   logic [4*(R+1)-1:0]   he_cq02h;        // per credit, min(R, the allowances in force), one-hot
   (* keep *) logic [S-1:0] prio_cq02h;   // the rotation's first slot, one-hot, for the take
@@ -226,27 +238,83 @@ module ooe_go #(
           if (p[f] && ((q - f + S) % S) < ((s - f + S) % S)) bef_of[s * S + q] = 1'b1;
       end
   endfunction
-  // Candidate (r, s)'s other warps' terms: each warp's takes before it, the
-  // smaller of its run and r + 1 for a warp before s in rotation, of its run
-  // and r for the rest; each a slice of the warp's run. With s's own term
-  // (r) they give its rank, summed in one tree.
-  function automatic logic [S*R-1:0] terms_of(input logic [S*R-1:0] run, input logic [S*S-1:0] bf, input int r,
-                                              input int s, input logic own);
-    terms_of = '0;
+  // Head v's unit is u or below, at the warp's take (registered, ut; u >= v
+  // always).
+  function automatic logic ut_at(input logic [S*(R+1)*NU-1:0] ut, input int s, input int k, input int v, input int u);
+    // (the index kept in range where u is out of it: elaboration reads it)
+    ut_at = u >= v ? 1'b1 : u < 0 ? 1'b0 : ut[(s * (R + 1) + k) * NU + (u >= 0 && u < v ? ui(v, u) : 0)];
+  endfunction
+  // Each warp's heads by unit (au[(s, v, u)]): head v is in the run and its
+  // unit is u or below; at u = R - 1, the run. Each a thermometer over v.
+  function automatic logic [S*R*R-1:0] au_of(input logic [S*(R+1)*R-1:0] f, input logic [S*(R+1)*NU-1:0] ut,
+                                             input logic [S*(R+1)-1:0] t, input logic [S-1:0] b);
+    for (int s = 0; s < S; s++)
+      for (int v = 0; v < R; v++)
+        for (int u = 0; u < R; u++) begin
+          au_of[(s * R + v) * R + u] = 1'b0;
+          for (int k = 0; k < R + 1; k++)
+            au_of[(s * R + v) * R + u] = au_of[(s * R + v) * R + u] |
+                (f[(s * (R + 1) + k) * R + v] & t[s * (R + 1) + k] & ~b[s] & ut_at(ut, s, k, v, u));
+        end
+  endfunction
+  // Unit u of warp s: the other warps' terms, each warp's heads in its units
+  // before u, and in its unit u too for a warp before s in rotation; each a
+  // thermometer (the run never splits a pair, so a unit is whole in it).
+  function automatic logic [S*R-1:0] tu_of(input logic [S*R*R-1:0] au, input logic [S*S-1:0] bf, input int u, input int s);
     for (int q = 0; q < S; q++)
       for (int v = 0; v < R; v++)
-        if (v < r)       terms_of[q * R + v] = run[q * R + v];
-        else if (v == r) terms_of[q * R + v] = run[q * R + v] & bf[s * S + q];
-    if (!own) terms_of[s * R +: R] = '0;
+        tu_of[q * R + v] = q != s && ((u > 0 && au[(q * R + v) * R + (u + R - 1) % R]) || (au[(q * R + v) * R + u] && bf[s * S + q]));
   endfunction
-  // Taken: the warp has its r-th uop, so its own term is r, and the others'
-  // sum below R - r (the closed form, for the take's depth).
-  function automatic logic [R*S-1:0] tk_of(input logic [S*R-1:0] run, input logic [S*S-1:0] bf);
-    logic [R-1:0] ot;
-    for (int r = 0; r < R; r++)
+  // Each head's unit, at the warp's take: us[(s, j, u)], one-hot over u <= j.
+  function automatic logic [S*R*R-1:0] us_of(input logic [S*(R+1)*NU-1:0] ut, input logic [S*(R+1)-1:0] t);
+    for (int s = 0; s < S; s++)
+      for (int j = 0; j < R; j++)
+        for (int u = 0; u < R; u++) begin
+          us_of[(s * R + j) * R + u] = 1'b0;
+          for (int k = 0; k < R + 1; k++)
+            if (u <= j)
+              us_of[(s * R + j) * R + u] = us_of[(s * R + j) * R + u] |
+                  (t[s * (R + 1) + k] & ut_at(ut, s, k, j, u) & ~ut_at(ut, s, k, j, u - 1));
+        end
+  endfunction
+  // And with its kind, in its run: zs[(s, j, u, f)], head j in the run, its
+  // unit u, a pair's first slot (f 1) or not.
+  function automatic logic [S*R*R*2-1:0] zs_of(input logic [S*(R+1)*R-1:0] fi, input logic [S*(R+1)*NU-1:0] ut,
+                                               input logic [S*(R+1)*R-1:0] pf, input logic [S*(R+1)-1:0] t,
+                                               input logic [S-1:0] b);
+    for (int s = 0; s < S; s++)
+      for (int j = 0; j < R; j++)
+        for (int u = 0; u < R; u++)
+          for (int f = 0; f < 2; f++) begin
+            zs_of[((s * R + j) * R + u) * 2 + f] = 1'b0;
+            for (int k = 0; k < R + 1; k++)
+              if (u <= j)
+                zs_of[((s * R + j) * R + u) * 2 + f] = zs_of[((s * R + j) * R + u) * 2 + f] |
+                    (fi[(s * (R + 1) + k) * R + j] & t[s * (R + 1) + k] & ~b[s] & (pf[(s * (R + 1) + k) * R + j] == (f != 0)) &
+                     ut_at(ut, s, k, j, u) & ~ut_at(ut, s, k, j, u - 1));
+          end
+  endfunction
+  // The others' sums, per warp and unit (ou[(s, u)]): a thermometer
+  // saturated at R, each in one tree.
+  function automatic logic [S*R*R-1:0] ou_of(input logic [S*R*R-1:0] au, input logic [S*S-1:0] bf);
+    for (int s = 0; s < S; s++)
+      for (int u = 0; u < R; u++) ou_of[(s * R + u) * R +: R] = tsum(tu_of(au, bf, u, s));
+  endfunction
+  // Taken (OI-84 (a), OA's rev 264): candidate (j, s), warp s's head j, in
+  // its unit u, which is a single uop or a pair (weight two) in adjacent
+  // lanes. Its rank is the others' sum at u and j, its own heads before it;
+  // it is taken while its unit's last lane is below R: the others' sum below
+  // R - j, or R - j - 1 for a pair's first slot. Units are taken in order,
+  // so no pair is split and no cut is needed.
+  function automatic logic [R*S-1:0] tk_of(input logic [S*R*R-1:0] ou, input logic [S*R*R*2-1:0] zs);
+    for (int j = 0; j < R; j++)
       for (int s = 0; s < S; s++) begin
-        ot = tsum(terms_of(run, bf, r, s, 1'b0));
-        tk_of[r * S + s] = run[s * R + r] & (r == 0 || !ot[(R - 1 - r) % R]);
+        tk_of[j * S + s] = 1'b0;
+        for (int u = 0; u < R; u++)
+          for (int f = 0; f < 2; f++)
+            if (u <= j && j + f < R)
+              tk_of[j * S + s] = tk_of[j * S + s] |
+                  (zs[((s * R + j) * R + u) * 2 + f] & ~ou[(s * R + u) * R + R - 1 - j - f]);
       end
   endfunction
   // Each candidate's first-slot bit: its warp's registered vector at its
@@ -258,94 +326,66 @@ module ooe_go #(
         for (int k = 0; k < R + 1; k++) pr_of[s * R + r] = pr_of[s * R + r] | (pf[(s * (R + 1) + k) * R + r] & t[s * (R + 1) + k]);
       end
   endfunction
-  // The cut (OI-79 (b)): a pair's first slot taken and its second not, the
-  // width's split. Nothing from its lane on is taken: no candidate of a
-  // later round, nor of its round in a warp not before its own. Which head
-  // is a first slot is registered (pf, at the warp's take; OA's rev 239);
-  // only the compare against the width is here. The candidates the cut
-  // removes (a superset beyond the take is harmless).
-  function automatic logic [R*S-1:0] st_of(input logic [R*S-1:0] tk, input logic [S*R-1:0] pr);
-    for (int r = 0; r < R; r++)
-      for (int s = 0; s < S; s++)
-        st_of[r * S + s] = pr[s * R + r] & tk[r * S + s] & (r == R - 1 || !tk[((r + 1) % R) * S + s]);
-  endfunction
-  function automatic logic [R*S-1:0] cut_of(input logic [R*S-1:0] tk, input logic [S*R-1:0] pr,
-                                            input logic [S*S-1:0] bf);
-    logic [R*S-1:0] st;
-    logic [R-1:0]   sr;                         // some warp's round r is cut
-    st = st_of(tk, pr);
-    for (int r = 0; r < R; r++) begin
-      sr[r] = 1'b0;
-      for (int s = 0; s < S; s++) sr[r] = sr[r] | st[r * S + s];
-    end
-    for (int v = 0; v < R; v++)
-      for (int q = 0; q < S; q++) begin
-        cut_of[v * S + q] = 1'b0;
-        for (int r = 0; r < v; r++) if (sr[r]) cut_of[v * S + q] = 1'b1;
-        for (int s = 0; s < S; s++) if (st[v * S + s] && !bf[s * S + q]) cut_of[v * S + q] = 1'b1;
-      end
-  endfunction
 
   // The take: per slot a thermometer.
-  logic [S*R-1:0] run_t_cq02h;
-  logic [S*S-1:0] bef_cq02h;
-  logic [R*S-1:0] tk_c_cq02h, tk_a_cq02h;      // before the cut and after
+  logic [S*R-1:0]     run_t_cq02h;
+  logic [S*S-1:0]     bef_cq02h;
+  logic [S*R*R-1:0]   ou_t_cq02h;
+  logic [R*S-1:0]     tk_a_cq02h;
   always_comb begin
     run_t_cq02h = run_of(fits_cq02h, tko_cq02h, blk_cq01h);
     bef_cq02h   = bef_of(prio_cq02h);
-    tk_c_cq02h  = tk_of(run_t_cq02h, bef_cq02h);
-    tk_a_cq02h  = tk_c_cq02h & ~cut_of(tk_c_cq02h, pr_of(pf_cq02h, tko_cq02h), bef_cq02h);
+    ou_t_cq02h  = ou_of(au_of(fits_cq02h, ut_cq02h, tko_cq02h, blk_cq01h), bef_cq02h);
+    tk_a_cq02h  = tk_of(ou_t_cq02h, zs_of(fits_cq02h, ut_cq02h, pf_cq02h, tko_cq02h, blk_cq01h));
     for (int s = 0; s < S; s++)
       for (int r = 0; r < R; r++) take_cq02h[s * R + r] = tk_a_cq02h[r * S + s];
   end
 
   // The lanes, from the second copies: lane l is taken while the runs sum
-  // past l and the cut is beyond it, and its uop is the candidate whose rank
-  // is l.
-  logic [S*R-1:0]   run_w_cq02h;
+  // past l, and its uop is the candidate whose rank is l: the others' sum at
+  // its unit, then its own heads before it. A pair's first slot at rank
+  // R - 1 is not taken (its second would be past the width), and its lane
+  // is empty: every candidate after it ranks R or more.
+  logic [S*R-1:0]   run_w_cq02h, pfs_w_cq02h;
   logic [S*S-1:0]   befw_cq02h;
-  logic [R*S-1:0]   tk_w_cq02h, cut_w_cq02h, st_w_cq02h;
-  logic [R:0]       rq_cq02h;
-  logic [R-1:0]     lv_cq02h;                  // the lanes the runs reach
+  logic [S*R*R-1:0] au_w_cq02h, ou_w_cq02h, us_w_cq02h;
+  logic [R-1:0]     os_cq02h;                  // a candidate's others' sum at its unit
+  logic [R:0]       rq_cq02h;                  // its rank, a thermometer (bit l: l or more)
   always_comb begin
     run_w_cq02h = run_of(fitsw_cq02h, tkow_cq02h, blkw_cq01h);
     befw_cq02h  = bef_of(priow_cq02h);
-    tk_w_cq02h  = tk_of(run_w_cq02h, befw_cq02h);
-    st_w_cq02h  = st_of(tk_w_cq02h, pr_of(pfw_cq02h, tkow_cq02h));
-    cut_w_cq02h = cut_of(tk_w_cq02h, pr_of(pfw_cq02h, tkow_cq02h), befw_cq02h);
-    lv_cq02h    = tsum(run_w_cq02h);
+    au_w_cq02h  = au_of(fitsw_cq02h, utw_cq02h, tkow_cq02h, blkw_cq01h);
+    ou_w_cq02h  = ou_of(au_w_cq02h, befw_cq02h);
+    us_w_cq02h  = us_of(utw_cq02h, tkow_cq02h);
+    pfs_w_cq02h = pr_of(pfw_cq02h, tkow_cq02h);
     lane_c_cq02h = '0;
-    lane_v_cq02h = lv_cq02h;
-    for (int r = 0; r < R; r++)
+    lane_v_cq02h = tsum(run_w_cq02h);
+    for (int j = 0; j < R; j++)
       for (int s = 0; s < S; s++) begin
-        rq_cq02h = {tsum(terms_of(run_w_cq02h, befw_cq02h, r, s, 1'b1)), 1'b1};
-        for (int l = 0; l < R; l++) begin
-          lane_c_cq02h[(l * R + r) * S + s] = run_w_cq02h[s * R + r] & rq_cq02h[l] & ~rq_cq02h[l + 1] & ~cut_w_cq02h[r * S + s];
-          // A cut's first slot at rank l or below empties lane l.
-          if (st_w_cq02h[r * S + s] && !rq_cq02h[l + 1]) lane_v_cq02h[l] = 1'b0;
-        end
+        os_cq02h = '0;
+        for (int u = 0; u < R; u++) os_cq02h = os_cq02h | ({R{us_w_cq02h[(s * R + j) * R + u]}} & ou_w_cq02h[(s * R + u) * R +: R]);
+        for (int l = 0; l < R + 1; l++) rq_cq02h[l] = l <= j ? 1'b1 : os_cq02h[(l - j - 1 + R) % R];
+        for (int l = 0; l < R; l++)
+          lane_c_cq02h[(l * R + j) * S + s] = run_w_cq02h[s * R + j] & rq_cq02h[l] & ~rq_cq02h[l + 1] &
+                                              ~(pfs_w_cq02h[s * R + j] && l == R - 1);
+        if (run_w_cq02h[s * R + j] && pfs_w_cq02h[s * R + j] && rq_cq02h[R - 1] && !rq_cq02h[R]) lane_v_cq02h[R - 1] = 1'b0;
       end
   end
 
-  // The writer totals and the take register, from the third copies: the take
-  // after the cut.
-  logic [S*R-1:0] run_x_cq02h;
-  logic [S*S-1:0] befx_cq02h;
-  logic [R*S-1:0] tk_y_cq02h, tk_xw_cq02h;
-  always_comb begin
-    run_x_cq02h = run_of(fitsx_cq02h, tkox_cq02h, blkx_cq01h);
-    befx_cq02h  = bef_of(priox_cq02h);
-    tk_y_cq02h  = tk_of(run_x_cq02h, befx_cq02h);
-    tk_xw_cq02h = tk_y_cq02h & ~cut_of(tk_y_cq02h, pr_of(pfx_cq02h, tkox_cq02h), befx_cq02h);
-  end
+  // The writer totals and the take register, from the third copies.
+  logic [R*S-1:0] tk_xw_cq02h;
+  always_comb
+    tk_xw_cq02h = tk_of(ou_of(au_of(fitsx_cq02h, utx_cq02h, tkox_cq02h, blkx_cq01h), bef_of(priox_cq02h)),
+                        zs_of(fitsx_cq02h, utx_cq02h, pfx_cq02h, tkox_cq02h, blkx_cq01h));
 
   // The writers before each candidate: its rank's sum, each warp's term the
-  // writers among its candidates before this one: its prefix count (at its
-  // own last take) at the length its rank term takes, the OR over the
-  // lengths the term reaches, as the counts rise with the length; the
-  // totals, over the taken writers.
+  // writers among its heads before this one: its prefix count (at its own
+  // last take) at the length its term takes, the OR over the lengths the
+  // term reaches, as the counts rise with the length; the other warps' at
+  // the candidate's unit; the totals, over the taken writers.
   logic [S*2*(R+1)*R-1:0] wcs_cq02h;           // per slot, class, length m (0 to R): its writers, a thermometer
-  logic [S*R-1:0]         wq_cq02h, wtq_cq02h;
+  logic [S*R*S*2*R-1:0]   wu_cq02h;            // per slot s, unit u, warp q and class: q's writers before (u, s)
+  logic [S*R-1:0]         tu_w_cq02h, wq_cq02h, wtq_cq02h;
   always_comb begin
     for (int q = 0; q < S; q++)
       for (int b = 0; b < 2; b++) begin
@@ -357,20 +397,35 @@ module ooe_go #(
               (wc_cq02h[(((q * (R + 1) + k) * 2 + b) * R + m - 1) * R +: R] & {R{tkow_cq02h[q * (R + 1) + k]}});
         end
       end
+    for (int s = 0; s < S; s++)
+      for (int u = 0; u < R; u++) begin
+        tu_w_cq02h = tu_of(au_w_cq02h, befw_cq02h, u, s);
+        for (int q = 0; q < S; q++)
+          for (int b = 0; b < 2; b++) begin
+            wu_cq02h[(((s * R + u) * S + q) * 2 + b) * R +: R] = '0;
+            for (int v = 0; v < R; v++)
+              wu_cq02h[(((s * R + u) * S + q) * 2 + b) * R +: R] = wu_cq02h[(((s * R + u) * S + q) * 2 + b) * R +: R] |
+                ({R{tu_w_cq02h[q * R + v]}} & wcs_cq02h[((q * 2 + b) * (R + 1) + v + 1) * R +: R]);
+          end
+      end
     for (int b = 0; b < 2; b++) begin
-      for (int r = 0; r < R; r++)
+      for (int j = 0; j < R; j++)
         for (int s = 0; s < S; s++) begin
           for (int q = 0; q < S; q++) begin
             wq_cq02h[q * R +: R] = '0;
-            for (int v = 0; v < R; v++)
-              if (v < r || v == r)
+            if (q == s) begin
+              for (int v = 0; v < j; v++)
                 wq_cq02h[q * R +: R] = wq_cq02h[q * R +: R] |
-                  ({R{run_w_cq02h[q * R + v] && (v < r || befw_cq02h[s * S + q])}} & wcs_cq02h[((q * 2 + b) * (R + 1) + v + 1) * R +: R]);
+                  ({R{run_w_cq02h[q * R + v]}} & wcs_cq02h[((q * 2 + b) * (R + 1) + v + 1) * R +: R]);
+            end else begin
+              for (int u = 0; u < R; u++)
+                wq_cq02h[q * R +: R] = wq_cq02h[q * R +: R] |
+                  ({R{us_w_cq02h[(s * R + j) * R + u]}} & wu_cq02h[(((s * R + u) * S + q) * 2 + b) * R +: R]);
+            end
           end
-          wb_cq02h[((r * S + s) * 2 + b) * R +: R] = tsum(wq_cq02h);
+          wb_cq02h[((j * S + s) * 2 + b) * R +: R] = tsum(wq_cq02h);
         end
-      // The writers taken: each warp's prefix count at its own take after
-      // the cut, summed.
+      // The writers taken: each warp's prefix count at its own take, summed.
       for (int q = 0; q < S; q++) begin
         wtq_cq02h[q * R +: R] = '0;
         for (int m = 1; m < R + 1; m++)
@@ -491,19 +546,26 @@ module ooe_go #(
   localparam int ND = 2;
   logic [4*ND-1:0] dr_cq02h;                   // registered, one-hot per credit
   logic [4*ND-1:0] dr_nx_cq02h, dd_cq02h;
-  logic [PA-1:0]   a0_cq02h;
-  logic [1:0]      dn_cq02h;
+  logic [PA-1:0]   a0_cq02h, a1_cq02h;
+  logic [2:0]      dn_cq02h;
   logic [S-1:0]    pn_cq02h;                   // the rotation's next slot
   logic            ph_cq02h;                   // the rotation's slot has a head
   always_comb begin
     pn_cq02h = {priod_cq02h[S-2:0], priod_cq02h[S-1]};
     a0_cq02h = '0;
+    a1_cq02h = '0;
     for (int s = 0; s < S; s++) if (pn_cq02h[s] && hv_cq01h[s * H]) a0_cq02h = ha_cq01h[(s * H) * PA +: PA];
+    // A pair's first slot's need is the pair's (OI-80 (d)): its second is
+    // the next head.
+    for (int s = 0; s < S; s++)
+      if (pn_cq02h[s] && hv_cq01h[s * H + 1] && ha_cq01h[(s * H) * PA + 7]) a1_cq02h = ha_cq01h[(s * H + 1) * PA +: PA];
     for (int c = 0; c < 4; c++) begin
-      dn_cq02h = c == 0 ? 2'(a0_cq02h[0]) + 2'(a0_cq02h[2]) + 2'(a0_cq02h[8]) :
-                 c == 1 ? 2'(a0_cq02h[1]) + 2'(a0_cq02h[8]) :
-                 c == 2 ? (a0_cq02h[8] ? 2'd2 : 2'(a0_cq02h[3])) : 2'(a0_cq02h[4]);
-      dr_nx_cq02h[c * ND +: ND] = dn_cq02h == 2'd2 ? 2'b10 : 2'b01;
+      dn_cq02h = c == 0 ? 3'(a0_cq02h[0]) + 3'(a0_cq02h[2]) + 3'(a0_cq02h[8] & a0_cq02h[7]) +
+                          3'(a1_cq02h[0]) + 3'(a1_cq02h[2]) + 3'(a1_cq02h[8] & a1_cq02h[7]) :
+                 c == 1 ? 3'(a0_cq02h[1]) + 3'(a1_cq02h[1]) :
+                 c == 2 ? 3'(a0_cq02h[8] | a0_cq02h[3]) + 3'(a1_cq02h[8] | a1_cq02h[3]) :
+                          3'(a0_cq02h[4]) + 3'(a1_cq02h[4]);
+      dr_nx_cq02h[c * ND +: ND] = dn_cq02h >= 3'd2 ? 2'b10 : 2'b01;
     end
     ph_cq02h = |(priod_cq02h & with_w_cq01h);
     for (int c = 0; c < 4; c++)
@@ -627,16 +689,16 @@ module ooe_go #(
         pre_cq01h = '0;
         for (int h = 0; h < k; h++)
           if (h < H) pre_cq01h = pre_cq01h + {4'(ha_cq01h[(s * H + h) * PA + 4]),
-                                              ha_cq01h[(s * H + h) * PA + 8] ? 4'd2 : 4'(ha_cq01h[(s * H + h) * PA + 3])};
+                                              4'(ha_cq01h[(s * H + h) * PA + 8] | ha_cq01h[(s * H + h) * PA + 3])};
         nd_cq01h = '0;
         ser_cq01h = 1'b0;
         for (int m = 1; m < R + 1; m++) begin
           ok_cq02h = 1'b0;
           if (k + m - 1 < H) begin
             a_cq01h     = ha_cq01h[(s * H + k + m - 1) * PA +: PA];
-            nd_cq01h[0 +: 4]  = nd_cq01h[0 +: 4] + 4'(a_cq01h[0]) + 4'(a_cq01h[2]) + 4'(a_cq01h[8]);
-            nd_cq01h[4 +: 4]  = nd_cq01h[4 +: 4] + 4'(a_cq01h[1]) + 4'(a_cq01h[8]);
-            nd_cq01h[8 +: 4]  = nd_cq01h[8 +: 4] + (a_cq01h[8] ? 4'd2 : 4'(a_cq01h[3]));
+            nd_cq01h[0 +: 4]  = nd_cq01h[0 +: 4] + 4'(a_cq01h[0]) + 4'(a_cq01h[2]) + 4'(a_cq01h[8] & a_cq01h[7]);
+            nd_cq01h[4 +: 4]  = nd_cq01h[4 +: 4] + 4'(a_cq01h[1]);
+            nd_cq01h[8 +: 4]  = nd_cq01h[8 +: 4] + 4'(a_cq01h[8] | a_cq01h[3]);
             nd_cq01h[12 +: 4] = nd_cq01h[12 +: 4] + 4'(a_cq01h[4]);
             // ROB entries, not heads: a pair's second slot takes none (OI-79).
             npf_cq01h = '0;
@@ -653,27 +715,34 @@ module ooe_go #(
           end
           okm_cq02h[m - 1] = ok_cq02h;
         end
-        // The cut-back (OI-79 (b)): a run never ends on a pair's first slot.
-        // The second carries no needs, takes no ROB entry and is never
-        // serial, so where head m is a first, m + 1 fits exactly when m does
-        // and the second is a head within the width: from decq's bits alone,
-        // beside the fit's own terms.
+        // A run never ends on a pair's first slot (OI-84 (a)): where head m
+        // is a first, length m fits as m + 1 does, its second's needs counted
+        // (OI-80 (d)), and not at all at the width. The fits stay a
+        // thermometer, a pair whole in it.
         for (int m = 1; m < R + 1; m++)
-          fits_nx_cq01h[(s * (R + 1) + k) * R + m - 1] = okm_cq02h[m - 1] &
-              ~(k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 7] &&
-                (m == R || k + m >= H || !hv_cq01h[s * H + (k + m) % H]));
+          fits_nx_cq01h[(s * (R + 1) + k) * R + m - 1] =
+              (k + m - 1 < H && ha_cq01h[(s * H + (k + m - 1) % H) * PA + 7]) ? (m < R && okm_cq02h[m % R]) : okm_cq02h[m - 1];
       end
     end
   end
 
-  // Each warp's first slots past each take k (OI-79 (b)), registered with
-  // the fits.
-  logic [S*(R+1)*R-1:0] pf_nx_cq01h;
+  // Each warp's first slots past each take k, and each head's unit (OI-84
+  // (a)): head v's unit is v less the seconds up to it, a second being the
+  // head after a first; registered with the fits.
+  logic [S*(R+1)*R-1:0]  pf_nx_cq01h;
+  logic [S*(R+1)*NU-1:0] ut_nx_cq01h;
+  logic [2:0]            nsec_cq01h;
   always_comb
     for (int s = 0; s < S; s++)
-      for (int k = 0; k < R + 1; k++)
+      for (int k = 0; k < R + 1; k++) begin
         for (int r = 0; r < R; r++)
           pf_nx_cq01h[(s * (R + 1) + k) * R + r] = k + r < H && ha_cq01h[(s * H + (k + r) % H) * PA + 7];
+        for (int v = 1; v < R; v++) begin
+          nsec_cq01h = '0;
+          for (int h = 0; h < v; h++) nsec_cq01h = nsec_cq01h + 3'(pf_nx_cq01h[(s * (R + 1) + k) * R + h]);
+          for (int u = 0; u < v; u++) ut_nx_cq01h[(s * (R + 1) + k) * NU + ui(v, u)] = 3'(v) <= 3'(u) + nsec_cq01h;
+        end
+      end
 
   // Each warp's writer prefix counts past each take k, registered with the
   // fits.
@@ -700,7 +769,7 @@ module ooe_go #(
     for (int s = 0; s < S; s++) begin
       blk_nx_cq00h[s] = hold_l_cq00h[s] | rbusy_l_cq00h | sq_l_cq00h[s];
       for (int k = 0; k < R + 1; k++)
-        // The take after the pair cut (its copy): decq's heads move by it alone.
+        // The take (its copy): decq's heads move by it alone.
         tko_nx_cq01h[s * (R + 1) + k] = (k == 0 || tk_xw_cq02h[((k + R - 1) % R) * S + s]) &&
                                   (k == R || !tk_xw_cq02h[(k % R) * S + s]);
       // Any take needs the slot's first head now (heads are contiguous).
@@ -716,7 +785,7 @@ module ooe_go #(
   logic         he_chg_cq02h, rem_cq02h, any_ev_cq02h;
   always_comb begin
     for (int s = 0; s < S; s++)
-      hd_ev_cq02h[s] = dq_ev_cq01h[s] | tk_y_cq02h[s] | ~tko_cq02h[s * (R + 1)] | sq_l_cq00h[s] | sq_cq01h[s];   // the take before the cut, a superset
+      hd_ev_cq02h[s] = dq_ev_cq01h[s] | tk_xw_cq02h[s] | ~tko_cq02h[s * (R + 1)] | sq_l_cq00h[s] | sq_cq01h[s];
     any_ev_cq02h = |hd_ev_cq02h;
     he_chg_cq02h = he_en_cq02h && he_nx_cq02h != he_cq02h;
     rem_cq02h = 1'b0;
@@ -776,6 +845,9 @@ module ooe_go #(
         pf_cq02h[gs * (R + 1) * R +: (R + 1) * R]   <= '0;
         pfw_cq02h[gs * (R + 1) * R +: (R + 1) * R]  <= '0;
         pfx_cq02h[gs * (R + 1) * R +: (R + 1) * R]  <= '0;
+        ut_cq02h[gs * (R + 1) * NU +: (R + 1) * NU]  <= '0;
+        utw_cq02h[gs * (R + 1) * NU +: (R + 1) * NU] <= '0;
+        utx_cq02h[gs * (R + 1) * NU +: (R + 1) * NU] <= '0;
         sel_q_cq02h[gs]                             <= 1'b0;
       end else if (fits_en_cq02h[gs]) begin
         fits_cq02h[gs * (R + 1) * R +: (R + 1) * R] <= fits_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R] & {((R + 1) * R){~sq_cq01h[gs]}};
@@ -785,6 +857,9 @@ module ooe_go #(
         pf_cq02h[gs * (R + 1) * R +: (R + 1) * R]   <= pf_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R];
         pfw_cq02h[gs * (R + 1) * R +: (R + 1) * R]  <= pf_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R];
         pfx_cq02h[gs * (R + 1) * R +: (R + 1) * R]  <= pf_nx_cq01h[gs * (R + 1) * R +: (R + 1) * R];
+        ut_cq02h[gs * (R + 1) * NU +: (R + 1) * NU]  <= ut_nx_cq01h[gs * (R + 1) * NU +: (R + 1) * NU];
+        utw_cq02h[gs * (R + 1) * NU +: (R + 1) * NU] <= ut_nx_cq01h[gs * (R + 1) * NU +: (R + 1) * NU];
+        utx_cq02h[gs * (R + 1) * NU +: (R + 1) * NU] <= ut_nx_cq01h[gs * (R + 1) * NU +: (R + 1) * NU];
         sel_q_cq02h[gs]                             <= sel_nx_cq01h[gs];
       end
     end
