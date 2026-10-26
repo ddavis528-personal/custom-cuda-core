@@ -175,6 +175,45 @@ struct Config {
   /// operand's width code on the issue and memop stays the register's own
   /// (the stubs mask the write). Off, a narrow register takes its slice.
   bool full_rows = false;
+  /// The narrow allocator's form (OI-29, slice 6): 0 searches every row
+  /// the warp owns at each allocation; 1 and 2 are the RTL's candidates,
+  /// one per warp and kind (positions 0-3 for one section, 0 and 2 for
+  /// two), the lowest owned row with those sections free. Each group sees
+  /// them as it starts: a second allocation wanting a candidate the group
+  /// already took tries the next position's, then a fresh row (AR-15); a
+  /// position without one takes a fresh row, then another position's. 1
+  /// finds them on the group's starting state. 2 is ooe_freelist's
+  /// registered find: every free so far, but not last cycle's
+  /// allocations, and a candidate in a row last cycle allocated in is void.
+  /// The default, 2 with the four settings below, is the design (OI-81:
+  /// OA's revs 251 and 252); 0 is the reference the sweep compares with.
+  unsigned cand = 2;
+  /// With cand: every GPR writer takes a row from the free list, as the
+  /// go counts it; a narrow one that takes a candidate instead returns its
+  /// row, a free the next cycle (Rename 2's). Its slot holds the row from
+  /// the take to the return, as rename's held counts it.
+  bool cand_return = true;
+  /// With cand, OI-81 (ii): the lanes independent. A source or merged old
+  /// destination written earlier in the group counts as no narrow
+  /// operand (the home position), and a conflict takes a fresh row.
+  bool cand_indep = true;
+  /// cand 2's age: its find leaves out the last cand_lag groups'
+  /// allocations, and a candidate in a row they allocated in is void
+  /// (ooe_freelist registers Rename 2's allocations: 2).
+  unsigned cand_lag = 2;
+  /// OI-82's reduced form (OA's rev 254, the design): each slot keeps only its home position's two
+  /// candidates (one section at the slot index, two at sections 2(slot % 2)
+  /// up), 8 in all; a narrow destination wanting another position takes a
+  /// fresh row.
+  bool cand_home = true;
+  /// Sectioned: a row returns to the pool a cycle after its last section
+  /// frees, and a returned unused row (cand_return) a cycle later too, its
+  /// slot holding it until then (ooe_freelist registers Rename 2's
+  /// allocations and returns, and returns a row the cycle after it
+  /// empties, unless they wrote it). A free of a register the last group
+  /// allocated waits a cycle too: its sections reach the free list's bits
+  /// a cycle after the free could (a squash's free is registered too).
+  bool ret_late = true;
   /// Placement of a narrow destination with no narrow source (OA-14):
   /// 0 the warp's home position, its tier-1 slot index; 1 position 0 for
   /// every warp; 2 the home position, advanced at each taken backward branch
@@ -1038,13 +1077,21 @@ public:
   std::map<std::string, uint64_t> counters;
   std::map<std::string, std::map<uint64_t, uint64_t>> histograms;
   /// Free-list depths and a slot's owned registers, for tests and sweeps.
-  size_t freeGprs() const { return gfree_.size(); }
+  size_t freeGprs() const { return gfree_.size() + ret_pend_.size() + cand_ret_.size(); }   ///< ret_late's pending rows as free
   size_t freePreds() const { return pfree_.size(); }
-  unsigned heldGprs(unsigned slot) const { return slot_[slot].held_gpr; }
+  /// Rows a slot holds, less those on their way back (ret_late, cand_return),
+  /// which freeGprs counts.
+  unsigned heldGprs(unsigned slot) const {
+    unsigned pend = 0;
+    for (unsigned r : ret_pend_) pend += ret_owner_[r] == slot + 1;
+    for (unsigned r : cand_ret_) pend += ret_owner_[r] == slot + 1;
+    return slot_[slot].held_gpr - pend;
+  }
   /// A GPR row's or a predicate's owner, a slot, or -1 while free (for
   /// test/ooe/freelist_tb.cpp, whose RTL keeps each entry's owner).
   int gprRowOwner(unsigned row) const {
     const auto &o = cfg_.sectioned ? rowOwner_ : gowner_;
+    if (cfg_.sectioned && row < ret_owner_.size() && ret_owner_[row]) return int(ret_owner_[row]) - 1;
     return row < o.size() ? int(o[row]) - 1 : -1;
   }
   int predOwner(unsigned p) const { return p < powner_.size() ? int(powner_[p]) - 1 : -1; }
@@ -1285,7 +1332,7 @@ private:
   unsigned allocSlice(unsigned slot, unsigned w, unsigned pos, bool own_row = false);
   /// Sectioned: how a width w register at pos would be placed, without
   /// placing it: 0 an owned partial row, 1 a new row, 2 neither (stall).
-  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row) const;
+  unsigned planSlice(unsigned slot, unsigned w, unsigned &pos, bool allow_row);
   unsigned placePos(unsigned slot, const Uop &u, bool merge) const;
   /// The resources an entry needs (OI-31): bits 0-3 lane sections S0-S3,
   /// 4 RCU (R), 5-8 MIU pipes P0-P3.
@@ -1419,6 +1466,9 @@ public:
     uint32_t squash = 0, release = 0;                       ///< slot masks
     std::vector<Ret> ret;
     std::vector<Ren> ren;
+    /// Uops renamed as a rename-time fault's no-op (F-BARRIER, F-WIDTH,
+    /// F-FORMAT): a lane with its class bits and no Ren.
+    unsigned faults = 0;
     /// Each slot's committed width table after the cycle (AR-24 (d)), and
     /// whether the cycle changed it: a chwidth's or sibling's retire, a
     /// launch, a restore-allocate.
@@ -1674,6 +1724,34 @@ private:
   unsigned kPos_ = 1;
   std::vector<uint8_t> gw_;                   ///< name -> width code
   std::vector<uint8_t> rowOwner_, rowSec_;    ///< row -> slot + 1; live sections
+public:
+  /// A section allocation or free (freelist_tb), and a slot without a
+  /// candidate of a kind.
+  struct SecEvent { unsigned row, sec, slot; };
+  static constexpr unsigned kNoRow = ~0u;
+private:
+  // cand: each slot's candidate rows by kind (kNoRow none), as this group
+  // sees them; the rows the group took a candidate of; and the sections
+  // allocated since the group started, by row (cand 2).
+  std::vector<std::array<unsigned, 6>> cand_;
+  std::vector<uint8_t> row_claim_, row_alloc_, cand_sec_;
+  std::vector<SecEvent> cyc_sa_, cyc_sf_;
+  std::vector<unsigned> cyc_rt_;
+  /// cand_return: rows to return next cycle, and each one's slot, which
+  /// holds it until then (rename's held counts the take and the return).
+  std::vector<unsigned> cand_ret_;
+  std::vector<uint8_t> ret_owner_;
+  /// ret_late: rows whose return waits for the next cycle (owner in
+  /// ret_owner_), and the allocations of the group before last (cand_lag 2).
+  std::vector<unsigned> ret_pend_;
+  std::vector<std::pair<unsigned, unsigned>> free_defer_;   ///< ret_late: (slot, name) freed next cycle
+  std::vector<uint8_t> row_alloc_prev_;
+  void retPending();
+  std::vector<uint16_t> grp_written_;        ///< cand_indep: each slot's GPRs written this group
+  unsigned cand_row_ = kNoRow;               ///< planSlice's candidate, for allocSlice
+  static unsigned candKind(unsigned w, unsigned pos) { return w == 1 ? 4 + ((pos >> 1) & 1u) : pos & 3u; }
+  unsigned candFind(unsigned slot, unsigned kind, const std::vector<uint8_t> &sec) const;
+  void candStart();
   // The ready path as the RTL builds it (OA-1; A-62, A-73, OA-4): each
   // producer drives kWakeLines wake lines, its fastest bypass point plus
   // each bypass penalty, and the PRF read; each matrix cell selects one.
@@ -1697,6 +1775,16 @@ public:
   uint64_t serial() const { return serial_; }
   /// The GPR row free list and the predicate free list (ooe_freelist).
   const FreeVec &gprFree() const { return gfree_; }
+  /// ooe_freelist's sections (freelist_tb, FL_NS): the section allocations
+  /// (row, sections, slot) and section frees (row, sections) since the GPR
+  /// free list's last clock, as its cycleAllocs and cycleFrees; the rows
+  /// cand_return gave back are among its frees. With cand, the candidates
+  /// the last group started from, and the section bits they were found on.
+  const std::vector<SecEvent> &cycleSecAllocs() const { return cyc_sa_; }
+  const std::vector<SecEvent> &cycleSecFrees() const { return cyc_sf_; }
+  const std::vector<unsigned> &cycleReturns() const { return cyc_rt_; }
+  unsigned candidate(unsigned slot, unsigned kind) const { return slot < cand_.size() ? cand_[slot][kind] : kNoRow; }
+  const std::vector<uint8_t> &candSections() const { return cand_sec_; }
   const FreeVec &predFree() const { return pfree_; }
   unsigned rsEntries() const { return n_; }
   bool rsValid(unsigned e) const { return rs_[e].valid; }

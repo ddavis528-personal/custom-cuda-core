@@ -264,11 +264,41 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   (positions 0 or 2). An 8-bit or 4-bit one takes one section, so 4-bit gets
   4x the rate, not 8x (OI-29).
 - **Rows.** One tier-1 slot owns a row while any of its sections is live
-  (V-62). Freeing the last live section frees the row.
+  (V-62). Freeing the last live section frees the row: back in the pool a
+  cycle later (`ret_late`), as ooe_freelist returns it. A free of a
+  register the last group allocated waits a cycle too, since its sections
+  reach the free list a cycle after the free could.
+- **The narrow allocator** (slice 6; OI-81 and OI-82, OA's revs 251-254)
+  is ooe_freelist's form, the default. Each slot keeps two candidates for
+  its home position (`cand_home`): the lowest row it owns, live, with its
+  home section free (one section, at the slot index) and with its home pair
+  free (two sections, at 2(slot % 2)). They are registered over every free
+  so far but not the last two groups' allocations, and a candidate in a row
+  those wrote is void (`cand 2`, `cand_lag 2`). A narrow destination at its
+  home position takes the candidate if the group has not taken its row;
+  else, or at another position, it takes a fresh row. Every GPR writer
+  takes the row the go counts, and one that took a candidate gives it back
+  (`cand_return`): its slot holds it until it rejoins the pool, two cycles
+  on. `cand 0` is the earlier search of every owned row, the sweep's
+  reference. On the OI-34 sweep the decided form costs no cycles and no
+  footprint against the full 24-candidate form at 192 and 176 rows; rows in
+  use are unchanged at place 0, +2.0 mean on the other arms.
 - **Placement.** A narrow destination goes, in this order:
   1. to its old destination's position, on a merge;
   2. to an existing narrow source's position;
   3. to its home position.
+
+  A source or old destination written earlier in the same rename group is
+  not seen (`cand_indep`, OI-81 (ii)): the lanes stay independent, so such
+  an op takes its home position. Across groups the rule is as listed. The
+  placement test's control in-group-follows runs the old rule.
+
+  Under the narrow allocator (`cand` on), placement reads what Rename 2's
+  lanes carry, as the RTL does (slice 6). A register's width is its
+  committed width code, not its name's; the two differ only where an
+  atomic wrote it as a whole row. A merge is the merge source's read. A
+  masked load's copy takes that read instead, so the load places by its
+  sources. On the OI-34 sweep neither change moves a row.
 
   The home position comes from `place`. 0 is the decided default (DA's
   response OI-35, 2026-10-09); the others are sweep arms, and OA-14's
