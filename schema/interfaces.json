@@ -266,10 +266,12 @@
       "id_classes_why": "Credits are counts of slots from several uops, owned by no one transaction; the uops they free are in the trace as they rename.",
       "slot_attrs": {
         "slot_binding": "bound",
+        "ordering": "slot_group",
         "binding_key": "tier1_id"
       },
       "slot_attrs_why": {
         "slot_binding": "slot k is tier-1 warp k's return, so every warp's credits return in the cycle they free, whatever the others do",
+        "ordering": "a warp's returns are one stream, in the order its slots left the queue",
         "binding_key": "tier1_id must equal the slot, checked rather than stated"
       }
     },
