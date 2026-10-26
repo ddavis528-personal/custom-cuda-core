@@ -68,7 +68,7 @@ it.
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
 | PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
-| PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | deferred: to DA (AR-24, IS-24; AR, IS and CP recommend option W) |
+| PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted by decision (DA, 2026-10-26: option W), not yet built |
 
 ## Entries
 
@@ -1067,10 +1067,17 @@ it.
 - **Who gains:** code with pointer-reached per-thread state, CPU-style code
   such as CoreMark. The GPU kernels already coalesce and gain nothing.
   Divergent per-thread work gains much less.
-- **Signal:** a decision, not a counter: DA weighs the bound against the
-  new ISA concept. If adopted, ROB depth is a single-thread question only:
+- **Decided (Daniel, 2026-10-26; DA tab rev 95):** option W adopted, in
+  his words "Let's adopt IS-24 option W as you recommend." What lost:
+  option M, the compiler-only form, and pointers that mean the same in
+  every lane. IS writes it into the ISA as an O-n; CP builds ccv-sim's
+  swizzle and `__ccv_privbase`; TI adds `imm_kind` 5 to the schema and the
+  swizzle to the MIU stub; AR's MIU spec (rev 39) and DEC spec (rev 15)
+  carry it. It moves to adopted with the commit that builds it.
+- **Signal:** with W adopted, ROB depth is a single-thread question only:
   interleaved coremark32 has the ROB full 35.2% of cycles, but four
   interleaved warps only 2.3%, so ROB 32 holds at the design point (OA's
-  rev 257). ROB 48 and 64 on interleaved coremark32 are queued for that
-  trade. Measured follow-ups
-  queued: L1 at 512 KiB and the DCU req_id pool, for L1's size.
+  rev 257). On interleaved coremark32, ROB 48 saves 3.9% and 64 saves 5.1%
+  (TI's rev 228), a single-thread trade for AR-20. L1's size is the DCU
+  spec's, chosen on the corpus sweep between 64 KiB and 512 KiB (DA tab rev
+  95); on interleaved coremark128, 512 KiB saves 7.1% against 64 KiB.
