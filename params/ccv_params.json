@@ -1065,6 +1065,14 @@
       "decided_at": "with CCV_LAT_MIU_FILL"
     },
     {
+      "name": "CCV_LAT_SPM",
+      "value": 2,
+      "status": "provisional",
+      "source": "TI's rev 230 (CP-62, AR-24), pending AR",
+      "doc": "SPM's own time for one pass: from a request's arrival at SPM to its response leaving, when no earlier pass holds one of its banks. The two crossings add to it. A bank serves one pass a cycle. A pass that finds one of its banks taken starts when every bank it needs is free, and its response's conflict_serialization says how many cycles it waited. A .shared memop is one pass for each word a bank holds for it, formed by MIU. A .shared load completes only when its data are back, and wakes nothing early (A-46). SPM's spec tab has no Internals yet, so the value is the stub's.",
+      "decided_at": "SPM per-block session"
+    },
+    {
       "name": "CCV_P_PHYS_REGS",
       "value": 192,
       "status": "provisional",

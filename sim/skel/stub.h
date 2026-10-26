@@ -70,7 +70,9 @@ struct Ch {
            // Barriers (TI-40): SYU's inputs and its three answers.
            rau_syu = chanId("ccv_rau_syu_alloc"), ooe_syu = chanId("ccv_ooe_syu_bar"),
            syu_ooe = chanId("ccv_syu_ooe_rel"), syu_fet = chanId("ccv_syu_fet_rel"),
-           syu_rau = chanId("ccv_syu_rau_ready");
+           syu_rau = chanId("ccv_syu_rau_ready"),
+           // .shared (TI's rev 230): MIU's passes to SPM and its answers.
+           miu_spm = chanId("ccv_miu_spm_req"), spm_miu = chanId("ccv_spm_miu_rsp");
 };
 inline const Ch &ch() { static const Ch c; return c; }
 /// ccv_ooe_syu_bar's bar_kind and ccv_rau_syu_alloc's syu_alloc_op (TI-40).
@@ -130,7 +132,10 @@ enum : unsigned { kAllocFree = 0, kAllocLaunch = 1,      // rau_ooe_alloc.alloc_
                   kAllocRestoreAlloc = 2, kAllocRestoreActivate = 3 };
 enum : unsigned { kSpaceGlobal = 0, kSpaceShared = 1 }; // ooe_miu_memop.space
 enum : unsigned { kFaultNone = 0, kFaultFetch = 1,          // CCV_W_FAULT_CAUSE (ISA §12)
-                  kFaultIllegal = 2, kFaultAddr = 6, kFaultRo = 8 };
+                  kFaultIllegal = 2, kFaultAddr = 6, kFaultShared = 7, kFaultRo = 8 };
+/// ccv_miu_spm_req's spm_op (CCV_L_W_SPM_OP, preliminary): a pass reads or
+/// writes its banks' words under byte_mask.
+enum : unsigned { kSpmRead = 0, kSpmWrite = 1 };
 /// A completion's status on ccv_miu_ooe_cmpl: 0 complete, 1 fault, 2 replay.
 enum : unsigned { kCmplDone = 0, kCmplFault = 1, kCmplReplay = 2 };
 enum : unsigned { kSizeLine = 7 };                      // size: 2^7 bytes
@@ -195,6 +200,9 @@ struct OpInfo {
   /// ret: its source is the link register, which ccv-sim's record does not
   /// list; the compressed form names it in imm[7:4] (Format K, opcode 53).
   bool ret = false;
+  /// .shared (ISA section 5.1): space 1 on the memop, no window shift, and
+  /// MIU sends it to SPM rather than DCU (TI's rev 230).
+  bool shared = false;
 };
 // Where each executes (Q-32, Q-38): the lane executes any opcode with a
 // per-lane input -- a GPR, or its own hardwired index (srd #0). RCU executes
@@ -426,6 +434,27 @@ inline constexpr OpInfo kOps[] = {
   // the bits it exposes, so the value may change (AR-24 (c)).
   {"C_CHWIDTH",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 1},
   {"CHWIDTH_MULTI", kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 2},
+  // The four-warp corpus's (CP-62, AR-24). .shared, as .global's forms are
+  // laid out: [rdata, rbase, disp] and [rdata, rbase, rindex, scale, disp];
+  // a store's data first among its sources.
+  {"LD_SHARED",     kLoad,      1, true,  false, false, false, false,  0, -1, -1,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ST_SHARED",     kStore,     2, false, false, false, false, false,  1, -1,  0,  0, -1, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"LD_SHARED_IDX", kLoad,      2, true,  false, false, false, false,  0,  1, -1,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  {"ST_SHARED_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
+  // c.ld.global: [rdata, rbase], no displacement.
+  {"C_LD_GLOBAL",   kLoad,      1, true,  false, false, false, false,  0, -1, -1, -1, -1, -1, -1},
+  {"C_ORI",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
+  // Guarded forms, as add.p and mad.lo.p: off lanes keep the destination.
+  {"SUB_P",         kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
+  {"MUL_HI_U_P",    kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},
+  // FP and SFU: integer lanes' timing for now, as C_FMUL's (OI-16), in
+  // their bypass groups.
+  {"C_FADD",        kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"FSUB",          kAlu,       2, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"CVT_F32_S32_P", kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypFp},
+  {"RCP_U32",       kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
+  {"RSQRT_F32",     kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
+  {"RCP_F32_P",     kAlu,       1, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1, -1, false, false, kBypSfu},
 };
 /// The copy-only op (A-38): the all-ones opcode, outside the table.
 constexpr unsigned kOpCopy = ccv::prelim::kOpPrfCopy;

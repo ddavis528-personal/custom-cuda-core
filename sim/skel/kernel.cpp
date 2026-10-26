@@ -847,7 +847,7 @@ private:
 
 class Miu : public Stub {
 public:
-  Miu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().miu_dcu) {}
+  Miu(int inst, Kernel &k) : Stub(inst, k), ids_(ch().miu_dcu), spm_ids_(ch().miu_spm) {}
   const char *kind() const override { return "miu"; }
 
 private:
@@ -883,7 +883,32 @@ private:
     bool xsigned = false;            ///< and xfer_signed
     uint32_t pdata = 0;
     unsigned rmw = 0;                ///< a predicate store's drain: 1 reading, 2 writing
+    /// .shared (TI's rev 230): SPM's, in passes of at most one word a bank,
+    /// not DCU's lines. addr is the CTA-relative offset ccv-sim names, and
+    /// paddr SPM's byte address. lines still name what it touches, keyed
+    /// apart from .global's (kSpmKey), for the ordering checks.
+    bool spm = false;
+    struct Pass {
+      std::array<uint16_t, ccv::kSpmBanks> word{};
+      std::array<bool, ccv::kSpmBanks> used{};
+      Line data{};
+      std::array<bool, kLine> mask{};
+    };
+    std::vector<Pass> passes;
+    std::array<uint8_t, kLanes> lane_pass{};
+    std::array<uint64_t, kLanes> paddr{};
+    unsigned pnext = 0, pback = 0;   ///< passes sent / answered
   };
+  static_assert(kLine == 4 * ccv::kSpmBanks, "an SPM pass is a line's bytes, a word a bank");
+  static constexpr uint64_t kSpmKey = uint64_t(1) << 63;
+  /// The line a lane's access lies in, and its byte there: SPM's, keyed
+  /// apart, for .shared.
+  static uint64_t keyOf(const Job &j, unsigned l) {
+    return j.spm ? kSpmKey | (j.paddr[l] / kLine * kLine) : j.addr[l] / kLine * kLine;
+  }
+  static unsigned offOf(const Job &j, unsigned l) {
+    return unsigned((j.spm ? j.paddr[l] : j.addr[l]) % kLine);
+  }
   /// A predicate transfer's oracle access: the uop's word, its sub-th of
   /// the instruction's, ascending (TI-36).
   static const MemAcc *xferAcc(const Record *r, uint64_t tid) {
@@ -895,6 +920,13 @@ private:
 
   std::map<unsigned, Memop> memop_;
   std::map<unsigned, Addr> addr_;
+  /// Each CTA slot's .shared region in SPM, its first and last bytes, from
+  /// RAU; SPM's requests in flight, by req_id, their job and pass; and the
+  /// ones a bulk discard abandoned, by req_id, their warp (TI-21).
+  std::map<unsigned, std::pair<uint64_t, uint64_t>> spm_;
+  IdPool spm_ids_;
+  std::map<unsigned, std::pair<uint64_t, unsigned>> spm_out_;
+  std::map<unsigned, unsigned> spm_orphan_;
   /// F-RO's .const range by CTA slot, [base, limit), from RAU (TI-26).
   std::map<unsigned, std::pair<uint64_t, uint64_t>> ro_;
   /// The lanes of a store F-RO refuses (AR's responses TI-26): any lane
@@ -902,7 +934,7 @@ private:
   /// to 2, the whole window) or the CTA's .const range. Compared on the
   /// effective address, which this MIU never maps. no-ro drops the check.
   uint32_t roLanes(const Job &j, unsigned cta) const {
-    if (!j.store || k_.brk == "no-ro") return 0;
+    if (!j.store || !j.global || k_.brk == "no-ro") return 0;
     const auto r = ro_.find(cta);
     const uint64_t base = r == ro_.end() ? 0 : r->second.first;
     const uint64_t limit = r == ro_.end() ? 0 : r->second.second;
@@ -1054,6 +1086,7 @@ private:
       const Bits m = take(c.rau_miu, 0).payload;
       const unsigned cta = unsigned(get(m, c.rau_miu, "cta_slot"));
       ro_[cta] = {get(m, c.rau_miu, "const_base"), get(m, c.rau_miu, "const_limit")};
+      spm_[cta] = {get(m, c.rau_miu, "spm_base"), get(m, c.rau_miu, "spm_limit")};
       // And where its launch-slot windows come from; the old launch's go.
       Windows &t = win_[cta];
       t.block = get(m, c.rau_miu, "launch_block_addr");
@@ -1179,6 +1212,41 @@ private:
           }
       }
 
+    for (unsigned s = 0; s != kChans[c.spm_miu].rate; ++s)
+      while (has(c.spm_miu, s)) {
+        Receiver::Msg m = take(c.spm_miu, s);
+        const unsigned id = unsigned(get(m.payload, c.spm_miu, "req_id"));
+        auto orph = spm_orphan_.find(id);
+        if (orph != spm_orphan_.end()) {
+          const unsigned w = orph->second;
+          spm_orphan_.erase(orph);
+          spm_ids_.release(id);
+          if (--orphans_[w] == 0 && k_.brk != "early-ready") ready(w);
+          continue;
+        }
+        auto o = spm_out_.find(id);
+        if (o == spm_out_.end()) {
+          k_.fail("miu: an SPM response for req_id %u, which is not outstanding", id);
+          continue;
+        }
+        const auto [serial, p] = o->second;
+        spm_out_.erase(o);
+        spm_ids_.release(id);
+        if (get(m.payload, c.spm_miu, "conflict_serialization")) k_.hit("spm_wait");
+        const Line rd = getLine(m.payload, field(c.spm_miu, "read_data").lsb);
+        for (Job &j : jobs_)
+          if (j.serial == serial) {
+            // A load's lanes of this pass take their bytes, at their place
+            // in the line, which is their bank's.
+            for (unsigned l = 0; l != kLanes && !j.store; ++l)
+              if ((j.active >> l & 1u) && j.lane_pass[l] == p) {
+                Line &g = j.got[keyOf(j, l)];
+                for (unsigned b = 0; b != j.bytes; ++b) g[offOf(j, l) + b] = rd[offOf(j, l) + b];
+              }
+            ++j.pback;
+          }
+      }
+
     if (jobs_.size() < kMiuPipes) start();
     advance();
     // A hit's completion and data leave together at the contract cycle, or
@@ -1269,6 +1337,15 @@ private:
           ++orphans_[w];
           k_.hit("orphan");
           o = outstanding_.erase(o);
+        } else {
+          ++o;
+        }
+      for (auto o = spm_out_.begin(); o != spm_out_.end();)
+        if (o->second.first == j.serial) {
+          spm_orphan_[o->first] = w;
+          ++orphans_[w];
+          k_.hit("orphan");
+          o = spm_out_.erase(o);
         } else {
           ++o;
         }
@@ -1478,6 +1555,21 @@ private:
                     (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
                     uint64_t(disp);
       }
+    // .shared (CP-33): the offset into the CTA's region, modulo 2^32, which
+    // ccv-sim names; SPM's byte address is the region's first byte plus it.
+    // An SPM access is never an L1 hit. shared-unwrapped: the offset's carry
+    // past 32 bits kept.
+    j.spm = !global;
+    if (j.spm) {
+      j.hit = false;
+      const auto sp = spm_.find(cta);
+      const uint64_t sbase = sp == spm_.end() ? 0 : sp->second.first;
+      for (unsigned l = 0; l != kLanes; ++l)
+        if ((j.active >> l) & 1u) {
+          if (k_.brk != "shared-unwrapped") j.addr[l] &= 0xffffffffu;
+          j.paddr[l] = sbase + j.addr[l];
+        }
+    }
     // Lines touched by ACTIVE lanes, in first-touch order; each lane moves
     // the transfer above (AR-24 (d): its data register's width, 4, 2 or 1
     // bytes, or O-80's sized form's). An inactive lane's address is never
@@ -1488,8 +1580,7 @@ private:
       if (!((j.active >> l) & 1u)) continue;
       // one-line: MIU takes the warp's access to lie in the line its first
       // active lane falls in, so the lanes past a line boundary are wrong.
-      const uint64_t line =
-          (k_.brk == "one-line" && !j.lines.empty() ? j.lines[0].line : j.addr[l]) / kLine * kLine;
+      const uint64_t line = k_.brk == "one-line" && !j.lines.empty() ? j.lines[0].line : keyOf(j, l);
       if (!at.count(line)) {
         at[line] = j.lines.size();
         j.lines.push_back({line, {}, {}, uint16_t(j.lines.size())});
@@ -1498,12 +1589,13 @@ private:
         LineReq &lr = j.lines[at[line]];
         const uint32_t v = getLane(am, c.rcu_miu, "store_data", l);
         for (unsigned b = 0; b != nb; ++b) {
-          const unsigned off = unsigned(j.addr[l] % kLine) + b;
+          const unsigned off = offOf(j, l) + b;
           lr.data[off] = uint8_t(v >> (8 * b));
           lr.mask[off] = true;
         }
       }
     }
+    if (j.spm) formPasses(j, am);
     // A load waits, and every memop behind it, while a store's write to one
     // of its lines is in flight: DCU would answer it from the line as it was.
     if (!j.store && inFlight(j, true)) return;
@@ -1527,7 +1619,8 @@ private:
     // AR-23's measure: an access whose active lanes lie in more than one
     // 64 KiB window, as every O-30 frame access does.
     for (unsigned l = 0; l != kLanes; ++l)
-      if ((j.active >> l & 1u) && j.addr[l] >> 16 != j.addr[__builtin_ctz(j.active)] >> 16)
+      if ((j.active >> l & 1u) && j.global &&
+          j.addr[l] >> 16 != j.addr[__builtin_ctz(j.active)] >> 16)
         j.frame = true;
     k_.peak("lines_peak", j.lines.size());
     if (j.store)
@@ -1541,25 +1634,36 @@ private:
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l & 1u) && j.global && j.addr[l] >> ccv::kAddrBits && k_.brk != "addr-wrap")
         bad |= 1u << l;
-    const uint32_t ro = bad ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
+    // F-SHARED (section 12.5): a .shared access with a byte past its CTA's
+    // region, after F-ADDR, which no .shared access raises. no-spm-bound:
+    // unchecked, so the access reaches the next slot's region.
+    uint32_t sbad = 0;
+    if (j.spm && k_.brk != "no-spm-bound") {
+      const auto sp = spm_.find(cta);
+      const uint64_t size = sp == spm_.end() ? 0 : sp->second.second - sp->second.first + 1;
+      for (unsigned l = 0; l != kLanes; ++l)
+        if ((j.active >> l & 1u) && (j.pxfer ? 4u : j.bytes) + j.addr[l] > size) sbad |= 1u << l;
+    }
+    const uint32_t fl = bad ? bad : sbad;
+    const uint32_t ro = fl ? 0u : roLanes(j, unsigned(get(mo.msg, c.ooe_miu, "cta_slot")));
     order_.pop_front();
     memop_.erase(tag);
     win_miss_.erase(tag);
     addr_.erase(a);
-    if (bad) {
+    if (fl) {
       // As F-RO's: no lane has any effect, and the completion is the fault,
       // with the lowest faulting lane's address in full (section 12.6).
       Bits m = cmpl(j);
       put(m, c.miu_ooe, "status", kCmplFault);
-      put(m, c.miu_ooe, "cause", kFaultAddr);
-      put(m, c.miu_ooe, "lane_mask", bad);
-      put(m, c.miu_ooe, "address", j.addr[__builtin_ctz(bad)]);
+      put(m, c.miu_ooe, "cause", bad ? kFaultAddr : kFaultShared);
+      put(m, c.miu_ooe, "lane_mask", fl);
+      put(m, c.miu_ooe, "address", j.addr[__builtin_ctz(fl)]);
       // A load's completion never comes before the L1 contract's cycle (A-46,
       // V-44), a fault's included: OOE would have woken nothing on it, and
       // takes an early one for a broken contract.
       if (!j.store && j.due > now_) late_faults_.push_back({j.due, {j.memop_slot, m, j.tid}});
       else to_ooe_.push_back({j.memop_slot, m, j.tid});
-      k_.hit("addr_fault");
+      k_.hit(bad ? "addr_fault" : "shared_fault");
       return;
     }
     if (ro) {
@@ -1582,6 +1686,39 @@ private:
       return;
     }
     launch(j);
+  }
+
+  /// A .shared access's passes (TI's rev 230): each active lane, in
+  /// ascending order, joins the first pass whose bank for it is free or
+  /// already holds its word, so a pass is at most one word a bank and lanes
+  /// naming one word share it. A store's bytes go in its pass by bank, the
+  /// highest lane last, as ccv-sim writes them. Its lines stay as DCU's
+  /// would be, keyed apart, and need no request: they mark it done.
+  /// spm-one-pass: every lane in pass 0, a bank's last word taken for all.
+  void formPasses(Job &j, const Bits &am) {
+    for (unsigned l = 0; l != kLanes; ++l) {
+      if (!((j.active >> l) & 1u)) continue;
+      const uint64_t w = j.paddr[l] / 4;
+      const unsigned bank = unsigned(w % ccv::kSpmBanks);
+      const uint16_t bw = uint16_t(w / ccv::kSpmBanks);
+      size_t p = 0;
+      if (k_.brk != "spm-one-pass")
+        while (p != j.passes.size() && j.passes[p].used[bank] && j.passes[p].word[bank] != bw) ++p;
+      if (p == j.passes.size()) j.passes.emplace_back();
+      Job::Pass &ps = j.passes[p];
+      ps.used[bank] = true;
+      ps.word[bank] = bw;
+      j.lane_pass[l] = uint8_t(p);
+      const uint32_t v = j.store ? getLane(am, ch().rcu_miu, "store_data", l) : 0;
+      for (unsigned b = 0; b != j.bytes; ++b) {
+        const unsigned off = offOf(j, l) + b;
+        if (j.store) ps.data[off] = uint8_t(v >> (8 * b));
+        ps.mask[off] = true;
+      }
+    }
+    j.next = j.back = unsigned(j.lines.size());
+    if (j.passes.size() > 1) k_.hit("spm_conflict");
+    k_.peak("spm_passes_peak", j.passes.size());
   }
 
   void launch(Job j) {
@@ -1650,7 +1787,7 @@ private:
       return;
     }
     for (const MemAcc &a : r->mem) {
-      if (a.addr != j.addr[a.lane] || a.shared)
+      if (a.addr != j.addr[a.lane] || a.shared == j.global)
         k_.fail("miu: seq %llu lane %u address %llx, oracle %llx",
                 (unsigned long long)r->seq, a.lane,
                 (unsigned long long)j.addr[a.lane], (unsigned long long)a.addr);
@@ -1719,8 +1856,30 @@ private:
       k_.hit("dcu_lookups");
       if (job_.frame) k_.hit("frame_lookups");
     }
+    // Up to one pass per SPM slot per cycle, likewise.
+    const unsigned srate = kChans[c.miu_spm].rate;
+    unsigned ss = 0;
+    for (Job &jb : jobs_)
+      for (; ss != srate && jb.pnext != jb.passes.size(); ++ss) {
+        if (!can(c.miu_spm, ss) || !spm_ids_.any()) continue;
+        const unsigned p = jb.pnext++;
+        const Job::Pass &ps = jb.passes[p];
+        Bits r = msgOf(c.miu_spm);
+        const unsigned id = spm_ids_.take();
+        put(r, c.miu_spm, "req_id", id);
+        const uint32_t alsb = field(c.miu_spm, "bank_addr").lsb;
+        for (unsigned b = 0; b != ccv::kSpmBanks; ++b)
+          r.set(alsb + ccv::kWSpmWord * b, ccv::kWSpmWord, ps.word[b]);
+        putLine(r, field(c.miu_spm, "write_data").lsb, ps.data);
+        const uint32_t mlsb = field(c.miu_spm, "byte_mask").lsb;
+        for (unsigned k = 0; k != kLine; ++k) r.setBit(mlsb + k, ps.mask[k]);
+        put(r, c.miu_spm, "spm_op", jb.store ? kSpmWrite : kSpmRead);
+        send(c.miu_spm, ss, r, makeUid(IdClass::kTxn, uidSeq(jb.tid), p, /*owned=*/true));
+        spm_out_[id] = {jb.serial, p};
+        k_.hit("spm_pass");
+      }
     for (auto it = jobs_.begin(); it != jobs_.end();) {
-      if (it->back != it->lines.size()) { ++it; continue; }
+      if (it->back != it->lines.size() || it->pback != it->passes.size()) { ++it; continue; }
       if (it->rmw == 1) { merge(*it); ++it; continue; }
       if (!it->store) complete(*it);
       it = jobs_.erase(it);
@@ -1792,9 +1951,8 @@ private:
       }
       for (unsigned l = 0; l != kLanes && !job_.pxfer; ++l) {
         if (!((job_.active >> l) & 1u)) continue;
-        const Line &ln = job_.got.at(k_.brk == "one-line" ? job_.lines[0].line
-                                                          : job_.addr[l] / kLine * kLine);
-        const unsigned off = unsigned(job_.addr[l] % kLine);
+        const Line &ln = job_.got.at(k_.brk == "one-line" ? job_.lines[0].line : keyOf(job_, l));
+        const unsigned off = offOf(job_, l);
         uint32_t v = 0;
         for (unsigned b = 0; b != job_.bytes; ++b) v |= uint32_t(ln[off + b]) << (8 * b);
         // What came back from memory, against what ccv-sim loaded.
@@ -1845,6 +2003,7 @@ private:
   bool busy() const override {
     return !jobs_.empty() || !late_faults_.empty() || !order_.empty() || !stores_.empty() || !timed_.empty() ||
            !hints_.empty() || !orphan_.empty() || !to_rau_.empty() ||
+           !spm_out_.empty() || !spm_orphan_.empty() ||
            !committed_.empty() || !to_rcu_.empty() || !to_ooe_.empty() ||
            !to_dcu_.empty() || !to_fet_.empty();
   }
@@ -3169,7 +3328,7 @@ private:
       if (mop == kMemBulkDiscard || mop == kMemAtomicRead || mop == kMemAtomicWrite)
         k_.fail("dec: mem_op %x is OOE's to generate (V-52, V-72)", mop);
       put(u, c.dec_ooe, "mem_op", mop);
-      put(u, c.dec_ooe, "space", kSpaceGlobal);     // every memory op in the table
+      put(u, c.dec_ooe, "space", op->shared ? kSpaceShared : kSpaceGlobal);
       // ordering-on-load: DEC's table gives a load an ordering, which only a
       // fence may carry (IS-11): asserted on DEC's output, as V-52 is.
       // memop-ordering: the same, from a DEC without that assertion, so the
@@ -4431,6 +4590,14 @@ private:
           put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
           // Where MIU's window table fills from (TI-31).
           put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
+          // The CTA's .shared region, its first and last bytes in SPM (TI's
+          // rev 230): an equal share of SPM a CTA slot, until RAU sizes it
+          // from the kernel's .shared. spm-shared-region: every slot given
+          // slot 0's.
+          const uint64_t share = ccv::kSpmBytes >> ccv::prov::kWCtaSlot;
+          const uint64_t sb = k_.brk == "spm-shared-region" ? 0 : cs * share;
+          put(a, c.rau_miu, "spm_base", sb);
+          put(a, c.rau_miu, "spm_limit", sb + share - 1);
           send(c.rau_miu, 0, a, none);
           cta_sent_.insert(cs);
           syuOp(kSyuAlloc, l.w);   // the CTA's barriers, before any warp of it runs
@@ -4862,7 +5029,70 @@ private:
   bool busy() const override { return !out_.empty(); }
 };
 
-/// SPM: nothing on any kernel's path yet.
+/// SPM (TI's rev 230): the scratchpad, CCV_SPM_BYTES in CCV_SPM_BANKS
+/// banks of a word, served a pass at a time. A bank serves one pass a
+/// cycle: a pass starts when every bank it names is free, takes
+/// CCV_LAT_SPM, and its response says how many cycles it waited
+/// (conflict_serialization). It reads and writes at its arrival, which
+/// orders it as MIU sent it; MIU holds a load behind a store to its words.
+/// spm-no-wait: a pass never waits for its banks.
+class Spm : public Stub {
+public:
+  Spm(int inst, Kernel &k) : Stub(inst, k), mem_(ccv::kSpmBytes) {}
+  const char *kind() const override { return "spm"; }
+private:
+  std::vector<uint8_t> mem_;
+  std::array<uint64_t, ccv::kSpmBanks> free_at_{};
+  struct Out { uint64_t at; unsigned slot; Bits msg; uint64_t tid; };
+  std::deque<Out> out_;
+  void work() override {
+    const Ch &c = ch();
+    for (unsigned s = 0; s != kChans[c.miu_spm].rate; ++s)
+      while (has(c.miu_spm, s)) {
+        Receiver::Msg m = take(c.miu_spm, s);
+        const uint32_t alsb = field(c.miu_spm, "bank_addr").lsb;
+        const uint32_t mlsb = field(c.miu_spm, "byte_mask").lsb;
+        const bool wr = get(m.payload, c.miu_spm, "spm_op") == kSpmWrite;
+        const Line wd = getLine(m.payload, field(c.miu_spm, "write_data").lsb);
+        Line rd{};
+        uint64_t start = now_;
+        for (unsigned b = 0; b != ccv::kSpmBanks; ++b) {
+          bool any = false;
+          for (unsigned k = 0; k != 4; ++k) any = any || m.payload.bit(mlsb + 4 * b + k);
+          if (!any) continue;
+          if (k_.brk != "spm-no-wait") start = std::max(start, free_at_[b]);
+          const uint64_t w = m.payload.get(alsb + ccv::kWSpmWord * b, ccv::kWSpmWord);
+          const uint64_t a = (w * ccv::kSpmBanks + b) * 4;
+          for (unsigned k = 0; k != 4; ++k) {
+            if (!m.payload.bit(mlsb + 4 * b + k)) continue;
+            if (wr) mem_[a + k] = wd[4 * b + k];
+            else rd[4 * b + k] = mem_[a + k];
+          }
+        }
+        for (unsigned b = 0; b != ccv::kSpmBanks; ++b) {
+          bool any = false;
+          for (unsigned k = 0; k != 4; ++k) any = any || m.payload.bit(mlsb + 4 * b + k);
+          if (any) free_at_[b] = start + 1;
+        }
+        Bits r = msgOf(c.spm_miu);
+        put(r, c.spm_miu, "req_id", get(m.payload, c.miu_spm, "req_id"));
+        putLine(r, field(c.spm_miu, "read_data").lsb, rd);
+        const uint64_t cap = (uint64_t(1) << ccv::kWConflictSer) - 1;
+        put(r, c.spm_miu, "conflict_serialization", std::min(start - now_, cap));
+        out_.push_back({start + ccv::prov::kLatSpm, s, r, m.tid});
+      }
+    for (auto it = out_.begin(); it != out_.end();)
+      if (it->at <= now_ && can(c.spm_miu, it->slot)) {
+        send(c.spm_miu, it->slot, it->msg, it->tid);
+        it = out_.erase(it);
+      } else {
+        ++it;
+      }
+  }
+  bool busy() const override { return !out_.empty(); }
+};
+
+/// Any block with nothing on a kernel's path yet.
 class Idle : public Stub {
 public:
   Idle(int inst, Kernel &k, const char *n) : Stub(inst, k), n_(n) {}
@@ -4890,6 +5120,7 @@ std::unique_ptr<Block> makeKernelBlock(int inst, Kernel &k) {
   case Blk::PCA:  return std::make_unique<Pca>(inst, k);
   case Blk::CRU:  return std::make_unique<Cru>(inst, k);
   case Blk::SYU:  return std::make_unique<Syu>(inst, k);
+  case Blk::SPM:  return std::make_unique<Spm>(inst, k);
   default:
     return std::make_unique<Idle>(inst, k, blkName(kBlkInsts[inst].type));
   }

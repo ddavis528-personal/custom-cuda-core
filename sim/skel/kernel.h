@@ -242,7 +242,9 @@ struct Kernel {
       // Fences and barriers (IS-11, TI-40).
       "fence", "fence_wait", "bar_wait", "bar_arrive", "bar_complete", "bar_release", "bar_ready",
       "syu_ready", "addr_fault", "narrow_arith", "chw_converged", "chw_diverged", "ret_pass",
-      "fet_pred_partial"};
+      "fet_pred_partial",
+      // .shared through SPM (TI's rev 230).
+      "spm_pass", "spm_conflict", "spm_passes_peak", "spm_wait", "shared_fault"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
