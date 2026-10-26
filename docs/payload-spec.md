@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 54 channels
+# Payload specification — all 55 channels
 
-Every payload field has a width, so **every one of the 54
+Every payload field has a width, so **every one of the 55
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 14 | 36 |
-| ⚠️ Some provisional | 25 | 130 |
+| ⚠️ Some provisional | 26 | 133 |
 | ⛔ Some preliminary | 15 | 139 |
-| **Total** | **54** | **305** |
+| **Total** | **55** | **308** |
 
 ## What still has to be decided
 
@@ -70,7 +70,7 @@ because those are the ones where a skeleton that reads the field
 
 | Parameter | Value | Churn | Basis |
 |---|---|---|---|
-| `CCV_P_W_SCHED_ATTR` | 21 | med | Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: the CAS pair's two decode slots under one ROB entry; TI-39, OA's rev 189), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03. |
+| `CCV_P_W_SCHED_ATTR` | 21 | med | Width of sched_attr on ccv_dec_ooe_uop: the scheduling attributes DEC decodes so OOE never decodes opcode (A-66). Layout, MSB first: commit_width (1: a chwidth.multi sibling that commits its register's width at retire without serial's hold, which sits on the last sibling only; AR-24 (c), OA's rev 222), ret (1: the branch is a ret, so OOE takes its target from ccv_rcu_ooe_done.aux and sets the redirect's stay; AR-24 (b), OA's rev 223), pair_second and pair_first (1 each: a pair's two decode slots under one ROB entry; TI-39, OA's rev 189. A uop that needs k rows of any RS class, or k names, occupies k slots, at most one row per class and one name a slot: the CAS pair, and every single-slot RMW atomic, which DEC emits as a pair (OI-80 (d), DA tab rev 94)), bypass_group (3: the codes of CCV_P_BYP_GROUPS; 0, don't-care, for an op that writes no result and reads no GPR, such as a branch or exit; OI-16, added 2026-10-08), rs_miu (1: the MIU reservation station), exec_rcu (1: RCU executes it, not a lane), cross_lane (1), writes_gpr (1), writes_pred (1), mem_kind (2: load, store, atomic, fence; meaningful with rs_miu), branch (1), serial (3: 0 none, 1 chwidth, 2 barrier wait, 3 exit, 4 barrier arrive, 5-7 spare; TI-41, OA's rev 198; exit, TI-1: OOE holds it until every older uop of its warp completes and retires it as the warp's last), lat_class (3: 0 RCU, 1 lane, 2 L1-contracted load, 3 on completion, 4 SFU at CCV_LAT_SFU, 5 warp-collective at CCV_LAT_COLLECTIVE, 6-7 spare). mem_kind is don't-care unless rs_miu is set. SFU takes lat_class 4 and the warp-collective ops 5, with CCV_LAT_SFU and CCV_LAT_COLLECTIVE (Daniel's responses OA-4); a further fixed-latency unit takes 6 or 7, with its own latency parameter. Field set the OOE session's, bit order and codes the schema owner's; confirmed 2026-10-03. |
 
 ### EXB session -- flattened bundle or separate TL channels
 
@@ -372,6 +372,19 @@ fet → dec · rate 8 · instruction
 | `all_waiting` | `1` | 1 | literal |
 | **total** | | **162** | ⚠️ 5 provisional |
 
+### `ccv_ooe_fet_decq_credit`
+
+Decode-queue credits back to FET, per tier-1 warp (TI-46, form (b), DA tab rev 96; OA's revs 262-268). OOE refuses no uop on ccv_dec_ooe_uop for a per-warp reason: FET holds CCV_P_DECQ_WARP_MAX credits a warp, counted in decode-queue slots, and picks a warp only while they cover the next instruction's slots, which it counts exactly by predecode (DEC asserts the count). credit_count is the slots of the slot's warp that left the decode queue this cycle: those renamed, and those a flush or rewind squashed, in the cycle they are dropped, so FET never resynchronises. An instruction needing more slots than the share borrows, only from full credits, into a 5-bit signed counter (OA's rev 263). HELD-AHEAD: after FET fetches a converged wait it marks all_waiting, the warp fetches at most CCV_P_HELD_AHEAD slots past it and never borrows. released clears that: OOE sets it in the cycle SYU's answer reaches it on ccv_syu_ooe_rel. A rewind beat (a squash of the wait, or a demotion) clears it at FET too. A message is sent for a slot only when credit_count or released is non-zero.
+
+ooe → fet · rate 4 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `credit_count` | `CCV_W_DECQ_CREDIT` | 4 ⚠️ | CCV_W_DECQ_CREDIT (provisional) |
+| `released` | `1` | 1 | literal |
+| **total** | | **7** | ⚠️ 4 provisional |
+
 ### `ccv_rcu_ooe_done`
 
 Completion back to the ROB for arithmetic -- and branch resolution: the condition is a predicate, which lives in RCU's file, so RCU resolves. branch_mask (issue mask AND guard) is what makes a branch divergence rather than a jump; branch_taken is any lane taking it. CCV_OP_PRF_COPY produces no done: its masked load keeps one rob_tag and one completion, the load's (A-38). Nor does any memop: a load or store completes on ccv_miu_ooe_cmpl alone, and RCU, which sends its address and writes a load's data, sends nothing here for it (OI-4, Daniel 2026-10-08). A done for a memop would spend a transfer and, arriving late, could match a reused rob_tag. CCV_DONE_SLOTS slots, a free pool (TI-9, OA's response 2026-10-09): dones arrive at fixed latency from ops issued in different cycles, so they stack by latency class. Four narrow lane ops issued at t - 7, an SFU op at t - 12, an RCU-only op at t - 3 and a warp-collective at t - 5 all land at t: seven. A lane op's done leaves the cycle its write lands, at V-35's bound with no slack, so none can wait for a slot. Memops send none (OI-4). No fault rides here: no cause of ISA v1.9 (§12) originates in RCU or a lane (AR's response IS-16), so exec_fault, fault_lane_mask and the lanes' sec_fault were removed. AR-24 (b), OA's revs 222, 223, 226: branch_mask is issue mask AND guard for a branch and for a barrier arrive, wait and wait.phase. For a ret, aux is the lowest active lane's rs (the target's offset in the ret's 4 GiB code window, ISA section 3) and branch_mask the active lanes whose rs equals it; OOE redirects those lanes to {PC[47:32] of the ret, aux} with stay = 1, and the ret re-issues for the rest, a pass per distinct target. For wait.phase, aux carries ps's lane bits, each lane's expected phase. Don't-care otherwise.
@@ -642,7 +655,7 @@ pca → fet · rate 1 · control
 
 ### `ccv_rau_miu_cta`
 
-Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.
+Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. The CTA's .shared region is SPM bytes spm_base to spm_limit, both included, so a region may end at SPM's last byte within CCV_W_SPM_ADDR. A .shared address is the CTA-relative offset, modulo 2^32 (CP-33). MIU raises F-SHARED, cause 7, on any active lane whose bytes do not all lie within offset 0 to spm_limit - spm_base. It ranks after F-ADDR, which no .shared access can raise, and before F-RO, which only .global can raise (section 12.5). SPM's byte address is spm_base plus the offset (TI's rev 230). F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.
 
 rau → miu · rate 1 · control
 
@@ -866,7 +879,7 @@ ooe → miu · rate 4 · memory
 
 ### `ccv_miu_spm_req`
 
-Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).
+Scratchpad access with a per-bank address set: one pass, at most one word in each bank, which bank_addr names, with write_data and byte_mask laid out by bank (bank b at bytes 4b to 4b + 3). MIU splits a warp's access into passes, one for each distinct word a bank holds for it, its lanes in ascending order, so a store's highest lane wins a word that lanes share, as ccv-sim's does. SPM's resolver issues one pass a cycle, and reports the cycles a pass waited for it as conflict_serialization (SPM spec rev 2; TI's rev 230). spm_op 0 reads and 1 writes, under byte_mask. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).
 
 miu → spm · rate 4 · memory
 

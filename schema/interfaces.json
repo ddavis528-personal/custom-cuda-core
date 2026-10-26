@@ -249,6 +249,33 @@
       }
     },
     {
+      "name": "ccv_ooe_fet_decq_credit",
+      "src": "ooe",
+      "dst": "fet",
+      "rate": 4,
+      "group": "control",
+      "payload_fields": [
+        "tier1_id",
+        "credit_count",
+        "released"
+      ],
+      "doc": "Decode-queue credits back to FET, per tier-1 warp (TI-46, form (b), DA tab rev 96; OA's revs 262-268). OOE refuses no uop on ccv_dec_ooe_uop for a per-warp reason: FET holds CCV_P_DECQ_WARP_MAX credits a warp, counted in decode-queue slots, and picks a warp only while they cover the next instruction's slots, which it counts exactly by predecode (DEC asserts the count). credit_count is the slots of the slot's warp that left the decode queue this cycle: those renamed, and those a flush or rewind squashed, in the cycle they are dropped, so FET never resynchronises. An instruction needing more slots than the share borrows, only from full credits, into a 5-bit signed counter (OA's rev 263). HELD-AHEAD: after FET fetches a converged wait it marks all_waiting, the warp fetches at most CCV_P_HELD_AHEAD slots past it and never borrows. released clears that: OOE sets it in the cycle SYU's answer reaches it on ccv_syu_ooe_rel. A rewind beat (a squash of the wait, or a demotion) clears it at FET too. A message is sent for a slot only when credit_count or released is non-zero.",
+      "id_classes": [
+        "none"
+      ],
+      "id_classes_why": "Credits are counts of slots from several uops, owned by no one transaction; the uops they free are in the trace as they rename.",
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "ordering": "slot_group",
+        "binding_key": "tier1_id"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "slot k is tier-1 warp k's return, so every warp's credits return in the cycle they free, whatever the others do",
+        "ordering": "a warp's returns are one stream, in the order its slots left the queue",
+        "binding_key": "tier1_id must equal the slot, checked rather than stated"
+      }
+    },
+    {
       "name": "ccv_dec_ooe_uop",
       "src": "dec",
       "dst": "ooe",
@@ -639,7 +666,7 @@
         "byte_mask",
         "spm_op"
       ],
-      "doc": "Scratchpad access with a per-bank address set. Bank conflicts resolve inside SPM. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).",
+      "doc": "Scratchpad access with a per-bank address set: one pass, at most one word in each bank, which bank_addr names, with write_data and byte_mask laid out by bank (bank b at bytes 4b to 4b + 3). MIU splits a warp's access into passes, one for each distinct word a bank holds for it, its lanes in ascending order, so a store's highest lane wins a word that lanes share, as ccv-sim's does. SPM's resolver issues one pass a cycle, and reports the cycles a pass waited for it as conflict_serialization (SPM spec rev 2; TI's rev 230). spm_op 0 reads and 1 writes, under byte_mask. byte_mask is already ANDed with the instruction's active_mask: a predicated-off lane's bytes are never enabled, so SPM needs no lane mask of its own (arch open A-20; an MIU assertion when MIU is RTL).",
       "id_classes": [
         "txn"
       ],
@@ -1196,7 +1223,7 @@
         "const_base",
         "const_limit"
       ],
-      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.",
+      "doc": "Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. The CTA's .shared region is SPM bytes spm_base to spm_limit, both included, so a region may end at SPM's last byte within CCV_W_SPM_ADDR. A .shared address is the CTA-relative offset, modulo 2^32 (CP-33). MIU raises F-SHARED, cause 7, on any active lane whose bytes do not all lie within offset 0 to spm_limit - spm_base. It ranks after F-ADDR, which no .shared access can raise, and before F-RO, which only .global can raise (section 12.5). SPM's byte address is spm_base plus the offset (TI's rev 230). F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.",
       "id_classes": [
         "none"
       ]
@@ -1598,6 +1625,8 @@
     "warp_mask": "CCV_WARP_CONTEXTS",
     "last_lanes": "CCV_W_LANE_IDX",
     "all_waiting": "1",
+    "credit_count": "CCV_W_DECQ_CREDIT",
+    "released": "1",
     "rewind_held": "1",
     "held_long": "1",
     "own_pc": "1",
