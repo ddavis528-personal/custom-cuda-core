@@ -982,6 +982,21 @@ it.
   164). It moves to adopted with
   the commit that builds it. The measurement above still says whether the
   second path earns its verification.
+- **Measured, and a liveness defect (TI-46; TI's revs 233-236,
+  2026-10-26):** fetching on past a converged wait deadlocked four-warp
+  barrier kernels. A held warp's uops filled its decode-queue share and were
+  refused, and a refused uop at a `ccv_dec_ooe_uop` slot's head blocks every
+  other warp, the late warp's arrive among them. Unbounded run-ahead is also
+  slower, gemv +85% and sgemm +75%, because held warps take the channel from
+  the warp the barrier waits on. Against parking at the wait, run-ahead
+  bounded at two instructions saves 0.17% (gemv), 3.3% (sgemm), 1.6%
+  (layernorm) and 0.4% (cta-reduce): 0.7 to 4.7 cycles a converged wait,
+  not the 10 estimated above. At four or more instructions, three held
+  warps overfill the 13-slot queue. OA's ruling (rev 265): per-warp
+  decode-queue credits from OOE to FET, and a held-ahead limit of r slots
+  past a converged wait, r <= 2 at four warps (FET spec rev 33). The choice
+  between r = 0 (parking) and r = 2 goes to DA, since the spread exceeds
+  0.5%.
 
 ### PF-45 Self-timed completion for done-free lane ops
 
