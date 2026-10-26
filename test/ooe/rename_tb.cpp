@@ -44,6 +44,8 @@
 // register drops the older take: OA's rev 219). The last two need names
 // that bind: run-rtl.sh's scarce build (RENAME_SCARCE), 144 rows and a
 // GPR ceiling of 24, the model's set alike.
+// The sectioned build (RENAME_SECTIONS) adds no-merge (no head's attributes
+// say it reads its merge source, so a merge places by its sources).
 // With --cg <scenario> <vcd> it runs that scenario (test/ooe/cg_trace.h)
 // and dumps the VCD its clock-gating unit measures, checking as ever.
 // Usage: rename_tb [seeds] | rename_tb --cg <scenario> <vcd>
@@ -58,6 +60,7 @@
 #include <cstdlib>
 #include <memory>
 #include <random>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -75,6 +78,31 @@ void renameConfig(Config &c) {
     c.ren_ceil = RENAME_CLG;
   }
 }
+// The sectioned build's random tests, over each test's own settings: every
+// core sectioned, under the decided narrow allocator (OI-81, OI-82): home
+// placement and the allocator's defaults. Its directed tests keep their own
+// (their timing expectations are for whole rows); those sectioned are benched.
+// A clock-gating scenario's cores are fault-free at rename: the RTL has no
+// rename-time faults yet (F-WIDTH, F-FORMAT), and a core stopped at one
+// leaves a trace the netlist's replay cannot follow (its group's grant never
+// comes). The comparison runs keep them, and stop there (fault).
+bool g_cg_no_faults = false;
+void renameSectioned(Config &c) {
+  if (g_cg_no_faults)
+    c.inject_no_width_fault = c.inject_no_sized_fault = c.inject_no_converged_fault = c.inject_no_format_fault = true;
+  {
+    const Config d;
+    c.sectioned = true;
+    c.full_rows = false;
+    c.place = 0;
+    c.cand = d.cand;
+    c.cand_lag = d.cand_lag;
+    c.cand_return = d.cand_return;
+    c.cand_indep = d.cand_indep;
+    c.cand_home = d.cand_home;
+    c.ret_late = d.ret_late;
+  }
+}
 
 namespace {
 constexpr unsigned S = RENAME_S, R = RENAME_R, RP = RENAME_RP, C = RENAME_C, GW = RENAME_GW, PW = RENAME_PW,
@@ -88,6 +116,9 @@ constexpr unsigned LS = bits(S), LC = bits(C), LX = bits(XM + 1), W = bits(N);
 std::unique_ptr<VerilatedContext> ctx;
 std::unique_ptr<Vooe_rename_tb> dut;
 std::string control;
+// RENAME_DEBUG: each benched core, each stop and why, and a mismatch's lanes;
+// RENAME_NO_DIRECTED: the random tests alone. Debug aids, never in the gate.
+const bool g_debug = std::getenv("RENAME_DEBUG") != nullptr;
 std::mt19937 rng(11);
 uint64_t current = 0;
 bool skip = false;      // a core this RTL is not built for
@@ -119,7 +150,9 @@ template <typename T> unsigned getField(const T &w, unsigned lsb, unsigned n) {
 }
 template <typename T> void clearAll(T &w, unsigned n) { for (unsigned i = 0; i != n; ++i) setBit(w, i, false); }
 unsigned sat(unsigned v, unsigned w) { return std::min(v, (1u << w) - 1); }
-unsigned gname(unsigned n) { return n * 4; }   // a whole row: the row at position 0
+// A model name as the RTL's: a whole row at position 0, or with sections the
+// model's own (row * 4 + position).
+unsigned gname(unsigned n) { return RENAME_NS ? n : n * 4; }
 
 CgRun cg;   // --cg <scenario> <vcd>: a clock-gating unit's bench (cg_trace.h)
 
@@ -157,6 +190,8 @@ struct Cycle {
   Core::RenEvents ev;
   Grp y;
   std::vector<unsigned> gal, gfr, pal, pfr;
+  std::vector<Core::SecEvent> gsf;   // RENAME_NS: the GPR section frees
+  std::string stalls;                // RENAME_DEBUG: the model's stall counters that moved
 };
 std::vector<Grp> past;    // the groups stepped, oldest first: the last three
 Cycle prev, cur;          // the cycle to drive, and the next one
@@ -267,7 +302,13 @@ void compareRows(const Grp &y, const Grp *a) {
       }
       for (unsigned j = 0; j != N; ++j) {
         const bool got = getBit(dut->row_dep_cq04h, p * N + j);
-        if (want_row[j] && !got) fail("row_dep missing", p, j, 0, 1);
+        if (want_row[j] && !got) {
+          fail("row_dep missing", p, j, 0, 1);
+          if (g_debug)
+            std::fprintf(stderr, "  consumer slot %u gname %u src %u %u %u (reads %x) pold %u merge %d wsrc %u %u %u wdst %u\n",
+                         x.r.slot, x.r.gname, x.r.psrc[0], x.r.psrc[1], x.r.psrc[2], x.r.greads, x.r.pold, x.r.gmerge,
+                         x.r.wsrc[0], x.r.wsrc[1], x.r.wsrc[2], x.r.wdst);
+        }
         // ooe_rs's masks: not valid before the row's edge (the cycle ahead's
         // state), freed at it, or the group ahead's.
         if (!want_row[j] && got) {
@@ -316,6 +357,7 @@ void clearInputs() {
   dut->gfree_l_cq00h = 0;
   dut->pfree_l_cq00h = 0;
   clearAll(dut->gfree_cq01h, NG);
+  clearAll(dut->gfree_sec_cq01h, RENAME_NS ? NG * RENAME_NS : NG);
   clearAll(dut->pfree_cq01h, NP);
   clearAll(dut->rstl_cq00h, S);
   clearAll(dut->rgl_cq00h, S * RP);
@@ -382,7 +424,7 @@ unsigned attrOf(const Core::RatLog::Ren &r) {
   x |= unsigned(r.nob) << 3;
   if (control != "no-reads") {
     x |= (r.greads & 7u) << 4;
-    x |= unsigned(r.gmerge) << 7;
+    x |= unsigned(r.gmerge && control != "no-merge") << 7;
     x |= unsigned(r.pguse) << 8;
     x |= unsigned(r.plogic) << 9;
     x |= unsigned(r.pmerge) << 10;
@@ -408,11 +450,13 @@ void driveRetire() {
 }
 
 // Why a core stopped: the go's log missing, a restore-allocate or an
-// atomic, the lane order, a head's write bits, the allocations, the takes.
-enum Why { kNoLog, kRstAtomic, kOrder, kBits, kAlloc, kTook, kWhys };
-const char *const kWhyName[kWhys] = {"no-log", "rst-atomic", "order", "write-bits", "allocs", "took"};
+// atomic, a rename-time fault's lane without a rename (no RTL yet), the lane order, a head's write
+// bits, the allocations, the takes.
+enum Why { kNoLog, kRstAtomic, kFault, kOrder, kBits, kAlloc, kTook, kWhys };
+const char *const kWhyName[kWhys] = {"no-log", "rst-atomic", "fault", "order", "write-bits", "allocs", "took"};
 unsigned long long why[kWhys] = {};
 void stop(Why w) {
+  if (g_debug) std::fprintf(stderr, "  stop %s at cycle %llu\n", kWhyName[w], cycles);
   stopped = true;
   ++stops;
   ++why[w];
@@ -443,18 +487,28 @@ void step(const Cycle &P, const Cycle &N) {
     if (s >= S || h != head[s]++ || h >= g.adm[s].size()) { stop(kOrder); return; }
     const uint16_t a = g.adm[s][h];
     if ((a & 3u) == 0) { ++nops; continue; }
-    if (j == w.ren.size() || w.ren[j].slot != s) { stop(kOrder); return; }
+    if (j == w.ren.size() || w.ren[j].slot != s) {
+      if (g_debug)
+        std::fprintf(stderr, "  order: lane %u slot %u head %u, rename %u of %zu (slot %u)%s\n", k, s, h, j, w.ren.size(),
+                     j < w.ren.size() ? w.ren[j].slot : 99u, P.stalls.c_str());
+      if (g_debug) {
+        for (const auto &x : g.lanes) std::fprintf(stderr, "    lane slot %u head %u adm %x\n", x.first, x.second, x.second < g.adm[x.first].size() ? unsigned(g.adm[x.first][x.second]) : 0xffffu);
+        for (const auto &x : w.ren) std::fprintf(stderr, "    ren slot %u gwe %d\n", x.slot, int(x.gwe));
+      }
+      stop(w.faults ? kFault : kOrder);
+      return;
+    }
     const auto &r = w.ren[j++];
-    if (bool((a >> 3) & 1u) != r.gwe || bool((a >> 4) & 1u) != r.pwe) { stop(kBits); return; }
+    if (bool((a >> 3) & 1u) != r.gwe || bool((a >> 4) & 1u) != r.pwe) { stop(w.faults ? kFault : kBits); return; }
     if (r.main == kNoEntry || bool((a >> 1) & 1u) != r.mem || bool((a >> 2) & 1u) != (r.copy != kNoEntry)) {
-      stop(kBits);
+      stop(w.faults ? kFault : kBits);
       return;
     }
     lane[k] = &r;
     gw += r.gwe;
     pw += r.pwe;
   }
-  if (j != w.ren.size()) { stop(kOrder); return; }
+  if (j != w.ren.size()) { stop(w.faults ? kFault : kOrder); return; }
   if (P.gal.size() != gw || P.pal.size() != pw) { stop(kAlloc); return; }
   for (unsigned s = 0; s != S; ++s)
     if (head[s] != g.took[s]) { stop(kTook); return; }
@@ -523,10 +577,17 @@ void step(const Cycle &P, const Cycle &N) {
   driveRetire();
   // The free lists: this cycle's frees, the next one's lead.
   if (control != "drop-free") {
-    for (unsigned p : P.gfr) setBit(dut->gfree_cq01h, p, true);
+    // With sections the GPR list takes the section frees, and returns rows itself.
+    if (RENAME_NS) {
+      for (const auto &f : P.gsf)
+        for (unsigned j = 0; j != RENAME_NS; ++j)
+          if ((f.sec >> j) & 1u) setBit(dut->gfree_sec_cq01h, f.row * RENAME_NS + j, true);
+    } else {
+      for (unsigned p : P.gfr) setBit(dut->gfree_cq01h, p, true);
+    }
     for (unsigned p : P.pfr) setBit(dut->pfree_cq01h, p, true);
   }
-  dut->gfree_l_cq00h = !N.gfr.empty() && control != "no-lead";
+  dut->gfree_l_cq00h = !(RENAME_NS ? N.gsf.empty() : N.gfr.empty()) && control != "no-lead";
   dut->pfree_l_cq00h = !N.pfr.empty() && control != "no-lead";
   frees += P.gfr.size() + P.pfr.size();
   dut->ooe_core_clk = 0;
@@ -594,7 +655,14 @@ void step(const Cycle &P, const Cycle &N) {
     eq("predicate write", 0, getBit(dut->q_pwe_cq03h, k), r.pwe);
     eq("branch", 0, getBit(dut->q_br_cq03h, k), r.br);
     if (r.gwe) { eq("destination", 0, getField(dut->q_dst_cq03h, k * 4, 4), r.dst); ++names; }
-    if (r.gwe) eq("new GPR name", 0, getField(dut->q_gname_cq03h, k * GW, GW), gname(r.gname));
+    if (r.gwe) {
+      const unsigned got = getField(dut->q_gname_cq03h, k * GW, GW);
+      if (g_debug && got != gname(r.gname))
+        std::fprintf(stderr, "  lane %u slot %u wdst %u wset %d atomic %d merge %d src %u %u %u reads %x wsrc %u %u %u pold %u\n",
+                     k, r.slot, r.wdst, r.wset, r.atomic, r.gmerge, r.psrc[0], r.psrc[1], r.psrc[2], r.greads,
+                     r.wsrc[0], r.wsrc[1], r.wsrc[2], r.pold);
+      eq("new GPR name", 0, got, gname(r.gname));
+    }
     if (r.pwe) { eq("predicate destination", 0, getField(dut->q_pdst_cq03h, k * 2, 2), r.pdst); ++pnames; }
     if (r.pwe) eq("new predicate name", 0, getField(dut->q_pname_cq03h, k * PW, PW), r.pname);
     if (r.br) eq("checkpoint", 0, getField(dut->q_ckpt_cq03h, k * LC, LC), r.ckpt);
@@ -619,16 +687,32 @@ void newCore(const Core &c) {
   const auto &cfg = c.config();
   const auto &gf = c.gprFree(), &pf = c.predFree();
   skip = c.slots() != S || cfg.ckpts != C || cfg.rename_width > R || cfg.retire_per_rob > RP ||
-         cfg.pred_zero != (1u << PW) - 1 || cfg.sectioned || !cfg.rename_preds || gf.capacity() != NG || pf.capacity() != NP ||
+         cfg.pred_zero != (1u << PW) - 1 || cfg.sectioned != (RENAME_NS != 0) ||
+         (RENAME_NS && (cfg.full_rows || cfg.place != 0 || cfg.cand != 2 || cfg.cand_lag != 2 || !cfg.cand_return || !cfg.cand_indep ||
+                        !cfg.cand_home || !cfg.ret_late)) || !cfg.rename_preds || gf.capacity() != NG || pf.capacity() != NP ||
          gf.bufferCap() != FB || gf.banks() != FK || pf.bufferCap() != FB || pf.banks() != FK || c.rsEntries() != N ||
          c.rsRcuEntries() != NR || cfg.ren_floor != FLG || cfg.ren_ceil != CLG || cfg.pred_ren_floor != FLP ||
          cfg.pred_ren_ceil != CLP;
+  // A core stopped mid-run may leave a group in flight, whose grant never
+  // comes: the reset is raised first (its retirements unneeded).
+  const bool was_stopped = stopped;
   skipped += skip;
+  if (g_debug && !skip)
+    std::fprintf(stderr, "core %llu benched: slots %u sectioned %d place %u\n", cores, c.slots(), cfg.sectioned, cfg.place);
   stopped = false;
   have_prev = have_cur = false;
   // The last core's retirements leave ooe_rat's retire stage as its leads
   // said, then the reset.
   clearInputs();
+  if (was_stopped) {
+    // Its inputs are no longer the model's, so the RTL's input assertions
+    // are off until the reset (flopped, RST-1: two edges) holds it.
+    ctx->assertOn(false);
+    dut->ooe_rst_r00h = 1;
+    tick();
+    tick();
+    ctx->assertOn(true);
+  }
   driveRetire();
   tick();
   prev_ret.clear();
@@ -653,6 +737,15 @@ void pre(const Core &c) {
   // cur's whole free interval is in.
   cur.gal = c.gprFree().cycleAllocs();
   cur.gfr = c.gprFree().cycleFrees();
+  cur.gsf = c.cycleSecFrees();
+  if (g_debug) {
+    static std::map<std::string, uint64_t> last;
+    cur.stalls.clear();
+    if (last.size() > c.counters.size()) last.clear();
+    for (const auto &[k, v] : c.counters)
+      if (k.rfind("stall.", 0) == 0 && v != last[k]) cur.stalls += " " + k + "+" + std::to_string(v - last[k]);
+    last = c.counters;
+  }
   cur.pal = c.predFree().cycleAllocs();
   cur.pfr = c.predFree().cycleFrees();
   if (have_prev) step(prev, cur);
@@ -695,8 +788,10 @@ int main(int argc, char **argv) {
   tick();
   dut->ooe_rst_r00h = 0;
   // The directed tests in the ordinary run; a scenario is the random tests'.
+  g_cg_no_faults = cg.on();
+  if (RENAME_NS) ooeTestRandomOver(renameSectioned);
   const int model_fails =
-      (cg.on() ? 0 : ooeTestDirectedPrePostWith(pre, post, renameConfig)) + cg.run(seeds, pre, post, renameConfig);
+      (cg.on() || std::getenv("RENAME_NO_DIRECTED") ? 0 : ooeTestDirectedPrePostWith(pre, post, renameConfig)) + cg.run(seeds, pre, post, renameConfig);
   cg.close();
   dut->final();
   std::printf("rename_tb control=%s seeds=%u cores=%llu cycles=%llu skipped=%llu stopped=%llu takes=%llu "

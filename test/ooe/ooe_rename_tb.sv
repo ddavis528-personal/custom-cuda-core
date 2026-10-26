@@ -30,6 +30,8 @@ module ooe_rename_tb #(
   parameter int CLG = 64,
   parameter int FLP = 4,
   parameter int CLP = 20,
+  parameter int NS = 0,                  // GPR row sections (rename_tb's sectioned build: 4)
+  localparam int NSB = (NS > 0) ? NS : 1,
   localparam int PA = 9,
   localparam int H  = 2 * R - 1,
   localparam int NC = S * R,
@@ -75,6 +77,7 @@ module ooe_rename_tb #(
   input  logic              ctl_notq2,
   input  logic              gfree_l_cq00h,
   input  logic [NG-1:0]     gfree_cq01h,
+  input  logic [NG*NSB-1:0] gfree_sec_cq01h,
   input  logic              pfree_l_cq00h,
   input  logic [NP-1:0]     pfree_cq01h,
   // ooe_rat's other ports.
@@ -145,13 +148,13 @@ module ooe_rename_tb #(
     .ret_pwe_cq01h, .ret_pdst_cq01h, .ret_pname_cq01h, .restore_cq00h, .restore_ckpt_cq00h, .squash_cq00h,
     .release_cq00h, .rat_cq02h, .crat_cq02h, .ckpt_cq02h);
   ooe_rename #(.S(S), .R(R), .C(C), .NG(NG), .NP(NP), .GW(GW), .PW(PW), .N(N), .NR(NR), .NU(NU), .G(G), .CT(CT),
-               .AG(AG), .AP(AP), .FLG(FLG), .CLG(CLG), .FLP(FLP), .CLP(CLP)) u_rename (
+               .AG(AG), .AP(AP), .FLG(FLG), .CLG(CLG), .FLP(FLP), .CLP(CLP), .NS(NS)) u_rename (
     .ooe_core_clk, .ooe_rst_r00h, .hv_cq01h, .ha_cq01h, .c_src_cq01h, .c_dst_cq01h, .c_pguard_cq01h,
     .c_pdst_cq01h, .c_pq_cq01h, .c_br_cq01h, .c_ckpt_cq01h, .c_x_cq01h,
     .c_wset_cq01h, .c_wnew_cq01h, .cwl_cq00h, .cwd_cq01h,
     .run_cq01h, .reach_cq01h, .ret_cq01h, .hold_l_cq00h, .rbusy_l_cq00h, .sq_l_cq00h, .dq_ev_cq01h,
     .rob_en_cq01h, .occ_cq01h, .occ_l_cq00h, .rsf_l_cq00h, .fpr_cq01h, .fpm_cq01h, .flr_cq01h,
-    .flm_cq01h, .rat_cq02h, .gfree_l_cq00h, .gfree_cq01h, .pfree_l_cq00h, .pfree_cq01h,
+    .flm_cq01h, .rat_cq02h, .gfree_l_cq00h, .gfree_cq01h, .gfree_sec_cq01h, .pfree_l_cq00h, .pfree_cq01h,
     .gnt_v_cq03h, .gnt_idx_cq03h, .take_cq02h, .sel_cq02h, .q_v_cq03h, .q_slot_cq03h, .q_dst_cq03h, .q_gwe_cq03h, .q_gname_cq03h,
     .q_pdst_cq03h, .q_pwe_cq03h, .q_pname_cq03h, .q_br_cq03h, .q_ckpt_cq03h, .q_w_cq03h, .req_l_cq03h, .req_cq04h,
     .row_prod_cq04h, .row_dep_cq04h, .row_code_cq04h, .grp_dep_cq04h, .grp_code_cq04h, .prv_dep_cq04h,
