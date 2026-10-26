@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (8585 bits,
+// At each edge of its clock: sample every channel signal (8881 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (4437 bits). Common-port outputs sit inactive, as in
+// what it drove (4725 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_ooe (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_ooe(
     input int h, input longint cyc, input bit rst,
-    input bit [8584:0] sample, output bit [4436:0] drive);
+    input bit [8880:0] sample, output bit [4724:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [4436:0] drv, q, q2;
+  bit [4724:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -149,8 +149,15 @@ module ccv_ooe (
       dec_ooe_uop_s2_valid, dec_ooe_uop_s1_stall, dec_ooe_uop_s1_credit,
       dec_ooe_uop_s1_payload, dec_ooe_uop_s1_valid, dec_ooe_uop_s0_stall,
       dec_ooe_uop_s0_credit, dec_ooe_uop_s0_payload, dec_ooe_uop_s0_valid,
-      kill_ack_epoch, kill_ack, kill_epoch,
-      kill_warp_mask, kill_valid
+      ooe_fet_decq_credit_s3_tid, ooe_fet_decq_credit_s2_tid, ooe_fet_decq_credit_s1_tid,
+      ooe_fet_decq_credit_s0_tid, ooe_fet_decq_credit_s3_stall, ooe_fet_decq_credit_s3_credit,
+      ooe_fet_decq_credit_s3_payload, ooe_fet_decq_credit_s3_valid, ooe_fet_decq_credit_s2_stall,
+      ooe_fet_decq_credit_s2_credit, ooe_fet_decq_credit_s2_payload, ooe_fet_decq_credit_s2_valid,
+      ooe_fet_decq_credit_s1_stall, ooe_fet_decq_credit_s1_credit, ooe_fet_decq_credit_s1_payload,
+      ooe_fet_decq_credit_s1_valid, ooe_fet_decq_credit_s0_stall, ooe_fet_decq_credit_s0_credit,
+      ooe_fet_decq_credit_s0_payload, ooe_fet_decq_credit_s0_valid, kill_ack_epoch,
+      kill_ack, kill_epoch, kill_warp_mask,
+      kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -197,11 +204,16 @@ module ccv_ooe (
     dec_ooe_uop_s4_credit, dec_ooe_uop_s3_stall, dec_ooe_uop_s3_credit,
     dec_ooe_uop_s2_stall, dec_ooe_uop_s2_credit, dec_ooe_uop_s1_stall,
     dec_ooe_uop_s1_credit, dec_ooe_uop_s0_stall, dec_ooe_uop_s0_credit,
+    ooe_fet_decq_credit_s3_tid, ooe_fet_decq_credit_s2_tid, ooe_fet_decq_credit_s1_tid,
+    ooe_fet_decq_credit_s0_tid, ooe_fet_decq_credit_s3_payload, ooe_fet_decq_credit_s3_valid,
+    ooe_fet_decq_credit_s2_payload, ooe_fet_decq_credit_s2_valid, ooe_fet_decq_credit_s1_payload,
+    ooe_fet_decq_credit_s1_valid, ooe_fet_decq_credit_s0_payload, ooe_fet_decq_credit_s0_valid,
     kill_ack_epoch, kill_ack
   } = skew ? q2 : q;
 `endif
   assign csr_rsp = '0;
   assign csr_credit = '0;
+  assign ooe_fet_decq_credit_wake = '0;
   assign ooe_rcu_issue_wake = '0;
   assign ooe_miu_memop_wake = '0;
   assign ooe_miu_retire_wake = '0;

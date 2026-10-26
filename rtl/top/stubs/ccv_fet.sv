@@ -90,6 +90,14 @@ module ccv_fet (
 `ifdef CCV_TRACE
   assign fet_dec_instr_s7_tid = '0;
 `endif
+  assign ooe_fet_decq_credit_s0_credit = '0;
+  assign ooe_fet_decq_credit_s0_stall = '0;
+  assign ooe_fet_decq_credit_s1_credit = '0;
+  assign ooe_fet_decq_credit_s1_stall = '0;
+  assign ooe_fet_decq_credit_s2_credit = '0;
+  assign ooe_fet_decq_credit_s2_stall = '0;
+  assign ooe_fet_decq_credit_s3_credit = '0;
+  assign ooe_fet_decq_credit_s3_stall = '0;
   assign ooe_fet_redirect_credit = '0;
   assign ooe_fet_redirect_stall = '0;
   assign ooe_fet_ckpt_free_credit = '0;

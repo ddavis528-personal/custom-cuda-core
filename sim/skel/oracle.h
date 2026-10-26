@@ -69,6 +69,11 @@ struct Record {
   uint64_t target = 0;               ///< branch: where they go
   std::vector<RegVal> uses, defs;    ///< operand order; uses before, defs after
   std::vector<MemAcc> mem;           ///< ascending lane
+  /// The barrier waits ccv-sim tried just before this record and blocked
+  /// (TI-40): each try's PC, group and blocked lanes. The tries are not
+  /// instructions, but each was a pick, and its lanes then sat at the wait.
+  struct StallTry { uint64_t pc; uint32_t mask, blocked; };
+  std::vector<StallTry> stalls_before;
   /// Every GPR's width code as the record executes, 2 bits per register
   /// (R0 lowest): ccv-sim keeps the bits above a narrow element as the
   /// slice last held them, so a value is compared only within its width.
@@ -146,6 +151,7 @@ struct Oracle {
   std::vector<std::pair<uint64_t, uint32_t>> final_mem;
   unsigned issue_groups = 0;
   unsigned stalls = 0;   ///< barrier waits ccv-sim retried, dropped at load (TI-40)
+  std::vector<Record::StallTry> tries;   ///< the tries since the last record, at load
 
   /// Empty string on success, else what was wrong with the file.
   std::string load(const std::string &path);

@@ -59,7 +59,11 @@ struct Config {
   unsigned rs_miu = ccv::prov::kRsMiu;
   unsigned rs_warp_cap = ccv::prov::kRsWarpCap;   ///< 0 or >= both classes = no cap
   unsigned decq = ccv::prov::kDecq;
-  unsigned decq_warp_max = ccv::prov::kDecqWarpMax; ///< 0 or >= decq = no limit
+  /// 0 or >= decq = no limit. Form (b) of TI-46 (DA tab rev 96): OOE refuses
+  /// no uop for a per-warp reason, so in the skeleton, where FET holds the
+  /// share as credits, the block sets it 0; the unit benches, with no FET,
+  /// keep the cap as their stand-in for the credits.
+  unsigned decq_warp_max = ccv::prov::kDecqWarpMax;
   unsigned ckpts = ccv::prov::kBrCkpts;
   unsigned phys_regs = ccv::prov::kPhysRegs;
   unsigned pred_regs = ccv::prov::kPredRegs;
@@ -960,6 +964,26 @@ public:
   /// leaves a uop in the channel while this is false.) A CAS's two slots
   /// arrive together, on credit for both (TI-39).
   bool canAccept(unsigned warp, unsigned n = 1) const;
+  /// TI-46 (b): what the credit return and its checks read. A tier-1 slot's
+  /// warp (-1 if free), a warp's decode-queue slots, whether it is held at
+  /// a barrier, and whether its queued uops are one instruction's (a borrow).
+  int warpOfSlot(unsigned slot) const {
+    return slot < slot_.size() && slot_[slot].st != WarpState::kFree ? int(slot_[slot].warp) : -1;
+  }
+  int tier1Of(unsigned warp) const { return slotOf(warp); }
+  unsigned decqOf(unsigned warp) const { const int s = slotOf(warp); return s < 0 ? 0 : slot_[s].decq; }
+  bool barHeld(unsigned warp) const { const int s = slotOf(warp); return s >= 0 && slot_[s].bar_hold; }
+  bool decqOneInstr(unsigned warp) const {
+    uint64_t seq = UINT64_MAX;
+    for (const Uop &u : decq_)
+      if (u.warp == warp) {
+        const uint64_t q = u.tid & 0xffffffffu;
+        if (seq != UINT64_MAX && q != seq) return false;
+        seq = q;
+      }
+    return true;
+  }
+  unsigned decqShared() const { return decqHeld(); }
   /// Decode-queue entries the credit check counts as held: the queue, plus
   /// under decq_late_credit those freed this cycle.
   unsigned decqHeld() const {

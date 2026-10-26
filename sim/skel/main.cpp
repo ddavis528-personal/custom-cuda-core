@@ -252,7 +252,11 @@ int main(int argc, char **argv) {
                       brk == "deny-ownership" || brk == "local-no-ctx" || brk == "local-base-slot" ||
                       brk == "narrow-carry" || brk == "lane-unmasked" || brk == "wide-xfer" || brk == "no-chw-mark" ||
                       brk == "xfer-unsigned" || brk == "xfer-ignored" || brk == "chw-mark-always" ||
-                      brk == "ret-no-stay" || brk == "pred-taken-any";
+                      brk == "ret-no-stay" || brk == "pred-taken-any" ||
+                      // .shared and SPM (TI's rev 230); FET's barrier parking (TI-40)
+                      brk == "spm-one-pass" || brk == "spm-no-wait" || brk == "spm-shared-region" ||
+                      brk == "bar-park-off" || brk == "held-over-r" || brk == "held-no-clear" ||
+                      brk == "borrow-partial";
   if (kbreak && kernel.empty()) {
     std::fprintf(stderr, "--break %s needs --kernel\n", brk.c_str());
     return 2;

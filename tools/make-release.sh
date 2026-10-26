@@ -119,11 +119,13 @@ A="$STAGE/release"
 mkdir -p "$A/kernels"
 cp "$VLOG" "$A/verify.log" || die "cannot copy the gate's log"
 cp build/rel_wiring.txt "$A/wiring.txt"
-# A Perfetto view over 1 MB ships gzipped (ui.perfetto.dev opens .json.gz
+# A Perfetto view over 64 KiB ships gzipped (ui.perfetto.dev opens .json.gz
 # as it is): a long kernel's views run to megabytes of repetitive JSON and
-# compress about fifty-fold, and the per-file cap stays as it is.
+# compress about fifty-fold, and the per-file cap stays as it is. At 1 MB
+# the views just under it shipped raw and took release/ past its 25 MB cap
+# (2026-10-25, 27.1 MB with callret, divchw, narrowadd and sized added).
 view() {
-  if [ "$(stat -c %s "$1")" -gt $((1024 * 1024)) ]; then
+  if [ "$(stat -c %s "$1")" -gt $((64 * 1024)) ]; then
     gzip -9c "$1" >"$2.gz"
   else
     cp "$1" "$2"

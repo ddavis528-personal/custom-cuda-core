@@ -228,7 +228,10 @@ private:
           // One coin per step, not stop-at-the-first-failure: that drained
           // ~1.5 messages a cycle against the unordered receiver's 0.6 x
           // rate, and the tail of 16 in-flight messages crossed N.
-          if (rng_.uniform() >= cfg_.p_pop) continue;
+          // Draining, every message pops: the coin would leave the drain
+          // unbounded, and a run's last message past the end of it. A
+          // control that silences consumption (p_pop 0) stays silent.
+          if (!(g_draining && cfg_.p_pop > 0) && rng_.uniform() >= cfg_.p_pop) continue;
           verify(g, unsigned(pick), g.rx[pick]->front());
           g.rx[pick]->pop();
           taken[pick] = !cfg_.double_pop;
@@ -244,7 +247,7 @@ private:
         // contract, and the bank's fixed_latency_prompt says so.
         // A wiring control silences consumption (p_pop 0), fixed-latency
         // receivers included: there the control supplies the credits.
-        if (all && ((cd.fixed_lat && cfg_.p_pop > 0) ||
+        if (all && ((cd.fixed_lat && cfg_.p_pop > 0) || (g_draining && cfg_.p_pop > 0) ||
                     decide(cd.lockstep, chan, uid, now, 0x9) < cfg_.p_pop))
           for (auto &m : u) {
             verify(*m.first, m.second, m.first->rx[m.second]->front());
