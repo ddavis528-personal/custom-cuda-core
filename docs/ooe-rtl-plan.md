@@ -861,10 +861,41 @@ Built (`rtl/ooe/`):
      their enabled cycles in medium / high, waived by DA (OI-82, DA tab rev
      94; floors 4 / 9). The only exact enable is
      the find, and the alternative, a per-lane find, needs a fourth rename
-     stage (+1.7% mean on the OI-34 sweep, +9.2% worst). ooe_rename's
-     instance stays at NS 0 until Rename 2's lanes are built: placement,
-     the candidate mux and void, the fresh-or-candidate name and the
-     return.
+     stage (+1.7% mean on the OI-34 sweep, +9.2% worst).
+     *Rename 2's lanes (built).* ooe_ren1n, at NS 4, places each lane's
+     narrow destination, from the Rename 1 register's width codes (10
+     bits a lane: src0..2, the destination's, the old destination's) and
+     its attributes. The order is the old destination's position on a
+     merge at its width, else the first narrow source's, else the slot's
+     home position; a source written earlier in the group (its read is a
+     lane) is not seen, and an atomic or full_rows is a whole row. A
+     narrow writer at its home position takes the slot's candidate of its
+     kind, unless an earlier lane of the group took it, or one of the
+     other kind did and the two are the same row (ooe_freelist's
+     cand_same). The name is the candidate's row, or the fresh row the go
+     counted, with the position beside it. Every writer's row and
+     sections go to sa; a writer that took a candidate returns its fresh
+     row through rt. The prodmap now registers the full name, not the
+     row. run-rtl.sh's sectioned build (rename_sec, NS 4) holds it to the
+     model, live. Its random cores are held to the decided form; its
+     directed cores, timed for whole rows, are the first build's. At 25
+     seeds: 48,150 cycles, 41,221 GPR names (7,607 narrow lanes), none
+     differ. At 150 seeds: 283,851 cycles, none differ. Controls
+     drop-free, no-lead, no-reads, no-merge and no-cw-write are caught.
+     A core stops at a rename-time fault (F-WIDTH, F-FORMAT): the RTL
+     has none yet, and the model renames the uop as a no-op where the
+     go admitted a lane (98 cores at 25 seeds). The clock-gating
+     scenarios hold their cores fault-free.
+     *Not closed: the name's timing (OI-83, to OA).* At NS 4 Rename 2's
+     name reaches q_gname_cq03h at 17.3 NGD against OA's budget of 3
+     (OI-70, rev 194). ooe_rat's paths from it are 11.3 more, so the
+     path is 28.6 against 25. In ooe_ren1n, placement takes 18.7 from
+     the registered reads and codes, the candidate claim 16.1 and the
+     fresh row 5.5. NGD-7 also asks for copies of the Rename 1
+     registers that feed the name. check-cg at NS 4 passes (1373
+     flops, 10 gates; pxn's CG-3 is the waived one). Until OA settles
+     the stage, ooe_rename's default and its check-ngd and check-cg
+     units stay at NS 0.
   7. **ooe_rename's top**: ooe_go, the reads and Rename 1, the free lists,
      ooe_rendep and ooe_prodmap, rename's counters (ooe_rencred) and its
      pool and floor registers, assembled and benched against the model.

@@ -293,6 +293,13 @@ more memop onto held sections and pipes, and RCU must refuse the overlap
   an op takes its home position. Across groups the rule is as listed. The
   placement test's control in-group-follows runs the old rule.
 
+  Under the narrow allocator (`cand` on), placement reads what Rename 2's
+  lanes carry, as the RTL does (slice 6). A register's width is its
+  committed width code, not its name's; the two differ only where an
+  atomic wrote it as a whole row. A merge is the merge source's read. A
+  masked load's copy takes that read instead, so the load places by its
+  sources. On the OI-34 sweep neither change moves a row.
+
   The home position comes from `place`. 0 is the decided default (DA's
   response OI-35, 2026-10-09); the others are sweep arms, and OA-14's
   rotation is withdrawn:

@@ -151,7 +151,8 @@ module ooe_freelist #(
   output logic [LB-1:0]  avail_cq02h,        // entries allocation can take: the buffer, less those in transit
   output logic [S*2*LT-1:0] fsp_cq03h,       // the frees of two cycles ago by owner, each slot's a carry-save pair (s * 2 * LT)
   output logic [S*NK-1:0]   cand_v_cq02h,    // slot s's home candidate, k 0 one section, 1 two, at s * NK + k, is valid
-  output logic [S*NK*W-1:0] cand_row_cq02h   //   and its row
+  output logic [S*NK*W-1:0] cand_row_cq02h,  //   and its row
+  output logic [S-1:0]      cand_same_cq02h  // slot s's two candidates are one row (both valid)
 `ifdef CCV_CHECK
   // Read only by test/ooe/freelist_tb.cpp, which compares the whole state
   // (OA's choice for TI-20): no design port, so synthesis sees none.
@@ -504,8 +505,9 @@ module ooe_freelist #(
   if (NS == 0) begin : g_nosec
     assign pend_cq02h     = '0;
     assign fr_en_cq02h    = 1'b0;
-    assign cand_v_cq02h   = '0;
-    assign cand_row_cq02h = '0;
+    assign cand_v_cq02h    = '0;
+    assign cand_row_cq02h  = '0;
+    assign cand_same_cq02h = '0;
 `ifdef CCV_CHECK
     assign sec_cq02h = '0;
 `endif
@@ -671,6 +673,12 @@ module ooe_freelist #(
         cand_v_cq02h[c] = cv_cq02h[c] && !hit;
       end
     assign cand_row_cq02h = cr_cq02h;
+    // Rename 2 claims by row: a slot's one-section and two-section
+    // candidates may be the same row.
+    for (genvar sl = 0; sl < S; sl++) begin : g_same
+      assign cand_same_cq02h[sl] = cv_cq02h[sl * NK] && cv_cq02h[sl * NK + 1] &&
+                                   cr_cq02h[sl * NK * W +: W] == cr_cq02h[(sl * NK + 1) * W +: W];
+    end
   end
 
   // -- Owners and the frees they count ------------------------------------------

@@ -41,6 +41,9 @@ bool g_quiet = false;     ///< a negative control's expected failures
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
 void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over every test's
+/// An RTL bench's settings over each random test's own (randomConfig's last
+/// step): what the bench's build is for, whatever the seed and mode chose.
+void (*g_random_config_hook)(Config &) = nullptr;
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -3444,6 +3447,7 @@ Config randomConfig(unsigned seed, int mode) {
   // a lane latency past the wake, so grandchildren issue on a load that
   // then misses and transitive cancel takes more than one hop.
   if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
+  if (g_random_config_hook) g_random_config_hook(c);
   return c;
 }
 
@@ -4816,6 +4820,9 @@ int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Cor
 /// pre and post are the hooks before and after each core cycle, cfg the
 /// settings the RTL under test assumes (any may be null). Returns the
 /// failure count.
+/// Settings a bench holds each random test to, after the test's own.
+void ooeTestRandomOver(void (*cfg)(Config &)) { g_random_config_hook = cfg; }
+
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
   g_pre_cycle_hook = pre;

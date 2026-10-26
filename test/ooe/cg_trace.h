@@ -35,6 +35,8 @@ struct Config;
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const ccv::ooe::Core &), void (*post)(const ccv::ooe::Core &),
                     void (*cfg)(ccv::ooe::Config &));
+// Settings a bench holds each random test to, after the test's own.
+void ooeTestRandomOver(void (*cfg)(ccv::ooe::Config &));
 
 struct CgRun {
   std::string scenario;               // empty: not a clock-gating run (high, the bench's seeds)

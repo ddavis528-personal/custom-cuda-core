@@ -1442,6 +1442,9 @@ public:
     uint32_t squash = 0, release = 0;                       ///< slot masks
     std::vector<Ret> ret;
     std::vector<Ren> ren;
+    /// Uops renamed as a rename-time fault's no-op (F-BARRIER, F-WIDTH,
+    /// F-FORMAT): a lane with its class bits and no Ren.
+    unsigned faults = 0;
     /// Each slot's committed width table after the cycle (AR-24 (d)), and
     /// whether the cycle changed it: a chwidth's or sibling's retire, a
     /// launch, a restore-allocate.

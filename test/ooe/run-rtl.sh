@@ -535,13 +535,17 @@ done
 # driven from the model's go log, its renames' fields, its frees a model
 # cycle behind and ooe_rs's grant and frees; its takes, lanes, names, reads,
 # RS request and rows, and its counters as the go reads them, compared.
-# Nothing tells it what was taken. Three builds: the design's parameters;
+# Nothing tells it what was taken. Four builds: the design's parameters;
 # the ceiling test's floor and ceiling (its directed core alone); and
 # scarce names, 144 rows and a ceiling of 24, where the names' pool binds
-# (its correction's controls, OA's revs 208 and 219).
+# (its correction's controls, OA's revs 208 and 219); and the design's
+# sectioned rows (NS 4, slice 6: the narrow allocator), its random cores
+# held to the decided form (its directed cores, timed for whole rows, are
+# the first build's).
 for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-reads,no-grant,no-cw-write" \
            "rename_ceil RENAME_FLOORS=4,8 0 -" \
-           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2"; do
+           "rename_scarce RENAME_NAMES=144,24 25 no-take-q,no-take-q2" \
+           "rename_sec RENAME_SECTIONS=1 25 drop-free,no-lead,no-reads,no-merge,no-cw-write"; do
   set -- $cfg
   name=$1 env=$2 nseeds=$3 ctls=$4
   [ "$nseeds" = 25 ] && nseeds=$seeds

@@ -688,7 +688,14 @@ unsigned Core::candFind(unsigned slot, unsigned kind, const std::vector<uint8_t>
 /// without last cycle's allocations (Rename 2's, which reach the section
 /// bits a cycle on), and void in a row last cycle allocated in.
 void Core::candStart() {
-  if (!cfg_.cand || !cfg_.sectioned) return;
+  if (!cfg_.sectioned) return;
+  if (!cfg_.cand) {
+    // The search form keeps no candidates, but ret_late's deferred frees
+    // read the last group's allocations, so they still turn over.
+    row_alloc_prev_ = row_alloc_;
+    std::fill(row_alloc_.begin(), row_alloc_.end(), 0);
+    return;
+  }
   for (unsigned r : cand_ret_) {
     cyc_rt_.push_back(r);
     if (cfg_.ret_late) { ret_pend_.push_back(r); continue; }   // returned next cycle
@@ -734,12 +741,16 @@ unsigned Core::placePos(unsigned slot, const Uop &u, bool merge) const {
   auto unseen = [&](unsigned a) {
     return cfg_.cand && cfg_.cand_indep && slot < grp_written_.size() && ((grp_written_[slot] >> (a & 15)) & 1u);
   };
+  // A register's width as rename has it: its committed width (the table
+  // the issue's codes come from), not its name's. They differ only where an
+  // atomic wrote it, as a whole row (OI-81: the RTL keeps no width a name).
+  auto width = [&](unsigned a, unsigned n) { return cfg_.cand ? unsigned(s.cw[a & 15]) : nameWidth(n); };
   const unsigned old = s.rat[u.dst & 15];
-  if (merge && !unseen(u.dst) && !isZeroName(old) && nameWidth(old) == w) return align(namePos(old));
+  if (merge && !unseen(u.dst) && !isZeroName(old) && width(u.dst, old) == w) return align(namePos(old));
   for (unsigned i = 0; i != 3; ++i) {
     if (!((u.shape.gpr_reads >> i) & 1u) || unseen(u.src[i])) continue;
     const unsigned n = s.rat[u.src[i] & 15];
-    if (!isZeroName(n) && nameWidth(n) != 0) return align(namePos(n));
+    if (!isZeroName(n) && width(u.src[i], n) != 0) return align(namePos(n));
   }
   const unsigned home = cfg_.place == 1   ? 0
                         : cfg_.place == 2 ? s.home_ctr
@@ -3398,7 +3409,9 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   }
   unsigned pos = 0, plan = 0;
   if (wgpr && cfg_.sectioned && !atomic) {
-    pos = placePos(si, u, merge);
+    // The decided form places on the merge source's read, which a copy's
+    // half takes instead (OI-81: the RTL's attribute is that read).
+    pos = placePos(si, u, merge && !(cfg_.cand && copy));
     plan = planSlice(si, allocWidth(si, u), pos, gprAllowed(si, 1));
   }
   // An atomic's names are whole rows when sectioned: 32-bit data.
@@ -3482,6 +3495,7 @@ bool Core::tryRename(unsigned si, const Uop &u) {
   r.valid = true;
   r.u = u;
   r.seq = s.next_seq++;
+  if (bar_fault || width_fault || format_fault) ++rlog_.faults;
   r.is_mem = mem;
   r.is_store = mem && a.mem_kind == kMemKStore;
   r.is_load = mem && a.mem_kind == kMemKLoad;

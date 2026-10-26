@@ -28,6 +28,9 @@ if os.environ.get('RENAME_FLOORS'):
 scarce = bool(os.environ.get('RENAME_NAMES'))
 if scarce:
     g['NG'], g['CLG'] = (int(x) for x in os.environ['RENAME_NAMES'].split(','))
+# RENAME_SECTIONS=1: the GPR rows' sections and narrow names (slice 6,
+# OI-81/82): run-rtl.sh's sectioned build; the bench runs sectioned cores.
+g['NS'] = (1 << p('CCV_W_PHYS_POS')) if os.environ.get('RENAME_SECTIONS') else 0
 gs = ['-G%s=%d' % kv for kv in g.items()]
 gs += ["-GGZERO=%d'd%d" % (gw, p('CCV_P_PHYS_ZERO') << p('CCV_W_PHYS_POS')),
        "-GPZERO=%d'd%d" % (pw, p('CCV_P_PRED_ZERO'))]
