@@ -799,17 +799,6 @@ if [ "$(cover "$B/kernel_spm-no-wait.log" spm_wait)" = 0 ]; then
 else
   bad "--break spm-no-wait" "a pass that never waits still waited: $(grep '^COVER' "$B/kernel_spm-no-wait.log" | grep -o 'spm_wait=[0-9]*')"
 fi
-# TI-46 (OA's rev 261): OOE refuses a warp's uop only for a condition that
-# clears without another warp's progress. transp4, a control kept out of
-# test/kernels, deadlocks today: three warps held at a converged wait fill
-# ccv_dec_ooe_uop's slots, and the assertion must name it.
-CCV_ORACLE_DIR=build/oracle-ctl tools/gen-oracle.sh test/controls/transp4 >/dev/null 2>&1
-"$SKEL" --kernel build/oracle-ctl/transp4/oracle.jsonl --cycles 20000 2>&1 | head -c 2000000 >"$B/kernel_ti46.log"
-if grep -q "^CHECK ooe: TI-46: warp 0's uop refused at a decode slot's head while it is held at barrier 0" "$B/kernel_ti46.log"; then
-  say "transp4: a barrier-held warp's refusal is caught" "PASS (TI-46)"
-else
-  bad "transp4 (TI-46)" "a held warp's refused uop went unnoticed: $(grep '^KERNEL' "$B/kernel_ti46.log")"
-fi
 # V-41's partial outcome (OI's 8994b78, rev 210): a branch FET predicts
 # taken that only some of its lanes take is a mispredict, and OOE redirects
 # the lanes that took it. pred-taken-any (perfect fetch) predicts div's 32

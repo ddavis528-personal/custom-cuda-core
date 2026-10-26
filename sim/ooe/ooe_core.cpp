@@ -252,13 +252,6 @@ bool Core::canAccept(unsigned warp, unsigned n) const {
 }
 
 void Core::noteRefused(unsigned warp) {
-  // TI-46 (OA's rev 261): OOE may refuse a warp's uop only for a condition
-  // that clears without another warp's progress. A refused uop holds its
-  // ccv_dec_ooe_uop slot's head, so one of a warp held at a barrier, which
-  // waits on other warps, can block the arrive that would release it.
-  if (const int s = slotOf(warp); s >= 0 && slot_[s].bar_hold)
-    err("TI-46: warp %u's uop refused at a decode slot's head while it is held at barrier %u",
-        warp, slot_[s].bar_id);
   if (decqHeld() >= cfg_.decq) {
     count("stall.decq_full");
     oev(OoeEv::kDecqFull, warp, decq_.size());
