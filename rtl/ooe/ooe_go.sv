@@ -364,7 +364,7 @@ module ooe_go #(
       for (int s = 0; s < S; s++) begin
         os_cq02h = '0;
         for (int u = 0; u < R; u++) os_cq02h = os_cq02h | ({R{us_w_cq02h[(s * R + j) * R + u]}} & ou_w_cq02h[(s * R + u) * R +: R]);
-        for (int l = 0; l < R + 1; l++) rq_cq02h[l] = l <= j ? 1'b1 : os_cq02h[(l - j - 1 + R) % R];
+        for (int l = 0; l < R + 1; l++) rq_cq02h[l] = j >= l ? 1'b1 : os_cq02h[(l - j - 1 + R) % R];
         for (int l = 0; l < R; l++)
           lane_c_cq02h[(l * R + j) * S + s] = run_w_cq02h[s * R + j] & rq_cq02h[l] & ~rq_cq02h[l + 1] &
                                               ~(pfs_w_cq02h[s * R + j] && l == R - 1);
@@ -740,7 +740,7 @@ module ooe_go #(
         for (int v = 1; v < R; v++) begin
           nsec_cq01h = '0;
           for (int h = 0; h < v; h++) nsec_cq01h = nsec_cq01h + 3'(pf_nx_cq01h[(s * (R + 1) + k) * R + h]);
-          for (int u = 0; u < v; u++) ut_nx_cq01h[(s * (R + 1) + k) * NU + ui(v, u)] = 3'(v) <= 3'(u) + nsec_cq01h;
+          for (int u = 0; u < v; u++) ut_nx_cq01h[(s * (R + 1) + k) * NU + ui(v, u)] = 3'(u) + nsec_cq01h >= 3'(v);
         end
       end
 

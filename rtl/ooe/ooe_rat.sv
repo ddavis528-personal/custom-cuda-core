@@ -210,7 +210,7 @@ module ooe_rat #(
   logic [S-1:0]    wl_cq02h, rw_cq02h;
   logic [S*C-1:0]  ck_cq02h;
   logic            po_en_cq01h;
-  // Its valid, slot, destination and write bits twice, each (* keep *)
+  // Each of its fields twice, each copy (* keep *)
   // (NGD-7): one leaves for the reads, one drives this module's writes.
   (* keep *) logic [A-1:0]    pi_v_cq02h, pi_gwe_cq02h;
   (* keep *) logic [A*LS-1:0] pi_slot_cq02h;
@@ -226,6 +226,14 @@ module ooe_rat #(
   assign po_gwe_cq02h  = pq_gwe_cq02h;
   assign po_slot_cq02h = pq_slot_cq02h;
   assign po_dst_cq02h  = pq_dst_cq02h;
+  (* keep *) logic [A*GW-1:0] pq_gname_cq02h;
+  (* keep *) logic [A*2-1:0]  pq_pdst_cq02h;
+  (* keep *) logic [A-1:0]    pq_pwe_cq02h;
+  (* keep *) logic [A*PW-1:0] pq_pname_cq02h;
+  assign po_gname_cq02h = pq_gname_cq02h;
+  assign po_pdst_cq02h  = pq_pdst_cq02h;
+  assign po_pwe_cq02h   = pq_pwe_cq02h;
+  assign po_pname_cq02h = pq_pname_cq02h;
   logic [A-1:0]    po_rst_cq02h, po_br_cq02h;
   logic [A*LC-1:0] po_ckpt_cq02h;
   assign po_en_cq01h = wl_cq01h != '0;
@@ -259,10 +267,10 @@ module ooe_rat #(
       pq_dst_cq02h   <= pw_dst_cq01h;
       pi_gwe_cq02h   <= pw_gwe_cq01h;
       pq_gwe_cq02h   <= pw_gwe_cq01h;
-      po_gname_cq02h <= pw_gname_cq01h;
-      po_pdst_cq02h  <= pw_pdst_cq01h;
-      po_pwe_cq02h   <= pw_pwe_cq01h;
-      po_pname_cq02h <= pw_pname_cq01h;
+      pq_gname_cq02h <= pw_gname_cq01h;
+      pq_pdst_cq02h  <= pw_pdst_cq01h;
+      pq_pwe_cq02h   <= pw_pwe_cq01h;
+      pq_pname_cq02h <= pw_pname_cq01h;
       pi_gname_cq02h <= pw_gname_cq01h;
       pi_pdst_cq02h  <= pw_pdst_cq01h;
       pi_pwe_cq02h   <= pw_pwe_cq01h;
