@@ -402,7 +402,10 @@ fi
 # One lane message a cycle also means the misplaced movi takes the message
 # OOE scheduled for the lane op issued beside it, seq 3's srd, whose done
 # V-35 then names a cycle late too: the cost of the movi, not a second fault.
-MOVI_TOTAL=512
+# 512 -> 258 when FET's decode-queue credits replaced OOE's per-warp
+# refusal, TI-46 (b): the lone warp now waits on credits, so the readers of
+# the late movi48 issue later and half of the downstream reads land after it.
+MOVI_TOTAL=258
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
@@ -671,12 +674,12 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
-byp    copy=1 lane_byp=4
+byp    copy=1 lane_byp=3
 plog   merge=3
 chains lane_byp=9
 missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
-mlp    l1_hit=0 reexec=5 fill_notice>0 cmpl_hint>0
+mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4
 swap   slot_reuse=2
@@ -942,10 +945,11 @@ else
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 # The first wrong read follows when OOE's free lists refill: since OI's
-# FreeVec alignment (OI-70, OI-71), seq 204's R3.
-if grep -q "^CHECK lane 0: seq 204 operand 1 (R3) 00000032, oracle 00000064" "$B/kernel_free-new.log" &&
+# FreeVec alignment (OI-70, OI-71), seq 204's R3; since FET's decode-queue
+# credits (TI-46 (b)) pace the warp, seq 203's R4.
+if grep -q "^CHECK lane 0: seq 203 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 204, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 203, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
@@ -1338,11 +1342,12 @@ done
 # orphans its DCU requests, and reports the warp ready to RAU once they are
 # home. RAU restores only a ready warp (RAU spec rev 25), so the restored
 # warp's replayed load hits (stall's one L1 hit; none without the swap).
-# vadd4's discard orphans nothing: it is ready at once.
+# vadd4's discard orphans one request since FET's decode-queue credits pace
+# its warps (TI-46 (b)): it is ready once that comes home.
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
-w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=0 ready=1 restored=1)
+w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=1 ready=1 restored=1)
 if [ -z "$w$w2" ]; then
-  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4 ready at once)"
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4's orphan home, then ready)"
 else
   bad "replay drain" "stall: $w; vadd4: $w2"
 fi
@@ -1535,10 +1540,12 @@ fi
 # and the lane forwards its own result. The lanes answer at the contract, so
 # a dependant that took the register file's value instead would read it
 # stale. Every kernel must pass so with bypass alone, and with both modes
-# off; byp forwards four operands, a third operand among them, and merge a
+# off; byp forwards three operands, a third operand among them, and merge a
 # merge_data. With both off nothing forwards. (byp forwarded five while
 # full-width lane ops could co-issue; at one a cycle, TI-9, tid's third
-# reader, seq 8, issues after tid's write lands and reads the register file.)
+# reader, seq 8, issues after tid's write lands and reads the register file.
+# Four until FET's decode-queue credits, TI-46 (b): the lone warp waits on
+# credits, and seq 7 issues after its producer's write lands.)
 for k in $(ls build/oracle); do
   for cfg in bypass=1,l1_spec=0 bypass=0,l1_spec=0; do
     log="$B/kernel_${k}_${cfg//[=,]/_}.log"
@@ -1556,8 +1563,8 @@ for k in $(ls build/oracle); do
   [ "$(cover "$B/kernel_${k}_bypass_1_l1_spec_0.log" lane_byp)" -gt 0 ] && nbyp=$((nbyp + 1))
   [ "$(cover "$B/kernel_${k}_bypass_0_l1_spec_0.log" lane_byp)" = 0 ] || noff=$((noff + 1))
 done
-if [ "$(cover "$log" lane_byp)" = 4 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
-  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 4; none with both off)"
+if [ "$(cover "$log" lane_byp)" = 3 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
+  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 3; none with both off)"
 else
   bad "byp with bypass" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
 fi
@@ -1565,11 +1572,11 @@ bctl() { CCV_OOE_CONFIG=$1 "$SKEL" --kernel "build/oracle/$2/oracle.jsonl" ${3:+
 # RCU never names the producer: each forwarded operand is the stale value
 # RCU read, on all 32 lanes, and nothing replays it.
 bctl bypass=1 byp no-lane-bypass no-lane-bypass
-n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|7 operand 1|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
-if [ "$n" = 128 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 128 ]; then
-  say "--break no-lane-bypass: forwards read stale" "PASS (4 operands x 32 lanes)"
+n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
+if [ "$n" = 96 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 96 ]; then
+  say "--break no-lane-bypass: forwards read stale" "PASS (3 operands x 32 lanes)"
 else
-  bad "--break no-lane-bypass" "$n stale reads (want 128): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
+  bad "--break no-lane-bypass" "$n stale reads (want 96): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
 fi
 bctl bypass=1 merge no-lane-bypass no-lane-bypass-merge
 if [ "$(grep -c "^CHECK lane [0-9]*: seq 5 merge_data " "$B/kernel_no-lane-bypass-merge.log")" = 16 ]; then
