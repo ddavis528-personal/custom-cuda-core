@@ -16,113 +16,115 @@ namespace ccv {
 enum Channel : uint16_t {
   /// fet -> dec, 8/cycle
   CH_FET_DEC_INSTR = 0,
+  /// ooe -> fet, 4/cycle
+  CH_OOE_FET_DECQ_CREDIT = 1,
   /// dec -> ooe, 6/cycle
-  CH_DEC_OOE_UOP = 1,
+  CH_DEC_OOE_UOP = 2,
   /// ooe -> rcu, 9/cycle
-  CH_OOE_RCU_ISSUE = 2,
+  CH_OOE_RCU_ISSUE = 3,
   /// rcu -> lane, 1/cycle
-  CH_RCU_LANE_OPS = 3,
+  CH_RCU_LANE_OPS = 4,
   /// lane -> rcu, 1/cycle
-  CH_LANE_RCU_RES = 4,
+  CH_LANE_RCU_RES = 5,
   /// rcu -> ooe, 7/cycle
-  CH_RCU_OOE_DONE = 5,
+  CH_RCU_OOE_DONE = 6,
   /// rcu -> miu, 4/cycle
-  CH_RCU_MIU_ADDR = 6,
+  CH_RCU_MIU_ADDR = 7,
   /// miu -> rcu, 4/cycle
-  CH_MIU_RCU_DATA = 7,
+  CH_MIU_RCU_DATA = 8,
   /// ooe -> miu, 4/cycle
-  CH_OOE_MIU_MEMOP = 8,
+  CH_OOE_MIU_MEMOP = 9,
   /// miu -> ooe, 4/cycle
-  CH_MIU_OOE_CMPL = 9,
+  CH_MIU_OOE_CMPL = 10,
   /// ooe -> miu, 4/cycle
-  CH_OOE_MIU_RETIRE = 10,
+  CH_OOE_MIU_RETIRE = 11,
   /// ooe -> fet, 1/cycle
-  CH_OOE_FET_REDIRECT = 11,
+  CH_OOE_FET_REDIRECT = 12,
   /// ooe -> fet, 1/cycle
-  CH_OOE_FET_CKPT_FREE = 12,
+  CH_OOE_FET_CKPT_FREE = 13,
   /// miu -> spm, 4/cycle
-  CH_MIU_SPM_REQ = 13,
+  CH_MIU_SPM_REQ = 14,
   /// spm -> miu, 4/cycle
-  CH_SPM_MIU_RSP = 14,
+  CH_SPM_MIU_RSP = 15,
   /// miu -> dcu, 4/cycle
-  CH_MIU_DCU_REQ = 15,
+  CH_MIU_DCU_REQ = 16,
   /// dcu -> miu, 4/cycle
-  CH_DCU_MIU_RSP = 16,
+  CH_DCU_MIU_RSP = 17,
   /// dcu -> mlc, 1/cycle
-  CH_DCU_MLC_REQ = 17,
+  CH_DCU_MLC_REQ = 18,
   /// mlc -> dcu, 1/cycle
-  CH_MLC_DCU_RSP = 18,
+  CH_MLC_DCU_RSP = 19,
   /// mlc -> dcu, 1/cycle
-  CH_MLC_DCU_PROBE = 19,
+  CH_MLC_DCU_PROBE = 20,
   /// dcu -> mlc, 1/cycle
-  CH_DCU_MLC_PROBE_ACK = 20,
+  CH_DCU_MLC_PROBE_ACK = 21,
   /// fet -> mlc, 1/cycle
-  CH_FET_MLC_IFILL = 21,
+  CH_FET_MLC_IFILL = 22,
   /// mlc -> fet, 1/cycle
-  CH_MLC_FET_IFILL_RSP = 22,
+  CH_MLC_FET_IFILL_RSP = 23,
   /// miu -> fet, 1/cycle
-  CH_MIU_FET_ITLB = 23,
+  CH_MIU_FET_ITLB = 24,
   /// fet -> miu, 1/cycle
-  CH_FET_MIU_ITLB_REQ = 24,
+  CH_FET_MIU_ITLB_REQ = 25,
   /// mlc -> exb, 1/cycle
-  CH_MLC_EXB_REQ = 25,
+  CH_MLC_EXB_REQ = 26,
   /// exb -> mlc, 1/cycle
-  CH_EXB_MLC_RSP = 26,
+  CH_EXB_MLC_RSP = 27,
   /// exb -> EXTERNAL, 1/cycle
-  CH_EXB_EXT_OUT = 27,
+  CH_EXB_EXT_OUT = 28,
   /// rau -> fet, 1/cycle
-  CH_RAU_FET_LAUNCH = 28,
+  CH_RAU_FET_LAUNCH = 29,
   /// rau -> ooe, 1/cycle
-  CH_RAU_OOE_ALLOC = 29,
+  CH_RAU_OOE_ALLOC = 30,
   /// ooe -> rau, 1/cycle
-  CH_OOE_RAU_STATUS = 30,
+  CH_OOE_RAU_STATUS = 31,
   /// rau -> ooe, 1/cycle
-  CH_RAU_OOE_DEMOTE = 31,
+  CH_RAU_OOE_DEMOTE = 32,
   /// ooe -> rau, 1/cycle
-  CH_OOE_RAU_DRAINED = 32,
+  CH_OOE_RAU_DRAINED = 33,
   /// rau -> rcu, 1/cycle
-  CH_RAU_RCU_MIG = 33,
+  CH_RAU_RCU_MIG = 34,
   /// ooe -> rcu, 1/cycle
-  CH_OOE_RCU_MAP = 34,
+  CH_OOE_RCU_MAP = 35,
   /// rcu -> pca, 1/cycle
-  CH_RCU_PCA_MIG = 35,
+  CH_RCU_PCA_MIG = 36,
   /// pca -> rcu, 1/cycle
-  CH_PCA_RCU_MIG = 36,
+  CH_PCA_RCU_MIG = 37,
   /// fet -> pca, 1/cycle
-  CH_FET_PCA_MIG = 37,
+  CH_FET_PCA_MIG = 38,
   /// pca -> fet, 1/cycle
-  CH_PCA_FET_MIG = 38,
+  CH_PCA_FET_MIG = 39,
   /// rau -> fet, 1/cycle
-  CH_RAU_FET_MIG = 39,
+  CH_RAU_FET_MIG = 40,
   /// pca -> rau, 1/cycle
-  CH_PCA_RAU_MIG_DONE = 40,
+  CH_PCA_RAU_MIG_DONE = 41,
   /// rau -> pca, 1/cycle
-  CH_RAU_PCA_MIG = 41,
+  CH_RAU_PCA_MIG = 42,
   /// miu -> rau, 1/cycle
-  CH_MIU_RAU_READY = 42,
+  CH_MIU_RAU_READY = 43,
   /// rau -> miu, 1/cycle
-  CH_RAU_MIU_CTA = 43,
+  CH_RAU_MIU_CTA = 44,
   /// ooe -> syu, 1/cycle
-  CH_OOE_SYU_BAR = 44,
+  CH_OOE_SYU_BAR = 45,
   /// syu -> ooe, 1/cycle
-  CH_SYU_OOE_REL = 45,
+  CH_SYU_OOE_REL = 46,
   /// syu -> fet, 1/cycle
-  CH_SYU_FET_REL = 46,
+  CH_SYU_FET_REL = 47,
   /// syu -> rau, 1/cycle
-  CH_SYU_RAU_READY = 47,
+  CH_SYU_RAU_READY = 48,
   /// rau -> syu, 1/cycle
-  CH_RAU_SYU_ALLOC = 48,
+  CH_RAU_SYU_ALLOC = 49,
   /// ooe -> cru, 1/cycle
-  CH_OOE_CRU_FAULT = 49,
+  CH_OOE_CRU_FAULT = 50,
   /// cru -> rau, 1/cycle
-  CH_CRU_RAU_CFG = 50,
+  CH_CRU_RAU_CFG = 51,
   /// EXTERNAL -> exb, 1/cycle
-  CH_EXT_EXB_IN = 51,
+  CH_EXT_EXB_IN = 52,
   /// dcu -> miu, 4/cycle
-  CH_DCU_MIU_FILL_NTC = 52,
+  CH_DCU_MIU_FILL_NTC = 53,
   /// miu -> ooe, 4/cycle
-  CH_MIU_OOE_CMPL_HINT = 53,
-  kChannelCount = 54,
+  CH_MIU_OOE_CMPL_HINT = 54,
+  kChannelCount = 55,
 };
 
 struct ChannelInfo {
@@ -135,6 +137,7 @@ struct ChannelInfo {
 inline const ChannelInfo &channelInfo(Channel c) {
   static const ChannelInfo kInfo[] = {
       {"ccv_fet_dec_instr", "fet", "dec", 8},
+      {"ccv_ooe_fet_decq_credit", "ooe", "fet", 4},
       {"ccv_dec_ooe_uop", "dec", "ooe", 6},
       {"ccv_ooe_rcu_issue", "ooe", "rcu", 9},
       {"ccv_rcu_lane_ops", "rcu", "lane", 1},
@@ -196,11 +199,11 @@ static constexpr unsigned kPortsCru = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsDcu = 7;  // 3 in, 4 out
 static constexpr unsigned kPortsDec = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsExb = 4;  // 2 in, 2 out
-static constexpr unsigned kPortsFet = 12;  // 8 in, 4 out
+static constexpr unsigned kPortsFet = 13;  // 9 in, 4 out
 static constexpr unsigned kPortsLane = 2;  // 1 in, 1 out
 static constexpr unsigned kPortsMiu = 15;  // 8 in, 7 out
 static constexpr unsigned kPortsMlc = 8;  // 4 in, 4 out
-static constexpr unsigned kPortsOoe = 17;  // 7 in, 10 out
+static constexpr unsigned kPortsOoe = 18;  // 7 in, 11 out
 static constexpr unsigned kPortsPca = 6;  // 3 in, 3 out
 static constexpr unsigned kPortsRau = 14;  // 6 in, 8 out
 static constexpr unsigned kPortsRcu = 10;  // 6 in, 4 out

@@ -33,116 +33,118 @@
 //   csr_credit       out  star      Credit return for the CSR channel.
 //   clk_gated        out  observe   CCV_CHECK only: the block's clock gate is closed this cycle.
 
-localparam int CCV_NUM_CHANNELS = 54;
+localparam int CCV_NUM_CHANNELS = 55;
 
 // fet -> dec, 8/cycle
 localparam int CCV_CH_FET_DEC_INSTR = 0;
+// ooe -> fet, 4/cycle
+localparam int CCV_CH_OOE_FET_DECQ_CREDIT = 1;
 // dec -> ooe, 6/cycle
-localparam int CCV_CH_DEC_OOE_UOP = 1;
+localparam int CCV_CH_DEC_OOE_UOP = 2;
 // ooe -> rcu, 9/cycle
-localparam int CCV_CH_OOE_RCU_ISSUE = 2;
+localparam int CCV_CH_OOE_RCU_ISSUE = 3;
 // rcu -> lane, 1/cycle
-localparam int CCV_CH_RCU_LANE_OPS = 3;
+localparam int CCV_CH_RCU_LANE_OPS = 4;
 // lane -> rcu, 1/cycle
-localparam int CCV_CH_LANE_RCU_RES = 4;
+localparam int CCV_CH_LANE_RCU_RES = 5;
 // rcu -> ooe, 7/cycle
-localparam int CCV_CH_RCU_OOE_DONE = 5;
+localparam int CCV_CH_RCU_OOE_DONE = 6;
 // rcu -> miu, 4/cycle
-localparam int CCV_CH_RCU_MIU_ADDR = 6;
+localparam int CCV_CH_RCU_MIU_ADDR = 7;
 // miu -> rcu, 4/cycle
-localparam int CCV_CH_MIU_RCU_DATA = 7;
+localparam int CCV_CH_MIU_RCU_DATA = 8;
 // ooe -> miu, 4/cycle
-localparam int CCV_CH_OOE_MIU_MEMOP = 8;
+localparam int CCV_CH_OOE_MIU_MEMOP = 9;
 // miu -> ooe, 4/cycle
-localparam int CCV_CH_MIU_OOE_CMPL = 9;
+localparam int CCV_CH_MIU_OOE_CMPL = 10;
 // ooe -> miu, 4/cycle
-localparam int CCV_CH_OOE_MIU_RETIRE = 10;
+localparam int CCV_CH_OOE_MIU_RETIRE = 11;
 // ooe -> fet, 1/cycle
-localparam int CCV_CH_OOE_FET_REDIRECT = 11;
+localparam int CCV_CH_OOE_FET_REDIRECT = 12;
 // ooe -> fet, 1/cycle
-localparam int CCV_CH_OOE_FET_CKPT_FREE = 12;
+localparam int CCV_CH_OOE_FET_CKPT_FREE = 13;
 // miu -> spm, 4/cycle
-localparam int CCV_CH_MIU_SPM_REQ = 13;
+localparam int CCV_CH_MIU_SPM_REQ = 14;
 // spm -> miu, 4/cycle
-localparam int CCV_CH_SPM_MIU_RSP = 14;
+localparam int CCV_CH_SPM_MIU_RSP = 15;
 // miu -> dcu, 4/cycle
-localparam int CCV_CH_MIU_DCU_REQ = 15;
+localparam int CCV_CH_MIU_DCU_REQ = 16;
 // dcu -> miu, 4/cycle
-localparam int CCV_CH_DCU_MIU_RSP = 16;
+localparam int CCV_CH_DCU_MIU_RSP = 17;
 // dcu -> mlc, 1/cycle
-localparam int CCV_CH_DCU_MLC_REQ = 17;
+localparam int CCV_CH_DCU_MLC_REQ = 18;
 // mlc -> dcu, 1/cycle
-localparam int CCV_CH_MLC_DCU_RSP = 18;
+localparam int CCV_CH_MLC_DCU_RSP = 19;
 // mlc -> dcu, 1/cycle
-localparam int CCV_CH_MLC_DCU_PROBE = 19;
+localparam int CCV_CH_MLC_DCU_PROBE = 20;
 // dcu -> mlc, 1/cycle
-localparam int CCV_CH_DCU_MLC_PROBE_ACK = 20;
+localparam int CCV_CH_DCU_MLC_PROBE_ACK = 21;
 // fet -> mlc, 1/cycle
-localparam int CCV_CH_FET_MLC_IFILL = 21;
+localparam int CCV_CH_FET_MLC_IFILL = 22;
 // mlc -> fet, 1/cycle
-localparam int CCV_CH_MLC_FET_IFILL_RSP = 22;
+localparam int CCV_CH_MLC_FET_IFILL_RSP = 23;
 // miu -> fet, 1/cycle
-localparam int CCV_CH_MIU_FET_ITLB = 23;
+localparam int CCV_CH_MIU_FET_ITLB = 24;
 // fet -> miu, 1/cycle
-localparam int CCV_CH_FET_MIU_ITLB_REQ = 24;
+localparam int CCV_CH_FET_MIU_ITLB_REQ = 25;
 // mlc -> exb, 1/cycle
-localparam int CCV_CH_MLC_EXB_REQ = 25;
+localparam int CCV_CH_MLC_EXB_REQ = 26;
 // exb -> mlc, 1/cycle
-localparam int CCV_CH_EXB_MLC_RSP = 26;
+localparam int CCV_CH_EXB_MLC_RSP = 27;
 // exb -> EXTERNAL, 1/cycle
-localparam int CCV_CH_EXB_EXT_OUT = 27;
+localparam int CCV_CH_EXB_EXT_OUT = 28;
 // rau -> fet, 1/cycle
-localparam int CCV_CH_RAU_FET_LAUNCH = 28;
+localparam int CCV_CH_RAU_FET_LAUNCH = 29;
 // rau -> ooe, 1/cycle
-localparam int CCV_CH_RAU_OOE_ALLOC = 29;
+localparam int CCV_CH_RAU_OOE_ALLOC = 30;
 // ooe -> rau, 1/cycle
-localparam int CCV_CH_OOE_RAU_STATUS = 30;
+localparam int CCV_CH_OOE_RAU_STATUS = 31;
 // rau -> ooe, 1/cycle
-localparam int CCV_CH_RAU_OOE_DEMOTE = 31;
+localparam int CCV_CH_RAU_OOE_DEMOTE = 32;
 // ooe -> rau, 1/cycle
-localparam int CCV_CH_OOE_RAU_DRAINED = 32;
+localparam int CCV_CH_OOE_RAU_DRAINED = 33;
 // rau -> rcu, 1/cycle
-localparam int CCV_CH_RAU_RCU_MIG = 33;
+localparam int CCV_CH_RAU_RCU_MIG = 34;
 // ooe -> rcu, 1/cycle
-localparam int CCV_CH_OOE_RCU_MAP = 34;
+localparam int CCV_CH_OOE_RCU_MAP = 35;
 // rcu -> pca, 1/cycle
-localparam int CCV_CH_RCU_PCA_MIG = 35;
+localparam int CCV_CH_RCU_PCA_MIG = 36;
 // pca -> rcu, 1/cycle
-localparam int CCV_CH_PCA_RCU_MIG = 36;
+localparam int CCV_CH_PCA_RCU_MIG = 37;
 // fet -> pca, 1/cycle
-localparam int CCV_CH_FET_PCA_MIG = 37;
+localparam int CCV_CH_FET_PCA_MIG = 38;
 // pca -> fet, 1/cycle
-localparam int CCV_CH_PCA_FET_MIG = 38;
+localparam int CCV_CH_PCA_FET_MIG = 39;
 // rau -> fet, 1/cycle
-localparam int CCV_CH_RAU_FET_MIG = 39;
+localparam int CCV_CH_RAU_FET_MIG = 40;
 // pca -> rau, 1/cycle
-localparam int CCV_CH_PCA_RAU_MIG_DONE = 40;
+localparam int CCV_CH_PCA_RAU_MIG_DONE = 41;
 // rau -> pca, 1/cycle
-localparam int CCV_CH_RAU_PCA_MIG = 41;
+localparam int CCV_CH_RAU_PCA_MIG = 42;
 // miu -> rau, 1/cycle
-localparam int CCV_CH_MIU_RAU_READY = 42;
+localparam int CCV_CH_MIU_RAU_READY = 43;
 // rau -> miu, 1/cycle
-localparam int CCV_CH_RAU_MIU_CTA = 43;
+localparam int CCV_CH_RAU_MIU_CTA = 44;
 // ooe -> syu, 1/cycle
-localparam int CCV_CH_OOE_SYU_BAR = 44;
+localparam int CCV_CH_OOE_SYU_BAR = 45;
 // syu -> ooe, 1/cycle
-localparam int CCV_CH_SYU_OOE_REL = 45;
+localparam int CCV_CH_SYU_OOE_REL = 46;
 // syu -> fet, 1/cycle
-localparam int CCV_CH_SYU_FET_REL = 46;
+localparam int CCV_CH_SYU_FET_REL = 47;
 // syu -> rau, 1/cycle
-localparam int CCV_CH_SYU_RAU_READY = 47;
+localparam int CCV_CH_SYU_RAU_READY = 48;
 // rau -> syu, 1/cycle
-localparam int CCV_CH_RAU_SYU_ALLOC = 48;
+localparam int CCV_CH_RAU_SYU_ALLOC = 49;
 // ooe -> cru, 1/cycle
-localparam int CCV_CH_OOE_CRU_FAULT = 49;
+localparam int CCV_CH_OOE_CRU_FAULT = 50;
 // cru -> rau, 1/cycle
-localparam int CCV_CH_CRU_RAU_CFG = 50;
+localparam int CCV_CH_CRU_RAU_CFG = 51;
 // EXTERNAL -> exb, 1/cycle
-localparam int CCV_CH_EXT_EXB_IN = 51;
+localparam int CCV_CH_EXT_EXB_IN = 52;
 // dcu -> miu, 4/cycle
-localparam int CCV_CH_DCU_MIU_FILL_NTC = 52;
+localparam int CCV_CH_DCU_MIU_FILL_NTC = 53;
 // miu -> ooe, 4/cycle
-localparam int CCV_CH_MIU_OOE_CMPL_HINT = 53;
+localparam int CCV_CH_MIU_OOE_CMPL_HINT = 54;
 
 // Payload structs, for channels whose every field has a
 // decided width. A channel missing one generates no struct --
@@ -162,6 +164,12 @@ typedef struct packed {
   logic                                          final_exit;
   logic                                          all_waiting;
 } ccv_fet_dec_instr_t;
+
+typedef struct packed {
+  logic [ccv_params_pkg::CCV_W_TIER1_ID-1:0]     tier1_id;
+  logic [ccv_prov_pkg::CCV_W_DECQ_CREDIT-1:0]    credit_count;
+  logic                                          released;
+} ccv_ooe_fet_decq_credit_t;
 
 typedef struct packed {
   logic [ccv_params_pkg::CCV_W_WARP_ID-1:0]      warp_id;
@@ -625,11 +633,11 @@ localparam int CCV_PORTS_CRU = 2;  // 1 in, 1 out
 localparam int CCV_PORTS_DCU = 7;  // 3 in, 4 out
 localparam int CCV_PORTS_DEC = 2;  // 1 in, 1 out
 localparam int CCV_PORTS_EXB = 4;  // 2 in, 2 out
-localparam int CCV_PORTS_FET = 12;  // 8 in, 4 out
+localparam int CCV_PORTS_FET = 13;  // 9 in, 4 out
 localparam int CCV_PORTS_LANE = 2;  // 1 in, 1 out
 localparam int CCV_PORTS_MIU = 15;  // 8 in, 7 out
 localparam int CCV_PORTS_MLC = 8;  // 4 in, 4 out
-localparam int CCV_PORTS_OOE = 17;  // 7 in, 10 out
+localparam int CCV_PORTS_OOE = 18;  // 7 in, 11 out
 localparam int CCV_PORTS_PCA = 6;  // 3 in, 3 out
 localparam int CCV_PORTS_RAU = 14;  // 6 in, 8 out
 localparam int CCV_PORTS_RCU = 10;  // 6 in, 4 out

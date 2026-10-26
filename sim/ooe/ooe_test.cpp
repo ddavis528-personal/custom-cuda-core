@@ -41,6 +41,9 @@ bool g_quiet = false;     ///< a negative control's expected failures
 /// with OOE_TEST_AS_LIBRARY uses it to check RTL against the live core.
 void (*g_cycle_hook)(const Core &) = nullptr;
 void (*g_config_hook)(Config &) = nullptr;   // an RTL bench's settings, over every test's
+/// An RTL bench's settings over each random test's own (randomConfig's last
+/// step): what the bench's build is for, whatever the seed and mode chose.
+void (*g_random_config_hook)(Config &) = nullptr;
 /// Called just before every core cycle, after that cycle's inputs: the
 /// whole interval between two FreeVec::clock() calls is then visible.
 void (*g_pre_cycle_hook)(const Core &) = nullptr;
@@ -3202,6 +3205,83 @@ void testFormatFault() {
   }
 }
 
+/// Placement across and within a rename group (AR-15; OI-81 (ii), OA's rev
+/// 252). Across groups a narrow op follows its source's position and a
+/// merge keeps its old destination's; within a group a source or old
+/// destination written earlier in it is not seen, so the op takes its
+/// warp's home (8-bit: the slot index). Slot 1, so home is section 1 for
+/// 8 bits and sections 2-3 for 16. The control, in-group-follows, runs the
+/// old rule (cand_indep off), which follows inside the group too.
+bool narrowPlacement(bool control = false) {
+  Config c = baseConfig();
+  c.sectioned = true;
+  c.place = 0;
+  c.l1_spec = false;
+  c.cand_indep = !control;
+  if (!control) g_test = "sections: placement within a rename group and across groups";
+  bool ok = true;
+  auto check = [&](bool cond, const std::string &what) {
+    if (cond) return;
+    ok = false;
+    if (!control) EXPECT(false, "%s", what.c_str());
+  };
+  auto at = [](const char *where, unsigned long long tid, unsigned v, const char *what) {
+    return std::string(where) + ": tid " + std::to_string(tid) + " " + what + " " + std::to_string(v);
+  };
+  // (1) In one group: tid 1 writes R4 at 16 bits (home, 2); tid 2 reads it
+  // at 8 bits and tid 3 merges R5, both written in the group: home, 1.
+  {
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);
+    Op b; b.k = kLane; b.dst = 5; b.w = 2; b.src[0] = 4; b.nsrc = 1; p.push_back(b);
+    Op m; m.k = kLane; m.dst = 5; m.w = 2; m.mask = 0xffff; p.push_back(m);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(5, 1, p);
+    e.finish();
+    unsigned seen = 0;
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.port < 4 && !i.copy) {
+          ++seen;
+          const unsigned want = i.tid == 1 ? 2 : 1;
+          check(e.core.namePos(i.pdst) == want, at("in one group", i.tid, e.core.namePos(i.pdst), "placed at"));
+        }
+    check(seen == 3, "in one group: " + std::to_string(seen) + " lane issues");
+    check(e.errors.empty(), "in one group: " + (e.errors.empty() ? std::string() : e.errors[0]));
+  }
+  // (2) Across groups (three 32-bit ops between, so never in a group of
+  // the width): tid 5 follows R4 to 2, and tid 9's merge of R5 keeps 2.
+  {
+    Env e(c);
+    e.keep_log = true;
+    std::vector<Op> p;
+    auto fill = [&]() {
+      for (unsigned r = 8; r != 11; ++r) { Op f; f.k = kLane; f.dst = r; f.w = 0; p.push_back(f); }
+    };
+    Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);
+    fill();
+    Op b; b.k = kLane; b.dst = 5; b.w = 2; b.src[0] = 4; b.nsrc = 1; p.push_back(b);
+    fill();
+    Op m; m.k = kLane; m.dst = 5; m.w = 2; m.mask = 0xffff; p.push_back(m);
+    Op ex; ex.k = kExit; p.push_back(ex);
+    e.launch(5, 1, p);
+    e.finish();
+    unsigned seen = 0;
+    for (const Outputs &o : e.log)
+      for (const Issue &i : o.issues)
+        if (i.port < 4 && !i.copy && (i.tid == 1 || i.tid == 5 || i.tid == 9)) {
+          ++seen;
+          check(e.core.namePos(i.pdst) == 2, at("across groups", i.tid, e.core.namePos(i.pdst), "placed at"));
+          check(i.port == 2, at("across groups", i.tid, i.port, "issued on port"));
+        }
+    check(seen == 3, "across groups: " + std::to_string(seen) + " narrow lane issues");
+    check(e.errors.empty(), "across groups: " + (e.errors.empty() ? std::string() : e.errors[0]));
+  }
+  return ok;
+}
+
 /// Sectioned lanes (OI-29 to OI-33): narrow registers placed in sections,
 /// footprints widened per unit, and lane ops co-issued on disjoint sections.
 void testSections() {
@@ -3275,32 +3355,7 @@ void testSections() {
   g_test = "sections: SFU takes the whole lane";
   EXPECT(maxLane(run(cfgS(0), kSfu, 2, {0, 2})) == 1, "two SFU ops in a cycle");
 
-  g_test = "sections: a narrow op follows its source; a merge keeps its position";
-  {
-    Config c = cfgS(0);
-    Env e(c);
-    e.keep_log = true;
-    std::vector<Op> p;
-    // Slot 1's home is section 1 (8-bit) or sections 2-3 (16-bit); the
-    // source and merge rules must override it.
-    Op a; a.k = kLane; a.dst = 4; a.w = 1; p.push_back(a);                               // tid 1: 16-bit, sections 2-3
-    Op b; b.k = kLane; b.dst = 5; b.w = 2; b.src[0] = 4; b.nsrc = 1; p.push_back(b);     // tid 2: follows R4 to 2
-    Op m; m.k = kLane; m.dst = 5; m.w = 2; m.mask = 0xffff; p.push_back(m);              // tid 3: merges R5 at 2
-    Op ex; ex.k = kExit; p.push_back(ex);
-    e.launch(5, 1, p);
-    e.finish();
-    unsigned seen = 0;
-    for (const Outputs &o : e.log)
-      for (const Issue &i : o.issues)
-        if (i.port < 4 && !i.copy) {
-          ++seen;
-          EXPECT(e.core.namePos(i.pdst) == 2, "tid %llu placed at %u, not section 2",
-                 (unsigned long long)i.tid, e.core.namePos(i.pdst));
-          EXPECT(i.port == 2, "tid %llu issued on port %u", (unsigned long long)i.tid, i.port);
-        }
-    EXPECT(seen == 3, "%u lane issues", seen);
-    EXPECT(e.errors.empty(), "%s", e.errors.empty() ? "" : e.errors[0].c_str());
-  }
+  narrowPlacement();
 
   g_test = "sections: narrow loads of two warps take their own MIU pipes";
   {
@@ -3392,6 +3447,7 @@ Config randomConfig(unsigned seed, int mode) {
   // a lane latency past the wake, so grandchildren issue on a load that
   // then misses and transitive cancel takes more than one hop.
   if (seed % 7 == 3) c.lat_l1_cmpl = c.lat_l1_wake + c.lat_lane;
+  if (g_random_config_hook) g_random_config_hook(c);
   return c;
 }
 
@@ -4609,8 +4665,8 @@ void sweepSections() {
   // AR-16: under the decided default (place 0, home = slot index) one
   // warp's narrow ops share a section, so its rows are 1.0x by design.
   std::printf("One-warp rows at place=slot are 1.0x by design (AR-16): narrow rates are aggregate across warps.\n\n");
-  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | element ops/cycle | outside setp cycles | int foot / spread | FP foot / spread | idle sections/cycle | lost resource |\n"
-              "|---|---|---|---|---|---|---|---|---|---|---|---|\n");
+  std::printf("| kernel | warps | place | OA-13 | cycles | vs slot | element ops/cycle | outside setp cycles | int foot / spread | FP foot / spread | idle sections/cycle | lost resource | rows in use |\n"
+              "|---|---|---|---|---|---|---|---|---|---|---|---|---|\n");
   for (const Kern &k : ks)
     for (unsigned warps : {1u, 4u}) {
       double ref = 0;
@@ -4622,7 +4678,7 @@ void sweepSections() {
           c.sectioned = true;
           c.place = place;
           c.loads_pass_loads = oa13;
-          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0, narrow = 0, full = 0;
+          uint64_t cyc = 0, cycles_seen = 0, idle = 0, lost = 0, narrow = 0, full = 0, rows_n = 0, rows_sum = 0;
           // [int, FP] x [footprint, spread]: op count and section sum.
           uint64_t n[2][2] = {}, sum[2][2] = {};
           const unsigned seeds = 4;
@@ -4645,6 +4701,7 @@ void sweepSections() {
               for (auto &h : kv.second) { n[g][spread] += h.second; sum[g][spread] += h.first * h.second; }
             }
             for (auto &h : e.core.histograms["sections_idle"]) { cycles_seen += h.second; idle += h.first * h.second; }
+            for (auto &h : e.core.histograms["rows_in_use"]) { rows_n += h.second; rows_sum += h.first * h.second; }
             lost += e.core.counters["select.lost_resource"];
             narrow += e.core.counters["select.lane_elem"];
             full += e.core.counters["select.lane_ctl_cycles"];
@@ -4654,10 +4711,11 @@ void sweepSections() {
           auto mean = [&](int g, int sp) { return n[g][sp] ? double(sum[g][sp]) / double(n[g][sp]) : 0.0; };
           char fp[32] = "-";
           if (n[1][0]) std::snprintf(fp, sizeof fp, "%.2f / %.2f", mean(1, 0), mean(1, 1));
-          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.2f / %.2f | %s | %.2f | %.0f |\n", k.name, warps,
+          std::printf("| %s | %u | %s | %s | %.0f | %.3f | %.2f | %.2f | %.2f / %.2f | %s | %.2f | %.0f | %.1f |\n", k.name, warps,
                       pn[place], oa13 ? "on" : "off", cy, cy / ref, double(narrow) / double(cyc),
                       cyc > full ? double(narrow) / double(cyc - full) : 0.0, mean(0, 0), mean(0, 1), fp,
-                      cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds);
+                      cycles_seen ? double(idle) / cycles_seen : 0.0, double(lost) / seeds,
+                      rows_n ? double(rows_sum) / double(rows_n) : 0.0);
         }
     }
 }
@@ -4762,6 +4820,9 @@ int ooeTestDirectedPrePostWith(void (*pre)(const Core &), void (*post)(const Cor
 /// pre and post are the hooks before and after each core cycle, cfg the
 /// settings the RTL under test assumes (any may be null). Returns the
 /// failure count.
+/// Settings a bench holds each random test to, after the test's own.
+void ooeTestRandomOver(void (*cfg)(Config &)) { g_random_config_hook = cfg; }
+
 int ooeTestScenario(const std::string &scenario, unsigned seeds, unsigned idle_cycles,
                     void (*pre)(const Core &), void (*post)(const Core &), void (*cfg)(Config &)) {
   g_pre_cycle_hook = pre;
@@ -4909,6 +4970,13 @@ int main(int argc, char **argv) {
     testAtomicRandom(10, randomConfig, k);
     const bool caught = g_fail != saved;
     g_fail = saved;
+    g_test = name;
+    EXPECT(caught, "the harness missed it");
+    std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");
+  }
+  {
+    const char *name = "control in-group-follows";
+    const bool caught = !narrowPlacement(true);
     g_test = name;
     EXPECT(caught, "the harness missed it");
     std::printf("  %-24s %s\n", name, caught ? "caught" : "MISSED");

@@ -14,6 +14,7 @@
 
 module ccv_fet_w #(
   parameter int RPT_FET_DEC_INSTR = 0,
+  parameter int RPT_OOE_FET_DECQ_CREDIT = 0,
   parameter int RPT_OOE_FET_REDIRECT = 0,
   parameter int RPT_OOE_FET_CKPT_FREE = 0,
   parameter int RPT_FET_MLC_IFILL = 0,
@@ -63,6 +64,23 @@ module ccv_fet_w #(
   logic b_fet_dec_instr_s7_credit;
   logic b_fet_dec_instr_s7_stall;
   logic b_fet_dec_instr_wake;
+  logic b_ooe_fet_decq_credit_s0_valid;
+  ccv_ooe_fet_decq_credit_t b_ooe_fet_decq_credit_s0_payload;
+  logic b_ooe_fet_decq_credit_s0_credit;
+  logic b_ooe_fet_decq_credit_s0_stall;
+  logic b_ooe_fet_decq_credit_s1_valid;
+  ccv_ooe_fet_decq_credit_t b_ooe_fet_decq_credit_s1_payload;
+  logic b_ooe_fet_decq_credit_s1_credit;
+  logic b_ooe_fet_decq_credit_s1_stall;
+  logic b_ooe_fet_decq_credit_s2_valid;
+  ccv_ooe_fet_decq_credit_t b_ooe_fet_decq_credit_s2_payload;
+  logic b_ooe_fet_decq_credit_s2_credit;
+  logic b_ooe_fet_decq_credit_s2_stall;
+  logic b_ooe_fet_decq_credit_s3_valid;
+  ccv_ooe_fet_decq_credit_t b_ooe_fet_decq_credit_s3_payload;
+  logic b_ooe_fet_decq_credit_s3_credit;
+  logic b_ooe_fet_decq_credit_s3_stall;
+  logic b_ooe_fet_decq_credit_wake;
   logic b_ooe_fet_redirect_valid;
   ccv_ooe_fet_redirect_t b_ooe_fet_redirect_payload;
   logic b_ooe_fet_redirect_credit;
@@ -127,6 +145,10 @@ module ccv_fet_w #(
   logic [63:0] b_fet_dec_instr_s5_tid;
   logic [63:0] b_fet_dec_instr_s6_tid;
   logic [63:0] b_fet_dec_instr_s7_tid;
+  logic [63:0] b_ooe_fet_decq_credit_s0_tid;
+  logic [63:0] b_ooe_fet_decq_credit_s1_tid;
+  logic [63:0] b_ooe_fet_decq_credit_s2_tid;
+  logic [63:0] b_ooe_fet_decq_credit_s3_tid;
   logic [63:0] b_ooe_fet_redirect_tid;
   logic [63:0] b_ooe_fet_ckpt_free_tid;
   logic [63:0] b_fet_mlc_ifill_tid;
@@ -184,6 +206,23 @@ module ccv_fet_w #(
     .fet_dec_instr_s7_credit(b_fet_dec_instr_s7_credit),
     .fet_dec_instr_s7_stall(b_fet_dec_instr_s7_stall),
     .fet_dec_instr_wake(b_fet_dec_instr_wake),
+    .ooe_fet_decq_credit_s0_valid(b_ooe_fet_decq_credit_s0_valid),
+    .ooe_fet_decq_credit_s0_payload(b_ooe_fet_decq_credit_s0_payload),
+    .ooe_fet_decq_credit_s0_credit(b_ooe_fet_decq_credit_s0_credit),
+    .ooe_fet_decq_credit_s0_stall(b_ooe_fet_decq_credit_s0_stall),
+    .ooe_fet_decq_credit_s1_valid(b_ooe_fet_decq_credit_s1_valid),
+    .ooe_fet_decq_credit_s1_payload(b_ooe_fet_decq_credit_s1_payload),
+    .ooe_fet_decq_credit_s1_credit(b_ooe_fet_decq_credit_s1_credit),
+    .ooe_fet_decq_credit_s1_stall(b_ooe_fet_decq_credit_s1_stall),
+    .ooe_fet_decq_credit_s2_valid(b_ooe_fet_decq_credit_s2_valid),
+    .ooe_fet_decq_credit_s2_payload(b_ooe_fet_decq_credit_s2_payload),
+    .ooe_fet_decq_credit_s2_credit(b_ooe_fet_decq_credit_s2_credit),
+    .ooe_fet_decq_credit_s2_stall(b_ooe_fet_decq_credit_s2_stall),
+    .ooe_fet_decq_credit_s3_valid(b_ooe_fet_decq_credit_s3_valid),
+    .ooe_fet_decq_credit_s3_payload(b_ooe_fet_decq_credit_s3_payload),
+    .ooe_fet_decq_credit_s3_credit(b_ooe_fet_decq_credit_s3_credit),
+    .ooe_fet_decq_credit_s3_stall(b_ooe_fet_decq_credit_s3_stall),
+    .ooe_fet_decq_credit_wake(b_ooe_fet_decq_credit_wake),
     .ooe_fet_redirect_valid(b_ooe_fet_redirect_valid),
     .ooe_fet_redirect_payload(b_ooe_fet_redirect_payload),
     .ooe_fet_redirect_credit(b_ooe_fet_redirect_credit),
@@ -251,6 +290,10 @@ module ccv_fet_w #(
     , .fet_dec_instr_s5_tid(b_fet_dec_instr_s5_tid)
     , .fet_dec_instr_s6_tid(b_fet_dec_instr_s6_tid)
     , .fet_dec_instr_s7_tid(b_fet_dec_instr_s7_tid)
+    , .ooe_fet_decq_credit_s0_tid(b_ooe_fet_decq_credit_s0_tid)
+    , .ooe_fet_decq_credit_s1_tid(b_ooe_fet_decq_credit_s1_tid)
+    , .ooe_fet_decq_credit_s2_tid(b_ooe_fet_decq_credit_s2_tid)
+    , .ooe_fet_decq_credit_s3_tid(b_ooe_fet_decq_credit_s3_tid)
     , .ooe_fet_redirect_tid(b_ooe_fet_redirect_tid)
     , .ooe_fet_ckpt_free_tid(b_ooe_fet_ckpt_free_tid)
     , .fet_mlc_ifill_tid(b_fet_mlc_ifill_tid)
@@ -285,6 +328,28 @@ module ccv_fet_w #(
     assign {b_fet_dec_instr_s7_stall, b_fet_dec_instr_s6_stall, b_fet_dec_instr_s5_stall, b_fet_dec_instr_s4_stall, b_fet_dec_instr_s3_stall, b_fet_dec_instr_s2_stall, b_fet_dec_instr_s1_stall, b_fet_dec_instr_s0_stall} = {fet_dec_instr_s7_stall, fet_dec_instr_s6_stall, fet_dec_instr_s5_stall, fet_dec_instr_s4_stall, fet_dec_instr_s3_stall, fet_dec_instr_s2_stall, fet_dec_instr_s1_stall, fet_dec_instr_s0_stall};
 `ifdef CCV_TRACE
     assign {fet_dec_instr_s7_tid, fet_dec_instr_s6_tid, fet_dec_instr_s5_tid, fet_dec_instr_s4_tid, fet_dec_instr_s3_tid, fet_dec_instr_s2_tid, fet_dec_instr_s1_tid, fet_dec_instr_s0_tid} = {b_fet_dec_instr_s7_tid, b_fet_dec_instr_s6_tid, b_fet_dec_instr_s5_tid, b_fet_dec_instr_s4_tid, b_fet_dec_instr_s3_tid, b_fet_dec_instr_s2_tid, b_fet_dec_instr_s1_tid, b_fet_dec_instr_s0_tid};
+`endif
+  end
+  // ccv_ooe_fet_decq_credit, destination end
+  if (RPT_OOE_FET_DECQ_CREDIT > 0) begin : g_rpt_ooe_fet_decq_credit
+    ccv_common_rpt #(.STAGES(RPT_OOE_FET_DECQ_CREDIT), .SLOTS(4), .PAYLOAD_W(7)) u_rpt_ooe_fet_decq_credit (
+      .clk(core_clk), .rst_n(rst_n),
+      .src_valid({ooe_fet_decq_credit_s3_valid, ooe_fet_decq_credit_s2_valid, ooe_fet_decq_credit_s1_valid, ooe_fet_decq_credit_s0_valid}), .src_payload({ooe_fet_decq_credit_s3_payload, ooe_fet_decq_credit_s2_payload, ooe_fet_decq_credit_s1_payload, ooe_fet_decq_credit_s0_payload}),
+      .src_wake(ooe_fet_decq_credit_wake), .src_credit({ooe_fet_decq_credit_s3_credit, ooe_fet_decq_credit_s2_credit, ooe_fet_decq_credit_s1_credit, ooe_fet_decq_credit_s0_credit}), .src_stall({ooe_fet_decq_credit_s3_stall, ooe_fet_decq_credit_s2_stall, ooe_fet_decq_credit_s1_stall, ooe_fet_decq_credit_s0_stall}),
+      .dst_valid({b_ooe_fet_decq_credit_s3_valid, b_ooe_fet_decq_credit_s2_valid, b_ooe_fet_decq_credit_s1_valid, b_ooe_fet_decq_credit_s0_valid}), .dst_payload({b_ooe_fet_decq_credit_s3_payload, b_ooe_fet_decq_credit_s2_payload, b_ooe_fet_decq_credit_s1_payload, b_ooe_fet_decq_credit_s0_payload}),
+      .dst_wake(b_ooe_fet_decq_credit_wake), .dst_credit({b_ooe_fet_decq_credit_s3_credit, b_ooe_fet_decq_credit_s2_credit, b_ooe_fet_decq_credit_s1_credit, b_ooe_fet_decq_credit_s0_credit}), .dst_stall({b_ooe_fet_decq_credit_s3_stall, b_ooe_fet_decq_credit_s2_stall, b_ooe_fet_decq_credit_s1_stall, b_ooe_fet_decq_credit_s0_stall})
+`ifdef CCV_TRACE
+      , .src_tid({ooe_fet_decq_credit_s3_tid, ooe_fet_decq_credit_s2_tid, ooe_fet_decq_credit_s1_tid, ooe_fet_decq_credit_s0_tid}), .dst_tid({b_ooe_fet_decq_credit_s3_tid, b_ooe_fet_decq_credit_s2_tid, b_ooe_fet_decq_credit_s1_tid, b_ooe_fet_decq_credit_s0_tid})
+`endif
+    );
+  end else begin : g_wire_ooe_fet_decq_credit
+    assign {b_ooe_fet_decq_credit_s3_valid, b_ooe_fet_decq_credit_s2_valid, b_ooe_fet_decq_credit_s1_valid, b_ooe_fet_decq_credit_s0_valid} = {ooe_fet_decq_credit_s3_valid, ooe_fet_decq_credit_s2_valid, ooe_fet_decq_credit_s1_valid, ooe_fet_decq_credit_s0_valid};
+    assign {b_ooe_fet_decq_credit_s3_payload, b_ooe_fet_decq_credit_s2_payload, b_ooe_fet_decq_credit_s1_payload, b_ooe_fet_decq_credit_s0_payload} = {ooe_fet_decq_credit_s3_payload, ooe_fet_decq_credit_s2_payload, ooe_fet_decq_credit_s1_payload, ooe_fet_decq_credit_s0_payload};
+    assign b_ooe_fet_decq_credit_wake = ooe_fet_decq_credit_wake;
+    assign {ooe_fet_decq_credit_s3_credit, ooe_fet_decq_credit_s2_credit, ooe_fet_decq_credit_s1_credit, ooe_fet_decq_credit_s0_credit} = {b_ooe_fet_decq_credit_s3_credit, b_ooe_fet_decq_credit_s2_credit, b_ooe_fet_decq_credit_s1_credit, b_ooe_fet_decq_credit_s0_credit};
+    assign {ooe_fet_decq_credit_s3_stall, ooe_fet_decq_credit_s2_stall, ooe_fet_decq_credit_s1_stall, ooe_fet_decq_credit_s0_stall} = {b_ooe_fet_decq_credit_s3_stall, b_ooe_fet_decq_credit_s2_stall, b_ooe_fet_decq_credit_s1_stall, b_ooe_fet_decq_credit_s0_stall};
+`ifdef CCV_TRACE
+    assign {b_ooe_fet_decq_credit_s3_tid, b_ooe_fet_decq_credit_s2_tid, b_ooe_fet_decq_credit_s1_tid, b_ooe_fet_decq_credit_s0_tid} = {ooe_fet_decq_credit_s3_tid, ooe_fet_decq_credit_s2_tid, ooe_fet_decq_credit_s1_tid, ooe_fet_decq_credit_s0_tid};
 `endif
   end
   // ccv_ooe_fet_redirect, destination end

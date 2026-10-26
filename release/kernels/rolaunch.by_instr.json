@@ -146,7 +146,7 @@
    "args": {
     "instr_uid": 9223372036854775808,
     "unit": "txn 0",
-    "channel_id": 24,
+    "channel_id": 25,
     "payload_lo": 256,
     "payload_hi": 0
    }
@@ -162,7 +162,7 @@
    "args": {
     "instr_uid": 9223372036854775808,
     "unit": "txn 0",
-    "channel_id": 23,
+    "channel_id": 24,
     "payload_lo": 1,
     "payload_hi": 0
    }
@@ -178,7 +178,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 21,
+    "channel_id": 22,
     "payload_lo": 4096,
     "payload_hi": 0
    }
@@ -194,7 +194,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 25,
+    "channel_id": 26,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -210,7 +210,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 27,
+    "channel_id": 28,
     "payload_lo": 268435908,
     "payload_hi": 0
    }
@@ -226,7 +226,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 51,
+    "channel_id": 52,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -242,7 +242,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 51,
+    "channel_id": 52,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -258,7 +258,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 26,
+    "channel_id": 27,
     "payload_lo": 1622950873,
     "payload_hi": 4
    }
@@ -274,7 +274,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 22,
+    "channel_id": 23,
     "payload_lo": 405737718,
     "payload_hi": 1
    }
@@ -370,7 +370,7 @@
    "args": {
     "instr_uid": 4611686018427387905,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 335544320,
     "payload_hi": 0
    }
@@ -386,7 +386,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 536870912,
     "payload_hi": 134217728
    }
@@ -402,7 +402,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 1778384896,
     "payload_hi": 2
    }
@@ -418,7 +418,7 @@
    "args": {
     "instr_uid": 4611686018427387906,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 33554432,
     "payload_hi": 0
    }
@@ -434,7 +434,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 35651584,
     "payload_hi": 2
    }
@@ -642,7 +642,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 65528,
     "payload_hi": 1073741832
    }
@@ -674,7 +674,7 @@
    "args": {
     "instr_uid": 4611686018427387905,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 16,
     "payload_hi": 16
    }
@@ -690,7 +690,7 @@
    "args": {
     "instr_uid": 4611686018427387906,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 152
    }
@@ -706,7 +706,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -738,7 +738,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 616,
     "payload_hi": 152
    }
@@ -754,7 +754,7 @@
    "args": {
     "instr_uid": 4611686018427387905,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -818,7 +818,7 @@
    "args": {
     "instr_uid": 4611686018427387906,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -850,7 +850,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -882,7 +882,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -898,7 +898,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -914,7 +914,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -930,7 +930,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 2147483736
    }
@@ -946,7 +946,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 8,
+    "channel_id": 9,
     "payload_lo": 4227072,
     "payload_hi": 2148130816
    }
@@ -962,7 +962,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 6,
+    "channel_id": 7,
     "payload_lo": 77,
     "payload_hi": 77
    }
@@ -978,7 +978,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 9,
+    "channel_id": 10,
     "payload_lo": 524544,
     "payload_hi": 0
    }
@@ -994,7 +994,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 49,
+    "channel_id": 50,
     "payload_lo": 33570816,
     "payload_hi": 0
    }
@@ -1010,7 +1010,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 11,
+    "channel_id": 12,
     "payload_lo": 96,
     "payload_hi": 0
    }
@@ -1026,7 +1026,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 8,
+    "channel_id": 9,
     "payload_lo": 262144,
     "payload_hi": 7864320
    }
@@ -1036,6 +1036,6 @@
  "ccv": {
   "schema_version": 2,
   "schema_hash": "727da17b3c4367e2",
-  "events": 62
+  "events": 65
  }
 }

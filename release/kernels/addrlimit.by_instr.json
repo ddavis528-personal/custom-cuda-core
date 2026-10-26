@@ -146,7 +146,7 @@
    "args": {
     "instr_uid": 9223372036854775808,
     "unit": "txn 0",
-    "channel_id": 24,
+    "channel_id": 25,
     "payload_lo": 256,
     "payload_hi": 0
    }
@@ -162,7 +162,7 @@
    "args": {
     "instr_uid": 9223372036854775808,
     "unit": "txn 0",
-    "channel_id": 23,
+    "channel_id": 24,
     "payload_lo": 1,
     "payload_hi": 0
    }
@@ -178,7 +178,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 21,
+    "channel_id": 22,
     "payload_lo": 4096,
     "payload_hi": 0
    }
@@ -194,7 +194,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 25,
+    "channel_id": 26,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -210,7 +210,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 27,
+    "channel_id": 28,
     "payload_lo": 268435908,
     "payload_hi": 0
    }
@@ -226,7 +226,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 51,
+    "channel_id": 52,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -242,7 +242,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 51,
+    "channel_id": 52,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -258,7 +258,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 26,
+    "channel_id": 27,
     "payload_lo": 4294860989,
     "payload_hi": 3233677311
    }
@@ -274,7 +274,7 @@
    "args": {
     "instr_uid": 9223372036854775809,
     "unit": "txn 1",
-    "channel_id": 22,
+    "channel_id": 23,
     "payload_lo": 4294940719,
     "payload_hi": 808419327
    }
@@ -370,7 +370,7 @@
    "args": {
     "instr_uid": 4611686018427387905,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 3825205248,
     "payload_hi": 2047
    }
@@ -386,7 +386,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 4227858432,
     "payload_hi": 134217727
    }
@@ -402,7 +402,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 33554432,
     "payload_hi": 0
    }
@@ -418,7 +418,7 @@
    "args": {
     "instr_uid": 4611686018427387906,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 1778384896,
     "payload_hi": 2
    }
@@ -434,7 +434,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 1,
+    "channel_id": 2,
     "payload_lo": 1024,
     "payload_hi": 0
    }
@@ -610,7 +610,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 4294967288,
     "payload_hi": 23
    }
@@ -626,7 +626,7 @@
    "args": {
     "instr_uid": 4611686018427387905,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 524256,
     "payload_hi": 16
    }
@@ -642,7 +642,7 @@
    "args": {
     "instr_uid": 4611686018427387906,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 616,
     "payload_hi": 152
    }
@@ -658,7 +658,7 @@
    "args": {
     "instr_uid": 4611686018427387904,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -722,7 +722,7 @@
    "args": {
     "instr_uid": 4611686018427387905,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -754,7 +754,7 @@
    "args": {
     "instr_uid": 4611686018427387906,
     "unit": "instr",
-    "channel_id": 5,
+    "channel_id": 6,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -786,7 +786,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -802,7 +802,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -818,7 +818,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -834,7 +834,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 2,
+    "channel_id": 3,
     "payload_lo": 0,
     "payload_hi": 2147483736
    }
@@ -850,7 +850,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 8,
+    "channel_id": 9,
     "payload_lo": 0,
     "payload_hi": 2148130816
    }
@@ -866,7 +866,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 6,
+    "channel_id": 7,
     "payload_lo": 77,
     "payload_hi": 77
    }
@@ -882,7 +882,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 9,
+    "channel_id": 10,
     "payload_lo": 4294967280,
     "payload_hi": 262143
    }
@@ -930,7 +930,7 @@
    "args": {
     "instr_uid": 4611686018427387907,
     "unit": "instr",
-    "channel_id": 10,
+    "channel_id": 11,
     "payload_lo": 7,
     "payload_hi": 0
    }
@@ -946,7 +946,7 @@
    "args": {
     "instr_uid": 4611686018427387908,
     "unit": "instr",
-    "channel_id": 44,
+    "channel_id": 45,
     "payload_lo": 0,
     "payload_hi": 4294967294
    }
@@ -962,7 +962,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 15,
+    "channel_id": 16,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -978,7 +978,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 17,
+    "channel_id": 18,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -994,7 +994,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 25,
+    "channel_id": 26,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -1010,7 +1010,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 27,
+    "channel_id": 28,
     "payload_lo": 4286579140,
     "payload_hi": 4294967295
    }
@@ -1026,7 +1026,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 51,
+    "channel_id": 52,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -1042,7 +1042,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 51,
+    "channel_id": 52,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -1058,7 +1058,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 26,
+    "channel_id": 27,
     "payload_lo": 1,
     "payload_hi": 0
    }
@@ -1074,7 +1074,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 18,
+    "channel_id": 19,
     "payload_lo": 3,
     "payload_hi": 0
    }
@@ -1090,7 +1090,7 @@
    "args": {
     "instr_uid": 11529215046068469763,
     "unit": "txn 0",
-    "channel_id": 16,
+    "channel_id": 17,
     "payload_lo": 0,
     "payload_hi": 0
    }
@@ -1100,6 +1100,6 @@
  "ccv": {
   "schema_version": 2,
   "schema_hash": "727da17b3c4367e2",
-  "events": 67
+  "events": 70
  }
 }

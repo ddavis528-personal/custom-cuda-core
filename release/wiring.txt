@@ -6,6 +6,10 @@ ccv_fet_dec_instr 0 4 u_fet u_dec 0
 ccv_fet_dec_instr 0 5 u_fet u_dec 0
 ccv_fet_dec_instr 0 6 u_fet u_dec 0
 ccv_fet_dec_instr 0 7 u_fet u_dec 0
+ccv_ooe_fet_decq_credit 0 0 u_ooe u_fet 0
+ccv_ooe_fet_decq_credit 0 1 u_ooe u_fet 0
+ccv_ooe_fet_decq_credit 0 2 u_ooe u_fet 0
+ccv_ooe_fet_decq_credit 0 3 u_ooe u_fet 0
 ccv_dec_ooe_uop 0 0 u_dec u_ooe 0
 ccv_dec_ooe_uop 0 1 u_dec u_ooe 0
 ccv_dec_ooe_uop 0 2 u_dec u_ooe 0

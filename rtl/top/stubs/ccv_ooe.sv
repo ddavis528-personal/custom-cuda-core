@@ -49,6 +49,27 @@ module ccv_ooe (
   assign kill_ack_epoch = '0;
   assign csr_rsp = '0;
   assign csr_credit = '0;
+  assign ooe_fet_decq_credit_s0_valid = '0;
+  assign ooe_fet_decq_credit_s0_payload = '0;
+  assign ooe_fet_decq_credit_s1_valid = '0;
+  assign ooe_fet_decq_credit_s1_payload = '0;
+  assign ooe_fet_decq_credit_s2_valid = '0;
+  assign ooe_fet_decq_credit_s2_payload = '0;
+  assign ooe_fet_decq_credit_s3_valid = '0;
+  assign ooe_fet_decq_credit_s3_payload = '0;
+  assign ooe_fet_decq_credit_wake = '0;
+`ifdef CCV_TRACE
+  assign ooe_fet_decq_credit_s0_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_fet_decq_credit_s1_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_fet_decq_credit_s2_tid = '0;
+`endif
+`ifdef CCV_TRACE
+  assign ooe_fet_decq_credit_s3_tid = '0;
+`endif
   assign dec_ooe_uop_s0_credit = '0;
   assign dec_ooe_uop_s0_stall = '0;
   assign dec_ooe_uop_s1_credit = '0;
