@@ -402,7 +402,10 @@ fi
 # One lane message a cycle also means the misplaced movi takes the message
 # OOE scheduled for the lane op issued beside it, seq 3's srd, whose done
 # V-35 then names a cycle late too: the cost of the movi, not a second fault.
-MOVI_TOTAL=512
+# 512 -> 258 when FET's decode-queue credits replaced OOE's per-warp
+# refusal, TI-46 (b): the lone warp now waits on credits, so the readers of
+# the late movi48 issue later and half of the downstream reads land after it.
+MOVI_TOTAL=258
 run movi-in-lane
 L="$B/kernel_movi-in-lane.log"
 nmovi=$(grep -c "^CHECK lane [0-9]*: MOVI\(48\)\? " "$L")
@@ -671,12 +674,12 @@ merge  zero_read=2 merge=4
 vadd   ckpt_free=1 redirect=0 epoch_drop=0 full_line=1 fill_notice=3 cmpl_hint=3
 hit    l1_hit=4 l1_late=0
 late   l1_late=1 l1_hit=2 hit_under_miss=1
-byp    copy=1 lane_byp=4
+byp    copy=1 lane_byp=3
 plog   merge=3
 chains lane_byp=9
 missrun l1_hit=0 reexec=2
 ldpar  l1_hit=4 hit_under_miss=4
-mlp    l1_hit=0 reexec=5 fill_notice>0 cmpl_hint>0
+mlp    l1_hit=0 reexec=4 fill_notice>0 cmpl_hint>0
 mwmiss l1_hit=0
 vadd4  full_line=4
 swap   slot_reuse=2
@@ -711,6 +714,10 @@ narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 sized partial_line>0
 divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
 callret ret_pass=1 groups_peak=2
+spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
+lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
+transp4 bar_complete=1 spm_pass=64 held_ahead_wait>0 credit_wait>0 credit_borrow=0
+borrow credit_borrow=1 credit_wait>0 chw_converged=2
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -770,6 +777,68 @@ if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 105
   say "--break ret-no-stay: a ret's second pass is followed" "PASS ($(field "$B/kernel_ret-no-stay.log" check_failures) checks)"
 else
   bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
+fi
+# .shared through SPM (TI's rev 230): MIU forms passes of one word a bank,
+# SPM serves a bank one pass a cycle, and each CTA slot has its own region;
+# and FET parks lanes ccv-sim blocked at a barrier wait (TI-40).
+#   spm-one-pass: every lane in one pass, a bank's last word taken for all
+#   spm-no-wait: a pass never waits for its banks (spmbank's spm_wait bin)
+#   spm-shared-region: every CTA slot given slot 0's region (lnorm1's two CTAs)
+#   bar-park-off: no lane parked, so FET picks a group waiting at a barrier
+for kb in spmbank:spm-one-pass spmbank:spm-no-wait lnorm1:spm-shared-region lnorm1:bar-park-off; do
+  k=${kb%%:*}; b=${kb#*:}
+  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break "$b" --cycles 300000 2>&1 | head -c 2000000 >"$B/kernel_$b.log"
+done
+ctl() {   # control, what must show in its log
+  if grep -q "$2" "$B/kernel_$1.log"; then
+    say "--break $1: refused" "PASS ($(field "$B/kernel_$1.log" check_failures) checks)"
+  else
+    bad "--break $1" "went unnoticed: $(grep '^KERNEL' "$B/kernel_$1.log")"
+  fi
+}
+ctl spm-one-pass "^CHECK miu: seq 4 lane 0 loaded 0000001f, oracle 00000000"
+ctl spm-shared-region "^CHECK miu: seq 66 lane 0 loaded c0340000, oracle 408a0000"
+ctl bar-park-off "^CHECK fet: warp 0 picks 10c6 for lanes ffff0000; ccv-sim issued 10dc for 0000ffff"
+if [ "$(cover "$B/kernel_spm-no-wait.log" spm_wait)" = 0 ]; then
+  say "--break spm-no-wait: spmbank's spm_wait bin misses it" "PASS (spm_wait=0)"
+else
+  bad "--break spm-no-wait" "a pass that never waits still waited: $(grep '^COVER' "$B/kernel_spm-no-wait.log" | grep -o 'spm_wait=[0-9]*')"
+fi
+# TI-46, form (b) (DA tab rev 96): FET gates its pick on per-warp
+# decode-queue credits, so OOE refuses no uop for a per-warp reason; an
+# oversize instruction borrows only from full credits; a warp past a
+# converged wait fetches at most CCV_P_HELD_AHEAD slots until released.
+#   held-over-r: a held warp fetches on past r (transp4: three held warps)
+#   borrow-partial: borrow's eight-slot chwidth.multi borrows from partial credits
+#   decq_warp_max=4: a per-warp cap under FET's credits, which must be caught as a refusal
+for kb in transp4:held-over-r borrow:borrow-partial; do
+  k=${kb%%:*}; b=${kb#*:}
+  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break "$b" --cycles 20000 2>&1 | head -c 2000000 >"$B/kernel_$b.log"
+done
+CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 2>&1 |
+  head -c 2000000 >"$B/kernel_warp-cap.log"
+ctl held-over-r "^CHECK ooe: warp 1 holds 3 slots past its held wait, over r = 2 (TI-46 (b))"
+ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
+ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
+# A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
+# warp of transp4 demoted at cycle 760, three of them held at the converged
+# wait, then restored. held-no-clear keeps it set, and the restored warps,
+# whose wait is gone, never fetch again.
+for b in "" held-no-clear; do
+  CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:760 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 \
+    ${b:+--break $b} 2>&1 | head -c 2000000 >"$B/kernel_heldrw${b:+-$b}.log"
+done
+L="$B/kernel_heldrw.log"
+if grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$L" &&
+   [ "$(cover "$L" demote)" -gt 0 ] && [ "$(cover "$L" restored)" -gt 0 ] && [ "$(cover "$L" bar_ready)" -gt 0 ]; then
+  say "transp4, held warps demoted and restored" "PASS ($(cycles "$L"); demote=$(cover "$L" demote))"
+else
+  bad "transp4 demoted at its barrier" "$(grep '^KERNEL' "$L")"
+fi
+if grep -q "finished=0" "$B/kernel_heldrw-held-no-clear.log"; then
+  say "--break held-no-clear: restored warps never fetch" "PASS (never finishes)"
+else
+  bad "--break held-no-clear" "held-ahead kept over a demotion went unnoticed: $(grep '^KERNEL' "$B/kernel_heldrw-held-no-clear.log")"
 fi
 # V-41's partial outcome (OI's 8994b78, rev 210): a branch FET predicts
 # taken that only some of its lanes take is a mispredict, and OOE redirects
@@ -876,10 +945,11 @@ else
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 # The first wrong read follows when OOE's free lists refill: since OI's
-# FreeVec alignment (OI-70, OI-71), seq 204's R3.
-if grep -q "^CHECK lane 0: seq 204 operand 1 (R3) 00000032, oracle 00000064" "$B/kernel_free-new.log" &&
+# FreeVec alignment (OI-70, OI-71), seq 204's R3; since FET's decode-queue
+# credits (TI-46 (b)) pace the warp, seq 203's R4.
+if grep -q "^CHECK lane 0: seq 203 operand 1 (R4) 00000000, oracle 00000001" "$B/kernel_free-new.log" &&
    [ "$(field "$B/kernel_free-new.log" gpr_mismatch)" -gt 0 ]; then
-  say "--break free-new: a live register reallocated" "PASS (seq 204, its source reallocated)"
+  say "--break free-new: a live register reallocated" "PASS (seq 203, its source reallocated)"
 else
   bad "--break free-new" "freeing the wrong register went unnoticed: $(grep '^KERNEL' "$B/kernel_free-new.log")"
 fi
@@ -1272,11 +1342,12 @@ done
 # orphans its DCU requests, and reports the warp ready to RAU once they are
 # home. RAU restores only a ready warp (RAU spec rev 25), so the restored
 # warp's replayed load hits (stall's one L1 hit; none without the swap).
-# vadd4's discard orphans nothing: it is ready at once.
+# vadd4's discard orphans one request since FET's decode-queue credits pace
+# its warps (TI-46 (b)): it is ready once that comes home.
 w=$(ok "$B/kernel_stall_swap.log" bulk_discard=1 replay=1 orphan=1 ready=1 l1_hit=1 provisional=0)
-w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=0 ready=1 restored=1)
+w2=$(ok "$B/kernel_vadd4_swap.log" bulk_discard=1 orphan=1 ready=1 restored=1)
 if [ -z "$w$w2" ]; then
-  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4 ready at once)"
+  say "replay drain: loads replayed, orphans home, then restored" "PASS (stall's replay hits; vadd4's orphan home, then ready)"
 else
   bad "replay drain" "stall: $w; vadd4: $w2"
 fi
@@ -1469,10 +1540,12 @@ fi
 # and the lane forwards its own result. The lanes answer at the contract, so
 # a dependant that took the register file's value instead would read it
 # stale. Every kernel must pass so with bypass alone, and with both modes
-# off; byp forwards four operands, a third operand among them, and merge a
+# off; byp forwards three operands, a third operand among them, and merge a
 # merge_data. With both off nothing forwards. (byp forwarded five while
 # full-width lane ops could co-issue; at one a cycle, TI-9, tid's third
-# reader, seq 8, issues after tid's write lands and reads the register file.)
+# reader, seq 8, issues after tid's write lands and reads the register file.
+# Four until FET's decode-queue credits, TI-46 (b): the lone warp waits on
+# credits, and seq 7 issues after its producer's write lands.)
 for k in $(ls build/oracle); do
   for cfg in bypass=1,l1_spec=0 bypass=0,l1_spec=0; do
     log="$B/kernel_${k}_${cfg//[=,]/_}.log"
@@ -1490,8 +1563,8 @@ for k in $(ls build/oracle); do
   [ "$(cover "$B/kernel_${k}_bypass_1_l1_spec_0.log" lane_byp)" -gt 0 ] && nbyp=$((nbyp + 1))
   [ "$(cover "$B/kernel_${k}_bypass_0_l1_spec_0.log" lane_byp)" = 0 ] || noff=$((noff + 1))
 done
-if [ "$(cover "$log" lane_byp)" = 4 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
-  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 4; none with both off)"
+if [ "$(cover "$log" lane_byp)" = 3 ] && [ "$(cover "$log" copy)" = 1 ] && [ "$noff" = 0 ]; then
+  say "every kernel with bypass alone, and both off" "PASS (forwarding in $nbyp kernels; byp's 3; none with both off)"
 else
   bad "byp with bypass" "$(grep -E '^(KERNEL|COVER)' "$log" | xargs)"
 fi
@@ -1499,11 +1572,11 @@ bctl() { CCV_OOE_CONFIG=$1 "$SKEL" --kernel "build/oracle/$2/oracle.jsonl" ${3:+
 # RCU never names the producer: each forwarded operand is the stale value
 # RCU read, on all 32 lanes, and nothing replays it.
 bctl bypass=1 byp no-lane-bypass no-lane-bypass
-n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|7 operand 1|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
-if [ "$n" = 128 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 128 ]; then
-  say "--break no-lane-bypass: forwards read stale" "PASS (4 operands x 32 lanes)"
+n=$(grep -cE "^CHECK lane [0-9]+: seq (6 operand 0|9 operand 0|10 operand 2) " "$B/kernel_no-lane-bypass.log")
+if [ "$n" = 96 ] && [ "$(field "$B/kernel_no-lane-bypass.log" check_failures)" = 96 ]; then
+  say "--break no-lane-bypass: forwards read stale" "PASS (3 operands x 32 lanes)"
 else
-  bad "--break no-lane-bypass" "$n stale reads (want 128): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
+  bad "--break no-lane-bypass" "$n stale reads (want 96): $(grep '^KERNEL' "$B/kernel_no-lane-bypass.log")"
 fi
 bctl bypass=1 merge no-lane-bypass no-lane-bypass-merge
 if [ "$(grep -c "^CHECK lane [0-9]*: seq 5 merge_data " "$B/kernel_no-lane-bypass-merge.log")" = 16 ]; then

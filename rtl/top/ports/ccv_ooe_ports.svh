@@ -28,6 +28,27 @@
   input  logic [48:0] csr_req,
   output logic [32:0] csr_rsp,
   output logic csr_credit,
+  // ooe -> fet, slot 0 of 4
+  output logic ooe_fet_decq_credit_s0_valid,
+  output ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s0_payload,
+  input  logic ooe_fet_decq_credit_s0_credit,
+  input  logic ooe_fet_decq_credit_s0_stall,
+  // ooe -> fet, slot 1 of 4
+  output logic ooe_fet_decq_credit_s1_valid,
+  output ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s1_payload,
+  input  logic ooe_fet_decq_credit_s1_credit,
+  input  logic ooe_fet_decq_credit_s1_stall,
+  // ooe -> fet, slot 2 of 4
+  output logic ooe_fet_decq_credit_s2_valid,
+  output ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s2_payload,
+  input  logic ooe_fet_decq_credit_s2_credit,
+  input  logic ooe_fet_decq_credit_s2_stall,
+  // ooe -> fet, slot 3 of 4
+  output logic ooe_fet_decq_credit_s3_valid,
+  output ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s3_payload,
+  input  logic ooe_fet_decq_credit_s3_credit,
+  input  logic ooe_fet_decq_credit_s3_stall,
+  output logic ooe_fet_decq_credit_wake,
   // dec -> ooe, slot 0 of 6
   input  logic dec_ooe_uop_s0_valid,
   input  ccv_dec_ooe_uop_t dec_ooe_uop_s0_payload,
@@ -289,6 +310,10 @@
   , output logic clk_gated
 `endif
 `ifdef CCV_TRACE
+  , output logic [63:0] ooe_fet_decq_credit_s0_tid
+  , output logic [63:0] ooe_fet_decq_credit_s1_tid
+  , output logic [63:0] ooe_fet_decq_credit_s2_tid
+  , output logic [63:0] ooe_fet_decq_credit_s3_tid
   , input  logic [63:0] dec_ooe_uop_s0_tid
   , input  logic [63:0] dec_ooe_uop_s1_tid
   , input  logic [63:0] dec_ooe_uop_s2_tid

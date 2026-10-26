@@ -23,9 +23,12 @@ def attr(c, a, default):
     return c.get("slot_attrs", {}).get(a, default)
 
 
-# Ordered = any ordering KEY other than none, on a channel with slots to order.
+# Ordered = any ordering KEY other than none, on a channel with slots to order:
+# slot_group ordering over groups of one slot has nothing to reorder.
 ordered = " ".join(sorted(c["name"] for c in d["channels"]
-                          if c["rate"] > 1 and attr(c, "ordering", "none") != "none"))
+                          if c["rate"] > 1 and attr(c, "ordering", "none") != "none" and
+                          not (attr(c, "ordering", "none") == "slot_group" and
+                               attr(c, "binding_group", 1) == 1)))
 print("X_FIXED=%d" % sum(c["rate"] * copies(c) for c in d["channels"]
                          if attr(c, "fixed_latency", False)))
 print("X_BINDING=%d X_OUTSTANDING=%d" % (
