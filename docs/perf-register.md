@@ -1070,10 +1070,11 @@ it.
 - **Decided (Daniel, 2026-10-26; DA tab rev 95):** option W adopted, in
   his words "Let's adopt IS-24 option W as you recommend." What lost:
   option M, the compiler-only form, and pointers that mean the same in
-  every lane. IS writes it into the ISA as an O-n; CP builds ccv-sim's
+  every lane. IS wrote it into the ISA as O-83 (§5.9, compiler 3424e9a); CP builds ccv-sim's
   swizzle and `__ccv_privbase`; TI adds `imm_kind` 5 to the schema and the
   swizzle to the MIU stub; AR's MIU spec (rev 39) and DEC spec (rev 15)
-  carry it. It moves to adopted with the commit that builds it.
+  carry it (MIU rev 41, DEC rev 16). It moves to adopted with the commit
+  that builds it.
 - **Signal:** with W adopted, ROB depth is a single-thread question only:
   interleaved coremark32 has the ROB full 35.2% of cycles, but four
   interleaved warps only 2.3%, so ROB 32 holds at the design point (OA's
