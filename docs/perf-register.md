@@ -1001,7 +1001,7 @@ it.
   -5.1%, gemv -0.05%, sgemm +0.6%; S1 -0.01% (TI's revs 237 and 238). Most
   of it is the credits removing the cross-warp stall, not the refill.
   What lost: parking with no interface change, and PF-44's unbounded
-  fetch-on. FET spec rev 34 carries it.
+  fetch-on. FET spec rev 35 carries it.
 
 ### PF-45 Self-timed completion for done-free lane ops
 
