@@ -886,16 +886,18 @@ Built (`rtl/ooe/`):
      has none yet, and the model renames the uop as a no-op where the
      go admitted a lane (98 cores at 25 seeds). The clock-gating
      scenarios hold their cores fault-free.
-     *Not closed: the name's timing (OI-83, to OA).* At NS 4 Rename 2's
-     name reaches q_gname_cq03h at 17.3 NGD against OA's budget of 3
-     (OI-70, rev 194). ooe_rat's paths from it are 11.3 more, so the
-     path is 28.6 against 25. In ooe_ren1n, placement takes 18.7 from
-     the registered reads and codes, the candidate claim 16.1 and the
-     fresh row 5.5. NGD-7 also asks for copies of the Rename 1
-     registers that feed the name. check-cg at NS 4 passes (1373
-     flops, 10 gates; pxn's CG-3 is the waived one). Until OA settles
-     the stage, ooe_rename's default and its check-ngd and check-cg
-     units stay at NS 0.
+     *The name's timing (OI-83 (b), OA rev 259, budgets rev 273).*
+     ooe_rat captures rename's group (pw_*) with no logic in front and
+     writes its maps and checkpoints from the capture an edge later; a
+     whole-map event drops its slot's captured writes (control
+     pend-over-event). The capture leaves as po_*, which ooe_headrd and
+     ooe_ratread take as the older pending group, so the next group of
+     the warp sees it. rename_stages stays 3 and the model is unchanged.
+     Measured: ooe_rat 12.3 flop to flop; ooe_rename at NS 4 24.1, the
+     name out at 18.1 (required 20), po_* into its flops 19.4 (arrival
+     2). NGD-7's copies of the Rename 1 registers feeding the name are
+     (* keep *). ooe_rename's default and its check-ngd and check-cg
+     units are NS 4.
   7. **ooe_rename's top**: ooe_go, the reads and Rename 1, the free lists,
      ooe_rendep and ooe_prodmap, rename's counters (ooe_rencred) and its
      pool and floor registers, assembled and benched against the model.

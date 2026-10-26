@@ -58,7 +58,7 @@ module ooe_rename #(
   parameter int PW = 6,                  // predicate name (CCV_P_W_PHYS_PRED)
   parameter int FB = 8,                  // a free list's candidate buffer
   parameter int FK = 4,                  // its refill banks
-  parameter int NS = 0,                  // GPR row sections: 4 the narrow allocator (slice 6, OI-81), 0 whole rows
+  parameter int NS = 4,                  // GPR row sections: 4 the narrow allocator (slice 6, OI-81), 0 whole rows
   parameter int FR = 0,                  // with NS: every register a whole row (AR-24's interim, full_rows)
   parameter int AG = 16,                 // architectural GPRs a slot (CCV_GPRS)
   parameter int AP = 4,                  // and predicates (CCV_PREDS)

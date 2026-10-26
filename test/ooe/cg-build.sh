@@ -81,8 +81,9 @@ case "$unit" in
       "$PWD/test/ooe/rendep_tb.cpp" ;;
   ooe_rename)
     # Beside the ooe_rat it reads and writes (test/ooe/ooe_rename_tb.sv);
-    # the unit's scope is u_rename.
-    read -r g d < <(python3 test/ooe/rename-params.py)
+    # the unit's scope is u_rename. Sectioned, as ooe_rename's default (NS 4,
+    # OA rev 273).
+    read -r g d < <(RENAME_SECTIONS=1 python3 test/ooe/rename-params.py)
     vl ooe_rename_tb "-DCCV_CHECK_RENAME -DCCV_CHECK_RAT ${g//,/ }" "${d//,/ }" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" \
       "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" "$PWD/rtl/ooe/ooe_headrd.sv" "$PWD/rtl/ooe/ooe_ren1.sv" \
       "$PWD/rtl/ooe/ooe_ren1n.sv" "$PWD/rtl/ooe/ooe_rendep.sv" "$PWD/rtl/ooe/ooe_prodmap.sv" "$PWD/rtl/ooe/ooe_rename.sv" "$PWD/test/ooe/ooe_rename_tb.sv" \
