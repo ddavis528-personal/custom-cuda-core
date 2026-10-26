@@ -66,7 +66,7 @@ it.
 | PF-41 | Restore a parked warp before it is ready, into an idle slot | RAU | deferred (TI-21; OI's rev 155) |
 | PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
-| PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
+| PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
 | PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted by decision (DA, 2026-10-26: option W), not yet built |
 
@@ -994,9 +994,14 @@ it.
   not the 10 estimated above. At four or more instructions, three held
   warps overfill the 13-slot queue. OA's ruling (rev 265): per-warp
   decode-queue credits from OOE to FET, and a held-ahead limit of r slots
-  past a converged wait, r <= 2 at four warps (FET spec rev 33). The choice
-  between r = 0 (parking) and r = 2 goes to DA, since the spread exceeds
-  0.5%.
+  past a converged wait, r <= 2 at four warps (FET spec rev 33).
+- **Decided (Daniel, 2026-10-26; DA tab rev 96):** (b) at r = 2 adopted,
+  in his words "Adopt (b) for TI-46 as recommended." With the credits and
+  the held-ahead limit, against parking: layernorm -13.1%, cta-reduce
+  -5.1%, gemv -0.05%, sgemm +0.6%; S1 -0.01% (TI's revs 237 and 238). Most
+  of it is the credits removing the cross-warp stall, not the refill.
+  What lost: parking with no interface change, and PF-44's unbounded
+  fetch-on. FET spec rev 34 carries it.
 
 ### PF-45 Self-timed completion for done-free lane ops
 
