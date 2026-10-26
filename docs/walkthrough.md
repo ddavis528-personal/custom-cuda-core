@@ -216,11 +216,11 @@ real channels. It then compares the final state with the oracle's.
 
 ```
 KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
-XFER events=728 launched=728 match=yes channels_seen=33
+XFER events=660 launched=660 match=yes channels_seen=33
 ```
 
 Retired in order, every register, predicate and memory word equal to
-`ccv-sim`'s, and every one of the 728 messages
+`ccv-sim`'s, and every one of the 660 messages
 launched was seen by the checker bank, which reported nothing. The run
 touches 33/55 channel types. The rest are waiting for
 kernels that need them:
@@ -238,9 +238,9 @@ instruction can be followed across every block it touches. Seq 12,
 ```
   cycle  event / channel                src  -> dst    msgs
   ------------------------------------------------------------
-     47  ccv_fet_dec_instr              fet  -> dec       
-     49  ccv_dec_ooe_uop                dec  -> ooe       
-     53  EV_DISPATCH                    ooe          
+     41  ccv_fet_dec_instr              fet  -> dec       
+     43  ccv_dec_ooe_uop                dec  -> ooe       
+     47  EV_DISPATCH                    ooe          
      66  EV_WAKEUP                      ooe          
      91  EV_OOE_MEMOP_HOLD_CYCLES       ooe          
      91  EV_ISSUE                       ooe          
@@ -265,7 +265,7 @@ instruction can be followed across every block it touches. Seq 12,
 
 - **Fetch to dispatch in 6 cycles:** FET to DEC to OOE, one
   channel hop each.
-- **Dispatched at 53, issued at 91.** The S1 OOE issues in order
+- **Dispatched at 47, issued at 91.** The S1 OOE issues in order
   and lets one memory operation be in flight at a time. The loads ahead of
   this one (seq 4, 6, 9, 10, 11) each make the whole
   trip first.
@@ -275,7 +275,7 @@ instruction can be followed across every block it touches. Seq 12,
   102. The data comes back at 114, in 2 beats, and returns the
   same way.
 - **Completion:** MIU delivers the data to RCU and completion to OOE, and
-  the instruction retires at 131, 84 cycles after fetch.
+  the instruction retires at 131, 90 cycles after fetch.
 
 Seq 14, `C_ADD`, the add, is the other shape of
 traffic: the lanes. RCU sends 32 lane operations, one per lane instance,
@@ -284,9 +284,9 @@ in the same cycle, and gets 32 results back 4 cycles later:
 ```
   cycle  event / channel                src  -> dst    msgs
   ------------------------------------------------------------
-     48  ccv_fet_dec_instr              fet  -> dec       
-     50  ccv_dec_ooe_uop                dec  -> ooe       
-     54  EV_DISPATCH                    ooe          
+     47  ccv_fet_dec_instr              fet  -> dec       
+     49  ccv_dec_ooe_uop                dec  -> ooe       
+     53  EV_DISPATCH                    ooe          
     107  EV_WAKEUP                      ooe          
     108  EV_WAKEUP                      ooe          
     108  EV_ISSUE                       ooe          
@@ -382,7 +382,7 @@ skeleton's:
 ```
 SVHOST shims=46/46 skewed=none
 KERNEL name=vadd finished=1 cycles=157 from_fetch=126 retired=17 issue_groups=17 order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0 class_violations=0 overflows=0 credit_leaks=0 channels_used=33/55 violations=0
-TRACES records=804/804 equal=yes byte_identical=no differing_cycles=0
+TRACES records=734/734 equal=yes byte_identical=no differing_cycles=0
 ```
 
 The same KERNEL line, and the same event trace, record for record. Swapping a
@@ -508,4 +508,4 @@ ID:
 Stage 4 replaces the stubs, block by block, with RTL written against the
 ports, the checkers and the clock gate already in place.
 
-<!-- walkthrough inputs: a0a407bff81205d4 (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->
+<!-- walkthrough inputs: 604635fde004b9fa (tools/gen-walkthrough.py --check-inputs; tools/regen.sh rewrites it) -->

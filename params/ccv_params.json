@@ -710,21 +710,21 @@
     },
     {
       "name": "CCV_P_DECQ_WARP_MAX",
-      "value": 6,
+      "value": 7,
       "status": "tunable",
-      "decided_at": "Stage 4b sweep (register OA-7)",
-      "source": "OA's responses TI-21 (revs 160 and 166, final), from OI's stall_hole measurement; OI's revs 155-159: S1 loses at 4, and OI's gate passes at 6 (0dff9b1); first build OI-6",
+      "decided_at": "OA's rev 274 (TI-46), on its even-stall condition",
+      "source": "TI's rev 241 credit-sizing set and TI-21's even-stall sweep at each share; OA's revs 271 and 274; earlier OA's responses TI-21 (revs 160 and 166), OI's revs 155-159",
       "require": "CCV_P_DECQ_WARP_MAX <= CCV_P_DECQ",
-      "doc": "Decode-queue slots one warp may hold at once, now FET's per-warp credits (TI-46, (b), DA tab rev 96): FET picks a warp only while its credits cover the next instruction's slots, counted exactly by predecode, and OOE refuses no uop for a per-warp reason. An instruction needing more slots than this (chwidth.multi) borrows, only from full credits, into a signed counter (OA's rev 263). With no limit (the queue's depth, the first-build value), a warp stalled behind a miss held all 13 entries for its whole stall and the other warps renamed nothing (TI-21's stall_hole). Six (OA's rev 166, final) makes the even-stall sweep 0.863 of no limit; at 4, mlp is 3.3% slower (OI's rev 155). test/ooe/cg-units.json's ooe_decq unit carries the same D, since its bench builds the RTL at this parameter."
+      "doc": "Decode-queue slots one warp may hold at once, now FET's per-warp credits (TI-46, (b), DA tab rev 96): FET picks a warp only while its credits cover the next instruction's slots, counted exactly by predecode, and OOE refuses no uop for a per-warp reason. An instruction needing more slots than this (chwidth.multi) borrows, only from full credits, into a signed counter (OA's rev 263). Measured with (b) built, at r = 2 and a 13-entry queue (TI's rev 241): shares 7, 8 and 10 pass check-ooo's floors and 6 does not; on S1, 7 is +0.04% and 10 +0.02% against the pre-(b) build, and mlp, the lone-warp floor kernel, +5.8% at 7 and +2.5% at 10. OA took 10 (rev 274) on the condition that TI-21's even-stall sweep, where a larger share lets a stalled warp hold more of the queue, not lose more than 0.5% against the best share; its cycles at 5, 6, 7, 8 and 10 are 854, 877, 901, 921 and 967, so 10 is 7.3% and 8 2.2% over 7, and the largest share within 0.5% of the best passing share is 7. The counters and the return field are the same width at 7, 8 and 10. With no limit (the queue's depth), a warp stalled behind a miss held all 13 entries for its whole stall (TI-21's stall_hole). test/ooe/cg-units.json's ooe_decq unit carries the same D, since its bench builds the RTL at this parameter."
     },
     {
       "name": "CCV_P_HELD_AHEAD",
       "value": 2,
       "status": "provisional",
       "decided_at": "DA tab rev 96 (TI-46)",
-      "source": "TI's revs 236-238 on CP-62's four barrier kernels; OA's revs 265-268",
-      "require": "CCV_P_DECQ >= (CCV_TIER1_WARPS - 1) * CCV_P_HELD_AHEAD + CCV_P_DECQ_WARP_MAX",
-      "doc": "r, the held-ahead limit (TI-46, (b)): after FET fetches a converged wait it marks for OOE's hold, the warp fetches at most this many decode-queue slots past it, and never borrows, until the released bit on ccv_ooe_fet_decq_credit or a rewind beat clears it. While held, a warp's slots in the decode queue are only those past its wait, so the held warps hold at most (warps - 1) x r and the working warp always admits a full share: the require. At 4 tier-1 warps it allows r <= 2. Measured, model-only: against parking at the wait, credits alone (r = 0) are -8.4% on layernorm-128 and -4.8% on cta-reduce-128, and r = 2 adds up to 5% more on barrier-dense code."
+      "source": "TI's revs 236-238 and 241 on CP-62's four barrier kernels; OA's revs 265-268, 271 and 274",
+      "require": "CCV_P_DECQ > (CCV_TIER1_WARPS - 1) * CCV_P_HELD_AHEAD",
+      "doc": "r, the held-ahead limit (TI-46, (b)): after FET fetches a converged wait it marks for OOE's hold, the warp fetches at most this many decode-queue slots past it, and never borrows, until the released bit on ccv_ooe_fet_decq_credit or a rewind beat clears it. While held, a warp's slots in the decode queue are only those past its wait, so the held warps hold at most (warps - 1) x r, and the require leaves the working warp at least one slot, which is liveness: unheld warps clear a full queue on their own renames (OA's rev 271; the share term it had was a performance term). At 4 tier-1 warps and 13 entries it allows r <= 4; 2 is set (OA's rev 274). Measured, model-only: against parking at the wait, credits alone (r = 0) are -8.4% on layernorm-128 and -4.8% on cta-reduce-128, and r = 2 adds up to 5% more on barrier-dense code."
     },
     {
       "name": "CCV_W_DECQ_CREDIT",
