@@ -215,6 +215,10 @@ module ooe_rat #(
   (* keep *) logic [A-1:0]    pi_v_cq02h, pi_gwe_cq02h;
   (* keep *) logic [A*LS-1:0] pi_slot_cq02h;
   (* keep *) logic [A*4-1:0]  pi_dst_cq02h;
+  (* keep *) logic [A*GW-1:0] pi_gname_cq02h;
+  (* keep *) logic [A*2-1:0]  pi_pdst_cq02h;
+  (* keep *) logic [A-1:0]    pi_pwe_cq02h;
+  (* keep *) logic [A*PW-1:0] pi_pname_cq02h;
   (* keep *) logic [A-1:0]    pq_v_cq02h, pq_gwe_cq02h;
   (* keep *) logic [A*LS-1:0] pq_slot_cq02h;
   (* keep *) logic [A*4-1:0]  pq_dst_cq02h;
@@ -259,6 +263,10 @@ module ooe_rat #(
       po_pdst_cq02h  <= pw_pdst_cq01h;
       po_pwe_cq02h   <= pw_pwe_cq01h;
       po_pname_cq02h <= pw_pname_cq01h;
+      pi_gname_cq02h <= pw_gname_cq01h;
+      pi_pdst_cq02h  <= pw_pdst_cq01h;
+      pi_pwe_cq02h   <= pw_pwe_cq01h;
+      pi_pname_cq02h <= pw_pname_cq01h;
       po_br_cq02h    <= pw_br_cq01h;
       po_ckpt_cq02h  <= pw_ckpt_cq01h;
     end
@@ -277,9 +285,9 @@ module ooe_rat #(
     for (int p = 0; p < A; p++)
       if (p <= k && pi_v_cq02h[p] && !po_rst_cq02h[p] && pi_slot_cq02h[p * LS +: LS] == t) begin
         for (int a = 0; a < NG; a++)
-          if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = po_gname_cq02h[p * GW +: GW];
+          if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = pi_gname_cq02h[p * GW +: GW];
         for (int a = 0; a < NP; a++)
-          if (po_pwe_cq02h[p] && po_pdst_cq02h[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = po_pname_cq02h[p * PW +: PW];
+          if (pi_pwe_cq02h[p] && pi_pdst_cq02h[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = pi_pname_cq02h[p * PW +: PW];
       end
     map_after = m;
   endfunction
@@ -302,27 +310,27 @@ module ooe_rat #(
   // else restore. An entry the group writes takes the last such port's name
   // over it.
   logic [S-1:0]       whole_cq01h;
-  logic               pkeep;                   // the control pend-over-event
+  logic               pkeep_cq01h;             // the control pend-over-event
 `ifdef CCV_CHECK_RAT
-  assign pkeep = ctl_pkeep;
+  assign pkeep_cq01h = ctl_pkeep;
 `else
-  assign pkeep = 1'b0;
+  assign pkeep_cq01h = 1'b0;
 `endif
   logic [S*MW-1:0]    base_cq02h;
-  logic [S*NG-1:0]    g_wr_cq01h;              // a port of the group writes GPR entry (s, a)
-  logic [S*NG*GW-1:0] g_name_cq01h;
-  logic [S*NP-1:0]    p_wr_cq01h;
-  logic [S*NP*PW-1:0] p_name_cq01h;
+  logic [S*NG-1:0]    g_wr_cq02h;              // a port of the group writes GPR entry (s, a)
+  logic [S*NG*GW-1:0] g_name_cq02h;
+  logic [S*NP-1:0]    p_wr_cq02h;
+  logic [S*NP*PW-1:0] p_name_cq02h;
   // A slot's checkpoint c, by its registered restore's index.
   function automatic logic [MW-1:0] ck_pick(input logic [C*MW-1:0] ck, input logic [LC-1:0] c);
     ck_pick = '0;
     for (int k = 0; k < C; k++) if (c == LC'(k)) ck_pick = ck[k * MW +: MW];
   endfunction
   always_comb begin
-    g_wr_cq01h   = '0;
-    g_name_cq01h = '0;
-    p_wr_cq01h   = '0;
-    p_name_cq01h = '0;
+    g_wr_cq02h   = '0;
+    g_name_cq02h = '0;
+    p_wr_cq02h   = '0;
+    p_name_cq02h = '0;
     for (int t = 0; t < S; t++) begin
       whole_cq01h[t] = rl_cq01h[t] || sq_cq01h[t] || rs_cq01h[t];
       base_cq02h[t * MW +: MW] = rl_cq01h[t] ? {{NP{PZERO}}, {NG{GZERO}}} :
@@ -331,16 +339,16 @@ module ooe_rat #(
       // The captured group's writes, but none in a slot whose event this
       // edge applies (OI-83 (b) (3): the event wins).
       for (int p = 0; p < A; p++)
-        if (pi_v_cq02h[p] && 32'(pi_slot_cq02h[p * LS +: LS]) == t && (!whole_cq01h[t] || pkeep)) begin
+        if (pi_v_cq02h[p] && 32'(pi_slot_cq02h[p * LS +: LS]) == t && (!whole_cq01h[t] || pkeep_cq01h)) begin
           for (int a = 0; a < NG; a++)
             if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) begin
-              g_wr_cq01h[t * NG + a]                = 1'b1;
-              g_name_cq01h[(t * NG + a) * GW +: GW] = po_gname_cq02h[p * GW +: GW];
+              g_wr_cq02h[t * NG + a]                = 1'b1;
+              g_name_cq02h[(t * NG + a) * GW +: GW] = pi_gname_cq02h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
-            if (po_pwe_cq02h[p] && po_pdst_cq02h[p * 2 +: 2] == 2'(a)) begin
-              p_wr_cq01h[t * NP + a]                = 1'b1;
-              p_name_cq01h[(t * NP + a) * PW +: PW] = po_pname_cq02h[p * PW +: PW];
+            if (pi_pwe_cq02h[p] && pi_pdst_cq02h[p * 2 +: 2] == 2'(a)) begin
+              p_wr_cq02h[t * NP + a]                = 1'b1;
+              p_name_cq02h[(t * NP + a) * PW +: PW] = pi_pname_cq02h[p * PW +: PW];
             end
         end
     end
@@ -360,14 +368,14 @@ module ooe_rat #(
       rat_en_cq01h[t] = wl_cq02h[t] || whole_cq01h[t];
       for (int a = 0; a < NG; a++)
         rat_nx_cq01h[t * MW + a * GW +: GW] =
-            ({GW{g_wr_cq01h[t * NG + a]}} & g_name_cq01h[(t * NG + a) * GW +: GW]) |
-            ({GW{!g_wr_cq01h[t * NG + a] && whole_cq01h[t]}} & base_cq02h[t * MW + a * GW +: GW]) |
-            ({GW{!g_wr_cq01h[t * NG + a] && !whole_cq01h[t]}} & rin_cq02h[t * MW + a * GW +: GW]);
+            ({GW{g_wr_cq02h[t * NG + a]}} & g_name_cq02h[(t * NG + a) * GW +: GW]) |
+            ({GW{!g_wr_cq02h[t * NG + a] && whole_cq01h[t]}} & base_cq02h[t * MW + a * GW +: GW]) |
+            ({GW{!g_wr_cq02h[t * NG + a] && !whole_cq01h[t]}} & rin_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
         rat_nx_cq01h[t * MW + NG * GW + a * PW +: PW] =
-            ({PW{p_wr_cq01h[t * NP + a]}} & p_name_cq01h[(t * NP + a) * PW +: PW]) |
-            ({PW{!p_wr_cq01h[t * NP + a] && whole_cq01h[t]}} & base_cq02h[t * MW + NG * GW + a * PW +: PW]) |
-            ({PW{!p_wr_cq01h[t * NP + a] && !whole_cq01h[t]}} & rin_cq02h[t * MW + NG * GW + a * PW +: PW]);
+            ({PW{p_wr_cq02h[t * NP + a]}} & p_name_cq02h[(t * NP + a) * PW +: PW]) |
+            ({PW{!p_wr_cq02h[t * NP + a] && whole_cq01h[t]}} & base_cq02h[t * MW + NG * GW + a * PW +: PW]) |
+            ({PW{!p_wr_cq02h[t * NP + a] && !whole_cq01h[t]}} & rin_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
   for (genvar t = 0; t < S; t++) begin : g_rat
@@ -386,16 +394,18 @@ module ooe_rat #(
   // The retire-stage register's writes in port order, then a
   // restore-allocate's, which the group's ports carry; a release maps the
   // slot to the zero registers, under any write.
-  logic [S*NG-1:0]    c_wr_cq01h;
-  logic [S*NG*GW-1:0] c_name_cq01h;
-  logic [S*NP-1:0]    cp_wr_cq01h;
-  logic [S*NP*PW-1:0] cp_name_cq01h;
+  // The retire-stage register's (c_, cp_) and the captured group's (ca_,
+  // cpa_), each at its own stage; the capture's over the retirements'.
+  logic [S*NG-1:0]    c_wr_cq01h, ca_wr_cq02h;
+  logic [S*NG*GW-1:0] c_name_cq01h, ca_name_cq02h;
+  logic [S*NP-1:0]    cp_wr_cq01h, cpa_wr_cq02h;
+  logic [S*NP*PW-1:0] cp_name_cq01h, cpa_name_cq02h;
   always_comb begin
     c_wr_cq01h    = '0;
     c_name_cq01h  = '0;
     cp_wr_cq01h   = '0;
     cp_name_cq01h = '0;
-    for (int t = 0; t < S; t++) begin
+    for (int t = 0; t < S; t++)
       for (int r = 0; r < R; r++) begin
         for (int a = 0; a < NG; a++)
           if (ret_gwe_cq01h[t * R + r] && ret_dst_cq01h[(t * R + r) * 4 +: 4] == 4'(a)) begin
@@ -408,20 +418,26 @@ module ooe_rat #(
             cp_name_cq01h[(t * NP + a) * PW +: PW] = ret_pname_cq01h[(t * R + r) * PW +: PW];
           end
       end
+  end
+  always_comb begin
+    ca_wr_cq02h    = '0;
+    ca_name_cq02h  = '0;
+    cpa_wr_cq02h   = '0;
+    cpa_name_cq02h = '0;
+    for (int t = 0; t < S; t++)
       for (int p = 0; p < A; p++)
         if (pi_v_cq02h[p] && po_rst_cq02h[p] && 32'(pi_slot_cq02h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)
             if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) begin
-              c_wr_cq01h[t * NG + a]                = 1'b1;
-              c_name_cq01h[(t * NG + a) * GW +: GW] = po_gname_cq02h[p * GW +: GW];
+              ca_wr_cq02h[t * NG + a]                = 1'b1;
+              ca_name_cq02h[(t * NG + a) * GW +: GW] = pi_gname_cq02h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
-            if (po_pwe_cq02h[p] && po_pdst_cq02h[p * 2 +: 2] == 2'(a)) begin
-              cp_wr_cq01h[t * NP + a]                = 1'b1;
-              cp_name_cq01h[(t * NP + a) * PW +: PW] = po_pname_cq02h[p * PW +: PW];
+            if (pi_pwe_cq02h[p] && pi_pdst_cq02h[p * 2 +: 2] == 2'(a)) begin
+              cpa_wr_cq02h[t * NP + a]                = 1'b1;
+              cpa_name_cq02h[(t * NP + a) * PW +: PW] = pi_pname_cq02h[p * PW +: PW];
             end
         end
-    end
   end
 
   // Each slot's committed GPRs one gate, its predicates another: clocked on
@@ -436,14 +452,16 @@ module ooe_rat #(
       cp_en_cq01h[t] = rl_cq01h[t] || rw_cq02h[t] || rp_cq01h[t * R +: R] != '0;
       for (int a = 0; a < NG; a++)
         crat_nx_cq01h[t * MW + a * GW +: GW] =
-            ({GW{c_wr_cq01h[t * NG + a]}} & c_name_cq01h[(t * NG + a) * GW +: GW]) |
-            ({GW{!c_wr_cq01h[t * NG + a] && rl_cq01h[t]}} & GZERO) |
-            ({GW{!c_wr_cq01h[t * NG + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + a * GW +: GW]);
+            ({GW{ca_wr_cq02h[t * NG + a]}} & ca_name_cq02h[(t * NG + a) * GW +: GW]) |
+            ({GW{!ca_wr_cq02h[t * NG + a] && c_wr_cq01h[t * NG + a]}} & c_name_cq01h[(t * NG + a) * GW +: GW]) |
+            ({GW{!ca_wr_cq02h[t * NG + a] && !c_wr_cq01h[t * NG + a] && rl_cq01h[t]}} & GZERO) |
+            ({GW{!ca_wr_cq02h[t * NG + a] && !c_wr_cq01h[t * NG + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + a * GW +: GW]);
       for (int a = 0; a < NP; a++)
         crat_nx_cq01h[t * MW + NG * GW + a * PW +: PW] =
-            ({PW{cp_wr_cq01h[t * NP + a]}} & cp_name_cq01h[(t * NP + a) * PW +: PW]) |
-            ({PW{!cp_wr_cq01h[t * NP + a] && rl_cq01h[t]}} & PZERO) |
-            ({PW{!cp_wr_cq01h[t * NP + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + NG * GW + a * PW +: PW]);
+            ({PW{cpa_wr_cq02h[t * NP + a]}} & cpa_name_cq02h[(t * NP + a) * PW +: PW]) |
+            ({PW{!cpa_wr_cq02h[t * NP + a] && cp_wr_cq01h[t * NP + a]}} & cp_name_cq01h[(t * NP + a) * PW +: PW]) |
+            ({PW{!cpa_wr_cq02h[t * NP + a] && !cp_wr_cq01h[t * NP + a] && rl_cq01h[t]}} & PZERO) |
+            ({PW{!cpa_wr_cq02h[t * NP + a] && !cp_wr_cq01h[t * NP + a] && !rl_cq01h[t]}} & crat_cq02h[t * MW + NG * GW + a * PW +: PW]);
     end
 
   for (genvar t = 0; t < S; t++) begin : g_crat
@@ -461,16 +479,16 @@ module ooe_rat #(
   // Checkpoint (s, c) is written when a branch port of the group names it,
   // with the maps as they stand after that port's writes; its enable is
   // this module's flop of the same, from the go's cycle.
-  logic [S*C-1:0]    ckpt_wr_cq01h;
+  logic [S*C-1:0]    ckpt_wr_cq02h;
   logic [S*C*MW-1:0] ckpt_nx_cq01h;
   always_comb begin
-    ckpt_wr_cq01h = '0;
+    ckpt_wr_cq02h = '0;
     ckpt_nx_cq01h = '0;
     for (int p = 0; p < A; p++)
       for (int i = 0; i < S * C; i++)
         if (pi_v_cq02h[p] && !po_rst_cq02h[p] && po_br_cq02h[p] &&
             pi_slot_cq02h[p * LS +: LS] == LS'(i / C) && po_ckpt_cq02h[p * LC +: LC] == LC'(i % C)) begin
-          ckpt_wr_cq01h[i]            = 1'b1;
+          ckpt_wr_cq02h[i]            = 1'b1;
           ckpt_nx_cq01h[i * MW +: MW] = ck_map_cq02h[p * MW +: MW];
         end
   end
@@ -478,7 +496,7 @@ module ooe_rat #(
   // naming one is younger than the event, and its group is dropped.
   logic [S*C-1:0] ckpt_en_cq01h, ck_ev_cq01h;
   always_comb
-    for (int i = 0; i < S * C; i++) ck_ev_cq01h[i] = whole_cq01h[i / C] && !pkeep;
+    for (int i = 0; i < S * C; i++) ck_ev_cq01h[i] = whole_cq01h[i / C] && !pkeep_cq01h;
   assign ckpt_en_cq01h = ck_cq02h & ~ck_ev_cq01h;
   for (genvar i = 0; i < S * C; i++) begin : g_ckpt
     always_ff @(posedge ooe_core_clk) begin
@@ -490,20 +508,20 @@ module ooe_rat #(
   // each checkpoint exactly when its lead says, and the retire-stage
   // register carries the decision copied here; a restore-allocate port only
   // where its lead says.
-  logic [S-1:0] grp_sl_cq01h, rst_sl_cq01h;
+  logic [S-1:0] grp_sl_cq02h, rst_sl_cq02h;
   always_comb begin
-    grp_sl_cq01h = '0;
-    rst_sl_cq01h = '0;
+    grp_sl_cq02h = '0;
+    rst_sl_cq02h = '0;
     for (int p = 0; p < A; p++)
       for (int t = 0; t < S; t++)
         if (pi_v_cq02h[p] && pi_slot_cq02h[p * LS +: LS] == LS'(t)) begin
-          grp_sl_cq01h[t] = 1'b1;
-          if (po_rst_cq02h[p]) rst_sl_cq01h[t] = 1'b1;
+          grp_sl_cq02h[t] = 1'b1;
+          if (po_rst_cq02h[p]) rst_sl_cq02h[t] = 1'b1;
         end
   end
-  `CCV_ASSERT(group_led, (grp_sl_cq01h & ~wl_cq02h) == '0)
-  `CCV_ASSERT(restore_alloc_led, rst_sl_cq01h == rw_cq02h)
-  `CCV_ASSERT(ckpt_led, ckpt_wr_cq01h == ck_cq02h)
+  `CCV_ASSERT(group_led, (grp_sl_cq02h & ~wl_cq02h) == '0)
+  `CCV_ASSERT(restore_alloc_led, rst_sl_cq02h == rw_cq02h)
+  `CCV_ASSERT(ckpt_led, ckpt_wr_cq02h == ck_cq02h)
   `CCV_ASSERT(retire_led, ret_gwe_cq01h == rg_cq01h && ret_pwe_cq01h == rp_cq01h)
   // The group names no slot a registered whole-map event names (see above).
   logic [S-1:0] renamed_cq01h;

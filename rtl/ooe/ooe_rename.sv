@@ -451,7 +451,9 @@ module ooe_rename #(
   (* keep *) logic [R*2*R-1:0] p_idx_cq03h;
   (* keep *) logic [R*GR-1:0]  p_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  p_palloc_cq03h;
-  logic [R*4*GW-1:0] q_gv_cq03h;
+  (* keep *) logic [R*4*GW-1:0] q_gv_cq03h;
+  (* keep *) logic [R*4*GW-1:0] qo_gv_cq03h;   // the pending names again, for the names out (NGD-7)
+  (* keep *) logic [R*5-1:0]    no_na_cq03h;   // and the narrow attributes
   (* keep *) logic [R*4*R-1:0] q_gl_cq03h;
   logic [R*4*R-1:0]  q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
@@ -491,6 +493,7 @@ module ooe_rename #(
       q_br_cq03h     <= l_br_cq02h;
       q_ckpt_cq03h   <= l_ckpt_cq02h;
       q_gv_cq03h     <= l_g_cq02h;
+      qo_gv_cq03h    <= l_g_cq02h;
       q_gl_cq03h     <= l_gl_cq02h;
       q_pv_cq03h     <= l_p_cq02h;
       q_pl_cq03h     <= l_pl_cq02h;
@@ -514,6 +517,8 @@ module ooe_rename #(
       wq_cq03h       <= l_w_cq02h;
       n_gwe_cq03h    <= l_gwe_cq02h;
       for (int l = 0; l < R; l++) wo_cq03h[l * 8 +: 8] <= l_w_cq02h[l * 10 +: 8];
+      for (int l = 0; l < R; l++)
+        no_na_cq03h[l * 5 +: 5] <= {l_x_cq02h[l * XL + 3 + 7], l_x_cq02h[l * XL + 3 + 4 +: 3], l_x_cq02h[l * XL + 3]};
       for (int l = 0; l < R; l++)
         o_c_cq03h[l * 2 +: 2] <= {l_x_cq02h[l * XL] && l_x_cq02h[l * XL + 1],
                                   l_x_cq02h[l * XL] && (!l_x_cq02h[l * XL + 1] || l_x_cq02h[l * XL + 2])};
@@ -549,8 +554,8 @@ module ooe_rename #(
   logic [R*4*PW-1:0] q_px_cq03h;
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .FR(FR), .S(S)) u_ren1n (
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
-    .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(qo_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
-    .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(wq_cq03h),
+    .q_g_cq01h(qo_gv_cq03h), .q_gl_cq01h(qo_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
+    .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(no_na_cq03h), .q_nw_cq01h(wq_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
     .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_gx_cq03h), .n_p(q_px_cq03h),
     .n_sa_v(sa_v_cq03h), .n_sa_row(sa_row_cq03h), .n_sa_sec(sa_sec_cq03h), .n_rt_v(rt_v_cq03h), .n_rt_row(rt_row_cq03h));
