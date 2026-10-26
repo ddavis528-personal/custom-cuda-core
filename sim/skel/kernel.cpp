@@ -1557,8 +1557,8 @@ private:
       }
     // .shared (CP-33): the offset into the CTA's region, modulo 2^32, which
     // ccv-sim names; SPM's byte address is the region's first byte plus it.
-    // An SPM access is never an L1 hit. shared-unwrapped: the offset's carry
-    // past 32 bits kept.
+    // An SPM access is never an L1 hit. ccv-sim keeps the carry (task: CP-33),
+    // so no kernel here crosses 2^32.
     j.spm = !global;
     if (j.spm) {
       j.hit = false;
@@ -1566,7 +1566,7 @@ private:
       const uint64_t sbase = sp == spm_.end() ? 0 : sp->second.first;
       for (unsigned l = 0; l != kLanes; ++l)
         if ((j.active >> l) & 1u) {
-          if (k_.brk != "shared-unwrapped") j.addr[l] &= 0xffffffffu;
+          j.addr[l] &= 0xffffffffu;
           j.paddr[l] = sbase + j.addr[l];
         }
     }
@@ -1595,7 +1595,6 @@ private:
         }
       }
     }
-    if (j.spm) formPasses(j, am);
     // A load waits, and every memop behind it, while a store's write to one
     // of its lines is in flight: DCU would answer it from the line as it was.
     if (!j.store && inFlight(j, true)) return;
@@ -1613,6 +1612,7 @@ private:
       k_.fail("miu: rob tag %u has active lanes %08x outside its issue group",
               tag, j.active & ~issue);
     check(j, am);
+    if (j.spm) formPasses(j, am);
     if (j.pxfer) k_.hit("pred_xfer");
     if (local) k_.hit("local_form");
     if (j.lines.size() > 1) k_.hit("line_split");
@@ -1635,10 +1635,10 @@ private:
       if ((j.active >> l & 1u) && j.global && j.addr[l] >> ccv::kAddrBits && k_.brk != "addr-wrap")
         bad |= 1u << l;
     // F-SHARED (section 12.5): a .shared access with a byte past its CTA's
-    // region, after F-ADDR, which no .shared access raises. no-spm-bound:
-    // unchecked, so the access reaches the next slot's region.
+    // region, after F-ADDR, which no .shared access raises. ccv-sim bounds
+    // no .shared access, so no kernel here can reach it yet.
     uint32_t sbad = 0;
-    if (j.spm && k_.brk != "no-spm-bound") {
+    if (j.spm) {
       const auto sp = spm_.find(cta);
       const uint64_t size = sp == spm_.end() ? 0 : sp->second.second - sp->second.first + 1;
       for (unsigned l = 0; l != kLanes; ++l)
@@ -4009,8 +4009,7 @@ private:
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBarWait) {
         const bool conv = r.mask == x.lanes;
         put(f, c.fet_dec, "all_waiting", conv && k_.brk != "no-wait-mark");
-        // syu-park-off: a diverged wait's lanes fetch on past it.
-        if (!conv && k_.brk != "syu-park-off") x.syu_parked |= r.mask;
+        if (!conv) x.syu_parked |= r.mask;
         k_.hit(conv ? "bar_wait" : "bar_diverged");
       }
       // A chwidth's mark is its convergence (O-81; FET spec): set when its

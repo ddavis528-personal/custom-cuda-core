@@ -711,6 +711,8 @@ narrowadd narrow_arith>0 partial_line>0 chw_converged=7 chw_diverged=0
 sized partial_line>0
 divchw fault=1 kill=1 split=1 chw_converged=2 chw_diverged=1
 callret ret_pass=1 groups_peak=2
+spmbank spm_pass=68 spm_conflict=2 spm_passes_peak=32 spm_wait>0 shared_fault=0
+lnorm1 bar_park=10 bar_complete=12 spm_pass=68 spm_conflict=0
 KERNELS
 # O-80's sized loads and stores (DA tab rev 90): the transfer from DEC's
 # xfer_size, never rdata's width, and a signed load sign-filled to rdata.
@@ -770,6 +772,32 @@ if grep -q "^CHECK fet: warp 0 picks 1054 for lanes aaaaaaaa; ccv-sim issued 105
   say "--break ret-no-stay: a ret's second pass is followed" "PASS ($(field "$B/kernel_ret-no-stay.log" check_failures) checks)"
 else
   bad "--break ret-no-stay" "a ret's staying lanes sent past it went unnoticed: $(grep '^KERNEL' "$B/kernel_ret-no-stay.log")"
+fi
+# .shared through SPM (TI's rev 230): MIU forms passes of one word a bank,
+# SPM serves a bank one pass a cycle, and each CTA slot has its own region;
+# and FET parks lanes ccv-sim blocked at a barrier wait (TI-40).
+#   spm-one-pass: every lane in one pass, a bank's last word taken for all
+#   spm-no-wait: a pass never waits for its banks (spmbank's spm_wait bin)
+#   spm-shared-region: every CTA slot given slot 0's region (lnorm1's two CTAs)
+#   bar-park-off: no lane parked, so FET picks a group waiting at a barrier
+for kb in spmbank:spm-one-pass spmbank:spm-no-wait lnorm1:spm-shared-region lnorm1:bar-park-off; do
+  k=${kb%%:*}; b=${kb#*:}
+  "$SKEL" --kernel "build/oracle/$k/oracle.jsonl" --break "$b" --cycles 300000 2>&1 | head -c 2000000 >"$B/kernel_$b.log"
+done
+ctl() {   # control, what must show in its log
+  if grep -q "$2" "$B/kernel_$1.log"; then
+    say "--break $1: refused" "PASS ($(field "$B/kernel_$1.log" check_failures) checks)"
+  else
+    bad "--break $1" "went unnoticed: $(grep '^KERNEL' "$B/kernel_$1.log")"
+  fi
+}
+ctl spm-one-pass "^CHECK miu: seq 4 lane 0 loaded 0000001f, oracle 00000000"
+ctl spm-shared-region "^CHECK miu: seq 66 lane 0 loaded c0340000, oracle 408a0000"
+ctl bar-park-off "^CHECK fet: warp 0 picks 10c6 for lanes ffff0000; ccv-sim issued 10dc for 0000ffff"
+if [ "$(cover "$B/kernel_spm-no-wait.log" spm_wait)" = 0 ]; then
+  say "--break spm-no-wait: spmbank's spm_wait bin misses it" "PASS (spm_wait=0)"
+else
+  bad "--break spm-no-wait" "a pass that never waits still waited: $(grep '^COVER' "$B/kernel_spm-no-wait.log" | grep -o 'spm_wait=[0-9]*')"
 fi
 # V-41's partial outcome (OI's 8994b78, rev 210): a branch FET predicts
 # taken that only some of its lanes take is a mispredict, and OOE redirects
