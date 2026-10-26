@@ -42,6 +42,12 @@
       "by": "OI",
       "date": "2026-10-24",
       "why": "OA's rev 219 (OI-76): each slot's frees as a carry-save pair, registered (the free list's second stage, 21.6 flop to flop), so it leaves from flops; ooe_rename takes it into each remainder's 4-operand carry-save sum."
+    },
+    "free_sec_cq01h": {
+      "arrival": 2.0,
+      "by": "OI",
+      "date": "2026-10-25",
+      "why": "The sections' form of free_mask (OI-81): the same retire-stage register, so OA's arrival for it (OA's response OI-58, V-75 budgets, in NGD from the launching flop) holds; inside, it reaches the candidates' find-first at 18.6."
     }
   }
 }

@@ -140,6 +140,23 @@
    "why": "OA's rev 219 (OI-76): the names' pool registers (GPR and predicate, 10 flops) are formed from the remainders as they stand, less the older take, so they must be clocked while a names' take is registered and on the edge after the remainders move (nv), not with the counters alone; the bench holds every take to the model's and the scarce build's no-take-q2 control fails without the older take. They change on few of those cycles: the GPR pool stands at its saturation XM while names are plentiful, and the predicates' at the pool less its floors while no slot holds past its floor. Measured 12% (medium) and 24% (high); idle enables none. Clocked with the counters instead, under their enable or nv, the 175-flop gate fell to 68% in medium (96% high); skipping nv while both pools stand at XM leaves it there, the predicates' pool never reaching XM. Each pool alone would be a 5-flop gate, past the module's allowance (19 of its 23.9 flops in use). Floors 2 under the measure.",
    "by": "OI",
    "date": "2026-10-24"
+  },
+  {
+   "module": "ooe_freelist",
+   "rule": "CG-3",
+   "target": "g_sec.cr_cq02h",
+   "enable": "g_sec.cand_en_cq01h",
+   "floor_pct": {
+    "medium": 4,
+    "high": 9
+   },
+   "measured_pct": {
+    "medium": 6,
+    "high": 11
+   },
+   "why": "The candidates' rows and valids (72 flops), one gate: the valids clocked on the rows' enable, the reset among its terms (DA's grant, OA's direction, DA tab rev 94). OI-81 (a) and OI-82 (OA's revs 252-254; granted by DA, 2026-10-25): each slot's two home-position candidates, the lowest owned live row with its home section or home pair free, found over all 192 rows and registered. The find's result is stable while the section bits move under it, so the candidates change on few of the cycles a section changes; the only exact enable is the 192-row find itself, and no enable from the module's own flops within CCV_NGD_CG_EN reaches 75% (a per-slot enable, measured on the model, sees a candidate change on 17-20% of its events). Without them Rename 2 needs a per-lane find and a fourth rename stage (+1.7% mean, +9.2% worst on the OI-34 sweep). Home-only (8 candidates, not 24) costs nothing on the sweep. Idle enables none. Floors 2 under the measure.",
+   "by": "DA",
+   "date": "2026-10-25"
   }
  ]
 }

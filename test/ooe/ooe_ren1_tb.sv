@@ -161,6 +161,13 @@ module ooe_ren1_tb #(
   // Rename 2's first gates: the names bound.
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW)) ooe_ren1n (
     .q_idx_cq01h(q_idx), .q_galloc_cq01h(q_galloc), .q_palloc_cq01h(q_palloc), .q_g_cq01h(q_gv),
-    .q_gl_cq01h(q_gl), .q_p_cq01h(q_pv), .q_pl_cq01h(q_pl), .n_gname(q_gname), .n_pname(q_pname), .n_g(q_g),
-    .n_p(q_p));
+    .q_gl_cq01h(q_gl), .q_p_cq01h(q_pv), .q_pl_cq01h(q_pl),
+    // Whole rows here (NS 0): rename_tb's sectioned build holds the narrow names.
+    .q_slot_cq01h('0), .q_gwe_cq01h('0), .q_na_cq01h('0), .q_nw_cq01h('0), .cand_v_cq01h('0),
+    .cand_row_cq01h('0), .cand_same_cq01h('0),
+    .n_gname(q_gname), .n_pname(q_pname), .n_g(q_g), .n_p(q_p),
+    .n_sa_v(n_sa_v), .n_sa_row(n_sa_row), .n_sa_sec(n_sa_sec), .n_rt_v(n_rt_v), .n_rt_row(n_rt_row));
+  logic [R-1:0]    n_sa_v, n_rt_v;
+  logic [R*GR-1:0] n_sa_row, n_rt_row;
+  logic [R-1:0]    n_sa_sec;
 endmodule
