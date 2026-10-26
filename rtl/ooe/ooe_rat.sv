@@ -20,11 +20,15 @@
 // Every write is applied an edge after the model makes it, from registers,
 // so each gate's enable is this module's own flop (OA's response OI-58,
 // V-75):
-//   - rename's group writes the speculative maps an edge after its go, from
-//     rename's register of the group (pw_*, data). The enable is this
-//     module's flop of the go per slot (a take, or a restore-allocate),
-//     and each checkpoint's its flop of "a taken branch names it", formed
-//     from rename's take counts and decq's head fields (L2). A branch's
+//   - rename's group writes the speculative maps two edges after its go
+//     (OI-83 (b), OA's rev 259): rename's register of the group (pw_*,
+//     data) is captured here first (po_*, from no logic, so a late name
+//     costs nothing), and the maps are written from the capture at the
+//     next edge. The capture leaves as po_* for the reads, which take it as
+//     the older of two pending groups. The enable is this module's flop of
+//     the go per slot (a take, or a restore-allocate), a cycle on, and each
+//     checkpoint's its flop of "a taken branch names it", formed from
+//     rename's take counts and decq's head fields (L2). A branch's
 //     checkpoint is the maps as they stand after its own port's writes and
 //     the lower ports' of its slot.
 //   - retirement writes the committed maps from the ROB's retire-stage
@@ -38,7 +42,10 @@
 //     applied at the next edge (L4), in that order of precedence.
 // Rename never names a slot such an event names, in its cycle or the next
 // (a mispredict's epoch drops the warp's queued uops; a demoting, killed
-// or freed slot does not rename): asserted for the edge they share. The
+// or freed slot does not rename): asserted for the edge they share. A
+// captured group, a cycle older, can meet its slot's event at the edge it
+// would write: the event wins and the slot's captured writes are dropped
+// (OI-83 (b) (3)). The
 // reads are not here: ooe_ratread reads rat_cq02h, the flops, with the
 // pending group's writes and the in-group override in front.
 //
@@ -113,6 +120,21 @@ module ooe_rat #(
   input  logic [S*LC-1:0]   restore_ckpt_cq00h,
   input  logic [S-1:0]      squash_cq00h,      // a squash to retirement
   input  logic [S-1:0]      release_cq00h,     // the slot freed
+`ifdef CCV_CHECK_RAT
+  // Read only by the benches (CCV_CHECK_RAT): the control pend-over-event
+  // lets a captured group's writes win over its slot's event.
+  input  logic              ctl_pkeep,
+`endif
+  // The captured group (OI-83 (b)): rename's register of the group a cycle
+  // on, written into the maps at the next edge; the reads' older pending.
+  output logic [A-1:0]      po_v_cq02h,
+  output logic [A*LS-1:0]   po_slot_cq02h,
+  output logic [A*4-1:0]    po_dst_cq02h,
+  output logic [A-1:0]      po_gwe_cq02h,
+  output logic [A*GW-1:0]   po_gname_cq02h,
+  output logic [A*2-1:0]    po_pdst_cq02h,
+  output logic [A-1:0]      po_pwe_cq02h,
+  output logic [A*PW-1:0]   po_pname_cq02h,
   // The maps after the last edge.
   output logic [S*MW-1:0]   rat_cq02h,         // speculative
   output logic [S*MW-1:0]   crat_cq02h,        // committed (the demotion map)
@@ -182,22 +204,82 @@ module ooe_rat #(
     rsc_cq01h <= restore_ckpt_cq00h;     // payload, read only with rs
   end
 
+  // -- the captured group (OI-83 (b)) -----------------------------------------
+  // Rename's register of the group, captured as it arrives, clocked on this
+  // module's lead of it (some slot's write); its leads a cycle on.
+  logic [S-1:0]    wl_cq02h, rw_cq02h;
+  logic [S*C-1:0]  ck_cq02h;
+  logic            po_en_cq01h;
+  // Its valid, slot, destination and write bits twice, each (* keep *)
+  // (NGD-7): one leaves for the reads, one drives this module's writes.
+  (* keep *) logic [A-1:0]    pi_v_cq02h, pi_gwe_cq02h;
+  (* keep *) logic [A*LS-1:0] pi_slot_cq02h;
+  (* keep *) logic [A*4-1:0]  pi_dst_cq02h;
+  (* keep *) logic [A-1:0]    pq_v_cq02h, pq_gwe_cq02h;
+  (* keep *) logic [A*LS-1:0] pq_slot_cq02h;
+  (* keep *) logic [A*4-1:0]  pq_dst_cq02h;
+  assign po_v_cq02h    = pq_v_cq02h;
+  assign po_gwe_cq02h  = pq_gwe_cq02h;
+  assign po_slot_cq02h = pq_slot_cq02h;
+  assign po_dst_cq02h  = pq_dst_cq02h;
+  logic [A-1:0]    po_rst_cq02h, po_br_cq02h;
+  logic [A*LC-1:0] po_ckpt_cq02h;
+  assign po_en_cq01h = wl_cq01h != '0;
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      wl_cq02h <= '0;
+      rw_cq02h <= '0;
+      ck_cq02h <= '0;
+    end else begin
+      wl_cq02h <= wl_cq01h;
+      rw_cq02h <= rw_cq01h;
+      ck_cq02h <= ck_cq01h;
+    end
+  end
+  // The valid bits every cycle (A flops): no group arrives as no write.
+  always_ff @(posedge ooe_core_clk) begin
+    if (rst_r01h) begin
+      pi_v_cq02h <= '0;
+      pq_v_cq02h <= '0;
+    end else begin
+      pi_v_cq02h <= pw_v_cq01h;
+      pq_v_cq02h <= pw_v_cq01h;
+    end
+  end
+  always_ff @(posedge ooe_core_clk) begin
+    if (po_en_cq01h) begin
+      pi_slot_cq02h  <= pw_slot_cq01h;
+      pq_slot_cq02h  <= pw_slot_cq01h;
+      po_rst_cq02h   <= pw_rst_cq01h;
+      pi_dst_cq02h   <= pw_dst_cq01h;
+      pq_dst_cq02h   <= pw_dst_cq01h;
+      pi_gwe_cq02h   <= pw_gwe_cq01h;
+      pq_gwe_cq02h   <= pw_gwe_cq01h;
+      po_gname_cq02h <= pw_gname_cq01h;
+      po_pdst_cq02h  <= pw_pdst_cq01h;
+      po_pwe_cq02h   <= pw_pwe_cq01h;
+      po_pname_cq02h <= pw_pname_cq01h;
+      po_br_cq02h    <= pw_br_cq01h;
+      po_ckpt_cq02h  <= pw_ckpt_cq01h;
+    end
+  end
+
   // A slot's speculative maps as they stand after the group's port k's own
   // writes and those of the lower ports naming the same slot: what a branch
   // on port k checkpoints.
   function automatic logic [MW-1:0] map_after(input logic [S*MW-1:0] q, input int k);
     logic [MW-1:0]  m;
     logic [LS-1:0]  t;
-    t = pw_slot_cq01h[k * LS +: LS];
+    t = pi_slot_cq02h[k * LS +: LS];
     m = '0;
     for (int u = 0; u < S; u++) if (t == LS'(u)) m = q[u * MW +: MW];
     // Every write as a decoder: no index computed and written through.
     for (int p = 0; p < A; p++)
-      if (p <= k && pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == t) begin
+      if (p <= k && pi_v_cq02h[p] && !po_rst_cq02h[p] && pi_slot_cq02h[p * LS +: LS] == t) begin
         for (int a = 0; a < NG; a++)
-          if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+          if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) m[a * GW +: GW] = po_gname_cq02h[p * GW +: GW];
         for (int a = 0; a < NP; a++)
-          if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+          if (po_pwe_cq02h[p] && po_pdst_cq02h[p * 2 +: 2] == 2'(a)) m[NG * GW + a * PW +: PW] = po_pname_cq02h[p * PW +: PW];
       end
     map_after = m;
   endfunction
@@ -220,6 +302,12 @@ module ooe_rat #(
   // else restore. An entry the group writes takes the last such port's name
   // over it.
   logic [S-1:0]       whole_cq01h;
+  logic               pkeep;                   // the control pend-over-event
+`ifdef CCV_CHECK_RAT
+  assign pkeep = ctl_pkeep;
+`else
+  assign pkeep = 1'b0;
+`endif
   logic [S*MW-1:0]    base_cq02h;
   logic [S*NG-1:0]    g_wr_cq01h;              // a port of the group writes GPR entry (s, a)
   logic [S*NG*GW-1:0] g_name_cq01h;
@@ -240,17 +328,19 @@ module ooe_rat #(
       base_cq02h[t * MW +: MW] = rl_cq01h[t] ? {{NP{PZERO}}, {NG{GZERO}}} :
                                  sq_cq01h[t] ? crat_cq02h[t * MW +: MW] :
                                  ck_pick(ckpt_cq02h[t * C * MW +: C * MW], rsc_cq01h[t * LC +: LC]);
+      // The captured group's writes, but none in a slot whose event this
+      // edge applies (OI-83 (b) (3): the event wins).
       for (int p = 0; p < A; p++)
-        if (pw_v_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
+        if (pi_v_cq02h[p] && 32'(pi_slot_cq02h[p * LS +: LS]) == t && (!whole_cq01h[t] || pkeep)) begin
           for (int a = 0; a < NG; a++)
-            if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
+            if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) begin
               g_wr_cq01h[t * NG + a]                = 1'b1;
-              g_name_cq01h[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+              g_name_cq01h[(t * NG + a) * GW +: GW] = po_gname_cq02h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
-            if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
+            if (po_pwe_cq02h[p] && po_pdst_cq02h[p * 2 +: 2] == 2'(a)) begin
               p_wr_cq01h[t * NP + a]                = 1'b1;
-              p_name_cq01h[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+              p_name_cq01h[(t * NP + a) * PW +: PW] = po_pname_cq02h[p * PW +: PW];
             end
         end
     end
@@ -267,7 +357,7 @@ module ooe_rat #(
   logic [S*MW-1:0] rat_nx_cq01h;
   always_comb
     for (int t = 0; t < S; t++) begin
-      rat_en_cq01h[t] = wl_cq01h[t] || whole_cq01h[t];
+      rat_en_cq01h[t] = wl_cq02h[t] || whole_cq01h[t];
       for (int a = 0; a < NG; a++)
         rat_nx_cq01h[t * MW + a * GW +: GW] =
             ({GW{g_wr_cq01h[t * NG + a]}} & g_name_cq01h[(t * NG + a) * GW +: GW]) |
@@ -319,16 +409,16 @@ module ooe_rat #(
           end
       end
       for (int p = 0; p < A; p++)
-        if (pw_v_cq01h[p] && pw_rst_cq01h[p] && 32'(pw_slot_cq01h[p * LS +: LS]) == t) begin
+        if (pi_v_cq02h[p] && po_rst_cq02h[p] && 32'(pi_slot_cq02h[p * LS +: LS]) == t) begin
           for (int a = 0; a < NG; a++)
-            if (pw_gwe_cq01h[p] && pw_dst_cq01h[p * 4 +: 4] == 4'(a)) begin
+            if (pi_gwe_cq02h[p] && pi_dst_cq02h[p * 4 +: 4] == 4'(a)) begin
               c_wr_cq01h[t * NG + a]                = 1'b1;
-              c_name_cq01h[(t * NG + a) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+              c_name_cq01h[(t * NG + a) * GW +: GW] = po_gname_cq02h[p * GW +: GW];
             end
           for (int a = 0; a < NP; a++)
-            if (pw_pwe_cq01h[p] && pw_pdst_cq01h[p * 2 +: 2] == 2'(a)) begin
+            if (po_pwe_cq02h[p] && po_pdst_cq02h[p * 2 +: 2] == 2'(a)) begin
               cp_wr_cq01h[t * NP + a]                = 1'b1;
-              cp_name_cq01h[(t * NP + a) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+              cp_name_cq01h[(t * NP + a) * PW +: PW] = po_pname_cq02h[p * PW +: PW];
             end
         end
     end
@@ -342,8 +432,8 @@ module ooe_rat #(
   logic [S*MW-1:0]    crat_nx_cq01h;
   always_comb
     for (int t = 0; t < S; t++) begin
-      cg_en_cq01h[t] = rl_cq01h[t] || rw_cq01h[t] || rg_cq01h[t * R +: R] != '0;
-      cp_en_cq01h[t] = rl_cq01h[t] || rw_cq01h[t] || rp_cq01h[t * R +: R] != '0;
+      cg_en_cq01h[t] = rl_cq01h[t] || rw_cq02h[t] || rg_cq01h[t * R +: R] != '0;
+      cp_en_cq01h[t] = rl_cq01h[t] || rw_cq02h[t] || rp_cq01h[t * R +: R] != '0;
       for (int a = 0; a < NG; a++)
         crat_nx_cq01h[t * MW + a * GW +: GW] =
             ({GW{c_wr_cq01h[t * NG + a]}} & c_name_cq01h[(t * NG + a) * GW +: GW]) |
@@ -378,14 +468,18 @@ module ooe_rat #(
     ckpt_nx_cq01h = '0;
     for (int p = 0; p < A; p++)
       for (int i = 0; i < S * C; i++)
-        if (pw_v_cq01h[p] && !pw_rst_cq01h[p] && pw_br_cq01h[p] &&
-            pw_slot_cq01h[p * LS +: LS] == LS'(i / C) && pw_ckpt_cq01h[p * LC +: LC] == LC'(i % C)) begin
+        if (pi_v_cq02h[p] && !po_rst_cq02h[p] && po_br_cq02h[p] &&
+            pi_slot_cq02h[p * LS +: LS] == LS'(i / C) && po_ckpt_cq02h[p * LC +: LC] == LC'(i % C)) begin
           ckpt_wr_cq01h[i]            = 1'b1;
           ckpt_nx_cq01h[i * MW +: MW] = ck_map_cq02h[p * MW +: MW];
         end
   end
-  logic [S*C-1:0] ckpt_en_cq01h;
-  assign ckpt_en_cq01h = ck_cq01h;
+  // A slot's checkpoints are not written at its event's edge: the branch
+  // naming one is younger than the event, and its group is dropped.
+  logic [S*C-1:0] ckpt_en_cq01h, ck_ev_cq01h;
+  always_comb
+    for (int i = 0; i < S * C; i++) ck_ev_cq01h[i] = whole_cq01h[i / C] && !pkeep;
+  assign ckpt_en_cq01h = ck_cq02h & ~ck_ev_cq01h;
   for (genvar i = 0; i < S * C; i++) begin : g_ckpt
     always_ff @(posedge ooe_core_clk) begin
       if (ckpt_en_cq01h[i]) ckpt_cq02h[i * MW +: MW] <= ckpt_nx_cq01h[i * MW +: MW];
@@ -402,14 +496,14 @@ module ooe_rat #(
     rst_sl_cq01h = '0;
     for (int p = 0; p < A; p++)
       for (int t = 0; t < S; t++)
-        if (pw_v_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == LS'(t)) begin
+        if (pi_v_cq02h[p] && pi_slot_cq02h[p * LS +: LS] == LS'(t)) begin
           grp_sl_cq01h[t] = 1'b1;
-          if (pw_rst_cq01h[p]) rst_sl_cq01h[t] = 1'b1;
+          if (po_rst_cq02h[p]) rst_sl_cq01h[t] = 1'b1;
         end
   end
-  `CCV_ASSERT(group_led, (grp_sl_cq01h & ~wl_cq01h) == '0)
-  `CCV_ASSERT(restore_alloc_led, rst_sl_cq01h == rw_cq01h)
-  `CCV_ASSERT(ckpt_led, ckpt_wr_cq01h == ck_cq01h)
+  `CCV_ASSERT(group_led, (grp_sl_cq01h & ~wl_cq02h) == '0)
+  `CCV_ASSERT(restore_alloc_led, rst_sl_cq01h == rw_cq02h)
+  `CCV_ASSERT(ckpt_led, ckpt_wr_cq01h == ck_cq02h)
   `CCV_ASSERT(retire_led, ret_gwe_cq01h == rg_cq01h && ret_pwe_cq01h == rp_cq01h)
   // The group names no slot a registered whole-map event names (see above).
   logic [S-1:0] renamed_cq01h;

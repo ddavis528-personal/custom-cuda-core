@@ -481,7 +481,7 @@ read -r rat_g rat_d < <(python3 test/ooe/rat-params.py)
 dir=build/ooe-rtl/rat
 mkdir -p "$dir"
 if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-      --trace ${rat_g//,/ } --top-module ooe_rat_read --Mdir "$dir" -o rat_tb \
+      --trace -DCCV_CHECK_RAT ${rat_g//,/ } --top-module ooe_rat_read --Mdir "$dir" -o rat_tb \
       -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
       -CFLAGS "-std=c++17 -O2 ${rat_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe" \
       "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_ratread.sv" \
@@ -494,7 +494,7 @@ if out=$("$dir/rat_tb" "$seeds" 2>&1); then
 else
   say "rat == model, live" "FAIL"; echo "$out" | tail -8; fail=1
 fi
-for c in port-reverse drop-restore drop-retire drop-squash no-pending no-lead; do
+for c in port-reverse drop-restore drop-retire drop-squash no-pending no-lead pend-over-event; do
   if RAT_CONTROL=$c "$dir/rat_tb" 3 >/dev/null 2>&1; then
     say "  control $c (rat)" "MISSED"; fail=1
   else
@@ -557,7 +557,7 @@ for cfg in "rename - 25 drop-free,no-lead,no-write-bits,no-hold,drop-restore,no-
   dir=build/ooe-rtl/$name
   mkdir -p "$dir"
   if ! verilator --cc --exe --build -j 0 -O2 --assert -Wall -Wno-UNUSEDSIGNAL -Wno-DECLFILENAME \
-        --trace -DCCV_CHECK_RENAME ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
+        --trace -DCCV_CHECK_RENAME -DCCV_CHECK_RAT ${rename_g//,/ } --top-module ooe_rename_tb --Mdir "$dir" -o rename_tb \
         -I"$PWD/rtl/include" -I"$PWD/rtl/generated" \
         -CFLAGS "-std=c++17 -O2 ${rename_d//,/ } -DOOE_TEST_AS_LIBRARY -I$PWD/sim/generated -I$PWD/sim/ooe -I$PWD/test/ooe" \
         "$PWD/rtl/ccv_assert_pkg.sv" "$PWD/rtl/ooe/ooe_rat.sv" "$PWD/rtl/ooe/ooe_go.sv" "$PWD/rtl/common/ccv_common_csa.sv" "$PWD/rtl/ooe/ooe_freelist.sv" \

@@ -11,8 +11,10 @@
 // returns. Each rename port reads its three GPR sources, its old GPR
 // destination, its guard, its old predicate destination and predicate
 // logic's two sources from its slot's speculative maps as ooe_rat's flops
-// hold them, with the pending group's writes over them (last cycle's
-// group, which ooe_rat writes an edge late: OA's response OI-58), then
+// hold them, with the captured group's writes over them (the group before
+// last, which ooe_rat writes from its capture at this edge: OI-83 (b)),
+// then the pending group's (last cycle's, which ooe_rat captures at this
+// edge: OA's response OI-58), then
 // the writes of the lower ports naming the same slot (the in-group
 // override). A restore-allocate port (rst) writes and
 // reads nothing, so it overrides nothing.
@@ -44,8 +46,18 @@ module ooe_ratread #(
   input  logic [A-1:0]      ren_pwe_cq01h,
   input  logic [A*PW-1:0]   ren_pname_cq01h,
   input  logic [A*2*2-1:0]  ren_pq_cq01h,
-  // The pending group: last cycle's, in rename's register, whose writes
-  // reach ooe_rat's flops only at this edge (OA's response OI-58).
+  // The captured group: the one before last, in ooe_rat's capture, written
+  // into its flops at this edge (OI-83 (b)).
+  input  logic [A-1:0]      po_v_cq02h,
+  input  logic [A*LS-1:0]   po_slot_cq02h,
+  input  logic [A*4-1:0]    po_dst_cq02h,
+  input  logic [A-1:0]      po_gwe_cq02h,
+  input  logic [A*GW-1:0]   po_gname_cq02h,
+  input  logic [A*2-1:0]    po_pdst_cq02h,
+  input  logic [A-1:0]      po_pwe_cq02h,
+  input  logic [A*PW-1:0]   po_pname_cq02h,
+  // The pending group: last cycle's, in rename's register, which ooe_rat
+  // captures at this edge (OA's response OI-58).
   input  logic [A-1:0]      pw_v_cq01h,
   input  logic [A*LS-1:0]   pw_slot_cq01h,
   input  logic [A*4-1:0]    pw_dst_cq01h,
@@ -62,11 +74,11 @@ module ooe_ratread #(
 );
 
   // Each read as a select: the flops' entry, or the last writer of it among
-  // the pending group's ports (last cycle's, written at this edge) and then
-  // the lower ports of this group naming the same slot. Every writer's
+  // the captured group's ports, the pending group's and then the lower
+  // ports of this group naming the same slot. Every writer's
   // match is compared in parallel with the flops' read, so the override is
   // a one-hot AND-OR after both, not a map rebuilt in front of the read.
-  localparam int NW = 2 * A;             // the pending group's ports, then this group's
+  localparam int NW = 3 * A;             // the captured group's ports, the pending group's, then this group's
   function automatic logic [GW-1:0] gsel(input int k, input logic [3:0] a);
     logic [LS-1:0] s;
     logic [GW-1:0] f, v;
@@ -78,11 +90,13 @@ module ooe_ratread #(
       for (int e = 0; e < NG; e++)
         f = f | (rat_cq02h[t * MW + e * GW +: GW] & {GW{s == LS'(t) && a == 4'(e)}});
     for (int p = 0; p < A; p++) begin
-      m[p] = pw_v_cq01h[p] && pw_gwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == s && pw_dst_cq01h[p * 4 +: 4] == a;
-      nm[p * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
-      m[A + p] = p < k && ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_gwe_cq01h[p] &&
-                 ren_slot_cq01h[p * LS +: LS] == s && ren_dst_cq01h[p * 4 +: 4] == a;
-      nm[(A + p) * GW +: GW] = ren_gname_cq01h[p * GW +: GW];
+      m[p] = po_v_cq02h[p] && po_gwe_cq02h[p] && po_slot_cq02h[p * LS +: LS] == s && po_dst_cq02h[p * 4 +: 4] == a;
+      nm[p * GW +: GW] = po_gname_cq02h[p * GW +: GW];
+      m[A + p] = pw_v_cq01h[p] && pw_gwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == s && pw_dst_cq01h[p * 4 +: 4] == a;
+      nm[(A + p) * GW +: GW] = pw_gname_cq01h[p * GW +: GW];
+      m[2 * A + p] = p < k && ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_gwe_cq01h[p] &&
+                     ren_slot_cq01h[p * LS +: LS] == s && ren_dst_cq01h[p * 4 +: 4] == a;
+      nm[(2 * A + p) * GW +: GW] = ren_gname_cq01h[p * GW +: GW];
     end
     later[NW-1] = 1'b0;
     for (int w = NW - 2; w >= 0; w--) later[w] = later[w + 1] || m[w + 1];
@@ -101,11 +115,13 @@ module ooe_ratread #(
       for (int e = 0; e < NP; e++)
         f = f | (rat_cq02h[t * MW + NG * GW + e * PW +: PW] & {PW{s == LS'(t) && a == 2'(e)}});
     for (int p = 0; p < A; p++) begin
-      m[p] = pw_v_cq01h[p] && pw_pwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == s && pw_pdst_cq01h[p * 2 +: 2] == a;
-      nm[p * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
-      m[A + p] = p < k && ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_pwe_cq01h[p] &&
-                 ren_slot_cq01h[p * LS +: LS] == s && ren_pdst_cq01h[p * 2 +: 2] == a;
-      nm[(A + p) * PW +: PW] = ren_pname_cq01h[p * PW +: PW];
+      m[p] = po_v_cq02h[p] && po_pwe_cq02h[p] && po_slot_cq02h[p * LS +: LS] == s && po_pdst_cq02h[p * 2 +: 2] == a;
+      nm[p * PW +: PW] = po_pname_cq02h[p * PW +: PW];
+      m[A + p] = pw_v_cq01h[p] && pw_pwe_cq01h[p] && pw_slot_cq01h[p * LS +: LS] == s && pw_pdst_cq01h[p * 2 +: 2] == a;
+      nm[(A + p) * PW +: PW] = pw_pname_cq01h[p * PW +: PW];
+      m[2 * A + p] = p < k && ren_v_cq01h[p] && !ren_rst_cq01h[p] && ren_pwe_cq01h[p] &&
+                     ren_slot_cq01h[p * LS +: LS] == s && ren_pdst_cq01h[p * 2 +: 2] == a;
+      nm[(2 * A + p) * PW +: PW] = ren_pname_cq01h[p * PW +: PW];
     end
     later[NW-1] = 1'b0;
     for (int w = NW - 2; w >= 0; w--) later[w] = later[w + 1] || m[w + 1];

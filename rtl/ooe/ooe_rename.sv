@@ -157,6 +157,16 @@ module ooe_rename #(
   input  logic [LMF-1:0]    flm_cq01h,
   // ooe_rat's speculative maps.
   input  logic [S*MW-1:0]   rat_cq02h,
+  // ooe_rat's capture of the group before last, written into its maps at
+  // this edge (OI-83 (b)): the heads' reads take it under the pending group.
+  input  logic [R-1:0]      po_v_cq02h,
+  input  logic [R*LS-1:0]   po_slot_cq02h,
+  input  logic [R*4-1:0]    po_dst_cq02h,
+  input  logic [R-1:0]      po_gwe_cq02h,
+  input  logic [R*GW-1:0]   po_gname_cq02h,
+  input  logic [R*2-1:0]    po_pdst_cq02h,
+  input  logic [R-1:0]      po_pwe_cq02h,
+  input  logic [R*PW-1:0]   po_pname_cq02h,
   // The free lists' frees (the retire stage's register) and their leads.
   input  logic              gfree_l_cq00h,
   input  logic [NG-1:0]     gfree_cq01h,
@@ -377,7 +387,8 @@ module ooe_rename #(
     ooe_headrd #(.S(S), .SL(s), .R(R), .A(R), .GW(GW), .PW(PW)) u_rd (
       .rat_cq02h(rat_cq02h[s * MW +: MW]), .h_src_cq01h(src_cq01h), .h_dst_cq01h(dst_cq01h),
       .h_gwe_cq01h(gwe_cq01h), .h_pguard_cq01h(pguard_cq01h), .h_pdst_cq01h(pdst_cq01h), .h_pwe_cq01h(pwe_cq01h),
-      .h_pq_cq01h(pq_cq01h), .pw_v_cq01h(p_v_cq03h), .pw_slot_cq01h(p_slot_cq03h), .pw_dst_cq01h(p_dst_cq03h),
+      .h_pq_cq01h(pq_cq01h), .po_v_cq02h, .po_slot_cq02h, .po_dst_cq02h, .po_gwe_cq02h, .po_gname_cq02h,
+      .po_pdst_cq02h, .po_pwe_cq02h, .po_pname_cq02h, .pw_v_cq01h(p_v_cq03h), .pw_slot_cq01h(p_slot_cq03h), .pw_dst_cq01h(p_dst_cq03h),
       .pw_gwe_cq01h(p_gwe_cq03h), .pw_gname_cq01h(p_gname_cq03h), .pw_pdst_cq01h(p_pdst_cq03h),
       .pw_pwe_cq01h(p_pwe_cq03h), .pw_pname_cq01h(p_pname_cq03h),
       .h_gv_cq01h(c_gv_cq03h[s * R * 4 * GW +: R * 4 * GW]), .h_gw_cq01h(c_gw_cq01h[s * R * 4 * R +: R * 4 * R]),
@@ -441,10 +452,19 @@ module ooe_rename #(
   (* keep *) logic [R*GR-1:0]  p_galloc_cq03h;
   (* keep *) logic [R*PW-1:0]  p_palloc_cq03h;
   logic [R*4*GW-1:0] q_gv_cq03h;
-  logic [R*4*R-1:0]  q_gl_cq03h, q_pl_cq03h;
+  (* keep *) logic [R*4*R-1:0] q_gl_cq03h;
+  logic [R*4*R-1:0]  q_pl_cq03h;
   logic [R*4*PW-1:0] q_pv_cq03h;
   (* keep *) logic [R*XL-1:0] x_x_cq03h;
-  logic [R*10-1:0] w_cq03h;                    // each lane's width codes: the first 8 out, all to the names
+  (* keep *) logic [R*10-1:0] w_cq03h;         // each lane's width codes, to the names
+  (* keep *) logic [R*4*R-1:0] qo_gl_cq03h;    // the in-group writer lanes again, for the names out (NGD-7)
+  (* keep *) logic [R*10-1:0]  wq_cq03h;       // and the width codes
+  // The narrow names' own copies of the lanes' slot, write bit and width
+  // codes, each (* keep *): the outputs' registers reach no placement
+  // (NGD-7 at NS 4).
+  (* keep *) logic [R*LS-1:0] n_slot_cq03h;
+  (* keep *) logic [R-1:0]    n_gwe_cq03h;
+  (* keep *) logic [R*8-1:0]  wo_cq03h;          // the first 8 bits of each lane's, out
   (* keep *) logic [R*2-1:0] o_c_cq03h;
   (* keep *) logic [R-1:0]   o_lv_cq03h;
   logic              r1_en_cq02h;
@@ -489,6 +509,11 @@ module ooe_rename #(
       p_palloc_cq03h <= palloc_cq02h;
       x_x_cq03h      <= l_x_cq02h;
       w_cq03h        <= l_w_cq02h;
+      n_slot_cq03h   <= l_slot_cq02h;
+      qo_gl_cq03h    <= l_gl_cq02h;
+      wq_cq03h       <= l_w_cq02h;
+      n_gwe_cq03h    <= l_gwe_cq02h;
+      for (int l = 0; l < R; l++) wo_cq03h[l * 8 +: 8] <= l_w_cq02h[l * 10 +: 8];
       for (int l = 0; l < R; l++)
         o_c_cq03h[l * 2 +: 2] <= {l_x_cq02h[l * XL] && l_x_cq02h[l * XL + 1],
                                   l_x_cq02h[l * XL] && (!l_x_cq02h[l * XL + 1] || l_x_cq02h[l * XL + 2])};
@@ -501,9 +526,7 @@ module ooe_rename #(
   assign q_gwe_cq03h  = o_gwe_cq03h;
   assign q_pdst_cq03h = o_pdst_cq03h;
   assign q_pwe_cq03h  = o_pwe_cq03h;
-  for (genvar l = 0; l < R; l++) begin : g_qw
-    assign q_w_cq03h[l * 8 +: 8] = w_cq03h[l * 10 +: 8];
-  end
+  assign q_w_cq03h = wo_cq03h;
 
   // -- The names bound ---------------------------------------------------------
   // Each lane's narrow attributes (slice 6): an atomic, its GPR reads
@@ -526,8 +549,8 @@ module ooe_rename #(
   logic [R*4*PW-1:0] q_px_cq03h;
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .FR(FR), .S(S)) u_ren1n (
     .q_idx_cq01h(q_idx_cq03h), .q_galloc_cq01h(q_galloc_cq03h), .q_palloc_cq01h(q_palloc_cq03h),
-    .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
-    .q_slot_cq01h(o_slot_cq03h), .q_gwe_cq01h(o_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
+    .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(qo_gl_cq03h), .q_p_cq01h('0), .q_pl_cq01h('0),
+    .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(wq_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
     .n_gname(q_gname_cq03h), .n_pname(q_pname_cq03h), .n_g(q_gx_cq03h), .n_p(q_px_cq03h),
     .n_sa_v(sa_v_cq03h), .n_sa_row(sa_row_cq03h), .n_sa_sec(sa_sec_cq03h), .n_rt_v(rt_v_cq03h), .n_rt_row(rt_row_cq03h));
@@ -539,7 +562,7 @@ module ooe_rename #(
   ooe_ren1n #(.R(R), .GW(GW), .GR(GR), .PW(PW), .NS(NS), .FR(FR), .S(S)) u_ren1nr (
     .q_idx_cq01h(r_idx_cq03h), .q_galloc_cq01h(r_galloc_cq03h), .q_palloc_cq01h(r_palloc_cq03h),
     .q_g_cq01h(q_gv_cq03h), .q_gl_cq01h(q_gl_cq03h), .q_p_cq01h(q_pv_cq03h), .q_pl_cq01h(q_pl_cq03h),
-    .q_slot_cq01h(o_slot_cq03h), .q_gwe_cq01h(o_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
+    .q_slot_cq01h(n_slot_cq03h), .q_gwe_cq01h(n_gwe_cq03h), .q_na_cq01h(na_cq03h), .q_nw_cq01h(w_cq03h),
     .cand_v_cq01h(ncv_cq02h), .cand_row_cq01h(ncr_cq02h), .cand_same_cq01h(gcs_cq02h),
     .n_gname(r_gname_cq03h), .n_pname(r_pname_cq03h), .n_g(r_g_cq03h), .n_p(r_p_cq03h),
     .n_sa_v(r_sav_cq03h), .n_sa_row(r_sar_cq03h), .n_sa_sec(r_sas_cq03h), .n_rt_v(r_rtv_cq03h), .n_rt_row(r_rtr_cq03h));
