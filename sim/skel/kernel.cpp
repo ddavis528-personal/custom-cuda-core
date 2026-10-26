@@ -5064,20 +5064,21 @@ private:
   bool busy() const override { return !out_.empty(); }
 };
 
-/// SPM (TI's rev 230): the scratchpad, CCV_SPM_BYTES in CCV_SPM_BANKS
-/// banks of a word, served a pass at a time. A bank serves one pass a
-/// cycle: a pass starts when every bank it names is free, takes
-/// CCV_LAT_SPM, and its response says how many cycles it waited
-/// (conflict_serialization). It reads and writes at its arrival, which
-/// orders it as MIU sent it; MIU holds a load behind a store to its words.
-/// spm-no-wait: a pass never waits for its banks.
+/// SPM (TI's rev 230; SPM spec rev 2, AR's rev 227): the scratchpad,
+/// CCV_SPM_BYTES in CCV_SPM_BANKS banks of a word. Its resolver issues one
+/// pass a cycle into the banks, so a memop's first pass answers
+/// CCV_LAT_SPM_BASE cycles after it arrives and each further one a cycle
+/// later, pipelined; a pass's response says how many cycles it waited for
+/// the resolver (conflict_serialization). It reads and writes at its
+/// arrival, which orders it as MIU sent it; MIU holds a load behind a store
+/// to its words. spm-no-wait: every pass issues as it arrives.
 class Spm : public Stub {
 public:
   Spm(int inst, Kernel &k) : Stub(inst, k), mem_(ccv::kSpmBytes) {}
   const char *kind() const override { return "spm"; }
 private:
   std::vector<uint8_t> mem_;
-  std::array<uint64_t, ccv::kSpmBanks> free_at_{};
+  uint64_t next_ = 0;   ///< the first cycle the resolver is free
   struct Out { uint64_t at; unsigned slot; Bits msg; uint64_t tid; };
   std::deque<Out> out_;
   void work() override {
@@ -5090,12 +5091,7 @@ private:
         const bool wr = get(m.payload, c.miu_spm, "spm_op") == kSpmWrite;
         const Line wd = getLine(m.payload, field(c.miu_spm, "write_data").lsb);
         Line rd{};
-        uint64_t start = now_;
         for (unsigned b = 0; b != ccv::kSpmBanks; ++b) {
-          bool any = false;
-          for (unsigned k = 0; k != 4; ++k) any = any || m.payload.bit(mlsb + 4 * b + k);
-          if (!any) continue;
-          if (k_.brk != "spm-no-wait") start = std::max(start, free_at_[b]);
           const uint64_t w = m.payload.get(alsb + ccv::kWSpmWord * b, ccv::kWSpmWord);
           const uint64_t a = (w * ccv::kSpmBanks + b) * 4;
           for (unsigned k = 0; k != 4; ++k) {
@@ -5104,17 +5100,14 @@ private:
             else rd[4 * b + k] = mem_[a + k];
           }
         }
-        for (unsigned b = 0; b != ccv::kSpmBanks; ++b) {
-          bool any = false;
-          for (unsigned k = 0; k != 4; ++k) any = any || m.payload.bit(mlsb + 4 * b + k);
-          if (any) free_at_[b] = start + 1;
-        }
+        const uint64_t start = k_.brk == "spm-no-wait" ? now_ : std::max(now_, next_);
+        next_ = start + 1;
         Bits r = msgOf(c.spm_miu);
         put(r, c.spm_miu, "req_id", get(m.payload, c.miu_spm, "req_id"));
         putLine(r, field(c.spm_miu, "read_data").lsb, rd);
         const uint64_t cap = (uint64_t(1) << ccv::kWConflictSer) - 1;
         put(r, c.spm_miu, "conflict_serialization", std::min(start - now_, cap));
-        out_.push_back({start + ccv::prov::kLatSpm, s, r, m.tid});
+        out_.push_back({start + ccv::prov::kLatSpmBase, s, r, m.tid});
       }
     for (auto it = out_.begin(); it != out_.end();)
       if (it->at <= now_ && can(c.spm_miu, it->slot)) {
