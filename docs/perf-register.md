@@ -39,7 +39,7 @@ it.
 | PF-14 | Younger non-memory ops pass a barrier wait | rename | deferred (doc; converged waits only since TI-40) |
 | PF-15 | `chwidth` without serialising rename | rename | deferred again (DA tab rev 93): the drain stays; trigger 5% `hold.chwidth` on converged narrow code |
 | PF-16 | More than one redirect a cycle | recovery | deferred (A-6) |
-| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: -4.2% at 8, one warp; held for the 4-warp shape) |
+| PF-17 | More branch checkpoints per warp | recovery, FET | deferred (AR-24: none at four warps; -4.2% at one warp, a single-thread trade for AR-20) |
 | PF-18 | A masked load merged without a copy-only op | issue, RCU, MIU | deferred (A-38) |
 | PF-19 | Criticality-aware select | scheduler | deferred |
 | PF-20 | Rename in the cycle a uop arrives | front end | deferred |
@@ -66,8 +66,9 @@ it.
 | PF-41 | Restore a parked warp before it is ready, into an idle slot | RAU | deferred (TI-21; OI's rev 155) |
 | PF-42 | Store-to-load forwarding within a warp | MIU | deferred (TI-27 (d); TI-36) |
 | PF-43 | Carry a per-lane base in a field the memop does not use | RCU, MIU, OOE | deferred (measured: the field stays; TI-32) |
-| PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), not yet built |
+| PF-44 | Fetch past a converged barrier wait | FET, OOE | adopted by decision (DA, TI-40), bounded by credits and r = 2 (DA, TI-46), not yet built |
 | PF-45 | Self-timed completion for done-free lane ops | OOE, RCU | deferred (measured: -1.0% single-thread; OA's rev 246) |
+| PF-46 | Interleaved per-thread memory: a window MIU swizzles | ISA, MIU, OOE, compiler | adopted by decision (DA, 2026-10-26: option W), not yet built |
 
 ## Entries
 
@@ -353,6 +354,11 @@ it.
   three latency levers with it (L1 wake 13, lane bypass 3) add up: -15.4%
   together. Held for the 4-warp shape, since a checkpoint is FET's per-lane
   group state as well as the RAT's (OA's rev 243).
+- **Four warps (AR-24, TI's rev 222, 2026-10-25):** coremark128 at 512 KiB,
+  8 checkpoints take 9,133,639 cycles against 9,070,811 at 4 (+0.7%), with
+  `ckpt_full` unchanged (35.0M and 35.2M warp-cycles): fetch waits behind
+  the loads whatever the count. Closed at 4 for the design point (OA's rev
+  258). One warp's -4.2% goes to AR-20's single-thread table.
 
 ### PF-18 A masked load merged without a copy-only op
 
@@ -976,6 +982,26 @@ it.
   164). It moves to adopted with
   the commit that builds it. The measurement above still says whether the
   second path earns its verification.
+- **Measured, and a liveness defect (TI-46; TI's revs 233-236,
+  2026-10-26):** fetching on past a converged wait deadlocked four-warp
+  barrier kernels. A held warp's uops filled its decode-queue share and were
+  refused, and a refused uop at a `ccv_dec_ooe_uop` slot's head blocks every
+  other warp, the late warp's arrive among them. Unbounded run-ahead is also
+  slower, gemv +85% and sgemm +75%, because held warps take the channel from
+  the warp the barrier waits on. Against parking at the wait, run-ahead
+  bounded at two instructions saves 0.17% (gemv), 3.3% (sgemm), 1.6%
+  (layernorm) and 0.4% (cta-reduce): 0.7 to 4.7 cycles a converged wait,
+  not the 10 estimated above. At four or more instructions, three held
+  warps overfill the 13-slot queue. OA's ruling (rev 265): per-warp
+  decode-queue credits from OOE to FET, and a held-ahead limit of r slots
+  past a converged wait, r <= 2 at four warps (FET spec rev 33).
+- **Decided (Daniel, 2026-10-26; DA tab rev 96):** (b) at r = 2 adopted,
+  in his words "Adopt (b) for TI-46 as recommended." With the credits and
+  the held-ahead limit, against parking: layernorm -13.1%, cta-reduce
+  -5.1%, gemv -0.05%, sgemm +0.6%; S1 -0.01% (TI's revs 237 and 238). Most
+  of it is the credits removing the cross-warp stall, not the refill.
+  What lost: parking with no interface change, and PF-44's unbounded
+  fetch-on. FET spec rev 35 carries it.
 
 ### PF-45 Self-timed completion for done-free lane ops
 
@@ -1000,3 +1026,79 @@ it.
 - **Signal:** stages on the done link (`params/links.json`), which add to
   every lane op's completion, or the 4-warp shape showing done slots short.
   Re-run the bound then.
+
+### PF-46 Interleaved per-thread memory: a window MIU swizzles
+
+- **Now:** per-thread data that a pointer reaches lies in `.global` in
+  contiguous blocks, one per thread. O-69 interleaves only the spill space,
+  which no pointer reaches. So 32 lanes reading the same field read 32
+  lines: CoreMark-derived's per-thread state is all pointer-reached (CP-55),
+  and its load memops touch 27.9 lines each on coremark32 (TI's rev 208).
+  More L1 lookups do not help: 4x the lookup rate saves 2.7% (TI's rev 214).
+- **Alternative (IS-24 option W, ISA draft in the register):** a window of
+  `.global` that MIU interleaves as O-69 does, chosen by address. An access
+  is interleaved when the `rbase` of the lowest lane in its issue mask lies
+  in `[W, W + L/64 KiB)`, an aligned run of 2^k windows (CP-59). Its logical
+  offset `b = ((rbase - W) << 16) + (rindex << scale) + disp` faults F-ADDR
+  outside `[0, L)`. Lane l's byte goes to `R(ctx) + 128*floor(b/4) + 4l +
+  (b mod 4)`, with `R(ctx)` the warp context's own region, `32*L` apart. The
+  kernel forms `W` once as launch-block word 24 plus `srd #3` (`%privoff`,
+  3 x `CCV_LANE_CONTEXTS`). A pointer into the window names the same bytes
+  only in the lane that uses it, as a CUDA local pointer does. A plain
+  access into `R(ctx)` is an ordinary `.global` access (IS's rev 167). Every
+  `.global` form works this way; no opcode is added. Option M, the same
+  swizzle as two Format D opcodes, is kept for comparison.
+- **What it buys (TI's exact bound, revs 210 and 220):** a scratch knob
+  applies the layout below MIU with every oracle check unchanged. Pin
+  13b4cfd, 64 KiB 8-way L1, warm MLC, perfect fetch, ROB 32, 4 checkpoints;
+  every run exact.
+
+  | Shape | Plain | Interleaved | Change |
+  |---|---|---|---|
+  | coremark32, one warp, uniform seed | 2,433,583 | 1,311,956 | -46.1% (-42.0% unaligned) |
+  | coremark128, four warps, uniform seed | 10,164,145 | 2,838,912 | -72.1% |
+  | coremarkpl32, one warp, a seed per lane | 8,566,857 | 7,961,653 | -7.1% |
+
+  Uniform, 98.5% of memops become one line. Four warps then take 2.16x one
+  warp's time for 4x the work, where plain they took 4.18x and hid nothing:
+  the four-warp memory bound was the layout, not L1's size. Interleaved,
+  even an 8 KiB direct-mapped L1 runs coremark128 in 3,340,054 cycles,
+  3.0x faster than the plain layout at 64 KiB 8-way, and 8 KiB to 64 KiB
+  buys only 15% more (TI's rev 225). Per thread,
+  four interleaved warps take 22,179 cycles against one thread's 1,938,449.
+  With a seed per lane only 55.5% of memops coalesce, since diverged lanes
+  walk different nodes, so the gain falls to 7.1%.
+- **Cost (W):** MIU compares each lane's `rbase` high bits with the window
+  and takes the lowest issuing lane's result: about 1,000 to 1,500 gates,
+  beside the address add. The swizzle is the base + index add with rewired
+  operands and one more carry-save level per lane, about 2 NGD. That is
+  AR's estimate; no MIU session has confirmed it fits without a cycle. MIU
+  forms the window value once a CTA, about 32 flops a CTA slot. OOE
+  substitutes `srd #3` as `imm_kind` 5, one constant on the existing mux
+  (OA's rev 255). The compiler forms the base in three instructions a
+  kernel (CP-61), and the source places per-thread state at the window,
+  one line in CoreMark-derived. The ISA gains a lane-relative pointer,
+  which is new to it though not to CUDA. No opcode points are spent.
+- **Cost (M, for comparison):** Format D's last two points and a 3-bit size
+  field, about one mux level in MIU, and a whole-module points-to analysis
+  in the compiler, whose errors are silent corruption, not faults (CP-58).
+  The compiler-only form, with no ISA change, adds 21% to 34% issue groups
+  (CP-57), most of the gain.
+- **Who gains:** code with pointer-reached per-thread state, CPU-style code
+  such as CoreMark. The GPU kernels already coalesce and gain nothing.
+  Divergent per-thread work gains much less.
+- **Decided (Daniel, 2026-10-26; DA tab rev 95):** option W adopted, in
+  his words "Let's adopt IS-24 option W as you recommend." What lost:
+  option M, the compiler-only form, and pointers that mean the same in
+  every lane. IS wrote it into the ISA as O-83 (§5.9, compiler 3424e9a); CP builds ccv-sim's
+  swizzle and `__ccv_privbase`; TI adds `imm_kind` 5 to the schema and the
+  swizzle to the MIU stub; AR's MIU spec (rev 39) and DEC spec (rev 15)
+  carry it (MIU rev 41, DEC rev 16). It moves to adopted with the commit
+  that builds it.
+- **Signal:** with W adopted, ROB depth is a single-thread question only:
+  interleaved coremark32 has the ROB full 35.2% of cycles, but four
+  interleaved warps only 2.3%, so ROB 32 holds at the design point (OA's
+  rev 257). On interleaved coremark32, ROB 48 saves 3.9% and 64 saves 5.1%
+  (TI's rev 228), a single-thread trade for AR-20. L1's size is the DCU
+  spec's, chosen on the corpus sweep between 64 KiB and 512 KiB (DA tab rev
+  95); on interleaved coremark128, 512 KiB saves 7.1% against 64 KiB.
