@@ -3856,9 +3856,10 @@ private:
         x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
         x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
         x.br_mask = 0;
-        // Restored to a slot whose queue holds nothing of it (TI-46 (b)).
+        // Restored to a slot whose queue holds nothing of it (TI-46 (b)); a
+        // demotion's rewind beat has cleared held-ahead (held-no-clear: kept).
         x.credits = int(ccv::prov::kDecqWarpMax);
-        x.held = false;
+        if (k_.brk != "held-no-clear") x.held = false;
         x.next = at;
         x.launched = true;
         x.stopped = x.restoring = x.await_redirect = false;

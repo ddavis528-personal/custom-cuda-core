@@ -817,6 +817,26 @@ CCV_OOE_CONFIG=decq_warp_max=4 "$SKEL" --kernel build/oracle/transp4/oracle.json
 ctl held-over-r "^CHECK ooe: warp 1 holds 3 slots past its held wait, over r = 2 (TI-46 (b))"
 ctl borrow-partial "^CHECK ooe: warp 0 holds 8 decode-queue slots, over its share outside a borrow (TI-46 (b))"
 ctl warp-cap "^CHECK ooe: warp [0-9]*'s uop refused for a per-warp reason"
+# A demotion's rewind beat clears held-ahead (OA's revs 265, 270): every
+# warp of transp4 demoted at cycle 760, three of them held at the converged
+# wait, then restored. held-no-clear keeps it set, and the restored warps,
+# whose wait is gone, never fetch again.
+for b in "" held-no-clear; do
+  CCV_RAU_CONCURRENT=1 CCV_RAU_DEMOTE=at:760 "$SKEL" --kernel build/oracle/transp4/oracle.jsonl --cycles 20000 \
+    ${b:+--break $b} 2>&1 | head -c 2000000 >"$B/kernel_heldrw${b:+-$b}.log"
+done
+L="$B/kernel_heldrw.log"
+if grep -q "finished=1 .*order=ok gpr_mismatch=0 pred_mismatch=0 mem_mismatch=0 check_failures=0" "$L" &&
+   [ "$(cover "$L" demote)" -gt 0 ] && [ "$(cover "$L" restored)" -gt 0 ] && [ "$(cover "$L" bar_ready)" -gt 0 ]; then
+  say "transp4, held warps demoted and restored" "PASS ($(cycles "$L"); demote=$(cover "$L" demote))"
+else
+  bad "transp4 demoted at its barrier" "$(grep '^KERNEL' "$L")"
+fi
+if grep -q "finished=0" "$B/kernel_heldrw-held-no-clear.log"; then
+  say "--break held-no-clear: restored warps never fetch" "PASS (never finishes)"
+else
+  bad "--break held-no-clear" "held-ahead kept over a demotion went unnoticed: $(grep '^KERNEL' "$B/kernel_heldrw-held-no-clear.log")"
+fi
 # V-41's partial outcome (OI's 8994b78, rev 210): a branch FET predicts
 # taken that only some of its lanes take is a mispredict, and OOE redirects
 # the lanes that took it. pred-taken-any (perfect fetch) predicts div's 32
