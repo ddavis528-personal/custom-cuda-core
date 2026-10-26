@@ -3499,6 +3499,12 @@ private:
     std::map<uint64_t, unsigned> ckpt_of;   ///< checkpoint, by branch seq
     uint64_t ckpt_at[64] = {};              ///< cycle each checkpoint was taken (AR-24)
     bool await_redirect = false;            ///< fetched a branch it mispredicts
+    /// Lanes at a barrier wait (TI-40), out of the pick: bar_parked, those
+    /// ccv-sim blocked before the wait is fetched, until their passing wait;
+    /// syu_parked, a diverged wait's, fetched, until SYU answers it.
+    uint32_t bar_parked = 0, syu_parked = 0;
+    size_t tries_for = SIZE_MAX;            ///< the record whose tries are applied
+    uint32_t runnable() const { return lanes & ~(bar_parked | syu_parked); }
     bool stopped = false;                   ///< an epoch notice: demoted or killed
     bool restoring = false;                 ///< RAU's restore command, PCs to come
     /// Lanes OOE's rewind beats set, and to what (TI-24 (3)): the stub's
@@ -3550,20 +3556,23 @@ private:
   /// FET's pick for a warp, as the FET spec states it: the lowest PC among
   /// live lanes, except that once lane r's group has gone N picks without
   /// issuing, the pick is that group. Its issue, either way, restarts the
-  /// count and moves r to the next live lane. No lane waits at a barrier or
-  /// a sleep in these kernels; a barrier's kind fails at fetch.
+  /// count and moves r to the next live lane. A lane at a barrier wait is
+  /// not runnable (TI-40); no lane sleeps in these kernels.
   Pick pick(const Warp &x) const {
     Pick p;
     p.ptr = x.fair_ptr;
     p.cnt = x.fair_cnt;
-    if (!x.lanes) return p;
+    // Lanes at a barrier wait are not runnable (TI-40), as in ccv-sim: the
+    // pick and lane r are among the rest; the pointer moves over live lanes.
+    const uint32_t run = x.runnable();
+    if (!run) return p;
     p.pc = UINT64_MAX;
     for (unsigned l = 0; l != kLanes; ++l)
-      if (x.lanes >> l & 1u) p.pc = std::min(p.pc, x.pc[l]);
+      if (run >> l & 1u) p.pc = std::min(p.pc, x.pc[l]);
     const unsigned n = k_.brk == "fair-off" ? 0 : k_.brk == "fair-late" ? fair_n_ + 1 : fair_n_;
     if (n) {
       unsigned r = p.ptr;
-      while (!(x.lanes >> r & 1u)) r = (r + 1) % kLanes;
+      while (!(run >> r & 1u)) r = (r + 1) % kLanes;
       bool served = x.pc[r] == p.pc;
       if (!served && ++p.cnt == n) { p.pc = x.pc[r]; served = p.fair = true; }
       if (served) {
@@ -3573,7 +3582,7 @@ private:
       }
     }
     for (unsigned l = 0; l != kLanes; ++l)
-      if ((x.lanes >> l & 1u) && x.pc[l] == p.pc) p.mask |= 1u << l;
+      if ((run >> l & 1u) && x.pc[l] == p.pc) p.mask |= 1u << l;
     return p;
   }
   /// The fairness state after issuing a given group, by the same rule: the
@@ -3584,9 +3593,9 @@ private:
     p.mask = mask;
     p.ptr = x.fair_ptr;
     p.cnt = x.fair_cnt;
-    if (fair_n_ && x.lanes) {
+    if (fair_n_ && x.runnable()) {
       unsigned r = p.ptr;
-      while (!(x.lanes >> r & 1u)) r = (r + 1) % kLanes;
+      while (!(x.runnable() >> r & 1u)) r = (r + 1) % kLanes;
       if (mask >> r & 1u) {
         p.cnt = 0;
         p.ptr = (r + 1) % kLanes;
@@ -3844,12 +3853,19 @@ private:
       }
     }
     if (has(c.syu_fet, 0)) {
-      // SYU's answer to a parked wait (TI-40). This FET parks none: it marks
-      // every wait it follows converged, whose answer goes to OOE, so any
-      // answer here is one for lanes not waiting (no-wait-mark's symptom).
+      // SYU's answer to a diverged wait (TI-40): its lanes run again. A
+      // converged wait's answer goes to OOE, so one here for lanes not
+      // parked is a mark gone wrong (no-wait-mark's symptom).
       const Bits m = take(c.syu_fet, 0).payload;
-      k_.fail("fet: SYU releases warp %u lanes %08x, which are not waiting in FET",
-              unsigned(get(m, c.syu_fet, "warp_id")), uint32_t(get(m, c.syu_fet, "lane_mask")));
+      const unsigned w = unsigned(get(m, c.syu_fet, "warp_id"));
+      const uint32_t l = uint32_t(get(m, c.syu_fet, "lane_mask"));
+      auto it = warps_.find(w);
+      if (it == warps_.end() || (l & ~it->second.syu_parked) || !l) {
+        k_.fail("fet: SYU releases warp %u lanes %08x, which are not waiting in FET", w, l);
+      } else {
+        it->second.syu_parked &= ~l;
+        k_.hit("bar_unpark");
+      }
     }
     if (has(c.ooe_free, 0)) {
       // Checkpoints freed by correct resolutions. Every bit must name one
@@ -3917,6 +3933,26 @@ private:
       // fetch; so a restored warp that departs follows ccv-sim's group,
       // counted, with its fairness state moved as that group's issue moves
       // it. Any other departure is a failure.
+      // The waits ccv-sim tried and blocked before this record (TI-40): each
+      // a pick, moving the fairness state as its issue would, whose blocked
+      // lanes then sit at the wait. Applied once a record.
+      if (x.tries_for != x.next) {
+        x.tries_for = x.next;
+        for (const Record::StallTry &t : recs[x.next].stalls_before) {
+          const Pick tp = issued(x, t.pc, t.mask);
+          x.fair_ptr = tp.ptr;
+          x.fair_cnt = tp.cnt;
+          x.bar_parked |= t.blocked;
+          k_.hit("bar_park");
+        }
+      }
+      // A parked group's passing wait: its barrier has completed in ccv-sim's
+      // run, and the wait is the instruction. Lanes a diverged wait parked
+      // fetch nothing until SYU answers it.
+      // bar-park-off: no lane parked, so the pick finds a waiting group.
+      if (recs[x.next].op == "C_BAR_WAIT") x.bar_parked &= ~recs[x.next].mask;
+      if (k_.brk == "bar-park-off") x.bar_parked = 0;
+      if (recs[x.next].mask & x.syu_parked) { k_.hit("bar_syu_wait"); break; }
       Pick pk = pick(x);
       if (!pk.mask) break;   // no live lane: the warp has exited
       const Record &r = recs[x.next];
@@ -3971,11 +4007,11 @@ private:
       // which this oracle-ordered FET does not model yet: it refuses one.
       // no-wait-mark: the converged wait goes unmarked.
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBarWait) {
-        if (r.mask != x.lanes)
-          k_.fail("fet: warp %u seq %llu waits at a barrier diverged (lanes %08x of %08x); this FET "
-                  "follows converged waits only", w, (unsigned long long)r.seq, r.mask, x.lanes);
-        put(f, c.fet_dec, "all_waiting", k_.brk != "no-wait-mark");
-        k_.hit("bar_wait");
+        const bool conv = r.mask == x.lanes;
+        put(f, c.fet_dec, "all_waiting", conv && k_.brk != "no-wait-mark");
+        // syu-park-off: a diverged wait's lanes fetch on past it.
+        if (!conv && k_.brk != "syu-park-off") x.syu_parked |= r.mask;
+        k_.hit(conv ? "bar_wait" : "bar_diverged");
       }
       // A chwidth's mark is its convergence (O-81; FET spec): set when its
       // group is every live lane, the wait's test. OOE faults an unmarked one

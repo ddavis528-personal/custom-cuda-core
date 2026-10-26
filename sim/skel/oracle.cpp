@@ -234,6 +234,7 @@ std::string Oracle::load(const std::string &path) {
         if (j.at("kind").s() == "stall") {
           if (j.at("op").s() != "C_BAR_WAIT") throw std::string("a stall that is not a barrier wait");
           ++stalls;
+          tries.push_back({j.at("pc").u(), uint32_t(j.at("mask").u()), uint32_t(j.at("taken").u())});
           continue;
         }
         r.seq = recs.size();
@@ -268,6 +269,8 @@ std::string Oracle::load(const std::string &path) {
           if (m.has("val")) a.val = uint32_t(m.at("val").u());
           r.mem.push_back(a);
         }
+        r.stalls_before = std::move(tries);
+        tries.clear();
         recs.push_back(std::move(r));
       }
     }
