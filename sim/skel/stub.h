@@ -72,7 +72,9 @@ struct Ch {
            syu_ooe = chanId("ccv_syu_ooe_rel"), syu_fet = chanId("ccv_syu_fet_rel"),
            syu_rau = chanId("ccv_syu_rau_ready"),
            // .shared (TI's rev 230): MIU's passes to SPM and its answers.
-           miu_spm = chanId("ccv_miu_spm_req"), spm_miu = chanId("ccv_spm_miu_rsp");
+           miu_spm = chanId("ccv_miu_spm_req"), spm_miu = chanId("ccv_spm_miu_rsp"),
+           // TI-46 (b): decode-queue credits back to FET.
+           ooe_cred = chanId("ccv_ooe_fet_decq_credit");
 };
 inline const Ch &ch() { static const Ch c; return c; }
 /// ccv_ooe_syu_bar's bar_kind and ccv_rau_syu_alloc's syu_alloc_op (TI-40).

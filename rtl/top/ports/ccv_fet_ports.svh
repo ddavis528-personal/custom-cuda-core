@@ -69,6 +69,27 @@
   input  logic fet_dec_instr_s7_credit,
   input  logic fet_dec_instr_s7_stall,
   output logic fet_dec_instr_wake,
+  // ooe -> fet, slot 0 of 4
+  input  logic ooe_fet_decq_credit_s0_valid,
+  input  ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s0_payload,
+  output logic ooe_fet_decq_credit_s0_credit,
+  output logic ooe_fet_decq_credit_s0_stall,
+  // ooe -> fet, slot 1 of 4
+  input  logic ooe_fet_decq_credit_s1_valid,
+  input  ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s1_payload,
+  output logic ooe_fet_decq_credit_s1_credit,
+  output logic ooe_fet_decq_credit_s1_stall,
+  // ooe -> fet, slot 2 of 4
+  input  logic ooe_fet_decq_credit_s2_valid,
+  input  ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s2_payload,
+  output logic ooe_fet_decq_credit_s2_credit,
+  output logic ooe_fet_decq_credit_s2_stall,
+  // ooe -> fet, slot 3 of 4
+  input  logic ooe_fet_decq_credit_s3_valid,
+  input  ccv_ooe_fet_decq_credit_t ooe_fet_decq_credit_s3_payload,
+  output logic ooe_fet_decq_credit_s3_credit,
+  output logic ooe_fet_decq_credit_s3_stall,
+  input  logic ooe_fet_decq_credit_wake,
   // ooe -> fet
   input  logic ooe_fet_redirect_valid,
   input  ccv_ooe_fet_redirect_t ooe_fet_redirect_payload,
@@ -147,6 +168,10 @@
   , output logic [63:0] fet_dec_instr_s5_tid
   , output logic [63:0] fet_dec_instr_s6_tid
   , output logic [63:0] fet_dec_instr_s7_tid
+  , input  logic [63:0] ooe_fet_decq_credit_s0_tid
+  , input  logic [63:0] ooe_fet_decq_credit_s1_tid
+  , input  logic [63:0] ooe_fet_decq_credit_s2_tid
+  , input  logic [63:0] ooe_fet_decq_credit_s3_tid
   , input  logic [63:0] ooe_fet_redirect_tid
   , input  logic [63:0] ooe_fet_ckpt_free_tid
   , output logic [63:0] fet_mlc_ifill_tid

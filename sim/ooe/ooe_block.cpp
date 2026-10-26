@@ -102,6 +102,18 @@ private:
   bool bad_pos_done_ = false;   ///< the bad-pos control names one register
   std::map<unsigned, unsigned> rs_sent_;   ///< rob tag -> its memop's rs_idx (OA-23)
   int demote_ = optChan("ccv_rau_ooe_demote"), rel_ = optChan("ccv_syu_ooe_rel");
+  /// TI-46 (b), DA tab rev 96: decode-queue credits back to FET, one slot
+  /// a tier-1 warp. A slot's return is what left the queue since the last:
+  /// the occupancy then, plus what came in, less the occupancy now, which
+  /// counts renames and squashes alike. released: SYU's answer arrived.
+  int cred_ = optChan("ccv_ooe_fet_decq_credit");
+  std::array<int, ccv::kTier1Warps> cred_warp_ = [] {
+    std::array<int, ccv::kTier1Warps> a{};
+    a.fill(-1);
+    return a;
+  }();
+  std::array<unsigned, ccv::kTier1Warps> cred_prev_{}, cred_in_{};
+  uint32_t cred_rel_ = 0;
   int map_ = optChan("ccv_ooe_rcu_map"), bar_ = optChan("ccv_ooe_syu_bar");
   int drained_ = optChan("ccv_ooe_rau_drained"), status_ = optChan("ccv_ooe_rau_status");
   int fault_ = optChan("ccv_ooe_cru_fault");
@@ -126,6 +138,9 @@ private:
     c.inject_double_grant = k.brk == "no-resource-cap";
     c.pred_window = [](unsigned w, unsigned p) { return physPred(w, p); };
     c.inject_free_new = k.brk == "free-new";
+    // TI-46 (b), DA tab rev 96: FET holds each warp's share as credits on
+    // ccv_ooe_fet_decq_credit, so OOE refuses no uop for a per-warp reason.
+    c.decq_warp_max = 0;
     unsigned data_link = ccv::kLatHop, cmpl_link = ccv::kLatHop;
     for (const ChanInst &ci : kChanInsts) {
       if (ci.chan == chanId("ccv_ooe_fet_redirect")) c.redirect_lat = ccv::kLatHop + ci.stages;
@@ -275,6 +290,7 @@ private:
       Receiver::Msg m = take(unsigned(rel_), 0);
       // A held wait's answer names its warp (TI-40); the core takes a mask.
       core_.barRelease(uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id"));
+      cred_rel_ |= uint32_t(1) << get(m.payload, unsigned(rel_), "warp_id");
     }
     for (unsigned s = 0; s != kChans[c.rcu_ooe].rate; ++s)
       while (has(c.rcu_ooe, s)) {
@@ -367,8 +383,17 @@ private:
       if (best < 0) return;
       const Receiver *r = peek(c.dec_ooe, unsigned(best));
       const unsigned w = unsigned(get(r->front().payload, c.dec_ooe, "warp_id"));
-      if (!core_.canAccept(w)) { core_.noteRefused(w); held.insert(w); continue; }
+      if (!core_.canAccept(w)) {
+        // (b): a refusal only for the shared queue, never for one warp.
+        if (core_.decqShared() < core_.config().decq)
+          k_.fail("ooe: warp %u's uop refused for a per-warp reason, %u slots held (TI-46 (b))", w,
+                  core_.decqOf(w));
+        core_.noteRefused(w);
+        held.insert(w);
+        continue;
+      }
       taken.insert(unsigned(best));
+      if (const int ts = core_.tier1Of(w); ts >= 0 && size_t(ts) < cred_in_.size()) ++cred_in_[ts];
       core_.uop(decode(take(c.dec_ooe, unsigned(best))));
     }
   }
@@ -673,11 +698,45 @@ private:
     send(chan, port, msg, tid);
   }
 
+  /// (b)'s returns, and its checks on what FET's credits must keep: a warp
+  /// past its share only by one borrowed instruction, and a held warp only
+  /// its r slots past the wait (OA's rev 267 (ii)).
+  void credits() {
+    for (unsigned t = 0; t != cred_warp_.size(); ++t) {
+      const int w = core_.warpOfSlot(t);
+      const unsigned occ = w < 0 ? 0 : core_.decqOf(unsigned(w));
+      // A slot newly given a warp, or freed, starts from what it holds now.
+      if (w < 0 || w != cred_warp_[t]) {
+        cred_warp_[t] = w;
+        cred_prev_[t] = occ;
+        cred_in_[t] = 0;
+        continue;
+      }
+      const unsigned back = cred_prev_[t] + cred_in_[t] - occ;
+      cred_prev_[t] = occ;
+      cred_in_[t] = 0;
+      if (occ > ccv::prov::kDecqWarpMax && !core_.decqOneInstr(unsigned(w)))
+        k_.fail("ooe: warp %d holds %u decode-queue slots, over its share outside a borrow (TI-46 (b))", w, occ);
+      if (core_.barHeld(unsigned(w)) && occ > ccv::prov::kHeldAhead)
+        k_.fail("ooe: warp %d holds %u slots past its held wait, over r = %u (TI-46 (b))", w, occ,
+                ccv::prov::kHeldAhead);
+      const bool rel = cred_rel_ >> unsigned(w) & 1u;
+      if (cred_ < 0 || (!back && !rel)) continue;
+      Bits m = msgOf(unsigned(cred_));
+      put(m, unsigned(cred_), "tier1_id", t);
+      put(m, unsigned(cred_), "credit_count", back);
+      put(m, unsigned(cred_), "released", rel ? 1 : 0);
+      sendOn(unsigned(cred_), t, m, makeUid(IdClass::kNone, 0));
+      cred_rel_ &= ~(uint32_t(1) << unsigned(w));
+    }
+  }
+
   void work() override {
     takeInputs();
     core_.cycle(now_);
     takeUops();
     sendOutputs();
+    credits();
     for (const ooe::Retired &r : core_.retired) {
       // An instruction retires with its last uop (TI-36's cracked ones).
       if (k_.lastUop(r.tid)) {

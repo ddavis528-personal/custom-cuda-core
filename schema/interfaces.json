@@ -249,6 +249,31 @@
       }
     },
     {
+      "name": "ccv_ooe_fet_decq_credit",
+      "src": "ooe",
+      "dst": "fet",
+      "rate": 4,
+      "group": "control",
+      "payload_fields": [
+        "tier1_id",
+        "credit_count",
+        "released"
+      ],
+      "doc": "Decode-queue credits back to FET, per tier-1 warp (TI-46, form (b), DA tab rev 96; OA's revs 262-268). OOE refuses no uop on ccv_dec_ooe_uop for a per-warp reason: FET holds CCV_P_DECQ_WARP_MAX credits a warp, counted in decode-queue slots, and picks a warp only while they cover the next instruction's slots, which it counts exactly by predecode (DEC asserts the count). credit_count is the slots of the slot's warp that left the decode queue this cycle: those renamed, and those a flush or rewind squashed, in the cycle they are dropped, so FET never resynchronises. An instruction needing more slots than the share borrows, only from full credits, into a 5-bit signed counter (OA's rev 263). HELD-AHEAD: after FET fetches a converged wait it marks all_waiting, the warp fetches at most CCV_P_HELD_AHEAD slots past it and never borrows. released clears that: OOE sets it in the cycle SYU's answer reaches it on ccv_syu_ooe_rel. A rewind beat (a squash of the wait, or a demotion) clears it at FET too. A message is sent for a slot only when credit_count or released is non-zero.",
+      "id_classes": [
+        "none"
+      ],
+      "id_classes_why": "Credits are counts of slots from several uops, owned by no one transaction; the uops they free are in the trace as they rename.",
+      "slot_attrs": {
+        "slot_binding": "bound",
+        "binding_key": "tier1_id"
+      },
+      "slot_attrs_why": {
+        "slot_binding": "slot k is tier-1 warp k's return, so every warp's credits return in the cycle they free, whatever the others do",
+        "binding_key": "tier1_id must equal the slot, checked rather than stated"
+      }
+    },
+    {
       "name": "ccv_dec_ooe_uop",
       "src": "dec",
       "dst": "ooe",
@@ -1598,6 +1623,8 @@
     "warp_mask": "CCV_WARP_CONTEXTS",
     "last_lanes": "CCV_W_LANE_IDX",
     "all_waiting": "1",
+    "credit_count": "CCV_W_DECQ_CREDIT",
+    "released": "1",
     "rewind_held": "1",
     "held_long": "1",
     "own_pc": "1",

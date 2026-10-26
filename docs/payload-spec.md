@@ -3,9 +3,9 @@
      params/ccv_params.json. Edit a source and regenerate; tools/verify.sh
      fails if this file is stale. -->
 
-# Payload specification — all 54 channels
+# Payload specification — all 55 channels
 
-Every payload field has a width, so **every one of the 54
+Every payload field has a width, so **every one of the 55
 channels generates a packed struct** and the skeleton can be
 wired end to end. The cost is that some widths are guesses, and
 the job of this document is to make sure a guess can never be
@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 14 | 36 |
-| ⚠️ Some provisional | 25 | 130 |
+| ⚠️ Some provisional | 26 | 133 |
 | ⛔ Some preliminary | 15 | 139 |
-| **Total** | **54** | **305** |
+| **Total** | **55** | **308** |
 
 ## What still has to be decided
 
@@ -371,6 +371,19 @@ fet → dec · rate 8 · instruction
 | `final_exit` | `1` | 1 | literal |
 | `all_waiting` | `1` | 1 | literal |
 | **total** | | **162** | ⚠️ 5 provisional |
+
+### `ccv_ooe_fet_decq_credit`
+
+Decode-queue credits back to FET, per tier-1 warp (TI-46, form (b), DA tab rev 96; OA's revs 262-268). OOE refuses no uop on ccv_dec_ooe_uop for a per-warp reason: FET holds CCV_P_DECQ_WARP_MAX credits a warp, counted in decode-queue slots, and picks a warp only while they cover the next instruction's slots, which it counts exactly by predecode (DEC asserts the count). credit_count is the slots of the slot's warp that left the decode queue this cycle: those renamed, and those a flush or rewind squashed, in the cycle they are dropped, so FET never resynchronises. An instruction needing more slots than the share borrows, only from full credits, into a 5-bit signed counter (OA's rev 263). HELD-AHEAD: after FET fetches a converged wait it marks all_waiting, the warp fetches at most CCV_P_HELD_AHEAD slots past it and never borrows. released clears that: OOE sets it in the cycle SYU's answer reaches it on ccv_syu_ooe_rel. A rewind beat (a squash of the wait, or a demotion) clears it at FET too. A message is sent for a slot only when credit_count or released is non-zero.
+
+ooe → fet · rate 4 · control
+
+| Field | Width expression | Bits | Source |
+|---|---|---|---|
+| `tier1_id` | `CCV_W_TIER1_ID` | 2 | CCV_W_TIER1_ID (arch) |
+| `credit_count` | `CCV_W_DECQ_CREDIT` | 4 ⚠️ | CCV_W_DECQ_CREDIT (provisional) |
+| `released` | `1` | 1 | literal |
+| **total** | | **7** | ⚠️ 4 provisional |
 
 ### `ccv_rcu_ooe_done`
 

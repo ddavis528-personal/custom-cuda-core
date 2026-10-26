@@ -10,9 +10,9 @@
 // three is a file-list change; tools/check-sv-hosted.sh builds the top
 // from these alone and requires the run the C++ skeleton produces.
 //
-// At each edge of its clock: sample every channel signal (6312 bits,
+// At each edge of its clock: sample every channel signal (6608 bits,
 // first port at the LSB), let the C++ block run its cycle, register
-// what it drove (3196 bits). Common-port outputs sit inactive, as in
+// what it drove (3204 bits). Common-port outputs sit inactive, as in
 // the stub. Simulation only, and only with the trace sideband: the
 // C++ blocks carry trace identity on every message.
 `include "ccv_interfaces.svh"
@@ -53,12 +53,12 @@ module ccv_fet (
   import "DPI-C" function bit ccv_dpi_skew(input int h);
   import "DPI-C" context function void ccv_dpi_cycle_fet(
     input int h, input longint cyc, input bit rst,
-    input bit [6311:0] sample, output bit [3195:0] drive);
+    input bit [6607:0] sample, output bit [3203:0] drive);
 
   int h;
   bit skew;              // negative control: one extra register
   longint cyc;
-  bit [3195:0] drv, q, q2;
+  bit [3203:0] drv, q, q2;
   initial begin
     cyc = 0;
     h = ccv_dpi_register($sformatf("%m"));
@@ -87,22 +87,28 @@ module ccv_fet (
       ooe_fet_ckpt_free_tid, ooe_fet_ckpt_free_stall, ooe_fet_ckpt_free_credit,
       ooe_fet_ckpt_free_payload, ooe_fet_ckpt_free_valid, ooe_fet_redirect_tid,
       ooe_fet_redirect_stall, ooe_fet_redirect_credit, ooe_fet_redirect_payload,
-      ooe_fet_redirect_valid, fet_dec_instr_s7_tid, fet_dec_instr_s6_tid,
-      fet_dec_instr_s5_tid, fet_dec_instr_s4_tid, fet_dec_instr_s3_tid,
-      fet_dec_instr_s2_tid, fet_dec_instr_s1_tid, fet_dec_instr_s0_tid,
-      fet_dec_instr_s7_stall, fet_dec_instr_s7_credit, fet_dec_instr_s7_payload,
-      fet_dec_instr_s7_valid, fet_dec_instr_s6_stall, fet_dec_instr_s6_credit,
-      fet_dec_instr_s6_payload, fet_dec_instr_s6_valid, fet_dec_instr_s5_stall,
-      fet_dec_instr_s5_credit, fet_dec_instr_s5_payload, fet_dec_instr_s5_valid,
-      fet_dec_instr_s4_stall, fet_dec_instr_s4_credit, fet_dec_instr_s4_payload,
-      fet_dec_instr_s4_valid, fet_dec_instr_s3_stall, fet_dec_instr_s3_credit,
-      fet_dec_instr_s3_payload, fet_dec_instr_s3_valid, fet_dec_instr_s2_stall,
-      fet_dec_instr_s2_credit, fet_dec_instr_s2_payload, fet_dec_instr_s2_valid,
-      fet_dec_instr_s1_stall, fet_dec_instr_s1_credit, fet_dec_instr_s1_payload,
-      fet_dec_instr_s1_valid, fet_dec_instr_s0_stall, fet_dec_instr_s0_credit,
-      fet_dec_instr_s0_payload, fet_dec_instr_s0_valid, kill_ack_epoch,
-      kill_ack, kill_epoch, kill_warp_mask,
-      kill_valid
+      ooe_fet_redirect_valid, ooe_fet_decq_credit_s3_tid, ooe_fet_decq_credit_s2_tid,
+      ooe_fet_decq_credit_s1_tid, ooe_fet_decq_credit_s0_tid, ooe_fet_decq_credit_s3_stall,
+      ooe_fet_decq_credit_s3_credit, ooe_fet_decq_credit_s3_payload, ooe_fet_decq_credit_s3_valid,
+      ooe_fet_decq_credit_s2_stall, ooe_fet_decq_credit_s2_credit, ooe_fet_decq_credit_s2_payload,
+      ooe_fet_decq_credit_s2_valid, ooe_fet_decq_credit_s1_stall, ooe_fet_decq_credit_s1_credit,
+      ooe_fet_decq_credit_s1_payload, ooe_fet_decq_credit_s1_valid, ooe_fet_decq_credit_s0_stall,
+      ooe_fet_decq_credit_s0_credit, ooe_fet_decq_credit_s0_payload, ooe_fet_decq_credit_s0_valid,
+      fet_dec_instr_s7_tid, fet_dec_instr_s6_tid, fet_dec_instr_s5_tid,
+      fet_dec_instr_s4_tid, fet_dec_instr_s3_tid, fet_dec_instr_s2_tid,
+      fet_dec_instr_s1_tid, fet_dec_instr_s0_tid, fet_dec_instr_s7_stall,
+      fet_dec_instr_s7_credit, fet_dec_instr_s7_payload, fet_dec_instr_s7_valid,
+      fet_dec_instr_s6_stall, fet_dec_instr_s6_credit, fet_dec_instr_s6_payload,
+      fet_dec_instr_s6_valid, fet_dec_instr_s5_stall, fet_dec_instr_s5_credit,
+      fet_dec_instr_s5_payload, fet_dec_instr_s5_valid, fet_dec_instr_s4_stall,
+      fet_dec_instr_s4_credit, fet_dec_instr_s4_payload, fet_dec_instr_s4_valid,
+      fet_dec_instr_s3_stall, fet_dec_instr_s3_credit, fet_dec_instr_s3_payload,
+      fet_dec_instr_s3_valid, fet_dec_instr_s2_stall, fet_dec_instr_s2_credit,
+      fet_dec_instr_s2_payload, fet_dec_instr_s2_valid, fet_dec_instr_s1_stall,
+      fet_dec_instr_s1_credit, fet_dec_instr_s1_payload, fet_dec_instr_s1_valid,
+      fet_dec_instr_s0_stall, fet_dec_instr_s0_credit, fet_dec_instr_s0_payload,
+      fet_dec_instr_s0_valid, kill_ack_epoch, kill_ack,
+      kill_epoch, kill_warp_mask, kill_valid
     }, drv);
     q <= drv;
     q2 <= q;
@@ -117,15 +123,18 @@ module ccv_fet (
     miu_fet_itlb_credit, mlc_fet_ifill_rsp_stall, mlc_fet_ifill_rsp_credit,
     fet_mlc_ifill_tid, fet_mlc_ifill_payload, fet_mlc_ifill_valid,
     ooe_fet_ckpt_free_stall, ooe_fet_ckpt_free_credit, ooe_fet_redirect_stall,
-    ooe_fet_redirect_credit, fet_dec_instr_s7_tid, fet_dec_instr_s6_tid,
-    fet_dec_instr_s5_tid, fet_dec_instr_s4_tid, fet_dec_instr_s3_tid,
-    fet_dec_instr_s2_tid, fet_dec_instr_s1_tid, fet_dec_instr_s0_tid,
-    fet_dec_instr_s7_payload, fet_dec_instr_s7_valid, fet_dec_instr_s6_payload,
-    fet_dec_instr_s6_valid, fet_dec_instr_s5_payload, fet_dec_instr_s5_valid,
-    fet_dec_instr_s4_payload, fet_dec_instr_s4_valid, fet_dec_instr_s3_payload,
-    fet_dec_instr_s3_valid, fet_dec_instr_s2_payload, fet_dec_instr_s2_valid,
-    fet_dec_instr_s1_payload, fet_dec_instr_s1_valid, fet_dec_instr_s0_payload,
-    fet_dec_instr_s0_valid, kill_ack_epoch, kill_ack
+    ooe_fet_redirect_credit, ooe_fet_decq_credit_s3_stall, ooe_fet_decq_credit_s3_credit,
+    ooe_fet_decq_credit_s2_stall, ooe_fet_decq_credit_s2_credit, ooe_fet_decq_credit_s1_stall,
+    ooe_fet_decq_credit_s1_credit, ooe_fet_decq_credit_s0_stall, ooe_fet_decq_credit_s0_credit,
+    fet_dec_instr_s7_tid, fet_dec_instr_s6_tid, fet_dec_instr_s5_tid,
+    fet_dec_instr_s4_tid, fet_dec_instr_s3_tid, fet_dec_instr_s2_tid,
+    fet_dec_instr_s1_tid, fet_dec_instr_s0_tid, fet_dec_instr_s7_payload,
+    fet_dec_instr_s7_valid, fet_dec_instr_s6_payload, fet_dec_instr_s6_valid,
+    fet_dec_instr_s5_payload, fet_dec_instr_s5_valid, fet_dec_instr_s4_payload,
+    fet_dec_instr_s4_valid, fet_dec_instr_s3_payload, fet_dec_instr_s3_valid,
+    fet_dec_instr_s2_payload, fet_dec_instr_s2_valid, fet_dec_instr_s1_payload,
+    fet_dec_instr_s1_valid, fet_dec_instr_s0_payload, fet_dec_instr_s0_valid,
+    kill_ack_epoch, kill_ack
   } = skew ? q2 : q;
 `endif
   assign csr_rsp = '0;

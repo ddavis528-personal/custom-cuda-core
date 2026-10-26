@@ -3503,6 +3503,15 @@ private:
     /// ccv-sim blocked before the wait is fetched, until their passing wait;
     /// syu_parked, a diverged wait's, fetched, until SYU answers it.
     uint32_t bar_parked = 0, syu_parked = 0;
+    /// Decode-queue credits (TI-46 (b), DA tab rev 96): slots this warp may
+    /// still put in flight to OOE's decode queue, signed, since an oversize
+    /// instruction borrows from full credits. held: past a converged wait it
+    /// marked for OOE's hold, fetching at most CCV_P_HELD_AHEAD slots (ahead)
+    /// and never borrowing, until OOE's released bit or a rewind beat.
+    int credits = int(ccv::prov::kDecqWarpMax);
+    bool held = false;
+    unsigned ahead = 0;
+    uint64_t held_seq = 0;   ///< the held wait's record index
     size_t tries_for = SIZE_MAX;            ///< the record whose tries are applied
     uint32_t runnable() const { return lanes & ~(bar_parked | syu_parked); }
     bool stopped = false;                   ///< an epoch notice: demoted or killed
@@ -3650,6 +3659,8 @@ private:
         x.pc.fill(start);
         x.lanes = uint32_t(get(m.payload, c.rau_fet, "live_mask"));
         x.fair_ptr = x.fair_cnt = 0;
+        x.credits = int(ccv::prov::kDecqWarpMax);   // a new slot's queue holds nothing of it
+        x.held = false;
       }
     }
     if (has(c.ooe_fet, 0)) {
@@ -3672,6 +3683,8 @@ private:
         for (unsigned l = 0; l != kLanes; ++l)
           if (lanes >> l & 1u) x.lane_pc[l] = pc;
         x.rewound |= lanes;
+        // held-no-clear: a rewind beat leaves held-ahead set (TI-46 (b)).
+        if (k_.brk != "held-no-clear") x.held = false;
         // The oldest beat's uop, on the trace sideband: where this stub's
         // oracle-ordered fetch resumes after a restore (trace-only).
         if (uidClass(m.tid) == IdClass::kInstr &&
@@ -3711,6 +3724,8 @@ private:
             break;
           }
         x.await_redirect = false;
+        // A redirect squashes the held wait only if its branch is older.
+        if (k_.brk != "held-no-clear" && x.held && seqIndex(uidSeq(m.tid)) < x.held_seq) x.held = false;
         // The split (IS-17 (b)): the branch's lanes OOE names as taken go to
         // the target, the rest of its group falls through. split-swap
         // sends each half the other's way.
@@ -3841,6 +3856,9 @@ private:
         x.fair_ptr = unsigned(get(mm.payload, c.pca_fet, "fair_ptr"));
         x.fair_cnt = unsigned(get(mm.payload, c.pca_fet, "fair_cnt"));
         x.br_mask = 0;
+        // Restored to a slot whose queue holds nothing of it (TI-46 (b)).
+        x.credits = int(ccv::prov::kDecqWarpMax);
+        x.held = false;
         x.next = at;
         x.launched = true;
         x.stopped = x.restoring = x.await_redirect = false;
@@ -3852,6 +3870,21 @@ private:
         k_.hit("resumed");
       }
     }
+    // Decode-queue credits back from OOE, a tier-1 slot each (TI-46 (b)).
+    for (unsigned s = 0; s != kChans[c.ooe_cred].rate; ++s)
+      while (has(c.ooe_cred, s)) {
+        const Bits m = take(c.ooe_cred, s).payload;
+        const unsigned t = unsigned(get(m, c.ooe_cred, "tier1_id"));
+        if (t != s) k_.fail("fet: a credit return names tier-1 slot %u on slot %u", t, s);
+        Warp *x = nullptr;
+        for (auto &wx : warps_) if (wx.second.tier1 == t) x = &wx.second;
+        if (!x) continue;   // the slot's warp left; its credits go with it
+        x->credits += int(get(m, c.ooe_cred, "credit_count"));
+        if (x->credits > int(ccv::prov::kDecqWarpMax))
+          k_.fail("fet: tier-1 slot %u's credits return to %d, over its share %u", t, x->credits,
+                  ccv::prov::kDecqWarpMax);
+        if (get(m, c.ooe_cred, "released")) x->held = false;
+      }
     if (has(c.syu_fet, 0)) {
       // SYU's answer to a diverged wait (TI-40): its lanes run again. A
       // converged wait's answer goes to OOE, so one here for lanes not
@@ -3953,6 +3986,20 @@ private:
       if (recs[x.next].op == "C_BAR_WAIT") x.bar_parked &= ~recs[x.next].mask;
       if (k_.brk == "bar-park-off") x.bar_parked = 0;
       if (recs[x.next].mask & x.syu_parked) { k_.hit("bar_syu_wait"); break; }
+      // The credit gate (TI-46 (b)): the next instruction's slots, exactly
+      // as DEC cracks it. An oversize one borrows, only from full credits; a
+      // held warp fetches at most r slots past its wait and never borrows.
+      // held-over-r: a held warp fetches on past r.
+      // borrow-partial: an oversize instruction borrows from any credits.
+      {
+        const int n = int(recs[x.next].uops());
+        const int share = int(ccv::prov::kDecqWarpMax);
+        const bool full = x.credits >= share || (k_.brk == "borrow-partial" && x.credits > 0);
+        const bool ok = x.held ? (k_.brk == "held-over-r" || x.ahead + unsigned(n) <= ccv::prov::kHeldAhead) &&
+                                     n <= x.credits
+                               : n <= share ? n <= x.credits : full;
+        if (!ok) { k_.hit(x.held ? "held_ahead_wait" : "credit_wait"); break; }
+      }
       Pick pk = pick(x);
       if (!pk.mask) break;   // no live lane: the warp has exited
       const Record &r = recs[x.next];
@@ -4009,6 +4056,12 @@ private:
       if (const OpInfo *op = opByName(r.op); op && op->cls == kBarWait) {
         const bool conv = r.mask == x.lanes;
         put(f, c.fet_dec, "all_waiting", conv && k_.brk != "no-wait-mark");
+        // Held-ahead from the wait OOE will hold (TI-46 (b)).
+        if (conv && k_.brk != "no-wait-mark") {
+          x.held = true;
+          x.ahead = 0;
+          x.held_seq = r.seq;
+        }
         if (!conv) x.syu_parked |= r.mask;
         k_.hit(conv ? "bar_wait" : "bar_diverged");
       }
@@ -4086,6 +4139,9 @@ private:
           if (r.mask >> l & 1u) x.pc[l] = r.pc + r.size;
         if (groups(x) < before) k_.hit("reconverge");
       }
+      x.credits -= int(r.uops());
+      if (x.held) x.ahead += r.uops();
+      if (x.credits < 0) k_.hit("credit_borrow");
       ++x.next;
       if (mispredict) { x.await_redirect = true; break; }
     }

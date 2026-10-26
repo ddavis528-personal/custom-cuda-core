@@ -246,7 +246,9 @@ struct Kernel {
       // .shared through SPM (TI's rev 230).
       "spm_pass", "spm_conflict", "spm_passes_peak", "spm_wait", "shared_fault",
       // Lanes at a barrier wait in FET (TI-40).
-      "bar_park", "bar_diverged", "bar_unpark", "bar_syu_wait"};
+      "bar_park", "bar_diverged", "bar_unpark", "bar_syu_wait",
+      // Decode-queue credits at FET (TI-46 (b)).
+      "credit_wait", "credit_borrow", "held_ahead_wait"};
   std::map<std::string, uint64_t> cover;
   /// DCU's dirty lines (DCU spec rev 8: write-back), by line address: what
   /// memory holds that the testbench does not yet. For the final memory
