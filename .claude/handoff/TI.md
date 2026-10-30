@@ -47,6 +47,8 @@ pongs. Pings 2026-10-30 sent to all five; all ponged ok.
 1. TI-48 (open, TI rev 266): every agent writes its handoff. Once AR, OA,
    OI, CP and IS have all answered, put `"autoCompactWindow": 400000` in
    `.claude/settings.json` (DA, 2026-10-30). This session: /autocompact 500k.
+   Answered: AR (62443b5, AR rev 256; also took TI-49). Waiting: OA, OI, CP, IS.
+   Verify all five rows in the register before setting it.
 2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
    Context and handoff). Still to propose: the sweep as its own cheaper
    session (needs a way for pongs to come from the roster's session).
