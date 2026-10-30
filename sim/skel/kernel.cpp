@@ -965,6 +965,8 @@ private:
     void clear() { valid = 0; ++gen; }
   };
   std::map<unsigned, Windows> win_;
+  /// Each CTA slot's local_base, from its ccv_rau_miu_cta (TI-47).
+  std::map<unsigned, uint64_t> lbase_;
   /// A window fill's request to DCU, by req_id: its CTA slot and line, and
   /// the table's gen when it was sent.
   struct Fill { unsigned cta; uint64_t line; unsigned gen; };
@@ -1091,6 +1093,9 @@ private:
       Windows &t = win_[cta];
       t.block = get(m, c.rau_miu, "launch_block_addr");
       t.clear();
+      // local_base (TI-47): O-69's spill base and O-83's W, from the CTA's
+      // arrival, so neither waits for the launch block's line.
+      lbase_[cta] = get(m, c.rau_miu, "local_base");
     }
     for (unsigned s = 0; s != kChans[c.ooe_miu].rate; ++s)
       while (has(c.ooe_miu, s)) {
@@ -1411,12 +1416,12 @@ private:
     // L1 miss, never a hit (AR's response). no-window-fill: the table is
     // taken as filled, its words zero.
     const bool slot = get(mo.msg, c.ooe_miu, "slot_form") != 0;
-    // The interleaved local form (IS-19) waits the same way for local_base,
-    // the table's word from the launch block's first line.
+    // The interleaved local form (IS-19) takes local_base from the CTA's
+    // ccv_rau_miu_cta (TI-47), so it never waits for the line.
     const bool local = get(mo.msg, c.ooe_miu, "local_form") != 0;
     const unsigned cta = unsigned(get(mo.msg, c.ooe_miu, "cta_slot"));
-    const unsigned k = local ? kLocalBase : unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
-    if ((slot || local) && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
+    const unsigned k = unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
+    if (slot && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
       const uint64_t line = slotAddr(win_[cta], k) / kLine * kLine;
       win_miss_.insert(tag);
       for (const auto &f : fills_)
@@ -1521,9 +1526,9 @@ private:
     // + 4l + b % 4, ctx the warp's hardware context, which MIU forms from
     // the memop's warp_id and its core's index (OA's proposal IS-19).
     // local-no-ctx: ctx taken as 0, so every warp spills to one frame.
-    // local-base-slot: local_base read from launch slot 0's word.
-    const uint64_t lbase =
-        win_[cta].w[k_.brk == "local-base-slot" ? 0u : unsigned(kLocalBase)];
+    // local-base-slot: local_base taken from the wrong word, launch slot 0's,
+    // which is 0 here.
+    const uint64_t lbase = k_.brk == "local-base-slot" ? 0 : lbase_[cta];
     const uint64_t ctx = k_.brk == "local-no-ctx"
                              ? 0 : (uint64_t(ccv::prov::kCoreId) << ccv::kWWarpId) | j.warp;
     auto localAddr = [&](uint64_t b, unsigned l) {
@@ -1558,10 +1563,8 @@ private:
     // O-83 (option W, DA tab rev 95; ISA section 5.9): a .global access in a
     // form that takes rbase is interleaved when lane d's rbase lies in the
     // private run, d the lowest lane of the ISSUE mask whether or not its
-    // predicate is set. W = local_base + %privoff, so MIU decides only once
-    // the launch block's first line, holding local_base, is in its table: a
-    // kernel names the run only after its prologue's launch-slot load of
-    // word 24, which fills that line. Each lane's offset b is its own, from
+    // predicate is set. W = local_base + %privoff, local_base from the CTA's
+    // ccv_rau_miu_cta (TI-47). Each lane's offset b is its own, from
     // its own rbase; lane l's byte b is at R(ctx) + 128 (b / 4) + 4l + b % 4,
     // past the run's own windows, and b outside [0, L) is F-ADDR, as is an
     // ordinary access into the run's own windows, which name logical offsets
@@ -1571,9 +1574,8 @@ private:
     // -ccv-test-priv-lane0), which a diverged group with lane 0 off gets wrong.
     // priv-no-ctx: R(ctx) taken at ctx 0, so every warp shares one region.
     uint32_t pbad = 0;
-    const bool lb_valid = win_[cta].valid >> kLocalBase & 1u;
-    if (global && lb_valid && issue) {
-      const uint64_t W = uint64_t(win_[cta].w[kLocalBase]) + 3ull * ccv::prov::kLaneContexts;
+    if (global && issue) {
+      const uint64_t W = lbase_[cta] + 3ull * ccv::prov::kLaneContexts;
       const unsigned pk = unsigned(__builtin_ctz(ccv::prov::kPrivWindows));
       const int64_t L = int64_t(ccv::prov::kPrivWindows) << 16;
       const unsigned d = k_.brk == "priv-lane0" ? 0u : unsigned(__builtin_ctz(issue));
@@ -4731,6 +4733,12 @@ private:
           put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
           // Where MIU's window table fills from (TI-31).
           put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
+          // The context's local_base (TI-47): launch-block word 24, from the
+          // launch descriptor, which ccv-sim's launch block is here.
+          uint64_t lb = 0;
+          for (const auto &w : k_.orcs[l.w].init_mem)
+            if (w.first == k_.orcs[l.w].launch_block + 24) lb = w.second;
+          put(a, c.rau_miu, "local_base", lb);
           // The CTA's .shared region, its first and last bytes in SPM (TI's
           // rev 230): an equal share of SPM a CTA slot, until RAU sizes it
           // from the kernel's .shared. spm-shared-region: every slot given

@@ -451,6 +451,8 @@ inline constexpr OpInfo kOps[] = {
   {"ST_SHARED_IDX", kStore,     3, false, false, false, false, false,  1,  2,  0,  1,  0, -1, -1, -1, false, false, -1, -1, false, false, false, false, 0, false, true},
   // c.ld.global: [rdata, rbase], no displacement.
   {"C_LD_GLOBAL",   kLoad,      1, true,  false, false, false, false,  0, -1, -1, -1, -1, -1, -1},
+  // Its store (Format K, coremark-derived-priv): st.global's row, no displacement.
+  {"C_ST_GLOBAL",   kStore,     2, false, false, false, false, false,  1, -1,  0, -1, -1, -1, -1},
   {"C_ORI",         kAlu,       1, true,  false, false, false, false, -1, -1, -1, -1, -1,  0,  1},
   // Guarded forms, as add.p and mad.lo.p: off lanes keep the destination.
   {"SUB_P",         kAlu,       2, true,  true,  false, true,  false, -1, -1, -1, -1, -1, -1, -1},

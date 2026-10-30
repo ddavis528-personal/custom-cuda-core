@@ -44,9 +44,9 @@ since a struct is only as settled as its least-decided field.
 | Weakest width on the channel | Channels | Fields |
 |---|---|---|
 | All decided | 14 | 36 |
-| ⚠️ Some provisional | 26 | 133 |
+| ⚠️ Some provisional | 26 | 134 |
 | ⛔ Some preliminary | 15 | 139 |
-| **Total** | **55** | **308** |
+| **Total** | **55** | **309** |
 
 ## What still has to be decided
 
@@ -655,7 +655,7 @@ pca → fet · rate 1 · control
 
 ### `ccv_rau_miu_cta`
 
-Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. The CTA's .shared region is SPM bytes spm_base to spm_limit, both included, so a region may end at SPM's last byte within CCV_W_SPM_ADDR. A .shared address is the CTA-relative offset, modulo 2^32 (CP-33). MIU raises F-SHARED, cause 7, on any active lane whose bytes do not all lie within offset 0 to spm_limit - spm_base. It ranks after F-ADDR, which no .shared access can raise, and before F-RO, which only .global can raise (section 12.5). SPM's byte address is spm_base plus the offset (TI's rev 230). F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's.
+Per-CTA scratchpad bounds and the launch block address, so MIU can check F-SHARED and service launch-block reads. The CTA's .shared region is SPM bytes spm_base to spm_limit, both included, so a region may end at SPM's last byte within CCV_W_SPM_ADDR. A .shared address is the CTA-relative offset, modulo 2^32 (CP-33). MIU raises F-SHARED, cause 7, on any active lane whose bytes do not all lie within offset 0 to spm_limit - spm_base. It ranks after F-ADDR, which no .shared access can raise, and before F-RO, which only .global can raise (section 12.5). SPM's byte address is spm_base plus the offset (TI's rev 230). F-RO (O-51, O-61; AR's responses TI-26, revs 124-126): const_base and const_limit are the module's .const range, flat addresses (O-54), half-open [const_base, const_limit); equal, the range is empty. They come from the grid's descriptor (Q-50), set by its module, so they are per CTA. MIU raises F-RO, cause 8, on any lane in active_mask of a store or atomic any byte of which lies in that range or in the launch window, window 2 (address bits [47:16] equal to 2; the whole window is read-only, ISA section 5.2), compared on the effective address before MIU maps it. Loads are unaffected. F-RO is last among the execute causes (section 12.5). The instruction then has no effect on any lane: a store puts nothing committable in the store buffer, and an atomic sends no exclusive request. The completion's lane_mask is the faulting lanes, and its address the lowest such lane's. LOCAL_BASE (TI-47; AR's rev 253, MIU spec rev 44, RAU spec rev 33): the context's local_base, launch-block word 24, a window index, sent at dispatch from the launch descriptor. MIU forms from it, at the CTA's arrival, both O-69's spill-space base (local_base + CCV_LANE_CONTEXTS) and O-83's run base W = local_base + %privoff, so O-83's decision on a .global memop's rbase never waits for the launch block's line, and a local-form access no longer fills it.
 
 rau → miu · rate 1 · control
 
@@ -667,7 +667,8 @@ rau → miu · rate 1 · control
 | `launch_block_addr` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `const_base` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
 | `const_limit` | `CCV_W_VA` | 64 | CCV_W_VA (arch) |
-| **total** | | **229** | ⚠️ 3 provisional |
+| `local_base` | `CCV_W_VA - 16` | 48 | CCV_W_VA (arch) |
+| **total** | | **277** | ⚠️ 3 provisional |
 
 ### `ccv_ooe_syu_bar`
 

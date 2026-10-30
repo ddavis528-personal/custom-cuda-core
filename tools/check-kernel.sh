@@ -73,8 +73,11 @@
 #   O-69's interleaved spill space (IS-19):   local-no-ctx (localsp): warp
 #     no base register; MIU forms each           1 spills into context 0's
 #     lane's address from local_base (its        frame; local-base-slot: the
-#     table, launch-block byte 24) and the       window read from slot 0's
+#     CTA message, launch-block byte 24) and     window read from slot 0's
 #     warp's context (local_form)                word misses the space
+#   O-83's private run (option W): the        priv-no-ctx (privwin): warp 1
+#     decision on the lowest issuing lane's      in context 0's region;
+#     rbase, each lane's cell (priv_form)        priv-lane0: decided on lane 0
 #   retire frees the mapping a write          free-new (loop): live values
 #     replaced; the free list wraps (loop)       reallocated, the lanes see it
 #   the issue mask is FET's group mask,       corrupt-group-mask: the lanes
@@ -704,6 +707,7 @@ predmerge pred_xfer=3 pred_merge=2 pred_copy=1
 predlane pred_xfer=2 pred_merge=2 pred_copy=0
 predswap pred_xfer=32 pred_merge=16 crack_split=0 store_hit=15
 localsp local_form=12 window_fill=2 pred_xfer=4 frame_lookups=0
+privwin priv_form=11 priv_fault=0
 rope local_form=44 frame_lookups=0
 fence fence=1 fence_wait>0
 addrhigh addr_fault=1 fault=1 kill=1
@@ -933,8 +937,8 @@ fi
 # O-69's spill space (IS-19): localsp's two warps spill in their own
 # frames, 4 MiB apart. MIU forms ctx from the memop's warp_id; taken as 0,
 # warp 1's first st.local lands in context 0's frame. local_base is the
-# launch block's word at byte 24; read from launch slot 0's instead, every
-# local address misses the space.
+# launch block's word at byte 24, which RAU sends on ccv_rau_miu_cta
+# (TI-47); taken from the wrong word, 0, every local address misses the space.
 "$SKEL" --kernel build/oracle/localsp/oracle.jsonl --break local-no-ctx >"$B/kernel_local-no-ctx.log" 2>&1
 "$SKEL" --kernel build/oracle/localsp/oracle.jsonl --break local-base-slot >"$B/kernel_local-base-slot.log" 2>&1
 if grep -q "^CHECK miu: seq 6 lane 0 address 11000100, oracle 11400100" "$B/kernel_local-no-ctx.log" &&
@@ -942,6 +946,22 @@ if grep -q "^CHECK miu: seq 6 lane 0 address 11000100, oracle 11400100" "$B/kern
   say "--break local-no-ctx, local-base-slot" "PASS (warp 1 in context 0's frame; local_base from the wrong word)"
 else
   bad "--break local-no-ctx, local-base-slot" "a local-form address went unchecked: $(grep '^KERNEL' "$B/kernel_local-no-ctx.log")"
+fi
+# O-83's private run (option W; DA tab rev 95): privwin's two warps each
+# have their own region, 32 * L apart, and a group without lane 0 stores
+# through a pointer lane 0 holds one window past the run. priv-no-ctx: R(ctx)
+# at context 0, so warp 1's first interleaved store lands in warp 0's region
+# (0x31010000 against R(1)'s 0x31210000). priv-lane0: the decision on lane
+# 0's rbase, so lanes 16-31's store is ordinary and lands in the run's own
+# window, which names logical offsets only: F-ADDR, where ccv-sim ran it.
+"$SKEL" --kernel build/oracle/privwin/oracle.jsonl --break priv-no-ctx >"$B/kernel_priv-no-ctx.log" 2>&1
+"$SKEL" --kernel build/oracle/privwin/oracle.jsonl --break priv-lane0 >"$B/kernel_priv-lane0.log" 2>&1
+if grep -q "^CHECK miu: seq 6 lane 0 address 31010000, oracle 31210000" "$B/kernel_priv-no-ctx.log" &&
+   grep -q "^CHECK miu: seq 24 lane 16 address 31000008, oracle 31010140" "$B/kernel_priv-lane0.log" &&
+   [ "$(cover "$B/kernel_priv-lane0.log" priv_fault)" = 1 ]; then
+  say "--break priv-no-ctx, priv-lane0" "PASS (warp 1 in context 0's region; the decision on lane 0's rbase faults)"
+else
+  bad "--break priv-no-ctx, priv-lane0" "a private-run address went unchecked: $(grep '^KERNEL' "$B/kernel_priv-lane0.log")"
 fi
 "$SKEL" --kernel build/oracle/loop/oracle.jsonl --break free-new >"$B/kernel_free-new.log" 2>&1
 # The first wrong read follows when OOE's free lists refill: since OI's
