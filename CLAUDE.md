@@ -50,6 +50,15 @@ together share a build directory. check-cg and check-ngd measure their units
 keeps it for an intermediate run, whose result reads `CACHED PASS`. The gate
 before a push is the clean one (Daniel, 2026-10-21).
 
+Routine moves are one command each, printing a few lines with the logs in
+`$CCV_LOGDIR` (default `~/ccv-logs`; DA, 2026-10-30): `tools/gate-push.sh`
+(regen and commit, the clean gate, an ancestry check, push to
+`$CCV_PUSH_BRANCHES`, clear build) and `tools/daily-sweep.sh` (merge every
+remote branch but release, regen, `tools/make-release.sh --push`, push,
+clear; it stops, exit 3, on a conflict outside generated files). Read a
+gate's result with `tools/gate-summary.py <log>`, not the log, and run a
+long job as `tools/bg-run.sh <name> <cmd...>`, which ends in one line.
+
 Local clock gating (Daniel, 2026-10-16; `docs/rtl-coding-style.md`): every
 register behind an `if` on an enable named `<name>_en`; a clock gate is 8
 flops or more, its enable cone within 8 NGD and its DCGE at least 75% in
@@ -136,6 +145,14 @@ custom-cuda-core checkout beside it (or `$CCV_ROSTER`, or a copy at that
 repo's `docs/register/roster.json`, which CP checks against this one in its
 daily sweep). Instructions given only in conversation do not
 survive a compaction; put them here or in the handoff.
+
+Keep bulky reading out of the session's own context: the subagents in
+`.claude/agents/` return a few lines each. `register-reader` (a notice's
+rows, or a sweep's read since the bookmarks), `gate-triage` (why the gate is
+red, with a proposed fix) and `run-tabulate` (an experiment's runs as one
+table) run on cheaper models; for a search across the code use the built-in
+Explore agent. The session still writes the register and decides; a
+subagent only reads and reports.
 
 ## Sessions working side by side
 

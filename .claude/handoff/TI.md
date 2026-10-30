@@ -7,10 +7,11 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
 - Worktree /home/user/ti-ret. Push only to `ccr-183cc441-doowtf` and
   `claude/custom-cuda-core-infra-6msg93`, each after
   `git merge-base --is-ancestor origin/<b> HEAD`. No PRs. Never bare `git stash`.
-- `./tools/regen.sh` and commit what it changes, then a clean
-  `./tools/verify.sh` (or make-release's gate), before every push.
-- After a push, clear build products but keep build/compiler and
-  build/compiler.git.
+- Push with `CCV_PUSH_BRANCHES=ccr-183cc441-doowtf,claude/custom-cuda-core-infra-6msg93
+  tools/gate-push.sh` (regen+commit, clean gate, ancestry, push, clear build);
+  run it in the background and read its summary lines only.
+- Notices: hand the text to the `register-reader` subagent with prefix TI;
+  act on its digest. Gate red: `gate-triage` subagent.
 - Commits end with the Co-Authored-By and Claude-Session lines from the
   session's attribution reminder. No model ids in commits or artifacts.
 - Edits to OI's files (sim/ooe/*) follow OI-18: edit, then notify OI.
@@ -22,12 +23,13 @@ survives a compaction. CLAUDE.md holds the repo's rules; this holds TI's.
   not whole logs.
 
 ## Daily sweep (scheduled task trig_01A8r3ENUjnLyTaNUcc23ZbF, 02:11 PT)
-Register section 4; merge all remote branches but release, regen, commit;
-`tools/make-release.sh --push`; push both branches; clear build; pings and
-pongs; report in a few lines.
+Register section 4 (read through `register-reader` from the bookmarks
+below); then `CCV_PUSH_BRANCHES=... tools/daily-sweep.sh` in the background
+(exit 3 = a real merge conflict to resolve); pings and pongs; report in a
+few lines.
 
 ## Register bookmarks (revs read through)
-Conventions 15, AR 250, OA 279, IS 176, TI 252, OI 234 (FYI re:OI-85,
+Conventions 15, AR 250, OA 279, IS 176, TI 266, OI 234 (FYI re:OI-85,
 re:OI-89; OI-89 closed), CP 143, DA 96. Latest TI open: TI-48.
 Pings 2026-10-30 sent to all five; all ponged ok.
 
@@ -41,12 +43,12 @@ Pings 2026-10-30 sent to all five; all ponged ok.
   review that check-cg patch when the sweep merges it.
 
 ## Open work (most urgent first)
-1. Context handoff (TI-48): the shared `autoCompactWindow` 400000 goes in
-   `.claude/settings.json` only once every agent has reported its handoff
-   in the register (DA, 2026-10-30). This session is at 500k by /autocompact.
-2. Usage reductions DA asked about 2026-10-30, not yet approved: sweep and
-   gate-push scripts, gate-log summarizer, register digest, sweep as a fresh
-   cheaper session, notice-receive subagent.
+1. TI-48 (open, TI rev 266): every agent writes its handoff. Once AR, OA,
+   OI, CP and IS have all answered, put `"autoCompactWindow": 400000` in
+   `.claude/settings.json` (DA, 2026-10-30). This session: /autocompact 500k.
+2. Usage (DA, 2026-10-30): scripts and subagents are in (CLAUDE.md, The gate;
+   Context and handoff). Still to propose: the sweep as its own cheaper
+   session; FYI notices not rung; weekly pings (register rows to OA/DA).
 3. AR-24 capacity sweep on CP-64's eight traces (#46): frames in place
    only plus one interleaved equality check; 64 KiB at hit base 7 vs
    512 KiB at bases 7/8/9. Needs CTA queueing past resident slots and
