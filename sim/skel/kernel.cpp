@@ -965,6 +965,10 @@ private:
     void clear() { valid = 0; ++gen; }
   };
   std::map<unsigned, Windows> win_;
+  /// Each memop's ROB row (OI-85), echoed on its completion.
+  std::map<unsigned, unsigned> cmpl_row_;
+  /// Each CTA slot's local_base, from its ccv_rau_miu_cta (TI-47).
+  std::map<unsigned, uint64_t> lbase_;
   /// A window fill's request to DCU, by req_id: its CTA slot and line, and
   /// the table's gen when it was sent.
   struct Fill { unsigned cta; uint64_t line; unsigned gen; };
@@ -1091,6 +1095,9 @@ private:
       Windows &t = win_[cta];
       t.block = get(m, c.rau_miu, "launch_block_addr");
       t.clear();
+      // local_base (TI-47): O-69's spill base and O-83's W, from the CTA's
+      // arrival, so neither waits for the launch block's line.
+      lbase_[cta] = get(m, c.rau_miu, "local_base");
     }
     for (unsigned s = 0; s != kChans[c.ooe_miu].rate; ++s)
       while (has(c.ooe_miu, s)) {
@@ -1141,6 +1148,7 @@ private:
           }
         }
         memop_[tag] = {s, m.payload, now_, m.tid};
+        cmpl_row_[tag] = unsigned(get(m.payload, c.ooe_miu, "done_row"));   // OI-85
         order_.push_back(tag);
       }
     for (unsigned s = 0; s != kChans[c.rcu_miu].rate; ++s)
@@ -1374,6 +1382,7 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", tag);
+    put(m, c.miu_ooe, "done_row", cmpl_row_[tag]);   // OI-85
     put(m, c.miu_ooe, "rs_idx", rs_idx);
     put(m, c.miu_ooe, "status", kStatusReplay);
     return m;
@@ -1411,12 +1420,12 @@ private:
     // L1 miss, never a hit (AR's response). no-window-fill: the table is
     // taken as filled, its words zero.
     const bool slot = get(mo.msg, c.ooe_miu, "slot_form") != 0;
-    // The interleaved local form (IS-19) waits the same way for local_base,
-    // the table's word from the launch block's first line.
+    // The interleaved local form (IS-19) takes local_base from the CTA's
+    // ccv_rau_miu_cta (TI-47), so it never waits for the line.
     const bool local = get(mo.msg, c.ooe_miu, "local_form") != 0;
     const unsigned cta = unsigned(get(mo.msg, c.ooe_miu, "cta_slot"));
-    const unsigned k = local ? kLocalBase : unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
-    if ((slot || local) && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
+    const unsigned k = unsigned(get(mo.msg, c.ooe_miu, "arg_slot"));
+    if (slot && k_.brk != "no-window-fill" && !(win_[cta].valid >> k & 1u)) {
       const uint64_t line = slotAddr(win_[cta], k) / kLine * kLine;
       win_miss_.insert(tag);
       for (const auto &f : fills_)
@@ -1521,9 +1530,9 @@ private:
     // + 4l + b % 4, ctx the warp's hardware context, which MIU forms from
     // the memop's warp_id and its core's index (OA's proposal IS-19).
     // local-no-ctx: ctx taken as 0, so every warp spills to one frame.
-    // local-base-slot: local_base read from launch slot 0's word.
-    const uint64_t lbase =
-        win_[cta].w[k_.brk == "local-base-slot" ? 0u : unsigned(kLocalBase)];
+    // local-base-slot: local_base taken from the wrong word, launch slot 0's,
+    // which is 0 here.
+    const uint64_t lbase = k_.brk == "local-base-slot" ? 0 : lbase_[cta];
     const uint64_t ctx = k_.brk == "local-no-ctx"
                              ? 0 : (uint64_t(ccv::prov::kCoreId) << ccv::kWWarpId) | j.warp;
     auto localAddr = [&](uint64_t b, unsigned l) {
@@ -1555,6 +1564,50 @@ private:
                     (uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) +
                     uint64_t(disp);
       }
+    // O-83 (option W, DA tab rev 95; ISA section 5.9): a .global access in a
+    // form that takes rbase is interleaved when lane d's rbase lies in the
+    // private run, d the lowest lane of the ISSUE mask whether or not its
+    // predicate is set. W = local_base + %privoff, local_base from the CTA's
+    // ccv_rau_miu_cta (TI-47). Each lane's offset b is its own, from
+    // its own rbase; lane l's byte b is at R(ctx) + 128 (b / 4) + 4l + b % 4,
+    // past the run's own windows, and b outside [0, L) is F-ADDR, as is an
+    // ordinary access into the run's own windows, which name logical offsets
+    // only. ld.pred/st.pred: lane d's b with l = 0. The launch-slot and
+    // local forms, and .shared, are never interleaved.
+    // priv-lane0: the decision on lane 0's rbase (ccv-sim's
+    // -ccv-test-priv-lane0), which a diverged group with lane 0 off gets wrong.
+    // priv-no-ctx: R(ctx) taken at ctx 0, so every warp shares one region.
+    uint32_t pbad = 0;
+    if (global && issue) {
+      const uint64_t W = lbase_[cta] + 3ull * ccv::prov::kLaneContexts;
+      const unsigned pk = unsigned(__builtin_ctz(ccv::prov::kPrivWindows));
+      const int64_t L = int64_t(ccv::prov::kPrivWindows) << 16;
+      const unsigned d = k_.brk == "priv-lane0" ? 0u : unsigned(__builtin_ctz(issue));
+      const uint64_t rbd = getLane(am, c.rcu_miu, "base_per_lane", d);
+      if (!slot && !local && (rbd >> pk) == (W >> pk)) {
+        const uint64_t pctx = k_.brk == "priv-no-ctx" ? 0 : ctx;
+        const uint64_t R = ((W + ccv::prov::kPrivWindows) << 16) + pctx * 32 * uint64_t(L);
+        auto bOf = [&](unsigned l, bool idx) {
+          const int64_t rb = int64_t(getLane(am, c.rcu_miu, "base_per_lane", l));
+          const int64_t ix = idx ? int64_t(uint64_t(getLane(am, c.rcu_miu, "index_per_lane", l)) << sh) : 0;
+          return ((rb - int64_t(W)) << 16) + ix + disp;
+        };
+        auto cell = [&](int64_t b, unsigned l) {
+          return R + 128 * uint64_t(b / 4) + 4 * uint64_t(l) + uint64_t(b % 4);
+        };
+        const int64_t bd = bOf(d, false);
+        for (unsigned l = 0; l != kLanes; ++l) {
+          if (!((j.active >> l) & 1u)) continue;
+          const int64_t b = j.pxfer ? bd : bOf(l, true);
+          if (b < 0 || b >= L) pbad |= 1u << l;
+          else j.addr[l] = cell(b, j.pxfer ? 0u : l);
+        }
+        k_.hit("priv_form");
+      } else {
+        for (unsigned l = 0; l != kLanes; ++l)
+          if ((j.active >> l & 1u) && !local && (j.addr[l] >> 16 >> pk) == (W >> pk)) pbad |= 1u << l;
+      }
+    }
     // .shared (CP-33): the offset into the CTA's region, modulo 2^32, which
     // ccv-sim names; SPM's byte address is the region's first byte plus it.
     // An SPM access is never an L1 hit. ccv-sim keeps the carry (task: CP-33),
@@ -1634,6 +1687,8 @@ private:
     for (unsigned l = 0; l != kLanes; ++l)
       if ((j.active >> l & 1u) && j.global && j.addr[l] >> ccv::kAddrBits && k_.brk != "addr-wrap")
         bad |= 1u << l;
+    if (pbad) k_.hit("priv_fault");
+    bad |= pbad;
     // F-SHARED (section 12.5): a .shared access with a byte past its CTA's
     // region, after F-ADDR, which no .shared access raises. ccv-sim bounds
     // no .shared access, so no kernel here can reach it yet.
@@ -1808,6 +1863,7 @@ private:
     const Ch &c = ch();
     Bits m = msgOf(c.miu_ooe);
     put(m, c.miu_ooe, "rob_tag", j.tag);
+    put(m, c.miu_ooe, "done_row", cmpl_row_[j.tag]);   // the memop's row (OI-85)
     // The RS entry, echoed from the memop as phys_dst is to RCU, so MIU holds
     // no table of it and OOE wakes the entry with no lookup (OA-23).
     put(m, c.miu_ooe, "rs_idx", k_.brk == "rs-echo" ? j.rs_idx ^ 1u : j.rs_idx);
@@ -2390,8 +2446,12 @@ private:
   Bits done(unsigned tag) {
     Bits d = msgOf(ch().rcu_ooe);
     put(d, ch().rcu_ooe, "rob_tag", tag);
+    // The row its issue named (OI-85), so OOE sets that row's done bit.
+    // done-row: the next row instead, a done for a row the entry may not owe.
+    put(d, ch().rcu_ooe, "done_row", (done_row_[tag] + (k_.brk == "done-row" ? 1u : 0u)) & 3u);
     return d;
   }
+  std::map<unsigned, unsigned> done_row_;   ///< each rob_tag's row, from its issue
   /// The first slot of slot s's resource group: S0, P0 or R.
   static unsigned groupOf(unsigned s) {
     return s < kSlotP0 ? kSlotS0 : s < kSlotR ? kSlotP0 : kSlotR;
@@ -2831,6 +2891,8 @@ private:
     const unsigned tag = unsigned(get(m.payload, c.ooe_rcu, "rob_tag"));
     const unsigned opc = unsigned(get(m.payload, c.ooe_rcu, "opcode"));
     const OpInfo *op = opc == kOpCopy ? nullptr : opByCode(opc);
+    // The ROB entry's row (OI-85): the op's done echoes it.
+    done_row_[tag] = unsigned(get(m.payload, c.ooe_rcu, "done_row"));
     if (!op && opc != kOpCopy) { k_.fail("rcu: unknown opcode"); return; }
     // Each class on its own resources: lane ops (the copy among them) on
     // the sections, memops on the pipes, RCU-only ops on R.
@@ -3236,11 +3298,11 @@ private:
     const OpInfo *op = opByName(r->op);
     // DEC's second illegal-instruction obligation, separate from the
     // reserved-field zero checks: srd's selector is a legal field that may
-    // hold an unallocated value, so this is a range comparison. Selector 2,
-    // %lanectx, is allocated (O-64); 3-15 are not.
+    // hold an unallocated value, so this is a range comparison. Selectors 2,
+    // %lanectx (O-64), and 3, %privoff (O-83), are allocated; 4-15 are not.
     if (op && op->srd_sel >= 0) {
       const int64_t sel = (r->imms.empty() ? 0 : r->imms[0]) +
-                          (k_.brk == "srd-selector" ? 3 : 0);
+                          (k_.brk == "srd-selector" ? 4 : 0);
       op = srdBySel(sel);
       if (!op) {
         k_.fail("dec: seq %llu srd selector %lld is unallocated (a legal field, "
@@ -4682,6 +4744,12 @@ private:
           put(a, c.rau_miu, "const_limit", k_.orcs[l.w].const_limit);
           // Where MIU's window table fills from (TI-31).
           put(a, c.rau_miu, "launch_block_addr", k_.orcs[l.w].launch_block);
+          // The context's local_base (TI-47): launch-block word 24, from the
+          // launch descriptor, which ccv-sim's launch block is here.
+          uint64_t lb = 0;
+          for (const auto &w : k_.orcs[l.w].init_mem)
+            if (w.first == k_.orcs[l.w].launch_block + 24) lb = w.second;
+          put(a, c.rau_miu, "local_base", lb);
           // The CTA's .shared region, its first and last bytes in SPM (TI's
           // rev 230): an equal share of SPM a CTA slot, until RAU sizes it
           // from the kernel's .shared. spm-shared-region: every slot given
