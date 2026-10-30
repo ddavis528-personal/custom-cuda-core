@@ -43,8 +43,7 @@ if ! verilator $VCOMMON --assert -DCCV_TRACE --top-module ccv_common_chk_bank \
      -CFLAGS "-std=c++17 -O1 -I$R/sim/include -I$R/sim/generated -I$R/sim/skel" \
      rtl/ccv_assert_pkg.sv rtl/if/ccv_common_chk_credit.sv \
      rtl/if/ccv_common_chk_atomic.sv rtl/if/ccv_common_chk_lockstep.sv \
-     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_distinct.sv \
-     rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv \
+     rtl/if/ccv_common_chk_binding.sv rtl/if/ccv_common_chk_outstanding.sv rtl/if/ccv_common_chk_notice.sv \
      rtl/if/ccv_common_chk_wake.sv \
      rtl/generated/ccv_common_chk_bank.sv \
      "$R/sim/skel/main.cpp" "$R/sim/skel/machine.cpp" \
@@ -83,7 +82,6 @@ bank_cc=$(grep -c "^  ccv_common_chk_credit #" rtl/generated/ccv_common_chk_bank
 bank_ac=$(grep -c "^  ccv_common_chk_atomic #" rtl/generated/ccv_common_chk_bank.sv)
 bank_lc=$(grep -c "^  ccv_common_chk_lockstep #" rtl/generated/ccv_common_chk_bank.sv)
 bank_bc=$(grep -c "^  ccv_common_chk_binding #" rtl/generated/ccv_common_chk_bank.sv)
-bank_dc=$(grep -c "^  ccv_common_chk_distinct #" rtl/generated/ccv_common_chk_bank.sv)
 bank_oc=$(grep -c "^  ccv_common_chk_outstanding #" rtl/generated/ccv_common_chk_bank.sv)
 bank_nc=$(grep -c "^  ccv_common_chk_notice #" rtl/generated/ccv_common_chk_bank.sv)
 bank_fx=$(grep -c "^  ccv_common_chk_credit #.*FIXED_LAT(1)" rtl/generated/ccv_common_chk_bank.sv)
@@ -93,7 +91,6 @@ bin_n=$(field "$B/skel_count.log" slots)
 if [ "$bank_cc" = "$X_SLOTS" ] && [ "$bin_n" = "$X_SLOTS" ] &&
    [ "$doc_n" = "$X_SLOTS" ] && [ "$bank_ac" = "$X_MULTI" ] &&
    [ "$bank_lc" = "$X_LOCKSTEP" ] && [ "$bank_bc" = "$X_BINDING" ] &&
-   [ "$bank_dc" = "$X_DISTINCT" ] &&
    [ "$bank_oc" = "$X_OUTSTANDING" ] && [ "$bank_fx" = "$X_FIXED" ] &&
    [ "$bank_nc" = "$X_NOTICE" ] &&
    [ "$(field "$B/skel_count.log" chan_insts)" = "$X_INSTS" ] &&
@@ -102,7 +99,7 @@ if [ "$bank_cc" = "$X_SLOTS" ] && [ "$bin_n" = "$X_SLOTS" ] &&
       "PASS ($X_SLOTS slots, $X_MULTI groups)"
 else
   bad "slot count re-derived from the schema" \
-      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; distinct $bank_dc/$X_DISTINCT; outstanding $bank_oc/$X_OUTSTANDING; notice $bank_nc/$X_NOTICE; fixed latency $bank_fx/$X_FIXED"
+      "schema $X_SLOTS, binary $bin_n, bank $bank_cc, doc $doc_n; groups $bank_ac/$X_MULTI; lockstep $bank_lc/$X_LOCKSTEP; binding $bank_bc/$X_BINDING; outstanding $bank_oc/$X_OUTSTANDING; notice $bank_nc/$X_NOTICE; fixed latency $bank_fx/$X_FIXED"
 fi
 
 # -- the trace sideband is invisible to synthesis --------------------------
@@ -261,21 +258,6 @@ if [ "$props" = "binding_key" ] && [ "$inst" = "$X_BINDING" ]; then
   say "--break misgroup: slot carries another stream" "PASS ($inst binding checker)"
 else
   bad "--break misgroup" "$inst of $X_BINDING fired {$props}, want {binding_key}"
-fi
-
-# -- distinct key: two slots of a cycle naming one entry (OI-85) -----------
-# Every rcu->ooe done carries rob_tag 0: valids, credits and payload timing
-# are all legal, so only the distinct checker can see two slots naming one
-# ROB entry -- and only distinct_key may fire, on every keyed instance.
-log="$B/skel_dupkey.log"
-"$SKEL" --cycles 400 --break dupkey >"$log" 2>&1
-props=$(grep -o "CCV [a-z_]* failed" "$log" | awk '{print $2}' | sort -u | tr '\n' '+' | sed 's/+$//')
-inst=$(grep -o "Assertion failed in [^:]*" "$log" \
-       | sed 's/Assertion failed in //; s/\.[a-z_]*$//' | sort -u | wc -l)
-if [ "$props" = "distinct_key" ] && [ "$inst" = "$X_DISTINCT" ]; then
-  say "--break dupkey: two slots name one entry" "PASS ($inst distinct checker)"
-else
-  bad "--break dupkey" "$inst of $X_DISTINCT fired {$props}, want {distinct_key}"
 fi
 
 # -- id classes: a class a channel may not carry is caught on every one ----

@@ -2950,6 +2950,7 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
   is.tid = u.tid;
   is.port = port;
   is.rob_tag = tagOf(slot, idx);
+  is.row = uint8_t(step == 2 ? 2 : step == 3 ? 3 : 0);   // OI-85
   is.warp = s.warp;
   is.issue_mask = u.group_mask;          // V-54: the mask it arrived with
   for (unsigned i = 0; i != 3; ++i) is.psrc[i] = r.psrc[i];
@@ -3019,10 +3020,12 @@ Issue Core::makeIssue(unsigned slot, unsigned idx, unsigned port, unsigned step)
     // srd: identity is OOE's to substitute (A-25): warp_base for %ctatid
     // (the lane ORs its index in), %ctaid for selector 1, and for selector
     // 2 (%lanectx, O-64) the hardware warp context, the core's index above
-    // warp_id, shifted the same way.
+    // warp_id, shifted the same way. Selector 3 (%privoff, O-83) is a device
+    // constant, the private run's offset from local_base in windows.
     is.imm = u.shape.srd == 0 ? s.warp_in_cta << 5
            : u.shape.srd == 1 ? s.ctaid
            : u.shape.srd == 2 ? uint32_t(((cfg_.core_id << ccv::kWWarpId) | s.warp) << 5)
+           : u.shape.srd == 3 ? uint32_t(3 * ccv::prov::kLaneContexts)
            : u.imm;
     // Predicate logic's two sources, renamed: each physical predicate with
     // its negate above it, where DEC's qualifiers were (TI-1).
@@ -3051,6 +3054,7 @@ void Core::issueCopy(unsigned slot, unsigned idx, unsigned copy_port) {
   Issue cp = is;
   cp.port = copy_port;
   cp.copy = true;
+  cp.row = 1;                    // the copy's row (OI-85)
   cp.res = Issue::kLaneOp;       // the copy runs through a lane
   cp.footprint = uint8_t(cfg_.sectioned ? resOf(r, true) & 0xFu : 0xFu);
   cp.send_imm = true;
@@ -3132,6 +3136,7 @@ void Core::doIssue(unsigned e, unsigned port, bool with_copy, unsigned copy_port
     m.warp = s.warp;
     m.cta_slot = cfg_.inject_cta_slot_zero ? 0 : s.cta_slot;
     m.rs_idx = e;
+    m.row = uint8_t(x.atom == 3 ? 3 : 0);   // OI-85
     m.mem_op = u.mem_op;                 // DEC's, unexamined (A-68)
     m.issue_mask = u.group_mask;
     m.pdst = r.alloc_gpr ? r.pnew : noGpr();   // TI-37, as the issue
