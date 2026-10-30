@@ -1121,4 +1121,5 @@ it.
   bytes in every thread, IS's first top-down split, and O-64's frame
   windows. The fixes add: both together save 22.8% on coremark128, and
   512 KiB's lead over 64 KiB grows to 8.4% with frames interleaved, so the
-  L1 size still rests on the eight-trace sweep.
+  L1 size still rests on the eight-trace sweep. IS wrote it into the ISA
+  as O-84 (compiler 3d9ba61).
